@@ -44,7 +44,7 @@ def _edit_above_everything(target: Path) -> None:
 
 def test_the_fingerprint_does_not_move_or_die_when_the_file_is_edited_mid_render(tmp_path) -> None:
     module, target = _load_copy(tmp_path)
-    collectors = [module.collect_chain, module.collect_band_stages, module._band_chain_link]
+    collectors = [module.collect_chain, module.collect_chain_volume, module.collect_live_readiness]
     before = [module._section_fingerprint(c) for c in collectors]
     salt_before = module._center_landing_salt()
 
@@ -63,7 +63,7 @@ def test_the_fingerprint_still_follows_a_real_change_of_code(tmp_path) -> None:
 
     # A fresh process on the edited file sees the edit.
     text = target.read_text(encoding="utf-8").replace(
-        '"④ 概率分档校准"', '"④ 概率分档校准 (edited)"', 1
+        '"④ P0 概率服务"', '"④ P0 概率服务 (edited)"', 1
     )
     target.write_text(text, encoding="utf-8")
     spec = importlib.util.spec_from_file_location("_dashboard_copy_edited", target)

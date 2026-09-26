@@ -1,6 +1,9 @@
 #!/bin/bash
-# The board's research render: one heavy section a run, on its own clock
-# (user ruling 2026-09-24 「单开研究节渲染」).
+# The board's research render: the overdue pages the page render cannot
+# refresh, on its own clock (user ruling 2026-09-24 「单开研究节渲染」) --
+# heavy sections past their lifetime and, since 2026-09-26, any page starved
+# for three hours by the page render's budget (calibration_dashboard.
+# STARVED_PAGE_AGE_SEC), most overdue first, until RESEARCH_RUN_BUDGET_SEC.
 #
 # The page render (dashboard_render_sweep.sh) has 1,500 s and serves every
 # section that cost 300 s or more last time from its page ("research lane").
@@ -46,7 +49,7 @@ if [ -f "$WAL" ]; then
     exit 0
   fi
 fi
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render (one heavy section)"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render (overdue pages: heavy and starved)"
 # Five minutes under the hourly StartInterval, so a killed run leaves a gap
 # with no research read in it, as the page render's deadline does.
 RESEARCH_TIMEOUT_SEC="${PM_DASHBOARD_RESEARCH_TIMEOUT_SEC:-3300}"

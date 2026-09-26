@@ -762,9 +762,17 @@ def _readiness_book(monkeypatch) -> dict:
         "probation": [], "barred": ["AAAA", "ZZZZ"],
         "minimum_settlements": 5,
     })
-    band = [{"station": "AAAA", "ratio": 1.0},
-            {"station": "ZZZZ", "ratio": 1.0}]
-    return board.collect_live_readiness(conn, band)
+    # The roster is every station with a market-timezone binding (charter
+    # 232 retired the band audit whose station list it used to be).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS calibration_station_market_timezone_binding"
+        " (station_id TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO calibration_station_market_timezone_binding VALUES (?)",
+        [("AAAA",), ("ZZZZ",)],
+    )
+    return board.collect_live_readiness(conn)
 
 
 def test_a_station_that_traded_live_has_a_row_with_its_live_money(

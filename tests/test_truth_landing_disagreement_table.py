@@ -222,7 +222,7 @@ def test_the_baseline_line_prices_the_class_at_the_market():
     assert "验收样本底数" in html
     assert "≥45% 而市场价 &lt;30% 的桶 <b>51 个，开出 3 个</b>（5.9%）" in html
     assert f"{100 * (3 / 51 - 0.18):.1f}¢" in html and 'class="down"' in html
-    assert "β 车道和 L4 的验收样本" in html
+    assert "「模型说有、市场说没有」的验收样本" in html
 
 
 def test_a_page_without_the_baseline_draws_no_line():

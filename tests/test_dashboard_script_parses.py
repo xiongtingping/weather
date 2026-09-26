@@ -42,10 +42,11 @@ def _scripts() -> list[str]:
 def test_the_page_carries_the_panels_as_inline_script():
     joined = "\n".join(_scripts())
     # Canaries: the section this guard was written for (the claim-edge
-    # thermometer) retired with charter 230's lambda; the L4 panel and the
-    # beta dial carry it now.
+    # thermometer) retired with charter 230's lambda, and the beta dial
+    # after it left the page on 2026-09-26; the L4 panel and the Proper
+    # lane's page (charter 231) carry it now.
     assert "function posteriorLane(" in joined
-    assert "function betaDial(" in joined
+    assert "function properBetLane(" in joined
 
 
 @pytest.mark.skipif(

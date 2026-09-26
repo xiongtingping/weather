@@ -197,9 +197,7 @@ def test_the_board_and_the_control_plane_cannot_disagree() -> None:
 
     import sqlite3  # noqa: PLC0415
 
-    from calibration_dashboard import (  # noqa: PLC0415
-        collect_band_residual_audit, collect_live_readiness,
-    )
+    from calibration_dashboard import collect_live_readiness  # noqa: PLC0415
 
     db = ROOT / "data" / "bayes_basket_target_ssot.db"
     if not db.is_file():
@@ -208,9 +206,7 @@ def test_the_board_and_the_control_plane_cannot_disagree() -> None:
     conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA busy_timeout=60000")
-        board = collect_live_readiness(
-            conn, (collect_band_residual_audit(conn)).get("stations") or []
-        )
+        board = collect_live_readiness(conn)
     finally:
         conn.close()
     plane = control.live_stations()

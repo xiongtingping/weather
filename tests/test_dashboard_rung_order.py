@@ -256,18 +256,3 @@ def test_the_posted_ladder_and_its_legs_are_drawn_cold_to_warm() -> None:
     # And the per-leg table under it, which reads the same list.
     table = html[html.index("<tbody>"):]
     assert _order(table, scrambled) == ["18°C", "19°C", "20°C"]
-
-
-def test_convergence_candidate_buckets_are_drawn_cold_to_warm() -> None:
-    scrambled = ["27°C", "25°C", "26°C"]
-    html = _run(
-        {"convergence_claim": {"examples": [{
-            "station_id": "ZUUU", "event_date": "2026-09-13", "stage": "P0",
-            "at": "2026-09-13T00:00", "buckets": scrambled, "claim": 0.4,
-            "price": 0.3, "agreement": 0.5, "claim_rise": 0.01,
-            "price_fall": 0.01, "lifted_edge": 0.02, "flips_gate": False,
-        }]}},
-        _extract("convergenceClaim"),
-        "convergenceClaim()",
-    )
-    assert _order(html, scrambled) == ["25°C", "26°C", "27°C"]

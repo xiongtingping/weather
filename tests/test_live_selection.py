@@ -355,16 +355,20 @@ def test_the_board_hands_these_sections_the_live_payload_only() -> None:
     # The paper selection payload is no longer built for the page.
     assert "build_selection_payload" not in source
     template = source[source.index('HTML_TEMPLATE = r"""'):]
-    for name in ("overviewLamps", "refusalStats", "coverage", "basketHit",
-                 "liveReadiness", "roster"):
+    for name in ("overviewLamps", "liveReadiness"):
         body = _template_function(template, name)
         assert body is not None, name
         assert "D.selection" not in body, name
         assert "D.live_selection" in body, name
     # 逐站汇总（跨日） merged into the go-live table, 没建仓是因为什么 moved
-    # into 逐站逐日明细: neither is a section of its own any more.
-    for gone in ("stationSummary", "ledgerAlignment"):
+    # into 逐站逐日明细: neither is a section of its own any more.  The
+    # basket's refusal, coverage and hit-rate sections -- and the roster's
+    # why-not-built rows -- left the page on 2026-09-26 with the basket's
+    # selection readings (user: 「全面检查旧的内容」「整区删除」).
+    for gone in ("stationSummary", "ledgerAlignment", "refusalStats",
+                 "coverage", "basketHit"):
         assert _template_function(template, gone) is None, gone
+    assert "D.live_selection" not in (_template_function(template, "roster") or "")
     top = template[template.index("const TOP = "):]
     top = top[: top.index("];") + 2]
     assert "refusalStats" not in top and "stationSummary" not in top

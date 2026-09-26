@@ -524,7 +524,11 @@ def test_every_chain_light_is_a_seek():
 
 
 def test_the_chain_prints_the_counts_it_was_handed():
-    """``volume`` is also the band link's local name; the counts must not be shadowed."""
+    """The counts reach the links they were handed to, by link.
+
+    ``volume`` was also the band link's local name, and shadowed them; that
+    link left the chain with the band layer (charter 232).
+    """
 
     import calibration_dashboard as board
 
@@ -539,7 +543,7 @@ def test_the_chain_prints_the_counts_it_was_handed():
     counts = {"capture": 1234, "truth": 5, "activation": 6, "p0": 7, "p1": 8}
     links = {row["name"][0]: row["volume"] for row in board.collect_chain(conn, counts)}
     assert links["①"] == "1,234 条成员预报"
-    assert links["⑤"] == "7 份快照" and links["⑥"] == "8 份快照"
+    assert links["④"] == "7 份快照" and links["⑤"] == "8 份快照"
     unread = {row["name"][0]: row["volume"] for row in board.collect_chain(conn, {})}
     assert unread["①"] == "条数本轮未算"
 

@@ -52,7 +52,8 @@ def _conn() -> sqlite3.Connection:
         "CREATE TABLE calibration_center_width_fit_journal ("
         "  stage TEXT, fitted_at_utc TEXT, outcome TEXT, delta_c REAL,"
         "  width_lambda REAL, serving_day_count INTEGER,"
-        "  serving_cell_count INTEGER, forward_nll_gain REAL);"
+        "  serving_cell_count INTEGER, forward_nll_gain REAL,"
+        "  evidence_json TEXT);"
     )
     return conn
 
@@ -60,9 +61,9 @@ def _conn() -> sqlite3.Connection:
 def _journal(conn, stage, *, days, outcome="ACCUMULATING"):
     conn.execute(
         "INSERT INTO calibration_center_width_fit_journal"
-        " VALUES(?,?,?,?,?,?,?,?)",
+        " VALUES(?,?,?,?,?,?,?,?,?)",
         (stage, "2026-09-12T00:00:00Z", outcome, 0.0, 1.0, days, days * 90,
-         0.0),
+         0.0, "{}"),
     )
 
 

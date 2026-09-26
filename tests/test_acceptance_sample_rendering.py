@@ -48,8 +48,7 @@ def _run(payload: dict, call: str) -> str:
     script = (
         "const D = " + json.dumps(payload, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s);\n"
-        + _function("betaShadow") + "\n" + _function("posteriorRealisation")
-        + "\n" + _function("threeKnobs")
+        + _function("posteriorRealisation")
         + f"\nconsole.log({call});\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
@@ -61,41 +60,8 @@ def _text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
 
 
-ACCEPTANCE = {
-    "claim_floor": 0.45, "market_ceiling": 0.30, "windows": 5, "days": 3, "judged": 4,
-    "hit_rate": 0.2, "mean_price": 0.21, "mean_hit_minus_price": -0.01,
-    "current_admits": 3, "current_mean_hit_minus_price": -0.12,
-    "beta_admits": 1, "beta_mean_hit_minus_price": 0.79,
-}
-
-
-def _beta(acceptance) -> dict:
-    replay = {"since": "2026-09-03", "windows": 9, "judged": 8, "no_market_mid": 0,
-              "cells": {}, "days": []}
-    if acceptance is not None:
-        replay["acceptance"] = acceptance
-    return {"beta_shadow": {"available": True, "mode": "shadow", "served": {}, "research": {},
-                            "lead_bands": {}, "live": {}, "replay": replay}}
-
-
-def test_the_beta_section_draws_the_class_with_both_gates_verdicts():
-    text = _text(_run(_beta(ACCEPTANCE), "betaShadow()"))
-
-    assert "验收样本：模型说 ≥45% 而市场中价 &lt;30% 的窗" in text
-    # windows / days, judged, hit rate, price, then the live gate and beta side by side.
-    assert re.search(r"5 / 3 4 20% 0\.21 -1\.0点 3 -12\.0点 1 \+79\.0点", text)
-
-
-def test_the_beta_section_says_when_the_class_has_not_settled_yet():
-    text = _text(_run(_beta({**ACCEPTANCE, "windows": 0}), "betaShadow()"))
-
-    assert "还没有这类已结算的窗" in text and "累积中" in text
-
-
-def test_the_beta_section_says_when_the_page_predates_the_field():
-    text = _text(_run(_beta(None), "betaShadow()"))
-
-    assert "验收样本 ：本页数据还没带这一项" in text
+# The beta section and its acceptance rows left the page with the beta
+# lane's board readings (2026-09-26); the L4 table keeps its own.
 
 
 def _cell(n: int, hit: float) -> dict:

@@ -1,4 +1,4 @@
-"""A packet that shipped two families of four has to be visible as that.
+"""A packet that shipped two families of six has to be visible as that.
 
 2026-09-10.  The strip read "模型在进来 3/4 · 最旧一家 ECCC · 32.0 小时前的 run"
 and everything else on the page was green.  What it could not say was that
@@ -14,7 +14,8 @@ published from inside a poll whose shape varies, so a page rendered on a
 rotation-level poll sees no receipt at all and reads as fine.
 
 So the count is taken off the serving inbox: a file, outliving every
-process, holding exactly what the compiler is given.
+process, holding exactly what the compiler is given.  The families expected
+are the production registry's (six since charter 212), not a list kept here.
 """
 
 from __future__ import annotations
@@ -31,8 +32,10 @@ if str(ROOT / "scripts") not in sys.path:
 
 import calibration_dashboard as C  # noqa: E402
 
-FOUR = ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05",
-        "ECCC_GEM_GLOBAL_ENS", "DWD_ICON_GLOBAL_EPS"]
+# Every family the registry seats, in the board's order; the first two are
+# ECMWF IFS and AIFS.
+ALL = [system_id for system_id, *_rest in C.MEMBER_FAMILIES]
+LABELS = [label for _system_id, label, *_rest in C.MEMBER_FAMILIES]
 
 
 def _packet(event_date: str, systems: list[str], received: str) -> dict:
@@ -58,10 +61,10 @@ def _at(monkeypatch, when: str) -> None:
     monkeypatch.setattr(C, "_now", lambda: stamp)
 
 
-def test_a_two_family_packet_reports_two_of_four(monkeypatch, tmp_path):
+def test_a_two_family_packet_reports_two_of_six(monkeypatch, tmp_path):
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-12", FOUR[:2], "2026-09-10T08:25:07Z")
+        _packet("2026-09-12", ALL[:2], "2026-09-10T08:25:07Z")
         for _ in range(37)
     ])
 
@@ -70,8 +73,8 @@ def test_a_two_family_packet_reports_two_of_four(monkeypatch, tmp_path):
 
     assert row["event_date"] == "2026-09-12"
     assert row["packets"] == 37
-    assert (row["family_count"], row["expected_family_count"]) == (2, 4)
-    assert row["absent"] == ["ECCC", "ICON"]
+    assert (row["family_count"], row["expected_family_count"]) == (2, 6)
+    assert row["absent"] == LABELS[2:]
 
 
 def test_taf_rides_the_same_packet_and_is_not_a_family(monkeypatch, tmp_path):
@@ -79,7 +82,7 @@ def test_taf_rides_the_same_packet_and_is_not_a_family(monkeypatch, tmp_path):
 
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-12", [*FOUR[:2], "OFFICIAL_AIRPORT_TAF_TX"],
+        _packet("2026-09-12", [*ALL[:2], "OFFICIAL_AIRPORT_TAF_TX"],
                 "2026-09-10T08:25:07Z"),
     ])
 
@@ -95,23 +98,23 @@ def test_the_far_date_alone_does_not_light_the_strip(monkeypatch, tmp_path):
 
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-10", FOUR, "2026-09-10T02:09:22Z"),
-        _packet("2026-09-11", FOUR, "2026-09-10T08:42:51Z"),
-        _packet("2026-09-12", FOUR[:2], "2026-09-10T08:25:07Z"),
+        _packet("2026-09-10", ALL, "2026-09-10T02:09:22Z"),
+        _packet("2026-09-11", ALL, "2026-09-10T08:42:51Z"),
+        _packet("2026-09-12", ALL[:2], "2026-09-10T08:25:07Z"),
     ])
 
     out = C._official_native_family_coverage({})
     assert out["native_inbox_health"] == "green"
     assert out["native_inbox_short_near_dates"] == []
     # Still printed, every date, whatever the colour.
-    assert [r["family_count"] for r in out["native_inbox_coverage"]] == [4, 4, 2]
+    assert [r["family_count"] for r in out["native_inbox_coverage"]] == [6, 6, 2]
 
 
 def test_a_near_date_short_of_families_does_light_it(monkeypatch, tmp_path):
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-10", FOUR[:2], "2026-09-10T02:09:22Z"),
-        _packet("2026-09-11", FOUR, "2026-09-10T08:42:51Z"),
+        _packet("2026-09-10", ALL[:2], "2026-09-10T02:09:22Z"),
+        _packet("2026-09-11", ALL, "2026-09-10T08:42:51Z"),
     ])
 
     out = C._official_native_family_coverage({})
@@ -128,7 +131,7 @@ def test_the_counts_stand_without_the_workers_receipt(monkeypatch, tmp_path):
 
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-10", FOUR[:2], "2026-09-10T02:09:22Z"),
+        _packet("2026-09-10", ALL[:2], "2026-09-10T02:09:22Z"),
     ])
 
     out = C._official_native_family_coverage({"forecast_prefetch": {}})
@@ -142,7 +145,7 @@ def test_the_hold_reason_is_carried_when_the_receipt_has_one(
 ):
     _at(monkeypatch, "2026-09-10T08:00:00+00:00")
     _inbox(monkeypatch, tmp_path, [
-        _packet("2026-09-12", FOUR[:2], "2026-09-10T08:25:07Z"),
+        _packet("2026-09-12", ALL[:2], "2026-09-10T08:25:07Z"),
     ])
     status = {"forecast_prefetch": {"resident_nwp_capture": {
         "official_native_capture": {"last_completed": {

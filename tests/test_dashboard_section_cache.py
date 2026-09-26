@@ -167,15 +167,14 @@ def test_every_timed_section_is_comparable_to_every_other(cache_dir) -> None:
 # ``alerts`` from exactly these, so a stale one is a light that says green
 # about a state that has already gone red.
 HEALTH_BANNER_SOURCES = {
-    "members", "chain", "stages", "truth", "worker", "delta_v2_authority",
+    "members", "chain", "truth", "worker", "delta_v2_authority",
 }
 # The live book, which is what the page is opened for during a session.
 LIVE_SECTIONS = {
     "live_readiness", "live_selection", "live_days", "live_money",
-    "window_divergence",
     # The strategy lanes' money pages read the same live book; served from
     # a page they showed the 2026-09-24 09:33Z tiebreak P&L for 28 hours.
-    "tiebreak_lane", "p1_tail_lane", "p1_consensus_lane",
+    "tiebreak_lane", "p1_tail_lane", "p1_consensus_lane", "proper_bet_lane",
 }
 
 
