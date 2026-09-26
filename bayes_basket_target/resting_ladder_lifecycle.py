@@ -215,6 +215,9 @@ def resting_rung_keep_or_cancel(
 
     if (
         str(intent.get("order_action") or "BUY").upper() == "BUY"
+        # A NO buy (charter 231) on a dead bucket is a certain win, not a
+        # loss to stop; the rule is for the YES rungs it was written for.
+        and str(intent.get("side") or "YES").upper() == "YES"
         and intent["bucket"] in dead_buckets
     ):
         return {
@@ -287,6 +290,27 @@ def latest_book_by_bucket(
     return out
 
 
+def mirror_book(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The NO token's book, read off the YES book it is the complement of.
+
+    Charter 231's NO rungs: the CLOB matches a NO bid against a YES bid and
+    a NO ask against a YES ask through the complement, so NO bid is
+    ``1 - YES ask`` and NO ask ``1 - YES bid`` (zero where the YES side it
+    comes from is empty, which leaves the ladder without an anchor exactly
+    as a missing YES side does).  Same clock and tick as the YES book.
+    """
+
+    tick = float(row.get("tick") or 0.001)
+    digits = max(0, int(round(-math.log10(tick)))) if tick > 0 else 6
+    yes_bid = float(row.get("bid") or 0.0)
+    yes_ask = float(row.get("ask") or 0.0)
+    return {
+        **dict(row),
+        "bid": round(1.0 - yes_ask, digits) if yes_ask > 0.0 else 0.0,
+        "ask": round(1.0 - yes_bid, digits) if yes_bid > 0.0 else 0.0,
+    }
+
+
 def book_age_seconds(book: Mapping[str, Any] | None, *, as_of_utc: str) -> float | None:
     """How old the book a rung is priced against is; None when it cannot say.
 
@@ -330,7 +354,7 @@ def load_resting_maker_intents(
         "SELECT i.order_intent_id, cy.station_id, cy.event_date, i.bucket,"
         " i.token_id, i.limit_price, i.requested_size, i.idempotency_key,"
         " i.created_at, i.intent_json, i.order_action, i.state,"
-        " r.exchange_order_id, r.filled_size, r.filled_notional_usdc, r.state"
+        " r.exchange_order_id, r.filled_size, r.filled_notional_usdc, r.state, i.side"
         " FROM basket_target_order_intents i"
         " JOIN basket_target_execution_cycles cy ON cy.cycle_id=i.cycle_id"
         " JOIN basket_target_order_reconciliations r"
@@ -378,6 +402,9 @@ def load_resting_maker_intents(
             "idempotency_key": str(row[7]),
             "posted_at_utc": str((posted[0] if posted else None) or row[8]),
             "order_action": order_action,
+            # The outcome leg.  A NO rung (charter 231) is judged against the
+            # YES book mirrored -- see ``mirror_book``.
+            "side": str(row[16] or "YES").strip().upper(),
             "intent_state": str(row[11]),
             "post_only": post_only,
             "order_type": order_type,
@@ -1027,7 +1054,10 @@ def reprice_resting_rungs(
             def _book(scope: tuple[str, str] = scope) -> Mapping[str, Any] | None:
                 if scope not in book_cache:
                     book_cache[scope] = books(conn, station_id=scope[0], event_date=scope[1])
-                return book_cache[scope].get(intent["bucket"])
+                row = book_cache[scope].get(intent["bucket"])
+                if row and str(intent.get("side") or "YES") == "NO":
+                    return mirror_book(row)
+                return row
 
             verdict = resting_rung_keep_or_cancel(
                 intent=intent,
@@ -1116,6 +1146,7 @@ def reprice_resting_rungs(
 
 __all__ = [
     "DEAD_BUCKET_CANCEL_RULE_VERSION",
+    "mirror_book",
     "RESTING_BOOK_STALE_SECONDS",
     "RESTING_LOOKUP_CONCURRENCY",
     "RESTING_REPRICE_DWELL_SECONDS",

@@ -58,7 +58,7 @@ def attribute(conn: sqlite3.Connection) -> dict[str, Any]:
         return {"rows": [], "totals": {}, "reason": "no_evaluation_table"}
     evaluations = conn.execute(
         f"SELECT station_id, event_date, stage, p_json, q_json, divergence_kl,"
-        f" lambda_shares, sends_json, refusal FROM {EVALUATION_TABLE}"
+        f" lambda_shares, legs_state_json, refusal FROM {EVALUATION_TABLE}"
         " WHERE p_json IS NOT NULL AND q_json IS NOT NULL"
         " ORDER BY event_date, station_id, stage"
     ).fetchall()
@@ -72,7 +72,7 @@ def attribute(conn: sqlite3.Connection) -> dict[str, Any]:
         "station_days": 0, "traded_station_days": 0, "delta_s": 0.0, "divergence": 0.0,
         "stake_usdc": 0.0, "realised_usdc": 0.0, "frictionless_usdc": 0.0, "l_usdc": 0.0,
     }
-    for station, day, stage, p_json, q_json, divergence, lam, sends_json, refusal in evaluations:
+    for station, day, stage, p_json, q_json, divergence, lam, legs_json, refusal in evaluations:
         landed = settled.get((str(station), str(day)))
         if landed is None:
             continue
@@ -83,17 +83,22 @@ def attribute(conn: sqlite3.Connection) -> dict[str, Any]:
             continue
         delta_s = math.log(float(p[y]) / float(q[y]))
         d = float(divergence) if divergence is not None else None
-        sends = json.loads(sends_json) if sends_json else []
-        fills = _fills(conn, [s["order_intent_id"] for s in sends if s.get("order_intent_id")])
+        # Every rung a leg posted (charter 231 v2 re-posts until filled): the
+        # leg is its side and bucket, its fills the sum over its rungs.
+        rungs = [
+            (key.split(":", 1)[0], key.split(":", 1)[1], intent_id)
+            for key, leg_state in (json.loads(legs_json) if legs_json else {}).items()
+            for intent_id in leg_state.get("intents") or []
+        ]
+        fills = _fills(conn, [intent_id for _side, _bucket, intent_id in rungs])
         stake = realised = frictionless = 0.0
         legs: list[dict[str, Any]] = []
-        for send in sends:
-            size, paid = fills.get(str(send.get("order_intent_id")), (0.0, 0.0))
+        for side, bucket, intent_id in rungs:
+            size, paid = fills.get(intent_id, (0.0, 0.0))
             if size <= 0.0:
                 continue
-            bucket = str(send["bucket"])
             hit = 1.0 if bucket == y else 0.0
-            if str(send["side"]).upper() == "NO":
+            if side.upper() == "NO":
                 payout = size * (1.0 - hit)
                 at_q = size * (float(q[bucket]) - hit)
             else:
@@ -102,7 +107,7 @@ def attribute(conn: sqlite3.Connection) -> dict[str, Any]:
             stake += paid
             realised += payout - paid
             frictionless += at_q
-            legs.append({"bucket": bucket, "side": send["side"], "shares": size, "paid_usdc": paid,
+            legs.append({"bucket": bucket, "side": side, "shares": size, "paid_usdc": paid,
                          "payout_usdc": payout, "at_q_usdc": at_q})
         row = {
             "station_id": station, "event_date": day, "stage": stage, "settled_bucket": y,

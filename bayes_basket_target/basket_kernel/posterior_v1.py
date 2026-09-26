@@ -25,9 +25,13 @@ works in this coordinate and not in the valuation lane's linear one.
 No store import here: this module is what the runtime and the estimator
 both read, and the runtime must never reach the database through it.
 
-``PM_POSTERIOR_LANE`` (charter 230, user ruling 2026-09-26 「按l4做」):
+``PM_POSTERIOR_LANE`` (charter 230, user ruling 2026-09-26 「按l4做」;
+default ``off`` since charter 231, user ruling the same day 「l4和旧的目标函数
+还需要吗？如果不需要，先下线，但是不删代码！」: the basket lane is switched off
+and the Proper 下注线 bets on the weather model's own vector, so nothing reads
+the posterior -- it is not computed, and the nightly refit is off too):
 
-* ``on`` (default) -- the posterior is the basket's ONLY belief.  The gate
+* ``on`` -- the posterior is the basket's ONLY belief.  The gate
   reads the lower bound of ``sum(b) - cost`` across the draws, the solver
   sizes on ``b``, and the effective-edge lambda is not read.  A row serves
   its parameters only on its own walk-forward verdict (both of charter 211's
@@ -57,7 +61,7 @@ LCB_QUANTILE = 0.05
 EPS = 1e-6
 
 POSTERIOR_MODE = (
-    os.environ.get("PM_POSTERIOR_LANE", "").strip().lower() or "on"
+    os.environ.get("PM_POSTERIOR_LANE", "").strip().lower() or "off"
 )
 if POSTERIOR_MODE not in {"off", "shadow", "on"}:
     raise RuntimeError(f"unknown posterior lane mode: {POSTERIOR_MODE}")

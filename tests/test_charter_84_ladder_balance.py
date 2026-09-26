@@ -1088,14 +1088,16 @@ def test_the_ledger_names_the_station_days_the_book_holds() -> None:
         _insert_ledger_fill(conn, intent="a", bucket="30°C", token="t30", size=5, notional=1.25)
         _insert_ledger_fill(conn, intent="b", bucket="31°C", token="t31", size=5, notional=2.15)
         conn.execute(
-            "INSERT INTO basket_target_order_intents VALUES('c','cycle-flat','20°C','t20','BUY')"
+            "INSERT INTO basket_target_order_intents(order_intent_id,cycle_id,bucket,token_id,order_action)"
+            " VALUES('c','cycle-flat','20°C','t20','BUY')"
         )
         conn.execute(
             "INSERT INTO basket_target_order_reconciliations VALUES"
             "('c','resolved_filled',5,1.0,'0xc','2026-07-23T04:00:00Z')"
         )
         conn.execute(
-            "INSERT INTO basket_target_order_intents VALUES('d','cycle-flat','20°C','t20','SELL')"
+            "INSERT INTO basket_target_order_intents(order_intent_id,cycle_id,bucket,token_id,order_action)"
+            " VALUES('d','cycle-flat','20°C','t20','SELL')"
         )
         conn.execute(
             "INSERT INTO basket_target_order_reconciliations VALUES"

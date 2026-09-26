@@ -260,8 +260,9 @@ def test_the_retired_second_beliefs_have_no_on_arm() -> None:
         assert "mode" in result.stderr and ": on" in result.stderr, (flag, result.stderr[-400:])
 
 
-def test_production_ships_the_lane_on() -> None:
-    """The suite pins ``shadow`` (conftest); production reads the code default."""
+def test_production_ships_the_lane_off() -> None:
+    """The suite pins ``shadow`` (conftest); production reads the code default,
+    ``off`` since charter 231 (「先下线，但是不删代码」)."""
 
     result = subprocess.run(
         [sys.executable, "-c",
@@ -272,7 +273,7 @@ def test_production_ships_the_lane_on() -> None:
         env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT)}, timeout=120,
     )
     assert result.returncode == 0, result.stderr[-400:]
-    assert result.stdout.split() == ["on", "on", "logit_market_prior_multiclass_v2"]
+    assert result.stdout.split() == ["off", "off", "logit_market_prior_multiclass_v2"]
 
 
 

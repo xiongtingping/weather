@@ -225,22 +225,30 @@ P1_CONSENSUS_DEFAULT_SETTINGS: dict[str, Any] = {
 #: 「实盘上线，p＝天气模型」): the betting rule of arXiv 2607.06166 in place of
 #: the basket's.  At a stage's first decision, the weather model's served
 #: vector ``p`` against the market's normalised mid ladder ``q``: the Log
-#: proper position ``s = log(p / q)`` on every bucket, YES where ``p`` clears
-#: the ask, NO where ``p`` is under the bid, a limit FOK per leg sized
-#: ``lambda * |s|`` with ``lambda`` spending ``stake_usdc`` on the station-day.
+#: proper position ``s = log(p / q)`` on every bucket, YES where ``s > 0``,
+#: NO where ``s < 0``, each a resting rung sized ``lambda * |s|``.
 #: See ``proper_bet_lane`` for the band, the sizing and what was measured.
 PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
-    "rule": "log_proper_bid_ask_band_two_sided_v1",
-    # One station-day's budget: lambda makes the legs' worst-case cost this
-    # (capped by the free cash).  The paper leaves the scale open.
-    "stake_usdc": 5.0,
-    # Fundamental (Corollary 4): one evaluation at the stage's first decision,
-    # held to settlement.  P0 is where the basket opened (charter 229).
+    # v2 (user ruling 2026-09-26 「吃单改为挂单，post-only，best bid+1，挂单周期
+    # 最短，重新挂单，直至成交，但是挂单价格要符合下注规则」): each leg a
+    # post-only GTD rung at bid+1t on its own side's book, signed at the
+    # venue's minimum horizon and re-posted until filled, every price under
+    # the leg's claim (YES under p, NO under 1 - p).
+    "rule": "log_proper_maker_bid_plus_one_min_horizon_v2",
+    # 「预算提高到最低要求」: lambda is the smallest the venue allows for the
+    # whole position (the smallest leg at the five-share minimum), capped by
+    # the free cash.  The ruling left no fixed stake.
+    "budget_rule": "minimum_full_position",
+    # 「仅p0阶段下单」: the P0 first decision opens; the plan is posted while
+    # the station-day is still P0.
     "opening_stages": ["P0"],
-    # A first decision older than this is recorded, not traded.
+    # 「按照>36h」: posted only while the settlement clock is more than this
+    # many hours away -- the band the L4 verdict found P0 beat the market on.
+    "min_hours_to_settlement": 36.0,
+    # A first decision older than this is recorded, not planned.
     "first_decision_fresh_seconds": 3600.0,
-    # A FOK is priced on a book at most this old; the WS publisher's own
+    # A rung is priced on a book at most this old; the WS publisher's own
     # ladder first, the committed snapshot otherwise.
     "send_book_fresh_seconds": 60.0,
     "live_ws_book": True,

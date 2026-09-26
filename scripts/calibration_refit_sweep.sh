@@ -162,12 +162,19 @@ done
 # carries its walk-forward verdict and serves only when both scores beat the
 # market (else b = m and nothing is bought).  One stage per invocation.
 # Never fatal: a failed refit leaves the served row standing.
-for POSTERIOR_STAGE in P0 P0-M P1; do
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] posterior refit $POSTERIOR_STAGE"
-  "$PY" scripts/refit_posterior.py --commit --stage "$POSTERIOR_STAGE" \
-    --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    || echo "posterior refit $POSTERIOR_STAGE failed; the served row stands" >&2
-done
+# Offline since charter 231 (user ruling 2026-09-26 「先下线，但是不删代码」):
+# the basket lane is off and nothing reads the posterior; PM_POSTERIOR_REFIT=on
+# runs the step again.
+if [ "${PM_POSTERIOR_REFIT:-off}" = "on" ]; then
+  for POSTERIOR_STAGE in P0 P0-M P1; do
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] posterior refit $POSTERIOR_STAGE"
+    "$PY" scripts/refit_posterior.py --commit --stage "$POSTERIOR_STAGE" \
+      --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      || echo "posterior refit $POSTERIOR_STAGE failed; the served row stands" >&2
+  done
+else
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] posterior refit offline (charter 231)"
+fi
 
 # The regional models' bias calibration (user ruling 2026-09-18, "和全球模型
 # 方式一样"): every regional lane, CMA included, refitted daily in the global
