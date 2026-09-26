@@ -41,23 +41,6 @@ def _certainty_gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-@pytest.fixture(autouse=True)
-def _pre_charter_87_gate(monkeypatch: pytest.MonkeyPatch) -> None:
-    """These books are cheap on purpose; the lambda gate is tested separately.
-
-    Charter 87 (2026-09-06) has the positive-EV gate read the lifted claim
-    times charter 68's lambda(a).  The fixture book here offers a certain
-    basket at 0.40 (a = 0.40, lambda 0.14), which that gate refuses on
-    sight -- so leaving it on would make every test in this file assert
-    "the gate fired" instead of the property it was written for.  The gate's
-    own behaviour is pinned in test_clause_87_* and the charter 84 tests.
-    """
-
-    monkeypatch.setattr(
-        delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off"
-    )
-
-
 @pytest.fixture
 def _three_stage_basket(monkeypatch: pytest.MonkeyPatch) -> None:
     """Charter 229 ships the basket buying in P0 only.  The tests that pin
