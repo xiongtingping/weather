@@ -656,7 +656,28 @@ def fit_stage_and_bands(
 VERDICT_MIN_TEST_DAYS = MIN_DAYS
 VERDICT_DRAWS = 1000
 VERDICT_SEED = 20260926
-VERDICT_RULE = "walk_forward_brier_and_logscore_beat_market_v1"
+#: v2 (user ruling 2026-09-26 「LogScore 显著胜市场，但 Brier 不显著……那也准入」):
+#: LogScore -- charter 211's primary score and training rule -- must beat
+#: the market significantly; Brier must improve on its point estimate (charter
+#: 211's supplement: both point estimates better), not significantly.  v1
+#: demanded both significant and admitted nothing on 2026-09-26, P0 >=36h
+#: reading LogScore -0.0237 [upper -0.0092] with Brier -0.0033 [upper +0.0014].
+VERDICT_RULE = "walk_forward_logscore_significant_brier_point_better_v2"
+
+
+def verdict_decision_v2(
+    *, test_days: int, logscore_upper: float, brier_mean: float,
+) -> tuple[bool, str]:
+    """``VERDICT_RULE`` v2 on a row's walk-forward readings: enough test days,
+    LogScore's one-sided upper bound below zero, Brier's point below zero."""
+
+    if test_days < VERDICT_MIN_TEST_DAYS:
+        return False, "too_few_test_days"
+    if not logscore_upper < 0.0:
+        return False, "logscore_not_significant"
+    if not brier_mean < 0.0:
+        return False, "brier_point_not_better"
+    return True, "admitted"
 
 
 def _no_verdict(reason: str) -> dict[str, Any]:
@@ -703,10 +724,11 @@ def walk_forward_verdict(
     the runtime would read (its band's when not accumulating, else the
     stage's; a decision with neither reads ``b = m`` and is nobody's
     evidence).  The row is admitted when, over at least
-    ``VERDICT_MIN_TEST_DAYS`` test days, the one-sided 95% upper bound of the
-    mean change against the market is below zero on BOTH of charter 211's
-    scores -- bucket LogScore and bucket Brier -- station-days weighted
-    equally, by-event-day bootstrap.  A row without that serves ``b = m``.
+    ``VERDICT_MIN_TEST_DAYS`` test days, the mean change in bucket LogScore
+    against the market has a one-sided 95% upper bound below zero AND the
+    mean change in bucket Brier is below zero (``VERDICT_RULE`` v2) --
+    station-days weighted equally, by-event-day bootstrap.  A row without
+    that serves ``b = m``.
     """
 
     import numpy as np  # noqa: PLC0415
@@ -787,16 +809,14 @@ def walk_forward_verdict(
         boot = num[picks].sum(axis=1) / den[picks].sum(axis=1)[:, None]
         lo = np.quantile(boot, LCB_QUANTILE, axis=0)
         hi = np.quantile(boot, 1.0 - LCB_QUANTILE, axis=0)
-        enough = len(days) >= VERDICT_MIN_TEST_DAYS
-        beats = bool(hi[0] < 0.0 and hi[1] < 0.0)
+        admitted, reason = verdict_decision_v2(
+            test_days=len(days), logscore_upper=float(hi[0]),
+            brier_mean=float(mean[1]),
+        )
         out[key] = {
             "rule": VERDICT_RULE,
-            "admitted": bool(enough and beats),
-            "reason": (
-                "admitted" if enough and beats
-                else "too_few_test_days" if not enough
-                else "does_not_beat_market"
-            ),
+            "admitted": admitted,
+            "reason": reason,
             "test_days": len(days),
             "station_days": len(cells),
             "decisions": int(sum(len(v) for v in cells.values())),
@@ -1378,4 +1398,5 @@ __all__ = [
     "load_posterior_as_of", "load_posterior_tables", "serving_row",
     "forward_skill", "realisation", "REALISATION_CELLS",
     "walk_forward_verdict", "VERDICT_RULE", "VERDICT_MIN_TEST_DAYS",
+    "verdict_decision_v2",
 ]

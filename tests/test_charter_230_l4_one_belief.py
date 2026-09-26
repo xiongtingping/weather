@@ -98,7 +98,33 @@ def test_verdict_holds_a_row_that_does_not_beat_the_market() -> None:
     band = store.walk_forward_verdict(rows)[">=36h"]
     assert band["test_days"] >= store.VERDICT_MIN_TEST_DAYS
     assert band["admitted"] is False
-    assert band["reason"] == "does_not_beat_market"
+    assert band["reason"] in {"logscore_not_significant", "brier_point_not_better"}
+
+
+@pytest.mark.parametrize(
+    "logscore_upper, brier_mean, admitted, reason",
+    [
+        # P0 >=36h on 2026-09-26: the case the ruling admitted.
+        (-0.0092, -0.0033, True, "admitted"),
+        # P0-M's whole row that day: LogScore significant, Brier worse.
+        (-0.0011, +0.0058, False, "brier_point_not_better"),
+        # P1 <6h that day: LogScore not significant.
+        (+0.0149, +0.0048, False, "logscore_not_significant"),
+    ],
+)
+def test_the_v2_rule_needs_logscore_significant_and_brier_only_better(
+    logscore_upper, brier_mean, admitted, reason,
+) -> None:
+    """User ruling 2026-09-26: LogScore (charter 211's primary score) must
+    beat the market significantly; Brier must only improve on its point."""
+
+    assert store.verdict_decision_v2(
+        test_days=19, logscore_upper=logscore_upper, brier_mean=brier_mean,
+    ) == (admitted, reason)
+    assert store.verdict_decision_v2(
+        test_days=store.VERDICT_MIN_TEST_DAYS - 1,
+        logscore_upper=-1.0, brier_mean=-1.0,
+    ) == (False, "too_few_test_days")
 
 
 def test_the_served_row_carries_its_verdict_and_accumulating_is_never_admitted() -> None:
@@ -137,7 +163,7 @@ def _served(*, admitted: bool) -> dict:
     return {kernel.POSTERIOR_TABLE_KEY: {"P0": {
         **_PARAMS, "w_lcb": 0.3, "w_ucb": 0.7, "sha256": "x" * 64,
         "accumulating": False, "lead_band": "", "admitted": admitted,
-        "verdict": {"admitted": admitted, "reason": "admitted" if admitted else "does_not_beat_market"},
+        "verdict": {"admitted": admitted, "reason": "admitted" if admitted else "brier_point_not_better"},
         "draws": tuple((0.0, 0.0, 0.3 + 0.02 * i) for i in range(21)),
         "lead_bands": {},
     }}}

@@ -20610,8 +20610,8 @@ function posteriorLane(){
   return `<h2>L4 后验层（宪章 230，篮子唯一信念）：先信市场，再看分歧兑现几成</h2>
   <p class="sub">第一性原理基线 §4.4：<span class="mono">logit b = logit m + w·(logit p − logit m) + α + γ·logit m</span>，
   在全部站日 × 整梯全部桶上前瞻拟合，先验 w = γ = α = 0（市场对）。
-  按宪章 211 以整梯多类 LogLoss 拟合；<b>每行前推判决桶 Brier 与 LogScore 都显著胜市场才服务，否则 b = m，闸门什么都不买</b>。
-  门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日；判决至少 8 个检验日、单侧 95%。</p>
+  按宪章 211 以整梯多类 LogLoss 拟合；<b>每行前推判决：LogScore 显著胜市场（单侧 95%）且桶 Brier 点估计也变好才服务，否则 b = m，闸门什么都不买</b>。
+  门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日；判决至少 8 个检验日。</p>
   <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
   <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
   会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>
@@ -25785,7 +25785,7 @@ const GROUPS = [
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p（已含 band，不含 λ、L4 等读价格的层）有没有市场没有的信息；L4 自己赢没赢看 L4 小节的前瞻技能分",
       sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
      {box:"② 实盘此刻的信念：L4 后验（宪章 230）", kind:"live",
-      note:"篮子唯一信念：b 由整梯多类 LogLoss 拟合，每行前推判决桶 Brier 与 LogScore 都胜市场才服务；否则 b = m，只估值不买。λ 表已退役",
+      note:"篮子唯一信念：b 由整梯多类 LogLoss 拟合，每行前推判决 LogScore 显著胜市场且桶 Brier 点估计也变好才服务；否则 b = m，只估值不买。λ 表已退役",
       sections:[[posteriorLane,"L4 后验层（唯一信念）"]]},
      {box:"③ L4 的两个特例（影子，只记录）", kind:"shadow",
       note:"β 车道和估值车道是 L4 取概率空间、去掉 c(m) 的特例；只记录，不再有 on",
