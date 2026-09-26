@@ -3,7 +3,8 @@
 Model-layer review 2026-09-13, R4: ``build_native_ensemble_oos`` restricted
 its cases to what was knowable at ``as_of_utc`` but loaded the band,
 centre/width and station-width tables active now, so a replay of a past build
-scored those days under tables fitted on them.
+scored those days under tables fitted on them.  (The band table retired with
+charter 232; the widths remain.)
 """
 from __future__ import annotations
 
@@ -18,58 +19,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import native_ensemble_oos, table_as_of  # noqa: E402
-from bayes_basket_target.band_reliability_store import (  # noqa: E402
-    BAND_AXIS_CENTRE_DISTANCE,
-    ensure_band_table_schema,
-    persist_and_activate_band_table,
-    retire_band_table,
-)
 from bayes_basket_target.center_width_store import (  # noqa: E402
     persist_and_activate_center_width,
 )
-
-OLD = (((0.0, 1.0), 1.1), ((1.0, 99.0), 0.9))
-NEW = (((0.0, 1.0), 1.2), ((1.0, 99.0), 0.8))
-
-
-def _band(conn, factors, at):
-    return persist_and_activate_band_table(
-        conn, stage="P0", factors=factors, evidence={"schema": "test"},
-        serving_day_count=20, axis=BAND_AXIS_CENTRE_DISTANCE,
-        fitted_at_utc=at,
-    )["band_table_sha256"]
-
-
-def test_the_band_table_is_the_one_active_at_the_moment() -> None:
-    conn = sqlite3.connect(":memory:")
-    ensure_band_table_schema(conn)
-    assert table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-01T00:00:00Z"
-    ) is None
-    old = _band(conn, OLD, "2026-09-02T04:20:00.5Z")
-    new = _band(conn, NEW, "2026-09-05T04:20:00Z")
-    before = table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-02T04:20:00Z"
-    )
-    # Mixed precision: the ".5" activation is after the whole-second moment.
-    assert before is None
-    between = table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-04T00:00:00Z"
-    )
-    assert between == (OLD, old, BAND_AXIS_CENTRE_DISTANCE)
-    after = table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-06T00:00:00Z"
-    )
-    assert after == (NEW, new, BAND_AXIS_CENTRE_DISTANCE)
-    retire_band_table(conn, stage="P0", retired_at_utc="2026-09-07T00:00:00Z")
-    # Retirement ends it from that moment, not retroactively.
-    assert table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-06T23:59:59Z"
-    ) == (NEW, new, BAND_AXIS_CENTRE_DISTANCE)
-    assert table_as_of.band_table_as_of(
-        conn, stage="P0", as_of_utc="2026-09-07T00:00:00Z"
-    ) is None
-
 
 def _journal_activation(conn, *, sha, at, delta_c, width_lambda):
     """What ``fit_center_width`` writes beside an activation.
@@ -117,6 +69,17 @@ def test_the_centre_width_version_carries_its_own_floor_and_tiers() -> None:
     assert late["sigma_floor_rungs"] == pytest.approx(0.0)
 
 
+def _width(conn, width_lambda, at):
+    sha = persist_and_activate_center_width(
+        conn, stage="P0", delta_c=0.0, width_lambda=width_lambda,
+        evidence={"schema": "test"}, serving_day_count=9, fitted_at_utc=at,
+    )["center_width_sha256"]
+    _journal_activation(
+        conn, sha=sha, at=at, delta_c=0.0, width_lambda=width_lambda,
+    )
+    return sha
+
+
 def test_a_replay_build_pins_the_table_that_was_active_then(monkeypatch) -> None:
     from tests.test_native_ensemble_p0 import (
         _insert_official_native_mixed_cycle_archive,
@@ -131,8 +94,8 @@ def test_a_replay_build_pins_the_table_that_was_active_then(monkeypatch) -> None
     }
     _insert_fixture(conn, cycle_by_system=cycle_by_system, lead_bucket="d2")
     _insert_official_native_mixed_cycle_archive(conn, cycle_by_system)
-    old = _band(conn, OLD, "2026-06-20T00:00:00Z")
-    new = _band(conn, NEW, "2026-06-30T12:00:00Z")
+    old = _width(conn, 0.9, "2026-06-20T00:00:00Z")
+    new = _width(conn, 0.75, "2026-06-30T12:00:00Z")
     for system_id, cycle in cycle_by_system.items():
         monkeypatch.setitem(
             native_ensemble_oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS,
@@ -153,8 +116,13 @@ def test_a_replay_build_pins_the_table_that_was_active_then(monkeypatch) -> None
             conn, station_id="TEST", as_of_utc="2026-07-01T00:00:00Z",
             **kwargs,
         )
+        assert not any(
+            "band_table_sha256" in candidate
+            or "band_reliability" in str(candidate.get("combination_method"))
+            for candidate in report["cross_candidates"]
+        ), "charter 232: no candidate pins a band table"
         return {
-            candidate.get("band_table_sha256")
+            candidate.get("center_width_sha256")
             for candidate in report["cross_candidates"]
         }
 

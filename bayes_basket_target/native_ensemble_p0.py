@@ -24,13 +24,6 @@ from .contracts import (
 EPS = 1e-9
 from .station_registry import station_coordinates
 from .station_season import station_season_bin
-from .band_reliability_store import (
-    BAND_AXIS_CENTRE_DISTANCE,
-    BAND_AXIS_CLAIM,
-    load_band_table,
-    load_band_table_with_axis,
-    pinned_band_table_sha,
-)
 from .center_width_calibration import served_bucket_axis
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
@@ -43,7 +36,6 @@ from .center_width_store import (
     pinned_station_width_sha,
 )
 from .cross_consensus import (
-    BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     RADIATION_SHIFT_METHOD_TAG,
     pinned_radiation_shift_sigmas,
@@ -66,7 +58,6 @@ from .stable_pool import (
     STABLE_POOL_WEIGHT_RULE,
 )
 from .served_shape import (
-    BandLayer,
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
@@ -1593,66 +1584,6 @@ def _activations_ambiguous(
 
 
 
-def resolve_pinned_band_layer(
-    conn: "sqlite3.Connection",
-    artifact_combination_method: str,
-    band_table_override: "tuple | None" = None,
-) -> "tuple[BandLayer | None, str | None, str]":
-    """Which band table this artifact is served through, its sha and its axis.
-
-    The layer is None when nothing is to be applied -- identity.
-
-    The artifact pins the table version its holdout was scored against
-    (``band_table_sha256=`` in the combination method).  A pinned-but-missing
-    table fails closed inside the loader: serving an approximation of gated
-    math is exactly what the pin exists to forbid.  A pinned table the lane
-    has VETOED loads as an empty table -- identity, with its sha kept so the
-    receipt can say which version was retired out from under it.
-
-    A BARE tag is identity too, not the pre-store bootstrap constants.  It
-    meant them while artifacts older than the store were still alive (the
-    store took over 2026-08-15); today its one producer is a build made when
-    no table is activated, which is what a veto leaves behind.  Measured
-    2026-09-15: the veto retired P0's table at 18:26Z, the next builds minted
-    bare tags, and 284 P0 decisions went on being rescaled by the
-    hand-written constants -- on the CLAIM axis, while the lane has been on
-    centre_distance since 09-07: the layer the veto had just called harmful,
-    in a shape nothing had gated.  "No active table" means identity.
-
-    Charter 105: the lookup follows the TABLE's axis, never the caller's.
-    """
-
-    if BAND_RELIABILITY_METHOD_TAG not in artifact_combination_method:
-        return None, None, BAND_AXIS_CLAIM
-    pinned_sha = pinned_band_table_sha(artifact_combination_method)
-    pinned_factors = None
-    pinned_axis = BAND_AXIS_CLAIM
-    if pinned_sha is not None:
-        pinned_factors, _sha, pinned_axis = load_band_table_with_axis(
-            conn, table_sha256=pinned_sha
-        )
-    if band_table_override is not None:
-        # The counterfactual arm.  Replaces the pinned lookup outright, axis
-        # included -- a table handed in without its axis would be applied
-        # through whichever one the pin happened to name, which is the
-        # failure this triple exists to make impossible.  The receipt records
-        # the substitution so a replayed envelope can never be mistaken for a
-        # served one.
-        pinned_factors = tuple(
-            ((float(lo), float(hi)), float(factor))
-            for (lo, hi), factor in band_table_override[0]
-        )
-        pinned_sha = str(band_table_override[1])
-        pinned_axis = str(band_table_override[2])
-        if pinned_axis not in {BAND_AXIS_CLAIM, BAND_AXIS_CENTRE_DISTANCE}:
-            raise ContractError(
-                "FAIL_CLOSED_NO_P0:band_table_override_axis_unknown"
-            )
-    if pinned_factors is None:
-        return None, pinned_sha, pinned_axis
-    return BandLayer(factors=pinned_factors, axis=pinned_axis), pinned_sha, pinned_axis
-
-
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -1662,9 +1593,6 @@ def compile_native_ensemble_p0(
     native_oos_snapshot: NativeOosSnapshot | Mapping[str, Any] | None = None,
     artifact_parameter_override: (
         Mapping[str, Mapping[str, Any]] | None
-    ) = None,
-    band_table_override: (
-        tuple[Sequence[tuple[tuple[float, float], float]], str, str] | None
     ) = None,
 ) -> dict[str, Any]:
     """Compile one station-day, or fail closed with ``NO_P0``.
@@ -1684,24 +1612,7 @@ def compile_native_ensemble_p0(
     naming a system this station is not serving is ignored rather than
     seated, for the same reason.
 
-    ``band_table_override`` is the same idea for charter 105's axis.  The
-    band table is not a constant either: it is loaded from the database by
-    the sha the artifact's combination method pins, so a replay that varies
-    the table cannot reach it by setting a constant and cannot reach it by
-    writing a different table either -- the pin would still name the old
-    one.  It is handed in as ``(factors, sha, axis)``, the same triple
-    ``load_band_table_with_axis`` returns, and it replaces the pinned lookup
-    entirely: the axis rides with it, so a distance-fitted counterfactual is
-    applied through the distance lookup and not through the claim one.
-
-    Both are deliberately narrow, and both are applied AFTER the activation
-    has been resolved and its run cycle checked.  Every gate the compile
-    normally passes still runs and still fails closed; what these can change
-    is the numbers, never whether a system was entitled to be seated.  An
-    override naming a system this station is not serving is ignored rather
-    than seated, for the same reason.
-
-    Production never passes either.  ``None`` leaves this function
+    Production never passes it.  ``None`` leaves this function
     byte-identical.
     """
 
@@ -3491,9 +3402,9 @@ def compile_native_ensemble_p0(
                 latitude=station_latitude,
             )
         )
-    # Before the band layer: this moves the distribution along the temperature
-    # axis, and the band factors are measured on the claim that distribution
-    # produces, so the shape has to be final before the claim is corrected.
+    # The centre/width scalars move and scale the distribution along the
+    # temperature axis, the last fitted layer since the band table after it
+    # retired (charter 232, 2026-09-26).
     # Only ever applied against the version the artifact names: an artifact
     # built before this existed carries no tag and is served the math it was
     # gated on, and a pinned-but-missing version fails closed inside the
@@ -3559,17 +3470,10 @@ def compile_native_ensemble_p0(
         )
         else None
     )
-    # Outermost, after every shape layer, which as of 2026-08-23 finally
-    # includes the centre/width scalars above.  This layer rescales a claim,
-    # and a claim rescaled here stops being the claim the moment anything
-    # moves the distribution afterwards -- which is exactly what the shape
-    # layer had been doing to it.  P1 has always composed them this way and
-    # says why in ``materialization._posterior``: geometry before claim.
-    # The order itself lives in ``served_shape``; this block only resolves
-    # which table version the artifact pinned.
-    band_layer, pinned_sha, pinned_axis = resolve_pinned_band_layer(
-        conn, artifact_combination_method, band_table_override
-    )
+    # Charter 232: no band layer follows, whatever the artifact pinned.  An
+    # artifact certified before the retirement names a band table in its
+    # combination method and is served without it, as a vetoed table's pin
+    # always was: identity is what "no table" means.
     # Charter 190: the width layer is handed the axis with its open ends, so
     # an open edge bucket's mass moves as a tail -- the same axis the width
     # fit scores its scalars on.
@@ -3577,15 +3481,12 @@ def compile_native_ensemble_p0(
     # Charter 201 step 2: the input the served layers see, kept so the
     # deterministic-feature shadow can re-run the same layers on a shifted one.
     pre_layer_probability = dict(probability)
-    probability, center_width_receipt, band_reliability_receipt = (
-        apply_served_table_layers(
-            probability,
-            ordered_keys=ordered,
-            key_centers_c=served_centers_c,
-            center_width=center_width_layer,
-            band=band_layer,
-            open_edge_bounds_c=open_edge_bounds_c,
-        )
+    probability, center_width_receipt = apply_served_table_layers(
+        probability,
+        ordered_keys=ordered,
+        key_centers_c=served_centers_c,
+        center_width=center_width_layer,
+        open_edge_bounds_c=open_edge_bounds_c,
     )
     # Charter 224: last of all, the stages' one model-zero floor.  Each
     # system's members are dressed with a 0.5C kernel, so past about 2C
@@ -3602,7 +3503,6 @@ def compile_native_ensemble_p0(
             ordered_keys=ordered,
             key_centers_c=served_centers_c,
             center_width=center_width_layer,
-            band=band_layer,
             open_edge_bounds_c=open_edge_bounds_c,
         )[0])[0]
 
@@ -3633,12 +3533,6 @@ def compile_native_ensemble_p0(
                 center_width_receipt["station_width_state"] = (
                     "PINNED_VERSION_RETIRED"
                 )
-    if band_reliability_receipt is not None:
-        if pinned_sha is not None:
-            band_reliability_receipt["band_table_sha256"] = pinned_sha
-        if band_table_override is not None:
-            band_reliability_receipt["band_table_counterfactual"] = True
-            band_reliability_receipt["band_table_axis"] = pinned_axis
     model_envelope_lower_bucket = _bucket_for_value(
         envelope_lower_c,
         intervals_raw,
@@ -4182,9 +4076,6 @@ def compile_native_ensemble_p0(
         **({"consensus_bridge_json": json.dumps(
             consensus_bridge_receipt, sort_keys=True
         )} if consensus_bridge_receipt is not None else {}),
-        **({"band_reliability_json": json.dumps(
-            band_reliability_receipt, sort_keys=True
-        )} if band_reliability_receipt is not None else {}),
         # Charter 224: which buckets the model-zero floor lifted, in P1's own
         # schema; absent when none was, so an unfloored envelope keeps its
         # content hash.

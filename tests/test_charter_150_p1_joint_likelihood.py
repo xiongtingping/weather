@@ -2,7 +2,8 @@
 
 User ruling 2026-09-19 ("按照方案全量落地并测试调优"):
 
-* P0 is the only stage with post-hoc calibration (centre/width, band table).
+* P0 is the only stage with post-hoc calibration (centre/width; the band
+  table beside it retired with charter 232).
 * P0-M = P0 x L_TAF under the observed-high mask -- TAF as a likelihood only.
 * P1 = root x 1[k >= running-high bucket] x g(d_k | s_t) ** alpha(hours) -- one
   joint observation likelihood per decision, no chained layers after it.
@@ -329,10 +330,11 @@ def test_no_tx_is_identity_and_says_so() -> None:
 
 
 def test_only_p0_serves_post_hoc_tables() -> None:
-    from bayes_basket_target.band_reliability_store import BAND_SERVED_STAGES
+    from bayes_basket_target import band_reliability_store
     from bayes_basket_target.center_width_store import (
         CENTER_WIDTH_SERVED_STAGES,
     )
 
-    assert BAND_SERVED_STAGES == ("P0",)
     assert CENTER_WIDTH_SERVED_STAGES == ("P0",)
+    # Charter 232: the band table serves no stage at all.
+    assert not hasattr(band_reliability_store, "BAND_SERVED_STAGES")

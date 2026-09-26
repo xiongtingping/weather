@@ -20,12 +20,6 @@ from itertools import product
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from .band_reliability_store import (
-    BAND_AXIS_CENTRE_DISTANCE,
-    BAND_AXIS_CLAIM,
-    load_band_table,
-    load_band_table_with_axis,
-)
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -41,7 +35,6 @@ from .station_season import season_bins_for_window, station_season_bin
 from .center_width_calibration import served_bucket_axis
 from .station_day_ladder import settled_rung, station_day_ladder
 from .cross_consensus import (
-    BAND_RELIABILITY_METHOD_TAG,
     CONSENSUS_BRIDGE_METHOD_TAG,
     SYNOPTIC_COOLING_METHOD_TAG,
     apply_neighbour_direction_tilt,
@@ -56,7 +49,6 @@ from .cross_consensus import (
     bridged_cross_probability,
 )
 from .table_as_of import (
-    band_table_as_of,
     center_width_as_of,
     station_width_as_of,
 )
@@ -70,7 +62,6 @@ from .stable_pool import (
 )
 from .served_shape import (
     SERVED_TABLE_LAYER_ORDER,
-    BandLayer,
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
@@ -2359,7 +2350,6 @@ def _holdout_shape_stack(
     station_latitude: float | None,
     neighbour_center_c: float,
     center_width_layer: CenterWidthLayer | None,
-    band_layer: BandLayer | None,
     skip: str | None = None,
     ladder: Mapping[str, Any] | None = None,
 ) -> dict[str, float]:
@@ -2376,8 +2366,8 @@ def _holdout_shape_stack(
     blend that wins a seat, the blend that is certified and the blend that is
     served are shaped by the same layers in the same order.  Position first
     (radiation shift), then the neighbour lean around the models' own centre,
-    then the two fitted tables in ``served_shape``'s order: centre/width,
-    band.
+    then the fitted table in ``served_shape``'s order: centre/width (the band
+    table after it retired with charter 232).
 
     Until 2026-09-13 the contest shaped without centre/width, the gate
     applied band before centre/width, and both anchored the lean on the
@@ -2395,7 +2385,6 @@ def _holdout_shape_stack(
             station_latitude=station_latitude,
             neighbour_center_c=neighbour_center_c,
             center_width_layer=center_width_layer,
-            band_layer=band_layer,
             skip=skip,
         )
     if cooling_shift_sigma and skip != "synoptic_cooling":
@@ -2418,12 +2407,11 @@ def _holdout_shape_stack(
             center_bucket=_nearest_key(grid, float(neighbour_center_c)),
             latitude=station_latitude,
         )
-    shaped, _cw_receipt, _band_receipt = apply_served_table_layers(
+    shaped, _cw_receipt = apply_served_table_layers(
         shaped,
         ordered_keys=grid,
         key_centers_c=[float(int(key)) for key in grid],
         center_width=center_width_layer,
-        band=band_layer,
         skip=skip if skip in SERVED_TABLE_LAYER_ORDER else None,
     )
     return shaped
@@ -2437,7 +2425,6 @@ def _ladder_shape_stack(
     station_latitude: float | None,
     neighbour_center_c: float,
     center_width_layer: CenterWidthLayer | None,
-    band_layer: BandLayer | None,
     skip: str | None,
 ) -> dict[str, float]:
     """``_holdout_shape_stack`` on the market ladder, in serving's order."""
@@ -2466,12 +2453,11 @@ def _ladder_shape_stack(
             center_bucket=_ladder_bucket(ladder, float(neighbour_center_c)),
             latitude=station_latitude,
         )
-    shaped, _cw_receipt, _band_receipt = apply_served_table_layers(
+    shaped, _cw_receipt = apply_served_table_layers(
         shaped,
         ordered_keys=grid,
         key_centers_c=centers,
         center_width=center_width_layer,
-        band=band_layer,
         open_edge_bounds_c=ladder["open_edge_bounds_c"],
         skip=skip if skip in SERVED_TABLE_LAYER_ORDER else None,
     )
@@ -2529,11 +2515,6 @@ def _select_minimum_crps_subset(
     residuals_by_system: Mapping[str, Mapping[str, float]] = {},
     conditioning_by_day: Mapping[str, Mapping[str, float | None]] = {},
     station_latitude: float | None = None,
-    band_factors: Sequence[tuple[tuple[float, float], float]] | None = None,
-    # Charter 105: the axis travels with the factors.  A holdout that scores
-    # a distance-fitted table through the claim lookup gates it on math
-    # production will not serve.
-    band_axis: str = BAND_AXIS_CLAIM,
     # The centre/width layer the gate scores and serving applies.  The
     # contest ranked blends without it until 2026-09-13, so the seat went to
     # the blend that scored best under an arithmetic nobody serves.
@@ -2672,8 +2653,6 @@ def _select_minimum_crps_subset(
             # background.  Serving kept applying it to artifacts gated with the
             # tag until the last one's window closed (2026-09-17); the branch
             # was deleted 2026-09-22 (charter 43 amendment).
-            # Charter 105: the band lookup follows the table's own axis, and
-            # the holdout scores it through the lookup production serves.
             probability = _holdout_shape_stack(
                 probability,
                 grid=ordered_keys,
@@ -2693,10 +2672,6 @@ def _select_minimum_crps_subset(
                     },
                 ),
                 center_width_layer=center_width_layer,
-                band_layer=(
-                    BandLayer(factors=band_factors, axis=band_axis)
-                    if band_factors is not None else None
-                ),
                 ladder=day_ladder,
             )
             actual = float(
@@ -4792,7 +4767,7 @@ def p0_gate_tables(
     station_id: str,
     tables_as_of_utc: str | None = None,
 ) -> dict[str, Any]:
-    """The band and centre/width tables P0's gate scores one station under.
+    """The centre/width tables P0's gate scores one station under.
 
     One resolver for the OOS build and for anything that replays it (charter
     134's nested replay), so a replay scores a blend under exactly the layers
@@ -4800,18 +4775,13 @@ def p0_gate_tables(
     the ones that were active at that moment.
     """
 
-    # The active DB-resident band table, or the static bootstrap constants
-    # when none is activated yet.  The sha rides into every candidate so
-    # each artifact pins the exact table its holdout was scored against.
+    # Charter 232: no band table.  The gate scores the holdout without one
+    # and no candidate pins one, as serving applies none.
     if tables_as_of_utc is None:
-        active_band_table = load_band_table_with_axis(conn, stage="P0")
         active_center_width = load_center_width(conn, stage="P0")
         active_station_width = load_station_width(conn, stage="P0")
         replay_width = None
     else:
-        active_band_table = band_table_as_of(
-            conn, stage="P0", as_of_utc=tables_as_of_utc
-        )
         replay_width = center_width_as_of(
             conn, stage="P0", as_of_utc=tables_as_of_utc
         )
@@ -4827,12 +4797,7 @@ def p0_gate_tables(
         active_station_width = station_width_as_of(
             conn, stage="P0", as_of_utc=tables_as_of_utc
         )
-    band_factors, band_table_sha, band_table_axis_id = (
-        active_band_table
-        if active_band_table is not None
-        else (None, None, BAND_AXIS_CLAIM)
-    )
-    # Same contract for the stage scalars: whatever is active now is what
+    # The stage scalars: whatever is active now is what
     # this build's holdout scores, and its sha rides into every candidate so
     # serving reproduces that exact pair or fails closed.  None until the
     # layer's own forward window admits a fit, which is the identity case
@@ -4882,8 +4847,8 @@ def p0_gate_tables(
         if active_station_width is not None and station_width_scale != 1.0
         else None
     )
-    # The two fitted tables as the layers ``served_shape`` applies, resolved
-    # once so the contest, the gate and the ablation read one object.  The
+    # The fitted table as the layer ``served_shape`` applies, resolved once
+    # so the contest, the gate and the ablation read one object.  The
     # fleet regime shift stays at zero: it has no version a gate could score
     # (see ``served_shape``).
     gate_center_width_layer = (
@@ -4907,21 +4872,10 @@ def p0_gate_tables(
         )
         else None
     )
-    # No active table means identity, for the holdout exactly as for serving:
-    # ``factors=None`` would reach ``apply_band_reliability``'s pre-store
-    # bootstrap constants, which is the shape a veto exists to stop.
-    gate_band_layer = (
-        BandLayer(factors=band_factors, axis=band_table_axis_id)
-        if band_factors is not None else None
-    )
     return {
-        "band_factors": band_factors,
-        "band_table_sha256": band_table_sha,
-        "band_table_axis": band_table_axis_id,
         "center_width_sha256": center_width_sha,
         "station_width_sha256": station_width_sha,
         "center_width_layer": gate_center_width_layer,
-        "band_layer": gate_band_layer,
     }
 
 
@@ -4952,7 +4906,7 @@ def build_native_ensemble_oos(
     skill rule and certified on the cohort holdout with nothing chosen on it;
     ``subset_contest`` is the rule it replaced.
 
-    ``tables_as_of_utc`` scores the holdout under the band, centre/width and
+    ``tables_as_of_utc`` scores the holdout under the centre/width and
     station-width tables that were active at that moment instead of now.  A
     forward build leaves it unset: what it mints is served from now on.  A
     replay of a past build sets it to the replayed moment, or the gate scores
@@ -4973,13 +4927,9 @@ def build_native_ensemble_oos(
     gate_tables = p0_gate_tables(
         conn, station_id=station_id, tables_as_of_utc=tables_as_of_utc
     )
-    band_factors = gate_tables["band_factors"]
-    band_table_sha = gate_tables["band_table_sha256"]
-    band_table_axis_id = gate_tables["band_table_axis"]
     center_width_sha = gate_tables["center_width_sha256"]
     station_width_sha = gate_tables["station_width_sha256"]
     gate_center_width_layer = gate_tables["center_width_layer"]
-    gate_band_layer = gate_tables["band_layer"]
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -5516,8 +5466,6 @@ def build_native_ensemble_oos(
             conditioning_by_day=conditioning_by_day,
             family_by_system=family_by_system,
             configured_caps=configured_caps,
-            band_factors=band_factors,
-            band_axis=band_table_axis_id,
             center_width_layer=gate_center_width_layer,
             train_error_scale=train_error_scale,
             train_n_by_system={
@@ -5625,7 +5573,6 @@ def build_native_ensemble_oos(
             for layer in (
                 "synoptic_cooling",
                 "neighbour_direction",
-                "band_reliability",
             )
         }
         for day in common_holdout:
@@ -5705,7 +5652,6 @@ def build_native_ensemble_oos(
                     station_latitude=station_latitude,
                     neighbour_center_c=center_c,
                     center_width_layer=gate_center_width_layer,
-                    band_layer=gate_band_layer,
                     skip=skip,
                     ladder=day_ladder,
                 )
@@ -6053,7 +5999,6 @@ def build_native_ensemble_oos(
                 for system_id in selected_system_ids
             },
             "run_cycle_by_system_sha256": cycle_mapping_sha,
-            "band_table_sha256": band_table_sha,
             "center_width_sha256": center_width_sha,
             "station_width_sha256": station_width_sha,
             "radiation_shift_sigmas": list(scope_radiation_sigmas),
@@ -7534,18 +7479,8 @@ def persist_native_ensemble_oos(
                     # 2026-09-21: the holdout read each day's radiation as
                     # known at its cutoff and scaled it by the served spread.
                     + "::" + RADIATION_ASOF_METHOD_TAG
-                    # The tag rides only with a table: it keys the serving
-                    # transform, and a bare one used to mean the pre-store
-                    # bootstrap constants (2026-09-15: that is how a vetoed
-                    # stage kept rescaling, on the wrong axis).  No table
-                    # means no band layer, said by leaving the tag off.
-                    + (
-                        "::" + BAND_RELIABILITY_METHOD_TAG
-                        + "::band_table_sha256="
-                        + str(candidate["band_table_sha256"])
-                        if candidate.get("band_table_sha256")
-                        else ""
-                    )
+                    # No band tag since charter 232: the band layer retired,
+                    # and a tag names only a layer the holdout scored.
                     # Absent while the layer has fitted nothing, so artifacts
                     # built before it stay byte-identical and keep serving
                     # exactly the math they were gated on.

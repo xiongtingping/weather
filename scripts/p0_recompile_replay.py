@@ -142,18 +142,6 @@ def main() -> int:
         help="module.NAME=value, applied for this run only",
     )
     parser.add_argument("--out", type=Path)
-    parser.add_argument(
-        "--band-axis",
-        choices=("claim", "centre_distance"),
-        help=(
-            "Recompile with a band table fitted on this axis instead of the"
-            " one the artifact pins (charter 105).  Fitted read-only from the"
-            " live sample at run time and handed to the compiler as"
-            " (factors, sha, axis); nothing is persisted and nothing is"
-            " activated.  Omit for the served table, which is the baseline"
-            " arm."
-        ),
-    )
     args = parser.parse_args()
 
     undo = _apply_constants(args.set_constant)
@@ -165,36 +153,6 @@ def main() -> int:
     )
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=60.0)
     conn.execute("PRAGMA query_only=ON")
-    # The counterfactual arm's table, fitted here rather than read from the
-    # store: activating one to score it is the thing this lane exists to
-    # avoid.  The connection is read-only and query_only, so a fit that
-    # tried to persist would fail loudly rather than quietly changing what
-    # production serves.
-    band_table_override = None
-    if args.band_axis:
-        from bayes_basket_target.band_reliability_store import (  # noqa: PLC0415
-            band_table_sha256,
-            fit_band_reliability_table,
-        )
-
-        fitted = fit_band_reliability_table(
-            conn, stage="P0", axis=args.band_axis,
-        )
-        band_table_override = (
-            fitted["factors"],
-            band_table_sha256(
-                fitted["factors"], stage="P0", axis=args.band_axis,
-            ),
-            args.band_axis,
-        )
-        live = sum(
-            1 for _band, factor in fitted["factors"]
-            if abs(factor - 1.0) > 1e-9
-        )
-        print(
-            f"  band arm: axis={args.band_axis} cells={len(fitted['factors'])}"
-            f" live={live} sha={band_table_override[1][:12]}"
-        )
     results: list[dict] = []
     failures: list[dict] = []
     try:
@@ -205,7 +163,6 @@ def main() -> int:
                     conn,
                     forward_packet=packet,
                     decision_at_utc=decision,
-                    band_table_override=band_table_override,
                 )
             except Exception as exc:  # noqa: BLE001
                 failures.append({

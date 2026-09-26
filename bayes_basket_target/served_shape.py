@@ -1,26 +1,25 @@
-"""The two fitted table layers of P0, in the one order every face applies.
+"""P0's fitted table layer, in the one order every face applies.
 
-P0's probability passes two tables fitted on the stage's own settled record
+P0's probability passes one table fitted on the stage's own settled record
 before it is served: the centre/width scalars move and scale the distribution
-on the temperature axis, and the band table rescales each bucket by how far it
-sits from the peak.  The band factors are fitted on the claim the served
-distribution makes, so geometry comes first and the claim correction last.
+on the temperature axis.
 
-Three places need that composition and until 2026-09-13 each had its own
-copy.  Serving (``native_ensemble_p0.compile_native_ensemble_p0``) ran
-centre/width then band.  The OOS gate that certifies an artifact
-(``native_ensemble_oos.build_native_ensemble_oos``) ran band then centre/width,
-because f81cd0d1 appended the width pin after the band call when it first
-pinned the scalars into the gated math.  The subset contest that picks the
-seated systems (``_select_minimum_crps_subset``) ran band and no centre/width
-at all.  Same table shas, three arithmetics: with the live P0 band table
-(``4f522947``) and lambda 0.75, a seven-bucket vector's centre bucket reads
-0.35951 in the gate and 0.35378 served, and on 2026-09-13 44 of 45 P0 rows
-carried both layers non-identity.
+Until 2026-09-26 a second table followed it -- the band table, rescaling each
+bucket by how far it sat from the peak -- and three places needed that
+composition.  Until 2026-09-13 each had its own copy: serving
+(``native_ensemble_p0.compile_native_ensemble_p0``) ran centre/width then
+band, the OOS gate that certifies an artifact
+(``native_ensemble_oos.build_native_ensemble_oos``) ran band then
+centre/width, and the subset contest ran band and no centre/width at all --
+same table shas, three arithmetics.  So the order came to live here and
+nowhere else, and it still does: ``SERVED_TABLE_LAYER_ORDER`` is the contract
+and ``apply_served_table_layers`` the only function that applies it.
 
-So the order lives here and nowhere else.  ``SERVED_TABLE_LAYER_ORDER`` is the
-contract; ``apply_served_table_layers`` is the only function that applies the
-two tables in sequence.
+Charter 232 retired the band layer (user ruling 2026-09-26, 「退役 band 层」):
+measured on the market ladder over 43 test days it had no position of its own
+above the width layer, and switched on it hurt the short leads (h00_12 Brier
+and LogScore both significantly worse), because it was fitted on each
+station-day's first decision and applied to every decision after it.
 
 What is deliberately not in here:
 
@@ -37,12 +36,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .center_width_calibration import apply_center_width_calibration
-from .cross_consensus import (
-    BAND_RELIABILITY_AXIS_CENTRE_DISTANCE,
-    apply_band_reliability,
-)
 
-SERVED_TABLE_LAYER_ORDER = ("center_width", "band_reliability")
+SERVED_TABLE_LAYER_ORDER = ("center_width",)
 
 
 @dataclass(frozen=True)
@@ -55,28 +50,6 @@ class CenterWidthLayer:
     sigma_floor_rungs: float = 0.0
     width_tier_lambdas: Sequence[float] | None = None
     width_tier_boundaries: Sequence[float] | None = None
-
-
-@dataclass(frozen=True)
-class BandLayer:
-    """A band table and the axis it was fitted on.
-
-    ``factors`` is required and may be empty (a pin to a table the lane
-    vetoed loads as the empty table -- identity, with its sha kept).  It may
-    NOT be None: that used to fall through to ``apply_band_reliability``'s
-    pre-store bootstrap constants, and on 2026-09-15 that is how a vetoed P0
-    kept rescaling for six hours -- hand-written 2026-08 factors on the claim
-    axis, while the lane had been on centre_distance since 09-07.  No table
-    means no layer, so callers pass None for the LAYER, never for its
-    factors.
-    """
-
-    factors: Sequence[tuple[tuple[float, float], float]]
-    axis: str
-
-    def __post_init__(self) -> None:
-        if self.factors is None:
-            raise ValueError("band_layer_factors_required")
 
 
 def model_center_c(
@@ -108,16 +81,15 @@ def apply_served_table_layers(
     ordered_keys: Sequence[str],
     key_centers_c: Sequence[float],
     center_width: CenterWidthLayer | None,
-    band: BandLayer | None,
     excluded_buckets: Sequence[str] = (),
     skip: str | None = None,
     open_edge_bounds_c: Sequence[float | None] | None = None,
-) -> tuple[dict[str, float], dict[str, Any] | None, dict[str, Any] | None]:
-    """Centre/width, then band.  Returns the vector and both receipts.
+) -> tuple[dict[str, float], dict[str, Any] | None]:
+    """Centre/width.  Returns the vector and the layer's receipt.
 
-    ``None`` for a layer means the face does not apply it (no pin, no tag);
-    its receipt comes back ``None``.  ``skip`` names one layer to leave out,
-    for the gate's layer ablation, which must score the same arithmetic
+    ``None`` for the layer means the face does not apply it (no pin, no
+    tag); its receipt comes back ``None``.  ``skip`` names a layer to leave
+    out, for the gate's layer ablation, which must score the same arithmetic
     minus one layer rather than a re-derivation of it.
 
     ``open_edge_bounds_c`` (charter 190) is the axis's open ends, as
@@ -144,15 +116,4 @@ def apply_served_table_layers(
             excluded_buckets=excluded_buckets,
             open_edge_bounds_c=open_edge_bounds_c,
         )
-    band_receipt = None
-    if band is not None and skip != "band_reliability":
-        shaped, band_receipt = apply_band_reliability(
-            shaped,
-            factors=band.factors,
-            ordinals=(
-                {str(key): index for index, key in enumerate(ordered_keys)}
-                if band.axis == BAND_RELIABILITY_AXIS_CENTRE_DISTANCE
-                else None
-            ),
-        )
-    return shaped, center_width_receipt, band_receipt
+    return shaped, center_width_receipt

@@ -16,9 +16,9 @@ riding another lead than the packet's differs:
 days knowable at the update; a borrow serves only the donor's bias_c and
 max(1, spread_factor) at reliability 1, as ``compile_native_ensemble_p0``
 does.  A member on the packet's lead is calibrated identically in both arms.
-Both arms are scored under the band and centre/width tables active NOW, so
-the centre/width lane's own ``_search`` can be run on either arm's pre-band
-served vectors and read as "the residual the incumbent layer would need".
+Both arms are scored under the centre/width tables active NOW, so the
+centre/width lane's own ``_search`` can be run on either arm's served vectors
+(pre-band until the band table retired with charter 232) and read as "the residual the incumbent layer would need".
 
 Read-only.  One gzip JSONL per station, resumable under a time budget.
 """
@@ -219,7 +219,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 "cycle": {s: packet[s][2][3] for s in pool},
                 "paths": {s: paths[s] for s in pool},
                 "w": {s: round(v, 5) for s, v in weights.items()},
-                "cw_sha": tables["center_width_sha256"], "band_sha": tables["band_table_sha256"],
+                "cw_sha": tables["center_width_sha256"],
                 "differs": differs, "arms": {},
             }
             for arm, rows in (("NEW", new_rows), ("OLD", old_rows)):

@@ -127,10 +127,9 @@ LANE_TABLES: dict[str, tuple[str, str]] = {
         "calibration_center_width_station",
         "calibration_center_width_station_journal",
     ),
-    "band reliability": (
-        "calibration_band_reliability_table",
-        "calibration_band_reliability_fit_journal",
-    ),
+    # The band reliability lane left with its layer (charter 232,
+    # 2026-09-26): it fits nothing any more, so waiting for its next step
+    # would hold every verdict at "pending" for good.
 }
 
 

@@ -95,10 +95,12 @@ def test_a_lane_that_has_not_refitted_yields_no_verdict() -> None:
     conn = _conn()
     _shape(conn, day=9, hour_from=21, hour_to=24, sigma=1.0, centre=10.0)
     _shape(conn, day=10, hour_from=9, hour_to=12, sigma=1.0, centre=10.0)
-    _lane(conn, "band reliability", fitted=None, activated=None)
+    _lane(conn, "station width", fitted=None, activated=None)
     verdict = audit._shape_verdict(conn, stage="P0", since=SINCE)
     assert verdict["state"] == "pending"
     assert verdict["unfitted"] == sorted(audit.LANE_TABLES)
+    # Charter 232: a retired lane is not one a verdict waits for.
+    assert "band reliability" not in audit.LANE_TABLES
 
 
 def test_a_lane_that_refused_its_candidate_took_no_step() -> None:
@@ -125,14 +127,14 @@ def test_the_step_is_judged_where_the_lane_activated() -> None:
     _shape(conn, day=11, hour_from=0, hour_to=8, sigma=1.0, centre=10.0)
     _shape(conn, day=11, hour_from=9, hour_to=17, sigma=0.5, centre=10.0)
     _all_lanes_settled(conn)
-    _lane(conn, "band reliability", fitted="2026-09-11T08:55:00Z",
+    _lane(conn, "station width", fitted="2026-09-11T08:55:00Z",
           activated="2026-09-11T09:00:00Z")
     at_code = audit._shape_shift(conn, stage="P0", since=SINCE)
     assert at_code is not None and at_code["moved"] is False
 
     verdict = audit._shape_verdict(conn, stage="P0", since=SINCE)
     assert verdict["state"] == "moved"
-    assert verdict["label"] == "band reliability"
+    assert verdict["label"] == "station width"
     assert verdict["at"] == "2026-09-11T09:00:00Z"
 
 

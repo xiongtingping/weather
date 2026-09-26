@@ -92,8 +92,7 @@ def test_every_lane_reads_the_evidence_anchor() -> None:
     for lane in (beta_edge_store, valuation_store):
         assert lane._anchor(conn, "P0") == (sa.STAGE_EVIDENCE_EPOCH["P0"], "ok")
     for module in (
-        "band_reliability_store", "band_shadow_store", "beta_edge_store",
-        "off_centre_claim_store", "valuation_store",
+        "beta_edge_store", "off_centre_claim_store", "valuation_store",
     ):
         source = (ROOT / "bayes_basket_target" / f"{module}.py").read_text()
         assert "served_arithmetic_anchor" not in source, module

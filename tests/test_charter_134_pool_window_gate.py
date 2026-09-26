@@ -336,12 +336,17 @@ def test_the_build_certifies_a_pool_seat_on_its_persisted_record(
     persist_native_ensemble_oos_evaluations(
         store, report, evaluated_at_utc=first_at,
     )
+    # The candidate's own key, cycles included: the pool mints one seat per
+    # cohort, and picking among them by evaluation id picks by content hash,
+    # which moves whenever anything recorded beside the metrics does.
     row = store.execute(
         "SELECT * FROM calibration_cross_native_ensemble_oos_evaluation "
         "WHERE ensemble_system_ids_json=? AND season_bin=? "
+        "AND run_cycle=? AND run_cycle_by_system_sha256=? "
         "ORDER BY evaluation_id LIMIT 1",
         (native_ensemble_oos._json(sorted(candidate["selected_system_ids"])),
-         candidate["season_bin"]),
+         candidate["season_bin"], candidate["run_cycle"],
+         candidate["run_cycle_by_system_sha256"]),
     ).fetchone()
     columns = [
         column[1] for column in store.execute(

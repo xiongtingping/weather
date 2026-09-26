@@ -1,6 +1,7 @@
 #!/bin/bash
-# Daily refit of the two served calibration layers: band reliability and
-# centre/width.  Hosted by the resident's sweep scheduler (2026-08-26) --
+# Daily refit of the served calibration layer, centre/width (the band
+# reliability table beside it retired with charter 232, 2026-09-26).
+# Hosted by the resident's sweep scheduler (2026-08-26) --
 # these two segments used to live only in the 02:00 crontab entry
 # (daily_calibration_training.sh), and macOS cron silently skips a run
 # when the machine sleeps through the minute: the band fit journal shows
@@ -42,24 +43,17 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] settlement labels"
 "$PY" scripts/refresh_settlement_labels.py --commit \
   || echo "settlement labels failed; the lanes read the labels already written" >&2
 
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_reliability refit"
-"$PY" scripts/refit_band_reliability.py --commit --summary || RC=$?
-
 # The off-centre claim correction, which until 2026-09-09 was a kernel
 # constant fitted by hand twice -- once by code that was never written down
 # (2026-08-14: no script, no n on the off-centre cells, and taken the day
 # before charter 49 removed the population it scored), once on claim-axis
-# samples days after P0 had moved to the distance axis.  A constant only a
-# person can move does not follow the layer underneath it, and that layer
-# refits nightly, right above this line.
+# samples days after P0 had moved to the distance axis.  (It rode after the
+# band refit while the band table moved every claim it measures; charter 232
+# retired that table, and charter 68's lambda refit that followed it retired
+# with charter 230.)
 #
-# It rides HERE, after the band refit, because the band table moves every
-# claim and the off-centre correction is measured on claims.  (Charter 68's
-# lambda refit that used to follow it retired with charter 230.)
-#
-# Never fatal: a stage with no activated band table, or with too few
-# off-centre windows on the current axis, keeps the value it serves and says
-# so in its receipt.
+# Never fatal: a stage with too few off-centre windows keeps the value it
+# serves and says so in its receipt.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] off-centre claim refit"
 "$PY" scripts/refit_off_centre_claim.py --commit \
   --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -123,15 +117,6 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] center_width refit"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] serving arithmetic watchdog"
 "$PY" scripts/acknowledge_serving_arithmetic.py --audit \
   || echo "watchdog audit failed; refits above still committed" >&2
-
-# Shadow only: station x bucket-position band factors, fitted on the same
-# serving lane as the pooled table above and served by nothing.  It rides
-# this sweep so its evidence clock advances on the same cadence as the
-# layer it is a candidate to refine -- the two are only comparable if
-# they see the same settled days.  Measured at ~95s against the live
-# store on 2026-08-28, which the 900s sweep budget absorbs.
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
-"$PY" scripts/refit_band_shadow.py --commit --summary || RC=$?
 
 # Charter 128 (2026-09-12): the beta lane -- one slope per stage on the
 # production candidate-window population, walk-forward as-of today,

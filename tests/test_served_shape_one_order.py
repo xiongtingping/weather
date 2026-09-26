@@ -6,6 +6,10 @@ band, the OOS gate band then centre/width, and the subset contest band alone.
 An artifact was certified on one vector, seated by a second, served a third.
 The order now lives in ``served_shape``; these tests hold each face to it by
 behaviour rather than by how the source reads.
+
+Charter 232 (2026-09-26) retired the band table, so the order is one layer
+long; the faces still share it, and a retired layer's name is refused as an
+ablation target like any other unknown layer.
 """
 from __future__ import annotations
 
@@ -21,10 +25,6 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import native_ensemble_oos, native_ensemble_p0  # noqa: E402
 from bayes_basket_target import served_shape  # noqa: E402
-from bayes_basket_target.band_reliability_store import (  # noqa: E402
-    BAND_AXIS_CENTRE_DISTANCE,
-    persist_and_activate_band_table,
-)
 from bayes_basket_target.center_width_calibration import (  # noqa: E402
     apply_center_width_calibration,
 )
@@ -33,18 +33,9 @@ from bayes_basket_target.center_width_store import (  # noqa: E402
 )
 from bayes_basket_target import cross_consensus
 from bayes_basket_target.cross_consensus import (  # noqa: E402
-    apply_band_reliability,
     apply_neighbour_direction_tilt,
 )
 
-# The live P0 distance table on 2026-09-13 (sha 4f522947...).
-LIVE_P0_BAND = (
-    ((0.0, 1.0), 1.0),
-    ((1.0, 2.0), 1.047515),
-    ((2.0, 3.0), 1.0),
-    ((3.0, 4.0), 0.984),
-    ((4.0, 99.0), 0.6943),
-)
 KEYS = [str(index) for index in range(7)]
 
 
@@ -59,58 +50,34 @@ def _width(vector):
     )[0]
 
 
-def _band(vector):
-    return apply_band_reliability(
-        vector, factors=LIVE_P0_BAND,
-        ordinals={key: index for index, key in enumerate(KEYS)},
-    )[0]
-
-
-def test_the_table_layers_are_centre_width_then_band() -> None:
-    served, cw_receipt, band_receipt = served_shape.apply_served_table_layers(
+def test_the_table_layer_is_centre_width_alone() -> None:
+    served, cw_receipt = served_shape.apply_served_table_layers(
         VECTOR,
         ordered_keys=KEYS,
         key_centers_c=[float(k) for k in range(7)],
         center_width=served_shape.CenterWidthLayer(width_lambda=0.75),
-        band=served_shape.BandLayer(
-            factors=LIVE_P0_BAND, axis=BAND_AXIS_CENTRE_DISTANCE
-        ),
     )
-    assert served_shape.SERVED_TABLE_LAYER_ORDER == (
-        "center_width", "band_reliability"
-    )
-    assert cw_receipt is not None and band_receipt is not None
-    geometry_first = _band(_width(VECTOR))
-    claim_first = _width(_band(VECTOR))
-    assert served == pytest.approx(geometry_first, abs=1e-15)
-    # The review's counterexample: the two orders are not the same vector.
-    assert served["3"] == pytest.approx(0.35378, abs=1e-5)
-    assert claim_first["3"] == pytest.approx(0.35951, abs=1e-5)
+    assert served_shape.SERVED_TABLE_LAYER_ORDER == ("center_width",)
+    assert cw_receipt is not None
+    assert served == pytest.approx(_width(VECTOR), abs=1e-15)
 
 
-def test_a_skipped_layer_is_left_out_and_nothing_else_moves() -> None:
+def test_a_skipped_layer_is_left_out_and_a_retired_one_is_refused() -> None:
     kwargs = dict(
         ordered_keys=KEYS,
         key_centers_c=[float(k) for k in range(7)],
         center_width=served_shape.CenterWidthLayer(width_lambda=0.75),
-        band=served_shape.BandLayer(
-            factors=LIVE_P0_BAND, axis=BAND_AXIS_CENTRE_DISTANCE
-        ),
     )
-    no_band, _cw, band_receipt = served_shape.apply_served_table_layers(
-        VECTOR, skip="band_reliability", **kwargs
-    )
-    assert band_receipt is None
-    assert no_band == pytest.approx(_width(VECTOR), abs=1e-15)
-    no_width, cw_receipt, _b = served_shape.apply_served_table_layers(
+    no_width, cw_receipt = served_shape.apply_served_table_layers(
         VECTOR, skip="center_width", **kwargs
     )
     assert cw_receipt is None
-    assert no_width == pytest.approx(_band(VECTOR), abs=1e-15)
-    with pytest.raises(ValueError):
-        served_shape.apply_served_table_layers(
-            VECTOR, skip="neighbour_direction", **kwargs
-        )
+    assert no_width == pytest.approx(VECTOR, abs=1e-15)
+    for retired_or_unknown in ("band_reliability", "neighbour_direction"):
+        with pytest.raises(ValueError):
+            served_shape.apply_served_table_layers(
+                VECTOR, skip=retired_or_unknown, **kwargs
+            )
 
 
 def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean(
@@ -138,7 +105,6 @@ def test_the_holdout_leans_around_the_models_centre_not_the_shifted_mean(
         station_latitude=50.0,
         neighbour_center_c=centre_c,
         center_width_layer=None,
-        band_layer=None,
     )
     shifted = native_ensemble_oos._shift_bucketed_probability(
         base, ordered_keys=grid, shift_c=-2.0
@@ -167,11 +133,6 @@ def test_neither_p0_face_keeps_a_private_copy_of_the_table_primitives() -> None:
 
 
 def _activate_non_identity_tables(conn: sqlite3.Connection) -> None:
-    persist_and_activate_band_table(
-        conn, stage="P0", factors=LIVE_P0_BAND, evidence={"schema": "test"},
-        serving_day_count=20, axis=BAND_AXIS_CENTRE_DISTANCE,
-        fitted_at_utc="2026-06-30T00:00:00Z",
-    )
     persist_and_activate_center_width(
         conn, stage="P0", delta_c=0.1, width_lambda=0.75,
         evidence={"schema": "test"}, serving_day_count=20,
@@ -182,7 +143,7 @@ def _activate_non_identity_tables(conn: sqlite3.Connection) -> None:
 def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
     """The contest ranks each candidate on the exact vectors the gate scores.
 
-    With both tables non-identity, the winning subset's contest score and the
+    With the table non-identity, the winning subset's contest score and the
     certified cross metrics are one computation over the same holdout days.
     Before 2026-09-13 the contest skipped centre/width and the gate put it
     after band, so the two numbers differed on every such scope.
@@ -216,13 +177,12 @@ def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
                 "run_cycle": cycle,
             },
         )
-    shaped_layers: list[tuple[object, object]] = []
+    shaped_layers: list[object] = []
     real_stack = native_ensemble_oos._holdout_shape_stack
 
     def _spy(*args, **kwargs):
-        shaped_layers.append(
-            (kwargs["center_width_layer"], kwargs["band_layer"])
-        )
+        assert "band_layer" not in kwargs
+        shaped_layers.append(kwargs["center_width_layer"])
         return real_stack(*args, **kwargs)
 
     monkeypatch.setattr(native_ensemble_oos, "_holdout_shape_stack", _spy)
@@ -235,12 +195,11 @@ def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
     ]
     assert candidates, "fixture produced no cross candidate"
     assert shaped_layers
-    for center_width_layer, band_layer in shaped_layers:
+    for center_width_layer in shaped_layers:
         # Every shaping call -- contest, gate, ablation, diagnostics -- saw
-        # both fitted tables.
+        # the fitted table.
         assert center_width_layer is not None
         assert center_width_layer.width_lambda == pytest.approx(0.75)
-        assert band_layer.axis == BAND_AXIS_CENTRE_DISTANCE
     for candidate in candidates:
         winner = candidate["subset_selection"]["winner"]
         certified = candidate["oos_metrics"]
@@ -250,7 +209,7 @@ def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
             ), metric
 
 
-def test_the_compiler_applies_both_pinned_tables_through_the_one_function(
+def test_the_compiler_applies_the_pinned_table_through_the_one_function(
     monkeypatch,
 ) -> None:
     from tests.test_native_ensemble_p0 import (
@@ -282,13 +241,7 @@ def test_the_compiler_applies_both_pinned_tables_through_the_one_function(
     call = calls[0]
     assert call["center_width"] is not None
     assert call["center_width"].width_lambda == pytest.approx(0.75)
-    assert call["band"] is not None
-    assert call["band"].axis == BAND_AXIS_CENTRE_DISTANCE
-    assert [
-        (lower, upper, factor)
-        for (lower, upper), factor in call["band"].factors
-    ] == pytest.approx([
-        (lower, upper, factor) for (lower, upper), factor in LIVE_P0_BAND
-    ])
+    assert "band" not in call
     lineage = compiled["packet"]["native_probability_envelope"]["lineage"]
-    assert "center_width_json" in lineage and "band_reliability_json" in lineage
+    assert "center_width_json" in lineage
+    assert "band_reliability_json" not in lineage

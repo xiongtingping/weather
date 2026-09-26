@@ -37,10 +37,7 @@ from datetime import UTC, datetime
 from typing import Any, Mapping, Sequence
 
 from .band_reliability_store import (
-    BAND_AXIS_CLAIM,
-    BAND_AXES,
-    band_table_axis,
-    load_band_table,
+    BAND_AXIS_CENTRE_DISTANCE,
     serving_lane_by_station_day,
     _first_decision_by_station_day,
     _truth,
@@ -57,6 +54,13 @@ CLAIM_BANDS: tuple[tuple[float, float], ...] = (
 )
 # Four-bucket contiguous windows, the width the original fit used.
 WINDOW_WIDTH = 4
+# The partition this lane serves and fits.  It used to be read off the stage's
+# band table, because the band table moved every claim this lane measures;
+# charter 232 retired that table (2026-09-26) with every stage on the
+# distance axis, so the claims are no longer moved by one and the partition
+# that was serving then is the one that serves from now on.  Rows on the
+# claim partition stay history.
+SERVED_AXIS = BAND_AXIS_CENTRE_DISTANCE
 # The centre definition the served correction keys on: charter 42's point
 # estimate, which is what ``model_center_bucket`` carries and what
 # ``_support_windows`` compares the window against.
@@ -203,7 +207,7 @@ def load_off_centre_bands(
     # No ensure_schema here: the serving side reads through a read-only
     # connection, and a missing table is "serve the bootstrap", not an error.
     try:
-        axis = band_table_axis(conn, stage=stage)
+        axis = SERVED_AXIS
         row = conn.execute(
             "SELECT factors_json, table_sha256 FROM"
             " calibration_off_centre_claim_table"
@@ -211,8 +215,6 @@ def load_off_centre_bands(
             (str(stage), str(axis)),
         ).fetchone()
     except sqlite3.Error:
-        return None
-    except Exception:  # noqa: BLE001 -- no band store, no axis, no table
         return None
     if row is None:
         return None
@@ -345,7 +347,7 @@ def retire_off_centre_table(
 
     ensure_schema(conn)
     now = retired_at_utc or datetime.now(UTC).isoformat(timespec="seconds")
-    axis = band_table_axis(conn, stage=stage)
+    axis = SERVED_AXIS
     conn.execute(
         "UPDATE calibration_off_centre_claim_table"
         " SET activated=0, retired_at_utc=COALESCE(retired_at_utc, ?)"
@@ -420,11 +422,7 @@ def fit_off_centre_claim_table(
         ensure_schema(conn)
     except sqlite3.Error:
         pass
-    if load_band_table(conn, stage=stage) is None:
-        return {"stage": stage, "error": "no_activated_band_table"}
-    axis = band_table_axis(conn, stage=stage)
-    if axis not in BAND_AXES:
-        return {"stage": stage, "error": f"unknown_band_axis:{axis}"}
+    axis = SERVED_AXIS
     # The serving-arithmetic floor (2026-09-11): the same bound the band
     # lane carries.  This table measures how much of a served claim is
     # realised, and a claim served before the stage's declared version start
@@ -593,7 +591,7 @@ def _active_off_centre_activated_at(
         row = conn.execute(
             "SELECT activated_at_utc FROM calibration_off_centre_claim_table"
             " WHERE activated=1 AND stage=? AND band_axis=?",
-            (str(stage), band_table_axis(conn, stage=stage)),
+            (str(stage), SERVED_AXIS),
         ).fetchone()
     except sqlite3.Error:
         return None

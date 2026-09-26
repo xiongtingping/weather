@@ -162,7 +162,7 @@ def test_the_holdout_shift_is_the_served_shift_on_the_same_distribution(tmp_path
     base.update({"24": 0.25, "25": 0.5, "26": 0.25})
     held = OOS._holdout_shape_stack(
         base, grid=grid, cooling_shift_sigma=shift_sigma, station_latitude=30.6,
-        neighbour_center_c=25.0, center_width_layer=None, band_layer=None,
+        neighbour_center_c=25.0, center_width_layer=None,
     )
     intervals = {k: [int(k) - 0.5, int(k) + 0.5] for k in grid}
     centers = [float(int(k)) for k in grid]

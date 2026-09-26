@@ -2,18 +2,17 @@
 
 Serving dresses, blends, shapes and prices P0 on the day's market ladder;
 the gate used to certify the same arithmetic on a 1C integer grid.  These
-pin the ladder path to the serving functions, the one ladder rule, and the
-band lane's reading of what the gate archives.
+pin the ladder path to the serving functions and the one ladder rule.  (The
+band lane's reading of what the gate archives left with that lane, charter
+232.)
 """
 from __future__ import annotations
 
-import json
 import math
 import sqlite3
 
 import pytest
 
-from bayes_basket_target import band_reliability_store as B
 from bayes_basket_target import native_ensemble_oos as O
 from bayes_basket_target import native_ensemble_p0 as P
 from bayes_basket_target.station_day_ladder import settled_rung, station_day_ladder
@@ -141,49 +140,11 @@ def test_the_shape_stack_on_a_ladder_keeps_its_rungs_and_mass():
     shaped = O._holdout_shape_stack(
         base, grid=ladder["ordered"], cooling_shift_sigma=0.3,
         station_latitude=40.8, neighbour_center_c=17.0,
-        center_width_layer=None, band_layer=None, ladder=ladder,
+        center_width_layer=None, ladder=ladder,
     )
     assert list(shaped) == ladder["ordered"]
     assert sum(shaped.values()) == pytest.approx(1.0)
     assert shaped != base   # the radiation shift moved mass
-
-
-def test_the_band_lane_reads_ladder_rows_against_the_ladder(tmp_path):
-    conn = _store(tmp_path)
-    _decision(conn, "h1", "2026-09-20T12:00:00Z", F_ROWS)
-    conn.execute(
-        "CREATE TABLE calibration_cross_native_ensemble_oos_prediction ("
-        " cross_ensemble_artifact_id TEXT, station_id TEXT, event_date TEXT,"
-        " lead_bucket TEXT, trained_through_event_date TEXT,"
-        " decision_at_utc TEXT, probabilities_json TEXT,"
-        " bucket_centers_c_json TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE calibration_cross_native_ensemble_artifact ("
-        " cross_ensemble_artifact_id TEXT, combination_method TEXT)"
-    )
-    ladder = _ladder()
-    probs = dict(zip(ladder["ordered"], [0.1, 0.2, 0.4, 0.2, 0.1]))
-    centres = dict(zip(ladder["ordered"], ladder["centers_c"]))
-    conn.execute("INSERT INTO calibration_cross_native_ensemble_artifact VALUES ('a','m')")
-    conn.execute(
-        "INSERT INTO calibration_cross_native_ensemble_oos_prediction VALUES"
-        " ('a','KLGA','2026-09-20','h12_24','2026-09-19','2026-09-19T00:00:00Z',?,?)",
-        (json.dumps(probs), json.dumps(centres)),
-    )
-    # An integer-degree row on another day keeps the 1C window rule.
-    conn.execute(
-        "INSERT INTO calibration_cross_native_ensemble_oos_prediction VALUES"
-        " ('a','KLGA','2026-09-19','h12_24','2026-09-18','2026-09-18T00:00:00Z',?,?)",
-        (json.dumps({"16": 0.5, "17": 0.5}), json.dumps({"16": 16.0, "17": 17.0})),
-    )
-    out = B.gate_lane_by_day(conn, {("KLGA", "2026-09-20"): 16.4,
-                                    ("KLGA", "2026-09-19"): 16.5})
-    # 16.4C = 61.5F settles in 62-63F.  A 1C window around each rung's
-    # centre misses it altogether (60-61F reaches 16.33C, 62-63F starts at
-    # 16.44C): the 2F rung is 1.11C wide, and the ladder is what settles.
-    assert out["2026-09-20"] == [[(0.1, 0), (0.2, 0), (0.4, 1), (0.2, 0), (0.1, 0)]]
-    assert out["2026-09-19"] == [[(0.5, 0), (0.5, 1)]]
 
 
 def test_the_default_grid_is_the_market_ladder():

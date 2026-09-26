@@ -262,9 +262,9 @@ class P0PinContractTest(unittest.TestCase):
         """Both halves must be present in the compiler, not just the tag.
 
         The transform itself is reached through ``served_shape`` since
-        2026-09-13, which is the one place the centre/width and band tables
-        are composed; the compiler holding that function object is what
-        makes it apply the same arithmetic the gate scores.
+        2026-09-13, which is the one place the fitted table layers are
+        applied; the compiler holding that function object is what makes it
+        apply the same arithmetic the gate scores.
         """
 
         from bayes_basket_target import native_ensemble_p0, served_shape

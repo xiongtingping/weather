@@ -48,7 +48,7 @@ SCHEMA = "serving_arithmetic_fingerprint_v1"
 # the training entry whose artifacts a stage serves is a root in its own
 # right: what P0 serves is decided as much when the artifact is fitted as
 # when it is compiled.  P0-M is built on P0's root and moves with it.
-# The three table lanes are roots for the reason ``_fit_parameters`` is one:
+# The table lanes are roots for the reason ``_fit_parameters`` is one:
 # what a stage serves is decided as much where the number is fitted as where
 # it is applied, and both reach serving baked into a row rather than through a
 # call.  They were left out when the training entry became a root, and the gap
@@ -56,7 +56,8 @@ SCHEMA = "serving_arithmetic_fingerprint_v1"
 # store (the width lane was composing its answer into the wrong space; the
 # band lane was pooling evidence across a retired shape) and moved no
 # stage's fingerprint at all, because only the LOADERS of those tables were
-# reachable from the serving roots.
+# reachable from the serving roots.  The band lane left both lists with its
+# layer (charter 232, 2026-09-26).
 STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
     "P0": (
         ("bayes_basket_target.native_ensemble_p0", "compile_native_ensemble_p0"),
@@ -66,8 +67,6 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
          "apply_center_width_calibration"),
         ("bayes_basket_target.center_width_store", "fit_center_width"),
         ("bayes_basket_target.center_width_store", "fit_station_width"),
-        ("bayes_basket_target.band_reliability_store",
-         "fit_band_reliability_table"),
     ),
     "P0-M": (
         # ``materialize_p0m`` (the calibrated TAF operator) left this list
@@ -83,8 +82,6 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
          "apply_center_width_calibration"),
         ("bayes_basket_target.center_width_store", "fit_center_width"),
         ("bayes_basket_target.center_width_store", "fit_station_width"),
-        ("bayes_basket_target.band_reliability_store",
-         "fit_band_reliability_table"),
     ),
     # Charter 150: the root under the hard bound times one joint observation
     # likelihood.  ``materialize_p1`` reaches the likelihood's arithmetic

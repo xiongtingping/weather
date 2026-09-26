@@ -84,12 +84,11 @@ GRID_POINT_RULE = [
 
 def _served(probability, *, bounds, delta=0.0, lam=0.75):
     centers, _ = C.served_bucket_axis(INTERVALS, KEYS)
-    out, receipt, _band = apply_served_table_layers(
+    out, receipt = apply_served_table_layers(
         probability,
         ordered_keys=KEYS,
         key_centers_c=centers,
         center_width=CenterWidthLayer(delta_c=delta, width_lambda=lam),
-        band=None,
         open_edge_bounds_c=bounds,
     )
     return [out[key] for key in KEYS], receipt

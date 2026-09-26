@@ -165,8 +165,6 @@ def test_every_stage_hashes_the_lanes_that_decide_its_tables() -> None:
     wanted = {
         ("bayes_basket_target.center_width_store", "fit_center_width"),
         ("bayes_basket_target.center_width_store", "fit_station_width"),
-        ("bayes_basket_target.band_reliability_store",
-         "fit_band_reliability_table"),
     }
     # Charter 150: P1 applies no table; P0-M applies none of its own but is
     # built on P0's root, whose tables it therefore moves with.

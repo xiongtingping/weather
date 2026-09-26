@@ -1,7 +1,7 @@
 """Which fitted table a stage was serving at a past moment.
 
-``build_native_ensemble_oos`` loads the band table, the centre/width scalars
-and the per-station width scales that are active NOW.  That is right for a
+``build_native_ensemble_oos`` loads the centre/width scalars and the
+per-station width scales that are active NOW.  That is right for a
 forward build -- the artifact it mints is served from now on -- and wrong for
 a replay of a past build: a table fitted on the days being replayed, or later,
 scores those days in sample.  Model-layer review 2026-09-13, R4: strict
@@ -13,9 +13,11 @@ activated, and every fit writes a journal row saying whether it activated
 anything.  An activation event is either record; the table active at ``T`` is
 the latest event at or before ``T``, unless that version was retired at or
 before ``T``.  A moment before any event has no table, which is what the
-stage served then (the static bootstrap for band, identity for the widths).
+stage served then (identity for the widths).  The band table left this
+module with its layer (charter 232, 2026-09-26): a replay scores the
+arithmetic that exists, and no band layer does.
 
-Limits, stated rather than hidden.  The band and station-width rows keep the
+Limits, stated rather than hidden.  The station-width rows keep the
 time a version was LAST activated, so an earlier activation of a re-activated
 version that never reached the journal is invisible.  The centre/width row of
 a superseded version has its activation time cleared outright, so for that
@@ -29,11 +31,7 @@ import json
 import sqlite3
 from typing import Any
 
-from .band_reliability_store import (
-    BAND_AXIS_CLAIM,
-    load_band_table_with_axis,
-    utc_instant,
-)
+from .band_reliability_store import utc_instant
 from .center_width_store import (
     load_center_width,
     load_center_width_floor,
@@ -126,13 +124,6 @@ def activation_events(
     """Every activation event each resolver reads, for a replay's receipt."""
 
     return {
-        "band": _events(
-            conn,
-            table="calibration_band_reliability_table",
-            journal="calibration_band_reliability_fit_journal",
-            sha_column="band_table_sha256",
-            stage=stage,
-        ),
         "center_width": _events(
             conn,
             table="calibration_center_width_table",
@@ -148,30 +139,6 @@ def activation_events(
             stage=stage,
         ),
     }
-
-
-def band_table_as_of(
-    conn: sqlite3.Connection, *, stage: str, as_of_utc: str
-) -> tuple[Any, str, str] | None:
-    """``load_band_table_with_axis`` for the table active at ``as_of_utc``."""
-
-    sha = _sha_as_of(
-        conn,
-        table="calibration_band_reliability_table",
-        journal="calibration_band_reliability_fit_journal",
-        sha_column="band_table_sha256",
-        stage=stage,
-        as_of_utc=as_of_utc,
-        retirable=True,
-    )
-    if sha is None:
-        return None
-    loaded = load_band_table_with_axis(
-        conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
-    )
-    if loaded is None:
-        return None
-    return loaded[0], loaded[1], str(loaded[2] or BAND_AXIS_CLAIM)
 
 
 def center_width_as_of(
@@ -239,14 +206,11 @@ def describe_as_of(
 ) -> dict[str, Any]:
     """What a replay at ``as_of_utc`` scores under, as plain JSON."""
 
-    band = band_table_as_of(conn, stage=stage, as_of_utc=as_of_utc)
     width = center_width_as_of(conn, stage=stage, as_of_utc=as_of_utc)
     station = station_width_as_of(conn, stage=stage, as_of_utc=as_of_utc)
     return json.loads(json.dumps({
         "stage": stage,
         "as_of_utc": as_of_utc,
-        "band_table_sha256": None if band is None else band[1],
-        "band_axis": None if band is None else band[2],
         "center_width": width,
         "station_width_sha256": None if station is None else station[1],
     }))

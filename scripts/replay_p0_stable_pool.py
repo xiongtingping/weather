@@ -15,10 +15,12 @@ scheme blend the same per-system forecasts:
 Every per-system forecast is a walk-forward serving fit: ``_fit_parameters``
 over the rolling window of settled days whose truth was committed before the
 update and whose capture preceded it.  Blends go through the production
-bridge and ``_holdout_shape_stack`` under the band / centre-width tables
-active at the update (``p0_gate_tables``), and each is scored four ways: no
-fitted tables, the tables as served, and a width-lambda grid under the served
-band.  Nothing selects kappa or lambda here; the aggregator does that on days
+bridge and ``_holdout_shape_stack`` under the centre-width tables active at
+the update (``p0_gate_tables``), and each is scored three ways: no fitted
+tables, the tables as served, and a width-lambda grid.  The band table
+retired with charter 232 (2026-09-26); ``noband`` and ``pre_band`` stay in
+the record so a resumed station file keeps one shape, and since then they
+are the served view.  Nothing selects kappa or lambda here; the aggregator does that on days
 strictly before each outer day.
 
 Read-only against the SSOT.  One gzip JSONL per station, written atomically,
@@ -189,25 +191,21 @@ def _blend_and_score(*, weights, day_rows, cooling_shift_sigma, latitude, tables
     model_center = sum(weights[s] * centers[s] for s in systems)
     pre_tables = oos._holdout_shape_stack(
         blended, grid=grid, cooling_shift_sigma=cooling_shift_sigma, station_latitude=latitude,
-        neighbour_center_c=model_center, center_width_layer=None, band_layer=None,
+        neighbour_center_c=model_center, center_width_layer=None,
     )
-    served, _cw, _band = apply_served_table_layers(
+    served, _cw = apply_served_table_layers(
         pre_tables, ordered_keys=grid, key_centers_c=[float(int(k)) for k in grid],
-        center_width=tables["center_width_layer"], band=tables["band_layer"],
+        center_width=tables["center_width_layer"],
     )
-    # The same vector with the band left out, kept whole so the aggregator
-    # can refit the band on this scheme's own claims and apply it here.
-    pre_band, _cw, _band = apply_served_table_layers(
-        pre_tables, ordered_keys=grid, key_centers_c=[float(int(k)) for k in grid],
-        center_width=tables["center_width_layer"], band=None,
-    )
+    # No band layer since charter 232, so the served vector is the pre-band one.
+    pre_band = served
     base_layer = tables["center_width_layer"] or CenterWidthLayer()
     by_lambda = []
     for lam in LAMBDA_GRID:
         layer = dataclasses.replace(base_layer, width_lambda=lam, width_tier_lambdas=None, width_tier_boundaries=None)
-        vector, _cw, _band = apply_served_table_layers(
+        vector, _cw = apply_served_table_layers(
             pre_tables, ordered_keys=grid, key_centers_c=[float(int(k)) for k in grid],
-            center_width=layer, band=tables["band_layer"],
+            center_width=layer,
         )
         by_lambda.append(_score(vector, actual))
     mean = sum(float(int(k)) * v for k, v in served.items())
@@ -299,7 +297,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                 "lead": newest_scope[2], "actual": actual,
                 "pool": pool, "scopes": {s: [packet[s][2][2], packet[s][2][3]] for s in pool},
                 "runs": {s: packet[s][1] for s in pool},
-                "band_sha": tables["band_table_sha256"], "cw_sha": tables["center_width_sha256"],
+                "cw_sha": tables["center_width_sha256"],
                 "schemes": {},
             }
             residuals = {s: day_rows[s]["residuals"] for s in pool}
@@ -350,8 +348,7 @@ def replay_station(conn: sqlite3.Connection, station: str) -> list[dict[str, Any
                         train_error_scale={s: prior_rows[s][earliest]["error_scale"] for s in pool},
                         train_n_by_system={s: prior_rows[s][earliest]["train_n"] for s in pool},
                         residuals_by_system=contest_residuals, conditioning_by_day=contest_signals,
-                        station_latitude=latitude, band_factors=tables["band_factors"],
-                        band_axis=tables["band_table_axis"], center_width_layer=tables["center_width_layer"],
+                        station_latitude=latitude, center_width_layer=tables["center_width_layer"],
                     )
                     weights_a = {s: v for s, v in weights_a.items() if v > 0.0}
                     record["schemes"]["A"] = _blend_and_score(weights=weights_a, **common(None))

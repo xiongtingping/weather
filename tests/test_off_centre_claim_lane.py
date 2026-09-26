@@ -5,11 +5,12 @@ written down (no script until three weeks later, no n recorded on the
 off-centre cells, and taken the day before charter 49 removed the population
 it scored), and 2026-09-08, on claim-axis samples days after P0 had moved to
 the distance axis.  A constant only a person can move does not follow the
-band table underneath it, and that table refits nightly.
+layer underneath it.  (That layer was the band table until charter 232
+retired it; the lane now serves the distance partition every stage was on
+that day.)
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 import sys
 
@@ -42,22 +43,7 @@ def _off_centre_arm_on(monkeypatch):
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     store.ensure_schema(conn)
-    from bayes_basket_target.band_reliability_store import (
-        ensure_band_table_schema,
-    )
-    ensure_band_table_schema(conn)
     return conn
-
-
-def _band_table(conn, *, stage="P0", axis="centre_distance", sha=None):
-    conn.execute(
-        "INSERT INTO calibration_band_reliability_table("
-        " band_table_sha256, factors_json, evidence_json, fitted_at_utc,"
-        " serving_day_count, activated, activated_at_utc, stage, axis)"
-        " VALUES(?,?,?,?,?,1,?,?,?)",
-        (sha or ("b" * 64), json.dumps([[[0.0, 1.0], 1.0]]), "{}",
-         "2026-09-09T00:00:00Z", 30, "2026-09-09T00:00:00Z", stage, axis),
-    )
 
 
 def _activate(conn, factors, *, stage="P0", axis="centre_distance", sha="f" * 64):
@@ -80,11 +66,13 @@ def test_the_kernel_constant_is_the_bootstrap_not_the_rule() -> None:
 
 
 def test_a_table_fitted_on_another_axis_is_not_loaded() -> None:
-    """Charter 110's reason, one layer over: the band table moves every
+    """Charter 110's reason, one layer over: the band table moved every
     claim, this correction is measured on claims, so a table fitted on one
-    axis describes a quantity the other does not compute."""
+    axis describes a quantity the other does not compute.  Since charter 232
+    the served partition is fixed at the distance axis every stage was on
+    when the band table retired."""
+    assert store.SERVED_AXIS == "centre_distance"
     conn = _db()
-    _band_table(conn, axis="centre_distance")
     _activate(conn, [[0.05, 1.0], [0.2, 0.70], [1.01, 1.0]], axis="claim")
     assert store.load_off_centre_bands(conn, stage="P0") is None
     _activate(conn, [[0.05, 1.0], [0.2, 0.75], [1.01, 1.0]],
@@ -187,7 +175,6 @@ def test_the_sample_is_bounded_below_at_the_serving_arithmetic_anchor(
     from bayes_basket_target import center_width_store
 
     conn = _db()
-    _band_table(conn)
     seen: list[str | None] = []
 
     def sample(conn_, truth, *, stage, pre_band, min_decision_at_utc=None):
@@ -287,7 +274,6 @@ def test_the_lane_journals_every_fit_and_can_retire_its_table() -> None:
     refused, held or retired left no trace."""
 
     conn = _db()
-    _band_table(conn)
     _activate(conn, [[0.05, 1.0], [0.2, 0.89], [1.01, 1.0]])
     assert store.load_off_centre_bands(conn, stage="P0") is not None
     fit = {
