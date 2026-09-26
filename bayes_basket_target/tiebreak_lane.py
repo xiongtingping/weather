@@ -35,7 +35,10 @@ fires, and a fired one records why it did not send, so the forward sample
 is the whole population and not the trades.
 
 One attempt per station-day, at the first stage whose first decision fires.
-A rung the venue is holding ends the station-day while it stands; a rung
+Only P0-M and P1 open (charter 229, user rulings 2026-09-26 「p0m和p1仅限秤
+砣线策略开仓」, 「P0 只留篮子」; the lane file's ``opening_stages``): P0 is
+the basket's, so a P0 first decision is scored and, fired, refused
+``stage_not_opening:P0`` for good.  A rung the venue is holding ends the station-day while it stands; a rung
 that ended without filling -- its own GTD horizon ran out, or the resting
 lifecycle cancelled it when the bid ran away (charters 94/110/135, which
 judge this rung exactly as they judge a basket leg's) -- is re-judged on a
@@ -70,7 +73,12 @@ from .exit_orders import Transport
 from .lane_orders import lane_decision_id, send_lane_buy
 from .live_station_scope import admission as live_station_admission
 from .settlement_time import settlement_day_state
-from .strategy_lanes import LANE_TIEBREAK, TIEBREAK_DEFAULT_SETTINGS, lane_settings
+from .strategy_lanes import (
+    LANE_TIEBREAK,
+    TIEBREAK_DEFAULT_SETTINGS,
+    lane_settings,
+    opening_stages,
+)
 from .supply_watch import EGRESS_HOLD_REASON, egress_held_sql
 
 LANE = LANE_TIEBREAK
@@ -280,12 +288,22 @@ RETRY_COLUMNS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: Charter 229 (user rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 and 「P0
+#: 只留篮子」): a first decision of a stage outside the lane's
+#: ``opening_stages`` is scored like any other and, fired, refused with this
+#: prefix and the stage.
+STAGE_NOT_OPENING_PREFIX = "stage_not_opening:"
+
+
 #: Refusals that end a fired station-day-stage for good: the ruling, the
 #: cap, the closed day, or a position already held.  Every other refusal of
 #: a FIRED evaluation is a book or a balance that may change: cash and a
 #: stale read retry on any fresh book, the rest only on a book newer than
 #: the one last examined.
 TERMINAL_REFUSAL_PREFIXES: tuple[str, ...] = (
+    # Charter 229: a stage this lane does not open on (P0, which the basket
+    # owns) -- the ruling, not the book.
+    STAGE_NOT_OPENING_PREFIX,
     "station_day_already_attempted",
     "station_day_send_cap:",
     "venue_disabled_cap:",
@@ -989,6 +1007,7 @@ def plan_tiebreak_entries(
     max_paid_raw = cfg.get("max_paid_price")
     max_paid = DEFAULT_MAX_PAID_PRICE if max_paid_raw is None else float(max_paid_raw)
     fresh_seconds = float(cfg.get("first_decision_fresh_seconds") or TIEBREAK_DEFAULT_SETTINGS["first_decision_fresh_seconds"])
+    stages = opening_stages(cfg)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     now = _utc(now_utc)
     done = _evaluated(
@@ -1045,6 +1064,13 @@ def plan_tiebreak_entries(
         if not reading["fired"]:
             evaluations.append(_record(target_conn, key, fact, reading, fired=False,
                                        refusal=f"rule_not_met:{reading['reason']}", order_intent_id=None, plan=None, now_utc=now_utc, rule_version=rule_version))
+            continue
+        if str(key["stage"]) not in stages:
+            # Charter 229: the rule fired on a stage this lane does not open
+            # on.  Recorded with its reading, never sent, never retried.
+            evaluations.append(_record(target_conn, key, fact, reading, fired=True,
+                                       refusal=f"{STAGE_NOT_OPENING_PREFIX}{key['stage']}", order_intent_id=None,
+                                       plan=None, now_utc=now_utc, rule_version=rule_version))
             continue
         refusal = _planning_refusal(
             target_conn, key, fact, gate=gate, now_utc=now_utc,
@@ -1226,6 +1252,7 @@ def _retry_operational_refusals(
     shut_cooldown = float(
         cfg.get("venue_disabled_cooldown_seconds") or DEFAULT_VENUE_DISABLED_COOLDOWN_SECONDS
     )
+    stages = opening_stages(cfg)
     _sync_sent_rows(target_conn, floor=floor)
     rows = target_conn.execute(
         f"SELECT station_id, event_date, stage, refusal, retry_of_refusal, COALESCE(retry_count, 0), plan_json, retry_snapshot_id"
@@ -1265,6 +1292,11 @@ def _retry_operational_refusals(
             )
             entry["refusal_after"] = None if plan else reason
             out.append(entry)
+        if key["stage"] not in stages:
+            # Charter 229: a row fired on a stage the lane no longer opens on
+            # (a P0 row refused for cash or an unfilled rung before the
+            # ruling) is closed, not re-sent.
+            _note(f"{STAGE_NOT_OPENING_PREFIX}{key['stage']}"); continue
         if (key["station_id"], key["event_date"]) in attempted_today or station_day_attempted(target_conn, key["station_id"], key["event_date"]):
             # A position, or an order the exchange has not yet answered for:
             # nothing to send, and nothing to write on the row -- when the

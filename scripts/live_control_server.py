@@ -31,7 +31,8 @@ POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and
                   rather than move the wrong dial.
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
 POST /api/tiebreak-stake {"value": 5}     -> tiebreak lane stake_usdc (秤砣线每笔预算, charter 146)
-POST /api/lane    {"lane": "basket", "enabled": false} -> one strategy lane's switch (charter 146)
+POST /api/lane    {"lane": "basket", "enabled": false} -> one strategy lane's switch (charter 146);
+                  the board draws three of them -- 篮子, 秤砣线, 同心线 (charter 229)
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
 POST /api/allowlist {"stations": ["ZBAA", ...]}
 POST /api/station-bar     {"station": "KSEA", "barred": true}
@@ -388,14 +389,42 @@ def _read_strategy_lanes() -> dict:
 
 def _strategy_lanes_state() -> dict:
     doc = _read_strategy_lanes()
+    lanes = {
+        name: {"enabled": bool(lane.get("enabled") is True)}
+        for name, lane in doc["lanes"].items()
+    }
+    for name, stages in _lane_opening_stages(doc).items():
+        lanes[name]["opening_stages"] = stages
     return {
         "source": doc.get("source"),
         "updated_at_utc": doc.get("updated_at_utc"),
-        "lanes": {
-            name: {"enabled": bool(lane.get("enabled") is True)}
-            for name, lane in doc["lanes"].items()
-        },
+        "lanes": lanes,
     }
+
+
+def _lane_opening_stages(doc: dict) -> dict:
+    """Charter 229: the stages the basket and the tiebreak lane may open on,
+    read where each rule lives -- the basket's in the compile, the tiebreak
+    lane's in its lane file -- so the board's switches say what they reach
+    without restating a rule.  A lane whose answer cannot be read is left
+    out rather than guessed."""
+
+    lanes = _lanes_module()
+    order = lanes.KNOWN_STAGES
+    out: dict = {}
+    try:
+        from bayes_basket_target.delta_v2_runtime import (  # noqa: PLC0415
+            BASKET_BUYING_STAGES,
+        )
+        out[lanes.LANE_BASKET] = [s for s in order if s in BASKET_BUYING_STAGES]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        tiebreak = lanes.opening_stages(doc["lanes"][lanes.LANE_TIEBREAK])
+        out[lanes.LANE_TIEBREAK] = [s for s in order if s in tiebreak]
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def _tiebreak_stake_state() -> dict:

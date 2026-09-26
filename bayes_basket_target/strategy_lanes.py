@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -103,7 +104,16 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # its own budget and an hour between tries instead.
     "max_venue_disabled_sends_per_station_day": 6,
     "venue_disabled_cooldown_seconds": 3600.0,
+    # Charter 229 (user rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 and
+    # 「P0 只留篮子」): the stages whose first decision may open.  A P0 first
+    # decision is still scored into the evaluation table -- the forward
+    # sample stays the whole population -- and a fired one is refused
+    # ``stage_not_opening:P0``, for good.
+    "opening_stages": ["P0-M", "P1"],
 }
+
+#: Every stage a lane may be told to open on.
+KNOWN_STAGES: tuple[str, ...] = ("P0", "P0-M", "P1")
 
 #: The P1 tail lane's settings (charter 166, user ruling 2026-09-20 「上线尾段
 #: 车道 p1_tail 策略」).  The belief is the market's own mid ladder under the
@@ -296,6 +306,24 @@ def lane_enabled(name: str, path: Path | str | None = None) -> bool:
     return lane_settings(name, path).get("enabled") is True
 
 
+def opening_stages(settings: Mapping[str, Any]) -> frozenset[str]:
+    """The stages a lane's ``opening_stages`` setting names.
+
+    A list of known stage names, possibly empty (a lane that opens nowhere).
+    Anything else is not a ruling anyone can act on, and raises: a lane that
+    guessed would be deciding where to spend on its own.
+    """
+
+    declared = settings.get("opening_stages")
+    if not isinstance(declared, (list, tuple)):
+        raise ValueError(f"opening_stages_not_a_list:{declared!r}")
+    stages = frozenset(str(stage).strip().upper() for stage in declared)
+    unknown = sorted(stages - set(KNOWN_STAGES))
+    if unknown:
+        raise ValueError(f"opening_stages_unknown:{','.join(unknown)}")
+    return stages
+
+
 def validate_tiebreak_stake(value: Any) -> float:
     """A stake the lane may be set to: finite, inside the bounds, to the cent."""
 
@@ -319,6 +347,7 @@ __all__ = [
     "DEFAULT_PATH",
     "ENV_VAR",
     "KNOWN_LANES",
+    "KNOWN_STAGES",
     "LANE_BASKET",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",
@@ -333,4 +362,5 @@ __all__ = [
     "lane_enabled",
     "lane_settings",
     "load_strategy_lanes",
+    "opening_stages",
 ]

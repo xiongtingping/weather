@@ -146,11 +146,16 @@ def _pin_p1_may_open(monkeypatch: pytest.MonkeyPatch) -> None:
     observation, sizing refusals, the optimizer's hold -- is the same path a
     P1 top-up takes, so the opening stages are pinned to the research arm
     that admits P1 (``PM_CHAIN_OPENING_STAGES``) rather than the fixture
-    being rebuilt around a held position.
+    being rebuilt around a held position.  Charter 229 (2026-09-26) ships the
+    basket buying in P0 only, so P1 must be a buying stage in the arm too
+    (``PM_BASKET_BUYING_STAGES``).
     """
 
     from bayes_basket_target import delta_v2_runtime
 
+    monkeypatch.setattr(
+        delta_v2_runtime, "BASKET_BUYING_STAGES", frozenset({"P0", "P1"})
+    )
     monkeypatch.setattr(
         delta_v2_runtime, "CHAIN_OPENING_STAGES", frozenset({"P0", "P1"})
     )

@@ -500,6 +500,12 @@ EXECUTION_AUTHORIZATION_WHOLE_BASKET_EDGE = "whole_basket_edge_v1"
 # 2026-09-08, "已经没有门票这个语义了"); a P0 with no edge now opens nothing,
 # and the stages that follow find an empty chain and hold.
 CHAIN_OPENING_STAGE = "P0"
+# Charter 229 (user ruling, 2026-09-26: 「篮子策略仅限p0开仓建仓，p0m和p1仅限
+# 秤砣线策略开仓」): the basket buys in P0 only -- it opens there and builds
+# there.  P0-M and P1 no longer add to what P0 holds: no top-up, no
+# completion, no TAF entry.  They still compile, record the decision and
+# write the training fact the tiebreak lane is triggered by; they hold.
+BASKET_BUYING_STAGE = "P0"
 # The fill below which a buy is dust and is kept out of the equity curve.
 # It was named for the ticket and outlived it: the ticket is retired (user
 # ruling, 2026-09-08, "已经没有门票这个语义了"), a fill too small to compound

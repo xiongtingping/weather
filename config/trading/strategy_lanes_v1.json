@@ -1,12 +1,13 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-09-23T11:52:00Z",
-  "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175.",
+  "updated_at_utc": "2026-09-26T05:34:48Z",
+  "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane).",
   "lanes": {
     "basket": {
-      "enabled": false,
+      "enabled": true,
       "paused_at_utc": "2026-09-18T00:00:00Z",
-      "note": "Every BUY the basket compile mints: seat, top-up, charter 143 completion, charter 145 TAF entry."
+      "note": "Every BUY the basket compile mints: seat, top-up, charter 143 completion, charter 145 TAF entry. Charter 229 (2026-09-26): the compile buys in P0 only; P0-M and P1 compile, record the decision and hold (reason basket_stage_not_buying).",
+      "enabled_at_utc": "2026-09-26T05:34:48Z"
     },
     "certain_win_recycle": {
       "enabled": true,
@@ -24,7 +25,11 @@
       "stake_usdc": 6.0,
       "min_market_share_on_model_mode": 0.4,
       "first_decision_fresh_seconds": 3600.0,
-      "note": "秤砣线 v2.3 (charter 175, user ruling 2026-09-21 「把价带上限改成按实付价 ≤0.60」): at a stage's first decision, the model's mode bucket priced at least 0.40 by the market's normalised mid AND quoted both sides at most 3 cents wide -> rest one post-only GTD rung on that bucket at the best bid plus one tick (clamped under the ask), stake_usdc' worth of shares, once per station-day -- and only if that rung's own price is at most max_paid_price (0.60). The ceiling used to be on the normalised mid, which sits a median 3 cents under the price paid: the four P0-M fills bought at 0.61-0.66 settled 0/4. v2.2 (charter 163, 2026-09-20..21) had the same conditions with the ceiling on the mid; each rule version is its own sample. Features (market move since the previous decision, spread, depth) are recorded on every evaluation row, not traded on. A send the VENUE turned away because the market was not trading (\"trading is disabled\") spends none of max_sends_per_station_day; those attempts have their own budget and an hour between tries (user ruling 2026-09-20 「改」).",
+      "opening_stages": [
+        "P0-M",
+        "P1"
+      ],
+      "note": "秤砣线 v2.3 (charter 175, user ruling 2026-09-21 「把价带上限改成按实付价 ≤0.60」): at a stage's first decision, the model's mode bucket priced at least 0.40 by the market's normalised mid AND quoted both sides at most 3 cents wide -> rest one post-only GTD rung on that bucket at the best bid plus one tick (clamped under the ask), stake_usdc' worth of shares, once per station-day -- and only if that rung's own price is at most max_paid_price (0.60). The ceiling used to be on the normalised mid, which sits a median 3 cents under the price paid: the four P0-M fills bought at 0.61-0.66 settled 0/4. v2.2 (charter 163, 2026-09-20..21) had the same conditions with the ceiling on the mid; each rule version is its own sample. Features (market move since the previous decision, spread, depth) are recorded on every evaluation row, not traded on. A send the VENUE turned away because the market was not trading (\"trading is disabled\") spends none of max_sends_per_station_day; those attempts have their own budget and an hour between tries (user ruling 2026-09-20 「改」). Charter 229 (user rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」「P0 只留篮子」): the lane opens only on the first decisions of the stages in opening_stages (P0-M, P1). A P0 first decision is still scored into tiebreak_lane_evaluation and, fired, refused stage_not_opening:P0 -- never sent, never retried.",
       "rule": "model_mode_midband_spread_maker_paid_cap_v2_3",
       "max_market_share_on_model_mode": 0.6,
       "max_spread_on_model_mode": 0.031,
@@ -55,7 +60,7 @@
       "pause_note": "User ruling 2026-09-23 「P1 尾段线：暂定交易先关闭」: 16 settled legs over 09-21/09-22, 5 hit, 71.26 USDC in, -43.95 (-61.7%); the seven bought under 0.50 all lost (-30.06), the nine at 0.50 or more hit 5 and still lost -13.89. Switched off at the lane file; the worker returns before calling the lane, so no new evaluations are written while it is off. Turn back on by setting enabled true."
     },
     "p1_consensus": {
-      "enabled": true,
+      "enabled": false,
       "stake_usdc": 5.0,
       "rule": "p1_four_centre_consensus_maker_v2",
       "min_remaining_hours": 6.0,
@@ -71,7 +76,9 @@
       "max_buys_per_bucket": 1,
       "max_sends_per_station_day": 120,
       "min_minutes_between_buys": 20.0,
-      "note": "同心线 (the P1 consensus lane, charter 203). v2 (user ruling 2026-09-23 「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), post one post-only GTD rung at the best bid plus one tick (5 USDC), signed at the venue's minimum horizon (~3.5 min), and re-post it on the current book while unfilled, as long as the decision's belief stands and the day is >= 6 h from its clock. At most 2 takes a station-day, 1 per bucket, 20 minutes apart; one rung resting at a time; no exclusion against the tiebreak lane. v1 (08:11Z-11:41Z) crossed FOK at the ask: LTAC 09-23 20°C, four takes. Replay 07-28..09-22 (at the ask): 117 takes, +15.3% [+4.8%, +25.3%]."
+      "note": "同心线 (the P1 consensus lane, charter 203). v2 (user ruling 2026-09-23 「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」): on a P1 decision 6-10 h from the settlement clock where the model's and the market's mode and mean buckets are one bucket and its best ask is in [0.50, 0.70), post one post-only GTD rung at the best bid plus one tick (5 USDC), signed at the venue's minimum horizon (~3.5 min), and re-post it on the current book while unfilled, as long as the decision's belief stands and the day is >= 6 h from its clock. At most 2 takes a station-day, 1 per bucket, 20 minutes apart; one rung resting at a time; no exclusion against the tiebreak lane. v1 (08:11Z-11:41Z) crossed FOK at the ask: LTAC 09-23 20°C, four takes. Replay 07-28..09-22 (at the ask): 117 takes, +15.3% [+4.8%, +25.3%].",
+      "paused_at_utc": "2026-09-26T05:25:42Z",
+      "pause_note": "User rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 then 「停同心线」 (charter 229): P1 openings belong to the tiebreak lane alone. Switched off at the lane file; the worker skips the lane while it is off (no new evaluations, no re-posts), and a rung still resting ends at its own ~3.5-minute horizon under the resting lifecycle. Turn back on with the board's 同心线 switch."
     }
   }
 }

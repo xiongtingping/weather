@@ -615,9 +615,14 @@ def test_real_candidate_receipt_projection_recompute_commit_and_replay(
     # The candidate is a P1 opening an empty chain, which charter 74 reserves
     # for P0.  What this test drives -- receipt, projection, recompute, commit
     # and replay after a maker fill -- is the path a P1 top-up takes, so the
-    # opening stages are pinned to the research arm that admits P1.
+    # opening stages are pinned to the research arm that admits P1 -- and,
+    # since charter 229 (2026-09-26) ships the basket buying in P0 only, the
+    # buying stages with them.
     from bayes_basket_target import delta_v2_runtime
 
+    monkeypatch.setattr(
+        delta_v2_runtime, "BASKET_BUYING_STAGES", frozenset({"P0", "P1"})
+    )
     monkeypatch.setattr(
         delta_v2_runtime, "CHAIN_OPENING_STAGES", frozenset({"P0", "P1"})
     )

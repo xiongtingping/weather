@@ -17,6 +17,7 @@ from bayes_basket_target.delta_v2_artifact import (
     DeltaV2PolicyArtifact,
 )
 from bayes_basket_target import delta_v2_runtime
+from bayes_basket_target.basket_kernel.delta_v2 import CANDIDATE_KIND_BASELINE
 from bayes_basket_target.delta_v2_runtime import (
     _target_candidates,
     compile_delta_v2_runtime_plan,
@@ -54,6 +55,20 @@ def _pre_charter_87_gate(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off"
+    )
+
+
+@pytest.fixture
+def _three_stage_basket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Charter 229 ships the basket buying in P0 only.  The tests that pin
+    what P0-M and P1 bought before the ruling run its research arm
+    (``PM_BASKET_BUYING_STAGES=P0,P0-M,P1``); the shipped default is pinned
+    by ``test_charter_229_*``."""
+
+    monkeypatch.setattr(
+        delta_v2_runtime,
+        "BASKET_BUYING_STAGES",
+        frozenset({"P0", "P0-M", "P1"}),
     )
 
 def _snapshot(*, pending_shares: float = 0.0) -> TargetBasketSnapshot:
@@ -885,6 +900,7 @@ def test_pending_zero_partial_zero_rewinds_deterministically() -> None:
     assert zero_replay["content_sha256"] == zero["content_sha256"]
 
 
+@pytest.mark.usefixtures("_three_stage_basket")
 def test_p1_recomputes_complete_gap_bundle_beyond_three_changes() -> None:
     """Checkpoint/quote/fill/inventory changes are triggers, not tranches."""
 
@@ -944,6 +960,7 @@ def test_p1_recomputes_complete_gap_bundle_beyond_three_changes() -> None:
     assert len({plan["content_sha256"] for plan in plans}) == len(plans)
 
 
+@pytest.mark.usefixtures("_three_stage_basket")
 @pytest.mark.parametrize(
     "trigger",
     ["checkpoint", "quote", "fill", "inventory"],
@@ -1172,6 +1189,109 @@ def test_curve_objective_prefers_flat_curve_and_keeps_sound_bets() -> None:
             weights=weights,
             objective_form=CURVE_OBJECTIVE_FORM,
         )
+
+
+def _later_stage_snapshot_and_policy(stage: str):
+    """The P0 fixture's book at a later stage, with that stage's policy."""
+
+    raw = _snapshot().to_dict()
+    raw["evidence"]["probability_stage"] = stage
+    if stage == "P1":
+        raw["evidence"].update({
+            "reported_high_bucket": "35",
+            "reported_high_ordinal": 35,
+            "reported_high_observation_id": "metar-rkpk-p1",
+            "hard_bound_id": "hard-bound-rkpk-p1",
+        })
+        raw["buckets"][0]["probability"] = 0.0
+        raw["buckets"][1]["probability"] = 1.0
+        return raw, _p1_delta_policy()
+    policy_raw = _delta_policy().to_dict()
+    policy_raw["stage"] = stage
+    policy_raw.pop("content_sha256", None)
+    policy_raw["content_sha256"] = content_sha256(policy_raw)
+    return raw, DeltaV2PolicyArtifact.from_mapping(policy_raw)
+
+
+@pytest.mark.parametrize("stage", ["P0-M", "P1"])
+def test_charter_229_a_later_stage_compiles_and_holds(stage: str) -> None:
+    """User ruling 2026-09-26 「篮子策略仅限p0开仓建仓」: P0-M and P1 compile,
+    record the decision and hold -- the same book P0 buys (the test above)
+    and the same stage the three-stage arm buys on."""
+
+    raw, policy = _later_stage_snapshot_and_policy(stage)
+    plan = compile_delta_v2_runtime_plan(
+        snapshot=TargetBasketSnapshot.from_mapping(raw),
+        basket_policy=_basket_policy(),
+        delta_policy=policy,
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+
+    assert plan["state"] == "HOLD"
+    assert "basket_stage_not_buying" in plan["reason_codes"]
+    assert plan["delta_v2_action_selection"]["selected_actions"] == []
+    assert all(
+        row["execution_candidate"] == "NONE" for row in plan["targets"]
+    )
+
+
+@pytest.mark.parametrize("stage", ["P0-M", "P1"])
+def test_charter_229_only_the_baseline_is_offered_at_a_later_stage(
+    stage: str,
+) -> None:
+    raw, policy = _later_stage_snapshot_and_policy(stage)
+    snapshot = TargetBasketSnapshot.from_mapping(raw)
+    kwargs = dict(
+        snapshot=snapshot,
+        desired=[row.bucket for row in snapshot.buckets],
+        artifact=policy,
+        capital_available_usdc=5.0,
+        minimum_clip_notional_usdc=0.01,
+        bankroll_usdc=5.0,
+        probabilities_by_bucket={
+            row.bucket: row.probability for row in snapshot.buckets
+        },
+    )
+
+    held = _target_candidates(**kwargs)
+    assert {row["candidate_kind"] for row in held} == {CANDIDATE_KIND_BASELINE}
+
+    # The P0 fixture's own book, offered at P0: increments are on the table.
+    p0_snapshot = _snapshot()
+    p0 = _target_candidates(**{
+        **kwargs,
+        "snapshot": p0_snapshot,
+        "artifact": _delta_policy(),
+        "probabilities_by_bucket": {
+            row.bucket: row.probability for row in p0_snapshot.buckets
+        },
+    })
+    assert {row["candidate_kind"] for row in p0} > {CANDIDATE_KIND_BASELINE}
+
+
+def test_charter_229_p0_still_buys_and_names_no_stage_hold() -> None:
+    plan = compile_delta_v2_runtime_plan(
+        snapshot=_snapshot(),
+        basket_policy=_basket_policy(),
+        delta_policy=_delta_policy(),
+        fill_resolver=_fill_resolver,
+        capital_available_usdc=5.0,
+        minimum_profit_floor=-5.0,
+        resource_probe_ok=True,
+    )
+
+    assert plan["state"] == "TRADE"
+    assert "basket_stage_not_buying" not in plan["reason_codes"]
+
+
+def test_charter_229_the_shipped_buying_stage_is_p0_alone() -> None:
+    assert delta_v2_runtime.BASKET_BUYING_STAGES == frozenset({"P0"})
+    assert delta_v2_runtime.CHAIN_OPENING_STAGES <= (
+        delta_v2_runtime.BASKET_BUYING_STAGES
+    )
 
 
 @pytest.fixture

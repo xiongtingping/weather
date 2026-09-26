@@ -31,6 +31,14 @@ def _compile(monkeypatch: pytest.MonkeyPatch, *, stage: str) -> dict:
         delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
     )
     monkeypatch.setattr(delta_v2_runtime, "CHARTER_83_MIN_NOTIONAL", "off")
+    if stage != "P0":
+        # Charter 229 (2026-09-26): the basket buys in P0 only; a later
+        # stage's completion is priced under the three-stage research arm.
+        monkeypatch.setattr(
+            delta_v2_runtime,
+            "BASKET_BUYING_STAGES",
+            frozenset({"P0", "P0-M", "P1"}),
+        )
     solve = delta_v2_runtime.solve_reservation_price_v2
     monkeypatch.setattr(
         delta_v2_runtime,

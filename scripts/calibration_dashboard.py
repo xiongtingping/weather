@@ -13174,6 +13174,8 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "max_spread_on_model_mode": tiebreak.get("max_spread_on_model_mode"),
             # v2.3 (charter 175): the ceiling is the rung's own price.
             "max_paid_price": tiebreak.get("max_paid_price"),
+            # Charter 229: the stages whose first decision may open.
+            "opening_stages": tiebreak.get("opening_stages"),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
         },
@@ -18789,6 +18791,12 @@ box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
 .lc-sw[aria-checked="true"]::after{transform:translateX(16px)}
 .lc-sw:disabled{opacity:.4;cursor:not-allowed}
 .lc-sw:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+/* Charter 229: a strategy lane's switch is the same object, green when the
+   lane runs.  Red stays the LIVE flag's: a lane switched on under a lowered
+   flag moves no money. */
+.lc-sw.lc-lane[aria-checked="true"]{background:var(--green)}
+.navctl-lane .lc-lane-st{margin-left:3px;font-size:10.5px;
+font-variant-numeric:tabular-nums}
 /* The station gate, three switches per row.  A 34px slider each would be
    110px of chrome on a 45-row table, so these carry their state in the fill
    instead of a knob -- same contract as .lc-sw (the state and the action are
@@ -24306,7 +24314,7 @@ function tiebreakLane(){
       <span style="flex:1"></span>
       ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
-    <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：每个阶段的首个决策，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
+    <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：${Array.isArray(S.opening_stages)?`${S.opening_stages.map(x=>h(String(x))).join("、")} 阶段的首个决策（宪章 229：P0 留给篮子，P0 首决策照常打分入表、命中也不挂单）`:"每个阶段的首个决策"}，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
   const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
   const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
@@ -24506,6 +24514,7 @@ function liveControlStrip(){
     <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
+    ${laneSwitch("basket")}
     ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
@@ -24522,12 +24531,44 @@ function liveControlStrip(){
       `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
         L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
+    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
+    ${laneSwitch("tiebreak")}
     ${knob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔 FOK 买单花这么多；宪章 146）",
       `${b("tiebreak",-5,"−5",true)}${b("tiebreak",-1,"−")}<b id="lc-tiebreak">${
         L.tiebreak_stake==null?"—":LC_KNOBS.tiebreak.fmt(L.tiebreak_stake)}</b>${
         b("tiebreak",1,"+")}${b("tiebreak",5,"+5",true)}`)}
-    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
+    ${laneSwitch("p1_consensus")}
   </div>`;
+}
+// Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关」「秤砣线也
+// 是单独加开关」「停同心线」): one switch per lane that opens positions, beside
+// that lane's own dials, written through POST /api/lane.  What each reaches
+// -- the stages it opens on -- is painted from the control server's answer
+// (``opening_stages``, read where each rule lives), never written here.
+const LC_LANES = {
+  basket: {name:"篮子",
+    on:"实盘举旗时，篮子编译出的买单照常发出",
+    off:"篮子照常编译、记决策，买单在发送处拦下（意向记 strategy_lane_paused:basket）"},
+  tiebreak: {name:"秤砣线",
+    on:"实盘举旗时，秤砣线在开仓阶段的首决策照常挂单",
+    off:"整条车道跳过：不评估、不挂新单"},
+  p1_consensus: {name:"同心线",
+    on:"实盘举旗时，同心线（P1 共识线，宪章 203）照常挂单",
+    off:"整条车道跳过：不评估、不挂新单"},
+};
+// Drawn disabled from the page snapshot, like every control here: only the
+// server's answer enables a switch, and ``lcPaintLanes`` repaints it from
+// that answer, never from the click.
+function laneSwitch(key){
+  const L = D.live_readiness || {}, spec = LC_LANES[key];
+  const on = !!((L.strategy_lanes||{})[key]);
+  return `<span class="navctl-k navctl-lane" data-lc-lane-box="${key}"
+    title="${h(spec.name)}车道开关（开：${h(spec.on)}；关：${h(spec.off)}）· 每次改动写 data/live_control_audit.jsonl"
+    ><span class="navctl-l">${spec.name}<small class="lc-lane-st"
+      data-lc-lane-stages="${key}"></small></span><button type="button"
+      class="lc-sw lc-lane" role="switch" data-lc-lane="${key}"
+      aria-checked="${on}" aria-label="${spec.name}车道开关" disabled
+      onclick="lcLane(this)"></button></span>`;
 }
 
 function liveReadiness(){
@@ -24927,6 +24968,7 @@ function lcRender(s){
   // optimistic flip would show a bar the server refused, which is the one
   // lie a control that stops orders must never tell.
   lcPaintGates(s);
+  lcPaintLanes(s);
   window.__lcState = s;
   lcSynced = Date.now();
 }
@@ -25020,7 +25062,7 @@ function lcPaintStatus(s){
 function lcDown(){
   window.__lcState = null;
   lcPaintStatus(null);
-  document.querySelectorAll(".lc-w, #lc-live-btn, .lc-gate, .lc-bulk")
+  document.querySelectorAll(".lc-w, #lc-live-btn, .lc-gate, .lc-bulk, .lc-lane")
     .forEach(b=>{ b.disabled = true; });
   document.querySelectorAll(".navctl-k[aria-busy]")
     .forEach(k=>k.removeAttribute("aria-busy"));
@@ -25071,6 +25113,40 @@ function lcLive(){
       if(e && e.lcDown) lcDown(); else if(btn) btn.disabled=false;
       alert("失败: "+e);
     });
+}
+// Charter 229: one lane's switch.  One click, both directions, no dialog --
+// the LIVE switch's contract -- and held down for the round trip, so a
+// second click cannot send the opposite instruction against a state that
+// has already moved.
+function lcLane(btn){
+  const s = window.__lcState; if(!s || !btn) return;
+  const key = btn.dataset.lcLane;
+  const cur = (((s.strategy_lanes||{}).lanes)||{})[key];
+  if(!cur) return;
+  btn.disabled = true;
+  lcApi("/api/lane", {lane:key, enabled:cur.enabled!==true, by:"dashboard"})
+    .then(lcRender)
+    .catch(e=>{
+      if(e && e.lcDown) lcDown(); else lcPaintLanes(window.__lcState);
+      alert("失败: "+e);
+    });
+}
+function lcPaintLanes(s){
+  const lanes = ((s && s.strategy_lanes) || {}).lanes || {};
+  document.querySelectorAll(".lc-lane").forEach(btn=>{
+    const key = btn.dataset.lcLane, spec = LC_LANES[key], cur = lanes[key];
+    // An answer that does not name the lane enables nothing: a switch the
+    // server cannot vouch for must not look clickable.
+    if(!spec || !cur){ btn.disabled = true; return; }
+    const on = cur.enabled === true;
+    btn.setAttribute("aria-checked", String(on));
+    const stages = (cur.opening_stages || []).join("·");
+    const tag = document.querySelector(`[data-lc-lane-stages="${key}"]`);
+    if(tag) tag.textContent = stages ? " " + stages : "";
+    btn.title = (on ? `运行中 · 点击关闭：${spec.off}` : `已关闭 · 点击打开：${spec.on}`)
+      + (stages ? `（开仓阶段 ${stages}）` : "");
+    btn.disabled = false;
+  });
 }
 // The station gate: three switches per row, one click each.
 //

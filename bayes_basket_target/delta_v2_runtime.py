@@ -97,6 +97,7 @@ from .basket_kernel.delta_v2 import (
     CURVE_OBJECTIVE_FORM,
     EXCHANGE_LOT_TOP_UP,
     CHAIN_OPENING_STAGE,
+    BASKET_BUYING_STAGE,
     execution_authorization_rule_v1,
     DECISION_MOMENT_RULE_VERSION,
     ORDER_END_MOMENT_RULE_VERSION,
@@ -1244,6 +1245,27 @@ CHAIN_OPENING_STAGES = frozenset(
 )
 if not CHAIN_OPENING_STAGES <= {"P0", "P0-M", "P1"}:
     raise RuntimeError(f"unknown chain opening stages: {sorted(CHAIN_OPENING_STAGES)}")
+# Charter 229 (user ruling, 2026-09-26): the stages the basket may BUY on at
+# all -- open, top up, complete a seat or enter on a TAF TX.  Ships P0
+# alone; a stage outside the set compiles, records its decision and holds.
+# Research arm: ``PM_BASKET_BUYING_STAGES=P0,P0-M,P1`` is the three-stage
+# chain the basket ran until the ruling, for replays of it.
+BASKET_BUYING_STAGES = frozenset(
+    part.strip().upper()
+    for part in (
+        os.environ.get("PM_BASKET_BUYING_STAGES", "") or BASKET_BUYING_STAGE
+    ).split(",")
+    if part.strip()
+)
+if not BASKET_BUYING_STAGES <= {"P0", "P0-M", "P1"}:
+    raise RuntimeError(f"unknown basket buying stages: {sorted(BASKET_BUYING_STAGES)}")
+if not CHAIN_OPENING_STAGES <= BASKET_BUYING_STAGES:
+    # An opening is a buy: a stage allowed to open but not to buy would be
+    # an arm that silently does nothing.
+    raise RuntimeError(
+        "chain opening stages outside the basket's buying stages:"
+        f" {sorted(CHAIN_OPENING_STAGES - BASKET_BUYING_STAGES)}"
+    )
 # The gap below which a day reads as symmetric, in units of the served
 # sigma (user ruling, 2026-09-11; the charter-55 half bucket was an absolute
 # gate that turned into a width reading as serving narrowed -- see the
@@ -5184,6 +5206,15 @@ def _target_candidates(
                 and (row.get("completion_143") or {}).get("exempt") is True
             )
         ]
+    if stage_name not in BASKET_BUYING_STAGES:
+        # Charter 229: the basket buys in P0 only.  Every generator above
+        # has offered its increment -- the Kelly seat, the grid, a charter
+        # 143 completion, a charter 145 TAF entry -- and at this stage the
+        # baseline (hold what is held) is the only one that may be chosen.
+        candidates = [
+            row for row in candidates
+            if row.get("candidate_kind") == CANDIDATE_KIND_BASELINE
+        ]
     if not candidates:
         raise ContractError("delta_v2_target_candidate_set_empty")
     return _assert_candidate_support_contract(
@@ -7734,6 +7765,12 @@ def compile_delta_v2_runtime_plan(
         # Charter 74: the day was never opened by P0; this stage adds
         # to a position and there is none.
         reason_codes.append("chain_not_opened_by_p0")
+    if (
+        str(snapshot.evidence.probability_stage or "")
+        not in BASKET_BUYING_STAGES
+    ):
+        # Charter 229: the basket buys in P0 only; this stage held.
+        reason_codes.append("basket_stage_not_buying")
     decision_moment_audit = dict(
         support_selection.get("decision_moment") or {}
     )

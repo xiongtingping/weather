@@ -84,6 +84,12 @@ def _plain_edge_gate(monkeypatch):
     # lambda gate; the fixture book is cheap enough for the plain edge gate.
     monkeypatch.setattr(P, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     monkeypatch.setattr(P, "P0M_TAF_MODE", "tx_envelope")
+    # Charter 229 (2026-09-26): the basket buys in P0 only, so a P0-M entry
+    # is bought only under the three-stage research arm this file pins; the
+    # shipped default is pinned by test_229_* below.
+    monkeypatch.setattr(
+        P, "BASKET_BUYING_STAGES", frozenset({"P0", "P0-M", "P1"})
+    )
 
 
 def _seats(stage: str, tx_bucket: str | None, *, held=None, probabilities=SYMMETRIC):
@@ -481,6 +487,18 @@ def test_145_end_to_end_the_tx_leg_is_bought_as_the_fok_with_the_waiver(monkeypa
     late = _compile_entry(_p0m_entry_snapshot(), hours=2.0)
     assert late["basket_target_activated"] is False
     assert _bought(late) == []
+
+
+def test_229_the_shipped_default_holds_the_p0m_entry(monkeypatch) -> None:
+    """User ruling 2026-09-26 「篮子策略仅限p0开仓建仓」: the entry the arm
+    buys above is held under the shipped default, and the plan says why."""
+
+    fixture._production_arms(monkeypatch)
+    monkeypatch.setattr(P, "BASKET_BUYING_STAGES", frozenset({"P0"}))
+    result = _compile_entry(_p0m_entry_snapshot())
+    assert result["basket_target_activated"] is False
+    assert _bought(result) == []
+    assert "basket_stage_not_buying" in result["reason_codes"]
 
 
 def test_145_end_to_end_with_charter_143_off_the_entry_holds_as_before(monkeypatch) -> None:
