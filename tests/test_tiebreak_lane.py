@@ -1177,3 +1177,83 @@ def test_the_paid_ceiling_is_the_lane_files_to_set() -> None:
     assert lane.paid_price_refusal(lane.RULE_V23, 0.61, 0.62) is None
     assert lane.paid_price_refusal(lane.RULE_V22, 0.66, 0.60) is None
     assert lane.paid_price_refusal(lane.RULE_V21, 0.66, 0.60) is None
+
+
+# ---------------------------------------------------------------------------
+# Charter 229 (user rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 and 「P0 只留
+# 篮子」): the lane opens on P0-M and P1 first decisions only.
+
+
+def test_charter_229_a_p0_first_decision_is_scored_and_never_opens(store) -> None:
+    _seed(store, stage="P0")
+    sent: list = []
+    receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                            live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert receipt["evaluated"] == 1 and receipt["fired"] == 1
+    assert receipt["planned"] == 0 and receipt["submitted"] == 0 and sent == []
+    assert receipt["refusals"] == ["stage_not_opening:P0"]
+    # The reading is kept: the forward sample stays the whole population.
+    row = store.execute(
+        f"SELECT stage, fired, refusal, model_mode, order_intent_id, plan_json FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert row == ("P0", 1, "stage_not_opening:P0", "28°C", None, None)
+    # Terminal: the next cycle neither re-scores nor retries it.
+    again = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                          live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert again["evaluated"] == 0 and again["retried"] == 0 and sent == []
+    # The refusal spent nothing: the station-day's P0-M first decision opens.
+    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z")
+    p0m = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
+                                        live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert p0m["evaluated"] == 1 and p0m["submitted"] == 1 and len(sent) == 1
+
+
+def test_charter_229_an_older_retryable_p0_row_is_closed_not_resent(store) -> None:
+    """A P0 row fired and refused for cash before the ruling would have been
+    re-asked and bought once the deposit landed; it is closed instead."""
+
+    from bayes_basket_target.account_equity import ensure_account_equity_table  # noqa: PLC0415
+
+    _seed(store, stage="P0")
+    ensure_account_equity_table(store)
+    _insert(store, "basket_target_account_equity", {
+        "equity_id": "e_poor", "observed_at_utc": "2026-09-18T12:09:00Z", "cash_usdc": 1.7,
+        "positions_value_usdc": 70.0, "equity_usdc": 71.7, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
+        "content_sha256": "f" * 64,
+    })
+    before = {"stake_usdc": 6.0, "opening_stages": ["P0", "P0-M", "P1"]}
+    poor = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
+                                         live_submit_authorized=True, settings=before, admission=ADMIT)
+    assert poor["refusals"][0].startswith("insufficient_cash:")
+    _insert(store, "basket_target_account_equity", {
+        "equity_id": "e_rich", "observed_at_utc": "2026-09-18T12:12:00Z", "cash_usdc": 100.13,
+        "positions_value_usdc": 120.0, "equity_usdc": 220.13, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
+        "content_sha256": "0" * 64,
+    })
+    _seed(store, stage="P0", fact_id="f9", decided="2026-09-18T12:08:00.000Z")
+    sent: list = []
+    after = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent),
+                                          now_utc="2026-09-18T12:14:00.000Z", live_submit_authorized=True,
+                                          settings={"stake_usdc": 6.0}, admission=ADMIT)
+    assert after["retry_planned"] == 0 and after["submitted"] == 0 and sent == []
+    row = store.execute(f"SELECT refusal, retry_of_refusal FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row[0] == "stage_not_opening:P0" and row[1].startswith("insufficient_cash:1.70")
+    assert not lane.is_retryable_refusal(row[0])
+
+
+def test_charter_229_the_stages_are_the_lane_files_to_name(store) -> None:
+    _seed(store, stage="P0")
+    sent: list = []
+    receipt = lane.execute_tiebreak_entries(
+        store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
+        settings={"stake_usdc": 6.0, "opening_stages": ["P0", "P0-M", "P1"]}, admission=ADMIT)
+    assert receipt["submitted"] == 1 and len(sent) == 1
+    for bad in (["P2"], "P0-M,P1", None):
+        with pytest.raises(ValueError):
+            lane.plan_tiebreak_entries(store, now_utc=NOW, settings={"opening_stages": bad}, admission=ADMIT)
+
+
+def test_charter_229_the_shipped_stages_leave_p0_to_the_basket() -> None:
+    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
+
+    assert strategy_lanes.opening_stages(strategy_lanes.TIEBREAK_DEFAULT_SETTINGS) == {"P0-M", "P1"}

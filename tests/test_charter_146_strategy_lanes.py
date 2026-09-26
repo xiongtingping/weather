@@ -304,3 +304,29 @@ def test_an_unreadable_lane_file_is_not_edited_into_shape(tmp_path, monkeypatch)
     with pytest.raises(ValueError):
         control.set_tiebreak_stake(5)
     assert lanes_path.read_text(encoding="utf-8") == "{not json"
+
+
+def test_charter_229_the_board_is_told_which_stages_each_switch_reaches(tmp_path, monkeypatch) -> None:
+    """The basket's from the compile, the tiebreak lane's from its file; a
+    lane whose answer cannot be read is left out, not guessed."""
+
+    control, lanes_path = _control(tmp_path, monkeypatch)
+    served = control.state()["strategy_lanes"]["lanes"]
+    assert served["basket"]["opening_stages"] == ["P0"]
+    assert served["tiebreak"]["opening_stages"] == ["P0-M", "P1"]
+    assert "opening_stages" not in served["p1_consensus"]
+    doc = json.loads(lanes_path.read_text(encoding="utf-8"))
+    doc["lanes"]["tiebreak"]["opening_stages"] = ["P1", "P0-M", "P0"]
+    lanes_path.write_text(json.dumps(doc), encoding="utf-8")
+    assert control.state()["strategy_lanes"]["lanes"]["tiebreak"]["opening_stages"] == ["P0", "P0-M", "P1"]
+    doc["lanes"]["tiebreak"]["opening_stages"] = ["P2"]
+    lanes_path.write_text(json.dumps(doc), encoding="utf-8")
+    assert "opening_stages" not in control.state()["strategy_lanes"]["lanes"]["tiebreak"]
+
+
+def test_charter_229_opening_stages_is_a_list_of_known_stages() -> None:
+    assert lanes.opening_stages({"opening_stages": []}) == frozenset()
+    assert lanes.opening_stages({"opening_stages": ["p0-m", "P1"]}) == {"P0-M", "P1"}
+    for bad in ({"opening_stages": "P1"}, {}, {"opening_stages": ["P0", "P3"]}):
+        with pytest.raises(ValueError):
+            lanes.opening_stages(bad)
