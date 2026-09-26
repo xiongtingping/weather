@@ -1,4 +1,4 @@
-"""Render stations_0926.json as the markdown table (stations_0926.md); marks a basket seat kept as the incumbent.
+"""Render stations_0926.json as the markdown table (stations_0926.md); marks whether the recorded seat cleared the price gate.
 
 User: 「我要所有站点9月26日的k1、篮子和市场的均值、众数及选桶。」  Read-only.
 """
@@ -32,14 +32,19 @@ for x in r["rows"]:
         lines.append(f'| {x["station"]} | — | — | — | 盘口不完整 | — |'); continue
     b, k, m = x["basket"], x["k1"], x["market"]
     prod = b["production_seat"]
-    if prod is None: act = "无记录"
-    elif prod == b["seat"]: act = "同左"
+    ev = conn.execute(
+        "SELECT seated, admissible FROM basket_candidate_window_evidence"
+        " WHERE station_id=? AND event_date='2026-09-26' AND decision_at_utc=?",
+        (x["station"], x["belief_at"])).fetchall()
+    passed = any(a for s_, a in ev if s_)
+    if prod is None:
+        act = "无记录"
+    elif not passed:
+        # Charter 78: nothing cleared the price gate; the plan keeps the
+        # probability core (charter 76) as an inadmissible placeholder.
+        act = f"无窗口过闸（占位 {rng(prod)}）"
     else:
-        inc = ""
-        p = conn.execute("SELECT decision_at_utc, plan_json FROM basket_p0_preselection_plan WHERE station_id=? AND event_date='2026-09-26' ORDER BY decision_at_utc DESC LIMIT 1", (x["station"],)).fetchone()
-        if p and p[0] == x["belief_at"] and (json.loads(p[1])["compiled_plan"]["plan"]["basket_support_selection"].get("seated") or {}).get("is_incumbent"):
-            inc = "（沿用）"
-        act = rng(prod) + inc
+        act = ("同左" if prod == b["seat"] else rng(prod)) + "（过闸）"
     unit = "°F" if "°F" in (b["mean_bucket"] or "") else "°C"
     lines.append(f'| {x["station"]} {unit} | {x["stage"]} | {cell(b)} | {cell(k, x["k1_delta_c"])} | {cell(m)} | {act} |')
 text = "\n".join(lines)
