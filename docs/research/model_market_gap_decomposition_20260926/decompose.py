@@ -37,7 +37,9 @@ from bayes_basket_target.settlement_time import hours_to_settlement_if_known  # 
 
 BINS = ((0, 12), (12, 24), (24, 36), (36, 48), (48, 60), (60, math.inf))
 LABELS = ["0-12h", "12-24h", "24-36h", "36-48h", "48-60h", "60h+"]
-GROUPS = {"all": (0, 1, 2, 3, 4, 5), "0-24h": (0, 1), "24-60h": (2, 3, 4, 5)}
+# "24-60h" is strict (24 <= h < 60); until the 2026-09-26 review it also took
+# the 60h+ bin, so section 2 disagreed with sections 1 and 3 in the fourth decimal.
+GROUPS = {"all": (0, 1, 2, 3, 4, 5), "0-24h": (0, 1), "24-60h": (2, 3, 4)}
 DRAWS = 2000
 SEED = 20260926
 MAX_BOOK_AGE = timedelta(minutes=30)
