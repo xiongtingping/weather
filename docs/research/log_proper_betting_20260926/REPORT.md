@@ -272,6 +272,28 @@ MMMX 09-08 P0：模型中心 23°C（0.396），市场 23°C 0.31 / 24°C 0.30 /
 
 **结论（第 11 节）**：达到论文要求的唯一有正上限的调整在**执行层的成交价**，不在概率层、规则或筛选：把平均成交价从卖一推到中价即打平，推到被动一侧即 +2% 至 +4%。它成不成立取决于被动单的成交率与逆选择，那正是秤砣线在跑的前向样本；概率层要补的 0.7–1.6 个百分点等于同一个半点差，目前没有已知来源。
 
+## 12. maker 上限能不能兑现：把逆选择算进去（熊先生 09-26 问「如果是 maker，就有 +2.3% 正收益吗」）
+
+第 11 节的 maker 上限假设每张被动单都在买一成交、且成交与之后的价格走向无关。这里用重放盘口的相邻时点做逆选择回放：在时点 t 按论文的带挂被动单（YES 挂买一、NO 挂 NO 买一 = 1 − ask），只有到 t+1 市场**穿过**我们的价才算成交，未成交撤单（论文 D.7 也是下一周期撤），成交腿持有到结算。
+两种成交判定：strict = 下一时点的对手价穿过我们的价（YES：`ask_{t+1} ≤ 我们的 bid_t`）；touch = 下一时点同侧价到达我们的价（YES：`bid_{t+1} ≤ bid_t`），作为宽松界。纯 P0、双边，`maker_fill_replay.py`，读数在 `results_maker_fill_replay.json`。43,021 张挂单。
+
+| 规则 | 全部按 taker | 上限：全部在挂单价成交 | **maker，strict 成交腿** | maker，touch 成交腿 | 未成交那部分本来会有 |
+|---|---|---|---|---|---|
+| Brier | −6.0% [−8.0, −3.7] | +4.2% [+1.6, +6.9] | **−36.7% [−39.6, −33.8]**（33% 单、34% 投入） | −20.4% [−22.6, −18.2]（46%） | +25.0% [+21.4, +28.9] |
+| Log | −2.1% [−3.1, −1.3] | +2.5% [+1.7, +3.4] | **−26.6% [−30.1, −23.4]**（33% 单、13% 投入） | −6.2% [−7.9, −4.8]（46% 单、39% 投入） | +6.9% [+5.8, +8.4] |
+| logit | −2.7% | +2.7% | −29.6% [−33.1, −26.4] | −7.9% [−9.9, −6.3] | +8.4% |
+
+逆选择用一个数看：
+
+| 侧 | 成交（strict）的挂单所在桶实际命中 | 未成交的挂单所在桶实际命中 |
+|---|---|---|
+| YES（我们想买的桶） | **3.0%** | 10.1% |
+| NO（我们想卖的桶） | **58.5%** | 12.0% |
+
+- 被动买 YES 只在市场放弃那个桶时成交：成交的桶命中 3%，没成交的命中 10%。被动买 NO 只在市场涌入那个桶时成交：成交的桶命中 58%，没成交的 12%。上限里的 +2.5% 全部落在**没成交**的那部分（+6.9% 至 +25%）。
+- 网格间隔 4–8 小时，穿价判定偏粗；真实成交介于 strict 与 touch 之间，两端都显著为负，且都比 taker 更差。这与第 11 节引用的秤砣线（生产 maker 车道，带保留价与等待门）09-25 读数 −0.3% 同向：被动成交本身不是 edge。
+- 所以「如果是 maker 就有 +2.3%」不成立。+2.3% 是不存在的成交假设下的账面数；把「谁来成交你」算进去，maker 比 taker 亏得更多。
+
 ## 判定（按事前规则）
 
 - 无摩擦 `Π` 的 95% 下界 > 0：服务版只有 P0 首个决策勉强过（+0.002），现行 P0 24–60h 过（+0.037）；两者都在 ε 敏感性下消失。
@@ -293,6 +315,7 @@ python3 decompose_legs.py <edge_population.pkl> <decompose_cache.pkl>
 PYTHONPATH=<repo> python3 paper_protocol.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector served --floor always
 PYTHONPATH=<repo> python3 paper_protocol.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector root --floor log_only
 PYTHONPATH=<repo> python3 levers.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector root
+PYTHONPATH=<repo> python3 maker_fill_replay.py ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json --vector root
 PYTHONPATH=<repo> python3 l_split_and_floor.py <edge_population.pkl> <decompose_cache.pkl> ../bayes_kelly_replay_20260924/dataset.jsonl.gz ../bayes_kelly_replay_20260924/venue_truth_overrides.json
 ```
 
