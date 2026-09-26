@@ -1,0 +1,2414 @@
+{
+ "as_of_utc": "2026-09-26T03:40:09.561137Z",
+ "rows": [
+  {
+   "station": "CYYZ",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:33.612Z",
+   "k1_delta_c": 0.69,
+   "basket": {
+    "mean": 22.41,
+    "mean_bucket": "22°C",
+    "mode_bucket": "22°C",
+    "skew": "偏暖",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ],
+    "production_seat": [
+     "22°C",
+     "23°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 23.09,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ]
+   },
+   "market": {
+    "mean": 23.11,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "EDDM",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:38:23.714Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.3,
+   "basket": {
+    "mean": 23.09,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ],
+    "production_seat": [
+     "23°C",
+     "24°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 23.39,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "偏暖",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "market": {
+    "mean": 23.47,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "偏暖",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "EFHK",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:41:03Z",
+   "book_at": "2026-09-26T03:37:30.463Z",
+   "k1_delta_c": -0.01,
+   "basket": {
+    "mean": 14.36,
+    "mean_bucket": "14°C",
+    "mode_bucket": "14°C",
+    "skew": "偏暖",
+    "seat": [
+     "14°C",
+     "15°C",
+     "16°C"
+    ],
+    "production_seat": [
+     "14°C",
+     "15°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 14.36,
+    "mean_bucket": "14°C",
+    "mode_bucket": "14°C",
+    "skew": "偏暖",
+    "seat": [
+     "14°C",
+     "15°C",
+     "16°C"
+    ]
+   },
+   "market": {
+    "mean": 14.46,
+    "mean_bucket": "14°C",
+    "mode_bucket": "14°C",
+    "skew": "偏暖",
+    "seat": [
+     "14°C",
+     "15°C",
+     "16°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "regime_ssot_not_unique"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "EGLC",
+   "stage": "P0",
+   "version": "calibrated_native_cross_ensemble_p0_v19",
+   "belief_at": "2026-09-25T22:44:13.770Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.25,
+   "basket": {
+    "mean": 20.67,
+    "mean_bucket": "21°C",
+    "mode_bucket": "21°C",
+    "skew": "偏冷",
+    "seat": [
+     "19°C",
+     "20°C",
+     "21°C"
+    ],
+    "production_seat": [
+     "20°C",
+     "21°C"
+    ],
+    "production_seat_stage": "P0",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 20.42,
+    "mean_bucket": "20°C",
+    "mode_bucket": "21°C",
+    "skew": "偏冷",
+    "seat": [
+     "18°C",
+     "19°C",
+     "20°C"
+    ]
+   },
+   "market": {
+    "mean": 20.5,
+    "mean_bucket": "20°C",
+    "mode_bucket": "20°C",
+    "skew": "偏暖",
+    "seat": [
+     "20°C",
+     "21°C",
+     "22°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "regime_ssot_not_unique"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "EHAM",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:38:23.714Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.75,
+   "basket": {
+    "mean": 19.13,
+    "mean_bucket": "19°C",
+    "mode_bucket": "19°C",
+    "skew": "对称",
+    "seat": [
+     "18°C",
+     "19°C",
+     "20°C"
+    ],
+    "production_seat": [
+     "19°C",
+     "20°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 19.87,
+    "mean_bucket": "20°C",
+    "mode_bucket": "20°C",
+    "skew": "对称",
+    "seat": [
+     "19°C",
+     "20°C",
+     "21°C"
+    ]
+   },
+   "market": {
+    "mean": 19.81,
+    "mean_bucket": "20°C",
+    "mode_bucket": "20°C",
+    "skew": "对称",
+    "seat": [
+     "19°C",
+     "20°C",
+     "21°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "regime_ssot_not_unique"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "EPWA",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:38:23.714Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.35,
+   "basket": {
+    "mean": 17.37,
+    "mean_bucket": "17°C",
+    "mode_bucket": "17°C",
+    "skew": "偏暖",
+    "seat": [
+     "17°C",
+     "18°C",
+     "19°C"
+    ],
+    "production_seat": [
+     "17°C",
+     "18°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 17.72,
+    "mean_bucket": "18°C",
+    "mode_bucket": "18°C",
+    "skew": "对称",
+    "seat": [
+     "17°C",
+     "18°C",
+     "19°C"
+    ]
+   },
+   "market": {
+    "mean": 17.64,
+    "mean_bucket": "18°C",
+    "mode_bucket": "18°C",
+    "skew": "偏冷",
+    "seat": [
+     "16°C",
+     "17°C",
+     "18°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "FACT",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:38:23.714Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.03,
+   "basket": {
+    "mean": 20.27,
+    "mean_bucket": "20°C",
+    "mode_bucket": "21°C",
+    "skew": "偏冷",
+    "seat": [
+     "18°C",
+     "19°C",
+     "20°C"
+    ],
+    "production_seat": null,
+    "production_seat_stage": null,
+    "production_seat_admissible": null
+   },
+   "k1": {
+    "mean": 20.24,
+    "mean_bucket": "20°C",
+    "mode_bucket": "21°C",
+    "skew": "偏冷",
+    "seat": [
+     "18°C",
+     "19°C",
+     "20°C"
+    ]
+   },
+   "market": {
+    "mean": 20.21,
+    "mean_bucket": "20°C",
+    "mode_bucket": "20°C",
+    "skew": "对称",
+    "seat": [
+     "19°C",
+     "20°C",
+     "21°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "KATL",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:30.463Z",
+   "k1_delta_c": 0.49,
+   "basket": {
+    "mean": 80.4,
+    "mean_bucket": "80-81°F",
+    "mode_bucket": "80-81°F",
+    "skew": "对称",
+    "seat": [
+     "78-79°F",
+     "80-81°F",
+     "82-83°F"
+    ],
+    "production_seat": null,
+    "production_seat_stage": null,
+    "production_seat_admissible": null
+   },
+   "k1": {
+    "mean": 81.2,
+    "mean_bucket": "80-81°F",
+    "mode_bucket": "80-81°F",
+    "skew": "对称",
+    "seat": [
+     "78-79°F",
+     "80-81°F",
+     "82-83°F"
+    ]
+   },
+   "market": {
+    "mean": 81.4,
+    "mean_bucket": "80-81°F",
+    "mode_bucket": "80-81°F",
+    "skew": "偏暖",
+    "seat": [
+     "80-81°F",
+     "82-83°F",
+     "84-85°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KAUS",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:55:25Z",
+   "book_at": "2026-09-26T03:37:34.607Z",
+   "k1_delta_c": -0.1,
+   "basket": {
+    "mean": 94.6,
+    "mean_bucket": "94-95°F",
+    "mode_bucket": "94-95°F",
+    "skew": "对称",
+    "seat": [
+     "92-93°F",
+     "94-95°F",
+     "96-97°F"
+    ],
+    "production_seat": [
+     "94-95°F",
+     "96-97°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 94.4,
+    "mean_bucket": "94-95°F",
+    "mode_bucket": "94-95°F",
+    "skew": "对称",
+    "seat": [
+     "92-93°F",
+     "94-95°F",
+     "96-97°F"
+    ]
+   },
+   "market": {
+    "mean": 94.3,
+    "mean_bucket": "94-95°F",
+    "mode_bucket": "94-95°F",
+    "skew": "对称",
+    "seat": [
+     "92-93°F",
+     "94-95°F",
+     "96-97°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KBKF",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:30.463Z",
+   "k1_delta_c": -0.09,
+   "basket": {
+    "mean": 82.4,
+    "mean_bucket": "82-83°F",
+    "mode_bucket": "82-83°F",
+    "skew": "对称",
+    "seat": [
+     "80-81°F",
+     "82-83°F",
+     "84-85°F"
+    ],
+    "production_seat": [
+     "80-81°F",
+     "82-83°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 82.2,
+    "mean_bucket": "82-83°F",
+    "mode_bucket": "82-83°F",
+    "skew": "对称",
+    "seat": [
+     "80-81°F",
+     "82-83°F",
+     "84-85°F"
+    ]
+   },
+   "market": {
+    "mean": 82.1,
+    "mean_bucket": "82-83°F",
+    "mode_bucket": "82-83°F",
+    "skew": "对称",
+    "seat": [
+     "80-81°F",
+     "82-83°F",
+     "84-85°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KDAL",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:33.547Z",
+   "k1_delta_c": -0.13,
+   "basket": {
+    "mean": 92.9,
+    "mean_bucket": "92-93°F",
+    "mode_bucket": "92-93°F",
+    "skew": "对称",
+    "seat": [
+     "90-91°F",
+     "92-93°F",
+     "94-95°F"
+    ],
+    "production_seat": [
+     "92-93°F",
+     "94-95°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 92.7,
+    "mean_bucket": "92-93°F",
+    "mode_bucket": "92-93°F",
+    "skew": "对称",
+    "seat": [
+     "90-91°F",
+     "92-93°F",
+     "94-95°F"
+    ]
+   },
+   "market": {
+    "mean": 92.8,
+    "mean_bucket": "92-93°F",
+    "mode_bucket": "92-93°F",
+    "skew": "对称",
+    "seat": [
+     "90-91°F",
+     "92-93°F",
+     "94-95°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KHOU",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:58:00Z",
+   "book_at": "2026-09-26T03:37:34.551Z",
+   "k1_delta_c": 0.45,
+   "basket": {
+    "mean": 89.7,
+    "mean_bucket": "90-91°F",
+    "mode_bucket": "90-91°F",
+    "skew": "偏冷",
+    "seat": [
+     "86-87°F",
+     "88-89°F",
+     "90-91°F"
+    ],
+    "production_seat": [
+     "88-89°F",
+     "90-91°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 90.5,
+    "mean_bucket": "90-91°F",
+    "mode_bucket": "90-91°F",
+    "skew": "对称",
+    "seat": [
+     "88-89°F",
+     "90-91°F",
+     "92-93°F"
+    ]
+   },
+   "market": {
+    "mean": 90.4,
+    "mean_bucket": "90-91°F",
+    "mode_bucket": "90-91°F",
+    "skew": "对称",
+    "seat": [
+     "88-89°F",
+     "90-91°F",
+     "92-93°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KLAX",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:25Z",
+   "book_at": "2026-09-26T03:37:34.260Z",
+   "k1_delta_c": -1.34,
+   "basket": {
+    "mean": 82.3,
+    "mean_bucket": "82-83°F",
+    "mode_bucket": "82-83°F",
+    "skew": "对称",
+    "seat": [
+     "80-81°F",
+     "82-83°F",
+     "84-85°F"
+    ],
+    "production_seat": null,
+    "production_seat_stage": null,
+    "production_seat_admissible": null
+   },
+   "k1": {
+    "mean": 79.9,
+    "mean_bucket": "80-81°F",
+    "mode_bucket": "80-81°F",
+    "skew": "对称",
+    "seat": [
+     "78-79°F",
+     "80-81°F",
+     "82-83°F"
+    ]
+   },
+   "market": {
+    "mean": 79.7,
+    "mean_bucket": "80-81°F",
+    "mode_bucket": "80-81°F",
+    "skew": "对称",
+    "seat": [
+     "78-79°F",
+     "80-81°F",
+     "82-83°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KLGA",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:34.271Z",
+   "k1_delta_c": -0.53,
+   "basket": {
+    "mean": 62.4,
+    "mean_bucket": "62-63°F",
+    "mode_bucket": "62-63°F",
+    "skew": "对称",
+    "seat": [
+     "60-61°F",
+     "62-63°F",
+     "64-65°F"
+    ],
+    "production_seat": [
+     "60-61°F",
+     "62-63°F",
+     "64-65°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 61.5,
+    "mean_bucket": "60-61°F",
+    "mode_bucket": "60-61°F",
+    "skew": "对称",
+    "seat": [
+     "58-59°F",
+     "60-61°F",
+     "62-63°F"
+    ]
+   },
+   "market": {
+    "mean": 61.9,
+    "mean_bucket": "62-63°F",
+    "mode_bucket": "60-61°F",
+    "skew": "偏暖",
+    "seat": [
+     "62-63°F",
+     "64-65°F",
+     "66-67°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KMIA",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T03:02:18Z",
+   "book_at": "2026-09-26T03:37:33.856Z",
+   "k1_delta_c": 0.91,
+   "basket": {
+    "mean": 86.8,
+    "mean_bucket": "86-87°F",
+    "mode_bucket": "86-87°F",
+    "skew": "对称",
+    "seat": [
+     "84-85°F",
+     "86-87°F",
+     "88-89°F"
+    ],
+    "production_seat": [
+     "84-85°F",
+     "86-87°F",
+     "88-89°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 88.4,
+    "mean_bucket": "88-89°F",
+    "mode_bucket": "88-89°F",
+    "skew": "对称",
+    "seat": [
+     "86-87°F",
+     "88-89°F",
+     "90-91°F"
+    ]
+   },
+   "market": {
+    "mean": 88.4,
+    "mean_bucket": "88-89°F",
+    "mode_bucket": "88-89°F",
+    "skew": "对称",
+    "seat": [
+     "86-87°F",
+     "88-89°F",
+     "90-91°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KORD",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:33.180Z",
+   "k1_delta_c": -0.33,
+   "basket": {
+    "mean": 70.5,
+    "mean_bucket": "70-71°F",
+    "mode_bucket": "70-71°F",
+    "skew": "对称",
+    "seat": [
+     "68-69°F",
+     "70-71°F",
+     "72-73°F"
+    ],
+    "production_seat": [
+     "68-69°F",
+     "70-71°F"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 69.9,
+    "mean_bucket": "70-71°F",
+    "mode_bucket": "70-71°F",
+    "skew": "对称",
+    "seat": [
+     "68-69°F",
+     "70-71°F",
+     "72-73°F"
+    ]
+   },
+   "market": {
+    "mean": 69.7,
+    "mean_bucket": "70-71°F",
+    "mode_bucket": "70-71°F",
+    "skew": "偏冷",
+    "seat": [
+     "66-67°F",
+     "68-69°F",
+     "70-71°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KSEA",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:59:17Z",
+   "book_at": "2026-09-26T03:37:33.160Z",
+   "k1_delta_c": 1.14,
+   "basket": {
+    "mean": 60.4,
+    "mean_bucket": "60-61°F",
+    "mode_bucket": "60-61°F",
+    "skew": "对称",
+    "seat": [
+     "58-59°F",
+     "60-61°F",
+     "62-63°F"
+    ],
+    "production_seat": null,
+    "production_seat_stage": null,
+    "production_seat_admissible": null
+   },
+   "k1": {
+    "mean": 62.4,
+    "mean_bucket": "62-63°F",
+    "mode_bucket": "62-63°F",
+    "skew": "对称",
+    "seat": [
+     "60-61°F",
+     "62-63°F",
+     "64-65°F"
+    ]
+   },
+   "market": {
+    "mean": 62.3,
+    "mean_bucket": "62-63°F",
+    "mode_bucket": "62-63°F",
+    "skew": "对称",
+    "seat": [
+     "60-61°F",
+     "62-63°F",
+     "64-65°F"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "KSFO",
+   "error": "market_incomplete"
+  },
+  {
+   "station": "LEMD",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:40:14.540Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.01,
+   "basket": {
+    "mean": 33.7,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ],
+    "production_seat": [
+     "33°C",
+     "34°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 33.69,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "market": {
+    "mean": 33.57,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "regime_ssot_not_unique"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "LFPB",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:40:14.540Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.07,
+   "basket": {
+    "mean": 24.16,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 24.1,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "market": {
+    "mean": 24.11,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "LIMC",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:40:14.540Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.1,
+   "basket": {
+    "mean": 23.37,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "偏暖",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat": [
+     "23°C",
+     "24°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 23.27,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ]
+   },
+   "market": {
+    "mean": 23.35,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "偏暖",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "resident_p1_replay_required"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "LTAC",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:40:14.540Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.25,
+   "basket": {
+    "mean": 21.66,
+    "mean_bucket": "22°C",
+    "mode_bucket": "22°C",
+    "skew": "偏冷",
+    "seat": [
+     "20°C",
+     "21°C",
+     "22°C"
+    ],
+    "production_seat": [
+     "21°C",
+     "22°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 21.42,
+    "mean_bucket": "21°C",
+    "mode_bucket": "22°C",
+    "skew": "偏冷",
+    "seat": [
+     "19°C",
+     "20°C",
+     "21°C"
+    ]
+   },
+   "market": {
+    "mean": 21.49,
+    "mean_bucket": "21°C",
+    "mode_bucket": "21°C",
+    "skew": "偏暖",
+    "seat": [
+     "21°C",
+     "22°C",
+     "23°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "resident_p1_replay_required"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "MMMX",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:33.845Z",
+   "k1_delta_c": 0.34,
+   "basket": {
+    "mean": 25.4,
+    "mean_bucket": "25°C",
+    "mode_bucket": "26°C",
+    "skew": "偏冷",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat": [
+     "25°C",
+     "26°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 25.72,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "对称",
+    "seat": [
+     "25°C",
+     "26°C",
+     "27°C or higher"
+    ]
+   },
+   "market": {
+    "mean": 25.58,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "偏冷",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "MPMG",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:41:19.678Z",
+   "book_at": "2026-09-26T03:37:31.207Z",
+   "k1_delta_c": 0.12,
+   "basket": {
+    "mean": 31.07,
+    "mean_bucket": "31°C",
+    "mode_bucket": "31°C",
+    "skew": "对称",
+    "seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ],
+    "production_seat": [
+     "31°C",
+     "32°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 31.2,
+    "mean_bucket": "31°C",
+    "mode_bucket": "31°C",
+    "skew": "对称",
+    "seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ]
+   },
+   "market": {
+    "mean": 31.23,
+    "mean_bucket": "31°C",
+    "mode_bucket": "31°C",
+    "skew": "对称",
+    "seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "NZWN",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:03:56.733000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.0,
+   "basket": {
+    "mean": 15.02,
+    "mean_bucket": "15°C",
+    "mode_bucket": "15°C",
+    "skew": "对称",
+    "seat": [
+     "15°C",
+     "16°C"
+    ],
+    "production_seat": [
+     "15°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 15.02,
+    "mean_bucket": "15°C",
+    "mode_bucket": "15°C",
+    "skew": "对称",
+    "seat": [
+     "15°C",
+     "16°C"
+    ]
+   },
+   "market": {
+    "mean": 15.0,
+    "mean_bucket": "15°C",
+    "mode_bucket": "15°C",
+    "skew": "对称",
+    "seat": [
+     "15°C",
+     "16°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "OEJN",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T20:40:14.540Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.12,
+   "basket": {
+    "mean": 37.23,
+    "mean_bucket": "37°C",
+    "mode_bucket": "37°C",
+    "skew": "对称",
+    "seat": [
+     "36°C",
+     "37°C",
+     "38°C"
+    ],
+    "production_seat": [
+     "37°C",
+     "38°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 37.35,
+    "mean_bucket": "37°C",
+    "mode_bucket": "37°C",
+    "skew": "对称",
+    "seat": [
+     "36°C",
+     "37°C",
+     "38°C"
+    ]
+   },
+   "market": {
+    "mean": 37.51,
+    "mean_bucket": "38°C",
+    "mode_bucket": "37°C",
+    "skew": "偏暖",
+    "seat": [
+     "38°C",
+     "39°C",
+     "40°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "OPKC",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T18:37:55.188Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.19,
+   "basket": {
+    "mean": 33.84,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "对称",
+    "seat": [
+     "33°C",
+     "34°C",
+     "35°C"
+    ],
+    "production_seat": [
+     "33°C",
+     "34°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 33.66,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "对称",
+    "seat": [
+     "33°C",
+     "34°C",
+     "35°C"
+    ]
+   },
+   "market": {
+    "mean": 33.54,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "RCSS",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.422Z",
+   "k1_delta_c": 0.1,
+   "basket": {
+    "mean": 34.13,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "对称",
+    "seat": [
+     "33°C",
+     "34°C",
+     "35°C"
+    ],
+    "production_seat": [
+     "34°C",
+     "35°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 34.24,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "对称",
+    "seat": [
+     "33°C",
+     "34°C",
+     "35°C"
+    ]
+   },
+   "market": {
+    "mean": 34.28,
+    "mean_bucket": "34°C",
+    "mode_bucket": "34°C",
+    "skew": "偏暖",
+    "seat": [
+     "34°C",
+     "35°C",
+     "36°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "RJTT",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:03:56.733000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.04,
+   "basket": {
+    "mean": 23.05,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C"
+    ],
+    "production_seat": [
+     "23°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 23.05,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C"
+    ]
+   },
+   "market": {
+    "mean": 23.0,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "RKPK",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:17:38.960000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.76,
+   "basket": {
+    "mean": 23.11,
+    "mean_bucket": "23°C",
+    "mode_bucket": "23°C",
+    "skew": "对称",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ],
+    "production_seat": [
+     "23°C",
+     "24°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 22.63,
+    "mean_bucket": "23°C",
+    "mode_bucket": "22°C",
+    "skew": "偏暖",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "market": {
+    "mean": 22.46,
+    "mean_bucket": "22°C",
+    "mode_bucket": "22°C",
+    "skew": "偏暖",
+    "seat": [
+     "22°C",
+     "23°C",
+     "24°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "RKSI",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:02:50.177000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.19,
+   "basket": {
+    "mean": 25.06,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "对称",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ],
+    "production_seat": [
+     "25°C",
+     "26°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 25.25,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "对称",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ]
+   },
+   "market": {
+    "mean": 25.29,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "偏暖",
+    "seat": [
+     "25°C",
+     "26°C",
+     "27°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "RPLL",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.01,
+   "basket": {
+    "mean": 32.7,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C"
+    ],
+    "production_seat": [
+     "32°C",
+     "33°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 32.72,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C"
+    ]
+   },
+   "market": {
+    "mean": 32.61,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "偏冷",
+    "seat": [
+     "32°C",
+     "33°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "SAEZ",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.02,
+   "basket": {
+    "mean": 24.18,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 24.16,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "market": {
+    "mean": 24.2,
+    "mean_bucket": "24°C",
+    "mode_bucket": "24°C",
+    "skew": "对称",
+    "seat": [
+     "23°C",
+     "24°C",
+     "25°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "p1_entry_window_not_open"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "SBGR",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-26T02:54:23.500Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.61,
+   "basket": {
+    "mean": 31.2,
+    "mean_bucket": "31°C",
+    "mode_bucket": "31°C",
+    "skew": "对称",
+    "seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ],
+    "production_seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 31.81,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ]
+   },
+   "market": {
+    "mean": 31.74,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "p1_entry_window_not_open"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "VILK",
+   "stage": "P0-M",
+   "version": "p0m_taf_likelihood_v21",
+   "belief_at": "2026-09-25T18:16:35.123Z",
+   "book_at": "2026-09-26T03:37:30.801Z",
+   "k1_delta_c": 0.51,
+   "basket": {
+    "mean": 24.81,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "对称",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ],
+    "production_seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ],
+    "production_seat_stage": "P0-M",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 25.32,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "对称",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ]
+   },
+   "market": {
+    "mean": 25.36,
+    "mean_bucket": "25°C",
+    "mode_bucket": "25°C",
+    "skew": "偏暖",
+    "seat": [
+     "25°C",
+     "26°C",
+     "27°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "production_quote_expired"
+    ],
+    "lifecycle": null,
+    "lifecycle_reason": null
+   }
+  },
+  {
+   "station": "WMKK",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:24.507000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.14,
+   "basket": {
+    "mean": 32.11,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ],
+    "production_seat": [
+     "32°C",
+     "33°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 32.25,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ]
+   },
+   "market": {
+    "mean": 32.3,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "偏暖",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "WSSS",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:29:30.857000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.02,
+   "basket": {
+    "mean": 32.88,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "对称",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ],
+    "production_seat": [
+     "33°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 32.86,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "对称",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "market": {
+    "mean": 32.79,
+    "mean_bucket": "33°C",
+    "mode_bucket": "33°C",
+    "skew": "对称",
+    "seat": [
+     "32°C",
+     "33°C",
+     "34°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZBAA",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.17,
+   "basket": {
+    "mean": 27.52,
+    "mean_bucket": "28°C",
+    "mode_bucket": "28°C",
+    "skew": "偏冷",
+    "seat": [
+     "26°C",
+     "27°C",
+     "28°C"
+    ],
+    "production_seat": [
+     "27°C",
+     "28°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 27.68,
+    "mean_bucket": "28°C",
+    "mode_bucket": "28°C",
+    "skew": "对称",
+    "seat": [
+     "27°C",
+     "28°C",
+     "29°C"
+    ]
+   },
+   "market": {
+    "mean": 27.54,
+    "mean_bucket": "28°C",
+    "mode_bucket": "28°C",
+    "skew": "偏冷",
+    "seat": [
+     "26°C",
+     "27°C",
+     "28°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZGGG",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.19,
+   "basket": {
+    "mean": 35.67,
+    "mean_bucket": "36°C",
+    "mode_bucket": "36°C",
+    "skew": "偏冷",
+    "seat": [
+     "34°C",
+     "35°C",
+     "36°C"
+    ],
+    "production_seat": [
+     "35°C",
+     "36°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 35.87,
+    "mean_bucket": "36°C",
+    "mode_bucket": "36°C",
+    "skew": "对称",
+    "seat": [
+     "35°C",
+     "36°C",
+     "37°C"
+    ]
+   },
+   "market": {
+    "mean": 35.79,
+    "mean_bucket": "36°C",
+    "mode_bucket": "36°C",
+    "skew": "对称",
+    "seat": [
+     "35°C",
+     "36°C",
+     "37°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZGSZ",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:04:42.932000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.32,
+   "basket": {
+    "mean": 32.06,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ],
+    "production_seat": [
+     "32°C",
+     "33°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 31.75,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "对称",
+    "seat": [
+     "31°C",
+     "32°C",
+     "33°C"
+    ]
+   },
+   "market": {
+    "mean": 31.66,
+    "mean_bucket": "32°C",
+    "mode_bucket": "32°C",
+    "skew": "偏冷",
+    "seat": [
+     "30°C",
+     "31°C",
+     "32°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZHHH",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -1.05,
+   "basket": {
+    "mean": 26.95,
+    "mean_bucket": "27°C",
+    "mode_bucket": "27°C",
+    "skew": "对称",
+    "seat": [
+     "26°C",
+     "27°C",
+     "28°C"
+    ],
+    "production_seat": [
+     "26°C",
+     "27°C",
+     "28°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": true
+   },
+   "k1": {
+    "mean": 26.0,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "对称",
+    "seat": [
+     "25°C or below",
+     "26°C",
+     "27°C"
+    ]
+   },
+   "market": {
+    "mean": 25.89,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "对称",
+    "seat": [
+     "25°C or below",
+     "26°C",
+     "27°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZSPD",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.28,
+   "basket": {
+    "mean": 29.77,
+    "mean_bucket": "30°C",
+    "mode_bucket": "30°C",
+    "skew": "对称",
+    "seat": [
+     "29°C",
+     "30°C",
+     "31°C"
+    ],
+    "production_seat": [
+     "29°C",
+     "30°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 30.06,
+    "mean_bucket": "30°C",
+    "mode_bucket": "30°C",
+    "skew": "对称",
+    "seat": [
+     "29°C",
+     "30°C",
+     "31°C"
+    ]
+   },
+   "market": {
+    "mean": 30.03,
+    "mean_bucket": "30°C",
+    "mode_bucket": "30°C",
+    "skew": "对称",
+    "seat": [
+     "29°C",
+     "30°C",
+     "31°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZSQD",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:04:42.948000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": -0.11,
+   "basket": {
+    "mean": 25.87,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "对称",
+    "seat": [
+     "25°C",
+     "26°C",
+     "27°C"
+    ],
+    "production_seat": [
+     "25°C",
+     "26°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 25.76,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "对称",
+    "seat": [
+     "25°C",
+     "26°C",
+     "27°C"
+    ]
+   },
+   "market": {
+    "mean": 25.67,
+    "mean_bucket": "26°C",
+    "mode_bucket": "26°C",
+    "skew": "偏冷",
+    "seat": [
+     "24°C",
+     "25°C",
+     "26°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZUCK",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:06:36.110000Z",
+   "book_at": "2026-09-26T03:37:30.365Z",
+   "k1_delta_c": 0.08,
+   "basket": {
+    "mean": 28.87,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ],
+    "production_seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 28.95,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ]
+   },
+   "market": {
+    "mean": 28.91,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  },
+  {
+   "station": "ZUUU",
+   "stage": "P1",
+   "version": "p1_joint_likelihood_v30",
+   "belief_at": "2026-09-26T03:04:42.940000Z",
+   "book_at": "2026-09-26T03:37:30.422Z",
+   "k1_delta_c": -0.26,
+   "basket": {
+    "mean": 29.07,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ],
+    "production_seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ],
+    "production_seat_stage": "P1",
+    "production_seat_admissible": false
+   },
+   "k1": {
+    "mean": 28.82,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ]
+   },
+   "market": {
+    "mean": 28.76,
+    "mean_bucket": "29°C",
+    "mode_bucket": "29°C",
+    "skew": "对称",
+    "seat": [
+     "28°C",
+     "29°C",
+     "30°C"
+    ]
+   },
+   "execution": {
+    "state": "blocked",
+    "reasons": [
+     "complete_basket_target_not_activated"
+    ],
+    "lifecycle": "HOLD",
+    "lifecycle_reason": "target_inventory_satisfied"
+   }
+  }
+ ]
+}
