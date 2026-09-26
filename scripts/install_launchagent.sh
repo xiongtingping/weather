@@ -27,15 +27,17 @@ DEFAULT_PLISTS=(
 #
 #   PM_LAUNCHD_ONLY=com.weather.live_control scripts/install_launchagent.sh
 #
-# The paper ledger sweep is deliberately NOT offered here.  The resident has
-# hosted it since 2026-08-24, inside the SSOT writer turn.  This list used to
-# offer its launchd plist on the belief that the book otherwise moved only by
-# hand; installed on 2026-09-11 it ran every fifteen minutes OUTSIDE that
-# turn, and was the only process writing the SSOT that the turn did not
-# serialize.  Measured 2026-09-13: capture_noaa_conus_forward held the turn
-# for 1140s while production waited 1132s behind it, then failed with
-# "database is locked" -- the ledger had taken the real lock at 02:52Z,
-# squarely inside that window.  A lane has one scheduler.
+# The retired paper ledger sweep (paper_trading_ledger_sweep) was never offered
+# here: it wrote the SSOT.  Installed on 2026-09-11 it ran every fifteen
+# minutes outside the writer turn and was the only process writing the SSOT
+# that the turn did not serialize.  Measured 2026-09-13:
+# capture_noaa_conus_forward held the turn for 1140s while production waited
+# 1132s behind it, then failed with "database is locked" -- the ledger had
+# taken the real lock at 02:52Z, squarely inside that window.  A lane has one
+# scheduler.  Its successor, com.weather.paper_ledger_aligned below, reads
+# the SSOT read-only and writes its own file, and launchd is its one
+# scheduler: the sweep script refuses a start the resident hands a writer
+# lease.
 OPTIONAL_PLISTS=(
   com.weather.live_control.plist
   # The board's static server on 8791; same history as the live control
@@ -55,6 +57,10 @@ OPTIONAL_PLISTS=(
   # settlement evidence, daily at 21:00 local (2026-09-25, 「加一条常规车道」).
   # Outside the writer turn: captures first, then one short write a repair.
   com.weather.settlement_source_repair.plist
+  # The paper ledger's daily pass, hourly (2026-09-26, 「纸面账本不要阻断生产。
+  # 失败即跳过。」).  A reader outside the writer turn; it writes only
+  # data/paper_ledger_aligned.db and gives way to an overdue production cycle.
+  com.weather.paper_ledger_aligned.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

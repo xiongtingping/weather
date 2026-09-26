@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.paper_ledger_aligned</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/paper_ledger_aligned_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- The paper ledger's daily pass (user, 2026-09-26: 「纸面账本不要阻断生产。
+       失败即跳过。」).  A reader outside the writer turn: it opens the SSOT and
+       the archive read-only and writes only data/paper_ledger_aligned.db.
+       The resident hosted it from 2026-09-25 as a sweep, holding one of the
+       four slots its maintenance lanes share for the hour or more a settled
+       day takes to walk, and every restart killed it.
+
+       Hourly.  A start with nothing owed reads the ledger's own file and
+       exits; one with days owed walks them, oldest first, each attempted
+       once, and gives way between decisions while a production cycle is
+       overdue or the SSOT's WAL is past the resident's truncate line.  The
+       script's single_instance guard keeps a start that arrives mid walk
+       from stacking a second copy; the walk's own deadline (four hours a
+       day) bounds it, and a day it cannot finish is skipped, not retried. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/paper_ledger_aligned.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/paper_ledger_aligned.err.log</string>
+</dict>
+</plist>

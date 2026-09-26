@@ -360,15 +360,12 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # cycle itself is fail-closed before it reaches the call, and its
     # single-instance guard is what keeps the two from overlapping.
     ("pr12_awc_observation", "scripts/pr12_awc_observation_sweep.sh", 10800.0, 900.0),
-    # The paper ledger through production's own entries (2026-09-25): daily,
-    # one settled event day per pass (~1,750-2,250 basket decisions, each a
-    # production compile at 1-5 s of SSOT reads on this machine), with the
-    # continue marker while a backlog is left.  Four hours because one day is
-    # 1.5-3 h here and the pass writes only its own file (``paper_ledger``
-    # domain, excludes no writer): the 90-minute slot it had could not hold
-    # the seven days it then walked, and it was stopped at 69 minutes on
-    # 2026-09-25 with nothing stored.
-    ("paper_ledger_aligned", "scripts/paper_ledger_aligned_sweep.sh", 86400.0, 14400.0),
+    # The paper ledger is not hosted here (user, 2026-09-26: 「纸面账本不要阻断
+    # 生产。失败即跳过。」).  Hosted from 2026-09-25, a pass held one of the four
+    # sweep slots for the hour or more a settled day takes, and every restart
+    # killed it; it reads the SSOT ``mode=ro`` and needs no writer turn.  It
+    # is its own LaunchAgent (com.weather.paper_ledger_aligned), and its
+    # sweep script exits at once when handed a writer lease.
     ("settlement_truth", "scripts/settlement_truth_sweep.sh", 10800.0, 900.0),
     # The two served calibration layers (band reliability, centre/width)
     # used to refit only from the 02:00 crontab, and macOS cron silently
@@ -646,10 +643,6 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
 #   archive    - writes data/archive.db only (SSOT connection is mode=ro)
 #   none       - touches no database at all (packet retention is gzip files on
 #                disk, deliberately: the SSOT sits near its size ceiling)
-#   paper_ledger - writes its own paper-ledger file only; the SSOT is opened
-#                ``mode=ro``.  data/paper_ledger.db until 2026-09-25, then
-#                data/paper_ledger_aligned.db.  No writer lane writes that
-#                file, so it excludes nothing.
 # A name missing from this map is treated as an SSOT writer, so a sweep added
 # without a decision here loses throughput rather than the invariant.
 HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
@@ -661,15 +654,6 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # waits on.
     "maker_shadow_probe": "maker_shadow",
     "pr12_awc_observation": "ssot",
-    # Its four tables left the SSOT for their own file on 2026-09-19: the
-    # pass is almost all reading (7,419 production cycles re-walked per
-    # pass) and it held the SSOT writer for its whole lease regardless --
-    # 62 production cycles waited on it, 4.25 hours of the prior 28.9.
-    # Reads the SSOT and the archive ``mode=ro``; writes only
-    # data/paper_ledger_aligned.db, which nothing else writes, so it excludes
-    # no writer lane (2026-09-25).  The retired paper_trading_ledger held
-    # this slot.
-    "paper_ledger_aligned": "paper_ledger",
     "settlement_truth": "ssot",
     "calibration_refit": "ssot",
     "settled_day_cycle_close": "ssot",

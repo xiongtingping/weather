@@ -47,6 +47,7 @@ import hashlib
 import json
 import math
 import os
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -112,6 +113,22 @@ MAKER_FILL_CURVES = ROOT / "config" / "paper_ledger" / "maker_fill_curves_v1.jso
 ARCHIVE_DB = ROOT / "data" / "archive.db"
 LEDGER_DB = ROOT / "data" / "paper_ledger_aligned.db"
 SCHEMA = "paper_ledger_aligned_v1"
+
+# The walk gives way to production (user, 2026-09-26: 「纸面账本不要阻断生产」).
+# It is a reader outside the writer turn and nothing waits on it, so it is the
+# one that waits: it starts no read while the resident's production cycle is
+# overdue, or while the SSOT's WAL is past the line the resident truncates it
+# at (``TARGET_SSOT_WARN_WAL_BYTES`` in the daemon; the board render's start
+# line) -- a read then is one more reader the checkpoint has to wait out.
+RESIDENT_STATUS = ROOT / "data" / "weather_basket_yes_status.json"
+YIELD_WAL_BYTES = int(
+    os.environ.get("PM_PAPER_LEDGER_YIELD_WAL_BYTES", str(256 * 1024 * 1024))
+)
+#: A status file older than this cannot say whether a cycle is overdue.
+RESIDENT_STATUS_FRESH_SEC = 180.0
+#: How often the walk re-reads the two signals: the status file is ~3 MB of
+#: JSON, too much to parse before every one of a day's ~2,000 decisions.
+YIELD_POLL_SEC = 5.0
 
 # The recorded plan and the compiled plan differ, by construction, in what the
 # atomic commit stamps after the compile: its own ids, the admission deadline
@@ -1323,6 +1340,69 @@ def _count(values: Iterator[Any] | Sequence[Any]) -> dict[str, int]:
     return dict(sorted(out.items(), key=lambda item: -item[1]))
 
 
+class PassDeadline(RuntimeError):
+    """A walk still running at its deadline: its day is skipped, not retried."""
+
+
+class PassTerminated(RuntimeError):
+    """SIGTERM mid-walk (launchd unloading, a shutdown): the day is skipped."""
+
+
+def production_blocker(ssot_path: str | Path) -> str | None:
+    """Why the walk should not start its next read now, or None."""
+
+    try:
+        wal_bytes = Path(f"{ssot_path}-wal").stat().st_size
+    except OSError:
+        wal_bytes = 0
+    if wal_bytes > YIELD_WAL_BYTES:
+        return f"wal {wal_bytes}"
+    # The resident's cycle is only a reason to wait when this walk reads the
+    # resident's store (a copy, or a test's, is nobody's contention).
+    try:
+        if Path(ssot_path).resolve() != SSOT_DB.resolve():
+            return None
+        status = json.loads(RESIDENT_STATUS.read_text(encoding="utf-8"))
+        age = (datetime.now(timezone.utc) - _instant(status.get("heartbeat_at"))).total_seconds()
+    except (OSError, ValueError, TypeError):
+        return None
+    inflight = status.get("production_inflight")
+    if 0.0 <= age <= RESIDENT_STATUS_FRESH_SEC and isinstance(inflight, Mapping) and inflight.get("overdue"):
+        return "production cycle overdue"
+    return None
+
+
+class ProductionGate:
+    """Holds the walk between decisions while production needs the room."""
+
+    def __init__(self, ssot_path: str | Path, *, deadline: float | None = None) -> None:
+        self.ssot_path = ssot_path
+        self.deadline = deadline
+        self.waited_sec = 0.0
+        self._checked = -math.inf
+        self._blocker: str | None = None
+
+    def _poll(self) -> str | None:
+        now = time.monotonic()
+        if now - self._checked >= YIELD_POLL_SEC:
+            self._checked = now
+            self._blocker = production_blocker(self.ssot_path)
+        return self._blocker
+
+    def wait(self, *, walked: int) -> None:
+        while self._poll() is not None and not self._past_deadline():
+            time.sleep(YIELD_POLL_SEC)
+            self.waited_sec += YIELD_POLL_SEC
+        if self._past_deadline():
+            raise PassDeadline(
+                f"deadline reached after {walked} decisions"
+                f" ({self.waited_sec:.0f}s given way to production)"
+            )
+
+    def _past_deadline(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     ssot = sqlite3.connect(f"file:{args.ssot}?mode=ro", uri=True, timeout=60)
     ssot.row_factory = sqlite3.Row
@@ -1333,6 +1413,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     started = time.time()
     started_at_utc = datetime.now(timezone.utc).isoformat()
+    gate = ProductionGate(args.ssot, deadline=getattr(args, "deadline_monotonic", None))
     last = None
     for index, row in enumerate(_production_decisions(
         ssot, since_rowid=args.since_rowid, until_rowid=args.until_rowid,
@@ -1341,6 +1422,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )):
         if args.limit and index >= args.limit:
             break
+        gate.wait(walked=index)
         ledger.rows.append(ledger.decide(row))
         last = row["created_at"]
         ledger.books.forget_before(last)
@@ -1350,6 +1432,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     orders = [o for chain in ledger.state.days.values() for o in chain.orders]
     summary = summarize(ledger.rows, settlements, orders)
     summary["seconds"] = round(time.time() - started, 1)
+    summary["gave_way_to_production_sec"] = round(gate.waited_sec, 1)
     summary["fill_model"] = args.fill_model
     summary["maker_fill_curves_sha256"] = ledger.venue.curves_sha256
     summary["started_at_utc"] = started_at_utc
@@ -1421,36 +1504,59 @@ def _store(args: argparse.Namespace, ledger: AlignedLedger, settlements: Sequenc
     return run_id
 
 
-# The daily pass (the resident's ``paper_ledger_aligned`` sweep).  It used to
-# re-walk the last seven event days every day: ~12,000 basket decisions, each
-# one a call into production's own compile at 1-5 s of SSOT reads apiece on
-# this machine -- ten hours against a 90-minute slot.  On 2026-09-25 the pass
-# was stopped at 69 minutes and never stored a run, and the lane sat red
-# (user: 「没有会话在改，你改」).  Now a pass walks ONE event day -- the oldest
-# settled day in the window that no daily pass has stored -- and asks the
-# resident for the next pass while any are left.  A day is walked whole, every
-# station-day from its first decision, with its own paper account; the one
-# reader (``live_station_scope.settlement_counts``) counts each settled
-# station-day once, however it was walked.
+# The daily pass: its own LaunchAgent (com.weather.paper_ledger_aligned), not
+# a resident sweep (user, 2026-09-26: 「纸面账本不要阻断生产。失败即跳过。」).  The
+# resident hosted it from 2026-09-25: a sweeps-turn slot, one of the four the
+# maintenance lanes share, held for the hour or more a day takes, and killed
+# by every restart.  It reads the SSOT ``mode=ro`` and writes only its own
+# file, so it needs no writer turn: it runs beside production, gives way to it
+# (``ProductionGate``) and is bounded by its own deadline.
+#
+# A pass walks every settled day of its window that no pass has attempted,
+# oldest first, each whole -- every station-day from its first decision --
+# with its own paper account.  A day is attempted once.  Whatever ends a walk
+# before it is stored -- an error, the deadline, SIGTERM, a kill that leaves
+# no record at all -- skips that day with its reason and the pass goes on to
+# the next: nothing is retried and nothing is held red.  The one reader
+# (``live_station_scope.settlement_counts``) counts each settled station-day
+# once, however it was walked.
+#
+# Until 2026-09-25 every pass re-walked the last seven days: ~12,000 decisions
+# at 1-5 s of SSOT reads each against a 90-minute slot, stopped at 69 minutes
+# with nothing stored.
 DAILY_PASS_LABEL = "daily_sweep"
 #: Days after an event date before the pass walks it: by then every station's
 #: local day ended a day ago and its settlement label has landed.
 DAILY_PASS_SETTLE_LAG_DAYS = 2
-#: A day that failed this many times is left behind, so one day that cannot be
-#: replayed does not hold the lane red for ever; every failure keeps its reason.
-DAILY_PASS_MAX_ATTEMPTS = 2
+#: One day's walk, waits for production included.  2026-09-26: 182 decisions
+#: in 342 s at utility I/O, so a day of ~2,100 is about an hour.
+DAILY_PASS_DEADLINE_SEC = 4 * 3600.0
+#: ``started`` when a walk begins, then ``stored`` or ``skipped`` with the
+#: reason; a ``started`` with neither after it is a walk that died silently.
 DAILY_PASS_DDL = (
     "CREATE TABLE IF NOT EXISTS daily_pass_attempts ("
     " event_date TEXT NOT NULL, attempted_at TEXT NOT NULL,"
     " state TEXT NOT NULL, run_id TEXT, reason TEXT)"
 )
+#: The last pass's outcome, for readers that do not open the ledger.
+DAILY_PASS_STATUS = ROOT / "data" / "paper_ledger" / "daily_pass_status.json"
+#: A walk with no word this long past its deadline was killed.
+DEAD_WALK_GRACE_SEC = 600.0
+
+
+def _ledger_tables(conn: sqlite3.Connection) -> set[str]:
+    return {
+        str(row[0]) for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
 
 
 def daily_pass_plan(
     ledger_db: str | Path, *, today: "date", window_days: int,
-) -> tuple[list[str], list[str], dict[str, int]]:
-    """The days the daily pass still owes, oldest first; the days already
-    stored; and the failures counted against the rest of the window."""
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """The days the daily pass still owes, oldest first; the days stored;
+    and the days skipped, each with why."""
 
     through = today - timedelta(days=DAILY_PASS_SETTLE_LAG_DAYS)
     window = [
@@ -1458,16 +1564,13 @@ def daily_pass_plan(
         for offset in reversed(range(max(1, int(window_days))))
     ]
     walked: set[str] = set()
-    failures: dict[str, int] = {}
+    attempted: set[str] = set()
+    skipped: dict[str, str] = {}
     path = Path(ledger_db)
     if path.exists():
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
         try:
-            tables = {
-                str(row[0]) for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                )
-            }
+            tables = _ledger_tables(conn)
             if "runs" in tables:
                 for (params_json,) in conn.execute(
                     "SELECT params_json FROM runs WHERE finished_at IS NOT NULL"
@@ -1480,22 +1583,20 @@ def daily_pass_plan(
                     ):
                         walked.add(str(day))
             if "daily_pass_attempts" in tables:
-                failures = {
-                    str(day): int(count) for day, count in conn.execute(
-                        "SELECT event_date, COUNT(*) FROM daily_pass_attempts"
-                        " WHERE state='failed' GROUP BY event_date"
-                    )
-                }
+                for day, state, reason in conn.execute(
+                    "SELECT event_date, state, reason FROM daily_pass_attempts"
+                    " ORDER BY rowid"
+                ):
+                    attempted.add(str(day))
+                    if state == "skipped":
+                        skipped[str(day)] = str(reason or "")
         finally:
             conn.close()
-    pending = [
-        day for day in window
-        if day not in walked and failures.get(day, 0) < DAILY_PASS_MAX_ATTEMPTS
-    ]
+    pending = [day for day in window if day not in walked and day not in attempted]
     return (
         pending,
         [day for day in window if day in walked],
-        {day: failures[day] for day in window if failures.get(day)},
+        {day: skipped[day] for day in window if day in skipped},
     )
 
 
@@ -1515,49 +1616,144 @@ def _record_daily_attempt(
         out.close()
 
 
-def daily_pass(args: argparse.Namespace, *, today: "date | None" = None) -> int:
-    """One event day of the daily pass; 0 stored or nothing owed, 2 failed."""
+def close_dead_walks(
+    ledger_db: str | Path, *, deadline_sec: float, now: datetime | None = None,
+) -> list[str]:
+    """Skip, with a reason, every walk that started and never said how it
+    ended.  A walk is bounded by its deadline, so a ``started`` older than
+    that with nothing after it was killed, or the machine stopped under it."""
 
-    from bayes_basket_target.pass_deadline import HOSTED_SWEEP_CONTINUE_MARKER  # noqa: PLC0415
+    path = Path(ledger_db)
+    if not path.exists():
+        return []
+    now = now or datetime.now(timezone.utc)
+    conn = sqlite3.connect(str(path), timeout=30)
+    try:
+        if "daily_pass_attempts" not in _ledger_tables(conn):
+            return []
+        last: dict[str, tuple[str, str]] = {}
+        for day, attempted_at, state in conn.execute(
+            "SELECT event_date, attempted_at, state FROM daily_pass_attempts"
+            " ORDER BY rowid"
+        ):
+            last[str(day)] = (str(attempted_at), str(state))
+        dead = [
+            day for day, (attempted_at, state) in sorted(last.items())
+            if state == "started"
+            and (now - _instant(attempted_at)).total_seconds()
+            > deadline_sec + DEAD_WALK_GRACE_SEC
+        ]
+        if dead:
+            with conn:
+                conn.executemany(
+                    "INSERT INTO daily_pass_attempts VALUES(?,?,?,?,?)",
+                    [
+                        (day, now.isoformat(), "skipped", None,
+                         "the walk ended without a record (killed, or the machine stopped)")
+                        for day in dead
+                    ],
+                )
+        return dead
+    finally:
+        conn.close()
+
+
+def _write_daily_status(args: argparse.Namespace, outcome: Mapping[str, Any]) -> None:
+    target = getattr(args, "status_json", None)
+    if not target or args.dry_run:
+        return
+    path = Path(target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "paper_ledger_daily_pass_status_v1",
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        **outcome,
+    }
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _terminated(signum: int, frame: Any) -> None:  # noqa: ARG001
+    raise PassTerminated("terminated (SIGTERM)")
+
+
+def daily_pass(args: argparse.Namespace, *, today: "date | None" = None) -> str:
+    """The oldest owed day: walked whole and stored, or skipped with why.
+
+    Returns ``stored``, ``skipped``, ``terminated`` (skipped, and the pass
+    stops), ``up_to_date`` or ``dry_run``.
+    """
 
     today = today or datetime.now(timezone.utc).date()
-    pending, walked, failed = daily_pass_plan(
+    deadline_sec = float(getattr(args, "pass_deadline_sec", None) or DAILY_PASS_DEADLINE_SEC)
+    if not args.dry_run:
+        close_dead_walks(args.ledger_db, deadline_sec=deadline_sec)
+    pending, walked, skipped = daily_pass_plan(
         args.ledger_db, today=today, window_days=args.window_days,
     )
     if not pending:
-        print(json.dumps(
-            {"daily_pass": "up_to_date", "walked": walked, "failed": failed},
-            sort_keys=True,
-        ))
-        return 0
+        outcome = {"daily_pass": "up_to_date", "walked": walked, "skipped": skipped}
+        print(json.dumps(outcome, sort_keys=True, ensure_ascii=False))
+        _write_daily_status(args, outcome)
+        return "up_to_date"
     day = pending[0]
     args.from_event_date = args.to_event_date = day
     args.since_rowid, args.until_rowid, args.stations, args.limit = 0, None, "", 0
     args.label = DAILY_PASS_LABEL
+    args.deadline_monotonic = time.monotonic() + deadline_sec
+    if not args.dry_run:
+        _record_daily_attempt(
+            args.ledger_db, event_date=day, state="started", run_id=None, reason=None,
+        )
+    previous = signal.signal(signal.SIGTERM, _terminated)
     try:
         summary = run(args)
-    except Exception as exc:  # noqa: BLE001 -- the reason is the receipt
+    except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001 -- 失败即跳过
         reason = f"{type(exc).__name__}: {exc}"[:500]
         if not args.dry_run:
             _record_daily_attempt(
-                args.ledger_db, event_date=day, state="failed", run_id=None, reason=reason,
+                args.ledger_db, event_date=day, state="skipped", run_id=None, reason=reason,
             )
-        print(json.dumps({"daily_pass": "failed", "event_date": day, "reason": reason}))
-        print(f"daily pass {day} failed: {reason}", file=sys.stderr)
-        return 2
+        outcome = {
+            "daily_pass": "skipped", "event_date": day, "reason": reason,
+            "remaining": pending[1:],
+        }
+        print(json.dumps(outcome, sort_keys=True, ensure_ascii=False))
+        print(f"daily pass {day} skipped: {reason}", file=sys.stderr)
+        _write_daily_status(args, outcome)
+        return "terminated" if isinstance(exc, (PassTerminated, KeyboardInterrupt)) else "skipped"
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
     if not args.dry_run:
         _record_daily_attempt(
             args.ledger_db, event_date=day, state="stored",
             run_id=summary.get("run_id"), reason=None,
         )
-    print(json.dumps(
-        {"daily_pass": "stored" if not args.dry_run else "dry_run",
-         "event_date": day, "remaining": pending[1:],
-         "seconds": summary.get("seconds"), "run_id": summary.get("run_id")},
-        sort_keys=True,
-    ))
-    if len(pending) > 1:
-        print(HOSTED_SWEEP_CONTINUE_MARKER)
+    outcome = {
+        "daily_pass": "stored" if not args.dry_run else "dry_run",
+        "event_date": day, "remaining": pending[1:],
+        "seconds": summary.get("seconds"),
+        "gave_way_to_production_sec": summary.get("gave_way_to_production_sec"),
+        "run_id": summary.get("run_id"),
+    }
+    print(json.dumps(outcome, sort_keys=True, ensure_ascii=False))
+    _write_daily_status(args, outcome)
+    return str(outcome["daily_pass"])
+
+
+def daily_passes(args: argparse.Namespace, *, today: "date | None" = None) -> int:
+    """Every owed day of the window, oldest first, until none is owed.
+
+    Each day is attempted once, so the loop ends within the window; a dry run
+    or SIGTERM ends it after the day in hand.
+    """
+
+    today = today or datetime.now(timezone.utc).date()
+    for _ in range(max(1, int(args.window_days)) + 1):
+        if daily_pass(args, today=today) not in {"stored", "skipped"}:
+            break
     return 0
 
 
@@ -1581,12 +1777,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--label", default="", help="a name readers select runs by (the daily pass: daily_sweep)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--daily-pass", action="store_true",
-                        help="the resident's daily pass: one settled event day per run (see daily_pass)")
+                        help="the daily pass: every owed settled event day of the window, each"
+                             " attempted once (see daily_pass)")
     parser.add_argument("--window-days", type=int, default=3,
                         help="the daily pass's window of settled event days")
+    parser.add_argument("--pass-deadline-sec", type=float, default=DAILY_PASS_DEADLINE_SEC,
+                        help="the daily pass: one day's walk, waits for production included;"
+                             " past it the day is skipped")
+    parser.add_argument("--status-json", default=str(DAILY_PASS_STATUS),
+                        help="the daily pass writes its last outcome here")
     args = parser.parse_args(argv)
     if args.daily_pass:
-        return daily_pass(args)
+        return daily_passes(args)
     print(json.dumps(run(args), indent=2, sort_keys=True, default=str))
     return 0
 

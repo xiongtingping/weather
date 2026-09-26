@@ -59,10 +59,11 @@ def test_every_sweep_declares_a_write_domain(daemon) -> None:
     assert declared == listed
     assert set(daemon.HOSTED_SWEEP_WRITE_DOMAIN.values()) <= {
         # A domain is a file the sweeps of that name serialise against.
-        # ``paper_ledger`` (charter 155) and ``maker_shadow`` (charter 169)
-        # are books that left the SSOT: each is its own file, so a sweep
-        # writing one excludes no SSOT writer and costs production no turn.
-        "ssot", "archive", "none", "paper_ledger", "maker_shadow",
+        # ``maker_shadow`` (charter 169) is a book that left the SSOT: its
+        # own file, so a sweep writing it excludes no SSOT writer and costs
+        # production no turn.  (``paper_ledger``, charter 155, went with the
+        # ledger to its own LaunchAgent on 2026-09-26.)
+        "ssot", "archive", "none", "maker_shadow",
         # Charter 199: the fusion blend's training facts, its own file.
         "fusion_blend",
     }
@@ -152,7 +153,7 @@ def test_total_concurrency_is_capped(daemon) -> None:
 def test_running_sweeps_count_against_the_cap(daemon) -> None:
     admitted = daemon.admissible_hosted_sweeps(
         _due("correction_review_auto_clear", module=daemon),
-        running_names=["paper_ledger_aligned", "forward_packet_retention"],
+        running_names=["maker_shadow_probe", "forward_packet_retention"],
         max_concurrency=2,
     )
     assert admitted == []

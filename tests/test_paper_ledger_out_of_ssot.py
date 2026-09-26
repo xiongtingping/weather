@@ -1,15 +1,19 @@
-"""The paper ledger stays out of the SSOT writer's way (2026-09-19, 「移出」).
+"""The paper ledger stays out of the resident's way.
 
-The old ledger's tables sat in the SSOT, so its pass -- almost all reading --
-held the SSOT writer for its whole lease: 62 production cycles waited on it,
-4.25 hours of the 28.9 before the move.  Its successor (2026-09-25,
-``scripts/paper_ledger_aligned.py``) opens the SSOT read-only and writes only
-``data/paper_ledger_aligned.db``; this pins that the resident schedules it
-without an SSOT writer turn.
+2026-09-19 (「移出」): the old ledger's tables sat in the SSOT, so its pass --
+almost all reading -- held the SSOT writer for its whole lease: 62 production
+cycles waited on it, 4.25 hours of the 28.9 before the move.
+
+2026-09-26 (「纸面账本不要阻断生产。失败即跳过。」): its successor
+(``scripts/paper_ledger_aligned.py``) opens the SSOT read-only and writes only
+``data/paper_ledger_aligned.db``, and the resident no longer schedules it at
+all -- as a sweep it held one of the four maintenance slots for the hour or
+more a day takes, and every restart killed it.  It is its own LaunchAgent.
 """
 from __future__ import annotations
 
 import importlib.util
+import plistlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,19 +27,22 @@ def _load(name: str, path: Path):
     return module
 
 
-def test_the_resident_no_longer_waits_on_the_ledger() -> None:
+def test_the_resident_does_not_schedule_the_ledger() -> None:
     daemon = _load("_daemon_paper_domain", ROOT / "scripts" / "weather_basket_yes_daemon.py")
-    assert daemon.hosted_sweep_write_domain("paper_ledger_aligned") == "paper_ledger"
-    assert "paper_ledger" not in daemon._EXCLUSIVE_WRITE_DOMAINS
-    assert daemon.writer_excluding_sweeps(["paper_ledger_aligned"]) == []
+    hosted = {name for name, _script, _interval, _timeout in daemon.HOSTED_SWEEPS}
+    scripts = {script for _name, script, _interval, _timeout in daemon.HOSTED_SWEEPS}
+    assert "paper_ledger_aligned" not in hosted
+    assert "scripts/paper_ledger_aligned_sweep.sh" not in scripts
+    assert "paper_ledger_aligned" not in daemon.HOSTED_SWEEP_WRITE_DOMAIN
     assert "paper_ledger_aligned" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
-    # It starts in the same slot as an SSOT sweep, and neither holds the other.
-    due = [
-        (5.0, 0, "settlement_truth", "a.sh", 1800.0),
-        (4.0, 1, "paper_ledger_aligned", "b.sh", 1800.0),
-    ]
-    admitted = daemon.admissible_hosted_sweeps(due, running_names=[])
-    assert [item[2] for item in admitted] == ["settlement_truth", "paper_ledger_aligned"]
-    assert daemon.admissible_hosted_sweeps(
-        [(9.0, 0, "paper_ledger_aligned", "b.sh", 1800.0)], running_names=["settlement_truth"],
-    ) != []
+
+
+def test_the_ledger_is_its_own_launch_agent() -> None:
+    path = ROOT / "launchd" / "com.weather.paper_ledger_aligned.plist"
+    with path.open("rb") as handle:
+        agent = plistlib.load(handle)
+    assert agent["ProgramArguments"][-1].endswith("scripts/paper_ledger_aligned_sweep.sh")
+    assert agent["StartInterval"] == 3600
+    installer = (ROOT / "scripts" / "install_launchagent.sh").read_text(encoding="utf-8")
+    offered = installer.split("OPTIONAL_PLISTS=(", 1)[1].split("\n)\n", 1)[0]
+    assert "com.weather.paper_ledger_aligned.plist" in offered
