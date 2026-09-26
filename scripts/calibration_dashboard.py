@@ -19325,7 +19325,7 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 // draws only the three least healthy lanes; the writer, the queue and the
 // restart count stay in the payload and in the machine row's lamp.
 const SWEEP_LABEL = {
-  paper_ledger_aligned:"纸面账本（生产入口）", settlement_truth:"结算真值",
+  settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
   settled_day_cycle_close:"已结算日收盘", maker_shadow_probe:"挂单影子探针",
   correction_review_auto_clear:"订正复核自动清除",
