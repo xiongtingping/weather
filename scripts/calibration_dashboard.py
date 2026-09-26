@@ -17294,6 +17294,12 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # The freshness lamps and clocks: a lamp that can be a page old is a
     # lamp that says green through an outage.
     "hosted_sweeps", "cycle_time", "observation_intake",
+    # The 发布时间 table's regional and TAF rows, whose "next run due" is
+    # read against the viewer's clock: served from a page, the regional
+    # section was 43 hours old on 2026-09-26 (no production gap since
+    # 09-24 09:54Z) and the table read 「比常态晚 40.0 小时」 for lanes whose
+    # newest run had landed within the hour.  1.6 s and 0.1 s to read.
+    "regional", "taf_board",
     # Everything the banner's light is derived from.
     "members", "chain", "band_stages", "truth_materialization",
     "delta_v2_authority",
@@ -18087,6 +18093,10 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     hosted_sweeps = _cached_section(
         "hosted_sweeps", collect_hosted_sweeps, conn
     )
+    # The 发布时间 table's regional and TAF rows (every run, see
+    # RENDER_EVERY_RUN_SECTIONS).
+    regional = _cached_section("regional", collect_regional_lanes, conn)
+    taf_board = _cached_section("taf_board", collect_taf_board, conn)
     delta_v2_authority = _cached_section(
         "delta_v2_authority", collect_delta_v2_authority, conn
     )
@@ -18191,7 +18201,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     consensus_bridge = _cached_section(
         "consensus_bridge", collect_consensus_bridge, conn
     )
-    taf_board = _cached_section("taf_board", collect_taf_board, conn)
     metar_board = _cached_section("metar_board", collect_metar_board, conn)
     precip_classification = _cached_section(
         "precip_classification", collect_precip_classification, conn
@@ -18526,9 +18535,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # paper book's own risk metrics and nine numbers left the page with
         # it: the ledger is a rule comparator, not the account.
         "live_money": live_money,
-        "regional": _cached_section(
-            "regional", collect_regional_lanes, conn
-        ),
+        "regional": regional,
         "worker": worker,
         "section_cache": dict(_SECTION_CACHE_LOG),
     }
