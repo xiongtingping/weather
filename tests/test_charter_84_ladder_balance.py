@@ -62,8 +62,16 @@ def _charter_81_arm_on(monkeypatch):
         _k81._parse_claim_bands(_k81.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
     )
 
-def _held_snapshot(*, held_32: float = 0.0, ask_32: float = 0.15) -> TargetBasketSnapshot:
-    """ZGSZ 2026-09-06 as the ledger saw it: 30°C and 31°C held, 32°C empty."""
+def _held_snapshot(
+    *, held_32: float = 0.0, ask_32: float = 0.15, ask_31: float = 0.45,
+) -> TargetBasketSnapshot:
+    """ZGSZ 2026-09-06 as the ledger saw it: 30°C and 31°C held, 32°C empty.
+
+    ``ask_31`` (charter 230): a test of the completion path needs the whole
+    window refused while its increment clears.  Charter 68's lambda used to
+    do that at 0.45 (0.90 x 0.85 against 0.80); on the undeflated claim 0.55
+    does it (0.90 against 0.90: the whole window has no edge left for the
+    Kelly row, and the increment still clears)."""
 
     def bucket(name: str, ordinal: int, probability: float, ask: float,
                held: float, cost: float) -> dict:
@@ -110,7 +118,7 @@ def _held_snapshot(*, held_32: float = 0.0, ask_32: float = 0.15) -> TargetBaske
             # so the open book enumerates them and charter 125 has a domain to cut.
             bucket("29", 29, 0.05, 0.08, 0.0, 0.0),
             bucket("30", 30, 0.20, 0.20, 5.0, 1.25),
-            bucket("31", 31, 0.50, 0.45, 5.0, 2.15),
+            bucket("31", 31, 0.50, ask_31, 5.0, 2.15),
             bucket("32", 32, 0.20, ask_32, held_32, held_32 * ask_32),
             bucket("33", 33, 0.05, 0.08, 0.0, 0.0),
         ],
@@ -466,58 +474,6 @@ def test_the_depth_cost_walk_answers_none_when_the_book_is_short() -> None:
         levels=[{"price": 0.0, "shares": 5.0}, {"price": 0.20, "shares": 5.0}],
         shares=2.0,
     ) == pytest.approx(0.40)
-
-
-def test_the_seated_projection_carries_the_lambda_axis_it_was_priced_on() -> None:
-    """Charter 97's retirement condition depends on a field a whitelist ate.
-
-    The gate stamps ``effective_edge_lambda_source`` on every priced row, but
-    ``_solve_over_support_windows`` projects seated and considered key by key,
-    and the field was not on the list -- so every plan reported a lambda with
-    no axis beside it.  The clause retires itself when the seats the
-    claim-edge band opened realise under one; with the source dropped, that
-    set could never have gained a member and the condition could never have
-    fired.  Reported from the plan side, 2026-09-06.
-
-    Pinned on both projections because they are two separate whitelists and
-    fixing one is what left the other broken in the first place.
-    """
-
-    result = compile_delta_v2_runtime_plan(
-        snapshot=_held_snapshot(), basket_policy=_basket_policy(),
-        delta_policy=_delta_policy(), fill_resolver=_fill_resolver,
-        capital_available_usdc=10.0, minimum_profit_floor=-5.0,
-        resource_probe_ok=True, book_equity_usdc=514.29,
-    )
-
-    def find(node):
-        if isinstance(node, dict):
-            if "basket_support_selection" in node:
-                return node["basket_support_selection"]
-            for value in node.values():
-                found = find(value)
-                if found is not None:
-                    return found
-        elif isinstance(node, list):
-            for value in node:
-                found = find(value)
-                if found is not None:
-                    return found
-        return None
-
-    selection = find(result)
-    assert selection is not None
-    seated = selection["seated"]
-    assert seated["effective_edge_lambda"] is not None
-    assert seated["effective_edge_lambda_source"] in {
-        "agreement_band", "claim_edge_thin_band",
-    }
-    for row in selection["considered"]:
-        if row.get("effective_edge_lambda") is None:
-            continue
-        assert row["effective_edge_lambda_source"] in {
-            "agreement_band", "claim_edge_thin_band",
-        }
 
 
 def test_the_support_contract_is_atomic_at_the_result() -> None:
@@ -1249,30 +1205,9 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     # Charter 66 A's refusal of a completion is the reading charter 143
     # replaced; pinned under its rollback.
     set_charter_143(monkeypatch, "off")
-    # At the live prices the only sanctioned window is refused by charter
-    # 66 A -- a chain at par -- and with nothing else admitted the compile
-    # has no window: support_empty, which is what LTAC's plans said all
-    # afternoon.
-    # (Whether the day compiles to a HOLD on an inadmissible wider window or
-    # to support_empty depends on which seat arms the surrounding tests left
-    # switched; both are the same refusal, and neither buys.)
-    try:
-        at_par = _compile(_ltac(ask_31=0.34, ask_33=0.09))
-    except ContractError as exc:
-        assert "delta_v2_support_empty" in str(exc)
-    else:
-        assert at_par["state"] == "HOLD"
-        # Charter 87 (2026-09-06): the gate reads the increment's claim
-        # through charter 68's lambda at the window's agreement (a = 1.08,
-        # lambda 0.82): 0.514 x 0.82 = 0.42 against an offer of 0.43, so
-        # the completion is refused at the gate, before the chain law sees
-        # it.  Either refusal is the same answer: nothing is bought.
-        selection = at_par["basket_support_selection"]
-        assert selection["seated"]["admissible"] is False
-        assert selection["effective_edge_gate_refused_window_count"] >= 1
-    # The pre-87 gate: the increment is admitted on the lifted claim alone
-    # and it is charter 66 A -- a chain at par -- that refuses it.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
+    # Charter 230 retired charter 87's lambda at the gate: the increment is
+    # admitted on its claim alone and it is charter 66 A -- a chain at par --
+    # that refuses it.
     try:
         at_par = _compile(_ltac(ask_31=0.34, ask_33=0.09))
     except ContractError as exc:
@@ -1293,8 +1228,6 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
                 for row in at_par["basket_support_selection"]["unsolvable_windows"]
             )
         )
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "on")
-
     cheaper = _compile(_ltac(ask_31=0.30, ask_33=0.07))
     seated = cheaper["basket_support_selection"]["seated"]
     assert seated["buckets"] == ["31", "32", "33"]

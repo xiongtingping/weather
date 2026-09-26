@@ -573,7 +573,7 @@ def compile_production_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
-    effective_edge_tables: Mapping[str, Any] | None = None,
+    served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -592,7 +592,7 @@ def compile_production_plan(
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
         last_decision_signature=last_decision_signature,
-        effective_edge_tables=effective_edge_tables,
+        served_tables=served_tables,
         off_centre_claim_bands=off_centre_claim_bands,
         convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
@@ -1373,8 +1373,8 @@ def prepare_production_candidate(
             ),
             # Charter 68(c): the lambda tables this decision was sized under,
             # so "did production read the store" is answerable from the row.
-            "effective_edge_tables": (
-                dict(delta_v2_audit.get("effective_edge_tables") or {})
+            "served_tables": (
+                dict(delta_v2_audit.get("served_tables") or {})
                 if isinstance(delta_v2_audit, Mapping)
                 else None
             ),

@@ -23,7 +23,7 @@ from .cash_phase import (
     BasketCashPhasePolicyArtifact,
     BasketCashPhaseInput,
 )
-from .effective_edge_store import load_effective_edge_tables
+from .served_tables import load_served_tables
 from .account_equity import (
     budget_capped_equity,
     load_account_equity,
@@ -2074,7 +2074,7 @@ def chain_compile_kwargs(
         "last_decision_signature": chain_state.last_decision_signature(
             station_id=station_id, event_date=event_date, stage=str(stage),
         ),
-        "effective_edge_tables": load_effective_edge_tables(
+        "served_tables": load_served_tables(
             conn, as_of_utc=chain_state.tables_as_of_utc,
         ),
         "off_centre_claim_bands": load_off_centre_tables(conn),

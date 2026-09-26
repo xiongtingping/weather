@@ -197,10 +197,10 @@ def test_persist_activate_and_read_as_of_the_journal() -> None:
 
 
 def test_the_served_tables_mapping_carries_the_lane_under_its_own_key() -> None:
-    from bayes_basket_target.effective_edge_store import load_effective_edge_tables
+    from bayes_basket_target.served_tables import load_served_tables
 
     conn = _db()
-    tables = load_effective_edge_tables(conn)
+    tables = load_served_tables(conn)
     assert BETA_TABLE_KEY in tables
     assert set(tables[BETA_TABLE_KEY]) == {"P0", "P0-M", "P1"}
     assert all(v is None for v in tables[BETA_TABLE_KEY].values())
@@ -254,7 +254,7 @@ def _windows(beta_tables, **overrides):
         probabilities=probabilities, fee_rate=0.0,
         maximum_support_buckets=4, minimum_support_buckets=3,
         center_bucket="31°C", probability_stage="P0",
-        effective_edge_tables=beta_tables,
+        served_tables=beta_tables,
     )
     kwargs.update(overrides)
     return _support_windows(**kwargs)
@@ -303,37 +303,9 @@ def test_shadow_records_the_beta_reading_and_changes_no_verdict() -> None:
     assert audit_none["beta_would_refuse_count"] == 0
 
 
-def test_on_reads_the_beta_belief_and_a_missing_fit_refuses(monkeypatch) -> None:
-    import bayes_basket_target.delta_v2_runtime as R
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    monkeypatch.setattr(R, "BETA_EDGE_MODE", "on")
-    # No fit at all: beta_lcb 0, the belief is the market's own, and the
-    # lane buys nothing on it -- whatever the book's arithmetic says (this
-    # fixture's asks sum under one, so the normalised mid clears the ask on
-    # every window; that is the book's quirk, not the model's evidence).
-    windows, audit = _windows({BETA_TABLE_KEY: {"P0": None}})
-    assert audit["beta_edge_mode"] == "on"
-    assert not any(w["admissible"] for w in windows if w["all_in_price"] is not None)
-    for w in windows:
-        if w["all_in_price"] is not None:
-            assert w["beta_lcb"] == 0.0
-            assert w["beta_belief"] == pytest.approx(w["beta_market_mid"], abs=1e-6)
-            assert w["beta_admissible"] is False
-            assert w["effective_win_probability"] <= 1e-6
-            assert w["effective_edge_lambda_source"] == "beta_edge_lcb_zero"
-    # beta_lcb 1: the belief is the raw claim, so a window is admissible
-    # exactly when its raw claim clears its price (and the structural gates).
-    served = {BETA_TABLE_KEY: {"P0": {"beta": 1.0, "beta_lcb": 1.0, "sha256": "y" * 64, "accumulating": False}}}
-    windows, _ = _windows(served)
-    for w in windows:
-        if w["all_in_price"] is None:
-            continue
-        assert w["effective_win_probability"] == pytest.approx(w["raw_win_probability"], abs=1e-6)
-        # The solver's lambda is the ratio that reproduces the belief.
-        assert w["effective_edge_lambda"] * w["win_probability"] == pytest.approx(w["raw_win_probability"], abs=1e-6)
-    seated = [w for w in windows if w["admissible"]]
-    assert seated, "a raw claim above its price must seat under beta_lcb = 1"
-    assert all(w["raw_win_probability"] > w["all_in_price"] for w in seated)
+
 
 
 def test_a_band_row_serves_only_when_it_clears_the_hurdles() -> None:
@@ -365,7 +337,7 @@ def test_a_band_row_serves_only_when_it_clears_the_hurdles() -> None:
     assert all(w["beta_lead_band"] is None and w["beta_lcb"] == pytest.approx(0.2) for w in priced)
 
 
-def test_without_a_market_belief_shadow_records_nothing_and_on_refuses(monkeypatch) -> None:
+def test_without_a_market_belief_shadow_records_nothing(monkeypatch) -> None:
     import bayes_basket_target.delta_v2_runtime as R
 
     monkeypatch.setattr(
@@ -376,11 +348,6 @@ def test_without_a_market_belief_shadow_records_nothing_and_on_refuses(monkeypat
     shadow, audit = _windows(served)
     assert audit["beta_market_state"] == "incomplete"
     assert all(w["beta_belief"] is None and w["beta_market_mid"] is None for w in shadow)
-    monkeypatch.setattr(R, "BETA_EDGE_MODE", "on")
-    on, _ = _windows(served)
-    priced = [w for w in on if w["all_in_price"] is not None]
-    assert priced and not any(w["admissible"] for w in priced)
-    assert all(w["effective_edge_lambda_source"] == "beta_edge_no_market" for w in priced)
 
 
 def test_a_row_fitted_on_another_basis_is_never_served() -> None:

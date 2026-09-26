@@ -111,49 +111,6 @@ def test_the_shadow_arm_records_a_reading_and_decides_nothing(
     )
 
 
-def test_the_authority_arm_can_only_buy_less(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
-    )
-    # The fixture is a two-leg basket short a rung, which charter 143
-    # completes without reading the claim; the claim-driven path this clause
-    # deflates is pinned under its rollback.
-    set_charter_143(monkeypatch, "off")
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    def compile_at(mode: str, nats: float):
-        monkeypatch.setattr(
-            delta_v2_runtime, "CHARTER_124_ROBUST_CLAIM", mode
-        )
-        monkeypatch.setattr(
-            delta_v2_runtime, "ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS", nats
-        )
-        return compile_delta_v2_runtime_plan(
-            snapshot=_held_snapshot(),
-            basket_policy=_basket_policy(),
-            delta_policy=_delta_policy(),
-            fill_resolver=_fill_resolver,
-            capital_available_usdc=10.0,
-            minimum_profit_floor=-5.0,
-            resource_probe_ok=True,
-            book_equity_usdc=514.29,
-        )
 
-    served = compile_at("off", 0.02)
-    robust = compile_at("on", 0.02)
-
-    served_seat = served["basket_support_selection"]["seated"]
-    robust_seat = robust["basket_support_selection"]["seated"]
-    # The deflation reaches the belief the gate reads, and it lowers it.
-    assert (
-        robust_seat["effective_win_probability"]
-        < served_seat["effective_win_probability"]
-    )
-
-    # A ball wide enough to take every claim to zero can only end in a hold.
-    # "Buys less" is the whole predicted effect of this clause, so it is
-    # pinned rather than assumed.
-    refuses = compile_at("on", 5.0)
-    assert refuses["basket_target_activated"] is False
-    assert refuses["state"] == "HOLD"

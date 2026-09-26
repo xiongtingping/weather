@@ -775,8 +775,6 @@ def test_clause_45_market_center_outside_envelope_is_diagnostic_only(monkeypatch
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-
     clause = _clause(45)
     assert "退役" in clause
     assert "不再锁新钱" in clause
@@ -997,8 +995,6 @@ def test_clause_35_objective_owns_seat_quantity_price_and_dials(monkeypatch: pyt
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-
     clause = _clause(35)
     assert "模型选桶仅是参考与提名" in clause
     assert "五项全部唯一归本条目标函数" in clause
@@ -1434,62 +1430,10 @@ def test_clause_119_the_refusal_codes_dropped_a_prefix_that_lied() -> None:
         assert "stage_zero_execution_p1_strong_likelihood" not in source
 
 
-def test_clause_68_the_objective_reads_effective_edge() -> None:
-    clause = _clause(68)
-    assert "λ(a)·p" in clause
-    assert "缺腿" in clause
+# Clause 68 (the objective reads lambda(a) * p) was retired by charter 230:
+# the L4 posterior is the basket's one belief.
 
-    from bayes_basket_target import delta_v2_runtime as runtime
-    from bayes_basket_target.basket_kernel import delta_v2 as kernel
 
-    assert runtime.EFFECTIVE_EDGE_MODE == "on"
-    # (b) 2026-09-05: one table per stage.  P0-M's starts equal to P0's so
-    # nothing served moved on the day of the split; the store fits its
-    # scope on its own seats from here.
-    assert kernel.EFFECTIVE_EDGE_STAGES == frozenset({"P0"})
-    assert kernel.EFFECTIVE_EDGE_P0M_STAGES == frozenset({"P0-M"})
-    assert kernel.EFFECTIVE_EDGE_P0M_LAMBDA == kernel.EFFECTIVE_EDGE_LAMBDA
-    assert "各阶段各自一张 λ 表" in clause
-    # (c) 2026-09-05: the rolling fit promotes itself; the constants are
-    # the bootstrap before a scope's first activation, nothing more.
-    assert "机器算候选、机器晋升" in clause
-    # The original, unquoted sentence is gone; the phrase survives only
-    # inside the retirement note and (c)'s reference to it.
-    assert "钳 [0.05,1.50]），机器算候选、人晋升常量" not in clause
-    # Charter 96 (2026-09-06) split the top band at 0.95 and charter 104(四)
-    # (2026-09-07) split what was left of it at 1.00 and 1.10, because the
-    # open top band was heterogeneous in the one way that stops a band mean
-    # from working as a threshold: lambda tracks a almost one-for-one inside
-    # it, and lambda - a turns positive only under 1.00.  Every split carries
-    # the containing band's value into its halves (``_project_onto_partition``),
-    # so the bootstrap still describes the table charter 68 shipped -- it just
-    # names three more boundaries.
-    assert kernel.EFFECTIVE_EDGE_BAND_BOUNDS == (
-        0.50, 0.70, 0.80, 0.85, 0.95, 1.00, 1.10, float("inf")
-    )
-    assert kernel.EFFECTIVE_EDGE_LAMBDA == (
-        (0.50, 0.14),
-        (0.70, 0.60),
-        (0.80, 0.87),
-        (0.85, 0.87),
-        (0.95, 0.82),
-        # The three heirs of the old open top band, all carrying its value:
-        # a split moves no served number on the day it lands.
-        (1.00, 0.82),
-        (1.10, 0.82),
-        (float("inf"), 0.82),
-    )
-    # P1's own table is served capped at one: the exemption was "trust
-    # it", never "trust it more than it says".
-    assert all(lam <= 1.0 for _bound, lam in kernel.EFFECTIVE_EDGE_P1_LAMBDA)
-    assert kernel.effective_edge_lambda_for_stage("P0", 1.27) == 0.82
-    assert kernel.effective_edge_lambda_for_stage("P0-M", 0.3) == 0.14
-    # (a) 2026-09-03: window scope is the rule, bucket the research arm;
-    # a rung the reservation inversion cannot price still reaches the
-    # joint selector.
-    assert "单腿负边际不得否决整篮正边际" in clause
-    assert runtime.EFFECTIVE_EDGE_SCOPE == "window"
-    assert runtime.TAKER_LEG_VETO == "joint"
 
 
 def test_clause_69_the_retired_decline_clamp_is_gone_from_both_sides() -> None:
@@ -2928,7 +2872,6 @@ def test_clause_131_symmetric_day_seat_is_the_mean_bucket_plus_minus_one(monkeyp
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 
@@ -3078,160 +3021,10 @@ def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
     root = _Path(__file__).resolve().parents[1]
 
 
-def test_clause_87_the_gate_reads_effective_edge_and_the_ticket_waits_for_it(monkeypatch) -> None:
-    """Charter 87: the positive-EV gate reads the lifted claim times lambda(a).
+# Clause 87 (the gate reads lambda * claim) was retired by charter 230; the
+# gate reads the one belief, see tests/test_charter_230_l4_one_belief.py.
 
-    A window the book prices above what lambda says arrives is refused at the
-    gate, so it is offered the baseline only and charter 74's ticket is never
-    issued on it; the pre-ruling arm admits it as before.
-    """
-    from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
-    from bayes_basket_target.delta_v2_runtime import _support_windows
-    import bayes_basket_target.basket_kernel.delta_v2 as _k0
 
-    # Charter 81 was retired 2026-09-12 (identity lift by default).  The
-    # numbers this ruling shipped with were taken with the lift on, so the
-    # arm is switched on to reproduce them; the mechanism asserted here --
-    # the gate reads lambda(a) times the claim -- does not depend on it.
-    monkeypatch.setattr(
-        _k0, "CENTER_WINDOW_CLAIM_BANDS",
-        _k0._parse_claim_bands(_k0.CENTER_WINDOW_CLAIM_RETIRED_TABLE),
-    )
-    clause = _clause(87)
-    for needle in (
-        "λ(a)", "PM_CHARTER_87_GATE_LAMBDA", "门票只在闸后发",
-        "effective_win_probability", "gate_belief", "effective_edge_lambda",
-    ):
-        assert needle in clause, needle
-    # The old clauses carry the rewrite.
-    assert "第 87 条起" in _clause(58)
-    assert "第 87 条起" in _clause(68)
-    assert "第 87 条起" in _clause(74)
-    assert "第 87 条起" in _clause(81)
-    assert delta_v2_runtime.CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
-    assert delta_v2_runtime.EFFECTIVE_EDGE_MODE == "on"
-    assert delta_v2_runtime.EFFECTIVE_EDGE_SCOPE == "window"
-
-    labels = ["29°C", "30°C", "31°C", "32°C", "33°C", "34°C"]
-    probs = [0.02, 0.10, 0.50, 0.30, 0.06, 0.02]
-    # Charter 131: this shape reads RIGHT_SKEWED (mean 4.34 over mode 31°C,
-    # 0.34 buckets against a 0.31 gate), so the seat is {31,32,33} -- raw
-    # 0.86, lifted 0.9288 under the retired table -- and 33°C is asked at
-    # 0.27 and 0.08 so the seat prices at 0.90 (claim edge 0.0288, inside
-    # the thin band, refused by the 5% hurdle) while the two-rung {31,32}
-    # at 0.82 clears the pre-lambda test and falls to lambda -- the role
-    # the old fixture's {31,32,33} played.
-    asks = [0.02, 0.12, 0.55, 0.27, 0.08, 0.02]
-    rows = [
-        {
-            "bucket": b, "ordinal": i + 2, "probability": p,
-            "bid_price": max(0.0, a - 0.01),
-            "bid_levels": [{"price": max(0.001, a - 0.01), "shares": 50.0}],
-            "ask_levels": [{"price": a, "shares": 100.0}],
-            "price_tick_size": 0.01,
-            "maker_queue_ahead_shares": 0.0, "maker_queue_known": True,
-        }
-        for i, (b, p, a) in enumerate(zip(labels, probs, asks))
-    ]
-    snapshot = TargetBasketSnapshot.from_mapping({
-        "schema": "target_basket_snapshot_v6", "snapshot_id": "c87", "sequence": 1,
-        "observed_at": "2026-09-06T00:00:00Z", "market_id": "m", "station_id": "X",
-        "event_date": "2026-09-07", "quote_version": "q",
-        "quote_observed_at": "2026-09-06T00:00:00Z", "quote_source": "OFFICIAL_CLOB_WS",
-        "inventory_version": "i", "order_state_version": "o",
-        "evidence": {"probability_stage": "P0", "posterior_version": "p", "posterior_sha256": "a" * 64},
-        "buckets": rows, "checkpoint_changed": True, "quote_changed": True,
-        "fill_changed": True, "time_gate_changed": True, "evidence_fresh": True,
-        "contract_matches": True, "order_state_known": True, "risk_inputs_complete": True,
-        "time_left_minutes": 600.0,
-    })
-    seat_key = ("31°C", "32°C", "33°C")
-    kwargs = dict(
-        snapshot=snapshot, desired=set(seat_key),
-        probabilities=dict(zip(labels, probs)), fee_rate=0.0,
-        **dict(zip(("minimum_support_buckets", "maximum_support_buckets"),
-                   delta_v2_runtime.support_width_bounds_v1())),
-        center_bucket="31°C", probability_stage="P0",
-    )
-    windows, audit = _support_windows(**kwargs)
-    seat = {tuple(w["buckets"]): w for w in windows}[seat_key]
-    # The lifted claim, 0.86 x 1.08 = 0.9288, clears the 0.90 offer: the
-    # old gate admitted this window.  Charter 68's top band (a = 0.969)
-    # says 0.82 of the claim arrives, so the agreement axis reads 0.762.
-    assert seat["win_probability"] == pytest.approx(0.9288)
-    assert seat["all_in_price"] == pytest.approx(0.90)
-    assert seat["win_probability"] - seat["all_in_price"] > 0
-    assert seat["effective_edge_agreement"] == pytest.approx(0.90 / 0.9288)
-    assert audit["gate_reads_effective_edge"] == "on"
-    # Charter 97 (2026-09-06) changes what happens next, and this window is
-    # exactly the case it changes: its claim edge is 0.972 - 0.95 = 0.022,
-    # inside the thin band the thermometer measured at 1.036 realisation, so
-    # the second axis serves one and the window is admitted after all.  The
-    # charter-87 mechanism is unchanged and is asserted on the thick-edge
-    # window below; what moved is which windows the mechanism refuses.
-    assert seat["effective_edge_lambda"] == pytest.approx(1.0)
-    assert seat["effective_edge_lambda_source"] == "claim_edge_thin_band"
-    # Charter 130 (2026-09-12): the gate's pass mark is 5% of the all-in
-    # cost, not zero.  0.972 on 0.95 is +2.3%, so the thermometer's lambda
-    # of 1.0 is read and recorded and the seat is still refused -- at the
-    # gate now, where it used to be refused at execution three cycles
-    # running.  The charter-87 mechanism is unchanged; only the pass mark
-    # moved.
-    assert seat["edge"] > 0
-    assert seat["admissible"] is False
-    with_thermometer = {tuple(w["buckets"]): w for w in windows}
-
-    # Charter 87 on a window the thin band does not reach: turn the second
-    # axis off and the same seat is refused on 0.82, which is the reading the
-    # ruling shipped with.
-    import bayes_basket_target.basket_kernel.delta_v2 as _k
-    _saved = _k.CLAIM_EDGE_THERMOMETER_MODE
-    _k.CLAIM_EDGE_THERMOMETER_MODE = "off"
-    try:
-        windows_off, audit_off = _support_windows(**kwargs)
-    finally:
-        _k.CLAIM_EDGE_THERMOMETER_MODE = _saved
-    seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
-    assert seat_off["effective_edge_lambda"] == pytest.approx(0.82)
-    assert seat_off["effective_win_probability"] == pytest.approx(0.9288 * 0.82)
-    assert seat_off["edge"] == pytest.approx(0.9288 * 0.82 - 0.90)
-    assert seat_off["admissible"] is False
-    assert audit_off["effective_edge_gate_refused_window_count"] >= 1
-    # Nothing seats under the charter-87 arm: the solver is offered the
-    # baseline only, so no Kelly seat and no ticket.
-    assert not any(w["admissible"] for w in windows_off)
-    windows, audit = windows_off, audit_off
-    seat = seat_off
-    assert with_thermometer[seat_key]["admissible"] is False  # charter 130
-
-    # The pre-ruling arm: the same window, admitted on the lifted claim.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    windows_off, audit_off = _support_windows(**kwargs)
-    seat_off = {tuple(w["buckets"]): w for w in windows_off}[seat_key]
-    assert seat_off["effective_edge_lambda"] is None
-    assert seat_off["effective_win_probability"] == pytest.approx(0.9288)
-    assert seat_off["edge"] == pytest.approx(0.9288 - 0.90)
-    # Refused by the hurdle, not by lambda: nothing for charter 87 to count.
-    assert seat_off["admissible"] is False
-    assert audit_off["effective_edge_gate_refused_window_count"] == 0
-
-    # The served tables travel with the gate: a table that trusts the top
-    # band in full admits the window again, through the same lookup the
-    # solver reads.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "on")
-    windows_tbl, _ = _support_windows(
-        **kwargs,
-        effective_edge_tables={
-            "P0": ((0.5, 0.14), (0.7, 0.60), (0.85, 0.87), (float("inf"), 1.0)),
-        },
-    )
-    seat_tbl = {tuple(w["buckets"]): w for w in windows_tbl}[seat_key]
-    assert seat_tbl["effective_edge_lambda"] == pytest.approx(1.0)
-    assert seat_tbl["admissible"] is False  # +2.3% never clears charter 130
-
-    # The ledger reads the same switch, hands the gate the same served
-    # tables, and hashes the belief the gate reads.
-    root = Path(__file__).resolve().parents[1]
 
 
 def test_clause_92_every_buy_reads_the_deflated_belief(monkeypatch) -> None:

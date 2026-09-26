@@ -105,7 +105,7 @@ def test_the_compiled_completion_candidate_is_the_gap_at_the_limit(
         "solve_reservation_price_v2",
         lambda **kwargs: {**solve(**kwargs), "reservation_price": None},
     )
-    snapshot = fixture._held_snapshot()
+    snapshot = fixture._held_snapshot(ask_31=0.55)  # charter 230: whole window refused
     rows = tuple(
         replace(
             row,
@@ -149,7 +149,7 @@ def _stepped_compile(monkeypatch: pytest.MonkeyPatch, levels):
     monkeypatch.setattr(
         delta_v2_runtime, "CONSOLIDATION_TILT_SIGNALS", ("stable", "sharp")
     )
-    snapshot = fixture._held_snapshot()
+    snapshot = fixture._held_snapshot(ask_31=0.55)  # charter 230: whole window refused
     rows = tuple(
         replace(
             row,

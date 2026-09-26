@@ -1546,7 +1546,7 @@ STORED_BLOB_PATHS: tuple[tuple[str, ...], ...] = (
     ("plan", "basket_support_selection", "beta_served"),
     ("plan", "basket_support_selection", "posterior_tables"),
     ("plan", "basket_support_selection", "valuation_tables"),
-    ("plan", "basket_support_selection", "effective_edge_tables"),
+    ("plan", "basket_support_selection", "served_tables"),
     ("boundary",),
     ("optimizer",),
 )

@@ -230,10 +230,10 @@ def test_persist_load_round_trip_carries_the_band_rows() -> None:
 
 
 def test_the_served_tables_mapping_carries_the_lane_under_its_own_key() -> None:
-    from bayes_basket_target.effective_edge_store import load_effective_edge_tables
+    from bayes_basket_target.served_tables import load_served_tables
 
     conn = sqlite3.connect(":memory:")
-    tables = load_effective_edge_tables(conn)
+    tables = load_served_tables(conn)
     assert kernel.POSTERIOR_TABLE_KEY in tables
     assert set(tables[kernel.POSTERIOR_TABLE_KEY]) == {"P0", "P0-M", "P1"}
     assert all(v is None for v in tables[kernel.POSTERIOR_TABLE_KEY].values())
@@ -301,7 +301,7 @@ def _windows(tables, **overrides):
         probabilities=probabilities, fee_rate=0.0,
         maximum_support_buckets=4, minimum_support_buckets=3,
         center_bucket="31°C", probability_stage="P0",
-        effective_edge_tables=tables,
+        served_tables=tables,
     )
     kwargs.update(overrides)
     return _support_windows(**kwargs)

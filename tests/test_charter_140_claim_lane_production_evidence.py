@@ -25,7 +25,6 @@ for path in (ROOT, ROOT / "scripts"):
 from bayes_basket_target import atomic_ledger  # noqa: E402
 from bayes_basket_target import beta_edge_store  # noqa: E402
 from bayes_basket_target import candidate_window_evidence as E  # noqa: E402
-from bayes_basket_target import effective_edge_store  # noqa: E402
 from bayes_basket_target.label_knowability import knowable_labels  # noqa: E402
 
 DAY = "2026-09-10"
@@ -191,13 +190,10 @@ def test_the_view_scores_sampled_rows_against_the_standing_label():
     assert rows == [('["29"]', 0, "31"), ('["30", "31"]', 1, "31")]
 
 
-def test_both_fits_read_the_production_view():
+def test_the_beta_fit_reads_the_production_view():
+    """Charter 68's lambda fit read the same view until charter 230 retired it."""
+
     conn = _scored_book()
-    assert effective_edge_store.CANDIDATE_SOURCE == E.SCORED_VIEW
-    population = effective_edge_store._candidate_population(
-        conn, ("P0",), "2026-09-01",
-    )
-    assert population["served_row_count"] == 2
     rows, meta = beta_edge_store.population(
         conn, stage_scope="P0", anchored=False, as_of=DAY,
         cutoff_utc="2026-09-20T00:00:00Z",

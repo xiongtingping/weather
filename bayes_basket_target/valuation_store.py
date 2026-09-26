@@ -109,8 +109,9 @@ _JOURNAL_INDEX = (
     "CREATE INDEX IF NOT EXISTS calibration_valuation_journal_idx"
     " ON calibration_valuation_fit_journal(stage_scope, fitted_at_utc, fit_id)"
 )
-# The walk-forward verdict a promotion reads.  Written by
-# scripts/valuation_four_arm.py; one active row per stage.
+# The walk-forward verdict the retired ``on`` gate read (charter 230 retired
+# the gate and its writer, scripts/valuation_four_arm.py); the rows stay as
+# history and the dashboard shows the last one.  One active row per stage.
 _VERDICT_DDL = """
 CREATE TABLE IF NOT EXISTS calibration_valuation_verdict (
   verdict_sha256 TEXT PRIMARY KEY,

@@ -53,12 +53,9 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_reliability refit"
 # person can move does not follow the layer underneath it, and that layer
 # refits nightly, right above this line.
 #
-# It rides HERE, between the band refit and the lambda refit, because that
-# is the order the dependency runs in: the band table moves every claim, the
-# off-centre correction is measured on claims, and lambda is keyed on
-# ``price / claim``.  Fitting it before the band table would measure the
-# previous axis; fitting it after lambda would leave lambda keyed on a claim
-# the correction has since moved.
+# It rides HERE, after the band refit, because the band table moves every
+# claim and the off-centre correction is measured on claims.  (Charter 68's
+# lambda refit that used to follow it retired with charter 230.)
 #
 # Never fatal: a stage with no activated band table, or with too few
 # off-centre windows on the current axis, keeps the value it serves and says
@@ -136,35 +133,8 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] serving arithmetic watchdog"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] band_shadow refit (shadow, unserved)"
 "$PY" scripts/refit_band_shadow.py --commit --summary || RC=$?
 
-# Charter 68's lambda table, refitted on the rolling settled window.  The
-# rule shrinks a claim by the fraction history says arrives at its market
-# agreement, and a fitted constant goes stale the moment the selection
-# distribution moves -- which charter 68 itself moves.  A band short of
-# evidence keeps its incumbent value rather than being refitted on whatever
-# few seats landed there, so committing cannot serve a number the admission
-# rule did not clear.
-#
-# Exit 3 means a band has gone blind: no seats at all inside the window, so
-# the number governing it is frozen and nothing on the book can refresh it.
-# That is a human's call (deliberately sample the band, or accept the
-# freeze), not a reason to fail the sweep the other refits ride on.
-# Charter 140: the fit reads production's own candidate windows, recorded
-# forward on the band table that served each decision; a row keyed on
-# another axis is excluded, not restated.  (The replay lane that re-derived
-# the paper ledger's windows onto today's band table retired with that
-# ledger on 2026-09-25 -- on production evidence the fit never read it.)
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] effective edge lambda refit"
-"$PY" scripts/refit_effective_edge_lambda.py --commit || {
-  EE_RC=$?
-  if [ "$EE_RC" = "3" ]; then
-    echo "effective-edge refit: a band has no observations left" >&2
-  else
-    RC=$EE_RC
-  fi
-}
-
 # Charter 128 (2026-09-12): the beta lane -- one slope per stage on the
-# same candidate-window population lambda reads, walk-forward as-of today,
+# production candidate-window population, walk-forward as-of today,
 # by-day bootstrap lower bound.  Shadow: it is recorded on every decision
 # and gates nothing until ruled on.  Never fatal.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] beta edge refit"

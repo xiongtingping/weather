@@ -58,7 +58,6 @@ def test_the_confirmed_high_at_two_cents_is_refused_like_any_tail(monkeypatch) -
     """ZGSZ 2026-09-06 at 14:50 local: the market asks 2.3 cents for 27°C
     against a 61.5% belief.  Charter 91 admitted it; charter 131 does not."""
 
-    monkeypatch.setattr(P, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     asks = {"27": 0.023, "28": 0.283, "29": 0.61, "30": 0.18, "31": 0.04, "32": 0.023, "33": 0.002}
     probabilities = {"27": 0.615, "28": 0.002, "29": 0.014, "30": 0.109, "31": 0.180, "32": 0.073, "33": 0.007}
     snapshot = _snapshot(asks, probabilities)

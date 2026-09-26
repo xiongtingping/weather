@@ -775,7 +775,6 @@ def test_production_io_compiles_read_only_candidate_and_rejects_hash_drift(monke
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         _seed_delta_v2(conn)
@@ -824,7 +823,6 @@ def test_stage_zero_anchor_binds_complete_stage_cycles(monkeypatch: pytest.Monke
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         compiled = _stage_zero_compiled_cycle(conn)
 
@@ -868,7 +866,6 @@ def test_stage_zero_anchor_fails_closed_on_stage_clock_and_cycle_drift(monkeypat
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         compiled = _stage_zero_compiled_cycle(conn)
 
@@ -924,7 +921,6 @@ def test_stage_zero_anchor_rejects_p1_without_formal_strong_likelihood(
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         p1_cycle = _stage_zero_cycle_for_stage(conn, stage="P1")
         lineage = p1_cycle["probability_envelope"]["lineage"]
@@ -950,7 +946,6 @@ def test_resident_stage_zero_commits_only_no_execution_target_rows(
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         conn.row_factory = sqlite3.Row
         candidate = _stage_zero_cycle_for_stage(conn, stage=stage)
@@ -1046,8 +1041,6 @@ def test_stage_zero_p0_and_p0m_flush_as_distinct_exact_stage_oos_records(
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-
     with sqlite3.connect(":memory:") as conn:
         conn.row_factory = sqlite3.Row
         p0_candidate = _stage_zero_cycle_for_stage(conn, stage="P0")
@@ -1369,7 +1362,6 @@ def test_production_io_resolves_delta_v2_policy_and_fill_from_ssot(monkeypatch: 
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         _seed_delta_v2(conn)
@@ -1402,7 +1394,6 @@ def test_production_io_missing_delta_v2_authority_fails_closed(monkeypatch: pyte
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, cash_promoted=False)
         plan = compile_production_cycle_from_ssot(

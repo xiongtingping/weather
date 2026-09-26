@@ -65,7 +65,6 @@ def _snapshot(asks: dict[str, float | None], probabilities: dict[str, float]):
 
 
 def _audit(asks, probabilities, monkeypatch):
-    monkeypatch.setattr(P, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     _windows, audit = _support_windows(
         snapshot=_snapshot(asks, probabilities), desired=set(HELD),
         probabilities=probabilities, fee_rate=0.0,

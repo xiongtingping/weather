@@ -2,7 +2,7 @@
 
 Everything here is a function of its arguments -- no database, no clock --
 because the runtime that prices a snapshot must not import a store (the rule
-``BUCKET_TABLE_KEY`` and ``BETA_TABLE_KEY`` already live under).  The store
+``BETA_TABLE_KEY`` already lives under).  The store
 (``bayes_basket_target.valuation_store``) fits, persists and loads; this module
 is what both the fit and the enumeration compute with, so the two cannot hold
 two copies of the market reference or the pool.
@@ -33,7 +33,9 @@ LCB_QUANTILE = 0.05
 VALUATION_MODE = (
     os.environ.get("PM_VALUATION_MODE", "").strip().lower() or "shadow"
 )
-if VALUATION_MODE not in {"off", "shadow", "on"}:
+# Charter 230: the L4 posterior is the basket's one belief; the pooled
+# valuation is a shadow reading only (its ``on`` gate is retired).
+if VALUATION_MODE not in {"off", "shadow"}:
     raise RuntimeError(f"unknown valuation mode: {VALUATION_MODE}")
 
 # Market reference completeness.  A tail bucket quoted only on the ask at a

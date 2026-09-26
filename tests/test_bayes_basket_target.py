@@ -1391,7 +1391,6 @@ def test_target_compiler_direction_ignores_quote_anchor(monkeypatch: pytest.Monk
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     envelope = ProbabilityEnvelope.from_mapping({
@@ -1486,7 +1485,6 @@ def test_unobserved_cash_phase_preserves_preselection_but_blocks_execution(monke
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     observed_only_policy = BasketCashPhasePolicyArtifact.create(
         policy_version="production-no-live-missing-tail-v1",
@@ -1682,7 +1680,6 @@ def test_station_reserve_does_not_rewrite_probability_or_bypass_v2(monkeypatch: 
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     reserve = next(item for item in artifacts if item.family == "reserve")
@@ -1746,7 +1743,6 @@ def test_full_bridge_reaches_target_plan_without_orders(monkeypatch: pytest.Monk
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     market_snapshot = {
@@ -1865,7 +1861,6 @@ def test_model_disagreement_expands_candidate_boundary_while_extrema_remain_diag
     # charter 68's lambda(a) says most of the claim never arrives, so the
     # gate now refuses it; the property under test lives past the gate, so it runs the pre-87 arm.
     # The gate itself is pinned in test_clause_87_*.
-    monkeypatch.setattr(delta_v2_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     prior, artifacts, activations = _policy_inputs()
     cash_policy, cash_input = _cash_phase_inputs()
     base = _envelope()

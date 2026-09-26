@@ -24,8 +24,8 @@ loaded; the scope falls back to the kernel bootstrap and says so.
 
 Not partitioned on the band table's SHA.  Band tables are refitted nightly
 and the sha moves whenever a factor shifts in its third decimal; keying on
-it would end the fit rather than purify it.  Same reasoning, same words, as
-``effective_edge_store._fit_band_sha``.
+it would end the fit rather than purify it.  (The same reasoning charter 68's
+lambda store used, retired with charter 230.)
 """
 from __future__ import annotations
 
@@ -640,9 +640,7 @@ def load_off_centre_tables(
     """One table per served stage, as the compile reads them.
 
     ``None`` for a stage with nothing activated on the axis it serves today,
-    which the kernel reads as "use the bootstrap".  Same contract, same
-    shape and the same bootstrap-on-absence rule as
-    ``effective_edge_store.load_effective_edge_tables``.
+    which the kernel reads as "use the bootstrap".
     """
 
     out: dict[str, tuple[tuple[float, float], ...] | None] = {}

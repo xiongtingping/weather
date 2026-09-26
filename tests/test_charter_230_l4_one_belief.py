@@ -163,8 +163,8 @@ def test_on_values_every_window_on_the_admitted_posterior(on) -> None:
         mass = kernel.window_mass(belief, w["buckets"])
         assert w["win_probability"] == pytest.approx(mass)
         assert w["effective_win_probability"] == pytest.approx(mass)
-        # One belief: lambda is not read.
-        assert w["effective_edge_lambda"] is None
+        # One belief: charter 68's lambda is gone from the row as well.
+        assert "effective_edge_lambda" not in w
         if w["all_in_price"] is None:
             continue
         priced += 1
@@ -210,7 +210,7 @@ def test_on_the_solver_is_handed_the_belief(on, monkeypatch) -> None:
     snapshot, probabilities = _snapshot()
     l4 = R.posterior_belief_v1(
         snapshot=snapshot, probabilities=probabilities, probability_stage="P0",
-        hours_to_cutoff=40.0, effective_edge_tables=_served(admitted=True),
+        hours_to_cutoff=40.0, served_tables=_served(admitted=True),
     )
     assert l4["belief_source"] == "l4_posterior"
     assert l4["belief"] is not None and l4["belief"] != probabilities
@@ -218,17 +218,20 @@ def test_on_the_solver_is_handed_the_belief(on, monkeypatch) -> None:
     assert len(l4["belief_draws"]) == 21
 
 
-def test_a_second_belief_is_refused_at_import() -> None:
+def test_the_retired_second_beliefs_have_no_on_arm() -> None:
+    """E12: beta, the pooled valuation, the robust claim and the convergence
+    lift are shadow readings only; asking any of them for ``on`` fails at
+    import rather than silently rewriting the belief."""
+
     code = "import bayes_basket_target.delta_v2_runtime"
     for flag in ("PM_BETA_EDGE", "PM_VALUATION_MODE", "PM_CHARTER_124_ROBUST_CLAIM", "PM_CONVERGENCE_CLAIM"):
         result = subprocess.run(
             [sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True,
-            env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT),
-                 "PM_POSTERIOR_LANE": "on", flag: "on"},
+            env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT), flag: "on"},
             timeout=120,
         )
         assert result.returncode != 0, flag
-        assert "charter 230" in result.stderr, (flag, result.stderr[-400:])
+        assert "mode" in result.stderr and ": on" in result.stderr, (flag, result.stderr[-400:])
 
 
 def test_production_ships_the_lane_on() -> None:
@@ -283,7 +286,7 @@ def test_on_the_production_chain_opens_only_on_an_admitted_posterior(monkeypatch
     monkeypatch.setattr(R, "POSTERIOR_MODE", "on")
 
     compiled, *_ = chain._p0_opening_compile(
-        effective_edge_tables=_identity_posterior(admitted=True),
+        served_tables=_identity_posterior(admitted=True),
     )
     assert compiled["status"] == "ready_no_live"
     assert "l4_posterior" in set(_find_all(compiled, "belief_source"))
@@ -295,7 +298,7 @@ def test_on_the_production_chain_opens_only_on_an_admitted_posterior(monkeypatch
     assert opened
 
     held, *_ = chain._p0_opening_compile(
-        effective_edge_tables=_identity_posterior(admitted=False),
+        served_tables=_identity_posterior(admitted=False),
     )
     assert "l4_market_prior" in set(_find_all(held, "belief_source"))
     assert not [

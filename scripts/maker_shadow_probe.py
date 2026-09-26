@@ -42,13 +42,7 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
     HOSTED_SWEEP_CONTINUE_MARKER,
     writer_lease_seconds,
 )
-from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
-    effective_edge_lambda_from_tables,
-)
 from bayes_basket_target.contracts import ContractError, content_sha256  # noqa: E402
-from bayes_basket_target.effective_edge_store import (  # noqa: E402
-    load_effective_edge_tables,
-)
 from bayes_basket_target.probability_bridge import (  # noqa: E402
     history_envelope_payload,
 )
@@ -93,10 +87,6 @@ PRICE_RULES = (
 # control -- the difference only appears on the legs production would have
 # bought at a price its own gate can barely justify.
 CLAIM_CAP_MARGIN = {"claim_cap": 0.0, "claim_cap@0.8": 0.2}
-# Which stage's lambda table prices the ceiling.  P0 is the opening stage and
-# the one this lane has always been about; a shadow order carries no stage of
-# its own, so pinning it is a statement rather than an inference.
-CLAIM_CAP_STAGE = "P0"
 # The arm charter 108 asked for.  Every rule above rests at the price it was
 # written at; charter 94(六) does not -- production cancels a rung that has
 # fallen out of the bid-anchored ladder and re-mints it at the current bid,
@@ -336,7 +326,6 @@ def _limit_price(
     quote: dict[str, Any],
     *,
     probability: float | None = None,
-    lambda_tables: Any = None,
 ) -> float | None:
     rule = BASE_RULE.get(rule, rule)
     bid, ask, tick = quote["bid"], quote["ask"], quote["tick"]
@@ -349,15 +338,9 @@ def _limit_price(
         rung = min(bid + tick, ask)
         if rung <= 0.0:
             return None
-        # ``a`` is read at the rung: what the market's agreement would be if
-        # this leg were posted the way production posts it.  Lambda is a
-        # step function of a, so reading it at the price we would otherwise
-        # pay is the honest lookup -- and it makes the ceiling a property of
-        # this book rather than of the price we are about to choose.
-        lam = float(effective_edge_lambda_from_tables(
-            CLAIM_CAP_STAGE, rung / float(probability), lambda_tables
-        ))
-        ceiling = float(probability) * lam * (1.0 - CLAIM_CAP_MARGIN[rule])
+        # The ceiling is the claim itself less the margin: charter 68's
+        # lambda that used to deflate it retired with charter 230.
+        ceiling = float(probability) * (1.0 - CLAIM_CAP_MARGIN[rule])
         price = min(rung, _floor_to_tick(ceiling, tick))
         if price <= 0.0:
             return None
@@ -494,11 +477,6 @@ def place(
     if not books:
         return {"scopes_with_fresh_book": 0}
     now = _now()
-    # One load per round: the served tables, exactly as the gate reads them.
-    try:
-        lambda_tables = load_effective_edge_tables(conn)
-    except Exception:  # noqa: BLE001 -- no store, no ceiling, other arms run
-        lambda_tables = None
     widest = _stamp(now - timedelta(minutes=PLACEMENT_INTERVAL_MINUTES))
     last_placed: dict[tuple[str, str], str] = {}
     # ``placed_at_utc`` leads no index and the table is 4.9M rows, so this
@@ -563,7 +541,6 @@ def place(
                 price = _limit_price(
                     rule, quote,
                     probability=float(probabilities[bucket]),
-                    lambda_tables=lambda_tables,
                 )
                 if price is None or price < MINIMUM_LIMIT_PRICE:
                     counts["leg_below_floor_or_one_sided"] += 1

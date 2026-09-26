@@ -41,12 +41,16 @@ pytestmark = pytest.mark.skipif(
 
 
 def _compile(**overrides):
+    # 6.0, not the 10.0 the fixture was built on: charter 230 retired the
+    # lambda that deflated this P0 claim, and on the undeflated claim 10.0
+    # sizes past the venue's lot (no rung is lifted, so the clause has
+    # nothing to read).  6.0 is the largest round stake that still lifts 32.
     return compile_delta_v2_runtime_plan(
         snapshot=_held_snapshot(),
         basket_policy=_basket_policy(),
         delta_policy=overrides.pop("delta_policy", None) or _delta_policy(),
         fill_resolver=_fill_resolver,
-        capital_available_usdc=10.0,
+        capital_available_usdc=6.0,
         minimum_profit_floor=-5.0,
         resource_probe_ok=True,
         book_equity_usdc=514.29,

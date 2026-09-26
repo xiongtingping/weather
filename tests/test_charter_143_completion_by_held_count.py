@@ -508,7 +508,9 @@ def test_a_kelly_top_up_the_chain_law_refuses_does_not_take_the_completion_with_
     asked again without it, and the completion is seated."""
     monkeypatch.setattr(runtime, "CHARTER_66A_CHAIN_PAR", "on")
     monkeypatch.setattr(runtime, "_chain_blended_cost", lambda **kw: 1.5)
-    result = zgsz._compile(zgsz._snapshot(0.24))
+    # The fixture's own 0.45 on 31: the whole window keeps an edge, so the
+    # Kelly row exists to take the seat first (charter 230).
+    result = zgsz._compile(zgsz._snapshot(0.24, ask_31=0.45))
     solution = result["target_solution"]
     assert solution["winner_candidate_origin"] == kernel.LADDER_BALANCE_CANDIDATE_ORIGIN
     assert solution["winner_completion_rule"] == RULE
@@ -517,7 +519,7 @@ def test_a_kelly_top_up_the_chain_law_refuses_does_not_take_the_completion_with_
     assert len(excluded) == 1 and excluded[0].startswith("kelly-")
     # Without the retry the same window is refused outright.
     set_charter_143(monkeypatch, "off")
-    held = zgsz._compile(zgsz._snapshot(0.24))
+    held = zgsz._compile(zgsz._snapshot(0.24, ask_31=0.45))
     assert held["basket_target_activated"] is False
 
 

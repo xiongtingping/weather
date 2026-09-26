@@ -185,7 +185,7 @@ def _seat(asks, *, tables):
         probabilities=probabilities, fee_rate=0.0,
         maximum_support_buckets=3, minimum_support_buckets=2,
         center_bucket="31°C", probability_stage="P0",
-        effective_edge_tables=tables,
+        served_tables=tables,
     )
     # Charter 131: this fixture reads RIGHT_SKEWED (mean 4.58 against mode
     # 31°C, 0.58 buckets over a 0.43 gate), so the mean bucket is 32°C and
@@ -232,43 +232,8 @@ def test_the_clause_names_what_the_code_does() -> None:
         assert "第 130 条改写" in old, n
 
 
-def test_the_head_is_chosen_on_the_effective_belief(monkeypatch) -> None:
-    """Charter 64 as written ("折后"), code caught up 2026-09-12.
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    A wider window can claim more and, deflated by its own agreement band,
-    believe less.  The seat goes to what the gate, the stake and the ROI
-    target believe -- the same lambda(a) * p -- not to the raw claim.
-    """
 
-    # Agreement below 0.70 is trusted in full; at or above it, 0.80 arrives.
-    tables = {"P0": ((0.70, 1.0), (float("inf"), 0.80))}
-    # Charter 131 shapes on this fixture: {32, 33} claims 0.42 at 0.29
-    # (a=0.69 -> lambda 1.0 -> 0.42); {32, 33, 34} claims 0.50 at 0.36
-    # (a=0.72 -> lambda 0.80 -> 0.40).  Both clear the 5% hurdle.
-    asks = [0.03, 0.12, 0.30, 0.20, 0.09, 0.07]
-    snapshot, probabilities = _snapshot(asks)
-    windows, audit = R._support_windows(
-        snapshot=snapshot, desired={"31°C", "32°C", "33°C"},
-        probabilities=probabilities, fee_rate=0.0,
-        maximum_support_buckets=3, minimum_support_buckets=2,
-        center_bucket="31°C", probability_stage="P0",
-        effective_edge_tables=tables,
-    )
-    admissible = [w for w in windows if w["admissible"] and w["all_in_price"] is not None]
-    listing = [
-        (w["buckets"], round(w["win_probability"], 3), round(w["effective_win_probability"], 3), w["all_in_price"])
-        for w in windows
-    ]
-    assert len(admissible) >= 2, listing
-    by_claim = max(admissible, key=lambda w: float(w["win_probability"]))
-    by_effective = max(admissible, key=lambda w: float(w["effective_win_probability"]))
-    assert tuple(by_claim["buckets"]) == ("32°C", "33°C", "34°C"), listing
-    assert tuple(by_effective["buckets"]) == ("32°C", "33°C"), listing
-    # Charter 131 (evening): the head is the largest EFFECTIVE EDGE --
-    # {32,33} at 0.42 - 0.29 = 0.13 against {32,33,34} at 0.40 - 0.36 =
-    # 0.04 -- which here agrees with effective mass and not with the claim.
-    by_edge = max(admissible, key=lambda w: float(w["edge"]))
-    assert tuple(by_edge["buckets"]) == ("32°C", "33°C"), listing
-    assert tuple(windows[0]["buckets"]) == ("32°C", "33°C"), listing
 
 

@@ -45,7 +45,8 @@ def _compile(monkeypatch: pytest.MonkeyPatch, *, stage: str) -> dict:
         "solve_reservation_price_v2",
         lambda **kwargs: {**solve(**kwargs), "reservation_price": None},
     )
-    snapshot = fixture._held_snapshot()
+    # Charter 230: the whole window refused, the increment admitted.
+    snapshot = fixture._held_snapshot(ask_31=0.60)
     snapshot = replace(
         snapshot, evidence=replace(snapshot.evidence, probability_stage=stage)
     )

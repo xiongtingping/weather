@@ -84,33 +84,14 @@ def test_no_fit_and_an_accumulating_fit_record_nothing():
         assert all(w["valuation_mass"] is None for w in windows)
 
 
-def test_on_holds_every_window_without_an_admitted_verdict(monkeypatch):
-    import bayes_basket_target.delta_v2_runtime as R
-
-    monkeypatch.setattr(R, "VALUATION_MODE", "on")
-    for tables in (None, _served("hold"), _served(None), _served("admitted", accumulating=True)):
-        windows, audit = _windows(tables)
-        assert not any(w["admissible"] for w in windows)
-        assert audit["valuation_mode"] == "on"
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
 
-def test_on_with_an_admitted_verdict_gates_on_the_lower_bound(monkeypatch):
-    import bayes_basket_target.delta_v2_runtime as R
 
-    monkeypatch.setattr(R, "VALUATION_MODE", "on")
-    # The weather vector alone (beta 1): the pool is the claim, so the lane
-    # admits what clears the hurdle on its lower bound and nothing else.
-    windows, audit = _windows(_served("admitted", beta=1.0))
-    assert audit["valuation_state"] == "admitted"
-    for w in windows:
-        if w["all_in_price"] is None:
-            continue
-        assert w["effective_edge_lambda_source"] == "valuation_pool"
-        assert w["effective_win_probability"] == pytest.approx(
-            min(1 - 1e-9, w["valuation_mass"]), rel=1e-6,
-        )
-        if w["admissible"]:
-            assert w["valuation_admissible"] is True
+
+# Charter 230 retired the lambda / second-belief arm this test pinned.
+
+
 
 
 def test_on_with_a_market_only_pool_is_the_market_and_gates_on_its_bound(monkeypatch):

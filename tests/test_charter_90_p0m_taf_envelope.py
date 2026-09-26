@@ -82,7 +82,6 @@ P0_BASKET = {"29": 5.0, "30": 5.0, "31": 5.0}
 def _plain_edge_gate(monkeypatch):
     # These tests are about which windows may seat, not about the charter-87
     # lambda gate; the fixture book is cheap enough for the plain edge gate.
-    monkeypatch.setattr(P, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
     monkeypatch.setattr(P, "P0M_TAF_MODE", "tx_envelope")
     # Charter 229 (2026-09-26): the basket buys in P0 only, so a P0-M entry
     # is bought only under the three-stage research arm this file pins; the

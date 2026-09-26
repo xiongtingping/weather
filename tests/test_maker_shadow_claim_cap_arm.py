@@ -12,6 +12,9 @@ _share`` is 0.0 -- so a leg priced a thousandth under its ceiling passes,
 and lambda is fitted on tens to hundreds of seats per band, which puts a
 thousandth well inside its error bar.  These arms measure what happens if
 the ceiling prices the order instead of auditing it.
+
+Charter 230 retired charter 68's lambda: the ceiling is the claim itself
+(less the margin arm's fifth).
 """
 from __future__ import annotations
 
@@ -29,18 +32,12 @@ _spec = importlib.util.spec_from_file_location(
 probe = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(probe)
 
-# One band each side of 1.0 on the shipped P0 shape, so the lookup is
-# exercised rather than assumed.  Values are the table's own form: (upper
-# bound, lambda), read as "the first bound the agreement falls below".
-TABLES = {"P0": ((0.7, 0.40), (1.0, 1.00), (float("inf"), 1.20))}
 QUOTE = {"bid": 0.30, "ask": 0.40, "tick": 0.01,
          "queue_ahead": None, "queue_known": False}
 
 
 def _price(rule, probability, quote=None):
-    return probe._limit_price(
-        rule, quote or QUOTE, probability=probability, lambda_tables=TABLES,
-    )
+    return probe._limit_price(rule, quote or QUOTE, probability=probability)
 
 
 def test_both_arms_are_declared_beside_the_rules_they_answer() -> None:
@@ -48,16 +45,13 @@ def test_both_arms_are_declared_beside_the_rules_they_answer() -> None:
     assert "claim_cap@0.8" in probe.PRICE_RULES
     assert "bid+1t" in probe.PRICE_RULES, "the ladder twin stays"
     assert probe.CLAIM_CAP_MARGIN == {"claim_cap": 0.0, "claim_cap@0.8": 0.2}
-    # A shadow order carries no stage, so the table it prices from is pinned
-    # rather than inferred.
-    assert probe.CLAIM_CAP_STAGE == "P0"
 
 
 def test_a_rung_already_under_the_ceiling_is_posted_unchanged() -> None:
     """The arm is its own control on every leg the ceiling does not bind.
 
-    Claim 0.32 at the 0.31 rung is a = 0.969, lambda 1.00, ceiling 0.320 --
-    above the rung, so the rung stands and this leg is identical to bid+1t.
+    Claim 0.32 at the 0.31 rung: ceiling 0.320 -- above the rung, so the rung
+    stands and this leg is identical to bid+1t.
     """
     assert _price("claim_cap", 0.32) == probe._limit_price("bid+1t", QUOTE)
 
@@ -65,15 +59,15 @@ def test_a_rung_already_under_the_ceiling_is_posted_unchanged() -> None:
 def test_a_rung_over_the_ceiling_is_cut_to_it() -> None:
     """And this is the only place the arms can differ.
 
-    Claim 0.55 at the 0.31 rung is a = 0.564, lambda 0.40, ceiling 0.220 --
-    the rung is 9 cents dearer than what history says the claim delivers.
+    Claim 0.22 at the 0.31 rung: ceiling 0.220 -- the rung is 9 cents dearer
+    than the claim.
     """
-    capped = _price("claim_cap", 0.55)
+    capped = _price("claim_cap", 0.22)
     assert capped is not None
     assert capped < probe._limit_price("bid+1t", QUOTE)
     assert abs(capped - 0.22) < 1e-9
-    # The margin arm keeps a fifth of the ceiling back.
-    assert abs(_price("claim_cap@0.8", 0.55) - 0.17) < 1e-9
+    # The margin arm keeps a fifth of the ceiling back (0.176, floored).
+    assert abs(_price("claim_cap@0.8", 0.22) - 0.17) < 1e-9
 
 
 def test_the_ceiling_is_floored_to_the_tick() -> None:
@@ -92,9 +86,7 @@ def test_no_claim_means_no_order_rather_than_a_book_price() -> None:
     assert _price("claim_cap", None) is None
     assert _price("claim_cap", 0.0) is None
     one_sided = dict(QUOTE, bid=0.0)
-    assert probe._limit_price(
-        "claim_cap", one_sided, probability=0.5, lambda_tables=TABLES
-    ) is None
+    assert probe._limit_price("claim_cap", one_sided, probability=0.5) is None
 
 
 def test_the_chasing_lane_never_reprices_a_claim_capped_order() -> None:

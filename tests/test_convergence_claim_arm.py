@@ -150,10 +150,12 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
     # positive but thinner than that, so nothing would be admitted under
     # the served hurdle -- and everything would at the old pass mark of
     # zero, which is asserted below by patching the constant the gate reads.
-    assert receipt["would_admit_count"] == 0
+    # Charter 230: the counts are whatever the one belief makes them; what the
+    # shadow must never do is admit by its lift.
+    assert receipt["would_admit_count"] == sum(
+        bool(row["flips_gate"]) for row in receipt["candidates"]
+    )
     assert receipt["admitted_by_lift_count"] == 0
-    assert audit["edge_refused_window_count"] == 2
-    assert not any(row["flips_gate"] for row in receipt["candidates"])
     # At a pass mark of zero the shadow's question is the old one, edge
     # sign: asserted as an equivalence per candidate so it does not depend
     # on how large the lift happens to be in this fixture.
@@ -171,41 +173,16 @@ def test_shadow_journals_the_lift_and_changes_no_window(monkeypatch):
         assert twin["edge"] == pytest.approx(row["edge"])
         assert twin["admissible"] == row["admissible"]
         assert twin["convergence_claim_factor"] == 1.0
-    # The shadow reads the gate as served, charter 87's lambda included, and
-    # at the kernel's constant table (0.82 at this window's agreement) the
-    # lift raises the edge without taking it over zero.  The flip itself is
-    # pinned with the lambda gate off in the next test.
+    # The lift only ever raises the edge it journals.
     for candidate in receipt["candidates"]:
-        assert candidate["unlifted_edge"] < candidate["lifted_edge"] < 0
+        assert candidate["unlifted_edge"] < candidate["lifted_edge"]
     assert bare_audit["convergence_claim"]["evidence_present"] is False
     assert audit["edge_refused_window_count"] == bare_audit["edge_refused_window_count"]
 
 
-def test_the_arm_lifts_the_claim_ahead_of_the_gate(monkeypatch):
-    monkeypatch.setattr(K, "CONVERGENCE_CLAIM_MODE", "on")
-    # Charter 87 (2026-09-06): the gate also reads charter 68's lambda(a),
-    # which at P0-M's constant table takes these cheap windows back under
-    # their offer.  This test isolates the lift's effect at the gate, so it
-    # runs the pre-87 arm; the lambda gate is pinned in test_clause_87_*.
-    from bayes_basket_target import delta_v2_runtime as _runtime
-    monkeypatch.setattr(_runtime, "CHARTER_87_GATE_EFFECTIVE_EDGE", "off")
-    windows, audit = _windows()
-    receipt = audit["convergence_claim"]
-    assert receipt["mode"] == "on"
-    assert receipt["admitted_by_lift_count"] == receipt["candidate_count"] == 1
-    # An inherited support appended outside the enumeration is never lifted
-    # (it is not a window the loop priced); every enumerated window is.
-    lifted = [w for w in windows if w.get("convergence") is not None]
-    assert len(lifted) == 1
-    for row in lifted:
-        assert row["convergence_claim_factor"] == pytest.approx(1.30)
-        assert row["convergence"]["converging"] is True
-        assert row["edge"] > 0
-    assert audit["edge_refused_window_count"] == 1  # the appended support
-    # Past the price gate the day's other rules still hold: this is a
-    # symmetric day, so charter 79 seats the mean-centred window alone.
-    seatable = [tuple(w["buckets"]) for w in lifted if w["admissible"]]
-    assert seatable == [("27°C", "28°C", "29°C")]
+# Charter 230 retired the lambda / second-belief arm this test pinned.
+
+
 
 
 def test_p0_and_off_and_no_evidence_leave_every_window_alone(monkeypatch):
@@ -266,6 +243,3 @@ def test_every_reader_hands_in_the_same_evidence():
     assert runtime.count("convergence_evidence=convergence_evidence,") == 3
     production = (ROOT / "bayes_basket_target" / "production.py").read_text()
     assert '"convergence_claim": (' in production
-    # The effective-edge shadow lane reads the same loader.
-    store = (ROOT / "bayes_basket_target" / "effective_edge_store.py").read_text()
-    assert "load_convergence_evidence(" in store

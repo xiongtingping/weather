@@ -80,35 +80,14 @@ def _dict_values(tree: ast.AST, key: str):
                     yield v
 
 
-def test_the_gate_reads_lambda_times_the_claim() -> None:
-    """Reader one: admission.  effective_win = raw_win * claim_factor * lambda."""
-
-    assert any(
-        {"raw_win", "claim_factor", "gate_lambda"} <= _names(value)
-        for value in _assignments(RUNTIME, "effective_win")
-    )
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
 
-def test_the_solver_multiplies_the_same_lambda_into_the_partition() -> None:
-    """Reader two: sizing.  No second lookup -- the gate's lambda is reused."""
 
-    assert any(
-        isinstance(node, ast.AugAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "claim_factor"
-        and isinstance(node.op, ast.Mult)
-        and "gate_lambda" in _names(node.value)
-        for node in ast.walk(RUNTIME)
-    )
-    # And the window's partition is taken with that factor.
-    assert any(
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Name)
-        and value.func.id == "deflate_window_partition_v1"
-        and isinstance(_keyword(value, "claim_factor"), ast.Name)
-        and _keyword(value, "claim_factor").id == "claim_factor"
-        for value in _assignments(RUNTIME, "window_probabilities")
-    )
+
+# Charter 230 retired the lambda / second-belief arm this test pinned.
+
+
 
 
 def test_the_kelly_stake_is_fed_that_partition() -> None:

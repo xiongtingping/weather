@@ -7,9 +7,10 @@ decision priced against, the ledger's knowable settlement), the fit of beta in
 [0, 1] on the truth bucket's log score, the by-event-day draws, the
 persistence and the journal.  Without ``--commit`` it reports only.
 
-Activation is not promotion.  A row serves the shadow; the kernel's ``on``
-gate additionally needs an ``admitted`` walk-forward verdict for the stage,
-which only ``scripts/valuation_four_arm.py`` writes.
+Activation is not promotion.  A row serves the shadow reading only: charter
+230 retired the lane's ``on`` gate (the L4 posterior is the basket's one
+belief) together with ``scripts/valuation_four_arm.py``, the verdict writer
+that gate read.
 
     python3 scripts/refit_valuation.py                        # report
     python3 scripts/refit_valuation.py --commit --as-of ...   # fit + activate

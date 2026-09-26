@@ -84,25 +84,9 @@ def test_the_arm_multiplies_only_centre_holding_windows() -> None:
     )
 
 
-def test_the_lambda_store_fits_agreement_on_the_lifted_claim() -> None:
-    """Charter 81 (二): the store and the solver read one basis for a.
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    The store used to apply the lift itself, on the seat's raw mass.  Charter
-    87's second reading moved the fit onto every enumerated candidate window,
-    and that table's ``win_probability`` is ALREADY the lifted claim -- the
-    enumeration did it -- so the store must read the column and not lift
-    again.  This guard was left asserting the line that did the lifting, and
-    so spent from that day until 2026-09-08 asserting a string that was no
-    longer in the file; it now guards the invariant that outlived it.
-    """
-    import bayes_basket_target.effective_edge_store as S
 
-    source = inspect.getsource(S.fit_lambda_table)
-    # a is read off the column the enumeration already lifted ...
-    assert "claim = float(win or 0.0)" in source
-    assert "slot = tally[_band_index(price / claim, incumbent)]" in source
-    # ... and the store never lifts a second time.
-    assert "center_window_claim_factor(" not in source
 
 
 def test_the_admission_sizing_split_is_off_by_default_and_touches_only_the_stake() -> None:

@@ -31,7 +31,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import beta_edge_store as beta_store  # noqa: E402
-from bayes_basket_target import effective_edge_store as lambda_store  # noqa: E402
 from tests.claim_lane_tables import add_label  # noqa: E402
 from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: E402
     ECONOMIC_HURDLE_V1,
@@ -307,103 +306,8 @@ def test_the_fit_keeps_joint_draws_only_when_it_serves(monkeypatch):
     assert thin["accumulating"] and thin["evidence"]["joint_draws"] == []
 
 
-# --------------------------------------------------------------------------
-# Item 46: lambda's as-of fit has a ceiling
-# --------------------------------------------------------------------------
-
-def _lambda_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE basket_candidate_window_scored("
-        " candidate_id TEXT PRIMARY KEY, station_id TEXT, event_date TEXT,"
-        " stage TEXT, decision_at_utc TEXT, buckets_json TEXT,"
-        " win_probability REAL, all_in_price REAL, hit INTEGER,"
-        " admissible INTEGER, seated INTEGER, settled_at_utc TEXT,"
-        " settled_bucket TEXT)"
-    )
-    add_label(conn, "P", "2026-09-12")
-    return conn
-
-
-def _lambda_row(conn, cid, *, day, settled_at, station="S1"):
-    conn.execute(
-        "INSERT INTO basket_candidate_window_scored VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (cid, station, day, "P0", f"{day}T06:00:00Z", '["b"]', 0.7, 0.6, 1, 1, 0,
-         settled_at, "b"),
-    )
-    add_label(conn, station, day, settled_bucket="b", known_at_utc=settled_at)
-
-
-def test_a_lambda_fit_as_of_a_day_reads_nothing_after_it():
-    """The audit's reproduction: as-of 09-05 read a 09-12 settlement."""
-
-    conn = _lambda_db()
-    _lambda_row(conn, "a", day="2026-09-04", settled_at="2026-09-05T01:00:00Z")
-    _lambda_row(conn, "b", day="2026-09-05", settled_at="2026-09-05T22:00:00Z",
-                station="S2")
-    _lambda_row(conn, "c", day="2026-09-12", settled_at="2026-09-13T01:00:00Z",
-                station="S3")
-    got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01",
-        ceiling_day="2026-09-05", cutoff_utc="2026-09-06T00:00:00Z",
-    )
-    assert sorted(str(r[4]) for r in got["rows"]) == ["2026-09-04", "2026-09-05"]
-
-
-def test_a_lambda_label_settled_after_the_cutoff_is_not_read():
-    conn = _lambda_db()
-    _lambda_row(conn, "a", day="2026-09-05", settled_at="2026-09-09T00:00:00Z")
-    got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01",
-        ceiling_day="2026-09-05", cutoff_utc="2026-09-06T00:00:00Z",
-    )
-    assert got["rows"] == []
-    assert got["excluded_label_not_yet_knowable"] == 1
-
-
-def test_the_nightly_lambda_population_is_unchanged_without_a_ceiling():
-    conn = _lambda_db()
-    _lambda_row(conn, "a", day="2026-09-04", settled_at="2026-09-05T01:00:00Z")
-    _lambda_row(conn, "c", day="2026-09-12", settled_at="2026-09-13T01:00:00Z",
-                station="S3")
-    got = lambda_store._candidate_population(
-        conn, ("P0",), "2026-08-01",
-    )
-    assert len(got["rows"]) == 2
-
-
-# --------------------------------------------------------------------------
-# Item 49: an unrecorded seat shape is not the current one, for evidence
-# --------------------------------------------------------------------------
-
-def _lambda_table(conn, *, sha, shape):
-    lambda_store.ensure_schema(conn)
-    payload = {"bands": [{"upper_bound": None, "lambda": 0.9}]}
-    if shape is not None:
-        payload["seat_shape_rule"] = shape
-    conn.execute(
-        "INSERT INTO calibration_effective_edge_lambda("
-        " lambda_table_sha256, bands_json, evidence_json, fitted_at_utc,"
-        " window_days, seat_count, activated, activated_at_utc, stage_scope)"
-        " VALUES(?,?,?,?,?,?,?,?,?)",
-        (sha, json.dumps(payload), "{}", "2026-09-11T00:00:00Z", 28, 10, 1,
-         "2026-09-11T00:00:00Z", "P0"),
-    )
-
-
-@pytest.mark.parametrize(
-    "shape, verdict",
-    [(None, "unrecorded"), ("old_rule", "other_shape"),
-     (SEAT_SHAPE_RULE_VERSION, "current")],
-)
-def test_the_strict_loader_serves_evidence_only_on_the_current_shape(shape, verdict):
-    conn = sqlite3.connect(":memory:")
-    _lambda_table(conn, sha="a" * 64, shape=shape)
-    bands, got = lambda_store.load_lambda_as_of_strict(conn, stage_scope="P0")
-    assert got == verdict
-    assert (bands is not None) == (verdict == "current")
-    status = lambda_store.lambda_vintage_status(conn)
-    assert status["P0/window"]["verdict"] == verdict
+# Items 46 and 49 pinned charter 68's lambda store (its as-of ceiling and the
+# strict seat-shape loader); the store retired with charter 230.
 
 
 def test_the_truth_revision_commit_is_when_a_label_became_knowable():

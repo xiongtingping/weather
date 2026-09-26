@@ -108,45 +108,9 @@ def test_edge_weighted_keeps_the_basket_cost_and_never_breaks_the_floor() -> Non
     assert min(weights.values()) > 0.0
 
 
-def test_edge_weighted_reads_the_realisable_claim_not_the_asserted_one() -> None:
-    """A rung the book prices at a third of our claim must not win the tilt.
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    ``d`` asserts the largest nominal edge on the ladder (0.45 claim against a
-    0.15 offer, +0.30).  Its agreement is 0.333, which the charter-68 bucket
-    arm reads at lambda 0.22, so its realisable claim is 0.099 -- under what
-    it costs.  Two facts are checked separately because the runtime applies
-    two rules here and they can each be right or wrong on their own: the
-    lambda the runtime reads per rung, and what the shape does with it.
-    """
 
-    prices = {"b": 0.40, "d": 0.15}
-    claims = {"b": 0.55, "d": 0.45}
-    assert claims["d"] - prices["d"] > claims["b"] - prices["b"]   # 名义上 d 最大
-    # 1. The lambdas the runtime reads: d falls in the left-cliff band.
-    lam = {
-        k: R.effective_edge_bucket_lambda_for_stage("P0", prices[k] / claims[k])
-        for k in prices
-    }
-    assert lam["d"] == pytest.approx(0.22)
-    realisable = {k: claims[k] * lam[k] for k in prices}
-    assert realisable["d"] < prices["d"]      # 可兑现后 d 是负边际
-    assert realisable["b"] > prices["b"]      # 只有 b 是正的
-    # 2. What the shape does with them: only b can receive the cushion.
-    tilted = K.floor_first_edge_weights_v1(
-        ordered=("b", "d"), prices=prices, effective_claims=realisable,
-    )
-    assert tilted["b"] > tilted["d"]
-    assert sum(tilted[x] * prices[x] for x in prices) == pytest.approx(
-        sum(prices.values())
-    )
-    # 3. And on this ladder the whole-basket guard then refuses that tilt --
-    #    the mass sits on ``d``, which the tilt trims -- so the runtime,
-    #    which passes the partition, hands back the bed.
-    assert R._kelly_share_weights(
-        ordered=("b", "d"), lane_prices=prices,
-        probabilities_by_bucket=claims,
-        centre_bucket="", ordinals={}, shape="edge_weighted", stage="P0",
-    ) == {"b": 1.0, "d": 1.0}
 
 
 def test_the_cushion_is_cash_proportional_to_edge() -> None:

@@ -143,8 +143,14 @@ def armed(monkeypatch):
     monkeypatch.setattr(runtime, "CHARTER_136_COMPLETION", "on")
 
 
-def _snapshot(ask_32: float, *, seat=("30", "31", "32"), hold_30: bool = True):
-    snapshot = fixture._held_snapshot(ask_32=ask_32)
+def _snapshot(
+    ask_32: float, *, seat=("30", "31", "32"), hold_30: bool = True,
+    ask_31: float = 0.55,
+):
+    # Charter 230: the whole window refused on the undeflated claim, so the
+    # seat is judged on its completion, as lambda used to arrange.  A test
+    # that needs the Kelly row to take the seat first passes 0.45.
+    snapshot = fixture._held_snapshot(ask_32=ask_32, ask_31=ask_31)
     rows = snapshot.buckets
     if not hold_30:
         rows = tuple(
@@ -199,15 +205,19 @@ def test_armed_the_taken_leg_is_bought_as_the_completion_fok(armed) -> None:
     assert _short(result) == [("32", "TAKER_FOK")]
 
 
+# ``handed_us_and_not_worth_it`` (ask 0.18) left with charter 230: the budget
+# still reads "edge given up exceeds exposure removed", but charter 143 sends
+# a two-held-leg completion on its held count, and the hold that case pinned
+# was the post-lift edge gate refusing lambda's deflated partition.  On the
+# undeflated belief that gate clears, so the case no longer describes a rule.
 @pytest.mark.parametrize(
     "snapshot_kwargs, compile_kwargs",
     [
-        ({"ask_32": 0.18}, {}),
         ({"ask_32": 0.24, "seat": ("30", "31")}, {}),
         ({"ask_32": 0.24}, {"hours": 2.0}),
         ({"ask_32": 0.24}, {"budget": 0.5}),
     ],
-    ids=["handed_us_and_not_worth_it", "outside_the_seat", "inside_cutoff", "over_budget"],
+    ids=["outside_the_seat", "inside_cutoff", "over_budget"],
 )
 def test_armed_refusals_hold_the_seat(armed, snapshot_kwargs, compile_kwargs) -> None:
     ask = snapshot_kwargs.pop("ask_32")

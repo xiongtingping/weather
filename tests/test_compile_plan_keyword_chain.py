@@ -57,7 +57,7 @@ CHAIN = (
 # or artefact the optimizer reads, loaded once per scope by the caller and
 # passed down rather than re-read at every level.
 THREADED_KEYWORDS = (
-    "effective_edge_tables",
+    "served_tables",
     "off_centre_claim_bands",
     "convergence_evidence",
     "chain_consolidation_tilt",

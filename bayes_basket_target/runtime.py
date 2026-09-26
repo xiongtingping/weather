@@ -979,7 +979,7 @@ def _compile_target_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
-    effective_edge_tables: Mapping[str, Any] | None = None,
+    served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1406,7 +1406,7 @@ def _compile_target_plan(
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
-            effective_edge_tables=effective_edge_tables,
+            served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
             convergence_evidence=convergence_evidence,
             # The P0-M TAF TX bucket the enumerator's TAF arms read.  Off
@@ -2105,7 +2105,7 @@ class DeltaBasketScoreV2Optimizer:
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
-    effective_edge_tables: Mapping[str, Any] | None = None,
+    served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -2137,7 +2137,7 @@ class DeltaBasketScoreV2Optimizer:
             chain_consolidation_tilt=chain_consolidation_tilt,
             last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
-            effective_edge_tables=effective_edge_tables,
+            served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
             convergence_evidence=convergence_evidence,
         )
@@ -2192,7 +2192,7 @@ def compile_target_plan(
     chain_consolidation_tilt: float | None = None,
     last_acted_probability_identity: str | None = None,
     last_decision_signature: Mapping[str, Any] | None = None,
-    effective_edge_tables: Mapping[str, Any] | None = None,
+    served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -2203,7 +2203,7 @@ def compile_target_plan(
         chain_consolidation_tilt=chain_consolidation_tilt,
         last_acted_probability_identity=last_acted_probability_identity,
             last_decision_signature=last_decision_signature,
-            effective_edge_tables=effective_edge_tables,
+            served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
             convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,

@@ -41,8 +41,10 @@ def _scripts() -> list[str]:
 
 def test_the_page_carries_the_panels_as_inline_script():
     joined = "\n".join(_scripts())
-    # A canary from the section this guard was written for.
-    assert "function edgeBandHealth()" in joined
+    # Canaries: the section this guard was written for (the claim-edge
+    # thermometer) retired with charter 230's lambda; the L4 panel and the
+    # beta dial carry it now.
+    assert "function posteriorLane(" in joined
     assert "function betaDial(" in joined
 
 

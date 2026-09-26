@@ -172,18 +172,9 @@ def test_the_fingerprint_carries_the_served_table_not_just_the_constant() -> Non
     )
 
 
-def test_the_fit_partitions_and_counts_the_off_centre_rows() -> None:
-    """Both halves: the key that excludes them, and the number that says how
-    many there were.  The count has been zero and non-zero inside one day."""
-    import inspect
+# Charter 230 retired the lambda / second-belief arm this test pinned.
 
-    from bayes_basket_target import effective_edge_store as store
 
-    source = inspect.getsource(store._candidate_population)
-    assert "off_centre_table_sha=off_centre_sha" in source
-    assert '"off_centre_row_count": off_centre_rows,' in source
-    fit_source = inspect.getsource(store.fit_lambda_table)
-    assert 'population["off_centre_row_count"]' in fit_source
 
 
 def test_the_sample_is_bounded_below_at_the_serving_arithmetic_anchor(

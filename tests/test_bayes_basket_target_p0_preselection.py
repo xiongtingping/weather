@@ -1485,7 +1485,7 @@ def test_the_opening_compile_hands_in_the_chains_last_acted_identity() -> None:
     assert kwargs["last_acted_probability_identity"] == "identity-x"
     assert kwargs["last_decision_signature"] == {"stage": "P0-M"}
     assert kwargs["chain_consolidation_tilt"] == 0.5
-    assert {"effective_edge_tables", "off_centre_claim_bands"} <= set(kwargs)
+    assert {"served_tables", "off_centre_claim_bands"} <= set(kwargs)
     assert asked == [("signature", "P0-M")]
 
     tree = ast.parse(textwrap.dedent(

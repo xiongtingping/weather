@@ -86,7 +86,7 @@ def _value(*, preselection_id: str, quote: str, target_shares: int) -> dict[str,
                 "beta_served": {"P0": {"beta": 0.5467, "sha256": "7" * 64, "price_basis": "market_mid_reference_v1", "note": "s" * 300}, "P1": None},
                 "posterior_tables": {"P0": {"alpha": 0.1, "gamma": 0.2, "w": 0.3, "sha256": "8" * 64, "note": "p" * 300}},
                 "valuation_tables": {"P0": {"beta": 0.4, "verdict": "ACCUMULATING", "sha256": "9" * 64, "note": "v" * 300}},
-                "effective_edge_tables": {"P0": [[0.05, 0.8], [None, 1.0]] * 20, "P0-M": [[0.05, 0.9], [None, 1.0]] * 20},
+                "served_tables": {"P0": [[0.05, 0.8], [None, 1.0]] * 20, "P0-M": [[0.05, 0.9], [None, 1.0]] * 20},
             },
             "delta_v2_audit": copy.deepcopy(audit),
             "lineage": {**copy.deepcopy(lineage), "flag": 1},
@@ -144,11 +144,11 @@ def test_both_blocks_leave_the_row_and_are_named_by_digest() -> None:
         "plan.basket_support_selection.beta_served",
         "plan.basket_support_selection.posterior_tables",
         "plan.basket_support_selection.valuation_tables",
-        "plan.basket_support_selection.effective_edge_tables",
+        "plan.basket_support_selection.served_tables",
         "boundary",
         "optimizer",
     }
-    for key in ("beta_served", "posterior_tables", "valuation_tables", "effective_edge_tables"):
+    for key in ("beta_served", "posterior_tables", "valuation_tables", "served_tables"):
         assert key not in compiled["plan"]["basket_support_selection"]
     assert "boundary" not in compiled and "optimizer" not in compiled
     assert set(paths.values()) == set(blobs)
@@ -229,7 +229,7 @@ def test_small_or_absent_blocks_stay_in_the_row() -> None:
     value["compiled_plan"]["plan"]["lineage"] = {"posterior_version": "p0-v14"}
     for key in ("boundary", "optimizer"):
         del value["compiled_plan"][key]
-    for key in ("beta_served", "posterior_tables", "valuation_tables", "effective_edge_tables"):
+    for key in ("beta_served", "posterior_tables", "valuation_tables", "served_tables"):
         del value["compiled_plan"]["plan"]["basket_support_selection"][key]
     row, blobs = split_preselection_blobs(stored_preselection_payload(value))
     assert blobs == {}
