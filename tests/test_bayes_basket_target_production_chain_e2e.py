@@ -839,8 +839,11 @@ def test_optimizer_hold_remains_a_compiled_no_live_decision(
     assert compiled["boundary"]["calls_order_gateway"] is False
 
 
-def _p0_opening_compile():
-    """The P0 opening fixture: the ensemble-only compile and its market."""
+def _p0_opening_compile(**compile_overrides):
+    """The P0 opening fixture: the ensemble-only compile and its market.
+
+    ``compile_overrides`` reach ``compile_production_plan`` (charter 230's
+    tests hand in the served posterior tables)."""
 
     envelopes, priors, artifacts, activations, market, cash_policy = _inputs()
     # P0's claim is deflated by its lambda table (charter 68), which pays
@@ -951,6 +954,7 @@ def _p0_opening_compile():
         cash_phase_policy=cash_policy,
         cash_phase_input=_cash_input(cash_policy),
         resource_probe_ok=True,
+        **compile_overrides,
     )
     compiled["production_inputs"] = {
         "strategy_version": "target-v1",

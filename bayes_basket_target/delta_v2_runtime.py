@@ -1600,6 +1600,25 @@ if CHARTER_124_ROBUST_CLAIM not in CHARTER_124_ROBUST_CLAIM_MODES:
     raise RuntimeError(
         f"unknown charter 124 robust claim mode: {CHARTER_124_ROBUST_CLAIM}"
     )
+# Charter 230 (E12, one belief): under the L4 lane's ``on`` every valuation
+# reads the posterior, so no other lane may also rewrite the belief.  Refused
+# at import rather than resolved by precedence -- a second "on" is a
+# configuration nobody ruled.
+if POSTERIOR_MODE == "on":
+    _second_beliefs = [
+        name for name, mode in (
+            ("PM_VALUATION_MODE", VALUATION_MODE),
+            ("PM_BETA_EDGE", BETA_EDGE_MODE),
+            ("PM_CHARTER_124_ROBUST_CLAIM", CHARTER_124_ROBUST_CLAIM),
+            ("PM_CONVERGENCE_CLAIM", CONVERGENCE_CLAIM_MODE),
+        )
+        if mode == "on"
+    ]
+    if _second_beliefs:
+        raise RuntimeError(
+            "charter 230: PM_POSTERIOR_LANE=on is the only belief; also on: "
+            + ", ".join(_second_beliefs)
+        )
 ROBUST_CLAIM_DIVERGENCE_BUDGET_NATS = float(
     os.environ.get("PM_ROBUST_CLAIM_DIVERGENCE_NATS", "").strip() or 0.02
 )
@@ -1835,6 +1854,123 @@ def _completion_143_sent_shares(
     return None
 
 
+def posterior_belief_v1(
+    *,
+    snapshot: TargetBasketSnapshot,
+    probabilities: Mapping[str, float],
+    probability_stage: str,
+    hours_to_cutoff: float | None,
+    effective_edge_tables: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Charter 230: the L4 posterior for this snapshot, once.
+
+    ``probabilities`` is the served WEATHER vector -- the posterior's input,
+    never replaced by it.  The row is the decision's lead band's when that
+    band is not accumulating, else the stage's.  Under ``on`` the result's
+    ``belief`` is what every valuation in the basket reads:
+
+    * the row serves and holds an admitted walk-forward verdict -> the
+      posterior point vector and one vector per parameter draw;
+    * any other row (no fit, accumulating, not admitted) -> ``b = m`` with the
+      observed-dead buckets zeroed, and ``m`` as its only draw (E3); it values
+      the book and buys nothing (``belief_source`` ``l4_market_prior``);
+    * no complete market vector -> ``belief`` is None and nothing is bought.
+
+    Under ``shadow`` the vectors are computed whenever the row has
+    parameters, whatever its verdict, and ``belief`` stays None.
+    """
+
+    out: dict[str, Any] = {
+        "mode": POSTERIOR_MODE, "state": "off", "row": None, "band": None,
+        "point": None, "draws": [], "market_reference": None,
+        "belief": None, "belief_draws": [], "belief_source": None,
+        "admitted": False, "verdict_reason": None,
+    }
+    if POSTERIOR_MODE == "off":
+        return out
+    observed_dead = (
+        frozenset(snapshot.evidence.observed_dead_buckets)
+        if observed_high_floor_enabled()
+        else frozenset()
+    )
+    try:
+        market_reference = market_reference_v1(snapshot.buckets)
+        out["market_reference"] = market_reference
+        served = (effective_edge_tables or {}).get(POSTERIOR_TABLE_KEY) or {}
+        stage_row = (
+            served.get(str(probability_stage or ""))
+            if isinstance(served, Mapping) else None
+        )
+        row: Mapping[str, Any] | None = None
+        band: str | None = None
+        if isinstance(stage_row, Mapping):
+            row = stage_row
+            band_label = beta_lead_band(hours_to_cutoff)
+            if band_label is not None:
+                band_row = (stage_row.get("lead_bands") or {}).get(band_label)
+                if isinstance(band_row, Mapping) and not band_row.get("accumulating"):
+                    row, band = band_row, band_label
+        out["row"], out["band"] = row, band
+        market_complete = (
+            market_reference is not None and market_reference["state"] == "complete"
+        )
+        usable = (
+            isinstance(row, Mapping)
+            and not row.get("accumulating")
+            and row.get("w") is not None
+        )
+        admitted = bool(usable and row.get("admitted"))
+        out["admitted"] = admitted
+        out["verdict_reason"] = (
+            (row.get("verdict") or {}).get("reason")
+            if isinstance(row, Mapping) else None
+        )
+        if not market_complete:
+            out["state"] = "market_" + str(
+                (market_reference or {}).get("reason") or "incomplete"
+            ).split(":")[0]
+            return out
+        market_vector = market_reference["vector"]
+        if usable:
+            params = {key: row.get(key) for key in ("alpha", "gamma", "w")}
+            point = posterior_vector_v1(
+                probabilities, market_vector, params, excluded=observed_dead,
+            )
+            draws = posterior_draw_vectors_v1(
+                probabilities, market_vector, row.get("draws") or (),
+                excluded=observed_dead,
+            )
+            if point is not None and draws:
+                out["point"], out["draws"] = point, draws
+        if not isinstance(row, Mapping):
+            out["state"] = "no_fit"
+        elif not usable:
+            out["state"] = "accumulating"
+        elif out["point"] is None:
+            out["state"] = "no_vector"
+        elif POSTERIOR_MODE == "shadow":
+            out["state"] = "shadow"
+        else:
+            out["state"] = "admitted" if admitted else "not_admitted"
+        if POSTERIOR_MODE == "on":
+            if admitted and out["point"] is not None:
+                out["belief"], out["belief_draws"] = out["point"], out["draws"]
+                out["belief_source"] = "l4_posterior"
+            else:
+                prior = posterior_vector_v1(
+                    probabilities, market_vector, {"alpha": 0.0, "gamma": 0.0, "w": 0.0},
+                    excluded=observed_dead,
+                )
+                if prior is not None:
+                    out["belief"], out["belief_draws"] = prior, [prior]
+                    out["belief_source"] = "l4_market_prior"
+    except Exception as exc:  # noqa: BLE001 -- a failed belief buys nothing
+        out["state"] = "error_" + type(exc).__name__
+        out["point"], out["draws"] = None, []
+        out["belief"], out["belief_draws"], out["belief_source"] = None, [], None
+    return out
+
+
 def _support_windows(
     *,
     snapshot: TargetBasketSnapshot,
@@ -1851,8 +1987,14 @@ def _support_windows(
     off_centre_claim_bands: Mapping[str, Any] | None = None,
     hours_to_cutoff: float | None = None,
     completion_budget_usdc: float | None = None,
+    l4: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Contiguous windows admissible as a support, ranked by belief divergence.
+
+    ``l4`` is ``posterior_belief_v1``'s result for this snapshot (charter
+    230).  Under ``on`` its ``belief`` is the vector every valuation here
+    reads; ``probabilities`` stays the served weather vector the centre, the
+    core, the seat's shape and the TAF span are read from.
 
     ``hours_to_cutoff`` is the beta lane's second axis (charter 128 v2): it
     picks the lead band whose fitted row, when one clears the lane's
@@ -1875,6 +2017,38 @@ def _support_windows(
     """
 
     by_bucket = {row.bucket: row for row in snapshot.buckets}
+    # Charter 230: one belief.  Under ``on`` every valuation below -- the leg
+    # floors, the window's claim, completions, the incumbent -- reads the L4
+    # posterior; the effective-edge lambda is not read.  Structure (centre,
+    # core, seat shape, TAF span) stays on the weather vector: the basket's
+    # centre comes only from the materialised stage.  No belief (no complete
+    # book, or the lane failed) buys nothing.
+    if l4 is None:
+        # A direct caller (tests, research) gets the same belief the
+        # production caller computes and hands to the solver.
+        l4 = posterior_belief_v1(
+            snapshot=snapshot,
+            probabilities=probabilities,
+            probability_stage=str(probability_stage or ""),
+            hours_to_cutoff=hours_to_cutoff,
+            effective_edge_tables=effective_edge_tables,
+        )
+    l4 = dict(l4)
+    belief_on = POSTERIOR_MODE == "on"
+    # Buying needs an admitted posterior.  ``b = m`` still values the book
+    # (holds, records), but it is the lane's failure direction -- the
+    # baseline's "b = m -> no action" -- and a normalised mid that happens to
+    # clear an ask (a ladder whose offers sum under one) is not evidence the
+    # model earned.  No belief at all buys nothing either.
+    belief_blocked = belief_on and l4.get("belief_source") != "l4_posterior"
+    value: Mapping[str, float] = (
+        {
+            bucket: float((l4.get("belief") or {}).get(bucket, 0.0) or 0.0)
+            for bucket in probabilities
+        }
+        if belief_on and l4.get("belief") is not None
+        else probabilities
+    )
     # Charter 125: the day's own thermometer, before any price or belief.
     #
     # A bucket whose upper edge the running high has already reached cannot
@@ -1958,7 +2132,7 @@ def _support_windows(
         # Charter 103: and it is read off the mid, not the ask.
         return not _leg_below_floor(
             row,
-            probabilities.get(row.bucket, float(row.probability)),
+            value.get(row.bucket, float(row.probability)),
             fee_rate=float(fee_rate),
         )
 
@@ -2071,7 +2245,7 @@ def _support_windows(
                 quote_by_bucket.get(bucket) is not None
                 and _leg_below_floor(
                     by_bucket[bucket],
-                    probabilities.get(bucket),
+                    value.get(bucket),
                     fee_rate=float(fee_rate),
                 )
             )
@@ -2087,7 +2261,7 @@ def _support_windows(
         )
         increment_win = min(
             1.0 - EPS,
-            sum(float(probabilities[bucket]) for bucket in buyable)
+            sum(float(value[bucket]) for bucket in buyable)
             * float(claim_factor),
         )
         # Charter 130: the increment clears the one hurdle, in dollars of
@@ -2145,7 +2319,7 @@ def _support_windows(
                     for bucket in window
                 },
                 claim_by_bucket={
-                    bucket: float(probabilities.get(bucket, 0.0) or 0.0)
+                    bucket: float(value.get(bucket, 0.0) or 0.0)
                     for bucket in window
                 },
                 budget_usdc=float(completion_budget_usdc or 0.0),
@@ -2206,7 +2380,7 @@ def _support_windows(
                 and clears_economic_hurdle_v1(
                     expected_payout=min(
                         1.0 - EPS,
-                        float(probabilities[bucket]) * float(claim_factor),
+                        float(value[bucket]) * float(claim_factor),
                     ),
                     cost=float(quote),
                 )
@@ -2471,64 +2645,26 @@ def _support_windows(
     valuation_would_admit = 0
     valuation_refused = 0
     valuation_hold_refused = 0
-    # L4 posterior lane (first-principles baseline, shadow): the belief the
-    # baseline's gate would read, built once per snapshot from the served
-    # ``(alpha, gamma, w)`` row -- the decision's lead band when that band's
-    # row clears the hurdles, else the stage's whole row -- and its draws.
-    # Wide catch on purpose: a shadow reading that cannot be taken is a
-    # state on the record, never a blocked decision.
-    posterior_served = (effective_edge_tables or {}).get(POSTERIOR_TABLE_KEY) or {}
-    posterior_row: Mapping[str, Any] | None = None
-    posterior_band: str | None = None
-    posterior_point_vector: dict[str, float] | None = None
-    posterior_draws: list[dict[str, float]] = []
-    posterior_state = "off"
-    if POSTERIOR_MODE != "off":
-        try:
-            _stage_row = (
-                posterior_served.get(str(probability_stage or ""))
-                if isinstance(posterior_served, Mapping) else None
-            )
-            if not isinstance(_stage_row, Mapping):
-                posterior_state = "no_fit"
-            else:
-                posterior_row, posterior_band = _stage_row, None
-                if beta_lead_band_label is not None:
-                    _band_row = (_stage_row.get("lead_bands") or {}).get(
-                        beta_lead_band_label
-                    )
-                    if isinstance(_band_row, Mapping) and not _band_row.get("accumulating"):
-                        posterior_row, posterior_band = _band_row, beta_lead_band_label
-                if posterior_row.get("accumulating") or posterior_row.get("w") is None:
-                    posterior_state = "accumulating"
-                elif market_reference is None or market_reference["state"] != "complete":
-                    posterior_state = "market_" + str(
-                        (market_reference or {}).get("reason") or "incomplete"
-                    ).split(":")[0]
-                else:
-                    _params = {
-                        key: posterior_row.get(key) for key in ("alpha", "gamma", "w")
-                    }
-                    posterior_point_vector = posterior_vector_v1(
-                        probabilities, market_reference["vector"], _params,
-                        excluded=observed_dead,
-                    )
-                    posterior_draws = posterior_draw_vectors_v1(
-                        probabilities, market_reference["vector"],
-                        posterior_row.get("draws") or (), excluded=observed_dead,
-                    )
-                    if posterior_point_vector is None or not posterior_draws:
-                        posterior_state = "no_vector"
-                        posterior_point_vector = None
-                        posterior_draws = []
-                    else:
-                        posterior_state = "shadow"
-        except Exception as exc:  # noqa: BLE001 -- a shadow never blocks a decision
-            posterior_state = "error_" + type(exc).__name__
-            posterior_point_vector = None
-            posterior_draws = []
+    # L4 posterior lane (charter 230): the snapshot's one posterior, built by
+    # ``posterior_belief_v1`` in the caller so the solver reads the same
+    # vector.  Under ``on`` the vector every window sums is the belief (the
+    # admitted posterior, or ``b = m``); under ``shadow`` it is the row's
+    # point whatever its verdict, recorded and gating nothing.
+    posterior_row: Mapping[str, Any] | None = l4.get("row")
+    posterior_band: str | None = l4.get("band")
+    posterior_state = str(l4.get("state") or "off")
+    if belief_on:
+        posterior_point_vector: dict[str, float] | None = l4.get("belief")
+        posterior_draws: list[dict[str, float]] = list(l4.get("belief_draws") or [])
+    else:
+        posterior_point_vector = l4.get("point")
+        posterior_draws = list(l4.get("draws") or [])
     posterior_would_refuse = 0
     posterior_would_admit = 0
+    # Charter 230: windows the ``on`` gate refused on the posterior's lower
+    # bound, and windows refused because the snapshot had no belief at all.
+    posterior_on_refused = 0
+    posterior_blocked_refused = 0
     enumerated = 0
     shortlisted = 0
     # The window the price gate came closest to admitting.  The counters
@@ -2701,7 +2837,7 @@ def _support_windows(
                 gapped_refused += 1
                 continue
             raw_win = sum(
-                float(probabilities[bucket]) for bucket in window
+                float(value[bucket]) for bucket in window
             )
             # A window that does not hold the model's own centre is
             # over-claimed by a measured amount; the objective must rank and
@@ -2819,6 +2955,7 @@ def _support_windows(
                 CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
                 and EFFECTIVE_EDGE_MODE == "on"
                 and EFFECTIVE_EDGE_SCOPE == "window"
+                and not belief_on
                 and str(probability_stage or "") in _EFFECTIVE_EDGE_GATE_STAGES
                 and priced
                 and win > EPS
@@ -3158,7 +3295,7 @@ def _support_windows(
             if priced and any(
                 _leg_below_floor(
                     by_bucket[bucket],
-                    probabilities.get(bucket),
+                    value.get(bucket),
                     fee_rate=float(fee_rate),
                 )
                 for bucket, quote in zip(window, quotes)
@@ -3323,6 +3460,42 @@ def _support_windows(
                         _clears = bool(valuation_admissible)
                     if not _clears:
                         valuation_refused += 1
+                        admissible = False
+            if belief_on:
+                # Charter 230: the baseline's gate (E8) -- the lower bound of
+                # the value across the posterior's draws clears the hurdle.
+                # The same three routes as charter 132's ``on``: a charter
+                # 136/143 completion is admitted on exposure or held count,
+                # not on value; another completion is judged on the rungs it
+                # buys; a whole window on itself.  No belief buys nothing.
+                if belief_blocked:
+                    if admissible:
+                        posterior_blocked_refused += 1
+                    admissible = False
+                elif admissible:
+                    if completion is not None and completion.get("admitted_by") in (
+                        COMPLETION_RISK_BUDGET_RULE_VERSION,
+                        COMPLETION_143_RULE_VERSION,
+                    ):
+                        _posterior_clears = True
+                    elif completion is not None:
+                        _inc_price = completion.get("increment_all_in_price")
+                        _inc = (
+                            valuation_action_value_v1(
+                                posterior_draws,
+                                {b: 1.0 for b in completion["buyable_buckets"]},
+                                float(_inc_price),
+                            )
+                            if _inc_price is not None else None
+                        )
+                        _posterior_clears = _inc is not None and (
+                            float(_inc["value_lcb"])
+                            >= economic_hurdle_usdc(float(_inc_price)) - EPS
+                        )
+                    else:
+                        _posterior_clears = bool(posterior_admissible)
+                    if not _posterior_clears:
+                        posterior_on_refused += 1
                         admissible = False
             if not admissible:
                 # Name which of the three ways this branch can refuse actually
@@ -3565,7 +3738,7 @@ def _support_windows(
         if priced and any(
             _leg_below_floor(
                 by_bucket[bucket],
-                probabilities.get(bucket),
+                value.get(bucket),
                 fee_rate=float(fee_rate),
             )
             for bucket, quote in zip(incumbent, quotes)
@@ -3573,7 +3746,7 @@ def _support_windows(
             incumbent_leg_floor_hit = True
             priced = False
         price = sum(quote for quote in quotes if quote is not None)
-        win = sum(float(probabilities[bucket]) for bucket in incumbent)
+        win = sum(float(value[bucket]) for bucket in incumbent)
         # Charter 78: the appended incumbent passes the same gate the
         # loop applies; an incumbent the price refuses is counted as a
         # refusal, not carried through.
@@ -3588,6 +3761,7 @@ def _support_windows(
             CHARTER_87_GATE_EFFECTIVE_EDGE == "on"
             and EFFECTIVE_EDGE_MODE == "on"
             and EFFECTIVE_EDGE_SCOPE == "window"
+            and not belief_on
             and str(probability_stage or "") in _EFFECTIVE_EDGE_GATE_STAGES
             and priced
             and win > EPS
@@ -3614,6 +3788,23 @@ def _support_windows(
                 expected_payout=incumbent_effective_win, cost=price,
             )
         )
+        if belief_on and incumbent_admissible:
+            # Charter 230: the incumbent passes the loop's gate -- the lower
+            # bound across the posterior's draws -- or no gate at all when
+            # the snapshot has no belief.
+            _incumbent_value = (
+                None if belief_blocked else valuation_action_value_v1(
+                    posterior_draws, {b: 1.0 for b in incumbent}, price,
+                )
+            )
+            if _incumbent_value is None or float(_incumbent_value["value_lcb"]) < (
+                economic_hurdle_usdc(price) - EPS
+            ):
+                incumbent_admissible = False
+                if belief_blocked:
+                    posterior_blocked_refused += 1
+                else:
+                    posterior_on_refused += 1
         if (
             priced
             and not structurally_refused
@@ -3930,23 +4121,32 @@ def _support_windows(
                 "one_sided_buckets": valuation_market.get("one_sided_buckets"),
             }
         ),
-        # L4 posterior lane (shadow): what the snapshot read and what the
-        # gate would have done.  ``posterior_state``: ``shadow`` (computed
-        # and recorded), ``accumulating``, ``no_fit``, ``market_*``,
-        # ``no_vector``, ``error_*``, ``off``.
+        # L4 posterior lane (charter 230): what the snapshot read and what
+        # its gate did.  ``posterior_state``: ``admitted`` / ``not_admitted``
+        # (``on``), ``shadow``, ``accumulating``, ``no_fit``, ``market_*``,
+        # ``no_vector``, ``error_*``, ``off``.  ``belief_source`` names the
+        # vector every valuation read: ``l4_posterior``, ``l4_market_prior``
+        # (b = m), None (no belief: nothing bought), or ``weather`` when the
+        # lane is not ``on``.
         "posterior_mode": POSTERIOR_MODE,
         "posterior_rule": POSTERIOR_RULE,
         "posterior_state": posterior_state,
         "posterior_lead_band": posterior_band,
+        "posterior_verdict_reason": l4.get("verdict_reason"),
+        "belief_source": (
+            l4.get("belief_source") if belief_on else "weather"
+        ),
         "posterior_served": (
             None if not isinstance(posterior_row, Mapping) else {
                 key: posterior_row.get(key)
                 for key in ("alpha", "gamma", "w", "w_lcb", "w_ucb",
-                            "accumulating", "sha256", "lead_band")
+                            "accumulating", "sha256", "lead_band", "admitted")
             }
         ),
         "posterior_would_refuse_count": posterior_would_refuse,
         "posterior_would_admit_count": posterior_would_admit,
+        "posterior_on_refused_window_count": posterior_on_refused,
+        "posterior_blocked_refused_window_count": posterior_blocked_refused,
         "valuation_would_refuse_count": valuation_would_refuse,
         "valuation_would_admit_count": valuation_would_admit,
         "valuation_refused_window_count": valuation_refused,
@@ -4278,6 +4478,7 @@ def _solve_over_support_windows(
         bucket_factors: dict[str, float] = {}
         if (
             EFFECTIVE_EDGE_MODE == "on"
+            and POSTERIOR_MODE != "on"
             and EFFECTIVE_EDGE_SCOPE == "bucket"
             and (
                 stage in EFFECTIVE_EDGE_STAGES
@@ -4322,7 +4523,7 @@ def _solve_over_support_windows(
         # P1 now flows through the same dispatch with its own table (identity
         # today; see EFFECTIVE_EDGE_P1_LAMBDA), so the exemption is a fitted
         # row rather than an absent branch.
-        if EFFECTIVE_EDGE_MODE == "on" and (
+        if EFFECTIVE_EDGE_MODE == "on" and POSTERIOR_MODE != "on" and (
             stage in EFFECTIVE_EDGE_STAGES
             or stage in EFFECTIVE_EDGE_P0M_STAGES
             or stage in EFFECTIVE_EDGE_P1_STAGES
@@ -6623,10 +6824,28 @@ def compile_delta_v2_runtime_plan(
     # replays put that at ROI +9.7% -> -20.5%.  So: the domain stays wide,
     # the shortlist is ordered by probability mass, its head is the seat, and
     # the objective decides quantities inside it (charter 64).
+    # Charter 230: the snapshot's L4 posterior, once, from the served weather
+    # vector and the book.  Under ``on`` its ``belief`` is what the
+    # enumeration values windows on and what the solver sizes on -- one
+    # vector; the weather vector keeps deciding structure.
+    l4_belief = posterior_belief_v1(
+        snapshot=snapshot,
+        probabilities=probabilities,
+        probability_stage=str(snapshot.evidence.probability_stage or ""),
+        hours_to_cutoff=hours_to_cutoff,
+        effective_edge_tables=effective_edge_tables,
+    )
+    sizing_belief: Mapping[str, float] = probabilities
+    if POSTERIOR_MODE == "on" and l4_belief.get("belief") is not None:
+        sizing_belief = {
+            bucket: float(l4_belief["belief"].get(bucket, 0.0) or 0.0)
+            for bucket in probabilities
+        }
     support_windows, support_window_audit = _support_windows(
         snapshot=snapshot,
         desired=desired,
         probabilities=probabilities,
+        l4=l4_belief,
         fee_rate=basket_policy.fee_rate,
         **dict(zip(
             ("minimum_support_buckets", "maximum_support_buckets"),
@@ -6699,7 +6918,10 @@ def compile_delta_v2_runtime_plan(
                 window_audit=support_window_audit,
                 live_buckets=evidence_live_buckets,
                 snapshot=snapshot,
-                probabilities=probabilities,
+                # Charter 230: the partition every window is sized and
+                # authorised on is the belief (the weather vector when the
+                # lane is not ``on``).
+                probabilities=sizing_belief,
                 shortfall=shortfall,
                 breakthrough=breakthrough,
                 delta_policy=delta_policy,

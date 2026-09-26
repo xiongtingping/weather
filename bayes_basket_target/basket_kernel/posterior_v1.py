@@ -1,4 +1,4 @@
-"""L4 posterior layer, v1 -- pure arithmetic, shadow only.
+"""L4 posterior layer -- pure arithmetic; the basket's one belief (charter 230).
 
 The first-principles baseline (docs/architecture/
 EDGE_SYSTEM_FIRST_PRINCIPLES_BASELINE_2026-09-17.md, §4.4 and appendix A)
@@ -24,9 +24,24 @@ works in this coordinate and not in the valuation lane's linear one.
 
 No store import here: this module is what the runtime and the estimator
 both read, and the runtime must never reach the database through it.
-``PM_POSTERIOR_LANE`` is ``shadow`` (record on every priced window, gate
-nothing) or ``off``; ``on`` is refused until the baseline's promotion rule
-(forward skill score lower bound > 0, E15) has a reader.
+
+``PM_POSTERIOR_LANE`` (charter 230, user ruling 2026-09-26 「按l4做」):
+
+* ``on`` (default) -- the posterior is the basket's ONLY belief.  The gate
+  reads the lower bound of ``sum(b) - cost`` across the draws, the solver
+  sizes on ``b``, and the effective-edge lambda is not read.  A row serves
+  its parameters only on its own walk-forward verdict (both of charter 211's
+  scores beat the market); every other row -- no fit, accumulating, not
+  admitted -- serves ``b = m`` (E3): it values the book and buys nothing.
+  No complete market vector means no belief, and nothing is bought.
+* ``shadow`` -- the research arm: the belief is recorded on every priced
+  window and gates nothing; the served weather vector and lambda decide.
+* ``off`` -- nothing is computed.
+
+``POSTERIOR_RULE`` v2: ``(alpha, gamma, w)`` are fitted by charter 211's
+training rule, the multiclass log loss of the renormalised ladder
+(``posterior_store._fit_multiclass``); v1 fitted each bucket as its own
+logistic and renormalised afterwards.
 """
 from __future__ import annotations
 
@@ -35,20 +50,17 @@ import os
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-POSTERIOR_RULE = "logit_market_prior_v1"
+POSTERIOR_RULE = "logit_market_prior_multiclass_v2"
 POSTERIOR_TABLE_KEY = "posterior"
 PARAM_NAMES: tuple[str, str, str] = ("alpha", "gamma", "w")
 LCB_QUANTILE = 0.05
 EPS = 1e-6
 
 POSTERIOR_MODE = (
-    os.environ.get("PM_POSTERIOR_LANE", "").strip().lower() or "shadow"
+    os.environ.get("PM_POSTERIOR_LANE", "").strip().lower() or "on"
 )
-if POSTERIOR_MODE not in {"off", "shadow"}:
-    raise RuntimeError(
-        f"unknown posterior lane mode: {POSTERIOR_MODE} (on is not implemented;"
-        " promotion needs the forward skill reader first)"
-    )
+if POSTERIOR_MODE not in {"off", "shadow", "on"}:
+    raise RuntimeError(f"unknown posterior lane mode: {POSTERIOR_MODE}")
 
 
 def logit(x: float) -> float:

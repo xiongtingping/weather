@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refit the L4 posterior layer (shadow) per served stage and activate it.
+"""Refit the L4 posterior layer per served stage and activate it (charter 230).
 
 Thin CLI over ``bayes_basket_target.posterior_store``: the population (every
 labelled decision, every bucket of its ladder), the logit-space fit of
@@ -8,10 +8,11 @@ row per lead band, the by-event-day draws, the persistence, the journal, and
 the forward skill score read off the journal.  Without ``--commit`` it
 reports only.
 
-Activation is not promotion.  The lane is ``shadow``: the runtime records the
-belief and the verdict it would give on every priced window and gates
-nothing.  The number promotion is argued on is ``forward skill``: each
-decision scored on the fit that was active when it was taken.
+Charter 230: every row carries its walk-forward verdict (both of charter 211's
+scores against the market); under ``PM_POSTERIOR_LANE=on`` a row serves its
+parameters only when admitted, else ``b = m`` and nothing is bought.
+``forward skill`` (each decision scored on the fit active when it was taken)
+stays the diagnostic beside it.
 
     python3 scripts/refit_posterior.py                        # report
     python3 scripts/refit_posterior.py --commit --as-of ...   # fit + activate
@@ -62,6 +63,7 @@ def _line(fit: dict) -> str:
         return (
             head + f" -- ACCUMULATING (needs {ev['min_station_days']} /"
             f" {ev['min_days']}); serves b = m"
+            + _verdict(ev.get("verdict") or {})
         )
     pt = ev["point"]
     ci = ev["ci"]
@@ -74,6 +76,20 @@ def _line(fit: dict) -> str:
         + f" [{_f(sk['s_in_sample_ci'][0], '+.4f')}, {_f(sk['s_in_sample_ci'][1], '+.4f')}]"
         + f" IC {_f(sk['ic_in_sample'])}"
         + f"; draws w>0 {_f(sk['w_draw_positive_share'], '.2f')}"
+        + _verdict(ev.get("verdict") or {})
+    )
+
+
+def _verdict(v: dict) -> str:
+    """Charter 230: the row's walk-forward against the market, both scores."""
+
+    ls = v.get("d_logscore") or [None, None, None]
+    br = v.get("d_brier") or [None, None, None]
+    return (
+        f"\n      verdict {'ADMITTED' if v.get('admitted') else 'b = m'} ({v.get('reason')}):"
+        f" {v.get('test_days', 0)} test days / {v.get('station_days', 0)} station-days;"
+        f" LogScore {_f(ls[0], '+.4f')} [{_f(ls[1], '+.4f')}, {_f(ls[2], '+.4f')}]"
+        f" Brier {_f(br[0], '+.4f')} [{_f(br[1], '+.4f')}, {_f(br[2], '+.4f')}]"
     )
 
 
@@ -89,17 +105,18 @@ def main() -> int:
         "--stage", choices=sorted(STAGE_SCOPES) + ["all"], default="all",
     )
     parser.add_argument(
-        "--unanchored", action="store_true",
-        help="research reading only: include decisions from before the stage's"
-             " serving-arithmetic anchor; refused together with --commit",
+        "--anchored", action="store_true",
+        help="research reading only: cut the population at the stage's"
+             " serving-arithmetic anchor (charter 230 serves the rolling"
+             " window); refused together with --commit",
     )
     parser.add_argument(
         "--no-forward", action="store_true",
         help="skip the forward skill reading (it re-reads the population)",
     )
     args = parser.parse_args()
-    if args.commit and args.unanchored:
-        print("--unanchored is a research reading and may not be committed")
+    if args.commit and args.anchored:
+        print("--anchored is a research reading and may not be committed")
         return 2
     database = args.db.expanduser().resolve(strict=True)
     if args.commit and not args.as_of:
@@ -121,7 +138,7 @@ def main() -> int:
         for scope in scopes:
             fits = fit_stage_and_bands(
                 conn, stage_scope=scope, cutoff_utc=args.as_of,
-                anchored=not args.unanchored,
+                anchored=bool(args.anchored),
             )
             for fit in fits:
                 if args.commit and not fit["evidence"].get("error"):
@@ -149,7 +166,7 @@ def main() -> int:
                 receipts.append(receipt)
             if not args.no_forward:
                 fwd = forward_skill(
-                    conn, stage_scope=scope, anchored=not args.unanchored,
+                    conn, stage_scope=scope, anchored=bool(args.anchored),
                 )
                 print(
                     f"  {scope:12s} forward skill: {fwd['decisions']} decisions /"

@@ -31,6 +31,14 @@ os.environ.setdefault(
     "P0_FUSION_BLEND_TRAINING_DB",
     os.path.join(os.path.dirname(__file__), "_no_fusion_blend_training.db"),
 )
+# Charter 230: production ships ``PM_POSTERIOR_LANE=on`` -- the L4 posterior
+# is the basket's one belief, and a row without an admitted walk-forward
+# verdict buys nothing.  The mechanism tests (seat rules, completions, the
+# capital layer, execution) exercise arithmetic that is the same whatever
+# vector it is fed, and their fixtures carry no fitted posterior, so the suite
+# runs them on the weather vector (``shadow``).  The lane's own tests switch
+# ``on`` explicitly; the shipped default is asserted in a subprocess.
+os.environ.setdefault("PM_POSTERIOR_LANE", "shadow")
 
 
 @pytest.fixture(autouse=True)

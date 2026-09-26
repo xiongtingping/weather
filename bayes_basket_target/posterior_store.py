@@ -1,6 +1,16 @@
-"""DB-resident L4 posterior parameters: the fit, the journal, the served
-rows, the forward skill score.  Shadow lane for the first-principles baseline
-(docs/architecture/EDGE_SYSTEM_FIRST_PRINCIPLES_BASELINE_2026-09-17.md).
+"""DB-resident L4 posterior parameters: the fit, the walk-forward verdict,
+the journal, the served rows, the forward skill score.  The basket's one
+belief since charter 230 (user ruling 2026-09-26 「按l4做」); the
+first-principles baseline is
+docs/architecture/EDGE_SYSTEM_FIRST_PRINCIPLES_BASELINE_2026-09-17.md.
+
+Charter 230 changed three things below: the fit is the multiclass log loss of
+the renormalised ladder (``_fit_multiclass``, charter 211's training rule;
+the per-bucket logistic ``_fit_logistic`` stays as the comparison arm the
+research reads), every row carries ``walk_forward_verdict``'s reading of
+both scores against the market and serves only when admitted, and the
+population is the rolling window rather than the serving-arithmetic anchor
+(``POPULATION_ANCHORED``).
 
 What is fitted (§4.4, appendix A.2).  Per decision and per bucket of the
 market's ladder::
@@ -63,6 +73,17 @@ from .valuation_store import STAGE_SCOPES, population as _valuation_population
 
 SCHEMA = "posterior_table_v1"
 WINDOW_DAYS = 28
+#: Charter 230: the lane's population is the rolling window, NOT cut at the
+#: stage's serving-arithmetic anchor.  The anchor moves with every served
+#: version bump (P0 went v14 -> v19 in two days), and a lane that restarts its
+#: evidence at each bump never holds a verdict: on 2026-09-26 the anchored P0
+#: population was 11 days, leaving its walk-forward one test day.  The
+#: parameters are "how far to trust the model's disagreement with the book"
+#: and the book's own recalibration, measured over recent history; a version
+#: change shows up in the walk-forward verdict, which is scored day by day
+#: on the vectors actually served then.  ``anchored=True`` stays a research
+#: reading.
+POPULATION_ANCHORED = False
 MIN_STATION_DAYS = 100
 MIN_DAYS = 8
 BOOTSTRAP_DRAWS = 200
@@ -189,7 +210,7 @@ def population(
     as_of: str | None = None,
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
-    anchored: bool = True,
+    anchored: bool = POPULATION_ANCHORED,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """The valuation lane's population with each decision's lead band."""
 
@@ -289,6 +310,123 @@ def _fit_logistic(
     return theta
 
 
+def _multiclass_terms(
+    design: Mapping[str, Any], theta: Any, *, dec_weight: Any,
+    prior_mean: Any, prec: Any, want_hessian: bool = True,
+) -> tuple[float, Any, Any]:
+    """Penalised multiclass log loss of the renormalised ladder, its gradient
+    and Hessian.
+
+    ``b_i = expit(s_i) / sum_j expit(s_j)`` per decision, ``s = offset + X theta``;
+    the loss is ``-sum_d w_d log b_{d,label}`` plus the Gaussian prior.  With
+    ``T_d = sum_j expit(s_j)`` and ``a = expit(s)(1 - expit(s))``::
+
+        grad = -sum_d w_d [(1 - sig_y) x_y - (sum_j a_j x_j) / T_d]
+        hess =  sum_d w_d [a_y x_y x_y' + sum_j a_j (1 - 2 sig_j) x_j x_j' / T_d
+                           - A_d A_d' / T_d^2],   A_d = sum_j a_j x_j
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    X = design["X"]
+    starts = design["starts"]
+    y = design["y"]
+    # Clipped so a far-out parameter proposal cannot overflow the sigmoid or
+    # empty a decision's total; the prior keeps the optimum well inside.
+    s = np.clip(design["offset"] + X @ theta, -60.0, 60.0)
+    sig = 1.0 / (1.0 + np.exp(-s))
+    a = sig * (1.0 - sig)
+    total = np.maximum(np.add.reduceat(sig, starts), 1e-300)
+    lengths = np.diff(np.append(starts, len(sig)))
+    label_rows = np.flatnonzero(y > 0.5)
+    sig_y = np.maximum(sig[label_rows], 1e-300)
+    loss = float(-np.sum(dec_weight * (np.log(sig_y) - np.log(total))))
+    diff = theta - prior_mean
+    loss += 0.5 * float(np.sum(prec * diff * diff))
+    xa = X * a[:, None]
+    big_a = np.add.reduceat(xa, starts, axis=0)
+    grad = -(X[label_rows] * (dec_weight * (1.0 - sig[label_rows]))[:, None]).sum(axis=0)
+    grad += (big_a * (dec_weight / total)[:, None]).sum(axis=0)
+    grad += prec * diff
+    if not want_hessian:
+        return loss, grad, None
+    w_row = np.repeat(dec_weight / total, lengths)
+    hess = (X[label_rows] * (dec_weight * a[label_rows])[:, None]).T @ X[label_rows]
+    hess += (X * (w_row * a * (1.0 - 2.0 * sig))[:, None]).T @ X
+    hess -= (big_a * (dec_weight / (total * total))[:, None]).T @ big_a
+    hess += np.diag(prec)
+    return loss, grad, hess
+
+
+def _fit_multiclass(
+    design: Mapping[str, Any], *, row_weight: Any, prior_mean: Sequence[float],
+    prior_sd: Sequence[float] = PRIOR_SD, start: Sequence[float] | None = None,
+) -> Any:
+    """Charter 211's training rule on L4: the multiclass log loss of the
+    RENORMALISED ladder, not a logistic regression per bucket.
+
+    ``_fit_logistic`` fits every bucket as its own yes/no and renormalises
+    afterwards, so the coefficients it returns maximise a likelihood nobody
+    serves; the belief the gate reads is the renormalised vector, and this
+    maximises the probability that vector puts on the bucket that settled.
+    Damped Newton (Levenberg) with a backtracking line search: the loss of a
+    logit-then-renormalise map is not convex everywhere, the prior makes it
+    well posed.  ``row_weight`` is per row (constant within a decision) or a
+    scalar, as ``_fit_logistic`` takes it.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    X = design["X"]
+    if X.shape[0] == 0:
+        return np.asarray(prior_mean, dtype=float).copy()
+    starts = design["starts"]
+    row_w = design["w"] * (np.ones(X.shape[0]) * row_weight)
+    dec_weight = row_w[starts]
+    mu0 = np.asarray(prior_mean, dtype=float)
+    prec = 1.0 / (np.asarray(prior_sd, dtype=float) ** 2)
+    theta = np.asarray(start if start is not None else mu0, dtype=float).copy()
+    loss, grad, hess = _multiclass_terms(
+        design, theta, dec_weight=dec_weight, prior_mean=mu0, prec=prec,
+    )
+    damping = 0.0
+    for _ in range(NEWTON_ITERATIONS):
+        step = None
+        for _attempt in range(12):
+            try:
+                candidate_hess = hess + damping * np.eye(len(theta))
+                np.linalg.cholesky(candidate_hess)
+                step = np.linalg.solve(candidate_hess, grad)
+                break
+            except np.linalg.LinAlgError:
+                damping = max(1e-6, damping * 10.0 if damping else 1e-4 * float(np.max(np.abs(np.diag(hess)))) + 1e-6)
+        if step is None:
+            break
+        scale = 1.0
+        improved = False
+        for _ls in range(30):
+            trial = theta - scale * step
+            trial_loss, _g, _h = _multiclass_terms(
+                design, trial, dec_weight=dec_weight, prior_mean=mu0, prec=prec,
+                want_hessian=False,
+            )
+            if math.isfinite(trial_loss) and trial_loss <= loss + 1e-12:
+                improved = True
+                break
+            scale *= 0.5
+        if not improved:
+            break
+        moved = float(np.max(np.abs(trial - theta)))
+        theta = trial
+        loss, grad, hess = _multiclass_terms(
+            design, theta, dec_weight=dec_weight, prior_mean=mu0, prec=prec,
+        )
+        damping = damping * 0.1 if damping > 1e-9 else 0.0
+        if moved < NEWTON_TOLERANCE:
+            break
+    return theta
+
+
 def _ladder_scores(design: Mapping[str, Any], theta: Any) -> dict[str, Any]:
     """Per-decision ``log b(truth) - log m(truth)`` on the renormalised
     ladder, and the bucket-level IC ingredients."""
@@ -342,14 +480,20 @@ def fit_posterior(
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
     draws: int = BOOTSTRAP_DRAWS,
-    anchored: bool = True,
+    anchored: bool = POPULATION_ANCHORED,
     lead_band: str | None = None,
     rows: Sequence[Mapping[str, Any]] | None = None,
     meta: Mapping[str, Any] | None = None,
     parent: Mapping[str, Any] | None = None,
+    verdict: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One row's fit: the stage's whole population, or one lead band of it
-    shrunk to ``parent`` (the stage's fit) by ``BAND_SHRINK_DAYS``."""
+    shrunk to ``parent`` (the stage's fit) by ``BAND_SHRINK_DAYS``.
+
+    Charter 230: fitted by ``_fit_multiclass`` (charter 211's training rule),
+    and carrying ``verdict`` -- the row's own walk-forward against the market,
+    from ``walk_forward_verdict`` -- in the table, so a row whose verdict
+    moved is a new row."""
 
     import numpy as np  # noqa: PLC0415
 
@@ -391,7 +535,7 @@ def fit_posterior(
     if rows and not accumulating:
         design = _design(rows)
         ones = np.ones(design["X"].shape[0])
-        theta = _fit_logistic(design, row_weight=ones, prior_mean=(0.0, 0.0, 0.0))
+        theta = _fit_multiclass(design, row_weight=ones, prior_mean=(0.0, 0.0, 0.0))
         n_days = design["n_days"]
         shrink = None
         if parent is not None and lead_band is not None:
@@ -408,7 +552,7 @@ def fit_posterior(
                 minlength=n_days,
             ).astype(float)
             weight = counts[day_of_row]
-            draw = _fit_logistic(
+            draw = _fit_multiclass(
                 design, row_weight=weight, prior_mean=(0.0, 0.0, 0.0), start=theta,
             )
             if shrink is not None:
@@ -435,8 +579,12 @@ def fit_posterior(
                 if param_draws else None
             ),
         }
+    verdict_record = dict(verdict) if verdict is not None else _no_verdict("not_evaluated")
+    if accumulating:
+        verdict_record = dict(verdict_record, admitted=False)
     evidence.update({
         "accumulating": bool(accumulating),
+        "verdict": verdict_record,
         "point": point,
         "ci": {name: list(ci[name]) for name in PARAM_NAMES},
         "draws": [] if accumulating else param_draws,
@@ -453,6 +601,7 @@ def fit_posterior(
         "decision_count": len(rows), "station_day_count": station_days,
         "day_count": len(days), "accumulating": bool(accumulating),
         "draws": evidence["draws"],
+        "verdict": verdict_record,
     }
     return {
         "stage_scope": stage_scope, "lead_band": band, "table": table,
@@ -470,7 +619,7 @@ def fit_stage_and_bands(
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
     draws: int = BOOTSTRAP_DRAWS,
-    anchored: bool = True,
+    anchored: bool = POPULATION_ANCHORED,
 ) -> list[dict[str, Any]]:
     """The stage's whole row first, then one row per lead band shrunk to it;
     all cut from one population."""
@@ -479,9 +628,11 @@ def fit_stage_and_bands(
         conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
         cutoff_utc=cutoff_utc, anchored=anchored,
     )
+    verdicts = {} if meta.get("error") else walk_forward_verdict(rows)
     whole = fit_posterior(
         None, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
         cutoff_utc=cutoff_utc, draws=draws, anchored=anchored, rows=rows, meta=meta,
+        verdict=verdicts.get(WHOLE_STAGE),
     )
     fits = [whole]
     if meta.get("error"):
@@ -492,8 +643,167 @@ def fit_stage_and_bands(
             None, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
             cutoff_utc=cutoff_utc, draws=draws, anchored=anchored,
             lead_band=label, rows=rows, meta=meta, parent=parent,
+            verdict=verdicts.get(label),
         ))
     return fits
+
+
+# --------------------------------------------------------------------------
+# Charter 230: the walk-forward verdict a row must hold to serve
+# --------------------------------------------------------------------------
+
+#: Test days a row's verdict needs, and training days before a test day.
+VERDICT_MIN_TEST_DAYS = MIN_DAYS
+VERDICT_DRAWS = 1000
+VERDICT_SEED = 20260926
+VERDICT_RULE = "walk_forward_brier_and_logscore_beat_market_v1"
+
+
+def _no_verdict(reason: str) -> dict[str, Any]:
+    return {
+        "rule": VERDICT_RULE, "admitted": False, "reason": reason,
+        "test_days": 0, "station_days": 0, "decisions": 0,
+        "d_logscore": [None, None, None], "d_brier": [None, None, None],
+    }
+
+
+def _row_theta(
+    rows: Sequence[Mapping[str, Any]], *, parent: Any | None = None,
+) -> Any | None:
+    """The multiclass point a row would serve on ``rows``, or None while the
+    row is accumulating -- the same hurdles and band shrink as ``fit_posterior``."""
+
+    import numpy as np  # noqa: PLC0415
+
+    station_days = len({(r["station"], r["date"]) for r in rows})
+    days = {str(r["date"]) for r in rows}
+    if station_days < MIN_STATION_DAYS or len(days) < MIN_DAYS:
+        return None
+    design = _design(rows)
+    theta = _fit_multiclass(
+        design, row_weight=np.ones(design["X"].shape[0]), prior_mean=(0.0, 0.0, 0.0),
+    )
+    if parent is not None:
+        n = float(design["n_days"])
+        theta = (n * theta + BAND_SHRINK_DAYS * np.asarray(parent, dtype=float)) / (
+            n + BAND_SHRINK_DAYS
+        )
+    return theta
+
+
+def walk_forward_verdict(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Charter 230: per served row, does the lane beat the market out of sample?
+
+    Every event day in the population is a test day once its training set --
+    decisions whose label was knowable before that day's first decision --
+    fits.  On it the stage row and the five band rows are fitted exactly as
+    the nightly fit fits them, and each of the day's decisions reads the row
+    the runtime would read (its band's when not accumulating, else the
+    stage's; a decision with neither reads ``b = m`` and is nobody's
+    evidence).  The row is admitted when, over at least
+    ``VERDICT_MIN_TEST_DAYS`` test days, the one-sided 95% upper bound of the
+    mean change against the market is below zero on BOTH of charter 211's
+    scores -- bucket LogScore and bucket Brier -- station-days weighted
+    equally, by-event-day bootstrap.  A row without that serves ``b = m``.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    out: dict[str, dict[str, Any]] = {
+        band: _no_verdict("no_test_days") for band in (WHOLE_STAGE, *LEAD_BAND_LABELS)
+    }
+    if not rows:
+        return out
+
+    def _instant(value: Any) -> datetime | None:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed.tzinfo is not None else None
+
+    by_day: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        by_day.setdefault(str(row["date"]), []).append(row)
+    known = [(_instant(r.get("label_known_at")), r) for r in rows]
+    # (row label, day, station) -> list of (d_logscore, d_brier)
+    scored: dict[str, dict[tuple[str, str], list[tuple[float, float]]]] = {}
+    for day in sorted(by_day):
+        first = min(
+            (t for t in (_instant(r.get("at")) for r in by_day[day]) if t is not None),
+            default=None,
+        )
+        if first is None:
+            continue
+        train = [
+            r for t, r in known
+            if t is not None and t <= first and str(r["date"]) < day
+        ]
+        stage_theta = _row_theta(train)
+        if stage_theta is None:
+            continue
+        band_theta: dict[str, Any] = {}
+        for label in LEAD_BAND_LABELS:
+            band_theta[label] = _row_theta(
+                [r for r in train if r.get("lead_band") == label], parent=stage_theta,
+            )
+        for r in by_day[day]:
+            label = r.get("lead_band")
+            if label is not None and band_theta.get(label) is not None:
+                key, theta = str(label), band_theta[label]
+            else:
+                key, theta = WHOLE_STAGE, stage_theta
+            params = {name: float(theta[i]) for i, name in enumerate(PARAM_NAMES)}
+            vector = posterior_vector_v1(r["p"], r["m"], params)
+            if vector is None:
+                continue
+            truth = str(r["label"])
+            m = r["m"]
+            b_y = max(float(vector.get(truth, 0.0)), EPS)
+            m_y = max(float(m[truth]), EPS)
+            d_ls = -math.log(b_y) + math.log(m_y)
+            d_br = sum(
+                (float(vector.get(k, 0.0)) - (1.0 if str(k) == truth else 0.0)) ** 2
+                - (float(v) - (1.0 if str(k) == truth else 0.0)) ** 2
+                for k, v in m.items()
+            )
+            scored.setdefault(key, {}).setdefault(
+                (day, str(r["station"])), []
+            ).append((d_ls, d_br))
+    for key, cells in scored.items():
+        days = sorted({day for day, _station in cells})
+        day_index = {d: i for i, d in enumerate(days)}
+        num = np.zeros((len(days), 2))
+        den = np.zeros(len(days))
+        for (day, _station), values in cells.items():
+            arr = np.asarray(values, dtype=float)
+            num[day_index[day]] += arr.mean(axis=0)
+            den[day_index[day]] += 1.0
+        mean = num.sum(axis=0) / den.sum()
+        rng = np.random.default_rng(VERDICT_SEED)
+        picks = rng.integers(0, len(days), size=(VERDICT_DRAWS, len(days)))
+        boot = num[picks].sum(axis=1) / den[picks].sum(axis=1)[:, None]
+        lo = np.quantile(boot, LCB_QUANTILE, axis=0)
+        hi = np.quantile(boot, 1.0 - LCB_QUANTILE, axis=0)
+        enough = len(days) >= VERDICT_MIN_TEST_DAYS
+        beats = bool(hi[0] < 0.0 and hi[1] < 0.0)
+        out[key] = {
+            "rule": VERDICT_RULE,
+            "admitted": bool(enough and beats),
+            "reason": (
+                "admitted" if enough and beats
+                else "too_few_test_days" if not enough
+                else "does_not_beat_market"
+            ),
+            "test_days": len(days),
+            "station_days": len(cells),
+            "decisions": int(sum(len(v) for v in cells.values())),
+            "d_logscore": [float(mean[0]), float(lo[0]), float(hi[0])],
+            "d_brier": [float(mean[1]), float(lo[1]), float(hi[1])],
+        }
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -608,6 +918,9 @@ def _row_to_served(row: Sequence[Any]) -> dict[str, Any]:
         "accumulating": bool(accumulating), "draws": draws,
         "fit_cutoff_utc": cutoff, "activated_at_utc": activated_at,
         "skill": evidence.get("skill") or {}, "ci": evidence.get("ci") or {},
+        # Charter 230: a row serves its parameters only on its own verdict.
+        "admitted": bool((evidence.get("verdict") or {}).get("admitted")),
+        "verdict": evidence.get("verdict") or _no_verdict("unrecorded"),
     }
 
 
@@ -692,7 +1005,7 @@ def forward_skill(
     *,
     stage_scope: str,
     window_days: int = WINDOW_DAYS,
-    anchored: bool = True,
+    anchored: bool = POPULATION_ANCHORED,
     draws: int = BOOTSTRAP_DRAWS,
 ) -> dict[str, Any]:
     """Score every labelled decision on the fit that was active when it was
@@ -1064,4 +1377,5 @@ __all__ = [
     "persist_and_activate", "journal_fit", "register_hypotheses",
     "load_posterior_as_of", "load_posterior_tables", "serving_row",
     "forward_skill", "realisation", "REALISATION_CELLS",
+    "walk_forward_verdict", "VERDICT_RULE", "VERDICT_MIN_TEST_DAYS",
 ]

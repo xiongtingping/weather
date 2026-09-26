@@ -185,12 +185,13 @@ for VALUATION_STAGE in P0 P0-M P1; do
     || echo "valuation refit $VALUATION_STAGE failed; the served row stands" >&2
 done
 
-# L4 posterior lane (first-principles baseline, 2026-09-17): the logit-space
-# posterior ``logit m + w (logit p - logit m) + c(m)`` fitted on every
-# labelled decision's whole ladder, the stage row and its lead-band rows, with
-# the market as prior.  Shadow: activation serves the recorded values only;
-# the runtime records the belief and its verdict on every priced window and
-# gates nothing.  One stage per invocation.  Never fatal.
+# L4 posterior lane (charter 230, the basket's one belief): the logit-space
+# posterior ``logit m + w (logit p - logit m) + c(m)`` fitted by the multiclass
+# log loss on every labelled decision's whole ladder over the rolling window,
+# the stage row and its lead-band rows, with the market as prior; each row
+# carries its walk-forward verdict and serves only when both scores beat the
+# market (else b = m and nothing is bought).  One stage per invocation.
+# Never fatal: a failed refit leaves the served row standing.
 for POSTERIOR_STAGE in P0 P0-M P1; do
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] posterior refit $POSTERIOR_STAGE"
   "$PY" scripts/refit_posterior.py --commit --stage "$POSTERIOR_STAGE" \
