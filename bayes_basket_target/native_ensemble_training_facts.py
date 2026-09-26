@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from .canonical_contract import FORMAL_TRUTH_LANES, FORMAL_TRUTH_LANES_SQL
 from .market_registry import registry_scope_timezone_triples
 from .contracts import ContractError, content_sha256
+from .sqlite_busy import begin_immediate_if_idle
 from .event_contracts import ForecastRevision
 from .ssot import (
     native_ensemble_foundation_schema_status,
@@ -556,6 +557,12 @@ def ingest_forward_taf_inbox(
     )
     _capture_started = time.perf_counter()
     wrote = 0
+    # The write lock first: nearly every capture is a replay the
+    # content-addressed insert only looks up, so a deferred savepoint read
+    # for most of the batch and failed 517 at its first new row whenever
+    # another writer committed meanwhile -- the P0-M stage's end, and the
+    # cycle's, on 2026-09-26 10:00Z (``begin_immediate_if_idle``).
+    own_transaction = begin_immediate_if_idle(conn)
     conn.execute("SAVEPOINT forward_taf_capture_ingress")
     try:
         for row in rows:
@@ -574,8 +581,12 @@ def ingest_forward_taf_inbox(
     except Exception:
         conn.execute("ROLLBACK TO forward_taf_capture_ingress")
         conn.execute("RELEASE forward_taf_capture_ingress")
+        if own_transaction:
+            conn.rollback()
         raise
     conn.execute("RELEASE forward_taf_capture_ingress")
+    if own_transaction:
+        conn.commit()
     phase_ms["capture_insert"] = round(
         (time.perf_counter() - _capture_started) * 1000.0, 1
     )

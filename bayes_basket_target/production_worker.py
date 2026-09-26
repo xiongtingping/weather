@@ -22177,6 +22177,17 @@ class TargetProductionWorker:
             }
         except Exception as exc:
             reason = f"{type(exc).__name__}:{exc}"
+            # Which of SQLite's two "database is locked" faults ended the
+            # cycle: a lock starved past busy_timeout (5) or this
+            # connection's own stale read snapshot (517), which waiting can
+            # never fix.  The board prints ``reason`` and nothing else, and
+            # the three cycles lost on 2026-09-26 all read the bare sentence.
+            # The stored reason codes keep the plain text.
+            lock_kind = sqlite_busy.busy_kind(exc)
+            receipt_reason = (
+                f"{reason}:{lock_kind[0]}:{lock_kind[1]}"
+                if lock_kind is not None else reason
+            )
             if (
                 delta_v2_truth_ingress is None
                 and delta_v2_label_ingress is None
@@ -22236,6 +22247,9 @@ class TargetProductionWorker:
                     "exception_reason": str(exc),
                     # Which statement, not just which sentence.
                     "failed_statement": last_failed_statement(),
+                    "sqlite_busy_kind": (
+                        list(lock_kind) if lock_kind is not None else None
+                    ),
                     "no_market_snapshot_written": True,
                     "no_intents_written": True,
                     "no_capital_reserved": True,
@@ -22245,7 +22259,7 @@ class TargetProductionWorker:
                 created_at_utc=now,
             )
             payload = {
-                **_blocked(reason),
+                **_blocked(receipt_reason),
                 "failed_statement": last_failed_statement(),
                 "worker_checked_at": now,
                 "scope_count": len(scopes),

@@ -93,6 +93,34 @@ class WriteBlocked(RuntimeError):
         self.code = int(code)
 
 
+def begin_immediate_if_idle(conn: sqlite3.Connection) -> bool:
+    """Open the connection's transaction by taking the write lock first.
+
+    A ``SAVEPOINT`` on a connection with no transaction opens a DEFERRED one:
+    it reads on a snapshot and asks for the write lock only at its first
+    write.  A batch that looks a row up before deciding to write it --
+    content-addressed replays, "already current" quotes -- can read for a
+    long stretch before that first write, and if any other connection
+    commits in the stretch the write fails at once with
+    ``SQLITE_BUSY_SNAPSHOT`` (517, "database is locked"); ``busy_timeout``
+    is never consulted.  Measured on the SSOT 2026-09-26: three production
+    cycles of two hundred ended that way inside the market-evidence and
+    forward-TAF batches (07:30, 10:00, 12:40Z), each before its decision
+    loop ran.  ``BEGIN IMMEDIATE`` takes the lock up front -- waiting out
+    ``busy_timeout`` like any writer -- so the reads and the writes share one
+    snapshot and no promotion can fail.
+
+    Returns whether it opened the transaction; the caller then owns its
+    ``COMMIT``/``ROLLBACK``.  A connection already inside a transaction is
+    left as it is: the caller's transaction and its lock are the caller's.
+    """
+
+    if conn.in_transaction:
+        return False
+    conn.execute("BEGIN IMMEDIATE")
+    return True
+
+
 @contextlib.contextmanager
 def blocked_when_busy():
     """Re-raise a contended-lock fault inside as ``WriteBlocked``.
@@ -144,6 +172,7 @@ __all__ = [
     "SQLITE_BUSY_SNAPSHOT",
     "STALE_READ_SNAPSHOT",
     "WriteBlocked",
+    "begin_immediate_if_idle",
     "blocked_when_busy",
     "busy_kind",
     "write_row",

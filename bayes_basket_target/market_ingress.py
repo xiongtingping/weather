@@ -30,6 +30,7 @@ from .market_registry import (
 )
 from .market_materialization import insert_market_evidence_bundle
 from .quote_freshness import QuoteFreshnessPolicy
+from .sqlite_busy import begin_immediate_if_idle
 from .resource_bounds import (
     MAX_INPUT_FILES_PER_BATCH,
     MAX_WS_EVIDENCE_CACHE_ROW_BYTES,
@@ -1300,6 +1301,11 @@ def materialize_official_ws_evidence_cache(
         )
         assert_target_db_capacity(db_path, projected_bytes=projected_bytes)
     savepoint = "basket_ws_evidence_cache"
+    # The write lock before the first look-up: most rows are already current
+    # and only read, so a deferred savepoint read for the whole stretch and
+    # failed 517 at its first write whenever another writer committed in it
+    # (see ``begin_immediate_if_idle``).
+    own_transaction = begin_immediate_if_idle(conn)
     conn.execute(f"SAVEPOINT {savepoint}")
     receipts: list[dict[str, Any]] = []
     try:
@@ -1311,9 +1317,13 @@ def materialize_official_ws_evidence_cache(
         else:
             conn.execute(f"ROLLBACK TO {savepoint}")
             conn.execute(f"RELEASE {savepoint}")
+            if own_transaction:
+                conn.rollback()
     except Exception:
         conn.execute(f"ROLLBACK TO {savepoint}")
         conn.execute(f"RELEASE {savepoint}")
+        if own_transaction:
+            conn.rollback()
         raise
     return {
         "schema": "bayes_basket_official_ws_evidence_cache_ingress_v1",
@@ -1444,7 +1454,11 @@ def materialize_market_evidence(
     # A savepoint works both on a clean connection and when the caller has an
     # open transaction (for example after installing an isolated test
     # registry).  It keeps the batch atomic without committing unrelated
-    # caller-owned work until the explicit commit path below.
+    # caller-owned work until the explicit commit path below.  On a clean
+    # connection the transaction takes the write lock first, so the bundles'
+    # own look-ups cannot leave it reading on a snapshot another writer has
+    # moved past (``begin_immediate_if_idle``).
+    own_transaction = begin_immediate_if_idle(conn)
     conn.execute(f"SAVEPOINT {savepoint}")
     receipts: list[dict[str, Any]] = []
     try:
@@ -1456,9 +1470,13 @@ def materialize_market_evidence(
         else:
             conn.execute(f"ROLLBACK TO {savepoint}")
             conn.execute(f"RELEASE {savepoint}")
+            if own_transaction:
+                conn.rollback()
     except Exception:
         conn.execute(f"ROLLBACK TO {savepoint}")
         conn.execute(f"RELEASE {savepoint}")
+        if own_transaction:
+            conn.rollback()
         raise
     return {
         "schema": INGRESS_SCHEMA,
