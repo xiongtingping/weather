@@ -1,0 +1,348 @@
+{
+ "P0_opening": {
+  "basket": {
+   "station_days": 1236,
+   "skewed_share": 0.324,
+   "mean_bucket_eq_mode_bucket_share": 0.909,
+   "hit_mean_bucket": 0.389,
+   "hit_mode_bucket": 0.396,
+   "mae_mean_c": 0.905,
+   "mae_mode_c": 0.893,
+   "closer_to_mean_share_excl_ties": 0.431,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     488,
+     0.395
+    ],
+    "mode": [
+     489,
+     0.396
+    ],
+    "other_side": [
+     259,
+     0.21
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     177,
+     0.443
+    ],
+    "mode": [
+     170,
+     0.425
+    ],
+    "other_side": [
+     53,
+     0.133
+    ]
+   },
+   "split_days": {
+    "n": 113,
+    "hit_mean_bucket": 0.265,
+    "hit_mode_bucket": 0.336,
+    "truth_side": {
+     "mean_side": [
+      57,
+      0.504
+     ],
+     "mode": [
+      38,
+      0.336
+     ],
+     "other_side": [
+      18,
+      0.159
+     ]
+    }
+   }
+  },
+  "k1": {
+   "station_days": 1236,
+   "skewed_share": 0.212,
+   "mean_bucket_eq_mode_bucket_share": 0.916,
+   "hit_mean_bucket": 0.433,
+   "hit_mode_bucket": 0.437,
+   "mae_mean_c": 0.806,
+   "mae_mode_c": 0.784,
+   "closer_to_mean_share_excl_ties": 0.411,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     451,
+     0.365
+    ],
+    "mode": [
+     540,
+     0.437
+    ],
+    "other_side": [
+     245,
+     0.198
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     114,
+     0.435
+    ],
+    "mode": [
+     120,
+     0.458
+    ],
+    "other_side": [
+     28,
+     0.107
+    ]
+   },
+   "split_days": {
+    "n": 104,
+    "hit_mean_bucket": 0.317,
+    "hit_mode_bucket": 0.365,
+    "truth_side": {
+     "mean_side": [
+      55,
+      0.529
+     ],
+     "mode": [
+      38,
+      0.365
+     ],
+     "other_side": [
+      11,
+      0.106
+     ]
+    }
+   }
+  },
+  "market": {
+   "station_days": 1236,
+   "skewed_share": 0.234,
+   "mean_bucket_eq_mode_bucket_share": 0.832,
+   "hit_mean_bucket": 0.429,
+   "hit_mode_bucket": 0.439,
+   "mae_mean_c": 0.815,
+   "mae_mode_c": 0.778,
+   "closer_to_mean_share_excl_ties": 0.41,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     455,
+     0.368
+    ],
+    "mode": [
+     542,
+     0.439
+    ],
+    "other_side": [
+     238,
+     0.193
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     135,
+     0.467
+    ],
+    "mode": [
+     121,
+     0.419
+    ],
+    "other_side": [
+     33,
+     0.114
+    ]
+   },
+   "split_days": {
+    "n": 208,
+    "hit_mean_bucket": 0.341,
+    "hit_mode_bucket": 0.399,
+    "truth_side": {
+     "mean_side": [
+      100,
+      0.481
+     ],
+     "mode": [
+      83,
+      0.399
+     ],
+     "other_side": [
+      25,
+      0.12
+     ]
+    }
+   }
+  }
+ },
+ "P1_first": {
+  "basket": {
+   "station_days": 966,
+   "skewed_share": 0.419,
+   "mean_bucket_eq_mode_bucket_share": 0.853,
+   "hit_mean_bucket": 0.478,
+   "hit_mode_bucket": 0.486,
+   "mae_mean_c": 0.719,
+   "mae_mode_c": 0.715,
+   "closer_to_mean_share_excl_ties": 0.421,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     365,
+     0.378
+    ],
+    "mode": [
+     469,
+     0.486
+    ],
+    "other_side": [
+     132,
+     0.137
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     182,
+     0.449
+    ],
+    "mode": [
+     176,
+     0.435
+    ],
+    "other_side": [
+     47,
+     0.116
+    ]
+   },
+   "split_days": {
+    "n": 142,
+    "hit_mean_bucket": 0.296,
+    "hit_mode_bucket": 0.345,
+    "truth_side": {
+     "mean_side": [
+      75,
+      0.528
+     ],
+     "mode": [
+      49,
+      0.345
+     ],
+     "other_side": [
+      18,
+      0.127
+     ]
+    }
+   }
+  },
+  "k1": {
+   "station_days": 966,
+   "skewed_share": 0.351,
+   "mean_bucket_eq_mode_bucket_share": 0.835,
+   "hit_mean_bucket": 0.57,
+   "hit_mode_bucket": 0.564,
+   "mae_mean_c": 0.561,
+   "mae_mode_c": 0.55,
+   "closer_to_mean_share_excl_ties": 0.383,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     318,
+     0.329
+    ],
+    "mode": [
+     545,
+     0.564
+    ],
+    "other_side": [
+     103,
+     0.107
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     153,
+     0.451
+    ],
+    "mode": [
+     174,
+     0.513
+    ],
+    "other_side": [
+     12,
+     0.035
+    ]
+   },
+   "split_days": {
+    "n": 159,
+    "hit_mean_bucket": 0.415,
+    "hit_mode_bucket": 0.377,
+    "truth_side": {
+     "mean_side": [
+      94,
+      0.591
+     ],
+     "mode": [
+      60,
+      0.377
+     ],
+     "other_side": [
+      5,
+      0.031
+     ]
+    }
+   }
+  },
+  "market": {
+   "station_days": 966,
+   "skewed_share": 0.422,
+   "mean_bucket_eq_mode_bucket_share": 0.885,
+   "hit_mean_bucket": 0.6,
+   "hit_mode_bucket": 0.596,
+   "mae_mean_c": 0.535,
+   "mae_mode_c": 0.497,
+   "closer_to_mean_share_excl_ties": 0.346,
+   "truth_side_all_with_any_gap": {
+    "mean_side": [
+     274,
+     0.289
+    ],
+    "mode": [
+     559,
+     0.589
+    ],
+    "other_side": [
+     116,
+     0.122
+    ]
+   },
+   "truth_side_skewed_days": {
+    "mean_side": [
+     162,
+     0.397
+    ],
+    "mode": [
+     216,
+     0.529
+    ],
+    "other_side": [
+     30,
+     0.074
+    ]
+   },
+   "split_days": {
+    "n": 111,
+    "hit_mean_bucket": 0.405,
+    "hit_mode_bucket": 0.369,
+    "truth_side": {
+     "mean_side": [
+      59,
+      0.532
+     ],
+     "mode": [
+      41,
+      0.369
+     ],
+     "other_side": [
+      11,
+      0.099
+     ]
+    }
+   }
+  }
+ }
+}
