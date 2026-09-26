@@ -1,0 +1,7 @@
+{
+ "source": "scripts/settlement_truth_reconciliation.run(days=43, dry_run=True), window 2026-08-14..2026-09-25, checked 2026-09-26: AGREE 1902, MARKET_LOWEST_BRACKET 2, NO_TRUTH 3, PENDING 28",
+ "overrides": {
+  "MPMG|2026-08-31": "23°C or below",
+  "MPMG|2026-09-01": "23°C or below"
+ }
+}
