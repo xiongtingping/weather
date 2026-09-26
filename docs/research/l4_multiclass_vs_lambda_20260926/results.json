@@ -1,0 +1,768 @@
+{
+ "protocol": "PROTOCOL.md",
+ "population": 44131,
+ "tested": 44131,
+ "Q1": {
+  "P0": {
+   "decisions": 11789,
+   "station_days": 1069,
+   "days": 31,
+   "logscore": [
+    0.0006447930694038424,
+    -0.0013507898717986376,
+    0.0025375172783671375
+   ],
+   "brier": [
+    0.0007240151941750247,
+    -0.0004950324068019879,
+    0.0018663644613721756
+   ],
+   "both_lower": false,
+   "either_higher": false
+  },
+  "P0-M": {
+   "decisions": 7545,
+   "station_days": 497,
+   "days": 12,
+   "logscore": [
+    -0.0014294756582764472,
+    -0.005110343022598068,
+    0.002349089412445459
+   ],
+   "brier": [
+    -8.625425191703086e-05,
+    -0.0023955415315043554,
+    0.0021416371408191186
+   ],
+   "both_lower": false,
+   "either_higher": false
+  },
+  "P1": {
+   "decisions": 14252,
+   "station_days": 1048,
+   "days": 26,
+   "logscore": [
+    0.002592624709558842,
+    -0.0005150586607999607,
+    0.005723116419689637
+   ],
+   "brier": [
+    0.001121638606183202,
+    -0.00012763021154786166,
+    0.0025787825505074902
+   ],
+   "both_lower": false,
+   "either_higher": false
+  }
+ },
+ "Q2": {
+  "P0": {
+   "6-12h": {
+    "rows_read": {
+     "band": 0,
+     "market": 2,
+     "stage": 0
+    },
+    "multiclass_vs_market": {
+     "decisions": 2,
+     "station_days": 2,
+     "days": 1,
+     "logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 2,
+     "station_days": 2,
+     "days": 1,
+     "logscore": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "brier": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": null
+   },
+   "12-24h": {
+    "rows_read": {
+     "band": 0,
+     "market": 72,
+     "stage": 6
+    },
+    "multiclass_vs_market": {
+     "decisions": 78,
+     "station_days": 18,
+     "days": 6,
+     "logscore": [
+      0.005288364682323667,
+      -0.011816448541977043,
+      0.050894389144258693
+     ],
+     "brier": [
+      0.006200784527080121,
+      0.0008627200294345006,
+      0.027862311849864478
+     ],
+     "both_lower": false,
+     "either_higher": true
+    },
+    "binary_vs_market": {
+     "decisions": 78,
+     "station_days": 18,
+     "days": 6,
+     "logscore": [
+      0.0032262107072641376,
+      -0.015788591047563222,
+      0.04675782671235847
+     ],
+     "brier": [
+      0.0050665878125313295,
+      -0.0007902470658293376,
+      0.026592802299164053
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.049935134757174045,
+     0.12328564119357405,
+     0.04247977805804858
+    ]
+   },
+   "24-36h": {
+    "rows_read": {
+     "band": 1749,
+     "market": 2756,
+     "stage": 0
+    },
+    "multiclass_vs_market": {
+     "decisions": 4505,
+     "station_days": 381,
+     "days": 36,
+     "logscore": [
+      0.003203625316733065,
+      -0.005279682233802668,
+      0.01138969881470034
+     ],
+     "brier": [
+      0.003181569456771725,
+      -0.0006954350565968907,
+      0.007015397261060273
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 4505,
+     "station_days": 381,
+     "days": 36,
+     "logscore": [
+      -0.00371385991992789,
+      -0.010313984027457822,
+      0.003022646802541815
+     ],
+     "brier": [
+      -0.0005405555983171825,
+      -0.0032892081637972484,
+      0.0026476795114333987
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.7146274376627558,
+     0.09859989872616265,
+     -0.16718051094259712
+    ]
+   },
+   ">=36h": {
+    "rows_read": {
+     "band": 10008,
+     "market": 4487,
+     "stage": 26
+    },
+    "multiclass_vs_market": {
+     "decisions": 14521,
+     "station_days": 1265,
+     "days": 39,
+     "logscore": [
+      -0.015266327408281221,
+      -0.022432263010156495,
+      -0.008442058559759559
+     ],
+     "brier": [
+      -0.0022422733432711536,
+      -0.004295267343087173,
+      -0.0003043193737972049
+     ],
+     "both_lower": true,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 14521,
+     "station_days": 1265,
+     "days": 39,
+     "logscore": [
+      -0.01523420590989369,
+      -0.021792248294861084,
+      -0.009161957808337172
+     ],
+     "brier": [
+      -0.00233680628558866,
+      -0.004430137269790307,
+      -0.0006026606855917632
+     ],
+     "both_lower": true,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.2531731856632841,
+     0.18026743827418648,
+     0.02935034471747708
+    ]
+   }
+  },
+  "P0-M": {
+   "12-24h": {
+    "rows_read": {
+     "band": 0,
+     "market": 4,
+     "stage": 22
+    },
+    "multiclass_vs_market": {
+     "decisions": 26,
+     "station_days": 25,
+     "days": 9,
+     "logscore": [
+      -0.0023362150951657724,
+      -0.025022051671703686,
+      0.017067529503754002
+     ],
+     "brier": [
+      0.01858668018273687,
+      -0.0014573081614573048,
+      0.037483772881782326
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 26,
+     "station_days": 25,
+     "days": 9,
+     "logscore": [
+      -0.014568133713891668,
+      -0.027610374982566036,
+      -0.001671472514459534
+     ],
+     "brier": [
+      0.009152731530831073,
+      -0.0030223857922702024,
+      0.02061217660405311
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     -0.11354689848960887,
+     0.14651969468346657,
+     -0.04415431666955046
+    ]
+   },
+   "24-36h": {
+    "rows_read": {
+     "band": 4975,
+     "market": 1343,
+     "stage": 0
+    },
+    "multiclass_vs_market": {
+     "decisions": 6318,
+     "station_days": 705,
+     "days": 21,
+     "logscore": [
+      -0.0006003629056813148,
+      -0.009460676477234194,
+      0.008040112449569377
+     ],
+     "brier": [
+      0.0017449323418912016,
+      -0.0025425582084691346,
+      0.005468167391192331
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 6318,
+     "station_days": 705,
+     "days": 21,
+     "logscore": [
+      -0.0009582638186456808,
+      -0.007628325509091942,
+      0.005937727767654755
+     ],
+     "brier": [
+      0.0010560187099252012,
+      -0.001381917923397236,
+      0.0034256223728570956
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.08853631122458196,
+     0.12784920185326945,
+     -0.03530315491172793
+    ]
+   },
+   ">=36h": {
+    "rows_read": {
+     "band": 2205,
+     "market": 535,
+     "stage": 343
+    },
+    "multiclass_vs_market": {
+     "decisions": 3083,
+     "station_days": 568,
+     "days": 20,
+     "logscore": [
+      -0.0044734265856454635,
+      -0.015767730596385605,
+      0.007444247845270966
+     ],
+     "brier": [
+      0.0019762750310701495,
+      -0.0013002822345235556,
+      0.005345846887148558
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 3083,
+     "station_days": 568,
+     "days": 20,
+     "logscore": [
+      -0.0009999671915116937,
+      -0.00861621458641299,
+      0.007470519497694383
+     ],
+     "brier": [
+      0.003263754250907205,
+      0.00044019387718924633,
+      0.0058676849280568395
+     ],
+     "both_lower": false,
+     "either_higher": true
+    },
+    "theta_multiclass_median": [
+     1.121571176903967,
+     0.3353848308922456,
+     0.0287088914913478
+    ]
+   }
+  },
+  "P1": {
+   "<6h": {
+    "rows_read": {
+     "band": 5317,
+     "market": 368,
+     "stage": 574
+    },
+    "multiclass_vs_market": {
+     "decisions": 6259,
+     "station_days": 943,
+     "days": 31,
+     "logscore": [
+      -0.011040801057915432,
+      -0.03583998698928576,
+      0.005563842396577194
+     ],
+     "brier": [
+      -0.004183476757197046,
+      -0.01595326666108851,
+      0.0017100384457443233
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 6259,
+     "station_days": 943,
+     "days": 31,
+     "logscore": [
+      -0.013862897681748417,
+      -0.04154458500656673,
+      0.003386574123574225
+     ],
+     "brier": [
+      -0.005773101323100157,
+      -0.018884450762347436,
+      0.0013699338303314198
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     -0.003748450537991853,
+     0.39526656998222337,
+     0.42577437823041536
+    ]
+   },
+   "6-12h": {
+    "rows_read": {
+     "band": 5978,
+     "market": 253,
+     "stage": 372
+    },
+    "multiclass_vs_market": {
+     "decisions": 6603,
+     "station_days": 962,
+     "days": 32,
+     "logscore": [
+      -0.0015369703590220238,
+      -0.008227942663050346,
+      0.0048540471809254155
+     ],
+     "brier": [
+      0.001146246657700528,
+      -0.0023913724606217774,
+      0.004477004811947692
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 6603,
+     "station_days": 962,
+     "days": 32,
+     "logscore": [
+      -0.003213043640139049,
+      -0.011515933495118568,
+      0.0033284441362357257
+     ],
+     "brier": [
+      -0.0004998173446525748,
+      -0.005866436567333722,
+      0.003779673688954457
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.6791352400124613,
+     0.31653910935537694,
+     0.19995756840633133
+    ]
+   },
+   "12-24h": {
+    "rows_read": {
+     "band": 1880,
+     "market": 725,
+     "stage": 131
+    },
+    "multiclass_vs_market": {
+     "decisions": 2736,
+     "station_days": 867,
+     "days": 34,
+     "logscore": [
+      0.0015791821217233596,
+      -0.006205052331342492,
+      0.009219645951550623
+     ],
+     "brier": [
+      0.0012494937192397975,
+      -0.00155841756980112,
+      0.003982491479521633
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "binary_vs_market": {
+     "decisions": 2736,
+     "station_days": 867,
+     "days": 34,
+     "logscore": [
+      -0.0008688954321086112,
+      -0.00749372035382848,
+      0.005327855502397571
+     ],
+     "brier": [
+      0.0006133272911154239,
+      -0.002186266293496406,
+      0.0031709259448936995
+     ],
+     "both_lower": false,
+     "either_higher": false
+    },
+    "theta_multiclass_median": [
+     0.5060330842684482,
+     0.17350029061052397,
+     0.1291734862253263
+    ]
+   }
+  }
+ },
+ "Q3": {
+  "unmatched_windows": 787,
+  "P0": {
+   "l4_vs_lambda": {
+    "decisions": 176,
+    "station_days": 97,
+    "days": 8,
+    "logscore": [
+     -0.07662072392440857,
+     -0.12440079447088861,
+     -0.03627305981956082
+    ],
+    "brier": [
+     -0.02883891634519337,
+     -0.05213454908127835,
+     -0.010483856203511721
+    ],
+    "both_lower": true,
+    "either_higher": false
+   },
+   "l4_vs_market": {
+    "decisions": 176,
+    "station_days": 97,
+    "days": 8,
+    "logscore": [
+     -0.04459312784402096,
+     -0.05914064935518274,
+     -0.03354688821335269
+    ],
+    "brier": [
+     -0.01699323952112388,
+     -0.023872293926464838,
+     -0.01248343829418355
+    ],
+    "both_lower": true,
+    "either_higher": false
+   },
+   "lambda_vs_market": {
+    "decisions": 176,
+    "station_days": 97,
+    "days": 8,
+    "logscore": [
+     0.03202759608038761,
+     -0.003129701879864118,
+     0.07466067643407823
+    ],
+    "brier": [
+     0.011845676824069491,
+     -0.005786999858193946,
+     0.033904161169869114
+    ],
+    "both_lower": false,
+    "either_higher": false
+   },
+   "admitted": {
+    "lambda": {
+     "station_days": 16,
+     "windows": 17,
+     "days": 5,
+     "pnl_per_window_unit": 0.07531249999999999,
+     "ci": [
+      -0.211,
+      0.29818181818181816
+     ]
+    },
+    "l4_multiclass": {
+     "station_days": 2,
+     "windows": 2,
+     "days": 2,
+     "pnl_per_window_unit": -0.235,
+     "ci": [
+      -0.76,
+      0.29000000000000004
+     ]
+    },
+    "market": {
+     "station_days": 0,
+     "windows": 0
+    }
+   }
+  },
+  "P0-M": {
+   "l4_vs_lambda": {
+    "decisions": 897,
+    "station_days": 304,
+    "days": 8,
+    "logscore": [
+     -0.09642361364470463,
+     -0.12163221455827157,
+     -0.07103864314901287
+    ],
+    "brier": [
+     -0.035357171339719315,
+     -0.04163709201528144,
+     -0.029167885891816854
+    ],
+    "both_lower": true,
+    "either_higher": false
+   },
+   "l4_vs_market": {
+    "decisions": 897,
+    "station_days": 304,
+    "days": 8,
+    "logscore": [
+     -0.0023367149862772965,
+     -0.008488205823280063,
+     0.004844118006880285
+    ],
+    "brier": [
+     -0.0009780981442589264,
+     -0.0024898079865874664,
+     0.0006802782752276246
+    ],
+    "both_lower": false,
+    "either_higher": false
+   },
+   "lambda_vs_market": {
+    "decisions": 897,
+    "station_days": 304,
+    "days": 8,
+    "logscore": [
+     0.09408689865842733,
+     0.07427724804223598,
+     0.11490755162994407
+    ],
+    "brier": [
+     0.03437907319546038,
+     0.028946406681136863,
+     0.040112741744374444
+    ],
+    "both_lower": false,
+    "either_higher": true
+   },
+   "admitted": {
+    "lambda": {
+     "station_days": 64,
+     "windows": 79,
+     "days": 8,
+     "pnl_per_window_unit": -0.04820833333333334,
+     "ci": [
+      -0.17271844115004492,
+      0.051943256194483374
+     ]
+    },
+    "l4_multiclass": {
+     "station_days": 9,
+     "windows": 10,
+     "days": 7,
+     "pnl_per_window_unit": 0.1711111111111111,
+     "ci": [
+      0.084,
+      0.29571428571428576
+     ]
+    },
+    "market": {
+     "station_days": 0,
+     "windows": 0
+    }
+   }
+  },
+  "P1": {
+   "l4_vs_lambda": {
+    "decisions": 1109,
+    "station_days": 342,
+    "days": 9,
+    "logscore": [
+     -0.07703592626914305,
+     -0.10881306124314942,
+     -0.04819099213891739
+    ],
+    "brier": [
+     -0.02106286952386676,
+     -0.029099683162556646,
+     -0.011879616908047343
+    ],
+    "both_lower": true,
+    "either_higher": false
+   },
+   "l4_vs_market": {
+    "decisions": 1109,
+    "station_days": 342,
+    "days": 9,
+    "logscore": [
+     0.013615876998535571,
+     -0.0029104018137355993,
+     0.029385460509982333
+    ],
+    "brier": [
+     0.003590544322895715,
+     0.0003144449779778112,
+     0.0074147992028055195
+    ],
+    "both_lower": false,
+    "either_higher": true
+   },
+   "lambda_vs_market": {
+    "decisions": 1109,
+    "station_days": 342,
+    "days": 9,
+    "logscore": [
+     0.09065180326767859,
+     0.05444222292478384,
+     0.13270660612113114
+    ],
+    "brier": [
+     0.024653413846762475,
+     0.013968219886698057,
+     0.03494337227955276
+    ],
+    "both_lower": false,
+    "either_higher": true
+   },
+   "admitted": {
+    "lambda": {
+     "station_days": 119,
+     "windows": 180,
+     "days": 9,
+     "pnl_per_window_unit": -0.15403221288515406,
+     "ci": [
+      -0.24974206349206354,
+      -0.06851472734719101
+     ]
+    },
+    "l4_multiclass": {
+     "station_days": 28,
+     "windows": 33,
+     "days": 7,
+     "pnl_per_window_unit": -0.19089285714285714,
+     "ci": [
+      -0.29309255115089516,
+      -0.029990384615384665
+     ]
+    },
+    "market": {
+     "station_days": 1,
+     "windows": 2,
+     "days": 1,
+     "pnl_per_window_unit": 0.21499999999999997,
+     "ci": [
+      0.21499999999999997,
+      0.21499999999999997
+     ]
+    }
+   }
+  }
+ }
+}
