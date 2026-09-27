@@ -619,6 +619,8 @@ class TablePlan:
     estimated_bytes: int | None = None
     oldest: str | None = None
     newest: str | None = None
+    table_rows: int | None = None
+    table_estimated_bytes: int | None = None
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -636,6 +638,8 @@ class TablePlan:
             "estimated_bytes": self.estimated_bytes,
             "oldest_candidate": self.oldest,
             "newest_candidate": self.newest,
+            "table_rows": self.table_rows,
+            "table_estimated_bytes": self.table_estimated_bytes,
         }
 
 
@@ -696,6 +700,7 @@ def plan_table(
         plan.state = "refused"
         plan.refused = refused
         return plan
+    plan.table_rows, plan.table_estimated_bytes = _table_size(conn, policy.table, estimate_sample)
     floor_days: list[tuple[str, str]] = []
     for floor in policy.floors:
         try:
@@ -815,6 +820,18 @@ def _time_of(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> s
     return None if row is None or row[0] is None else str(row[0])
 
 
+def _payload_bytes(conn: sqlite3.Connection, table: str, rowids: Sequence[int]) -> int:
+    columns = _columns(conn, table)
+    width = "+".join(f"COALESCE(length(CAST({_q(c)} AS BLOB)),0)" for c in columns) or "0"
+    total = 0
+    for chunk in _chunks(list(rowids), READ_CHUNK):
+        marks = ",".join("?" * len(chunk))
+        total += int(conn.execute(
+            f"SELECT COALESCE(SUM({width}),0) FROM {_q(table)} WHERE rowid IN ({marks})", tuple(chunk)
+        ).fetchone()[0])
+    return total
+
+
 def _estimate_bytes(conn: sqlite3.Connection, table: str, rowids: Sequence[int], sample: int) -> int:
     """Payload bytes of ``rowids``, from an even sample of them."""
 
@@ -822,15 +839,33 @@ def _estimate_bytes(conn: sqlite3.Connection, table: str, rowids: Sequence[int],
         return 0
     step = max(1, len(rowids) // max(1, int(sample)))
     picked = list(rowids[::step])
-    columns = _columns(conn, table)
-    width = "+".join(f"COALESCE(length(CAST({_q(c)} AS BLOB)),0)" for c in columns) or "0"
-    total = 0
-    for chunk in _chunks(picked, READ_CHUNK):
-        marks = ",".join("?" * len(chunk))
-        total += int(conn.execute(
-            f"SELECT COALESCE(SUM({width}),0) FROM {_q(table)} WHERE rowid IN ({marks})", tuple(chunk)
-        ).fetchone()[0])
-    return int(total * len(rowids) / len(picked))
+    return int(_payload_bytes(conn, table, picked) * len(rowids) / len(picked))
+
+
+def _table_size(conn: sqlite3.Connection, table: str, sample: int) -> tuple[int, int]:
+    """The table's rows, and its payload bytes from rows spread over its rowids.
+
+    One seek per sample point, the same measure the 2026-09-25 inventory
+    used (``resource_bounds``: rowid-sampled table sizes, within 0.5% of the
+    file) -- a dbstat pass over a 60 GiB store is the read this lane exists
+    to avoid.  Payload only: indexes and page slack come on top.
+    """
+
+    rows = int(conn.execute(f"SELECT COUNT(*) FROM {_q(table)}").fetchone()[0])
+    if not rows:
+        return 0, 0
+    low, high = conn.execute(f"SELECT MIN(rowid), MAX(rowid) FROM {_q(table)}").fetchone()
+    points = max(1, min(int(sample), rows))
+    step = max(1, (int(high) - int(low) + 1) // points)
+    picked: list[int] = []
+    for point in range(int(low), int(high) + 1, step):
+        hit = conn.execute(
+            f"SELECT rowid FROM {_q(table)} WHERE rowid>=? ORDER BY rowid LIMIT 1", (point,)
+        ).fetchone()
+        if hit is not None:
+            picked.append(int(hit[0]))
+    picked = sorted(set(picked))
+    return rows, int(_payload_bytes(conn, table, picked) * rows / max(1, len(picked)))
 
 
 # --------------------------------------------------------------------------
@@ -1455,6 +1490,7 @@ def run(
             stopped = stopped or outcome.get("state") == "stopped"
         receipt["candidate_rows"] = sum(int(t["candidate_rows"]) for t in receipt["tables"])
         receipt["estimated_bytes"] = sum(int(t["estimated_bytes"] or 0) for t in receipt["tables"])
+        receipt["table_estimated_bytes"] = sum(int(t.get("table_estimated_bytes") or 0) for t in receipt["tables"])
         if not apply:
             receipt["state"] = "dry_run"
             return receipt
@@ -1487,33 +1523,57 @@ def _single_instance(path: Path):
     return handle
 
 
+_STATE_WORDS = {
+    "planned": "可搬", "nothing_to_move": "旧行全受保护", "nothing_old": "没有旧行",
+    "refused": "拒绝", "moved": "已搬", "nothing_moved": "未搬", "partial_budget": "预算到点、下次续搬",
+    "stopped": "中途停下", "not_started_budget": "预算用完未开始", "not_started_after_stop": "前表停下未开始",
+}
+_KEPT_WORDS = {"station_day": "真钱站日", "newest_rowid": "最大 rowid", "hold": "hold",
+               "serving_arithmetic_audit": "指纹审计"}
+
+
 def _print_summary(receipt: Mapping[str, Any]) -> None:
-    gib = lambda value: f"{int(value or 0) / GIB:.2f} GiB"  # noqa: E731
+    def gib(value: Any) -> str:
+        return f"{int(value or 0) / GIB:.2f} GiB"
+
     tier = receipt.get("cold_tier") or {}
-    print(
-        f"  mode={receipt.get('mode')} state={receipt.get('state')}"
-        f" cold_tier={tier.get('state')} root={tier.get('root')}"
-    )
+    mode = "预演（只读，一行不动）" if receipt.get("mode") == "dry_run" else "执行"
+    print(f"SSOT 老行冷层（宪章 233）  {mode}  状态={receipt.get('state')}")
+    print(f"  冷层：{tier.get('state')}  {tier.get('root') or ''}"
+          + (f"  剩余 {gib(tier.get('free_bytes'))}" if tier.get("free_bytes") else ""))
     before = receipt.get("store_before") or {}
     if before:
-        print(f"  SSOT before: live {gib(before.get('live_bytes'))}, free pages {gib(before.get('free_page_bytes'))}")
+        print(f"  SSOT：文件 {gib(before.get('file_bytes_by_pages'))}，在用 {gib(before.get('live_bytes'))}，"
+              f"空闲页 {gib(before.get('free_page_bytes'))}")
     for row in receipt.get("tables") or []:
-        print(
-            f"  {row['table']}: {row['state']} cutoff<{row['cutoff_before']}"
-            f" old={row['older_than_cutoff']} kept={row['kept']} floors={row['floors']}"
-            f" move={row['candidate_rows']} (~{gib(row.get('estimated_bytes'))})"
-            + (f" refused={row['refused']}" if row.get("refused") else "")
-        )
+        kept = "、".join(
+            f"{_KEPT_WORDS.get(k, '每键最新' if k.startswith('latest_') else k)} {v:,}"
+            for k, v in (row.get("kept") or {}).items()
+        ) or "无"
+        print(f"  · {row['table']}  [{_STATE_WORDS.get(row['state'], row['state'])}]")
+        if row.get("refused"):
+            print(f"      原因：{'; '.join(row['refused'])}")
+            continue
+        print(f"      全表 {int(row.get('table_rows') or 0):,} 行 ≈ {gib(row.get('table_estimated_bytes'))}"
+              f"；{row['time_column']} 早于 {row['cutoff_before']} 的旧行 {int(row['older_than_cutoff']):,}"
+              + (f"（且 {row['candidate_where']}）" if row.get("candidate_where") else ""))
+        print(f"      保留：{kept}")
+        print(f"      可搬 {int(row['candidate_rows']):,} 行 ≈ {gib(row.get('estimated_bytes'))}"
+              + (f"（{row['oldest_candidate']} … {row['newest_candidate']}）" if row.get("oldest_candidate") else ""))
+    print(f"  合计：七张表约 {gib(receipt.get('table_estimated_bytes'))}，可搬约 {gib(receipt.get('estimated_bytes'))}"
+          f"（{int(receipt.get('candidate_rows') or 0):,} 行；行内数据量，不含索引与页内空隙）")
     for row in receipt.get("moves") or []:
         print(
-            f"  moved {row.get('table')}: {row.get('state')} rows={row.get('moved_rows', 0)}"
-            f" ({gib(row.get('moved_bytes'))}) batches={row.get('batches', 0)}"
-            f" max_lock={row.get('max_lock_sec', 0)}s"
-            + (f" reason={row['reason']}" if row.get("reason") else "")
+            f"  搬移 {row.get('table')}：{_STATE_WORDS.get(str(row.get('state')), row.get('state'))}"
+            f"  {int(row.get('moved_rows', 0)):,} 行 ≈ {gib(row.get('moved_bytes'))}，{row.get('batches', 0)} 批，"
+            f"单批持锁最长 {row.get('max_lock_sec', 0)} 秒"
+            + (f"  原因：{row['reason']}" if row.get("reason") else "")
         )
     after = receipt.get("store_after") or {}
     if after:
-        print(f"  SSOT after: live {gib(after.get('live_bytes'))}, free pages {gib(after.get('free_page_bytes'))}")
+        print(f"  SSOT 之后：在用 {gib(after.get('live_bytes'))}，空闲页 {gib(after.get('free_page_bytes'))}"
+              "（空闲页由后续写入复用，文件本身不缩）")
+    print(f"  用时 {receipt.get('run_seconds')} 秒")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

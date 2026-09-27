@@ -338,7 +338,9 @@ def test_the_newest_plan_of_each_station_is_what_it_was(store: Path, cold: Path,
     conn.close()
 
 
-def test_a_dry_run_touches_nothing(store: Path, cold: Path, tmp_path: Path) -> None:
+def test_a_dry_run_touches_nothing_and_says_how_big_each_table_is(
+    store: Path, cold: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     _plans_fixture(store)
     digest = hashlib.sha256(store.read_bytes()).hexdigest()
     receipt = _run(store, cold, tmp_path, apply=False)
@@ -346,6 +348,14 @@ def test_a_dry_run_touches_nothing(store: Path, cold: Path, tmp_path: Path) -> N
     assert receipt["candidate_rows"] == 3
     assert hashlib.sha256(store.read_bytes()).hexdigest() == digest
     assert not (cold / off.COLD_SUBDIR).exists()
+    plans = next(row for row in receipt["tables"] if row["table"] == PLAN)
+    assert plans["table_rows"] == 9
+    # Nine rows of ~3 KB each: the whole-table estimate is the rows' payload.
+    assert 9 * 3000 < plans["table_estimated_bytes"] < 9 * 4000
+    assert 0 < plans["estimated_bytes"] < plans["table_estimated_bytes"]
+    off._print_summary(receipt)
+    printed = capsys.readouterr().out
+    assert "预演（只读，一行不动）" in printed and "可搬 3 行" in printed
 
 
 @pytest.mark.parametrize("unusable", ["missing", "same_device", "disabled"])
@@ -385,11 +395,13 @@ def test_a_crash_after_the_copy_is_finished_by_the_next_run(
     assert receipt["state"] == "stopped"
     assert _table_rows(store, PLAN) == before          # nothing deleted
     assert len(_table_rows(_cold_file(cold, PLAN), PLAN)) == 3   # but copied
+    off._print_summary(receipt)          # a stopped run still reads out
     monkeypatch.setattr(off, "_wait_for_wal", real_wait)
     receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
     assert receipt["state"] == "applied"
     assert len(_table_rows(store, PLAN)) == 6
     assert len(_table_rows(_cold_file(cold, PLAN), PLAN)) == 3   # once, not twice
+    off._print_summary(receipt)
 
 
 def _regime(conn, artifact_id: str, day: str, state: str = "COMMITTED") -> None:
