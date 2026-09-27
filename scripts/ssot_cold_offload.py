@@ -1,0 +1,1580 @@
+#!/usr/bin/env python3
+"""Move the aged rows of the SSOT's append-only history tables to the cold tier.
+
+User ruling 2026-09-27 (「优化ssot，移动部分不影响生产的数据至外置硬盘」).
+
+The SSOT only ever grows.  Charters 218, 220 and 221 took the duplicated bytes
+out of what is written, and the store still gains about five GB a day against
+a ceiling raised from 23 to 68 GiB in eleven steps since 2026-08-22 -- because
+nothing ever leaves.  Most of what it keeps is read once, by the cycle that wrote it,
+and never again: a P0 preselection plan is looked up by the id of the decision
+being committed and, for the edge evidence, as the newest row of its station;
+a cross-system OOS evaluation is read as the latest two of its reader key and,
+by the stable-pool gate, for 21 days.  Past those windows a row is history.
+This moves that history -- rows, not files -- into one SQLite file per table
+on the charter 196 cold tier, and deletes it from the SSOT only after the copy
+is committed on the volume and read back identical.
+
+What decides a table, and what is kept (``POLICIES``, one entry per table):
+
+* a time column and a hot window: rows whose time is before
+  ``today - hot_days`` are candidates, compared at date precision so every
+  ISO spelling the writers use orders the same way; a policy may narrow the
+  candidates further (``candidate_where``);
+* per-reader protections, derived from the readers rather than guessed:
+  the newest *k* rows of a reader's own key (a latest-per-key reader stays
+  exact at every instant after the cutoff), every row of a station-day that
+  carried real money, and floors computed at run time from what a reader is
+  still waiting to judge;
+* always the table's own newest rowid, so no rowid a moved row had is ever
+  handed out again, and any operator hold (``--restore`` writes one).
+
+What makes a table eligible at all: production reads it only through the
+windows above; it is a rowid table; no other table declares a FOREIGN KEY to
+it; and its only DELETE triggers are the append-only ``RAISE(ABORT)`` guards.
+Anything else is refused table by table, and the reason is in the receipt.
+
+The move, per batch:
+
+1. read the rows (``SELECT rowid, *``) off the SSOT, outside any write lock;
+2. ``INSERT OR IGNORE`` them, rowid and all, into the table's cold file
+   (the SSOT's columns and declared types, append-only, its CREATE TABLE text
+   recorded beside it), together with one row in the cold file's own batch
+   ledger, and commit with ``synchronous=FULL``;
+3. read them back through a fresh connection and compare every value *and
+   its SQLite storage class* with the source (the batch's digest over the
+   same goes into both ledgers);
+4. ``BEGIN IMMEDIATE`` on the SSOT, re-read the same rows and require them
+   unchanged (a row that changed after it was copied is not deleted),
+   delete them on a connection whose triggers are switched off
+   (``SQLITE_DBCONFIG_ENABLE_TRIGGER`` -- the schema is never touched, so
+   every other connection stays guarded throughout), commit;
+5. append the batch to the manifest on the internal disk.
+
+A crash between 2 and 4 leaves the rows in both places; the next run finds
+them, re-verifies and deletes.  Nothing is ever deleted that is not already
+on the volume, verified.
+
+The file does not shrink -- SQLite puts the freed pages on its freelist and
+every later write reuses them before the file grows again (the same arithmetic
+as the 2026-09-19 retirement and the market registry retention).  Run daily,
+the store stops growing; giving the file back needs a compaction, which is a
+separate decision.
+
+The cold tier is usable or the lane does nothing: unplugged, TCC-denied under
+launchd, read-only, on the internal disk or short of space, every row stays
+hot and the receipt says why.  Production never reads the cold files; only
+offline readers do, through :func:`open_cold_table`, which asserts the volume
+first.  ``--restore`` puts rows back verbatim and writes a hold so the next run
+does not move them again.
+
+Dry-run is the default; ``--apply`` moves.
+"""
+
+from __future__ import annotations
+
+import argparse
+from array import array
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+import fcntl
+import hashlib
+import heapq
+import json
+import os
+from pathlib import Path
+import shutil
+import sqlite3
+import sys
+import time
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
+    STABLE_POOL_GATE_LOOKBACK_DAYS,
+    _EVALUATION_READER_KEY as OOS_EVALUATION_READER_KEY,
+)
+from bayes_basket_target.offloaded_paths import (  # noqa: E402
+    DEFAULT_COLD_TIER_MIN_FREE_BYTES,
+    OffloadedVolumeMissing,
+    assert_present,
+    cold_tier_root,
+    cold_tier_status,
+)
+
+SCHEMA = "ssot_cold_offload_v1"
+BATCH_SCHEMA = "ssot_cold_offload_batch_v1"
+DEFAULT_SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
+#: Under the charter 196 cold root, beside ``evicted/``.
+COLD_SUBDIR = "ssot_rows"
+#: The cold file's own record of what it holds and where it came from.
+COLD_BATCH_TABLE = "__ssot_cold_batches"
+#: The SSOT's CREATE TABLE text for every archived table, as first seen.
+COLD_SCHEMA_TABLE = "__ssot_cold_schema"
+RUNTIME = ROOT / "data" / "runtime"
+MANIFEST = RUNTIME / "ssot_cold_offload.jsonl"
+HOLDS = RUNTIME / "ssot_cold_offload_holds.json"
+RECEIPT = RUNTIME / "ssot_cold_offload_latest.json"
+LOCK = RUNTIME / "ssot_cold_offload.lock"
+
+MIB = 1024 * 1024
+GIB = 1024 * MIB
+#: A batch is the unit that holds the one SSOT write lock, so it is sized by
+#: the lock: the 2026-09-19 retirement held it about a second per 8 MiB.
+BATCH_ROWS = 1000
+BATCH_BYTES = 8 * MIB
+#: Rows read per SELECT while planning and copying.  Well under SQLite's
+#: variable limit, and small enough that no statement stays open for long on
+#: a store whose WAL the resident has to be able to checkpoint.
+READ_CHUNK = 500
+#: After each delete the lane sleeps at least this long, and at least
+#: ``pause_factor`` times what the delete held the lock for: measured on
+#: 2026-09-19, factor 1 saturated the disk and stretched one production cycle
+#: from 5-9 minutes to 11; factor 3 left the resident its turns.
+PAUSE_SEC = 0.5
+DEFAULT_PAUSE_FACTOR = 3.0
+#: The resident truncates the WAL past 256 MiB when it is idle; this lane
+#: stops adding to it until a checkpoint has caught up.
+MAX_WAL_BYTES = 256 * MIB
+WAL_WAIT_LIMIT_SEC = 1800.0
+#: Deletes put pages on the freelist and frames in the WAL.  Below this much
+#: free internal disk the lane stops rather than be the thing that fills it.
+MIN_INTERNAL_FREE_BYTES = 2 * GIB
+#: Re-check the volume at least this often while moving.
+COLD_RECHECK_BYTES = 1 * GIB
+DEFAULT_ESTIMATE_SAMPLE = 2000
+#: ``scripts/acknowledge_serving_arithmetic.py`` (``SHAPE_SHIFT_WINDOW_HOURS``)
+#: judges a fingerprint on the plans this many hours either side of each
+#: moment it names; the test pins the two together.
+SERVING_AUDIT_WINDOW_HOURS = 12
+#: The paper ledger's daily pass walks settled event dates today-4 .. today-2
+#: (``--window-days`` 3 ending ``DAILY_PASS_SETTLE_LAG_DAYS`` 2 back), and each
+#: replayed decision re-reads its regime artifact.  Pinned by the test.
+PAPER_LEDGER_EVENT_DAYS = 4
+
+
+class OffloadRefused(RuntimeError):
+    """A table this lane will not touch, and why (fail closed, table by table)."""
+
+
+# --------------------------------------------------------------------------
+# Policies.
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class KeepLatest:
+    """Per ``key``, the newest ``count`` rows before the cutoff stay hot.
+
+    ``order`` is the reader's own ordering, newest first (each column is read
+    DESC; ``rowid`` is allowed).  A reader that takes the latest *k* rows of a
+    key at any instant after the cutoff then gets exactly the rows it got
+    before: the rows after the cutoff all stay, and the ones it reaches below
+    the cutoff are at most these *k*.
+    """
+
+    key: tuple[str, ...]
+    order: tuple[str, ...]
+    count: int
+    why: str
+
+
+@dataclass(frozen=True)
+class KeepStationDays:
+    """Every row of a station-day that had an order intent stays hot.
+
+    ``live_only`` narrows it to intents authorised for live submission --
+    the audit trail of real money, which the SSOT keeps whole.
+    """
+
+    live_only: bool
+    why: str
+
+
+@dataclass(frozen=True)
+class DynamicFloor:
+    """Rows dated on or after a day computed at run time stay hot.
+
+    ``resolve`` reads the SSOT and returns a ``YYYY-MM-DD`` day or None (no
+    floor today); it raises :class:`OffloadRefused` when it cannot tell, and
+    the table is then left alone for this run.
+    """
+
+    name: str
+    why: str
+    resolve: Callable[[sqlite3.Connection], str | None]
+
+
+@dataclass(frozen=True)
+class TablePolicy:
+    table: str
+    time_column: str
+    hot_days: int
+    readers: str
+    #: An SQL predicate a row must also satisfy to leave at all.
+    candidate_where: str | None = None
+    keep_latest: tuple[KeepLatest, ...] = ()
+    keep_station_days: KeepStationDays | None = None
+    floors: tuple[DynamicFloor, ...] = ()
+    #: Content-addressed side tables the moved rows name, COPIED (never
+    #: deleted) into the same cold file so an offline reader can expand a
+    #: cold row without the SSOT.
+    mirror_tables: tuple[str, ...] = ()
+
+    def cutoff_date(self, as_of: datetime) -> str:
+        return (as_of.astimezone(timezone.utc).date() - timedelta(days=int(self.hot_days))).isoformat()
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "table": self.table,
+            "time_column": self.time_column,
+            "hot_days": self.hot_days,
+            "candidate_where": self.candidate_where,
+            "readers": self.readers,
+            "keep_latest": [
+                {"key": list(r.key), "order": list(r.order), "count": r.count, "why": r.why}
+                for r in self.keep_latest
+            ],
+            "keep_station_days": None if self.keep_station_days is None else {
+                "live_only": self.keep_station_days.live_only, "why": self.keep_station_days.why,
+            },
+            "floors": [{"name": f.name, "why": f.why} for f in self.floors],
+            "mirror_tables": list(self.mirror_tables),
+        }
+
+
+def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
+    """The day before the oldest serving fingerprint still waiting for a verdict.
+
+    The daily calibration sweep runs ``acknowledge_serving_arithmetic --audit``,
+    which judges an unacknowledged fingerprint on the P0 plans twelve hours
+    either side of the moment it started serving and of each lane activation
+    after it.  While any stage has one, the plans from that day on stay, so
+    the audit can still say "inert" or "a bump is owed" instead of "no sample".
+    The same ``watchdog`` the audit calls decides it.
+    """
+
+    from bayes_basket_target import serving_arithmetic  # noqa: PLC0415
+
+    floors: list[str] = []
+    for stage in ("P0", "P0-M", "P1"):
+        try:
+            reading = serving_arithmetic.watchdog(conn, stage=stage)
+        except sqlite3.Error as exc:
+            raise OffloadRefused(f"serving_arithmetic_watchdog_unreadable:{stage}") from exc
+        if reading.get("acknowledged") or not reading.get("discrepancy"):
+            continue
+        since = str(reading.get("fingerprint_since_utc") or "")
+        try:
+            moment = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise OffloadRefused(f"serving_arithmetic_since_unreadable:{stage}:{since}") from exc
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        moment -= timedelta(hours=SERVING_AUDIT_WINDOW_HOURS)
+        floors.append(moment.astimezone(timezone.utc).date().isoformat())
+    return min(floors) if floors else None
+
+
+POLICIES: tuple[TablePolicy, ...] = (
+    TablePolicy(
+        table="basket_p0_preselection_plan",
+        time_column="created_at",
+        hot_days=7,
+        readers=(
+            "production_worker._station_edge_evidence: MAX(rowid) per station; "
+            "atomic_ledger (preliminary decision) and the p0_preselection writer: by "
+            "the preselection_id being committed; calibration_refit's "
+            "acknowledge_serving_arithmetic --audit: 12h either side of an "
+            "unacknowledged fingerprint; dashboard: plans of live baskets.  The paper "
+            "ledger reads the recorded plan from the training fact, not from here."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id",), order=("rowid",), count=1,
+                why="_station_edge_evidence reads the newest plan of each station, whatever its age",
+            ),
+        ),
+        keep_station_days=KeepStationDays(
+            live_only=True,
+            why="the dashboard reads the plans of live baskets; real money stays in the SSOT whole",
+        ),
+        floors=(
+            DynamicFloor(
+                name="serving_arithmetic_audit",
+                why="the fingerprint audit judges on plans around unacknowledged fingerprints",
+                resolve=serving_arithmetic_floor,
+            ),
+        ),
+        mirror_tables=("basket_p0_preselection_blob",),
+    ),
+    TablePolicy(
+        table="calibration_cross_native_ensemble_oos_evaluation",
+        time_column="evaluated_at_utc",
+        # The stable-pool gate reads [as_of - LOOKBACK, as_of]; two days of
+        # margin keep the date-precision cutoff clear of its window.
+        hot_days=STABLE_POOL_GATE_LOOKBACK_DAYS + 2,
+        readers=(
+            "native_ensemble_p0 (two places), republisher_fallback_activation, "
+            "plan_native_ensemble_activation_repair and the charter 221 writer: the "
+            "latest two rows of the reader key at or before their clock; "
+            "native_ensemble_oos._stable_pool_gate_history: the key's rows in the last "
+            "STABLE_POOL_GATE_LOOKBACK_DAYS; dashboard: the last 7 days and the latest "
+            "per scope; health audit: MAX per scope."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=tuple(OOS_EVALUATION_READER_KEY),
+                order=("evaluated_at_utc", "evaluation_id"),
+                count=2,
+                why=(
+                    "P0 and the republisher fallback take the latest two per reader key "
+                    "(and refuse when they share a clock); since charter 221 a stable "
+                    "scope may not be rewritten for weeks"
+                ),
+            ),
+        ),
+    ),
+    TablePolicy(
+        table="basket_candidate_window_evidence",
+        time_column="event_date",
+        hot_days=3,
+        candidate_where="sampled = 0",
+        readers=(
+            "every reader takes sampled=1 only: the scored view (beta/lambda/L4 "
+            "fits, posterior_store, dashboard) filters e.sampled = 1, and the "
+            "writer's first-decision check reads sampled=1.  The re-decisions "
+            "(sampled=0, about fourteen in fifteen rows) are read by nobody."
+        ),
+    ),
+    TablePolicy(
+        table="basket_shadow_objective_score",
+        time_column="decision_at_utc",
+        hot_days=2,
+        readers="write-only: shadow_objective writes one row per committed P0 plan and nothing reads it.",
+    ),
+    TablePolicy(
+        table="basket_probability_update_proof",
+        time_column="decision_at_utc",
+        hot_days=3,
+        readers=(
+            "write-only for production: insert_probability_update_proof reads by the "
+            "proof_id it is writing (idempotency).  Envelope lineage names proof ids "
+            "but the validator recomputes the proof instead of reading it."
+        ),
+    ),
+    TablePolicy(
+        table="basket_portfolio_inventory_snapshot",
+        time_column="as_of_utc",
+        hot_days=2,
+        readers="no reader anywhere: persist_portfolio_inventory writes it and nothing reads it back.",
+    ),
+    TablePolicy(
+        table="basket_regime_artifact",
+        # Keyed on the event date: forward days open about 72 hours before
+        # their local start, so a row's creation time says little about when
+        # it stops being read.
+        time_column="event_date",
+        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
+        readers=(
+            "regime_materialization.load_regime_artifact: by the current envelope "
+            "(production P0/P0-M/P1 compiles, and the paper ledger's replays of event "
+            "dates today-4 .. today-2); production_worker._materialize_regime_ssot and "
+            "atomic_ledger: current scopes only."
+        ),
+    ),
+)
+
+POLICY_BY_TABLE = {policy.table: policy for policy in POLICIES}
+
+
+# --------------------------------------------------------------------------
+# Small helpers.
+# --------------------------------------------------------------------------
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _q(name: str) -> str:
+    """A quoted identifier.  Registry names are constants; quoting is hygiene."""
+
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _chunks(values: Sequence[Any], size: int) -> Iterator[Sequence[Any]]:
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
+def rows_digest(rows: Iterable[Sequence[Any]]) -> str:
+    """sha256 over ``(rowid, *values)`` rows in the order given.
+
+    Every value goes in with its SQLite storage class and, for text and
+    blobs, its length: ``1``, ``1.0`` and ``'1'`` all compare equal somewhere,
+    and a copy that changed a value's class, or moved a byte from one column
+    into the next, must not hash the same.  Length-prefixed rather than JSON
+    so a 100 KB plan is hashed, not re-escaped, three times a batch.
+    """
+
+    digest = hashlib.sha256()
+    update = digest.update
+    for row in rows:
+        for value in row:
+            if value is None:
+                update(b"n")
+            elif isinstance(value, bool):  # never produced by sqlite3
+                update(b"i%d;" % int(value))
+            elif isinstance(value, int):
+                update(b"i%d;" % value)
+            elif isinstance(value, float):
+                update(b"f" + value.hex().encode("ascii") + b";")
+            elif isinstance(value, bytes):
+                update(b"b%d:" % len(value))
+                update(value)
+            else:
+                data = str(value).encode("utf-8")
+                update(b"t%d:" % len(data))
+                update(data)
+        update(b"\n")
+    return digest.hexdigest()
+
+
+def same_rows(left: Sequence[Sequence[Any]], right: Sequence[Sequence[Any]]) -> bool:
+    """Row for row, value for value, and storage class for storage class.
+
+    What ``rows_digest`` attests, compared directly: a verification does not
+    need a hash, and this is the part of a batch that runs twice.
+    """
+
+    if len(left) != len(right):
+        return False
+    for a, b in zip(left, right):
+        if len(a) != len(b):
+            return False
+        for x, y in zip(a, b):
+            if type(x) is not type(y) or x != y:
+                return False
+    return True
+
+
+def _row_bytes(row: Sequence[Any]) -> int:
+    total = 0
+    for value in row:
+        if isinstance(value, bytes):
+            total += len(value)
+        elif isinstance(value, str):
+            total += len(value.encode("utf-8"))
+        else:
+            total += 8
+    return total
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [str(row[1]) for row in conn.execute(f"PRAGMA table_info({_q(table)})")]
+
+
+def _normalized_sql(sql: str) -> str:
+    return " ".join(str(sql).upper().split())
+
+
+def _is_append_only_guard(sql: str) -> bool:
+    """``BEFORE UPDATE|DELETE ON t BEGIN SELECT RAISE(ABORT, '...'); END`` and
+    nothing else: a trigger that only ever refuses, unconditionally."""
+
+    text = _normalized_sql(sql)
+    if not text.startswith("CREATE TRIGGER"):
+        return False
+    parts = text.split(" BEGIN ", 1)
+    if len(parts) != 2:
+        return False
+    head, body = parts
+    if " BEFORE DELETE ON " not in head and " BEFORE UPDATE ON " not in head:
+        return False
+    if " WHEN " in head:
+        return False
+    body = body.strip()
+    return (
+        body.startswith("SELECT RAISE(ABORT,")
+        and body.endswith("; END")
+        and body.count(";") == 1
+    )
+
+
+def _triggers(conn: sqlite3.Connection, table: str) -> list[tuple[str, str]]:
+    return [
+        (str(name), str(sql)) for name, sql in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=? ORDER BY name",
+            (table,),
+        )
+    ]
+
+
+def _foreign_key_children(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Tables that declare a FOREIGN KEY to ``table``."""
+
+    children = []
+    for (child,) in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).fetchall():
+        for row in conn.execute(f"PRAGMA foreign_key_list({_q(str(child))})"):
+            if str(row[2]) == table:
+                children.append(str(child))
+                break
+    return sorted(set(children))
+
+
+def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
+    """Why ``policy.table`` may not be offloaded here (empty when it may)."""
+
+    table = policy.table
+    if not _table_exists(conn, table):
+        return ["table_missing"]
+    reasons: list[str] = []
+    sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()[0]
+    if "WITHOUT ROWID" in _normalized_sql(sql):
+        reasons.append("without_rowid_table")
+    columns = set(_columns(conn, table))
+    needed = {policy.time_column}
+    for rule in policy.keep_latest:
+        needed.update(c for c in (*rule.key, *rule.order) if c != "rowid")
+    if policy.keep_station_days is not None:
+        needed.update({"station_id", "event_date"})
+    missing = sorted(needed - columns)
+    if missing:
+        reasons.append("columns_missing:" + ",".join(missing))
+    children = _foreign_key_children(conn, table)
+    if children:
+        reasons.append("foreign_key_children:" + ",".join(children))
+    for name, trigger_sql in _triggers(conn, table):
+        text = _normalized_sql(trigger_sql)
+        if " DELETE ON " in text and not _is_append_only_guard(trigger_sql):
+            reasons.append(f"delete_trigger_not_a_guard:{name}")
+    return reasons
+
+
+# --------------------------------------------------------------------------
+# Holds (what --restore leaves behind so the next run does not undo it).
+# --------------------------------------------------------------------------
+
+
+def load_holds(path: Path = HOLDS) -> dict[str, dict[str, Any]]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        # A hold that cannot be read could be protecting anything.
+        raise OffloadRefused(f"holds_unreadable:{path}:{type(exc).__name__}") from exc
+    if not isinstance(raw, dict) or not all(isinstance(v, dict) for v in raw.values()):
+        raise OffloadRefused(f"holds_malformed:{path}")
+    return {str(k): dict(v) for k, v in raw.items()}
+
+
+def write_hold(table: str, since: str, *, reason: str, path: Path = HOLDS) -> dict[str, Any]:
+    """Keep ``table``'s rows dated ``since`` or later hot until the hold is removed."""
+
+    holds = load_holds(path)
+    current = holds.get(table)
+    if current is None or str(since) < str(current.get("since") or "9999"):
+        holds[table] = {"since": str(since), "reason": reason, "written_at_utc": _iso(_utc_now())}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(path.name + ".tmp")
+    staging.write_text(json.dumps(holds, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(staging, path)
+    return holds[table]
+
+
+# --------------------------------------------------------------------------
+# Planning: which rowids leave.
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class TablePlan:
+    policy: TablePolicy
+    cutoff: str
+    state: str = "planned"
+    refused: list[str] = field(default_factory=list)
+    older_than_cutoff: int = 0
+    kept: dict[str, int] = field(default_factory=dict)
+    floors: dict[str, str | None] = field(default_factory=dict)
+    candidates: Sequence[int] = field(default_factory=list)
+    estimated_bytes: int | None = None
+    oldest: str | None = None
+    newest: str | None = None
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "table": self.policy.table,
+            "state": self.state,
+            "refused": list(self.refused),
+            "time_column": self.policy.time_column,
+            "hot_days": self.policy.hot_days,
+            "candidate_where": self.policy.candidate_where,
+            "cutoff_before": self.cutoff,
+            "older_than_cutoff": self.older_than_cutoff,
+            "floors": dict(self.floors),
+            "kept": dict(self.kept),
+            "candidate_rows": len(self.candidates),
+            "estimated_bytes": self.estimated_bytes,
+            "oldest_candidate": self.oldest,
+            "newest_candidate": self.newest,
+        }
+
+
+def _intent_station_days(conn: sqlite3.Connection, *, live_only: bool) -> set[tuple[str, str]]:
+    days: set[tuple[str, str]] = set()
+    if not _table_exists(conn, "auto_trade_decisions"):
+        return days
+    for table in ("basket_target_order_intents", "basket_target_order_intents_pre_go_live"):
+        if not _table_exists(conn, table):
+            continue
+        where = " WHERE i.live_submit_authorized<>0" if live_only else ""
+        for station, day in conn.execute(
+            f"SELECT DISTINCT d.station_id, d.event_date FROM {_q(table)} i"
+            f" JOIN auto_trade_decisions d ON d.decision_id=i.decision_id{where}"
+        ):
+            days.add((str(station), str(day)))
+    return days
+
+
+def _sql_order_key(value: Any) -> tuple:
+    """SQLite's ORDER BY across storage classes: NULL, numbers, text, blobs."""
+
+    if value is None:
+        return (0,)
+    if isinstance(value, (int, float)):
+        return (1, value)
+    if isinstance(value, str):
+        return (2, value)
+    return (3, bytes(value))
+
+
+def plan_table(
+    conn: sqlite3.Connection,
+    policy: TablePolicy,
+    *,
+    as_of: datetime,
+    holds: Mapping[str, Mapping[str, Any]],
+    station_days: Callable[[bool], set[tuple[str, str]]],
+    estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
+) -> TablePlan:
+    """Every rowid of ``policy.table`` that may leave, and what was kept and why.
+
+    Read so that no row body is touched.  The old rows are enumerated as
+    ``(rowid, time)`` off an index that covers the time column (every
+    registered table has one -- the test pins the query plans), because the
+    time column often sits behind a large JSON column and reading it through
+    the table walks every overflow chain: the dashboard's full-table filter on
+    ``evaluated_at_utc`` read 1.38 GB for 235k rows and took 1,017 s.  The
+    columns the protections need beyond that (keys, station, event date) are
+    all near the front of their rows and are fetched by rowid, a chunk at a
+    time, while the newest rows per key are kept in small heaps -- so memory
+    is the old rowids plus a few rows per key, never the rows themselves.
+    """
+
+    plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(as_of))
+    refused = eligibility(conn, policy)
+    if refused:
+        plan.state = "refused"
+        plan.refused = refused
+        return plan
+    floor_days: list[tuple[str, str]] = []
+    for floor in policy.floors:
+        try:
+            day = floor.resolve(conn)
+        except OffloadRefused as exc:
+            plan.state = "refused"
+            plan.refused = [f"floor_unresolved:{floor.name}:{exc}"]
+            return plan
+        plan.floors[floor.name] = day
+        if day:
+            floor_days.append((str(day), floor.name))
+    hold = holds.get(policy.table) or {}
+    if hold.get("since"):
+        floor_days.append((str(hold["since"]), "hold"))
+    table, time_column = policy.table, policy.time_column
+    extra = f" AND ({policy.candidate_where})" if policy.candidate_where else ""
+    plan.older_than_cutoff = int(conn.execute(
+        f"SELECT COUNT(*) FROM {_q(table)} WHERE {_q(time_column)} < ?{extra}", (plan.cutoff,)
+    ).fetchone()[0])
+    if not plan.older_than_cutoff:
+        plan.state = "nothing_old"
+        return plan
+    kept: dict[str, int] = {}
+    # A floor or a hold keeps everything dated on or after it: below the
+    # lowest of them and the cutoff is all that can leave.
+    effective = plan.cutoff
+    if floor_days:
+        lowest, name = min(floor_days)
+        if lowest < effective:
+            held = int(conn.execute(
+                f"SELECT COUNT(*) FROM {_q(table)} WHERE {_q(time_column)} >= ?"
+                f" AND {_q(time_column)} < ?{extra}",
+                (lowest, plan.cutoff),
+            ).fetchone()[0])
+            if held:
+                kept[name] = held
+            effective = lowest
+    days = (
+        station_days(policy.keep_station_days.live_only)
+        if policy.keep_station_days is not None else set()
+    )
+    wanted: list[str] = []
+    for rule in policy.keep_latest:
+        wanted += [c for c in (*rule.key, *rule.order) if c not in {"rowid", time_column}]
+    if days:
+        wanted += [c for c in ("station_id", "event_date") if c != time_column]
+    wanted = list(dict.fromkeys(wanted))
+    at = {column: index for index, column in enumerate(wanted)}
+    heaps: list[dict[tuple, list[tuple[tuple, int]]]] = [{} for _ in policy.keep_latest]
+    protected: dict[int, str] = {}
+    older = array("q")
+    cursor = conn.execute(
+        f"SELECT rowid,{_q(time_column)} FROM {_q(table)} WHERE {_q(time_column)} < ?{extra}",
+        (effective,),
+    )
+    while True:
+        chunk = cursor.fetchmany(READ_CHUNK)
+        if not chunk:
+            break
+        stamps = {int(rowid): stamp for rowid, stamp in chunk}
+        older.extend(stamps)
+        if not wanted and not days:
+            continue
+        rows: Iterable[Sequence[Any]] = [(rowid,) for rowid in stamps]
+        if wanted:
+            listed = ",".join(_q(c) for c in wanted)
+            marks = ",".join("?" * len(stamps))
+            rows = conn.execute(
+                f"SELECT rowid,{listed} FROM {_q(table)} WHERE rowid IN ({marks})", tuple(stamps)
+            ).fetchall()
+        for row in rows:
+            rowid = int(row[0])
+
+            def value(column: str, row: Sequence[Any] = row, rowid: int = rowid) -> Any:
+                if column == "rowid":
+                    return rowid
+                if column == time_column:
+                    return stamps[rowid]
+                return row[1 + at[column]]
+
+            for rule, heap in zip(policy.keep_latest, heaps):
+                key = tuple(value(c) for c in rule.key)
+                order = tuple(_sql_order_key(value(c)) for c in rule.order)
+                entries = heap.setdefault(key, [])
+                heapq.heappush(entries, (order, rowid))
+                if len(entries) > rule.count:
+                    heapq.heappop(entries)
+            if days and (str(value("station_id")), str(value("event_date"))) in days:
+                protected.setdefault(rowid, "station_day")
+    for index, (rule, heap) in enumerate(zip(policy.keep_latest, heaps)):
+        label = f"latest_{index}:{'+'.join(rule.key)}"
+        for entries in heap.values():
+            for _order, rowid in entries:
+                protected.setdefault(rowid, label)
+    # Every protection so far names a row of ``older``; the newest rowid may
+    # or may not be one.
+    for reason in protected.values():
+        kept[reason] = kept.get(reason, 0) + 1
+    newest = conn.execute(f"SELECT MAX(rowid) FROM {_q(table)}").fetchone()[0]
+    if newest is not None and int(newest) not in protected:
+        protected[int(newest)] = "newest_rowid"
+        if int(newest) in older:
+            kept["newest_rowid"] = 1
+    plan.kept = dict(sorted(kept.items()))
+    plan.candidates = array("q", sorted(rowid for rowid in older if rowid not in protected))
+    del older
+    if plan.candidates:
+        plan.oldest = _time_of(conn, table, time_column, plan.candidates[0])
+        plan.newest = _time_of(conn, table, time_column, plan.candidates[-1])
+        plan.estimated_bytes = _estimate_bytes(conn, table, plan.candidates, estimate_sample)
+    plan.state = "planned" if plan.candidates else "nothing_to_move"
+    return plan
+
+
+def _time_of(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> str | None:
+    row = conn.execute(f"SELECT {_q(column)} FROM {_q(table)} WHERE rowid=?", (rowid,)).fetchone()
+    return None if row is None or row[0] is None else str(row[0])
+
+
+def _estimate_bytes(conn: sqlite3.Connection, table: str, rowids: Sequence[int], sample: int) -> int:
+    """Payload bytes of ``rowids``, from an even sample of them."""
+
+    if not rowids:
+        return 0
+    step = max(1, len(rowids) // max(1, int(sample)))
+    picked = list(rowids[::step])
+    columns = _columns(conn, table)
+    width = "+".join(f"COALESCE(length(CAST({_q(c)} AS BLOB)),0)" for c in columns) or "0"
+    total = 0
+    for chunk in _chunks(picked, READ_CHUNK):
+        marks = ",".join("?" * len(chunk))
+        total += int(conn.execute(
+            f"SELECT COALESCE(SUM({width}),0) FROM {_q(table)} WHERE rowid IN ({marks})", tuple(chunk)
+        ).fetchone()[0])
+    return int(total * len(rowids) / len(picked))
+
+
+# --------------------------------------------------------------------------
+# The cold side.
+# --------------------------------------------------------------------------
+
+
+def cold_path(root: Path | str, table: str) -> Path:
+    return Path(root) / COLD_SUBDIR / f"{table}.sqlite"
+
+
+COLD_BATCH_DDL = f"""
+CREATE TABLE IF NOT EXISTS {COLD_BATCH_TABLE} (
+  batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  first_rowid INTEGER NOT NULL,
+  last_rowid INTEGER NOT NULL,
+  row_count INTEGER NOT NULL,
+  rows_sha256 TEXT NOT NULL,
+  payload_bytes INTEGER NOT NULL,
+  source_path TEXT NOT NULL,
+  cutoff_before TEXT NOT NULL,
+  policy_json TEXT NOT NULL,
+  copied_at_utc TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS {COLD_BATCH_TABLE}_no_update
+BEFORE UPDATE ON {COLD_BATCH_TABLE} BEGIN SELECT RAISE(ABORT,'cold_append_only'); END;
+CREATE TRIGGER IF NOT EXISTS {COLD_BATCH_TABLE}_no_delete
+BEFORE DELETE ON {COLD_BATCH_TABLE} BEGIN SELECT RAISE(ABORT,'cold_append_only'); END;
+CREATE TABLE IF NOT EXISTS {COLD_SCHEMA_TABLE} (
+  table_name TEXT NOT NULL,
+  create_sql TEXT NOT NULL,
+  create_sql_sha256 TEXT NOT NULL,
+  first_seen_utc TEXT NOT NULL,
+  PRIMARY KEY(table_name, create_sql_sha256)
+);
+CREATE TRIGGER IF NOT EXISTS {COLD_SCHEMA_TABLE}_no_update
+BEFORE UPDATE ON {COLD_SCHEMA_TABLE} BEGIN SELECT RAISE(ABORT,'cold_append_only'); END;
+CREATE TRIGGER IF NOT EXISTS {COLD_SCHEMA_TABLE}_no_delete
+BEFORE DELETE ON {COLD_SCHEMA_TABLE} BEGIN SELECT RAISE(ABORT,'cold_append_only'); END;
+"""
+
+
+def _cold_columns(conn: sqlite3.Connection, table: str) -> list[tuple[str, str]]:
+    """Name and declared type of every column: what storage depends on."""
+
+    return [(str(row[1]), str(row[2] or "")) for row in conn.execute(f"PRAGMA table_info({_q(table)})")]
+
+
+def _cold_statements(table: str, columns: Sequence[tuple[str, str]], time_column: str | None) -> list[str]:
+    """The archive table: the SSOT's columns and declared types, nothing else.
+
+    No keys, UNIQUE constraints or CHECKs: the SSOT enforced them when each
+    row was written, and a key the archive maintained would cost a random
+    page per row on a spinning USB disk (~83 random I/Os a second) -- the
+    OOS evaluation ids and content hashes are random strings, and in a year
+    each of those indexes alone would be gigabytes.  What is kept is append
+    order: the rowid is the SSOT's own, and the one index is on the time
+    column, which grows at its right edge.  The same declared types give the
+    same affinity, so every value lands in the storage class it had (the
+    digest checks the class too).  The archive's own guards refuse any
+    change.
+    """
+
+    body = ", ".join(f"{_q(name)} {kind}".rstrip() for name, kind in columns)
+    statements = [f"CREATE TABLE IF NOT EXISTS {_q(table)} ({body})"]
+    if time_column:
+        statements.append(
+            f"CREATE INDEX IF NOT EXISTS {_q(table + '__cold_time_idx')} ON {_q(table)}({_q(time_column)})"
+        )
+    statements += [
+        f"CREATE TRIGGER IF NOT EXISTS {_q(table + '__cold_no_update')} BEFORE UPDATE ON {_q(table)}"
+        " BEGIN SELECT RAISE(ABORT,'cold_append_only'); END",
+        f"CREATE TRIGGER IF NOT EXISTS {_q(table + '__cold_no_delete')} BEFORE DELETE ON {_q(table)}"
+        " BEGIN SELECT RAISE(ABORT,'cold_append_only'); END",
+    ]
+    return statements
+
+
+def _open_cold(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=60.0, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    # Durable at every commit: the SSOT copy is deleted on the strength of it.
+    conn.execute("PRAGMA synchronous=FULL")
+    # Appends need little: the right edge of one table and one index.
+    conn.execute("PRAGMA cache_size=-32768")
+    return conn
+
+
+def ensure_cold_table(
+    ssot: sqlite3.Connection, cold: sqlite3.Connection, table: str, *, time_column: str | None = None,
+) -> None:
+    """The cold table exists with the SSOT's columns, and still matches them.
+
+    The SSOT's own CREATE TABLE text is recorded in the cold file (one row
+    per distinct text, first seen when), so the archive names the canonical
+    schema its rows were written under.  A cold table whose columns differ
+    from the SSOT's -- a column added since -- fails closed: this lane does
+    not guess how to map one onto the other.
+    """
+
+    create = ssot.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    if create is None:
+        raise OffloadRefused(f"table_missing:{table}")
+    columns = _cold_columns(ssot, table)
+    create_sql = str(create[0])
+    cold.executescript(COLD_BATCH_DDL)
+    cold.execute("BEGIN IMMEDIATE")
+    try:
+        if _table_exists(cold, table):
+            if _cold_columns(cold, table) != columns:
+                cold.execute("ROLLBACK")
+                raise OffloadRefused(f"cold_schema_mismatch:{table}")
+        else:
+            for statement in _cold_statements(table, columns, time_column):
+                cold.execute(statement)
+        cold.execute(
+            f"INSERT OR IGNORE INTO {COLD_SCHEMA_TABLE} VALUES(?,?,?,?)",
+            (table, create_sql, hashlib.sha256(create_sql.encode("utf-8")).hexdigest(), _iso(_utc_now())),
+        )
+        cold.execute("COMMIT")
+    except BaseException:
+        if cold.in_transaction:
+            cold.execute("ROLLBACK")
+        raise
+
+
+def mirror_table(ssot: sqlite3.Connection, cold: sqlite3.Connection, table: str) -> int:
+    """Copy (never move) a content-addressed side table into the cold file."""
+
+    if not _table_exists(ssot, table):
+        return 0
+    ensure_cold_table(ssot, cold, table)
+    columns = _columns(ssot, table)
+    listed = ",".join(_q(c) for c in columns)
+    marks = ",".join("?" * (len(columns) + 1))
+    have = {int(r[0]) for r in cold.execute(f"SELECT rowid FROM {_q(table)}")}
+    missing = [int(r[0]) for r in ssot.execute(f"SELECT rowid FROM {_q(table)}") if int(r[0]) not in have]
+    copied = 0
+    for chunk in _chunks(missing, READ_CHUNK):
+        rows = _read_rows(ssot, table, columns, chunk)
+        cold.execute("BEGIN IMMEDIATE")
+        try:
+            cold.executemany(f"INSERT OR IGNORE INTO {_q(table)}(rowid,{listed}) VALUES({marks})", rows)
+            cold.execute("COMMIT")
+        except BaseException:
+            cold.execute("ROLLBACK")
+            raise
+        copied += len(rows)
+    return copied
+
+
+def open_cold_table(table: str, *, root: Path | str | None = None) -> sqlite3.Connection:
+    """A read-only connection to ``table``'s cold file, for offline readers.
+
+    Asserts the volume first (charters 167/196): an unplugged or TCC-denied
+    volume raises :class:`OffloadedVolumeMissing` instead of reading as "no
+    rows".  Production must never call this -- it reads the SSOT only.
+    """
+
+    base = Path(root) if root is not None else cold_tier_root()
+    if base is None:
+        raise OffloadedVolumeMissing("cold tier is switched off (PM_COLD_TIER_ROOT='')")
+    assert_present(base, what="cold tier")
+    if not base.is_dir():
+        raise OffloadedVolumeMissing(f"cold tier {base} is not mounted")
+    path = cold_path(base, table)
+    if not path.is_file():
+        raise FileNotFoundError(f"no cold rows for {table} (looked at {path})")
+    return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+
+
+# --------------------------------------------------------------------------
+# Moving.
+# --------------------------------------------------------------------------
+
+
+def _wal_bytes(db: Path) -> int:
+    wal = db.with_name(db.name + "-wal")
+    try:
+        return wal.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _wait_for_wal(
+    db: Path, conn: sqlite3.Connection, *, limit_sec: float = WAL_WAIT_LIMIT_SEC,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Hold off while the WAL is past the line, helping the checkpoint along."""
+
+    waited = 0.0
+    while _wal_bytes(db) > MAX_WAL_BYTES:
+        if waited >= limit_sec:
+            return False
+        try:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.Error:
+            pass
+        sleep(10.0)
+        waited += 10.0
+    return True
+
+
+def _read_rows(conn: sqlite3.Connection, table: str, columns: Sequence[str], rowids: Sequence[int]) -> list[tuple]:
+    listed = ",".join(_q(c) for c in columns)
+    rows: list[tuple] = []
+    for chunk in _chunks(list(rowids), READ_CHUNK):
+        marks = ",".join("?" * len(chunk))
+        rows.extend(
+            tuple(r) for r in conn.execute(
+                f"SELECT rowid,{listed} FROM {_q(table)} WHERE rowid IN ({marks}) ORDER BY rowid",
+                tuple(chunk),
+            )
+        )
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def _begin_immediate(
+    conn: sqlite3.Connection, *, sleep: Callable[[float], None] = time.sleep,
+    attempts: int = 6, wait_sec: float = 30.0,
+) -> None:
+    """Take the SSOT write lock, outwaiting a resident that holds it long.
+
+    Each attempt already waits ``busy_timeout`` (120 s); a resident restart
+    has held the lock past that (2026-09-19 16:57Z, the retirement's
+    restore).  Nothing is written before the lock is ours, so trying again
+    is the same batch.
+    """
+
+    for attempt in range(attempts):
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            return
+        except sqlite3.OperationalError as exc:
+            text = str(exc).lower()
+            if ("locked" not in text and "busy" not in text) or attempt == attempts - 1:
+                raise
+            sleep(wait_sec)
+
+
+def _delete_connection(db: Path) -> sqlite3.Connection:
+    """The one connection that writes the SSOT here, with its triggers off.
+
+    Only this connection: the schema is never changed, so the append-only
+    guards stay in force for every other connection throughout, and a crash
+    can never leave a table unguarded.  Foreign keys are enforced on it, so a
+    row some other table still names by a declared key cannot be deleted.
+    """
+
+    if not hasattr(sqlite3, "SQLITE_DBCONFIG_ENABLE_TRIGGER"):
+        raise OffloadRefused("python_3_12_required_for_connection_trigger_switch")
+    conn = sqlite3.connect(str(db), timeout=120.0, isolation_level=None)
+    conn.execute("PRAGMA busy_timeout=120000")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
+    if conn.getconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER):
+        raise OffloadRefused("connection_trigger_switch_ineffective")
+    return conn
+
+
+def _append_manifest(path: Path, row: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+@dataclass
+class MoveBudget:
+    deadline: float | None
+    pause_factor: float = DEFAULT_PAUSE_FACTOR
+    batch_rows: int = BATCH_ROWS
+    batch_bytes: int = BATCH_BYTES
+
+    def expired(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
+
+
+def move_table(
+    *,
+    ssot_path: Path,
+    read: sqlite3.Connection,
+    delete: sqlite3.Connection,
+    plan: TablePlan,
+    cold_root: Path,
+    budget: MoveBudget,
+    manifest: Path,
+    cold_ok: Callable[[], dict[str, Any]],
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Move ``plan.candidates`` batch by batch; stop cleanly on any limit."""
+
+    policy = plan.policy
+    table = policy.table
+    result: dict[str, Any] = {
+        "table": table, "state": "started", "moved_rows": 0, "moved_bytes": 0,
+        "batches": 0, "max_lock_sec": 0.0, "max_lock_wait_sec": 0.0, "mirrored_rows": 0,
+        "cold_path": str(cold_path(cold_root, table)),
+    }
+    columns = _columns(read, table)
+    cold_file = cold_path(cold_root, table)
+    cold = _open_cold(cold_file)
+    verify: sqlite3.Connection | None = None
+    listed = ",".join(_q(c) for c in columns)
+    marks = ",".join("?" * (len(columns) + 1))
+    policy_json = json.dumps(policy.describe(), ensure_ascii=False, sort_keys=True)
+    since_check = 0
+
+    def move_batch(rows: list[tuple], size: int) -> str | None:
+        """One batch across; None when it moved, else why the table stops."""
+
+        nonlocal since_check
+        ids = [int(r[0]) for r in rows]
+        digest = rows_digest(rows)
+        # 2. Onto the volume, with the batch's own ledger row.
+        cold.execute("BEGIN IMMEDIATE")
+        try:
+            cold.executemany(f"INSERT OR IGNORE INTO {_q(table)}(rowid,{listed}) VALUES({marks})", rows)
+            cold.execute(
+                f"INSERT INTO {COLD_BATCH_TABLE}(table_name,first_rowid,last_rowid,row_count,"
+                "rows_sha256,payload_bytes,source_path,cutoff_before,policy_json,copied_at_utc)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (table, ids[0], ids[-1], len(ids), digest, size, str(ssot_path),
+                 plan.cutoff, policy_json, _iso(_utc_now())),
+            )
+            cold.execute("COMMIT")
+        except BaseException:
+            if cold.in_transaction:
+                cold.execute("ROLLBACK")
+            raise
+        # 3. Read back through another connection, value and type.
+        landed = _read_rows(verify, table, columns, ids)
+        if not same_rows(landed, rows):
+            return "cold_verify_mismatch"
+        # 4. Delete exactly what was verified.
+        if not _wait_for_wal(ssot_path, delete, sleep=sleep):
+            return "wal_not_draining"
+        if shutil.disk_usage(ssot_path.parent).free < MIN_INTERNAL_FREE_BYTES:
+            return "internal_disk_low"
+        queued = time.monotonic()
+        _begin_immediate(delete, sleep=sleep)
+        started = time.monotonic()
+        try:
+            again = _read_rows(delete, table, columns, ids)
+            if not same_rows(again, rows):
+                delete.execute("ROLLBACK")
+                return "ssot_rows_changed_since_copy"
+            removed = 0
+            for chunk in _chunks(ids, READ_CHUNK):
+                removed += delete.execute(
+                    f"DELETE FROM {_q(table)} WHERE rowid IN ({','.join('?' * len(chunk))})",
+                    tuple(chunk),
+                ).rowcount
+            if removed != len(ids):
+                delete.execute("ROLLBACK")
+                return "ssot_delete_count_mismatch"
+            delete.execute("COMMIT")
+        except BaseException:
+            if delete.in_transaction:
+                delete.execute("ROLLBACK")
+            raise
+        held = time.monotonic() - started
+        result["max_lock_sec"] = round(max(result["max_lock_sec"], held), 3)
+        result["max_lock_wait_sec"] = round(max(result["max_lock_wait_sec"], started - queued), 3)
+        # 5. The internal record, once the delete is durable.
+        _append_manifest(manifest, {
+            "schema": BATCH_SCHEMA, "table": table, "first_rowid": ids[0], "last_rowid": ids[-1],
+            "rows": len(ids), "payload_bytes": size, "rows_sha256": digest,
+            "cold_path": str(cold_file), "cutoff_before": plan.cutoff,
+            "lock_sec": round(held, 3), "committed_at_utc": _iso(_utc_now()),
+            "production_dependency": False,
+        })
+        result["moved_rows"] += len(ids)
+        result["moved_bytes"] += size
+        result["batches"] += 1
+        since_check += size
+        if since_check >= COLD_RECHECK_BYTES:
+            since_check = 0
+            status = cold_ok()
+            if status.get("state") != "available":
+                return f"cold_tier_{status.get('state')}"
+        sleep(max(PAUSE_SEC, held * budget.pause_factor))
+        return None
+
+    try:
+        ensure_cold_table(read, cold, table, time_column=policy.time_column)
+        for side in policy.mirror_tables:
+            result["mirrored_rows"] += mirror_table(read, cold, side)
+        verify = sqlite3.connect(f"file:{cold_file}?mode=ro", uri=True, timeout=60.0)
+        pending: list[tuple] = []
+        pending_bytes = 0
+        stopped: str | None = None
+        for chunk in _chunks(plan.candidates, READ_CHUNK):
+            if budget.expired():
+                stopped = "budget"
+                break
+            for row in _read_rows(read, table, columns, chunk):
+                pending.append(row)
+                pending_bytes += _row_bytes(row)
+                if len(pending) >= budget.batch_rows or pending_bytes >= budget.batch_bytes:
+                    stopped = move_batch(pending, pending_bytes)
+                    pending, pending_bytes = [], 0
+                    if stopped:
+                        break
+            if stopped:
+                break
+        if pending and (stopped is None or stopped == "budget"):
+            reason = move_batch(pending, pending_bytes)
+            stopped = reason or stopped
+        if stopped == "budget":
+            result["state"] = "partial_budget"
+        elif stopped:
+            result["state"] = "stopped"
+            result["reason"] = stopped
+        else:
+            result["state"] = "moved" if result["moved_rows"] else "nothing_moved"
+        return result
+    finally:
+        if verify is not None:
+            verify.close()
+        try:
+            cold.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+        cold.close()
+
+
+# --------------------------------------------------------------------------
+# Restoring.
+# --------------------------------------------------------------------------
+
+
+def restore_table(
+    *,
+    ssot_path: Path,
+    cold_root: Path,
+    table: str,
+    since: str,
+    until: str | None = None,
+    holds_path: Path = HOLDS,
+    reason: str = "restore",
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Put cold rows with ``time >= since`` (and ``< until``) back, verbatim.
+
+    The hold is written first: from then on no run moves those rows again,
+    whatever the policy says, until somebody removes it.  Rows go back with
+    their own rowids (``INSERT OR IGNORE``, so a row still present is left
+    alone) on the trigger-less connection, so an insert guard, if a table
+    ever grows one, does not refuse history it once accepted.
+    """
+
+    policy = POLICY_BY_TABLE.get(table)
+    if policy is None:
+        raise OffloadRefused(f"table_not_registered:{table}")
+    hold = write_hold(table, since, reason=reason, path=holds_path)
+    source = open_cold_table(table, root=cold_root)
+    target = _delete_connection(ssot_path)
+    restored = 0
+    rowids: list[int] = []
+    try:
+        if _cold_columns(source, table) != _cold_columns(target, table):
+            raise OffloadRefused(f"cold_schema_mismatch:{table}")
+        columns = _columns(source, table)
+        listed = ",".join(_q(c) for c in columns)
+        marks = ",".join("?" * (len(columns) + 1))
+        where = f"{_q(policy.time_column)} >= ?"
+        args: tuple = (since,)
+        if until:
+            where += f" AND {_q(policy.time_column)} < ?"
+            args += (until,)
+        rowids = [int(r[0]) for r in source.execute(
+            f"SELECT rowid FROM {_q(table)} WHERE {where} ORDER BY rowid", args
+        )]
+        for chunk in _chunks(rowids, READ_CHUNK):
+            rows = _read_rows(source, table, columns, chunk)
+            _begin_immediate(target, sleep=sleep)
+            try:
+                before = target.total_changes
+                target.executemany(
+                    f"INSERT OR IGNORE INTO {_q(table)}(rowid,{listed}) VALUES({marks})", rows
+                )
+                restored += target.total_changes - before
+                target.execute("COMMIT")
+            except BaseException:
+                if target.in_transaction:
+                    target.execute("ROLLBACK")
+                raise
+            sleep(PAUSE_SEC)
+    finally:
+        source.close()
+        target.close()
+    return {
+        "schema": SCHEMA, "table": table, "since": since, "until": until,
+        "cold_rows_selected": len(rowids), "restored_rows": restored,
+        "hold": hold, "holds_path": str(holds_path),
+    }
+
+
+# --------------------------------------------------------------------------
+# The run.
+# --------------------------------------------------------------------------
+
+
+def _store_pages(conn: sqlite3.Connection) -> dict[str, int]:
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+    freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0])
+    return {
+        "page_size": page_size, "page_count": page_count, "freelist_count": freelist,
+        "file_bytes_by_pages": page_size * page_count, "free_page_bytes": page_size * freelist,
+        "live_bytes": page_size * max(0, page_count - freelist),
+    }
+
+
+def run(
+    *,
+    ssot_path: Path,
+    cold_root: Path | None,
+    tables: Sequence[str] | None = None,
+    apply: bool = False,
+    as_of: datetime | None = None,
+    budget_seconds: float = 0.0,
+    pause_factor: float = DEFAULT_PAUSE_FACTOR,
+    batch_rows: int = BATCH_ROWS,
+    batch_bytes: int = BATCH_BYTES,
+    min_cold_free_bytes: int = DEFAULT_COLD_TIER_MIN_FREE_BYTES,
+    local_reference: Path | None = ROOT,
+    manifest: Path = MANIFEST,
+    holds_path: Path = HOLDS,
+    estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
+    policies: Sequence[TablePolicy] = POLICIES,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Plan every selected table; with ``apply``, move what the plan names."""
+
+    started = time.monotonic()
+    moment = as_of or _utc_now()
+    status = (
+        cold_tier_status(cold_root, local_reference=local_reference, min_free_bytes=min_cold_free_bytes)
+        if cold_root is not None else {"state": "disabled", "root": "", "free_bytes": None}
+    )
+    receipt: dict[str, Any] = {
+        "schema": SCHEMA, "generated_at_utc": _iso(_utc_now()), "as_of_utc": _iso(moment),
+        "mode": "apply" if apply else "dry_run", "ssot": str(ssot_path),
+        "cold_tier": status, "tables": [],
+        "calls_order_gateway": False, "orders_submitted": 0, "production_dependency": False,
+    }
+    by_table = {policy.table: policy for policy in policies}
+    selected = [by_table[name] for name in tables] if tables else list(policies)
+    if apply and status.get("state") != "available":
+        # These rows are not re-obtainable: without the tier they stay hot,
+        # and there is no reason to spend the store's reads planning a move
+        # that cannot happen (the daily job under launchd without TCC access).
+        receipt["state"] = f"skipped_cold_tier_{status.get('state')}"
+        receipt["run_seconds"] = round(time.monotonic() - started, 1)
+        return receipt
+    read = sqlite3.connect(f"file:{ssot_path}?mode=ro", uri=True, timeout=60.0)
+    read.execute("PRAGMA busy_timeout=60000")
+    delete: sqlite3.Connection | None = None
+    try:
+        receipt["store_before"] = _store_pages(read)
+        holds = load_holds(holds_path)
+        receipt["holds"] = holds
+        day_cache: dict[bool, set[tuple[str, str]]] = {}
+
+        def station_days(live_only: bool) -> set[tuple[str, str]]:
+            if live_only not in day_cache:
+                day_cache[live_only] = _intent_station_days(read, live_only=live_only)
+            return day_cache[live_only]
+
+        budget = MoveBudget(
+            deadline=(started + float(budget_seconds)) if budget_seconds and budget_seconds > 0 else None,
+            pause_factor=float(pause_factor), batch_rows=int(batch_rows), batch_bytes=int(batch_bytes),
+        )
+        root = Path(str(status["root"])) if status.get("root") else None
+
+        def cold_ok() -> dict[str, Any]:
+            return cold_tier_status(root, local_reference=local_reference, min_free_bytes=min_cold_free_bytes)
+
+        if apply:
+            delete = _delete_connection(ssot_path)
+        moves: list[dict[str, Any]] = []
+        stopped = False
+        # One table at a time, planned and then moved, so only one table's
+        # candidate rowids are ever held.
+        for policy in selected:
+            try:
+                plan = plan_table(read, policy, as_of=moment, holds=holds, station_days=station_days,
+                                  estimate_sample=estimate_sample)
+            except sqlite3.Error as exc:
+                # A table that cannot be planned is left alone; the others go on.
+                plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
+                                 refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
+            receipt["tables"].append(plan.summary())
+            if not apply or plan.state != "planned":
+                continue
+            if stopped or budget.expired():
+                moves.append({"table": policy.table, "state": "not_started_budget" if not stopped
+                              else "not_started_after_stop"})
+                continue
+            try:
+                outcome = move_table(
+                    ssot_path=ssot_path, read=read, delete=delete, plan=plan, cold_root=root,
+                    budget=budget, manifest=manifest, cold_ok=cold_ok, sleep=sleep,
+                )
+            except (sqlite3.Error, OSError, OffloadRefused) as exc:
+                # Whatever broke, the batch in flight either committed both
+                # halves or rolled back its delete: the SSOT never loses a row
+                # the volume does not hold.  The receipt says what broke.
+                outcome = {
+                    "table": policy.table, "state": "stopped",
+                    "reason": f"error:{type(exc).__name__}:{str(exc)[:200]}",
+                }
+            moves.append(outcome)
+            stopped = stopped or outcome.get("state") == "stopped"
+        receipt["candidate_rows"] = sum(int(t["candidate_rows"]) for t in receipt["tables"])
+        receipt["estimated_bytes"] = sum(int(t["estimated_bytes"] or 0) for t in receipt["tables"])
+        if not apply:
+            receipt["state"] = "dry_run"
+            return receipt
+        receipt["moves"] = moves
+        receipt["moved_rows"] = sum(int(m.get("moved_rows", 0)) for m in moves)
+        receipt["moved_bytes"] = sum(int(m.get("moved_bytes", 0)) for m in moves)
+        receipt["store_after"] = _store_pages(read)
+        if any(m.get("state") == "stopped" for m in moves):
+            receipt["state"] = "stopped"
+        elif any(str(m.get("state", "")).startswith(("partial", "not_started")) for m in moves):
+            receipt["state"] = "partial"
+        else:
+            receipt["state"] = "applied"
+        return receipt
+    finally:
+        receipt["run_seconds"] = round(time.monotonic() - started, 1)
+        if delete is not None:
+            delete.close()
+        read.close()
+
+
+def _single_instance(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = path.open("a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
+def _print_summary(receipt: Mapping[str, Any]) -> None:
+    gib = lambda value: f"{int(value or 0) / GIB:.2f} GiB"  # noqa: E731
+    tier = receipt.get("cold_tier") or {}
+    print(
+        f"  mode={receipt.get('mode')} state={receipt.get('state')}"
+        f" cold_tier={tier.get('state')} root={tier.get('root')}"
+    )
+    before = receipt.get("store_before") or {}
+    if before:
+        print(f"  SSOT before: live {gib(before.get('live_bytes'))}, free pages {gib(before.get('free_page_bytes'))}")
+    for row in receipt.get("tables") or []:
+        print(
+            f"  {row['table']}: {row['state']} cutoff<{row['cutoff_before']}"
+            f" old={row['older_than_cutoff']} kept={row['kept']} floors={row['floors']}"
+            f" move={row['candidate_rows']} (~{gib(row.get('estimated_bytes'))})"
+            + (f" refused={row['refused']}" if row.get("refused") else "")
+        )
+    for row in receipt.get("moves") or []:
+        print(
+            f"  moved {row.get('table')}: {row.get('state')} rows={row.get('moved_rows', 0)}"
+            f" ({gib(row.get('moved_bytes'))}) batches={row.get('batches', 0)}"
+            f" max_lock={row.get('max_lock_sec', 0)}s"
+            + (f" reason={row['reason']}" if row.get("reason") else "")
+        )
+    after = receipt.get("store_after") or {}
+    if after:
+        print(f"  SSOT after: live {gib(after.get('live_bytes'))}, free pages {gib(after.get('free_page_bytes'))}")
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--ssot", type=Path, default=DEFAULT_SSOT)
+    parser.add_argument("--cold-tier-root", type=Path, default=None,
+                        help="default: the charter 196 cold root (PM_COLD_TIER_ROOT)")
+    parser.add_argument("--cold-tier-min-free-gib", type=float,
+                        default=DEFAULT_COLD_TIER_MIN_FREE_BYTES / GIB)
+    parser.add_argument("--tables", nargs="*", choices=sorted(POLICY_BY_TABLE))
+    parser.add_argument("--apply", action="store_true", help="move; the default only plans")
+    parser.add_argument("--budget-seconds", type=float, default=0.0, help="0 = no limit")
+    parser.add_argument("--pause-factor", type=float, default=DEFAULT_PAUSE_FACTOR)
+    parser.add_argument("--batch-rows", type=int, default=BATCH_ROWS)
+    parser.add_argument("--batch-mib", type=float, default=BATCH_BYTES / MIB)
+    parser.add_argument("--estimate-sample", type=int, default=DEFAULT_ESTIMATE_SAMPLE)
+    parser.add_argument("--receipt", type=Path, default=RECEIPT)
+    parser.add_argument("--list-policies", action="store_true", help="print the registry and stop")
+    parser.add_argument("--restore", action="store_true",
+                        help="put one table's cold rows back (needs --tables T --since YYYY-MM-DD)")
+    parser.add_argument("--since", help="restore: rows whose time is on or after this")
+    parser.add_argument("--until", help="restore: rows whose time is before this")
+    args = parser.parse_args(argv)
+
+    if args.list_policies:
+        print(json.dumps([policy.describe() for policy in POLICIES], ensure_ascii=False, indent=2))
+        return 0
+    ssot_path = args.ssot.expanduser().resolve()
+    root = args.cold_tier_root if args.cold_tier_root is not None else cold_tier_root()
+    lock = _single_instance(LOCK)
+    if lock is None:
+        print("  another ssot_cold_offload run holds the lock; nothing done")
+        return 0
+    try:
+        if args.restore:
+            if not args.tables or len(args.tables) != 1 or not args.since:
+                parser.error("--restore needs exactly one --tables and --since")
+            if root is None:
+                parser.error("--restore needs the cold tier")
+            outcome = restore_table(ssot_path=ssot_path, cold_root=Path(root), table=args.tables[0],
+                                    since=args.since, until=args.until)
+            print(json.dumps(outcome, ensure_ascii=False, indent=2))
+            return 0
+        receipt = run(
+            ssot_path=ssot_path, cold_root=Path(root) if root is not None else None,
+            tables=args.tables, apply=args.apply, budget_seconds=args.budget_seconds,
+            pause_factor=args.pause_factor, batch_rows=args.batch_rows,
+            batch_bytes=int(args.batch_mib * MIB),
+            min_cold_free_bytes=int(args.cold_tier_min_free_gib * GIB),
+            estimate_sample=args.estimate_sample,
+        )
+        if args.receipt:
+            args.receipt.parent.mkdir(parents=True, exist_ok=True)
+            args.receipt.write_text(
+                json.dumps(receipt, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+            )
+        _print_summary(receipt)
+        return 1 if receipt.get("state") == "stopped" else 0
+    finally:
+        lock.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
