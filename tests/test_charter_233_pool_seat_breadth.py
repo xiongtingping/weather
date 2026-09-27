@@ -1,8 +1,9 @@
 """Charter 233: pool seats rank breadth, then the pool weight they keep, before the mint clock.
 
-When no pool seat matches the packet exactly -- routine wherever the packet
-carries a system with no certificate at the scope (ICON fills forward only) --
-the compile used to rank the activation instant ahead of breadth, so a pair
+When no pool seat matches the packet exactly -- a system the packet carries
+holds no certificate at the scope yet, or the exact view is dark under the
+window gate -- the compile used to rank the activation instant ahead of
+breadth, so a pair
 re-certified this morning outranked the five-system view certified last
 night, and two same-size views minted together fell to the activation id.
 """
@@ -36,8 +37,8 @@ GEFS = "NOAA_GEFS_05"
 AIGEFS = "NOAA_AIGEFS_025"
 GEM = "ECCC_GEM_GLOBAL_ENS"
 ICON = "DWD_ICON_GLOBAL_EPS"
-# The packet carries all six; ICON holds no certificate at the scope, so no
-# pool seat can equal the packet.
+# The packet carries all six; one of them (here ICON) holds no certificate
+# at this scope yet, so no pool seat can equal the packet.
 PACKET = {IFS, AIFS, GEFS, AIGEFS, GEM, ICON}
 FIVE = sorted([IFS, AIFS, GEFS, AIGEFS, GEM])
 LAST_NIGHT = "2026-09-26T22:00:00Z"

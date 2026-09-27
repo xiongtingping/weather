@@ -1562,9 +1562,11 @@ def _activation_rank(
         # every seat serves are the packet's own) nor that it scored better.
         # Ranked ahead of breadth, it let a pair re-certified this morning
         # outrank the five-system view certified last night whenever no seat
-        # matched the packet exactly -- routine wherever a system the packet
-        # carries holds no certificate at the scope (ICON, whose archive
-        # fills forward only).  Breadth comes first, as charter 134 seats
+        # matched the packet exactly -- as when a system the packet carries
+        # holds no certificate at the scope yet (a new scope accumulates its
+        # train and holdout days forward, ICON's archive cannot be
+        # backfilled) or the exact view is dark under the window gate.
+        # Breadth comes first, as charter 134 seats
         # every qualified system; a same-size tie keeps the systems that
         # carry more pool weight instead of falling to the content hash.
         return (
