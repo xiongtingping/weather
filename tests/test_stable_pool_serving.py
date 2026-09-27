@@ -297,3 +297,57 @@ def test_a_fresh_seat_outranks_a_pool_seat_that_would_leave_p0_stale() -> None:
     assert best([stale_pool, contest, fresh_pool]) == "pool-fresh"
     # The contest rule's order does not read freshness.
     assert best([contest, stale_pool], pool_first=False) == "pool"
+
+
+def test_the_compile_ranks_pool_seats_on_their_own_certified_weights(store, monkeypatch) -> None:
+    """Charter 233: each compatible pool seat's certified weights reach the rank.
+
+    The compile reads them once from the selection evidence and hands the
+    pool weight every seat keeps to ``_activation_rank``, which ranks it
+    under breadth and ahead of the activation instant.
+    """
+
+    import json
+
+    from bayes_basket_target.contracts import content_sha256
+    from tests.test_native_ensemble_p0 import _mixed_packet
+
+    report = _build(store, "stable_pool")
+    identity = {k: v for k, v in report.items() if k != "content_sha256"}
+    identity["cross_candidates"] = _official(report)
+    report = {**identity, "content_sha256": content_sha256(identity)}
+    assert persist_native_ensemble_oos(
+        store, report, activated_at_utc="2026-07-01T00:00:00Z"
+    )["state"] == "COMMITTED"
+    seen = []
+    real_rank = native_ensemble_p0._activation_rank
+
+    def spy(item, **kwargs):
+        seen.append((item, kwargs.get("retained_weight")))
+        return real_rank(item, **kwargs)
+
+    monkeypatch.setattr(native_ensemble_p0, "_activation_rank", spy)
+    compiled = native_ensemble_p0.compile_native_ensemble_p0(
+        store, forward_packet=_mixed_packet(),
+        decision_at_utc="2026-07-01T13:00:00Z",
+    )
+    assert compiled["packet"]["native_probability_envelope"]
+    pool_items = {
+        item[0][0]: item for item, _retained in seen
+        if STABLE_POOL_WEIGHT_RULE in str(item[0][15] or "")
+    }
+    assert len(pool_items) >= 2
+    weights = {
+        str(item[0][13]): json.loads(store.execute(
+            "SELECT selected_weights_json FROM"
+            " calibration_cross_native_ensemble_selection_evidence"
+            " WHERE content_sha256=?", (item[0][13],),
+        ).fetchone()[0])
+        for item in pool_items.values()
+    }
+    expected = native_ensemble_p0.pool_retained_weights(
+        list(pool_items.values()), weights
+    )
+    assert all(retained is seen[0][1] for _item, retained in seen)
+    assert seen[0][1] == pytest.approx(expected)
+    assert all(value > 0.0 for value in expected.values())

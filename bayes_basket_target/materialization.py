@@ -933,7 +933,9 @@ def materialize_p0m_observed(
     # radiation pair at 0.18 / 0.06.
     # v21 (charter 199, 2026-09-25): the root (P0 v19) -- the US ASOS
     # stations blended.
-    posterior_version: str = "p0m_taf_likelihood_v21",
+    # v22 (charter 233, 2026-09-27): the root (P0 v20) -- pool seats rank
+    # breadth ahead of the instant they were minted.
+    posterior_version: str = "p0m_taf_likelihood_v22",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1320,7 +1322,9 @@ def materialize_p1(
     # -- the radiation pair at 0.18 / 0.06.
     # v30 (charter 199, 2026-09-25): the root again (P0 v19, P0-M v21) -- the
     # US ASOS stations blended.
-    posterior_version: str = "p1_joint_likelihood_v30",
+    # v31 (charter 233, 2026-09-27): the root again (P0 v20, P0-M v22) --
+    # pool seats rank breadth ahead of the instant they were minted.
+    posterior_version: str = "p1_joint_likelihood_v31",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

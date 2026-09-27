@@ -6,6 +6,7 @@ import json
 import math
 import os
 import sqlite3
+from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -151,12 +152,14 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # rank would have chosen.
 # Charter 204: AIFS ENS admitted to the stable pool.  Where it qualifies the
 # pool is the five-system one and a packet without its run serves that
-# pool's renormalised weights, so the four-family arithmetic moved too.
+# pool's four-system missing-member view -- minted and certified with its
+# own weights, not the five-system weights renormalised (charter 233 corrects
+# the wording) -- so the four-family arithmetic moved too.
 # Charter 210: the radiation shift is served at the fleet coefficient (0.07)
 # on every artifact; the rows still serving a pinned 0.15 move.
 # Charter 212: NOAA AIGEFS admitted to the stable pool as the fifth
 # independent family; where it qualifies the pool gains a family and a packet
-# without its run serves renormalised weights.
+# without its run serves the pool's missing-member view.
 # Charter 199 (2026-09-24): the fusion blend serves -- each compile's
 # weights are the seat's re-fitted on the centre error and the pool CRPS of
 # the settled day-ahead roots, half each, the seat weights as prior.
@@ -176,7 +179,12 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # zero-probability truths.
 # Charter 199 (2026-09-25): the eleven US ASOS stations are blended like
 # every other station instead of held at the seat weights.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v19"
+# Charter 233: when no pool seat matches the packet exactly, the pool seats
+# rank breadth, then the pool weight they keep, ahead of the instant they
+# were minted -- a pair re-certified this morning no longer outranks the
+# five-system view certified last night, and a same-size tie keeps the
+# heavier systems instead of falling to the activation id.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v20"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -1510,14 +1518,18 @@ def _activation_rank(
     observed_set: set[str],
     pool_first: bool,
     seats_usable: Callable[[Sequence[str]], bool] | None = None,
+    retained_weight: Mapping[str, float] | None = None,
 ) -> tuple[Any, ...]:
     """Sort key over compatible activations, highest first.
 
     ``item`` is (activation row, seated system ids, cycle riders, same-run
     fresh count).  Under charter 134: a seat whose evidence keeps the P0
     usable first, then a pool seat, then exact packet match, fewest riders,
-    freshest runs, latest activation, breadth, generation, id.  See the
-    comments at the call site for why each key sits where it does.
+    freshest runs.  A pool seat then ranks breadth, the pool weight it keeps
+    (``retained_weight``, keyed by activation id), its activation instant,
+    generation and id (charter 233); a contest row keeps its older order --
+    activation instant, breadth, generation, id.  See the comments at the
+    call site for why each key sits where it does.
 
     ``seats_usable`` answers the freshness question the compile asks after
     choosing, for each candidate before it: the pool key alone put a view
@@ -1533,17 +1545,107 @@ def _activation_rank(
         if not pool_first or seats_usable is None
         else bool(seats_usable(member_ids))
     )
-    return (
+    pool_seat = (
+        bool(pool_first) and STABLE_POOL_WEIGHT_RULE in str(row[15] or "")
+    )
+    head = (
         usable,
-        bool(pool_first) and STABLE_POOL_WEIGHT_RULE in str(row[15] or ""),
+        pool_seat,
         set(member_ids) == observed_set,
         -len(riders),
         int(fresh_count),
+    )
+    if pool_seat:
+        # Charter 233: every view of a pool is certified on the same cohort
+        # holdout, so the instant a view was minted says only when its
+        # certificate last changed -- not that its runs are newer (the runs
+        # every seat serves are the packet's own) nor that it scored better.
+        # Ranked ahead of breadth, it let a pair re-certified this morning
+        # outrank the five-system view certified last night whenever no seat
+        # matched the packet exactly -- routine wherever a system the packet
+        # carries holds no certificate at the scope (ICON, whose archive
+        # fills forward only).  Breadth comes first, as charter 134 seats
+        # every qualified system; a same-size tie keeps the systems that
+        # carry more pool weight instead of falling to the content hash.
+        return (
+            *head,
+            len(member_ids),
+            float((retained_weight or {}).get(str(row[0]), 0.0)),
+            str(row[4] or ""),
+            int(row[3]),
+            str(row[0]),
+        )
+    return (
+        *head,
         str(row[4] or ""),
         len(member_ids),
         int(row[3]),
         str(row[0]),
     )
+
+
+def pool_retained_weights(
+    items: Sequence[tuple[Any, Sequence[str], Sequence[str], int]],
+    weights_by_selection: Mapping[str, Mapping[str, float]],
+) -> dict[str, float]:
+    """Charter 233: the pool weight each seat keeps, keyed by activation id.
+
+    Two same-size views of one pool differ only in whom they leave out, so
+    the one to serve is the one leaving out the system the pool weighs
+    least.  A system's weight is its mean over the same-size pool views that
+    seat it (each view's own certified weights, ``row[13]`` naming its
+    selection evidence); a view keeps the sum over its members.  Only
+    ``items`` that are pool seats should be passed, and the number is a tie
+    break under breadth -- it never outranks a larger view.
+    """
+
+    by_size: dict[int, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for row, member_ids, _riders, _fresh in items:
+        weights = weights_by_selection.get(str(row[13] or "")) or {}
+        for system_id in member_ids:
+            if system_id in weights:
+                by_size[len(member_ids)][str(system_id)].append(
+                    float(weights[system_id])
+                )
+    retained: dict[str, float] = {}
+    for row, member_ids, _riders, _fresh in items:
+        means = by_size.get(len(member_ids)) or {}
+        retained[str(row[0])] = sum(
+            sum(means[str(system_id)]) / len(means[str(system_id)])
+            for system_id in member_ids
+            if means.get(str(system_id))
+        )
+    return retained
+
+
+def _selection_weights_by_sha(
+    conn: sqlite3.Connection, selection_shas: Sequence[str]
+) -> dict[str, dict[str, float]]:
+    """Certified seat weights per selection evidence, read in bounded batches."""
+
+    ordered = sorted({str(sha) for sha in selection_shas if sha})
+    weights: dict[str, dict[str, float]] = {}
+    for start in range(0, len(ordered), 500):
+        chunk = ordered[start:start + 500]
+        for sha, text in conn.execute(
+            "SELECT content_sha256,selected_weights_json "
+            "FROM calibration_cross_native_ensemble_selection_evidence "
+            f"WHERE content_sha256 IN ({','.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall():
+            try:
+                parsed = json.loads(str(text or "{}"))
+            except ValueError:
+                continue
+            if isinstance(parsed, Mapping):
+                weights[str(sha)] = {
+                    str(key): float(value)
+                    for key, value in parsed.items()
+                    if isinstance(value, (int, float))
+                }
+    return weights
 
 
 def _activations_ambiguous(
@@ -2243,7 +2345,24 @@ def compile_native_ensemble_p0(
     # packet would keep winning the scopes the OOS rotation has not reached
     # yet -- or has reached, and minted the pool for.  Where no pool seat is
     # compatible yet, the contest rows still serve rather than failing closed.
+    # Charter 233: among pool seats, breadth then the pool weight a seat keeps
+    # rank ahead of the activation instant (see ``_activation_rank``); the
+    # weights are the pool views' own certified ones, read once per compile.
     pool_first = P0_MEMBERSHIP_MODE == P0_MEMBERSHIP_MODE_STABLE_POOL
+    pool_items = [
+        item for item in compatible_activations
+        if pool_first and STABLE_POOL_WEIGHT_RULE in str(item[0][15] or "")
+    ]
+    retained_weight = (
+        pool_retained_weights(
+            pool_items,
+            _selection_weights_by_sha(
+                conn, [str(item[0][13] or "") for item in pool_items]
+            ),
+        )
+        if len(pool_items) > 1
+        else {}
+    )
     def _seats_usable(member_ids: Sequence[str]) -> bool:
         # The same reading the freshness check below makes of the seat the
         # compile finally serves, asked of every candidate before choosing.
@@ -2263,6 +2382,7 @@ def compile_native_ensemble_p0(
             observed_set=observed_set,
             pool_first=pool_first,
             seats_usable=_seats_usable,
+            retained_weight=retained_weight,
         ),
         reverse=True,
     )
