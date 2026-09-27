@@ -92,10 +92,20 @@ def test_the_execution_reading_is_the_same_inequality() -> None:
 
 def test_the_four_evaluation_points_read_the_predicate() -> None:
     tree = ast.parse(RUNTIME_SRC)
-    predicate_calls = list(_calls(tree, "clears_economic_hurdle_v1"))
-    # Gate, gate's lambda counter, incumbent, incumbent's lambda counter,
-    # completion increment, and the convergence shadow's two questions.
-    assert len(predicate_calls) >= 7
+    # Charter 233 removed the shadow readings.  Check each surviving gate
+    # itself: unrelated calls elsewhere cannot make up for a missing gate.
+    # The fourth evaluation point (execution) is checked above.
+    for target in ("admissible", "incumbent_admissible", "clears_hurdle"):
+        assignments = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == target for t in node.targets)
+        ]
+        assert assignments, target
+        assert any(
+            list(_calls(node.value, "clears_economic_hurdle_v1"))
+            for node in assignments
+        ), target
     # Every friction-in-dollars variable is h * C.
     for target in ("friction", "incumbent_friction", "increment_friction"):
         found = False
@@ -233,7 +243,5 @@ def test_the_clause_names_what_the_code_does() -> None:
 
 
 # Charter 230 retired the lambda / second-belief arm this test pinned.
-
-
 
 

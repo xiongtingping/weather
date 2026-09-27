@@ -245,12 +245,12 @@ def test_on_the_solver_is_handed_the_belief(on, monkeypatch) -> None:
 
 
 def test_the_retired_second_beliefs_have_no_on_arm() -> None:
-    """E12: beta, the pooled valuation, the robust claim and the convergence
-    lift are shadow readings only; asking any of them for ``on`` fails at
-    import rather than silently rewriting the belief."""
+    """E12: the robust claim is a shadow reading only; asking it for ``on``
+    fails at import rather than silently rewriting the belief.  (Beta, the
+    pooled valuation and the convergence lift retired with charter 233.)"""
 
     code = "import bayes_basket_target.delta_v2_runtime"
-    for flag in ("PM_BETA_EDGE", "PM_VALUATION_MODE", "PM_CHARTER_124_ROBUST_CLAIM", "PM_CONVERGENCE_CLAIM"):
+    for flag in ("PM_CHARTER_124_ROBUST_CLAIM",):
         result = subprocess.run(
             [sys.executable, "-c", code], cwd=str(ROOT), capture_output=True, text=True,
             env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(ROOT), flag: "on"},

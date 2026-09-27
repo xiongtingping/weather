@@ -107,76 +107,19 @@ M = {"a": 0.1, "b": 0.6, "c": 0.3}
 P = {"a": 0.3, "b": 0.3, "c": 0.4}
 
 
-def test_the_ends_of_the_pool_are_the_two_sources():
-    assert kernel.valuation_vector_v1(P, M, 0.0) == pytest.approx(M)
-    assert kernel.valuation_vector_v1(P, M, 1.0) == pytest.approx(P)
-
-
-def test_a_hard_fact_zeroes_a_bucket_on_both_sources():
-    got = kernel.valuation_vector_v1(P, M, 0.5, excluded=("c",))
-    assert got["c"] == 0.0
-    assert sum(got.values()) == pytest.approx(1.0)
-
-
-def test_every_subset_window_is_worth_no_more_than_its_superset():
-    """The cross-window inconsistency the audit reproduced cannot recur."""
-
-    rng = random.Random(7)
-    buckets = [f"b{i}" for i in range(9)]
-    for _ in range(200):
-        m = {b: rng.random() for b in buckets}
-        p = {b: rng.random() for b in buckets}
-        tm, tp = sum(m.values()), sum(p.values())
-        m = {b: v / tm for b, v in m.items()}
-        p = {b: v / tp for b, v in p.items()}
-        vector = kernel.valuation_vector_v1(p, m, rng.random())
-        start = rng.randrange(7)
-        sub = buckets[start:start + 2]
-        sup = buckets[max(0, start - 1):start + 3]
-        assert kernel.window_mass(vector, sub) <= kernel.window_mass(vector, sup) + 1e-12
-
-
-def test_a_price_change_moves_the_action_and_never_the_belief():
-    vector = kernel.valuation_vector_v1(P, M, 0.3)
-    again = kernel.valuation_vector_v1(P, M, 0.3)
-    assert vector == again  # the vector takes no price at all
-    cheap = kernel.action_value_v1([vector], {"b": 1.0}, 0.40)
-    dear = kernel.action_value_v1([vector], {"b": 1.0}, 0.45)
-    assert cheap["value_point"] - dear["value_point"] == pytest.approx(0.05)
-
-
 def test_the_action_bound_is_a_quantile_across_whole_vectors():
-    vectors = kernel.beta_draw_vectors(P, M, [0.0, 0.25, 0.5, 0.75, 1.0])
+    """``action_value_v1`` (read by the L4 lane) bounds an action by a
+    quantile of its value across whole draw vectors."""
+
+    vectors = [
+        {key: (1.0 - w) * M[key] + w * P[key] for key in P}
+        for w in (0.0, 0.25, 0.5, 0.75, 1.0)
+    ]
     got = kernel.action_value_v1(vectors, {"b": 1.0}, 0.40, quantile=0.0)
     masses = sorted(v["b"] for v in vectors)
     assert got["value_lcb"] == pytest.approx(masses[0] - 0.40)
-    # A negative-disagreement action (weather says less than the market) takes
-    # its worst value at the weather end, and the bound says so.
     assert P["b"] < M["b"]
     assert got["value_lcb"] == pytest.approx(P["b"] - 0.40)
-
-
-def test_the_ladder_cost_walks_depth():
-    cost, got = kernel.ladder_cost_v1([(0.40, 10.0), (0.50, 10.0)], 15.0)
-    assert got == 15.0 and cost == pytest.approx(10 * 0.40 + 5 * 0.50)
-    cost, got = kernel.ladder_cost_v1([(0.40, 10.0)], 15.0)
-    assert got == 10.0
-
-
-def test_capacity_stops_where_the_bound_stops_clearing():
-    levels = {"b": [(0.40, 10.0), (0.60, 10.0)]}
-    got = kernel.capacity_v1(
-        window=["b"], ask_levels_by_bucket=levels, mass_lcb=0.50, hurdle=0.05,
-    )
-    # 10 shares cost 4.00 against 5.00 of lower-bound payout: clears 5%.
-    # 20 shares cost 10.00 against 10.00: does not.
-    assert got["capacity_shares"] == 10.0
-    assert got["capacity_cost"] == pytest.approx(4.0)
-    floor = kernel.capacity_v1(
-        window=["b"], ask_levels_by_bucket=levels, mass_lcb=0.50, hurdle=0.05,
-        min_order_size=15.0,
-    )
-    assert floor["capacity_shares"] == 0.0
 
 
 # --------------------------------------------------------------------------
@@ -236,39 +179,6 @@ def _plant(conn, *, days, stations, weight, seed=11, stage="P0"):
     conn.commit()
 
 
-def test_the_fit_recovers_a_planted_pool_weight():
-    conn = sqlite3.connect(":memory:")
-    _plant(conn, days=20, stations=60, weight=0.6)
-    fit = store.fit_valuation(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    ev = fit["evidence"]
-    assert not fit["accumulating"]
-    assert abs(ev["beta"] - 0.6) < 0.2
-    assert ev["beta_lcb"] <= ev["beta"] <= ev["beta_ucb"]
-    assert ev["scores"]["log_pool"] >= ev["scores"]["log_market"]
-    assert ev["scores"]["log_pool"] >= ev["scores"]["log_weather"]
-    assert len(ev["beta_draws"]) == store.BOOTSTRAP_DRAWS
-
-
-def test_a_market_only_world_fits_beta_at_zero():
-    conn = sqlite3.connect(":memory:")
-    _plant(conn, days=20, stations=60, weight=0.0)
-    fit = store.fit_valuation(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    assert fit["evidence"]["beta"] <= 0.15
-
-
-def test_below_the_hurdles_the_fit_serves_no_draws():
-    conn = sqlite3.connect(":memory:")
-    _plant(conn, days=3, stations=5, weight=0.5)
-    fit = store.fit_valuation(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    assert fit["accumulating"] and fit["evidence"]["beta_draws"] == []
-
-
 def test_a_label_not_yet_knowable_is_not_evidence():
     conn = sqlite3.connect(":memory:")
     _plant(conn, days=2, stations=3, weight=0.5)
@@ -277,32 +187,6 @@ def test_a_label_not_yet_knowable_is_not_evidence():
         window_days=40,
     )
     assert {r["date"] for r in rows} == {"2026-08-01"}
-
-
-def test_persist_load_and_verdict_round_trip():
-    conn = sqlite3.connect(":memory:")
-    _plant(conn, days=20, stations=60, weight=0.4)
-    fit = store.fit_valuation(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    store.persist_and_activate(conn, fit, now="2026-09-13T00:00:00Z")
-    store.journal_fit(conn, fit=fit, outcome="ACTIVATED",
-                      fitted_at_utc="2026-09-13T00:00:00Z")
-    served = store.load_valuation_as_of(conn, stage_scope="P0")
-    assert served["beta"] == fit["evidence"]["beta"]
-    assert len(served["beta_draws"]) == store.BOOTSTRAP_DRAWS
-    assert served["verdict"] is None
-    store.persist_verdict(
-        conn, stage_scope="P0", verdict="hold", reason="test", evidence={},
-        computed_at_utc="2026-09-13T01:00:00Z", first_test_day=None,
-        last_test_day=None,
-    )
-    assert store.load_valuation_as_of(conn, stage_scope="P0")["verdict"] == "hold"
-    # As of a moment before the verdict, none stood.
-    before = store.load_valuation_as_of(
-        conn, stage_scope="P0", as_of_utc="2026-09-13T00:30:00Z",
-    )
-    assert before["verdict"] is None
 
 
 def _with_anchor(conn, monkeypatch, anchor):
@@ -351,17 +235,3 @@ def test_an_anchor_set_after_the_cutoff_did_not_exist_then(monkeypatch):
     )
     assert len(rows) == 5 * 3
     assert meta["anchor_utc"] is None and meta["anchors_after_cutoff"] == 1
-
-
-def test_an_anchor_that_cannot_be_read_refuses_the_fit(monkeypatch):
-    conn = sqlite3.connect(":memory:")
-    _plant(conn, days=5, stations=3, weight=0.5)
-    _with_anchor(conn, monkeypatch, sqlite3.OperationalError("locked"))
-    rows, meta = store.population(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    assert rows == [] and meta["error"] == "anchor_unreadable"
-    fit = store.fit_valuation(
-        conn, stage_scope="P0", cutoff_utc="2026-12-31T00:00:00Z", window_days=40,
-    )
-    assert fit["accumulating"] and fit["evidence"]["beta"] is None

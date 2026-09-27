@@ -86,13 +86,13 @@ def test_the_lanes_floor_is_the_epoch_and_the_version_start_is_not_moved() -> No
 
 
 def test_every_lane_reads_the_evidence_anchor() -> None:
-    from bayes_basket_target import beta_edge_store, valuation_store
+    from bayes_basket_target import valuation_store
 
     conn = _served("calibrated_native_cross_ensemble_p0_v9")
-    for lane in (beta_edge_store, valuation_store):
+    for lane in (valuation_store,):
         assert lane._anchor(conn, "P0") == (sa.STAGE_EVIDENCE_EPOCH["P0"], "ok")
     for module in (
-        "beta_edge_store", "off_centre_claim_store", "valuation_store",
+        "off_centre_claim_store", "valuation_store",
     ):
         source = (ROOT / "bayes_basket_target" / f"{module}.py").read_text()
         assert "served_arithmetic_anchor" not in source, module
