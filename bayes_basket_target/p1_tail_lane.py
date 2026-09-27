@@ -592,6 +592,7 @@ def live_ws_snapshot(
     station_id: str,
     event_date: str,
     now_utc: str,
+    include_listing_days: bool = False,
 ) -> dict[str, Any] | None:
     """This station-day's ladder as the WS publisher holds it now, or None.
 
@@ -611,6 +612,16 @@ def live_ws_snapshot(
     as in the snapshot.  Any refusal on the way (scope absent, hash, a
     token missing, crossed book) is None: the caller falls back to the
     committed snapshot and its own bounds.
+
+    ``include_listing_days`` reads a listed day that has not started yet
+    (charter 48), which is every day a lane that only bets well ahead of
+    settlement ever prices.  Measured 2026-09-26: the Proper lane (charter
+    231, P0 and more than 36 hours out) read no live book at all because
+    this read the started-day registry view -- all eight of its v2 first
+    decisions waited on committed snapshots 130-140 s old against its
+    60-second bound until the decision itself was an hour old, and were
+    refused ``first_decision_stale``.  This lane (P1, the day itself) keeps
+    the started-day view.
     """
 
     if not isinstance(root, Mapping):
@@ -627,7 +638,7 @@ def live_ws_snapshot(
         verified, quotes = load_official_ws_quotes_payload(nested)
         rows = _load_registry(
             target_conn, station_id=station_id, event_date=event_date,
-            as_of_utc=now_utc,
+            as_of_utc=now_utc, include_listing_days=include_listing_days,
         ).get(key)
         if not rows:
             return None

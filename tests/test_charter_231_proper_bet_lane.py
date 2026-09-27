@@ -369,6 +369,71 @@ def test_a_stale_book_waits_while_the_decision_is_young(store) -> None:
     assert late["evaluated"] == 1 and late["refusals"] == ["first_decision_stale"] and not sent
 
 
+def _publisher_manifest(tmp_path: Path, *, observed: str) -> Path:
+    """The WS publisher's multi-scope manifest for this station-day, with the
+    same ladder the committed snapshot carries."""
+
+    import hashlib  # noqa: PLC0415
+
+    from bayes_basket_target.market_ingress import _canonical  # noqa: PLC0415
+
+    quotes = {}
+    for row in _ladder():
+        token = TOKENS[row["bucket"]][0]
+        ask, bid = row["ask_levels"][0]["price"], row["bid_levels"][0]["price"]
+        quotes[token] = {
+            "token_id": token, "side": "YES",
+            "asks": [{"price": ask, "size": 200.0}], "bids": [{"price": bid, "size": 200.0}],
+            "best_ask": ask, "best_bid": bid, "book_observed_at": observed,
+        }
+    core = {
+        "schema": "clob_ws_latest_quote_snapshot_v1",
+        "source": "official_polymarket_clob_websocket",
+        "evidence_only": True, "authorizes_order": False, "state": "connected",
+        "active_shards": [0], "expected_shards": 1, "quote_storage": "inline_v1",
+        "quotes_by_token": quotes, "scope_key": f"{ST}|{ED}",
+        "target_local_date": ED, "unmaterialized_tokens": [],
+    }
+    nested = {**core, "snapshot_sha256": hashlib.sha256(_canonical(core)).hexdigest()}
+    path = tmp_path / "publisher_manifest.json"
+    path.write_text(json.dumps({
+        "schema": "bayes_basket_target_resident_multi_scope_ws_manifest_v1",
+        "state": "connected", "scope_manifests": {f"{ST}|{ED}": nested},
+    }), encoding="utf-8")
+    return path
+
+
+def test_the_publishers_live_book_prices_a_day_that_has_not_started(store, tmp_path) -> None:
+    """2026-09-26: the lane bets only more than 36 hours out, so the day it
+    prices has never started -- and the live book read the started-day
+    registry view, found no rows, and gave nothing.  Every v2 first decision
+    waited on a committed snapshot 130-140 s old against the 60-second bound
+    until it was an hour old and was refused ``first_decision_stale``."""
+
+    # The committed snapshot is two minutes old: past the send bound.
+    _seed(store, observed="2026-09-18T12:00:30.000Z")
+    manifest = _publisher_manifest(tmp_path, observed="2026-09-18T12:02:20.000Z")
+    sent: list = []
+    receipt = lane.execute_proper_bets(
+        store, transport=_resting_transport(sent), now_utc=NOW, live_submit_authorized=True,
+        settings={**SETTINGS, "live_ws_book": True}, admission=ADMIT,
+        ws_manifest_path=manifest,
+    )
+    assert receipt["waiting"] == 0, receipt["waiting_reasons"]
+    assert receipt["evaluated"] == 1 and receipt["planned"] == 1
+    row = store.execute(
+        f"SELECT book_source, refusal FROM {lane.EVALUATION_TABLE}"
+    ).fetchone()
+    assert tuple(row) == ("ws_publisher_manifest", None)
+
+
+def test_a_waiting_decision_says_what_it_waits_on(store) -> None:
+    _seed(store, observed="2026-09-18T11:50:00.000Z")
+    receipt = _run(store, [])
+    assert receipt["waiting"] == 1
+    assert receipt["waiting_reasons"] == {"book_stale": 1}
+
+
 def test_a_missing_no_token_is_not_sent(store) -> None:
     _seed(store, no_token=False)
     sent: list = []
