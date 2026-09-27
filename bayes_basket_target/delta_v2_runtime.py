@@ -3656,6 +3656,32 @@ def _solve_over_support_windows(
     # quote refresh that changed neither offers no buying candidate.
     edge_state = edge_state_v1(windows)
     last_signature = dict(last_decision_signature or {})
+    # A P1 state refresh is allowed to move the served belief as cooling,
+    # cloud, rain, and the remaining clock evolve, but it is not a new-high
+    # trading event.  ``assemble_target_snapshot`` already clears
+    # ``checkpoint_changed`` for this case; delta-v2 owns production cadence,
+    # so its own decision-moment judge must apply the same contract instead
+    # of treating the refreshed probability hash (or an edge change caused by
+    # it) as a reason to add risk.  Holding and order-end changes remain live:
+    # a confirmed fill/cancel still has to recompute the residual inventory.
+    probability_change_is_moment = not (
+        str(snapshot.evidence.probability_stage or "") == "P1"
+        and snapshot.evidence.reported_high_advanced is False
+    )
+    last_probability_identity = (
+        str(last_signature.get("probability_identity") or "") or None
+    )
+    last_edge_state = (
+        str(last_signature.get("edge_state") or "") or None
+    )
+    moment_last_probability_identity = last_probability_identity
+    moment_last_edge_state = last_edge_state
+    if not probability_change_is_moment:
+        # Make only the probability/admissibility arms quiet.  Supplying the
+        # current values on both sides also handles a restart before a prior
+        # signature was loaded without inventing a change.
+        moment_last_probability_identity = probability_identity
+        moment_last_edge_state = edge_state
     # Charter 90: a TAF TX outside the held basket is new evidence the
     # served vector does not carry, so it is a decision moment of its own
     # until the TX leg is held.
@@ -3677,13 +3703,8 @@ def _solve_over_support_windows(
         is_decision_moment_v1(
             probability_identity=probability_identity,
             edge_state=edge_state,
-            last_probability_identity=(
-                str(last_signature.get("probability_identity") or "")
-                or None
-            ),
-            last_edge_state=(
-                str(last_signature.get("edge_state") or "") or None
-            ),
+            last_probability_identity=moment_last_probability_identity,
+            last_edge_state=moment_last_edge_state,
             basket_holding=basket_holding,
             # An older decision recorded no holding.  Reading its absence as
             # "held nothing" would make the first cycle after this ships a
@@ -3710,9 +3731,17 @@ def _solve_over_support_windows(
         "probability_identity": probability_identity,
         "edge_state": edge_state,
         "last_probability_identity": (
-            last_signature.get("probability_identity") or None
+            last_probability_identity
         ),
-        "last_edge_state": last_signature.get("edge_state") or None,
+        "last_edge_state": last_edge_state,
+        **(
+            {
+                "reported_high_advanced": False,
+                "probability_change_is_moment": False,
+            }
+            if not probability_change_is_moment
+            else {}
+        ),
         "taf_tx_entry": taf_tx_entry,
         "basket_holding": basket_holding,
         "last_basket_holding": last_signature.get("basket_holding") or None,
