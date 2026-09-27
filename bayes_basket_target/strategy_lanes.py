@@ -55,6 +55,7 @@ LANE_TIEBREAK = "tiebreak"
 LANE_P1_TAIL = "p1_tail"
 LANE_P1_CONSENSUS = "p1_consensus"
 LANE_PROPER_BET = "proper_bet"
+LANE_TAIL_SHORT = "tail_short"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -63,6 +64,7 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_P1_TAIL,
     LANE_P1_CONSENSUS,
     LANE_PROPER_BET,
+    LANE_TAIL_SHORT,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -254,6 +256,39 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     "live_ws_book": True,
 }
 
+#: 远尾做空线 (charter 234, user rulings 2026-09-28 「上线：只按市场自己的价格结构
+#: 做空远尾桶」 and 「上线：H1 的纯市场版」): the market's own far tails, bought NO
+#: as a taker.  The rule is the one measured (p0_differential_edge_20260927,
+#: H1's market-only arm); the sizing and the limits are the lane's own.
+TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": True,
+    "rule": "market_far_tail_no_taker_v1",
+    # The window measured: P0, more than 36 hours to the settlement clock.
+    "opening_stages": ["P0"],
+    "min_hours_to_settlement": 36.0,
+    # The leg measured: the market's own price at or under 5%, three or more
+    # rungs from its modal bucket, a YES bid of at least 2 cents.
+    "max_market_price": 0.05,
+    "min_rungs_from_mode": 3,
+    "min_yes_bid": 0.02,
+    # Per take, in USDC at the NO ask; the depth at the bid caps it.
+    "stake_usdc": 10.0,
+    "max_legs_per_station_day": 4,
+    # Sends a bucket gets that reached the venue (a killed FOK is one) ...
+    "max_attempts_per_bucket": 3,
+    # ... and orders it may mint whatever became of them, so a send the
+    # gateway keeps refusing costs a bounded number of rows; one that never
+    # reached the venue waits this long before the next.
+    "max_orders_per_bucket": 8,
+    "unsent_retry_seconds": 300.0,
+    "max_daily_cost_usdc": 150.0,
+    # Polymarket's weather taker fee rate: fee = shares x rate x p x (1 - p).
+    "taker_fee_rate": 0.05,
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+    "lookback_days": 1,
+}
+
 #: The per-trade stake is a board dial (charter 146); the server refuses a
 #: value outside this range, and the lane reads whatever the file says.
 TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
@@ -267,6 +302,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_P1_TAIL: dict(P1_TAIL_DEFAULT_SETTINGS),
     LANE_P1_CONSENSUS: dict(P1_CONSENSUS_DEFAULT_SETTINGS),
     LANE_PROPER_BET: dict(PROPER_BET_DEFAULT_SETTINGS),
+    LANE_TAIL_SHORT: dict(TAIL_SHORT_DEFAULT_SETTINGS),
 }
 
 
@@ -393,11 +429,13 @@ __all__ = [
     "LANE_P1_CONSENSUS",
     "LANE_P1_TAIL",
     "LANE_PROPER_BET",
+    "LANE_TAIL_SHORT",
     "LANE_TIEBREAK",
     "P1_CONSENSUS_DEFAULT_SETTINGS",
     "PROPER_BET_DEFAULT_SETTINGS",
     "P1_TAIL_DEFAULT_SETTINGS",
     "SCHEMA",
+    "TAIL_SHORT_DEFAULT_SETTINGS",
     "TIEBREAK_DEFAULT_SETTINGS",
     "config_path",
     "lane_enabled",

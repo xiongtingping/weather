@@ -1,7 +1,7 @@
 # Polymarket Auto Buyer（本地）
 
 ## 目标
-- 生产下注规则为宪章 231 的 Proper 下注线（2026-09-26 熊先生裁决「实盘上线，p＝天气模型」）：P0 首决策以天气模型服务向量 p 对市场归一中价 q 求 s=log(p/q)，逐桶 bid/ask 带双边下单（p>YES 卖价买 YES、p<YES 买价买 NO），每腿 λ|s| 份（λ＝整仓最低需要，受现金封顶）post-only 挂买一+1、最短有效期、未成交重挂至成交，挂价须 YES＜p、NO＜1−p；只在 P0 且距结算＞36h；篮子车道已关（照常编译、记决策），L4 已下线（代码保留）。除该车道外禁止自动买 NO。
+- 生产下注规则为宪章 231 的 Proper 下注线（2026-09-26 熊先生裁决「实盘上线，p＝天气模型」）：P0 首决策以天气模型服务向量 p 对市场归一中价 q 求 s=log(p/q)，逐桶 bid/ask 带双边下单（p>YES 卖价买 YES、p<YES 买价买 NO），每腿 λ|s| 份（λ＝整仓最低需要，受现金封顶）post-only 挂买一+1、最短有效期、未成交重挂至成交，挂价须 YES＜p、NO＜1−p；只在 P0 且距结算＞36h；篮子车道已关（照常编译、记决策），L4 已下线（代码保留）。除该车道与宪章 234 远尾做空线（2026-09-28 裁决，只按市场自身价格结构吃单买 NO）外禁止自动买 NO。
 
 ## 工程原则（必须遵守）
 - 单写者调度法（2026-08-29，源自一周四起饥饿/停摆事故）：SSOT 写者轮转只准放真正写 SSOT 的车道；**只读工作（渲染、报表、探针的读段）一律走独立 executor，不占写者槽**；维护类车道（sweeps/采集）在生产到期时**不得连占两个槽**（生产保底交替是最坏情形下限）；单个槽位超过 ~300 秒的成员必须拆分或移出；SSOT 与 archive 的 WAL 超 256M 且写者空闲时由 daemon 自动 TRUNCATE。新增任何托管 sweep 前先回答：它写 SSOT 吗？一轮多久？不写或超长就不进队。
@@ -22,7 +22,7 @@
 - `ΔBasketScore v2` 的未来日时序观察与 `production_no_live`、RKPK 单站闭环和 45 站扩展并行；未来/forward 数据不构成 OOS、硬门或晋级依据，未完成不得阻断生产 no-live 主链。参数/权重 artifact 的 `FORMAL_PROMOTED` 与 live 晋级只接受闭日、strict-as-of 历史 OOS；P0 模型组合自身要求的离线严格 OOS artifact 同样只用历史数据。
 - 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的canonical ASOS优先/AWC后备truth（或宪章 225 的结算源修补真值）才能形成严格OOS。Open-Meteo可作为显式`aggregator_republisher`的历史同日calibration/OOS fallback，并在该历史激活存在时服务原生缺失的no-live P0；仍绝不进入native arrival、P1或formal/live authority。
 - 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；canonical ASOS一分钟/AWC METAR-SPECI观测生成P1。禁止P0-F/P0-F^r分支。
-- 篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime、官方报文硬事实排除集合和官方 CLOB WS 证据，缺证据即 fail closed；篮子不得生成 BUY NO intent（NO 腿只属宪章 231）。
+- 篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime、官方报文硬事实排除集合和官方 CLOB WS 证据，缺证据即 fail closed；篮子不得生成 BUY NO intent（NO 腿只属宪章 231 与 234）。
 - 外置盘仅用于非关键、无用数据的异步冷归档；禁止作为生产数据库备份、回滚、切换、readiness 或服务启停依赖，任何外置盘异常不得影响 AWC/METAR/SPECI、SSOT 或交易。
 - 禁止把日常生产操作设计为交互sudo；用户域迁移后所有常规服务控制必须由当前登录用户完成。
 - 每次阶段性收尾时自动说明“下一个主线任务”。
@@ -64,7 +64,7 @@
 - 旧生产线标记 `019f7a84-53ec-7183-9c5f-7f9cfa62e1f0` 已按熊先生指令退役，不再作为保护或运行依赖；用户域三个共用服务只承载 target `production_no_live` 主线，system 域同名服务必须为零。
 - 篮子 Maker 允许确定性部分成交并按实际成交重算；撤单未确认、成交结果不明或迟到回报立即进入 `reconcile_required`。紧迫FOK单桶全成或零成，失败后禁止猜测重发，必须先重算当前SSOT。
 - 新报文仅在推进站点当日已报最高温时触发；同温和旧温不交易。
-- 官方报文硬下界只用于从纯 YES 篮子支持集剔除已数学排除桶；不得据此创建、补仓或退出任何 NO 仓位（Proper 下注线的 NO 腿只来自 s<0 且 p<YES 买价）。
+- 官方报文硬下界只用于从纯 YES 篮子支持集剔除已数学排除桶；不得据此创建、补仓或退出任何 NO 仓位（Proper 下注线的 NO 腿只来自 s<0 且 p<YES 买价；远尾做空线的 NO 腿只来自市场自身价格结构）。
 - 更正/修订报使站点日停牌并人工复核，禁止自动反向交易。
 - 旧 Bayes/Target Realization 代码只保留离线历史，不得启动、读取或 fallback。
 
