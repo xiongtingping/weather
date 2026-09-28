@@ -391,6 +391,23 @@ def test_the_receipt_says_whether_the_writers_can_open(
     assert "写者可开" in capsys.readouterr().out
 
 
+def test_the_books_and_the_lock_live_beside_the_ssot(
+    store: Path, cold: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Run from an unpacked copy of the branch, the script still keeps the
+    daily job's ledger, holds, receipt and lock -- beside the SSOT."""
+
+    _plans_fixture(store)
+    argv = ["--ssot", str(store), "--cold-tier-root", str(cold), "--cold-tier-min-free-gib", "0"]
+    assert off.main(argv) == 0
+    capsys.readouterr()
+    runtime = store.parent / "runtime"
+    receipt = json.loads((runtime / off.RECEIPT.name).read_text(encoding="utf-8"))
+    assert receipt["mode"] == "dry_run" and receipt["candidate_rows"] == 3
+    assert (runtime / off.LOCK.name).exists()
+    assert off.RUNTIME == off.DEFAULT_SSOT.parent / off.RUNTIME.name
+
+
 @pytest.mark.parametrize("unusable", ["missing", "same_device", "disabled"])
 def test_an_unusable_cold_tier_moves_nothing(
     store: Path, tmp_path: Path, unusable: str

@@ -1626,7 +1626,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--batch-rows", type=int, default=BATCH_ROWS)
     parser.add_argument("--batch-mib", type=float, default=BATCH_BYTES / MIB)
     parser.add_argument("--estimate-sample", type=int, default=DEFAULT_ESTIMATE_SAMPLE)
-    parser.add_argument("--receipt", type=Path, default=RECEIPT)
+    parser.add_argument("--receipt", type=Path, default=None,
+                        help="default: runtime/ssot_cold_offload_latest.json beside the SSOT")
     parser.add_argument("--list-policies", action="store_true", help="print the registry and stop")
     parser.add_argument("--restore", action="store_true",
                         help="put one table's cold rows back (needs --tables T --since YYYY-MM-DD)")
@@ -1638,8 +1639,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps([policy.describe() for policy in POLICIES], ensure_ascii=False, indent=2))
         return 0
     ssot_path = args.ssot.expanduser().resolve()
+    # The ledger, the holds and the lock live beside the SSOT they describe,
+    # so a copy of this script run from anywhere else (an unpacked branch)
+    # keeps the daily job's books and takes the daily job's lock.
+    runtime = args.ssot.expanduser().absolute().parent / RUNTIME.name
+    manifest, holds = runtime / MANIFEST.name, runtime / HOLDS.name
+    receipt_path = args.receipt if args.receipt is not None else runtime / RECEIPT.name
     root = args.cold_tier_root if args.cold_tier_root is not None else cold_tier_root()
-    lock = _single_instance(LOCK)
+    lock = _single_instance(runtime / LOCK.name)
     if lock is None:
         print("  another ssot_cold_offload run holds the lock; nothing done")
         return 0
@@ -1650,7 +1657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if root is None:
                 parser.error("--restore needs the cold tier")
             outcome = restore_table(ssot_path=ssot_path, cold_root=Path(root), table=args.tables[0],
-                                    since=args.since, until=args.until)
+                                    since=args.since, until=args.until, holds_path=holds)
             print(json.dumps(outcome, ensure_ascii=False, indent=2))
             return 0
         receipt = run(
@@ -1659,11 +1666,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             pause_factor=args.pause_factor, batch_rows=args.batch_rows,
             batch_bytes=int(args.batch_mib * MIB),
             min_cold_free_bytes=int(args.cold_tier_min_free_gib * GIB),
-            estimate_sample=args.estimate_sample,
+            estimate_sample=args.estimate_sample, manifest=manifest, holds_path=holds,
         )
-        if args.receipt:
-            args.receipt.parent.mkdir(parents=True, exist_ok=True)
-            args.receipt.write_text(
+        if receipt_path:
+            receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            receipt_path.write_text(
                 json.dumps(receipt, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
             )
         _print_summary(receipt)
