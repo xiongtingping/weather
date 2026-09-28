@@ -358,6 +358,39 @@ def test_a_dry_run_touches_nothing_and_says_how_big_each_table_is(
     assert "预演（只读，一行不动）" in printed and "可搬 3 行" in printed
 
 
+def test_the_receipt_says_whether_the_writers_can_open(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The writers' guard reads the file's size (2026-09-27): moving rows frees
+    pages but never shrinks a file that already sits on the ceiling."""
+
+    from bayes_basket_target import resource_bounds
+
+    assert off.MAX_TARGET_DB_BYTES == resource_bounds.MAX_TARGET_DB_BYTES
+    _plans_fixture(store)
+    size = store.stat().st_size
+    monkeypatch.setattr(off, "MAX_TARGET_DB_BYTES", size - 1)
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
+    assert receipt["state"] == "applied" and receipt["moved_rows"] == 3
+    assert receipt["ceiling_before"]["writers_open"] is False
+    assert receipt["ceiling_after"]["file_bytes"] == size
+    assert receipt["ceiling_after"]["writers_open"] is False
+    assert receipt["ceiling_after"]["writable_bytes"] == 0
+    off._print_summary(receipt)
+    assert "写者拒开" in capsys.readouterr().out
+
+    monkeypatch.setattr(off, "MAX_TARGET_DB_BYTES", size + 10 * 4096)
+    receipt = _run(store, cold, tmp_path, apply=False)
+    pages, ceiling = receipt["store_before"], receipt["ceiling_before"]
+    assert ceiling["writers_open"] is True
+    assert ceiling["writable_bytes"] == (
+        size + 10 * 4096 - pages["file_bytes_by_pages"] + pages["free_page_bytes"]
+    )
+    off._print_summary(receipt)
+    assert "写者可开" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("unusable", ["missing", "same_device", "disabled"])
 def test_an_unusable_cold_tier_moves_nothing(
     store: Path, tmp_path: Path, unusable: str

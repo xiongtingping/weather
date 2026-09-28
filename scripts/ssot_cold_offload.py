@@ -104,6 +104,7 @@ from bayes_basket_target.offloaded_paths import (  # noqa: E402
     cold_tier_root,
     cold_tier_status,
 )
+from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES  # noqa: E402
 
 SCHEMA = "ssot_cold_offload_v1"
 BATCH_SCHEMA = "ssot_cold_offload_batch_v1"
@@ -1387,6 +1388,28 @@ def _store_pages(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def _ceiling(ssot_path: Path, pages: Mapping[str, int]) -> dict[str, Any]:
+    """What the writers' capacity guard makes of the store right now.
+
+    ``resource_bounds.assert_target_db_capacity`` compares the file's size
+    with ``MAX_TARGET_DB_BYTES``, not its live pages, and this lane never
+    shrinks the file: a store whose file already sits on the ceiling stays
+    shut however much the lane frees (2026-09-27), and only a raise reopens
+    it.  Once open, writers reuse the free pages first and then grow the file
+    up to the ceiling, so the two together are what they can still write.
+    """
+
+    file_bytes = int(ssot_path.stat().st_size)
+    writers_open = file_bytes <= MAX_TARGET_DB_BYTES
+    growth = max(0, MAX_TARGET_DB_BYTES - int(pages["file_bytes_by_pages"]))
+    return {
+        "max_database_bytes": MAX_TARGET_DB_BYTES,
+        "file_bytes": file_bytes,
+        "writers_open": writers_open,
+        "writable_bytes": growth + int(pages["free_page_bytes"]) if writers_open else 0,
+    }
+
+
 def run(
     *,
     ssot_path: Path,
@@ -1434,6 +1457,7 @@ def run(
     delete: sqlite3.Connection | None = None
     try:
         receipt["store_before"] = _store_pages(read)
+        receipt["ceiling_before"] = _ceiling(ssot_path, receipt["store_before"])
         holds = load_holds(holds_path)
         receipt["holds"] = holds
         day_cache: dict[bool, set[tuple[str, str]]] = {}
@@ -1498,6 +1522,7 @@ def run(
         receipt["moved_rows"] = sum(int(m.get("moved_rows", 0)) for m in moves)
         receipt["moved_bytes"] = sum(int(m.get("moved_bytes", 0)) for m in moves)
         receipt["store_after"] = _store_pages(read)
+        receipt["ceiling_after"] = _ceiling(ssot_path, receipt["store_after"])
         if any(m.get("state") == "stopped" for m in moves):
             receipt["state"] = "stopped"
         elif any(str(m.get("state", "")).startswith(("partial", "not_started")) for m in moves):
@@ -1536,6 +1561,13 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
     def gib(value: Any) -> str:
         return f"{int(value or 0) / GIB:.2f} GiB"
 
+    def ceiling_words(ceiling: Mapping[str, Any]) -> str:
+        head = (f"  写者上限：文件 {gib(ceiling.get('file_bytes'))} / 上限 "
+                f"{gib(ceiling.get('max_database_bytes'))}")
+        if ceiling.get("writers_open"):
+            return head + f" → 写者可开，还能写约 {gib(ceiling.get('writable_bytes'))}（先复用空闲页，再长到上限）"
+        return head + " → 写者拒开：闸量的是文件大小，搬行只腾空闲页、文件不缩，须先抬上限"
+
     tier = receipt.get("cold_tier") or {}
     mode = "预演（只读，一行不动）" if receipt.get("mode") == "dry_run" else "执行"
     print(f"SSOT 老行冷层（宪章 233）  {mode}  状态={receipt.get('state')}")
@@ -1545,6 +1577,8 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
     if before:
         print(f"  SSOT：文件 {gib(before.get('file_bytes_by_pages'))}，在用 {gib(before.get('live_bytes'))}，"
               f"空闲页 {gib(before.get('free_page_bytes'))}")
+    if receipt.get("ceiling_before"):
+        print(ceiling_words(receipt["ceiling_before"]))
     for row in receipt.get("tables") or []:
         kept = "、".join(
             f"{_KEPT_WORDS.get(k, '每键最新' if k.startswith('latest_') else k)} {v:,}"
@@ -1573,6 +1607,8 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
     if after:
         print(f"  SSOT 之后：在用 {gib(after.get('live_bytes'))}，空闲页 {gib(after.get('free_page_bytes'))}"
               "（空闲页由后续写入复用，文件本身不缩）")
+    if receipt.get("ceiling_after"):
+        print(ceiling_words(receipt["ceiling_after"]))
     print(f"  用时 {receipt.get('run_seconds')} 秒")
 
 
