@@ -59,15 +59,16 @@ def single_skill(prefix):
         for s in p["w"]: acc[s].append(-math.log(p["phit"][s]))
     return {s: float(np.mean(v)) for s, v in acc.items()}
 fits = {}
-for i in range(3, len(days)):
+for i in range(1, len(days)):
     prefix = [p for p in P if p["day"] < days[i]]; fits[days[i]] = {"em": em_weights(prefix), "skill": single_skill(prefix)}
-    print(days[i], "EM", {k[:9]: round(v, 3) for k, v in fits[days[i]]["em"].items()}, "skill", {k[:9]: round(v, 3) for k, v in fits[days[i]]["skill"].items()}, flush=True)
+    if i >= 3: print(days[i], "EM", {k[:9]: round(v, 3) for k, v in fits[days[i]]["em"].items()}, "skill", {k[:9]: round(v, 3) for k, v in fits[days[i]]["skill"].items()}, flush=True)
 def arm_weights(p, arm):
     w = p["w"]
     if arm in ("A1",): return w
     if arm == "S": return p["seat"]
     if arm == "EQ": return {s: 1 / len(w) for s in w}
     if arm == "PW": return norm({s: 1 / p["sig2"][s] for s in w})
+    if p["day"] not in fits: return w  # first day: no prefix, serve as served
     f = fits[p["day"]]
     if arm == "EM": return norm({s: f["em"][s] for s in w})
     if arm == "EM50": e = norm({s: f["em"][s] for s in w}); return norm({s: 0.5 * e[s] + 0.5 * w[s] for s in w})
