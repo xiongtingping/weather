@@ -981,7 +981,6 @@ def _compile_target_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one full stage → policy → v2 delta plan, no-live boundary."""
 
@@ -1408,7 +1407,6 @@ def _compile_target_plan(
             last_decision_signature=last_decision_signature,
             served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            convergence_evidence=convergence_evidence,
             # The P0-M TAF TX bucket the enumerator's TAF arms read.  Off
             # by default (PM_P0M_TAF_MODE); until 2026-09-04 only the paper
             # ledger passed it, so the arm could not have acted live.
@@ -2107,7 +2105,6 @@ class DeltaBasketScoreV2Optimizer:
     last_decision_signature: Mapping[str, Any] | None = None,
     served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    convergence_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         result = _compile_target_plan(
             station_policy_stage=station_policy_stage,
@@ -2139,7 +2136,6 @@ class DeltaBasketScoreV2Optimizer:
             last_decision_signature=last_decision_signature,
             served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            convergence_evidence=convergence_evidence,
         )
         boundary = dict(result.get("boundary") or {})
         boundary.update({
@@ -2194,7 +2190,6 @@ def compile_target_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compatibility-free public facade for the one optimizer boundary."""
 
@@ -2205,7 +2200,6 @@ def compile_target_plan(
             last_decision_signature=last_decision_signature,
             served_tables=served_tables,
             off_centre_claim_bands=off_centre_claim_bands,
-            convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,

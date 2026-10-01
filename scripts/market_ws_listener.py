@@ -2672,6 +2672,73 @@ async def _run_held_yes_ws_forever(
             backoff = min(backoff * 1.7, 30.0)
 
 
+# The target publisher rewrites its manifest every few seconds while it is
+# connected (liveness writes every 5 s, a socket refresh every 30 s).  Three
+# minutes without a write is not a slow book, it is a dead or wedged task.
+TARGET_PUBLISHER_STALL_SECONDS = 180.0
+TARGET_PUBLISHER_CHECK_SECONDS = 15.0
+TARGET_PUBLISHER_CANCEL_GRACE_SECONDS = 10.0
+
+
+def _manifest_age_seconds(path: Path) -> float | None:
+    try:
+        return max(0.0, time.time() - path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+async def _supervise_target_publisher(
+    run_publisher: Any,
+    *,
+    manifest_path: Path,
+    stall_seconds: float = TARGET_PUBLISHER_STALL_SECONDS,
+    check_seconds: float = TARGET_PUBLISHER_CHECK_SECONDS,
+    cancel_grace_seconds: float = TARGET_PUBLISHER_CANCEL_GRACE_SECONDS,
+) -> None:
+    """Keep the target book publisher alive, and say so when it was not.
+
+    2026-09-30T10:02Z the publisher task stopped -- no log line, no socket,
+    no manifest write -- while this listener's own shards and heartbeat kept
+    running.  The task was created and never awaited, so its end was
+    invisible, and the manifest it left behind still read
+    ``state: connected``: every lane reading it refused ``book_stale`` for
+    fifteen hours (远尾做空线 H1 sent nothing after 09:38Z).  A task that
+    returns, raises (``BaseException`` included), or stops writing for
+    ``stall_seconds`` is logged with its cause and started again.
+    """
+
+    started = time.monotonic()
+    while True:
+        task = asyncio.create_task(
+            run_publisher(), name="target-resident-multi-scope-official-ws",
+        )
+        generation_started = time.monotonic()
+        cause = ""
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=check_seconds)
+            if done:
+                if task.cancelled():
+                    cause = "cancelled"
+                else:
+                    exc = task.exception()
+                    cause = (
+                        f"{type(exc).__name__}:{str(exc)[:200]}" if exc is not None
+                        else "returned"
+                    )
+                break
+            age = _manifest_age_seconds(manifest_path)
+            alive_for = time.monotonic() - max(generation_started, started)
+            if alive_for >= stall_seconds and (age is None or age >= stall_seconds):
+                cause = f"stalled:manifest_age={'missing' if age is None else round(age)}s"
+                task.cancel()
+                # A task that ignores its cancellation is abandoned, not
+                # awaited: waiting on it is the wedge this guard exists for.
+                await asyncio.wait({task}, timeout=cancel_grace_seconds)
+                break
+        print(f"[market_ws][target_exact] publisher_restarted:{cause}", flush=True)
+        await asyncio.sleep(1.0)
+
+
 async def run_forever(args: argparse.Namespace) -> None:
     backoff = 1.0
     coalescer = TickCoalescer(
@@ -2684,6 +2751,7 @@ async def run_forever(args: argparse.Namespace) -> None:
         os.environ.get("PM_TARGET_WS_VERTICAL_SLICE_ENABLED", "1")
     ).strip().lower() in {"1", "true", "yes", "on"}
     if target_multi_scope_enabled:
+        from bayes_basket_target.database import DEFAULT_TARGET_WS_MANIFEST
         from scripts.resident_target_ws_publisher import (
             run_resident_target_ws_publisher,
         )
@@ -2693,8 +2761,11 @@ async def run_forever(args: argparse.Namespace) -> None:
         # can make the current P1 scope disappear while the next P0/P0-M
         # scope is being refreshed.
         target_multi_scope_task = asyncio.create_task(
-            run_resident_target_ws_publisher(),
-            name="target-resident-multi-scope-official-ws",
+            _supervise_target_publisher(
+                run_resident_target_ws_publisher,
+                manifest_path=DEFAULT_TARGET_WS_MANIFEST,
+            ),
+            name="target-resident-multi-scope-supervisor",
         )
     # Active historical YES positions have their own bounded official CLOB
     # evidence task.  It is intentionally neither awaited nor included in the

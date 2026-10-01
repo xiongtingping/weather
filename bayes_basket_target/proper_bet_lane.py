@@ -60,6 +60,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from collections import Counter
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
@@ -492,11 +493,20 @@ def _book(
     The publisher's comes first for a second reason besides speed: a rung
     resting on the station-day holds its market ingress shut, so the
     committed snapshot stops advancing while this lane is posting.
+
+    Read with the listing days (charter 48): this lane only bets more than
+    36 hours out, so the day it prices has never started, and the started-
+    day view gave it no live book at all -- every v2 first decision on
+    2026-09-26 waited on a committed snapshot 130-140 s old against the
+    60-second bound until it was an hour old (``first_decision_stale``).
     """
 
     candidates: list[dict[str, Any]] = []
     if live:
-        book = live_ws_snapshot(conn, root, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        book = live_ws_snapshot(
+            conn, root, station_id=station_id, event_date=event_date, now_utc=now_utc,
+            include_listing_days=True,
+        )
         if book is not None:
             candidates.append(book)
     committed = _latest_snapshot(conn, station_id, event_date)
@@ -1033,6 +1043,13 @@ def execute_proper_bets(
         "evaluated": len(judged["evaluations"]),
         "planned": sum(1 for e in judged["evaluations"] if e.get("plan_json")),
         "waiting": len(judged["waiting"]),
+        # What each waiting first decision waits on.  A decision waits
+        # unrecorded (no book fresh enough, a ladder the market has not
+        # completed) until it is judged or turns stale, so this count is the
+        # only place the reason shows before the refusal does.
+        "waiting_reasons": dict(sorted(Counter(
+            str(item.get("reason") or "") for item in judged["waiting"]
+        ).items())),
         "active_plans": sum(1 for p in pending["passes"] if "outstanding_legs" in p),
         "closed_plans": [p for p in pending["passes"] if "closed" in p],
         "rungs": len(pending["rungs"]),

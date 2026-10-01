@@ -575,7 +575,6 @@ def compile_production_plan(
     last_decision_signature: Mapping[str, Any] | None = None,
     served_tables: Mapping[str, Any] | None = None,
     off_centre_claim_bands: Mapping[str, Any] | None = None,
-    convergence_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compile one v2-only production decision, and deliver it when authorised.
 
@@ -594,7 +593,6 @@ def compile_production_plan(
         last_decision_signature=last_decision_signature,
         served_tables=served_tables,
         off_centre_claim_bands=off_centre_claim_bands,
-        convergence_evidence=convergence_evidence,
         probability_envelopes=probability_envelopes,
         market_snapshot=market_snapshot,
         policy_activations=policy_activations,
@@ -1375,13 +1373,6 @@ def prepare_production_candidate(
             # so "did production read the store" is answerable from the row.
             "served_tables": (
                 dict(delta_v2_audit.get("served_tables") or {})
-                if isinstance(delta_v2_audit, Mapping)
-                else None
-            ),
-            # Arm B (2026-09-06): the convergence lift's shadow receipt, so
-            # the page can show what the lift would have admitted.
-            "convergence_claim": (
-                dict(delta_v2_audit.get("convergence_claim") or {})
                 if isinstance(delta_v2_audit, Mapping)
                 else None
             ),

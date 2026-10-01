@@ -231,12 +231,12 @@ else
   echo "  冷层已关闭（PM_OFFICIAL_NWP_NATIVE_RETENTION_COLD_TIER_ROOT 为空）。"
 fi
 
-# Charter 233: the SSOT's aged history rows (P0 preselection plans past seven
+# Charter 237: the SSOT's aged history rows (P0 preselection plans past seven
 # days, OOS evaluations past the stable-pool window, ...) go to the same cold
 # tier, one verified batch at a time, and leave the SSOT only once the volume
 # holds them.  Bounded by its own budget; the rows are not re-obtainable, so
 # with the tier unusable (unplugged, or TCC-denied under launchd) nothing moves.
-echo "【冷层：SSOT 老行（宪章 233）】"
+echo "【冷层：SSOT 老行（宪章 237）】"
 SSOT_OFFLOAD_RC=0
 if [ -n "$COLD_TIER_ROOT" ] && [ "${PM_SSOT_COLD_OFFLOAD_APPLY:-1}" = "1" ]; then
   "$PY" "$ROOT/scripts/ssot_cold_offload.py" --apply \

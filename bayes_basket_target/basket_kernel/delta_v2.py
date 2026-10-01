@@ -1941,43 +1941,11 @@ def support_scenario_floor_v1(
 # the book's agreement -- is retired by charter 230 (2026-09-26): the L4
 # posterior is the basket's one belief, and a window's belief is its mass in
 # that vector.
-# Charter 128 (2026-09-12): the beta lane rides in the same served-tables
-# mapping under a key no stage can collide with.  Its value per stage is a
-# dict (``beta``, ``beta_lcb``, ``sha256``, ``accumulating``), not a band
-# table; readers that iterate the mapping as band tables must skip it.
-BETA_TABLE_KEY = "beta"
-# ``off``: the lane is not read.  ``shadow`` (default): every priced window
-# records the beta belief, edge and verdict and nothing gates on them.
-# ``on``: the gate and the solver read ``q + beta_lcb * (p - q)`` instead of
-# the lifted-claim-times-lambda belief; a stage with no fit reads
-# ``beta_lcb = 0``, which is the belief collapsing onto the price and the
-# gate refusing -- the honest reading of "no evidence yet".
-BETA_EDGE_MODE = (
-    os.environ.get("PM_BETA_EDGE", "").strip().lower() or "shadow"
-)
-# Charter 230: the L4 posterior is the basket's one belief; this lane is a
-# shadow reading only (its ``on`` arm is retired).
-if BETA_EDGE_MODE not in {"off", "shadow"}:
-    raise RuntimeError(f"unknown beta edge mode: {BETA_EDGE_MODE}")
-# v2 (user ruling, 2026-09-14: "改"): the disagreement is measured against
-# the market's BELIEF -- the normalised mid of the whole ladder, the same
-# vector charter 132 reads -- and the cost is charged at the all-in ask by
-# the gate, separately.  On the v1 basis ``q`` was the all-in ask, so the
-# regressor ``p - q`` carried half a spread plus the fee and a spread that
-# varied across windows read as realised disagreement: with zero information
-# the slope is ``Var(d) / (Var(x) + Var(d))``, not 0.  Measured 2026-09-14
-# on identical rows (leg level, 28 days): the ask basis read beta 0.016
-# (P0) and 0.033 (P1) higher than the mid basis, with the intercept
-# absorbing the mean spread.  The ledger hashes this string, so the book
-# re-imports under the new basis and every candidate window carries the mid.
-BETA_EDGE_RULE_VERSION = "beta_lcb_times_disagreement_mid_v2"
-BETA_PRICE_BASIS = "market_mid_reference_v1"
-# The second axis of the fit (same ruling): hours from the decision to the
-# settlement cutoff.  The disagreement realises differently through the day
-# -- measured 2026-09-14, P1's k = Cov/Var runs 0.99 -> 0.95 -> 0.97 from the
-# first third of a station-day's decisions to the last, and P0 sits at 1.01
-# throughout -- so a stage pools bands it should not.  A band serves only
-# when it clears the lane's own hurdles; otherwise the stage's whole row does.
+# The lead bands of the hours from a decision to the settlement cutoff.  Built
+# for charter 128's beta lane (2026-09-14: the disagreement realises
+# differently through the day, so a stage pools bands it should not), which
+# retired with charter 233; the L4 lane's rows and the candidate-window
+# evidence still partition on them.
 BETA_LEAD_BANDS: tuple[tuple[float, float, str], ...] = (
     (0.0, 6.0, "<6h"),
     (6.0, 12.0, "6-12h"),
@@ -2001,132 +1969,6 @@ def beta_lead_band(hours_to_cutoff: Any) -> str | None:
         if low <= hours < high:
             return label
     return BETA_LEAD_BANDS[-1][2]
-
-
-def beta_belief_v1(raw_win: float, market_mid: float, beta_lcb: float) -> float:
-    """Charter 128 (v2 basis): ``m + beta_lcb * (p - m)``, clipped to a
-    probability.
-
-    ``p`` is the raw served claim, ``m`` the market's belief for the window
-    (the normalised mid mass, ``BETA_PRICE_BASIS``), ``beta_lcb`` the lower
-    bound of the share of the disagreement that arrives.  At ``beta_lcb = 0``
-    this is the market's belief and the disagreement is worth nothing; at 1
-    it is the raw claim.  The cost -- the all-in ask -- is not in here: the
-    gate charges it when it compares this belief with what the window costs.
-    """
-
-    belief = float(market_mid) + float(beta_lcb) * (float(raw_win) - float(market_mid))
-    return min(1.0 - EPS, max(EPS, belief))
-
-
-def beta_conditional_edge_v2(
-    raw_win: float,
-    market_mid: float,
-    joint_draws: Sequence[Sequence[float]],
-    *,
-    quantile: float = 0.05,
-) -> dict[str, float] | None:
-    """Charter 132: the conditional net edge ``alpha + beta * (p - m)``,
-    point and lower bound, read on the fit's joint draws.  ``m`` is the
-    market's belief (v2 basis), so the prediction is of ``hit - m``; a caller
-    comparing it with a cost adds ``m`` back first.
-
-    Three things charter 128's ``q + beta_lcb * (p - q)`` gets wrong, each a
-    counterexample in the 2026-09-13 audit and each a test in
-    ``test_charter_132_evidence_contract``:
-
-    * **The intercept is dropped.**  On this lane alpha is about -0.04 -- the
-      spread above the price the book would clear at.  p=.8, q=.6, beta=.3,
-      alpha=-.08: the served edge is +.06 and clears 5%; the fitted edge is
-      -.02.
-    * **The bound is taken on beta's marginal.**  alpha and beta come from one
-      sample and are correlated; the bound belongs to the prediction.
-    * **A negative disagreement flips it.**  d=-.2 with beta in [-.8, .4]:
-      ``beta_lcb * d`` is +.16, while the worst prediction on the interval is
-      -.08.  A quantile over ``alpha_k + beta_k * d`` has no sign to get wrong.
-
-    The number is a net edge per unit of cost basis, not a probability, and is
-    named so on every row that records it.  None when there are no draws --
-    an accumulating fit has none, and nothing may be served from it.
-    """
-
-    pairs = [
-        (float(pair[0]), float(pair[1]))
-        for pair in joint_draws
-        if len(pair) == 2
-        and math.isfinite(float(pair[0]))
-        and math.isfinite(float(pair[1]))
-    ]
-    if not pairs:
-        return None
-    d = float(raw_win) - float(market_mid)
-    values = sorted(alpha + beta * d for alpha, beta in pairs)
-    q = min(max(float(quantile), 0.0), 1.0)
-    lower = values[min(len(values) - 1, int(q * len(values)))]
-    upper = values[max(0, int((1.0 - q) * len(values)) - 1)]
-    point = sum(values) / len(values)
-    return {
-        "disagreement": d,
-        "edge_point": point,
-        "edge_lcb": lower,
-        "edge_ucb": upper,
-        "draws": float(len(values)),
-    }
-
-
-def beta_conditional_edge_v3(
-    raw_win: float,
-    market_mid: float,
-    joint_draws: Sequence[Sequence[float]],
-    *,
-    market_centre: float | None = None,
-    quantile: float = 0.05,
-) -> dict[str, float] | None:
-    """Charter 128 v3 (user ruling, 2026-09-17: 把 β 车道补上 γ): the
-    conditional net edge ``alpha + beta * (p - m) + gamma * (m - m0)``,
-    point and lower bound on the fit's joint draws.
-
-    The third knob is the market's own slope, and it is what keeps the
-    market's reliability curve out of beta.  The model disagrees more where
-    the book is cheap (corr(p - m, m) = -0.42 on 13,337 priced buckets since
-    2026-08-15), so a market that under-realises its cheap prices and
-    over-realises its dear ones reads, with two knobs, as the disagreement
-    leaning the wrong way: beta -0.064 without gamma, +0.050 with it, gamma
-    +0.21 [+0.17, +0.25] by day.  ``m0`` is the market centre the fit was
-    taken at (the population's mean mid), carried on the row so a served
-    prediction reads the line the fit drew.
-
-    Draws are ``(alpha, beta)`` pairs or ``(alpha, beta, gamma)`` triples; a
-    pair is a fit that had no third knob and reads gamma = 0, which is
-    exactly the v2 prediction.  None when there are no draws.
-    """
-
-    triples: list[tuple[float, float, float]] = []
-    for pair in joint_draws:
-        if len(pair) not in (2, 3):
-            continue
-        values_ = [float(v) for v in pair]
-        if not all(math.isfinite(v) for v in values_):
-            continue
-        triples.append((values_[0], values_[1], values_[2] if len(values_) == 3 else 0.0))
-    if not triples:
-        return None
-    d = float(raw_win) - float(market_mid)
-    centre = 0.0 if market_centre is None else float(market_centre)
-    z = float(market_mid) - centre
-    values = sorted(alpha + beta * d + gamma * z for alpha, beta, gamma in triples)
-    q = min(max(float(quantile), 0.0), 1.0)
-    lower = values[min(len(values) - 1, int(q * len(values)))]
-    upper = values[max(0, int((1.0 - q) * len(values)) - 1)]
-    point = sum(values) / len(values)
-    return {
-        "disagreement": d,
-        "market_offset": z,
-        "edge_point": point,
-        "edge_lcb": lower,
-        "edge_ucb": upper,
-        "draws": float(len(values)),
-    }
 
 
 # Charter 71 (user ruling, 2026-09-03): the two hard gates on a top-up.
@@ -4399,46 +4241,6 @@ def center_window_claim_factor(claimed_mass: float) -> float:
     return 1.0
 
 
-# Arm B (user ruling 2026-09-06, "做 B 臂。先影子"): the convergence claim
-# lift.  Measured that day on the probability layer (P0-M and P1 stages,
-# 852 station-days with truth): a window whose served claim ROSE by 0.02 or
-# more over the prior 12 hours while the market's best-ask sum FELL by 0.05
-# or more, and which the market still prices at 1.1x the claim or above,
-# realises 1.31-1.44 of its claim (n=50/47, 30/25 stations, hit 82-89%,
-# drop-3 winners +10% at 12h) -- while the same market move against an
-# UNCHANGED claim realises 1.00-1.13 and loses (-15%/-27%, every week
-# negative).  So the factor is conditioned on both sides moving toward each
-# other, never on the market's move alone.  It multiplies the claim before
-# the positive-EV gate, like charter 81, because the gate is what refuses
-# these windows today: 46 of 50 sit at claim 0.63 against price 0.80.
-#
-# ``shadow`` (default) computes the state and the factor on every window,
-# journals candidates and what the lift would have admitted, and changes
-# nothing; ``on`` is the ledger arm and, only after the ledger prices it,
-# production.  P0 is excluded: an opening seat has no prior belief or book
-# (charter 48 opens at listing), and the measurement was P0-M/P1.  This
-# collides with charter 68's P1 ceiling ("trust it, not more than it
-# trusts itself") by construction -- the factor is exactly "more than the
-# claim" -- which is why it ships in shadow and must be ruled on by name.
-CONVERGENCE_CLAIM_MODE = (
-    os.environ.get("PM_CONVERGENCE_CLAIM", "").strip().lower() or "shadow"
-)
-# Charter 230: a shadow reading only; its ``on`` lift is retired.
-if CONVERGENCE_CLAIM_MODE not in {"off", "shadow"}:
-    raise RuntimeError(f"unknown convergence claim mode: {CONVERGENCE_CLAIM_MODE}")
-CONVERGENCE_CLAIM_HORIZON_HOURS = float(
-    os.environ.get("PM_CONVERGENCE_CLAIM_HORIZON_HOURS", "") or 12.0
-)
-CONVERGENCE_CLAIM_FACTOR = float(
-    os.environ.get("PM_CONVERGENCE_CLAIM_FACTOR", "") or 1.30
-)
-CONVERGENCE_CLAIM_STAGES: frozenset[str] = frozenset({"P0-M", "P1"})
-CONVERGENCE_CLAIM_MIN_AGREEMENT = 1.10
-CONVERGENCE_CLAIM_MIN_CLAIM_RISE = 0.02
-CONVERGENCE_CLAIM_MIN_PRICE_FALL = 0.05
-CONVERGENCE_CLAIM_RULE_VERSION = "convergence_claim_v1"
-
-
 # Charter 110 (extended 2026-09-08): the partition key for lambda is not the
 # band axis alone.  ``a = price / claim`` is keyed on the claim, and the band
 # table is only the first of several layers that move it -- charter 81's
@@ -4508,14 +4310,18 @@ def claim_transform_fingerprint(
     their claims really would no longer be the claims this code computes.
     """
 
+    # The convergence lift (Arm B, 2026-09-06) was a shadow: it never moved a
+    # served claim.  Charter 233 retired it and its constants; their values
+    # stay here as literals so no row's key moves for a lift none of them
+    # went through.
     common = {
         "rule": CLAIM_TRANSFORM_RULE_VERSION,
-        "convergence_mode": str(CONVERGENCE_CLAIM_MODE),
-        "convergence_factor": float(CONVERGENCE_CLAIM_FACTOR),
-        "convergence_stages": sorted(CONVERGENCE_CLAIM_STAGES),
-        "convergence_min_agreement": float(CONVERGENCE_CLAIM_MIN_AGREEMENT),
-        "convergence_min_claim_rise": float(CONVERGENCE_CLAIM_MIN_CLAIM_RISE),
-        "convergence_min_price_fall": float(CONVERGENCE_CLAIM_MIN_PRICE_FALL),
+        "convergence_mode": "shadow",
+        "convergence_factor": 1.3,
+        "convergence_stages": ["P0-M", "P1"],
+        "convergence_min_agreement": 1.1,
+        "convergence_min_claim_rise": 0.02,
+        "convergence_min_price_fall": 0.05,
     }
     if holds_centre:
         return content_sha256({
@@ -4556,62 +4362,6 @@ def claim_transform_fingerprint(
             str(off_centre_table_sha) if off_centre_table_sha else None
         ),
     })
-
-
-def convergence_state_v1(
-    *,
-    stage: str,
-    claim_now: float,
-    claim_prev: float | None,
-    price_now: float | None,
-    price_prev: float | None,
-    agreement_now: float | None,
-) -> dict[str, Any]:
-    """Whether a window is converging from both sides and still dear.
-
-    ``claim`` is the served window mass before any lift, ``price`` the
-    window's best-ask sum on the same basis at both ends, ``agreement`` the
-    all-in price over the served claim -- the a charter 68 reads.  A
-    missing prior (None) is "not converging" with the reason recorded;
-    the state never invents a move.
-    """
-
-    state: dict[str, Any] = {
-        "rule": CONVERGENCE_CLAIM_RULE_VERSION,
-        "stage_eligible": str(stage) in CONVERGENCE_CLAIM_STAGES,
-        "claim_rise": None,
-        "price_fall": None,
-        "agreement": None if agreement_now is None else float(agreement_now),
-        "converging": False,
-        "reason": None,
-    }
-    if not state["stage_eligible"]:
-        state["reason"] = "stage"
-        return state
-    if claim_prev is None or price_now is None or price_prev is None:
-        state["reason"] = "no_prior"
-        return state
-    rise = float(claim_now) - float(claim_prev)
-    fall = float(price_prev) - float(price_now)
-    state["claim_rise"] = round(rise, 4)
-    state["price_fall"] = round(fall, 4)
-    if agreement_now is None or float(agreement_now) < CONVERGENCE_CLAIM_MIN_AGREEMENT:
-        state["reason"] = "not_dear"
-        return state
-    if rise < CONVERGENCE_CLAIM_MIN_CLAIM_RISE:
-        state["reason"] = "claim_not_rising"
-        return state
-    if fall < CONVERGENCE_CLAIM_MIN_PRICE_FALL:
-        state["reason"] = "price_not_falling"
-        return state
-    state["converging"] = True
-    return state
-
-
-def convergence_claim_factor(state: Mapping[str, Any]) -> float:
-    """The lift a converging window earns; 1.0 for every other window."""
-
-    return float(CONVERGENCE_CLAIM_FACTOR) if state.get("converging") else 1.0
 
 
 # The ladder's length is a property of the day, not a constant.  A model

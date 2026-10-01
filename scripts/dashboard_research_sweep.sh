@@ -8,9 +8,8 @@
 # The page render (dashboard_render_sweep.sh) has 1,500 s and serves every
 # section that cost 300 s or more last time from its page ("research lane").
 # This refreshes those pages, the one furthest past its lifetime first:
-# bias_half_life (1,249 s), lambda_axis_realisation (793 s),
-# band_residual_audit (651 s), charter_ev (413-580 s), convergence_claim
-# (469 s) and whatever else grows past the line.  It is called exactly as
+# bias_half_life (1,249 s), member_depth (686-1,000 s), charter_ev
+# (413-580 s) and whatever else grows past the line.  It is called exactly as
 # the page render last called it (data/dashboard_section_cache/
 # _section_specs.json), reads only in production gaps, gives its read up if
 # the store's WAL crosses the page render's yield line, and writes that

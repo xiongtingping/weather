@@ -23,7 +23,6 @@ for path in (ROOT, ROOT / "scripts"):
         sys.path.insert(0, str(path))
 
 from bayes_basket_target import atomic_ledger  # noqa: E402
-from bayes_basket_target import beta_edge_store  # noqa: E402
 from bayes_basket_target import candidate_window_evidence as E  # noqa: E402
 from bayes_basket_target.label_knowability import knowable_labels  # noqa: E402
 
@@ -96,8 +95,8 @@ def test_the_compile_projection_keeps_refused_windows_and_marks_the_seat():
             {"buckets": ["30", "31"], "win_probability": 0.6,
              "raw_win_probability": 0.55, "all_in_price": 0.5,
              "effective_edge_agreement": 0.83, "admissible": True,
-             "center_gap_buckets": 0, "beta_market_mid": 0.48,
-             "beta_hours_to_cutoff": 20.0},
+             "center_gap_buckets": 0, "market_mid": 0.48,
+             "hours_to_cutoff": 20.0},
             {"buckets": ["29"], "win_probability": 0.1, "all_in_price": 0.2,
              "admissible": False, "center_gap_buckets": 2},
             {"buckets": ["32"], "all_in_price": None},
@@ -188,18 +187,6 @@ def test_the_view_scores_sampled_rows_against_the_standing_label():
         " ORDER BY buckets_json"
     ).fetchall()
     assert rows == [('["29"]', 0, "31"), ('["30", "31"]', 1, "31")]
-
-
-def test_the_beta_fit_reads_the_production_view():
-    """Charter 68's lambda fit read the same view until charter 230 retired it."""
-
-    conn = _scored_book()
-    rows, meta = beta_edge_store.population(
-        conn, stage_scope="P0", anchored=False, as_of=DAY,
-        cutoff_utc="2026-09-20T00:00:00Z",
-    )
-    assert "error" not in meta, meta
-    assert sorted(r["hit"] for r in rows) == [0.0, 1.0]
 
 
 def test_a_failed_evidence_write_does_not_stop_the_decision():

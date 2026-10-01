@@ -1570,7 +1570,7 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
 
     tier = receipt.get("cold_tier") or {}
     mode = "预演（只读，一行不动）" if receipt.get("mode") == "dry_run" else "执行"
-    print(f"SSOT 老行冷层（宪章 233）  {mode}  状态={receipt.get('state')}")
+    print(f"SSOT 老行冷层（宪章 237）  {mode}  状态={receipt.get('state')}")
     print(f"  冷层：{tier.get('state')}  {tier.get('root') or ''}"
           + (f"  剩余 {gib(tier.get('free_bytes'))}" if tier.get("free_bytes") else ""))
     before = receipt.get("store_before") or {}
