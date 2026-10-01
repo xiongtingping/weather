@@ -338,7 +338,9 @@ EVIDENCE_EVENT_DATE_MARGIN_DAYS = 2
 #: ``TRUTH_LANDING_SINCE`` (truth landing) and ``H5_FROM_UTC`` (H5).  The
 #: dashboard renders on a schedule and never reads the cold tier, so these
 #: are floors.  Pinned by the test to ``scripts/calibration_dashboard.py``.
-DASHBOARD_FIXED_STARTS = ("2026-08-15", "2026-08-27")
+DASHBOARD_TRUTH_LANDING_SINCE = "2026-08-15"
+DASHBOARD_H5_FROM = "2026-08-27"
+DASHBOARD_FIXED_STARTS = (DASHBOARD_TRUTH_LANDING_SINCE, DASHBOARD_H5_FROM)
 
 
 def dashboard_fixed_start_floor(_conn: sqlite3.Connection) -> str | None:
@@ -561,6 +563,16 @@ POLICIES: tuple[TablePolicy, ...] = (
         table="basket_official_ws_snapshot",
         time_column="event_date",
         hot_days=VALUATION_WINDOW_DAYS + 2,
+        # The dashboard's truth-landing section reads every book from
+        # TRUTH_LANDING_SINCE on; its per-day cache is keyed on the section's
+        # code, so a code change re-reads them all off the SSOT.
+        floors=(
+            DynamicFloor(
+                name="dashboard_truth_landing",
+                why="the truth-landing section re-reads every book from TRUTH_LANDING_SINCE when its code changes",
+                resolve=lambda _conn: DASHBOARD_TRUTH_LANDING_SINCE,
+            ),
+        ),
         readers=(
             "market_ingress: MAX(sequence)+1 and by snapshot_id for the day being written; "
             "production_io / production_worker / atomic_ledger / tiebreak, p1_tail, "

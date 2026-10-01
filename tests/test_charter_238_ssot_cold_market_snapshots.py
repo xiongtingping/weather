@@ -413,6 +413,12 @@ def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
         "calibration_evidence_anchor", "dashboard_fixed_starts", "taf_case_cache",
         "metar_trajectory_training",
     }
+    # The truth-landing section also reads the WS book from its fixed start.
+    assert off.DASHBOARD_TRUTH_LANDING_SINCE == landing
+    (book_floor,) = off.POLICY_BY_TABLE[WS].floors
+    assert book_floor.name == "dashboard_truth_landing"
+    assert book_floor.resolve(None) == landing
+    assert "FROM basket_official_ws_snapshot" in dashboard[dashboard.index("def _truth_landing_chunk_end"):][:2000]
     assert policy.keep_station_days is not None and policy.keep_station_days.live_only
 
 
