@@ -14079,6 +14079,9 @@ def build_payload(db: Path) -> dict[str, Any]:
         payload = _build_payload(conn, db)
     finally:
         conn.close()
+    # Which payload keys each cache landed in, and what fed it, so each
+    # section names its own stale inputs (user 2026-10-01).
+    payload["section_cache"] = _section_cache_destinations(payload)
     # The render's own cost, on the page.  Reported because the page is a
     # file on a thirty-minute timer, not a live query: a reader who
     # refreshes right after a change sees the PREVIOUS build until the next
@@ -15259,7 +15262,59 @@ def _serve_unavailable(name: str, value: Any, reason: str) -> Any:
     return json.loads(json.dumps(value))
 
 
-def _cached_section(
+#: Each cached section's value this build, by name, so the page can say which
+#: section reads which cache (user 2026-10-01: 把最下方的数据过期诊断放到各个板块).
+_SECTION_CACHE_VALUES: dict[str, Any] = {}
+
+
+def _cached_section(name: str, collector: Any, *args: Any, **kwargs: Any) -> Any:
+    """``_cached_section_value``, and a record of what fed it.
+
+    A section handed another section's value as an argument (members is fed
+    run_cadence and member_depth) is only as fresh as that input, so the
+    input's name rides on the entry as ``fed_by`` -- found by identity, the
+    very object passed in, so no list of edges has to be kept by hand.
+    """
+
+    value = _cached_section_value(name, collector, *args, **kwargs)
+    feeds = sorted(
+        other for other, held in _SECTION_CACHE_VALUES.items()
+        if held is not None and not isinstance(held, (str, int, float, bool))
+        and any(held is arg for arg in args)
+    )
+    _SECTION_CACHE_VALUES[name] = value
+    entry = _SECTION_CACHE_LOG.get(name)
+    if entry is not None and feeds:
+        entry["fed_by"] = feeds
+    return value
+
+
+def _section_cache_destinations(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The cache log, each entry with the payload keys its value landed in.
+
+    By identity again: a payload key whose value IS the cached value, or one
+    of its top-level members (``daily`` is ``live_days["daily"]``).  The page
+    reads these to put each section's staleness inside that section.
+    """
+
+    log = {name: dict(entry) for name, entry in _SECTION_CACHE_LOG.items()}
+    for name, value in _SECTION_CACHE_VALUES.items():
+        if name not in log or value is None or isinstance(value, (str, int, float, bool)):
+            continue
+        members = list(value.values()) if isinstance(value, dict) else []
+        keys = sorted(
+            key for key, held in payload.items()
+            if key != "section_cache" and (
+                held is value or any(held is member for member in members
+                                     if not isinstance(member, (str, int, float, bool)) and member is not None)
+            )
+        )
+        if keys:
+            log[name]["payload_keys"] = keys
+    return log
+
+
+def _cached_section_value(
     name: str,
     collector: Any,
     *args: Any,
@@ -15529,6 +15584,7 @@ def _cached_section(
 
 def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
+    _SECTION_CACHE_VALUES.clear()
     cadence = _cached_section("run_cadence", collect_run_cadence, conn)
     member_depth = _cached_section(
         "member_depth", collect_member_depth, conn, _unavailable={}
@@ -16315,6 +16371,14 @@ border-bottom:1px solid var(--soft)}
 .link:last-child{border-bottom:none}
 .link .body{flex:1;min-width:0}
 .link .name{font-weight:600}
+.stale-note{font-size:12px;margin:-4px 0 8px;color:var(--muted)}
+.ns-core .ns-primary{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset}
+.ns-core .ns-primary .ns-v{font-size:26px}
+.lamps{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}
+.lamps .lamp{display:inline-flex;align-items:center;gap:4px}
+details.diag>summary{color:var(--muted)}
+.kpis-diag .kpi-v{font-size:18px}
+.stale-note.is-stale{color:var(--down);border-left:2px solid var(--down);padding-left:8px}
 .why{background:var(--why-bg);border-left:2px solid var(--accent);
 padding:9px 13px;border-radius:0 7px 7px 0;color:var(--why-fg);font-size:13.4px;
 margin:9px 0 0}
@@ -16641,7 +16705,18 @@ color:var(--accent);vertical-align:1px}
 <button id="theme" type="button"></button>
 <div class="wrap" id="app"></div>
 <script>
+// Which payload keys the section being rendered reads (user 2026-10-01:
+// 把最下方的数据过期诊断放到各个板块): ``sec`` opens a set, every D.key read
+// lands in it, and the section's own staleness line is built from it.
+let SEC_READS = null;
+const SEC_ATTRIBUTED = new Set();
 const D = __PAYLOAD__;
+Object.keys(D).forEach(key => {
+  let held = D[key];
+  Object.defineProperty(D, key, {enumerable: true, configurable: true,
+    get(){ if(SEC_READS) SEC_READS.add(key); return held; },
+    set(value){ held = value; }});
+});
 const h = (s) => String(s == null ? "" : s);
 // How many formal model families this render read (its member rows, built
 // from production's product registry), the way the headings say it: 「六大
@@ -21673,7 +21748,7 @@ function modelAccuracyBoard(){
   const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
     .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
   const col = (rows, dts, key) => dts.map(d => { const r = rows.find(x => x.event_date === d); return r && r[key] != null ? r[key] : null; });
-  const star = northStarBlock(LD, landDates, col);
+  const NS = northStarBlock(LD, landDates, col);
   const charts = [
     trendChart({title: "中心偏差（°C）", sub: "P0 前瞻预测，真值 − 预测，按事件日；负＝预测偏暖",
       dates, series: [{name: "P0", values: col(F, dates, "bias_c")}], ref: {y: 0, label: "0"},
@@ -21708,7 +21783,13 @@ function modelAccuracyBoard(){
       <td class="mono">${n2(lg("P1").bias_rungs)}</td>
       <td class="mono">${pctS(lg("P0").seat_claim)} / ${pctS(lg("P0").seat_cover)}</td></tr>`;
   }).join("");
-  return `${star}<h2>模型准不准 · 总览：中心、宽度、概率一张看</h2>
+  // The six layers, as lamps on one line; their sentences and numbers sit
+  // in the scorecard below, folded away (charter 240: diagnostics).
+  const lamps = (S.layers || []).map(L => `<span class="lamp" title="${h(L.verdict || "")}"><span class="dot ${S.accumulating ? "muted" : L.health}"></span>${h(L.name)}</span>`).join("");
+  const scoreBody = typeof scorecard === "function" ? safe(scorecard, "六层总检").replace(/^\s*<h2>[\s\S]*?<\/h2>/, "") : "";
+  return `<h2>模型准不准 · 总检：LogScore 主评分 → CRPS 结构验证 → Brier 护栏（宪章 240）</h2>
+  <p class="sub">模型唯一的目标是条件离散温度桶概率 P(Y=k|X)。升级成立＝<b>LogScore 显著变好</b>，且 CRPS 不稳定变差、Brier 不显著变差；
+    三个分数之下的一切（中心偏差、宽度、PIT、覆盖、Reliability/Resolution、六层灯）都是诊断：<b>诊断指标负责找病，proper score 负责判断治疗有没有价值</b>。</p>
   <div class="card vstrip">
     <span class="pill violet">证据窗</span>
     <span>${whenZ((S.window || {}).anchor)} 起（宪章 202：升版不清零）· ${S.event_day_count || 0} 个事件日${S.accumulating ? `（攒证据中，满 ${S.min_event_days || 8} 天出结论）` : ""}</span>
@@ -21717,13 +21798,23 @@ function modelAccuracyBoard(){
     <span class="pill">上一版 ${vShort(W && W.version)}</span>
     <span class="muted">${whenZ(W && W.since)} → ${whenZ(W && W.until)} · ${P.event_day_count || 0} 个事件日</span>
   </div>
-  <div class="grid g3 kpis">${kpis}</div>
-  <div class="grid g3" style="margin-top:12px">${charts}</div>
-  <p class="sub" style="margin-top:6px">走势按事件日画最近 ${T.days || 21} 天，跨版本不截断；竖线是每次升版的起点（v3…v6）。
-    上排四张读 P0 的前瞻预测（总检同一份样本），下排两张读服务出去的分布（真值离均值同一份样本）。${
-    thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>（只结算了一两个站，会把线拽走）：${
-      h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
-    thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p>
+  ${NS.empty || `<div class="grid g3 ns-grid ns-core">${NS.coreCards}</div>
+  <div class="card" style="margin-top:10px"><ul class="ns-verdict">${NS.verdicts}</ul>
+    <div class="muted" style="font-size:12px">本版对上一版是证据窗均值对比（护栏容差 2%，与 OOS 门同一条）；
+    各车道换表另按站日整块重抽判显著性（宽度车道、OOS 门、两条似然、特征门）。两边各满 ${NS.minDays} 个事件日才判。</div></div>
+  <div class="grid g3" style="margin-top:12px">${NS.coreCharts}</div>`}
+  ${lamps ? `<div class="card lamps" style="margin-top:12px"><span class="muted">诊断灯 · 六层</span>${lamps}
+    <span class="pill ${S.overall || "muted"}" style="margin-left:auto">${VERDICT_WORD[S.overall] || "证据不足"}</span></div>` : ""}
+  <details class="note diag"><summary>诊断：中心 μ · 宽度 σ / 形状 · 概率行为（找病用，不判决）</summary>
+    <div class="grid g3 kpis kpis-diag">${kpis}</div>
+    ${NS.diagCards ? `<div class="grid g3 ns-grid" style="margin-top:10px">${NS.diagCards}</div>` : ""}
+    ${NS.identity ? `<div class="muted" style="font-size:12px;margin-top:4px">${NS.identity}</div>` : ""}
+    <div class="grid g3" style="margin-top:12px">${charts}${NS.diagCharts || ""}</div>
+    <p class="sub" style="margin-top:6px">走势按事件日画最近 ${T.days || 21} 天，跨版本不截断；竖线是每次升版的起点。
+      中心/宽度四张读 P0 的前瞻预测（总检同一份样本），其余读服务出去的分布（真值离均值同一份样本）。${
+      thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>：${h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
+      thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></details>
+  ${scoreBody ? `<details class="note diag"><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT、融合重解、上一版）</summary>${scoreBody}</details>` : ""}
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
@@ -21731,39 +21822,36 @@ function modelAccuracyBoard(){
       <tbody>${tableRows}</tbody></table></div></details>`;
 }
 
-// The product's north star and its verdict (user, 2026-09-23: Reliability
-// and Resolution of the served bucket probabilities; charter 211, 2026-09-24,
-// amended the same day: the model's only objective is the discrete bucket
-// distribution, and "closer to it" is decided by its two proper scores --
-// bucket Brier and LogScore both lower.  Reliability / Resolution are
-// Brier's decomposition, shown to explain the move, never a gate; RMSE and
-// CRPS are intermediate diagnostics).  Read off the
+// The board's verdict (charter 240, user ruling 2026-10-01): the model's only
+// target is P(Y=k|X), and its three proper scores are ranked, not equal
+// vetoes -- LogScore is the primary judge, the ladder CRPS checks the
+// distribution's structure, the bucket Brier is the guardrail.  Everything
+// else on this board is a diagnostic: it finds the illness, it does not
+// judge the cure (RMSE/bias for the centre, PIT/E[z^2]/width for the shape,
+// Reliability/Resolution for the probability behaviour).  Read off the
 // served cells the landing table scores (one sample, station-days weighted
 // equally), this version against the one before it, per stage.
+const GUARDRAIL_MAX_RELATIVE_LOSS = 0.02;   // native_ensemble_oos, charter 240
 const CORE_METRICS = [
-  {key:"reliability", label:"Reliability 可靠性", unit:"×10⁻³", star:true, panel:true, better:"lower",
-   q:"说 20% 的桶，是不是真有 20% 落进来；越低越好", fmt:v => (1000 * v).toFixed(3)},
-  {key:"resolution", label:"Resolution 分辨力", unit:"×10⁻³", star:true, panel:true, better:"higher",
-   q:"概率能不能把会落和不会落的桶分开；越高越好", fmt:v => (1000 * v).toFixed(2)},
-  {key:"bucket_brier", label:"桶 Brier", unit:"", panel:true, decide:true, better:"lower",
-   q:"整条桶概率向量对结算桶的平方误差；越低越好", fmt:v => v.toFixed(4)},
-  {key:"nll", label:"LogScore（NLL）", unit:"nat", panel:true, decide:true, better:"lower",
-   q:"真值所在桶给了多少概率，取负对数；越低越好", fmt:v => v.toFixed(3)},
-  {key:"rmse_c", label:"RMSE", unit:"°C", better:"lower",
-   q:"服务均值离真值的均方根——中间诊断：查中心有没有跑偏，不是目标", fmt:v => v.toFixed(3)},
-  {key:"crps_c", label:"CRPS", unit:"°C", better:"lower",
-   q:"整条分布离真值多远（桶梯上的 CRPS）——中间诊断：查连续形状，不是目标", fmt:v => v.toFixed(3)},
+  {key:"nll", label:"LogScore（NLL）", unit:"nat", role:"primary", decide:true, better:"lower",
+   q:"主裁判：真值所在桶给了多少概率，取负对数；必须显著变好", fmt:v => v.toFixed(3)},
+  {key:"crps_c", label:"CRPS（桶梯）", unit:"°C", role:"structure", decide:true, better:"lower",
+   q:"第二裁判：计入桶间距离后整条分布离真值多远；不能稳定变差", fmt:v => v.toFixed(3)},
+  {key:"bucket_brier", label:"桶 Brier", unit:"", role:"guard", decide:true, better:"lower",
+   q:"护栏：有没有为少数情况破坏整体概率质量；不能显著变差", fmt:v => v.toFixed(4)},
+  {key:"reliability", label:"Reliability 可靠性", unit:"×10⁻³", role:"diag", better:"lower",
+   q:"诊断：说 20% 的桶是不是真有 20% 落进来", fmt:v => (1000 * v).toFixed(3)},
+  {key:"resolution", label:"Resolution 分辨力", unit:"×10⁻³", role:"diag", better:"higher",
+   q:"诊断：概率能不能把会落和不会落的桶分开", fmt:v => (1000 * v).toFixed(2)},
+  {key:"rmse_c", label:"RMSE", unit:"°C", role:"diag", better:"lower",
+   q:"诊断：服务均值离真值的均方根，查中心", fmt:v => v.toFixed(3)},
 ];
-const PANEL_KEYS = CORE_METRICS.filter(m => m.panel).map(m => m.key);
-const DECIDE_KEYS = CORE_METRICS.filter(m => m.decide).map(m => m.key);
+const ROLE_WORD = {primary:"主评分", structure:"结构验证", guard:"护栏", diag:"诊断"};
 function northStarBlock(LD, landDates, col){
   const cur = D.center_landing_version || D.center_landing || {}, prev = D.center_landing_previous || {};
   // The headline reads the lanes' own sample: the served landing on the
   // evidence window (charter 202 -- P0 from the stable pool, P0-M and P1
-  // from charter 150, bumps no longer reset it).  The 21-day calendar pool
-  // mixed in the contest seats before 09-14 and read P0's top claims as
-  // 64% said / 42% happened where the current arithmetic reads 63 / 46 on
-  // a tenth of the weight (2026-09-23).  The trend lines stay calendar.
+  // from charter 150, bumps no longer reset it).  The trend lines stay calendar.
   const T = D.model_accuracy_trend || {};
   const pooled = {};
   ((D.center_landing || {}).stages || []).forEach(x => { pooled[x.stage] = x.core || {}; });
@@ -21772,20 +21860,19 @@ function northStarBlock(LD, landDates, col){
   const STAGES = ["P0", "P0-M", "P1"];
   const coreOf = (land, s) => (((land.stages || []).find(x => x.stage === s)) || {}).core || null;
   const present = STAGES.filter(s => (pooled[s] && pooled[s].station_days) || coreOf(cur, s));
-  if(!present.length) return `<h2>北极星与面板（宪章 211）</h2><p class="sub">服务样本还没有算出桶概率指标（新字段要等下一轮整库渲染）。</p>`;
+  if(!present.length) return {empty: `<p class="sub">服务样本还没有算出桶概率指标（新字段要等下一轮整库渲染）。</p>`};
   const better = (m, a, b) => {
     if(a == null || b == null) return null;
     if(Math.abs(a - b) < 1e-12) return 0;
     return (m.better === "lower" ? a < b : a > b) ? 1 : -1;
   };
   // A version comparison is judged only when both sides have MIN_DAYS
-  // settled event days -- the same bar the scorecard holds; below it the
-  // numbers show and the verdict waits.
+  // settled event days -- the same bar the scorecard holds.
   const judged = s => {
     const c = coreOf(cur, s), pv = coreOf(prev, s);
     return !!(c && pv && c.event_days >= MIN_DAYS && pv.event_days >= MIN_DAYS);
   };
-  const cards = CORE_METRICS.map(m => {
+  const card = m => {
     const lines = present.map(s => {
       const pl = pooled[s] || {}, c = coreOf(cur, s), pv = coreOf(prev, s);
       const v = pl[m.key], cv = c ? c[m.key] : null, pvv = pv ? pv[m.key] : null;
@@ -21795,65 +21882,61 @@ function northStarBlock(LD, landDates, col){
       return `<div class="ns-row"><span class="ns-st">${s}</span><span class="ns-v">${v == null ? "—" : h(m.fmt(v))}</span>
         <span class="muted ns-p">${ver}</span></div>`;
     }).join("");
-    return `<div class="card ns-card${m.star ? " ns-star" : ""}">
-      <div class="ns-h"><span class="pill${m.star ? " violet" : ""}">${m.star ? "北极星 · 诊断" : m.decide ? "判据" : "中间诊断"}</span>
+    return `<div class="card ns-card ns-${m.role}">
+      <div class="ns-h"><span class="pill${m.role === "primary" ? " violet" : ""}">${ROLE_WORD[m.role]}</span>
         <b>${h(m.label)}</b><span class="muted">${h(m.unit)} · ${m.better === "lower" ? "↓ 越低越好" : "↑ 越高越好"}</span></div>
       ${lines}<div class="muted kpi-q">${h(m.q)}</div></div>`;
-  }).join("");
-  const word = (b, up) => b > 0 ? (up ? "↑好" : "↓好") : b < 0 ? (up ? "↓差" : "↑差") : "平";
+  };
+  const m = k => CORE_METRICS.find(x => x.key === k);
+  const loss = (a, b) => (a == null || b == null || !(b > 0)) ? null : (a - b) / b;
+  const pctL = v => v == null ? "—" : (v > 0 ? "+" : "") + (100 * v).toFixed(1) + "%";
   const verdicts = present.map(s => {
     const c = coreOf(cur, s), pv = coreOf(prev, s), pl = pooled[s] || {};
     const sample = `证据窗 ${pl.station_days || 0} 个站日 / ${pl.event_days || 0} 个事件日${
-      pl.zero_hits ? `；真值落在概率为 0 的桶上 ${pl.zero_hits} 格，按 p=1e-6 计入 NLL` : ""}`;
-    if(!judged(s)) return `<li><b>${s}</b>：${sample}。本版 ${c ? c.event_days : 0} 天、上一版 ${pv ? pv.event_days : 0} 天，
-      <span class="muted">攒证据中——两边各满 ${MIN_DAYS} 个事件日才判两个 proper score 的进退</span></li>`;
-    const m = k => CORE_METRICS.find(x => x.key === k);
-    const panel = PANEL_KEYS.map(k => better(m(k), c[k], pv[k]));
-    const diag = ["rmse_c", "crps_c"].map(k => better(m(k), c[k], pv[k]));
-    const stars = [better(m("reliability"), c.reliability, pv.reliability), better(m("resolution"), c.resolution, pv.resolution)];
-    const decide = DECIDE_KEYS.map(k => better(m(k), c[k], pv[k]));
-    const closer = decide.every(b => b > 0), bothStars = stars.every(b => b > 0);
-    return `<li><b>${s}</b> 本版对上一版（宪章 211 判据）：桶 Brier ${word(decide[0])} · LogScore ${word(decide[1])}
-      → <b class="${closer ? "up" : "down"}">${closer ? "两个 proper score 都进步：更接近目标" : "两个 proper score 未都进步"}</b>；
-      <span class="muted">诊断：REL ${word(stars[0])} · RES ${word(stars[1], true)}${bothStars ? "（北极星两项都进步）" : ""}</span>
-      <span class="muted">（中间诊断：RMSE ${word(diag[0])} · CRPS ${word(diag[1])}，只看不判；${sample}）</span></li>`;
+      pl.zero_hits ? `；真值落在概率为 0 的桶上 ${pl.zero_hits} 格` : ""}`;
+    if(!judged(s)) return `<li><b>${s}</b>：<span class="muted">本版 ${c ? c.event_days : 0} 天、上一版 ${pv ? pv.event_days : 0} 天，
+      攒证据中——两边各满 ${MIN_DAYS} 个事件日才判进退；${sample}</span></li>`;
+    const primary = better(m("nll"), c.nll, pv.nll) > 0;
+    const crpsL = loss(c.crps_c, pv.crps_c), brierL = loss(c.bucket_brier, pv.bucket_brier);
+    const crpsOk = crpsL != null && crpsL <= GUARDRAIL_MAX_RELATIVE_LOSS;
+    const brierOk = brierL != null && brierL <= GUARDRAIL_MAX_RELATIVE_LOSS;
+    const ok = primary && crpsOk && brierOk;
+    const why = !primary ? "LogScore 没有变好" : !crpsOk ? "CRPS 变差超过 2%" : !brierOk ? "Brier 变差超过 2%" : "";
+    return `<li><b>${s}</b> 本版对上一版：LogScore ${pctL(loss(c.nll, pv.nll))}<span class="muted">（主）</span>
+      · CRPS ${pctL(crpsL)} ${crpsOk ? "✓" : "✗"} · Brier ${pctL(brierL)} ${brierOk ? "✓" : "✗"}
+      → <b class="${ok ? "up" : "down"}">${ok ? "更接近 P(Y=k|X)" : "未更接近：" + why}</b>
+      <span class="muted">· ${sample}</span></li>`;
   }).join("");
   const p0 = pooled.P0 || {};
   const identity = p0.mean_bucket_brier != null ? `P0 证据窗拆开看：平均单桶 Brier ${p0.mean_bucket_brier.toFixed(5)}
     ＝ REL ${p0.reliability.toFixed(5)} − RES ${p0.resolution.toFixed(5)} ＋ UNC ${p0.uncertainty.toFixed(5)} ＋ 分档修正 ${p0.binning_correction.toFixed(5)}；
-    Resolution 能涨到的上限是 UNC ${p0.uncertainty.toFixed(5)}（完全分得开时）。` : "";
+    Resolution 能涨到的上限是 UNC ${p0.uncertainty.toFixed(5)}。` : "";
   const series = key => STAGES.filter(s => (LD[s] || []).some(r => r[key] != null))
     .map(s => ({name: s, values: col(LD[s], landDates, key)}));
   const scaled = key => series(key).map(x => ({name: x.name, values: x.values.map(v => v == null ? null : 1000 * v)}));
   const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
     .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
-  const charts = [
-    trendChart({title: "Reliability（含当天近 7 天合并，×10⁻³）", sub: "北极星 · 越低越好", dates: landDates,
-      series: scaled("reliability_7d"), marks, fmt: v => Number(v).toFixed(2)}),
-    trendChart({title: "Resolution（含当天近 7 天合并，×10⁻³）", sub: "北极星 · 越高越好", dates: landDates,
-      series: scaled("resolution_7d"), marks, fmt: v => Number(v).toFixed(1)}),
-    trendChart({title: "桶 Brier", sub: "面板 · 按事件日 · 越低越好", dates: landDates, series: series("bucket_brier"),
+  const coreCharts = [
+    trendChart({title: "LogScore / NLL（nat）", sub: "主评分 · 按事件日 · 越低越好", dates: landDates, series: series("nll"),
+      marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "CRPS（°C，桶梯）", sub: "结构验证 · 按事件日 · 越低越好", dates: landDates, series: series("crps_c"),
+      marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "桶 Brier", sub: "护栏 · 按事件日 · 越低越好", dates: landDates, series: series("bucket_brier"),
       marks, fmt: v => Number(v).toFixed(3)}),
-    trendChart({title: "LogScore / NLL（nat）", sub: "面板 · 按事件日 · 越低越好", dates: landDates, series: series("nll"),
-      marks, fmt: v => Number(v).toFixed(2)}),
-    trendChart({title: "RMSE（°C）", sub: "中间诊断 · 按事件日（不是目标）", dates: landDates, series: series("rmse_c"),
-      marks, fmt: v => Number(v).toFixed(2)}),
-    trendChart({title: "CRPS（°C）", sub: "中间诊断 · 按事件日（不是目标）", dates: landDates, series: series("crps_c"),
+  ].join("");
+  const diagCharts = [
+    trendChart({title: "Reliability（近 7 天合并，×10⁻³）", sub: "诊断 · 越低越好", dates: landDates,
+      series: scaled("reliability_7d"), marks, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "Resolution（近 7 天合并，×10⁻³）", sub: "诊断 · 越高越好", dates: landDates,
+      series: scaled("resolution_7d"), marks, fmt: v => Number(v).toFixed(1)}),
+    trendChart({title: "RMSE（°C）", sub: "诊断 · 中心", dates: landDates, series: series("rmse_c"),
       marks, fmt: v => Number(v).toFixed(2)}),
   ].join("");
-  return `<h2>判据：桶 Brier ↓、LogScore ↓（两个 proper score，宪章 211）· 北极星诊断：Reliability ↓ 与 Resolution ↑ · RMSE / CRPS 只作中间诊断</h2>
-  <p class="sub">模型唯一优化目标是条件离散温度桶概率分布 P(Y=k|X)——交易的 EV 只由 Σ(p_k − c_k) 决定，不需要知道 RMSE 或 CRPS。
-    读服务出去的分布（与「真值离均值多远」同一份样本，每个站日只算一次）。大字是证据窗读数——和校准车道读的是同一批样本
-    （宪章 202：P0 自 09-14 稳定池、P0-M/P1 自 09-18 宪章 150，升版不清零）；走势图仍按近 ${T.days || 21} 天日历画；
-    小字是本版对上一版，两边各满 ${MIN_DAYS} 个事件日才标好坏。
-    Reliability/Resolution 按每个桶「落 / 不落」拆，每站日质量 1 均分到它的桶上，分档
-    [0,1,2.5,5,10,20,…,90,100]% 与融合权重研究同一套，服务读数和研究里候选的读数在同一把尺子上。</p>
-  <div class="grid g5 ns-grid">${cards}</div>
-  <div class="card" style="margin-top:10px"><ul class="ns-verdict">${verdicts}</ul>
-    ${identity ? `<div class="muted" style="font-size:12px;margin-top:4px">${identity}</div>` : ""}</div>
-  <div class="grid g3" style="margin-top:12px">${charts}</div>
-  <p class="sub" style="margin-top:6px">Reliability/Resolution 单日只有约 45 个站日、随天气晃，画的是含当天在内近 7 个事件日合并后的值；
-    结算中的日子与窗口开头截到一半的日子按下方同一规则不画。融合权重三候选在同一把尺子上的读数见「②′ 融合权重候选」。</p>`;
+  return {
+    coreCards: CORE_METRICS.filter(x => x.decide).map(card).join(""),
+    diagCards: CORE_METRICS.filter(x => !x.decide).map(card).join(""),
+    verdicts, identity, coreCharts, diagCharts, minDays: MIN_DAYS,
+  };
 }
 
 function fusionCandidates(){
@@ -22969,8 +23052,8 @@ const GROUPS = [
    note:"概率层：先看总览，再沿链条从上游到下游——单系统 → 融合层 → 分布层（P0，校准只在这里）→ 按站的贝叶斯更新（P0-M、P1）→ 两条似然本身 → 区域模型",
    sections:[
      {box:"总览：模型准不准", kind:"audit",
-      note:"中心、宽度、概率、校准、覆盖一屏看完：本版对上一版，21 天走势；再下面是六层总检，最后按站排一次名",
-      sections:[[modelAccuracyBoard,"模型准不准 · 总览"],[scorecard,"模型校准总检"],
+      note:"宪章 240：先看 LogScore（主）、CRPS（结构）、Brier（护栏）三张核心卡与本版对上一版的判词；中心/宽度/校准/六层灯都折叠在诊断里；最后按站排一次名",
+      sections:[[modelAccuracyBoard,"模型准不准 · 总检"],
         [stationCalibrationRank,"逐站校准排序"]]},
      {box:"① 单系统：每家模型各自校准", kind:"live",
       note:`${famJia()}集合预报各自订正偏差、各自调宽度；命中率看订正有没有用，H5 看订正用多长的记忆`,
@@ -23069,8 +23152,8 @@ const tabs = `<nav class="tabs" id="tabs" aria-label="区域">${
 // nobody has classified must not be given a green light by omission.
 const LANES = {
   // --- model: where the probability itself comes from ---
-  "模型准不准 · 总览": {layer:"概率层 · 读数", status:"audit",
-    role:"中心、宽度、概率、校准、覆盖：本版对上一版、21 天走势"},
+  "模型准不准 · 总检": {layer:"概率层 · 读数", status:"audit",
+    role:"LogScore 主评分 → CRPS 结构 → Brier 护栏（宪章 240）；中心、宽度、校准、六层总检折叠为诊断"},
   "单系统订正表": {layer:"概率层 · 单系统", status:"live",
     role:"每家模型在每站每提前量偏多少度 → 服务时先把成员整体挪回来"},
   "单系统宽度校准": {layer:"概率层 · 单系统", status:"live",
@@ -23104,8 +23187,6 @@ const LANES = {
     role:"中心平移多少、宽度收窄多少 → P0 服务分布的两个旋钮（第 150 条起只在 P0）"},
   "真值离均值多远": {layer:"概率层 · 读数", status:"audit",
     role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
-  "模型校准总检": {layer:"概率层 · 读数", status:"audit",
-    role:"六层各自及格没有，一屏看完"},
   "逐站校准排序": {layer:"概率层 · 读数", status:"audit",
     role:"每站的中心偏差（真值−均值，档）与宽度÷误差各排一次名，站名点开最新挂牌的盘口"},
   "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
@@ -23176,8 +23257,58 @@ const STARRED = new Set(["宪章 EV 恒等式"]);
 // section rendered something: an empty section is guarded out of the page
 // on purpose, and a lane strip would put it back as a chip pointing at
 // nothing.  The jump bar still reads the heading, which sits below.
+const SECTION_CACHE_NAMES={truth_landing:"真值落点",
+    scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
+    bias_half_life:"半衰期对比",
+    center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
+    model_accuracy_trend:"模型准不准走势",station_calibration_windows:"逐站校准排序（7/30 天与累计）",p1_path_skill:"P1 温度路径",
+    ssot_capacity:"SSOT 容量",
+    charter_ev:"宪章 EV 恒等式",
+    center_landing_version:"真值离均值多远（本版）",scorecard_previous:"校准计分卡（上一版）",
+    run_cadence:"模型出报节奏",member_depth:"成员深度",member_admission:"成员准入",members:"成员",
+    report_latency:"报文到概率延迟",cycle_time:"生产周期",certificate_authority:"证书授权",
+    chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
+    refusal_history:"拒单历史",station_difficulty:"站点难度",synoptic_cooling:"辐射平移",
+    single_system_width:"单系统宽度",consensus_bridge:"共识桥",metar_board:"METAR 板",
+    precip_classification:"降水分类",regional_usage:"区域模型使用",ai_models:"AI 模型",
+    p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",station_bayes:"逐站贝叶斯",
+    correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
+    center_width:"宽度层",posterior_lane:"后验车道",live_days:"每日统计",live_selection:"选站",
+    live_readiness:"上线闸门",live_money:"资金",observation_intake:"观测入库",hosted_sweeps:"托管 sweep"};
+// The caches this section read, and the caches that fed those, that were
+// reused from an earlier build: named in the section, oldest first, amber when
+// past their lifetime.  The footer keeps only what no section claimed.
+function sectionStaleness(reads){
+  const c = D.section_cache || {};
+  const hits = new Set();
+  Object.entries(c).forEach(([name, v]) => {
+    const keys = (v && v.payload_keys) || [name];
+    if(keys.some(k => reads.has(k)) || reads.has(name)) hits.add(name);
+  });
+  const queue = [...hits];
+  while(queue.length){ const n = queue.pop();
+    ((c[n] || {}).fed_by || []).forEach(up => { if(!hits.has(up)){ hits.add(up); queue.push(up); } }); }
+  hits.forEach(n => SEC_ATTRIBUTED.add(n));
+  const reused = [...hits].filter(n => c[n] && c[n].reused)
+    .sort((a, b) => (Number(c[b].age_sec) || 0) - (Number(c[a].age_sec) || 0));
+  if(!reused.length) return "";
+  const NAME = SECTION_CACHE_NAMES;
+  const age = n => { const m = Math.round((Number(c[n].age_sec) || 0) / 60);
+    return m >= 120 ? `${(m / 60).toFixed(m >= 1440 ? 0 : 1)} 小时前` : `${m} 分钟前`; };
+  const stale = reused.filter(n => c[n].stale);
+  const items = reused.map(n => `<span class="${c[n].stale ? "down" : "muted"}">${h(NAME[n] || n)} ${age(n)}${c[n].stale ? "（超期）" : ""}</span>`).join("、");
+  return `<div class="stale-note${stale.length ? " is-stale" : ""}" title="分页渲染：区块只在生产空隙里读库，按各自节奏重算；这里列的是本节用到、沿用了之前算好的数据">${
+    stale.length ? `<b>⚠ 本节数据未按时刷新</b>` : `<span class="muted">本节沿用缓存</span>`}：${items}</div>`;
+}
 const sec = (fn, name, id) => {
-  const body = safe(fn, name);
+  const reads = new Set();
+  const outer = SEC_READS;
+  SEC_READS = reads;
+  let body;
+  try { body = safe(fn, name); } finally { SEC_READS = outer; }
+  if(outer) reads.forEach(k => outer.add(k));
+  const stale = body && body.trim() ? sectionStaleness(reads) : "";
+  if(stale) body = body.replace(/(<\/h2>)/, `$1${stale}`) + (/<\/h2>/.test(body) ? "" : stale);
   const lane = body && body.trim() ? LANES[name] : null;
   return `<section class="sec" id="${id}" data-name="${name}"${
     lane ? ` data-lane="${lane.status}"` : ""}${
@@ -23249,24 +23380,20 @@ const TOP_AREA = {label:"实盘", tone:"#7ee787",
 // left for someone to infer from a number that stopped moving.
 function sectionCacheNote(){
   const c=D.section_cache||{};
-  const NAME={truth_landing:"真值落点",
-    scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
-    bias_half_life:"半衰期对比",
-    center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
-    model_accuracy_trend:"模型准不准走势",station_calibration_windows:"逐站校准排序（7/30 天与累计）",p1_path_skill:"P1 温度路径",
-    ssot_capacity:"SSOT 容量",
-    charter_ev:"宪章 EV 恒等式"};
-  const reused=Object.entries(c).filter(([,v])=>v&&v.reused);
+  const NAME=SECTION_CACHE_NAMES;
+  // Each section names its own stale inputs now; the footer keeps only the
+  // caches no rendered section read, so nothing old goes unnamed.
+  const reused=Object.entries(c).filter(([k,v])=>v&&v.reused&&!SEC_ATTRIBUTED.has(k));
   if(!reused.length){
     const built=Object.keys(c).length;
-    return built?`本轮全部区块现算 · `:"";
+    return built?(SEC_ATTRIBUTED.size?`各区块的数据新鲜度标在各自板块内 · `:`本轮全部区块现算 · `):"";
   }
   const worst=Math.max(...reused.map(([,v])=>Number(v.age_sec)||0));
   // A page served past its own lifetime: this run's budget ran out, no
   // production gap came, or its read yielded the WAL back to the writer.
   const list=reused.map(([k,v])=>
     `${NAME[k]||k} ${Math.round((Number(v.age_sec)||0)/60)} 分钟前${v.stale?"（超期）":""}`).join("、");
-  return `<span title="分页渲染：每个区块只在生产空隙里读库、算完即存，按各自节奏重算；灯每轮现算">沿用之前算好的区块：`
+  return `<span title="分页渲染：每个区块只在生产空隙里读库、算完即存，按各自节奏重算；灯每轮现算">未归属任何板块的缓存：`
     + `${h(list)}（最旧 ${Math.round(worst/60)} 分钟）</span> · `;
 }
 

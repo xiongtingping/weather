@@ -102,10 +102,14 @@ def test_the_page_renders_both_blocks_from_a_payload():
     assert "[fusionCandidates," in source
     # The version comparison waits for the scorecard's event-day bar.
     assert "min_event_days" in source[source.index("function northStarBlock("):]
-    # Charter 211: the verdict is the bucket panel; RMSE/CRPS are diagnostics.
-    block = source[source.index("function northStarBlock("):source.index("function fusionCandidates(")]
-    assert "DECIDE_KEYS" in block and "中间诊断" in block and "三降" not in block
-    assert "四项" not in block
+    # Charter 240: LogScore primary, CRPS structure, Brier guardrail; REL,
+    # RES and RMSE are diagnostics and decide nothing.
+    block = source[source.index("const GUARDRAIL_MAX_RELATIVE_LOSS"):source.index("function fusionCandidates(")]
+    assert "GUARDRAIL_MAX_RELATIVE_LOSS = 0.02" in block and "function northStarBlock(" in block
+    assert '{key:"nll", label:"LogScore（NLL）", unit:"nat", role:"primary", decide:true' in block
+    for key in ("reliability", "resolution", "rmse_c"):
+        assert f'{{key:"{key}"' in block and 'role:"diag"' in block
+    assert "三降" not in block and "四项" not in block
 
 
 def test_forward_shadow_scores_seat_and_shadow_on_the_same_days(tmp_path, monkeypatch):
