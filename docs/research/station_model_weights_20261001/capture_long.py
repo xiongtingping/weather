@@ -14,7 +14,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 if os.environ.get("PM_SINGLE_SYSTEM_FIT_RULE"):
     sys.exit("unset PM_SINGLE_SYSTEM_FIT_RULE: the capture must use production's single-system rule")
-KEEP = {"ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"}
+ALL = bool(os.environ.get("SMW_ALL"))
+KEEP = ({"ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05", "DWD_ICON_GLOBAL_EPS", "ECCC_GEM_GLOBAL_ENS", "ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"}
+        if ALL else {"ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"})
+PERIOD = "all" if ALL else "long"
 IEM_BEFORE = "2026-07-01"
 SOURCE = ROOT / "docs" / "research" / "single_system_logloss_reg_20260924" / "capture_reg.py"
 text = SOURCE.read_text(encoding="utf-8")
@@ -104,10 +107,10 @@ assert R.oos.SINGLE_SYSTEM_FIT_RULE == R.oos.SINGLE_SYSTEM_FIT_RULE_LOGLOSS
 R.LONG_LAG = live_lag()
 R.TRAIN_FLOOR = "2025-12-01"
 R.CUTOFF_UTC = "2026-10-01T09:00:00Z"
-R.PERIODS["long"] = lambda day: "2026-01-01" <= day <= "2026-09-30"
+R.PERIODS[PERIOD] = lambda day: "2026-01-01" <= day <= "2026-09-30"
 R.HERE = HERE
 
 if __name__ == "__main__":
     print("modelled lag (h):", {s: {c: round(v.total_seconds() / 3600, 2) for c, v in by.items()} for s, by in R.LONG_LAG.items()}, flush=True)
-    sys.argv += ["--period", "long", "--model-backfill-arrivals", "--fast"]
+    sys.argv += ["--period", PERIOD, "--model-backfill-arrivals", "--fast"]
     sys.exit(R.main())

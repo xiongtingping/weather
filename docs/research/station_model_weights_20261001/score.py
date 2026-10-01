@@ -133,6 +133,13 @@ def eb_fit(st, days):
         grad = (resp - q).mean(0); th += 2.0 * grad; th -= th.mean()
         if np.abs(grad).max() < 1e-6: break
     w = np.exp(th - th.max()); _eb_cache[key] = (w / w.sum(), len(days)); return _eb_cache[key]
+def eb_per(d, tau):
+    """Addendum 2: each system shrinks by its own day count at this station."""
+    days = prefix_days(d["station"], d["at"]); fit = eb_fit(d["station"], days)
+    if fit is None: return dict(d["w0"])
+    w, _n = fit; hat = norm({s: float(w[FI[s]]) for s in d["pool"]})
+    cnt = {s: sum(1 for day in days if s in rec[d["station"]][day]["r"]) for s in d["pool"]}
+    return norm({s: (1 - cnt[s] / (cnt[s] + tau)) * d["w0"][s] + cnt[s] / (cnt[s] + tau) * hat[s] for s in d["pool"]})
 def eb(d, tau):
     fit = eb_fit(d["station"], prefix_days(d["station"], d["at"]))
     if fit is None: return dict(d["w0"])
@@ -170,13 +177,14 @@ def seated(d):
 
 # ---------------------------------------------------------------- precompute proxy losses for tuning
 combos = {"H": [(e, h) for e in ETAS for h in HALVES], "HL": [(e, h) for e in ETAS for h in HALVES],
-          "HF": [(e, h) for e in ETAS for h in HALVES], "EB": [(t,) for t in TAUS]}
+          "HF": [(e, h) for e in ETAS for h in HALVES], "EB": [(t,) for t in TAUS], "EBP": [(t,) for t in TAUS]}
 if SKIP_HF: del combos["HF"]
 def weights_for(arm, c, d):
     if arm == "H": return hedge(d, c[0], c[1], "S")
     if arm == "HL": return hedge(d, c[0], c[1], "L")
     if arm == "HF": return hedge(d, c[0], c[1], "F")
     if arm == "EB": return eb(d, c[0])
+    if arm == "EBP": return eb_per(d, c[0])
 LOSS = {(arm, c): np.zeros(len(decs)) for arm in combos for c in combos[arm]}
 for i, d in enumerate(decs):
     d["id"] = i
@@ -215,14 +223,14 @@ log("oracles done")
 # ---------------------------------------------------------------- arm weights at a scored decision
 def arm_w(d, arm):
     if arm == "A0": return d["w0"]
-    if arm in ("H*", "HL", "HF", "EB"):
-        key = {"H*": "H", "HL": "HL", "HF": "HF", "EB": "EB"}[arm]; return weights_for(key, chosen[key][d["day"]], d)
+    if arm in ("H*", "HL", "HF", "EB", "EBP*"):
+        key = {"H*": "H", "HL": "HL", "HF": "HF", "EB": "EB", "EBP*": "EBP"}[arm]; return weights_for(key, chosen[key][d["day"]], d)
     if arm == "SEAT*": return norm({s: d["w0"][s] for s in seated(d)})
     if arm == "SEAT+H":
         keep = seated(d); w = weights_for("H", chosen["H"][d["day"]], d); return norm({s: w[s] for s in keep})
     if arm == "ORACLE-S": o = oracle_s[d["station"]]; return norm({s: float(o[FI[s]]) for s in d["pool"]})
     if arm == "ORACLE-SL": o = oracle_sl[(d["station"], d["lead"])]; return norm({s: float(o[FI[s]]) for s in d["pool"]})
-ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]
+ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "EBP*", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]
 
 # ---------------------------------------------------------------- full production downstream
 conn = sqlite3.connect(f"file:{ROOT/'data/bayes_basket_target_ssot.db'}?mode=ro", uri=True, timeout=30)
