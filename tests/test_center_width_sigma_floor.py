@@ -282,7 +282,7 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
     lane = _sigma_floor_lane(
         forward=forward, forward_clusters=clusters,
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_scores=[(1.60, 0.70)] * 2, floored_scores=[(1.50, 0.68)] * 2,
+        pooled_scores=[(1.60, 0.70, 0.50)] * 2, floored_scores=[(1.50, 0.68, 0.50)] * 2,
         incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     # Measured on its own evidence, and served only once the paper ledger
@@ -297,7 +297,7 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
     refused = _sigma_floor_lane(
         forward=forward, forward_clusters=clusters,
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_scores=[(1.50, 0.68)] * 2, floored_scores=[(1.55, 0.69)] * 2,
+        pooled_scores=[(1.50, 0.68, 0.50)] * 2, floored_scores=[(1.55, 0.69, 0.50)] * 2,
         incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     assert refused["admitted"] is False
@@ -308,7 +308,7 @@ def test_the_floor_must_beat_the_pooled_candidate_not_just_the_incumbent(
     split = _sigma_floor_lane(
         forward=forward, forward_clusters=clusters,
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_scores=[(1.60, 0.68)] * 2, floored_scores=[(1.50, 0.70)] * 2,
+        pooled_scores=[(1.60, 0.68, 0.50)] * 2, floored_scores=[(1.50, 0.70, 0.50)] * 2,
         incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     assert split["forward_nll_gain_vs_pooled"] > 0.0
@@ -334,7 +334,7 @@ def test_the_floor_is_shadow_until_the_ledger_promotes_it() -> None:
         forward=[_cell(NARROW, KEYS_C[1])],
         forward_clusters=[("AAAA", "2026-09-01")],
         pooled=(0.0, 0.75), floored=(0.0, 0.725),
-        pooled_scores=[(1.60, 0.70)], floored_scores=[(1.50, 0.68)],
+        pooled_scores=[(1.60, 0.70, 0.50)], floored_scores=[(1.50, 0.68, 0.50)],
         incumbent_nll=1.61, incumbent_floor_rungs=0.0,
     )
     assert lane["measured_admitted"] is True

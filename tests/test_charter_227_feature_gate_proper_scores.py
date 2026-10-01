@@ -33,12 +33,15 @@ def _fit(tmp_path, monkeypatch, informative):
 
 def test_an_informative_source_clears_all_six_bounds(tmp_path, monkeypatch):
     payload = _fit(tmp_path, monkeypatch, informative=True)
-    assert payload["gate_rule"] == G.GATE_RULE == "proper_scores_brier_logscore_v2"
+    assert payload["gate_rule"] == G.GATE_RULE == "logscore_primary_rps_brier_guardrail_v3"
     stat = payload["stations"]["SBGR"]["sources"]["ECMWF_AIFS_SINGLE_POINT"]
     assert stat["verdict"] == "PASS"
-    assert all(stat[key][2] < 0 for key in SIX)
-    # RPS is still read, and decides nothing.
-    assert stat["d_rps"] and stat["d_rps_drop_best2"] and stat["d_rps_vs_random_sign"]
+    # Charter 240: the primary (LogScore, all three robustness forms) is
+    # significantly lower and both guardrails (RPS, Brier) are not worse.
+    assert stat["primary_pass"] is True
+    assert stat["guardrails_pass"] == {"rps": True, "brier": True}
+    assert all(stat[f"d_logscore{form}"][2] < 0 for form in G.ROBUST_FORMS)
+    assert stat["d_rps"][1] <= 0 and stat["d_brier"][1] <= 0
 
 
 def test_an_uninformative_source_fails(tmp_path, monkeypatch):
@@ -49,14 +52,10 @@ def test_an_uninformative_source_fails(tmp_path, monkeypatch):
     assert payload["stations"]["SBGR"]["selected_system"] is None
 
 
-def test_the_verdict_reads_the_proper_scores_not_rps():
-    tree = ast.parse(textwrap.dedent(inspect.getsource(G.fit)))
-    passed = next(node for node in ast.walk(tree)
-                  if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "passed" for t in node.targets))
-    source = ast.unparse(passed.value)
-    assert "PROPER_SCORES" in source and "ROBUST_FORMS" in source
-    assert "rps" not in source and "nll" not in source
-    assert G.PROPER_SCORES == ("brier", "logscore")
+def test_the_verdict_ranks_the_scores():
+    """Charter 240: one primary, two guardrails -- not equal vetoes."""
+    assert G.PRIMARY_SCORE == "logscore"
+    assert G.GUARDRAIL_SCORES == ("rps", "brier")
     assert G.ROBUST_FORMS == ("", "_drop_best2", "_vs_random_sign")
 
 

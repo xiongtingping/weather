@@ -78,7 +78,7 @@ def test_a_three_day_loss_inside_a_winning_record_passes() -> None:
 
     assert gate["own_holdout_gate"]["pass"] is False
     assert gate["pass"] is True
-    assert gate["path"] == "WINDOW_STRICT"
+    assert gate["path"] == "WINDOW_LOGSCORE_PRIMARY"
     assert gate["rule"] == STABLE_POOL_GATE_RULE
     assert gate["membership_mode"] == "stable_pool"
     assert gate["window_event_dates"] == days
@@ -165,7 +165,9 @@ def test_the_breakage_floor_rejects_a_seat_that_just_broke() -> None:
 def test_the_breakage_floor_boundary_is_exactly_half_again_climatology() -> None:
     days = _days("2026-09-21", 10)
     history = {day: (dict(GOOD), dict(CLIMATE)) for day in days[:7]}
-    at_floor = {"brier": 0.80, "crps": 2.50, "nll": 3.0}
+    # CRPS and Brier inside the guardrails on the window (charter 240), so
+    # only the breakage floor is in question here.
+    at_floor = {"brier": 0.80, "crps": 0.90, "nll": 3.0}
     gate = _gate(days[7:], at_floor, history)
 
     assert STABLE_POOL_GATE_BREAKAGE_MAX_RELATIVE_NLL_LOSS == 0.5

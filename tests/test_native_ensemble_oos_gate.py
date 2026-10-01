@@ -1,18 +1,18 @@
-"""The cross-system OOS gate and its Brier tolerance channel.
+"""The cross-system OOS gate under charter 240's ranked verdict.
 
-Charter 211: the gate reads the two proper scores of the discrete bucket
-distribution -- bucket Brier and the log score (NLL).  Brier scores only
-the bucket that settled, so a candidate that is sharper across the whole
-distribution can lose it by a rounding-scale margin while winning the log
-score outright.  The tolerance path admits exactly that shape and nothing
-looser; CRPS is recorded as a diagnostic and decides nothing.
+The model's target is the bucket distribution P(Y=k|X).  The log score is the
+primary judge and must beat climatology; the ladder CRPS (structure) and the
+bucket Brier (guardrail) may each lose to it by at most
+``GUARDRAIL_MAX_RELATIVE_LOSS``.  No score holds an equal veto, and a
+guardrail does not have to be paid for with a margin on the primary.
 """
 from __future__ import annotations
 
+import math
+
 from bayes_basket_target.native_ensemble_oos import (
-    BRIER_TOLERANCE_MAX_RELATIVE_LOSS,
-    BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
     GATE_SCORING_RULE,
+    GUARDRAIL_MAX_RELATIVE_LOSS,
     _cross_oos_gate,
 )
 
@@ -23,80 +23,44 @@ def _cross(*, brier: float, crps: float, nll: float) -> dict[str, float]:
     return {"brier": brier, "crps": crps, "nll": nll}
 
 
-def test_beating_climatology_on_both_rules_passes_strictly() -> None:
-    gate = _cross_oos_gate(
-        _cross(brier=0.70, crps=0.70, nll=1.90),
-        CLIMATE,
-    )
+def test_beating_climatology_on_the_primary_with_guardrails_inside_passes() -> None:
+    gate = _cross_oos_gate(_cross(brier=0.70, crps=0.70, nll=1.90), CLIMATE)
+    assert gate["pass"] is True and gate["path"] == "LOGSCORE_PRIMARY"
+    assert gate["scoring"] == GATE_SCORING_RULE == "LOGSCORE_PRIMARY_CRPS_BRIER_GUARD_V3"
+    assert GUARDRAIL_MAX_RELATIVE_LOSS == 0.02
+    assert gate["primary_pass"] and gate["crps_guard_pass"] and gate["brier_guard_pass"]
+
+
+def test_a_thin_log_score_win_passes_when_the_guardrails_hold() -> None:
+    # Charter 228/211 demanded a 5% NLL margin to excuse a Brier loss; under
+    # charter 240 any primary win passes if the guardrails are inside 2%.
+    gate = _cross_oos_gate(_cross(brier=0.81, crps=0.80, nll=1.98), CLIMATE)
     assert gate["pass"] is True
-    assert gate["path"] == "STRICT"
-    assert gate["scoring"] == GATE_SCORING_RULE == "BRIER_LOGSCORE_V2"
+    assert gate["brier_relative_loss"] <= GUARDRAIL_MAX_RELATIVE_LOSS
+    assert math.isclose(gate["nll_relative_gain"], 0.01)
 
 
-def test_a_hair_of_brier_loss_passes_when_the_log_score_wins_clearly() -> None:
-    # Brier loses 1.25%, NLL wins 10%: the KDAL/KHOU shape.
-    gate = _cross_oos_gate(
-        _cross(brier=0.81, crps=0.70, nll=1.80),
-        CLIMATE,
-    )
-    assert gate["pass"] is True
-    assert gate["path"] == "NLL_TOLERANCE"
-    assert gate["brier_relative_loss"] <= BRIER_TOLERANCE_MAX_RELATIVE_LOSS
-    assert gate["nll_relative_gain"] >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
+def test_losing_the_primary_is_rejected_whatever_the_guardrails_say() -> None:
+    gate = _cross_oos_gate(_cross(brier=0.50, crps=0.50, nll=2.01), CLIMATE)
+    assert gate["pass"] is False and gate["path"] == "REJECTED_PRIMARY"
 
 
-def test_losing_brier_by_more_than_the_tolerance_stays_rejected() -> None:
-    # Brier loses 5%: however good the log score, the channel is shut.
-    gate = _cross_oos_gate(
-        _cross(brier=0.84, crps=0.60, nll=1.50),
-        CLIMATE,
-    )
-    assert gate["pass"] is False
-    assert gate["path"] == "REJECTED"
+def test_a_crps_loss_beyond_the_margin_is_rejected_on_structure() -> None:
+    gate = _cross_oos_gate(_cross(brier=0.70, crps=0.85, nll=1.50), CLIMATE)
+    assert gate["pass"] is False and gate["path"] == "REJECTED_CRPS_GUARD"
+    assert gate["crps_relative_loss"] > GUARDRAIL_MAX_RELATIVE_LOSS
 
 
-def test_a_thin_log_score_win_does_not_buy_a_brier_loss() -> None:
-    # NLL wins only 1%, short of the 5% the channel demands.
-    gate = _cross_oos_gate(
-        _cross(brier=0.81, crps=0.70, nll=1.98),
-        CLIMATE,
-    )
-    assert gate["pass"] is False
-    assert gate["path"] == "REJECTED"
+def test_a_brier_loss_beyond_the_margin_is_rejected_on_the_guardrail() -> None:
+    gate = _cross_oos_gate(_cross(brier=0.84, crps=0.60, nll=1.50), CLIMATE)
+    assert gate["pass"] is False and gate["path"] == "REJECTED_BRIER_GUARD"
 
 
-def test_crps_decides_nothing_either_way() -> None:
-    """Charter 211: a CRPS win cannot admit, a CRPS loss cannot reject."""
-
-    # Same Brier loss, big CRPS win, log score short of the margin: rejected.
-    lost = _cross_oos_gate(_cross(brier=0.81, crps=0.40, nll=1.98), CLIMATE)
-    assert lost["pass"] is False
-    # Same Brier loss, CRPS worse than climatology, log score wins: admitted.
-    won = _cross_oos_gate(_cross(brier=0.81, crps=0.95, nll=1.80), CLIMATE)
-    assert won["pass"] is True and won["path"] == "NLL_TOLERANCE"
-    # Strict: Brier and NLL win while CRPS loses.
-    strict = _cross_oos_gate(_cross(brier=0.70, crps=0.95, nll=1.50), CLIMATE)
-    assert strict["path"] == "STRICT"
-    # ... and the diagnostic is still on the record, with its sign.
-    assert won["crps_relative_gain"] < 0 < lost["crps_relative_gain"]
-
-
-def test_tolerance_is_unavailable_against_a_zero_baseline() -> None:
+def test_against_a_zero_baseline_the_guardrails_cannot_exceed_it() -> None:
     gate = _cross_oos_gate(
         _cross(brier=0.10, crps=0.10, nll=0.10),
         {"brier": 0.0, "crps": 0.0, "nll": 0.0},
     )
-    assert gate["pass"] is False
-    assert gate["tolerance_available"] is False
-    assert gate["crps_relative_gain"] is None
-
-
-def test_a_strict_pass_is_never_reclassified_by_the_tolerance_channel() -> None:
-    # Winning Brier while losing the log score is not a strict pass, and the
-    # channel only ever opens for a Brier loss.
-    gate = _cross_oos_gate(
-        _cross(brier=0.70, crps=0.60, nll=2.10),
-        CLIMATE,
-    )
-    assert gate["pass"] is False
-    assert gate["path"] == "REJECTED"
+    assert gate["pass"] is False and gate["path"] == "REJECTED_PRIMARY"
+    assert gate["nll_relative_gain"] is None
+    assert gate["crps_relative_loss"] is None and gate["brier_relative_loss"] is None

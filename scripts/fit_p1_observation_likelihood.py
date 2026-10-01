@@ -1078,9 +1078,16 @@ def direct_design(
     raw = np.full((count, len(DU.STATE_COLUMNS)), np.nan)
     hours = np.zeros(count); weight = np.zeros(count)
     day = np.empty(count, dtype=object); as_of = np.zeros(count); known = np.zeros(count)
+    # Charter 240: each rung's centre, for the ladder CRPS guardrail; padded
+    # columns repeat the last centre so they add no distance.
+    centres = np.zeros((count, width))
     for i, row in enumerate(rows):
         view = row["view"]; ordinals = view["ordinals"]
         order = sorted(ordinals, key=lambda b: (ordinals[b], b))
+        row_centres = [float(view["centers"][b]) for b in order]
+        centres[i, :len(row_centres)] = row_centres
+        if len(row_centres) < width:
+            centres[i, len(row_centres):] = row_centres[-1]
         bases = DU.bucket_bases(
             bucket_ordinals=ordinals, bucket_centers_c=view["centers"],
             bucket_upper_bounds_c=view["uppers"], running_high_c=row["high"],
@@ -1114,7 +1121,7 @@ def direct_design(
     return {
         "prior": prior, "live": live, "rise": rise, "slope": slope, "top": top,
         "truth": truth, "raw": raw, "hours": hours, "weight": weight, "day": day,
-        "as_of": as_of, "known_at": known,
+        "as_of": as_of, "known_at": known, "centres": centres,
         "usable": (prior * live).sum(1) > 1e-12,
     }
 
@@ -1242,6 +1249,34 @@ def direct_scores(design, idx, scaling, theta) -> np.ndarray:
     return np.log(served[np.arange(len(idx)), design["truth"][idx]])
 
 
+def _served_vectors(p: np.ndarray, live: np.ndarray) -> np.ndarray:
+    under = (live & (p < PROBABILITY_MODEL_ZERO_FLOOR)).any(axis=1)
+    lifted = np.where(live, np.maximum(p, PROBABILITY_MODEL_ZERO_FLOOR), 0.0)
+    return np.where(under[:, None], lifted / lifted.sum(axis=1, keepdims=True), p)
+
+
+def _guard_scores(served: np.ndarray, truth: np.ndarray, centres: np.ndarray) -> np.ndarray:
+    """(Brier, ladder CRPS) per row of served vectors -- charter 240's guardrails."""
+
+    rows = np.arange(len(truth))
+    onehot = np.zeros_like(served); onehot[rows, truth] = 1.0
+    brier = ((served - onehot) ** 2).sum(axis=1)
+    cumulative = np.cumsum(served, axis=1)[:, :-1]
+    observed = (np.arange(served.shape[1] - 1)[None, :] >= truth[:, None]).astype(float)
+    crps = (((cumulative - observed) ** 2) * np.diff(centres, axis=1)).sum(axis=1)
+    return np.stack([brier, crps], axis=1)
+
+
+def direct_guard_deltas(design, idx, scaling, theta) -> np.ndarray:
+    """Per row (posterior minus root) of (Brier, CRPS), both served vectors."""
+
+    live = design["live"][idx]; truth = design["truth"][idx]; centres = design["centres"][idx]
+    post = _served_vectors(_direct_posterior(design, idx, direct_x(design, idx, scaling), theta), live)
+    prior = np.where(live, design["prior"][idx], 0.0)
+    root = _served_vectors(prior / prior.sum(axis=1, keepdims=True), live)
+    return _guard_scores(post, truth, centres) - _guard_scores(root, truth, centres)
+
+
 def direct_choose(
     design, idx, start=None, *, gate=None, fixed_lambda=None
 ) -> tuple[float, dict[str, Any], np.ndarray]:
@@ -1320,6 +1355,7 @@ def fit_direct_block(
         for i, row in enumerate(everything)
     }
     scored_by_day: dict[str, tuple[float, float]] = {}
+    guard_by_day: dict[str, tuple[float, float]] = {}
     lambdas: dict[str, float] = {}
     walk_days: list[tuple[str, np.ndarray, np.ndarray, float, np.ndarray]] = []
     theta = None
@@ -1337,12 +1373,32 @@ def fit_direct_block(
             float((w * direct_scores(design, rows_d, scaling, theta)).sum() / w.sum()),
             curve["forward_nat_by_day"][day],
         )
+        guard = direct_guard_deltas(design, rows_d, scaling, theta)
+        guard_by_day[day] = (
+            float((w * guard[:, 0]).sum() / w.sum()), float((w * guard[:, 1]).sum() / w.sum())
+        )
         lambdas[day] = lam
         if keep_walk:
             walk_days.append((day, train, rows_d, lam, theta.copy()))
     gains_root = [scored_by_day[d][0] - curve["forward_root_nat_by_day"][d] for d in scored_by_day]
     gains_alpha = [scored_by_day[d][0] - scored_by_day[d][1] for d in scored_by_day]
     state, reason = _direct_gate(gains_root, gains_alpha, margin)
+    # Charter 240: the primary is the log score above; the bucket Brier and the
+    # ladder CRPS (posterior minus root, positive is worse) are guardrails,
+    # each day-block lower bound not above zero.
+    guards = {
+        name: _bootstrap_mean([guard_by_day[d][k] for d in scored_by_day])
+        for k, name in enumerate(("brier", "crps"))
+    }
+    guard_low = {
+        name: (draws[int(0.025 * len(draws))] if draws else None)
+        for name, draws in guards.items()
+    }
+    if state == DU.GATE_SERVE:
+        for name, low in guard_low.items():
+            if low is None or low > 0.0:
+                state, reason = "IDENTITY", f"{name}_guard:{low}"
+                break
     boot = _bootstrap_mean(gains_alpha)
     # The served block: every settled row, the served clock (the body's).
     final_design = direct_design(everything, body)
@@ -1357,6 +1413,12 @@ def fit_direct_block(
             "alpha_nat_by_day": {d: v[1] for d, v in scored_by_day.items()},
             "lambda_by_day": lambdas,
             "gain_vs_root_nat": statistics.mean(gains_root) if gains_root else None,
+            "guardrails": {
+                "rule": "logscore_primary_crps_brier_guardrail_day_bootstrap_v1",
+                **{f"{name}_delta_by_day": {d: guard_by_day[d][k] for d in scored_by_day}
+                   for k, name in enumerate(("brier", "crps"))},
+                **{f"{name}_ci_low": low for name, low in guard_low.items()},
+            },
             "gain_vs_alpha_nat": statistics.mean(gains_alpha) if gains_alpha else None,
             "gain_vs_alpha_ci": [boot[100], boot[3899]] if boot else None,
             "margin": margin,

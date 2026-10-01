@@ -51,15 +51,15 @@ STALE_TABLE_GAP_DAYS = 3
 # Mirrors native_ensemble_oos; duplicated rather than imported so a read-only
 # audit never pulls the serving module's import graph into a cron shell.  If
 # they drift, the rates below describe a gate nobody runs -- pinned by test.
-BRIER_TOLERANCE_MAX_LOSS = 0.02
-BRIER_TOLERANCE_MIN_GAIN = 0.05
+# Charter 240: the guardrail margin both the CRPS and the Brier may lose to
+# climatology by once the log score (primary) beats it.
+GUARDRAIL_MAX_LOSS = 0.02
 # Below this the rates are a fortnight of weather, not a property of the gate.
 GATE_RATE_MIN_SAMPLE = 100
-# Measured 2026-08-18: NLL is the binding condition and only 6.7% of
-# contested candidates are admitted, so Brier alone blocks a small minority.
-# Should that minority become the majority, Brier is deciding this path by
-# itself and its thresholds are worth revisiting.
-GATE_BRIER_ONLY_ALARM_SHARE = 0.50
+# Charter 240: the guardrails constrain and the log score decides.  Should
+# they block most of what the primary passes, they have become the deciders
+# and the margin is worth revisiting.
+GATE_GUARDRAIL_ALARM_SHARE = 0.50
 # How far back the rates look.  Long enough to be a property of the gate,
 # short enough to notice a change in it.
 GATE_RATE_LOOKBACK_DAYS = 14
@@ -296,20 +296,17 @@ def check_bias_stability(conn: sqlite3.Connection, live: dict) -> list[dict]:
 def gate_condition_rates(
     conn: sqlite3.Connection, *, since: str
 ) -> dict:
-    """Which of the tolerance channel's two conditions is doing the work.
+    """Which of the gate's three checks is doing the rejecting (charter 240).
 
-    Charter 211: a candidate that loses Brier to climatology may still pass
-    if its Brier loss is small and the log score (NLL) wins by a margin.
-    CRPS is not a condition any more -- it is reported here as a diagnostic
-    share only, so a reader can still see how often the demoted score would
-    have agreed.  Contested = every candidate that lost Brier to
-    climatology, i.e. every one the channel judges.
+    Primary: the log score (NLL) beats climatology.  Structure: the ladder
+    CRPS loses to it by at most ``GUARDRAIL_MAX_LOSS``.  Guardrail: the Brier
+    likewise.  Reported over every candidate, and over the candidates the
+    primary passes -- the guardrails only ever speak to those.
 
-    So this is a diagnostic, not an alarm, with one exception.  NLL is the
-    binding condition today.  If it stops being one -- if the share blocked
-    by Brier *alone* grows -- then Brier has become the gate's sole
-    gatekeeper on this path, and that is the moment the tolerance thresholds
-    are worth revisiting.  That, and only that, is reported as a finding.
+    A diagnostic, not an alarm, with one exception: if the guardrails block
+    most of what the primary passes, they have become the gate's deciders,
+    which is the reverse of the ranking the charter sets, and the margin is
+    worth revisiting.  That, and only that, is reported as a finding.
     """
 
     rows = conn.execute(
@@ -318,59 +315,61 @@ def gate_condition_rates(
         " WHERE evaluated_at_utc>=?",
         (since,),
     ).fetchall()
-    contested = []
+
+    def _loss(model: dict, climate: dict, name: str) -> float | None:
+        if model.get(name) is None or climate.get(name) is None:
+            return None
+        base = float(climate[name])
+        if base <= 0.0:
+            return 0.0 if float(model[name]) <= base else float("inf")
+        return (float(model[name]) - base) / base
+
+    judged = []
     for metrics_json, baseline_json in rows:
         try:
             model = json.loads(str(metrics_json))
             climate = json.loads(str(baseline_json))
         except (TypeError, ValueError):
             continue
-        if not climate.get("brier") or model.get("brier") is None:
+        if model.get("nll") is None or climate.get("nll") is None:
             continue
-        if model["brier"] <= climate["brier"]:
-            continue
-        contested.append((
-            (model["brier"] - climate["brier"]) / climate["brier"],
-            (
-                (climate["crps"] - model["crps"]) / climate["crps"]
-                if climate.get("crps") and model.get("crps") is not None
-                else 0.0
-            ),
-            (
-                (climate["nll"] - model["nll"]) / climate["nll"]
-                if climate.get("nll") else 0.0
-            ),
-        ))
-    total = len(contested)
+        primary = float(model["nll"]) < float(climate["nll"])
+        crps_loss = _loss(model, climate, "crps")
+        brier_loss = _loss(model, climate, "brier")
+        crps_ok = crps_loss is not None and crps_loss <= GUARDRAIL_MAX_LOSS
+        brier_ok = brier_loss is not None and brier_loss <= GUARDRAIL_MAX_LOSS
+        judged.append((primary, crps_ok, brier_ok, crps_loss, brier_loss))
+    total = len(judged)
     if not total:
-        return {"contested_count": 0}
-    within_brier = [c for c in contested if c[0] <= BRIER_TOLERANCE_MAX_LOSS]
-    passes_crps = [c for c in contested if c[1] >= BRIER_TOLERANCE_MIN_GAIN]
-    passes_nll = [c for c in contested if c[2] >= BRIER_TOLERANCE_MIN_GAIN]
-    admitted = [
-        c for c in contested
-        if c[0] <= BRIER_TOLERANCE_MAX_LOSS
-        and c[2] >= BRIER_TOLERANCE_MIN_GAIN
-    ]
-    # Blocked by Brier and nothing else: the log-score condition is met and
-    # only the Brier loss keeps it out.
-    brier_only = [
-        c for c in contested
-        if c[0] > BRIER_TOLERANCE_MAX_LOSS
-        and c[2] >= BRIER_TOLERANCE_MIN_GAIN
-    ]
+        return {"candidate_count": 0, "primary_pass_count": 0}
+    primary_pass = [j for j in judged if j[0]]
+    n_primary = len(primary_pass)
+
+    def _share(items, total_count):
+        return len(items) / total_count if total_count else 0.0
+
+    blocked_crps = [j for j in primary_pass if not j[1]]
+    blocked_brier = [j for j in primary_pass if not j[2]]
+    blocked_any = [j for j in primary_pass if not (j[1] and j[2])]
+    admitted = [j for j in primary_pass if j[1] and j[2]]
+    finite = lambda values: [v for v in values if v is not None and v != float("inf")]
     return {
-        "contested_count": total,
-        "brier_loss_within_tolerance_share": len(within_brier) / total,
-        "crps_gain_sufficient_share": len(passes_crps) / total,
-        "nll_gain_sufficient_share": len(passes_nll) / total,
-        "admitted_share": len(admitted) / total,
-        "blocked_by_brier_alone_share": len(brier_only) / total,
-        "median_brier_loss": statistics.median(c[0] for c in contested),
-        "median_crps_gain": statistics.median(c[1] for c in contested),
-        "median_nll_gain": statistics.median(c[2] for c in contested),
-        "brier_tolerance_max_loss": BRIER_TOLERANCE_MAX_LOSS,
-        "brier_tolerance_min_gain": BRIER_TOLERANCE_MIN_GAIN,
+        "candidate_count": total,
+        "primary_pass_count": n_primary,
+        "primary_pass_share": _share(primary_pass, total),
+        "admitted_share": _share(admitted, total),
+        "blocked_by_crps_guard_share": _share(blocked_crps, n_primary),
+        "blocked_by_brier_guard_share": _share(blocked_brier, n_primary),
+        "blocked_by_guardrails_share": _share(blocked_any, n_primary),
+        "median_crps_loss_primary_pass": (
+            statistics.median(finite(j[3] for j in primary_pass))
+            if finite(j[3] for j in primary_pass) else None
+        ),
+        "median_brier_loss_primary_pass": (
+            statistics.median(finite(j[4] for j in primary_pass))
+            if finite(j[4] for j in primary_pass) else None
+        ),
+        "guardrail_max_loss": GUARDRAIL_MAX_LOSS,
     }
 
 
@@ -515,28 +514,26 @@ def check_calibration_regression(murphy: dict) -> list[dict]:
 
 
 def check_gate_binding_condition(rates: dict) -> list[dict]:
-    """Brier having become the sole blocker is the trigger to revisit it."""
+    """The guardrails blocking most primary passes is the trigger to revisit
+    the margin (charter 240: they constrain, the log score decides)."""
 
-    total = int(rates.get("contested_count") or 0)
-    if total < GATE_RATE_MIN_SAMPLE:
+    passed = int(rates.get("primary_pass_count") or 0)
+    if passed < GATE_RATE_MIN_SAMPLE:
         return []
-    share = float(rates.get("blocked_by_brier_alone_share") or 0.0)
-    if share < GATE_BRIER_ONLY_ALARM_SHARE:
+    share = float(rates.get("blocked_by_guardrails_share") or 0.0)
+    if share < GATE_GUARDRAIL_ALARM_SHARE:
         return []
     return [{
-        "check": "tolerance_channel_now_gated_by_brier_alone",
-        "contested_count": total,
-        "blocked_by_brier_alone_share": round(share, 4),
-        "nll_gain_sufficient_share": round(
-            float(rates.get("nll_gain_sufficient_share") or 0.0), 4
+        "check": "guardrails_now_decide_the_gate",
+        "primary_pass_count": passed,
+        "blocked_by_guardrails_share": round(share, 4),
+        "blocked_by_crps_guard_share": round(
+            float(rates.get("blocked_by_crps_guard_share") or 0.0), 4
         ),
-        "median_brier_loss": round(
-            float(rates.get("median_brier_loss") or 0.0), 4
+        "blocked_by_brier_guard_share": round(
+            float(rates.get("blocked_by_brier_guard_share") or 0.0), 4
         ),
-        "median_crps_gain": round(
-            float(rates.get("median_crps_gain") or 0.0), 4
-        ),
-        "alarm_share": GATE_BRIER_ONLY_ALARM_SHARE,
+        "alarm_share": GATE_GUARDRAIL_ALARM_SHARE,
     }]
 
 
@@ -603,20 +600,19 @@ def main(argv: list[str] | None = None) -> int:
             f" · BSS {murphy['brier_skill_score']:+.4f}"
             f"（校准欠超 {MURPHY_RELIABILITY_ALARM_SHARE:.0%} 才告警）"
         )
-    if gate_rates.get("contested_count"):
+    if gate_rates.get("candidate_count"):
         print(
-            f"  容差通道（近 {GATE_RATE_LOOKBACK_DAYS} 天"
-            f" {gate_rates['contested_count']} 个 CRPS赢/Brier输 候选）:"
+            f"  评估门（宪章240，近 {GATE_RATE_LOOKBACK_DAYS} 天"
+            f" {gate_rates['candidate_count']} 个候选）:"
         )
         print(
-            f"    Brier 劣势在容差内 {gate_rates['brier_loss_within_tolerance_share']:.1%}"
-            f" · CRPS 增益够 {gate_rates['crps_gain_sufficient_share']:.1%}"
-            f" · NLL 增益够 {gate_rates['nll_gain_sufficient_share']:.1%}"
+            f"    LogScore 胜气候 {gate_rates['primary_pass_share']:.1%}"
             f" ⇒ 放行 {gate_rates['admitted_share']:.1%}"
         )
         print(
-            f"    仅被 Brier 挡住 {gate_rates['blocked_by_brier_alone_share']:.1%}"
-            f"（超 {GATE_BRIER_ONLY_ALARM_SHARE:.0%} 才告警）"
+            f"    主评分通过者中：CRPS 护栏挡 {gate_rates['blocked_by_crps_guard_share']:.1%}"
+            f" · Brier 护栏挡 {gate_rates['blocked_by_brier_guard_share']:.1%}"
+            f"（护栏合计超 {GATE_GUARDRAIL_ALARM_SHARE:.0%} 才告警）"
         )
     for check, count in by_check.most_common():
         print(f"  {check}: {count}")

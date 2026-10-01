@@ -148,7 +148,16 @@ ROLLING_ORIGIN_MAX_FOLDS = 5
 # floor serving never applies -- a truth on a near-zero tail cost 13.8 nats
 # where serving is charged 6.9, and 57 such cells carried 71% of the long
 # window's "widen" gain measured on 2026-09-16.
-GATE_RULE = "brier_and_logscore_both_lower_station_day_bootstrap_v1"
+# Charter 240 (user ruling 2026-10-01): the model's target is P(Y=k|X), and
+# the three proper scores of the bucket distribution are ranked, not equal
+# vetoes.  The LogScore is the primary judge and must be significantly lower;
+# the ladder CRPS checks the distribution's structure once bucket distance
+# counts and must not be significantly higher; the bucket Brier is the
+# guardrail against buying a few cells at the cost of the whole and must not
+# be significantly higher either.  Charter 228's rule (both Brier and
+# LogScore significantly lower) asked the guardrail to prove an improvement
+# it has half the power to see.
+GATE_RULE = "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1"
 GATE_BOOTSTRAP_DRAWS = 2000
 GATE_BOOTSTRAP_SEED = 20260925
 GATE_CONFIDENCE = 0.95
@@ -174,8 +183,10 @@ CENTER_WIDTH_VETO_MIN_CELLS = 60
 # first-decision slice -0.0174 [-0.0288, -0.0078]; 10-01 -0.034 [-0.072,
 # -0.005]) the LogScore has called the slice's widening while the Brier sat
 # flat.  Admission, the fold majority and the veto on this slice all read
-# this rule; everything pooled keeps charter 228's two-score gate.
-GATE_RULE_LOGSCORE = "logscore_lower_station_day_bootstrap_v1"
+# this rule; since charter 240 the slice and everything pooled read one verdict.
+# Charter 240 subsumes charter 239's LogScore-only gate: the slice is judged
+# by the stage's one verdict, whose primary score is the LogScore and whose
+# CRPS and Brier are guardrails, never required to improve.
 SLICE_MIN_QUALIFYING_DAYS = 8
 SLICE_MIN_QUALIFYING_CELLS = 60
 SLICE_MIN_FOLD_TRAIN_CELLS = 30
@@ -813,7 +824,7 @@ MAX_STATION_WIDTH_SCALE = 1.5
 # that never runs while accumulating.  So before anything else the lane
 # scores the incumbent on the cells served AFTER its own activation -- out
 # of sample by construction -- against the same cells with the incumbent
-# undone.  Undoing significantly better on both proper scores (charter 228)
+# undone.  Undoing better under the ranked verdict (charter 240)
 # retires the table.  The window opens at three days / sixty cells, half the
 # qualifying floor: the question "is this table hurting" needs less evidence
 # than "which table is best", and a day earlier here was one fewer day
@@ -1222,8 +1233,8 @@ def _center_width_veto(
 ) -> dict[str, Any]:
     """Score the active pair on the cells served after it went live: kept
     (served as-is) against the same rows with the pair left off.  ``vetoed``
-    when leaving it off is significantly better on both proper scores
-    (charter 228) on at least the veto window (charter 138).
+    when leaving it off is better under the ranked verdict
+    (charter 240) on at least the veto window (charter 138).
 
     Rows that cannot say what identity would have served are not judged and
     are counted by reason.  Declining is the safe direction here -- it holds
@@ -1262,6 +1273,7 @@ def _center_width_veto(
                 ordered_keys=cell["ordered_keys"],
                 settled_bucket=cell["settled_bucket"],
                 excluded_buckets=cell["excluded_buckets"],
+                key_centers_c=cell["key_centers_c"],
             ))
             clusters.append((cell.get("station_id"), day))
         if day_kept:
@@ -1357,6 +1369,7 @@ def _undo_station_scale_scores(
         ordered_keys=cell["ordered_keys"],
         settled_bucket=cell["settled_bucket"],
         excluded_buckets=cell["excluded_buckets"],
+        key_centers_c=cell["key_centers_c"],
     )
 
 
@@ -1368,7 +1381,7 @@ def _station_width_veto(
 ) -> dict[str, Any]:
     """Score the active table on the cells served after it went live: kept
     (served as-is) against undone.  ``vetoed`` when undoing is
-    significantly better on both proper scores (charter 228) on at least
+    better under the ranked verdict (charter 240) on at least
     the veto window."""
 
     since = activated_at_utc or ""
@@ -1637,6 +1650,7 @@ def fit_station_width(
                 ordered_keys=cell["ordered_keys"],
                 settled_bucket=cell["settled_bucket"],
                 excluded_buckets=cell["excluded_buckets"],
+                key_centers_c=cell["key_centers_c"],
             ))
         return out
 
@@ -2121,8 +2135,15 @@ def _served_scores(
     ordered_keys: Sequence[str],
     settled_bucket: str,
     excluded_buckets: Sequence[str] = (),
-) -> tuple[float, float]:
-    """(LogScore, bucket Brier) of one vector as serving would serve it.
+    key_centers_c: Sequence[float] | None = None,
+) -> tuple[float, float, float]:
+    """(LogScore, bucket Brier, ladder CRPS) of one vector as serving would
+    serve it.
+
+    The CRPS (charter 240's structural score) is the ranked probability score
+    on the ladder weighted by the distance between adjacent key centres --
+    the same arithmetic the OOS gate records (``native_ensemble_oos``).
+    Without centres it is NaN, which no gate passes.
 
     Charter 228: normalised on the cell's own buckets, then the served zero
     floor (``materialization.floor_probabilities``, charter 224) -- called,
@@ -2146,7 +2167,18 @@ def _served_scores(
         (float(floored[key]) - (1.0 if key == settled_bucket else 0.0)) ** 2
         for key in keys
     )
-    return -math.log(max(float(floored[settled_bucket]), 1e-12)), brier
+    crps = float("nan")
+    if key_centers_c is not None and len(key_centers_c) == len(keys):
+        hit = keys.index(settled_bucket)
+        cumulative = 0.0
+        crps = 0.0
+        for index in range(len(keys) - 1):
+            cumulative += float(floored[keys[index]])
+            observed = 1.0 if index >= hit else 0.0
+            crps += (cumulative - observed) ** 2 * (
+                float(key_centers_c[index + 1]) - float(key_centers_c[index])
+            )
+    return -math.log(max(float(floored[settled_bucket]), 1e-12)), brier, crps
 
 
 def _served_row_logscore(
@@ -2222,6 +2254,7 @@ def _cell_proper_scores(
         ordered_keys=cell["ordered_keys"],
         settled_bucket=cell["settled_bucket"],
         excluded_buckets=cell["excluded_buckets"],
+        key_centers_c=cell["key_centers_c"],
     )
 
 
@@ -2241,18 +2274,26 @@ def _cell_nll(
 
 
 def _proper_score_gate(
-    base: Sequence[tuple[float, float]],
-    candidate: Sequence[tuple[float, float]],
+    base: Sequence[tuple[float, ...]],
+    candidate: Sequence[tuple[float, ...]],
     clusters: Sequence[Any],
 ) -> dict[str, Any]:
-    """Charter 228: is ``candidate`` significantly better than ``base`` on both
-    proper scores?
+    """Charter 240: is ``candidate`` better than ``base`` under the ranked
+    verdict?
 
-    One entry per cell, (LogScore, bucket Brier) on each side; ``clusters``
-    names each cell's station-day.  The change is cell-weighted, as every
-    mean in this lane is.  Its interval resamples whole station-days
-    (``GATE_BOOTSTRAP_DRAWS`` draws, fixed seed, so a refit is
-    reproducible), and ``lower`` needs both upper bounds below zero.
+    One entry per cell, (LogScore, bucket Brier, ladder CRPS) on each side;
+    ``clusters`` names each cell's station-day.  The change is cell-weighted,
+    as every mean in this lane is, and its intervals resample whole
+    station-days (``GATE_BOOTSTRAP_DRAWS`` draws, fixed seed, so a refit is
+    reproducible).  ``lower`` needs:
+
+    * primary -- the LogScore's upper bound below zero;
+    * structure -- the CRPS's lower bound not above zero (not stably worse);
+    * guardrail -- the Brier's lower bound not above zero (not significantly
+      worse).
+
+    A CRPS that cannot be computed (NaN) fails the structure check: a verdict
+    that cannot see the distribution's structure does not get to skip it.
     """
 
     import numpy as np
@@ -2266,55 +2307,64 @@ def _proper_score_gate(
         "bootstrap_draws": GATE_BOOTSTRAP_DRAWS,
         "d_logscore": None,
         "d_brier": None,
+        "d_crps": None,
         "ci_logscore": None,
         "ci_brier": None,
+        "ci_crps": None,
+        "primary_lower": False,
+        "crps_not_worse": False,
+        "brier_not_worse": False,
         "lower": False,
     }
     if count == 0 or len(candidate) != count or len(clusters) != count:
         return out
     ids: dict[Any, int] = {}
     index = np.array([ids.setdefault(key, len(ids)) for key in clusters])
-    d_log = np.array([c[0] - b[0] for b, c in zip(base, candidate)])
-    d_brier = np.array([c[1] - b[1] for b, c in zip(base, candidate)])
+
+    def _column(position: int) -> Any:
+        return np.array([
+            (float(c[position]) - float(b[position]))
+            if len(b) > position and len(c) > position else float("nan")
+            for b, c in zip(base, candidate)
+        ])
+
+    d_log, d_brier, d_crps = _column(0), _column(1), _column(2)
     size = len(ids)
     cells = np.bincount(index, minlength=size).astype(float)
-    sum_log = np.bincount(index, weights=d_log, minlength=size)
-    sum_brier = np.bincount(index, weights=d_brier, minlength=size)
     draws = np.random.default_rng(GATE_BOOTSTRAP_SEED).integers(
         0, size, size=(GATE_BOOTSTRAP_DRAWS, size)
     )
     weight = cells[draws].sum(axis=1)
     tail = 100.0 * (1.0 - GATE_CONFIDENCE) / 2.0
-    ci_log = np.percentile(sum_log[draws].sum(axis=1) / weight, [tail, 100.0 - tail])
-    ci_brier = np.percentile(
-        sum_brier[draws].sum(axis=1) / weight, [tail, 100.0 - tail]
-    )
+
+    def _interval(values: Any) -> list[float] | None:
+        if not np.all(np.isfinite(values)):
+            return None
+        sums = np.bincount(index, weights=values, minlength=size)
+        low, high = np.percentile(
+            sums[draws].sum(axis=1) / weight, [tail, 100.0 - tail]
+        )
+        return [float(low), float(high)]
+
+    ci_log, ci_brier, ci_crps = _interval(d_log), _interval(d_brier), _interval(d_crps)
+    primary = bool(ci_log is not None and ci_log[1] < 0.0)
+    crps_ok = bool(ci_crps is not None and ci_crps[0] <= 0.0)
+    brier_ok = bool(ci_brier is not None and ci_brier[0] <= 0.0)
     out.update({
         "d_logscore": float(d_log.sum() / count),
         "d_brier": float(d_brier.sum() / count),
-        "ci_logscore": [float(ci_log[0]), float(ci_log[1])],
-        "ci_brier": [float(ci_brier[0]), float(ci_brier[1])],
-        "lower": bool(ci_log[1] < 0.0 and ci_brier[1] < 0.0),
+        "d_crps": (
+            float(d_crps.sum() / count) if np.all(np.isfinite(d_crps)) else None
+        ),
+        "ci_logscore": ci_log,
+        "ci_brier": ci_brier,
+        "ci_crps": ci_crps,
+        "primary_lower": primary,
+        "crps_not_worse": crps_ok,
+        "brier_not_worse": brier_ok,
+        "lower": bool(primary and crps_ok and brier_ok),
     })
     return out
-
-
-def _logscore_gate(
-    base: Sequence[tuple[float, float]],
-    candidate: Sequence[tuple[float, float]],
-    clusters: Sequence[Any],
-) -> dict[str, Any]:
-    """Charter 239: is ``candidate`` significantly better than ``base`` on the
-    LogScore?  The same station-day bootstrap as ``_proper_score_gate``, the
-    Brier still measured and reported, but ``lower`` reads the LogScore's
-    upper bound alone.  Only the thin-pool far-lead slice is judged here."""
-
-    gate = _proper_score_gate(base, candidate, clusters)
-    gate["rule"] = GATE_RULE_LOGSCORE
-    gate["lower"] = bool(
-        gate["ci_logscore"] is not None and gate["ci_logscore"][1] < 0.0
-    )
-    return gate
 
 
 # Charter 202 follow-up (2026-09-23): the lane's grids, scored once per cell.
@@ -2622,7 +2672,7 @@ def _thin_far_slice_lane(
         "slice": THIN_FAR_SLICE_NAME,
         "max_seated_systems": THIN_FAR_MAX_SEATED_SYSTEMS,
         "min_hours_to_settlement": THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
-        "gate_rule": GATE_RULE_LOGSCORE,
+        "gate_rule": GATE_RULE,
         "slice_day_count": len(slice_days),
         "slice_cell_count": len(slice_cells),
         "min_qualifying_days": SLICE_MIN_QUALIFYING_DAYS,
@@ -2698,7 +2748,7 @@ def _thin_far_slice_lane(
         held_clusters.extend(
             (cell.get("station_id"), ordered[index]) for cell in test
         )
-    gate = _logscore_gate(held_other, held_slice, held_clusters)
+    gate = _proper_score_gate(held_other, held_slice, held_clusters)
     positive = sum(1 for fold in folds if fold["gain"] > 0.0)
     majority = positive * 2 > len(folds) if folds else False
     train_prefix = [
@@ -2806,10 +2856,11 @@ def _thin_far_slice_veto(
                 ordered_keys=cell["ordered_keys"],
                 settled_bucket=cell["settled_bucket"],
                 excluded_buckets=cell["excluded_buckets"],
+                key_centers_c=cell["key_centers_c"],
             ))
             clusters.append((cell.get("station_id"), day))
             judged_days.add(day)
-    gate = _logscore_gate(kept, undone, clusters)
+    gate = _proper_score_gate(kept, undone, clusters)
     enough = (
         len(judged_days) >= CENTER_WIDTH_VETO_MIN_DAYS
         and len(kept) >= CENTER_WIDTH_VETO_MIN_CELLS
@@ -2860,11 +2911,12 @@ def _cell_scores(
         sigma_floor_rungs=sigma_floor_rungs,
         width_tier_lambdas=width_tier_lambdas,
     ))
-    logscore, brier = _served_scores(
+    logscore, brier, _crps = _served_scores(
         adjusted,
         ordered_keys=cell["ordered_keys"],
         settled_bucket=cell["settled_bucket"],
         excluded_buckets=cell["excluded_buckets"],
+        key_centers_c=cell["key_centers_c"],
     )
     total = sum(adjusted.values())
     if total <= 0.0:
@@ -2986,8 +3038,8 @@ def _width_tier_lane(
     """Whether the tiers earned their place, and the numbers that say so.
 
     Admitted where the tiered candidate is significantly better than the
-    pooled candidate on both proper scores over the forward window
-    (charter 228); ``gate_vs_incumbent`` is what the pair then has to clear
+    pooled candidate on the ranked verdict over the forward window
+    (charter 240); ``gate_vs_incumbent`` is what the pair then has to clear
     at the stage's own gate.
     """
 
@@ -3332,7 +3384,7 @@ def _rolling_origin_admission(
     bought against identity -- identity being what the stage serves today,
     since the cells already carry it.  Cell-weighted rather than fold-weighted
     so a thin day cannot outvote a full one.  ``gate`` pools every fold's
-    held-out cells and asks charter 228's question of them.
+    held-out cells and asks charter 240's question of them.
 
     What this validates is the search *procedure*, not one pair: each fold
     picks its own pair from its own prefix.  That is what licenses the served
@@ -3402,10 +3454,9 @@ def _rolling_origin_admission(
         held_clusters.extend(
             (cell.get("station_id"), ordered[index]) for cell in test
         )
-    # A fold gained when it gained on both scores (charter 228).
-    positive = sum(
-        1 for fold in folds if fold["gain"] > 0.0 and fold["brier_gain"] > 0.0
-    )
+    # A fold gained when it gained on the primary score (charter 240; under
+    # charter 228 it had to gain on both).
+    positive = sum(1 for fold in folds if fold["gain"] > 0.0)
     return {
         "schema": "center_width_rolling_origin_v2",
         "min_fold_train_days": ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
@@ -3454,8 +3505,8 @@ def _sigma_floor_lane(
     """Whether the floor earned its place, and the numbers that say so.
 
     Admitted only where it is significantly better than the *pooled*
-    candidate on both proper scores over the held-out forward window
-    (charter 228).  Beating the incumbent is not enough on its own: the
+    candidate on the ranked verdict over the held-out forward window
+    (charter 240).  Beating the incumbent is not enough on its own: the
     floored fit carries a refitted lambda with it, and a lane that only wins
     by dragging that refit along has not shown that the floor is what did
     the work.  The pair as a whole then faces the incumbent at the usual
@@ -3720,7 +3771,7 @@ def fit_center_width(
         forward_candidate = sigma_floor["forward_nll_pooled_candidate"]
         candidate_floor = 0.0
     # Width tiers: fitted under the floor the pair will serve, judged against
-    # the pooled/floored candidate on both proper scores (charter 228).
+    # the pooled/floored candidate on the ranked verdict (charter 240).
     tier_delta, tier_lambdas, _tier_train = _search_tiers(
         train, sigma_floor_rungs=candidate_floor, pooled_lambda=lam,
     )
@@ -3779,7 +3830,7 @@ def fit_center_width(
         ),
     })
     # Both halves of the rolling verdict: the held-out cells are
-    # significantly better on both proper scores (charter 228), and a
+    # better under the ranked verdict (charter 240), and a
     # majority of folds gained on both.  The second is not a refinement --
     # without it one hard day can carry three losing folds over the line,
     # which is the first live run's reading exactly.

@@ -129,15 +129,16 @@ def _cell(dist, settled, *, seated=2, hours=48.0, station="S00", day="2026-09-01
     }
 
 
-def test_the_logscore_gate_needs_only_the_logscore() -> None:
-    base = [(1.0, 0.5)] * 40
-    candidate = [(0.8, 0.52)] * 40            # LogScore better, Brier worse
+def test_the_slice_reads_the_stage_verdict() -> None:
+    """Charter 240 subsumes 239's LogScore-only gate: the slice is judged by
+    the one ranked verdict -- LogScore primary, CRPS and Brier guardrails."""
+    assert not hasattr(store, "GATE_RULE_LOGSCORE") and not hasattr(store, "_logscore_gate")
+    base = [(1.0, 0.50, 0.60)] * 40
+    candidate = [(0.8, 0.50, 0.60)] * 40            # LogScore better, guards flat
     clusters = [(f"S{i:02d}", "2026-09-01") for i in range(40)]
-    both = store._proper_score_gate(base, candidate, clusters)
-    log_only = store._logscore_gate(base, candidate, clusters)
-    assert both["lower"] is False and log_only["lower"] is True
-    assert log_only["rule"] == store.GATE_RULE_LOGSCORE
-    assert log_only["ci_brier"] is not None and log_only["d_brier"] > 0
+    assert store._proper_score_gate(base, candidate, clusters)["lower"] is True
+    brier_worse = [(0.8, 0.52, 0.60)] * 40          # guardrail breached
+    assert store._proper_score_gate(base, brier_worse, clusters)["lower"] is False
 
 
 def test_the_cells_are_split_by_the_predicate() -> None:
@@ -175,7 +176,7 @@ def test_the_lane_admits_a_wider_slice_on_the_logscore_and_refuses_the_reverse()
         pooled_admitted=False, served_residual=store.RESIDUAL_IDENTITY,
         sigma_floor_rungs=0.0, served_slice_lambda=0.75, incumbent_slices=None,
     )
-    assert lane["gate_rule"] == store.GATE_RULE_LOGSCORE
+    assert lane["gate_rule"] == store.GATE_RULE
     assert lane["slice_day_count"] == 12 and lane["slice_cell_count"] == 144
     assert lane["candidate_residual_width_lambda"] > 1.0
     assert lane["gate"]["lower"] and lane["majority_positive"]
@@ -219,7 +220,7 @@ def test_the_veto_reads_the_recorded_input_and_the_logscore_rule() -> None:
         ]
     veto = store._thin_far_slice_veto(by_day, slices=SLICES, activated_at_utc="2026-09-01T00:00:00Z")
     assert veto["cell_count"] == 80 and veto["day_count"] == 4
-    assert veto["gate"]["rule"] == store.GATE_RULE_LOGSCORE
+    assert veto["gate"]["rule"] == store.GATE_RULE
     assert veto["undo_gain"] > 0 and veto["vetoed"] is True
     # Nothing since activation: nothing judged.
     none = store._thin_far_slice_veto(by_day, slices=SLICES, activated_at_utc="2026-09-30T00:00:00Z")
@@ -281,5 +282,5 @@ def test_every_serving_face_resolves_the_slice_through_one_resolver() -> None:
     assert 'hours_to_settlement_if_known(' in cells
     charter = read("docs/constitution/SYSTEM_CHARTER.md")
     line = next(l for l in charter.splitlines() if l.startswith("239. "))
-    for word in ("thin_far_slice_applies", "logscore_lower_station_day_bootstrap_v1", "width_slices_json", "按照logscore单独判"):
+    for word in ("thin_far_slice_applies", "width_slices_json", "按照logscore单独判"):
         assert word in line, word

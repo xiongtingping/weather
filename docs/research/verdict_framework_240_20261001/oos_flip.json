@@ -1,0 +1,39 @@
+{
+ "rows": 559486,
+ "seconds": 50,
+ "flips": {
+  "('contest', True, True)": 142337,
+  "('contest', True, False)": 658,
+  "('contest', False, False)": 28801,
+  "('contest', False, True)": 473,
+  "('stable_pool', True, True)": 357774,
+  "('stable_pool', False, False)": 26987,
+  "('stable_pool', False, True)": 610,
+  "('stable_pool', True, False)": 1846
+ },
+ "flip_paths": {
+  "('contest', 'REJECTED_PRIMARY')": 658,
+  "('contest', 'LOGSCORE_PRIMARY')": 473,
+  "('stable_pool', 'LOGSCORE_PRIMARY')": 610,
+  "('stable_pool', 'REJECTED_PRIMARY')": 477,
+  "('stable_pool', 'REJECTED_CRPS_GUARD')": 1369
+ },
+ "newest_per_key": {
+  "('stable_pool', True, True)": 13661,
+  "('stable_pool', False, False)": 659,
+  "('stable_pool', False, True)": 7,
+  "('stable_pool', True, False)": 88
+ },
+ "key_count": 14415,
+ "fidelity": {
+  "('contest', 'old_rule_reproduces_stored', True)": 170226,
+  "('contest', 'old_rule_reproduces_stored', False)": 2043,
+  "('stable_pool', 'old_rule_reproduces_stored', True)": 386060,
+  "('stable_pool', 'old_rule_reproduces_stored', False)": 1157
+ },
+ "genuine_flips": {
+  "('contest', 'genuine_flip', False, True)": 134,
+  "('stable_pool', 'genuine_flip', False, True)": 400,
+  "('stable_pool', 'genuine_flip', True, False)": 1369
+ }
+}

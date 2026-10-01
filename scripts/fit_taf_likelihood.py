@@ -646,6 +646,37 @@ def _floored_log(probabilities: Mapping[str, float], truth: str) -> float:
     return math.log(lifted[truth] / sum(lifted.values()))
 
 
+def _floored_guard_scores(
+    probabilities: Mapping[str, float], centers: Mapping[str, float], truth: str
+) -> tuple[float, float]:
+    """Charter 240's guardrails on the served (floored) vector: (bucket Brier,
+    ladder CRPS), buckets ordered by centre, rungs weighted by the distance
+    between adjacent centres -- the OOS gate's arithmetic."""
+
+    order = sorted(probabilities, key=lambda b: (float(centers[b]), b))
+    lifted = {b: max(float(probabilities[b]), PROBABILITY_MODEL_ZERO_FLOOR) for b in order}
+    total = sum(lifted.values())
+    served = {b: v / total for b, v in lifted.items()}
+    brier = sum((served[b] - (1.0 if b == truth else 0.0)) ** 2 for b in order)
+    hit = order.index(truth)
+    cumulative = crps = 0.0
+    for index in range(len(order) - 1):
+        cumulative += served[order[index]]
+        crps += (cumulative - (1.0 if index >= hit else 0.0)) ** 2 * (
+            float(centers[order[index + 1]]) - float(centers[order[index]])
+        )
+    return brier, crps
+
+
+def _day_bootstrap(means: Sequence[float], seed: int) -> tuple[float, float]:
+    rng = random.Random(seed)
+    boot = sorted(
+        statistics.mean(rng.choice(means) for _ in means)
+        for _ in range(BOOTSTRAP_DRAWS)
+    )
+    return boot[int(0.025 * BOOTSTRAP_DRAWS)], boot[int(0.975 * BOOTSTRAP_DRAWS)]
+
+
 def _scored(
     line_artifact: Mapping[str, Any], cases: Sequence[Mapping[str, Any]]
 ) -> list[tuple[Mapping[str, Any], dict[str, float]]]:
@@ -789,6 +820,7 @@ def walk_forward(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     as_of = AsOf(cases)
     fits: dict[tuple, dict[str, Any] | None] = {}
     gains_by_day: dict[str, list[float]] = {}
+    guard_by_day: dict[str, list[tuple[float, float]]] = {}
     hits = {"root": 0, "taf": 0}
     scored = 0
     after_truth = 0
@@ -827,6 +859,19 @@ def walk_forward(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             - _floored_log(case["probabilities"], case["truth_bucket"])
         )
         gains_by_day.setdefault(day, []).append(gain)
+        # Charter 240: the guardrails on the same pair, posterior minus root
+        # (positive is worse).
+        if all(b in case["centers"] for b in posterior):
+            post_brier, post_crps = _floored_guard_scores(
+                posterior, case["centers"], case["truth_bucket"]
+            )
+            root_brier, root_crps = _floored_guard_scores(
+                {b: case["probabilities"][b] for b in posterior},
+                case["centers"], case["truth_bucket"],
+            )
+            guard_by_day.setdefault(day, []).append(
+                (post_brier - root_brier, post_crps - root_crps)
+            )
         scored += 1
         hits["root"] += int(
             max(case["probabilities"], key=case["probabilities"].get)
@@ -847,8 +892,27 @@ def walk_forward(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     )
     low = boot[int(0.025 * BOOTSTRAP_DRAWS)]
     high = boot[int(0.975 * BOOTSTRAP_DRAWS)]
+    # Charter 240: the log score is primary (its lower bound above zero);
+    # the bucket Brier and the ladder CRPS are guardrails -- each day's mean
+    # change, posterior minus root, must not be significantly above zero.
+    guard_days = [day for day in gains_by_day if guard_by_day.get(day)]
+    brier_means = [statistics.mean(v[0] for v in guard_by_day[d]) for d in guard_days]
+    crps_means = [statistics.mean(v[1] for v in guard_by_day[d]) for d in guard_days]
+    brier_ci = _day_bootstrap(brier_means, 20261001) if len(brier_means) >= 5 else None
+    crps_ci = _day_bootstrap(crps_means, 20261002) if len(crps_means) >= 5 else None
+    brier_ok = brier_ci is not None and brier_ci[0] <= 0.0
+    crps_ok = crps_ci is not None and crps_ci[0] <= 0.0
+    primary = low > 0.0
     return {
-        "state": TL.GATE_SERVE if low > 0.0 else TL.GATE_IDENTITY,
+        "state": (
+            TL.GATE_SERVE if primary and brier_ok and crps_ok else TL.GATE_IDENTITY
+        ),
+        "gate_rule": "logscore_primary_crps_brier_guardrail_day_bootstrap_v1",
+        "primary_pass": primary,
+        "brier_guard": {"ci": list(brier_ci) if brier_ci else None, "pass": brier_ok,
+                        "mean": statistics.mean(brier_means) if brier_means else None},
+        "crps_guard": {"ci": list(crps_ci) if crps_ci else None, "pass": crps_ok,
+                       "mean": statistics.mean(crps_means) if crps_means else None},
         "by_day_mean_gain_nat": statistics.mean(means),
         "ci_low": low,
         "ci_high": high,

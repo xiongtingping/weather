@@ -46,7 +46,7 @@ def _cell(rng: random.Random, *, zeros: bool, excluded: bool) -> dict:
 def test_a_zero_rung_hit_is_charged_what_serving_charges() -> None:
     cell = _cell(random.Random(1), zeros=True, excluded=False)
     cell["settled_bucket"] = cell["ordered_keys"][0]            # the zero rung
-    logscore, brier = cws._cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0)
+    logscore, brier, crps = cws._cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0)
     served, lifted = floor_probabilities(dict(cell["probabilities"]))
     assert lifted                                              # the floor acted
     assert logscore == -math.log(served[cell["ordered_keys"][0]])
@@ -56,6 +56,17 @@ def test_a_zero_rung_hit_is_charged_what_serving_charges() -> None:
         (served[key] - (1.0 if key == cell["settled_bucket"] else 0.0)) ** 2
         for key in cell["ordered_keys"]
     )
+    # Charter 240: the ladder CRPS on the same floored vector, rungs weighted
+    # by the distance between adjacent key centres.
+    keys, centres = cell["ordered_keys"], cell["key_centers_c"]
+    hit = keys.index(cell["settled_bucket"])
+    cumulative, expected = 0.0, 0.0
+    for index in range(len(keys) - 1):
+        cumulative += served[keys[index]]
+        expected += (cumulative - (1.0 if index >= hit else 0.0)) ** 2 * (
+            centres[index + 1] - centres[index]
+        )
+    assert crps == pytest.approx(expected, abs=1e-12)
 
 
 def test_a_candidate_is_scored_through_the_transform_and_then_the_floor() -> None:
@@ -91,24 +102,35 @@ def test_every_grid_entry_is_the_scalar_logscore_exactly(seed: int) -> None:
             ), (delta, lam)
 
 
-def test_the_gate_needs_both_scores() -> None:
+def test_the_gate_ranks_the_scores() -> None:
+    """Charter 240: the LogScore must be significantly lower; the CRPS and
+    the Brier must only not be significantly higher."""
     clusters = [(f"S{index:02d}", "2026-09-20") for index in range(40)]
-    base = [(1.50, 0.70)] * 40
-    both = [(1.40, 0.68)] * 40
-    log_only = [(1.40, 0.72)] * 40
-    assert cws._proper_score_gate(base, both, clusters)["lower"] is True
-    split = cws._proper_score_gate(base, log_only, clusters)
-    assert split["ci_logscore"][1] < 0 < split["ci_brier"][0]
-    assert split["lower"] is False
-    assert cws._proper_score_gate(base, base, clusters)["lower"] is False
+    base = [(1.50, 0.70, 0.60)] * 40
+    better = [(1.40, 0.70, 0.60)] * 40              # primary only; guards flat
+    assert cws._proper_score_gate(base, better, clusters)["lower"] is True
+    brier_worse = [(1.40, 0.72, 0.60)] * 40
+    gate = cws._proper_score_gate(base, brier_worse, clusters)
+    assert gate["primary_lower"] and gate["crps_not_worse"]
+    assert gate["brier_not_worse"] is False and gate["lower"] is False
+    crps_worse = [(1.40, 0.70, 0.62)] * 40
+    gate = cws._proper_score_gate(base, crps_worse, clusters)
+    assert gate["crps_not_worse"] is False and gate["lower"] is False
+    guards_better_primary_flat = [(1.50, 0.60, 0.50)] * 40
+    gate = cws._proper_score_gate(base, guards_better_primary_flat, clusters)
+    assert gate["primary_lower"] is False and gate["lower"] is False
+    # A CRPS the scorer could not compute fails the structure check.
+    missing = [(1.40, 0.70)] * 40
+    gate = cws._proper_score_gate(base, missing, clusters)
+    assert gate["ci_crps"] is None and gate["lower"] is False
 
 
 def test_the_interval_resamples_station_days() -> None:
     """Forty cells from one station-day are one weather: a gain that lives
     only there is not significant however many cells carry it."""
 
-    base = [(1.5, 0.7)] * 60
-    candidate = [(1.2, 0.6)] * 40 + [(1.52, 0.705)] * 20
+    base = [(1.5, 0.7, 0.6)] * 60
+    candidate = [(1.2, 0.6, 0.5)] * 40 + [(1.52, 0.705, 0.605)] * 20
     one_day = [("AAAA", "2026-09-20")] * 40 + [
         (f"S{index:02d}", "2026-09-21") for index in range(20)
     ]
@@ -121,8 +143,8 @@ def test_the_interval_resamples_station_days() -> None:
 
 def test_the_gate_is_reproducible() -> None:
     rng = random.Random(7)
-    base = [(rng.random(), rng.random()) for _ in range(50)]
-    candidate = [(b[0] - 0.01 * rng.random(), b[1]) for b in base]
+    base = [(rng.random(), rng.random(), rng.random()) for _ in range(50)]
+    candidate = [(b[0] - 0.01 * rng.random(), b[1], b[2]) for b in base]
     clusters = [(f"S{index % 17}", "d") for index in range(50)]
     assert cws._proper_score_gate(base, candidate, clusters) == (
         cws._proper_score_gate(base, candidate, clusters)
@@ -132,7 +154,7 @@ def test_the_gate_is_reproducible() -> None:
 def test_the_old_single_score_machinery_is_gone() -> None:
     for name in ("MIN_FORWARD_NLL_GAIN", "MAX_BUCKET_NLL_REGRESSION", "WINDOW_TERM_WEIGHT"):
         assert not hasattr(cws, name), name
-    assert cws.GATE_RULE == "brier_and_logscore_both_lower_station_day_bootstrap_v1"
+    assert cws.GATE_RULE == "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1"
     assert (cws.GATE_BOOTSTRAP_DRAWS, cws.GATE_CONFIDENCE) == (2000, 0.95)
     # Its only other reader wrote a table nobody read, and went with it.
     assert not (ROOT / "scripts" / "fit_center_width_replay_table.py").exists()

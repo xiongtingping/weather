@@ -75,9 +75,15 @@ MAX_ENVELOPES_PER_CELL = 12
 NLL_FLOOR = 1e-4
 BOOTSTRAP = 2000
 SEED = 20260923
-# Charter 227: the criterion the verdicts in this artifact were reached by.
-GATE_RULE = "proper_scores_brier_logscore_v2"
-# The two proper scores, each with the three robustness forms.
+# Charter 240 (revising 227): the criterion the verdicts in this artifact were
+# reached by.  The LogScore is primary and must be significantly lower in all
+# three robustness forms; the ladder RPS (the CRPS in rungs, the structural
+# score) and the bucket Brier (the guardrail) must not be significantly
+# higher -- their intervals' lower ends not above zero.
+GATE_RULE = "logscore_primary_rps_brier_guardrail_v3"
+PRIMARY_SCORE = "logscore"
+GUARDRAIL_SCORES = ("rps", "brier")
+# Kept for the readers that list the scores the artifact carries.
 PROPER_SCORES = ("brier", "logscore")
 ROBUST_FORMS = ("", "_drop_best2", "_vs_random_sign")
 
@@ -302,9 +308,20 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None = None) -> dict:
             stat["d_nll_nz"] = _bootstrap(
                 cell_pairs(lambda s: (-math.log(s["roll"][1]) + math.log(s["base"][1]))
                            if all(s[a][1] >= NLL_FLOOR for a in s) else None), rng)
-            passed = stat["event_days"] >= DFC.GATE_MIN_EVENT_DAYS and all(
-                stat[f"d_{name}{form}"] and stat[f"d_{name}{form}"][2] < 0
-                for name in PROPER_SCORES for form in ROBUST_FORMS
+            primary = all(
+                stat[f"d_{PRIMARY_SCORE}{form}"]
+                and stat[f"d_{PRIMARY_SCORE}{form}"][2] < 0
+                for form in ROBUST_FORMS
+            )
+            guards = {
+                name: bool(stat[f"d_{name}"] and stat[f"d_{name}"][1] <= 0)
+                for name in GUARDRAIL_SCORES
+            }
+            stat["primary_pass"] = bool(primary)
+            stat["guardrails_pass"] = guards
+            passed = (
+                stat["event_days"] >= DFC.GATE_MIN_EVENT_DAYS
+                and primary and all(guards.values())
             )
             stat["verdict"] = "PASS" if passed else (
                 "INSUFFICIENT" if stat["event_days"] < DFC.GATE_MIN_EVENT_DAYS else "FAIL"

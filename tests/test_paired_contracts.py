@@ -107,7 +107,7 @@ PAIRED_CONTRACTS: tuple[tuple[str, Callable[[], Any], Callable[[], Any]], ...] =
         ),
     ),
     (
-        "The Brier tolerance thresholds the audit reports are the ones the "
+        "The guardrail margin (charter 240) the audit reports is the one the "
         "gate applies.  Duplicated to keep a cron audit out of the serving "
         "import graph, and duplicated constants that drift describe a gate "
         "nobody runs.",
@@ -243,26 +243,20 @@ def _reads_key(relative: str, anchor: str, needle: str) -> bool:
     return needle in source[start:start + 4000]
 
 
-def _gate_tolerances() -> tuple[float, float]:
+def _gate_tolerances() -> float:
     from bayes_basket_target import native_ensemble_oos as oos
 
-    return (
-        oos.BRIER_TOLERANCE_MAX_RELATIVE_LOSS,
-        oos.BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
-    )
+    return oos.GUARDRAIL_MAX_RELATIVE_LOSS
 
 
-def _audit_tolerances() -> tuple[float, float]:
+def _audit_tolerances() -> float:
     import sys
 
     if str(ROOT / "scripts") not in sys.path:
         sys.path.insert(0, str(ROOT / "scripts"))
     import audit_native_calibration_health as audit
 
-    return (
-        audit.BRIER_TOLERANCE_MAX_LOSS,
-        audit.BRIER_TOLERANCE_MIN_GAIN,
-    )
+    return audit.GUARDRAIL_MAX_LOSS
 
 
 class PairedContractTest(unittest.TestCase):

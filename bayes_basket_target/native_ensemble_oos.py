@@ -709,8 +709,8 @@ EPS = 1e-12
 # still stays rejected and keeps serving its last passing weights.
 #
 # Charter 211 (user ruling 2026-09-24): the model's only objective is the
-# discrete bucket distribution P(Y=k|X); RMSE and CRPS are diagnostics, not
-# targets.  The gate therefore reads the two proper scores of that
+# discrete bucket distribution P(Y=k|X); RMSE is a diagnostic, not a target
+# (charter 240 made the ladder CRPS a structural check again, below).  The gate therefore reads the two proper scores of that
 # distribution -- bucket Brier and the log score (NLL) -- and CRPS is still
 # computed and recorded on every evaluation but decides nothing.  Before
 # this the strict path was Brier-and-CRPS and the tolerance path demanded a
@@ -719,9 +719,17 @@ EPS = 1e-12
 # (docs/research/bucket_objective_20260924/measure_gate_flip.py): 481
 # REJECTED -> PASS, 393 PASS -> REJECTED; at the newest evaluation per key
 # 36 admitted and 21 withdrawn of 6,252 keys (0.9%).
-BRIER_TOLERANCE_MAX_RELATIVE_LOSS = 0.02
-BRIER_TOLERANCE_MIN_RELATIVE_GAIN = 0.05
-GATE_SCORING_RULE = "BRIER_LOGSCORE_V2"
+#
+# Charter 240 (user ruling 2026-10-01): the three proper scores are ranked,
+# not equal vetoes.  The log score is the primary judge and must beat
+# climatology; the ladder CRPS is the structural check and the bucket Brier
+# the guardrail, and each may lose to climatology by at most
+# ``GUARDRAIL_MAX_RELATIVE_LOSS`` -- "not significantly worse" on a mean of a
+# few days, which is all this gate reads.  The old tolerance path (Brier lost
+# by <= 2% only if the NLL gained >= 5%) is the special case this replaces:
+# a guardrail no longer has to be paid for with a margin on the primary.
+GUARDRAIL_MAX_RELATIVE_LOSS = 0.02
+GATE_SCORING_RULE = "LOGSCORE_PRIMARY_CRPS_BRIER_GUARD_V3"
 VALID_NATIVE_RUN_CYCLES = frozenset({
     "00Z",
     "06Z",
@@ -992,69 +1000,59 @@ def _cross_oos_gate(
     cross_metrics: Mapping[str, float],
     climate_metrics: Mapping[str, float],
 ) -> dict[str, Any]:
-    """Decide the gate and record which path decided it.
+    """Decide the gate and record which check decided it (charter 240).
 
-    Charter 211: the strict path beats climatology on bucket Brier and the
-    log score (NLL).  The tolerance path exists because Brier can be lost by
-    a rounding-scale margin on a candidate that is better everywhere else,
-    and it demands a real margin on the log score in exchange.  CRPS is
-    recorded beside both paths as a diagnostic and decides neither.  The
-    returned record is stored with the evaluation so a later review can
-    separate tolerance admissions from strict ones without re-deriving them.
+    Primary: the log score (NLL) below climatology's.  Structure: the ladder
+    CRPS no more than ``GUARDRAIL_MAX_RELATIVE_LOSS`` above climatology's.
+    Guardrail: the bucket Brier likewise.  Against a baseline at zero a
+    relative margin is meaningless, so there the candidate must simply not
+    exceed it.  The record names each check's reading so a later review can
+    tell a primary rejection from a guardrail one without re-deriving it.
     """
 
-    strict_pass = (
-        float(cross_metrics["brier"])
-        <= float(climate_metrics["brier"]) + EPS
-        and float(cross_metrics["nll"])
-        <= float(climate_metrics["nll"]) + EPS
-    )
-    climate_crps = float(climate_metrics.get("crps", 0.0))
-    crps_relative_gain = (
-        (climate_crps - float(cross_metrics.get("crps", climate_crps)))
-        / climate_crps
-        if climate_crps > EPS else None
-    )
-    gate: dict[str, Any] = {
-        "path": "STRICT" if strict_pass else "REJECTED",
-        "pass": strict_pass,
-        "scoring": GATE_SCORING_RULE,
-        "brier_tolerance_max_relative_loss": (
-            BRIER_TOLERANCE_MAX_RELATIVE_LOSS
-        ),
-        "tolerance_min_relative_gain": BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
-        # Diagnostic only (charter 211): never read by the verdict.
-        "crps_relative_gain": crps_relative_gain,
-    }
-    if strict_pass:
-        return gate
+    def _relative_loss(name: str) -> float | None:
+        if name not in cross_metrics or name not in climate_metrics:
+            return None
+        base = float(climate_metrics[name])
+        value = float(cross_metrics[name])
+        if not (math.isfinite(base) and math.isfinite(value)):
+            return None
+        if base <= EPS:
+            return 0.0 if value <= base + EPS else float("inf")
+        return (value - base) / base
 
-    climate_brier = float(climate_metrics["brier"])
+    nll = float(cross_metrics["nll"])
     climate_nll = float(climate_metrics["nll"])
-    if climate_brier <= EPS or climate_nll <= EPS:
-        # Relative margins are meaningless against a zero baseline, and a
-        # perfect climatology is not something to be admitted around.
-        gate["tolerance_available"] = False
-        return gate
-
-    brier_relative_loss = (
-        float(cross_metrics["brier"]) - climate_brier
-    ) / climate_brier
-    nll_relative_gain = (
-        climate_nll - float(cross_metrics["nll"])
-    ) / climate_nll
-    tolerance_pass = (
-        brier_relative_loss <= BRIER_TOLERANCE_MAX_RELATIVE_LOSS
-        and nll_relative_gain >= BRIER_TOLERANCE_MIN_RELATIVE_GAIN
+    primary = nll < climate_nll - EPS
+    crps_loss = _relative_loss("crps")
+    brier_loss = _relative_loss("brier")
+    crps_ok = crps_loss is not None and crps_loss <= GUARDRAIL_MAX_RELATIVE_LOSS
+    brier_ok = brier_loss is not None and brier_loss <= GUARDRAIL_MAX_RELATIVE_LOSS
+    passed = bool(primary and crps_ok and brier_ok)
+    path = (
+        "LOGSCORE_PRIMARY" if passed
+        else "REJECTED_PRIMARY" if not primary
+        else "REJECTED_CRPS_GUARD" if not crps_ok
+        else "REJECTED_BRIER_GUARD"
     )
-    gate.update({
-        "tolerance_available": True,
-        "brier_relative_loss": brier_relative_loss,
-        "nll_relative_gain": nll_relative_gain,
-        "path": "NLL_TOLERANCE" if tolerance_pass else "REJECTED",
-        "pass": tolerance_pass,
-    })
-    return gate
+
+    def _finite(value: float | None) -> float | None:
+        return value if value is not None and math.isfinite(value) else None
+
+    return {
+        "path": path,
+        "pass": passed,
+        "scoring": GATE_SCORING_RULE,
+        "guardrail_max_relative_loss": GUARDRAIL_MAX_RELATIVE_LOSS,
+        "nll_relative_gain": (
+            (climate_nll - nll) / climate_nll if climate_nll > EPS else None
+        ),
+        "crps_relative_loss": _finite(crps_loss),
+        "brier_relative_loss": _finite(brier_loss),
+        "primary_pass": bool(primary),
+        "crps_guard_pass": bool(crps_ok),
+        "brier_guard_pass": bool(brier_ok),
+    }
 
 
 # Charter 134 (七) (user ruling 2026-09-22, 「合成件（稳定池件）：让评估门稳下来」):

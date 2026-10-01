@@ -19,8 +19,7 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from audit_native_calibration_health import (  # noqa: E402
-    BRIER_TOLERANCE_MAX_LOSS,
-    BRIER_TOLERANCE_MIN_GAIN,
+    GUARDRAIL_MAX_LOSS,
     POINT_FORECAST_SYSTEM_IDS,
     check_calibration_regression,
     check_gate_binding_condition,
@@ -246,85 +245,57 @@ class GateConditionRatesTest(unittest.TestCase):
             )
         return conn
 
-    def test_only_contested_candidates_are_counted(self) -> None:
-        """The channel runs on every candidate that lost Brier (charter 211:
-        CRPS no longer selects); a strict pass is decided elsewhere."""
+    def test_the_guardrails_only_speak_to_primary_passes(self) -> None:
+        """Charter 240: the log score decides; CRPS and Brier constrain."""
 
         conn = self._conn_with([
-            (0.9, 1.1, 0.9),   # contested: lost Brier, wins NLL
-            (0.9, 0.9, 0.9),   # strict pass, not contested
-            (1.1, 1.1, 1.1),   # lost Brier and NLL: contested, rejected
+            # (crps, brier, nll) against climatology (1.0, 1.0, 1.0)
+            (0.90, 1.01, 0.90),   # primary pass, both guards inside 2%: admitted
+            (1.10, 0.90, 0.90),   # primary pass, CRPS 10% worse: CRPS guard
+            (0.90, 1.10, 0.90),   # primary pass, Brier 10% worse: Brier guard
+            (0.90, 0.90, 1.10),   # primary fails: no guard speaks
         ])
         rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")
-        self.assertEqual(rates["contested_count"], 2)
-        self.assertEqual(rates["admitted_share"], 0.0)
-
-    def test_each_condition_is_reported_separately(self) -> None:
-        """The point of the breakdown is to show which condition binds; the
-        CRPS share is a diagnostic (charter 211) and admits nothing."""
-
-        conn = self._conn_with([
-            # Brier loss inside tolerance, CRPS wins big, NLL loses.
-            (0.90, 1.01, 1.20),
-            (0.90, 1.01, 1.20),
-        ])
-        rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")
-        self.assertEqual(rates["brier_loss_within_tolerance_share"], 1.0)
-        self.assertEqual(rates["crps_gain_sufficient_share"], 1.0)
-        self.assertEqual(rates["nll_gain_sufficient_share"], 0.0)
-        self.assertEqual(rates["admitted_share"], 0.0)
-        self.assertEqual(rates["blocked_by_brier_alone_share"], 0.0)
-
-    def test_brier_alone_blocking_is_named_as_such(self) -> None:
-        conn = self._conn_with([
-            # NLL clears the margin (CRPS too, but it no longer counts); only
-            # the Brier loss is out.
-            (0.90, 1.30, 0.90),
-        ])
-        rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")
-        self.assertEqual(rates["blocked_by_brier_alone_share"], 1.0)
+        self.assertEqual(rates["candidate_count"], 4)
+        self.assertEqual(rates["primary_pass_count"], 3)
+        self.assertAlmostEqual(rates["admitted_share"], 0.25)
+        self.assertAlmostEqual(rates["blocked_by_crps_guard_share"], 1 / 3)
+        self.assertAlmostEqual(rates["blocked_by_brier_guard_share"], 1 / 3)
+        self.assertAlmostEqual(rates["blocked_by_guardrails_share"], 2 / 3)
 
     def test_a_thin_sample_raises_nothing(self) -> None:
         """A fortnight of weather is not a property of the gate."""
 
-        conn = self._conn_with([(0.90, 1.30, 0.90)])
+        conn = self._conn_with([(1.30, 1.30, 0.90)])
         rates = gate_condition_rates(conn, since="2026-01-01T00:00:00Z")
         self.assertEqual(check_gate_binding_condition(rates), [])
 
-    def test_it_alarms_only_once_brier_is_the_sole_gatekeeper(self) -> None:
+    def test_it_alarms_only_once_the_guardrails_decide(self) -> None:
         self.assertEqual(
             check_gate_binding_condition({
-                "contested_count": 500,
-                "blocked_by_brier_alone_share": 0.10,
+                "primary_pass_count": 500,
+                "blocked_by_guardrails_share": 0.10,
             }),
             [],
         )
         raised = check_gate_binding_condition({
-            "contested_count": 500,
-            "blocked_by_brier_alone_share": 0.80,
-            "nll_gain_sufficient_share": 0.9,
-            "median_brier_loss": 0.05,
-            "median_crps_gain": 0.12,
+            "primary_pass_count": 500,
+            "blocked_by_guardrails_share": 0.80,
+            "blocked_by_crps_guard_share": 0.5,
+            "blocked_by_brier_guard_share": 0.6,
         })
         self.assertEqual(len(raised), 1)
-        self.assertEqual(
-            raised[0]["check"],
-            "tolerance_channel_now_gated_by_brier_alone",
-        )
+        self.assertEqual(raised[0]["check"], "guardrails_now_decide_the_gate")
 
-    def test_the_thresholds_match_the_gate_that_actually_runs(self) -> None:
+    def test_the_margin_matches_the_gate_that_actually_runs(self) -> None:
         """Duplicated constants that drift describe a gate nobody runs."""
 
         from bayes_basket_target import native_ensemble_oos as oos
 
-        self.assertEqual(
-            BRIER_TOLERANCE_MAX_LOSS,
-            oos.BRIER_TOLERANCE_MAX_RELATIVE_LOSS,
-        )
-        self.assertEqual(
-            BRIER_TOLERANCE_MIN_GAIN,
-            oos.BRIER_TOLERANCE_MIN_RELATIVE_GAIN,
-        )
+        self.assertEqual(GUARDRAIL_MAX_LOSS, oos.GUARDRAIL_MAX_RELATIVE_LOSS)
+        a = {"crps": 0.9, "brier": 1.01, "nll": 0.9}
+        c = {"crps": 1.0, "brier": 1.0, "nll": 1.0}
+        self.assertTrue(oos._cross_oos_gate(a, c)["pass"])
 
 
 class MurphyDecompositionTest(unittest.TestCase):
