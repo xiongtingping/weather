@@ -271,3 +271,80 @@ def test_paired_reports_for_one_valid_time_collapse_like_settled_truth():
     rows, ok = module._deduplicate_prefix(conflicting)
     assert ok is False
     assert rows == []
+
+
+# --------------------------------------------------------------------------
+# 2026-10-01 (user: 「上线」): the packet had trained nothing since 09-01.
+# --------------------------------------------------------------------------
+
+
+def _afternoon_packet(root: dict[str, object], *, method: str) -> dict:
+    truths = [
+        _truth(20, committed="2026-07-20T15:00:00Z"),
+        _truth(21, committed="2026-07-21T15:00:00Z"),
+        _truth(22, committed="2026-07-22T15:00:00Z"),
+        _truth(25, committed="2026-07-25T15:00:00Z"),
+    ]
+    observations = [
+        _observation("1", valid_at="2026-07-25T02:00:00Z", committed_at="2026-07-25T02:05:00Z",
+                     temperature_c=33.0),
+        _observation("2", valid_at="2026-07-25T03:00:00Z", committed_at="2026-07-25T03:05:00Z",
+                     temperature_c=35.0),
+    ]
+    return build_training_packet(
+        truth_rows=truths, observation_rows=observations, probability_rows=[root],
+        station_id="RKPK", settlement_timezone="Asia/Seoul", local_time_bucket="AFTERNOON",
+        minimum_prior_truths=3, minimum_effective_sample_n=20.0,
+        decided_at_utc="2026-07-30T00:00:00Z", valid_from_utc="2026-07-30T00:00:00Z",
+        valid_until_utc="2027-07-30T00:00:00Z", generation=1, method=method,
+    )
+
+
+def test_the_physical_method_does_not_read_the_root_curve() -> None:
+    """Serving builds the physical path state with no curve; so does the packet.
+
+    A physical fold reading the curve failed every evening whose curve had run
+    out of future points (``future_temperature_curve_future_points_insufficient``).
+    """
+
+    root = _root()
+    lineage = json.loads(root["lineage_json"])
+    lineage["conditional_future_temperature_curve_json"] = "not a curve"
+    root["lineage_json"] = json.dumps(lineage)
+    packet = _afternoon_packet(root, method="physical")
+    assert len(packet["folds"]) == 1
+    assert packet["folds"][0]["root_checkpoint_id"] == "p0-root-25"
+    with pytest.raises(ValueError):
+        _afternoon_packet(root, method="hourly_curve")
+
+
+def test_lineage_references_are_put_back_before_the_packet_reads_them(tmp_path) -> None:
+    """Since 926dfa29 the curve is stored as ``@ref/<sha>``; json.loads of that
+    reference was the failure that left the packet without folds."""
+
+    import hashlib
+    import sqlite3
+
+    from bayes_basket_target.contracts import ContractError
+    from bayes_basket_target.materialization import LINEAGE_DOCUMENT_DDL
+
+    conn = sqlite3.connect(tmp_path / "ssot.db")
+    conn.execute(LINEAGE_DOCUMENT_DDL)
+    body = json.dumps({"points": [1, 2, 3]})
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    columns = [r[1] for r in conn.execute("PRAGMA table_info(basket_probability_lineage_document)")]
+    values = {"document_sha256": digest, "document": body}
+    values.update({c: "2026-10-01T00:00:00Z" for c in columns if c not in values})
+    conn.execute(
+        f"INSERT INTO basket_probability_lineage_document({','.join(values)})"
+        f" VALUES({','.join('?' * len(values))})", tuple(values.values()),
+    )
+    conn.commit()
+    ref = {"conditional_future_temperature_curve_json": f"@ref/{digest}", "kept": 1}
+    (row,) = packet_builder._rehydrated(conn, [{"lineage_json": json.dumps(ref)}])
+    assert json.loads(row["lineage_json"]) == {
+        "conditional_future_temperature_curve_json": body, "kept": 1,
+    }
+    missing = {"conditional_future_temperature_curve_json": "@ref/" + "0" * 64}
+    with pytest.raises(ContractError):
+        packet_builder._rehydrated(conn, [{"lineage_json": json.dumps(missing)}])

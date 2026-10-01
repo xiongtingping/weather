@@ -32,6 +32,10 @@ from bayes_basket_target.metar_trajectory import (
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     MINIMUM_EFFECTIVE_SAMPLE_N,
 )
+from bayes_basket_target.materialization import (
+    LINEAGE_DOCUMENT_REF_PREFIX,
+    rehydrate_lineage_documents,
+)
 from bayes_basket_target.resource_bounds import write_bounded_json
 from bayes_basket_target.truth_exclusions import is_excluded
 from bayes_basket_target.future_temperature_curve import (
@@ -380,7 +384,7 @@ def _read_probability_roots(
                 ROOTS_SQL + " ORDER BY event_date,decision_at_utc,checkpoint_id",
                 (station_id,),
             ).fetchall()
-            return [dict(row) for row in rows]
+            return _rehydrated(conn, [dict(row) for row in rows])
         counts = {str(day): int(n) for day, n in conn.execute(ROOT_COUNTS_SQL, (station_id,))}
         now = now_utc or _iso_utc(datetime.now(timezone.utc))
         frozen_through = (
@@ -421,8 +425,37 @@ def _read_probability_roots(
                            else _cached_rows(cache, station_id, day))
         finally:
             cache.close()
-    out.sort(key=_root_order)
-    return out
+        out.sort(key=_root_order)
+        return _rehydrated(conn, out)
+
+
+def _rehydrated(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each root's lineage with its ``@ref/`` documents put back.
+
+    Since 2026-09-01 (926dfa29) the big lineage bodies -- the conditional
+    future-temperature curve among them -- are stored once and referenced by
+    hash; this packet read the reference itself and failed to parse it, so
+    every bucket whose folds reached a curve failed and the night bucket
+    carried no fold (found 2026-10-01).  Production's own
+    ``rehydrate_lineage_documents`` puts them back; a missing body fails
+    closed there.  The cache keeps the references: the bodies stay in the
+    SSOT's document table.
+    """
+
+    prefix = LINEAGE_DOCUMENT_REF_PREFIX
+    for row in rows:
+        raw = row.get("lineage_json")
+        if not isinstance(raw, str) or prefix not in raw:
+            continue
+        try:
+            lineage = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(lineage, dict):
+            row["lineage_json"] = json.dumps(
+                rehydrate_lineage_documents(conn, lineage), sort_keys=True, ensure_ascii=False,
+            )
+    return rows
 
 
 CURVE_HISTORY_DIR = (
@@ -1077,8 +1110,14 @@ def build_training_packet(
                     ),
                 )
                 future_curve = None
-                future_curve_raw = lineage.get(
-                    "conditional_future_temperature_curve_json"
+                # Serving reads the curve only under the hourly-curve method
+                # (``metar_trajectory`` builds the path state with
+                # ``future_curve=None`` for the physical conditioner); a
+                # physical fold reading it anyway failed every evening fold
+                # whose curve had run out (2026-10-01).
+                future_curve_raw = (
+                    lineage.get("conditional_future_temperature_curve_json")
+                    if method != "physical" else None
                 )
                 if future_curve_raw:
                     future_curve = json.loads(str(future_curve_raw))
@@ -1176,17 +1215,18 @@ def build_training_packet(
                     root_probabilities=probabilities,
                     bucket_centers_c=centers,
                     future_curve=future_curve,
+                    # Serving binds the curve's root only when it reads a curve.
                     root_checkpoint_id=str(
-                        lineage.get(
+                        (lineage.get(
                             "conditional_future_temperature_curve_root_checkpoint_id"
-                        )
+                        ) if future_curve is not None else None)
                         or root.get("checkpoint_id")
                         or ""
                     ),
                     root_probability_sha256=str(
-                        lineage.get(
+                        (lineage.get(
                             "conditional_future_temperature_curve_root_probability_sha256"
-                        )
+                        ) if future_curve is not None else None)
                         or root.get("posterior_sha256")
                         or ""
                     ),

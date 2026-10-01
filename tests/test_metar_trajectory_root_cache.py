@@ -11,6 +11,7 @@ read lineage key, either way.
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import json
 import sqlite3
@@ -19,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from bayes_basket_target import ssot
+from bayes_basket_target.materialization import LINEAGE_DOCUMENT_DDL
 from tests.test_taf_likelihood_review_20260919 import _ddl
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,10 +36,20 @@ def _packet():
     return module
 
 
+CURVE_BODY = json.dumps({"points": []})
+CURVE_SHA = hashlib.sha256(CURVE_BODY.encode("utf-8")).hexdigest()
+
+
 def _store(tmp_path: Path) -> Path:
     path = tmp_path / "ssot.db"
     conn = sqlite3.connect(path)
     conn.execute(_ddl(ssot.PRODUCTION_TARGET_DDL, "basket_probability_envelope"))
+    # The curve is stored once and referenced (926dfa29); the packet puts it back.
+    conn.execute(LINEAGE_DOCUMENT_DDL)
+    conn.execute(
+        "INSERT INTO basket_probability_lineage_document VALUES(?,?,?)",
+        (CURVE_SHA, CURVE_BODY, "2026-09-01T00:00:00Z"),
+    )
     conn.commit()
     conn.close()
     return path
@@ -46,7 +58,7 @@ def _store(tmp_path: Path) -> Path:
 def _root(path: Path, n: int, day: str, stage: str = "P0", *, extra: dict | None = None) -> None:
     lineage = {
         "bucket_intervals_c_json": json.dumps({"20": [19.5, 20.5]}),
-        "conditional_future_temperature_curve_json": "@ref/" + "a" * 64,
+        "conditional_future_temperature_curve_json": "@ref/" + CURVE_SHA,
         "p0_root_checkpoint_id": f"cp-{n}",
         "unread_key": "x" * 500,
         **(extra or {}),
@@ -129,6 +141,10 @@ def test_the_cache_keeps_only_the_lineage_keys_the_packet_reads(tmp_path: Path) 
     packet._read_probability_roots(db, station_id="KLGA", cache_path=cache, now_utc=NOW)
     (row,) = packet._read_probability_roots(db, station_id="KLGA", cache_path=cache, now_utc=NOW)
     assert "unread_key" not in json.loads(row["lineage_json"])
+    # The cache keeps the reference; the read hands the packet the body.
+    stored = sqlite3.connect(cache).execute("SELECT body FROM blob WHERE body LIKE '%@ref/%'").fetchone()
+    assert stored is not None
+    assert json.loads(row["lineage_json"])["conditional_future_temperature_curve_json"] == CURVE_BODY
 
 
 def test_every_lineage_key_the_packet_reads_is_cached() -> None:
