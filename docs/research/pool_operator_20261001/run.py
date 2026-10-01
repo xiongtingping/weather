@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pool operators vs production linear pool, on codex's captured production packets.  See PROTOCOL.md."""
 from __future__ import annotations
-import json, gzip, glob, math, sys, time
+import json, gzip, glob, math, os, sys, time
 from collections import defaultdict
 from pathlib import Path
 import numpy as np
@@ -13,7 +13,7 @@ from bayes_basket_target.cross_consensus import bridged_cross_probability, distr
 from bayes_basket_target.center_width_store import _served_scores, _proper_score_gate
 CAP = ROOT / "tmp/production_fusion_trace_20261001_codex"; OUT = Path(__file__).resolve().parent
 LAMS = [round(0.55 + 0.025 * i, 3) for i in range(29)]
-EPS = 1e-3
+EPS = float(os.environ.get('POOL_EPS', '1e-3'))  # pre-registered 1e-3; other values are diagnostics only
 t0 = time.monotonic()
 
 def norm(p):
@@ -90,4 +90,6 @@ for name, pred in {"n<=3": lambda p: p["n"] <= 3, "n4_5": lambda p: 4 <= p["n"] 
     print(name, len(ssd), {arm: round(mean[arm][0] - mean["A0"][0], 4) for arm in mean}, flush=True)
 res["mean_scores_all"] = {arm: [float(np.mean([tabs[arm][s][i] for s in sds])) for i in range(3)] for arm in tabs}
 print("means", {k: [round(x, 4) for x in v] for k, v in res["mean_scores_all"].items()})
-(OUT / "results.json").write_text(json.dumps(res, indent=1, default=str)); print("DONE", round(time.monotonic() - t0))
+if "POOL_EPS" not in os.environ:
+    (OUT / "results.json").write_text(json.dumps(res, indent=1, default=str))
+print("DONE", round(time.monotonic() - t0))

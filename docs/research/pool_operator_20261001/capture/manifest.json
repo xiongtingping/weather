@@ -1,0 +1,325 @@
+{
+  "asof_utc": "2026-10-01T11:47:10.312339Z",
+  "source": "production-stored basket_probability_envelope",
+  "no_refitting": true,
+  "stations": [
+    "CYYZ",
+    "EDDM",
+    "EFHK",
+    "EGLC",
+    "EHAM",
+    "EPWA",
+    "FACT",
+    "KATL",
+    "KAUS",
+    "KBKF",
+    "KDAL",
+    "KHOU",
+    "KLAX",
+    "KLGA",
+    "KMIA",
+    "KORD",
+    "KSEA",
+    "KSFO",
+    "LEMD",
+    "LFPB",
+    "LIMC",
+    "LTAC",
+    "MMMX",
+    "MPMG",
+    "NZWN",
+    "OEJN",
+    "OPKC",
+    "RCSS",
+    "RJTT",
+    "RKPK",
+    "RKSI",
+    "RPLL",
+    "SAEZ",
+    "SBGR",
+    "VILK",
+    "WMKK",
+    "WSSS",
+    "ZBAA",
+    "ZGGG",
+    "ZGSZ",
+    "ZHHH",
+    "ZSPD",
+    "ZSQD",
+    "ZUCK",
+    "ZUUU"
+  ],
+  "selected_checkpoints": [
+    "earliest_P0",
+    "last_before_36h_to_settlement",
+    "last_before_local_day_start"
+  ],
+  "rows": {
+    "CYYZ": 24,
+    "EDDM": 23,
+    "EFHK": 23,
+    "EGLC": 23,
+    "EHAM": 23,
+    "EPWA": 23,
+    "FACT": 23,
+    "KATL": 24,
+    "KAUS": 24,
+    "KBKF": 24,
+    "KDAL": 24,
+    "KHOU": 24,
+    "KLAX": 25,
+    "KLGA": 24,
+    "KMIA": 24,
+    "KORD": 24,
+    "KSEA": 25,
+    "KSFO": 24,
+    "LEMD": 23,
+    "LFPB": 23,
+    "LIMC": 23,
+    "LTAC": 23,
+    "MMMX": 24,
+    "MPMG": 24,
+    "NZWN": 23,
+    "OEJN": 23,
+    "OPKC": 24,
+    "RCSS": 24,
+    "RJTT": 23,
+    "RKPK": 23,
+    "RKSI": 23,
+    "RPLL": 24,
+    "SAEZ": 24,
+    "SBGR": 24,
+    "VILK": 23,
+    "WMKK": 24,
+    "WSSS": 24,
+    "ZBAA": 24,
+    "ZGGG": 24,
+    "ZGSZ": 24,
+    "ZHHH": 24,
+    "ZSPD": 24,
+    "ZSQD": 24,
+    "ZUCK": 24,
+    "ZUUU": 24
+  },
+  "skips": {
+    "CYYZ": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "EDDM": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "EFHK": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "EGLC": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "EHAM": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "EPWA": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "FACT": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "KATL": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KAUS": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KBKF": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KDAL": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KHOU": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KLAX": {
+      "missing_production_components_or_width_receipt": 22
+    },
+    "KLGA": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KMIA": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KORD": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "KSEA": {
+      "missing_production_components_or_width_receipt": 22
+    },
+    "KSFO": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "LEMD": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "LFPB": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "LIMC": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "LTAC": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "MMMX": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "MPMG": {
+      "missing_production_components_or_width_receipt": 23
+    },
+    "NZWN": {
+      "missing_production_components_or_width_receipt": 25
+    },
+    "OEJN": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "OPKC": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "RCSS": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "RJTT": {
+      "missing_production_components_or_width_receipt": 25
+    },
+    "RKPK": {
+      "missing_production_components_or_width_receipt": 25
+    },
+    "RKSI": {
+      "missing_production_components_or_width_receipt": 25
+    },
+    "RPLL": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "SAEZ": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "SBGR": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "VILK": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "WMKK": {
+      "no_checkpoint": 3,
+      "missing_production_components_or_width_receipt": 21
+    },
+    "WSSS": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZBAA": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZGGG": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZGSZ": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZHHH": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZSPD": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZSQD": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZUCK": {
+      "missing_production_components_or_width_receipt": 24
+    },
+    "ZUUU": {
+      "missing_production_components_or_width_receipt": 24
+    }
+  },
+  "code_sha": {
+    "bayes_basket_target/native_ensemble_p0.py": "e58bf802c42abe11dd03f2f7126b425c12f78a8ab77de162344e8da800d3aa52",
+    "bayes_basket_target/cross_consensus.py": "1e9f3dd1d4e0f12b448efdd3301fa18205d0ccf34df016ea4c91b00c8492777d",
+    "bayes_basket_target/center_width_calibration.py": "06c8ec5808812f32034b6405ef0db09de3500f6d5dba6f8360f8522dee0a8d58",
+    "bayes_basket_target/served_shape.py": "506c2262148c02c4b857c6a950ae09246e719af49d01590026e9c2d3a382331c",
+    "bayes_basket_target/materialization.py": "70f0cbff56d0cd6198a98027cf714df142742b041eb49f8eab94fd068254c0ff"
+  },
+  "domains": {
+    "basket_probability_envelope": {
+      "stage": [
+        "P0",
+        "P0-M",
+        "P1"
+      ],
+      "state": [
+        "COMMITTED"
+      ],
+      "station_id": [
+        "CYYZ"
+      ]
+    },
+    "calibration_station_daily_high_truth": {
+      "source_lane": [
+        "AWC"
+      ],
+      "authority_scope": [
+        "FORMAL_NATIVE_ELIGIBLE"
+      ],
+      "qc_status": [
+        "ACCEPTED"
+      ]
+    }
+  },
+  "bindings": {
+    "CYYZ": "America/Toronto",
+    "EDDM": "Europe/Berlin",
+    "EFHK": "Europe/Helsinki",
+    "EGLC": "Europe/London",
+    "EHAM": "Europe/Amsterdam",
+    "EPWA": "Europe/Warsaw",
+    "FACT": "Africa/Johannesburg",
+    "KAUS": "America/Chicago",
+    "KBKF": "America/Denver",
+    "KDAL": "America/Chicago",
+    "KHOU": "America/Chicago",
+    "KLAX": "America/Los_Angeles",
+    "KORD": "America/Chicago",
+    "KSEA": "America/Los_Angeles",
+    "KSFO": "America/Los_Angeles",
+    "LEMD": "Europe/Madrid",
+    "LFPB": "Europe/Paris",
+    "LIMC": "Europe/Rome",
+    "LTAC": "Europe/Istanbul",
+    "MMMX": "America/Mexico_City",
+    "MPMG": "America/Panama",
+    "NZWN": "Pacific/Auckland",
+    "OEJN": "Asia/Riyadh",
+    "OPKC": "Asia/Karachi",
+    "RJTT": "Asia/Tokyo",
+    "RKPK": "Asia/Seoul",
+    "RKSI": "Asia/Seoul",
+    "RPLL": "Asia/Manila",
+    "SAEZ": "America/Argentina/Buenos_Aires",
+    "SBGR": "America/Sao_Paulo",
+    "VILK": "Asia/Kolkata",
+    "WMKK": "Asia/Kuala_Lumpur",
+    "WSSS": "Asia/Singapore",
+    "KATL": "America/New_York",
+    "KLGA": "America/New_York",
+    "KMIA": "America/New_York",
+    "RCSS": "Asia/Taipei",
+    "ZBAA": "Asia/Shanghai",
+    "ZGGG": "Asia/Shanghai",
+    "ZGSZ": "Asia/Shanghai",
+    "ZHHH": "Asia/Shanghai",
+    "ZSPD": "Asia/Shanghai",
+    "ZSQD": "Asia/Shanghai",
+    "ZUCK": "Asia/Shanghai",
+    "ZUUU": "Asia/Shanghai",
+    "LTFM": "Europe/Istanbul",
+    "UUWW": "Europe/Moscow",
+    "LLBG": "Asia/Jerusalem"
+  }
+}
