@@ -950,3 +950,99 @@ def test_a_killed_page_render_still_leaves_its_calls(paged, monkeypatch) -> None
     C._cached_section("slow_moving", _heavy_probe, None)
     specs = json.loads((paged / "sections" / C.RENDER_SECTION_SPECS).read_text())
     assert specs["slow_moving"]["collector"] == "_heavy_probe"
+
+
+# The hard deadline (2026-10-01: three runs in a row killed at 1,500 s on
+# every-run sections slowed tenfold by swap, nothing written, the whole board
+# frozen at the 10:54Z page for three hours).
+
+
+def test_an_every_run_section_keeps_its_last_value_but_is_still_never_paged(paged) -> None:
+    calls: list[str] = []
+    C._cached_section("regional", _collector(calls), None)
+    assert not (paged / "sections" / "regional.json").exists()
+    assert (paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME / "regional.json").exists()
+    C._SECTION_CACHE_LOG.clear()
+    C._cached_section("regional", _collector(calls), None)
+    assert calls == ["v", "v"], "before the deadline it is read every run"
+
+
+def test_past_the_deadline_an_every_run_section_serves_its_last_value_marked_overdue(paged, monkeypatch) -> None:
+    calls: list[str] = []
+    first = C._cached_section("regional", _collector(calls, "old"), None)
+    C._SECTION_CACHE_LOG.clear()
+    monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)
+    value = C._cached_section("regional", _collector(calls, "new"), None)
+    assert calls == ["old"], "past the deadline nothing more is read"
+    assert value == first
+    entry = C._SECTION_CACHE_LOG["regional"]
+    assert entry["stale"] is True and entry["stale_reason"] == "deadline"
+    alerts = C._render_deadline_alerts()
+    assert len(alerts) == 1 and alerts[0]["health"] == "amber" and "regional" in alerts[0]["note"]
+
+
+def test_an_every_run_read_in_hand_is_interrupted_at_the_deadline(paged, monkeypatch) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.set_progress_handler(C._render_yield_check, 1_000)
+    slow = {"on": False}
+
+    def members(connection):
+        if not slow["on"]:
+            return {"value": "old"}
+        monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)  # passes mid-read
+        return {"value": _long_count(connection)}
+
+    C._cached_section("members", members, conn)
+    C._SECTION_CACHE_LOG.clear()
+    slow["on"] = True
+    value = C._cached_section("members", members, conn)
+    assert value["value"] == "old"
+    assert C._SECTION_CACHE_LOG["members"]["stale_reason"] == "deadline"
+    assert C._PAGED_RUN["armed"] is False
+
+
+def test_past_the_deadline_with_no_last_value_an_every_run_section_is_still_read(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)
+    calls: list[str] = []
+    # No interrupt without a progress handler on this stand-in connection.
+    C._cached_section("members", _collector(calls), None)
+    assert calls == ["v"]
+
+
+def test_a_last_value_is_never_served_across_a_code_change(paged, monkeypatch) -> None:
+    C._cached_section("members", _collector([], "old"), None)
+    C._SECTION_CACHE_LOG.clear()
+    monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)
+    calls: list[str] = []
+
+    def members(conn):  # another body, another fingerprint
+        calls.append("edited")
+        return {"value": "edited"}
+
+    assert C._cached_section("members", members, None) == {"value": "edited"}
+    assert calls == ["edited"]
+
+
+def test_past_the_deadline_a_page_backed_section_serves_its_page(paged, monkeypatch) -> None:
+    calls: list[str] = []
+    C._cached_section("slow_moving", _collector(calls, "old"), None)
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    C._SECTION_CACHE_LOG.clear()
+    monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)
+    C._cached_section("slow_moving", _collector(calls, "new"), None)
+    assert calls == ["old"]
+    assert C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"] == "deadline"
+
+
+def test_the_research_render_never_latches_the_deadline(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)
+    C._PAGED_RUN["force"] = "slow_moving"
+    assert C._paged_past_deadline() is False
+
+
+def test_the_hard_deadline_sits_between_the_soft_budget_and_the_kill() -> None:
+    sweep = (ROOT / "scripts" / "dashboard_render_sweep.sh").read_text(encoding="utf-8")
+    kill = int(sweep.split('PM_DASHBOARD_RENDER_TIMEOUT_SEC:-', 1)[1].split("}", 1)[0])
+    assert C.RENDER_SOFT_BUDGET_SEC < C.RENDER_HARD_DEADLINE_SEC <= kill - 120

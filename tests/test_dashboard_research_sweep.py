@@ -44,10 +44,12 @@ def _project(tmp_path: Path) -> Path:
     return project
 
 
-def _run(project: Path, pattern: str) -> subprocess.CompletedProcess[str]:
+def _run(project: Path, pattern: str, wait_sec: int = 1) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     env["TMPDIR"] = str(project / "locks")
     env["PM_DASHBOARD_PAGE_RENDER_PATTERN"] = pattern
+    env["PM_DASHBOARD_RESEARCH_WAIT_SEC"] = str(wait_sec)
+    env["PM_DASHBOARD_RESEARCH_WAIT_POLL_SEC"] = "1"
     (project / "locks").mkdir(exist_ok=True)
     return subprocess.run(
         ["bash", str(project / "scripts" / SWEEP.name)],
@@ -88,3 +90,22 @@ def test_it_does_not_start_beside_the_page_render(tmp_path: Path) -> None:
         page_render.wait()
     assert result.returncode == 0 and "the page render is running" in result.stdout
     assert not (project / "data" / "called").exists()
+
+
+def test_it_waits_out_a_page_render_that_finishes(tmp_path: Path) -> None:
+    """2026-10-01: seven of fourteen hourly starts were skipped because they
+    landed inside a page render, and the pages only this render refreshes
+    sat 10-25 hours old on the board."""
+
+    project = _project(tmp_path)
+    marker = f"fake-page-render-{os.getpid()}-{time.time_ns()}"
+    page_render = subprocess.Popen(["bash", "-c", f"exec -a {marker} sleep 2"])
+    try:
+        time.sleep(0.3)
+        result = _run(project, marker, wait_sec=30)
+    finally:
+        page_render.kill()
+        page_render.wait()
+    assert result.returncode == 0, result.stderr
+    assert "waited" in result.stdout and "for the page render to finish" in result.stdout
+    assert (project / "data" / "called").read_text() == "--refresh-research"

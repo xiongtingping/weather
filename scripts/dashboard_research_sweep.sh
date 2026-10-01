@@ -16,8 +16,9 @@
 # section's page and nothing else -- the next page render serves it.
 #
 # It does not start beside the page render: two readers of the store at once
-# are what made the page render miss its deadline on 2026-09-24 10:24Z.  A
-# skipped start exits 0; the next hour is the retry.
+# are what made the page render miss its deadline on 2026-09-24 10:24Z.  It
+# waits for a running page render to finish (up to 25 minutes) and starts in
+# the gap after it; a start that cannot wait it out exits 0.
 
 set -euo pipefail
 
@@ -34,9 +35,26 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --html-out}"
-if pgrep -f "$PAGE_RENDER_PATTERN" >/dev/null 2>&1; then
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render skipped: the page render is running"
-  exit 0
+# Wait the page render out rather than skip the hour.  The page render runs
+# 17-25 minutes and restarts 30 minutes after it ends, so an hourly start
+# lands inside one about half the time: on 2026-10-01 seven of fourteen
+# research starts were skipped, and the pages only this render refreshes
+# (member_depth, run_cadence, certificate_authority, ssot_capacity) sat 10-25
+# hours old on the board.  Its end opens a 30-minute gap with no page
+# render; that gap is this render's.
+WAIT_SEC="${PM_DASHBOARD_RESEARCH_WAIT_SEC:-1500}"
+POLL_SEC="${PM_DASHBOARD_RESEARCH_WAIT_POLL_SEC:-15}"
+waited=0
+while pgrep -f "$PAGE_RENDER_PATTERN" >/dev/null 2>&1; do
+  if [ "$waited" -ge "$WAIT_SEC" ]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render skipped: the page render is running (waited ${waited}s)"
+    exit 0
+  fi
+  sleep "$POLL_SEC"
+  waited=$((waited + POLL_SEC))
+done
+if [ "$waited" -gt 0 ]; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render waited ${waited}s for the page render to finish"
 fi
 # The same start line as the page render (the resident's WAL maintenance line).
 WAL="data/bayes_basket_target_ssot.db-wal"

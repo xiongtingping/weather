@@ -14881,6 +14881,22 @@ PAGED_SECTION_TTL_SEC = 1800
 RENDER_SOFT_BUDGET_SEC = float(
     os.environ.get("PM_DASHBOARD_RENDER_SOFT_BUDGET_SEC", "1200")
 )
+#: When the run stops reading altogether, every-run sections included: the
+#: read in hand is interrupted and each section still due is served from its
+#: last value, marked overdue, so the page is written before the sweep's
+#: 1,500 s kill.  The soft budget bounds only page-backed sections; the
+#: every-run ones read on past it, and on a machine deep in swap one of them
+#: can take ten times its usual cost -- 2026-10-01 11:25Z, 12:20Z and 13:15Z
+#: were all killed at 1,500 s (regional 792 s and 691 s against its usual
+#: 20-60 s, members 340 s), wrote nothing, and the whole board kept the
+#: 10:54Z page: every lamp and every section frozen for three hours.
+RENDER_HARD_DEADLINE_SEC = float(
+    os.environ.get("PM_DASHBOARD_RENDER_HARD_DEADLINE_SEC", "1380")
+)
+#: Where an every-run section's last value is kept -- served only once the
+#: run is past ``RENDER_HARD_DEADLINE_SEC``, always marked overdue, never as
+#: this run's answer.
+EVERY_RUN_LAST_DIR_NAME = "_every_run_last"
 #: The resident's maintenance line (TARGET_SSOT_WARN_WAL_BYTES): above it
 #: the resident tries to truncate the WAL, and a reader is what stops it.
 #: No section STARTS a read above it (and the sweep does not start at all).
@@ -15036,6 +15052,91 @@ def _paged_elapsed() -> float:
     return time.monotonic() - float(_PAGED_RUN["started"])
 
 
+def _render_deadline_alerts() -> list[dict[str, Any]]:
+    """An every-run section this run served from its last value: the lamps
+    it feeds are that value's age, not now, and the banner says so."""
+
+    if not _PAGED_RUN.get("deadline_hit"):
+        return []
+    late = [
+        name for name, reason in (_PAGED_RUN.get("stale") or {}).items()
+        if reason == "deadline" and name in RENDER_EVERY_RUN_SECTIONS
+    ]
+    if not late:
+        return []
+    ages = {
+        name: round(float((_SECTION_CACHE_LOG.get(name) or {}).get("age_sec") or 0) / 60)
+        for name in late
+    }
+    return [{
+        "health": "amber",
+        "label": "看板本轮超时",
+        "note": f"渲染到 {RENDER_HARD_DEADLINE_SEC:.0f} 秒截止，这些区块沿用上一轮："
+        + "、".join(f"{name} {ages[name]} 分钟前" for name in sorted(late)),
+    }]
+
+
+def _paged_past_deadline() -> bool:
+    """Past ``RENDER_HARD_DEADLINE_SEC``; latched, so every later section
+    sees the same answer.  The research render (``force``) has its own
+    launchd timeout and no page to write, so it never latches."""
+
+    if not _PAGED_RUN or _PAGED_RUN.get("force"):
+        return False
+    if not _PAGED_RUN.get("deadline_hit") and _paged_elapsed() >= RENDER_HARD_DEADLINE_SEC:
+        _PAGED_RUN["deadline_hit"] = True
+    return bool(_PAGED_RUN.get("deadline_hit"))
+
+
+def _every_run_last_path(name: str) -> Path:
+    return SECTION_CACHE_DIR / EVERY_RUN_LAST_DIR_NAME / f"{name}.json"
+
+
+def _save_every_run_last(name: str, collector: Any, value: Any) -> None:
+    """Keep an every-run section's value for a run that hits the deadline."""
+
+    path = _every_run_last_path(name)
+    try:
+        text = json.dumps(
+            {
+                "schema": "dashboard_every_run_last_v1",
+                "section": name,
+                "code_fingerprint": _section_fingerprint(collector, ""),
+                "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
+                "value": value,
+            },
+            ensure_ascii=False,
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(path)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _serve_every_run_last(name: str, collector: Any) -> tuple[bool, Any]:
+    """An every-run section's last value, past the deadline, marked overdue.
+
+    ``(False, None)`` when there is none from this code: never across a code
+    change, as for pages.
+    """
+
+    try:
+        blob = json.loads(_every_run_last_path(name).read_text(encoding="utf-8"))
+        if blob.get("code_fingerprint") != _section_fingerprint(collector, ""):
+            return False, None
+        stamp = str(blob["computed_at_utc"])
+        age = (
+            _now() - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        ).total_seconds()
+        if "value" not in blob:
+            return False, None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False, None
+    return True, _serve_stale_page(name, blob, 0, age, "deadline")
+
+
 def _render_wal_bytes() -> int:
     try:
         return int(Path(_PAGED_RUN["wal"]).stat().st_size)
@@ -15119,6 +15220,9 @@ def _render_yield_check() -> int:
 
     if not _PAGED_RUN or not _PAGED_RUN.get("armed"):
         return 0
+    if _paged_past_deadline():
+        _PAGED_RUN["yielded"] = True
+        return 1
     now = time.monotonic()
     if now - float(_PAGED_RUN["wal_checked"]) >= 1.0:
         _PAGED_RUN["wal_checked"] = now
@@ -15490,6 +15594,10 @@ def _cached_section_value(
         # minutes on 2026-09-09 with no record of where the other minutes
         # went.  A section without a lifetime is not a section without a
         # price.
+        if paged and _paged_past_deadline():
+            served, value = _serve_every_run_last(name, collector)
+            if served:
+                return value
         if paged:
             blocker = _await_production_gap(
                 name, LIVE_SECTION_GAP_CAP_SEC, RENDER_YIELD_WAL_BYTES
@@ -15506,6 +15614,10 @@ def _cached_section_value(
             value = collector(*args, **kwargs)
         except sqlite3.OperationalError as exc:
             if paged and _PAGED_RUN["yielded"]:
+                if _paged_past_deadline():
+                    served, value = _serve_every_run_last(name, collector)
+                    if served:
+                        return value
                 raise RenderYielded(f"{name}: interrupted, WAL past the line") from exc
             raise
         finally:
@@ -15514,6 +15626,10 @@ def _cached_section_value(
         if paged and _PAGED_RUN["yielded"]:
             # Caught the interrupt itself and returned what it had: a lamp
             # or a banner input read short must not be shown as fresh.
+            if _paged_past_deadline():
+                served, value = _serve_every_run_last(name, collector)
+                if served:
+                    return value
             raise RenderYielded(f"{name}: interrupted, WAL past the line")
         _SECTION_CACHE_LOG[name] = {
             "build_sec": round(time.perf_counter() - started, 1),
@@ -15523,6 +15639,7 @@ def _cached_section_value(
         _trace_slow_section(name, _SECTION_CACHE_LOG[name]["build_sec"])
         if paged and name in RENDER_EVERY_RUN_SECTIONS:
             _save_every_run_costs()
+            _save_every_run_last(name, collector, value)
         return value
     fingerprint = _section_fingerprint(collector, _salt)
     # The code alone, without the declared inputs: what decides whether an
@@ -15578,6 +15695,11 @@ def _cached_section_value(
                 return _serve_stale_page(name, page, ttl, page_age, "research lane", page_inputs_moved)
             if _unavailable is not _NO_UNAVAILABLE:
                 return _serve_unavailable(name, _unavailable, "research lane")
+        if _paged_past_deadline():
+            if page is not None:
+                return _serve_stale_page(name, page, ttl, page_age, "deadline", page_inputs_moved)
+            if _unavailable is not _NO_UNAVAILABLE:
+                return _serve_unavailable(name, _unavailable, "deadline")
         # Room left for this section: the soft budget, less what the
         # every-run sections still to come cost last time.
         remaining = (
@@ -16064,6 +16186,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # decision reads is fresh -- the two things that failed on
         # 2026-09-21/22 while every row above stayed green.
         + _supply_watch_alerts(db=db)
+        + _render_deadline_alerts()
     )
     overall = (
         "red" if any(a["health"] == "red" for a in alerts)
