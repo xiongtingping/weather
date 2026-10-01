@@ -19,7 +19,7 @@ So membership is a slow variable and weather is a fast one:
   A decision that matches no view exactly serves, among the views its runs
   fit equally well, the broadest one, then the one keeping the most pool
   weight -- never the most recently minted
-  (``native_ensemble_p0._activation_rank``, charter 233);
+  (``native_ensemble_p0._activation_rank``, charter 236);
 * the mixture keeps every member's spread and the disagreement between their
   centres -- nothing here narrows a distribution by dropping a dissenter;
 * skill still divides the weight, shrunk toward a family-balanced baseline

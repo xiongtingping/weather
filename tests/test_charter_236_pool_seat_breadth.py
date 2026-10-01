@@ -1,4 +1,4 @@
-"""Charter 233: pool seats rank breadth, then the pool weight they keep, before the mint clock.
+"""Charter 236: pool seats rank breadth, then the pool weight they keep, before the mint clock.
 
 When no pool seat matches the packet exactly -- a system the packet carries
 holds no certificate at the scope yet, or the exact view is dark under the
@@ -193,15 +193,15 @@ def test_the_compile_hands_the_read_weights_to_the_rank() -> None:
     assert "pool_retained_weights(" in source.split("compatible_activations.sort(", 1)[0]
 
 
-def test_charter_233_names_the_rule_the_code_serves() -> None:
+def test_charter_236_names_the_rule_the_code_serves() -> None:
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
-    clause = charter.split("\n233. ", 1)[1]
+    clause = charter.split("\n236. ", 1)[1]
     assert "占号" not in clause.split("\n", 1)[0]
     assert "席位数" in clause and "保留权重" in clause
     assert "_activation_rank" in clause and "pool_retained_weights" in clause
     assert "P0 v20 / P0-M v22 / P1 v31" in clause
     assert "裁决人：用户" in clause
     clause_134 = charter.split("\n134. ", 1)[1].split("\n135. ", 1)[0]
-    assert "第 233 条补记" in clause_134
+    assert "第 236 条补记" in clause_134
     clause_204 = charter.split("\n204. ", 1)[1].split("\n205. ", 1)[0]
-    assert "第 233 条更正" in clause_204
+    assert "第 236 条更正" in clause_204

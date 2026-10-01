@@ -300,7 +300,7 @@ def test_a_fresh_seat_outranks_a_pool_seat_that_would_leave_p0_stale() -> None:
 
 
 def test_the_compile_ranks_pool_seats_on_their_own_certified_weights(store, monkeypatch) -> None:
-    """Charter 233: each compatible pool seat's certified weights reach the rank.
+    """Charter 236: each compatible pool seat's certified weights reach the rank.
 
     The compile reads them once from the selection evidence and hands the
     pool weight every seat keeps to ``_activation_rank``, which ranks it
