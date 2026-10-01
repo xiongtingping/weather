@@ -1557,6 +1557,9 @@ def capture_official_native_forward(
     }
 
 
+# How old a followed run may be and still be read again for stations listed
+# after its first read: DWD serves ICON objects for about a day.
+FOLLOW_SUPPLEMENT_MAX_RUN_AGE = timedelta(hours=24)
 # What a follow file must agree on with a supplement before the two are one
 # run's archive.  Any of these differing means the supplement is not the same
 # run read the same way, and the file keeps what it had.
@@ -1753,6 +1756,30 @@ def capture_follow_runs(
         for lead_days, cycle in follow_run.event_follow_runs(family):
             if (family, int(lead_days), int(cycle)) not in targets:
                 targets.append((family, int(lead_days), int(cycle)))
+    # The follow files this date already holds are revisited as well, for the
+    # stations listed since their first read.  A rung names only its newest
+    # followed cycle, so once ICON's 06Z lands its 00Z file is never a rung
+    # target again -- 2026-10-01's 10-03 00Z kept 4 stations after the fix
+    # above went in.  Bounded to runs young enough that every publisher still
+    # serves them (DWD keeps about a day); a file with nothing missing costs a
+    # read of the file.
+    for family in dict.fromkeys(
+        (*follow_run.FOLLOW_FAMILIES, *follow_run.EVENT_RUN_FAMILIES)
+    ):
+        for run_init, held_path in follow_run.follow_archive_paths(
+            root, family, event_date
+        ):
+            if (
+                not held_path.is_file()
+                or now - run_init > FOLLOW_SUPPLEMENT_MAX_RUN_AGE
+            ):
+                continue
+            lead_days = (
+                date.fromisoformat(str(event_date)) - run_init.date()
+            ).days
+            key = (family, int(lead_days), int(run_init.hour))
+            if key not in targets:
+                targets.append(key)
     seals = {
         follow_run.ICON_FAMILY: icon_follow_forecast_hours,
         follow_run.ECCC_FAMILY: eccc_follow_forecast_hours,

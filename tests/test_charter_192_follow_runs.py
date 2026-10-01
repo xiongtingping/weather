@@ -1424,3 +1424,53 @@ def test_a_retained_follow_file_reads_only_the_stations_listed_since(monkeypatch
         o for o in again["outcomes"]
         if o["family"] == follow_run.ICON_FAMILY and o["path"] == path.name
     )["state"] == "RETAINED"
+
+
+def test_an_older_follow_file_of_the_date_is_revisited_once_a_newer_cycle_leads(monkeypatch, tmp_path) -> None:
+    # The rung now names 18Z; the 12Z file is no rung target any more but
+    # still lacks a station listed since its read.
+    _install_station_registry(monkeypatch)
+    rows = _registry()["rows"]
+    monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: {"rows": rows})
+    listed = sorted({str(row["station_id"]) for row in rows})
+    asked: list[tuple[int, list[str]]] = []
+
+    def fake_icon(**kw):
+        stations = [s["station_id"] for s in kw["station_scopes"]]
+        asked.append((kw["run_cycle_hour"], stations))
+        if kw["run_cycle_hour"] != 12:
+            raise RuntimeError("HTTPStatusError:404")
+        return _follow_archive(stations, kw["archive_query_at_utc"], receipt="b")
+
+    monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
+    stop = lambda **_kw: (_ for _ in ()).throw(RuntimeError("HTTPStatusError:404"))  # noqa: E731
+    monkeypatch.setattr(capture, "capture_geps_station_days", stop)
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", stop)
+    _no_ai_network(monkeypatch)
+    path = follow_run.follow_archive_path(tmp_path, follow_run.ICON_FAMILY, DAY, 1, 12)
+    path.write_text(json.dumps(
+        _follow_archive(listed[:1], "2026-08-01T03:00:00Z", receipt="a")
+    ), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+    receipt = capture.capture_follow_runs(
+        registry_path=registry_path, event_date=DAY, rungs=[(1, 18)],
+        capture_root=tmp_path, timeout_seconds=30.0,
+        as_of_utc="2026-08-01T05:30:00Z",
+    )
+    assert (12, listed[1:]) in asked
+    assert next(
+        o for o in receipt["outcomes"] if o["path"] == path.name
+    )["state"] == "SUPPLEMENTED"
+    # past the age bound the file is left as it is
+    asked.clear()
+    path.write_text(json.dumps(
+        _follow_archive(listed[:1], "2026-08-01T03:00:00Z", receipt="a")
+    ), encoding="utf-8")
+    later = capture.capture_follow_runs(
+        registry_path=registry_path, event_date=DAY, rungs=[(1, 18)],
+        capture_root=tmp_path, timeout_seconds=30.0,
+        as_of_utc="2026-08-01T13:00:00Z",
+    )
+    assert all(cycle != 12 for cycle, _ in asked)
+    assert all(o["path"] != path.name for o in later["outcomes"])
