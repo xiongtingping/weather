@@ -1299,6 +1299,113 @@ def collect_run_cadence(
     return runs
 
 
+#: How far back the every-run read of recent runs looks.  The cadence read
+#: above walks six days of member rows (58 s on 2026-10-01) and so lives on a
+#: page; served from that page when production leaves no gap it was 9.4 h old
+#: that afternoon, the newest run of every family was missing from it, and
+#: the 发布时间 table printed 「—」 for every global model's arrival.  Thirty-six
+#: hours covers every run an open day can still be served from.
+RECENT_RUNS_WINDOW_HOURS = 36
+#: Per (run, target day): stations, and the first and last row's rowid --
+#: rows land in capture order, so the first row's ``archive_query_at_utc`` is
+#: the run's arrival for that day and the last row's is its newest top-up.
+#: A covering range on ``calibration_native_member_skill_idx`` (1.7 s for six
+#: families on 2026-10-01); only the two rowids per group are looked up.
+RECENT_RUNS_SQL = (
+    "SELECT native_run_init_utc, target_local_date,"
+    " COUNT(DISTINCT station_id), MIN(rowid), MAX(rowid)"
+    " FROM calibration_native_ensemble_historical_member_run"
+    " INDEXED BY calibration_native_member_skill_idx"
+    " WHERE ensemble_system_id=? AND transport_provider_id=?"
+    " AND qc_status IN ('ACCEPTED','QUARANTINED')"
+    " AND target_local_date>=? AND native_run_init_utc>=?"
+    " GROUP BY native_run_init_utc, target_local_date"
+)
+
+
+def collect_recent_runs(
+    conn: sqlite3.Connection,
+) -> dict[str, list[dict[str, Any]]]:
+    """The last day and a half of runs per family, read every render.
+
+    Same row shape as ``collect_run_cadence`` plus ``days``: per target day
+    the run was read for, how many stations it holds.  A run read for a day
+    only for the stations listed at the time shows here as the short count
+    it is (ICON's 10-03 00Z held 4 of 44 until 2026-10-01 13:33Z).
+    """
+
+    since = _now() - timedelta(hours=RECENT_RUNS_WINDOW_HOURS)
+    since_run = since.strftime("%Y-%m-%dT%H:%M:%SZ")
+    since_day = since.date().isoformat()
+    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    rowids: list[int] = []
+    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
+        runs: dict[str, dict[str, Any]] = {}
+        for run, day, stations, first_id, last_id in conn.execute(
+            RECENT_RUNS_SQL, (system_id, transport, since_day, since_run)
+        ):
+            entry = runs.setdefault(str(run), {"days": {}, "first": [], "last": []})
+            entry["days"][str(day)] = int(stations)
+            entry["first"].append(int(first_id))
+            entry["last"].append(int(last_id))
+            rowids.extend((int(first_id), int(last_id)))
+        grouped[system_id] = runs
+    query_at: dict[int, str] = {}
+    for start in range(0, len(rowids), 500):
+        chunk = rowids[start:start + 500]
+        query_at.update(
+            (int(rowid), str(at))
+            for rowid, at in conn.execute(
+                "SELECT rowid, archive_query_at_utc"
+                " FROM calibration_native_ensemble_historical_member_run"
+                f" WHERE rowid IN ({','.join('?' * len(chunk))})",
+                chunk,
+            )
+        )
+    out: dict[str, list[dict[str, Any]]] = {}
+    for system_id, runs in grouped.items():
+        rows = []
+        for run in sorted(runs, reverse=True):
+            entry = runs[run]
+            firsts = [query_at[i] for i in entry["first"] if i in query_at]
+            lasts = [query_at[i] for i in entry["last"] if i in query_at]
+            capture = min(firsts) if firsts else None
+            rows.append({
+                "run_utc": run,
+                "stations": max(entry["days"].values()),
+                "capture_utc": capture,
+                "last_capture_utc": max(lasts) if lasts else None,
+                "run_age_hours": _age_hours(run),
+                "capture_age_hours": _age_hours(capture),
+                "days": dict(sorted(entry["days"].items())),
+            })
+        out[system_id] = rows
+    return out
+
+
+def _merge_recent_runs(
+    cadence: Mapping[str, list[dict[str, Any]]],
+    recent: Mapping[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """The paged cadence with its last day and a half replaced by a fresh read.
+
+    A run in both is taken from the fresh read; older runs keep the page's
+    rows, which only feed the cycle and delay medians.
+    """
+
+    merged: dict[str, list[dict[str, Any]]] = {}
+    for system_id in set(cadence) | set(recent):
+        fresh = list(recent.get(system_id) or [])
+        seen = {row["run_utc"] for row in fresh}
+        rows = fresh + [
+            row for row in cadence.get(system_id) or []
+            if row.get("run_utc") not in seen
+        ]
+        rows.sort(key=lambda row: str(row.get("run_utc") or ""), reverse=True)
+        merged[system_id] = rows
+    return merged
+
+
 def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Per family: how deep its training history is, and how many seats it won.
 
@@ -1600,7 +1707,12 @@ def collect_member_admission(
             near = day <= near_floor
             if info["stations"] and seated_n * 2 < info["stations"]:
                 flag = "absent"
-                health = "red" if near else "green"
+                # The far day's own contract run (ICON/ECCC D-2 12Z) lands in
+                # the evening, and only certified earlier runs seat before it
+                # -- so short there is expected for part of the day, but not
+                # invisible: 2026-10-01 audit, 9 in 10 P0s 48-60 h out lacked
+                # ECCC or ICON while this lamp read green.
+                health = "red" if near else "amber"
                 note = f"{seated_n}/{info['stations']} 站的 P0 里有这家"
             elif captured and served and captured > served and (
                 captured_age is None
@@ -1609,6 +1721,14 @@ def collect_member_admission(
                 flag = "captured_not_seated"
                 health = "amber" if near else "green"
                 note = "这一天已采到更新的一轮，P0 还没用上"
+            elif info["stations"] and seated_n * 10 < info["stations"] * 9:
+                # 2026-10-01 14Z: AIGEFS, ECCC and ICON each sat in 30-31 of
+                # the 45 D+1 P0s and every lamp read green -- only "fewer
+                # than half" was ever lit.  Same-day runs that cannot cover a
+                # station's started day cost two or three stations, not ten.
+                flag = "short"
+                health = "amber"
+                note = f"{seated_n}/{info['stations']} 站的 P0 里有这家"
             elif served and nearer_newest and served < nearer_newest:
                 flag = "day_behind"
                 health = "amber" if near else "green"
@@ -14832,6 +14952,10 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "regional", "taf_board",
     # Everything the banner's light is derived from.
     "members", "chain", "truth_materialization",
+    # What each open day's P0 seats, and the runs behind it: a page of them
+    # 10.7 h and 9.4 h old on 2026-10-01 left the 入围 lamps on the night
+    # before and the 发布时间 arrivals blank.  2.7 s and 1.7 s to read.
+    "member_admission", "recent_runs",
     "delta_v2_authority",
     # The live book: what the page is opened for mid-session.
     "live_readiness", "live_selection", "live_days", "live_money",
@@ -15844,11 +15968,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     _SECTION_CACHE_LOG.clear()
     _SECTION_CACHE_VALUES.clear()
     cadence = _cached_section("run_cadence", collect_run_cadence, conn)
+    recent_runs = _cached_section("recent_runs", collect_recent_runs, conn)
     member_depth = _cached_section(
         "member_depth", collect_member_depth, conn, _unavailable={}
     )
     members = _cached_section(
-        "members", collect_members, conn, cadence, member_depth
+        "members", collect_members, conn,
+        _merge_recent_runs(cadence, recent_runs), member_depth,
     )
     member_admission = _cached_section(
         "member_admission", collect_member_admission, conn, members
@@ -16208,6 +16334,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         },
         "chain_volume": chain_volume,
         "member_admission": member_admission,
+        "recent_runs": recent_runs,
         "synoptic_cooling": synoptic_cooling,
         "single_system_width": single_system_width,
         "consensus_bridge": consensus_bridge,
@@ -17291,7 +17418,16 @@ function head(){
           + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
       }
     })();
-    return O.banner + rendered[0] + cycle + sweeps + rendered[1] + published
+    // The run each open day's P0 actually seats, per family, right under the
+    // lamps that only say the newest run landed.
+    const runHealth = (() => {
+      try { return modelRunHealth(); }
+      catch (err) {
+        return `<div class="lampdeck"><span class="lampcap">模型 run 采集健康度</span>`
+          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
+      }
+    })();
+    return O.banner + rendered[0] + cycle + sweeps + rendered[1] + runHealth + published
       + rendered.slice(2).join("");
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
@@ -17752,6 +17888,71 @@ function publishTimes(){
     （到货 = 首次落库，即本系统的「可用时刻」；源站发布早于或等于它。时间为 UTC，悬停看本地时间与最近几轮）</span>
     <div class="pubt-wrap"><table class="pubt"><thead><tr><th>来源</th><th>最新一轮</th><th>到货</th>
       <th>起报→到货</th><th>下一轮</th><th>说明</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
+}
+
+// 模型 run 采集健康度 (user, 2026-10-01: 「前端突出模型run采集健康度的看不出
+// 来」).  The capture lamps say a family's newest run landed; the admission
+// lamps carried one day each, D+2 was green by rule, and on 2026-10-01 nine in
+// ten P0s 48-60 h out lacked ECCC or ICON with every lamp green.  One row per
+// family: for each open day, the run its P0 seats and on how many stations
+// (member_admission, read every render), then the recent runs with how many
+// stations each was read for per day (recent_runs) -- a run read only for the
+// stations listed at the time shows as the short count it is.
+function modelRunHealth(){
+  const A = D.member_admission || {};
+  const F = A.families || [];
+  const days = A.open_event_dates || [];
+  if(!F.length || !days.length) return "";
+  const RR = D.recent_runs || {};
+  const todayUtc = Date.parse(new Date().toISOString().slice(0, 10));
+  const dTag = d => {
+    const n = Math.round((Date.parse(d) - todayUtc) / 864e5);
+    return n === 0 ? "当天" : `D+${n}`;
+  };
+  const hm = s => { const m = String(s || "").match(/T(\d{2}):(\d{2})/); return m ? `${m[1]}:${m[2]}Z` : "—"; };
+  const rank = {green: 0, amber: 1, red: 2};
+  let worst = "green";
+  const rows = F.map(f => {
+    const byDay = {};
+    (f.days || []).forEach(x => { byDay[x.event_date] = x; });
+    const cells = days.map(d => {
+      const x = byDay[d];
+      if(!x) return `<td class="muted">—</td>`;
+      if(rank[x.health] > rank[worst]) worst = x.health;
+      const tip = [
+        x.note || "",
+        x.captured_run_utc ? `这一天采到的最新一轮 ${runLabel(x.captured_run_utc)}` : "这一天还没采到这家",
+        Object.keys(x.other_runs || {}).length
+          ? "其余站用 " + Object.entries(x.other_runs).map(([r, n]) => `${runLabel(r)}×${n}`).join("、") : "",
+      ].filter(Boolean).join("\n");
+      return `<td class="mono" title="${attr(tip)}"><span class="dot ${x.health || "muted"}"></span> ${
+        x.served_run_utc ? h(runLabel(x.served_run_utc)) : "<b>不在包里</b>"} · ${
+        x.stations_seated}/${x.stations} 站</td>`;
+    }).join("");
+    const runs = (RR[f.system_id] || []).slice(0, 4);
+    const best = {};
+    runs.forEach(r => Object.entries(r.days || {}).forEach(([d, n]) => {
+      best[d] = Math.max(best[d] || 0, n);
+    }));
+    const recent = runs.map(r => `<div>${h(runLabel(r.run_utc))} <span class="muted">到货 ${
+      h(hm(r.capture_utc))}</span>：${days.filter(d => (r.days || {})[d] != null).map(d => {
+        const n = r.days[d];
+        // Half, not any shortfall: a run issued inside a station's day cannot
+        // cover it, so a same-day run is a few short by construction.
+        return n * 2 < best[d]
+          ? `<span class="pub-late" title="同一天这家别的轮次采到 ${best[d]} 站">${h(d.slice(5))} ${n}</span>`
+          : `${h(d.slice(5))} ${n}`;
+      }).join(" · ") || "<span class=\"muted\">不服务开放日</span>"}</div>`).join("");
+    return `<tr><td><b>${h(f.label)}</b></td>${cells}<td class="mono" style="font-size:12px">${
+      recent || "<span class=\"muted\">36 小时内没有落库</span>"}</td></tr>`;
+  });
+  return `<div class="lampdeck"><span class="lampcap"><span class="dot ${worst}"></span>
+    模型 run 采集健康度 · 每个开放事件日 P0 实际用的是哪一轮、几站入座（悬停看原因）；
+    右列是最近几轮各给每一天采到几站，红字＝不到同一天这家别的轮次的一半（采集时那些站还没挂牌）。
+    不到九成的站有这家亮黄；D+1 及更近不到一半亮红，D+2 最多亮黄——它的 ICON/ECCC 合同轮次 D-2 12Z 傍晚才到，之前只有证书成熟的早轮次能入座</span>
+    <div class="pubt-wrap"><table class="pubt"><thead><tr><th>模型</th>${
+      days.map(d => `<th>${h(d.slice(5))} <span class="muted">${dTag(d)}</span></th>`).join("")
+    }<th>最近几轮 · 每天采到几站</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
 }
 
 function healthLamps(){
