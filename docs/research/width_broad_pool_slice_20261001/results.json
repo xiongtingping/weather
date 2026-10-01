@@ -1,0 +1,748 @@
+{
+ "floor": "2026-09-14T05:52:13Z",
+ "days": [
+  "2026-09-13",
+  "2026-09-14",
+  "2026-09-15",
+  "2026-09-16",
+  "2026-09-17",
+  "2026-09-18",
+  "2026-09-19",
+  "2026-09-20",
+  "2026-09-21",
+  "2026-09-22",
+  "2026-09-23",
+  "2026-09-24",
+  "2026-09-25",
+  "2026-09-26",
+  "2026-09-27",
+  "2026-09-28",
+  "2026-09-29",
+  "2026-09-30",
+  "2026-10-01"
+ ],
+ "cut": 12,
+ "cell_count": 12849,
+ "census_seated_x_horizon": {
+  "2|<=36h": 672,
+  "2|>36h": 1793,
+  "3|<=36h": 402,
+  "3|>36h": 401,
+  "4|<=36h": 3620,
+  "4|>36h": 1813,
+  "5|<=36h": 237,
+  "5|>36h": 250,
+  "6|<=36h": 2690,
+  "6|>36h": 971
+ },
+ "arms": {
+  "thin_far_control": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 16,
+   "slice_cell_count": 2194,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 4,
+   "folds_positive": 3,
+   "majority_positive": true,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 241,
+    "station_days": 118,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": -0.009586116610706848,
+    "d_brier": 0.0006246491390397389,
+    "d_crps": 0.0017992987289136076,
+    "ci_logscore": [
+     -0.037244537265782085,
+     0.014222747743631537
+    ],
+    "ci_brier": [
+     -0.002694862245682256,
+     0.00373973275754484
+    ],
+    "ci_crps": [
+     -0.002676542827083656,
+     0.00585761824434568
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 241,
+   "gain": 0.009586116610706876,
+   "brier_gain": -0.0006246491390397156,
+   "train_prefix_slice_cell_count": 1761,
+   "candidate_residual_width_lambda": 1.1,
+   "candidate_train_nll": 1.6182624134342936,
+   "candidate_width_lambda": 0.825,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 1953,
+     "cell_count": 71,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.075,
+     "other_nll": 1.6463262817218371,
+     "slice_nll": 1.6321519631675152,
+     "gain": 0.01417431855432194,
+     "brier_gain": -0.0005419752141069518
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 2024,
+     "cell_count": 42,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.075,
+     "other_nll": 1.6067552597145465,
+     "slice_nll": 1.5841444392913862,
+     "gain": 0.022610820423160316,
+     "brier_gain": -0.0005093843086502234
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 2066,
+     "cell_count": 82,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.075,
+     "other_nll": 1.4378712927355364,
+     "slice_nll": 1.432855386698285,
+     "gain": 0.005015906037251439,
+     "brier_gain": -0.0009375606846490379
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 2148,
+     "cell_count": 46,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.075,
+     "other_nll": 1.4587256317843569,
+     "slice_nll": 1.4599665288931363,
+     "gain": -0.001240897108779393,
+     "brier_gain": -0.00029969750440103036
+    }
+   ],
+   "arm": "thin_far_control"
+  },
+  "broad4": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 19,
+   "slice_cell_count": 9581,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 5,
+   "folds_positive": 0,
+   "majority_positive": false,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 2777,
+    "station_days": 179,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": 0.0,
+    "d_brier": 0.0,
+    "d_crps": 0.0,
+    "ci_logscore": [
+     0.0,
+     0.0
+    ],
+    "ci_brier": [
+     0.0,
+     0.0
+    ],
+    "ci_crps": [
+     0.0,
+     0.0
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 2777,
+   "gain": 0.0,
+   "brier_gain": 0.0,
+   "train_prefix_slice_cell_count": 5377,
+   "candidate_residual_width_lambda": 1.0,
+   "candidate_train_nll": 1.4273634476360144,
+   "candidate_width_lambda": 0.75,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 6804,
+     "cell_count": 630,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.3616157299305809,
+     "slice_nll": 1.3616157299305809,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 7434,
+     "cell_count": 658,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.3299065716424672,
+     "slice_nll": 1.3299065716424672,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 8092,
+     "cell_count": 618,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.3516066999043455,
+     "slice_nll": 1.3516066999043455,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 8710,
+     "cell_count": 853,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.4229404930965828,
+     "slice_nll": 1.4229404930965828,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-10-01",
+     "train_slice_cell_count": 9563,
+     "cell_count": 18,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 0.7660260084815217,
+     "slice_nll": 0.7660260084815217,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    }
+   ],
+   "arm": "broad4"
+  },
+  "broad5": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 9,
+   "slice_cell_count": 4148,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 5,
+   "folds_positive": 4,
+   "majority_positive": true,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 2450,
+    "station_days": 177,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": -0.000856052929197833,
+    "d_brier": 0.0006953539552039947,
+    "d_crps": -0.0010641030306251594,
+    "ci_logscore": [
+     -0.018607566618335857,
+     0.020961871035678703
+    ],
+    "ci_brier": [
+     -0.005061852982481727,
+     0.006815344993868556
+    ],
+    "ci_crps": [
+     -0.0047475935748571155,
+     0.0026790145003811965
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 2450,
+   "gain": 0.0008560529291977546,
+   "brier_gain": -0.0006953539552039761,
+   "train_prefix_slice_cell_count": 472,
+   "candidate_residual_width_lambda": 0.875,
+   "candidate_train_nll": 1.337133345241187,
+   "candidate_width_lambda": 0.6562,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 1698,
+     "cell_count": 591,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.3423189526320818,
+     "slice_nll": 1.3551320952149029,
+     "gain": -0.012813142582821069,
+     "brier_gain": 0.0011664163764561245
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 2289,
+     "cell_count": 558,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.309224418255782,
+     "slice_nll": 1.3013840783850408,
+     "gain": 0.007840339870741175,
+     "brier_gain": 0.0026071242652779465
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 2847,
+     "cell_count": 587,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.342596511867904,
+     "slice_nll": 1.335473975667023,
+     "gain": 0.00712253620088088,
+     "brier_gain": 0.0011603364123668873
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 3434,
+     "cell_count": 699,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.3932967716323046,
+     "slice_nll": 1.3920599731924113,
+     "gain": 0.0012367984398933274,
+     "brier_gain": -0.006471776996545584
+    },
+    {
+     "scored_day": "2026-10-01",
+     "train_slice_cell_count": 4133,
+     "cell_count": 15,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.9,
+     "other_nll": 0.8094454356117755,
+     "slice_nll": 0.7928096732313981,
+     "gain": 0.01663576238037745,
+     "brier_gain": -0.0003393308156269962
+    }
+   ],
+   "arm": "broad5"
+  },
+  "broad6": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 9,
+   "slice_cell_count": 3661,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 5,
+   "folds_positive": 4,
+   "majority_positive": true,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 2354,
+    "station_days": 177,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": 0.000307001141826911,
+    "d_brier": 0.0009372300224353747,
+    "d_crps": -0.0010103356063535349,
+    "ci_logscore": [
+     -0.021660414019033916,
+     0.026634592728853563
+    ],
+    "ci_brier": [
+     -0.005737866753051258,
+     0.007655325673812158
+    ],
+    "ci_crps": [
+     -0.005330052242314016,
+     0.003283736412944669
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 2354,
+   "gain": -0.0003070011418269494,
+   "brier_gain": -0.0009372300224353772,
+   "train_prefix_slice_cell_count": 236,
+   "candidate_residual_width_lambda": 0.675,
+   "candidate_train_nll": 1.1765952969338163,
+   "candidate_width_lambda": 0.5063,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 1307,
+     "cell_count": 541,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.825,
+     "other_nll": 1.3268600740181786,
+     "slice_nll": 1.3456683367344817,
+     "gain": -0.018808262716303092,
+     "brier_gain": -0.00019395991519648696
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 1848,
+     "cell_count": 537,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.85,
+     "other_nll": 1.308037216014199,
+     "slice_nll": 1.3006143131167465,
+     "gain": 0.007422902897452621,
+     "brier_gain": 0.0031831258912440254
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 2385,
+     "cell_count": 585,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.3436893167430113,
+     "slice_nll": 1.336663630858034,
+     "gain": 0.007025685884977317,
+     "brier_gain": 0.0011922008540041211
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 2970,
+     "cell_count": 677,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 1.3920566599479858,
+     "slice_nll": 1.390461914579546,
+     "gain": 0.0015947453684397317,
+     "brier_gain": -0.006631408438239067
+    },
+    {
+     "scored_day": "2026-10-01",
+     "train_slice_cell_count": 3647,
+     "cell_count": 14,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 0.875,
+     "other_nll": 0.8082725767662888,
+     "slice_nll": 0.7884995961532998,
+     "gain": 0.019772980612989044,
+     "brier_gain": -0.0013299820852987437
+    }
+   ],
+   "arm": "broad6"
+  },
+  "broad4_near": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 19,
+   "slice_cell_count": 6547,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 5,
+   "folds_positive": 0,
+   "majority_positive": false,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 1677,
+    "station_days": 178,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": 0.0,
+    "d_brier": 0.0,
+    "d_crps": 0.0,
+    "ci_logscore": [
+     0.0,
+     0.0
+    ],
+    "ci_brier": [
+     0.0,
+     0.0
+    ],
+    "ci_crps": [
+     0.0,
+     0.0
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 1677,
+   "gain": 0.0,
+   "brier_gain": 0.0,
+   "train_prefix_slice_cell_count": 3969,
+   "candidate_residual_width_lambda": 1.0,
+   "candidate_train_nll": 1.3797090685561673,
+   "candidate_width_lambda": 0.75,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 4870,
+     "cell_count": 356,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.315694841745816,
+     "slice_nll": 1.315694841745816,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 5226,
+     "cell_count": 343,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.2618322898881116,
+     "slice_nll": 1.2618322898881116,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 5569,
+     "cell_count": 475,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.3335411743444643,
+     "slice_nll": 1.3335411743444643,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 6044,
+     "cell_count": 491,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.3726294336823541,
+     "slice_nll": 1.3726294336823541,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-10-01",
+     "train_slice_cell_count": 6535,
+     "cell_count": 12,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 0.7684794464836169,
+     "slice_nll": 0.7684794464836169,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    }
+   ],
+   "arm": "broad4_near"
+  },
+  "broad4_far": {
+   "schema": "center_width_thin_far_slice_lane_v1",
+   "slice": "thin_far",
+   "max_seated_systems": 3,
+   "min_hours_to_settlement": 36.0,
+   "gate_rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+   "slice_day_count": 17,
+   "slice_cell_count": 3034,
+   "min_qualifying_days": 8,
+   "min_qualifying_cells": 60,
+   "incumbent_slices": null,
+   "served_slice_lambda": 0.75,
+   "served_residual": [
+    0.0,
+    1.0
+   ],
+   "pooled_admitted": false,
+   "fold_count": 5,
+   "folds_positive": 0,
+   "majority_positive": false,
+   "gate": {
+    "rule": "logscore_primary_crps_brier_guardrail_station_day_bootstrap_v1",
+    "cells": 1100,
+    "station_days": 176,
+    "confidence": 0.95,
+    "bootstrap_draws": 2000,
+    "d_logscore": 0.003485115452426919,
+    "d_brier": 0.0004549542400387143,
+    "d_crps": 0.0004539653817787997,
+    "ci_logscore": [
+     -0.0003943487597574094,
+     0.006847271867751593
+    ],
+    "ci_brier": [
+     -0.000120988903209574,
+     0.0009998390770222338
+    ],
+    "ci_crps": [
+     -0.00018270370112695008,
+     0.0010277587675527537
+    ],
+    "primary_lower": false,
+    "crps_not_worse": true,
+    "brier_not_worse": true,
+    "lower": false
+   },
+   "scored_cell_count": 1100,
+   "gain": -0.0034851154524268542,
+   "brier_gain": -0.00045495424003865473,
+   "train_prefix_slice_cell_count": 1408,
+   "candidate_residual_width_lambda": 1.025,
+   "candidate_train_nll": 1.560727541408549,
+   "candidate_width_lambda": 0.7687,
+   "measured_admitted": false,
+   "admitted": false,
+   "state": "REFUSED_FORWARD",
+   "folds": [
+    {
+     "scored_day": "2026-09-27",
+     "train_slice_cell_count": 1934,
+     "cell_count": 274,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 1.4212793656742895,
+     "slice_nll": 1.4212793656742895,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    },
+    {
+     "scored_day": "2026-09-28",
+     "train_slice_cell_count": 2208,
+     "cell_count": 315,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.025,
+     "other_nll": 1.4040319006638764,
+     "slice_nll": 1.4083414057387207,
+     "gain": -0.004309505074844289,
+     "brier_gain": -0.0005165843832210771
+    },
+    {
+     "scored_day": "2026-09-29",
+     "train_slice_cell_count": 2523,
+     "cell_count": 143,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.025,
+     "other_nll": 1.4116145645263285,
+     "slice_nll": 1.4119482287872753,
+     "gain": -0.000333664260946831,
+     "brier_gain": -0.0003767321198269029
+    },
+    {
+     "scored_day": "2026-09-30",
+     "train_slice_cell_count": 2666,
+     "cell_count": 362,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.025,
+     "other_nll": 1.4911800792081475,
+     "slice_nll": 1.4978884187379216,
+     "gain": -0.00670833952977401,
+     "brier_gain": -0.0007841240060569995
+    },
+    {
+     "scored_day": "2026-10-01",
+     "train_slice_cell_count": 3028,
+     "cell_count": 6,
+     "other_delta_c": 0.0,
+     "other_width_lambda": 1.0,
+     "slice_width_lambda": 1.0,
+     "other_nll": 0.7611191324773313,
+     "slice_nll": 0.7611191324773313,
+     "gain": 0.0,
+     "brier_gain": 0.0
+    }
+   ],
+   "arm": "broad4_far"
+  }
+ }
+}
