@@ -961,7 +961,7 @@ def test_an_every_run_section_keeps_its_last_value_but_is_still_never_paged(page
     calls: list[str] = []
     C._cached_section("regional", _collector(calls), None)
     assert not (paged / "sections" / "regional.json").exists()
-    assert (paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME / "regional.json").exists()
+    assert list((paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME).glob("regional.*.json"))
     C._SECTION_CACHE_LOG.clear()
     C._cached_section("regional", _collector(calls), None)
     assert calls == ["v", "v"], "before the deadline it is read every run"
@@ -1046,3 +1046,33 @@ def test_the_hard_deadline_sits_between_the_soft_budget_and_the_kill() -> None:
     sweep = (ROOT / "scripts" / "dashboard_render_sweep.sh").read_text(encoding="utf-8")
     kill = int(sweep.split('PM_DASHBOARD_RENDER_TIMEOUT_SEC:-', 1)[1].split("}", 1)[0])
     assert C.RENDER_SOFT_BUDGET_SEC < C.RENDER_HARD_DEADLINE_SEC <= kill - 120
+
+
+def test_with_no_last_value_a_read_in_hand_runs_on_past_the_deadline(paged, monkeypatch) -> None:
+    """2026-10-01 14:10Z, the first run under the deadline: live_days had no
+    last value yet, was cut at 1,380 s with nothing in its place, and the
+    run wrote no page.  With nothing to serve instead it reads to the end
+    and keeps a last value for the next run."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.set_progress_handler(C._render_yield_check, 1_000)
+
+    def live_days(connection):
+        monkeypatch.setattr(C, "RENDER_HARD_DEADLINE_SEC", -1.0)  # passes mid-read
+        return {"n": connection.execute(
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n"
+            " WHERE i < 200000) SELECT count(*) FROM n").fetchone()[0]}
+
+    assert C._cached_section("live_days", live_days, conn) == {"n": 200000}
+    assert list((paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME).glob("live_days.*.json"))
+
+
+def test_a_new_last_value_replaces_the_one_from_older_code(paged) -> None:
+    C._cached_section("members", _collector([], "old"), None)
+
+    def members(conn):
+        return {"value": "edited"}
+
+    C._cached_section("members", members, None)
+    kept = list((paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME).glob("members.*.json"))
+    assert len(kept) == 1 and json.loads(kept[0].read_text())["value"] == {"value": "edited"}

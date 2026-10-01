@@ -15411,14 +15411,18 @@ def _paged_past_deadline() -> bool:
     return bool(_PAGED_RUN.get("deadline_hit"))
 
 
-def _every_run_last_path(name: str) -> Path:
-    return SECTION_CACHE_DIR / EVERY_RUN_LAST_DIR_NAME / f"{name}.json"
+def _every_run_last_path(name: str, collector: Any) -> Path:
+    """Keyed on the collector's code, so whether a run has a last value it
+    may serve is one ``stat`` -- never across a code change, as for pages."""
+
+    fingerprint = _section_fingerprint(collector, "")[:16]
+    return SECTION_CACHE_DIR / EVERY_RUN_LAST_DIR_NAME / f"{name}.{fingerprint}.json"
 
 
 def _save_every_run_last(name: str, collector: Any, value: Any) -> None:
     """Keep an every-run section's value for a run that hits the deadline."""
 
-    path = _every_run_last_path(name)
+    path = _every_run_last_path(name, collector)
     try:
         text = json.dumps(
             {
@@ -15434,6 +15438,9 @@ def _save_every_run_last(name: str, collector: Any, value: Any) -> None:
         tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         tmp.write_text(text, encoding="utf-8")
         tmp.replace(path)
+        for older in path.parent.glob(f"{name}.*.json"):
+            if older != path:
+                older.unlink(missing_ok=True)
     except (OSError, TypeError, ValueError):
         pass
 
@@ -15446,7 +15453,7 @@ def _serve_every_run_last(name: str, collector: Any) -> tuple[bool, Any]:
     """
 
     try:
-        blob = json.loads(_every_run_last_path(name).read_text(encoding="utf-8"))
+        blob = json.loads(_every_run_last_path(name, collector).read_text(encoding="utf-8"))
         if blob.get("code_fingerprint") != _section_fingerprint(collector, ""):
             return False, None
         stamp = str(blob["computed_at_utc"])
@@ -15543,7 +15550,7 @@ def _render_yield_check() -> int:
 
     if not _PAGED_RUN or not _PAGED_RUN.get("armed"):
         return 0
-    if _paged_past_deadline():
+    if _PAGED_RUN.get("deadline_fallback") and _paged_past_deadline():
         _PAGED_RUN["yielded"] = True
         return 1
     now = time.monotonic()
@@ -15932,6 +15939,12 @@ def _cached_section_value(
                 raise RenderYielded(f"{name}: {blocker}")
             _PAGED_RUN["armed"] = True
             _PAGED_RUN["yielded"] = False
+            # Interrupted at the deadline only if it has a last value to
+            # serve instead.  One with none reads on, as before the deadline
+            # existed, and keeps a last value for the next run: the first
+            # run under the deadline (2026-10-01 14:10Z) cut live_days at
+            # 1,380 s with nothing in its place and wrote no page at all.
+            _PAGED_RUN["deadline_fallback"] = _every_run_last_path(name, collector).is_file()
         started = time.perf_counter()
         try:
             value = collector(*args, **kwargs)
@@ -16064,6 +16077,9 @@ def _cached_section_value(
             raise RenderYielded(f"{name}: {blocker}")
         _PAGED_RUN["armed"] = True
         _PAGED_RUN["yielded"] = False
+        _PAGED_RUN["deadline_fallback"] = (
+            page is not None or _unavailable is not _NO_UNAVAILABLE
+        )
         # Stamped when the read starts, not when the section was reached:
         # a page is as old as the snapshot it read.
         now = _now()
