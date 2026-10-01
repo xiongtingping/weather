@@ -46,7 +46,16 @@ for r in rows:
         for k in keys: consensus[k] += w[s] * sh[k]
     consensus = norm(consensus)
     geo = norm({k: math.exp(sum(w[s] * math.log(max(pp[s][k], EPS)) for s in w)) for k in keys})
-    pre = {"A": physics(bridged), "B": physics(consensus), "C": physics(geo), "D": physics(linear)}
+    # Appendix: consensus bridge v2 -- scale to A - B about the consensus centre.
+    sig2 = {s: distribution_sigma_c([pp[s][k] for k in keys], axis) ** 2 for s in w}
+    Avar = sum(w[s] * sig2[s] for s in w); Bvar = sum(w[s] * (float(centers[s]) - cc) ** 2 for s in w)
+    target = max(Avar - Bvar, 0.25 * Avar)
+    lam_e1 = math.sqrt(target / Avar) if Avar > 0 else 1.0
+    lam_e2 = math.sqrt(target / (Avar + Bvar)) if Avar + Bvar > 0 else 1.0
+    def clamp(x): return max(0.5, min(1.5, x))
+    pre = {"A": physics(bridged), "B": physics(consensus), "C": physics(geo), "D": physics(linear),
+           "E1": physics(width(consensus, clamp(lam_e1))), "E2": physics(width(linear, clamp(lam_e2)))}
+    lam_b = {"E1": lam_e1, "E2": lam_e2}
     scores = {}
     for op, p in pre.items():
         for lam in LAMS:
@@ -54,19 +63,21 @@ for r in rows:
     prod = _served_scores(r["probabilities"], ordered_keys=keys, settled_bucket=hit, excluded_buckets=(), key_centers_c=axis)
     # sanity: production path replay at 0.75 equals stored
     rep = scores[("A", 0.75)]
-    packets.append({"sd": (r["station_id"], r["event_date"]), "day": r["event_date"], "n": len(w), "h": r["hours_to_settlement"], "scores": scores, "prod": prod, "replay_gap": abs(rep[0] - prod[0])})
+    scores[("E3", 1.0)] = scores[("E1", 1.0)]
+    packets.append({"sd": (r["station_id"], r["event_date"]), "day": r["event_date"], "n": len(w), "h": r["hours_to_settlement"], "scores": scores, "prod": prod, "replay_gap": abs(rep[0] - prod[0]), "lam_b": lam_b, "A": Avar, "B": Bvar})
 print(f"packets={len(packets)} max replay gap(LogScore, stored vs A@0.75)={max(p['replay_gap'] for p in packets):.2e} t={time.monotonic()-t0:.0f}s", flush=True)
 days = sorted({p["day"] for p in packets})
 # rolling-origin lambda per operator
 fit = {}
-for op in "ABCD":
+for op in ["A", "B", "C", "D", "E1", "E2"]:
     for i in range(3, len(days)):
         prefix = [p for p in packets if p["day"] < days[i]]
         fit[(op, days[i])] = min(LAMS, key=lambda lam: sum(p["scores"][(op, lam)][0] for p in prefix) / len(prefix))
 scored = [p for p in packets if p["day"] >= days[3]]
 def arm_scores(p, arm):
     if arm == "A0": return p["prod"]
-    op = {"A1": "A", "B": "B", "C": "C", "D": "D"}[arm]; return p["scores"][(op, fit[(op, p["day"])])]
+    if arm == "E3": return p["scores"][("E1", 1.0)]
+    op = {"A1": "A", "B": "B", "C": "C", "D": "D", "E1": "E1", "E2": "E2"}[arm]; return p["scores"][(op, fit[(op, p["day"])])]
 # station-day averaging: average triples within station-day per arm, then gate with cluster = station-day (one entry per sd)
 def sd_avg(arm):
     acc = defaultdict(list)
@@ -74,8 +85,8 @@ def sd_avg(arm):
     return {sd: tuple(float(np.mean([t[i] for t in v])) for i in range(3)) for sd, v in acc.items()}
 sds = sorted({p["sd"] for p in scored})
 res = {"packets": len(packets), "scored_packets": len(scored), "scored_station_days": len(sds), "days_scored": days[3:], "lambda_by_day": {f"{k[0]}|{k[1]}": v for k, v in fit.items()}, "pairs": {}, "subgroups": {}}
-tabs = {arm: sd_avg(arm) for arm in ["A0", "A1", "B", "C", "D"]}
-for a, b in [("A1", "A0"), ("B", "A0"), ("B", "A1"), ("C", "A0"), ("C", "A1"), ("D", "A0"), ("D", "A1")]:
+tabs = {arm: sd_avg(arm) for arm in ["A0", "A1", "B", "C", "D", "E1", "E2", "E3"]}
+for a, b in [("A1", "A0"), ("B", "A0"), ("B", "A1"), ("C", "A0"), ("C", "A1"), ("D", "A0"), ("D", "A1"), ("E1", "A0"), ("E1", "A1"), ("E1", "C"), ("E2", "A0"), ("E2", "A1"), ("E3", "A0")]:
     g = _proper_score_gate([tabs[b][s] for s in sds], [tabs[a][s] for s in sds], sds)
     res["pairs"][f"{a}_vs_{b}"] = g
     print(f"{a} vs {b}: dLog={g['d_logscore']:+.4f} {g['ci_logscore']} dBrier={g['d_brier']:+.4f} dCRPS={g['d_crps']:+.4f} lower={g['lower']}", flush=True)
@@ -84,10 +95,13 @@ for name, pred in {"n<=3": lambda p: p["n"] <= 3, "n4_5": lambda p: 4 <= p["n"] 
     if not sub: continue
     acc = defaultdict(lambda: defaultdict(list))
     for p in sub:
-        for arm in ["A0", "A1", "B", "C", "D"]: acc[arm][p["sd"]].append(arm_scores(p, arm))
+        for arm in ["A0", "A1", "B", "C", "D", "E1", "E2", "E3"]: acc[arm][p["sd"]].append(arm_scores(p, arm))
     ssd = sorted(acc["A0"]); mean = {arm: tuple(float(np.mean([np.mean([t[i] for t in acc[arm][s]]) for s in ssd])) for i in range(3)) for arm in acc}
     res["subgroups"][name] = {"station_days": len(ssd), "mean_scores": mean, "delta_vs_A0": {arm: [mean[arm][i] - mean["A0"][i] for i in range(3)] for arm in mean}}
     print(name, len(ssd), {arm: round(mean[arm][0] - mean["A0"][0], 4) for arm in mean}, flush=True)
+res["lam_b_summary"] = {k: {"median": float(np.median([p["lam_b"][k] for p in packets])), "p10": float(np.percentile([p["lam_b"][k] for p in packets], 10)), "p90": float(np.percentile([p["lam_b"][k] for p in packets], 90))} for k in ("E1", "E2")}
+res["A_minus_B_check"] = {str(n): {"A": float(np.mean([p["A"] for p in packets if p["n"] == n])), "B": float(np.mean([p["B"] for p in packets if p["n"] == n])), "packets": sum(1 for p in packets if p["n"] == n)} for n in sorted({p["n"] for p in packets})}
+print("lam_b", res["lam_b_summary"]); print("A,B by n", res["A_minus_B_check"])
 res["mean_scores_all"] = {arm: [float(np.mean([tabs[arm][s][i] for s in sds])) for i in range(3)] for arm in tabs}
 print("means", {k: [round(x, 4) for x in v] for k, v in res["mean_scores_all"].items()})
 if "POOL_EPS" not in os.environ:
