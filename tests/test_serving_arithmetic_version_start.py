@@ -85,9 +85,9 @@ CHARTER_222_PAIR_START = sa.version_effective_from(
 CHARTER_199_ASOS_START = sa.version_effective_from(
     "P0", "calibrated_native_cross_ensemble_p0_v19"
 )
-# Charter 233 (pool seats rank breadth before the mint clock): the instant P0
+# Charter 236 (pool seats rank breadth before the mint clock): the instant P0
 # v20, P0-M v22 and P1 v31 declare.
-CHARTER_233_START = sa.version_effective_from(
+CHARTER_236_START = sa.version_effective_from(
     "P0", "calibrated_native_cross_ensemble_p0_v20"
 )
 
@@ -236,8 +236,8 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     assert CHARTER_224_START and CHARTER_224_START > CHARTER_222_START
     assert CHARTER_222_PAIR_START and CHARTER_222_PAIR_START > CHARTER_224_START
     assert CHARTER_199_ASOS_START and CHARTER_199_ASOS_START > CHARTER_222_PAIR_START
-    assert CHARTER_233_START and CHARTER_233_START > CHARTER_199_ASOS_START
-    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_233_START
+    assert CHARTER_236_START and CHARTER_236_START > CHARTER_199_ASOS_START
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_236_START
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v19"
     ) == CHARTER_199_ASOS_START
@@ -295,7 +295,7 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # Charter 204's v12 and charter 210's v13 are root bumps at P0 v10's and
     # P0 v11's moments.
     assert p0m == "p0m_taf_likelihood_v22"
-    assert sa.version_effective_from("P0-M", p0m) == CHARTER_233_START
+    assert sa.version_effective_from("P0-M", p0m) == CHARTER_236_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v21") == CHARTER_199_ASOS_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v20") == CHARTER_222_PAIR_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v19") == CHARTER_224_START
@@ -379,7 +379,7 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # v21 (charter 204) and v22 (charter 210) are the seventh and eighth
     # root bumps, at P0 v10's and P0 v11's moments.
     assert p1 == "p1_joint_likelihood_v31"
-    assert sa.version_effective_from("P1", p1) == CHARTER_233_START
+    assert sa.version_effective_from("P1", p1) == CHARTER_236_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v30") == CHARTER_199_ASOS_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v29") == CHARTER_222_PAIR_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v28") == CHARTER_224_START

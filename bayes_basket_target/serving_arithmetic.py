@@ -309,7 +309,7 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # 13:45Z, KLGA/EGLC/RJTT) keep every four-system view that survives
         # byte-identical, but where AIFS qualifies the pool becomes the
         # five-system one and a packet without its run serves its four-system
-        # missing-member view (certified with its own weights; charter 233
+        # missing-member view (certified with its own weights; charter 236
         # corrects "renormalised") -- the four-family arithmetic moved.
         # Declared past the push and past the coordinator's batch restart
         # that deploys it (the watchdog reads a fingerprint first seen after
@@ -372,17 +372,17 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # every other station.  Declared past the push and past the restart
         # that deploys it, and after v18 so the versions stay in order.
         "calibrated_native_cross_ensemble_p0_v19": "2026-09-25T14:00:00Z",
-        # Charter 233: pool seats rank breadth, then the pool weight they
+        # Charter 236: pool seats rank breadth, then the pool weight they
         # keep, ahead of the instant they were minted.  Written in a cloud
         # session that cannot restart the resident, as charter 222 was:
         # declared past the push, and the restart that deploys it on the
         # production machine has to land before this instant (Beijing
-        # midnight, 09-28/29; first declared 01:00Z, moved on the day when
-        # the deploy could not be made by then).  If that restart lands
-        # later, move this instant (and P0-M v22's, P1 v31's) past it -- the
-        # watchdog reads a fingerprint first seen after its declaration as a
-        # discrepancy.
-        "calibrated_native_cross_ensemble_p0_v20": "2026-09-28T16:00:00Z",
+        # midnight, 10-01/02; first declared 09-28T01:00Z, then 09-28T16:00Z,
+        # moved each time the deploy could not be made by then).  If that
+        # restart lands later, move this instant (and P0-M v22's, P1 v31's)
+        # past it -- the watchdog reads a fingerprint first seen after its
+        # declaration as a discrepancy.
+        "calibrated_native_cross_ensemble_p0_v20": "2026-10-01T16:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -422,8 +422,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v20": "2026-09-25T13:30:00Z",
         # Charter 199 (ASOS blended): root bump at the instant P0 v19 declares.
         "p0m_taf_likelihood_v21": "2026-09-25T14:00:00Z",
-        # Charter 233: root bump at the instant P0 v20 declares.
-        "p0m_taf_likelihood_v22": "2026-09-28T16:00:00Z",
+        # Charter 236: root bump at the instant P0 v20 declares.
+        "p0m_taf_likelihood_v22": "2026-10-01T16:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -482,8 +482,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v29": "2026-09-25T13:30:00Z",
         # Charter 199 (ASOS blended): root bump at the instant P0 v19 declares.
         "p1_joint_likelihood_v30": "2026-09-25T14:00:00Z",
-        # Charter 233: root bump at the instant P0 v20 declares.
-        "p1_joint_likelihood_v31": "2026-09-28T16:00:00Z",
+        # Charter 236: root bump at the instant P0 v20 declares.
+        "p1_joint_likelihood_v31": "2026-10-01T16:00:00Z",
     },
 }
 

@@ -38,6 +38,11 @@ basket, not Kelly, not a value clamp: the pair of probability vectors
 * Attribution: the evaluation row keeps ``p``, ``q``, ``s`` and
   ``D = KL(q || p)``; ``scripts/proper_bet_attribution.py`` closes
   ``Pi = Delta S + D - L`` on settlement.
+* Sides (charter 235, user ruling 2026-09-28 「Proper 线的 YES 腿停掉」): the
+  ``sides`` setting names the directions a leg may take, ``["NO"]`` as
+  shipped.  A leg on a stopped side is still quoted -- its rung and the
+  rule's verdict stay on the record -- and never posted or sized; an active
+  plan stops re-posting it.
 
 v1 (FOK at the worst in-band ask level, 2026-09-26 11:52Z-) never sent an
 order: every first decision it saw was stale, closed or barred.
@@ -102,6 +107,9 @@ OPEN_STATES = ("prepared", "submitting", "submitted", "reconcile_required")
 #: The two directions a leg can take, as the ledger spells the outcome leg.
 SIDE_YES = "YES"
 SIDE_NO = "NO"
+
+BOTH_SIDES = frozenset({SIDE_YES, SIDE_NO})
+SIDE_STOPPED = "side_stopped"
 
 PLAN_ACTIVE = "active"
 PLAN_DONE = "done"
@@ -184,6 +192,24 @@ def _tick_decimals(tick: float) -> int:
     return max(0, int(round(-math.log10(tick)))) if tick > 0 else 6
 
 
+def allowed_sides(settings: Mapping[str, Any]) -> frozenset[str]:
+    """The sides a leg may take (charter 235).
+
+    A list of ``YES``/``NO``, possibly one of them.  Anything else raises, as
+    ``opening_stages`` does: a lane that guessed which side to trade would be
+    deciding where to spend on its own.
+    """
+
+    declared = settings.get("sides")
+    if not isinstance(declared, (list, tuple)):
+        raise ValueError(f"proper_bet_sides_not_a_list:{declared!r}")
+    sides = frozenset(str(side).strip().upper() for side in declared)
+    unknown = sorted(sides - BOTH_SIDES)
+    if unknown:
+        raise ValueError(f"proper_bet_sides_unknown:{','.join(unknown)}")
+    return sides
+
+
 # ---------------------------------------------------------------------------
 # The rule: (p, q) -> s -> the rung each leg rests at -> lambda.  Pure.
 
@@ -248,10 +274,13 @@ def rung_price(bid: float | None, ask: float | None, tick: float) -> float | Non
 
 def leg_quote(
     bucket: str, p: float, s: float, book_row: Mapping[str, Any] | None, tick: float,
+    *, sides: frozenset[str] = BOTH_SIDES,
 ) -> dict[str, Any]:
     """One bucket's leg: its side from ``s``, its rung, and the rule's verdict.
 
     The rule: a YES rung only under ``p``, a NO rung only under ``1 - p``.
+    A leg that obeys it on a side not in ``sides`` reads ``side_stopped``
+    (charter 235), its rung kept on the record.
     """
 
     out: dict[str, Any] = {"bucket": bucket, "p": p, "s": s, "side": None, "price": None,
@@ -273,6 +302,8 @@ def leg_quote(
     out["price"] = price
     if not price < claim - 1e-12:
         out["reason"] = f"price_breaks_rule:{price:.4f}>={claim:.4f}"
+    elif side not in sides:
+        out["reason"] = f"{SIDE_STOPPED}:{side}"
     return out
 
 
@@ -342,6 +373,7 @@ def evaluate_ladder(
     cash_usdc: float | None,
     min_shares: Mapping[str, float],
     ticks: Mapping[str, float],
+    sides: frozenset[str] = BOTH_SIDES,
 ) -> dict[str, Any]:
     """The whole rule on one ladder: ``p``, ``q``, ``s``, ``D``, the rungs, lambda."""
 
@@ -365,7 +397,8 @@ def evaluate_ladder(
     rows = {str(r.get("bucket")): r for r in book_buckets}
     order = sorted(q, key=lambda b: rows.get(b, {}).get("ordinal", 0))
     quotes = [
-        leg_quote(b, p[b], s[b], rows.get(b), float(ticks.get(b) or rows.get(b, {}).get("price_tick_size") or 0.01))
+        leg_quote(b, p[b], s[b], rows.get(b), float(ticks.get(b) or rows.get(b, {}).get("price_tick_size") or 0.01),
+                  sides=sides)
         for b in order
     ]
     sizing = size_minimum(quotes, cash_usdc=cash_usdc, min_shares=min_shares)
@@ -378,7 +411,11 @@ def evaluate_ladder(
         **sizing,
     }
     if not any(leg.get("price") and not leg.get("reason") for leg in quotes):
-        out["refusal"] = "no_leg_obeys_rule"
+        # Legs that obeyed the rule on a stopped side say so, rather than
+        # reading as a ladder the rule found nothing on.
+        stopped = sorted({str(leg["side"]) for leg in quotes
+                          if str(leg.get("reason") or "").startswith(SIDE_STOPPED + ":")})
+        out["refusal"] = f"{SIDE_STOPPED}:{','.join(stopped)}" if stopped else "no_leg_obeys_rule"
     elif not sizing["legs"]:
         out["refusal"] = f"insufficient_cash:{float(cash_usdc or 0.0):.2f}<{sizing['need_full_usdc']:.2f}"
     return out
@@ -614,6 +651,7 @@ def plan_new_first_decisions(
     min_hours = float(cfg["min_hours_to_settlement"])
     live = cfg.get("live_ws_book", True) is True
     stages = opening_stages(cfg)
+    sides = allowed_sides(cfg)
     now = _utc(now_utc)
     done = _evaluated(
         target_conn,
@@ -681,7 +719,8 @@ def plan_new_first_decisions(
                                        refusal=cash["refusal"], envelope=envelope, book=book, hours=hours))
             continue
         reading = evaluate_ladder(envelope["probabilities"], list(book["buckets"]),
-                                  cash_usdc=cash.get("cash"), min_shares=min_shares, ticks=ticks)
+                                  cash_usdc=cash.get("cash"), min_shares=min_shares, ticks=ticks,
+                                  sides=sides)
         if reading.get("refusal") == "market_incomplete":
             waiting.append({**key, "reason": f"market_incomplete:{reading.get('market_reason')}"})
             continue
@@ -729,7 +768,7 @@ def plan_new_first_decisions(
             "lambda_shares": reading["lambda_shares"], "need_full_usdc": reading["need_full_usdc"],
             "budget_usdc": reading["budget_usdc"], "capped_by_cash": reading["capped_by_cash"],
             "divergence_kl": reading["divergence_kl"], "min_hours_to_settlement": min_hours,
-            "legs": legs,
+            "sides": sorted(sides), "legs": legs,
         }
         plan["plan_id"] = f"{INTENT_PREFIX}_{content_sha256({'plan': plan})[:32]}"
         evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
@@ -776,6 +815,7 @@ def plan_rungs(
     book_fresh = float(cfg["send_book_fresh_seconds"])
     min_hours = float(cfg["min_hours_to_settlement"])
     live = cfg.get("live_ws_book", True) is True
+    sides = allowed_sides(cfg)
     rungs: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
     rows = target_conn.execute(
@@ -811,6 +851,7 @@ def plan_rungs(
         book = None
         book_refusal = None
         outstanding = 0
+        stopped: set[str] = set()
         for leg in plan["legs"]:
             leg_state = state.setdefault(_leg_key(leg), {"intents": []})
             filled, open_rung = _leg_progress(target_conn, list(leg_state["intents"]))
@@ -818,6 +859,13 @@ def plan_rungs(
             remaining = float(leg["target_shares"]) - filled
             if remaining < float(leg["min_size"]) - 1e-9:
                 leg_state["status"] = "filled" if filled > 0 else "done"
+                continue
+            if str(leg["side"]) not in sides:
+                # Charter 235: a plan made before its side was stopped posts
+                # no further rung on it; a rung already resting ends at its
+                # own (minimum) horizon, and what filled is held.
+                leg_state["status"] = f"{SIDE_STOPPED}:{leg['side']}"
+                stopped.add(str(leg["side"]))
                 continue
             outstanding += 1
             if open_rung:
@@ -865,7 +913,10 @@ def plan_rungs(
                 f"UPDATE {EVALUATION_TABLE} SET legs_state_json=? WHERE station_id=? AND event_date=? AND stage=?",
                 (json.dumps(state, ensure_ascii=False, sort_keys=True), *where),
             )
-            close("all_legs_filled", final=PLAN_DONE)
+            if stopped:
+                close(f"{SIDE_STOPPED}:{','.join(sorted(stopped))}")
+            else:
+                close("all_legs_filled", final=PLAN_DONE)
             continue
         target_conn.execute(
             f"UPDATE {EVALUATION_TABLE} SET legs_state_json=?, passes=?, last_pass_at_utc=?"
@@ -913,6 +964,7 @@ def execute_proper_bets(
     cfg = {**PROPER_BET_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
     if str(cfg.get("rule")) not in RULE_VERSIONS:
         raise ValueError(f"proper_bet_rule_unknown:{cfg.get('rule')}")
+    allowed_sides(cfg)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
@@ -1020,7 +1072,9 @@ __all__ = [
     "RULE_MAKER_V2",
     "RULE_VERSIONS",
     "SIDE_NO",
+    "SIDE_STOPPED",
     "SIDE_YES",
+    "allowed_sides",
     "divergence_kl",
     "ensure_lane_schema",
     "evaluate_ladder",

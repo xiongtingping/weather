@@ -51,8 +51,12 @@ ED = "2026-09-20"
 DECIDED = "2026-09-18T12:02:00.000Z"
 NOW = "2026-09-18T12:02:30.000Z"
 TOKENS = {"27°C": ("t27", "n27"), "28°C": ("t28", "n28"), "29°C": ("t29", "n29")}
+#: Both sides: this suite pins the two-sided rule as charter 231 wrote it.  The
+#: YES side ships stopped (charter 235, ``sides: ["NO"]``); its own suite pins
+#: that.
 SETTINGS = {"opening_stages": ["P0"], "live_ws_book": False, "min_hours_to_settlement": 36.0,
-            "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0}
+            "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0,
+            "sides": ["YES", "NO"]}
 
 
 def _row(bucket, ordinal, bids, asks, tick=0.01):
@@ -512,7 +516,7 @@ def test_the_retired_no_side_trigger_is_gone_from_the_schema(tmp_path) -> None:
     assert "basket_target_intents_no_no_side_insert" not in names
 
 
-def test_the_lane_ships_v2_on_and_the_basket_off() -> None:
+def test_the_lane_ships_v2_and_the_basket_off() -> None:
     assert strategy_lanes.LANE_PROPER_BET in strategy_lanes.KNOWN_LANES
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
     assert defaults["rule"] == lane.RULE_MAKER_V2 and defaults["opening_stages"] == ["P0"]
@@ -521,7 +525,9 @@ def test_the_lane_ships_v2_on_and_the_basket_off() -> None:
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
     assert shipped["source"] == "file"
     proper = shipped["lanes"]["proper_bet"]
-    assert proper["enabled"] is True and proper["rule"] == lane.RULE_MAKER_V2
+    # The on/off switch is the operator's (2026-09-28 ruling stopped Proper);
+    # only the rule it runs when on is pinned here.
+    assert proper["rule"] == lane.RULE_MAKER_V2
     assert proper["min_hours_to_settlement"] == 36.0 and proper["opening_stages"] == ["P0"]
     assert shipped["lanes"]["basket"]["enabled"] is False
 

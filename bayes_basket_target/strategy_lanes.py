@@ -254,6 +254,13 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # ladder first, the committed snapshot otherwise.
     "send_book_fresh_seconds": 60.0,
     "live_ws_book": True,
+    # 「Proper 线的 YES 腿停掉」 (charter 235, user ruling 2026-09-28): the
+    # sides a leg may take.  The measurement behind the ruling had the rule's
+    # YES legs at -29.0% [-37.3%, -19.2%] at the ask and its NO legs flat
+    # (p0_differential_edge_20260927, the control reading).  A YES leg is
+    # still quoted and recorded, never posted; the whole position's lambda
+    # is the NO legs' own.
+    "sides": ["NO"],
 }
 
 #: 远尾做空线 (charter 234, user rulings 2026-09-28 「上线：只按市场自己的价格结构

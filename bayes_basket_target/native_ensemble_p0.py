@@ -153,7 +153,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 204: AIFS ENS admitted to the stable pool.  Where it qualifies the
 # pool is the five-system one and a packet without its run serves that
 # pool's four-system missing-member view -- minted and certified with its
-# own weights, not the five-system weights renormalised (charter 233 corrects
+# own weights, not the five-system weights renormalised (charter 236 corrects
 # the wording) -- so the four-family arithmetic moved too.
 # Charter 210: the radiation shift is served at the fleet coefficient (0.07)
 # on every artifact; the rows still serving a pinned 0.15 move.
@@ -179,7 +179,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # zero-probability truths.
 # Charter 199 (2026-09-25): the eleven US ASOS stations are blended like
 # every other station instead of held at the seat weights.
-# Charter 233: when no pool seat matches the packet exactly, the pool seats
+# Charter 236: when no pool seat matches the packet exactly, the pool seats
 # rank breadth, then the pool weight they keep, ahead of the instant they
 # were minted -- a pair re-certified this morning no longer outranks the
 # five-system view certified last night, and a same-size tie keeps the
@@ -1527,7 +1527,7 @@ def _activation_rank(
     usable first, then a pool seat, then exact packet match, fewest riders,
     freshest runs.  A pool seat then ranks breadth, the pool weight it keeps
     (``retained_weight``, keyed by activation id), its activation instant,
-    generation and id (charter 233); a contest row keeps its older order --
+    generation and id (charter 236); a contest row keeps its older order --
     activation instant, breadth, generation, id.  See the comments at the
     call site for why each key sits where it does.
 
@@ -1556,7 +1556,7 @@ def _activation_rank(
         int(fresh_count),
     )
     if pool_seat:
-        # Charter 233: every view of a pool is certified on the same cohort
+        # Charter 236: every view of a pool is certified on the same cohort
         # holdout, so the instant a view was minted says only when its
         # certificate last changed -- not that its runs are newer (the runs
         # every seat serves are the packet's own) nor that it scored better.
@@ -1590,7 +1590,7 @@ def pool_retained_weights(
     items: Sequence[tuple[Any, Sequence[str], Sequence[str], int]],
     weights_by_selection: Mapping[str, Mapping[str, float]],
 ) -> dict[str, float]:
-    """Charter 233: the pool weight each seat keeps, keyed by activation id.
+    """Charter 236: the pool weight each seat keeps, keyed by activation id.
 
     Two same-size views of one pool differ only in whom they leave out, so
     the one to serve is the one leaving out the system the pool weighs
@@ -2347,7 +2347,7 @@ def compile_native_ensemble_p0(
     # packet would keep winning the scopes the OOS rotation has not reached
     # yet -- or has reached, and minted the pool for.  Where no pool seat is
     # compatible yet, the contest rows still serve rather than failing closed.
-    # Charter 233: among pool seats, breadth then the pool weight a seat keeps
+    # Charter 236: among pool seats, breadth then the pool weight a seat keeps
     # rank ahead of the activation instant (see ``_activation_rank``); the
     # weights are the pool views' own certified ones, read once per compile.
     pool_first = P0_MEMBERSHIP_MODE == P0_MEMBERSHIP_MODE_STABLE_POOL

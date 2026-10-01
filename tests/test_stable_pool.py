@@ -65,7 +65,7 @@ def test_shrinkage_runs_from_skill_to_baseline_and_never_zeroes_a_member() -> No
 
 
 def test_a_member_without_a_run_is_served_by_its_minted_view() -> None:
-    """Charter 233: the missing-member rule is a certified view, not a renormalisation.
+    """Charter 236: the missing-member rule is a certified view, not a renormalisation.
 
     Every view that leaves one system out is minted beside the whole pool,
     so a decision without that system's run serves the view's own certified
