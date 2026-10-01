@@ -1310,3 +1310,117 @@ def test_a_six_hour_icon_run_is_seated_only_beside_weights_on_its_own_grid(ssot)
     _pool(ssot, station="ZUUU", season_bin=season, lead_bucket=bucket,
           cycles={"DWD_ICON_GLOBAL_EPS": "06Z", "NOAA_GEFS_05": "06Z"}, generation=2)
     assert _ready(ssot, run)
+
+
+# --------------------------------------------------------------------------
+# A follow file grows to the stations listed after its first read.
+# --------------------------------------------------------------------------
+def _follow_archive(stations: list[str], query: str, *, receipt: str) -> dict:
+    run = follow_run.follow_run_init(DAY, 1, 12).isoformat().replace("+00:00", "Z")
+    identity = {
+        "schema": ICON, "event_date": DAY, "run_init_utc": run,
+        "run_cycle": "12Z", "archive_lead_bucket": "d1",
+        "ensemble_system_id": icon.SYSTEM_ID,
+        "independence_family_id": icon.INDEPENDENCE_FAMILY_ID,
+        "member_count": 40, "training_only": True, "holdout_eligible": False,
+        "single_download_per_global_field": True,
+        "station_count": len(stations), "station_ids": list(stations),
+        "union_forecast_hours": [12, 15] if receipt == "a" else [15, 18],
+        "archive_query_at_utc": query, "object_receipt_set_sha256": receipt * 64,
+        "total_response_bytes": 10,
+        "captures": [
+            {"station_id": s, "archive_query_at_utc": query, "x": s} for s in stations
+        ],
+    }
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def test_a_supplement_keeps_every_retained_capture_and_adds_only_new_stations() -> None:
+    retained = _follow_archive(["ZUUU"], "2026-08-01T03:00:00Z", receipt="a")
+    supplement = _follow_archive(["KLGA"], "2026-08-01T05:30:00Z", receipt="b")
+    merged = capture.merge_follow_supplement(retained, supplement)
+    assert merged["captures"][0] == retained["captures"][0]
+    assert merged["captures"][1] == supplement["captures"][0]
+    assert merged["station_ids"] == ["ZUUU", "KLGA"]
+    assert merged["station_count"] == 2
+    assert merged["union_forecast_hours"] == [12, 15, 18]
+    assert merged["total_response_bytes"] == 20
+    # the file never claims an arrival earlier than a capture it holds
+    assert merged["archive_query_at_utc"] == "2026-08-01T05:30:00Z"
+    # the first read's receipts stay at top level, the second's are its own
+    assert merged["object_receipt_set_sha256"] == "a" * 64
+    assert merged["supplemental_reads"] == [{
+        "station_count": 1, "station_ids": ["KLGA"],
+        "union_forecast_hours": [15, 18],
+        "archive_query_at_utc": "2026-08-01T05:30:00Z",
+        "object_receipt_set_sha256": "b" * 64, "total_response_bytes": 10,
+    }]
+    assert merged["content_sha256"] == content_sha256(
+        {k: v for k, v in merged.items() if k != "content_sha256"}
+    )
+
+
+@pytest.mark.parametrize("change", [
+    {"run_init_utc": "2026-07-31T00:00:00Z"},
+    {"extraction_version": "other"},
+    {"captures": [{"station_id": "ZUUU"}]},
+    {"archive_query_at_utc": "2026-08-01T02:00:00Z"},
+])
+def test_a_supplement_that_is_not_the_same_run_read_later_is_refused(change) -> None:
+    retained = _follow_archive(["ZUUU"], "2026-08-01T03:00:00Z", receipt="a")
+    supplement = {**_follow_archive(["KLGA"], "2026-08-01T05:30:00Z", receipt="b"), **change}
+    with pytest.raises(capture.ContractError):
+        capture.merge_follow_supplement(retained, supplement)
+
+
+def test_a_retained_follow_file_reads_only_the_stations_listed_since(monkeypatch, tmp_path) -> None:
+    _install_station_registry(monkeypatch)
+    rows = _registry()["rows"]
+    monkeypatch.setattr(capture, "load_market_registry_snapshot", lambda _p: {"rows": rows})
+    listed = sorted({str(row["station_id"]) for row in rows})
+    assert len(listed) >= 2
+    asked: list[list[str]] = []
+
+    def fake_icon(**kw):
+        stations = [s["station_id"] for s in kw["station_scopes"]]
+        asked.append(stations)
+        return _follow_archive(stations, kw["archive_query_at_utc"], receipt="b")
+
+    monkeypatch.setattr(capture, "capture_icon_eps_station_days", fake_icon)
+    stop = lambda **_kw: (_ for _ in ()).throw(RuntimeError("HTTPStatusError:404"))  # noqa: E731
+    monkeypatch.setattr(capture, "capture_geps_station_days", stop)
+    monkeypatch.setattr(capture, "capture_ecmwf_station_days", stop)
+    _no_ai_network(monkeypatch)
+    path = follow_run.follow_archive_path(tmp_path, follow_run.ICON_FAMILY, DAY, 1, 12)
+    first = _follow_archive(listed[:1], "2026-08-01T03:00:00Z", receipt="a")
+    path.write_text(json.dumps(first), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text("{}", encoding="utf-8")
+
+    receipt = capture.capture_follow_runs(
+        registry_path=registry_path, event_date=DAY, rungs=[(1, 12)],
+        capture_root=tmp_path, timeout_seconds=30.0,
+        as_of_utc="2026-08-01T05:30:00Z",
+    )
+    outcome = next(
+        o for o in receipt["outcomes"]
+        if o["family"] == follow_run.ICON_FAMILY and o["path"] == path.name
+    )
+    assert outcome["state"] == "SUPPLEMENTED"
+    assert asked == [listed[1:]]
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert on_disk["captures"][0] == first["captures"][0]
+    assert sorted(follow_run.archive_station_ids(on_disk)) == listed
+    assert str(path) in receipt["archive_paths"]
+
+    asked.clear()
+    again = capture.capture_follow_runs(
+        registry_path=registry_path, event_date=DAY, rungs=[(1, 12)],
+        capture_root=tmp_path, timeout_seconds=30.0,
+        as_of_utc="2026-08-01T06:00:00Z",
+    )
+    assert asked == []
+    assert next(
+        o for o in again["outcomes"]
+        if o["family"] == follow_run.ICON_FAMILY and o["path"] == path.name
+    )["state"] == "RETAINED"

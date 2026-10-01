@@ -324,3 +324,48 @@ def test_an_unsupported_lead_is_still_rejected() -> None:
             archives=_lead_archives("d7", "2026-06-24T18:00:00Z", "18Z"),
             station_id="SAEZ",
         )
+
+
+def _with_capture_query(archive: dict, capture_query: str, file_query: str) -> dict:
+    capture = {
+        key: value
+        for key, value in archive["captures"][0].items()
+        if key != "content_sha256"
+    }
+    capture["archive_query_at_utc"] = capture_query
+    capture = {**capture, "content_sha256": content_sha256(capture)}
+    identity = {
+        key: value for key, value in archive.items() if key != "content_sha256"
+    }
+    identity["captures"] = [capture]
+    identity["archive_query_at_utc"] = file_query
+    return {**identity, "content_sha256": content_sha256(identity)}
+
+
+def test_a_station_arrives_when_its_own_capture_was_read() -> None:
+    # A follow file read again for later-listed stations carries the newest
+    # read at file level; a station from the first read keeps its own instant.
+    intervals = {"15°C or below": [None, 15.5], "16°C or higher": [15.5, None]}
+    gefs = _archive(
+        schema=NOAA_GEFS_MULTISTATION_SCHEMA, system_id="NOAA_GEFS_05",
+        family_id="NOAA_GEFS", intervals=intervals,
+    )
+    eccc = _with_capture_query(
+        _archive(
+            schema=ECCC_GEPS_MULTISTATION_SCHEMA,
+            system_id="ECCC_GEM_GLOBAL_ENS", family_id="ECCC_GEM",
+            intervals=intervals, run_cycle="00Z",
+            run_init_utc="2026-06-30T00:00:00Z",
+        ),
+        capture_query="2026-07-31T00:02:00Z",
+        file_query="2026-07-31T05:00:00Z",
+    )
+    packet = build_official_native_forward_packet(
+        archives=[gefs, eccc], station_id="SAEZ"
+    )
+    assert packet["archive_query_at_utc_by_system"]["ECCC_GEM_GLOBAL_ENS"] == (
+        "2026-07-31T00:02:00Z"
+    )
+    assert packet["availability_evidence"]["available_at_utc"] == (
+        "2026-07-31T00:02:00Z"
+    )

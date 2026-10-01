@@ -1557,6 +1557,146 @@ def capture_official_native_forward(
     }
 
 
+# What a follow file must agree on with a supplement before the two are one
+# run's archive.  Any of these differing means the supplement is not the same
+# run read the same way, and the file keeps what it had.
+_FOLLOW_RUN_IDENTITY_KEYS = (
+    "schema",
+    "event_date",
+    "run_init_utc",
+    "run_cycle",
+    "archive_lead_bucket",
+    "ensemble_system_id",
+    "independence_family_id",
+    "member_count",
+    "member_availability_contract",
+    "extraction_version",
+    "source_prefix",
+    "source_class",
+    "training_only",
+    "holdout_eligible",
+    "single_download_per_global_field",
+)
+# Per-read facts: each read keeps its own, under ``supplemental_reads``.
+_FOLLOW_READ_KEYS_MERGED = (
+    "captures",
+    "content_sha256",
+    "station_ids",
+    "station_count",
+    "union_forecast_hours",
+    "archive_query_at_utc",
+    "total_response_bytes",
+    "supplemental_reads",
+)
+
+
+def _capture_follow_family(
+    family: str,
+    *,
+    event_date: str,
+    station_scopes: Sequence[Mapping[str, Any]],
+    archive_query_at_utc: str,
+    timeout_seconds: float,
+    lead_days: int,
+    cycle: int,
+    icon_download_workers: int | None,
+) -> dict[str, Any]:
+    """One family's read of one followed run, for the given stations."""
+
+    if family == follow_run.ICON_FAMILY:
+        return capture_icon_eps_station_days(
+            event_date=event_date,
+            station_scopes=station_scopes,
+            archive_query_at_utc=archive_query_at_utc,
+            timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
+            lead_days=lead_days,
+            run_cycle_hour=cycle,
+            download_workers=icon_download_workers,
+        )
+    collector = {
+        follow_run.ECMWF_FAMILY: capture_ecmwf_station_days,
+        follow_run.AIFS_FAMILY: capture_aifs_station_days,
+        follow_run.AIGEFS_FAMILY: capture_aigefs_station_days,
+        follow_run.ECCC_FAMILY: capture_geps_station_days,
+    }[family]
+    return collector(
+        event_date=event_date,
+        station_scopes=station_scopes,
+        archive_query_at_utc=archive_query_at_utc,
+        timeout_seconds=float(timeout_seconds),
+        lead_days=lead_days,
+        run_cycle_hour=cycle,
+    )
+
+
+def merge_follow_supplement(
+    retained: Mapping[str, Any], supplement: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A retained follow archive plus a later read of the same run.
+
+    The retained captures are kept byte for byte -- each station capture
+    carries its own ``archive_query_at_utc``, which is what the packet and the
+    history ingest read -- and the supplement's captures are appended.  The
+    file-level read facts (receipt sets, bytes, the query instant) of every
+    read after the first go under ``supplemental_reads``; the top-level
+    ``archive_query_at_utc`` becomes the newest read, so the file never
+    claims an earlier arrival than any capture it holds.  Fail closed on any
+    identity disagreement or on a station present in both.
+    """
+
+    for key in _FOLLOW_RUN_IDENTITY_KEYS:
+        if retained.get(key) != supplement.get(key):
+            raise ContractError(f"follow_supplement_identity_mismatch:{key}")
+    old = [dict(row) for row in retained.get("captures") or []]
+    new = [dict(row) for row in supplement.get("captures") or []]
+    old_ids = {str(row.get("station_id") or "").strip().upper() for row in old}
+    new_ids = [str(row.get("station_id") or "").strip().upper() for row in new]
+    if not new or "" in new_ids or old_ids & set(new_ids):
+        raise ContractError("follow_supplement_station_overlap")
+    queries = [
+        _parse_utc_timestamp(retained.get("archive_query_at_utc")),
+        _parse_utc_timestamp(supplement.get("archive_query_at_utc")),
+    ]
+    if None in queries or queries[1] < queries[0]:
+        raise ContractError("follow_supplement_query_order_invalid")
+    read = {
+        key: value
+        for key, value in supplement.items()
+        if key not in {"captures", "content_sha256", "supplemental_reads"}
+        and key not in _FOLLOW_RUN_IDENTITY_KEYS
+    }
+    read["station_ids"] = new_ids
+    merged: dict[str, Any] = {
+        key: value
+        for key, value in retained.items()
+        if key != "content_sha256"
+    }
+    captures = old + new
+    merged["captures"] = captures
+    merged["supplemental_reads"] = [
+        *list(retained.get("supplemental_reads") or []),
+        read,
+    ]
+    if "station_ids" in retained:
+        merged["station_ids"] = [
+            str(row["station_id"]) for row in captures
+        ]
+    if "station_count" in retained:
+        merged["station_count"] = len(captures)
+    if "union_forecast_hours" in retained or "union_forecast_hours" in supplement:
+        merged["union_forecast_hours"] = sorted({
+            int(hour)
+            for source in (retained, supplement)
+            for hour in source.get("union_forecast_hours") or ()
+        })
+    if "total_response_bytes" in retained:
+        merged["total_response_bytes"] = int(
+            retained.get("total_response_bytes") or 0
+        ) + int(supplement.get("total_response_bytes") or 0)
+    merged["archive_query_at_utc"] = supplement.get("archive_query_at_utc")
+    return {**merged, "content_sha256": content_sha256(merged)}
+
+
 def capture_follow_runs(
     *,
     registry_path: Path,
@@ -1632,11 +1772,65 @@ def capture_follow_runs(
             "path": path.name,
         }
         outcomes.append(outcome)
-        if follow_run.load_follow_archive(
+        seal = seals[family]
+        covered = [
+            scope for scope in scopes
+            if seal(
+                event_date=event_date,
+                settlement_timezone=str(scope["settlement_timezone"]),
+                run_init_utc=run_init,
+            ) is not None
+        ]
+        retained = follow_run.load_follow_archive(
             path, family=family, event_date=event_date, run_init=run_init
-        ) is not None:
-            outcome["state"] = "RETAINED"
+        )
+        if retained is not None:
             archive_paths.append(str(path))
+            # A follow file is written when its run first lands, for the
+            # stations listed at that instant -- and D+2 lists over D-2's
+            # morning.  Left alone, a station listed after the capture never
+            # held that run: ICON's 10-03 00Z banked 4 of the 29 its sibling
+            # ECCC capture saw half an hour later, so those stations' own
+            # (bucket x cycle) history never grew and the run never seated
+            # for them (2026-10-01: 9 in 10 of the 48-60h P0s missing GEM or
+            # ICON).  The stations it lacks are read now and added; the
+            # stations it holds keep their bytes.
+            held_stations = follow_run.archive_station_ids(retained)
+            missing = [
+                scope for scope in covered
+                if str(scope["station_id"]).strip().upper()
+                not in held_stations
+            ]
+            if not missing:
+                outcome["state"] = "RETAINED"
+                continue
+            try:
+                assert_process_memory_budget()
+                supplement = _capture_follow_family(
+                    family,
+                    event_date=event_date,
+                    station_scopes=missing,
+                    archive_query_at_utc=capture_at,
+                    timeout_seconds=float(timeout_seconds),
+                    lead_days=lead_days,
+                    cycle=cycle,
+                    icon_download_workers=icon_download_workers,
+                )
+                merged = merge_follow_supplement(retained, supplement)
+            except Exception as exc:  # noqa: BLE001 - the file keeps what it has
+                outcome["state"] = "SUPPLEMENT_FAILED"
+                outcome["missing_station_count"] = len(missing)
+                outcome["error"] = f"{type(exc).__name__}:{exc}"[:200]
+                continue
+            write_bounded_json_if_changed(path, merged)
+            outcome["state"] = "SUPPLEMENTED"
+            outcome["station_count"] = len(merged["captures"])
+            outcome["added_station_ids"] = sorted(
+                str(row["station_id"]) for row in supplement["captures"]
+            )
+            outcome["total_response_bytes"] = int(
+                supplement.get("total_response_bytes") or 0
+            )
             continue
         if not follow_run.follow_publication_due(
             family,
@@ -1647,66 +1841,21 @@ def capture_follow_runs(
         ):
             outcome["state"] = "NOT_DUE"
             continue
-        seal = seals[family]
-        covered = [
-            scope for scope in scopes
-            if seal(
-                event_date=event_date,
-                settlement_timezone=str(scope["settlement_timezone"]),
-                run_init_utc=run_init,
-            ) is not None
-        ]
         if not covered:
             outcome["state"] = "NO_COVERABLE_STATION"
             continue
         try:
             assert_process_memory_budget()
-            if family == follow_run.ICON_FAMILY:
-                archive = capture_icon_eps_station_days(
-                    event_date=event_date,
-                    station_scopes=covered,
-                    archive_query_at_utc=capture_at,
-                    timeout_seconds=ICON_OBJECT_TIMEOUT_SECONDS,
-                    lead_days=lead_days,
-                    run_cycle_hour=cycle,
-                    download_workers=icon_download_workers,
-                )
-            elif family == follow_run.ECMWF_FAMILY:
-                archive = capture_ecmwf_station_days(
-                    event_date=event_date,
-                    station_scopes=covered,
-                    archive_query_at_utc=capture_at,
-                    timeout_seconds=float(timeout_seconds),
-                    lead_days=lead_days,
-                    run_cycle_hour=cycle,
-                )
-            elif family == follow_run.AIFS_FAMILY:
-                archive = capture_aifs_station_days(
-                    event_date=event_date,
-                    station_scopes=covered,
-                    archive_query_at_utc=capture_at,
-                    timeout_seconds=float(timeout_seconds),
-                    lead_days=lead_days,
-                    run_cycle_hour=cycle,
-                )
-            elif family == follow_run.AIGEFS_FAMILY:
-                archive = capture_aigefs_station_days(
-                    event_date=event_date,
-                    station_scopes=covered,
-                    archive_query_at_utc=capture_at,
-                    timeout_seconds=float(timeout_seconds),
-                    lead_days=lead_days,
-                    run_cycle_hour=cycle,
-                )
-            else:
-                archive = capture_geps_station_days(
-                    event_date=event_date,
-                    station_scopes=covered,
-                    archive_query_at_utc=capture_at,
-                    timeout_seconds=float(timeout_seconds),
-                    lead_days=lead_days,
-                    run_cycle_hour=cycle,
-                )
+            archive = _capture_follow_family(
+                family,
+                event_date=event_date,
+                station_scopes=covered,
+                archive_query_at_utc=capture_at,
+                timeout_seconds=float(timeout_seconds),
+                lead_days=lead_days,
+                cycle=cycle,
+                icon_download_workers=icon_download_workers,
+            )
         except Exception as exc:  # noqa: BLE001 - one run, retried later
             outcome["state"] = "FAILED"
             outcome["error"] = f"{type(exc).__name__}:{exc}"[:200]

@@ -619,7 +619,23 @@ def build_official_native_forward_packet(
             or ""
         )
         run_init_utc = str(archive.get("run_init_utc") or "").strip()
-        archive_query_at_utc = str(
+        # The station's own capture says when its members were read.  A
+        # follow file read again for stations listed after its first read
+        # holds captures from both reads, and the file-level instant is the
+        # newest; each station's arrival is its own capture's, never earlier
+        # nor later than the read that produced it.  Captures without the
+        # field (pre-vocabulary fixtures) keep the file-level value.
+        station_query = next(
+            (
+                str(item.get("archive_query_at_utc") or "").strip()
+                for item in archive.get("captures") or []
+                if isinstance(item, Mapping)
+                and str(item.get("station_id") or "").strip().upper()
+                == station
+            ),
+            "",
+        )
+        archive_query_at_utc = station_query or str(
             archive.get("archive_query_at_utc") or ""
         ).strip()
         if (
