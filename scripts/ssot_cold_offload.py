@@ -370,7 +370,10 @@ def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
     frozen: set[tuple[str, str]] = set()
     if path.is_file():
         try:
-            cache = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            # Not mode=ro: a WAL file whose writer has closed has no -shm,
+            # and a read-only open cannot make one.
+            cache = sqlite3.connect(str(path))
+            cache.execute("PRAGMA query_only=1")
             try:
                 frozen = {
                     (str(station), str(day)) for station, day in cache.execute(
@@ -419,7 +422,10 @@ def taf_case_cache_floor(conn: sqlite3.Connection) -> str | None:
     if not path.is_file():
         return taf.DEFAULT_SINCE
     try:
-        cache = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        # Not mode=ro: a WAL file whose writer has closed has no -shm,
+        # and a read-only open cannot make one.
+        cache = sqlite3.connect(str(path))
+        cache.execute("PRAGMA query_only=1")
         try:
             frozen = {str(r[0]) for r in cache.execute("SELECT event_date FROM frozen_date")}
         finally:
