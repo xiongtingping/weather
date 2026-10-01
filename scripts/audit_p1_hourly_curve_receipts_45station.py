@@ -137,6 +137,9 @@ def _open_target_db(path: Path) -> sqlite3.Connection:
         raise RuntimeError("p1_hourly_curve_audit_target_database_missing")
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_probability_envelope",))  # charter 238: whole history
     conn.execute("PRAGMA query_only=ON")
     return conn
 

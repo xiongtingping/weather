@@ -40,7 +40,6 @@ WHOLE_HISTORY_READERS = (
     "scripts/measure_venue_price_calibration.py",
     "scripts/edge_attribution.py",
     "scripts/trace_tiebreak_entry_paths.py",
-    "scripts/refit_posterior.py",
 )
 
 
@@ -337,3 +336,145 @@ def test_charter_238_names_the_tables() -> None:
     assert "attach_cold_history" in article
     for table in NEW_TABLES:
         assert table in article
+
+
+# --------------------------------------------------------------------------
+# The probability envelope (2026-10-01, 「查发布链」).
+# --------------------------------------------------------------------------
+
+ENVELOPE = "basket_probability_envelope"
+ENVELOPE_WHOLE_HISTORY_READERS = (
+    "scripts/measure_climate_blend.py",
+    "scripts/audit_p1_hourly_curve_receipts_45station.py",
+    "scripts/edge_attribution.py",
+    "scripts/replay_p0_member_own_lead.py",
+    "scripts/replay_p0_stable_pool.py",
+)
+
+
+def _scheduled_scripts() -> set[str]:
+    """Every script a schedule runs: shell sweeps, the daemon and worker, LaunchAgents."""
+
+    import re
+    import subprocess
+
+    texts = [p.read_text(encoding="utf-8", errors="ignore") for p in (ROOT / "scripts").glob("*.sh")]
+    for name in ("scripts/weather_basket_yes_daemon.py", "scripts/weather_maintenance_worker.py",
+                 "bayes_basket_target/production_worker.py"):
+        texts.append((ROOT / name).read_text(encoding="utf-8"))
+    agents = Path.home() / "Library" / "LaunchAgents"
+    for plist in agents.glob("com.weather.*.plist") if agents.is_dir() else ():
+        texts.append(subprocess.run(["plutil", "-p", str(plist)], capture_output=True, text=True).stdout)
+    names = {m for text in texts for m in re.findall(r"([a-z_0-9]+\.py)", text)}
+    # The dashboard imports these helpers into its own scheduled render.
+    names |= {"live_book.py", "live_selection.py", "dashboard_ai_models.py"}
+    return {name for name in names if (ROOT / "scripts" / name).is_file()}
+
+
+def test_no_scheduled_job_reads_the_cold_tier() -> None:
+    """The external volume may never be a dependency of anything that runs on its own."""
+
+    offenders = sorted(
+        name for name in _scheduled_scripts() - {"ssot_cold_offload.py"}
+        if "attach_cold_history" in (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        or "open_cold_table" in (ROOT / "scripts" / name).read_text(encoding="utf-8")
+    )
+    assert offenders == []
+    for name in ENVELOPE_WHOLE_HISTORY_READERS + WHOLE_HISTORY_READERS:
+        assert Path(name).name not in _scheduled_scripts(), name
+
+
+def test_every_envelope_history_reader_attaches_the_cold_rows() -> None:
+    for name in ENVELOPE_WHOLE_HISTORY_READERS:
+        tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
+        tables = {
+            elt.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "attach_cold_history"
+            for arg in node.args[1:2] for elt in getattr(arg, "elts", [])
+        }
+        assert ENVELOPE in tables, name
+
+
+def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
+    import re
+
+    policy = off.POLICY_BY_TABLE[ENVELOPE]
+    gate = (ROOT / "scripts" / "fit_deterministic_feature_gate.py").read_text(encoding="utf-8")
+    assert re.search(r"^WINDOW_DAYS = (\d+)$", gate, re.M).group(1) == str(off.FEATURE_GATE_WINDOW_DAYS)
+    sweep = (ROOT / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
+    assert f"timedelta(days={off.P1_LIKELIHOOD_WINDOW_DAYS})" in sweep
+    assert policy.hot_days > off.FEATURE_GATE_WINDOW_DAYS and policy.hot_days > off.P1_LIKELIHOOD_WINDOW_DAYS
+    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    landing = re.search(r'^TRUTH_LANDING_SINCE = "([0-9-]+)"$', dashboard, re.M).group(1)
+    h5 = re.search(r'^H5_FROM_UTC = "([0-9-]+)T', dashboard, re.M).group(1)
+    assert sorted(off.DASHBOARD_FIXED_STARTS) == sorted([landing, h5])
+    assert {f.name for f in policy.floors} == {
+        "calibration_evidence_anchor", "dashboard_fixed_starts", "taf_case_cache",
+        "metar_trajectory_training",
+    }
+    assert policy.keep_station_days is not None and policy.keep_station_days.live_only
+
+
+def test_an_unanchored_calibration_lane_moves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bayes_basket_target import center_width_store
+
+    monkeypatch.setattr(center_width_store, "evidence_anchor", lambda _conn, *, stage: None)
+    with pytest.raises(off.OffloadRefused):
+        off.evidence_anchor_floor(sqlite3.connect(":memory:"))
+    monkeypatch.setattr(
+        center_width_store, "evidence_anchor",
+        lambda _conn, *, stage: {"P0": "2026-09-14T05:52:13Z"}.get(stage, "2026-09-18T19:10:09Z"),
+    )
+    assert off.evidence_anchor_floor(sqlite3.connect(":memory:")) == "2026-09-12"
+
+
+def test_the_taf_floor_is_the_first_day_its_cache_has_not_frozen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts import fit_taf_likelihood as taf
+
+    path = tmp_path / "cases.db"
+    monkeypatch.setattr(taf, "CASE_CACHE_PATH", path)
+    assert off.taf_case_cache_floor(sqlite3.connect(":memory:")) == taf.DEFAULT_SINCE
+    cache = taf.open_case_cache(path)
+    for day in taf._days(taf.DEFAULT_SINCE, "2026-08-20"):
+        cache.execute("INSERT INTO frozen_date VALUES(?,0,0,?,?)", (day, taf.CASE_CACHE_SCHEMA, "x"))
+    cache.close()
+    assert off.taf_case_cache_floor(sqlite3.connect(":memory:")) == "2026-08-21"
+
+
+def test_an_unlabelled_fact_keeps_its_envelope(store: Path, cold: Path, tmp_path: Path) -> None:
+    conn = sqlite3.connect(store)
+    columns = [r[1] for r in conn.execute(f"PRAGMA table_info({ENVELOPE})")]
+    for n in range(3):
+        values = {c: f"{c}-{n}" for c in columns}
+        values.update({
+            "envelope_id": f"env_{n}", "stage": "P0", "checkpoint_id": f"cp_{n}", "station_id": "KLGA",
+            "event_date": "2026-06-01", "decision_at_utc": f"2026-05-31T0{n}:00:00Z",
+            "state": "COMMITTED", "content_sha256": _sha(f"e{n}"), "posterior_sha256": _sha("p"),
+            "bridge_sha256": _sha("b"), "lineage_json": "{}", "probabilities_json": "{}",
+            "bucket_ordinals_json": "{}",
+        })
+        conn.execute(
+            f"INSERT INTO {ENVELOPE}({','.join(values)}) VALUES({','.join('?' * len(values))})",
+            tuple(values.values()),
+        )
+    fact_columns = [r[1] for r in conn.execute("PRAGMA table_info(basket_policy_training_fact)")]
+    conn.execute("CREATE TEMP TABLE _f AS SELECT * FROM basket_policy_training_fact WHERE 0")
+    conn.commit()
+    conn.close()
+    policy = off.POLICY_BY_TABLE[ENVELOPE]
+    reduced = off.TablePolicy(
+        table=ENVELOPE, time_column="event_date", hot_days=policy.hot_days, readers="test",
+        keep_latest=policy.keep_latest,
+        keep_named=(off.KeepNamed(name="unlabelled_fact", column="envelope_id",
+                                  sql="SELECT 'env_0'", why="test"),),
+    )
+    conn = sqlite3.connect(store)
+    plan = off.plan_table(conn, reduced, as_of=AS_OF, holds={}, station_days=lambda _live: set())
+    conn.close()
+    assert plan.kept.get("named:unlabelled_fact") == 1
+    assert plan.kept.get("latest_0:station_id+stage") == 1
+    assert len(plan.candidates) == 1
+    assert fact_columns   # the production schema carries the table the real query reads

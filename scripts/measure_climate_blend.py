@@ -31,6 +31,9 @@ START, END = sys.argv[1] if len(sys.argv) > 1 else "2026-08-15", sys.argv[2] if 
 OUT = sys.argv[3] if len(sys.argv) > 3 else "/private/tmp/claude-501/-Users-xiong-weather/b62c5338-a9d3-4aeb-97b4-2fb839c056e3/scratchpad/climate_blend_rows.json"
 
 c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+from scripts.ssot_cold_offload import attach_cold_history  # noqa: E402
+
+attach_cold_history(c, ("basket_probability_envelope",))  # charter 238: whole history
 
 truth = {}
 for st, d, v, rev, at in c.execute(

@@ -192,6 +192,8 @@ DAY_COUNTS_SQL = (
     " WHERE state='COMMITTED' AND event_date=? AND stage IN ('P0','P0-M') GROUP BY stage"
 )
 
+#: Where the nightly fit's evidence begins (the sweep passes no --since).
+DEFAULT_SINCE = "2026-08-16"
 CASE_CACHE_PATH = ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "taf_likelihood_cases.db"
 CASE_CACHE_SCHEMA = "taf_likelihood_case_cache_v1"
 #: A day's P0 and P0-M stop being written once its local day is over; three
@@ -865,7 +867,7 @@ def main() -> int:
     parser.add_argument("--target-db", default=str(
         ROOT / "data" / "bayes_basket_target_ssot.db"
     ))
-    parser.add_argument("--since", default="2026-08-16")
+    parser.add_argument("--since", default=DEFAULT_SINCE)
     parser.add_argument("--through", required=True)
     parser.add_argument("--out", default=str(TL.ARTIFACT_PATH))
     parser.add_argument("--fitted-at-utc", default=None)

@@ -217,6 +217,20 @@ class KeepVectorRefs:
 
 
 @dataclass(frozen=True)
+class KeepNamed:
+    """Every row whose ``column`` a reader's own query still names stays hot.
+
+    ``sql`` returns one column of values; it runs once per plan, and must be
+    cheap (an index scan), since it runs against the live store.
+    """
+
+    name: str
+    column: str
+    sql: str
+    why: str
+
+
+@dataclass(frozen=True)
 class DynamicFloor:
     """Rows dated on or after a day computed at run time stay hot.
 
@@ -241,6 +255,7 @@ class TablePolicy:
     keep_latest: tuple[KeepLatest, ...] = ()
     keep_station_days: KeepStationDays | None = None
     keep_vector_refs: KeepVectorRefs | None = None
+    keep_named: tuple[KeepNamed, ...] = ()
     floors: tuple[DynamicFloor, ...] = ()
     #: Content-addressed side tables the moved rows name, COPIED (never
     #: deleted) into the same cold file so an offline reader can expand a
@@ -269,6 +284,7 @@ class TablePolicy:
                 "instant_column": self.keep_vector_refs.instant_column,
                 "why": self.keep_vector_refs.why,
             },
+            "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
             "mirror_tables": list(self.mirror_tables),
         }
@@ -305,6 +321,95 @@ def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
         moment -= timedelta(hours=SERVING_AUDIT_WINDOW_HOURS)
         floors.append(moment.astimezone(timezone.utc).date().isoformat())
     return min(floors) if floors else None
+
+
+#: The P0 envelopes the feature gate (charter 201/227, served) re-scores:
+#: event days of its last WINDOW_DAYS; P1's likelihood refit reads 44.
+#: Pinned by the test to ``scripts/fit_deterministic_feature_gate.py`` and
+#: ``scripts/p1_likelihood_refit_sweep.sh``.
+FEATURE_GATE_WINDOW_DAYS = 60
+P1_LIKELIHOOD_WINDOW_DAYS = 44
+#: A decision for event date D is taken up to two days before D, so an
+#: anchor on the decision clock keeps event dates from two days before it.
+EVIDENCE_EVENT_DATE_MARGIN_DAYS = 2
+
+
+#: Dashboard sections that read every P0 envelope from a fixed day on:
+#: ``TRUTH_LANDING_SINCE`` (truth landing) and ``H5_FROM_UTC`` (H5).  The
+#: dashboard renders on a schedule and never reads the cold tier, so these
+#: are floors.  Pinned by the test to ``scripts/calibration_dashboard.py``.
+DASHBOARD_FIXED_STARTS = ("2026-08-15", "2026-08-27")
+
+
+def dashboard_fixed_start_floor(_conn: sqlite3.Connection) -> str | None:
+    return min(DASHBOARD_FIXED_STARTS)
+
+
+def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
+    """P1's trajectory training reads every truth day of a station and its roots.
+
+    ``production_worker._run_metar_trajectory_training`` runs
+    ``build_bayes_basket_target_metar_trajectory_training_packet.py`` for one
+    due station a cycle; the packet binds each accepted AWC truth day, from
+    the first, to that day's P0/P0-M roots, and falls back to a historical
+    curve when they are gone -- a different fold.  Until that packet reads
+    frozen roots the way the TAF fit does, every envelope stays.
+    """
+
+    row = conn.execute(
+        "SELECT MIN(local_date) FROM calibration_station_daily_high_truth"
+        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
+    ).fetchone()
+    if not row or not row[0]:
+        raise OffloadRefused("metar_trajectory_truth_unreadable")
+    return str(row[0])
+
+
+def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
+    """The width and off-centre lanes read every decision since their anchor.
+
+    Both refit nightly on ``center_width_store.serving_lane_by_station_day``
+    from ``evidence_anchor`` (charter 202's epoch, or a served version's own
+    start), rebuilding each sampled row's envelope.  No anchor means an
+    unbounded read, so nothing moves.
+    """
+
+    from bayes_basket_target.center_width_store import evidence_anchor  # noqa: PLC0415
+
+    days: list[str] = []
+    for stage in ("P0", "P0-M", "P1"):
+        try:
+            anchor = evidence_anchor(conn, stage=stage)
+        except sqlite3.Error as exc:
+            raise OffloadRefused(f"evidence_anchor_unreadable:{stage}") from exc
+        moment = _instant(anchor) if anchor else None
+        if moment is None:
+            raise OffloadRefused(f"evidence_anchor_missing:{stage}")
+        days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
+    return min(days)
+
+
+def taf_case_cache_floor(conn: sqlite3.Connection) -> str | None:
+    """The first day the TAF fit still reads off the SSOT (not yet in its cache)."""
+
+    from scripts import fit_taf_likelihood as taf  # noqa: PLC0415
+
+    path = Path(taf.CASE_CACHE_PATH)
+    if not path.is_file():
+        return taf.DEFAULT_SINCE
+    try:
+        cache = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            frozen = {str(r[0]) for r in cache.execute("SELECT event_date FROM frozen_date")}
+        finally:
+            cache.close()
+    except sqlite3.Error as exc:
+        raise OffloadRefused(f"taf_case_cache_unreadable:{path}") from exc
+    last = (_utc_now().date() - timedelta(days=taf.FREEZE_LAG_DAYS)).isoformat()
+    for day in taf._days(taf.DEFAULT_SINCE, last):
+        if day not in frozen:
+            return day
+    return None
 
 
 POLICIES: tuple[TablePolicy, ...] = (
@@ -498,6 +603,82 @@ POLICIES: tuple[TablePolicy, ...] = (
     ),
 )
 
+POLICIES += (
+    # 2026-10-01 (user: 「查发布链」): the probability envelope.  Its readers
+    # with a window: the served feature gate (60 event days of P0), P1's
+    # likelihood refit (44), the dashboard (valuation 28, posterior 14), the
+    # width/off-centre lanes (from their evidence anchor, a floor), the TAF
+    # fit (from 2026-08-16, through its case cache: a floor until a day is
+    # frozen).  The release chain that inventories every envelope
+    # (canonical_typed_scope_builder / canonical_expected_scope_manifest) has
+    # no caller, and no envelope since 09-28 carries the release_state the
+    # production check reads.  Offline whole-history readers attach the cold
+    # rows.
+    TablePolicy(
+        table="basket_probability_envelope",
+        time_column="event_date",
+        hot_days=max(FEATURE_GATE_WINDOW_DAYS, P1_LIKELIHOOD_WINDOW_DAYS) + 2,
+        readers=(
+            "production (worker, io, ledger, lanes, bridge, materialization): the current "
+            "station-day, an envelope by id, or the newest per station; "
+            "fit_deterministic_feature_gate: P0 of the last 60 event days; "
+            "build_metar_phase_hazard_samples / fit_p1_observation_likelihood: 44 days; "
+            "fit_taf_likelihood: from 2026-08-16 via its case cache; refit_center_width / "
+            "refit_off_centre_claim and serving_arithmetic: from the evidence anchor; "
+            "dashboard: valuation 28 days, posterior 14, live_book every live decision, "
+            "truth landing from TRUTH_LANDING_SINCE and H5 from H5_FROM_UTC (floors); "
+            "delta_v2_settlement_label: the envelope an unlabelled fact names; "
+            "the METAR trajectory packet (production, one due station a cycle): every "
+            "truth day's roots since the first (a floor that today holds every row)."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id", "stage"), order=("decision_at_utc",), count=1,
+                why="native_ensemble_oos and rolling_native_taf_oos read each station's newest P0",
+            ),
+        ),
+        keep_station_days=KeepStationDays(
+            live_only=True,
+            why="live_book re-reads the envelope of every live decision; real money stays whole",
+        ),
+        keep_named=(
+            KeepNamed(
+                name="unlabelled_fact",
+                column="envelope_id",
+                sql=(
+                    "SELECT f.probability_envelope_id FROM basket_policy_training_fact f"
+                    " INDEXED BY sqlite_autoindex_basket_policy_training_fact_1"
+                    " WHERE NOT EXISTS (SELECT 1 FROM basket_policy_training_label l"
+                    " WHERE l.fact_id = f.fact_id)"
+                ),
+                why="the settlement label lane re-reads the envelope of a fact it has not labelled",
+            ),
+        ),
+        floors=(
+            DynamicFloor(
+                name="calibration_evidence_anchor",
+                why="the width and off-centre lanes rebuild sampled envelopes from their anchor on",
+                resolve=evidence_anchor_floor,
+            ),
+            DynamicFloor(
+                name="metar_trajectory_training",
+                why="P1's trajectory training binds every truth day since the first to its roots",
+                resolve=metar_trajectory_training_floor,
+            ),
+            DynamicFloor(
+                name="dashboard_fixed_starts",
+                why="the dashboard's truth-landing and H5 sections read every P0 envelope from a fixed day",
+                resolve=dashboard_fixed_start_floor,
+            ),
+            DynamicFloor(
+                name="taf_case_cache",
+                why="the TAF fit reads a day off the SSOT until its case cache has frozen it",
+                resolve=taf_case_cache_floor,
+            ),
+        ),
+    ),
+)
+
 POLICY_BY_TABLE = {policy.table: policy for policy in POLICIES}
 
 
@@ -666,6 +847,8 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         needed.update(c for c in (*rule.key, *rule.order) if c != "rowid")
     if policy.keep_station_days is not None:
         needed.update({"station_id", "event_date"})
+    for rule in policy.keep_named:
+        needed.add(rule.column)
     if policy.keep_vector_refs is not None:
         needed.update({"station_id", "event_date", "content_sha256"})
         if policy.keep_vector_refs.instant_column:
@@ -919,6 +1102,11 @@ def plan_table(
         wanted += [c for c in (*rule.key, *rule.order) if c not in {"rowid", time_column}]
     if days:
         wanted += [c for c in ("station_id", "event_date") if c != time_column]
+    named: list[tuple[KeepNamed, set[str]]] = [
+        (rule, {str(r[0]) for r in conn.execute(rule.sql) if r[0] is not None})
+        for rule in policy.keep_named
+    ]
+    wanted += [rule.column for rule, _ids in named if rule.column != time_column]
     wanted = list(dict.fromkeys(wanted))
     at = {column: index for index, column in enumerate(wanted)}
     heaps: list[dict[tuple, list[tuple[tuple, int]]]] = [{} for _ in policy.keep_latest]
@@ -934,7 +1122,7 @@ def plan_table(
             break
         stamps = {int(rowid): stamp for rowid, stamp in chunk}
         older.extend(stamps)
-        if not wanted and not days:
+        if not wanted and not days and not named:
             continue
         rows: Iterable[Sequence[Any]] = [(rowid,) for rowid in stamps]
         if wanted:
@@ -962,6 +1150,9 @@ def plan_table(
                     heapq.heappop(entries)
             if days and (str(value("station_id")), str(value("event_date"))) in days:
                 protected.setdefault(rowid, "station_day")
+            for rule, ids in named:
+                if str(value(rule.column)) in ids:
+                    protected.setdefault(rowid, f"named:{rule.name}")
     if policy.keep_vector_refs is not None and len(older):
         old_set = set(older)
         for rowid, label in _vector_ref_rowids(conn, table, policy.keep_vector_refs).items():

@@ -249,6 +249,9 @@ def main() -> int:
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(f"file:{ROOT}/data/bayes_basket_target_ssot.db?mode=ro", uri=True, timeout=60)
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_probability_envelope",))  # charter 238: whole history
     conn.execute("PRAGMA query_only=1")
     stations = args.stations or sorted({
         str(row[0]) for row in conn.execute(
