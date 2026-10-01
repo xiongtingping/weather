@@ -26,6 +26,7 @@ from .contracts import (
     timestamp_lt,
 )
 from .event_contracts import CanonicalObservationEvent
+from .observed_floor_censoring import p1_root_probabilities
 from .metar_path_state import (
     HOURLY_CURVE_PATH_MODEL_COEFFICIENT_KEYS,
     PATH_MODEL_COEFFICIENT_KEYS,
@@ -1620,6 +1621,9 @@ def compile_metar_trajectory_update_proof(
         raise ContractError("metar_trajectory_soft_likelihood_policy_invalid")
     if root.stage not in {"P0", "P0-M"}:
         raise ContractError("metar_trajectory_prediction_root_stage_invalid")
+    # Charter 241: the prior this proof weighs is the one P1 multiplies -- a
+    # censoring P0-M's proportional shape, otherwise the root's own vector.
+    root_probabilities = p1_root_probabilities(root)
     if (
         root.station_id != governed.station_id
         or root.settlement_timezone != governed.settlement_timezone
@@ -1825,7 +1829,7 @@ def compile_metar_trajectory_update_proof(
             ],
             as_of_utc=evidence_as_of,
             settlement_timezone=root.settlement_timezone,
-            root_probabilities=root.probabilities,
+            root_probabilities=root_probabilities,
             bucket_centers_c=centers,
             future_curve=future_curve,
             root_checkpoint_id=(
@@ -1884,7 +1888,7 @@ def compile_metar_trajectory_update_proof(
         ordered_buckets, upper_bounds, running_high
     )
     survivors = [bucket for bucket in ordered_buckets if bucket not in excluded]
-    if not survivors or sum(root.probabilities[bucket] for bucket in survivors) <= 0:
+    if not survivors or sum(root_probabilities[bucket] for bucket in survivors) <= 0:
         raise ContractError("metar_trajectory_hard_bound_exhausts_support")
     missing, long_count = _interval_diagnostics(ordered, governed)
     reasons: list[str] = []
@@ -1953,7 +1957,7 @@ def compile_metar_trajectory_update_proof(
             )
             ratios[bucket] = math.exp(strength * math.log(bounded))
     soft_weighted = {
-        bucket: root.probabilities[bucket] * ratios[bucket]
+        bucket: root_probabilities[bucket] * ratios[bucket]
         for bucket in ordered_buckets
     }
     hard_bound_mask = {

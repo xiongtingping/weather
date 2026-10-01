@@ -292,7 +292,7 @@ def test_a_closed_gate_leaves_p0m_equal_to_p0() -> None:
     envelope = _p0m(root, _taf_artifact(TL.GATE_IDENTITY))
     assert dict(envelope.probabilities) == dict(root.probabilities)
     assert envelope.lineage["taf_revision_state"] == "IDENTITY_GATE_CLOSED"
-    assert envelope.posterior_version == "p0m_taf_likelihood_v22"
+    assert envelope.posterior_version == "p0m_taf_likelihood_v23"
 
 
 def test_an_open_gate_multiplies_p0_by_the_taf_gaussian() -> None:

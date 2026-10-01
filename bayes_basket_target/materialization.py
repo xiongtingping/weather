@@ -38,6 +38,12 @@ from .p1_observation_likelihood import (
     silent_receipt as observation_silent_receipt,
 )
 from .settlement_time import settlement_day_window
+from .observed_floor_censoring import (
+    OBSERVED_FLOOR_CENSORING_LINEAGE_KEY,
+    OBSERVED_FLOOR_CENSORING_RECEIPT_SCHEMA,
+    OBSERVED_FLOOR_CENSORING_RULE,
+    p1_root_probabilities,
+)
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
 from .taf_likelihood import (
@@ -781,6 +787,8 @@ def _posterior(
     fresh_until_utc: str,
     bridge_sha256: str,
     anchor_geometry: Mapping[str, Mapping[str, Any]] | None = None,
+    floor_censoring: bool = False,
+    prior_probabilities: Mapping[str, float] | None = None,
 ) -> ProbabilityEnvelope:
     """One Bayesian update of a calibrated root: prior x likelihood x mask.
 
@@ -793,6 +801,14 @@ def _posterior(
     is either a likelihood now or gone.  The zero floor stays: it is not a
     correction of the model, it is the rule that only an observation may write
     an exact zero.
+
+    ``floor_censoring`` (charter 241, P0-M only): the mass the mask removes
+    lands on the lowest surviving bucket -- the running high's -- instead of
+    being spread over the survivors by renormalisation; the proportional
+    vector rides along in the lineage for P1 to root on.
+    ``prior_probabilities`` replaces the predecessor's vector as the prior
+    (same buckets), for P1 rooting on that proportional shape; identity,
+    ordinals and lineage still bind the predecessor itself.
     """
 
     if predecessor.stage not in {"P0", "P0-M", "P1"}:
@@ -811,8 +827,15 @@ def _posterior(
     unknown = excluded - set(predecessor.probabilities)
     if unknown:
         raise ContractError("hard_exclusion_bucket_unknown")
+    prior = (
+        predecessor.probabilities
+        if prior_probabilities is None
+        else prior_probabilities
+    )
+    if set(prior) != set(predecessor.probabilities):
+        raise ContractError("probability_prior_bucket_scope_mismatch")
     unnormalized = {
-        bucket: predecessor.probabilities[bucket]
+        bucket: prior[bucket]
         * likelihoods[bucket]
         * (0.0 if bucket in excluded else 1.0)
         for bucket in predecessor.probabilities
@@ -821,7 +844,43 @@ def _posterior(
     if not math.isfinite(total) or total <= 0.0:
         raise ContractError("probability_posterior_empty_after_hard_bound")
     probabilities = {bucket: value / total for bucket, value in unnormalized.items()}
+    censoring_receipt: dict[str, Any] | None = None
+    if floor_censoring and excluded:
+        ruled_out = sum(
+            float(prior[bucket]) * float(likelihoods[bucket])
+            for bucket in excluded
+        )
+        whole = total + ruled_out
+        if ruled_out > 0.0 and math.isfinite(whole):
+            floor_bucket = min(
+                (
+                    bucket for bucket in predecessor.probabilities
+                    if bucket not in excluded
+                ),
+                key=lambda bucket: (predecessor.bucket_ordinals[bucket], bucket),
+            )
+            proportional, _proportional_floored = floor_probabilities(
+                probabilities, excluded
+            )
+            probabilities = {
+                bucket: value / whole
+                for bucket, value in unnormalized.items()
+            }
+            probabilities[floor_bucket] += ruled_out / whole
+            censoring_receipt = {
+                "schema": OBSERVED_FLOOR_CENSORING_RECEIPT_SCHEMA,
+                "rule": OBSERVED_FLOOR_CENSORING_RULE,
+                "floor_bucket": floor_bucket,
+                "censored_mass": ruled_out / whole,
+                # What the stage served before charter 241, bucket for bucket:
+                # the vector P1 roots on.
+                "proportional_probabilities": proportional,
+            }
     lineage = dict(lineage)
+    if censoring_receipt is not None:
+        lineage[OBSERVED_FLOOR_CENSORING_LINEAGE_KEY] = json.dumps(
+            censoring_receipt, sort_keys=True
+        )
     # Last of all: no likelihood may manufacture an absolute zero.  A zero
     # claim is a structural statement -- the settlement rules make the bucket
     # impossible -- and only the
@@ -935,7 +994,9 @@ def materialize_p0m_observed(
     # stations blended.
     # v22 (charter 236, 2026-09-27): the root (P0 v20) -- pool seats rank
     # breadth ahead of the instant they were minted.
-    posterior_version: str = "p0m_taf_likelihood_v22",
+    # v23 (charter 241, 2026-10-01): the observed hard bound censors -- the
+    # ruled-out mass lands on the running high's bucket.
+    posterior_version: str = "p0m_taf_likelihood_v23",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -954,6 +1015,10 @@ def materialize_p0m_observed(
     and the lineage says which of its silent states held; the probabilities
     are then P0's, and what the stage contributes is the decision moment the
     entry walk prices against whatever book exists at that hour.
+
+    Charter 241: the observed high's mask censors rather than renormalises --
+    a root scenario the day has already beaten settles in the running high's
+    bucket (``_posterior`` ``floor_censoring``).
     """
 
     previous = (
@@ -1062,6 +1127,7 @@ def materialize_p0m_observed(
         fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
         bridge_sha256=bridge_sha256,
         anchor_geometry=anchor_geometry,
+        floor_censoring=True,
     )
 
 
@@ -1476,6 +1542,9 @@ def materialize_p1(
     ]
     if not surviving_buckets:
         raise ContractError("p1_reported_high_bucket_missing")
+    # Charter 241: the prior P1 multiplies -- a censoring P0-M's
+    # proportional shape, otherwise the root's own vector.
+    root_probabilities = p1_root_probabilities(root)
     reported_high_bucket = min(
         surviving_buckets,
         key=lambda bucket: (root.bucket_ordinals[bucket], bucket),
@@ -1522,7 +1591,7 @@ def materialize_p1(
                 joint, joint_receipt = compile_direct_update(
                     bundle["features"],
                     artifact,
-                    root_probabilities=root.probabilities,
+                    root_probabilities=root_probabilities,
                     bucket_ordinals=root.bucket_ordinals,
                     bucket_centers_c={
                         str(bucket): float(value)
@@ -1704,6 +1773,7 @@ def materialize_p1(
         root,
         stage="P1",
         likelihoods=likelihoods,
+        prior_probabilities=root_probabilities,
         hard_excluded_buckets=proof.hard_excluded_buckets,
         lineage=values,
         checkpoint_id=checkpoint_id,

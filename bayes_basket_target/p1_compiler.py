@@ -23,6 +23,7 @@ from .metar_four_layer import (
     recent_curve_bias,
 )
 from .metar_path_state import compile_conditional_metar_path_state
+from .observed_floor_censoring import p1_root_probabilities
 from .settlement_time import settlement_day_window
 from .metar_trajectory import (
     METAR_TRAJECTORY_AUTHORITY_SCOPE,
@@ -413,7 +414,8 @@ def _observation_features_for_step(
                 rows,
                 as_of_utc=decision_at_utc,
                 settlement_timezone=root.settlement_timezone,
-                root_probabilities=root.probabilities,
+                # Charter 241: the prior P1 multiplies, as in the proof.
+                root_probabilities=p1_root_probabilities(root),
                 bucket_centers_c=bucket_centers_c,
             )
         except ContractError:

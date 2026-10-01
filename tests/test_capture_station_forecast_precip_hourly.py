@@ -137,9 +137,11 @@ def test_historical_rows_are_not_as_of_values(monkeypatch) -> None:
     monkeypatch.setattr(CAP, "_fetch_json", lambda url, timeout_seconds: _payload({"2026-08-01": series}))
     CAP.capture_station(conn, station_id="ZUUU", start_date="2026-08-01", end_date="2026-08-01",
                         settlement_timezone="Asia/Shanghai", mode="historical", timeout_seconds=5)
+    # The capture is stamped with the wall clock, so the cutoff has to sit
+    # after any run of this test -- a fixed 2026-09-30 went red on 10-01.
     agg, receipt = resolve_precip_hourly_as_of(conn, station_id="ZUUU", local_date="2026-08-01",
-                                               cutoff_utc="2026-09-30T00:00:00Z")
+                                               cutoff_utc="2099-01-01T00:00:00Z")
     assert agg is None and receipt["state"] == "NO_VERSIONS"
     agg, receipt = resolve_precip_hourly_as_of(conn, station_id="ZUUU", local_date="2026-08-01",
-                                               cutoff_utc="2026-09-30T00:00:00Z", modes=("forward", "historical"))
+                                               cutoff_utc="2099-01-01T00:00:00Z", modes=("forward", "historical"))
     assert agg["precip_before_peak_mm"] == 9.0 and receipt["capture_mode"] == "historical"

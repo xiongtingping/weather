@@ -92,6 +92,7 @@ from bayes_basket_target.regional_point_debias import (  # noqa: E402
     RULE_VERSION as REGIONAL_CALIBRATION_RULE,
     replay_curve as regional_calibration_replay,
 )
+from bayes_basket_target.observed_floor_censoring import p1_root_probabilities  # noqa: E402
 from bayes_basket_target.settlement_time import (  # noqa: E402
     settlement_day_window,
 )
@@ -449,7 +450,9 @@ class RootView:
             "bridge_sha256": str(row["bridge_sha256"]),
             "lineage": lineage,
         })
-        probabilities = dict(envelope.probabilities)
+        # Charter 241: the prior P1 multiplies at serving -- a censoring
+        # P0-M's proportional shape -- read through the same function.
+        probabilities = p1_root_probabilities(envelope)
         self.checkpoint_id = envelope.checkpoint_id
         self.probabilities = probabilities
         self.envelope = envelope

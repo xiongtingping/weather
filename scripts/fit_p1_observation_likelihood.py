@@ -79,6 +79,7 @@ from bayes_basket_target.materialization import (  # noqa: E402
     rehydrate_lineage_documents,
 )
 from bayes_basket_target.p1_compiler import _bucket_geometry_c  # noqa: E402
+from bayes_basket_target.observed_floor_censoring import p1_root_probabilities  # noqa: E402
 
 ALPHA_GRID = tuple(round(0.125 * step, 3) for step in range(25))
 HOLDOUT_SHARE = 0.30
@@ -514,7 +515,9 @@ class RootCache:
             self._cache[checkpoint_id] = None
             return None
         view = {
-            "probabilities": dict(envelope.probabilities),
+            # Charter 241: the prior P1 multiplies at serving -- a censoring
+            # P0-M's proportional shape -- read through the same function.
+            "probabilities": p1_root_probabilities(envelope),
             "ordinals": dict(envelope.bucket_ordinals),
             "centers": centers,
             "uppers": uppers,

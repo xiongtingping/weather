@@ -424,6 +424,15 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v21": "2026-09-25T14:00:00Z",
         # Charter 236: root bump at the instant P0 v20 declares.
         "p0m_taf_likelihood_v22": "2026-10-01T16:00:00Z",
+        # Charter 241: P0-M's own change -- the observed hard bound censors
+        # (the ruled-out mass lands on the running high's bucket).  Deployed
+        # by the 2026-10-01 restart that follows its commit; declared after
+        # v22 so the versions stay in order, and past that restart, so the
+        # v23 envelopes before this instant are simply not evidence yet.  P1
+        # is not bumped: it roots on the proportional shape the P0-M carries
+        # (``observed_floor_censoring.p1_root_probabilities``), which is the
+        # vector v22 served, so P1's served numbers do not move.
+        "p0m_taf_likelihood_v23": "2026-10-01T16:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
