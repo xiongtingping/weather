@@ -15170,6 +15170,14 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
 
     due: list[tuple[float, str, float]] = []
     for name in specs:
+        # The page render computes these every run and never keeps a page,
+        # so a page file left from before they joined that set never ages
+        # out: on 2026-10-01 tiebreak_lane, regional and taf_board ranked
+        # first in every research run (overdue 333x, pages dated 09-24/25),
+        # were recomputed for 5-15 minutes, saved nothing, and the run hit
+        # the page render before reaching model_accuracy_trend (39 h old).
+        if name in RENDER_EVERY_RUN_SECTIONS:
+            continue
         path = SECTION_CACHE_DIR / f"{name}.json"
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))

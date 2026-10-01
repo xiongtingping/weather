@@ -72,3 +72,22 @@ def test_the_overview_is_one_charter_240_board() -> None:
     assert '[scorecard,"模型校准总检"]' not in source
     assert '"模型准不准 · 总检": {layer:"概率层 · 读数"' in source
     assert "LogScore 主评分 → CRPS 结构验证 → Brier 护栏（宪章 240）" in source
+
+
+def test_the_research_render_skips_sections_the_page_render_computes_every_run(tmp_path, monkeypatch) -> None:
+    """An every-run section never keeps a page, so a leftover page file must
+    not put it at the head of every research run forever (2026-10-01)."""
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {})
+    monkeypatch.setattr(C, "PAGED_SECTION_TTL_SEC", 1800)
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
+    every_run = next(iter(sorted(C.RENDER_EVERY_RUN_SECTIONS)))
+    for name, age in ((every_run, 7 * 86400), ("model_accuracy_trend", 39 * 3600)):
+        (tmp_path / f"{name}.json").write_text(json.dumps({
+            "computed_at_utc": (now - timedelta(seconds=age)).isoformat().replace("+00:00", "Z"),
+            "build_sec": 500.0, "value": {}}), encoding="utf-8")
+    names = [n for _r, n, _c in C.research_due({every_run: {}, "model_accuracy_trend": {}}, now)]
+    assert names == ["model_accuracy_trend"]
