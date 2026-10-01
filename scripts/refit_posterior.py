@@ -128,6 +128,10 @@ def main() -> int:
         else sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     )
     conn.execute("PRAGMA busy_timeout=180000")
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    # Charter 238: the fit reads the books its evidence names, of any age.
+    attach_cold_history(conn, ("basket_official_ws_snapshot",))
     scopes = sorted(STAGE_SCOPES) if args.stage == "all" else [args.stage]
     receipts = []
     try:

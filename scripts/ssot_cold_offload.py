@@ -387,6 +387,83 @@ POLICIES: tuple[TablePolicy, ...] = (
             "atomic_ledger: current scopes only."
         ),
     ),
+    # Charter 238 (user ruling 2026-10-01 「扩」): the three per-cycle market
+    # snapshots.  Measured that day, 237's seven tables covered 45% of what
+    # the store gains a day; the WS book alone was 26% (about 410 MB/day).
+    # All three are keyed on the event date for the same reason as the regime
+    # artifact: the paper ledger replays settled days today-4 .. today-2 and
+    # re-reads their books, and a forward day's rows are written ~72 hours
+    # before it starts.  Offline readers of the whole history read the cold
+    # rows through :func:`attach_cold_history`.
+    TablePolicy(
+        table="basket_official_ws_snapshot",
+        time_column="event_date",
+        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
+        readers=(
+            "market_ingress: MAX(sequence)+1 and by snapshot_id for the day being written; "
+            "production_io / production_worker / atomic_ledger / tiebreak, p1_tail, "
+            "resting_ladder, mis_bought_leg_exit, certain_win_recycle and proper lanes: "
+            "the newest committed book of a current station-day, or the snapshot_id a "
+            "current decision names; execution_transition_runtime: by content_sha256 of "
+            "an intent's execution vector; paper_ledger_aligned: event dates today-4 .. "
+            "today-2; dashboard: recent event dates.  Whole-history readers "
+            "(posterior_store/valuation_store refits, forward_scorecard, edge_attribution "
+            "and the market-ladder research probes) read through attach_cold_history."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id", "event_date"), order=("sequence",), count=1,
+                why="market_ingress numbers the next book MAX(sequence)+1 per station-day",
+            ),
+        ),
+        keep_station_days=KeepStationDays(
+            live_only=True,
+            why="the execution vectors of real orders name these books; real money stays in the SSOT whole",
+        ),
+    ),
+    TablePolicy(
+        table="basket_confirmed_inventory_snapshot",
+        time_column="event_date",
+        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
+        readers=(
+            "certain_win_recycle: the newest complete row per station-day for event dates "
+            "within MAX_EVENT_AGE_DAYS; production_io / production_worker / atomic_ledger "
+            "/ p1_tail: the current station-day's newest row or the id/sha a current "
+            "decision names; execution_transition_runtime: by content_sha256 of an "
+            "intent's execution vector; paper ledger: event dates today-4 .. today-2."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id", "event_date"), order=("rowid",), count=1,
+                why="the newest inventory of a station-day is its standing position, whatever its age",
+            ),
+        ),
+        keep_station_days=KeepStationDays(
+            live_only=True,
+            why="the execution vectors of real orders name these snapshots; real money stays in the SSOT whole",
+        ),
+    ),
+    TablePolicy(
+        table="basket_order_state_snapshot",
+        time_column="event_date",
+        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
+        readers=(
+            "production_io / production_worker / atomic_ledger: the current station-day's "
+            "newest row or the id/sha a current decision names; "
+            "execution_transition_runtime: by content_sha256 of an intent's execution "
+            "vector; paper ledger: event dates today-4 .. today-2."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("station_id", "event_date"), order=("rowid",), count=1,
+                why="the newest order state of a station-day is its standing state, whatever its age",
+            ),
+        ),
+        keep_station_days=KeepStationDays(
+            live_only=True,
+            why="the execution vectors of real orders name these snapshots; real money stays in the SSOT whole",
+        ),
+    ),
 )
 
 POLICY_BY_TABLE = {policy.table: policy for policy in POLICIES}
@@ -1040,6 +1117,86 @@ def open_cold_table(table: str, *, root: Path | str | None = None) -> sqlite3.Co
     if not path.is_file():
         raise FileNotFoundError(f"no cold rows for {table} (looked at {path})")
     return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+
+
+def _moved_tables(manifest: Path = MANIFEST) -> set[str]:
+    """Tables this lane has ever moved rows of, from the internal manifest."""
+
+    moved: set[str] = set()
+    try:
+        lines = manifest.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return moved
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("table"):
+            moved.add(str(row["table"]))
+    return moved
+
+
+def attach_cold_history(
+    conn: sqlite3.Connection,
+    tables: Iterable[str],
+    *,
+    root: Path | str | None = None,
+    manifest: Path = MANIFEST,
+) -> dict[str, str]:
+    """Make ``tables`` read as their whole history -- hot rows and cold -- on ``conn``.
+
+    For offline readers of a table's whole history (charter 238): each table
+    whose rows this lane has moved gets a TEMP VIEW of the same name, the SSOT
+    rows UNION ALL the cold rows the SSOT no longer holds.  SQLite resolves an
+    unqualified name in ``temp`` before ``main``, so the reader's own queries
+    are unchanged.  Call it right after connecting and before ``PRAGMA
+    query_only`` (a TEMP VIEW is a schema change).
+
+    Fails closed: a table the manifest says was moved whose cold file cannot
+    be opened raises (:class:`OffloadedVolumeMissing` when the volume is
+    absent) instead of reading as a shorter history.  A table never moved is
+    left alone.  Production must never call this.
+    """
+
+    moved = _moved_tables(manifest)
+    attached: dict[str, str] = {}
+    for table in dict.fromkeys(str(t) for t in tables):
+        base = Path(root) if root is not None else cold_tier_root()
+        if base is None:
+            if table in moved:
+                raise OffloadedVolumeMissing(
+                    f"{table} has cold rows but the cold tier is switched off (PM_COLD_TIER_ROOT='')"
+                )
+            continue
+        if table in moved:
+            assert_present(base, what="cold tier")
+        path = cold_path(base, table)
+        # The manifest line is written after the SSOT delete commits, so a
+        # cold file counts too: rows may have left with the line unwritten.
+        if not path.is_file():
+            if table in moved:
+                raise FileNotFoundError(f"{table} has cold rows but no cold file at {path}")
+            continue
+        alias = f"cold_{len(attached)}"
+        conn.execute(f"ATTACH DATABASE ? AS {alias}", (f"file:{path}?mode=ro",))
+        hot = _cold_columns(conn, table)
+        if [(n, k) for n, k in conn.execute(
+            f"SELECT name, type FROM pragma_table_info(?, ?)", (table, alias)
+        )] != hot:
+            raise OffloadRefused(f"cold_schema_mismatch:{table}")
+        listed = ",".join(_q(name) for name, _kind in hot)
+        cold_listed = ",".join(f"c.{_q(name)}" for name, _kind in hot)
+        # A crash between the copy and the delete leaves a row in both
+        # places; the hot copy wins, so nothing is read twice.
+        conn.execute(
+            f"CREATE TEMP VIEW {_q(table)} AS"
+            f" SELECT {listed} FROM main.{_q(table)}"
+            f" UNION ALL SELECT {cold_listed} FROM {alias}.{_q(table)} c"
+            f" WHERE NOT EXISTS (SELECT 1 FROM main.{_q(table)} h WHERE h.rowid = c.rowid)"
+        )
+        attached[table] = str(path)
+    return attached
 
 
 # --------------------------------------------------------------------------

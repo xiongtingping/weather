@@ -849,6 +849,8 @@ def test_the_daily_job_runs_the_lane_after_the_file_lane() -> None:
 def test_charter_237_names_the_lane() -> None:
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     article = next((line for line in charter.splitlines() if line.startswith("237. ")), "")
+    widened = next((line for line in charter.splitlines() if line.startswith("238. ")), "")
     assert "ssot_cold_offload" in article
     for policy in off.POLICIES:
-        assert policy.table in article
+        # Charter 238 added the market snapshots to the same lane.
+        assert policy.table in article or policy.table in widened

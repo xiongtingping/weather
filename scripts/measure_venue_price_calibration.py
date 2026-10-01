@@ -335,6 +335,9 @@ def main() -> int:
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     attach_maker_shadow(conn, ssot_path=args.db)
+    from ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_official_ws_snapshot",))  # charter 238: whole book history
     conn.execute("PRAGMA query_only=1")
 
     book = measure_book(conn, args.since, args.until, args.snapshots_per_day)

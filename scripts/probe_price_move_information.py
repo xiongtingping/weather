@@ -59,6 +59,9 @@ def main():
     ap.add_argument("--out")
     args = ap.parse_args()
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    from ssot_cold_offload import attach_cold_history  # noqa: PLC0415 -- scripts/ is sys.path[0]
+
+    attach_cold_history(conn, ("basket_official_ws_snapshot",))  # charter 238: whole book history
     conn.execute("PRAGMA query_only=1")
 
     truth = {}

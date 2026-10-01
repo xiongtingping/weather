@@ -269,6 +269,9 @@ def main() -> int:
     args = parser.parse_args()
     database = args.db.expanduser().resolve(strict=True)
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_official_ws_snapshot",))  # charter 238: whole book history
     try:
         legs, counts = load_legs(conn)
     finally:
