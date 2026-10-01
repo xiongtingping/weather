@@ -428,17 +428,38 @@ def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
     assert policy.keep_station_days is not None and policy.keep_station_days.live_only
 
 
-def test_an_unanchored_calibration_lane_moves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_unanchored_calibration_lane_moves_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from bayes_basket_target import center_width_store
+    from bayes_basket_target import serving_payload_cache as payloads
 
+    monkeypatch.setattr(payloads, "CACHE_PATH", tmp_path / "payloads.db")
+    monkeypatch.setattr(payloads, "_CONNECTIONS", {})
     monkeypatch.setattr(center_width_store, "evidence_anchor", lambda _conn, *, stage: None)
     with pytest.raises(off.OffloadRefused):
         off.evidence_anchor_floor(sqlite3.connect(":memory:"))
-    monkeypatch.setattr(
-        center_width_store, "evidence_anchor",
-        lambda _conn, *, stage: {"P0": "2026-09-14T05:52:13Z"}.get(stage, "2026-09-18T19:10:09Z"),
-    )
+    anchors = {"P0": "2026-09-14T05:52:13Z", "P0-M": "2026-09-18T19:10:09Z", "P1": "2026-09-18T19:10:09Z"}
+    monkeypatch.setattr(center_width_store, "evidence_anchor", lambda _conn, *, stage: anchors[stage])
+    # No pass yet: everything from the anchor, less the margin.
     assert off.evidence_anchor_floor(sqlite3.connect(":memory:")) == "2026-09-12"
+    # Every lane passed over its anchor: the floor follows the frozen days.
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    lanes = [("center_width.serving_cells_by_day", "P0")] + [
+        ("band_reliability.serving_lane_by_station_day", s) for s in ("P0", "P0-M", "P1")
+    ]
+    for sampler, stage in lanes[:-1]:
+        payloads.record_pass(sampler, stage=stage, pre_band=True, min_decision_at_utc=anchors[stage], now=now,
+                             cache_path=payloads.CACHE_PATH)
+    assert off.evidence_anchor_floor(sqlite3.connect(":memory:")) == "2026-09-16"   # P1 still from its anchor
+    payloads.record_pass(lanes[-1][0], stage="P1", pre_band=False, min_decision_at_utc=anchors["P1"], now=now,
+                         cache_path=payloads.CACHE_PATH)
+    from datetime import date, timedelta
+
+    expected = (date.fromisoformat(payloads.frozen_through(now)) + timedelta(days=1)).isoformat()
+    assert off.evidence_anchor_floor(sqlite3.connect(":memory:")) == expected
 
 
 def test_the_taf_floor_is_the_first_day_its_cache_has_not_frozen(

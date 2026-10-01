@@ -76,7 +76,7 @@ from __future__ import annotations
 import argparse
 from array import array
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import fcntl
 import hashlib
 import heapq
@@ -388,16 +388,28 @@ def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
 def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
     """The width and off-centre lanes read every decision since their anchor.
 
-    Both refit nightly on ``center_width_store.serving_lane_by_station_day``
-    from ``evidence_anchor`` (charter 202's epoch, or a served version's own
-    start), rebuilding each sampled row's envelope.  No anchor means an
-    unbounded read, so nothing moves.
+    Both refit nightly from ``evidence_anchor`` (charter 202's epoch, or a
+    served version's own start), rebuilding each sampled row's envelope --
+    since 2026-10-01 through ``serving_payload_cache``, which keeps a frozen
+    day's payloads and records each complete sampler pass.  Per stage, the
+    floor is the day after the last frozen day every lane's recent pass
+    covered from no later than the anchor; a lane with no such pass keeps
+    everything from the anchor (less the decision-to-event margin).  No
+    anchor means an unbounded read, so nothing moves.
     """
 
-    from bayes_basket_target.center_width_store import evidence_anchor  # noqa: PLC0415
+    from bayes_basket_target import serving_payload_cache as payloads  # noqa: PLC0415
+    from bayes_basket_target.center_width_store import (  # noqa: PLC0415
+        CENTER_WIDTH_SERVED_STAGES,
+        evidence_anchor,
+    )
+    from bayes_basket_target.off_centre_claim_store import SERVED_STAGES as OFF_CENTRE_STAGES  # noqa: PLC0415
 
+    lanes = [("center_width.serving_cells_by_day", s) for s in CENTER_WIDTH_SERVED_STAGES] + [
+        ("band_reliability.serving_lane_by_station_day", s) for s in OFF_CENTRE_STAGES
+    ]
     days: list[str] = []
-    for stage in ("P0", "P0-M", "P1"):
+    for sampler, stage in lanes:
         try:
             anchor = evidence_anchor(conn, stage=stage)
         except sqlite3.Error as exc:
@@ -405,8 +417,12 @@ def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
         moment = _instant(anchor) if anchor else None
         if moment is None:
             raise OffloadRefused(f"evidence_anchor_missing:{stage}")
-        days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
-    return min(days)
+        covered = payloads.covered_through(sampler, stage=stage, anchor_utc=str(anchor))
+        if covered:
+            days.append((date.fromisoformat(covered) + timedelta(days=1)).isoformat())
+        else:
+            days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
+    return min(days) if days else None
 
 
 def taf_case_cache_floor(conn: sqlite3.Connection) -> str | None:

@@ -1990,6 +1990,12 @@ def serving_cells_by_day(
             if cell is not None:
                 by_day.setdefault(day, []).append(cell)
                 break
+    from .serving_payload_cache import record_pass  # noqa: PLC0415
+
+    record_pass(
+        "center_width.serving_cells_by_day", stage=stage_id, pre_band=pre_band,
+        min_decision_at_utc=min_decision_at_utc, conn=conn,
+    )
     return by_day
 
 
@@ -2027,12 +2033,14 @@ def _serving_cell(
     sampled row rather than for all 154,723 of them.
     """
 
-    from .probability_bridge import history_envelope_payload
+    # Charter 238 (「现在做」): a frozen day's payload comes from the cache,
+    # so the envelopes behind this lane's evidence can leave the SSOT.
+    from .serving_payload_cache import cached_history_envelope_payload
 
     station, day, decided, checkpoint, sha, stored, actual = row[:7]
     tz_name = str(row[7]) if len(row) > 7 and row[7] else None
     try:
-        envelope = history_envelope_payload(
+        envelope = cached_history_envelope_payload(
             conn,
             checkpoint_id=checkpoint,
             envelope_content_sha256=sha,

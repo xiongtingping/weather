@@ -212,7 +212,8 @@ def serving_lane_by_station_day(
     reconstruct windows.
     """
 
-    from .probability_bridge import history_envelope_payload
+    # Charter 238 (「现在做」): frozen days' payloads come from the cache.
+    from .serving_payload_cache import cached_history_envelope_payload, record_pass
 
     by_station_day: dict[
         tuple[str, str], list[list[tuple[float, int, float]]]
@@ -245,7 +246,7 @@ def serving_lane_by_station_day(
         actual = truth.get((str(station), str(event)))
         if actual is None:
             continue
-        envelope = history_envelope_payload(
+        envelope = cached_history_envelope_payload(
             conn,
             checkpoint_id=str(checkpoint),
             envelope_content_sha256=str(sha),
@@ -285,6 +286,10 @@ def serving_lane_by_station_day(
             ))
         entries.sort(key=lambda entry: entry[2])
         by_station_day[(str(station), str(event))].append(entries)
+    record_pass(
+        "band_reliability.serving_lane_by_station_day", stage=_check_stage(stage),
+        pre_band=pre_band, min_decision_at_utc=min_decision_at_utc, conn=conn,
+    )
     return dict(by_station_day)
 
 
