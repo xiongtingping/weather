@@ -35,7 +35,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .center_width_calibration import apply_center_width_calibration
+import dataclasses
+
+from .center_width_calibration import (
+    apply_center_width_calibration,
+    width_slice_for,
+)
 
 SERVED_TABLE_LAYER_ORDER = ("center_width",)
 
@@ -50,6 +55,46 @@ class CenterWidthLayer:
     sigma_floor_rungs: float = 0.0
     width_tier_lambdas: Sequence[float] | None = None
     width_tier_boundaries: Sequence[float] | None = None
+    # Charter 239: the slice this one decision is in, resolved by the caller
+    # from the decision's seated count and hours to settlement
+    # (``with_width_slice``).  When set, ``width_slice_lambda`` replaces
+    # ``width_lambda`` for this decision and the tiers do not apply; the
+    # station scale and the floor compose as they always did.
+    width_slice: str | None = None
+    width_slice_lambda: float | None = None
+
+
+def with_width_slice(
+    layer: CenterWidthLayer | None,
+    slices: Mapping[str, Mapping[str, Any]] | None,
+    *,
+    seated_system_count: int | None,
+    hours_to_settlement: float | None,
+) -> CenterWidthLayer | None:
+    """The layer with the decision's slice resolved onto it (charter 239).
+
+    One resolver for serving, the gate and the fit's reserve, so the three
+    read the same lambda for the same decision.  A layer of ``None`` stays
+    ``None``: the slices ride on a table row, and a face that applies no row
+    applies no slice.
+    """
+
+    if layer is None or not slices:
+        return layer
+    resolved = width_slice_for(
+        slices,
+        seated_system_count=seated_system_count,
+        hours_to_settlement=hours_to_settlement,
+    )
+    if resolved is None:
+        if layer.width_slice is None:
+            return layer
+        return dataclasses.replace(
+            layer, width_slice=None, width_slice_lambda=None
+        )
+    return dataclasses.replace(
+        layer, width_slice=resolved[0], width_slice_lambda=float(resolved[1])
+    )
 
 
 def model_center_c(
@@ -103,17 +148,38 @@ def apply_served_table_layers(
     shaped = {str(key): float(value) for key, value in probability.items()}
     center_width_receipt = None
     if center_width is not None and skip != "center_width":
+        sliced = center_width.width_slice_lambda is not None
         shaped, center_width_receipt = apply_center_width_calibration(
             shaped,
             delta_c=center_width.delta_c,
-            width_lambda=center_width.width_lambda,
+            # Charter 239: a resolved slice replaces the stage lambda for
+            # this decision, and the tiers (which read the served sigma)
+            # stand aside -- two selectors of one lambda would be a
+            # composition nobody fitted.
+            width_lambda=(
+                float(center_width.width_slice_lambda)
+                if sliced else center_width.width_lambda
+            ),
             station_width_scale=center_width.station_width_scale,
             sigma_floor_rungs=center_width.sigma_floor_rungs,
-            width_tier_lambdas=center_width.width_tier_lambdas,
+            width_tier_lambdas=(
+                None if sliced else center_width.width_tier_lambdas
+            ),
             width_tier_boundaries=center_width.width_tier_boundaries,
             ordered_keys=ordered_keys,
             key_centers_c=key_centers_c,
             excluded_buckets=excluded_buckets,
             open_edge_bounds_c=open_edge_bounds_c,
+        )
+        # Always written, so a receipt answers "which slice?" the same way
+        # whether or not one applied; ``stage_width_lambda`` is the pooled
+        # lambda the slice stood in for (``pooled_width_lambda`` inside the
+        # kernel's receipt is the lambda the kernel was handed).
+        center_width_receipt["width_slice"] = center_width.width_slice
+        center_width_receipt["width_slice_lambda"] = (
+            float(center_width.width_slice_lambda) if sliced else None
+        )
+        center_width_receipt["stage_width_lambda"] = float(
+            center_width.width_lambda
         )
     return shaped, center_width_receipt

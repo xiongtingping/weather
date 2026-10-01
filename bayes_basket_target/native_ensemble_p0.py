@@ -31,6 +31,7 @@ from .center_width_store import (
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
     load_center_width_floor,
+    load_center_width_slices,
     load_center_width_tiers,
     load_station_width,
     pinned_center_width_sha,
@@ -58,10 +59,12 @@ from .stable_pool import (
     P0_MEMBERSHIP_MODE_STABLE_POOL,
     STABLE_POOL_WEIGHT_RULE,
 )
+from .settlement_time import hours_to_settlement_if_known
 from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_width_slice,
 )
 from .future_temperature_curve import (
     MIN_SAME_DAY_CURVE_POINTS,
@@ -3534,6 +3537,7 @@ def compile_native_ensemble_p0(
     scalars = None
     sigma_floor_rungs = 0.0
     width_tiers = None
+    width_slices = None
     pinned_center_width = None
     if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_center_width = pinned_center_width_sha(
@@ -3550,6 +3554,12 @@ def compile_native_ensemble_p0(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
             width_tiers = load_center_width_tiers(
+                conn, stage="P0", table_sha256=pinned_center_width
+            )
+            # Charter 239: the thin-pool far-lead slice, on the same pinned
+            # row; resolved onto the layer below from this decision's own
+            # seated count and hours to settlement.
+            width_slices = load_center_width_slices(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
     # The per-station width scale, exactly the version the artifact's
@@ -3589,8 +3599,25 @@ def compile_native_ensemble_p0(
             or station_scale != 1.0
             or sigma_floor_rungs
             or width_tiers
+            or width_slices
         )
         else None
+    )
+    # Charter 239: a decision seating at most three systems more than 36 h
+    # before settlement is served the slice's lambda in place of the stage's.
+    # The count is of the weights the pool actually serves (a provisional
+    # rider at zero weight is not a seat), the horizon the one charter 110
+    # reads; both are recorded in the receipt beside the slice applied.
+    seated_system_count = sum(
+        1 for value in system_weights.values() if float(value) > EPS
+    )
+    hours_to_settlement = hours_to_settlement_if_known(
+        event_date, as_of_utc=decision_at_utc, settlement_timezone=timezone_name,
+    )
+    center_width_layer = with_width_slice(
+        center_width_layer, width_slices,
+        seated_system_count=seated_system_count,
+        hours_to_settlement=hours_to_settlement,
     )
     # Charter 232: no band layer follows, whatever the artifact pinned.  An
     # artifact certified before the retirement names a band table in its
@@ -3643,6 +3670,10 @@ def compile_native_ensemble_p0(
         served_layers=_served_layers_again,
     )
     if center_width_receipt is not None:
+        center_width_receipt["seated_system_count"] = int(seated_system_count)
+        center_width_receipt["hours_to_settlement"] = (
+            None if hours_to_settlement is None else float(hours_to_settlement)
+        )
         if pinned_center_width is not None:
             center_width_receipt["center_width_sha256"] = (
                 pinned_center_width

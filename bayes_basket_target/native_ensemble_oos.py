@@ -25,6 +25,7 @@ from .center_width_store import (
     STATION_WIDTH_METHOD_TAG,
     load_center_width,
     load_center_width_floor,
+    load_center_width_slices,
     load_center_width_tiers,
     load_station_width,
 )
@@ -65,7 +66,9 @@ from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_width_slice,
 )
+from .settlement_time import hours_to_settlement_if_known
 from .dwd_icon_eps_archive import (
     ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as _ICON_ARCHIVE_CYCLES_BY_LEAD,
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
@@ -2503,6 +2506,43 @@ def _day_ladder(
     return ladder_for(str(day))
 
 
+def _day_center_width_layer(
+    layer: CenterWidthLayer | None,
+    slices: Mapping[str, Mapping[str, Any]] | None,
+    *,
+    predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
+    weights: Mapping[str, float],
+    day: str,
+    settlement_timezone: str | None,
+) -> CenterWidthLayer | None:
+    """Charter 239: the width layer for one holdout day, with the slice this
+    day's decision would be in resolved onto it -- the seated count from the
+    weights actually served, the horizon from the latest decision instant of
+    the seated systems' predictions on the station's settlement clock.  The
+    same resolver serving calls, so the gate scores the lambda serving will
+    apply; a day with no horizon (no timezone) resolves to no slice."""
+
+    if layer is None or not slices:
+        return layer
+    seated = [system for system, weight in weights.items() if float(weight) > 0.0]
+    decided = max(
+        (
+            str(predictions_by_system[system][day].get("decision_at_utc") or "")
+            for system in seated
+            if day in predictions_by_system.get(system, {})
+        ),
+        default="",
+    )
+    return with_width_slice(
+        layer, slices,
+        seated_system_count=len(seated),
+        hours_to_settlement=hours_to_settlement_if_known(
+            str(day), as_of_utc=decided or None,
+            settlement_timezone=settlement_timezone,
+        ),
+    )
+
+
 def _select_minimum_crps_subset(
     *,
     ready_system_ids: Sequence[str],
@@ -2520,6 +2560,10 @@ def _select_minimum_crps_subset(
     # the blend that scored best under an arithmetic nobody serves.
     center_width_layer: CenterWidthLayer | None = None,
     ladder_for: Callable[[str], Mapping[str, Any] | None] | None = None,
+    # Charter 239: the slices on the gate's row and the station's settlement
+    # clock, so each holdout day is served the slice serving would serve it.
+    center_width_slices: Mapping[str, Mapping[str, Any]] | None = None,
+    settlement_timezone: str | None = None,
     # Charter 134: ``stable_pool`` divides a pinned set's weight by the skill
     # rule shrunk toward the family baseline, and the receipt says so.  Only
     # meaningful with ``pinned_subset``: a pool is seated, never contested.
@@ -2671,7 +2715,12 @@ def _select_minimum_crps_subset(
                         for s in subset
                     },
                 ),
-                center_width_layer=center_width_layer,
+                center_width_layer=_day_center_width_layer(
+                    center_width_layer, center_width_slices,
+                    predictions_by_system=predictions_by_system,
+                    weights=weights, day=day,
+                    settlement_timezone=settlement_timezone,
+                ),
                 ladder=day_ladder,
             )
             actual = float(
@@ -4833,6 +4882,18 @@ def p0_gate_tables(
         if active_center_width is not None
         else None
     )
+    # Charter 239: the slices, on the same sha; each holdout day resolves its
+    # own (``with_width_slice``) from the seated count and the day's decision
+    # instant, exactly as serving resolves a decision's.
+    center_width_slices = (
+        (
+            load_center_width_slices(conn, stage="P0")
+            if replay_width is None
+            else replay_width.get("width_slices")
+        )
+        if active_center_width is not None
+        else None
+    )
     # The per-station width scale, under the same contract as the stage
     # scalars: whatever is active now is what this build's holdout scores,
     # and its sha rides into every candidate.  This build is one station's,
@@ -4876,6 +4937,7 @@ def p0_gate_tables(
         "center_width_sha256": center_width_sha,
         "station_width_sha256": station_width_sha,
         "center_width_layer": gate_center_width_layer,
+        "center_width_slices": center_width_slices,
     }
 
 
@@ -4930,6 +4992,7 @@ def build_native_ensemble_oos(
     center_width_sha = gate_tables["center_width_sha256"]
     station_width_sha = gate_tables["station_width_sha256"]
     gate_center_width_layer = gate_tables["center_width_layer"]
+    gate_center_width_slices = gate_tables.get("center_width_slices")
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -5457,7 +5520,21 @@ def build_native_ensemble_oos(
             predictions_by_system=predictions_by_system,
             radiation_shift_sigmas=scope_radiation_sigmas,
         )
+        # Charter 239: the station's settlement clock for the slice's
+        # horizon, read off this scope's own cases.
+        scope_timezone: str | None = None
+        for system_id, _evaluation in rows:
+            scope_cases = cases_by_scope.get((
+                system_id, season_bin, lead_bucket, cycle_by_system[system_id],
+            )) or []
+            if scope_cases:
+                scope_timezone = (
+                    str(scope_cases[0].get("timezone_name") or "") or None
+                )
+                break
         weights, subset_selection = _select_minimum_crps_subset(
+            center_width_slices=gate_center_width_slices,
+            settlement_timezone=scope_timezone,
             station_latitude=station_latitude,
             ready_system_ids=[system_id for system_id, _e in rows],
             predictions_by_system=predictions_by_system,
@@ -5627,6 +5704,12 @@ def build_native_ensemble_oos(
                 conditioning_by_day.get(str(day)) or {}
             ).get("synoptic_cooling_shift_sigma")
             seated_center_c = served_model_center_c(weights, day_centers)
+            day_center_width_layer = _day_center_width_layer(
+                gate_center_width_layer, gate_center_width_slices,
+                predictions_by_system=predictions_by_system,
+                weights=weights, day=day,
+                settlement_timezone=scope_timezone,
+            )
 
             def _shaped(
                 base: Mapping[str, float],
@@ -5651,7 +5734,7 @@ def build_native_ensemble_oos(
                     cooling_shift_sigma=cooling_shift,
                     station_latitude=station_latitude,
                     neighbour_center_c=center_c,
-                    center_width_layer=gate_center_width_layer,
+                    center_width_layer=day_center_width_layer,
                     skip=skip,
                     ladder=day_ladder,
                 )

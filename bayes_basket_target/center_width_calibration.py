@@ -142,6 +142,85 @@ MAX_STATION_WIDTH_SCALE = 1.5
 # served, at the floor.  Receipts carry the unfloored product beside the
 # served one so an audit can see when the floor bound.
 MIN_COMPOSED_WIDTH_LAMBDA = 0.5
+
+# Charter 239 (user ruling 2026-10-01, 「按照logscore单独判」): the thin-pool
+# far-lead width slice.  A P0 decision taken more than this many hours before
+# the market settles, by a pool seating at most this many systems, is served
+# the slice's own lambda in place of the stage's pooled one.  Measured
+# 2026-10-01 on 488 first decisions over 25 days: E[z^2] 1.46 [1.25, 1.71]
+# for the two-seat pools at >36h (81% of first decisions), against 0.76 for
+# the six-seat pools -- the linear pool of individually calibrated systems
+# keeps each one's width and adds the centres' spread, so one lambda fitted
+# across both cannot serve either.  One predicate, read by the fit, by
+# serving and by the OOS gate, so the three agree on which cell is in the
+# slice.
+THIN_FAR_SLICE_NAME = "thin_far"
+THIN_FAR_MAX_SEATED_SYSTEMS = 3
+THIN_FAR_MIN_HOURS_TO_SETTLEMENT = 36.0
+
+
+def thin_far_slice_applies(
+    *,
+    seated_system_count: int | None,
+    hours_to_settlement: float | None,
+    max_seated_systems: int = THIN_FAR_MAX_SEATED_SYSTEMS,
+    min_hours_to_settlement: float = THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
+) -> bool:
+    """Whether a decision falls in the thin-pool far-lead slice.
+
+    Fails closed on an unknown count or an unknown horizon: a cell that
+    cannot say what it is serves the pooled lambda, never the slice's.
+    """
+
+    if seated_system_count is None or hours_to_settlement is None:
+        return False
+    try:
+        count = int(seated_system_count)
+        hours = float(hours_to_settlement)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(hours):
+        return False
+    return count <= int(max_seated_systems) and hours > float(
+        min_hours_to_settlement
+    )
+
+
+def width_slice_for(
+    slices: Mapping[str, Mapping[str, Any]] | None,
+    *,
+    seated_system_count: int | None,
+    hours_to_settlement: float | None,
+) -> tuple[str, float] | None:
+    """The (name, lambda) of the one slice this decision is in, or None.
+
+    ``slices`` is the stored table's ``width_slices`` mapping (charter 239);
+    only ``thin_far`` is defined, and its bounds travel in the mapping so a
+    row written under one definition keeps serving exactly that definition.
+    """
+
+    if not slices:
+        return None
+    entry = slices.get(THIN_FAR_SLICE_NAME)
+    if not isinstance(entry, Mapping) or entry.get("width_lambda") is None:
+        return None
+    lam = float(entry["width_lambda"])
+    if not math.isfinite(lam) or not (MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA):
+        raise ValueError("center_width_slice_lambda_out_of_range")
+    if thin_far_slice_applies(
+        seated_system_count=seated_system_count,
+        hours_to_settlement=hours_to_settlement,
+        max_seated_systems=int(
+            entry.get("max_seated_systems", THIN_FAR_MAX_SEATED_SYSTEMS)
+        ),
+        min_hours_to_settlement=float(
+            entry.get(
+                "min_hours_to_settlement", THIN_FAR_MIN_HOURS_TO_SETTLEMENT
+            )
+        ),
+    ):
+        return THIN_FAR_SLICE_NAME, lam
+    return None
 # The width floor.  One lambda cannot serve a fleet whose own
 # claimed spread means different things at different sizes.  Measured
 # 2026-09-05 on this stage's own serving cells, the standardised error's

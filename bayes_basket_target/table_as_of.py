@@ -35,6 +35,7 @@ from .band_reliability_store import utc_instant
 from .center_width_store import (
     load_center_width,
     load_center_width_floor,
+    load_center_width_slices,
     load_center_width_tiers,
     load_station_width,
 )
@@ -172,6 +173,10 @@ def center_width_as_of(
             conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
         ),
         "width_tiers": load_center_width_tiers(
+            conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
+        ),
+        # Charter 239: the slices ride on the same row and the same sha.
+        "width_slices": load_center_width_slices(
             conn, stage=stage, table_sha256=sha, as_of_utc=as_of_utc
         ),
     }

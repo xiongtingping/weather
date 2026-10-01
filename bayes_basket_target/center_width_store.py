@@ -49,9 +49,14 @@ from .center_width_calibration import (
     bucket_rung_width_c,
     served_bucket_axis,
     sigma_floor_lift_v1,
+    THIN_FAR_MAX_SEATED_SYSTEMS,
+    THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
+    THIN_FAR_SLICE_NAME,
+    thin_far_slice_applies,
 )
 from . import serving_arithmetic
 from .contracts import ContractError, content_sha256
+from .settlement_time import hours_to_settlement_if_known
 
 CENTER_WIDTH_STAGES = ("P0", "P0-M", "P1")
 # Stages whose serving path actually reads this table.  P0's distribution is
@@ -159,6 +164,21 @@ GATE_CONFIDENCE = 0.95
 # station lane's reasoning: a day earlier here is one fewer day served wrong.
 CENTER_WIDTH_VETO_MIN_DAYS = 3
 CENTER_WIDTH_VETO_MIN_CELLS = 60
+# Charter 239 (user ruling 2026-10-01, 「按照logscore单独判」): the thin-pool
+# far-lead slice -- decisions seating at most THIN_FAR_MAX_SEATED_SYSTEMS
+# systems more than THIN_FAR_MIN_HOURS_TO_SETTLEMENT hours before settlement
+# -- is judged on the LogScore alone.  Measured on the ladder the bucket
+# Brier needs about twice the LogScore's sample to see a 15% width error
+# (300 vs 600 independent station-days; with 45 stations sharing a day's
+# weather the effective count is far smaller), and twice in a row (09-27
+# first-decision slice -0.0174 [-0.0288, -0.0078]; 10-01 -0.034 [-0.072,
+# -0.005]) the LogScore has called the slice's widening while the Brier sat
+# flat.  Admission, the fold majority and the veto on this slice all read
+# this rule; everything pooled keeps charter 228's two-score gate.
+GATE_RULE_LOGSCORE = "logscore_lower_station_day_bootstrap_v1"
+SLICE_MIN_QUALIFYING_DAYS = 8
+SLICE_MIN_QUALIFYING_CELLS = 60
+SLICE_MIN_FOLD_TRAIN_CELLS = 30
 # Open-ended edge buckets have no far side; this is the width
 # ``materialization`` gives them on the P0-M TAF likelihood's axis, which its
 # own artifact was fitted on.  It is no longer the width layer's convention:
@@ -349,6 +369,16 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # Charter 239: the thin-pool far-lead slice rides on the same row as the
+    # pair it refines; nullable, and read as "no slice", so every row written
+    # before it keeps describing exactly the arithmetic it described.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN width_slices_json TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -431,6 +461,7 @@ def center_width_sha256(
     *, stage: str, delta_c: float, width_lambda: float,
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
+    width_slices: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "schema": "center_width_table_v1",
@@ -452,6 +483,19 @@ def center_width_sha256(
                 round(float(b), 6) for b in width_tiers["boundaries_rungs"]
             ],
             "lambdas": [round(float(v), 6) for v in width_tiers["lambdas"]],
+        }
+    # Charter 239: a row carrying a slice is a different arithmetic from the
+    # same pair without one, so the slice is in the digest an artifact pins.
+    if width_slices:
+        payload["width_slices"] = {
+            str(name): {
+                "max_seated_systems": int(entry["max_seated_systems"]),
+                "min_hours_to_settlement": round(
+                    float(entry["min_hours_to_settlement"]), 6
+                ),
+                "width_lambda": round(float(entry["width_lambda"]), 6),
+            }
+            for name, entry in sorted(width_slices.items())
         }
     return content_sha256(payload)
 
@@ -660,6 +704,65 @@ def load_center_width_tiers(
         "boundaries_rungs": [float(b) for b in tiers.get("boundaries_rungs") or WIDTH_TIER_BOUNDARIES_RUNGS],
         "lambdas": [float(v) for v in tiers["lambdas"]],
     }
+
+
+def load_center_width_slices(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+    as_of_utc: str | None = None,
+) -> dict[str, dict[str, Any]] | None:
+    """The active (or pinned) table's width slices (charter 239), if any --
+    None means the row serves no slice, which is every row written before
+    the slice lane existed and every fit whose slice was not admitted."""
+
+    stage_id = _check_stage(stage)
+    if table_sha256 is not None and _pinned_center_width_retired(
+        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
+    ):
+        return None
+    try:
+        if table_sha256 is None:
+            row = conn.execute(
+                "SELECT width_slices_json"
+                " FROM calibration_center_width_table"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT width_slices_json"
+                " FROM calibration_center_width_table"
+                " WHERE center_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None or not row[0]:
+        return None
+    try:
+        slices = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(slices, Mapping):
+        return None
+    out: dict[str, dict[str, Any]] = {}
+    for name, entry in slices.items():
+        if not isinstance(entry, Mapping) or entry.get("width_lambda") is None:
+            continue
+        out[str(name)] = {
+            "max_seated_systems": int(
+                entry.get("max_seated_systems", THIN_FAR_MAX_SEATED_SYSTEMS)
+            ),
+            "min_hours_to_settlement": float(
+                entry.get(
+                    "min_hours_to_settlement", THIN_FAR_MIN_HOURS_TO_SETTLEMENT
+                )
+            ),
+            "width_lambda": float(entry["width_lambda"]),
+        }
+    return out or None
 
 
 STATION_WIDTH_METHOD_TAG = "station_width_scale_v2"
@@ -1853,7 +1956,8 @@ def serving_cells_by_day(
             .append((
                 hours,
                 (str(station), str(day), str(decided), str(checkpoint),
-                 str(sha), str(stored) if stored else None, float(actual)),
+                 str(sha), str(stored) if stored else None, float(actual),
+                 str(tz_name)),
             ))
     by_day: dict[str, list[dict[str, Any]]] = {}
     for (_station, day, _block), entries in candidates.items():
@@ -1911,7 +2015,8 @@ def _serving_cell(
 
     from .probability_bridge import history_envelope_payload
 
-    station, day, decided, checkpoint, sha, stored, actual = row
+    station, day, decided, checkpoint, sha, stored, actual = row[:7]
+    tz_name = str(row[7]) if len(row) > 7 and row[7] else None
     try:
         envelope = history_envelope_payload(
             conn,
@@ -1964,10 +2069,30 @@ def _serving_cell(
         )
         if today is not None:
             probabilities, reserved = today, True
+    # Charter 239: which slice the decision was in, read off the row itself
+    # -- the seated count from the weights the pool served, the horizon from
+    # the decision instant on the station's own settlement clock.  Absent
+    # where the row cannot say; the slice predicate then fails closed.
+    seated_system_count: int | None = None
+    try:
+        served_weights = json.loads(
+            str(lineage.get("system_weights_json") or "")
+        )
+        if isinstance(served_weights, Mapping):
+            seated_system_count = sum(
+                1 for value in served_weights.values() if float(value) > 0.0
+            )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        seated_system_count = None
+    hours_to_settlement = hours_to_settlement_if_known(
+        str(day), as_of_utc=str(decided), settlement_timezone=tz_name,
+    )
     return {
         "station_id": station,
         "event_date": day,
         "decision_at_utc": decided,
+        "seated_system_count": seated_system_count,
+        "hours_to_settlement": hours_to_settlement,
         "model_center_c": lineage.get("model_center_c"),
         # What this row actually had applied, from the row itself: the veto
         # scores the width this decision was served under, not the width the
@@ -2174,6 +2299,24 @@ def _proper_score_gate(
     return out
 
 
+def _logscore_gate(
+    base: Sequence[tuple[float, float]],
+    candidate: Sequence[tuple[float, float]],
+    clusters: Sequence[Any],
+) -> dict[str, Any]:
+    """Charter 239: is ``candidate`` significantly better than ``base`` on the
+    LogScore?  The same station-day bootstrap as ``_proper_score_gate``, the
+    Brier still measured and reported, but ``lower`` reads the LogScore's
+    upper bound alone.  Only the thin-pool far-lead slice is judged here."""
+
+    gate = _proper_score_gate(base, candidate, clusters)
+    gate["rule"] = GATE_RULE_LOGSCORE
+    gate["lower"] = bool(
+        gate["ci_logscore"] is not None and gate["ci_logscore"][1] < 0.0
+    )
+    return gate
+
+
 # Charter 202 follow-up (2026-09-23): the lane's grids, scored once per cell.
 # Once the evidence stopped resetting at every bump the lane held ten days of
 # cells, and scoring the pooled grid, the tier grid and every rolling-origin
@@ -2372,6 +2515,317 @@ def _search(
         return 0.0, 1.0, 0.0
     return best
 
+
+
+def _cell_in_thin_far_slice(cell: Mapping[str, Any]) -> bool:
+    """Charter 239: the fit reads the slice off the cell the way serving
+    reads it off the decision -- the one predicate, the row's own count and
+    horizon."""
+
+    return thin_far_slice_applies(
+        seated_system_count=cell.get("seated_system_count"),
+        hours_to_settlement=cell.get("hours_to_settlement"),
+    )
+
+
+def _split_slice_cells(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> tuple[dict[str, list[Mapping[str, Any]]], dict[str, list[Mapping[str, Any]]]]:
+    """(pooled cells, slice cells) by day.  Every day keeps a (possibly
+    empty) entry on the pooled side so the day order the folds walk is the
+    stage's, not the slice's."""
+
+    pooled: dict[str, list[Mapping[str, Any]]] = {}
+    sliced: dict[str, list[Mapping[str, Any]]] = {}
+    for day in sorted(by_day):
+        pooled[day] = []
+        for cell in by_day[day]:
+            if _cell_in_thin_far_slice(cell):
+                sliced.setdefault(day, []).append(cell)
+            else:
+                pooled[day].append(cell)
+    return pooled, sliced
+
+
+@_in_memo_scope
+def _search_slice_lambda(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    delta_c: float,
+    sigma_floor_rungs: float = 0.0,
+) -> tuple[float, float]:
+    """The slice's best lambda at a fixed shift, on the LogScore of the
+    floored vector (charter 239 keeps the training rule of 211/228 and only
+    changes the gate).  Returns (lambda, mean LogScore)."""
+
+    best: tuple[float, float] | None = None
+    if not cells:
+        return 1.0, 0.0
+    for lam in _GRID_LAMBDAS:
+        if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
+            continue
+        value = _mean_nll(
+            cells, delta_c=delta_c, width_lambda=lam,
+            sigma_floor_rungs=sigma_floor_rungs,
+        )
+        if best is None or value < best[1]:
+            best = (lam, value)
+    return best if best is not None else (1.0, 0.0)
+
+
+def _slice_entry(width_lambda: float) -> dict[str, Any]:
+    return {
+        "max_seated_systems": THIN_FAR_MAX_SEATED_SYSTEMS,
+        "min_hours_to_settlement": THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
+        "width_lambda": round(float(width_lambda), 4),
+    }
+
+
+@_in_memo_scope
+def _thin_far_slice_lane(
+    *,
+    pooled_by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    slice_by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    days: Sequence[str],
+    cut: int,
+    pooled_admitted: bool,
+    served_residual: tuple[float, float],
+    sigma_floor_rungs: float,
+    served_slice_lambda: float,
+    incumbent_slices: Mapping[str, Mapping[str, Any]] | None,
+) -> dict[str, Any]:
+    """Charter 239: one lambda for the thin-pool far-lead slice, admitted on
+    the LogScore alone.
+
+    Residual space, like everything the fit measures: the slice cells carry
+    what they were served (the stage pair, or the incumbent slice's lambda),
+    so the candidate is a factor on that.  ``served_residual`` is what a
+    slice cell would be served if there were no slice -- the pooled
+    candidate's residual pair when that is admitted this round, identity
+    otherwise -- and the slice has to beat exactly that on its own held-out
+    cells.
+
+    Admission walks the origin the way ``_rolling_origin_admission`` does:
+    each fold refits the pooled pair on its prefix (when the pooled pair is
+    admitted this round) and the slice lambda on the prefix's slice cells,
+    and scores the held-out day's slice cells.  The pooled held-out cells
+    pass the LogScore-only station-day gate and a majority of folds gain on
+    the LogScore.  The stored lambda is the one fitted on the training
+    prefix, composed onto what the slice cells were served under.
+    """
+
+    ordered = list(days)
+    slice_days = [day for day in ordered if slice_by_day.get(day)]
+    slice_cells = [cell for day in slice_days for cell in slice_by_day[day]]
+    out: dict[str, Any] = {
+        "schema": "center_width_thin_far_slice_lane_v1",
+        "slice": THIN_FAR_SLICE_NAME,
+        "max_seated_systems": THIN_FAR_MAX_SEATED_SYSTEMS,
+        "min_hours_to_settlement": THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
+        "gate_rule": GATE_RULE_LOGSCORE,
+        "slice_day_count": len(slice_days),
+        "slice_cell_count": len(slice_cells),
+        "min_qualifying_days": SLICE_MIN_QUALIFYING_DAYS,
+        "min_qualifying_cells": SLICE_MIN_QUALIFYING_CELLS,
+        "incumbent_slices": (
+            dict(incumbent_slices) if incumbent_slices else None
+        ),
+        "served_slice_lambda": float(served_slice_lambda),
+        "served_residual": list(served_residual),
+        "pooled_admitted": bool(pooled_admitted),
+    }
+    if (
+        len(slice_days) < SLICE_MIN_QUALIFYING_DAYS
+        or len(slice_cells) < SLICE_MIN_QUALIFYING_CELLS
+    ):
+        out.update({"admitted": False, "state": "ACCUMULATING"})
+        return out
+    first = max(
+        ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
+        len(ordered) - ROLLING_ORIGIN_MAX_FOLDS,
+    )
+    folds: list[dict[str, Any]] = []
+    held_other: list[tuple[float, float]] = []
+    held_slice: list[tuple[float, float]] = []
+    held_clusters: list[tuple[Any, str]] = []
+    for index in range(first, len(ordered)):
+        test = list(slice_by_day.get(ordered[index], []))
+        train_slice = [
+            cell for day in ordered[:index] for cell in slice_by_day.get(day, [])
+        ]
+        if not test or len(train_slice) < SLICE_MIN_FOLD_TRAIN_CELLS:
+            continue
+        if pooled_admitted:
+            train_pooled = [
+                cell for day in ordered[:index]
+                for cell in pooled_by_day.get(day, [])
+            ]
+            other_delta, other_lambda, _nll = (
+                _search(train_pooled, sigma_floor_rungs=sigma_floor_rungs)
+                if train_pooled else RESIDUAL_IDENTITY + (0.0,)
+            )
+        else:
+            other_delta, other_lambda = RESIDUAL_IDENTITY
+        slice_lambda, _train = _search_slice_lambda(
+            train_slice, delta_c=other_delta, sigma_floor_rungs=sigma_floor_rungs,
+        )
+        other_scores = _cell_score_list(
+            test, delta_c=other_delta, width_lambda=other_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+        )
+        slice_scores = _cell_score_list(
+            test, delta_c=other_delta, width_lambda=slice_lambda,
+            sigma_floor_rungs=sigma_floor_rungs,
+        )
+        other_nll = sum(x[0] for x in other_scores) / len(test)
+        slice_nll = sum(x[0] for x in slice_scores) / len(test)
+        folds.append({
+            "scored_day": ordered[index],
+            "train_slice_cell_count": len(train_slice),
+            "cell_count": len(test),
+            "other_delta_c": other_delta,
+            "other_width_lambda": other_lambda,
+            "slice_width_lambda": slice_lambda,
+            "other_nll": other_nll,
+            "slice_nll": slice_nll,
+            "gain": other_nll - slice_nll,
+            "brier_gain": (
+                sum(x[1] for x in other_scores) - sum(x[1] for x in slice_scores)
+            ) / len(test),
+        })
+        held_other.extend(other_scores)
+        held_slice.extend(slice_scores)
+        held_clusters.extend(
+            (cell.get("station_id"), ordered[index]) for cell in test
+        )
+    gate = _logscore_gate(held_other, held_slice, held_clusters)
+    positive = sum(1 for fold in folds if fold["gain"] > 0.0)
+    majority = positive * 2 > len(folds) if folds else False
+    train_prefix = [
+        cell for day in ordered[:cut] for cell in slice_by_day.get(day, [])
+    ]
+    candidate_lambda, candidate_train_nll = _search_slice_lambda(
+        train_prefix, delta_c=served_residual[0],
+        sigma_floor_rungs=sigma_floor_rungs,
+    ) if train_prefix else (1.0, 0.0)
+    absolute = max(
+        MIN_WIDTH_LAMBDA,
+        min(MAX_WIDTH_LAMBDA, float(served_slice_lambda) * float(candidate_lambda)),
+    )
+    measured = bool(gate["lower"]) and bool(majority) and bool(folds)
+    admitted = measured and abs(float(candidate_lambda) - 1.0) > 1e-9
+    out.update({
+        "fold_count": len(folds),
+        "folds_positive": positive,
+        "majority_positive": majority,
+        "gate": gate,
+        "scored_cell_count": sum(fold["cell_count"] for fold in folds),
+        "gain": (
+            sum(fold["gain"] * fold["cell_count"] for fold in folds)
+            / max(1, sum(fold["cell_count"] for fold in folds))
+        ) if folds else 0.0,
+        "brier_gain": (
+            sum(fold["brier_gain"] * fold["cell_count"] for fold in folds)
+            / max(1, sum(fold["cell_count"] for fold in folds))
+        ) if folds else 0.0,
+        "train_prefix_slice_cell_count": len(train_prefix),
+        "candidate_residual_width_lambda": float(candidate_lambda),
+        "candidate_train_nll": float(candidate_train_nll),
+        "candidate_width_lambda": round(absolute, 4),
+        "measured_admitted": measured,
+        "admitted": admitted,
+        "state": (
+            "ADMITTED" if admitted
+            else "UNCHANGED" if measured
+            else "REFUSED_FORWARD"
+        ),
+        "folds": folds,
+    })
+    return out
+
+
+def _thin_far_slice_veto(
+    slice_by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    slices: Mapping[str, Mapping[str, Any]],
+    activated_at_utc: str | None,
+) -> dict[str, Any]:
+    """Charter 239: should the active slice come off?  Each slice cell served
+    since activation is scored as served (identity residual) against the same
+    row served the stage lambda instead -- the recorded input, re-served with
+    the slice's factor swapped for the stage's.  Vetoed when the swap is
+    significantly better on the LogScore (the slice's own rule) on at least
+    the veto window (charter 138)."""
+
+    since = activated_at_utc or ""
+    entry = (slices or {}).get(THIN_FAR_SLICE_NAME) or {}
+    kept: list[tuple[float, float]] = []
+    undone: list[tuple[float, float]] = []
+    clusters: list[tuple[Any, str]] = []
+    skipped: dict[str, int] = {}
+    judged_days: set[str] = set()
+    for day in sorted(slice_by_day):
+        for cell in slice_by_day[day]:
+            if str(cell.get("decision_at_utc") or "") < since:
+                continue
+            receipt = cell.get("center_width_receipt") or {}
+            slice_lambda = receipt.get("width_slice_lambda")
+            stage_lambda = receipt.get("stage_width_lambda")
+            applied_lambda = receipt.get("width_lambda")
+            applied_delta = float(receipt.get("delta_c") or 0.0)
+            if (
+                slice_lambda is None or stage_lambda is None
+                or applied_lambda is None or float(slice_lambda) <= 0.0
+            ):
+                skipped["not_sliced"] = skipped.get("not_sliced", 0) + 1
+                continue
+            recovered, basis = _identity_counterfactual(
+                cell, delta_c=applied_delta, width_lambda=float(applied_lambda),
+            )
+            if recovered is None:
+                skipped[basis] = skipped.get(basis, 0) + 1
+                continue
+            swapped_lambda = (
+                float(applied_lambda) * float(stage_lambda) / float(slice_lambda)
+            )
+            if not MIN_WIDTH_LAMBDA <= swapped_lambda <= MAX_WIDTH_LAMBDA:
+                skipped["residual"] = skipped.get("residual", 0) + 1
+                continue
+            counterfactual, _ = apply_center_width_calibration(
+                recovered,
+                delta_c=applied_delta,
+                width_lambda=swapped_lambda,
+                ordered_keys=cell["ordered_keys"],
+                key_centers_c=cell["key_centers_c"],
+                excluded_buckets=cell["excluded_buckets"],
+                open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+            )
+            kept.append(_cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0))
+            undone.append(_served_scores(
+                counterfactual,
+                ordered_keys=cell["ordered_keys"],
+                settled_bucket=cell["settled_bucket"],
+                excluded_buckets=cell["excluded_buckets"],
+            ))
+            clusters.append((cell.get("station_id"), day))
+            judged_days.add(day)
+    gate = _logscore_gate(kept, undone, clusters)
+    enough = (
+        len(judged_days) >= CENTER_WIDTH_VETO_MIN_DAYS
+        and len(kept) >= CENTER_WIDTH_VETO_MIN_CELLS
+    )
+    return {
+        "schema": "center_width_thin_far_slice_veto_v1",
+        "activated_at_utc": activated_at_utc,
+        "incumbent_slice": dict(entry),
+        "day_count": len(judged_days),
+        "cell_count": len(kept),
+        "skipped": skipped,
+        "undo_gain": 0.0 if not kept else -float(gate["d_logscore"]),
+        "gate": gate,
+        "enough_evidence": enough,
+        "vetoed": bool(enough and gate["lower"]),
+    }
 
 
 def _cell_tier(cell: Mapping[str, Any]) -> int:
@@ -3087,6 +3541,18 @@ def fit_center_width(
     base_tiers = (
         None if active is None else load_center_width_tiers(conn, stage=stage_id)
     )
+    # Charter 239: the active row's slice, and the cells split by it.  While a
+    # slice serves, its cells carry the slice's lambda, not the pair's, so the
+    # pooled lane (veto, search, admission) reads the pooled cells only and
+    # the slice lane reads its own; with no slice active every cell is the
+    # pooled lane's, exactly as before.
+    base_slices = (
+        None if active is None else load_center_width_slices(conn, stage=stage_id)
+    )
+    pooled_by_day, slice_by_day = _split_slice_cells(by_day)
+    lane_by_day: Mapping[str, Sequence[Mapping[str, Any]]] = (
+        pooled_by_day if base_slices else by_day
+    )
     accumulating = (
         len(days) < MIN_QUALIFYING_DAYS or len(cells) < MIN_QUALIFYING_CELLS
     )
@@ -3116,7 +3582,7 @@ def fit_center_width(
     # and the hold is exactly when nobody else is looking (charter 138).
     if active is not None and (base[0] != 0.0 or base[1] != 1.0):
         veto = _center_width_veto(
-            by_day,
+            lane_by_day,
             delta_c=base[0],
             width_lambda=base[1],
             activated_at_utc=_active_center_width_activated_at(
@@ -3132,6 +3598,7 @@ def fit_center_width(
                 "width_lambda": 1.0,
                 "sigma_floor_rungs": 0.0,
                 "width_tiers": None,
+                "width_slices": None,
                 "forward_nll_gain": -float(veto["undo_gain"]),
                 "accumulating": accumulating,
                 "vetoed": True,
@@ -3161,6 +3628,7 @@ def fit_center_width(
             "width_lambda": base[1],
             "sigma_floor_rungs": base_floor,
             "width_tiers": base_tiers,
+            "width_slices": base_slices,
             "forward_nll_gain": 0.0,
             "accumulating": True,
             "vetoed": False,
@@ -3182,6 +3650,7 @@ def fit_center_width(
             "width_lambda": base[1],
             "sigma_floor_rungs": base_floor,
             "width_tiers": base_tiers,
+            "width_slices": base_slices,
             "forward_nll_gain": 0.0,
             "accumulating": False,
             "vetoed": False,
@@ -3192,11 +3661,11 @@ def fit_center_width(
         }
     cut = max(1, int(len(days) * (1.0 - FORWARD_WINDOW_FRACTION)))
     train_days, forward_days = days[:cut], days[cut:] or days[-1:]
-    train = [cell for day in train_days for cell in by_day[day]]
-    forward = [cell for day in forward_days for cell in by_day[day]]
+    train = [cell for day in train_days for cell in lane_by_day.get(day, [])]
+    forward = [cell for day in forward_days for cell in lane_by_day.get(day, [])]
     forward_clusters = [
         (cell.get("station_id"), day)
-        for day in forward_days for cell in by_day[day]
+        for day in forward_days for cell in lane_by_day.get(day, [])
     ]
     # Which pair is stored does not change here: it is still the one the
     # training prefix picks.  Only the gate moves, and the two sub-lanes keep
@@ -3279,7 +3748,7 @@ def fit_center_width(
     # here is whether the search beats what is served at all, and that is the
     # one the single window was deciding by coin toss.
     rolling = _rolling_origin_admission(
-        by_day, days, sigma_floor_rungs=candidate_floor
+        lane_by_day, days, sigma_floor_rungs=candidate_floor
     )
     evidence["rolling_origin"] = rolling
     single_window_gain = forward_base - forward_candidate
@@ -3324,6 +3793,51 @@ def fit_center_width(
         # single one, so the fold majority does not speak to it; the pair it
         # rides on has already passed the gate above.
         admitted = bool(width_tier_lane["gate_vs_incumbent"]["lower"])
+    # Charter 239: the thin-pool far-lead slice, judged on the LogScore alone.
+    # The veto first, for the reason the pooled veto runs first: an active
+    # slice is only safe while it is still earning its place.  Then the lane,
+    # against whatever a slice cell would be served without a slice this
+    # round -- the pooled candidate's residual if that is admitted, identity
+    # (the incumbent pair, already in the cell) otherwise.
+    served_slices: Mapping[str, Mapping[str, Any]] | None = base_slices
+    slice_veto: dict[str, Any] | None = None
+    if base_slices:
+        slice_veto = _thin_far_slice_veto(
+            slice_by_day, slices=base_slices,
+            activated_at_utc=_active_center_width_activated_at(
+                conn, stage=stage_id
+            ),
+        )
+        evidence["width_slice_veto"] = slice_veto
+    if slice_veto is not None and slice_veto["vetoed"]:
+        served_slices = None
+        evidence["width_slices"] = {
+            "schema": "center_width_thin_far_slice_lane_v1",
+            "slice": THIN_FAR_SLICE_NAME,
+            "admitted": False,
+            "state": "INCUMBENT_VETOED",
+        }
+    else:
+        slice_lane = _thin_far_slice_lane(
+            pooled_by_day=pooled_by_day,
+            slice_by_day=slice_by_day,
+            days=days,
+            cut=cut,
+            pooled_admitted=admitted,
+            served_residual=(delta, lam) if admitted else RESIDUAL_IDENTITY,
+            sigma_floor_rungs=candidate_floor if admitted else base_floor,
+            served_slice_lambda=float(
+                (base_slices or {}).get(THIN_FAR_SLICE_NAME, {}).get(
+                    "width_lambda", base[1]
+                )
+            ),
+            incumbent_slices=base_slices,
+        )
+        evidence["width_slices"] = slice_lane
+        if slice_lane["admitted"]:
+            served_slices = {
+                THIN_FAR_SLICE_NAME: _slice_entry(slice_lane["candidate_width_lambda"])
+            }
     # The TAF-conditional lane (charter 57, distance axis): each cell fits
     # its own scalars from its own slice of the same train/forward split --
     # the shift along each day's TAF direction, the width unsigned -- and is
@@ -3366,6 +3880,16 @@ def fit_center_width(
         # the incumbent's scalars: nothing was shown to be better.
         "sigma_floor_rungs": candidate_floor if admitted else base_floor,
         "width_tiers": candidate_tiers if admitted else base_tiers,
+        # Charter 239: the slice that will serve -- admitted this round, kept
+        # from the incumbent, or dropped by its veto -- beside the pair.
+        "width_slices": dict(served_slices) if served_slices else None,
+        "candidate_width_slices": (
+            {THIN_FAR_SLICE_NAME: _slice_entry(
+                evidence["width_slices"]["candidate_width_lambda"]
+            )}
+            if evidence["width_slices"].get("candidate_width_lambda") is not None
+            else None
+        ),
         "candidate_width_tiers": {
             "boundaries_rungs": list(WIDTH_TIER_BOUNDARIES_RUNGS),
             "lambdas": list(tier_lambdas),
@@ -3398,6 +3922,7 @@ def persist_and_activate_center_width(
     fitted_at_utc: str | None = None,
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
+    width_slices: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
@@ -3405,6 +3930,23 @@ def persist_and_activate_center_width(
         stage=stage_id, delta_c=delta_c, width_lambda=width_lambda,
         sigma_floor_rungs=sigma_floor_rungs,
         width_tiers=width_tiers,
+        width_slices=width_slices,
+    )
+    slices_json = (
+        json.dumps(
+            {
+                str(name): {
+                    "max_seated_systems": int(entry["max_seated_systems"]),
+                    "min_hours_to_settlement": float(
+                        entry["min_hours_to_settlement"]
+                    ),
+                    "width_lambda": float(entry["width_lambda"]),
+                }
+                for name, entry in sorted(width_slices.items())
+            },
+            sort_keys=True,
+        )
+        if width_slices else None
     )
     tiers_json = (
         json.dumps(
@@ -3434,22 +3976,24 @@ def persist_and_activate_center_width(
             " center_width_sha256, stage, delta_c, width_lambda,"
             " evidence_json,"
             " fitted_at_utc, serving_day_count, activated, activated_at_utc,"
-            " taf_cells_json, sigma_floor_rungs, width_tiers_json"
-            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?,?)"
+            " taf_cells_json, sigma_floor_rungs, width_tiers_json,"
+            " width_slices_json"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?,?,?)"
             " ON CONFLICT(center_width_sha256) DO UPDATE SET"
             "  evidence_json=excluded.evidence_json,"
             "  fitted_at_utc=excluded.fitted_at_utc,"
             "  serving_day_count=excluded.serving_day_count,"
             "  taf_cells_json=excluded.taf_cells_json,"
             "  sigma_floor_rungs=excluded.sigma_floor_rungs,"
-            "  width_tiers_json=excluded.width_tiers_json",
+            "  width_tiers_json=excluded.width_tiers_json,"
+            "  width_slices_json=excluded.width_slices_json",
             (
                 digest, stage_id, float(delta_c), float(width_lambda),
                 json.dumps(
                     dict(evidence), ensure_ascii=False, sort_keys=True
                 ),
                 now, int(serving_day_count), cells_json,
-                float(sigma_floor_rungs) or None, tiers_json,
+                float(sigma_floor_rungs) or None, tiers_json, slices_json,
             ),
         )
         conn.execute(
@@ -3539,6 +4083,7 @@ def journal_center_width_fit(
         width_lambda=fitted["width_lambda"],
         sigma_floor_rungs=float(fitted.get("sigma_floor_rungs") or 0.0),
         width_tiers=fitted.get("width_tiers") or None,
+        width_slices=fitted.get("width_slices") or None,
     )
     fit_id = "cwfit-" + content_sha256({
         "stage": stage_id,
@@ -3724,7 +4269,22 @@ def _refit_stages(
                 "width_tiers": fitted.get("width_tiers"),
                 "candidate_width_tiers": fitted.get("candidate_width_tiers"),
                 "width_tier_lane": fitted["evidence"].get("width_tiers") or {},
+                # Charter 239: the slice beside the pair, and its lane.
+                "width_slices": fitted.get("width_slices"),
+                "candidate_width_slices": fitted.get("candidate_width_slices"),
+                "width_slice_lane": fitted["evidence"].get("width_slices") or {},
+                "width_slice_veto": fitted["evidence"].get("width_slice_veto"),
             })
+            # Charter 239: a slice admitted or vetoed is a row change even
+            # when the pooled pair stands, so the pair is re-persisted with
+            # the new slice (a new sha) rather than held under REFUSED.
+            active_slices = (
+                load_center_width_slices(conn, stage=stage)
+                if active is not None else None
+            )
+            slices_changed = (
+                (fitted.get("width_slices") or None) != (active_slices or None)
+            )
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
                     outcome = "NOT_WIRED"
@@ -3735,7 +4295,7 @@ def _refit_stages(
                     outcome = "INCUMBENT_VETOED"
                 elif fitted["accumulating"]:
                     outcome = "ACCUMULATING"
-                elif not fitted.get("admitted", False):
+                elif not fitted.get("admitted", False) and not slices_changed:
                     outcome = "REFUSED_FORWARD"
                 else:
                     committed = persist_and_activate_center_width(
@@ -3749,6 +4309,7 @@ def _refit_stages(
                             fitted.get("sigma_floor_rungs") or 0.0
                         ),
                         width_tiers=fitted.get("width_tiers") or None,
+                        width_slices=fitted.get("width_slices") or None,
                     )
                     entry["commit"] = committed
                     outcome = str(committed["state"])
