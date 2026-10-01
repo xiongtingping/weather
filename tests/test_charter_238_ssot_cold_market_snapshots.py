@@ -87,8 +87,8 @@ def _book(conn, sid: str, station: str, day: str, sequence: int) -> None:
     conn.execute(
         f"INSERT INTO {WS} VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
-            sid, "m", station, day, "UTC", sequence, f"{day}T00:00:0{sequence}Z", f"qv-{sid}",
-            f"{day}T00:00:00Z", f"{day}T00:05:00Z", _sha("fresh"), "OFFICIAL_CLOB_WS", "iv", "ov",
+            sid, "m", station, day, "UTC", sequence, f"{day}T00:00:0{sequence}.000Z", f"qv-{sid}",
+            f"{day}T00:00:0{sequence}.000Z", f"{day}T00:05:00Z", _sha("fresh"), "OFFICIAL_CLOB_WS", "iv", "ov",
             1.0, json.dumps([{"bucket": "20°C", "pad": "x" * 500}]), "{}", _sha(sid), "COMMITTED",
             f"{day}T00:00:00Z",
         ),
@@ -102,46 +102,61 @@ def _inventory(conn, table: str, sid: str, station: str, day: str, version: str)
     )
 
 
-def _live_intent(conn, station: str, day: str) -> None:
+def _vector(conn, n: int, station: str, day: str, *, ws: str, instant: str, inventory: str, order_state: str) -> None:
+    """One executed order's version vector: the hashes of the rows it was bound to."""
+
+    cycle = f"cyc_{n}"
     conn.execute(
-        "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,"
-        "settlement_timezone,strategy_lane,decided_state,will_order,reason_codes_json,"
-        "details_json,decision_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("d_live", "c_live", "plan_x", station, day, "UTC", "basket",
-         "submitted", 1, "[]", "{}", _sha("d"), f"{day}T00:00:00Z"),
+        "INSERT INTO basket_target_execution_cycles VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (cycle, f"plan_{n}", station, day, "UTC", "basket", _sha(f"plan{n}"), 1.0, "settled",
+         f"{day}T00:00:00Z", f"{day}T00:00:00Z"),
     )
-    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(basket_target_order_intents)")]
-    values = {
-        "order_intent_id": "i_live", "decision_id": "d_live", "cycle_id": "c_live",
-        "bucket": "20°C", "token_id": "tok", "side": "NO", "order_action": "BUY",
-        "limit_price": 0.97, "requested_size": 10.0, "requested_notional_usdc": 9.7,
-        "state": "filled", "live_submit_authorized": 1, "idempotency_key": "k",
-        "intent_json": "{}", "intent_sha256": _sha("i"), "created_at": f"{day}T00:01:00Z",
+    columns = {
+        "order_intent_id": f"i_{n}", "cycle_id": cycle, "decision_id": f"d_{n}",
+        "vector_policy": "EXECUTION", "target_price_id": "tp", "quote_observed_at": instant,
+        "quote_expires_at": f"{day}T00:05:00Z", "probability_sha256": _sha("p"),
+        "official_ws_quote_sha256": ws, "inventory_sha256": inventory, "order_state_sha256": order_state,
+        "station_policy_sha256": _sha("sp"), "cash_policy_decision_sha256": _sha("cp"),
+        "strict_delta_artifact_sha256": _sha("sd"), "vector_json": "{}", "vector_sha256": _sha(f"v{n}"),
+        "created_at": f"{day}T00:00:00Z",
     }
-    listed = [c for c in columns if c in values]
     conn.execute(
-        f"INSERT INTO basket_target_order_intents({','.join(listed)}) VALUES({','.join('?' * len(listed))})",
-        tuple(values[c] for c in listed),
+        f"INSERT INTO basket_target_execution_version_vectors({','.join(columns)})"
+        f" VALUES({','.join('?' * len(columns))})", tuple(columns.values()),
     )
+
+
+BOOK_OLD, BOOK_HOT = "2026-08-10", "2026-09-10"     # the book window is 30 days: cutoff 08-28
+STATE_OLD, STATE_HOT = "2026-09-10", "2026-09-22"   # the state window is 7 days: cutoff 09-20
 
 
 def _fixture(store: Path) -> None:
     conn = sqlite3.connect(store)
-    # KLGA 09-10: three books; only the highest sequence must stay.
+    # KLGA: three books; only the highest sequence must stay.
     for seq in (0, 1, 2):
-        _book(conn, f"ws_klga_10_{seq}", "KLGA", "2026-09-10", seq)
-    # EGLC 09-11 carried real money: every book stays.
+        _book(conn, f"ws_klga_{seq}", "KLGA", BOOK_OLD, seq)
+    # EGLC: an order executed against book 0 -- it stays, book 1 moves
+    # unless it is the newest of its day, so give the day a third book.
+    for seq in (0, 1, 2):
+        _book(conn, f"ws_eglc_{seq}", "EGLC", BOOK_OLD, seq)
+    # ZUUU: an order names a book that is not there -- the whole day stays.
     for seq in (0, 1):
-        _book(conn, f"ws_eglc_11_{seq}", "EGLC", "2026-09-11", seq)
-    _live_intent(conn, "EGLC", "2026-09-11")
-    # Inside the window (today-7 = 09-20 onward): stays.
+        _book(conn, f"ws_zuuu_{seq}", "ZUUU", BOOK_OLD, seq)
+    # Inside the 30-day window: stays (the dashboard's valuation population).
     for seq in (0, 1):
-        _book(conn, f"ws_klga_22_{seq}", "KLGA", "2026-09-22", seq)
+        _book(conn, f"ws_hot_{seq}", "KLGA", BOOK_HOT, seq)
     for table in (INVENTORY, ORDER_STATE):
         for n in (0, 1, 2):
-            _inventory(conn, table, f"{table[:6]}_klga_10_{n}", "KLGA", "2026-09-10", f"v{n}")
-        _inventory(conn, table, f"{table[:6]}_eglc_11", "EGLC", "2026-09-11", "v0")
-        _inventory(conn, table, f"{table[:6]}_klga_22", "KLGA", "2026-09-22", "v0")
+            _inventory(conn, table, f"{table[:6]}_klga_{n}", "KLGA", STATE_OLD, f"v{n}")
+            _inventory(conn, table, f"{table[:6]}_eglc_{n}", "EGLC", STATE_OLD, f"v{n}")
+        _inventory(conn, table, f"{table[:6]}_hot", "KLGA", STATE_HOT, "v0")
+    # The vector spells the instant with microseconds, the book with millis.
+    _vector(conn, 1, "EGLC", BOOK_OLD, ws=_sha("ws_eglc_0"), instant=f"{BOOK_OLD}T00:00:00.000000Z",
+            inventory=_sha("basket_eglc_0"), order_state=_sha("basket_eglc_0"))
+    _vector(conn, 2, "EGLC", STATE_OLD, ws=_sha("absent"), instant=f"{STATE_OLD}T00:00:00.000000Z",
+            inventory=_sha(f"{INVENTORY[:6]}_eglc_0"), order_state=_sha(f"{ORDER_STATE[:6]}_eglc_0"))
+    _vector(conn, 3, "ZUUU", BOOK_OLD, ws=_sha("not_written"), instant=f"{BOOK_OLD}T00:00:00.000000Z",
+            inventory=_sha("x"), order_state=_sha("x"))
     conn.commit()
     conn.close()
 
@@ -173,18 +188,29 @@ def test_the_new_tables_are_eligible_and_planned_off_an_index(store: Path) -> No
 
 def test_old_books_move_and_the_protected_ones_stay(store: Path, cold: Path, tmp_path: Path) -> None:
     _fixture(store)
-    _run(store, cold, tmp_path, apply=True, tables=list(NEW_TABLES))
+    receipt = _run(store, cold, tmp_path, apply=True, tables=list(NEW_TABLES))
     assert _ids(store, WS) == {
-        "ws_klga_10_2",                     # newest sequence of its station-day
-        "ws_eglc_11_0", "ws_eglc_11_1",     # real money
-        "ws_klga_22_0", "ws_klga_22_1",     # inside the window
+        "ws_klga_2",                  # newest sequence of its station-day
+        "ws_eglc_0",                  # an executed order's book, found across spellings
+        "ws_eglc_2",                  # newest of its day
+        "ws_zuuu_0", "ws_zuuu_1",     # a named book missing: the whole day stays
+        "ws_hot_0", "ws_hot_1",       # inside the window
     }
     for table in (INVENTORY, ORDER_STATE):
         prefix = table[:6]
-        assert _ids(store, table) == {f"{prefix}_klga_10_2", f"{prefix}_eglc_11", f"{prefix}_klga_22"}
+        assert _ids(store, table) == {
+            f"{prefix}_klga_2", f"{prefix}_eglc_2",   # newest of each day
+            f"{prefix}_eglc_0",                       # named by an executed order
+            f"{prefix}_hot",
+        }
+    kept = {plan["table"]: plan["kept"] for plan in receipt["tables"]}
+    assert kept[WS].get("execution_vector") == 1
+    assert kept[WS].get("execution_vector_unresolved_station_day") == 2
     cold_conn = off.open_cold_table(WS, root=cold)
     try:
-        assert {r[0] for r in cold_conn.execute(f"SELECT snapshot_id FROM {WS}")} == {"ws_klga_10_0", "ws_klga_10_1"}
+        assert {r[0] for r in cold_conn.execute(f"SELECT snapshot_id FROM {WS}")} == {
+            "ws_klga_0", "ws_klga_1", "ws_eglc_1",
+        }
     finally:
         cold_conn.close()
 
@@ -193,11 +219,11 @@ def test_the_next_sequence_is_what_it_was(store: Path, cold: Path, tmp_path: Pat
     _fixture(store)
     query = f"SELECT COALESCE(MAX(sequence),-1)+1 FROM {WS} WHERE station_id=? AND event_date=?"
     conn = sqlite3.connect(store)
-    before = conn.execute(query, ("KLGA", "2026-09-10")).fetchone()[0]
+    before = conn.execute(query, ("KLGA", BOOK_OLD)).fetchone()[0]
     conn.close()
     _run(store, cold, tmp_path, apply=True, tables=[WS])
     conn = sqlite3.connect(store)
-    after = conn.execute(query, ("KLGA", "2026-09-10")).fetchone()[0]
+    after = conn.execute(query, ("KLGA", BOOK_OLD)).fetchone()[0]
     conn.close()
     assert before == after == 3
     ingress = (ROOT / "bayes_basket_target" / "market_ingress.py").read_text(encoding="utf-8")
@@ -218,7 +244,7 @@ def test_an_offline_reader_sees_the_whole_history(store: Path, cold: Path, tmp_p
         assert {tuple(r) for r in reader.execute(f"SELECT * FROM {WS}")} == everything
         # The reader's own filters reach the cold rows too.
         assert reader.execute(
-            f"SELECT COUNT(*) FROM {WS} WHERE station_id='KLGA' AND event_date='2026-09-10'"
+            f"SELECT COUNT(*) FROM {WS} WHERE station_id='KLGA' AND event_date='{BOOK_OLD}'"
         ).fetchone()[0] == 3
     finally:
         reader.close()
@@ -248,7 +274,7 @@ def test_a_table_never_moved_reads_as_it_is(store: Path, cold: Path, tmp_path: P
     reader = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
     try:
         assert off.attach_cold_history(reader, [WS], root=cold, manifest=tmp_path / "none.jsonl") == {}
-        assert reader.execute(f"SELECT COUNT(*) FROM {WS}").fetchone()[0] == 7
+        assert reader.execute(f"SELECT COUNT(*) FROM {WS}").fetchone()[0] == 10
     finally:
         reader.close()
 
@@ -278,13 +304,28 @@ def test_every_whole_history_reader_attaches_the_cold_rows_before_reading() -> N
         assert WS in tables, name
 
 
-def test_the_windows_are_tied_to_the_paper_ledger() -> None:
+def test_the_windows_are_tied_to_their_readers() -> None:
+    from bayes_basket_target import valuation_store
+
     for table in NEW_TABLES:
         policy = off.POLICY_BY_TABLE[table]
         assert policy.time_column == "event_date"
         assert policy.hot_days > off.PAPER_LEDGER_EVENT_DAYS
-        assert policy.keep_station_days is not None and policy.keep_station_days.live_only
+        assert policy.keep_station_days is None
+        assert policy.keep_vector_refs is not None
         assert policy.keep_latest[0].key == ("station_id", "event_date")
+    # The dashboard's charter-EV page joins the valuation population's facts
+    # to their books over WINDOW_DAYS; the posterior page over 14 days.
+    assert off.POLICY_BY_TABLE[WS].hot_days > valuation_store.WINDOW_DAYS
+    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "realisation(\n            conn, since_event_date=(date.today() - timedelta(days=14))" in dashboard
+    assert off.POLICY_BY_TABLE[WS].hot_days > 14
+    runtime = (ROOT / "bayes_basket_target" / "execution_transition_runtime.py").read_text(encoding="utf-8")
+    for table, column in ((WS, "official_ws_quote_sha256"), (INVENTORY, "inventory_sha256"),
+                          (ORDER_STATE, "order_state_sha256")):
+        assert off.POLICY_BY_TABLE[table].keep_vector_refs.vector_column == column
+        assert f'"SELECT * FROM {table} WHERE content_sha256=?"' in runtime
+        assert f'vector["{column}"]' in runtime
     from bayes_basket_target import certain_win_recycle
 
     assert certain_win_recycle.MAX_EVENT_AGE_DAYS < off.POLICY_BY_TABLE[INVENTORY].hot_days

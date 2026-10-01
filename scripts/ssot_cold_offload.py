@@ -105,6 +105,7 @@ from bayes_basket_target.offloaded_paths import (  # noqa: E402
     cold_tier_status,
 )
 from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES  # noqa: E402
+from bayes_basket_target.valuation_store import WINDOW_DAYS as VALUATION_WINDOW_DAYS  # noqa: E402
 
 SCHEMA = "ssot_cold_offload_v1"
 BATCH_SCHEMA = "ssot_cold_offload_batch_v1"
@@ -196,6 +197,26 @@ class KeepStationDays:
 
 
 @dataclass(frozen=True)
+class KeepVectorRefs:
+    """Every row an execution version vector names by content hash stays hot.
+
+    ``basket_target_execution_version_vectors.<vector_column>`` holds the
+    ``content_sha256`` of the row an order's execution was bound to, and
+    ``execution_transition_runtime`` re-reads the row by that hash.  Rows are
+    found per station-day (the vector's cycle names it) off the table's own
+    station-day index, so no large row body is read except the matches.
+    ``instant_column`` narrows a station-day to the rows whose instant equals
+    the vector's ``quote_observed_at`` (parsed: the two are spelled with
+    different precisions) before their hashes are read.  A hash that cannot
+    be found keeps its whole station-day.
+    """
+
+    vector_column: str
+    why: str
+    instant_column: str | None = None
+
+
+@dataclass(frozen=True)
 class DynamicFloor:
     """Rows dated on or after a day computed at run time stay hot.
 
@@ -219,6 +240,7 @@ class TablePolicy:
     candidate_where: str | None = None
     keep_latest: tuple[KeepLatest, ...] = ()
     keep_station_days: KeepStationDays | None = None
+    keep_vector_refs: KeepVectorRefs | None = None
     floors: tuple[DynamicFloor, ...] = ()
     #: Content-addressed side tables the moved rows name, COPIED (never
     #: deleted) into the same cold file so an offline reader can expand a
@@ -241,6 +263,11 @@ class TablePolicy:
             ],
             "keep_station_days": None if self.keep_station_days is None else {
                 "live_only": self.keep_station_days.live_only, "why": self.keep_station_days.why,
+            },
+            "keep_vector_refs": None if self.keep_vector_refs is None else {
+                "vector_column": self.keep_vector_refs.vector_column,
+                "instant_column": self.keep_vector_refs.instant_column,
+                "why": self.keep_vector_refs.why,
             },
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
             "mirror_tables": list(self.mirror_tables),
@@ -393,12 +420,15 @@ POLICIES: tuple[TablePolicy, ...] = (
     # All three are keyed on the event date for the same reason as the regime
     # artifact: the paper ledger replays settled days today-4 .. today-2 and
     # re-reads their books, and a forward day's rows are written ~72 hours
-    # before it starts.  Offline readers of the whole history read the cold
-    # rows through :func:`attach_cold_history`.
+    # before it starts.  The WS book is also read, through the training facts
+    # that name it, by the dashboard's charter-EV page over the valuation
+    # population's WINDOW_DAYS (28) and by its posterior page over 14 days,
+    # so its window is that population's plus two.  Offline readers of the
+    # whole history read the cold rows through :func:`attach_cold_history`.
     TablePolicy(
         table="basket_official_ws_snapshot",
         time_column="event_date",
-        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
+        hot_days=VALUATION_WINDOW_DAYS + 2,
         readers=(
             "market_ingress: MAX(sequence)+1 and by snapshot_id for the day being written; "
             "production_io / production_worker / atomic_ledger / tiebreak, p1_tail, "
@@ -406,7 +436,9 @@ POLICIES: tuple[TablePolicy, ...] = (
             "the newest committed book of a current station-day, or the snapshot_id a "
             "current decision names; execution_transition_runtime: by content_sha256 of "
             "an intent's execution vector; paper_ledger_aligned: event dates today-4 .. "
-            "today-2; dashboard: recent event dates.  Whole-history readers "
+            "today-2; dashboard: recent event dates, and through the training facts the "
+            "charter-EV page (valuation_store.population, WINDOW_DAYS) and the posterior "
+            "page (posterior_store.realisation, 14 days).  Whole-history readers "
             "(posterior_store/valuation_store refits, forward_scorecard, edge_attribution "
             "and the market-ladder research probes) read through attach_cold_history."
         ),
@@ -416,9 +448,9 @@ POLICIES: tuple[TablePolicy, ...] = (
                 why="market_ingress numbers the next book MAX(sequence)+1 per station-day",
             ),
         ),
-        keep_station_days=KeepStationDays(
-            live_only=True,
-            why="the execution vectors of real orders name these books; real money stays in the SSOT whole",
+        keep_vector_refs=KeepVectorRefs(
+            vector_column="official_ws_quote_sha256", instant_column="quote_observed_at",
+            why="execution_transition_runtime re-reads the book an order executed against by its hash",
         ),
     ),
     TablePolicy(
@@ -438,9 +470,9 @@ POLICIES: tuple[TablePolicy, ...] = (
                 why="the newest inventory of a station-day is its standing position, whatever its age",
             ),
         ),
-        keep_station_days=KeepStationDays(
-            live_only=True,
-            why="the execution vectors of real orders name these snapshots; real money stays in the SSOT whole",
+        keep_vector_refs=KeepVectorRefs(
+            vector_column="inventory_sha256",
+            why="execution_transition_runtime re-reads the inventory an order executed against by its hash",
         ),
     ),
     TablePolicy(
@@ -459,9 +491,9 @@ POLICIES: tuple[TablePolicy, ...] = (
                 why="the newest order state of a station-day is its standing state, whatever its age",
             ),
         ),
-        keep_station_days=KeepStationDays(
-            live_only=True,
-            why="the execution vectors of real orders name these snapshots; real money stays in the SSOT whole",
+        keep_vector_refs=KeepVectorRefs(
+            vector_column="order_state_sha256",
+            why="execution_transition_runtime re-reads the order state an order executed against by its hash",
         ),
     ),
 )
@@ -634,6 +666,10 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         needed.update(c for c in (*rule.key, *rule.order) if c != "rowid")
     if policy.keep_station_days is not None:
         needed.update({"station_id", "event_date"})
+    if policy.keep_vector_refs is not None:
+        needed.update({"station_id", "event_date", "content_sha256"})
+        if policy.keep_vector_refs.instant_column:
+            needed.add(policy.keep_vector_refs.instant_column)
     missing = sorted(needed - columns)
     if missing:
         reasons.append("columns_missing:" + ",".join(missing))
@@ -735,6 +771,64 @@ def _intent_station_days(conn: sqlite3.Connection, *, live_only: bool) -> set[tu
         ):
             days.add((str(station), str(day)))
     return days
+
+
+VECTOR_TABLE = "basket_target_execution_version_vectors"
+CYCLE_TABLE = "basket_target_execution_cycles"
+
+
+def _instant(value: Any) -> datetime | None:
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
+def _vector_ref_rowids(conn: sqlite3.Connection, table: str, rule: KeepVectorRefs) -> dict[int, str]:
+    """The rowids of ``table`` an execution vector names (see :class:`KeepVectorRefs`)."""
+
+    if not (_table_exists(conn, VECTOR_TABLE) and _table_exists(conn, CYCLE_TABLE)):
+        return {}
+    wanted: dict[tuple[str, str], dict[str, set[Any]]] = {}
+    for station, day, sha, instant in conn.execute(
+        f"SELECT c.station_id, c.event_date, v.{_q(rule.vector_column)}, v.quote_observed_at"
+        f" FROM {VECTOR_TABLE} v JOIN {CYCLE_TABLE} c ON c.cycle_id = v.cycle_id"
+        f" WHERE v.{_q(rule.vector_column)} IS NOT NULL"
+    ):
+        wanted.setdefault((str(station), str(day)), {}).setdefault(str(sha), set()).add(_instant(instant))
+    kept: dict[int, str] = {}
+    for (station, day), shas in wanted.items():
+        if rule.instant_column:
+            instants = set().union(*shas.values())
+            candidates = [
+                int(rowid) for rowid, at in conn.execute(
+                    f"SELECT rowid, {_q(rule.instant_column)} FROM {_q(table)}"
+                    " WHERE station_id=? AND event_date=?", (station, day),
+                ) if _instant(at) in instants
+            ]
+        else:
+            candidates = [
+                int(rowid) for (rowid,) in conn.execute(
+                    f"SELECT rowid FROM {_q(table)} WHERE station_id=? AND event_date=?", (station, day),
+                )
+            ]
+        found: set[str] = set()
+        for chunk in _chunks(candidates, READ_CHUNK):
+            marks = ",".join("?" * len(chunk))
+            for rowid, sha in conn.execute(
+                f"SELECT rowid, content_sha256 FROM {_q(table)} WHERE rowid IN ({marks})", tuple(chunk),
+            ):
+                if str(sha) in shas:
+                    kept[int(rowid)] = "execution_vector"
+                    found.add(str(sha))
+        if set(shas) - found:
+            # Fail closed: a named row not found keeps its whole station-day.
+            for (rowid,) in conn.execute(
+                f"SELECT rowid FROM {_q(table)} WHERE station_id=? AND event_date=?", (station, day),
+            ):
+                kept.setdefault(int(rowid), "execution_vector_unresolved_station_day")
+    return kept
 
 
 def _sql_order_key(value: Any) -> tuple:
@@ -868,6 +962,12 @@ def plan_table(
                     heapq.heappop(entries)
             if days and (str(value("station_id")), str(value("event_date"))) in days:
                 protected.setdefault(rowid, "station_day")
+    if policy.keep_vector_refs is not None and len(older):
+        old_set = set(older)
+        for rowid, label in _vector_ref_rowids(conn, table, policy.keep_vector_refs).items():
+            if rowid in old_set:
+                protected.setdefault(rowid, label)
+        del old_set
     for index, (rule, heap) in enumerate(zip(policy.keep_latest, heaps)):
         label = f"latest_{index}:{'+'.join(rule.key)}"
         for entries in heap.values():
