@@ -20,8 +20,10 @@ t0 = time.monotonic()
 FLOOR = 1e-3
 FAM = ["DWD_ICON_GLOBAL_EPS", "ECCC_GEM_GLOBAL_ENS", "ECMWF_AIFS_ENS_GLOBAL", "ECMWF_IFS_ENS_OPEN_PF50", "NOAA_AIGEFS_025", "NOAA_GEFS_05"]
 FI = {f: i for i, f in enumerate(FAM)}
-SCORE_FROM, SPLIT, SCORE_TO = "2026-08-10", "2026-09-14", "2026-09-30"
-ETAS = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0); HALVES = (7.0, 14.0, 30.0, math.inf); TAUS = (5.0, 10.0, 20.0, 40.0, 80.0)
+import os as _os
+SCORE_FROM = _os.environ.get("SMW_FROM", "2026-08-10"); SPLIT = _os.environ.get("SMW_SPLIT", "2026-09-14"); SCORE_TO = "2026-09-30"
+PASS_DIR = _os.environ.get("SMW_PASS", "pass1_smw"); SKIP_HF = bool(_os.environ.get("SMW_SKIP_HF"))
+ETAS = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0); HALVES = (7.0, 14.0, 30.0, math.inf); TAUS = tuple(float(x) for x in _os.environ.get("SMW_TAUS", "5,10,20,40,80").split(","))
 BINS = ((48, 1e9), (36, 48), (24, 36), (12, 24), (0, 12))
 def utc(s): return datetime.fromisoformat(s.replace("Z", "+00:00"))
 def log(*a): print(f"[{time.monotonic()-t0:6.0f}s]", *a, flush=True)
@@ -31,7 +33,7 @@ decs = []
 import os
 ONLY = set(filter(None, os.environ.get("SMW_STATIONS", "").split(",")))
 OUTTAG = os.environ.get("SMW_TAG", "")
-for f in sorted((HERE / "pass1_smw").glob("????.jsonl.gz")):
+for f in sorted((HERE / PASS_DIR).glob("????.jsonl.gz")):
     if ONLY and f.name[:4] not in ONLY: continue
     rows = [json.loads(l) for l in gzip.open(f, "rt")]
     by_day = defaultdict(list)
@@ -88,7 +90,8 @@ for day, per in fleet_day.items():
         vals = sorted(vals); fleet_idx[(day, s_)] = ([k for k, _ in vals], np.cumsum([v for _, v in vals]))
 _S_cache = {}
 def cum_regret(d, half, mode):
-    key = (d["id"], half, mode)
+    key = (d["id"], half, mode) if mode == "F" else (d["station"], d["day"], len(prefix_days(d["station"], d["at"])), half, mode,
+                                                     tuple(sorted(d["slead"].items())) if mode == "L" else None, tuple(d["pool"]))
     if key in _S_cache: return _S_cache[key]
     delta = 0.5 ** (1.0 / half) if math.isfinite(half) else 1.0
     today = date.fromisoformat(d["day"]); S = {s: 0.0 for s in d["pool"]}
@@ -168,23 +171,27 @@ def seated(d):
 # ---------------------------------------------------------------- precompute proxy losses for tuning
 combos = {"H": [(e, h) for e in ETAS for h in HALVES], "HL": [(e, h) for e in ETAS for h in HALVES],
           "HF": [(e, h) for e in ETAS for h in HALVES], "EB": [(t,) for t in TAUS]}
-W = defaultdict(dict)   # (arm, params) -> id(d) -> weights
+if SKIP_HF: del combos["HF"]
+def weights_for(arm, c, d):
+    if arm == "H": return hedge(d, c[0], c[1], "S")
+    if arm == "HL": return hedge(d, c[0], c[1], "L")
+    if arm == "HF": return hedge(d, c[0], c[1], "F")
+    if arm == "EB": return eb(d, c[0])
+LOSS = {(arm, c): np.zeros(len(decs)) for arm in combos for c in combos[arm]}
 for i, d in enumerate(decs):
     d["id"] = i
-    for e, h in combos["H"]: W[("H", (e, h))][i] = hedge(d, e, h, "S")
-    for e, h in combos["HL"]: W[("HL", (e, h))][i] = hedge(d, e, h, "L")
-    for t in TAUS: W[("EB", (t,))][i] = eb(d, t)
-    for e, h in combos["HF"]: W[("HF", (e, h))][i] = hedge(d, e, h, "F")
-    if i % 2000 == 0: log("weights", i)
+    for arm in combos:
+        for c in combos[arm]: LOSS[(arm, c)][i] = proxy(d, weights_for(arm, c, d))
+    if i % 5000 == 0: log("weights", i)
 log("weights done")
 by_day_decs = defaultdict(list)
 for d in decs: by_day_decs[d["day"]].append(d)
 alldays = sorted(by_day_decs)
 def choose(arm, day):
     window = [x for x in alldays if (date.fromisoformat(day) - date.fromisoformat(x)).days in range(2, 23)]
-    pool = [d for x in window for d in by_day_decs[x]]
-    if not pool: return combos[arm][0]
-    return min(combos[arm], key=lambda c: (sum(proxy(d, W[(arm, c)][d["id"]]) for d in pool) / len(pool), c))
+    ids = np.array([d["id"] for x in window for d in by_day_decs[x]], dtype=int)
+    if not len(ids): return combos[arm][0]
+    return min(combos[arm], key=lambda c: (float(LOSS[(arm, c)][ids].sum()) / len(ids), c))
 chosen = {arm: {day: choose(arm, day) for day in alldays if SCORE_FROM <= day <= SCORE_TO} for arm in combos}
 log("tuning done", {arm: sorted(set(v.values()))[:6] for arm, v in chosen.items()})
 
@@ -209,13 +216,13 @@ log("oracles done")
 def arm_w(d, arm):
     if arm == "A0": return d["w0"]
     if arm in ("H*", "HL", "HF", "EB"):
-        key = {"H*": "H", "HL": "HL", "HF": "HF", "EB": "EB"}[arm]; return W[(key, chosen[key][d["day"]])][d["id"]]
+        key = {"H*": "H", "HL": "HL", "HF": "HF", "EB": "EB"}[arm]; return weights_for(key, chosen[key][d["day"]], d)
     if arm == "SEAT*": return norm({s: d["w0"][s] for s in seated(d)})
     if arm == "SEAT+H":
-        keep = seated(d); w = W[("H", chosen["H"][d["day"]])][d["id"]]; return norm({s: w[s] for s in keep})
+        keep = seated(d); w = weights_for("H", chosen["H"][d["day"]], d); return norm({s: w[s] for s in keep})
     if arm == "ORACLE-S": o = oracle_s[d["station"]]; return norm({s: float(o[FI[s]]) for s in d["pool"]})
     if arm == "ORACLE-SL": o = oracle_sl[(d["station"], d["lead"])]; return norm({s: float(o[FI[s]]) for s in d["pool"]})
-ARMS = ["A0", "H*", "HL", "HF", "EB", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]
+ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]
 
 # ---------------------------------------------------------------- full production downstream
 conn = sqlite3.connect(f"file:{ROOT/'data/bayes_basket_target_ssot.db'}?mode=ro", uri=True, timeout=30)
@@ -237,8 +244,12 @@ def downstream(d, w):
     crps, nll, brier, _b, _a = replay._score(served, d["actual"])
     _ds[key] = (nll, brier, crps); return _ds[key]
 results = defaultdict(dict)   # arm -> (station, day) -> list of triples
+per_decision = []
 for i, d in enumerate(scored):
-    for arm in ARMS: results[arm].setdefault((d["station"], d["day"]), []).append(downstream(d, arm_w(d, arm)))
+    row = {"station": d["station"], "day": d["day"], "bin": d["bin"], "n_seated": len(d["pool"])}
+    for arm in ARMS:
+        t = downstream(d, arm_w(d, arm)); results[arm].setdefault((d["station"], d["day"]), []).append(t); row[arm] = t
+    per_decision.append(row)
     if i % 2000 == 0: log("downstream", i, "/", len(scored))
 sd = sorted(results["A0"])
 tab = {arm: {k: tuple(float(np.mean([t[i] for t in results[arm][k]])) for i in range(3)) for k in sd} for arm in ARMS}
@@ -281,5 +292,9 @@ res["seat_drops"] = {f"{k[0]}|{k[1]}": v for k, v in sorted(drops.items(), key=l
 log("seat drops (station|system: decisions)", dict(list(res["seat_drops"].items())[:15]))
 (HERE / f"results{OUTTAG}.json").write_text(json.dumps(res, indent=1, default=str))
 with gzip.open(HERE / f"station_day_scores{OUTTAG}.jsonl.gz", "wt") as z:
-    for k in sd: z.write(json.dumps({"station": k[0], "day": k[1], **{arm: tab[arm][k] for arm in ARMS}}) + "\n")
+    first_at = {}
+    for d in scored: first_at[(d["station"], d["day"])] = min(first_at.get((d["station"], d["day"]), d["at"]), d["at"])
+    for k in sd: z.write(json.dumps({"station": k[0], "day": k[1], "prefix_n": len(prefix_days(k[0], first_at[k])), **{arm: tab[arm][k] for arm in ARMS}}) + "\n")
+with gzip.open(HERE / f"decision_scores{OUTTAG}.jsonl.gz", "wt") as z:
+    for row in per_decision: z.write(json.dumps(row) + "\n")
 log("DONE")
