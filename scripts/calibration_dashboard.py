@@ -10214,6 +10214,7 @@ def collect_fusion_candidates() -> dict[str, Any]:
         "available": True,
         "production_regime": _fusion_production_regime(),
         "forward_shadow": _fusion_forward_shadow(),
+        "later_studies": _fusion_later_studies(),
         "cohort": {
             "status": (frozen or {}).get("cohort_status") or pareto.get("cohort_status"),
             "sample_n": joint.get("n"), "stations": joint.get("stations"),
@@ -10236,13 +10237,14 @@ def collect_fusion_candidates() -> dict[str, Any]:
     }
 
 
-# Charter 199's switch: the forward shadow record on days nobody has seen.
-FUSION_SWITCH_MIN_EVENT_DAYS = 20
-# Charter 211 (amended 2026-09-24, user: 「四项同时变好不是新模型目标」): what
-# decides the fusion switch is the bucket distribution's two proper scores,
-# both lower.  Reliability / Resolution are Brier's decomposition and RMSE /
-# CRPS intermediate diagnostics -- all drawn beside, none a gate.
-FUSION_SWITCH_PANEL = ("bucket_brier", "nll")
+# Charter 199 serves the blend since 2026-09-24 (user: 「上线」); the ledger
+# keeps scoring it against the seat weights it replaced, on settled days the
+# switch never saw.  Charter 211/240: the two bucket proper scores decide;
+# Reliability / Resolution and RMSE / CRPS are drawn beside as diagnostics.
+FUSION_LEDGER_PANEL = ("bucket_brier", "nll")
+# Charter 224: the same 1e-3 floor the OOS gate scores LogScore with.
+FUSION_LEDGER_LOG_FLOOR = 1e-3
+FUSION_LEDGER_BOOTSTRAP_DRAWS = 2000
 
 
 def _fusion_production_regime() -> dict[str, Any] | None:
@@ -10266,15 +10268,17 @@ def _fusion_production_regime() -> dict[str, Any] | None:
 
 
 def _fusion_forward_shadow() -> dict[str, Any]:
-    """Seat weights against the blend's shadow weights, same settled days.
+    """Blend weights against seat weights, same settled day-ahead roots.
 
     Read off the charter-199 training file: each settled station-day's
-    day-ahead root carries both the weights it served and the ones the blend
-    recorded beside them, and the file holds that day's systems' own
-    distributions, centre errors and CRPS terms -- so the two are scored on
-    one sample with no second read of the book.  A root whose blend fell
-    back records the seat weights as its shadow, which scores a zero
-    difference, as it should.
+    day-ahead root carries both the seat weights and the blend's weights,
+    and the file holds that day's systems' own distributions, centre errors
+    and CRPS terms -- so the two are scored on one sample with no second
+    read of the book.  Roots compiled before the 09-24 switch (state
+    ``SHADOW_*``) served the seat weights; later roots served the blend.  A
+    root whose blend fell back carries the seat weights on both sides and
+    scores a zero difference, as it should.  The pool is the systems'
+    linear pool before the width layer, not the served P0.
     """
 
     try:
@@ -10294,8 +10298,7 @@ def _fusion_forward_shadow() -> dict[str, Any]:
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for fact in facts:
         latest[(fact["station_id"], fact["event_date"])] = fact
-    cells: dict[str, list[tuple[float, dict[str, Any]]]] = {"seat": [], "shadow": []}
-    sums: dict[str, dict[str, float]] = {arm: defaultdict(float) for arm in cells}
+    scored: list[dict[str, Any]] = []
     states: Counter = Counter()
     for fact in latest.values():
         try:
@@ -10310,57 +10313,162 @@ def _fusion_forward_shadow() -> dict[str, Any]:
         keys = sorted(seat)
         if set(keys) - set(probabilities) or set(keys) != set(shadow):
             continue
-        states[str(fact["fusion_blend_state"])] += 1
+        state = str(fact["fusion_blend_state"])
+        states[state] += 1
         hit = int(fact["truth_bucket_index"])
-        for arm, weights in (("seat", seat), ("shadow", shadow)):
+        row: dict[str, Any] = {
+            "day": fact["event_date"],
+            "era": "shadow" if state.startswith("SHADOW_") else "served",
+            "moved": 0.5 * sum(abs(shadow[k] - seat[k]) for k in keys),
+        }
+        for arm, weights in (("seat", seat), ("blend", shadow)):
             error = sum(weights[k] * errors[k] for k in keys)
-            crps = sum(weights[k] * a[k] for k in keys) - 0.5 * sum(
-                weights[i] * weights[j] * b[i][j] for i in keys for j in keys
-            )
             pooled = [
                 sum(weights[k] * probabilities[k][index] for k in keys)
                 for index in range(len(probabilities[keys[0]]))
             ]
-            sums[arm]["se"] += error * error
-            sums[arm]["crps"] += crps
-            sums[arm]["nll"] += -math.log(max(pooled[hit], CORE_NLL_FLOOR))
-            sums[arm]["brier"] += sum(
-                (value - (1.0 if index == hit else 0.0)) ** 2
-                for index, value in enumerate(pooled)
-            )
-            cells[arm].append((1.0, {"probabilities": pooled, "hit": hit}))
-    count = len(cells["seat"])
-    days = len({day for _station, day in latest}) if count else 0
-    if not count:
-        return {"available": True, "station_days": 0, "event_days": 0,
-                "states": dict(states), "min_event_days": FUSION_SWITCH_MIN_EVENT_DAYS}
-    arms = {}
-    for arm in cells:
-        murphy = _core_murphy(cells[arm])
-        arms[arm] = {
-            "rmse_c": math.sqrt(sums[arm]["se"] / count),
-            "crps_c": sums[arm]["crps"] / count,
-            "nll": sums[arm]["nll"] / count,
-            "bucket_brier": sums[arm]["brier"] / count,
-            "reliability": murphy.get("reliability"),
-            "resolution": murphy.get("resolution"),
+            floored = [max(value, FUSION_LEDGER_LOG_FLOOR) for value in pooled]
+            row[arm] = {
+                "se": error * error,
+                "crps": sum(weights[k] * a[k] for k in keys) - 0.5 * sum(
+                    weights[i] * weights[j] * b[i][j] for i in keys for j in keys
+                ),
+                "nll": -math.log(floored[hit] / sum(floored)),
+                "bucket_brier": sum(
+                    (value - (1.0 if index == hit else 0.0)) ** 2
+                    for index, value in enumerate(pooled)
+                ),
+                "cell": (1.0, {"probabilities": pooled, "hit": hit}),
+            }
+        scored.append(row)
+
+    def _group(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+        if not rows:
+            return None
+        count = len(rows)
+        arms = {}
+        for arm in ("seat", "blend"):
+            murphy = _core_murphy([row[arm]["cell"] for row in rows])
+            arms[arm] = {
+                "rmse_c": math.sqrt(sum(row[arm]["se"] for row in rows) / count),
+                "crps_c": sum(row[arm]["crps"] for row in rows) / count,
+                "nll": sum(row[arm]["nll"] for row in rows) / count,
+                "bucket_brier": sum(row[arm]["bucket_brier"] for row in rows) / count,
+                "reliability": murphy.get("reliability"),
+                "resolution": murphy.get("resolution"),
+            }
+        # Event-day block bootstrap of the paired difference (blend - seat).
+        by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            by_day[row["day"]].append(row)
+        days = sorted(by_day)
+        rng = random.Random(199)
+        draws: dict[str, list[float]] = {key: [] for key in FUSION_LEDGER_PANEL}
+        for _ in range(FUSION_LEDGER_BOOTSTRAP_DRAWS):
+            sample = [row for day in rng.choices(days, k=len(days)) for row in by_day[day]]
+            for key in FUSION_LEDGER_PANEL:
+                draws[key].append(
+                    sum(row["blend"][key] - row["seat"][key] for row in sample) / len(sample)
+                )
+        delta = {}
+        for key in FUSION_LEDGER_PANEL:
+            ordered = sorted(draws[key])
+            delta[key] = {
+                "mean": arms["blend"][key] - arms["seat"][key],
+                "ci95": [ordered[int(0.025 * len(ordered))],
+                         ordered[int(0.975 * len(ordered)) - 1]],
+            }
+        moved = sorted(row["moved"] for row in rows if row["moved"] > 1e-9)
+        return {
+            "station_days": count, "event_days": len(days),
+            "period": [days[0], days[-1]],
+            "arms": arms, "delta": delta,
+            "moved_n": len(moved),
+            "moved_half_l1_median": moved[len(moved) // 2] if moved else 0.0,
+            "both_lower": all(delta[key]["mean"] < 0 for key in FUSION_LEDGER_PANEL),
+            "both_significant": all(delta[key]["ci95"][1] < 0 for key in FUSION_LEDGER_PANEL),
         }
-    better = {
-        key: (arms["shadow"][key] > arms["seat"][key]) if key == "resolution"
-        else (arms["shadow"][key] < arms["seat"][key])
-        for key in ("rmse_c", "crps_c", "nll", "bucket_brier", "reliability", "resolution")
+
+    groups = {
+        "served": _group([row for row in scored if row["era"] == "served"]),
+        "shadow": _group([row for row in scored if row["era"] == "shadow"]),
+        "all": _group(scored),
     }
-    # Charter 211: the switch is judged on the bucket panel alone; RMSE and
-    # CRPS are shown beside it as diagnostics and decide nothing.
-    panel_better = {key: better[key] for key in FUSION_SWITCH_PANEL}
-    event_days = len({fact["event_date"] for fact in latest.values()})
     return {
-        "available": True, "station_days": count, "event_days": event_days,
-        "arms": arms, "better": better, "panel_better": panel_better,
-        "panel": list(FUSION_SWITCH_PANEL), "states": dict(states),
-        "min_event_days": FUSION_SWITCH_MIN_EVENT_DAYS,
-        "switch_ready": event_days >= FUSION_SWITCH_MIN_EVENT_DAYS and all(panel_better.values()),
+        "available": True, "station_days": len(scored),
+        "groups": {key: value for key, value in groups.items() if value},
+        "panel": list(FUSION_LEDGER_PANEL), "states": dict(states),
+        "log_floor": FUSION_LEDGER_LOG_FLOOR,
+        "mode": _fusion_blend_mode(),
     }
+
+
+# Fusion-layer studies run after the 09-24 switch, read from their own result
+# files: (study dir, file, pair key, label).  Every pair is "arm vs A0 =
+# production as served", scored by the study's own charter-240 rule.
+FUSION_LATER_STUDIES = (
+    ("pool_operator_20261001", "results.json", "C_vs_A0", "几何池（换合并算子）"),
+    ("pool_operator_20261001", "results.json", "A1_vs_A0", "线性池只重拟 λ"),
+    ("pool_operator_20261001", "results.json", "B_vs_A0", "完全共识（各家平移到共识中心）"),
+    ("pool_operator_20261001", "results.json", "E1_vs_A0", "共识桥 v2（按 A−B 定尺度）"),
+    ("pool_operator_20261001", "results_w.json", "EM50_vs_A0", "LogScore 最优权重与服务各半"),
+    ("pool_operator_20261001", "results_w.json", "EM_vs_A0", "LogScore 最优前推权重"),
+    ("pool_operator_20261001", "results_w.json", "S_vs_A0", "座位先验（去掉 199 混合）"),
+    ("pool_operator_20261001", "results_w.json", "DROP1_vs_A0", "剔掉最差一家"),
+    ("pool_operator_20261001", "results_w.json", "EQ_vs_A0", "等权"),
+    ("pool_operator_20261001", "results_w.json", "BEST1_vs_A0", "只坐最好一家"),
+)
+
+
+def _fusion_later_studies() -> list[dict[str, Any]]:
+    out = []
+    cache: dict[tuple[str, str], Any] = {}
+    for study, name, pair, label in FUSION_LATER_STUDIES:
+        if (study, name) not in cache:
+            try:
+                cache[(study, name)] = json.loads(
+                    (ROOT / "docs" / "research" / study / name).read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
+                cache[(study, name)] = None
+        data = cache[(study, name)]
+        row = ((data or {}).get("pairs") or {}).get(pair)
+        if not row:
+            continue
+        out.append({
+            "label": label, "study": study, "pair": pair,
+            "station_days": row.get("station_days"),
+            "days": len((data or {}).get("days_scored") or []),
+            "d_logscore": row.get("d_logscore"), "ci_logscore": row.get("ci_logscore"),
+            "d_brier": row.get("d_brier"), "ci_brier": row.get("ci_brier"),
+            "d_crps": row.get("d_crps"), "ci_crps": row.get("ci_crps"),
+            "passes": bool(row.get("lower")),
+        })
+    try:
+        logloss = json.loads(
+            (ROOT / "docs" / "research" / "fusion199_logloss_20260925" / "results.json")
+            .read_text(encoding="utf-8")
+        ).get("pooled") or {}
+    except (OSError, ValueError):
+        logloss = {}
+    if logloss.get("delta"):
+        out.append({
+            "label": "训练目标改桶 LogLoss", "study": "fusion199_logloss_20260925",
+            "pair": "logloss_vs_current",
+            "station_days": logloss.get("station_days"), "days": logloss.get("days"),
+            "d_logscore": logloss["delta"].get("nll"), "ci_logscore": (logloss.get("ci95") or {}).get("nll"),
+            "d_brier": logloss["delta"].get("brier"), "ci_brier": (logloss.get("ci95") or {}).get("brier"),
+            "d_crps": None, "ci_crps": None, "passes": bool(logloss.get("holds")),
+        })
+    return out
+
+
+def _fusion_blend_mode() -> str | None:
+    try:
+        from bayes_basket_target import fusion_blend  # noqa: PLC0415
+    except ImportError:
+        return None
+    return str(fusion_blend.FUSION_BLEND_MODE)
 
 
 def _scorecard_window(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -22338,25 +22446,50 @@ function fusionCandidates(){
     .filter(([k]) => PR[k]).map(([k, label]) => { const g = PR[k], c = g.change_pct || {};
       return `<tr><td><b>${label}</b></td><td class="mono">${g.n} / ${g.days}</td><td class="mono">${pct2(c.rmse)}</td><td class="mono">${pct2(c.crps)}</td>
         <td class="mono">${pct2(c.nll)}</td><td class="mono">${pct2(c.reliability)}</td><td class="mono">${c.resolution == null ? "—" : `<span class="${c.resolution > 0 ? "up" : "down"}">${c.resolution > 0 ? "+" : ""}${c.resolution.toFixed(2)}%</span>`}</td></tr>`; }).join("") : "";
-  const fsArms = FS.arms || null;
-  const fsMark = k => (FS.panel || []).includes(k) ? (FS.better[k] ? '<span class="up">✓</span>' : '<span class="down">✗</span>') : `<span class="muted">${FS.better[k] ? "↓" : "↑"} 诊断</span>`;
-  const fsCell = (k, f) => fsArms && fsArms.seat[k] != null ? `${f(fsArms.seat[k])} → ${f(fsArms.shadow[k])} ${fsMark(k)}` : "—";
-  const forward = !FS.available ? "" : `<div class="card" style="margin-top:10px"><b>前向影子记账（宪章 199，服务仍为席位权重）</b>
-    <p class="sub" style="margin:4px 0">每个已结算站日的日前 P0 同时记着它服务的席位权重和融合规则的影子权重，在同一批站日上比较。
-      切换条件（宪章 211 判据）：满 ${FS.min_event_days} 个事件日，且桶 Brier、LogScore 两个 proper score 都降；Reliability、Resolution（Brier 的分解）与 RMSE、CRPS 只作诊断并列显示；满足后由用户裁决切服务并同批升版。</p>
-    ${FS.station_days ? `<div class="scroll"><table><thead><tr><th>样本</th><th>桶 Brier</th><th>LogScore</th><th>Reliability ×10⁻³</th><th>Resolution ×10⁻³</th><th>RMSE °C（诊断）</th><th>CRPS °C（诊断）</th><th>切换</th></tr></thead>
-      <tbody><tr><td class="mono">${FS.station_days} 站日 / ${FS.event_days} 天</td>
-      <td class="mono">${fsCell("bucket_brier", v => v.toFixed(4))}</td><td class="mono">${fsCell("nll", v => v.toFixed(3))}</td>
-      <td class="mono">${fsCell("reliability", v => (1000 * v).toFixed(3))}</td><td class="mono">${fsCell("resolution", v => (1000 * v).toFixed(2))}</td>
-      <td class="mono">${fsCell("rmse_c", v => v.toFixed(3))}</td><td class="mono">${fsCell("crps_c", v => v.toFixed(3))}</td>
-      <td>${FS.switch_ready ? '<b class="up">条件已满足，待裁决</b>' : `<span class="muted">攒证据 ${FS.event_days}/${FS.min_event_days} 天</span>`}</td></tr></tbody></table></div>`
-      : `<p class="muted">还没有带影子回执的日前 P0 结算（上线后第一个事件日结算起开始记账）。</p>`}</div>`;
-  return `<h2>融合权重：宪章 199 已接入生产（影子运行）· 研究候选与上线前复核</h2>
-  <div class="card"><b>现状</b>：每次 P0 编译都按决策时刻可知的已结算站日计算 50:50 融合权重并写进回执（<span class="mono">fusion_blend_json</span>），
-    <b>服务仍为席位权重</b>。上线前在生产训练密度下用服务函数本身重放，研究没用过的站日变差；09-24 历史样本（2,908 站日 / 65 天）按宪章 211 面板复判：桶 Brier +0.02%、LogScore +0.05%、Resolution −0.06% 三项反向，只有 Reliability −15.6% 改善——不切换。
-    ${prRows ? `<div class="scroll" style="margin-top:6px"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div>` : ""}</div>
+  const sgn = (v, d) => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(d);
+  const dCell = (x, d) => !x ? "—" : `<span class="${x.ci95[1] < 0 ? "up" : x.ci95[0] > 0 ? "down" : "flat"}">${sgn(x.mean, d)}</span><br><span class="muted">[${sgn(x.ci95[0], d)}, ${sgn(x.ci95[1], d)}]</span>`;
+  const verdict = g => g.both_significant ? '<b class="up">两项都显著降</b>'
+    : g.both_lower ? '<span class="flat">两项点估计都降，区间跨零</span>' : '<span class="flat">两项不同向，与零分不开</span>';
+  const ledgerRow = (label, g) => !g ? "" : `<tr><td><b>${label}</b><br><span class="muted">${h(g.period.join(" → "))}</span></td>
+    <td class="mono">${g.station_days} / ${g.event_days}</td>
+    <td class="mono">${g.arms.seat.bucket_brier.toFixed(4)} → ${g.arms.blend.bucket_brier.toFixed(4)}<br>${dCell(g.delta.bucket_brier, 5)}</td>
+    <td class="mono">${g.arms.seat.nll.toFixed(4)} → ${g.arms.blend.nll.toFixed(4)}<br>${dCell(g.delta.nll, 4)}</td>
+    <td>${verdict(g)}</td>
+    <td class="mono">${(1000 * g.arms.seat.reliability).toFixed(3)} → ${(1000 * g.arms.blend.reliability).toFixed(3)}</td>
+    <td class="mono">${(1000 * g.arms.seat.resolution).toFixed(2)} → ${(1000 * g.arms.blend.resolution).toFixed(2)}</td>
+    <td class="mono">${g.arms.seat.rmse_c.toFixed(3)} → ${g.arms.blend.rmse_c.toFixed(3)}</td>
+    <td class="mono">${g.moved_n} 个 · ${g.moved_half_l1_median.toFixed(3)}</td></tr>`;
+  const G = FS.groups || {};
+  const forward = !FS.available ? "" : `<div class="card" style="margin-top:10px"><b>前向记账：融合权重 对 它取代的席位权重（同一批已结算日前 P0）</b>
+    <p class="sub" style="margin:4px 0">每个已结算站日的日前 P0 同时记着席位权重和融合规则的权重，在同一批站日上比较（Δ＝融合 − 席位，负为好；
+      区间＝按事件日整块重抽 95%；LogScore 过第 224 条 ${FS.log_floor} 下限）。09-24 之前的根服务席位、融合只是影子；之后的根服务融合、席位是反事实。
+      判据按第 211/240 条：桶 Brier 与 LogScore 两个 proper score；Reliability、Resolution、RMSE 只作诊断。分布是各家线性池（宽度层之前），不是服务 P0。退回席位权重的根两边相同、差为 0。</p>
+    ${FS.station_days ? `<div class="scroll"><table><thead><tr><th>样本</th><th>站日 / 天</th><th>桶 Brier（Δ 与区间）</th><th>LogScore（Δ 与区间）</th><th>判读</th>
+      <th>Reliability ×10⁻³</th><th>Resolution ×10⁻³</th><th>RMSE °C（诊断）</th><th>权重动过的根 · 半 L1 中位</th></tr></thead>
+      <tbody>${ledgerRow("切换后（服务融合）", G.served)}${ledgerRow("切换前（影子）", G.shadow)}${ledgerRow("合计", G.all)}</tbody></table></div>`
+      : `<p class="muted">还没有带融合回执的日前 P0 结算。</p>`}</div>`;
+  const LS = F.later_studies || [];
+  const ciTxt = ci => ci ? `[${sgn(ci[0], 4)}, ${sgn(ci[1], 4)}]` : "";
+  const laterRows = LS.map(r => `<tr><td><b>${h(r.label)}</b><br><span class="muted mono">${h(r.study)} · ${h(r.pair)}</span></td>
+    <td class="mono">${r.station_days ?? "—"} / ${r.days ?? "—"}</td>
+    <td class="mono"><span class="${r.ci_logscore && r.ci_logscore[1] < 0 ? "up" : r.ci_logscore && r.ci_logscore[0] > 0 ? "down" : "flat"}">${sgn(r.d_logscore, 4)}</span><br><span class="muted">${ciTxt(r.ci_logscore)}</span></td>
+    <td class="mono">${sgn(r.d_brier, 5)}<br><span class="muted">${ciTxt(r.ci_brier)}</span></td>
+    <td class="mono">${r.d_crps == null ? "—" : sgn(r.d_crps, 4)}</td>
+    <td>${r.passes ? '<b class="up">过门</b>' : '<span class="down">不过</span>'}</td></tr>`).join("");
+  const later = !LS.length ? "" : `<h3 style="margin-top:14px">切换后的研究候选（对生产原样服务）</h3>
+    <p class="sub">切换后在融合层上试过的所有臂，Δ＝候选 − 生产（负为好），区间按站日或日期块重抽，判据为各研究预注册的第 211/240 条门。
+      只有「过门」的才有资格提落地；落地改的是 P0 融合入口，属扩大范围，须熊先生裁决。</p>
+    <div class="scroll"><table><thead><tr><th>候选</th><th>站日 / 天</th><th>ΔLogScore（主）</th><th>Δ桶 Brier（护栏）</th><th>ΔCRPS °C（结构）</th><th>门</th></tr></thead>
+    <tbody>${laterRows}</tbody></table></div>`;
+  const mode = FS.mode || "—";
+  return `<h2>融合权重：宪章 199 在服务（P0_FUSION_BLEND_MODE=${h(mode)}）· 前向记账与研究候选</h2>
+  <div class="card"><b>现状</b>：每次 P0 编译按决策时刻可知的已结算站日算「中心误差＋正则」与「分层 CRPS」各半的融合权重，
+    <b>2026-09-24 起服务融合权重</b>（P0 v13；判据改用历史样本 2,457 站日、按第 211 条两项都降），09-25 起美国 11 个 ASOS 站同一规则（P0 v19）；
+    训练目标改桶 LogLoss 已测不过、不改。缺训练日、成员低于 1e-6 或优化器不收敛时退回席位权重，回执写明原因（<span class="mono">fusion_blend_json</span>）。
+    ${prRows ? `<details style="margin-top:6px"><summary>09-23 上线前重放（生产训练密度、当时入座的系统；已被 09-24 历史样本复判取代）</summary><div class="scroll"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div></details>` : ""}</div>
   ${forward}
-  <h3 style="margin-top:14px">研究候选（冻结，同一批 ${c.sample_n == null ? "—" : c.sample_n} 站日）</h3>
+  ${later}
+  <details style="margin-top:14px"><summary>09-22 冻结的三个研究候选（服务规则 blend50 的出处；同一批 ${c.sample_n == null ? "—" : c.sample_n} 站日）</summary>
   <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
     同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
     分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
@@ -22371,7 +22504,7 @@ function fusionCandidates(){
     ${E ? `<li>可兑现价值（${E.sample_n} 个有真实盘口的站日、${E.dates} 个事件日，生产费用合同 fee=0）：模型比市场差 <b>${gap == null ? "—" : Math.abs(gap).toFixed(3)} nat</b>，候选只把差距缩小 ${span(lift, v => v.toFixed(3))} nat；
       门槛吃单实现 ROI ${span(rois, v => pctS(v, 0))}（自报 ${span(claimed, v => pctS(v, 0))}，便宜的尾部桶被系统性高估）${kellyAllNeg ? "，¼ Kelly 组合全部是负增长" : ""}。换权重只能「少亏」，翻不了符号。</li>` : ""}
     ${P ? `<li>要在全新日子上把 NLL 这么小的改善（${P.effect_nll.toFixed(4)} nat）确认出来（两个标准误、80% 把握），按本研究的日间波动约需 <b>${P.days_needed} 个事件日</b>的新数据。</li>` : ""}
-  </ul></div>`;
+  </ul></div></details>`;
 }
 
 // The version before the served one, layer by layer (user, 2026-09-18: 显示，做对比).
@@ -23414,8 +23547,8 @@ const GROUPS = [
      {box:`② 融合层：${famJia()}怎么合成一条`, kind:"live",
       note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
       sections:[[servingWeights,"模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
-     {box:"②′ 融合权重：宪章 199 影子运行、前向记账与研究候选", kind:"shadow",
-      note:"每次 P0 编译都算融合权重并记账，服务仍为席位权重；上线前重放、前向影子对比（同批站日的 RMSE、CRPS、NLL、Reliability、Resolution）与冻结的三个研究候选",
+     {box:"②′ 融合权重：宪章 199 在服务、前向记账与研究候选", kind:"live",
+      note:"09-24 起服务融合权重；前向记账在同批已结算站日上比融合与它取代的席位权重（桶 Brier、LogScore 带区间），下面列切换后试过的全部融合层候选",
       sections:[[fusionCandidates,"融合权重候选"]]},
      {box:"②″ AI 模型：AIFS ENS（在用）、确定性特征族含 AIFS 单点（影子）、AIGEFS（研究）", kind:"live",
       note:"三个身份别混着读：AIFS ENS 是第 204 条起的 P0 正式成员，只在它那天的 run 到手的站日入座；AIFS 单点只是第 201 条特征族的候选之一，过闸前不改任何中心；AIGEFS 只在研究库回填",
@@ -23559,8 +23692,8 @@ const LANES = {
     role:"P0 首决策、距结算 >36h：s = log(p/q) 定方向与份数（YES/NO 双边），各腿买一加一档 post-only 最短有效期，未成交重挂到成交"},
   "远尾做空 H1 · 宪章 234": {layer:"实盘 · 车道", status:"live",
     role:"纯市场价与市场众数距离筛选远尾，在 P0 首决策 FOK 买 NO"},
-  "融合权重候选": {layer:"概率层 · 融合", status:"shadow",
-    role:"宪章 199：每次 P0 编译都算融合权重并记账，服务仍是席位权重；上线前重放与前向影子对比"},
+  "融合权重候选": {layer:"概率层 · 融合", status:"live",
+    role:"宪章 199：09-24 起服务融合权重；前向记账比融合与席位权重，并列切换后的研究候选"},
   // --- the book's own account ---
   "资金看板": {layer:"实盘 · 读数", status:"audit",
     role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细"},
