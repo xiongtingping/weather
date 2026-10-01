@@ -34,6 +34,7 @@ IDENTITY and every group reads 1.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -151,8 +152,259 @@ def as_of_label(
     return max(standing, key=lambda label: label[1]) if standing else None
 
 
+# --------------------------------------------------------------------------
+# Where the cases' envelope numbers come from (2026-10-01 「改」).
+#
+# A case needs a handful of numbers off two envelopes -- the day's first
+# P0-M with a TX, and its P0 root -- and the fit used to re-derive every one
+# of them each night by walking every P0-M since 2026-08-16 through its
+# ~18 KB lineage.  Those numbers never change once a day is over (envelopes
+# are append-only), so a day FREEZE_LAG_DAYS past is copied once, verbatim,
+# into a small case cache beside the P1 samples, and the fit reads frozen
+# days from there.  What is cached is the raw rows the three queries below
+# return, not cases: truth (which charter 225 may revise) is still read live,
+# and the case selection is the same code on either source.
+# --------------------------------------------------------------------------
+
+P0M_ROWS_SQL = (
+    "SELECT station_id, event_date, decision_at_utc,"
+    " json_extract(lineage_json,'$.taf_observed_tx_c'),"
+    " json_extract(lineage_json,'$.p0_root_checkpoint_id')"
+    " FROM basket_probability_envelope"
+    " WHERE stage='P0-M' AND state='COMMITTED'"
+    " AND event_date>=? AND event_date<=?"
+)
+ROOT_SQL = (
+    "SELECT json_extract(lineage_json,'$.model_center_c'), probabilities_json,"
+    " bucket_ordinals_json, json_extract(lineage_json,'$.bucket_intervals_c_json')"
+    " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1"
+)
+P0_ROOTS_SQL = (
+    "SELECT decision_at_utc, checkpoint_id FROM basket_probability_envelope"
+    " WHERE station_id=? AND event_date=? AND stage='P0' AND state='COMMITTED'"
+)
+DAY_P0_ROOTS_SQL = (
+    "SELECT station_id, decision_at_utc, checkpoint_id FROM basket_probability_envelope"
+    " WHERE event_date=? AND stage='P0' AND state='COMMITTED'"
+)
+DAY_COUNTS_SQL = (
+    "SELECT stage, COUNT(*) FROM basket_probability_envelope"
+    " WHERE state='COMMITTED' AND event_date=? AND stage IN ('P0','P0-M') GROUP BY stage"
+)
+
+CASE_CACHE_PATH = ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "taf_likelihood_cases.db"
+CASE_CACHE_SCHEMA = "taf_likelihood_case_cache_v1"
+#: A day's P0 and P0-M stop being written once its local day is over; three
+#: days past it the day is copied and, from then on, read from the cache.
+FREEZE_LAG_DAYS = 3
+#: Columns without a declared type keep each value's storage class, so a
+#: cached row is the row the SSOT query returned, REAL, TEXT and NULL alike.
+CASE_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS frozen_date (
+  event_date TEXT PRIMARY KEY,
+  p0m_rows INTEGER NOT NULL,
+  p0_rows INTEGER NOT NULL,
+  schema TEXT NOT NULL,
+  frozen_at_utc TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS p0m_row (
+  event_date TEXT NOT NULL, seq INTEGER NOT NULL,
+  station_id, decision_at_utc, tx, root_id,
+  PRIMARY KEY(event_date, seq)
+);
+CREATE TABLE IF NOT EXISTS p0_root (
+  event_date TEXT NOT NULL, seq INTEGER NOT NULL,
+  station_id, decision_at_utc, checkpoint_id,
+  PRIMARY KEY(event_date, seq)
+);
+CREATE INDEX IF NOT EXISTS p0_root_scope_idx ON p0_root(station_id, event_date);
+CREATE TABLE IF NOT EXISTS root (
+  event_date TEXT NOT NULL, checkpoint_id TEXT NOT NULL, present INTEGER NOT NULL,
+  model_center_c, probabilities_sha TEXT, ordinals_sha TEXT, intervals_sha TEXT,
+  PRIMARY KEY(event_date, checkpoint_id)
+);
+CREATE INDEX IF NOT EXISTS root_checkpoint_idx ON root(checkpoint_id);
+-- The JSON texts by content: ~47k distinct probability vectors and 60 bucket
+-- geometries stand behind ~170k roots (measured 2026-10-01, 44 days).
+CREATE TABLE IF NOT EXISTS blob (sha TEXT PRIMARY KEY, body TEXT NOT NULL);
+"""
+
+
+class SsotSource:
+    """The envelope rows, read off the SSOT as the fit always read them."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def p0m_rows(self, since: str, through: str) -> list[tuple]:
+        return self.conn.execute(P0M_ROWS_SQL, (since, through)).fetchall()
+
+    def root(self, checkpoint_id: str) -> tuple | None:
+        return self.conn.execute(ROOT_SQL, (checkpoint_id,)).fetchone()
+
+    def p0_roots(self, station_id: str, event_date: str) -> list[tuple]:
+        return self.conn.execute(P0_ROOTS_SQL, (station_id, event_date)).fetchall()
+
+
+def open_case_cache(path: Path | str = CASE_CACHE_PATH) -> sqlite3.Connection:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cache = sqlite3.connect(str(path), timeout=60.0, isolation_level=None)
+    cache.execute("PRAGMA journal_mode=WAL")
+    cache.executescript(CASE_CACHE_DDL)
+    return cache
+
+
+def _day_counts(conn: sqlite3.Connection, day: str) -> tuple[int, int]:
+    counts = dict(conn.execute(DAY_COUNTS_SQL, (day,)).fetchall())
+    return int(counts.get("P0-M", 0)), int(counts.get("P0", 0))
+
+
+def freeze_day(conn: sqlite3.Connection, cache: sqlite3.Connection, day: str, *, now_utc: str) -> dict[str, int]:
+    """Copy one event day's envelope rows into the cache, replacing any older copy."""
+
+    rows = conn.execute(P0M_ROWS_SQL, (day, day)).fetchall()
+    roots = conn.execute(DAY_P0_ROOTS_SQL, (day,)).fetchall()
+    p0m_count, p0_count = _day_counts(conn, day)
+    wanted = list(dict.fromkeys(
+        [str(r[2]) for r in roots] + [str(r[4]) for r in rows if r[4]]
+    ))
+    geometry = [(cid, conn.execute(ROOT_SQL, (cid,)).fetchone()) for cid in wanted]
+    cache.execute("BEGIN IMMEDIATE")
+    try:
+        for table in ("p0m_row", "p0_root", "root", "frozen_date"):
+            cache.execute(f"DELETE FROM {table} WHERE event_date=?", (day,))
+        cache.executemany(
+            "INSERT INTO p0m_row VALUES(?,?,?,?,?,?)",
+            [(day, seq, r[0], r[2], r[3], r[4]) for seq, r in enumerate(rows)],
+        )
+        cache.executemany(
+            "INSERT INTO p0_root VALUES(?,?,?,?,?)",
+            [(day, seq, r[0], r[1], r[2]) for seq, r in enumerate(roots)],
+        )
+        root_rows = []
+        for cid, g in geometry:
+            if g is None:
+                root_rows.append((day, cid, 0, None, None, None, None))
+                continue
+            shas = []
+            for text in g[1:]:
+                if text is None:
+                    shas.append(None)
+                    continue
+                if not isinstance(text, str):
+                    raise TypeError(f"taf_case_cache_non_text_json:{cid}")
+                sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                cache.execute("INSERT OR IGNORE INTO blob VALUES(?,?)", (sha, text))
+                shas.append(sha)
+            root_rows.append((day, cid, 1, g[0], *shas))
+        cache.executemany("INSERT INTO root VALUES(?,?,?,?,?,?,?)", root_rows)
+        cache.execute(
+            "INSERT INTO frozen_date VALUES(?,?,?,?,?)",
+            (day, p0m_count, p0_count, CASE_CACHE_SCHEMA, now_utc),
+        )
+        cache.execute("COMMIT")
+    except BaseException:
+        if cache.in_transaction:
+            cache.execute("ROLLBACK")
+        raise
+    return {"p0m_rows": len(rows), "p0_roots": len(roots), "roots": len(geometry)}
+
+
+def _days(since: str, through: str) -> list[str]:
+    from datetime import date, timedelta  # noqa: PLC0415
+
+    first, last = date.fromisoformat(since), date.fromisoformat(through)
+    return [(first + timedelta(days=n)).isoformat() for n in range((last - first).days + 1)]
+
+
+def refresh_case_cache(
+    conn: sqlite3.Connection, cache: sqlite3.Connection, *, since: str, frozen_through: str, now_utc: str,
+) -> dict[str, Any]:
+    """Freeze every day up to ``frozen_through``; re-freeze a day the SSOT has since added to.
+
+    A frozen day whose rows have left the SSOT (the cold tier) is kept as it
+    is: the counts can only be compared while the SSOT still holds the day.
+    """
+
+    receipt = {"frozen": 0, "refrozen": 0, "kept": 0}
+    if frozen_through < since:
+        return receipt
+    known = {
+        str(day): (int(p0m), int(p0), str(schema))
+        for day, p0m, p0, schema in cache.execute(
+            "SELECT event_date, p0m_rows, p0_rows, schema FROM frozen_date"
+        )
+    }
+    for day in _days(since, frozen_through):
+        held = known.get(day)
+        if held is None:
+            freeze_day(conn, cache, day, now_utc=now_utc)
+            receipt["frozen"] += 1
+            continue
+        counts = _day_counts(conn, day)
+        if held[2] != CASE_CACHE_SCHEMA or (any(counts) and counts != held[:2]):
+            freeze_day(conn, cache, day, now_utc=now_utc)
+            receipt["refrozen"] += 1
+        else:
+            receipt["kept"] += 1
+    return receipt
+
+
+class CachedSource:
+    """Frozen days off the case cache, every other day off the SSOT."""
+
+    def __init__(self, conn: sqlite3.Connection, cache: sqlite3.Connection) -> None:
+        self.ssot = SsotSource(conn)
+        self.cache = cache
+        self.frozen = {str(r[0]) for r in cache.execute("SELECT event_date FROM frozen_date")}
+
+    def p0m_rows(self, since: str, through: str) -> list[tuple]:
+        out: list[tuple] = []
+        run: list[str] = []
+
+        def flush() -> None:
+            if run:
+                out.extend(self.ssot.p0m_rows(run[0], run[-1]))
+                run.clear()
+
+        for day in _days(since, through):
+            if day in self.frozen:
+                flush()
+                out.extend(
+                    (r[0], day, r[1], r[2], r[3]) for r in self.cache.execute(
+                        "SELECT station_id, decision_at_utc, tx, root_id FROM p0m_row"
+                        " WHERE event_date=? ORDER BY seq", (day,),
+                    )
+                )
+            else:
+                run.append(day)
+        flush()
+        return out
+
+    def root(self, checkpoint_id: str) -> tuple | None:
+        row = self.cache.execute(
+            "SELECT r.present, r.model_center_c, p.body, o.body, i.body FROM root r"
+            " LEFT JOIN blob p ON p.sha = r.probabilities_sha"
+            " LEFT JOIN blob o ON o.sha = r.ordinals_sha"
+            " LEFT JOIN blob i ON i.sha = r.intervals_sha"
+            " WHERE r.checkpoint_id=? LIMIT 1", (checkpoint_id,),
+        ).fetchone()
+        if row is None:
+            return self.ssot.root(checkpoint_id)
+        return tuple(row[1:]) if row[0] else None
+
+    def p0_roots(self, station_id: str, event_date: str) -> list[tuple]:
+        if event_date not in self.frozen:
+            return self.ssot.p0_roots(station_id, event_date)
+        return self.cache.execute(
+            "SELECT decision_at_utc, checkpoint_id FROM p0_root"
+            " WHERE station_id=? AND event_date=? ORDER BY seq", (station_id, event_date),
+        ).fetchall()
+
+
 def load_cases(
-    conn: sqlite3.Connection, *, since: str, through: str
+    conn: sqlite3.Connection, *, since: str, through: str, source: Any = None,
 ) -> list[dict[str, Any]]:
     """The first P0-M with a TX per settled station-day, on its P0 root.
 
@@ -163,17 +415,10 @@ def load_cases(
     (review 2026-09-19: a 38C root read as 38.18C).
     """
 
+    source = source if source is not None else SsotSource(conn)
     truth = load_truth_revisions(conn)
     first: dict[tuple[str, str], tuple[float, str, float, str]] = {}
-    for station, day, at, tx, root_id in conn.execute(
-        "SELECT station_id, event_date, decision_at_utc,"
-        " json_extract(lineage_json,'$.taf_observed_tx_c'),"
-        " json_extract(lineage_json,'$.p0_root_checkpoint_id')"
-        " FROM basket_probability_envelope"
-        " WHERE stage='P0-M' AND state='COMMITTED'"
-        " AND event_date>=? AND event_date<=?",
-        (since, through),
-    ):
+    for station, day, at, tx, root_id in source.p0m_rows(since, through):
         if tx in (None, "", "NONE") or not root_id:
             continue
         key = (str(station), str(day))
@@ -184,18 +429,15 @@ def load_cases(
             first[key] = (moment, str(at), float(tx), str(root_id))
     cases: list[dict[str, Any]] = []
     for (station, day), (moment, at, tx, root_id) in sorted(first.items()):
-        row = conn.execute(
-            "SELECT probabilities_json, bucket_ordinals_json,"
-            " json_extract(lineage_json,'$.bucket_intervals_c_json'),"
-            " json_extract(lineage_json,'$.model_center_c')"
-            " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
-            (root_id,),
-        ).fetchone()
-        if row is None or not row[2] or row[3] in (None, "", "NONE"):
+        root = source.root(root_id)
+        if root is None:
             continue
-        probabilities = {str(k): float(v) for k, v in json.loads(row[0]).items()}
-        ordinals = {str(k): int(v) for k, v in json.loads(row[1]).items()}
-        lineage = {"bucket_intervals_c_json": row[2]}
+        center, probabilities_json, ordinals_json, intervals = root
+        if not intervals or center in (None, "", "NONE"):
+            continue
+        probabilities = {str(k): float(v) for k, v in json.loads(probabilities_json).items()}
+        ordinals = {str(k): int(v) for k, v in json.loads(ordinals_json).items()}
+        lineage = {"bucket_intervals_c_json": intervals}
         axis = _bucket_centers_c(lineage, bucket_ordinals=ordinals)
         labels = _revision_labels(
             truth[(station, day)], lineage=lineage, ordinals=ordinals
@@ -208,7 +450,7 @@ def load_cases(
             "decided_at": moment,
             "decided_at_utc": at,
             "tx_c": tx,
-            "c0": float(row[3]),
+            "c0": float(center),
             # Scored against today's truth; trained on the revision standing
             # at the moment of the prediction being scored (``as_of_label``).
             "truth_c": labels[-1][2],
@@ -221,10 +463,11 @@ def load_cases(
 
 
 def load_tempering_cases(
-    conn: sqlite3.Connection, *, since: str, through: str
+    conn: sqlite3.Connection, *, since: str, through: str, source: Any = None,
 ) -> list[dict[str, Any]]:
     """Every forward TAF with a TX and its weather, on the P0 current when it arrived."""
 
+    source = source if source is not None else SsotSource(conn)
     truth = load_truth_revisions(conn)
     seen: set[tuple[str, str, str, float]] = set()
     raw: list[tuple[str, str, float, str, float, float, float]] = []
@@ -260,26 +503,14 @@ def load_tempering_cases(
         scope = (station, day)
         if scope not in roots:
             roots[scope] = sorted(
-                (_epoch(at), str(cid)) for at, cid in conn.execute(
-                    "SELECT decision_at_utc, checkpoint_id"
-                    " FROM basket_probability_envelope"
-                    " WHERE station_id=? AND event_date=? AND stage='P0'"
-                    " AND state='COMMITTED'",
-                    scope,
-                )
+                (_epoch(at), str(cid)) for at, cid in source.p0_roots(*scope)
             )
         current = [cid for at, cid in roots[scope] if at <= moment]
         if not current:
             continue
         cid = current[-1]
         if cid not in geometry:
-            row = conn.execute(
-                "SELECT json_extract(lineage_json,'$.model_center_c'),"
-                " probabilities_json, bucket_ordinals_json,"
-                " json_extract(lineage_json,'$.bucket_intervals_c_json')"
-                " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
-                (cid,),
-            ).fetchone()
+            row = source.root(cid)
             geometry[cid] = None
             if row is not None and row[0] not in (None, "", "NONE") and row[3]:
                 probabilities = {
@@ -638,24 +869,42 @@ def main() -> int:
     parser.add_argument("--through", required=True)
     parser.add_argument("--out", default=str(TL.ARTIFACT_PATH))
     parser.add_argument("--fitted-at-utc", default=None)
+    parser.add_argument(
+        "--case-cache", default=str(CASE_CACHE_PATH),
+        help="frozen days' envelope rows; '' reads every day off the SSOT",
+    )
     args = parser.parse_args()
 
-    conn = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True, timeout=120)
+    from datetime import date, timedelta  # noqa: PLC0415
+
+    now_utc = _iso(datetime.now(timezone.utc))
+    frozen_through = (
+        date.fromisoformat(now_utc[:10]) - timedelta(days=FREEZE_LAG_DAYS)
+    ).isoformat()
+    cache = open_case_cache(args.case_cache) if args.case_cache else None
+    cache_receipt: dict[str, Any] | None = None
     try:
-        cases = load_cases(conn, since=args.since, through=args.through)
+        conn = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True, timeout=120)
+        try:
+            if cache is not None:
+                cache_receipt = refresh_case_cache(
+                    conn, cache, since=args.since,
+                    frozen_through=min(frozen_through, args.through), now_utc=now_utc,
+                )
+            source = CachedSource(conn, cache) if cache is not None else SsotSource(conn)
+            cases = load_cases(conn, since=args.since, through=args.through, source=source)
+            if len(cases) < 50:
+                print(json.dumps({"state": "REFUSED_THIN", "cases": len(cases)}))
+                return 3
+            tempering_cases = load_tempering_cases(
+                conn, since=args.since, through=args.through, source=source,
+            )
+        finally:
+            conn.close()
     finally:
-        conn.close()
-    if len(cases) < 50:
-        print(json.dumps({"state": "REFUSED_THIN", "cases": len(cases)}))
-        return 3
+        if cache is not None:
+            cache.close()
     gate = walk_forward(cases)
-    conn = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True, timeout=120)
-    try:
-        tempering_cases = load_tempering_cases(
-            conn, since=args.since, through=args.through
-        )
-    finally:
-        conn.close()
     line = fit(cases)
     served_line = {"schema": TL.SCHEMA, "gate": {"state": TL.GATE_SERVE}, **line}
     lambdas, group_weight = fit_tempering(served_line, tempering_cases)
@@ -702,6 +951,7 @@ def main() -> int:
             "tafs": len(tempering_cases),
         },
         "out": str(out),
+        "case_cache": cache_receipt,
     }, ensure_ascii=False))
     return 0
 
