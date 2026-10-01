@@ -231,6 +231,25 @@ else
   echo "  冷层已关闭（PM_OFFICIAL_NWP_NATIVE_RETENTION_COLD_TIER_ROOT 为空）。"
 fi
 
+# Charter 237: the SSOT's aged history rows (P0 preselection plans past seven
+# days, OOS evaluations past the stable-pool window, ...) go to the same cold
+# tier, one verified batch at a time, and leave the SSOT only once the volume
+# holds them.  Bounded by its own budget; the rows are not re-obtainable, so
+# with the tier unusable (unplugged, or TCC-denied under launchd) nothing moves.
+echo "【冷层：SSOT 老行（宪章 237）】"
+SSOT_OFFLOAD_RC=0
+if [ -n "$COLD_TIER_ROOT" ] && [ "${PM_SSOT_COLD_OFFLOAD_APPLY:-1}" = "1" ]; then
+  "$PY" "$ROOT/scripts/ssot_cold_offload.py" --apply \
+    --cold-tier-root "$COLD_TIER_ROOT" \
+    --budget-seconds "${PM_SSOT_COLD_OFFLOAD_BUDGET_SEC:-3600}" \
+    --receipt "$AUDIT_DIR/ssot_cold_offload_latest.json" || SSOT_OFFLOAD_RC=$?
+  if [ "$SSOT_OFFLOAD_RC" != "0" ]; then
+    echo "  告警：SSOT 老行搬迁中途停下（已搬的已核对，未搬的仍在 SSOT），见 $AUDIT_DIR/ssot_cold_offload_latest.json"
+  fi
+else
+  echo "  SSOT 老行冷层已关闭（冷层根为空或 PM_SSOT_COLD_OFFLOAD_APPLY!=1）。"
+fi
+
 echo "【剩余】"
 du -sh data/runtime/official_nwp_sources
 du -sh data/research/bayes_basket_target/model_arrivals 2>/dev/null \
@@ -280,7 +299,7 @@ PYHEALTH
     exit 1
   fi
 fi
-if [ "$OFFLOAD_RC" != "0" ]; then
+if [ "$OFFLOAD_RC" != "0" ] || [ "$SSOT_OFFLOAD_RC" != "0" ]; then
   echo "=== 完成（冷层搬迁带告警） ==="
   exit 1
 fi

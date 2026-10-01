@@ -347,7 +347,27 @@ MAX_JSON_NODES = 500_000
 # ceiling: bought time again.  The next lever is the plan restated whole
 # every cycle -- 95% of consecutive same-scope plans carry unchanged
 # probabilities -- which is the ruling that stops these raises.
-MAX_TARGET_DB_BYTES = 69632 * MIB
+#
+# Raised 68 -> 70 GiB on 2026-09-27 to reopen the fail-closed store the user
+# reported, and sized for charter 237 to land rather than for the burn.  The
+# file reached this ceiling and every writer stopped: the resident's receipt
+# read ``target_ssot_writer_open_failed:target_database_bytes_exceeded``,
+# the settlement-truth and AWC-observation sweeps failed on this guard,
+# ECMWF and AIGEFS member rows stopped landing, and the D+1 P0 supply went
+# fleet-expired (45 listed, 0 fresh, the last one expired 12:43:50Z).
+#
+# Charter 237 moves the aged rows of seven tables to the cold tier, but a
+# delete only puts pages on the freelist and this guard measures the file, so
+# moving rows cannot reopen a store whose file already sits on the ceiling --
+# the 08-22 and 09-19 situation again, a file that contains its own headroom.
+# Two GiB lets the writers back in while the first offload runs (about ten
+# hours at the full-speed 4.5-5.5 GB/day); after it lands they reuse the
+# freed pages and the file does not grow until those are spent, and the daily
+# job moves each day's aged rows as they leave their windows.  So this is disk
+# spent only if the offload does not run.  If the daily moves fall behind the
+# writes, the levers are the open rulings -- the finer OOS-evaluation
+# retention and five ask levels -- not another raise.
+MAX_TARGET_DB_BYTES = 71680 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
