@@ -375,11 +375,25 @@ def test_no_scheduled_job_reads_the_cold_tier() -> None:
     """The external volume may never be a dependency of anything that runs on its own."""
 
     offenders = sorted(
-        name for name in _scheduled_scripts() - {"ssot_cold_offload.py"}
+        name for name in _scheduled_scripts() - {"ssot_cold_offload.py", "calibration_dashboard.py"}
         if "attach_cold_history" in (ROOT / "scripts" / name).read_text(encoding="utf-8")
         or "open_cold_table" in (ROOT / "scripts" / name).read_text(encoding="utf-8")
     )
     assert offenders == []
+    # The dashboard (not a production consumer) may recompute through the
+    # cold tier (user ruling 2026-10-01 「在外置硬盘」), only in _history_conn,
+    # and an unreadable volume there is a section not ready.
+    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    tree = ast.parse(dashboard)
+    callers = {
+        fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef)
+        for node in ast.walk(fn)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) in {"attach_cold_history", "open_cold_table"}
+    }
+    assert callers == {"_history_conn"}
+    helper = dashboard[dashboard.index("def _history_conn("):]
+    helper = helper[:helper.index("\ndef ")]
+    assert "raise SectionNotReady" in helper
     for name in ENVELOPE_WHOLE_HISTORY_READERS + WHOLE_HISTORY_READERS:
         assert Path(name).name not in _scheduled_scripts(), name
 
@@ -405,20 +419,12 @@ def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
     sweep = (ROOT / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
     assert f"timedelta(days={off.P1_LIKELIHOOD_WINDOW_DAYS})" in sweep
     assert policy.hot_days > off.FEATURE_GATE_WINDOW_DAYS and policy.hot_days > off.P1_LIKELIHOOD_WINDOW_DAYS
-    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    landing = re.search(r'^TRUTH_LANDING_SINCE = "([0-9-]+)"$', dashboard, re.M).group(1)
-    h5 = re.search(r'^H5_FROM_UTC = "([0-9-]+)T', dashboard, re.M).group(1)
-    assert sorted(off.DASHBOARD_FIXED_STARTS) == sorted([landing, h5])
     assert {f.name for f in policy.floors} == {
-        "calibration_evidence_anchor", "dashboard_fixed_starts", "taf_case_cache",
-        "metar_trajectory_training",
+        "calibration_evidence_anchor", "taf_case_cache", "metar_trajectory_training",
     }
-    # The truth-landing section also reads the WS book from its fixed start.
-    assert off.DASHBOARD_TRUTH_LANDING_SINCE == landing
-    (book_floor,) = off.POLICY_BY_TABLE[WS].floors
-    assert book_floor.name == "dashboard_truth_landing"
-    assert book_floor.resolve(None) == landing
-    assert "FROM basket_official_ws_snapshot" in dashboard[dashboard.index("def _truth_landing_chunk_end"):][:2000]
+    # The dashboard's fixed-start sections recompute through the cold tier
+    # instead of holding rows back (「在外置硬盘」).
+    assert off.POLICY_BY_TABLE[WS].floors == ()
     assert policy.keep_station_days is not None and policy.keep_station_days.live_only
 
 

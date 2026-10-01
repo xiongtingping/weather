@@ -1236,6 +1236,42 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+#: The store whose cold tier ``_history_conn`` attaches (charter 238).
+COLD_TIER_STORE = ROOT / "data" / "bayes_basket_target_ssot.db"
+
+
+def _history_conn(conn: sqlite3.Connection, tables: Sequence[str]) -> sqlite3.Connection:
+    """The same store, read-only, with ``tables`` read as their whole history.
+
+    User ruling 2026-10-01 (「在外置硬盘」): a section that has to recompute
+    days whose rows the cold tier has taken (charter 238) reads them there.
+    Only that recompute opens this -- an ordinary paged render reads its
+    cached closed days and the SSOT's recent rows, and never the volume.  A
+    volume that cannot be read is a section that is not ready (the page
+    serves what it had), never a shorter history.
+    """
+
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    path = next(
+        (str(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main"),
+        "",
+    )
+    # The cold tier is the production SSOT's; any other store (a fixture, a
+    # copy) has no cold rows and is read as it is.  Callers close only a
+    # connection that is not the one they passed.
+    if not path or Path(path).resolve() != COLD_TIER_STORE.resolve():
+        return conn
+    history = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60.0)
+    try:
+        attach_cold_history(history, tables)
+        history.execute("PRAGMA query_only=1")
+    except Exception as exc:  # noqa: BLE001 -- volume missing, refused, or unreadable
+        history.close()
+        raise SectionNotReady(f"cold_tier_unavailable:{type(exc).__name__}:{str(exc)[:120]}") from exc
+    return history
+
+
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -5840,14 +5876,17 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
             (H5_FROM_UTC,),
         )
     }
-    event_days = [
-        str(day) for (day,) in conn.execute(
-            "SELECT DISTINCT event_date FROM basket_probability_envelope"
-            " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
-            " ORDER BY event_date",
-            (H5_FROM_UTC[:10],),
-        )
-    ]
+    def _event_days(source: sqlite3.Connection) -> list[str]:
+        return [
+            str(day) for (day,) in source.execute(
+                "SELECT DISTINCT event_date FROM basket_probability_envelope"
+                " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
+                " ORDER BY event_date",
+                (H5_FROM_UTC[:10],),
+            )
+        ]
+
+    event_days = _event_days(conn)
     # Each day's count reads every P0 envelope's lineage JSON for that day
     # (1,907 s whole the last time).  Under a paged render a day two or
     # more back is kept -- its P0s are all written and their artifact
@@ -5858,22 +5897,41 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
         kept = _load_closed_readings(RENDER_H5_DAYS)
         kept_days = dict(kept.get("days") or {}) if kept.get("code") == code else {}
         keep_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
-        pending = [day for day in event_days if day not in kept_days]
-        behind = [day for day in pending if day <= keep_through]
-        if len(behind) > H5_CATCHUP_DAYS:
-            kept_days.update(_h5_day_counts(
-                conn, behind[:H5_CATCHUP_DAYS], known, fitted_under_h5,
-            ))
-            _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": kept_days})
-            raise SectionNotReady(
-                f"h5_readiness kept {len(kept_days)} of {len(event_days)} days"
-            )
-        counts = {**kept_days, **_h5_day_counts(conn, pending, known, fitted_under_h5)}
+        source = conn
+        if not kept_days:
+            # A first run or a code change: the days the cold tier holds are
+            # gone from the SSOT, so the day list and the counts come from
+            # the whole history (charter 238; 「在外置硬盘」).
+            source = _history_conn(conn, ("basket_probability_envelope",))
+            event_days = _event_days(source)
+        # A kept day stays listed after its envelopes have left the SSOT.
+        event_days = sorted(set(event_days) | set(kept_days))
+        try:
+            pending = [day for day in event_days if day not in kept_days]
+            behind = [day for day in pending if day <= keep_through]
+            if len(behind) > H5_CATCHUP_DAYS:
+                kept_days.update(_h5_day_counts(
+                    source, behind[:H5_CATCHUP_DAYS], known, fitted_under_h5,
+                ))
+                _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": kept_days})
+                raise SectionNotReady(
+                    f"h5_readiness kept {len(kept_days)} of {len(event_days)} days"
+                )
+            counts = {**kept_days, **_h5_day_counts(source, pending, known, fitted_under_h5)}
+        finally:
+            if source is not conn:
+                source.close()
         _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": {
             day: value for day, value in counts.items() if day <= keep_through
         }})
     else:
-        counts = _h5_day_counts(conn, event_days, known, fitted_under_h5)
+        history = _history_conn(conn, ("basket_probability_envelope",))
+        try:
+            event_days = _event_days(history)
+            counts = _h5_day_counts(history, event_days, known, fitted_under_h5)
+        finally:
+            if history is not conn:
+                history.close()
     days: list[dict[str, Any]] = []
     for day in event_days:
         decisions, under_h5, provisional_only = counts.get(day, (0, 0, 0))
@@ -5959,6 +6017,17 @@ def _next_iso_day(day: str) -> str:
 #: How many snapshots one catch-up read of settled days may take (~550 MB of
 #: buckets_json at the September rate of 30-45k snapshots a day).
 TRUTH_LANDING_CATCHUP_SNAPSHOTS = 60_000
+#: ... and at most this many days when the chunk reaches the cold tier,
+#: whose rows the snapshot count above cannot see.
+TRUTH_LANDING_CATCHUP_DAYS = 7
+
+
+def _cold_book_floor() -> str:
+    """The first event day whose WS books are all still in the SSOT."""
+
+    from scripts.ssot_cold_offload import POLICY_BY_TABLE  # noqa: PLC0415
+
+    return POLICY_BY_TABLE["basket_official_ws_snapshot"].cutoff_date(datetime.now(timezone.utc))
 
 
 def _truth_landing_chunk_end(
@@ -6202,10 +6271,27 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         # section is not ready -- the page serves what it had -- instead of
         # reading every snapshot at once into the render's deadline.
         chunk_until = _truth_landing_chunk_end(conn, read_from, keep_through)
+        # Days the cold tier holds are counted nowhere above (the count reads
+        # the SSOT's index), so a catch-up reaching them is also capped in
+        # days, and reads them through the whole history (charter 238).
+        cold_reach = read_from < _cold_book_floor()
+        if cold_reach:
+            capped = (
+                date.fromisoformat(read_from) + timedelta(days=TRUTH_LANDING_CATCHUP_DAYS - 1)
+            ).isoformat()
+            chunk_until = min(chunk_until or capped, capped)
         if chunk_until is not None and chunk_until < keep_through:
-            records.update(_truth_landing_records(
-                conn, day_closed, read_from, chunk_until,
-            ))
+            source = (
+                _history_conn(conn, ("basket_official_ws_snapshot", "basket_probability_envelope"))
+                if cold_reach else conn
+            )
+            try:
+                records.update(_truth_landing_records(
+                    source, day_closed, read_from, chunk_until,
+                ))
+            finally:
+                if source is not conn:
+                    source.close()
             _save_closed_readings(RENDER_TRUTH_LANDING_RECORDS, {
                 "code": code, "through": chunk_until, "records": records,
             })
@@ -6223,7 +6309,12 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
                 },
             })
     else:
-        records = _truth_landing_records(conn, day_closed, TRUTH_LANDING_SINCE)
+        history = _history_conn(conn, ("basket_official_ws_snapshot", "basket_probability_envelope"))
+        try:
+            records = _truth_landing_records(history, day_closed, TRUTH_LANDING_SINCE)
+        finally:
+            if history is not conn:
+                history.close()
     ordered = sorted(records.items())
     first_decision = {key: record["decided"] for key, record in ordered}
 

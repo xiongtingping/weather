@@ -334,17 +334,11 @@ P1_LIKELIHOOD_WINDOW_DAYS = 44
 EVIDENCE_EVENT_DATE_MARGIN_DAYS = 2
 
 
-#: Dashboard sections that read every P0 envelope from a fixed day on:
-#: ``TRUTH_LANDING_SINCE`` (truth landing) and ``H5_FROM_UTC`` (H5).  The
-#: dashboard renders on a schedule and never reads the cold tier, so these
-#: are floors.  Pinned by the test to ``scripts/calibration_dashboard.py``.
-DASHBOARD_TRUTH_LANDING_SINCE = "2026-08-15"
-DASHBOARD_H5_FROM = "2026-08-27"
-DASHBOARD_FIXED_STARTS = (DASHBOARD_TRUTH_LANDING_SINCE, DASHBOARD_H5_FROM)
-
-
-def dashboard_fixed_start_floor(_conn: sqlite3.Connection) -> str | None:
-    return min(DASHBOARD_FIXED_STARTS)
+#: The dashboard's truth-landing (books and envelopes from 08-15) and H5
+#: (envelopes from 08-27) sections keep their closed days in a cache and,
+#: when a code change voids it, recompute through ``_history_conn`` -- the
+#: one dashboard path allowed onto the cold tier (user ruling 2026-10-01
+#: 「在外置硬盘」).  They are no floor.
 
 
 def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
@@ -563,16 +557,6 @@ POLICIES: tuple[TablePolicy, ...] = (
         table="basket_official_ws_snapshot",
         time_column="event_date",
         hot_days=VALUATION_WINDOW_DAYS + 2,
-        # The dashboard's truth-landing section reads every book from
-        # TRUTH_LANDING_SINCE on; its per-day cache is keyed on the section's
-        # code, so a code change re-reads them all off the SSOT.
-        floors=(
-            DynamicFloor(
-                name="dashboard_truth_landing",
-                why="the truth-landing section re-reads every book from TRUTH_LANDING_SINCE when its code changes",
-                resolve=lambda _conn: DASHBOARD_TRUTH_LANDING_SINCE,
-            ),
-        ),
         readers=(
             "market_ingress: MAX(sequence)+1 and by snapshot_id for the day being written; "
             "production_io / production_worker / atomic_ledger / tiebreak, p1_tail, "
@@ -665,7 +649,7 @@ POLICIES += (
             "fit_taf_likelihood: from 2026-08-16 via its case cache; refit_center_width / "
             "refit_off_centre_claim and serving_arithmetic: from the evidence anchor; "
             "dashboard: valuation 28 days, posterior 14, live_book every live decision, "
-            "truth landing from TRUTH_LANDING_SINCE and H5 from H5_FROM_UTC (floors); "
+            "truth landing and H5 from their cache, recomputing through the cold tier; "
             "delta_v2_settlement_label: the envelope an unlabelled fact names; "
             "the METAR trajectory packet (production, one due station a cycle): every "
             "root of the station, through its root cache (a floor until frozen)."
@@ -703,11 +687,6 @@ POLICIES += (
                 name="metar_trajectory_training",
                 why="P1's trajectory training reads a station-day off the SSOT until its root cache has frozen it",
                 resolve=metar_trajectory_training_floor,
-            ),
-            DynamicFloor(
-                name="dashboard_fixed_starts",
-                why="the dashboard's truth-landing and H5 sections read every P0 envelope from a fixed day",
-                resolve=dashboard_fixed_start_floor,
             ),
             DynamicFloor(
                 name="taf_case_cache",
