@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import date, datetime, time, timedelta, timezone
 import json
 import math
@@ -207,29 +208,221 @@ def _read_observations(
     return [dict(row) for row in rows]
 
 
+ROOT_COLUMNS = (
+    "stage", "checkpoint_id", "station_id", "event_date", "settlement_timezone",
+    "decision_at_utc", "bucket_ordinals_json", "probabilities_json",
+    "posterior_sha256", "lineage_json", "content_sha256",
+)
+ROOTS_SQL = (
+    "SELECT " + ",".join(ROOT_COLUMNS) + " FROM basket_probability_envelope"
+    " WHERE station_id=? AND stage IN ('P0','P0-M') AND state='COMMITTED'"
+)
+ROOT_COUNTS_SQL = (
+    "SELECT event_date, COUNT(*) FROM basket_probability_envelope"
+    " WHERE station_id=? AND stage IN ('P0','P0-M') AND state='COMMITTED'"
+    " GROUP BY event_date"
+)
+
+# --------------------------------------------------------------------------
+# The root cache (2026-10-01 「做」).
+#
+# Production runs this packet for one due station a cycle, and every run read
+# every P0/P0-M the station ever had -- lineage and all -- which kept every
+# envelope in the SSOT.  A station-day ROOT_FREEZE_LAG_DAYS past is copied
+# once, and later runs read it from the cache.  What is kept of a row is
+# every column and, of its lineage, the keys this file reads
+# (CACHED_LINEAGE_KEYS; a test scans for ``lineage.get`` so a new key cannot
+# be read off a cached row unseen).  The packet built either way is the same
+# bytes (verified 2026-10-01 on the live store).
+# --------------------------------------------------------------------------
+
+ROOT_CACHE_PATH = (
+    ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "metar_trajectory_roots.db"
+)
+ROOT_CACHE_SCHEMA = "metar_trajectory_root_cache_v1"
+ROOT_FREEZE_LAG_DAYS = 3
+CACHED_LINEAGE_KEYS = (
+    "bucket_centers_c_json",
+    "bucket_intervals_c_json",
+    "conditional_future_temperature_curve_json",
+    "conditional_future_temperature_curve_root_checkpoint_id",
+    "conditional_future_temperature_curve_root_probability_sha256",
+    "conditional_future_temperature_curve_root_stage",
+    "conditional_future_temperature_curve_sha256",
+    "p0_root_checkpoint_id",
+    "p0_root_posterior_sha256",
+)
+ROOT_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS frozen_day (
+  station_id TEXT NOT NULL, event_date TEXT NOT NULL, row_count INTEGER NOT NULL,
+  schema TEXT NOT NULL, frozen_at_utc TEXT NOT NULL,
+  PRIMARY KEY(station_id, event_date)
+);
+CREATE TABLE IF NOT EXISTS root_row (
+  station_id TEXT NOT NULL, event_date TEXT NOT NULL, seq INTEGER NOT NULL,
+  stage, checkpoint_id, settlement_timezone, decision_at_utc,
+  bucket_ordinals_sha, probabilities_sha, posterior_sha256, lineage_sha, content_sha256,
+  PRIMARY KEY(station_id, event_date, seq)
+);
+CREATE TABLE IF NOT EXISTS blob (sha TEXT PRIMARY KEY, body);
+"""
+
+
+def _project_lineage(raw: Any) -> Any:
+    """The keys this file reads, verbatim; anything unparseable kept whole."""
+
+    try:
+        lineage = json.loads(str(raw or "{}"))
+    except (TypeError, ValueError):
+        return raw
+    if not isinstance(lineage, dict):
+        return raw
+    return json.dumps(
+        {key: lineage[key] for key in CACHED_LINEAGE_KEYS if key in lineage},
+        sort_keys=True, ensure_ascii=False,
+    )
+
+
+def _blob(cache: sqlite3.Connection, value: Any) -> str | None:
+    if value is None:
+        return None
+    body = value if isinstance(value, (str, bytes)) else json.dumps(value)
+    digest = hashlib.sha256(body.encode("utf-8") if isinstance(body, str) else body).hexdigest()
+    cache.execute("INSERT OR IGNORE INTO blob VALUES(?,?)", (digest, body))
+    return digest
+
+
+def open_root_cache(path: Path | str = ROOT_CACHE_PATH) -> sqlite3.Connection:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cache = sqlite3.connect(str(path), timeout=60.0, isolation_level=None)
+    cache.execute("PRAGMA journal_mode=WAL")
+    cache.executescript(ROOT_CACHE_DDL)
+    return cache
+
+
+def _cached_rows(cache: sqlite3.Connection, station_id: str, event_date: str) -> list[dict[str, Any]]:
+    return [
+        dict(zip(ROOT_COLUMNS, (
+            stage, checkpoint, station_id, event_date, tz, decided, ordinals, probabilities,
+            posterior, lineage, content,
+        )))
+        for stage, checkpoint, tz, decided, ordinals, probabilities, posterior, lineage, content
+        in cache.execute(
+            "SELECT r.stage, r.checkpoint_id, r.settlement_timezone, r.decision_at_utc,"
+            " o.body, p.body, r.posterior_sha256, l.body, r.content_sha256 FROM root_row r"
+            " LEFT JOIN blob o ON o.sha = r.bucket_ordinals_sha"
+            " LEFT JOIN blob p ON p.sha = r.probabilities_sha"
+            " LEFT JOIN blob l ON l.sha = r.lineage_sha"
+            " WHERE r.station_id=? AND r.event_date=? ORDER BY r.seq",
+            (station_id, event_date),
+        )
+    ]
+
+
+def _freeze_day(
+    cache: sqlite3.Connection, station_id: str, event_date: str,
+    rows: list[dict[str, Any]], *, now_utc: str,
+) -> None:
+    cache.execute("BEGIN IMMEDIATE")
+    try:
+        cache.execute("DELETE FROM root_row WHERE station_id=? AND event_date=?", (station_id, event_date))
+        cache.execute("DELETE FROM frozen_day WHERE station_id=? AND event_date=?", (station_id, event_date))
+        for seq, row in enumerate(rows):
+            cache.execute(
+                "INSERT INTO root_row VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    station_id, event_date, seq, row["stage"], row["checkpoint_id"],
+                    row["settlement_timezone"], row["decision_at_utc"],
+                    _blob(cache, row["bucket_ordinals_json"]),
+                    _blob(cache, row["probabilities_json"]), row["posterior_sha256"],
+                    _blob(cache, _project_lineage(row["lineage_json"])), row["content_sha256"],
+                ),
+            )
+        cache.execute(
+            "INSERT INTO frozen_day VALUES(?,?,?,?,?)",
+            (station_id, event_date, len(rows), ROOT_CACHE_SCHEMA, now_utc),
+        )
+        cache.execute("COMMIT")
+    except BaseException:
+        if cache.in_transaction:
+            cache.execute("ROLLBACK")
+        raise
+
+
+def _root_order(row: Mapping[str, Any]) -> tuple:
+    return tuple(
+        "" if row.get(key) is None else str(row.get(key))
+        for key in ("event_date", "decision_at_utc", "checkpoint_id")
+    )
+
+
 def _read_probability_roots(
     db: Path,
     *,
     station_id: str,
+    cache_path: Path | str | None = None,
+    now_utc: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Every P0/P0-M of the station, in (event_date, decision, checkpoint) order.
+
+    With ``cache_path``, frozen station-days come from the root cache and the
+    rest from the SSOT; a station-day whose SSOT row count has changed since
+    it was frozen is frozen again.  Without it, every row is read off the SSOT.
+    """
+
     with sqlite3.connect(
         f"file:{db.resolve()}?mode=ro", uri=True, timeout=5.0
     ) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
-            SELECT stage,checkpoint_id,station_id,event_date,
-                   settlement_timezone,decision_at_utc,
-                   bucket_ordinals_json,probabilities_json,posterior_sha256,lineage_json,
-                   content_sha256
-              FROM basket_probability_envelope
-             WHERE station_id=? AND stage IN ('P0','P0-M')
-               AND state='COMMITTED'
-             ORDER BY event_date,decision_at_utc,checkpoint_id
-            """,
-            (station_id,),
-        ).fetchall()
-    return [dict(row) for row in rows]
+        if cache_path is None:
+            rows = conn.execute(
+                ROOTS_SQL + " ORDER BY event_date,decision_at_utc,checkpoint_id",
+                (station_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        counts = {str(day): int(n) for day, n in conn.execute(ROOT_COUNTS_SQL, (station_id,))}
+        now = now_utc or _iso_utc(datetime.now(timezone.utc))
+        frozen_through = (
+            date.fromisoformat(now[:10]) - timedelta(days=ROOT_FREEZE_LAG_DAYS)
+        ).isoformat()
+        cache = open_root_cache(cache_path)
+        try:
+            frozen = {
+                str(day): (int(n), str(schema))
+                for day, n, schema in cache.execute(
+                    "SELECT event_date, row_count, schema FROM frozen_day WHERE station_id=?",
+                    (station_id,),
+                )
+            }
+            # A frozen day is read from the cache unless the SSOT still holds
+            # it and holds a different number of rows (or the cache is from
+            # another schema); a day the SSOT no longer holds stays as frozen.
+            usable = {
+                day for day, (n, schema) in frozen.items()
+                if schema == ROOT_CACHE_SCHEMA and counts.get(day, n) == n
+            }
+            from_ssot = sorted(day for day in counts if day not in usable)
+            ssot_rows: dict[str, list[dict[str, Any]]] = {}
+            for start in range(0, len(from_ssot), 400):
+                chunk = from_ssot[start:start + 400]
+                for row in conn.execute(
+                    ROOTS_SQL + f" AND event_date IN ({','.join('?' * len(chunk))})"
+                    " ORDER BY event_date,decision_at_utc,checkpoint_id",
+                    (station_id, *chunk),
+                ):
+                    ssot_rows.setdefault(str(row["event_date"]), []).append(dict(row))
+            for day in from_ssot:
+                if day <= frozen_through:
+                    _freeze_day(cache, station_id, day, ssot_rows.get(day, []), now_utc=now)
+            out: list[dict[str, Any]] = []
+            for day in sorted(usable | set(from_ssot)):
+                out.extend(ssot_rows.get(day, []) if day in ssot_rows or day in from_ssot
+                           else _cached_rows(cache, station_id, day))
+        finally:
+            cache.close()
+    out.sort(key=_root_order)
+    return out
 
 
 CURVE_HISTORY_DIR = (
@@ -1320,6 +1513,10 @@ def main() -> int:
         ),
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--root-cache", default=str(ROOT_CACHE_PATH),
+        help="frozen station-days' P0/P0-M rows; '' reads every root off the SSOT",
+    )
     args = parser.parse_args()
     packet = build_training_packet(
         truth_rows=_read_truth(
@@ -1333,6 +1530,7 @@ def main() -> int:
         probability_rows=_read_probability_roots(
             args.target_db.expanduser().resolve(),
             station_id=args.station_id.upper(),
+            cache_path=args.root_cache or None,
         ),
         station_id=args.station_id,
         settlement_timezone=args.settlement_timezone,

@@ -346,23 +346,44 @@ def dashboard_fixed_start_floor(_conn: sqlite3.Connection) -> str | None:
 
 
 def metar_trajectory_training_floor(conn: sqlite3.Connection) -> str | None:
-    """P1's trajectory training reads every truth day of a station and its roots.
+    """P1's trajectory training reads every root of a station, from its first day.
 
     ``production_worker._run_metar_trajectory_training`` runs
     ``build_bayes_basket_target_metar_trajectory_training_packet.py`` for one
-    due station a cycle; the packet binds each accepted AWC truth day, from
-    the first, to that day's P0/P0-M roots, and falls back to a historical
-    curve when they are gone -- a different fold.  Until that packet reads
-    frozen roots the way the TAF fit does, every envelope stays.
+    due station a cycle; the packet reads every P0/P0-M the station has, and
+    since 2026-10-01 reads a station-day frozen in its root cache from there.
+    The floor is the first station-day the SSOT holds that the cache has not
+    frozen: until the packet has run once for every station, that is the
+    first day of all.
     """
 
-    row = conn.execute(
-        "SELECT MIN(local_date) FROM calibration_station_daily_high_truth"
-        " WHERE source_lane='AWC' AND qc_status='ACCEPTED'"
-    ).fetchone()
-    if not row or not row[0]:
-        raise OffloadRefused("metar_trajectory_truth_unreadable")
-    return str(row[0])
+    from scripts import build_bayes_basket_target_metar_trajectory_training_packet as packet  # noqa: PLC0415
+
+    held = conn.execute(
+        "SELECT station_id, event_date FROM basket_probability_envelope"
+        " INDEXED BY basket_probability_envelope_asof_idx"
+        " WHERE stage IN ('P0','P0-M') AND state='COMMITTED' GROUP BY station_id, event_date"
+    ).fetchall()
+    if not held:
+        return None
+    path = Path(packet.ROOT_CACHE_PATH)
+    frozen: set[tuple[str, str]] = set()
+    if path.is_file():
+        try:
+            cache = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            try:
+                frozen = {
+                    (str(station), str(day)) for station, day in cache.execute(
+                        "SELECT station_id, event_date FROM frozen_day WHERE schema=?",
+                        (packet.ROOT_CACHE_SCHEMA,),
+                    )
+                }
+            finally:
+                cache.close()
+        except sqlite3.Error as exc:
+            raise OffloadRefused(f"metar_trajectory_root_cache_unreadable:{path}") from exc
+    unfrozen = [str(day) for station, day in held if (str(station), str(day)) not in frozen]
+    return min(unfrozen) if unfrozen else None
 
 
 def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
@@ -629,7 +650,7 @@ POLICIES += (
             "truth landing from TRUTH_LANDING_SINCE and H5 from H5_FROM_UTC (floors); "
             "delta_v2_settlement_label: the envelope an unlabelled fact names; "
             "the METAR trajectory packet (production, one due station a cycle): every "
-            "truth day's roots since the first (a floor that today holds every row)."
+            "root of the station, through its root cache (a floor until frozen)."
         ),
         keep_latest=(
             KeepLatest(
@@ -662,7 +683,7 @@ POLICIES += (
             ),
             DynamicFloor(
                 name="metar_trajectory_training",
-                why="P1's trajectory training binds every truth day since the first to its roots",
+                why="P1's trajectory training reads a station-day off the SSOT until its root cache has frozen it",
                 resolve=metar_trajectory_training_floor,
             ),
             DynamicFloor(
