@@ -12,8 +12,14 @@ the same members made it measurably closer.
 
 So membership is a slow variable and weather is a fast one:
 
-* every qualified native system with a run in hand sits; one without a run
-  this decision sits out and the rest renormalise (the missing-member rule);
+* every qualified native system with a run in hand sits.  One without a run
+  this decision sits out by serving the pool's missing-member view -- every
+  view spanning two families is minted and certified in advance with its own
+  weights (``pool_subsets``), never the whole pool's weights renormalised.
+  A decision that matches no view exactly serves, among the views its runs
+  fit equally well, the broadest one, then the one keeping the most pool
+  weight -- never the most recently minted
+  (``native_ensemble_p0._activation_rank``, charter 236);
 * the mixture keeps every member's spread and the disagreement between their
   centres -- nothing here narrows a distribution by dropping a dissenter;
 * skill still divides the weight, shrunk toward a family-balanced baseline
@@ -118,32 +124,6 @@ def shrink_toward_baseline(
     }
     total = sum(blended.values())
     return {system_id: value / total for system_id, value in blended.items()}
-
-
-def available_pool_weights(
-    weights: Mapping[str, float],
-    available_system_ids: Sequence[str],
-    family_by_system: Mapping[str, str],
-) -> dict[str, float] | None:
-    """The missing-member rule: drop systems without a run, renormalise.
-
-    ``None`` when what is left spans fewer than two families or carries no
-    weight, which is a P0 that must not be served -- never a single-family
-    distribution wearing a pool's name.
-    """
-
-    available = {str(value) for value in available_system_ids}
-    kept = {
-        system_id: float(value)
-        for system_id, value in weights.items()
-        if system_id in available and float(value) > 0.0
-    }
-    if len(_families(list(kept), family_by_system)) < MIN_POOL_FAMILIES:
-        return None
-    total = sum(kept.values())
-    if total <= 0.0:
-        return None
-    return {system_id: value / total for system_id, value in sorted(kept.items())}
 
 
 def stable_pool_weights(

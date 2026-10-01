@@ -12,7 +12,6 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.stable_pool import (  # noqa: E402
-    available_pool_weights,
     family_balanced_weights,
     shrink_toward_baseline,
     stable_pool_weights,
@@ -65,22 +64,22 @@ def test_shrinkage_runs_from_skill_to_baseline_and_never_zeroes_a_member() -> No
             )
 
 
-def test_a_member_without_a_run_sits_out_and_the_rest_renormalise() -> None:
-    weights = {system: 0.25 for system in FOUR}
-    three = available_pool_weights(
-        weights,
-        ["ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05", "DWD_ICON_GLOBAL_EPS"],
-        FAMILIES,
-    )
-    assert three == pytest.approx({
-        "DWD_ICON_GLOBAL_EPS": 1 / 3,
-        "ECMWF_IFS_ENS_OPEN_PF50": 1 / 3,
-        "NOAA_GEFS_05": 1 / 3,
-    })
-    # One family left is not a P0.
-    assert available_pool_weights(
-        weights, ["ECMWF_IFS_ENS_OPEN_PF50"], FAMILIES
-    ) is None
+def test_a_member_without_a_run_is_served_by_its_minted_view() -> None:
+    """Charter 236: the missing-member rule is a certified view, not a renormalisation.
+
+    Every view that leaves one system out is minted beside the whole pool,
+    so a decision without that system's run serves the view's own certified
+    weights.  The renormalising helper the module documented was never
+    wired to serving and is gone.
+    """
+
+    from bayes_basket_target import stable_pool
+    from bayes_basket_target.stable_pool import pool_subsets
+
+    views = set(pool_subsets(FOUR, FAMILIES))
+    for absent in FOUR:
+        assert tuple(sorted(set(FOUR) - {absent})) in views
+    assert not hasattr(stable_pool, "available_pool_weights")
     with pytest.raises(ContractError, match="weight_keys_mismatch"):
         shrink_toward_baseline(
             {"NOAA_GEFS_05": 1.0},
