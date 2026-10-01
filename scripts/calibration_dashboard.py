@@ -7108,7 +7108,7 @@ _LANE_DECISION_RE = re.compile(
 def _intent_lane(decision_id: str) -> str:
     """The lane that minted an intent: ``basket`` for a plain decision id,
     else the prefix a side lane writes (recycle998, misbuyexit, tiebreak,
-    p1_tail, p1_consensus, proper_bet).  The prefix may carry underscores: until
+    p1_tail, p1_consensus, proper_bet, tail_short).  The prefix may carry underscores: until
     2026-09-23 the pattern stopped at the first one, so every P1 尾段线 and
     同心线 order read as a basket buy while the basket lane was paused."""
 
@@ -7301,7 +7301,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {
         "intent_count": 0, "submitted_count": 0, "accepted_count": 0,
         "notional_usdc": 0.0, "matched_notional_usdc": 0.0, "rows": [],
-        "book": {}, "exchange": {}, "pnl": {}, "plan_state": {},
+        "exchange": {}, "pnl": {}, "plan_state": {},
         "market_slugs": {},
     }
     if not _table_exists(conn, "basket_target_order_intents"):
@@ -7342,7 +7342,7 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             "   OR i.decision_id IN ("
             "     SELECT decision_id FROM basket_target_order_intents"
             "     WHERE live_submit_authorized=1 AND state='filled')"
-            # Every sell: a resting 0.99 recycle sell can stand for days and
+            # Every sell: a resting recycle sell can stand for days and
             # the newest-200 window would drop it while it still rests.
             + ("   OR i.order_action='SELL'" if has_action else "") +
             " )"
@@ -7474,112 +7474,9 @@ def _collect_live_orders(conn: sqlite3.Connection) -> dict[str, Any]:
             pass
     out["notional_usdc"] = round(out["notional_usdc"], 4)
     out["matched_notional_usdc"] = round(out["matched_notional_usdc"], 4)
-    out["book"] = _collect_order_book(conn)
     out["exchange"] = _collect_order_exchange(conn)
     out["pnl"] = _collect_live_pnl(conn)
     return out
-
-
-def _collect_order_book(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The live intent book, cut the three ways a reader asks for.
-
-    Live only (user ruling, 2026-08-31): every query here is filtered to
-    ``live_submit_authorized=1``.  The paper intents are a different book
-    and counting them beside live ones in the same table is how the two
-    get added up by eye.  Their count is carried separately, named as
-    excluded, for the one sentence that explains an empty panel -- a
-    reader who sees zero live intents still needs to know whether the
-    lane is minting anything at all.
-    """
-
-    book: dict[str, Any] = {}
-    joined = (
-        " FROM basket_target_order_intents i"
-        " LEFT JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
-        " WHERE i.live_submit_authorized=1"
-    )
-    try:
-        book["paper_excluded"] = int(conn.execute(
-            "SELECT COUNT(*) FROM basket_target_order_intents"
-            " WHERE live_submit_authorized=0"
-        ).fetchone()[0])
-    except sqlite3.Error:
-        book["paper_excluded"] = 0
-    try:
-        row = conn.execute(
-            "SELECT COUNT(*),"
-            " COALESCE(SUM(i.requested_notional_usdc),0),"
-            " AVG(i.requested_notional_usdc), AVG(i.limit_price),"
-            " COUNT(DISTINCT d.station_id), COUNT(DISTINCT i.decision_id),"
-            " COUNT(DISTINCT i.cycle_id),"
-            " MIN(d.event_date), MAX(d.event_date), MAX(i.created_at)"
-            + joined
-        ).fetchone()
-    except sqlite3.Error:
-        return book
-    if not row or not row[0]:
-        book["total"] = 0
-        return book
-    book.update({
-        "total": int(row[0]),
-        "notional_usdc": round(float(row[1] or 0.0), 2),
-        "mean_notional_usdc": round(float(row[2] or 0.0), 3),
-        "mean_limit_price": round(float(row[3] or 0.0), 4),
-        "stations": int(row[4] or 0), "decisions": int(row[5] or 0),
-        "cycles": int(row[6] or 0),
-        "first_event_date": str(row[7] or ""),
-        "last_event_date": str(row[8] or ""),
-        "last_minted_at": str(row[9] or ""),
-    })
-    try:
-        book["by_state"] = [
-            {"state": str(state), "count": int(count),
-             "notional_usdc": round(float(notional or 0.0), 2)}
-            for state, count, notional in conn.execute(
-                "SELECT i.state, COUNT(*),"
-                " COALESCE(SUM(i.requested_notional_usdc),0)"
-                " FROM basket_target_order_intents i"
-                " WHERE i.live_submit_authorized=1"
-                " GROUP BY i.state ORDER BY COUNT(*) DESC"
-            )
-        ]
-    except sqlite3.Error:
-        book["by_state"] = []
-    try:
-        book["by_day"] = [
-            {"event_date": str(day), "count": int(count),
-             "stations": int(stations or 0),
-             "notional_usdc": round(float(notional or 0.0), 2)}
-            for day, count, stations, notional in conn.execute(
-                "SELECT d.event_date, COUNT(*),"
-                " COUNT(DISTINCT d.station_id),"
-                " COALESCE(SUM(i.requested_notional_usdc),0)"
-                + joined +
-                " AND d.event_date IS NOT NULL"
-                " GROUP BY d.event_date ORDER BY d.event_date DESC LIMIT 14"
-            )
-        ]
-    except sqlite3.Error:
-        book["by_day"] = []
-    try:
-        book["by_station"] = [
-            {"station_id": str(station), "count": int(count),
-             "days": int(days or 0),
-             "mean_limit_price": round(float(price or 0.0), 4),
-             "notional_usdc": round(float(notional or 0.0), 2)}
-            for station, count, days, price, notional in conn.execute(
-                "SELECT d.station_id, COUNT(*),"
-                " COUNT(DISTINCT d.event_date), AVG(i.limit_price),"
-                " COALESCE(SUM(i.requested_notional_usdc),0)"
-                + joined +
-                " AND d.station_id IS NOT NULL"
-                " GROUP BY d.station_id"
-                " ORDER BY SUM(i.requested_notional_usdc) DESC LIMIT 12"
-            )
-        ]
-    except sqlite3.Error:
-        book["by_station"] = []
-    return book
 
 
 def _collect_order_exchange(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -12278,6 +12175,7 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     tiebreak = lanes["lanes"].get("tiebreak") or {}
     out: dict[str, Any] = {
         "available": True,
+        "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "settings": {
             "enabled": tiebreak.get("enabled") is True,
             "stake_usdc": tiebreak.get("stake_usdc"),
@@ -12371,21 +12269,24 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "last_at_utc": last_at, "refusals": refusals,
             "fired_rows": fired_rows, "by_day": by_day, "by_rule": by_rule,
         }
-    # Which rule version scored each order.  Charter 163: the ask-crossing
-    # rows (…_spread_v2_1) and the resting rows (…_spread_maker_v2_2) are two
-    # strategies priced on two sides of the book, and an edge averaged over
-    # both is a number about neither.
-    version_by_intent: dict[str, str] = {}
-    if has_eval:
-        version_by_intent = {
-            str(r[0]): str(r[1])
-            for r in conn.execute(
-                "SELECT order_intent_id, rule_version FROM tiebreak_lane_evaluation"
-                " WHERE order_intent_id IS NOT NULL"
-            )
-        }
+    # A station-day can repost several intents.  The evaluation row only
+    # points at its latest one, so it cannot label earlier fills.  The
+    # decision signature is the immutable rule that minted every intent.
+    version_by_decision: dict[str, str] = {}
+    for decision_id, details_json in conn.execute(
+        "SELECT decision_id, details_json FROM auto_trade_decisions"
+        " WHERE decision_id LIKE 'tiebreak_decision_%'"
+    ):
+        signature = (json.loads(details_json).get("decision_signature") or {})
+        version = str(signature.get("rule") or "")
+        if not version.startswith("tiebreak_"):
+            raise ValueError(f"tiebreak_decision_rule_missing:{decision_id}")
+        version_by_decision[str(decision_id)] = version
     book = _render_live_book(conn)
     settled = book.get("settled") or {}
+    if "sold_by_intent" not in book:
+        raise ValueError("tiebreak_sale_allocation_missing")
+    sold_by_intent = book["sold_by_intent"]
     legs = [
         leg for leg in (book.get("legs") or [])
         if str(leg.get("decision_id") or "").startswith("tiebreak_decision_")
@@ -12396,8 +12297,14 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         landed = settled.get(key)
         filled = float(leg.get("filled_size") or 0.0)
         notional = float(leg.get("filled_notional_usdc") or 0.0)
+        sold_size, sale_proceeds = sold_by_intent.get(
+            str(leg.get("order_intent_id") or ""), (0.0, 0.0)
+        )
         hit = (landed[0] == leg["bucket"]) if (landed and filled > 0) else None
-        payout = filled if hit else (0.0 if hit is False else None)
+        payout = (
+            sale_proceeds + (filled - sold_size if hit else 0.0)
+            if hit is not None else None
+        )
         trades.append({
             "order_intent_id": leg.get("order_intent_id"),
             "station_id": leg["station_id"], "event_date": leg["event_date"],
@@ -12406,13 +12313,14 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "requested_size": leg.get("requested_size"),
             "requested_notional_usdc": leg.get("requested_notional_usdc"),
             "filled_size": filled, "filled_notional_usdc": notional,
+            "sold_size": sold_size, "sale_proceeds_usdc": sale_proceeds,
             "ask_paid": (notional / filled) if filled > 0 else None,
             "claimed_probability": leg.get("claimed_probability"),
             "state": leg.get("state"), "created_at": leg.get("created_at"),
             "settled_bucket": landed[0] if landed else None,
             "hit": hit, "payout_usdc": payout,
             "pnl_usdc": (payout - notional) if payout is not None else None,
-            "rule_version": version_by_intent.get(str(leg.get("order_intent_id") or "")),
+            "rule_version": version_by_decision.get(str(leg.get("decision_id") or "")),
         })
     trades.sort(key=lambda t: (t["event_date"], t["station_id"]), reverse=True)
     filled_rows = [t for t in trades if t["filled_size"] > 0]
@@ -12423,38 +12331,41 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     hits = sum(1 for t in settled_rows if t["hit"])
     avg_ask = (stake / shares) if shares > 0 else None
     hit_rate = (hits / len(settled_rows)) if settled_rows else None
-    edge_rows = [
-        ((1.0 if t["hit"] else 0.0) - (t["ask_paid"] or 0.0), t["event_date"])
-        for t in settled_rows if t["ask_paid"] is not None
-    ]
-    edge = (sum(e for e, _d in edge_rows) / len(edge_rows)) if edge_rows else None
-    ci = None
-    event_days = sorted({t["event_date"] for t in settled_rows})
-    if len(edge_rows) >= 5 and len(event_days) >= 3:
-        import random as _random  # noqa: PLC0415
+    def unit_edge(t: dict[str, Any]) -> float:
+        """Cash received per filled share, less its actual paid price."""
 
-        rng = _random.Random(146)
-        by_day_edges: dict[str, list[float]] = defaultdict(list)
-        for e, d in edge_rows:
-            by_day_edges[d].append(e)
-        days_list = list(by_day_edges)
-        draws: list[float] = []
-        for _ in range(500):
-            picked = [rng.choice(days_list) for _ in days_list]
-            pool = [e for d in picked for e in by_day_edges[d]]
-            draws.append(sum(pool) / len(pool))
-        draws.sort()
-        ci = [draws[int(0.05 * len(draws))], draws[int(0.95 * len(draws))]]
-    halves = None
-    if len(event_days) >= 2:
-        cut = event_days[len(event_days) // 2]
-        first = [e for e, d in edge_rows if d < cut]
-        second = [e for e, d in edge_rows if d >= cut]
-        halves = {
-            "split_event_date": cut,
-            "first": (sum(first) / len(first)) if first else None,
-            "second": (sum(second) / len(second)) if second else None,
-        }
+        return (t["payout_usdc"] - t["filled_notional_usdc"]) / t["filled_size"]
+
+    def edge_summary(rows: list[dict[str, Any]]) -> tuple[float | None, list[float] | None, dict[str, Any] | None, int]:
+        edge_rows = [(unit_edge(t), t["event_date"]) for t in rows]
+        edge = (sum(e for e, _d in edge_rows) / len(edge_rows)) if edge_rows else None
+        event_days = sorted({d for _e, d in edge_rows})
+        ci = None
+        if len(edge_rows) >= 5 and len(event_days) >= 3:
+            rng = random.Random(146)
+            by_day_edges: dict[str, list[float]] = defaultdict(list)
+            for e, d in edge_rows:
+                by_day_edges[d].append(e)
+            draws: list[float] = []
+            for _ in range(10000):
+                pool = [e for d in (rng.choice(event_days) for _ in event_days)
+                        for e in by_day_edges[d]]
+                draws.append(sum(pool) / len(pool))
+            draws.sort()
+            ci = [draws[int(0.05 * len(draws))], draws[int(0.95 * len(draws))]]
+        halves = None
+        if len(event_days) >= 2:
+            cut = event_days[len(event_days) // 2]
+            first = [e for e, d in edge_rows if d < cut]
+            second = [e for e, d in edge_rows if d >= cut]
+            halves = {
+                "split_event_date": cut,
+                "first": (sum(first) / len(first)) if first else None,
+                "second": (sum(second) / len(second)) if second else None,
+            }
+        return edge, ci, halves, len(event_days)
+
+    edge, ci, halves, event_days = edge_summary(settled_rows)
     # v2.1 (user ruling 2026-09-18): the recorded feature, split the way the
     # reading was -- the market's move on the model's bucket since the
     # station-day's previous decision -- and, per bin, what the lane's own
@@ -12538,8 +12449,8 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                 "hit_rate": (hits / len(settled_t)) if settled_t else None,
                 "avg_ask": (stake_t / shares_t) if shares_t > 0 else None,
                 "realised_minus_ask": (
-                    (hits / len(settled_t)) - (stake_t / shares_t)
-                    if settled_t and shares_t > 0 else None
+                    sum(unit_edge(t) for t in settled_t) / len(settled_t)
+                    if settled_t else None
                 ),
                 "median_gap_minutes": (gaps[len(gaps) // 2] if gaps else None),
                 "stage_mix": {
@@ -12624,10 +12535,20 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "hit_rate": (hits_v / len(settled_v)) if settled_v else None,
             "avg_price": (stake_v / shares_v) if shares_v > 0 else None,
             "realised_minus_price": (
-                (hits_v / len(settled_v)) - (stake_v / shares_v)
-                if settled_v and shares_v > 0 else None
+                sum(unit_edge(t) for t in settled_v) / len(settled_v)
+                if settled_v else None
             ),
         })
+    from bayes_basket_target.strategy_lanes import opening_stages  # noqa: PLC0415
+    from bayes_basket_target.tiebreak_lane import rule_version_for  # noqa: PLC0415
+
+    current_version = rule_version_for(tiebreak.get("rule"))
+    current_stages = opening_stages(tiebreak)
+    current_rows = [
+        t for t in settled_rows
+        if t["rule_version"] == current_version and t["stage"] in current_stages
+    ]
+    current_edge, current_ci, current_halves, current_days = edge_summary(current_rows)
     out["by_rule_version"] = by_version
     out["feature_split"] = feature_split
     out["feature_split_by_stage"] = feature_split_by_stage
@@ -12645,16 +12566,24 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         "roi": ((payout - stake) / stake) if stake > 0 else None,
         "avg_ask": avg_ask, "hit_rate": hit_rate,
         "realised_minus_ask": edge, "realised_minus_ask_ci90": ci,
-        "halves": halves, "event_days": len(event_days),
+        "halves": halves, "event_days": event_days,
         "acceptance": {
-            "lower_bound_positive": bool(ci and ci[0] > 0),
+            "rule_version": current_version,
+            "opening_stages": sorted(current_stages),
+            "settled": len(current_rows),
+            "pnl_usdc": sum(t["pnl_usdc"] for t in current_rows),
+            "realised_minus_price": current_edge,
+            "ci90": current_ci,
+            "halves": current_halves,
+            "lower_bound_positive": bool(current_ci and current_ci[0] > 0),
             "halves_same_sign": bool(
-                halves and halves["first"] is not None and halves["second"] is not None
-                and (halves["first"] > 0) == (halves["second"] > 0)
+                current_halves and current_halves["first"] is not None
+                and current_halves["second"] is not None
+                and (current_halves["first"] > 0) == (current_halves["second"] > 0)
             ),
-            "event_days": len(event_days), "event_days_needed": 30,
+            "event_days": current_days, "event_days_needed": 30,
         },
-        "rows": trades[:60],
+        "rows": filled_rows,
     }
     return out
 
@@ -13121,6 +13050,204 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     }
     return out
 
+
+
+def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
+    """H1 readout from its evaluation, intent and reconciliation lineage."""
+
+    lanes = _load_strategy_lanes()
+    cfg = lanes["lanes"].get("tail_short") or {}
+    out: dict[str, Any] = {
+        "available": True,
+        "settings": {k: cfg.get(k) for k in (
+            "enabled", "rule", "opening_stages", "min_hours_to_settlement",
+            "max_market_price", "min_rungs_from_mode", "min_yes_bid",
+            "stake_usdc", "max_legs_per_station_day", "max_daily_cost_usdc",
+            "send_book_fresh_seconds",
+        )},
+        "evaluations": {"available": False},
+        "trades": {"available": False},
+    }
+    table = "tail_short_lane_evaluation"
+    if not _table_exists(conn, table):
+        return out
+    total, sent, first_at, last_at = conn.execute(
+        f"SELECT COUNT(*),COALESCE(SUM(sent),0),MIN(evaluated_at_utc),"
+        f" MAX(evaluated_at_utc) FROM {table}"
+    ).fetchone()
+    refusals = [
+        {"reason": str(reason or "sent"), "count": int(count)}
+        for reason, count in conn.execute(
+            f"SELECT refusal,COUNT(*) FROM {table} GROUP BY refusal"
+            " ORDER BY COUNT(*) DESC LIMIT 15"
+        )
+    ]
+    recent = [
+        {"station_id": r[0], "event_date": r[1], "bucket": r[2],
+         "yes_bid": r[3], "market_q": r[4], "rungs_from_mode": r[5],
+         "refusal": r[6], "evaluated_at_utc": r[7]}
+        for r in conn.execute(
+            f"SELECT station_id,event_date,bucket,yes_bid,market_q,"
+            f" rungs_from_mode,refusal,evaluated_at_utc FROM {table}"
+            " ORDER BY evaluated_at_utc DESC LIMIT 30"
+        )
+    ]
+    out["evaluations"] = {
+        "available": True, "total": int(total), "sent": int(sent),
+        "first_at_utc": first_at, "last_at_utc": last_at,
+        "refusals": refusals, "recent": recent,
+    }
+    if not all(_table_exists(conn, t) for t in (
+        "basket_target_order_intents", "basket_target_order_reconciliations",
+        "basket_target_execution_cycles",
+    )):
+        return out
+    orders = conn.execute(
+        f"SELECT e.station_id,e.event_date,e.bucket,e.yes_bid,e.market_q,"
+        " e.rungs_from_mode,e.book_source,e.book_age_seconds,"
+        " i.order_intent_id,i.limit_price,i.requested_size,i.state,i.created_at,"
+        " COALESCE(r.filled_size,0),COALESCE(r.filled_notional_usdc,0),"
+        " r.exchange_order_id,r.state,i.token_id,e.sent"
+        f" FROM {table} e"
+        " JOIN basket_target_order_intents i ON i.order_intent_id=e.order_intent_id"
+        " LEFT JOIN basket_target_order_reconciliations r"
+        " ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.live_submit_authorized=1 AND i.side='NO' AND i.order_action='BUY'"
+        " ORDER BY i.created_at DESC"
+    ).fetchall()
+    # A recycle sell can close a NO position before settlement.  Attribute a
+    # shared token's proceeds in proportion to each buy's filled shares.
+    no_flows = conn.execute(
+        "SELECT c.station_id,c.event_date,i.bucket,i.token_id,i.order_action,"
+        " SUM(r.filled_size),SUM(r.filled_notional_usdc)"
+        " FROM basket_target_order_intents i"
+        " JOIN basket_target_execution_cycles c ON c.cycle_id=i.cycle_id"
+        " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.live_submit_authorized=1 AND i.side='NO'"
+        " AND r.state IN ('resolved_filled','resolved_partial') AND r.filled_size>0"
+        " GROUP BY c.station_id,c.event_date,i.bucket,i.token_id,i.order_action"
+    ).fetchall()
+    flows: dict[tuple[str, str, str, str], dict[str, float]] = {}
+    for station, day, bucket, token, action, shares, amount in no_flows:
+        slot = flows.setdefault((str(station), str(day), str(bucket), str(token)), {})
+        slot[str(action)] = float(shares or 0.0)
+        slot[str(action) + "_amount"] = float(amount or 0.0)
+    h1_tokens = {str(r[17]) for r in orders}
+    recycle_sells = [
+        {"order_intent_id": str(intent), "token_id": str(token),
+         "state": str(state), "reconciliation_state": str(recon or ""),
+         "exchange_order_id": str(exchange_id or ""),
+         "filled_size": float(filled or 0.0)}
+        for intent, token, state, recon, exchange_id, filled in conn.execute(
+            "SELECT i.order_intent_id,i.token_id,i.state,r.state,r.exchange_order_id,"
+            " COALESCE(r.filled_size,0)"
+            " FROM basket_target_order_intents i"
+            " LEFT JOIN basket_target_order_reconciliations r"
+            " ON r.order_intent_id=i.order_intent_id"
+            " WHERE i.side='NO' AND i.order_action='SELL'"
+            " AND i.live_submit_authorized=1 AND i.order_intent_id LIKE 'recycle998_%'"
+        )
+        if str(token) in h1_tokens
+    ]
+    uncertain_sale_tokens = {
+        r["token_id"] for r in recycle_sells
+        if r["state"] == "reconcile_required"
+        or (r["filled_size"] > 0 and r["reconciliation_state"] not in (
+            "resolved_filled", "resolved_partial"
+        ))
+    }
+    settled = dict(_render_live_book(conn).get("settled") or {})
+    # The common live book starts from decision-backed legs.  H1's own
+    # decision id has no auto_trade_decisions row, so ask the same canonical
+    # settlement resolver for H1 scopes the book did not already cover.
+    h1_scopes = {(str(r[0]), str(r[1])) for r in orders}
+    settled.update(live_book.settled_buckets(conn, h1_scopes - set(settled)))
+    trades = []
+    for r in orders:
+        station, day, bucket, token = str(r[0]), str(r[1]), str(r[2]), str(r[17])
+        filled, cost = float(r[13] or 0.0), float(r[14] or 0.0)
+        flow = flows.get((station, day, bucket, token)) or {}
+        bought = flow.get("BUY", 0.0)
+        sold = min(filled, flow.get("SELL", 0.0) * filled / bought) if bought > 0 else 0.0
+        proceeds = flow.get("SELL_amount", 0.0) * filled / bought if bought > 0 else 0.0
+        landed = settled.get((station, day))
+        hit = (landed[0] != bucket) if landed and filled > 0 else None
+        # A confirmed sale realizes its proceeds even before the event's
+        # official truth arrives.  An unsold remainder still needs that truth.
+        closed_by_sale = filled > 0 and sold >= filled - 1e-9
+        payout = (
+            proceeds + (filled - sold if hit else 0.0)
+            if token not in uncertain_sale_tokens and (hit is not None or closed_by_sale)
+            else None
+        )
+        paid_price = cost / filled if filled > 0 else None
+        open_cost = cost * max(filled - sold, 0.0) / filled if filled > 0 else 0.0
+        sale_pnl = proceeds - cost * sold / filled if filled > 0 else 0.0
+        remaining = max(0.0, filled - sold)
+        settlement_pnl = (
+            (remaining if hit else 0.0) - cost * remaining / filled
+            if hit is not None and filled > 0 else 0.0
+        )
+        realised_pnl = (
+            sale_pnl + settlement_pnl
+            if token not in uncertain_sale_tokens and filled > 0 else None
+        )
+        trades.append({
+            "station_id": station, "event_date": day, "bucket": bucket,
+            "yes_bid": r[3], "market_q": r[4], "rungs_from_mode": r[5],
+            "book_source": r[6], "book_age_seconds": r[7],
+            "order_intent_id": r[8], "limit_price": r[9],
+            "requested_size": r[10], "state": r[11], "created_at": r[12],
+            "sent": bool(r[18]),
+            "filled_size": filled, "filled_notional_usdc": cost,
+            "exchange_order_id": r[15], "reconciliation_state": r[16],
+            "sold_size": sold, "sale_proceeds_usdc": proceeds,
+            "sale_realised_pnl_usdc": sale_pnl if token not in uncertain_sale_tokens else None,
+            "realised_pnl_usdc": realised_pnl,
+            "paid_price": paid_price,
+            "net_odds": (1.0 - paid_price) / paid_price if paid_price and paid_price < 1 else None,
+            "open_cost_usdc": 0.0 if payout is not None else open_cost,
+            "close_reason": "sale" if closed_by_sale else ("settlement" if hit is not None else None),
+            "settled_bucket": landed[0] if landed else None, "hit": hit,
+            "payout_usdc": payout,
+            "pnl_usdc": payout - cost if payout is not None else None,
+        })
+    filled_rows = [r for r in trades if r["filled_size"] > 0]
+    closed_rows = [r for r in filled_rows if r["payout_usdc"] is not None]
+    stake = sum(r["filled_notional_usdc"] for r in closed_rows)
+    payout = sum(r["payout_usdc"] or 0.0 for r in closed_rows)
+    closed_shares = sum(r["filled_size"] for r in closed_rows)
+    wins = sum(r["pnl_usdc"] > 0 for r in closed_rows)
+    out["trades"] = {
+        "available": True, "rows": trades[:100],
+        "sent": sum(1 for r in trades if r["sent"]),
+        "filled": len(filled_rows),
+        "filled_shares": sum(r["filled_size"] for r in filled_rows),
+        "spent_usdc": sum(r["filled_notional_usdc"] for r in filled_rows),
+        "recycled_shares": sum(r["sold_size"] for r in filled_rows),
+        "recycle_proceeds_usdc": sum(r["sale_proceeds_usdc"] for r in filled_rows),
+        "recycle_realised_pnl_usdc": sum(
+            r["sale_realised_pnl_usdc"] or 0.0 for r in filled_rows
+        ),
+        "realised_pnl_usdc": sum(r["realised_pnl_usdc"] or 0.0 for r in filled_rows),
+        "recycle_order_count": len(recycle_sells),
+        "recycle_submitted": sum(1 for r in recycle_sells if r["exchange_order_id"]),
+        "recycle_reconcile_required": sum(
+            1 for r in recycle_sells if r["state"] == "reconcile_required"
+        ),
+        "in_flight_usdc": sum(r["open_cost_usdc"] for r in filled_rows),
+        "unresolved": sum(1 for r in trades if r["state"] in ("prepared", "submitting", "submitted", "reconcile_required")
+                          and r["reconciliation_state"] not in ("resolved_filled", "resolved_partial", "resolved_not_placed")),
+        "official_settled": sum(r["hit"] is not None for r in filled_rows),
+        "closed": len(closed_rows), "wins": wins,
+        "win_rate": wins / len(closed_rows) if closed_rows else None,
+        "avg_paid_price": stake / closed_shares if closed_shares else None,
+        "net_odds": (closed_shares - stake) / stake if stake else None,
+        "stake_usdc": stake,
+        "payout_usdc": payout, "pnl_usdc": payout - stake,
+        "roi": (payout - stake) / stake if stake > 0 else None,
+    }
+    return out
 
 
 def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -14708,15 +14835,16 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "delta_v2_authority",
     # The live book: what the page is opened for mid-session.
     "live_readiness", "live_selection", "live_days", "live_money",
-    # The strategy lanes' own money pages (秤砣线 charter 146, P1 尾段线 166,
-    # 同心线 203): the same live book, cut by each lane's decision rows.  As
+    # The remaining strategy lanes' money pages: the same live book, cut
+    # by each lane's decision rows.  As
     # page-backed sections with a four-minute lifetime they were reached at
     # the end of the run, never inside a gap, and served "from its page (no
     # gap)" on every render from 2026-09-24 09:33Z: on 09-25 13:37Z the page
     # read 55 settled tiebreak legs at -27.45 USDC while the book held 71 at
     # -1.04, the day of the charter-146 review (user: 「但是前端显示的数据却不
     # 一样」).  A P&L a day old is a wrong P&L, not a slow one.
-    "tiebreak_lane", "p1_tail_lane", "p1_consensus_lane", "proper_bet_lane",
+    "tiebreak_lane", "proper_bet_lane",
+    "tail_short_lane",
 })
 #: A section that cost at least this much last time is the research render's
 #: to compute (``--refresh-research``, its own launchd clock, user ruling
@@ -15675,12 +15803,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     # The strategy lanes' money pages: every-run, on the live book the
     # sections above already built this run.
     tiebreak_lane = _cached_section("tiebreak_lane", collect_tiebreak_lane, conn)
-    p1_tail_lane = _cached_section("p1_tail_lane", collect_p1_tail_lane, conn)
-    p1_consensus_lane = _cached_section(
-        "p1_consensus_lane", collect_p1_consensus_lane, conn
-    )
     proper_bet_lane = _cached_section(
         "proper_bet_lane", collect_proper_bet_lane, conn
+    )
+    tail_short_lane = _cached_section(
+        "tail_short_lane", collect_tail_short_lane, conn
     )
     previous_windows = _previous_version_windows(conn)
     previous_salt = json.dumps(previous_windows, sort_keys=True)
@@ -15976,10 +16103,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "truth_landing": truth_landing,
         "live_readiness": live_readiness,
         "tiebreak_lane": tiebreak_lane,
-        "p1_tail_lane": p1_tail_lane,
         "board_evidence": collect_board_evidence(),
-        "p1_consensus_lane": p1_consensus_lane,
         "proper_bet_lane": proper_bet_lane,
+        "tail_short_lane": tail_short_lane,
         "chain": chain,
         "hosted_sweeps": hosted_sweeps,
         "ssot_capacity": ssot_capacity,
@@ -18186,7 +18312,7 @@ function moneyDataBoard(){
       M.capital_usdc==null ? "—" : num(M.capital_usdc,0)+" U"}（预算旋钮）${
       M.pending_legs ? ` · 待结算 ${M.pending_legs} 腿不计` : ""}</span>
     ${(M.pending_sales||{}).sold_shares > 0 ? `<span class="pb-kv"
-      title="还没结算的站日上主动卖出（0.99 回收、144 卖回）的股：卖出时就已实现；站日结算后并入上面的总账"><span class="muted">未结算日已卖出</span>
+      title="还没结算的站日上主动卖出（0.998 回收、144 卖回）的股：卖出时就已实现；站日结算后并入上面的总账"><span class="muted">未结算日已卖出</span>
       <b>${num(M.pending_sales.proceeds_usdc)} U</b>
       <span class="muted">成本 ${num(M.pending_sales.cost_usdc)} U · ${M.pending_sales.station_days} 站日</span>
       <b class="${text(M.pending_sales.realised_pnl_usdc)}">${usd(M.pending_sales.realised_pnl_usdc)}</b></span>` : ""}
@@ -19352,8 +19478,9 @@ function liveOrderCard(L){
   // A sell leg (0.99 recycle, charter 144 sell-back) is drawn as a sell:
   // 卖 before the price, and its own words for its states -- a resting GTC
   // sell is 挂着, not the … a buy rung waiting on a fill wears.
-  const LANE_WORD = {recycle998:"0.99 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线",
-    p1_tail:"P1 尾段线", p1_consensus:"同心线", proper_bet:"Proper 下注线", basket:"篮子"};
+  const LANE_WORD = {recycle998:"0.998 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线",
+    p1_tail:"P1 尾段线", p1_consensus:"同心线", proper_bet:"Proper 下注线",
+    tail_short:"远尾做空 H1", basket:"篮子"};
   const sellChip = (r)=>{
     const st = String(r.state||"");
     const sold = Number(r.filled_size||0);
@@ -19544,7 +19671,7 @@ function liveOrderCard(L){
         byLane.get(k).push(l);
       }
       const sellLines = [...byLane.entries()].map(([lane, legs])=>`<div style="${row};margin:3px 0 0 18px">
-          <span class="pill amber" style="font-size:10px" title="卖出车道挂在交易所的卖单：GTC 限价 0.99 的回收单会一直挂到有人按这个价接，宪章 144 卖回单按买一价卖出">挂单卖出 · ${h(LANE_WORD[lane]||lane)}</span>
+          <span class="pill amber" style="font-size:10px" title="卖出车道挂在交易所的卖单：旧 0.99 单按确认状态撤换；0.998 回收单只在交易所允许该刻度时挂出，宪章 144 卖回单按买一价卖出">挂单卖出 · ${h(LANE_WORD[lane]||lane)}</span>
           <span>${rungSorted(legs, l=>l.bucket).map(l=>sellChip(l)).join("")}</span></div>`).join("");
       if(lines.length === 1 && !sellLines) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
         ${head}${legsOf(lines[0])}${money}</div>`;
@@ -19669,81 +19796,7 @@ function liveOrderCard(L){
 }
 
 
-// The live intent book, and only it (user ruling, 2026-08-31): paper
-// intents are a different book and were being read as this one's rows.
-// With no live intent yet the panel says so in one line rather than
-// rendering three empty tables -- but it does not disappear, because a
-// missing panel and an empty one answer different questions.
-function orderBookCard(B){
-  const paper = B.paper_excluded||0;
-  const foot = `<details class="note"><summary>这里只数实盘 · 纸面意向为什么不算在内</summary>
-      <div class="muted">本板块每一个数都过
-      <span class="mono">live_submit_authorized=1</span> 这一道筛——
-      那一位由 runtime 合同给，只有它为 1 的意向才会真的交到交易所。<br>
-      账本里另有 <b>${paper}</b> 笔 <span class="mono">live_submit_authorized=0</span> 的纸面意向，
-      <b>不计入上面任何一个数</b>：它们跑的是同一套选桶与定规模，但走到交易所边界就停，
-      和实盘是两本账，并排放进同一张表只会被眼睛加到一起。
-      纸面账本自 2026-09-16 起只做规则对照，不在本页出成绩。</div>
-    </details>`;
-  if(!B.total) return `<div class="card" style="margin-top:12px">
-    <div class="muted">实盘意向簿</div>
-    <div style="margin:6px 0">还没有实盘意向。<span class="muted">第一笔铸出后，
-      这里按<b>状态 / 事件日 / 站</b>三个维度分列笔数、名义与均价。</span></div>
-    ${foot}</div>`;
-  const u = (v,d=2)=>v==null?"—":v.toFixed(d)+" U";
-  const share = (n)=>B.total?((100*n/B.total).toFixed(1)+"%"):"—";
-  const tile=(lab,val,sub2,klass)=>`<div class="card">
-    <div class="muted">${lab}</div>
-    <div class="big ${klass||""}">${val}</div>
-    <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
-  const stateRows=(B.by_state||[]).map(r=>`<tr>
-    <td class="mono">${h(r.state)}</td>
-    <td class="mono">${r.count}</td>
-    <td class="mono">${share(r.count)}</td>
-    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td></tr>`).join("");
-  const dayRows=(B.by_day||[]).map(r=>`<tr>
-    <td class="mono">${h(r.event_date)}</td>
-    <td class="mono">${r.count}</td>
-    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
-    <td class="mono">${r.stations}</td></tr>`).join("");
-  const stationRows=(B.by_station||[]).map(r=>`<tr>
-    <td class="mono">${h(r.station_id)}</td>
-    <td class="mono">${r.count}</td>
-    <td class="mono">${(r.notional_usdc||0).toFixed(2)}</td>
-    <td class="mono">${r.days}</td>
-    <td class="mono">${(r.mean_limit_price||0).toFixed(3)}</td></tr>`).join("");
-  return `<div class="card" style="margin-top:12px">
-    <div class="muted">实盘意向簿 · 只数 <span class="mono">live_submit_authorized=1</span> 的行</div>
-    <div class="grid g4" style="margin-top:8px">
-      ${tile("实盘意向", B.total+" 笔", "均单 "+u(B.mean_notional_usdc,3))}
-      ${tile("计划名义合计", u(B.notional_usdc), "全为 BUY/YES")}
-      ${tile("平均限价", (B.mean_limit_price||0).toFixed(4), "按笔简单平均")}
-      ${tile("覆盖", B.stations+" 站",
-        B.decisions+" 个决策 · "+B.cycles+" 个周期<br>"+
-        h(B.first_event_date)+" → "+h(B.last_event_date))}
-    </div>
-    <div class="grid g3" style="margin-top:12px">
-      <div><div class="muted" style="margin-bottom:4px">按状态</div>
-        <div class="scroll"><table><thead><tr><th>状态</th><th>笔</th>
-          <th>占比</th><th>名义u</th></tr></thead>
-          <tbody>${stateRows}</tbody></table></div></div>
-      <div><div class="muted" style="margin-bottom:4px">按事件日（近 14 个有单的日子）</div>
-        <div class="scroll" style="max-height:300px"><table><thead><tr><th>事件日</th>
-          <th>笔</th><th>名义u</th><th>站</th></tr></thead>
-          <tbody>${dayRows}</tbody></table></div></div>
-      <div><div class="muted" style="margin-bottom:4px">按站（名义前 12）</div>
-        <div class="scroll" style="max-height:300px"><table><thead><tr><th>站</th>
-          <th>笔</th><th>名义u</th><th>日</th><th>均价</th></tr></thead>
-          <tbody>${stationRows}</tbody></table></div></div>
-    </div>
-    ${foot}
-  </div>`;
-}
-
-
-// The money board (user ruling, 2026-09-13: 把「组合风险指标」、入场的九个数、
-// 钱 · 这本账值多少、实盘订单、实盘意向簿融合在一个大容器内，做成一个数据看板，
-// 分类展示).  Five readings of what the book is worth sat in three places:
+// The money board groups the live account readings in one container.
 // the 钱 lamp row in the head, two sections under it, and two cards inside
 // 站点实盘上线闸门 -- where the live P&L was read under a paragraph about the
 // arming flag.  They are one container now, in two categories: the paper
@@ -19767,190 +19820,75 @@ const MONEY_BOARD = [
      ["orders", "实盘 · 数据看板与站明细",
       () => safe(() => moneyDataBoard(), "实盘数据看板") + liveMoney((L) => liveOrderCard(L)),
       "sec-live-orders"],
-     ["book", "实盘意向簿",
-      () => liveMoney((L) => orderBookCard((L.live_orders||{}).book||{})),
-      "sec-live-book"],
      // Charter 146: the tiebreak lane's own page -- its switch and stake,
      // every first decision it scored, and its trades on their own.
      ["tiebreak", "秤砣线 · 宪章 146",
       () => tiebreakLane(),
       "sec-tiebreak"],
-     // Charter 166: the tail lane's own page -- its dials, every envelope it
-     // scored, and what the five-minute window cost it.
-     ["p1tail", "P1 尾段线 · 宪章 166",
-      () => p1TailLane(),
-      "sec-p1-tail"],
-     // Charter 203: the consensus lane's own page -- its dials, every P1
-     // decision it judged in the window, the overlap with the tiebreak lane
-     // it does not yield to, and its trades on their own.
-     ["p1consensus", "同心线 · 宪章 203",
-      () => p1ConsensusLane(),
-      "sec-p1-consensus"],
      // Charter 231: the Proper lane's own page -- its window, every P0 first
      // decision it judged (p, q, s = log(p/q), D), the plans the rung pass
      // keeps posting, and its YES and NO legs on their own.
      ["proper", "Proper 下注线 · 宪章 231",
       () => properBetLane(),
-      "sec-proper-bet"]]},
+      "sec-proper-bet"],
+     ["tailshort", "远尾做空 H1 · 宪章 234",
+      () => tailShortLane(),
+      "sec-tail-short"]]},
 ];
 
-// Both live blocks read the live-readiness payload, which is absent when the
+// The live order block reads the live-readiness payload, which is absent when the
 // collector could not build it.  Absent is said, not drawn as empty tiles.
 function liveMoney(render){
   const L = D.live_readiness || {};
   if(!L.available) return `<div class="muted">实盘读数这一轮没有生成
-    （live_readiness 不可用），实盘订单与意向簿无从读起。</div>`;
+    （live_readiness 不可用），实盘订单无从读起。</div>`;
   return render(L);
 }
 
-// 「P1 尾段线」(charter 166): the market's own ladder times our observation
-// likelihood, in the 6-10h bin.  Its own page for the same reason the
-// tiebreak lane has one -- a maker rule and a taker rule averaged together
-// is a number about neither.
-function p1TailLane(){
-  const T=D.p1_tail_lane||{};
-  if(!T.available) return `<div class="muted">P1 尾段线读数这一轮没有生成。</div>`;
+// H1's own fills and NO settlement result.  A filled FOK is a past trade,
+// not an order currently resting at the exchange.
+function tailShortLane(){
+  const T=D.tail_short_lane||{};
+  if(!T.available) return `<div class="muted">H1 读数这一轮没有生成。</div>`;
   const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{};
-  const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
-  const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
-  const sp=v=>v==null?"—":((v>=0?"+":"−")+Math.abs(Math.round(+v*1000)/10)+"点");
-  const n2=v=>v==null?"—":(+v).toFixed(2);
-  const secs=v=>v==null?"—":(Math.round(+v)+"s");
-  const tile=(label,val,sub)=>`<div class="card"><div class="muted">${label}</div>
-    <div style="font-size:20px;font-weight:600">${val}</div>
-    <div class="muted" style="font-size:12px">${sub||""}</div></div>`;
-  const head=`<div class="card"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <b>P1 尾段线</b>
-      <span class="pill ${S.enabled?"green":"amber"}">车道：${S.enabled?"运行":"暂停"}</span>
-      <span class="pill">每笔 ${usd(S.stake_usdc)}</span>
-      <span class="pill">门槛 ${sp(S.hurdle)}</span>
-      <span class="pill">档位 ${n2(S.min_remaining_hours)}–${n2(S.max_remaining_hours)}h</span>
-      <span class="pill">新鲜窗 ${secs(S.envelope_fresh_seconds)}</span>
-      <span class="pill">站日上限 ${S.max_sends_per_station_day==null?"—":S.max_sends_per_station_day} 笔</span>
-      <span class="muted">${S.rule||""}</span>
-    </div>
-    <div class="muted" style="margin-top:6px">规则：一份 METAR 进来、P1 的似然回执说这份报文距本站结算钟还有 6–10 小时时，信念取<b>市场自己的归一化中价梯子</b>（先按硬观测下界把死桶清零再归一），乘上<b>同一个包络的观测似然</b>再归一；哪个桶的信念高出卖一 ${sp(S.hurdle)} 以上，就按卖一 FOK 吃进 ${usd(S.stake_usdc)}，一个桶一辈子只买一次，持到结算不翻手。<b>买的不是 P1</b>——P1 的根输给市场 0.15 nat，这里只把「一份报文说了什么」乘到市场的先验上，赚的是市场读同一份报文之前的那几分钟。<br>
-    ${withEv("p1_tail_replay",(V,e)=>`依据（${evStamp(e)}；${V.reports==null?"—":V.reports.toLocaleString()} 份报文 / ${V.station_days} 站日 / ${V.days} 天）：6–10h 档 t+2 每美元 ${evSg(V.t2_per_dollar,3)}、每股 ${evSg(V.t2_per_share,3)} ${evCi(V.t2_per_share_ci,x=>evSg(x,3))}、${V.days} 天里 ${V.positive_days} 天正；t+5 ${evSg(V.t5_per_dollar,3)}；t+8 ${evSg(V.t8_per_dollar,3)} 且下界穿零；≥10h 档 t+2 ${evSg(V.ge10h_t2_per_dollar,3)}、t+8 ${evSg(V.ge10h_t8_per_dollar,3)}；&lt;6h 档 ${V.days} 天只有 ${V.lt6h_takes} 笔。对数得分同样只有这一档为正（${evSg(V.logscore_nat,3)} nat ${evCi(V.logscore_ci,x=>evSg(x,3))}，对报文后 15 分钟的市场 ${evSg(V.market_15min_nat,3)}）。<br>
-    <b>诚实边界</b>：6–10h 这个档是 ${h(String(V.bin_chosen_on||"?"))} 看过结果之后挑出来的，真正没被任何选择看过的只有 ${h(String(V.unseen_days||"?"))} 两天 ${V.unseen_takes} 笔（${evSg(V.unseen_per_dollar,3)}/$）；而且实测用的是研究自己拟的似然、β=1，本车道乘的是<b>服务件的似然</b>（v17 直接对数更新，λ 已乘），两条向量接近但不相同。所以上面是边际的形状，不是本车道盈亏的预测；本车道自己的评估行才是算数的那份。`)}与秤砣线的三条互斥：同桶不重复买、不排在任何车道的挂着的买单后面、账本各记各的指纹。</div></div>`;
-  const tiles=`<div class="grid">
-    ${tile("打分过的包络", E.available?E.total:"—", `${E.event_days||0} 个事件日 · 触发 ${E.fired||0}`)}
-    ${tile("送出 / 成交", `${R.available?R.count:"—"} / ${R.available?R.filled:"—"}`, `已结算 ${R.settled||0} 笔`)}
-    ${tile("平均买价", R.available?n2(R.avg_ask):"—", `命中 ${pc(R.hit_rate)}`)}
-    ${tile("每股边际", R.available?sp(R.edge_per_share):"—", "结算 − 实付，仅已结算笔")}
-    ${tile("每美元", R.available&&R.pnl_per_dollar!=null?((R.pnl_per_dollar>=0?"+":"−")+Math.abs(R.pnl_per_dollar*100).toFixed(1)+"%"):"—", `盈亏 ${usd(R.pnl_usdc)}`)}
-    ${tile("报文龄 中位/p90", `${secs(E.report_age_median_sec)} / ${secs(E.report_age_p90_sec)}`, `超窗错过 ${E.stale||0} 次`)}
-    ${tile("被挂单挡住", E.blocked_by_open_order||0, `其中该挂单桶已被本报文打死 ${E.blocked_bucket_already_dead||0} 次`)}
+  const usd=v=>v==null?"—":"$"+(+v).toFixed(2);
+  const pct=v=>v==null?"—":((+v)*100).toFixed(1)+"%";
+  const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
+  const settings=`<div class="card"><b>远尾做空 H1</b> <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
+    <span class="muted">纯市场规则；P0 首决策、距结算 &gt; ${h(S.min_hours_to_settlement)}h、市场价 ≤ ${pct(S.max_market_price)}、离市场众数 ≥ ${h(S.min_rungs_from_mode)} 档、YES 买一 ≥ ${pct(S.min_yes_bid)}。每笔最多 ${usd(S.stake_usdc)}，每站日至多 ${h(S.max_legs_per_station_day)} 桶，每天最多 ${usd(S.max_daily_cost_usdc)}；实际股数可因深度缩小。</span>
+    <div class="muted">FOK 吃单成交后没有当前挂单；下方列出历史成交。0.998 回收卖单在实盘订单页单独显示。</div></div>`;
+  const totals=`<div class="grid g3" style="margin-top:8px">
+    ${tile("评估 / 发单 / 成交",`${E.available?E.total:"—"} / ${R.available?R.sent:"—"} / ${R.available?R.filled:"—"}`,`最近评估 ${h(E.last_at_utc||"—")}`)}
+    ${tile("NO 股数 / 实付",`${R.available?(+R.filled_shares).toFixed(2):"—"} / ${R.available?usd(R.spent_usdc):"—"}`,`未结算投入 ${R.available?usd(R.in_flight_usdc):"—"}`)}
+    ${tile("已实现盈亏",`${R.available?usd(R.realised_pnl_usdc):"—"}`,`含部分回收的已卖股；完整结束 ${R.available?R.closed:"—"} 笔，盈亏 ${R.available?usd(R.pnl_usdc):"—"} · 官方结算 ${R.available?R.official_settled:"—"} 笔`)}
+    ${tile("胜率 / 净赔率",`${R.closed?pct(R.win_rate):"—"} / ${R.closed?(+R.net_odds).toFixed(2)+"x":"—"}`,`盈利 ${R.available?R.wins:"—"} / 已结束 ${R.available?R.closed:"—"} 笔 · 净赔率按已结束仓位实付均价计算`)}
+    ${tile("已结束 ROI / 待核对",`${R.closed?pct(R.roi):"—"} / ${R.available?R.unresolved:"—"}`,`已结束投入 ${R.closed?usd(R.stake_usdc):"—"}；仍持有成本 ${R.available?usd(R.in_flight_usdc):"—"}`)}
+    ${tile("回收卖出",`${R.recycled_shares==null?"—":(+R.recycled_shares).toFixed(2)} 股已卖 / ${usd(R.recycle_proceeds_usdc)}`,`回收股已实现盈亏 ${R.available?usd(R.recycle_realised_pnl_usdc):"—"}；历史 0.99 与新 0.998 均计入 · 待核对 ${R.recycle_reconcile_required==null?"—":R.recycle_reconcile_required}；当前挂单见实盘订单页`)}
   </div>`;
-  const rows=(E.fired_rows||[]).map(r=>`<tr><td>${r.station_id}</td><td>${r.event_date}</td><td>${r.bucket||""}</td>
-      <td>${n2(r.remaining_hours)}h</td><td>${pc(r.market_mid)}</td><td>${n2(r.market_ask)}</td>
-      <td>${n2(r.likelihood)}</td><td>${pc(r.belief)}</td><td>${sp(r.gap)}</td>
-      <td>${secs(r.report_age_seconds)}</td><td>${r.refusal?`<span class="muted">${r.refusal}</span>`:"已送出"}</td></tr>`).join("");
-  const fired=rows?`<table class="tight"><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>剩余</th>
-      <th>市场中价</th><th>卖一</th><th>似然</th><th>信念</th><th>高出</th><th>报文龄</th><th>结果</th></tr></thead>
-      <tbody>${rows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`;
-  const miss=(E.near_miss||[]).map(r=>`<tr><td>${r.station_id}</td><td>${r.event_date}</td>
-      <td>${sp(r.best_gap)}</td><td>${n2(r.remaining_hours)}h</td><td>${(r.evaluated_at_utc||"").slice(11,16)}Z</td></tr>`).join("");
-  const nearMiss=miss?`<table class="tight"><thead><tr><th>站</th><th>事件日</th><th>最高高出</th><th>剩余</th><th>时刻</th></tr></thead>
-      <tbody>${miss}</tbody></table>`:`<div class="muted">没有未触发的读数。</div>`;
-  const refusals=(E.refusals||[]).map(r=>`<tr><td>${r.refusal}</td><td>${r.count}</td><td>${r.fired}</td></tr>`).join("");
-  const days=(E.by_day||[]).map(r=>`<tr><td>${r.event_date}</td><td>${r.evaluated}</td><td>${r.fired}</td><td>${r.sent}</td></tr>`).join("");
-  const trades=(R.rows||[]).map(r=>`<tr><td>${r.station_id}</td><td>${r.event_date}</td><td>${r.bucket}</td>
-      <td>${n2(r.limit_price)}</td><td>${n2(r.filled_size)}</td><td>${n2(r.ask_paid)}</td>
-      <td>${r.settled_bucket||"—"}</td><td>${r.hit==null?"—":(r.hit?"中":"未中")}</td><td>${usd(r.pnl_usdc)}</td>
-      <td class="muted">${r.state||""}</td></tr>`).join("");
-  const tradeTable=trades?`<table class="tight"><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>限价</th>
-      <th>成交股</th><th>实付</th><th>结算桶</th><th>命中</th><th>盈亏</th><th>状态</th></tr></thead>
-      <tbody>${trades}</tbody></table>`:`<div class="muted">还没有成交。</div>`;
-  return head+tiles+
-    `<div class="card"><b>触发的读数</b><div class="muted">每一行都是一份报文：那一刻市场对这桶的中价、卖一、这份报文给的似然、乘完之后的信念，以及包络到打分时已经多老。</div>${fired}</div>`+
-    `<div class="card"><b>最接近门槛但没触发的</b><div class="muted">门槛要不要动，看的是这张表，不是已经成交的那几笔。</div>${nearMiss}</div>`+
-    `<div class="card"><b>拒因</b><table class="tight"><thead><tr><th>原因</th><th>次数</th><th>其中已触发</th></tr></thead><tbody>${refusals}</tbody></table></div>`+
-    `<div class="card"><b>按事件日</b><table class="tight"><thead><tr><th>事件日</th><th>打分</th><th>触发</th><th>送出</th></tr></thead><tbody>${days}</tbody></table></div>`+
-    `<div class="card"><b>成交</b>${tradeTable}</div>`;
-}
-
-// 「同心线」(charter 203, the P1 consensus lane): on a P1 decision 6-10h from the settlement
-// clock where the model's and the market's mode and mean buckets are one
-// bucket, and that bucket is sold at 0.50-0.70, buy it -- v1 crossed the ask,
-// v2 rests a post-only bid+1t and reposts until the belief expires.  Its own
-// page for the same reason the other two lanes have one: a rule's trades
-// averaged with another rule's are a number about neither.  Laid out the way
-// the tiebreak lane's page is (user ruling 2026-09-24 「同心线看不到订单和盈亏，
-// 做成和秤砣线一样的」): switch and rule, what it judged, the money, the money
-// split by how the order was sent, why it did not buy, every order.
-function p1ConsensusLane(){
-  const T=D.p1_consensus_lane||{};
-  if(!T.available) return `<div class="muted">同心线读数这一轮没有生成。</div>`;
-  const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{};
-  const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
-  const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
-  const sp=v=>v==null?"—":((v>=0?"+":"−")+Math.abs(Math.round(+v*1000)/10)+"点");
-  const n2=v=>v==null?"—":(+v).toFixed(2);
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const secs=v=>v==null?"—":(Math.round(+v)+"s");
-  const cnt=v=>v==null?"—":v;
-  const tile=(label,val,sub)=>`<div class="card"><div class="muted">${label}</div>
-    <div class="mono" style="font-size:1.35em">${val}</div>${sub?`<div class="muted">${sub}</div>`:""}</div>`;
-  const settings=`<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-      <b>同心线</b> <span class="muted">（P1 四心同桶）</span>
-      <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
-      <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b></span>
-      <span class="pill">窗口 剩 ${n2(S.min_remaining_hours)}–${n2(S.max_remaining_hours)}h</span>
-      <span class="pill">卖一 ${n2(S.min_ask)}–${n2(S.max_ask)}</span>
-      <span class="pill">实付 ≤ ${n2(S.max_paid_price)}</span>
-      <span class="pill">每站日 ≤ ${cnt(S.max_buys_per_station_day)} 笔</span>
-      <span class="pill">事实新鲜窗 ${secs(S.fact_fresh_seconds)}</span>
-      <span class="muted">规则 <b class="mono">${h(S.rule||"—")}</b></span>
-    </div>
-    <div class="muted" style="margin-top:6px">规则：每个 P1 决策，若离本站结算时钟还有 6–10 小时（当地约下午两点到六点），且<b>模型众数桶＝模型均值桶＝市场众数桶＝市场均值桶</b>（两边在共同桶上归一，均值桶取 Σ概率×序号 四舍五入的那一档），这一桶的卖一又在 ${n2(S.min_ask)}–${n2(S.max_ask)} 之间——就在这一桶<b>挂买一加一跳的 post-only 单</b> ${usd(S.stake_usdc)}，有效期取交易所允许的最短（约 ${S.resting_horizon_seconds==null?"—":(S.resting_horizon_seconds/60).toFixed(1)} 分钟），<b>没成交就在新盘口上重挂</b>，直到这条判断过期或离日终不足 6 小时（2026-09-23 裁决「吃单改为post only。best买一+1，挂单周期改为最短，没成交继续挂！」；此前 v1 是按卖一吃单）。每站日最多 ${S.max_buys_per_station_day==null?"—":S.max_buys_per_station_day} 笔、同一桶最多 ${S.max_buys_per_bucket==null?"—":S.max_buys_per_bucket} 笔、同站日两笔隔 ${S.min_minutes_between_buys==null?"—":S.min_minutes_between_buys} 分钟，同一时刻只挂一张；与秤砣线<b>互不避让</b>（「照买，不避让」）。<br>
-    ${withEv("p1_consensus_replay",(V,e)=>`依据（${evStamp(e)}）：${V.takes} 笔 / ${V.station_days} 站日 / ${V.days} 个事件日，命中 ${evPct(V.hit_rate,1)}，卖一均价 ${V.mean_ask==null?"—":V.mean_ask.toFixed(3)}，ROI ${evSgPct(V.roi)}（90% 区间 ${evCi(V.roi_ci,x=>evSgPct(x))}）；前半 ${evSgPct(V.first_half_roi)}、后半 ${evSgPct(V.second_half_roi)}；09-20 以后 ${V.since_0920_takes} 笔 ${evSgPct(V.since_0920_roi)}；延后 15 分钟再买仍 ${evSgPct(V.delayed_15min_roi)}——不是抢时间的交易。<br>
-    <b>诚实边界</b>：这一格是切片搜出来的（四同 → 6–10 小时 → 价带 → 每次都买），最窄的祖先格经多重比较 p=${V.ancestor_cell_p==null?"—":V.ancestor_cell_p.toFixed(3)}；真正的前向只有 ${V.forward_days} 个事件日。所以小额上线，窗口内每个决策——买没买都记——落在评估表里，前向再读。`)}</div></div>`;
-  // The version still being scored is the one that started last.
-  const rules=E.by_rule||[];
-  const byRule=rules.map((r,i)=>`<span class="pill ${i===rules.length-1?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(String(r.rule_version||"").replace("p1_consensus_lane_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
-  const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
-  const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
-    ${tile("窗口内判过的决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
-    ${tile("四中心同桶 / 价带内触发",`${E.four_same} / ${E.fired}`,`四同占 ${E.total?pc(E.four_same/E.total):"—"} 的决策`)}
-    ${tile("发单 / 成交 / 已结算",`${cnt(R.sent)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`未挂出 ${cnt(R.not_placed)} · 在途 ${cnt(R.open)}`)}
-  </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
-  const halves=R.halves&&R.halves.first!=null?`前后半段 实现−实付均价 ${sp(R.halves.first)} / ${sp(R.halves.second)}（以 ${h(R.halves.split_event_date||"")} 为界）。`:"";
-  const money=R.available?`<div class="grid g3" style="margin-top:8px">
-    ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${cnt(R.settled)} 笔`)}
-    ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${cnt(R.hits)}${R.settled?` / ${R.settled}`:""}`)}
-    ${tile("实现 − 实付均价",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} 对 均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
-  </div>
-  <div class="muted" style="margin-top:6px">${halves}与秤砣线：送出那一刻账户已持同桶 ${E.overlap_tiebreak_same_bucket||0} 次、持别的桶 ${E.overlap_tiebreak_other_bucket||0} 次、撞挂单 ${E.overlap_open_order||0} 次——互不避让，只记不停手。</div>`:"";
-  const vers=(T.by_rule_version||[]).map(v=>`<tr><td class="mono">${h(String(v.rule_version||"").replace("p1_consensus_lane_",""))}${v.resting?' <span class="pill green">挂单</span>':' <span class="pill amber">吃单</span>'}</td><td class="mono">${v.sent}</td><td class="mono">${v.not_placed}</td><td class="mono">${v.filled}</td><td class="mono">${v.settled}</td><td class="mono">${v.event_days}</td><td class="mono">${usd(v.stake_usdc)}</td><td class="mono">${usd((v.payout_usdc||0)-(v.stake_usdc||0))}</td><td class="mono">${v.hit_rate==null?"—":pc(v.hit_rate)}</td><td class="mono">${v.avg_price==null?"—":n3(v.avg_price)}</td><td class="mono">${v.realised_minus_price==null?"—":sp(v.realised_minus_price)}</td></tr>`).join("");
-  const versTable=vers?`<details open style="margin-top:8px"><summary>按下单方式分开算（v1 按卖一吃单、v2 挂买一+1 是两个策略，不混算）</summary>
-    <table><thead><tr><th>规则版本</th><th>发单</th><th>未挂出</th><th>成交</th><th>已结算</th><th>事件日</th><th>投入</th><th>盈亏</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${vers}</tbody></table>
-    <div class="muted">「发单」数的是交易所意向：挂单版每次到期重挂都是新的一张，所以发单会远多于成交。「未挂出」是意向到了网关却没进交易所的那些，原因见逐笔的状态列。</div></details>`:"";
-  const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td><td class="mono">${r.fired}</td></tr>`).join("");
-  const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
-    <table><thead><tr><th>结果 / 未发单原因</th><th>条数</th><th>其中触发</th></tr></thead><tbody>${refusals}</tbody></table>
-    <div class="muted">rule_not_met:centres_split 是四个中心不同桶；rule_not_met:ask_outside_band 是同桶但卖一不在价带；fact_stale 是事实到手时已超出新鲜窗；send_book_stale 是盘口太旧不下单；rung_resting 是本站日已有一张挂单在场上；station_day_buy_cap / bucket_buy_cap / station_day_buy_spacing 是站日上限、单桶上限、20 分钟间隔；send:* 是挂单没成交就结束了（到期、被撤或没挂出去，会在新盘口上重挂）；retry_* 是重挂时重判的结果；window_closed 是离日终不足 6 小时、不再重挂。空白（sent）是挂单在场上或已成交。</div></details>`:"";
-  const how=t=>t.order_type==="GTD"?"挂单":(t.order_type==="FOK"?"吃单":h(t.order_type||"—"));
-  const rows=(R.rows||[]).map(t=>`<tr>
-    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td class="mono">${h((t.created_at||"").slice(11,16))}Z</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td><td>${how(t)}</td>
-    <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
+  const exchangeRows=(R.rows||[]).filter(t=>t.sent||t.exchange_order_id||(+t.filled_size)>0);
+  const rows=exchangeRows.map(t=>`<tr><td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td>
+    <td>${h(t.bucket)}</td><td class="mono">${t.yes_bid==null?"—":pct(t.yes_bid)}</td>
+    <td class="mono">${t.limit_price==null?"—":(+t.limit_price).toFixed(3)}</td>
+    <td class="mono">${t.paid_price==null?"—":(+t.paid_price).toFixed(3)}</td>
+    <td class="mono">${t.net_odds==null?"—":(+t.net_odds).toFixed(2)+"x"}</td>
     <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
-    <td>${h(t.state||"")}${t.not_placed?`<div class="muted mono" style="font-size:.85em">未挂出：${h(t.not_placed)}</div>`:""}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
-    <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
+    <td class="mono">${t.sold_size==null?"—":(+t.sold_size).toFixed(2)} / ${usd(t.sale_proceeds_usdc)}</td>
+    <td>${h(t.state||t.reconciliation_state||"—")}</td>
+    <td>${h(t.book_source||"—")} · ${t.book_age_seconds==null?"—":Math.round(+t.book_age_seconds)+"s"}</td>
+    <td>${t.settled_bucket?h(t.settled_bucket):(t.close_reason==="sale"?"已卖出":"未结算")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔（${(R.rows||[]).length}${R.count>(R.rows||[]).length?` / ${R.count}`:""} 笔，新的在上）</summary>
-    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>下单于</th><th>阶段</th><th>桶</th><th>方式</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
-  const firedRows=(E.fired_rows||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td class="mono">${h((r.decision_at_utc||"").slice(11,16))}Z</td>
-      <td class="mono">${n2(r.remaining_hours)}h</td><td>${h(r.bucket||"")}</td><td class="mono">${n2(r.best_ask)}</td><td class="mono">${pc(r.market_share)}</td><td class="mono">${pc(r.model_share)}</td>
-      <td class="mono">${r.station_day_buys==null?"—":r.station_day_buys}</td><td>${h(r.held_buckets||"—")}</td><td>${r.open_order_lane?h(r.open_order_lane+":"+(r.open_order_bucket||"")):"—"}</td>
-      <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td></tr>`).join("");
-  const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
-    ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>决策</th><th>剩余</th><th>桶</th><th>卖一</th><th>市场给它</th><th>模型给它</th><th>此前本线笔数</th><th>当时持仓桶</th><th>当时挂单</th><th>结果</th></tr></thead><tbody>${firedRows}</tbody></table>
-    <div class="muted">每一行是一个 P1 决策：四个中心同桶、卖一在价带内。右边三列是送出那一刻本线在这个站日已买的笔数、账户在这个站日持有哪些桶（秤砣线的也在内）、以及挂着的买单——本线不因它们停手，只记下来。</div>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
-  const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.four_same}</td><td class="mono">${r.fired}</td><td class="mono">${r.sent}</td></tr>`).join("");
-  const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
-    <table><thead><tr><th>事件日</th><th>判过</th><th>四同</th><th>触发</th><th>送出</th></tr></thead><tbody>${days}</tbody></table></details>`:"";
-  const pending=E.available&&!E.total?`<div class="card muted">评估表已建立，但窗口内还没有新的 P1 决策事实可判——决策层写出事实之后才会有行。</div>`:"";
-  return settings+evalTiles+money+versTable+pending+refTable+tradeTable+firedTable+daysTable;
+  const orders=`<details open style="margin-top:8px;min-width:0;max-width:100%"><summary>H1 送达交易所的历史订单（${exchangeRows.length} 笔；未送达 ${(R.rows||[]).length-exchangeRows.length} 笔见阻断原因）</summary>
+    ${rows?`<div class="scroll" style="min-width:0;max-width:100%;max-height:520px"><table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>YES 买一</th><th>NO 限价</th><th>实付价</th><th>净赔率</th><th>成交股</th><th>实付</th><th>回收股 / 收益</th><th>状态</th><th>盘口 / 年龄</th><th>结算桶</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>`:"<div class='muted'>暂无发单。</div>"}</details>`;
+  const refusals=(E.refusals||[]).map(r=>`<tr><td>${h(r.reason)}</td><td>${r.count}</td></tr>`).join("");
+  const why=refusals?`<details style="margin-top:8px"><summary>评估结果与阻断原因</summary><table><thead><tr><th>结果</th><th>次数</th></tr></thead><tbody>${refusals}</tbody></table></details>`:"";
+  const signals=(E.recent||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td>${h(r.event_date)}</td>
+    <td>${h(r.bucket)}</td><td>${r.market_q==null?"—":pct(r.market_q)}</td>
+    <td>${r.rungs_from_mode==null?"—":r.rungs_from_mode}</td>
+    <td>${r.yes_bid==null?"—":pct(r.yes_bid)}</td><td>${h(r.refusal||"已出单")}</td>
+    <td class="mono">${h(r.evaluated_at_utc||"—")}</td></tr>`).join("");
+  const recent=signals?`<details style="margin-top:8px"><summary>最近 30 条市场信号</summary>
+    <table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>市场价</th><th>离众数</th><th>YES 买一</th><th>结果</th><th>评估于</th></tr></thead><tbody>${signals}</tbody></table></details>`:"";
+  return settings+totals+orders+why+recent;
 }
 
 // 「Proper 下注线」(charter 231): p is the weather model, q the market's
@@ -20047,11 +19985,12 @@ function tiebreakLane(){
   const cond=(ok,text)=>`<span class="pill ${ok?"green":"amber"}">${text}</span>`;
   const settings=`<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
       <b>秤砣线</b>
+      <span class="muted">数据更新 ${h(T.computed_at_utc||"—")}</span>
       <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
       <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${/paid_cap/.test(S.rule||"")?`≥ ${n3(S.min_market_share_on_model_mode)}（归一化中价）、挂单实付价 ≤ ${S.max_paid_price==null?"0.600":n3(S.max_paid_price)}`:`${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}`}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/spread/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
-      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.99 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
+      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
     <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：${Array.isArray(S.opening_stages)?`${S.opening_stages.map(x=>h(String(x))).join("、")} 阶段的首个决策（宪章 229：P0 留给篮子，P0 首决策照常打分入表、命中也不挂单）`:"每个阶段的首个决策"}，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
@@ -20062,24 +20001,20 @@ function tiebreakLane(){
     ${tile("发单 / 成交 / 已结算",`${R.sent==null?"—":R.sent} / ${R.filled==null?"—":R.filled} / ${R.settled==null?"—":R.settled}`,`在途 ${R.open==null?"—":R.open}`)}
   </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
   const money=R.available?`<div class="grid g3" style="margin-top:8px">
-    ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${R.settled} 笔`)}
-    ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${R.hits==null?"—":R.hits}${R.settled?` / ${R.settled}`:""}`)}
-    ${tile("实现 − 实付均价",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} 对 均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
+    ${tile("投入 → 回款与赔付（历版）",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${R.settled} 笔；已卖按实际回款`)}
+    ${tile("盈亏 / ROI（历版）",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${R.hits==null?"—":R.hits}${R.settled?` / ${R.settled}`:""}`)}
+    ${tile("实现 − 实付均价（历版）",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} · 实付均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
   </div>
   <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
     ${cond(A.lower_bound_positive,"① 实现−实付均价 日聚类下界 > 0")}
-    ${cond(A.halves_same_sign,"② 前后半段同号"+(R.halves&&R.halves.first!=null?`（${sp(R.halves.first)} / ${sp(R.halves.second)}）`:""))}
+    ${cond(A.halves_same_sign,"② 前后半段同号"+(A.halves&&A.halves.first!=null?`（${sp(A.halves.first)} / ${sp(A.halves.second)}）`:""))}
     ${cond((A.event_days||0)>=(A.event_days_needed||30),`③ 事件日 ${A.event_days||0} / ${A.event_days_needed||30}`)}
-    <span class="muted">三条同时满足才算过；不过则关掉本线、恢复其余车道（同一文件）。首次复核 09-25。注意：09-20 前是吃卖一、09-20 起是挂买一+1，这三条把两版混在一起算，按上面的「按规则版本」分开读。</span>
+    <span class="muted">三条只按当前版本 ${h(A.rule_version||"—")}、当前开仓阶段 ${h((A.opening_stages||[]).join(" / "))} 的 ${A.settled||0} 笔已结算成交验收；净盈亏 ${usd(A.pnl_usdc)}，单位优势 ${sp(A.realised_minus_price)}${A.ci90?`，90% [${sp(A.ci90[0])}, ${sp(A.ci90[1])}]`:""}。上方三张卡是历版现金流合计，不作为晋级依据。</span>
   </div>`:"";
-  const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td><td class="mono">${r.fired}</td></tr>`).join("");
-  const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没买（评估结果分布，${E.total} 条）</summary>
-    <table><thead><tr><th>结果 / 未发单原因</th><th>条数</th><th>其中触发</th></tr></thead><tbody>${refusals}</tbody></table>
-    <div class="muted">rule_not_met:* 是四条件不成立；first_decision_stale 是上线时已过时的首决策；station_* / account_* / market_* 是触发后被各闸挡下；maker_anchor_unavailable 是这桶没有买一或没有 tick、挂不出单；order_below_venue_minimum 是每笔预算在挂单价上买不够交易所最小股数；send:* 是单子没成交就结束了（GTD 到期或被撤），会在更新的盘口上重判重挂；venue_disabled_cooldown / venue_disabled_cap 是交易所回「trading is disabled」——市场当时没开，这类不占每站日 3 次的发单预算，改为隔一小时再试、最多 6 次。空白（sent）是已发单——挂单还在场上也记空白。</div></details>`:"";
   const vers=(T.by_rule_version||[]).map(v=>`<tr><td class="mono">${h(v.rule_version.replace("tiebreak_",""))}${v.resting?' <span class="pill green">挂单</span>':' <span class="pill amber">吃单</span>'}</td><td class="mono">${v.filled}</td><td class="mono">${v.settled}</td><td class="mono">${v.event_days}</td><td class="mono">${usd(v.stake_usdc)}</td><td class="mono">${usd((v.payout_usdc||0)-(v.stake_usdc||0))}</td><td class="mono">${v.hit_rate==null?"—":pc(v.hit_rate)}</td><td class="mono">${v.avg_price==null?"—":n3(v.avg_price)}</td><td class="mono">${v.realised_minus_price==null?"—":sp(v.realised_minus_price)}</td></tr>`).join("");
   const versTable=vers?`<details open style="margin-top:8px"><summary>按下单方式分开算（宪章 163：吃卖一的 v2.1 与挂买一+1 的 v2.2 是两个策略，不混算）</summary>
     <table><thead><tr><th>规则版本</th><th>成交</th><th>已结算</th><th>事件日</th><th>投入</th><th>盈亏</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${vers}</tbody></table>
-    <div class="muted">挂单这版从 2026-09-20 起重新计；上面三条验收灯把两版合在一起算，真正的判据读这张表里挂单那一行。</div></details>`:"";
+    <div class="muted">各版成交、实际卖出回款与结算赔付分开计算；上方验收灯只读当前版本。</div></details>`:"";
   const gapTxt=g=>g==null?"—":(g>=120?`${(g/60).toFixed(1)} 小时`:`${Math.round(g)} 分钟`);
   const mixTxt=m=>{const k=Object.keys(m||{});return k.length?k.map(x=>`${h(x)} ${m[x]}`).join(" / "):"—";};
   // A bin's realised-minus-paid is a measurement only once it has enough
@@ -20110,27 +20045,17 @@ function tiebreakLane(){
     <table><thead><tr><th>到哪个阶段</th><th>本阶段动量中位</th><th>其中最终没中的中位</th>${featHead.slice(4)}</thead><tbody>${featStage}</tbody></table>
     <div class="muted"><b>「+3 点」不是中性零点。</b>两次决策之间市场的挂牌阶梯会收窄，于是任何一个桶的归一化份额都会机械地涨——在模型众数桶<b>最终没中</b>的那些行上，动量平均也有 +3.1 点（P1 +4.0、P0-M +0.6）。所以同一条「≥3 点」，在 P0-M 是「高于漂移」、在 P1 是「低于漂移」，这也是它在两个阶段里符号相反的原因。要当规则就得把门槛钉在「本阶段最终没中的那些行的中位」上方，那才是「比阶梯自己收窄得更多」。</div>
     <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0；但那次的参照点短得多，同一份回测把参照点拉到 ≥45 分钟就掉到 +5.2%，而线上 76.8% 的行参照点都 ≥45 分钟、P1 行全部 ≥666 分钟——线上记的天生就是那个弱化版。前向样本站住了再考虑当规则（v3），站不住就换轴（按小时的靠拢速率，或两种过渡各自一套阈值）。</div></details>`:"";
-  // A failed send or a rung cancelled with nothing filled is not a trade
-  // (user ruling 2026-09-26 「秤砣线failed、cancelled的订单不显示」): it
-  // moved no money, and the table is read for what the lane holds and made.
-  // A cancelled rung that filled in part keeps its row -- it has money.
-  const shown=(R.rows||[]).filter(t=>!(["failed","cancelled"].includes(String(t.state||""))
-    && !(+t.filled_size>0)));
-  const hiddenN=(R.rows||[]).length-shown.length;
+  const shown=(R.rows||[]).filter(t=>+t.filled_size>0);
   const rows=shown.map(t=>`<tr>
-    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td>${h(t.bucket)}</td>
+    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td class="mono" title="${h(t.rule_version||"")}">${h((t.rule_version||"").match(/v\d+(?:_\d+)*$/)?.[0]?.replaceAll("_",".")||t.rule_version||"—")}</td><td>${h(t.bucket)}</td>
     <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
     <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
+    <td class="mono">${(+t.sold_size).toFixed(2)}</td><td class="mono">${usd(t.sale_proceeds_usdc)}</td>
     <td>${h(t.state||"")}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔（${shown.length} 笔，新的在上${hiddenN?`；另有 ${hiddenN} 张 failed/cancelled 且未成交的不显示`:""}）</summary>
-    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>桶</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
-  const firedRows=(E.fired_rows||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td>${h(r.stage)}</td>
-    <td>${h(r.model_mode)} ← ${h(r.market_mode)}</td><td class="mono">${n3(r.market_share_on_model_mode)}</td><td class="mono">${n3(r.model_mode_share)}</td>
-    <td class="mono">${r.refusal?h(r.refusal):"<span class='pill green'>已发单</span>"}</td><td class="mono">${h((r.evaluated_at_utc||"").slice(5,16).replace("T"," "))}</td></tr>`).join("");
-  const firedTable=E.available?`<details style="margin-top:8px"><summary>触发过的首决策（${(E.fired_rows||[]).length} 条，含被闸挡下的）</summary>
-    ${firedRows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>模型桶 ← 市场桶</th><th>市场给模型桶</th><th>模型自报</th><th>结果</th><th>评估于</th></tr></thead><tbody>${firedRows}</tbody></table>`:`<div class="muted">还没有触发过。</div>`}</details>`:"";
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔（${shown.length} 笔）：全部已成交订单，含部分成交与未结算，新的在上</summary>
+    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>规则版本</th><th>桶</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>已卖股</th><th>卖出回款</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const H=T.registered_hypotheses||{};
   const hp=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)}%`;
   const hrows=(H.rows||[]).map(r=>{
@@ -20151,7 +20076,7 @@ function tiebreakLane(){
     <div class="muted"><b>只看「前向」那一行。</b>「全史」是这些假设当初被写出来的那份数据——一个数不能既提出假设又确认假设。登记于 ${h((H.rows||[])[0]?.registered_at_utc||"")}，登记当天的读数写在代码里的 <span class="mono">at_registration</span>。</div>
     <div class="muted">门槛为什么要这么严：在这份重放上搜 122 个候选格，把中/空在同一事件日内随机重排，<b>100% 能找出「前后半都确认」的格</b>，而且那个随机格较弱一侧的 95 分位是 <b>+24.0%</b> ROI——比数据里真有的还漂亮。事前登记一个假设的门槛是 +15.3%，搜五个是 +17.5%，搜二十个是 +20.6%。所以这张表只增不改，新假设只能往后加。</div>
     <div class="muted">两个 p 不一样：<span class="mono">P(≤0)</span> 是按事件日自助，问「这一臂赚不赚钱」——profitable 格子的任何子集都会继承一部分；<span class="mono">重排 p</span> 把中/空在同一事件日内打乱，问「分到哪一臂要不要紧」，那才是关于这个切分的。两者分歧时读重排。</div></details>`:"";
-  return settings+evalTiles+money+versTable+hypTable+featTable+featStageTable+refTable+tradeTable+firedTable;
+  return settings+evalTiles+money+versTable+hypTable+featTable+featStageTable+tradeTable;
 }
 
 function moneyBoard(){
@@ -20172,7 +20097,7 @@ function moneyBoard(){
   }).join("");
   return `<h2>资金看板：实盘的盈亏和风险</h2>
   <p class="sub">全部读<b>实盘成交</b>。第一页上面是数据看板（总账、对比、风险、曲线，每个数只出现一次），
-  下面是订单数量与站明细；第二页是实盘意向簿。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
+  下面是订单数量与站明细。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
   ${cats}`;
 }
 
@@ -20262,6 +20187,7 @@ function liveControlStrip(){
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
     ${laneSwitch("basket")}
     ${laneSwitch("proper_bet")}
+    ${laneSwitch("certain_win_recycle")}
     ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
         L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
@@ -20305,6 +20231,9 @@ const LC_LANES = {
   proper_bet: {name:"Proper 下注线",
     on:"实盘举旗时，P0 首决策按 s=log(p/q) 逐桶双边（YES/NO）挂 post-only，未成交重挂到成交（宪章 231 v2）",
     off:"整条车道跳过：不评估、不挂新单"},
+  certain_win_recycle: {name:"0.998 回收",
+    on:"对持有的 YES/NO 腿，在交易所允许 0.998 刻度时挂回收卖单；旧 0.99 单先确认撤销及成交",
+    off:"停止新增回收卖单；已在交易所的卖单仍须按订单页核对"},
 };
 // Drawn disabled from the page snapshot, like every control here: only the
 // server's answer enables a switch, and ``lcPaintLanes`` repaints it from
@@ -20613,7 +20542,7 @@ function liveReadiness(){
   ${L.submission_paused
     ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
     : "暂停旗不在位"}。
-  实盘订单与意向簿在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。
+  实盘订单在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。
   下面的首批站点闸门表同时是<b>逐站汇总（跨日）</b>：每站的实盘订单（含被实盘门拒掉的）、篮子完整度、
   生产入座时的席位读数和地理分组都在同一行，全部读实盘与生产记录，没有纸面账本的列。</p>
   ${completenessCard}
@@ -23211,19 +23140,15 @@ const LANES = {
   // --- live: the lanes that send, and the book they send into ---
   "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",
     role:"阶段首个决策，模型众数桶被市场定在价带内 → 买一上方一档挂 post-only，一站日一笔"},
-  "P1 尾段线 · 宪章 166": {layer:"实盘 · 车道", status:"live",
-    role:"剩 6–10h 的 P1：市场梯子 × 观测似然，信念高出卖一过门槛才吃单（开关状态见页内「运行/暂停」）"},
-  "同心线 · 宪章 203": {layer:"实盘 · 车道", status:"live",
-    role:"剩 6–10h 的 P1 四个中心同桶、卖一在价带内 → 买一加一档 post-only 挂单，未成交重挂"},
   "Proper 下注线 · 宪章 231": {layer:"实盘 · 车道", status:"live",
     role:"P0 首决策、距结算 >36h：s = log(p/q) 定方向与份数（YES/NO 双边），各腿买一加一档 post-only 最短有效期，未成交重挂到成交"},
+  "远尾做空 H1 · 宪章 234": {layer:"实盘 · 车道", status:"live",
+    role:"纯市场价与市场众数距离筛选远尾，在 P0 首决策 FOK 买 NO"},
   "融合权重候选": {layer:"概率层 · 融合", status:"shadow",
     role:"宪章 199：每次 P0 编译都算融合权重并记账，服务仍是席位权重；上线前重放与前向影子对比"},
-  "实盘意向簿": {layer:"实盘 · 读数", status:"audit",
-    role:"只数 live_submit_authorized=1 的意向：状态、事件日、站三个维度的笔数、名义与均价"},
   // --- the book's own account ---
   "资金看板": {layer:"实盘 · 读数", status:"audit",
-    role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细，意向簿"},
+    role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细"},
   "站点实盘上线闸门": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"实盘 · 读数", status:"audit",
@@ -23231,13 +23156,11 @@ const LANES = {
   "逐站逐日明细": {layer:"实盘 · 读数", status:"audit",
     role:"每个站日实盘挂了哪些桶、买到了哪些"},
 };
-// A strategy lane's section reads its own switch (the lane file the control
-// server writes, as this render read it): 同心线 and P1 尾段线 read 已上线 for
-// days after both were switched off.
+// Shown strategy lanes read their own switch from the live control payload.
 (()=>{
   const sw=(D.live_readiness||{}).strategy_lanes||{};
-  [["秤砣线 · 宪章 146","tiebreak"],["P1 尾段线 · 宪章 166","p1_tail"],
-   ["同心线 · 宪章 203","p1_consensus"],["Proper 下注线 · 宪章 231","proper_bet"]]
+  [["秤砣线 · 宪章 146","tiebreak"],["Proper 下注线 · 宪章 231","proper_bet"],
+   ["远尾做空 H1 · 宪章 234","tail_short"]]
     .forEach(([name,key])=>{
       if(LANES[name] && key in sw) LANES[name].status = sw[key] ? "live" : "off";
     });
@@ -23809,6 +23732,19 @@ def render_html(
     payload, so the two part company and the page says so.
     """
 
+    # Hot updates can reuse a payload built before these retired panes were
+    # removed.  Do not ship their old statistics in the refreshed page.
+    payload = {
+        key: value for key, value in payload.items()
+        if key not in {"p1_tail_lane", "p1_consensus_lane"}
+    }
+    if isinstance(payload.get("live_readiness"), dict):
+        readiness = dict(payload["live_readiness"])
+        if isinstance(readiness.get("live_orders"), dict):
+            orders = dict(readiness["live_orders"])
+            orders.pop("book", None)
+            readiness["live_orders"] = orders
+        payload["live_readiness"] = readiness
     page = time.time() if started_at is None else started_at
     data = page if payload_started_at is None else payload_started_at
     return HTML_TEMPLATE.replace(

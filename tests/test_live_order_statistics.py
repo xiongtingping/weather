@@ -189,47 +189,6 @@ def test_a_miss_is_a_loss_and_an_unsettled_day_is_neither() -> None:
     assert pnl["available"] is True
 
 
-def test_the_intent_book_counts_only_the_live_rows() -> None:
-    """Paper intents are a different book and stay out of every cut.
-
-    Two of the three rows here are paper, and they are the two that would
-    dominate every total if the filter were dropped -- so a regression
-    shows up as numbers that are too big, not as an empty panel.
-    """
-
-    conn = _book(
-        rows=[("live", "d1", "KMIA", "2026-08-30", "31°C", 1),
-              ("p1", "d2", "KLGA", "2026-08-30", "24°C", 0),
-              ("p2", "d3", "KLGA", "2026-08-29", "23°C", 0)],
-        fills=[], settled=[],
-    )
-    book = board._collect_order_book(conn)
-    assert book["total"] == 1
-    assert book["paper_excluded"] == 2
-    assert book["stations"] == 1
-    assert book["notional_usdc"] == 3.0
-    assert [r["event_date"] for r in book["by_day"]] == ["2026-08-30"]
-    assert book["by_day"][0]["count"] == 1
-    assert [r["station_id"] for r in book["by_station"]] == ["KMIA"]
-    assert [r["state"] for r in book["by_state"]] == ["prepared"]
-    assert book["by_state"][0]["count"] == 1
-
-
-def test_an_all_paper_book_reports_zero_and_says_what_it_excluded() -> None:
-    """The state the board is in today: nothing live, 1406 paper rows."""
-
-    conn = _book(
-        rows=[("p1", "d1", "KLGA", "2026-08-30", "24°C", 0),
-              ("p2", "d2", "KLGA", "2026-08-29", "23°C", 0)],
-        fills=[], settled=[],
-    )
-    book = board._collect_order_book(conn)
-    assert book["total"] == 0
-    assert book["paper_excluded"] == 2
-    # No aggregates are invented for an empty book.
-    assert "notional_usdc" not in book
-
-
 def test_a_fail_closed_receipt_turns_the_production_light_red() -> None:
     """The shape that got past every check: no lanes, because it never ran.
 

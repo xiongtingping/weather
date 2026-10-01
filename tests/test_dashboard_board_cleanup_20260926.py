@@ -245,9 +245,10 @@ def _page_function(name: str) -> str:
 
 
 def test_the_tiebreak_table_leaves_out_what_moved_no_money() -> None:
-    """User ruling 2026-09-26 「秤砣线failed、cancelled的订单不显示」: a failed
-    send or a cancelled rung with nothing filled is not drawn; a cancelled
-    rung that filled in part keeps its row."""
+    """User ruling 2026-09-30 「逐笔：显示全部已成交订单和对应版本」, which
+    narrowed 2026-09-26 「秤砣线failed、cancelled的订单不显示」: the table lists
+    what filled -- a cancelled rung that filled in part keeps its row, and a
+    rung still resting with nothing filled is not drawn either."""
 
     import re
     import shutil
@@ -257,7 +258,7 @@ def test_the_tiebreak_table_leaves_out_what_moved_no_money() -> None:
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
     body = _page_function("tiebreakLane")
-    match = re.search(r"const shown=\(R\.rows\|\|\[\]\)\.filter\(.*?\)\);", body, re.S)
+    match = re.search(r"const shown=\(R\.rows\|\|\[\]\)\.filter\(.*?\);", body, re.S)
     assert match, "the tiebreak table no longer filters its rows"
     rows = [
         {"id": "filled", "state": "filled", "filled_size": 5},
@@ -272,7 +273,7 @@ def test_the_tiebreak_table_leaves_out_what_moved_no_money() -> None:
     )
     done = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout) == ["filled", "cancelled_part", "open"]
+    assert json.loads(done.stdout) == ["filled", "cancelled_part"]
 
 
 def test_a_retired_sections_recorded_call_is_skipped_not_fatal(pages, monkeypatch) -> None:

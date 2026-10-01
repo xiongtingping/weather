@@ -433,7 +433,7 @@ def load_exit_sells(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         return []
     rows = conn.execute(
         "SELECT i.order_intent_id, c.station_id, c.event_date, i.bucket,"
-        " r.filled_size, r.filled_notional_usdc, i.created_at"
+        " r.filled_size, r.filled_notional_usdc, i.created_at, i.side"
         " FROM basket_target_order_intents i"
         " JOIN basket_target_order_reconciliations r"
         "   ON r.order_intent_id=i.order_intent_id"
@@ -451,13 +451,15 @@ def load_exit_sells(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             "sold_size": float(size or 0.0),
             "proceeds_usdc": float(proceeds or 0.0),
             "created_at": str(created or ""),
+            "side": str(side or "YES").upper(),
         }
-        for intent, station, day, bucket, size, proceeds, created in rows
+        for intent, station, day, bucket, size, proceeds, created, side in rows
     ]
 
 
 def allocate_sells(
     legs: list[dict[str, Any]], sells: list[dict[str, Any]],
+    *, by_intent: dict[str, tuple[float, float]] | None = None,
 ) -> dict[tuple[str, str, str], dict[str, tuple[float, float]]]:
     """Each sale of a bucket, shared out over the stages that held it.
 
@@ -468,34 +470,55 @@ def allocate_sells(
     bought -- they were bought outside this system -- is not this book's).
     """
 
-    held: dict[tuple[str, str, str], dict[str, float]] = defaultdict(
-        lambda: defaultdict(float)
-    )
+    out: dict[tuple[str, str, str], dict[str, tuple[float, float]]] = defaultdict(dict)
+    if by_intent is None:
+        by_intent = allocate_sells_by_intent(legs, sells)
     for leg in legs:
-        # The recycle and exit sales are YES sales; a NO leg holds none of
-        # the bucket's YES shares.
+        shares, proceeds = by_intent.get(leg["order_intent_id"], (0.0, 0.0))
+        if shares <= 0.0:
+            continue
+        key = (leg["station_id"], leg["event_date"], leg["stage"])
+        bucket = leg["bucket"]
+        prior = out[key].get(bucket, (0.0, 0.0))
+        out[key][bucket] = (prior[0] + shares, prior[1] + proceeds)
+    return dict(out)
+
+
+def allocate_sells_by_intent(
+    legs: list[dict[str, Any]], sells: list[dict[str, Any]],
+) -> dict[str, tuple[float, float]]:
+    """Attribute fungible YES sales to live buy intents at the book's grain.
+
+    A sell names a station-day and bucket, not the buy intent that supplied
+    its shares.  Split it across all live YES buys of that bucket in proportion
+    to filled shares, using its actual proceeds.  This is the same allocation
+    used by the stage settlement book; lane readouts can then use their own
+    intents without claiming another lane's sale or paying sold shares twice.
+    """
+
+    held: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for leg in legs:
         if leg["filled_size"] > 0 and leg.get("side", "YES") == "YES":
-            held[(leg["station_id"], leg["event_date"], leg["bucket"])][
-                leg["stage"]
-            ] += leg["filled_size"]
+            held[(leg["station_id"], leg["event_date"], leg["bucket"])].append(leg)
     sold: dict[tuple[str, str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
     for sale in sells:
+        if sale.get("side", "YES") != "YES":
+            continue
         slot = sold[(sale["station_id"], sale["event_date"], sale["bucket"])]
         slot[0] += sale["sold_size"]
         slot[1] += sale["proceeds_usdc"]
-    out: dict[tuple[str, str, str], dict[str, tuple[float, float]]] = defaultdict(dict)
-    for (station, day, bucket), (shares, proceeds) in sold.items():
-        stages = held.get((station, day, bucket)) or {}
-        total = sum(stages.values())
+    out: dict[str, tuple[float, float]] = {}
+    for key, (shares, proceeds) in sold.items():
+        buyers = held.get(key) or []
+        total = sum(leg["filled_size"] for leg in buyers)
         if total <= 0.0 or shares <= 0.0:
             continue
         take = min(shares, total)
         price = proceeds / shares
-        for stage, stage_shares in stages.items():
-            part = take * stage_shares / total
-            prior = out[(station, day, stage)].get(bucket, (0.0, 0.0))
-            out[(station, day, stage)][bucket] = (prior[0] + part, prior[1] + part * price)
-    return dict(out)
+        for leg in buyers:
+            part = take * leg["filled_size"] / total
+            out[leg["order_intent_id"]] = (part, part * price)
+    return out
 
 
 def _payout(
@@ -1008,10 +1031,12 @@ def build(conn: sqlite3.Connection) -> dict[str, Any]:
         sells = load_exit_sells(conn)
     except sqlite3.Error:
         sells = []
-    sold_by_stage = allocate_sells(legs, sells)
+    sold_by_intent = allocate_sells_by_intent(legs, sells)
+    sold_by_stage = allocate_sells(legs, sells, by_intent=sold_by_intent)
     book = {
         "legs": legs,
         "exit_sells": sells,
+        "sold_by_intent": sold_by_intent,
         "sold_by_stage": sold_by_stage,
         "settled": settled,
         "settlements": settlement_rows(legs, settled, truth_c, sold_by_stage),

@@ -68,7 +68,6 @@ const h = (s) => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const moneyDataBoard = () => { if (D.__board_throws) throw new Error('boom'); return '<div>DATA</div>'; };
 const liveOrderCard = (L) => `<h3>ORDERS ${L.live_orders.intent_count}</h3>`;
-const orderBookCard = (B) => `<div>BOOK ${B.total}</div>`;
 """
 
 
@@ -86,7 +85,7 @@ def _render(payload: dict) -> str:
 
 
 LIVE = {"live_readiness": {"available": True,
-                           "live_orders": {"intent_count": 7, "book": {"total": 7}}}}
+                           "live_orders": {"intent_count": 7}}}
 
 
 def _panes(html: str) -> list[tuple[str, str, bool]]:
@@ -104,20 +103,20 @@ def test_one_live_category_with_the_data_board_over_the_orders():
 
     # Charter 146 (6cf2a530) gave the tiebreak lane the third pane.
     assert _panes(html) == [
-        ("live", "orders", False), ("live", "book", True),
+        ("live", "orders", False),
         ("live", "tiebreak", True),
-        # Charter 166: the tail lane's own page, beside the tiebreak lane's.
-        ("live", "p1tail", True),
-        # Charter 203: the consensus lane's own page, after the other two.
-        ("live", "p1consensus", True),
-        # Charter 231: the Proper lane's own page, last.
+        # Charter 231: the Proper lane's own page.
         ("live", "proper", True),
+        # Charter 234: H1 historical FOK fills and NO result.
+        ("live", "tailshort", True),
     ]
     assert 'data-daytabs="money-paper"' not in html
-    for label in ("实盘", "实盘 · 数据看板与站明细", "实盘意向簿"):
+    for label in ("实盘", "实盘 · 数据看板与站明细"):
         assert label in html
-    for body in ("DATA", "ORDERS 7", "BOOK 7"):
+    for body in ("DATA", "ORDERS 7"):
         assert body in html
+    for removed in ("实盘意向簿", "P1 尾段线", "同心线"):
+        assert removed not in html
     # 上面是数据看板，下方是站明细.
     assert html.index("DATA") < html.index("ORDERS 7")
 
@@ -136,15 +135,15 @@ def test_a_block_that_throws_does_not_blank_the_others():
     html = _render(LIVE | {"__board_throws": True})
 
     assert "渲染失败" in html and "boom" in html
-    for body in ("ORDERS 7", "BOOK 7"):
+    for body in ("ORDERS 7",):
         assert body in html
 
 
 def test_live_blocks_say_absent_instead_of_drawing_empty_tiles():
     html = _render({"live_readiness": {"available": False}})
 
-    assert "ORDERS" not in html and "BOOK" not in html
-    assert html.count("live_readiness 不可用") == 2
+    assert "ORDERS" not in html
+    assert html.count("live_readiness 不可用") == 1
     # The data board reads the live book, not the readiness payload.
     assert "DATA" in html
 
@@ -167,7 +166,7 @@ def test_the_board_sits_between_the_head_and_live_readiness():
     assert "sec(entryEconomics" not in page and "sec(riskMetrics" not in page
 
 
-@pytest.mark.parametrize("name", ["moneyDataBoard", "liveOrderCard", "orderBookCard"])
+@pytest.mark.parametrize("name", ["moneyDataBoard", "liveOrderCard"])
 def test_each_block_is_drawn_by_the_board_and_nowhere_else(name):
     """A second call site would print the same numbers twice on one page."""
 
