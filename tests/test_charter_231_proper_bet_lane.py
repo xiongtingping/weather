@@ -51,8 +51,12 @@ ED = "2026-09-20"
 DECIDED = "2026-09-18T12:02:00.000Z"
 NOW = "2026-09-18T12:02:30.000Z"
 TOKENS = {"27°C": ("t27", "n27"), "28°C": ("t28", "n28"), "29°C": ("t29", "n29")}
+#: Both sides: this suite pins the two-sided rule as charter 231 wrote it.  The
+#: YES side ships stopped (charter 235, ``sides: ["NO"]``); its own suite pins
+#: that.
 SETTINGS = {"opening_stages": ["P0"], "live_ws_book": False, "min_hours_to_settlement": 36.0,
-            "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0}
+            "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0,
+            "sides": ["YES", "NO"]}
 
 
 def _row(bucket, ordinal, bids, asks, tick=0.01):
