@@ -197,7 +197,10 @@ for d in decs: by_day_decs[d["day"]].append(d)
 alldays = sorted(by_day_decs)
 def choose(arm, day):
     window = [x for x in alldays if (date.fromisoformat(day) - date.fromisoformat(x)).days in range(2, 23)]
-    ids = np.array([d["id"] for x in window for d in by_day_decs[x]], dtype=int)
+    # Strict as-of (found by the production parity check, 2026-10-02): only
+    # window decisions whose truth was known by noon UTC of the scored day.
+    cut = datetime.fromisoformat(day + "T12:00:00+00:00")
+    ids = np.array([d["id"] for x in window for d in by_day_decs[x] if d["known"] <= cut], dtype=int)
     if not len(ids): return combos[arm][0]
     return min(combos[arm], key=lambda c: (float(LOSS[(arm, c)][ids].sum()) / len(ids), c))
 chosen = {arm: {day: choose(arm, day) for day in alldays if SCORE_FROM <= day <= SCORE_TO} for arm in combos}
