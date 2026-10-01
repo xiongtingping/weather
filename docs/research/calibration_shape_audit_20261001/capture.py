@@ -22,7 +22,7 @@ DATE0, DATE1 = dt.date(2026, 9, 1), dt.date(2026, 9, 30)
 KEEP = ['system_weights_json', 'native_system_probabilities_json', 'native_calibrated_system_centers_c_json',
         'consensus_bridge_json', 'synoptic_cooling_json', 'center_width_json', 'probability_floor_json',
         'hour_lead_bucket_by_system_json', 'archive_query_at_utc_by_system_json', 'bucket_intervals_c_json',
-        'system_family_ids_json', 'fusion_blend_json']
+        'system_family_ids_json', 'fusion_blend_json', 'neighbour_direction_json', 'band_reliability_json']
 
 def instant(s): return dt.datetime.fromisoformat(s.replace('Z', '+00:00'))
 def guard():
