@@ -298,3 +298,43 @@ def test_a_retired_sections_recorded_call_is_skipped_not_fatal(pages, monkeypatc
     out = C.refresh_research_section(pages / "ssot.db")
 
     assert ran == ["current"], out
+
+
+def test_the_cheap_starved_pages_go_before_a_heavier_more_overdue_one(pages) -> None:
+    """2026-10-01: run_cadence (1,972 s) led every research run by overdue
+    ratio, and certificate_authority (14 s) sat 17 hours old behind it."""
+
+    now = datetime(2026, 10, 1, 16, 0, tzinfo=timezone.utc)
+    heavy = C.RESEARCH_SECTION_MIN_COST_SEC
+    _page(pages, "run_cadence", age_sec=C.STARVED_PAGE_AGE_SEC * 9, cost=heavy * 6, now=now)
+    _page(pages, "certificate_authority", age_sec=C.STARVED_PAGE_AGE_SEC * 2, cost=14.0, now=now)
+    _page(pages, "ssot_capacity", age_sec=C.STARVED_PAGE_AGE_SEC * 3, cost=45.0, now=now)
+    specs = {name: {} for name in ("run_cadence", "certificate_authority", "ssot_capacity")}
+
+    names = [name for _overdue, name, _cost in C.research_due(specs, now)]
+
+    assert names == ["ssot_capacity", "certificate_authority", "run_cadence"]
+
+
+def test_a_research_run_shares_one_gap_wait_budget(pages, monkeypatch) -> None:
+    now = datetime(2026, 10, 1, 16, 0, tzinfo=timezone.utc)
+    for name in ("first", "second", "third"):
+        _page(pages, name, age_sec=C.STARVED_PAGE_AGE_SEC * 2, cost=5.0, now=now)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    spec = {"module": "calibration_dashboard", "collector": "collect_chain"}
+    monkeypatch.setattr(C, "_load_closed_readings",
+                        lambda _name: {"first": spec, "second": spec, "third": spec})
+    monkeypatch.setattr(C, "_page_render_running", lambda: False)
+    monkeypatch.setattr(C, "_connect", lambda _db: __import__("sqlite3").connect(":memory:"))
+    monkeypatch.setattr(C, "RENDER_GAP_WAIT_BUDGET_SEC", 0.4)
+    monkeypatch.setattr(C, "LIVE_SECTION_GAP_CAP_SEC", 60.0)
+    monkeypatch.setattr(C, "RENDER_GAP_POLL_SEC", 0.05)
+    monkeypatch.setattr(C, "_production_gap_blocker", lambda _line=None: "production cycle in flight")
+    monkeypatch.setattr(C, "_cached_section_value",
+                        lambda name, collector, *a, **k: C._await_production_gap(name, C.LIVE_SECTION_GAP_CAP_SEC))
+    import time as _time
+    started = _time.monotonic()
+
+    C.refresh_research_section(pages / "ssot.db")
+
+    assert _time.monotonic() - started < 0.9, "three sections, one 0.4 s wait budget (not 0.4 s each)"

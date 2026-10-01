@@ -15752,8 +15752,26 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
         line = ttl if cost >= RESEARCH_SECTION_MIN_COST_SEC else max(ttl, STARVED_PAGE_AGE_SEC)
         if age >= line:
             due.append((age / ttl, name, cost))
-    due.sort(key=lambda item: (-item[0], item[1]))
+    # The cheap pages first, then the heavy ones, each most overdue first.
+    # By overdue alone a heavy page led every run: on 2026-10-01 run_cadence
+    # took 1,972 s of one run's 1,800, and the cheap pages behind it --
+    # certificate_authority 14 s, chain_volume 56 s, ssot_capacity 45 s --
+    # sat 17-29 hours old on the board.  26 cheap pages cost ~1,540 s
+    # together and fall due again only after STARVED_PAGE_AGE_SEC, so the
+    # runs in between are the heavy pages'.
+    due.sort(key=lambda item: (
+        item[2] >= RESEARCH_SECTION_MIN_COST_SEC, -item[0], item[1],
+    ))
     return due
+
+
+#: What is left of the research run's gap-wait budget, shared by its
+#: sections as the page render's are (``RENDER_GAP_WAIT_BUDGET_SEC``).  Each
+#: section used to start a fresh budget, so each waited its full 60 s for a
+#: gap that, with production cycles back to back, did not come: on
+#: 2026-10-01 nearly every research section logged 「waited 60s ... still
+#: production cycle in flight」 and then read anyway.
+_RESEARCH_GAP_WAIT_LEFT: list[float] = []
 
 
 def _refresh_one_section(db: Path, name: str, spec: Mapping[str, Any]) -> str:
@@ -15761,6 +15779,8 @@ def _refresh_one_section(db: Path, name: str, spec: Mapping[str, Any]) -> str:
     conn = _connect(db)
     _paged_run_start(db)
     _PAGED_RUN["force"] = name
+    if _RESEARCH_GAP_WAIT_LEFT:
+        _PAGED_RUN["gap_wait_left"] = _RESEARCH_GAP_WAIT_LEFT[0]
     conn.set_progress_handler(_render_yield_check, 20_000)
     started = time.perf_counter()
     try:
@@ -15777,6 +15797,8 @@ def _refresh_one_section(db: Path, name: str, spec: Mapping[str, Any]) -> str:
     finally:
         conn.close()
         entry = dict(_SECTION_CACHE_LOG.get(name) or {})
+        if _RESEARCH_GAP_WAIT_LEFT:
+            _RESEARCH_GAP_WAIT_LEFT[0] = float(_PAGED_RUN.get("gap_wait_left") or 0.0)
         _PAGED_RUN.clear()
     elapsed = time.perf_counter() - started
     if entry.get("stale") or entry.get("unavailable"):
@@ -15805,14 +15827,18 @@ def refresh_research_section(db: Path) -> str:
         return "research render: nothing due"
     started = time.perf_counter()
     done: list[str] = []
-    for _overdue, name, cost in due:
-        spent = time.perf_counter() - started
-        if done and spent + cost > RESEARCH_RUN_BUDGET_SEC:
-            continue
-        if done and _page_render_running():
-            done.append("stopped: the page render started")
-            break
-        done.append(_refresh_one_section(db, name, specs[name]))
+    _RESEARCH_GAP_WAIT_LEFT[:] = [RENDER_GAP_WAIT_BUDGET_SEC]
+    try:
+        for _overdue, name, cost in due:
+            spent = time.perf_counter() - started
+            if done and spent + cost > RESEARCH_RUN_BUDGET_SEC:
+                continue
+            if done and _page_render_running():
+                done.append("stopped: the page render started")
+                break
+            done.append(_refresh_one_section(db, name, specs[name]))
+    finally:
+        _RESEARCH_GAP_WAIT_LEFT.clear()
     return "research render: " + "; ".join(done)
 
 def _serve_unavailable(name: str, value: Any, reason: str) -> Any:
