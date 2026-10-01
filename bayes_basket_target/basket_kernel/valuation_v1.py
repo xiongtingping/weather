@@ -1,14 +1,15 @@
-"""Charter 132 kernel half: the valuation lane's pure arithmetic.
+"""The market's belief off a whole ladder, and an action's value bounds.
 
-Everything here is a function of its arguments -- no database, no clock --
-because the runtime that prices a snapshot must not import a store (the rule
-``BETA_TABLE_KEY`` already lives under).  The store
-(``bayes_basket_target.valuation_store``) fits, persists and loads; this module
-is what both the fit and the enumeration compute with, so the two cannot hold
-two copies of the market reference or the pool.
+Pure arithmetic -- no database, no clock.  ``market_reference_v1`` turns the
+official WS ladder into the market's probability vector (normalised mids,
+every one-sided or empty bucket stated), which the lanes that price against
+the market (Proper, tiebreak, P1 tail and consensus), the candidate-window
+evidence and the L4 shadow all read; ``action_value_v1`` is an action's value
+across a belief's draws, read by the L4 lane.
 
-See ``valuation_store``'s module docstring for the design: the market's book as
-a second forecast, one pooled vector per snapshot, conservatism on the action.
+Charter 132's pooled valuation -- ``(1 - beta) * m + beta * p`` fitted per
+stage, its draws, capacity and ladder cost -- was built here and retired with
+charter 233 (2026-09-27): a shadow no rule read.
 """
 from __future__ import annotations
 
@@ -17,27 +18,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
-VALUATION_RULE = "linear_pool_market_weather_v1"
 MARKET_REFERENCE_RULE = "normalised_mid_v1"
-# Where the valuation lane travels in the served-tables mapping.  Not a stage
-# and not a band table; readers that iterate the mapping as band tables skip it.
-VALUATION_TABLE_KEY = "valuation"
 LCB_QUANTILE = 0.05
-# ``off``: not read.  ``shadow`` (default): every priced window records the
-# pooled mass, the market mass, the action's value bounds, its capacity and the
-# verdict the gate would reach on them; nothing gates.  ``on``: the gate reads
-# the action's lower bound and the solver sizes on the pooled mass -- and a
-# stage without a served, non-accumulating fit AND an ``admitted`` walk-forward
-# verdict holds entirely.  There is no fallback to the claim chain under ``on``:
-# a stage the valuation lane cannot vouch for is a stage that does not trade.
-VALUATION_MODE = (
-    os.environ.get("PM_VALUATION_MODE", "").strip().lower() or "shadow"
-)
-# Charter 230: the L4 posterior is the basket's one belief; the pooled
-# valuation is a shadow reading only (its ``on`` gate is retired).
-if VALUATION_MODE not in {"off", "shadow"}:
-    raise RuntimeError(f"unknown valuation mode: {VALUATION_MODE}")
-
 # Market reference completeness.  A tail bucket quoted only on the ask at a
 # price this small is effectively a zero-probability outcome with a lottery
 # ticket on it; its mid is bounded in [0, ask] and taken as ask/2, an error of
@@ -178,63 +160,8 @@ def market_reference_v1(buckets: Iterable[Any]) -> dict[str, Any]:
     }
 
 
-def valuation_vector_v1(
-    p_weather: Mapping[str, float],
-    m_market: Mapping[str, float],
-    beta: float,
-    *,
-    excluded: Iterable[str] = (),
-) -> dict[str, float] | None:
-    """``(1 - beta) * m + beta * p`` on the market's contract, hard facts at 0.
-
-    The contract is the market's bucket set: a bucket the book lists is an
-    outcome that can settle.  A bucket a hard fact has excluded -- the running
-    high already past its upper edge -- is zeroed on BOTH sources before the
-    pool and the result renormalised, so a lagging book cannot hand a settled
-    loss any probability.  None when nothing is left.
-    """
-
-    b = min(max(float(beta), 0.0), 1.0)
-    dead = {str(x) for x in excluded}
-    raw: dict[str, float] = {}
-    for bucket, m in m_market.items():
-        key = str(bucket)
-        if key in dead:
-            raw[key] = 0.0
-            continue
-        p = float(p_weather.get(key, 0.0) or 0.0)
-        raw[key] = max(0.0, (1.0 - b) * float(m) + b * max(0.0, p))
-    total = sum(raw.values())
-    if not (total > 0.0 and math.isfinite(total)):
-        return None
-    return {bucket: value / total for bucket, value in raw.items()}
-
-
 def window_mass(vector: Mapping[str, float], window: Iterable[str]) -> float:
     return float(sum(float(vector.get(str(bucket), 0.0) or 0.0) for bucket in window))
-
-
-def ladder_cost_v1(
-    ask_levels: Sequence[tuple[float, float]], shares: float,
-) -> tuple[float, float]:
-    """Cash to buy ``shares`` walking the ask ladder, and the shares it holds.
-
-    Returns ``(cost, fillable)``; ``fillable < shares`` means the visible book
-    ends first, and the cost is for what it holds.  Fees are zero on this
-    venue's weather markets (config/trading/basket_yes_v1.json); a non-zero fee
-    belongs to the caller's cost, never to a belief.
-    """
-
-    want = max(0.0, float(shares))
-    cost = 0.0
-    got = 0.0
-    for price, depth in sorted(ask_levels):
-        if got >= want - 1e-12:
-            break
-        take = min(depth, want - got)
-        cost += take * price
-        got += take
-    return cost, got
 
 
 def action_value_v1(
@@ -266,66 +193,5 @@ def action_value_v1(
         "value_lcb": values[min(len(values) - 1, int(q * len(values)))],
         "value_ucb": values[max(0, int((1.0 - q) * len(values)) - 1)],
     }
-
-
-def capacity_v1(
-    *,
-    window: Sequence[str],
-    ask_levels_by_bucket: Mapping[str, Sequence[tuple[float, float]]],
-    mass_lcb: float,
-    hurdle: float,
-    min_order_size: float = 0.0,
-) -> dict[str, float]:
-    """The most equal shares per leg the window can take and still clear.
-
-    ``mass_lcb * n >= (1 + h) * C(n)`` with ``C`` walked down every leg's
-    ladder.  The ask side only rises with n, so the largest n that clears is
-    found by walking the union of level breakpoints; the exchange minimum is a
-    floor below which nothing is buyable at all.  Reported beside the edge so
-    "an edge on one share" is never read as "an edge on the station".
-    """
-
-    legs = [str(b) for b in window]
-    breakpoints: set[float] = set()
-    for bucket in legs:
-        cumulative = 0.0
-        for _price, depth in sorted(ask_levels_by_bucket.get(bucket) or ()):
-            cumulative += depth
-            breakpoints.add(cumulative)
-    best_n = 0.0
-    best_cost = 0.0
-    floor = max(0.0, float(min_order_size))
-    for n in sorted(x for x in breakpoints if x >= floor and x > 0.0):
-        total = 0.0
-        full = True
-        for bucket in legs:
-            cost, got = ladder_cost_v1(ask_levels_by_bucket.get(bucket) or (), n)
-            if got < n - 1e-9:
-                full = False
-                break
-            total += cost
-        if not full:
-            break
-        if mass_lcb * n >= (1.0 + float(hurdle)) * total - 1e-12:
-            best_n, best_cost = n, total
-        else:
-            break
-    return {"capacity_shares": best_n, "capacity_cost": best_cost}
-
-
-def beta_draw_vectors(
-    p_weather: Mapping[str, float],
-    m_market: Mapping[str, float],
-    draws: Sequence[float],
-    *,
-    excluded: Iterable[str] = (),
-) -> list[dict[str, float]]:
-    dead = tuple(excluded)
-    out = []
-    for beta in draws:
-        vector = valuation_vector_v1(p_weather, m_market, beta, excluded=dead)
-        if vector is not None:
-            out.append(vector)
-    return out
 
 

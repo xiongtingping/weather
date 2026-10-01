@@ -163,15 +163,13 @@ def test_the_roi_target_reads_the_seated_partition_and_nothing_else() -> None:
 
 
 def test_no_second_belief_enters_by_default() -> None:
-    """The two switches that could give a reader its own q are off."""
+    """The switch that could give a reader its own q is off, and the beta
+    lane that was the other one retired with charter 233."""
 
-    from bayes_basket_target.basket_kernel.delta_v2 import (  # noqa: PLC0415
-        BETA_EDGE_MODE,
-        SIZING_CLAIM_BANDS,
-    )
+    from bayes_basket_target.basket_kernel import delta_v2  # noqa: PLC0415
 
-    assert SIZING_CLAIM_BANDS == ()
-    assert BETA_EDGE_MODE == "shadow"
+    assert delta_v2.SIZING_CLAIM_BANDS == ()
+    assert not hasattr(delta_v2, "BETA_EDGE_MODE")
 
 
 def test_charter_72_names_the_three_readers() -> None:

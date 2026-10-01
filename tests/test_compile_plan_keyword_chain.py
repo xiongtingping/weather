@@ -59,7 +59,6 @@ CHAIN = (
 THREADED_KEYWORDS = (
     "served_tables",
     "off_centre_claim_bands",
-    "convergence_evidence",
     "chain_consolidation_tilt",
     "last_acted_probability_identity",
     "last_decision_signature",

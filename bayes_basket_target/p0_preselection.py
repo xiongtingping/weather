@@ -26,7 +26,6 @@ from .market_registry import load_market_registry_snapshot
 from .observed_high_floor import (
     MARKET_SNAPSHOT_KEY as OBSERVED_HIGH_MARKET_SNAPSHOT_KEY,
 )
-from .convergence_evidence import load_convergence_evidence
 from .production import compile_production_plan
 from .regime_materialization import load_regime_artifact
 from .production_io import (
@@ -1278,12 +1277,6 @@ def compile_p0_preselection(
         **chain_compile_kwargs(
             conn, chain_state, station_id=station_id, event_date=event_date,
             stage=str(envelope.stage),
-        ),
-        # Arm B (2026-09-06): the belief and book H hours before this
-        # compile, for the convergence claim lift (shadow by default).
-        convergence_evidence=load_convergence_evidence(
-            conn, station_id=station_id, event_date=event_date,
-            as_of_utc=evaluation_at_utc,
         ),
         probability_envelopes=envelopes,
         # Charter 125: the day's observed high rides on the book the plan is

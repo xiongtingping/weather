@@ -118,27 +118,9 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] serving arithmetic watchdog"
 "$PY" scripts/acknowledge_serving_arithmetic.py --audit \
   || echo "watchdog audit failed; refits above still committed" >&2
 
-# Charter 128 (2026-09-12): the beta lane -- one slope per stage on the
-# production candidate-window population, walk-forward as-of today,
-# by-day bootstrap lower bound.  Shadow: it is recorded on every decision
-# and gates nothing until ruled on.  Never fatal.
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] beta edge refit"
-"$PY" scripts/refit_beta_edge.py --commit \
-  --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  || echo "beta edge refit failed; the served beta stands" >&2
-
-# Charter 132 (2026-09-13): the valuation pool -- beta in [0, 1] between the
-# market's normalised book and the served weather vector, fitted on the truth
-# bucket's log score with by-event-day draws.  One stage per invocation so no
-# slot exceeds the 300-second budget.  Shadow: activation serves the recorded
-# values only; the gate reads them only under PM_VALUATION_MODE=on with an
-# admitted walk-forward verdict.  Never fatal.
-for VALUATION_STAGE in P0 P0-M P1; do
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] valuation refit $VALUATION_STAGE"
-  "$PY" scripts/refit_valuation.py --commit --stage "$VALUATION_STAGE" \
-    --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    || echo "valuation refit $VALUATION_STAGE failed; the served row stands" >&2
-done
+# The beta lane's refit (charter 128) and the pooled valuation's
+# (charter 132, one stage per invocation) ran here until charter 233
+# retired both shadow lanes (2026-09-27).
 
 # L4 posterior lane (charter 230, the basket's one belief): the logit-space
 # posterior ``logit m + w (logit p - logit m) + c(m)`` fitted by the multiclass

@@ -349,14 +349,14 @@ MAX_JSON_NODES = 500_000
 # probabilities -- which is the ruling that stops these raises.
 #
 # Raised 68 -> 70 GiB on 2026-09-27 to reopen the fail-closed store the user
-# reported, and sized for charter 233 to land rather than for the burn.  The
+# reported, and sized for charter 237 to land rather than for the burn.  The
 # file reached this ceiling and every writer stopped: the resident's receipt
 # read ``target_ssot_writer_open_failed:target_database_bytes_exceeded``,
 # the settlement-truth and AWC-observation sweeps failed on this guard,
 # ECMWF and AIGEFS member rows stopped landing, and the D+1 P0 supply went
 # fleet-expired (45 listed, 0 fresh, the last one expired 12:43:50Z).
 #
-# Charter 233 moves the aged rows of seven tables to the cold tier, but a
+# Charter 237 moves the aged rows of seven tables to the cold tier, but a
 # delete only puts pages on the freelist and this guard measures the file, so
 # moving rows cannot reopen a store whose file already sits on the ceiling --
 # the 08-22 and 09-19 situation again, a file that contains its own headroom.

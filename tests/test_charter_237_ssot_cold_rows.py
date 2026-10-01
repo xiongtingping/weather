@@ -1,4 +1,4 @@
-"""Charter 233: the SSOT's aged history rows move to the cold tier, verified,
+"""Charter 237: the SSOT's aged history rows move to the cold tier, verified,
 and every production reader answers exactly as before.
 
 User ruling 2026-09-27 (「优化ssot，移动部分不影响生产的数据至外置硬盘」).  What
@@ -846,9 +846,9 @@ def test_the_daily_job_runs_the_lane_after_the_file_lane() -> None:
     assert "PM_SSOT_COLD_OFFLOAD_APPLY" in job
 
 
-def test_charter_233_names_the_lane() -> None:
+def test_charter_237_names_the_lane() -> None:
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
-    article = next((line for line in charter.splitlines() if line.startswith("233. ")), "")
+    article = next((line for line in charter.splitlines() if line.startswith("237. ")), "")
     assert "ssot_cold_offload" in article
     for policy in off.POLICIES:
         assert policy.table in article

@@ -31,7 +31,6 @@ from .account_equity import (
     table_present as account_equity_table_present,
 )
 from .off_centre_claim_store import load_off_centre_tables
-from .convergence_evidence import load_convergence_evidence
 from .cash_phase_authority import (
     CashPhaseAuthorityManifest,
     load_cash_phase_authority_manifest,
@@ -3101,12 +3100,6 @@ def compile_production_cycle_from_ssot(
         **chain_compile_kwargs(
             conn, chain_state, station_id=station_id, event_date=event_date,
             stage=current_envelope.stage,
-        ),
-        # Arm B (2026-09-06): the belief and book H hours before this
-        # compile, for the convergence claim lift (shadow by default).
-        convergence_evidence=load_convergence_evidence(
-            conn, station_id=station_id, event_date=event_date,
-            as_of_utc=evaluation_at_utc,
         ),
         probability_envelopes=envelopes,
         market_snapshot=market_snapshot,

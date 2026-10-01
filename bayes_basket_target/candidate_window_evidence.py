@@ -239,12 +239,12 @@ def candidate_windows_v1(
             "holds_centre": float(row.get("center_gap_buckets") or 0.0) <= 0.0,
             "leg_claim_cost": row.get("leg_claim_cost") or None,
             "market_mid": (
-                None if row.get("beta_market_mid") is None
-                else float(row["beta_market_mid"])
+                None if row.get("market_mid") is None
+                else float(row["market_mid"])
             ),
             "hours_to_cutoff": (
-                None if row.get("beta_hours_to_cutoff") is None
-                else float(row["beta_hours_to_cutoff"])
+                None if row.get("hours_to_cutoff") is None
+                else float(row["hours_to_cutoff"])
             ),
         })
     return out

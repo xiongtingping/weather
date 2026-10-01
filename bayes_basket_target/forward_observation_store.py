@@ -1382,7 +1382,7 @@ def append_forward_settlement_labels(
                                 "forward_store_label_decision_authority_missing"
                             )
                         decision_rows = source.execute(
-                            "SELECT details_json FROM auto_trade_decisions "
+                            "SELECT rowid,details_json FROM auto_trade_decisions "
                             "WHERE decision_id=? LIMIT 2",
                             (item["decision_id"],),
                         ).fetchall()
@@ -1391,7 +1391,7 @@ def append_forward_settlement_labels(
                                 "forward_store_label_decision_authority_not_unique"
                             )
                         try:
-                            details = json.loads(str(decision_rows[0][0] or "{}"))
+                            details = json.loads(str(decision_rows[0][1] or "{}"))
                         except (TypeError, ValueError, json.JSONDecodeError) as exc:
                             raise ForwardObservationStoreError(
                                 "forward_store_label_decision_details_invalid"
@@ -1401,11 +1401,39 @@ def append_forward_settlement_labels(
                             if isinstance(details, Mapping)
                             else ""
                         )
-                        if not status.startswith("INELIGIBLE_"):
-                            raise ForwardObservationStoreError(
-                                "forward_store_label_exact_decision_join_missing_or_ambiguous"
+                        if status.startswith("INELIGIBLE_"):
+                            skip_reason = status
+                        else:
+                            # An eligible decision the store never ingested
+                            # because the store ingested a DIFFERENT decision
+                            # from the same source row: the row was rewritten
+                            # in place after it was ingested, so this
+                            # decision's observation will never arrive.  The
+                            # store's own ingest record is the evidence, and
+                            # nothing is joined across the two ids.  Measured
+                            # 2026-09-27: 170 decisions of 2026-08-01..08-30
+                            # (OPKC 08-30 01:23Z: the store holds
+                            # decision_251baf87 at source row 60353, the SSOT
+                            # decision_0977ed18) held the label cursor at
+                            # 13,115 from 2026-08-31 -- 49,013 labels behind
+                            # them, 208 of them materialisable.  Anything
+                            # else stays fail-closed.
+                            ingested_there = connection.execute(
+                                "SELECT decision_id FROM forward_ingest_state "
+                                "WHERE source_rowid=? LIMIT 1",
+                                (int(decision_rows[0][0]),),
+                            ).fetchone()
+                            if (
+                                ingested_there is None
+                                or str(ingested_there[0]) == item["decision_id"]
+                            ):
+                                raise ForwardObservationStoreError(
+                                    "forward_store_label_exact_decision_join_missing_or_ambiguous"
+                                )
+                            skip_reason = (
+                                "FORWARD_SOURCE_ROW_REWRITTEN:"
+                                + str(ingested_there[0])
                             )
-                        skip_reason = status
                     connection.execute(
                         "INSERT INTO forward_label_ingest_state("
                         "source_label_rowid,source_label_id,"

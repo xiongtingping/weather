@@ -712,6 +712,102 @@ def test_settlement_label_projection_skips_explicitly_ineligible_fact(
     source.close()
 
 
+def _add_eligible_label(
+    source: sqlite3.Connection, outcome: str, *, decision_id: str, source_rowid: int,
+    suffix: str,
+) -> None:
+    """A settled label whose decision the source calls ELIGIBLE, at a chosen
+    rowid of the decision table."""
+
+    source.execute(
+        "CREATE TABLE IF NOT EXISTS auto_trade_decisions("
+        " decision_id TEXT PRIMARY KEY, details_json TEXT NOT NULL)"
+    )
+    source.execute(
+        "INSERT INTO auto_trade_decisions(rowid,decision_id,details_json) VALUES(?,?,?)",
+        (source_rowid, decision_id, '{"forward_observation_status":"ELIGIBLE"}'),
+    )
+    source.execute(
+        "INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?)",
+        (f"fact-{suffix}", "RKPK", "2026-07-27", "Asia/Seoul", decision_id,
+         "2026-07-26T21:09:00Z"),
+    )
+    truth_sha = "3" * 64
+    source.execute(
+        "INSERT INTO calibration_station_daily_high_truth(truth_id,station_id,"
+        "local_date,revision_no,content_sha256,authority_scope,qc_status,"
+        "timestamps_complete) VALUES(?,?,?,?,?,?,?,?)",
+        (f"truth-{suffix}", "RKPK", "2026-07-27", 1, truth_sha,
+         "FORMAL_NATIVE_ELIGIBLE", "ACCEPTED", 1),
+    )
+    identity = {
+        "fact_id": f"fact-{suffix}", "truth_id": f"truth-{suffix}",
+        "truth_revision_no": 1, "truth_sha256": truth_sha, "official_tmax_c": 30.0,
+        "winning_bucket": "30", "settlement_closed_at_utc": "2026-07-28T00:00:00Z",
+        "labeled_at_utc": "2026-07-28T01:30:00Z", "outcome_json": outcome,
+        "authority_scope": "FORMAL_NATIVE_ELIGIBLE", "supersedes_label_id": None,
+    }
+    label_sha = content_sha256(
+        {"schema": "delta_basket_score_training_label_v2", **identity}
+    )
+    source.execute(
+        "INSERT INTO basket_policy_training_label VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (f"d2label_{label_sha[:40]}", identity["fact_id"], identity["truth_id"], 1,
+         truth_sha, 30.0, "30", identity["settlement_closed_at_utc"],
+         identity["labeled_at_utc"], outcome, identity["authority_scope"], None,
+         label_sha),
+    )
+    source.commit()
+
+
+def test_a_label_whose_source_row_was_rewritten_after_ingest_is_skipped(
+    tmp_path: Path,
+) -> None:
+    """2026-09-27: 170 decisions of 2026-08-01..08-30 were rewritten in place
+    -- same source row, new decision id -- after the store had ingested the
+    originals, and their labels held the cursor from 2026-08-31.  The store's
+    own ingest record at that source row is the evidence; nothing is joined
+    across the two ids."""
+
+    path, row = _seed_local_store(tmp_path)  # ingests row["decision_id"] at rowid 1
+    source, _, outcome = _source_with_label(row)
+    _add_eligible_label(source, outcome, decision_id="decision-rewritten",
+                        source_rowid=1, suffix="rewritten")
+
+    result = append_forward_settlement_labels(
+        path, source, expected_generation=1,
+        materialized_at_utc="2026-07-28T02:00:00Z", allowed_root=path.parent,
+    )
+
+    assert result["skipped_ineligible"] == 1
+    with sqlite3.connect(path) as stored:
+        assert stored.execute(
+            "SELECT state,skip_reason FROM forward_label_ingest_state "
+            "ORDER BY source_label_rowid DESC LIMIT 1"
+        ).fetchone() == (
+            "SKIPPED_INELIGIBLE",
+            "FORWARD_SOURCE_ROW_REWRITTEN:" + row["decision_id"],
+        )
+
+
+def test_an_eligible_decision_the_store_never_saw_still_fails_closed(
+    tmp_path: Path,
+) -> None:
+    path, row = _seed_local_store(tmp_path)
+    source, _, outcome = _source_with_label(row)
+    # Its source row was never ingested at all: its observation may yet come.
+    _add_eligible_label(source, outcome, decision_id="decision-unseen",
+                        source_rowid=2, suffix="unseen")
+
+    with pytest.raises(
+        Exception, match="forward_store_label_exact_decision_join_missing_or_ambiguous"
+    ):
+        append_forward_settlement_labels(
+            path, source, expected_generation=1,
+            materialized_at_utc="2026-07-28T02:00:00Z", allowed_root=path.parent,
+        )
+
+
 def test_settlement_label_skips_quarantined_decision_and_promotes_after_repair(
     tmp_path: Path,
 ) -> None:
