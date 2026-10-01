@@ -7182,19 +7182,25 @@ def _live_station_day_money(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 source = str(leg.get("settled_bucket_source") or "")
                 break
         buy_legs = filled = 0
-        cost = held = 0.0
+        cost = held = held_no = 0.0
         asked: set[str] = set()
         for legs in baskets:
             for leg in legs:
                 buy_legs += 1
-                asked.add(str(leg.get("bucket")))
+                # A NO leg (charters 231, 234) is no bucket a basket asked
+                # for, and it pays on every bucket but its own.
+                no_leg = str(leg.get("side") or "").upper() == "NO"
+                if not no_leg:
+                    asked.add(str(leg.get("bucket")))
                 if str(leg.get("state") or "") != "filled":
                     continue
                 filled += 1
                 size = _num(leg.get("filled_size")) or _num(leg.get("requested_size"))
                 cost += (_num(leg.get("filled_notional_usdc"))
                          or _num(leg.get("requested_notional_usdc")))
-                if truth and str(leg.get("bucket")) == truth:
+                if truth and no_leg and str(leg.get("bucket")) != truth:
+                    held_no += size
+                elif truth and not no_leg and str(leg.get("bucket")) == truth:
                     held += size
         sold_legs = resting = 0
         proceeds = sold_of_truth = 0.0
@@ -7210,7 +7216,7 @@ def _live_station_day_money(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     sold_of_truth += sold
             if state not in ("filled", "failed", "cancelled"):
                 resting += 1
-        settlement = max(held - sold_of_truth, 0.0)
+        settlement = max(held - sold_of_truth, 0.0) + held_no
         payout = settlement + proceeds
         day_row = days.setdefault(day, {
             "event_date": day, "stations": 0, "baskets": 0, "barred_baskets": 0,

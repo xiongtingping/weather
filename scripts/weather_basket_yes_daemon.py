@@ -120,6 +120,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_P1_CONSENSUS,
     LANE_PROPER_BET,
     LANE_P1_TAIL,
+    LANE_TAIL_SHORT,
     LANE_TIEBREAK,
     lane_enabled,
 )
@@ -4158,6 +4159,28 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 234: the 远尾做空线 -- the market's own far tails, bought NO as a
+    # taker on a book at most a minute old.  A failure is a receipt, never a stop.
+    tail_short_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_TAIL_SHORT
+    ):
+        tail_short_receipt = {"state": "lane_paused", "lane": LANE_TAIL_SHORT}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _tail_short_transport,
+            )
+            from bayes_basket_target.tail_short_lane import execute_tail_short
+            tail_short_receipt = execute_tail_short(
+                connection,
+                canonical,
+                transport=_tail_short_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4178,6 +4201,7 @@ def run_target_production_cycle(
         **({"p1_consensus_lane": p1_consensus_receipt} if p1_consensus_receipt else {}),
         **({"proper_bet_lane_head": proper_bet_head_receipt} if proper_bet_head_receipt else {}),
         **({"proper_bet_lane": proper_bet_receipt} if proper_bet_receipt else {}),
+        **({"tail_short_lane": tail_short_receipt} if tail_short_receipt else {}),
     }
 
 
