@@ -22524,10 +22524,12 @@ function fusionCandidates(){
     <div class="scroll"><table><thead><tr><th>候选</th><th>站日 / 天</th><th>ΔLogScore（主）</th><th>Δ桶 Brier（护栏）</th><th>ΔCRPS °C（结构）</th><th>门</th></tr></thead>
     <tbody>${laterRows}</tbody></table></div>`;
   const mode = FS.mode || "—";
-  return `<h2>融合权重：宪章 199 在服务（P0_FUSION_BLEND_MODE=${h(mode)}）· 前向记账与研究候选</h2>
-  <div class="card"><b>现状</b>：每次 P0 编译按决策时刻可知的已结算站日算「中心误差＋正则」与「分层 CRPS」各半的融合权重，
-    <b>2026-09-24 起服务融合权重</b>（P0 v13；判据改用历史样本 2,457 站日、按第 211 条两项都降），09-25 起美国 11 个 ASOS 站同一规则（P0 v19）；
-    训练目标改桶 LogLoss 已测不过、不改。缺训练日、成员低于 1e-6 或优化器不收敛时退回席位权重，回执写明原因（<span class="mono">fusion_blend_json</span>）。
+  return `<h2>融合权重：宪章 199 层、宪章 242 规则在服务（P0_FUSION_BLEND_MODE=${h(mode)}）· 前向记账与研究候选</h2>
+  <div class="card"><b>现状</b>：<b>宪章 242 起（P0 v21）</b>，每次 P0 编译读当日拟好的站级参数（<span class="mono">station_model_weight_params</span>）：
+    本站已知真值上各家混合的桶 LogScore 最优权重，每家按自己在本站被打分的站日数向席位权重收缩（α=n/(n+τ)，τ 每日在全队近三周前推选）；
+    服务权重在已服务决策上显著差于席位权重时由否决闸退回席位权重（<span class="mono">station_model_weight_veto</span>）。
+    此前的规则（「中心误差＋正则」与「分层 CRPS」各半、本站 21 天窗；09-24 起服务）已退役；下方前向记账照读回执里的席位与服务权重。
+    参数缺失、被否决或训练文件不可读时退回席位权重，回执写明原因（<span class="mono">fusion_blend_json</span>）。
     ${prRows ? `<details style="margin-top:6px"><summary>09-23 上线前重放（生产训练密度、当时入座的系统；已被 09-24 历史样本复判取代）</summary><div class="scroll"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div></details>` : ""}</div>
   ${forward}
   ${later}

@@ -26,6 +26,14 @@ function and refused unless every centre matches the lineage to 1e-7 C (the
 study's reconstruction, compare.reconstruct).  A station-day without them
 still trains the centre objective.
 
+Charter 242 adds a second table, ``station_model_weight_fact``: for each
+settled station-day from ``FORWARD_FACTS_FROM`` on, the last committed P0 in
+each of five horizon bins before the local day's end, each seated system's
+probability of the settled bucket (market ladder), and the seat and served
+weights from its fusion receipt.  The truth is the newest formal revision
+(charter 225's two lanes), each revision its own row.  Earlier days come from
+the replay backfill (``scripts/backfill_station_model_weight_facts.py``).
+
 SSOT is opened read-only; the only write is data/fusion_blend_training.db.
 Append-only: a row, once written, is never rewritten.
 """
@@ -47,6 +55,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import fusion_blend as FB  # noqa: E402
+from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: E402
 from bayes_basket_target.materialization import (  # noqa: E402
     rehydrate_lineage_documents,
 )
@@ -85,7 +94,7 @@ def ssot_connection(path: Path) -> sqlite3.Connection:
 def training_connection(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
-    for statement in FB.TRAINING_DDL:
+    for statement in FB.TRAINING_DDL + FB.STATION_WEIGHT_DDL:
         conn.execute(statement)
     conn.commit()
     return conn
@@ -193,6 +202,122 @@ def packet_probabilities(conn, lineage, station, day, weights, centers, interval
             spread_parameters=spread, reliability_parameters=reliability,
         )
     return out, "PACKET_RECONSTRUCTION"
+
+
+def weight_fact_truths(conn: sqlite3.Connection, station: str, day: str, tz: str, cutoff: datetime):
+    """Every accepted formal revision (charter 225's lanes), known at the later
+    of the local day's end and its own commit/receipt/publication."""
+
+    end = datetime.fromisoformat(day).replace(tzinfo=ZoneInfo(tz)) + timedelta(days=1)
+    if end > cutoff:
+        return []
+    out = []
+    for row in conn.execute(
+        "SELECT * FROM calibration_station_daily_high_truth WHERE station_id=? AND local_date=?"
+        " AND source_lane IN " + FORMAL_TRUTH_LANES_SQL + " AND qc_status='ACCEPTED'"
+        " AND authority_scope='FORMAL_NATIVE_ELIGIBLE' ORDER BY revision_no",
+        (station, day),
+    ):
+        if (
+            row["settlement_timezone"] != tz or not row["canonical_committed_at_utc"]
+            or stamp(row["canonical_committed_at_utc"]) > cutoff
+        ):
+            continue
+        stamps = [stamp(row[k]) for k in ("canonical_committed_at_utc", "received_at_utc", "published_at_utc") if row[k]]
+        out.append((row, max([end, *stamps])))
+    return out
+
+
+def build_weight_facts(conn, out, stations, *, first, cutoff, deadline, dry_run, counts) -> None:
+    """Charter 242's forward facts (see the module docstring)."""
+
+    existing = {
+        (r[0], r[1], int(r[2]), int(r[3])) for r in out.execute(
+            "SELECT station_id, event_date, horizon_bin, truth_revision FROM station_model_weight_fact"
+        )
+    }
+    created = iso(datetime.now(timezone.utc))
+    for station, tz in sorted(stations.items()):
+        day = max(first, datetime.fromisoformat(FB.FORWARD_FACTS_FROM).date())
+        while day <= cutoff.date():
+            day_text = day.isoformat()
+            day += timedelta(days=1)
+            if time.monotonic() > deadline:
+                counts["weight_facts_stopped_on_budget"] = 1
+                return
+            truths = weight_fact_truths(conn, station, day_text, tz, cutoff)
+            if not truths:
+                continue
+            end = datetime.fromisoformat(day_text).replace(tzinfo=ZoneInfo(tz)) + timedelta(days=1)
+            for lo, hi in FB.HORIZON_BINS_H:
+                pending = [
+                    (row, known) for row, known in truths
+                    if (station, day_text, int(lo), int(row["revision_no"])) not in existing
+                ]
+                if not pending:
+                    continue
+                lower = end - timedelta(hours=hi if hi != float("inf") else 96.0)
+                upper = end - timedelta(hours=lo)
+                root = conn.execute(
+                    "SELECT * FROM basket_probability_envelope"
+                    " INDEXED BY basket_probability_envelope_asof_idx"
+                    " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage='P0'"
+                    " AND decision_at_utc>=? AND decision_at_utc<? AND created_at<?"
+                    " ORDER BY decision_at_utc DESC LIMIT 1",
+                    (station, day_text, iso(lower), iso(upper), iso(end)),
+                ).fetchone()
+                if root is None:
+                    counts["weight_fact_no_p0_in_bin"] = counts.get("weight_fact_no_p0_in_bin", 0) + 1
+                    continue
+                lineage = rehydrate_lineage_documents(conn, decoded(root["lineage_json"]))
+                served = {str(k): float(v) for k, v in (decoded(lineage.get("system_weights_json")) or {}).items()}
+                probabilities = decoded(lineage.get("native_system_probabilities_json")) or {}
+                intervals = decoded(lineage.get("bucket_intervals_c_json")) or {}
+                receipt = decoded(lineage.get("fusion_blend_json")) or {}
+                pool = sorted(s for s, w in served.items() if w > 0.0 and s in probabilities)
+                if len(pool) < 2:
+                    counts["weight_fact_thin_or_no_probabilities"] = counts.get("weight_fact_thin_or_no_probabilities", 0) + 1
+                    continue
+                try:
+                    keys, _points = FB.representative_points(intervals)
+                except ValueError as error:
+                    counts["weight_fact_" + str(error)] = counts.get("weight_fact_" + str(error), 0) + 1
+                    continue
+                seat_source = receipt.get("seat_weights") or served
+                seat = {s: float(seat_source.get(s, 0.0)) for s in pool}
+                for truth, known in pending:
+                    try:
+                        hit = FB.truth_bucket_index(intervals, keys, float(truth["official_tmax_c"]))
+                    except ValueError as error:
+                        counts["weight_fact_" + str(error)] = counts.get("weight_fact_" + str(error), 0) + 1
+                        continue
+                    identity = {
+                        "station_id": station, "event_date": day_text, "horizon_bin": int(lo),
+                        "truth_revision": int(truth["revision_no"]),
+                        "decision_at_utc": str(root["decision_at_utc"]),
+                        "truth_c": float(truth["official_tmax_c"]), "truth_known_at_utc": iso(known),
+                        "truth_source": "FORMAL", "probability_source": "ENVELOPE",
+                        "probability_grid": "MARKET_LADDER", "systems_json": json.dumps(pool),
+                        "truth_probability_json": json.dumps(
+                            {s: float(probabilities[s][keys[hit]]) for s in pool}, sort_keys=True),
+                        "seat_weights_json": json.dumps(seat, sort_keys=True),
+                        "served_weights_json": json.dumps({s: served[s] for s in pool}, sort_keys=True),
+                        "fusion_rule_version": str(receipt.get("rule_version") or "NONE"),
+                        "fusion_state": str(receipt.get("state") or "NONE"),
+                        "source_ref": "envelope:" + str(root["content_sha256"]),
+                        "schema": FB.STATION_WEIGHT_FACT_SCHEMA,
+                    }
+                    content = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+                    record = {**identity, "created_at_utc": created, "content_sha256": content}
+                    if not dry_run:
+                        out.execute(
+                            "INSERT OR IGNORE INTO station_model_weight_fact (" + ",".join(record)
+                            + ") VALUES (" + ",".join("?" * len(record)) + ")", tuple(record.values()),
+                        )
+                    existing.add((station, day_text, int(lo), int(truth["revision_no"])))
+                    counts["weight_facts_written"] = counts.get("weight_facts_written", 0) + 1
+        if not dry_run:
+            out.commit()
 
 
 def build(args: argparse.Namespace) -> dict[str, int]:
@@ -364,7 +489,12 @@ def build(args: argparse.Namespace) -> dict[str, int]:
             out.commit()
         if counts.get("stopped_on_budget"):
             break
+    build_weight_facts(
+        conn, out, stations, first=first, cutoff=cutoff,
+        deadline=started + args.budget_seconds, dry_run=args.dry_run, counts=counts,
+    )
     counts["rows_total"] = out.execute("SELECT count(*) FROM fusion_blend_training_fact").fetchone()[0]
+    counts["weight_fact_rows_total"] = out.execute("SELECT count(*) FROM station_model_weight_fact").fetchone()[0]
     counts["seconds"] = int(time.monotonic() - started)
     out.close()
     conn.close()

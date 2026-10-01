@@ -153,16 +153,20 @@ def test_forward_shadow_scores_seat_and_shadow_on_the_same_days(tmp_path, monkey
     conn.close()
     monkeypatch.setattr(FB, "FUSION_BLEND_TRAINING_DB", path)
     out = C._fusion_forward_shadow()
-    assert out["station_days"] == 2 and out["event_days"] == 2
-    seat, shadow = out["arms"]["seat"], out["arms"]["shadow"]
+    # Since the 09-24 switch (76a8d67a) the ledger groups rows by era: roots
+    # that served the seat (SHADOW_*) and roots that served the blend.
+    assert out["available"] and out["station_days"] == 2
+    assert set(out["groups"]) == {"shadow", "all"}
+    group = out["groups"]["shadow"]
+    assert group["station_days"] == 2 and group["event_days"] == 2
+    seat, blend = group["arms"]["seat"], group["arms"]["blend"]
     assert seat["rmse_c"] == pytest.approx(abs(0.5 * 0.2 + 0.5 * -2.0))
-    assert shadow["rmse_c"] == pytest.approx(abs(0.7 * 0.2 + 0.3 * -2.0))
-    assert shadow["nll"] == pytest.approx(-math.log(0.7 * 0.8 + 0.3 * 0.3))
-    assert out["better"]["rmse_c"] and out["better"]["nll"]
+    assert blend["rmse_c"] == pytest.approx(abs(0.7 * 0.2 + 0.3 * -2.0))
+    assert blend["nll"] == pytest.approx(-math.log(0.7 * 0.8 + 0.3 * 0.3))
     # Charter 211 (amended): the switch reads the two proper scores; REL/RES
     # and RMSE/CRPS are diagnostics.
     assert out["panel"] == ["bucket_brier", "nll"]
-    assert set(out["panel_better"]) == set(out["panel"])
-    assert shadow["bucket_brier"] == pytest.approx(
+    assert blend["bucket_brier"] == pytest.approx(
         (0.7 * 0.1 + 0.3 * 0.6) ** 2 + (0.7 * 0.8 + 0.3 * 0.3 - 1.0) ** 2 + (0.1) ** 2)
-    assert out["switch_ready"] is False     # two days, not twenty
+    assert group["delta"]["nll"]["mean"] == pytest.approx(blend["nll"] - seat["nll"])
+    assert group["both_lower"] is (blend["nll"] < seat["nll"] and blend["bucket_brier"] < seat["bucket_brier"])

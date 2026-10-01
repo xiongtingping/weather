@@ -187,7 +187,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # were minted -- a pair re-certified this morning no longer outranks the
 # five-system view certified last night, and a same-size tie keeps the
 # heavier systems instead of falling to the activation id.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v20"
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v21"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -3279,13 +3279,13 @@ def compile_native_ensemble_p0(
         registry_family_by_system=family_by_system,
         family_caps=family_caps,
     )
-    # Charter 199: the seat's weights re-fitted as of this decision on the
-    # settled station-days knowable now -- the centre's squared error over
-    # this station and the pooled CRPS over the fleet then this station,
-    # half each (``fusion_blend``).  The seat still decides who sits.  In
-    # the served SHADOW mode the fit runs and is recorded while the seat's
-    # weights are served; every path that cannot fit serves them too, and
-    # the receipt says which path ran.
+    # Charter 199, rule of charter 242: the seat's weights re-weighted for
+    # this station -- the station's log-score-optimal mixture of the seated
+    # systems, each system shrunk to its seat weight by its own station-days
+    # (``fusion_blend``; parameters fitted daily, read as of this decision,
+    # with a forward veto).  The seat still decides who sits.  In SHADOW the
+    # weights are computed and recorded while the seat's are served; every
+    # path that cannot apply them serves the seat's, and the receipt says why.
     system_weights, fusion_blend_receipt = overlay_system_weights(
         station_id=station_id,
         event_date=event_date,
