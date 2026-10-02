@@ -37,6 +37,11 @@ MAX_BOOK_SKEW_SECONDS = 120.0
 
 
 def _field(row: Any, name: str, default: Any = None) -> Any:
+    # A plain dict first: the history path hands in JSON-decoded dicts, and
+    # isinstance against typing's Mapping costs an ABC subclass walk --
+    # 13.6M calls and 29 s of the charter EV page's 143 s on 2026-10-02.
+    if type(row) is dict:
+        return row.get(name, default)
     if isinstance(row, Mapping):
         return row.get(name, default)
     return getattr(row, name, default)
