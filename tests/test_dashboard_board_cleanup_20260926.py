@@ -387,3 +387,22 @@ def test_the_heavy_pages_rotate_oldest_page_first(pages, monkeypatch) -> None:
     names = [name for _overdue, name, _cost in C.research_due(specs, now)]
 
     assert names == ["skill", "short"]
+
+
+def test_a_page_from_other_code_is_no_page(pages, monkeypatch) -> None:
+    """2026-10-02: truth_landing's page predated a code change, so the page
+    render showed nothing ("it has no page yet") while the research render
+    ranked the file by its 48 h age behind older servable pages."""
+
+    now = datetime(2026, 10, 2, 8, 0, tzinfo=timezone.utc)
+    heavy = C.RESEARCH_SECTION_MIN_COST_SEC
+    _page(pages, "older_servable", age_sec=100 * 3600, cost=heavy * 2, now=now)
+    _page(pages, "stale_code", age_sec=48 * 3600, cost=heavy * 2, now=now)
+    blob = json.loads((pages / "stale_code.json").read_text())
+    blob["code_fingerprint"] = "not-this-code"
+    (pages / "stale_code.json").write_text(json.dumps(blob))
+    spec = {"module": "calibration_dashboard", "collector": "collect_chain"}
+    names = [name for _o, name, _c in C.research_due(
+        {"older_servable": spec, "stale_code": spec}, now
+    )]
+    assert names[0] == "stale_code"

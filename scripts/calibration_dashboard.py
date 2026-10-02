@@ -15804,6 +15804,20 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
         ttl = SECTION_CACHE_TTL_SEC.get(name) or PAGED_SECTION_TTL_SEC
         stamp = _parse_utc_or_none(blob.get("computed_at_utc"))
         age = (now - stamp).total_seconds() if stamp else float("inf")
+        # A page the page render cannot serve is no page, whatever its date:
+        # across a code change it is "not shown this run; it has no page
+        # yet" on the board, and ranked here by its file's age it waited
+        # behind older servable pages -- truth_landing, last built 09-30,
+        # sat off the board through 10-02 while this read it as 48 h old.
+        if blob.get("code_fingerprint"):
+            try:
+                current = _section_fingerprint(
+                    _resolve_collector(specs[name]), ""
+                )
+            except Exception:  # noqa: BLE001 -- unresolvable: keep the file's age
+                current = None
+            if current is not None and blob.get("code_fingerprint") != current:
+                age = float("inf")
         line = ttl if cost >= RESEARCH_SECTION_MIN_COST_SEC else max(ttl, STARVED_PAGE_AGE_SEC)
         if age >= line:
             due.append((age / ttl, name, cost))
