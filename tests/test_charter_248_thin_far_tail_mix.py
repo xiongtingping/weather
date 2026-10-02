@@ -181,6 +181,10 @@ def test_the_lane_admits_a_tail_weight_and_refuses_the_reverse() -> None:
     assert lane["gate"]["lower"] and lane["majority_positive"]
     assert lane["admitted"] is True and lane["state"] == "ADMITTED"
     assert all(fold["slice_tail_mix_weight"] > 0.0 for fold in lane["folds"])
+    # Charter 248 amendment: every fold from the third day on, not the last five.
+    assert store.SLICE_ROLLING_ORIGIN_MAX_FOLDS is None and lane["max_folds"] is None
+    assert lane["fold_count"] == 12 - store.ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS
+    assert lane["folds"][0]["scored_day"] == "2026-09-04"
     # Truth always in the mode of a vector with no floored bucket: every mix
     # only moves mass off the mode -> weight 0, refused.  (On the NARROW
     # vector the zero end buckets are lifted by the charter 224 floor, and a

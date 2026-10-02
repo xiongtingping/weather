@@ -193,6 +193,16 @@ CENTER_WIDTH_VETO_MIN_CELLS = 60
 SLICE_MIN_QUALIFYING_DAYS = 8
 SLICE_MIN_QUALIFYING_CELLS = 60
 SLICE_MIN_FOLD_TRAIN_CELLS = 30
+# Charter 248 amendment (user ruling 2026-10-03 「放宽重测」): the slice lane
+# walks every available fold, not the stage's last ``ROLLING_ORIGIN_MAX_FOLDS``.
+# The slice is thin -- about 27 station-days a day -- so five held-out days
+# held 136 station-days and an interval half-width of 0.033 nat, three times
+# the gain it had to resolve (first live run 2026-10-02: -0.0095 [-0.044,
+# +0.022]); the research arm needed ~460 station-days to resolve -0.018.  The
+# stage lane's five days hold 5,000+ cells and keep their cap.  None means
+# every fold from ``ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS`` on; the gate is the
+# same ranked verdict and fold majority.
+SLICE_ROLLING_ORIGIN_MAX_FOLDS: int | None = None
 # Open-ended edge buckets have no far side; this is the width
 # ``materialization`` gives them on the P0-M TAF likelihood's axis, which its
 # own artifact was fitted on.  It is no longer the width layer's convention:
@@ -2759,6 +2769,7 @@ def _thin_far_slice_lane(
         "slice_cell_count": len(slice_cells),
         "min_qualifying_days": SLICE_MIN_QUALIFYING_DAYS,
         "min_qualifying_cells": SLICE_MIN_QUALIFYING_CELLS,
+        "max_folds": SLICE_ROLLING_ORIGIN_MAX_FOLDS,
         "incumbent_slices": (
             dict(incumbent_slices) if incumbent_slices else None
         ),
@@ -2771,9 +2782,13 @@ def _thin_far_slice_lane(
     ):
         out.update({"admitted": False, "state": "ACCUMULATING"})
         return out
-    first = max(
-        ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
-        len(ordered) - ROLLING_ORIGIN_MAX_FOLDS,
+    first = (
+        ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS
+        if SLICE_ROLLING_ORIGIN_MAX_FOLDS is None
+        else max(
+            ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
+            len(ordered) - SLICE_ROLLING_ORIGIN_MAX_FOLDS,
+        )
     )
     folds: list[dict[str, Any]] = []
     held_other: list[tuple[float, float, float]] = []
