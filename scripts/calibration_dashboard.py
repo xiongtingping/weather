@@ -16140,8 +16140,18 @@ def _cached_section_value(
             else RENDER_YIELD_WAL_BYTES
         )
         blocker = _await_production_gap(name, cap, line)
-        if blocker is not None and page is not None:
+        # A cycle in flight does not stop a section with a page: only the
+        # WAL does.  Production cycles now run back to back, so on
+        # 2026-10-02 the page render served 115 pages "no gap" against 62
+        # reads (nearly all every-run), and certificate_authority, gaps and
+        # truth_coverage sat 2-4 hours old although the every-run sections
+        # and the research render read through those same cycles.  A reader
+        # costs the writer nothing under WAL; the budget above already
+        # bounds what this run reads.
+        if blocker is not None and page is not None and blocker.startswith("wal"):
             return _serve_stale_page(name, page, ttl, page_age, "no gap", page_inputs_moved)
+        if blocker is not None and page is not None:
+            blocker = None
         if blocker is not None and blocker.startswith("wal"):
             if _unavailable is not _NO_UNAVAILABLE:
                 return _serve_unavailable(name, _unavailable, blocker)

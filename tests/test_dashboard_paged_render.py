@@ -374,7 +374,9 @@ def test_an_every_run_section_with_no_record_still_gets_room(paged) -> None:
 
 
 def test_a_section_with_a_page_never_waits_for_a_gap(paged, monkeypatch) -> None:
-    """No gap open right now: serve the page and move on, don't sit out the budget."""
+    """A cycle in flight: read through it without waiting (2026-10-02, the
+    page render served 115 pages "no gap" against 62 reads while cycles ran
+    back to back).  Only a WAL past the start line serves the page."""
 
     calls: list[str] = []
     C._cached_section("slow_moving", _collector(calls, "old"), None)
@@ -385,7 +387,15 @@ def test_a_section_with_a_page_never_waits_for_a_gap(paged, monkeypatch) -> None
     slept: list[float] = []
     monkeypatch.setattr(C.time, "sleep", lambda sec: slept.append(sec))
     value = C._cached_section("slow_moving", _collector(calls, "new"), None)
-    assert value["value"] == "old" and slept == []
+    assert value["value"] == "new" and slept == []
+
+    blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
+    blob["computed_at_utc"] = "2026-09-01T00:00:00Z"
+    (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
+    monkeypatch.setattr(C, "RENDER_MAX_WAL_BYTES", 1024)
+    _wal(paged, 4096)
+    value = C._cached_section("slow_moving", _collector(calls, "newer"), None)
+    assert value["value"] == "new" and slept == []
     assert C._SECTION_CACHE_LOG["slow_moving"]["stale_reason"] == "no gap"
 
 
