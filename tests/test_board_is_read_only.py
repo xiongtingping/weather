@@ -41,3 +41,23 @@ def test_the_board_calls_none_of_productions_compute_functions() -> None:
                 line = source.count("\n", 0, match.start()) + 1
                 found.append(f"{path.name}:{line} {name}")
     assert found == []
+
+
+def test_every_seated_system_keeps_its_own_short_name() -> None:
+    """2026-10-02: the consensus bridge cut system ids at the first "_", so
+    IFS and AIFS both became "ECMWF" and GEFS and AIGEFS both "NOAA" -- six
+    seated systems shown as four columns.  One short name per system, from
+    the board's single table, and no id cut at its first underscore."""
+
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
+        OFFICIAL_ARCHIVE_SCOPE_CONTRACTS,
+    )
+
+    labels = [C.MEMBER_FAMILY_LABELS.get(s, s) for s in OFFICIAL_ARCHIVE_SCOPE_CONTRACTS]
+    assert len(set(labels)) == len(labels) >= 6
+    for path in BOARD_SOURCES:
+        assert 'split("_")[0]' not in path.read_text(encoding="utf-8"), path.name

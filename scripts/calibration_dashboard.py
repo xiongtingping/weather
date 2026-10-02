@@ -2107,7 +2107,14 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
                 "lambda": bridge.get("lambda"),
                 "consensus_center_c": bridge.get("consensus_center_c"),
                 "model_center_c": found[2],
-                "centres": {k.split("_")[0]: round(float(v), 2) for k, v in centres.items()},
+                # The board's short names, one per system: the first token of
+                # the id put IFS and AIFS both under "ECMWF" and GEFS and
+                # AIGEFS both under "NOAA", so six seated systems showed as
+                # four columns (2026-10-02).
+                "centres": {
+                    MEMBER_FAMILY_LABELS.get(str(k), str(k)): round(float(v), 2)
+                    for k, v in centres.items()
+                },
                 "centre_range_c": (max(values) - min(values)) if values else None,
             })
     summary = []
@@ -15968,6 +15975,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "synoptic_cooling": synoptic_cooling,
         "single_system_width": single_system_width,
         "consensus_bridge": consensus_bridge,
+        # One short name per system for the page's own tables (the fusion
+        # seat column cut ids at the first "_": two ECMWFs, two NOAAs).
+        "system_labels": dict(MEMBER_FAMILY_LABELS),
         "taf_board": taf_board,
         "metar_board": metar_board,
         "precip_classification": precip_classification,
@@ -21018,7 +21028,7 @@ function scorecard(){
         <td class="mono"><span class="dot ${tone}"></span>
           ${(p.distance*100).toFixed(1)}%</td>
         <td class="muted" style="font-size:12px">${names.map(n =>
-          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}→${
+          `${h((D.system_labels || {})[n] || n)} ${(p.served[n]*100).toFixed(0)}→${
            (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
       </tr>`;
     }).join("");
@@ -22652,7 +22662,7 @@ function aiModelsBoard(){
   const w3 = v => v == null ? "—" : Number(v).toFixed(3);
   const short = s => String(s || "").replace("_GLOBAL_EPS", "").replace("_GLOBAL_ENS", "").replace("_OPEN_PF50", "")
     .replace("ECMWF_IFS_ENS", "IFS").replace("ECMWF_AIFS_ENS", "AIFS").replace("NOAA_GEFS_05", "GEFS")
-    .replace("DWD_ICON", "ICON").replace("ECCC_GEM", "GEM");
+    .replace("NOAA_AIGEFS_025", "AIGEFS").replace("DWD_ICON", "ICON").replace("ECCC_GEM", "GEM");
   const byDay = Object.entries(V.by_event_date || {}).map(([d, s]) => `<tr><td class="mono">${h(d)}</td>
     <td class="mono">${s.scopes}</td><td class="mono"><span class="pill ${s.with_aifs ? "green" : ""}">${s.with_aifs}</span></td>
     <td class="mono">${s.scopes ? (100 * s.with_aifs / s.scopes).toFixed(0) + "%" : "—"}</td></tr>`).join("");
