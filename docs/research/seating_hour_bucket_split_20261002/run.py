@@ -13,6 +13,7 @@ src = src[:src.index("# --------------------------------------------------------
 g = {"__name__": "seat", "__file__": os.path.join(SMW, "score.py")}
 with contextlib.redirect_stdout(io.StringIO()): exec(compile(src, "score_head", "exec"), g)
 decs, norm = g["decs"], g["norm"]
+for i, d in enumerate(decs): d["id"] = i
 # downstream (same as score.py) -- pulled in from its source after the records section
 tail = open(os.path.join(SMW, "score.py")).read()
 ds_src = tail[tail.index("# ---------------------------------------------------------------- full production downstream"):tail.index("results = defaultdict(dict)")]
@@ -27,7 +28,7 @@ for d in decs:
     split = [s for s in d["pool"] if d["slead"][s] != d["lead"]]
     if not split or len(fresh) < 2: continue
     wA = norm({s: d["w0"][s] for s in fresh}); wB = dict(d["w0"])
-    rows.append({"sd": d["sd"], "day": d["day"], "bin": d["bin"], "n_fresh": len(fresh), "n_split": len(split), "lead": d["lead"],
+    rows.append({"sd": (d["station"], d["day"]), "day": d["day"], "bin": d["bin"], "n_fresh": len(fresh), "n_split": len(split), "lead": d["lead"],
                  "A": downstream(d, wA), "B": downstream(d, wB)})
 print("split decisions", len(rows), "of", sum(1 for d in decs if "2026-08-10" <= d["day"] <= "2026-09-30"))
 def gate(rs):
