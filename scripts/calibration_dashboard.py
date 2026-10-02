@@ -1295,44 +1295,22 @@ def collect_run_cadence(
 ) -> dict[str, list[dict[str, Any]]]:
     """Recent runs per family: when each was issued and when it landed.
 
-    One scan of the member table serves all four families.  The table has no
-    index on the run column, so a per-family query would cost a full scan
-    each -- four scans of nearly a million rows to answer one question.
+    ``collect_recent_runs`` over ``RUN_CADENCE_WINDOW_DAYS``.  This used to
+    be its own read, grouping six days of member rows by run with the
+    capture time fetched off every row (no index carries it): 58 s on a
+    quiet disk on 2026-10-01, 1,541-1,972 s on the swapping machine, and on
+    the page's default half-hour lifetime it alone asked the research render
+    for 3,000 s an hour while the render had ~800 to give -- every other
+    heavy page starved behind it.  The recent-runs read answers the same
+    question off ``calibration_native_member_skill_idx`` and two rowid
+    lookups per (run, day): 5.5 s for the same six days.  ``stations`` is the
+    run's largest single-day count, as the recent read already reports it;
+    the cadence medians read only the run and capture times.
     """
 
-    since = (
-        _now() - timedelta(days=RUN_CADENCE_WINDOW_DAYS)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    pairs = " OR ".join(
-        "(ensemble_system_id=? AND transport_provider_id=?)"
-        for _s, _l, _t, _b in MEMBER_FAMILIES
+    return collect_recent_runs(
+        conn, window_hours=RUN_CADENCE_WINDOW_DAYS * 24
     )
-    params: list[str] = []
-    for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
-        params.extend((system_id, transport))
-    runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in conn.execute(
-        "SELECT ensemble_system_id, native_run_init_utc,"
-        " COUNT(DISTINCT station_id), MIN(archive_query_at_utc),"
-        " MAX(archive_query_at_utc)"
-        " FROM calibration_native_ensemble_historical_member_run"
-        f" WHERE native_run_init_utc >= ? AND ({pairs})"
-        " GROUP BY ensemble_system_id, native_run_init_utc"
-        " ORDER BY ensemble_system_id, native_run_init_utc DESC",
-        (since, *params),
-    ):
-        # First capture, not last: the first is when the run arrived, which
-        # is what the publication delay is measured against.  The last only
-        # says when the newest station of that run was topped up.
-        runs[row[0]].append({
-            "run_utc": row[1],
-            "stations": row[2],
-            "capture_utc": row[3],
-            "last_capture_utc": row[4],
-            "run_age_hours": _age_hours(row[1]),
-            "capture_age_hours": _age_hours(row[3]),
-        })
-    return runs
 
 
 #: How far back the every-run read of recent runs looks.  The cadence read
@@ -1361,6 +1339,8 @@ RECENT_RUNS_SQL = (
 
 def collect_recent_runs(
     conn: sqlite3.Connection,
+    *,
+    window_hours: float = RECENT_RUNS_WINDOW_HOURS,
 ) -> dict[str, list[dict[str, Any]]]:
     """The last day and a half of runs per family, read every render.
 
@@ -1370,7 +1350,7 @@ def collect_recent_runs(
     it is (ICON's 10-03 00Z held 4 of 44 until 2026-10-01 13:33Z).
     """
 
-    since = _now() - timedelta(hours=RECENT_RUNS_WINDOW_HOURS)
+    since = _now() - timedelta(hours=window_hours)
     since_run = since.strftime("%Y-%m-%dT%H:%M:%SZ")
     since_day = since.date().isoformat()
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
@@ -1445,37 +1425,55 @@ def _merge_recent_runs(
 def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Per family: how deep its training history is, and how many seats it won.
 
-    Split out of ``collect_members`` on 2026-09-24.  These counts walk every
-    member row of the family through the table (COUNT DISTINCT and the
-    capture time are not in any index), which took 187-500 s a render, and
-    ``members`` feeds the banner light, so it may never be served from a
-    page: under a paged render it had to read for minutes on every run and
-    was the section the WAL line interrupted.  None of these numbers colour
-    the light -- they move by days -- so they are a slow-moving section of
-    their own and ``members`` keeps only what the light is computed from.
+    Split out of ``collect_members`` on 2026-09-24.  None of these numbers
+    colour the banner light -- they move by days -- so they are a
+    slow-moving section of their own and ``members`` keeps only what the
+    light is computed from.
+
+    The counts come off ``calibration_native_member_skill_idx``, whose
+    (system, transport) prefix covers station and target day, and the
+    newest capture is the one row at the family's highest rowid (rows land
+    in capture order, which ``collect_recent_runs`` relies on too).  The
+    seats are one pass over the selection evidence grouped by its member
+    set.  The old reads fetched every member row for its capture time and
+    scanned the evidence once per family: 187-500 s a render on 2026-09-24,
+    1,396 s on 2026-10-02 on the swapping machine, against ~40 s for the
+    index walk plus ~20 s for the one evidence pass.
     """
 
+    seat_sets = conn.execute(
+        "SELECT selected_system_ids_json, COUNT(*)"
+        " FROM calibration_cross_native_ensemble_selection_evidence"
+        " GROUP BY selected_system_ids_json"
+    ).fetchall()
     depth: dict[str, dict[str, Any]] = {}
     for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
-        record = conn.execute(
+        rows, stations, days, last_rowid = conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT station_id),"
-            " COUNT(DISTINCT target_local_date), MAX(archive_query_at_utc)"
+            " COUNT(DISTINCT target_local_date), MAX(rowid)"
             " FROM calibration_native_ensemble_historical_member_run"
+            " INDEXED BY calibration_native_member_skill_idx"
             " WHERE ensemble_system_id=? AND transport_provider_id=?",
             (system_id, transport),
         ).fetchone()
-        seats = conn.execute(
-            "SELECT COUNT(*) FROM"
-            " calibration_cross_native_ensemble_selection_evidence"
-            " WHERE selected_system_ids_json LIKE ?",
-            (f"%{system_id}%",),
-        ).fetchone()[0]
+        latest = None
+        if last_rowid is not None:
+            found = conn.execute(
+                "SELECT archive_query_at_utc"
+                " FROM calibration_native_ensemble_historical_member_run"
+                " WHERE rowid=?",
+                (last_rowid,),
+            ).fetchone()
+            latest = found[0] if found else None
         depth[system_id] = {
-            "member_rows": record[0],
-            "stations": record[1],
-            "training_days": record[2],
-            "latest_capture_utc": record[3],
-            "seats_won": seats,
+            "member_rows": rows,
+            "stations": stations,
+            "training_days": days,
+            "latest_capture_utc": latest,
+            "seats_won": sum(
+                int(count) for members, count in seat_sets
+                if system_id in str(members or "")
+            ),
         }
     return depth
 
@@ -14993,8 +14991,11 @@ SECTION_CACHE_TTL_SEC = {
     "bias_half_life": 1440 * 60,
     "center_landing": 255 * 60,
     # Three small tables plus one population read per stage for the forward
-    # skill score; the journal moves once a day.
-    "posterior_lane": 55 * 60,
+    # skill score; the journal moves once a day.  Six hours, not 55
+    # minutes: on the swapping machine a read cost up to 1,417 s, and an
+    # hourly lifetime asked the research render for 1,546 s an hour of the
+    # ~800 it had (2026-10-02, the scorecard 7 h overdue behind it).
+    "posterior_lane": 6 * 60 * 60 + 13 * 60,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -15025,9 +15026,13 @@ SECTION_CACHE_TTL_SEC = {
     # Seven minutes off the scorecard's three hours: cached sections expire
     # on distinct clocks so the slow ones never rebuild in the same render.
     "precip_classification": 3 * 60 * 60 + 7 * 60,
-    # One stage-clock seek over a day of P0 rows plus ~1,200 lineage reads
-    # (~20 s); the products it reads change by the cycle, not the minute.
-    "ai_models": 15 * 60 + 11,
+    # One stage-clock seek over a day of P0 rows plus ~1,200 lineage reads;
+    # the products it reads change by the cycle (six hours), not the minute.
+    # Three hours since 2026-10-02: the read was ~20 s when its lifetime was
+    # set to 15 minutes, 143-913 s now (most of it parsing lineage), and at
+    # four reads an hour it alone asked the research render for 1,800 s an
+    # hour of the ~800 it had.
+    "ai_models": 3 * 60 * 60 + 11,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
