@@ -14156,7 +14156,11 @@ SECTION_CACHE_TTL_SEC = {
     # recomputes it and an older page stays exact for its own days.
     "refusal_history": 1375 * 60,
     # Row counts per chain link (collect_chain_volume): display only.
-    "chain_volume": 191 * 60,
+    # Five row counts that "move by the day and colour nothing" (the
+    # collector's own words): a day.  At 191 min each ~500 s count fell due
+    # eight times a day in a research render that could not keep up, and sat
+    # 19 h "overdue" on 2026-10-02 behind the pages that change.
+    "chain_volume": 24 * 60 * 60,
     "center_landing_previous": 258 * 60,
     # The served version's own span, for the board's version comparison
     # (charter 202 moved the served landing onto the evidence window).  A new
@@ -14199,9 +14203,11 @@ SECTION_CACHE_TTL_SEC = {
     # the two maker_shadow tables alone are 36s of the quiet figure.  On a
     # 30-minute render clock a 45-minute TTL rebuilt the walk on nearly
     # every render, ~32 times a day.  The composition moves on the scale
-    # of days -- the retention ruling reads it once a day at most -- so six
-    # hours costs the reading nothing and leaves four walks a day.
-    "ssot_capacity": 6 * 60 * 60,
+    # of days -- the retention ruling reads it once a day at most -- so a
+    # day costs the reading nothing (2026-10-02: six hours still left it 19 h
+    # "overdue" behind the pages that change; the live gauge itself is the
+    # resident's status, read on every render).
+    "ssot_capacity": 24 * 60 * 60,
     # 降水分类评分: one pass over the observation archive's AWC lane
     # (~25s on the 15 GB file); the pairs move once a day, when a local
     # day closes somewhere, so three hours costs the reading nothing.
