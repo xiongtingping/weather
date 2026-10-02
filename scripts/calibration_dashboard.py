@@ -15838,6 +15838,18 @@ RESEARCH_RUN_BUDGET_SEC = 1800.0
 #: A heavy page that does not fit a run after the cheap ones is taken first
 #: only while no cheap page is older than this (``research_due``).
 RESEARCH_CHEAP_STARVE_CAP_SEC = 2 * STARVED_PAGE_AGE_SEC
+#: The section a research run is building, written as it starts and removed
+#: as it ends; found at the next run's start, it names the section the last
+#: run died on (the sweep's timeout kills the process, not the section).
+RESEARCH_ATTEMPT_FILE = "_research_attempt.json"
+#: Sections a research run died on, with when (``RESEARCH_ATTEMPT_FILE``).
+RESEARCH_KILLED_FILE = "_research_killed.json"
+#: How long a section that killed a run waits behind the others.  The
+#: oldest-first rotation otherwise hands it the next run straight back: on
+#: 2026-10-02 bias_half_life (2,804 s last time) ran into the 3,300 s timeout
+#: at 09:16Z, kept its old page, stayed the oldest, and would have taken
+#: every hour after it.
+RESEARCH_KILLED_BACKOFF_SEC = 6 * 3600
 #: The page render, as the research sweep finds it (``pgrep -f``).
 PAGE_RENDER_PATTERN = "calibration_dashboard.py --html-out"
 
@@ -15860,6 +15872,13 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
 
     due: list[tuple[float, str, float]] = []
     _page_ages: dict[str, float] = {}
+    killed_at = {
+        name: stamp for name, stamp in (
+            _load_closed_readings(RESEARCH_KILLED_FILE).get("killed") or {}
+        ).items()
+        if (stamp_at := _parse_utc_or_none(stamp)) is not None
+        and (now - stamp_at).total_seconds() < RESEARCH_KILLED_BACKOFF_SEC
+    }
     for name in specs:
         # The page render computes these every run and never keeps a page,
         # so a page file left from before they joined that set never ages
@@ -15912,6 +15931,7 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
     # scorecard (3 h) were refreshed again and again ahead of it.  Oldest
     # first is a rotation: no heavy page waits longer than one lap.
     due.sort(key=lambda item: (
+        item[1] in killed_at,
         item[2] >= RESEARCH_SECTION_MIN_COST_SEC,
         -(_page_ages[item[1]] if item[2] >= RESEARCH_SECTION_MIN_COST_SEC else item[0]),
         item[1],
@@ -15933,7 +15953,10 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
         spent, skipped = 0.0, []
         for item in due:
             if spent and spent + item[2] > RESEARCH_RUN_BUDGET_SEC:
-                if item[2] >= RESEARCH_SECTION_MIN_COST_SEC:
+                if (
+                    item[2] >= RESEARCH_SECTION_MIN_COST_SEC
+                    and item[1] not in killed_at
+                ):
                     skipped.append(item)
                 continue
             spent += item[2]
@@ -15953,7 +15976,39 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
 _RESEARCH_GAP_WAIT_LEFT: list[float] = []
 
 
+def _note_research_death() -> None:
+    """A section the last research run started and never finished killed it."""
+
+    path = SECTION_CACHE_DIR / RESEARCH_ATTEMPT_FILE
+    attempt = _load_closed_readings(RESEARCH_ATTEMPT_FILE)
+    if not attempt:
+        return
+    ledger = _load_closed_readings(RESEARCH_KILLED_FILE)
+    killed = dict(ledger.get("killed") or {})
+    if attempt.get("name"):
+        killed[str(attempt["name"])] = str(attempt.get("started_at_utc") or "")
+    _save_closed_readings(RESEARCH_KILLED_FILE, {"killed": killed})
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def _refresh_one_section(db: Path, name: str, spec: Mapping[str, Any]) -> str:
+    _save_closed_readings(RESEARCH_ATTEMPT_FILE, {
+        "name": name,
+        "started_at_utc": _now().isoformat().replace("+00:00", "Z"),
+    })
+    try:
+        return _refresh_one_section_inner(db, name, spec)
+    finally:
+        try:
+            (SECTION_CACHE_DIR / RESEARCH_ATTEMPT_FILE).unlink()
+        except OSError:
+            pass
+
+
+def _refresh_one_section_inner(db: Path, name: str, spec: Mapping[str, Any]) -> str:
     collector = _resolve_collector(spec)
     conn = _connect(db)
     _paged_run_start(db)
@@ -16000,6 +16055,7 @@ def refresh_research_section(db: Path) -> str:
     else, and the next page render serves them.
     """
 
+    _note_research_death()
     specs = _live_specs(_load_closed_readings(RENDER_SECTION_SPECS))
     due = research_due(specs, _now())
     if not due:

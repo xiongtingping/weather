@@ -406,3 +406,29 @@ def test_a_page_from_other_code_is_no_page(pages, monkeypatch) -> None:
         {"older_servable": spec, "stale_code": spec}, now
     )]
     assert names[0] == "stale_code"
+
+
+def test_a_section_that_killed_the_last_run_waits_behind_the_others(pages) -> None:
+    """2026-10-02 09:16Z: bias_half_life ran into the research timeout, kept
+    its old page, stayed the oldest, and the rotation handed it the next run
+    straight back."""
+
+    now = datetime(2026, 10, 2, 10, 0, tzinfo=timezone.utc)
+    heavy = C.RESEARCH_SECTION_MIN_COST_SEC
+    budget = C.RESEARCH_RUN_BUDGET_SEC
+    _page(pages, "killer", age_sec=150 * 3600, cost=budget * 1.5, now=now)
+    _page(pages, "next_oldest", age_sec=60 * 3600, cost=budget * 1.2, now=now)
+    _page(pages, "cheap", age_sec=C.STARVED_PAGE_AGE_SEC + 60, cost=30.0, now=now)
+    C._save_closed_readings(C.RESEARCH_ATTEMPT_FILE, {
+        "name": "killer", "started_at_utc": "2026-10-02T08:22:00Z",
+    })
+    C._note_research_death()
+    assert not (pages / C.RESEARCH_ATTEMPT_FILE).exists()
+    specs = {name: {} for name in ("killer", "next_oldest", "cheap")}
+
+    names = [name for _o, name, _c in C.research_due(specs, now)]
+
+    assert names == ["next_oldest", "cheap", "killer"]
+    later = now + timedelta(seconds=C.RESEARCH_KILLED_BACKOFF_SEC)
+    after = [n for _o, n, _c in C.research_due(specs, later)]
+    assert after.index("killer") < after.index("next_oldest"), after
