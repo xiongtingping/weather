@@ -51,7 +51,7 @@ rest = rest.replace('if SKIP_HF: del combos["HF"]', '')
 rest = rest.replace('ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "EBP*", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]', 'ARMS = ["A0", "EBP*"]')
 rest = rest[:rest.index("# ---------------------------------------------------------------- verdicts")]
 rest = rest.replace(rest[rest.index("# ---------------------------------------------------------------- oracle upper bounds"):rest.index("# ---------------------------------------------------------------- arm weights at a scored decision")],
-                    "scored = [d for d in decs if SCORE_FROM <= d['day'] <= SCORE_TO]\\n")
+                    "scored = [d for d in decs if SCORE_FROM <= d['day'] <= SCORE_TO]\n")
 g = {"__name__": "ls", "__file__": os.path.join(SMW, "score.py")}
 with contextlib.redirect_stdout(io.StringIO()):
     exec(compile(head + patch + rest, "score_ls", "exec"), g)
