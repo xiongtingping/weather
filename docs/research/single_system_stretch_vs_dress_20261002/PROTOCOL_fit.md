@@ -32,3 +32,7 @@
 ## 落地范围（选定后）
 
 `native_ensemble_oos._fit_parameters` / `_logloss_refit` / `_apply_parameters` 与 `native_ensemble_p0._calibrated_system_probability` 同一算术同改；新参数进 artifact 列并冻结进 `test_fit_parameter_keys_are_all_persisted`；P0 指纹升版；旧证书按新形式服务需重铸；`restart_resident.sh` 重启。
+
+## 修订（2026-10-02，试跑 ZUUU 一站后、未看任何判定样本前）
+
+`fit_c0` / `dress_fit` 的核参数原写为 b = max(0.5, c·s·d)。试跑 ZUUU：`fit_c0` 的 c 在 7,459 个系统×更新上 p10/p50/p90 全为 0——不是 LogLoss 不想动，而是 max(·) 在 c=0 处梯度恒零（c 要越过 0.5/(s·d) 才有任何变化），L-BFGS-B 的差分梯度看不见，c 被钉死。改为核方差份额：b² = 0.5² + c·(s²d² − 0.5²)，c∈[0, 0.999]；c=0 仍逐位等于现行，c→1 为同总宽的高斯，对 c 线性、在 0 处有梯度。`dress` 对照臂在该坐标下的锚点 c_dress 以训练期平均离散度 M 换算：b² = (s²−1)M²。臂的含义、起点、回拉、判据不变。ZUUU 试跑的其他读数（SHASH 在该站明显更差）不作为判定依据，全样本按原规则判。
