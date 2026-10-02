@@ -191,8 +191,9 @@ def aifs_ens_served(conn: sqlite3.Connection, *, now: datetime) -> dict[str, Any
     pools: Counter[tuple[str, ...]] = Counter()
     versions: Counter[str] = Counter()
     latest: dict[str, dict[str, Any]] = {}
-    packets = with_aifs = 0
+    packets = with_aifs = with_aigefs = 0
     weights_seen: list[float] = []
+    aigefs_weights: list[float] = []
     shadow: Counter[str] = Counter()
     shadow_abs: list[float] = []
     for station, day, decided, created, version, lineage_json in conn.execute(
@@ -211,6 +212,12 @@ def aifs_ens_served(conn: sqlite3.Connection, *, now: datetime) -> dict[str, Any
         if aifs_w is not None:
             with_aifs += 1
             weights_seen.append(float(aifs_w))
+        # AIGEFS has been a P0 member since charter 212 (2026-09-24): read off
+        # the same served rows, the same way.
+        aigefs_w = weights.get(AIGEFS_SYSTEM_ID)
+        if aigefs_w is not None:
+            with_aigefs += 1
+            aigefs_weights.append(float(aigefs_w))
         feature = _loads(lineage.get("deterministic_feature_json"))
         if isinstance(feature, dict):
             shadow[str(feature.get("state") or "?")] += 1
@@ -227,14 +234,18 @@ def aifs_ens_served(conn: sqlite3.Connection, *, now: datetime) -> dict[str, Any
                 "decision_at_utc": str(decided), "version": str(version),
                 "systems": list(systems),
                 "aifs_weight": None if aifs_w is None else round(float(aifs_w), 3),
+                "aigefs_weight": None if aigefs_w is None else round(float(aigefs_w), 3),
                 "weights": {k: round(float(v), 3) for k, v in weights.items()},
             }
     weights_seen.sort()
     by_day: dict[str, dict[str, int]] = {}
     for entry in latest.values():
-        slot = by_day.setdefault(entry["event_date"], {"scopes": 0, "with_aifs": 0})
+        slot = by_day.setdefault(
+            entry["event_date"], {"scopes": 0, "with_aifs": 0, "with_aigefs": 0}
+        )
         slot["scopes"] += 1
         slot["with_aifs"] += entry["aifs_weight"] is not None
+        slot["with_aigefs"] += entry["aigefs_weight"] is not None
     return {
         "window_hours": SERVED_WINDOW_HOURS,
         "p0_packets": packets,
@@ -248,6 +259,11 @@ def aifs_ens_served(conn: sqlite3.Connection, *, now: datetime) -> dict[str, Any
             round(weights_seen[len(weights_seen) // 2], 3) if weights_seen else None
         ),
         "aifs_weight_max": round(weights_seen[-1], 3) if weights_seen else None,
+        "with_aigefs": with_aigefs,
+        "aigefs_weight_median": (
+            round(sorted(aigefs_weights)[len(aigefs_weights) // 2], 3)
+            if aigefs_weights else None
+        ),
         "versions": dict(versions),
         "pools": [
             {"systems": list(systems), "count": count}
@@ -332,7 +348,10 @@ def aigefs_research(
     """The research backfill's own tables; absent volume reported, not raised."""
 
     out: dict[str, Any] = {
-        "system_id": AIGEFS_SYSTEM_ID, "in_production": False,
+        # A P0 member since charter 212 (2026-09-24); this block is its
+        # research backfill, and its seating is read off the served P0s
+        # (``aifs_ens_served``'s with_aigefs) like AIFS's.
+        "system_id": AIGEFS_SYSTEM_ID, "in_production": True,
         "db_path": str(db_path),
     }
     plans = sorted(Path(research_dir).glob("plan_*.json")) if Path(research_dir).is_dir() else []

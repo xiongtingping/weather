@@ -66,8 +66,8 @@ def test_served_reading_is_per_station_day_and_names_the_weight(tmp_path: Path) 
     assert served["p0_packets"] == 4 and served["with_aifs"] == 1
     assert served["scopes_seen"] == 3 and served["scopes_seated"] == 1
     assert served["by_event_date"] == {
-        "2026-09-24": {"scopes": 2, "with_aifs": 1},
-        "2026-09-25": {"scopes": 1, "with_aifs": 0},
+        "2026-09-24": {"scopes": 2, "with_aifs": 1, "with_aigefs": 0},
+        "2026-09-25": {"scopes": 1, "with_aifs": 0, "with_aigefs": 0},
     }
     eddm = next(s for s in served["scopes"] if s["station_id"] == "EDDM" and s["event_date"] == "2026-09-24")
     assert eddm["aifs_weight"] == 0.2 and AI.AIFS_ENS_SYSTEM_ID in eddm["systems"]
@@ -135,4 +135,4 @@ def test_forward_gate_and_research_readings_from_files(tmp_path: Path) -> None:
     rc.commit(); rc.close()
     present = AI.aigefs_research(db, research_dir, now=NOW)
     assert present["available"] and present["runs"]["count"] == 1 and present["missing_runs"] == 0
-    assert present["in_production"] is False
+    assert present["in_production"] is True

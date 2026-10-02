@@ -181,6 +181,10 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # with every restart.  It gives way to production and skips a failed
         # day, so it needs no writer turn of its own.
         "com.weather.paper_ledger_aligned.plist",
+        # 2026-10-02 (「新开一个后端读数任务」): the backend board-readings job.
+        # A read-only connection and a writer of files under
+        # data/board_readings/ only -- no writer turn to take.
+        "com.weather.board_readings.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

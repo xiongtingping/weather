@@ -316,8 +316,10 @@ def test_the_windows_are_tied_to_their_readers() -> None:
     # The dashboard's charter-EV page joins the valuation population's facts
     # to their books over WINDOW_DAYS; the posterior page over 14 days.
     assert off.POLICY_BY_TABLE[WS].hot_days > valuation_store.WINDOW_DAYS
-    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "realisation(\n            conn, since_event_date=(date.today() - timedelta(days=14))" in dashboard
+    # The realisation reader moved to the backend board-readings job on
+    # 2026-10-02 (the board only reads its file); same 14 days.
+    readings = (ROOT / "bayes_basket_target" / "board_readings.py").read_text(encoding="utf-8")
+    assert "since_event_date=(_now().date() - timedelta(days=14))" in readings
     assert off.POLICY_BY_TABLE[WS].hot_days > 14
     runtime = (ROOT / "bayes_basket_target" / "execution_transition_runtime.py").read_text(encoding="utf-8")
     for table, column in ((WS, "official_ws_quote_sha256"), (INVENTORY, "inventory_sha256"),
