@@ -182,3 +182,27 @@ def test_the_compile_asks_its_evidence_test_off_two_covering_indexes(tmp_path) -
     plan = _plan(_store(tmp_path), EVIDENCE_PREFILTER)
     assert "COVERING INDEX calibration_native_activation_evidence_idx" in plan, plan
     assert "COVERING INDEX calibration_cross_native_artifact_evidence_idx" in plan, plan
+
+
+def test_the_admitted_rows_are_read_by_id_not_by_walking_the_scope_again(tmp_path) -> None:
+    """2026-10-02, first cycles on the evidence index: the second read (the
+    admitted rows, whole) went through the window index and walked every
+    valid row of the scope again to filter the ids."""
+
+    import inspect
+
+    from bayes_basket_target import native_ensemble_p0 as P0
+
+    source = inspect.getsource(P0)
+    start = source.index("activation_sql = (")
+    end = source.index(")\n", source.index("ORDER BY a.generation DESC", start))
+    activation_sql = eval(source[start + len("activation_sql = "):end + 1])  # noqa: S307
+    # A hundred ids, as the compile sends them: with two the planner took the
+    # primary key even when the artifact_kind index was still open to it.
+    sql = P0._ADMITTED_ROWS_SQL(activation_sql).replace(
+        "ORDER BY", "AND a.activation_id IN (" + ",".join("?" * 100) + ") ORDER BY"
+    )
+    plan = _plan(_store(tmp_path), sql)
+    assert "activation_window_idx" not in plan, plan
+    assert "(activation_id=?)" in plan, plan
+    assert "artifact_kind=?" not in plan, plan

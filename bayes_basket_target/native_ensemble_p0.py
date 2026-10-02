@@ -1696,6 +1696,23 @@ def _activations_ambiguous(
 
 
 
+def _ADMITTED_ROWS_SQL(activation_sql: str) -> str:
+    """The activation read, re-aimed at a list of ids (see its caller)."""
+
+    kind = "WHERE a.artifact_kind="
+    if (
+        activation_sql.count("AND a.station_id=? ") != 1
+        or activation_sql.count(kind) != 1
+    ):
+        raise ContractError("native_p0_admitted_rows_sql_shape")
+    # Both: with only the station hidden, a hundred ids sent the planner to
+    # the artifact_kind index -- every CROSS activation in the store, 2 s a
+    # call (2026-10-02 replay of 82 live packets, 26 s -> 130 s).
+    return activation_sql.replace(
+        "AND a.station_id=? ", "AND +a.station_id=? "
+    ).replace(kind, "WHERE +a.artifact_kind=")
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -2185,7 +2202,12 @@ def compile_native_ensemble_p0(
         for start in range(0, len(admitted_ids), 400):
             chunk = admitted_ids[start:start + 400]
             rows.extend(conn.execute(
-                activation_sql.replace(
+                # Unary + on the station: the same predicate, but no longer
+                # one the window index can seek on, so the planner takes the
+                # primary key for the ids.  Without it the window index won
+                # and walked every valid row of the scope again to filter the
+                # ids (2026-10-02, 0.13 s a call on the live store).
+                _ADMITTED_ROWS_SQL(activation_sql).replace(
                     "ORDER BY",
                     "AND a.activation_id IN (" + ",".join("?" * len(chunk))
                     + ") ORDER BY",
