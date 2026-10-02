@@ -267,7 +267,7 @@ def _windows_setup(monkeypatch, tmp_path, truth):
     monkeypatch.setattr(store, "serving_cells_by_day", cells)
     monkeypatch.setattr(
         C, "_center_landing_entry",
-        lambda stage, cell, _truth: _entry(cell["station_id"], cell["event_date"], cell["e"], 1.0),
+        lambda stage, cell, _truth, _seats=None: _entry(cell["station_id"], cell["event_date"], cell["e"], 1.0),
     )
     monkeypatch.setattr(C, "_now", lambda: C.datetime.fromisoformat(TODAY))
     monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)

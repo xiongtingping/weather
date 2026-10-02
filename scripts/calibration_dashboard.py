@@ -8440,86 +8440,70 @@ def _center_landing_bootstrap(
     )
 
 
-def _center_landing_seat(
-    *,
-    stage: str,
-    keys: Sequence[str],
-    probabilities: Mapping[str, float],
-    excluded: Sequence[str] = (),
-) -> dict[str, Any] | None:
-    """The seat window charter 131 rules for one served cell.
+def _stored_seat_shapes(
+    conn: sqlite3.Connection,
+) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """The seat window production ruled, per served envelope it decided on.
 
-    Read off the runtime's own functions rather than re-derived here (a
-    panel that copied the seat rule would drift the day the rule moved):
-    the centre is the mass-weighted mean bucket snapped to the nearest live
-    rung (charter 54/75), the shape is fixed by the three-state reading at
-    0.35 sigma -- symmetric ``c+-1``; skewed ``{c, tail, tail+1}`` with the
-    mode bucket outside by ruling -- and a P1 day left with one live rung
-    seats that rung alone.  The widest ruled shape whose rungs are all live
-    is the window reported; production seats the two-rung subset only when
-    the wider one fails a gate, which a page without prices cannot see.
-
-    ``None`` when the runtime would seat nothing: no live rung, or every
-    ruled shape reaches off the ladder or onto a dead rung.  Until
-    2026-09-12 this panel hard-coded the mean bucket +-1 (charter 49/79,
-    both retired), which on a skewed day is not the seat at all.
+    Read, not re-derived (user ruling 2026-10-02 「只读是读后端算出来的」):
+    the decision's compiled plan keeps charter 131's audit
+    (``basket_support_selection.seat_shape``: the allowed windows by bucket
+    ordinal, the skew state and sign), and the decision names the envelope it
+    priced (``checkpoint_id``).  Keyed on (station, event date, the
+    envelope's decision instant), which is how a serving cell names itself;
+    the window reported is the widest ruled shape, as the panel always
+    reported.  An envelope production never decided on has no seat here --
+    until 2026-10-02 the board ran the seat rule itself on every served
+    cell, a decision production had not taken.
     """
 
-    try:                                             # noqa: PLC0415
-        from bayes_basket_target.delta_v2_runtime import (
-            LADDER_CENTER_DEFINITION,
-            _alternate_ladder_center,
-            _skew_extension_sign,
-            seat_shape_windows_v1,
-        )
-    except ImportError:
-        return None
-    ordinals = {str(key): index for index, key in enumerate(keys)}
-    dead = {str(name) for name in excluded}
-    admitted = [
-        str(key) for key in keys
-        if float(probabilities.get(key, 0.0) or 0.0) > 0.0
-        and str(key) not in dead
-    ]
-    if not admitted:
-        return None
-    # The runtime's own order: heaviest live rung as the seed, the ruled
-    # definition (mean, since charter 54) applied over it.
-    centre = max(
-        admitted,
-        key=lambda bucket: (
-            float(probabilities.get(bucket, 0.0) or 0.0), -ordinals[bucket]
-        ),
-    )
-    if LADDER_CENTER_DEFINITION != "heaviest":
-        centre = _alternate_ladder_center(
-            LADDER_CENTER_DEFINITION,
-            admitted=admitted,
-            probabilities=probabilities,
-            ordinals=ordinals,
-        ) or centre
-    sign = _skew_extension_sign(probabilities, ordinals)
-    live = {ordinals[bucket] for bucket in admitted}
-    _shapes, audit = seat_shape_windows_v1(
-        centre_ordinal=ordinals[centre],
-        sign=sign,
-        stage=str(stage),
-        probability_by_ordinal={
-            ordinals[key]: float(probabilities.get(key, 0.0) or 0.0)
-            for key in keys
-        },
-        live_ordinals=live,
-    )
-    by_ordinal = {index: key for key, index in ordinals.items()}
-    for shape in audit.get("allowed_ordinals") or []:
-        if all(int(ordinal) in live for ordinal in shape):
-            return {
-                "state": str(audit.get("state") or ""),
-                "sign": int(sign),
-                "centre": centre,
-                "seat_keys": [by_ordinal[int(o)] for o in shape],
+    seats: dict[tuple[str, str, str], dict[str, Any]] = {}
+    try:
+        rows = conn.execute(
+            "SELECT json_extract(details_json,'$.checkpoint_id'),"
+            " json_extract(details_json,"
+            "'$.stage_zero_execution_anchor.compiled_plan.plan"
+            ".basket_support_selection.seat_shape')"
+            " FROM auto_trade_decisions"
+            " WHERE instr(details_json,'\"seat_shape\"')>0"
+        ).fetchall()
+    except sqlite3.Error:
+        return seats
+    for checkpoint, audit_json in rows:
+        if not checkpoint or not audit_json:
+            continue
+        try:
+            audit = json.loads(audit_json)
+            windows = [
+                [int(value) for value in window]
+                for window in audit.get("allowed_ordinals") or []
+            ]
+        except (TypeError, ValueError, AttributeError):
+            continue
+        envelope = conn.execute(
+            "SELECT station_id, event_date, decision_at_utc, bucket_ordinals_json"
+            " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
+            (str(checkpoint),),
+        ).fetchone()
+        if envelope is None:
+            continue
+        try:
+            by_ordinal = {
+                int(ordinal): str(bucket)
+                for bucket, ordinal in json.loads(envelope[3]).items()
             }
-    return None
+        except (TypeError, ValueError, AttributeError):
+            continue
+        widest = max(windows, key=len) if windows else None
+        seats[(str(envelope[0]), str(envelope[1]), str(envelope[2]))] = {
+            "state": audit.get("state"),
+            "sign": int(audit.get("sign") or 0),
+            "seat_keys": (
+                [by_ordinal[o] for o in widest if o in by_ordinal]
+                if widest else []
+            ),
+        }
+    return seats
 
 
 def _center_landing_group(
@@ -8576,9 +8560,12 @@ def _center_landing_group(
         "median_rungs": sorted(errors)[count // 2],
         "sd_rungs": spread,
         "warm_share": sum(1 for value in errors if value > 0.0) / count,
-        "skewed_share": sum(
-            1 for row in members if int(row.get("sign") or 0) != 0
-        ) / count,
+        # Among the cells production decided on: the skew state is the seat
+        # audit's, and a cell nobody decided on has none.
+        "skewed_share": (
+            sum(1 for row in seated if int(row.get("sign") or 0) != 0)
+            / len(seated) if seated else None
+        ),
         "same_window_share": (
             sum(1 for row in seated if row.get("same_window")) / len(seated)
             if seated else None
@@ -8795,9 +8782,9 @@ def collect_center_landing(
     rungs of each station's own ladder (charter 53(b)), which is what makes
     a Celsius and a Fahrenheit market comparable in one column.
 
-    The seat-window columns read the window charter 131 would seat on that
-    cell (``_center_landing_seat``), and every row is also split by the
-    day's three-state reading, because on a skewed day the seat and the
+    The seat-window columns read the window production ruled on the cells
+    it decided on (``_stored_seat_shapes``), and every row is also split by
+    the day's three-state reading, because on a skewed day the seat and the
     mean +-1 window are different sets of rungs.
     """
 
@@ -8820,6 +8807,7 @@ def collect_center_landing(
     if not _table_exists(conn, "basket_probability_bridge_history"):
         return {}
     truth = _truth(conn)
+    stored_seats = _stored_seat_shapes(conn)
     state_labels = (
         (SKEW_STATE_SYMMETRIC, "symmetric", "对称"),
         (SKEW_STATE_LEFT, "left", "左偏（冷尾）"),
@@ -8848,7 +8836,7 @@ def collect_center_landing(
             for cell in by_day[day]:
                 if until and str(cell.get("decision_at_utc") or "") >= until:
                     continue
-                entry = _center_landing_entry(stage, cell, truth)
+                entry = _center_landing_entry(stage, cell, truth, stored_seats)
                 if entry is not None:
                     landings.append(entry)
         if not landings:
@@ -8957,6 +8945,7 @@ def _center_landing_entry(
     stage: str,
     cell: Mapping[str, Any],
     truth: Mapping[tuple[str, str], float],
+    stored_seats: Mapping[tuple[str, str, str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """One serving cell's landing: truth minus the served mean in rungs, the
     served width, the seat window's claim and hit, and the core readings.
@@ -9014,12 +9003,12 @@ def _center_landing_entry(
 
     mode_names = keys[max(0, peak - 1):peak + 2]
     legacy_names = keys[max(0, legacy_centre - 1):legacy_centre + 2]
-    seat = _center_landing_seat(
-        stage=stage,
-        keys=keys,
-        probabilities=probabilities,
-        excluded=cell.get("excluded_buckets") or (),
-    )
+    seat = (stored_seats or {}).get((
+        str(cell["station_id"]), str(cell["event_date"]),
+        str(cell.get("decision_at_utc") or ""),
+    ))
+    if seat is not None and not seat.get("seat_keys"):
+        seat = None
     entry: dict[str, Any] = {
         "sigma": sigma_c / rung_c,
         "error": (float(actual) - mean_c) / rung_c,
@@ -9324,7 +9313,7 @@ def _center_landing_rule() -> dict[str, Any]:
 
 def _center_landing_salt() -> str:
     helpers = "".join(_loaded_source(helper) for helper in (
-        _center_landing_seat, _center_landing_group, _core_cell,
+        _stored_seat_shapes, _center_landing_group, _core_cell,
         _core_murphy, _core_metrics, _core_daily,
         _center_landing_entry, _station_calibration_rows,
         _station_day_readings, _station_calibration_rank,
@@ -9750,6 +9739,7 @@ def collect_station_calibration_windows(
     if not _table_exists(conn, "basket_probability_bridge_history"):
         return {}
     truth = _truth(conn)
+    stored_seats = _stored_seat_shapes(conn)
     today = _now().date()
     closed_through = (
         today - timedelta(days=STATION_DAY_CLOSED_DAYS)
@@ -9807,7 +9797,7 @@ def collect_station_calibration_windows(
                 for cell in cells:
                     if (str(cell["station_id"]), str(cell["event_date"])) not in todo:
                         continue
-                    entry = _center_landing_entry(stage, cell, truth)
+                    entry = _center_landing_entry(stage, cell, truth, stored_seats)
                     if entry is not None:
                         entries.append(entry)
             fresh = _station_day_readings(entries)
@@ -18922,8 +18912,8 @@ function centreLanding(){
       <tbody>${detailRows((st.rows || []).concat(st.states || []))}</tbody></table></div></div>`).join("")}
     <div class="muted" style="font-size:11.5px;margin-top:6px">单位是桶：摄氏市场一桶 1°C、华氏 2°F。
       宽度按服务分布自称的宽度切；形状是宪章 131 的三态读数（${
-      h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗＝裁定形状里最宽的窗；
-      无席位的格子只进偏差列。</div></details>${typeof landingPrevious === "function" ? landingPrevious() : ""}`;
+      h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗与三态读数都取自生产决策时存下的席位审计（裁定形状里最宽的窗），
+      只有生产实际下过决策的格子才有；无席位的格子只进偏差列。</div></details>${typeof landingPrevious === "function" ? landingPrevious() : ""}`;
 
   return `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
   <div class="card tl-verdict-card"><b>结论：</b>${centreLine}<br>${coverLine}${
