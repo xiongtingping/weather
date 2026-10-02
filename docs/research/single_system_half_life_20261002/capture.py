@@ -11,8 +11,9 @@ src = (SMW / "capture_long.py").read_text()
 # the dump patch inside capture_long already writes per-system rows; additionally pass the decision instant to the shift signal
 inner_old = '            signals = oos._holdout_conditioning_signals('
 assert src.count("R.PERIODS[PERIOD]") == 1
+FIRST_DAY = "2026-07-15" if ARM == "CUR" else "2026-08-15"
 src = src.replace('R.PERIODS[PERIOD] = lambda day: "2026-01-01" <= day <= "2026-09-30"',
-                  'R.PERIODS[PERIOD] = lambda day: "2026-07-15" <= day <= "2026-09-30"')
+                  f'R.PERIODS[PERIOD] = lambda day: "{FIRST_DAY}" <= day <= "2026-09-30"')
 src = src.replace('PERIOD = "all" if ALL else "long"', f'PERIOD = "sc_{ARM}"')
 src = src.replace('R.HERE = HERE', 'R.HERE = Path(os.environ["SC_OUT"])')
 # capture_long builds its exec'd text with patch(); add one more patch for the decision instant

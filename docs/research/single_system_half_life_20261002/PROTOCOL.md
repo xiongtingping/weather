@@ -13,3 +13,6 @@
 CUR（B5, L15）；B3、B8、B12（偏差半衰期，L15）；L8、L30（LogLoss 半衰期，B5）。
 ## 判决
 计分 2026-08-15..09-30（物理位移有当时版本起），代表决策同 score.py，簇=站日，第 240 条门，5 臂 Bonferroni 99%，前后两段（08-15..09-07、09-08..09-30）ΔLogScore 同负。过门 → 提议改常数（P0 升版）；否则维持。
+
+## 成本修正（2026-10-02 07:15Z，任何评分之前）
+整机负载下单站约 100 秒、六臂全站约 8 小时。修正：除 CUR 外各臂只跑固定半数站点（按站名排序隔一取一，23 站：CYYZ,EFHK,EHAM,FACT,KAUS,KDAL,KLAX,KMIA,KSEA,LEMD,LIMC,MMMX,NZWN,OPKC,RJTT,RKSI,SAEZ,VILK,WSSS,ZGGG,ZHHH,ZSQD,ZUUU），事件日只跑计分窗 08-15..09-30；B12 暂缓（B8 若过门再补）；比较在同 23 站上做，Bonferroni 改为 4 臂（98.75%）。判据不变。
