@@ -37,7 +37,7 @@ rest = rest.replace('"HF": [(e, h) for e in ETAS for h in HALVES], "EB": [(t,) f
 rest = rest.replace('if SKIP_HF: del combos["HF"]', '')
 if MODE == "cap":
     rest = rest.replace('ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "EBP*", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]',
-                        'ARMS = ["CAP0.5", "CAP0.6", "CAP0.75", "CAP0.9", "CAP1.0"]')
+                        'ARMS = ["A0", "CAP0.5", "CAP0.6", "CAP0.75", "CAP0.9", "CAP1.0"]')
     rest = rest.replace('def arm_w(d, arm):\n', '''def arm_w(d, arm):
     if arm.startswith("CAP"):
         from bayes_basket_target.fusion_blend import feasible as _feasible
@@ -49,7 +49,7 @@ if MODE == "cap":
         return out
 ''', 1)
 else:
-    rest = rest.replace('ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "EBP*", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]', 'ARMS = ["EBP*"]')
+    rest = rest.replace('ARMS = ["A0", "H*", "HL"] + ([] if SKIP_HF else ["HF"]) + ["EB", "EBP*", "SEAT*", "SEAT+H", "ORACLE-S", "ORACLE-SL"]', 'ARMS = ["A0", "EBP*"]')
 rest = rest[:rest.index("# ---------------------------------------------------------------- verdicts")]
 rest = rest.replace(rest[rest.index("# ---------------------------------------------------------------- oracle upper bounds"):rest.index("# ---------------------------------------------------------------- arm weights at a scored decision")],
                     "scored = [d for d in decs if SCORE_FROM <= d['day'] <= SCORE_TO]\n")
