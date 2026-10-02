@@ -1827,9 +1827,15 @@ LINEAGE_DOCUMENT_REF_PREFIX = "@ref/"
 # body still fails closed however many other stores hold it; an in-memory or
 # unnamed database is never remembered.  Bounded by bytes, least recently
 # used out.
+#
+# 128 MiB (user ruling 2026-10-02 「提」): at 32 the cycle still sent 8,014
+# lookups (43 s) -- a cycle walks its station-days in the same order every
+# time, and a working set past the bound is the access pattern under which
+# least-recently-used keeps nothing.  Bodies average 4.5 KB; the resident's
+# RSS bound is 4 GiB.
 _LINEAGE_DOCUMENT_CACHE: "OrderedDict[tuple[str, str], str]" = OrderedDict()
 _LINEAGE_DOCUMENT_CACHE_BYTES = 0
-_LINEAGE_DOCUMENT_CACHE_MAX_BYTES = 32 * 1024 * 1024
+_LINEAGE_DOCUMENT_CACHE_MAX_BYTES = 128 * 1024 * 1024
 _LINEAGE_DOCUMENT_CACHE_LOCK = threading.Lock()
 
 
