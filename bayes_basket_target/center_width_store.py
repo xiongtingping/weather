@@ -4351,6 +4351,34 @@ def stage_order_by_staleness(
     )
 
 
+def _active_slices_in_retired_form(
+    conn: sqlite3.Connection, *, stage: str
+) -> bool:
+    """Whether the stage's active row names a slice entry the loader no
+    longer reads (charter 239's ``width_lambda`` form, retired by 248)."""
+
+    try:
+        row = conn.execute(
+            "SELECT width_slices_json FROM calibration_center_width_table"
+            " WHERE activated=1 AND stage=?",
+            (_check_stage(stage),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if row is None or not row[0]:
+        return False
+    try:
+        slices = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(slices, Mapping):
+        return False
+    return any(
+        isinstance(entry, Mapping) and entry.get("tail_mix_weight") is None
+        for entry in slices.values()
+    )
+
+
 def _refit_stages(
     conn: sqlite3.Connection,
     wanted: "Sequence[str]",
@@ -4410,6 +4438,13 @@ def _refit_stages(
             slices_changed = (
                 (fitted.get("width_slices") or None) != (active_slices or None)
             )
+            # Charter 248: an active row still naming a slice of the retired
+            # 239 form reads as no slice but is a different row from one
+            # that names none; the first run under 248 rewrites it.
+            if active is not None and _active_slices_in_retired_form(
+                conn, stage=stage
+            ):
+                slices_changed = True
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
                     outcome = "NOT_WIRED"

@@ -286,6 +286,43 @@ def test_a_slice_change_is_committed_even_when_the_pooled_pair_stands(tmp_path, 
     assert store.load_center_width_slices(conn, stage="P0") is None
 
 
+def test_an_active_row_in_the_retired_form_is_rewritten_on_the_first_run(tmp_path, monkeypatch) -> None:
+    conn = sqlite3.connect(tmp_path / "cw.db")
+    store.persist_and_activate_center_width(
+        conn, stage="P0", delta_c=0.0, width_lambda=0.75, evidence={"schema": "t"}, serving_day_count=9,
+    )
+    # A 239-era row: its sha digested the lambda slice, so it differs from
+    # the plain pair's row the lane will write.
+    conn.execute(
+        "UPDATE calibration_center_width_table SET width_slices_json=?, center_width_sha256=?"
+        " WHERE activated=1 AND stage='P0'",
+        ('{"thin_far": {"max_seated_systems": 3, "min_hours_to_settlement": 36.0, "width_lambda": 1.1}}', "f" * 64),
+    )
+    conn.commit()
+    assert store._active_slices_in_retired_form(conn, stage="P0") is True
+    assert store.load_center_width_slices(conn, stage="P0") is None       # reads as no slice ...
+    fitted = {
+        "stage": "P0", "delta_c": 0.0, "width_lambda": 0.75, "sigma_floor_rungs": 0.0,
+        "width_tiers": None, "width_slices": None, "candidate_width_slices": None,
+        "forward_nll_gain": 0.0, "accumulating": False, "vetoed": False, "admitted": False,
+        "serving_day_count": 9, "serving_cell_count": 200,
+        "evidence": {"width_slices": {"state": "REFUSED_FORWARD", "candidate_tail_mix_weight": 0.2}},
+    }
+    monkeypatch.setattr(store, "fit_center_width", lambda conn, stage, min_decision_at_utc=None: fitted)
+    monkeypatch.setattr(store, "fit_station_width", lambda conn, stage, min_decision_at_utc=None: {
+        "station_count": 0, "forward_nll_gain": 0.0, "accumulating": True, "evidence": {},
+    })
+    results: dict = {}
+    store._refit_stages(conn, ("P0",), results, True, None)
+    assert results["P0"]["outcome"] == "ACTIVATED"                     # ... but the row is rewritten without it
+    row = conn.execute("SELECT width_slices_json FROM calibration_center_width_table WHERE activated=1 AND stage='P0'").fetchone()
+    assert row[0] is None
+    assert store._active_slices_in_retired_form(conn, stage="P0") is False
+    results = {}
+    store._refit_stages(conn, ("P0",), results, True, None)
+    assert results["P0"]["outcome"] == "REFUSED_FORWARD"                # and stays put after that
+
+
 def test_every_serving_face_resolves_the_slice_through_one_resolver() -> None:
     root = Path(__file__).resolve().parents[1]
     read = lambda rel: (root / rel).read_text(encoding="utf-8")
