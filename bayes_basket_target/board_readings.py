@@ -50,6 +50,9 @@ DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 SCHEMA = "board_reading_v1"
 #: How far back the seat windows reach: the scorecard's own longest window.
 SEAT_LOOKBACK_DAYS = 45
+#: How far before the last run's start the seat windows are read again: a
+#: three-hour block's median cell can move until the block closes, plus margin.
+SEAT_REREAD_HOURS = 6
 READING_NAMES = ("seat_windows", "fusion_resolve", "centre_shape", "l4_lane")
 
 
@@ -185,18 +188,40 @@ def seat_windows(conn: sqlite3.Connection) -> dict[str, Any]:
     from .center_width_store import _truth, serving_cells_by_day  # noqa: PLC0415
 
     previous = load_reading("seat_windows") or {}
+    # Keyed on the rule alone: the values are seat_window's, whatever reads them.
+    same_code = previous.get("code_sha256") == _code_sha(seat_window)
     kept: dict[str, Any] = (
-        dict((previous.get("value") or {}).get("seats") or {})
-        if previous.get("code_sha256") == _code_sha(seat_window, seat_windows)
-        else {}
+        dict((previous.get("value") or {}).get("seats") or {}) if same_code else {}
     )
     floor = (_now() - timedelta(days=SEAT_LOOKBACK_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Only the cells that can still change are read again.  A cell is the
+    # median row of a three-hour block, and a block takes new rows only while
+    # it is current, so every cell decided more than SEAT_REREAD_HOURS before
+    # the last run began is fixed and kept as written.  Reading all 45 days
+    # of all three stages every hour was the job's whole cost, and it fell
+    # inside production's cycle (2026-10-02 13:27Z: the first cycle after the
+    # 13:30Z restart ran past its 720 s alarm beside it).
+    reread_from = floor
+    if same_code and previous.get("computed_at_utc"):
+        try:
+            last = datetime.fromisoformat(
+                str(previous["computed_at_utc"]).replace("Z", "+00:00")
+            ) - timedelta(seconds=float(previous.get("build_sec") or 0.0))
+            reread_from = max(
+                floor,
+                (last - timedelta(hours=SEAT_REREAD_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            )
+        except ValueError:
+            reread_from = floor
+    seats: dict[str, Any] = {
+        key: value for key, value in kept.items()
+        if key.split("|")[-1] >= floor and key.split("|")[-1] < reread_from
+    }
     truth = _truth(conn)
-    seats: dict[str, Any] = {}
     computed = 0
     for stage in ("P0", "P0-M", "P1"):
         for cells in serving_cells_by_day(
-            conn, truth, stage=stage, min_decision_at_utc=floor,
+            conn, truth, stage=stage, min_decision_at_utc=reread_from,
         ).values():
             for cell in cells:
                 key = "|".join((
@@ -217,7 +242,10 @@ def seat_windows(conn: sqlite3.Connection) -> dict[str, Any]:
                     "seat_keys": list(seat["seat_keys"]),
                 }
                 computed += 1
-    return {"seats": seats, "computed": computed, "floor_utc": floor}
+    return {
+        "seats": seats, "computed": computed, "floor_utc": floor,
+        "reread_from_utc": reread_from,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -995,7 +1023,7 @@ def l4_lane(conn: sqlite3.Connection) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
-    "seat_windows": (seat_windows, (seat_window, seat_windows)),
+    "seat_windows": (seat_windows, (seat_window,)),
     "fusion_resolve": (
         fusion_resolved_seats,
         (fusion_resolved_seats, _fusion_reconstruction,
