@@ -61,6 +61,11 @@ OPTIONAL_PLISTS=(
   # 失败即跳过。」).  A reader outside the writer turn; it writes only
   # data/paper_ledger_aligned.db and gives way to an overdue production cycle.
   com.weather.paper_ledger_aligned.plist
+  # The backend board-readings job, hourly (2026-10-02, 「新开一个后端读数
+  # 任务」): what the board shows that the serving path does not store, with
+  # production's own functions.  A reader outside the writer turn; it writes
+  # only data/board_readings/.
+  com.weather.board_readings.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

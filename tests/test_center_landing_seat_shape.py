@@ -1,17 +1,15 @@
-"""The landing panel's seat window is the one production ruled, as stored.
+"""The landing panel's seat window: charter 131's, computed by the backend.
 
 Until 2026-09-12 ``collect_center_landing`` hard-coded the mean bucket +-1
-as "the seat window"; from then until 2026-10-02 it ran charter 131's seat
-rule itself on every served cell.  User ruling 2026-10-02 「只读是读后端算出
-来的」: the panel reads the audit the decision's compiled plan kept
-(``basket_support_selection.seat_shape``) for the envelopes production
-decided on, and a cell nobody decided on has no seat.
+as "the seat window"; until 2026-10-02 the board ran charter 131's seat rule
+itself on every served cell.  User rulings 2026-10-02 (「只读是读后端算出来
+的」, 「新开一个后端读数任务」): the backend board-readings job computes the
+window with the runtime's own functions (``board_readings.seat_window``) for
+every served cell and writes it; the panel only reads that file.
 """
 
 from __future__ import annotations
 
-import json
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -21,39 +19,114 @@ for p in (ROOT, ROOT / "scripts"):
         sys.path.insert(0, str(p))
 
 import calibration_dashboard as C  # noqa: E402
+from bayes_basket_target import board_readings as BR  # noqa: E402
+from bayes_basket_target.basket_kernel.support import (  # noqa: E402
+    SKEW_STATE_LEFT,
+    SKEW_STATE_RIGHT,
+    SKEW_STATE_SYMMETRIC,
+)
+from bayes_basket_target.delta_v2_runtime import (  # noqa: E402
+    seat_shape_windows_v1,
+)
 
 KEYS = ["26C", "27C", "28C", "29C", "30C", "31C"]
 
 
-def _store() -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE auto_trade_decisions (decision_id TEXT, details_json TEXT)"
+def _dist(*masses: float) -> dict[str, float]:
+    return dict(zip(KEYS, masses))
+
+
+def test_right_skewed_day_seats_the_tail_and_leaves_the_mode_out():
+    # Mode at 27C, mean ordinal 2.09 (28C): gap 1.09 buckets against a
+    # 0.35 sigma gate of 0.43 -- read RIGHT_SKEWED.
+    probabilities = _dist(0.02, 0.40, 0.25, 0.18, 0.10, 0.05)
+    seat = BR.seat_window(
+        stage="P0", keys=KEYS, probabilities=probabilities
     )
-    conn.execute(
-        "CREATE TABLE basket_probability_envelope (checkpoint_id TEXT,"
-        " station_id TEXT, event_date TEXT, decision_at_utc TEXT,"
-        " bucket_ordinals_json TEXT)"
+    assert seat is not None
+    assert seat["state"] == SKEW_STATE_RIGHT
+    assert seat["centre"] == "28C"
+    assert seat["seat_keys"] == ["28C", "29C", "30C"]
+    assert "27C" not in seat["seat_keys"]
+
+
+def test_left_skewed_day_mirrors():
+    probabilities = _dist(0.05, 0.10, 0.18, 0.25, 0.40, 0.02)
+    seat = BR.seat_window(
+        stage="P0", keys=KEYS, probabilities=probabilities
     )
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?)",
-        ("cp-1", "KAAA", "2026-09-20", "2026-09-19T06:00:00Z",
-         json.dumps({key: index for index, key in enumerate(KEYS)})),
+    assert seat is not None
+    assert seat["state"] == SKEW_STATE_LEFT
+    assert seat["centre"] == "29C"
+    assert seat["seat_keys"] == ["27C", "28C", "29C"]
+
+
+def test_symmetric_day_seats_the_mean_bucket_and_both_neighbours():
+    probabilities = _dist(0.05, 0.15, 0.60, 0.15, 0.05, 0.0)
+    seat = BR.seat_window(
+        stage="P0", keys=KEYS, probabilities=probabilities
     )
-    details = {
-        "checkpoint_id": "cp-1",
-        "stage_zero_execution_anchor": {"compiled_plan": {"plan": {
-            "basket_support_selection": {"seat_shape": {
-                "allowed_ordinals": [[3, 4, 5], [3, 4]],
-                "centre_ordinal": 3, "sign": 1, "state": "RIGHT_SKEWED",
-                "rule": "seat_shape_mean_anchored_v1",
-            }},
-        }}},
-    }
-    conn.execute(
-        "INSERT INTO auto_trade_decisions VALUES (?,?)", ("d-1", json.dumps(details))
+    assert seat is not None
+    assert seat["state"] == SKEW_STATE_SYMMETRIC
+    assert seat["seat_keys"] == ["27C", "28C", "29C"]
+
+
+def test_the_backend_reads_the_runtime_not_a_copy():
+    probabilities = _dist(0.02, 0.40, 0.25, 0.18, 0.10, 0.05)
+    seat = BR.seat_window(
+        stage="P0", keys=KEYS, probabilities=probabilities
     )
-    return conn
+    assert seat is not None
+    ordinals = {key: index for index, key in enumerate(KEYS)}
+    _shapes, audit = seat_shape_windows_v1(
+        centre_ordinal=ordinals[seat["centre"]],
+        sign=seat["sign"],
+        stage="P0",
+        probability_by_ordinal={
+            ordinals[key]: probabilities[key] for key in KEYS
+        },
+        live_ordinals=set(ordinals.values()),
+    )
+    widest = audit["allowed_ordinals"][0]
+    assert [ordinals[key] for key in seat["seat_keys"]] == widest
+
+
+def test_a_dead_tail_rung_drops_the_seat_to_the_two_rung_shape():
+    # Charter 125/131: an observed-dead rung is not live, so the three-rung
+    # tail window cannot be seated and the ruled two-rung subset is.
+    probabilities = _dist(0.02, 0.40, 0.25, 0.18, 0.10, 0.05)
+    seat = BR.seat_window(
+        stage="P0-M", keys=KEYS, probabilities=probabilities,
+        excluded=("30C",),
+    )
+    assert seat is not None
+    assert seat["seat_keys"] == ["28C", "29C"]
+
+
+def test_p1_with_one_live_rung_seats_that_rung_alone():
+    probabilities = _dist(0.05, 0.15, 0.60, 0.15, 0.05, 0.0)
+    seat = BR.seat_window(
+        stage="P1", keys=KEYS, probabilities=probabilities,
+        excluded=("26C", "27C", "29C", "30C", "31C"),
+    )
+    assert seat is not None
+    assert seat["seat_keys"] == ["28C"]
+
+
+def test_no_live_rung_means_no_seat():
+    assert BR.seat_window(
+        stage="P0", keys=KEYS, probabilities=_dist(0, 0, 0, 0, 0, 0)
+    ) is None
+
+
+def _write_seats(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path)
+    BR.write_reading("seat_windows", {"seats": {
+        "KAAA|2026-09-20|2026-09-19T06:00:00Z": {
+            "state": "RIGHT_SKEWED", "sign": 1, "seat_keys": ["29C", "30C", "31C"],
+        },
+        "KAAA|2026-09-20|2026-09-19T03:00:00Z": None,
+    }}, code="x", build_sec=1.0)
 
 
 def _cell(decided: str) -> dict:
@@ -67,20 +140,15 @@ def _cell(decided: str) -> dict:
     }
 
 
-def test_the_seat_is_the_widest_window_the_decision_stored() -> None:
-    seats = C._stored_seat_shapes(_store())
-    assert seats == {("KAAA", "2026-09-20", "2026-09-19T06:00:00Z"): {
-        "state": "RIGHT_SKEWED", "sign": 1, "seat_keys": ["29C", "30C", "31C"],
-    }}
-
-
-def test_a_cell_reads_the_seat_of_its_own_envelope_and_no_other() -> None:
-    seats = C._stored_seat_shapes(_store())
+def test_the_board_reads_the_backends_seat_for_its_own_cell_and_no_other(tmp_path, monkeypatch) -> None:
+    _write_seats(tmp_path, monkeypatch)
+    seats = C._stored_seat_shapes()
+    assert list(seats) == [("KAAA", "2026-09-20", "2026-09-19T06:00:00Z")]
     truth = {("KAAA", "2026-09-20"): 29.6}
     decided = C._center_landing_entry("P0", _cell("2026-09-19T06:00:00Z"), truth, seats)
     assert decided["state"] == "RIGHT_SKEWED" and decided["sign"] == 1
     assert abs(decided["seat_claim"] - 0.7) < 1e-12 and decided["seat_hit"] == 1
-    # Another envelope of the same day was never decided on: no seat.
+    # A cell the job has not reached (or that seats nothing) has no seat.
     other = C._center_landing_entry("P0", _cell("2026-09-19T09:00:00Z"), truth, seats)
     assert other["state"] is None and other["seat_claim"] is None
     assert other["mode_claim"] is not None, "the mode window is plain arithmetic and stays"

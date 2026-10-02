@@ -8331,6 +8331,7 @@ SCORECARD_THRESHOLDS = {
     "pit_deviation": (0.04, 0.08),   # max |empirical - uniform| over PIT bins
     "ece": (0.05, 0.10),             # expected calibration error
     "conditional_gap": (0.05, 0.10),  # worst well-populated reliability bin
+    "weight_distance": (0.10, 0.25),       # half-L1 gap, served vs production re-solve
     "residual_correlation": (0.5, 0.75),   # max off-diagonal
     "spread_skill": (0.20, 0.45),    # |ratio - 1|, ensemble spread vs realised error
     "ci_relative": (0.15, 0.30),     # bootstrap half-width / value
@@ -8441,68 +8442,26 @@ def _center_landing_bootstrap(
 
 
 def _stored_seat_shapes(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """The seat window production ruled, per served envelope it decided on.
+    """Charter 131's seat window for every served cell, as the backend
+    board-readings job computed it (``board_readings.seat_windows``).
 
-    Read, not re-derived (user ruling 2026-10-02 「只读是读后端算出来的」):
-    the decision's compiled plan keeps charter 131's audit
-    (``basket_support_selection.seat_shape``: the allowed windows by bucket
-    ordinal, the skew state and sign), and the decision names the envelope it
-    priced (``checkpoint_id``).  Keyed on (station, event date, the
-    envelope's decision instant), which is how a serving cell names itself;
-    the window reported is the widest ruled shape, as the panel always
-    reported.  An envelope production never decided on has no seat here --
-    until 2026-10-02 the board ran the seat rule itself on every served
-    cell, a decision production had not taken.
+    Read, not computed (user rulings 2026-10-02 「只读是读后端算出来的」 /
+    「新开一个后端读数任务」): keyed on (station, event date, the cell's
+    decision instant), which is how a serving cell names itself.  A cell the
+    job has not reached yet has no seat until its next run.  ``conn`` is
+    unused; the readings live beside the store, not in it.
     """
 
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    reading = load_reading("seat_windows") or {}
     seats: dict[tuple[str, str, str], dict[str, Any]] = {}
-    try:
-        rows = conn.execute(
-            "SELECT json_extract(details_json,'$.checkpoint_id'),"
-            " json_extract(details_json,"
-            "'$.stage_zero_execution_anchor.compiled_plan.plan"
-            ".basket_support_selection.seat_shape')"
-            " FROM auto_trade_decisions"
-            " WHERE instr(details_json,'\"seat_shape\"')>0"
-        ).fetchall()
-    except sqlite3.Error:
-        return seats
-    for checkpoint, audit_json in rows:
-        if not checkpoint or not audit_json:
-            continue
-        try:
-            audit = json.loads(audit_json)
-            windows = [
-                [int(value) for value in window]
-                for window in audit.get("allowed_ordinals") or []
-            ]
-        except (TypeError, ValueError, AttributeError):
-            continue
-        envelope = conn.execute(
-            "SELECT station_id, event_date, decision_at_utc, bucket_ordinals_json"
-            " FROM basket_probability_envelope WHERE checkpoint_id=? LIMIT 1",
-            (str(checkpoint),),
-        ).fetchone()
-        if envelope is None:
-            continue
-        try:
-            by_ordinal = {
-                int(ordinal): str(bucket)
-                for bucket, ordinal in json.loads(envelope[3]).items()
-            }
-        except (TypeError, ValueError, AttributeError):
-            continue
-        widest = max(windows, key=len) if windows else None
-        seats[(str(envelope[0]), str(envelope[1]), str(envelope[2]))] = {
-            "state": audit.get("state"),
-            "sign": int(audit.get("sign") or 0),
-            "seat_keys": (
-                [by_ordinal[o] for o in widest if o in by_ordinal]
-                if widest else []
-            ),
-        }
+    for key, seat in ((reading.get("value") or {}).get("seats") or {}).items():
+        parts = str(key).split("|")
+        if seat and len(parts) == 3:
+            seats[(parts[0], parts[1], parts[2])] = seat
     return seats
 
 
@@ -8560,8 +8519,8 @@ def _center_landing_group(
         "median_rungs": sorted(errors)[count // 2],
         "sd_rungs": spread,
         "warm_share": sum(1 for value in errors if value > 0.0) / count,
-        # Among the cells production decided on: the skew state is the seat
-        # audit's, and a cell nobody decided on has none.
+        # Among the cells with a seat: the skew state comes with the seat
+        # the backend computed, and a cell without one has none.
         "skewed_share": (
             sum(1 for row in seated if int(row.get("sign") or 0) != 0)
             / len(seated) if seated else None
@@ -8782,10 +8741,10 @@ def collect_center_landing(
     rungs of each station's own ladder (charter 53(b)), which is what makes
     a Celsius and a Fahrenheit market comparable in one column.
 
-    The seat-window columns read the window production ruled on the cells
-    it decided on (``_stored_seat_shapes``), and every row is also split by
-    the day's three-state reading, because on a skewed day the seat and the
-    mean +-1 window are different sets of rungs.
+    The seat-window columns read the window charter 131 seats on each cell,
+    as the backend board-readings job computed it (``_stored_seat_shapes``),
+    and every row is also split by the day's three-state reading, because on
+    a skewed day the seat and the mean +-1 window are different sets of rungs.
     """
 
     try:
@@ -10827,6 +10786,104 @@ def _scorecard_salt(conn: sqlite3.Connection) -> str:
 
 
 def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Whether each served blend carries the weights production's rule gives.
+
+    Read, not computed (user rulings 2026-10-02 「只读是读后端算出来的」 /
+    「新开一个后端读数任务」): the backend board-readings job re-solves every
+    served seat from what the SSOT kept, by production's own weighting
+    functions (``board_readings.fusion_resolved_seats``), and this grades
+    what it wrote -- the distance where the diagonal is recovered exactly,
+    the residual correlation as before.  Until the job has written its
+    reading the layer reads the stored weights and correlation alone
+    (``_fusion_stored_seats``) and grades on the correlation.
+    """
+
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    reading = load_reading("fusion_resolve")
+    if reading is None:
+        return _fusion_stored_seats(conn)
+    rows = list((reading.get("value") or {}).get("rows") or [])
+    unread = int((reading.get("value") or {}).get("unread") or 0)
+    correlations = [
+        row["max_correlation"] for row in rows
+        if row["max_correlation"] is not None
+    ]
+    if not correlations:
+        return {
+            "health": "muted",
+            "verdict": "还没有两家以上模型同时在座的在役组合",
+            "detail": "证据不足",
+            "pairs": [],
+            "summary": {"served_count": len(rows), "unread_count": unread},
+        }
+    exact = [
+        row for row in rows
+        if row["basis"] == "exact" and row["distance"] is not None
+    ]
+    approximate = [row for row in rows if row not in exact]
+    approximate_distances = sorted(
+        row["distance"] for row in approximate if row["distance"] is not None
+    )
+    mean_correlation = sum(correlations) / len(correlations)
+    mean_distance = (
+        sum(row["distance"] for row in exact) / len(exact) if exact else None
+    )
+    correlation_health = _grade(mean_correlation, "residual_correlation")
+    distance_health = _grade(mean_distance, "weight_distance")
+    health = _worst([correlation_health, distance_health])
+    if mean_distance is None:
+        verdict = (
+            f"模型之间残差相关 {mean_correlation:.2f}，"
+            "但没有一份在役权重能从存档精确重解，自检做不了"
+        )
+    elif distance_health != "green":
+        verdict = (
+            f"在役权重和存档证据重解对不上（平均差 {mean_distance:.1%}）"
+            "——先查数据再查解法"
+        )
+    elif correlation_health == "green":
+        verdict = (
+            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}），"
+            f"几家模型残差也互相独立（相关 {mean_correlation:.2f}）"
+        )
+    else:
+        verdict = (
+            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}）；"
+            f"灯色来自模型残差相关 {mean_correlation:.2f}，几家模型在犯相近的错"
+        )
+    return {
+        "health": health,
+        "verdict": verdict,
+        "detail": (
+            f"{len(rows)} 份在役权重 · 精确重解 {len(exact)} 份"
+            f" · 平均最大相关 {mean_correlation:.2f}"
+            + (f" · 离重解 {mean_distance:.1%}"
+               if mean_distance is not None else "")
+        ),
+        "pairs": sorted(
+            exact, key=lambda row: row["distance"], reverse=True
+        )[:12],
+        "summary": {
+            "served_count": len(rows),
+            "exact_count": len(exact),
+            "unread_count": unread,
+            "approximate_by_basis": dict(
+                Counter(row["basis"] for row in approximate)
+            ),
+            "approximate_median_distance": (
+                median(approximate_distances)
+                if approximate_distances else None
+            ),
+            "approximate_max_distance": (
+                approximate_distances[-1] if approximate_distances else None
+            ),
+        },
+    }
+
+
+
+def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     """The served blends as stored: each seat's weights and the residual
     correlation its selection evidence kept.
 
@@ -13170,8 +13227,9 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
 def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """The L4 posterior lane (first-principles baseline, shadow): the served
     ``(alpha, gamma, w)`` rows per stage and lead band with the in-sample
-    skill the fit stored, the registered hypotheses, and what the shadow
-    recorded on recent decisions -- all as stored, nothing re-judged.
+    skill the fit stored, the registered hypotheses, what the shadow
+    recorded on recent decisions, and the backend's forward skill and
+    realisation readings -- nothing re-judged here.
     """
 
     out: dict[str, Any] = {"available": False}
@@ -13206,13 +13264,19 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             )
         }
 
-    # Read-only (user ruling 2026-10-02 「所有前端都改为只读」): the served rows,
-    # the hypotheses and the shadow the planner recorded.  The forward skill
-    # and the realisation table re-judged every decision with the L4 rows --
-    # production's rule re-run on the board -- and are gone with it.
+    # Read-only (user rulings 2026-10-02 「所有前端都改为只读」 / 「新开一个后端
+    # 读数任务」): the served rows, the hypotheses and the planner's shadow
+    # off the store; the forward skill and the realisation table -- every
+    # decision re-judged with the L4 rows -- as the backend board-readings
+    # job computed them (``board_readings.l4_lane``).
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    l4 = load_reading("l4_lane") or {}
+    l4_value = l4.get("value") or {}
     stages: list[dict[str, Any]] = []
     for scope in ("P0", "P0-M", "P1"):
         row = served.get(scope)
+        forward = (l4_value.get("forward") or {}).get(scope)
         stages.append({
             "stage": scope,
             "served": None if row is None else {
@@ -13222,6 +13286,7 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                     for label in LEAD_BAND_LABELS
                 },
             },
+            "forward": forward if isinstance(forward, dict) and "error" not in forward else None,
         })
     shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
     try:
@@ -13270,6 +13335,8 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         "available": True, "mode": POSTERIOR_MODE, "rule": POSTERIOR_RULE,
         "stages": stages, "shadow": shadow, "hypotheses": hypotheses,
         "min_station_days": MIN_STATION_DAYS, "min_days": MIN_DAYS,
+        "realisation": l4_value.get("realisation"),
+        "readings_at_utc": l4.get("computed_at_utc"),
     })
     return out
 
@@ -13583,6 +13650,15 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
                 )
             },
         })
+    # The P0 gap split into centre and shape (2026-09-22 audit, finding 1),
+    # as the backend board-readings job computed it -- the board reads it.
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    split = load_reading("centre_shape")
+    out["centre_shape"] = (
+        {**(split.get("value") or {}), "computed_at_utc": split.get("computed_at_utc")}
+        if split else {"available": False, "error": "后端读数任务还没写出这一项"}
+    )
     # Saved even when a scope failed: every entry is a finished derivation.
     _save_charter_ev_decision_memo(memo)
     out.update({
@@ -17806,7 +17882,7 @@ function posteriorLane(){
   const n4=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(4));
   const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
   const cards=(V.stages||[]).map(st=>{
-    const s=st.served, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
+    const s=st.served, f=st.forward||{}, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
     const vd=(s&&s.verdict)||{};
     const vls=vd.d_logscore||[], vbr=vd.d_brier||[];
     const word=!s?"无拟合，b = m 不买":(s.accumulating?"累积中，b = m 不买":(s.admitted?"准入：服务后验":"未准入，b = m 不买"))
@@ -17830,6 +17906,9 @@ function posteriorLane(){
         <div><div class="muted">技能分 S = log b − log m（样本内）</div>
           <div class="big ${sk.s_in_sample==null?"":(sk.s_in_sample<0?"down":"up")}">${n4(sk.s_in_sample)}</div>
           <div class="muted">${ci(sk.s_in_sample_ci,n4)||"—"} nat · IC ${n3(sk.ic_in_sample)}</div></div>
+        <div><div class="muted">技能分 S（前瞻，按当时服务的拟合）</div>
+          <div class="big ${f.s_forward==null?"":(f.s_forward<0?"down":"up")}">${n4(f.s_forward)}</div>
+          <div class="muted">${ci(f.s_forward_ci,n4)||"—"} nat · IC ${n3(f.ic_forward)} · ${f.decisions||0} 决策 / ${f.days||0} 天${f.served_market?` · 其中 ${f.served_market} 次服务的是市场`:""}</div></div>
       </div>
       <table style="margin-top:10px"><thead><tr><th>提前量档</th><th>决策 / 天</th><th>w · 90%</th><th>γ</th><th>S 样本内</th></tr></thead>
       <tbody>${bands||"<tr><td colspan=5 class='muted'>无档行</td></tr>"}</tbody></table>
@@ -17845,10 +17924,128 @@ function posteriorLane(){
   门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日；判决至少 8 个检验日。</p>
   <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
   <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
-  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>`;
+  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>
+  ${posteriorRealisation(V.realisation)}`;
+}
+
+// L4's money edge (user ruling, 2026-09-17 "补"): the windows L4 would buy,
+// after they settled.  Every settled window production enumerated in the
+// last 14 days, re-judged with the L4 row that was active at its decision,
+// crossed with the verdict the live lambda gate gave the same window.
+function posteriorRealisation(R){
+  const title=`<h3 style="margin-top:18px">兑现表：L4 会买的窗，结算后赚没赚</h3>`;
+  if(!R) return `${title}<div class="card muted">未采集。</div>`;
+  if(R.error) return `${title}<div class="card muted">不可读：${h(R.error)}。</div>`;
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const pp=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+" 点");
+  const ci=c=>!c||c[0]==null?"":` <span class="muted">[${pp(c[0])}, ${pp(c[1])}]</span>`;
+  const tone=x=>x.hit_minus_price==null?"":(x.ci&&x.ci[0]!=null&&x.ci[0]>0?"up":(x.ci&&x.ci[1]!=null&&x.ci[1]<0?"down":""));
+  const row=(label,x,strong)=>{x=x||{};return `<tr${strong?' style="font-weight:620"':""}><td>${label}</td>
+    <td class="mono">${x.n||0} / ${x.station_days||0} / ${x.days||0}</td>
+    <td class="mono">${n3(x.price)}</td><td class="mono">${n3(x.hit)}</td>
+    <td class="mono">${pp(x.claimed_edge)}</td>
+    <td class="mono ${tone(x)}"><b>${pp(x.hit_minus_price)}</b>${ci(x.ci)}</td></tr>`;};
+  const c=R.cells||{};
+  // The acceptance sample (user ruling, 2026-09-17): the disagreement class
+  // the band table cannot see; L4's edge is read here first.
+  const A=R.acceptance;
+  const pc=v=>v==null?"—":(v*100).toFixed(0)+"%";
+  const acceptRows=!A?`<tr><td colspan="6" class="muted">验收样本：本页数据还没带这一项，等下一轮整库渲染。</td></tr>`
+    :`<tr><td colspan="6" style="padding-top:10px"><b>验收样本</b>：模型说 ≥${pc(A.claim_floor)} 而市场中价 &lt;${pc(A.market_ceiling)} 的窗——已结算 ${A.windows}、已判 ${A.judged}${A.windows?"":"（累积中）"}</td></tr>
+    ${row("　这类窗全部（不论谁买）",A.all)}${row("　其中 L4 会买",A.l4_admitted,true)}${row("　其中实盘 λ 会买",A.lambda_admitted)}`;
+  const stages=Object.entries(R.by_stage||{}).map(([st,v])=>`${h(st)}：L4 会买 ${(v.l4_admitted||{}).n||0} 窗 ${pp((v.l4_admitted||{}).hit_minus_price)} · λ 会买 ${(v.lambda_admitted||{}).n||0} 窗 ${pp((v.lambda_admitted||{}).hit_minus_price)}`).join("；");
+  const empty=!R.judged;
+  return `${title}
+  <p class="sub">最近 14 天（${h(R.since)} 起）生产枚举过、已结算的每个定价窗，用<b>决策当时生效的 L4 拟合</b>重判买不买，
+  再和实盘 λ 闸对同一个窗的判决交叉。「L4 声称 edge」= L4 信念 − 全含价；「实际」= 命中 − 全含价，按事件日自助 90%。
+  L4 放行那两行的实际值区间下界 &gt; 0 才算 L4 的 edge 兑现了。</p>
+  <div class="card" style="overflow-x:auto"><table><thead><tr><th>哪些窗</th><th>窗 / 站日 / 天</th><th>平均价</th><th>命中率</th><th>L4 声称 edge</th><th>实际 命中 − 价 · 90%</th></tr></thead>
+  <tbody>${row("L4 会买（合计）",R.l4_admitted,true)}${row("实盘 λ 会买（合计，对照）",R.lambda_admitted,true)}
+  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}
+  ${acceptRows}</tbody></table>
+  <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
+    ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
+    :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;
 }
 
 
+
+// The P0 gap to the market in two readings, centre and shape (2026-09-22 P0
+// downstream audit, finding 1 and its "只需要做" item b): a change to the
+// distribution layers answers to the shape reading only.  Rides on the
+// charter EV payload (same window, same labels), so a payload drawn before
+// the field existed says so instead of reading as "no gap".
+function centreShapeGap(){
+  const E=D.charter_ev||{}, S=E.centre_shape;
+  const title=`<h2>模型对市场差距：输多少，差在中心还是形状</h2>`;
+  if(!S) return `${title}<div class="card muted">这一版数据还没有这一项，下一次整库渲染后出现。</div>`;
+  if(!S.available) return `${title}<div class="card">未采集${S.error?"："+h(S.error):""}。</div>`;
+  const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
+  const pc=v=>v==null?"—":Math.round(v*100)+"%";
+  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
+  const f3=v=>sg(v,3);
+  const cls=v=>v==null?"":(v>0?"down":"up");
+  const cells=r=>`<td class="mono">${r.station_days} / ${r.days}</td>
+      <td class="mono ${cls(r.gap)}"><b>${f3(r.gap)}</b>${ci(r.gap_ci,f3)}</td>
+      <td class="mono">${f3(r.centre)}${ci(r.centre_ci,f3)}</td>
+      <td class="mono">${f3(r.shape)}${ci(r.shape_ci,f3)}</td>
+      <td class="mono"><b>${pc(r.centre_share)}</b>${ci(r.centre_share_ci,pc)}</td>
+      <td class="mono">${f3(r.control)}${ci(r.control_ci,f3)}</td>
+      <td class="mono">${r.mean_abs_distance_c==null?"—":(+r.mean_abs_distance_c).toFixed(2)}
+        <span class="muted">（${sg(r.mean_signed_distance_c,2)}）</span></td>
+      <td class="mono">${pc(r.clamped_share)}</td>`;
+  const row=(label,r,muted)=>(!r||!r.station_days)
+    ?`<tr class="muted"><td>${label}</td><td colspan="8">尚无已结算的站日</td></tr>`
+    :`<tr class="${muted?"muted":""}"><td style="white-space:nowrap">${label}</td>${cells(r)}</tr>`;
+  const at=v=>v?String(v).slice(0,16).replace("T"," ")+"Z":"（未记录）";
+  const X=S.samples||{}, T=S.tiers||{};
+  const head=`<th>站日 / 天</th>
+      <th>差距<br><span class="muted">RPS 模型 − 市场 · 95%</span></th>
+      <th>中心差<br><span class="muted">挪到市场均值消掉的</span></th>
+      <th>形状差<br><span class="muted">挪完还剩的</span></th>
+      <th>中心占比</th>
+      <th>对照<br><span class="muted">同幅度乱方向挪 − 不挪</span></th>
+      <th>模型均值离市场均值 °C<br><span class="muted">绝对值（带符号，正＝模型偏暖）</span></th>
+      <th>挪动触 ${S.max_abs_shift_c||1.5}°C 上限</th>`;
+  const P=X.stable_pool||{};
+  const pill=!P.station_days?{tone:"amber",word:"无样本"}
+    :(P.gap_ci&&P.gap_ci[0]>0
+      ?{tone:"red",word:`输给市场 ${f3(P.gap)}，其中中心 ${pc(P.centre_share)}`}
+      :{tone:"green",word:"差距区间含 0"});
+  const tierRows=Object.entries(T).map(([k,r])=>row(`${h(k)} h`,r,k==="0-12")).join("");
+  const N=S.population||{}, W=S.window||{};
+  return `${title}
+  <p class="sub">P0 服务分布对同一时刻盘口中价，按 RPS（整梯累积概率的平方误差，离真值越多档罚越重）比谁离真值更近，
+  再把差距拆成两半：<b>中心差</b>——用生产宽度层自己的平移函数把 P0 整条分布挪到市场的均值上，差距缩掉的部分；
+  <b>形状差</b>——挪完还剩的部分（胖瘦、尾巴、偏斜）。<b>这是读数，不是拟合，也不服务任何东西。</b></p>
+  <div class="why"><b>为什么要拆：</b>共识桥、辐射降温项、中心/宽度两标量这些分布层，只能改分布的形状，
+  <b>只对形状差负责</b>；中心差出在单系统订正、NWP 输入和融合，分布层怎么调都追不回来。<br>
+  <b>怎么挪：</b><span class="mono">apply_center_width_calibration</span>（宽度 λ = 1，只平移不缩放），挪动量 = 市场均值 − 模型均值，
+  最多 ${S.max_abs_shift_c||1.5}°C（这个函数自己的上限，超过的按上限挪，最后一列是触限的比例）。<br>
+  <b>对照：</b>同样的挪动量、方向随机（两个方向各算一次取平均）。对照为正且远离 0，说明中心差靠的是市场均值的<b>方向</b>，
+  不是「挪一挪」本身的机械效果。<br>
+  <b>取样：</b>窗内每个已结算站日、每个提前量档，取第一个配得上 30 分钟内完整盘口快照的 P0 包（09-22 模型下游审查第 1 条的取样）。
+  P0 是 P0-M、P1 的根，所以 12–24h 也读，不只看 P0 自己交易的那几档。站日等权，区间按事件日自助 ${E.bootstrap_draws||200} 次。<br>
+  ${withEv("centre_source_20260922",(V,e)=>`<b>例子（审查读数，${evStamp(e)}）：</b>提前 ${h(String(V.example_lead||"—"))}，模型中心平均离真值 ${V.model_mean_abs_c}°C、市场 ${V.market_mean_abs_c}°C；把 P0 挪到市场均值后，差距只剩约 ${evPct(V.residual_after_shift_share)}。
+  <b>中心差出在哪一步：</b>单系统偏差订正在帮中心——不订正时 P0 差距是 ${evSg(V.uncorrected_gap,2)}，订正收掉约 ${evPct(V.correction_share)}；
+  剩下的中心差是 NWP 输入本身的逐日误差，集中在 ${(V.worst_stations||[]).map(h).join("、")}，各家模型在这些站都比市场差，换权重、挑家都救不回来。`)}</div>
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px"><b>P0 · 提前 12h 以上</b><span style="flex:1"></span>
+      <span class="pill ${pill.tone}">${pill.word}</span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>样本</th>${head}</tr></thead>
+    <tbody>${row("稳定池（P0 v5，"+at(S.stable_pool_from_utc)+"）起",X.stable_pool,false)}${
+      row(`滚动 ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}`,X.window,false)}${
+      row("服务锚 "+at(S.served_anchor_utc)+" 起",X.anchor,true)}</tbody></table></div>
+    <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（审查的样本，稳定池后同一套融合）；滚动窗那行混着稳定池以前的版本；
+      锚后那行才是今天服务的 P0，会随结算自动填满。读了 ${N.station_days!=null?N.station_days:"—"} 个站日，
+      档内没配上 30 分钟内完整盘口的 ${N.band_unpaired!=null?N.band_unpaired:"—"} 档不计。</div>
+  </div>
+  <div class="card">
+    <div><b>按提前量拆开</b> <span class="muted">稳定池起的样本；0–12h 灰显：这一段服务的是 P1，市场已经读到当天的观测</span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>距结算</th>${head}</tr></thead>
+    <tbody>${tierRows}</tbody></table></div>
+  </div>`;
+}
 
 function charterEv(){
   const E=D.charter_ev||{};
@@ -18912,8 +19109,8 @@ function centreLanding(){
       <tbody>${detailRows((st.rows || []).concat(st.states || []))}</tbody></table></div></div>`).join("")}
     <div class="muted" style="font-size:11.5px;margin-top:6px">单位是桶：摄氏市场一桶 1°C、华氏 2°F。
       宽度按服务分布自称的宽度切；形状是宪章 131 的三态读数（${
-      h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗与三态读数都取自生产决策时存下的席位审计（裁定形状里最宽的窗），
-      只有生产实际下过决策的格子才有；无席位的格子只进偏差列。</div></details>${typeof landingPrevious === "function" ? landingPrevious() : ""}`;
+      h(String((L.seat_rule || {}).skew_threshold_sigma ?? 0.35))}σ）。席位窗＝裁定形状里最宽的窗，由后端读数任务用运行时的同一组函数为每个格子算好，
+      看板只读；无席位的格子只进偏差列。</div></details>${typeof landingPrevious === "function" ? landingPrevious() : ""}`;
 
   return `<h2>真值落在离服务均值多远：检验服务分布盖不盖得住真值</h2>
   <div class="card tl-verdict-card"><b>结论：</b>${centreLine}<br>${coverLine}${
@@ -20742,8 +20939,11 @@ function scorecard(){
   </div>`).join("");
 
   const fusionSummary = S.fusion_summary || {};
-  const fusion = (S.fusion_pairs||[]).slice(0,8).map(p => {
+  const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
+    .slice(0,8).map(p => {
       const names = Object.keys(p.served||{}).sort();
+      const tone = p.distance <= 0.10 ? "green"
+                 : (p.distance <= 0.25 ? "amber" : "red");
       return `<tr>
         <td class="mono">${h(p.station_id)}</td>
         <td class="mono muted">${h(p.lead_bucket)}</td>
@@ -20751,10 +20951,19 @@ function scorecard(){
         <td class="muted" style="font-size:12px">${h(p.rule)}</td>
         <td class="mono">${p.max_correlation == null ? "—"
           : p.max_correlation.toFixed(2)}</td>
+        <td class="mono"><span class="dot ${tone}"></span>
+          ${(p.distance*100).toFixed(1)}%</td>
         <td class="muted" style="font-size:12px">${names.map(n =>
-          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}%`).join(" · ")}</td>
+          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}→${
+           (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
       </tr>`;
     }).join("");
+  const fusionBasisWords = {capped: "族上限咬住", fallback: "逆误差兜底",
+    non_psd: "相关阵非正定", unsolved: "重解失败"};
+  const fusionApprox = Object.entries(fusionSummary.approximate_by_basis||{})
+    .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
+    .join("、");
+  const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
 
   const W = S.window || {};
   const count = v => v == null ? "—" : v.toLocaleString();
@@ -20801,16 +21010,25 @@ function scorecard(){
     ${pitBars}</div>
   <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>
 
-  ${fusion ? `<h2 style="margin-top:26px">在役融合权重与残差相关</h2>
+  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
-  这张表只读在役指针指向的那份选择证据：存下的权重，和训练期几家模型残差的相关。
-  按相关从高到低列：相关越高，几家模型越在犯相近的错，融合能抵消的误差越少。</p>
+  先按训练残差的收缩协方差求最小方差权重，共享训练日不足 12 天时落回逆误差兜底；
+  再把结果向「按族均分」收缩一半（κ=0.5）。八月的竞赛件在过期前仍按最小方差服务。
+  这张表是一致性自检，只读在役指针指向的那份证据。右边是后端读数任务用存档的残差相关性、
+  影子逆方差权重（还原各家方差）和生产同一组函数当场重解的权重，距离应当接近零。
+  距离若系统性变大，说明上线的解和存档的证据对不上了，先查数据再查解法。</p>
   <table><thead><tr>
     <th>站</th><th>提前量</th><th>cycle · 季节</th><th>规则</th>
-    <th>最大相关</th><th>在役权重</th>
+    <th>最大相关</th><th>离重解</th><th>现在 → 重解</th>
   </tr></thead><tbody>${fusion}</tbody></table>
   <div class="muted" style="margin-top:6px">
-    共 ${fusionSummary.served_count ?? "—"} 份在役权重，列出相关最高的几个。</div>` : ""}
+    共 ${fusionSummary.served_count ?? "—"} 份在役权重，
+    只列能精确重解的 ${fusionSummary.exact_count ?? "—"} 份里偏离最大的几个。
+    ${fusionApprox ? `另有 ${fusionApprox} 份只能近似重解，不计入灯色
+    （中位差 ${fusionPct(fusionSummary.approximate_median_distance)}、
+    最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
+    兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
+    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}
   ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
 }
 
@@ -22671,7 +22889,7 @@ const GROUPS = [
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
-      sections:[[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
+      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
      {box:"② L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
       note:"已下线：篮子车道关闭，下注改由 Proper 下注线按天气模型 p 与市场 q 直接生成仓位（宪章 231），L4 不再计算、夜间不再重拟；下表是下线前最后一版行。原设计：b 由整梯多类 LogLoss 拟合，每行前推判决 LogScore 显著胜市场且桶 Brier 点估计也变好才服务",
       sections:[[posteriorLane,"L4 后验层（已下线）"]]}]},

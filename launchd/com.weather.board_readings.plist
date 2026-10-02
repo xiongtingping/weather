@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.weather.board_readings</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/xiong/weather/scripts/board_readings_sweep.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/xiong/weather</string>
+  <!-- The backend board-readings job (user rulings 2026-10-02
+       「只读是读后端算出来的」 / 「新开一个后端读数任务」): the readings the
+       board shows that production's serving path does not store -- every
+       served cell's seat window, the fusion re-solve, the centre/shape
+       split, the L4 forward skill and realisation -- computed with
+       production's own functions and written to data/board_readings/.  A
+       reader of the store outside the writer turn; it waits out a running
+       page render, skips a start with the WAL past the resident's line, and
+       carries its own deadline. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/xiong/weather/data/logs/board_readings.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/xiong/weather/data/logs/board_readings.err.log</string>
+</dict>
+</plist>
