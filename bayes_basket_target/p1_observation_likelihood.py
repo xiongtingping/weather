@@ -57,7 +57,11 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .contracts import ContractError
-from .metar_four_layer import _continuation_distribution, phase_rise_probability
+from .metar_four_layer import (
+    _continuation_distribution,
+    phase_rise_probability,
+    phase_rise_terms,
+)
 
 SCHEMA = "bayes_basket_target_p1_observation_likelihood_v1"
 RULE = "p1_prior_x_joint_observation_likelihood_v1"
@@ -423,6 +427,11 @@ def compile_observation_likelihood(
         "station_clock_offset_h": station_clock_offset(artifact, station_id),
         "clock_hours": round(hours, 4),
         "rise_probability": rise,
+        # The logit behind it, term by term, so a reader shows what was
+        # served instead of recomputing it (user ruling 2026-10-02).
+        "rise_terms": _rounded_rise_terms(
+            phase_rise_terms({**features, "remaining_hours": hours}, artifact)
+        ),
         "running_high_c": float(running_high_c),
         "running_high_bucket": str(running_high_bucket),
         "features": {
@@ -441,6 +450,23 @@ def compile_observation_likelihood(
         },
     }
     return likelihoods, receipt
+
+
+def _rounded_rise_terms(terms: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "intercept": round(float(terms["intercept"]), 6),
+        "eta": round(float(terms["eta"]), 6),
+        "terms": [
+            {
+                "feature": str(term["feature"]),
+                "value": round(float(term["value"]), 6),
+                "coefficient": round(float(term["coefficient"]), 6),
+                "contribution": round(float(term["contribution"]), 6),
+                "fallback": bool(term["fallback"]),
+            }
+            for term in terms["terms"]
+        ],
+    }
 
 
 def silent_receipt(state: str, *, reason: str = "", artifact_sha256: str = "") -> dict[str, Any]:

@@ -3446,100 +3446,33 @@ def _p1_direct_term_word(name: str) -> tuple[str, str]:
     return "base", P1_LIKELIHOOD_FEATURE_WORDS.get(text, text)
 
 
-def _p1_likelihood_breakdown(
-    receipt: Mapping[str, Any],
-    *,
-    root_probabilities_json: Any,
-    probabilities_json: Any,
-    ordinals_json: Any,
-    raw_artifact: Mapping[str, Any],
-) -> dict[str, Any]:
-    """One served P1 step taken apart: prior x g**alpha -> served, bucket by bucket.
+def _p1_rise_terms(receipt: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The rise rung's logit as the P1 receipt stored it, term by term.
 
-    Read, not rebuilt: the evidence per bucket, alpha and the features come
-    off the envelope's own receipt, the prior off the root it names, the
-    served vector off the envelope.  The rise probability's logit is split
-    into its terms and checked against production's own
-    ``phase_rise_probability`` on the receipt's feature row, and the check
-    travels with it, so a decomposition that disagrees says so.
+    Read, not rebuilt (user ruling 2026-10-02 「只读是读后端算出来的」): the
+    receipt carries the intercept, each feature's contribution and eta since
+    the likelihood began writing them (``phase_rise_terms``); a receipt from
+    before has none, and the board says nothing rather than recompute it.
     """
 
-    from bayes_basket_target import metar_four_layer as mfl  # noqa: PLC0415
-    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
-
-    try:
-        served = {str(k): float(v) for k, v in json.loads(probabilities_json or "{}").items()}
-        prior = {str(k): float(v) for k, v in json.loads(root_probabilities_json or "{}").items()}
-        ordinals = {str(k): int(v) for k, v in json.loads(ordinals_json or "{}").items()}
-    except (TypeError, ValueError):
-        served, prior, ordinals = {}, {}, {}
-    evidence = {str(k): float(v) for k, v in (receipt.get("evidence_by_bucket") or {}).items()}
-    alpha = receipt.get("alpha")
-    rows = []
-    for bucket in sorted(served, key=lambda b: ordinals.get(b, 0)):
-        g = evidence.get(bucket)
-        rows.append({
-            "bucket": bucket,
-            "prior": prior.get(bucket),
-            "g": g,
-            "g_alpha": (None if g is None or alpha is None else max(g, 0.0) ** float(alpha)),
-            "served": served.get(bucket),
-            "at_or_below_high": ordinals.get(bucket, -1)
-            <= ordinals.get(str(receipt.get("running_high_bucket") or ""), -1),
-        })
-    features = dict(receipt.get("features") or {})
-    decomposition: dict[str, Any] = {}
-    block = (raw_artifact or {}).get("phase") or {}
-    if features and block and features.get("remaining_hours") is not None:
-        try:
-            # The clock the step was served on: hours left shifted by the
-            # station's peak offset (charter 157), read between bin midpoints
-            # when the artifact says so (charter 156) -- the served reading,
-            # through the same function, not the bin's own intercept.
-            clock = float(
-                receipt.get("clock_hours")
-                if receipt.get("clock_hours") is not None
-                else features["remaining_hours"]
-            )
-            index = mfl._hours_bin(clock, block["hours_edges"])
-            intercept = mfl.phase_clock_intercept(clock, block)
-            fallbacks = (raw_artifact or {}).get("feature_fallbacks") or {}
-            terms = []
-            for name, weight in (block.get("coefficients") or {}).items():
-                value = features.get(name)
-                used_fallback = value is None
-                if used_fallback:
-                    value = fallbacks.get(name, 0.0)
-                terms.append({
-                    "feature": name,
-                    "label": P1_LIKELIHOOD_FEATURE_WORDS.get(name, name),
-                    "value": float(value), "coefficient": float(weight),
-                    "contribution": float(weight) * float(value),
-                    "fallback": used_fallback,
-                })
-            terms.sort(key=lambda t: -abs(t["contribution"]))
-            eta = intercept + sum(t["contribution"] for t in terms)
-            recomputed = mfl.phase_rise_probability(
-                {**features, "remaining_hours": clock}, raw_artifact
-            )
-            decomposition = {
-                "hours_left": float(features["remaining_hours"]),
-                "clock_hours": clock,
-                "station_clock_offset_h": receipt.get("station_clock_offset_h"),
-                "bin": [block["hours_edges"][index], block["hours_edges"][index + 1]],
-                "intercept": intercept, "terms": terms, "eta": eta,
-                "probability": 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, eta)))),
-                "production_probability": recomputed,
-                # Features ride the receipt at four decimals, so the check is
-                # to that precision rather than bit for bit.
-                "matches_receipt": (
-                    receipt.get("rise_probability") is not None
-                    and abs(float(receipt["rise_probability"]) - recomputed) < 1e-3
-                ),
-            }
-        except (KeyError, IndexError, TypeError, ValueError, ContractError):
-            decomposition = {}
-    return {"buckets": rows, "decomposition": decomposition}
+    stored = receipt.get("rise_terms")
+    if not isinstance(stored, Mapping) or not stored.get("terms"):
+        return None
+    features = receipt.get("features") or {}
+    return {
+        "hours_left": features.get("remaining_hours"),
+        "clock_hours": receipt.get("clock_hours"),
+        "intercept": stored.get("intercept"),
+        "eta": stored.get("eta"),
+        "terms": sorted(
+            (
+                {**term, "label": P1_LIKELIHOOD_FEATURE_WORDS.get(
+                    str(term.get("feature")), str(term.get("feature")))}
+                for term in stored["terms"]
+            ),
+            key=lambda term: -abs(float(term.get("contribution") or 0.0)),
+        ),
+    }
 
 
 def _p1_direct_update_brief(raw_artifact: Mapping[str, Any]) -> dict[str, Any]:
@@ -3874,7 +3807,6 @@ def _station_bayes_card(
     conn: sqlite3.Connection,
     station: str,
     event_date: str,
-    likelihood_artifact: Mapping[str, Any],
     truth_c: float | None = None,
 ) -> dict[str, Any] | None:
     """One station-day's chain, bucket by bucket.
@@ -4129,23 +4061,13 @@ def _station_bayes_card(
             "excluded": sorted(excluded, key=lambda b: int(ordinals.get(b, 0))),
         } if p1 is not None else None,
         "buckets": buckets,
-        # The rise rung's logit split into its terms and checked against
-        # production's own function on the receipt's features.
+        # The rise rung's logit, term by term, as the receipt stored it.
         "rise_terms": (
-            _p1_likelihood_breakdown(
-                receipt, root_probabilities_json=None,
-                probabilities_json=probabilities_json, ordinals_json=ordinals_json,
-                raw_artifact=likelihood_artifact,
-            ).get("decomposition")
-            if p1 is not None and receipt.get("state") == "APPLIED" and likelihood_artifact
+            _p1_rise_terms(receipt)
+            if p1 is not None and receipt.get("state") == "APPLIED"
             # g's rise rung is not what a direct update served (charter 161).
             and receipt.get("update") != "DIRECT_LOG_UPDATE_V1"
             else None
-        ),
-        "rise_terms_same_artifact": (
-            p1 is not None
-            and str(receipt.get("artifact_sha256") or "")
-            == str(likelihood_artifact.get("content_sha256") or "")
         ),
         "steps": steps[1:] if len(steps) > 48 else steps,
         # How many envelopes on this day were a decision second's replay of
@@ -4158,11 +4080,6 @@ def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
     """Each station's chain on the day it observes, the day ahead, and the
     settled days before (``STATION_BAYES_ROLE_OFFSETS``), bucket by bucket."""
 
-    try:
-        from bayes_basket_target import p1_observation_likelihood as OL  # noqa: PLC0415
-        likelihood_artifact = OL.load_artifact() or {}
-    except Exception:  # noqa: BLE001
-        likelihood_artifact = {}
     now = _now()
     utc_today = now.date()
     stations: list[dict[str, Any]] = []
@@ -4203,7 +4120,7 @@ def collect_station_bayes(conn: sqlite3.Connection) -> dict[str, Any]:
         for role, offset in STATION_BAYES_ROLE_OFFSETS:
             event_date = (local_today + timedelta(days=offset)).isoformat()
             card = _station_bayes_card(
-                conn, str(station), event_date, likelihood_artifact,
+                conn, str(station), event_date,
                 truth_c=truth.get((str(station), event_date)),
             )
             if card is None:
@@ -22114,7 +22031,7 @@ function stationBayesBoard(){
         ${hasP0m ? `<th>TAF 似然</th><th>P0-M</th><th>Δ点</th>` : ""}${hasP1 ? `<th>硬下界</th><th>${Mt.update === "DIRECT_LOG_UPDATE_V1" ? "e<sup>f</sup>" : "g<sup>α</sup>"}</th><th>P1</th><th>Δ点</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>
       ${hasP1 ? `<div style="margin:8px 0"><span class="muted">这一步读到的实况特征（灰色＝缺，按全队均值）：</span>${feats || "—"}</div>` : ""}
       ${skill ? `<div class="sb-sub">本站近 ${skill.station_days} 个已结算站日：14:00 众数命中 <b>${pc(skill.hit_14)}</b>（±1 桶 ${pc(skill.within1_14)}）· 16:00 ${pc(skill.hit_16)} · 提前锁定 ${pc(skill.predicted_share)} · 提前量中位 ${skill.median_lead_hours == null ? "—" : Number(skill.median_lead_hours).toFixed(1)} 小时</div>` : ""}
-      ${e.rise_terms && e.rise_terms.terms ? `<details><summary><b>「再升」${pc(Mt.rise_probability)} 是怎么算出来的</b> <span class="muted">（剩余 ${Number(e.rise_terms.hours_left).toFixed(1)} 小时档截距 ${Number(e.rise_terms.intercept).toFixed(2)} + Σ 系数×特征 = η ${Number(e.rise_terms.eta).toFixed(2)}；${e.rise_terms.matches_receipt ? "与生产回执一致" : e.rise_terms_same_artifact ? "与回执不一致" : "拟合件已日更换代，按现任件复算"}）</span></summary>
+      ${e.rise_terms && e.rise_terms.terms ? `<details><summary><b>「再升」${pc(Mt.rise_probability)} 是怎么算出来的</b> <span class="muted">（剩余 ${Number(e.rise_terms.hours_left).toFixed(1)} 小时档截距 ${Number(e.rise_terms.intercept).toFixed(2)} + Σ 系数×特征 = η ${Number(e.rise_terms.eta).toFixed(2)}；生产回执原样）</span></summary>
         <table class="by-tab"><thead><tr><th>特征</th><th>当时的值</th><th>系数</th><th>对 η 的贡献</th></tr></thead><tbody>${e.rise_terms.terms.map(t => `<tr><td>${h(t.label)}${t.fallback ? ' <span class="muted">（缺，按队均值）</span>' : ""}</td><td class="mono">${Number(t.value).toFixed(2)}</td><td class="mono">${Number(t.coefficient).toFixed(3)}</td><td class="mono ${t.contribution > 0 ? "up" : "down"}">${(t.contribution > 0 ? "+" : "") + Number(t.contribution).toFixed(3)}</td></tr>`).join("")}</tbody></table></details>` : ""}
       ${hasP1 ? `<details><summary><b>逐份报文的每一步</b> <span class="muted">（已报最高、此刻实测、区域模型剩余最高、再升、均值、众数，以及这一步相对上一步的信息增益；一个决策秒只留服务出去的那一步${
         e.replayed_steps ? "，这一天另有 " + e.replayed_steps + " 条是同一秒对自己前缀的回放" : ""}）</span></summary>

@@ -182,3 +182,30 @@ def test_fit_g_learns_rung_one_on_the_shifted_clock_and_publishes_the_table() ->
     assert body["phase"]["bin_intercepts"] == pytest.approx(direct["bin_intercepts"])
     plain = fitter.fit_g(samples)
     assert OL.STATION_CLOCK_OFFSET_KEY not in plain
+
+
+def test_the_receipt_carries_the_rise_logit_term_by_term() -> None:
+    """User ruling 2026-10-02 「只读是读后端算出来的」: the board shows the
+    decomposition the receipt stored instead of recomputing it, so the
+    receipt's terms must add up to the very logit served, on the clock the
+    rise was read at."""
+
+    import math
+
+    art = _shifted(RPLL=-2.4)
+    feats = _features(9.0)
+    _, receipt = OL.compile_observation_likelihood(
+        feats, art, bucket_ordinals=BUCKETS, bucket_centers_c=CENTRES,
+        running_high_c=20.6, running_high_bucket="21", station_id="RPLL",
+    )
+    terms = receipt["rise_terms"]
+    assert terms["eta"] == pytest.approx(
+        terms["intercept"] + sum(t["contribution"] for t in terms["terms"]), abs=1e-5
+    )
+    assert 1.0 / (1.0 + math.exp(-terms["eta"])) == pytest.approx(
+        receipt["rise_probability"], abs=1e-6
+    )
+    assert terms["intercept"] == pytest.approx(
+        M4.phase_clock_intercept(6.6, art["phase"]), abs=1e-6
+    )
+    assert {t["feature"] for t in terms["terms"]} == set(art["phase"]["coefficients"])

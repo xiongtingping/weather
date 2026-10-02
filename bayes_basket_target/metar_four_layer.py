@@ -220,20 +220,46 @@ def phase_clock_intercept(hours: float, phase: Mapping[str, Any]) -> float:
     return float(intercepts[_hours_bin(float(hours), edges)])
 
 
+def phase_rise_terms(
+    features: Mapping[str, float | None], artifact: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The rise probability's logit, term by term: the clock's intercept and
+    each feature's coefficient times its value (the fleet mean where the
+    feature is absent), summed in ``_linear``'s order so ``eta`` is the very
+    number ``phase_rise_probability`` takes the logistic of.  The P1 receipt
+    stores it, so a reader shows the decomposition rather than recomputing
+    it (user ruling 2026-10-02 「只读是读后端算出来的」)."""
+
+    phase = artifact["phase"]
+    hours = _finite("remaining_hours", features["remaining_hours"])
+    intercept = phase_clock_intercept(hours, phase)
+    fallbacks = artifact["feature_fallbacks"]
+    terms: list[dict[str, Any]] = []
+    total = 0.0
+    for name, weight in phase["coefficients"].items():
+        value = features.get(name)
+        used_fallback = value is None
+        if used_fallback:
+            value = float(fallbacks.get(name, 0.0))
+        contribution = float(weight) * float(value)
+        total += contribution
+        terms.append({
+            "feature": str(name),
+            "value": float(value),
+            "coefficient": float(weight),
+            "contribution": contribution,
+            "fallback": used_fallback,
+        })
+    return {"intercept": intercept, "terms": terms, "eta": intercept + total}
+
+
 def phase_rise_probability(
     features: Mapping[str, float | None], artifact: Mapping[str, Any]
 ) -> float:
     """P(the day's maximum is still above the running high), from the clock
     and the reports alone."""
 
-    phase = artifact["phase"]
-    edges = phase["hours_edges"]
-    intercepts = phase["bin_intercepts"]
-    hours = _finite("remaining_hours", features["remaining_hours"])
-    intercept = phase_clock_intercept(hours, phase)
-    eta = intercept + _linear(
-        features, phase["coefficients"], artifact["feature_fallbacks"]
-    )
+    eta = phase_rise_terms(features, artifact)["eta"]
     return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, eta))))
 
 
@@ -282,5 +308,6 @@ __all__ = [
     "curve_shape_realized",
     "interpolate_curve",
     "phase_rise_probability",
+    "phase_rise_terms",
     "recent_curve_bias",
 ]
