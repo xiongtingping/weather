@@ -3451,18 +3451,47 @@ def _fitted_lead_buckets(
 
     if conn is None:
         return None
+    # A skip scan over (station, kind, season, lead): one index seek per
+    # distinct combination, then one seek for a valid CROSS row.  The bare
+    # DISTINCT went through the artifact_kind index and read every CROSS
+    # activation row -- 337 s in the first cycle after the 11:03Z restart
+    # on 2026-10-02 with the machine swapping, 9 s on a quiet one.  The same
+    # pairs: every key column is NOT NULL, so no row escapes the row-value
+    # comparison.
+    cross = "CROSS_NATIVE_ENSEMBLE"
+    past_every_kind = "\U0010ffff"
+    pairs: set[tuple[str, str]] = set()
+    key: tuple[str, str, str, str] = ("", "", "", "")
     try:
-        return {
-            (str(row[0]), str(row[1]))
-            for row in conn.execute(
-                "SELECT DISTINCT station_id,lead_bucket "
+        while True:
+            row = conn.execute(
+                "SELECT station_id,artifact_kind,season_bin,lead_bucket "
                 "FROM calibration_native_ensemble_activation "
-                "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+                "WHERE (station_id,artifact_kind,season_bin,lead_bucket)"
+                ">(?,?,?,?) "
+                "ORDER BY station_id,artifact_kind,season_bin,lead_bucket "
+                "LIMIT 1",
+                key,
+            ).fetchone()
+            if row is None:
+                return pairs
+            station, kind, season, lead = (str(value) for value in row)
+            if kind < cross:
+                key = (station, cross, "", "")
+                continue
+            if kind > cross:
+                key = (station, past_every_kind, "", "")
+                continue
+            if conn.execute(
+                "SELECT 1 FROM calibration_native_ensemble_activation "
+                "WHERE station_id=? AND artifact_kind=? AND season_bin=? "
+                "AND lead_bucket=? AND valid_until_utc>? "
                 "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-                "AND valid_from_utc<=? AND valid_until_utc>?",
-                (as_of_utc, as_of_utc),
-            )
-        }
+                "AND valid_from_utc<=? LIMIT 1",
+                (station, kind, season, lead, as_of_utc, as_of_utc),
+            ).fetchone() is not None:
+                pairs.add((station, lead))
+            key = (station, kind, season, lead)
     except Exception:
         return None
 
