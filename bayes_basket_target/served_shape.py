@@ -39,6 +39,7 @@ import dataclasses
 
 from .center_width_calibration import (
     apply_center_width_calibration,
+    apply_tail_mix,
     width_slice_for,
 )
 
@@ -55,13 +56,16 @@ class CenterWidthLayer:
     sigma_floor_rungs: float = 0.0
     width_tier_lambdas: Sequence[float] | None = None
     width_tier_boundaries: Sequence[float] | None = None
-    # Charter 239: the slice this one decision is in, resolved by the caller
-    # from the decision's seated count and hours to settlement
-    # (``with_width_slice``).  When set, ``width_slice_lambda`` replaces
-    # ``width_lambda`` for this decision and the tiers do not apply; the
-    # station scale and the floor compose as they always did.
+    # Charter 239 / 248: the slice this one decision is in, resolved by the
+    # caller from the decision's seated count and hours to settlement
+    # (``with_width_slice``).  When set, the decision is served the stage
+    # pair like every other and then the slice's tail mix on top
+    # (``apply_tail_mix`` at ``width_slice_tail_weight`` and
+    # ``width_slice_tail_scale``); the 239 form, a lambda replacing the
+    # stage's, is retired.
     width_slice: str | None = None
-    width_slice_lambda: float | None = None
+    width_slice_tail_weight: float | None = None
+    width_slice_tail_scale: float | None = None
 
 
 def with_width_slice(
@@ -90,10 +94,13 @@ def with_width_slice(
         if layer.width_slice is None:
             return layer
         return dataclasses.replace(
-            layer, width_slice=None, width_slice_lambda=None
+            layer, width_slice=None, width_slice_tail_weight=None,
+            width_slice_tail_scale=None,
         )
     return dataclasses.replace(
-        layer, width_slice=resolved[0], width_slice_lambda=float(resolved[1])
+        layer, width_slice=resolved[0],
+        width_slice_tail_weight=float(resolved[1]),
+        width_slice_tail_scale=float(resolved[2]),
     )
 
 
@@ -148,37 +155,49 @@ def apply_served_table_layers(
     shaped = {str(key): float(value) for key, value in probability.items()}
     center_width_receipt = None
     if center_width is not None and skip != "center_width":
-        sliced = center_width.width_slice_lambda is not None
         shaped, center_width_receipt = apply_center_width_calibration(
             shaped,
             delta_c=center_width.delta_c,
-            # Charter 239: a resolved slice replaces the stage lambda for
-            # this decision, and the tiers (which read the served sigma)
-            # stand aside -- two selectors of one lambda would be a
-            # composition nobody fitted.
-            width_lambda=(
-                float(center_width.width_slice_lambda)
-                if sliced else center_width.width_lambda
-            ),
+            width_lambda=center_width.width_lambda,
             station_width_scale=center_width.station_width_scale,
             sigma_floor_rungs=center_width.sigma_floor_rungs,
-            width_tier_lambdas=(
-                None if sliced else center_width.width_tier_lambdas
-            ),
+            width_tier_lambdas=center_width.width_tier_lambdas,
             width_tier_boundaries=center_width.width_tier_boundaries,
             ordered_keys=ordered_keys,
             key_centers_c=key_centers_c,
             excluded_buckets=excluded_buckets,
             open_edge_bounds_c=open_edge_bounds_c,
         )
-        # Always written, so a receipt answers "which slice?" the same way
-        # whether or not one applied; ``stage_width_lambda`` is the pooled
-        # lambda the slice stood in for (``pooled_width_lambda`` inside the
-        # kernel's receipt is the lambda the kernel was handed).
-        center_width_receipt["width_slice"] = center_width.width_slice
-        center_width_receipt["width_slice_lambda"] = (
-            float(center_width.width_slice_lambda) if sliced else None
+        # Charter 248: the slice's tail mix, after the pair and on the pair's
+        # output -- the receipt's ``input_probability`` stays the width
+        # layer's input, so a fitter re-serving the row from it under the
+        # recorded pair gets the vector the mix was applied to.  Always
+        # written, so a receipt answers "which slice?" the same way whether
+        # or not one applied.
+        sliced = (
+            center_width.width_slice is not None
+            and center_width.width_slice_tail_weight is not None
+            and float(center_width.width_slice_tail_weight) > 0.0
         )
+        tail_receipt = None
+        if sliced:
+            shaped, tail_receipt = apply_tail_mix(
+                shaped,
+                weight=float(center_width.width_slice_tail_weight),
+                scale=float(center_width.width_slice_tail_scale or 0.0),
+                ordered_keys=ordered_keys,
+                key_centers_c=key_centers_c,
+                excluded_buckets=excluded_buckets,
+                open_edge_bounds_c=open_edge_bounds_c,
+            )
+        center_width_receipt["width_slice"] = center_width.width_slice
+        center_width_receipt["width_slice_tail_weight"] = (
+            float(center_width.width_slice_tail_weight) if sliced else None
+        )
+        center_width_receipt["width_slice_tail_scale"] = (
+            float(center_width.width_slice_tail_scale) if sliced else None
+        )
+        center_width_receipt["width_slice_tail_mix"] = tail_receipt
         center_width_receipt["stage_width_lambda"] = float(
             center_width.width_lambda
         )

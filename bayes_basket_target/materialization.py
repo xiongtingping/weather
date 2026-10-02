@@ -998,7 +998,9 @@ def materialize_p0m_observed(
     # ruled-out mass lands on the running high's bucket.
     # v28 (charter 247, 2026-10-02): the root (P0 v25) -- single-system
     # width laid on by widening the kernel, not stretching the members.
-    posterior_version: str = "p0m_taf_likelihood_v28",
+    # v29 (charter 248, 2026-10-03): the root (P0 v26) -- the thin-far
+    # slice is a tail mix on the stage pair.
+    posterior_version: str = "p0m_taf_likelihood_v29",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1394,7 +1396,9 @@ def materialize_p1(
     # pool seats rank breadth ahead of the instant they were minted.
     # v36 (charter 247, 2026-10-02): the root again (P0 v25, P0-M v28) --
     # single-system width laid on by widening the kernel.
-    posterior_version: str = "p1_joint_likelihood_v36",
+    # v37 (charter 248, 2026-10-03): the root again (P0 v26, P0-M v29) --
+    # the thin-far slice is a tail mix on the stage pair.
+    posterior_version: str = "p1_joint_likelihood_v37",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

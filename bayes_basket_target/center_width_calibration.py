@@ -157,6 +157,23 @@ MIN_COMPOSED_WIDTH_LAMBDA = 0.5
 THIN_FAR_SLICE_NAME = "thin_far"
 THIN_FAR_MAX_SEATED_SYSTEMS = 3
 THIN_FAR_MIN_HOURS_TO_SETTLEMENT = 36.0
+# Charter 248 (user ruling 2026-10-03 「修薄池远端，方向是尾重不是整体宽度」):
+# the slice no longer replaces the stage lambda.  Its cells are served the
+# stage pair like every other cell and then a tail mix on top:
+#   p' = (1 - w) * p + w * W_kappa(p)
+# with W_kappa the width transform itself at lambda = kappa about the mean
+# (a scale mixture: the body stays, the tails thicken).  Measured on the
+# dress_v1 replay (docs/research/thin_far_tail_weight_20261003, 1,043 slice
+# station-days): the body of these pools was right (PIT variance ratio 1.00,
+# 50% coverage 0.50) and only the tails thin, so replacing lambda 0.75 by 1.1
+# (sigma x1.47) over-widened the body (E[z^2] 0.77, CRPS significantly worse)
+# while a mix at kappa 1.5 and w 0.15-0.30 passed charter 240 on both halves
+# and left the slice calibrated (E[z^2] 0.94, 50% coverage 0.52, PIT tails
+# 5.7% / 4.5%).  kappa is fixed; the weight is the one number the lane fits,
+# on this grid, nightly, under the stage's own gate -- w = 0 is no slice.
+TAIL_MIX_SCALE = 1.5
+TAIL_MIX_WEIGHT_GRID = (0.0, 0.05, 0.10, 0.15, 0.20, 0.30)
+MAX_TAIL_MIX_WEIGHT = 0.30
 
 
 def thin_far_slice_applies(
@@ -191,22 +208,32 @@ def width_slice_for(
     *,
     seated_system_count: int | None,
     hours_to_settlement: float | None,
-) -> tuple[str, float] | None:
-    """The (name, lambda) of the one slice this decision is in, or None.
+) -> tuple[str, float, float] | None:
+    """The (name, tail-mix weight, tail-mix scale) of the one slice this
+    decision is in, or None.
 
-    ``slices`` is the stored table's ``width_slices`` mapping (charter 239);
-    only ``thin_far`` is defined, and its bounds travel in the mapping so a
-    row written under one definition keeps serving exactly that definition.
+    ``slices`` is the stored table's ``width_slices`` mapping; only
+    ``thin_far`` is defined, and its bounds travel in the mapping so a row
+    written under one definition keeps serving exactly that definition.
+    Charter 248: a slice entry is a tail mix.  An entry of the retired form
+    (a ``width_lambda`` replacing the stage lambda, charter 239) resolves to
+    no slice -- that transform is gone from every face, as the band table
+    went with charter 232 -- and the lane rewrites the row on its next run.
     """
 
     if not slices:
         return None
     entry = slices.get(THIN_FAR_SLICE_NAME)
-    if not isinstance(entry, Mapping) or entry.get("width_lambda") is None:
+    if not isinstance(entry, Mapping) or entry.get("tail_mix_weight") is None:
         return None
-    lam = float(entry["width_lambda"])
-    if not math.isfinite(lam) or not (MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA):
-        raise ValueError("center_width_slice_lambda_out_of_range")
+    weight = float(entry["tail_mix_weight"])
+    scale = float(entry.get("tail_mix_scale", TAIL_MIX_SCALE))
+    if not math.isfinite(weight) or not (0.0 <= weight <= MAX_TAIL_MIX_WEIGHT):
+        raise ValueError("center_width_slice_tail_weight_out_of_range")
+    if not math.isfinite(scale) or not (1.0 <= scale <= MAX_WIDTH_LAMBDA):
+        raise ValueError("center_width_slice_tail_scale_out_of_range")
+    if weight <= 0.0:
+        return None
     if thin_far_slice_applies(
         seated_system_count=seated_system_count,
         hours_to_settlement=hours_to_settlement,
@@ -219,8 +246,73 @@ def width_slice_for(
             )
         ),
     ):
-        return THIN_FAR_SLICE_NAME, lam
+        return THIN_FAR_SLICE_NAME, weight, scale
     return None
+
+
+def apply_tail_mix(
+    probability: Mapping[str, float],
+    *,
+    weight: float,
+    scale: float,
+    ordered_keys: Sequence[str],
+    key_centers_c: Sequence[float],
+    excluded_buckets: Sequence[str] = (),
+    open_edge_bounds_c: Sequence[float | None] | None = None,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Charter 248: thicken the tails without moving the body.
+
+    ``p' = (1 - weight) * p + weight * W(p)`` where ``W`` is
+    ``apply_center_width_calibration`` at ``width_lambda = scale`` and no
+    shift -- the same transport serving already uses, so an open edge bucket
+    (charter 190) and a ruled-out bucket are handled exactly as the width
+    layer handles them.  A weight of zero is the identity.
+    """
+
+    w = float(weight)
+    kappa = float(scale)
+    if not math.isfinite(w) or not (0.0 <= w <= MAX_TAIL_MIX_WEIGHT):
+        raise ValueError("center_width_slice_tail_weight_out_of_range")
+    if not math.isfinite(kappa) or not (1.0 <= kappa <= MAX_WIDTH_LAMBDA):
+        raise ValueError("center_width_slice_tail_scale_out_of_range")
+    keys = [str(key) for key in ordered_keys]
+    base = {key: float(probability.get(key, 0.0)) for key in keys}
+    total_in = sum(base.values())
+    if total_in <= 0.0 or not math.isfinite(total_in):
+        raise ValueError("center_width_probability_empty")
+    if w == 0.0:
+        return {key: value / total_in for key, value in base.items()}, {
+            "schema": "tail_mix_receipt_v1",
+            "state": "IDENTITY",
+            "tail_mix_weight": 0.0,
+            "tail_mix_scale": kappa,
+        }
+    widened, widened_receipt = apply_center_width_calibration(
+        base,
+        delta_c=0.0,
+        width_lambda=kappa,
+        ordered_keys=keys,
+        key_centers_c=key_centers_c,
+        excluded_buckets=excluded_buckets,
+        open_edge_bounds_c=open_edge_bounds_c,
+    )
+    mixed = {
+        key: (1.0 - w) * (base[key] / total_in) + w * float(widened.get(key, 0.0))
+        for key in keys
+    }
+    total = sum(mixed.values())
+    if total <= 0.0 or not math.isfinite(total):
+        raise ValueError("center_width_probability_empty")
+    return {key: value / total for key, value in mixed.items()}, {
+        "schema": "tail_mix_receipt_v1",
+        "state": "APPLIED",
+        "tail_mix_weight": w,
+        "tail_mix_scale": kappa,
+        "widened_state": widened_receipt.get("state"),
+        "widened_sigma_c": widened_receipt.get("distribution_sigma_c"),
+    }
+
+
 # The width floor.  One lambda cannot serve a fleet whose own
 # claimed spread means different things at different sizes.  Measured
 # 2026-09-05 on this stage's own serving cells, the standardised error's

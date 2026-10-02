@@ -402,6 +402,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # (dress_v1), not by stretching the members.  Declared past the
         # push and past the restart that deploys it.
         "calibrated_native_cross_ensemble_p0_v25": "2026-10-02T14:30:00Z",
+        # Charter 248: the thin-far slice is a tail mix on the stage pair
+        # (kappa 1.5, the weight fitted nightly), not a lambda replacing it.
+        # Declared past the push and past the restart that deploys it.
+        "calibrated_native_cross_ensemble_p0_v26": "2026-10-02T17:30:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -462,6 +466,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v27": "2026-10-02T06:30:00Z",
         # Charter 247: root bump at the instant P0 v25 declares.
         "p0m_taf_likelihood_v28": "2026-10-02T14:30:00Z",
+        # Charter 248: root bump at the instant P0 v26 declares.
+        "p0m_taf_likelihood_v29": "2026-10-02T17:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -532,6 +538,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v35": "2026-10-02T06:30:00Z",
         # Charter 247: root bump at the instant P0 v25 declares.
         "p1_joint_likelihood_v36": "2026-10-02T14:30:00Z",
+        # Charter 248: root bump at the instant P0 v26 declares.
+        "p1_joint_likelihood_v37": "2026-10-02T17:30:00Z",
     },
 }
 

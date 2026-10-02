@@ -52,6 +52,9 @@ from .center_width_calibration import (
     THIN_FAR_MAX_SEATED_SYSTEMS,
     THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
     THIN_FAR_SLICE_NAME,
+    TAIL_MIX_SCALE,
+    TAIL_MIX_WEIGHT_GRID,
+    apply_tail_mix,
     thin_far_slice_applies,
 )
 from . import serving_arithmetic
@@ -495,8 +498,10 @@ def center_width_sha256(
             ],
             "lambdas": [round(float(v), 6) for v in width_tiers["lambdas"]],
         }
-    # Charter 239: a row carrying a slice is a different arithmetic from the
-    # same pair without one, so the slice is in the digest an artifact pins.
+    # Charter 239 / 248: a row carrying a slice is a different arithmetic
+    # from the same pair without one, so the slice is in the digest an
+    # artifact pins.  The slice is a tail mix (248); the digest names its
+    # weight and scale.
     if width_slices:
         payload["width_slices"] = {
             str(name): {
@@ -504,7 +509,8 @@ def center_width_sha256(
                 "min_hours_to_settlement": round(
                     float(entry["min_hours_to_settlement"]), 6
                 ),
-                "width_lambda": round(float(entry["width_lambda"]), 6),
+                "tail_mix_weight": round(float(entry["tail_mix_weight"]), 6),
+                "tail_mix_scale": round(float(entry["tail_mix_scale"]), 6),
             }
             for name, entry in sorted(width_slices.items())
         }
@@ -760,7 +766,10 @@ def load_center_width_slices(
         return None
     out: dict[str, dict[str, Any]] = {}
     for name, entry in slices.items():
-        if not isinstance(entry, Mapping) or entry.get("width_lambda") is None:
+        # Charter 248: a slice is a tail mix.  An entry of the retired 239
+        # form (``width_lambda``) reads as no slice; the lane's next run
+        # rewrites the row.
+        if not isinstance(entry, Mapping) or entry.get("tail_mix_weight") is None:
             continue
         out[str(name)] = {
             "max_seated_systems": int(
@@ -771,7 +780,8 @@ def load_center_width_slices(
                     "min_hours_to_settlement", THIN_FAR_MIN_HOURS_TO_SETTLEMENT
                 )
             ),
-            "width_lambda": float(entry["width_lambda"]),
+            "tail_mix_weight": float(entry["tail_mix_weight"]),
+            "tail_mix_scale": float(entry.get("tail_mix_scale", TAIL_MIX_SCALE)),
         }
     return out or None
 
@@ -985,18 +995,45 @@ def _reserved_under_current_width(
     vector: there is nothing exact to re-serve it from.
     """
 
-    if not isinstance(receipt, Mapping) or str(receipt.get("state") or "") != "APPLIED":
+    if not isinstance(receipt, Mapping):
+        return None
+    state = str(receipt.get("state") or "")
+    # An identity pair has nothing exact to re-serve (charter 202) -- unless
+    # the row was then mixed by the tail slice (charter 248), in which case
+    # the recorded input under the identity pair is exactly the mix's input.
+    tail_mixed = False
+    try:
+        tail_mixed = float(receipt.get("width_slice_tail_weight") or 0.0) > 0.0
+    except (TypeError, ValueError):
+        tail_mixed = False
+    if state != "APPLIED" and not (state == "IDENTITY" and tail_mixed):
         return None
     if receipt.get("width_tier_lambda") is not None:
         return None
     recorded = receipt.get("input_probability")
     if not isinstance(recorded, Mapping) or set(recorded) != set(keys):
         return None
+    applied_lambda = float(receipt.get("width_lambda") or 1.0)
+    # Charter 248: a row served under the retired 239 slice (a lambda that
+    # replaced the stage's) is re-served under the stage lambda it stood in
+    # for, so the lane fits on the vector every slice cell is served now.  A
+    # row served under the tail mix re-serves to the mix's input: the
+    # recorded input under the recorded pair is exactly that.
+    legacy_slice = receipt.get("width_slice_lambda")
+    stage_lambda = receipt.get("stage_width_lambda")
+    if legacy_slice is not None and stage_lambda is not None:
+        try:
+            if float(legacy_slice) > 0.0:
+                applied_lambda = applied_lambda * float(stage_lambda) / float(legacy_slice)
+        except (TypeError, ValueError):
+            return None
+        if not MIN_WIDTH_LAMBDA <= applied_lambda <= MAX_WIDTH_LAMBDA:
+            return None
     try:
         served, _ = apply_center_width_calibration(
             {str(key): float(value) for key, value in recorded.items()},
             delta_c=float(receipt.get("delta_c") or 0.0),
-            width_lambda=float(receipt.get("width_lambda") or 1.0),
+            width_lambda=applied_lambda,
             ordered_keys=list(keys),
             key_centers_c=list(centers),
             excluded_buckets=tuple(excluded),
@@ -2605,37 +2642,73 @@ def _split_slice_cells(
     return pooled, sliced
 
 
-@_in_memo_scope
-def _search_slice_lambda(
+def _cell_tail_scores(
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    tail_mix_weight: float,
+    sigma_floor_rungs: float = 0.0,
+) -> tuple[float, float, float]:
+    """(LogScore, bucket Brier, ladder CRPS) of one slice cell under a
+    residual pair and then the slice's tail mix (charter 248)."""
+
+    adjusted = _adjusted_cell(
+        cell, delta_c=delta_c, width_lambda=width_lambda,
+        sigma_floor_rungs=sigma_floor_rungs,
+    )
+    if float(tail_mix_weight) > 0.0:
+        adjusted, _ = apply_tail_mix(
+            adjusted,
+            weight=float(tail_mix_weight),
+            scale=TAIL_MIX_SCALE,
+            ordered_keys=cell["ordered_keys"],
+            key_centers_c=cell["key_centers_c"],
+            excluded_buckets=cell["excluded_buckets"],
+            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+        )
+    return _served_scores(
+        adjusted,
+        ordered_keys=cell["ordered_keys"],
+        settled_bucket=cell["settled_bucket"],
+        excluded_buckets=cell["excluded_buckets"],
+        key_centers_c=cell["key_centers_c"],
+    )
+
+
+def _search_slice_tail(
     cells: Sequence[Mapping[str, Any]],
     *,
     delta_c: float,
+    width_lambda: float,
     sigma_floor_rungs: float = 0.0,
 ) -> tuple[float, float]:
-    """The slice's best lambda at a fixed shift, on the LogScore of the
-    floored vector (charter 239 keeps the training rule of 211/228 and only
-    changes the gate).  Returns (lambda, mean LogScore)."""
+    """The slice's best tail-mix weight on ``TAIL_MIX_WEIGHT_GRID`` at a
+    fixed residual pair, on the LogScore of the floored vector (the training
+    rule of 211/228).  Returns (weight, mean LogScore); zero is no slice."""
 
-    best: tuple[float, float] | None = None
     if not cells:
-        return 1.0, 0.0
-    for lam in _GRID_LAMBDAS:
-        if not MIN_WIDTH_LAMBDA <= lam <= MAX_WIDTH_LAMBDA:
-            continue
-        value = _mean_nll(
-            cells, delta_c=delta_c, width_lambda=lam,
-            sigma_floor_rungs=sigma_floor_rungs,
-        )
+        return 0.0, 0.0
+    best: tuple[float, float] | None = None
+    for weight in TAIL_MIX_WEIGHT_GRID:
+        value = sum(
+            _cell_tail_scores(
+                cell, delta_c=delta_c, width_lambda=width_lambda,
+                tail_mix_weight=weight, sigma_floor_rungs=sigma_floor_rungs,
+            )[0]
+            for cell in cells
+        ) / len(cells)
         if best is None or value < best[1]:
-            best = (lam, value)
-    return best if best is not None else (1.0, 0.0)
+            best = (float(weight), value)
+    return best if best is not None else (0.0, 0.0)
 
 
-def _slice_entry(width_lambda: float) -> dict[str, Any]:
+def _slice_entry(tail_mix_weight: float) -> dict[str, Any]:
     return {
         "max_seated_systems": THIN_FAR_MAX_SEATED_SYSTEMS,
         "min_hours_to_settlement": THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
-        "width_lambda": round(float(width_lambda), 4),
+        "tail_mix_weight": round(float(tail_mix_weight), 4),
+        "tail_mix_scale": TAIL_MIX_SCALE,
     }
 
 
@@ -2649,35 +2722,36 @@ def _thin_far_slice_lane(
     pooled_admitted: bool,
     served_residual: tuple[float, float],
     sigma_floor_rungs: float,
-    served_slice_lambda: float,
     incumbent_slices: Mapping[str, Mapping[str, Any]] | None,
 ) -> dict[str, Any]:
-    """Charter 239: one lambda for the thin-pool far-lead slice, admitted on
-    the LogScore alone.
+    """Charter 248: one tail-mix weight for the thin-pool far-lead slice,
+    on top of the stage pair, admitted under the ranked verdict.
 
-    Residual space, like everything the fit measures: the slice cells carry
-    what they were served (the stage pair, or the incumbent slice's lambda),
-    so the candidate is a factor on that.  ``served_residual`` is what a
-    slice cell would be served if there were no slice -- the pooled
-    candidate's residual pair when that is admitted this round, identity
-    otherwise -- and the slice has to beat exactly that on its own held-out
-    cells.
+    Residual space, like everything the fit measures: a slice cell carries
+    the vector it was served before any slice (``_reserved_under_current_width``
+    re-serves it from the recorded input), the pooled candidate's residual
+    pair is applied to it when that pair is admitted this round, and the
+    slice's candidate is the tail mix on that -- exactly what serving will
+    do to a slice decision.  The weight is searched on the fixed grid at the
+    fixed scale; kappa is not a fitted number.
 
     Admission walks the origin the way ``_rolling_origin_admission`` does:
-    each fold refits the pooled pair on its prefix (when the pooled pair is
-    admitted this round) and the slice lambda on the prefix's slice cells,
-    and scores the held-out day's slice cells.  The pooled held-out cells
-    pass the LogScore-only station-day gate and a majority of folds gain on
-    the LogScore.  The stored lambda is the one fitted on the training
-    prefix, composed onto what the slice cells were served under.
+    each fold refits the pooled pair on its prefix (when admitted this
+    round) and the weight on the prefix's slice cells, and scores the
+    held-out day's slice cells with and without the mix.  The held-out cells
+    pass the stage's ranked gate and a majority of folds gain on the
+    LogScore.  The stored weight is the one fitted on the training prefix.
     """
 
     ordered = list(days)
     slice_days = [day for day in ordered if slice_by_day.get(day)]
     slice_cells = [cell for day in slice_days for cell in slice_by_day[day]]
     out: dict[str, Any] = {
-        "schema": "center_width_thin_far_slice_lane_v1",
+        "schema": "center_width_thin_far_slice_lane_v2",
         "slice": THIN_FAR_SLICE_NAME,
+        "transform": "tail_mix",
+        "tail_mix_scale": TAIL_MIX_SCALE,
+        "tail_mix_weight_grid": list(TAIL_MIX_WEIGHT_GRID),
         "max_seated_systems": THIN_FAR_MAX_SEATED_SYSTEMS,
         "min_hours_to_settlement": THIN_FAR_MIN_HOURS_TO_SETTLEMENT,
         "gate_rule": GATE_RULE,
@@ -2688,7 +2762,6 @@ def _thin_far_slice_lane(
         "incumbent_slices": (
             dict(incumbent_slices) if incumbent_slices else None
         ),
-        "served_slice_lambda": float(served_slice_lambda),
         "served_residual": list(served_residual),
         "pooled_admitted": bool(pooled_admitted),
     }
@@ -2703,8 +2776,8 @@ def _thin_far_slice_lane(
         len(ordered) - ROLLING_ORIGIN_MAX_FOLDS,
     )
     folds: list[dict[str, Any]] = []
-    held_other: list[tuple[float, float]] = []
-    held_slice: list[tuple[float, float]] = []
+    held_other: list[tuple[float, float, float]] = []
+    held_slice: list[tuple[float, float, float]] = []
     held_clusters: list[tuple[Any, str]] = []
     for index in range(first, len(ordered)):
         test = list(slice_by_day.get(ordered[index], []))
@@ -2724,17 +2797,24 @@ def _thin_far_slice_lane(
             )
         else:
             other_delta, other_lambda = RESIDUAL_IDENTITY
-        slice_lambda, _train = _search_slice_lambda(
-            train_slice, delta_c=other_delta, sigma_floor_rungs=sigma_floor_rungs,
-        )
-        other_scores = _cell_score_list(
-            test, delta_c=other_delta, width_lambda=other_lambda,
+        weight, _train = _search_slice_tail(
+            train_slice, delta_c=other_delta, width_lambda=other_lambda,
             sigma_floor_rungs=sigma_floor_rungs,
         )
-        slice_scores = _cell_score_list(
-            test, delta_c=other_delta, width_lambda=slice_lambda,
-            sigma_floor_rungs=sigma_floor_rungs,
-        )
+        other_scores = [
+            _cell_tail_scores(
+                cell, delta_c=other_delta, width_lambda=other_lambda,
+                tail_mix_weight=0.0, sigma_floor_rungs=sigma_floor_rungs,
+            )
+            for cell in test
+        ]
+        slice_scores = [
+            _cell_tail_scores(
+                cell, delta_c=other_delta, width_lambda=other_lambda,
+                tail_mix_weight=weight, sigma_floor_rungs=sigma_floor_rungs,
+            )
+            for cell in test
+        ]
         other_nll = sum(x[0] for x in other_scores) / len(test)
         slice_nll = sum(x[0] for x in slice_scores) / len(test)
         folds.append({
@@ -2743,7 +2823,7 @@ def _thin_far_slice_lane(
             "cell_count": len(test),
             "other_delta_c": other_delta,
             "other_width_lambda": other_lambda,
-            "slice_width_lambda": slice_lambda,
+            "slice_tail_mix_weight": weight,
             "other_nll": other_nll,
             "slice_nll": slice_nll,
             "gain": other_nll - slice_nll,
@@ -2762,16 +2842,12 @@ def _thin_far_slice_lane(
     train_prefix = [
         cell for day in ordered[:cut] for cell in slice_by_day.get(day, [])
     ]
-    candidate_lambda, candidate_train_nll = _search_slice_lambda(
-        train_prefix, delta_c=served_residual[0],
+    candidate_weight, candidate_train_nll = _search_slice_tail(
+        train_prefix, delta_c=served_residual[0], width_lambda=served_residual[1],
         sigma_floor_rungs=sigma_floor_rungs,
-    ) if train_prefix else (1.0, 0.0)
-    absolute = max(
-        MIN_WIDTH_LAMBDA,
-        min(MAX_WIDTH_LAMBDA, float(served_slice_lambda) * float(candidate_lambda)),
-    )
+    ) if train_prefix else (0.0, 0.0)
     measured = bool(gate["lower"]) and bool(majority) and bool(folds)
-    admitted = measured and abs(float(candidate_lambda) - 1.0) > 1e-9
+    admitted = measured and candidate_weight > 0.0
     out.update({
         "fold_count": len(folds),
         "folds_positive": positive,
@@ -2787,9 +2863,8 @@ def _thin_far_slice_lane(
             / max(1, sum(fold["cell_count"] for fold in folds))
         ) if folds else 0.0,
         "train_prefix_slice_cell_count": len(train_prefix),
-        "candidate_residual_width_lambda": float(candidate_lambda),
+        "candidate_tail_mix_weight": float(candidate_weight),
         "candidate_train_nll": float(candidate_train_nll),
-        "candidate_width_lambda": round(absolute, 4),
         "measured_admitted": measured,
         "admitted": admitted,
         "state": (
@@ -2808,17 +2883,17 @@ def _thin_far_slice_veto(
     slices: Mapping[str, Mapping[str, Any]],
     activated_at_utc: str | None,
 ) -> dict[str, Any]:
-    """Charter 239: should the active slice come off?  Each slice cell served
-    since activation is scored as served (identity residual) against the same
-    row served the stage lambda instead -- the recorded input, re-served with
-    the slice's factor swapped for the stage's.  Vetoed when the swap is
-    significantly better on the LogScore (the slice's own rule) on at least
-    the veto window (charter 138)."""
+    """Charter 248: should the active tail slice come off?  Each slice cell
+    served since activation is scored as served -- its pre-mix vector
+    (re-served from the recorded input) mixed again with the receipt's own
+    weight and scale -- against the same vector without the mix.  Vetoed
+    when the undo is significantly better under the ranked verdict on at
+    least the veto window (charter 138)."""
 
     since = activated_at_utc or ""
     entry = (slices or {}).get(THIN_FAR_SLICE_NAME) or {}
-    kept: list[tuple[float, float]] = []
-    undone: list[tuple[float, float]] = []
+    kept: list[tuple[float, float, float]] = []
+    undone: list[tuple[float, float, float]] = []
     clusters: list[tuple[Any, str]] = []
     skipped: dict[str, int] = {}
     judged_days: set[str] = set()
@@ -2827,45 +2902,37 @@ def _thin_far_slice_veto(
             if str(cell.get("decision_at_utc") or "") < since:
                 continue
             receipt = cell.get("center_width_receipt") or {}
-            slice_lambda = receipt.get("width_slice_lambda")
-            stage_lambda = receipt.get("stage_width_lambda")
-            applied_lambda = receipt.get("width_lambda")
-            applied_delta = float(receipt.get("delta_c") or 0.0)
-            if (
-                slice_lambda is None or stage_lambda is None
-                or applied_lambda is None or float(slice_lambda) <= 0.0
-            ):
+            weight = receipt.get("width_slice_tail_weight")
+            if weight is None or float(weight) <= 0.0:
                 skipped["not_sliced"] = skipped.get("not_sliced", 0) + 1
                 continue
-            recovered, basis = _identity_counterfactual(
-                cell, delta_c=applied_delta, width_lambda=float(applied_lambda),
-            )
-            if recovered is None:
-                skipped[basis] = skipped.get(basis, 0) + 1
+            if not cell.get("reserved_under_current_width"):
+                # The cell's vector is the served one, mix included, and the
+                # mix is not its own inverse: nothing exact to undo from.
+                skipped["no_recorded_input"] = skipped.get("no_recorded_input", 0) + 1
                 continue
-            swapped_lambda = (
-                float(applied_lambda) * float(stage_lambda) / float(slice_lambda)
-            )
-            if not MIN_WIDTH_LAMBDA <= swapped_lambda <= MAX_WIDTH_LAMBDA:
-                skipped["residual"] = skipped.get("residual", 0) + 1
+            scale = float(receipt.get("width_slice_tail_scale") or TAIL_MIX_SCALE)
+            try:
+                mixed, _ = apply_tail_mix(
+                    cell["probabilities"],
+                    weight=float(weight),
+                    scale=scale,
+                    ordered_keys=cell["ordered_keys"],
+                    key_centers_c=cell["key_centers_c"],
+                    excluded_buckets=cell["excluded_buckets"],
+                    open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+                )
+            except ValueError:
+                skipped["malformed"] = skipped.get("malformed", 0) + 1
                 continue
-            counterfactual, _ = apply_center_width_calibration(
-                recovered,
-                delta_c=applied_delta,
-                width_lambda=swapped_lambda,
-                ordered_keys=cell["ordered_keys"],
-                key_centers_c=cell["key_centers_c"],
-                excluded_buckets=cell["excluded_buckets"],
-                open_edge_bounds_c=cell.get("open_edge_bounds_c"),
-            )
-            kept.append(_cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0))
-            undone.append(_served_scores(
-                counterfactual,
+            kept.append(_served_scores(
+                mixed,
                 ordered_keys=cell["ordered_keys"],
                 settled_bucket=cell["settled_bucket"],
                 excluded_buckets=cell["excluded_buckets"],
                 key_centers_c=cell["key_centers_c"],
             ))
+            undone.append(_cell_proper_scores(cell, delta_c=0.0, width_lambda=1.0))
             clusters.append((cell.get("station_id"), day))
             judged_days.add(day)
     gate = _proper_score_gate(kept, undone, clusters)
@@ -2874,7 +2941,7 @@ def _thin_far_slice_veto(
         and len(kept) >= CENTER_WIDTH_VETO_MIN_CELLS
     )
     return {
-        "schema": "center_width_thin_far_slice_veto_v1",
+        "schema": "center_width_thin_far_slice_veto_v2",
         "activated_at_utc": activated_at_utc,
         "incumbent_slice": dict(entry),
         "day_count": len(judged_days),
@@ -3852,7 +3919,8 @@ def fit_center_width(
         # single one, so the fold majority does not speak to it; the pair it
         # rides on has already passed the gate above.
         admitted = bool(width_tier_lane["gate_vs_incumbent"]["lower"])
-    # Charter 239: the thin-pool far-lead slice, judged on the LogScore alone.
+    # Charter 239 / 248: the thin-pool far-lead slice -- a tail mix on the stage
+    # pair since 248, judged under the stage's ranked verdict.
     # The veto first, for the reason the pooled veto runs first: an active
     # slice is only safe while it is still earning its place.  Then the lane,
     # against whatever a slice cell would be served without a slice this
@@ -3885,17 +3953,14 @@ def fit_center_width(
             pooled_admitted=admitted,
             served_residual=(delta, lam) if admitted else RESIDUAL_IDENTITY,
             sigma_floor_rungs=candidate_floor if admitted else base_floor,
-            served_slice_lambda=float(
-                (base_slices or {}).get(THIN_FAR_SLICE_NAME, {}).get(
-                    "width_lambda", base[1]
-                )
-            ),
             incumbent_slices=base_slices,
         )
         evidence["width_slices"] = slice_lane
         if slice_lane["admitted"]:
             served_slices = {
-                THIN_FAR_SLICE_NAME: _slice_entry(slice_lane["candidate_width_lambda"])
+                THIN_FAR_SLICE_NAME: _slice_entry(
+                    slice_lane["candidate_tail_mix_weight"]
+                )
             }
     # The TAF-conditional lane (charter 57, distance axis): each cell fits
     # its own scalars from its own slice of the same train/forward split --
@@ -3944,9 +4009,9 @@ def fit_center_width(
         "width_slices": dict(served_slices) if served_slices else None,
         "candidate_width_slices": (
             {THIN_FAR_SLICE_NAME: _slice_entry(
-                evidence["width_slices"]["candidate_width_lambda"]
+                evidence["width_slices"]["candidate_tail_mix_weight"]
             )}
-            if evidence["width_slices"].get("candidate_width_lambda") is not None
+            if evidence["width_slices"].get("candidate_tail_mix_weight") is not None
             else None
         ),
         "candidate_width_tiers": {
@@ -3999,7 +4064,8 @@ def persist_and_activate_center_width(
                     "min_hours_to_settlement": float(
                         entry["min_hours_to_settlement"]
                     ),
-                    "width_lambda": float(entry["width_lambda"]),
+                    "tail_mix_weight": float(entry["tail_mix_weight"]),
+                    "tail_mix_scale": float(entry["tail_mix_scale"]),
                 }
                 for name, entry in sorted(width_slices.items())
             },

@@ -198,7 +198,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # calibrated width is laid onto its members by widening the kernel
 # (dress_v1), not by stretching the member spacing -- the two-humped
 # single-system vectors were an artifact of the stretch.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v25"
+# Charter 248 (2026-10-03 ruling 「修薄池远端，方向是尾重不是整体宽度」): the
+# thin-pool far-lead slice is a tail mix on the stage pair, not a lambda
+# replacing it.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v26"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
