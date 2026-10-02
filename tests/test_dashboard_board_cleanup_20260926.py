@@ -368,3 +368,22 @@ def test_a_research_run_shares_one_gap_wait_budget(pages, monkeypatch) -> None:
     C.refresh_research_section(pages / "ssot.db")
 
     assert _time.monotonic() - started < 0.9, "three sections, one 0.4 s wait budget (not 0.4 s each)"
+
+
+def test_the_heavy_pages_rotate_oldest_page_first(pages, monkeypatch) -> None:
+    """2026-10-02: skill (3.5 h lifetime) sat 56 hours old while the
+    shorter-lived truth_landing (2.5 h) out-ranked it by age / lifetime in
+    every run -- every heavy page is overdue always, so the ratio only ever
+    favoured the short lifetimes."""
+
+    now = datetime(2026, 10, 2, 7, 0, tzinfo=timezone.utc)
+    heavy = C.RESEARCH_SECTION_MIN_COST_SEC
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC",
+                        {**C.SECTION_CACHE_TTL_SEC, "short": 2.5 * 3600, "skill": 3.5 * 3600})
+    _page(pages, "short", age_sec=40 * 3600, cost=heavy * 2, now=now)
+    _page(pages, "skill", age_sec=56 * 3600, cost=heavy * 2, now=now)
+    specs = {name: {} for name in ("short", "skill")}
+
+    names = [name for _overdue, name, _cost in C.research_due(specs, now)]
+
+    assert names == ["skill", "short"]

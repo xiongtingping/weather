@@ -15769,8 +15769,18 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
     # sat 17-29 hours old on the board.  26 cheap pages cost ~1,540 s
     # together and fall due again only after STARVED_PAGE_AGE_SEC, so the
     # runs in between are the heavy pages'.
+    #
+    # The heavy pages among themselves go oldest page first, not most
+    # overdue: their lifetimes (2.5-6 h) ask ~72,000 s of reading a day of a
+    # render that has ~20,000, so every heavy page is overdue always, and by
+    # age / lifetime the shortest lifetimes led every run -- on 2026-10-02
+    # skill (3.5 h, 632 s) sat 56 hours old while truth_landing (2.5 h) and
+    # scorecard (3 h) were refreshed again and again ahead of it.  Oldest
+    # first is a rotation: no heavy page waits longer than one lap.
     due.sort(key=lambda item: (
-        item[2] >= RESEARCH_SECTION_MIN_COST_SEC, -item[0], item[1],
+        item[2] >= RESEARCH_SECTION_MIN_COST_SEC,
+        -(_page_ages[item[1]] if item[2] >= RESEARCH_SECTION_MIN_COST_SEC else item[0]),
+        item[1],
     ))
     # But a heavy page the run's own budget rule would pass over behind the
     # others never comes round at all: cheap pages fall due every few hours,
@@ -15794,7 +15804,7 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
                 continue
             spent += item[2]
         if skipped:
-            first = max(skipped, key=lambda item: (item[0], item[1]))
+            first = max(skipped, key=lambda item: (_page_ages[item[1]], item[1]))
             due.remove(first)
             due.insert(0, first)
     return due
