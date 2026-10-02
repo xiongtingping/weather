@@ -4229,6 +4229,10 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
 # the standing P1 is read, and how many settled event days the trend spans.
 P1_PATH_STANDING_HOURS = (8, 10, 12, 14, 16)
 P1_PATH_SKILL_DAYS = 21
+#: Days behind the newest truth after which a station-day's P1 path row is
+#: kept across renders (``RENDER_P1_PATH_DAYS``).
+P1_PATH_CLOSED_DAYS = 2
+RENDER_P1_PATH_DAYS = "_p1_path_skill_days.json"
 
 
 def _as_float(value: Any) -> float | None:
@@ -4289,18 +4293,43 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
         (since, str(latest)),
     ):
         truth[(str(station), str(day))] = float(value)
+    # Closed station-days are kept across renders (paged runs only, as the
+    # truth landing does): a day's P1 heads and its settled high do not move
+    # once the day is two days behind the newest truth, so its row is read
+    # again only when its truth is revised.  Reading every P1 head of 21 days
+    # with its lineage was the whole 386 s, and on 2026-10-02 left the
+    # section 21 hours old behind the research render's queue.
+    closed_before = (
+        date.fromisoformat(str(latest)) - timedelta(days=P1_PATH_CLOSED_DAYS)
+    ).isoformat()
+    code = _section_fingerprint(collect_p1_path_skill)
+    kept_rows: dict[str, dict[str, Any]] = {}
+    if _PAGED_RUN:
+        held = _load_closed_readings(RENDER_P1_PATH_DAYS)
+        if held.get("code") == code:
+            kept_rows = dict(held.get("days") or {})
+    reused: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, value in truth.items():
+        entry = kept_rows.get(f"{key[0]}|{key[1]}")
+        if (
+            isinstance(entry, dict) and entry.get("truth") == value
+            and key[1] < closed_before
+        ):
+            reused[key] = entry.get("row")
+    pending = [key for key in truth if key not in reused]
+    read_from = min((key[1] for key in pending), default=None)
     heads: dict[tuple[str, str], dict[str, tuple]] = defaultdict(dict)
     zones: dict[tuple[str, str], str] = {}
     first_rowid: dict[tuple[str, str], int] = {}
-    for rowid, station, day, decided, probs, ords, running, zone in conn.execute(
+    for rowid, station, day, decided, probs, ords, running, zone in (conn.execute(
         "SELECT rowid, station_id, event_date, decision_at_utc, probabilities_json,"
         " bucket_ordinals_json, json_extract(lineage_json,'$.metar_trajectory_running_high_c'),"
         " settlement_timezone FROM basket_probability_envelope"
         " WHERE state='COMMITTED' AND stage='P1' AND event_date BETWEEN ? AND ?",
-        (since, str(latest)),
-    ):
+        (read_from, str(latest)),
+    ) if read_from is not None else ()):
         key = (str(station), str(day))
-        if key not in truth:
+        if key not in truth or key in reused:
             continue
         second = str(decided)[:19]
         held = heads[key].get(second)
@@ -4370,6 +4399,17 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
             "lead_hours": None if lead is None else round(lead, 2),
             "decisions": len(seq),
         })
+    if _PAGED_RUN:
+        fresh = {f"{row['station_id']}|{row['event_date']}": row for row in days}
+        _save_closed_readings(RENDER_P1_PATH_DAYS, {"code": code, "days": {
+            f"{key[0]}|{key[1]}": {"truth": truth[key], "row": row}
+            for key, row in (
+                [(k, r) for k, r in reused.items() if r is not None]
+                + [((r["station_id"], r["event_date"]), r) for r in fresh.values()]
+            )
+            if key[1] < closed_before
+        }})
+    days.extend(row for row in reused.values() if row is not None)
 
     def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
         out: dict[str, Any] = {"station_days": len(rows)}
