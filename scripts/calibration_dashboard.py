@@ -8415,7 +8415,6 @@ SCORECARD_THRESHOLDS = {
     "ece": (0.05, 0.10),             # expected calibration error
     "conditional_gap": (0.05, 0.10),  # worst well-populated reliability bin
     "residual_correlation": (0.5, 0.75),   # max off-diagonal
-    "weight_distance": (0.10, 0.25),       # half-L1 gap, served vs production re-solve
     "spread_skill": (0.20, 0.45),    # |ratio - 1|, ensemble spread vs realised error
     "ci_relative": (0.15, 0.30),     # bootstrap half-width / value
 }
@@ -10882,204 +10881,14 @@ def _stability_verdict(
     return f"只有 {sample}，区间比数值本身还宽——上面每个判断都是暂定的"
 
 
-def _fusion_synthetic_residuals(
-    systems: Sequence[str],
-    correlation: Mapping[str, Mapping[str, float]],
-    sigmas: Sequence[float],
-) -> dict[str, dict[str, float]] | None:
-    """Residual series whose population covariance is exactly ``D R D``.
-
-    Production weighs a seat from per-day train residuals.  The SSOT keeps
-    what those residuals summarise -- the correlation matrix on the evidence
-    row, and each system's variance through the inverse-variance shadow --
-    but not the days.  Re-deriving the solver from those pieces would put a
-    second copy of the rule on this page, and the copy that stood here until
-    2026-09-17 had drifted three ways: it refused a lone active system where
-    production allows one, ignored the family caps, and scaled by train RMSE
-    where production scales by the residual sigma.  So the covariance is
-    turned back into series that carry it exactly, and those are handed to
-    the production function unchanged.
-
-    Column ``m`` is ``sqrt(2) cos(2 pi (m+1) t / n)``: zero mean, mean square
-    one, and orthogonal to its siblings while ``n > 2k``.  With ``S = L L^T``
-    the rows ``x_t = L z_t`` have population covariance ``S``, the normaliser
-    production divides by.  ``None`` when the stored correlation is not
-    positive definite, which a matrix built from pairwise day sets can be.
-    """
-
-    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
-        MINIMUM_VARIANCE_MIN_DAYS,
-    )
-
-    size = len(systems)
-    if size < 2 or len(sigmas) != size:
-        return None
-    try:
-        covariance = [
-            [
-                float(correlation[left][right])
-                * float(sigmas[row])
-                * float(sigmas[column])
-                for column, right in enumerate(systems)
-            ]
-            for row, left in enumerate(systems)
-        ]
-    except (KeyError, TypeError, ValueError):
-        return None
-    lower = [[0.0] * size for _ in range(size)]
-    for row in range(size):
-        for column in range(row + 1):
-            value = covariance[row][column] - sum(
-                lower[row][term] * lower[column][term]
-                for term in range(column)
-            )
-            if row == column:
-                if value <= 1e-12:
-                    return None
-                lower[row][row] = math.sqrt(value)
-            else:
-                lower[row][column] = value / lower[column][column]
-    days = max(MINIMUM_VARIANCE_MIN_DAYS, 2 * size + 2)
-    basis = [
-        [
-            math.sqrt(2.0) * math.cos(2.0 * math.pi * (term + 1) * day / days)
-            for term in range(size)
-        ]
-        for day in range(days)
-    ]
-    return {
-        system: {
-            f"synthetic-{day:02d}": sum(
-                lower[row][term] * basis[day][term]
-                for term in range(row + 1)
-            )
-            for day in range(days)
-        }
-        for row, system in enumerate(systems)
-    }
-
-
-def _fusion_reconstruction(
-    *,
-    served: Mapping[str, float],
-    correlation: Mapping[str, Mapping[str, float]],
-    inverse_variance: Mapping[str, float] | None,
-    member_scale: Mapping[str, float],
-    member_train_n: Mapping[str, int | None],
-    family_by_system: Mapping[str, str],
-    family_caps: Mapping[str, float],
-    kappa: float | None,
-) -> dict[str, Any]:
-    """A served seat's weights, re-solved by production's own functions.
-
-    Every input is what the SSOT kept of what production read:
-
-    * ``inverse_variance`` is the evaluation's shadow scheme, which is
-      ``_minimum_variance_weights`` at shrinkage 1.0 over the same train
-      series, so its shares are ``1/var`` of exactly the diagonal the served
-      solve used.  Absent means that call returned nothing: the shared train
-      window was under ``MINIMUM_VARIANCE_MIN_DAYS`` and production weighed
-      the seat by inverse error.
-    * ``member_scale`` and ``member_train_n`` are the member artifact's
-      residual sigma and fit case count, which is what that fallback reads.
-      The artifact persists the serving fit while the seat was weighed on
-      the gate fit, a few days shorter, so a fallback seat re-solves only
-      approximately.
-    * ``kappa`` is parsed from the artifact's combination method, so a pool
-      seat is shrunk by the value it was minted with.
-
-    ``basis`` says which reconstruction this was: ``exact`` when the
-    diagonal came from the shadow; ``capped`` when the shadow's shares had
-    hit a family cap, which hides the variance ratio, so the member sigma
-    stands in; ``fallback`` when the seat was weighed by inverse error; and
-    ``non_psd`` when the stored correlation admits no covariance.  Only an
-    ``exact`` distance checks production -- the others measure how much of
-    it this page can reconstruct.
-    """
-
-    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
-    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
-        SEAT_WEIGHT_RULE_INVERSE_RMSE,
-        _seat_weights,
-    )
-    from bayes_basket_target.stable_pool import (  # noqa: PLC0415
-        stable_pool_weights,
-    )
-
-    systems = sorted(served)
-    families = {system: family_by_system[system] for system in systems}
-    residuals: dict[str, dict[str, float]] = {system: {} for system in systems}
-    basis = "fallback"
-    if inverse_variance:
-        shares = {
-            system: float(inverse_variance.get(system) or 0.0)
-            for system in systems
-        }
-        family_share: dict[str, float] = defaultdict(float)
-        for system, share in shares.items():
-            family_share[families[system]] += share
-        capped = any(
-            abs(share - float(family_caps.get(family, 0.75))) <= 1e-9
-            for family, share in family_share.items()
-        )
-        if capped or min(shares.values()) <= 0.0:
-            basis = "capped"
-            sigmas = [float(member_scale[system]) for system in systems]
-        else:
-            basis = "exact"
-            sigmas = [1.0 / math.sqrt(shares[system]) for system in systems]
-        synthetic = _fusion_synthetic_residuals(systems, correlation, sigmas)
-        if synthetic is None:
-            return {"basis": "non_psd", "weights": None, "skill_rule": None}
-        residuals = synthetic
-    try:
-        weights, skill_rule = _seat_weights(
-            residuals_by_system=residuals,
-            train_error_scale_by_system={
-                system: float(member_scale[system]) for system in systems
-            },
-            family_by_system=families,
-            family_caps=family_caps,
-            train_n_by_system={
-                system: member_train_n.get(system) for system in systems
-            },
-        )
-        if kappa is not None:
-            weights = stable_pool_weights(weights, families, kappa=kappa)
-    except (ContractError, KeyError, ValueError, ZeroDivisionError):
-        return {"basis": basis, "weights": None, "skill_rule": None}
-    if skill_rule == SEAT_WEIGHT_RULE_INVERSE_RMSE:
-        basis = "fallback"
-    return {"basis": basis, "weights": dict(weights), "skill_rule": skill_rule}
-
-
-def _fusion_rule_label(kappa: float | None, skill_rule: str | None) -> str:
-    from bayes_basket_target.native_ensemble_oos import (  # noqa: PLC0415
-        SEAT_WEIGHT_RULE_COVARIANCE,
-    )
-
-    if skill_rule is None:
-        return "—"
-    covariance = skill_rule == SEAT_WEIGHT_RULE_COVARIANCE
-    if kappa is not None:
-        return f"稳定池 κ={kappa:g} · {'协方差' if covariance else '逆误差'}"
-    return "最小方差" if covariance else "逆误差兜底"
-
-
 def _scorecard_salt(conn: sqlite3.Connection) -> str:
     """What the scorecard cache must also expire on.
 
     ``_section_fingerprint`` hashes only the collector it is handed.  The
-    scorecard's arithmetic lives in the helpers it calls, the fusion layer
-    defers to production's weighting functions, and the sample starts at
-    P0's serving anchor, which moves when a version is declared.  A change
-    to any of them changes what the lamps read.
+    scorecard's arithmetic lives in the helpers it calls, and the sample
+    starts at P0's serving anchor, which moves when a version is declared.
+    A change to any of them changes what the lamps read.
     """
-
-    from bayes_basket_target import (  # noqa: PLC0415
-        native_ensemble_oos,
-        stable_pool,
-    )
 
     sources = "\n".join(
         _loaded_source(function)
@@ -11099,17 +10908,6 @@ def _scorecard_salt(conn: sqlite3.Connection) -> str:
             _sharpness_verdict,
             _stability_verdict,
             _collect_fusion_layer,
-            _fusion_reconstruction,
-            _fusion_synthetic_residuals,
-            _fusion_rule_label,
-            native_ensemble_oos._seat_weights,
-            native_ensemble_oos._minimum_variance_weights,
-            native_ensemble_oos._bounded_family_weights,
-            native_ensemble_oos._capped_family_weights,
-            native_ensemble_oos._weight_maturity,
-            stable_pool.stable_pool_weights,
-            stable_pool.shrink_toward_baseline,
-            stable_pool.family_balanced_weights,
         )
     )
     return "\n".join((
@@ -11122,43 +10920,23 @@ def _scorecard_salt(conn: sqlite3.Connection) -> str:
 
 
 def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Whether each served blend carries the weights production's rule gives.
+    """The served blends as stored: each seat's weights and the residual
+    correlation its selection evidence kept.
 
-    Until 2026-09-17 this compared the served weights against a minimum-
-    variance optimum solved here from train RMSE, and three things had moved
-    under it.  Charter 134 (2026-09-14) shrinks every pool seat halfway
-    toward family-balanced weights, so a gap of about 20% was the design
-    rather than a finding.  Production had weighed on the residual sigma
-    since the bias correction, so a system with a large offset but a steady
-    error -- GEFS at OEJN, RMSE 6.4 against sigma 0.8 -- was pointed the
-    wrong way.  And the sample was the newest 400 evidence rows, of which 85
-    were served.
-
-    Now every served seat -- activation pointer, artifact, evidence, the
-    path ``collect_serving_weights`` reads -- is re-solved by production's
-    own functions from what the SSOT kept (``_fusion_reconstruction``).  The
-    distance grades the lamp only where the diagonal is recovered exactly;
-    measured at the rewrite, 686 of 826 served seats, 99th percentile 0.8%.
-    The residual correlation grades it as before.
+    Read-only (user ruling 2026-10-02 「所有前端都改为只读」).  Until then
+    every served seat was re-solved here by production's own weighting
+    functions and graded on its distance from the stored weights -- the
+    production rule run again on the board, with a member-artifact and an
+    evaluation lookup per seat.  The lamp now reads what the evidence
+    stored: how alike the seated systems' errors were.
     """
 
-    family_by_system = {
-        str(system): str(family)
-        for system, family in conn.execute(
-            "SELECT ensemble_system_id, independence_family_id"
-            " FROM calibration_native_ensemble_system"
-        )
-    }
     served_rows = conn.execute(
         "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
-        " p.set_hash, ar.combination_method, se.content_sha256,"
-        " se.selected_weights_json,"
-        " se.cross_system_residual_correlation_json,"
-        " se.run_cycle_by_system_json, se.family_weight_caps_json,"
-        " se.train_end_date"
+        " ar.combination_method, se.selected_weights_json,"
+        " se.cross_system_residual_correlation_json"
         " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
-        "   artifact_id, available_system_set_hash_or_star AS set_hash,"
-        "   MAX(generation)"
+        "   artifact_id, MAX(generation)"
         "  FROM calibration_native_ensemble_activation"
         "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
         "  AND season_bin IN"
@@ -11175,8 +10953,7 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     unread = 0
     for (
-        station, season, lead, cycle, set_hash, method, evidence_sha,
-        weights_json, correlation_json, cycles_json, caps_json, train_end,
+        station, season, lead, cycle, method, weights_json, correlation_json,
     ) in served_rows:
         try:
             served = {
@@ -11184,20 +10961,11 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
                 for system, value in json.loads(weights_json).items()
             }
             correlation = json.loads(correlation_json)
-            cycles = json.loads(cycles_json) if cycles_json else {}
-            caps = {
-                str(family): float(value)
-                for family, value in json.loads(caps_json).items()
-            }
         except (AttributeError, TypeError, ValueError):
             unread += 1
             continue
         systems = sorted(served)
-        if (
-            len(systems) < 2
-            or not isinstance(correlation, dict)
-            or any(system not in family_by_system for system in systems)
-        ):
+        if len(systems) < 2 or not isinstance(correlation, dict):
             unread += 1
             continue
         off_diagonal = []
@@ -11209,91 +10977,20 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
                     off_diagonal.append(float(correlation[left][right]))
                 except (KeyError, TypeError, ValueError):
                     pass
-        kappa = None
-        for part in str(method or "").split("::")[1:]:
-            if part.startswith("stable_pool_kappa="):
-                try:
-                    kappa = float(part.split("=", 1)[1])
-                except ValueError:
-                    pass
-        evaluation = conn.execute(
-            "SELECT json_extract(oos_metrics_json, '$.equal_weight_diagnostic"
-            ".shadow_schemes.inverse_variance.weights')"
-            " FROM calibration_cross_native_ensemble_oos_evaluation"
-            " WHERE station_id=? AND season_bin=? AND lead_bucket=?"
-            " AND run_cycle=? AND available_system_set_hash=?"
-            " AND selection_evidence_sha256=?"
-            " ORDER BY evaluated_at_utc DESC LIMIT 1",
-            (station, season, lead, cycle, set_hash, evidence_sha),
-        ).fetchone()
-        member_scale: dict[str, float] = {}
-        member_train_n: dict[str, int | None] = {}
-        for system in systems:
-            member = conn.execute(
-                "SELECT spread_parameters_json, reliability_parameters_json"
-                " FROM calibration_native_ensemble_system_artifact"
-                " WHERE station_id=? AND lead_bucket=? AND run_cycle=?"
-                " AND ensemble_system_id=? AND train_end_date<=?"
-                " AND season_bin=?"
-                " ORDER BY rowid DESC LIMIT 1",
-                (
-                    station, lead, str(cycles.get(system) or cycle), system,
-                    train_end, season,
-                ),
-            ).fetchone()
-            if member is None:
-                break
-            try:
-                spread = json.loads(member[0])
-                reliability = json.loads(member[1] or "{}")
-                member_scale[system] = float(
-                    spread.get("train_residual_sigma_c")
-                    or spread["train_rmse_c"]
-                )
-            except (KeyError, TypeError, ValueError):
-                break
-            count = reliability.get("fit_case_count")
-            member_train_n[system] = int(count) if count else None
-        if evaluation is None or len(member_scale) != len(systems):
-            unread += 1
-            continue
-        try:
-            inverse_variance = (
-                json.loads(evaluation[0]) if evaluation[0] else None
-            )
-        except (TypeError, ValueError):
-            inverse_variance = None
-        rebuilt = _fusion_reconstruction(
-            served=served,
-            correlation=correlation,
-            inverse_variance=inverse_variance,
-            member_scale=member_scale,
-            member_train_n=member_train_n,
-            family_by_system=family_by_system,
-            family_caps=caps,
-            kappa=kappa,
+        parts = str(method or "").split("::")
+        kappa = next(
+            (part.split("=", 1)[1] for part in parts[1:]
+             if part.startswith("stable_pool_kappa=")),
+            None,
         )
-        resolved = rebuilt["weights"]
-        basis = rebuilt["basis"]
-        if resolved is None and basis != "non_psd":
-            basis = "unsolved"
         rows.append({
             "station_id": str(station),
             "season_bin": str(season),
             "lead_bucket": str(lead),
             "run_cycle": str(cycle),
-            "rule": _fusion_rule_label(kappa, rebuilt["skill_rule"]),
-            "basis": basis,
+            "rule": f"稳定池 κ={kappa}" if kappa is not None else parts[0],
             "max_correlation": max(off_diagonal) if off_diagonal else None,
-            "distance": (
-                0.5 * sum(
-                    abs(served[system] - float(resolved.get(system, 0.0)))
-                    for system in systems
-                )
-                if resolved is not None else None
-            ),
             "served": served,
-            "resolved": resolved,
         })
 
     correlations = [
@@ -11308,70 +11005,27 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
             "pairs": [],
             "summary": {"served_count": len(rows), "unread_count": unread},
         }
-    exact = [
-        row for row in rows
-        if row["basis"] == "exact" and row["distance"] is not None
-    ]
-    approximate = [row for row in rows if row not in exact]
-    approximate_distances = sorted(
-        row["distance"] for row in approximate if row["distance"] is not None
-    )
     mean_correlation = sum(correlations) / len(correlations)
-    mean_distance = (
-        sum(row["distance"] for row in exact) / len(exact) if exact else None
+    health = _grade(mean_correlation, "residual_correlation")
+    verdict = (
+        f"几家在座模型的残差互相独立（平均最大相关 {mean_correlation:.2f}），"
+        "融合能互相抵消误差"
+        if health == "green" else
+        f"几家在座模型的残差相关 {mean_correlation:.2f}，在犯相近的错，"
+        "融合能抵消的误差有限"
     )
-    correlation_health = _grade(mean_correlation, "residual_correlation")
-    distance_health = _grade(mean_distance, "weight_distance")
-    health = _worst([correlation_health, distance_health])
-    if mean_distance is None:
-        verdict = (
-            f"模型之间残差相关 {mean_correlation:.2f}，"
-            "但没有一份在役权重能从存档精确重解，自检做不了"
-        )
-    elif distance_health != "green":
-        verdict = (
-            f"在役权重和存档证据重解对不上（平均差 {mean_distance:.1%}）"
-            "——先查数据再查解法"
-        )
-    elif correlation_health == "green":
-        verdict = (
-            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}），"
-            f"几家模型残差也互相独立（相关 {mean_correlation:.2f}）"
-        )
-    else:
-        verdict = (
-            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}）；"
-            f"灯色来自模型残差相关 {mean_correlation:.2f}，几家模型在犯相近的错"
-        )
     return {
         "health": health,
         "verdict": verdict,
         "detail": (
-            f"{len(rows)} 份在役权重 · 精确重解 {len(exact)} 份"
-            f" · 平均最大相关 {mean_correlation:.2f}"
-            + (f" · 离重解 {mean_distance:.1%}"
-               if mean_distance is not None else "")
+            f"{len(rows)} 份在役权重 · 平均最大相关 {mean_correlation:.2f}"
         ),
         "pairs": sorted(
-            exact, key=lambda row: row["distance"], reverse=True
+            (row for row in rows if row["max_correlation"] is not None),
+            key=lambda row: row["max_correlation"], reverse=True,
         )[:12],
-        "summary": {
-            "served_count": len(rows),
-            "exact_count": len(exact),
-            "unread_count": unread,
-            "approximate_by_basis": dict(
-                Counter(row["basis"] for row in approximate)
-            ),
-            "approximate_median_distance": (
-                median(approximate_distances)
-                if approximate_distances else None
-            ),
-            "approximate_max_distance": (
-                approximate_distances[-1] if approximate_distances else None
-            ),
-        },
+        "summary": {"served_count": len(rows), "unread_count": unread},
     }
-
 
 def collect_gaps(
     conn: sqlite3.Connection,
@@ -21181,11 +20835,8 @@ function scorecard(){
   </div>`).join("");
 
   const fusionSummary = S.fusion_summary || {};
-  const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
-    .slice(0,8).map(p => {
+  const fusion = (S.fusion_pairs||[]).slice(0,8).map(p => {
       const names = Object.keys(p.served||{}).sort();
-      const tone = p.distance <= 0.10 ? "green"
-                 : (p.distance <= 0.25 ? "amber" : "red");
       return `<tr>
         <td class="mono">${h(p.station_id)}</td>
         <td class="mono muted">${h(p.lead_bucket)}</td>
@@ -21193,19 +20844,10 @@ function scorecard(){
         <td class="muted" style="font-size:12px">${h(p.rule)}</td>
         <td class="mono">${p.max_correlation == null ? "—"
           : p.max_correlation.toFixed(2)}</td>
-        <td class="mono"><span class="dot ${tone}"></span>
-          ${(p.distance*100).toFixed(1)}%</td>
         <td class="muted" style="font-size:12px">${names.map(n =>
-          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}→${
-           (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
+          `${h(n.split("_")[0])} ${(p.served[n]*100).toFixed(0)}%`).join(" · ")}</td>
       </tr>`;
     }).join("");
-  const fusionBasisWords = {capped: "族上限咬住", fallback: "逆误差兜底",
-    non_psd: "相关阵非正定", unsolved: "重解失败"};
-  const fusionApprox = Object.entries(fusionSummary.approximate_by_basis||{})
-    .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
-    .join("、");
-  const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
 
   const W = S.window || {};
   const count = v => v == null ? "—" : v.toLocaleString();
@@ -21252,25 +20894,16 @@ function scorecard(){
     ${pitBars}</div>
   <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>
 
-  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
+  ${fusion ? `<h2 style="margin-top:26px">在役融合权重与残差相关</h2>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
-  先按训练残差的收缩协方差求最小方差权重，共享训练日不足 12 天时落回逆误差兜底；
-  再把结果向「按族均分」收缩一半（κ=0.5）。八月的竞赛件在过期前仍按最小方差服务。
-  这张表是一致性自检，只读在役指针指向的那份证据。右边是用存档的残差相关性、
-  影子逆方差权重（还原各家方差）和生产同一组函数当场重解的权重，距离应当接近零。
-  距离若系统性变大，说明上线的解和存档的证据对不上了，先查数据再查解法。</p>
+  这张表只读在役指针指向的那份选择证据：存下的权重，和训练期几家模型残差的相关。
+  按相关从高到低列：相关越高，几家模型越在犯相近的错，融合能抵消的误差越少。</p>
   <table><thead><tr>
     <th>站</th><th>提前量</th><th>cycle · 季节</th><th>规则</th>
-    <th>最大相关</th><th>离重解</th><th>现在 → 重解</th>
+    <th>最大相关</th><th>在役权重</th>
   </tr></thead><tbody>${fusion}</tbody></table>
   <div class="muted" style="margin-top:6px">
-    共 ${fusionSummary.served_count ?? "—"} 份在役权重，
-    只列能精确重解的 ${fusionSummary.exact_count ?? "—"} 份里偏离最大的几个。
-    ${fusionApprox ? `另有 ${fusionApprox} 份只能近似重解，不计入灯色
-    （中位差 ${fusionPct(fusionSummary.approximate_median_distance)}、
-    最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
-    兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
-    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}
+    共 ${fusionSummary.served_count ?? "—"} 份在役权重，列出相关最高的几个。</div>` : ""}
   ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
 }
 
