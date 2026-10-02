@@ -16,7 +16,7 @@ import json
 import math
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, MutableMapping
 
 from .basket_kernel.valuation_v1 import market_reference_v1
 
@@ -76,8 +76,18 @@ def population(
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
     anchored: bool = True,
+    decision_memo: MutableMapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every decision of the scope's stages a fit at ``cutoff_utc`` could use.
+
+    ``decision_memo``: a reader that calls this every few hours (the board)
+    may hand in what an earlier call derived from each (envelope, snapshot)
+    pair -- both rows are immutable, so the weather vector, the market
+    reference and the clock read off them are too.  The joins still run, off
+    the two primary keys alone, so a row gone from the store is gone from the
+    population exactly as without the memo; only a pair the memo lacks reads
+    its two JSON columns.  None (every production caller) is the read as it
+    always was.
 
     One row per decision: the committed envelope's vector, the market
     reference built from the WS snapshot the decision priced against, and the
@@ -171,9 +181,16 @@ def population(
     except sqlite3.Error:
         has_tz = False
     tz_col = "e.settlement_timezone" if has_tz else "NULL"
+    # With a memo the JSON stays where it is: the ids ride in its place and
+    # the joins are answered off the primary-key indexes.
+    selected = (
+        f"       e.probabilities_json, s.buckets_json, {tz_col}"
+        if decision_memo is None else
+        "       f.probability_envelope_id, f.ws_snapshot_id, NULL"
+    )
     cursor = conn.execute(
         "SELECT f.station_id, f.event_date, f.stage, f.decision_at_utc,"
-        f"       e.probabilities_json, s.buckets_json, {tz_col}"
+        + selected +
         " FROM basket_policy_training_fact f"
         " JOIN basket_probability_envelope e"
         "   ON e.envelope_id = f.probability_envelope_id"
@@ -186,7 +203,7 @@ def population(
         (*stages, floor_day, latest,
          *(() if anchor_utc is None else (str(anchor_utc)[:19],))),
     )
-    for station, day, stage, decided_at, probs_json, book_json, tz in cursor:
+    for station, day, stage, decided_at, envelope_side, snapshot_side, tz in cursor:
         counts["decisions_read"] += 1
         labelled = labels.get((str(station), str(day)))
         if labelled is None:
@@ -199,20 +216,30 @@ def population(
         if anchor_utc is not None and _instant(decided_at) < _instant(anchor_utc):
             counts["excluded_before_anchor"] += 1
             continue
-        try:
-            p_weather = {
-                str(k): float(v) for k, v in json.loads(probs_json or "{}").items()
-            }
-            book = json.loads(book_json or "[]")
-        except (TypeError, ValueError):
+        if decision_memo is None:
+            p_weather, market = _decision_vectors(envelope_side, snapshot_side)
+        else:
+            # The two sides are the ids here (see ``selected``).
+            memo_key = f"{envelope_side}|{snapshot_side}"
+            entry = decision_memo.get(memo_key)
+            if entry is None:
+                envelope = conn.execute(
+                    f"SELECT e.probabilities_json, {tz_col}"
+                    " FROM basket_probability_envelope e WHERE e.envelope_id=?",
+                    (envelope_side,),
+                ).fetchone()
+                snapshot = conn.execute(
+                    "SELECT buckets_json FROM basket_official_ws_snapshot"
+                    " WHERE snapshot_id=?",
+                    (snapshot_side,),
+                ).fetchone()
+                vector, reference = _decision_vectors(envelope[0], snapshot[0])
+                entry = {"p": vector, "market": reference, "tz": envelope[1]}
+                decision_memo[memo_key] = entry
+            p_weather, market, tz = entry["p"], entry["market"], entry["tz"]
+        if p_weather is None:
             counts["weather_vector_invalid"] += 1
             continue
-        total_p = sum(p_weather.values())
-        if not (total_p > 0.0 and math.isfinite(total_p)):
-            counts["weather_vector_invalid"] += 1
-            continue
-        p_weather = {k: v / total_p for k, v in p_weather.items()}
-        market = market_reference_v1(book if isinstance(book, list) else [])
         if market["state"] != "complete":
             counts["market_incomplete"] += 1
             key = str(market.get("reason") or "").split(":")[0]
@@ -255,6 +282,27 @@ def population(
         "anchor_states": anchor_states,
         "anchors_after_cutoff": anchors_after_cutoff, **counts,
     }
+
+
+def _decision_vectors(
+    probs_json: Any, book_json: Any,
+) -> tuple[dict[str, float] | None, dict[str, Any] | None]:
+    """The committed envelope's vector, normalised, and the market reference
+    off the snapshot's book; ``(None, None)`` when the vector is unusable."""
+
+    try:
+        p_weather = {
+            str(k): float(v) for k, v in json.loads(probs_json or "{}").items()
+        }
+        book = json.loads(book_json or "[]")
+    except (TypeError, ValueError):
+        return None, None
+    total_p = sum(p_weather.values())
+    if not (total_p > 0.0 and math.isfinite(total_p)):
+        return None, None
+    p_weather = {k: v / total_p for k, v in p_weather.items()}
+    market = market_reference_v1(book if isinstance(book, list) else [])
+    return p_weather, market
 
 
 def _brier(vector: Mapping[str, float], label: str) -> float:

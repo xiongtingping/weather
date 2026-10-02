@@ -14410,6 +14410,54 @@ def collect_centre_shape(
     }
 
 
+#: What ``population`` derived from each (envelope, snapshot) pair, kept
+#: across builds: both rows are immutable, so only pairs new since the last
+#: build read their JSON.  Every build re-read all ~60k pairs of the 28-day
+#: window -- a random envelope page and a snapshot's whole book each -- and
+#: that was nearly all of this page's 1,601 s on 2026-10-02.
+CHARTER_EV_DECISION_MEMO = "_charter_ev_decision_memo.json"
+
+
+class _TrackedMemo(dict):
+    """The memo, noting which entries this build asked for, so the file
+    keeps exactly the window's pairs and sheds the ones it has slid past."""
+
+    def __init__(self, prior: Mapping[str, Any]) -> None:
+        super().__init__(prior)
+        self.used: set[str] = set()
+
+    def get(self, key: str, default: Any = None) -> Any:  # noqa: D401
+        self.used.add(key)
+        return super().get(key, default)
+
+
+def _charter_ev_memo_code() -> str:
+    from bayes_basket_target import valuation_store  # noqa: PLC0415
+    from bayes_basket_target.basket_kernel.valuation_v1 import (  # noqa: PLC0415
+        market_reference_v1,
+    )
+
+    return _section_fingerprint(
+        valuation_store.population,
+        _section_fingerprint(valuation_store._decision_vectors)
+        + _section_fingerprint(market_reference_v1),
+    )
+
+
+def _charter_ev_decision_memo() -> _TrackedMemo:
+    kept = _load_closed_readings(CHARTER_EV_DECISION_MEMO)
+    if kept.get("code") != _charter_ev_memo_code():
+        kept = {}
+    return _TrackedMemo(kept.get("entries") or {})
+
+
+def _save_charter_ev_decision_memo(memo: _TrackedMemo) -> None:
+    _save_closed_readings(CHARTER_EV_DECISION_MEMO, {
+        "code": _charter_ev_memo_code(),
+        "entries": {key: memo[key] for key in memo.used if key in memo},
+    })
+
+
 def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
     """Charter EV identity per stage: Var(e_q), Cov(e_p,e_q), Var - Cov, k.
 
@@ -14441,9 +14489,12 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
     window: dict[str, Any] = {}
     p0_anchor: str | None = None
     p0_window: tuple[Any, Any] = (None, None)
+    memo = _charter_ev_decision_memo()
     for scope in ("P0", "P0-M", "P1"):
         try:
-            rows, meta = population(conn, stage_scope=scope, anchored=False)
+            rows, meta = population(
+                conn, stage_scope=scope, anchored=False, decision_memo=memo,
+            )
         except (sqlite3.Error, ValueError) as exc:
             scopes.append({"scope": scope, "error": f"{type(exc).__name__}:{exc}"})
             continue
@@ -14511,6 +14562,8 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
                 )
             },
         })
+    # Saved even when a scope failed: every entry is a finished derivation.
+    _save_charter_ev_decision_memo(memo)
     out.update({
         "available": any("research" in scope for scope in scopes),
         "scopes": scopes,

@@ -27,6 +27,14 @@ import calibration_dashboard as C  # noqa: E402
 LADDER = ("31°C", "32°C", "33°C")
 
 
+@pytest.fixture(autouse=True)
+def _own_cache_dir(tmp_path, monkeypatch):
+    """The collector keeps a decision memo beside the section pages; a test
+    must not write it into the live board's directory."""
+
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+
+
 def _row(p, m, *, label="32°C", station="KMIA", date="2026-09-10", weight=1.0):
     return {
         "station": station, "date": date, "at": f"{date}T00:00:00Z",
