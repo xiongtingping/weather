@@ -1,47 +1,9 @@
-"""Keep a 0.99 sell resting on every held leg.
+"""Offer held YES and NO shares at 0.998 when the venue tick permits it.
 
-Operator ruling 2026-08-31: 确定赢的仓位提前折价回笼资金再周转 -- a position
-that has won pays 1.000 at settlement, hours or days later; a sell a little
-under that pays now, and the freed capital re-enters the budget.
-
-What the lane does has been ruled three times since, all on 2026-09-18:
-「直接挂单卖出啊，和收盘没关系吧」 (the close is not the condition),
-「一直挂」 (the sell rests from the moment the leg is held, not only once the
-market bids for it), and 「改为0.99」 (the price).  So: every held leg of a
-market still taking orders carries a GTC limit sell at 0.99 for the shares
-not already offered or sold, not post-only.  A leg the market already bids
-at 0.99 or more fills at once, at the bid (0.999 on a won bucket); a leg it
-does not rests at 0.99 until a buyer takes it or the venue closes the
-market.  A leg that loses never meets a buyer at 0.99, and one sold at 0.99
-that later loses was sold at 0.99 -- the price bounds both sides.
-
-Why 0.99 and not 0.998: the venue prices a token between 0.04 and 0.96 on a
-0.01 tick (measured 2026-09-18: 665 of 671 mid-priced book rows), where the
-highest sell it accepts is 0.99; 0.998 exists only once the bucket is priced
-past 0.96.  A sell that must rest from the moment the leg is held has to be
-a price the venue takes at every price the leg can have.
-
-Two gates had to let a resting recycle sell through, and do only for it
-(RESTING_RECYCLE_SELL_PREFIX):
-
-* the order-state quiescence predicates (order_state_producer), which
-  refuse a station-day a zero-pending order snapshot -- and so stop its
-  quotes renewing -- while any of its orders is open.  A resting sell of a
-  held leg spends no cash and reserves nothing a decision reads; held all
-  day it would have frozen every held station-day's quotes (RKSI
-  2026-09-18, a charter 144 sell, froze RKSI's for a day);
-* the same-bucket sequential gate (can_submit_next_order), which holds a
-  token shut while another order on it is open: a plainly resting recycle
-  sell no longer blocks a buy (the tiebreak lane's, a basket top-up) or the
-  next recycle sell on that token.  One whose state is unknown still does.
-
-History: from 08-31 to 09-17 the lane never placed an order (it read the
-holdings under a key no snapshot wrote, lost the token when the target
-registry pruned the market, and wrote no event or reconciliation); repaired
-09-17, it was then paused by charter 146 with the other lanes until
-「继续，打开车道」 reopened it 09-18 08:50Z.  The intent prefix keeps the
-lane's first name, recycle998, so its decisions and every reader of them
-keep one key.
+The official WS book must provide a fresh tick that quotes 0.998 exactly.
+Old 0.99 GTC offers are cancelled and reconciled before their shares can be
+reoffered. An unknown cancellation or fill remains reserved in the ledger.
+The historic ``recycle998`` intent prefix is retained for the same lineage.
 """
 
 from __future__ import annotations
@@ -51,18 +13,21 @@ import math
 import sqlite3
 import time
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
+from . import exit_orders
 from .contracts import content_sha256
-from .exit_orders import default_position_reader, send_exit_sell
+from .exit_orders import TRANSPORT_TIMEOUT_SECONDS, default_position_reader, send_exit_sell
 from .supply_watch import EGRESS_HOLD_REASON, egress_held_sql, egress_send_gate
 
-RECYCLE_PRICE = 0.99
+RECYCLE_PRICE = 0.998
 STRATEGY_ID = "bayes_basket_target_v1"
 INTENT_PREFIX = "recycle998"
 SCHEMA = "certain_win_recycle_plan_v1"
-RULE_VERSION = "certain_win_recycle_resting_099_v4"
+RULE_VERSION = "certain_win_recycle_resting_0998_v5"
 DEFAULT_MIN_ORDER_SHARES = 5.0
 DEFAULT_TICK_SIZE = 0.01
 # A market takes orders until a few hours after its day ends (18-300 min,
@@ -81,6 +46,7 @@ MAX_SENDS_PER_LEG = 12
 MAX_SENDS_PER_CYCLE = 8
 # A book older than this gives no bid to order the sends by.
 MAX_BOOK_AGE_SECONDS = 3600.0
+MAX_TICK_AGE_SECONDS = 120.0
 # The venue's refusal when the account does not hold the shares.
 BALANCE_REFUSAL_MARK = "not enough balance"
 # The account is traded outside this system too (measured 2026-09-18: every
@@ -92,6 +58,7 @@ BALANCE_REFUSAL_MARK = "not enough balance"
 # not asked again for this long.
 ACCOUNT_SHORT_RECHECK_SECONDS = 1200.0
 _ACCOUNT_SHORT: dict[str, float] = {}
+_MIGRATION_CURSOR = 0
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -162,16 +129,17 @@ def _registry_rows(
 
 
 def recycle_price(tick_size: Any) -> float:
-    """0.99 on the venue's 0.01 and 0.001 ticks alike; floored to a coarser one."""
+    """Return the exact requested price, or refuse a tick that cannot quote it."""
 
     try:
         tick = float(tick_size)
     except (TypeError, ValueError):
-        tick = DEFAULT_TICK_SIZE
+        raise ValueError("recycle_tick_missing") from None
     if not math.isfinite(tick) or tick <= 0.0:
-        tick = DEFAULT_TICK_SIZE
-    price = math.floor(RECYCLE_PRICE / tick + 1e-9) * tick
-    return round(min(RECYCLE_PRICE, price), 6)
+        raise ValueError("recycle_tick_invalid")
+    if abs(RECYCLE_PRICE / tick - round(RECYCLE_PRICE / tick)) > 1e-7:
+        raise ValueError("recycle_price_not_on_tick")
+    return RECYCLE_PRICE
 
 
 def _utc(value: str) -> datetime:
@@ -216,14 +184,21 @@ def _latest_book(
         if not isinstance(item, Mapping):
             continue
         best_bid = 0.0
+        best_ask = 1.0
         for level in item.get("bid_levels") or ():
             try:
                 best_bid = max(best_bid, float(level["price"]))
             except (KeyError, TypeError, ValueError):
                 continue
+        for level in item.get("ask_levels") or ():
+            try:
+                best_ask = min(best_ask, float(level["price"]))
+            except (KeyError, TypeError, ValueError):
+                continue
         out["legs"][str(item.get("bucket"))] = {
             "best_bid": best_bid,
-            "tick_size": item.get("price_tick_size"),
+            "best_ask": best_ask,
+            "tick_size": item.get("price_tick_size") if age <= MAX_TICK_AGE_SECONDS else None,
             "min_size": item.get("min_order_size"),
             "token_id": str(item.get("token_id") or ""),
         }
@@ -246,7 +221,8 @@ def _settlement_timezone(
 
 
 def _own_sells(
-    conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str, counted: set[str],
+    conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str,
+    counted: set[str], side: str = "YES",
 ) -> dict[str, Any]:
     """This lane's sells on the leg: the shares still offered by its open
     orders, the shares it sold that the inventory has not netted yet, and
@@ -263,11 +239,11 @@ def _own_sells(
         "   AND e.event_type='SUBMIT_REFUSED' ORDER BY e.rowid DESC LIMIT 1)"
         " FROM basket_target_order_intents i"
         " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
-        " WHERE i.order_action='SELL' AND i.bucket=? AND i.decision_id=?"
+        " WHERE i.order_action='SELL' AND i.side=? AND i.bucket=? AND i.decision_id=?"
         # Charter 197 amendment: a sell the egress hold kept in never left --
         # neither a send nor a failure against the leg's caps.
         f" AND NOT {egress_held_sql('i')}",
-        (bucket, f"{INTENT_PREFIX}_decision_{station_id}_{event_date}"),
+        (side, bucket, f"{INTENT_PREFIX}_decision_{station_id}_{event_date}"),
     ):
         sends += 1
         if refusal and BALANCE_REFUSAL_MARK in str(refusal):
@@ -285,19 +261,126 @@ def _own_sells(
         # negative); only this lane's fills missing from its lineage are
         # taken off again.  Taking every sale off twice left a partly sold
         # leg reading zero once the inventory caught up.
-        if str(intent_id) not in counted:
+        if str(intent_id) not in counted and (
+            side == "YES" or str(reconciliation_state) not in {"resolved_filled", "resolved_partial"}
+        ):
             sold_unseen += filled
     return {"offered": offered, "sold_unseen": sold_unseen, "failed": failed, "sends": sends,
             "no_balance": no_balance}
 
 
-def _intent_id(*, station_id: str, event_date: str, bucket: str, token_id: str, now_utc: str) -> str:
+def _intent_id(*, station_id: str, event_date: str, bucket: str, token_id: str, now_utc: str,
+               side: str = "YES") -> str:
     minute = _utc(now_utc).replace(second=0, microsecond=0)
     return INTENT_PREFIX + "_" + content_sha256({
         "schema": SCHEMA, "rule": RULE_VERSION, "station_id": station_id, "event_date": event_date,
         "bucket": bucket, "token_id": token_id,
+        "side": side,
         "minute": minute.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
     })[:40]
+
+
+def _held_no_legs(conn: sqlite3.Connection, oldest_date: str) -> list[tuple[str, str, str, str, str, float]]:
+    """Settled NO token inventory, including sells, from the order ledger.
+
+    The canonical inventory snapshot is deliberately YES-only.  A NO share
+    cannot be read from its ``filled_by_bucket`` or mapped to a YES token.
+    """
+
+    rows = conn.execute(
+        "SELECT c.station_id,c.event_date,i.bucket,i.token_id,"
+        " MIN(c.settlement_timezone),MAX(c.settlement_timezone),"
+        " SUM(CASE i.order_action WHEN 'BUY' THEN r.filled_size"
+        " WHEN 'SELL' THEN -r.filled_size END)"
+        " FROM basket_target_execution_cycles c"
+        " JOIN basket_target_order_intents i ON i.cycle_id=c.cycle_id"
+        " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE c.event_date>=? AND i.side='NO' AND i.live_submit_authorized=1"
+        " AND i.order_action IN ('BUY','SELL')"
+        " AND r.state IN ('resolved_filled','resolved_partial') AND r.filled_size>0"
+        " GROUP BY c.station_id,c.event_date,i.bucket,i.token_id",
+        (oldest_date,),
+    ).fetchall()
+    result = []
+    for station, day, bucket, token, first_tz, last_tz, shares in rows:
+        if not first_tz or first_tz != last_tz or float(shares or 0.0) < -1e-6:
+            raise ValueError("recycle_no_inventory_lineage_conflict")
+        if float(shares or 0.0) > 1e-6:
+            result.append((str(station), str(day), str(bucket), str(token),
+                           str(first_tz), float(shares)))
+    return result
+
+
+def retire_old_price_orders(
+    conn: sqlite3.Connection, *, now_utc: str, client: Any,
+    max_attempts: int = MAX_SENDS_PER_CYCLE,
+) -> dict[str, Any]:
+    """Cancel the old 0.99 GTC offers before their shares can be reoffered.
+
+    A cancel response alone does not prove that no shares remain at the
+    exchange.  Only its explicit terminal order view closes the ledger;
+    lookup silence and any fill race leave the old offer counted as open.
+    """
+
+    global _MIGRATION_CURSOR
+    rows = conn.execute(
+        "SELECT i.order_intent_id,i.requested_size,i.limit_price,"
+        " r.exchange_order_id,COALESCE(r.filled_size,0),"
+        " COALESCE(r.filled_notional_usdc,0)"
+        " FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_order_reconciliations r"
+        " ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.order_action='SELL' AND i.order_intent_id LIKE 'recycle998_%'"
+        " AND i.limit_price<? AND i.state IN ('submitted','reconcile_required','submitting')"
+        " AND (r.state IS NULL OR r.state NOT LIKE 'resolved_%')"
+        " ORDER BY i.created_at,i.order_intent_id",
+        (RECYCLE_PRICE - 1e-7,),
+    ).fetchall()
+    result: dict[str, Any] = {"attempted": 0, "closed": 0, "pending": []}
+    if not rows:
+        return result
+    start = _MIGRATION_CURSOR % len(rows)
+    rows = (rows[start:] + rows[:start])[:max(0, int(max_attempts))]
+    _MIGRATION_CURSOR = start + len(rows)
+    from .resting_ladder_lifecycle import _exchange_view, sync_resting_intent
+
+    for intent_id, requested, price, order_id, filled, filled_notional in rows:
+        entry: dict[str, Any] = {"order_intent_id": str(intent_id)}
+        result["attempted"] += 1
+        if not order_id:
+            entry["reason"] = "exchange_order_id_unknown"
+            result["pending"].append(entry)
+            continue
+        try:
+            cancel = client.cancel_order({
+                "order_id": str(order_id),
+                "idempotency_key": f"{intent_id}:cancel:recycle_0998_v5",
+            })
+            if cancel.get("ok") is not True:
+                entry["reason"] = "cancel_unconfirmed"
+                result["pending"].append(entry)
+                continue
+            view = _exchange_view(client.lookup_exchange_order({"order_id": str(order_id)}))
+            if view.get("status_inferred_from_not_found"):
+                entry["reason"] = "lookup_not_found_after_cancel"
+                result["pending"].append(entry)
+                continue
+            synced = sync_resting_intent(
+                conn,
+                intent={"order_intent_id": str(intent_id), "requested_size": float(requested),
+                        "limit_price": float(price), "exchange_order_id": str(order_id),
+                        "filled_size": float(filled), "filled_notional_usdc": float(filled_notional)},
+                view=view, as_of_utc=now_utc, write=nullcontext,
+            )
+            if synced["state"] in {"cancelled", "expired", "filled"}:
+                result["closed"] += 1
+            else:
+                entry["reason"] = str(synced.get("reason") or synced["state"])
+                result["pending"].append(entry)
+        except Exception as exc:  # The old offer remains reserved on ambiguity.
+            entry["reason"] = f"{type(exc).__name__}:{exc}"[:160]
+            result["pending"].append(entry)
+    return result
 
 
 def plan_certain_win_recycles(
@@ -306,7 +389,7 @@ def plan_certain_win_recycles(
     *,
     now_utc: str,
 ) -> list[dict[str, Any]]:
-    """The 0.99 sells to place: for every held leg of a market still taking
+    """The 0.998 sells to place: for every held leg of a market still taking
     orders, the shares no open sell of this lane already offers and the
     inventory has not seen sold, when that is at least the venue minimum.
 
@@ -403,13 +486,14 @@ def plan_certain_win_recycles(
                 )
             if not timezone_name:
                 continue
-            # The book's tick is the venue's current one (the registry's can
-            # lag a switch to 0.001); 0.99 is on both.
-            tick = leg.get("tick_size") or row.get("tick_size") or DEFAULT_TICK_SIZE
+            # 0.998 is legal only on a current fine-tick official WS book.
+            # Registry metadata can lag a tick_size_change; never guess.
+            tick = leg.get("tick_size")
             try:
                 tick_size = float(tick)
+                limit_price = recycle_price(tick_size)
             except (TypeError, ValueError):
-                tick_size = DEFAULT_TICK_SIZE
+                continue
             plans.append({
                 "schema": SCHEMA,
                 "rule": RULE_VERSION,
@@ -421,9 +505,10 @@ def plan_certain_win_recycles(
                 "event_date": event_date,
                 "settlement_timezone": timezone_name,
                 "bucket": bucket,
+                "side": "YES",
                 "token_id": str(token_id),
                 "shares": uncovered,
-                "limit_price": recycle_price(tick_size),
+                "limit_price": limit_price,
                 "tick_size": tick_size,
                 "min_size": min_size,
                 "best_bid": float(leg.get("best_bid") or 0.0),
@@ -431,6 +516,60 @@ def plan_certain_win_recycles(
                 "offered_before_shares": round(own["offered"], 6),
                 "sold_before_shares": round(own["sold_unseen"], 6),
             })
+    for station_id, event_date, bucket, token_id, timezone_name, held_shares in _held_no_legs(
+        target_conn, oldest_date
+    ):
+        registry = _registry_rows(
+            target_conn, canonical_conn, station_id=station_id, event_date=event_date,
+            outcome=bucket,
+        ).get(bucket) or {}
+        if not registry or (registry.get("accepting_orders") is not None
+                            and int(registry["accepting_orders"] or 0) != 1):
+            continue
+        try:
+            market_no_token = str((json.loads(registry["registry_json"]) or {}).get("no_token") or "")
+        except (TypeError, ValueError):
+            market_no_token = ""
+        if not market_no_token or market_no_token != token_id:
+            continue
+        # This ledger total already subtracts every resolved recycle sale.
+        # Only unresolved offers need to be subtracted again.
+        own = _own_sells(
+            target_conn, station_id=station_id, event_date=event_date,
+            bucket=bucket, counted=set(), side="NO",
+        )
+        if own["failed"] >= MAX_FAILED_SENDS_PER_LEG or own["sends"] >= MAX_SENDS_PER_LEG or own["no_balance"]:
+            continue
+        uncovered = _floor_cents(held_shares - own["offered"] - own["sold_unseen"])
+        try:
+            min_size = float(registry.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
+        except (TypeError, ValueError):
+            continue
+        if uncovered + 1e-9 < max(min_size, 1e-6):
+            continue
+        book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        leg = book["legs"].get(bucket) or {}
+        try:
+            tick_size = float(leg.get("tick_size"))
+            limit_price = recycle_price(tick_size)
+        except (TypeError, ValueError):
+            continue
+        yes_ask = float(leg.get("best_ask") or 1.0)
+        plans.append({
+            "schema": SCHEMA, "rule": RULE_VERSION,
+            "order_intent_id": _intent_id(
+                station_id=station_id, event_date=event_date, bucket=bucket,
+                token_id=token_id, now_utc=now_utc, side="NO",
+            ),
+            "station_id": station_id, "event_date": event_date,
+            "settlement_timezone": timezone_name, "bucket": bucket,
+            "side": "NO", "token_id": token_id, "shares": uncovered,
+            "limit_price": limit_price, "tick_size": tick_size,
+            "min_size": min_size, "best_bid": max(0.0, 1.0 - yes_ask),
+            "held_shares": round(held_shares, 6),
+            "offered_before_shares": round(own["offered"], 6),
+            "sold_before_shares": round(own["sold_unseen"], 6),
+        })
     plans.sort(key=lambda plan: (-plan["best_bid"], plan["station_id"], plan["event_date"], plan["bucket"]))
     return plans
 
@@ -444,24 +583,30 @@ def execute_certain_win_recycles(
     live_submit_authorized: bool,
     max_sends: int = MAX_SENDS_PER_CYCLE,
     position_reader: Callable[[str], Mapping[str, Any]] | None = None,
+    cancellation_client: Any | None = None,
 ) -> dict[str, Any]:
     """Mint the intents, place the resting sells, record what came back --
     through the same sender and ledger path every other order uses."""
 
-    plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
-    read_position = position_reader or default_position_reader
-    receipts: list[dict[str, Any]] = []
+    if (not live_submit_authorized or not exit_orders.live_intent_armed()
+            or (Path(__file__).resolve().parents[1] / "data/live_paused.flag").exists()):
+        return {"schema": "certain_win_recycle_receipt_v1", "rule": RULE_VERSION,
+                "state": "live_execution_paused", "planned": 0, "sent": 0,
+                "submitted": 0, "receipts": []}
     # Charter 197 amendment (user ruling 2026-09-22): no new order while the
-    # egress reading is red.  Held before minting: this lane re-plans every
-    # cycle from what is still unsold, so nothing is lost by waiting, and a
-    # minted-and-held intent per leg per cycle through a fifteen-hour outage
-    # would be thousands of rows saying the same thing.  Every plan it held
-    # is named on the receipt with the reason.  Resting sells are untouched.
+    # egress reading is red.  Held before minting, and before the 0.99
+    # offers are cancelled: this lane re-plans every cycle from what is
+    # still unsold, so nothing is lost by waiting, and a minted-and-held
+    # intent per leg per cycle through a fifteen-hour outage would be
+    # thousands of rows saying the same thing.  Every plan it held is named
+    # on the receipt with the reason.  Resting sells are untouched.
     egress_gate = egress_send_gate()
     if egress_gate.get("hold"):
+        plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
         return {
             "schema": "certain_win_recycle_receipt_v1",
             "rule": RULE_VERSION,
+            "state": "egress_held",
             "planned": len(plans),
             "sent": 0,
             "deferred_to_next_cycle": len(plans),
@@ -475,6 +620,15 @@ def execute_certain_win_recycles(
                 for plan in plans
             ],
         }
+    if cancellation_client is None:
+        from clob_order_service_client import ClobOrderServiceClient
+        cancellation_client = ClobOrderServiceClient(timeout_seconds=TRANSPORT_TIMEOUT_SECONDS)
+    migration = retire_old_price_orders(
+        target_conn, now_utc=now_utc, client=cancellation_client,
+    )
+    plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
+    read_position = position_reader or default_position_reader
+    receipts: list[dict[str, Any]] = []
     submitted = 0
     sent = 0
     for plan in plans:
@@ -516,6 +670,7 @@ def execute_certain_win_recycles(
             intent_body={"schema": SCHEMA, "rule": RULE_VERSION, "strategy_id": STRATEGY_ID,
                          "execution_candidate": "EXIT_GTC_LIMIT", "plan": plan},
             transport=transport, live_submit_authorized=live_submit_authorized,
+            outcome_side=plan.get("side", "YES"),
         )
         if entry.get("exchange_post_started"):
             submitted += 1
@@ -523,6 +678,7 @@ def execute_certain_win_recycles(
     return {
         "schema": "certain_win_recycle_receipt_v1",
         "rule": RULE_VERSION,
+        "old_price_migration": migration,
         "planned": len(plans),
         "sent": sent,
         "deferred_to_next_cycle": max(0, len(plans) - sent),

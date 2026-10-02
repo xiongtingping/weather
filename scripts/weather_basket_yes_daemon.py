@@ -336,19 +336,6 @@ WRITER_YIELD_SEC = 1.0
 # which is why pr12_awc_observation is a backstop and no longer the lane.
 HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # (name, script, interval_sec, timeout_sec)
-    # Fifteen minutes, not five.  An interval is a claim on the SSOT queue --
-    # that domain admits one writer per turn and the ordering ranks by how
-    # many of its own intervals a member is late, so the shortest contract in
-    # the table accumulates priority fastest.  Five minutes was the shortest,
-    # and it belonged to the shadow probe of a concluded maker campaign, which
-    # therefore outbid the identity lane that gates the live stage two turns
-    # to one.  Measured 2026-09-01 08:27: the probe took the SSOT slot at 29.0
-    # rounds late while pr12_awc_observation waited at 5.8.
-    #
-    # What it costs is sample density on ``maker_shadow_order`` -- a table with
-    # 3.99M rows, no retention, and one consumer that reads its whole history
-    # -- and the campaign it serves is closed. Operator ruling 2026-09-01.
-    ("maker_shadow_probe", "scripts/maker_shadow_probe_sweep.sh", 10800.0, 900.0),
     # The backstop, not the lane.  The production cycle now runs this same
     # script itself, before the probability chain that consumes it -- it is
     # the one loop with a heartbeat and a watchdog, it comes round more often
@@ -415,6 +402,8 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         3600.0,
         900.0,
     ),
+    # Delete only one independently verified batch during a hosted writer turn.
+    ("preselection_retention_apply", "scripts/preselection_retention_apply_sweep.sh", 21600.0, 120.0),
     # A corrected report halts its station's P1 until a review receipt exists,
     # and the policy that writes one only ever ran by hand.  Measured
     # 2026-08-26: an on-hour COR for RKPK at 08:00Z left P1 fail-closed on
@@ -654,7 +643,6 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # rows.  Writing them made the probe an SSOT writer and cost production
     # an exclusive turn every three hours for a book nothing downstream
     # waits on.
-    "maker_shadow_probe": "maker_shadow",
     "pr12_awc_observation": "ssot",
     "settlement_truth": "ssot",
     "calibration_refit": "ssot",
@@ -686,6 +674,7 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # Writes station_registry.py and the two SSOT identity rows.
     "station_onboarding": "ssot",
     "market_registry_retention": "ssot",
+    "preselection_retention_apply": "ssot",
 }
 # Domains that name a database hold one sweep at a time; "none" writes nothing
 # and is bounded only by the total cap below.
@@ -935,6 +924,7 @@ def due_hosted_sweeps(
     next_due: "Mapping[str, float]",
     skip_names: "Iterable[str]" = (),
     sweeps: "Sequence[tuple[str, str, float, float]]" = (),
+    priority_intervals: "Mapping[str, float] | None" = None,
 ) -> "list[tuple[float, int, str, str, float]]":
     """Every member past its due time, ranked by intervals late.
 
@@ -949,7 +939,9 @@ def due_hosted_sweeps(
 
     return [
         (
-            (now_mono - next_due[name]) / max(float(interval_sec), 1.0),
+            (now_mono - next_due[name]) / max(
+                float((priority_intervals or {}).get(name, interval_sec)), 1.0
+            ),
             index,
             name,
             script,
@@ -1291,6 +1283,7 @@ HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
     "settled_day_cycle_close": ("sliced", WRITER_LEASE_SEC),
     "pr12_awc_observation": ("one_shot", 120.0),
     "market_registry_retention": ("one_shot", 120.0),
+    "preselection_retention_apply": ("one_shot", 120.0),
     "correction_review_auto_clear": ("one_shot", 60.0),
     # Three fits in one wrapper; measured 7m37s on 2026-09-06, once a day.
     "calibration_refit": ("one_shot", 600.0),
@@ -3829,6 +3822,30 @@ def run_target_production_cycle(
     # never stops the cycle that follows.
     head_receipt: dict[str, Any] | None = None
     head_connection = getattr(worker, "commit_conn", None)
+    # H1 reads the latest P0 marker and the live WS ladder.  Run it before
+    # the long model/compile cycle so a market-only signal already visible at
+    # the cycle boundary does not wait behind that work.  The same SSOT writer
+    # connection is used; no separate writer or resident service is added.
+    tail_short_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_TAIL_SHORT)
+    ):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _tail_short_head_transport,
+            )
+            from bayes_basket_target.tail_short_lane import execute_tail_short
+            tail_short_head_receipt = execute_tail_short(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_tail_short_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            tail_short_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     if (
         PRODUCTION_EXECUTION_MODE == "production_live"
         and head_connection is not None
@@ -3994,15 +4011,39 @@ def run_target_production_cycle(
             "live_submit_authorized": False,
             "orders_submitted": 0,
         }
+    canonical = getattr(worker, "canonical_source_conn", None)
+    # Recheck H1 immediately after this cycle commits a new P0 marker.  Other
+    # strategy lanes and maintenance do not sit between that signal and its
+    # order.  Each pass revalidates the book and the cash before sending.
+    tail_short_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_TAIL_SHORT
+    ):
+        tail_short_receipt = {"state": "lane_paused", "lane": LANE_TAIL_SHORT}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _tail_short_transport,
+            )
+            from bayes_basket_target.tail_short_lane import execute_tail_short
+            tail_short_receipt = execute_tail_short(
+                connection,
+                canonical,
+                transport=_tail_short_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # The recycle lane (operator ruling 2026-08-31; ruled again 2026-09-18:
-    # 「一直挂」, 「改为0.99」): every held leg of a market still trading
-    # carries a resting 0.99 sell, which a standing bid at or above it fills
+    # 「一直挂」, 「改为0.99」; revised 2026-09-29 to 0.998): a held leg
+    # may carry a resting 0.998 sell when the current venue tick permits it,
+    # which a standing bid at or above it fills
     # at once; the freed capital re-enters the budget.  Runs after the main cycle on the same writer
     # connection, and a failure here is reported on the receipt rather than
     # raised -- a take-profit convenience must not be able to stop the lane
     # that produces the positions it profits from.
     recycle_receipt: dict[str, Any] | None = None
-    canonical = getattr(worker, "canonical_source_conn", None)
     if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
         LANE_CERTAIN_WIN_RECYCLE
     ):
@@ -4159,28 +4200,6 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
-    # Charter 234: the 远尾做空线 -- the market's own far tails, bought NO as a
-    # taker on a book at most a minute old.  A failure is a receipt, never a stop.
-    tail_short_receipt: dict[str, Any] | None = None
-    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
-        LANE_TAIL_SHORT
-    ):
-        tail_short_receipt = {"state": "lane_paused", "lane": LANE_TAIL_SHORT}
-    elif PRODUCTION_EXECUTION_MODE == "production_live":
-        try:
-            from bayes_basket_target.exit_orders import (
-                default_transport as _tail_short_transport,
-            )
-            from bayes_basket_target.tail_short_lane import execute_tail_short
-            tail_short_receipt = execute_tail_short(
-                connection,
-                canonical,
-                transport=_tail_short_transport,
-                now_utc=utc_now(),
-                live_submit_authorized=True,
-            )
-        except Exception as exc:
-            tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4191,6 +4210,7 @@ def run_target_production_cycle(
         **({"certain_win_recycle": recycle_receipt} if recycle_receipt else {}),
         **({"mis_bought_leg_exit": exit_receipt} if exit_receipt else {}),
         **({"tiebreak_lane_head": head_receipt} if head_receipt else {}),
+        **({"tail_short_lane_head": tail_short_head_receipt} if tail_short_head_receipt else {}),
         **({"tiebreak_lane": tiebreak_receipt} if tiebreak_receipt else {}),
         **({"p1_tail_lane_head": p1_tail_head_receipt} if p1_tail_head_receipt else {}),
         **({"p1_tail_lane": p1_tail_receipt} if p1_tail_receipt else {}),
@@ -6197,6 +6217,13 @@ def main() -> int:
             max_workers=HOSTED_SWEEP_MAX_CONCURRENCY,
             thread_name_prefix="reported-trajectory-hosted-sweep",
         )
+        # External cold archiving only reads SSOT; it never claims a writer turn.
+        preselection_archive_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="reported-trajectory-preselection-archive",
+        )
+        preselection_archive_future: Any = None
+        next_preselection_archive = time.monotonic() + 60.0
         # The entry/order lane gets its own single-worker pool so that a slow
         # NWS forecast fetch in the window worker can never delay an entry fact
         # that must reach the gateway inside its frozen argmax period.
@@ -6407,6 +6434,13 @@ def main() -> int:
             )
             for index, (name, _, interval_sec, _) in enumerate(HOSTED_SWEEPS)
         }
+        # Pending cold-retention batches have a ten-minute fairness contract;
+        # the normal six-hour interval resumes when the queue drains.
+        hosted_priority_intervals: dict[str, float] = {}
+        if hosted_sweep_boot_outcome(
+            _sweep_clocks.get("preselection_retention_apply")
+        ).get("continue"):
+            hosted_priority_intervals["preselection_retention_apply"] = 600.0
         # Keyed by sweep name so several may be in flight at once, at most one
         # per write domain.  ``running`` stays a list for the same reason.
         hosted_sweep_futures: "dict[str, Any]" = {}
@@ -7091,6 +7125,23 @@ def main() -> int:
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
+            if preselection_archive_future is not None and preselection_archive_future.done():
+                try:
+                    archive_result = preselection_archive_future.result()
+                except Exception as exc:  # noqa: BLE001 -- archive is optional
+                    archive_result = {"state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160]}
+                state["preselection_archive"] = archive_result
+                next_preselection_archive = time.monotonic() + (
+                    30.0 if archive_result.get("continue") else 600.0
+                )
+                preselection_archive_future = None
+            if storage_ok and preselection_archive_future is None and now_mono >= next_preselection_archive:
+                preselection_archive_future = preselection_archive_executor.submit(
+                    run_hosted_sweep,
+                    str(ROOT / "scripts/preselection_archive_sweep.sh"),
+                    240.0,
+                )
+                next_preselection_archive = now_mono + 600.0
             # Hosted sweeps and production cycles still exclude each other:
             # that mutual gate is the whole point of hosting them, so a sweep
             # burst can never again hold the lock into a production write and
@@ -7118,6 +7169,11 @@ def main() -> int:
                                 sweep_result, interval_sec
                             )
                         )
+                if done_name == "preselection_retention_apply":
+                    if sweep_result.get("state") == "ok" and sweep_result.get("continue"):
+                        hosted_priority_intervals[done_name] = 600.0
+                    else:
+                        hosted_priority_intervals.pop(done_name, None)
                 # Only a completed attempt advances the COMPLETION stamp: a
                 # member whose run was killed or failed has not succeeded,
                 # and the record must keep saying so.  But every attempt --
@@ -7217,6 +7273,7 @@ def main() -> int:
                     now_mono=now_mono,
                     next_due=next_hosted_sweep,
                     skip_names=hosted_sweep_futures,
+                    priority_intervals=hosted_priority_intervals,
                 )
                 # One slot now starts every due sweep whose database is free,
                 # not just the most overdue one.  Twelve members become due at
@@ -7387,6 +7444,7 @@ def main() -> int:
             "registry_executor",
             "argmax_executor",
             "sweep_executor",
+            "preselection_archive_executor",
             "argmax_entry_executor",
         ):
             resident_executor = locals().get(executor_name)

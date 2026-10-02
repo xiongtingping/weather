@@ -187,6 +187,39 @@ def test_a_departed_order_the_position_does_not_cover_is_expired_not_cancelled()
     assert "EXPIRED" in events and "CANCEL_ACK" not in events
 
 
+def test_departed_partially_filled_order_closes_when_no_new_shares_are_attributable():
+    conn = _ledger([{"id": "int-a", "ex": "0xaaa", "bucket": "25°C",
+                     "price": 0.191, "size": 6.0}])
+    record_order_event(conn, order_intent_id="int-a", event={
+        "event_type": "PARTIAL_FILL", "exchange_order_id": "0xaaa",
+        "observed_at": "2026-09-07T01:00:00Z", "matched_size": 5.6,
+        "matched_notional_usdc": 5.6 * 0.191, "event_payload": {},
+    })
+    out = lane.reconcile_departed_intent(
+        conn, intent=_intent(conn, "int-a"), client=_Client(live_ids=[], shares=5.6),
+        as_of_utc="2026-09-07T12:00:00Z", write=_nowrite,
+    )
+    assert out["state"] == "departed_partial"
+    assert _state(conn, "int-a") == ("cancelled", "resolved_partial", 5.6)
+
+
+def test_terminal_lookup_cannot_erase_a_previously_recorded_partial_fill():
+    conn = _ledger([{"id": "int-a", "ex": "0xaaa", "bucket": "25°C",
+                     "price": 0.191, "size": 6.0}])
+    record_order_event(conn, order_intent_id="int-a", event={
+        "event_type": "PARTIAL_FILL", "exchange_order_id": "0xaaa",
+        "observed_at": "2026-09-07T01:00:00Z", "matched_size": 5.6,
+        "matched_notional_usdc": 5.6 * 0.191, "event_payload": {},
+    })
+    out = lane.sync_resting_intent(
+        conn, intent=_intent(conn, "int-a"),
+        view={"ok": True, "status": "canceled", "size_matched": 0.0},
+        as_of_utc="2026-09-07T12:00:00Z", write=_nowrite,
+    )
+    assert out["state"] == "cancelled"
+    assert _state(conn, "int-a") == ("cancelled", "resolved_partial", 5.6)
+
+
 def test_only_the_shares_the_ledger_has_not_already_booked_are_claimed():
     """LTAC 25C's shape: six requested, 5.6 already recorded, six held.  The
     order may claim the 0.4 nobody has booked, not the six on the account."""

@@ -4187,6 +4187,7 @@ FAST_LANE_CHECKPOINTS_ENABLED = (
 FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
     os.environ.get("PM_FAST_LANE_CHECKPOINT_INTERVAL_SEC", "").strip() or 45.0
 )
+TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC = 30.0
 #: ... and never more often than the last pass took.  Measured on the first
 #: cycle that ran the re-armed checkpoints (2026-09-20T12:09:53Z): six of
 #: them cost 403s of a 1366s cycle, one of them 242s on its own, against a
@@ -17653,6 +17654,71 @@ class TargetProductionWorker:
             **boundary,
         }
 
+    def _tail_short_check(
+        self, *, reason: str, only_station_day: tuple[str, str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Check H1 at a safe writer checkpoint using current market WS books."""
+
+        connection = getattr(self, "commit_conn", None)
+        if PRODUCTION_EXECUTION_MODE != "production_live" or connection is None:
+            return None
+        if getattr(connection, "in_transaction", False):
+            return None
+        from .strategy_lanes import LANE_TAIL_SHORT, lane_enabled  # noqa: PLC0415
+        if not lane_enabled(LANE_TAIL_SHORT):
+            return None
+        started = time.perf_counter()
+        try:
+            from .exit_orders import default_transport  # noqa: PLC0415
+            from .tail_short_lane import execute_tail_short  # noqa: PLC0415
+            receipt = execute_tail_short(
+                connection,
+                getattr(self, "canonical_source_conn", None),
+                transport=default_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+                ws_manifest_path=getattr(self, "market_manifest_path", None),
+                only_station_day=only_station_day,
+            )
+        except Exception as exc:  # noqa: BLE001 -- trading failure stays visible
+            receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
+        receipts = getattr(self, "_tail_short_receipts", None)
+        if not isinstance(receipts, list):
+            receipts = []
+            self._tail_short_receipts = receipts
+        receipts.append({"reason": reason, "station_day": only_station_day, **receipt})
+        self._add_span(
+            "tail_short_after_p0_decision" if only_station_day else "tail_short_market_checkpoint",
+            (time.perf_counter() - started) * 1000.0,
+            label=f"{only_station_day[0]}|{only_station_day[1]}" if only_station_day else reason,
+        )
+        return receipt
+
+    def _tail_short_after_p0_decision(
+        self, *, station_id: str, event_date: str,
+    ) -> dict[str, Any] | None:
+        """Check H1 immediately after this station-day's P0 decision commits."""
+
+        return self._tail_short_check(
+            reason="p0_decision_committed",
+            only_station_day=(station_id, event_date),
+        )
+
+    def _tail_short_market_if_due(self, label: str) -> dict[str, Any] | None:
+        """Recheck changing market books during a long probability cycle."""
+
+        if PRODUCTION_EXECUTION_MODE != "production_live":
+            return None
+        connection = getattr(self, "commit_conn", None)
+        if connection is None or getattr(connection, "in_transaction", False):
+            return None
+        now = time.monotonic()
+        last = getattr(self, "_last_tail_short_market_check_mono", None)
+        if last is not None and now - last < TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC:
+            return None
+        self._last_tail_short_market_check_mono = now
+        return self._tail_short_check(reason=f"checkpoint:{label}")
+
     def _p1_tail_after_p1(self, reason: str) -> dict[str, Any] | None:
         """Charter 166 (2026-09-21 ruling 「把车道挂到 P1 刚写完那一刻」).
 
@@ -18041,6 +18107,7 @@ class TargetProductionWorker:
         raises.  Before the chain that means P1 alone.
         """
 
+        self._tail_short_market_if_due(label)
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
         spent = float(getattr(self, "_fast_lane_cycle_spent_sec", 0.0) or 0.0)
@@ -20267,6 +20334,7 @@ class TargetProductionWorker:
         self._early_p0m_this_cycle = None
         self._fast_lane_receipts = []
         self._p1_tail_receipts = []
+        self._tail_short_receipts = []
         self._probability_chain_ran = False
         early_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
@@ -21921,6 +21989,14 @@ class TargetProductionWorker:
                         plan=candidate,
                         decided_at_utc=now,
                     )
+                    probability = candidate.get("probability_envelope")
+                    if (
+                        isinstance(probability, Mapping)
+                        and str(probability.get("stage") or "").upper() == "P0"
+                    ):
+                        self._tail_short_after_p0_decision(
+                            station_id=station, event_date=day,
+                        )
                     results.append(candidate)
                 except Exception as exc:
                     reason = f"{type(exc).__name__}:{exc}"
@@ -22099,6 +22175,10 @@ class TargetProductionWorker:
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
+                "tail_short_after_p0_decision": [
+                    {k: v for k, v in receipt.items() if k not in {"receipts", "settings"}}
+                    for receipt in self._tail_short_receipts
+                ],
                 "listing_scope_turn": serve_listing,
                 "account_equity": account_equity_receipt,
                 "intent_reconcile": intent_reconcile,

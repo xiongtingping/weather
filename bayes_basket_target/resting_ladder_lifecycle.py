@@ -494,7 +494,9 @@ def sync_resting_intent(
     intent_id = str(intent["order_intent_id"])
     requested = float(intent["requested_size"])
     prior = float(intent["filled_size"])
-    cumulative = min(float(view["size_matched"]), requested)
+    # A later order lookup can omit or reset size_matched after cancellation;
+    # the ledger's already confirmed fill remains a lower bound.
+    cumulative = max(prior, min(float(view["size_matched"]), requested))
     increment = max(0.0, cumulative - prior)
     price = float(intent["limit_price"])
     status = str(view["status"])
@@ -755,7 +757,20 @@ def reconcile_departed_intent(
                 "matched_notional_usdc": 0.0,
                 "event_payload": evidence,
             })
-        return {**out, "state": "departed_unfilled", "reason": "no_unattributed_shares"}
+            if EPS < prior < requested - EPS:
+                # The prior fill is already booked.  EXPIRED confirms the
+                # remaining order is absent, so close that known partial;
+                # otherwise EXPIRED leaves it unknown and the next sweep
+                # writes the same event forever.
+                resolve_cancelled_after_partial_fill(
+                    conn,
+                    order_intent_id=str(intent["order_intent_id"]),
+                    filled_size=prior,
+                    filled_notional_usdc=float(intent["filled_notional_usdc"]),
+                    resolved_at_utc=as_of_utc,
+                )
+        return {**out, "state": "departed_partial" if prior > EPS else "departed_unfilled",
+                "reason": "no_unattributed_shares"}
 
     cumulative = prior + take
     with write():

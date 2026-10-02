@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+import gzip
+import hashlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -124,6 +127,7 @@ def test_apply_retires_only_unguarded_rows_and_keeps_the_trigger(
     assert left == {"old_named", "old_live_day", "new"}
     with pytest.raises(sqlite3.DatabaseError, match="append_only"):
         conn.execute("DELETE FROM basket_probability_envelope WHERE envelope_id='new'")
+    conn.rollback()
     manifest = (tmp_path / "x" / "manifest.jsonl").read_text().splitlines()
     assert len(manifest) == 1 and '"rows": 1' in manifest[0]
 
@@ -140,3 +144,227 @@ def test_restore_puts_rows_back_verbatim(store: Path, tmp_path: Path, monkeypatc
         "SELECT rowid,* FROM basket_probability_envelope ORDER BY rowid"
     ).fetchall()
     assert after == before
+
+
+def test_explicit_older_cutoff_keeps_live_day_and_can_restore(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _only_envelopes(monkeypatch)
+    _plenty_of_disk(monkeypatch)
+    export = tmp_path / "later"
+    retire.main(["--db", str(store), "--export-dir", str(export),
+                 "--cutoff", "2026-09-07", "--apply"])
+    conn = sqlite3.connect(store)
+    left = {r[0] for r in conn.execute("SELECT envelope_id FROM basket_probability_envelope")}
+    assert left == {"old_named", "old_live_day"}
+    retire.main(["--db", str(store), "--export-dir", str(export), "--restore"])
+    assert conn.execute("SELECT COUNT(*) FROM basket_probability_envelope").fetchone()[0] == 4
+
+
+def test_export_readback_and_same_device_guard(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _only_envelopes(monkeypatch)
+    payload = b"a\n" * 1000
+    archive = tmp_path / "member.gz"
+    with gzip.open(archive, "wb") as stream:
+        stream.write(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    retire._verify_export_member(archive, 0, digest, len(payload))
+    with pytest.raises(RuntimeError, match="verification_failed"):
+        retire._verify_export_member(archive, 0, "0" * 64, len(payload))
+    with pytest.raises(SystemExit, match="ssot_export_must_be_on_another_device"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "same"),
+                     "--apply", "--require-external"])
+
+
+def test_cutoff_refuses_days_inside_the_seven_day_boundary(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _only_envelopes(monkeypatch)
+    too_recent = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
+    with pytest.raises(SystemExit, match="cutoff_outside_retired_closed_day_window"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "recent"),
+                     "--cutoff", too_recent, "--apply"])
+    assert sqlite3.connect(store).execute(
+        "SELECT COUNT(*) FROM basket_probability_envelope"
+    ).fetchone()[0] == 4
+
+
+def test_bounded_batches_resume_across_cutoff_and_preserve_guards(
+    store: Path, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _only_envelopes(monkeypatch)
+    _plenty_of_disk(monkeypatch)
+    conn = sqlite3.connect(store)
+    for i in range(3):
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?)",
+            (f"extra_{i}", "KLGA", "2026-09-01", "2026-09-01T11:00:00Z", "{}", b"x"),
+        )
+    conn.commit()
+    export = tmp_path / "bounded"
+    args = ["--db", str(store), "--export-dir", str(export), "--cutoff",
+            "2026-09-05", "--batch-bytes", "1", "--max-batches", "1", "--apply"]
+    for expected in (1, 2, 3, 4):
+        retire.main(args)
+        assert '"state": "partial"' in capsys.readouterr().out
+        assert conn.execute(
+            "SELECT COUNT(*) FROM basket_probability_envelope"
+        ).fetchone()[0] == 7 - expected
+    retire.main(args)
+    assert '"state": "applied"' in capsys.readouterr().out
+    assert {row[0] for row in conn.execute(
+        "SELECT envelope_id FROM basket_probability_envelope"
+    )} == {"old_named", "old_live_day", "new"}
+    with pytest.raises(sqlite3.DatabaseError, match="append_only"):
+        conn.execute("DELETE FROM basket_probability_envelope WHERE envelope_id='new'")
+    assert len((export / "manifest.jsonl").read_text().splitlines()) == 4
+    conn.rollback()
+    retire.main(["--db", str(store), "--export-dir", str(export), "--restore"])
+    assert conn.execute("SELECT COUNT(*) FROM basket_probability_envelope").fetchone()[0] == 7
+
+
+def test_exact_plan_references_release_only_unread_plans(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _plenty_of_disk(monkeypatch)
+    monkeypatch.setattr(retire, "_require_external_export", lambda *_: None)
+    monkeypatch.setattr(retire, "TABLES", ((
+        "basket_p0_preselection_plan", "decision_at_utc", (), "live",
+    ),))
+    conn = sqlite3.connect(store)
+    conn.execute("ALTER TABLE auto_trade_decisions ADD COLUMN details_json TEXT")
+    conn.execute(
+        "UPDATE auto_trade_decisions SET details_json=? WHERE decision_id='d_live'",
+        ('{"production_plan_sha256":"sha_named"}',),
+    )
+    conn.execute(
+        "INSERT INTO auto_trade_decisions(decision_id,station_id,event_date,details_json)"
+        " VALUES ('d_id','EGLC','2026-09-03',?)",
+        ('{"preselection_id":"id_named"}',),
+    )
+    conn.execute(
+        "CREATE TABLE basket_p0_preselection_plan (preselection_id TEXT,"
+        " station_id TEXT,event_date TEXT,decision_at_utc TEXT,plan_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TRIGGER plan_no_delete BEFORE DELETE ON basket_p0_preselection_plan"
+        " BEGIN SELECT RAISE(ABORT,'append_only'); END"
+    )
+    for plan_id, day, sha, body in (
+        ("hash_named", "2026-09-03", "sha_named", None),
+        ("id_named", "2026-09-03", "sha_id", None),
+        ("free", "2026-09-03", "sha_free", None),
+        ("unrecognized", "2026-09-03", None, "{}"),
+        ("latest", "2026-09-06", "sha_latest", None),
+    ):
+        conn.execute(
+            "INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?,?)",
+            (plan_id, "EGLC", day, day + "T10:00:00Z",
+             body or '{"compiled_plan":{"production_plan_sha256":"' + sha + '"}}'),
+        )
+    conn.execute(
+        "INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?,?)",
+        ("old_latest", "NZWN", "2026-09-01", "2026-09-01T10:00:00Z",
+         '{"compiled_plan":{"production_plan_sha256":"sha_old_latest"}}'),
+    )
+    conn.commit()
+    export = tmp_path / "exact"
+    args = ["--db", str(store), "--export-dir", str(export), "--apply",
+            "--exact-preselection-refs", "--cutoff", "2026-09-05"]
+    retire.main(args)
+    assert {r[0] for r in conn.execute(
+        "SELECT preselection_id FROM basket_p0_preselection_plan"
+    )} == {"hash_named", "id_named", "unrecognized", "latest", "old_latest"}
+    retire.main(args)
+    assert len((export / "manifest.jsonl").read_text().splitlines()) == 1
+    with pytest.raises(sqlite3.DatabaseError, match="append_only"):
+        conn.execute("DELETE FROM basket_p0_preselection_plan WHERE preselection_id='latest'")
+    conn.rollback()
+    retire.main(["--db", str(store), "--export-dir", str(export), "--restore"])
+    assert conn.execute("SELECT COUNT(*) FROM basket_p0_preselection_plan").fetchone()[0] == 6
+
+
+def test_exact_reference_audit_fails_closed_on_unreadable_decision(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(retire, "_require_external_export", lambda *_: None)
+    monkeypatch.setattr(retire, "TABLES", ((
+        "basket_p0_preselection_plan", "decision_at_utc", (), "live",
+    ),))
+    conn = sqlite3.connect(store)
+    conn.execute("ALTER TABLE auto_trade_decisions ADD COLUMN details_json TEXT")
+    conn.execute("UPDATE auto_trade_decisions SET details_json='not json'")
+    conn.execute("CREATE TABLE basket_p0_preselection_plan ("
+                 "preselection_id TEXT,station_id TEXT,event_date TEXT,"
+                 "decision_at_utc TEXT,plan_json TEXT)")
+    conn.commit()
+    with pytest.raises(RuntimeError, match="preselection_decision_details_unreadable"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "invalid"),
+                     "--exact-preselection-refs", "--apply"])
+    assert conn.execute("SELECT COUNT(*) FROM basket_p0_preselection_plan").fetchone()[0] == 0
+
+
+def test_new_decision_before_exact_delete_aborts_batch(
+    store: Path, tmp_path: Path, monkeypatch
+) -> None:
+    _plenty_of_disk(monkeypatch)
+    monkeypatch.setattr(retire, "_require_external_export", lambda *_: None)
+    monkeypatch.setattr(retire, "TABLES", ((
+        "basket_p0_preselection_plan", "decision_at_utc", (), "live",
+    ),))
+    conn = sqlite3.connect(store)
+    conn.execute("ALTER TABLE auto_trade_decisions ADD COLUMN details_json TEXT")
+    conn.execute("CREATE TABLE basket_p0_preselection_plan ("
+                 "preselection_id TEXT,station_id TEXT,event_date TEXT,"
+                 "decision_at_utc TEXT,plan_json TEXT)")
+    for plan_id, day in (("old", "2026-09-01"), ("new", "2026-09-06")):
+        conn.execute(
+            "INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?,?)",
+            (plan_id, "KLGA", day, day + "T10:00:00Z",
+             '{"compiled_plan":{"production_plan_sha256":"sha_' + plan_id + '"}}'),
+        )
+    conn.commit()
+    original = retire._preselection_decision_references
+
+    def _concurrent_decision(reader):
+        refs = original(reader)
+        writer = sqlite3.connect(store)
+        writer.execute(
+            "INSERT INTO auto_trade_decisions(decision_id,station_id,event_date,details_json)"
+            " VALUES ('late','KLGA','2026-09-01',?)",
+            ('{"production_plan_sha256":"sha_old"}',),
+        )
+        writer.commit()
+        writer.close()
+        return refs
+
+    monkeypatch.setattr(retire, "_preselection_decision_references", _concurrent_decision)
+    with pytest.raises(RuntimeError, match="preselection_decisions_changed_before_delete"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "race"),
+                     "--exact-preselection-refs", "--apply"])
+    assert conn.execute("SELECT COUNT(*) FROM basket_p0_preselection_plan").fetchone()[0] == 2
+
+
+def test_exact_reference_scan_limit_fails_closed(store: Path, tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(retire, "_require_external_export", lambda *_: None)
+    monkeypatch.setattr(retire, "PRESELECTION_REF_MAX_ROWS", 0)
+    monkeypatch.setattr(retire, "TABLES", ((
+        "basket_p0_preselection_plan", "decision_at_utc", (), "live",
+    ),))
+    conn = sqlite3.connect(store)
+    conn.execute("ALTER TABLE auto_trade_decisions ADD COLUMN details_json TEXT")
+    conn.execute("CREATE TABLE basket_p0_preselection_plan ("
+                 "preselection_id TEXT,station_id TEXT,event_date TEXT,"
+                 "decision_at_utc TEXT,plan_json TEXT)")
+    conn.commit()
+    with pytest.raises(RuntimeError, match="preselection_reference_scan_resource_limit"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "bounded"),
+                     "--exact-preselection-refs", "--apply"])
+
+
+def test_exact_mode_requires_external_archive(store: Path, tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="ssot_export_must_be_on_another_device"):
+        retire.main(["--db", str(store), "--export-dir", str(tmp_path / "same_device"),
+                     "--exact-preselection-refs", "--apply"])

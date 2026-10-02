@@ -1,9 +1,6 @@
-"""The recycle lane (operator ruling 2026-08-31; repaired 2026-09-17 under
-"打通0.998卖单"; ruled again 2026-09-18: 「直接挂单卖出啊，和收盘没关系吧」,
-「一直挂」, 「改为0.99」): every held leg of a market still taking orders
-carries a resting GTC sell at 0.99 for the shares not already offered or
-sold, through the shared exit sender -- and a resting one shuts neither its
-token nor its station-day's quotes.
+"""The recycle lane: held YES/NO legs sell at exactly 0.998 on a fresh fine
+tick, after any older 0.99 offer is confirmed absent. A resting offer shuts
+neither its token nor its station-day's quotes.
 """
 
 from __future__ import annotations
@@ -80,7 +77,7 @@ def _registry(conn: sqlite3.Connection, table: str) -> None:
     )
 
 
-def _registry_row(conn, table, *, bucket, accepting=1, refreshed_at="2026-09-16T09:00:00Z", tick=0.01, min_size=5.0):
+def _registry_row(conn, table, *, bucket, accepting=1, refreshed_at="2026-09-16T09:00:00Z", tick=0.001, min_size=5.0):
     conn.execute(
         f"INSERT INTO {table} VALUES(?,?,?,?,?,?,?)",
         (ST, ED, bucket, TOKENS[bucket], accepting,
@@ -98,7 +95,7 @@ def _inventory(conn, holdings: dict, *, observed_at="2026-09-16T09:00:00Z", key=
     )
 
 
-def _book(conn, *, observed_at="2026-09-16T09:25:00.000Z", bids=None, tick=0.001, sequence=1):
+def _book(conn, *, observed_at="2026-09-16T09:29:30.000Z", bids=None, tick=0.001, sequence=1):
     """One committed station-day book; ``bids`` maps bucket -> [(price, shares)]."""
 
     conn.execute(
@@ -130,6 +127,7 @@ def _store(*, target_registry: bool = True, holdings: dict | None = None) -> tup
     _registry(conn, "basket_target_market_registry")
     _bought(conn, holdings)
     _inventory(conn, holdings)
+    _book(conn, observed_at="2026-09-16T09:29:00.000Z", sequence=0)
     if target_registry:
         for bucket in TOKENS:
             _registry_row(conn, "basket_target_market_registry", bucket=bucket)
@@ -159,28 +157,155 @@ def _matched(path, payload):
             "exchange_response": {"takingAmount": round(payload["size"] * 0.999, 6)}}
 
 
-def test_every_held_leg_is_offered_at_099_while_its_day_is_still_open() -> None:
+def test_every_eligible_held_leg_is_offered_at_0998_while_its_day_is_open() -> None:
     conn, canonical = _store()
     _book(conn)
     plans = _plans(conn, canonical)
-    assert lane.RULE_VERSION == "certain_win_recycle_resting_099_v4"
+    assert lane.RULE_VERSION == "certain_win_recycle_resting_0998_v5"
     assert [(p["bucket"], p["shares"], p["limit_price"], p["token_id"], p["best_bid"]) for p in plans] == [
-        ("25°C", 6.0, 0.99, "t25", 0.999),  # the leg the market bids highest goes first
-        ("26°C", 5.0, 0.99, "t26", 0.001),
+        ("25°C", 6.0, 0.998, "t25", 0.999),  # the leg the market bids highest goes first
+        ("26°C", 5.0, 0.998, "t26", 0.001),
     ]
     assert all(p["settlement_timezone"] == TZ and p["order_intent_id"].startswith("recycle998_") for p in plans)
-    # No book at all: still offered, the timezone from the canonical bounds.
+    # No current official tick: do not guess from the registry.
     conn2, canonical2 = _store()
-    assert [(p["bucket"], p["best_bid"], p["settlement_timezone"]) for p in _plans(conn2, canonical2)] == [
-        ("25°C", 0.0, TZ), ("26°C", 0.0, TZ),
+    conn2.execute("DELETE FROM basket_official_ws_snapshot")
+    assert _plans(conn2, canonical2) == []
+
+
+def test_no_holding_recycles_its_own_token_once_and_never_the_yes_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store(holdings={})
+    conn.execute(
+        "UPDATE basket_target_market_registry SET registry_json=? WHERE outcome='25°C'",
+        (json.dumps({"no_token": "no_t25", "order_min_size": 5,
+                     "order_price_min_tick_size": 0.01}),),
+    )
+    _insert(conn, "basket_target_execution_cycles", {
+        "cycle_id": "no_cycle", "plan_id": "no_plan", "station_id": ST,
+        "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket",
+        "requested_reserve_usdc": 5.76, "state": "settled", "created_at": NOW,
+        "updated_at": NOW,
+    })
+    _insert(conn, "basket_target_order_intents", {
+        "order_intent_id": "tail_short_buy_no", "decision_id": "tail_short_decision_test",
+        "cycle_id": "no_cycle", "bucket": "25°C", "token_id": "no_t25",
+        "side": "NO", "order_action": "BUY", "limit_price": 0.96,
+        "requested_size": 6.0, "requested_notional_usdc": 5.76,
+        "state": "submitted", "live_submit_authorized": 1,
+        "idempotency_key": "tail_short_buy_no", "intent_json": "{}", "created_at": NOW,
+    })
+    record_order_event(conn, order_intent_id="tail_short_buy_no", event={
+        "event_type": "FILL", "exchange_order_id": "0xno_buy", "observed_at": NOW,
+        "matched_size": 6.0, "matched_notional_usdc": 5.76, "event_payload": {},
+    })
+    conn.execute("UPDATE basket_target_market_registry SET registry_json=? WHERE outcome='25°C'",
+                 (json.dumps({"no_token": "a_different_token", "order_min_size": 5}),))
+    assert _plans(conn, canonical) == []  # no guessed token from a mismatched registry
+    conn.execute("UPDATE basket_target_market_registry SET registry_json=? WHERE outcome='25°C'",
+                 (json.dumps({"no_token": "no_t25", "order_min_size": 5,
+                              "order_price_min_tick_size": 0.01}),))
+    plans = _plans(conn, canonical)
+    assert [(p["side"], p["token_id"], p["shares"], p["limit_price"]) for p in plans] == [
+        ("NO", "no_t25", 6.0, 0.998),
     ]
+    _armed(monkeypatch)
+    calls = []
+    lane.execute_certain_win_recycles(
+        conn, canonical, now_utc=NOW, live_submit_authorized=True,
+        position_reader=lambda _token: {"ok": True, "shares": 6.0},
+        transport=lambda _path, payload: calls.append(payload) or _resting(_path, payload),
+    )
+    assert len(calls) == 1
+    assert calls[0]["token_id"] == "no_t25"
+    assert calls[0]["outcome_side"] == "NO"
+    assert calls[0]["side"] == "SELL"
+    assert conn.execute(
+        "SELECT side FROM basket_target_order_intents WHERE order_intent_id LIKE 'recycle998_%'"
+    ).fetchone()[0] == "NO"
+    assert _plans(conn, canonical) == []  # the standing sell already offers all six
+    conn.execute("UPDATE basket_target_order_reconciliations SET filled_size=2,"
+                 " filled_notional_usdc=1.98,state='pending' WHERE order_intent_id LIKE 'recycle998_%'")
+    assert _plans(conn, canonical) == []  # unresolved partial: two sold, four still offered
 
 
-def test_099_is_a_price_on_both_of_the_venues_ticks() -> None:
-    assert lane.recycle_price(0.001) == 0.99
-    assert lane.recycle_price(0.01) == 0.99
-    assert lane.recycle_price(None) == 0.99
-    assert lane.recycle_price(0.1) == 0.9
+def test_0998_requires_an_exact_fine_tick() -> None:
+    assert lane.recycle_price(0.001) == 0.998
+    for tick in (0.01, 0.1, None, 0, float("nan")):
+        with pytest.raises(ValueError):
+            lane.recycle_price(tick)
+    conn, canonical = _store()
+    conn.execute("DELETE FROM basket_official_ws_snapshot")
+    _book(conn, tick=0.01)
+    assert _plans(conn, canonical) == []
+
+
+@pytest.mark.parametrize("status,matched,expected,remaining", [
+    ("canceled", 0.0, "cancelled", 10.0),
+    ("canceled", 2.0, "cancelled", 8.0),
+    ("live", 0.0, "submitted", 0.0),
+    ("unknown", 0.0, "submitted", 0.0),
+])
+def test_old_099_offer_is_released_only_after_exchange_confirmation(
+    monkeypatch: pytest.MonkeyPatch, status: str, matched: float,
+    expected: str, remaining: float,
+) -> None:
+    conn, canonical = _store(holdings={"25°C": 10.0})
+    _armed(monkeypatch)
+    exit_orders.send_exit_sell(
+        conn, lane="recycle998", intent_id="recycle998_old_price_test",
+        station_id=ST, event_date=ED, settlement_timezone=TZ,
+        bucket="25°C", token_id="t25", price=0.99, shares=10.0,
+        order_type="GTC", post_only=False, tick_size=0.01,
+        intent_body={"rule": "certain_win_recycle_resting_099_v4"},
+        transport=lambda _path, _payload: {"ok": True, "orderID": "0xold", "status": "live"},
+        live_submit_authorized=True,
+    )
+
+    class Client:
+        def cancel_order(self, _payload):
+            return {"ok": True}
+
+        def lookup_exchange_order(self, _payload):
+            return {"ok": True, "status": status,
+                    "response": {"id": "0xold", "status": status,
+                                 "size_matched": matched}}
+
+    receipt = lane.retire_old_price_orders(conn, now_utc=NOW, client=Client())
+    state = conn.execute(
+        "SELECT state FROM basket_target_order_intents WHERE order_intent_id='recycle998_old_price_test'"
+    ).fetchone()[0]
+    assert state == expected
+    assert receipt["closed"] == (1 if expected == "cancelled" else 0)
+    assert sum(p["shares"] for p in _plans(conn, canonical)) == pytest.approx(remaining)
+
+
+def test_old_price_cancel_reply_without_terminal_lookup_remains_reserved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn, canonical = _store(holdings={"25°C": 10.0})
+    _armed(monkeypatch)
+    exit_orders.send_exit_sell(
+        conn, lane="recycle998", intent_id="recycle998_unknown_cancel_test",
+        station_id=ST, event_date=ED, settlement_timezone=TZ,
+        bucket="25°C", token_id="t25", price=0.99, shares=10.0,
+        order_type="GTC", post_only=False, tick_size=0.01,
+        intent_body={"rule": "certain_win_recycle_resting_099_v4"},
+        transport=lambda _path, _payload: {"ok": True, "orderID": "0xunknown", "status": "live"},
+        live_submit_authorized=True,
+    )
+
+    class Client:
+        def cancel_order(self, _payload):
+            return {"ok": True}
+
+        def lookup_exchange_order(self, _payload):
+            return {"ok": True, "status": "cancelled",
+                    "status_inferred_from_not_found": True}
+
+    receipt = lane.retire_old_price_orders(conn, now_utc=NOW, client=Client())
+    assert receipt["closed"] == 0
+    assert receipt["pending"][0]["reason"] == "lookup_not_found_after_cancel"
+    assert _plans(conn, canonical) == []
 
 
 def test_a_market_the_venue_closed_is_not_offered_and_the_newest_registry_row_decides() -> None:
@@ -195,7 +320,7 @@ def test_a_market_the_venue_closed_is_not_offered_and_the_newest_registry_row_de
 def test_the_token_survives_the_target_registry_being_pruned() -> None:
     conn, canonical = _store(target_registry=False)
     assert [(p["bucket"], p["token_id"], p["limit_price"]) for p in _plans(conn, canonical)] == [
-        ("25°C", "t25", 0.99), ("26°C", "t26", 0.99),
+        ("25°C", "t25", 0.998), ("26°C", "t26", 0.998),
     ]
 
 
@@ -215,7 +340,7 @@ def test_the_holdings_key_is_filled_by_bucket_and_the_old_name_still_reads() -> 
     assert [(p["bucket"], p["shares"]) for p in _plans(conn, canonical)] == [("25°C", 12.46)]
 
 
-def test_the_sell_is_a_gtc_limit_at_099_not_post_only_and_a_standing_bid_fills_it(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_sell_is_a_gtc_limit_at_0998_not_post_only_and_a_standing_bid_fills_it(monkeypatch: pytest.MonkeyPatch) -> None:
     conn, canonical = _store(holdings={"25°C": 6.0})
     _book(conn, bids={"25°C": [(0.999, 400.0)]})
     _armed(monkeypatch)
@@ -228,7 +353,7 @@ def test_the_sell_is_a_gtc_limit_at_099_not_post_only_and_a_standing_bid_fills_i
     assert sent == [{
         "strategy_id": "weather_basket_yes_v2", "order_intent_id": sent[0]["order_intent_id"],
         "idempotency_key": sent[0]["order_intent_id"], "token_id": "t25", "outcome_side": "YES",
-        "side": "SELL", "price": 0.99, "size": 6.0, "order_type": "GTC", "post_only": False,
+        "side": "SELL", "price": 0.998, "size": 6.0, "order_type": "GTC", "post_only": False,
         "tick_size": 0.001,
     }]
     row = conn.execute(
@@ -257,6 +382,7 @@ def test_a_resting_sell_covers_its_shares_and_new_shares_get_their_own(monkeypat
     # Six more bought: those six are offered by a second sell, and the first
     # one resting on the same token does not shut the sender's gate.
     _inventory(conn, {"25°C": 12.0}, observed_at="2026-09-16T09:35:00Z")
+    _book(conn, observed_at="2026-09-16T09:39:30.000Z", sequence=2)
     plans = _plans(conn, canonical, now="2026-09-16T09:40:00.000Z")
     assert [(p["bucket"], p["shares"], p["offered_before_shares"]) for p in plans] == [("25°C", 6.0, 6.0)]
     _armed(monkeypatch, at="2026-09-16T09:40:10.000Z")
@@ -297,6 +423,7 @@ def test_a_refused_send_is_retried_then_left_and_a_missing_balance_stops_it_at_o
     refuse = lambda path, payload: (calls.append(payload), {"ok": False, "error": "service_not_ready"})[1]
     for minute in range(lane.MAX_FAILED_SENDS_PER_LEG + 2):
         _armed(monkeypatch, at=f"2026-09-16T09:{30 + minute:02d}:10.000Z")
+        _book(conn, observed_at=f"2026-09-16T09:{30 + minute:02d}:00.000Z", sequence=minute + 2)
         lane.execute_certain_win_recycles(
             conn, canonical, now_utc=f"2026-09-16T09:{30 + minute:02d}:00.000Z",
             live_submit_authorized=True, transport=refuse,
@@ -310,6 +437,7 @@ def test_a_refused_send_is_retried_then_left_and_a_missing_balance_stops_it_at_o
     })[1]
     for minute in range(3):
         _armed(monkeypatch, at=f"2026-09-16T09:{30 + minute:02d}:10.000Z")
+        _book(conn2, observed_at=f"2026-09-16T09:{30 + minute:02d}:00.000Z", sequence=minute + 2)
         lane.execute_certain_win_recycles(
             conn2, canonical2, now_utc=f"2026-09-16T09:{30 + minute:02d}:00.000Z",
             live_submit_authorized=True, transport=no_balance,
@@ -334,9 +462,11 @@ def test_disarmed_never_reaches_the_exchange(monkeypatch: pytest.MonkeyPatch) ->
     conn, canonical = _store(holdings={"25°C": 6.0})
     monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: False)
     calls: list = []
+    before = conn.total_changes
     receipt = lane.execute_certain_win_recycles(conn, canonical, transport=lambda p, payload: calls.append(payload), now_utc=NOW, live_submit_authorized=True)
     assert calls == [] and receipt["submitted"] == 0
-    assert receipt["receipts"][0]["reason"] == "live_intent_disarmed"
+    assert receipt["state"] == "live_execution_paused" and receipt["receipts"] == []
+    assert conn.total_changes == before
 
 
 def test_a_resting_recycle_sell_does_not_shut_its_token_but_an_unknown_one_does(monkeypatch: pytest.MonkeyPatch) -> None:

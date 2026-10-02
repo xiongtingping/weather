@@ -26,8 +26,8 @@ lives in the far tails the market itself puts there.
   ``min_rungs_from_mode`` rungs from the market's modal bucket in ladder
   order, and a YES best bid >= ``min_yes_bid``;
 * **order**: FOK buy of the NO token at the NO ask, 1 - YES best bid, sized
-  to ``stake_usdc`` and to the depth resting at that bid (the P1 tail lane's
-  headroom), at least the venue minimum;
+  up to ``stake_usdc`` and capped by the depth resting at that bid (the P1
+  tail lane's headroom), at least the venue minimum;
 * **limits**: a bucket is done once any send fills, and gets at most
   ``max_attempts_per_bucket`` sends that reached the venue and
   ``max_orders_per_bucket`` orders minted in all (a send that never reached
@@ -259,7 +259,8 @@ def no_take(
 
 
 def station_days_in_window(
-    conn: sqlite3.Connection, *, now_utc: str, lookback_days: int, stages: frozenset[str]
+    conn: sqlite3.Connection, *, now_utc: str, lookback_days: int, stages: frozenset[str],
+    only_station_day: tuple[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Station-days whose newest decision is in an opening stage."""
 
@@ -268,15 +269,17 @@ def station_days_in_window(
     ).fetchone() is None:
         return []
     floor = (_utc(now_utc) - timedelta(days=int(lookback_days))).date().isoformat()
+    restriction = " AND station_id=? AND event_date=?" if only_station_day else ""
     rows = conn.execute(
         "SELECT f.station_id, f.event_date, f.stage, f.settlement_timezone"
         " FROM basket_policy_training_fact f"
         " JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS newest"
-        "       FROM basket_policy_training_fact WHERE event_date >= ?"
+        "       FROM basket_policy_training_fact WHERE event_date >= ?" + restriction +
         "       GROUP BY station_id, event_date) n"
         "   ON n.station_id = f.station_id AND n.event_date = f.event_date"
-        "  AND n.newest = f.decision_at_utc",
-        (floor,),
+        "  AND n.newest = f.decision_at_utc"
+        " ORDER BY f.decision_at_utc DESC, f.created_at_utc DESC, f.rowid DESC",
+        (floor, *only_station_day) if only_station_day else (floor,),
     ).fetchall()
     seen: dict[tuple[str, str], dict[str, str]] = {}
     for station, day, stage, tz in rows:
@@ -314,7 +317,14 @@ def _book(
 
     seen = False
     if live:
-        book = live_ws_snapshot(conn, root, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        # H1 trades future listing days (>36 h to settlement).  The default
+        # started-day view excludes exactly those scopes, leaving this lane
+        # waiting for the slower committed snapshot even with a fresh WS
+        # publisher ladder in hand.
+        book = live_ws_snapshot(
+            conn, root, station_id=station_id, event_date=event_date,
+            now_utc=now_utc, include_listing_days=True,
+        )
         if book is not None:
             seen = True
             taken = fresh(book)
@@ -413,6 +423,7 @@ def plan_tail_short(
     cfg: Mapping[str, Any],
     gate: Admission,
     manifest_root: Callable[[], Mapping[str, Any] | None],
+    only_station_day: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Every station-day in the window: read the book, fire the rule, plan the takes."""
 
@@ -432,7 +443,7 @@ def plan_tail_short(
 
     for scope in station_days_in_window(
         target_conn, now_utc=now_utc, lookback_days=int(cfg.get("lookback_days", DEFAULT_LOOKBACK_DAYS)),
-        stages=stages,
+        stages=stages, only_station_day=only_station_day,
     ):
         station, day, tz = scope["station_id"], scope["event_date"], scope["settlement_timezone"]
         try:
@@ -574,18 +585,19 @@ def execute_tail_short(
     settings: Mapping[str, Any] | None = None,
     admission: Admission | None = None,
     ws_manifest_path: Any = None,
+    only_station_day: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fire the rule on every station-day in the window and send the takes."""
 
-    ensure_lane_schema(target_conn)
-    cfg = {**TAIL_SHORT_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
-    if str(cfg.get("rule")) not in RULE_VERSIONS:
-        raise ValueError(f"tail_short_rule_unknown:{cfg.get('rule')}")
     stopped = ("live_paused" if PAUSE_FLAG_PATH.exists()
                else "live_intent_disarmed" if not lane_orders.live_intent_armed() else None)
     if stopped:
         return {"schema": "tail_short_lane_receipt_v1", "lane": LANE, "title": LANE_TITLE,
                 "state": stopped, "evaluated": 0, "planned": 0, "submitted": 0, "filled": 0}
+    ensure_lane_schema(target_conn)
+    cfg = {**TAIL_SHORT_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
+    if str(cfg.get("rule")) not in RULE_VERSIONS:
+        raise ValueError(f"tail_short_rule_unknown:{cfg.get('rule')}")
     # A cycle this lane left open (a send that crashed mid-way) holds the
     # station-day's quotes shut; settle it before anything else is read.
     cycles_settled = settle_stuck_lane_cycles(target_conn)
@@ -599,7 +611,7 @@ def execute_tail_short(
         return manifest["root"]
 
     planned = plan_tail_short(target_conn, canonical_conn, now_utc=now_utc, cfg=cfg, gate=gate,
-                              manifest_root=manifest_root)
+                              manifest_root=manifest_root, only_station_day=only_station_day)
     receipts: list[dict[str, Any]] = []
     submitted = filled = 0
     for plan in planned["plans"]:

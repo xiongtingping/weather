@@ -57,7 +57,7 @@ import shutil
 import sqlite3
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +79,10 @@ BATCH_ROWS = 1500
 PAUSE_SEC = 0.5
 MAX_WAL_BYTES = 256 * 1024 * 1024
 MIN_FREE_DISK_BYTES = 5 * 1024 ** 3
+PRESELECTION_REF_MAX_ROWS = 500_000
+PRESELECTION_REF_MAX_BYTES = 512 * 1024 ** 2
+PRESELECTION_REF_MAX_IDENTITIES = 250_000
+PRESELECTION_REF_MAX_SECONDS = 120.0
 
 # Tables that name decisions, and the column they name them by.
 DECISION_REFERENCES = (
@@ -186,6 +190,43 @@ def _intent_station_days(conn: sqlite3.Connection, *, live_only: bool) -> set[tu
     return out
 
 
+def _preselection_decision_references(conn: sqlite3.Connection) -> tuple[set[str], set[tuple[str, str, str]], int]:
+    """Keep the exact plans named by decisions, including blocked decisions."""
+    highwater = int(conn.execute("SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions").fetchone()[0])
+    ids: set[str] = set()
+    plans: set[tuple[str, str, str]] = set()
+    scanned_bytes = 0
+    scanned_rows = 0
+    started = time.monotonic()
+    for station, day, raw in conn.execute(
+        "SELECT station_id,event_date,details_json FROM auto_trade_decisions"
+    ):
+        scanned_rows += 1
+        scanned_bytes += len(raw) if isinstance(raw, (str, bytes)) else 0
+        if (scanned_rows > PRESELECTION_REF_MAX_ROWS
+                or scanned_bytes > PRESELECTION_REF_MAX_BYTES
+                or len(ids) + len(plans) > PRESELECTION_REF_MAX_IDENTITIES
+                or time.monotonic() - started > PRESELECTION_REF_MAX_SECONDS):
+            raise RuntimeError("preselection_reference_scan_resource_limit")
+        if not raw:
+            continue
+        try:
+            details = json.loads(raw)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("preselection_decision_details_unreadable") from exc
+        if not isinstance(details, dict):
+            raise RuntimeError("preselection_decision_details_not_object")
+        preselection_id = details.get("preselection_id")
+        if preselection_id:
+            ids.add(str(preselection_id))
+        plan_sha = details.get("production_plan_sha256")
+        if plan_sha:
+            plans.add((str(station), str(day), str(plan_sha)))
+    if int(conn.execute("SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions").fetchone()[0]) != highwater:
+        raise RuntimeError("preselection_decisions_changed_during_reference_scan")
+    return ids, plans, highwater
+
+
 def _delete_triggers(conn: sqlite3.Connection, table: str) -> list[tuple[str, str]]:
     rows = conn.execute(
         "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?",
@@ -197,7 +238,8 @@ def _delete_triggers(conn: sqlite3.Connection, table: str) -> list[tuple[str, st
     ]
 
 
-def _scan_bound(conn: sqlite3.Connection, table: str, column: str | None) -> int:
+def _scan_bound(conn: sqlite3.Connection, table: str, column: str | None,
+                scan_bound: str = SCAN_BOUND) -> int:
     lo, hi = conn.execute(f'SELECT MIN(rowid), MAX(rowid) FROM "{table}"').fetchone()
     if lo is None:
         return -1
@@ -208,7 +250,7 @@ def _scan_bound(conn: sqlite3.Connection, table: str, column: str | None) -> int
     while lo < hi:
         mid = (lo + hi) // 2
         row = conn.execute(probe, (mid,)).fetchone()
-        if row is None or (row[0] is not None and str(row[0]) >= SCAN_BOUND):
+        if row is None or (row[0] is not None and str(row[0]) >= scan_bound):
             hi = mid
         else:
             lo = mid + 1
@@ -231,9 +273,33 @@ def _free_disk(path: Path) -> int:
     return shutil.disk_usage(path).free
 
 
+def _require_external_export(db: Path, export_dir: Path) -> None:
+    if os.stat(db).st_dev == os.stat(export_dir).st_dev:
+        raise SystemExit("ssot_export_must_be_on_another_device")
+    if _free_disk(export_dir) < 50 * 1024 ** 3:
+        raise SystemExit("ssot_external_export_free_space_below_50_gib")
+
+
 def _wal_bytes(db: Path) -> int:
     wal = db.with_name(db.name + "-wal")
     return wal.stat().st_size if wal.exists() else 0
+
+
+def _verify_export_member(path: Path, offset: int, expected_sha256: str,
+                          expected_bytes: int) -> None:
+    """Read the newly fsynced gzip member back before deleting its SSOT rows."""
+    digest = hashlib.sha256()
+    total = 0
+    with path.open("rb") as raw:
+        raw.seek(offset)
+        with gzip.GzipFile(fileobj=raw, mode="rb") as archived:
+            while chunk := archived.read(1024 * 1024):
+                digest.update(chunk)
+                total += len(chunk)
+                if total > expected_bytes:
+                    raise RuntimeError("ssot_export_member_larger_than_source")
+    if total != expected_bytes or digest.hexdigest() != expected_sha256:
+        raise RuntimeError("ssot_export_member_verification_failed")
 
 
 def _wait_for_wal(db: Path, conn: sqlite3.Connection | None = None) -> None:
@@ -257,7 +323,10 @@ def _wait_for_wal(db: Path, conn: sqlite3.Connection | None = None) -> None:
 
 
 def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect_cache: dict, log,
-                 pause_factor: float = 1.0, batch_bytes_limit: int = BATCH_BYTES) -> dict:
+                 pause_factor: float = 1.0, batch_bytes_limit: int = BATCH_BYTES,
+                 cutoff: str = CUTOFF, scan_bound: str = SCAN_BOUND,
+                 max_batches: int | None = None,
+                 exact_preselection_refs: bool = False) -> dict:
     table, column, protections, day_guard = spec
     if not _table_exists(conn, table):
         return {"table": table, "state": "missing"}
@@ -272,8 +341,21 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
     si = cols.index("station_id") if day_guard else None
     ei = cols.index("event_date") if day_guard else None
     ti = cols.index(column) if column else None
+    exact_plans = exact_preselection_refs and table == "basket_p0_preselection_plan"
+    if exact_plans:
+        if "preselection_decision_refs" not in protect_cache:
+            protect_cache["preselection_decision_refs"] = _preselection_decision_references(conn)
+        named_ids, named_plans, decision_highwater = protect_cache["preselection_decision_refs"]
+        latest_by_station = {
+            int(rowid) for _station, rowid in conn.execute(
+                "SELECT station_id,MAX(rowid) FROM basket_p0_preselection_plan"
+                " GROUP BY station_id"
+            )
+        }
+        plan_id_idx = cols.index("preselection_id")
+        plan_json_idx = cols.index("plan_json")
 
-    bound = _scan_bound(conn, table, column)
+    bound = _scan_bound(conn, table, column, scan_bound)
     triggers = _delete_triggers(conn, table)
     stats = {"table": table, "time_column": column, "scan_bound_rowid": bound,
              "deleted_rows": 0, "deleted_payload_bytes": 0, "kept_referenced": 0,
@@ -287,6 +369,7 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
     last = -1
     batch: list[tuple] = []
     batch_bytes = 0
+    stopped_at_limit = False
 
     def flush() -> None:
         nonlocal batch, batch_bytes
@@ -312,10 +395,12 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
                 raise SystemExit("free disk below 5 GiB; stopping before the next batch")
             _wait_for_wal(db, conn)
             with open(export_path, "ab") as raw:
+                export_offset = raw.tell()
                 with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6) as gz:
                     gz.write(payload)
                 raw.flush()
                 os.fsync(raw.fileno())
+            _verify_export_member(export_path, export_offset, digest, len(payload))
             queued = time.monotonic()
             conn.execute("BEGIN IMMEDIATE")
             # Held time starts once the lock is ours; the wait before it is
@@ -323,6 +408,10 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
             started = time.monotonic()
             stats["max_wait_sec"] = max(stats.get("max_wait_sec", 0.0), started - queued)
             try:
+                if exact_plans and int(conn.execute(
+                    "SELECT COALESCE(MAX(rowid),0) FROM auto_trade_decisions"
+                ).fetchone()[0]) != decision_highwater:
+                    raise RuntimeError("preselection_decisions_changed_before_delete")
                 for name, _sql in triggers:
                     conn.execute(f'DROP TRIGGER "{name}"')
                 for i in range(0, len(ids), 500):
@@ -376,12 +465,29 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
             values = r[1:]
             if ti is not None:
                 stamp = values[ti]
-                if stamp is None or str(stamp) >= CUTOFF:
+                if stamp is None or str(stamp) >= cutoff:
                     continue
             if any(values[idx] in keep for idx, keep in key_sets):
                 stats["kept_referenced"] += 1
                 continue
-            if intent_days is not None and (values[si], values[ei]) in intent_days:
+            if exact_plans:
+                if r[0] in latest_by_station or str(values[plan_id_idx]) in named_ids:
+                    stats["kept_referenced"] += 1
+                    continue
+                try:
+                    compiled = json.loads(values[plan_json_idx])["compiled_plan"]
+                    plan_sha = str(compiled["production_plan_sha256"])
+                except (TypeError, ValueError, KeyError):
+                    # An unknown historical shape cannot be matched safely.
+                    stats["kept_referenced"] += 1
+                    continue
+                if not plan_sha:
+                    stats["kept_referenced"] += 1
+                    continue
+                if (str(values[si]), str(values[ei]), plan_sha) in named_plans:
+                    stats["kept_referenced"] += 1
+                    continue
+            elif intent_days is not None and (values[si], values[ei]) in intent_days:
                 stats["kept_intent_day"] += 1
                 continue
             width = sum(len(v) if isinstance(v, (str, bytes)) else 8 for v in values)
@@ -389,8 +495,15 @@ def retire_table(conn, db: Path, spec, *, apply: bool, export_dir: Path, protect
             batch_bytes += width
             if batch_bytes >= batch_bytes_limit or len(batch) >= BATCH_ROWS:
                 flush()
-    flush()
-    stats["state"] = "applied" if apply else "planned"
+                if max_batches is not None and stats["batches"] >= max_batches:
+                    stopped_at_limit = True
+                    break
+        if stopped_at_limit:
+            break
+    if not stopped_at_limit:
+        flush()
+    stats["state"] = ("partial" if stopped_at_limit else
+                      "applied" if apply else "planned")
     return stats
 
 
@@ -489,18 +602,41 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--restore", action="store_true")
     parser.add_argument("--tables", nargs="*")
+    parser.add_argument("--cutoff", default=CUTOFF,
+                        help="exclusive UTC date; default preserves the original 2026-09-05 ruling")
+    parser.add_argument("--require-external", action="store_true",
+                        help="require the export to be on a different device with at least 50 GiB free")
     # Measured 2026-09-19: at factor 1 the envelope pass saturated the disk
     # (~107 MB/s, 9.4k IOPS) and one production cycle ran 11 minutes against
     # a usual 5-9.  Factor 3 yields three times each hold.
     parser.add_argument("--pause-factor", type=float, default=1.0)
     parser.add_argument("--batch-bytes", type=int, default=BATCH_BYTES)
+    parser.add_argument("--max-batches", type=int, default=None,
+                        help="stop after this many verified, committed batches per table")
+    parser.add_argument("--exact-preselection-refs", action="store_true",
+                        help="protect decision-named plans exactly, plus each station's latest plan")
     args = parser.parse_args(argv)
+    if args.max_batches is not None and args.max_batches < 1:
+        raise SystemExit("max_batches_must_be_positive")
+    try:
+        requested_cutoff = date.fromisoformat(args.cutoff)
+    except ValueError as exc:
+        raise SystemExit("invalid_cutoff_date") from exc
+    # These rows are never pruned from a current event day.  Seven closed UTC
+    # days also leave the resident's two-day target horizon well behind us;
+    # every order-bearing station-day is independently protected below.
+    if requested_cutoff < date(2026, 9, 5) or requested_cutoff > datetime.now(timezone.utc).date() - timedelta(days=7):
+        raise SystemExit("cutoff_outside_retired_closed_day_window")
+    cutoff = requested_cutoff.isoformat()
+    scan_bound = (requested_cutoff + timedelta(days=2)).isoformat()
     db = args.db.resolve()
     if args.restore:
         restore(db, args.export_dir, args.tables,
                 pause_factor=args.pause_factor, batch_bytes_limit=args.batch_bytes)
         return 0
     args.export_dir.mkdir(parents=True, exist_ok=True)
+    if args.apply and (args.require_external or args.exact_preselection_refs):
+        _require_external_export(db, args.export_dir)
     conn = sqlite3.connect(db, timeout=60, isolation_level=None)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_size_limit=67108864")
@@ -526,7 +662,10 @@ def main(argv: list[str] | None = None) -> int:
         started = time.monotonic()
         res = retire_table(conn, db, spec, apply=args.apply,
                            export_dir=args.export_dir, protect_cache=cache, log=log,
-                           pause_factor=args.pause_factor, batch_bytes_limit=args.batch_bytes)
+                           pause_factor=args.pause_factor, batch_bytes_limit=args.batch_bytes,
+                           cutoff=cutoff, scan_bound=scan_bound,
+                           max_batches=args.max_batches,
+                           exact_preselection_refs=args.exact_preselection_refs)
         res["elapsed_sec"] = round(time.monotonic() - started, 1)
         results.append(res)
         log(json.dumps(res))
@@ -534,7 +673,7 @@ def main(argv: list[str] | None = None) -> int:
     freelist_after = conn.execute("PRAGMA freelist_count").fetchone()[0]
     summary = {
         "mode": "apply" if args.apply else "dry_run",
-        "cutoff": CUTOFF,
+        "cutoff": cutoff,
         "deleted_rows": sum(r.get("deleted_rows", 0) for r in results),
         "deleted_payload_gib": round(sum(r.get("deleted_payload_bytes", 0) for r in results) / 2**30, 2),
         "freelist_gib_before": round(freelist_before * page_size / 2**30, 2),

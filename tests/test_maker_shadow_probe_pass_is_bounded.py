@@ -451,11 +451,10 @@ def test_the_lane_no_longer_costs_production_a_writer_turn() -> None:
     daemon = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(daemon)
 
-    assert daemon.hosted_sweep_write_domain("maker_shadow_probe") == "maker_shadow"
+    assert "maker_shadow_probe" not in {
+        name for name, _script, _interval, _timeout in daemon.HOSTED_SWEEPS
+    }
     assert "maker_shadow_probe" not in daemon.HOSTED_SWEEP_LEASE_CONTRACT
-    # Still bounded, just not by the writer lease: the sweep's own timeout.
-    timeouts = {name: timeout for name, _script, _interval, timeout in daemon.HOSTED_SWEEPS}
-    assert timeouts["maker_shadow_probe"] > 0.0
 
 
 # ---------------------------------------------------------------------------

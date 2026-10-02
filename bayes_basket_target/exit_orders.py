@@ -1,7 +1,7 @@
 """The one way an exit lane sends a SELL: intent, gate, gateway, ledger.
 
 Two lanes sell -- charter 144's mis-bought-leg exit and the 0.998 recycle of
-a won position -- and until 2026-09-17 each would have had its own copy of
+a held YES or NO position -- and until 2026-09-17 each would have had its own copy of
 the same twelve steps (the recycle lane's copy wrote the intent and nothing
 else: no event, no reconciliation, so a fill would never have reached the
 inventory).  One function, so a sell is recorded exactly as a buy is:
@@ -96,6 +96,7 @@ def send_exit_sell(
     live_submit_authorized: bool,
     expiration: int | None = None,
     tick_size: float | None = None,
+    outcome_side: str = "YES",
 ) -> dict[str, Any]:
     """Mint one SELL intent under its own cycle row and send it.
 
@@ -104,6 +105,8 @@ def send_exit_sell(
     or unauthorized send is recorded as its event, never raised.
     """
 
+    if outcome_side not in {"YES", "NO"}:
+        raise ValueError("exit_outcome_side_invalid")
     sent_at = wall_clock_utc()
     cycle_id = f"{lane}_cycle_{content_sha256({'intent': intent_id})[:32]}"
     body = {
@@ -111,6 +114,7 @@ def send_exit_sell(
         "lane": lane,
         "order_type": order_type,
         "post_only": bool(post_only),
+        "outcome_side": outcome_side,
         "live_submit_authorized": bool(live_submit_authorized),
         **({"expiration": int(expiration)} if expiration is not None else {}),
         **({"tick_size": float(tick_size)} if tick_size is not None else {}),
@@ -129,7 +133,7 @@ def send_exit_sell(
         "live_submit_authorized,idempotency_key,intent_json,intent_sha256,created_at,"
         "target_execution_hard_deadline_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (intent_id, f"{lane}_decision_{station_id}_{event_date}", cycle_id, bucket, token_id,
-         "YES", "SELL", float(price), float(shares), round(float(shares) * float(price), 6),
+         outcome_side, "SELL", float(price), float(shares), round(float(shares) * float(price), 6),
          "prepared", 1 if live_submit_authorized else 0, intent_id,
          json.dumps(body, ensure_ascii=False, sort_keys=True), body_sha, sent_at, None),
     )
@@ -138,7 +142,7 @@ def send_exit_sell(
         "order_intent_id": intent_id,
         "idempotency_key": intent_id,
         "token_id": token_id,
-        "outcome_side": "YES",
+        "outcome_side": outcome_side,
         "side": "SELL",
         "price": float(price),
         "size": float(shares),

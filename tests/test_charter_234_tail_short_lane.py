@@ -147,11 +147,25 @@ def test_an_incomplete_book_fires_nothing() -> None:
     assert reading["state"] == "market_incomplete" and reading["legs"] == []
 
 
+def test_future_day_uses_the_live_ws_listing_ladder_first(monkeypatch, store) -> None:
+    calls = []
+    def live(_conn, _root, **kwargs):
+        calls.append(kwargs)
+        return {"snapshot_id": "live", "observed_at": NOW, "buckets": _book()}
+    monkeypatch.setattr(lane, "live_ws_snapshot", live)
+    monkeypatch.setattr(lane, "_latest_snapshot", lambda *_args: pytest.fail("committed snapshot read"))
+    book, refusal = lane._book(store, {}, station_id=ST, event_date=ED,
+                               now_utc=NOW, fresh_seconds=60.0, live=True)
+    assert refusal is None and book["snapshot_id"] == "live"
+    assert calls == [{"station_id": ST, "event_date": ED, "now_utc": NOW,
+                      "include_listing_days": True}]
+
+
 def test_the_no_take_is_priced_at_one_minus_the_bid_within_its_depth() -> None:
     take = lane.no_take(0.03, 100.0, 10.0, tick_size=0.01, min_shares=5.0)
     assert take["price"] == pytest.approx(0.97)
     assert take["shares"] == 10.0 and take["cost_usdc"] == pytest.approx(9.7)
-    # A thin bid caps the size with the P1 tail lane's headroom (min of 80%, depth - 1).
+    # The 10 USDC cap may shrink to the depth available with headroom.
     thin = lane.no_take(0.03, 8.0, 10.0, tick_size=0.01, min_shares=5.0)
     assert thin["shares"] == 6.0
     assert lane.no_take(0.03, 5.0, 10.0, tick_size=0.01, min_shares=5.0)["refusal"].startswith("thin_bid")
@@ -238,7 +252,10 @@ def test_nothing_is_written_while_paused_or_disarmed(store, monkeypatch) -> None
     lane.PAUSE_FLAG_PATH.unlink()
     monkeypatch.setattr("bayes_basket_target.lane_orders.live_intent_armed", lambda: False)
     assert _run(store, [])["state"] == "live_intent_disarmed"
-    assert store.execute(f"SELECT COUNT(*) FROM {lane.EVALUATION_TABLE}").fetchone()[0] == 0
+    assert store.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (lane.EVALUATION_TABLE,),
+    ).fetchone() is None
     assert store.execute("SELECT COUNT(*) FROM basket_target_order_intents").fetchone()[0] == 0
 
 
@@ -278,6 +295,21 @@ def test_only_while_the_newest_decision_is_p0(store) -> None:
     assert _run(store, [])["planned"] == 0
 
 
+def test_same_timestamp_newer_stage_does_not_reopen_p0(store) -> None:
+    _seed(store)
+    _insert(store, "basket_policy_training_fact", {
+        "fact_id": "f2", "station_id": ST, "event_date": ED,
+        "settlement_timezone": TZ, "decision_at_utc": DECIDED,
+        "decision_scope_key": "scope_f2", "captured_at_utc": DECIDED,
+        "source_sequence": 2, "quote_observed_at": DECIDED,
+        "quote_expires_at": "2026-09-18T13:00:00Z", "stage": "P0-M",
+        "probability_envelope_id": "env_f2", "ws_snapshot_id": "snap1",
+        "intent_count": 0, "authority_scope": "PRODUCTION_NO_LIVE_FORWARD",
+        "created_at_utc": DECIDED, "cycle_id": "cyc_f2", "decision_id": "dec_f2",
+    })
+    assert _run(store, [])["planned"] == 0
+
+
 def test_a_stale_book_is_never_taken(store) -> None:
     _seed(store, observed="2026-09-18T12:00:00.000Z")
     receipt = _run(store, [])
@@ -300,6 +332,78 @@ def test_the_daily_budget_bounds_the_lane(store) -> None:
     receipt = _run(store, [], max_daily_cost_usdc=15.0)
     assert receipt["planned"] == 1
     assert any(r.startswith("daily_budget:") for r in receipt["refusals"])
+
+
+def test_immediate_p0_pass_checks_only_the_committed_station_day(store) -> None:
+    _seed(store)
+    assert lane.station_days_in_window(
+        store, now_utc=NOW, lookback_days=1, stages=frozenset({"P0"}),
+        only_station_day=("KJFK", ED),
+    ) == []
+    sent = []
+    receipt = lane.execute_tail_short(
+        store, transport=_fill_transport(sent), now_utc=NOW,
+        live_submit_authorized=True, only_station_day=(ST, ED),
+        settings={**strategy_lanes.TAIL_SHORT_DEFAULT_SETTINGS, **SETTINGS},
+        admission=ADMIT,
+    )
+    assert receipt["planned"] == 3 and receipt["submitted"] == 3
+    assert len(sent) == 3
+
+
+def test_worker_checks_h1_on_the_same_writer_after_p0_commit(monkeypatch, store) -> None:
+    from bayes_basket_target import production_worker
+
+    calls = []
+    monkeypatch.setattr(production_worker, "PRODUCTION_EXECUTION_MODE", "production_live")
+    monkeypatch.setattr(strategy_lanes, "lane_enabled", lambda name: name == strategy_lanes.LANE_TAIL_SHORT)
+    monkeypatch.setattr(lane, "execute_tail_short", lambda conn, canonical, **kwargs: (
+        calls.append((conn, kwargs["only_station_day"])), {"state": "checked"}
+    )[1])
+
+    class Worker:
+        commit_conn = store
+        canonical_source_conn = None
+        market_manifest_path = None
+        _tail_short_receipts = None
+        _tail_short_check = production_worker.TargetProductionWorker._tail_short_check
+
+        def _add_span(self, *args, **kwargs):
+            pass
+
+    worker = Worker()
+    receipt = production_worker.TargetProductionWorker._tail_short_after_p0_decision(
+        worker, station_id=ST, event_date=ED,
+    )
+    assert receipt["state"] == "checked"
+    assert calls == [(store, (ST, ED))]
+    assert worker._tail_short_receipts[0]["state"] == "checked"
+
+
+def test_market_checkpoint_rechecks_during_cycle_without_parallel_writer(monkeypatch, store) -> None:
+    from bayes_basket_target import production_worker
+
+    monkeypatch.setattr(production_worker, "PRODUCTION_EXECUTION_MODE", "production_live")
+    clock = [100.0]
+    monkeypatch.setattr(production_worker.time, "monotonic", lambda: clock[0])
+    calls = []
+
+    class Worker:
+        commit_conn = store
+        _last_tail_short_market_check_mono = None
+
+        def _tail_short_check(self, *, reason):
+            calls.append(reason)
+            return {"reason": reason}
+
+    worker = Worker()
+    check = production_worker.TargetProductionWorker._tail_short_market_if_due
+    assert check(worker, "after_native") == {"reason": "checkpoint:after_native"}
+    clock[0] += 29.0
+    assert check(worker, "after_market") is None
+    clock[0] += 1.0
+    assert check(worker, "after_market") == {"reason": "checkpoint:after_market"}
+    assert calls == ["checkpoint:after_native", "checkpoint:after_market"]
 
 
 def test_the_station_day_leg_cap_bounds_the_lane(store) -> None:
@@ -336,7 +440,8 @@ def test_the_daemon_runs_the_lane_at_the_cycle_tail() -> None:
     source = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
     called = [node.func.id for node in ast.walk(ast.parse(source))
               if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
-    assert called.count("execute_tail_short") == 1
+    assert called.count("execute_tail_short") == 2
+    assert '"tail_short_lane_head": tail_short_head_receipt' in source
     assert '"tail_short_lane": tail_short_receipt' in source
 
 

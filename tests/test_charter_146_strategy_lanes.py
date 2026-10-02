@@ -68,10 +68,8 @@ def test_the_env_override_points_at_a_copy(tmp_path, monkeypatch) -> None:
 
 
 def test_the_served_file_carries_the_rulings_and_leaves_the_switches_to_the_board() -> None:
-    """The operator file as committed: the ruling itself.  The 0.998
-    recycle came back on 2026-09-18 (「0.998回收卖出没有生效」, then
-    「继续，打开车道」): it sells what has already won, it is not a
-    strategy that takes a new position.
+    """The operator file as committed: the current production ruling.
+    The recycle lane was reopened for all YES/NO holdings on 2026-09-28.
 
     Charter 229 (2026-09-26) put the basket, tiebreak and 同心线 switches on
     the board, and the operator threw the basket's within minutes: their
@@ -81,6 +79,10 @@ def test_the_served_file_carries_the_rulings_and_leaves_the_switches_to_the_boar
     served = lanes.load_strategy_lanes(lanes.DEFAULT_PATH)
     assert served["source"] == "file"
     assert served["lanes"]["certain_win_recycle"]["enabled"] is True
+    # Charter 234's rule and stages are the ruling's; whether the lane is on
+    # is the operator's switch, like the tiebreak's (thrown off 2026-10-02).
+    assert served["lanes"]["tail_short"]["rule"] == "market_far_tail_no_taker_v1"
+    assert lanes.opening_stages(served["lanes"]["tail_short"]) == {"P0"}
     assert served["lanes"]["mis_bought_leg_exit"]["enabled"] is False
     assert lanes.opening_stages(served["lanes"]["tiebreak"]) == {"P0-M", "P1"}
     # The stake is the operator's dial (the board moved it 5 -> 6 within an
@@ -292,6 +294,11 @@ def test_a_lane_switch_flips_one_lane_and_is_audited(tmp_path, monkeypatch) -> N
     out = control.set_lane_enabled("tiebreak", False)
     assert out["tiebreak_stake"]["enabled"] is False
     assert lanes.lane_enabled("tiebreak", lanes_path) is False
+    out = control.set_lane_enabled("certain_win_recycle", False)
+    assert out["strategy_lanes"]["lanes"]["certain_win_recycle"]["enabled"] is False
+    assert lanes.lane_enabled("certain_win_recycle", lanes_path) is False
+    out = control.set_lane_enabled("certain_win_recycle", True)
+    assert out["strategy_lanes"]["lanes"]["certain_win_recycle"]["enabled"] is True
     with pytest.raises(ValueError):
         control.set_lane_enabled("no_such_lane", True)
     audit = [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
