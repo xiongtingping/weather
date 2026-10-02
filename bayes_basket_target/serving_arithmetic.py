@@ -388,6 +388,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Declared past the push and past the restart that deploys it, and
         # after v20 and P0-M v23 so the versions stay in order.
         "calibrated_native_cross_ensemble_p0_v21": "2026-10-01T19:30:00Z",
+        # Charter 243: pool seats rank breadth before the rider count.
+        # Declared past the push and the restart that deploys it.
+        "calibrated_native_cross_ensemble_p0_v22": "2026-10-02T03:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -440,6 +443,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v23": "2026-10-01T16:30:00Z",
         # Charter 242: root bump at the instant P0 v21 declares.
         "p0m_taf_likelihood_v24": "2026-10-01T19:30:00Z",
+        # Charter 243: root bump at the instant P0 v22 declares.
+        "p0m_taf_likelihood_v25": "2026-10-02T03:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -502,6 +507,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v31": "2026-10-01T16:00:00Z",
         # Charter 242: root bump at the instant P0 v21 declares.
         "p1_joint_likelihood_v32": "2026-10-01T19:30:00Z",
+        # Charter 243: root bump at the instant P0 v22 declares.
+        "p1_joint_likelihood_v33": "2026-10-02T03:00:00Z",
     },
 }
 

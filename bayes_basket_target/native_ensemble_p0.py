@@ -187,7 +187,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # were minted -- a pair re-certified this morning no longer outranks the
 # five-system view certified last night, and a same-size tie keeps the
 # heavier systems instead of falling to the activation id.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v21"
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v22"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -1527,12 +1527,13 @@ def _activation_rank(
 
     ``item`` is (activation row, seated system ids, cycle riders, same-run
     fresh count).  Under charter 134: a seat whose evidence keeps the P0
-    usable first, then a pool seat, then exact packet match, fewest riders,
-    freshest runs.  A pool seat then ranks breadth, the pool weight it keeps
-    (``retained_weight``, keyed by activation id), its activation instant,
-    generation and id (charter 236); a contest row keeps its older order --
-    activation instant, breadth, generation, id.  See the comments at the
-    call site for why each key sits where it does.
+    usable first, then a pool seat, then exact packet match.  A pool seat
+    then ranks breadth (charter 243), fewest riders, freshest runs, the pool
+    weight it keeps (``retained_weight``, keyed by activation id), its
+    activation instant, generation and id (charter 236); a contest row keeps
+    its older order -- fewest riders, freshest runs, activation instant,
+    breadth, generation, id.  See the comments at the call site for why
+    each key sits where it does.
 
     ``seats_usable`` answers the freshness question the compile asks after
     choosing, for each candidate before it: the pool key alone put a view
@@ -1551,35 +1552,39 @@ def _activation_rank(
     pool_seat = (
         bool(pool_first) and STABLE_POOL_WEIGHT_RULE in str(row[15] or "")
     )
-    head = (
-        usable,
-        pool_seat,
-        set(member_ids) == observed_set,
-        -len(riders),
-        int(fresh_count),
-    )
+    exact = set(member_ids) == observed_set
     if pool_seat:
-        # Charter 236: every view of a pool is certified on the same cohort
-        # holdout, so the instant a view was minted says only when its
-        # certificate last changed -- not that its runs are newer (the runs
-        # every seat serves are the packet's own) nor that it scored better.
-        # Ranked ahead of breadth, it let a pair re-certified this morning
-        # outrank the five-system view certified last night whenever no seat
-        # matched the packet exactly -- as when a system the packet carries
-        # holds no certificate at the scope yet (a new scope accumulates its
-        # train and holdout days forward, ICON's archive cannot be
-        # backfilled) or the exact view is dark under the window gate.
-        # Breadth comes first, as charter 134 seats
-        # every qualified system; a same-size tie keeps the systems that
-        # carry more pool weight instead of falling to the content hash.
+        # Charter 243 (2026-10-02): a pool seat ranks breadth before its
+        # rider count and fresh count.  Every pool view is a certified seat
+        # of currently qualified systems (charter 134), so the stale-contest
+        # failure the rider key guarded against cannot recur under the pool;
+        # what the key did in practice was seat the two or three systems
+        # whose runs happened to match a fitted pairing exactly and leave
+        # the other certified families out for hours (36-48h: 20% of the
+        # time, <=36h: 10%, 2026-10-01).  Measured on the 2026-01..09 replay
+        # (docs/research/seating_hour_bucket_split_20261002): seating every
+        # observed system against the freshest-bucket seat alone, LogScore
+        # -0.065 [-0.096, -0.038], Brier -0.011, CRPS -0.016; -0.123 where
+        # only two had been seated.
         return (
-            *head,
+            usable,
+            pool_seat,
+            exact,
             len(member_ids),
+            -len(riders),
+            int(fresh_count),
             float((retained_weight or {}).get(str(row[0]), 0.0)),
             str(row[4] or ""),
             int(row[3]),
             str(row[0]),
         )
+    head = (
+        usable,
+        pool_seat,
+        exact,
+        -len(riders),
+        int(fresh_count),
+    )
     return (
         *head,
         str(row[4] or ""),
@@ -2353,6 +2358,10 @@ def compile_native_ensemble_p0(
     # Charter 236: among pool seats, breadth then the pool weight a seat keeps
     # rank ahead of the activation instant (see ``_activation_rank``); the
     # weights are the pool views' own certified ones, read once per compile.
+    # Charter 243: for pool seats breadth also ranks ahead of the rider count
+    # and the fresh count above -- the ZUUU 08-16 specimen was a stale
+    # contest row, which the pool cannot produce; measured, the rider key
+    # left certified families out of P0 for hours at a cost of 0.065 nat.
     pool_first = P0_MEMBERSHIP_MODE == P0_MEMBERSHIP_MODE_STABLE_POOL
     pool_items = [
         item for item in compatible_activations

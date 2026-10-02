@@ -111,15 +111,22 @@ def test_a_same_size_tie_keeps_the_heavier_systems_whatever_the_id() -> None:
     assert _ranked([keeps_gem, five], retained=retained)[0][0][0] == "five"
 
 
-def test_riders_and_the_fresh_count_still_rank_ahead_of_breadth() -> None:
+def test_breadth_ranks_ahead_of_riders_and_the_fresh_count_for_pool_seats() -> None:
+    """Charter 243: a wider certified pool view wins even when it needs a
+    rider or carries older runs; among equal breadth the old order holds."""
     five_with_rider = (_activation("five", valid_from=LAST_NIGHT), FIVE, [IFS], 2)
     four_exact_cycles = (_activation("four", valid_from=LAST_NIGHT),
                          [s for s in FIVE if s != GEM], [], 2)
-    assert _ranked([five_with_rider, four_exact_cycles])[0][0][0] == "four"
+    assert _ranked([four_exact_cycles, five_with_rider])[0][0][0] == "five"
     five_older_runs = (_activation("five", valid_from=LAST_NIGHT), FIVE, [], 1)
     four_fresh_runs = (_activation("four", valid_from=LAST_NIGHT),
                        [s for s in FIVE if s != GEM], [], 2)
-    assert _ranked([five_older_runs, four_fresh_runs])[0][0][0] == "four"
+    assert _ranked([four_fresh_runs, five_older_runs])[0][0][0] == "five"
+    four_with_rider = (_activation("four_r", valid_from=LAST_NIGHT),
+                       [s for s in FIVE if s != GEM], [IFS], 2)
+    assert _ranked([four_with_rider, four_exact_cycles])[0][0][0] == "four"
+    # Contest rows keep the rider key ahead (charter 236 left them alone).
+    assert _ranked([five_with_rider, four_exact_cycles], pool_first=False)[0][0][0] == "four"
 
 
 def test_an_exact_packet_match_still_ranks_first() -> None:

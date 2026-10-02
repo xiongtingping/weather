@@ -98,6 +98,10 @@ CHARTER_241_P0M_START = "2026-10-01T16:30:00Z"
 CHARTER_242_START = sa.version_effective_from(
     "P0", "calibrated_native_cross_ensemble_p0_v21"
 )
+# Charter 243 (pool seats rank breadth before riders): P0 v22, P0-M v25, P1 v33.
+CHARTER_243_START = sa.version_effective_from(
+    "P0", "calibrated_native_cross_ensemble_p0_v22"
+)
 
 
 def _served(version: str) -> sqlite3.Connection:
@@ -231,7 +235,7 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # Charter 198 (P0 v9) is declared past its push and the restart that
     # deploys it; v8 keeps charter 190's moment, v7 charter 160's and v6
     # charter 149's.
-    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v21"
+    assert POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v22"
     assert CHARTER_190_START and CHARTER_190_START > CHARTER_160_START
     assert CHARTER_198_START and CHARTER_198_START > CHARTER_190_START
     assert CHARTER_204_START and CHARTER_204_START > CHARTER_198_START
@@ -246,7 +250,11 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     assert CHARTER_199_ASOS_START and CHARTER_199_ASOS_START > CHARTER_222_PAIR_START
     assert CHARTER_236_START and CHARTER_236_START > CHARTER_199_ASOS_START
     assert CHARTER_242_START and CHARTER_242_START > CHARTER_241_P0M_START > CHARTER_236_START
-    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_242_START
+    assert CHARTER_243_START and CHARTER_243_START > CHARTER_242_START
+    assert sa.version_effective_from("P0", POSTERIOR_VERSION) == CHARTER_243_START
+    assert sa.version_effective_from(
+        "P0", "calibrated_native_cross_ensemble_p0_v21"
+    ) == CHARTER_242_START
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v20"
     ) == CHARTER_236_START
@@ -306,8 +314,9 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     # at P0 v9's.
     # Charter 204's v12 and charter 210's v13 are root bumps at P0 v10's and
     # P0 v11's moments.
-    assert p0m == "p0m_taf_likelihood_v24"
-    assert sa.version_effective_from("P0-M", p0m) == CHARTER_242_START
+    assert p0m == "p0m_taf_likelihood_v25"
+    assert sa.version_effective_from("P0-M", p0m) == CHARTER_243_START
+    assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v24") == CHARTER_242_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v23") == CHARTER_241_P0M_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v22") == CHARTER_236_START
     assert sa.version_effective_from("P0-M", "p0m_taf_likelihood_v21") == CHARTER_199_ASOS_START
@@ -392,8 +401,9 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # (charter 200) is P1's own change, declared past its push and restart.
     # v21 (charter 204) and v22 (charter 210) are the seventh and eighth
     # root bumps, at P0 v10's and P0 v11's moments.
-    assert p1 == "p1_joint_likelihood_v32"
-    assert sa.version_effective_from("P1", p1) == CHARTER_242_START
+    assert p1 == "p1_joint_likelihood_v33"
+    assert sa.version_effective_from("P1", p1) == CHARTER_243_START
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v32") == CHARTER_242_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v31") == CHARTER_236_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v30") == CHARTER_199_ASOS_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v29") == CHARTER_222_PAIR_START
