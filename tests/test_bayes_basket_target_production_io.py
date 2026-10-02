@@ -1248,7 +1248,7 @@ def test_production_io_fresh_stale_fresh_recovery_uses_new_snapshot() -> None:
 def test_production_io_requires_exact_regime_ssot() -> None:
     with sqlite3.connect(":memory:") as conn:
         _seed(conn, include_regime=False)
-        with pytest.raises(ContractError, match="regime_ssot_not_unique"):
+        with pytest.raises(ContractError, match="regime_ssot_missing"):
             compile_production_cycle_from_ssot(
                 conn,
                 station_id="ZUUU",

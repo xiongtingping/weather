@@ -18059,6 +18059,9 @@ class TargetProductionWorker:
         # than at the end of the cycle.
         if (p1 or {}).get("ran") is True:
             self._p1_tail_after_p1(f"checkpoint:{label}")
+        # A checkpoint inside the decision loop commits envelopes a later
+        # scope in the same loop may price: give them their companions now.
+        self._regime_catch_up(label=f"checkpoint_{label}")
         receipt = {
             "label": label,
             "at_utc": clock,
@@ -18298,10 +18301,56 @@ class TargetProductionWorker:
             if fresh_until is not None and fresh_until > fresh_after_utc
         )
 
+    def _regime_catch_up(self, *, label: str) -> dict[str, Any] | None:
+        """Companions for the envelopes committed since the regime pass.
+
+        The regime stage runs once, mid-cycle; the forward P0 loop and the
+        fast-lane checkpoints commit envelopes after it, and a decision that
+        prices one of them found no companion -- ``regime_ssot_missing`` --
+        until the next cycle's pass (NZWN 2026-10-03: envelopes 12:24-12:26Z,
+        decision 12:29:50Z, companions 12:31:58Z).  Runs only once this
+        cycle's regime pass has, reads the new envelopes' scopes by rowid,
+        and hands them to the same pass; companions are pure functions of
+        the committed row, so this is the pass, sooner.
+        """
+
+        if not getattr(self, "_regime_ran_this_cycle", False):
+            return None
+        mark = getattr(self, "_regime_rowid_mark", None)
+        if mark is None or self.conn is None:
+            return None
+        started = time.perf_counter()
+        ceiling = int(self.conn.execute(
+            "SELECT COALESCE(MAX(rowid),0) FROM basket_probability_envelope"
+        ).fetchone()[0])
+        if ceiling <= int(mark):
+            return None
+        scopes = {
+            (row[0], row[1])
+            for row in self.conn.execute(
+                "SELECT station_id,event_date FROM basket_probability_envelope"
+                " WHERE rowid>? AND rowid<=?",
+                (int(mark), ceiling),
+            )
+        }
+        self._regime_rowid_mark = ceiling
+        if not scopes:
+            return None
+        receipt = self._materialize_regime_ssot(
+            as_of_utc=utc_now(), only_scopes=scopes,
+        )
+        self._add_span(
+            f"regime_catch_up_{label}",
+            (time.perf_counter() - started) * 1000.0,
+            label=f"{len(scopes)} scopes",
+        )
+        return receipt
+
     def _materialize_regime_ssot(
         self,
         *,
         as_of_utc: str,
+        only_scopes: Collection[tuple[Any, Any]] | None = None,
     ) -> dict[str, Any]:
         """Append exact probability companions before any basket compile.
 
@@ -18329,14 +18378,24 @@ class TargetProductionWorker:
         # clock -- died on ``regime_ssot_not_unique`` for whichever station
         # had just minted one (20 stations in one 2026-08-20 snapshot).
         _regime_probe_started = time.perf_counter()
-        scopes = self._fresh_committed_envelope_scopes(
-            # Widened by the serving grace: a P1 an hour past its roll is
-            # still the day's current reading (contracts.STAGES_SERVABLE_
-            # PAST_CADENCE) and its companion must exist for that long.
-            fresh_after_utc=shift_timestamp_utc(
-                as_of_utc, -PROBABILITY_MAX_STALE_SECONDS
-            ),
-        )
+        if only_scopes is not None:
+            # A catch-up pass (``_regime_catch_up``): the scopes of the
+            # envelopes committed since the last pass, nothing else.
+            scopes = sorted(set(only_scopes))
+        else:
+            # Everything committed after this mark is the catch-up's.
+            self._regime_rowid_mark = int(self.conn.execute(
+                "SELECT COALESCE(MAX(rowid),0) FROM basket_probability_envelope"
+            ).fetchone()[0])
+            self._regime_ran_this_cycle = True
+            scopes = self._fresh_committed_envelope_scopes(
+                # Widened by the serving grace: a P1 an hour past its roll is
+                # still the day's current reading (contracts.STAGES_SERVABLE_
+                # PAST_CADENCE) and its companion must exist for that long.
+                fresh_after_utc=shift_timestamp_utc(
+                    as_of_utc, -PROBABILITY_MAX_STALE_SECONDS
+                ),
+            )
         self._add_span(
             "regime_scope_probe",
             (time.perf_counter() - _regime_probe_started) * 1000.0,
@@ -20365,6 +20424,7 @@ class TargetProductionWorker:
         self._p1_tail_receipts = []
         self._tail_short_receipts = []
         self._probability_chain_ran = False
+        self._regime_ran_this_cycle = False
         early_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
         )
@@ -21666,6 +21726,9 @@ class TargetProductionWorker:
             self._mark("committed_scope_sweep")
             # Decisions price the freshest update there is.
             self._fast_lane_checkpoint("before_decisions")
+            # ...and every envelope committed since the regime pass gets its
+            # companion before anything prices it.
+            self._regime_catch_up(label="before_decisions")
             if not rows:
                 # Preliminary future scopes have their own zero-execution
                 # decision chain above.  A current-scope blocker must never

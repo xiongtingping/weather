@@ -627,6 +627,11 @@ def load_regime_artifact(
             ),
         ),
     ).fetchall()
+    # Two failures, two names (2026-10-02): no companion is a timing gap the
+    # catch-up closes (``ProductionWorker._regime_catch_up``); two would be a
+    # broken uniqueness contract.  One name for both hid which it was.
+    if not rows:
+        raise ContractError("regime_ssot_missing")
     if len(rows) != 1:
         raise ContractError("regime_ssot_not_unique")
     return resolve_regime_artifact(

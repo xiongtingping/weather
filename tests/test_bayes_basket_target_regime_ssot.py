@@ -294,7 +294,7 @@ def test_loader_finds_a_p1_companion_inside_the_grace():
         ).checkpoint_id == "p1-grace-checkpoint"
         # Beyond the grace: the envelope itself is no longer servable, and
         # neither is its companion.
-        with pytest.raises(ContractError, match="regime_ssot_not_unique"):
+        with pytest.raises(ContractError, match="regime_ssot_missing"):
             load_regime_artifact(
                 conn, probability=envelope,
                 evaluation_at_utc="2026-07-27T07:00:01Z",
@@ -732,3 +732,35 @@ def test_cross_station_insert_conflict_rolls_back_the_whole_batch():
             "SELECT COUNT(*) FROM basket_regime_artifact "
             "WHERE station_id='KATL'"
         ).fetchone()[0] == 0
+
+
+def test_envelopes_committed_after_the_regime_pass_get_companions_before_decisions() -> None:
+    """NZWN 2026-10-03: envelopes committed 12:24-12:26Z, after the cycle's
+    regime pass; the decision at 12:29:50Z found no companion
+    (regime_ssot_missing) until the next cycle's pass at 12:31:58Z.  The
+    catch-up hands exactly the scopes committed since the pass to the same
+    pass, and only once the pass has run this cycle."""
+
+    from types import SimpleNamespace
+
+    from bayes_basket_target.production_worker import TargetProductionWorker
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT)")
+    conn.executemany(
+        "INSERT INTO basket_probability_envelope VALUES (?,?)",
+        [("KAAA", "2026-10-02"), ("NZWN", "2026-10-03"), ("NZWN", "2026-10-03")],
+    )
+    calls: list[set] = []
+    fake = SimpleNamespace(
+        conn=conn, _regime_ran_this_cycle=False, _regime_rowid_mark=1,
+        _materialize_regime_ssot=lambda *, as_of_utc, only_scopes: calls.append(set(only_scopes)) or {"ok": True},
+        _add_span=lambda *a, **k: None,
+    )
+    catch_up = TargetProductionWorker._regime_catch_up
+    assert catch_up(fake, label="t") is None and calls == [], "not before this cycle's pass"
+    fake._regime_ran_this_cycle = True
+    assert catch_up(fake, label="t") == {"ok": True}
+    assert calls == [{("NZWN", "2026-10-03")}]
+    assert fake._regime_rowid_mark == 3
+    assert catch_up(fake, label="t") is None and len(calls) == 1, "nothing new, nothing done"
