@@ -12461,8 +12461,15 @@ class TargetProductionWorker:
                 "settlement_timezone,quote_source,buckets_json,"
                 "cash_phase_input_json,station_id,event_date,snapshot_id,"
                 "market_id,quote_version FROM basket_official_ws_snapshot "
-                "WHERE content_sha256=? AND state='COMMITTED' LIMIT 2",
-                (str(row[25]),),
+                # The scope first: content_sha256 has no index and sits
+                # behind both JSON columns, so the bare hash was a scan of
+                # 1.1M rows through their overflow pages -- 332 s of one
+                # cycle's settlement lane on 2026-10-02.  The binding was
+                # just checked to name this scope, so a quote from any other
+                # is not this receipt's either way.
+                "WHERE station_id=? AND event_date=? AND state='COMMITTED' "
+                "AND content_sha256=? LIMIT 2",
+                (str(row[3]), str(row[4]), str(row[25])),
             ).fetchall()
             if len(quote_rows) != 1:
                 raise ContractError(
