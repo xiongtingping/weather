@@ -16642,6 +16642,12 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     scorecard_previous = _cached_section(
         "scorecard_previous", collect_calibration_scorecard, conn,
         window_override=previous_windows.get("P0"), _salt=previous_salt,
+        # Heavy: built by the research render.  Without a page (first build,
+        # or after a code change) the page render shows "not available"
+        # instead of reading it whole past its deadline -- on 2026-10-02
+        # scorecard_previous, pageless after 3ffee5a0, was read after the
+        # deadline and the page render was killed three runs running.
+        _unavailable={"available": False},
     ) if previous_windows.get("P0") else {"available": False}
     synoptic_cooling = _cached_section(
         "synoptic_cooling", collect_synoptic_cooling, conn
@@ -16696,6 +16702,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn,
         _salt=_scorecard_salt(conn),
+        _unavailable={"available": False},
     )
     truth_landing = _cached_section(
         "truth_landing", collect_truth_landing, conn,
@@ -16934,13 +16941,16 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             _unavailable={}
         ),
         "bias_half_life": _cached_section(
-            "bias_half_life", collect_bias_half_life, conn
+            "bias_half_life", collect_bias_half_life, conn,
+            _unavailable={"available": False},
         ),
         "posterior_lane": _cached_section(
-            "posterior_lane", collect_posterior_lane, conn
+            "posterior_lane", collect_posterior_lane, conn,
+            _unavailable={"available": False},
         ),
         "charter_ev": _cached_section(
             "charter_ev", collect_charter_ev, conn,
+            _unavailable={"available": False},
             # The arithmetic lives in two helpers the fingerprint cannot
             # see; without this a change to either keeps serving the old
             # reading for the section's whole lifetime.
