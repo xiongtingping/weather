@@ -316,6 +316,36 @@ def test_the_cheap_starved_pages_go_before_a_heavier_more_overdue_one(pages) -> 
     assert names == ["ssot_capacity", "certificate_authority", "run_cadence"]
 
 
+def test_a_heavy_page_that_never_fits_after_the_cheap_ones_goes_first(pages) -> None:
+    """2026-10-02: bias_half_life (2,804 s) sat 102 hours old, run_cadence
+    (1,900 s) 11 and member_depth 37 -- the budget rule passed each over
+    behind the cheap pages and the lighter heavy ones, every run."""
+
+    now = datetime(2026, 10, 2, 2, 0, tzinfo=timezone.utc)
+    budget = C.RESEARCH_RUN_BUDGET_SEC
+    _page(pages, "cheap", age_sec=C.STARVED_PAGE_AGE_SEC + 600, cost=60.0, now=now)
+    _page(pages, "fits", age_sec=C.PAGED_SECTION_TTL_SEC * 20, cost=budget / 2, now=now)
+    _page(pages, "giant_old", age_sec=C.PAGED_SECTION_TTL_SEC * 12, cost=budget * 1.5, now=now)
+    _page(pages, "giant", age_sec=C.PAGED_SECTION_TTL_SEC * 4, cost=budget * 1.1, now=now)
+    specs = {name: {} for name in ("cheap", "fits", "giant_old", "giant")}
+
+    names = [name for _overdue, name, _cost in C.research_due(specs, now)]
+
+    assert names == ["giant_old", "cheap", "fits", "giant"]
+
+
+def test_the_cheap_pages_take_back_the_run_once_starved_past_the_cap(pages) -> None:
+    now = datetime(2026, 10, 2, 2, 0, tzinfo=timezone.utc)
+    _page(pages, "cheap", age_sec=C.RESEARCH_CHEAP_STARVE_CAP_SEC + 60, cost=60.0, now=now)
+    _page(pages, "giant", age_sec=C.PAGED_SECTION_TTL_SEC * 40,
+          cost=C.RESEARCH_RUN_BUDGET_SEC * 1.5, now=now)
+    specs = {name: {} for name in ("cheap", "giant")}
+
+    names = [name for _overdue, name, _cost in C.research_due(specs, now)]
+
+    assert names == ["cheap", "giant"]
+
+
 def test_a_research_run_shares_one_gap_wait_budget(pages, monkeypatch) -> None:
     now = datetime(2026, 10, 1, 16, 0, tzinfo=timezone.utc)
     for name in ("first", "second", "third"):

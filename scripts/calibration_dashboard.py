@@ -15710,6 +15710,9 @@ STARVED_PAGE_AGE_SEC = 3 * 3600
 #: What one research run may spend: under its launchd timeout
 #: (dashboard_research_sweep.sh, 3,300 s) with room for the section in hand.
 RESEARCH_RUN_BUDGET_SEC = 1800.0
+#: A heavy page that does not fit a run after the cheap ones is taken first
+#: only while no cheap page is older than this (``research_due``).
+RESEARCH_CHEAP_STARVE_CAP_SEC = 2 * STARVED_PAGE_AGE_SEC
 #: The page render, as the research sweep finds it (``pgrep -f``).
 PAGE_RENDER_PATTERN = "calibration_dashboard.py --html-out"
 
@@ -15731,6 +15734,7 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
     last build cost)``; a section with no page yet is infinitely overdue."""
 
     due: list[tuple[float, str, float]] = []
+    _page_ages: dict[str, float] = {}
     for name in specs:
         # The page render computes these every run and never keeps a page,
         # so a page file left from before they joined that set never ages
@@ -15752,6 +15756,7 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
         line = ttl if cost >= RESEARCH_SECTION_MIN_COST_SEC else max(ttl, STARVED_PAGE_AGE_SEC)
         if age >= line:
             due.append((age / ttl, name, cost))
+            _page_ages[name] = age
     # The cheap pages first, then the heavy ones, each most overdue first.
     # By overdue alone a heavy page led every run: on 2026-10-01 run_cadence
     # took 1,972 s of one run's 1,800, and the cheap pages behind it --
@@ -15762,6 +15767,31 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
     due.sort(key=lambda item: (
         item[2] >= RESEARCH_SECTION_MIN_COST_SEC, -item[0], item[1],
     ))
+    # But a heavy page the run's own budget rule would pass over behind the
+    # others never comes round at all: cheap pages fall due every few hours,
+    # so a section whose cost does not fit after them was skipped run after
+    # run -- on 2026-10-02 bias_half_life (2,804 s) was 102 hours old,
+    # run_cadence (1,900 s) 11 and member_depth 37.  The most overdue of the
+    # pages the run would skip goes first instead, as long as no cheap page
+    # has been starved past ``RESEARCH_CHEAP_STARVE_CAP_SEC`` -- one run in
+    # a few is the cheap pages' alone, so neither queue starves the other.
+    oldest_cheap = max(
+        (_page_ages[name] for _o, name, cost in due
+         if cost < RESEARCH_SECTION_MIN_COST_SEC),
+        default=0.0,
+    )
+    if oldest_cheap < RESEARCH_CHEAP_STARVE_CAP_SEC:
+        spent, skipped = 0.0, []
+        for item in due:
+            if spent and spent + item[2] > RESEARCH_RUN_BUDGET_SEC:
+                if item[2] >= RESEARCH_SECTION_MIN_COST_SEC:
+                    skipped.append(item)
+                continue
+            spent += item[2]
+        if skipped:
+            first = max(skipped, key=lambda item: (item[0], item[1]))
+            due.remove(first)
+            due.insert(0, first)
     return due
 
 
