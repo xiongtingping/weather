@@ -20588,13 +20588,29 @@ class TargetProductionWorker:
                 }
                 active_native_stations = {
                     str(row[0]).strip().upper()
+                    # Station by station, an index seek each (a skip scan
+                    # written out), then one seek for a valid row: the bare
+                    # DISTINCT went through the artifact_kind index and read
+                    # every CROSS activation row, 9-19 s of every cycle on
+                    # 2026-10-02, for 45 stations.  Same rows (station_id is
+                    # NOT NULL), 0.06 s.
                     for row in self.commit_conn.execute(
-                        "SELECT DISTINCT station_id FROM "
-                        "calibration_native_ensemble_activation "
-                        "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
-                        "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-                        "AND valid_from_utc<=? AND valid_until_utc>? "
-                        "ORDER BY station_id LIMIT ?",
+                        "WITH RECURSIVE s(station_id) AS ("
+                        " SELECT (SELECT MIN(station_id)"
+                        " FROM calibration_native_ensemble_activation)"
+                        " UNION ALL SELECT (SELECT MIN(station_id)"
+                        " FROM calibration_native_ensemble_activation"
+                        " WHERE station_id>s.station_id)"
+                        " FROM s WHERE s.station_id IS NOT NULL)"
+                        " SELECT s.station_id FROM s"
+                        " WHERE s.station_id IS NOT NULL AND EXISTS ("
+                        "SELECT 1 FROM calibration_native_ensemble_activation a"
+                        " WHERE a.station_id=s.station_id"
+                        " AND a.artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+                        " AND a.valid_until_utc>?"
+                        " AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+                        " AND a.valid_from_utc<=?)"
+                        " ORDER BY s.station_id LIMIT ?",
                         (now, now, MAX_FORWARD_P0_STATIONS),
                     )
                 }
