@@ -9640,6 +9640,15 @@ SCORECARD_MAX_WINDOW_DAYS = 45
 PIT_BIN_COUNT = 10
 
 
+#: The per-row scores the scorecard averages (``_prediction_scores``, plus
+#: the flat reference's two), every one entering only as a weighted mean.
+_SCORECARD_LINEAR_KEYS = (
+    "error", "abs_error", "square_error", "error_c", "abs_error_c",
+    "square_error_c", "rung_c", "crps", "brier", "variance_rungs",
+    "variance_c", "flat_crps", "flat_brier",
+)
+
+
 def _prediction_scores(
     probability: dict[str, float],
     centers: dict[str, float],
@@ -10568,14 +10577,20 @@ def collect_calibration_scorecard(
     scored: list[dict[str, Any]] = []
     stations: set[str] = set()
     latest = ""
+    # The flat reference depends only on the ladder and the truth, so it is
+    # scored once per (ladder, truth), not once per row: half of the
+    # 1.34M scorings of 2026-10-02 were this one number recomputed.
+    flat_by_ladder: dict[tuple[str, float], dict[str, Any] | None] = {}
+    # No ORDER BY: nothing below depends on row order, and sorting the
+    # window (668k rows, 318 MB of JSON on 2026-10-02) was a temp B-tree
+    # the size of the window, spilled to disk on every build.
     for (
         station, day, lead, probabilities_json, centers_json, decided
     ) in conn.execute(
         "SELECT station_id, event_date, lead_bucket, probabilities_json,"
         " bucket_centers_c_json, decision_at_utc"
         " FROM calibration_cross_native_ensemble_oos_prediction"
-        " WHERE event_date>=date('now',?) AND decision_at_utc>=?"
-        " ORDER BY decision_at_utc",
+        " WHERE event_date>=date('now',?) AND decision_at_utc>=?",
         (f"-{SCORECARD_MAX_WINDOW_DAYS} days", anchor_prefix),
     ):
         actual = truth.get((str(station), str(day)))
@@ -10608,10 +10623,15 @@ def collect_calibration_scorecard(
         # sample it scores alike (mean CRPS 2.05 against 2.06 for a 60-day
         # kernel climatology built with the gate's own function), because a
         # summer window drifts off an autumn event as far as flat does.
-        order = _bucket_order(centers)
-        flat_scores = _prediction_scores(
-            {key: 1.0 / len(order) for key in order}, centers, actual
-        )
+        flat_key = (str(centers_json), actual)
+        if flat_key in flat_by_ladder:
+            flat_scores = flat_by_ladder[flat_key]
+        else:
+            order = _bucket_order(centers)
+            flat_scores = _prediction_scores(
+                {key: 1.0 / len(order) for key in order}, centers, actual
+            )
+            flat_by_ladder[flat_key] = flat_scores
         if flat_scores is None:
             continue
         scores["flat_crps"] = flat_scores["crps"]
@@ -10632,6 +10652,35 @@ def collect_calibration_scorecard(
         row["weight"] = 1.0 / copies[
             (row["station"], row["event_date"], row["lead"])
         ]
+    row_count = len(scored)
+    reliability_input = [
+        (promised, happened, row["weight"])
+        for row in scored for promised, happened in row["reliability_pairs"]
+    ]
+    # Every lamp below is a weighted mean, sum(w*x)/sum(w), with w one over
+    # the copies of its (station, day, lead) -- so each of those groups
+    # contributes exactly its own mean at weight one.  Collapsed here, the
+    # ~210 passes below walk a few thousand groups instead of every row
+    # (668k on 2026-10-02, 63 s of _mean alone); the numbers are the same up
+    # to the order of a float sum.  Reliability keeps its per-row pairs.
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in scored:
+        key = (row["station"], row["event_date"], row["lead"])
+        slot = grouped.get(key)
+        if slot is None:
+            slot = grouped[key] = {
+                "station": row["station"], "event_date": row["event_date"],
+                "lead": row["lead"], "weight": 1.0,
+                "pit_bins": [0.0] * PIT_BIN_COUNT,
+                **{name: 0.0 for name in _SCORECARD_LINEAR_KEYS},
+            }
+        share = row["weight"]
+        for name in _SCORECARD_LINEAR_KEYS:
+            slot[name] += share * row[name]
+        bins = slot["pit_bins"]
+        for index, value in enumerate(row["pit_bins"]):
+            bins[index] += share * value
+    scored = list(grouped.values())
     station_days = {(row["station"], row["event_date"]) for row in scored}
     event_days = {row["event_date"] for row in scored}
     accumulating = len(event_days) < SCORECARD_MIN_EVENT_DAYS
@@ -10694,10 +10743,7 @@ def collect_calibration_scorecard(
     ])
 
     # ---- layer 3: calibration -----------------------------------------
-    decomposition = _reliability_decomposition([
-        (promised, happened, row["weight"])
-        for row in scored for promised, happened in row["reliability_pairs"]
-    ])
+    decomposition = _reliability_decomposition(reliability_input)
     ece = decomposition["ece"]
     # ECE alone hides the shape.  Four fifths of all (rung, day) pairs sit in
     # the 0-10% bin, where the gap is tiny, so a weighted average stays small
@@ -10911,7 +10957,7 @@ def collect_calibration_scorecard(
         "window": window,
         "accumulating": accumulating,
         "min_event_days": SCORECARD_MIN_EVENT_DAYS,
-        "row_count": len(scored),
+        "row_count": row_count,
         "station_day_count": len(station_days),
         "station_day_lead_count": len(copies),
         "event_day_count": len(event_days),
