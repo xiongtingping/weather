@@ -136,7 +136,7 @@ def test_a_pool_artifact_names_its_rule_and_its_shrinkage(store) -> None:
     ]
     assert methods
     for method in methods:
-        assert method.startswith(STABLE_POOL_WEIGHT_RULE + "::stable_pool_kappa=0.5::")
+        assert method.startswith(STABLE_POOL_WEIGHT_RULE + f"::stable_pool_kappa={STABLE_POOL_KAPPA:g}::")
 
 
 def _activation(activation_id, *, valid_from, method, generation=3):
@@ -351,3 +351,13 @@ def test_the_compile_ranks_pool_seats_on_their_own_certified_weights(store, monk
     assert all(retained is seen[0][1] for _item, retained in seen)
     assert seen[0][1] == pytest.approx(expected)
     assert all(value > 0.0 for value in expected.values())
+
+
+def test_charter_244_pool_kappa_is_a_quarter_and_the_single_system_leash_stays_half() -> None:
+    """Charter 244 moved the pool's shrinkage only; charter 216's single-system
+    log-loss leash used to read the same constant and is now its own 0.5."""
+    from bayes_basket_target import native_ensemble_oos as oos
+    from bayes_basket_target.stable_pool import STABLE_POOL_KAPPA as kappa
+
+    assert kappa == 0.25
+    assert oos.LOGLOSS_REFIT_KAPPA == 0.5

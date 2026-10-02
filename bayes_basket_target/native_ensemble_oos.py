@@ -1687,7 +1687,10 @@ if SINGLE_SYSTEM_FIT_RULE not in SINGLE_SYSTEM_FIT_RULES:
         f"unknown PM_SINGLE_SYSTEM_FIT_RULE: {SINGLE_SYSTEM_FIT_RULE}"
     )
 LOGLOSS_REFIT_HALF_LIFE_DAYS = RELIABILITY_HALF_LIFE_DAYS
-LOGLOSS_REFIT_KAPPA = STABLE_POOL_KAPPA
+# Charter 244: decoupled from the pool's kappa, which moved to 0.25.  The
+# single-system leash stays at 0.5 -- re-tested under charter 240 on
+# 2026-10-01 (docs/research/single_system_240_20261001: shrinkage stays 0.5).
+LOGLOSS_REFIT_KAPPA = 0.5
 LOGLOSS_REFIT_P_FLOOR = 1e-6
 LOGLOSS_REFIT_DELTA_BOUNDS_C = (-3.0, 3.0)
 # The moment fit's own clamp on the spread factor.

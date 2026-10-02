@@ -168,7 +168,7 @@ class ServingReaderTest(unittest.TestCase):
         # charter 198 (the rung and the activation read); the clearness form
         # is unchanged by either.  v16 since charter 222 (its coefficient's
         # two sides).
-        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v22")
+        self.assertEqual(P0.POSTERIOR_VERSION, "calibrated_native_cross_ensemble_p0_v23")
 
 
 if __name__ == "__main__":

@@ -58,7 +58,14 @@ if P0_MEMBERSHIP_MODE not in P0_MEMBERSHIP_MODES:
 # The served shrinkage.  The nested replay chose kappa on earlier days for
 # each update; across 7,714 updates it landed on 0.25 (40%), 0.5 (45%), 0.75
 # (12%) and 1.0 (3%), and 0.5 alone scores -4.86% CRPS against the contest.
-STABLE_POOL_KAPPA = 0.5
+# Charter 244 (user ruling 2026-10-02 「改」): 0.25.  On the six-system
+# 2026-01..09 replay, 04-01..09-30, 7,093 station-days, the seat-weight pool
+# at 0.25 against 0.5: LogScore -0.0022 [-0.0046, -0.0004], Brier +0.0002,
+# CRPS -0.0009; larger kappa is monotonically worse (0.75 +0.0045, 1.0
+# +0.0095).  Through charter 242's served weights it moves P0 by -0.0004
+# (docs/research/seat_weight_kappa_20261002).  New pool certificates carry
+# the value in their combination method; the daily OOS rotation re-mints.
+STABLE_POOL_KAPPA = 0.25
 # Candidate shrinkage strengths the replay chooses among.  0 serves the skill
 # weights untouched; 1 serves the family-balanced baseline.
 STABLE_POOL_KAPPA_GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
