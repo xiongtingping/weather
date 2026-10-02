@@ -143,7 +143,7 @@ def test_p0m_groups_on_the_root_s_served_mean_and_the_capture_s_weather() -> Non
 
     dry = seat(0.2, 0.0)
     receipt = json.loads(dry.lineage[TL.LINEAGE_KEY])
-    assert dry.posterior_version == "p0m_taf_likelihood_v26"
+    assert dry.posterior_version == "p0m_taf_likelihood_v27"
     assert receipt["tempering"]["group"] == TL.GROUP_UNREASONED_COLD
     assert receipt["tempering"]["x_served_c"] == pytest.approx(tx - mean)
     x = tx - 38.0

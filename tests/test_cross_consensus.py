@@ -43,3 +43,12 @@ def test_the_band_reliability_layer_is_deleted_not_dormant() -> None:
     assert not hasattr(native_ensemble_p0, "resolve_pinned_band_layer")
     assert not hasattr(served_shape, "BandLayer")
     assert served_shape.SERVED_TABLE_LAYER_ORDER == ("center_width",)
+
+
+def test_charter_246_bridge_ramp_starts_at_one_degree_and_is_full_by_one_and_a_half() -> None:
+    from bayes_basket_target import cross_consensus as cc
+
+    assert (cc.CONSENSUS_BRIDGE_GAP_START_C, cc.CONSENSUS_BRIDGE_GAP_FULL_C, cc.CONSENSUS_BRIDGE_LAMBDA_MAX) == (1.0, 1.5, 0.4)
+    assert cc.consensus_bridge_lambda(1.0) == 0.0
+    assert abs(cc.consensus_bridge_lambda(1.25) - 0.2) < 1e-12
+    assert cc.consensus_bridge_lambda(1.5) == 0.4 and cc.consensus_bridge_lambda(3.0) == 0.4

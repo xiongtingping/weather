@@ -732,9 +732,16 @@ def apply_neighbour_direction_tilt(
 # observed valley rates: 2-3C stratum 0.6*0.173 + 0.4*~0.45 ~= 0.28 against
 # 27.8% observed; >=3C moves 22.9% -> ~0.36 against 45.5% observed (n=11),
 # deliberately short of the point estimate rather than tuned onto it.
+# Charter 246 (2026-10-02): the ramp starts at 1.0C and is full by 1.5C.
+# Once charter 242 concentrated the served weights the bridge earns its keep
+# (off: LogScore +0.0068 [+0.0038, +0.0102]) and an earlier ramp beats the
+# 1.5/2.0 one on all three scores (LogScore -0.0018 [-0.0027, -0.0010],
+# Brier -0.0004, CRPS -0.0003, both halves), 2026-04..09 six-system replay
+# (docs/research/consensus_bridge_long_20261002).  A larger ceiling (0.6)
+# did not separate; 0.4 stays.
 CONSENSUS_BRIDGE_LAMBDA_MAX = 0.4
-CONSENSUS_BRIDGE_GAP_START_C = 1.5
-CONSENSUS_BRIDGE_GAP_FULL_C = 2.0
+CONSENSUS_BRIDGE_GAP_START_C = 1.0
+CONSENSUS_BRIDGE_GAP_FULL_C = 1.5
 
 
 def consensus_bridge_lambda(gap_c: float) -> float:

@@ -184,7 +184,7 @@ def test_no_retired_layer_speaks_on_p1() -> None:
     assert not [key for key in RETIRED_P1_KEYS if key in lineage]
     assert lineage["observation_likelihood_mode"] == OL.LIKELIHOOD_MODE
     assert packets[-1]["expected_envelope"]["posterior_version"] == (
-        "p1_joint_likelihood_v34"
+        "p1_joint_likelihood_v35"
     )
 
 
@@ -292,7 +292,7 @@ def test_a_closed_gate_leaves_p0m_equal_to_p0() -> None:
     envelope = _p0m(root, _taf_artifact(TL.GATE_IDENTITY))
     assert dict(envelope.probabilities) == dict(root.probabilities)
     assert envelope.lineage["taf_revision_state"] == "IDENTITY_GATE_CLOSED"
-    assert envelope.posterior_version == "p0m_taf_likelihood_v26"
+    assert envelope.posterior_version == "p0m_taf_likelihood_v27"
 
 
 def test_an_open_gate_multiplies_p0_by_the_taf_gaussian() -> None:

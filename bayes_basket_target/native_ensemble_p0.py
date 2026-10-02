@@ -187,7 +187,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # were minted -- a pair re-certified this morning no longer outranks the
 # five-system view certified last night, and a same-size tie keeps the
 # heavier systems instead of falling to the activation id.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v23"
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v24"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
