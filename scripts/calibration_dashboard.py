@@ -6526,49 +6526,36 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """Every active P0 blend, spelled out: which models, at what weight.
 
     Section three counts the weight tables; this reads the weights
-    themselves off the serving path -- newest activation pointer per scope,
-    the artifact it binds, the selection evidence whose contest produced the
-    weights -- so the page shows what P0 actually blends, not a census of
-    the tables it is stored in.  The holdout end rides along because the
+    themselves off the serving path -- each open station-day's newest P0,
+    the artifact its lineage names, the selection evidence whose contest
+    produced the weights -- so the page shows what P0 actually blends, not a
+    census of the tables it is stored in.  The holdout end rides along because the
     fleet rebinds gradually after a re-selection: a scope still serving an
     old contest is visible here as an old window, not as a mystery.
     """
 
     labels = {system: label for system, label, _t, _b in MEMBER_FAMILIES}
     rows: list[dict[str, Any]] = []
-    for (
-        station, season, lead, cycle, weights_json,
-        candidates_json, selected_json, holdout_end, train_end,
-    ) in conn.execute(
-        "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
-        " se.selected_weights_json, se.candidate_system_ids_json,"
-        " se.selected_system_ids_json, se.holdout_end_date,"
-        " se.train_end_date"
-        " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
-        "   artifact_id, MAX(generation)"
-        "  FROM calibration_native_ensemble_activation"
-        "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
-        # Charter 62: only rows in the station-local vocabulary are the
-        # serving path now.  Without this filter the legacy calendar rows
-        # (which nothing queries but which stay valid for up to 30 days)
-        # render as a second column per scope and pollute the seat counts.
-        "  AND season_bin IN"
-        "   ('PEAK','DESCENT','TROUGH','ASCENT','ALLYEAR')"
-        "  AND valid_until_utc > strftime('%Y-%m-%dT%H:%M:%SZ','now')"
-        "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
-        " JOIN calibration_cross_native_ensemble_artifact ar"
-        "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
-        " JOIN calibration_cross_native_ensemble_selection_evidence se"
-        "  ON se.content_sha256 = ar.selection_evidence_sha256"
-    ):
+    # The seats P0 actually serves, off each open station-day's newest P0
+    # (``board_readings.served_p0_seats``).  MAX(generation) per scope was
+    # "the served seat" until 2026-10-02; since charter 198 it was mostly a
+    # two-system re-mint (706 of 743 rows) while the served P0s carried six.
+    from bayes_basket_target.board_readings import served_p0_seats  # noqa: PLC0415
+
+    for seat in served_p0_seats(conn):
+        station, season, lead, cycle = (
+            seat["station_id"], seat["season_bin"], seat["lead_bucket"], seat["run_cycle"],
+        )
+        holdout_end, train_end = seat["holdout_end_date"], seat["train_end_date"]
         try:
-            weights = json.loads(weights_json)
-            candidates = json.loads(candidates_json)
-            selected = json.loads(selected_json)
+            weights = json.loads(seat["selected_weights_json"])
+            candidates = json.loads(seat["candidate_system_ids_json"])
+            selected = json.loads(seat["selected_system_ids_json"])
         except (ValueError, TypeError):
             continue
         rows.append({
             "station": str(station),
+            "event_date": str(seat["event_date"]),
             "season": str(season),
             "lead_bucket": str(lead),
             "lead_label": dict(LEAD_LABELS).get(str(lead), str(lead)),
@@ -10952,24 +10939,17 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     stored: how alike the seated systems' errors were.
     """
 
-    served_rows = conn.execute(
-        "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
-        " ar.combination_method, se.selected_weights_json,"
-        " se.cross_system_residual_correlation_json"
-        " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
-        "   artifact_id, MAX(generation)"
-        "  FROM calibration_native_ensemble_activation"
-        "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
-        "  AND season_bin IN"
-        "   ('PEAK','DESCENT','TROUGH','ASCENT','ALLYEAR')"
-        "  AND valid_until_utc > strftime('%Y-%m-%dT%H:%M:%SZ','now')"
-        "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
-        " JOIN calibration_cross_native_ensemble_artifact ar"
-        "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
-        " JOIN calibration_cross_native_ensemble_selection_evidence se"
-        "  ON se.content_sha256 = ar.selection_evidence_sha256"
-        " WHERE se.selected_system_count > 1"
-    ).fetchall()
+    from bayes_basket_target.board_readings import served_p0_seats  # noqa: PLC0415
+
+    served_rows = [
+        (
+            seat["station_id"], seat["season_bin"], seat["lead_bucket"],
+            seat["run_cycle"], seat["combination_method"],
+            seat["selected_weights_json"], seat["correlation_json"],
+        )
+        for seat in served_p0_seats(conn)
+        if int(seat.get("selected_system_count") or 0) > 1
+    ]
 
     rows: list[dict[str, Any]] = []
     unread = 0

@@ -95,6 +95,93 @@ def load_reading(name: str) -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
+# the seats P0 actually serves
+# ---------------------------------------------------------------------------
+
+#: Event days (today and after) whose served P0 seats the board reads.
+SERVED_SEAT_DAYS = 3
+
+
+def served_p0_seats(
+    conn: sqlite3.Connection, *, days: int = SERVED_SEAT_DAYS,
+) -> list[dict[str, Any]]:
+    """The seat each open station-day's newest P0 was served from, as stored.
+
+    Read off the envelope's own lineage (``native_cross_ensemble_artifact_
+    sha256`` / ``native_cross_activation_sha256``) to the artifact and the
+    selection evidence, all by content sha.  Until 2026-10-02 the board and
+    this job took ``MAX(generation)`` per (station, season, lead, cycle) as
+    "the served seat"; since charter 198 a scope holds hundreds of valid
+    pairings and P0 ranks them (usable, pool, exact, breadth ...), so the
+    highest generation was mostly some two-system re-mint -- 706 of 743
+    rows showed two systems while the served P0s carried six.
+    """
+
+    today = _now().date()
+    seats: list[dict[str, Any]] = []
+    for offset in range(days):
+        day = (today + timedelta(days=offset)).isoformat()
+        for station, decided in conn.execute(
+            "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
+            " WHERE state='COMMITTED' AND event_date=? AND stage='P0'"
+            " GROUP BY station_id",
+            (day,),
+        ).fetchall():
+            lineage = conn.execute(
+                "SELECT json_extract(lineage_json,'$.native_cross_ensemble_artifact_sha256'),"
+                " json_extract(lineage_json,'$.native_cross_activation_sha256')"
+                " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+                " AND stage='P0' AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+                (station, day, decided),
+            ).fetchone()
+            if not lineage or not lineage[0]:
+                continue
+            artifact = conn.execute(
+                "SELECT cross_ensemble_artifact_id, season_bin, lead_bucket, run_cycle,"
+                " combination_method, selection_evidence_sha256"
+                " FROM calibration_cross_native_ensemble_artifact WHERE content_sha256=?",
+                (str(lineage[0]),),
+            ).fetchone()
+            if artifact is None:
+                continue
+            activation = conn.execute(
+                "SELECT available_system_set_hash_or_star"
+                " FROM calibration_native_ensemble_activation WHERE content_sha256=?",
+                (str(lineage[1] or ""),),
+            ).fetchone()
+            evidence = conn.execute(
+                "SELECT content_sha256, selected_weights_json,"
+                " cross_system_residual_correlation_json, run_cycle_by_system_json,"
+                " family_weight_caps_json, train_end_date, candidate_system_ids_json,"
+                " selected_system_ids_json, holdout_end_date, selected_system_count"
+                " FROM calibration_cross_native_ensemble_selection_evidence"
+                " WHERE content_sha256=?",
+                (str(artifact[5]),),
+            ).fetchone()
+            if evidence is None:
+                continue
+            seats.append({
+                "station_id": str(station), "event_date": day,
+                "decision_at_utc": str(decided),
+                "artifact_id": str(artifact[0]),
+                "season_bin": str(artifact[1]), "lead_bucket": str(artifact[2]),
+                "run_cycle": str(artifact[3]), "combination_method": artifact[4],
+                "set_hash": None if activation is None else activation[0],
+                "evidence_sha256": evidence[0],
+                "selected_weights_json": evidence[1],
+                "correlation_json": evidence[2],
+                "run_cycle_by_system_json": evidence[3],
+                "family_weight_caps_json": evidence[4],
+                "train_end_date": evidence[5],
+                "candidate_system_ids_json": evidence[6],
+                "selected_system_ids_json": evidence[7],
+                "holdout_end_date": evidence[8],
+                "selected_system_count": evidence[9],
+            })
+    return seats
+
+
+# ---------------------------------------------------------------------------
 # seat_windows
 # ---------------------------------------------------------------------------
 
@@ -464,28 +551,19 @@ def fusion_resolved_seats(conn: sqlite3.Connection) -> dict[str, Any]:
             " FROM calibration_native_ensemble_system"
         )
     }
-    served_rows = conn.execute(
-        "SELECT p.station_id, p.season_bin, p.lead_bucket, p.run_cycle,"
-        " p.set_hash, ar.combination_method, se.content_sha256,"
-        " se.selected_weights_json,"
-        " se.cross_system_residual_correlation_json,"
-        " se.run_cycle_by_system_json, se.family_weight_caps_json,"
-        " se.train_end_date"
-        " FROM (SELECT station_id, season_bin, lead_bucket, run_cycle,"
-        "   artifact_id, available_system_set_hash_or_star AS set_hash,"
-        "   MAX(generation)"
-        "  FROM calibration_native_ensemble_activation"
-        "  WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
-        "  AND season_bin IN"
-        "   ('PEAK','DESCENT','TROUGH','ASCENT','ALLYEAR')"
-        "  AND valid_until_utc > strftime('%Y-%m-%dT%H:%M:%SZ','now')"
-        "  GROUP BY station_id, season_bin, lead_bucket, run_cycle) p"
-        " JOIN calibration_cross_native_ensemble_artifact ar"
-        "  ON ar.cross_ensemble_artifact_id = p.artifact_id"
-        " JOIN calibration_cross_native_ensemble_selection_evidence se"
-        "  ON se.content_sha256 = ar.selection_evidence_sha256"
-        " WHERE se.selected_system_count > 1"
-    ).fetchall()
+    # The seats P0 actually serves (``served_p0_seats``), not the highest
+    # generation per scope.
+    served_rows = [
+        (
+            seat["station_id"], seat["season_bin"], seat["lead_bucket"],
+            seat["run_cycle"], seat["set_hash"], seat["combination_method"],
+            seat["evidence_sha256"], seat["selected_weights_json"],
+            seat["correlation_json"], seat["run_cycle_by_system_json"],
+            seat["family_weight_caps_json"], seat["train_end_date"],
+        )
+        for seat in served_p0_seats(conn)
+        if int(seat.get("selected_system_count") or 0) > 1
+    ]
 
     rows: list[dict[str, Any]] = []
     unread = 0
@@ -1074,7 +1152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "READINGS_DIR", "READING_NAMES", "SCHEMA", "load_reading", "main", "run",
-    "write_reading",
+    "served_p0_seats", "write_reading",
 ]
 
 

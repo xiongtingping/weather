@@ -90,3 +90,43 @@ def test_seat_windows_read_again_only_the_cells_that_can_still_change(tmp_path, 
     assert old_key in value["seats"], "an older cell is kept as written"
     assert "KAAA|2026-10-02|2026-10-02T13:00:00Z" in value["seats"]
     assert value["computed"] == 1
+
+
+def test_the_served_seat_is_the_one_the_newest_p0_names_not_the_highest_generation(monkeypatch) -> None:
+    """2026-10-02: MAX(generation) per scope stood in for "the served seat";
+    since charter 198 it was mostly a two-system re-mint (706 of 743 rows)
+    while the served P0s carried six.  The seat is the one the station-day's
+    newest P0 names in its lineage."""
+
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(BR, "_now", lambda: datetime(2026, 10, 2, 12, tzinfo=timezone.utc))
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+        CREATE TABLE basket_probability_envelope (station_id, event_date, stage, state,
+            decision_at_utc, lineage_json);
+        CREATE TABLE calibration_cross_native_ensemble_artifact (cross_ensemble_artifact_id,
+            season_bin, lead_bucket, run_cycle, combination_method, selection_evidence_sha256,
+            content_sha256);
+        CREATE TABLE calibration_native_ensemble_activation (available_system_set_hash_or_star,
+            content_sha256);
+        CREATE TABLE calibration_cross_native_ensemble_selection_evidence (content_sha256,
+            selected_weights_json, cross_system_residual_correlation_json,
+            run_cycle_by_system_json, family_weight_caps_json, train_end_date,
+            candidate_system_ids_json, selected_system_ids_json, holdout_end_date,
+            selected_system_count);
+    """)
+    for at, art in (("2026-10-02T06:00:00Z", "a-old"), ("2026-10-02T09:00:00Z", "a-six")):
+        conn.execute("INSERT INTO basket_probability_envelope VALUES ('KAAA','2026-10-02','P0','COMMITTED',?,?)",
+                     (at, json.dumps({"native_cross_ensemble_artifact_sha256": art,
+                                      "native_cross_activation_sha256": "act-" + art})))
+    for art, ev in (("a-old", "e-two"), ("a-six", "e-six")):
+        conn.execute("INSERT INTO calibration_cross_native_ensemble_artifact VALUES (?,?,?,?,?,?,?)",
+                     ("id-" + art, "PEAK", "h12_24", "00Z", "stable_pool", ev, art))
+        conn.execute("INSERT INTO calibration_native_ensemble_activation VALUES ('h', ?)", ("act-" + art,))
+    conn.execute("INSERT INTO calibration_cross_native_ensemble_selection_evidence VALUES"
+                 " ('e-six','{}','{}','{}','{}','2026-09-30','[]','[]','2026-10-01',6)")
+    conn.execute("INSERT INTO calibration_cross_native_ensemble_selection_evidence VALUES"
+                 " ('e-two','{}','{}','{}','{}','2026-09-30','[]','[]','2026-10-01',2)")
+    seats = BR.served_p0_seats(conn, days=1)
+    assert [(s["artifact_id"], s["selected_system_count"]) for s in seats] == [("id-a-six", 6)]
