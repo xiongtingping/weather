@@ -19,8 +19,9 @@
 # copy and receipt under weather_cold/maker_shadow_retired_20260930), so from
 # 10-01 the refit failed every turn on "no such table: maker_shadow_order" and
 # the lane read red while the renewal behind it kept the batch served.  The
-# fitter stays for an offline refit against that copy; a refit is minted by
-# hand, with the probe back on, never from a book that no longer grows.
+# probe itself was retired on 2026-10-02 (user ruling 「去掉挂单探针采集」),
+# so the book will not grow again: the fitter stays as the served batch's
+# lineage and reads the frozen cold copy by hand, never on this clock.
 
 set -uo pipefail
 

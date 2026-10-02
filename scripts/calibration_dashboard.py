@@ -17726,7 +17726,7 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 const SWEEP_LABEL = {
   settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
-  settled_day_cycle_close:"已结算日收盘", maker_shadow_probe:"挂单影子探针",
+  settled_day_cycle_close:"已结算日收盘",
   correction_review_auto_clear:"订正复核自动清除",
   forward_packet_retention:"前瞻包保留", auto_station_exclusions:"自动禁入站",
   capture_jma_msm_forward:"JMA MSM 捕获",

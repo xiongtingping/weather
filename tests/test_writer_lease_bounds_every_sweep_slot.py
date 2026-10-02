@@ -17,7 +17,6 @@ import importlib.util
 import re
 import sqlite3
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -161,79 +160,6 @@ def _fresh(path: Path, name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-@pytest.fixture()
-def probe():
-    return _fresh(ROOT / "scripts" / "maker_shadow_probe.py", "_maker_probe_under_test")
-
-
-def _book_db(probe) -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
-    probe.ensure_schema(conn)
-    conn.execute(
-        "CREATE TABLE basket_official_ws_snapshot("
-        " station_id TEXT, event_date TEXT, state TEXT,"
-        " quote_observed_at TEXT, buckets_json TEXT)"
-    )
-    return conn
-
-
-def test_the_probe_places_nothing_once_its_clock_is_spent(probe, monkeypatch) -> None:
-    conn = _book_db(probe)
-    now = probe._now()
-    book = {"31C": {"ask": 0.4, "bid": 0.38, "tick": 0.01, "queue_ahead": None,
-                    "queue_known": False, "depth": 10.0}}
-    monkeypatch.setattr(
-        probe, "_latest_books",
-        lambda c, **kw: {("KMIA", "2026-09-16"): (now, book), ("EGLC", "2026-09-16"): (now, book)},
-    )
-    monkeypatch.setattr(probe, "_model_probabilities", lambda c, s, d: {"31C": 0.5})
-
-    spent = probe.place(conn, deadline=time.monotonic() - 1.0)
-    assert spent["stopped_for_time"] == 1
-    assert conn.execute("SELECT COUNT(*) FROM maker_shadow_order").fetchone()[0] == 0
-
-    whole = probe.place(conn, deadline=None)
-    assert "stopped_for_time" not in whole
-    assert whole["scopes_with_fresh_book"] == 2
-    assert conn.execute("SELECT COUNT(*) FROM maker_shadow_order").fetchone()[0] > 0
-
-
-def test_the_probe_resolves_nothing_once_its_clock_is_spent(probe, monkeypatch) -> None:
-    conn = _book_db(probe)
-    now = probe._now()
-    book = {"31C": {"ask": 0.4, "bid": 0.38, "tick": 0.01, "queue_ahead": None,
-                    "queue_known": False, "depth": 10.0}}
-    monkeypatch.setattr(
-        probe, "_latest_books", lambda c, **kw: {("KMIA", "2026-09-16"): (now, book)},
-    )
-    monkeypatch.setattr(probe, "_model_probabilities", lambda c, s, d: {"31C": 0.5})
-    probe.place(conn)
-    open_before = conn.execute(
-        "SELECT COUNT(*) FROM maker_shadow_order WHERE state='OPEN'"
-    ).fetchone()[0]
-    assert open_before > 0
-
-    spent = probe.resolve(conn, deadline=time.monotonic() - 1.0)
-    assert spent["stopped_for_time"] == 1
-    assert spent["still_open"] == open_before
-
-
-def test_the_probe_asks_for_the_next_pass_when_any_phase_stopped(probe, monkeypatch, tmp_path, capsys) -> None:
-    db = tmp_path / "book.db"
-    sqlite3.connect(db).close()
-    monkeypatch.setattr(probe, "place", lambda conn, *, deadline=None: {"stopped_for_time": 1})
-    monkeypatch.setattr(probe, "resolve", lambda conn, *, deadline=None: {"open": 0})
-    monkeypatch.setattr(probe, "settle", lambda conn, *, deadline=None: {"unsettled_fills": 0})
-    monkeypatch.setattr(probe, "claim_cap_reading", lambda conn: "cap")
-    monkeypatch.setattr(sys, "argv", ["maker_shadow_probe.py", "--db", str(db)])
-    assert probe.main() == 0
-    assert pd.HOSTED_SWEEP_CONTINUE_MARKER in capsys.readouterr().out.splitlines()
-
-    monkeypatch.setattr(probe, "place", lambda conn, *, deadline=None: {"intents_written": 3})
-    assert probe.main() == 0
-    assert pd.HOSTED_SWEEP_CONTINUE_MARKER not in capsys.readouterr().out.splitlines()
 
 
 def test_the_truth_sweep_stops_between_scopes_and_says_so(monkeypatch, tmp_path, capsys) -> None:

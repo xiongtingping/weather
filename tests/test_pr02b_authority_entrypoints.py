@@ -103,19 +103,19 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
     targetctl = (ROOT / "scripts" / "targetctl.sh").read_text(encoding="utf-8")
     # The guard this test exists for is the installer's own list: it manages
     # three user-domain services and no more.  The repository's launchd
-    # directory has grown past that, and the growth is accounted for --
-    # four of the eight extras were folded into the resident daemon's
-    # hosted sweeps on 2026-08-24 and are installed disabled, and four run
-    # on their own clocks for reasons recorded below.  Pinning the
-    # directory to the known set keeps a new one from arriving unnoticed
-    # without pretending the four superseded definitions are not on disk.
+    # directory has grown past that, and the growth is accounted for -- the
+    # extras folded into the resident daemon's hosted sweeps on 2026-08-24
+    # are installed disabled (the maker shadow probe's left with the probe,
+    # retired 2026-10-02), and the rest run on their own clocks for reasons
+    # recorded below.  Pinning the directory to the known set keeps a new
+    # one from arriving unnoticed without pretending the superseded
+    # definitions are not on disk.
     installer_managed = [
         "com.weather.clob_order_service.plist",
         "com.weather.market_ws.plist",
         "com.weather.weather_basket_yes.plist",
     ]
     superseded_by_hosted_sweeps = [
-        "com.weather.maker_shadow_probe.plist",
         "com.weather.pr12_awc_observation_sweep.plist",
         "com.weather.settlement_truth_sweep.plist",
     ]
