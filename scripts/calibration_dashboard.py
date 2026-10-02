@@ -5072,6 +5072,16 @@ def collect_certificate_authority(conn: sqlite3.Connection) -> dict[str, Any]:
         return {"available": False, "health": "amber", "note": f"读不出：{exc}"}
 
 
+def _live_ssot_guard() -> dict[str, Any]:
+    """The resident's capacity guard as it stands now (its status file)."""
+
+    try:
+        status = json.loads(STATUS_JSON.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dict(status.get("target_ssot_capacity") or {})
+
+
 def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
     """The store against its own ceiling, and which tables are eating it.
 
@@ -15697,6 +15707,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "ssot_capacity", collect_ssot_capacity, conn,
         _unavailable={"available": False, "tables": []},
     )
+    # The gauge is the resident's live status, read every render; only the
+    # per-table composition is the cached daily page.  The lamp read the
+    # page's copy until 2026-10-02, so a daily page would have held the
+    # ceiling warning a day stale (and showed "3 天" from a one-hour growth
+    # window long after the guard said 20.7).
+    live_guard = _live_ssot_guard()
+    if live_guard:
+        ssot_capacity = {**(ssot_capacity or {}), **live_guard, "available": True}
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, tables
     )

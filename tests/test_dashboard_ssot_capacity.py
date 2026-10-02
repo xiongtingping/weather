@@ -170,10 +170,11 @@ def test_the_reading_reaches_the_head_lamp():
     assert "D.ssot_capacity" in page
     assert '"ssot_capacity": ssot_capacity,' in page
     # The composition walk counts rows over a day on ten tables; it is the
-    # only part that is cached, and the gauge above it never is.  Six hours
-    # since 2026-09-17: the walk is a 397s pass over the store's blobs and
-    # a 45-minute TTL rebuilt it on nearly every 30-minute render.
-    assert '"ssot_capacity": 6 * 60 * 60,' in page
+    # only part that is cached (daily since 2026-10-02), and the gauge above
+    # it never is: the resident's live guard is laid over the page on every
+    # render, so the ceiling lamp is never a day stale.
+    assert '"ssot_capacity": 24 * 60 * 60,' in page
+    assert "live_guard = _live_ssot_guard()" in page
 
 
 def test_the_wal_reaches_the_lamp(tmp_path, monkeypatch):
