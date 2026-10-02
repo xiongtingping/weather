@@ -1,0 +1,349 @@
+{
+ "cells": 2313,
+ "station_days": 661,
+ "days": 18,
+ "evidence_floor": "2026-09-14T05:52:13Z",
+ "fixed_weight_in_sample": {
+  "0.1": [
+   -0.014199541138979019,
+   -0.024490442291370932,
+   -0.004843284731669918
+  ],
+  "0.15": [
+   -0.01647198145480766,
+   -0.028818280242686546,
+   -0.0029796412827926555
+  ],
+  "0.2": [
+   -0.016841771867222303,
+   -0.03454619529006057,
+   -0.0014933403295369792
+  ],
+  "0.3": [
+   -0.013644377492538383,
+   -0.0339521147956146,
+   0.00643332699100352
+  ]
+ },
+ "decomposition_w0.2": {
+  "cold_tail": {
+   "cells": 367,
+   "share_cells": 0.15866839602248162,
+   "mean_dlog": -0.15136348302416208,
+   "contribution_to_mean": -0.024016601067819925,
+   "mean_abs": 0.20793700691017467
+  },
+  "warm_tail": {
+   "cells": 421,
+   "share_cells": 0.18201469952442714,
+   "mean_dlog": -0.1297526667331686,
+   "contribution_to_mean": -0.023616892647930814,
+   "mean_abs": 0.19468320044039908
+  },
+  "body": {
+   "cells": 1525,
+   "share_cells": 0.6593169044530912,
+   "mean_dlog": 0.046702460744686085,
+   "contribution_to_mean": 0.03079172184852844,
+   "mean_abs": 0.04779785799518669
+  }
+ },
+ "variance_share_w0.2": {
+  "cold_tail": 0.479134160286722,
+  "warm_tail": 0.43712288095679014,
+  "body": 0.08374295875648786
+ },
+ "dlog_distribution_w0.2": {
+  "p1": -1.185574270227706,
+  "p5": -0.35726738627906157,
+  "p50": 0.03873988593688882,
+  "p95": 0.09780266903596506,
+  "p99": 0.10293297028849924,
+  "max": 0.12447781857102447,
+  "min": -2.330987764341052,
+  "excess_kurtosis": 30.29529179743129
+ },
+ "tail_hits": {
+  "cold_realised": 0.15866839602248162,
+  "warm_realised": 0.18201469952442714,
+  "cold_claimed": 0.13531950975502485,
+  "warm_claimed": 0.15022322664462
+ },
+ "walk_forward_reproduced": [
+  -0.01271485244376049,
+  -0.030970442673875342,
+  0.004284958356996105
+ ],
+ "held_out_days_fixed_w0.2": [
+  -0.01678886759935181,
+  -0.033654009568851624,
+  -0.0012076776935611745
+ ],
+ "held_out_days_fixed_w0.15": [
+  -0.01638868934332351,
+  -0.03053076266561239,
+  -0.004249163179559076
+ ],
+ "fold_weight_counts": {
+  "0.15": 1,
+  "0.3": 5,
+  "0.2": 11
+ },
+ "held_out_days_fixed_w0.15_brier": [
+  -0.0007345474522262921,
+  -0.002097099837060513,
+  0.0005532118042345376
+ ],
+ "held_out_days_fixed_w0.15_crps": [
+  -0.0010025035891403752,
+  -0.0024107764760183566,
+  0.00044977129711050765
+ ],
+ "held_out_days_fixed_w0.2_brier": [
+  -0.0007031666290846832,
+  -0.0025500239704301206,
+  0.000988451098435128
+ ],
+ "held_out_days_fixed_w0.2_crps": [
+  -0.001061452909552925,
+  -0.0030516964136661803,
+  0.000991240363620035
+ ],
+ "deepest_saves_w0.2": [
+  {
+   "station": "SBGR",
+   "day": "2026-09-20",
+   "decided": "2026-09-18T14:02",
+   "seated": 2,
+   "truth_bucket": "21°C or below",
+   "vector_mean_c": 26.51,
+   "truth_minus_mean_c": -5.51,
+   "base_p_truth": 0.0013,
+   "mixed_p_truth": 0.0134,
+   "dlog": -2.331
+  },
+  {
+   "station": "SBGR",
+   "day": "2026-09-20",
+   "decided": "2026-09-19T13:50",
+   "seated": 2,
+   "truth_bucket": "21°C or below",
+   "vector_mean_c": 26.79,
+   "truth_minus_mean_c": -5.79,
+   "base_p_truth": 0.0016,
+   "mixed_p_truth": 0.0163,
+   "dlog": -2.322
+  },
+  {
+   "station": "KDAL",
+   "day": "2026-09-23",
+   "decided": "2026-09-21T15:08",
+   "seated": 2,
+   "truth_bucket": "98-99°F",
+   "vector_mean_c": 34.02,
+   "truth_minus_mean_c": 2.92,
+   "base_p_truth": 0.0022,
+   "mixed_p_truth": 0.0131,
+   "dlog": -1.786
+  },
+  {
+   "station": "WSSS",
+   "day": "2026-09-22",
+   "decided": "2026-09-20T08:18",
+   "seated": 2,
+   "truth_bucket": "31°C",
+   "vector_mean_c": 33.3,
+   "truth_minus_mean_c": -2.3,
+   "base_p_truth": 0.0023,
+   "mixed_p_truth": 0.0139,
+   "dlog": -1.781
+  },
+  {
+   "station": "KSEA",
+   "day": "2026-09-19",
+   "decided": "2026-09-17T17:39",
+   "seated": 3,
+   "truth_bucket": "63°F or below",
+   "vector_mean_c": 21.72,
+   "truth_minus_mean_c": -4.72,
+   "base_p_truth": 0.001,
+   "mixed_p_truth": 0.0056,
+   "dlog": -1.721
+  },
+  {
+   "station": "WSSS",
+   "day": "2026-09-28",
+   "decided": "2026-09-26T08:43",
+   "seated": 2,
+   "truth_bucket": "30°C",
+   "vector_mean_c": 32.42,
+   "truth_minus_mean_c": -2.42,
+   "base_p_truth": 0.0028,
+   "mixed_p_truth": 0.0133,
+   "dlog": -1.567
+  },
+  {
+   "station": "KLGA",
+   "day": "2026-09-22",
+   "decided": "2026-09-20T08:18",
+   "seated": 2,
+   "truth_bucket": "68-69°F",
+   "vector_mean_c": 17.01,
+   "truth_minus_mean_c": 3.27,
+   "base_p_truth": 0.003,
+   "mixed_p_truth": 0.0135,
+   "dlog": -1.517
+  },
+  {
+   "station": "MPMG",
+   "day": "2026-10-01",
+   "decided": "2026-09-30T16:07",
+   "seated": 2,
+   "truth_bucket": "29°C",
+   "vector_mean_c": 31.45,
+   "truth_minus_mean_c": -2.45,
+   "base_p_truth": 0.003,
+   "mixed_p_truth": 0.0132,
+   "dlog": -1.492
+  },
+  {
+   "station": "ZSQD",
+   "day": "2026-09-20",
+   "decided": "2026-09-18T14:02",
+   "seated": 2,
+   "truth_bucket": "29°C",
+   "vector_mean_c": 31.1,
+   "truth_minus_mean_c": -2.1,
+   "base_p_truth": 0.0036,
+   "mixed_p_truth": 0.0157,
+   "dlog": -1.481
+  },
+  {
+   "station": "KSEA",
+   "day": "2026-09-19",
+   "decided": "2026-09-18T16:16",
+   "seated": 2,
+   "truth_bucket": "63°F or below",
+   "vector_mean_c": 21.78,
+   "truth_minus_mean_c": -4.78,
+   "base_p_truth": 0.001,
+   "mixed_p_truth": 0.0043,
+   "dlog": -1.471
+  },
+  {
+   "station": "SBGR",
+   "day": "2026-09-20",
+   "decided": "2026-09-19T10:42",
+   "seated": 2,
+   "truth_bucket": "21°C or below",
+   "vector_mean_c": 27.17,
+   "truth_minus_mean_c": -6.17,
+   "base_p_truth": 0.0029,
+   "mixed_p_truth": 0.0121,
+   "dlog": -1.438
+  },
+  {
+   "station": "VILK",
+   "day": "2026-09-16",
+   "decided": "2026-09-14T10:29",
+   "seated": 2,
+   "truth_bucket": "33°C or higher",
+   "vector_mean_c": 30.43,
+   "truth_minus_mean_c": 2.57,
+   "base_p_truth": 0.0081,
+   "mixed_p_truth": 0.033,
+   "dlog": -1.398
+  }
+ ],
+ "concentration_w0.2": {
+  "cells_dlog_lt_-0.5": 80,
+  "sum_of_those_over_n": -0.03385727022403469,
+  "mean_without_them": 0.01762509973099285,
+  "top_1pct_cells_sum_over_n": -0.015017387625080161,
+  "mean_without_top_1pct": -0.0018427077519977183,
+  "station_days_behind_lt_-0.5": 42,
+  "station_days_behind_top_1pct": 15
+ },
+ "without_top_station_days_w0.2": [
+  0.006145291547144954,
+  -0.004124339170653326,
+  0.016289454630261692
+ ],
+ "one_sided_cold_w0.2_exploratory": [
+  -0.00839603916469279,
+  -0.020960132231978866,
+  0.002379296360665898
+ ],
+ "one_sided_warm_w0.2_exploratory": [
+  -0.008444999669117367,
+  -0.019765615091717304,
+  0.0017110314791771752
+ ],
+ "segments": [
+  {
+   "label": "09-13..09-25 (pre-236 seating, more thin pools)",
+   "cells": 1909,
+   "station_days": 477,
+   "dlog_w0.2": [
+    -0.017887766744598667,
+    -0.036556226062143704,
+    0.0002542012767152644
+   ],
+   "cold_tail_hits": 0.16029334730225248,
+   "warm_tail_hits": 0.19067574646411733
+  },
+  {
+   "label": "09-26..10-02",
+   "cells": 404,
+   "station_days": 184,
+   "dlog_w0.2": [
+    -0.01189918716199588,
+    -0.04081823321935072,
+    0.013979281793502184
+   ],
+   "cold_tail_hits": 0.15099009900990099,
+   "warm_tail_hits": 0.14108910891089108
+  },
+  {
+   "label": "C stations",
+   "cells": 1495,
+   "station_days": 475,
+   "dlog_w0.2": [
+    -0.010072757730456152,
+    -0.02909076815105663,
+    0.00603504666434417
+   ],
+   "cold_tail_hits": 0.1531772575250836,
+   "warm_tail_hits": 0.17525083612040135
+  },
+  {
+   "label": "F stations (ladder rung 1.11C)",
+   "cells": 818,
+   "station_days": 186,
+   "dlog_w0.2": [
+    -0.029213014085395162,
+    -0.0628273657636599,
+    0.000989487189667978
+   ],
+   "cold_tail_hits": 0.1687041564792176,
+   "warm_tail_hits": 0.19437652811735942
+  },
+  {
+   "label": "not re-served (served vector as is)",
+   "cells": 413,
+   "station_days": 120,
+   "dlog_w0.2": [
+    -0.032653723504546144,
+    -0.07371939824720397,
+    0.003167258670737532
+   ],
+   "cold_tail_hits": 0.17191283292978207,
+   "warm_tail_hits": 0.2397094430992736
+  }
+ ],
+ "station_day_weighted_w0.2": {
+  "mean": -0.015409405500224635,
+  "station_days": 661
+ },
+ "overlap_with_replay_station_days": 534
+}
