@@ -13834,10 +13834,11 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         }
 
     stages: list[dict[str, Any]] = []
+    memo = _charter_ev_decision_memo(POSTERIOR_DECISION_MEMO)
     for scope in ("P0", "P0-M", "P1"):
         row = served.get(scope)
         try:
-            forward = forward_skill(conn, stage_scope=scope)
+            forward = forward_skill(conn, stage_scope=scope, decision_memo=memo)
         except (sqlite3.Error, ValueError, TypeError, KeyError):
             forward = None
         stages.append({
@@ -13851,6 +13852,7 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             },
             "forward": forward,
         })
+    _save_charter_ev_decision_memo(memo, POSTERIOR_DECISION_MEMO)
     shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
     try:
         # The plan header lives on the training fact, one per decision;
@@ -14444,18 +14446,37 @@ def _charter_ev_memo_code() -> str:
     )
 
 
-def _charter_ev_decision_memo() -> _TrackedMemo:
-    kept = _load_closed_readings(CHARTER_EV_DECISION_MEMO)
+#: The posterior lane's own memo: it reads the same pairs anchored, so a
+#: shared file pruned to one reader's pairs would shed the other's.
+POSTERIOR_DECISION_MEMO = "_posterior_decision_memo.json"
+
+
+def _charter_ev_decision_memo(
+    name: str = CHARTER_EV_DECISION_MEMO,
+) -> _TrackedMemo:
+    kept = _load_closed_readings(name)
     if kept.get("code") != _charter_ev_memo_code():
         kept = {}
     return _TrackedMemo(kept.get("entries") or {})
 
 
-def _save_charter_ev_decision_memo(memo: _TrackedMemo) -> None:
-    _save_closed_readings(CHARTER_EV_DECISION_MEMO, {
+def _save_charter_ev_decision_memo(
+    memo: _TrackedMemo, name: str = CHARTER_EV_DECISION_MEMO,
+) -> None:
+    # Not ``_save_closed_readings``: it sorts keys, and a vector's bucket
+    # order is the order its sums run in -- a sorted memo moved P1's
+    # ic_forward in the last place (2026-10-02).  Insertion order is kept.
+    payload = {
         "code": _charter_ev_memo_code(),
         "entries": {key: memo[key] for key in memo.used if key in memo},
-    })
+    }
+    try:
+        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = SECTION_CACHE_DIR / f"{name}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(SECTION_CACHE_DIR / name)
+    except OSError:
+        pass
 
 
 def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:

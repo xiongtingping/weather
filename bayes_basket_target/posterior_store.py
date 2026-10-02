@@ -54,7 +54,7 @@ import random
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, MutableMapping
 
 from .basket_kernel.delta_v2 import BETA_LEAD_BANDS, beta_lead_band
 from .basket_kernel.posterior_v1 import (
@@ -211,12 +211,16 @@ def population(
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
     anchored: bool = POPULATION_ANCHORED,
+    decision_memo: MutableMapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The valuation lane's population with each decision's lead band."""
+    """The valuation lane's population with each decision's lead band.
+
+    ``decision_memo`` is the valuation population's (the board's reader
+    passes one); None is the read as it always was."""
 
     rows, meta = _valuation_population(
         conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
-        cutoff_utc=cutoff_utc, anchored=anchored,
+        cutoff_utc=cutoff_utc, anchored=anchored, decision_memo=decision_memo,
     )
     without_clock = 0
     for row in rows:
@@ -1027,6 +1031,7 @@ def forward_skill(
     window_days: int = WINDOW_DAYS,
     anchored: bool = POPULATION_ANCHORED,
     draws: int = BOOTSTRAP_DRAWS,
+    decision_memo: MutableMapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score every labelled decision on the fit that was active when it was
     taken.  A decision before the first journal entry has no fit and is
@@ -1065,6 +1070,7 @@ def forward_skill(
     stamps = sorted(groups)
     rows, _meta = population(
         conn, stage_scope=stage_scope, window_days=window_days, anchored=anchored,
+        decision_memo=decision_memo,
     )
     s_values: list[float] = []
     day_of: list[int] = []
