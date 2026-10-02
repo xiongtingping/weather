@@ -774,6 +774,89 @@ def _temperature_bucket(value: float) -> str:
 # they also widened the distribution the calibration had already sized.
 KERNEL_BANDWIDTH_C = 0.5
 
+# Charter 247 (user ruling 2026-10-02 「肯定要解决」): how a native ensemble's
+# calibrated width is laid onto its members.  ``stretch_v1`` multiplies every
+# member's distance from the mean by the spread factor and dresses the result
+# with the fixed 0.5C kernel -- the gaps between member clusters grow with
+# the factor while the kernel does not, so a two-cluster run was served as
+# two humps: 13.1% of single-system vectors carried two or more modes, 53.8%
+# when the day's spread ran 1.5x the training mean (ZUUU 2026-10-03 ICON put
+# 16.2% at <=21C and 16.2% at 28C with a hollow between).  ``dress_v1``
+# keeps the members at their own spacing and widens the kernel instead, to
+# b = sqrt(s^2 - 1) * d for a factor s over a member sd d: the same total
+# variance s^2 d^2 (the variance-preserving shrink in ``_probabilities``
+# lands the members back on their raw spacing exactly), a smooth shape.  A
+# factor at or below 1 and a lone member are unchanged.  Measured on the
+# served P0 replay (docs/research/single_system_stretch_vs_dress_20261002,
+# 45 stations, 2,856 station-days, 07-30..10-01): log score -0.0087
+# [-0.0228, -0.0005], CRPS and bucket Brier flat, multimodal share 13.1% ->
+# 2.1%.  A LogLoss-fitted kernel share (noise across scopes: 32% at zero,
+# 26% at the Gaussian bound) and a four-parameter sinh-arcsinh family
+# (+0.054, significantly worse) were measured and not adopted.  The rule is
+# written into the artifact (``kernel_rule``) so a certificate is served on
+# the arithmetic it was earned on; an artifact without the key is a
+# stretch_v1 one and serves so until re-minted.
+# ``PM_SINGLE_SYSTEM_KERNEL_RULE=stretch_v1`` is the research arm.
+SINGLE_SYSTEM_KERNEL_RULE_STRETCH = "stretch_v1"
+SINGLE_SYSTEM_KERNEL_RULE_DRESS = "dress_v1"
+SINGLE_SYSTEM_KERNEL_RULES = (
+    SINGLE_SYSTEM_KERNEL_RULE_STRETCH, SINGLE_SYSTEM_KERNEL_RULE_DRESS,
+)
+_DEFAULT_SINGLE_SYSTEM_KERNEL_RULE = SINGLE_SYSTEM_KERNEL_RULE_DRESS
+SINGLE_SYSTEM_KERNEL_RULE = (
+    os.environ.get(
+        "PM_SINGLE_SYSTEM_KERNEL_RULE", _DEFAULT_SINGLE_SYSTEM_KERNEL_RULE
+    ).strip()
+    or _DEFAULT_SINGLE_SYSTEM_KERNEL_RULE
+)
+if SINGLE_SYSTEM_KERNEL_RULE not in SINGLE_SYSTEM_KERNEL_RULES:
+    raise RuntimeError(
+        f"unknown PM_SINGLE_SYSTEM_KERNEL_RULE: {SINGLE_SYSTEM_KERNEL_RULE}"
+    )
+
+
+def _member_kernel_bandwidth_c(
+    values: Sequence[float],
+    spread_factor: float,
+    parameters: Mapping[str, Any],
+) -> float:
+    """The kernel each calibrated member is dressed with, under the artifact's rule.
+
+    One function for the trainer's objective (``_truth_bucket_probability``),
+    the gate (``_apply_parameters``) and the server
+    (``native_ensemble_p0._calibrated_system_probability``): the affine
+    incident was two of these disagreeing.  A rule this build cannot run is
+    refused, never served as the fixed kernel in its place.  A lone member
+    (a point forecast) has no member spread for the factor to scale, so its
+    honest width is the training residual, whatever the rule.
+    """
+
+    rule = str(
+        parameters.get("kernel_rule") or SINGLE_SYSTEM_KERNEL_RULE_STRETCH
+    )
+    if rule not in SINGLE_SYSTEM_KERNEL_RULES:
+        raise ContractError("native_ensemble_oos_kernel_rule_unsupported")
+    current = [float(value) for value in values]
+    if len(current) == 1:
+        return max(
+            KERNEL_BANDWIDTH_C,
+            float(
+                parameters.get("train_residual_sigma_c")
+                or parameters.get("train_rmse_c")
+                or 0.0
+            ),
+        )
+    spread = float(spread_factor)
+    if rule == SINGLE_SYSTEM_KERNEL_RULE_DRESS and spread > 1.0:
+        mean = sum(current) / len(current)
+        deviation = math.sqrt(
+            sum((value - mean) ** 2 for value in current) / len(current)
+        )
+        return max(
+            KERNEL_BANDWIDTH_C, math.sqrt(spread * spread - 1.0) * deviation
+        )
+    return KERNEL_BANDWIDTH_C
+
 
 def _probabilities(
     values: Sequence[float],
@@ -1609,6 +1692,10 @@ def _fit_parameters(
         "bias_bin_cuts_c": bias_bin_cuts,
         "bias_bin_shifts_c": bias_bin_shifts,
         "spread_factor": spread_factor,
+        # Charter 247: how the width is laid onto the members.  Set before
+        # the log-loss refit below so the objective it minimises is the
+        # distribution this artifact serves.
+        "kernel_rule": SINGLE_SYSTEM_KERNEL_RULE,
         "reliability_weight": reliability_weight,
         "climate_samples_c": climate_samples[-180:],
         "train_rmse_c": rmse,
@@ -1724,7 +1811,8 @@ def _truth_bucket_probability(
 
     The per-case reference for ``_truth_bucket_probabilities``: the
     tercile-resolved centre plus ``delta_c``, the spread about the member
-    mean, the variance-preserving shrink onto the 0.5C kernel, the
+    mean, the variance-preserving shrink onto the artifact's kernel
+    (``_member_kernel_bandwidth_c`` at the candidate spread), the
     4-kernel-width truncation and the renormalisation, read at the one bucket
     the log loss needs.  The mean is summed in the production order -- the
     tercile cuts are training centres, so a case on a cut flips bin on the
@@ -1740,7 +1828,7 @@ def _truth_bucket_probability(
     center = mean + _resolved_bias_c(mean, parameters) + float(delta_c)
     members = np.asarray(current, dtype=float)
     dressed = center + float(spread) * (members - mean)
-    bandwidth = KERNEL_BANDWIDTH_C
+    bandwidth = _member_kernel_bandwidth_c(current, spread, parameters)
     middle = dressed.mean()
     std = math.sqrt(float(((dressed - middle) ** 2).mean()))
     if std > bandwidth:
@@ -1771,16 +1859,26 @@ def _refit_case_arrays(
 
     Member deviations from each case's own mean (padded to the widest case
     and masked), the tercile-resolved centre before any shift -- the mean
-    summed in the production order -- and the settled integer bucket.
+    summed in the production order -- the settled integer bucket, each
+    case's member sd and the kernel floor its rule gives a lone member
+    (charter 247: the kernel is the artifact's rule read at the candidate
+    spread, so it is resolved per case inside the loss, not here).
     """
 
     import numpy as np  # noqa: PLC0415
 
+    kernel_rule = str(
+        parameters.get("kernel_rule") or SINGLE_SYSTEM_KERNEL_RULE_STRETCH
+    )
+    if kernel_rule not in SINGLE_SYSTEM_KERNEL_RULES:
+        raise ContractError("native_ensemble_oos_kernel_rule_unsupported")
     width = max(len(case["values"]) for case in cases)
     deviations = np.zeros((len(cases), width))
     mask = np.zeros((len(cases), width), dtype=bool)
     centers = np.zeros(len(cases))
     buckets = np.zeros(len(cases))
+    spreads = np.zeros(len(cases))
+    floors = np.full(len(cases), KERNEL_BANDWIDTH_C)
     for row, case in enumerate(cases):
         current = [float(value) for value in case["values"]]
         mean = sum(current) / len(current)
@@ -1788,8 +1886,14 @@ def _refit_case_arrays(
         deviations[row, :len(current)] = [value - mean for value in current]
         mask[row, :len(current)] = True
         buckets[row] = int(_temperature_bucket(float(case["actual_tmax_c"])))
+        spreads[row] = math.sqrt(
+            sum((value - mean) ** 2 for value in current) / len(current)
+        )
+        if len(current) == 1:
+            floors[row] = _member_kernel_bandwidth_c(current, 1.0, parameters)
     return {"deviations": deviations, "mask": mask, "centers": centers,
-            "buckets": buckets, "counts": mask.sum(axis=1)}
+            "buckets": buckets, "counts": mask.sum(axis=1),
+            "spreads": spreads, "floors": floors, "kernel_rule": kernel_rule}
 
 
 def _truth_bucket_probabilities(
@@ -1801,7 +1905,20 @@ def _truth_bucket_probabilities(
     from scipy.special import ndtr  # noqa: PLC0415
 
     mask, counts = arrays["mask"], arrays["counts"]
-    bandwidth = KERNEL_BANDWIDTH_C
+    # Charter 247: the kernel per case, as ``_member_kernel_bandwidth_c``
+    # resolves it at this candidate spread -- the dress rule widens it with
+    # the case's own member sd; the stretch rule and a factor at or below 1
+    # keep the floor (0.5C, or a lone member's training residual).
+    if (
+        arrays["kernel_rule"] == SINGLE_SYSTEM_KERNEL_RULE_DRESS
+        and float(spread) > 1.0
+    ):
+        bandwidth = np.maximum(
+            arrays["floors"],
+            math.sqrt(float(spread) ** 2 - 1.0) * arrays["spreads"],
+        )
+    else:
+        bandwidth = arrays["floors"]
     dressed = (
         (arrays["centers"] + float(delta_c))[:, None]
         + float(spread) * arrays["deviations"]
@@ -1824,9 +1941,9 @@ def _truth_bucket_probabilities(
     bucket = arrays["buckets"]
 
     def _mean(edge_hi: Any, edge_lo: Any) -> Any:
-        values = ndtr((edge_hi[:, None] - dressed) / bandwidth) - ndtr(
-            (edge_lo[:, None] - dressed) / bandwidth
-        )
+        values = ndtr(
+            (edge_hi[:, None] - dressed) / bandwidth[:, None]
+        ) - ndtr((edge_lo[:, None] - dressed) / bandwidth[:, None])
         return np.where(mask, values, 0.0).sum(axis=1) / counts
 
     mass = _mean(bucket + 0.5, bucket - 0.5)
@@ -1947,23 +2064,12 @@ def _apply_parameters(
         center + spread_factor * (value - mean)
         for value in current
     ]
-    # A single-member system (a point forecast) has no member spread for the
-    # spread factor to inflate, so the default kernel would serve a delta of
-    # width 0.5C regardless of how wrong the point tends to be.  Its honest
-    # width is the training residual: dress the lone member with the fitted
-    # RMSE instead.  Strictly one member -- a plural ensemble that happens to
-    # collapse to identical values keeps the plain kernel, exactly as before.
-    member_bandwidth = (
-        max(
-            KERNEL_BANDWIDTH_C,
-            float(
-                parameters.get("train_residual_sigma_c")
-                or parameters.get("train_rmse_c")
-                or 0.0
-            ),
-        )
-        if len(current) == 1
-        else KERNEL_BANDWIDTH_C
+    # The kernel the artifact's rule gives these members (charter 247): a
+    # lone member is dressed with its training residual, a dress_v1 artifact
+    # with a factor over 1 widens the kernel instead of the member spacing,
+    # everything else keeps the 0.5C kernel.
+    member_bandwidth = _member_kernel_bandwidth_c(
+        current, spread_factor, parameters
     )
     member_probability = _probabilities(
         corrected, bandwidth_c=member_bandwidth
@@ -6806,6 +6912,9 @@ def _system_artifact_identity(
         }),
         "spread_parameters_json": _json({
             "spread_factor": parameters["spread_factor"],
+            # Charter 247: the rule the gate scored this artifact under, so
+            # serving lays the width onto the members the same way.
+            "kernel_rule": parameters["kernel_rule"],
             "moment_spread_factor": parameters["moment_spread_factor"],
             "train_rmse_c": parameters["train_rmse_c"],
             "train_residual_sigma_c": parameters[

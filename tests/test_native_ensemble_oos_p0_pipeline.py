@@ -2201,6 +2201,18 @@ def test_native_cycle_mapping_legacy_migration_is_additive_and_idempotent(
     )
     assert TARGET_SSOT_DDL.count(mapping_column_ddl) == 4
     legacy_ddl = TARGET_SSOT_DDL.replace(mapping_column_ddl, "")
+    # The compile's covering index (2026-10-02) names the mapping column, so
+    # a store from before the column cannot have carried the index either;
+    # the migration adds both.
+    evidence_index_ddl = next(
+        line for line in TARGET_SSOT_DDL.splitlines()
+        if line.startswith(
+            "CREATE INDEX IF NOT EXISTS "
+            "calibration_native_activation_evidence_idx "
+        )
+    ) + "\n"
+    assert TARGET_SSOT_DDL.count(evidence_index_ddl) == 1
+    legacy_ddl = legacy_ddl.replace(evidence_index_ddl, "")
     legacy = sqlite3.connect(":memory:")
     legacy.executescript(legacy_ddl)
 

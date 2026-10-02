@@ -4632,6 +4632,12 @@ def apply_native_ensemble_foundation_schema(
         )
         _migrate_native_historical_source_contract(conn)
         statement = ""
+        # Indexes are created after the column migrations below: the
+        # compile's covering index (2026-10-02) names the run-cycle mapping
+        # columns, which a store from before them only receives from
+        # ``_migrate_native_run_cycle_mapping`` -- created here it would
+        # fail on exactly the store the migration exists for.
+        deferred_indexes: list[str] = []
         for line in DDL.splitlines(keepends=True):
             statement += line
             if not sqlite3.complete_statement(statement):
@@ -4642,7 +4648,14 @@ def apply_native_ensemble_foundation_schema(
                 table in sql
                 for table in NATIVE_ENSEMBLE_SCHEMA_TABLES
             ):
-                conn.execute(sql)
+                body = "\n".join(
+                    line for line in sql.splitlines()
+                    if not line.lstrip().startswith("--")
+                ).lstrip().upper()
+                if body.startswith(("CREATE INDEX", "CREATE UNIQUE INDEX")):
+                    deferred_indexes.append(sql)
+                else:
+                    conn.execute(sql)
         if statement.strip():
             raise RuntimeError(
                 "native_ensemble_schema_source_incomplete"
@@ -4653,6 +4666,8 @@ def apply_native_ensemble_foundation_schema(
         run_cycle_mapping_migration = (
             _migrate_native_run_cycle_mapping(conn)
         )
+        for sql in deferred_indexes:
+            conn.execute(sql)
         status = native_ensemble_foundation_schema_status(conn)
         if status["ok"] is not True:
             raise RuntimeError(

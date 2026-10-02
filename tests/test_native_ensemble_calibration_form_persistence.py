@@ -70,6 +70,8 @@ PERSISTED_BY_COLUMN = {
     },
     "spread_parameters_json": {
         "spread_factor",
+        # Charter 247: how the width is laid onto the members.
+        "kernel_rule",
         "moment_spread_factor",
         "train_rmse_c",
         "train_residual_sigma_c",

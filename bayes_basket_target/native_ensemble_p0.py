@@ -78,7 +78,14 @@ from .native_ensemble_contract import (
     validate_native_ensemble_transport_gate,
 )
 from .native_archive_lead import lead_hour_bucket_for_run
-from .native_ensemble_oos import BIAS_CORRECTION_FORM, _resolved_bias_c
+from .native_ensemble_oos import (
+    BIAS_CORRECTION_FORM,
+    SINGLE_SYSTEM_KERNEL_RULE,
+    SINGLE_SYSTEM_KERNEL_RULE_STRETCH,
+    SINGLE_SYSTEM_KERNEL_RULES,
+    _member_kernel_bandwidth_c,
+    _resolved_bias_c,
+)
 from .native_ensemble_training_facts import taf_restatement_is_current
 from .native_ensemble_authority import (
     NativeOosSnapshot,
@@ -187,7 +194,11 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # were minted -- a pair re-certified this morning no longer outranks the
 # five-system view certified last night, and a same-size tie keeps the
 # heavier systems instead of falling to the activation id.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v24"
+# Charter 247 (2026-10-02 ruling 「肯定要解决」): a native ensemble's
+# calibrated width is laid onto its members by widening the kernel
+# (dress_v1), not by stretching the member spacing -- the two-humped
+# single-system vectors were an artifact of the stretch.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v25"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -770,6 +781,18 @@ def _calibrated_system_probability(
     reliability = float(
         reliability_parameters["reliability_weight"]
     )
+    # Charter 247: the rule the artifact lays its width onto the members
+    # with.  Absent on every artifact minted before the clause (stretch),
+    # refused when it names a rule this build cannot run -- the same guard
+    # as the correction form above, for the same reason.
+    kernel_rule = str(
+        spread_parameters.get("kernel_rule")
+        or SINGLE_SYSTEM_KERNEL_RULE_STRETCH
+    )
+    if kernel_rule not in SINGLE_SYSTEM_KERNEL_RULES:
+        raise ContractError(
+            "native_ensemble_p0_calibration_kernel_rule_unsupported"
+        )
     if (
         any(not -20.0 <= value <= 20.0 for value in all_biases)
         # The upper bound is the trainer's spread-factor cap in
@@ -786,26 +809,20 @@ def _calibrated_system_probability(
         center + spread * (value - mean)
         for value in current
     ]
-    # A single-member system (a point forecast) has no member deviations for
-    # the spread factor to scale, so the plain 0.5C kernel would serve the
-    # point as near-certainty regardless of how wrong it tends to be.  Its
-    # honest width is the artifact's training residual -- the same number the
-    # OOS evaluator used when it admitted the system -- so serving stays
-    # consistent with what was gated.  Plural ensembles are untouched.
-    single_member_bandwidth = None
-    if len(current) == 1:
-        single_member_bandwidth = max(
-            0.5,
-            float(
-                spread_parameters.get("train_residual_sigma_c")
-                or spread_parameters.get("train_rmse_c")
-                or 0.0
-            ),
-        )
+    # The kernel is the trainer's own resolver
+    # (``native_ensemble_oos._member_kernel_bandwidth_c``), so the shape
+    # served here is the shape the certificate was earned on: a lone member
+    # (a point forecast) is dressed with its training residual, a dress_v1
+    # artifact with a factor over 1 widens the kernel instead of the member
+    # spacing (the variance-preserving shrink in ``_interval_probability``
+    # lands the members back on their raw spacing), everything else keeps
+    # the 0.5C kernel.
     member_probability = _interval_probability(
         corrected,
         intervals,
-        bandwidth_c=single_member_bandwidth,
+        bandwidth_c=_member_kernel_bandwidth_c(
+            current, spread, spread_parameters
+        ),
     )
     climate_samples = reliability_parameters.get("climate_samples_c")
     if not isinstance(climate_samples, list) or not climate_samples:
@@ -3323,12 +3340,15 @@ def compile_native_ensemble_p0(
         # reliability 1.0 zeroes the climate blend term, but the kernel still
         # demands sample shape; the members themselves satisfy it without
         # contributing anything.
+        # Charter 247: a member without a certificate is served under the
+        # build's own kernel rule -- it borrows a width, not an artifact.
         system_probabilities[system_id] = _calibrated_system_probability(
             values=raw_values,
             intervals=intervals_raw,
             bias_parameters={"bias_c": provisional_bias_c},
             spread_parameters={
                 "spread_factor": provisional_spread_factor,
+                "kernel_rule": SINGLE_SYSTEM_KERNEL_RULE,
             },
             reliability_parameters={
                 "reliability_weight": 1.0,
@@ -3347,6 +3367,7 @@ def compile_native_ensemble_p0(
             "run_cycle": system_run_cycle,
             "borrowed_bias_c": provisional_bias_c,
             "borrowed_spread_factor": provisional_spread_factor,
+            "kernel_rule": SINGLE_SYSTEM_KERNEL_RULE,
         }
         borrowed_lead = (
             borrowed_own.get("from_lead_bucket") if borrowed_own else None
