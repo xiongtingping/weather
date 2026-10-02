@@ -13,9 +13,9 @@
   <string>/Users/xiong/weather</string>
   <!-- The backend board-readings job (user rulings 2026-10-02
        「只读是读后端算出来的」 / 「新开一个后端读数任务」): the readings the
-       board shows that production's serving path does not store -- every
+       board shows that production's serving path does not store: every
        served cell's seat window, the fusion re-solve, the centre/shape
-       split, the L4 forward skill and realisation -- computed with
+       split, the L4 forward skill and realisation, computed with
        production's own functions and written to data/board_readings/.  A
        reader of the store outside the writer turn; it waits out a running
        page render, skips a start with the WAL past the resident's line, and
