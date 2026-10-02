@@ -8,18 +8,19 @@
 # 09-30, each end refusing every candidate at every station.  The rules are
 # in bayes_basket_target/delta_v2_authority_clock.py; this is the clock.
 #
-# Daily, three steps, in dependency order:
-#   1. refit the fill model from the maker shadow book -- weekly, gated on the
-#      newest batch's start, and handed off to the policies at one instant;
-#   2. renew any served fill batch inside sixty days of its end (the backstop
-#      when the refit cannot run: same numbers, new year);
-#   3. re-pin and renew the policies (a pin that went stale, or a window
+# Daily, two steps, in dependency order:
+#   1. renew any served fill batch inside sixty days of its end (same
+#      numbers, new year);
+#   2. re-pin and renew the policies (a pin that went stale, or a window
 #      inside sixty days of its end).
 #
-# The refit reads ~5M shadow rows and writes ~160k: a few minutes once a
-# week, which is why this is its own lane and not a step of the 900-second
-# calibration refit.  Every other day it is three indexed reads and a re-pin
-# check.
+# The weekly refit from the maker shadow book is no longer a step.  The probe
+# stopped writing on 2026-09-28 and the book left the machine on 09-30 (cold
+# copy and receipt under weather_cold/maker_shadow_retired_20260930), so from
+# 10-01 the refit failed every turn on "no such table: maker_shadow_order" and
+# the lane read red while the renewal behind it kept the batch served.  The
+# fitter stays for an offline refit against that copy; a refit is minted by
+# hand, with the probe back on, never from a book that no longer grows.
 
 set -uo pipefail
 
@@ -35,10 +36,6 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 RC=0
-
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 fill refit (weekly)"
-"$PY" scripts/fit_delta_v2_fill_from_maker_shadow.py --commit \
-  --if-older-than-days 7 || RC=$?
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] delta_v2 fill renewal"
 "$PY" scripts/renew_delta_v2_fill_batch.py --commit || RC=$?
