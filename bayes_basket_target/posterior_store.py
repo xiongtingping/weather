@@ -54,7 +54,7 @@ import random
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, MutableMapping
+from typing import Any
 
 from .basket_kernel.delta_v2 import BETA_LEAD_BANDS, beta_lead_band
 from .basket_kernel.posterior_v1 import (
@@ -211,16 +211,12 @@ def population(
     window_days: int = WINDOW_DAYS,
     cutoff_utc: str | None = None,
     anchored: bool = POPULATION_ANCHORED,
-    decision_memo: MutableMapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The valuation lane's population with each decision's lead band.
-
-    ``decision_memo`` is the valuation population's (the board's reader
-    passes one); None is the read as it always was."""
+    """The valuation lane's population with each decision's lead band."""
 
     rows, meta = _valuation_population(
         conn, stage_scope=stage_scope, as_of=as_of, window_days=window_days,
-        cutoff_utc=cutoff_utc, anchored=anchored, decision_memo=decision_memo,
+        cutoff_utc=cutoff_utc, anchored=anchored,
     )
     without_clock = 0
     for row in rows:
@@ -1031,7 +1027,6 @@ def forward_skill(
     window_days: int = WINDOW_DAYS,
     anchored: bool = POPULATION_ANCHORED,
     draws: int = BOOTSTRAP_DRAWS,
-    decision_memo: MutableMapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Score every labelled decision on the fit that was active when it was
     taken.  A decision before the first journal entry has no fit and is
@@ -1070,7 +1065,6 @@ def forward_skill(
     stamps = sorted(groups)
     rows, _meta = population(
         conn, stage_scope=stage_scope, window_days=window_days, anchored=anchored,
-        decision_memo=decision_memo,
     )
     s_values: list[float] = []
     day_of: list[int] = []
@@ -1141,260 +1135,6 @@ def forward_skill(
     return out
 
 
-# --------------------------------------------------------------------------
-# Realisation: did the windows L4 would buy make money once they settled
-# --------------------------------------------------------------------------
-
-REALISATION_CELLS: tuple[str, ...] = ("both_admit", "l4_only", "lambda_only", "both_refuse")
-
-
-def _journal_groups(
-    conn: sqlite3.Connection, stage_scope: str,
-) -> tuple[list[str], dict[str, dict[str, dict[str, Any]]]]:
-    """Activation instants for a stage, each with its stage row and band rows
-    (point values, draws and accumulating flag), oldest first."""
-
-    rows = conn.execute(
-        "SELECT j.fitted_at_utc, j.lead_band, t.accumulating, t.alpha, t.gamma,"
-        " t.w, t.evidence_json"
-        " FROM calibration_posterior_fit_journal j"
-        " JOIN calibration_posterior_table t ON t.posterior_sha256=j.posterior_sha256"
-        " WHERE j.stage_scope=? ORDER BY j.fitted_at_utc, j.fit_id",
-        (str(stage_scope),),
-    ).fetchall()
-    groups: dict[str, dict[str, dict[str, Any]]] = {}
-    for fitted_at, band, accumulating, alpha, gamma, w, evidence_json in rows:
-        try:
-            draws = tuple(
-                tuple(float(x) for x in d)
-                for d in (json.loads(str(evidence_json)).get("draws") or ())
-                if isinstance(d, (list, tuple)) and len(d) == 3
-            )
-        except (TypeError, ValueError):
-            draws = ()
-        groups.setdefault(str(fitted_at), {})[str(band or WHOLE_STAGE)] = {
-            "accumulating": bool(accumulating), "alpha": alpha, "gamma": gamma,
-            "w": w, "draws": draws,
-        }
-    return sorted(groups), groups
-
-
-def realisation(
-    conn: sqlite3.Connection,
-    *,
-    since_event_date: str,
-    draws: int = BOOTSTRAP_DRAWS,
-) -> dict[str, Any]:
-    """Every settled candidate window production enumerated since a day,
-    re-judged with the L4 row that was active when the decision was taken,
-    crossed with the verdict production's own gate gave it.
-
-    The windows are the production evidence table's sampled rows (charter
-    140: every priced window of the first decision per station, day, stage
-    and lead band, refused ones included), so the refused cells are the
-    control the admitted ones are read against.  The belief is rebuilt from
-    the decision's committed envelope and the official book it priced
-    against, through the same kernel the runtime's shadow calls; the edge is
-    ``window mass - all-in price`` and the verdict is the runtime's own
-    (lower bound across the fit's draws at least the economic hurdle).  A
-    decision taken while its row was accumulating served ``b = m`` and gave
-    no verdict; it is counted, not judged.  One difference from the runtime:
-    the replay does not zero buckets the day's observed high has already
-    ruled out, because the evidence row does not carry that set; on the
-    windows the gate prices those buckets carry almost no mass either way.
-
-    Per cell: windows, station-days, event days, mean price, hit rate, the
-    L4 edge it claimed, the ``hit - price`` it realised with a by-event-day
-    bootstrap interval.
-    """
-
-    from .basket_kernel.delta_v2 import economic_hurdle_usdc  # noqa: PLC0415
-    from .basket_kernel.posterior_v1 import (  # noqa: PLC0415
-        posterior_draw_vectors_v1,
-        window_mass,
-    )
-    from .basket_kernel.valuation_v1 import (  # noqa: PLC0415
-        action_value_v1,
-        market_reference_v1,
-    )
-    from .candidate_window_evidence import (  # noqa: PLC0415
-        ACCEPTANCE_CLAIM_FLOOR,
-        ACCEPTANCE_MARKET_CEILING,
-        EVIDENCE_TABLE,
-        SCORED_VIEW,
-        in_acceptance_class,
-    )
-
-    out: dict[str, Any] = {
-        "since": str(since_event_date), "windows": 0, "judged": 0,
-        "no_fit": 0, "accumulating": 0, "no_vector": 0,
-        "cells": {}, "by_stage": {}, "acceptance": {},
-    }
-    needed = (
-        SCORED_VIEW, EVIDENCE_TABLE, "calibration_posterior_fit_journal",
-        "basket_policy_training_fact", "basket_probability_envelope",
-        "basket_official_ws_snapshot",
-    )
-    if not all(_has_table(conn, name) for name in needed):
-        out["error"] = "missing_table"
-        return out
-    rows = conn.execute(
-        "SELECT v.station_id, v.event_date, v.stage, v.decision_at_utc,"
-        "       v.buckets_json, v.all_in_price, v.admissible, v.hit,"
-        "       v.hours_to_cutoff, f.probability_envelope_id, f.ws_snapshot_id,"
-        "       v.raw_win_probability, v.market_mid"
-        f" FROM {SCORED_VIEW} v"
-        f" JOIN {EVIDENCE_TABLE} e ON e.evidence_id = v.candidate_id"
-        " JOIN basket_policy_training_fact f ON f.fact_id = e.fact_id"
-        " WHERE v.hit IS NOT NULL AND v.event_date >= ?"
-        "   AND v.all_in_price IS NOT NULL",
-        (str(since_event_date),),
-    ).fetchall()
-    journals: dict[str, tuple[list[str], dict[str, dict[str, dict[str, Any]]]]] = {}
-    vectors: dict[tuple[str, str, str], tuple[list[dict[str, float]], dict[str, float]] | None] = {}
-    judged: list[dict[str, Any]] = []
-    acceptance_windows = 0
-    for (station, day, stage, decided_at, buckets_json, price, admissible, hit,
-         hours, envelope_id, snapshot_id, raw_claim, market_mid) in rows:
-        out["windows"] += 1
-        # The acceptance class (user ruling, 2026-09-17), on the row's own
-        # raw claim and market mid, counted before any verdict so the
-        # windows still waiting for a fit are visible too.
-        in_class = in_acceptance_class(raw_claim, market_mid)
-        acceptance_windows += int(in_class)
-        stage = str(stage)
-        if stage not in journals:
-            journals[stage] = _journal_groups(conn, stage)
-        stamps, groups = journals[stage]
-        at = str(decided_at)
-        active = None
-        active_stamp = ""
-        for stamp in stamps:
-            if stamp <= at:
-                active, active_stamp = groups[stamp], stamp
-            else:
-                break
-        stage_row = None if active is None else active.get(WHOLE_STAGE)
-        if stage_row is None:
-            out["no_fit"] += 1
-            continue
-        band = beta_lead_band(hours) if hours is not None else None
-        chosen, chosen_band = stage_row, WHOLE_STAGE
-        if band is not None and band in active and not active[band]["accumulating"]:
-            chosen, chosen_band = active[band], band
-        if chosen["accumulating"] or chosen.get("w") is None or not chosen["draws"]:
-            out["accumulating"] += 1
-            continue
-        key = (str(envelope_id), str(snapshot_id), active_stamp, chosen_band)
-        if key not in vectors:
-            vectors[key] = None
-            env = conn.execute(
-                "SELECT probabilities_json FROM basket_probability_envelope WHERE envelope_id=?",
-                (str(envelope_id),),
-            ).fetchone()
-            book = conn.execute(
-                "SELECT buckets_json FROM basket_official_ws_snapshot WHERE snapshot_id=?",
-                (str(snapshot_id),),
-            ).fetchone()
-            try:
-                p = {str(k): float(v) for k, v in json.loads(env[0] or "{}").items()} if env else {}
-                ladder = json.loads(book[0] or "[]") if book else []
-            except (TypeError, ValueError):
-                p, ladder = {}, []
-            market = market_reference_v1(ladder if isinstance(ladder, list) else [])
-            if p and market.get("state") == "complete":
-                point = posterior_vector_v1(p, market["vector"], chosen)
-                sampled = posterior_draw_vectors_v1(
-                    p, market["vector"], chosen["draws"][: int(draws)],
-                )
-                if point is not None and sampled:
-                    vectors[key] = (sampled, point)
-        cached = vectors[key]
-        if cached is None:
-            out["no_vector"] += 1
-            continue
-        sampled, point = cached
-        try:
-            window = [str(b) for b in json.loads(buckets_json or "[]")]
-        except (TypeError, ValueError):
-            out["no_vector"] += 1
-            continue
-        cost = float(price)
-        value = action_value_v1(sampled, {b: 1.0 for b in window}, cost)
-        if value is None:
-            out["no_vector"] += 1
-            continue
-        mass = window_mass(point, window)
-        l4_admit = float(value["value_lcb"]) >= economic_hurdle_usdc(cost) - 1e-12
-        lam_admit = bool(admissible)
-        cell = (
-            ("both_admit" if lam_admit else "l4_only") if l4_admit
-            else ("lambda_only" if lam_admit else "both_refuse")
-        )
-        judged.append({
-            "cell": cell, "stage": stage, "station": str(station), "date": str(day),
-            "price": cost, "hit": float(hit), "edge": mass - cost,
-            "acceptance": in_class,
-        })
-    out["judged"] = len(judged)
-
-    def _summary(items: list[dict[str, Any]]) -> dict[str, Any]:
-        if not items:
-            return {"n": 0, "station_days": 0, "days": 0, "price": None, "hit": None,
-                    "claimed_edge": None, "hit_minus_price": None, "ci": [None, None]}
-        by_day: dict[str, list[float]] = {}
-        for item in items:
-            by_day.setdefault(item["date"], []).append(item["hit"] - item["price"])
-        keys = sorted(by_day)
-        rng = random.Random(BOOTSTRAP_SEED)
-        boot: list[float] = []
-        for _ in range(int(draws)):
-            pick = [keys[rng.randrange(len(keys))] for _ in keys]
-            num = sum(sum(by_day[k]) for k in pick)
-            den = sum(len(by_day[k]) for k in pick)
-            boot.append(num / den if den else 0.0)
-        boot.sort()
-        n = len(items)
-        return {
-            "n": n,
-            "station_days": len({(i["station"], i["date"]) for i in items}),
-            "days": len(keys),
-            "price": sum(i["price"] for i in items) / n,
-            "hit": sum(i["hit"] for i in items) / n,
-            "claimed_edge": sum(i["edge"] for i in items) / n,
-            "hit_minus_price": sum(i["hit"] - i["price"] for i in items) / n,
-            "ci": [boot[min(len(boot) - 1, int(LCB_QUANTILE * len(boot)))],
-                   boot[max(0, int((1.0 - LCB_QUANTILE) * len(boot)) - 1)]],
-        }
-
-    out["cells"] = {
-        cell: _summary([j for j in judged if j["cell"] == cell]) for cell in REALISATION_CELLS
-    }
-    out["l4_admitted"] = _summary([j for j in judged if j["cell"] in ("both_admit", "l4_only")])
-    out["lambda_admitted"] = _summary([j for j in judged if j["cell"] in ("both_admit", "lambda_only")])
-    for stage in sorted(STAGE_SCOPES):
-        items = [j for j in judged if j["stage"] == stage]
-        out["by_stage"][stage] = {
-            "judged": len(items),
-            "l4_admitted": _summary([j for j in items if j["cell"] in ("both_admit", "l4_only")]),
-            "lambda_admitted": _summary([j for j in items if j["cell"] in ("both_admit", "lambda_only")]),
-        }
-    # The acceptance sample: the class's windows, whoever bought them, then
-    # the ones L4 would buy and the ones the live gate bought.  L4's edge is
-    # read here first, because this is the shape nothing upstream can see.
-    accepted = [j for j in judged if j["acceptance"]]
-    out["acceptance"] = {
-        "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
-        "market_ceiling": ACCEPTANCE_MARKET_CEILING,
-        "windows": acceptance_windows,
-        "judged": len(accepted),
-        "all": _summary(accepted),
-        "l4_admitted": _summary([j for j in accepted if j["cell"] in ("both_admit", "l4_only")]),
-        "lambda_admitted": _summary([j for j in accepted if j["cell"] in ("both_admit", "lambda_only")]),
-    }
-    return out
-
-
 __all__ = [
     "SCHEMA", "WINDOW_DAYS", "MIN_STATION_DAYS", "MIN_DAYS", "BOOTSTRAP_DRAWS",
     "PRIOR_SD", "BAND_SHRINK_DAYS", "WHOLE_STAGE", "LEAD_BAND_LABELS",
@@ -1402,7 +1142,7 @@ __all__ = [
     "ensure_schema", "population", "fit_posterior", "fit_stage_and_bands",
     "persist_and_activate", "journal_fit", "register_hypotheses",
     "load_posterior_as_of", "load_posterior_tables", "serving_row",
-    "forward_skill", "realisation", "REALISATION_CELLS",
+    "forward_skill",
     "walk_forward_verdict", "VERDICT_RULE", "VERDICT_MIN_TEST_DAYS",
     "verdict_decision_v2",
 ]

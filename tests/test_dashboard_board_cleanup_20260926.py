@@ -435,7 +435,7 @@ def test_a_section_that_killed_the_last_run_waits_behind_the_others(pages) -> No
 
 
 HEAVY_SECTIONS_WITH_A_STAND_IN = (
-    "ai_models", "bias_half_life", "center_landing", "chain_volume",
+    "ai_models", "center_landing", "chain_volume",
     "charter_ev", "h5_readiness", "member_depth", "model_accuracy_trend",
     "p1_path_skill", "posterior_lane", "precip_classification",
     "refusal_history", "report_latency", "scorecard", "scorecard_previous",

@@ -5645,251 +5645,6 @@ TRUTH_LANDING_UNLIKELY = 0.05
 # Both are facts about a past deployment, so they are stated rather than
 # derived.
 H5_FROM_UTC = "2026-08-27T06:48:00Z"
-# The half-lives the section compares (user rulings, 2026-09-17: 增加 h15 的
-# 对比, 测试 H3): the one that serves and one either side of it.
-BIAS_HALF_LIFE_ARMS: tuple[float, ...] = (3.0, 5.0, 15.0)
-# The scored window: this many of the most recent settled event days.
-BIAS_HALF_LIFE_WINDOW_DAYS = 31
-BIAS_HALF_LIFE_BOOTSTRAP = 2000
-
-
-BIAS_HALF_LIFE_MEMO = "_bias_half_life_memo.json"
-
-
-def _bias_half_life_memo_code(oos_module: Any) -> str:
-    """The fit's whole module and this collector: either changing voids the
-    kept refits."""
-
-    try:
-        module_bytes = Path(oos_module.__file__).read_bytes()
-    except OSError:
-        module_bytes = b""
-    return hashlib.sha256(
-        module_bytes + _section_fingerprint(collect_bias_half_life).encode("utf-8")
-    ).hexdigest()
-
-
-def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Which bias half-life corrects closest to truth, with nothing else changed.
-
-    Every settled event day in the window is corrected once per half-life,
-    each time refitted from scratch on the cases strictly before that day
-    inside the rolling train window, through production's own case loader,
-    fit and centre resolver (``native_ensemble_oos``) -- only the half-life
-    constant differs between arms.  Absolute error is averaged over a
-    station-day's cells before anything is compared.
-
-    Why a refit and not the stored artifacts.  The section read the served
-    tables until 2026-09-17: H5 as served each day against the last H15 table
-    fitted before the switch.  That control froze on 2026-08-27, so by
-    mid-September it was three weeks stale and most of H5's 0.116C lead was
-    freshness, not half-life -- refitted daily, the same days put H5 ahead of
-    H15 by 0.008C.  (It had also been correcting the wrong way round.)
-
-    Two tests, both on the station-day: a sign vote, and an interval on the
-    mean difference that resamples whole event days, because every station
-    on one day shares that day's weather.  Loading the cases is the cost --
-    about five minutes for the fleet -- so the section is cached for a day.
-    """
-
-    from bayes_basket_target import native_ensemble_oos as OOS  # noqa: PLC0415
-    from bayes_basket_target.contracts import ContractError  # noqa: PLC0415
-
-    try:
-        stations = [
-            str(row[0]) for row in conn.execute(
-                "SELECT station_id FROM calibration_station_registry"
-                " ORDER BY station_id"
-            )
-        ]
-    except sqlite3.Error:
-        return {"available": False, "reason": "station_registry_missing"}
-    as_of = _now().isoformat().replace("+00:00", "Z")
-    by_station: dict[str, dict[Any, list[dict[str, Any]]]] = {}
-    for station in stations:
-        try:
-            by_scope = OOS._load_cases(conn, station_id=station, as_of_utc=as_of)
-        except (ContractError, sqlite3.Error, ValueError, KeyError):
-            continue
-        by_station[station] = {
-            scope: sorted(
-                (
-                    case for case in cases
-                    if case.get("values")
-                    and case.get("actual_tmax_c") is not None
-                ),
-                key=lambda case: str(case["event_date"])[:10],
-            )
-            for scope, cases in by_scope.items()
-        }
-    days_seen = sorted({
-        str(case["event_date"])[:10]
-        for scopes in by_station.values()
-        for cases in scopes.values() for case in cases
-    })
-    if not days_seen:
-        return {"available": False, "reason": "no_settled_cases"}
-    window_to = days_seen[-1]
-    window_from = (
-        date.fromisoformat(window_to)
-        - timedelta(days=BIAS_HALF_LIFE_WINDOW_DAYS - 1)
-    ).isoformat()
-
-    serving = float(OOS.BIAS_HALF_LIFE_DAYS)
-    arms = tuple(sorted(set(BIAS_HALF_LIFE_ARMS) | {serving}))
-    errors: dict[tuple[str, str], dict[float, list[float]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
-    cells = 0
-    # Each cell's refits, kept across builds.  A settled day's training
-    # cases do not move, so neither do its fits -- and the fits were the
-    # section (212 of 254 s on three stations, 2026-10-02; ~3,800 s for the
-    # fleet, past the research render's 3,300 s timeout).  Keyed on the
-    # cell's whole input, so a late case or a revised truth is a new key;
-    # the file is void when native_ensemble_oos.py changes at all.
-    memo_code = _bias_half_life_memo_code(OOS)
-    kept = _load_closed_readings(BIAS_HALF_LIFE_MEMO)
-    memo: dict[str, Any] = (
-        dict(kept.get("cells") or {}) if kept.get("code") == memo_code else {}
-    )
-    used: set[str] = set()
-    try:
-        for station, scopes in by_station.items():
-            # Kept station by station, whole (nothing pruned yet): the first
-            # build of a cold memo is the fleet's full ~3,800 s and the
-            # research render is killed at 3,300 s, so a build that dies
-            # leaves the next one only the stations it did not reach.
-            if used:
-                _save_closed_readings(BIAS_HALF_LIFE_MEMO, {
-                    "code": memo_code, "cells": memo,
-                })
-            for cases in scopes.values():
-                for case in cases:
-                    day = str(case["event_date"])[:10]
-                    if not window_from <= day <= window_to:
-                        continue
-                    floor = (
-                        date.fromisoformat(day)
-                        - timedelta(days=OOS.ROLLING_TRAIN_WINDOW_DAYS)
-                    ).isoformat()
-                    history = [
-                        prior for prior in cases
-                        if floor <= str(prior["event_date"])[:10] < day
-                    ]
-                    if len({
-                        str(prior["event_date"])[:10] for prior in history
-                    }) < OOS.DEFAULT_MIN_TRAIN_DAYS:
-                        continue
-                    values = [float(value) for value in case["values"]]
-                    mean = sum(values) / len(values)
-                    actual = float(case["actual_tmax_c"])
-                    memo_key = hashlib.sha256(json.dumps(
-                        [history, case["values"], case["actual_tmax_c"]],
-                        sort_keys=True, default=str,
-                    ).encode("utf-8")).hexdigest()
-                    kept_cell = memo.get(memo_key)
-                    if kept_cell is not None and (
-                        kept_cell.get("skip")
-                        or all(repr(arm) in kept_cell for arm in arms)
-                    ):
-                        used.add(memo_key)
-                        if kept_cell.get("skip"):
-                            continue
-                        for arm in arms:
-                            errors[(station, day)][arm].append(
-                                float(kept_cell[repr(arm)])
-                            )
-                        cells += 1
-                        continue
-                    misses: dict[float, float] = {}
-                    try:
-                        for arm in arms:
-                            OOS.BIAS_HALF_LIFE_DAYS = arm
-                            parameters = OOS._fit_parameters(history)
-                            misses[arm] = abs(
-                                OOS._corrected_center(mean, parameters) - actual
-                            )
-                    except (ContractError, KeyError, TypeError, ValueError):
-                        memo[memo_key] = {"skip": True}
-                        used.add(memo_key)
-                        continue
-                    finally:
-                        OOS.BIAS_HALF_LIFE_DAYS = serving
-                    memo[memo_key] = {repr(arm): miss for arm, miss in misses.items()}
-                    used.add(memo_key)
-                    for arm, miss in misses.items():
-                        errors[(station, day)][arm].append(miss)
-                    cells += 1
-    finally:
-        OOS.BIAS_HALF_LIFE_DAYS = serving
-        _save_closed_readings(BIAS_HALF_LIFE_MEMO, {
-            "code": memo_code,
-            "cells": {key: memo[key] for key in used if key in memo},
-        })
-    if not errors:
-        return {"available": False, "reason": "no_scoreable_cells"}
-
-    station_days = {
-        key: {arm: statistics.mean(values) for arm, values in by_arm.items()}
-        for key, by_arm in errors.items()
-    }
-    keys = sorted(station_days)
-
-    def compare(arm: float) -> dict[str, Any]:
-        diffs = [station_days[key][arm] - station_days[key][serving] for key in keys]
-        arm_closer = sum(1 for diff in diffs if diff < 0)
-        serving_closer = sum(1 for diff in diffs if diff > 0)
-        decided = arm_closer + serving_closer
-        by_day: dict[str, list[float]] = defaultdict(list)
-        for (_station, day), diff in zip(keys, diffs):
-            by_day[day].append(diff)
-        days = sorted(by_day)
-        rng = random.Random(7)
-        means = sorted(
-            statistics.mean([
-                diff for pick in (rng.choice(days) for _ in days)
-                for diff in by_day[pick]
-            ])
-            for _ in range(BIAS_HALF_LIFE_BOOTSTRAP)
-        )
-        tail = int(round(0.025 * BIAS_HALF_LIFE_BOOTSTRAP))
-        return {
-            "half_life_days": arm,
-            "mean_diff_c": round(statistics.mean(diffs), 4),
-            "ci_low_c": round(means[tail], 4),
-            "ci_high_c": round(means[-tail - 1], 4),
-            "arm_closer": arm_closer,
-            "serving_closer": serving_closer,
-            "sign_z": round(
-                (arm_closer - decided / 2) / math.sqrt(decided / 4), 2
-            ) if decided else 0.0,
-            "days_arm_better": sum(
-                1 for day in days if statistics.mean(by_day[day]) < 0
-            ),
-            "days": len(days),
-        }
-
-    return {
-        "available": True,
-        "measured_at_utc": as_of,
-        "window_from": window_from,
-        "window_to": window_to,
-        "cells": cells,
-        "station_days": len(keys),
-        "serving_half_life_days": serving,
-        "arms": [
-            {
-                "half_life_days": arm,
-                "mae_c": round(statistics.mean(
-                    station_days[key][arm] for key in keys
-                ), 4),
-            }
-            for arm in arms
-        ],
-        "comparisons": [compare(arm) for arm in arms if arm != serving],
-    }
-
-
 def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
     """Whether the bias half-life change can yet be scored against truth.
 
@@ -13853,12 +13608,9 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """The L4 posterior lane (first-principles baseline, shadow): the served
-    ``(alpha, gamma, w)`` rows per stage and lead band, the in-sample skill
-    beside the forward skill read off the journal, the registered
-    hypotheses, and what the shadow recorded on recent decisions.
-
-    Read-only.  ``forward_skill`` re-reads each stage's population (the same
-    ~10s the valuation lane's fit pays), which is why the section is cached.
+    ``(alpha, gamma, w)`` rows per stage and lead band with the in-sample
+    skill the fit stored, the registered hypotheses, and what the shadow
+    recorded on recent decisions -- all as stored, nothing re-judged.
     """
 
     out: dict[str, Any] = {"available": False}
@@ -13871,9 +13623,7 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             LEAD_BAND_LABELS,
             MIN_DAYS,
             MIN_STATION_DAYS,
-            forward_skill,
             load_posterior_tables,
-            realisation,
         )
     except ImportError:
         return out
@@ -13895,14 +13645,13 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             )
         }
 
+    # Read-only (user ruling 2026-10-02 「所有前端都改为只读」): the served rows,
+    # the hypotheses and the shadow the planner recorded.  The forward skill
+    # and the realisation table re-judged every decision with the L4 rows --
+    # production's rule re-run on the board -- and are gone with it.
     stages: list[dict[str, Any]] = []
-    memo = _charter_ev_decision_memo(POSTERIOR_DECISION_MEMO)
     for scope in ("P0", "P0-M", "P1"):
         row = served.get(scope)
-        try:
-            forward = forward_skill(conn, stage_scope=scope, decision_memo=memo)
-        except (sqlite3.Error, ValueError, TypeError, KeyError):
-            forward = None
         stages.append({
             "stage": scope,
             "served": None if row is None else {
@@ -13912,9 +13661,7 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
                     for label in LEAD_BAND_LABELS
                 },
             },
-            "forward": forward,
         })
-    _save_charter_ev_decision_memo(memo, POSTERIOR_DECISION_MEMO)
     shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
     try:
         # The plan header lives on the training fact, one per decision;
@@ -13958,20 +13705,10 @@ def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             })
     except sqlite3.Error:
         pass
-    # The money edge: every settled window production enumerated in the
-    # last 14 days, re-judged with the L4 row active at its decision, against
-    # the verdict production's lambda gate gave it.
-    try:
-        realised = realisation(
-            conn, since_event_date=(date.today() - timedelta(days=14)).isoformat(),
-        )
-    except (sqlite3.Error, ValueError, TypeError, KeyError):
-        realised = None
     out.update({
         "available": True, "mode": POSTERIOR_MODE, "rule": POSTERIOR_RULE,
         "stages": stages, "shadow": shadow, "hypotheses": hypotheses,
         "min_station_days": MIN_STATION_DAYS, "min_days": MIN_DAYS,
-        "realisation": realised,
     })
     return out
 
@@ -14506,11 +14243,6 @@ def _charter_ev_memo_code() -> str:
         _section_fingerprint(valuation_store._decision_vectors)
         + _section_fingerprint(market_reference_v1),
     )
-
-
-#: The posterior lane's own memo: it reads the same pairs anchored, so a
-#: shared file pruned to one reader's pairs would shed the other's.
-POSTERIOR_DECISION_MEMO = "_posterior_decision_memo.json"
 
 
 def _charter_ev_decision_memo(
@@ -15170,7 +14902,6 @@ SECTION_CACHE_TTL_SEC = {
     "skill": 210 * 60,
     # Refits the fleet's bias under each half-life (~5 min); the verdict
     # moves with a settled day at most.
-    "bias_half_life": 1440 * 60,
     "center_landing": 255 * 60,
     # Three small tables plus one population read per stage for the forward
     # skill score; the journal moves once a day.  Six hours, not 55
@@ -16950,10 +16681,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             "h5_readiness", collect_h5_readiness, conn,
             # The card reads ``days || []`` and hides when there are none.
             _unavailable={}
-        ),
-        "bias_half_life": _cached_section(
-            "bias_half_life", collect_bias_half_life, conn,
-            _unavailable={"available": False},
         ),
         "posterior_lane": _cached_section(
             "posterior_lane", collect_posterior_lane, conn,
@@ -18890,8 +18617,7 @@ function posteriorLane(){
   const n4=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(4));
   const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
   const cards=(V.stages||[]).map(st=>{
-    const s=st.served, f=st.forward||{}, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
-    const fwdOk=f.s_forward_ci&&f.s_forward_ci[0]!=null&&f.s_forward_ci[0]>0;
+    const s=st.served, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
     const vd=(s&&s.verdict)||{};
     const vls=vd.d_logscore||[], vbr=vd.d_brier||[];
     const word=!s?"无拟合，b = m 不买":(s.accumulating?"累积中，b = m 不买":(s.admitted?"准入：服务后验":"未准入，b = m 不买"))
@@ -18915,9 +18641,6 @@ function posteriorLane(){
         <div><div class="muted">技能分 S = log b − log m（样本内）</div>
           <div class="big ${sk.s_in_sample==null?"":(sk.s_in_sample<0?"down":"up")}">${n4(sk.s_in_sample)}</div>
           <div class="muted">${ci(sk.s_in_sample_ci,n4)||"—"} nat · IC ${n3(sk.ic_in_sample)}</div></div>
-        <div><div class="muted">技能分 S（前瞻，按当时服务的拟合）</div>
-          <div class="big ${f.s_forward==null?"":(f.s_forward<0?"down":"up")}">${n4(f.s_forward)}</div>
-          <div class="muted">${ci(f.s_forward_ci,n4)||"—"} nat · IC ${n3(f.ic_forward)} · ${f.decisions||0} 决策 / ${f.days||0} 天${f.served_market?` · 其中 ${f.served_market} 次服务的是市场`:""}</div></div>
       </div>
       <table style="margin-top:10px"><thead><tr><th>提前量档</th><th>决策 / 天</th><th>w · 90%</th><th>γ</th><th>S 样本内</th></tr></thead>
       <tbody>${bands||"<tr><td colspan=5 class='muted'>无档行</td></tr>"}</tbody></table>
@@ -18933,49 +18656,9 @@ function posteriorLane(){
   门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日；判决至少 8 个检验日。</p>
   <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
   <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
-  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>
-  ${posteriorRealisation(V.realisation)}`;
+  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>`;
 }
 
-// L4's money edge (user ruling, 2026-09-17 "补"): the windows L4 would buy,
-// after they settled.  Every settled window production enumerated in the
-// last 14 days, re-judged with the L4 row that was active at its decision,
-// crossed with the verdict the live lambda gate gave the same window.
-function posteriorRealisation(R){
-  const title=`<h3 style="margin-top:18px">兑现表：L4 会买的窗，结算后赚没赚</h3>`;
-  if(!R) return `${title}<div class="card muted">未采集。</div>`;
-  if(R.error) return `${title}<div class="card muted">不可读：${h(R.error)}。</div>`;
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const pp=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+" 点");
-  const ci=c=>!c||c[0]==null?"":` <span class="muted">[${pp(c[0])}, ${pp(c[1])}]</span>`;
-  const tone=x=>x.hit_minus_price==null?"":(x.ci&&x.ci[0]!=null&&x.ci[0]>0?"up":(x.ci&&x.ci[1]!=null&&x.ci[1]<0?"down":""));
-  const row=(label,x,strong)=>{x=x||{};return `<tr${strong?' style="font-weight:620"':""}><td>${label}</td>
-    <td class="mono">${x.n||0} / ${x.station_days||0} / ${x.days||0}</td>
-    <td class="mono">${n3(x.price)}</td><td class="mono">${n3(x.hit)}</td>
-    <td class="mono">${pp(x.claimed_edge)}</td>
-    <td class="mono ${tone(x)}"><b>${pp(x.hit_minus_price)}</b>${ci(x.ci)}</td></tr>`;};
-  const c=R.cells||{};
-  // The acceptance sample (user ruling, 2026-09-17): the disagreement class
-  // the band table cannot see; L4's edge is read here first.
-  const A=R.acceptance;
-  const pc=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const acceptRows=!A?`<tr><td colspan="6" class="muted">验收样本：本页数据还没带这一项，等下一轮整库渲染。</td></tr>`
-    :`<tr><td colspan="6" style="padding-top:10px"><b>验收样本</b>：模型说 ≥${pc(A.claim_floor)} 而市场中价 &lt;${pc(A.market_ceiling)} 的窗——已结算 ${A.windows}、已判 ${A.judged}${A.windows?"":"（累积中）"}</td></tr>
-    ${row("　这类窗全部（不论谁买）",A.all)}${row("　其中 L4 会买",A.l4_admitted,true)}${row("　其中实盘 λ 会买",A.lambda_admitted)}`;
-  const stages=Object.entries(R.by_stage||{}).map(([st,v])=>`${h(st)}：L4 会买 ${(v.l4_admitted||{}).n||0} 窗 ${pp((v.l4_admitted||{}).hit_minus_price)} · λ 会买 ${(v.lambda_admitted||{}).n||0} 窗 ${pp((v.lambda_admitted||{}).hit_minus_price)}`).join("；");
-  const empty=!R.judged;
-  return `${title}
-  <p class="sub">最近 14 天（${h(R.since)} 起）生产枚举过、已结算的每个定价窗，用<b>决策当时生效的 L4 拟合</b>重判买不买，
-  再和实盘 λ 闸对同一个窗的判决交叉。「L4 声称 edge」= L4 信念 − 全含价；「实际」= 命中 − 全含价，按事件日自助 90%。
-  L4 放行那两行的实际值区间下界 &gt; 0 才算 L4 的 edge 兑现了。</p>
-  <div class="card" style="overflow-x:auto"><table><thead><tr><th>哪些窗</th><th>窗 / 站日 / 天</th><th>平均价</th><th>命中率</th><th>L4 声称 edge</th><th>实际 命中 − 价 · 90%</th></tr></thead>
-  <tbody>${row("L4 会买（合计）",R.l4_admitted,true)}${row("实盘 λ 会买（合计，对照）",R.lambda_admitted,true)}
-  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}
-  ${acceptRows}</tbody></table>
-  <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
-    ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
-    :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;
-}
 
 // The P0 gap to the market in two readings, centre and shape (2026-09-22 P0
 // downstream audit, finding 1 and its "只需要做" item b): a change to the
@@ -19756,82 +19439,27 @@ function hitRate(){
 
 
 function h5Readiness(){
-  // The single-system bias half-life in one place, conclusions only (user
-  // rulings, 2026-09-17: 和换代进度融合，突出结论; 增加 h15 的对比; 测试 H3;
-  // 文案前加单系统校准).  Two answers: has the fleet turned over to the
-  // 5-day tables, and which half-life corrects closest to truth when the
-  // half-life is the only thing changed (``collect_bias_half_life``).  An arm
-  // differs from the serving one only when its day-resampled interval
-  // clears zero -- a station-day vote alone reads weather shared across the
-  // fleet as independent evidence.
+  // The single-system bias half-life's rollout: has the fleet turned over to
+  // the 5-day tables.  Which half-life corrects closest to truth is research,
+  // not a board reading: the board only reads what production stored (user
+  // ruling 2026-10-02 「所有前端都改为只读」), and the half-life question was
+  // answered by its own protocol (836611c5: keep 5/15/60).
   const H = D.h5_readiness || {}; const days = H.days || [];
-  const B = D.bias_half_life || {};
-  if(!days.length && !B.available) return "";
-  const latest = days.length ? days[days.length-1] : null;
-  const ready = H.scoreable_days || [];
-  const done = latest && latest.share >= 0.9;
-  const rollPill = !latest ? "" : done
+  if(!days.length) return "";
+  const latest = days[days.length-1];
+  const done = latest.share >= 0.9;
+  const rollPill = done
     ? `<span class="pill green">已换代 ${(100*latest.share).toFixed(0)}%</span>`
     : `<span class="pill amber">换代中 ${(100*latest.share).toFixed(0)}%</span>`;
-  const rollLine = !latest ? "" : done
+  const rollLine = done
     ? `<b>舰队已全部换到 H5：</b>最近事件日 ${h(latest.event_date)} 的
        ${latest.decisions.toLocaleString()} 笔已标定决策中 ${(100*latest.share).toFixed(0)}% 由 5 天半衰期订正表服务。`
     : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务。`;
-
-  const hl = v => "H" + Number(v).toFixed(0);
-  // Rounded first, so a value that rounds to zero reads 0.000, not -0.000.
-  const signed = (v, d=3) => {
-    const r = Number(Number(v).toFixed(d));
-    return r === 0 ? (0).toFixed(d) : (r > 0 ? "+" : "") + r.toFixed(d);
-  };
-  let accPill = "", accLine = "", table = "";
-  if(B.available){
-    const serving = B.serving_half_life_days;
-    const mae = {}; (B.arms||[]).forEach(a => { mae[a.half_life_days] = a.mae_c; });
-    const best = (B.arms||[]).reduce((x, a) => (!x || a.mae_c < x.mae_c) ? a : x, null);
-    const verdict = c => c.ci_low_c > 0 ? "worse" : (c.ci_high_c < 0 ? "better" : "tie");
-    const beaten = (B.comparisons||[]).filter(c => verdict(c) === "better");
-    const phrase = c => {
-      const v = verdict(c);
-      return `${hl(c.half_life_days)} ${v === "worse" ? "显著更差" : v === "better" ? "显著更准" : "没有显著差别"}（误差${
-        c.mean_diff_c >= 0 ? "多" : "少"} ${Math.abs(c.mean_diff_c).toFixed(3)}°C，95% 区间 ${signed(c.ci_low_c)} 至 ${signed(c.ci_high_c)}）`;
-    };
-    if(beaten.length){
-      accPill = `<span class="pill amber">${beaten.map(c => hl(c.half_life_days)).join("、")} 比 ${hl(serving)} 更准</span>`;
-      accLine = `<b>现役 ${hl(serving)} 不是最准的：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
-    } else if(best && best.half_life_days === serving){
-      accPill = `<span class="pill green">${hl(serving)} 最准</span>`;
-      accLine = `<b>现役 ${hl(serving)} 在三者里订正后误差最小：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
-    } else {
-      accPill = `<span class="pill green">${hl(serving)} 没有被超过</span>`;
-      accLine = `<b>没有哪个半衰期显著好过现役 ${hl(serving)}：</b>${(B.comparisons||[]).map(phrase).join("；")}。`;
-    }
-    const cmp = {}; (B.comparisons||[]).forEach(c => { cmp[c.half_life_days] = c; });
-    const rows = (B.arms||[]).map(a => {
-      const c = cmp[a.half_life_days];
-      const isServing = a.half_life_days === serving;
-      const decided = c ? c.arm_closer + c.serving_closer : 0;
-      return `<tr${isServing ? ' style="font-weight:600"' : ""}>
-        <td>${hl(a.half_life_days)}（${Number(a.half_life_days).toFixed(0)} 天${isServing ? "，现役" : ""}）</td>
-        <td class="mono ${best && a.half_life_days === best.half_life_days ? "up" : ""}">${a.mae_c.toFixed(3)}°C</td>
-        <td class="mono ${!c ? "muted" : verdict(c) === "worse" ? "down" : verdict(c) === "better" ? "up" : ""}">${
-          !c ? "—" : `${signed(c.mean_diff_c)}°C <span class="muted">[${signed(c.ci_low_c)}, ${signed(c.ci_high_c)}]</span>`}</td>
-        <td class="mono">${!c ? "—" : `${c.arm_closer}:${c.serving_closer}${decided ? ` <span class="muted">${(100*c.arm_closer/decided).toFixed(0)}%</span>` : ""}`}</td>
-      </tr>`;
-    }).join("");
-    table = `<table style="margin-top:8px;font-size:13.5px"><thead><tr>
-        <th>半衰期</th><th>订正后平均绝对误差</th><th>比 ${hl(serving)} 多出的误差 <span class="muted">[95% 区间]</span></th>
-        <th>离真值更近的站日 <span class="muted">它:${hl(serving)}</span></th></tr></thead><tbody>${rows}</tbody></table>`;
-  }
-  return `<h2 id="h5">单系统校准 · 偏差半衰期 H5：换代进度与订正准度 ${rollPill} ${accPill}</h2>
+  return `<h2 id="h5">单系统校准 · 偏差半衰期 H5：换代进度 ${rollPill}</h2>
   <p class="sub">单系统校准里每个模型自己的中心偏差，按最近真值加权拟合；半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
   <div class="card" style="font-size:14.5px;line-height:1.7">
-    ${B.available ? `<div>${accPill} ${accLine}</div>${table}` : ""}
-    ${latest ? `<div style="margin-top:6px">${rollPill} ${rollLine}</div>` : ""}
-  </div>
-  ${B.available ? `<div class="muted" style="margin-top:6px">准度＝最近 ${h(B.window_from)} 至 ${h(B.window_to)} 的
-    ${B.station_days.toLocaleString()} 个已结算站日，每天只用之前的数据按各半衰期重拟合（生产的样本加载、拟合、订正函数），
-    只换半衰期；区间按整天重抽样。每天算一次，测于 ${h(String(B.measured_at_utc||"").slice(0,16).replace("T"," "))}Z。</div>` : ""}`;
+    <div>${rollPill} ${rollLine}</div>
+  </div>`;
 }
 
 
@@ -24110,7 +23738,6 @@ const STARRED = new Set(["宪章 EV 恒等式"]);
 // nothing.  The jump bar still reads the heading, which sits below.
 const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
-    bias_half_life:"半衰期对比",
     center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
     model_accuracy_trend:"模型准不准走势",station_calibration_windows:"逐站校准排序（7/30 天与累计）",p1_path_skill:"P1 温度路径",
     ssot_capacity:"SSOT 容量",
