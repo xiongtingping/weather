@@ -5653,6 +5653,22 @@ BIAS_HALF_LIFE_WINDOW_DAYS = 31
 BIAS_HALF_LIFE_BOOTSTRAP = 2000
 
 
+BIAS_HALF_LIFE_MEMO = "_bias_half_life_memo.json"
+
+
+def _bias_half_life_memo_code(oos_module: Any) -> str:
+    """The fit's whole module and this collector: either changing voids the
+    kept refits."""
+
+    try:
+        module_bytes = Path(oos_module.__file__).read_bytes()
+    except OSError:
+        module_bytes = b""
+    return hashlib.sha256(
+        module_bytes + _section_fingerprint(collect_bias_half_life).encode("utf-8")
+    ).hexdigest()
+
+
 def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
     """Which bias half-life corrects closest to truth, with nothing else changed.
 
@@ -5725,8 +5741,28 @@ def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
         lambda: defaultdict(list)
     )
     cells = 0
+    # Each cell's refits, kept across builds.  A settled day's training
+    # cases do not move, so neither do its fits -- and the fits were the
+    # section (212 of 254 s on three stations, 2026-10-02; ~3,800 s for the
+    # fleet, past the research render's 3,300 s timeout).  Keyed on the
+    # cell's whole input, so a late case or a revised truth is a new key;
+    # the file is void when native_ensemble_oos.py changes at all.
+    memo_code = _bias_half_life_memo_code(OOS)
+    kept = _load_closed_readings(BIAS_HALF_LIFE_MEMO)
+    memo: dict[str, Any] = (
+        dict(kept.get("cells") or {}) if kept.get("code") == memo_code else {}
+    )
+    used: set[str] = set()
     try:
         for station, scopes in by_station.items():
+            # Kept station by station, whole (nothing pruned yet): the first
+            # build of a cold memo is the fleet's full ~3,800 s and the
+            # research render is killed at 3,300 s, so a build that dies
+            # leaves the next one only the stations it did not reach.
+            if used:
+                _save_closed_readings(BIAS_HALF_LIFE_MEMO, {
+                    "code": memo_code, "cells": memo,
+                })
             for cases in scopes.values():
                 for case in cases:
                     day = str(case["event_date"])[:10]
@@ -5747,6 +5783,24 @@ def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
                     values = [float(value) for value in case["values"]]
                     mean = sum(values) / len(values)
                     actual = float(case["actual_tmax_c"])
+                    memo_key = hashlib.sha256(json.dumps(
+                        [history, case["values"], case["actual_tmax_c"]],
+                        sort_keys=True, default=str,
+                    ).encode("utf-8")).hexdigest()
+                    kept_cell = memo.get(memo_key)
+                    if kept_cell is not None and (
+                        kept_cell.get("skip")
+                        or all(repr(arm) in kept_cell for arm in arms)
+                    ):
+                        used.add(memo_key)
+                        if kept_cell.get("skip"):
+                            continue
+                        for arm in arms:
+                            errors[(station, day)][arm].append(
+                                float(kept_cell[repr(arm)])
+                            )
+                        cells += 1
+                        continue
                     misses: dict[float, float] = {}
                     try:
                         for arm in arms:
@@ -5756,14 +5810,22 @@ def collect_bias_half_life(conn: sqlite3.Connection) -> dict[str, Any]:
                                 OOS._corrected_center(mean, parameters) - actual
                             )
                     except (ContractError, KeyError, TypeError, ValueError):
+                        memo[memo_key] = {"skip": True}
+                        used.add(memo_key)
                         continue
                     finally:
                         OOS.BIAS_HALF_LIFE_DAYS = serving
+                    memo[memo_key] = {repr(arm): miss for arm, miss in misses.items()}
+                    used.add(memo_key)
                     for arm, miss in misses.items():
                         errors[(station, day)][arm].append(miss)
                     cells += 1
     finally:
         OOS.BIAS_HALF_LIFE_DAYS = serving
+        _save_closed_readings(BIAS_HALF_LIFE_MEMO, {
+            "code": memo_code,
+            "cells": {key: memo[key] for key in used if key in memo},
+        })
     if not errors:
         return {"available": False, "reason": "no_scoreable_cells"}
 

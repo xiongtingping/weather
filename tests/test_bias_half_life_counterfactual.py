@@ -27,6 +27,14 @@ import calibration_dashboard as C  # noqa: E402
 from bayes_basket_target import native_ensemble_oos as OOS  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _own_cache_dir(tmp_path, monkeypatch):
+    """The collector keeps its refits beside the section pages; a test must
+    not write them into the live board's directory."""
+
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+
+
 def _cases() -> list[dict]:
     start = date(2026, 7, 1)
     out = []
@@ -67,3 +75,21 @@ def test_a_shorter_half_life_catches_a_step_sooner_and_every_arm_corrects(
     assert comparisons[3.0]["mean_diff_c"] < 0 < comparisons[15.0]["mean_diff_c"]
     assert comparisons[15.0]["ci_low_c"] <= comparisons[15.0]["mean_diff_c"] <= (
         comparisons[15.0]["ci_high_c"])
+
+
+def test_the_refits_are_kept_and_a_second_build_reads_them(monkeypatch) -> None:
+    """2026-10-02: the fleet's refits were ~3,800 s a build, past the research
+    timeout.  A settled cell's inputs do not move, so neither does its fit."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE calibration_station_registry (station_id TEXT)")
+    conn.execute("INSERT INTO calibration_station_registry VALUES ('KAAA')")
+    monkeypatch.setattr(OOS, "_load_cases", lambda _c, **_k: {("s",): _cases()})
+    first = C.collect_bias_half_life(conn)
+    fits = []
+    real = OOS._fit_parameters
+    monkeypatch.setattr(OOS, "_fit_parameters", lambda h: fits.append(1) or real(h))
+    second = C.collect_bias_half_life(conn)
+    assert fits == [], "every cell came from the kept refits"
+    first.pop("measured_at_utc"), second.pop("measured_at_utc")
+    assert first == second
