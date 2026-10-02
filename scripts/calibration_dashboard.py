@@ -16660,12 +16660,17 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     metar_board = _cached_section("metar_board", collect_metar_board, conn)
     precip_classification = _cached_section(
-        "precip_classification", collect_precip_classification, conn
+        "precip_classification", collect_precip_classification, conn,
+        _unavailable={"available": False},
     )
     regional_usage = _cached_section(
         "regional_usage", collect_regional_usage, conn
     )
-    ai_models = _cached_section("ai_models", collect_ai_models, conn)
+    # Heavy pages from here down declare what to show without a page, so
+    # the page render never reads one whole past its deadline (9d40f09a).
+    ai_models = _cached_section(
+        "ai_models", collect_ai_models, conn, _unavailable={"available": False}
+    )
     p1_joint_likelihood = _cached_section(
         "p1_joint_likelihood", collect_p1_joint_likelihood, conn
     )
@@ -16676,18 +16681,23 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "station_bayes", collect_station_bayes, conn
     )
     p1_path_skill = _cached_section(
-        "p1_path_skill", collect_p1_path_skill, conn
+        "p1_path_skill", collect_p1_path_skill, conn,
+        _unavailable={"available": False},
     )
     tables = _cached_section(
         "correction_and_weights", collect_correction_and_weights, conn
     )
     ssot_capacity = _cached_section(
-        "ssot_capacity", collect_ssot_capacity, conn
+        "ssot_capacity", collect_ssot_capacity, conn,
+        _unavailable={"available": False, "tables": []},
     )
     gaps = _cached_section(
         "gaps", collect_gaps, conn, members, tables
     )
-    skill = _cached_section("skill", collect_model_skill, conn)
+    skill = _cached_section(
+        "skill", collect_model_skill, conn,
+        _unavailable={"rows": [], "totals": [], "summary": {}},
+    )
     scores = _cached_section("oos_scores", collect_oos_scores, conn)
     serving_weights = _cached_section(
         "serving_weights", collect_serving_weights, conn
@@ -16698,6 +16708,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     center_landing = _cached_section(
         "center_landing", collect_center_landing, conn,
         _salt=_center_landing_salt(),
+        _unavailable={},
     )
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn,

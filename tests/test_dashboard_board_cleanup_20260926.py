@@ -432,3 +432,32 @@ def test_a_section_that_killed_the_last_run_waits_behind_the_others(pages) -> No
     later = now + timedelta(seconds=C.RESEARCH_KILLED_BACKOFF_SEC)
     after = [n for _o, n, _c in C.research_due(specs, later)]
     assert after.index("killer") < after.index("next_oldest"), after
+
+
+HEAVY_SECTIONS_WITH_A_STAND_IN = (
+    "ai_models", "bias_half_life", "center_landing", "chain_volume",
+    "charter_ev", "h5_readiness", "member_depth", "model_accuracy_trend",
+    "p1_path_skill", "posterior_lane", "precip_classification",
+    "refusal_history", "report_latency", "scorecard", "scorecard_previous",
+    "skill", "ssot_capacity", "station_calibration_windows", "truth_landing",
+)
+
+
+def test_every_heavy_section_declares_what_to_show_without_a_page() -> None:
+    """2026-10-02: a heavy section with no page (any change to its collector
+    voids it) and no stand-in was read whole by the page render past its
+    deadline; scorecard_previous got the render killed three runs running.
+    Every section that has cost 200 s or more declares one."""
+
+    import re
+
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    missing = []
+    for name in HEAVY_SECTIONS_WITH_A_STAND_IN:
+        call = re.search(
+            r'_cached_section\(\s*"%s",.*?\n\s*\)' % re.escape(name), source, re.S
+        )
+        assert call is not None, name
+        if "_unavailable=" not in call.group(0):
+            missing.append(name)
+    assert missing == []
