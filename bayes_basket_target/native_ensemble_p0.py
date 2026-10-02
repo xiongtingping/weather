@@ -2091,10 +2091,112 @@ def compile_native_ensemble_p0(
         training_lead_bucket,
     )
     activation_parameters += (decision_at_utc, decision_at_utc)
-    activation_rows = conn.execute(
-        activation_sql,
-        activation_parameters,
-    ).fetchall()
+    # Charter 191: the generations of one pairing share one evaluation key,
+    # so the same lookup at the same instant was asked once per generation
+    # -- 22,249 lookups for 132 packets, 20,246 of them repeats (2026-09-21).
+    # Asked once per key; the answer is the one the first ask got.
+    evaluation_rows_by_key: dict[tuple[Any, ...], list[Any]] = {}
+
+    def _evaluation_rows(evaluation_key: tuple[Any, ...]) -> list[Any]:
+        rows = evaluation_rows_by_key.get(evaluation_key)
+        if rows is None:
+            rows = conn.execute(
+                "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
+                "FROM calibration_cross_native_ensemble_oos_evaluation "
+                "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+                "AND run_cycle=? AND run_cycle_by_system_json=? "
+                "AND run_cycle_by_system_sha256=? "
+                "AND settlement_definition=? "
+                "AND ensemble_system_ids_json=? "
+                "AND available_system_set_hash=? AND evaluated_at_utc<=? "
+                "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
+                evaluation_key,
+            ).fetchall()
+            evaluation_rows_by_key[evaluation_key] = rows
+        return rows
+
+    def _evaluation_admits(rows: list[Any], selection_sha: str) -> bool:
+        return bool(
+            rows
+            and not (len(rows) > 1 and str(rows[0][2]) == str(rows[1][2]))
+            and str(rows[0][0]) == "PRODUCTION_NO_LIVE_OOS_PASS"
+            and str(rows[0][1]) == selection_sha
+        )
+
+    # The scope holds every re-mint of every pairing, all still valid
+    # (RCSS DESCENT h12_24: 2,667 rows of 200 pairings on 2026-10-02, 3.4 MB
+    # a call, 0.4-1.3 s cold, 65 s of every cycle), and the loop below
+    # admits only the rows whose selection evidence is the one the pairing's
+    # latest evaluation passed.  So that test is asked first, off the two
+    # covering indexes (calibration_native_activation_evidence_idx,
+    # calibration_cross_native_artifact_evidence_idx), and only the rows it
+    # admits are read whole.  The loop is unchanged and runs on them: a row
+    # it would have admitted passes this test with the same key, and every
+    # row this drops the loop drops too.  A scope that comes out with
+    # nothing runs the loop again on every row, so which fail-closed reason
+    # it gives is the one it always gave.
+    def _evidence_admitted_rows() -> list[Any]:
+        admitted_ids: list[str] = []
+        # Named, because the artifact's primary key is a unique equality the
+        # planner otherwise prefers, and that reads the table row.  Named
+        # only once it exists: until the index migration has run, the same
+        # read goes through the primary key, slower and identical.
+        evidence_index = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='calibration_cross_native_artifact_evidence_idx'"
+        ).fetchone() is not None
+        for pre in conn.execute(
+            "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
+            "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
+            "a.available_system_set_hash_or_star,r.ensemble_system_ids_json "
+            "FROM calibration_native_ensemble_activation a "
+            "JOIN calibration_cross_native_ensemble_artifact r"
+            + (
+                " INDEXED BY calibration_cross_native_artifact_evidence_idx "
+                if evidence_index else " "
+            )
+            + "ON r.cross_ensemble_artifact_id=a.artifact_id "
+            "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+            "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+            "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND a.valid_from_utc<=? AND a.valid_until_utc>?",
+            activation_parameters,
+        ):
+            try:
+                pre_ids = _json(sorted(str(v) for v in json.loads(str(pre[6]))))
+            except (TypeError, ValueError):
+                admitted_ids.append(str(pre[0]))  # the loop decides
+                continue
+            pre_key = (
+                station_id,
+                season_bin,
+                training_lead_bucket,
+                str(pre[2] or ""),
+                str(pre[3] or ""),
+                str(pre[4] or ""),
+                settlement_definition,
+                pre_ids,
+                str(pre[5]),
+                decision_at_utc,
+            )
+            if _evaluation_admits(_evaluation_rows(pre_key), str(pre[1])):
+                admitted_ids.append(str(pre[0]))
+        rows: list[Any] = []
+        for start in range(0, len(admitted_ids), 400):
+            chunk = admitted_ids[start:start + 400]
+            rows.extend(conn.execute(
+                activation_sql.replace(
+                    "ORDER BY",
+                    "AND a.activation_id IN (" + ",".join("?" * len(chunk))
+                    + ") ORDER BY",
+                ),
+                activation_parameters + tuple(chunk),
+            ).fetchall())
+        rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
+        return rows
+
+    def _all_rows() -> list[Any]:
+        return conn.execute(activation_sql, activation_parameters).fetchall()
     observed_set = set(observed_system_ids)
     # Charter 193 (三): members on a secondary sampling grid with no fit on
     # that grid; activations seating them are passed over below.
@@ -2123,210 +2225,185 @@ def compile_native_ensemble_p0(
         if official_snapshot
         else set()
     )
-    compatible_activations: list[
-        tuple[Any, list[str]]
-    ] = []
-    rejected_or_unproven_activation_seen = False
-    # Charter 191: the generations of one pairing share one evaluation key,
-    # so the same lookup at the same instant was asked once per generation
-    # -- 22,249 lookups for 132 packets, 20,246 of them repeats (2026-09-21).
-    # Asked once per key; the answer is the one the first ask got.
-    evaluation_rows_by_key: dict[tuple[Any, ...], list[Any]] = {}
-    parsed_ids_by_text: dict[str, tuple[list[str], str]] = {}
-    parsed_fit_by_text: dict[
-        str, tuple[dict[str, str], str, str, str] | None
-    ] = {}
-    for row in activation_rows:
-        if station_attested:
-            # Resolve the attestation for this activation's own scope.  The
-            # pointer names one activation by id and content hash, so it can
-            # only speak for the scope that activation was fitted in; a
-            # station attested at another lead has nothing to say about this
-            # one, and treating its pointer as authoritative here rejected
-            # every correctly calibrated candidate.
-            native_pointer_binding = pointer_for_scope(
-                native_pointer_snapshot,
-                station_id,
-                season_bin=season_bin,
-                lead_bucket=training_lead_bucket,
-                run_cycle=str(row[8] or ""),
-            )
-            if native_pointer_binding is None:
-                continue
-            pointer_mismatches = pointer_activation_mismatch_reasons(
-                native_pointer_binding,
-                activation_id=str(row[0]),
-                artifact_id=str(row[1]),
-                activation_sha256=str(row[2]),
-                artifact_sha256=str(row[14] or ""),
-                selection_evidence_sha256=str(row[13]),
-                generation=int(row[3]),
-                season_bin=season_bin,
-                lead_bucket=training_lead_bucket,
-                run_cycle=str(row[8] or ""),
-                run_cycle_by_system_json=str(row[9] or ""),
-                authority_scope="PRODUCTION_NO_LIVE_ONLY",
-            )
-            if pointer_mismatches:
-                continue
-        ids_text = str(row[6])
-        parsed_ids = parsed_ids_by_text.get(ids_text)
-        if parsed_ids is None:
-            parsed_selected = sorted(
-                str(value) for value in json.loads(ids_text)
-            )
-            parsed_ids = (parsed_selected, content_sha256(parsed_selected))
-            parsed_ids_by_text[ids_text] = parsed_ids
-        selected_ids = list(parsed_ids[0])
-        packet_cycle_mapping = {
-            system_id: str(
-                official_lineage["run_cycle_by_system"].get(system_id)
-                or ""
-            )
-            for system_id in selected_ids
-        }
-        # The activation's identity is the pairing it was fitted and
-        # evaluated under -- its own recorded cycle map -- not whatever runs
-        # today's capture happens to carry.  Requiring the packet's cycles to
-        # equal the fitted map re-imposed same-cycle capture on a lane that
-        # reads each family at its own newest published run, so every daytime
-        # packet (ECMWF/GEFS on 06Z beside ICON/ECCC on 00Z) failed closed.
-        # The fitted identity keeps guarding the certificate below; a system
-        # whose packet run differs from the fitted pairing serves as a named
-        # cycle rider, and activations whose fitted map matches the packet
-        # outrank those that need riders.
-        fit_text = str(row[9] or "{}")
-        if fit_text in parsed_fit_by_text:
-            parsed_fit = parsed_fit_by_text[fit_text]
-        else:
-            try:
-                parsed_mapping = {
-                    str(key): str(value)
-                    for key, value in json.loads(fit_text).items()
-                }
-            except ValueError:
-                parsed_fit = None
-            else:
-                parsed_cycles = set(parsed_mapping.values())
-                parsed_fit = (
-                    parsed_mapping,
-                    _json(parsed_mapping),
-                    content_sha256(parsed_mapping),
-                    next(iter(parsed_cycles))
-                    if len(parsed_cycles) == 1
-                    else MIXED_NATIVE_CYCLES,
+    for activation_rows_of in (_evidence_admitted_rows, _all_rows):
+        activation_rows = activation_rows_of()
+        compatible_activations: list[
+            tuple[Any, list[str]]
+        ] = []
+        rejected_or_unproven_activation_seen = False
+        parsed_ids_by_text: dict[str, tuple[list[str], str]] = {}
+        parsed_fit_by_text: dict[
+            str, tuple[dict[str, str], str, str, str] | None
+        ] = {}
+        for row in activation_rows:
+            if station_attested:
+                # Resolve the attestation for this activation's own scope.  The
+                # pointer names one activation by id and content hash, so it can
+                # only speak for the scope that activation was fitted in; a
+                # station attested at another lead has nothing to say about this
+                # one, and treating its pointer as authoritative here rejected
+                # every correctly calibrated candidate.
+                native_pointer_binding = pointer_for_scope(
+                    native_pointer_snapshot,
+                    station_id,
+                    season_bin=season_bin,
+                    lead_bucket=training_lead_bucket,
+                    run_cycle=str(row[8] or ""),
                 )
-            parsed_fit_by_text[fit_text] = parsed_fit
-        if parsed_fit is None:
-            continue
-        fitted_cycle_mapping = dict(parsed_fit[0])
-        fitted_cycle_mapping_json = parsed_fit[1]
-        fitted_cycle_mapping_sha = parsed_fit[2]
-        fitted_run_cycle = parsed_fit[3]
-        if (
-            len(selected_ids) != int(row[7])
-            or len(set(selected_ids)) != len(selected_ids)
-            or str(row[5]) != parsed_ids[1]
-            or not set(selected_ids).issubset(observed_set)
-            or not all(packet_cycle_mapping.values())
-            or sorted(fitted_cycle_mapping) != selected_ids
-            or not all(fitted_cycle_mapping.values())
-            or str(row[8] or "") != fitted_run_cycle
-            or str(row[9] or "") != fitted_cycle_mapping_json
-            or str(row[10] or "") != fitted_cycle_mapping_sha
-            or str(row[11] or "") != fitted_cycle_mapping_json
-            or str(row[12] or "") != fitted_cycle_mapping_sha
-        ):
-            continue
-        # A selected system may legitimately be absent from the packet's
-        # cycle mapping, and indexing it raised a bare KeyError instead of
-        # deciding anything (measured 2026-08-15: ZUUU died on
-        # KeyError:'OFFICIAL_AIRPORT_TAF_TX' every drain).  Two ways it
-        # happens, and neither is an error:
-        #
-        # * a forecast bystander -- TAF and the METAR physical path carry an
-        #   issue time rather than a run init, so clause 47 keeps them out of
-        #   cycle voting by construction; a legacy selection row that still
-        #   names one is demoted under clause 42, not matched against a cycle
-        #   it structurally cannot have;
-        # * a system the packet does not carry this round, which the rider
-        #   mechanism exists to name.
-        #
-        # Comparing only what both sides actually hold keeps the rider list
-        # meaning "fitted and packet disagree", which is what downstream
-        # activation reads it as.
-        activation_cycle_riders = sorted(
-            system_id
-            for system_id in selected_ids
-            if system_id not in NON_RUN_LEAD_BYSTANDER_SYSTEMS
-            and system_id in packet_cycle_mapping
-            and system_id in fitted_cycle_mapping
-            and packet_cycle_mapping[system_id]
-            != fitted_cycle_mapping[system_id]
-        )
-        # Charter 193 (三): weights fitted with a system on another sampling
-        # grid are not borrowed (a rider across grids), and a member with no
-        # fit on its own grid is not seated by any activation.
-        if any(
-            _cycle_step_hours(system_id, packet_cycle_mapping[system_id])
-            != _cycle_step_hours(system_id, fitted_cycle_mapping[system_id])
-            for system_id in activation_cycle_riders
-        ) or not off_grid_system_ids.isdisjoint(selected_ids):
-            continue
-        evaluation_key = (
-            station_id,
-            season_bin,
-            training_lead_bucket,
-            fitted_run_cycle,
-            fitted_cycle_mapping_json,
-            fitted_cycle_mapping_sha,
-            settlement_definition,
-            _json(selected_ids),
-            str(row[5]),
-            decision_at_utc,
-        )
-        evaluation_rows = evaluation_rows_by_key.get(evaluation_key)
-        if evaluation_rows is None:
-            evaluation_rows = conn.execute(
-                "SELECT oos_state,selection_evidence_sha256,evaluated_at_utc "
-                "FROM calibration_cross_native_ensemble_oos_evaluation "
-                "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
-                "AND run_cycle=? AND run_cycle_by_system_json=? "
-                "AND run_cycle_by_system_sha256=? "
-                "AND settlement_definition=? "
-                "AND ensemble_system_ids_json=? "
-                "AND available_system_set_hash=? AND evaluated_at_utc<=? "
-                "ORDER BY evaluated_at_utc DESC,evaluation_id DESC LIMIT 2",
-                evaluation_key,
-            ).fetchall()
-            evaluation_rows_by_key[evaluation_key] = evaluation_rows
-        if (
-            not evaluation_rows
-            or (
-                len(evaluation_rows) > 1
-                and str(evaluation_rows[0][2])
-                == str(evaluation_rows[1][2])
+                if native_pointer_binding is None:
+                    continue
+                pointer_mismatches = pointer_activation_mismatch_reasons(
+                    native_pointer_binding,
+                    activation_id=str(row[0]),
+                    artifact_id=str(row[1]),
+                    activation_sha256=str(row[2]),
+                    artifact_sha256=str(row[14] or ""),
+                    selection_evidence_sha256=str(row[13]),
+                    generation=int(row[3]),
+                    season_bin=season_bin,
+                    lead_bucket=training_lead_bucket,
+                    run_cycle=str(row[8] or ""),
+                    run_cycle_by_system_json=str(row[9] or ""),
+                    authority_scope="PRODUCTION_NO_LIVE_ONLY",
+                )
+                if pointer_mismatches:
+                    continue
+            ids_text = str(row[6])
+            parsed_ids = parsed_ids_by_text.get(ids_text)
+            if parsed_ids is None:
+                parsed_selected = sorted(
+                    str(value) for value in json.loads(ids_text)
+                )
+                parsed_ids = (parsed_selected, content_sha256(parsed_selected))
+                parsed_ids_by_text[ids_text] = parsed_ids
+            selected_ids = list(parsed_ids[0])
+            packet_cycle_mapping = {
+                system_id: str(
+                    official_lineage["run_cycle_by_system"].get(system_id)
+                    or ""
+                )
+                for system_id in selected_ids
+            }
+            # The activation's identity is the pairing it was fitted and
+            # evaluated under -- its own recorded cycle map -- not whatever runs
+            # today's capture happens to carry.  Requiring the packet's cycles to
+            # equal the fitted map re-imposed same-cycle capture on a lane that
+            # reads each family at its own newest published run, so every daytime
+            # packet (ECMWF/GEFS on 06Z beside ICON/ECCC on 00Z) failed closed.
+            # The fitted identity keeps guarding the certificate below; a system
+            # whose packet run differs from the fitted pairing serves as a named
+            # cycle rider, and activations whose fitted map matches the packet
+            # outrank those that need riders.
+            fit_text = str(row[9] or "{}")
+            if fit_text in parsed_fit_by_text:
+                parsed_fit = parsed_fit_by_text[fit_text]
+            else:
+                try:
+                    parsed_mapping = {
+                        str(key): str(value)
+                        for key, value in json.loads(fit_text).items()
+                    }
+                except ValueError:
+                    parsed_fit = None
+                else:
+                    parsed_cycles = set(parsed_mapping.values())
+                    parsed_fit = (
+                        parsed_mapping,
+                        _json(parsed_mapping),
+                        content_sha256(parsed_mapping),
+                        next(iter(parsed_cycles))
+                        if len(parsed_cycles) == 1
+                        else MIXED_NATIVE_CYCLES,
+                    )
+                parsed_fit_by_text[fit_text] = parsed_fit
+            if parsed_fit is None:
+                continue
+            fitted_cycle_mapping = dict(parsed_fit[0])
+            fitted_cycle_mapping_json = parsed_fit[1]
+            fitted_cycle_mapping_sha = parsed_fit[2]
+            fitted_run_cycle = parsed_fit[3]
+            if (
+                len(selected_ids) != int(row[7])
+                or len(set(selected_ids)) != len(selected_ids)
+                or str(row[5]) != parsed_ids[1]
+                or not set(selected_ids).issubset(observed_set)
+                or not all(packet_cycle_mapping.values())
+                or sorted(fitted_cycle_mapping) != selected_ids
+                or not all(fitted_cycle_mapping.values())
+                or str(row[8] or "") != fitted_run_cycle
+                or str(row[9] or "") != fitted_cycle_mapping_json
+                or str(row[10] or "") != fitted_cycle_mapping_sha
+                or str(row[11] or "") != fitted_cycle_mapping_json
+                or str(row[12] or "") != fitted_cycle_mapping_sha
+            ):
+                continue
+            # A selected system may legitimately be absent from the packet's
+            # cycle mapping, and indexing it raised a bare KeyError instead of
+            # deciding anything (measured 2026-08-15: ZUUU died on
+            # KeyError:'OFFICIAL_AIRPORT_TAF_TX' every drain).  Two ways it
+            # happens, and neither is an error:
+            #
+            # * a forecast bystander -- TAF and the METAR physical path carry an
+            #   issue time rather than a run init, so clause 47 keeps them out of
+            #   cycle voting by construction; a legacy selection row that still
+            #   names one is demoted under clause 42, not matched against a cycle
+            #   it structurally cannot have;
+            # * a system the packet does not carry this round, which the rider
+            #   mechanism exists to name.
+            #
+            # Comparing only what both sides actually hold keeps the rider list
+            # meaning "fitted and packet disagree", which is what downstream
+            # activation reads it as.
+            activation_cycle_riders = sorted(
+                system_id
+                for system_id in selected_ids
+                if system_id not in NON_RUN_LEAD_BYSTANDER_SYSTEMS
+                and system_id in packet_cycle_mapping
+                and system_id in fitted_cycle_mapping
+                and packet_cycle_mapping[system_id]
+                != fitted_cycle_mapping[system_id]
             )
-            or str(evaluation_rows[0][0])
-            != "PRODUCTION_NO_LIVE_OOS_PASS"
-            or str(evaluation_rows[0][1])
-            != str(row[13])
-        ):
-            rejected_or_unproven_activation_seen = True
-            continue
-        compatible_activations.append(
-            (
-                row,
-                selected_ids,
-                activation_cycle_riders,
-                _same_run_fresh_count(
+            # Charter 193 (三): weights fitted with a system on another sampling
+            # grid are not borrowed (a rider across grids), and a member with no
+            # fit on its own grid is not seated by any activation.
+            if any(
+                _cycle_step_hours(system_id, packet_cycle_mapping[system_id])
+                != _cycle_step_hours(system_id, fitted_cycle_mapping[system_id])
+                for system_id in activation_cycle_riders
+            ) or not off_grid_system_ids.isdisjoint(selected_ids):
+                continue
+            evaluation_key = (
+                station_id,
+                season_bin,
+                training_lead_bucket,
+                fitted_run_cycle,
+                fitted_cycle_mapping_json,
+                fitted_cycle_mapping_sha,
+                settlement_definition,
+                _json(selected_ids),
+                str(row[5]),
+                decision_at_utc,
+            )
+            if not _evaluation_admits(
+                _evaluation_rows(evaluation_key), str(row[13])
+            ):
+                rejected_or_unproven_activation_seen = True
+                continue
+            compatible_activations.append(
+                (
+                    row,
                     selected_ids,
-                    fitted_cycle_mapping,
-                    packet_cycle_mapping,
-                    freshest_bucket_system_ids,
-                ),
+                    activation_cycle_riders,
+                    _same_run_fresh_count(
+                        selected_ids,
+                        fitted_cycle_mapping,
+                        packet_cycle_mapping,
+                        freshest_bucket_system_ids,
+                    ),
+                )
             )
-        )
+        if compatible_activations:
+            break
     # Exact packet match, then least tolerated mismatch, then freshest fit,
     # and only then breadth.
     #

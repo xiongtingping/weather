@@ -31,6 +31,15 @@ row instead of reading and sorting every valid activation of the scope
 (707 for RCSS DESCENT h12_24; 138 calls, 3-7s a cycle).
 ``calibration_native_activation_generation_idx``.
 
+2026-10-02 adds a fifth and sixth, for the same read taken evidence-first:
+a scope's valid activations had grown to 2,667 re-mints of 200 pairings
+(RCSS DESCENT h12_24), every one a random page of the activation table and
+one of the artifact table -- 0.4-1.3 s a call cold, 65 s of every cycle --
+while the loop admits only rows whose selection evidence the pairing's
+latest evaluation passed.  ``calibration_native_activation_evidence_idx``
+and ``calibration_cross_native_artifact_evidence_idx`` cover that test, so
+only the admitted rows are read whole.
+
 All are declared in the schema DDL verbatim; the resident never applies
 schema, so this is how they reach the live store.  Verified the way the
 recycle-index migration verifies: each index is read through and its count
@@ -95,6 +104,20 @@ STATEMENTS = (
         " ON calibration_native_ensemble_activation"
         "(station_id,artifact_kind,season_bin,lead_bucket,generation DESC,activation_id)",
     ),
+    (
+        "calibration_native_activation_evidence_idx",
+        "CREATE INDEX IF NOT EXISTS"
+        " calibration_native_activation_evidence_idx"
+        " ON calibration_native_ensemble_activation"
+        "(station_id,artifact_kind,season_bin,lead_bucket,valid_until_utc,authority_scope,valid_from_utc,artifact_id,activation_id,available_system_set_hash_or_star,run_cycle_by_system_sha256,run_cycle_by_system_json)",
+    ),
+    (
+        "calibration_cross_native_artifact_evidence_idx",
+        "CREATE INDEX IF NOT EXISTS"
+        " calibration_cross_native_artifact_evidence_idx"
+        " ON calibration_cross_native_ensemble_artifact"
+        "(cross_ensemble_artifact_id,selection_evidence_sha256,run_cycle,ensemble_system_ids_json)",
+    ),
 )
 
 
@@ -154,6 +177,24 @@ _INDEX_AGREEMENT_CHECKS = (
         " WHERE station_id>='' AND artifact_kind='CROSS_NATIVE_ENSEMBLE'",
         "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
         " WHERE +station_id>='' AND +artifact_kind='CROSS_NATIVE_ENSEMBLE'",
+    ),
+    (
+        "calibration_native_activation_evidence_idx",
+        "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
+        " INDEXED BY calibration_native_activation_evidence_idx"
+        " WHERE station_id>='' AND artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+        " AND valid_until_utc>'2026-10-01T00:00:00Z'",
+        "SELECT COUNT(*) FROM calibration_native_ensemble_activation"
+        " WHERE +station_id>='' AND +artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+        " AND +valid_until_utc>'2026-10-01T00:00:00Z'",
+    ),
+    (
+        "calibration_cross_native_artifact_evidence_idx",
+        "SELECT COUNT(*) FROM calibration_cross_native_ensemble_artifact"
+        " INDEXED BY calibration_cross_native_artifact_evidence_idx"
+        " WHERE cross_ensemble_artifact_id>''",
+        "SELECT COUNT(*) FROM calibration_cross_native_ensemble_artifact"
+        " WHERE +cross_ensemble_artifact_id>''",
     ),
 )
 

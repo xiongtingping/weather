@@ -22,6 +22,8 @@ REGISTRY_TZ = "basket_target_market_registry_scope_tz_idx"
 WINDOW = "calibration_native_activation_window_idx"
 SCOPE_LANE = "basket_target_market_registry_scope_lane_idx"  # charter 179
 GENERATION = "calibration_native_activation_generation_idx"  # charter 185
+EVIDENCE_A = "calibration_native_activation_evidence_idx"  # 2026-10-02
+EVIDENCE_R = "calibration_cross_native_artifact_evidence_idx"  # 2026-10-02
 
 TIMEZONE_READS = {
     # native_ensemble_p0 (the compile)
@@ -107,6 +109,8 @@ def _store_without_the_new_indexes(tmp_path: Path) -> Path:
     conn.execute(f"DROP INDEX {WINDOW}")
     conn.execute(f"DROP INDEX {SCOPE_LANE}")
     conn.execute(f"DROP INDEX {GENERATION}")
+    conn.execute(f"DROP INDEX {EVIDENCE_A}")
+    conn.execute(f"DROP INDEX {EVIDENCE_R}")
     # Rows only need to exist for the index counts; the snapshot parent
     # rows the foreign key names are beside the point here.
     conn.execute("PRAGMA foreign_keys=OFF")
@@ -132,7 +136,7 @@ def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) 
     path = _store_without_the_new_indexes(tmp_path)
     receipt = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert receipt["state"] == "migrated"
-    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION])
+    assert receipt["indexes_created"] == sorted([REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION, EVIDENCE_A, EVIDENCE_R])
     by_name = {item["index"]: item for item in receipt["index_verification"]}
     # 3 stations x 2 days = 6 scopes, each with one non-blank timezone.
     assert by_name[REGISTRY_TZ]["rows"] == 6
@@ -142,5 +146,39 @@ def test_the_migration_adds_both_and_proves_them_against_their_tables(tmp_path) 
     again = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert again["indexes_created"] == []
     assert sorted(again["indexes_already_present"]) == sorted(
-        [REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION]
+        [REGISTRY_TZ, WINDOW, SCOPE_LANE, GENERATION, EVIDENCE_A, EVIDENCE_R]
     )
+
+
+EVIDENCE_PREFILTER = (
+    "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
+    "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
+    "a.available_system_set_hash_or_star,r.ensemble_system_ids_json "
+    "FROM calibration_native_ensemble_activation a "
+    "JOIN calibration_cross_native_ensemble_artifact r"
+    " INDEXED BY calibration_cross_native_artifact_evidence_idx "
+    "ON r.cross_ensemble_artifact_id=a.artifact_id "
+    "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+    "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+    "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+    "AND a.valid_from_utc<=? AND a.valid_until_utc>?"
+)
+
+
+def test_the_compile_asks_its_evidence_test_off_two_covering_indexes(tmp_path) -> None:
+    """2026-10-02: 2,667 valid re-mints a scope, each a random page of both
+    tables, 65 s a cycle.  The evidence test must touch neither table."""
+
+    import inspect
+
+    from bayes_basket_target import native_ensemble_p0
+
+    source = inspect.getsource(native_ensemble_p0)
+    assert all(part in source for part in (
+        '"SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"',
+        '" INDEXED BY calibration_cross_native_artifact_evidence_idx "',
+        '"AND a.valid_from_utc<=? AND a.valid_until_utc>?",',
+    ))
+    plan = _plan(_store(tmp_path), EVIDENCE_PREFILTER)
+    assert "COVERING INDEX calibration_native_activation_evidence_idx" in plan, plan
+    assert "COVERING INDEX calibration_cross_native_artifact_evidence_idx" in plan, plan

@@ -1118,6 +1118,14 @@ CREATE INDEX IF NOT EXISTS calibration_native_activation_window_idx ON calibrati
 -- the read streams and the walk stops after a row or two; an expired row is
 -- an old generation, so it sorts last either way.
 CREATE INDEX IF NOT EXISTS calibration_native_activation_generation_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,generation DESC,activation_id);
+-- The compile's evidence-first read (2026-10-02): every activation still
+-- valid for the scope with the key and selection evidence its OOS check
+-- needs, off two covering indexes, so only the rows that pass are read whole.
+-- A scope held 2,667 valid re-mints of 200 pairings (RCSS DESCENT h12_24),
+-- each a random page of this table and one of the artifact table: 0.4-1.3 s
+-- a call cold, 65 s of every production cycle.
+CREATE INDEX IF NOT EXISTS calibration_native_activation_evidence_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,valid_until_utc,authority_scope,valid_from_utc,artifact_id,activation_id,available_system_set_hash_or_star,run_cycle_by_system_sha256,run_cycle_by_system_json);
+CREATE INDEX IF NOT EXISTS calibration_cross_native_artifact_evidence_idx ON calibration_cross_native_ensemble_artifact(cross_ensemble_artifact_id,selection_evidence_sha256,run_cycle,ensemble_system_ids_json);
 CREATE INDEX IF NOT EXISTS calibration_native_certificate_renewal_scope_idx ON calibration_native_ensemble_certificate_renewal(station_id,artifact_kind,season_bin,lead_bucket,renewed_valid_until_utc);
 CREATE INDEX IF NOT EXISTS calibration_station_source_authority_latest_idx ON calibration_station_source_authority(station_id,activated_at_utc,authority_id);
 CREATE INDEX IF NOT EXISTS basket_policy_activation_asof_idx ON basket_policy_activation(station_id,stage,season_bin,maturity_bin,liquidity_bin,strategy_version,valid_from_utc,valid_until_utc,generation);
