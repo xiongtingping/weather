@@ -21545,27 +21545,37 @@ function modelAccuracyBoard(){
   const median = xs => { const a = xs.filter(v => v > 0).sort((p, q) => p - q);
     return a.length ? a[Math.floor(a.length / 2)] : 0; };
   const F_all = T.forecast_daily || [];
-  const fFloor = Math.max(10, 0.5 * median(F_all.map(r => r.station_days || 0)));
-  const F = F_all.filter(r => (r.station_days || 0) >= fFloor);
+  const fMed = median(F_all.map(r => r.station_days || 0));
+  const fNewest = F_all.length ? F_all[F_all.length - 1].event_date : "";
+  // Same newest-day rule as the landing rows below (80% of the median).
+  const fFloorOf = r => Math.max(10, (r.event_date === fNewest ? 0.8 : 0.5) * fMed);
+  const F = F_all.filter(r => (r.station_days || 0) >= fFloorOf(r));
   const dates = F.map(r => r.event_date);
   const LD_all = T.landing_daily || {};
   // Thin days come in two kinds: the newest, still settling; and the
   // window's first few, which the decision-time cut catches only partly.
   const LD = {}, thinLand = [];
   let thinHead = 0;
+  // The newest day is held to 80% of the median, not half: on 2026-10-02
+  // the still-settling day had 587 cells against ~850 and drew 1.28 under
+  // a 1.43 window.  Older days keep the half floor.
   Object.entries(LD_all).forEach(([st, rows]) => {
-    const floor = Math.max(30, 0.5 * median(rows.map(r => r.cells || 0)));
-    LD[st] = rows.filter(r => (r.cells || 0) >= floor);
+    const med = median(rows.map(r => r.cells || 0));
+    const floor = Math.max(30, 0.5 * med);
+    const newest = rows.length ? rows[rows.length - 1].event_date : "";
+    const floorOf = r => r.event_date === newest ? Math.max(floor, 0.8 * med) : floor;
+    rows = rows.map(r => ({...r, _floor: floorOf(r)}));
+    LD[st] = rows.filter(r => (r.cells || 0) >= r._floor);
     const lastFull = LD[st].length ? LD[st][LD[st].length - 1].event_date : "";
-    rows.filter(r => (r.cells || 0) < floor).forEach(r => {
+    rows.filter(r => (r.cells || 0) < r._floor).forEach(r => {
       if(r.event_date > lastFull) thinLand.push(`${st} ${String(r.event_date).slice(5)}（${r.cells} 格）`);
       else thinHead += 1;
     });
   });
   const lastF = F.length ? F[F.length - 1].event_date : "";
-  const thinF = F_all.filter(r => (r.station_days || 0) < fFloor && r.event_date > lastF)
+  const thinF = F_all.filter(r => (r.station_days || 0) < fFloorOf(r) && r.event_date > lastF)
     .map(r => `${String(r.event_date).slice(5)}（${r.station_days} 个站日）`);
-  thinHead += F_all.filter(r => (r.station_days || 0) < fFloor && r.event_date <= lastF).length;
+  thinHead += F_all.filter(r => (r.station_days || 0) < fFloorOf(r) && r.event_date <= lastF).length;
   const landDates = [...new Set(Object.values(LD).flat().map(r => r.event_date))].sort();
   const marks = (T.version_marks || []).filter(mk => mk.stage === "P0")
     .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
@@ -21700,7 +21710,14 @@ function northStarBlock(LD, landDates, col){
       const v = pl[m.key], cv = c ? c[m.key] : null, pvv = pv ? pv[m.key] : null;
       const b = judged(s) ? better(m, cv, pvv) : null;
       const tag = b == null ? "" : b > 0 ? ` <span class="up">好于上一版</span>` : b < 0 ? ` <span class="down">差于上一版</span>` : ` <span class="flat">持平</span>`;
-      const ver = `本版 ${vShort((W[s] || {}).current_version)}${c ? `（${c.event_days} 天）` : ""} ${cv == null ? "—" : h(m.fmt(cv))} · 上一版 ${vShort((W[s] || {}).version)}${pv ? `（${pv.event_days} 天）` : ""} ${pvv == null ? "—" : h(m.fmt(pvv))}${tag}`;
+      // The version figures are their own, much smaller samples (2026-10-02:
+      // "本版 v26（1 天）0.835" beside a pooled 1.430 was 8 station-days of
+      // short-lead decisions), so each carries its size, and a side short of
+      // the judging bar is greyed and named, not read as a result.
+      const size = x => x ? `（${x.event_days} 天 · ${x.station_days ?? "?"} 站日）` : "";
+      const thin = !judged(s);
+      const ver = `<span class="${thin ? "muted" : ""}">本版 ${vShort((W[s] || {}).current_version)}${size(c)} ${cv == null ? "—" : h(m.fmt(cv))} · 上一版 ${vShort((W[s] || {}).version)}${size(pv)} ${pvv == null ? "—" : h(m.fmt(pvv))}${
+        thin ? `（未满 ${MIN_DAYS} 天，样本不足，不比较）` : tag}</span>`;
       return `<div class="ns-row"><span class="ns-st">${s}</span><span class="ns-v">${v == null ? "—" : h(m.fmt(v))}</span>
         <span class="muted ns-p">${ver}</span></div>`;
     }).join("");
