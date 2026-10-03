@@ -1,0 +1,1303 @@
+{
+ "schema": "tiebreak_conditional_results_v1",
+ "captured_at_utc": "2026-10-03T07:01:52.806Z",
+ "overlap": {
+  "stored_in_window": 114,
+  "fresh_in_window": 114,
+  "in_both": 114,
+  "bucket_differs": 0,
+  "ask_differs": 0
+ },
+ "relabelled_rows": 0,
+ "R1": {
+  "filled": 122,
+  "open": 3,
+  "all": {
+   "n": 119,
+   "hits": 61,
+   "event_days": 15,
+   "stake_usdc": 677.89994316,
+   "pnl_usdc": 10.202777237999992,
+   "roi": 0.015050565117973319,
+   "avg_paid": 0.5036256126492982,
+   "hit_rate": 0.5126050420168067,
+   "edge_per_share": 0.01672666817083811,
+   "edge_ci90": [
+    -0.03416272204501437,
+    0.06773137946381562
+   ],
+   "halves": {
+    "cut": "2026-09-25",
+    "first": 0.012438594815346404,
+    "second": 0.022852487250111974
+   }
+  },
+  "by_version": {
+   "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3": {
+    "n": 88,
+    "hits": 47,
+    "event_days": 12,
+    "stake_usdc": 500.80122051,
+    "pnl_usdc": 7.867599497999994,
+    "roi": 0.015710024608142692,
+    "avg_paid": 0.49988387112100907,
+    "hit_rate": 0.5340909090909091,
+    "edge_per_share": 0.026248206731126763,
+    "edge_ci90": [
+     -0.03799946144905737,
+     0.0886408837383862
+    ],
+    "halves": {
+     "cut": "2026-09-27",
+     "first": 0.024182229554435462,
+     "second": 0.029529464599989414
+    }
+   },
+   "tiebreak_model_mode_market_midband_spread_maker_v2_2": {
+    "n": 10,
+    "hits": 4,
+    "event_days": 3,
+    "stake_usdc": 54.76872265,
+    "pnl_usdc": 2.443377349999996,
+    "roi": 0.04461264078796251,
+    "avg_paid": 0.5171631066705749,
+    "hit_rate": 0.4,
+    "edge_per_share": -0.024020204966424236,
+    "edge_ci90": [
+     -0.14454545454545456,
+     0.16708512866735936
+    ],
+    "halves": {
+     "cut": "2026-09-21",
+     "first": 0.4198989751678789,
+     "second": -0.135
+    }
+   },
+   "tiebreak_model_mode_market_midband_spread_v2_1": {
+    "n": 21,
+    "hits": 10,
+    "event_days": 4,
+    "stake_usdc": 122.33,
+    "pnl_usdc": -0.10819960999999889,
+    "roi": -0.0008844895773726714,
+    "avg_paid": 0.5133399934787819,
+    "hit_rate": 0.47619047619047616,
+    "edge_per_share": -0.0037698395402465537,
+    "edge_ci90": [
+     -0.1229578964878795,
+     0.16209203080288892
+    ],
+    "halves": {
+     "cut": "2026-09-20",
+     "first": 0.03241409848060166,
+     "second": -0.030907793055882715
+    }
+   }
+  },
+  "v23_by_stage": {
+   "P0": {
+    "n": 3,
+    "hits": 2,
+    "event_days": 3,
+    "stake_usdc": 14.24950152,
+    "pnl_usdc": 0.6070004800000004,
+    "roi": 0.04259801503568669,
+    "avg_paid": 0.5238112916491414,
+    "hit_rate": 0.6666666666666666,
+    "edge_per_share": 0.1366692136287311,
+    "edge_ci90": null,
+    "halves": {
+     "cut": "2026-09-24",
+     "first": -0.49,
+     "second": 0.45000382044309667
+    }
+   },
+   "P0-M": {
+    "n": 65,
+    "hits": 35,
+    "event_days": 11,
+    "stake_usdc": 367.45778465,
+    "pnl_usdc": 16.134010758,
+    "roi": 0.043907113774627166,
+    "avg_paid": 0.49873346594806633,
+    "hit_rate": 0.5384615384615384,
+    "edge_per_share": 0.03261223984483521,
+    "edge_ci90": [
+     -0.04487252722648751,
+     0.11087747027416148
+    ],
+    "halves": {
+     "cut": "2026-09-27",
+     "first": 0.014605383153184675,
+     "second": 0.05496557918619449
+    }
+   },
+   "P1": {
+    "n": 20,
+    "hits": 10,
+    "event_days": 9,
+    "stake_usdc": 119.09393434,
+    "pnl_usdc": -8.873411740000005,
+    "roi": -0.07450767152143448,
+    "avg_paid": 0.5007108136572025,
+    "hit_rate": 0.5,
+    "edge_per_share": -0.01099805192306634,
+    "edge_ci90": [
+     -0.18500000000000003,
+     0.11947616736035377
+    ],
+    "halves": {
+     "cut": "2026-09-25",
+     "first": 0.04182004246803492,
+     "second": -0.07555350062330121
+    }
+   }
+  },
+  "by_day": {
+   "2026-09-18": {
+    "n": 2,
+    "hits": 1,
+    "pnl_usdc": 0.625884000000001
+   },
+   "2026-09-19": {
+    "n": 7,
+    "hits": 4,
+    "pnl_usdc": 3.321955
+   },
+   "2026-09-20": {
+    "n": 10,
+    "hits": 4,
+    "pnl_usdc": -5.171176650000001
+   },
+   "2026-09-21": {
+    "n": 10,
+    "hits": 5,
+    "pnl_usdc": 10.09861559
+   },
+   "2026-09-22": {
+    "n": 11,
+    "hits": 5,
+    "pnl_usdc": 0.8002597299999965
+   },
+   "2026-09-23": {
+    "n": 15,
+    "hits": 6,
+    "pnl_usdc": -19.098913409999998
+   },
+   "2026-09-24": {
+    "n": 15,
+    "hits": 10,
+    "pnl_usdc": 21.092489709999995
+   },
+   "2026-09-25": {
+    "n": 10,
+    "hits": 6,
+    "pnl_usdc": 6.2593987900000005
+   },
+   "2026-09-26": {
+    "n": 5,
+    "hits": 2,
+    "pnl_usdc": -10.281679400000002
+   },
+   "2026-09-27": {
+    "n": 5,
+    "hits": 3,
+    "pnl_usdc": 6.992900000000002
+   },
+   "2026-09-28": {
+    "n": 4,
+    "hits": 2,
+    "pnl_usdc": -0.846000000000001
+   },
+   "2026-09-29": {
+    "n": 6,
+    "hits": 3,
+    "pnl_usdc": -4.709880912000002
+   },
+   "2026-09-30": {
+    "n": 6,
+    "hits": 3,
+    "pnl_usdc": 1.167856379999999
+   },
+   "2026-10-01": {
+    "n": 6,
+    "hits": 2,
+    "pnl_usdc": -12.740739999999999
+   },
+   "2026-10-02": {
+    "n": 7,
+    "hits": 5,
+    "pnl_usdc": 12.69180841
+   }
+  }
+ },
+ "R2": [
+  {
+   "hypothesis_id": "cell_itself_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "格子本身：模型众数桶被市场定在 0.40–0.60 且两侧窄",
+   "prediction": "ROI > 0",
+   "at_registration": "+7.9% [+2.2%, +13.7%], P(<=0)=0.01, n=388",
+   "reading_window": "all",
+   "n_treatment": 606,
+   "n_control": 0,
+   "event_days": 50,
+   "roi_treatment": 0.059696442873732845,
+   "roi_control": null,
+   "contrast": 0.059696442873732845,
+   "ci_lo": 0.006042446549608299,
+   "ci_hi": 0.11317092530101942,
+   "p_at_or_below_zero": 0.03475,
+   "p_permutation": null
+  },
+  {
+   "hypothesis_id": "cell_itself_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "格子本身：模型众数桶被市场定在 0.40–0.60 且两侧窄",
+   "prediction": "ROI > 0",
+   "at_registration": "+7.9% [+2.2%, +13.7%], P(<=0)=0.01, n=388",
+   "reading_window": "forward",
+   "n_treatment": 207,
+   "n_control": 0,
+   "event_days": 12,
+   "roi_treatment": 0.018859311173907125,
+   "roi_control": null,
+   "contrast": 0.018859311173907125,
+   "ci_lo": -0.09256872668624248,
+   "ci_hi": 0.12033800422039145,
+   "p_at_or_below_zero": 0.38625,
+   "p_permutation": null
+  },
+  {
+   "hypothesis_id": "stage_gradient_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "阶段梯度：离结算越近越赚（P1 高于 P0）",
+   "prediction": "ROI(P1) - ROI(P0) > 0",
+   "at_registration": "+11.4 点, p=0.123 (P0 +3.9% / P0-M +7.9% / P1 +15.3%)",
+   "reading_window": "all",
+   "n_treatment": 131,
+   "n_control": 180,
+   "event_days": 50,
+   "roi_treatment": 0.043160432022486935,
+   "roi_control": 0.05966454520829852,
+   "contrast": -0.016504113185811582,
+   "ci_lo": -0.2031005156707572,
+   "ci_hi": 0.18665709469836728,
+   "p_at_or_below_zero": 0.54625,
+   "p_permutation": 0.26975
+  },
+  {
+   "hypothesis_id": "stage_gradient_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "阶段梯度：离结算越近越赚（P1 高于 P0）",
+   "prediction": "ROI(P1) - ROI(P0) > 0",
+   "at_registration": "+11.4 点, p=0.123 (P0 +3.9% / P0-M +7.9% / P1 +15.3%)",
+   "reading_window": "forward",
+   "n_treatment": 39,
+   "n_control": 10,
+   "event_days": 12,
+   "roi_treatment": -0.0983862968114207,
+   "roi_control": -0.05009853918415643,
+   "contrast": -0.048287757627264276,
+   "ci_lo": -0.5208024150863619,
+   "ci_hi": 0.3854631086924383,
+   "p_at_or_below_zero": 0.59575,
+   "p_permutation": 0.82125
+  },
+  {
+   "hypothesis_id": "p1_converging_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "对照组：P1 内部，市场靠拢≥3点 是否胜过不靠拢",
+   "prediction": "ROI(P1 且靠拢) - ROI(P1 且非靠拢) > 0",
+   "at_registration": "+25.9 点, p=0.320",
+   "reading_window": "all",
+   "n_treatment": 77,
+   "n_control": 54,
+   "event_days": 36,
+   "roi_treatment": 0.10895145525486162,
+   "roi_control": -0.05065269369775103,
+   "contrast": 0.15960414895261266,
+   "ci_lo": -0.16289884926031872,
+   "ci_hi": 0.43104100813552115,
+   "p_at_or_below_zero": 0.21425,
+   "p_permutation": 0.5985
+  },
+  {
+   "hypothesis_id": "p1_converging_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "对照组：P1 内部，市场靠拢≥3点 是否胜过不靠拢",
+   "prediction": "ROI(P1 且靠拢) - ROI(P1 且非靠拢) > 0",
+   "at_registration": "+25.9 点, p=0.320",
+   "reading_window": "forward",
+   "n_treatment": 29,
+   "n_control": 10,
+   "event_days": 12,
+   "roi_treatment": -0.12500527392497618,
+   "roi_control": -0.021191263182109853,
+   "contrast": -0.10381401074286632,
+   "ci_lo": -0.5881403362240472,
+   "ci_hi": 0.4677203352751736,
+   "p_at_or_below_zero": 0.63025,
+   "p_permutation": 0.752
+  },
+  {
+   "hypothesis_id": "band_top_slice_is_priced_out_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "价带顶档：归一化中价 0.55–0.60 那一刀是不是买贵了",
+   "prediction": "ROI(0.40–0.55) - ROI(>=0.55) > 0",
+   "at_registration": "+17.2 点, p=0.690 (0.40-0.55 +7.1% n=391 / >=0.55 -10.1% n=59, 顶档前后半 -11.0%/-9.8%, 27 事件日)",
+   "reading_window": "all",
+   "n_treatment": 604,
+   "n_control": 97,
+   "event_days": 50,
+   "roi_treatment": 0.04135442285259542,
+   "roi_control": 0.008773754003315926,
+   "contrast": 0.032580668849279494,
+   "ci_lo": -0.12113160516333298,
+   "ci_hi": 0.20518011241427947,
+   "p_at_or_below_zero": 0.35825,
+   "p_permutation": 0.93875
+  },
+  {
+   "hypothesis_id": "band_top_slice_is_priced_out_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "价带顶档：归一化中价 0.55–0.60 那一刀是不是买贵了",
+   "prediction": "ROI(0.40–0.55) - ROI(>=0.55) > 0",
+   "at_registration": "+17.2 点, p=0.690 (0.40-0.55 +7.1% n=391 / >=0.55 -10.1% n=59, 顶档前后半 -11.0%/-9.8%, 27 事件日)",
+   "reading_window": "forward",
+   "n_treatment": 207,
+   "n_control": 33,
+   "event_days": 12,
+   "roi_treatment": -0.0122538489787953,
+   "roi_control": 0.15308565365262225,
+   "contrast": -0.16533950263141756,
+   "ci_lo": -0.4017016522688138,
+   "ci_hi": 0.1931993919600447,
+   "p_at_or_below_zero": 0.81175,
+   "p_permutation": 0.98325
+  },
+  {
+   "hypothesis_id": "stage_gradient_unconditional_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "阶段梯度（去掉名额选择）：每个触发行都算，P1 是否高于 P0",
+   "prediction": "ROI(P1) - ROI(P0) > 0",
+   "at_registration": "+3.6 点 [-14.1%,+22.9%], p=0.273 (P0 +3.9% n=169 / P0-M +3.6% n=153 / P1 +7.5% n=128, 37 事件日)",
+   "reading_window": "all",
+   "n_treatment": 195,
+   "n_control": 180,
+   "event_days": 50,
+   "roi_treatment": 0.0189303407216814,
+   "roi_control": 0.05966454520829852,
+   "contrast": -0.04073420448661712,
+   "ci_lo": -0.21156599760335906,
+   "ci_hi": 0.1344360145146054,
+   "p_at_or_below_zero": 0.6425,
+   "p_permutation": 0.48125
+  },
+  {
+   "hypothesis_id": "stage_gradient_unconditional_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "阶段梯度（去掉名额选择）：每个触发行都算，P1 是否高于 P0",
+   "prediction": "ROI(P1) - ROI(P0) > 0",
+   "at_registration": "+3.6 点 [-14.1%,+22.9%], p=0.273 (P0 +3.9% n=169 / P0-M +3.6% n=153 / P1 +7.5% n=128, 37 事件日)",
+   "reading_window": "forward",
+   "n_treatment": 65,
+   "n_control": 10,
+   "event_days": 12,
+   "roi_treatment": -0.025488433857023766,
+   "roi_control": -0.05009853918415643,
+   "contrast": 0.024610105327132665,
+   "ci_lo": -0.4545968204673826,
+   "ci_hi": 0.43763247099263536,
+   "p_at_or_below_zero": 0.493,
+   "p_permutation": 0.73275
+  },
+  {
+   "hypothesis_id": "slot_to_p1_contested_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "名额让给 P1 值不值：同站日 P1 与更早阶段都触发时，P1 那条对名额实际拿到的那条",
+   "prediction": "ROI(P1) - ROI(名额拿到的那条) > 0",
+   "at_registration": "-16.6 点 [-43.3%,+11.6%], p=0.801 (名额拿到的 +5.7% / 同站日 P1 -10.9%, 38 对 / 23 事件日) -- 与预测反向",
+   "reading_window": "all",
+   "n_treatment": 64,
+   "n_control": 64,
+   "event_days": 33,
+   "roi_treatment": -0.030665627409654943,
+   "roi_control": -0.002784987091662054,
+   "contrast": -0.027880640317992887,
+   "ci_lo": -0.2354554075762515,
+   "ci_hi": 0.17608666986712193,
+   "p_at_or_below_zero": 0.59825,
+   "p_permutation": 0.40875
+  },
+  {
+   "hypothesis_id": "slot_to_p1_contested_v1",
+   "registered_at_utc": "2026-09-20",
+   "title": "名额让给 P1 值不值：同站日 P1 与更早阶段都触发时，P1 那条对名额实际拿到的那条",
+   "prediction": "ROI(P1) - ROI(名额拿到的那条) > 0",
+   "at_registration": "-16.6 点 [-43.3%,+11.6%], p=0.801 (名额拿到的 +5.7% / 同站日 P1 -10.9%, 38 对 / 23 事件日) -- 与预测反向",
+   "reading_window": "forward",
+   "n_treatment": 26,
+   "n_control": 26,
+   "event_days": 10,
+   "roi_treatment": 0.08385836057457165,
+   "roi_control": -0.08945784900120893,
+   "contrast": 0.1733162095757806,
+   "ci_lo": -0.10621674830443327,
+   "ci_hi": 0.40342754721182117,
+   "p_at_or_below_zero": 0.16775,
+   "p_permutation": 0.07425
+  }
+ ],
+ "R3": {
+  "cells_declared": 46,
+  "discovery_rows": 461,
+  "validation_rows": 240,
+  "discovery_days": 38,
+  "discovery_split": "2026-09-02",
+  "validation_days": 12,
+  "roi_discovery_all": 0.05057233342595092,
+  "roi_validation_all": 0.010480332633024616,
+  "roi_validation_all_ci90": [
+   -0.09512104190797255,
+   0.10064512936849954
+  ],
+  "selected": [
+   {
+    "cell": "normalised mid 0.45–0.5",
+    "n": 75,
+    "event_days": 12,
+    "roi": -0.02208077641851676,
+    "ci90": [
+     -0.2122640450963368,
+     0.18922913247122936
+    ],
+    "lower_bound_at_0.05_over_k": -0.27504337635917564,
+    "contrast_vs_rest": -0.04736161316587836,
+    "contrast_p_permutation": 0.4955
+   },
+   {
+    "cell": "spread 0.015–0.025",
+    "n": 85,
+    "event_days": 12,
+    "roi": 0.06018128299702806,
+    "ci90": [
+     -0.060808267475537345,
+     0.1874646518755525
+    ],
+    "lower_bound_at_0.05_over_k": -0.11315873450744003,
+    "contrast_vs_rest": 0.07695631024103759,
+    "contrast_p_permutation": 0.218
+   },
+   {
+    "cell": "ask minus normalised 0.015–0.03",
+    "n": 97,
+    "event_days": 12,
+    "roi": -0.11642832947622289,
+    "ci90": [
+     -0.2924028439113772,
+     0.04350295754806359
+    ],
+    "lower_bound_at_0.05_over_k": -0.37266189196566596,
+    "contrast_vs_rest": -0.21299355878475107,
+    "contrast_p_permutation": 0.948
+   },
+   {
+    "cell": "ask depth shares <20",
+    "n": 88,
+    "event_days": 12,
+    "roi": -0.12169381223887481,
+    "ci90": [
+     -0.33113094461645476,
+     0.07520424636973995
+    ],
+    "lower_bound_at_0.05_over_k": -0.39779560772781325,
+    "contrast_vs_rest": -0.20869601821878855,
+    "contrast_p_permutation": 0.947
+   },
+   {
+    "cell": "ask depth shares 60–150",
+    "n": 36,
+    "event_days": 12,
+    "roi": 0.04825058177733547,
+    "ci90": [
+     -0.2297176507702823,
+     0.3130854338002996
+    ],
+    "lower_bound_at_0.05_over_k": -0.3619457352318918,
+    "contrast_vs_rest": 0.044435587228601005,
+    "contrast_p_permutation": 0.373
+   }
+  ],
+  "k": 5,
+  "selected_mean_validation_roi": -0.030354210671850186,
+  "best_selected_validation_roi": 0.06018128299702806,
+  "p_best_reached_by_shuffle": 0.886,
+  "shuffle_best_median": 0.12700396075380313,
+  "shuffle_best_p95": 0.28106166344361594,
+  "rank_correlation_discovery_vs_validation": -0.347167325428195,
+  "rank_correlation_cells": 45,
+  "table": [
+   {
+    "cell": "stage P0",
+    "n_first": 89,
+    "n_second": 81,
+    "roi_first": 0.0003112735616293581,
+    "roi_second": 0.13843086644876895,
+    "roi_discovery": 0.0661211972313841,
+    "n_validation": 10,
+    "roi_validation": -0.05009853918415643,
+    "roi_validation_rest": 0.013114196625075965,
+    "selected": false
+   },
+   {
+    "cell": "stage P0-M",
+    "n_first": 0,
+    "n_second": 161,
+    "roi_first": null,
+    "roi_second": 0.04177066794157551,
+    "roi_discovery": 0.04177066794157551,
+    "n_validation": 165,
+    "roi_validation": 0.028321293481660705,
+    "roi_validation_rest": -0.02876978123397479,
+    "selected": false
+   },
+   {
+    "cell": "stage P1",
+    "n_first": 49,
+    "n_second": 81,
+    "roi_first": -0.07937724751484132,
+    "roi_second": 0.11404505888471163,
+    "roi_discovery": 0.04113972801103398,
+    "n_validation": 65,
+    "roi_validation": -0.025488433857023766,
+    "roi_validation_rest": 0.023840160186471157,
+    "selected": false
+   },
+   {
+    "cell": "modes agree (distance 0)",
+    "n_first": 127,
+    "n_second": 303,
+    "roi_first": -0.013041324286647777,
+    "roi_second": 0.07325872855529852,
+    "roi_discovery": 0.04777010829732834,
+    "n_validation": 230,
+    "roi_validation": 0.02624265753431344,
+    "roi_validation_rest": -0.3520531400966183,
+    "selected": false
+   },
+   {
+    "cell": "modes adjacent (distance 1)",
+    "n_first": 11,
+    "n_second": 20,
+    "roi_first": -0.20050305425799492,
+    "roi_second": 0.24891163691750645,
+    "roi_discovery": 0.08944190779071565,
+    "n_validation": 10,
+    "roi_validation": -0.3520531400966183,
+    "roi_validation_rest": 0.02624265753431344,
+    "selected": false
+   },
+   {
+    "cell": "normalised mid <0.45",
+    "n_first": 46,
+    "n_second": 111,
+    "roi_first": 0.012856135414867376,
+    "roi_second": 0.01160279167279373,
+    "roi_discovery": 0.011970013406140149,
+    "n_validation": 81,
+    "roi_validation": -0.0661865975950381,
+    "roi_validation_rest": 0.04953707067373581,
+    "selected": false
+   },
+   {
+    "cell": "normalised mid 0.45–0.5",
+    "n_first": 41,
+    "n_second": 95,
+    "roi_first": 0.010319803282593758,
+    "roi_second": 0.17498105867673727,
+    "roi_discovery": 0.12534053315350283,
+    "n_validation": 75,
+    "roi_validation": -0.02208077641851676,
+    "roi_validation_rest": 0.025280836747361604,
+    "selected": true
+   },
+   {
+    "cell": "normalised mid 0.5–0.55",
+    "n_first": 34,
+    "n_second": 70,
+    "roi_first": -0.0877662208031355,
+    "roi_second": 0.16532950050349257,
+    "roi_discovery": 0.08258666853786417,
+    "n_validation": 51,
+    "roi_validation": 0.08785540976423953,
+    "roi_validation_rest": -0.010398656434128618,
+    "selected": false
+   },
+   {
+    "cell": "normalised mid >=0.55",
+    "n_first": 17,
+    "n_second": 47,
+    "roi_first": -0.11130731985916754,
+    "roi_second": -0.04911804243849024,
+    "roi_discovery": -0.06563706925335765,
+    "n_validation": 33,
+    "roi_validation": 0.15308565365262225,
+    "roi_validation_rest": -0.0122538489787953,
+    "selected": false
+   },
+   {
+    "cell": "ask <0.45",
+    "n_first": 19,
+    "n_second": 44,
+    "roi_first": -0.1426672957854854,
+    "roi_second": 0.004808715064993191,
+    "roi_discovery": -0.039668177096262254,
+    "n_validation": 32,
+    "roi_validation": 0.22092025718656472,
+    "roi_validation_rest": -0.021895040375212324,
+    "selected": false
+   },
+   {
+    "cell": "ask 0.45–0.5",
+    "n_first": 40,
+    "n_second": 87,
+    "roi_first": 0.1223187278303243,
+    "roi_second": 0.00033572855102825176,
+    "roi_discovery": 0.038755570843719916,
+    "n_validation": 71,
+    "roi_validation": -0.24571513925631225,
+    "roi_validation_rest": 0.11811274981730223,
+    "selected": false
+   },
+   {
+    "cell": "ask 0.5–0.55",
+    "n_first": 43,
+    "n_second": 97,
+    "roi_first": -0.06519585966195679,
+    "roi_second": 0.22891177362154622,
+    "roi_discovery": 0.13857871482732745,
+    "n_validation": 67,
+    "roi_validation": 0.03726706403665666,
+    "roi_validation_rest": 0.00010628058653127958,
+    "selected": false
+   },
+   {
+    "cell": "ask 0.55–0.6",
+    "n_first": 26,
+    "n_second": 67,
+    "roi_first": -0.052419595846031605,
+    "roi_second": 0.05222034298391109,
+    "roi_discovery": 0.022966166536830333,
+    "n_validation": 47,
+    "roi_validation": 0.12504373952594838,
+    "roi_validation_rest": -0.01741852811292055,
+    "selected": false
+   },
+   {
+    "cell": "ask >=0.6",
+    "n_first": 10,
+    "n_second": 28,
+    "roi_first": -0.18775208170699972,
+    "roi_second": 0.043986807949799964,
+    "roi_discovery": -0.016997110380936792,
+    "n_validation": 23,
+    "roi_validation": 0.19641988873819285,
+    "roi_validation_rest": -0.009227546585495522,
+    "selected": false
+   },
+   {
+    "cell": "spread <0.015",
+    "n_first": 73,
+    "n_second": 150,
+    "roi_first": -0.2118762408954849,
+    "roi_second": 0.1437747087307172,
+    "roi_discovery": 0.027350855265637596,
+    "n_validation": 84,
+    "roi_validation": -0.09575739242563687,
+    "roi_validation_rest": 0.06768526151076541,
+    "selected": false
+   },
+   {
+    "cell": "spread 0.015–0.025",
+    "n_first": 33,
+    "n_second": 104,
+    "roi_first": 0.13421397830149848,
+    "roi_second": 0.16063393181093935,
+    "roi_discovery": 0.1542700014035558,
+    "n_validation": 85,
+    "roi_validation": 0.06018128299702806,
+    "roi_validation_rest": -0.016775027244009536,
+    "selected": true
+   },
+   {
+    "cell": "spread >=0.025",
+    "n_first": 32,
+    "n_second": 69,
+    "roi_first": 0.2242538287555855,
+    "roi_second": -0.16081895257014042,
+    "roi_discovery": -0.03881569512040549,
+    "n_validation": 71,
+    "roi_validation": 0.0766688977596059,
+    "roi_validation_rest": -0.017326697686426695,
+    "selected": false
+   },
+   {
+    "cell": "ask minus normalised <0.015",
+    "n_first": 29,
+    "n_second": 62,
+    "roi_first": 0.05602003396021598,
+    "roi_second": -0.08490732019981621,
+    "roi_discovery": -0.039996405137827935,
+    "n_validation": 31,
+    "roi_validation": 0.11275697491098298,
+    "roi_validation_rest": -0.004689887034997919,
+    "selected": false
+   },
+   {
+    "cell": "ask minus normalised 0.015–0.03",
+    "n_first": 56,
+    "n_second": 82,
+    "roi_first": 0.013441681150278198,
+    "roi_second": 0.23983063143588865,
+    "roi_discovery": 0.14796265160984381,
+    "n_validation": 97,
+    "roi_validation": -0.11642832947622289,
+    "roi_validation_rest": 0.09656522930852816,
+    "selected": true
+   },
+   {
+    "cell": "ask minus normalised 0.03–0.04",
+    "n_first": 37,
+    "n_second": 99,
+    "roi_first": -0.22361891516507973,
+    "roi_second": 0.17148073699528096,
+    "roi_discovery": 0.06399039045165342,
+    "n_validation": 66,
+    "roi_validation": 0.23120966217106784,
+    "roi_validation_rest": -0.07324458546761246,
+    "selected": false
+   },
+   {
+    "cell": "ask minus normalised >=0.04",
+    "n_first": 16,
+    "n_second": 80,
+    "roi_first": 0.1271751844127435,
+    "roi_second": -0.052535292466018665,
+    "roi_discovery": -0.022583546319558303,
+    "n_validation": 46,
+    "roi_validation": -0.10753208987850915,
+    "roi_validation_rest": 0.038462659620295506,
+    "selected": false
+   },
+   {
+    "cell": "model minus market share <-0.05",
+    "n_first": 133,
+    "n_second": 151,
+    "roi_first": -0.036989143319720946,
+    "roi_second": 0.0769270270723742,
+    "roi_discovery": 0.02357896136058316,
+    "n_validation": 68,
+    "roi_validation": 0.17460419699397825,
+    "roi_validation_rest": -0.054405846300375656,
+    "selected": false
+   },
+   {
+    "cell": "model minus market share -0.05–0.0",
+    "n_first": 3,
+    "n_second": 55,
+    "roi_first": 0.29462041226747104,
+    "roi_second": 0.13002706737798048,
+    "roi_discovery": 0.13854051625157482,
+    "n_validation": 57,
+    "roi_validation": 0.0023239406574646743,
+    "roi_validation_rest": 0.013020848166395744,
+    "selected": false
+   },
+   {
+    "cell": "model minus market share 0.0–0.05",
+    "n_first": 1,
+    "n_second": 44,
+    "roi_first": 1.173913043478261,
+    "roi_second": 0.14668814500649097,
+    "roi_discovery": 0.1695153649725303,
+    "n_validation": 59,
+    "roi_validation": -0.13683539595513733,
+    "roi_validation_rest": 0.05850037675844757,
+    "selected": false
+   },
+   {
+    "cell": "model minus market share >=0.05",
+    "n_first": 1,
+    "n_second": 73,
+    "roi_first": -1.0,
+    "roi_second": 0.026765470090445904,
+    "roi_discovery": 0.012890261035169609,
+    "n_validation": 56,
+    "roi_validation": -0.02530324678191066,
+    "roi_validation_rest": 0.02137098723757013,
+    "selected": false
+   },
+   {
+    "cell": "ask depth shares <20",
+    "n_first": 42,
+    "n_second": 109,
+    "roi_first": 0.09625195363891349,
+    "roi_second": 0.19114521298723938,
+    "roi_discovery": 0.16475106138042028,
+    "n_validation": 88,
+    "roi_validation": -0.12169381223887481,
+    "roi_validation_rest": 0.08700220597991375,
+    "selected": true
+   },
+   {
+    "cell": "ask depth shares 20–60",
+    "n_first": 26,
+    "n_second": 46,
+    "roi_first": -0.32051691028315793,
+    "roi_second": 0.09664813685805689,
+    "roi_discovery": -0.05399479683182624,
+    "n_validation": 39,
+    "roi_validation": 0.13977229829117827,
+    "roi_validation_rest": -0.01460616816631863,
+    "selected": false
+   },
+   {
+    "cell": "ask depth shares 60–150",
+    "n_first": 15,
+    "n_second": 28,
+    "roi_first": 0.4145891953788264,
+    "roi_second": 0.05705073034345208,
+    "roi_discovery": 0.18177345070462916,
+    "n_validation": 36,
+    "roi_validation": 0.04825058177733547,
+    "roi_validation_rest": 0.0038149945487344645,
+    "selected": true
+   },
+   {
+    "cell": "ask depth shares >=150",
+    "n_first": 55,
+    "n_second": 140,
+    "roi_first": -0.10526840177085216,
+    "roi_second": 0.002125460927922963,
+    "roi_discovery": -0.028165115730705917,
+    "n_validation": 77,
+    "roi_validation": 0.07839213937151768,
+    "roi_validation_rest": -0.02160070490601812,
+    "selected": false
+   },
+   {
+    "cell": "hours to settlement <18",
+    "n_first": 10,
+    "n_second": 65,
+    "roi_first": -0.1828935959370742,
+    "roi_second": 0.1650793164530643,
+    "roi_discovery": 0.11868292813437917,
+    "n_validation": 65,
+    "roi_validation": -0.025488433857023766,
+    "roi_validation_rest": 0.023840160186471157,
+    "selected": false
+   },
+   {
+    "cell": "hours to settlement 18–30",
+    "n_first": 51,
+    "n_second": 33,
+    "roi_first": -0.03175531147550906,
+    "roi_second": -0.16003995545308167,
+    "roi_discovery": -0.082152850180984,
+    "n_validation": 9,
+    "roi_validation": -0.283315497785782,
+    "roi_validation_rest": 0.021926923428562534,
+    "selected": false
+   },
+   {
+    "cell": "hours to settlement 30–42",
+    "n_first": 20,
+    "n_second": 114,
+    "roi_first": -0.13222816029626908,
+    "roi_second": 0.10905387600365887,
+    "roi_discovery": 0.07304163177978903,
+    "n_validation": 78,
+    "roi_validation": -0.0030193810871252647,
+    "roi_validation_rest": 0.01698019479457826,
+    "selected": false
+   },
+   {
+    "cell": "hours to settlement >=42",
+    "n_first": 57,
+    "n_second": 111,
+    "roi_first": 0.03914453104043638,
+    "roi_second": 0.08373557285307195,
+    "roi_discovery": 0.06860646938092774,
+    "n_validation": 88,
+    "roi_validation": 0.0790611276988666,
+    "roi_validation_rest": -0.029224338194568114,
+    "selected": false
+   },
+   {
+    "cell": "market move <0.0",
+    "n_first": 2,
+    "n_second": 69,
+    "roi_first": 0.13636363636363646,
+    "roi_second": -0.0513599096865158,
+    "roi_discovery": -0.04607192247383545,
+    "n_validation": 56,
+    "roi_validation": 0.11380138649288722,
+    "roi_validation_rest": -0.020965205498237917,
+    "selected": false
+   },
+   {
+    "cell": "market move 0.0–0.03",
+    "n_first": 2,
+    "n_second": 84,
+    "roi_first": 0.9259259259259258,
+    "roi_second": 0.17760850205706658,
+    "roi_discovery": 0.19501123284471444,
+    "n_validation": 85,
+    "roi_validation": -0.02855672370742194,
+    "roi_validation_rest": 0.031887750626172724,
+    "selected": false
+   },
+   {
+    "cell": "market move >=0.03",
+    "n_first": 21,
+    "n_second": 77,
+    "roi_first": 0.11243284084504876,
+    "roi_second": 0.05090050970100372,
+    "roi_discovery": 0.06408600923187051,
+    "n_validation": 71,
+    "roi_validation": -0.01415742804854964,
+    "roi_validation_rest": 0.020831107830609066,
+    "selected": false
+   },
+   {
+    "cell": "minutes since previous decision <60",
+    "n_first": 0,
+    "n_second": 64,
+    "roi_first": null,
+    "roi_second": 0.05363821412853273,
+    "roi_discovery": 0.05363821412853273,
+    "n_validation": 88,
+    "roi_validation": -0.20941054382863677,
+    "roi_validation_rest": 0.13778557690030227,
+    "selected": false
+   },
+   {
+    "cell": "minutes since previous decision 60–400",
+    "n_first": 1,
+    "n_second": 79,
+    "roi_first": 0.8867924528301886,
+    "roi_second": 0.01689511585590012,
+    "roi_discovery": 0.027768832568078727,
+    "n_validation": 39,
+    "roi_validation": 0.4289899561218236,
+    "roi_validation_rest": -0.07072302714838415,
+    "selected": false
+   },
+   {
+    "cell": "minutes since previous decision >=400",
+    "n_first": 26,
+    "n_second": 92,
+    "roi_first": 0.06149524344211385,
+    "roi_second": 0.10666766851775447,
+    "roi_discovery": 0.09671442231464722,
+    "n_validation": 103,
+    "roi_validation": 0.04576490089258628,
+    "roi_validation_rest": -0.016047481459930502,
+    "selected": false
+   },
+   {
+    "cell": "fahrenheit station",
+    "n_first": 37,
+    "n_second": 92,
+    "roi_first": 0.25335771489331593,
+    "roi_second": 0.0018879608245835802,
+    "roi_discovery": 0.07401494454972386,
+    "n_validation": 67,
+    "roi_validation": -0.07079689020917083,
+    "roi_validation_rest": 0.0419576385892506,
+    "selected": false
+   },
+   {
+    "cell": "celsius station",
+    "n_first": 101,
+    "n_second": 231,
+    "roi_first": -0.13104967556727623,
+    "roi_second": 0.11689149391664024,
+    "roi_discovery": 0.04146360801942468,
+    "n_validation": 173,
+    "roi_validation": 0.0419576385892506,
+    "roi_validation_rest": -0.07079689020917083,
+    "selected": false
+   },
+   {
+    "cell": "model share >=0.5",
+    "n_first": 1,
+    "n_second": 100,
+    "roi_first": -1.0,
+    "roi_second": 0.14379356460145007,
+    "roi_discovery": 0.1324688758430199,
+    "n_validation": 89,
+    "roi_validation": -0.08580785821087825,
+    "roi_validation_rest": 0.06723297491850377,
+    "selected": false
+   },
+   {
+    "cell": "model share <0.4",
+    "n_first": 127,
+    "n_second": 112,
+    "roi_first": -0.034253566114394285,
+    "roi_second": 0.038224242184442016,
+    "roi_discovery": -0.00028907017519066443,
+    "n_validation": 31,
+    "roi_validation": 0.20560124843403085,
+    "roi_validation_rest": -0.01846104722262703,
+    "selected": false
+   },
+   {
+    "cell": "stage P0 x normalised >=0.55",
+    "n_first": 7,
+    "n_second": 7,
+    "roi_first": -0.030780739298783936,
+    "roi_second": -0.059202739795018985,
+    "roi_discovery": -0.04499173954690146,
+    "n_validation": 2,
+    "roi_validation": -0.1935483870967742,
+    "roi_validation_rest": 0.012194859689577547,
+    "selected": false
+   },
+   {
+    "cell": "stage P0-M x normalised >=0.55",
+    "n_first": 0,
+    "n_second": 23,
+    "roi_first": null,
+    "roi_second": -0.14116190568948242,
+    "roi_discovery": -0.14116190568948242,
+    "n_validation": 19,
+    "roi_validation": -0.060793996697602534,
+    "roi_validation_rest": 0.016607989905793465,
+    "selected": false
+   },
+   {
+    "cell": "stage P1 x normalised >=0.55",
+    "n_first": 10,
+    "n_second": 17,
+    "roi_first": -0.16767592625143607,
+    "roi_second": 0.07956441263612866,
+    "roi_discovery": -0.012006083248154574,
+    "n_validation": 12,
+    "roi_validation": 0.549500773498711,
+    "roi_validation_rest": -0.017889164254643083,
+    "selected": false
+   }
+  ]
+ },
+ "R4": {
+  "forward_floor": "2026-09-24",
+  "forward_trades": 64,
+  "forward_days": 9,
+  "unjoined": 0,
+  "paid_at_or_above_0.60": 0,
+  "splits": [
+   {
+    "split": "点差 ≤0.02 对 0.03",
+    "n_good": 46,
+    "n_bad": 18,
+    "hits_good": 25,
+    "hits_bad": 11,
+    "edge_good": 0.03834375871264792,
+    "edge_bad": 0.09033361238061358,
+    "contrast": -0.05198985366796566,
+    "contrast_ci90": [
+     -0.2600978184377199,
+     0.11263114139914612
+    ]
+   },
+   {
+    "split": "实付 ≥0.45 对 <0.45",
+    "n_good": 54,
+    "n_bad": 10,
+    "hits_good": 33,
+    "hits_bad": 3,
+    "edge_good": 0.08745959117838609,
+    "edge_bad": -0.13329999999999997,
+    "contrast": 0.22075959117838606,
+    "contrast_ci90": [
+     -0.21545913092835972,
+     0.5008023102001428
+    ]
+   },
+   {
+    "split": "市场第二名在热侧 对 在冷侧",
+    "n_good": 40,
+    "n_bad": 24,
+    "hits_good": 20,
+    "hits_bad": 16,
+    "edge_good": -0.005248984568096933,
+    "edge_bad": 0.14999072109819692,
+    "contrast": -0.15523970566629386,
+    "contrast_ci90": [
+     -0.31204359434333395,
+     0.0370995717755876
+    ]
+   },
+   {
+    "split": "两众数重合 对 相邻",
+    "n_good": 60,
+    "n_bad": 4,
+    "hits_good": 34,
+    "hits_bad": 2,
+    "edge_good": 0.05353029872721415,
+    "edge_bad": 0.044499999999999956,
+    "contrast": 0.00903029872721419,
+    "contrast_ci90": [
+     -0.5504946788144814,
+     0.5262383632411753
+    ]
+   }
+  ]
+ },
+ "R5": {
+  "v23_fired": 234,
+  "refusals": {
+   "sent": 91,
+   "station_day_send_cap": 56,
+   "retry_rule_not_met": 30,
+   "station_day_already_attempted": 20,
+   "send": 13,
+   "insufficient_cash": 10,
+   "station_not_admitted": 7,
+   "stage_not_opening": 7
+  },
+  "legs": 303,
+  "rested_legs": 222,
+  "rested_legs_with_fill": 91,
+  "never_rested_station_day_buckets": 18,
+  "filled": {
+   "n": 88,
+   "event_days": 12,
+   "hit_rate": 0.5340909090909091,
+   "avg_first_limit": 0.49477272727272725,
+   "avg_price": 0.5040909090909091,
+   "hit_minus_price": 0.030000000000000002,
+   "avg_sends": 1.4090909090909092
+  },
+  "unfilled": {
+   "n": 46,
+   "event_days": 9,
+   "hit_rate": 0.45652173913043476,
+   "avg_first_limit": 0.4882608695652174,
+   "avg_price": 0.4882608695652174,
+   "hit_minus_price": -0.031739130434782596,
+   "avg_sends": 1.9130434782608696
+  },
+  "fill_rate": 0.6567164179104478,
+  "hit_rate_contrast_ci90": [
+   -0.031862745098039214,
+   0.2052759248029109
+  ]
+ },
+ "R6": {
+  "post_hoc_lag_correlations": {
+   "1": [
+    -0.02590914052342115,
+    44
+   ],
+   "2": [
+    -0.34994883624981893,
+    45
+   ],
+   "3": [
+    0.042703999049716695,
+    42
+   ],
+   "4": [
+    -0.22066259012032446,
+    42
+   ],
+   "5": [
+    0.13723575963660906,
+    40
+   ]
+  },
+  "post_hoc_lag2_discovery": [
+   -0.33121865760060826,
+   33
+  ],
+  "post_hoc_lag2_validation": [
+   -0.5254905656420182,
+   12
+  ],
+  "days": 50,
+  "pairs": 45,
+  "lag2_correlation": -0.34994883624981893,
+  "validation_days": 12,
+  "gated_days": 4,
+  "gated_rows": 76,
+  "gated_roi": -0.17897287167141057,
+  "gated_ci90": [
+   -0.3499329999304017,
+   -0.028972519286678954
+  ],
+  "closed_days": 8,
+  "closed_rows": 164,
+  "closed_roi": 0.09827571999361652,
+  "ungated_roi": 0.010480332633024616,
+  "ungated_ci90": [
+   -0.09512104190797255,
+   0.10064512936849954
+  ],
+  "daily_edge": {
+   "2026-08-01": -0.2866666666666667,
+   "2026-08-03": 0.43000000000000005,
+   "2026-08-07": -0.44,
+   "2026-08-15": -0.23249999999999998,
+   "2026-08-16": 0.021666666666666678,
+   "2026-08-17": 0.08599999999999998,
+   "2026-08-18": -0.001666666666666659,
+   "2026-08-19": -0.051111111111111114,
+   "2026-08-20": 0.007000000000000001,
+   "2026-08-21": -0.124,
+   "2026-08-22": 0.08199999999999999,
+   "2026-08-23": 0.009999999999999981,
+   "2026-08-25": 0.14333333333333334,
+   "2026-08-27": 0.0309090909090909,
+   "2026-08-28": 0.09416666666666668,
+   "2026-08-29": -0.07222222222222222,
+   "2026-08-30": -0.07272727272727271,
+   "2026-08-31": 0.25,
+   "2026-09-01": -0.176,
+   "2026-09-02": -0.03458333333333332,
+   "2026-09-03": -0.08217391304347825,
+   "2026-09-04": 0.1985714285714286,
+   "2026-09-05": 0.10500000000000001,
+   "2026-09-06": 0.028823529411764706,
+   "2026-09-07": 0.06333333333333332,
+   "2026-09-08": -0.01285714285714286,
+   "2026-09-09": 0.03708333333333333,
+   "2026-09-10": 0.22916666666666669,
+   "2026-09-11": 0.07,
+   "2026-09-12": 0.11374999999999999,
+   "2026-09-13": 0.21166666666666667,
+   "2026-09-14": 0.013703703703703714,
+   "2026-09-15": -0.044285714285714275,
+   "2026-09-16": 0.04312500000000001,
+   "2026-09-17": 0.109375,
+   "2026-09-18": 0.05473684210526316,
+   "2026-09-19": -0.06181818181818181,
+   "2026-09-20": -0.08454545454545455,
+   "2026-09-21": -0.071875,
+   "2026-09-22": -0.026874999999999993,
+   "2026-09-23": -0.07095238095238095,
+   "2026-09-24": 0.18083333333333335,
+   "2026-09-25": 0.11105263157894736,
+   "2026-09-26": -0.2505555555555556,
+   "2026-09-27": -0.004444444444444436,
+   "2026-09-28": 0.07333333333333333,
+   "2026-09-29": 0.10800000000000001,
+   "2026-09-30": -0.0031818181818181693,
+   "2026-10-01": -0.11277777777777777,
+   "2026-10-02": 0.058750000000000004
+  }
+ }
+}
