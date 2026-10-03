@@ -4,6 +4,10 @@ import bisect, gzip, json, os, re
 import numpy as np, pandas as pd
 from load import load, floor_vec
 
+def _ts(value):
+    return pd.Timestamp(value).tz_convert("UTC") if pd.Timestamp(value).tzinfo else pd.Timestamp(value, tz="UTC")
+
+
 SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "downstream_after_247_20261002", "pass1_down")
 df = load()
 C = df[(df.unit == "C") & (df.stage == "P0")].copy()
@@ -29,8 +33,10 @@ for st in stations:
         rows = by_day.get(d)
         if not rows: continue
         rows.sort(key=lambda x: x[0])
-        t = g.t.iloc[0][:19] + "Z"
-        ats = [x[0][:19] + "Z" for x in rows]
+        # Whole timestamps, not seconds: truncating both sides let a replay
+        # update up to a second AFTER the decision through (review 2026-10-03).
+        t = _ts(g.t.iloc[0])
+        ats = [_ts(x[0]) for x in rows]
         i = bisect.bisect_right(ats, t) - 1
         if i < 0: continue
         at, vec, seated = rows[i]
