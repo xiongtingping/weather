@@ -22601,6 +22601,19 @@ function p0mTafBoard(){
   <div style="margin-top:8px"><span class="muted">过去 36 小时各站最新 P0-M：</span>${outcome || "—"} <span class="muted">· 每站的 TAF 读数与逐桶变化在上面的「站点 × 日期」表里</span></div>`;
 }
 
+// The newest day of a daily series is drawn only once its sample reaches
+// 80% of the series' median (2026-10-02: a settling day at ~64% drew the
+// accuracy and P1 path charts off the stations whose day had closed first).
+// Returns the rows to draw and the held day, if any, to name under the chart.
+function settledDays(rows, sizeKey){
+  const sizes = rows.map(r => r[sizeKey] || 0).filter(v => v > 0).sort((a, b) => a - b);
+  const med = sizes.length ? sizes[Math.floor(sizes.length / 2)] : 0;
+  if(!rows.length || !med) return {rows, held: null};
+  const last = rows.reduce((a, b) => (a.event_date > b.event_date ? a : b));
+  if((last[sizeKey] || 0) >= 0.8 * med) return {rows, held: null};
+  return {rows: rows.filter(r => r !== last), held: last};
+}
+
 function p1PathSkill(){
   const Q = D.p1_path_skill || {};
   if(!Q.available) return `<h2>P1 温度路径：命中率与提前量</h2><div class="card muted">这一轮没有生成。</div>`;
@@ -22609,7 +22622,8 @@ function p1PathSkill(){
   const hr = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(1) + " 小时";
   const standCards = hrs.map(hh => `<div class="card"><div class="muted">当地 ${hh}:00 站立</div>
     <div class="big">${p1(O["hit_" + hh])}</div><div class="muted">±1 桶 ${p1(O["within1_" + hh])} · ${O["n_" + hh] || 0} 站日</div></div>`).join("");
-  const daily = Q.daily || [];
+  const settled = settledDays(Q.daily || [], "station_days");
+  const daily = settled.rows;
   const dates = daily.map(d => d.event_date);
   const marks = (Q.version_marks || []).map(m => ({date: String(m.at).slice(0, 10), label: "P1 " + m.label}));
   const pct = v => (100 * v).toFixed(0) + "%";
@@ -22638,7 +22652,8 @@ function p1PathSkill(){
     <div class="card"><div class="muted">提前 ≥1 小时 / ≥3 小时</div><div class="big">${p1(O.lead_ge_1h_share)}</div><div class="muted">≥3 小时 ${p1(O.lead_ge_3h_share)}</div></div>
     <div class="card"><div class="muted">提前量中位数</div><div class="big">${hr(O.median_lead_hours)}</div><div class="muted">所有锁定的站日</div></div>
     <div class="card"><div class="muted">收盘前最终锁定</div><div class="big">${p1(O.locked_share)}</div><div class="muted">最后一份 P1 的众数桶是结算桶</div></div></div>
-  <div class="grid g3" style="margin-top:10px">${hitChart}${leadChart}${medChart}</div>
+  <div class="grid g3" style="margin-top:10px">${hitChart}${leadChart}${medChart}</div>${
+    settled.held ? `<div class="muted" style="font-size:12px">${h(String(settled.held.event_date).slice(5))} 还在结算中（${settled.held.station_days} 个站日，不到平时八成），图上先不画。</div>` : ""}
   <details class="note"><summary>逐站（${(Q.stations || []).length} 站）</summary>
     <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>站日</th>
       ${hrs.map(hh => `<th>${hh}:00 命中</th>`).join("")}<th>14:00 ±1</th><th>提前锁定</th><th>提前≥1h</th><th>提前量中位</th></tr></thead>
