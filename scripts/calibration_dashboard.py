@@ -5892,13 +5892,22 @@ def _truth_landing_records(
     until: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Per closed station-day from ``since`` on, what the truth-landing table
-    aggregates: the first P0's decision time and claim, each bucket's entry
-    asks (count and median -- all the table reads of them) and its last
-    non-zero bid.  ``collect_truth_landing`` keeps these across paged renders
-    for days that no longer move (``TRUTH_LANDING_KEEP_AFTER_DAYS``).
+    aggregates: the first P0's decision time, version and claim, and each
+    bucket's entry asks and entry bids (count and median over the four hours
+    after that decision -- all the table reads of them).
+    ``collect_truth_landing`` keeps these across paged renders for days that
+    no longer move (``TRUTH_LANDING_KEEP_AFTER_DAYS``).
+
+    2026-10-03 audit (docs/research/truth_landing_audit_20261003, user
+    「改」): the entry bids are kept beside the asks so the market ruler is
+    the mid, not the ask -- one ladder's best asks summed to a median 1.24,
+    so an ask read as a probability overstated the market by a quarter.  The
+    last bids, which carried the market's own adjudication, are no longer
+    read: truth is the settlement pipeline's settled bucket.
     """
 
     first_decision: dict[tuple[str, str], str] = {}
+    versions: dict[tuple[str, str], str] = {}
     claims: dict[tuple[str, str], dict[str, float]] = {}
     # One row per station-day, chosen in SQL, instead of 147,971 sorted in a
     # temp B-tree and all but 1,215 thrown away in Python.
@@ -5915,8 +5924,8 @@ def _truth_landing_records(
     last_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if until is not None:
         last_day = min(last_day, until)
-    for station, event, probabilities_json, decided in conn.execute(
-        "SELECT station_id, event_date, probabilities_json,"
+    for station, event, probabilities_json, version, decided in conn.execute(
+        "SELECT station_id, event_date, probabilities_json, posterior_version,"
         " MIN(decision_at_utc)"
         " FROM basket_probability_envelope"
         " WHERE event_date >= ? AND stage='P0' AND event_date <= ?"
@@ -5929,6 +5938,7 @@ def _truth_landing_records(
         if not day_closed(*key):
             continue
         first_decision[key] = str(decided)
+        versions[key] = str(version or "")
         try:
             claims[key] = {
                 str(bucket): float(value)
@@ -5940,22 +5950,14 @@ def _truth_landing_records(
     entry_asks: dict[tuple[str, str], dict[str, list[float]]] = defaultdict(
         lambda: defaultdict(list)
     )
-    last_bid: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
-    # Which observation each surviving bid came from, so the ORDER BY can
-    # go.  Sorting was doing one job -- letting the assignment below
-    # overwrite in time order so the LAST non-zero bid wins -- and it was
-    # charging the whole result set for it: ``ORDER BY observed_at`` has no
-    # index to ride, so SQLite built a temp B-tree over every row, and the
-    # row it has to carry through that sort is ``buckets_json`` -- 2.05 GB
-    # of it across ~105k snapshots as of 2026-09-02.  The order was never
-    # needed globally either; only within a station-day-bucket.  Taking the
-    # max explicitly keeps the same winner, drops the sort, and lets the
-    # scan stay on ``day_expiry_idx`` where ``event_date >=`` can seek.
-    #
-    # The comparison is on the ISO-8601 string, which is what the freshness
-    # test four lines down already does; both are UTC with a trailing Z, so
-    # lexical order is time order.
-    last_bid_at: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
+    entry_bids: dict[tuple[str, str], dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    # No ORDER BY: both lists are collected to take a median, so the order
+    # never mattered, and ``observed_at`` has no index to ride -- sorting
+    # would build a temp B-tree over every row's ``buckets_json`` (2.05 GB
+    # across ~105k snapshots as of 2026-09-02).  The scan stays on
+    # ``day_expiry_idx`` where ``event_date >=`` can seek.
     for station, event, observed, buckets_json in conn.execute(
         "SELECT station_id, event_date, observed_at, buckets_json"
         " FROM basket_official_ws_snapshot WHERE event_date >= ?"
@@ -5968,7 +5970,14 @@ def _truth_landing_records(
     ):
         key = (str(station), str(event))
         decided = first_decision.get(key)
-        if decided is None:
+        if decided is None or str(observed) < decided:
+            continue
+        try:
+            opened = datetime.fromisoformat(decided.replace("Z", "+00:00"))
+            seen = datetime.fromisoformat(str(observed).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if (seen - opened).total_seconds() > 4 * 3600:
             continue
         try:
             rows = json.loads(buckets_json)
@@ -5976,69 +5985,257 @@ def _truth_landing_records(
             continue
         if not isinstance(rows, list):
             continue
-        in_entry = False
-        if str(observed) >= decided:
-            try:
-                opened = datetime.fromisoformat(
-                    decided.replace("Z", "+00:00")
-                )
-                seen = datetime.fromisoformat(
-                    str(observed).replace("Z", "+00:00")
-                )
-                in_entry = (seen - opened).total_seconds() <= 4 * 3600
-            except ValueError:
-                in_entry = False
         for row in rows:
             if not isinstance(row, dict):
                 continue
             bucket = str(row.get("bucket"))
             levels = row.get("ask_levels") or []
             ask = levels[0].get("price") if levels else None
+            if not ask or float(ask) <= 0:
+                continue
             bid = row.get("bid_price") or 0
             bid_levels = row.get("bid_levels") or []
             if not bid and bid_levels:
                 bid = bid_levels[0].get("price") or 0
-            if in_entry and ask and float(ask) > 0:
-                # Order-independent: these are collected to take a median.
-                entry_asks[key][bucket].append(float(ask))
-            if bid and float(bid) > 0:
-                seen_at = str(observed)
-                if seen_at >= last_bid_at[key].get(bucket, ""):
-                    last_bid[key][bucket] = float(bid)
-                    last_bid_at[key][bucket] = seen_at
+            # Order-independent: these are collected to take a median.  A
+            # quote with no bid is a bid of zero, as a book with nobody
+            # buying is.
+            entry_asks[key][bucket].append(float(ask))
+            entry_bids[key][bucket].append(max(0.0, float(bid or 0.0)))
 
     records: dict[str, dict[str, Any]] = {}
     for key, decided in first_decision.items():
         records[f"{key[0]}|{key[1]}"] = {
             "decided": decided,
+            "version": versions.get(key, ""),
             "claims": claims[key],
             "asks": {
                 bucket: [len(asks), median(asks)]
                 for bucket, asks in entry_asks.get(key, {}).items()
             },
-            "bids": dict(last_bid.get(key, {})),
+            "bids": {
+                bucket: [len(bids), median(bids)]
+                for bucket, bids in entry_bids.get(key, {}).items()
+            },
         }
     return records
+
+
+#: The interval on every truth-landing reading: 95%, resampling whole event
+#: days -- one day's weather is shared by every station, so buckets and
+#: station-days are not independent draws (``_cluster_bootstrap_half_width``).
+TRUTH_LANDING_INTERVAL_DRAWS = 600
+TRUTH_LANDING_INTERVAL_SEED = 20261003
+#: Fewer buckets than this in a group or a band and the row is not judged.
+TRUTH_LANDING_MIN_BUCKETS = 30
+
+
+def _truth_landing_interval(
+    by_day: Mapping[str, Sequence[float]],
+    statistic: Any,
+) -> list[float] | None:
+    """95% interval of ``statistic(summed components)`` over resampled days.
+
+    ``by_day`` maps an event day to the component sums the statistic reads
+    (counts, hit sums, claim sums ...), so a draw is one pass of additions.
+    """
+
+    days = sorted(by_day)
+    if len(days) < 2:
+        return None
+    rng = random.Random(TRUTH_LANDING_INTERVAL_SEED)
+    width = len(next(iter(by_day.values())))
+    values = []
+    for _ in range(TRUTH_LANDING_INTERVAL_DRAWS):
+        total = [0.0] * width
+        for _day in days:
+            row = by_day[days[rng.randrange(len(days))]]
+            for index in range(width):
+                total[index] += row[index]
+        value = statistic(total)
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None
+    values.sort()
+    return [
+        values[int(0.025 * (len(values) - 1))],
+        values[int(0.975 * (len(values) - 1))],
+    ]
+
+
+def _truth_landing_tables(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The two tables on one population of station-days.
+
+    Each row is one settled, fully priced station-day: its ladder, the first
+    P0 claim, the market's normalised entry mid and the entry ask per bucket,
+    and the settled bucket.  Both rulers read exactly these buckets.
+    """
+
+    from bayes_basket_target.candidate_window_evidence import (  # noqa: PLC0415
+        ACCEPTANCE_CLAIM_FLOOR,
+        ACCEPTANCE_MARKET_CEILING,
+        in_acceptance_class,
+    )
+
+    def band_of(value: float) -> tuple[float, float] | None:
+        for low, high in TRUTH_LANDING_PRICE_BANDS:
+            if low <= value < high:
+                return (low, high)
+        return None
+
+    # band -> day -> [buckets, hits, value sum, cost sum]
+    price_cells: dict[tuple[float, float], dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
+    )
+    claim_cells: dict[tuple[float, float], dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
+    )
+    # group -> day -> [buckets, hits, claim sum, market sum, cost sum]
+    gap_cells: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0.0])
+    )
+    unlikely = [0, 0]
+    acceptance = [0, 0, 0.0, 0.0, 0.0]
+    truths = 0
+    for row in rows:
+        day = str(row["event_date"])
+        truth = row["truth"]
+        truths += 1
+        for bucket, claim in row["claims"].items():
+            hit = 1.0 if bucket == truth else 0.0
+            market = row["market"][bucket]
+            cost = row["cost"][bucket]
+            for cells, value in ((price_cells, market), (claim_cells, claim)):
+                band = band_of(value)
+                if band is None:
+                    continue
+                cell = cells[band][day]
+                cell[0] += 1
+                cell[1] += hit
+                cell[2] += value
+                cell[3] += cost
+            if in_acceptance_class(claim, market):
+                acceptance[0] += 1
+                acceptance[1] += int(hit)
+                acceptance[2] += claim
+                acceptance[3] += market
+                acceptance[4] += cost
+            if claim < TRUTH_LANDING_UNLIKELY and market < TRUTH_LANDING_UNLIKELY:
+                unlikely[0] += 1
+                unlikely[1] += int(hit)
+                continue
+            gap = claim - market
+            for name, _label, low, high in TRUTH_LANDING_GAP_GROUPS:
+                if (low is None or gap >= low) and (high is None or gap < high):
+                    cell = gap_cells[name][day]
+                    cell[0] += 1
+                    cell[1] += hit
+                    cell[2] += claim
+                    cell[3] += market
+                    cell[4] += cost
+                    break
+
+    def rate(total: Sequence[float]) -> float | None:
+        return total[1] / total[0] if total[0] else None
+
+    def banded(cells: Mapping[tuple[float, float], Mapping[str, list[float]]]) -> list[dict[str, Any]]:
+        out = []
+        for low, high in TRUTH_LANDING_PRICE_BANDS:
+            by_day = cells.get((low, high)) or {}
+            total = [sum(row[i] for row in by_day.values()) for i in range(4)]
+            if not total[0]:
+                continue
+            out.append({
+                "band": [low, high],
+                "bucket_count": int(total[0]),
+                "truth_count": int(total[1]),
+                "truth_share": total[1] / truths if truths else None,
+                "hit_rate": total[1] / total[0],
+                "value_mean": total[2] / total[0],
+                "cost_mean": total[3] / total[0],
+                # The interval on what came in minus what was said: zero
+                # inside it is "this ruler is right in this band".
+                "gap_interval": _truth_landing_interval(
+                    by_day, lambda t: (t[1] - t[2]) / t[0] if t[0] else None
+                ),
+                "hit_interval": _truth_landing_interval(by_day, rate),
+            })
+        return out
+
+    groups = []
+    for name, label, _low, _high in TRUTH_LANDING_GAP_GROUPS:
+        by_day = gap_cells.get(name) or {}
+        total = [sum(row[i] for row in by_day.values()) for i in range(5)]
+        n = total[0]
+
+        def nearer(t: Sequence[float]) -> float | None:
+            # > 0: the market's number sat nearer what came in.
+            if not t[0]:
+                return None
+            hit, claim, market = t[1] / t[0], t[2] / t[0], t[3] / t[0]
+            return abs(hit - claim) - abs(hit - market)
+
+        groups.append({
+            "key": name, "label": label,
+            "buckets": int(n), "hits": int(total[1]),
+            "claim_mean": total[2] / n if n else None,
+            "price_mean": total[3] / n if n else None,
+            "cost_mean": total[4] / n if n else None,
+            "hit_rate": total[1] / n if n else None,
+            "hit_interval": _truth_landing_interval(by_day, rate) if n else None,
+            "market_nearer": nearer(total) if n else None,
+            "market_nearer_interval": (
+                _truth_landing_interval(by_day, nearer) if n else None
+            ),
+        })
+    return {
+        "station_days": len(rows),
+        "event_days": len({str(row["event_date"]) for row in rows}),
+        "by_price": banded(price_cells),
+        "by_claim": banded(claim_cells),
+        "disagreement": {
+            "unlikely_below": TRUTH_LANDING_UNLIKELY,
+            "unlikely_buckets": unlikely[0],
+            "unlikely_hits": unlikely[1],
+            "acceptance_baseline": {
+                "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
+                "market_ceiling": ACCEPTANCE_MARKET_CEILING,
+                "buckets": acceptance[0],
+                "hits": acceptance[1],
+                "hit_rate": (acceptance[1] / acceptance[0]) if acceptance[0] else None,
+                "claim_mean": (acceptance[2] / acceptance[0]) if acceptance[0] else None,
+                "price_mean": (acceptance[3] / acceptance[0]) if acceptance[0] else None,
+                "cost_mean": (acceptance[4] / acceptance[0]) if acceptance[0] else None,
+            },
+            "groups": groups,
+        },
+    }
 
 
 def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where truth settles, by market price and by model claim.
 
-    Truth here is the market's own adjudication -- the bucket whose last
-    recorded bid converged to 0.80 or better -- because three hand-built
-    truth vocabularies in one evening each disagreed with the market's
-    closing prices, and the market is the party that actually pays.
-    Validated 60 of 62 against the settlement pipeline's settled_bucket the
-    day it was built (the two dissents are ZGSZ truth-revision days).
-    Station-days whose capture was truncated before convergence are
-    excluded and counted, never guessed.
+    2026-10-03 audit (docs/research/truth_landing_audit_20261003, user
+    「改」), four changes:
 
-    Price is the entry the seat actually faced: the median best ask over
-    the four hours after the station-day's first P0 decision, at least two
-    quotes.  The claim is that same first P0 envelope's served probability.
-    A day whose local calendar has not finished is excluded -- an unfinished
-    day's "truth" is whatever the afternoon has not yet overwritten, which
-    is how the first version of this table put 45 winners under a cent.
+    * Truth is the settlement pipeline's settled bucket
+      (``basket_station_day_settlement_label``, latest revision), not the
+      market's last bid reaching 0.80.  The two agreed on 1,925 of 1,926
+      station-days, but the bid rule dropped 188 settled days as "capture
+      truncated".
+    * The market's number is the entry mid -- median best ask plus median
+      best bid over the four hours after the first P0, halved -- normalised
+      so one ladder sums to one.  The ask alone summed to a median 1.24 a
+      ladder and overstated the market by a quarter.  The ask stays, as the
+      cost of buying, beside the probability.
+    * Both rulers read the same buckets: a station-day enters only when
+      every bucket on its ladder has two asks or more.  The ask rule used to
+      drop 100 truth buckets from the market's side alone.
+    * Two populations, each with 95% event-day intervals: the decisions at
+      or after P0's evidence epoch (charter 202: the start of the arithmetic
+      the stage still serves in kind) and those before it.  92% of the old
+      sample predated the current chain.
     """
 
     if not _table_exists(conn, "basket_official_ws_snapshot"):
@@ -6150,140 +6347,71 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
             if history is not conn:
                 history.close()
     ordered = sorted(records.items())
-    first_decision = {key: record["decided"] for key, record in ordered}
-
-    winners: dict[str, str] = {}
-    for key, record in ordered:
-        bids = record["bids"]
-        if not bids:
-            continue
-        bucket, top = max(bids.items(), key=lambda item: item[1])
-        if top >= 0.80:
-            winners[key] = bucket
-
-    def banded(
-        bands: tuple[tuple[float, float], ...],
-        rows: list[tuple[int, float]],
-    ) -> list[dict[str, Any]]:
-        cells: dict[tuple[float, float], list[float]] = {
-            band: [0.0, 0.0, 0.0] for band in bands
-        }
-        for hit, value in rows:
-            for low, high in bands:
-                if low <= value < high:
-                    cell = cells[(low, high)]
-                    cell[0] += hit
-                    cell[1] += 1
-                    cell[2] += value
-                    break
-        total_truth = sum(cell[0] for cell in cells.values()) or 1.0
-        return [
-            {
-                "band": [low, high],
-                "truth_count": int(cell[0]),
-                "bucket_count": int(cell[1]),
-                "truth_share": cell[0] / total_truth,
-                "hit_rate": (cell[0] / cell[1]) if cell[1] else None,
-                "value_mean": (cell[2] / cell[1]) if cell[1] else None,
-            }
-            for (low, high), cell in cells.items()
-        ]
-
-    # (key, bucket, entry-ask median) for every bucket with two asks or more
-    # on an adjudicated day -- the population the price rows read.
-    priced = [
-        (key, bucket, float(asked[1]))
-        for key, record in ordered if key in winners
-        for bucket, asked in record["asks"].items() if int(asked[0]) >= 2
-    ]
-    price_rows: list[tuple[int, float]] = [
-        (1 if winners[key] == bucket else 0, price)
-        for key, bucket, price in priced
-    ]
-    claim_rows: list[tuple[int, float]] = []
-    for key, record in ordered:
-        if key not in winners:
-            continue
-        for bucket, value in record["claims"].items():
-            claim_rows.append((1 if winners[key] == bucket else 0, value))
-
-    # [buckets, hits, sum of claims, sum of prices] per group.
-    gaps: dict[str, list[float]] = {
-        key: [0, 0, 0.0, 0.0] for key, *_ in TRUTH_LANDING_GAP_GROUPS
-    }
-    unlikely = [0, 0]
-    # The acceptance sample's baseline (user ruling, 2026-09-17): the buckets
-    # the model claims at 0.45 or more while the market asks under 0.30 --
-    # the shape the band table cannot see, on which the lanes that read the
-    # market are judged first.  [buckets, hits, sum of claims, sum of prices].
-    from bayes_basket_target.candidate_window_evidence import (  # noqa: PLC0415
-        ACCEPTANCE_CLAIM_FLOOR,
-        ACCEPTANCE_MARKET_CEILING,
-        in_acceptance_class,
+    labels: dict[str, str] = {}
+    if _table_exists(conn, "basket_station_day_settlement_label"):
+        for station, event, bucket in conn.execute(
+            "SELECT station_id, event_date, settled_bucket"
+            " FROM basket_station_day_settlement_label"
+            " WHERE event_date >= ? ORDER BY truth_revision_no",
+            (TRUTH_LANDING_SINCE,),
+        ):
+            labels[f"{station}|{event}"] = str(bucket)
+    from bayes_basket_target.serving_arithmetic import (  # noqa: PLC0415
+        STAGE_EVIDENCE_EPOCH,
     )
-    acceptance = [0, 0, 0.0, 0.0]
-    for key, bucket, price in priced:
-        claim = records[key]["claims"].get(bucket)
-        if claim is None:
+    epoch = str(STAGE_EVIDENCE_EPOCH.get("P0") or "")
+    current: list[dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
+    unsettled = off_ladder = unpriced = 0
+    for key, record in ordered:
+        truth = labels.get(key)
+        if truth is None:
+            unsettled += 1
             continue
-        hit = 1 if winners[key] == bucket else 0
-        if in_acceptance_class(claim, price):
-            acceptance[0] += 1
-            acceptance[1] += hit
-            acceptance[2] += claim
-            acceptance[3] += price
-        if claim < TRUTH_LANDING_UNLIKELY and price < TRUTH_LANDING_UNLIKELY:
-            unlikely[0] += 1
-            unlikely[1] += hit
+        claims = record["claims"]
+        if truth not in claims:
+            off_ladder += 1
             continue
-        gap = claim - price
-        for name, _, low, high in TRUTH_LANDING_GAP_GROUPS:
-            if (low is None or gap >= low) and (high is None or gap < high):
-                cell = gaps[name]
-                cell[0] += 1
-                cell[1] += hit
-                cell[2] += claim
-                cell[3] += price
-                break
-
+        asks = record.get("asks") or {}
+        bids = record.get("bids") or {}
+        if any(
+            bucket not in asks or int(asks[bucket][0]) < 2 for bucket in claims
+        ):
+            unpriced += 1
+            continue
+        mids = {
+            bucket: (
+                float(asks[bucket][1])
+                + float((bids.get(bucket) or [0, 0.0])[1])
+            ) / 2.0
+            for bucket in claims
+        }
+        total = sum(mids.values())
+        if total <= 0.0:
+            unpriced += 1
+            continue
+        row = {
+            "event_date": key.split("|", 1)[1],
+            "truth": truth,
+            "claims": claims,
+            "market": {bucket: value / total for bucket, value in mids.items()},
+            "cost": {bucket: float(asks[bucket][1]) for bucket in claims},
+        }
+        (current if epoch and str(record["decided"]) >= epoch else history).append(row)
     return {
         "since": TRUTH_LANDING_SINCE,
-        "closed_station_days": len(first_decision),
-        "adjudicated_station_days": len(winners),
-        "capture_truncated_days": len(first_decision) - len(winners),
-        "by_price": banded(TRUTH_LANDING_PRICE_BANDS, price_rows),
-        "by_claim": banded(TRUTH_LANDING_PRICE_BANDS, claim_rows),
-        "disagreement": {
-            "unlikely_below": TRUTH_LANDING_UNLIKELY,
-            "unlikely_buckets": unlikely[0],
-            "unlikely_hits": unlikely[1],
-            "acceptance_baseline": {
-                "claim_floor": ACCEPTANCE_CLAIM_FLOOR,
-                "market_ceiling": ACCEPTANCE_MARKET_CEILING,
-                "buckets": acceptance[0],
-                "hits": acceptance[1],
-                "hit_rate": (acceptance[1] / acceptance[0]) if acceptance[0] else None,
-                "claim_mean": (acceptance[2] / acceptance[0]) if acceptance[0] else None,
-                "price_mean": (acceptance[3] / acceptance[0]) if acceptance[0] else None,
-            },
-            "groups": [
-                {
-                    "key": name, "label": label,
-                    "buckets": int(gaps[name][0]),
-                    "hits": int(gaps[name][1]),
-                    "claim_mean": (
-                        gaps[name][2] / gaps[name][0] if gaps[name][0] else None
-                    ),
-                    "price_mean": (
-                        gaps[name][3] / gaps[name][0] if gaps[name][0] else None
-                    ),
-                    "hit_rate": (
-                        gaps[name][1] / gaps[name][0] if gaps[name][0] else None
-                    ),
-                }
-                for name, label, _, _ in TRUTH_LANDING_GAP_GROUPS
-            ],
-        },
+        "closed_station_days": len(ordered),
+        "settled_station_days": len(ordered) - unsettled,
+        "unsettled_station_days": unsettled,
+        "truth_off_ladder_days": off_ladder,
+        "unpriced_station_days": unpriced,
+        "epoch_utc": epoch,
+        "segments": [
+            {"key": "current", "label": f"现役：P0 证据纪元 {epoch[:10]} 起的首个决策（宪章 202）",
+             **_truth_landing_tables(current)},
+            {"key": "history", "label": f"历史：{epoch[:10]} 之前",
+             **_truth_landing_tables(history)},
+        ],
     }
 
 
@@ -17753,165 +17881,130 @@ function stationFailureIndex(){
 
 function truthLanding(){
   const T=D.truth_landing||{};
-  if(!(T.by_price||[]).length) return "";
+  const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
+  if(!segs.length) return "";
   const p=v=>v==null?"—":(v*100).toFixed(1)+"%";
-  // Who was right when the two disagreed (user ruling, 2026-09-15: the
-  // price x claim cross-tab was unreadable -- one simple table, with its
-  // conclusion and a summary).  Each group is buckets where the model's
-  // claim sat so many points above or below the market's entry ask; three
-  // bars on one scale say what the model said, what the market charged and
-  // how often it actually came in, and the pill names the nearer of the two.
-  const G=T.disagreement||{};
-  const groups=(G.groups||[]).filter(g=>g.buckets>0);
+  const iv=a=>a?`[${p(a[0])}, ${p(a[1])}]`:"";
+  // 2026-10-03 audit (user 「改」): truth is the settled bucket, the market's
+  // number is the normalised entry mid (the ask is shown as the cost of
+  // buying, never as a probability), both rulers read one population, and
+  // every verdict reads a 95% event-day interval instead of a 1-point rule.
   const MIN_N=30;
-  const judge=g=>{
-    if(g.hit_rate==null||g.buckets<MIN_N) return "thin";
-    const offModel=Math.abs(g.hit_rate-g.claim_mean);
-    const offMarket=Math.abs(g.hit_rate-g.price_mean);
-    return Math.abs(offModel-offMarket)<0.01?"tie"
-      :(offMarket<offModel?"market":"model");
-  };
   const WHO={market:["amber","市场更准"],model:["green","模型更准"],
-    tie:["","一样准"],thin:["","样本少"]};
-  const top=Math.max(0.01,...groups.flatMap(g=>[g.claim_mean,g.price_mean,g.hit_rate]
-    .filter(v=>v!=null)));
-  const bar=(label,v,color)=>`<div class="tl-bar"><span class="muted">${label}</span>
-    <span class="tl-track"><span style="width:${(100*(v||0)/top).toFixed(1)}%;background:${color}"></span></span>
-    <span class="mono">${p(v)}</span></div>`;
-  const gapRows=groups.map(g=>{
-    const [tone,word]=WHO[judge(g)];
-    const cents=(g.hit_rate==null||g.price_mean==null)?null:100*(g.hit_rate-g.price_mean);
-    return `<div class="tl-row${g.buckets<MIN_N?" muted":""}">
-      <div><b>${h(g.label)}</b><div class="muted" style="font-size:11.5px">${
-        g.buckets} 个桶 · 开出 ${g.hits} 个</div></div>
-      <div>${bar("模型说",g.claim_mean,"var(--violet)")}${
-        bar("市场价",g.price_mean,"var(--muted)")}${
-        bar("实际开出",g.hit_rate,"var(--accent)")}</div>
-      <div class="tl-verdict"><span class="pill ${tone}">${word}</span>
-        <div class="mono ${cents==null?"":(cents>=0?"up":"down")}" style="font-size:12px"
-          title="实际开出率 − 市场价：照市场价买一股，平均每股赚/亏多少（未计手续费）">${
-          cents==null?"":`按市场价买 ${cents>=0?"+":""}${cents.toFixed(1)}¢/股`}</div></div>
-    </div>`;
-  }).join("");
-  const byKey=Object.fromEntries(groups.map(g=>[g.key,g]));
-  const disagree=groups.filter(g=>g.key!=="agree"&&judge(g)!=="thin");
-  const tally=w=>disagree.filter(g=>judge(g)===w).length;
-  const line=g=>g?`<b>${h(g.label)}</b>的 ${g.buckets} 个桶：模型说 ${p(g.claim_mean)}、
-    市场价 ${p(g.price_mean)}，实际开出 <b>${p(g.hit_rate)}</b>`:"";
-  const verdict=!disagree.length?"两边有分歧的桶还太少，判不出谁更准。"
-    :`两边意见不一致的 ${disagree.length} 组里，<b>${tally("market")} 组市场更准</b>、${
-      tally("tie")} 组一样准、${tally("model")} 组模型更准——${
-      tally("model")===0?"分歧时该信市场"
-        :tally("market")===0?"分歧时该信模型":"分歧时谁对要看分歧方向"}。`;
-  const buyOver=["model_much","model_bit"].map(k=>byKey[k]).filter(g=>g&&g.hit_rate!=null&&g.buckets>=MIN_N);
-  const overCents=buyOver.length
-    ? 100*buyOver.reduce((a,g)=>a+(g.hit_rate-g.price_mean)*g.buckets,0)
-      /buyOver.reduce((a,g)=>a+g.buckets,0) : null;
-  const summary=overCents==null?""
-    :overCents<0
-      ?`<b>总结：</b>专挑「模型觉得比市场便宜」的桶去买，实际开出率低于买入价，平均每股
-        <b class="down">${overCents.toFixed(1)}¢</b>——模型的分歧不是赚钱机会，市场价才是更好的概率。`
-      :`<b>总结：</b>专挑「模型觉得比市场便宜」的桶去买，实际开出率高于买入价，平均每股
-        <b class="up">+${overCents.toFixed(1)}¢</b>（未计手续费）——这部分分歧是模型的真信息。`;
-  // The acceptance sample's baseline (user ruling, 2026-09-17): the buckets
-  // the model claims at >=45% while the market asks under 30%.  The band
-  // table reads the vector alone and cannot see them, so the lanes that
-  // read the market -- beta and L4 -- are judged on them first.  This line
-  // is the shape they have to beat; their own readings sit in their sections.
-  const A=G.acceptance_baseline;
-  const acceptCents=A&&A.hit_rate!=null&&A.price_mean!=null?100*(A.hit_rate-A.price_mean):null;
-  const acceptLine=!A||!A.buckets||acceptCents==null?"":`<div class="card tl-verdict-card" style="margin-top:8px"><b>验收样本底数：</b>模型说 ≥${
-    Math.round(100*A.claim_floor)}% 而市场价 &lt;${Math.round(100*A.market_ceiling)}% 的桶 <b>${A.buckets} 个，开出 ${A.hits} 个</b>（${p(A.hit_rate)}）；
-    模型均说 ${p(A.claim_mean)}、市场均价 ${p(A.price_mean)}，按市场价买每股 <b class="${acceptCents<0?"down":"up"}">${
-    acceptCents>=0?"+":""}${acceptCents.toFixed(1)}¢</b>。
-    这类桶是「模型说有、市场说没有」的验收样本（2026-09-17 裁定）：模型对市场的分歧有没有兑现，就看这一行。</div>`;
-  const gapTable=!groups.length?"":`<h3 style="margin-top:14px">模型和市场意见不一致时，谁更准</h3>
-  <div class="card tl-verdict-card"><b>结论：</b>${verdict}<br>
-    ${[line(byKey.model_much),line(byKey.market_much)].filter(Boolean).join("；<br>")}。
-    ${summary?`<div style="margin-top:6px">${summary}</div>`:""}</div>
-  ${acceptLine}
-  <div class="tl-rows">${gapRows}</div>
-  <p class="sub" style="margin-top:6px">市场价＝入场后 4 小时的中位卖一；「更准」＝实际开出率离谁更近（差不到 1 点算一样准）；
-    不足 ${MIN_N} 个桶的组标灰不判。另有 ${G.unlikely_buckets||0} 个桶两边都低于 ${
-    Math.round(100*(G.unlikely_below||0.05))}%（都说几乎不可能），实际开出 ${G.unlikely_hits||0} 个，未计入。</p>`;
-  // The two rulers in one table (user ruling, 2026-09-17: 两张表融合在一起对比).
-  // Rows are the shared 0.05 bands; each metric is a pair, market beside
-  // model, as the model-skill table does (放在一起对比，不要左右).  The two
-  // sides of a row are different buckets -- those the market priced in the
-  // band and those the model claimed in it -- so the last column judges each
-  // ruler against its own buckets, by the rule the table above uses.
-  const bandKey=r=>r.band.join("|");
-  const priceByBand=Object.fromEntries((T.by_price||[]).map(r=>[bandKey(r),r]));
-  const claimByBand=Object.fromEntries((T.by_claim||[]).map(r=>[bandKey(r),r]));
-  const bands=[...(T.by_price||[]),...(T.by_claim||[])].map(r=>r.band)
-    .filter((b,i,all)=>all.findIndex(o=>o.join("|")===b.join("|"))===i)
-    .sort((a,b)=>a[0]-b[0]);
-  const bandLabel=b=>`${b[0].toFixed(2)}–${b[1]>=1?"1.00":b[1].toFixed(2)}`;
-  const live=r=>r&&r.bucket_count>0?r:null;
-  const ratioOf=r=>r&&r.value_mean>0&&r.hit_rate!=null?r.hit_rate/r.value_mean:null;
-  const bandJudge=(mk,md)=>{
-    if(!mk||!md||mk.hit_rate==null||md.hit_rate==null
-      ||mk.bucket_count<MIN_N||md.bucket_count<MIN_N) return "thin";
-    const offMarket=Math.abs(mk.hit_rate-mk.value_mean);
-    const offModel=Math.abs(md.hit_rate-md.value_mean);
-    return Math.abs(offModel-offMarket)<0.01?"tie"
-      :(offMarket<offModel?"market":"model");
+    unclear:["","分不出"],thin:["","样本少"]};
+  const judge=g=>{
+    if(g.hit_rate==null||g.buckets<MIN_N||!g.market_nearer_interval) return "thin";
+    const [lo,hi]=g.market_nearer_interval;
+    return lo>0?"market":(hi<0?"model":"unclear");
   };
-  const EDGE='style="border-left:1px solid var(--line)"';
-  const ratioCell=(r,edge)=>{
-    const x=ratioOf(r);
-    return `<td class="mono ${x==null?"":(x>=0.85&&x<=1.2?"up":"down")}"${edge?" "+EDGE:""}>${
-      x==null?"—":x.toFixed(2)+"×"}</td>`;
+  const segment=(S,open)=>{
+    const G=S.disagreement||{};
+    const groups=(G.groups||[]).filter(g=>g.buckets>0);
+    const top=Math.max(0.01,...groups.flatMap(g=>[g.claim_mean,g.price_mean,g.hit_rate]
+      .filter(v=>v!=null)));
+    const bar=(label,v,color)=>`<div class="tl-bar"><span class="muted">${label}</span>
+      <span class="tl-track"><span style="width:${(100*(v||0)/top).toFixed(1)}%;background:${color}"></span></span>
+      <span class="mono">${p(v)}</span></div>`;
+    const gapRows=groups.map(g=>{
+      const [tone,word]=WHO[judge(g)];
+      const cents=(g.hit_rate==null||g.cost_mean==null)?null:100*(g.hit_rate-g.cost_mean);
+      return `<div class="tl-row${g.buckets<MIN_N?" muted":""}">
+        <div><b>${h(g.label)}</b><div class="muted" style="font-size:11.5px">${
+          g.buckets} 个桶 · 开出 ${g.hits} 个</div></div>
+        <div>${bar("模型说",g.claim_mean,"var(--violet)")}${
+          bar("市场（归一中间价）",g.price_mean,"var(--muted)")}${
+          bar("实际开出",g.hit_rate,"var(--accent)")}<div class="muted" style="font-size:11.5px">实际开出 95% ${iv(g.hit_interval)}</div></div>
+        <div class="tl-verdict"><span class="pill ${tone}">${word}</span>
+          <div class="mono ${cents==null?"":(cents>=0?"up":"down")}" style="font-size:12px"
+            title="实际开出率 − 中位卖一：照卖一买一股，平均每股赚/亏多少（未计手续费）">${
+            cents==null?"":`按卖一买 ${cents>=0?"+":""}${cents.toFixed(1)}¢/股`}</div></div>
+      </div>`;
+    }).join("");
+    const byKey=Object.fromEntries(groups.map(g=>[g.key,g]));
+    const disagree=groups.filter(g=>g.key!=="agree"&&judge(g)!=="thin");
+    const tally=w=>disagree.filter(g=>judge(g)===w).length;
+    const verdict=!disagree.length?"两边有分歧的桶还太少，判不出谁更准。"
+      :`两边意见不一致的 ${disagree.length} 组里，<b>${tally("market")} 组市场更准</b>、${
+        tally("model")} 组模型更准、${tally("unclear")} 组分不出（区间跨零）。`;
+    const buyOver=["model_much","model_bit"].map(k=>byKey[k]).filter(g=>g&&g.hit_rate!=null&&g.buckets>=MIN_N);
+    const overCents=buyOver.length
+      ? 100*buyOver.reduce((a,g)=>a+(g.hit_rate-g.cost_mean)*g.buckets,0)
+        /buyOver.reduce((a,g)=>a+g.buckets,0) : null;
+    const summary=overCents==null?""
+      :`<b>按卖一买「模型高于市场」的桶：</b>实际开出率比买入价${overCents<0?"低":"高"} <b class="${
+        overCents<0?"down":"up"}">${Math.abs(overCents).toFixed(1)}¢/股</b>（未计手续费）。`;
+    const A=G.acceptance_baseline;
+    const acceptLine=!A||!A.buckets||A.hit_rate==null?"":`<div class="card tl-verdict-card" style="margin-top:8px"><b>验收样本底数：</b>模型说 ≥${
+      Math.round(100*A.claim_floor)}% 而市场归一中间价 &lt;${Math.round(100*A.market_ceiling)}% 的桶 <b>${A.buckets} 个，开出 ${A.hits} 个</b>（${p(A.hit_rate)}）；
+      模型均说 ${p(A.claim_mean)}、市场 ${p(A.price_mean)}、卖一均价 ${p(A.cost_mean)}。</div>`;
+    const bandKey=r=>r.band.join("|");
+    const priceByBand=Object.fromEntries((S.by_price||[]).map(r=>[bandKey(r),r]));
+    const claimByBand=Object.fromEntries((S.by_claim||[]).map(r=>[bandKey(r),r]));
+    const bands=[...(S.by_price||[]),...(S.by_claim||[])].map(r=>r.band)
+      .filter((b,i,all)=>all.findIndex(o=>o.join("|")===b.join("|"))===i)
+      .sort((a,b)=>a[0]-b[0]);
+    const bandLabel=b=>`${b[0].toFixed(2)}–${b[1]>=1?"1.00":b[1].toFixed(2)}`;
+    const right=r=>r&&r.bucket_count>=MIN_N&&r.gap_interval?(r.gap_interval[0]<=0&&r.gap_interval[1]>=0):null;
+    const bandWho=(mk,md)=>{
+      const a=right(mk), b=right(md);
+      if(a==null||b==null) return ["","样本少"];
+      if(a&&b) return ["","都准"];
+      if(a) return ["amber","市场准"];
+      if(b) return ["green","模型准"];
+      return ["red","都不准"];
+    };
+    const EDGE='style="border-left:1px solid var(--line)"';
+    const ratio=r=>r&&r.value_mean>0&&r.hit_rate!=null?r.hit_rate/r.value_mean:null;
+    const ratioCell=(r,edge)=>{
+      const x=ratio(r);
+      return `<td class="mono ${x==null?"":(x>=0.85&&x<=1.2?"up":"down")}"${edge?" "+EDGE:""}>${
+        x==null?"—":x.toFixed(2)+"×"}</td>`;
+    };
+    const pair=(mk,md,f,cls="")=>`<td class="${cls}" ${EDGE}>${mk?f(mk):"—"}</td><td class="${cls}">${md?f(md):"—"}</td>`;
+    const judged=[];
+    const bandRows=bands.map(b=>{
+      const mk=priceByBand[b.join("|")], md=claimByBand[b.join("|")];
+      if(!mk&&!md) return "";
+      const [tone,word]=bandWho(mk,md);
+      judged.push([word,bandLabel(b)]);
+      return `<tr${word==="样本少"?' class="muted"':""}><td class="mono">${bandLabel(b)}</td>
+        ${pair(mk,md,r=>p(r.value_mean))}
+        <td class="mono" ${EDGE}>${mk?p(mk.cost_mean):"—"}</td>
+        ${pair(mk,md,r=>`<b title="95% ${iv(r.hit_interval)}">${p(r.hit_rate)}</b>`)}
+        ${ratioCell(mk,true)}${ratioCell(md,false)}
+        ${pair(mk,md,r=>`${r.bucket_count}<span class="muted">（${r.truth_count}）</span>`,"mono")}
+        <td ${EDGE}><span class="pill ${tone}">${word}</span></td></tr>`;
+    }).join("");
+    const bandsWhere=w=>judged.filter(([word])=>word===w).map(([,label])=>label);
+    const bandVerdict=["都准","市场准","模型准","都不准"].map(w=>{
+      const hit=bandsWhere(w);
+      return hit.length?`<b>${w} ${hit.length} 档</b>（${hit.join("、")}）`:`${w} 0 档`;
+    }).join("；");
+    const body=`<div class="card tl-verdict-card"><b>分歧时谁更准：</b>${verdict}${summary?`<div style="margin-top:6px">${summary}</div>`:""}</div>
+    ${acceptLine}
+    <div class="tl-rows">${gapRows}</div>
+    <p class="sub" style="margin-top:6px">「谁更准」＝实际开出率离谁的数更近，95% 区间按事件日重抽，跨零记「分不出」；不足 ${MIN_N} 个桶不判。
+      另有 ${G.unlikely_buckets||0} 个桶两边都低于 ${Math.round(100*(G.unlikely_below||0.05))}%，实际开出 ${G.unlikely_hits||0} 个，未计入分组。</p>
+    <h3 style="margin-top:14px">两把尺子按档对比：市场（入场后 4h 归一中间价）× 模型（P0 建仓时刻声称）</h3>
+    <div class="card tl-verdict-card"><b>各档自己说的数与实际开出是否相符（95% 区间含 0 为准）：</b>${bandVerdict}。</div>
+    <div style="overflow-x:auto"><table><thead><tr>
+      <th rowspan="2">档</th>
+      <th colspan="2" ${EDGE}>说的概率</th><th rowspan="2" ${EDGE}>卖一均价</th><th colspan="2" ${EDGE}>实际开出</th>
+      <th colspan="2" ${EDGE}>实现/声称</th>
+      <th colspan="2" ${EDGE}>桶数（其中真值）</th>
+      <th rowspan="2" ${EDGE}>这一档</th>
+    </tr><tr>${`<th ${EDGE}>市场</th><th>模型</th>`.repeat(4)}</tr></thead>
+    <tbody>${bandRows}</tbody></table></div>
+    <p class="sub" style="margin-top:6px">同一批桶：市场列按归一中间价分档，模型列按 P0 声称分档，所以同一行左右是同一批站日里不同的桶；悬停实际开出看 95% 区间。卖一均价是按市场列这一档买入的成本，不是概率。</p>`;
+    return `<details${open?" open":""} style="margin-top:12px"><summary><b>${h(S.label)}</b> · ${
+      S.station_days} 个站日 · ${S.event_days} 个事件日</summary>${body}</details>`;
   };
-  const pair=(mk,md,f,cls="")=>`<td class="${cls}" ${EDGE}>${mk?f(mk):"—"}</td><td class="${cls}">${md?f(md):"—"}</td>`;
-  const judged=[];
-  const fusedRows=bands.map(b=>{
-    const mk=live(priceByBand[b.join("|")]), md=live(claimByBand[b.join("|")]);
-    if(!mk&&!md) return "";
-    const who=bandJudge(mk,md);
-    judged.push([who,bandLabel(b)]);
-    const [tone,word]=WHO[who];
-    return `<tr${who==="thin"?' class="muted"':""}><td class="mono">${bandLabel(b)}</td>
-      ${pair(mk,md,r=>p(r.value_mean))}
-      ${pair(mk,md,r=>`<b>${p(r.hit_rate)}</b>`)}
-      ${ratioCell(mk,true)}${ratioCell(md,false)}
-      ${pair(mk,md,r=>p(r.truth_share))}
-      ${pair(mk,md,r=>`${r.bucket_count}<span class="muted">（${r.truth_count}）</span>`,"mono")}
-      <td ${EDGE}><span class="pill ${tone}">${word}</span></td></tr>`;
-  }).join("");
-  const bandsWhere=w=>judged.filter(([who])=>who===w).map(([,label])=>label);
-  const fusedVerdict=["market","model","tie"].map(w=>{
-    const hit=bandsWhere(w);
-    return hit.length?`<b>${WHO[w][1]} ${hit.length} 档</b>（${hit.join("、")}）`:`${WHO[w][1]} 0 档`;
-  }).join("；");
-  const sumOf=(rows,k)=>(rows||[]).reduce((a,r)=>a+(r[k]||0),0);
-  const fusedTable=!fusedRows?"":`<h3 style="margin-top:14px">两把尺子按档对比：市场价格（入场后 4h 中位卖一）× 模型概率（P0 建仓时刻声称）</h3>
-  <div class="card tl-verdict-card"><b>结论：</b>各档实际开出率离自己说的数更近的一方——${fusedVerdict}。</div>
-  <div style="overflow-x:auto"><table><thead><tr>
-    <th rowspan="2">档</th>
-    <th colspan="2" ${EDGE}>说的概率</th><th colspan="2" ${EDGE}>实际开出</th>
-    <th colspan="2" ${EDGE}>实现/声称</th><th colspan="2" ${EDGE}>占真值</th>
-    <th colspan="2" ${EDGE}>桶数（其中真值）</th>
-    <th rowspan="2" ${EDGE}>这一档谁说得准</th>
-  </tr><tr>${`<th ${EDGE}>市场</th><th>模型</th>`.repeat(5)}</tr></thead>
-  <tbody>${fusedRows}</tbody></table></div>
-  <p class="sub" style="margin-top:6px">市场列＝入场后 4h 中位卖一落在这档的桶（至少两次卖一报价才计入，共 ${
-    sumOf(T.by_price,"bucket_count")} 个桶、${sumOf(T.by_price,"truth_count")} 个真值）；
-    模型列＝P0 建仓时刻声称落在这档的桶（共 ${sumOf(T.by_claim,"bucket_count")} 个桶、${
-    sumOf(T.by_claim,"truth_count")} 个真值）。同一行左右<b>不是同一批桶</b>，各自对自己的桶打分；
-    同一批桶上一对一比谁更准看上一张表。实现/声称在 0.85–1.20× 为绿；「谁说得准」口径同上表
-    （差不到 1 点算一样准，任一侧不足 ${MIN_N} 个桶标灰不判）。</p>`;
-  return `<h2>真值落位：按市场价格 × 模型概率分格，比谁更能预判真值</h2>
+  return `<h2>真值落位：模型和市场意见不一致时谁更准，以及两把尺子各自准不准</h2>
   <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
-    · 市场裁定出赢家 ${T.adjudicated_station_days}
-    · 采集截断剔除 ${T.capture_truncated_days}。
-    真值＝市场收敛裁定（末端买价 ≥0.80 的桶）；
-    价格＝首个 P0 决策后 4 小时的中位卖一；概率＝同一时刻的服务后验。</p>
-  <div class="why"><b>这两张表回答一件事：</b>真值到底住在哪个价位、哪个声称档，
-  以及两把尺子对不齐时该信谁——第一张直接给答案，第二张把它读自的两把尺子按档并排
-  （先结论后明细，2026-09-17 裁定；两把尺子合成一张对比，同日裁定）。</div>
-  ${gapTable}
-  ${fusedTable}`;
+    · 已结算 ${T.settled_station_days}（未结算 ${T.unsettled_station_days}）
+    · 整条梯子有报价 ${T.settled_station_days-T.unpriced_station_days-(T.truth_off_ladder_days||0)}（缺报价剔除 ${T.unpriced_station_days}）。
+    真值＝官方结算桶；市场＝首个 P0 决策后 4 小时的中位买一与卖一的中间价，按梯子归一；模型＝同一首个 P0 的服务概率；两边读同一批桶。</p>
+  ${segs.map((S,i)=>segment(S,i===0)).join("")}`;
 }
 
 // The lambda tables, one per stage scope.  Placed beside the edge

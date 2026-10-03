@@ -797,7 +797,12 @@ def _truth_landing_fixture() -> sqlite3.Connection:
     )
     conn.execute(
         "CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT,"
-        " stage TEXT, decision_at_utc TEXT, probabilities_json TEXT)"
+        " stage TEXT, decision_at_utc TEXT, probabilities_json TEXT,"
+        " posterior_version TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE basket_station_day_settlement_label (station_id TEXT,"
+        " event_date TEXT, truth_revision_no INTEGER, settled_bucket TEXT)"
     )
     conn.execute(
         "CREATE TABLE basket_official_ws_snapshot (station_id TEXT, event_date TEXT,"
@@ -809,9 +814,14 @@ def _truth_landing_fixture() -> sqlite3.Connection:
     )
     for i, day in enumerate(("2026-08-20", "2026-08-21", "2026-08-22")):
         conn.execute(
-            "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?)",
+            "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v')",
             (day, f"{day}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})),
         )
+        if i < 2:   # the third day is not settled yet
+            conn.execute(
+                "INSERT INTO basket_station_day_settlement_label VALUES ('KLGA',?,0,'70')",
+                (day,),
+            )
         for hour, bids in ((2, (0.5, 0.4)), (3, (0.55, 0.35)), (23, (0.9 - 0.1 * i, 0.05))):
             conn.execute(
                 "INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?)",
@@ -843,7 +853,7 @@ def test_the_truth_landing_caught_up_in_chunks_is_the_one_read(paged, monkeypatc
             assert chunks < 10
     assert chunks >= 2, "the three settled days came a chunk at a time"
     assert paged_answer == whole
-    assert whole["adjudicated_station_days"] == 2   # the third day's bid never reached 0.80
+    assert whole["settled_station_days"] == 2   # the third day has no settled bucket yet
 
 
 def test_a_section_not_ready_serves_its_stand_in_and_caches_nothing(paged) -> None:
