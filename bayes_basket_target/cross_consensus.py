@@ -743,6 +743,29 @@ CONSENSUS_BRIDGE_LAMBDA_MAX = 0.4
 CONSENSUS_BRIDGE_GAP_START_C = 1.0
 CONSENSUS_BRIDGE_GAP_FULL_C = 1.5
 
+#: The ramp each P0 posterior version served, newest first, keyed by the
+#: first version that carried it.  The bridge receipt records the gap and
+#: the weight but not the ramp, so a reader of past envelopes (the board's
+#: trend) finds the threshold in force by the envelope's posterior version.
+CONSENSUS_BRIDGE_RULES_BY_P0_VERSION: tuple[tuple[int, float, float, float], ...] = (
+    (24, CONSENSUS_BRIDGE_GAP_START_C, CONSENSUS_BRIDGE_GAP_FULL_C,
+     CONSENSUS_BRIDGE_LAMBDA_MAX),  # charter 246, 2026-10-02
+    (0, 1.5, 2.0, 0.4),
+)
+
+
+def consensus_bridge_rule_for_p0_version(posterior_version: str) -> dict[str, float] | None:
+    """The ramp a P0 envelope of this posterior version was served with."""
+
+    tail = str(posterior_version or "").rsplit("_v", 1)
+    if len(tail) != 2 or not tail[1].isdigit():
+        return None
+    number = int(tail[1])
+    for first, start, full, ceiling in CONSENSUS_BRIDGE_RULES_BY_P0_VERSION:
+        if number >= first:
+            return {"gap_start_c": start, "gap_full_c": full, "lambda_max": ceiling}
+    return None
+
 
 def consensus_bridge_lambda(gap_c: float) -> float:
     """Blend weight for the consensus component at this center gap."""

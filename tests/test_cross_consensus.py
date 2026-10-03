@@ -52,3 +52,20 @@ def test_charter_246_bridge_ramp_starts_at_one_degree_and_is_full_by_one_and_a_h
     assert cc.consensus_bridge_lambda(1.0) == 0.0
     assert abs(cc.consensus_bridge_lambda(1.25) - 0.2) < 1e-12
     assert cc.consensus_bridge_lambda(1.5) == 0.4 and cc.consensus_bridge_lambda(3.0) == 0.4
+
+
+def test_the_rule_history_names_the_live_ramp_and_the_one_before_charter_246():
+    from bayes_basket_target import cross_consensus as cc
+    from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
+
+    live = cc.consensus_bridge_rule_for_p0_version(POSTERIOR_VERSION)
+    assert live == {
+        "gap_start_c": cc.CONSENSUS_BRIDGE_GAP_START_C,
+        "gap_full_c": cc.CONSENSUS_BRIDGE_GAP_FULL_C,
+        "lambda_max": cc.CONSENSUS_BRIDGE_LAMBDA_MAX,
+    }
+    before = cc.consensus_bridge_rule_for_p0_version(
+        "calibrated_native_cross_ensemble_p0_v23"
+    )
+    assert before == {"gap_start_c": 1.5, "gap_full_c": 2.0, "lambda_max": 0.4}
+    assert cc.consensus_bridge_rule_for_p0_version("no_version") is None

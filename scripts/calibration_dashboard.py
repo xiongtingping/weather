@@ -2072,7 +2072,16 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
     except (ImportError, AttributeError):
         rule = {}
     today = _now().date()
-    gap_start = (rule or {}).get("gap_start_c")
+    try:
+        from bayes_basket_target.cross_consensus import (  # noqa: PLC0415
+            CONSENSUS_BRIDGE_RULES_BY_P0_VERSION as rule_table,
+            consensus_bridge_rule_for_p0_version as rule_for,
+        )
+    except ImportError:
+        rule_table = ()
+
+        def rule_for(_version: str) -> dict[str, float] | None:
+            return None
 
     def bridge_day(day: str) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         """Each station's newest P0 bridge receipt for one event day, and
@@ -2089,7 +2098,7 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
             found = conn.execute(
                 "SELECT json_extract(lineage_json,'$.consensus_bridge_json'),"
                 " json_extract(lineage_json,'$.native_calibrated_system_centers_c_json'),"
-                " json_extract(lineage_json,'$.model_center_c')"
+                " json_extract(lineage_json,'$.model_center_c'), posterior_version"
                 " FROM basket_probability_envelope"
                 " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
                 " AND decision_at_utc=? AND stage='P0' LIMIT 1",
@@ -2120,13 +2129,22 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
                     for k, v in centres.items()
                 },
                 "centre_range_c": (max(values) - min(values)) if values else None,
+                "posterior_version": found[3],
             })
         group = [r for r in rows if r["gap_c"] is not None]
         if not group:
             return rows, None
         gaps = sorted(float(r["gap_c"]) for r in group)
         lambdas = [float(r["lambda"] or 0) for r in group]
+        # The ramp in force that day, by the posterior version most of the
+        # day's newest envelopes carry (charter 246 moved it on 2026-10-02;
+        # the receipt holds no threshold of its own).
+        versions = Counter(str(r["posterior_version"]) for r in group)
+        day_rule = rule_for(versions.most_common(1)[0][0]) or {}
         return rows, {
+            "gap_start_c": day_rule.get("gap_start_c"),
+            "gap_full_c": day_rule.get("gap_full_c"),
+            "posterior_versions": dict(versions),
             "event_date": day,
             "stations": len(group),
             "opened": sum(1 for v in lambdas if v > 0),
@@ -2135,7 +2153,9 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
             "gap_max_c": gaps[-1],
             "lambda_mean": sum(lambdas) / len(lambdas),
             "near_threshold": sum(
-                1 for g in gaps if gap_start is not None and g >= gap_start - 0.3
+                1 for g in gaps
+                if day_rule.get("gap_start_c") is not None
+                and g >= day_rule["gap_start_c"] - 0.3
             ),
         }
 
@@ -2143,7 +2163,9 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
     # day of the last CONSENSUS_BRIDGE_TREND_DAYS through D+2.  A past day's
     # newest P0 never changes, so in paged runs every day before yesterday
     # is kept across renders and only the last few are read again.
-    code = _section_fingerprint(collect_consensus_bridge)
+    code = _section_fingerprint(
+        collect_consensus_bridge, inspect.getsource(rule_for) + repr(rule_table)
+    )
     kept: dict[str, Any] = {}
     if _PAGED_RUN:
         held = _load_closed_readings(RENDER_CONSENSUS_BRIDGE_DAYS)
@@ -21340,7 +21362,7 @@ function trendChart(cfg){
   }).join("");
   const ends = [];
   const lines = (cfg.series || []).map((s, si) => {
-    const color = TREND_COLORS[si % TREND_COLORS.length];
+    const color = s.color || TREND_COLORS[si % TREND_COLORS.length];
     let d = "", pen = false, last = null;
     s.values.forEach((v, i) => {
       if(v == null || !isFinite(v)){ pen = false; return; }
@@ -21349,8 +21371,8 @@ function trendChart(cfg){
     });
     if(last == null) return "";
     ends.push({si, color, name: s.name, v: s.values[last], xe: x(last), ye: y(s.values[last])});
-    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2"
-        stroke-linejoin="round" stroke-linecap="round"/>`;
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${s.dash ? 1.5 : 2}"
+        ${s.dash ? 'stroke-dasharray="4 3"' : ""} stroke-linejoin="round" stroke-linecap="round"/>`;
   }).join("");
   // End labels: sorted by height, nudged apart by 12px, each tied to its
   // line's end by a leader so a nudge never detaches a label from its line.
@@ -21369,7 +21391,7 @@ function trendChart(cfg){
     .map(i => `<text x="${x(i)}" y="${H - 7}" text-anchor="middle" class="trend-ax">${h(String(dates[i]).slice(5))}</text>`).join("");
   const payload = attr(JSON.stringify({
     xs: dates.map((_, i) => +x(i).toFixed(1)), dates,
-    series: (cfg.series || []).map((s, si) => ({name: s.name, color: si,
+    series: (cfg.series || []).map((s, si) => ({name: s.name, color: s.color || TREND_COLORS[si % TREND_COLORS.length],
       values: s.values.map(v => v == null || !isFinite(v) ? null : fmt(v))})),
   }));
   return `<div class="card trend">${title}
@@ -21411,7 +21433,7 @@ function trendChart(cfg){
       data.series.forEach(s => {
         const row = document.createElement("div");
         const key = document.createElement("span");
-        key.className = "trend-key"; key.style.background = TREND_COLORS[s.color % TREND_COLORS.length];
+        key.className = "trend-key"; key.style.background = s.color;
         const val = document.createElement("b");
         val.textContent = s.values[best] == null ? "—" : s.values[best];
         row.appendChild(key); row.appendChild(val);
@@ -22124,14 +22146,23 @@ function consensusBridgeSection(){
     trendChart({title: "开桥站数占比", sub: "当天最新一期 P0 掺了共识成分的站 ÷ 有回执的站", dates, marks,
       series: [{name: "开桥", values: S.map(d => d.stations ? d.opened / d.stations : null)}],
       fmt: v => (100 * v).toFixed(0) + "%"}),
-    trendChart({title: "各家中心差（°C）", sub: "全队中位与 90 分位；虚线是开桥门槛", dates, marks,
-      series: [{name: "中位", values: S.map(d => d.gap_median_c)}, {name: "90 分位", values: S.map(d => d.gap_p90_c)}],
-      ref: {y: R.gap_start_c ?? 1.5, label: "门槛"}, fmt: v => Number(v).toFixed(2)}),
+    // The threshold is the one each day was served with (by its envelopes'
+    // P0 version), so the line steps where charter 246 moved it.
+    trendChart({title: "各家中心差（°C）", sub: "全队中位与 90 分位；虚线是当天在用的开桥门槛", dates, marks,
+      series: [{name: "中位", values: S.map(d => d.gap_median_c)}, {name: "90 分位", values: S.map(d => d.gap_p90_c)},
+        {name: "门槛", dash: true, color: "var(--muted)", values: S.map(d => d.gap_start_c ?? null)}],
+      fmt: v => Number(v).toFixed(2)}),
     trendChart({title: "共识成分平均权重", sub: "全队平均 λ（不开桥的站按 0 计）；上限 " + pctS(R.lambda_max ?? 0.4), dates, marks,
       series: [{name: "λ 均值", values: S.map(d => d.lambda_mean)}], fmt: v => Number(v).toFixed(2)}),
   ].join("") : "";
   const today = new Date().toISOString().slice(0, 10);
   const latest = S.filter(d => d.event_date <= today).slice(-1)[0];
+  // Where the served ramp changed inside the window, say so beside the charts.
+  const steps = S.filter((d, i) => i > 0 && d.gap_start_c != null && S[i - 1].gap_start_c != null
+    && d.gap_start_c !== S[i - 1].gap_start_c).map((d, i) =>
+    `${h(d.event_date.slice(5))} 起门槛 ${S[S.indexOf(d) - 1].gap_start_c}→${d.gap_start_c}°C`);
+  const stepNote = steps.length ? `<div class="muted" style="margin-top:6px">窗口内规则变过：${steps.join("；")}。
+    开桥占比与 λ 在这一天的跳变来自门槛下调，不是模型分歧变大。</div>` : "";
   const days = latest ? `<div class="muted" style="margin-top:6px">最近一个事件日 ${h(latest.event_date)}：${latest.opened}/${latest.stations} 站开桥，
     中心差中位 ${n2(latest.gap_median_c)}°C、最大 ${n2(latest.gap_max_c)}°C，离门槛不到 0.3°C 的 ${latest.near_threshold} 站。
     今天之后的日子还在更新，按当前读数画。</div>` : "";
@@ -22145,7 +22176,7 @@ function consensusBridgeSection(){
   <p class="sub">各家模型校准后的中心如果相差很大，直接按权重相加会得到两个峰，而真值往往落在中间。
     规则：中心差 ≤ ${R.gap_start_c ?? 1.5}°C 不动；到 ${R.gap_full_c ?? 2.0}°C 时补满，最多掺入 ${pctS(R.lambda_max ?? 0.4)} 的「共识」成分。
     每站读自最新一期 P0 的回执，不在这里重算。</p>
-  <div class="grid g3">${charts}</div>${days}
+  <div class="grid g3">${charts}</div>${stepNote}${days}
   <details class="note"><summary>今天到 D+2：中心差 ≥ 1.0°C 的站（按差距排序）</summary>
     <div class="scroll" style="max-height:340px"><table><thead><tr><th>日</th><th>站</th><th>各家校准后中心</th>
       <th>中心差 °C</th><th>共识桥</th><th>共识中心</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
