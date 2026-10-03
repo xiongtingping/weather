@@ -1,0 +1,12 @@
+{
+ "all": {
+  "stations": 45,
+  "corr_log_best_lambda": 0.031438513146229294,
+  "corr_dlog_at_0.9": -0.12148215060396765
+ },
+ "nf2": {
+  "stations": 45,
+  "corr_log_best_lambda": 0.12635723802973214,
+  "corr_dlog_at_0.9": 0.035017483894636624
+ }
+}
