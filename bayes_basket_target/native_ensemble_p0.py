@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -1733,6 +1734,79 @@ def _ADMITTED_ROWS_SQL(activation_sql: str) -> str:
     ).replace(kind, "WHERE +a.artifact_kind=")
 
 
+# The evidence test's answer for a scope, kept between compiles.
+#
+# The test walks every valid activation of the scope and seeks each one's
+# artifact -- 1,400-2,800 random index pages a scope on a store five times
+# the machine's memory -- then asks the pairing's latest evaluation, a hundred
+# lookups more: 0.33 s and 0.18 s a compile, 108 s of a 511 s cycle
+# (2026-10-03).  Its answer is a function of two sets only: the activations
+# valid at the decision instant and the evaluations visible at it.  All three
+# tables are append-only by trigger (``append_only``), so a row never changes
+# under its id and a set that lists the same ids is the same set -- and both
+# sets list off covering indexes in scope order, 11 ms and 36 ms.  The scopes
+# move when a refit mints or a batch expires, once or twice a day each.
+#
+# Kept per database file and scope: the digest of the two id lists, the
+# admitted activation ids, and the evaluation rows of the admitted pairings
+# (the loop below asks for exactly those again).  A store with no file -- a
+# test's ``:memory:`` -- keeps nothing.  "0" restores the read on every
+# compile, which is the same answer slower.
+ADMITTED_SCOPE_MEMO_ENABLED = (
+    os.environ.get("PM_NATIVE_P0_ADMITTED_MEMO", "1").strip().lower()
+    not in {"0", "off", "false", "no"}
+)
+ADMITTED_SCOPE_MEMO_MAX_SCOPES = 512
+_ADMITTED_SCOPE_MEMO: dict[
+    tuple[str, ...],
+    tuple[bytes, tuple[str, ...], dict[tuple[str, ...], tuple[tuple[Any, ...], ...]]],
+] = {}
+_MEMO_TEXT: dict[str, str] = {}
+
+
+def _main_database_file(conn: sqlite3.Connection) -> str:
+    for row in conn.execute("PRAGMA database_list"):
+        if str(row[1]) == "main":
+            return str(row[2] or "")
+    return ""
+
+
+def _admitted_scope_digest(
+    conn: sqlite3.Connection,
+    *,
+    activation_parameters: tuple[Any, ...],
+    decision_at_utc: str,
+) -> tuple[bytes, int]:
+    """Digest of the two id lists the evidence test reads, and how many
+    activations are valid.  The first WHERE is the evidence test's own."""
+
+    hasher = hashlib.sha256()
+    valid = 0
+    for row in conn.execute(
+        "SELECT a.activation_id "
+        "FROM calibration_native_ensemble_activation a "
+        "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+        "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+        "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+        "AND a.valid_from_utc<=? AND a.valid_until_utc>?",
+        activation_parameters,
+    ):
+        hasher.update(str(row[0]).encode("utf-8"))
+        hasher.update(b"\n")
+        valid += 1
+    hasher.update(b"|")
+    for row in conn.execute(
+        "SELECT evaluation_id "
+        "FROM calibration_cross_native_ensemble_oos_evaluation "
+        "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
+        "AND evaluated_at_utc<=?",
+        tuple(activation_parameters[:3]) + (decision_at_utc,),
+    ):
+        hasher.update(str(row[0]).encode("utf-8"))
+        hasher.update(b"\n")
+    return hasher.digest(), valid
+
+
 def compile_native_ensemble_p0(
     conn: sqlite3.Connection,
     *,
@@ -2172,8 +2246,56 @@ def compile_native_ensemble_p0(
     # row this drops the loop drops too.  A scope that comes out with
     # nothing runs the loop again on every row, so which fail-closed reason
     # it gives is the one it always gave.
+    def _admitted_rows_whole(admitted_ids: list[str]) -> list[Any]:
+        rows: list[Any] = []
+        for start in range(0, len(admitted_ids), 400):
+            chunk = admitted_ids[start:start + 400]
+            rows.extend(conn.execute(
+                # Unary + on the station: the same predicate, but no longer
+                # one the window index can seek on, so the planner takes the
+                # primary key for the ids.  Without it the window index won
+                # and walked every valid row of the scope again to filter the
+                # ids (2026-10-02, 0.13 s a call on the live store).
+                _ADMITTED_ROWS_SQL(activation_sql).replace(
+                    "ORDER BY",
+                    "AND a.activation_id IN (" + ",".join("?" * len(chunk))
+                    + ") ORDER BY",
+                ),
+                activation_parameters + tuple(chunk),
+            ).fetchall())
+        rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
+        return rows
+
     def _evidence_admitted_rows() -> list[Any]:
         admitted_ids: list[str] = []
+        # ``_ADMITTED_SCOPE_MEMO``: the scope's answer, while both id lists
+        # read as they did when it was kept.
+        scope_part = (station_id, season_bin, training_lead_bucket)
+        memo_key: tuple[str, ...] | None = None
+        digest = b""
+        valid_activations = -1
+        database_file = (
+            _main_database_file(conn) if ADMITTED_SCOPE_MEMO_ENABLED else ""
+        )
+        if database_file:
+            memo_key = (database_file,) + scope_part + (settlement_definition,)
+            digest, valid_activations = _admitted_scope_digest(
+                conn,
+                activation_parameters=activation_parameters,
+                decision_at_utc=decision_at_utc,
+            )
+            kept = _ADMITTED_SCOPE_MEMO.get(memo_key)
+            if kept is not None and kept[0] == digest:
+                for key_part, kept_rows in kept[2].items():
+                    evaluation_rows_by_key.setdefault(
+                        scope_part + key_part + (decision_at_utc,),
+                        list(kept_rows),
+                    )
+                return _admitted_rows_whole(list(kept[1]))
+        tested = 0
+        admitted_evaluations: dict[
+            tuple[str, ...], tuple[tuple[Any, ...], ...]
+        ] = {}
         # Named, because the artifact's primary key is a unique equality the
         # planner otherwise prefers, and that reads the table row.  Named
         # only once it exists: until the index migration has run, the same
@@ -2199,6 +2321,7 @@ def compile_native_ensemble_p0(
             "AND a.valid_from_utc<=? AND a.valid_until_utc>?",
             activation_parameters,
         ):
+            tested += 1
             try:
                 pre_ids = _json(sorted(str(v) for v in json.loads(str(pre[6]))))
             except (TypeError, ValueError):
@@ -2216,26 +2339,39 @@ def compile_native_ensemble_p0(
                 str(pre[5]),
                 decision_at_utc,
             )
-            if _evaluation_admits(_evaluation_rows(pre_key), str(pre[1])):
+            pre_rows = _evaluation_rows(pre_key)
+            if _evaluation_admits(pre_rows, str(pre[1])):
                 admitted_ids.append(str(pre[0]))
-        rows: list[Any] = []
-        for start in range(0, len(admitted_ids), 400):
-            chunk = admitted_ids[start:start + 400]
-            rows.extend(conn.execute(
-                # Unary + on the station: the same predicate, but no longer
-                # one the window index can seek on, so the planner takes the
-                # primary key for the ids.  Without it the window index won
-                # and walked every valid row of the scope again to filter the
-                # ids (2026-10-02, 0.13 s a call on the live store).
-                _ADMITTED_ROWS_SQL(activation_sql).replace(
-                    "ORDER BY",
-                    "AND a.activation_id IN (" + ",".join("?" * len(chunk))
-                    + ") ORDER BY",
-                ),
-                activation_parameters + tuple(chunk),
-            ).fetchall())
-        rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
-        return rows
+                # The same few cycle maps, system sets and states recur
+                # across every scope; one copy of each is kept.
+                admitted_evaluations[
+                    tuple(_MEMO_TEXT.setdefault(v, v) for v in pre_key[3:9])
+                ] = tuple(
+                    (_MEMO_TEXT.setdefault(str(row[0]), str(row[0])),)
+                    + tuple(row)[1:]
+                    for row in pre_rows
+                )
+        # Kept only when the answer provably belongs to the digest: every
+        # valid activation had its artifact (one arriving later would change
+        # the answer under the same two lists), and the lists read the same
+        # after the test as before it -- the store only grows, so whatever
+        # the test read in between lay between two equal sets.
+        if (
+            memo_key is not None
+            and tested == valid_activations
+            and _admitted_scope_digest(
+                conn,
+                activation_parameters=activation_parameters,
+                decision_at_utc=decision_at_utc,
+            ) == (digest, valid_activations)
+        ):
+            if len(_ADMITTED_SCOPE_MEMO) >= ADMITTED_SCOPE_MEMO_MAX_SCOPES:
+                _ADMITTED_SCOPE_MEMO.clear()
+                _MEMO_TEXT.clear()
+            _ADMITTED_SCOPE_MEMO[memo_key] = (
+                digest, tuple(admitted_ids), admitted_evaluations,
+            )
+        return _admitted_rows_whole(admitted_ids)
 
     def _all_rows() -> list[Any]:
         return conn.execute(activation_sql, activation_parameters).fetchall()
