@@ -284,3 +284,63 @@ def test_a_selection_evidence_read_once_is_not_read_again(tmp_path) -> None:
     assert first[sha] == {k: float(v) for k, v in __import__("json").loads(text).items()}
     second[sha]["x"] = 1.0  # a caller's copy is its own
     assert "x" not in P0._selection_weights_by_sha(conn, [sha])[sha]
+
+
+LEAD_WALK = "SELECT r.ensemble_system_ids_json,a.run_cycle_by_system_json"
+SYSTEM_READ = "SELECT activation_id,artifact_id,content_sha256,generation,"
+
+
+def test_the_lead_bucket_and_the_system_fits_are_not_asked_again_inside_the_horizon(
+    tmp_path, monkeypatch
+) -> None:
+    conn, report = _store(tmp_path)
+    first, flat_first = _statements(conn, "2026-07-01T13:00:00Z")
+    assert _count(flat_first, LEAD_WALK) >= 1 and _count(flat_first, SYSTEM_READ) >= 2
+    later, flat_later = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat_later, LEAD_WALK) == 0 and _count(flat_later, SYSTEM_READ) == 0
+    # An evaluation added moves neither read: they are of activations.
+    _reject(conn, report, "2026-07-01T13:20:00Z")
+    _, flat = _statements(conn, "2026-07-01T13:08:00Z")
+    assert _count(flat, LEAD_WALK) == 0 and _count(flat, SYSTEM_READ) == 0
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    plain, flat_plain = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat_plain, LEAD_WALK) >= 1 and _count(flat_plain, SYSTEM_READ) >= 2
+    assert later == plain
+
+
+def test_an_activation_reaching_its_edge_is_read_again(tmp_path, monkeypatch) -> None:
+    conn, _ = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    kept = dict(P0._SYSTEM_ACTIVATION_MEMO)
+    assert kept and P0._LEAD_BUCKET_MEMO
+    edges = {entry[1] for entry in kept.values()} | {
+        entry[1] for entry in P0._LEAD_BUCKET_MEMO.values()
+    }
+    closes = conn.execute(
+        "SELECT MIN(valid_until_utc) FROM calibration_native_ensemble_activation"
+    ).fetchone()[0]
+    # Every horizon kept is a window edge of the store, none past the first
+    # to close; at that instant the reads are made again.
+    assert all(edge <= closes or edge == P0._NO_HORIZON for edge in edges)
+    assert closes in edges
+    reasons = []
+    for enabled in (True, False):
+        monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", enabled)
+        try:
+            reasons.append(("ok", _compile(conn, closes)))
+        except ContractError as exc:
+            reasons.append(("refused", str(exc)))
+    assert reasons[0] == reasons[1]
+
+
+def test_the_window_horizon_is_the_first_edge_ahead() -> None:
+    at = "2026-07-01T13:00:00Z"
+    assert P0._window_horizon([], at) == P0._NO_HORIZON
+    assert P0._window_horizon(
+        [
+            ("2026-06-01T00:00:00Z", "2026-07-20T00:00:00Z"),  # valid: closes
+            ("2026-06-01T00:00:00Z", "2026-07-09T00:00:00Z"),  # valid: closes first
+            ("2026-07-05T00:00:00Z", "2026-08-05T00:00:00Z"),  # minted ahead: opens
+        ],
+        at,
+    ) == "2026-07-05T00:00:00Z"
