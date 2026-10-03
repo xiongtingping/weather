@@ -2072,9 +2072,13 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
     except (ImportError, AttributeError):
         rule = {}
     today = _now().date()
-    rows: list[dict[str, Any]] = []
-    for offset in range(0, 3):
-        day = (today + timedelta(days=offset)).isoformat()
+    gap_start = (rule or {}).get("gap_start_c")
+
+    def bridge_day(day: str) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        """Each station's newest P0 bridge receipt for one event day, and
+        the day's summary."""
+
+        rows: list[dict[str, Any]] = []
         for station, decided in conn.execute(
             "SELECT station_id, MAX(decision_at_utc)"
             " FROM basket_probability_envelope"
@@ -2117,22 +2121,63 @@ def collect_consensus_bridge(conn: sqlite3.Connection) -> dict[str, Any]:
                 },
                 "centre_range_c": (max(values) - min(values)) if values else None,
             })
-    summary = []
-    for day in sorted({r["event_date"] for r in rows}):
-        group = [r for r in rows if r["event_date"] == day and r["gap_c"] is not None]
+        group = [r for r in rows if r["gap_c"] is not None]
+        if not group:
+            return rows, None
         gaps = sorted(float(r["gap_c"]) for r in group)
-        summary.append({
+        lambdas = [float(r["lambda"] or 0) for r in group]
+        return rows, {
             "event_date": day,
             "stations": len(group),
-            "opened": sum(1 for r in group if (r["lambda"] or 0) > 0),
-            "gap_median_c": gaps[len(gaps) // 2] if gaps else None,
-            "gap_max_c": gaps[-1] if gaps else None,
+            "opened": sum(1 for v in lambdas if v > 0),
+            "gap_median_c": gaps[len(gaps) // 2],
+            "gap_p90_c": gaps[min(len(gaps) - 1, int(0.9 * len(gaps)))],
+            "gap_max_c": gaps[-1],
+            "lambda_mean": sum(lambdas) / len(lambdas),
             "near_threshold": sum(
-                1 for g in gaps if rule and g >= rule["gap_start_c"] - 0.3
+                1 for g in gaps if gap_start is not None and g >= gap_start - 0.3
             ),
-        })
+        }
+
+    # The trend (user, 2026-10-03 「共识桥：日期改为趋势变化」): every event
+    # day of the last CONSENSUS_BRIDGE_TREND_DAYS through D+2.  A past day's
+    # newest P0 never changes, so in paged runs every day before yesterday
+    # is kept across renders and only the last few are read again.
+    code = _section_fingerprint(collect_consensus_bridge)
+    kept: dict[str, Any] = {}
+    if _PAGED_RUN:
+        held = _load_closed_readings(RENDER_CONSENSUS_BRIDGE_DAYS)
+        if held.get("code") == code:
+            kept = dict(held.get("days") or {})
+    closed_before = (today - timedelta(days=1)).isoformat()
+    rows: list[dict[str, Any]] = []
+    summary: list[dict[str, Any]] = []
+    for offset in range(-CONSENSUS_BRIDGE_TREND_DAYS + 1, 3):
+        day = (today + timedelta(days=offset)).isoformat()
+        if day < closed_before and day in kept:
+            if kept[day]:
+                summary.append(kept[day])
+            continue
+        day_rows, day_summary = bridge_day(day)
+        kept[day] = day_summary
+        if day_summary is not None:
+            summary.append(day_summary)
+        if offset >= 0:
+            rows.extend(day_rows)
+    if _PAGED_RUN:
+        _save_closed_readings(RENDER_CONSENSUS_BRIDGE_DAYS, {"code": code, "days": {
+            day: value for day, value in kept.items() if day < closed_before
+        }})
     rows.sort(key=lambda r: (r["event_date"], -(r["gap_c"] or 0)))
-    return {"available": bool(rows), "rule": rule, "summary": summary, "rows": rows}
+    return {
+        "available": bool(summary), "rule": rule, "summary": summary,
+        "rows": rows, "trend_days": CONSENSUS_BRIDGE_TREND_DAYS,
+    }
+
+
+#: Event days of the consensus-bridge trend, through D+2.
+CONSENSUS_BRIDGE_TREND_DAYS = 21
+RENDER_CONSENSUS_BRIDGE_DAYS = "_consensus_bridge_days.json"
 
 
 TAF_INBOX_PATH = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
@@ -21975,9 +22020,28 @@ function consensusBridgeSection(){
   if(!B.available) return "";
   const R = B.rule || {};
   const n2 = v => v == null ? "—" : Number(v).toFixed(2);
-  const days = (B.summary || []).map(d => `<div class="card"><div class="muted">${h(d.event_date)}</div>
-    <div class="big">${d.opened}/${d.stations} 站开桥</div>
-    <div class="muted">中心差中位 ${n2(d.gap_median_c)}°C · 最大 ${n2(d.gap_max_c)}°C · 离门槛不到 0.3°C 的 ${d.near_threshold} 站</div></div>`).join("");
+  // A trend, not three date cards (user, 2026-10-03 「共识桥：日期改为趋势
+  // 变化」): every event day of the window through D+2, each station's
+  // newest P0.  Days ahead are still moving and are drawn as they stand.
+  const S = (B.summary || []).slice().sort((a, b) => a.event_date < b.event_date ? -1 : 1);
+  const dates = S.map(d => d.event_date);
+  const marks = ((D.model_accuracy_trend || {}).version_marks || []).filter(mk => mk.stage === "P0")
+    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
+  const charts = S.length ? [
+    trendChart({title: "开桥站数占比", sub: "当天最新一期 P0 掺了共识成分的站 ÷ 有回执的站", dates, marks,
+      series: [{name: "开桥", values: S.map(d => d.stations ? d.opened / d.stations : null)}],
+      fmt: v => (100 * v).toFixed(0) + "%"}),
+    trendChart({title: "各家中心差（°C）", sub: "全队中位与 90 分位；虚线是开桥门槛", dates, marks,
+      series: [{name: "中位", values: S.map(d => d.gap_median_c)}, {name: "90 分位", values: S.map(d => d.gap_p90_c)}],
+      ref: {y: R.gap_start_c ?? 1.5, label: "门槛"}, fmt: v => Number(v).toFixed(2)}),
+    trendChart({title: "共识成分平均权重", sub: "全队平均 λ（不开桥的站按 0 计）；上限 " + pctS(R.lambda_max ?? 0.4), dates, marks,
+      series: [{name: "λ 均值", values: S.map(d => d.lambda_mean)}], fmt: v => Number(v).toFixed(2)}),
+  ].join("") : "";
+  const today = new Date().toISOString().slice(0, 10);
+  const latest = S.filter(d => d.event_date <= today).slice(-1)[0];
+  const days = latest ? `<div class="muted" style="margin-top:6px">最近一个事件日 ${h(latest.event_date)}：${latest.opened}/${latest.stations} 站开桥，
+    中心差中位 ${n2(latest.gap_median_c)}°C、最大 ${n2(latest.gap_max_c)}°C，离门槛不到 0.3°C 的 ${latest.near_threshold} 站。
+    今天之后的日子还在更新，按当前读数画。</div>` : "";
   const rows = (B.rows || []).filter(r => (r.gap_c || 0) >= 1.0).map(r => `<tr>
     <td class="mono">${h(r.event_date.slice(5))}</td><td class="mono">${h(r.station_id)}</td>
     <td class="mono">${Object.entries(r.centres || {}).map(([k, v]) => h(k) + " " + v).join(" · ")}</td>
@@ -21988,8 +22052,8 @@ function consensusBridgeSection(){
   <p class="sub">各家模型校准后的中心如果相差很大，直接按权重相加会得到两个峰，而真值往往落在中间。
     规则：中心差 ≤ ${R.gap_start_c ?? 1.5}°C 不动；到 ${R.gap_full_c ?? 2.0}°C 时补满，最多掺入 ${pctS(R.lambda_max ?? 0.4)} 的「共识」成分。
     每站读自最新一期 P0 的回执，不在这里重算。</p>
-  <div class="grid g3">${days}</div>
-  <details class="note" open><summary>中心差 ≥ 1.0°C 的站（按差距排序）</summary>
+  <div class="grid g3">${charts}</div>${days}
+  <details class="note"><summary>今天到 D+2：中心差 ≥ 1.0°C 的站（按差距排序）</summary>
     <div class="scroll" style="max-height:340px"><table><thead><tr><th>日</th><th>站</th><th>各家校准后中心</th>
       <th>中心差 °C</th><th>共识桥</th><th>共识中心</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
