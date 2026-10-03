@@ -1,0 +1,1392 @@
+{
+ "schema": "tiebreak_conditional_results6_v1",
+ "rows": 3568,
+ "discovery": 2448,
+ "validation": 1120,
+ "discovery_split": "2026-08-29",
+ "calibration": [
+  {
+   "band": "<0.3",
+   "n": 308,
+   "share": 0.26411307766771186,
+   "bid": 0.24541883116883118,
+   "ask": 0.3220064935064935,
+   "hit": 0.262987012987013,
+   "hit_minus_ask": -0.05901948051948053,
+   "bid_minus_hit": -0.017568181818181816,
+   "discovery": {
+    "n": 207,
+    "hit": 0.2608695652173913,
+    "ask": 0.32367632850241546
+   },
+   "validation": {
+    "n": 101,
+    "hit": 0.26732673267326734,
+    "ask": 0.3185841584158416
+   }
+  },
+  {
+   "band": "0.3–0.4",
+   "n": 903,
+   "share": 0.35472049844405573,
+   "bid": 0.35505204872646734,
+   "ask": 0.39037320044296786,
+   "hit": 0.3964562569213732,
+   "hit_minus_ask": 0.0060830564784053465,
+   "bid_minus_hit": -0.04140420819490587,
+   "discovery": {
+    "n": 646,
+    "hit": 0.38235294117647056,
+    "ask": 0.3875185758513932
+   },
+   "validation": {
+    "n": 257,
+    "hit": 0.43190661478599224,
+    "ask": 0.39754863813229574
+   }
+  },
+  {
+   "band": "0.4–0.5",
+   "n": 1088,
+   "share": 0.450414150664533,
+   "bid": 0.45072702205882353,
+   "ask": 0.4851433823529412,
+   "hit": 0.45955882352941174,
+   "hit_minus_ask": -0.025584558823529446,
+   "bid_minus_hit": -0.008831801470588208,
+   "discovery": {
+    "n": 720,
+    "hit": 0.44166666666666665,
+    "ask": 0.4834805555555556
+   },
+   "validation": {
+    "n": 368,
+    "hit": 0.4945652173913043,
+    "ask": 0.4883967391304348
+   }
+  },
+  {
+   "band": "0.5–0.6",
+   "n": 661,
+   "share": 0.5436445401822191,
+   "bid": 0.5383055975794251,
+   "ask": 0.5787594553706505,
+   "hit": 0.5990922844175491,
+   "hit_minus_ask": 0.020332829046898593,
+   "bid_minus_hit": -0.06078668683812405,
+   "discovery": {
+    "n": 447,
+    "hit": 0.5928411633109619,
+    "ask": 0.5788590604026845
+   },
+   "validation": {
+    "n": 214,
+    "hit": 0.6121495327102804,
+    "ask": 0.5785514018691589
+   }
+  },
+  {
+   "band": "0.6–0.7",
+   "n": 274,
+   "share": 0.6400546354019057,
+   "bid": 0.626529197080292,
+   "ask": 0.674485401459854,
+   "hit": 0.6313868613138686,
+   "hit_minus_ask": -0.043098540145985464,
+   "bid_minus_hit": -0.004857664233576586,
+   "discovery": {
+    "n": 205,
+    "hit": 0.6487804878048781,
+    "ask": 0.6756536585365853
+   },
+   "validation": {
+    "n": 69,
+    "hit": 0.5797101449275363,
+    "ask": 0.6710144927536232
+   }
+  },
+  {
+   "band": "≥0.7",
+   "n": 222,
+   "share": 0.867222836795391,
+   "bid": 0.8510540540540541,
+   "ask": 0.8937342342342343,
+   "hit": 0.8963963963963963,
+   "hit_minus_ask": 0.002662162162162085,
+   "bid_minus_hit": -0.045342342342342246,
+   "discovery": {
+    "n": 146,
+    "hit": 0.910958904109589,
+    "ask": 0.8973835616438356
+   },
+   "validation": {
+    "n": 76,
+    "hit": 0.868421052631579,
+    "ask": 0.8867236842105263
+   }
+  }
+ ],
+ "arms": [
+  {
+   "arm": "M1 众数桶 份额 <0.3",
+   "side": "YES",
+   "n_discovery": 207,
+   "n_validation": 101,
+   "net_first": 0.011515758117495183,
+   "net_second": -0.29699731377880917,
+   "net_discovery": -0.2299292546709169,
+   "gross_discovery": -0.19611307109603768,
+   "net_validation": -0.17124501072134893,
+   "gross_validation": -0.13717421864214102,
+   "net_validation_ci90": [
+    -0.4368105445612141,
+    0.1607955819501118
+   ],
+   "hit_discovery": 0.2608695652173913,
+   "price_discovery": 0.32367632850241546,
+   "hit_validation": 0.26732673267326734,
+   "price_validation": 0.3185841584158416,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 <0.3",
+   "side": "NO",
+   "n_discovery": 207,
+   "n_validation": 101,
+   "net_first": -0.13041668609430118,
+   "net_second": -0.0026573371225986912,
+   "net_discovery": -0.03043110863818619,
+   "gross_discovery": -0.01813666419374175,
+   "net_validation": -0.045584790820549385,
+   "gross_validation": -0.03336201854332167,
+   "net_validation_ci90": [
+    -0.17212042146807952,
+    0.06005267226768657
+   ],
+   "hit_discovery": 0.7391304347826086,
+   "price_discovery": 0.7541111111111111,
+   "hit_validation": 0.7326732673267327,
+   "price_validation": 0.7555445544554455,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.3–0.4",
+   "side": "YES",
+   "n_discovery": 646,
+   "n_validation": 257,
+   "net_first": -0.06884023145557049,
+   "net_second": -0.03020016794130416,
+   "net_discovery": -0.039351761931525134,
+   "gross_discovery": -0.008727690724094787,
+   "net_validation": 0.07144815235061698,
+   "gross_validation": 0.1015707204440022,
+   "net_validation_ci90": [
+    -0.060474246835935545,
+    0.19481833397474452
+   ],
+   "hit_discovery": 0.38235294117647056,
+   "price_discovery": 0.3875185758513932,
+   "hit_validation": 0.43190661478599224,
+   "price_validation": 0.39754863813229574,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.3–0.4",
+   "side": "NO",
+   "n_discovery": 646,
+   "n_validation": 257,
+   "net_first": -0.0371544140511873,
+   "net_second": -0.07012881888475206,
+   "net_discovery": -0.06231909142417093,
+   "gross_discovery": -0.04466800783283965,
+   "net_validation": -0.13063919680885472,
+   "gross_validation": -0.1126314147076874,
+   "net_validation_ci90": [
+    -0.20094820601568605,
+    -0.05114183731978964
+   ],
+   "hit_discovery": 0.6176470588235294,
+   "price_discovery": 0.6469783281733746,
+   "hit_validation": 0.5680933852140078,
+   "price_validation": 0.6398443579766537,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.4–0.5",
+   "side": "YES",
+   "n_discovery": 720,
+   "n_validation": 368,
+   "net_first": -0.17655334646765697,
+   "net_second": -0.09403483777103297,
+   "net_discovery": -0.11134080278935272,
+   "gross_discovery": -0.08551483056713051,
+   "net_validation": -0.011125468369268265,
+   "gross_validation": 0.014454694674210003,
+   "net_validation_ci90": [
+    -0.10712977594214602,
+    0.08214588915895439
+   ],
+   "hit_discovery": 0.44166666666666665,
+   "price_discovery": 0.4834805555555556,
+   "hit_validation": 0.4945652173913043,
+   "price_validation": 0.4883967391304348,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.4–0.5",
+   "side": "NO",
+   "n_discovery": 720,
+   "n_validation": 368,
+   "net_first": 0.06214848860856094,
+   "net_second": -0.021360086643250172,
+   "net_discovery": -0.003846482666828674,
+   "gross_discovery": 0.01875150344428243,
+   "net_validation": -0.10567326728197264,
+   "gross_validation": -0.08325750641240742,
+   "net_validation_ci90": [
+    -0.19654553859850568,
+    -0.012680091727707772
+   ],
+   "hit_discovery": 0.5583333333333333,
+   "price_discovery": 0.5480402777777779,
+   "hit_validation": 0.5054347826086957,
+   "price_validation": 0.5516847826086957,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.5–0.6",
+   "side": "YES",
+   "n_discovery": 447,
+   "n_validation": 214,
+   "net_first": -0.07791069604644804,
+   "net_second": 0.02154592313361385,
+   "net_discovery": 0.006638555158078847,
+   "gross_discovery": 0.02769560213794462,
+   "net_validation": 0.03154218161618629,
+   "gross_validation": 0.05261461152272835,
+   "net_validation_ci90": [
+    -0.08189982821498488,
+    0.14399815151878614
+   ],
+   "hit_discovery": 0.5928411633109619,
+   "price_discovery": 0.5788590604026845,
+   "hit_validation": 0.6121495327102804,
+   "price_validation": 0.5785514018691589,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.5–0.6",
+   "side": "NO",
+   "n_discovery": 447,
+   "n_validation": 214,
+   "net_first": -0.021574349868596486,
+   "net_second": -0.15430736997842784,
+   "net_discovery": -0.13441226405592516,
+   "gross_discovery": -0.10742680544294976,
+   "net_validation": -0.1968262410534618,
+   "gross_validation": -0.17005754946467674,
+   "net_validation_ci90": [
+    -0.3355110578835506,
+    -0.05359829618232552
+   ],
+   "hit_discovery": 0.407158836689038,
+   "price_discovery": 0.4602908277404922,
+   "hit_validation": 0.3878504672897196,
+   "price_validation": 0.4646261682242991,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.6–0.7",
+   "side": "YES",
+   "n_discovery": 205,
+   "n_validation": 69,
+   "net_first": -0.16043672972043452,
+   "net_second": -0.039672412832666336,
+   "net_discovery": -0.052043391635803564,
+   "gross_discovery": -0.03582607456263282,
+   "net_validation": -0.15151240910172412,
+   "gross_validation": -0.13506313373940523,
+   "net_validation_ci90": [
+    -0.29505106495424416,
+    -0.026624617227921452
+   ],
+   "hit_discovery": 0.6487804878048781,
+   "price_discovery": 0.6756536585365853,
+   "hit_validation": 0.5797101449275363,
+   "price_validation": 0.6710144927536232,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 0.6–0.7",
+   "side": "NO",
+   "n_discovery": 205,
+   "n_validation": 69,
+   "net_first": 0.15855414147349628,
+   "net_second": -0.08083166070046874,
+   "net_discovery": -0.05630921267289183,
+   "gross_discovery": -0.024599700477769874,
+   "net_validation": 0.04628630352330241,
+   "gross_validation": 0.07647470932040384,
+   "net_validation_ci90": [
+    -0.1734466534546858,
+    0.31211507201986427
+   ],
+   "hit_discovery": 0.35121951219512193,
+   "price_discovery": 0.36580975609756095,
+   "hit_validation": 0.42028985507246375,
+   "price_validation": 0.396231884057971,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 ≥0.7",
+   "side": "YES",
+   "n_discovery": 146,
+   "n_validation": 76,
+   "net_first": -0.04386841664903815,
+   "net_second": 0.019548147384593543,
+   "net_discovery": 0.014770187080689785,
+   "gross_discovery": 0.019901008998498008,
+   "net_validation": -0.02524814657170233,
+   "gross_validation": -0.019584330782228647,
+   "net_validation_ci90": [
+    -0.10857015137588169,
+    0.06366665960630108
+   ],
+   "hit_discovery": 0.910958904109589,
+   "price_discovery": 0.8973835616438356,
+   "hit_validation": 0.868421052631579,
+   "price_validation": 0.8867236842105263,
+   "selected": false
+  },
+  {
+   "arm": "M1 众数桶 份额 ≥0.7",
+   "side": "NO",
+   "n_discovery": 223,
+   "n_validation": 111,
+   "net_first": -0.8878790064102564,
+   "net_second": -0.7535310852011657,
+   "net_discovery": -0.767990054299902,
+   "gross_discovery": -0.7226763771698571,
+   "net_validation": -0.6004326285012213,
+   "gross_validation": -0.5560019978705906,
+   "net_validation_ci90": [
+    -0.8692282366591499,
+    -0.2673480594874992
+   ],
+   "hit_discovery": 0.05829596412556054,
+   "price_discovery": 0.09372645739910315,
+   "hit_validation": 0.09009009009009009,
+   "price_validation": 0.11138738738738739,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶同桶",
+   "side": "YES",
+   "n_discovery": 2052,
+   "n_validation": 921,
+   "net_first": -0.10980093416197553,
+   "net_second": -0.057329420500081336,
+   "net_discovery": -0.06748107299704624,
+   "gross_discovery": -0.043324323484375676,
+   "net_validation": 0.014731573032192212,
+   "gross_validation": 0.03859742536661133,
+   "net_validation_ci90": [
+    -0.07290965012918676,
+    0.0934364757886416
+   ],
+   "hit_discovery": 0.49707602339181284,
+   "price_discovery": 0.5168650097465887,
+   "hit_validation": 0.5385450597176982,
+   "price_validation": 0.5226829533116178,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶同桶",
+   "side": "NO",
+   "n_discovery": 2129,
+   "n_validation": 956,
+   "net_first": -0.035670411031563355,
+   "net_second": -0.14176603971022547,
+   "net_discovery": -0.12133428406990068,
+   "gross_discovery": -0.09635499802011205,
+   "net_validation": -0.19010141565346958,
+   "gross_validation": -0.16515706418903445,
+   "net_validation_ci90": [
+    -0.26355962717526815,
+    -0.10539521605982961
+   ],
+   "hit_discovery": 0.48473461719116956,
+   "price_discovery": 0.5004142790042273,
+   "hit_validation": 0.4445606694560669,
+   "price_validation": 0.5011129707112971,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶在冷侧",
+   "side": "YES",
+   "n_discovery": 183,
+   "n_validation": 87,
+   "net_first": -0.04585105707059394,
+   "net_second": -0.019306687151024206,
+   "net_discovery": -0.023368120799920122,
+   "gross_discovery": 0.006019310894068944,
+   "net_validation": -0.06316120884106023,
+   "gross_validation": -0.03497730079508323,
+   "net_validation_ci90": [
+    -0.1678240052489862,
+    0.07132929634902362
+   ],
+   "hit_discovery": 0.41530054644808745,
+   "price_discovery": 0.41225136612021857,
+   "hit_validation": 0.40229885057471265,
+   "price_validation": 0.4363218390804598,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶在冷侧",
+   "side": "NO",
+   "n_discovery": 183,
+   "n_validation": 87,
+   "net_first": -0.08763764934462524,
+   "net_second": -0.11294666812208187,
+   "net_discovery": -0.10907424994848196,
+   "gross_discovery": -0.09108490568618687,
+   "net_validation": -0.0541088831801265,
+   "gross_validation": -0.03528704409966672,
+   "net_validation_ci90": [
+    -0.15752338260757082,
+    0.03362133872536482
+   ],
+   "hit_discovery": 0.5846994535519126,
+   "price_discovery": 0.6402131147540984,
+   "hit_validation": 0.5977011494252874,
+   "price_validation": 0.6235632183908046,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶在暖侧",
+   "side": "YES",
+   "n_discovery": 136,
+   "n_validation": 77,
+   "net_first": -0.03786268244047177,
+   "net_second": -0.13370456775594378,
+   "net_discovery": -0.11749601362170954,
+   "gross_discovery": -0.08869895479818013,
+   "net_validation": -0.21719071926908654,
+   "gross_validation": -0.1881173426457099,
+   "net_validation_ci90": [
+    -0.401355006602422,
+    -0.024075705298984548
+   ],
+   "hit_discovery": 0.39705882352941174,
+   "price_discovery": 0.42405882352941177,
+   "hit_validation": 0.33766233766233766,
+   "price_validation": 0.41853246753246753,
+   "selected": false
+  },
+  {
+   "arm": "M2 众数桶｜均值桶在暖侧",
+   "side": "NO",
+   "n_discovery": 136,
+   "n_validation": 77,
+   "net_first": -0.19631184189959658,
+   "net_second": -0.08334373379622688,
+   "net_discovery": -0.10244863443135557,
+   "gross_discovery": -0.08470561972547322,
+   "net_validation": 0.04939277899873155,
+   "gross_validation": 0.06719148029743284,
+   "net_validation_ci90": [
+    -0.1065314947567554,
+    0.2197303537619209
+   ],
+   "hit_discovery": 0.6029411764705882,
+   "price_discovery": 0.6451397058823529,
+   "hit_validation": 0.6623376623376623,
+   "price_validation": 0.6440259740259741,
+   "selected": false
+  },
+  {
+   "arm": "M3 均值桶（≠众数桶）",
+   "side": "YES",
+   "n_discovery": 319,
+   "n_validation": 164,
+   "net_first": -0.5298645829900819,
+   "net_second": -0.162009402973854,
+   "net_discovery": -0.2208201057350691,
+   "gross_discovery": -0.1881918925689249,
+   "net_validation": 0.10658531711501029,
+   "gross_validation": 0.1386981219930591,
+   "net_validation_ci90": [
+    -0.030204913352825564,
+    0.28105024353601166
+   ],
+   "hit_discovery": 0.28213166144200624,
+   "price_discovery": 0.34743573667711597,
+   "hit_validation": 0.39634146341463417,
+   "price_validation": 0.3577439024390244,
+   "selected": false
+  },
+  {
+   "arm": "M3 均值桶（≠众数桶）",
+   "side": "NO",
+   "n_discovery": 319,
+   "n_validation": 164,
+   "net_first": 0.16614558345928623,
+   "net_second": -0.0358090507216619,
+   "net_discovery": -0.003521632717811258,
+   "gross_discovery": 0.010839966028270247,
+   "net_validation": -0.17517721505680758,
+   "gross_validation": -0.1608692882275393,
+   "net_validation_ci90": [
+    -0.22124117081353814,
+    -0.1328190533225402
+   ],
+   "hit_discovery": 0.7178683385579937,
+   "price_discovery": 0.7127680250783699,
+   "hit_validation": 0.6036585365853658,
+   "price_validation": 0.7138414634146342,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| <0.15档",
+   "side": "YES",
+   "n_discovery": 713,
+   "n_validation": 336,
+   "net_first": -0.009741220454004645,
+   "net_second": -0.06533344184462274,
+   "net_discovery": -0.05504147378913664,
+   "gross_discovery": -0.033138107730230605,
+   "net_validation": -0.011402930910569084,
+   "gross_validation": 0.010625194089430924,
+   "net_validation_ci90": [
+    -0.10852979519058441,
+    0.07717549213864004
+   ],
+   "hit_discovery": 0.541374474053296,
+   "price_discovery": 0.5619326788218794,
+   "hit_validation": 0.5654761904761905,
+   "price_validation": 0.5594375,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| <0.15档",
+   "side": "NO",
+   "n_discovery": 790,
+   "n_validation": 371,
+   "net_first": -0.20273312150554348,
+   "net_second": -0.22949092871828003,
+   "net_discovery": -0.22457968562227143,
+   "gross_discovery": -0.19580759701467648,
+   "net_validation": -0.2634601924597348,
+   "gross_validation": -0.2351857989287375,
+   "net_validation_ci90": [
+    -0.3722421569256492,
+    -0.1368194551236701
+   ],
+   "hit_discovery": 0.4139240506329114,
+   "price_discovery": 0.42455822784810127,
+   "hit_validation": 0.3935309973045822,
+   "price_validation": 0.4345121293800539,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| 0.15–0.35档",
+   "side": "YES",
+   "n_discovery": 829,
+   "n_validation": 357,
+   "net_first": -0.21775577130004276,
+   "net_second": -0.05625269284349702,
+   "net_discovery": -0.08820263840064238,
+   "gross_discovery": -0.06354461668773526,
+   "net_validation": 0.10934721502625534,
+   "gross_validation": 0.13396066040440663,
+   "net_validation_ci90": [
+    0.012629076678020578,
+    0.20483032249886585
+   ],
+   "hit_discovery": 0.48009650180940894,
+   "price_discovery": 0.5068395657418576,
+   "hit_validation": 0.5686274509803921,
+   "price_validation": 0.5077310924369748,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| 0.15–0.35档",
+   "side": "NO",
+   "n_discovery": 829,
+   "n_validation": 357,
+   "net_first": 0.09775652973725775,
+   "net_second": -0.08127188367180742,
+   "net_discovery": -0.04585492372116003,
+   "gross_discovery": -0.022401365216938078,
+   "net_validation": -0.2352938022502643,
+   "gross_validation": -0.21212153334270129,
+   "net_validation_ci90": [
+    -0.32329418597744447,
+    -0.1372784086946604
+   ],
+   "hit_discovery": 0.5199034981905911,
+   "price_discovery": 0.5309288299155609,
+   "hit_validation": 0.43137254901960786,
+   "price_validation": 0.5365546218487395,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| ≥0.35档",
+   "side": "YES",
+   "n_discovery": 829,
+   "n_validation": 392,
+   "net_first": -0.05755167475839566,
+   "net_second": -0.05556066933502759,
+   "net_discovery": -0.0559257270242338,
+   "gross_discovery": -0.028416257784185547,
+   "net_validation": -0.1118788335935327,
+   "gross_validation": -0.08513737951190006,
+   "net_validation_ci90": [
+    -0.22423968253084425,
+    -0.00691710527931211
+   ],
+   "hit_discovery": 0.44149577804583834,
+   "price_discovery": 0.449810615199035,
+   "hit_validation": 0.41836734693877553,
+   "price_validation": 0.4651709183673469,
+   "selected": false
+  },
+  {
+   "arm": "M4 众数桶 |b| ≥0.35档",
+   "side": "NO",
+   "n_discovery": 829,
+   "n_validation": 392,
+   "net_first": -0.05414252188741886,
+   "net_second": -0.10125989080462536,
+   "net_discovery": -0.09262075922993852,
+   "gross_discovery": -0.0724602646581653,
+   "net_validation": -0.002289702583111293,
+   "gross_validation": 0.018354430069949936,
+   "net_validation_ci90": [
+    -0.09499932026234127,
+    0.09377321334504941
+   ],
+   "hit_discovery": 0.5585042219541616,
+   "price_discovery": 0.5967901085645356,
+   "hit_validation": 0.5816326530612245,
+   "price_validation": 0.5871173469387755,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 <0.1",
+   "side": "YES",
+   "n_discovery": 928,
+   "n_validation": 444,
+   "net_first": 0.014489903361724177,
+   "net_second": -0.10439529302699516,
+   "net_discovery": -0.07723617488646876,
+   "gross_discovery": -0.04691327617957221,
+   "net_validation": -0.054570672017298795,
+   "gross_validation": -0.024690829674956456,
+   "net_validation_ci90": [
+    -0.16560153471735017,
+    0.044268002484721625
+   ],
+   "hit_discovery": 0.3760775862068966,
+   "price_discovery": 0.393542025862069,
+   "hit_validation": 0.38963963963963966,
+   "price_validation": 0.40240315315315317,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 <0.1",
+   "side": "NO",
+   "n_discovery": 928,
+   "n_validation": 444,
+   "net_first": -0.10494640681295594,
+   "net_second": -0.04593602305903955,
+   "net_discovery": -0.059416843485580795,
+   "gross_discovery": -0.041999063313166995,
+   "net_validation": -0.06635874421629899,
+   "gross_validation": -0.04840604151359628,
+   "net_validation_ci90": [
+    -0.11913962316976874,
+    -0.00611746960040006
+   ],
+   "hit_discovery": 0.6239224137931034,
+   "price_discovery": 0.6516443965517241,
+   "hit_validation": 0.6103603603603603,
+   "price_validation": 0.6409459459459459,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 0.1–0.25",
+   "side": "YES",
+   "n_discovery": 814,
+   "n_validation": 378,
+   "net_first": -0.2811743320830121,
+   "net_second": -0.031544084639156526,
+   "net_discovery": -0.08030478407843544,
+   "gross_discovery": -0.0547382607369121,
+   "net_validation": 0.05183805430588059,
+   "gross_validation": 0.07671107017889647,
+   "net_validation_ci90": [
+    -0.04002891879987985,
+    0.1382513024225596
+   ],
+   "hit_discovery": 0.4656019656019656,
+   "price_discovery": 0.48866953316953315,
+   "hit_validation": 0.5343915343915344,
+   "price_validation": 0.5025396825396825,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 0.1–0.25",
+   "side": "NO",
+   "n_discovery": 814,
+   "n_validation": 378,
+   "net_first": 0.14687832140274729,
+   "net_second": -0.0974981037937171,
+   "net_discovery": -0.04976364236099248,
+   "gross_discovery": -0.027026664474014597,
+   "net_validation": -0.16222670641099762,
+   "gross_validation": -0.13937750006179125,
+   "net_validation_ci90": [
+    -0.23997165735369191,
+    -0.07934545384382889
+   ],
+   "hit_discovery": 0.5343980343980343,
+   "price_discovery": 0.5452604422604422,
+   "hit_validation": 0.4656084656084656,
+   "price_validation": 0.5430158730158731,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 ≥0.25",
+   "side": "YES",
+   "n_discovery": 629,
+   "n_validation": 263,
+   "net_first": -0.05338679049218654,
+   "net_second": -0.03183503323639302,
+   "net_discovery": -0.034473324665162654,
+   "gross_discovery": -0.018713149784399537,
+   "net_validation": -0.015271246928460365,
+   "gross_validation": -5.280586382157335e-05,
+   "net_validation_ci90": [
+    -0.10858552268489507,
+    0.07223762232219216
+   ],
+   "hit_discovery": 0.670906200317965,
+   "price_discovery": 0.6847965023847377,
+   "hit_validation": 0.6920152091254753,
+   "price_validation": 0.6956311787072244,
+   "selected": false
+  },
+  {
+   "arm": "M5 众数桶 领先第二名 ≥0.25",
+   "side": "NO",
+   "n_discovery": 706,
+   "n_validation": 298,
+   "net_first": -0.25221011029968177,
+   "net_second": -0.28225478448801444,
+   "net_discovery": -0.27842472687193803,
+   "gross_discovery": -0.24412670987477092,
+   "net_validation": -0.308242297862724,
+   "gross_validation": -0.2738570629633951,
+   "net_validation_ci90": [
+    -0.47247395368092393,
+    -0.13206761897517877
+   ],
+   "hit_discovery": 0.29320113314447593,
+   "price_discovery": 0.31403966005665723,
+   "hit_validation": 0.27181208053691275,
+   "price_validation": 0.3122953020134228,
+   "selected": false
+  },
+  {
+   "arm": "M5 第二名（领先 <0.10）",
+   "side": "YES",
+   "n_discovery": 928,
+   "n_validation": 444,
+   "net_first": -0.22487693232078132,
+   "net_second": -0.12666375948077838,
+   "net_discovery": -0.14910038948302043,
+   "gross_discovery": -0.11639225370715837,
+   "net_validation": -0.017279417488777832,
+   "gross_validation": 0.014937699628339277,
+   "net_validation_ci90": [
+    -0.12782758423382196,
+    0.08779220996591423
+   ],
+   "hit_discovery": 0.30711206896551724,
+   "price_discovery": 0.34583728448275863,
+   "hit_validation": 0.3581081081081081,
+   "price_validation": 0.35565765765765767,
+   "selected": false
+  },
+  {
+   "arm": "M5 第二名（领先 <0.10）",
+   "side": "NO",
+   "n_discovery": 928,
+   "n_validation": 444,
+   "net_first": 0.016659953838927835,
+   "net_second": -0.0427222111884943,
+   "net_discovery": -0.029156457971022863,
+   "gross_discovery": -0.01430365624688493,
+   "net_validation": -0.08733871992071619,
+   "gross_validation": -0.07203275145224772,
+   "net_validation_ci90": [
+    -0.1471914603623887,
+    -0.02612272988910924
+   ],
+   "hit_discovery": 0.6928879310344828,
+   "price_discovery": 0.7029439655172414,
+   "hit_validation": 0.6418918918918919,
+   "price_validation": 0.6938806306306307,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ <0.9°C",
+   "side": "YES",
+   "n_discovery": 766,
+   "n_validation": 397,
+   "net_first": -0.1196923445152194,
+   "net_second": -0.005589201134551121,
+   "net_discovery": -0.019740374269229304,
+   "gross_discovery": -0.0020606745303259053,
+   "net_validation": -0.013337050752907961,
+   "gross_validation": 0.005120002143817483,
+   "net_validation_ci90": [
+    -0.07664374781794162,
+    0.05844222023541365
+   ],
+   "hit_discovery": 0.6449086161879896,
+   "price_discovery": 0.6464060052219321,
+   "hit_validation": 0.6322418136020151,
+   "price_validation": 0.6308589420654912,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ <0.9°C",
+   "side": "NO",
+   "n_discovery": 843,
+   "n_validation": 432,
+   "net_first": -0.16618907197995214,
+   "net_second": -0.30344812089299583,
+   "net_discovery": -0.2858633317084066,
+   "gross_discovery": -0.25403782755656795,
+   "net_validation": -0.281373890116905,
+   "gross_validation": -0.2508569919687568,
+   "net_validation_ci90": [
+    -0.4075389051578102,
+    -0.15890568059894988
+   ],
+   "hit_discovery": 0.32265717674970346,
+   "price_discovery": 0.3634899169632266,
+   "hit_validation": 0.33796296296296297,
+   "price_validation": 0.38966203703703706,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ 0.9–1.3°C",
+   "side": "YES",
+   "n_discovery": 1012,
+   "n_validation": 448,
+   "net_first": -0.12883516127945116,
+   "net_second": -0.05333276206566067,
+   "net_discovery": -0.07123846938908925,
+   "gross_discovery": -0.04497414132584813,
+   "net_validation": -0.042208255865988815,
+   "gross_validation": -0.015771871937417376,
+   "net_validation_ci90": [
+    -0.12536883329956205,
+    0.03250203848317563
+   ],
+   "hit_discovery": 0.4515810276679842,
+   "price_discovery": 0.47471343873517785,
+   "hit_validation": 0.46651785714285715,
+   "price_validation": 0.47127232142857145,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ 0.9–1.3°C",
+   "side": "NO",
+   "n_discovery": 1012,
+   "n_validation": 448,
+   "net_first": 0.017692400785537535,
+   "net_second": -0.044015304334602996,
+   "net_discovery": -0.029381065966190223,
+   "gross_discovery": -0.007092231974095361,
+   "net_validation": -0.06776586043220152,
+   "gross_validation": -0.045839521146487226,
+   "net_validation_ci90": [
+    -0.13795181433757933,
+    0.012186787029881338
+   ],
+   "hit_discovery": 0.5484189723320159,
+   "price_discovery": 0.5542233201581028,
+   "hit_validation": 0.5334821428571429,
+   "price_validation": 0.5614732142857143,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ ≥1.3°C",
+   "side": "YES",
+   "n_discovery": 593,
+   "n_validation": 240,
+   "net_first": -0.030570183366350836,
+   "net_second": -0.14178770274268995,
+   "net_discovery": -0.12059448235563038,
+   "gross_discovery": -0.08898942333370796,
+   "net_validation": 0.06480489994426906,
+   "gross_validation": 0.09605552494426906,
+   "net_validation_ci90": [
+    -0.12775039691626838,
+    0.25950012017640434
+   ],
+   "hit_discovery": 0.33558178752107926,
+   "price_discovery": 0.36789881956155146,
+   "hit_validation": 0.4041666666666667,
+   "price_validation": 0.37498750000000003,
+   "selected": false
+  },
+  {
+   "arm": "M6 众数桶 市场σ ≥1.3°C",
+   "side": "NO",
+   "n_discovery": 593,
+   "n_validation": 240,
+   "net_first": -0.06983762374314495,
+   "net_second": -0.028346279035642605,
+   "net_discovery": -0.03625272414853934,
+   "gross_discovery": -0.020231138988336977,
+   "net_validation": -0.12803565089315153,
+   "gross_validation": -0.11200023422648486,
+   "net_validation_ci90": [
+    -0.2135429628649689,
+    -0.03428757946445458
+   ],
+   "hit_discovery": 0.6644182124789207,
+   "price_discovery": 0.6795682967959528,
+   "hit_validation": 0.5958333333333333,
+   "price_validation": 0.6792916666666666,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P0",
+   "side": "YES",
+   "n_discovery": 816,
+   "n_validation": 98,
+   "net_first": -0.10818401058377601,
+   "net_second": -0.03037721039582505,
+   "net_discovery": -0.06098503252858517,
+   "gross_discovery": -0.032963954097212624,
+   "net_validation": 0.13509205326331336,
+   "gross_validation": 0.16318899203882356,
+   "net_validation_ci90": [
+    -0.08325700033386081,
+    0.3250344977132615
+   ],
+   "hit_discovery": 0.42892156862745096,
+   "price_discovery": 0.43957843137254904,
+   "hit_validation": 0.5,
+   "price_validation": 0.4380612244897959,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P0",
+   "side": "NO",
+   "n_discovery": 816,
+   "n_validation": 98,
+   "net_first": -0.011661868394128805,
+   "net_second": -0.11008118329207625,
+   "net_discovery": -0.0713647616226631,
+   "gross_discovery": -0.05126764152462388,
+   "net_validation": -0.2359932831134249,
+   "gross_validation": -0.21852389535832287,
+   "net_validation_ci90": [
+    -0.30887161988288514,
+    -0.1399912246659745
+   ],
+   "hit_discovery": 0.571078431372549,
+   "price_discovery": 0.5980575980392157,
+   "hit_validation": 0.5,
+   "price_validation": 0.6506122448979592,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P0-M",
+   "side": "YES",
+   "n_discovery": 575,
+   "n_validation": 500,
+   "net_first": null,
+   "net_second": -0.04650600162627759,
+   "net_discovery": -0.04650600162627759,
+   "gross_discovery": -0.019571219017581933,
+   "net_validation": 0.020474837008902163,
+   "gross_validation": 0.04822283700890217,
+   "net_validation_ci90": [
+    -0.1063459066883603,
+    0.1329779298352578
+   ],
+   "hit_discovery": 0.45565217391304347,
+   "price_discovery": 0.461304347826087,
+   "hit_validation": 0.464,
+   "price_validation": 0.44504,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P0-M",
+   "side": "NO",
+   "n_discovery": 575,
+   "n_validation": 500,
+   "net_first": null,
+   "net_second": -0.050191961011933656,
+   "net_discovery": -0.050191961011933656,
+   "gross_discovery": -0.02817543927280322,
+   "net_validation": -0.08471491183397253,
+   "gross_validation": -0.06357991183397253,
+   "net_validation_ci90": [
+    -0.16838322936223263,
+    0.0074409625255708635
+   ],
+   "hit_discovery": 0.5443478260869565,
+   "price_discovery": 0.5596695652173913,
+   "hit_validation": 0.536,
+   "price_validation": 0.5773,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P1",
+   "side": "YES",
+   "n_discovery": 980,
+   "n_validation": 487,
+   "net_first": -0.0867604311733832,
+   "net_second": -0.08347441208841969,
+   "net_discovery": -0.08390025333718537,
+   "gross_discovery": -0.06297040639840985,
+   "net_validation": -0.06596996204209171,
+   "gross_validation": -0.045346553417861736,
+   "net_validation_ci90": [
+    -0.12994872575806854,
+    -0.00023960426849607453
+   ],
+   "hit_discovery": 0.5489795918367347,
+   "price_discovery": 0.5814030612244898,
+   "hit_validation": 0.5667351129363449,
+   "price_validation": 0.5875318275154005,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 阶段 P1",
+   "side": "NO",
+   "n_discovery": 1057,
+   "n_validation": 522,
+   "net_first": -0.12750310938404183,
+   "net_second": -0.20422010297528279,
+   "net_discovery": -0.19405891177114493,
+   "gross_discovery": -0.16584013220633886,
+   "net_validation": -0.22443751830724845,
+   "gross_validation": -0.19651548765590746,
+   "net_validation_ci90": [
+    -0.3399748558033149,
+    -0.11290673547095229
+   ],
+   "hit_discovery": 0.4181646168401135,
+   "price_discovery": 0.4356244087038789,
+   "hit_validation": 0.4042145593869732,
+   "price_validation": 0.4415593869731801,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 <12h",
+   "side": "YES",
+   "n_discovery": 190,
+   "n_validation": 64,
+   "net_first": -0.08715089432164934,
+   "net_second": -0.12100817163594464,
+   "net_discovery": -0.11548408954782279,
+   "gross_discovery": -0.10333540533729646,
+   "net_validation": -0.05151907035901197,
+   "gross_validation": -0.03870891410901197,
+   "net_validation_ci90": [
+    -0.21623577254623805,
+    0.07970711122840003
+   ],
+   "hit_discovery": 0.6947368421052632,
+   "price_discovery": 0.7570263157894737,
+   "hit_validation": 0.734375,
+   "price_validation": 0.743796875,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 <12h",
+   "side": "NO",
+   "n_discovery": 266,
+   "n_validation": 98,
+   "net_first": -0.5347268752899066,
+   "net_second": -0.5215281250794999,
+   "net_discovery": -0.5236617576323099,
+   "gross_discovery": -0.4847322463541145,
+   "net_validation": -0.6934565436798766,
+   "gross_validation": -0.6540458293941623,
+   "net_validation_ci90": [
+    -0.8708692441885757,
+    -0.44481973379989226
+   ],
+   "hit_discovery": 0.21804511278195488,
+   "price_discovery": 0.22140977443609022,
+   "hit_validation": 0.17346938775510204,
+   "price_validation": 0.2117857142857143,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 12–24h",
+   "side": "YES",
+   "n_discovery": 831,
+   "n_validation": 423,
+   "net_first": -0.06500615045613543,
+   "net_second": -0.07487517899323747,
+   "net_discovery": -0.07324815503465386,
+   "gross_discovery": -0.050130585840911374,
+   "net_validation": -0.06815638537002813,
+   "gross_validation": -0.04635082981447257,
+   "net_validation_ci90": [
+    -0.15222642231204916,
+    0.014348617551124663
+   ],
+   "hit_discovery": 0.5138387484957883,
+   "price_discovery": 0.5376486161251505,
+   "hit_validation": 0.541371158392435,
+   "price_validation": 0.5638888888888889,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 12–24h",
+   "side": "NO",
+   "n_discovery": 832,
+   "n_validation": 424,
+   "net_first": -0.00530981302147279,
+   "net_second": -0.10226089702536867,
+   "net_discovery": -0.08618006818818401,
+   "gross_discovery": -0.06161546482279939,
+   "net_validation": -0.11603217753715987,
+   "gross_validation": -0.0907655501786693,
+   "net_validation_ci90": [
+    -0.21680336135695266,
+    -0.017112239909537003
+   ],
+   "hit_discovery": 0.4855769230769231,
+   "price_discovery": 0.5087079326923077,
+   "hit_validation": 0.45754716981132076,
+   "price_validation": 0.4946674528301887,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 24–36h",
+   "side": "YES",
+   "n_discovery": 240,
+   "n_validation": 48,
+   "net_first": -0.0015326821711505144,
+   "net_second": 0.09836107156356555,
+   "net_discovery": 0.08212833658167419,
+   "gross_discovery": 0.1085470865816742,
+   "net_validation": 0.08938164316046013,
+   "gross_validation": 0.1176733098271268,
+   "net_validation_ci90": [
+    -0.23733694808996111,
+    0.3157561619694273
+   ],
+   "hit_discovery": 0.525,
+   "price_discovery": 0.471625,
+   "hit_validation": 0.4791666666666667,
+   "price_validation": 0.43416666666666665,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 24–36h",
+   "side": "NO",
+   "n_discovery": 240,
+   "n_validation": 48,
+   "net_first": 0.0041991182719951885,
+   "net_second": -0.204254161892526,
+   "net_discovery": -0.1703805038657913,
+   "gross_discovery": -0.14798883719912462,
+   "net_validation": -0.14747532734034502,
+   "gross_validation": -0.1269544940070117,
+   "net_validation_ci90": [
+    -0.2511333202000695,
+    0.07441422911154728
+   ],
+   "hit_discovery": 0.475,
+   "price_discovery": 0.5521666666666667,
+   "hit_validation": 0.5208333333333334,
+   "price_validation": 0.5895833333333333,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 36–48h",
+   "side": "YES",
+   "n_discovery": 916,
+   "n_validation": 448,
+   "net_first": -0.14140393035383905,
+   "net_second": -0.07270035535920584,
+   "net_discovery": -0.09077629594185498,
+   "gross_discovery": -0.06292858851827418,
+   "net_validation": 0.012908197232191344,
+   "gross_validation": 0.040603509732191345,
+   "net_validation_ci90": [
+    -0.1100523619562822,
+    0.12400062074038015
+   ],
+   "hit_discovery": 0.4181222707423581,
+   "price_discovery": 0.44304585152838427,
+   "hit_validation": 0.46205357142857145,
+   "price_validation": 0.44609375,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 36–48h",
+   "side": "NO",
+   "n_discovery": 916,
+   "n_validation": 448,
+   "net_first": 0.008167423873610831,
+   "net_second": -0.029561414354229605,
+   "net_discovery": -0.019634940541009577,
+   "gross_discovery": 0.0012880943934882375,
+   "net_validation": -0.07719742143381887,
+   "gross_validation": -0.05599764464810458,
+   "net_validation_ci90": [
+    -0.16561491742869874,
+    0.02064720115109
+   ],
+   "hit_discovery": 0.5818777292576419,
+   "price_discovery": 0.5815393013100437,
+   "hit_validation": 0.5379464285714286,
+   "price_validation": 0.5760044642857143,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 ≥48h",
+   "side": "YES",
+   "n_discovery": 194,
+   "n_validation": 102,
+   "net_first": null,
+   "net_second": -0.06430672988585437,
+   "net_discovery": -0.06430672988585437,
+   "gross_discovery": -0.03597683297863788,
+   "net_validation": 0.13140439698560769,
+   "gross_validation": 0.15946322051501943,
+   "net_validation_ci90": [
+    -0.08549886235028084,
+    0.31268567219253157
+   ],
+   "hit_discovery": 0.422680412371134,
+   "price_discovery": 0.4334020618556701,
+   "hit_validation": 0.5,
+   "price_validation": 0.4388235294117647,
+   "selected": false
+  },
+  {
+   "arm": "M7 众数桶 距结算 ≥48h",
+   "side": "NO",
+   "n_discovery": 194,
+   "n_validation": 102,
+   "net_first": null,
+   "net_second": -0.11516248495843757,
+   "net_discovery": -0.11516248495843757,
+   "gross_discovery": -0.09684547464915921,
+   "net_validation": -0.23354448183739698,
+   "gross_validation": -0.21592683477857347,
+   "net_validation_ci90": [
+    -0.30934188266625845,
+    -0.13947276390600497
+   ],
+   "hit_discovery": 0.5773195876288659,
+   "price_discovery": 0.6336597938144329,
+   "hit_validation": 0.5,
+   "price_validation": 0.6476470588235295,
+   "selected": false
+  },
+  {
+   "arm": "M8 众数桶 °C 站",
+   "side": "YES",
+   "n_discovery": 1837,
+   "n_validation": 840,
+   "net_first": -0.1711873030355684,
+   "net_second": -0.042270506770274316,
+   "net_discovery": -0.0671134822073533,
+   "gross_discovery": -0.04217006903370061,
+   "net_validation": -0.002214313431745261,
+   "gross_validation": 0.02202086513968331,
+   "net_validation_ci90": [
+    -0.08833789241411294,
+    0.07210668303239888
+   ],
+   "hit_discovery": 0.48285247686445293,
+   "price_discovery": 0.5011317365269461,
+   "hit_validation": 0.525,
+   "price_validation": 0.5152964285714285,
+   "selected": false
+  },
+  {
+   "arm": "M8 众数桶 °C 站",
+   "side": "NO",
+   "n_discovery": 1908,
+   "n_validation": 854,
+   "net_first": 0.002176186267843253,
+   "net_second": -0.1611070956518919,
+   "net_discovery": -0.12969988157194284,
+   "gross_discovery": -0.10563955662435374,
+   "net_validation": -0.1733899845160947,
+   "gross_validation": -0.14957405945754668,
+   "net_validation_ci90": [
+    -0.23960518082858345,
+    -0.09758801573429532
+   ],
+   "hit_discovery": 0.4979035639412998,
+   "price_discovery": 0.5187935010482181,
+   "hit_validation": 0.4672131147540984,
+   "price_validation": 0.5236814988290398,
+   "selected": false
+  },
+  {
+   "arm": "M8 众数桶 °F 站",
+   "side": "YES",
+   "n_discovery": 534,
+   "n_validation": 245,
+   "net_first": 0.1580283310444622,
+   "net_second": -0.11430495920942772,
+   "net_discovery": -0.06636614032578417,
+   "gross_discovery": -0.04194123395874297,
+   "net_validation": -0.027717993908476964,
+   "gross_validation": -0.0019484020717422564,
+   "net_validation_ci90": [
+    -0.13420034315210036,
+    0.08114035018472839
+   ],
+   "hit_discovery": 0.49250936329588013,
+   "price_discovery": 0.511501872659176,
+   "hit_validation": 0.47346938775510206,
+   "price_validation": 0.48460816326530615,
+   "selected": false
+  },
+  {
+   "arm": "M8 众数桶 °F 站",
+   "side": "NO",
+   "n_discovery": 540,
+   "n_validation": 266,
+   "net_first": -0.23821867477212422,
+   "net_second": -0.05012189089732845,
+   "net_discovery": -0.08286466438664475,
+   "gross_discovery": -0.05882966438664475,
+   "net_validation": -0.12994787760052906,
+   "gross_validation": -0.10545163699902528,
+   "net_validation_ci90": [
+    -0.2642790465878796,
+    -0.0028894953876928736
+   ],
+   "hit_discovery": 0.5018518518518519,
+   "price_discovery": 0.5193,
+   "hit_validation": 0.4849624060150376,
+   "price_validation": 0.5100751879699248,
+   "selected": false
+  }
+ ],
+ "k": 0
+}
