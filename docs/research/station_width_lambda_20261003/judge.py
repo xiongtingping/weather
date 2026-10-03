@@ -3,6 +3,8 @@
 
     python3 judge.py a     # data A (long replay, rows_a/)
     python3 judge.py b     # data B (current chain, rows_b/)
+    python3 judge.py cf    # robustness: conditional_width_lambda_20261003 replay, charter 224 floored scores
+    python3 judge.py cu    # same replay, unfloored
 
 Rows carry, per decision, (LogScore, Brier, CRPS) at every lambda of the grid.
 Every arm picks one lambda per (station, scoring day) from rows strictly
@@ -29,6 +31,10 @@ DATA = sys.argv[1] if len(sys.argv) > 1 else "a"
 CONF = {
     "a": {"rows": "rows_a", "prefix_from": "2026-02-15", "score_from": "2026-04-01", "score_to": "2026-09-30",
           "halves": (("04-06", "2026-04-01", "2026-06-30"), ("07-09", "2026-07-01", "2026-09-30"))},
+    "cf": {"rows": "rows_cf", "prefix_from": "2026-07-30", "score_from": "2026-09-01", "score_to": "2026-10-01",
+           "halves": (("09-01..09-15", "2026-09-01", "2026-09-15"), ("09-16..10-01", "2026-09-16", "2026-10-01"))},
+    "cu": {"rows": "rows_cu", "prefix_from": "2026-07-30", "score_from": "2026-09-01", "score_to": "2026-10-01",
+           "halves": (("09-01..09-15", "2026-09-01", "2026-09-15"), ("09-16..10-01", "2026-09-16", "2026-10-01"))},
     "b": {"rows": "rows_b", "prefix_from": "2026-07-30", "score_from": "2026-09-01", "score_to": "2026-10-01",
           "halves": (("09-01..09-15", "2026-09-01", "2026-09-15"), ("09-16..10-01", "2026-09-16", "2026-10-01"))},
 }[DATA]
