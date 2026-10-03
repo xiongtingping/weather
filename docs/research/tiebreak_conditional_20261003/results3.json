@@ -1,0 +1,526 @@
+{
+ "schema": "tiebreak_conditional_results3_v1",
+ "rows": 701,
+ "ask_differs_from_replay": 0,
+ "discovery_split": "2026-09-02",
+ "arms": [
+  {
+   "n_first": 93,
+   "n_second": 265,
+   "roi_first": -0.058465539310083255,
+   "roi_second": 0.08972081698146765,
+   "n_discovery": 358,
+   "roi_discovery": 0.05122547861522678,
+   "hit_discovery": 0.547486033519553,
+   "ask_discovery": 0.519217877094972,
+   "n_validation": 208,
+   "roi_validation": 0.004552529707675238,
+   "hit_validation": 0.5240384615384616,
+   "ask_validation": 0.5167307692307692,
+   "ci90_validation": [
+    -0.12237529701123924,
+    0.1216612200524576
+   ],
+   "roi_validation_control": 0.04901105164779556,
+   "selected": false,
+   "arm": "C1 四心同桶"
+  },
+  {
+   "n_first": 45,
+   "n_second": 58,
+   "roi_first": 0.035011408324345135,
+   "roi_second": 0.05861398259511473,
+   "n_discovery": 103,
+   "roi_discovery": 0.04830217830206005,
+   "hit_discovery": 0.5048543689320388,
+   "ask_discovery": 0.48563106796116506,
+   "n_validation": 32,
+   "roi_validation": 0.04901105164779556,
+   "hit_validation": 0.5,
+   "ask_validation": 0.4753125,
+   "ci90_validation": [
+    -0.1803312923050673,
+    0.3219401201351854
+   ],
+   "roi_validation_control": 0.004552529707675238,
+   "selected": false,
+   "arm": "C1 四心不同桶"
+  },
+  {
+   "n_first": 107,
+   "n_second": 290,
+   "roi_first": -0.017952118167300114,
+   "roi_second": 0.10972012545177352,
+   "n_discovery": 397,
+   "roi_discovery": 0.07530972225973101,
+   "hit_discovery": 0.5516372795969773,
+   "ask_discovery": 0.5127959697732998,
+   "n_validation": 227,
+   "roi_validation": -0.0027241276399455946,
+   "hit_validation": 0.5154185022026432,
+   "ask_validation": 0.5120704845814978,
+   "ci90_validation": [
+    -0.11989234838075741,
+    0.10017962758483791
+   ],
+   "roi_validation_control": 0.24105052355335058,
+   "selected": false,
+   "arm": "C2 模型均值桶 同桶"
+  },
+  {
+   "n_first": 18,
+   "n_second": 24,
+   "roi_first": -0.013189758020995708,
+   "roi_second": 0.08683599320266619,
+   "n_discovery": 42,
+   "roi_discovery": 0.04396781410681109,
+   "hit_discovery": 0.5238095238095238,
+   "ask_discovery": 0.5016666666666667,
+   "n_validation": 9,
+   "roi_validation": 0.35622755853697297,
+   "hit_validation": 0.6666666666666666,
+   "ask_validation": 0.5022222222222222,
+   "ci90_validation": [
+    -0.13699737371234957,
+    0.8506610823683995
+   ],
+   "roi_validation_control": -0.0029903385060902556,
+   "selected": false,
+   "arm": "C2 模型均值桶 在冷侧"
+  },
+  {
+   "n_first": 13,
+   "n_second": 9,
+   "roi_first": -0.13103765330485975,
+   "roi_second": -0.7474747474747474,
+   "n_discovery": 22,
+   "roi_discovery": -0.38321646455617747,
+   "hit_discovery": 0.3181818181818182,
+   "ask_discovery": 0.5113636363636364,
+   "n_validation": 4,
+   "roi_validation": -0.01809780515979978,
+   "hit_validation": 0.5,
+   "ask_validation": 0.4825,
+   "ci90_validation": null,
+   "roi_validation_control": 0.010964707849852148,
+   "selected": false,
+   "arm": "C2 模型均值桶 在暖侧"
+  },
+  {
+   "n_first": 122,
+   "n_second": 292,
+   "roi_first": -0.056934858447512275,
+   "roi_second": 0.06486366944428562,
+   "n_discovery": 414,
+   "roi_discovery": 0.028971349630760635,
+   "hit_discovery": 0.533816425120773,
+   "ask_discovery": 0.5174154589371981,
+   "n_validation": 224,
+   "roi_validation": 0.024045261343506978,
+   "hit_validation": 0.53125,
+   "ask_validation": 0.5144642857142857,
+   "ci90_validation": [
+    -0.08861321664206598,
+    0.12162679803339627
+   ],
+   "roi_validation_control": -0.17942866931372847,
+   "selected": false,
+   "arm": "C3 市场均值桶 同桶"
+  },
+  {
+   "n_first": 10,
+   "n_second": 25,
+   "roi_first": 0.1182985742900908,
+   "roi_second": 0.39687569654465193,
+   "n_discovery": 35,
+   "roi_discovery": 0.3172822330433488,
+   "hit_discovery": 0.6,
+   "ask_discovery": 0.4551428571428571,
+   "n_validation": 10,
+   "roi_validation": 0.11683569772548545,
+   "hit_validation": 0.5,
+   "ask_validation": 0.47300000000000003,
+   "ci90_validation": [
+    -0.2590152735080271,
+    0.4822304609968918
+   ],
+   "roi_validation_control": 0.005856186324656752,
+   "selected": true,
+   "arm": "C3 市场均值桶 在冷侧",
+   "lower_bound_at_0.05_over_k": -0.3326592517694641,
+   "found": false
+  },
+  {
+   "n_first": 6,
+   "n_second": 6,
+   "roi_first": 0.31688086774222957,
+   "roi_second": -0.28107606679035246,
+   "n_discovery": 12,
+   "roi_discovery": 0.01790240047593854,
+   "hit_discovery": 0.5,
+   "ask_discovery": 0.48,
+   "n_validation": 6,
+   "roi_validation": -0.673202614379085,
+   "hit_validation": 0.16666666666666666,
+   "ask_validation": 0.4533333333333333,
+   "ci90_validation": [
+    -1.0,
+    -0.34640522875817
+   ],
+   "roi_validation_control": 0.02801066460769409,
+   "selected": false,
+   "arm": "C3 市场均值桶 在暖侧"
+  },
+  {
+   "n_first": 40,
+   "n_second": 116,
+   "roi_first": -0.18280646447814985,
+   "roi_second": 0.1960094233256054,
+   "n_discovery": 156,
+   "roi_discovery": 0.09887714440156559,
+   "hit_discovery": 0.5512820512820513,
+   "ask_discovery": 0.5000641025641026,
+   "n_validation": 55,
+   "roi_validation": 0.050741003785114765,
+   "hit_validation": 0.5272727272727272,
+   "ask_validation": 0.5029090909090909,
+   "ci90_validation": [
+    -0.227626748724243,
+    0.3087171859357831
+   ],
+   "roi_validation_control": -0.001489056087867051,
+   "selected": false,
+   "arm": "C4 模型均值更暖 (a−b>+0.15)"
+  },
+  {
+   "n_first": 39,
+   "n_second": 108,
+   "roi_first": 0.08281439148651785,
+   "roi_second": -0.048997545360892784,
+   "n_discovery": 147,
+   "roi_discovery": -0.014027031503416493,
+   "hit_discovery": 0.5102040816326531,
+   "ask_discovery": 0.5152380952380953,
+   "n_validation": 80,
+   "roi_validation": -0.09442612448287643,
+   "hit_validation": 0.4625,
+   "ask_validation": 0.504875,
+   "ci90_validation": [
+    -0.25704749567929536,
+    0.06818664420428637
+   ],
+   "roi_validation_control": 0.06293356119097514,
+   "selected": false,
+   "arm": "C4 两均值接近"
+  },
+  {
+   "n_first": 59,
+   "n_second": 99,
+   "roi_first": 0.003740941184908237,
+   "roi_second": 0.0982855483213311,
+   "n_discovery": 158,
+   "roi_discovery": 0.06298091654254029,
+   "hit_discovery": 0.5506329113924051,
+   "ask_discovery": 0.5199367088607595,
+   "n_validation": 105,
+   "roi_validation": 0.06932013887975914,
+   "hit_validation": 0.5619047619047619,
+   "ask_validation": 0.5203809523809524,
+   "ci90_validation": [
+    -0.04580918912247996,
+    0.16689817924395328
+   ],
+   "roi_validation_control": -0.03528396111443558,
+   "selected": false,
+   "arm": "C4 模型均值更冷 (a−b<−0.15)"
+  },
+  {
+   "n_first": 32,
+   "n_second": 79,
+   "roi_first": -0.1641632109532607,
+   "roi_second": 0.2030110194138646,
+   "n_discovery": 111,
+   "roi_discovery": 0.0971589890377564,
+   "hit_discovery": 0.5765765765765766,
+   "ask_discovery": 0.5257657657657657,
+   "n_validation": 77,
+   "roi_validation": -0.10204900398900504,
+   "hit_validation": 0.4805194805194805,
+   "ask_validation": 0.5123376623376623,
+   "ci90_validation": [
+    -0.24442891830765962,
+    0.07632895723651832
+   ],
+   "roi_validation_control": 0.0636383628164374,
+   "selected": false,
+   "arm": "C6 两均值都贴着买入桶"
+  },
+  {
+   "n_first": 106,
+   "n_second": 244,
+   "roi_first": 0.013126801596812555,
+   "roi_second": 0.045646544905370005,
+   "n_discovery": 350,
+   "roi_discovery": 0.035797708360492606,
+   "hit_discovery": 0.5257142857142857,
+   "ask_discovery": 0.5072571428571429,
+   "n_validation": 163,
+   "roi_validation": 0.0636383628164374,
+   "hit_validation": 0.5398773006134969,
+   "ask_validation": 0.5106748466257669,
+   "ci90_validation": [
+    -0.0826594592026983,
+    0.19486827924758315
+   ],
+   "roi_validation_control": -0.10204900398900504,
+   "selected": false,
+   "arm": "C6 至少一个均值偏出"
+  }
+ ],
+ "swaps": [
+  {
+   "n_first": 31,
+   "n_second": 33,
+   "roi_first": 0.09294499786269352,
+   "roi_second": 0.7461875090276879,
+   "n_discovery": 64,
+   "roi_discovery": 0.42977316768214374,
+   "hit_discovery": 0.375,
+   "ask_discovery": 0.30203125000000003,
+   "n_validation": 13,
+   "roi_validation": 0.04093515982545934,
+   "hit_validation": 0.38461538461538464,
+   "ask_validation": 0.3446153846153846,
+   "ci90_validation": [
+    -0.5729701656183277,
+    0.5539410264654075
+   ],
+   "roi_validation_control": 0.24105052355335058,
+   "selected": true,
+   "arm": "T1 改买模型均值桶",
+   "roi_discovery_bought": -0.10287678168359123,
+   "roi_validation_bought": 0.24105052355335058,
+   "contrast_validation_ci90": [
+    -1.2561211135595711,
+    0.7184884609728626
+   ],
+   "lower_bound_at_0.05_over_k": -0.7311827956989247,
+   "found": false
+  },
+  {
+   "n_first": 16,
+   "n_second": 31,
+   "roi_first": -0.23568919979804884,
+   "roi_second": -0.10513685404958552,
+   "n_discovery": 47,
+   "roi_discovery": -0.14958020579374323,
+   "hit_discovery": 0.3829787234042553,
+   "ask_discovery": 0.4429787234042553,
+   "n_validation": 16,
+   "roi_validation": 0.4224175057268608,
+   "hit_validation": 0.625,
+   "ask_validation": 0.43,
+   "ci90_validation": [
+    0.038639120176836086,
+    0.8476487980487546
+   ],
+   "roi_validation_control": -0.17942866931372847,
+   "selected": false,
+   "arm": "T2 改买市场均值桶",
+   "roi_discovery_bought": 0.24084482898358445,
+   "roi_validation_bought": -0.17942866931372847,
+   "contrast_validation_ci90": [
+    -0.1260754432261303,
+    1.4058848952465974
+   ]
+  },
+  {
+   "n_first": 11,
+   "n_second": 20,
+   "roi_first": 0.2590564602304491,
+   "roi_second": -0.2007257843220438,
+   "n_discovery": 31,
+   "roi_discovery": -0.03757724593244954,
+   "hit_discovery": 0.4838709677419355,
+   "ask_discovery": 0.5006451612903225,
+   "n_validation": 10,
+   "roi_validation": 0.39863653384533526,
+   "hit_validation": 0.7,
+   "ask_validation": 0.5,
+   "ci90_validation": [
+    0.015545845997973706,
+    0.7767884607451147
+   ],
+   "roi_validation_control": -0.3520531400966183,
+   "selected": false,
+   "arm": "T3 改买市场众数桶",
+   "roi_discovery_bought": 0.08944190779071565,
+   "roi_validation_bought": -0.3520531400966183,
+   "contrast_validation_ci90": [
+    -0.07449675316729633,
+    1.5076375405353204
+   ]
+  }
+ ],
+ "k": 2,
+ "direction": {
+  "模型均值偏移 a": {
+   "全期": {
+    "n": 236,
+    "agree": 0.6228813559322034,
+    "ci90": [
+     0.5708154506437768,
+     0.6747967479674797
+    ]
+   },
+   "发现期": {
+    "n": 161,
+    "agree": 0.6335403726708074,
+    "ci90": [
+     0.5704225352112676,
+     0.6948051948051948
+    ]
+   },
+   "验证期": {
+    "n": 75,
+    "agree": 0.6,
+    "ci90": [
+     0.5,
+     0.6891891891891891
+    ]
+   }
+  },
+  "市场均值偏移 b": {
+   "全期": {
+    "n": 226,
+    "agree": 0.8053097345132744,
+    "ci90": [
+     0.7632850241545893,
+     0.8471074380165289
+    ]
+   },
+   "发现期": {
+    "n": 149,
+    "agree": 0.8120805369127517,
+    "ci90": [
+     0.7631578947368421,
+     0.86
+    ]
+   },
+   "验证期": {
+    "n": 77,
+    "agree": 0.7922077922077922,
+    "ci90": [
+     0.7088607594936709,
+     0.8732394366197183
+    ]
+   }
+  },
+  "模型减市场 a−b": {
+   "全期": {
+    "n": 213,
+    "agree": 0.3615023474178404,
+    "ci90": [
+     0.30837004405286345,
+     0.4180790960451977
+    ]
+   },
+   "发现期": {
+    "n": 141,
+    "agree": 0.3971631205673759,
+    "ci90": [
+     0.3283582089552239,
+     0.4715447154471545
+    ]
+   },
+   "验证期": {
+    "n": 72,
+    "agree": 0.2916666666666667,
+    "ci90": [
+     0.2328767123287671,
+     0.3559322033898305
+    ]
+   }
+  }
+ },
+ "live": [
+  {
+   "arm": "C1 四心同桶",
+   "n": 96,
+   "hits": 51,
+   "pnl_usdc": 35.529577927999995
+  },
+  {
+   "arm": "C1 四心不同桶",
+   "n": 23,
+   "hits": 10,
+   "pnl_usdc": -25.326800690000006
+  },
+  {
+   "arm": "C2 模型均值桶 同桶",
+   "n": 109,
+   "hits": 56,
+   "pnl_usdc": 10.594198667999994
+  },
+  {
+   "arm": "C2 模型均值桶 在冷侧",
+   "n": 7,
+   "hits": 3,
+   "pnl_usdc": -6.412880000000001
+  },
+  {
+   "arm": "C2 模型均值桶 在暖侧",
+   "n": 3,
+   "hits": 2,
+   "pnl_usdc": 6.02145857
+  },
+  {
+   "arm": "C3 市场均值桶 同桶",
+   "n": 109,
+   "hits": 59,
+   "pnl_usdc": 53.97807681799999
+  },
+  {
+   "arm": "C3 市场均值桶 在冷侧",
+   "n": 8,
+   "hits": 2,
+   "pnl_usdc": -32.18679958
+  },
+  {
+   "arm": "C3 市场均值桶 在暖侧",
+   "n": 2,
+   "hits": 0,
+   "pnl_usdc": -11.5885
+  },
+  {
+   "arm": "C4 模型均值更暖 (a−b>+0.15)",
+   "n": 32,
+   "hits": 17,
+   "pnl_usdc": 27.019207179999995
+  },
+  {
+   "arm": "C4 两均值接近",
+   "n": 35,
+   "hits": 16,
+   "pnl_usdc": -25.22445494
+  },
+  {
+   "arm": "C4 模型均值更冷 (a−b<−0.15)",
+   "n": 52,
+   "hits": 28,
+   "pnl_usdc": 8.408024997999997
+  },
+  {
+   "arm": "C6 两均值都贴着买入桶",
+   "n": 33,
+   "hits": 17,
+   "pnl_usdc": 7.240227500000002
+  },
+  {
+   "arm": "C6 至少一个均值偏出",
+   "n": 86,
+   "hits": 44,
+   "pnl_usdc": 2.962549737999989
+  }
+ ]
+}

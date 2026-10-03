@@ -1,0 +1,994 @@
+{
+ "schema": "tiebreak_conditional_results2_v1",
+ "A": {
+  "daily_shift": {
+   "2026-08-01": 0.65,
+   "2026-08-03": 0.36363636363636365,
+   "2026-08-06": -1,
+   "2026-08-07": -1.7142857142857142,
+   "2026-08-08": -0.6666666666666666,
+   "2026-08-09": 0.6666666666666666,
+   "2026-08-11": -3,
+   "2026-08-14": 2,
+   "2026-08-15": -0.5,
+   "2026-08-16": -0.21621621621621623,
+   "2026-08-17": 0.09302325581395349,
+   "2026-08-18": 0.25,
+   "2026-08-19": 0.5609756097560976,
+   "2026-08-20": 0.8536585365853658,
+   "2026-08-21": 0.2777777777777778,
+   "2026-08-22": 0.5614035087719298,
+   "2026-08-23": 0.13043478260869565,
+   "2026-08-24": -1.5,
+   "2026-08-25": -0.5555555555555556,
+   "2026-08-26": -0.2727272727272727,
+   "2026-08-27": 0.10810810810810811,
+   "2026-08-28": -0.10256410256410256,
+   "2026-08-29": -0.2631578947368421,
+   "2026-08-30": -0.3148148148148148,
+   "2026-08-31": -0.10666666666666667,
+   "2026-09-01": -0.25,
+   "2026-09-02": 0.1375,
+   "2026-09-03": -0.01904761904761905,
+   "2026-09-04": 0.32926829268292684,
+   "2026-09-05": 0.2716049382716049,
+   "2026-09-06": -0.25316455696202533,
+   "2026-09-07": -0.07377049180327869,
+   "2026-09-08": 0.49557522123893805,
+   "2026-09-09": 0.04310344827586207,
+   "2026-09-10": 0.1308411214953271,
+   "2026-09-11": -0.13385826771653545,
+   "2026-09-12": -0.06060606060606061,
+   "2026-09-13": 0.05223880597014925,
+   "2026-09-14": -0.18045112781954886,
+   "2026-09-15": -0.0234375,
+   "2026-09-16": 0.23484848484848486,
+   "2026-09-17": 0.015151515151515152,
+   "2026-09-18": 0.15671641791044777,
+   "2026-09-19": -0.4552238805970149,
+   "2026-09-20": -0.3282442748091603,
+   "2026-09-21": 0.1015625,
+   "2026-09-22": 0.19696969696969696,
+   "2026-09-23": 0.022727272727272728,
+   "2026-09-24": -0.11194029850746269,
+   "2026-09-25": 0.12686567164179105,
+   "2026-09-26": 0.007462686567164179,
+   "2026-09-27": -0.13934426229508196,
+   "2026-09-28": -0.2727272727272727,
+   "2026-09-29": 0.03731343283582089,
+   "2026-09-30": -0.17293233082706766,
+   "2026-10-01": 0.09022556390977443,
+   "2026-10-02": 0.03007518796992481
+  },
+  "live_by_day_class": {
+   "平日": {
+    "days": 9,
+    "n": 79,
+    "hits": 42,
+    "pnl_usdc": 10.303998777999997,
+    "stake_usdc": 447.88134662
+   },
+   "全队偏冷日": {
+    "days": 4,
+    "n": 27,
+    "hits": 13,
+    "pnl_usdc": -1.5273652700000033,
+    "stake_usdc": 159.50975627
+   },
+   "全队偏热日": {
+    "days": 2,
+    "n": 13,
+    "hits": 6,
+    "pnl_usdc": 1.4261437299999975,
+    "stake_usdc": 70.50884027000001
+   }
+  },
+  "replay_by_day_class": {
+   "平日": {
+    "days": 24,
+    "n": 405,
+    "hit_rate": 0.5506172839506173,
+    "avg_ask": 0.5106913580246913,
+    "roi": 0.07317463541534894,
+    "ci90": [
+     -0.0036897501849940425,
+     0.1459472208069716
+    ]
+   },
+   "全队偏冷日": {
+    "days": 13,
+    "n": 164,
+    "hit_rate": 0.4878048780487805,
+    "avg_ask": 0.510609756097561,
+    "roi": -0.04809985604299667,
+    "ci90": [
+     -0.13357546126859365,
+     0.016427835228425936
+    ]
+   },
+   "全队偏热日": {
+    "days": 13,
+    "n": 132,
+    "hit_rate": 0.5303030303030303,
+    "avg_ask": 0.5153030303030303,
+    "roi": 0.030922534766094033,
+    "ci90": [
+     -0.07577517894390798,
+     0.1312475095914526
+    ]
+   }
+  },
+  "miss_tags": {
+   "单站": {
+    "n": 42,
+    "pnl_usdc": -235.74128363
+   },
+   "天气日": {
+    "n": 16,
+    "pnl_usdc": -76.59786292
+   }
+  },
+  "miss_offsets": {
+   "-2": 2,
+   "-1": 26,
+   "1": 26,
+   "2": 4
+  },
+  "variance": {
+   "replay": {
+    "事件日": {
+     "eta2": 0.05242050753325128,
+     "groups": 50,
+     "null_mean": 0.06986514768792786,
+     "null_p95": 0.09280639004390114,
+     "p": 0.9155
+    },
+    "站点": {
+     "eta2": 0.07462113583012416,
+     "groups": 45,
+     "null_mean": 0.062064552127531224,
+     "null_p95": 0.08494580274243116,
+     "p": 0.163
+    },
+    "阶段": {
+     "eta2": 0.00020854878255929877,
+     "groups": 3,
+     "null_mean": 0.0020577234559583713,
+     "null_p95": 0.006370496200913159,
+     "p": 0.9065
+    }
+   },
+   "live": {
+    "事件日": {
+     "eta2": 0.04702376352634977,
+     "groups": 15,
+     "null_mean": 0.11999335945332994,
+     "null_p95": 0.19754356709666648,
+     "p": 0.9825
+    },
+    "站点": {
+     "eta2": 0.2340707650576439,
+     "groups": 37,
+     "null_mean": 0.3135253596688749,
+     "null_p95": 0.40861384600751804,
+     "p": 0.9255
+    },
+    "阶段": {
+     "eta2": 0.0027321317602095625,
+     "groups": 3,
+     "null_mean": 0.01625749270575578,
+     "null_p95": 0.04605769010452324,
+     "p": 0.8295
+    }
+   }
+  }
+ },
+ "S": {
+  "S1": {
+   "eta2": 0.07462113583012416,
+   "groups": 45,
+   "null_mean": 0.062064552127531224,
+   "null_p95": 0.08494580274243116,
+   "p": 0.163
+  },
+  "S2": {
+   "stations": 27,
+   "rank_correlation": 0.163003663003663
+  },
+  "S3": {
+   "floor": "2026-09-01",
+   "days": 32,
+   "white": {
+    "n": 177,
+    "roi": 0.09749568824614312,
+    "ci90": [
+     -0.0339736444647922,
+     0.21995960288311445
+    ]
+   },
+   "black": {
+    "n": 155,
+    "roi": -0.009403023516575005,
+    "ci90": [
+     -0.12514814092166013,
+     0.11394113173894088
+    ]
+   },
+   "unknown": {
+    "n": 246,
+    "roi": 0.03543617439799524
+   },
+   "all": {
+    "n": 578,
+    "roi": 0.04241620601454159
+   },
+   "white_minus_black": 0.10689871176271812,
+   "white_minus_black_ci90": [
+    -0.07228518206034028,
+    0.2920233506122099
+   ]
+  },
+  "S4": {
+   "test": {
+    "eta2": 0.005157252979012396,
+    "groups": 4,
+    "null_mean": 0.00429026065025196,
+    "null_p95": 0.011422115708836786,
+    "p": 0.298
+   },
+   "table": {
+    "America": {
+     "n_discovery": 171,
+     "roi_discovery": 0.11930325841236507,
+     "n_validation": 89,
+     "roi_validation": 0.029491295411203555,
+     "ci90_validation": [
+      -0.133016429808596,
+      0.1848193418331067
+     ],
+     "live_n": 43,
+     "live_hits": 21,
+     "live_pnl_usdc": -10.741550250000007
+    },
+    "Asia": {
+     "n_discovery": 138,
+     "roi_discovery": -0.029782090136537626,
+     "n_validation": 73,
+     "roi_validation": -0.05655978511176211,
+     "ci90_validation": [
+      -0.2575891343976911,
+      0.14320577705940085
+     ],
+     "live_n": 42,
+     "live_hits": 19,
+     "live_pnl_usdc": -5.440730539999999
+    },
+    "Europe": {
+     "n_discovery": 136,
+     "roi_discovery": 0.02636478158806648,
+     "n_validation": 68,
+     "roi_validation": -0.00495343704987754,
+     "ci90_validation": [
+      -0.2608018388034669,
+      0.2769199278803472
+     ],
+     "live_n": 31,
+     "live_hits": 18,
+     "live_pnl_usdc": 11.951459777999997
+    },
+    "其他": {
+     "n_discovery": 16,
+     "roi_discovery": 0.2148316664821311,
+     "n_validation": 10,
+     "roi_validation": 0.4356252572879098,
+     "ci90_validation": [
+      0.007787251420528174,
+      0.7974746341459731
+     ],
+     "live_n": 3,
+     "live_hits": 3,
+     "live_pnl_usdc": 14.433598250000001
+    }
+   }
+  },
+  "table": [
+   {
+    "station_id": "CYYZ",
+    "region": "America",
+    "n": 12,
+    "edge": 0.14916666666666667,
+    "roi": 0.2797481192058851,
+    "n_discovery": 9,
+    "edge_discovery": 0.14222222222222222,
+    "n_validation": 3,
+    "edge_validation": 0.17,
+    "live_n": 1,
+    "live_hits": 1,
+    "live_pnl_usdc": 5.999999999999999
+   },
+   {
+    "station_id": "EDDM",
+    "region": "Europe",
+    "n": 15,
+    "edge": -0.10533333333333332,
+    "roi": -0.1824595157928491,
+    "n_discovery": 6,
+    "edge_discovery": -0.033333333333333326,
+    "n_validation": 9,
+    "edge_validation": -0.15333333333333332,
+    "live_n": 6,
+    "live_hits": 3,
+    "live_pnl_usdc": -5.868699912000004
+   },
+   {
+    "station_id": "EFHK",
+    "region": "Europe",
+    "n": 27,
+    "edge": 0.05407407407407407,
+    "roi": 0.14187945084448264,
+    "n_discovery": 18,
+    "edge_discovery": 0.13444444444444445,
+    "n_validation": 9,
+    "edge_validation": -0.10666666666666667,
+    "live_n": 4,
+    "live_hits": 1,
+    "live_pnl_usdc": -10.74532
+   },
+   {
+    "station_id": "EGLC",
+    "region": "Europe",
+    "n": 13,
+    "edge": 0.19615384615384618,
+    "roi": 0.3947382171792555,
+    "n_discovery": 8,
+    "edge_discovery": 0.13125000000000003,
+    "n_validation": 5,
+    "edge_validation": 0.3,
+    "live_n": 4,
+    "live_hits": 4,
+    "live_pnl_usdc": 20.7858002
+   },
+   {
+    "station_id": "EHAM",
+    "region": "Europe",
+    "n": 23,
+    "edge": 0.10565217391304349,
+    "roi": 0.1928975536461363,
+    "n_discovery": 17,
+    "edge_discovery": 0.1423529411764706,
+    "n_validation": 6,
+    "edge_validation": 0.0016666666666666774,
+    "live_n": 3,
+    "live_hits": 1,
+    "live_pnl_usdc": -7.08387948
+   },
+   {
+    "station_id": "EPWA",
+    "region": "Europe",
+    "n": 26,
+    "edge": 0.02423076923076922,
+    "roi": 0.015317273009884058,
+    "n_discovery": 15,
+    "edge_discovery": -0.03466666666666667,
+    "n_validation": 11,
+    "edge_validation": 0.10454545454545454,
+    "live_n": 5,
+    "live_hits": 3,
+    "live_pnl_usdc": 5.0312
+   },
+   {
+    "station_id": "FACT",
+    "region": "其他",
+    "n": 10,
+    "edge": -0.029999999999999992,
+    "roi": -0.022528628223716984,
+    "n_discovery": 10,
+    "edge_discovery": -0.029999999999999992,
+    "n_validation": 0,
+    "edge_validation": null,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "KATL",
+    "region": "America",
+    "n": 15,
+    "edge": -0.011999999999999988,
+    "roi": 0.005106069980412497,
+    "n_discovery": 11,
+    "edge_discovery": 0.010000000000000009,
+    "n_validation": 4,
+    "edge_validation": -0.07249999999999998,
+    "live_n": 1,
+    "live_hits": 1,
+    "live_pnl_usdc": 1.9995000000000003
+   },
+   {
+    "station_id": "KAUS",
+    "region": "America",
+    "n": 27,
+    "edge": -0.017037037037037035,
+    "roi": -0.070810356680663,
+    "n_discovery": 19,
+    "edge_discovery": -0.07157894736842105,
+    "n_validation": 8,
+    "edge_validation": 0.11249999999999999,
+    "live_n": 4,
+    "live_hits": 2,
+    "live_pnl_usdc": -1.5631995199999995
+   },
+   {
+    "station_id": "KBKF",
+    "region": "America",
+    "n": 16,
+    "edge": 0.05937500000000001,
+    "roi": 0.12186197572308272,
+    "n_discovery": 13,
+    "edge_discovery": 0.033846153846153845,
+    "n_validation": 3,
+    "edge_validation": 0.17000000000000004,
+    "live_n": 2,
+    "live_hits": 1,
+    "live_pnl_usdc": 2.26098468
+   },
+   {
+    "station_id": "KDAL",
+    "region": "America",
+    "n": 16,
+    "edge": -0.011875000000000004,
+    "roi": -0.0699075809432346,
+    "n_discovery": 11,
+    "edge_discovery": 0.023636363636363626,
+    "n_validation": 5,
+    "edge_validation": -0.09,
+    "live_n": 3,
+    "live_hits": 1,
+    "live_pnl_usdc": -7.270300000000001
+   },
+   {
+    "station_id": "KHOU",
+    "region": "America",
+    "n": 23,
+    "edge": 0.04000000000000001,
+    "roi": 0.08080743112672029,
+    "n_discovery": 12,
+    "edge_discovery": 0.14583333333333334,
+    "n_validation": 11,
+    "edge_validation": -0.07545454545454545,
+    "live_n": 5,
+    "live_hits": 3,
+    "live_pnl_usdc": 6.428479680000001
+   },
+   {
+    "station_id": "KLAX",
+    "region": "America",
+    "n": 15,
+    "edge": 0.018666666666666665,
+    "roi": 0.004148978038571846,
+    "n_discovery": 11,
+    "edge_discovery": 0.024545454545454547,
+    "n_validation": 4,
+    "edge_validation": 0.0024999999999999883,
+    "live_n": 4,
+    "live_hits": 2,
+    "live_pnl_usdc": -2.068254000000003
+   },
+   {
+    "station_id": "KLGA",
+    "region": "America",
+    "n": 20,
+    "edge": -0.09,
+    "roi": -0.18548426821296707,
+    "n_discovery": 13,
+    "edge_discovery": 0.04846153846153846,
+    "n_validation": 7,
+    "edge_validation": -0.34714285714285714,
+    "live_n": 4,
+    "live_hits": 1,
+    "live_pnl_usdc": -9.795199999999998
+   },
+   {
+    "station_id": "KMIA",
+    "region": "America",
+    "n": 29,
+    "edge": 0.13793103448275862,
+    "roi": 0.29766625101739286,
+    "n_discovery": 20,
+    "edge_discovery": 0.1725,
+    "n_validation": 9,
+    "edge_validation": 0.06111111111111114,
+    "live_n": 6,
+    "live_hits": 2,
+    "live_pnl_usdc": -10.154210000000003
+   },
+   {
+    "station_id": "KORD",
+    "region": "America",
+    "n": 17,
+    "edge": -0.1488235294117647,
+    "roi": -0.29418395729558855,
+    "n_discovery": 7,
+    "edge_discovery": -0.05857142857142855,
+    "n_validation": 10,
+    "edge_validation": -0.212,
+    "live_n": 5,
+    "live_hits": 2,
+    "live_pnl_usdc": -8.956133340000001
+   },
+   {
+    "station_id": "KSEA",
+    "region": "America",
+    "n": 14,
+    "edge": 0.07,
+    "roi": 0.1421165751604559,
+    "n_discovery": 10,
+    "edge_discovery": -0.0010000000000000009,
+    "n_validation": 4,
+    "edge_validation": 0.24750000000000003,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "KSFO",
+    "region": "America",
+    "n": 4,
+    "edge": 0.23750000000000002,
+    "roi": 0.4941520467836258,
+    "n_discovery": 2,
+    "edge_discovery": -0.04999999999999999,
+    "n_validation": 2,
+    "edge_validation": 0.525,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "LEMD",
+    "region": "Europe",
+    "n": 35,
+    "edge": -0.031428571428571424,
+    "roi": -0.06748071716496243,
+    "n_discovery": 26,
+    "edge_discovery": -0.08384615384615385,
+    "n_validation": 9,
+    "edge_validation": 0.12,
+    "live_n": 4,
+    "live_hits": 2,
+    "live_pnl_usdc": -5.4893996000000005
+   },
+   {
+    "station_id": "LFPB",
+    "region": "Europe",
+    "n": 24,
+    "edge": -0.17666666666666667,
+    "roi": -0.34180012706241614,
+    "n_discovery": 19,
+    "edge_discovery": -0.19894736842105262,
+    "n_validation": 5,
+    "edge_validation": -0.092,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "LIMC",
+    "region": "Europe",
+    "n": 23,
+    "edge": 0.08652173913043479,
+    "roi": 0.18051156134142432,
+    "n_discovery": 18,
+    "edge_discovery": 0.10055555555555555,
+    "n_validation": 5,
+    "edge_validation": 0.03600000000000001,
+    "live_n": 2,
+    "live_hits": 2,
+    "live_pnl_usdc": 11.43515857
+   },
+   {
+    "station_id": "LTAC",
+    "region": "Europe",
+    "n": 18,
+    "edge": -0.003888888888888889,
+    "roi": -0.07768351529735866,
+    "n_discovery": 9,
+    "edge_discovery": 0.05222222222222221,
+    "n_validation": 9,
+    "edge_validation": -0.05999999999999999,
+    "live_n": 3,
+    "live_hits": 2,
+    "live_pnl_usdc": 3.8866000000000005
+   },
+   {
+    "station_id": "MMMX",
+    "region": "America",
+    "n": 22,
+    "edge": 0.3259090909090909,
+    "roi": 0.6894012718297035,
+    "n_discovery": 15,
+    "edge_discovery": 0.298,
+    "n_validation": 7,
+    "edge_validation": 0.38571428571428573,
+    "live_n": 4,
+    "live_hits": 3,
+    "live_pnl_usdc": 11.877806999999999
+   },
+   {
+    "station_id": "MPMG",
+    "region": "America",
+    "n": 11,
+    "edge": 0.060909090909090906,
+    "roi": 0.07638900982036781,
+    "n_discovery": 5,
+    "edge_discovery": 0.314,
+    "n_validation": 6,
+    "edge_validation": -0.15,
+    "live_n": 1,
+    "live_hits": 0,
+    "live_pnl_usdc": -5.99842475
+   },
+   {
+    "station_id": "NZWN",
+    "region": "其他",
+    "n": 16,
+    "edge": 0.2625,
+    "roi": 0.5011778449268979,
+    "n_discovery": 6,
+    "edge_discovery": 0.2966666666666667,
+    "n_validation": 10,
+    "edge_validation": 0.24200000000000002,
+    "live_n": 3,
+    "live_hits": 3,
+    "live_pnl_usdc": 14.433598250000001
+   },
+   {
+    "station_id": "OEJN",
+    "region": "Asia",
+    "n": 13,
+    "edge": -0.10384615384615385,
+    "roi": -0.19061076964873933,
+    "n_discovery": 7,
+    "edge_discovery": -0.19142857142857142,
+    "n_validation": 6,
+    "edge_validation": -0.0016666666666666774,
+    "live_n": 3,
+    "live_hits": 1,
+    "live_pnl_usdc": 3.030476329999998
+   },
+   {
+    "station_id": "OPKC",
+    "region": "Asia",
+    "n": 21,
+    "edge": -0.13142857142857142,
+    "roi": -0.245331282024147,
+    "n_discovery": 14,
+    "edge_discovery": -0.0842857142857143,
+    "n_validation": 7,
+    "edge_validation": -0.22571428571428573,
+    "live_n": 3,
+    "live_hits": 2,
+    "live_pnl_usdc": 7.65222
+   },
+   {
+    "station_id": "RCSS",
+    "region": "Asia",
+    "n": 5,
+    "edge": 0.324,
+    "roi": 0.7002512840470666,
+    "n_discovery": 2,
+    "edge_discovery": 0.5700000000000001,
+    "n_validation": 3,
+    "edge_validation": 0.16,
+    "live_n": 2,
+    "live_hits": 1,
+    "live_pnl_usdc": -0.3523999999999994
+   },
+   {
+    "station_id": "RJTT",
+    "region": "Asia",
+    "n": 3,
+    "edge": -0.5266666666666666,
+    "roi": -1.0,
+    "n_discovery": 2,
+    "edge_discovery": -0.54,
+    "n_validation": 1,
+    "edge_validation": -0.5,
+    "live_n": 1,
+    "live_hits": 0,
+    "live_pnl_usdc": -5.997199999999999
+   },
+   {
+    "station_id": "RKPK",
+    "region": "Asia",
+    "n": 10,
+    "edge": 0.309,
+    "roi": 0.6019208099299633,
+    "n_discovery": 6,
+    "edge_discovery": 0.185,
+    "n_validation": 4,
+    "edge_validation": 0.495,
+    "live_n": 2,
+    "live_hits": 2,
+    "live_pnl_usdc": 5.9995002899999985
+   },
+   {
+    "station_id": "RKSI",
+    "region": "Asia",
+    "n": 18,
+    "edge": 0.002777777777777777,
+    "roi": -0.0240659207555088,
+    "n_discovery": 13,
+    "edge_discovery": 0.046923076923076915,
+    "n_validation": 5,
+    "edge_validation": -0.11199999999999999,
+    "live_n": 1,
+    "live_hits": 0,
+    "live_pnl_usdc": -6.0
+   },
+   {
+    "station_id": "RPLL",
+    "region": "Asia",
+    "n": 7,
+    "edge": 0.09142857142857144,
+    "roi": 0.2213434654038803,
+    "n_discovery": 1,
+    "edge_discovery": 0.51,
+    "n_validation": 6,
+    "edge_validation": 0.021666666666666685,
+    "live_n": 3,
+    "live_hits": 1,
+    "live_pnl_usdc": -6.482371879999999
+   },
+   {
+    "station_id": "SAEZ",
+    "region": "America",
+    "n": 15,
+    "edge": -0.05466666666666666,
+    "roi": -0.06249096551141897,
+    "n_discovery": 9,
+    "edge_discovery": -0.21222222222222223,
+    "n_validation": 6,
+    "edge_validation": 0.1816666666666667,
+    "live_n": 3,
+    "live_hits": 2,
+    "live_pnl_usdc": 6.497399999999998
+   },
+   {
+    "station_id": "SBGR",
+    "region": "America",
+    "n": 4,
+    "edge": -0.017499999999999988,
+    "roi": -0.05141843971631199,
+    "n_discovery": 4,
+    "edge_discovery": -0.017499999999999988,
+    "n_validation": 0,
+    "edge_validation": null,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "VILK",
+    "region": "Asia",
+    "n": 13,
+    "edge": -0.12307692307692307,
+    "roi": -0.2188232806673586,
+    "n_discovery": 7,
+    "edge_discovery": 0.08285714285714288,
+    "n_validation": 6,
+    "edge_validation": -0.36333333333333334,
+    "live_n": 3,
+    "live_hits": 0,
+    "live_pnl_usdc": -7.23712087
+   },
+   {
+    "station_id": "WMKK",
+    "region": "Asia",
+    "n": 15,
+    "edge": 0.14533333333333334,
+    "roi": 0.2821170245034956,
+    "n_discovery": 13,
+    "edge_discovery": 0.16307692307692306,
+    "n_validation": 2,
+    "edge_validation": 0.030000000000000027,
+    "live_n": 4,
+    "live_hits": 4,
+    "live_pnl_usdc": 24.577471390000003
+   },
+   {
+    "station_id": "WSSS",
+    "region": "Asia",
+    "n": 19,
+    "edge": 0.16263157894736843,
+    "roi": 0.3235940388016003,
+    "n_discovery": 13,
+    "edge_discovery": 0.17,
+    "n_validation": 6,
+    "edge_validation": 0.14666666666666664,
+    "live_n": 5,
+    "live_hits": 2,
+    "live_pnl_usdc": -6.1223331
+   },
+   {
+    "station_id": "ZBAA",
+    "region": "Asia",
+    "n": 14,
+    "edge": -0.20214285714285715,
+    "roi": -0.4180195382785577,
+    "n_discovery": 9,
+    "edge_discovery": -0.26222222222222225,
+    "n_validation": 5,
+    "edge_validation": -0.094,
+    "live_n": 4,
+    "live_hits": 1,
+    "live_pnl_usdc": -10.49537475
+   },
+   {
+    "station_id": "ZGGG",
+    "region": "Asia",
+    "n": 10,
+    "edge": 0.025000000000000012,
+    "roi": 0.0025288974945725795,
+    "n_discovery": 6,
+    "edge_discovery": -0.11833333333333332,
+    "n_validation": 4,
+    "edge_validation": 0.24,
+    "live_n": 1,
+    "live_hits": 0,
+    "live_pnl_usdc": -3.21473796
+   },
+   {
+    "station_id": "ZGSZ",
+    "region": "Asia",
+    "n": 2,
+    "edge": -0.475,
+    "roi": -1.0,
+    "n_discovery": 1,
+    "edge_discovery": -0.45,
+    "n_validation": 1,
+    "edge_validation": -0.5,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "ZHHH",
+    "region": "Asia",
+    "n": 8,
+    "edge": -0.2175,
+    "roi": -0.5192307692307693,
+    "n_discovery": 5,
+    "edge_discovery": -0.264,
+    "n_validation": 3,
+    "edge_validation": -0.14,
+    "live_n": 2,
+    "live_hits": 1,
+    "live_pnl_usdc": -0.35599998999999993
+   },
+   {
+    "station_id": "ZSPD",
+    "region": "Asia",
+    "n": 24,
+    "edge": -0.010416666666666663,
+    "roi": -0.02300364549809923,
+    "n_discovery": 18,
+    "edge_discovery": 0.04277777777777778,
+    "n_validation": 6,
+    "edge_validation": -0.17,
+    "live_n": 4,
+    "live_hits": 2,
+    "live_pnl_usdc": -1.5550400000000009
+   },
+   {
+    "station_id": "ZSQD",
+    "region": "Asia",
+    "n": 22,
+    "edge": -0.03409090909090908,
+    "roi": -0.10448798976003028,
+    "n_discovery": 14,
+    "edge_discovery": -0.10857142857142855,
+    "n_validation": 8,
+    "edge_validation": 0.09625,
+    "live_n": 4,
+    "live_hits": 2,
+    "live_pnl_usdc": 1.1121800000000008
+   },
+   {
+    "station_id": "ZUCK",
+    "region": "Asia",
+    "n": 5,
+    "edge": 0.112,
+    "roi": 0.21014729950900166,
+    "n_discovery": 5,
+    "edge_discovery": 0.112,
+    "n_validation": 0,
+    "edge_validation": null,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   },
+   {
+    "station_id": "ZUUU",
+    "region": "Asia",
+    "n": 2,
+    "edge": -0.44499999999999995,
+    "roi": -1.0,
+    "n_discovery": 2,
+    "edge_discovery": -0.44499999999999995,
+    "n_validation": 0,
+    "edge_validation": null,
+    "live_n": 0,
+    "live_hits": 0,
+    "live_pnl_usdc": 0
+   }
+  ]
+ },
+ "L": {
+  "fills": 98,
+  "L1": {
+   "first_post": {
+    "n": 66,
+    "hits": 33,
+    "avg_paid": 0.49924242424242427,
+    "edge": 0.0007575757575757549,
+    "ci90": [
+     -0.07566037735849056,
+     0.08587301587301586
+    ]
+   },
+   "repost": {
+    "n": 32,
+    "hits": 18,
+    "avg_paid": 0.51875,
+    "edge": 0.04375000000000001,
+    "ci90": [
+     -0.07783783783783783,
+     0.1736666666666667
+    ]
+   },
+   "contrast": -0.042992424242424256,
+   "contrast_ci90": [
+    -0.20146126760563382,
+    0.1250068712780577
+   ]
+  },
+  "L2": {
+   "<2 分钟": {
+    "n": 5,
+    "hits": 5,
+    "avg_paid": 0.518,
+    "edge": 0.482,
+    "ci90": [
+     0.46199999999999997,
+     0.5
+    ]
+   },
+   "2–30 分钟": {
+    "n": 55,
+    "hits": 26,
+    "avg_paid": 0.5092727272727273,
+    "edge": -0.03654545454545455,
+    "ci90": [
+     -0.12716666666666668,
+     0.03933333333333333
+    ]
+   },
+   ">30 分钟": {
+    "n": 38,
+    "hits": 20,
+    "avg_paid": 0.4986842105263158,
+    "edge": 0.027631578947368427,
+    "ci90": [
+     -0.04285714285714286,
+     0.10567567567567568
+    ]
+   }
+  },
+  "L2_untimed": 0,
+  "L2_fast_minus_slow_ci90": [
+   0.3867948717948718,
+   0.52125
+  ]
+ }
+}
