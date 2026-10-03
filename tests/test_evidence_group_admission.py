@@ -567,6 +567,36 @@ def test_the_refresh_restates_only_the_stations_it_is_asked_for(cycle, monkeypat
     assert registry.calls[-1] == (D14, "open", ("CYYZ", "EGLC", "KLAX", "NZWN"), False)
 
 
+def test_an_open_day_refresh_does_not_read_the_listing_scopes(cycle, monkeypatch) -> None:
+    """They decide only a not-started group's view, and reading them re-runs
+    the fleet's decision scopes: 2 s a refresh, 46 s of 105 on 2026-10-03."""
+
+    worker, registry, _blocked = cycle(listing_keys={f"EHAM|{D14}"}, turn=False)
+    asked: list[str] = []
+    real = worker._listing_entry_scope_keys
+    monkeypatch.setattr(
+        worker, "_listing_entry_scope_keys",
+        lambda **kw: asked.append(kw["as_of_utc"]) or real(**kw),
+    )
+    catalog = [
+        {"event_date": D14, "station_id": station, "manifest": _scope(station, D14, state),
+         "probability_evidence_fresh": True}
+        for station, state in (("NZWN", "open"), ("CYYZ", "open"), ("EHAM", "not_started"))
+    ]
+    monkeypatch.setattr(worker, "_resident_ws_scope_catalog", lambda: catalog)
+    worker._refresh_scope_day_evidence(
+        {}, event_date=D14, as_of_utc="2026-09-14T10:00:00Z", stations=["NZWN", "CYYZ"],
+    )
+    assert asked == [] and registry.calls == [(D14, "open", ("CYYZ", "NZWN"), False)]
+    # A reach holding a not-started scope still reads them, and still lends
+    # the listed view only to the scopes they admit.
+    worker._refresh_scope_day_evidence(
+        {}, event_date=D14, as_of_utc="2026-09-14T10:00:00Z", stations=["NZWN", "EHAM"],
+    )
+    assert asked == ["2026-09-14T10:00:00Z"]
+    assert registry.calls[-2:] == [(D14, "open", ("NZWN",), False), (D14, "not_started", ("EHAM",), True)]
+
+
 # ------------------------------------------------ the rotation comes back
 
 

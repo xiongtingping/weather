@@ -13733,11 +13733,22 @@ class TargetProductionWorker:
         # snapshot the compile reads, and a cache-only pass returns before
         # writing it and would leave the loop compiling against the stamp it
         # was already failing on.
+        # The listing keys only decide what happens to a ``not_started``
+        # group (``_admitted_evidence_groups``), and reading them re-runs
+        # ``_decision_scopes`` over the fleet: 2 s a refresh, 46 s of 105 on
+        # 2026-10-03 15:35Z, where every refresh was of an open day.  Read
+        # only when the manifests restated hold such a group.
+        needs_listing = any(
+            state == "not_started"
+            for state, _group in _group_scope_manifests_by_day_state(day_scopes)
+        )
         outcomes, refused = self._materialize_evidence_groups(
             activation,
             manifests=day_scopes,
-            listing_scope_keys=self._listing_entry_scope_keys(
-                as_of_utc=as_of_utc
+            listing_scope_keys=(
+                self._listing_entry_scope_keys(as_of_utc=as_of_utc)
+                if needs_listing
+                else frozenset()
             ),
             full_materialization=True,
         )
