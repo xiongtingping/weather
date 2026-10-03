@@ -229,7 +229,10 @@ def test_inside_the_horizon_with_no_row_added_nothing_is_walked_or_read_again(
 ) -> None:
     conn, _ = _store(tmp_path)
     first, flat_first = _statements(conn, "2026-07-01T13:00:00Z")
-    assert _count(flat_first, *WALKS) == 2 and _count(flat_first, ROWS_WHOLE) == 1
+    # The evidence test's two lists (the activation list is also the one
+    # the lead bucket's horizon is read from, once per candidate).
+    assert _count(flat_first, WALKS[1]) == 1 and _count(flat_first, WALKS[0]) >= 1
+    assert _count(flat_first, ROWS_WHOLE) == 1
     later, flat_later = _statements(conn, "2026-07-01T13:07:00Z")
     assert _count(flat_later, *WALKS) == 0
     assert _count(flat_later, EVIDENCE_TEST) == 0
@@ -258,7 +261,7 @@ def test_an_instant_before_the_one_kept_walks_the_lists(tmp_path, monkeypatch) -
     conn, _ = _store(tmp_path)
     _compile(conn, "2026-07-01T13:07:00Z")
     earlier, flat = _statements(conn, "2026-07-01T13:00:00Z")
-    assert _count(flat, *WALKS) == 2
+    assert _count(flat, WALKS[1]) == 1 and _count(flat, WALKS[0]) >= 1
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
     assert earlier == _compile(conn, "2026-07-01T13:00:00Z")
 
@@ -344,3 +347,40 @@ def test_the_window_horizon_is_the_first_edge_ahead() -> None:
         ],
         at,
     ) == "2026-07-05T00:00:00Z"
+
+
+def test_a_re_mint_elsewhere_does_not_walk_a_scope_whose_ids_are_unchanged(
+    tmp_path, monkeypatch
+) -> None:
+    """2026-10-03 15:20-16:00Z: the OOS rotation re-minted a batch every ~20
+    minutes, every batch moved the table marks, and every compile walked its
+    lead bucket again -- 108-140 walks, 15-28 s a cycle -- though a batch
+    touches a few scopes of the fleet."""
+
+    conn, _ = _store(tmp_path)
+    first = _compile(conn, "2026-07-01T13:00:00Z")
+    # A re-mint of another station's scope: the activation table grows.
+    row = conn.execute(
+        "SELECT * FROM calibration_native_ensemble_activation "
+        "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' LIMIT 1"
+    ).fetchone()
+    columns = [c[1] for c in conn.execute("PRAGMA table_info(calibration_native_ensemble_activation)")]
+    other = dict(zip(columns, row))
+    other.update(
+        activation_id="native-activation-elsewhere", station_id="ELSEWHERE",
+        content_sha256="e" * 64,
+        run_cycle_by_system_sha256=other.get("run_cycle_by_system_sha256"),
+    )
+    conn.execute(
+        f"INSERT INTO calibration_native_ensemble_activation({','.join(columns)}) "
+        f"VALUES({','.join('?' * len(columns))})",
+        tuple(other[c] for c in columns),
+    )
+    conn.commit()
+    later, flat = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, LEAD_WALK) == 0 and _count(flat, SYSTEM_READ) == 0
+    # Asked again only through the id lists, and the answer is the one a
+    # store read with nothing kept gives.
+    assert _count(flat, WALKS[0]) >= 1
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert later == _compile(conn, "2026-07-01T13:07:00Z")

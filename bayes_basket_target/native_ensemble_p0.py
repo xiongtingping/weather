@@ -611,7 +611,13 @@ def _activated_lead_bucket(
     fresh = tuple(freshest_bucket_system_ids or ())
     # ``_LEAD_BUCKET_MEMO``: the answer for this packet shape, while neither
     # the activation nor the artifact table has a new row and the clock has
-    # reached no row's edge in any candidate's scope.
+    # reached no row's edge in any candidate's scope.  When a table has grown
+    # -- the OOS rotation re-mints a batch of scopes every ~20 minutes, and
+    # any batch anywhere moves the marks -- the candidates' valid activation
+    # ids are listed off the covering index (the read the horizon needs
+    # anyway): the walk's answer is a function of those rows alone, each
+    # immutable with its artifact, so the same ids are the same answer and
+    # only a scope the batch actually re-minted is walked again.
     database_file = (
         _main_database_file(conn) if ADMITTED_SCOPE_MEMO_ENABLED else ""
     )
@@ -620,43 +626,49 @@ def _activated_lead_bucket(
         database_file, station_id, season_bin, tuple(candidates),
         tuple(sorted(observed)), tuple(sorted(cycles.items())), fresh,
     )
+    kept = _LEAD_BUCKET_MEMO.get(memo_key) if marks is not None else None
+    if (
+        kept is not None
+        and kept[3] == (marks[0], marks[2])
+        and kept[0] <= decision_at_utc < kept[1]
+    ):
+        return kept[2]
+    windows: tuple[tuple[bytes, str], ...] = ()
     if marks is not None:
-        kept = _LEAD_BUCKET_MEMO.get(memo_key)
-        if (
-            kept is not None
-            and kept[3] == (marks[0], marks[2])
-            and kept[0] <= decision_at_utc < kept[1]
-        ):
-            return kept[2]
-    answer = _walk_activated_lead_bucket(
-        conn,
-        station_id=station_id,
-        season_bin=season_bin,
-        decision_at_utc=decision_at_utc,
-        observed=observed,
-        candidates=candidates,
-        cycles=cycles,
-        fresh=fresh,
-    )
-    if marks is not None:
-        horizon = _NO_HORIZON
-        for candidate in candidates:
-            horizon = min(horizon, _window_horizon(conn.execute(
-                "SELECT a.valid_from_utc,a.valid_until_utc "
+        windows = tuple(
+            _window_digest_horizon(conn.execute(
+                "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc "
                 "FROM calibration_native_ensemble_activation a "
                 "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
                 "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
                 "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
                 "AND a.valid_until_utc>?",
                 (station_id, season_bin, candidate, decision_at_utc),
-            ), decision_at_utc))
-        # Kept only if nothing was added while it was read.
-        if _append_marks(conn) == marks:
-            if len(_LEAD_BUCKET_MEMO) >= LEAD_BUCKET_MEMO_MAX:
-                _LEAD_BUCKET_MEMO.clear()
-            _LEAD_BUCKET_MEMO[memo_key] = (
-                decision_at_utc, horizon, answer, (marks[0], marks[2]),
-            )
+            ), decision_at_utc)
+            for candidate in candidates
+        )
+    horizon = min((window[1] for window in windows), default=_NO_HORIZON)
+    digests = tuple(window[0] for window in windows)
+    if kept is not None and kept[4] == digests:
+        answer = kept[2]
+    else:
+        answer = _walk_activated_lead_bucket(
+            conn,
+            station_id=station_id,
+            season_bin=season_bin,
+            decision_at_utc=decision_at_utc,
+            observed=observed,
+            candidates=candidates,
+            cycles=cycles,
+            fresh=fresh,
+        )
+    # Kept only if nothing was added while it was read.
+    if marks is not None and _append_marks(conn) == marks:
+        if len(_LEAD_BUCKET_MEMO) >= LEAD_BUCKET_MEMO_MAX:
+            _LEAD_BUCKET_MEMO.clear()
+        _LEAD_BUCKET_MEMO[memo_key] = (
+            decision_at_utc, horizon, answer, (marks[0], marks[2]), digests,
+        )
     return answer
 
 
@@ -1906,6 +1918,22 @@ def _append_marks(conn: sqlite3.Connection) -> tuple[int, int, int] | None:
         return None
 
 
+def _window_digest_horizon(
+    windows: Any, decision_at_utc: str
+) -> tuple[bytes, str]:
+    """``_window_horizon`` over ``(activation_id, valid_from, valid_until)``
+    rows, with a digest of the ids valid at the decision instant."""
+
+    hasher = hashlib.sha256()
+    rows: list[tuple[str, str]] = []
+    for row in windows:
+        if str(row[1]) <= decision_at_utc:
+            hasher.update(str(row[0]).encode("utf-8"))
+            hasher.update(b"\n")
+        rows.append((str(row[1]), str(row[2])))
+    return hasher.digest(), _window_horizon(rows, decision_at_utc)
+
+
 def _window_horizon(windows: Any, decision_at_utc: str) -> str:
     """The earliest later instant at which the rows valid at the decision
     instant stop being exactly those, given every ``(valid_from,
@@ -1930,12 +1958,12 @@ def _window_horizon(windows: Any, decision_at_utc: str) -> str:
 # the one kept.  Past either, the read is made again.
 LEAD_BUCKET_MEMO_MAX = 4096
 SYSTEM_ACTIVATION_MEMO_MAX = 16384
-# packet shape -> (kept at, horizon, lead bucket, (activation, artifact) marks)
-_LEAD_BUCKET_MEMO: dict[tuple[Any, ...], tuple[str, str, str, tuple[int, int]]] = {}
-# exact per-system key -> (kept at, horizon, rows, activation mark)
-_SYSTEM_ACTIVATION_MEMO: dict[
-    tuple[str, ...], tuple[str, str, tuple[tuple[Any, ...], ...], int]
-] = {}
+# packet shape -> (kept at, horizon, lead bucket, (activation, artifact) marks,
+#                  per-candidate digest of the activation ids valid then)
+_LEAD_BUCKET_MEMO: dict[tuple[Any, ...], tuple[Any, ...]] = {}
+# exact per-system key -> (kept at, horizon, rows, activation mark,
+#                         digest of the key's activation ids valid then)
+_SYSTEM_ACTIVATION_MEMO: dict[tuple[str, ...], tuple[Any, ...]] = {}
 
 
 def _system_activation_rows(
@@ -1965,33 +1993,21 @@ def _system_activation_rows(
         database_file, station_id, system_id, season_bin, calibration_lead,
         system_run_cycle,
     )
+    kept = _SYSTEM_ACTIVATION_MEMO.get(memo_key) if marks is not None else None
+    if (
+        kept is not None
+        and kept[3] == marks[0]
+        and kept[0] <= decision_at_utc < kept[1]
+    ):
+        return list(kept[2])
+    # The activation table has grown (any re-mint anywhere moves its mark) or
+    # the clock has reached an edge: list this key's rows off the index --
+    # the read the horizon needs anyway -- and when the ids valid now are the
+    # ones the kept answer was read from, it is still the answer.
+    digest, horizon = (b"", _NO_HORIZON)
     if marks is not None:
-        kept = _SYSTEM_ACTIVATION_MEMO.get(memo_key)
-        if (
-            kept is not None
-            and kept[3] == marks[0]
-            and kept[0] <= decision_at_utc < kept[1]
-        ):
-            return list(kept[2])
-    rows = conn.execute(
-        "SELECT activation_id,artifact_id,content_sha256,generation,"
-        "run_cycle_by_system_json,run_cycle_by_system_sha256 "
-        "FROM calibration_native_ensemble_activation "
-        "WHERE artifact_kind="
-        "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
-        "AND station_id=? AND ensemble_system_id_or_star=? "
-        "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
-        "AND available_system_set_hash_or_star='*' "
-        "AND run_cycle_by_system_json=? "
-        "AND run_cycle_by_system_sha256=? "
-        "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-        "AND valid_from_utc<=? AND valid_until_utc>? "
-        "ORDER BY generation DESC LIMIT 2",
-        identity + (decision_at_utc, decision_at_utc),
-    ).fetchall()
-    if marks is not None:
-        horizon = _window_horizon(conn.execute(
-            "SELECT valid_from_utc,valid_until_utc "
+        digest, horizon = _window_digest_horizon(conn.execute(
+            "SELECT activation_id,valid_from_utc,valid_until_utc "
             "FROM calibration_native_ensemble_activation "
             "WHERE artifact_kind="
             "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
@@ -2004,13 +2020,33 @@ def _system_activation_rows(
             "AND valid_until_utc>?",
             identity + (decision_at_utc,),
         ), decision_at_utc)
+    if kept is not None and kept[4] == digest:
+        rows = [tuple(row) for row in kept[2]]
+    else:
+        rows = conn.execute(
+            "SELECT activation_id,artifact_id,content_sha256,generation,"
+            "run_cycle_by_system_json,run_cycle_by_system_sha256 "
+            "FROM calibration_native_ensemble_activation "
+            "WHERE artifact_kind="
+            "'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+            "AND station_id=? AND ensemble_system_id_or_star=? "
+            "AND season_bin=? AND lead_bucket=? AND run_cycle=? "
+            "AND available_system_set_hash_or_star='*' "
+            "AND run_cycle_by_system_json=? "
+            "AND run_cycle_by_system_sha256=? "
+            "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND valid_from_utc<=? AND valid_until_utc>? "
+            "ORDER BY generation DESC LIMIT 2",
+            identity + (decision_at_utc, decision_at_utc),
+        ).fetchall()
+    if marks is not None:
         after = _append_marks(conn)
         if after is not None and after[0] == marks[0]:
             if len(_SYSTEM_ACTIVATION_MEMO) >= SYSTEM_ACTIVATION_MEMO_MAX:
                 _SYSTEM_ACTIVATION_MEMO.clear()
             _SYSTEM_ACTIVATION_MEMO[memo_key] = (
                 decision_at_utc, horizon,
-                tuple(tuple(row) for row in rows), marks[0],
+                tuple(tuple(row) for row in rows), marks[0], digest,
             )
     return rows
 

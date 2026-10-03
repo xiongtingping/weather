@@ -43,7 +43,13 @@ def _walk_sql(conn) -> list[str]:
         observed_system_ids=SYSTEMS, candidates=("h12_24",),
     )
     conn.set_trace_callback(None)
-    return [s for s in statements if "calibration_native_ensemble_activation a" in s]
+    # The walk itself: the activation rows joined to their artifacts.  The
+    # id list the kept answer is checked against reads the same table first.
+    return [
+        s for s in statements
+        if "calibration_native_ensemble_activation a" in s
+        and "JOIN calibration_cross_native_ensemble_artifact r" in s
+    ]
 
 
 def test_the_index_is_declared_where_the_resident_reads_its_schema() -> None:
