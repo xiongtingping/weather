@@ -1,0 +1,1234 @@
+{
+ "schema": "tiebreak_conditional_results7_v1",
+ "rows": 3568,
+ "discovery_split": "2026-08-29",
+ "patterns": [
+  {
+   "pattern": "A 四心同桶",
+   "windows": {
+    "前段": {
+     "n": 993,
+     "share_of_rows": 0.4056372549019608,
+     "model_mode": {
+      "n_quoted": 924,
+      "hit": 0.5497835497835498,
+      "ask": 0.5520768398268399,
+      "bid": 0.5171006493506494,
+      "model_probability": 0.4557243191264563
+     },
+     "model_mean": {
+      "n_quoted": 924,
+      "hit": 0.5497835497835498,
+      "ask": 0.5520768398268399,
+      "bid": 0.5171006493506494,
+      "model_probability": 0.4557243191264563
+     },
+     "market_mode": {
+      "n_quoted": 924,
+      "hit": 0.5497835497835498,
+      "ask": 0.5520768398268399,
+      "bid": 0.5171006493506494,
+      "model_probability": 0.4557243191264563
+     },
+     "market_mean": {
+      "n_quoted": 924,
+      "hit": 0.5497835497835498,
+      "ask": 0.5520768398268399,
+      "bid": 0.5171006493506494,
+      "model_probability": 0.4557243191264563
+     }
+    },
+    "近段": {
+     "n": 619,
+     "share_of_rows": 0.5526785714285715,
+     "model_mode": {
+      "n_quoted": 584,
+      "hit": 0.5496575342465754,
+      "ask": 0.5486660958904109,
+      "bid": 0.5047568493150685,
+      "model_probability": 0.508978958652446
+     },
+     "model_mean": {
+      "n_quoted": 584,
+      "hit": 0.5496575342465754,
+      "ask": 0.5486660958904109,
+      "bid": 0.5047568493150685,
+      "model_probability": 0.508978958652446
+     },
+     "market_mode": {
+      "n_quoted": 584,
+      "hit": 0.5496575342465754,
+      "ask": 0.5486660958904109,
+      "bid": 0.5047568493150685,
+      "model_probability": 0.508978958652446
+     },
+     "market_mean": {
+      "n_quoted": 584,
+      "hit": 0.5496575342465754,
+      "ask": 0.5486660958904109,
+      "bid": 0.5047568493150685,
+      "model_probability": 0.508978958652446
+     }
+    }
+   }
+  },
+  {
+   "pattern": "B 两众数同桶·仅模型均值桶偏出",
+   "windows": {
+    "前段": {
+     "n": 160,
+     "share_of_rows": 0.06535947712418301,
+     "model_mode": {
+      "n_quoted": 153,
+      "hit": 0.5359477124183006,
+      "ask": 0.5134901960784314,
+      "bid": 0.47738562091503267,
+      "model_probability": 0.3386678185139495
+     },
+     "model_mean": {
+      "n_quoted": 153,
+      "hit": 0.2222222222222222,
+      "ask": 0.2533529411764706,
+      "bid": 0.21834640522875817,
+      "model_probability": 0.2560106179703785
+     },
+     "market_mode": {
+      "n_quoted": 153,
+      "hit": 0.5359477124183006,
+      "ask": 0.5134901960784314,
+      "bid": 0.47738562091503267,
+      "model_probability": 0.3386678185139495
+     },
+     "market_mean": {
+      "n_quoted": 153,
+      "hit": 0.5359477124183006,
+      "ask": 0.5134901960784314,
+      "bid": 0.47738562091503267,
+      "model_probability": 0.3386678185139495
+     }
+    },
+    "近段": {
+     "n": 39,
+     "share_of_rows": 0.03482142857142857,
+     "model_mode": {
+      "n_quoted": 39,
+      "hit": 0.5641025641025641,
+      "ask": 0.5297435897435897,
+      "bid": 0.4917948717948718,
+      "model_probability": 0.3914873443676954
+     },
+     "model_mean": {
+      "n_quoted": 39,
+      "hit": 0.358974358974359,
+      "ask": 0.28076923076923077,
+      "bid": 0.24615384615384617,
+      "model_probability": 0.3377258333506633
+     },
+     "market_mode": {
+      "n_quoted": 39,
+      "hit": 0.5641025641025641,
+      "ask": 0.5297435897435897,
+      "bid": 0.4917948717948718,
+      "model_probability": 0.3914873443676954
+     },
+     "market_mean": {
+      "n_quoted": 39,
+      "hit": 0.5641025641025641,
+      "ask": 0.5297435897435897,
+      "bid": 0.4917948717948718,
+      "model_probability": 0.3914873443676954
+     }
+    }
+   }
+  },
+  {
+   "pattern": "C 两众数同桶·市场均值桶偏出",
+   "windows": {
+    "前段": {
+     "n": 97,
+     "share_of_rows": 0.039624183006535946,
+     "model_mode": {
+      "n_quoted": 97,
+      "hit": 0.44329896907216493,
+      "ask": 0.43117525773195875,
+      "bid": 0.37628865979381443,
+      "model_probability": 0.4003329643811361
+     },
+     "model_mean": {
+      "n_quoted": 97,
+      "hit": 0.36082474226804123,
+      "ask": 0.37989690721649483,
+      "bid": 0.3254639175257732,
+      "model_probability": 0.3766287562877064
+     },
+     "market_mode": {
+      "n_quoted": 97,
+      "hit": 0.44329896907216493,
+      "ask": 0.43117525773195875,
+      "bid": 0.37628865979381443,
+      "model_probability": 0.4003329643811361
+     },
+     "market_mean": {
+      "n_quoted": 97,
+      "hit": 0.28865979381443296,
+      "ask": 0.351020618556701,
+      "bid": 0.2982577319587629,
+      "model_probability": 0.24980567685469424
+     }
+    },
+    "近段": {
+     "n": 58,
+     "share_of_rows": 0.05178571428571429,
+     "model_mode": {
+      "n_quoted": 58,
+      "hit": 0.39655172413793105,
+      "ask": 0.4244827586206897,
+      "bid": 0.36224137931034484,
+      "model_probability": 0.4286835912190754
+     },
+     "model_mean": {
+      "n_quoted": 58,
+      "hit": 0.4827586206896552,
+      "ask": 0.4098275862068966,
+      "bid": 0.34413793103448276,
+      "model_probability": 0.4179613479944116
+     },
+     "market_mode": {
+      "n_quoted": 58,
+      "hit": 0.39655172413793105,
+      "ask": 0.4244827586206897,
+      "bid": 0.36224137931034484,
+      "model_probability": 0.4286835912190754
+     },
+     "market_mean": {
+      "n_quoted": 58,
+      "hit": 0.39655172413793105,
+      "ask": 0.36689655172413793,
+      "bid": 0.29017241379310343,
+      "model_probability": 0.27234336617983274
+     }
+    }
+   }
+  },
+  {
+   "pattern": "D 两众数相邻·市场均值桶在模型众数桶",
+   "windows": {
+    "前段": {
+     "n": 129,
+     "share_of_rows": 0.05269607843137255,
+     "model_mode": {
+      "n_quoted": 129,
+      "hit": 0.3023255813953488,
+      "ask": 0.36196124031007754,
+      "bid": 0.29733333333333334,
+      "model_probability": 0.40702582353507916
+     },
+     "model_mean": {
+      "n_quoted": 129,
+      "hit": 0.32558139534883723,
+      "ask": 0.3538217054263566,
+      "bid": 0.28911627906976745,
+      "model_probability": 0.4017638095167906
+     },
+     "market_mode": {
+      "n_quoted": 129,
+      "hit": 0.4418604651162791,
+      "ask": 0.4261240310077519,
+      "bid": 0.36844961240310076,
+      "model_probability": 0.23043557020534008
+     },
+     "market_mean": {
+      "n_quoted": 129,
+      "hit": 0.3023255813953488,
+      "ask": 0.36196124031007754,
+      "bid": 0.29733333333333334,
+      "model_probability": 0.40702582353507916
+     }
+    },
+    "近段": {
+     "n": 81,
+     "share_of_rows": 0.07232142857142858,
+     "model_mode": {
+      "n_quoted": 81,
+      "hit": 0.43209876543209874,
+      "ask": 0.3638271604938272,
+      "bid": 0.3030864197530864,
+      "model_probability": 0.41173489944920066
+     },
+     "model_mean": {
+      "n_quoted": 81,
+      "hit": 0.4444444444444444,
+      "ask": 0.35933333333333334,
+      "bid": 0.30117283950617285,
+      "model_probability": 0.4076285896948395
+     },
+     "market_mode": {
+      "n_quoted": 81,
+      "hit": 0.3950617283950617,
+      "ask": 0.44037037037037036,
+      "bid": 0.3924691358024691,
+      "model_probability": 0.24833099369458772
+     },
+     "market_mean": {
+      "n_quoted": 81,
+      "hit": 0.43209876543209874,
+      "ask": 0.3638271604938272,
+      "bid": 0.3030864197530864,
+      "model_probability": 0.41173489944920066
+     }
+    }
+   }
+  },
+  {
+   "pattern": "E 两众数相邻·市场均值桶在市场众数桶",
+   "windows": {
+    "前段": {
+     "n": 796,
+     "share_of_rows": 0.32516339869281047,
+     "model_mode": {
+      "n_quoted": 793,
+      "hit": 0.2635561160151324,
+      "ask": 0.2794653215636822,
+      "bid": 0.23898486759142498,
+      "model_probability": 0.3857187771308886
+     },
+     "model_mean": {
+      "n_quoted": 793,
+      "hit": 0.2849936948297604,
+      "ask": 0.3045813366960908,
+      "bid": 0.2648360655737705,
+      "model_probability": 0.37533099878985354
+     },
+     "market_mode": {
+      "n_quoted": 795,
+      "hit": 0.44528301886792454,
+      "ask": 0.4966050314465409,
+      "bid": 0.4595924528301887,
+      "model_probability": 0.2546780039678886
+     },
+     "market_mean": {
+      "n_quoted": 795,
+      "hit": 0.44528301886792454,
+      "ask": 0.4966050314465409,
+      "bid": 0.4595924528301887,
+      "model_probability": 0.2546780039678886
+     }
+    },
+    "近段": {
+     "n": 283,
+     "share_of_rows": 0.2526785714285714,
+     "model_mode": {
+      "n_quoted": 283,
+      "hit": 0.24028268551236748,
+      "ask": 0.3136042402826855,
+      "bid": 0.272791519434629,
+      "model_probability": 0.4245420876860747
+     },
+     "model_mean": {
+      "n_quoted": 283,
+      "hit": 0.2332155477031802,
+      "ask": 0.3274805653710247,
+      "bid": 0.28580212014134276,
+      "model_probability": 0.4193392774047003
+     },
+     "market_mode": {
+      "n_quoted": 283,
+      "hit": 0.5229681978798587,
+      "ask": 0.47742049469964665,
+      "bid": 0.43724381625441694,
+      "model_probability": 0.2807368781540509
+     },
+     "market_mean": {
+      "n_quoted": 283,
+      "hit": 0.5229681978798587,
+      "ask": 0.47742049469964665,
+      "bid": 0.43724381625441694,
+      "model_probability": 0.2807368781540509
+     }
+    }
+   }
+  },
+  {
+   "pattern": "E′ 两众数相邻·市场均值桶两者都不是",
+   "windows": {
+    "前段": {
+     "n": 23,
+     "share_of_rows": 0.009395424836601307,
+     "model_mode": {
+      "n_quoted": 20,
+      "hit": 0.25,
+      "ask": 0.1435,
+      "bid": 0.11,
+      "model_probability": 0.2744918921534743
+     },
+     "model_mean": {
+      "n_quoted": 22,
+      "hit": 0.3181818181818182,
+      "ask": 0.27545454545454545,
+      "bid": 0.2431818181818182,
+      "model_probability": 0.22928302966748068
+     },
+     "market_mode": {
+      "n_quoted": 23,
+      "hit": 0.34782608695652173,
+      "ask": 0.3987826086956522,
+      "bid": 0.33895652173913043,
+      "model_probability": 0.18273554020949534
+     },
+     "market_mean": {
+      "n_quoted": 23,
+      "hit": 0.13043478260869565,
+      "ask": 0.33695652173913043,
+      "bid": 0.29695652173913045,
+      "model_probability": 0.1319328121389513
+     }
+    },
+    "近段": {
+     "n": 5,
+     "share_of_rows": 0.004464285714285714,
+     "model_mode": {
+      "n_quoted": 5,
+      "hit": 0.6,
+      "ask": 0.246,
+      "bid": 0.13999999999999999,
+      "model_probability": 0.45100341111483727
+     },
+     "model_mean": {
+      "n_quoted": 5,
+      "hit": 0.6,
+      "ask": 0.246,
+      "bid": 0.13999999999999999,
+      "model_probability": 0.45100341111483727
+     },
+     "market_mode": {
+      "n_quoted": 5,
+      "hit": 0,
+      "ask": 0.574,
+      "bid": 0.282,
+      "model_probability": 0.2706164151470232
+     },
+     "market_mean": {
+      "n_quoted": 5,
+      "hit": 0.2,
+      "ask": 0.356,
+      "bid": 0.208,
+      "model_probability": 0.14240295061894323
+     }
+    }
+   }
+  },
+  {
+   "pattern": "F 两众数相隔≥2档",
+   "windows": {
+    "前段": {
+     "n": 250,
+     "share_of_rows": 0.10212418300653595,
+     "model_mode": {
+      "n_quoted": 231,
+      "hit": 0.0735930735930736,
+      "ask": 0.08713852813852814,
+      "bid": 0.05454978354978355,
+      "model_probability": 0.3074892887914699
+     },
+     "model_mean": {
+      "n_quoted": 247,
+      "hit": 0.1659919028340081,
+      "ask": 0.17764372469635628,
+      "bid": 0.13693117408906882,
+      "model_probability": 0.23955946123715058
+     },
+     "market_mode": {
+      "n_quoted": 250,
+      "hit": 0.392,
+      "ask": 0.417084,
+      "bid": 0.371256,
+      "model_probability": 0.09558706707632744
+     },
+     "market_mean": {
+      "n_quoted": 250,
+      "hit": 0.384,
+      "ask": 0.397852,
+      "bid": 0.352192,
+      "model_probability": 0.12410055509939981
+     }
+    },
+    "近段": {
+     "n": 35,
+     "share_of_rows": 0.03125,
+     "model_mode": {
+      "n_quoted": 35,
+      "hit": 0.14285714285714285,
+      "ask": 0.1812,
+      "bid": 0.10462857142857143,
+      "model_probability": 0.31176298723231116
+     },
+     "model_mean": {
+      "n_quoted": 35,
+      "hit": 0.2,
+      "ask": 0.1997142857142857,
+      "bid": 0.12628571428571428,
+      "model_probability": 0.2911002535297715
+     },
+     "market_mode": {
+      "n_quoted": 35,
+      "hit": 0.3142857142857143,
+      "ask": 0.3493428571428571,
+      "bid": 0.29285714285714287,
+      "model_probability": 0.11031438380488198
+     },
+     "market_mean": {
+      "n_quoted": 35,
+      "hit": 0.3142857142857143,
+      "ask": 0.324,
+      "bid": 0.2517142857142857,
+      "model_probability": 0.19412396418241787
+     }
+    }
+   }
+  }
+ ],
+ "arms": [
+  {
+   "arm": "A 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 924,
+   "n_validation": 584,
+   "net_first": -0.07110679149841859,
+   "net_second": -0.022181951828928858,
+   "net_discovery": -0.028059286464549377,
+   "net_validation": -0.017366548564639917,
+   "net_validation_ci90": [
+    -0.11323664734768071,
+    0.06957188405273901
+   ],
+   "hit_discovery": 0.5497835497835498,
+   "price_discovery": 0.5520768398268399,
+   "hit_validation": 0.5496575342465754,
+   "price_validation": 0.5486660958904109,
+   "selected": false
+  },
+  {
+   "arm": "A 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 924,
+   "n_validation": 584,
+   "net_first": -0.07110679149841859,
+   "net_second": -0.022181951828928858,
+   "net_discovery": -0.028059286464549377,
+   "net_validation": -0.017366548564639917,
+   "net_validation_ci90": [
+    -0.11323664734768071,
+    0.06957188405273901
+   ],
+   "hit_discovery": 0.5497835497835498,
+   "price_discovery": 0.5520768398268399,
+   "hit_validation": 0.5496575342465754,
+   "price_validation": 0.5486660958904109,
+   "selected": false
+  },
+  {
+   "arm": "A 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 924,
+   "n_validation": 584,
+   "net_first": -0.07110679149841859,
+   "net_second": -0.022181951828928858,
+   "net_discovery": -0.028059286464549377,
+   "net_validation": -0.017366548564639917,
+   "net_validation_ci90": [
+    -0.11323664734768071,
+    0.06957188405273901
+   ],
+   "hit_discovery": 0.5497835497835498,
+   "price_discovery": 0.5520768398268399,
+   "hit_validation": 0.5496575342465754,
+   "price_validation": 0.5486660958904109,
+   "selected": false
+  },
+  {
+   "arm": "A 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 924,
+   "n_validation": 584,
+   "net_first": -0.07110679149841859,
+   "net_second": -0.022181951828928858,
+   "net_discovery": -0.028059286464549377,
+   "net_validation": -0.017366548564639917,
+   "net_validation_ci90": [
+    -0.11323664734768071,
+    0.06957188405273901
+   ],
+   "hit_discovery": 0.5497835497835498,
+   "price_discovery": 0.5520768398268399,
+   "hit_validation": 0.5496575342465754,
+   "price_validation": 0.5486660958904109,
+   "selected": false
+  },
+  {
+   "arm": "B 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 153,
+   "n_validation": 39,
+   "net_first": -0.08530947650352594,
+   "net_second": 0.10547742427871909,
+   "net_discovery": 0.04188179068463742,
+   "net_validation": -0.02126302449080217,
+   "net_validation_ci90": [
+    -0.23599017160630215,
+    0.22615731756327875
+   ],
+   "hit_discovery": 0.5359477124183006,
+   "price_discovery": 0.5134901960784314,
+   "hit_validation": 0.5641025641025641,
+   "price_validation": 0.5297435897435897,
+   "selected": false
+  },
+  {
+   "arm": "B 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 160,
+   "n_validation": 39,
+   "net_first": -0.23020806796152393,
+   "net_second": -0.24324060308016396,
+   "net_discovery": -0.23851630909965696,
+   "net_validation": 0.2250774155616696,
+   "net_validation_ci90": [
+    -0.26225289681635117,
+    0.6696393066697669
+   ],
+   "hit_discovery": 0.2125,
+   "price_discovery": 0.24231250000000001,
+   "hit_validation": 0.358974358974359,
+   "price_validation": 0.28076923076923077,
+   "selected": false
+  },
+  {
+   "arm": "B 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 153,
+   "n_validation": 39,
+   "net_first": -0.08530947650352594,
+   "net_second": 0.10547742427871909,
+   "net_discovery": 0.04188179068463742,
+   "net_validation": -0.02126302449080217,
+   "net_validation_ci90": [
+    -0.23599017160630215,
+    0.22615731756327875
+   ],
+   "hit_discovery": 0.5359477124183006,
+   "price_discovery": 0.5134901960784314,
+   "hit_validation": 0.5641025641025641,
+   "price_validation": 0.5297435897435897,
+   "selected": false
+  },
+  {
+   "arm": "B 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 153,
+   "n_validation": 39,
+   "net_first": -0.08530947650352594,
+   "net_second": 0.10547742427871909,
+   "net_discovery": 0.04188179068463742,
+   "net_validation": -0.02126302449080217,
+   "net_validation_ci90": [
+    -0.23599017160630215,
+    0.22615731756327875
+   ],
+   "hit_discovery": 0.5359477124183006,
+   "price_discovery": 0.5134901960784314,
+   "hit_validation": 0.5641025641025641,
+   "price_validation": 0.5297435897435897,
+   "selected": false
+  },
+  {
+   "arm": "C 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 97,
+   "n_validation": 58,
+   "net_first": 0.34359963577080427,
+   "net_second": -0.08546424570144341,
+   "net_discovery": -0.023537499921943743,
+   "net_validation": -0.08612582954318904,
+   "net_validation_ci90": [
+    -0.3516092197111349,
+    0.21604536422116102
+   ],
+   "hit_discovery": 0.44329896907216493,
+   "price_discovery": 0.43117525773195875,
+   "hit_validation": 0.39655172413793105,
+   "price_validation": 0.4244827586206897,
+   "selected": false
+  },
+  {
+   "arm": "C 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 97,
+   "n_validation": 58,
+   "net_first": 0.41915845585056033,
+   "net_second": -0.2465109475048118,
+   "net_discovery": -0.15043495114424263,
+   "net_validation": 0.14951289205299406,
+   "net_validation_ci90": [
+    -0.15582156805429498,
+    0.4965752010144751
+   ],
+   "hit_discovery": 0.36082474226804123,
+   "price_discovery": 0.37989690721649483,
+   "hit_validation": 0.4827586206896552,
+   "price_validation": 0.4098275862068966,
+   "selected": false
+  },
+  {
+   "arm": "C 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 97,
+   "n_validation": 58,
+   "net_first": 0.34359963577080427,
+   "net_second": -0.08546424570144341,
+   "net_discovery": -0.023537499921943743,
+   "net_validation": -0.08612582954318904,
+   "net_validation_ci90": [
+    -0.3516092197111349,
+    0.21604536422116102
+   ],
+   "hit_discovery": 0.44329896907216493,
+   "price_discovery": 0.43117525773195875,
+   "hit_validation": 0.39655172413793105,
+   "price_validation": 0.4244827586206897,
+   "selected": false
+  },
+  {
+   "arm": "C 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 97,
+   "n_validation": 58,
+   "net_first": -0.4170709985143482,
+   "net_second": -0.17712373693730685,
+   "net_discovery": -0.21175530046389013,
+   "net_validation": 0.01381364110657451,
+   "net_validation_ci90": [
+    -0.1738413649198798,
+    0.1940585495961264
+   ],
+   "hit_discovery": 0.28865979381443296,
+   "price_discovery": 0.351020618556701,
+   "hit_validation": 0.39655172413793105,
+   "price_validation": 0.36689655172413793,
+   "selected": false
+  },
+  {
+   "arm": "D 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 129,
+   "n_validation": 81,
+   "net_first": -0.4337338464005131,
+   "net_second": -0.16802755883402257,
+   "net_discovery": -0.20510285477353288,
+   "net_validation": 0.24029738180717608,
+   "net_validation_ci90": [
+    -0.05443169241184043,
+    0.5958007169378072
+   ],
+   "hit_discovery": 0.3023255813953488,
+   "price_discovery": 0.36196124031007754,
+   "hit_validation": 0.43209876543209874,
+   "price_validation": 0.3638271604938272,
+   "selected": false
+  },
+  {
+   "arm": "D 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 129,
+   "n_validation": 81,
+   "net_first": -0.2340981699076937,
+   "net_second": -0.10863956632698243,
+   "net_discovery": -0.12614541798940726,
+   "net_validation": 0.13084003991294238,
+   "net_validation_ci90": [
+    -0.04614900871623977,
+    0.3280944567838043
+   ],
+   "hit_discovery": 0.32558139534883723,
+   "price_discovery": 0.3538217054263566,
+   "hit_validation": 0.4444444444444444,
+   "price_validation": 0.35933333333333334,
+   "selected": false
+  },
+  {
+   "arm": "D 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 129,
+   "n_validation": 81,
+   "net_first": -0.0575980900661669,
+   "net_second": 0.029431015004995436,
+   "net_discovery": 0.01728741894855418,
+   "net_validation": -0.09950935773024588,
+   "net_validation_ci90": [
+    -0.25127470008105973,
+    0.09462054619792838
+   ],
+   "hit_discovery": 0.4418604651162791,
+   "price_discovery": 0.4261240310077519,
+   "hit_validation": 0.3950617283950617,
+   "price_validation": 0.44037037037037036,
+   "selected": false
+  },
+  {
+   "arm": "D 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 129,
+   "n_validation": 81,
+   "net_first": -0.4337338464005131,
+   "net_second": -0.16802755883402257,
+   "net_discovery": -0.20510285477353288,
+   "net_validation": 0.24029738180717608,
+   "net_validation_ci90": [
+    -0.05443169241184043,
+    0.5958007169378072
+   ],
+   "hit_discovery": 0.3023255813953488,
+   "price_discovery": 0.36196124031007754,
+   "hit_validation": 0.43209876543209874,
+   "price_validation": 0.3638271604938272,
+   "selected": false
+  },
+  {
+   "arm": "E 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 796,
+   "n_validation": 283,
+   "net_first": -0.13226305225733748,
+   "net_second": -0.1249370130346032,
+   "net_discovery": -0.12638197303205204,
+   "net_validation": -0.2664475838316887,
+   "net_validation_ci90": [
+    -0.40622469984952725,
+    -0.1084212674358746
+   ],
+   "hit_discovery": 0.26256281407035176,
+   "price_discovery": 0.2784384422110553,
+   "hit_validation": 0.24028268551236748,
+   "price_validation": 0.3136042402826855,
+   "selected": false
+  },
+  {
+   "arm": "E 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 796,
+   "n_validation": 283,
+   "net_first": -0.34079792230026706,
+   "net_second": -0.07062429450564285,
+   "net_discovery": -0.12391230903297451,
+   "net_validation": -0.3583389558361611,
+   "net_validation_ci90": [
+    -0.4619202935555474,
+    -0.25248278142827846
+   ],
+   "hit_discovery": 0.28391959798994976,
+   "price_discovery": 0.3034597989949749,
+   "hit_validation": 0.2332155477031802,
+   "price_validation": 0.3274805653710247,
+   "selected": false
+  },
+  {
+   "arm": "E 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 795,
+   "n_validation": 283,
+   "net_first": -0.20450666485291824,
+   "net_second": -0.1298399200987806,
+   "net_discovery": -0.1444915077486491,
+   "net_validation": 0.08912669998681652,
+   "net_validation_ci90": [
+    -0.04334142763697686,
+    0.21047199200888211
+   ],
+   "hit_discovery": 0.44528301886792454,
+   "price_discovery": 0.4966050314465409,
+   "hit_validation": 0.5229681978798587,
+   "price_validation": 0.47742049469964665,
+   "selected": false
+  },
+  {
+   "arm": "E 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 795,
+   "n_validation": 283,
+   "net_first": -0.20450666485291824,
+   "net_second": -0.1298399200987806,
+   "net_discovery": -0.1444915077486491,
+   "net_validation": 0.08912669998681652,
+   "net_validation_ci90": [
+    -0.04334142763697686,
+    0.21047199200888211
+   ],
+   "hit_discovery": 0.44528301886792454,
+   "price_discovery": 0.4966050314465409,
+   "hit_validation": 0.5229681978798587,
+   "price_validation": 0.47742049469964665,
+   "selected": false
+  },
+  {
+   "arm": "E′买模型众数桶",
+   "side": "YES",
+   "n_discovery": 23,
+   "n_validation": 5,
+   "net_first": -1.04430625,
+   "net_second": 0.9933285630743527,
+   "net_discovery": 0.28458601939631695,
+   "net_validation": 0.7171262548262547,
+   "net_validation_ci90": [
+    -0.33051428571428576,
+    1.5203006756756756
+   ],
+   "hit_discovery": 0.21739130434782608,
+   "price_discovery": 0.12530434782608696,
+   "hit_validation": 0.6,
+   "price_validation": 0.246,
+   "selected": false
+  },
+  {
+   "arm": "E′买模型均值桶",
+   "side": "YES",
+   "n_discovery": 23,
+   "n_validation": 5,
+   "net_first": 0.22178551225644252,
+   "net_second": 0.38076494808449696,
+   "net_discovery": 0.3254677530138693,
+   "net_validation": 0.7171262548262547,
+   "net_validation_ci90": [
+    -0.33051428571428576,
+    1.5203006756756756
+   ],
+   "hit_discovery": 0.30434782608695654,
+   "price_discovery": 0.2639130434782609,
+   "hit_validation": 0.6,
+   "price_validation": 0.246,
+   "selected": false
+  },
+  {
+   "arm": "E′买市场众数桶",
+   "side": "YES",
+   "n_discovery": 23,
+   "n_validation": 5,
+   "net_first": -0.15051448774355747,
+   "net_second": -0.11701189609276991,
+   "net_discovery": -0.1286649714495656,
+   "net_validation": -1.0212999999999999,
+   "net_validation_ci90": [
+    -1.0289285714285714,
+    -1.0088750000000002
+   ],
+   "hit_discovery": 0.34782608695652173,
+   "price_discovery": 0.3987826086956522,
+   "hit_validation": 0.0,
+   "price_validation": 0.574,
+   "selected": false
+  },
+  {
+   "arm": "E′买市场均值桶",
+   "side": "YES",
+   "n_discovery": 23,
+   "n_validation": 5,
+   "net_first": -0.6299616935483872,
+   "net_second": -0.6731520336605891,
+   "net_discovery": -0.6581293066650405,
+   "net_validation": -0.3425448275862068,
+   "net_validation_ci90": [
+    -1.03275,
+    0.11792528735632198
+   ],
+   "hit_discovery": 0.13043478260869565,
+   "price_discovery": 0.33695652173913043,
+   "hit_validation": 0.2,
+   "price_validation": 0.356,
+   "selected": false
+  },
+  {
+   "arm": "F 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 250,
+   "n_validation": 35,
+   "net_first": -0.12516477340694734,
+   "net_second": -0.4928439927715183,
+   "net_discovery": -0.36047947380027273,
+   "net_validation": -0.3516848107448107,
+   "net_validation_ci90": [
+    -0.7305395424836602,
+    0.14810153256704983
+   ],
+   "hit_discovery": 0.068,
+   "price_discovery": 0.081048,
+   "hit_validation": 0.14285714285714285,
+   "price_validation": 0.1812,
+   "selected": false
+  },
+  {
+   "arm": "F 买模型均值桶",
+   "side": "YES",
+   "n_discovery": 250,
+   "n_validation": 35,
+   "net_first": -0.09191660129481977,
+   "net_second": -0.47158378831273845,
+   "net_discovery": -0.33490360098628774,
+   "net_validation": -0.18585886259334533,
+   "net_validation_ci90": [
+    -0.6421576289207869,
+    0.4440609346950942
+   ],
+   "hit_discovery": 0.164,
+   "price_discovery": 0.175656,
+   "hit_validation": 0.2,
+   "price_validation": 0.1997142857142857,
+   "selected": false
+  },
+  {
+   "arm": "F 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 250,
+   "n_validation": 35,
+   "net_first": -0.046316429544489245,
+   "net_second": -0.10722835574873464,
+   "net_discovery": -0.0853000623152063,
+   "net_validation": -0.13544027085617358,
+   "net_validation_ci90": [
+    -0.5700257404094613,
+    0.24104749364177555
+   ],
+   "hit_discovery": 0.392,
+   "price_discovery": 0.417084,
+   "hit_validation": 0.3142857142857143,
+   "price_validation": 0.3493428571428571,
+   "selected": false
+  },
+  {
+   "arm": "F 买市场均值桶",
+   "side": "YES",
+   "n_discovery": 250,
+   "n_validation": 35,
+   "net_first": -0.08646101063268584,
+   "net_second": -0.028788516998344123,
+   "net_discovery": -0.04955061470670714,
+   "net_validation": -0.0501805137856833,
+   "net_validation_ci90": [
+    -0.3773640716369041,
+    0.3967080374204957
+   ],
+   "hit_discovery": 0.384,
+   "price_discovery": 0.397852,
+   "hit_validation": 0.3142857142857143,
+   "price_validation": 0.324,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 <0.25档 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 745,
+   "n_validation": 491,
+   "net_first": -0.10859191654742321,
+   "net_second": 0.005133431093685755,
+   "net_discovery": -0.013642700127598007,
+   "net_validation": -0.04549895836909322,
+   "net_validation_ci90": [
+    -0.12603722123924116,
+    0.029477598813584457
+   ],
+   "hit_discovery": 0.5395973154362416,
+   "price_discovery": 0.5350523489932886,
+   "hit_validation": 0.5336048879837068,
+   "price_validation": 0.5459409368635438,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 <0.25档 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 745,
+   "n_validation": 491,
+   "net_first": 0.31299686154039547,
+   "net_second": -0.04350696084186668,
+   "net_discovery": 0.015352059497755125,
+   "net_validation": -0.01329992374045443,
+   "net_validation_ci90": [
+    -0.11840150810026637,
+    0.08226589819344815
+   ],
+   "hit_discovery": 0.4993288590604027,
+   "price_discovery": 0.5040161073825503,
+   "hit_validation": 0.5315682281059063,
+   "price_validation": 0.5303197556008147,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 0.25–0.5档 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 619,
+   "n_validation": 319,
+   "net_first": -0.08639828633636437,
+   "net_second": -0.07092884894973871,
+   "net_discovery": -0.07327800422331353,
+   "net_validation": -0.04318767571552534,
+   "net_validation_ci90": [
+    -0.12147569998952687,
+    0.0314662926071231
+   ],
+   "hit_discovery": 0.4991922455573506,
+   "price_discovery": 0.514983844911147,
+   "hit_validation": 0.5047021943573667,
+   "price_validation": 0.5070031347962383,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 0.25–0.5档 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 619,
+   "n_validation": 319,
+   "net_first": -0.27978165417129286,
+   "net_second": -0.0553100706108062,
+   "net_discovery": -0.08939783935827914,
+   "net_validation": -0.05790771947344014,
+   "net_validation_ci90": [
+    -0.17444069916394145,
+    0.052135039899666794
+   ],
+   "hit_discovery": 0.4281098546042003,
+   "price_discovery": 0.4382536348949919,
+   "hit_validation": 0.4482758620689655,
+   "price_validation": 0.4549028213166144,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 0.5–1.0档 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 653,
+   "n_validation": 223,
+   "net_first": -0.060288728902508935,
+   "net_second": -0.09091894672029323,
+   "net_discovery": -0.08500867498209902,
+   "net_validation": 0.12518589307423197,
+   "net_validation_ci90": [
+    -0.024076481037210617,
+    0.2771461693063397
+   ],
+   "hit_discovery": 0.45788667687595713,
+   "price_discovery": 0.48724961715160797,
+   "hit_validation": 0.5112107623318386,
+   "price_validation": 0.4507488789237668,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 0.5–1.0档 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 653,
+   "n_validation": 223,
+   "net_first": -0.19707369634231403,
+   "net_second": -0.1498421196868392,
+   "net_discovery": -0.15895571640749742,
+   "net_validation": -0.24371283357139673,
+   "net_validation_ci90": [
+    -0.39814364657789586,
+    -0.09628367120683072
+   ],
+   "hit_discovery": 0.3169984686064318,
+   "price_discovery": 0.330895865237366,
+   "hit_validation": 0.2825112107623318,
+   "price_validation": 0.33642152466367714,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 ≥1.0档 买市场众数桶",
+   "side": "YES",
+   "n_discovery": 354,
+   "n_validation": 52,
+   "net_first": -0.15877159679756508,
+   "net_second": -0.1245879803716072,
+   "net_discovery": -0.13472718863354385,
+   "net_validation": -0.00866401602537014,
+   "net_validation_ci90": [
+    -0.3214262873054396,
+    0.2741374272327536
+   ],
+   "hit_discovery": 0.3954802259887006,
+   "price_discovery": 0.446774011299435,
+   "hit_validation": 0.38461538461538464,
+   "price_validation": 0.4090384615384615,
+   "selected": false
+  },
+  {
+   "arm": "两中心相距 ≥1.0档 买模型众数桶",
+   "side": "YES",
+   "n_discovery": 355,
+   "n_validation": 52,
+   "net_first": -0.40559323624231186,
+   "net_second": -0.16764565831906275,
+   "net_discovery": -0.23869479426234275,
+   "net_validation": -0.02461055529437888,
+   "net_validation_ci90": [
+    -0.7065226615236259,
+    0.763764069917011
+   ],
+   "hit_discovery": 0.16619718309859155,
+   "price_discovery": 0.1665774647887324,
+   "hit_validation": 0.19230769230769232,
+   "price_validation": 0.21096153846153848,
+   "selected": false
+  },
+  {
+   "arm": "D 做空模型众数桶",
+   "side": "NO",
+   "n_discovery": 129,
+   "n_validation": 81,
+   "net_first": 0.09595827186206618,
+   "net_second": -0.03535651549803291,
+   "net_discovery": -0.01703352191290281,
+   "net_validation": -0.2042413662152403,
+   "net_validation_ci90": [
+    -0.31102778368047507,
+    -0.09283392618113759
+   ],
+   "hit_discovery": 0.6976744186046512,
+   "price_discovery": 0.7026666666666667,
+   "hit_validation": 0.5679012345679012,
+   "price_validation": 0.6969135802469135,
+   "selected": false
+  },
+  {
+   "arm": "E 做空模型众数桶",
+   "side": "NO",
+   "n_discovery": 793,
+   "n_validation": 283,
+   "net_first": -0.05059261167119412,
+   "net_second": -0.04460234316222582,
+   "net_discovery": -0.04577320270685392,
+   "net_validation": 0.0347034550157454,
+   "net_validation_ci90": [
+    -0.02376232586428684,
+    0.08616878013439294
+   ],
+   "hit_discovery": 0.7364438839848676,
+   "price_discovery": 0.761015132408575,
+   "hit_validation": 0.7597173144876325,
+   "price_validation": 0.727208480565371,
+   "selected": false
+  },
+  {
+   "arm": "F 做空模型众数桶",
+   "side": "NO",
+   "n_discovery": 231,
+   "n_validation": 35,
+   "net_first": -0.026286991099191564,
+   "net_second": -0.02127654341205288,
+   "net_discovery": -0.0230334536400106,
+   "net_validation": -0.049219237672852884,
+   "net_validation_ci90": [
+    -0.14000193887881512,
+    0.028203085661275024
+   ],
+   "hit_discovery": 0.9264069264069265,
+   "price_discovery": 0.9454502164502164,
+   "hit_validation": 0.8571428571428571,
+   "price_validation": 0.8953714285714286,
+   "selected": false
+  }
+ ],
+ "k": 0
+}
