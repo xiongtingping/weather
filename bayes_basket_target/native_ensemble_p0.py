@@ -7,6 +7,7 @@ import json
 import math
 import os
 import sqlite3
+import threading
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
@@ -629,8 +630,20 @@ def _activated_lead_bucket(
     kept = _LEAD_BUCKET_MEMO.get(memo_key) if marks is not None else None
     if (
         kept is not None
-        and kept[3] == (marks[0], marks[2])
         and kept[0] <= decision_at_utc < kept[1]
+        and (
+            kept[3] == (marks[0], marks[2])
+            # A re-mint elsewhere: nothing appended for these scopes.
+            or _appended_since(
+                conn, database_file, marks,
+                kept_marks=(kept[3][0], marks[1]),
+                activation_keys=[
+                    _activation_key("CROSS_NATIVE_ENSEMBLE", station_id, "*",
+                                    season_bin, candidate)
+                    for candidate in candidates
+                ],
+            ) is False
+        )
     ):
         return kept[2]
     windows: tuple[tuple[bytes, str], ...] = ()
@@ -1885,6 +1898,8 @@ def forget_admitted_scopes() -> None:
     _SELECTION_WEIGHTS_MEMO.clear()
     _LEAD_BUCKET_MEMO.clear()
     _SYSTEM_ACTIVATION_MEMO.clear()
+    with _APPENDED_KEYS_LOCK:
+        _APPENDED_KEYS.clear()
 
 
 def _main_database_file(conn: sqlite3.Connection) -> str:
@@ -1949,6 +1964,113 @@ def _window_horizon(windows: Any, decision_at_utc: str) -> str:
     return horizon
 
 
+# Which scopes the appended rows touched, per database file, read once.
+#
+# The OOS rotation re-mints a batch of scopes about every 20 minutes, and
+# every batch moves the tables' marks for the whole fleet; checking each kept
+# answer by listing its scope's valid ids again cost 6-13 s a cycle on
+# 2026-10-03 16:35-16:46Z, nearly every cycle.  The rows a batch appended are
+# few and lie past the last mark read, so they are read once, by rowid, and
+# each scope key keeps the newest rowid appended for it.  A kept answer whose
+# keys have nothing past its own mark -- and whose clock is still inside its
+# horizon -- reads the same rows it was computed from: the tables only grow,
+# and a new row takes a rowid above every old one.
+#
+# file -> [activation base, evaluation base, activation read to,
+#          evaluation read to, {activation key: newest rowid},
+#          {evaluation key: newest rowid}]
+_APPENDED_KEYS: dict[str, list[Any]] = {}
+_APPENDED_KEYS_LOCK = threading.Lock()
+_APPENDED_KEYS_MAX = 200_000
+_APPENDED_ROWS_MAX = 100_000
+
+
+def _activation_key(kind: str, station_id: str, system_or_star: str,
+                    season_bin: str, lead_bucket: str) -> tuple[str, ...]:
+    return (str(kind), str(station_id), str(system_or_star), str(season_bin), str(lead_bucket))
+
+
+def _appended_since(
+    conn: sqlite3.Connection,
+    database_file: str,
+    marks: tuple[int, int, int],
+    *,
+    kept_marks: tuple[int, int],
+    activation_keys: Sequence[tuple[str, ...]] = (),
+    evaluation_keys: Sequence[tuple[str, ...]] = (),
+) -> bool | None:
+    """Whether a row was appended for any of the keys past ``kept_marks``
+    (activation, evaluation) up to ``marks``; None when that is too many
+    rows to read and the caller has to look for itself.
+
+    The record covers the rows between its two bases and what it has read
+    to; it is extended forward to ``marks`` and back to ``kept_marks`` as
+    asked, reading only the rows it does not hold yet.
+    """
+
+    def _read_activations(low: int, high: int, keys: dict) -> None:
+        for row in conn.execute(
+            "SELECT rowid,artifact_kind,station_id,ensemble_system_id_or_star,"
+            "season_bin,lead_bucket FROM calibration_native_ensemble_activation "
+            "WHERE rowid>? AND rowid<=?",
+            (low, high),
+        ):
+            # A cross activation's key carries "*" whatever the row says:
+            # the readers ask for the scope, not for a system.
+            key = _activation_key(
+                row[1], row[2],
+                "*" if str(row[1]) == "CROSS_NATIVE_ENSEMBLE" else row[3],
+                row[4], row[5],
+            )
+            keys[key] = max(int(row[0]), keys.get(key, 0))
+
+    def _read_evaluations(low: int, high: int, keys: dict) -> None:
+        for row in conn.execute(
+            "SELECT rowid,station_id,season_bin,lead_bucket "
+            "FROM calibration_cross_native_ensemble_oos_evaluation "
+            "WHERE rowid>? AND rowid<=?",
+            (low, high),
+        ):
+            key = (str(row[1]), str(row[2]), str(row[3]))
+            keys[key] = max(int(row[0]), keys.get(key, 0))
+
+    kept_a, kept_e = int(kept_marks[0]), int(kept_marks[1])
+    if (
+        marks[0] - kept_a > _APPENDED_ROWS_MAX
+        or marks[1] - kept_e > _APPENDED_ROWS_MAX
+        or kept_a > marks[0]
+        or kept_e > marks[1]
+    ):
+        return None
+    with _APPENDED_KEYS_LOCK:
+        state = _APPENDED_KEYS.get(database_file)
+        if state is None or state[2] > marks[0] or state[3] > marks[1]:
+            # First look, or not the tables last read: an empty record
+            # starting at the marks asked from.
+            state = [kept_a, kept_e, kept_a, kept_e, {}, {}]
+            _APPENDED_KEYS[database_file] = state
+        if kept_a < state[0]:
+            _read_activations(kept_a, state[0], state[4])
+            state[0] = kept_a
+        if kept_e < state[1]:
+            _read_evaluations(kept_e, state[1], state[5])
+            state[1] = kept_e
+        if marks[0] > state[2]:
+            _read_activations(state[2], marks[0], state[4])
+            state[2] = marks[0]
+        if marks[1] > state[3]:
+            _read_evaluations(state[3], marks[1], state[5])
+            state[3] = marks[1]
+        if len(state[4]) + len(state[5]) > _APPENDED_KEYS_MAX:
+            _APPENDED_KEYS.pop(database_file, None)
+            return None
+        return any(
+            state[4].get(tuple(key), 0) > kept_a for key in activation_keys
+        ) or any(
+            state[5].get(tuple(key), 0) > kept_e for key in evaluation_keys
+        )
+
+
 # The two activation reads the compile makes besides the evidence test, kept
 # the same way (2026-10-03: 137 and 740 statements a cycle, 12.6 s of 111).
 # Both are functions of the activation rows valid at the instant -- the lead
@@ -1996,8 +2118,18 @@ def _system_activation_rows(
     kept = _SYSTEM_ACTIVATION_MEMO.get(memo_key) if marks is not None else None
     if (
         kept is not None
-        and kept[3] == marks[0]
         and kept[0] <= decision_at_utc < kept[1]
+        and (
+            kept[3] == marks[0]
+            or _appended_since(
+                conn, database_file, marks,
+                kept_marks=(kept[3], marks[1]),
+                activation_keys=[_activation_key(
+                    "NATIVE_ENSEMBLE_SYSTEM_CALIBRATION", station_id,
+                    system_id, season_bin, calibration_lead,
+                )],
+            ) is False
+        )
     ):
         return list(kept[2])
     # The activation table has grown (any re-mint anywhere moves its mark) or
@@ -2594,11 +2726,25 @@ def compile_native_ensemble_p0(
                 kept is not None
                 and kept[4] is not None
                 and marks is not None
-                and kept[4][2] == marks
                 and kept[4][0] <= decision_at_utc < kept[4][1]
+                and (
+                    kept[4][2] == marks
+                    # Rows were appended, none of them for this scope.
+                    or _appended_since(
+                        conn, database_file, marks,
+                        kept_marks=(kept[4][2][0], kept[4][2][1]),
+                        activation_keys=[_activation_key(
+                            "CROSS_NATIVE_ENSEMBLE", station_id, "*",
+                            season_bin, training_lead_bucket,
+                        )],
+                        evaluation_keys=[
+                            (station_id, season_bin, training_lead_bucket)
+                        ],
+                    ) is False
+                )
             ):
-                # Neither table has a new row and the clock has reached no
-                # row's edge: the two lists are the ones kept.
+                # Neither table has a new row for this scope and the clock
+                # has reached no row's edge: the two lists are the ones kept.
                 return _kept_answer(kept)
             digest, valid_activations, horizon = _admitted_scope_digest(
                 conn,

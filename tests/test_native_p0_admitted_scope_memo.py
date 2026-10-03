@@ -379,8 +379,53 @@ def test_a_re_mint_elsewhere_does_not_walk_a_scope_whose_ids_are_unchanged(
     conn.commit()
     later, flat = _statements(conn, "2026-07-01T13:07:00Z")
     assert _count(flat, LEAD_WALK) == 0 and _count(flat, SYSTEM_READ) == 0
-    # Asked again only through the id lists, and the answer is the one a
-    # store read with nothing kept gives.
+    # Not even the id lists: the rows appended are read once, by rowid, and
+    # none of them is this scope's.
+    assert _count(flat, *WALKS) == 0 and _count(flat, EVIDENCE_TEST) == 0
+    assert _count(flat, "SELECT activation_id,valid_from_utc,valid_until_utc") == 0
+    assert _count(flat, "SELECT rowid,artifact_kind,station_id") == 1
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert later == _compile(conn, "2026-07-01T13:07:00Z")
+
+
+def test_a_re_mint_of_this_scope_is_looked_at_again(tmp_path, monkeypatch) -> None:
+    conn, _ = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    columns = [c[1] for c in conn.execute("PRAGMA table_info(calibration_native_ensemble_activation)")]
+    # A system fit the compile actually read, and a cross row of its scope.
+    _db, station, system, season, lead, cycle = next(
+        key for key, kept in P0._SYSTEM_ACTIVATION_MEMO.items() if kept[2]
+    )
+    asked = {
+        "NATIVE_ENSEMBLE_SYSTEM_CALIBRATION": (
+            "AND station_id=? AND ensemble_system_id_or_star=? AND season_bin=? "
+            "AND lead_bucket=? AND run_cycle=?",
+            (station, system, season, lead, cycle),
+        ),
+        "CROSS_NATIVE_ENSEMBLE": ("AND station_id=?", (station,)),
+    }
+    for kind in ("CROSS_NATIVE_ENSEMBLE", "NATIVE_ENSEMBLE_SYSTEM_CALIBRATION"):
+        where, params = asked[kind]
+        row = dict(zip(columns, conn.execute(
+            "SELECT * FROM calibration_native_ensemble_activation WHERE artifact_kind=? "
+            + where + " ORDER BY rowid LIMIT 1", (kind, *params),
+        ).fetchone()))
+        # The same scope, a window that has not opened yet: the answer does
+        # not change, but the scope was touched and has to be looked at.
+        row.update(
+            activation_id=f"native-activation-again-{kind}",
+            content_sha256=(kind[0] * 64)[:64],
+            valid_from_utc="2026-07-01T20:00:00Z",
+            generation=int(row["generation"]) + 100,
+        )
+        conn.execute(
+            f"INSERT INTO calibration_native_ensemble_activation({','.join(columns)}) "
+            f"VALUES({','.join('?' * len(columns))})",
+            tuple(row[c] for c in columns),
+        )
+    conn.commit()
+    later, flat = _statements(conn, "2026-07-01T13:07:00Z")
     assert _count(flat, WALKS[0]) >= 1
+    assert _count(flat, "SELECT activation_id,valid_from_utc,valid_until_utc") >= 1
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
     assert later == _compile(conn, "2026-07-01T13:07:00Z")
