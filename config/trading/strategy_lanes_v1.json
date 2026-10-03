@@ -105,7 +105,9 @@
       "entry": "latest_decision",
       "reopened_at_utc": "2026-10-03T07:40:32Z",
       "reopen_note": "User rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」 (charter 249): reopened on rule v3 -- YES on the market's modal bucket, resting at the best bid plus one tick, P0 and more than 36 hours out. Thrown after the resident restarted on commit 2b153128 (pid 13929, 2026-10-03T07:27:42Z).",
-      "rung_horizon_seconds": 900.0
+      "rung_horizon_seconds": 900.0,
+      "freshness": "envelope_validity",
+      "freshness_note": "User ruling 2026-10-03 「按信封有效期」 (charter 249 (十)): a plan is made, and a rung re-posted, while the newest P0 decision's envelope is inside its own fresh_until_utc -- not only within first_decision_fresh_seconds of the decision. 'decision_age' restores the one-hour rule."
     },
     "tail_short": {
       "enabled": true,

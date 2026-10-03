@@ -255,6 +255,12 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # hour, when a ladder two days out is rarely quoted whole -- 170 of 173
     # station-days were refused ``first_decision_stale`` over 2026-09-26..30.
     "entry": "latest_decision",
+    # Charter 249 (十), user ruling 2026-10-03 「按信封有效期」: the decision a
+    # plan is made from is fresh while the P0 envelope it read is inside its
+    # own validity, not only for an hour after it was made
+    # (``decision_age``, charter 231) -- P0 decisions two days out come in
+    # bursts with the model runs, hours apart.
+    "freshness": "envelope_validity",
     # 「按照>36h」: posted only while the settlement clock is more than this
     # many hours away -- the band the L4 verdict found P0 beat the market on.
     "min_hours_to_settlement": 36.0,

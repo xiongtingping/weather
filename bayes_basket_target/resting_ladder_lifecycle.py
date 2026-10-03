@@ -23,6 +23,7 @@ import json
 import math
 import os
 import sqlite3
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
@@ -124,6 +125,38 @@ _RESTING = frozenset({"live", "open", "delayed", "unmatched", ""})
 #: Order types the venue holds until filled or until their own horizon.  A
 #: fill-or-kill is answered at the send and never rests.
 _RESTING_ORDER_TYPES = frozenset({"GTD", "GTC"})
+
+# Charter 250 (user ruling 2026-10-03 「卖单降频」): a resting order that is
+# not a rung and carries no horizon of its own -- today the 0.998 recycle
+# sells, GTC -- is asked of the venue at most once in this many seconds
+# instead of on every pass.  Measured 2026-10-03: 27 of the 30 resting orders
+# were such sells, some resting since 09-22, each a venue lookup a pass and
+# six of them a departed-order reconcile on top (the point lookup answers
+# empty), 14-22 s of every cycle in front of the decisions.  A rung, and a
+# sell with a GTD horizon (charter 144's exits, which hold their station-day
+# shut until synced), is still asked every pass.  The cost is the one stated
+# with the ruling: a 0.998 sell's fill, and the cash it frees, is booked up
+# to this long after it happens.  "0": every pass, as before.
+GTC_SELL_LOOKUP_INTERVAL_SEC = float(
+    os.environ.get("PM_RESTING_GTC_SELL_LOOKUP_INTERVAL_SEC", "") or 300.0
+)
+if GTC_SELL_LOOKUP_INTERVAL_SEC < 0:
+    raise ValueError(
+        f"GTC sell lookup interval must be >= 0: {GTC_SELL_LOOKUP_INTERVAL_SEC}"
+    )
+# order_intent_id -> monotonic clock of its last answered lookup (this process)
+_GTC_SELL_LAST_LOOKUP: dict[str, float] = {}
+
+
+def on_the_slow_clock(intent: Mapping[str, Any]) -> bool:
+    """Whether charter 250's interval applies to this resting order."""
+
+    return (
+        not intent.get("ladder_rung", True)
+        and str(intent.get("order_type") or "").upper() == "GTC"
+        and str(intent.get("order_action") or "").upper() == "SELL"
+    )
+
 
 
 def _iso(value: Any) -> datetime:
@@ -819,6 +852,7 @@ def reprice_resting_rungs(
     stale_book_seconds: float | None = None,
     start_index: int = 0,
     lookup_concurrency: int = 1,
+    gtc_sell_lookup_interval_sec: float | None = None,
 ) -> dict[str, Any]:
     """One pass over every resting rung: sync it, then keep or cancel it.
 
@@ -842,6 +876,11 @@ def reprice_resting_rungs(
     it writes the receipt the one-at-a-time pass writes.  The lookup is the
     only work handed to another thread: it touches the client, never the
     connection.  At 1 each rung is asked when the pass reaches it.
+
+    ``gtc_sell_lookup_interval_sec`` (charter 250): a GTC sell that is not a
+    rung and was answered for less than this long ago is not asked again
+    this pass -- it is listed kept, with how long ago, and the pass runs over
+    the rest.  None takes ``GTC_SELL_LOOKUP_INTERVAL_SEC``; 0 asks every one.
     """
 
     write = write or (lambda: contextlib.nullcontext())
@@ -891,6 +930,46 @@ def reprice_resting_rungs(
     }
     intents = load_resting_maker_intents(conn, limit=limit)
     receipt["examined"] = len(intents)
+    # Charter 250: GTC sells answered for inside the interval rest this pass.
+    interval = float(
+        GTC_SELL_LOOKUP_INTERVAL_SEC
+        if gtc_sell_lookup_interval_sec is None
+        else gtc_sell_lookup_interval_sec
+    )
+    receipt["gtc_sell_lookup_interval_sec"] = interval
+    receipt["lookup_rested"] = 0
+    resting_ids = {str(intent["order_intent_id"]) for intent in intents}
+    for gone in [key for key in _GTC_SELL_LAST_LOOKUP if key not in resting_ids]:
+        _GTC_SELL_LAST_LOOKUP.pop(gone, None)
+    if interval > 0:
+        clock = time.monotonic()
+        asked: list[dict[str, Any]] = []
+        for intent in intents:
+            last = _GTC_SELL_LAST_LOOKUP.get(str(intent["order_intent_id"]))
+            if (
+                last is not None
+                and clock - last < interval
+                and on_the_slow_clock(intent)
+            ):
+                receipt["kept"] += 1
+                receipt["kept_not_ladder"] += 1
+                receipt["lookup_rested"] += 1
+                receipt["rungs"].append({
+                    "order_intent_id": intent["order_intent_id"],
+                    "station_id": intent["station_id"],
+                    "event_date": intent["event_date"],
+                    "bucket": intent["bucket"],
+                    "limit_price": intent["limit_price"],
+                    "verdict": {
+                        "action": "keep",
+                        "reason": "not_a_ladder_rung",
+                        "looked_up_seconds_ago": round(clock - last, 1),
+                    },
+                })
+            else:
+                asked.append(intent)
+        intents = asked
+    receipt["looked_up"] = len(intents)
     # Rungs this pass did not reach because the gateway stopped answering,
     # named so the board can see them, and where the next pass starts.
     receipt["deferred"] = []
@@ -898,6 +977,8 @@ def reprice_resting_rungs(
     receipt["start_index"] = 0
     receipt["next_start_index"] = 0
     if not intents:
+        if receipt["examined"]:
+            receipt["state"] = "no_change"
         return receipt
     start = int(start_index or 0) % len(intents)
     receipt["start_index"] = start
@@ -980,6 +1061,9 @@ def reprice_resting_rungs(
             ):
                 defer_rest(position, entry, str(synced.get("reason") or ""))
                 break
+            if on_the_slow_clock(intent):
+                # Answered for: charter 250's interval runs from here.
+                _GTC_SELL_LAST_LOOKUP[str(intent_id)] = time.monotonic()
             if synced["state"] == "filled":
                 receipt["synced_filled"] += 1
                 receipt["rungs"].append(entry)
@@ -1164,6 +1248,8 @@ __all__ = [
     "mirror_book",
     "RESTING_BOOK_STALE_SECONDS",
     "RESTING_LOOKUP_CONCURRENCY",
+    "GTC_SELL_LOOKUP_INTERVAL_SEC",
+    "on_the_slow_clock",
     "RESTING_REPRICE_DWELL_SECONDS",
     "STALE_BOOK_CANCEL_RULE_VERSION",
     "book_age_seconds",

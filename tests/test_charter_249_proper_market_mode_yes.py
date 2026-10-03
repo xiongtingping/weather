@@ -54,7 +54,10 @@ YES_ONLY = frozenset({lane.SIDE_YES})
 #: The model above the market on the market's own mode (27°C, mid 0.49).
 WARM = {"27°C": 0.60, "28°C": 0.30, "29°C": 0.10}
 V3 = {**SETTINGS, "rule": lane.RULE_MAKER_MODE_YES_V3, "sides": ["YES"],
-      "buckets": "market_mode", "entry": "latest_decision"}
+      "buckets": "market_mode", "entry": "latest_decision",
+      "freshness": "envelope_validity"}
+#: An envelope valid through the whole station-day window of these tests.
+LONG = "2026-09-20T00:00:00Z"
 
 
 def _run(conn, sent, now=NOW, **overrides):
@@ -159,15 +162,16 @@ def test_the_newest_decision_is_judged_until_a_plan_is_made(store, warm) -> None
     first = _run(store, sent)
     assert first["evaluated"] == 0 and first["waiting"] == 1 and not sent
     assert list(first["waiting_reasons"]) == ["market_incomplete:one_sided_ask:29°C"]
-    # Ninety minutes on the first decision is stale.  Charter 231's entry
-    # wrote the station-day off here; this one waits for the next decision.
+    # At 13:30 the first decision's envelope (valid to 13:00) has run out.
+    # Charter 231's entry wrote the station-day off an hour after the
+    # decision; this one waits for the next decision.
     late = _run(store, sent, now="2026-09-18T13:30:00.000Z")
-    assert late["evaluated"] == 0 and list(late["waiting_reasons"]) == ["decision_stale"]
+    assert late["evaluated"] == 0 and list(late["waiting_reasons"]) == ["envelope_expired"]
     assert store.execute(f"SELECT COUNT(*) FROM {lane.EVALUATION_TABLE}").fetchone()[0] == 0
     # A newer P0 decision on a ladder now quoted whole: planned.
     decided = "2026-09-18T13:40:00.000Z"
     _snapshot(store, "snap_f2", decided, _ladder(), 2)
-    _fact(store, stage="P0", fact_id="f2", decided=decided, snapshot_id="snap_f2")
+    _fact(store, stage="P0", fact_id="f2", decided=decided, snapshot_id="snap_f2", fresh_until=LONG)
     planned = _run(store, sent, now="2026-09-18T13:40:20.000Z")
     assert planned["planned"] == 1 and len(sent) == 1 and sent[0][1]["token_id"] == "t27"
     row = store.execute(f"SELECT decision_at_utc, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
@@ -175,6 +179,44 @@ def test_the_newest_decision_is_judged_until_a_plan_is_made(store, warm) -> None
     # One plan a station-day: a later decision does not open a second.
     again = _run(store, sent, now="2026-09-18T13:41:00.000Z")
     assert again["planned"] == 0 and len(sent) == 1
+
+
+def test_a_plan_is_made_while_the_envelope_is_valid_however_old_the_decision(store, warm) -> None:
+    """Charter 249 (十), 「按信封有效期」: on 2026-10-03 the newest P0 decision was
+    3.7 h old on 35 of 36 station-days of 10-05, every envelope still valid."""
+
+    _seed(store, fresh_until="2026-09-18T18:00:00Z")
+    late = "2026-09-18T15:30:00.000Z"             # three and a half hours on
+    _snapshot(store, "snap_late", late, _ladder(), 2)
+    sent: list = []
+    by_age = _run(store, sent, now=late, freshness="decision_age")
+    assert by_age["planned"] == 0 and list(by_age["waiting_reasons"]) == ["decision_stale"] and not sent
+    planned = _run(store, sent, now=late)
+    assert planned["planned"] == 1 and len(sent) == 1 and sent[0][1]["token_id"] == "t27"
+
+
+def test_a_rung_is_not_re_posted_on_an_envelope_that_ran_out(store, warm) -> None:
+    _seed(store)                                   # valid to 13:00
+    sent: list = []
+    _run(store, sent)
+    assert len(sent) == 1
+    _end(store, _intents(store)[0][0])
+    after = "2026-09-18T13:10:00.000Z"
+    _snapshot(store, "snap_f2", after, _ladder(), 2)
+    waited = _run(store, sent, now=after)
+    assert waited["rungs"] == 0 and len(sent) == 1
+    legs = json.loads(store.execute(f"SELECT legs_state_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert legs["YES:27°C"]["status"] == "waiting:envelope_expired"
+    # A newer P0 decision with a valid envelope: the leg is posted again.
+    decided = "2026-09-18T13:12:00.000Z"
+    _snapshot(store, "snap_f3", decided, _ladder(), 3)
+    _fact(store, stage="P0", fact_id="f3", decided=decided, snapshot_id="snap_f3", fresh_until=LONG)
+    again = _run(store, sent, now="2026-09-18T13:12:20.000Z")
+    assert again["rungs"] == 1 and len(sent) == 2
+    # Under the one-hour age rule the re-post never looked at the envelope.
+    assert lane.freshness_rule({}) == "decision_age"
+    with pytest.raises(ValueError, match="proper_bet_freshness_unknown"):
+        lane.freshness_rule({"freshness": "sometimes"})
 
 
 def test_a_day_that_has_left_p0_is_not_opened(store, warm) -> None:
@@ -252,7 +294,7 @@ def test_a_rung_under_a_dollar_is_sized_up_to_it(store, warm) -> None:
 
 
 def test_a_rung_rests_fifteen_minutes_and_never_past_the_window(store, warm) -> None:
-    _seed(store)
+    _seed(store, fresh_until=LONG)
     sent: list = []
     _run(store, sent, rung_horizon_seconds=900.0)
     now = lane._utc(NOW).timestamp()
@@ -360,6 +402,7 @@ def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
     assert defaults["sides"] == ["YES"] and defaults["buckets"] == "market_mode"
     assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
     assert defaults["min_hours_to_settlement"] == 36.0 and defaults["rung_horizon_seconds"] == 900.0
+    assert defaults["freshness"] == "envelope_validity"
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
     assert shipped["source"] == "file"
     proper = shipped["lanes"]["proper_bet"]
@@ -368,6 +411,7 @@ def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
     assert proper["sides"] == ["YES"] and proper["buckets"] == "market_mode"
     assert proper["entry"] == "latest_decision" and proper["opening_stages"] == ["P0"]
     assert proper["rung_horizon_seconds"] == 900.0
+    assert proper["freshness"] == "envelope_validity" == lane.freshness_rule(proper)
     assert lane.allowed_sides(proper) == YES_ONLY
 
 
@@ -376,7 +420,8 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
     body = text[text.index(f"\n{CHARTER}. "):]
     for phrase in ("重开Proper 线并放开 YES，只开YES，市场众数桶，挂单", "限p0",
                    "log_proper_maker_market_mode_yes_v3", "latest_decision", "rests_on_another_bucket",
-                   "加长", "rung_horizon_seconds"):
+                   "加长", "rung_horizon_seconds", "按信封有效期", "envelope_validity",
+                   "envelope_expired"):
         assert phrase in body
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert f"宪章 {CHARTER}" in agents and "市场众数桶" in agents

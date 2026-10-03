@@ -54,13 +54,13 @@ TOKENS = {"27°C": ("t27", "n27"), "28°C": ("t28", "n28"), "29°C": ("t29", "n2
 #: Both sides, the whole ladder, the first decision: this suite pins the rule as
 #: charter 231 wrote it.  Charter 235 stopped the YES side and charter 249
 #: reopened the lane on YES at the market's modal bucket, judged on the newest
-#: decision; each has its own suite, and the three switches are named here so
-#: the shipped defaults cannot move this one.
+#: decision, fresh by its envelope's validity; each has its own suite, and the
+#: switches are named here so the shipped defaults cannot move this one.
 SETTINGS = {"opening_stages": ["P0"], "live_ws_book": False, "min_hours_to_settlement": 36.0,
             "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0,
             "rule": "log_proper_maker_bid_plus_one_min_horizon_v2",
             "sides": ["YES", "NO"], "buckets": "all", "entry": "first_decision",
-            "rung_horizon_seconds": 0.0}
+            "rung_horizon_seconds": 0.0, "freshness": "decision_age"}
 
 
 def _row(bucket, ordinal, bids, asks, tick=0.01):
@@ -92,11 +92,11 @@ def _snapshot(conn, snapshot_id, observed, book, sequence):
     })
 
 
-def _fact(conn, *, stage, fact_id, decided, snapshot_id):
+def _fact(conn, *, stage, fact_id, decided, snapshot_id, fresh_until="2026-09-18T13:00:00Z"):
     _insert(conn, "basket_probability_envelope", {
         "envelope_id": f"env_{fact_id}", "stage": stage, "checkpoint_id": f"cp_{fact_id}", "station_id": ST,
         "event_date": ED, "settlement_timezone": TZ, "decision_at_utc": decided,
-        "fresh_until_utc": "2026-09-18T13:00:00Z", "bucket_ordinals_json": json.dumps(ORDS),
+        "fresh_until_utc": fresh_until, "bucket_ordinals_json": json.dumps(ORDS),
         "probabilities_json": json.dumps(MODEL), "content_sha256": (fact_id * 64)[:64],
         "state": "COMMITTED", "created_at": decided, "lineage_json": "{}",
     })
@@ -110,9 +110,10 @@ def _fact(conn, *, stage, fact_id, decided, snapshot_id):
     })
 
 
-def _seed(conn, *, stage="P0", decided=DECIDED, observed=None, no_token=True, book=None):
+def _seed(conn, *, stage="P0", decided=DECIDED, observed=None, no_token=True, book=None,
+          fresh_until="2026-09-18T13:00:00Z"):
     _snapshot(conn, "snap_f1", observed or decided, book if book is not None else _ladder(), 1)
-    _fact(conn, stage=stage, fact_id="f1", decided=decided, snapshot_id="snap_f1")
+    _fact(conn, stage=stage, fact_id="f1", decided=decided, snapshot_id="snap_f1", fresh_until=fresh_until)
     registry_sha = "regf1".ljust(64, "0")
     _insert(conn, "basket_target_market_registry_snapshot",
             {"snapshot_sha256": registry_sha, "source_scope": "shared_live_registry_export_only"})

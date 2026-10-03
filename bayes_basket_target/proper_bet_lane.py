@@ -287,6 +287,39 @@ def entry_rule(settings: Mapping[str, Any]) -> str:
     return declared
 
 
+FRESH_BY_DECISION_AGE = "decision_age"
+FRESH_BY_ENVELOPE_VALIDITY = "envelope_validity"
+ENVELOPE_EXPIRED = "envelope_expired"
+
+
+def freshness_rule(settings: Mapping[str, Any]) -> str:
+    """What makes the decision a plan is made from fresh enough.
+
+    ``decision_age`` (charter 231): made within ``first_decision_fresh_seconds``.
+    ``envelope_validity`` (charter 249 (十), user ruling 2026-10-03 「按信封有效
+    期」): the P0 envelope that decision read is still inside its own
+    ``fresh_until_utc``.  P0 decisions more than a day out arrive in bursts
+    with the model runs -- on 2026-10-03 the newest one was 3.7 h old on 35 of
+    36 station-days of 10-05 while every envelope behind them had over an
+    hour of validity left -- so the one-hour age let a plan be made only in
+    the hour after a burst.  The same rule holds a re-post: a leg waits
+    (``envelope_expired``) while the newest P0 envelope has run out.
+    Anything else raises.
+    """
+
+    declared = str(settings.get("freshness", FRESH_BY_DECISION_AGE) or "").strip().lower()
+    if declared not in {FRESH_BY_DECISION_AGE, FRESH_BY_ENVELOPE_VALIDITY}:
+        raise ValueError(f"proper_bet_freshness_unknown:{settings.get('freshness')!r}")
+    return declared
+
+
+def _envelope_valid(envelope: Mapping[str, Any], now: datetime) -> bool:
+    try:
+        return _utc(str(envelope.get("fresh_until_utc") or "")) > now
+    except (TypeError, ValueError):
+        return False
+
+
 def market_mode_bucket(q: Mapping[str, float], order: list[str]) -> str | None:
     """The market's modal bucket: the largest normalised mid, the lower rung on
     a tie -- the mode the far-tail lane measures its rungs from (charter 234)."""
@@ -549,7 +582,8 @@ def _latest_stage(conn: sqlite3.Connection, station_id: str, event_date: str) ->
 
 def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT probabilities_json, content_sha256, decision_at_utc, stage"
+        "SELECT probabilities_json, content_sha256, decision_at_utc, stage,"
+        " fresh_until_utc"
         " FROM basket_probability_envelope WHERE envelope_id=?",
         (envelope_id,),
     ).fetchone()
@@ -562,6 +596,7 @@ def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | No
     return {
         "probabilities": probabilities, "content_sha256": str(row[1]),
         "decision_at_utc": str(row[2]), "stage": str(row[3]),
+        "fresh_until_utc": str(row[4] or ""),
     }
 
 
@@ -604,9 +639,12 @@ def latest_stage_decisions(
 
 def _latest_p0_probability(
     conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
-) -> float | None:
+    *, valid_at: datetime | None = None,
+) -> float | str | None:
     """``p`` of one bucket in the station-day's newest P0 envelope, floored as
-    ``evaluate_ladder`` floors it; None when there is none to read."""
+    ``evaluate_ladder`` floors it; None when there is none to read.  With
+    ``valid_at`` (charter 249 (十)) an envelope past its own validity at that
+    instant answers ``ENVELOPE_EXPIRED`` instead of a number."""
 
     row = conn.execute(
         "SELECT probability_envelope_id FROM basket_policy_training_fact"
@@ -619,6 +657,8 @@ def _latest_p0_probability(
     envelope = _envelope(conn, str(row[0]))
     if envelope is None:
         return None
+    if valid_at is not None and not _envelope_valid(envelope, valid_at):
+        return ENVELOPE_EXPIRED
     try:
         raw = {str(k): float(v) for k, v in envelope["probabilities"].items()}
     except (TypeError, ValueError):
@@ -818,6 +858,7 @@ def plan_new_first_decisions(
     buckets = bucket_scope(cfg)
     entry = entry_rule(cfg)
     latest = entry == ENTRY_LATEST_DECISION
+    by_envelope = freshness_rule(cfg) == FRESH_BY_ENVELOPE_VALIDITY
     now = _utc(now_utc)
     done = _evaluated(
         target_conn,
@@ -860,14 +901,25 @@ def plan_new_first_decisions(
         if refusal:
             refuse(refusal, hours=hours)
             continue
-        young = (now - _utc(fact["decision_at_utc"])).total_seconds() <= fresh_seconds
-        if not young:
-            refuse("decision_stale" if latest else "first_decision_stale", hours=hours)
-            continue
-        envelope = _envelope(target_conn, fact["envelope_id"])
-        if envelope is None:
-            refuse("envelope_missing", hours=hours)
-            continue
+        if by_envelope:
+            # Charter 249 (十): fresh while the envelope the decision read is
+            # still valid, however long ago the decision was made.
+            envelope = _envelope(target_conn, fact["envelope_id"])
+            if envelope is None:
+                refuse("envelope_missing", hours=hours)
+                continue
+            if not _envelope_valid(envelope, now):
+                refuse(ENVELOPE_EXPIRED, hours=hours)
+                continue
+        else:
+            young = (now - _utc(fact["decision_at_utc"])).total_seconds() <= fresh_seconds
+            if not young:
+                refuse("decision_stale" if latest else "first_decision_stale", hours=hours)
+                continue
+            envelope = _envelope(target_conn, fact["envelope_id"])
+            if envelope is None:
+                refuse("envelope_missing", hours=hours)
+                continue
         book, book_refusal = _book(
             target_conn, manifest_root(), station_id=key["station_id"], event_date=key["event_date"],
             now_utc=now_utc, fresh_seconds=book_fresh, live=live,
@@ -1002,6 +1054,7 @@ def plan_rungs(
     live = cfg.get("live_ws_book", True) is True
     sides = allowed_sides(cfg)
     horizon = rung_horizon_seconds(cfg)
+    by_envelope = freshness_rule(cfg) == FRESH_BY_ENVELOPE_VALIDITY
     rungs: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
     rows = target_conn.execute(
@@ -1083,9 +1136,15 @@ def plan_rungs(
                 if mode != str(leg["bucket"]):
                     leg_state["status"] = f"waiting:{NOT_MARKET_MODE}:{mode}"
                     continue
-                newest = _latest_p0_probability(target_conn, str(station), str(day), str(leg["bucket"]))
+                newest = _latest_p0_probability(
+                    target_conn, str(station), str(day), str(leg["bucket"]),
+                    valid_at=_utc(now_utc) if by_envelope else None,
+                )
+                if newest == ENVELOPE_EXPIRED:
+                    leg_state["status"] = f"waiting:{ENVELOPE_EXPIRED}"
+                    continue
                 if newest is not None:
-                    p_now = newest
+                    p_now = float(newest)
                 s_now = math.log(p_now / q_now[str(leg["bucket"])])
             quote = leg_quote(str(leg["bucket"]), p_now, s_now, row, tick)
             if quote["reason"] or quote["side"] != leg["side"]:
@@ -1195,6 +1254,7 @@ def execute_proper_bets(
     bucket_scope(cfg)
     entry_rule(cfg)
     rung_horizon_seconds(cfg)
+    freshness_rule(cfg)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
