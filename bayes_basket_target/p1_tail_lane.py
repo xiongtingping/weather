@@ -742,6 +742,33 @@ def open_order_on_station_day(
     }
 
 
+def open_buy_orders_on_station_day(
+    conn: sqlite3.Connection, station_id: str, event_date: str
+) -> list[dict[str, Any]]:
+    """Every BUY of any lane the venue has not answered for, newest first.
+
+    ``open_order_on_station_day`` is the first of these.  Charter 249 needs
+    them all and each one's bucket and ``post_only`` flag: a rung another lane
+    has resting on a DIFFERENT bucket is not an order a take queues behind.
+    """
+
+    rows = conn.execute(
+        "SELECT i.order_intent_id, i.bucket, i.state,"
+        "       json_extract(i.intent_json,'$.lane'), json_extract(i.intent_json,'$.post_only')"
+        " FROM basket_target_order_intents AS i"
+        " JOIN auto_trade_decisions AS d ON d.decision_id=i.decision_id"
+        " WHERE d.station_id=? AND d.event_date=? AND i.order_action='BUY'"
+        "   AND i.state NOT IN ('filled','failed','cancelled')"
+        " ORDER BY i.created_at DESC",
+        (station_id, event_date),
+    ).fetchall()
+    return [
+        {"order_intent_id": str(r[0]), "bucket": str(r[1] or ""), "state": str(r[2] or ""),
+         "lane": str(r[3] or ""), "post_only": r[4] in (1, True, "true")}
+        for r in rows
+    ]
+
+
 def held_buckets(
     conn: sqlite3.Connection, station_id: str, event_date: str
 ) -> list[str]:
@@ -1291,6 +1318,7 @@ __all__ = [
     "execute_p1_tail_entries",
     "held_buckets",
     "live_ws_snapshot",
+    "open_buy_orders_on_station_day",
     "open_order_on_station_day",
     "plan_p1_tail_entries",
     "rule_version_for",

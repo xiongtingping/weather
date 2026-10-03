@@ -1,0 +1,342 @@
+"""Charter 249: the Proper 下注线 reopens on YES at the market's modal bucket.
+
+User rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」
+and 「限p0」.  One leg a station-day: YES on the bucket the market itself
+prices highest, rested post-only at the best bid plus one tick, only under
+``p``, only while the station-day is in P0 and more than 36 hours out.  The
+station-day is judged on its NEWEST P0 decision on every pass until a plan is
+made, and every re-post asks the standing book which bucket the mode is and
+the newest P0 envelope what ``p`` is.  The far-tail lane (charter 234) is no
+longer held back by another lane's acknowledged rung on a different bucket.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+from bayes_basket_target import lane_orders  # noqa: E402
+from bayes_basket_target import proper_bet_lane as lane  # noqa: E402
+from bayes_basket_target import strategy_lanes  # noqa: E402
+from bayes_basket_target import tail_short_lane  # noqa: E402
+from bayes_basket_target.p1_tail_lane import open_buy_orders_on_station_day  # noqa: E402
+from bayes_basket_target.tiebreak_lane import resting_order_fields  # noqa: E402
+import tests.test_charter_231_proper_bet_lane as base  # noqa: E402
+import tests.test_charter_234_tail_short_lane as tails  # noqa: E402
+from tests.test_charter_231_proper_bet_lane import (  # noqa: E402,F401 -- ``store`` is a fixture
+    ADMIT,
+    ED,
+    NOW,
+    SETTINGS,
+    _end,
+    _fact,
+    _intents,
+    _ladder,
+    _resting_transport,
+    _row,
+    _seed,
+    _snapshot,
+    store,
+)
+from tests.test_tiebreak_lane import ST, TZ  # noqa: E402
+
+CHARTER = "249"
+YES_ONLY = frozenset({lane.SIDE_YES})
+#: The model above the market on the market's own mode (27°C, mid 0.49).
+WARM = {"27°C": 0.60, "28°C": 0.30, "29°C": 0.10}
+V3 = {**SETTINGS, "rule": lane.RULE_MAKER_MODE_YES_V3, "sides": ["YES"],
+      "buckets": "market_mode", "entry": "latest_decision"}
+
+
+def _run(conn, sent, now=NOW, **overrides):
+    return lane.execute_proper_bets(
+        conn, transport=_resting_transport(sent), now_utc=now, live_submit_authorized=True,
+        settings={**V3, **overrides}, admission=ADMIT,
+    )
+
+
+@pytest.fixture()
+def warm(monkeypatch):
+    """The base suite's ``_fact`` writes ``MODEL``; this suite's is ``WARM``."""
+
+    monkeypatch.setattr(base, "MODEL", dict(WARM))
+
+
+# ---------------------------------------------------------------------------
+# The rule.
+
+
+def test_the_market_mode_is_the_largest_mid_and_the_lower_rung_on_a_tie() -> None:
+    order = ["26°C", "27°C", "28°C"]
+    assert lane.market_mode_bucket({"26°C": 0.2, "27°C": 0.5, "28°C": 0.3}, order) == "27°C"
+    assert lane.market_mode_bucket({"26°C": 0.4, "27°C": 0.4, "28°C": 0.2}, order) == "26°C"
+    assert lane.market_mode_bucket({}, order) is None
+
+
+def test_only_the_yes_leg_on_the_markets_mode_is_kept() -> None:
+    reading = lane.evaluate_ladder(WARM, _ladder(), cash_usdc=None, min_shares={}, ticks={},
+                                   sides=YES_ONLY, buckets=lane.BUCKETS_MARKET_MODE)
+    assert reading["refusal"] is None and reading["market_mode_bucket"] == "27°C"
+    assert [(leg["bucket"], leg["side"], leg["price"]) for leg in reading["legs"]] == [("27°C", "YES", 0.49)]
+    # One leg, so lambda puts it at the venue's five-share minimum.
+    assert reading["legs"][0]["target_shares"] == 5.0
+    quotes = {q["bucket"]: q for q in reading["quotes"]}
+    assert quotes["27°C"]["reason"] is None
+    # Legs off the mode obey the rule on their own book and are recorded, not posted.
+    assert quotes["28°C"]["reason"] == lane.NOT_MARKET_MODE and quotes["28°C"]["price"] is not None
+    assert quotes["29°C"]["reason"] == lane.NOT_MARKET_MODE
+
+
+def test_a_model_under_the_market_on_the_mode_is_not_bet() -> None:
+    # p(27°C) = 0.10 against a mid of 0.49: the Log position there is NO, and
+    # the lane's sides are YES only.
+    reading = lane.evaluate_ladder(base.MODEL, _ladder(), cash_usdc=None, min_shares={}, ticks={},
+                                   sides=YES_ONLY, buckets=lane.BUCKETS_MARKET_MODE)
+    assert reading["refusal"] == "side_stopped:NO" and reading["legs"] == []
+
+
+def test_the_rung_on_the_mode_must_be_under_p() -> None:
+    # Mids sum to 1.05, so q(27°C) = 0.486 and p = 0.50 is above it -- but
+    # bid + 1 tick is 0.51, not under p.
+    book = [
+        _row("27°C", 27, [(0.50, 200.0)], [(0.52, 200.0)]),
+        _row("28°C", 28, [(0.30, 200.0)], [(0.32, 200.0)]),
+        _row("29°C", 29, [(0.22, 200.0)], [(0.24, 200.0)]),
+    ]
+    reading = lane.evaluate_ladder({"27°C": 0.50, "28°C": 0.30, "29°C": 0.20}, book, cash_usdc=None,
+                                   min_shares={}, ticks={}, sides=YES_ONLY, buckets=lane.BUCKETS_MARKET_MODE)
+    assert reading["refusal"] == "no_leg_obeys_rule"
+    quote = next(q for q in reading["quotes"] if q["bucket"] == "27°C")
+    assert quote["side"] == "YES" and quote["reason"].startswith("price_breaks_rule")
+
+
+@pytest.mark.parametrize("key,bad", [("buckets", "tails"), ("buckets", None), ("entry", "every_tick")])
+def test_a_scope_or_entry_nobody_can_act_on_raises(key, bad) -> None:
+    reader = lane.bucket_scope if key == "buckets" else lane.entry_rule
+    if bad is None:
+        assert reader({}) in {lane.BUCKETS_ALL, lane.ENTRY_FIRST_DECISION}
+        return
+    with pytest.raises(ValueError):
+        reader({key: bad})
+
+
+# ---------------------------------------------------------------------------
+# The lane end to end.
+
+
+def test_one_yes_rung_rests_on_the_modal_bucket(store, warm) -> None:
+    _seed(store)
+    sent: list = []
+    receipt = _run(store, sent)
+    assert receipt["rule"] == "proper_bet_lane_v3"
+    assert receipt["planned"] == 1 and receipt["rungs"] == 1 and receipt["submitted"] == 1
+    (_path, payload), = sent
+    assert payload["token_id"] == "t27" and payload["outcome_side"] == "YES"
+    assert payload["price"] == pytest.approx(0.49) and payload["size"] == 5.0
+    assert payload["order_type"] == "GTD" and payload["post_only"] is True
+    plan = json.loads(store.execute(f"SELECT plan_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert plan["buckets"] == "market_mode" and plan["entry"] == "latest_decision"
+    assert plan["market_mode_bucket"] == "27°C" and plan["sides"] == ["YES"]
+    assert [(leg["bucket"], leg["side"]) for leg in plan["legs"]] == [("27°C", "YES")]
+
+
+def test_the_newest_decision_is_judged_until_a_plan_is_made(store, warm) -> None:
+    # 29°C is asked at 0.20 with nobody bidding: the market reference refuses
+    # the ladder, as it does for most ladders two days out.
+    thin = _ladder()
+    thin[2] = _row("29°C", 29, [], [(0.20, 200.0)])
+    _seed(store, book=thin)
+    sent: list = []
+    first = _run(store, sent)
+    assert first["evaluated"] == 0 and first["waiting"] == 1 and not sent
+    assert list(first["waiting_reasons"]) == ["market_incomplete:one_sided_ask:29°C"]
+    # Ninety minutes on the first decision is stale.  Charter 231's entry
+    # wrote the station-day off here; this one waits for the next decision.
+    late = _run(store, sent, now="2026-09-18T13:30:00.000Z")
+    assert late["evaluated"] == 0 and list(late["waiting_reasons"]) == ["decision_stale"]
+    assert store.execute(f"SELECT COUNT(*) FROM {lane.EVALUATION_TABLE}").fetchone()[0] == 0
+    # A newer P0 decision on a ladder now quoted whole: planned.
+    decided = "2026-09-18T13:40:00.000Z"
+    _snapshot(store, "snap_f2", decided, _ladder(), 2)
+    _fact(store, stage="P0", fact_id="f2", decided=decided, snapshot_id="snap_f2")
+    planned = _run(store, sent, now="2026-09-18T13:40:20.000Z")
+    assert planned["planned"] == 1 and len(sent) == 1 and sent[0][1]["token_id"] == "t27"
+    row = store.execute(f"SELECT decision_at_utc, rule_version FROM {lane.EVALUATION_TABLE}").fetchone()
+    assert row == (decided, "proper_bet_lane_v3")
+    # One plan a station-day: a later decision does not open a second.
+    again = _run(store, sent, now="2026-09-18T13:41:00.000Z")
+    assert again["planned"] == 0 and len(sent) == 1
+
+
+def test_a_day_that_has_left_p0_is_not_opened(store, warm) -> None:
+    _seed(store)
+    later = "2026-09-18T12:05:00.000Z"
+    _snapshot(store, "snap_f2", later, _ladder(), 2)
+    _fact(store, stage="P0-M", fact_id="f2", decided=later, snapshot_id="snap_f2")
+    sent: list = []
+    receipt = _run(store, sent, now="2026-09-18T12:05:20.000Z")
+    assert receipt["planned"] == 0 and receipt["evaluated"] == 0 and not sent
+
+
+def test_inside_thirty_six_hours_is_written_once(store, warm) -> None:
+    _seed(store, decided="2026-09-19T05:00:00.000Z", observed="2026-09-19T05:00:00.000Z")
+    sent: list = []
+    receipt = _run(store, sent, now="2026-09-19T05:00:10.000Z")
+    assert receipt["refusals"][0].startswith("inside_36h") and not sent
+    again = _run(store, sent, now="2026-09-19T05:01:00.000Z")
+    assert again["evaluated"] == 0 and again["waiting"] == 0
+
+
+def test_a_repost_waits_while_the_bucket_is_not_the_markets_mode(store, warm) -> None:
+    _seed(store)
+    sent: list = []
+    _run(store, sent)
+    _end(store, _intents(store)[0][0])  # the first rung expired unfilled
+    later = "2026-09-18T12:12:00.000Z"
+    moved = [
+        _row("27°C", 27, [(0.30, 200.0)], [(0.32, 200.0)]),
+        _row("28°C", 28, [(0.48, 200.0)], [(0.50, 200.0)]),
+        _row("29°C", 29, [(0.18, 200.0)], [(0.20, 200.0)]),
+    ]
+    _snapshot(store, "snap_f2", later, moved, 2)
+    receipt = _run(store, sent, now=later)
+    assert receipt["rungs"] == 0 and len(sent) == 1
+    legs = json.loads(store.execute(f"SELECT legs_state_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert legs["YES:27°C"]["status"] == "waiting:not_market_mode:28°C"
+    # The mode comes back: the same leg is posted again on the book that stands.
+    back = "2026-09-18T12:20:00.000Z"
+    _snapshot(store, "snap_f3", back, _ladder(), 3)
+    assert _run(store, sent, now=back)["rungs"] == 1 and sent[-1][1]["token_id"] == "t27"
+
+
+def test_a_repost_reads_the_newest_p0_envelope(store, warm, monkeypatch) -> None:
+    _seed(store)
+    sent: list = []
+    _run(store, sent)
+    _end(store, _intents(store)[0][0])
+    # The next P0 decision puts 27°C at 0.45: bid + 1 tick (0.49) is no longer under p.
+    later = "2026-09-18T12:12:00.000Z"
+    monkeypatch.setattr(base, "MODEL", {"27°C": 0.45, "28°C": 0.35, "29°C": 0.20})
+    _snapshot(store, "snap_f2", later, _ladder(), 2)
+    _fact(store, stage="P0", fact_id="f2", decided=later, snapshot_id="snap_f2")
+    receipt = _run(store, sent, now="2026-09-18T12:12:20.000Z")
+    assert receipt["rungs"] == 0 and len(sent) == 1
+    legs = json.loads(store.execute(f"SELECT legs_state_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert legs["YES:27°C"]["status"].startswith("waiting:")
+    assert legs["YES:27°C"]["last_quote"]["p"] == pytest.approx(0.45, abs=1e-6)
+
+
+def test_a_rung_under_a_dollar_is_sized_up_to_it(store, warm) -> None:
+    cheap = [
+        _row("27°C", 27, [(0.15, 200.0)], [(0.17, 200.0)]),
+        _row("28°C", 28, [(0.10, 200.0)], [(0.12, 200.0)]),
+        _row("29°C", 29, [(0.08, 200.0)], [(0.10, 200.0)]),
+    ]
+    _seed(store, book=cheap)
+    sent: list = []
+    receipt = _run(store, sent)
+    assert receipt["rungs"] == 1
+    payload = sent[0][1]
+    # Five shares at 0.16 are 0.80 USDC; the venue takes no order under a dollar.
+    assert payload["price"] == pytest.approx(0.16) and payload["size"] == pytest.approx(6.25)
+    assert payload["size"] * payload["price"] >= 1.0 - 1e-9
+
+
+# ---------------------------------------------------------------------------
+# The far-tail lane beside a resting Proper rung.
+
+
+def test_only_an_acknowledged_rung_of_another_lane_on_another_bucket_lets_a_take_through() -> None:
+    resting = {"post_only": True, "state": "submitted", "lane": "proper_bet", "bucket": "28°C"}
+    assert tail_short_lane.rests_on_another_bucket(resting, "24°C") is True
+    assert tail_short_lane.rests_on_another_bucket(resting, "28°C") is False
+    for change in ({"state": "reconcile_required"}, {"state": "submitting"}, {"state": "prepared"},
+                   {"post_only": False}, {"lane": tail_short_lane.LANE}):
+        assert tail_short_lane.rests_on_another_bucket({**resting, **change}, "24°C") is False
+
+
+def _rest_a_proper_rung(conn, bucket, sent):
+    venue = resting_order_fields(now_utc=tails.NOW, limit_price=0.31, belief_fresh_until_utc=tails.NOW)
+    return lane_orders.send_lane_buy(
+        conn, lane=lane.LANE, intent_id=f"proper_test_{bucket}", station_id=ST, event_date=tails.ED,
+        settlement_timezone=TZ, bucket=bucket, token_id=f"yes_{bucket}", price=0.31, shares=5.0,
+        side="YES", execution_candidate=lane.EXECUTION_CANDIDATE, expiration=int(venue["expiration"]),
+        tick_size=0.01,
+        intent_body={"schema": lane.SCHEMA, "order_type": venue["order_type"], "post_only": venue["post_only"]},
+        transport=_resting_transport(sent), live_submit_authorized=True,
+        decision_details={"schema": "proper_bet_lane_decision_v2", "lane": lane.LANE},
+    )
+
+
+def test_a_proper_rung_on_the_mode_does_not_stop_the_far_tail_takes(store, monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(tail_short_lane, "_cash_refusal", lambda conn, now_utc, needed: None)
+    monkeypatch.setattr(tail_short_lane, "PAUSE_FLAG_PATH", tmp_path / "live_paused.flag")
+    monkeypatch.setattr("bayes_basket_target.lane_orders.live_intent_armed", lambda: True)
+    monkeypatch.setattr("bayes_basket_target.lane_orders.egress_send_gate", lambda: {"hold": False})
+    tails._seed(store)
+    entry = _rest_a_proper_rung(store, "28°C", [])
+    assert entry["event_type"] == "POST_ACK"
+    orders = open_buy_orders_on_station_day(store, ST, tails.ED)
+    assert [(o["lane"], o["bucket"], o["state"], o["post_only"]) for o in orders] == [
+        ("proper_bet", "28°C", "submitted", True)]
+    sent: list = []
+    receipt = tails._run(store, sent)
+    assert receipt["planned"] == 3 and receipt["filled"] == 3
+    assert sorted(r[0] for r in tails._intents(store) if r[2] == "NO") == ["24°C", "25°C", "31°C"]
+
+
+def test_a_rung_on_the_same_bucket_still_holds_the_take_back(store, monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(tail_short_lane, "_cash_refusal", lambda conn, now_utc, needed: None)
+    monkeypatch.setattr(tail_short_lane, "PAUSE_FLAG_PATH", tmp_path / "live_paused.flag")
+    monkeypatch.setattr("bayes_basket_target.lane_orders.live_intent_armed", lambda: True)
+    monkeypatch.setattr("bayes_basket_target.lane_orders.egress_send_gate", lambda: {"hold": False})
+    tails._seed(store)
+    _rest_a_proper_rung(store, "24°C", [])
+    sent: list = []
+    receipt = tails._run(store, sent)
+    assert receipt["planned"] == 2
+    assert sorted(r[0] for r in tails._intents(store) if r[2] == "NO") == ["25°C", "31°C"]
+    refusal = store.execute(
+        f"SELECT refusal FROM {tail_short_lane.EVALUATION_TABLE} WHERE bucket='24°C'"
+    ).fetchone()[0]
+    assert refusal == "open_order:proper_bet:submitted"
+
+
+# ---------------------------------------------------------------------------
+# What ships.
+
+
+def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
+    defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
+    assert defaults["rule"] == lane.RULE_MAKER_MODE_YES_V3 == lane.DEFAULT_RULE
+    assert defaults["sides"] == ["YES"] and defaults["buckets"] == "market_mode"
+    assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
+    assert defaults["min_hours_to_settlement"] == 36.0
+    shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
+    assert shipped["source"] == "file"
+    proper = shipped["lanes"]["proper_bet"]
+    # The on/off switch is the operator's; the rule it runs when on is pinned.
+    assert proper["rule"] == lane.RULE_MAKER_MODE_YES_V3
+    assert proper["sides"] == ["YES"] and proper["buckets"] == "market_mode"
+    assert proper["entry"] == "latest_decision" and proper["opening_stages"] == ["P0"]
+    assert lane.allowed_sides(proper) == YES_ONLY
+
+
+def test_the_charter_and_agents_carry_the_ruling() -> None:
+    text = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
+    body = text[text.index(f"\n{CHARTER}. "):]
+    for phrase in ("重开Proper 线并放开 YES，只开YES，市场众数桶，挂单", "限p0",
+                   "log_proper_maker_market_mode_yes_v3", "latest_decision", "rests_on_another_bucket"):
+        assert phrase in body
+    agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert f"宪章 {CHARTER}" in agents and "市场众数桶" in agents
+    assert len(agents.splitlines()) <= 104

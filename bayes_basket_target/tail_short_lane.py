@@ -68,7 +68,7 @@ from .p1_tail_lane import (
     _sendable_shares,
     _ws_manifest_root,
     live_ws_snapshot,
-    open_order_on_station_day,
+    open_buy_orders_on_station_day,
 )
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import LANE_TAIL_SHORT, TAIL_SHORT_DEFAULT_SETTINGS, lane_settings, opening_stages
@@ -162,6 +162,29 @@ def _levels(raw: Any) -> list[tuple[float, float]]:
         if math.isfinite(price) and 0.0 < price < 1.0 and shares > 0.0:
             out.append((price, shares))
     return out
+
+
+def rests_on_another_bucket(order: Mapping[str, Any], bucket: str) -> bool:
+    """Whether an open BUY is another lane's acknowledged resting rung on a
+    different bucket -- the one open order that does not hold a take back.
+
+    Charter 166's rule is "never queued behind a resting BUY of any lane": a
+    take on the token our own rung rests on queues behind that rung.  Charter
+    249 rests a YES rung on the market's modal bucket through the very window
+    this lane takes NO on the far tails -- another token, three or more rungs
+    away -- and read station-day-wide the rule would have stopped this lane
+    on every station-day the Proper lane is posting.  An order of this lane,
+    one whose outcome is not known (``prepared`` / ``submitting`` /
+    ``reconcile_required``), a taker order and anything on the same bucket
+    hold the take back as before.
+    """
+
+    return (
+        order.get("post_only") is True
+        and str(order.get("state")) == "submitted"
+        and str(order.get("lane")) != LANE
+        and str(order.get("bucket")) != str(bucket)
+    )
 
 
 def yes_quote(book_row: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -478,12 +501,11 @@ def plan_tail_short(
         held = sum(1 for h in history.values() if _held(h))
         verdict = gate(station, target_conn)
         station_refusal = None
+        open_orders: list[dict[str, Any]] = []
         if verdict.get("admitted") is not True:
             station_refusal = f"station_not_admitted:{verdict.get('reason') or 'refused'}"
         else:
-            open_order = open_order_on_station_day(target_conn, station, day)
-            if open_order is not None:
-                station_refusal = f"open_order:{open_order['lane'] or 'unknown'}:{open_order['state']}"
+            open_orders = open_buy_orders_on_station_day(target_conn, station, day)
         registry = None
         for leg in reading["legs"]:
             bucket = leg["bucket"]
@@ -519,6 +541,10 @@ def plan_tail_short(
                 continue
             if station_refusal:
                 refuse(station_refusal)
+                continue
+            blocker = next((o for o in open_orders if not rests_on_another_bucket(o, bucket)), None)
+            if blocker is not None:
+                refuse(f"open_order:{blocker['lane'] or 'unknown'}:{blocker['state']}")
                 continue
             if held >= int(cfg["max_legs_per_station_day"]):
                 refuse("max_legs_per_station_day")
@@ -690,6 +716,7 @@ __all__ = [
     "lane_cost_today",
     "no_take",
     "plan_tail_short",
+    "rests_on_another_bucket",
     "station_days_in_window",
     "taker_fee_usdc",
     "yes_quote",

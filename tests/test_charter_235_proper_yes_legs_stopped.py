@@ -38,16 +38,18 @@ from tests.test_charter_231_proper_bet_lane import (  # noqa: E402,F401 -- ``sto
 
 CHARTER = "235"
 NO_ONLY = frozenset({lane.SIDE_NO})
-#: The settings a production cycle reads: no ``sides`` of its own, so the
-#: shipped default decides.
-SHIPPED = {k: v for k, v in SETTINGS.items() if k != "sides"}
+#: The settings a production cycle read under charter 235: the switch at
+#: ``["NO"]``.  Charter 249 (2026-10-03) ships it at ``["YES"]``; the switch
+#: itself, pinned here, is what both rulings throw.
+SHIPPED = {**SETTINGS, "sides": ["NO"]}
 
 
-def test_the_lane_ships_with_the_yes_side_stopped() -> None:
-    assert strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["sides"] == ["NO"]
+def test_the_sides_switch_stops_the_yes_side() -> None:
+    assert lane.allowed_sides({"sides": ["NO"]}) == NO_ONLY
+    # The shipped position is charter 249's, and it is one the switch can read.
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
-    assert shipped["lanes"]["proper_bet"]["sides"] == ["NO"]
-    assert lane.allowed_sides(shipped["lanes"]["proper_bet"]) == NO_ONLY
+    assert lane.allowed_sides(shipped["lanes"]["proper_bet"]) <= lane.BOTH_SIDES
+    assert lane.allowed_sides(strategy_lanes.PROPER_BET_DEFAULT_SETTINGS) <= lane.BOTH_SIDES
 
 
 @pytest.mark.parametrize("bad", ["NO", None, ["NO", "MAYBE"]])
@@ -144,5 +146,6 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
     body = body[: body.index("\n", 1)]
     for phrase in ("Proper 线的 YES 腿停掉", '"sides": ["NO"]', "side_stopped:YES", "−29.0%"):
         assert phrase in body
+    # AGENTS.md states the rule in force: charter 249 superseded this default.
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert f"宪章 {CHARTER}" in agents and "YES 腿已停" in agents
+    assert f"宪章 {CHARTER}" in agents and "宪章 249" in agents

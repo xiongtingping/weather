@@ -51,12 +51,15 @@ ED = "2026-09-20"
 DECIDED = "2026-09-18T12:02:00.000Z"
 NOW = "2026-09-18T12:02:30.000Z"
 TOKENS = {"27°C": ("t27", "n27"), "28°C": ("t28", "n28"), "29°C": ("t29", "n29")}
-#: Both sides: this suite pins the two-sided rule as charter 231 wrote it.  The
-#: YES side ships stopped (charter 235, ``sides: ["NO"]``); its own suite pins
-#: that.
+#: Both sides, the whole ladder, the first decision: this suite pins the rule as
+#: charter 231 wrote it.  Charter 235 stopped the YES side and charter 249
+#: reopened the lane on YES at the market's modal bucket, judged on the newest
+#: decision; each has its own suite, and the three switches are named here so
+#: the shipped defaults cannot move this one.
 SETTINGS = {"opening_stages": ["P0"], "live_ws_book": False, "min_hours_to_settlement": 36.0,
             "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0,
-            "sides": ["YES", "NO"]}
+            "rule": "log_proper_maker_bid_plus_one_min_horizon_v2",
+            "sides": ["YES", "NO"], "buckets": "all", "entry": "first_decision"}
 
 
 def _row(bucket, ordinal, bids, asks, tick=0.01):
@@ -516,18 +519,20 @@ def test_the_retired_no_side_trigger_is_gone_from_the_schema(tmp_path) -> None:
     assert "basket_target_intents_no_no_side_insert" not in names
 
 
-def test_the_lane_ships_v2_and_the_basket_off() -> None:
+def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     assert strategy_lanes.LANE_PROPER_BET in strategy_lanes.KNOWN_LANES
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
-    assert defaults["rule"] == lane.RULE_MAKER_V2 and defaults["opening_stages"] == ["P0"]
+    # v2 stays a rule the lane knows; which rule ships is charter 249's suite.
+    assert lane.RULE_VERSIONS[lane.RULE_MAKER_V2] == "proper_bet_lane_v2"
+    assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0"]
     assert defaults["min_hours_to_settlement"] == 36.0
     assert defaults["budget_rule"] == "minimum_full_position" and "stake_usdc" not in defaults
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
     assert shipped["source"] == "file"
     proper = shipped["lanes"]["proper_bet"]
-    # The on/off switch is the operator's (2026-09-28 ruling stopped Proper);
-    # only the rule it runs when on is pinned here.
-    assert proper["rule"] == lane.RULE_MAKER_V2
+    # The on/off switch is the operator's; the window is pinned here, the rule
+    # it runs in charter 249's suite.
+    assert proper["rule"] in lane.RULE_VERSIONS
     assert proper["min_hours_to_settlement"] == 36.0 and proper["opening_stages"] == ["P0"]
     assert shipped["lanes"]["basket"]["enabled"] is False
 

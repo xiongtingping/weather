@@ -44,8 +44,32 @@ basket, not Kelly, not a value clamp: the pair of probability vectors
   rule's verdict stay on the record -- and never posted or sized; an active
   plan stops re-posting it.
 
+* Charter 249 (user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场
+  众数桶，挂单」 and 「限p0」), rule v3: the lane reopens on ONE leg a
+  station-day -- YES on the market's own modal bucket (the largest normalised
+  mid, the lower rung on a tie), rested at the best bid plus one tick, only
+  under ``p``.  ``buckets: "market_mode"`` names the bucket scope
+  (``"all"`` is charter 231's whole ladder); a leg off the mode is still
+  quoted and recorded ``not_market_mode``, never posted.
+  ``entry: "latest_decision"`` judges the station-day's NEWEST P0 decision on
+  every pass until a plan is made, instead of the first decision inside its
+  first hour: over 2026-09-26..30 the first-decision entry planned 3
+  station-days and refused 170 ``first_decision_stale``, because a ladder
+  more than two days out is rarely quoted whole in that hour.  While a plan
+  is active each re-post reads the newest P0 envelope's ``p`` and the
+  standing book: the leg waits while its bucket is not the market's mode or
+  the rung would not be under ``p``.  A rung under the venue's one-dollar
+  minimum is sized up to it (charter 83).  Measured before the ruling
+  (docs/research/proper_conditional_edge_20261003, section 14): this leg is
+  positive under every fill assumption tried -- +1.7c a share when only a
+  trade-through fills, +2.8c when a lifted level fills -- and its intervals
+  reach zero on the served record; the lane is the live measurement.
+
 v1 (FOK at the worst in-band ask level, 2026-09-26 11:52Z-) never sent an
-order: every first decision it saw was stale, closed or barred.
+order: every first decision it saw was stale, closed or barred.  v2's 468
+intents of 2026-09-28 were 464 gateway refusals (156 on the venue's GTD floor
+while this host's clock ran 107 s behind, 308 on prices under one cent), three
+transport errors and ONE order that rested -- and filled.
 
 Measured before the ruling (docs/research/log_proper_betting_20260926,
 sections 8, 9, 12, 13): two-sided Log shares at the ask ROI -3.0%
@@ -74,7 +98,11 @@ from .account_equity import (
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
 from .contracts import content_sha256
-from .delta_v2_runtime import bid_anchored_ladder
+from .delta_v2_runtime import (
+    CHARTER_83_MIN_NOTIONAL,
+    EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
+    bid_anchored_ladder,
+)
 from .exit_orders import Transport
 from .lane_orders import send_lane_buy
 from .live_station_scope import admission as live_station_admission
@@ -94,8 +122,9 @@ LANE_TITLE = "Proper 下注线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "proper_bet_lane_plan_v2"
 RULE_MAKER_V2 = "log_proper_maker_bid_plus_one_min_horizon_v2"
-RULE_VERSIONS = {RULE_MAKER_V2: "proper_bet_lane_v2"}
-DEFAULT_RULE = RULE_MAKER_V2
+RULE_MAKER_MODE_YES_V3 = "log_proper_maker_market_mode_yes_v3"
+RULE_VERSIONS = {RULE_MAKER_V2: "proper_bet_lane_v2", RULE_MAKER_MODE_YES_V3: "proper_bet_lane_v3"}
+DEFAULT_RULE = RULE_MAKER_MODE_YES_V3
 EXECUTION_CANDIDATE = "MAKER"
 EVALUATION_TABLE = "proper_bet_lane_evaluation"
 INTENT_PREFIX = "proper"
@@ -110,6 +139,18 @@ SIDE_NO = "NO"
 
 BOTH_SIDES = frozenset({SIDE_YES, SIDE_NO})
 SIDE_STOPPED = "side_stopped"
+
+#: Which buckets a leg may sit on (charter 249): the whole ladder, or only the
+#: market's own modal bucket.
+BUCKETS_ALL = "all"
+BUCKETS_MARKET_MODE = "market_mode"
+NOT_MARKET_MODE = "not_market_mode"
+#: Which decision opens a station-day: its first P0 decision (charter 231), or
+#: its newest one on every pass until a plan is made (charter 249).
+ENTRY_FIRST_DECISION = "first_decision"
+ENTRY_LATEST_DECISION = "latest_decision"
+#: Refusals under the latest-decision entry that no later pass can lift.
+TERMINAL_REFUSAL_PREFIXES = ("inside_", "settlement_day_closed")
 
 PLAN_ACTIVE = "active"
 PLAN_DONE = "done"
@@ -210,6 +251,34 @@ def allowed_sides(settings: Mapping[str, Any]) -> frozenset[str]:
     return sides
 
 
+def bucket_scope(settings: Mapping[str, Any]) -> str:
+    """``all`` or ``market_mode`` (charter 249); anything else raises."""
+
+    declared = str(settings.get("buckets", BUCKETS_ALL) or "").strip().lower()
+    if declared not in {BUCKETS_ALL, BUCKETS_MARKET_MODE}:
+        raise ValueError(f"proper_bet_buckets_unknown:{settings.get('buckets')!r}")
+    return declared
+
+
+def entry_rule(settings: Mapping[str, Any]) -> str:
+    """``first_decision`` or ``latest_decision`` (charter 249); anything else raises."""
+
+    declared = str(settings.get("entry", ENTRY_FIRST_DECISION) or "").strip().lower()
+    if declared not in {ENTRY_FIRST_DECISION, ENTRY_LATEST_DECISION}:
+        raise ValueError(f"proper_bet_entry_unknown:{settings.get('entry')!r}")
+    return declared
+
+
+def market_mode_bucket(q: Mapping[str, float], order: list[str]) -> str | None:
+    """The market's modal bucket: the largest normalised mid, the lower rung on
+    a tie -- the mode the far-tail lane measures its rungs from (charter 234)."""
+
+    ladder = [bucket for bucket in order if bucket in q]
+    if not ladder:
+        return None
+    return ladder[max(range(len(ladder)), key=lambda i: (float(q[ladder[i]]), -i))]
+
+
 # ---------------------------------------------------------------------------
 # The rule: (p, q) -> s -> the rung each leg rests at -> lambda.  Pure.
 
@@ -274,13 +343,14 @@ def rung_price(bid: float | None, ask: float | None, tick: float) -> float | Non
 
 def leg_quote(
     bucket: str, p: float, s: float, book_row: Mapping[str, Any] | None, tick: float,
-    *, sides: frozenset[str] = BOTH_SIDES,
+    *, sides: frozenset[str] = BOTH_SIDES, only_bucket: str | None = None,
 ) -> dict[str, Any]:
     """One bucket's leg: its side from ``s``, its rung, and the rule's verdict.
 
     The rule: a YES rung only under ``p``, a NO rung only under ``1 - p``.
     A leg that obeys it on a side not in ``sides`` reads ``side_stopped``
-    (charter 235), its rung kept on the record.
+    (charter 235), and one off ``only_bucket`` reads ``not_market_mode``
+    (charter 249); either way its rung is kept on the record.
     """
 
     out: dict[str, Any] = {"bucket": bucket, "p": p, "s": s, "side": None, "price": None,
@@ -302,6 +372,8 @@ def leg_quote(
     out["price"] = price
     if not price < claim - 1e-12:
         out["reason"] = f"price_breaks_rule:{price:.4f}>={claim:.4f}"
+    elif only_bucket is not None and bucket != only_bucket:
+        out["reason"] = NOT_MARKET_MODE
     elif side not in sides:
         out["reason"] = f"{SIDE_STOPPED}:{side}"
     return out
@@ -374,8 +446,13 @@ def evaluate_ladder(
     min_shares: Mapping[str, float],
     ticks: Mapping[str, float],
     sides: frozenset[str] = BOTH_SIDES,
+    buckets: str = BUCKETS_ALL,
 ) -> dict[str, Any]:
-    """The whole rule on one ladder: ``p``, ``q``, ``s``, ``D``, the rungs, lambda."""
+    """The whole rule on one ladder: ``p``, ``q``, ``s``, ``D``, the rungs, lambda.
+
+    ``buckets="market_mode"`` keeps only the leg on the market's own modal
+    bucket (charter 249); every other bucket is still quoted, for the record.
+    """
 
     market = market_reference_v1(book_buckets)
     if market.get("state") != "complete":
@@ -396,9 +473,10 @@ def evaluate_ladder(
     divergence = divergence_kl(p, q)
     rows = {str(r.get("bucket")): r for r in book_buckets}
     order = sorted(q, key=lambda b: rows.get(b, {}).get("ordinal", 0))
+    mode = market_mode_bucket(q, order)
     quotes = [
         leg_quote(b, p[b], s[b], rows.get(b), float(ticks.get(b) or rows.get(b, {}).get("price_tick_size") or 0.01),
-                  sides=sides)
+                  sides=sides, only_bucket=mode if buckets == BUCKETS_MARKET_MODE else None)
         for b in order
     ]
     sizing = size_minimum(quotes, cash_usdc=cash_usdc, min_shares=min_shares)
@@ -407,6 +485,7 @@ def evaluate_ladder(
         "p": p, "q": q, "s": s, "divergence_kl": divergence,
         "p_floored_buckets": floored,
         "mid_sum": market.get("mid_sum"),
+        "market_mode_bucket": mode,
         "quotes": quotes,
         **sizing,
     }
@@ -466,6 +545,72 @@ def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | No
         "probabilities": probabilities, "content_sha256": str(row[1]),
         "decision_at_utc": str(row[2]), "stage": str(row[3]),
     }
+
+
+def latest_stage_decisions(
+    conn: sqlite3.Connection, *, now_utc: str, lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+) -> list[dict[str, Any]]:
+    """The NEWEST fact of every station-day on recent event days (charter 249).
+
+    Its stage is the stage the station-day is in now, so a day that has left
+    P0 is not offered.  The far-tail lane reads its window the same way.
+    """
+
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='basket_policy_training_fact'"
+    ).fetchone() is None:
+        return []
+    floor = (_utc(now_utc) - timedelta(days=int(lookback_days))).date().isoformat()
+    rows = conn.execute(
+        "SELECT f.station_id, f.event_date, f.stage, f.decision_at_utc"
+        " FROM basket_policy_training_fact f"
+        " JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS newest"
+        "       FROM basket_policy_training_fact WHERE event_date >= ?"
+        "       GROUP BY station_id, event_date) n"
+        "   ON n.station_id = f.station_id AND n.event_date = f.event_date"
+        "  AND n.newest = f.decision_at_utc"
+        # ``rowid`` alone breaks a tie on the timestamp (insertion order): it is
+        # in the index, where ``created_at_utc`` sits behind the fact's large
+        # JSON columns and would read their overflow pages on every pass.
+        " ORDER BY f.station_id, f.event_date, f.rowid DESC",
+        (floor,),
+    ).fetchall()
+    seen: dict[tuple[str, str], dict[str, Any]] = {}
+    for station, day, stage, decided in rows:
+        seen.setdefault((str(station), str(day)), {
+            "station_id": str(station), "event_date": str(day), "stage": str(stage),
+            "decision_at_utc": str(decided),
+        })
+    return list(seen.values())
+
+
+def _latest_p0_probability(
+    conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
+) -> float | None:
+    """``p`` of one bucket in the station-day's newest P0 envelope, floored as
+    ``evaluate_ladder`` floors it; None when there is none to read."""
+
+    row = conn.execute(
+        "SELECT probability_envelope_id FROM basket_policy_training_fact"
+        " WHERE station_id=? AND event_date=? AND stage='P0'"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station_id, event_date),
+    ).fetchone()
+    if row is None:
+        return None
+    envelope = _envelope(conn, str(row[0]))
+    if envelope is None:
+        return None
+    try:
+        raw = {str(k): float(v) for k, v in envelope["probabilities"].items()}
+    except (TypeError, ValueError):
+        return None
+    total = sum(raw.values())
+    if bucket not in raw or not (total > 0.0 and math.isfinite(total)):
+        return None
+    floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
+    value = float(floored[bucket])
+    return value if 0.0 < value < 1.0 else None
 
 
 def _evaluated(conn: sqlite3.Connection, *, since_event_date: str) -> set[tuple[str, str, str]]:
@@ -652,6 +797,9 @@ def plan_new_first_decisions(
     live = cfg.get("live_ws_book", True) is True
     stages = opening_stages(cfg)
     sides = allowed_sides(cfg)
+    buckets = bucket_scope(cfg)
+    entry = entry_rule(cfg)
+    latest = entry == ENTRY_LATEST_DECISION
     now = _utc(now_utc)
     done = _evaluated(
         target_conn,
@@ -659,15 +807,32 @@ def plan_new_first_decisions(
     )
     evaluations: list[dict[str, Any]] = []
     waiting: list[dict[str, Any]] = []
-    for key in stage_first_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS):
+    decisions = (
+        latest_stage_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS)
+        if latest else
+        stage_first_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS)
+    )
+    for key in decisions:
         if str(key["stage"]) not in stages:
             continue
         if (key["station_id"], key["event_date"], key["stage"]) in done:
             continue
         fact = _fact(target_conn, key)
+
+        def refuse(reason: str, key: Mapping[str, Any] = key, fact: Mapping[str, Any] | None = fact,
+                   **record: Any) -> None:
+            # Charter 249: under the latest-decision entry a station-day is
+            # judged again on the next pass, so only a refusal no later pass
+            # can lift is written down (the row is the station-day's one
+            # verdict); everything else waits and says what on.
+            if latest and not reason.startswith(TERMINAL_REFUSAL_PREFIXES):
+                waiting.append({**key, "reason": reason})
+                return
+            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
+                                       refusal=reason, **record))
+
         if fact is None:
-            evaluations.append(_record(target_conn, key, None, rule_version=rule_version, now_utc=now_utc,
-                                       refusal="fact_missing"))
+            refuse("fact_missing")
             continue
         refusal, hours = _window_refusal(
             target_conn, station_id=key["station_id"], event_date=key["event_date"],
@@ -675,18 +840,15 @@ def plan_new_first_decisions(
             min_hours=min_hours, gate=gate,
         )
         if refusal:
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal=refusal, hours=hours))
+            refuse(refusal, hours=hours)
             continue
         young = (now - _utc(fact["decision_at_utc"])).total_seconds() <= fresh_seconds
         if not young:
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal="first_decision_stale", hours=hours))
+            refuse("decision_stale" if latest else "first_decision_stale", hours=hours)
             continue
         envelope = _envelope(target_conn, fact["envelope_id"])
         if envelope is None:
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal="envelope_missing", hours=hours))
+            refuse("envelope_missing", hours=hours)
             continue
         book, book_refusal = _book(
             target_conn, manifest_root(), station_id=key["station_id"], event_date=key["event_date"],
@@ -695,6 +857,15 @@ def plan_new_first_decisions(
         if book is None:
             waiting.append({**key, "reason": book_refusal})
             continue
+        if latest:
+            # Most station-days fire nothing on most passes: read the rule
+            # off the book before paying for the registry.
+            glance = evaluate_ladder(envelope["probabilities"], list(book["buckets"]), cash_usdc=None,
+                                     min_shares={}, ticks={}, sides=sides, buckets=buckets)
+            if glance.get("refusal"):
+                detail = f":{glance.get('market_reason')}" if glance["refusal"] == "market_incomplete" else ""
+                waiting.append({**key, "reason": f"{glance['refusal']}{detail}"})
+                continue
         registry = _registry_rows(target_conn, canonical_conn, station_id=key["station_id"], event_date=key["event_date"])
         min_shares: dict[str, float] = {}
         ticks: dict[str, float] = {}
@@ -715,19 +886,16 @@ def plan_new_first_decisions(
         if "cash" not in cash:
             cash["cash"], cash["refusal"] = _free_cash(target_conn, now_utc=now_utc)
         if cash.get("refusal"):
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal=cash["refusal"], envelope=envelope, book=book, hours=hours))
+            refuse(cash["refusal"], envelope=envelope, book=book, hours=hours)
             continue
         reading = evaluate_ladder(envelope["probabilities"], list(book["buckets"]),
                                   cash_usdc=cash.get("cash"), min_shares=min_shares, ticks=ticks,
-                                  sides=sides)
+                                  sides=sides, buckets=buckets)
         if reading.get("refusal") == "market_incomplete":
             waiting.append({**key, "reason": f"market_incomplete:{reading.get('market_reason')}"})
             continue
         if reading.get("refusal"):
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal=reading["refusal"], envelope=envelope, book=book,
-                                       reading=reading, hours=hours))
+            refuse(reading["refusal"], envelope=envelope, book=book, reading=reading, hours=hours)
             continue
         legs: list[dict[str, Any]] = []
         unsendable: dict[str, str] = {}
@@ -750,9 +918,7 @@ def plan_new_first_decisions(
         reading = {**reading, "legs": [l for l in reading["legs"] if str(l["bucket"]) not in unsendable],
                    "dropped": {**reading["dropped"], **unsendable}}
         if not legs:
-            evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
-                                       refusal="no_sendable_leg", envelope=envelope, book=book,
-                                       reading=reading, hours=hours))
+            refuse("no_sendable_leg", envelope=envelope, book=book, reading=reading, hours=hours)
             continue
         if cash.get("cash") is not None:
             cash["cash"] = float(cash["cash"]) - sum(float(leg["planned_cost_usdc"]) for leg in legs)
@@ -768,7 +934,8 @@ def plan_new_first_decisions(
             "lambda_shares": reading["lambda_shares"], "need_full_usdc": reading["need_full_usdc"],
             "budget_usdc": reading["budget_usdc"], "capped_by_cash": reading["capped_by_cash"],
             "divergence_kl": reading["divergence_kl"], "min_hours_to_settlement": min_hours,
-            "sides": sorted(sides), "legs": legs,
+            "sides": sorted(sides), "buckets": buckets, "entry": entry,
+            "market_mode_bucket": reading.get("market_mode_bucket"), "legs": legs,
         }
         plan["plan_id"] = f"{INTENT_PREFIX}_{content_sha256({'plan': plan})[:32]}"
         evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
@@ -881,13 +1048,40 @@ def plan_rungs(
                 continue
             row = next((r for r in book["buckets"] if str(r.get("bucket")) == str(leg["bucket"])), None)
             tick = float(leg.get("tick_size") or (row or {}).get("price_tick_size") or 0.01)
-            quote = leg_quote(str(leg["bucket"]), float(leg["p"]), float(leg["s"]), row, tick)
+            p_now, s_now = float(leg["p"]), float(leg["s"])
+            if plan.get("buckets") == BUCKETS_MARKET_MODE:
+                # Charter 249: the leg is "YES on the market's modal bucket",
+                # so every re-post asks the standing book which bucket that
+                # is, and the newest P0 envelope what p is.
+                market = market_reference_v1(book["buckets"])
+                if market.get("state") != "complete":
+                    leg_state["status"] = f"waiting:market_incomplete:{market.get('reason')}"
+                    continue
+                q_now = {str(k): float(v) for k, v in market["vector"].items()}
+                by_bucket = {str(r.get("bucket")): r for r in book["buckets"]}
+                mode = market_mode_bucket(
+                    q_now, sorted(q_now, key=lambda b: by_bucket.get(b, {}).get("ordinal", 0)))
+                if mode != str(leg["bucket"]):
+                    leg_state["status"] = f"waiting:{NOT_MARKET_MODE}:{mode}"
+                    continue
+                newest = _latest_p0_probability(target_conn, str(station), str(day), str(leg["bucket"]))
+                if newest is not None:
+                    p_now = newest
+                s_now = math.log(p_now / q_now[str(leg["bucket"])])
+            quote = leg_quote(str(leg["bucket"]), p_now, s_now, row, tick)
             if quote["reason"] or quote["side"] != leg["side"]:
                 leg_state["status"] = f"waiting:{quote['reason'] or 'side_changed'}"
-                leg_state["last_quote"] = {"price": quote["price"], "bid": quote["bid"], "ask": quote["ask"]}
+                leg_state["last_quote"] = {"price": quote["price"], "bid": quote["bid"], "ask": quote["ask"],
+                                           "p": p_now}
                 continue
             scale = 10 ** SHARE_PRECISION
             shares = math.floor(remaining * scale + 1e-6) / scale
+            floor_usdc = EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
+            if filled <= 0.0 and shares * float(quote["price"]) < floor_usdc - 1e-9:
+                # The venue takes no order under a dollar (charter 83): a
+                # five-share rung on a bucket priced under 0.20 is sized up
+                # to the dollar rather than refused on every pass.
+                shares = math.ceil(floor_usdc / float(quote["price"]) * scale - 1e-9) / scale
             cost = round(shares * float(quote["price"]), 6)
             if cash.get("cash") is not None and float(cash["cash"]) < cost - 1e-9:
                 leg_state["status"] = f"waiting:insufficient_cash:{float(cash['cash']):.2f}<{cost:.2f}"
@@ -904,7 +1098,7 @@ def plan_rungs(
             rungs.append({
                 "where": where, "plan": plan, "leg": leg, "intent_id": intent_id,
                 "price": float(quote["price"]), "shares": shares, "cost_usdc": cost,
-                "bid": quote["bid"], "ask": quote["ask"], "tick": tick,
+                "bid": quote["bid"], "ask": quote["ask"], "tick": tick, "p": p_now,
                 "book_id": book.get("snapshot_id"), "book_source": book.get("book_source"),
                 "hours_to_settlement": hours, **venue,
             })
@@ -965,6 +1159,8 @@ def execute_proper_bets(
     if str(cfg.get("rule")) not in RULE_VERSIONS:
         raise ValueError(f"proper_bet_rule_unknown:{cfg.get('rule')}")
     allowed_sides(cfg)
+    bucket_scope(cfg)
+    entry_rule(cfg)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
@@ -1016,7 +1212,7 @@ def execute_proper_bets(
                 "schema": SCHEMA, "rule": plan["rule"], "strategy_id": STRATEGY_ID,
                 "order_type": rung["order_type"], "post_only": rung["post_only"],
                 "expiration_basis": rung.get("expiration_basis"), "plan_id": plan["plan_id"],
-                "leg": leg, "rung": {k: rung[k] for k in ("price", "shares", "bid", "ask", "tick",
+                "leg": leg, "rung": {k: rung[k] for k in ("price", "shares", "bid", "ask", "tick", "p",
                                                            "book_id", "book_source", "hours_to_settlement")},
             },
             transport=transport, live_submit_authorized=live_submit_authorized,
@@ -1061,7 +1257,11 @@ def execute_proper_bets(
 
 
 __all__ = [
+    "BUCKETS_ALL",
+    "BUCKETS_MARKET_MODE",
     "DEFAULT_RULE",
+    "ENTRY_FIRST_DECISION",
+    "ENTRY_LATEST_DECISION",
     "EVALUATION_TABLE",
     "EXECUTION_CANDIDATE",
     "LANE",
@@ -1069,13 +1269,18 @@ __all__ = [
     "PLAN_ACTIVE",
     "PLAN_CLOSED",
     "PLAN_DONE",
+    "RULE_MAKER_MODE_YES_V3",
     "RULE_MAKER_V2",
     "RULE_VERSIONS",
     "SIDE_NO",
     "SIDE_STOPPED",
     "SIDE_YES",
     "allowed_sides",
+    "bucket_scope",
     "divergence_kl",
+    "entry_rule",
+    "latest_stage_decisions",
+    "market_mode_bucket",
     "ensure_lane_schema",
     "evaluate_ladder",
     "execute_proper_bets",

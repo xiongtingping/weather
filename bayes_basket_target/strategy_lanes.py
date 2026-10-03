@@ -237,18 +237,30 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # post-only GTD rung at bid+1t on its own side's book, signed at the
     # venue's minimum horizon and re-posted until filled, every price under
     # the leg's claim (YES under p, NO under 1 - p).
-    "rule": "log_proper_maker_bid_plus_one_min_horizon_v2",
+    #
+    # v3 (charter 249, user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，
+    # 市场众数桶，挂单」「限p0」): the same resting rung, on one leg a
+    # station-day -- YES on the market's modal bucket.
+    "rule": "log_proper_maker_market_mode_yes_v3",
     # 「预算提高到最低要求」: lambda is the smallest the venue allows for the
     # whole position (the smallest leg at the five-share minimum), capped by
     # the free cash.  The ruling left no fixed stake.
     "budget_rule": "minimum_full_position",
-    # 「仅p0阶段下单」: the P0 first decision opens; the plan is posted while
-    # the station-day is still P0.
+    # 「仅p0阶段下单」 / 「限p0」: only a station-day that is in P0 opens, and the
+    # plan is posted while it still is.
     "opening_stages": ["P0"],
+    # Charter 249: which decision opens the station-day.  ``latest_decision``
+    # judges its newest P0 decision on every pass until a plan is made;
+    # ``first_decision`` (charter 231) judged only the first, inside its first
+    # hour, when a ladder two days out is rarely quoted whole -- 170 of 173
+    # station-days were refused ``first_decision_stale`` over 2026-09-26..30.
+    "entry": "latest_decision",
     # 「按照>36h」: posted only while the settlement clock is more than this
     # many hours away -- the band the L4 verdict found P0 beat the market on.
     "min_hours_to_settlement": 36.0,
-    # A first decision older than this is recorded, not planned.
+    # A decision older than this is not planned on (under ``first_decision``
+    # it is recorded stale; under ``latest_decision`` the station-day waits
+    # for its next one).
     "first_decision_fresh_seconds": 3600.0,
     # A rung is priced on a book at most this old; the WS publisher's own
     # ladder first, the committed snapshot otherwise.
@@ -260,7 +272,16 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # (p0_differential_edge_20260927, the control reading).  A YES leg is
     # still quoted and recorded, never posted; the whole position's lambda
     # is the NO legs' own.
-    "sides": ["NO"],
+    #
+    # Charter 249 (2026-10-03) turns the switch the other way: YES only.  The
+    # -29.0% was the YES legs of the WHOLE ladder bought at the ask; by rungs
+    # from the market's mode it is the YES legs two or more rungs out that
+    # lose under every execution tried, and the YES leg on the modal bucket
+    # that does not (proper_conditional_edge_20261003, section 14).
+    "sides": ["YES"],
+    # Charter 249: the buckets a leg may sit on -- ``market_mode`` (the
+    # market's own modal bucket, the lower rung on a tie) or ``all``.
+    "buckets": "market_mode",
 }
 
 #: 远尾做空线 (charter 234, user rulings 2026-09-28 「上线：只按市场自己的价格结构
