@@ -1445,6 +1445,67 @@ TRUTH_INCREMENT_WINDOW_DAYS = 3
 TRUTH_INCREMENT_MAX_SCOPES = 12
 
 
+# The count below, kept incremental.  The observation table has no index
+# its predicate can seek (and the resident never applies schema), so the
+# statement read every report ever archived to find the few flagged in the
+# window: 218,000 wide rows, 2.9 s warm, twice a cycle (2026-10-03).  The
+# archive only inserts reports -- no production statement updates or deletes
+# one -- so the flagged rows are remembered per archive file with the rowid
+# they were read up to, and a call reads the rows past it.  A store with no
+# file, or "0", asks the statement as before.
+CORRECTION_COUNT_INCREMENTAL = (
+    os.environ.get("PM_CORRECTION_COUNT_INCREMENTAL", "1").strip().lower()
+    not in {"0", "off", "false", "no"}
+)
+_CORRECTION_SUSPECTS: dict[str, tuple[int, dict[str, str]]] = {}
+_CORRECTION_SUSPECTS_LOCK = threading.Lock()
+
+
+def forget_correction_suspects() -> None:
+    """Drop the remembered flagged reports (tests)."""
+    with _CORRECTION_SUSPECTS_LOCK:
+        _CORRECTION_SUSPECTS.clear()
+
+
+def _pending_correction_review_count_incremental(
+    conn: "sqlite3.Connection", *, database_file: str, since: str,
+) -> int:
+    with _CORRECTION_SUSPECTS_LOCK:
+        mark, suspects = _CORRECTION_SUSPECTS.get(database_file, (0, {}))
+        ceiling = int(conn.execute(
+            "SELECT COALESCE(MAX(rowid),0) FROM reported_trajectory_observations"
+        ).fetchone()[0])
+        if ceiling < mark:
+            # Not the table that was read: start again.
+            mark, suspects = 0, {}
+        if ceiling > mark:
+            suspects = dict(suspects)
+            for row in conn.execute(
+                "SELECT observation_id,canonical_committed_at"
+                " FROM reported_trajectory_observations"
+                " WHERE rowid>? AND rowid<=? AND correction_suspected=1",
+                (mark, ceiling),
+            ):
+                suspects[str(row[0])] = str(row[1])
+            _CORRECTION_SUSPECTS[database_file] = (ceiling, suspects)
+    # The statement's own window test, on the same text it compares.
+    in_window = [
+        observation_id
+        for observation_id, committed_at in suspects.items()
+        if committed_at >= since
+    ]
+    if not in_window:
+        return 0
+    reviewed = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT triggering_observation_id"
+            " FROM reported_trajectory_station_halt_reviews"
+        )
+    }
+    return sum(1 for observation_id in in_window if observation_id not in reviewed)
+
+
 def pending_correction_review_count(
     conn: "sqlite3.Connection",
     *,
@@ -1466,6 +1527,15 @@ def pending_correction_review_count(
         - timedelta(days=window_days)
     ).isoformat().replace("+00:00", "Z")
     try:
+        database_file = ""
+        if CORRECTION_COUNT_INCREMENTAL:
+            for entry in conn.execute("PRAGMA database_list"):
+                if str(entry[1]) == "main":
+                    database_file = str(entry[2] or "")
+        if database_file:
+            return _pending_correction_review_count_incremental(
+                conn, database_file=database_file, since=since,
+            )
         row = conn.execute(
             "SELECT COUNT(*) FROM reported_trajectory_observations o"
             " WHERE o.correction_suspected=1"
@@ -4259,6 +4329,12 @@ FAST_LANE_CHECKPOINT_CYCLE_BUDGET_SEC = float(
 FAST_LANE_NWP_P0_ENABLED = (
     os.environ.get("PM_FAST_LANE_NWP_P0", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
+)
+# The regime stage reads only the fresh scopes it still owes a read
+# (``_regime_scopes_owed``).  "0": every fresh scope, every cycle.
+REGIME_STAGE_INCREMENTAL = (
+    os.environ.get("PM_REGIME_STAGE_INCREMENTAL", "1").strip().lower()
+    not in {"0", "off", "false", "no"}
 )
 
 
@@ -18346,6 +18422,66 @@ class TargetProductionWorker:
         )
         return receipt
 
+    def _regime_scopes_owed(
+        self, fresh: Sequence[tuple[Any, Any]], *, ceiling: int,
+    ) -> list[tuple[Any, Any]]:
+        """The fresh scopes the stage's pass still owes a read.
+
+        The pass read every fresh station-day whole, every cycle, to find
+        that almost all of them had nothing new: 1,957 envelopes loaded and
+        rebuilt for 1-23 committed since the pass before (2026-10-03, 14 s
+        of a 197 s cycle).  Envelopes and companions are append-only, a
+        companion is a pure function of its envelope, and both the set of
+        fresh scopes and the set of servable envelopes only shrink while
+        nothing is committed -- so a scope a completed pass read without a
+        blocker is owed nothing until an envelope lands on it.  Owed: the
+        scopes of the envelopes committed since the last completed stage
+        pass (by rowid, catch-up or not), and the scopes whose last read
+        had a blocker.  The first pass of a process owes every fresh scope,
+        and so does any pass after one that did not finish.  "0" restores
+        every scope every cycle.
+        """
+
+        done = getattr(self, "_regime_full_done_mark", None)
+        if not REGIME_STAGE_INCREMENTAL or done is None or int(done) > int(ceiling):
+            return list(fresh)
+        owed = {
+            (str(scope[0]), str(scope[1]))
+            for scope in getattr(self, "_regime_retry_scopes", None) or ()
+        }
+        owed.update(
+            (str(row[0]), str(row[1]))
+            for row in self.conn.execute(
+                "SELECT station_id,event_date FROM basket_probability_envelope"
+                " WHERE rowid>? AND rowid<=?",
+                (int(done), int(ceiling)),
+            )
+        )
+        return [
+            scope for scope in fresh
+            if (str(scope[0]), str(scope[1])) in owed
+        ]
+
+    def _regime_note_pass(
+        self,
+        passed_scopes: Sequence[tuple[str, str]],
+        blockers: Sequence[Mapping[str, Any]],
+        *,
+        full_pass_ceiling: int | None,
+    ) -> None:
+        """What a finished pass leaves owed (``_regime_scopes_owed``)."""
+
+        blocked = {
+            (str(item.get("station_id") or ""), str(item.get("event_date") or ""))
+            for item in blockers
+        }
+        retry = set(getattr(self, "_regime_retry_scopes", None) or ())
+        retry.difference_update(passed_scopes)
+        retry.update(scope for scope in passed_scopes if scope in blocked)
+        self._regime_retry_scopes = retry
+        if full_pass_ceiling is not None:
+            self._regime_full_done_mark = int(full_pass_ceiling)
+
     def _materialize_regime_ssot(
         self,
         *,
@@ -18378,6 +18514,8 @@ class TargetProductionWorker:
         # clock -- died on ``regime_ssot_not_unique`` for whichever station
         # had just minted one (20 stations in one 2026-08-20 snapshot).
         _regime_probe_started = time.perf_counter()
+        full_pass_ceiling: int | None = None
+        fresh_scope_count: int | None = None
         if only_scopes is not None:
             # A catch-up pass (``_regime_catch_up``): the scopes of the
             # envelopes committed since the last pass, nothing else.
@@ -18387,6 +18525,7 @@ class TargetProductionWorker:
             self._regime_rowid_mark = int(self.conn.execute(
                 "SELECT COALESCE(MAX(rowid),0) FROM basket_probability_envelope"
             ).fetchone()[0])
+            full_pass_ceiling = int(self._regime_rowid_mark)
             self._regime_ran_this_cycle = True
             scopes = self._fresh_committed_envelope_scopes(
                 # Widened by the serving grace: a P1 an hour past its roll is
@@ -18396,6 +18535,10 @@ class TargetProductionWorker:
                     as_of_utc, -PROBABILITY_MAX_STALE_SECONDS
                 ),
             )
+            fresh_scope_count = len(scopes)
+            scopes = self._regime_scopes_owed(
+                scopes, ceiling=full_pass_ceiling,
+            )
         self._add_span(
             "regime_scope_probe",
             (time.perf_counter() - _regime_probe_started) * 1000.0,
@@ -18403,6 +18546,7 @@ class TargetProductionWorker:
         )
         envelopes: list[ProbabilityEnvelope] = []
         blockers: list[dict[str, str]] = []
+        passed_scopes = [(str(scope[0]), str(scope[1])) for scope in scopes]
         _regime_load_started = time.perf_counter()
         for station_id, event_date in scopes:
             try:
@@ -18584,9 +18728,19 @@ class TargetProductionWorker:
             (time.perf_counter() - _regime_build_started) * 1000.0,
             label=f"{len(envelopes)} envelopes",
         )
+        self._regime_note_pass(
+            passed_scopes, blockers,
+            full_pass_ceiling=full_pass_ceiling if only_scopes is None else None,
+        )
         return {
             "schema": "bayes_basket_target_regime_batch_v1",
             "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
+            # The stage's pass names the fresh scopes it found and the ones
+            # it owed a read; a catch-up pass was handed its scopes.
+            "fresh_scope_count": (
+                fresh_scope_count if only_scopes is None else None
+            ),
+            "scope_count": len(passed_scopes),
             "receipt_count": len(receipts),
             "envelope_count": len(envelopes),
             "chunk_count": (

@@ -1658,6 +1658,20 @@ def _selection_weights_by_sha(
 
     ordered = sorted({str(sha) for sha in selection_shas if sha})
     weights: dict[str, dict[str, float]] = {}
+    # ``_SELECTION_WEIGHTS_MEMO``: what an earlier compile read for a sha.
+    database_file = (
+        _main_database_file(conn)
+        if ADMITTED_SCOPE_MEMO_ENABLED and ordered else ""
+    )
+    if database_file:
+        unread = []
+        for sha in ordered:
+            kept = _SELECTION_WEIGHTS_MEMO.get((database_file, sha))
+            if kept is None:
+                unread.append(sha)
+            else:
+                weights[sha] = dict(kept)
+        ordered = unread
     for start in range(0, len(ordered), 500):
         chunk = ordered[start:start + 500]
         for sha, text in conn.execute(
@@ -1676,6 +1690,12 @@ def _selection_weights_by_sha(
                     for key, value in parsed.items()
                     if isinstance(value, (int, float))
                 }
+                if database_file:
+                    if len(_SELECTION_WEIGHTS_MEMO) >= SELECTION_WEIGHTS_MEMO_MAX:
+                        _SELECTION_WEIGHTS_MEMO.clear()
+                    _SELECTION_WEIGHTS_MEMO[(database_file, str(sha))] = dict(
+                        weights[str(sha)]
+                    )
     return weights
 
 
@@ -1748,20 +1768,45 @@ def _ADMITTED_ROWS_SQL(activation_sql: str) -> str:
 # move when a refit mints or a batch expires, once or twice a day each.
 #
 # Kept per database file and scope: the digest of the two id lists, the
-# admitted activation ids, and the evaluation rows of the admitted pairings
-# (the loop below asks for exactly those again).  A store with no file -- a
-# test's ``:memory:`` -- keeps nothing.  "0" restores the read on every
-# compile, which is the same answer slower.
+# admitted activation ids, their rows read whole, and the evaluation rows of
+# the admitted pairings (the loop below asks for exactly those again).  A
+# store with no file -- a test's ``:memory:`` -- keeps nothing.  "0" restores
+# the read on every compile, which is the same answer slower.
+#
+# Most compiles do not walk the two lists either (the walks were 71 ms a
+# compile, 11 s a cycle, once the test itself was kept).  Both tables only
+# grow, and a new row takes a rowid above every old one, so while each
+# table's largest rowid is what it was when the scope was kept, the tables
+# are what they were; what can still move the two sets is the clock --
+# a valid activation reaching its ``valid_until``, a minted one reaching its
+# ``valid_from``, an evaluation stamped ahead of the instant coming into
+# view.  The walk that kept the scope notes the earliest such moment (its
+# ``horizon``); from the instant it was kept until that moment, with both
+# rowids unmoved, the sets are the ones kept and the answer is given without
+# a walk.  Anything else -- a row added anywhere, the horizon reached, an
+# instant before the one kept -- walks the lists and compares the digest.
 ADMITTED_SCOPE_MEMO_ENABLED = (
     os.environ.get("PM_NATIVE_P0_ADMITTED_MEMO", "1").strip().lower()
     not in {"0", "off", "false", "no"}
 )
 ADMITTED_SCOPE_MEMO_MAX_SCOPES = 512
-_ADMITTED_SCOPE_MEMO: dict[
-    tuple[str, ...],
-    tuple[bytes, tuple[str, ...], dict[tuple[str, ...], tuple[tuple[Any, ...], ...]]],
-] = {}
+SELECTION_WEIGHTS_MEMO_MAX = 100_000
+# key -> (digest, admitted ids, admitted pairings' evaluation rows,
+#         admitted rows whole, (kept at, horizon, rowid marks) or None)
+_ADMITTED_SCOPE_MEMO: dict[tuple[str, ...], tuple[Any, ...]] = {}
 _MEMO_TEXT: dict[str, str] = {}
+# (database file, selection evidence sha) -> its certified seat weights.  The
+# evidence table is append-only and addressed by content, so a sha found once
+# reads the same for good; a sha not found is asked again.
+_SELECTION_WEIGHTS_MEMO: dict[tuple[str, str], dict[str, float]] = {}
+_NO_HORIZON = "\uffff"  # sorts after every timestamp
+
+
+def forget_admitted_scopes() -> None:
+    """Drop everything kept between compiles (tests)."""
+    _ADMITTED_SCOPE_MEMO.clear()
+    _MEMO_TEXT.clear()
+    _SELECTION_WEIGHTS_MEMO.clear()
 
 
 def _main_database_file(conn: sqlite3.Connection) -> str:
@@ -1771,40 +1816,78 @@ def _main_database_file(conn: sqlite3.Connection) -> str:
     return ""
 
 
+def _append_marks(conn: sqlite3.Connection) -> tuple[int, int] | None:
+    """The largest rowid of the activation and the evaluation table: a seek
+    each.  None where a store has no rowid to read (nothing is then given
+    without a walk)."""
+
+    try:
+        return (
+            int(conn.execute(
+                "SELECT COALESCE(MAX(rowid),0) "
+                "FROM calibration_native_ensemble_activation"
+            ).fetchone()[0]),
+            int(conn.execute(
+                "SELECT COALESCE(MAX(rowid),0) "
+                "FROM calibration_cross_native_ensemble_oos_evaluation"
+            ).fetchone()[0]),
+        )
+    except sqlite3.OperationalError:
+        return None
+
+
 def _admitted_scope_digest(
     conn: sqlite3.Connection,
     *,
     activation_parameters: tuple[Any, ...],
     decision_at_utc: str,
-) -> tuple[bytes, int]:
-    """Digest of the two id lists the evidence test reads, and how many
-    activations are valid.  The first WHERE is the evidence test's own."""
+) -> tuple[bytes, int, str]:
+    """Digest of the two id lists the evidence test reads, how many
+    activations are valid, and the earliest later instant at which either
+    list would read differently with no row added.
+
+    The lists are the evidence test's own: activations with
+    ``valid_from <= instant < valid_until``, evaluations with
+    ``evaluated_at <= instant``.  The comparisons are made here on the same
+    text the SQL would compare (SQLite compares TEXT bytewise, which for
+    UTF-8 is Python's own string order), so that the rows the instant has
+    not reached can be read in the same walk.
+    """
 
     hasher = hashlib.sha256()
     valid = 0
+    horizon = _NO_HORIZON
     for row in conn.execute(
-        "SELECT a.activation_id "
+        "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc "
         "FROM calibration_native_ensemble_activation a "
         "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
         "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
         "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-        "AND a.valid_from_utc<=? AND a.valid_until_utc>?",
-        activation_parameters,
-    ):
-        hasher.update(str(row[0]).encode("utf-8"))
-        hasher.update(b"\n")
-        valid += 1
-    hasher.update(b"|")
-    for row in conn.execute(
-        "SELECT evaluation_id "
-        "FROM calibration_cross_native_ensemble_oos_evaluation "
-        "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
-        "AND evaluated_at_utc<=?",
+        "AND a.valid_until_utc>?",
         tuple(activation_parameters[:3]) + (decision_at_utc,),
     ):
-        hasher.update(str(row[0]).encode("utf-8"))
-        hasher.update(b"\n")
-    return hasher.digest(), valid
+        valid_from = str(row[1])
+        if valid_from <= decision_at_utc:
+            hasher.update(str(row[0]).encode("utf-8"))
+            hasher.update(b"\n")
+            valid += 1
+            horizon = min(horizon, str(row[2]))
+        else:
+            horizon = min(horizon, valid_from)
+    hasher.update(b"|")
+    for row in conn.execute(
+        "SELECT evaluation_id,evaluated_at_utc "
+        "FROM calibration_cross_native_ensemble_oos_evaluation "
+        "WHERE station_id=? AND season_bin=? AND lead_bucket=?",
+        tuple(activation_parameters[:3]),
+    ):
+        evaluated_at = str(row[1])
+        if evaluated_at <= decision_at_utc:
+            hasher.update(str(row[0]).encode("utf-8"))
+            hasher.update(b"\n")
+        else:
+            horizon = min(horizon, evaluated_at)
+    return hasher.digest(), valid, horizon
 
 
 def compile_native_ensemble_p0(
@@ -2274,24 +2357,49 @@ def compile_native_ensemble_p0(
         memo_key: tuple[str, ...] | None = None
         digest = b""
         valid_activations = -1
+        horizon = _NO_HORIZON
+        marks: tuple[int, int] | None = None
         database_file = (
             _main_database_file(conn) if ADMITTED_SCOPE_MEMO_ENABLED else ""
         )
+
+        def _kept_answer(kept: tuple[Any, ...]) -> list[Any]:
+            for key_part, kept_rows in kept[2].items():
+                evaluation_rows_by_key.setdefault(
+                    scope_part + key_part + (decision_at_utc,),
+                    list(kept_rows),
+                )
+            return list(kept[3])
+
         if database_file:
             memo_key = (database_file,) + scope_part + (settlement_definition,)
-            digest, valid_activations = _admitted_scope_digest(
+            kept = _ADMITTED_SCOPE_MEMO.get(memo_key)
+            marks = _append_marks(conn)
+            if (
+                kept is not None
+                and kept[4] is not None
+                and marks is not None
+                and kept[4][2] == marks
+                and kept[4][0] <= decision_at_utc < kept[4][1]
+            ):
+                # Neither table has a new row and the clock has reached no
+                # row's edge: the two lists are the ones kept.
+                return _kept_answer(kept)
+            digest, valid_activations, horizon = _admitted_scope_digest(
                 conn,
                 activation_parameters=activation_parameters,
                 decision_at_utc=decision_at_utc,
             )
-            kept = _ADMITTED_SCOPE_MEMO.get(memo_key)
             if kept is not None and kept[0] == digest:
-                for key_part, kept_rows in kept[2].items():
-                    evaluation_rows_by_key.setdefault(
-                        scope_part + key_part + (decision_at_utc,),
-                        list(kept_rows),
-                    )
-                return _admitted_rows_whole(list(kept[1]))
+                # The same two lists, read now.  With no row added while
+                # they were walked, the walk's horizon holds from this
+                # instant, and the next compile need not walk.
+                _ADMITTED_SCOPE_MEMO[memo_key] = kept[:4] + ((
+                    (decision_at_utc, horizon, marks)
+                    if marks is not None and _append_marks(conn) == marks
+                    else None
+                ),)
+                return _kept_answer(kept)
         tested = 0
         admitted_evaluations: dict[
             tuple[str, ...], tuple[tuple[Any, ...], ...]
@@ -2351,27 +2459,41 @@ def compile_native_ensemble_p0(
                     + tuple(row)[1:]
                     for row in pre_rows
                 )
+        rows = _admitted_rows_whole(admitted_ids)
         # Kept only when the answer provably belongs to the digest: every
         # valid activation had its artifact (one arriving later would change
         # the answer under the same two lists), and the lists read the same
         # after the test as before it -- the store only grows, so whatever
-        # the test read in between lay between two equal sets.
-        if (
-            memo_key is not None
-            and tested == valid_activations
-            and _admitted_scope_digest(
+        # the test read in between lay between two equal sets.  With both
+        # rowid marks unmoved across the test nothing was added at all, the
+        # second walk is not needed, and the horizon holds from this instant.
+        if memo_key is not None and tested == valid_activations:
+            unmoved = marks is not None and _append_marks(conn) == marks
+            if unmoved or _admitted_scope_digest(
                 conn,
                 activation_parameters=activation_parameters,
                 decision_at_utc=decision_at_utc,
-            ) == (digest, valid_activations)
-        ):
-            if len(_ADMITTED_SCOPE_MEMO) >= ADMITTED_SCOPE_MEMO_MAX_SCOPES:
-                _ADMITTED_SCOPE_MEMO.clear()
-                _MEMO_TEXT.clear()
-            _ADMITTED_SCOPE_MEMO[memo_key] = (
-                digest, tuple(admitted_ids), admitted_evaluations,
-            )
-        return _admitted_rows_whole(admitted_ids)
+            )[:2] == (digest, valid_activations):
+                if len(_ADMITTED_SCOPE_MEMO) >= ADMITTED_SCOPE_MEMO_MAX_SCOPES:
+                    _ADMITTED_SCOPE_MEMO.clear()
+                    _MEMO_TEXT.clear()
+                shared = (4, 5, 6, 8, 9, 10, 11, 12, 15)
+                _ADMITTED_SCOPE_MEMO[memo_key] = (
+                    digest,
+                    tuple(admitted_ids),
+                    admitted_evaluations,
+                    tuple(
+                        tuple(
+                            _MEMO_TEXT.setdefault(value, value)
+                            if index in shared and isinstance(value, str)
+                            else value
+                            for index, value in enumerate(tuple(row))
+                        )
+                        for row in rows
+                    ),
+                    (decision_at_utc, horizon, marks) if unmoved else None,
+                )
+        return rows
 
     def _all_rows() -> list[Any]:
         return conn.execute(activation_sql, activation_parameters).fetchall()

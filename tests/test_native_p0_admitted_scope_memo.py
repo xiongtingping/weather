@@ -40,14 +40,33 @@ LOOKUP = (
 )
 
 
+WALKS = (
+    "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc",
+    "SELECT evaluation_id,evaluated_at_utc",
+)
+ROWS_WHOLE = "SELECT a.activation_id,a.artifact_id,a.content_sha256"
+
+
 @pytest.fixture(autouse=True)
 def _fresh_memo(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", True)
-    P0._ADMITTED_SCOPE_MEMO.clear()
-    P0._MEMO_TEXT.clear()
+    P0.forget_admitted_scopes()
     yield
-    P0._ADMITTED_SCOPE_MEMO.clear()
-    P0._MEMO_TEXT.clear()
+    P0.forget_admitted_scopes()
+
+
+def _statements(conn: sqlite3.Connection, at: str) -> tuple[dict, list[str]]:
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        compiled = _compile(conn, at)
+    finally:
+        conn.set_trace_callback(None)
+    return compiled, [" ".join(statement.split()) for statement in statements]
+
+
+def _count(flat: list[str], *heads: str) -> int:
+    return sum(statement.startswith(heads) for statement in flat)
 
 
 def _store(tmp_path: Path) -> tuple[sqlite3.Connection, dict]:
@@ -203,3 +222,65 @@ def test_two_stores_do_not_answer_for_each_other(tmp_path) -> None:
     with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
         _compile(second)
     assert _compile(first)["packet"]["native_probability_envelope"]
+
+
+def test_inside_the_horizon_with_no_row_added_nothing_is_walked_or_read_again(
+    tmp_path, monkeypatch
+) -> None:
+    conn, _ = _store(tmp_path)
+    first, flat_first = _statements(conn, "2026-07-01T13:00:00Z")
+    assert _count(flat_first, *WALKS) == 2 and _count(flat_first, ROWS_WHOLE) == 1
+    later, flat_later = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat_later, *WALKS) == 0
+    assert _count(flat_later, EVIDENCE_TEST) == 0
+    assert _count(flat_later, ROWS_WHOLE) == 0
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert later == _compile(conn, "2026-07-01T13:07:00Z")
+
+
+def test_a_row_added_anywhere_sends_the_next_compile_back_to_the_lists(tmp_path) -> None:
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    # Stamped after both instants: the lists the scope was kept under are
+    # unchanged, but a table grew, so they are walked -- and found equal.
+    _reject(conn, report, "2026-07-01T13:20:00Z")
+    _, flat = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, *WALKS) == 2
+    assert _count(flat, EVIDENCE_TEST) == 0
+    # The walk noted the stamp ahead of it: no walk until then, a walk at it.
+    _, flat = _statements(conn, "2026-07-01T13:08:00Z")
+    assert _count(flat, *WALKS) == 0
+    with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
+        _compile(conn, "2026-07-01T13:20:00Z")
+
+
+def test_an_instant_before_the_one_kept_walks_the_lists(tmp_path, monkeypatch) -> None:
+    conn, _ = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:07:00Z")
+    earlier, flat = _statements(conn, "2026-07-01T13:00:00Z")
+    assert _count(flat, *WALKS) == 2
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert earlier == _compile(conn, "2026-07-01T13:00:00Z")
+
+
+def test_a_selection_evidence_read_once_is_not_read_again(tmp_path) -> None:
+    conn, _ = _store(tmp_path)
+    sha, text = conn.execute(
+        "SELECT content_sha256,selected_weights_json "
+        "FROM calibration_cross_native_ensemble_selection_evidence LIMIT 1"
+    ).fetchone()
+    absent = "0" * 64
+    statements: list[str] = []
+    first = P0._selection_weights_by_sha(conn, [sha, absent])
+    conn.set_trace_callback(statements.append)
+    second = P0._selection_weights_by_sha(conn, [sha])
+    assert not [s for s in statements if "selection_evidence" in s]
+    third = P0._selection_weights_by_sha(conn, [sha, absent])
+    conn.set_trace_callback(None)
+    # The sha that was not there is asked for again; the one that was is not.
+    asked = [s for s in statements if "selection_evidence" in s]
+    assert len(asked) == 1 and absent in asked[0] and sha not in asked[0]
+    assert first == second == third and set(first) == {sha}
+    assert first[sha] == {k: float(v) for k, v in __import__("json").loads(text).items()}
+    second[sha]["x"] = 1.0  # a caller's copy is its own
+    assert "x" not in P0._selection_weights_by_sha(conn, [sha])[sha]
