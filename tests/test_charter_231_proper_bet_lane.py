@@ -59,7 +59,8 @@ TOKENS = {"27°C": ("t27", "n27"), "28°C": ("t28", "n28"), "29°C": ("t29", "n2
 SETTINGS = {"opening_stages": ["P0"], "live_ws_book": False, "min_hours_to_settlement": 36.0,
             "send_book_fresh_seconds": 60.0, "first_decision_fresh_seconds": 3600.0,
             "rule": "log_proper_maker_bid_plus_one_min_horizon_v2",
-            "sides": ["YES", "NO"], "buckets": "all", "entry": "first_decision"}
+            "sides": ["YES", "NO"], "buckets": "all", "entry": "first_decision",
+            "rung_horizon_seconds": 0.0}
 
 
 def _row(bucket, ordinal, bids, asks, tick=0.01):

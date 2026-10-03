@@ -266,6 +266,12 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # ladder first, the committed snapshot otherwise.
     "send_book_fresh_seconds": 60.0,
     "live_ws_book": True,
+    # Charter 249 (九), user ruling 2026-10-03 「加长」: how long a rung rests
+    # before it expires and is re-posted.  0 is the venue's minimum (charter
+    # 231's 「挂单周期最短」, about 270 s); at that length a rung was on the book
+    # for about four minutes of a production cycle that ran six to fifteen on
+    # the afternoon of 2026-10-03.  Never past the 36-hour line.
+    "rung_horizon_seconds": 900.0,
     # 「Proper 线的 YES 腿停掉」 (charter 235, user ruling 2026-09-28): the
     # sides a leg may take.  The measurement behind the ruling had the rule's
     # YES legs at -29.0% [-37.3%, -19.2%] at the ask and its NO legs flat

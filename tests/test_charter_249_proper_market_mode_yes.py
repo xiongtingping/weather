@@ -251,6 +251,45 @@ def test_a_rung_under_a_dollar_is_sized_up_to_it(store, warm) -> None:
     assert payload["size"] * payload["price"] >= 1.0 - 1e-9
 
 
+def test_a_rung_rests_fifteen_minutes_and_never_past_the_window(store, warm) -> None:
+    _seed(store)
+    sent: list = []
+    _run(store, sent, rung_horizon_seconds=900.0)
+    now = lane._utc(NOW).timestamp()
+    assert sent[0][1]["expiration"] - now == pytest.approx(900.0, abs=1.0)
+    body = json.loads(_intents(store)[0][6])
+    assert body["expiration_basis"] == "rung_horizon_seconds"
+    # Ten minutes before the 36-hour line the rung is signed to end on it ...
+    _end(store, _intents(store)[0][0])
+    near = "2026-09-19T03:50:00.000Z"   # 2026-09-20 in Shanghai settles 09-20T16:00Z
+    _snapshot(store, "snap_f2", near, _ladder(), 2)
+    _run(store, sent, now=near, rung_horizon_seconds=900.0)
+    assert len(sent) == 2
+    assert sent[1][1]["expiration"] - lane._utc(near).timestamp() == pytest.approx(600.0, abs=1.0)
+    # ... and with less than the venue's floor left it is not posted at all.
+    _end(store, _intents(store)[1][0], at="2026-09-19T03:55:00.000Z")
+    last = "2026-09-19T03:57:00.000Z"
+    _snapshot(store, "snap_f3", last, _ladder(), 3)
+    receipt = _run(store, sent, now=last, rung_horizon_seconds=900.0)
+    assert receipt["rungs"] == 0 and len(sent) == 2
+    legs = json.loads(store.execute(f"SELECT legs_state_json FROM {lane.EVALUATION_TABLE}").fetchone()[0])
+    assert legs["YES:27°C"]["status"] == "waiting:window_closing"
+
+
+def test_the_venue_minimum_is_still_a_horizon_the_lane_can_be_set_to(store, warm) -> None:
+    from bayes_basket_target.production import (  # noqa: PLC0415
+        GTD_SIGNING_MARGIN_SECONDS,
+        VENUE_GTD_MINIMUM_HORIZON_SECONDS,
+    )
+    _seed(store)
+    sent: list = []
+    _run(store, sent, rung_horizon_seconds=0.0)
+    assert sent[0][1]["expiration"] - lane._utc(NOW).timestamp() == pytest.approx(
+        VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS, abs=1.0)
+    with pytest.raises(ValueError):
+        lane.rung_horizon_seconds({"rung_horizon_seconds": -1})
+
+
 # ---------------------------------------------------------------------------
 # The far-tail lane beside a resting Proper rung.
 
@@ -320,7 +359,7 @@ def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
     assert defaults["rule"] == lane.RULE_MAKER_MODE_YES_V3 == lane.DEFAULT_RULE
     assert defaults["sides"] == ["YES"] and defaults["buckets"] == "market_mode"
     assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
-    assert defaults["min_hours_to_settlement"] == 36.0
+    assert defaults["min_hours_to_settlement"] == 36.0 and defaults["rung_horizon_seconds"] == 900.0
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
     assert shipped["source"] == "file"
     proper = shipped["lanes"]["proper_bet"]
@@ -328,6 +367,7 @@ def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
     assert proper["rule"] == lane.RULE_MAKER_MODE_YES_V3
     assert proper["sides"] == ["YES"] and proper["buckets"] == "market_mode"
     assert proper["entry"] == "latest_decision" and proper["opening_stages"] == ["P0"]
+    assert proper["rung_horizon_seconds"] == 900.0
     assert lane.allowed_sides(proper) == YES_ONLY
 
 
@@ -335,7 +375,8 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
     text = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     body = text[text.index(f"\n{CHARTER}. "):]
     for phrase in ("重开Proper 线并放开 YES，只开YES，市场众数桶，挂单", "限p0",
-                   "log_proper_maker_market_mode_yes_v3", "latest_decision", "rests_on_another_bucket"):
+                   "log_proper_maker_market_mode_yes_v3", "latest_decision", "rests_on_another_bucket",
+                   "加长", "rung_horizon_seconds"):
         assert phrase in body
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert f"宪章 {CHARTER}" in agents and "市场众数桶" in agents

@@ -98,6 +98,7 @@ from .account_equity import (
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
 from .contracts import content_sha256
+from .production import GTD_SIGNING_MARGIN_SECONDS, VENUE_GTD_MINIMUM_HORIZON_SECONDS
 from .delta_v2_runtime import (
     CHARTER_83_MIN_NOTIONAL,
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
@@ -258,6 +259,23 @@ def bucket_scope(settings: Mapping[str, Any]) -> str:
     if declared not in {BUCKETS_ALL, BUCKETS_MARKET_MODE}:
         raise ValueError(f"proper_bet_buckets_unknown:{settings.get('buckets')!r}")
     return declared
+
+
+def rung_horizon_seconds(settings: Mapping[str, Any]) -> float:
+    """How long a rung rests before it expires and is re-posted (charter 249).
+
+    Zero is the venue's minimum horizon, as charter 231 ruled it (「挂单周期最
+    短」); a positive number is that many seconds.  Anything else raises.
+    """
+
+    declared = settings.get("rung_horizon_seconds", 0.0)
+    try:
+        value = float(declared)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"proper_bet_rung_horizon_not_a_number:{declared!r}") from exc
+    if not (math.isfinite(value) and value >= 0.0):
+        raise ValueError(f"proper_bet_rung_horizon_invalid:{declared!r}")
+    return value
 
 
 def entry_rule(settings: Mapping[str, Any]) -> str:
@@ -983,6 +1001,7 @@ def plan_rungs(
     min_hours = float(cfg["min_hours_to_settlement"])
     live = cfg.get("live_ws_book", True) is True
     sides = allowed_sides(cfg)
+    horizon = rung_horizon_seconds(cfg)
     rungs: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
     rows = target_conn.execute(
@@ -1088,8 +1107,22 @@ def plan_rungs(
                 continue
             if cash.get("cash") is not None:
                 cash["cash"] = float(cash["cash"]) - cost
+            until = now_utc
+            if horizon > 0.0:
+                # Charter 249 (九): the rung rests ``horizon`` seconds, so it is
+                # on the book through a production cycle rather than for the
+                # venue's minimum -- but never past the 36-hour line, and not
+                # posted at all once less than the venue's own floor is left.
+                room = (float(hours) - min_hours) * 3600.0 if hours is not None else horizon
+                rest = min(horizon, room)
+                if rest < VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS:
+                    leg_state["status"] = "waiting:window_closing"
+                    continue
+                until = (_utc(now_utc) + timedelta(seconds=rest)).isoformat().replace("+00:00", "Z")
             venue = resting_order_fields(now_utc=now_utc, limit_price=float(quote["price"]),
-                                         belief_fresh_until_utc=now_utc)
+                                         belief_fresh_until_utc=until)
+            if horizon > 0.0:
+                venue = {**venue, "expiration_basis": "rung_horizon_seconds"}
             n = len(leg_state["intents"])
             intent_id = f"{INTENT_PREFIX}_" + content_sha256({
                 "plan_id": plan["plan_id"], "bucket": leg["bucket"], "side": leg["side"], "n": n,
@@ -1161,6 +1194,7 @@ def execute_proper_bets(
     allowed_sides(cfg)
     bucket_scope(cfg)
     entry_rule(cfg)
+    rung_horizon_seconds(cfg)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
@@ -1288,6 +1322,7 @@ __all__ = [
     "plan_new_first_decisions",
     "plan_rungs",
     "proper_position",
+    "rung_horizon_seconds",
     "rung_price",
     "side_book",
     "size_minimum",
