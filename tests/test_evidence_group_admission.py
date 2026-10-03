@@ -538,6 +538,35 @@ def test_the_refresh_admits_per_station_day_and_confines_a_refusing_group(cycle,
         worker._refresh_scope_day_evidence({}, event_date=D14, as_of_utc="2026-09-13T14:14:00Z")
 
 
+def test_the_refresh_restates_only_the_stations_it_is_asked_for(cycle, monkeypatch) -> None:
+    """2026-10-03: a mid-loop refresh restates the decision loop's reach, not
+    the whole day -- at four seconds a compile the whole day took longer to
+    write than the lease it was renewing."""
+
+    worker, registry, _blocked = cycle(listing_keys=set(), turn=False)
+    catalog = [
+        {"event_date": D14, "station_id": station, "manifest": _scope(station, D14, "open"),
+         "probability_evidence_fresh": True}
+        for station in ("CYYZ", "KLAX", "EGLC", "NZWN")
+    ]
+    monkeypatch.setattr(worker, "_resident_ws_scope_catalog", lambda: catalog)
+    result = worker._refresh_scope_day_evidence(
+        {}, event_date=D14, as_of_utc="2026-09-14T10:00:00Z", stations=["klax", "EGLC"],
+    )
+    assert registry.calls == [(D14, "open", ("EGLC", "KLAX"), False)]
+    assert result["station_allowlist"] == ["EGLC", "KLAX"]
+    assert result["day_scope_manifest_count"] == 4
+    # A reach the catalog has nothing for says so, and says the day had some.
+    none = worker._refresh_scope_day_evidence(
+        {}, event_date=D14, as_of_utc="2026-09-14T10:00:00Z", stations=["RJTT"],
+    )
+    assert none == {"event_date": D14, "state": "no_scope_manifest", "day_scope_manifest_count": 4}
+    assert len(registry.calls) == 1
+    # None is the whole day, as before.
+    worker._refresh_scope_day_evidence({}, event_date=D14, as_of_utc="2026-09-14T10:00:00Z")
+    assert registry.calls[-1] == (D14, "open", ("CYYZ", "EGLC", "KLAX", "NZWN"), False)
+
+
 # ------------------------------------------------ the rotation comes back
 
 

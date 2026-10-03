@@ -718,6 +718,72 @@ def quote_refresh_admitted_v1(
     if day_is_ineffective:
         return False
     return int(unproductive_attempts) < int(max_unproductive)
+
+
+# How long a renewed lease is expected to keep a scope compilable after the
+# refresh that renewed it: the ~26 s a book has left when the publisher hands
+# it over (``QUOTE_EVIDENCE_REFRESH_SECONDS``' own note: a median 34 s old
+# against a 60 s lease) less the 12 s threshold at which the next scope asks
+# again.
+QUOTE_REFRESH_REACH_SECONDS = 14.0
+# Seconds a decision-loop position costs before any loop has been measured.
+QUOTE_REFRESH_DEFAULT_POSITION_SECONDS = 0.45
+# "0": every refresh restates the whole day again, as before 2026-10-03.
+QUOTE_REFRESH_WITHIN_REACH = (
+    os.environ.get("PM_QUOTE_REFRESH_WITHIN_REACH", "1").strip().lower()
+    not in {"0", "off", "false", "no"}
+)
+
+
+def quote_refresh_reach_v1(
+    *,
+    seconds_per_position: float | None,
+    reach_seconds: float = QUOTE_REFRESH_REACH_SECONDS,
+) -> int:
+    """How many decision-loop positions one renewed lease will cover.
+
+    A mid-loop refresh used to restate every station of the day.  The books
+    it writes all come off one catalog read, so each has the same ~26 s left
+    whenever it is written, and the loop reaches them one compile at a time:
+    at 0.45 s a position a refresh covers ~31 scopes, and the rest of the
+    day -- plus every scope already compiled -- was written for nothing.
+    Under load that turned into a spiral (2026-10-03 13:22Z): four seconds a
+    compile, so three scopes per renewal, while restating all 44 took 17-57 s
+    -- longer than the lease it was renewing.  25 refreshes, 1,100 station
+    writes, 437 s, for 119 compiles.  Restating only the positions inside the
+    reach costs one station write per scope that needs one and never writes
+    a book that will lapse before it is read.
+    """
+
+    per = (
+        float(seconds_per_position)
+        if seconds_per_position is not None and float(seconds_per_position) > 0
+        else QUOTE_REFRESH_DEFAULT_POSITION_SECONDS
+    )
+    return max(1, int(float(reach_seconds) // per))
+
+
+def quote_refresh_stations_v1(
+    rows: Sequence[tuple[Any, Any]],
+    *,
+    position: int,
+    reach: int,
+    skip: Collection[tuple[str, str]] = (),
+) -> list[str]:
+    """The stations one mid-loop refresh restates: the scope at ``position``
+    and every scope of its day in the ``reach`` positions from there that the
+    loop will still compile (not in ``skip``), in loop order, each once."""
+
+    station, day = str(rows[position][0]), str(rows[position][1])
+    skipped = {(str(item[0]), str(item[1])) for item in skip}
+    stations: list[str] = []
+    for ahead_station, ahead_day in rows[position:position + max(1, int(reach))]:
+        key = (str(ahead_station), str(ahead_day))
+        if key[1] != day or key[0] in stations:
+            continue
+        if key[0] == station or key not in skipped:
+            stations.append(key[0])
+    return stations
 # Charter 48: a listed day not served for this long takes the next cycle
 # regardless of the alternation -- the guard against a restart storm.
 LISTING_SCOPE_TURN_STARVATION_SEC = 900.0
@@ -13609,6 +13675,7 @@ class TargetProductionWorker:
         *,
         event_date: str,
         as_of_utc: str,
+        stations: Collection[str] | None = None,
     ) -> dict[str, Any]:
         """Re-read one event day's books and restate its evidence.
 
@@ -13616,19 +13683,43 @@ class TargetProductionWorker:
         this is a bounded file read and the same validation path the cycle's
         first pass took -- no quote is fetched, recomputed or reinterpreted.
         It exists because the compile loop outlives the quote lease.
+
+        ``stations`` restates only those stations of the day (the decision
+        loop's reach, ``quote_refresh_reach_v1``); None restates them all.
+        ``day_scope_manifest_count`` says how many the whole day had, so a
+        caller can tell a day with nothing to restate from a subset that
+        has nothing.
         """
 
         catalog = self._resident_ws_scope_catalog()
-        day_scopes = [
-            item["manifest"]
+        day_items = [
+            item
             for item in catalog
             if str(item.get("event_date") or "") == str(event_date)
             and isinstance(item.get("manifest"), Mapping)
             and item.get("probability_evidence_fresh") is True
             and not item.get("scope_blocker")
         ]
+        wanted = (
+            None if stations is None
+            else {str(station).strip().upper() for station in stations}
+        )
+        day_scopes = [
+            item["manifest"]
+            for item in day_items
+            if wanted is None
+            or str(
+                item.get("station_id")
+                or _scope_manifest_station_day(item["manifest"])[0]
+                or ""
+            ).strip().upper() in wanted
+        ]
         if not day_scopes:
-            return {"event_date": str(event_date), "state": "no_scope_manifest"}
+            return {
+                "event_date": str(event_date),
+                "state": "no_scope_manifest",
+                "day_scope_manifest_count": len(day_items),
+            }
         # One pass per day state, each under the registry view its own state
         # and listing authorization admit -- the rule the cycle's first pass
         # uses; see _admitted_evidence_groups.  The refreshed snapshot the
@@ -13661,6 +13752,7 @@ class TargetProductionWorker:
                 "refused_scopes": refused[:10],
             }
         result = dict(succeeded[0]["ingress"])
+        result["day_scope_manifest_count"] = len(day_items)
         failed = [item for item in outcomes if "error" in item]
         if failed:
             result["evidence_group_failures"] = [
@@ -21993,7 +22085,14 @@ class TargetProductionWorker:
             # exists for.  Kept apart from the attempt count above, which
             # stays whole so the receipt still reports what was tried.
             day_unproductive_refreshes: dict[str, int] = {}
-            for station_id, event_date in rows:
+            # Where the next refresh's reach is measured from: this loop's own
+            # cost per position once it has a few, the last loop's before.
+            seconds_per_position_seed = getattr(
+                self, "_decision_loop_seconds_per_position", None
+            )
+            refresh_ineffective_scopes: set[tuple[str, str]] = set()
+            restated_station_count = 0
+            for position, (station_id, event_date) in enumerate(rows):
                 if self.stop_requested:
                     # SIGTERM: stop at the scope boundary.  The scopes not
                     # reached keep last cycle's decisions; the next cycle
@@ -22021,7 +22120,10 @@ class TargetProductionWorker:
                 )
                 if quote_refresh_admitted_v1(
                     lease_left_seconds=lease_left,
-                    day_is_ineffective=day in refresh_ineffective_days,
+                    day_is_ineffective=(
+                        day in refresh_ineffective_days
+                        or (station, day) in refresh_ineffective_scopes
+                    ),
                     unproductive_attempts=day_unproductive_refreshes.get(
                         day, 0
                     ),
@@ -22031,13 +22133,48 @@ class TargetProductionWorker:
                     day_refresh_counts[day] = (
                         day_refresh_counts.get(day, 0) + 1
                     )
-                    # A day refresh restates every station of that day, so
-                    # every cached expiry for it is now stale -- including
-                    # the scopes still to come, which is the whole point of
-                    # doing it here rather than per scope.
-                    day_expiry_before = self._scope_day_quote_expiry(day)
+                    # The stations of this day the loop will reach while the
+                    # renewed lease holds (``quote_refresh_reach_v1``): this
+                    # one, and the day's scopes in the positions after it,
+                    # not yet compiled and not known to have nothing to
+                    # restate.  None restates the whole day, as before.
+                    refresh_stations: list[str] | None = None
+                    if QUOTE_REFRESH_WITHIN_REACH:
+                        reach = quote_refresh_reach_v1(
+                            seconds_per_position=(
+                                (time.monotonic() - loop_started) / position
+                                if position >= 3
+                                else seconds_per_position_seed
+                            ),
+                        )
+                        refresh_stations = quote_refresh_stations_v1(
+                            rows,
+                            position=position,
+                            reach=reach,
+                            skip=set(recomputed_scopes) | refresh_ineffective_scopes,
+                        )
+                    # The books it restates are the ones whose cached expiry
+                    # is now stale -- and the ones whose renewal says whether
+                    # it worked.
+                    day_expiry_before = (
+                        self._scope_day_quote_expiry(day)
+                        if refresh_stations is None
+                        else max(
+                            (
+                                expiry
+                                for expiry in (
+                                    self._scope_day_quote_expiry(day, item)
+                                    for item in refresh_stations
+                                )
+                                if expiry is not None
+                            ),
+                            default=None,
+                        )
+                    )
                     for cached_key in [
-                        key for key in scope_quote_expiry if key[1] == day
+                        key for key in scope_quote_expiry
+                        if key[1] == day
+                        and (refresh_stations is None or key[0] in refresh_stations)
                     ]:
                         scope_quote_expiry.pop(cached_key, None)
                     try:
@@ -22052,14 +22189,26 @@ class TargetProductionWorker:
                             activation,
                             event_date=day,
                             as_of_utc=utc_now(),
+                            stations=refresh_stations,
                         )  # writes the snapshot the compile reads
                         self._add_span(
                             "decision_loop_quote_refresh",
                             (time.perf_counter() - _refresh_started) * 1000.0,
                             label=day,
                         )
+                        restated_count = (
+                            len(refresh_stations)
+                            if refresh_stations is not None
+                            else len(
+                                (refresh_receipt or {}).get("station_allowlist")
+                                or ()
+                            )
+                        )
+                        restated_station_count += restated_count
                         quote_refresh_receipts.append({
                             "event_date": day,
+                            # The reach: how many stations this pass restated.
+                            "station_count": restated_count,
                             "state": str(
                                 (refresh_receipt or {}).get("state") or ""
                             ),
@@ -22113,7 +22262,23 @@ class TargetProductionWorker:
                         # behind it died on production_quote_expired.  The
                         # attempt cap is what bounds a genuinely dead day
                         # now; this flag is for a pass that wrote nothing.
-                        renewed_day = self._scope_day_quote_expiry(day)
+                        # Asked of what the pass restated: the day when it
+                        # restated the day, its reach when it restated that.
+                        renewed_day = (
+                            self._scope_day_quote_expiry(day)
+                            if refresh_stations is None
+                            else max(
+                                (
+                                    expiry
+                                    for expiry in (
+                                        self._scope_day_quote_expiry(day, item)
+                                        for item in refresh_stations
+                                    )
+                                    if expiry is not None
+                                ),
+                                default=None,
+                            )
+                        )
                         renewed = (
                             day_expiry_before is not None
                             and renewed_day is not None
@@ -22131,7 +22296,19 @@ class TargetProductionWorker:
                                 or renewed_day <= day_expiry_before
                             )
                         ):
-                            refresh_ineffective_days.add(day)
+                            # A day with nothing to restate latches the day,
+                            # as before; a reach with nothing latches only
+                            # its own stations, so one station the catalog no
+                            # longer carries cannot disable the others.
+                            day_manifests = (refresh_receipt or {}).get(
+                                "day_scope_manifest_count"
+                            )
+                            if refresh_stations is None or day_manifests == 0:
+                                refresh_ineffective_days.add(day)
+                            else:
+                                refresh_ineffective_scopes.update(
+                                    (item, day) for item in refresh_stations
+                                )
                         scope_quote_expiry[(station, day)] = (
                             self._scope_day_quote_expiry(day, station)
                         )
@@ -22301,6 +22478,10 @@ class TargetProductionWorker:
                     else:
                         wrapper["failed_in"] = "compile"
                     results.append(wrapper)
+            if rows:
+                self._decision_loop_seconds_per_position = (
+                    (time.monotonic() - loop_started) / len(rows)
+                )
             # The loop above ran unnamed until 2026-09-07.  Every stall since
             # the timeline was introduced was diagnosed from a profile that
             # covered 41% of the cycle: measured that morning, 1768s of named
@@ -22464,6 +22645,14 @@ class TargetProductionWorker:
                         for day in sorted(set(quote_refresh_attempts))
                     },
                     "ineffective_days": sorted(refresh_ineffective_days),
+                    "ineffective_scopes": sorted(
+                        f"{item[0]}|{item[1]}" for item in refresh_ineffective_scopes
+                    ),
+                    # Station writes the attempts made between them: one a
+                    # scope that needed one when they restate the reach, a
+                    # whole day each before.
+                    "restated_station_count": restated_station_count,
+                    "within_reach": QUOTE_REFRESH_WITHIN_REACH,
                     # What the cap actually counts since 2026-09-08: an
                     # attempt that renewed nothing.  ``attempts_by_day``
                     # below stays the whole count, so a reader can still see
