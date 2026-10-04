@@ -427,11 +427,13 @@ def _lane_opening_stages(doc: dict) -> dict:
         out[lanes.LANE_TIEBREAK] = [s for s in order if s in tiebreak]
     except Exception:  # noqa: BLE001
         pass
-    try:
-        proper = lanes.opening_stages(doc["lanes"][lanes.LANE_PROPER_BET])
-        out[lanes.LANE_PROPER_BET] = [s for s in order if s in proper]
-    except Exception:  # noqa: BLE001
-        pass
+    # The lanes whose stages live in their own lane file (charters 231, 234).
+    for name in (lanes.LANE_PROPER_BET, lanes.LANE_TAIL_SHORT):
+        try:
+            stages = lanes.opening_stages(doc["lanes"][name])
+            out[name] = [s for s in order if s in stages]
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

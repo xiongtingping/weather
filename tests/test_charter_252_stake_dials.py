@@ -181,7 +181,7 @@ def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
     parts = {t: strip[a:b] for t, a, b in zip(titles, starts, starts[1:] + [len(strip)])}
     expected = {
         "Proper 下注线": ['laneSwitch("proper_bet")', 'stakeKnob("proper_bet"'],
-        "远尾做空 H1": ['stakeKnob("tail_short"'],
+        "远尾做空 H1": ['laneSwitch("tail_short")', 'stakeKnob("tail_short"'],
         "秤砣线": ['laneSwitch("tiebreak")', 'stakeKnob("tiebreak"'],
         "篮子": ['laneSwitch("basket")', 'knob("kelly"', 'knob("exposure"', 'knob("sizing"',
                  'knob("ceiling"', 'knob("budget"', 'id="lc-capital"'],
@@ -192,6 +192,20 @@ def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
             assert member in parts[title], (title, member)
             others = [t for t in titles if t != title]
             assert not any(member in parts[t] for t in others), (title, member)
+
+
+def test_the_far_tail_switch_reaches_the_lane_and_names_its_stages(tmp_path, monkeypatch) -> None:
+    # User ruling 2026-10-04 「加开关」: the far-tail lane gets its own switch.
+    control, lanes_path = _control(tmp_path, monkeypatch)
+    lane_state = control.state()["strategy_lanes"]["lanes"]["tail_short"]
+    assert lane_state["enabled"] is True and lane_state["opening_stages"] == ["P0"]
+    out = control.set_lane_enabled("tail_short", False, by="test")
+    assert out["strategy_lanes"]["lanes"]["tail_short"]["enabled"] is False
+    assert lanes.lane_enabled("tail_short", lanes_path) is False
+    assert out["lane_stakes"]["tail_short"]["enabled"] is False
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    table = source[source.index("const LC_LANES = {"):]
+    assert "tail_short: {name:\"远尾做空 H1\"" in table[: table.index("\n};\n")]
 
 
 def test_the_charter_and_agents_carry_the_ruling() -> None:
