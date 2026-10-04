@@ -2943,6 +2943,7 @@ def compile_production_cycle_from_ssot(
     observed_running_high_c: float | None = None,
     chain_state: Any = None,
     pinned_versions: Mapping[str, str] | None = None,
+    preloaded_validated: Sequence[ProbabilityEnvelope] | None = None,
 ) -> dict[str, Any]:
     """Compile one real-SSOT candidate while preserving the no-live boundary.
 
@@ -2952,6 +2953,13 @@ def compile_production_cycle_from_ssot(
     connection and this compiler holds only the target SSOT one; the caller
     that owns both produces it.  Absent, no bucket is floored and every
     downstream hash is what it was before the ruling.
+
+    ``preloaded_validated``: the station-day's validated envelopes as a load
+    at this same ``evaluation_at_utc`` already read them
+    (``load_materialized_probability_envelopes(validated_out=...)``) -- the
+    decision loop's replay-root check reads exactly that, a moment before.
+    Gated here as this compile always gates them; ignored when the chain
+    state reads the store as of a past instant.
     """
 
     evaluation_at_utc, _evaluation_at = _normalized_utc(
@@ -2990,6 +2998,12 @@ def compile_production_cycle_from_ssot(
         ),
         expected_source_lane=expected_source_lane,
         committed_before_utc=getattr(chain_state, "store_before_utc", None),
+        preloaded_validated=(
+            preloaded_validated
+            if preloaded_validated
+            and getattr(chain_state, "store_before_utc", None) is None
+            else None
+        ),
     )
     current_envelope = select_current_stage(
         envelopes,

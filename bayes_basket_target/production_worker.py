@@ -18865,6 +18865,7 @@ class TargetProductionWorker:
         station_id: str,
         event_date: str,
         as_of_utc: str,
+        validated_out: list[ProbabilityEnvelope] | None = None,
     ) -> str | None:
         """Refuse to trade a higher stage that has not caught up with its root.
 
@@ -18905,6 +18906,7 @@ class TargetProductionWorker:
             event_date=event_date,
             evaluation_at_utc=as_of_utc,
             expected_source_lane=expected_source_lane,
+            validated_out=validated_out,
         )
         p0_rows = [row for row in envelopes if row.stage == "P0"]
         if not p0_rows:
@@ -22345,11 +22347,17 @@ class TargetProductionWorker:
                 # own status and reason codes -- the upstream story the
                 # receipt used to drop on the floor).
                 candidate = None
+                # What the replay check reads is what the compile below would
+                # read: the same station-day at the same instant, with no
+                # write between them.  Read once (125 station-day reads a
+                # cycle, 2026-10-04).
+                scope_validated: list[ProbabilityEnvelope] = []
                 try:
                     replay_blocker = self._replay_root_mismatch_reason(
                         station_id=station,
                         event_date=day,
                         as_of_utc=now,
+                        validated_out=scope_validated,
                     )
                     if replay_blocker is not None:
                         if replay_blocker == "resident_p0m_replay_required":
@@ -22384,6 +22392,7 @@ class TargetProductionWorker:
                             event_date=day,
                             as_of_utc=now,
                         ),
+                        preloaded_validated=scope_validated or None,
                     )
                     self._add_span(
                         "decision_loop_compile",
