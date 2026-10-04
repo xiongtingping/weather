@@ -88,7 +88,7 @@ def test_the_served_file_carries_the_rulings_and_leaves_the_switches_to_the_boar
     # The stake is the operator's dial (the board moved it 5 -> 6 within an
     # hour of going live); a test pins the bounds and the rule, not the
     # number the operator last clicked.
-    low, high = lanes.TIEBREAK_STAKE_BOUNDS
+    low, high = lanes.STAKE_DIALS["tiebreak"]["bounds"]
     assert low <= float(served["lanes"]["tiebreak"]["stake_usdc"]) <= high
     # Charter 163 (user ruling 2026-09-20 "秤砣线从吃单改为post only，挂best
     # 买一+1"): v2.1's four conditions posted as a resting rung.  The version
@@ -267,11 +267,11 @@ def _control(tmp_path, monkeypatch):
 def test_the_stake_dial_writes_the_lane_file_and_keeps_every_other_field(tmp_path, monkeypatch) -> None:
     control, lanes_path = _control(tmp_path, monkeypatch)
     before = control.state()
-    assert before["tiebreak_stake"]["stake_usdc"] == 5.0
-    assert before["tiebreak_stake"]["bounds"] == [1.0, 100.0]
+    assert before["lane_stakes"]["tiebreak"]["stake_usdc"] == 5.0
+    assert before["lane_stakes"]["tiebreak"]["bounds"] == [1.0, 100.0]
     assert before["strategy_lanes"]["lanes"]["basket"]["enabled"] is False
-    after = control.set_tiebreak_stake(7)
-    assert after["tiebreak_stake"]["stake_usdc"] == 7.0
+    after = control.set_lane_stake("tiebreak", 7)
+    assert after["lane_stakes"]["tiebreak"]["stake_usdc"] == 7.0
     doc = json.loads(lanes_path.read_text(encoding="utf-8"))
     assert doc["lanes"]["tiebreak"]["stake_usdc"] == 7.0
     assert doc["lanes"]["basket"] == {"enabled": False, "note": "kept"}
@@ -281,7 +281,7 @@ def test_the_stake_dial_writes_the_lane_file_and_keeps_every_other_field(tmp_pat
     assert lanes.lane_settings("tiebreak", lanes_path)["stake_usdc"] == 7.0
     for bad in (0.5, 101, "x", float("nan")):
         with pytest.raises(ValueError):
-            control.set_tiebreak_stake(bad)
+            control.set_lane_stake("tiebreak", bad)
     assert json.loads(lanes_path.read_text(encoding="utf-8"))["lanes"]["tiebreak"]["stake_usdc"] == 7.0
 
 
@@ -292,7 +292,7 @@ def test_a_lane_switch_flips_one_lane_and_is_audited(tmp_path, monkeypatch) -> N
     assert lanes.lane_enabled("basket", lanes_path) is True
     assert lanes.lane_enabled("tiebreak", lanes_path) is True
     out = control.set_lane_enabled("tiebreak", False)
-    assert out["tiebreak_stake"]["enabled"] is False
+    assert out["lane_stakes"]["tiebreak"]["enabled"] is False
     assert lanes.lane_enabled("tiebreak", lanes_path) is False
     out = control.set_lane_enabled("certain_win_recycle", False)
     assert out["strategy_lanes"]["lanes"]["certain_win_recycle"]["enabled"] is False
@@ -309,7 +309,7 @@ def test_an_unreadable_lane_file_is_not_edited_into_shape(tmp_path, monkeypatch)
     control, lanes_path = _control(tmp_path, monkeypatch)
     lanes_path.write_text("{not json", encoding="utf-8")
     with pytest.raises(ValueError):
-        control.set_tiebreak_stake(5)
+        control.set_lane_stake("tiebreak", 5)
     assert lanes_path.read_text(encoding="utf-8") == "{not json"
 
 

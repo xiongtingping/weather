@@ -215,7 +215,7 @@ def test_lambda_is_the_venue_minimum_for_the_whole_position() -> None:
         {"bucket": "c", "s": 0.4, "side": "YES", "price": 0.30, "reason": None},
     ]
     mins = {"a": 5.0, "b": 5.0, "c": 5.0}
-    full = lane.size_minimum(legs, cash_usdc=None, min_shares=mins)
+    full = lane.size_position(legs, cash_usdc=None, min_shares=mins)
     shares = {leg["bucket"]: leg["target_shares"] for leg in full["legs"]}
     # The smallest |s| sits exactly at the minimum; the rest in ratio.
     assert full["lambda_shares"] == pytest.approx(5.0 / 0.4)
@@ -226,11 +226,11 @@ def test_lambda_is_the_venue_minimum_for_the_whole_position() -> None:
     need = full["need_full_usdc"]
     # Cash short of the whole position: the longest |s| prefix it can carry,
     # at that prefix's own minimum.
-    capped = lane.size_minimum(legs, cash_usdc=need - 0.01, min_shares=mins)
+    capped = lane.size_position(legs, cash_usdc=need - 0.01, min_shares=mins)
     assert [leg["bucket"] for leg in capped["legs"]] == ["a", "b"]
     assert capped["lambda_shares"] == pytest.approx(5.0 / 1.1)
     assert capped["dropped"] == {"c": "budget_capped_by_cash"} and capped["capped_by_cash"] is True
-    none = lane.size_minimum(legs, cash_usdc=1.0, min_shares=mins)
+    none = lane.size_position(legs, cash_usdc=1.0, min_shares=mins)
     assert none["legs"] == [] and none["lambda_shares"] is None
 
 
@@ -528,7 +528,8 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     assert lane.RULE_VERSIONS[lane.RULE_MAKER_V2] == "proper_bet_lane_v2"
     assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0"]
     assert defaults["min_hours_to_settlement"] == 36.0
-    assert defaults["budget_rule"] == "minimum_full_position" and "stake_usdc" not in defaults
+    # The budget is charter 252's dial; its suite pins the rule and the default.
+    assert defaults["budget_rule"] == "stake_full_position"
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
     assert shipped["source"] == "file"
     proper = shipped["lanes"]["proper_bet"]

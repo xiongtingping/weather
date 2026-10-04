@@ -38,6 +38,7 @@ permission.  ``PM_STRATEGY_LANES_CONFIG`` points a test at its own copy.
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -242,10 +243,16 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # 市场众数桶，挂单」「限p0」): the same resting rung, on one leg a
     # station-day -- YES on the market's modal bucket.
     "rule": "log_proper_maker_market_mode_yes_v3",
-    # 「预算提高到最低要求」: lambda is the smallest the venue allows for the
-    # whole position (the smallest leg at the five-share minimum), capped by
-    # the free cash.  The ruling left no fixed stake.
-    "budget_rule": "minimum_full_position",
+    # 「预算提高到最低要求」 left lambda at the smallest the venue allows for
+    # the whole position (the smallest leg at the five-share minimum), capped
+    # by the free cash.  Charter 252 (user ruling 2026-10-04 「还有Proper 下注线
+    # 的单笔预算调整按钮」): the position is filled up to ``stake_usdc``, a
+    # board dial, never under that minimum and still capped by the cash.  At
+    # 1 USDC it is the minimum rule wherever the leg is priced at 0.20 or
+    # more; under 0.20 the plan carries the dollar charter 83 used to add at
+    # the send.
+    "budget_rule": "stake_full_position",
+    "stake_usdc": 1.0,
     # 「仅p0阶段下单」 / 「限p0」: only a station-day that is in P0 opens, and the
     # plan is posted while it still is.
     "opening_stages": ["P0"],
@@ -332,10 +339,16 @@ TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "lookback_days": 1,
 }
 
-#: The per-trade stake is a board dial (charter 146); the server refuses a
-#: value outside this range, and the lane reads whatever the file says.
-TIEBREAK_STAKE_BOUNDS = (1.0, 100.0)
-TIEBREAK_STAKE_STEP = 1.0
+#: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak
+#: lane's since charter 146, the far-tail and Proper lanes' since charter 252
+#: (user rulings 2026-10-04 「顶部增加：远尾做空 H1 的单笔预算调整」「还有Proper 下注线
+#: 的单笔预算调整按钮」) -- each with its bounds and the board's step.  The
+#: server refuses a value outside the bounds; the lane reads the file.
+STAKE_DIALS: dict[str, dict[str, Any]] = {
+    LANE_TIEBREAK: {"bounds": (1.0, 100.0), "step": 1.0},
+    LANE_TAIL_SHORT: {"bounds": (1.0, 100.0), "step": 1.0},
+    LANE_PROPER_BET: {"bounds": (1.0, 100.0), "step": 1.0},
+}
 
 DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_BASKET: {"enabled": True},
@@ -442,26 +455,29 @@ def opening_stages(settings: Mapping[str, Any]) -> frozenset[str]:
     return stages
 
 
-def validate_tiebreak_stake(value: Any) -> float:
-    """A stake the lane may be set to: finite, inside the bounds, to the cent."""
+def validate_lane_stake(lane: str, value: Any) -> float:
+    """A stake a dialled lane may be set to: finite, inside its bounds, to
+    the cent."""
 
+    name = str(lane or "").strip()
+    if name not in STAKE_DIALS:
+        raise ValueError(f"stake_dial_unknown:{name}")
     try:
         stake = round(float(value), 2)
     except (TypeError, ValueError) as exc:
-        raise ValueError("tiebreak_stake_not_a_number") from exc
-    if not (stake == stake) or stake in (float("inf"), float("-inf")):
-        raise ValueError("tiebreak_stake_not_finite")
-    low, high = TIEBREAK_STAKE_BOUNDS
+        raise ValueError(f"{name}_stake_not_a_number") from exc
+    if not math.isfinite(stake):
+        raise ValueError(f"{name}_stake_not_finite")
+    low, high = STAKE_DIALS[name]["bounds"]
     if not (low <= stake <= high):
-        raise ValueError(f"tiebreak_stake_out_of_bounds:{low}..{high}")
+        raise ValueError(f"{name}_stake_out_of_bounds:{low}..{high}")
     return stake
 
 
 __all__ = [
     "DEFAULT_LANES",
-    "TIEBREAK_STAKE_BOUNDS",
-    "TIEBREAK_STAKE_STEP",
-    "validate_tiebreak_stake",
+    "STAKE_DIALS",
+    "validate_lane_stake",
     "DEFAULT_PATH",
     "ENV_VAR",
     "KNOWN_LANES",

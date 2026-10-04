@@ -74,6 +74,7 @@ from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noq
 import live_book  # noqa: E402
 from live_book import settled_buckets as _live_settled_buckets  # noqa: E402
 from bayes_basket_target.strategy_lanes import (  # noqa: E402
+    STAKE_DIALS as _STAKE_DIALS,
     load_strategy_lanes as _load_strategy_lanes,
 )
 # The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
@@ -8240,11 +8241,12 @@ def collect_live_readiness(
         "station_sizing": capital_layer.get("station_day_sizing_fraction", 0.065),
         "station_ceiling": capital_layer.get("station_day_ceiling_fraction", 0.10),
         "budget_usdc": runtime.get("target_remaining_budget_usdc"),
-        # Charter 146: the tiebreak lane's per-trade stake and the four
-        # lane switches, as the resident will read them.
-        "tiebreak_stake": (
-            (_load_strategy_lanes()["lanes"].get("tiebreak") or {}).get("stake_usdc")
-        ),
+        # Charter 146/252: each dialled lane's per-trade stake and the lane
+        # switches, as the resident will read them.
+        "lane_stakes": {
+            name: (_load_strategy_lanes()["lanes"].get(name) or {}).get("stake_usdc")
+            for name in _STAKE_DIALS
+        },
         "strategy_lanes": {
             name: bool(lane.get("enabled") is True)
             for name, lane in _load_strategy_lanes()["lanes"].items()
@@ -13304,6 +13306,7 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "first_decision_fresh_seconds": cfg.get("first_decision_fresh_seconds"),
             "send_book_fresh_seconds": cfg.get("send_book_fresh_seconds"),
             "live_ws_book": cfg.get("live_ws_book"),
+            "stake_usdc": cfg.get("stake_usdc"),
             "enabled_at_utc": cfg.get("enabled_at_utc"),
             "source": lanes.get("source"),
             "updated_at_utc": lanes.get("updated_at_utc"),
@@ -19935,7 +19938,7 @@ function tailShortLane(){
   const pct=v=>v==null?"—":((+v)*100).toFixed(1)+"%";
   const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
   const settings=`<div class="card"><b>远尾做空 H1</b> <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
-    <span class="muted">纯市场规则；P0 首决策、距结算 &gt; ${h(S.min_hours_to_settlement)}h、市场价 ≤ ${pct(S.max_market_price)}、离市场众数 ≥ ${h(S.min_rungs_from_mode)} 档、YES 买一 ≥ ${pct(S.min_yes_bid)}。每笔最多 ${usd(S.stake_usdc)}，每站日至多 ${h(S.max_legs_per_station_day)} 桶，每天最多 ${usd(S.max_daily_cost_usdc)}；实际股数可因深度缩小。</span>
+    <span class="muted">纯市场规则；P0 首决策、距结算 &gt; ${h(S.min_hours_to_settlement)}h、市场价 ≤ ${pct(S.max_market_price)}、离市场众数 ≥ ${h(S.min_rungs_from_mode)} 档、YES 买一 ≥ ${pct(S.min_yes_bid)}。每笔最多 ${usd(S.stake_usdc)}（顶部「远尾每笔」旋钮可调），每站日至多 ${h(S.max_legs_per_station_day)} 桶，每天最多 ${usd(S.max_daily_cost_usdc)}；实际股数可因深度缩小。</span>
     <div class="muted">FOK 吃单成交后没有当前挂单；下方列出历史成交。0.998 回收卖单在实盘订单页单独显示。</div></div>`;
   const totals=`<div class="grid g3" style="margin-top:8px">
     ${tile("评估 / 发单 / 成交",`${E.available?E.total:"—"} / ${R.available?R.sent:"—"} / ${R.available?R.filled:"—"}`,`最近评估 ${h(E.last_at_utc||"—")}`)}
@@ -19995,13 +19998,14 @@ function properBetLane(){
       <span class="pill">距结算 &gt; ${n2(S.min_hours_to_settlement)}h</span>
       <span class="pill">首决策新鲜窗 ${secs(S.first_decision_fresh_seconds)}</span>
       <span class="pill">下单盘口 ≤ ${secs(S.send_book_fresh_seconds)}</span>
+      <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「Proper每笔」旋钮可调）</span>
       <span class="muted">规则 <b class="mono">${h(S.rule||"—")}</b></span>
     </div>
     <div class="muted" style="margin-top:6px">规则：在站日的首个开仓阶段决策上、距本站结算时钟还有 ${n2(S.min_hours_to_settlement)} 小时以上时，
     p＝这个决策读到的天气模型服务向量，q＝一本新鲜盘口的归一中价，整条梯子上 s<sub>k</sub>＝log(p<sub>k</sub>/q<sub>k</sub>)，D＝KL(q‖p)。
     s＞0 的桶买 YES、s＜0 的桶买 NO；每条腿在自己那一侧盘口的买一加一跳挂 post-only（YES 挂价须低于 p<sub>k</sub>，NO 挂价须低于 1−p<sub>k</sub>，不守就这一轮不挂），
     有效期取交易所最短，没成交就在新盘口上重挂，直到这条腿成交、站日离开 P0 或出了窗口。份数 x<sub>k</sub>＝λ·|s<sub>k</sub>|，
-    λ 取整仓在交易所最小单量下的最小值（|s| 最小的腿恰为最小单量），可用现金不够时按 |s| 从大到小取撑得起的最长前缀。持有到结算。</div></div>`;
+    λ 把整仓挂满每笔预算 ${usd(S.stake_usdc)}（宪章 252），但不低于交易所最小单量（|s| 最小的腿恰为最小单量）；可用现金不够时预算压到现金，连最小单都撑不起时按 |s| 从大到小取撑得起的最长前缀。持有到结算。</div></div>`;
   const rules=E.by_rule||[];
   const byRule=rules.map((r,i)=>`<span class="pill ${i===rules.length-1?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(String(r.rule_version||"").replace("proper_bet_lane_",""))}：评估 ${r.evaluated} · 出计划 ${r.planned}</span>`).join(" ");
   const ps=E.plan_states||{};
@@ -20235,15 +20239,21 @@ const LC_KNOBS = {
     read:s=>s.budget.target_remaining_budget_usdc,
     fmt:v=>{const r=Math.round(Number(v)*100)/100;
       return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
-  // Charter 146: the tiebreak lane's per-trade stake (秤砣线每笔预算), whole
-  // dollars on the board; the server accepts cents and bounds it.  Absent
-  // from an older control server's answer: read as unset, never thrown on.
-  tiebreak: {id:"lc-tiebreak", name:"秤砣每笔", path:"/api/tiebreak-stake", unit:" USDC",
-    field:"stake_usdc", spec:s=>s.tiebreak_stake||{bounds:[1,100],step:1}, grid:1,
-    read:s=>(s.tiebreak_stake||{}).stake_usdc,
-    fmt:v=>{const r=Math.round(Number(v)*100)/100;
-      return Number.isInteger(r) ? String(r) : r.toFixed(2);}},
+  // Charter 146/252: a lane's per-trade stake (每笔预算), whole dollars on
+  // the board; the server accepts cents and bounds it, one POST
+  // /api/lane-stake for every dialled lane.  Absent from an older control
+  // server's answer: read as unset, never thrown on.
+  tiebreak: lcStakeKnob("tiebreak", "lc-tiebreak", "秤砣每笔"),
+  tail_short: lcStakeKnob("tail_short", "lc-tail-short", "远尾每笔"),
+  proper_bet: lcStakeKnob("proper_bet", "lc-proper-bet", "Proper每笔"),
 };
+function lcStakeKnob(lane, id, name){
+  return {id, name, path:"/api/lane-stake", body:{lane}, unit:" USDC",
+    field:"stake_usdc", spec:s=>(s.lane_stakes||{})[lane]||{bounds:[1,100],step:1}, grid:1,
+    read:s=>((s.lane_stakes||{})[lane]||{}).stake_usdc,
+    fmt:v=>{const r=Math.round(Number(v)*100)/100;
+      return Number.isInteger(r) ? String(r) : r.toFixed(2);}};
+}
 // Where one click takes a knob.  On a grid, a step goes to the grid line
 // that far away in its direction, so 114.29 +5 is 115 and −5 is 110, and
 // +50 is 160 rather than an off-grid 164.29.
@@ -20266,6 +20276,11 @@ function liveControlStrip(){
   const knob=(key,title,buttons)=>`<span class="navctl-k" data-knob="${key}"
     title="${title}"><span class="navctl-l">${LC_KNOBS[key].name}</span>
     <span class="stp">${buttons}</span></span>`;
+  const stakes = L.lane_stakes || {};
+  const stakeKnob=(key,title)=>knob(key, title,
+    `${b(key,-5,"−5",true)}${b(key,-1,"−")}<b id="${LC_KNOBS[key].id}">${
+      stakes[key]==null?"—":LC_KNOBS[key].fmt(stakes[key])}</b>${
+      b(key,1,"+")}${b(key,5,"+5",true)}`);
   return `<div class="navctl" id="lc-strip" data-lc="down" role="group"
     aria-label="实盘旋钮">
     <span class="navctl-s" id="lc-status"
@@ -20273,6 +20288,7 @@ function liveControlStrip(){
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
     ${laneSwitch("basket")}
     ${laneSwitch("proper_bet")}
+    ${stakeKnob("proper_bet", "Proper 下注线每笔预算 stake_usdc（USDC；每个站日这一笔挂满这么多，不低于交易所最小单，受现金封顶；宪章 252）")}
     ${laneSwitch("certain_win_recycle")}
     ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
       `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
@@ -20292,10 +20308,8 @@ function liveControlStrip(){
         b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
     <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
     ${laneSwitch("tiebreak")}
-    ${knob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔 FOK 买单花这么多；宪章 146）",
-      `${b("tiebreak",-5,"−5",true)}${b("tiebreak",-1,"−")}<b id="lc-tiebreak">${
-        L.tiebreak_stake==null?"—":LC_KNOBS.tiebreak.fmt(L.tiebreak_stake)}</b>${
-        b("tiebreak",1,"+")}${b("tiebreak",5,"+5",true)}`)}
+    ${stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）")}
+    ${stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）")}
   </div>`;
 }
 // Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关」「秤砣线也
@@ -20843,7 +20857,7 @@ function lcAdjust(knob, delta){
   if(box) box.setAttribute("aria-busy", "true");
   document.querySelectorAll(`.lc-w[data-knob="${knob}"]`)
     .forEach(b=>{ b.disabled = true; });
-  lcApi(K.path, {value: next}).then(lcRender).catch(e=>{
+  lcApi(K.path, {...(K.body||{}), value: next}).then(lcRender).catch(e=>{
     if(e && e.lcDown) lcDown();
     else if(window.__lcState) lcPaintKnobs(window.__lcState);
     alert("失败: "+e);

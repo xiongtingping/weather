@@ -23,11 +23,14 @@ basket, not Kelly, not a value clamp: the pair of probability vectors
   priced: YES at a price under ``p_k``, NO at a price under ``1 - p_k``
   (the pasted ``p_k < 1 - bid`` for NO was corrected before the ruling).
 * Size: ``x_k = lambda * |s_k|`` shares, one ``lambda`` for the station-day,
-  set at the MINIMUM the venue allows for the whole position -- the smallest
-  leg at the venue's minimum order (five shares), every other leg in exact
-  ratio.  When the free cash cannot carry that, the legs are taken in order
-  of ``|s|`` and the longest prefix whose own minimum the cash can carry is
-  kept (``budget_capped_by_cash`` names the shortfall).
+  never under the MINIMUM the venue allows for the whole position -- the
+  smallest leg at the venue's minimum order (five shares), every other leg
+  in exact ratio -- and raised until the position costs ``stake_usdc``, the
+  board's per-trade dial (charter 252, user ruling 2026-10-04 「还有Proper
+  下注线的单笔预算调整按钮」).  When the free cash cannot carry that, the stake
+  is cut to the cash; when it cannot carry the minimum, the legs are taken
+  in order of ``|s|`` and the longest prefix whose own minimum the cash can
+  carry is kept (``budget_capped_by_cash`` names the shortfall).
 * Window: P0 first decisions only, with more than 36 hours to the
   settlement clock (``settlement_time.hours_to_settlement``, the axis the
   L4 verdict found P0 ``>=36h`` on).  Each leg is posted at the venue's
@@ -278,6 +281,21 @@ def rung_horizon_seconds(settings: Mapping[str, Any]) -> float:
     return value
 
 
+def position_stake(settings: Mapping[str, Any]) -> float:
+    """The position's budget in USDC (charter 252): the board dial
+    ``stake_usdc``, read off the lane file on every pass.  A positive finite
+    number; anything else raises."""
+
+    declared = settings.get("stake_usdc")
+    try:
+        value = float(declared)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"proper_bet_stake_not_a_number:{declared!r}") from exc
+    if not (math.isfinite(value) and value > 0.0):
+        raise ValueError(f"proper_bet_stake_invalid:{declared!r}")
+    return value
+
+
 def entry_rule(settings: Mapping[str, Any]) -> str:
     """``first_decision`` or ``latest_decision`` (charter 249); anything else raises."""
 
@@ -430,19 +448,24 @@ def leg_quote(
     return out
 
 
-def size_minimum(
+def size_position(
     legs: list[dict[str, Any]],
     *,
     cash_usdc: float | None,
     min_shares: Mapping[str, float],
+    stake_usdc: float | None = None,
 ) -> dict[str, Any]:
-    """``x_k = lambda * |s_k|`` at the smallest ``lambda`` the venue allows.
+    """``x_k = lambda * |s_k|``, the whole position filled up to ``stake_usdc``.
 
-    For a set of legs the minimum is ``lambda = max_k m_k / |s_k|`` (``m_k``
+    The smallest ``lambda`` the venue allows is ``max_k m_k / |s_k|`` (``m_k``
     the leg's venue minimum): the smallest leg sits exactly at its minimum,
-    every other in ratio.  The whole position is taken when the cash carries
-    it; otherwise the longest ``|s|``-ordered prefix whose own minimum the
-    cash carries (adding a smaller ``|s|`` only raises ``lambda`` and the
+    every other in ratio.  Charter 252 raises ``lambda`` until the position
+    costs ``stake_usdc`` at the legs' prices (shares floored, so never more),
+    and never lowers it under that minimum; no stake is the minimum itself
+    (charter 231).  The whole position is taken when the cash carries it;
+    otherwise the stake is cut to the cash, and when even that does not
+    carry the minimum, the longest ``|s|``-ordered prefix whose own minimum
+    the cash carries (adding a smaller ``|s|`` only raises ``lambda`` and the
     cost, so the affordable prefixes are an initial run).
     """
 
@@ -451,9 +474,15 @@ def size_minimum(
         key=lambda leg: (-abs(float(leg["s"])), str(leg["bucket"])),
     )
 
-    def sized(prefix: list[dict[str, Any]]) -> tuple[float, list[dict[str, Any]], float]:
+    def sized(
+        prefix: list[dict[str, Any]], budget: float | None,
+    ) -> tuple[float, list[dict[str, Any]], float]:
         lam = max(float(min_shares.get(leg["bucket"], DEFAULT_MIN_ORDER_SHARES)) / abs(float(leg["s"]))
                   for leg in prefix)
+        if budget is not None:
+            per_lambda = sum(float(leg["price"]) * abs(float(leg["s"])) for leg in prefix)
+            if per_lambda > 0.0:
+                lam = max(lam, float(budget) / per_lambda)
         out = []
         scale = 10 ** SHARE_PRECISION
         for leg in prefix:
@@ -465,14 +494,16 @@ def size_minimum(
 
     if not ranked:
         return {"lambda_shares": None, "legs": [], "dropped": {}, "need_full_usdc": None,
-                "budget_usdc": 0.0, "capped_by_cash": False}
-    lam_full, full, need_full = sized(ranked)
+                "need_min_usdc": None, "budget_usdc": 0.0, "capped_by_cash": False}
+    need_min = sized(ranked, None)[2]
+    lam_full, full, need_full = sized(ranked, stake_usdc)
     if cash_usdc is None or need_full <= float(cash_usdc) + 1e-9:
         return {"lambda_shares": lam_full, "legs": full, "dropped": {}, "need_full_usdc": need_full,
-                "budget_usdc": need_full, "capped_by_cash": False}
+                "need_min_usdc": need_min, "budget_usdc": need_full, "capped_by_cash": False}
+    budget = float(cash_usdc) if stake_usdc is not None else None
     best: tuple[float, list[dict[str, Any]], float] | None = None
     for n in range(1, len(ranked) + 1):
-        candidate = sized(ranked[:n])
+        candidate = sized(ranked[:n], budget)
         if candidate[2] <= float(cash_usdc) + 1e-9:
             best = candidate
         else:
@@ -484,6 +515,7 @@ def size_minimum(
         "legs": best[1] if best else [],
         "dropped": dropped,
         "need_full_usdc": need_full,
+        "need_min_usdc": need_min,
         "budget_usdc": best[2] if best else 0.0,
         "capped_by_cash": True,
     }
@@ -498,11 +530,13 @@ def evaluate_ladder(
     ticks: Mapping[str, float],
     sides: frozenset[str] = BOTH_SIDES,
     buckets: str = BUCKETS_ALL,
+    stake_usdc: float | None = None,
 ) -> dict[str, Any]:
     """The whole rule on one ladder: ``p``, ``q``, ``s``, ``D``, the rungs, lambda.
 
     ``buckets="market_mode"`` keeps only the leg on the market's own modal
     bucket (charter 249); every other bucket is still quoted, for the record.
+    ``stake_usdc`` is the position's budget (charter 252, ``size_position``).
     """
 
     market = market_reference_v1(book_buckets)
@@ -530,7 +564,7 @@ def evaluate_ladder(
                   sides=sides, only_bucket=mode if buckets == BUCKETS_MARKET_MODE else None)
         for b in order
     ]
-    sizing = size_minimum(quotes, cash_usdc=cash_usdc, min_shares=min_shares)
+    sizing = size_position(quotes, cash_usdc=cash_usdc, min_shares=min_shares, stake_usdc=stake_usdc)
     out = {
         "refusal": None,
         "p": p, "q": q, "s": s, "divergence_kl": divergence,
@@ -547,7 +581,7 @@ def evaluate_ladder(
                           if str(leg.get("reason") or "").startswith(SIDE_STOPPED + ":")})
         out["refusal"] = f"{SIDE_STOPPED}:{','.join(stopped)}" if stopped else "no_leg_obeys_rule"
     elif not sizing["legs"]:
-        out["refusal"] = f"insufficient_cash:{float(cash_usdc or 0.0):.2f}<{sizing['need_full_usdc']:.2f}"
+        out["refusal"] = f"insufficient_cash:{float(cash_usdc or 0.0):.2f}<{sizing['need_min_usdc']:.2f}"
     return out
 
 
@@ -878,6 +912,7 @@ def plan_new_first_decisions(
     stages = opening_stages(cfg)
     sides = allowed_sides(cfg)
     buckets = bucket_scope(cfg)
+    stake = position_stake(cfg)
     entry = entry_rule(cfg)
     latest = entry == ENTRY_LATEST_DECISION
     by_envelope = freshness_rule(cfg) == FRESH_BY_ENVELOPE_VALIDITY
@@ -982,7 +1017,7 @@ def plan_new_first_decisions(
             continue
         reading = evaluate_ladder(envelope["probabilities"], list(book["buckets"]),
                                   cash_usdc=cash.get("cash"), min_shares=min_shares, ticks=ticks,
-                                  sides=sides, buckets=buckets)
+                                  sides=sides, buckets=buckets, stake_usdc=stake)
         if reading.get("refusal") == "market_incomplete":
             waiting.append({**key, "reason": f"market_incomplete:{reading.get('market_reason')}"})
             continue
@@ -1024,6 +1059,7 @@ def plan_new_first_decisions(
             "snapshot_id": book["snapshot_id"], "book_observed_at": book["observed_at"],
             "book_source": book.get("book_source"), "execution_candidate": EXECUTION_CANDIDATE,
             "lambda_shares": reading["lambda_shares"], "need_full_usdc": reading["need_full_usdc"],
+            "stake_usdc": stake,
             "budget_usdc": reading["budget_usdc"], "capped_by_cash": reading["capped_by_cash"],
             "divergence_kl": reading["divergence_kl"], "min_hours_to_settlement": min_hours,
             "sides": sorted(sides), "buckets": buckets, "entry": entry,
@@ -1407,5 +1443,6 @@ __all__ = [
     "rung_horizon_seconds",
     "rung_price",
     "side_book",
-    "size_minimum",
+    "size_position",
+    "position_stake",
 ]

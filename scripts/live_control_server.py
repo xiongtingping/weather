@@ -30,7 +30,10 @@ POST /api/kelly  is retired: it wrote the exposure bound under Kelly's name, and
                   board still open from before 2026-09-17 must fail loudly
                   rather than move the wrong dial.
 POST /api/budget  {"value": 515}           -> target_remaining_budget_usdc
-POST /api/tiebreak-stake {"value": 5}     -> tiebreak lane stake_usdc (秤砣线每笔预算, charter 146)
+POST /api/lane-stake {"lane": "tail_short", "value": 10} -> one lane's per-trade stake_usdc
+                  (秤砣线 charter 146; 远尾做空 H1 and Proper 下注线 charter 252)
+POST /api/tiebreak-stake is retired (charter 252): /api/lane-stake took it over, and a
+                  board still open from before must fail loudly rather than move nothing.
 POST /api/lane    {"lane": "basket", "enabled": false} -> one strategy lane's switch (charter 146);
                   the board draws four of them -- 篮子, Proper 下注线, 秤砣线, 同心线 (charters 229, 231)
 POST /api/live    {"enabled": true, "confirm": "LIVE", "by": "..."}
@@ -263,9 +266,9 @@ def state() -> dict:
         # Charter 141: the station-day's two numbers, read-only.  The
         # per-station dollar dial they replace never bounded spend.
         "capital_layer": _capital_layer_state(),
-        # Charter 146: the tiebreak lane's per-trade stake, a real dial, and
-        # the four lane switches beside it.
-        "tiebreak_stake": _tiebreak_stake_state(),
+        # Charter 146/252: every dialled lane's per-trade stake, and the lane
+        # switches beside them.
+        "lane_stakes": _lane_stakes_state(),
         "strategy_lanes": _strategy_lanes_state(),
         "live": {
             "enabled": intent["live_enabled"],
@@ -432,14 +435,20 @@ def _lane_opening_stages(doc: dict) -> dict:
     return out
 
 
-def _tiebreak_stake_state() -> dict:
+def _lane_stakes_state() -> dict:
+    """Each dialled lane's stake as the lane will read it, with its bounds
+    (``strategy_lanes.STAKE_DIALS``)."""
+
     lanes = _lanes_module()
     doc = _read_strategy_lanes()
     return {
-        "stake_usdc": doc["lanes"][lanes.LANE_TIEBREAK].get("stake_usdc"),
-        "bounds": list(lanes.TIEBREAK_STAKE_BOUNDS),
-        "step": lanes.TIEBREAK_STAKE_STEP,
-        "enabled": doc["lanes"][lanes.LANE_TIEBREAK].get("enabled") is True,
+        name: {
+            "stake_usdc": doc["lanes"][name].get("stake_usdc"),
+            "bounds": list(dial["bounds"]),
+            "step": dial["step"],
+            "enabled": doc["lanes"][name].get("enabled") is True,
+        }
+        for name, dial in lanes.STAKE_DIALS.items()
     }
 
 
@@ -468,18 +477,20 @@ def _write_strategy_lanes(mutate) -> None:
     _write_atomic(STRATEGY_LANES_PATH, document)
 
 
-def set_tiebreak_stake(value: float) -> dict:
-    """POST /api/tiebreak-stake {"value": 5}: the lane's per-trade stake."""
+def set_lane_stake(lane: str, value: float) -> dict:
+    """POST /api/lane-stake {"lane": "tail_short", "value": 10}: one dialled
+    lane's per-trade stake."""
 
     lanes = _lanes_module()
-    stake = lanes.validate_tiebreak_stake(value)
-    before = _tiebreak_stake_state()["stake_usdc"]
+    name = str(lane or "").strip()
+    stake = lanes.validate_lane_stake(name, value)
+    before = _lane_stakes_state()[name]["stake_usdc"]
 
     def mutate(document: dict) -> None:
-        document["lanes"][lanes.LANE_TIEBREAK]["stake_usdc"] = stake
+        document["lanes"][name]["stake_usdc"] = stake
 
     _write_strategy_lanes(mutate)
-    _audit({"knob": "tiebreak_stake_usdc", "before": before, "after": stake})
+    _audit({"knob": f"{name}_stake_usdc", "before": before, "after": stake})
     return state()
 
 
@@ -1295,7 +1306,12 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path.rstrip("/") == "/api/budget":
                 out = set_budget(float(body["value"]))
             elif self.path.rstrip("/") == "/api/tiebreak-stake":
-                out = set_tiebreak_stake(float(body["value"]))
+                raise ValueError(
+                    "/api/tiebreak-stake is retired (charter 252): reload the board; "
+                    "use /api/lane-stake"
+                )
+            elif self.path.rstrip("/") == "/api/lane-stake":
+                out = set_lane_stake(str(body.get("lane") or ""), body["value"])
             elif self.path.rstrip("/") == "/api/lane":
                 out = set_lane_enabled(
                     str(body.get("lane") or ""),
