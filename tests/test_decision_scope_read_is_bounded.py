@@ -103,3 +103,91 @@ def test_a_not_started_listed_day_is_still_found_under_the_floor() -> None:
     assert ("NZWN", "2026-09-15") in scopes      # listed, not started until 12:00Z
     assert ("KLAX", "2026-09-14") in scopes      # not started in Los Angeles yet
     assert ("KLAX", "2026-09-01") not in scopes
+
+
+# ---------------------------------------------- confined to the scopes asked
+
+def _worker_with_ws(rows, ws_rows) -> TargetProductionWorker:
+    worker = _worker_over(rows)
+    worker.conn.execute(
+        "CREATE TABLE basket_official_ws_evidence_cache("
+        "station_id TEXT, event_date TEXT, settlement_timezone TEXT)"
+    )
+    worker.conn.executemany("INSERT INTO basket_official_ws_evidence_cache VALUES(?,?,?)", ws_rows)
+    return worker
+
+
+def test_a_confined_read_answers_the_unconfined_one_restricted_to_its_scopes() -> None:
+    """2026-10-04 05:15Z: a refresh of the not-started 2026-10-05 asked for
+    the fleet's listing scopes to admit the stations it restates -- 54 times,
+    149 s of a 1,464 s cycle.  It now asks for those stations on that day."""
+
+    start = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    rows, ws_rows = [], []
+    for index, (station, zone) in enumerate(ZONES.items()):
+        for offset in range(-3, 4):
+            day = (start + timedelta(days=offset)).date().isoformat()
+            # Every stage mix, so listing, open-only and P1-barred scopes all occur.
+            for stage in (("P0",), ("P0-M",), ("P0", "P1"), ("P1",))[(index + offset) % 4]:
+                rows.append((station, day, zone, stage, "COMMITTED"))
+            if offset % 2 == 0:
+                ws_rows.append((station, day, zone))
+    worker = _worker_with_ws(rows, ws_rows)
+    days = sorted({row[1] for row in rows})
+    clocks = [
+        (start + timedelta(hours=3 * step)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for step in range(-8, 24)
+    ]
+    asked = [{"KLAX", "NZWN"}, {"ptkk"}, set(ZONES)]
+    nonempty = 0
+    for clock in clocks:
+        everything = worker._decision_scopes(as_of_utc=clock)
+        listing = worker._listing_entry_scopes(as_of_utc=clock)
+        for day in days:
+            for stations in asked:
+                wanted = {s.upper() for s in stations}
+                confined = worker._decision_scopes(as_of_utc=clock, event_date=day, station_ids=stations)
+                assert confined == [s for s in everything if s[1] == day and s[0] in wanted], (clock, day)
+                keys = worker._listing_entry_scope_keys(as_of_utc=clock, event_date=day, station_ids=stations)
+                assert keys == {f"{s}|{d}" for s, d in listing if d == day and s in wanted}, (clock, day)
+                nonempty += bool(keys)
+    assert nonempty  # not vacuous
+
+
+def test_the_refresh_asks_for_the_listing_scopes_of_the_stations_it_restates(monkeypatch) -> None:
+    import json as _json
+    from pathlib import Path
+
+    worker = object.__new__(TargetProductionWorker)
+    asked: list[dict] = []
+
+    def listing(**kw):
+        asked.append(kw)
+        return [("EHAM", "2026-09-14")]
+
+    def ingress(activation, *, manifest_path, full_materialization, listing_day_pass):
+        root = _json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        return {"state": "committed", "station_allowlist": sorted(root["station_scope"]["station_ids"])}
+
+    from tests.test_evidence_group_admission import _scope
+
+    def scope(station, state):
+        return {
+            "event_date": "2026-09-14", "station_id": station, "probability_evidence_fresh": True,
+            "manifest": _scope(station, "2026-09-14", state),
+        }
+
+    monkeypatch.setattr(worker, "_listing_entry_scopes", listing)
+    monkeypatch.setattr(worker, "_materialize_market_evidence_from_manifest", ingress)
+    monkeypatch.setattr(worker, "_resident_ws_scope_catalog", lambda: [
+        scope("NZWN", "open"), scope("EHAM", "not_started"), scope("KORD", "not_started"), scope("LFPB", "not_started"),
+    ])
+    result = worker._refresh_scope_day_evidence(
+        {}, event_date="2026-09-14", as_of_utc="2026-09-13T14:14:00Z", stations=["NZWN", "EHAM", "kord"],
+    )
+    assert asked == [{
+        "as_of_utc": "2026-09-13T14:14:00Z",
+        "station_allowlist": frozenset({"EHAM", "KORD"}),
+        "event_date": "2026-09-14",
+    }]
+    assert result["station_allowlist"] == ["NZWN"]

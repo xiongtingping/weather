@@ -11594,6 +11594,7 @@ class TargetProductionWorker:
         *,
         as_of_utc: str,
         station_allowlist: set[str] | frozenset[str] | None = None,
+        event_date: str | None = None,
     ) -> list[tuple[str, str]]:
         """Charter 48 scopes: a listed day this book may already open on.
 
@@ -11611,6 +11612,9 @@ class TargetProductionWorker:
         listed day could not enter, and the preselection lane that does see
         listed days writes plans no consumer reads.  This restores the path;
         every downstream gate the current day passes still applies unchanged.
+
+        ``station_allowlist`` and ``event_date`` confine the reads, not only
+        the answer: see ``_decision_scopes``.
         """
 
         _listing_started = time.perf_counter()
@@ -11619,6 +11623,8 @@ class TargetProductionWorker:
         for station, day in self._decision_scopes(
             as_of_utc=as_of_utc,
             include_not_started=True,
+            event_date=event_date,
+            station_ids=allow or None,
         ):
             if allow and str(station).upper() not in allow:
                 continue
@@ -11666,6 +11672,8 @@ class TargetProductionWorker:
         *,
         as_of_utc: str | None = None,
         include_not_started: bool = True,
+        event_date: str | None = None,
+        station_ids: Collection[str] | None = None,
     ) -> list[tuple[str, str]]:
         """Discover open scopes plus pre-event P0/P0-M no-live scopes.
 
@@ -11673,14 +11681,27 @@ class TargetProductionWorker:
         zero-execution lane and only while its committed probability authority
         is P0/P0-M.  Future P1 remains invalid and WS cache rows alone can
         never manufacture a future decision identity.
+
+        ``event_date`` confines each of the three reads to that day and
+        ``station_ids`` the answer to those stations.  A scope is admitted on
+        its own registry, probability and WS-cache rows alone, so the answer is
+        the unconfined one restricted to them.  2026-10-04 05:15Z: a mid-loop
+        refresh of a not-started day asked for the fleet's listing scopes to
+        admit the three to thirty stations it restates -- 54 times, 149 s of a
+        1,464 s cycle, 5,289 timezone reads.
         """
 
         if self.conn is None:
             return []
         decision_clock = as_of_utc or utc_now()
+        only_day = str(event_date or "").strip()
+        only_day_sql = " AND event_date=?" if only_day else ""
+        only_day_args: tuple[str, ...] = (only_day,) if only_day else ()
         scopes: set[tuple[str, str]] = set()
         try:
-            for item in load_started_registry_rows(self.conn, as_of_utc=decision_clock):
+            for item in load_started_registry_rows(
+                self.conn, as_of_utc=decision_clock, event_date=only_day,
+            ):
                 station = str(item.get("station_id") or "").strip()
                 day = str(item.get("event_date") or "").strip()
                 settlement_timezone = str(
@@ -11737,8 +11758,8 @@ class TargetProductionWorker:
             probability_rows = self.conn.execute(
                 DECISION_SCOPE_PROBABILITY_SQL.format(
                     stage_projection=stage_projection
-                ),
-                (_decision_scope_event_date_floor(decision_clock),),
+                ) + only_day_sql,
+                (_decision_scope_event_date_floor(decision_clock), *only_day_args),
             ).fetchall()
         except sqlite3.Error:
             probability_rows = []
@@ -11783,7 +11804,8 @@ class TargetProductionWorker:
             ws_rows = self.conn.execute(
                 "SELECT DISTINCT station_id,event_date,settlement_timezone "
                 "FROM basket_official_ws_evidence_cache "
-                "WHERE station_id<>'' AND event_date<>''"
+                "WHERE station_id<>'' AND event_date<>''" + only_day_sql,
+                only_day_args,
             ).fetchall()
         except sqlite3.Error:
             ws_rows = []
@@ -11819,6 +11841,13 @@ class TargetProductionWorker:
                 (station, day)
                 for station, day in scopes
                 if day in event_date_allowlist
+            }
+        if station_ids is not None:
+            wanted = {str(item).upper() for item in station_ids}
+            scopes = {
+                (station, day)
+                for station, day in scopes
+                if station.upper() in wanted
             }
         return sorted(scopes)
 
@@ -13817,17 +13846,30 @@ class TargetProductionWorker:
         # group (``_admitted_evidence_groups``), and reading them re-runs
         # ``_decision_scopes`` over the fleet: 2 s a refresh, 46 s of 105 on
         # 2026-10-03 15:35Z, where every refresh was of an open day.  Read
-        # only when the manifests restated hold such a group.
-        needs_listing = any(
-            state == "not_started"
-            for state, _group in _group_scope_manifests_by_day_state(day_scopes)
-        )
+        # only when the manifests restated hold such a group -- and only for
+        # the scopes in it: admission asks each manifest's own key and
+        # nothing else, and the fleet's took 2.8 s a refresh under load on
+        # 2026-10-04 05:15Z, 54 refreshes of the not-started 2026-10-05.
+        not_started = [
+            _scope_manifest_station_day(item)
+            for state, group in _group_scope_manifests_by_day_state(day_scopes)
+            if state == "not_started"
+            for item in group
+        ]
+        listing_stations = {station for station, _day in not_started if station}
+        listing_days = {day for _station, day in not_started}
         outcomes, refused = self._materialize_evidence_groups(
             activation,
             manifests=day_scopes,
             listing_scope_keys=(
-                self._listing_entry_scope_keys(as_of_utc=as_of_utc)
-                if needs_listing
+                self._listing_entry_scope_keys(
+                    as_of_utc=as_of_utc,
+                    event_date=(
+                        next(iter(listing_days)) if len(listing_days) == 1 else None
+                    ),
+                    station_ids=listing_stations or None,
+                )
+                if not_started
                 else frozenset()
             ),
             full_materialization=True,
@@ -13851,12 +13893,26 @@ class TargetProductionWorker:
             ]
         return result
 
-    def _listing_entry_scope_keys(self, *, as_of_utc: str) -> frozenset[str]:
+    def _listing_entry_scope_keys(
+        self,
+        *,
+        as_of_utc: str,
+        event_date: str | None = None,
+        station_ids: Collection[str] | None = None,
+    ) -> frozenset[str]:
         """Charter 48 listing scopes as ``STATION|DATE`` keys."""
 
         return frozenset(
             f"{str(station).upper()}|{day}"
-            for station, day in self._listing_entry_scopes(as_of_utc=as_of_utc)
+            for station, day in self._listing_entry_scopes(
+                as_of_utc=as_of_utc,
+                station_allowlist=(
+                    frozenset(str(item).upper() for item in station_ids)
+                    if station_ids is not None
+                    else None
+                ),
+                event_date=event_date,
+            )
         )
 
     def _materialize_evidence_groups(
