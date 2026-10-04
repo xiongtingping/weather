@@ -8230,12 +8230,13 @@ class TargetProductionWorker:
         )
         if changed is None:
             return None, "changed_stations_unreadable", False
-        # The fleet only: the builder's full pass exports the fleet and
-        # ignores the registry's staged onboarding rows (LTFM, UUWW, LLBG,
-        # which the archive also collects), but asked for one by name it
-        # refuses the whole subset (pr12_station_timezone_scope_missing), and
-        # the pass fell back to a full one -- 49 s at 03:37Z on 2026-10-04,
-        # whenever one of those three had reported since the last pass.
+        # The fleet only, read where the builder reads it: its full pass
+        # exports the fleet and ignores registry rows staged for onboarding,
+        # but asked for one by name it refuses the whole subset
+        # (pr12_station_timezone_scope_missing), and the pass fell back to a
+        # full one -- 49 s at 03:37Z on 2026-10-04, while LTFM/UUWW/LLBG were
+        # still onboarding (they joined the fleet at 5e68ea74 the same
+        # morning, and this follows the fleet list with them).
         changed &= {
             str(value).strip().upper()
             for value in coordinate_registry_manifest()["station_ids"]
