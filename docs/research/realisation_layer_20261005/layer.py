@@ -51,6 +51,7 @@ def frame():
     at_mode = np.where(mask, (dist == 0).astype(float), np.nan)
     beside = np.where(mask, (dist == 1).astype(float), np.nan)
     terms["M5"] = terms["M4"] + [at_mode, beside]
+    terms["M1p"] = [logq, at_mode, beside]
     base = np.where(mask, 1.0, np.nan)             # the pool starts from the flat ladder
     y = np.array([x["y"] for x in rec])
     wt = np.array([x["wt"] for x in rec])
@@ -59,7 +60,7 @@ def frame():
 
 
 def start_of(model):
-    return np.array([1.0] + [0.0] * {"M1": 0, "M2": 1, "M3": 3, "M4": 4, "M5": 6}[model])
+    return np.array([1.0] + [0.0] * {"M1": 0, "M2": 1, "M3": 3, "M4": 4, "M5": 6, "M1p": 2}[model])
 
 
 def main(model):

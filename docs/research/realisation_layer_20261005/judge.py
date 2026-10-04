@@ -127,7 +127,7 @@ def edges(fr, codes, k, belief_key="b"):
 def main():
     rec = c.load()
     fits = {}
-    for model in L.MODELS + ("M4i",):
+    for model in L.MODELS + ("M4i", "M5", "M1p"):
         with open(os.path.join(HERE, "fits", f"{model}.pkl"), "rb") as fh:
             fits[model] = pickle.load(fh)
     idx = sorted(fits["M1"]["b"])
@@ -135,7 +135,7 @@ def main():
     code = {d: i for i, d in enumerate(days)}
     k = len(days)
     vectors = {"M0": {"b": {i: rec[i]["q"] for i in idx}}, "P": {"b": {i: rec[i]["p"] for i in idx}}, **fits}
-    names = {"P": "模型原样 p", "M0": "M0 市场原样", "M1": "M1 市场自校准", "M2": "M2 市场+模型整体", "M3": "M3 市场+模型分项", "M4": "M4 分项+中心条件", "M4i": "M4i 再加保序映射"}
+    names = {"P": "模型原样 p", "M0": "M0 市场原样", "M1": "M1 市场自校准", "M2": "M2 市场+模型整体", "M3": "M3 市场+模型分项", "M4": "M4 分项+中心条件", "M4i": "M4i 再加保序映射", "M5": "M5 分项+条件+档距截距", "M1p": "M1p 市场自校准+档距截距"}
     wt = np.array([rec[i]["wt"] for i in idx])
     dcode = np.array([code[rec[i]["d"]] for i in idx])
     result = {"scored_decisions": len(idx), "station_days": len({(rec[i]["st"], rec[i]["d"]) for i in idx}), "event_days": k,
@@ -150,7 +150,7 @@ def main():
     top = {m: np.array([float(vectors[m]["b"][i].max()) for i in idx]) for m in vectors}
 
     result["models"] = {}
-    for m in ("P", "M0", "M1", "M2", "M3", "M4", "M4i"):
+    for m in ("P", "M0", "M1", "M1p", "M2", "M3", "M4", "M4i", "M5"):
         fr = flat(rec, idx, vectors[m])
         codes = np.array([code[rec[i]["d"]] for i in fr["i"].astype(int)])
         everything = np.ones(len(fr["b"]), bool)
@@ -200,9 +200,11 @@ def main():
     for cname, m in conditions:
         row = {"decisions": int(m.sum())}
         parts = []
-        for model in ("M2", "M3", "M4", "M4i"):
+        for model in ("M2", "M3", "M4", "M4i", "M5"):
             row[model] = boot((ls[model] - ls["M1"])[m], wt[m], dcode[m], k)
             parts.append(f"{model} {f(row[model])}")
+        row["M5_vs_M1p"] = boot((ls["M5"] - ls["M1p"])[m], wt[m], dcode[m], k)
+        parts.append(f"｜M5 对 M1p {f(row['M5_vs_M1p'])}")
         row["M1_vs_M0"] = boot((ls["M1"] - ls["M0"])[m], wt[m], dcode[m], k)
         result["increment"][cname] = row
         print(f"   {cname:<14} 决策 {int(m.sum()):5d}  " + "  ".join(parts) + f"   （M1 对市场原样 {f(row['M1_vs_M0'])}）")
@@ -210,17 +212,22 @@ def main():
     # verdict
     print("\n== 判词")
     result["verdict"] = {}
-    for m in ("M1", "M2", "M3", "M4", "M4i"):
+    for m in ("M1", "M1p", "M2", "M3", "M4", "M4i", "M5"):
         out = result["models"][m]
         calibrated = all(r["passed"] == r["judged"] for r in out["reliability"])
         legs_ok = all(e.get("belief_minus_hit") is None or (e["belief_minus_hit"][1] <= 0 <= e["belief_minus_hit"][2])
                       for name, e in out["edges"].items() if name in ("YES 全部", "NO 全部"))
-        more = out["logscore_vs_M1"][2] < 0 if m != "M1" else None
+        more = out["logscore_vs_M1"][2] < 0 if m not in ("M1", "M1p") else None
+        if m == "M5":
+            more = bool(result["increment"]["全部"]["M5_vs_M1p"][2] < 0)
         sure = [e["realised"][1] > 0 for name, e in out["edges"].items() if name.endswith("有把握") and "realised" in e]
-        result["verdict"][m] = {"usable": bool(calibrated and legs_ok), "calibrated_bins": calibrated, "selected_legs_calibrated": legs_ok,
+        judged = sum(r["judged"] for r in out["reliability"])
+        failed = judged - sum(r["passed"] for r in out["reliability"])
+        result["verdict"][m] = {"bins_judged": int(judged), "bins_failed": int(failed), "usable": bool(calibrated and legs_ok), "calibrated_bins": calibrated, "selected_legs_calibrated": legs_ok,
                                 "more_than_market_recalibration": more, "confident_edge_realised": bool(sure and all(sure))}
         print(f"   {names[m]:<14} 层可用 {'是' if (calibrated and legs_ok) else '否'}（各档校准 {'是' if calibrated else '否'}，被选中腿说多少中多少 {'是' if legs_ok else '否'}）"
-              f"  比市场自校准多带信息 {'—' if more is None else ('是' if more else '否')}  有把握的 edge 扣费后兑现 {'是' if (sure and all(sure)) else '否'}")
+              f"  比市场自校准多带信息 {'—' if more is None else ('是' if more else '否')}  有把握的 edge 扣费后兑现 {'是' if (sure and all(sure)) else '否'}"
+              f"  不过的档 {failed}/{judged}（5% 假设下期望 {0.05*judged:.1f}）")
     with open(os.path.join(HERE, "results.json"), "w") as fh:
         json.dump(result, fh, ensure_ascii=False, indent=1, default=float)
 
