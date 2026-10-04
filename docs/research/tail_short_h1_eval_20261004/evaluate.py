@@ -48,6 +48,19 @@ SINCE = "2026-08-15"
 RESEARCH_END = "2026-09-25"          # last event day of the study that chose the rule
 FEE = float(CFG["taker_fee_rate"])
 SEED, BOOT, BLOCK = 20260927, 2000, 3
+MODEL_SPLIT_SINCE = "2026-10-04"     # first event day whose outcome was unseen when the split was registered
+
+
+def model_p(conn, envelope_id: str, bucket: str) -> float | None:
+    """The served envelope's normalised probability of ``bucket`` (the lane itself never reads it)."""
+
+    row = conn.execute("SELECT probabilities_json FROM basket_probability_envelope WHERE envelope_id=?",
+                       (envelope_id,)).fetchone()
+    probabilities = _decode(row[0]) if row else None
+    if not probabilities or bucket not in probabilities:
+        return None
+    total = sum(float(v) for v in probabilities.values())
+    return float(probabilities[bucket]) / total if total > 0 else None
 
 
 def _decode(value):
@@ -81,16 +94,16 @@ def labels(conn) -> dict[tuple[str, str], str]:
 
 def replay(conn, truth) -> list[dict]:
     facts = defaultdict(list)
-    for station, day, at, tz, snap in conn.execute(
-        "SELECT station_id, event_date, decision_at_utc, settlement_timezone, ws_snapshot_id"
+    for station, day, at, tz, snap, envelope in conn.execute(
+        "SELECT station_id, event_date, decision_at_utc, settlement_timezone, ws_snapshot_id, probability_envelope_id"
         " FROM basket_policy_training_fact WHERE stage='P0' AND event_date>=?"
         " ORDER BY station_id, event_date, decision_at_utc, created_at_utc, fact_id", (SINCE,)
     ):
-        facts[(str(station), str(day))].append((str(at), str(tz), str(snap)))
+        facts[(str(station), str(day))].append((str(at), str(tz), str(snap), str(envelope)))
     legs, skipped = [], Counter()
     for (station, day), rows in facts.items():
         fired, sent = set(), set()
-        for at, tz, snap in rows:
+        for at, tz, snap, envelope in rows:
             hours = float(hours_to_settlement(day, as_of_utc=at, settlement_timezone=tz))
             if not hours > float(CFG["min_hours_to_settlement"]):
                 continue
@@ -110,7 +123,8 @@ def replay(conn, truth) -> list[dict]:
                 take = no_take(leg["bid"], leg["bid_size"], float(CFG["stake_usdc"]), tick_size=None, min_shares=5.0)
                 base = {"s": station, "d": day, "b": bucket, "h": hours, "q": leg["q"], "rungs": leg["rungs_from_mode"],
                         "bid": leg["bid"], "bid_size": leg["bid_size"], "label": truth.get((station, day)),
-                        "unit": "F" if "°F" in bucket else "C", "shares": take["shares"], "refusal": take["refusal"]}
+                        "unit": "F" if "°F" in bucket else "C", "shares": take["shares"], "refusal": take["refusal"],
+                        "envelope_id": envelope}
                 if bucket not in fired:
                     fired.add(bucket)
                     legs.append({**base, "arm": "first_fire"})
@@ -127,10 +141,10 @@ def roi(trades, *, sized=False, fee=True) -> dict | None:
         return None
     index = {d: i for i, d in enumerate(days)}
     num, den = np.zeros(len(days)), np.zeros(len(days))
-    hits = 0
+    losses = 0  # the far-tail bucket settled: the NO leg lost
     for t in trades:
         y = 1.0 if t["label"] == t["b"] else 0.0
-        hits += int(y)
+        losses += int(y)
         price = 1.0 - t["bid"]
         n = float(t["shares"]) if sized else 1.0
         num[index[t["d"]]] += n * (t["bid"] - y) - (FEE * price * (1 - price) * n if fee else 0.0)
@@ -145,7 +159,7 @@ def roi(trades, *, sized=False, fee=True) -> dict | None:
     return {"legs": len(trades), "station_days": len({(t["s"], t["d"]) for t in trades}), "event_days": len(days),
             "roi": float(num.sum() / den.sum()), "ci95": [float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))],
             "halves": [float(num[:half].sum() / den[:half].sum()) if half else None, float(num[half:].sum() / den[half:].sum())],
-            "hits": hits, "hit_rate": hits / len(trades), "mean_bid": float(np.mean([t["bid"] for t in trades]))}
+            "losses": losses, "loss_rate": losses / len(trades), "mean_bid": float(np.mean([t["bid"] for t in trades]))}
 
 
 def live(conn, truth) -> dict:
@@ -165,10 +179,10 @@ def live(conn, truth) -> dict:
                               "pnl": None if y is None else size * (1 - y) - notional - fee})
     settled = [f for f in out["filled"] if f["y"] is not None]
     pending = [f for f in out["filled"] if f["y"] is None]
-    out["settled"] = {"legs": len(settled), "hits": int(sum(f["y"] for f in settled)),
+    out["settled"] = {"legs": len(settled), "losses": int(sum(f["y"] for f in settled)),
                       "cost": sum(f["cost"] for f in settled), "pnl": sum(f["pnl"] for f in settled),
                       "event_days": sorted({f["d"] for f in settled}),
-                      "hit_legs": [(f["s"], f["d"], f["b"]) for f in settled if f["y"]]}
+                      "lost_legs": [(f["s"], f["d"], f["b"]) for f in settled if f["y"]]}
     out["settled"]["roi"] = out["settled"]["pnl"] / out["settled"]["cost"] if settled else None
     out["open"] = {"legs": len(pending), "cost": sum(f["cost"] for f in pending),
                    "by_day": dict(Counter(f["d"] for f in pending))}
@@ -209,6 +223,16 @@ def main() -> int:
                 [t for t in legs if t["arm"] == "production" and lo <= t["d"] <= hi and keep(t)])
     forward = sorted({t["d"] for t in legs if t["arm"] == "production" and t["d"] >= "2026-09-26"})
     result["forward_by_day"] = {d: roi([t for t in legs if t["arm"] == "production" and t["d"] == d]) for d in forward}
+    # PROTOCOL_FORWARD.md, secondary reading added 2026-10-04 after the six forward losses were read: the
+    # served P0 p of the triggering fact against the YES bid, on event days from MODEL_SPLIT_SINCE only.
+    split = [t for t in legs if t["arm"] == "production" and t["d"] >= MODEL_SPLIT_SINCE]
+    for t in split:
+        t["p"] = model_p(conn, t["envelope_id"], t["b"])
+    result["model_split_report_only"] = {
+        "since": MODEL_SPLIT_SINCE,
+        "p_below_bid": roi([t for t in split if t["p"] is not None and t["p"] < t["bid"]]),
+        "p_at_or_above_bid": roi([t for t in split if t["p"] is not None and t["p"] >= t["bid"]]),
+        "p_missing": sum(1 for t in split if t["p"] is None)}
     (HERE / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str))
 
     def line(tag, s):
@@ -216,19 +240,23 @@ def main() -> int:
             return f"  {tag}: —"
         return (f"  {tag:34s} legs {s['legs']:5d} ({s['station_days']} sd / {s['event_days']} d)  ROI {s['roi']*100:+.2f}% "
                 f"[{s['ci95'][0]*100:+.2f}, {s['ci95'][1]*100:+.2f}]  halves "
-                f"{'/'.join('—' if h is None else f'{h*100:+.2f}' for h in s['halves'])}  hits {s['hits']} "
-                f"({s['hit_rate']*100:.2f}%)  bid {s['mean_bid']*100:.2f}c")
+                f"{'/'.join('—' if h is None else f'{h*100:+.2f}' for h in s['halves'])}  losses {s['losses']} "
+                f"({s['loss_rate']*100:.2f}%)  bid {s['mean_bid']*100:.2f}c")
     for name, arms in result["windows"].items():
         print(f"== {name}")
         for arm, s in arms.items():
             print(line(arm, s))
+    ms = result["model_split_report_only"]
+    print(f"== model split since {ms['since']} (report only; p missing {ms['p_missing']})")
+    print(line("p < YES bid", ms["p_below_bid"]))
+    print(line("p >= YES bid", ms["p_at_or_above_bid"]))
     print("== slices (production, 1 share, fee; report only)")
     for name, s in result["slices_report_only"].items():
         print(line(name, s))
     lv = result["live"]
-    print(f"== live: settled {lv['settled']['legs']} legs, {lv['settled']['hits']} hits, cost {lv['settled']['cost']:.2f}, "
+    print(f"== live: settled {lv['settled']['legs']} legs, {lv['settled']['losses']} lost, cost {lv['settled']['cost']:.2f}, "
           f"pnl {lv['settled']['pnl']:+.2f} ({(lv['settled']['roi'] or 0)*100:+.2f}%), days {lv['settled']['event_days']}; "
-          f"hits {lv['settled']['hit_legs']}; open {lv['open']}")
+          f"lost {lv['settled']['lost_legs']}; open {lv['open']}")
     print(f"   evaluations by outcome {lv['evaluations']}")
     print(f"done in {time.time() - started:.0f}s")
     return 0
