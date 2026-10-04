@@ -81,7 +81,7 @@ def test_the_served_file_carries_the_rulings_and_leaves_the_switches_to_the_boar
     assert served["lanes"]["certain_win_recycle"]["enabled"] is True
     # Charter 234's rule and stages are the ruling's; whether the lane is on
     # is the operator's switch, like the tiebreak's (thrown off 2026-10-02).
-    assert served["lanes"]["tail_short"]["rule"] == "market_far_tail_no_taker_v1"
+    assert served["lanes"]["tail_short"]["rule"] == "market_far_tail_no_taker_model_below_bid_v2"  # charter 251
     assert lanes.opening_stages(served["lanes"]["tail_short"]) == {"P0"}
     assert served["lanes"]["mis_bought_leg_exit"]["enabled"] is False
     assert lanes.opening_stages(served["lanes"]["tiebreak"]) == {"P0-M", "P1"}

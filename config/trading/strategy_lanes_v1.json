@@ -111,7 +111,7 @@
     },
     "tail_short": {
       "enabled": true,
-      "rule": "market_far_tail_no_taker_v1",
+      "rule": "market_far_tail_no_taker_model_below_bid_v2",
       "opening_stages": [
         "P0"
       ],
@@ -130,7 +130,9 @@
       "taker_fee_rate": 0.05,
       "send_book_fresh_seconds": 60.0,
       "live_ws_book": true,
-      "lookback_days": 1
+      "lookback_days": 1,
+      "rule_changed_at_utc": "2026-10-04T12:27:00Z",
+      "rule_note": "Charter 251 (user ruling 2026-10-04 「改规则，把模型当过滤器」): v1 plus the model filter -- the station-day's newest P0 envelope, inside its validity, puts the bucket strictly under the YES best bid; judged where the leg is first sendable and at every send, a bucket once refused stays out for the station-day. Thrown after the resident restarted on b043d765 (pid 47301, 2026-10-04T12:25:26Z). market_far_tail_no_taker_v1 restores the market-only lane."
     }
   }
 }
