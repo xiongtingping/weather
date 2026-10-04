@@ -1099,6 +1099,7 @@ CREATE INDEX IF NOT EXISTS calibration_cross_native_artifact_scope_idx ON calibr
 CREATE INDEX IF NOT EXISTS calibration_cross_native_oos_evaluation_scope_idx ON calibration_cross_native_ensemble_oos_evaluation(station_id,season_bin,lead_bucket,run_cycle,available_system_set_hash,evaluated_at_utc,evaluation_id);
 CREATE INDEX IF NOT EXISTS calibration_cross_native_oos_prediction_scope_idx ON calibration_cross_native_ensemble_oos_prediction(station_id,event_date,season_bin,lead_bucket,run_cycle,decision_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_scope_idx ON calibration_forward_taf_capture(station_id,event_date,provider_available_at_utc,revision_sequence);
+CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_tx_idx ON calibration_forward_taf_capture(station_id) WHERE tx_c IS NOT NULL;
 CREATE INDEX IF NOT EXISTS calibration_historical_taf_capture_scope_idx ON calibration_historical_taf_capture(station_id,event_date,provider_available_at_utc);
 CREATE INDEX IF NOT EXISTS calibration_historical_taf_correction_quarantine_scope_idx ON calibration_historical_taf_correction_quarantine(station_id,event_date,settlement_timezone);
 CREATE INDEX IF NOT EXISTS calibration_native_activation_asof_idx ON calibration_native_ensemble_activation(station_id,artifact_kind,season_bin,lead_bucket,run_cycle,valid_from_utc,valid_until_utc,generation);
@@ -1750,6 +1751,13 @@ CREATE TABLE IF NOT EXISTS basket_order_state_snapshot (
 
 CREATE INDEX IF NOT EXISTS basket_order_state_snapshot_asof_idx
 ON basket_order_state_snapshot(station_id,event_date,state,observed_at);
+-- The forward training check finds a snapshot by its version (and asks for
+-- two, to refuse an ambiguous one).  The as-of index above stops at the
+-- state, so every committed snapshot of the station-day was read from the
+-- table to compare the version: 200-800 a station-day, 13 s a cycle cold
+-- (2026-10-03).
+CREATE INDEX IF NOT EXISTS basket_order_state_snapshot_version_idx
+ON basket_order_state_snapshot(station_id,event_date,order_state_version,state);
 
 CREATE TABLE IF NOT EXISTS basket_cash_phase_policy_artifact (
   policy_version TEXT PRIMARY KEY,
@@ -1940,6 +1948,13 @@ DEFERRED_INDEX_DDL = """
 -- so the scan gets worse on its own.
 CREATE INDEX IF NOT EXISTS auto_trade_decisions_scope_idx
 ON auto_trade_decisions(station_id,event_date,created_at);
+-- The basket's open exposure (account_equity.open_exposure_by_station_day,
+-- once per compile) probes a decision per filled or resting order for four
+-- columns; through the primary key each probe read a whole decision row,
+-- ~5 KB of details_json, 600-odd of them a call: 8-38 s a cycle cold
+-- (2026-10-03).  Covering, so the probe stays in the index.
+CREATE INDEX IF NOT EXISTS auto_trade_decisions_exposure_idx
+ON auto_trade_decisions(decision_id,event_date,plan_id,station_id,settlement_timezone);
 CREATE INDEX IF NOT EXISTS basket_target_execution_cycles_scope_idx
 ON basket_target_execution_cycles(station_id,event_date,created_at);
 -- The republisher archive is read on the same path and is the largest table
