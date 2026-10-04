@@ -68,6 +68,10 @@ class _Runs:
         # The pass runs its script through the group-bounded runner.
         monkeypatch.setattr(pw, "run_script_group_bounded", self)
         monkeypatch.setattr(pw, "load_bounded_json", self.receipt)
+        # The projection and registry, as the export reads them; these
+        # workers carry no target connection to read the registry from.
+        self.inputs = "inputs-v1"
+        monkeypatch.setattr(pw, "_identity_inputs_fingerprint", lambda _conn: self.inputs)
 
     def __call__(self, command, **kwargs):
         env = kwargs.get("env")
@@ -190,6 +194,68 @@ def test_the_full_pass_comes_back_on_its_period_and_on_a_new_day(monkeypatch) ->
     worker._live_observation_identity_watermark = (awc, substitute, "2026-09-20")
     _report(archive, "awc_o3", "awc", "ZUUU")
     assert worker._identify_live_observations()["full_pass_reason"] == "utc_day_changed"
+
+
+def test_a_projection_or_registry_change_is_a_full_pass_at_once(monkeypatch) -> None:
+    """2026-10-04: the periodic net was ten minutes, 45-105 s a full pass on
+    a busy morning.  What it was for is now asked directly -- the sweep script
+    naming the projection, the projection's bytes, the station registry --
+    and the period is an hour."""
+
+    assert pw.LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC == 3600.0
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    worker = _worker(archive)
+    worker._identify_live_observations()
+    _report(archive, "awc_o2", "awc", "EGLC")
+    assert worker._identify_live_observations()["stations"] == ["EGLC"]
+    runs.inputs = "inputs-v2"
+    _report(archive, "awc_o3", "awc", "ZUUU")
+    changed = worker._identify_live_observations()
+    assert (changed["scope"], changed["full_pass_reason"]) == ("full", "identity_inputs_changed")
+    # The full pass took the new inputs as its own: subsets resume.
+    _report(archive, "awc_o4", "awc", "KORD")
+    assert worker._identify_live_observations()["stations"] == ["KORD"]
+    # Inputs that cannot be read are a full pass every time.
+    runs.inputs = None
+    _report(archive, "awc_o5", "awc", "KLAX")
+    assert worker._identify_live_observations()["full_pass_reason"] == "identity_inputs_changed"
+
+
+def test_the_inputs_fingerprint_reads_what_the_export_reads(tmp_path, monkeypatch) -> None:
+    from bayes_basket_target.ssot import apply_production_ssot_schema
+
+    target = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(target)
+    first = pw._identity_inputs_fingerprint(target)
+    assert first and first == pw._identity_inputs_fingerprint(target)
+    assert pw._identity_inputs_fingerprint(None) is None
+    script = tmp_path / "sweep.sh"
+    projection = tmp_path / "config" / "projection.json"
+    projection.parent.mkdir()
+    projection.write_text('{"v": 1}')
+    script.write_text('PROJECTION="$ROOT/config/projection.json"\n')
+    monkeypatch.setattr(pw, "_IDENTITY_SWEEP_SCRIPT", script)
+    monkeypatch.setattr(pw, "ROOT", tmp_path)
+    one = pw._identity_inputs_fingerprint(target)
+    projection.write_text('{"v": 2}')
+    two = pw._identity_inputs_fingerprint(target)
+    columns = [r[1] for r in target.execute("PRAGMA table_info(calibration_station_registry)")]
+    target.execute("PRAGMA foreign_keys=OFF")
+    row = {c: f"x-{c}" for c in columns}
+    row.update(station_id="ZZZZ", content_sha256="a" * 64)
+    try:
+        target.execute(
+            f"INSERT INTO calibration_station_registry({','.join(columns)}) VALUES({','.join('?' * len(columns))})",
+            tuple(row[c] for c in columns),
+        )
+        three = pw._identity_inputs_fingerprint(target)
+    except sqlite3.IntegrityError:
+        three = None
+    assert len({one, two}) == 2
+    assert three is None or three != two
+    projection.unlink()
+    assert pw._identity_inputs_fingerprint(target) is None
 
 
 def test_a_subset_the_pass_refuses_is_answered_by_the_full_pass(monkeypatch) -> None:

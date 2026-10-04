@@ -1756,11 +1756,45 @@ def append_oos_handoff(
 # Charter 181: how long a run of station-subset identity passes may go before
 # a full one.  A station's facts are a function of its own archive rows, and
 # a subset pass re-derives exactly the stations whose rows moved -- the full
-# pass is the net under whatever that misses (a projection or registry
-# change, a pass the hosted sweep's single-instance guard turned away).
+# pass is the net under whatever that misses.  Of what it was there for, a
+# pass the single-instance guard turned away is answered by (三) (the subset
+# snapshot moves only on a stage the pass itself wrote), and a projection or
+# registry change is now asked about directly (``_identity_inputs_
+# fingerprint``) and answered by a full pass at once.  So the period is the
+# net under what nobody has named, and since 2026-10-04 it is an hour, not ten
+# minutes: the full pass took 45-105 s a time on a busy morning, every ten
+# minutes, for facts the subsets had already staged.
 LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC = float(
-    os.environ.get("PM_LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC", "") or 600.0
+    os.environ.get("PM_LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC", "") or 3600.0
 )
+_IDENTITY_SWEEP_SCRIPT = ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
+
+
+def _identity_inputs_fingerprint(conn: sqlite3.Connection | None) -> str | None:
+    """What the identity export reads besides the archive rows: the sweep
+    script (it names the projection), the authority projection's bytes and
+    the target's station registry.  None when any cannot be read, which the
+    caller answers with a full pass."""
+
+    import hashlib as _hashlib  # noqa: PLC0415
+    import re as _re  # noqa: PLC0415
+
+    try:
+        script = _IDENTITY_SWEEP_SCRIPT.read_bytes()
+        named = _re.search(rb'PROJECTION="\$ROOT/([^"]+)"', script)
+        if named is None or conn is None:
+            return None
+        projection = (ROOT / named.group(1).decode("utf-8")).read_bytes()
+        registry = conn.execute(
+            "SELECT station_id,settlement_definition,content_sha256"
+            " FROM calibration_station_registry ORDER BY station_id"
+        ).fetchall()
+    except (OSError, sqlite3.Error, UnicodeDecodeError):
+        return None
+    digest = _hashlib.sha256()
+    for part in (script, projection, repr(registry).encode("utf-8")):
+        digest.update(_hashlib.sha256(part).digest())
+    return digest.hexdigest()
 # Every archive table the identity export reads by station, with the lane
 # filter the export applies where the table has a lane.  Origins land in the
 # same transaction as their report; halts and reviews land on their own.
@@ -8029,6 +8063,7 @@ class TargetProductionWorker:
         # snapshot and named by the next one.
         source_conn = getattr(self, "canonical_source_conn", None)
         rowids = _identity_table_rowids(source_conn)
+        inputs = _identity_inputs_fingerprint(getattr(self, "conn", None))
         try:
             # Called through the class: this pass reports and never raises,
             # and the scope is only an economy -- anything unexpected in it
@@ -8036,6 +8071,7 @@ class TargetProductionWorker:
             stations, full_reason, skip_substitute = (
                 TargetProductionWorker._identity_pass_scope(
                     self, watermark=watermark, rowids=rowids, conn=source_conn,
+                    inputs=inputs,
                 )
             )
         except Exception as exc:  # noqa: BLE001 -- see above
@@ -8099,15 +8135,19 @@ class TargetProductionWorker:
         # fast-lane checkpoint with a new report, and its receipt was kept
         # nowhere -- on 2026-10-04 the cycle spent 20 s a time in it with
         # no record of whether that was the full pass or a few stations.
-        self._add_span(
-            "live_observation_identity_pass",
-            (time.monotonic() - started) * 1000.0,
-            label=(
-                f"full:{full_reason or 'unscoped'}" if stations is None
-                else f"{len(stations)} stations"
-                + ("" if skip_substitute else " +substitute")
-            ),
-        )
+        # ``getattr``: this pass reports and never raises, and stand-ins for
+        # the worker (tests, rotation helpers) carry no span ledger.
+        add_span = getattr(self, "_add_span", None)
+        if callable(add_span):
+            add_span(
+                "live_observation_identity_pass",
+                (time.monotonic() - started) * 1000.0,
+                label=(
+                    f"full:{full_reason or 'unscoped'}" if stations is None
+                    else f"{len(stations)} stations"
+                    + ("" if skip_substitute else " +substitute")
+                ),
+            )
         # What was actually written, from the stage receipt rather than from
         # the exit code: a start the single-instance guard refused also exits
         # zero, and the two are not the same outcome.
@@ -8144,6 +8184,7 @@ class TargetProductionWorker:
                 self._live_observation_identity_rowids = rowids
                 if stations is None:
                     self._live_observation_identity_full_mono = started
+                    self._live_observation_identity_inputs = inputs
         return receipt
 
     def _identity_pass_scope(
@@ -8152,6 +8193,7 @@ class TargetProductionWorker:
         watermark: tuple[int, int, str] | None,
         rowids: Mapping[str, int] | None,
         conn: sqlite3.Connection | None,
+        inputs: str | None = None,
     ) -> tuple[list[str] | None, str, bool]:
         """Charter 181: ``(stations or None for a full pass, why full, skip
         the substitute stage)``.
@@ -8175,6 +8217,12 @@ class TargetProductionWorker:
             return None, "no_staged_snapshot", False
         if not previous_watermark or previous_watermark[2] != watermark[2]:
             return None, "utc_day_changed", False
+        # The projection, the script naming it and the station registry, as
+        # the last full pass read them: any change is a full pass now.
+        if inputs is None or inputs != getattr(
+            self, "_live_observation_identity_inputs", None
+        ):
+            return None, "identity_inputs_changed", False
         if time.monotonic() - float(last_full) >= LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC:
             return None, "periodic_full_pass", False
         changed = _identity_changed_stations(
