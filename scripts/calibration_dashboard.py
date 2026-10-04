@@ -16522,8 +16522,19 @@ box-shadow:0 1px 2px rgba(0,0,0,.35);transition:transform .13s ease}
    lane runs.  Red stays the LIVE flag's: a lane switched on under a lowered
    flag moves no money. */
 .lc-sw.lc-lane[aria-checked="true"]{background:var(--green)}
-.navctl-lane .lc-lane-st{margin-left:3px;font-size:10.5px;
-font-variant-numeric:tabular-nums}
+.navctl-gh .lc-lane-st{margin-left:3px;font-size:10.5px;font-weight:400;
+color:var(--muted);font-variant-numeric:tabular-nums}
+/* One group per strategy (user ruling 2026-10-04 「重新布局，分别按照策略+按钮
+   的形式」): its name, then its own switch and dials; the rule between two
+   groups is the only one drawn, so which dial is whose reads off the bar. */
+.navctl-g{display:inline-flex;align-items:flex-start;max-width:100%;min-width:0;
+padding:1px 4px 1px 9px;border-left:1px solid var(--line)}
+/* The name holds the left edge and the dials wrap beside it, so on a bar
+   too narrow for the basket's six a wrapped dial still sits under its own
+   strategy's name, never at the start of a line of its own. */
+.navctl-gh{font-weight:620;white-space:nowrap;margin-right:3px;line-height:26px}
+.navctl-gb{display:inline-flex;flex-wrap:wrap;align-items:center;min-width:0}
+.navctl-g .navctl-k{border-left:0;padding:1px 4px}
 /* The station gate, three switches per row.  A 34px slider each would be
    110px of chrome on a 45-row table, so these carry their state in the fill
    instead of a knob -- same contract as .lc-sw (the state and the action are
@@ -20273,43 +20284,50 @@ function liveControlStrip(){
     class="lc-w${coarse?" coarse":""}" data-knob="${knob}" data-delta="${delta}"
     aria-label="${LC_KNOBS[knob].name} ${delta>0?"+":"−"}${Math.abs(delta)}"
     onclick="lcAdjust('${knob}',${delta})">${text}</button>`;
-  const knob=(key,title,buttons)=>`<span class="navctl-k" data-knob="${key}"
-    title="${title}"><span class="navctl-l">${LC_KNOBS[key].name}</span>
+  const knob=(key,title,buttons,label)=>`<span class="navctl-k" data-knob="${key}"
+    title="${title}"><span class="navctl-l">${label||LC_KNOBS[key].name}</span>
     <span class="stp">${buttons}</span></span>`;
   const stakes = L.lane_stakes || {};
   const stakeKnob=(key,title)=>knob(key, title,
     `${b(key,-5,"−5",true)}${b(key,-1,"−")}<b id="${LC_KNOBS[key].id}">${
       stakes[key]==null?"—":LC_KNOBS[key].fmt(stakes[key])}</b>${
-      b(key,1,"+")}${b(key,5,"+5",true)}`);
+      b(key,1,"+")}${b(key,5,"+5",true)}`, "每笔");
+  // One group per strategy, its name first and then its own switch and
+  // dials (user ruling 2026-10-04 「重新布局，分别按照策略+按钮的形式」).  A
+  // dial sits in the group of the lane that reads it: the five capital dials
+  // are read by the basket alone (``basket_kernel.delta_v2``, the pool the
+  // budget caps); the 0.998 sell recycles what every lane won.
+  const group=(title,lane,body)=>`<span class="navctl-g" role="group" aria-label="${title}">
+    <span class="navctl-gh">${title}${lane?`<small class="lc-lane-st" data-lc-lane-stages="${lane}"></small>`:""}</span><span class="navctl-gb">${body}</span></span>`;
   return `<div class="navctl" id="lc-strip" data-lc="down" role="group"
     aria-label="实盘旋钮">
     <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
-    ${laneSwitch("basket")}
-    ${laneSwitch("proper_bet")}
-    ${stakeKnob("proper_bet", "Proper 下注线每笔预算 stake_usdc（USDC；每个站日这一笔挂满这么多，不低于交易所最小单，受现金封顶；宪章 252）")}
-    ${laneSwitch("certain_win_recycle")}
-    ${knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
-      `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
-        L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)}
-    ${knob("exposure", "总敞口上限 portfolio_risk_fraction（篮子自己的未结算持仓成本+在挂买单 占 真实余额 的上限，其他车道不计；宪章 141/223）",
-      `${b("exposure",-0.05,"−")}<b id="lc-exposure">${
-        L.exposure==null?"—":LC_KNOBS.exposure.fmt(L.exposure)}</b>${b("exposure",0.05,"+")}`)}
-    ${knob("sizing", "单站日定注 station_day_sizing_fraction（凯利押注、各类候选方案最多按真实余额的这个比例定大小，整条链共用；宪章 141）",
-      `${b("sizing",-0.005,"−")}<b id="lc-sizing">${
-        L.station_sizing==null?"—":LC_KNOBS.sizing.fmt(L.station_sizing)}</b>${b("sizing",0.005,"+")}`)}
-    ${knob("ceiling", "单站日上限 station_day_ceiling_fraction（抬到最小一手、补腿、下单最多花真实余额的这个比例，整条链共用；不能低于定注；宪章 141）",
-      `${b("ceiling",-0.01,"−")}<b id="lc-ceiling">${
-        L.station_ceiling==null?"—":LC_KNOBS.ceiling.fmt(L.station_ceiling)}</b>${b("ceiling",0.01,"+")}`)}
-    ${knob("budget", "预算 target_remaining_budget_usdc（USDC，按 5 的整数倍）",
-      `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
-        L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
-        b("budget",5,"+")}${b("budget",50,"+50",true)}`)}
-    <span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的每站日 定注 / 上限（美元）"><span class="stp"><b id="lc-capital-v">—</b></span></span>
-    ${laneSwitch("tiebreak")}
-    ${stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）")}
-    ${stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）")}
+    ${group("Proper 下注线", "proper_bet", laneSwitch("proper_bet")
+      + stakeKnob("proper_bet", "Proper 下注线每笔预算 stake_usdc（USDC；每个站日这一笔挂满这么多，不低于交易所最小单，受现金封顶；宪章 252）"))}
+    ${group("远尾做空 H1", "", stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）"))}
+    ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
+      + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
+    ${group("篮子", "basket", laneSwitch("basket")
+      + knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
+        `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
+          L.kelly==null?"—":LC_KNOBS.kelly.fmt(L.kelly)}</b>${b("kelly",0.05,"+")}`)
+      + knob("exposure", "总敞口上限 portfolio_risk_fraction（篮子自己的未结算持仓成本+在挂买单 占 真实余额 的上限，其他车道不计；宪章 141/223）",
+        `${b("exposure",-0.05,"−")}<b id="lc-exposure">${
+          L.exposure==null?"—":LC_KNOBS.exposure.fmt(L.exposure)}</b>${b("exposure",0.05,"+")}`)
+      + knob("sizing", "单站日定注 station_day_sizing_fraction（篮子的凯利押注与各类候选方案最多按真实余额的这个比例定大小；宪章 141）",
+        `${b("sizing",-0.005,"−")}<b id="lc-sizing">${
+          L.station_sizing==null?"—":LC_KNOBS.sizing.fmt(L.station_sizing)}</b>${b("sizing",0.005,"+")}`)
+      + knob("ceiling", "单站日上限 station_day_ceiling_fraction（篮子抬到最小一手、补腿、下单最多花真实余额的这个比例；不能低于定注；宪章 141）",
+        `${b("ceiling",-0.01,"−")}<b id="lc-ceiling">${
+          L.station_ceiling==null?"—":LC_KNOBS.ceiling.fmt(L.station_ceiling)}</b>${b("ceiling",0.01,"+")}`)
+      + `<span class="navctl-k" id="lc-capital" title="宪章 141：按最新真实余额换算的篮子每站日 定注 / 上限（美元）"><span class="navctl-l">每站日</span><span class="stp"><b id="lc-capital-v">—</b></span></span>`
+      + knob("budget", "预算 target_remaining_budget_usdc（USDC，按 5 的整数倍；篮子资金池的上限，其他车道读真实现金、不受它限）",
+        `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
+          L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
+          b("budget",5,"+")}${b("budget",50,"+50",true)}`))}
+    ${group("0.998 回收", "", laneSwitch("certain_win_recycle"))}
   </div>`;
 }
 // Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关」「秤砣线也
@@ -20337,10 +20355,10 @@ const LC_LANES = {
 function laneSwitch(key){
   const L = D.live_readiness || {}, spec = LC_LANES[key];
   const on = !!((L.strategy_lanes||{})[key]);
+  // The lane's name and stages are its group's heading (liveControlStrip).
   return `<span class="navctl-k navctl-lane" data-lc-lane-box="${key}"
     title="${h(spec.name)}车道开关（开：${h(spec.on)}；关：${h(spec.off)}）· 每次改动写 data/live_control_audit.jsonl"
-    ><span class="navctl-l">${spec.name}<small class="lc-lane-st"
-      data-lc-lane-stages="${key}"></small></span><button type="button"
+    ><span class="navctl-l">开关</span><button type="button"
       class="lc-sw lc-lane" role="switch" data-lc-lane="${key}"
       aria-checked="${on}" aria-label="${spec.name}车道开关" disabled
       onclick="lcLane(this)"></button></span>`;

@@ -168,6 +168,32 @@ def test_the_board_draws_three_dials_and_no_consensus_switch() -> None:
     assert '"/api/lane-stake"' in server
 
 
+def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
+    # User ruling 2026-10-04 「重新布局，分别按照策略+按钮的形式」: each dial in
+    # the group of the lane that reads it -- the five capital dials are the
+    # basket's alone.
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    strip = source[source.index("function liveControlStrip(){"):]
+    strip = strip[: strip.index("\n}\n")]
+    titles = ["Proper 下注线", "远尾做空 H1", "秤砣线", "篮子", "0.998 回收"]
+    starts = [strip.index(f'${{group("{t}"') for t in titles]
+    assert starts == sorted(starts)
+    parts = {t: strip[a:b] for t, a, b in zip(titles, starts, starts[1:] + [len(strip)])}
+    expected = {
+        "Proper 下注线": ['laneSwitch("proper_bet")', 'stakeKnob("proper_bet"'],
+        "远尾做空 H1": ['stakeKnob("tail_short"'],
+        "秤砣线": ['laneSwitch("tiebreak")', 'stakeKnob("tiebreak"'],
+        "篮子": ['laneSwitch("basket")', 'knob("kelly"', 'knob("exposure"', 'knob("sizing"',
+                 'knob("ceiling"', 'knob("budget"', 'id="lc-capital"'],
+        "0.998 回收": ['laneSwitch("certain_win_recycle")'],
+    }
+    for title, members in expected.items():
+        for member in members:
+            assert member in parts[title], (title, member)
+            others = [t for t in titles if t != title]
+            assert not any(member in parts[t] for t in others), (title, member)
+
+
 def test_the_charter_and_agents_carry_the_ruling() -> None:
     text = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     body = text[text.index(f"\n{CHARTER}. "):]
