@@ -121,6 +121,30 @@ def test_a_high_frequency_row_names_no_station(monkeypatch) -> None:
     assert len(runs.calls) == 2
 
 
+def test_a_station_outside_the_fleet_does_not_spoil_the_subset(monkeypatch) -> None:
+    """2026-10-04 03:37Z: LTFM, UUWW and LLBG are collected into the archive
+    and staged in the station registry for onboarding, but not in the fleet;
+    the builder's full pass ignores them and, asked for one by name, refuses
+    the whole subset -- so every pass after one of them reported fell back to
+    the full pass (49 s)."""
+
+    fleet = set(pw.coordinate_registry_manifest()["station_ids"])
+    assert {"LTFM", "UUWW", "LLBG"}.isdisjoint(fleet) and "EGLC" in fleet
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    worker = _worker(archive)
+    worker._identify_live_observations()
+    _report(archive, "awc_o2", "awc", "EGLC")
+    _report(archive, "awc_o3", "awc", "LTFM")
+    assert worker._identify_live_observations()["stations"] == ["EGLC"]
+    # Only an outsider moved: nothing of the fleet's to subset, as when no
+    # AWC station moved at all.
+    _report(archive, "awc_o4", "awc", "UUWW")
+    alone = worker._identify_live_observations()
+    assert (alone["scope"], alone["full_pass_reason"]) == ("full", "no_awc_station_moved")
+    assert [call["stations"] for call in runs.calls] == [None, "EGLC", None]
+
+
 def test_a_halt_review_names_its_station_too(monkeypatch) -> None:
     archive = _archive()
     _Runs(monkeypatch)
