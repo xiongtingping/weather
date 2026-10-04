@@ -218,10 +218,11 @@ def test_a_projection_or_registry_change_is_a_full_pass_at_once(monkeypatch) -> 
     # The full pass took the new inputs as its own: subsets resume.
     _report(archive, "awc_o4", "awc", "KORD")
     assert worker._identify_live_observations()["stations"] == ["KORD"]
-    # Inputs that cannot be read are a full pass every time.
+    # Inputs that cannot be read decide nothing: the subset runs, and the
+    # periodic net is what is left.
     runs.inputs = None
     _report(archive, "awc_o5", "awc", "KLAX")
-    assert worker._identify_live_observations()["full_pass_reason"] == "identity_inputs_changed"
+    assert worker._identify_live_observations()["stations"] == ["KLAX"]
 
 
 def test_the_inputs_fingerprint_reads_what_the_export_reads(tmp_path, monkeypatch) -> None:
@@ -231,6 +232,12 @@ def test_the_inputs_fingerprint_reads_what_the_export_reads(tmp_path, monkeypatc
     apply_production_ssot_schema(target)
     first = pw._identity_inputs_fingerprint(target)
     assert first and first == pw._identity_inputs_fingerprint(target)
+    # The resident's connections return sqlite3.Row (2026-10-04: a repr of
+    # those carried an object address and changed on every call).
+    target.row_factory = sqlite3.Row
+    assert pw._identity_inputs_fingerprint(target) == first
+    assert pw._identity_inputs_fingerprint(target) == first
+    target.row_factory = None
     assert pw._identity_inputs_fingerprint(None) is None
     script = tmp_path / "sweep.sh"
     projection = tmp_path / "config" / "projection.json"

@@ -1785,14 +1785,21 @@ def _identity_inputs_fingerprint(conn: sqlite3.Connection | None) -> str | None:
         if named is None or conn is None:
             return None
         projection = (ROOT / named.group(1).decode("utf-8")).read_bytes()
-        registry = conn.execute(
-            "SELECT station_id,settlement_definition,content_sha256"
-            " FROM calibration_station_registry ORDER BY station_id"
-        ).fetchall()
+        # Plain tuples of text: the resident's connections hand back
+        # sqlite3.Row, whose repr is an object address -- a fingerprint of
+        # that changed on every call and made every pass a full one
+        # (2026-10-04 04:49-04:59Z, 244 s in one cycle).
+        registry = [
+            tuple(str(value) for value in row)
+            for row in conn.execute(
+                "SELECT station_id,settlement_definition,content_sha256"
+                " FROM calibration_station_registry ORDER BY station_id"
+            ).fetchall()
+        ]
     except (OSError, sqlite3.Error, UnicodeDecodeError):
         return None
     digest = _hashlib.sha256()
-    for part in (script, projection, repr(registry).encode("utf-8")):
+    for part in (script, projection, json.dumps(registry).encode("utf-8")):
         digest.update(_hashlib.sha256(part).digest())
     return digest.hexdigest()
 # Every archive table the identity export reads by station, with the lane
@@ -8218,10 +8225,11 @@ class TargetProductionWorker:
         if not previous_watermark or previous_watermark[2] != watermark[2]:
             return None, "utc_day_changed", False
         # The projection, the script naming it and the station registry, as
-        # the last full pass read them: any change is a full pass now.
-        if inputs is None or inputs != getattr(
-            self, "_live_observation_identity_inputs", None
-        ):
+        # the last full pass read them: any change is a full pass now.  Inputs
+        # that cannot be read decide nothing here -- the periodic net below
+        # still runs -- rather than turning every pass into a full one.
+        kept_inputs = getattr(self, "_live_observation_identity_inputs", None)
+        if inputs is not None and inputs != kept_inputs:
             return None, "identity_inputs_changed", False
         if time.monotonic() - float(last_full) >= LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC:
             return None, "periodic_full_pass", False
