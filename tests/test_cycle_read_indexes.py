@@ -7,7 +7,8 @@ store has no sqlite_stat tables, so its planner reads the same schema):
 
 * the forward training check's order-state snapshot by version;
 * the basket's open exposure, a decision probe per filled or resting order;
-* "does this station issue TAF TX".
+* "does this station issue TAF TX";
+* the quote-lease read: a station-day's newest quote expiry (2026-10-04).
 """
 
 from __future__ import annotations
@@ -29,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "basket_order_state_snapshot_version_idx"
 EXPOSURE = "auto_trade_decisions_exposure_idx"
 TAF_TX = "calibration_forward_taf_capture_tx_idx"
-NEW = (VERSION, EXPOSURE, TAF_TX)
+EXPIRY = "basket_official_ws_snapshot_scope_expiry_idx"
+NEW = (VERSION, EXPOSURE, TAF_TX, EXPIRY)
 
 
 def _store(path: Path) -> sqlite3.Connection:
@@ -73,6 +75,7 @@ def test_the_migration_states_the_ddl_verbatim() -> None:
         VERSION: "basket_order_state_snapshot",
         EXPOSURE: "auto_trade_decisions",
         TAF_TX: "calibration_forward_taf_capture",
+        EXPIRY: "basket_official_ws_snapshot",
     }
     ddl = " ".join((ROOT / "bayes_basket_target" / "ssot.py").read_text(encoding="utf-8").split())
     for name, statement in _migration().STATEMENTS:
@@ -107,6 +110,22 @@ def test_the_taf_tx_question_reads_only_rows_that_carry_one(tmp_path) -> None:
     assert f"INDEX {TAF_TX}" in plan, plan
 
 
+def test_a_station_days_newest_quote_expiry_is_one_seek(tmp_path) -> None:
+    from bayes_basket_target.production_worker import TargetProductionWorker
+
+    conn = _store(tmp_path / "ssot.db")
+    worker = object.__new__(TargetProductionWorker)
+    worker.conn = conn
+    statements = _traced(conn, lambda: worker._scope_day_quote_expiry("2026-10-05", "KLGA"))
+    sql = next(s for s in statements if "MAX(quote_expires_at)" in s)
+    plan = _plan(conn, sql.replace("'KLGA'", "?").replace("'2026-10-05'", "?"))
+    assert f"SEARCH basket_official_ws_snapshot USING COVERING INDEX {EXPIRY} (station_id=? AND event_date=?)" in plan, plan
+    # The fleet-wide form keeps the day index.
+    statements = _traced(conn, lambda: worker._scope_day_quote_expiry("2026-10-05"))
+    sql = next(s for s in statements if "MAX(quote_expires_at)" in s)
+    assert "basket_official_ws_snapshot_day_expiry_idx" in _plan(conn, sql.replace("'2026-10-05'", "?"))
+
+
 def _store_without_the_new_indexes(tmp_path: Path) -> Path:
     path = tmp_path / "live.db"
     conn = _store(path)
@@ -139,6 +158,14 @@ def _store_without_the_new_indexes(tmp_path: Path) -> Path:
              "authority_scope": "PRODUCTION_NO_LIVE_ONLY"}
             for i in range(10)
         ]),
+        ("basket_official_ws_snapshot", [
+            {"snapshot_id": f"w{i}", "station_id": f"S{i % 4}", "event_date": "2026-10-04",
+             "sequence": i, "quote_expires_at": f"2026-10-04T00:0{i}:00Z",
+             "state": "COMMITTED", "content_sha256": f"{i + 500:064x}",
+             "quote_freshness_policy_sha256": "f" * 64, "quote_source": "OFFICIAL_CLOB_WS",
+             "remaining_budget_usdc": 0.0}
+            for i in range(6)
+        ]),
     ):
         columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
         for row in rows:
@@ -162,7 +189,7 @@ def test_the_migration_adds_all_three_and_proves_them_against_their_tables(tmp_p
     assert receipt["state"] == "migrated"
     assert receipt["indexes_created"] == sorted(NEW)
     rows = {item["index"]: item["rows"] for item in receipt["index_verification"]}
-    assert rows == {VERSION: 8, EXPOSURE: 7, TAF_TX: 4}
+    assert rows == {VERSION: 8, EXPOSURE: 7, TAF_TX: 4, EXPIRY: 6}
     assert all(item["planner_used_index"] for item in receipt["index_verification"])
     again = _migration().migrate(db_path=path, confirmed_writer_stopped=False)
     assert again["indexes_created"] == [] and sorted(again["indexes_already_present"]) == sorted(NEW)

@@ -1599,6 +1599,17 @@ ON basket_official_ws_snapshot(event_date,quote_expires_at);
 CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_scope_sequence_idx
 ON basket_official_ws_snapshot(station_id,event_date,sequence DESC);
 
+-- The quote-lease read in its per-station form, MAX(quote_expires_at) of one
+-- station-day, had no index of its own: the planner took the day index above
+-- and walked the day's rows newest expiry first, reading each row to test
+-- its station until it met one of the station's.  For a station whose
+-- freshest book is hours old that is most of the day.  On 2026-10-04 06:11Z,
+-- on a host short of memory, 343 such reads took 155 s of a 305 s cycle
+-- (``_scope_day_quote_expiry``, from the decision loop's lease probe and
+-- refresh).  This answers it with one seek.
+CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_scope_expiry_idx
+ON basket_official_ws_snapshot(station_id,event_date,quote_expires_at);
+
 -- Tenth of the same bug class, and the most expensive yet: "the freshest
 -- book of the last twenty minutes, whatever the scope" leads on no index
 -- here, so it scanned.  Measured 2026-09-16 at 445,097 rows: 100.1 seconds
@@ -6854,6 +6865,7 @@ def _upgrade_quote_freshness_columns(
         "basket_official_ws_snapshot_day_expiry_idx",
         "basket_official_ws_snapshot_scope_sequence_idx",
         "basket_official_ws_snapshot_quote_observed_idx",
+        "basket_official_ws_snapshot_scope_expiry_idx",
     ):
         conn.execute(f"DROP INDEX IF EXISTS {_index}")
     if row_count:
@@ -6900,6 +6912,7 @@ def _upgrade_settlement_timezone_columns(
                 "basket_official_ws_snapshot_day_expiry_idx",
                 "basket_official_ws_snapshot_scope_sequence_idx",
                 "basket_official_ws_snapshot_quote_observed_idx",
+                "basket_official_ws_snapshot_scope_expiry_idx",
             ),
             "triggers": (
                 "basket_official_ws_snapshot_no_update",

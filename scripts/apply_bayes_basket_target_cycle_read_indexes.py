@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Additive index-only migration for three production-cycle reads (2026-10-03).
+"""Additive index-only migration for production-cycle reads (2026-10-03/04).
 
 User ruling 2026-10-03 「停机建索引」.  Measured on the live store the same
 afternoon, each a read the resident makes every cycle against an index that
@@ -18,6 +18,13 @@ stops one column short:
   TX" walks every capture of a station without one (28 of 45) and reads each
   row for ``tx_c``: 1-3 s a cycle.  Partial on ``tx_c IS NOT NULL``.
 
+Added 2026-10-04 (user: 「继续打生产周期」), rerun to create only it:
+
+* ``basket_official_ws_snapshot_scope_expiry_idx`` -- the quote-lease read
+  asks a station-day for its newest ``quote_expires_at``; the planner walked
+  the day index newest expiry first, reading each row for its station: 343
+  reads, 155 s of a 305 s cycle at 06:11Z on a host short of memory.
+
 All three are declared in the schema DDL verbatim; the resident never
 applies schema, so this is how they reach the live store.  Verified the way
 the replay-compile migration verifies: each index is read through and its
@@ -25,7 +32,7 @@ count compared with the same count taken off the table with unary ``+``
 suppressing it; a mismatch rolls the transaction back.
 
 The writer must be stopped (``launchctl bootout``: the service is KeepAlive):
-this takes BEGIN IMMEDIATE and builds indexes over ~1.18M and ~139k rows.
+this takes BEGIN IMMEDIATE and builds indexes over ~1.1-1.2M and ~139k rows.
 Rerunning it creates only what is missing.
 """
 from __future__ import annotations
@@ -68,6 +75,11 @@ STATEMENTS = (
         "CREATE INDEX IF NOT EXISTS calibration_forward_taf_capture_tx_idx"
         " ON calibration_forward_taf_capture(station_id) WHERE tx_c IS NOT NULL",
     ),
+    (
+        "basket_official_ws_snapshot_scope_expiry_idx",
+        "CREATE INDEX IF NOT EXISTS basket_official_ws_snapshot_scope_expiry_idx\n"
+        "ON basket_official_ws_snapshot(station_id,event_date,quote_expires_at)",
+    ),
 )
 
 # The counts each new index has to reproduce, and the table each is read from
@@ -98,6 +110,19 @@ _INDEX_AGREEMENT_CHECKS = (
         " WHERE station_id>='' AND tx_c IS NOT NULL",
         "SELECT COUNT(*) FROM calibration_forward_taf_capture"
         " WHERE +station_id>='' AND tx_c IS NOT NULL",
+    ),
+    (
+        "basket_official_ws_snapshot_scope_expiry_idx",
+        "SELECT COUNT(*) FROM basket_official_ws_snapshot"
+        " INDEXED BY basket_official_ws_snapshot_scope_expiry_idx"
+        " WHERE station_id>=''",
+        # Not off the table: its rows carry ``buckets_json`` and
+        # ``cash_phase_input_json`` (~8 GB), so a scan would hold the stopped
+        # writer for minutes.  Through the scope-sequence index instead,
+        # which has one entry per row as this one must.
+        "SELECT COUNT(*) FROM basket_official_ws_snapshot"
+        " INDEXED BY basket_official_ws_snapshot_scope_sequence_idx"
+        " WHERE station_id>=''",
     ),
 )
 
