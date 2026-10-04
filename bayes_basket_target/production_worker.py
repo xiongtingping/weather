@@ -18033,31 +18033,28 @@ class TargetProductionWorker:
         return sorted(scope for scope in scopes if all(scope))
 
     def _identify_live_observations_for_chain(self) -> dict[str, Any]:
-        """The identity pass at the chain's position, only when it can matter.
+        """The identity pass at the chain's position, whenever a report landed.
 
-        The chain's P1 reads reports strictly as of the cycle clock.  When
-        the head pass ran, it identified every one of them already; when it
-        found no uncovered report, none needs it.  A report that landed since
-        belongs to the next cycle, whose head pass identifies it -- running
-        the pass here as well only doubled a 33-77s fixed cost per cycle
-        (measured on the first cycle after charter 148 went live).  Any other
-        head-pass outcome is the fallback to the old single pass, and there
-        the identity pass runs here exactly as it always did.
+        Until 2026-10-04 this skipped whenever the head pass had run or found
+        nothing uncovered, on the premise that the chain's P1 reads reports
+        as of the head's clock.  It does not: the chain reads as of its own
+        clock, taken after the intent reconcile and the cash-phase flush, so
+        a report that landed in between went into the chain's P1 with no
+        identity pass behind it.  Its envelope carried no truth-revision
+        hash and the atomic-fact gate refused that station-day until the
+        next report (SAEZ 11:16:16Z: cycle head 11:16:15, P1 in the chain
+        at 11:16:37, no identity pass that cycle; 68 such P1s on 10-03).
+
+        The pass decides for itself: it reads the archive watermark now --
+        after the chain's clock -- and skips at no cost when nothing landed
+        since the pass it last staged, and otherwise runs the subset for the
+        stations that moved (charter 181), a few seconds.
         """
 
         head = getattr(self, "_early_p1_this_cycle", None)
-        head_state = str((head or {}).get("state") or "")
-        if head_state in ("RAN", "SKIPPED_NO_UNCOVERED_REPORTS"):
-            return {
-                "state": "SKIPPED_HEAD_PASS_COVERED",
-                "head_pass_state": head_state,
-                "duration_sec": 0.0,
-                "calls_order_gateway": False,
-                "places_orders": False,
-                "live_submit_authorized": False,
-                "orders_submitted": 0,
-            }
-        return self._identify_live_observations()
+        receipt = dict(self._identify_live_observations())
+        receipt["head_pass_state"] = str((head or {}).get("state") or "")
+        return receipt
 
     def _materialize_early_p0m(
         self,

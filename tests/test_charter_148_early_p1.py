@@ -252,18 +252,56 @@ def test_the_real_p1_pass_restricts_to_the_scopes_it_is_handed(monkeypatch) -> N
     assert read == [] and none["scope_count"] == 0
 
 
-@pytest.mark.parametrize("head_state", ["RAN", "SKIPPED_NO_UNCOVERED_REPORTS"])
-def test_the_chain_does_not_repeat_identity_after_a_covering_head_pass(monkeypatch, head_state: str) -> None:
+@pytest.mark.parametrize("head_state", ["RAN", "SKIPPED_NO_UNCOVERED_REPORTS", "DISABLED", "SKIPPED_IDENTITY_NOT_STAGED", "FAILED", ""])
+def test_the_chain_always_asks_the_identity_pass(monkeypatch, head_state: str) -> None:
+    """2026-10-04: the chain reads reports as of its own, later clock, so a
+    covering head pass does not cover it.  The pass itself skips when the
+    archive has nothing new since the pass it last staged."""
+
     worker = _worker()
-    worker._early_p1_this_cycle = {"state": head_state, "ran": head_state == "RAN"}
-    monkeypatch.setattr(worker, "_identify_live_observations", lambda: pytest.fail("identity repeated"))
+    worker._early_p1_this_cycle = {"state": head_state, "ran": head_state == "RAN"} if head_state else None
+    calls: list[int] = []
+
+    def identity():
+        calls.append(1)
+        return {"state": "SKIPPED_NO_NEW_REPORTS"}
+
+    monkeypatch.setattr(worker, "_identify_live_observations", identity)
     out = worker._identify_live_observations_for_chain()
-    assert out["state"] == "SKIPPED_HEAD_PASS_COVERED" and out["head_pass_state"] == head_state
+    assert calls == [1]
+    assert out["state"] == "SKIPPED_NO_NEW_REPORTS" and out["head_pass_state"] == head_state
 
 
-@pytest.mark.parametrize("head_state", ["DISABLED", "SKIPPED_WATERMARK_UNREADABLE", "SKIPPED_IDENTITY_NOT_STAGED", "FAILED", "SKIPPED_P1_NOT_ATTEMPTED", ""])
-def test_the_chain_runs_identity_when_the_head_pass_fell_back(monkeypatch, head_state: str) -> None:
+def test_a_report_landing_after_the_head_watermark_makes_the_chain_pass_run(monkeypatch) -> None:
+    """The case behind the regression: the head pass staged watermark W, a
+    report moved the archive to W' before the chain's clock -- the chain's
+    call must run the pass, not skip it."""
+
     worker = _worker()
-    worker._early_p1_this_cycle = {"state": head_state, "ran": False} if head_state else None
-    monkeypatch.setattr(worker, "_identify_live_observations", lambda: {"state": "STAGED"})
-    assert worker._identify_live_observations_for_chain() == {"state": "STAGED"}
+    worker._early_p1_this_cycle = {"state": "RAN", "ran": True}
+    head_mark = (100, 5, "2026-10-04")
+    worker._live_observation_identity_watermark = head_mark
+    worker._live_observation_identity_last = {"state": "STAGED"}
+    marks = iter([(101, 5, "2026-10-04")])
+    monkeypatch.setattr(pw, "_live_observation_watermark", lambda _conn: next(marks))
+    ran: list[int] = []
+
+    class Done:
+        returncode = 0
+        stderr = ""
+
+    def fake_run(*_a, **_k):
+        ran.append(1)
+        return Done()
+
+    monkeypatch.setattr(pw, "run_script_group_bounded", fake_run)
+    monkeypatch.setattr(pw, "_identity_table_rowids", lambda _conn: None)
+    monkeypatch.setattr(pw, "_identity_inputs_fingerprint", lambda _conn: None)
+    monkeypatch.setattr(pw, "load_bounded_json", lambda _path: None)
+    monkeypatch.setattr(pw.TargetProductionWorker, "_adopt_identity_pass_state", lambda self, rowids: None)
+    worker._live_observation_identity_rowids = {}
+    script = pw.ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
+    assert script.is_file()
+    out = worker._identify_live_observations_for_chain()
+    assert ran == [1], "a report past the head's watermark must be identified before the chain's P1"
+    assert out["state"] == "STAGED"
