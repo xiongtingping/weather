@@ -13282,6 +13282,13 @@ def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+# Station days whose Proper-lane orders the operator took out of the lane's
+# statistics (user 2026-10-05: 「Proper 下注线去掉CYYZ 2026-09-29这个订单的统计」
+# -- its one order, 20°C YES, filled 2026-09-28 05:03Z under the v2 rule).
+# The order stays in the order table, marked, and in no count, sum or rate.
+PROPER_BET_STATS_EXCLUDED_DAYS = frozenset({("CYYZ", "2026-09-29")})
+
+
 def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """Proper 下注线 -- the log-proper lane's own statistics (charter 231).
 
@@ -13461,6 +13468,7 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "settled_bucket": landed[0] if landed else None,
             "hit": hit, "payout_usdc": payout,
             "pnl_usdc": (payout - notional) if payout is not None else None,
+            "stats_excluded": (station_id, event_date) in PROPER_BET_STATS_EXCLUDED_DAYS,
         })
     trades.sort(
         key=lambda t: (t["event_date"], str(t["posted_at"] or ""), t["station_id"]),
@@ -13468,7 +13476,8 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     )
     for t in trades:
         del t["posted_at"]
-    filled_rows = [t for t in trades if t["filled_size"] > 0]
+    counted = [t for t in trades if not t["stats_excluded"]]
+    filled_rows = [t for t in counted if t["filled_size"] > 0]
     settled_rows = [t for t in filled_rows if t["hit"] is not None]
     stake_sum = sum(t["filled_notional_usdc"] for t in settled_rows)
     payout_sum = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
@@ -13476,7 +13485,12 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     out["trades"] = {
         "available": True,
         "rows": trades,
-        "orders": len(trades),
+        "orders": len(counted),
+        "stats_excluded": [
+            {"station_id": t["station_id"], "event_date": t["event_date"],
+             "bucket": t["bucket"], "side": t["side"]}
+            for t in trades if t["stats_excluded"]
+        ],
         "filled": len(filled_rows),
         "filled_yes": sum(1 for t in filled_rows if t["side"] == "YES"),
         "filled_no": sum(1 for t in filled_rows if t["side"] == "NO"),
@@ -20026,6 +20040,8 @@ function properBetLane(){
     ${tile("出计划 / 计划腿 / 计划成本",`${E.planned} / ${E.planned_legs} / ${usd(E.planned_cost_usdc)}`,`计划中 ${cnt(ps.active||0)} · 已完成 ${cnt(ps.done||0)} · 已关闭 ${cnt(ps.closed||0)}`)}
     ${tile("订单 / 成交（YES·NO）/ 已结算",`${cnt(R.orders)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`YES ${cnt(R.filled_yes)} · NO ${cnt(R.filled_no)} · 在飞 ${usd(R.in_flight_usdc)}`)}
   </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
+  const excluded=R.stats_excluded||[];
+  const excludedNote=excluded.length?`<div class="muted" style="margin-top:4px">以上统计不含 ${excluded.map(x=>`${h(x.station_id)} ${h(x.event_date)} ${h(x.bucket)} ${h(x.side)}`).join("、")}（熊先生裁决不计入统计，逐笔表里照常列出并标注）。</div>`:"";
   const money=R.available&&R.settled?`<div class="grid g3" style="margin-top:8px">
     ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${cnt(R.settled)} 笔`)}
     ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${cnt(R.hits)} / ${R.settled}`)}
@@ -20059,13 +20075,13 @@ function properBetLane(){
     <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
     <td>${stateTxt(t)}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
-    <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔，同站日同桶同方向合并为一笔，新的在上）</summary>
+    <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}${t.stats_excluded?` <span class="pill amber">不计入统计</span>`:""}</td></tr>`).join("");
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔${excluded.length?`，其中 ${excluded.length} 笔不计入统计`:""}，同站日同桶同方向合并为一笔，新的在上）</summary>
     ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>方向</th><th>成交均价</th><th>目标股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.planned}</td><td class="mono">${r.legs}</td><td class="mono">${usd(r.cost_usdc)}</td></tr>`).join("");
   const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
     <table><thead><tr><th>事件日</th><th>判过</th><th>出计划</th><th>计划腿</th><th>计划成本</th></tr></thead><tbody>${days}</tbody></table></details>`:"";
-  return settings+evalTiles+money+refTable+recentTable+tradeTable+daysTable;
+  return settings+evalTiles+money+excludedNote+refTable+recentTable+tradeTable+daysTable;
 }
 
 // 「秤砣线」(charter 146): the lane's switch and stake, the first decisions it

@@ -187,6 +187,31 @@ def test_the_proper_page_merges_an_orders_rungs_and_drops_unfilled_ones(monkeypa
     assert not any(t["event_date"] == "2026-10-05" for t in trades["rows"])
 
 
+def test_the_proper_page_leaves_cyyz_0929_out_of_its_statistics(monkeypatch) -> None:
+    # User 2026-10-05: 「Proper 下注线去掉CYYZ 2026-09-29这个订单的统计」.
+    legs = [
+        _leg(),
+        _leg(order_intent_id="y1", station_id="CYYZ", event_date="2026-09-29",
+             bucket="20°C", filled_notional_usdc=3.0),
+    ]
+    book = {"legs": legs, "settled": {("KLGA", "2026-09-24"): ("70-71°F",),
+                                      ("CYYZ", "2026-09-29"): ("19°C",)}}
+    monkeypatch.setattr(C, "_render_live_book", lambda _conn: book)
+
+    trades = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))["trades"]
+
+    # Still listed, marked, and in no count or sum.
+    cyyz = next(t for t in trades["rows"] if t["station_id"] == "CYYZ")
+    assert cyyz["stats_excluded"] is True and cyyz["hit"] is False
+    assert trades["stats_excluded"] == [
+        {"station_id": "CYYZ", "event_date": "2026-09-29", "bucket": "20°C", "side": "YES"}
+    ]
+    assert trades["orders"] == trades["filled"] == trades["settled"] == 1
+    assert trades["stake_usdc"] == pytest.approx(2.0)
+    assert trades["pnl_usdc"] == pytest.approx(8.0)
+    assert trades["hit_rate"] == pytest.approx(1.0)
+
+
 def test_the_proper_page_stands_without_its_table(monkeypatch) -> None:
     monkeypatch.setattr(C, "_render_live_book", lambda _conn: {"legs": [], "settled": {}})
     out = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))
