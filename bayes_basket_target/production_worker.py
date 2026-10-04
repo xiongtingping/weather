@@ -8095,6 +8095,19 @@ class TargetProductionWorker:
             "substitute_skipped": bool(stations is not None and skip_substitute),
             **boundary,
         }
+        # Named on the cycle record: the pass runs at the head and at every
+        # fast-lane checkpoint with a new report, and its receipt was kept
+        # nowhere -- on 2026-10-04 the cycle spent 20 s a time in it with
+        # no record of whether that was the full pass or a few stations.
+        self._add_span(
+            "live_observation_identity_pass",
+            (time.monotonic() - started) * 1000.0,
+            label=(
+                f"full:{full_reason or 'unscoped'}" if stations is None
+                else f"{len(stations)} stations"
+                + ("" if skip_substitute else " +substitute")
+            ),
+        )
         # What was actually written, from the stage receipt rather than from
         # the exit code: a start the single-instance guard refused also exits
         # zero, and the two are not the same outcome.
