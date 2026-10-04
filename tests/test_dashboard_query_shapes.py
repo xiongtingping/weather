@@ -179,7 +179,9 @@ def test_the_snapshot_sweep_does_not_sort_two_gigabytes_to_find_a_maximum():
 
     assert 'FROM basket_official_ws_snapshot WHERE event_date >= ?"' in SOURCE
     assert '" ORDER BY observed_at",' not in SOURCE
-    assert "last_bid_at" in SOURCE
+    # What the sweep keeps per bucket changed on 2026-10-03 (277443a0: the
+    # normalised entry mid in place of the last bid); the read it does may
+    # still not sort, which is what this test is for.
 
     conn = sqlite3.connect(":memory:")
     conn.execute(
