@@ -115,52 +115,80 @@ def test_the_proper_page_reads_the_lanes_rows_and_its_own_legs(monkeypatch) -> N
     assert [p["bucket"] for p in top] == ["72-73°F", "70-71°F", "68-69°F"]
 
     trades = out["trades"]
-    assert trades["sent"] == 3 and trades["filled"] == 2
+    assert trades["orders"] == 3 and trades["filled"] == 2
     assert (trades["filled_yes"], trades["filled_no"]) == (1, 1)
-    by_intent = {t["order_intent_id"]: t for t in trades["rows"]}
-    assert by_intent["i1"]["hit"] is True and by_intent["i1"]["pnl_usdc"] == pytest.approx(8.0)
-    assert by_intent["i2"]["hit"] is True and by_intent["i2"]["pnl_usdc"] == pytest.approx(3.0)
-    assert by_intent["i4"]["hit"] is None
+    by_key = {(t["event_date"], t["bucket"], t["side"]): t for t in trades["rows"]}
+    yes = by_key[("2026-09-24", "70-71°F", "YES")]
+    no = by_key[("2026-09-24", "72-73°F", "NO")]
+    assert yes["hit"] is True and yes["pnl_usdc"] == pytest.approx(8.0)
+    assert no["hit"] is True and no["pnl_usdc"] == pytest.approx(3.0)
+    assert by_key[("2026-09-28", "70-71°F", "YES")]["hit"] is None
     assert trades["pnl_usdc"] == pytest.approx(11.0)
     assert trades["hit_rate"] == pytest.approx(1.0)
 
 
-def test_the_proper_page_drops_unfilled_cancels_before_any_cut(monkeypatch) -> None:
-    # 2026-10-04: 714 legs, the 80 newest mostly unfilled reposted rungs, ten
-    # shown (user: 「前端有截断，只显示了10笔订单！去掉cancelled的订单」).
+def test_the_proper_page_merges_an_orders_rungs_and_drops_unfilled_ones(monkeypatch) -> None:
+    # 2026-10-04: 718 rung rows, the 80 newest mostly unfilled reposts, ten
+    # shown (user: 「前端有截断，只显示了10笔订单！去掉cancelled的订单」
+    # 「同一个站点同一笔订单合并在一起」).
+    key = {"station_id": "RCSS", "event_date": "2026-10-06", "bucket": "26°C",
+           "requested_size": 5.0}
     rungs = [
-        _leg(order_intent_id=f"c{i}", event_date="2026-10-06", filled_size=0.0,
-             filled_notional_usdc=0.0, state="cancelled",
+        _leg(order_intent_id=f"c{i}", **key, filled_size=0.0, filled_notional_usdc=0.0,
+             state="cancelled", limit_price=0.30,
              created_at=f"2026-10-04T{i // 60:02d}:{i % 60:02d}:00Z")
         for i in range(200)
+    ] + [
+        # Two partial fills on two rungs of the same order.
+        _leg(order_intent_id="p1", **key, state="cancelled", filled_size=1.6,
+             filled_notional_usdc=0.48, limit_price=0.30,
+             created_at="2026-10-04T05:00:00Z"),
+        _leg(order_intent_id="p2", **key, state="filled", filled_size=3.4,
+             filled_notional_usdc=1.19, limit_price=0.35,
+             created_at="2026-10-04T06:00:00Z"),
     ]
     legs = rungs + [
+        # Never filled, nothing working: not a trade.
         _leg(order_intent_id="f1", event_date="2026-10-05", state="failed",
              filled_size=0.0, filled_notional_usdc=0.0),
-        # Cancelled after a partial fill: its shares settle, so it stays.
-        _leg(order_intent_id="p1", event_date="2026-10-06", state="cancelled",
-             filled_size=1.6, filled_notional_usdc=0.5,
-             created_at="2026-10-04T09:18:00Z"),
+        _leg(order_intent_id="f2", event_date="2026-10-05", state="cancelled",
+             filled_size=0.0, filled_notional_usdc=0.0),
+        # Unfilled but resting: shown as working.
+        _leg(order_intent_id="r1", station_id="KLGA", event_date="2026-10-07",
+             state="cancelled", filled_size=0.0, filled_notional_usdc=0.0,
+             created_at="2026-10-04T10:00:00Z"),
+        _leg(order_intent_id="r2", station_id="KLGA", event_date="2026-10-07",
+             state="submitted", filled_size=0.0, filled_notional_usdc=0.0,
+             limit_price=0.41, created_at="2026-10-04T10:15:00Z"),
     ] + [
         _leg(order_intent_id=f"k{i}", event_date=f"2026-09-{10 + i:02d}")
-        for i in range(100)
+        for i in range(20)
     ]
     monkeypatch.setattr(C, "_render_live_book", lambda _conn: {"legs": legs, "settled": {}})
 
     trades = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))["trades"]
 
-    ids = {t["order_intent_id"] for t in trades["rows"]}
-    assert ids == {"p1"} | {f"k{i}" for i in range(100)}
-    assert trades["hidden_unfilled"] == 201
-    assert trades["count"] == trades["sent"] == len(legs)
-    assert trades["filled"] == 101
+    assert trades["rungs"] == len(legs)
+    assert trades["orders"] == 23 and len(trades["rows"]) == 22
+    assert trades["hidden_unfilled"] == 1
+    assert trades["filled"] == 21
+    rcss = next(t for t in trades["rows"] if t["station_id"] == "RCSS")
+    assert rcss["rungs"] == 202 and rcss["state"] == "filled"
+    assert rcss["filled_size"] == pytest.approx(5.0)
+    assert rcss["filled_notional_usdc"] == pytest.approx(1.67)
+    assert rcss["avg_fill_price"] == pytest.approx(0.334)
+    assert rcss["first_created_at"] == "2026-10-04T00:00:00Z"
+    resting = next(t for t in trades["rows"] if t["event_date"] == "2026-10-07")
+    assert resting["rungs"] == 2 and resting["state"] == "submitted"
+    assert resting["avg_fill_price"] is None and resting["last_limit_price"] == 0.41
+    assert not any(t["event_date"] == "2026-10-05" for t in trades["rows"])
 
 
 def test_the_proper_page_stands_without_its_table(monkeypatch) -> None:
     monkeypatch.setattr(C, "_render_live_book", lambda _conn: {"legs": [], "settled": {}})
     out = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))
     assert out["evaluations"] == {"available": False}
-    assert out["trades"]["sent"] == 0 and out["trades"]["roi"] is None
+    assert out["trades"]["orders"] == 0 and out["trades"]["roi"] is None
 
 
 def test_the_proper_page_is_rendered_every_run_and_has_a_pane() -> None:

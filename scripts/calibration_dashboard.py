@@ -13405,53 +13405,75 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         leg for leg in (book.get("legs") or [])
         if str(leg.get("decision_id") or "").startswith("proper_bet_decision_")
     ]
-    trades: list[dict[str, Any]] = []
+    # One order per station day, bucket and side: the rung pass reposts an
+    # unfilled leg every fifteen minutes, and every repost is its own intent
+    # row -- CYYZ 2026-09-29 20°C YES is 106 rows and one fill (user:
+    # 「同一个站点同一笔订单合并在一起」).  The rungs of one order are summed
+    # into it: shares and notional add, the price is the fill-weighted mean.
+    orders: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
     for leg in legs:
-        landed = settled.get((leg["station_id"], leg["event_date"]))
-        filled = float(leg.get("filled_size") or 0.0)
-        notional = float(leg.get("filled_notional_usdc") or 0.0)
         side = str(leg.get("side") or "YES").upper()
+        orders.setdefault(
+            (leg["station_id"], leg["event_date"], leg["bucket"], side), []
+        ).append(leg)
+    trades: list[dict[str, Any]] = []
+    for (station_id, event_date, bucket, side), rungs in orders.items():
+        rungs.sort(key=lambda leg: str(leg.get("created_at") or ""))
+        filled = sum(float(leg.get("filled_size") or 0.0) for leg in rungs)
+        notional = sum(float(leg.get("filled_notional_usdc") or 0.0) for leg in rungs)
+        target = max(float(leg.get("requested_size") or 0.0) for leg in rungs)
+        # A rung still working at the venue (not failed, cancelled or filled).
+        working = [
+            str(leg.get("state") or "") for leg in rungs
+            if str(leg.get("state") or "") not in ("failed", "cancelled", "filled")
+        ]
+        # An order that never filled and has nothing working is not a trade
+        # -- every failed send and unfilled cancelled rung (the rule the
+        # tiebreak page reads by).  Dropped before anything is shown.
+        if filled <= 0 and not working:
+            continue
+        if working:
+            state = working[-1]
+        elif target > 0 and filled >= target - 1e-9:
+            state = "filled"
+        else:
+            state = "partially_filled"
+        landed = settled.get((station_id, event_date))
         hit = None
         if landed and filled > 0:
-            on_bucket = landed[0] == leg["bucket"]
+            on_bucket = landed[0] == bucket
             hit = on_bucket if side == "YES" else not on_bucket
         payout = filled if hit else (0.0 if hit is False else None)
         trades.append({
-            "order_intent_id": leg.get("order_intent_id"),
-            "station_id": leg["station_id"], "event_date": leg["event_date"],
-            "stage": leg.get("stage"), "bucket": leg["bucket"], "side": side,
-            "limit_price": leg.get("limit_price"),
-            "requested_size": leg.get("requested_size"),
+            "station_id": station_id, "event_date": event_date,
+            "stage": rungs[-1].get("stage"), "bucket": bucket, "side": side,
+            "rungs": len(rungs),
+            "first_created_at": rungs[0].get("created_at"),
+            "last_created_at": rungs[-1].get("created_at"),
+            "last_limit_price": rungs[-1].get("limit_price"),
+            "avg_fill_price": (notional / filled) if filled > 0 else None,
+            "requested_size": target,
             "filled_size": filled, "filled_notional_usdc": notional,
-            "state": str(leg.get("state") or ""), "created_at": leg.get("created_at"),
+            "state": state,
             "settled_bucket": landed[0] if landed else None,
             "hit": hit, "payout_usdc": payout,
             "pnl_usdc": (payout - notional) if payout is not None else None,
         })
-    trades.sort(key=lambda t: (t["event_date"], str(t["created_at"] or ""), t["station_id"]), reverse=True)
+    trades.sort(
+        key=lambda t: (t["event_date"], str(t["first_created_at"] or ""), t["station_id"]),
+        reverse=True,
+    )
     filled_rows = [t for t in trades if t["filled_size"] > 0]
     settled_rows = [t for t in filled_rows if t["hit"] is not None]
     stake_sum = sum(t["filled_notional_usdc"] for t in settled_rows)
     payout_sum = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
     hits = sum(1 for t in settled_rows if t["hit"])
-    # A failed send or a cancelled rung with nothing filled is not a trade
-    # (the rule the tiebreak page reads by), and it is dropped here, before
-    # anything is cut.  The rung pass reposts every fifteen minutes, so the
-    # newest rows are mostly such rungs: on 2026-10-04 the lane held 714 legs,
-    # 69 of the 80 newest were unfilled cancels, and the page cut to 80 then
-    # filtered showed ten (user: 「前端有截断，只显示了10笔订单！去掉cancelled
-    # 的订单」).  Every other leg is sent -- a rung cancelled after a partial
-    # fill holds shares that settle, so it stays.
-    shown = [
-        t for t in trades
-        if t["filled_size"] > 0 or t["state"] not in ("failed", "cancelled")
-    ]
     out["trades"] = {
         "available": True,
-        "rows": shown,
-        "hidden_unfilled": len(trades) - len(shown),
-        "count": len(trades),
-        "sent": len(trades),
+        "rows": trades,
+        "orders": len(orders),
+        "hidden_unfilled": len(orders) - len(trades),
+        "rungs": len(legs),
         "filled": len(filled_rows),
         "filled_yes": sum(1 for t in filled_rows if t["side"] == "YES"),
         "filled_no": sum(1 for t in filled_rows if t["side"] == "NO"),
@@ -19987,12 +20009,12 @@ function properBetLane(){
     <div class="grid g3" style="margin-top:8px">
     ${tile("判过的首决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
     ${tile("出计划 / 计划腿 / 计划成本",`${E.planned} / ${E.planned_legs} / ${usd(E.planned_cost_usdc)}`,`计划中 ${cnt(ps.active||0)} · 已完成 ${cnt(ps.done||0)} · 已关闭 ${cnt(ps.closed||0)}`)}
-    ${tile("发单 / 成交（YES·NO）/ 已结算",`${cnt(R.sent)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`YES ${cnt(R.filled_yes)} · NO ${cnt(R.filled_no)} · 在飞 ${usd(R.in_flight_usdc)}`)}
+    ${tile("订单 / 成交（YES·NO）/ 已结算",`${cnt(R.orders)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`共挂单 ${cnt(R.rungs)} 次 · YES ${cnt(R.filled_yes)} · NO ${cnt(R.filled_no)} · 在飞 ${usd(R.in_flight_usdc)}`)}
   </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
   const money=R.available&&R.settled?`<div class="grid g3" style="margin-top:8px">
-    ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${cnt(R.settled)} 腿`)}
+    ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${cnt(R.settled)} 笔`)}
     ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${cnt(R.hits)} / ${R.settled}`)}
-    ${tile("命中率",pc(R.hit_rate),"YES 腿桶落中算中，NO 腿桶没落中算中")}
+    ${tile("命中率",pc(R.hit_rate),"按订单计：YES 单桶落中算中，NO 单桶没落中算中")}
   </div>`:"";
   const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td></tr>`).join("");
   const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没出计划（评估结果分布，${E.total} 条）</summary>
@@ -20005,22 +20027,29 @@ function properBetLane(){
       <td class="mono">${r.refusal?h(r.refusal):h([r.plan_state,r.plan_state_reason].filter(Boolean).join(" · ")||"planned")}</td></tr>`).join("");
   const recentTable=E.available?`<details style="margin-top:8px"><summary>最近判过的首决策（不含过期与已收盘，${(E.recent||[]).length} 条）</summary>
     ${recent?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>决策</th><th>距结算</th><th>D</th><th>计划</th><th>|s| 最大的桶（s）</th><th>结果 / 计划状态</th></tr></thead><tbody>${recent}</tbody></table>`:`<div class="muted">还没有。</div>`}</details>`:"";
-  // The backend has already dropped every failed send and unfilled
-  // cancelled rung (they are not trades) and sends every other leg; a rung
-  // cancelled after a partial fill reads as the partial fill it is.
+  // One row per order (station day × bucket × side), its reposted rungs
+  // summed by the backend; orders that never filled and have nothing
+  // working are not trades and are not sent.
   const shown=R.rows||[];
   const hiddenN=+R.hidden_unfilled||0;
-  const stateTxt=t=>t.state==="cancelled"?`<span title="余量已撤">部分成交</span>`:h(t.state||"");
+  const STATE_ZH={filled:"已成交", partially_filled:"部分成交", submitted:"挂单中"};
+  const stateTxt=t=>{
+    const word=STATE_ZH[t.state]||h(t.state||"");
+    return t.state!=="filled"&&t.state!=="partially_filled"&&+t.filled_size>0?`部分成交 · ${word}`:word;
+  };
+  const hm=v=>h((v||"").slice(5,16).replace("T"," "));
   const rows=shown.map(t=>`<tr>
-    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td class="mono">${h((t.created_at||"").slice(11,16))}Z</td><td>${h(t.bucket)}</td>
+    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td>
+    <td class="mono">${hm(t.first_created_at)}Z${t.rungs>1?` → ${hm(t.last_created_at)}Z`:""}</td><td class="mono">${t.rungs}</td><td>${h(t.bucket)}</td>
     <td><span class="pill ${t.side==="NO"?"amber":"green"}">${h(t.side)}</span></td>
-    <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
+    <td class="mono">${t.avg_fill_price==null?`<span class="muted">挂 ${n3(t.last_limit_price)}</span>`:n3(t.avg_fill_price)}</td>
+    <td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
     <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
     <td>${stateTxt(t)}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐腿（全部 ${shown.length} 腿，新的在上${hiddenN?`；另有 ${hiddenN} 张未成交即撤单或发送失败的重挂单不算交易、不显示`:""}）</summary>
-    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>下单于</th><th>桶</th><th>方向</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一腿。</div>`}</details>`;
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔，同站日同桶同方向的重挂合并为一笔，新的在上${hiddenN?`；另有 ${hiddenN} 笔从未成交即撤单或发送失败的不算交易、不显示`:""}）</summary>
+    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>首次 → 末次挂单</th><th>挂单次数</th><th>桶</th><th>方向</th><th>成交均价</th><th>目标股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.planned}</td><td class="mono">${r.legs}</td><td class="mono">${usd(r.cost_usdc)}</td></tr>`).join("");
   const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
     <table><thead><tr><th>事件日</th><th>判过</th><th>出计划</th><th>计划腿</th><th>计划成本</th></tr></thead><tbody>${days}</tbody></table></details>`:"";
