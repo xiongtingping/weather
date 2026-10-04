@@ -54,6 +54,7 @@ from .center_width_calibration import (
     THIN_FAR_SLICE_NAME,
     TAIL_MIX_SCALE,
     TAIL_MIX_WEIGHT_GRID,
+    apply_peak_ceiling,
     apply_tail_mix,
     thin_far_slice_applies,
 )
@@ -1016,7 +1017,10 @@ def _reserved_under_current_width(
         tail_mixed = float(receipt.get("width_slice_tail_weight") or 0.0) > 0.0
     except (TypeError, ValueError):
         tail_mixed = False
-    if state != "APPLIED" and not (state == "IDENTITY" and tail_mixed):
+    # Charter 253: likewise a row the far-peak ceiling then capped -- the
+    # recorded input under the identity pair is exactly the ceiling's input.
+    capped = receipt.get("peak_ceiling") is not None
+    if state != "APPLIED" and not (state == "IDENTITY" and (tail_mixed or capped)):
         return None
     if receipt.get("width_tier_lambda") is not None:
         return None
@@ -2969,6 +2973,94 @@ def _thin_far_slice_veto(
     }
 
 
+def _far_peak_ceiling_reading(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Charter 253: is the far-peak ceiling earning its place?  A reading,
+    journalled with every fit; the rule itself is fixed in code and comes off
+    by its switch, not by this lane.
+
+    Each cell served under a ceiling is scored as served -- its pre-ceiling
+    vector (re-served from the recorded input, the tail mix put back where
+    the receipt names one) capped again at the receipt's own ceiling --
+    against the same vector uncapped, under the stage's ranked verdict.
+    Beside it, on the cells whose top bucket claimed 0.40 or more before the
+    ceiling: what the top claimed, what it claims capped, and how often it
+    landed.
+    """
+
+    kept: list[tuple[float, float, float]] = []
+    undone: list[tuple[float, float, float]] = []
+    clusters: list[tuple[Any, str]] = []
+    skipped: dict[str, int] = {}
+    judged_days: set[str] = set()
+    tops_before: list[float] = []
+    tops_after: list[float] = []
+    top_hits: list[float] = []
+    for day in sorted(by_day):
+        for cell in by_day[day]:
+            receipt = cell.get("center_width_receipt") or {}
+            ceiling = receipt.get("peak_ceiling")
+            if ceiling is None:
+                continue
+            if not cell.get("reserved_under_current_width"):
+                skipped["no_recorded_input"] = skipped.get("no_recorded_input", 0) + 1
+                continue
+            vector: Mapping[str, float] = cell["probabilities"]
+            try:
+                weight = float(receipt.get("width_slice_tail_weight") or 0.0)
+                if weight > 0.0:
+                    vector, _ = apply_tail_mix(
+                        vector,
+                        weight=weight,
+                        scale=float(receipt.get("width_slice_tail_scale") or TAIL_MIX_SCALE),
+                        ordered_keys=cell["ordered_keys"],
+                        key_centers_c=cell["key_centers_c"],
+                        excluded_buckets=cell["excluded_buckets"],
+                        open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+                    )
+                capped, cap_receipt = apply_peak_ceiling(
+                    vector,
+                    ceiling=float(ceiling),
+                    ordered_keys=cell["ordered_keys"],
+                    excluded_buckets=cell["excluded_buckets"],
+                )
+            except (TypeError, ValueError):
+                skipped["malformed"] = skipped.get("malformed", 0) + 1
+                continue
+            score = dict(
+                ordered_keys=cell["ordered_keys"],
+                settled_bucket=cell["settled_bucket"],
+                excluded_buckets=cell["excluded_buckets"],
+                key_centers_c=cell["key_centers_c"],
+            )
+            kept.append(_served_scores(capped, **score))
+            undone.append(_served_scores(vector, **score))
+            clusters.append((cell.get("station_id"), day))
+            judged_days.add(day)
+            before = float(cap_receipt["top_probability_before"])
+            if before >= 0.40:
+                top = str(cap_receipt["top_bucket"])
+                tops_before.append(before)
+                tops_after.append(float(capped[top]))
+                top_hits.append(1.0 if top == cell["settled_bucket"] else 0.0)
+    gate = _proper_score_gate(undone, kept, clusters)
+    count = len(tops_before)
+    return {
+        "schema": "center_width_far_peak_ceiling_reading_v1",
+        "day_count": len(judged_days),
+        "cell_count": len(kept),
+        "skipped": skipped,
+        # The capped vector against the uncapped one: negative is the
+        # ceiling's gain.
+        "gate_capped_vs_uncapped": gate,
+        "top_cell_count": count,
+        "top_claim_uncapped": (sum(tops_before) / count) if count else None,
+        "top_claim_capped": (sum(tops_after) / count) if count else None,
+        "top_hit_rate": (sum(top_hits) / count) if count else None,
+    }
+
+
 def _cell_tier(cell: Mapping[str, Any]) -> int:
     """The tier the cell's distribution is served in -- read off the input
     the same way ``apply_center_width_calibration`` reads it."""
@@ -3977,6 +4069,10 @@ def fit_center_width(
                     slice_lane["candidate_tail_mix_weight"]
                 )
             }
+    # Charter 253: the far-peak ceiling's nightly reading, on every cell a
+    # ceiling was served to.  A record; nothing below reads it.
+    if stage_id == "P0":
+        evidence["far_peak_ceiling"] = _far_peak_ceiling_reading(by_day)
     # The TAF-conditional lane (charter 57, distance axis): each cell fits
     # its own scalars from its own slice of the same train/forward split --
     # the shift along each day's TAF direction, the width unsigned -- and is

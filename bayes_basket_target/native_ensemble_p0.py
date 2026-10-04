@@ -27,7 +27,7 @@ from .contracts import (
 EPS = 1e-9
 from .station_registry import station_coordinates
 from .station_season import station_season_bin
-from .center_width_calibration import served_bucket_axis
+from .center_width_calibration import FAR_PEAK_CEILING_METHOD_TAG, served_bucket_axis
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -66,6 +66,7 @@ from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_peak_ceiling,
     with_width_slice,
 )
 from .future_temperature_curve import (
@@ -203,7 +204,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 248 (2026-10-03 ruling 「修薄池远端，方向是尾重不是整体宽度」): the
 # thin-pool far-lead slice is a tail mix on the stage pair, not a lambda
 # replacing it.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v26"
+# Charter 253 (2026-10-04 ruling 「先查峰，修概率」): past 36 hours no bucket
+# is served above 0.45 -- the top bucket's excess goes to its neighbours.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v27"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4352,6 +4355,15 @@ def compile_native_ensemble_p0(
         center_width_layer, width_slices,
         seated_system_count=seated_system_count,
         hours_to_settlement=hours_to_settlement,
+    )
+    # Charter 253: the far-peak ceiling, applied exactly when this artifact's
+    # holdout was scored with it (the combination method carries the tag) --
+    # the bridge's contract.  It rides on the table layer and is the last of
+    # that layer's steps; the model-zero floor still follows.
+    center_width_layer = with_peak_ceiling(
+        center_width_layer,
+        hours_to_settlement=hours_to_settlement,
+        enabled=FAR_PEAK_CEILING_METHOD_TAG in artifact_combination_method,
     )
     # Charter 232: no band layer follows, whatever the artifact pinned.  An
     # artifact certified before the retirement names a band table in its

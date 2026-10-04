@@ -33,7 +33,11 @@ from .contracts import ContractError, content_sha256
 from .forecast_physics_asof import resolve_radiation_as_of
 from .station_registry import station_coordinates
 from .station_season import season_bins_for_window, station_season_bin
-from .center_width_calibration import served_bucket_axis
+from .center_width_calibration import (
+    far_peak_ceiling_method_tag_suffix,
+    far_peak_ceiling_serves,
+    served_bucket_axis,
+)
 from .station_day_ladder import settled_rung, station_day_ladder
 from .cross_consensus import (
     CONSENSUS_BRIDGE_METHOD_TAG,
@@ -66,6 +70,7 @@ from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_peak_ceiling,
     with_width_slice,
 )
 from .settlement_time import hours_to_settlement_if_known
@@ -2627,9 +2632,15 @@ def _day_center_width_layer(
     weights actually served, the horizon from the latest decision instant of
     the seated systems' predictions on the station's settlement clock.  The
     same resolver serving calls, so the gate scores the lambda serving will
-    apply; a day with no horizon (no timezone) resolves to no slice."""
+    apply; a day with no horizon (no timezone) resolves to no slice.
 
-    if layer is None or not slices:
+    Charter 253: the far-peak ceiling is resolved off the same horizon, by
+    the resolver serving calls, while the rule serves -- the certificate this
+    build writes carries the tag exactly then, so the holdout scores the
+    ceiling serving will apply.  A day with no horizon resolves to none."""
+
+    ceiling_serves = far_peak_ceiling_serves()
+    if layer is None or not (slices or ceiling_serves):
         return layer
     seated = [system for system, weight in weights.items() if float(weight) > 0.0]
     decided = max(
@@ -2640,13 +2651,18 @@ def _day_center_width_layer(
         ),
         default="",
     )
-    return with_width_slice(
-        layer, slices,
-        seated_system_count=len(seated),
-        hours_to_settlement=hours_to_settlement_if_known(
-            str(day), as_of_utc=decided or None,
-            settlement_timezone=settlement_timezone,
-        ),
+    hours = hours_to_settlement_if_known(
+        str(day), as_of_utc=decided or None,
+        settlement_timezone=settlement_timezone,
+    )
+    if slices:
+        layer = with_width_slice(
+            layer, slices,
+            seated_system_count=len(seated),
+            hours_to_settlement=hours,
+        )
+    return with_peak_ceiling(
+        layer, hours_to_settlement=hours, enabled=ceiling_serves,
     )
 
 
@@ -7681,6 +7697,12 @@ def persist_native_ensemble_oos(
                         "::" + CENTER_WIDTH_METHOD_TAG
                         + "::center_width_sha256="
                         + str(candidate["center_width_sha256"])
+                        # Charter 253: the holdout above capped the top
+                        # bucket of every day past 36 h, on the table layer
+                        # -- so the tag follows the layer's own, and is
+                        # absent where no layer was scored or the rule is
+                        # off.
+                        + far_peak_ceiling_method_tag_suffix()
                         if candidate.get("center_width_sha256")
                         else ""
                     )

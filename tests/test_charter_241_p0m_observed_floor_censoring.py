@@ -70,7 +70,7 @@ def _proportional_twin(p0m: ProbabilityEnvelope) -> ProbabilityEnvelope:
 def test_ruled_out_mass_lands_on_the_running_high_bucket() -> None:
     root = _root()
     envelope = _p0m()
-    assert envelope.posterior_version == "p0m_taf_likelihood_v29"
+    assert envelope.posterior_version == "p0m_taf_likelihood_v30"
     # root 37/38/39 = 0.2/0.6/0.2; "37" ruled out -> its 0.2 lands on "38".
     assert envelope.probabilities["37"] == 0.0
     assert envelope.probabilities["38"] == pytest.approx(0.8, abs=1e-12)

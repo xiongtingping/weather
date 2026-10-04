@@ -313,6 +313,158 @@ def apply_tail_mix(
     }
 
 
+# Charter 253 (user ruling 2026-10-04 「先查峰，修概率」): past 36 hours a P0
+# vector claims no more than ``FAR_PEAK_CEILING`` on any one bucket.
+# Measured on the current chain's replay (docs/research/
+# width_map_peak_20261004, 5,292 decisions past 36 h) and on the served record
+# (final_vector_acceptance_20261004, market ladder): a top bucket claiming
+# 0.54 landed 0.46-0.48 and one claiming 0.63 landed 0.43-0.45 -- past 0.45
+# the claim stopped telling the hit rate apart -- and the vector before the
+# width layer already showed it (-8.7 points at 0.5 and over), so it is not a
+# lambda's to fix: every pre-declared lambda and map arm left the gap.  The
+# ceiling fitted forward day by day sat on 0.44-0.46 through September; under
+# it the top bucket's hit minus claim went -5.1 [-7.3, -3.0] to -1.1
+# [-3.5, +1.2] on the replay and -3.3 to -1.3 on the served record, with
+# LogScore, CRPS and Brier none worse on either.  Inside 36 h the same rule
+# failed the score check, so it does not reach there.
+#
+# A fixed rule, like the bridge: the holdout scores it, the artifact's
+# combination method carries the tag, and serving applies it exactly where
+# the tag is.  One number for both ladder units -- a single-bucket threshold
+# is not comparable across units (charter 53) and the F stations' top bucket
+# stays over-claimed under it (-4.7 points, 11 stations); recorded, and the
+# width lane's nightly reading is where it is watched.
+FAR_PEAK_CEILING_METHOD_TAG = "far_peak_ceiling_v1"
+FAR_PEAK_CEILING = 0.45
+FAR_PEAK_MIN_HOURS_TO_SETTLEMENT = 36.0
+MIN_PEAK_CEILING = 0.30
+MAX_PEAK_CEILING = 0.90
+# ``serve`` is the rule in force; ``off`` is the research arm and the way
+# back -- the build stops tagging and serving stops applying, tag or not.
+FAR_PEAK_CEILING_MODE = (
+    os.environ.get("PM_P0_FAR_PEAK_CEILING", "").strip().lower() or "serve"
+)
+if FAR_PEAK_CEILING_MODE not in {"serve", "off"}:
+    raise RuntimeError(
+        f"unknown far-peak ceiling mode: {FAR_PEAK_CEILING_MODE}"
+    )
+
+
+def far_peak_ceiling_serves() -> bool:
+    return FAR_PEAK_CEILING_MODE == "serve"
+
+
+def far_peak_ceiling_method_tag_suffix() -> str:
+    """What a certificate appends for the holdout it scored: the tag while
+    the rule serves, nothing while it is off."""
+
+    return "::" + FAR_PEAK_CEILING_METHOD_TAG if far_peak_ceiling_serves() else ""
+
+
+def far_peak_ceiling_for(
+    *,
+    hours_to_settlement: float | None,
+    enabled: bool = True,
+) -> float | None:
+    """The ceiling a decision is served under, or None.
+
+    Fails closed on an unknown horizon, as the thin-far slice does: a
+    decision that cannot say how far out it is serves the vector as it is.
+    """
+
+    if not enabled or not far_peak_ceiling_serves() or hours_to_settlement is None:
+        return None
+    try:
+        hours = float(hours_to_settlement)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(hours) or not hours > FAR_PEAK_MIN_HOURS_TO_SETTLEMENT:
+        return None
+    return FAR_PEAK_CEILING
+
+
+def apply_peak_ceiling(
+    probability: Mapping[str, float],
+    *,
+    ceiling: float,
+    ordered_keys: Sequence[str],
+    excluded_buckets: Sequence[str] = (),
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Charter 253: no bucket above ``ceiling``.
+
+    The top bucket (the first maximum in axis order) keeps ``ceiling``; what
+    it claimed beyond that goes to its two neighbours in proportion to their
+    own mass, a neighbour stops at the ceiling too, and what neither can take
+    goes one ring further out.  Nothing moves when the top is at or under the
+    ceiling.  A ruled-out bucket receives nothing.  On a ladder too short to
+    hold the excess under the ceiling the remainder stays on the top bucket.
+    """
+
+    c = float(ceiling)
+    if not math.isfinite(c) or not (MIN_PEAK_CEILING <= c <= MAX_PEAK_CEILING):
+        raise ValueError("center_width_peak_ceiling_out_of_range")
+    keys = [str(key) for key in ordered_keys]
+    if len(keys) < 2 or set(keys) != {str(key) for key in probability}:
+        raise ValueError("center_width_bucket_mismatch")
+    total_in = sum(float(probability[key]) for key in keys)
+    if total_in <= 0.0 or not math.isfinite(total_in):
+        raise ValueError("center_width_probability_empty")
+    values = [float(probability[key]) / total_in for key in keys]
+    excluded = {str(bucket) for bucket in excluded_buckets}
+    top = max(range(len(keys)), key=lambda index: (values[index], -index))
+    before = values[top]
+    if before <= c:
+        return dict(zip(keys, values)), {
+            "schema": "peak_ceiling_receipt_v1",
+            "state": "IDENTITY",
+            "peak_ceiling": c,
+            "top_bucket": keys[top],
+            "top_probability_before": before,
+            "moved_mass": 0.0,
+        }
+    excess = before - c
+    values[top] = c
+    ring = 1
+    while excess > 1e-15 and ring < len(keys):
+        sides = [
+            index for index in (top - ring, top + ring)
+            if 0 <= index < len(keys) and keys[index] not in excluded
+        ]
+        if sides:
+            room = [max(c - values[index], 0.0) for index in sides]
+            mass = [values[index] for index in sides]
+            mass_total = sum(mass)
+            share = (
+                [value / mass_total for value in mass]
+                if mass_total > 0.0 else [1.0 / len(sides)] * len(sides)
+            )
+            give = [min(excess * part, space) for part, space in zip(share, room)]
+            left = excess - sum(give)
+            # What one side could not take the other may, up to its own room.
+            spare = [space - given for space, given in zip(room, give)]
+            spare_total = sum(spare)
+            if left > 1e-15 and spare_total > 0.0:
+                give = [
+                    given + min(space, left * space / spare_total)
+                    for given, space in zip(give, spare)
+                ]
+                left = excess - sum(give)
+            for index, given in zip(sides, give):
+                values[index] += given
+            excess = left
+        ring += 1
+    if excess > 1e-15:
+        values[top] += excess
+    return dict(zip(keys, values)), {
+        "schema": "peak_ceiling_receipt_v1",
+        "state": "APPLIED",
+        "peak_ceiling": c,
+        "top_bucket": keys[top],
+        "top_probability_before": before,
+        "moved_mass": before - values[top],
+    }
+
+
 # The width floor.  One lambda cannot serve a fleet whose own
 # claimed spread means different things at different sizes.  Measured
 # 2026-09-05 on this stage's own serving cells, the standardised error's

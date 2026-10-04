@@ -39,7 +39,9 @@ import dataclasses
 
 from .center_width_calibration import (
     apply_center_width_calibration,
+    apply_peak_ceiling,
     apply_tail_mix,
+    far_peak_ceiling_for,
     width_slice_for,
 )
 
@@ -66,6 +68,38 @@ class CenterWidthLayer:
     width_slice: str | None = None
     width_slice_tail_weight: float | None = None
     width_slice_tail_scale: float | None = None
+    # Charter 253: the ceiling this one decision is served under, resolved by
+    # the caller from the decision's hours to settlement and the artifact's
+    # tag (``with_peak_ceiling``).  When set, no bucket of the layer's output
+    # is above it (``apply_peak_ceiling``), after the pair and the tail mix.
+    peak_ceiling: float | None = None
+
+
+def with_peak_ceiling(
+    layer: CenterWidthLayer | None,
+    *,
+    hours_to_settlement: float | None,
+    enabled: bool,
+) -> CenterWidthLayer | None:
+    """The layer with the decision's far-peak ceiling resolved onto it
+    (charter 253).
+
+    One resolver for serving and the gate, so the two read the same ceiling
+    for the same decision.  ``enabled`` is the artifact's own word: serving
+    passes whether its combination method carries the tag, the build whether
+    it is about to write it.  A layer of ``None`` stays ``None`` -- the
+    ceiling rides on the table layer, and a face that applies no row applies
+    no ceiling.
+    """
+
+    if layer is None:
+        return None
+    ceiling = far_peak_ceiling_for(
+        hours_to_settlement=hours_to_settlement, enabled=enabled,
+    )
+    if ceiling == layer.peak_ceiling:
+        return layer
+    return dataclasses.replace(layer, peak_ceiling=ceiling)
 
 
 def with_width_slice(
@@ -201,4 +235,17 @@ def apply_served_table_layers(
         center_width_receipt["stage_width_lambda"] = float(
             center_width.width_lambda
         )
+        # Charter 253: last of the layer's steps, on what the pair and the
+        # mix produced.  Written only where a ceiling was resolved, so a
+        # receipt of a decision the rule does not reach is what it always
+        # was.
+        if center_width.peak_ceiling is not None:
+            shaped, ceiling_receipt = apply_peak_ceiling(
+                shaped,
+                ceiling=float(center_width.peak_ceiling),
+                ordered_keys=ordered_keys,
+                excluded_buckets=excluded_buckets,
+            )
+            center_width_receipt["peak_ceiling"] = float(center_width.peak_ceiling)
+            center_width_receipt["peak_ceiling_receipt"] = ceiling_receipt
     return shaped, center_width_receipt
