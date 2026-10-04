@@ -13410,6 +13410,8 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     # row -- CYYZ 2026-09-29 20°C YES is 106 rows and one fill (user:
     # 「同一个站点同一笔订单合并在一起」).  The rungs of one order are summed
     # into it: shares and notional add, the price is the fill-weighted mean.
+    # The rungs themselves are not shown -- no count, no first or last post
+    # (user: 「不要显示cancelled订单、挂单次数、首次、末次挂单」).
     orders: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
     for leg in legs:
         side = str(leg.get("side") or "YES").upper()
@@ -13447,9 +13449,7 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         trades.append({
             "station_id": station_id, "event_date": event_date,
             "stage": rungs[-1].get("stage"), "bucket": bucket, "side": side,
-            "rungs": len(rungs),
-            "first_created_at": rungs[0].get("created_at"),
-            "last_created_at": rungs[-1].get("created_at"),
+            "posted_at": rungs[0].get("created_at"),
             "last_limit_price": rungs[-1].get("limit_price"),
             "avg_fill_price": (notional / filled) if filled > 0 else None,
             "requested_size": target,
@@ -13460,9 +13460,11 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
             "pnl_usdc": (payout - notional) if payout is not None else None,
         })
     trades.sort(
-        key=lambda t: (t["event_date"], str(t["first_created_at"] or ""), t["station_id"]),
+        key=lambda t: (t["event_date"], str(t["posted_at"] or ""), t["station_id"]),
         reverse=True,
     )
+    for t in trades:
+        del t["posted_at"]
     filled_rows = [t for t in trades if t["filled_size"] > 0]
     settled_rows = [t for t in filled_rows if t["hit"] is not None]
     stake_sum = sum(t["filled_notional_usdc"] for t in settled_rows)
@@ -13471,9 +13473,7 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     out["trades"] = {
         "available": True,
         "rows": trades,
-        "orders": len(orders),
-        "hidden_unfilled": len(orders) - len(trades),
-        "rungs": len(legs),
+        "orders": len(trades),
         "filled": len(filled_rows),
         "filled_yes": sum(1 for t in filled_rows if t["side"] == "YES"),
         "filled_no": sum(1 for t in filled_rows if t["side"] == "NO"),
@@ -20009,7 +20009,7 @@ function properBetLane(){
     <div class="grid g3" style="margin-top:8px">
     ${tile("判过的首决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
     ${tile("出计划 / 计划腿 / 计划成本",`${E.planned} / ${E.planned_legs} / ${usd(E.planned_cost_usdc)}`,`计划中 ${cnt(ps.active||0)} · 已完成 ${cnt(ps.done||0)} · 已关闭 ${cnt(ps.closed||0)}`)}
-    ${tile("订单 / 成交（YES·NO）/ 已结算",`${cnt(R.orders)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`共挂单 ${cnt(R.rungs)} 次 · YES ${cnt(R.filled_yes)} · NO ${cnt(R.filled_no)} · 在飞 ${usd(R.in_flight_usdc)}`)}
+    ${tile("订单 / 成交（YES·NO）/ 已结算",`${cnt(R.orders)} / ${cnt(R.filled)} / ${cnt(R.settled)}`,`YES ${cnt(R.filled_yes)} · NO ${cnt(R.filled_no)} · 在飞 ${usd(R.in_flight_usdc)}`)}
   </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
   const money=R.available&&R.settled?`<div class="grid g3" style="margin-top:8px">
     ${tile("投入 → 赔付",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${cnt(R.settled)} 笔`)}
@@ -20031,16 +20031,13 @@ function properBetLane(){
   // summed by the backend; orders that never filled and have nothing
   // working are not trades and are not sent.
   const shown=R.rows||[];
-  const hiddenN=+R.hidden_unfilled||0;
   const STATE_ZH={filled:"已成交", partially_filled:"部分成交", submitted:"挂单中"};
   const stateTxt=t=>{
     const word=STATE_ZH[t.state]||h(t.state||"");
     return t.state!=="filled"&&t.state!=="partially_filled"&&+t.filled_size>0?`部分成交 · ${word}`:word;
   };
-  const hm=v=>h((v||"").slice(5,16).replace("T"," "));
   const rows=shown.map(t=>`<tr>
-    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td>
-    <td class="mono">${hm(t.first_created_at)}Z${t.rungs>1?` → ${hm(t.last_created_at)}Z`:""}</td><td class="mono">${t.rungs}</td><td>${h(t.bucket)}</td>
+    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.bucket)}</td>
     <td><span class="pill ${t.side==="NO"?"amber":"green"}">${h(t.side)}</span></td>
     <td class="mono">${t.avg_fill_price==null?`<span class="muted">挂 ${n3(t.last_limit_price)}</span>`:n3(t.avg_fill_price)}</td>
     <td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
@@ -20048,8 +20045,8 @@ function properBetLane(){
     <td>${stateTxt(t)}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔，同站日同桶同方向的重挂合并为一笔，新的在上${hiddenN?`；另有 ${hiddenN} 笔从未成交即撤单或发送失败的不算交易、不显示`:""}）</summary>
-    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>首次 → 末次挂单</th><th>挂单次数</th><th>桶</th><th>方向</th><th>成交均价</th><th>目标股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔，同站日同桶同方向合并为一笔，新的在上）</summary>
+    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>方向</th><th>成交均价</th><th>目标股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.planned}</td><td class="mono">${r.legs}</td><td class="mono">${usd(r.cost_usdc)}</td></tr>`).join("");
   const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
     <table><thead><tr><th>事件日</th><th>判过</th><th>出计划</th><th>计划腿</th><th>计划成本</th></tr></thead><tbody>${days}</tbody></table></details>`:"";

@@ -168,18 +168,21 @@ def test_the_proper_page_merges_an_orders_rungs_and_drops_unfilled_ones(monkeypa
 
     trades = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))["trades"]
 
-    assert trades["rungs"] == len(legs)
-    assert trades["orders"] == 23 and len(trades["rows"]) == 22
-    assert trades["hidden_unfilled"] == 1
+    assert trades["orders"] == len(trades["rows"]) == 22
     assert trades["filled"] == 21
+    # The rungs are summed, never shown, and no row reads cancelled.
+    for row in trades["rows"]:
+        assert not {"rungs", "first_created_at", "last_created_at", "posted_at"} & set(row)
+        assert row["state"] in ("filled", "partially_filled", "submitted")
+    # Newest event day first, then the newest order.
+    assert [t["event_date"] for t in trades["rows"][:2]] == ["2026-10-07", "2026-10-06"]
     rcss = next(t for t in trades["rows"] if t["station_id"] == "RCSS")
-    assert rcss["rungs"] == 202 and rcss["state"] == "filled"
+    assert rcss["state"] == "filled"
     assert rcss["filled_size"] == pytest.approx(5.0)
     assert rcss["filled_notional_usdc"] == pytest.approx(1.67)
     assert rcss["avg_fill_price"] == pytest.approx(0.334)
-    assert rcss["first_created_at"] == "2026-10-04T00:00:00Z"
     resting = next(t for t in trades["rows"] if t["event_date"] == "2026-10-07")
-    assert resting["rungs"] == 2 and resting["state"] == "submitted"
+    assert resting["state"] == "submitted"
     assert resting["avg_fill_price"] is None and resting["last_limit_price"] == 0.41
     assert not any(t["event_date"] == "2026-10-05" for t in trades["rows"])
 
