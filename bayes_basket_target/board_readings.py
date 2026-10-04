@@ -1116,13 +1116,50 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
 }
 
 
-def run(db: Path = DEFAULT_DB, names: Sequence[str] = READING_NAMES) -> list[str]:
+#: How old a reading may be before the hourly job recomputes it.  The job is
+#: a long SSOT reader, and l4_lane alone read 5-16 minutes of every hour
+#: (2026-10-04, swap 7 GB of 8, production cycles at 400-1300 s); L4 is
+#: offline (charter 231) and its settled windows move once a day, and the
+#: centre/shape gap reads closed days.  The seat and fusion readings follow
+#: what P0 serves now and stay hourly.  ``--only`` always recomputes.
+READING_MAX_AGE_SEC: dict[str, float] = {
+    "centre_shape": 3 * 3600.0,
+    "l4_lane": 6 * 3600.0,
+}
+
+
+def _reading_is_current(name: str, code: str) -> bool:
+    stored = load_reading(name)
+    limit = READING_MAX_AGE_SEC.get(name)
+    if stored is None or limit is None or stored.get("code_sha256") != code:
+        return False
+    try:
+        computed = datetime.fromisoformat(
+            str(stored.get("computed_at_utc")).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return False
+    # A few minutes of slack, so a reading written late in one hourly run is
+    # still recomputed on the run its age falls due, not the one after.
+    return (_now() - computed).total_seconds() < limit - 600.0
+
+
+def run(
+    db: Path = DEFAULT_DB,
+    names: Sequence[str] = READING_NAMES,
+    *,
+    force: bool = False,
+) -> list[str]:
     """Compute and write each named reading; one line of receipt per reading.
-    A reading that fails keeps its previous file and says why."""
+    A reading that fails keeps its previous file and says why; one still
+    inside its ``READING_MAX_AGE_SEC`` is kept unless ``force``."""
 
     receipts: list[str] = []
     for name in names:
         compute, sources = _READINGS[name]
+        if not force and _reading_is_current(name, _code_sha(*sources)):
+            receipts.append(f"{name} kept")
+            continue
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
         conn.execute("PRAGMA query_only=ON")
         started = time.perf_counter()
@@ -1146,7 +1183,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--only", action="append", choices=READING_NAMES)
     args = parser.parse_args(argv)
-    print("board readings: " + "; ".join(run(args.db, args.only or READING_NAMES)), flush=True)
+    print("board readings: " + "; ".join(
+        run(args.db, args.only or READING_NAMES, force=bool(args.only))
+    ), flush=True)
     return 0
 
 

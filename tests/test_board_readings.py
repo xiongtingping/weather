@@ -130,3 +130,32 @@ def test_the_served_seat_is_the_one_the_newest_p0_names_not_the_highest_generati
                  " ('e-two','{}','{}','{}','{}','2026-09-30','[]','[]','2026-10-01',2)")
     seats = BR.served_p0_seats(conn, days=1)
     assert [(s["artifact_id"], s["selected_system_count"]) for s in seats] == [("id-a-six", 6)]
+
+
+def test_the_slow_readings_are_kept_while_current_and_recomputed_when_due(tmp_path, monkeypatch) -> None:
+    """2026-10-04: l4_lane read 5-16 minutes of every hour; it and the
+    centre/shape gap now keep their file until their age falls due."""
+
+    from datetime import datetime, timedelta, timezone
+
+    from bayes_basket_target import board_readings as BR
+
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path)
+    calls: list[str] = []
+    monkeypatch.setitem(BR._READINGS, "l4_lane", (lambda conn: calls.append("l4") or {"x": 1}, (BR.l4_lane,)))
+    monkeypatch.setitem(BR._READINGS, "seat_windows", (lambda conn: calls.append("seat") or {"seats": {}}, (BR.seat_window,)))
+    db = tmp_path / "x.db"
+    import sqlite3
+    sqlite3.connect(db).close()
+    now = datetime(2026, 10, 4, 13, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(BR, "_now", lambda: now)
+    BR.run(db, ("l4_lane", "seat_windows"))
+    assert calls == ["l4", "seat"]
+    now = now + timedelta(hours=1)
+    receipts = BR.run(db, ("l4_lane", "seat_windows"))
+    assert calls == ["l4", "seat", "seat"] and receipts[0] == "l4_lane kept"
+    now = now + timedelta(hours=5)
+    BR.run(db, ("l4_lane",))
+    assert calls[-1] == "l4", "six hours on, the reading is due again"
+    BR.run(db, ("l4_lane",), force=True)
+    assert calls[-1] == "l4" and calls.count("l4") == 3
