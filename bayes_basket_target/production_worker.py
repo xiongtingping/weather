@@ -1768,13 +1768,22 @@ LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC = float(
     os.environ.get("PM_LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC", "") or 3600.0
 )
 _IDENTITY_SWEEP_SCRIPT = ROOT / "scripts" / "pr12_awc_observation_sweep.sh"
+# Charter 181(七): the subset bookkeeping, kept where a restart finds it --
+# the sweep's own work directory.  Only the resident's production worker
+# sets ``identity_pass_state_path``; every other worker keeps it in memory.
+IDENTITY_PASS_STATE_PATH = (
+    ROOT / "data" / "runtime" / "pr12_awc_observation" / "identity_pass_state.json"
+)
+IDENTITY_PASS_STATE_SCHEMA = "live_observation_identity_pass_state_v1"
 
 
 def _identity_inputs_fingerprint(conn: sqlite3.Connection | None) -> str | None:
     """What the identity export reads besides the archive rows: the sweep
-    script (it names the projection), the authority projection's bytes and
-    the target's station registry.  None when any cannot be read, which the
-    caller answers with a full pass."""
+    script (it names the projection), the authority projection's bytes, the
+    target's station registry, and the scripts the sweep runs (charter
+    181(七): a restart is usually a deploy, and a subset after one re-derives
+    only what moved).  None when any cannot be read, which the caller
+    answers with a full pass."""
 
     import hashlib as _hashlib  # noqa: PLC0415
     import re as _re  # noqa: PLC0415
@@ -1785,6 +1794,10 @@ def _identity_inputs_fingerprint(conn: sqlite3.Connection | None) -> str | None:
         if named is None or conn is None:
             return None
         projection = (ROOT / named.group(1).decode("utf-8")).read_bytes()
+        steps = [
+            (ROOT / name.decode("utf-8")).read_bytes()
+            for name in sorted(set(_re.findall(rb'"\$ROOT/(scripts/[^"]+\.py)"', script)))
+        ]
         # Plain tuples of text: the resident's connections hand back
         # sqlite3.Row, whose repr is an object address -- a fingerprint of
         # that changed on every call and made every pass a full one
@@ -1799,7 +1812,7 @@ def _identity_inputs_fingerprint(conn: sqlite3.Connection | None) -> str | None:
     except (OSError, sqlite3.Error, UnicodeDecodeError):
         return None
     digest = _hashlib.sha256()
-    for part in (script, projection, json.dumps(registry).encode("utf-8")):
+    for part in (script, projection, json.dumps(registry).encode("utf-8"), *steps):
         digest.update(_hashlib.sha256(part).digest())
     return digest.hexdigest()
 # Every archive table the identity export reads by station, with the lane
@@ -5418,6 +5431,9 @@ def observed_running_high_c(
 class TargetProductionWorker:
     """Resident target compiler and target-local no-live ledger writer."""
 
+    #: Charter 181(七); set by the resident on its production worker only.
+    identity_pass_state_path: Path | None = None
+
     def __init__(
         self,
         db_path: Path,
@@ -8049,6 +8065,17 @@ class TargetProductionWorker:
         watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
         )
+        # Charter 181(七): a fresh process takes up the bookkeeping the last
+        # one left, instead of opening with a full pass (70-157 s on
+        # 2026-10-04, five restarts by 06:30Z).
+        adopted = None
+        if getattr(self, "_live_observation_identity_rowids", None) is None:
+            adopted = TargetProductionWorker._adopt_identity_pass_state(
+                self,
+                _identity_table_rowids(
+                    getattr(self, "canonical_source_conn", None)
+                ),
+            )
         previous = getattr(self, "_live_observation_identity_last", None)
         if (
             watermark is not None
@@ -8062,6 +8089,7 @@ class TargetProductionWorker:
                 "state": "SKIPPED_NO_NEW_REPORTS",
                 "duration_sec": 0.0,
                 "watermark": list(watermark),
+                **({"adopted_staged_at_utc": adopted} if adopted else {}),
             }
         started = time.monotonic()
         started_utc = utc_now()
@@ -8136,6 +8164,7 @@ class TargetProductionWorker:
             "stations": list(stations or ()),
             "full_pass_reason": full_reason if stations is None else "",
             "substitute_skipped": bool(stations is not None and skip_substitute),
+            **({"adopted_staged_at_utc": adopted} if adopted else {}),
             **boundary,
         }
         # Named on the cycle record: the pass runs at the head and at every
@@ -8191,8 +8220,104 @@ class TargetProductionWorker:
                 self._live_observation_identity_rowids = rowids
                 if stations is None:
                     self._live_observation_identity_full_mono = started
+                    self._live_observation_identity_full_utc = started_utc
                     self._live_observation_identity_inputs = inputs
+                TargetProductionWorker._keep_identity_pass_state(self, receipt)
         return receipt
+
+    def _keep_identity_pass_state(self, receipt: Mapping[str, Any]) -> None:
+        """Charter 181(七): write the subset bookkeeping where a restart finds it.
+
+        Written only when a stage this process wrote moved it, and only by a
+        worker the resident pointed at the file.  Atomic rename; a write that
+        fails leaves the next process its full pass.
+        """
+
+        path = getattr(self, "identity_pass_state_path", None)
+        full_utc = getattr(self, "_live_observation_identity_full_utc", None)
+        rowids = getattr(self, "_live_observation_identity_rowids", None)
+        if path is None or not full_utc or not isinstance(rowids, Mapping):
+            return
+        watermark = getattr(self, "_live_observation_identity_watermark", None)
+        state = {
+            "schema": IDENTITY_PASS_STATE_SCHEMA,
+            "rowids": {str(k): int(v) for k, v in rowids.items()},
+            "watermark": list(watermark) if watermark else None,
+            "inputs": getattr(self, "_live_observation_identity_inputs", None),
+            "full_pass_started_utc": str(full_utc),
+            "receipt": dict(receipt),
+        }
+        target = Path(path)
+        scratch = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            scratch.write_text(
+                json.dumps(state, sort_keys=True, default=str), encoding="utf-8"
+            )
+            os.replace(scratch, target)
+        except OSError:
+            try:
+                scratch.unlink()
+            except OSError:
+                pass
+
+    def _adopt_identity_pass_state(
+        self, rowids_now: Mapping[str, int] | None
+    ) -> str | None:
+        """Charter 181(七): take up a previous process's subset bookkeeping.
+
+        Taken only whole: its full pass inside the period (by the wall
+        clock), every archive table it counted still at or past its count,
+        and a staged receipt.  The rest -- the UTC day, the inputs
+        fingerprint, the period itself -- is then asked by the subset rule
+        exactly as of a pass this process staged.  The bookkeeping says the
+        staged facts cover every station's rows up to its counts; a stage
+        by anyone since only adds to them.  Returns the adopted stage's
+        stamp, or None and the pass is full as before.
+        """
+
+        path = getattr(self, "identity_pass_state_path", None)
+        if path is None or not isinstance(rowids_now, Mapping):
+            return None
+        try:
+            target = Path(path)
+            if target.stat().st_size > 1024 * 1024:
+                return None
+            state = json.loads(target.read_text(encoding="utf-8"))
+            if (
+                not isinstance(state, Mapping)
+                or state.get("schema") != IDENTITY_PASS_STATE_SCHEMA
+            ):
+                return None
+            kept = {str(k): int(v) for k, v in dict(state["rowids"]).items()}
+            full_utc = str(state["full_pass_started_utc"])
+            age = (
+                datetime.now(timezone.utc)
+                - datetime.fromisoformat(full_utc.replace("Z", "+00:00"))
+            ).total_seconds()
+            receipt = dict(state["receipt"])
+            raw_watermark = state.get("watermark")
+            watermark = (
+                (int(raw_watermark[0]), int(raw_watermark[1]), str(raw_watermark[2]))
+                if raw_watermark
+                else None
+            )
+        except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+            return None
+        if (
+            not 0.0 <= age < LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC
+            or receipt.get("state") != "STAGED"
+            or set(kept) != {str(k) for k in rowids_now}
+            or any(kept[table] > int(rowids_now[table]) for table in kept)
+        ):
+            return None
+        self._live_observation_identity_rowids = kept
+        self._live_observation_identity_watermark = watermark
+        self._live_observation_identity_full_mono = time.monotonic() - age
+        self._live_observation_identity_full_utc = full_utc
+        self._live_observation_identity_inputs = state.get("inputs")
+        self._live_observation_identity_last = receipt
+        return str(receipt.get("staged_at_utc") or "") or full_utc
 
     def _identity_pass_scope(
         self,

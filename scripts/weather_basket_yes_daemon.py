@@ -130,6 +130,7 @@ from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_MARKET_MANIFEST,
     DEFAULT_TARGET_NWP_RUNTIME_ROOT,
     DEFAULT_TARGET_TAF_INBOX,
+    IDENTITY_PASS_STATE_PATH,
     TargetProductionWorker,
     open_target_writer_if_enabled,
     statement_probe_snapshot,
@@ -6262,6 +6263,9 @@ def main() -> int:
             canonical_source_db_path=args.db,
         )
         locals_workers["production_worker"] = production_worker
+        # Charter 181(七): the resident's writer keeps the identity pass's
+        # subset bookkeeping where its next process finds it.
+        production_worker.identity_pass_state_path = IDENTITY_PASS_STATE_PATH
         if production_worker.commit_error is None:
             try:
                 configure_target_worker_sqlite_lock_budget(production_worker)

@@ -386,3 +386,164 @@ def test_the_sweep_unset_is_the_full_pass_it_always_was(tmp_path) -> None:
     assert len(calls) == 3
     assert "--stations" not in calls[0]
     assert "stage_asos_substitute_observation_facts.py" in calls[2]
+
+
+# --- charter 181(七): across a restart --------------------------------------------------
+
+def _resident(archive, state_path) -> pw.TargetProductionWorker:
+    worker = _worker(archive)
+    worker.identity_pass_state_path = state_path
+    return worker
+
+
+def test_a_restart_takes_up_the_last_processs_bookkeeping(monkeypatch, tmp_path) -> None:
+    """2026-10-04: five restarts by 06:30Z, each opening with a full pass of
+    70-157 s on a host short of memory, re-deriving facts already staged."""
+
+    state = tmp_path / "identity_pass_state.json"
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    first = _resident(archive, state)
+    assert first._identify_live_observations()["full_pass_reason"] == "no_staged_snapshot"
+    _report(archive, "awc_o2", "awc", "EGLC")
+    assert first._identify_live_observations()["stations"] == ["EGLC"]
+    assert state.is_file()
+
+    # The next process: nothing new is nothing to do.
+    second = _resident(archive, state)
+    skipped = second._identify_live_observations()
+    assert skipped["state"] == "SKIPPED_NO_NEW_REPORTS" and skipped["adopted_staged_at_utc"]
+    _report(archive, "awc_o3", "awc", "ZUUU")
+    moved = second._identify_live_observations()
+    assert (moved["scope"], moved["stations"]) == ("stations", ["ZUUU"])
+    assert [call["stations"] for call in runs.calls] == [None, "EGLC", "ZUUU"]
+
+    # And the one after that, if a report landed while nobody was running.
+    _report(archive, "awc_o4", "awc", "KORD")
+    third = _resident(archive, state)
+    receipt = third._identify_live_observations()
+    assert (receipt["scope"], receipt["stations"]) == ("stations", ["KORD"])
+    assert receipt["adopted_staged_at_utc"]
+
+
+def test_the_hourly_full_pass_is_counted_from_the_last_real_one(monkeypatch, tmp_path) -> None:
+    state = tmp_path / "identity_pass_state.json"
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    _resident(archive, state)._identify_live_observations()
+    import json as _json
+    kept = _json.loads(state.read_text())
+    # A subset does not renew the period: the stamp is the full pass's.
+    _report(archive, "awc_o2", "awc", "EGLC")
+    second = _resident(archive, state)
+    second._identify_live_observations()
+    assert _json.loads(state.read_text())["full_pass_started_utc"] == kept["full_pass_started_utc"]
+    # Past the period, the next process takes nothing up.
+    from datetime import datetime, timedelta, timezone
+    old = datetime.now(timezone.utc) - timedelta(seconds=pw.LIVE_OBSERVATION_IDENTITY_FULL_PASS_SEC + 5)
+    stale = {**_json.loads(state.read_text()), "full_pass_started_utc": old.isoformat().replace("+00:00", "Z")}
+    state.write_text(_json.dumps(stale))
+    _report(archive, "awc_o3", "awc", "ZUUU")
+    late = _resident(archive, state)._identify_live_observations()
+    assert (late["scope"], late["full_pass_reason"]) == ("full", "no_staged_snapshot")
+    assert "adopted_staged_at_utc" not in late
+    assert runs.calls[-1]["stations"] is None
+
+
+def test_what_the_subset_rule_asks_it_still_asks_after_a_restart(monkeypatch, tmp_path) -> None:
+    state = tmp_path / "identity_pass_state.json"
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    _resident(archive, state)._identify_live_observations()
+    # The inputs moved across the restart (a deploy, a new projection).
+    runs.inputs = "inputs-v2"
+    _report(archive, "awc_o2", "awc", "EGLC")
+    changed = _resident(archive, state)._identify_live_observations()
+    assert (changed["scope"], changed["full_pass_reason"]) == ("full", "identity_inputs_changed")
+    # A new UTC day across the restart.
+    import json as _json
+    kept = _json.loads(state.read_text())
+    kept["watermark"][2] = "2026-09-20"
+    state.write_text(_json.dumps(kept))
+    _report(archive, "awc_o3", "awc", "ZUUU")
+    assert _resident(archive, state)._identify_live_observations()["full_pass_reason"] == "utc_day_changed"
+
+
+def test_bookkeeping_that_does_not_fit_the_archive_is_not_taken_up(monkeypatch, tmp_path) -> None:
+    import json as _json
+
+    state = tmp_path / "identity_pass_state.json"
+    archive = _archive()
+    _Runs(monkeypatch)
+    _resident(archive, state)._identify_live_observations()
+    kept = _json.loads(state.read_text())
+    # Counts past the archive (a rebuilt archive), a missing table, a
+    # receipt that is not a stage, another schema, and garbage.
+    for broken in (
+        {**kept, "rowids": {**kept["rowids"], "reported_trajectory_observations": 10**9}},
+        {**kept, "rowids": {k: v for k, v in kept["rowids"].items() if k != "reported_trajectory_station_halts"}},
+        {**kept, "receipt": {**kept["receipt"], "state": "FAILED"}},
+        {**kept, "schema": "other"},
+    ):
+        state.write_text(_json.dumps(broken))
+        worker = _resident(archive, state)
+        assert worker._adopt_identity_pass_state(pw._identity_table_rowids(archive)) is None
+        assert getattr(worker, "_live_observation_identity_rowids", None) is None
+    state.write_text("{not json")
+    assert _resident(archive, state)._adopt_identity_pass_state(pw._identity_table_rowids(archive)) is None
+    state.unlink()
+    assert _resident(archive, state)._adopt_identity_pass_state(pw._identity_table_rowids(archive)) is None
+
+
+def test_a_refused_start_writes_nothing_and_a_worker_without_the_path_keeps_it_in_memory(monkeypatch, tmp_path) -> None:
+    state = tmp_path / "identity_pass_state.json"
+    archive = _archive()
+    runs = _Runs(monkeypatch)
+    runs.stage_written = False
+    _resident(archive, state)._identify_live_observations()
+    assert not state.exists()
+    runs.stage_written = True
+    _worker(archive)._identify_live_observations()
+    assert not state.exists() and list(tmp_path.iterdir()) == []
+    # Only the resident's production worker is pointed at the file.
+    assert pw.TargetProductionWorker.identity_pass_state_path is None
+    daemon = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
+    assert daemon.count(".identity_pass_state_path = IDENTITY_PASS_STATE_PATH") == 1
+    assert 'production_worker.identity_pass_state_path = IDENTITY_PASS_STATE_PATH' in daemon
+
+
+def test_the_fingerprint_follows_the_scripts_the_sweep_runs(tmp_path, monkeypatch) -> None:
+    from bayes_basket_target.ssot import apply_production_ssot_schema
+
+    target = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(target)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "config" / "projection.json").write_text('{"v": 1}')
+    builder = tmp_path / "scripts" / "build.py"
+    builder.write_text("print(1)\n")
+    script = tmp_path / "sweep.sh"
+    script.write_text('PROJECTION="$ROOT/config/projection.json"\n"$PY" "$ROOT/scripts/build.py" --x\n')
+    monkeypatch.setattr(pw, "_IDENTITY_SWEEP_SCRIPT", script)
+    monkeypatch.setattr(pw, "ROOT", tmp_path)
+    one = pw._identity_inputs_fingerprint(target)
+    builder.write_text("print(2)\n")
+    two = pw._identity_inputs_fingerprint(target)
+    assert one and two and one != two
+    builder.unlink()
+    assert pw._identity_inputs_fingerprint(target) is None
+    # The real sweep names its three steps.
+    named = re.findall(r'"\$ROOT/(scripts/[^"]+\.py)"', (ROOT / "scripts" / "pr12_awc_observation_sweep.sh").read_text())
+    assert sorted(set(named)) == [
+        "scripts/build_pr12_awc_observation_contract.py",
+        "scripts/stage_asos_substitute_observation_facts.py",
+        "scripts/stage_pr12_awc_observation_contract.py",
+    ]
+
+
+def test_the_charter_carries_the_restart_rule() -> None:
+    text = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
+    body = text[text.index("\n181. "):text.index("\n182. ")]
+    for phrase in ("（七）", "identity_pass_state_path", "identity_pass_state.json",
+                   "adopted_staged_at_utc", "stage_asos_substitute_observation_facts.py"):
+        assert phrase in body
