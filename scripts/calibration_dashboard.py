@@ -20027,13 +20027,7 @@ const MONEY_BOARD = [
       "sec-proper-bet"],
      ["tailshort", "远尾做空 H1 · 宪章 234",
       () => tailShortLane(),
-      "sec-tail-short"],
-     // Charter 254: the realisation layer in shadow -- the belief b = P(Y | p, q)
-     // the two lanes above are read against, its nightly calibration gate,
-     // and every leg they judged priced on it.  Nothing here trades.
-     ["realisation", "兑现层（影子）· 宪章 254",
-      () => realisationLayer(),
-      "sec-realisation"]]},
+      "sec-tail-short"]]},
 ];
 
 // The live order block reads the live-readiness payload, which is absent when the
@@ -20110,7 +20104,8 @@ function realisationLayer(){
   const ci=(a,scale=100,d=1)=>Array.isArray(a)?`${pt(a[0]/100*scale,d)} [${pt(a[1]/100*scale,d)}, ${pt(a[2]/100*scale,d)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
   const nat=a=>Array.isArray(a)?`${(+a[0]).toFixed(4)} [${(+a[1]).toFixed(4)}, ${(+a[2]).toFixed(4)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
   const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
-  const intro=`<div class="card"><b>兑现层（影子）</b> <span class="pill amber">只记录，不改下单</span>
+  const intro=`<h2>兑现层（影子，宪章 254）：模型声称的 edge，按以市场为条件的兑现概率 b 说多少、结算后兑现多少</h2>
+    <div class="card"><span class="pill amber">只记录，不改下单</span>
     <span class="muted">模型向量 p 只看天气；这一层看到 p 又看到市场 q 之后给出每个桶的兑现概率 b，edge 只按 b 对可成交价算。
     形式：市场向量拉尖、市场众数桶与相邻两档各加一项、模型的宽度与形状（两个中心一致时权重大，不一致时小）；模型的中心分歧不进。
     每晚按已结算的 P0（距结算 &gt;36h）滚动 28 天重拟，逐日前推过校准门；Proper 与远尾做空两条线每判一条腿就记一行 b、区间与 edge。</span></div>`;
@@ -23419,12 +23414,18 @@ const GROUPS = [
   // select and sizing areas and the edge map left with the basket lane
   // (2026-09-26, user rulings 「还有β 车道」「检查统一估值车道」「整区删除」).
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；② L4 后验已下线，只留档",
+   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；② 兑现层（影子，宪章 254）：以市场为条件的兑现概率 b，检查两条线声称的 edge 兑现了多少；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；③ L4 后验已下线，只留档",
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
       sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
-     {box:"② L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
+     // Charter 254 (user 2026-10-05 「兑现层应该放在边际板块里……主要是检查
+     // 边际的兑现情况」): the edge the lanes claim, priced on b = P(Y | p, q)
+     // and checked against what settled.  Shadow: nothing here trades.
+     {box:"② 兑现层（影子，宪章 254）：edge 说多少、兑现多少", kind:"shadow",
+      note:"b = P(Y | p, q)：看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单",
+      sections:[[realisationLayer,"兑现层（影子）"]]},
+     {box:"③ L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
       note:"已下线：篮子车道关闭，下注改由 Proper 下注线按天气模型 p 与市场 q 直接生成仓位（宪章 231），L4 不再计算、夜间不再重拟；下表是下线前最后一版行。原设计：b 由整梯多类 LogLoss 拟合，每行前推判决 LogScore 显著胜市场且桶 Brier 点估计也变好才服务",
       sections:[[posteriorLane,"L4 后验层（已下线）"]]}]},
 ];
@@ -23527,7 +23528,9 @@ const LANES = {
     role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)，量的是服务 p 对 m（p 是概率层服务出来的天气模型向量；概率空间、整梯）；k 低于 1 才有 edge"},
   "真值落位": {layer:"边际层 · ① 验收", status:"audit",
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
-  "L4 后验层（已下线）": {layer:"边际层 · ② L4", status:"off",
+  "兑现层（影子）": {layer:"边际层 · ② 兑现层", status:"shadow",
+    role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
+  "L4 后验层（已下线）": {layer:"边际层 · ③ L4", status:"off",
     role:"logit b = logit m + w·(logit p − logit m) + c(m)：宪章 231 起下线，不计算、不重拟，下表是下线前最后一版"},
   // --- live: the lanes that send, and the book they send into ---
   "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",

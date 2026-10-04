@@ -109,8 +109,6 @@ def test_one_live_category_with_the_data_board_over_the_orders():
         ("live", "proper", True),
         # Charter 234: H1 historical FOK fills and NO result.
         ("live", "tailshort", True),
-        # Charter 254: the realisation layer in shadow.
-        ("live", "realisation", True),
     ]
     assert 'data-daytabs="money-paper"' not in html
     for label in ("实盘", "实盘 · 数据看板与站明细"):

@@ -241,10 +241,14 @@ def test_the_wiring_and_the_charter() -> None:
     sweep = (ROOT / "scripts" / "board_readings_sweep.sh").read_text(encoding="utf-8")
     assert "scripts/refit_realisation_layer.py" in sweep
     board = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "def collect_realisation_layer(" in board and "realisationLayer()" in board
-    assert '"realisation_layer"' in board
+    assert "def collect_realisation_layer(" in board and '"realisation_layer"' in board
+    # in the edge area (user 2026-10-05 「兑现层应该放在边际板块里」), not the money board
+    edge = board[board.index('{id:"edge", label:"边际"'):]
+    assert "sections:[[realisationLayer,\"兑现层（影子）\"]]" in edge[:edge.index("];")]
+    money = board[board.index("const MONEY_BOARD = ["):]
+    assert "realisationLayer" not in money[:money.index("];")]
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     line = next(l for l in charter.splitlines() if l.startswith("254. "))
     for word in ("market_conditioned_realisation_v1", "realisation_layer_shadow", "refit_realisation_layer",
-                 "active.json", "上影子", "前端增加对应显式看板", "裁决人：熊先生", "不改下单"):
+                 "active.json", "上影子", "前端增加对应显式看板", "裁决人：熊先生", "不改下单", "边际"):
         assert word in line, word
