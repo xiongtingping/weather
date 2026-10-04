@@ -7,6 +7,7 @@ import sqlite3
 import pytest
 
 from bayes_basket_target.contracts import ContractError
+from bayes_basket_target.station_registry import coordinate_registry_manifest
 from bayes_basket_target.portfolio_allocator import (
     allocate_portfolio_quota,
     derive_minimum_bankroll,
@@ -31,7 +32,8 @@ def _edges(*specs):
 def test_shipped_blocks_cover_every_station_exactly_once() -> None:
     blocks, sha = load_regional_blocks()
     assert len(sha) == 64
-    assert len(blocks) == 45
+    fleet = set(coordinate_registry_manifest()["station_ids"])
+    assert set(blocks) == fleet, sorted(set(blocks) ^ fleet)
     assert blocks["ZUUU"] == blocks["ZUCK"]          # one air mass
     assert blocks["KLAX"] != blocks["KLGA"]          # opposite coasts
 

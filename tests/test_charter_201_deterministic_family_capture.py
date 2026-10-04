@@ -430,9 +430,9 @@ def test_the_global_roster_leaves_out_a_station_it_cannot_place():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE calibration_station_registry(station_id TEXT, timezone_name TEXT)")
     conn.executemany("INSERT INTO calibration_station_registry VALUES(?,?)",
-                     [("SBGR", "America/Sao_Paulo"), ("LLBG", "Asia/Jerusalem")])
+                     [("SBGR", "America/Sao_Paulo"), ("ZZZZ", "Asia/Jerusalem")])
     roster = FAM.global_roster(conn)
-    assert [s[0] for s in roster] == ["SBGR"], "LLBG has a registry row but no coordinates"
+    assert [s[0] for s in roster] == ["SBGR"], "ZZZZ has a registry row but no coordinates"
     assert roster[0][3] == "America/Sao_Paulo"
 
 

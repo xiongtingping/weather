@@ -121,7 +121,7 @@ def test_a_station_outside_the_coordinate_registry_does_not_abort_the_sweep(
             if "basket_target_market_registry" in sql:
                 rows = [
                     ("KLGA", "America/New_York"),
-                    ("LLBG", "Asia/Jerusalem"),
+                    ("ZZZZ", "Asia/Jerusalem"),
                 ]
             return _Cursor(rows)
 
@@ -161,8 +161,8 @@ def test_a_station_outside_the_coordinate_registry_does_not_abort_the_sweep(
     assert captured == {"KLGA"}
     assert len(report["captures"]) == len(sweep.TARGET_MODELS)
     refused = {row["station_id"]: row for row in report["failures"]}
-    assert set(refused) == {"LLBG"}
-    assert "native_station_coordinates_missing" in refused["LLBG"]["error"]
+    assert set(refused) == {"ZZZZ"}
+    assert "native_station_coordinates_missing" in refused["ZZZZ"]["error"]
 
 
 def _quota_client(bodies):

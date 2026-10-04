@@ -21,7 +21,7 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
 SOURCE_SCHEMA = "awc_stationinfo_v1"
 SOURCE_ID = "awc_stationinfo"
 SOURCE_URL = "https://aviationweather.gov/api/data/stationinfo"
-SOURCE_SNAPSHOT_SHA256 = "22d624dbadff44141d4abdd6938873958e8b7a334a2d6f1394575e49c2f50ec6"
+SOURCE_SNAPSHOT_SHA256 = "baddc3d44bdd441536be23b6d5dc88477bc3e1da1aecf564f6ca1fb068e4e343"
 
 # Official AWC stationinfo lat/lon values.  Keep this projection intentionally
 # small: elevation, city labels, and provider fields do not belong in the
@@ -48,7 +48,9 @@ _COORDINATES: dict[str, tuple[float, float]] = {
     "LEMD": (40.466, -3.555),
     "LFPB": (48.967, 2.428),
     "LIMC": (45.631, 8.728),
+    "LLBG": (32.011, 34.887),
     "LTAC": (40.128, 32.995),
+    "LTFM": (41.262, 28.74),
     "MMMX": (19.436, -99.072),
     "MPMG": (8.967, -79.555),
     "NZWN": (-41.331, 174.806),
@@ -61,6 +63,7 @@ _COORDINATES: dict[str, tuple[float, float]] = {
     "RPLL": (14.507, 121.004),
     "SAEZ": (-34.822, -58.536),
     "SBGR": (-23.432, -46.469),
+    "UUWW": (55.592, 37.261),
     "VILK": (26.761, 80.889),
     "WMKK": (2.747, 101.714),
     "WSSS": (1.368, 103.982),

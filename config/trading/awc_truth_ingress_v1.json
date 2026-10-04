@@ -146,7 +146,8 @@
     "verified_against": [
       "gamma-api.polymarket.com/events description, event dates 2026-09-20..2026-09-25, 296 events",
       "polymarket.com event pages london/taipei/nyc 2026-09-24: Rules and Resolution Source match Gamma",
-      "weather.gov/wrh/timeseries?site=klga with Show Hourly Data: routine :51 METAR plus SPECI, no 5-minute rows"
+      "weather.gov/wrh/timeseries?site=klga with Show Hourly Data: routine :51 METAR plus SPECI, no 5-minute rows",
+      "gamma-api.polymarket.com/events 1122743/1122742/1122720 (istanbul/moscow/tel-aviv, event date 2026-10-05) read 2026-10-04: NOAA weather.gov/wrh/timeseries?site=LTFM/UUWW/LLBG, degrees Celsius, highest Temp for all times, Weather Underground fallback"
     ],
     "truth_basis": "bayes_basket_target/settlement_truth.py: max over the station-day's AWC METAR and SPECI, whole degrees",
     "update_rule": "a reported deviation is resolved by re-verifying the page and editing this entry in the same commit as any truth-lane change it needs",
@@ -263,6 +264,13 @@
         "hourly_data_only": true,
         "finality": "NEXT_DAY_FIRST_DATAPOINT"
       },
+      "istanbul": {
+        "station_id": "LTFM",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
       "jeddah": {
         "station_id": "OEJN",
         "family": "NOAA_WRH_TIMESERIES",
@@ -335,6 +343,13 @@
       },
       "milan": {
         "station_id": "LIMC",
+        "family": "NOAA_WRH_TIMESERIES",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "moscow": {
+        "station_id": "UUWW",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "C",
         "hourly_data_only": false,
@@ -427,6 +442,13 @@
       "taipei": {
         "station_id": "RCSS",
         "family": "WU_DAILY_OBSERVATIONS",
+        "unit": "C",
+        "hourly_data_only": false,
+        "finality": "NEXT_DAY_FIRST_DATAPOINT"
+      },
+      "tel-aviv": {
+        "station_id": "LLBG",
+        "family": "NOAA_WRH_TIMESERIES",
         "unit": "C",
         "hourly_data_only": false,
         "finality": "NEXT_DAY_FIRST_DATAPOINT"

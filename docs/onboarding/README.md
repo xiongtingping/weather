@@ -13,6 +13,30 @@ model has never priced them, and the reason is not the stations: it is that
 the fleet size is a literal in about twenty places rather than a derived
 quantity.
 
+## Moved 2026-10-04 (fleet 45 -> 48)
+
+Done in one commit and one restart, in the order the earlier two attempts
+(2026-08-31, 2026-09-21) showed it has to go:
+
+1. `scripts/prepare_fleet_move.py --add LLBG LTFM UUWW --commit-authority
+   --mint ...` appended `global_awc_ssot_v2` source-authority rows for the 48
+   (only the projection builder reads them) and minted
+   `config/artifacts/pr12_authority_scope_projection_current_20261004T120000Z.json`
+   from the doctrine blobs pinned at e9d31583.
+2. `--prove` ran the pr12 contract builder read-only against it: 1,400
+   revision facts, the three new stations 157-161 each, 136 closed station-days
+   quarantined (the old projection already closed them; their old generation
+   stays and is what settlement reads).
+3. The move itself: coordinates (one AWC stationinfo call over all 48, no
+   drift in the 45), the sweep's PROJECTION pointer, the capture configs'
+   fleet label, the lane map, the charter-205 settlement-source contract
+   (all three resolve on weather.gov/wrh/timeseries, degrees C), and the
+   regional blocks.  The seven tests the move turned red used the three as
+   their example of a station outside the fleet; they use ZZZZ now.
+
+The patch file below is history; the evidence the three stations still have
+to earn (arrival corpus, OOS activation) accrues from here.
+
 ## What is already done (idempotent, safe to re-verify)
 
 * `calibration_station_registry` and

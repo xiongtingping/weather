@@ -20,7 +20,7 @@ PY="$ROOT/.venv/bin/python"
 # round, not an audit by-product: output/audits is pruned by age (14 days),
 # and on 2026-08-26 that pruning deleted this file and stopped the lane.
 # Active inputs live in config/artifacts, which no retention pass touches.
-PROJECTION="$ROOT/config/artifacts/pr12_authority_scope_projection_current_20260826T120000Z.json"
+PROJECTION="$ROOT/config/artifacts/pr12_authority_scope_projection_current_20261004T120000Z.json"
 WORK="$ROOT/data/runtime/pr12_awc_observation"
 AUDIT="$ROOT/output/audits"
 mkdir -p "$WORK" "$AUDIT" "$ROOT/data/logs"

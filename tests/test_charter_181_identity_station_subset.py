@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import sqlite3
 import stat
 import subprocess
@@ -126,24 +127,25 @@ def test_a_high_frequency_row_names_no_station(monkeypatch) -> None:
 
 
 def test_a_station_outside_the_fleet_does_not_spoil_the_subset(monkeypatch) -> None:
-    """2026-10-04 03:37Z: LTFM, UUWW and LLBG are collected into the archive
+    """2026-10-04 03:37Z: LTFM, UUWW and LLBG were collected into the archive
     and staged in the station registry for onboarding, but not in the fleet;
     the builder's full pass ignores them and, asked for one by name, refuses
     the whole subset -- so every pass after one of them reported fell back to
-    the full pass (49 s)."""
+    the full pass (49 s).  They joined the fleet the same day; ZZZZ (ICAO's
+    "no designator") stands in for the next station staged ahead of it."""
 
     fleet = set(pw.coordinate_registry_manifest()["station_ids"])
-    assert {"LTFM", "UUWW", "LLBG"}.isdisjoint(fleet) and "EGLC" in fleet
+    assert "ZZZZ" not in fleet and "EGLC" in fleet
     archive = _archive()
     runs = _Runs(monkeypatch)
     worker = _worker(archive)
     worker._identify_live_observations()
     _report(archive, "awc_o2", "awc", "EGLC")
-    _report(archive, "awc_o3", "awc", "LTFM")
+    _report(archive, "awc_o3", "awc", "ZZZZ")
     assert worker._identify_live_observations()["stations"] == ["EGLC"]
     # Only an outsider moved: nothing of the fleet's to subset, as when no
     # AWC station moved at all.
-    _report(archive, "awc_o4", "awc", "UUWW")
+    _report(archive, "awc_o4", "awc", "ZZZZ")
     alone = worker._identify_live_observations()
     assert (alone["scope"], alone["full_pass_reason"]) == ("full", "no_awc_station_moved")
     assert [call["stations"] for call in runs.calls] == [None, "EGLC", None]
@@ -337,8 +339,11 @@ def _fake_root(tmp_path: Path) -> Path:
     (root / "scripts" / "lib").mkdir(parents=True)
     (root / ".venv" / "bin").mkdir(parents=True)
     (root / "config" / "artifacts").mkdir(parents=True)
-    (root / "config" / "artifacts" / "pr12_authority_scope_projection_current_20260826T120000Z.json").write_text("{}")
     script = (ROOT / "scripts" / "pr12_awc_observation_sweep.sh").read_text()
+    # The projection the sweep pins, whichever generation that is: the
+    # script exits 78 without it.
+    pinned = re.search(r'^PROJECTION="\$ROOT/(.+)"$', script, re.M).group(1)
+    (root / pinned).write_text("{}")
     (root / "scripts" / "pr12_awc_observation_sweep.sh").write_text(script)
     (root / "scripts" / "lib" / "single_instance.sh").write_text("single_instance() { :; }\n")
     python = root / ".venv" / "bin" / "python"

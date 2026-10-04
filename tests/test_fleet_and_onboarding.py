@@ -183,9 +183,9 @@ def test_onboarding_refuses_a_fleet_the_pr12_projection_does_not_carry(
     monkeypatch.setattr(onboard, "_pr12_projection_path", lambda: projection)
 
     assert onboard._sealed_fleet_blockers(fleet) == []
-    refused = onboard._sealed_fleet_blockers(fleet + ["LTFM"])
+    refused = onboard._sealed_fleet_blockers(fleet + ["ZZZZ"])
     assert [b["state"] for b in refused] == ["SEALED_AT_ANOTHER_FLEET"]
-    assert refused[0]["missing_from_projection"] == ["LTFM"]
+    assert refused[0]["missing_from_projection"] == ["ZZZZ"]
 
     monkeypatch.setattr(onboard, "_pr12_projection_path", lambda: None)
     assert [b["state"] for b in onboard._sealed_fleet_blockers(fleet)] == [
