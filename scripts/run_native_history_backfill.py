@@ -30,6 +30,14 @@ waiting in the queue.  A partial capture must never be topped up: the row
 identity carries the query time, so a second capture of the same
 station-day-version collides on the archive's unique key.
 
+``--station-id`` narrows the walk to named stations, and the roster to them:
+presence and the done line count those stations only, and the capture and
+ingest ask for those stations only.  The unique key carries the station, so
+a station that joined the fleet after a date was walked (LLBG, LTFM and UUWW
+on 2026-10-04) is a capture of its own, not a top-up of the date's others.
+Give such a walk its own ``--scratch``: packets are named by date, lead and
+cycle, not by station set.
+
 Meant to run in a terminal the operator can see; ``--max-event-days`` /
 ``--max-seconds`` bound one invocation and the loop is idempotent.
 """
@@ -46,12 +54,18 @@ import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bayes_basket_target import ecmwf_ifs_archive, noaa_gefs_archive  # noqa: E402
+from bayes_basket_target import (  # noqa: E402
+    ecmwf_aifs_ens_archive,
+    ecmwf_ifs_archive,
+    noaa_aigefs_archive,
+    noaa_gefs_archive,
+)
 from bayes_basket_target.contracts import ContractError  # noqa: E402
 from bayes_basket_target.database import DEFAULT_TARGET_DB  # noqa: E402
 from bayes_basket_target.market_registry import (  # noqa: E402
@@ -78,6 +92,26 @@ PROVIDERS = {
         "extraction_version": noaa_gefs_archive.extraction_version_for_lead,
         "raw_env": "GEFS_RAW_OBJECT_DIR",
         "packet_env": "GEFS_RETAINED_PACKET_DIR",
+    },
+    # The two AI ensembles keep no raw bodies (their lanes keep receipts), so
+    # their raw and packet variables name nothing the capture reads.
+    "aifs": {
+        "script": ROOT / "scripts" / "backfill_ai_ensemble_multistation_archive.py",
+        "script_args": ["--system", "aifs"],
+        "system_id": ecmwf_aifs_ens_archive.SYSTEM_ID,
+        "transport": "ECMWF_OPEN_DATA_S3",
+        "extraction_version": ecmwf_aifs_ens_archive.extraction_version_for_lead,
+        "raw_env": "AIFS_BACKFILL_RAW_DIR_UNUSED",
+        "packet_env": "AIFS_BACKFILL_PACKET_DIR_UNUSED",
+    },
+    "aigefs": {
+        "script": ROOT / "scripts" / "backfill_ai_ensemble_multistation_archive.py",
+        "script_args": ["--system", "aigefs"],
+        "system_id": noaa_aigefs_archive.SYSTEM_ID,
+        "transport": "NOAA_GEFS_PDS_S3",
+        "extraction_version": noaa_aigefs_archive.extraction_version_for_lead,
+        "raw_env": "AIGEFS_BACKFILL_RAW_DIR_UNUSED",
+        "packet_env": "AIGEFS_BACKFILL_PACKET_DIR_UNUSED",
     },
 }
 LOCKED = "database is locked"
@@ -381,11 +415,15 @@ def _coordinate_roster_count(db: Path) -> int:
 
 def _stations_present(
     db: Path, *, system_id: str, transport: str, event_date: str,
-    extraction_version: str,
+    extraction_version: str, station_ids: Sequence[str] = (),
 ) -> int:
     # Seekable on calibration_native_member_skill_idx
-    # (system, transport, qc, target_local_date); checked with
+    # (system, transport, qc, target_local_date, station_id); checked with
     # EXPLAIN QUERY PLAN before this lane was written.
+    named = sorted({str(s).strip().upper() for s in station_ids if str(s).strip()})
+    station_sql = (
+        " AND station_id IN (" + ",".join("?" for _ in named) + ")" if named else ""
+    )
     with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
         conn.execute("PRAGMA query_only=ON")
         row = conn.execute(
@@ -393,8 +431,8 @@ def _stations_present(
             "FROM calibration_native_ensemble_historical_member_run "
             "WHERE ensemble_system_id=? AND transport_provider_id=? "
             "AND qc_status='ACCEPTED' AND target_local_date=? "
-            "AND extraction_version=?",
-            (system_id, transport, event_date, extraction_version),
+            "AND extraction_version=?" + station_sql,
+            (system_id, transport, event_date, extraction_version, *named),
         ).fetchone()
     return int(row[0] or 0)
 
@@ -605,6 +643,12 @@ def main() -> int:
              "station that has coordinates; the three lead:cycle pairs used "
              "here cover the whole roster)",
     )
+    parser.add_argument(
+        "--station-id", action="append", default=[],
+        help="walk only these stations (repeatable): presence, the done line, "
+             "the capture and the ingest all read them alone; use with its "
+             "own --scratch",
+    )
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
 
@@ -637,8 +681,14 @@ def main() -> int:
     for path in list(raw_dirs.values()) + list(packet_dirs.values()):
         path.mkdir(parents=True, exist_ok=True)
     progress = scratch / "progress.jsonl"
-    roster = _coordinate_roster_count(db)
+    named_stations = sorted({s.strip().upper() for s in args.station_id if s.strip()})
+    if named_stations and args.coverable_only:
+        raise SystemExit("--station-id and --coverable-only are not combined")
+    for station in named_stations:
+        station_coordinates(station)  # refuses a station the decoder cannot place
+    roster = len(named_stations) or _coordinate_roster_count(db)
     done_threshold = int(args.skip_if_stations_at_least or roster)
+    station_args = [arg for s in named_stations for arg in ("--station-id", s)]
 
     def env_for(provider: str, lock_wait: float) -> dict[str, str]:
         spec = PROVIDERS[provider]
@@ -646,7 +696,7 @@ def main() -> int:
         env[spec["raw_env"]] = str(raw_dirs[provider])
         env[spec["packet_env"]] = str(packet_dirs[provider])
         env["NATIVE_HISTORY_LOCK_WAIT_SECONDS"] = str(lock_wait)
-        if provider == "ecmwf":
+        if provider in ("ecmwf", "aifs"):
             env["ECMWF_ARCHIVE_TRANSPORT_BASE_URL"] = args.ecmwf_base_url
             env["ECMWF_ARCHIVE_MAX_WORKERS"] = str(args.ecmwf_workers)
             # Reuse only from this lane's own store; the production roots
@@ -664,6 +714,7 @@ def main() -> int:
         return _stations_present(
             db, system_id=spec["system_id"], transport=spec["transport"],
             event_date=packet.event_date, extraction_version=packet.version,
+            station_ids=named_stations,
         )
 
     thresholds: dict[tuple[str, int, int], int] = {}
@@ -751,9 +802,10 @@ def main() -> int:
                 continue
             spec = PROVIDERS[packet.provider]
             cmd = [
-                args.python, str(spec["script"]), "--db", str(db),
-                "--event-date", packet.event_date, "--lead-days", str(packet.lead),
+                args.python, str(spec["script"]), *spec.get("script_args", ()),
+                "--db", str(db), "--event-date", packet.event_date, "--lead-days", str(packet.lead),
                 "--run-cycle-hour", str(packet.cycle), "--input", str(path), "--commit",
+                *station_args,
             ]
             if args.coverable_only and packet.provider == "ecmwf":
                 cmd.append("--coverable-only")
@@ -861,9 +913,10 @@ def main() -> int:
                     )
                     continue
                 cmd = [
-                    args.python, str(spec["script"]), "--db", str(db),
-                    "--event-date", event_date, "--lead-days", str(lead),
+                    args.python, str(spec["script"]), *spec.get("script_args", ()),
+                    "--db", str(db), "--event-date", event_date, "--lead-days", str(lead),
                     "--run-cycle-hour", str(cycle), "--output", str(path),
+                    *station_args,
                 ]
                 if args.coverable_only and provider == "ecmwf":
                     cmd.append("--coverable-only")
