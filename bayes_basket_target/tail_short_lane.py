@@ -88,6 +88,7 @@ from .p1_tail_lane import (
     open_buy_orders_on_station_day,
 )
 from .proper_bet_lane import served_p0_vector
+from . import realisation_store
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import LANE_TAIL_SHORT, TAIL_SHORT_DEFAULT_SETTINGS, lane_settings, opening_stages
 from .tiebreak_lane import _cash_refusal, settle_stuck_lane_cycles
@@ -172,6 +173,7 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     for column, kind in ADDED_COLUMNS:
         if column not in present:
             conn.execute(f"ALTER TABLE {EVALUATION_TABLE} ADD COLUMN {column} {kind}")
+    realisation_store.ensure_shadow_schema(conn)
 
 
 def model_filter(served: Mapping[str, Any], bucket: str, yes_bid: float) -> dict[str, Any]:
@@ -559,6 +561,9 @@ def plan_tail_short(
             open_orders = open_buy_orders_on_station_day(target_conn, station, day)
         registry = None
         served = served_p0_vector(target_conn, station, day, valid_at=now) if filtered else None
+        # Charter 254: every leg this pass writes down, for the realisation
+        # layer's shadow reading on the same book.
+        shadow_legs: list[dict[str, Any]] = []
         for leg in reading["legs"]:
             bucket = leg["bucket"]
             past = history.get(bucket) or _new_history()
@@ -576,11 +581,15 @@ def plan_tail_short(
                 base.update(model_p=(round(model["p"], 6) if model["p"] is not None else None),
                             model_envelope_id=served.get("envelope_id"))
 
-            def refuse(reason: str, **extra: Any) -> None:
+            def refuse(reason: str, leg: Mapping[str, Any] = leg, **extra: Any) -> None:
                 if reason in past["refusals"]:
                     return
                 past["refusals"].add(reason)
                 evaluations.append(_record(target_conn, {**base, **extra, "refusal": reason}))
+                no_price = round(1.0 - float(leg["bid"]), 6)
+                shadow_legs.append({"bucket": leg["bucket"], "side": SIDE, "price": no_price,
+                                    "fee_per_share": realisation_store.taker_fee_per_share(no_price, fee_rate),
+                                    "outcome": reason})
 
             if _held(past):
                 continue
@@ -668,6 +677,17 @@ def plan_tail_short(
             budget_left -= take["cost_usdc"] + fee
             held += 1
             plans.append(plan)
+            shadow_legs.append({"bucket": bucket, "side": SIDE, "price": float(take["price"]),
+                                "fee_per_share": realisation_store.taker_fee_per_share(take["price"], fee_rate),
+                                "outcome": "planned", "order_intent_id": plan["order_intent_id"]})
+        if shadow_legs:
+            envelope_id = (served or served_p0_vector(target_conn, station, day, valid_at=now)).get("envelope_id")
+            realisation_store.record_legs(
+                target_conn, lane=LANE, kind="take", station_id=str(station), event_date=str(day),
+                judged_at_utc=now_utc, hours_to_settlement=hours, book=book,
+                p_raw=realisation_store.envelope_probabilities(target_conn, envelope_id),
+                envelope_id=envelope_id, legs=shadow_legs,
+            )
     return {"plans": plans, "evaluations": evaluations, "skipped": skipped, "rule_version": rule_version}
 
 

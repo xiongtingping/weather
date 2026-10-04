@@ -211,7 +211,9 @@ def test_proper_reads_the_same_served_vector(store) -> None:
     _envelope(store)
     served = proper_bet_lane.served_p0_vector(store, ST, ED)
     assert served["state"] == "ok" and served["envelope_id"] == "env_f1"
-    assert proper_bet_lane._latest_p0_probability(store, ST, ED, "31°C") == pytest.approx(served["probabilities"]["31°C"])
+    value, read = proper_bet_lane._latest_p0_probability(store, ST, ED, "31°C")
+    assert value == pytest.approx(served["probabilities"]["31°C"])
+    assert read["p_envelope_id"] == "env_f1"
 
 
 # ---------------------------------------------------------------------------

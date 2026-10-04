@@ -46,6 +46,19 @@ if [ -f "$WAL" ]; then
     exit 0
   fi
 fi
+# Charter 254: the realisation layer's nightly fit -- the same read-only
+# discipline (mode=ro, waits the page render out, WAL line, utility
+# priority), writing data/realisation_layer/active.json, which the betting
+# lanes' shadow and the board read.  It fits only when the artifact is 20
+# hours old or was fitted by other code, so most hourly runs pass at once.
+# Never fatal: a failed fit leaves the previous artifact standing.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer"
+if run_with_timeout "${PM_REALISATION_REFIT_TIMEOUT_SEC:-900}" "" \
+    taskpolicy -d utility nice -n 10 "$PY" scripts/refit_realisation_layer.py; then
+  :
+else
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer refit ended rc=$?; the previous artifact stands"
+fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings"
 TIMEOUT_SEC="${PM_BOARD_READINGS_TIMEOUT_SEC:-2400}"
 if run_with_timeout "$TIMEOUT_SEC" "" \

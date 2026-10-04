@@ -42,6 +42,18 @@ os.environ.setdefault("PM_POSTERIOR_LANE", "shadow")
 
 
 @pytest.fixture(autouse=True)
+def _realisation_layer_reads_no_live_artifact(monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> None:
+    """Charter 254: the lanes' shadow reads ``data/realisation_layer/active.json``.
+    A test reads an empty directory of its own, so a lane suite never prices
+    its fixtures on the live fit; a test that wants a fit writes one there."""
+
+    from bayes_basket_target import realisation_store
+
+    monkeypatch.setattr(realisation_store, "ARTIFACT_DIR", tmp_path_factory.mktemp("realisation_layer"))
+    realisation_store._ACTIVE_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
 def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
     """Map the fixture station ``TEST`` like a northern mid-latitude station.
 

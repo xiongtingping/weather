@@ -111,6 +111,7 @@ from .exit_orders import Transport
 from .lane_orders import send_lane_buy
 from .live_station_scope import admission as live_station_admission
 from .materialization import floor_probabilities
+from . import realisation_store
 from .p1_tail_lane import _latest_snapshot, _ws_manifest_root, live_ws_snapshot
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import (
@@ -214,6 +215,7 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
         f"CREATE INDEX IF NOT EXISTS {EVALUATION_TABLE}_plan_state_idx"
         f" ON {EVALUATION_TABLE}(plan_state, event_date)"
     )
+    realisation_store.ensure_shadow_schema(conn)
 
 
 def _utc(value: str) -> datetime:
@@ -893,6 +895,24 @@ def _record(
         f"INSERT OR IGNORE INTO {EVALUATION_TABLE}({columns}) VALUES({','.join('?' for _ in row)})",
         tuple(row.values()),
     )
+    if envelope is not None and book is not None and reading:
+        # Charter 254: the realisation layer's reading of this decision, in
+        # shadow -- the lane's own leg (or, refused, the leg the rule looked
+        # at) priced on the belief b.  Nothing here changes what the lane does.
+        legs = [{"bucket": leg["bucket"], "side": leg["side"], "price": leg.get("planned_price"),
+                 "fee_per_share": 0.0, "outcome": "planned"} for leg in ((plan or {}).get("legs") or [])]
+        if not legs:
+            mode = reading.get("market_mode_bucket")
+            looked = next((x for x in reading.get("quotes") or []
+                           if mode is not None and str(x.get("bucket")) == str(mode)), None)
+            if looked is not None and looked.get("side"):
+                legs = [{"bucket": looked["bucket"], "side": looked["side"], "price": looked.get("price"),
+                         "fee_per_share": 0.0, "outcome": refusal}]
+        realisation_store.record_legs(
+            conn, lane=LANE, kind="plan", station_id=str(key["station_id"]), event_date=str(key["event_date"]),
+            judged_at_utc=now_utc, hours_to_settlement=hours, book=book,
+            p_raw=envelope.get("probabilities"), envelope_id=(fact or {}).get("envelope_id"), legs=legs,
+        )
     return row
 
 
@@ -1260,6 +1280,15 @@ def plan_rungs(
                 "plan_id": plan["plan_id"], "bucket": leg["bucket"], "side": leg["side"], "n": n,
             })[:32]
             leg_state["status"] = "posting"
+            # Charter 254: the rung's reading by the realisation layer, in shadow.
+            realisation_store.record_legs(
+                target_conn, lane=LANE, kind="rung", station_id=str(station), event_date=str(day),
+                judged_at_utc=now_utc, hours_to_settlement=hours, book=book,
+                p_raw=realisation_store.envelope_probabilities(target_conn, p_read.get("p_envelope_id")),
+                envelope_id=p_read.get("p_envelope_id"),
+                legs=[{"bucket": leg["bucket"], "side": leg["side"], "price": float(quote["price"]),
+                       "fee_per_share": 0.0, "outcome": "posting", "order_intent_id": intent_id}],
+            )
             rungs.append({
                 "where": where, "plan": plan, "leg": leg, "intent_id": intent_id,
                 "price": float(quote["price"]), "shares": shares, "cost_usdc": cost,

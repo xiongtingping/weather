@@ -13508,6 +13508,85 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     }
     return out
 
+#: Charter 254: where the realisation layer's nightly fit is written
+#: (``bayes_basket_target.realisation_store.ARTIFACT_DIR``), read as a file.
+REALISATION_LAYER_ACTIVE = ROOT / "data" / "realisation_layer" / "active.json"
+REALISATION_SHADOW_TABLE = "realisation_layer_shadow"
+
+
+def collect_realisation_layer(conn: sqlite3.Connection) -> dict[str, Any]:
+    """兑现层（影子）-- charter 254 (user rulings 2026-10-05 「上影子」,
+    「前端增加对应显式看板」).
+
+    Read only: the nightly fit's artifact as the backend wrote it (its
+    walk-forward calibration gate, its parameters, and the settled shadow legs
+    scored against what landed), and the shadow rows the two betting lanes
+    wrote for every leg they judged -- ``b``, its band and the edge on the
+    leg's own price -- beside the settled bucket and the order's state.
+    """
+
+    out: dict[str, Any] = {"available": True, "fit": {"available": False}, "shadow": {"available": False}}
+    try:
+        artifact = json.loads(REALISATION_LAYER_ACTIVE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        artifact = None
+    if artifact:
+        gate = dict(artifact.get("gate") or {})
+        try:
+            fitted = datetime.fromisoformat(str(artifact.get("fitted_at_utc")).replace("Z", "+00:00"))
+            age_hours = round((datetime.now(timezone.utc) - fitted).total_seconds() / 3600.0, 1)
+        except ValueError:
+            age_hours = None
+        out["fit"] = {
+            "available": True,
+            "fit_id": artifact.get("fit_id"), "rule": artifact.get("rule"),
+            "fitted_at_utc": artifact.get("fitted_at_utc"), "age_hours": age_hours,
+            "cutoff_utc": artifact.get("cutoff_utc"), "window_days": artifact.get("window_days"),
+            "build_sec": artifact.get("build_sec"),
+            "population": artifact.get("population") or {},
+            "theta": artifact.get("theta_named") or {},
+            "gate": {k: gate.get(k) for k in (
+                "state", "rule", "scored_days", "first_scored_day", "last_scored_day", "scored_decisions",
+                "cells_judged", "cells_outside", "cells_allowed", "calibration_line", "logscore", "top_bucket",
+            )},
+            "cells": [c for c in (gate.get("cells") or []) if c.get("group") == "all" or c.get("outside")],
+            "realised": artifact.get("shadow") or {},
+        }
+    if _table_exists(conn, REALISATION_SHADOW_TABLE):
+        table = REALISATION_SHADOW_TABLE
+        counts = [
+            {"lane": r[0], "kind": r[1], "state": r[2], "rows": int(r[3]), "last_at_utc": r[4]}
+            for r in conn.execute(
+                f"SELECT lane, kind, CASE WHEN state LIKE 'error:%' THEN 'error' ELSE state END,"
+                f" COUNT(*), MAX(judged_at_utc) FROM {table} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+            )
+        ]
+        recent = []
+        for r in conn.execute(
+            f"SELECT s.judged_at_utc, s.lane, s.kind, s.station_id, s.event_date, s.bucket, s.side,"
+            f" s.price, s.fee_per_share, s.p, s.q, s.b, s.b_low, s.b_high, s.edge, s.edge_sure,"
+            f" s.outcome, s.state, s.centres_agree, s.fit_state, s.hours_to_settlement, s.order_intent_id,"
+            " i.state, COALESCE(x.filled_size, 0),"
+            " (SELECT l.settled_bucket FROM basket_station_day_settlement_label l"
+            "   WHERE l.station_id=s.station_id AND l.event_date=s.event_date"
+            "   ORDER BY l.truth_revision_no DESC LIMIT 1)"
+            f" FROM {table} s"
+            " LEFT JOIN basket_target_order_intents i ON i.order_intent_id = s.order_intent_id"
+            " LEFT JOIN basket_target_order_reconciliations x ON x.order_intent_id = s.order_intent_id"
+            " ORDER BY s.judged_at_utc DESC LIMIT 60"
+        ):
+            recent.append({
+                "judged_at_utc": r[0], "lane": r[1], "kind": r[2], "station_id": r[3], "event_date": r[4],
+                "bucket": r[5], "side": r[6], "price": r[7], "fee_per_share": r[8], "p": r[9], "q": r[10],
+                "b": r[11], "b_low": r[12], "b_high": r[13], "edge": r[14], "edge_sure": r[15],
+                "outcome": r[16], "state": r[17], "centres_agree": r[18], "fit_state": r[19],
+                "hours_to_settlement": r[20], "order_intent_id": r[21], "order_state": r[22],
+                "filled_size": float(r[23] or 0.0), "settled_bucket": r[24],
+            })
+        out["shadow"] = {"available": True, "counts": counts, "recent": recent}
+    return out
+
+
 def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """The L4 posterior lane (first-principles baseline, shadow): the served
     ``(alpha, gamma, w)`` rows per stage and lead band with the in-sample
@@ -14645,6 +14724,9 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # 一样」).  A P&L a day old is a wrong P&L, not a slow one.
     "tiebreak_lane", "proper_bet_lane",
     "tail_short_lane",
+    # Charter 254: the lanes' shadow legs beside them -- one small table and
+    # one file, read on every run like the lanes they shadow.
+    "realisation_layer",
 })
 #: A section that cost at least this much last time is the research render's
 #: to compute (``--refresh-research``, its own launchd clock, user ruling
@@ -15895,6 +15977,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     tail_short_lane = _cached_section(
         "tail_short_lane", collect_tail_short_lane, conn
     )
+    realisation_layer = _cached_section(
+        "realisation_layer", collect_realisation_layer, conn
+    )
     previous_windows = _previous_version_windows(conn)
     previous_salt = json.dumps(previous_windows, sort_keys=True)
     center_landing_previous = _cached_section(
@@ -16223,6 +16308,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "board_evidence": collect_board_evidence(),
         "proper_bet_lane": proper_bet_lane,
         "tail_short_lane": tail_short_lane,
+        "realisation_layer": realisation_layer,
         "chain": chain,
         "hosted_sweeps": hosted_sweeps,
         "ssot_capacity": ssot_capacity,
@@ -19941,7 +20027,13 @@ const MONEY_BOARD = [
       "sec-proper-bet"],
      ["tailshort", "远尾做空 H1 · 宪章 234",
       () => tailShortLane(),
-      "sec-tail-short"]]},
+      "sec-tail-short"],
+     // Charter 254: the realisation layer in shadow -- the belief b = P(Y | p, q)
+     // the two lanes above are read against, its nightly calibration gate,
+     // and every leg they judged priced on it.  Nothing here trades.
+     ["realisation", "兑现层（影子）· 宪章 254",
+      () => realisationLayer(),
+      "sec-realisation"]]},
 ];
 
 // The live order block reads the live-readiness payload, which is absent when the
@@ -20003,6 +20095,81 @@ function tailShortLane(){
 // normalised mid, and s = log(p/q) on every bucket is each leg's direction
 // and size -- YES where s > 0, NO where s < 0.  Its own page, like every
 // lane's (user ruling 2026-09-26 「前端没有proper线相关内容」).
+// 「兑现层（影子）」(charter 254): b = P(Y | p, q), the belief an edge is
+// priced on -- the market sharpened, its modal bucket and the two beside it
+// lifted, and the weather model's width and shape where the two centres
+// agree.  Read only: the nightly fit's file and the shadow rows the lanes
+// wrote; nothing on this page trades.
+function realisationLayer(){
+  const T=D.realisation_layer||{};
+  if(!T.available) return `<div class="muted">兑现层读数这一轮没有生成。</div>`;
+  const F=T.fit||{}, S=T.shadow||{};
+  const pct=(v,d=1)=>v==null?"—":((+v)*100).toFixed(d)+"%";
+  const pt=(v,d=1)=>v==null?"—":((+v)>=0?"+":"")+((+v)*100).toFixed(d);
+  const num=(v,d=3)=>v==null?"—":(+v).toFixed(d);
+  const ci=(a,scale=100,d=1)=>Array.isArray(a)?`${pt(a[0]/100*scale,d)} [${pt(a[1]/100*scale,d)}, ${pt(a[2]/100*scale,d)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
+  const nat=a=>Array.isArray(a)?`${(+a[0]).toFixed(4)} [${(+a[1]).toFixed(4)}, ${(+a[2]).toFixed(4)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
+  const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
+  const intro=`<div class="card"><b>兑现层（影子）</b> <span class="pill amber">只记录，不改下单</span>
+    <span class="muted">模型向量 p 只看天气；这一层看到 p 又看到市场 q 之后给出每个桶的兑现概率 b，edge 只按 b 对可成交价算。
+    形式：市场向量拉尖、市场众数桶与相邻两档各加一项、模型的宽度与形状（两个中心一致时权重大，不一致时小）；模型的中心分歧不进。
+    每晚按已结算的 P0（距结算 &gt;36h）滚动 28 天重拟，逐日前推过校准门；Proper 与远尾做空两条线每判一条腿就记一行 b、区间与 edge。</span></div>`;
+  if(!F.available) return intro+`<div class="card muted">尚无拟合文件（data/realisation_layer/active.json）。后端读数任务每小时检查一次，满 20 小时或代码变更即重拟。</div>`+shadowBlock();
+  const G=F.gate||{}, L=G.logscore||{}, line=G.calibration_line||{}, top=G.top_bucket||{}, pop=F.population||{};
+  const state=G.state||"—";
+  const pill=state==="ADMITTED"?"green":(state==="REFUSED"?"red":"amber");
+  const stateText={ADMITTED:"校准门通过",REFUSED:"校准门未过",ACCUMULATING:"样本不足"}[state]||state;
+  const theta=F.theta||{};
+  const names={market_power:"市场拉尖",modal_bucket:"众数桶",beside_mode:"众数隔壁",width_agree:"宽度·中心一致",shape_agree:"形状·中心一致",width_disagree:"宽度·中心不一致",shape_disagree:"形状·中心不一致"};
+  const params=Object.keys(names).map(k=>`${names[k]} <span class="mono">${theta[k]==null?"—":(+theta[k]).toFixed(3)}</span>`).join(" · ");
+  const head=`<div class="card"><span class="pill ${pill}">${h(stateText)}</span>
+    <span class="muted">拟合于 ${h(F.fitted_at_utc||"—")}（${F.age_hours==null?"—":F.age_hours+" 小时前"}），窗口 ${h(pop.floor_day||"—")} 之后至 ${h(pop.latest_day||"—")}，
+    ${pop.decisions==null?"—":pop.decisions} 个决策 / ${pop.station_days==null?"—":pop.station_days} 个站日；前推计分 ${G.scored_days==null?"—":G.scored_days} 天（${h(G.first_scored_day||"—")} 至 ${h(G.last_scored_day||"—")}）。</span>
+    <div class="muted" style="margin-top:4px">参数：${params}</div></div>`;
+  const slope=line.slope||[], icpt=line.intercept||[];
+  const tiles=`<div class="grid g3" style="margin-top:8px">
+    ${tile("出区间的格 / 允许", `${G.cells_outside==null?"—":G.cells_outside} / ${G.cells_allowed==null?"—":G.cells_allowed}`, `共判 ${G.cells_judged==null?"—":G.cells_judged} 格（十个概率档 × 全部/众数桶/隔壁/≥2档，桶数≥200）；完全校准时出区间的格数在允许数以内`)}
+    ${tile("校准线斜率", slope.length?`${num(slope[0])} [${num(slope[1])}, ${num(slope[2])}]`:"—", `截距 ${icpt.length?`${num(icpt[0])} [${num(icpt[1])}, ${num(icpt[2])}]`:"—"}；斜率含 1、截距含 0 才算校准`)}
+    ${tile("清晰度：平均最高桶", `${pct(top.layer)} / ${pct(top.market)}`, "兑现层 / 市场原样；校准之内越高越好")}
+    ${tile("LogScore：兑现层 − 市场", nat(L.layer_minus_market), "负＝比市场原样准（nat/决策）")}
+    ${tile("模型的信息增量", nat(L.layer_minus_market_only_pool), "兑现层 − 不含模型的同形状池；负＝天气模型在市场之外还带信息")}
+    ${tile("LogScore 绝对值", `${nat(L.layer)}`, `市场原样 ${nat(L.market)}`)}
+  </div>`;
+  const cells=(F.cells||[]).map(c=>`<tr${c.outside?' style="color:#ff7b72"':""}><td>${h({all:"全部",modal:"众数桶",beside:"隔壁",far:"≥2档"}[c.group]||c.group)}</td>
+    <td class="mono">${num(c.bin[0])}–${num(c.bin[1])}</td><td class="mono">${c.buckets}</td>
+    <td class="mono">${pct(c.said,1)}</td><td class="mono">${pct(c.landed,1)}</td>
+    <td class="mono">${ci(c.gap)}</td><td>${c.judged?(c.outside?"出区间":"在区间内"):"桶数不足，不判"}</td></tr>`).join("");
+  const reliability=`<details open style="margin-top:8px"><summary>前推可靠性：说多少、中多少（全部桶十个概率档，另列出其它位置组里出区间的格）</summary>
+    <table><thead><tr><th>位置</th><th>b 档</th><th>桶数</th><th>说</th><th>中</th><th>中−说（点）[95%]</th><th>判</th></tr></thead><tbody>${cells||"<tr><td colspan=7 class='muted'>无</td></tr>"}</tbody></table></details>`;
+  const R=F.realised||{};
+  const realisedRows=(which,label)=>(R[which]||[]).map(r=>`<tr><td>${label}</td><td>${h(r.lane)}</td><td>${h(r.side)}</td>
+    <td class="mono">${r.legs}</td><td class="mono">${r.event_days}</td><td class="mono">${pct(r.belief_side)}</td>
+    <td class="mono">${pct(r.landed_side)}</td><td class="mono">${num(r.price)}</td><td class="mono">${pt(r.claimed,2)}</td>
+    <td class="mono">${ci(r.realised,100,2)}</td><td class="mono">${r.sure_legs}</td><td class="mono">${ci(r.sure_realised,100,2)}</td></tr>`).join("");
+  const settledRows=realisedRows("decided","每腿首判")+realisedRows("filled","已成交");
+  const realised=`<details open style="margin-top:8px"><summary>影子腿对结算：b 说的、实际中的、edge 声称与兑现（¢/份，已扣费；区间按事件日自助）</summary>
+    ${settledRows?`<table><thead><tr><th>口径</th><th>车道</th><th>方向</th><th>腿</th><th>事件日</th><th>b（本方向）</th><th>实际</th><th>均价</th><th>声称 edge</th><th>兑现 [95%]</th><th>有把握的腿</th><th>有把握兑现</th></tr></thead><tbody>${settledRows}</tbody></table>`
+      :`<div class="muted">尚无已结算的影子腿（${R.available===false?"影子表还没建":"等第一批站日结算"}）。</div>`}</details>`;
+  return intro+head+tiles+reliability+realised+shadowBlock();
+  function shadowBlock(){
+    if(!S.available) return `<div class="card muted" style="margin-top:8px">影子表 realisation_layer_shadow 还没有行：两条线下一次判腿时写入。</div>`;
+    const counts=(S.counts||[]).map(c=>`<tr><td>${h(c.lane)}</td><td>${h(c.kind)}</td><td>${h(c.state)}</td><td class="mono">${c.rows}</td><td class="mono">${h(c.last_at_utc||"—")}</td></tr>`).join("");
+    const rows=(S.recent||[]).map(r=>{
+      const settled=r.settled_bucket?(r.settled_bucket===r.bucket?`<b>${h(r.settled_bucket)}</b>`:h(r.settled_bucket)):"未结算";
+      const edgeColor=r.edge==null?"":(+r.edge>0?' style="color:#3fb950"':' style="color:#8b949e"');
+      return `<tr><td class="mono">${h(String(r.judged_at_utc||"").slice(5,16))}</td><td>${h(r.lane==="proper_bet"?"Proper":(r.lane==="tail_short"?"远尾":r.lane))}·${h(r.kind)}</td>
+        <td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td>${h(r.bucket)}</td><td>${h(r.side)}</td>
+        <td class="mono">${num(r.price)}</td><td class="mono">${pct(r.p)}</td><td class="mono">${pct(r.q)}</td>
+        <td class="mono">${pct(r.b)} [${pct(r.b_low)}, ${pct(r.b_high)}]</td>
+        <td class="mono"${edgeColor}>${pt(r.edge,1)}</td><td class="mono">${pt(r.edge_sure,1)}</td>
+        <td>${h(r.outcome||"—")}</td><td>${h(r.order_state||"—")}${r.filled_size>0?" · 成交 "+(+r.filled_size).toFixed(2):""}</td>
+        <td>${settled}</td><td class="muted">${h(r.state)}</td></tr>`;}).join("");
+    return `<details open style="margin-top:8px"><summary>两条线判过的腿，按兑现层读（最近 60 条；edge 单位：点/份，已扣手续费；正＝b 说这条腿有利）</summary>
+      <div class="scroll" style="max-height:520px"><table><thead><tr><th>判于</th><th>车道</th><th>站</th><th>事件日</th><th>桶</th><th>方向</th><th>价</th><th>模型 p</th><th>市场 q</th><th>兑现层 b [10%, 90%]</th><th>edge</th><th>有把握 edge</th><th>车道的决定</th><th>订单</th><th>结算桶</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div></details>
+      <details style="margin-top:8px"><summary>影子行计数</summary><table><thead><tr><th>车道</th><th>种类</th><th>状态</th><th>行数</th><th>最近</th></tr></thead><tbody>${counts}</tbody></table></details>`;
+  }
+}
+
 function properBetLane(){
   const T=D.proper_bet_lane||{};
   if(!T.available) return `<div class="muted">Proper 下注线读数这一轮没有生成（这一节随整库渲染出数）。</div>`;
