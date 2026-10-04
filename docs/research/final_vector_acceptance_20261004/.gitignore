@@ -1,0 +1,4 @@
+*.gz
+*.pkl
+*.done
+__pycache__/
