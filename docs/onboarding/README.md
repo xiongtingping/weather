@@ -34,6 +34,21 @@ Done in one commit and one restart, in the order the earlier two attempts
    regional blocks.  The seven tests the move turned red used the three as
    their example of a station outside the fleet; they use ZZZZ now.
 
+4. **Missed on the day, done the same evening:** the cash-phase authority.
+   `basket_cash_phase_authority_manifest` held the 45 seeded stations only, so
+   every snapshot of the three was refused on
+   `resident_cash_phase_authority_manifest_not_unique` (zero rows) -- three
+   `basket_official_ws_snapshot_missing` scopes a cycle.  The fix is data, not
+   code: `scripts/renew_cash_phase_authority_window.py --onboard --valid-from
+   <now>` issues the fleet's (uniform) template to every fleet station with
+   no binding, under its own name and market timezone, ending with the fleet's
+   window; ingest the packet with `scripts/ingest_bayes_basket_target_artifacts.py
+   --apply`.  The next refusal behind it was the same kind:
+   `production_basket_policy_artifacts_missing`, the twelve
+   `basket_policy_activation` rows every seeded station holds (all pointing at
+   the global prior) -- `scripts/onboard_basket_policy_activation.py
+   --valid-from <now>`, same ingest.  Run both as part of every future move.
+
 The patch file below is history; the evidence the three stations still have
 to earn (arrival corpus, OOS activation) accrues from here.
 

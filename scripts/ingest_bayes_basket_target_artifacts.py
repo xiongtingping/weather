@@ -18,6 +18,7 @@ from bayes_basket_target.artifact_ingress import CONFIRMATION, ingest_artifact_b
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.database import DEFAULT_TARGET_DB, resolve_target_database
 from bayes_basket_target.resource_bounds import load_bounded_json, write_bounded_json
+from bayes_basket_target.sqlite_busy import begin_immediate_if_idle
 
 
 def validate_packet_sha256(
@@ -123,6 +124,13 @@ def main() -> int:
             raise ValueError("artifact_ingress_confirmation_invalid")
         with sqlite3.connect(resolve_target_database(args.db), timeout=60.0) as conn:
             conn.execute("PRAGMA busy_timeout=60000")
+            # The bundle's SAVEPOINT would open a deferred transaction that
+            # looks rows up before writing them; with the resident writer
+            # committing in between, the first write fails at once on
+            # SQLITE_BUSY_SNAPSHOT and busy_timeout is never consulted
+            # (2026-10-04: the cash-phase onboarding packet, validate and
+            # apply alike).  Take the lock first.
+            begin_immediate_if_idle(conn)
             result = ingest_artifact_bundle(conn, packet, commit=bool(args.apply))
             bound_counts = packet_binding_counts(conn, packet)
         result = {

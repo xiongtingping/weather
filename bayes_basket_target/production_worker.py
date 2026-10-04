@@ -784,6 +784,55 @@ def quote_refresh_stations_v1(
         if key[0] == station or key not in skipped:
             stations.append(key[0])
     return stations
+
+
+# How long one cycle's decision loop may wait for the publisher's next book
+# generation, once a refresh of a day renewed nothing.
+#
+# A refresh can only renew a lease with books newer than the ones it holds,
+# and those come from the publisher's full resubscription every ~30 s.  When
+# that stalls the loop used to keep asking: 2026-10-04 15:51:41-45Z, four
+# refreshes in four seconds against one unchanged manifest, the per-day cap
+# of six spent, and the 19 scopes behind them died together on
+# production_quote_expired (23 that cycle, 15 more at 15:43:47Z the same way;
+# 41 of 70 on the board's cycle).  Waiting for the generation instead turns a
+# publisher gap into seconds of loop time rather than a cycle of dead
+# scopes.  Sixty is one whole lease: a publisher silent longer than that is
+# not a hiccup, and the loop then fails the remaining scopes as before.
+QUOTE_PUBLISHER_WAIT_BUDGET_SECONDS = 60.0
+QUOTE_PUBLISHER_POLL_SECONDS = 1.0
+# "0": a refresh that renewed nothing is retried at once, as before
+# 2026-10-04.
+QUOTE_REFRESH_AWAIT_PUBLISHER = (
+    os.environ.get("PM_QUOTE_REFRESH_AWAIT_PUBLISHER", "1").strip().lower()
+    not in {"0", "off", "false", "no"}
+)
+
+
+def publisher_book_floor_v1(manifest: Mapping[str, Any]) -> datetime | None:
+    """The oldest book in one resident scope manifest, or None.
+
+    A snapshot is stamped with its scope's oldest book, so this is the
+    stamp a refresh would write now.  None when the scope carries no
+    quotes or any quote carries no clock: nothing to wait for.
+    """
+
+    quotes = manifest.get("quotes_by_token")
+    if not isinstance(quotes, Mapping) or not quotes:
+        return None
+    floor: datetime | None = None
+    for quote in quotes.values():
+        if not isinstance(quote, Mapping):
+            return None
+        text = str(quote.get("book_observed_at") or quote.get("created_at") or "")
+        try:
+            stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if stamp.tzinfo is None:
+            return None
+        floor = stamp if floor is None or stamp < floor else floor
+    return floor
 # Charter 48: a listed day not served for this long takes the next cycle
 # regardless of the alternation -- the guard against a restart storm.
 LISTING_SCOPE_TURN_STARVATION_SEC = 900.0
@@ -13903,6 +13952,67 @@ class TargetProductionWorker:
         except ValueError:
             return None
 
+    def _await_publisher_books(
+        self,
+        *,
+        station_id: str,
+        event_date: str,
+        lease_seconds: float,
+        budget_seconds: float,
+    ) -> tuple[float, bool]:
+        """Wait until the publisher holds books that would renew this scope.
+
+        Returns the seconds waited and whether such books arrived.  The
+        manifest is re-read only when the file changes; a scope the
+        publisher does not carry returns at once, since no generation will
+        bring it.  ``QUOTE_PUBLISHER_WAIT_BUDGET_SECONDS`` says why.
+        """
+
+        started = time.monotonic()
+        last_identity: tuple[int, int] | None = None
+        station = str(station_id).strip().upper()
+        while True:
+            if self.stop_requested:
+                return time.monotonic() - started, False
+            try:
+                stat = os.stat(self.market_manifest_path)
+                identity: tuple[int, int] | None = (
+                    stat.st_mtime_ns, stat.st_size,
+                )
+            except OSError:
+                identity = None
+            if identity is not None and identity != last_identity:
+                last_identity = identity
+                try:
+                    manifest = next(
+                        (
+                            item["manifest"]
+                            for item in self._resident_ws_scope_catalog()
+                            if str(item.get("event_date") or "") == str(event_date)
+                            and str(item.get("station_id") or "").strip().upper()
+                            == station
+                            and isinstance(item.get("manifest"), Mapping)
+                        ),
+                        None,
+                    )
+                except Exception:  # noqa: BLE001 -- mid-write; read again
+                    manifest = {}
+                if manifest is None:
+                    return time.monotonic() - started, False
+                floor = publisher_book_floor_v1(manifest) if manifest else None
+                if floor is not None and (
+                    floor
+                    + timedelta(seconds=float(lease_seconds))
+                    - datetime.now(timezone.utc)
+                ).total_seconds() > QUOTE_EVIDENCE_REFRESH_SECONDS:
+                    return time.monotonic() - started, True
+            waited = time.monotonic() - started
+            if waited >= float(budget_seconds):
+                return waited, False
+            time.sleep(
+                min(QUOTE_PUBLISHER_POLL_SECONDS, float(budget_seconds) - waited)
+            )
+
     def _refresh_scope_day_evidence(
         self,
         activation: Mapping[str, Any],
@@ -22363,6 +22473,20 @@ class TargetProductionWorker:
             )
             refresh_ineffective_scopes: set[tuple[str, str]] = set()
             restated_station_count = 0
+            # Days whose last refresh renewed nothing: the next one waits for
+            # the publisher's next generation first
+            # (``QUOTE_PUBLISHER_WAIT_BUDGET_SECONDS``).
+            days_awaiting_publisher: set[str] = set()
+            publisher_wait_budget = QUOTE_PUBLISHER_WAIT_BUDGET_SECONDS
+            publisher_waits: list[dict[str, Any]] = []
+            try:
+                quote_lease_seconds: float | None = float(
+                    QuoteFreshnessPolicy.from_mapping(
+                        activation.get("quote_freshness_policy")
+                    ).max_quote_age_seconds
+                )
+            except Exception:  # noqa: BLE001 -- no lease, no wait
+                quote_lease_seconds = None
             for position, (station_id, event_date) in enumerate(rows):
                 if self.stop_requested:
                     # SIGTERM: stop at the scope boundary.  The scopes not
@@ -22399,6 +22523,29 @@ class TargetProductionWorker:
                         day, 0
                     ),
                 ):
+                    if (
+                        QUOTE_REFRESH_AWAIT_PUBLISHER
+                        and day in days_awaiting_publisher
+                        and quote_lease_seconds is not None
+                        and publisher_wait_budget > 0.0
+                    ):
+                        waited, arrived = self._await_publisher_books(
+                            station_id=station,
+                            event_date=day,
+                            lease_seconds=quote_lease_seconds,
+                            budget_seconds=publisher_wait_budget,
+                        )
+                        publisher_wait_budget -= waited
+                        publisher_waits.append({
+                            "scope": f"{station}|{day}",
+                            "waited_seconds": round(waited, 1),
+                            "books_arrived": arrived,
+                        })
+                        self._add_span(
+                            "decision_loop_publisher_wait",
+                            waited * 1000.0,
+                            label=f"{station}|{day}",
+                        )
                     evidence_refreshed_at[day] = time.monotonic()
                     quote_refresh_attempts.append(day)
                     day_refresh_counts[day] = (
@@ -22559,6 +22706,9 @@ class TargetProductionWorker:
                             day_unproductive_refreshes[day] = (
                                 day_unproductive_refreshes.get(day, 0) + 1
                             )
+                            days_awaiting_publisher.add(day)
+                        else:
+                            days_awaiting_publisher.discard(day)
                         if (
                             not refresh_wrote
                             and day_expiry_before is not None
@@ -22596,6 +22746,7 @@ class TargetProductionWorker:
                         day_unproductive_refreshes[day] = (
                             day_unproductive_refreshes.get(day, 0) + 1
                         )
+                        days_awaiting_publisher.add(day)
                         quote_refresh_failures.append(
                             {"event_date": day, "reason": f"{type(exc).__name__}:{exc}"[:160]}
                         )
@@ -22931,6 +23082,16 @@ class TargetProductionWorker:
                     # whole day each before.
                     "restated_station_count": restated_station_count,
                     "within_reach": QUOTE_REFRESH_WITHIN_REACH,
+                    # Each wait for the publisher's next generation after a
+                    # refresh renewed nothing, and whether the books came.
+                    "await_publisher": QUOTE_REFRESH_AWAIT_PUBLISHER,
+                    "publisher_wait_budget_seconds": (
+                        QUOTE_PUBLISHER_WAIT_BUDGET_SECONDS
+                    ),
+                    "publisher_wait_seconds": round(
+                        sum(item["waited_seconds"] for item in publisher_waits), 1
+                    ),
+                    "publisher_waits": publisher_waits[:10],
                     # What the cap actually counts since 2026-09-08: an
                     # attempt that renewed nothing.  ``attempts_by_day``
                     # below stays the whole count, so a reader can still see

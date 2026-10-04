@@ -111,6 +111,55 @@ MANIFEST_LIVENESS_WRITE_INTERVAL_SECONDS = 5.0
 # was not before: the scope probe each refresh performs used to cost 36-40s
 # and now costs 0.24-1.4s.
 CONNECTION_REFRESH_SECONDS = 30.0
+# The manifest's write gap, made visible.  The consumer's lease is 60 s and a
+# planned refresh lands every ~30 s, so a gap past 20 s is already eating the
+# lease.  2026-10-04 15:42-15:43Z and 15:50-15:51Z the books stopped moving
+# for over 50 s and 38 scopes died on production_quote_expired, and this log
+# could not say why: its lines carried no time and nothing recorded what the
+# loop was doing in between.  Every line is now stamped, and a gap is logged
+# on the write that ends it, with how many connections it spanned and the
+# slowest synchronous catalog read inside it (the event loop stops while
+# one runs).
+MANIFEST_GAP_REPORT_SECONDS = 20.0
+SCOPE_PROBE_REPORT_SECONDS = 5.0
+_PUBLISH_TRACE: dict[str, float] = {
+    "last_write": 0.0,
+    "connections": 0.0,
+    "slowest_scope_read": 0.0,
+}
+
+
+def _log(message: str) -> None:
+    print(f"{_now_utc()} {message}", flush=True)
+
+
+def _timed_scope(*, db_path: Path, as_of_utc: str) -> dict[str, Any]:
+    """``_scope``, with a slow read logged and kept for the gap report."""
+
+    started = time.monotonic()
+    try:
+        return _scope(db_path=db_path, as_of_utc=as_of_utc)
+    finally:
+        elapsed = time.monotonic() - started
+        _PUBLISH_TRACE["slowest_scope_read"] = max(
+            _PUBLISH_TRACE["slowest_scope_read"], elapsed
+        )
+        if elapsed > SCOPE_PROBE_REPORT_SECONDS:
+            _log(f"[market_ws][target_exact] slow_scope_read:{elapsed:.1f}s")
+
+
+def _note_manifest_write(now: float) -> None:
+    last = _PUBLISH_TRACE["last_write"]
+    gap = now - last if last > 0.0 else 0.0
+    if gap > MANIFEST_GAP_REPORT_SECONDS:
+        _log(
+            f"[market_ws][target_exact] manifest_gap:{gap:.1f}s"
+            f" connections:{int(_PUBLISH_TRACE['connections'])}"
+            f" slowest_scope_read:{_PUBLISH_TRACE['slowest_scope_read']:.1f}s"
+        )
+    _PUBLISH_TRACE["last_write"] = now
+    _PUBLISH_TRACE["connections"] = 0.0
+    _PUBLISH_TRACE["slowest_scope_read"] = 0.0
 RETRY_MAX_SECONDS = 10.0
 _STAGE_PRIORITY = {"P0": 0, "P0-M": 1, "P1": 2}
 
@@ -1230,7 +1279,7 @@ async def _publish_connection(
                     "resident_target_ws_planned_refresh"
                 )
             if time.monotonic() >= next_scope_probe:
-                refreshed = _scope(db_path=db_path, as_of_utc=observed_at)
+                refreshed = _timed_scope(db_path=db_path, as_of_utc=observed_at)
                 if (
                     refreshed["subscription_sha256"]
                     != catalog["subscription_sha256"]
@@ -1285,6 +1334,7 @@ async def _publish_connection(
             write_bounded_json(output_path, manifest, limit=MAX_JSON_OUTPUT_BYTES)
             assert_process_memory_budget()
             last_manifest_write = now
+            _note_manifest_write(time.monotonic())
             economic_dirty = False
             liveness_dirty = False
     finally:
@@ -1312,7 +1362,8 @@ async def run_resident_target_ws_publisher(
                 "+00:00",
                 "Z",
             )
-            catalog = _scope(db_path=db_path, as_of_utc=as_of_utc)
+            _PUBLISH_TRACE["connections"] += 1
+            catalog = _timed_scope(db_path=db_path, as_of_utc=as_of_utc)
             await _publish_connection(
                 catalog,
                 db_path=Path(db_path).expanduser().resolve(),
@@ -1331,24 +1382,17 @@ async def run_resident_target_ws_publisher(
         # that decide the book cadence, and neither is diagnosable without
         # knowing which one fired.
         except ConnectionRefreshRequired as exc:
-            print(
-                f"[market_ws][target_exact] planned_refresh:{str(exc)[:120]}",
-                flush=True,
-            )
+            _log(f"[market_ws][target_exact] planned_refresh:{str(exc)[:120]}")
             backoff = 1.0
             continue
         except ScopeCatalogChanged as exc:
-            print(
-                f"[market_ws][target_exact] catalog_changed:{str(exc)[:120]}",
-                flush=True,
-            )
+            _log(f"[market_ws][target_exact] catalog_changed:{str(exc)[:120]}")
             backoff = 1.0
             continue
         except Exception as exc:
-            print(
+            _log(
                 "[market_ws][target_exact] "
-                f"{type(exc).__name__}:{str(exc)[:240]}",
-                flush=True,
+                f"{type(exc).__name__}:{str(exc)[:240]}"
             )
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.7, RETRY_MAX_SECONDS)
