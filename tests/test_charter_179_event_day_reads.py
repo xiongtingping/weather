@@ -82,7 +82,15 @@ def test_no_event_day_envelope_read_is_planned_on_the_recency_index(tmp_path) ->
     # or the scan below proves nothing.
     assert len(newest_p0) >= 2, reads
     offenders = []
+    # The board readings' templates (``{hint}``) are issued with an INDEXED BY
+    # hint (board_readings._seek, the as-of index for every envelope read);
+    # planned as production issues them, not as raw templates.
+    board = (ROOT / "bayes_basket_target" / "board_readings.py").read_text()
     for path, line, sql in reads:
+        if "{hint}" in sql:
+            assert path.endswith("board_readings.py"), (path, line)
+            assert '"basket_probability_envelope_asof_idx")' in board
+            sql = sql.replace("{hint}", " INDEXED BY basket_probability_envelope_asof_idx")
         plan = " | ".join(
             str(row[3])
             for row in conn.execute(

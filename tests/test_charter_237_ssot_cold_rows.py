@@ -392,11 +392,15 @@ def test_the_receipt_says_whether_the_writers_can_open(
 
 
 def test_the_books_and_the_lock_live_beside_the_ssot(
-    store: Path, cold: Path, capsys: pytest.CaptureFixture[str]
+    store: Path, cold: Path, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Run from an unpacked copy of the branch, the script still keeps the
     daily job's ledger, holds, receipt and lock -- beside the SSOT."""
 
+    # ``main`` takes the wall clock; the fixture's rows are dated for AS_OF,
+    # and from 2026-10-04 on the cut-off had walked past two more of them.
+    monkeypatch.setattr(off, "_utc_now", lambda: AS_OF)
     _plans_fixture(store)
     argv = ["--ssot", str(store), "--cold-tier-root", str(cold), "--cold-tier-min-free-gib", "0"]
     assert off.main(argv) == 0
