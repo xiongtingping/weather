@@ -637,6 +637,44 @@ def latest_stage_decisions(
     return list(seen.values())
 
 
+def served_p0_vector(
+    conn: sqlite3.Connection, station_id: str, event_date: str,
+    *, valid_at: datetime | None = None,
+) -> dict[str, Any]:
+    """The station-day's newest P0 envelope, normalised and floored as
+    ``evaluate_ladder`` floors it.  ``state`` is ``ok``, ``no_p0``,
+    ``envelope_unreadable`` or -- with ``valid_at``, past the envelope's own
+    validity at that instant (charter 249 (十)) -- ``ENVELOPE_EXPIRED``.  The
+    far-tail lane's model filter (charter 251) reads the same vector."""
+
+    out: dict[str, Any] = {"state": "no_p0", "envelope_id": None, "content_sha256": None,
+                           "decision_at_utc": None, "probabilities": {}}
+    row = conn.execute(
+        "SELECT probability_envelope_id FROM basket_policy_training_fact"
+        " WHERE station_id=? AND event_date=? AND stage='P0'"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station_id, event_date),
+    ).fetchone()
+    if row is None:
+        return out
+    out["envelope_id"] = str(row[0])
+    envelope = _envelope(conn, str(row[0]))
+    if envelope is None:
+        return {**out, "state": "envelope_unreadable"}
+    out.update(content_sha256=envelope["content_sha256"], decision_at_utc=envelope["decision_at_utc"])
+    if valid_at is not None and not _envelope_valid(envelope, valid_at):
+        return {**out, "state": ENVELOPE_EXPIRED}
+    try:
+        raw = {str(k): float(v) for k, v in envelope["probabilities"].items()}
+    except (TypeError, ValueError):
+        return {**out, "state": "envelope_unreadable"}
+    total = sum(raw.values())
+    if not (total > 0.0 and math.isfinite(total)):
+        return {**out, "state": "envelope_unreadable"}
+    floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
+    return {**out, "state": "ok", "probabilities": {b: float(v) for b, v in floored.items()}}
+
+
 def _latest_p0_probability(
     conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
     *, valid_at: datetime | None = None,
@@ -646,28 +684,12 @@ def _latest_p0_probability(
     ``valid_at`` (charter 249 (十)) an envelope past its own validity at that
     instant answers ``ENVELOPE_EXPIRED`` instead of a number."""
 
-    row = conn.execute(
-        "SELECT probability_envelope_id FROM basket_policy_training_fact"
-        " WHERE station_id=? AND event_date=? AND stage='P0'"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
-        (station_id, event_date),
-    ).fetchone()
-    if row is None:
-        return None
-    envelope = _envelope(conn, str(row[0]))
-    if envelope is None:
-        return None
-    if valid_at is not None and not _envelope_valid(envelope, valid_at):
+    served = served_p0_vector(conn, station_id, event_date, valid_at=valid_at)
+    if served["state"] == ENVELOPE_EXPIRED:
         return ENVELOPE_EXPIRED
-    try:
-        raw = {str(k): float(v) for k, v in envelope["probabilities"].items()}
-    except (TypeError, ValueError):
+    if served["state"] != "ok" or bucket not in served["probabilities"]:
         return None
-    total = sum(raw.values())
-    if bucket not in raw or not (total > 0.0 and math.isfinite(total)):
-        return None
-    floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
-    value = float(floored[bucket])
+    value = float(served["probabilities"][bucket])
     return value if 0.0 < value < 1.0 else None
 
 

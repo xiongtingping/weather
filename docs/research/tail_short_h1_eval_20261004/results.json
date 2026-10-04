@@ -68,6 +68,40 @@
     "losses": 9,
     "loss_rate": 0.010650887573964497,
     "mean_bid": 0.02480473372781065
+   },
+   "production_v2_1share_fee": {
+    "legs": 454,
+    "station_days": 358,
+    "event_days": 28,
+    "roi": 0.012399790053502491,
+    "ci95": [
+     0.0030690272259948533,
+     0.020943580725202755
+    ],
+    "halves": [
+     0.0062936048265460065,
+     0.01605068176899213
+    ],
+    "losses": 5,
+    "loss_rate": 0.011013215859030838,
+    "mean_bid": 0.02429515418502203
+   },
+   "production_v2_sized_fee": {
+    "legs": 454,
+    "station_days": 358,
+    "event_days": 28,
+    "roi": 0.012443953882798663,
+    "ci95": [
+     0.0036189156526226685,
+     0.02085585930169308
+    ],
+    "halves": [
+     0.006735322528037732,
+     0.0158245313295124
+    ],
+    "losses": 5,
+    "loss_rate": 0.011013215859030838,
+    "mean_bid": 0.02429515418502203
    }
   },
   "forward": {
@@ -138,6 +172,40 @@
     "losses": 6,
     "loss_rate": 0.02586206896551724,
     "mean_bid": 0.02633620689655173
+   },
+   "production_v2_1share_fee": {
+    "legs": 114,
+    "station_days": 98,
+    "event_days": 8,
+    "roi": 0.006917409307768477,
+    "ci95": [
+     -0.011632570162481527,
+     0.024711709144206496
+    ],
+    "halves": [
+     0.008306326770991081,
+     0.005319589624467677
+    ],
+    "losses": 2,
+    "loss_rate": 0.017543859649122806,
+    "mean_bid": 0.025526315789473685
+   },
+   "production_v2_sized_fee": {
+    "legs": 114,
+    "station_days": 98,
+    "event_days": 8,
+    "roi": 0.006106311666792196,
+    "ci95": [
+     -0.014173462951574496,
+     0.024809839557006948
+    ],
+    "halves": [
+     0.007477298424139638,
+     0.004542106748367328
+    ],
+    "losses": 2,
+    "loss_rate": 0.017543859649122806,
+    "mean_bid": 0.025526315789473685
    }
   },
   "full": {
@@ -208,7 +276,49 @@
     "losses": 15,
     "loss_rate": 0.013927576601671309,
     "mean_bid": 0.025134633240482825
+   },
+   "production_v2_1share_fee": {
+    "legs": 568,
+    "station_days": 456,
+    "event_days": 36,
+    "roi": 0.011300563115908017,
+    "ci95": [
+     0.0027598857167429906,
+     0.019414441929600196
+    ],
+    "halves": [
+     0.005086775307900269,
+     0.01705178285952596
+    ],
+    "losses": 7,
+    "loss_rate": 0.01232394366197183,
+    "mean_bid": 0.02454225352112676
+   },
+   "production_v2_sized_fee": {
+    "legs": 568,
+    "station_days": 456,
+    "event_days": 36,
+    "roi": 0.011185390464474079,
+    "ci95": [
+     0.002745582182781024,
+     0.019256143084456317
+    ],
+    "halves": [
+     0.005142284187884855,
+     0.01679833285851836
+    ],
+    "losses": 7,
+    "loss_rate": 0.01232394366197183,
+    "mean_bid": 0.02454225352112676
    }
+  },
+  "forward_v2": {
+   "first_fire_1share_nofee": null,
+   "first_fire_1share_fee": null,
+   "production_1share_fee": null,
+   "production_sized_fee": null,
+   "production_v2_1share_fee": null,
+   "production_v2_sized_fee": null
   }
  },
  "slices_report_only": {
@@ -1464,7 +1574,7 @@
   "evaluations": {
    "thin_bid": 134,
    "station_not_admitted": 13,
-   "insufficient_cash": 342,
+   "insufficient_cash": 344,
    "sent": 87,
    "no_price_off_tick": 71,
    "send": 58,

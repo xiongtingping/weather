@@ -36,7 +36,9 @@ from tests.test_tiebreak_lane import (  # noqa: E402,F401 -- ``store`` is a fixt
 ED = "2026-09-20"            # settles 2026-09-20T16:00Z (Asia/Shanghai midnight)
 DECIDED = "2026-09-18T12:02:00.000Z"
 NOW = "2026-09-18T12:02:30.000Z"   # ~52h to settlement
-SETTINGS = {"live_ws_book": False}
+#: This file covers rule v1, the market-only lane; charter 251's model filter
+#: (v2, the shipped default) is tests/test_charter_251_tail_short_model_filter.py.
+SETTINGS = {"live_ws_book": False, "rule": lane.RULE_V1}
 #: bucket: (ordinal, bid, ask).  Mode 28°C; 24/25 and 31/32 sit 3+ rungs out.
 LADDER = {
     "24°C": (24, 0.02, 0.04), "25°C": (25, 0.03, 0.05), "26°C": (26, 0.07, 0.09),
@@ -429,7 +431,8 @@ def test_an_unadmitted_station_is_refused(store) -> None:
 def test_the_lane_is_registered_and_shipped_on() -> None:
     assert strategy_lanes.LANE_TAIL_SHORT in strategy_lanes.KNOWN_LANES
     served = strategy_lanes.TAIL_SHORT_DEFAULT_SETTINGS
-    assert served["enabled"] is True and served["rule"] == lane.RULE_V1
+    # Charter 251 ships rule v2 (v1 plus the model filter); v1 stays selectable.
+    assert served["enabled"] is True and served["rule"] == lane.RULE_V2 and lane.RULE_V1 in lane.RULE_VERSIONS
     assert (served["max_market_price"], served["min_rungs_from_mode"], served["min_yes_bid"]) == (0.05, 3, 0.02)
     assert served["min_hours_to_settlement"] == 36.0 and served["opening_stages"] == ["P0"]
     assert served["taker_fee_rate"] == 0.05

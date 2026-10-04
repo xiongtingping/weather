@@ -300,9 +300,12 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
 #: 做空远尾桶」 and 「上线：H1 的纯市场版」): the market's own far tails, bought NO
 #: as a taker.  The rule is the one measured (p0_differential_edge_20260927,
 #: H1's market-only arm); the sizing and the limits are the lane's own.
+#: Rule v2 (charter 251, user ruling 2026-10-04 「改规则，把模型当过滤器」) adds
+#: one condition: the served P0 p of the bucket under the YES bid; v1 is the
+#: market-only lane.
 TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
-    "rule": "market_far_tail_no_taker_v1",
+    "rule": "market_far_tail_no_taker_model_below_bid_v2",
     # The window measured: P0, more than 36 hours to the settlement clock.
     "opening_stages": ["P0"],
     "min_hours_to_settlement": 36.0,

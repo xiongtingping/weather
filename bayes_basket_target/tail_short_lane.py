@@ -40,6 +40,23 @@ Nothing is read or written while ``data/live_paused.flag`` is up or the
 arming flag is down: the gateway would refuse every send, and a refusal
 minted each cycle is a row each cycle.
 
+**Model filter** (rule v2, charter 251, user ruling 2026-10-04 「改规则，把模型
+当过滤器」): a leg is taken only where the station-day's newest P0 envelope,
+inside its own validity and floored as the Proper lane floors it, puts the
+bucket under the YES best bid -- the model, too, calls the NO cheap.  It is
+judged when the leg is first sendable (rule, tick and depth met) and again at
+every later send; a bucket the model once refused (``model_not_below_bid``)
+stays out for the station-day, so a later run that dips under the bid does
+not get a second say -- re-judging every cycle admitted ZSPD 10-03 22°C (3.26%
+against a 3c bid when first sendable, 1.6% three hours on) and took the
+forward read from +0.69% to +0.12%.  An unreadable p (no envelope, past its
+validity, bucket missing) refuses without barring.  Measured
+on the forward days after the rule was chosen (09-26..10-03,
+``docs/research/tail_short_h1_eval_20261004``): p under the bid 114 legs, 2
+lost, +0.69%; p at or over it 118 legs, 4 lost, -0.83% -- read after the fact
+and not significant.  The model still sets no price and no size; rule v1
+(``market_far_tail_no_taker_v1``) restores the market-only lane.
+
 Held to settlement.  Every bucket the rule fires on is recorded -- sent,
 filled, killed or refused -- in ``tail_short_lane_evaluation``; a repeated
 refusal for the same reason is written once.
@@ -70,6 +87,7 @@ from .p1_tail_lane import (
     live_ws_snapshot,
     open_buy_orders_on_station_day,
 )
+from .proper_bet_lane import served_p0_vector
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import LANE_TAIL_SHORT, TAIL_SHORT_DEFAULT_SETTINGS, lane_settings, opening_stages
 from .tiebreak_lane import _cash_refusal, settle_stuck_lane_cycles
@@ -79,8 +97,16 @@ LANE_TITLE = "远尾做空线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "tail_short_lane_plan_v1"
 RULE_V1 = "market_far_tail_no_taker_v1"
-RULE_VERSIONS = {RULE_V1: "tail_short_lane_v1"}
-DEFAULT_RULE = RULE_V1
+#: Charter 251: v1 plus the model filter -- the served P0 p under the YES bid.
+RULE_V2 = "market_far_tail_no_taker_model_below_bid_v2"
+RULE_VERSIONS = {RULE_V1: "tail_short_lane_v1", RULE_V2: "tail_short_lane_v2"}
+MODEL_FILTER_RULES = frozenset({RULE_V2})
+DEFAULT_RULE = RULE_V2
+#: Refusals of the model filter: the served p is not under the bid, or there is
+#: no served p to read (no P0 envelope, unreadable, past its validity, or
+#: without the bucket) -- the filter fails closed.
+MODEL_NOT_BELOW_BID = "model_not_below_bid"
+MODEL_UNAVAILABLE = "model_unavailable"
 EXECUTION_CANDIDATE = "TAKER_FOK"
 SIDE = "NO"
 EVALUATION_TABLE = "tail_short_lane_evaluation"
@@ -126,9 +152,13 @@ EVALUATION_DDL = (
     " order_intent_id TEXT,"
     " sent INTEGER NOT NULL DEFAULT 0,"
     " filled_shares REAL NOT NULL DEFAULT 0,"
-    " send_json TEXT"
+    " send_json TEXT,"
+    " model_p REAL,"
+    " model_envelope_id TEXT"
     ")"
 )
+#: Columns added after the table first shipped (charter 251).
+ADDED_COLUMNS = (("model_p", "REAL"), ("model_envelope_id", "TEXT"))
 EVALUATION_INDEX_DDL = (
     f"CREATE INDEX IF NOT EXISTS {EVALUATION_TABLE}_scope_idx"
     f" ON {EVALUATION_TABLE}(station_id, event_date, bucket)"
@@ -138,6 +168,26 @@ EVALUATION_INDEX_DDL = (
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     conn.execute(EVALUATION_INDEX_DDL)
+    present = {str(r[1]) for r in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
+    for column, kind in ADDED_COLUMNS:
+        if column not in present:
+            conn.execute(f"ALTER TABLE {EVALUATION_TABLE} ADD COLUMN {column} {kind}")
+
+
+def model_filter(served: Mapping[str, Any], bucket: str, yes_bid: float) -> dict[str, Any]:
+    """Charter 251: the served P0 ``p`` of ``bucket`` against the YES bid.
+
+    ``served`` is ``proper_bet_lane.served_p0_vector``.  A leg passes only
+    when ``p < yes_bid``; no readable p refuses it (``model_unavailable:<why>``).
+    """
+
+    state = str(served.get("state") or "")
+    p = (served.get("probabilities") or {}).get(bucket) if state == "ok" else None
+    if p is None:
+        why = state if state != "ok" else "bucket_missing"
+        return {"p": None, "refusal": f"{MODEL_UNAVAILABLE}:{why}"}
+    p = float(p)
+    return {"p": p, "refusal": None if p < float(yes_bid) else MODEL_NOT_BELOW_BID}
 
 
 def _utc(value: str) -> datetime:
@@ -451,6 +501,7 @@ def plan_tail_short(
     """Every station-day in the window: read the book, fire the rule, plan the takes."""
 
     rule_version = RULE_VERSIONS[str(cfg["rule"])]
+    filtered = str(cfg["rule"]) in MODEL_FILTER_RULES
     stages = opening_stages(cfg)
     now = _utc(now_utc)
     min_hours = float(cfg["min_hours_to_settlement"])
@@ -507,6 +558,7 @@ def plan_tail_short(
         else:
             open_orders = open_buy_orders_on_station_day(target_conn, station, day)
         registry = None
+        served = served_p0_vector(target_conn, station, day, valid_at=now) if filtered else None
         for leg in reading["legs"]:
             bucket = leg["bucket"]
             past = history.get(bucket) or _new_history()
@@ -519,6 +571,10 @@ def plan_tail_short(
                 "rungs_from_mode": leg["rungs_from_mode"], "yes_bid": leg["bid"], "yes_bid_size": leg["bid_size"],
                 "yes_ask": leg["ask"],
             }
+            model = model_filter(served, bucket, leg["bid"]) if served is not None else None
+            if model is not None:
+                base.update(model_p=(round(model["p"], 6) if model["p"] is not None else None),
+                            model_envelope_id=served.get("envelope_id"))
 
             def refuse(reason: str, **extra: Any) -> None:
                 if reason in past["refusals"]:
@@ -538,6 +594,11 @@ def plan_tail_short(
                 cfg["unsent_retry_seconds"]
             ):
                 skip("unsent_retry_wait")
+                continue
+            if model is not None and MODEL_NOT_BELOW_BID in past["refusals"]:
+                # Judged once (charter 251): a bucket the model did not call
+                # cheap when it first could be sent stays out for the day.
+                skip("model_barred")
                 continue
             if station_refusal:
                 refuse(station_refusal)
@@ -569,6 +630,11 @@ def plan_tail_short(
             if take["refusal"]:
                 refuse(take["refusal"])
                 continue
+            # The model is judged where the leg is first sendable -- the moment
+            # the measured filter read p -- and again at every later send.
+            if model is not None and model["refusal"]:
+                refuse(model["refusal"])
+                continue
             fee = taker_fee_usdc(take["price"], take["shares"], fee_rate)
             if take["cost_usdc"] + fee > budget_left + 1e-9:
                 refuse(f"daily_budget:{max(budget_left, 0.0):.2f}")
@@ -585,7 +651,11 @@ def plan_tail_short(
                 "limit_price": take["price"], "fok_price_cap": take["price"], "shares": take["shares"],
                 "cost_usdc": take["cost_usdc"], "fee_usdc_est": fee, "taker_fee_rate": fee_rate,
                 "tick_size": market_row.get("tick_size"), "min_size": market_row.get("min_size"),
-                "stake_usdc": stake, "attempt": past["sends"] + 1, **{k: base[k] for k in (
+                "stake_usdc": stake, "attempt": past["sends"] + 1,
+                "model_p": base.get("model_p"), "model_envelope_id": base.get("model_envelope_id"),
+                "model_envelope_sha256": (served or {}).get("content_sha256"),
+                "model_decision_at_utc": (served or {}).get("decision_at_utc"),
+                **{k: base[k] for k in (
                     "hours_to_settlement", "snapshot_id", "book_source", "book_observed_at",
                     "book_age_seconds", "market_q", "market_mode_bucket", "rungs_from_mode",
                     "yes_bid", "yes_bid_size", "yes_ask")},
@@ -646,8 +716,9 @@ def execute_tail_short(
             "decision_signature": {"stage": plan["stage"], "lane": LANE, "rule": plan["rule"]},
             "forward_evidence_binding": {
                 "decision_at_utc": now_utc, "probability_stage": plan["stage"],
-                "probability_decision_at_utc": None, "probability_artifact_sha256": None,
-                "probability_envelope_id": None, "ws_snapshot_id": plan["snapshot_id"],
+                "probability_decision_at_utc": plan.get("model_decision_at_utc"),
+                "probability_artifact_sha256": plan.get("model_envelope_sha256"),
+                "probability_envelope_id": plan.get("model_envelope_id"), "ws_snapshot_id": plan["snapshot_id"],
             },
             "plan": plan,
         }
@@ -706,7 +777,11 @@ __all__ = [
     "EXECUTION_CANDIDATE",
     "LANE",
     "LANE_TITLE",
+    "MODEL_FILTER_RULES",
+    "MODEL_NOT_BELOW_BID",
+    "MODEL_UNAVAILABLE",
     "RULE_V1",
+    "RULE_V2",
     "RULE_VERSIONS",
     "SIDE",
     "bucket_history",
@@ -714,6 +789,7 @@ __all__ = [
     "execute_tail_short",
     "far_tail_legs",
     "lane_cost_today",
+    "model_filter",
     "no_take",
     "plan_tail_short",
     "rests_on_another_bucket",

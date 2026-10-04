@@ -12,7 +12,10 @@ snapshot that fact read, through production's own ``far_tail_legs`` and
 have been (the research arm of p0_differential_edge_20260927); and
 ``production`` -- the first fact on which the take is also sendable (NO price
 on the cent grid, depth after headroom >= 5 shares), at most four buckets a
-station-day.  Cash and the daily budget are not modelled: they decide how
+station-day; and ``production_v2`` -- charter 251's rule: as ``production``,
+and the fact's own served P0 p of the bucket under the YES bid (production's
+``model_filter``), judged where the leg is first sendable; a bucket refused
+there stays out for the station-day, as the lane bars it.  Cash and the daily budget are not modelled: they decide how
 many of these legs the lane can afford, not what a leg earns.
 
 Labels: ``basket_station_day_settlement_label`` (newest revision), plus the
@@ -42,13 +45,15 @@ sys.path.insert(0, str(ROOT))
 from bayes_basket_target.candidate_window_evidence import standing_labels  # noqa: E402
 from bayes_basket_target.settlement_time import hours_to_settlement  # noqa: E402
 from bayes_basket_target.strategy_lanes import TAIL_SHORT_DEFAULT_SETTINGS as CFG  # noqa: E402
-from bayes_basket_target.tail_short_lane import far_tail_legs, no_take  # noqa: E402
+from bayes_basket_target.materialization import floor_probabilities  # noqa: E402
+from bayes_basket_target.tail_short_lane import MODEL_NOT_BELOW_BID, far_tail_legs, model_filter, no_take  # noqa: E402
 
 SINCE = "2026-08-15"
 RESEARCH_END = "2026-09-25"          # last event day of the study that chose the rule
 FEE = float(CFG["taker_fee_rate"])
 SEED, BOOT, BLOCK = 20260927, 2000, 3
 MODEL_SPLIT_SINCE = "2026-10-04"     # first event day whose outcome was unseen when the split was registered
+V2_FORWARD_SINCE = "2026-10-04"      # charter 251's verdict sample (PROTOCOL_FORWARD.md, rule v2)
 
 
 def model_p(conn, envelope_id: str, bucket: str) -> float | None:
@@ -92,6 +97,25 @@ def labels(conn) -> dict[tuple[str, str], str]:
     return {k: v[0] for k, v in best.items()}
 
 
+def served_at_fact(conn, envelope_id: str, cache: dict) -> dict:
+    """The fact's own P0 envelope in the shape of ``proper_bet_lane.served_p0_vector``:
+    normalised and floored the same way, read as of the fact (the live lane reads
+    the newest P0, which at the fact's own moment is this one)."""
+
+    if envelope_id not in cache:
+        row = conn.execute("SELECT probabilities_json FROM basket_probability_envelope WHERE envelope_id=?",
+                           (envelope_id,)).fetchone()
+        raw = _decode(row[0]) if row else None
+        served = {"state": "envelope_unreadable", "probabilities": {}}
+        if raw:
+            total = sum(float(v) for v in raw.values())
+            if total > 0 and math.isfinite(total):
+                floored, _ = floor_probabilities({str(k): float(v) / total for k, v in raw.items()})
+                served = {"state": "ok", "probabilities": {k: float(v) for k, v in floored.items()}}
+        cache[envelope_id] = served
+    return cache[envelope_id]
+
+
 def replay(conn, truth) -> list[dict]:
     facts = defaultdict(list)
     for station, day, at, tz, snap, envelope in conn.execute(
@@ -100,9 +124,9 @@ def replay(conn, truth) -> list[dict]:
         " ORDER BY station_id, event_date, decision_at_utc, created_at_utc, fact_id", (SINCE,)
     ):
         facts[(str(station), str(day))].append((str(at), str(tz), str(snap), str(envelope)))
-    legs, skipped = [], Counter()
+    legs, skipped, envelopes = [], Counter(), {}
     for (station, day), rows in facts.items():
-        fired, sent = set(), set()
+        fired, sent, sent_v2, barred = set(), set(), set(), set()
         for at, tz, snap, envelope in rows:
             hours = float(hours_to_settlement(day, as_of_utc=at, settlement_timezone=tz))
             if not hours > float(CFG["min_hours_to_settlement"]):
@@ -131,6 +155,14 @@ def replay(conn, truth) -> list[dict]:
                 if bucket not in sent and take["refusal"] is None and len(sent) < int(CFG["max_legs_per_station_day"]):
                     sent.add(bucket)
                     legs.append({**base, "arm": "production"})
+                if (bucket not in sent_v2 and bucket not in barred and take["refusal"] is None
+                        and len(sent_v2) < int(CFG["max_legs_per_station_day"])):
+                    model = model_filter(served_at_fact(conn, envelope, envelopes), bucket, leg["bid"])
+                    if model["refusal"] is None:
+                        sent_v2.add(bucket)
+                        legs.append({**base, "arm": "production_v2", "p": model["p"]})
+                    elif model["refusal"] == MODEL_NOT_BELOW_BID:
+                        barred.add(bucket)   # judged once where first sendable
     print(f"replay: {len(facts)} P0 station-days; skipped {dict(skipped)}", flush=True)
     return legs
 
@@ -202,7 +234,8 @@ def main() -> int:
     conn.execute("PRAGMA query_only=ON")
     truth = labels(conn)
     legs = [t for t in replay(conn, truth) if t["label"] is not None]
-    windows = {"in_sample": (SINCE, RESEARCH_END), "forward": ("2026-09-26", "9999"), "full": (SINCE, "9999")}
+    windows = {"in_sample": (SINCE, RESEARCH_END), "forward": ("2026-09-26", "9999"), "full": (SINCE, "9999"),
+               "forward_v2": (V2_FORWARD_SINCE, "9999")}
     result = {"windows": {}, "slices_report_only": {}, "live": live(conn, truth)}
     for name, (lo, hi) in windows.items():
         inside = [t for t in legs if lo <= t["d"] <= hi]
@@ -210,7 +243,9 @@ def main() -> int:
         pr = [t for t in inside if t["arm"] == "production"]
         result["windows"][name] = {
             "first_fire_1share_nofee": roi(ff, fee=False), "first_fire_1share_fee": roi(ff),
-            "production_1share_fee": roi(pr), "production_sized_fee": roi(pr, sized=True)}
+            "production_1share_fee": roi(pr), "production_sized_fee": roi(pr, sized=True),
+            "production_v2_1share_fee": roi([t for t in inside if t["arm"] == "production_v2"]),
+            "production_v2_sized_fee": roi([t for t in inside if t["arm"] == "production_v2"], sized=True)}
     slices = {"rungs=3": lambda t: t["rungs"] == 3, "rungs>=4": lambda t: t["rungs"] >= 4,
               "bid<2.5c": lambda t: t["bid"] < 0.025, "bid 2.5-3.5c": lambda t: 0.025 <= t["bid"] < 0.035,
               "bid>=3.5c": lambda t: t["bid"] >= 0.035, "h 36-48": lambda t: t["h"] <= 48,
