@@ -20296,7 +20296,6 @@ function liveControlStrip(){
       `${b("tiebreak",-5,"−5",true)}${b("tiebreak",-1,"−")}<b id="lc-tiebreak">${
         L.tiebreak_stake==null?"—":LC_KNOBS.tiebreak.fmt(L.tiebreak_stake)}</b>${
         b("tiebreak",1,"+")}${b("tiebreak",5,"+5",true)}`)}
-    ${laneSwitch("p1_consensus")}
   </div>`;
 }
 // Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关」「秤砣线也
@@ -20310,9 +20309,6 @@ const LC_LANES = {
     off:"篮子照常编译、记决策，买单在发送处拦下（意向记 strategy_lane_paused:basket）"},
   tiebreak: {name:"秤砣线",
     on:"实盘举旗时，秤砣线在开仓阶段的首决策照常挂单",
-    off:"整条车道跳过：不评估、不挂新单"},
-  p1_consensus: {name:"同心线",
-    on:"实盘举旗时，同心线（P1 共识线，宪章 203）照常挂单",
     off:"整条车道跳过：不评估、不挂新单"},
   proper_bet: {name:"Proper 下注线",
     on:"实盘举旗时，P0 首决策按 s=log(p/q) 逐桶双边（YES/NO）挂 post-only，未成交重挂到成交（宪章 231 v2）",
