@@ -125,6 +125,37 @@ def test_the_proper_page_reads_the_lanes_rows_and_its_own_legs(monkeypatch) -> N
     assert trades["hit_rate"] == pytest.approx(1.0)
 
 
+def test_the_proper_page_drops_unfilled_cancels_before_any_cut(monkeypatch) -> None:
+    # 2026-10-04: 714 legs, the 80 newest mostly unfilled reposted rungs, ten
+    # shown (user: 「前端有截断，只显示了10笔订单！去掉cancelled的订单」).
+    rungs = [
+        _leg(order_intent_id=f"c{i}", event_date="2026-10-06", filled_size=0.0,
+             filled_notional_usdc=0.0, state="cancelled",
+             created_at=f"2026-10-04T{i // 60:02d}:{i % 60:02d}:00Z")
+        for i in range(200)
+    ]
+    legs = rungs + [
+        _leg(order_intent_id="f1", event_date="2026-10-05", state="failed",
+             filled_size=0.0, filled_notional_usdc=0.0),
+        # Cancelled after a partial fill: its shares settle, so it stays.
+        _leg(order_intent_id="p1", event_date="2026-10-06", state="cancelled",
+             filled_size=1.6, filled_notional_usdc=0.5,
+             created_at="2026-10-04T09:18:00Z"),
+    ] + [
+        _leg(order_intent_id=f"k{i}", event_date=f"2026-09-{10 + i:02d}")
+        for i in range(100)
+    ]
+    monkeypatch.setattr(C, "_render_live_book", lambda _conn: {"legs": legs, "settled": {}})
+
+    trades = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))["trades"]
+
+    ids = {t["order_intent_id"] for t in trades["rows"]}
+    assert ids == {"p1"} | {f"k{i}" for i in range(100)}
+    assert trades["hidden_unfilled"] == 201
+    assert trades["count"] == trades["sent"] == len(legs)
+    assert trades["filled"] == 101
+
+
 def test_the_proper_page_stands_without_its_table(monkeypatch) -> None:
     monkeypatch.setattr(C, "_render_live_book", lambda _conn: {"legs": [], "settled": {}})
     out = C.collect_proper_bet_lane(sqlite3.connect(":memory:"))

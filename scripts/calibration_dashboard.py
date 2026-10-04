@@ -13434,9 +13434,22 @@ def collect_proper_bet_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     stake_sum = sum(t["filled_notional_usdc"] for t in settled_rows)
     payout_sum = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
     hits = sum(1 for t in settled_rows if t["hit"])
+    # A failed send or a cancelled rung with nothing filled is not a trade
+    # (the rule the tiebreak page reads by), and it is dropped here, before
+    # anything is cut.  The rung pass reposts every fifteen minutes, so the
+    # newest rows are mostly such rungs: on 2026-10-04 the lane held 714 legs,
+    # 69 of the 80 newest were unfilled cancels, and the page cut to 80 then
+    # filtered showed ten (user: 「前端有截断，只显示了10笔订单！去掉cancelled
+    # 的订单」).  Every other leg is sent -- a rung cancelled after a partial
+    # fill holds shares that settle, so it stays.
+    shown = [
+        t for t in trades
+        if t["filled_size"] > 0 or t["state"] not in ("failed", "cancelled")
+    ]
     out["trades"] = {
         "available": True,
-        "rows": trades[:80],
+        "rows": shown,
+        "hidden_unfilled": len(trades) - len(shown),
         "count": len(trades),
         "sent": len(trades),
         "filled": len(filled_rows),
@@ -19992,19 +20005,21 @@ function properBetLane(){
       <td class="mono">${r.refusal?h(r.refusal):h([r.plan_state,r.plan_state_reason].filter(Boolean).join(" · ")||"planned")}</td></tr>`).join("");
   const recentTable=E.available?`<details style="margin-top:8px"><summary>最近判过的首决策（不含过期与已收盘，${(E.recent||[]).length} 条）</summary>
     ${recent?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>决策</th><th>距结算</th><th>D</th><th>计划</th><th>|s| 最大的桶（s）</th><th>结果 / 计划状态</th></tr></thead><tbody>${recent}</tbody></table>`:`<div class="muted">还没有。</div>`}</details>`:"";
-  // A failed send or a cancelled rung with nothing filled is not a trade --
-  // the same rule the tiebreak page reads by (user ruling 2026-09-26).
-  const shown=(R.rows||[]).filter(t=>!(["failed","cancelled"].includes(String(t.state||""))&&!(+t.filled_size>0)));
-  const hiddenN=(R.rows||[]).length-shown.length;
+  // The backend has already dropped every failed send and unfilled
+  // cancelled rung (they are not trades) and sends every other leg; a rung
+  // cancelled after a partial fill reads as the partial fill it is.
+  const shown=R.rows||[];
+  const hiddenN=+R.hidden_unfilled||0;
+  const stateTxt=t=>t.state==="cancelled"?`<span title="余量已撤">部分成交</span>`:h(t.state||"");
   const rows=shown.map(t=>`<tr>
     <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td class="mono">${h((t.created_at||"").slice(11,16))}Z</td><td>${h(t.bucket)}</td>
     <td><span class="pill ${t.side==="NO"?"amber":"green"}">${h(t.side)}</span></td>
     <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
     <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
-    <td>${h(t.state||"")}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
+    <td>${stateTxt(t)}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐腿（${shown.length} 腿，新的在上${hiddenN?`；另有 ${hiddenN} 张 failed/cancelled 且未成交的不显示`:""}）</summary>
+  const tradeTable=`<details open style="margin-top:8px"><summary>逐腿（全部 ${shown.length} 腿，新的在上${hiddenN?`；另有 ${hiddenN} 张未成交即撤单或发送失败的重挂单不算交易、不显示`:""}）</summary>
     ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>下单于</th><th>桶</th><th>方向</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一腿。</div>`}</details>`;
   const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.planned}</td><td class="mono">${r.legs}</td><td class="mono">${usd(r.cost_usdc)}</td></tr>`).join("");
   const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
