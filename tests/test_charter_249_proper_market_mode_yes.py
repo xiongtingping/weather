@@ -277,6 +277,30 @@ def test_a_repost_reads_the_newest_p0_envelope(store, warm, monkeypatch) -> None
     assert legs["YES:27°C"]["last_quote"]["p"] == pytest.approx(0.45, abs=1e-6)
 
 
+def test_every_rung_names_the_envelope_its_p_was_read_from(store, warm, monkeypatch) -> None:
+    """On 2026-10-04, 10 of the lane's 18 filled rungs were priced on a later
+    P0 envelope than the plan's, and the rung kept only the number."""
+
+    _seed(store)
+    sent: list = []
+    _run(store, sent)
+    first = json.loads(_intents(store)[0][6])["rung"]
+    assert first["p"] == pytest.approx(0.60, abs=1e-6)
+    assert (first["p_envelope_id"], first["p_envelope_sha256"], first["p_envelope_decision_at_utc"]) == (
+        "env_f1", ("f1" * 64)[:64], base.DECIDED)
+    _end(store, _intents(store)[0][0])
+    # The next P0 decision moves 27°C to 0.55; the re-post is priced on it.
+    later = "2026-09-18T12:12:00.000Z"
+    monkeypatch.setattr(base, "MODEL", {"27°C": 0.55, "28°C": 0.33, "29°C": 0.12})
+    _snapshot(store, "snap_f2", later, _ladder(), 2)
+    _fact(store, stage="P0", fact_id="f2", decided=later, snapshot_id="snap_f2")
+    assert _run(store, sent, now="2026-09-18T12:12:20.000Z")["rungs"] == 1
+    second = json.loads(_intents(store)[1][6])["rung"]
+    assert second["p"] == pytest.approx(0.55, abs=1e-6)
+    assert (second["p_envelope_id"], second["p_envelope_sha256"], second["p_envelope_decision_at_utc"]) == (
+        "env_f2", ("f2" * 64)[:64], later)
+
+
 def test_a_rung_under_a_dollar_is_sized_up_to_it(store, warm) -> None:
     cheap = [
         _row("27°C", 27, [(0.15, 200.0)], [(0.17, 200.0)]),

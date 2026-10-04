@@ -712,19 +712,29 @@ def served_p0_vector(
 def _latest_p0_probability(
     conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
     *, valid_at: datetime | None = None,
-) -> float | str | None:
+) -> tuple[float | str | None, dict[str, Any]]:
     """``p`` of one bucket in the station-day's newest P0 envelope, floored as
-    ``evaluate_ladder`` floors it; None when there is none to read.  With
-    ``valid_at`` (charter 249 (十)) an envelope past its own validity at that
-    instant answers ``ENVELOPE_EXPIRED`` instead of a number."""
+    ``evaluate_ladder`` floors it, and that envelope's identity; the number is
+    None when there is none to read.  With ``valid_at`` (charter 249 (十)) an
+    envelope past its own validity at that instant answers
+    ``ENVELOPE_EXPIRED`` instead of a number."""
 
     served = served_p0_vector(conn, station_id, event_date, valid_at=valid_at)
+    read = _envelope_read(served.get("envelope_id"), served.get("content_sha256"),
+                          served.get("decision_at_utc"))
     if served["state"] == ENVELOPE_EXPIRED:
-        return ENVELOPE_EXPIRED
+        return ENVELOPE_EXPIRED, read
     if served["state"] != "ok" or bucket not in served["probabilities"]:
-        return None
+        return None, read
     value = float(served["probabilities"][bucket])
-    return value if 0.0 < value < 1.0 else None
+    return (value if 0.0 < value < 1.0 else None), read
+
+
+def _envelope_read(envelope_id: Any, sha256: Any, decision_at_utc: Any) -> dict[str, Any]:
+    """Which envelope a rung's ``p`` was read from, as the rung records it."""
+
+    return {"p_envelope_id": envelope_id, "p_envelope_sha256": sha256,
+            "p_envelope_decision_at_utc": decision_at_utc}
 
 
 def _evaluated(conn: sqlite3.Connection, *, since_event_date: str) -> set[tuple[str, str, str]]:
@@ -1179,6 +1189,10 @@ def plan_rungs(
             row = next((r for r in book["buckets"] if str(r.get("bucket")) == str(leg["bucket"])), None)
             tick = float(leg.get("tick_size") or (row or {}).get("price_tick_size") or 0.01)
             p_now, s_now = float(leg["p"]), float(leg["s"])
+            # The envelope this rung's ``p`` is read from: the plan's own,
+            # until the re-post below takes its number from a newer one.
+            p_read = _envelope_read(plan.get("envelope_id"), plan.get("envelope_sha256"),
+                                    plan.get("envelope_decision_at_utc"))
             if plan.get("buckets") == BUCKETS_MARKET_MODE:
                 # Charter 249: the leg is "YES on the market's modal bucket",
                 # so every re-post asks the standing book which bucket that
@@ -1194,7 +1208,7 @@ def plan_rungs(
                 if mode != str(leg["bucket"]):
                     leg_state["status"] = f"waiting:{NOT_MARKET_MODE}:{mode}"
                     continue
-                newest = _latest_p0_probability(
+                newest, newest_read = _latest_p0_probability(
                     target_conn, str(station), str(day), str(leg["bucket"]),
                     valid_at=_utc(now_utc) if by_envelope else None,
                 )
@@ -1203,6 +1217,7 @@ def plan_rungs(
                     continue
                 if newest is not None:
                     p_now = float(newest)
+                    p_read = newest_read
                 s_now = math.log(p_now / q_now[str(leg["bucket"])])
             quote = leg_quote(str(leg["bucket"]), p_now, s_now, row, tick)
             if quote["reason"] or quote["side"] != leg["side"]:
@@ -1248,7 +1263,7 @@ def plan_rungs(
             rungs.append({
                 "where": where, "plan": plan, "leg": leg, "intent_id": intent_id,
                 "price": float(quote["price"]), "shares": shares, "cost_usdc": cost,
-                "bid": quote["bid"], "ask": quote["ask"], "tick": tick, "p": p_now,
+                "bid": quote["bid"], "ask": quote["ask"], "tick": tick, "p": p_now, **p_read,
                 "book_id": book.get("snapshot_id"), "book_source": book.get("book_source"),
                 "hours_to_settlement": hours, **venue,
             })
@@ -1365,6 +1380,8 @@ def execute_proper_bets(
                 "order_type": rung["order_type"], "post_only": rung["post_only"],
                 "expiration_basis": rung.get("expiration_basis"), "plan_id": plan["plan_id"],
                 "leg": leg, "rung": {k: rung[k] for k in ("price", "shares", "bid", "ask", "tick", "p",
+                                                           "p_envelope_id", "p_envelope_sha256",
+                                                           "p_envelope_decision_at_utc",
                                                            "book_id", "book_source", "hours_to_settlement")},
             },
             transport=transport, live_submit_authorized=live_submit_authorized,
