@@ -21864,18 +21864,17 @@ const BOX_KIND = {
 // server's read-only GET /api/station-day (bayes_basket_target.station_day_board),
 // so it moves every minute while the rest of the page waits for its render.
 const SD = {station:"ZUUU", data:null, err:null, timer:null, busy:false,
-  every:30, fetchedAt:null, checkedAt:null, calc:{}, trendMode:{}, focus:{}, pendingRender:false};
+  every:30, fetchedAt:null, checkedAt:null, calc:{}, trendMode:{}, pendingRender:false};
 try{ const raw = localStorage.getItem("sd-every"); const v = Number(raw); if(raw != null && raw !== "" && [0, 15, 30, 60].includes(v)) SD.every = v; }catch(e){}
 try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s)) SD.station = s; }catch(e){}
 // The calculator's inputs, the trend choices: kept for this tab, so a reload
 // (the board's hot update) puts them back (user 2026-10-05「不要整页刷新渲染，丢失视角和输入」).
 try{ const kept = JSON.parse(sessionStorage.getItem("sd-state") || "null");
-  if(kept && kept.station === SD.station){ SD.calc = kept.calc || {}; SD.focus = kept.focus || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
+  if(kept && kept.station === SD.station){ SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
 function sdSave(){
-  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, calc:SD.calc, focus:SD.focus, trendMode:SD.trendMode})); }catch(e){}
+  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
 }
 const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba"};
-const SD_BKT = ["#58a6ff","#3fb950","#d29922","#f778ba","#a371f7","#56d4dd","#ff7b72","#e3b341","#8b949e","#7ee787"];
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
 const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
@@ -22167,69 +22166,19 @@ function sdHeadSeries(day, mode){
   tl.forEach(e => { const r = rank[e.stage]; if(r == null) return; if(r >= best){ best = r; out.push(e); } });
   return out;
 }
+// User 2026-10-05「不要显示温度趋势图」: the bucket-probability chart is gone;
+// the stage chips stay -- they choose the series the mean ± σ chart reads.
 function sdTrend(day){
   const key = day.event_date;
   const mode = SD.trendMode[key] || "head";
   const model = sdHeadSeries(day, mode);
   const market = ((day.market || {}).trend) || [];
-  const axis = day.axis || [];
-  let focus = SD.focus[key];
-  if(!focus){
-    const peak = {};
-    model.concat(market).forEach(e => Object.entries(e.vector || {}).forEach(([b, v]) => { peak[b] = Math.max(peak[b] || 0, v); }));
-    focus = axis.map(r => r.bucket).filter(b => (peak[b] || 0) >= 0.08)
-      .sort((a, b) => peak[b] - peak[a]).slice(0, 6);
-    SD.focus[key] = focus;
-  }
-  const colour = {};
-  axis.forEach((r, i) => colour[r.bucket] = SD_BKT[i % SD_BKT.length]);
   const times = model.map(e => +new Date(e.at_utc)).concat(market.map(e => +new Date(e.at_utc)));
   if(!times.length) return "";
   const t0 = Math.min(...times), t1 = Math.max(Math.max(...times), Date.now());
-  const W = 760, H = 230, L = 40, R = 12, T = 10, B = 24;
-  const x = t => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0);
-  let pmax = 0.1;
-  focus.forEach(b => model.concat(market).forEach(e => { pmax = Math.max(pmax, (e.vector || {})[b] || 0); }));
-  pmax = Math.min(1, Math.ceil(pmax * 10) / 10);
-  const y = p => T + (H - T - B) * (1 - p / pmax);
-  let g = "";
-  for(let p = 0; p <= pmax + 1e-9; p += pmax / 5) g += `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(p) + 3}" text-anchor="end" class="trend-ax">${Math.round(p * 100)}%</text>`;
-  g += sdTimeTicks(t0, t1, x, H - B, T);
-  // Stage bands under the lines (head mode): where each stage took over.
-  if(mode === "head"){
-    let prev = null;
-    model.forEach((e, i) => {
-      if(e.stage !== prev){
-        const xe = x(+new Date(e.at_utc));
-        g += `<line x1="${xe}" x2="${xe}" y1="${T}" y2="${H - B}" stroke="${SD_COL[e.stage]}" stroke-dasharray="3 3"/><text x="${xe + 2}" y="${T + 9}" font-size="9" fill="${SD_COL[e.stage]}">${e.stage}</text>`;
-        prev = e.stage;
-      }
-    });
-  }
-  const path = (rows, b) => {
-    // Step lines: a vector holds until the next one replaces it.
-    let d = "", last = null;
-    rows.forEach(e => {
-      const v = (e.vector || {})[b];
-      if(v == null) return;
-      const xx = x(+new Date(e.at_utc)).toFixed(1), yy = y(v).toFixed(1);
-      d += last == null ? `M${xx},${yy}` : `H${xx}V${yy}`;
-      last = yy;
-    });
-    if(last != null) d += `H${x(t1).toFixed(1)}`;
-    return d;
-  };
-  focus.forEach(b => {
-    g += `<path d="${path(model, b)}" fill="none" stroke="${colour[b]}" stroke-width="1.8"><title>模型 ${sdEsc(b)}</title></path>`;
-    g += `<path d="${path(market, b)}" fill="none" stroke="${colour[b]}" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8"><title>市场 ${sdEsc(b)}</title></path>`;
-    model.forEach(e => { const v = (e.vector || {})[b]; if(v != null) g += `<circle cx="${x(+new Date(e.at_utc)).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2" fill="${colour[b]}"><title>${e.stage} ${sdLocal(e.at_utc, true)} ${sdEsc(b)} ${sdPc(v, 1)}</title></circle>`; });
-  });
-  const chips = axis.slice().reverse().map(r => `<button type="button" class="sd-chip${focus.includes(r.bucket) ? " on" : ""}" data-sd-focus="${sdEsc(key)}" data-b="${sdEsc(r.bucket)}" style="--c:${colour[r.bucket]}">${sdEsc(r.bucket)}</button>`).join("");
   const modes = [["head","当日口径"],["P0","仅 P0"],["P0-M","仅 P0-M"],["P1","仅 P1"]]
     .map(([v, l]) => `<button type="button" class="sd-chip${mode === v ? " on" : ""}" data-sd-mode="${sdEsc(key)}" data-v="${v}">${l}</button>`).join("");
-  return `<div class="sd-t">温度桶概率趋势（实线＝模型，虚线＝市场；阶梯＝每次决策/每 15 分钟一点盘口）</div>
-    <div class="sd-chips">${modes}<span class="sd-div"></span>${chips}</div>
-    <svg class="sd-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>
+  return `<div class="sd-chips">${modes}</div>
     ${sdMeanTrend(day, model, market, t0, t1)}`;
 }
 function sdTimeTicks(t0, t1, x, yb, yt){
@@ -22685,11 +22634,7 @@ function sdOnClick(e){
   const t = e.target.closest("button");
   if(!t) return;
   const ds = t.dataset;
-  if(ds.sdFocus){
-    const list = SD.focus[ds.sdFocus] || [];
-    SD.focus[ds.sdFocus] = list.includes(ds.b) ? list.filter(x => x !== ds.b) : list.concat([ds.b]);
-    sdSave(); sdRender();
-  } else if(ds.sdMode && !ds.calc){
+  if(ds.sdMode && !ds.calc){
     SD.trendMode[ds.sdMode] = ds.v; sdSave(); sdRender();
   } else if(ds.sdHold){
     sdLoadHoldings(ds.sdHold);
