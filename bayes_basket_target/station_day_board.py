@@ -572,9 +572,69 @@ def _event_days(conn, station: str, now: datetime) -> tuple[str, list[tuple[str,
     tz_name = station_timezone(conn, station)
     if not tz_name:
         return None
-    today = now.astimezone(ZoneInfo(tz_name)).date()
-    return tz_name, [(role, (today + timedelta(days=offset)).isoformat())
-                     for role, offset in (("today", 0), ("ahead", 1))]
+    zone = ZoneInfo(tz_name)
+    today = now.astimezone(zone).date()
+    days = [(role, (today + timedelta(days=offset)).isoformat())
+            for role, offset in (("today", 0), ("ahead", 1))]
+    if past_peak(conn, station, days[0][1], zone, now)["past"]:
+        days = days[1:]
+    return tz_name, days
+
+
+def _model_peak(conn, station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:
+    """When the models put the day's warmest hour: the top of the day's earliest
+    P0 temperature curve (the earliest still spans the whole local day; later
+    ones carry only the hours after their decision)."""
+
+    from bayes_basket_target.materialization import rehydrate_lineage_documents  # noqa: PLC0415
+
+    row = conn.execute(
+        "SELECT json_extract(lineage_json,'$.conditional_future_temperature_curve_json')"
+        " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+        " AND +stage='P0' AND state='COMMITTED' ORDER BY decision_at_utc LIMIT 1",
+        (station, day),
+    ).fetchone()
+    if row is None or not row[0]:
+        return None
+    try:
+        body = rehydrate_lineage_documents(conn, {"curve": row[0]})["curve"]
+    except Exception:  # noqa: BLE001 -- a missing body means no peak, not a crash
+        return None
+    lo, hi = _local_window(day, zone)
+    points = [
+        (when, float(p["temperature_c"]))
+        for p in (_json(body, {}).get("points") or [])
+        if (when := _utc(p.get("valid_time_utc"))) is not None
+        and lo <= _iso(when) < hi and _float(p.get("temperature_c")) is not None
+    ]
+    if not points:
+        return None
+    when, temp = max(points, key=lambda x: x[1])
+    return {"peak_at_utc": _iso(when), "peak_local": when.astimezone(zone).strftime("%H:%M"),
+            "curve_peak_c": round(temp, 2), "curve_step_hours": 3}
+
+
+def past_peak(conn, station: str, day: str, zone: ZoneInfo, now: datetime) -> dict[str, Any]:
+    """User 2026-10-05「过了当日最高峰就不显示当日了」: past the models' warmest
+    hour, and the newest report since then is already below the day's high
+    (the reading has turned down)."""
+
+    peak = _model_peak(conn, station, day, zone)
+    metar = _metar(station, day, zone)
+    high = max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None)
+    latest = next((m for m in reversed(metar) if m["temp_c"] is not None), None)
+    result = {"past": False, "peak": peak, "running_high_c": high,
+              "latest_temp_c": None if latest is None else latest["temp_c"],
+              "latest_local": None if latest is None else latest["local"]}
+    if peak is None or latest is None or high is None:
+        return result
+    peak_at = _utc(peak["peak_at_utc"])
+    latest_at = _utc(latest["valid_at_utc"])
+    result["past"] = bool(
+        now >= peak_at and latest_at is not None and latest_at >= peak_at
+        and latest["temp_c"] < high
+    )
+    return result
 
 
 def _token(conn, station: str, days: Sequence[tuple[str, str]]) -> str:
@@ -623,12 +683,20 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         zone = ZoneInfo(tz_name)
         token = _token(conn, station, event_days)
         days = [_day(conn, station, day, role, zone) for role, day in event_days]
+        today = now.astimezone(zone).date().isoformat()
+        peak_today = past_peak(conn, station, today, zone, now)
+        for day in days:
+            if day["event_date"] == today:
+                day["peak"] = peak_today
     finally:
         conn.close()
     finished = datetime.now(timezone.utc)
     return {
         "schema": SCHEMA, "station_id": station, "available": True, "timezone": tz_name,
         "token": token,
+        # Today, once dropped for being past its peak: why, in one line.
+        "today_past_peak": None if any(d["role"] == "today" for d in days) else {
+            "event_date": today, **peak_today},
         "local_now": now.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
         "built_at_utc": _iso(finished),
         "build_sec": round((finished - started).total_seconds(), 2),

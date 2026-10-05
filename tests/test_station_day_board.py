@@ -35,3 +35,27 @@ def test_mean_variance_mode_and_spread() -> None:
 def test_unnormalised_vectors_are_normalised() -> None:
     s = vector_stats({"21°C": 2.0, "22°C": 2.0}, _axis())
     assert math.isclose(s["mode_p"], 0.5)
+
+
+def test_today_is_past_its_peak_only_once_the_reading_turns_down(monkeypatch) -> None:
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    import bayes_basket_target.station_day_board as B
+
+    zone = ZoneInfo("Asia/Shanghai")
+    monkeypatch.setattr(B, "_model_peak", lambda *a: {"peak_at_utc": "2026-10-05T06:00:00Z"})
+
+    def reports(*temps):
+        return lambda *a: [{"valid_at_utc": at, "temp_c": t, "local": ""} for at, t in temps]
+
+    now = datetime(2026, 10, 5, 11, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(B, "_metar", reports(("2026-10-05T06:00:00Z", 21.0), ("2026-10-05T10:00:00Z", 20.0)))
+    assert B.past_peak(None, "ZUUU", "2026-10-05", zone, now)["past"] is True
+    # Still at the high after the peak hour: the day may yet warm.
+    monkeypatch.setattr(B, "_metar", reports(("2026-10-05T06:00:00Z", 20.0), ("2026-10-05T10:00:00Z", 21.0)))
+    assert B.past_peak(None, "ZUUU", "2026-10-05", zone, now)["past"] is False
+    # Before the peak hour nothing is hidden.
+    early = datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(B, "_metar", reports(("2026-10-05T01:00:00Z", 19.0), ("2026-10-05T03:00:00Z", 18.0)))
+    assert B.past_peak(None, "ZUUU", "2026-10-05", zone, early)["past"] is False

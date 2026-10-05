@@ -21740,7 +21740,7 @@ function stationDayPanel(){
   setTimeout(sdBoot, 0);
   const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
     .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
-  return `<h2>单站日：${sdEsc(SD.station)} 今日与次日的概率分布</h2>
+  return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与次日的概率分布</h2>
   <div class="sd-ctl">
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
     <button type="button" id="sd-refresh" class="sd-btn">⟳ 立即刷新</button>
@@ -21768,7 +21768,7 @@ function sdBoot(){
     SD.station = v; SD.calc = {}; SD.data = null;
     try{ localStorage.setItem("sd-station", v); }catch(err){}
     const h2 = e.target.closest(".sec") && e.target.closest(".sec").querySelector("h2");
-    if(h2) h2.textContent = `单站日：${v} 今日与次日的概率分布`;
+    if(h2) h2.textContent = `单站日：${v} 今日（过峰即隐藏）与次日的概率分布`;
     sdFetch(true);
   });
   const body = document.getElementById("sd-body");
@@ -21832,7 +21832,13 @@ function sdRender(){
   const d = SD.data;
   if(!d){ body.innerHTML = ""; return; }
   if(!d.available){ body.innerHTML = `<div class="card muted">${sdEsc(d.station_id)}：${sdEsc(d.reason || "无数据")}</div>`; return; }
-  body.innerHTML = (d.days || []).map(sdDay).join("") + sdTafRaw(d);
+  const pk = d.today_past_peak;
+  // User 2026-10-05「过了当日最高峰就不显示当日了」: the backend drops today once
+  // past the models' warmest hour with the newest report below the day's high.
+  const pastNote = pk ? `<div class="card muted sd-sub" style="margin:8px 0">今日 ${sdEsc(pk.event_date)} 已过峰，不再显示：模型温度曲线最高点在当地 ${
+    sdEsc((pk.peak || {}).peak_local || "—")}（${sdN((pk.peak || {}).curve_peak_c, 1)}°C，逐 3 小时曲线），已报最高 <b>${sdN(pk.running_high_c, 0)}°C</b>，最新 METAR ${
+    sdEsc(pk.latest_local || "—")} ${sdN(pk.latest_temp_c, 0)}°C 已回落。</div>` : "";
+  body.innerHTML = pastNote + (d.days || []).map(sdDay).join("") + sdTafRaw(d);
 }
 
 // ---------------------------------------------------------------------------
