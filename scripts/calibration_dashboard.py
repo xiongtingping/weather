@@ -18706,122 +18706,6 @@ function liveSwitch(){
 }
 
 
-function liveOrderCard(L){
-  // Live rows are live by identity: live_submit_authorized=1 exists only on
-  // rows minted after the go-live migration widened the CHECK.  Every number
-  // here is counted off those rows at render, so the card and the ledger
-  // cannot disagree.
-  const O = L.live_orders || {};
-  const X = O.exchange || {};
-  const P = O.pnl || {};
-  // Two different flags, and they disagree today: the production lane is
-  // compiled for live, while the runtime contract still refuses to
-  // authorise a live submit.  A pill that reads only the first says
-  // "实盘发单中" over a book that cannot mint a live row -- the exact
-  // reassurance about a system that has stopped being that system which
-  // this panel already got wrong once.
-  const C = L.contracts || {};
-  const compiled = L.execution_mode === "production_live";
-  const authorized = C.live_submit_authorized === true;
-  const liveMode = compiled && authorized;
-  const state = !compiled ? "代码编译为 no-live"
-    : !authorized ? "合同未授权发单"
-    : L.submission_paused ? "暂停旗在位" : "实盘发单中";
-  const u = (v,d=2)=>v==null?"—":v.toFixed(d)+" U";
-  const signed = (v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
-  const pct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
-  const tile=(lab,val,sub2,klass)=>`<div class="card">
-    <div class="muted">${lab}</div>
-    <div class="big ${klass||""}">${val}</div>
-    <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
-  // Everything above is counted off our own tables.  This one row is not:
-  // it is what the exchange says is resting on the account right now.  On
-  // 2026-08-31 an order this machine placed and then lost track of rested
-  // for eighteen minutes; it appeared in no table here, and only asking the
-  // account found it.  So the account gets its own row, and a row that
-  // cannot be read says so rather than rendering a reassuring zero.
-  const O2 = L.open_orders || {};
-  const openRows = (O2.orders||[]).map(o=>`<tr>
-    <td><span class="pill red" style="font-size:10px">挂单中</span></td>
-    <td class="mono">${o.outcome||"—"}</td><td>${o.side||""}</td>
-    <td class="mono">${o.price??"—"}</td>
-    <td class="mono">${(o.size_matched==null?"?":shares(o.size_matched))
-      +"/"+(o.original_size==null?"?":shares(o.original_size))}</td>
-    <td class="mono" title="${o.id}">${String(o.id||"").slice(0,14)}…</td>
-    <td class="mono">${o.created_at??""}</td></tr>`).join("");
-  // Three ways the read fails, and they are three different sentences.
-  // "Nothing answered" and "the gateway answered and said no" send an
-  // operator to different places; printing both as 网关无响应 sent them to
-  // the wrong one twice on 2026-09-10, while a live order rested.
-  const O2WHY = {
-    unreachable: "网关无响应",
-    refused: "网关答了，但这次查询失败",
-    incomplete: "清单没枚举完，不是账户的全部",
-  }[O2.reason] || "读取失败";
-  const openCard = !O2.available
-    ? `<div class="note" style="margin-top:9px">⚠️ <b>账户挂单读不到</b>
-       <span class="muted">（${h(O2WHY)}：<span class="mono">${h(O2.error||"unknown")}</span>
-       ，问于 <span class="mono">${h(O2.asked_at||"?")}</span>）——
-       这一行问的是交易所，读不到就不是零。</span></div>`
-    : O2.count === 0
-      ? `<div class="muted" style="font-size:12px;margin-top:9px">✅ 交易所侧
-         <b>账户零挂单</b>（问于 <span class="mono">${h(O2.asked_at||"?")}</span>）</div>`
-      : `<div style="margin-top:9px"><b class="mono" style="color:var(--red)">
-         交易所侧：账户 ${O2.count} 笔挂单</b>
-         <span class="muted mono" style="font-size:11px">问于 ${h(O2.asked_at||"?")}</span>
-         <span class="muted" style="font-size:12px">—— 逐笔核对；若某笔不在上面的意向表里，
-         它就是本机丢了记录的孤儿单，撤掉它。</span>
-         <div style="overflow-x:auto"><table><thead><tr><th></th><th>桶</th><th>侧</th>
-         <th>价</th><th>成交/总</th><th>order id</th><th>挂单时刻</th></tr></thead>
-         <tbody>${openRows}</tbody></table></div></div>`;
-  // Counts here, money in the board above (2026-09-16): the PnL and ROI
-  // tiles were the second print of what the data board's 总账 already says.
-  return `<h3 style="margin-top:22px;font-size:15px">订单数量
-    <span class="pill ${liveMode&&!L.submission_paused?"red":""}"
-      style="font-size:11px">${state}</span></h3>
-  <div class="card">
-    <div class="grid g3">
-      ${tile("实盘意向", (O.intent_count||0)+" 笔",
-        "计划名义 "+u(O.notional_usdc)+(O.listed_count&&O.listed_count<O.intent_count
-          ? " · 下面按篮列出最近 "+O.listed_count+" 笔（新的 200 笔，外加每个成交过的篮子）"
-          : ""), O.intent_count?"":"muted")}
-      ${tile("走到交易所", (X.events||0)+" 回执",
-        "已提交 "+(O.submitted_count||0)+" · 受理 "+(O.accepted_count||0)+
-        " · 对账 "+(X.reconciliations||0)+" 行", (X.events||0)?"":"muted")}
-      ${tile("已成交", (P.filled_legs||0)+"／"+((P.filled_legs||0)+(P.pending_legs||0))+" 腿",
-        "成交名义 "+u(X.filled_notional_usdc||0)+" · "+(P.station_days||0)+" 个结算站日"
-          +((P.pending_legs||0)?" · "+P.pending_legs+" 腿待结算":""),
-        (P.filled_legs||0)?"":"muted")}
-    </div>
-    ${openCard}
-    <details class="note"><summary>实盘盈亏是怎么算的 · 声称从哪来 · 本金是什么</summary>
-      <div class="muted">钱<b>全部来自实盘成交列</b>：成本＝对账表报回来的成交名义
-      <span class="mono">filled_notional_usdc</span>，赔付＝真值落在该腿桶里时每股 1 USDC、
-      否则 0。结算桶标签有<b>两个来源，按先后</b>：生产结算标签已写的站日，直接用那一行；
-      <b>还没写的站日</b>，用真值车道当日成立的那版真值配上该站日自己的桶阶梯，
-      调<b>生产结算器本人的函数</b>落桶——各站档位规则一个字都不在这里重写。
-      借来的判定和自己推的判定在篮子行上分开标注。<br>
-      成交了但所在站日还没结算的腿计入<b>待结算</b>，<b>不当亏损算</b>。<br>
-      <b>声称</b>＝下单那个决策绑定的概率包（按内容哈希精确取回）里该桶的概率；
-      一笔＝一个站日一个阶段里成交过的腿，腿份数不等时份数单位取概率加权份数，
-      保证「投入×(声称÷成本−1)」正好等于这些腿声称能赚的钱。<br>
-      <b>本金</b>＝预算旋钮当前值（${h(String((D.live_money||{}).capital_usdc ?? "—"))} U，读自
-      <span class="mono">${h((D.live_money||{}).capital_source||"—")}</span>）：账户没有历史余额记录，
-      预算更大时下的单会被读成更高的回报率。<br>
-      当前两个闸的读数：代码执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>、
-      合同 <span class="mono">${h(C.execution_mode||"—")}</span>
-      （<span class="mono">live_submit_authorized=${C.live_submit_authorized===true?"true":"false"}</span>、
-      <span class="mono">calls_order_gateway=${C.calls_order_gateway===true?"true":"false"}</span>），
-      读自 <span class="mono">${h(C.runtime_config||"—")}</span>。
-      <b>两个都为真才可能铸出实盘行</b>，都是每次渲染现读。</div>
-    </details>
-    ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
-      对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
-  </div>
-`;
-}
-
-
 // The money board groups the live account readings in one container.
 // the 钱 lamp row in the head, two sections under it, and two cards inside
 // 站点实盘上线闸门 -- where the live P&L was read under a paragraph about the
@@ -18843,8 +18727,8 @@ const MONEY_BOARD = [
   {id:"live", label:"实盘", tone:"#ff7b72",
    note:"只数 live_submit_authorized=1 的行：真的交到交易所的单。纸面账本只当规则对比器，不在这里",
    panes:[
-     ["orders", "实盘 · 数据看板与站明细",
-      () => safe(() => moneyDataBoard(), "实盘数据看板") + liveMoney((L) => liveOrderCard(L)),
+     ["orders", "实盘 · 数据看板",
+      () => safe(() => moneyDataBoard(), "实盘数据看板"),
       "sec-live-orders"],
      // Charter 146: the tiebreak lane's own page -- its switch and stake,
      // every first decision it scored, and its trades on their own.
@@ -18864,13 +18748,6 @@ const MONEY_BOARD = [
 
 // The live order block reads the live-readiness payload, which is absent when the
 // collector could not build it.  Absent is said, not drawn as empty tiles.
-function liveMoney(render){
-  const L = D.live_readiness || {};
-  if(!L.available) return `<div class="muted">实盘读数这一轮没有生成
-    （live_readiness 不可用），实盘订单无从读起。</div>`;
-  return render(L);
-}
-
 // H1's own fills and NO settlement result.  A filled FOK is a past trade,
 // not an order currently resting at the exchange.
 function tailShortLane(){

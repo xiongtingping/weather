@@ -58,7 +58,6 @@ def _function(name: str) -> str:
 
 BOARD = "\n".join([
     _balanced("const MONEY_BOARD = ", "[", "]") + ";",
-    _function("liveMoney"),
     _function("moneyBoard"),
     _function("safe"),
 ])
@@ -67,7 +66,6 @@ STUBS = """
 const h = (s) => String(s == null ? '' : s)
   .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const moneyDataBoard = () => { if (D.__board_throws) throw new Error('boom'); return '<div>DATA</div>'; };
-const liveOrderCard = (L) => `<h3>ORDERS ${L.live_orders.intent_count}</h3>`;
 """
 
 
@@ -111,14 +109,13 @@ def test_one_live_category_with_the_data_board_over_the_orders():
         ("live", "tailshort", True),
     ]
     assert 'data-daytabs="money-paper"' not in html
-    for label in ("实盘", "实盘 · 数据看板与站明细"):
+    for label in ("实盘", "实盘 · 数据看板"):
         assert label in html
-    for body in ("DATA", "ORDERS 7"):
-        assert body in html
+    assert "DATA" in html
     for removed in ("实盘意向簿", "P1 尾段线", "同心线"):
         assert removed not in html
-    # 上面是数据看板，下方是站明细.
-    assert html.index("DATA") < html.index("ORDERS 7")
+    # The 订单数量 card left on 2026-10-05.
+    assert "ORDERS" not in html
 
 
 def test_every_tab_has_a_pane_and_a_single_block_draws_no_strip():
@@ -135,20 +132,6 @@ def test_a_block_that_throws_does_not_blank_the_others():
     html = _render(LIVE | {"__board_throws": True})
 
     assert "渲染失败" in html and "boom" in html
-    for body in ("ORDERS 7",):
-        assert body in html
-
-
-def test_live_blocks_say_absent_instead_of_drawing_empty_tiles():
-    html = _render({"live_readiness": {"available": False}})
-
-    assert "ORDERS" not in html
-    assert html.count("live_readiness 不可用") == 1
-    # The data board reads the live book, not the readiness payload.
-    assert "DATA" in html
-
-
-# ---------------------------------------------------------------- placement
 
 
 def _assembly() -> str:
@@ -166,7 +149,7 @@ def test_the_board_sits_between_the_head_and_live_readiness():
     assert "sec(entryEconomics" not in page and "sec(riskMetrics" not in page
 
 
-@pytest.mark.parametrize("name", ["moneyDataBoard", "liveOrderCard"])
+@pytest.mark.parametrize("name", ["moneyDataBoard"])
 def test_each_block_is_drawn_by_the_board_and_nowhere_else(name):
     """A second call site would print the same numbers twice on one page."""
 
