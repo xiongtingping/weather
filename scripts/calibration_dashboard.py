@@ -16093,9 +16093,10 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* One row, no ragged second line (user 2026-10-05: 一排显示。其他地方也是，
    不要跨行留空白).  On a wide screen a card grid of up to eight lays its cards
    out in a single row of equal columns; more than eight, or a narrow screen,
-   falls back to wrapping. */
+   falls back to wrapping.  ``.kpi`` also names a single card inside a
+   ``.kpis`` grid (the 诊断 cards); that card is not a grid of cards. */
 @media (min-width:900px){
-  .grid:not(:has(> :nth-child(9))),.kpi:not(:has(> :nth-child(9))),
+  .grid:not(:has(> :nth-child(9))),.kpi:not(.kpis > .kpi):not(:has(> :nth-child(9))),
   .pc-m:not(:has(> :nth-child(9))),.pb-kpis:not(:has(> :nth-child(9))),
   .ee-cmps:not(:has(> :nth-child(9))),.hgrid{
     grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
