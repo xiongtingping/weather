@@ -15984,6 +15984,16 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .hcat{background:var(--soft-bg,rgba(127,127,127,.05));border:1px solid var(--line);border-radius:10px;padding:10px}
 .hcat-t{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.02em}
 .hcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+/* One row, no ragged second line (user 2026-10-05: 一排显示。其他地方也是，
+   不要跨行留空白).  On a wide screen a card grid of up to eight lays its cards
+   out in a single row of equal columns; more than eight, or a narrow screen,
+   falls back to wrapping. */
+@media (min-width:900px){
+  .grid:not(:has(> :nth-child(9))),.kpi:not(:has(> :nth-child(9))),
+  .pc-m:not(:has(> :nth-child(9))),.pb-kpis:not(:has(> :nth-child(9))),
+  .ee-cmps:not(:has(> :nth-child(9))),.hgrid{
+    grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
+}
 .hcard{display:flex;align-items:center;gap:6px;height:32px;padding:0 9px;border-radius:7px;
 background:var(--card);border:1px solid var(--line);font-size:12.5px;font-weight:560;min-width:0;cursor:default}
 .hcard-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -19006,22 +19016,6 @@ function liveReadiness(){
   const EDGE = 'style="border-left:1px solid var(--line)"';
   // The station's lanes, each its own money (user ruling 2026-10-05), and
   // where the station sits on the globe; the fleet completeness card stays.
-  const SEL = D.live_selection || {};
-  const pc0 = v => v==null ? "—" : (100*v).toFixed(0)+"%";
-  // Fleet basket completeness: how many buckets each live basket meant to
-  // buy against how many it bought, e.g. posted 3 and bought 2.  The three
-  // headline numbers only; the per-(posted, bought) table under them came
-  // off the card (user ruling, 2026-09-17).
-  const BC = SEL.basket_completeness || {};
-  const completenessCard = BC.baskets ? `<div class="card" style="margin-top:12px">
-    <div class="muted">篮子完整度（实盘，挂到交易所的篮子；一个站日的一个阶段算一篮）</div>
-    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:6px">
-      <div><span class="big">${pc0(BC.complete_share)}</span>
-        <span class="muted">完整篮 ${BC.complete}/${BC.baskets}（挂出的桶全部买到）</span></div>
-      <div><span class="big">${pc0(BC.mean)}</span>
-        <span class="muted">平均完整度（买到桶数÷挂出桶数）</span></div>
-      <div><span class="big down">${BC.unfilled}</span>
-        <span class="muted">篮一桶都没买到</span></div></div></div>` : "";
   // Lanes in the order they matter now: the two that trade, then the
   // closed ones whose history is still on the book; any other lane the book
   // names is appended under its own id.
@@ -19151,7 +19145,6 @@ function liveReadiness(){
   实盘订单在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。
   下面的首批站点闸门表同时是<b>逐站汇总（跨日）</b>：每站<b>按车道分开</b>的已结算现金盈亏（含卖出回款）
   与站点属性在同一行，全部读实盘记录，没有纸面账本的列。</p>
-  ${completenessCard}
   <div class="card" style="margin-top:12px">
     <div class="muted" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">首批站点闸门
       <button type="button" class="lc-bulk" data-bulk="waive_all" disabled

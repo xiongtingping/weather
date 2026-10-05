@@ -206,31 +206,6 @@ def test_the_seat_side_is_productions_two_centres_on_envelope_ordinals() -> None
     assert abs(account["ev_per_usdc_mean"] - (0.9 / 0.8 - 1)) < 1e-9
 
 
-def test_baskets_count_what_reached_the_exchange_and_what_filled() -> None:
-    """The fleet completeness card: refused legs make no basket.
-
-    EGLC's only orders were refused by the send gate: no basket (no market
-    was asked).  KMIA posted three buckets and bought two: one basket, 2/3
-    complete.
-    """
-
-    day = "2026-09-10"
-    legs = [
-        _leg("i1", "d1", "KMIA", day, "P0", "30", filled=5, notional=1,
-             state="filled"),
-        _leg("i2", "d1", "KMIA", day, "P0", "31", filled=5, notional=1,
-             state="filled"),
-        _leg("i3", "d1", "KMIA", day, "P0", "32"),
-        _leg("i4", "d2", "EGLC", day, "P0", "20", state="failed"),
-        _leg("i5", "d2", "EGLC", day, "P0", "21", state="failed"),
-    ]
-    fleet = LS._completeness(LS._baskets(legs))
-    assert fleet["baskets"] == 1 and fleet["complete"] == 0
-    assert abs(fleet["mean"] - 2 / 3) < 1e-9
-    assert fleet["unfilled"] == 0
-    assert "matrix" not in fleet
-
-
 def test_the_board_counts_station_day_verdicts_from_the_live_book_only() -> None:
     """每日统计 reads one decision of a day's verdict.
 
@@ -302,7 +277,9 @@ def test_the_board_hands_these_sections_the_live_payload_only() -> None:
         body = _template_function(template, name)
         assert body is not None, name
         assert "D.selection" not in body, name
-        assert "D.live_selection" in body, name
+    # liveReadiness reads no selection payload since 2026-10-05 (its lanes'
+    # money is the readiness rows'); overviewLamps still reads the live one.
+    assert "D.live_selection" in _template_function(template, "overviewLamps")
     # 逐站汇总（跨日） merged into the go-live table, 没建仓是因为什么 moved
     # into 逐站逐日明细: neither is a section of its own any more.  The
     # basket's refusal, coverage and hit-rate sections -- and the roster's

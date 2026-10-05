@@ -342,57 +342,6 @@ def _money_account(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _baskets(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """What each basket meant to buy against what it bought.
-
-    A basket is one (station, day, stage): the stage's decisions posted one
-    ladder between them, and it is the grain the settlement rows and the
-    go-live table read.  ``intended`` is the distinct buckets posted to the
-    exchange, ``bought`` the distinct buckets that filled.  Legs the send
-    gate refused are not intended here -- no market was asked to fill them;
-    they are counted apart as refused orders.
-    """
-
-    groups: dict[tuple[str, str, str], list[Mapping[str, Any]]] = defaultdict(list)
-    for leg in legs:
-        if reached_exchange(leg):
-            groups[(str(leg["station_id"]), str(leg["event_date"]),
-                    str(leg["stage"]))].append(leg)
-    out = []
-    for (station, day, stage), group in sorted(groups.items()):
-        intended = {str(leg["bucket"]) for leg in group}
-        bought = {
-            str(leg["bucket"]) for leg in group
-            if float(leg.get("filled_size") or 0.0) > 0
-        }
-        out.append({
-            "station_id": station, "event_date": day, "stage": stage,
-            "intended": len(intended), "bought": len(bought),
-        })
-    return out
-
-
-def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Baskets that bought every bucket they posted, and how close the rest got.
-
-    ``mean`` averages bought/intended per basket, so a three-bucket basket
-    that bought two is 67% whatever its money; ``unfilled`` counts the ones
-    that bought nothing.
-    """
-
-    if not baskets:
-        return {"baskets": 0, "complete": 0, "complete_share": None,
-                "mean": None, "unfilled": 0}
-    complete = sum(1 for b in baskets if b["bought"] == b["intended"])
-    return {
-        "baskets": len(baskets),
-        "complete": complete,
-        "complete_share": complete / len(baskets),
-        "mean": sum(b["bought"] / b["intended"] for b in baskets) / len(baskets),
-        "unfilled": sum(1 for b in baskets if b["bought"] == 0),
-    }
-
-
 def _gate_refusals(
     conn: sqlite3.Connection, intents: Sequence[str]
 ) -> dict[str, str]:
@@ -644,7 +593,6 @@ def build(
             "day_count": len({s["event_date"] for s in seat_list}),
             **_money_account(rows),
         },
-        "basket_completeness": _completeness(_baskets(book.get("legs") or [])),
         "basket_hit_by_size": basket_hit_by_width(book),
         "chosen_basket_hit": chosen_basket_hit_trend(chains),
         "chosen_miss_offsets": chosen_miss_offsets(chains),
