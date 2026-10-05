@@ -2016,6 +2016,71 @@ def collect_single_system_width(conn: sqlite3.Connection) -> dict[str, Any]:
 BOARD_EVIDENCE_PATH = ROOT / "config" / "ui" / "board_evidence_v1.json"
 
 
+def collect_basket_shadow() -> dict[str, Any]:
+    """The basket's shadow ladder, as the backend board-readings job wrote it
+    (``board_readings.basket_shadow``; user 2026-10-05 「前端增加篮子策略（梯
+    子）的显示和评估」).  A file read: the board selects no bucket itself.
+
+    Each station-day is cut to what the page draws; the per-leg asks travel
+    only on the latest plan, the one the current ladder table prints.
+    """
+
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    reading = load_reading("basket_shadow")
+    if not reading:
+        return {"available": False, "error": "后端读数任务还没写出这一项"}
+    value = reading.get("value") or {}
+    state = value.get("state") or {}
+
+    def window(w: Any, *, legs: bool) -> dict[str, Any] | None:
+        if not isinstance(w, dict):
+            return None
+        keep = ("buckets", "all_in_price", "win_probability", "market_mid", "at")
+        out = {k: w.get(k) for k in keep if k in w}
+        if legs:
+            out["legs"] = w.get("legs") or {}
+        return out
+
+    rows = []
+    for rec in (state.get("station_days") or {}).values():
+        latest = rec.get("latest") or {}
+        rows.append({
+            "station_id": rec.get("station_id"),
+            "event_date": rec.get("event_date"),
+            "plans": rec.get("plans"),
+            "windowed_plans": rec.get("windowed_plans"),
+            "activated_plans": rec.get("activated_plans"),
+            "gates": rec.get("gates") or {},
+            "settled_bucket": rec.get("settled_bucket"),
+            "first_window": window(rec.get("first_window"), legs=False),
+            "open": rec.get("open"),
+            "latest": {
+                "at": latest.get("at"),
+                "gate": latest.get("gate"),
+                "activated": latest.get("activated"),
+                "legs": latest.get("legs") or [],
+                "window": window(latest.get("window"), legs=True),
+            },
+        })
+    rows.sort(key=lambda r: (str(r["event_date"]), str(r["station_id"])), reverse=True)
+    lanes = _load_strategy_lanes()
+    basket_lane = (lanes.get("lanes") or {}).get("basket") or {}
+    return {
+        "available": True,
+        "computed_at_utc": reading.get("computed_at_utc"),
+        "build_sec": reading.get("build_sec"),
+        "caught_up": bool(state.get("caught_up")),
+        "cursor": state.get("cursor"),
+        "cursor_top": state.get("cursor_top"),
+        "stage": value.get("stage"),
+        "days_kept": value.get("days_kept"),
+        "lane_enabled": basket_lane.get("enabled"),
+        "score": value.get("score") or {},
+        "rows": rows,
+    }
+
+
 def collect_board_evidence(path: Path = BOARD_EVIDENCE_PATH) -> dict[str, Any]:
     """The dated readings the page prints beside its live numbers.
 
@@ -15922,6 +15987,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "board_evidence": collect_board_evidence(),
         "proper_bet_lane": proper_bet_lane,
         "tail_short_lane": tail_short_lane,
+        "basket_shadow": collect_basket_shadow(),
         "realisation_layer": realisation_layer,
         "chain": chain,
         "hosted_sweeps": hosted_sweeps,
@@ -18518,8 +18584,93 @@ const MONEY_BOARD = [
       "sec-proper-bet"],
      ["tailshort", "远尾做空 H1 · 宪章 234",
       () => tailShortLane(),
-      "sec-tail-short"]]},
+      "sec-tail-short"],
+     // The basket's ladder in shadow (user 2026-10-05: 前端增加篮子策略（梯子）
+     // 的显示和评估) -- what it would buy from the P0 plans production
+     // compiled, and how those choices settled.  It places no order.
+     ["basketshadow", "篮子策略（梯子）· 影子",
+      () => safe(() => basketShadowLane(), "篮子影子"),
+      "sec-basket-shadow"]]},
 ];
+
+// The basket's shadow ladder: read from data/board_readings/basket_shadow.json
+// (board_readings.basket_shadow), which walks the P0 preselection plans
+// production compiled -- the board selects nothing itself.
+const BASKET_GATE_WORDS = {edge:"边际不足", shape:"形状不符", center:"未含中心",
+  leg_floor:"单腿地板", short:"窗口太短", gapped:"有缺口", market_lean:"市场偏向",
+  unpriced:"缺报价"};
+function basketShadowLane(){
+  const B = D.basket_shadow || {};
+  if(!B.available) return `<div class="muted">篮子影子读数还没有：${h(B.error||"后端读数任务这一轮没写出")}。</div>`;
+  const pct = v => v==null ? "—" : (v>=0?"+":"")+(100*v).toFixed(1)+"%";
+  const p0 = v => v==null ? "—" : (100*v).toFixed(0)+"%";
+  const usd = v => v==null ? "—" : (v>=0?"+":"")+(+v).toFixed(2);
+  const ci = c => c ? `[${pct(c[0])}, ${pct(c[1])}]` : "—";
+  const sc = B.score || {};
+  const tile = (name, x, note) => `<div class="card"><div class="muted">${name}</div>
+    <div class="mono" style="font-size:1.3em"><span class="${x&&x.roi!=null?(x.roi>=0?"up":"down"):""}">${x&&x.n?pct(x.roi):"—"}</span>
+    <span class="muted" style="font-size:.7em">${x&&x.n?ci(x.roi_ci95):""}</span></div>
+    <div class="muted">${x&&x.n?`${x.n} 站日 · ${x.days} 天 · 命中 ${p0(x.hit_rate)} · 投入 ${(+x.cost).toFixed(1)} U · 盈亏 ${usd(x.pnl)} U`:"还没有已结算站日"}</div>
+    <div class="muted" style="font-size:11.5px">${note}</div></div>`;
+  const W = sc.window || {};
+  const tiles = `<div class="grid g3" style="margin-top:8px">
+    ${tile("开仓单 · 挂价全成", sc.open, "篮子第一张有腿的 P0 计划：腿、股数、挂价照抄，假设挂单按挂价全部成交——这是上界，挂单不保证成交")}
+    ${tile("开仓单 · 按卖一", sc.open_at_ask, "同一批腿和股数改按同一计划里的全包卖一（吃单）计价；只数每条腿都有卖一的站日")}
+    ${tile("选桶窗口 · 每腿 1 股吃单", W, `第一张有可入窗口的计划：窗口内每桶 1 股按全包卖一买入，不看定量。模型说窗口命中 ${p0(W.mean_claim)}，市场中价合计 ${p0(W.mean_mid)}，实际 ${p0(W.hit_rate)}`)}
+  </div>`;
+  const today = new Date().toISOString().slice(0,10);
+  const rows = B.rows || [];
+  const legText = legs => (legs||[]).map(t=>`${h(t.bucket)} ${(+t.shares).toFixed(1)}@${(+t.price).toFixed(2)}`).join(" · ");
+  const gateCell = r => {
+    const L = r.latest || {};
+    if(L.activated) return `<td data-sort="0"><span class="pill green">会下单</span></td>`;
+    const g = L.gate;
+    return `<td data-sort="${g?1:2}" title="${h(Object.entries(r.gates||{}).map(([k,n])=>`${BASKET_GATE_WORDS[k]||k} ${n}`).join("，"))}（本站日全部 P0 计划的拦截次数）">${g?`<span class="pill amber">HOLD · ${h(BASKET_GATE_WORDS[g]||g)}</span>`:`<span class="muted">HOLD</span>`}</td>`;
+  };
+  const upcoming = rows.filter(r=>String(r.event_date)>=today).map(r=>{
+    const L = r.latest || {}, w = L.window;
+    const legs = w ? w.buckets.map(b=>{ const x=(w.legs||{})[b]; return `${h(b)} <span class="muted">${x?`模型 ${p0(x[0])} / 卖一 ${(+x[1]).toFixed(2)}`:""}</span>`; }).join("<br>") : `<span class="muted">没有可入窗口</span>`;
+    return `<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${h(r.station_id)}</td>
+      <td style="white-space:nowrap">${legs}</td>
+      <td class="mono">${w&&w.all_in_price!=null?(+w.all_in_price).toFixed(2):"—"}</td>
+      <td class="mono">${w?p0(w.win_probability):"—"}</td>
+      <td class="mono">${w?p0(w.market_mid):"—"}</td>
+      ${gateCell(r)}
+      <td class="mono" style="white-space:nowrap">${L.activated?legText(L.legs):"—"}</td>
+      <td class="mono" data-sort="${r.plans||0}">${r.plans||0} <span class="muted">/ ${r.windowed_plans||0} / ${r.activated_plans||0}</span></td>
+      <td class="mono muted">${h(String(L.at||"").slice(5,16).replace("T"," "))}</td></tr>`;
+  }).join("");
+  const settled = rows.filter(r=>r.settled_bucket && (r.open || r.first_window)).map(r=>{
+    const o = r.open, w = r.first_window, sb = r.settled_bucket;
+    const pay = o ? o.legs.filter(t=>t.bucket===sb).reduce((a,t)=>a+t.shares,0) : null;
+    const pnl = o ? pay - o.cost_usdc : null;
+    const whit = w ? (w.buckets||[]).includes(sb) : null;
+    return `<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${h(r.station_id)}</td>
+      <td>${w?h((w.buckets||[]).join(" · ")):"—"}</td>
+      <td class="mono">${w&&w.all_in_price!=null?(+w.all_in_price).toFixed(2):"—"}</td>
+      <td class="mono">${w?p0(w.win_probability):"—"}</td>
+      <td class="mono">${h(sb)}</td>
+      <td data-sort="${whit==null?"":(whit?1:0)}">${whit==null?"—":(whit?"✔":"✘")}</td>
+      <td class="mono" style="white-space:nowrap">${o?legText(o.legs):"—"}</td>
+      <td class="mono" data-sort="${o?o.cost_usdc:""}">${o?(+o.cost_usdc).toFixed(2):"—"}</td>
+      <td class="mono ${pnl==null?"":(pnl>=0?"up":"down")}" data-sort="${pnl==null?"":pnl}">${pnl==null?"—":usd(pnl)}</td></tr>`;
+  }).join("");
+  return `<div class="card"><b>篮子策略（梯子）· 影子</b>
+    <span class="pill ${B.lane_enabled?"green":"muted"}">篮子开关：${B.lane_enabled?"开":"关"}</span>
+    <span class="pill amber">影子，不下单</span>
+    <div class="muted" style="margin-top:4px">篮子只在 P0 建仓（宪章 229）。这里逐站日读生产每轮已编译的 P0 预选计划：选出的窗口（相邻几档）、每档模型概率与全包卖一、窗口整体卖一合计、
+    是否会下单（会下单＝计划有正股数的腿，列出 股数@挂价）以及没下单时最后拦下它的闸门。评估只数已结算站日。
+    读数 ${h(B.computed_at_utc||"—")}（${B.caught_up?"已读到最新计划":`补读中 ${B.cursor}/${B.cursor_top}`}），保留 ${h(B.days_kept)} 个事件日。</div></div>
+  ${tiles}
+  <div class="card" style="margin-top:8px"><b>当前梯子</b> <span class="muted">（今天及以后的事件日，最新一张 P0 计划）</span>
+    <div class="scroll" style="max-height:420px;margin-top:6px"><table style="white-space:nowrap"><thead><tr>
+      <th>事件日</th><th>站</th><th>窗口各档（模型 / 卖一）</th><th title="窗口内各档全包卖一之和">卖一合计</th><th title="模型给窗口的命中概率">模型命中</th><th title="窗口各档市场中价之和">市场中价</th><th>状态</th><th title="会下单时的腿：股数@挂价">下单腿</th><th title="P0 计划数 / 有可入窗口 / 会下单">计划</th><th>最新计划</th>
+    </tr></thead><tbody>${upcoming||`<tr><td colspan="10" class="muted">没有今天及以后的 P0 计划</td></tr>`}</tbody></table></div></div>
+  <div class="card" style="margin-top:8px"><b>已结算</b> <span class="muted">（第一张有窗口的计划与第一张开仓单，对结算桶）</span>
+    <div class="scroll" style="max-height:420px;margin-top:6px"><table style="white-space:nowrap"><thead><tr>
+      <th>事件日</th><th>站</th><th>首个窗口</th><th>卖一合计</th><th>模型命中</th><th>结算桶</th><th>窗口命中</th><th>开仓腿</th><th>开仓成本</th><th title="挂价全成假设下的结算盈亏(U)">开仓盈亏</th>
+    </tr></thead><tbody>${settled||`<tr><td colspan="10" class="muted">还没有已结算的站日</td></tr>`}</tbody></table></div></div>`;
+}
 
 // The live order block reads the live-readiness payload, which is absent when the
 // collector could not build it.  Absent is said, not drawn as empty tiles.
@@ -21740,7 +21891,7 @@ function stationDayPanel(){
   setTimeout(sdBoot, 0);
   const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
     .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
-  return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与次日的概率分布</h2>
+  return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
   <div class="sd-ctl">
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
     <button type="button" id="sd-refresh" class="sd-btn">⟳ 立即刷新</button>
@@ -21768,7 +21919,7 @@ function sdBoot(){
     SD.station = v; SD.calc = {}; SD.data = null;
     try{ localStorage.setItem("sd-station", v); }catch(err){}
     const h2 = e.target.closest(".sec") && e.target.closest(".sec").querySelector("h2");
-    if(h2) h2.textContent = `单站日：${v} 今日（过峰即隐藏）与次日的概率分布`;
+    if(h2) h2.textContent = `单站日：${v} 今日（过峰即隐藏）与明日（第二日）的概率分布`;
     sdFetch(true);
   });
   const body = document.getElementById("sd-body");
@@ -21851,7 +22002,7 @@ function sdSeries(day){
   return out;
 }
 function sdDay(day){
-  const roleWord = day.role === "today" ? "今日" : "次日";
+  const roleWord = day.role === "today" ? "今日" : "明日（第二日）";
   if(!day.available) return `<div class="sd-day card"><h3>${roleWord} ${sdEsc(day.event_date)}</h3><div class="muted">这一天还没有任何已提交的概率信封。</div></div>`;
   const S = sdSeries(day);
   const head = (day.stages || {})[day.head_stage] || {};
