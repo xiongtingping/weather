@@ -391,6 +391,26 @@ def _market(conn, station: str, day: str, axis) -> dict[str, Any]:
             if stats:
                 trend.append({"at_utc": str(at), "vector": {k: round(v, 5) for k, v in vec.items()},
                               "stats": stats})
+    # The book shown and priced is the WS publisher's own when it has this
+    # day -- the committed snapshot is the resident's once-a-cycle copy.
+    try:
+        from .p1_tail_lane import _ws_manifest_root, live_ws_snapshot  # noqa: PLC0415
+
+        live = live_ws_snapshot(
+            conn, _ws_manifest_root(None), station_id=station, event_date=day,
+            now_utc=_iso(datetime.now(timezone.utc)), include_listing_days=True,
+        )
+    except Exception:  # noqa: BLE001 -- no live book falls back to the snapshot
+        live = None
+    if live is not None:
+        live_ref = market_reference_v1(live["buckets"])
+        latest = (live["observed_at"], live["buckets"], live_ref, "WS_PUBLISHER_LIVE")
+        if live_ref.get("state") == "complete":
+            vec = {str(k): float(v) for k, v in live_ref["vector"].items()}
+            stats = vector_stats(vec, axis)
+            if stats and (not trend or trend[-1]["at_utc"] < str(live["observed_at"])):
+                trend.append({"at_utc": str(live["observed_at"]),
+                              "vector": {k: round(v, 5) for k, v in vec.items()}, "stats": stats})
     if latest is None:
         return {"available": False, "reason": "newest_snapshot_unreadable", "trend": trend}
     at, buckets, ref, source = latest

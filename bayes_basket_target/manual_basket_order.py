@@ -80,17 +80,27 @@ def _gateway(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     return ClobOrderServiceClient(timeout_seconds=15.0).place_order(payload)
 
 
-def latest_book(conn: sqlite3.Connection, station: str, day: str) -> dict[str, Any]:
-    row = conn.execute(
-        "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-        " ORDER BY observed_at DESC LIMIT 1",
-        (station, day),
-    ).fetchone()
-    if row is None:
+def latest_book(conn: sqlite3.Connection, station: str, day: str,
+                now: datetime | None = None) -> dict[str, Any]:
+    """The freshest ladder: the WS publisher's own, else the committed snapshot.
+
+    The committed snapshot is a copy the resident writes once a cycle for a
+    station; right after a restart it sat 6 minutes old (2026-10-05 12:22Z)
+    and refused the operator's basket.  The publisher's manifest carries the
+    stream as it arrives -- the read the Proper and tail lanes make.
+    """
+
+    from .p1_tail_lane import _latest_snapshot, _ws_manifest_root, live_ws_snapshot  # noqa: PLC0415
+
+    now = now or _now()
+    book = live_ws_snapshot(
+        conn, _ws_manifest_root(None), station_id=station, event_date=day,
+        now_utc=now.isoformat().replace("+00:00", "Z"), include_listing_days=True,
+    ) or _latest_snapshot(conn, station, day)
+    if book is None:
         raise ManualOrderError("没有这一天的官方 WS 盘口")
     buckets = {}
-    for b in json.loads(row[1] or "[]"):
+    for b in book.get("buckets") or []:
         asks = sorted(
             (float(l["price"]), float(l["shares"])) for l in (b.get("ask_levels") or [])
             if float(l.get("price") or 0) > 0 and float(l.get("shares") or 0) > 0
@@ -102,7 +112,8 @@ def latest_book(conn: sqlite3.Connection, station: str, day: str) -> dict[str, A
             "tick": float(b.get("price_tick_size") or 0.001),
             "min_order_size": float(b.get("min_order_size") or 5.0),
         }
-    return {"observed_at": str(row[0]), "buckets": buckets}
+    return {"observed_at": str(book.get("observed_at")), "buckets": buckets,
+            "source": book.get("book_source") or "committed_snapshot"}
 
 
 def fillable_within(asks: list[tuple[float, float]], shares: float, cap: float) -> float:
@@ -228,7 +239,7 @@ def place_manual_basket(
     try:
         conn.execute("PRAGMA query_only=1")
         book = latest_book(conn, str(request.get("station") or "").upper(),
-                           str(request.get("event_date") or ""))
+                           str(request.get("event_date") or ""), now)
     finally:
         conn.close()
     plan = plan_orders(request, book, now=now)
@@ -259,7 +270,8 @@ def place_manual_basket(
         "schema": "manual_basket_order_v1", "at_utc": now.isoformat().replace("+00:00", "Z"),
         "station_id": plan["station"], "event_date": plan["event_date"],
         "batch_id": plan["batch_id"], "mode": plan["mode"],
-        "book_observed_at": plan["book_observed_at"], "notional_usdc": plan["notional_usdc"],
+        "book_observed_at": plan["book_observed_at"], "book_source": book.get("source"),
+        "notional_usdc": plan["notional_usdc"],
         "legs": [leg["payload"] | {"bucket": leg["bucket"]} for leg in plan["legs"]],
         "results": results,
     }

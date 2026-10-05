@@ -22597,6 +22597,17 @@ function sdOrderResult(key){
     <div class="scroll"><table class="sd-tab"><thead><tr><th>桶</th><th>结果</th><th>类型</th><th>限价</th><th>份数</th><th>成交份数</th><th>付出 U</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function sdPlaceOrder(key){
+  if(SD.ordering || SD.busy) return;
+  // The panel redraws on new probabilities, not on every tick of the book:
+  // re-read it now, so the legs and the dialog are priced on the live book.
+  SD.ordering = true;
+  sdRefreshCalc(key, null);
+  fetch(`http://127.0.0.1:8788/api/station-day?station=${encodeURIComponent(SD.station)}&force=1`)
+    .then(r => r.json()).then(j => { if(j && j.available) SD.data = j; })
+    .catch(() => {})
+    .finally(() => { SD.ordering = false; sdRefreshCalc(key, null); sdPlaceOrderNow(key); });
+}
+function sdPlaceOrderNow(key){
   if(SD.ordering) return;
   const day = ((SD.data || {}).days || []).find(d => d.event_date === key);
   const st = sdCalcState(key);
@@ -22605,7 +22616,7 @@ function sdPlaceOrder(key){
   if(!res.ok || !legs.length){ alert("计算器没有可下的篮子：" + (res.warn || []).join("；")); return; }
   const modeWord = {taker:"吃卖一：限价 FOK，全成或零成", maker:"挂买一+1：post-only GTC，不保证成交", manual:"手填价格：GTC 限价"}[st.mode];
   const lines = legs.map(l => `  ${l.bucket}：${l.shares} 份 × 限价 ${l.limit_price}（约 ${l.cost.toFixed(2)} U）`).join("\n");
-  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key} 的 YES？\n\n${lines}\n\n合计约 ${res.total.toFixed(2)} U\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
+  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key} 的 YES？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n合计约 ${res.total.toFixed(2)} U\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
   if(!ok) return;
   const batch = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2, 10));
   SD.orders = SD.orders || {};
