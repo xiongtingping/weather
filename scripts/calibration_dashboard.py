@@ -17651,81 +17651,18 @@ function upstreamLamps(){
 // time are read against the viewer's clock, not the build's, so a page
 // half an hour old still says "已晚" when it is.
 function publishTimes(){
-  const at = s => { const t = Date.parse(s || ""); return isFinite(t) ? t : null; };
-  const utc = s => { const m = String(s || "").match(/^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-    return m ? `${m[1]}-${m[2]} ${m[3]}:${m[4]}Z` : "—"; };
-  const local = s => { const t = at(s); return t == null ? "" : new Date(t).toLocaleString(undefined,
-    {month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false}); };
-  const span = v => v == null ? "—" : (v < 1 ? Math.round(v * 60) + " 分钟" : v.toFixed(1) + " 小时");
-  const ago = s => { const t = at(s); return t == null ? "" : hours((Date.now() - t) / 3600e3); };
-  const lagOf = (a, b) => { const x = at(a), y = at(b); return x == null || y == null ? null : (y - x) / 3600e3; };
-  const next = (run, cycle, lag) => {
-    const t = at(run);
-    if(t == null || !cycle || lag == null) return {text: "—", late: false};
-    const nextRun = new Date(t + cycle * 3600e3).toISOString();
-    const due = (t + (cycle + lag) * 3600e3 - Date.now()) / 3600e3;
-    return {text: `${runLabel(nextRun)} · ${due >= 0 ? `约 ${span(due)}后到` : `比常态晚 ${span(-due)}`}`,
-            late: due < -cycle};
-  };
-  const row = (health, name, run, runTitle, cap, lag, nx, note) => `<tr>
-    <td><span class="dot ${health || "muted"}"></span> <b>${h(name)}</b></td>
-    <td class="mono" title="${attr(runTitle || "")}">${run}</td>
-    <td class="mono" title="${attr(cap ? "本地时间 " + local(cap) : "")}">${cap ? `${utc(cap)} <span class="muted">${h(ago(cap))}</span>` : "—"}</td>
-    <td class="mono">${lag == null ? "—" : h(span(lag))}</td>
-    <td class="mono${nx.late ? " pub-late" : ""}">${h(nx.text)}</td>
-    <td class="muted">${note || ""}</td></tr>`;
-  const grp = (t, sub) => `<tr class="pub-grp"><td colspan="6"><b>${h(t)}</b>${sub ? ` <span class="muted">${h(sub)}</span>` : ""}</td></tr>`;
-  const rows = [];
-  const M = D.members || [];
-  if(M.length){
-    rows.push(grp(`${famBig()}（全球集合）`, "P0 的成员；DWD 四轮、ECCC 两轮都采：默认 D+2 读 D-2 12Z、D+1 和当天读 00Z，更新的一轮须有自己 (档×轮次) 的成熟校准件才替上（宪章 192）"));
-    M.forEach(m => {
-      const newest = (m.runs_recent || []).find(r => r.run_utc === m.latest_run_utc) || {};
-      rows.push(row(m.health, m.label, runLabel(m.latest_run_utc),
-        (m.runs_recent || []).map(r => `${runLabel(r.run_utc)} 到货 ${utc(r.capture_utc)}（${r.stations} 站）`).join("\n"),
-        newest.capture_utc, lagOf(m.latest_run_utc, newest.capture_utc),
-        next(m.latest_run_utc, m.cycle_hours, m.publish_lag_hours),
-        `${m.cycle_hours ? m.cycle_hours.toFixed(0) + " 小时一轮" : ""}${
-          m.publish_lag_hours != null ? " · 常态起报后 " + span(m.publish_lag_hours) + "到" : ""}${
-          newest.stations != null ? " · " + newest.stations + " 站" : ""}`));
-    });
-  }
-  const R = (D.regional || {}).lanes || [];
-  if(R.length){
-    rows.push(grp("区域模型", "P1 的输入：观测更新的协变量（第 150/161 条）"));
-    R.forEach(l => rows.push(row(l.health, l.label, runLabel(l.last_run_init),
-      (l.runs_recent || []).map(r => `${runLabel(r.run_utc)} 到货 ${utc(r.capture_utc)}（${r.stations} 站）`).join("\n"),
-      l.latest_run_capture_utc, lagOf(l.last_run_init, l.latest_run_capture_utc),
-      next(l.last_run_init, l.cycle_hours, l.publish_lag_hours),
-      `${h(l.region)}${l.cycle_hours ? " · " + l.cycle_hours.toFixed(0) + " 小时一轮" : ""}${
-        l.latest_run_stations != null ? ` · ${l.latest_run_stations}/${l.roster_count || "—"} 站` : ""}`)));
-  }
-  const T = D.taf_board || {};
-  const TS = T.stations || [];
-  if(TS.length){
-    const newest = TS.slice().sort((a, b) => String(b.latest_issued_at_utc).localeCompare(String(a.latest_issued_at_utc)))[0];
-    const oldest = TS.slice().sort((a, b) => String(a.latest_issued_at_utc).localeCompare(String(b.latest_issued_at_utc)))[0];
-    const got = ((newest.reports || [])[0] || {}).received_at_utc;
-    const lags = TS.map(s => s.capture_lag_minutes).filter(v => v != null).sort((a, b) => a - b);
-    const C = T.counts || {};
-    const health = C.stale ? "red" : C.late ? "amber" : "green";
-    rows.push(grp(`TAF（${TS.length} 站）`, "P0-M 的输入；各站按自己的时刻表发报，一般 6 小时一报"));
-    rows.push(row(health, "最新一份", utc(newest.latest_issued_at_utc) + ` <span class="muted">${h(newest.station_id)}</span>`,
-      "签发时刻（报文自带的 DDHHMMZ）", got, lagOf(newest.latest_issued_at_utc, got), {text: "—", late: false},
-      `新鲜 ${C.fresh || 0} · 偏晚 ${C.late || 0} · 陈旧 ${C.stale || 0}${
-        lags.length ? " · 源站可取到落库中位 " + lags[Math.floor(lags.length / 2)].toFixed(0) + " 分钟" : ""}${
-        T.special_stations ? ` · ${T.special_stations} 站有修订/更正报` : ""}`));
-    rows.push(row(oldest.freshness === "stale" ? "red" : oldest.freshness === "late" ? "amber" : "green",
-      "最旧一站", utc(oldest.latest_issued_at_utc) + ` <span class="muted">${h(oldest.station_id)}</span>`,
-      "这一站最新一份 TAF 的签发时刻", ((oldest.reports || [])[0] || {}).received_at_utc,
-      lagOf(oldest.latest_issued_at_utc, ((oldest.reports || [])[0] || {}).received_at_utc), {text: "—", late: false},
-      `签发至今 ${h(span(oldest.age_hours))} · ${T.fresh_hours || 6.5} 小时内算新鲜、超 ${T.stale_hours || 9} 小时算陈旧`));
-  }
-  if(!rows.length) return "";
-  return `<div class="lampdeck"><span class="lampcap">发布时间 · 各家最新一轮什么时候起报、什么时候到货、下一轮预计何时到
-    （到货 = 首次落库，即本系统的「可用时刻」；源站发布早于或等于它。时间为 UTC，悬停看本地时间与最近几轮）</span>
-    <div class="pubt-wrap"><table class="pubt"><thead><tr><th>来源</th><th>最新一轮</th><th>到货</th>
-      <th>起报→到货</th><th>下一轮</th><th>说明</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
+  // The lamp only (user 2026-10-05: 不要这些细节): the worst state over the
+  // global members, the regional lanes and the TAF board.
+  const rank = {green: 0, amber: 1, red: 2};
+  let worst = null;
+  const take = hlt => { if(hlt in rank && (worst == null || rank[hlt] > rank[worst])) worst = hlt; };
+  (D.members || []).forEach(m => take(m.health));
+  ((D.regional || {}).lanes || []).forEach(l => take(l.health));
+  const C = (D.taf_board || {}).counts;
+  if(((D.taf_board || {}).stations || []).length && C) take(C.stale ? "red" : C.late ? "amber" : "green");
+  if(worst == null) return "";
+  return `<div class="lampdeck"><span class="lampcap"><span class="dot ${worst}"></span>
+    发布时间：全球集合、区域模型与 TAF 的最新一轮是否按常态到货</span></div>`;
 }
 
 // 模型 run 采集健康度 (user, 2026-10-01: 「前端突出模型run采集健康度的看不出
