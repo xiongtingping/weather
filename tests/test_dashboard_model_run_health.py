@@ -146,4 +146,4 @@ def test_both_reads_are_every_run_and_the_matrix_is_on_the_head() -> None:
     assert {"member_admission", "recent_runs"} <= cd.RENDER_EVERY_RUN_SECTIONS
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert "function modelRunHealth()" in page
-    assert "rendered[1] + runHealth + published" in page
+    assert 'card(modelRunHealth, "模型 run 采集")' in page

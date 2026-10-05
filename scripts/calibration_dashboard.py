@@ -2455,264 +2455,6 @@ def _age_minutes(now: datetime, stamp: Any) -> float | None:
 # it was received.
 CYCLE_HISTORY_PATH = ROOT / "data" / "runtime" / "production_cycle_history.jsonl"
 CYCLE_HISTORY_READ = 60
-CYCLE_STAGE_WORDS = {
-    "early_p0m": "早 P0-M（快车道）",
-    "early_p1": "早 P1（快车道）",
-    "fast_lane_before_decisions": "快车道检查点",
-    "intent_reconcile": "意图对账",
-    "decision_loop": "决策循环",
-    "forward_p0_loop": "前瞻 P0",
-    "native_p0_replay_compile": "P0 重放编译",
-    "native_ensemble_oos": "样本外评估",
-    "probability_p0m": "P0-M 链内",
-    "probability_p1": "P1 链内",
-    "settlement_lane": "结算车道",
-    "maintenance_lane": "维护车道",
-    "regime": "环境快照",
-    "oos_candidate_scan": "样本外候选扫描",
-}
-
-
-def collect_cycle_time(
-    conn: sqlite3.Connection,
-    latency: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """The resident's own cycle journal, and report-to-probability latency.
-
-    The journal is a file and is read on every render: it is the lamp.  The
-    latency medians (``_report_to_probability_latency``) read three days of
-    P1 lineage JSON and a P0-M lookup per TAF, and move over hours, so a
-    paged render builds them as their own section (``report_latency``) and
-    hands them in; called alone this still computes them.
-    """
-
-    out: dict[str, Any] = {"available": False}
-    rows: list[dict[str, Any]] = []
-    try:
-        lines = CYCLE_HISTORY_PATH.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        lines = []
-    for line in lines[-CYCLE_HISTORY_READ:]:
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except ValueError:
-            continue
-    if rows:
-        out["available"] = True
-        totals = [float(r.get("cycle_total_ms") or 0.0) / 1000.0 for r in rows]
-        ordered = sorted(totals)
-        # Each stage's share of the cycles it appeared in, so a stage that
-        # runs every other cycle is not averaged away by the ones it skips.
-        by_stage: dict[str, list[float]] = defaultdict(list)
-        for row in rows:
-            for stage, ms in (row.get("stages_ms") or {}).items():
-                by_stage[str(stage)].append(float(ms) / 1000.0)
-        stages = sorted(
-            ({"stage": stage,
-              "label": CYCLE_STAGE_WORDS.get(stage, stage),
-              "cycles": len(values),
-              "median_sec": round(median(values), 1),
-              "max_sec": round(max(values), 1)}
-             for stage, values in by_stage.items()),
-            key=lambda e: -e["median_sec"],
-        )[:12]
-        worst = max(rows, key=lambda r: float(r.get("cycle_total_ms") or 0.0))
-        waits: Counter = Counter()
-        for row in rows:
-            for lane in (row.get("wait_blocked_by") or []):
-                waits[str(lane)] += 1
-        out["cycles"] = {
-            "n": len(rows),
-            "from_utc": rows[0].get("completed_at_utc"),
-            "through_utc": rows[-1].get("completed_at_utc"),
-            "median_sec": round(median(totals), 1),
-            "p90_sec": round(ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))], 1),
-            "max_sec": round(max(totals), 1),
-            "last_sec": round(totals[-1], 1),
-            "last_state": rows[-1].get("state"),
-            "partial": sum(1 for r in rows if str(r.get("state") or "").endswith("partial")),
-            "waited_median_sec": round(
-                median([float(r.get("waited_sec") or 0.0) for r in rows]), 1),
-            "wait_blocked_by": dict(waits),
-            "series": [
-                {"at": r.get("completed_at_utc"),
-                 "sec": round(float(r.get("cycle_total_ms") or 0.0) / 1000.0, 1)}
-                for r in rows
-            ],
-        }
-        out["stages"] = stages
-        out["worst"] = {
-            "at": worst.get("completed_at_utc"),
-            "sec": round(float(worst.get("cycle_total_ms") or 0.0) / 1000.0, 1),
-            "state": worst.get("state"),
-            "spans": sorted(
-                ({"span": str(k), "sec": round(float(v) / 1000.0, 1)}
-                 for k, v in (worst.get("top_spans_ms") or {}).items()),
-                key=lambda e: -e["sec"],
-            )[:6],
-        }
-    out["latency"] = (
-        dict(latency) if latency is not None
-        else _report_to_probability_latency(conn)
-    )
-    if out["latency"]:
-        out["available"] = True
-    return out
-
-
-def _report_to_probability_latency(conn: sqlite3.Connection) -> dict[str, Any]:
-    """How long a report waits before the stage that reads it moves.
-
-    **Both ends are read on ``created_at``, the real commit clock.**
-    ``decision_at_utc`` is not one: P0-M stamps the instant of the evidence
-    it lays down (the as-of rule -- "laying new evidence on the model that
-    was current when the evidence arrived"), and P1 stamps the cycle's own
-    start, shared by every step of a replayed prefix.  Measured on the wrong
-    clock on 2026-09-20 this lane reported TAF -> P0-M at 25.6 minutes when
-    it is 2.5: pairing on ``decision_at_utc > received_at`` skipped the very
-    P0-M that seated the TAF -- its decision clock IS the TAF's instant, so
-    it is not strictly after it -- and landed on the next cycle's work.
-
-    METAR -> P1: each observation's FIRST commit that names it, so a
-    replayed prefix and a later state refresh do not count one report
-    waiting twice.  TAF -> P0-M: the first P0-M committed after the capture
-    landed, which is what "the TAF reached a P0-M" means when the envelope
-    does not name the issuance.  Checked 2026-09-20 against the exact
-    pairing (the P0-M whose decision clock equals the capture's instant,
-    which all 49 captures in the window had): 2.47 against 2.56 minutes.
-    """
-
-    now = _now()
-    since = (now - timedelta(hours=LATENCY_WINDOW_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    days = [
-        (now.date() + timedelta(days=offset)).isoformat() for offset in (-1, 0, 1)
-    ]
-    marks = ",".join("?" for _ in days)
-    out: dict[str, Any] = {"window_hours": LATENCY_WINDOW_HOURS, "since_utc": since}
-    metar: list[float] = []
-    # Charter 170: the same pairing, split at the stamp on the report itself.
-    # ``canonical_observation_committed_at`` is the ingress transaction; the
-    # report was in our hands at ``first_seen_at``, and it was taken at
-    # ``valid_at``.  Reading only the committed end measured the cycle and
-    # called it the chain, so a change to the fetch clock -- which is the
-    # whole of charter 170 -- could not show up here at all.
-    observed_to_arrival: list[float] = []
-    arrival_to_p1: list[float] = []
-    observed_to_p1: list[float] = []
-    try:
-        pairs = conn.execute(
-            "SELECT json_extract(lineage_json,'$.canonical_observation_committed_at'),"
-            " MIN(created_at),"
-            " json_extract(lineage_json,'$.canonical_observation_event_id')"
-            " FROM basket_probability_envelope"
-            f" WHERE state='COMMITTED' AND event_date IN ({marks})"
-            "   AND decision_at_utc>=? AND stage='P1'"
-            " GROUP BY json_extract(lineage_json,'$.canonical_observation_sha256')",
-            (*days, since),
-        ).fetchall()
-    except sqlite3.Error:
-        pairs = []
-    for committed, first, _event_id in pairs:
-        gap = _minutes_between(committed, first)
-        if gap is not None and 0.0 <= gap <= 240.0:
-            metar.append(gap)
-    if pairs:
-        try:
-            archive = sqlite3.connect(
-                f"file:{ROOT / 'data' / 'archive.db'}?mode=ro", uri=True, timeout=10
-            )
-        except sqlite3.Error:
-            archive = None
-        if archive is not None:
-            try:
-                for _committed, served_at, event_id in pairs:
-                    if not event_id:
-                        continue
-                    # Primary-key lookup, one per distinct observation.
-                    row = archive.execute(
-                        "SELECT valid_at, first_seen_at"
-                        " FROM reported_trajectory_observations WHERE observation_id=?",
-                        (str(event_id),),
-                    ).fetchone()
-                    if row is None:
-                        continue
-                    taken, held = str(row[0] or ""), str(row[1] or "")
-                    for bucket, start, end in (
-                        (observed_to_arrival, taken, held),
-                        (arrival_to_p1, held, served_at),
-                        (observed_to_p1, taken, served_at),
-                    ):
-                        gap = _minutes_between(start, end)
-                        if gap is not None and 0.0 <= gap <= 240.0:
-                            bucket.append(gap)
-            except sqlite3.Error:
-                pass
-            finally:
-                archive.close()
-    taf: list[float] = []
-    # Only the TAFs that can move a P0-M.  A capture with no TX leaves the
-    # likelihood identity, so nothing has to run promptly for it and its
-    # wait is not a latency anybody is cutting -- measured 2026-09-20, the
-    # no-TX captures sit at 86 minutes against 19 for the ones with a TX,
-    # and pooling the two reports a delay that is mostly "nothing needed
-    # doing".  One AWC fetch writes a row per event date it covers, and
-    # both of those are real station-days, so both are paired.
-    try:
-        captures = conn.execute(
-            "SELECT station_id, event_date, received_at_utc"
-            " FROM calibration_forward_taf_capture"
-            " WHERE received_at_utc>=? AND tx_available=1",
-            (since,),
-        ).fetchall()
-        no_tx = conn.execute(
-            "SELECT COUNT(*) FROM calibration_forward_taf_capture"
-            " WHERE received_at_utc>=? AND tx_available=0",
-            (since,),
-        ).fetchone()[0]
-    except sqlite3.Error:
-        captures, no_tx = [], 0
-    out["taf_captures_without_tx"] = no_tx
-    for station, day, received in captures:
-        try:
-            row = conn.execute(
-                "SELECT MIN(created_at) FROM basket_probability_envelope"
-                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-                "   AND stage='P0-M' AND created_at>?",
-                (str(station), str(day), str(received)),
-            ).fetchone()
-        except sqlite3.Error:
-            continue
-        gap = _minutes_between(received, row[0] if row else None)
-        if gap is not None and 0.0 <= gap <= 240.0:
-            taf.append(gap)
-    for name, values in (
-        ("metar_to_p1", metar),
-        ("taf_to_p0m", taf),
-        # Charter 170's three segments of the same chain.
-        ("observed_to_arrival", observed_to_arrival),
-        ("arrival_to_p1", arrival_to_p1),
-        ("observed_to_p1", observed_to_p1),
-    ):
-        if not values:
-            out[name] = None
-            continue
-        ordered = sorted(values)
-        out[name] = {
-            "n": len(values),
-            "median_min": round(median(values), 1),
-            "p90_min": round(ordered[min(len(ordered) - 1, int(0.9 * len(ordered)))], 1),
-            "max_min": round(max(values), 1),
-        }
-    return out
-
-
-def _minutes_between(start: Any, end: Any) -> float | None:
-    first, second = _parse_utc_or_none(start), _parse_utc_or_none(end)
-    if first is None or second is None:
-        return None
-    return round((second - first).total_seconds() / 60.0, 2)
 
 
 def _served_shape(probabilities: Mapping[str, Any], lineage: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -14569,7 +14311,7 @@ def _trace_slow_section(name: str, elapsed: float) -> None:
 RENDER_EVERY_RUN_SECTIONS = frozenset({
     # The freshness lamps and clocks: a lamp that can be a page old is a
     # lamp that says green through an outage.
-    "hosted_sweeps", "cycle_time", "observation_intake",
+    "hosted_sweeps", "observation_intake",
     # The 发布时间 table's regional and TAF rows, whose "next run due" is
     # read against the viewer's clock: served from a page, the regional
     # section was 43 hours old on 2026-09-26 (no production gap since
@@ -15782,14 +15524,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     observation_intake = _cached_section(
         "observation_intake", collect_observation_intake, conn
     )
-    # The latency medians: slow-moving, not a lamp (see collect_cycle_time).
-    report_latency = _cached_section(
-        "report_latency", _report_to_probability_latency, conn,
-        _unavailable={"unavailable": True, "window_hours": LATENCY_WINDOW_HOURS},
-    )
-    cycle_time = _cached_section(
-        "cycle_time", collect_cycle_time, conn, report_latency
-    )
     hosted_sweeps = _cached_section(
         "hosted_sweeps", collect_hosted_sweeps, conn
     )
@@ -16162,7 +15896,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "metar_board": metar_board,
         "precip_classification": precip_classification,
         "observation_intake": observation_intake,
-        "cycle_time": cycle_time,
         "regional_usage": regional_usage,
         "p1_joint_likelihood": p1_joint_likelihood,
         "p0m_taf_likelihood": p0m_taf_likelihood,
@@ -16371,25 +16104,18 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* 逐站校准排序: the window whose centre landed closest to truth. */
 .best-col{background:color-mix(in srgb,var(--accent) 13%,transparent)}
 .best-tag{color:var(--accent);font-weight:650;white-space:nowrap}
-/* Status lamps (user ruling, 2026-09-11).  A lamp is the whole section
-   when the section is only ever read for one binary -- is it moving.  Same
-   dot as everywhere else on the page, so a colour means the same thing
-   here as it does inside a table. */
-.lamps{display:grid;gap:6px;
-grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
-.lamp{display:flex;align-items:center;gap:8px;padding:7px 10px;
-background:var(--card);border:1px solid var(--line);border-radius:7px}
-.lamp b{font-weight:620;white-space:nowrap}
-.lamp .rd{margin-left:auto;color:var(--muted);font-size:12px;
-white-space:nowrap;font-variant-numeric:tabular-nums}
-.lamp.bad{border-color:var(--red)}
-/* The head deck (user ruling, 2026-09-11).  The lamps answer "is anything
-   broken" and that is read on arrival, before a tab is chosen -- so they
-   sit above the tab bar rather than inside two groups a click away.  A
-   caption per row instead of a heading: this is the head, not a section. */
-.lampdeck{margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
-.lampdeck + .lampdeck{margin-top:9px}
-.lampcap{display:block;color:var(--muted);font-size:11.5px;margin-bottom:5px}
+/* Health cards (user 2026-10-05: 做成风格一致的小卡片，重新排版，分类。不要明细，
+   只看是否健康).  One size, the dot and the name; four categories side by side
+   on a wide screen, stacked on a narrow one.  Details live in the hover. */
+.hgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px}
+.hcat{background:var(--soft-bg,rgba(127,127,127,.05));border:1px solid var(--line);border-radius:10px;padding:10px}
+.hcat-t{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.02em}
+.hcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+.hcard{display:flex;align-items:center;gap:6px;height:32px;padding:0 9px;border-radius:7px;
+background:var(--card);border:1px solid var(--line);font-size:12.5px;font-weight:560;min-width:0;cursor:default}
+.hcard-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hcard.h-red{border-color:var(--red);background:rgba(218,54,51,.10)}
+.hcard.h-amber{border-color:rgba(210,153,34,.55)}
 .pubt-wrap{overflow-x:auto}
 .pubt{width:100%;border-collapse:collapse;font-size:12.5px}
 .pubt th{font-weight:600;color:var(--muted);font-size:11.5px;text-align:left;padding:3px 8px;border-bottom:1px solid var(--line)}
@@ -16584,8 +16310,6 @@ border-bottom:1px solid var(--soft)}
 .stale-note{font-size:12px;margin:-4px 0 8px;color:var(--muted)}
 .ns-core .ns-primary{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset}
 .ns-core .ns-primary .ns-v{font-size:26px}
-.lamps{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px}
-.lamps .lamp{display:inline-flex;align-items:center;gap:4px}
 details.diag>summary{color:var(--muted)}
 .kpis-diag .kpi-v{font-size:18px}
 .stale-note.is-stale{color:var(--down);border-left:2px solid var(--down);padding-left:8px}
@@ -16723,7 +16447,6 @@ padding-top:10px;border-top:1px solid var(--line)}
 .mb-cat{padding:12px 14px;margin-bottom:12px}
 .mb-cat .grouptitle{margin:0 0 9px}
 .mb-pane > h2:first-child,.mb-pane > h3:first-child{margin-top:2px!important}
-.mb-pane > .lampdeck:first-child{margin-top:0;padding-top:0;border-top:0}
 /* 纸面账本 as one data board (user ruling, 2026-09-13): a headline card,
    comparison cards whose bars share one zero-based scale, risk cells and
    the curves, each under a small caption. */
@@ -16985,144 +16708,7 @@ function sweepDur(sec){
   if(sec < 5400) return Math.round(sec / 60) + " 分钟";
   return (sec / 3600).toFixed(1) + " 小时";
 }
-// Where the production cycle's time goes, and how long a report waits
-// before the probability moves (charters 153/154, panel added 2026-09-20).
-//
-// It rides under the machine lamp row, beside 维护车道健康度, because it
-// answers the same question that row asks -- is the machine turning -- with
-// the two numbers the lamp cannot carry: which stage ate the cycle, and how
-// long a TAF or an observation sat before the stage that reads it ran.
-//
-// The lamp above says "生产周期 N 秒" and only reddens past an hour, so the
-// 1,678-second cycle on 2026-09-20 (early_p0m 729s, of which
-// p0m_taf_fact_ingress 694s) read as green with nothing to click.
-function cycleHealth(){
-  const C = D.cycle_time || {};
-  const cap = `<span class="lampcap">生产周期去向与报文延迟 · 常驻自己记的每轮分段`
-    + `（第 153/154 条把 TAF 与实况提到了周期最前面，这里是它们实际等了多久）</span>`;
-  if(!C.available) return "";
-  const K = C.cycles || {}, L = C.latency || {}, W = C.worst || {};
-  const sec = v => v == null ? "—" : v >= 600 ? (v / 60).toFixed(1) + " 分" : Math.round(v) + " 秒";
-  const mins = v => v == null ? "—" : v < 1 ? (60 * v).toFixed(0) + " 秒" : v.toFixed(1) + " 分";
-  const tone = K.median_sec == null ? "" : K.median_sec > 600 ? "red" : K.median_sec > 300 ? "amber" : "green";
-  const worstTone = K.max_sec == null ? "" : K.max_sec > 900 ? "red" : K.max_sec > 600 ? "amber" : "";
-  const lat = (name, box, note) => {
-    if(!box) return `<div class="card"><div class="muted">${name}</div><div class="big">—</div>
-      <div class="muted">${L.unavailable ? "本轮未算（写库繁忙时让出）" : "这一窗口没有可配对的样本"}</div></div>`;
-    const t = box.median_min > 15 ? "red" : box.median_min > 8 ? "amber" : "green";
-    return `<div class="card"><div class="muted">${name}</div>
-      <div class="big mono"><span class="pill ${t}">${mins(box.median_min)}</span></div>
-      <div class="muted">中位 · p90 ${mins(box.p90_min)} · 最长 ${mins(box.max_min)} · ${box.n} 份${
-        note ? " · " + note : ""}</div></div>`;
-  };
-  const stages = (C.stages || []).map(s => {
-    const share = K.median_sec ? Math.min(100, 100 * s.median_sec / K.median_sec) : 0;
-    return `<tr><td>${h(s.label)}</td>
-      <td class="mono muted">${h(s.stage)}</td>
-      <td><div class="cell"><div class="by-bar"><i style="width:${share.toFixed(0)}%;background:var(--accent)"></i></div><span class="mono">${sec(s.median_sec)}</span></div></td>
-      <td class="mono">${sec(s.max_sec)}</td><td class="mono">${s.cycles}</td></tr>`;
-  }).join("");
-  const spans = (W.spans || []).map(s => `<span class="by-feat"><b>${h(s.span)}</b> ${sec(s.sec)}</span>`).join("");
-  const lanes = Object.entries(K.wait_blocked_by || {}).sort((a, b) => b[1] - a[1]);
-  const waits = lanes.slice(0, 3).map(([k, v]) => `${h(k.replace(/^sweep:|^writer_turn:/, ""))} ${v}`)
-    .join(" · ") + (lanes.length > 3 ? ` <span class="muted">等 ${lanes.length} 条</span>` : "");
-  return `<div class="lampdeck">${cap}
-  <div class="grid g4">
-    <div class="card"><div class="muted">周期总长（最近 ${K.n || 0} 轮）</div>
-      <div class="big mono"><span class="pill ${tone}">${sec(K.median_sec)}</span></div>
-      <div class="muted">p90 ${sec(K.p90_sec)} · 最长 <span class="pill ${worstTone}">${sec(K.max_sec)}</span> · 上一轮 ${sec(K.last_sec)}</div></div>
-    ${lat("观测时刻 → 报文到手", L.observed_to_arrival, "上游发布 + 我们的轮询")}
-    ${lat("报文到手 → P1", L.arrival_to_p1, "第 170 条量的就是这一段")}
-    ${lat("实况入库 → P1", L.metar_to_p1)}
-    ${lat("TAF 入库 → P0-M", L.taf_to_p0m,
-      L.taf_captures_without_tx ? `另有 ${L.taf_captures_without_tx} 份不带 TX（动不了 P0-M，不计）` : "")}
-    <div class="card"><div class="muted">这一轮等写库</div>
-      <div class="big mono">${sec(K.waited_median_sec)}</div>
-      <div class="muted">${K.partial ? K.partial + "/" + K.n + " 轮部分提交 · " : ""}${waits || "没排过队"}</div></div></div>
-  <details class="note" style="margin-top:8px"><summary>时间都花在哪（最近 ${K.n || 0} 轮，按各自出现过的轮次取中位）
-    <span class="muted">· 最长的一轮 ${h(String(W.at || "").slice(11, 19))}Z 用了 ${sec(W.sec)}</span></summary>
-    ${spans ? `<div style="margin:6px 0"><span class="muted">那一轮里最长的几段：</span>${spans}</div>` : ""}
-    <div class="scroll" style="max-height:320px"><table class="by-tab"><thead><tr><th>阶段</th><th>代码名</th><th>中位</th><th>最长</th><th>出现轮次</th></tr></thead>
-    <tbody>${stages}</tbody></table></div>
-    <div class="muted" style="margin-top:6px">读的是 <span class="mono">data/runtime/production_cycle_history.jsonl</span>，
-      常驻每轮自己写的一行；第 170 条把这条链拆成了三段：「观测时刻 → 报文到手」读观测行上的
-      <span class="mono">first_seen_at</span>，是上游发布加我们轮询的那一段（快车道能动的只有这一段里我们自己的部分）；
-      「报文到手 → P1」是同一份报文从握在手里到第一份写下它的 P1；两段之间的 ingress 事务实测不到一秒。
-      「实况入库 → P1」是每份观测在包络上标的落库时刻，到<b>第一份</b>写下它的 P1（回放步与状态刷新不重复计），
-      「TAF 入库 → P0-M」是每份带 TX 的 TAF 收到后，这一站日<b>第一份提交</b>的 P0-M。窗口 ${L.window_hours || "—"} 小时。
-      两头都按 <span class="mono">created_at</span>（真实提交钟）算——<b>不是</b> <span class="mono">decision_at_utc</span>：
-      P0-M 的决策钟标的是它所依据的那份证据的时刻（as-of 规则），P1 的标的是整轮周期的起点，都不是"这一份是什么时候写下来的"。</div></details>
-  </div>`;
-}
 
-function sweepHealth(){
-  const H = D.hosted_sweeps || {};
-  const cap = `<span class="lampcap">维护车道健康度 · 最不健康的三条：离上次完成过了几个<b>自己的</b>回合`
-    + `（刻度 1/2/3 个回合），右边是它此刻在干什么、在自己写域的队里排第几</span>`;
-  if(!H.available){
-    return `<div class="lampdeck">${cap}<div class="muted">读不出：${h(H.reason || "")}</div></div>`;
-  }
-  // Only the three least healthy (user ruling, 2026-09-14: 维护车道健康度：只显示
-  // 不健康的前三项即可).  Sixteen rows put the four that were red among twelve
-  // that were fine; red before amber, then whichever is more of its own turns
-  // late, and the count of the rest on one line so a shorter list does not
-  // read as "this is everything".
-  const label = n => SWEEP_LABEL[n] || n;
-  const TONE = {red: 0, amber: 1};
-  const sick = (H.lanes || [])
-    .filter(l => l.health in TONE)
-    .sort((a, b) => TONE[a.health] - TONE[b.health]
-      || (b.overdue_intervals || 0) - (a.overdue_intervals || 0));
-  const lanes = sick.slice(0, 3);
-  if(!lanes.length){
-    return `<div class="lampdeck">${cap}<div class="swhead"><span class="pill green">全部准点</span></div></div>`;
-  }
-  const header = sick.length > lanes.length
-    ? `<div class="swhead"><span class="muted">共 ${H.red_count || 0} 红 · ${H.amber_count || 0} 黄，其余 ${
-        sick.length - lanes.length} 条未列</span></div>`
-    : "";
-  const axis = `<div class="swrow swaxisrow"><span></span><span></span>
-    <div class="swaxis"><em style="left:25%">1 回合</em><em style="left:50%">2</em>
-    <em style="left:75%">3</em><em style="left:100%">≥4</em></div><span></span></div>`;
-  const rows = lanes.map(l => {
-    const over = l.overdue_intervals;
-    const x = over == null ? 0 : Math.min(4, Math.max(0, over)) / 4 * 100;
-    let state, hot = false;
-    if(l.running_now){
-      state = `在跑 ${sweepDur(l.running_elapsed_sec)} / 超时 ${sweepDur(l.timeout_sec)}`;
-      hot = true;
-    } else if(l.stuck){
-      state = "卡住：轮到就失败"; hot = true;
-    } else if(l.last_state && l.last_state !== "ok"){
-      state = `上次 ${l.last_state}`; hot = true;
-    } else if(l.waiting){
-      state = `排队 第 ${l.queue_rank}/${l.queue_size} 位`;
-      hot = l.health !== "green";
-    } else {
-      state = "准点";
-    }
-    const tip = [
-      `${l.name}`,
-      `每 ${sweepDur(l.interval_sec)} 一轮，超时 ${sweepDur(l.timeout_sec)}`,
-      `上次完成 ${sweepDur(l.since_completed_sec)}前`,
-      `上次尝试 ${sweepDur(l.since_attempted_sec)}前`,
-      over == null ? "" : `离上次完成 ${over.toFixed(2)} 个回合`,
-      l.last_duration_sec == null ? "" : `上次跑了 ${sweepDur(l.last_duration_sec)}`
-        + (l.lease_overrun_sec > 0 ? `（超写入租约 ${sweepDur(l.lease_overrun_sec)}）` : ""),
-      SWEEP_DOMAIN[l.domain] || l.domain,
-      l.download_capture ? "下载型：跑的时候不占写锁，也不占 SSOT 队列" : "",
-      l.note || "",
-    ].filter(Boolean).join(" · ");
-    const run = l.running_now && l.running_timeout_share != null
-      ? `<u class="swrun" style="width:${Math.min(100, 100 * l.running_timeout_share).toFixed(1)}%"></u>` : "";
-    return `<div class="swrow" title="${h(tip)}">
-      <span class="swname"><span class="dot ${l.health}"></span><b>${h(label(l.name))}</b></span>
-      <span class="swdom">${h((SWEEP_DOMAIN[l.domain] || l.domain) + (l.download_capture ? "·下载" : ""))}</span>
-      <div class="swbar"><b class="swm ${l.health}" style="left:${x.toFixed(1)}%"></b>${run}</div>
-      <span class="swstate${hot ? " hot" : ""}">${h(state)}</span></div>`;
-  }).join("");
-  return `<div class="lampdeck">${cap}<div class="swrows">${axis}${rows}</div>${header}</div>`;
-}
 
 function head(){
   const [t, s] = OVERALL[D.overall_health] || OVERALL.amber;
@@ -17137,17 +16723,12 @@ function head(){
     `<span class="pill ${a.health}" style="font-size:13px">${h(a.label)}
       <span style="opacity:.78">｜${h(a.note)}</span></span>`).join("");
   const more = named.length > 6
-    ? `<span class="muted">…等 ${named.length} 处，其余见下面三排灯里标${
+    ? `<span class="muted">…等 ${named.length} 处，其余见下面卡片里标${
         D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
   return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。<b>页头就是整块看板</b>：总灯，
-  然后三排状态灯——<b>机器</b>在不在转、<b>上游</b>的数据到没到、
-  <b>选桶</b>挑得准不准。三个问题按人实际发问的顺序排，
-  都在选标签页之前就该看见，所以放在标签栏上面而不是某个分组里面。
-  紧接着是<b>资金看板</b>：这本账值多少，按纸面账本与实盘两类分页签；
-  然后是站点实盘上线闸门，再往下是逐站账：每日统计、逐站逐日明细与三张跟进表；
-  再往下按层级分四个<b>区域</b>——模型（概率层）、边际、选窗、定注，顺着链条从上游到下游，
-  每区一个颜色，标签栏与区标题同色。</p>
+  <p class="sub">从模型到下单的一整条链。页首是<b>盈亏日历</b>；这里是总灯，下面四类健康卡片——
+  <b>运行</b>、<b>数据链</b>、<b>全球模型</b>、<b>区域模型与观测</b>——只看颜色，悬停看读数与原因。
+  再往下是资金看板、站点实盘上线闸门，然后按层级分区，标签栏与区标题同色。</p>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -17171,53 +16752,22 @@ function head(){
       O = {banner:"", machine:[lamp("red","总览出错",String(err))],
            upstream:[], selection:[]};
     }
-    const rows=[
-      ["机器 · 在不在转：常驻、周期、授权，然后是数据从头到尾的每一环"
-        + "（上面停了，下面迟早跟着停）、库容量、维护车道、真值物化",
-        () => O.machine.concat(healthLamps())],
-      [`上游 · 喂进来的东西到没到：${famJia()}全球模型（采集与入围）、三条区域采集道、区域赛道、`
-        + "缺口检查，以及决策真正读到的那份包里有几家",
-        () => upstreamLamps().concat(O.upstream)],
+    const card = (fn, label) => { try { return fn(); } catch (err) {
+      return lamp("red", label, null, String(err)); } };
+    const machine = O.machine.concat(healthLamps());
+    const upstream = upstreamLamps().concat(O.upstream);
+    const nameOf = c => (String(c).match(/data-name="([^"]*)"/) || [, ""])[1];
+    const isChain = c => /^[①②③④⑤⑥⑦⑧⑨]|^真值物化/.test(nameOf(c));
+    const isGlobal = c => / (采集|入围)$/.test(nameOf(c));
+    const cats = [
+      ["运行", machine.filter(c => !isChain(c))],
+      ["数据链", machine.filter(isChain)],
+      ["全球模型", upstream.filter(isGlobal).concat(
+        [card(modelRunHealth, "模型 run 采集"), card(publishTimes, "发布时间")].filter(Boolean))],
+      ["区域模型与观测", upstream.filter(c => !isGlobal(c))],
     ];
-    const rendered = rows.map(([cap,build])=>
-      lampRowSafe(()=>lampRow(cap,build()), cap.split(" ")[0]));
-    // Directly under the machine row whose "维护车道" lamp it expands.
-    const sweeps = (() => {
-      try { return sweepHealth(); }
-      catch (err) {
-        return `<div class="lampdeck"><span class="lampcap">维护车道健康度</span>`
-          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
-      }
-    })();
-    // Charters 153/154: the cycle's own breakdown and the report latency,
-    // under the lamp row that asks whether the machine is turning.
-    const cycle = (() => {
-      try { return cycleHealth(); }
-      catch (err) {
-        return `<div class="lampdeck"><span class="lampcap">生产周期去向</span>`
-          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
-      }
-    })();
-    // 发布时间 right under the upstream lamps: the same question -- did the
-    // data arrive -- asked with the clock instead of a colour.
-    const published = (() => {
-      try { return publishTimes(); }
-      catch (err) {
-        return `<div class="lampdeck"><span class="lampcap">发布时间</span>`
-          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
-      }
-    })();
-    // The run each open day's P0 actually seats, per family, right under the
-    // lamps that only say the newest run landed.
-    const runHealth = (() => {
-      try { return modelRunHealth(); }
-      catch (err) {
-        return `<div class="lampdeck"><span class="lampcap">模型 run 采集健康度</span>`
-          + `<div class="muted">渲染出错：${h(String(err))}</div></div>`;
-      }
-    })();
-    return O.banner + rendered[0] + cycle + sweeps + rendered[1] + runHealth + published
-      + rendered.slice(2).join("");
+    return O.banner + `<div class="hgrid">${
+      cats.map(([cap, list]) => lampRowSafe(() => lampRow(cap, list), cap)).join("")}</div>`;
   })()}
   ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
     align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
@@ -17498,14 +17048,19 @@ const runLabel = (s) => {
 // the same threshold the deleted section drew its warning line on.
 const attr = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-const lamp = (health, name, reading, tip) =>
-  `<div class="lamp${health === "red" ? " bad" : ""}"${
-    tip ? ` title="${attr(tip)}"` : ""}><span class="dot ${
-    health || "amber"}"></span><b>${h(name)}</b><span class="rd">${
-    reading == null ? "—" : reading}</span></div>`;
+// A health card (user 2026-10-05: 做成风格一致的小卡片…不要明细，只看是否
+// 健康): the dot and the name, one size for every card; the reading and the
+// note move into the hover.
+const lamp = (health, name, reading, tip) => {
+  const hover = [reading == null ? "" : String(reading).replace(/<[^>]*>/g, ""), tip || ""]
+    .filter(Boolean).join(" · ");
+  return `<div class="hcard h-${health || "amber"}" data-name="${attr(name)}"${
+    hover ? ` title="${attr(hover)}"` : ""}><span class="dot ${
+    health || "amber"}"></span><span class="hcard-n">${h(name)}</span></div>`;
+};
 const lampRow = (caption, lamps) => lamps.length
-  ? `<div class="lampdeck"><span class="lampcap">${caption}</span>
-     <div class="lamps">${lamps.join("")}</div></div>` : "";
+  ? `<div class="hcat"><div class="hcat-t">${caption}</div>
+     <div class="hcards">${lamps.join("")}</div></div>` : "";
 // The head is now the one element the page cannot afford to lose: the
 // banner light, the production cycle and the render stamp are all in the
 // same card as the lamps, and ``safe`` wraps the head as a whole.  So a
@@ -17612,8 +17167,7 @@ function publishTimes(){
   const C = (D.taf_board || {}).counts;
   if(((D.taf_board || {}).stations || []).length && C) take(C.stale ? "red" : C.late ? "amber" : "green");
   if(worst == null) return "";
-  return `<div class="lampdeck"><span class="lampcap"><span class="dot ${worst}"></span>
-    发布时间：全球集合、区域模型与 TAF 的最新一轮是否按常态到货</span></div>`;
+  return lamp(worst, "发布时间", null, "全球集合、区域模型与 TAF 的最新一轮是否按常态到货");
 }
 
 // 模型 run 采集健康度 (user, 2026-10-01: 「前端突出模型run采集健康度的看不出
@@ -17633,10 +17187,8 @@ function modelRunHealth(){
   F.forEach(f => (f.days || []).forEach(x => {
     if(days.includes(x.event_date) && rank[x.health] > rank[worst]) worst = x.health;
   }));
-  return `<div class="lampdeck"><span class="lampcap"><span class="dot ${worst}"></span>
-    模型 run 采集健康度：
-    不到九成的站有某家亮黄；D+1 及更近不到一半亮红，D+2 最多亮黄——它的 ICON/ECCC 合同轮次 D-2 12Z 傍晚才到，之前只有证书成熟的早轮次能入座</span>
-</div>`;
+  return lamp(worst, "模型 run 采集", null,
+    "每个开放事件日 P0 用的轮次与入座站数：不到九成的站有某家亮黄；D+1 及更近不到一半亮红，D+2 最多亮黄");
 }
 
 function healthLamps(){
@@ -22629,7 +22181,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     charter_ev:"宪章 EV 恒等式",
     center_landing_version:"真值离均值多远（本版）",scorecard_previous:"校准计分卡（上一版）",
     run_cadence:"模型出报节奏",member_depth:"成员深度",member_admission:"成员准入",members:"成员",
-    report_latency:"报文到概率延迟",cycle_time:"生产周期",certificate_authority:"证书授权",
+    certificate_authority:"证书授权",
     chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
     refusal_history:"拒单历史",station_difficulty:"站点难度",synoptic_cooling:"辐射平移",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",metar_board:"METAR 板",

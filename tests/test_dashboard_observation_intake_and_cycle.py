@@ -118,34 +118,6 @@ def test_a_fleet_that_stopped_reporting_goes_red(tmp_path, monkeypatch) -> None:
     assert out["stale"] == 2 and out["health"] == "red", out
 
 
-def test_the_cycle_journal_is_read_and_the_worst_cycle_kept(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 20, 3, 30, tzinfo=C.timezone.utc))
-    path = tmp_path / "production_cycle_history.jsonl"
-    path.write_text("\n".join(json.dumps(row) for row in [
-        {"completed_at_utc": "2026-09-20T03:00:00Z", "cycle_total_ms": 200_000,
-         "state": "cycle_committed", "waited_sec": 0.0,
-         "stages_ms": {"early_p0m": 10_000, "decision_loop": 40_000}, "top_spans_ms": {}},
-        {"completed_at_utc": "2026-09-20T03:20:00Z", "cycle_total_ms": 1_600_000,
-         "state": "cycle_committed_partial", "waited_sec": 5.0,
-         "wait_blocked_by": ["sweep:settlement_truth"],
-         "stages_ms": {"early_p0m": 700_000, "decision_loop": 50_000},
-         "top_spans_ms": {"p0m_taf_fact_ingress": 690_000}},
-    ]) + "\n", encoding="utf-8")
-    monkeypatch.setattr(C, "CYCLE_HISTORY_PATH", path)
-    monkeypatch.setattr(C, "_report_to_probability_latency", lambda conn: {})
-    out = C.collect_cycle_time(sqlite3.connect(":memory:"))
-    assert out["available"] is True
-    cycles = out["cycles"]
-    assert cycles["n"] == 2 and cycles["max_sec"] == 1600.0 and cycles["last_sec"] == 1600.0
-    assert cycles["partial"] == 1
-    assert cycles["wait_blocked_by"] == {"sweep:settlement_truth": 1}
-    # The stage that ate the cycle is the one the panel leads with.
-    assert out["stages"][0]["stage"] == "early_p0m"
-    assert out["stages"][0]["label"] == "早 P0-M（快车道）"
-    assert out["worst"]["sec"] == 1600.0
-    assert out["worst"]["spans"][0] == {"span": "p0m_taf_fact_ingress", "sec": 690.0}
-
-
 def _latency_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(tmp_path / "ssot.db")
     conn.execute(
@@ -160,92 +132,9 @@ def _latency_db(tmp_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def test_a_taf_with_no_tx_is_not_a_latency_anybody_is_cutting(tmp_path, monkeypatch) -> None:
-    """A capture with no TX leaves P0-M's likelihood identity, so nothing has
-    to run promptly for it.  Pooling the two reported a delay that was mostly
-    "nothing needed doing" (2026-09-20: 86 minutes against 19)."""
-
-    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 20, 3, 0, tzinfo=C.timezone.utc))
-    conn = _latency_db(tmp_path)
-    for tx, received in ((1, "2026-09-20T02:00:00Z"), (0, "2026-09-20T00:30:00Z")):
-        conn.execute(
-            "INSERT INTO calibration_forward_taf_capture VALUES ('ZUUU','2026-09-20',?,?)",
-            (received, tx),
-        )
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES"
-        " ('ZUUU','2026-09-20','P0-M','COMMITTED','2026-09-20T02:00:00Z',"
-        "  '2026-09-20T02:10:00Z','{}')"
-    )
-    conn.commit()
-    out = C._report_to_probability_latency(conn)
-    assert out["taf_captures_without_tx"] == 1, "the no-TX ones are counted, not measured"
-    assert out["taf_to_p0m"]["n"] == 1
-    assert out["taf_to_p0m"]["median_min"] == pytest.approx(10.0), (
-        "the 90-minute no-TX capture must not be in the median"
-    )
-
-
-def test_the_latency_reads_the_commit_clock_not_the_decision_clock(tmp_path, monkeypatch) -> None:
-    """``decision_at_utc`` is not when the envelope was written.
-
-    P0-M stamps the instant of the evidence it lays down -- for a TAF, the
-    capture's own receipt -- so the P0-M that seated a TAF is never strictly
-    after it, and a pairing on ``decision_at_utc > received_at`` skips it and
-    lands on the next cycle's work.  On 2026-09-20 that reported 25.6
-    minutes where the commit clock says 2.5, and sent me looking for a
-    regression that was not there.  P1 has the same trap from the other
-    side: its decision clock is the cycle's start, shared by every step of a
-    replayed prefix.
-    """
-
-    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 9, 20, 3, 0, tzinfo=C.timezone.utc))
-    conn = _latency_db(tmp_path)
-    conn.execute(
-        "INSERT INTO calibration_forward_taf_capture VALUES"
-        " ('ZUUU','2026-09-20','2026-09-20T02:00:00Z',1)"
-    )
-    # The P0-M that seated it: decision clock == the capture's instant,
-    # committed three minutes later.  Then the next cycle's, two hours on.
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES"
-        " ('ZUUU','2026-09-20','P0-M','COMMITTED','2026-09-20T02:00:00Z',"
-        "  '2026-09-20T02:03:00Z','{}')"
-    )
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES"
-        " ('ZUUU','2026-09-20','P0-M','COMMITTED','2026-09-20T04:00:00Z',"
-        "  '2026-09-20T04:02:00Z','{}')"
-    )
-    # One observation, read first by a cycle that started before it landed
-    # (the replay prefix shares the cycle's clock) and committed after.
-    lineage = json.dumps({
-        "canonical_observation_committed_at": "2026-09-20T02:30:00Z",
-        "canonical_observation_sha256": "a" * 64,
-    })
-    conn.execute(
-        "INSERT INTO basket_probability_envelope VALUES"
-        " ('ZUUU','2026-09-20','P1','COMMITTED','2026-09-20T02:29:00Z',"
-        "  '2026-09-20T02:34:00Z',?)", (lineage,)
-    )
-    conn.commit()
-    out = C._report_to_probability_latency(conn)
-    assert out["taf_to_p0m"]["median_min"] == pytest.approx(3.0), (
-        "the P0-M that seated the TAF is the answer, not the next cycle's"
-    )
-    assert out["metar_to_p1"]["median_min"] == pytest.approx(4.0), (
-        "a cycle that started before the report landed still took four "
-        "minutes to write the P1 -- a decision-clock reading would be "
-        "negative and get dropped"
-    )
-
-
 def test_the_panel_and_the_lamp_are_wired() -> None:
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert '"observation_intake": observation_intake,' in source
-    assert '"cycle_time": cycle_time,' in source
-    assert "function cycleHealth(){" in source
-    # The panel rides with the machine row, which is where "is the machine
-    # turning" is asked.
-    assert "O.banner + rendered[0] + cycle + sweeps" in source
+    # The cycle panel left the head on 2026-10-05 (health cards only); the
+    # lamp stays.
     assert 'push("upstream", OB.health || "muted",' in source

@@ -305,16 +305,6 @@ def test_sweep_health_names_the_queue_the_running_lane_and_the_restarts(
     assert out["production_overdue"] is True
 
 
-def test_the_sweep_health_panel_sits_under_the_machine_lamps():
-    page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
-    assert "function sweepHealth()" in page
-    # Right under the machine row, beside the cycle panel that joined it on
-    # 2026-09-20 -- both expand the same row's lamps.  The 发布时间 table
-    # (2026-09-18) follows the upstream row after them, which is not either
-    # panel's business.
-    assert "rendered[0] + cycle + sweeps + rendered[1]" in page
-
-
 def test_a_lane_that_ran_past_the_writer_lease_says_so(board, tmp_path, monkeypatch):
     """The resident records a lease overrun instead of killing the sweep
     (2026-09-15); the card is where it is read."""
