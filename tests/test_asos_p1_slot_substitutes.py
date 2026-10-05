@@ -395,6 +395,110 @@ def test_soft_rows_feed_the_path_but_never_close_or_advance() -> None:
     assert set(lanes) == {"AWC"}
 
 
+def test_a_soft_tail_never_becomes_the_closing_identity() -> None:
+    """The tail state refresh closes on the last METAR, not the last carrier.
+
+    2026-10-04/05: every US ASOS station's refresh after the evening METAR
+    named the newest MADIS carrier as its canonical event while carrying the
+    METAR's truth revision -- so the ledger refused it
+    (plan_lineage_canonical_observation_event_id_mismatch, ten stations a
+    day), the compiler never saw its head close on the newest formal report
+    and rewrote the refresh every cycle (KORD: 47 P1 envelopes in two
+    hours), and the next METAR re-anchored a "substitute-closed" head that
+    had closed on nothing.
+    """
+
+    observations = [
+        _observation(
+            "awc-morning",
+            lane="awc",
+            report_type="METAR",
+            valid_at="2026-08-09T14:51:00Z",
+            committed_at="2026-08-09T14:55:00Z",
+            temperature_c=20.0,
+        ),
+        _observation(
+            "awc-afternoon",
+            lane="awc",
+            report_type="METAR",
+            valid_at="2026-08-09T15:51:00Z",
+            committed_at="2026-08-09T15:55:00Z",
+            temperature_c=21.0,
+        ),
+        # Carriers after the last METAR: the prefix ends on soft rows.
+        _observation(
+            "asos_soft_" + "b" * 32,
+            lane="madis_hfmetar",
+            report_type="ASOS_HF",
+            valid_at="2026-08-09T16:05:00Z",
+            committed_at="2026-08-09T16:09:00Z",
+            temperature_c=20.5,
+        ),
+        _observation(
+            "asos_soft_" + "c" * 32,
+            lane="madis_hfmetar",
+            report_type="ASOS_HF",
+            valid_at="2026-08-09T16:10:00Z",
+            committed_at="2026-08-09T16:14:00Z",
+            temperature_c=20.4,
+        ),
+    ]
+    packets = compile_station_p1_packets(
+        predecessor=_p0_root(),
+        observations=observations,
+        registry_rows=_PACKET_REGISTRY,
+        compilation_at_utc="2026-08-09T18:30:00Z",
+    )
+    tail = packets[-1]
+    assert tail["reported_high_advanced"] is False
+    walked = [item["event"]["observation_id"] for item in tail["trajectory_observations"]]
+    assert walked[-1] == "asos_soft_" + "c" * 32
+    lineage = tail["expected_envelope"]["lineage"]
+    assert lineage["canonical_observation_event_id"] == "awc-afternoon"
+    assert tail["observation_id"] == "awc-afternoon"
+    assert lineage["source_lane"] == "AWC"
+    assert lineage["report_type"] == "METAR"
+    assert lineage["canonical_observation_committed_at"].startswith("2026-08-09T15:55:00")
+    # The carriers stay in the prefix the path state read.
+    assert "asos_soft_" + "c" * 32 in lineage["canonical_observation_ids"]
+    # A head that closed on the newest METAR is not refreshed again while
+    # it is fresh: a second compile a minute later emits nothing.
+    again = compile_station_p1_packets(
+        predecessor=tail["expected_envelope"],
+        prediction_root=_p0_root(),
+        observations=observations,
+        registry_rows=_PACKET_REGISTRY,
+        compilation_at_utc="2026-08-09T18:31:00Z",
+        consumed_observation_ids={"awc-morning", "awc-afternoon"},
+    )
+    assert again == []
+    # A carrier the head has not read moves the belief once, still closing
+    # on the METAR.
+    newer = observations + [
+        _observation(
+            "asos_soft_" + "d" * 32,
+            lane="madis_hfmetar",
+            report_type="ASOS_HF",
+            valid_at="2026-08-09T18:25:00Z",
+            committed_at="2026-08-09T18:29:00Z",
+            temperature_c=20.1,
+        ),
+    ]
+    moved = compile_station_p1_packets(
+        predecessor=tail["expected_envelope"],
+        prediction_root=_p0_root(),
+        observations=newer,
+        registry_rows=_PACKET_REGISTRY,
+        compilation_at_utc="2026-08-09T18:32:00Z",
+        consumed_observation_ids={"awc-morning", "awc-afternoon"},
+    )
+    assert len(moved) == 1
+    moved_lineage = moved[0]["expected_envelope"]["lineage"]
+    assert moved_lineage["canonical_observation_event_id"] == "awc-afternoon"
+    assert "asos_soft_" + "d" * 32 in moved_lineage["canonical_observation_ids"]
+    assert moved_lineage["p1_state_refresh_of_checkpoint_id"]
+
+
 def test_awc_only_days_never_emit_reanchor_packets() -> None:
     observations = [
         _observation(

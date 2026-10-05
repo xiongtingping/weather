@@ -56,6 +56,7 @@ from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
     METAR_TRAJECTORY_PHYSICAL_ABSOLUTE_TMAX_METHOD_VERSION,
     SOFT_LIKELIHOOD_POLICY_SUSPENDED,
+    SOFT_PATH_SOURCE_LANES,
     MetarTrajectoryLikelihoodArtifact,
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
@@ -1530,13 +1531,35 @@ def materialize_p1(
         raise ContractError("p1_conditional_future_curve_lineage_missing")
     if proof.as_of_utc != decision_at_utc:
         raise ContractError("p1_trajectory_proof_decision_time_mismatch")
-    last_event_id = proof.canonical_observation_ids[-1]
     normalized_observations = tuple(
         item
         if isinstance(item, MetarTrajectoryObservation)
         else MetarTrajectoryObservation.from_mapping(item)
         for item in trajectory_observations
     )
+    # The closing identity is the prefix's last FORMAL report.  Soft carrier
+    # rows ride the prefix as path evidence and close nothing (the compiler
+    # skips them before emission), but this named the prefix's last row, so a
+    # state refresh after the evening METAR closed on the newest MADIS
+    # carrier while carrying the METAR's truth revision.  2026-10-04/05: the
+    # ledger refused it (plan_lineage_canonical_observation_event_id_mismatch,
+    # every US ASOS station once a day), the compiler never saw the head
+    # close on the newest formal report and rewrote the refresh every cycle
+    # (KORD 47 P1 envelopes in two hours), and the next METAR re-anchored a
+    # head it took for substitute-closed.
+    soft_ids = {
+        item.event.observation_id
+        for item in normalized_observations
+        if item.event.source_lane.lower() in SOFT_PATH_SOURCE_LANES
+    }
+    closing_ids = [
+        observation_id
+        for observation_id in proof.canonical_observation_ids
+        if observation_id not in soft_ids
+    ]
+    if not closing_ids:
+        raise ContractError("p1_formal_closing_observation_missing")
+    last_event_id = closing_ids[-1]
     last_matches = tuple(
         item
         for item in normalized_observations

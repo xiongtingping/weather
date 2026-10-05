@@ -594,25 +594,6 @@ def compile_station_p1_packets(
     packets: list[dict[str, Any]] = []
     running_high_c: float | None = None
     generation = 0
-    # The lane of the observation the current head packet was closed on.
-    # An ASOS substitute may close a packet -- the posterior and hard bound
-    # must move the moment the evidence exists -- and it roots the atomic
-    # chain through its parallel identity fact
-    # (``substitute_observation_revision``), which the PR12 sweep stages on
-    # its own 600s timer.  The first AWC report after a substitute-closed
-    # head still re-anchors -- a packet even without a new high -- so the
-    # order chain regains a METAR-rooted head promptly instead of riding
-    # the staging race, and keeps working even if the identity sweep lags.
-    last_closing_lane: str | None = (
-        (
-            str(previous.lineage.get("source_lane") or "")
-            .strip()
-            .lower()
-            or None
-        )
-        if previous.stage == "P1"
-        else None
-    )
     last_decision = _parse_utc(previous.decision_at_utc)
     if decision_floor_at_utc is not None:
         floor = _parse_utc(decision_floor_at_utc)
@@ -741,6 +722,24 @@ def compile_station_p1_packets(
         )
         if newest_id != head_closing:
             return (len(ordered) + 1, last_admitted_formal, True)
+        # A carrier row the head has not read is evidence the belief has not
+        # moved with yet: soft rows feed the path state and close nothing, so
+        # the head's closing report cannot say whether it saw them -- its
+        # prefix can.  Once per new row.  Until 2026-10-05 the closing id was
+        # the prefix's last row, a soft carrier's, so every compile found the
+        # head unclosed and rewrote the refresh whether or not anything had
+        # arrived (KORD: 47 P1 envelopes in two hours, one carrier up to four
+        # times).
+        if trajectory_prefix:
+            head_prefix = {
+                item.strip()
+                for item in str(
+                    previous.lineage.get("canonical_observation_ids") or ""
+                ).split(",")
+                if item.strip()
+            }
+            if trajectory_prefix[-1].event.observation_id not in head_prefix:
+                return (len(ordered) + 1, last_admitted_formal, True)
         # The head already closed on the newest formal report, so a refresh
         # behind it can only be worth writing if the clock has moved -- the
         # cadence case, which the worker's reaffirmation used to cover.
@@ -896,16 +895,7 @@ def compile_station_p1_packets(
                 not is_state_refresh
                 and (old_high is None or reported_c > old_high)
             )
-            reanchors_atomic_head = (
-                not high_advanced
-                and observation_lane == "awc"
-                and last_closing_lane not in (None, "awc")
-            )
-            if (
-                not high_advanced
-                and not reanchors_atomic_head
-                and not is_state_refresh
-            ):
+            if not high_advanced and not is_state_refresh:
                 continue
             decision = max(
                 # A refresh answers the question "what do we believe now", so its
@@ -1147,7 +1137,6 @@ def compile_station_p1_packets(
             })
             previous = envelope
             last_decision = decision
-            last_closing_lane = observation_lane
     except ContractError as exc:
         if not walking_state_refresh:
             raise
