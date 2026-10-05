@@ -9180,6 +9180,8 @@ def _truth_bucket(centers: dict[str, float], order: list[str], truth: float) -> 
 SCORECARD_MIN_EVENT_DAYS = 8
 SCORECARD_MAX_WINDOW_DAYS = 45
 PIT_BIN_COUNT = 10
+#: Nominal central intervals the coverage diagnostic reads, 1 - alpha.
+COVERAGE_LEVELS = (0.5, 0.8, 0.9)
 
 
 #: The per-row scores the scorecard averages (``_prediction_scores``, plus
@@ -9188,6 +9190,7 @@ _SCORECARD_LINEAR_KEYS = (
     "error", "abs_error", "square_error", "error_c", "abs_error_c",
     "square_error_c", "rung_c", "crps", "brier", "variance_rungs",
     "variance_c", "flat_crps", "flat_brier",
+    *(f"coverage_{round(level * 100)}" for level in COVERAGE_LEVELS),
 )
 
 
@@ -9259,6 +9262,19 @@ def _prediction_scores(
                 pit_bins[index] = (right - left) / (upper - lower)
     pit_total = sum(pit_bins)
     pit_bins = [value / pit_total for value in pit_bins]
+    # Interval coverage on the same randomised PIT: the nominal 1 - alpha
+    # central interval [q(alpha/2), q(1 - alpha/2)] holds the truth exactly
+    # when the PIT lands in [alpha/2, 1 - alpha/2].  On a discrete ladder the
+    # whole-rung interval always over-covers; taken in expectation over the
+    # truth rung's PIT span, a calibrated forecast covers exactly 1 - alpha.
+    coverage = {}
+    for level in COVERAGE_LEVELS:
+        low, high = (1.0 - level) / 2.0, (1.0 + level) / 2.0
+        if upper - lower <= 1e-12:
+            inside = 1.0 if low <= lower <= high else 0.0
+        else:
+            inside = max(0.0, min(upper, high) - max(lower, low)) / (upper - lower)
+        coverage[f"coverage_{round(level * 100)}"] = inside
     # The reliability diagram is built from EVERY rung, not just the settled
     # one: each (promised probability, did it happen) pair is one observation.
     # Scoring only the settled rung would take a biased sample of high
@@ -9288,6 +9304,7 @@ def _prediction_scores(
         "variance_rungs": variance / (rung_c * rung_c),
         "variance_c": variance,
         "reliability_pairs": reliability_pairs,
+        **coverage,
     }
 
 
@@ -10310,6 +10327,19 @@ def collect_calibration_scorecard(
         _grade(ece, "ece"),
         _grade(conditional_gap, "conditional_gap"),
     ])
+    # Interval coverage: empirical against nominal per level, the most
+    # operational of the three calibration diagnostics.  Diagnostic only --
+    # no lamp reads it.
+    interval_coverage = [
+        {
+            "nominal": level,
+            "empirical": _mean(scored, f"coverage_{round(level * 100)}"),
+            "ci_half_width": _cluster_bootstrap_half_width(
+                _day_clusters(f"coverage_{round(level * 100)}")
+            ),
+        }
+        for level in COVERAGE_LEVELS
+    ]
 
     # ---- layer 5: sharpness (read against realised error) --------------
     width_rungs = (_mean(scored, "variance_rungs") or 0.0) ** 0.5
@@ -10354,6 +10384,12 @@ def collect_calibration_scorecard(
             "crps_skill": group_crps_skill,
             "brier_skill": _skill(group, "brier"),
             "spread_skill": group_ratio,
+            "coverage": {
+                str(round(level * 100)): _mean(
+                    group, f"coverage_{round(level * 100)}"
+                )
+                for level in COVERAGE_LEVELS
+            },
             "bias_health": _grade(
                 abs(group_bias) if group_bias is not None else None,
                 "bias_rungs",
@@ -10495,6 +10531,8 @@ def collect_calibration_scorecard(
         "daily": daily,
         "rows": rows,
         "pit_bins": pit_bins,
+        "reliability_bins": decomposition["bins"],
+        "interval_coverage": interval_coverage,
         "fusion_pairs": fusion["pairs"],
         "fusion_summary": fusion["summary"],
         "window": window,
@@ -19681,6 +19719,58 @@ function scorecard(){
     <div class="muted" style="font-size:10px">${(i*10)}</div>
   </div>`).join("");
 
+  // Reliability diagram: promised (x) against happened (y), every rung of
+  // every forecast; the ">=50%" bin pools the rare high claims.
+  const relBins = (S.reliability_bins||[]).filter(b => b.n > 0);
+  const relTop = Math.min(1, Math.max(0.2,
+    ...relBins.map(b => Math.max(b.promised, b.happened)))) ;
+  const relAxis = Math.ceil(relTop*10)/10;
+  const RX = v => 34 + v/relAxis*196, RY = v => 206 - v/relAxis*196;
+  const relGap = b => Math.abs(b.promised-b.happened);
+  const relDots = relBins.map(b => `<circle cx="${RX(b.promised).toFixed(1)}"
+      cy="${RY(b.happened).toFixed(1)}" r="${b.n >= 100 ? 4 : 2.5}"
+      fill="var(--${S.accumulating || b.n < 100 ? "muted" :
+        (relGap(b)<=0.05?"green":(relGap(b)<=0.10?"amber":"red"))})">
+      <title>${h(b.bin)}：说 ${(b.promised*100).toFixed(1)}%，中 ${
+        (b.happened*100).toFixed(1)}%（权重 ${Math.round(b.n).toLocaleString()}）</title></circle>`).join("");
+  const relLine = relBins.map((b,i) =>
+    `${i?"L":"M"}${RX(b.promised).toFixed(1)},${RY(b.happened).toFixed(1)}`).join(" ");
+  const relTicks = [0, relAxis/2, relAxis].map(v => `
+    <text x="${RX(v)}" y="222" text-anchor="middle" fill="var(--muted)" font-size="10">${(v*100).toFixed(0)}%</text>
+    <text x="28" y="${RY(v)+3}" text-anchor="end" fill="var(--muted)" font-size="10">${(v*100).toFixed(0)}%</text>`).join("");
+  const reliabilityChart = relBins.length ? `<svg viewBox="0 0 240 230" style="width:100%;max-width:300px">
+    <rect x="34" y="10" width="196" height="196" fill="none" stroke="var(--soft)"/>
+    <line x1="${RX(0)}" y1="${RY(0)}" x2="${RX(relAxis)}" y2="${RY(relAxis)}"
+      stroke="var(--muted)" stroke-dasharray="4 3"/>
+    <path d="${relLine}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+    ${relDots}${relTicks}</svg>` : `<div class="muted">证据不足</div>`;
+
+  // Interval coverage: empirical share inside the nominal central interval.
+  const covRows = (S.interval_coverage||[]).filter(c => c.empirical != null)
+    .map(c => {
+      const gap = c.empirical - c.nominal;
+      const tone = S.accumulating ? "muted" :
+        (Math.abs(gap)<=0.03?"green":(Math.abs(gap)<=0.06?"amber":"red"));
+      const word = Math.abs(gap) <= 0.03 ? "对得上" :
+        (gap < 0 ? `少覆盖 ${(-gap*100).toFixed(1)} 点＝偏自信` :
+                   `多覆盖 ${(gap*100).toFixed(1)} 点＝偏保守`);
+      return `<div style="margin:10px 0 2px"><b>${(c.nominal*100).toFixed(0)}% 区间</b>
+        <span class="mono">实际 ${(c.empirical*100).toFixed(1)}%</span>
+        ${c.ci_half_width == null ? "" :
+          `<span class="muted">±${(c.ci_half_width*100).toFixed(1)}</span>`}
+        <span class="muted">· ${word}</span></div>
+        <div style="position:relative;height:12px;background:var(--soft);border-radius:3px">
+          <div style="position:absolute;left:0;top:0;bottom:0;width:${(c.empirical*100).toFixed(1)}%;
+            background:var(--${tone});border-radius:3px"></div>
+          <div style="position:absolute;top:-3px;bottom:-3px;left:${(c.nominal*100).toFixed(1)}%;
+            width:2px;background:var(--text)"></div></div>`;
+    }).join("");
+  const covLeadRows = (S.rows||[]).filter(r => r.coverage).map(r => `<tr>
+    <td>${h(r.lead_label)}</td>${(S.interval_coverage||[]).map(c => {
+      const v = r.coverage[String(Math.round(c.nominal*100))];
+      return `<td class="mono">${v == null ? "—" : (v*100).toFixed(0)+"%"}</td>`;
+    }).join("")}</tr>`).join("");
+
   const fusionSummary = S.fusion_summary || {};
   const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
     .slice(0,8).map(p => {
@@ -19744,14 +19834,33 @@ function scorecard(){
   <p class="sub" style="margin-top:26px">「说了多少 vs 真发生了多少」残差表随 band 表于 2026-09-26 退役（第 232 条）；
   本节的校准灯照常打分。</p>
 
-  <h2 style="margin-top:26px">PIT：分布形状正不正</h2>
-  <p class="sub">如果分布形状是对的，真值落在分布各个位置的次数应该一样多，
-  下面十根柱子应该一样高（每根 10%）。中间鼓＝分布太宽，两头翘＝分布太窄。
-  这里用的是随机化 PIT：真值所在那一档在分布里占一段区间，真值按这段区间均匀摊开，
-  所以完全校准时十根柱子严格一样高。</p>
-  <div style="display:flex;gap:4px;align-items:flex-end;margin-top:10px">
-    ${pitBars}</div>
-  <div class="muted" style="margin-top:4px">横轴：真值在预测分布中的位置（百分位）</div>
+  <h2 style="margin-top:26px">三种校准诊断：可靠性图 · PIT · 区间覆盖</h2>
+  <p class="sub">同一批样本外站日、同一份权重，从三个角度看「说的概率」和「发生的频率」对不对得上。
+  三者都是诊断，负责找病；治疗有没有价值仍由 proper score 判。</p>
+  <div class="grid g3" style="margin-top:10px">
+    <div class="card"><div class="muted"><b>① 可靠性图</b>：说多少、中多少</div>
+      ${reliabilityChart}
+      <div class="muted" style="font-size:12px">横轴＝给某一档的概率，纵轴＝那一档真发生的频率；
+      每个预测的每一档都算一对。贴着虚线＝校准；点落在虚线下方＝偏自信（说得多中得少），
+      上方＝偏谦虚。小灰点是权重不足 100 的分箱，不评色。</div></div>
+    <div class="card"><div class="muted"><b>② PIT 直方图</b>：分布形状正不正</div>
+      <div style="display:flex;gap:4px;align-items:flex-end;margin-top:10px">
+        ${pitBars}</div>
+      <div class="muted" style="margin-top:4px;font-size:12px">横轴：真值在预测分布中的位置（百分位）。
+      形状对时十根柱子一样高（每根 10%）；两头翘＝太窄偏自信，中间鼓＝太宽偏谦虚，
+      一边高一边低＝系统性偏差。用的是随机化 PIT：真值所在那一档在分布里占一段区间，
+      按这段区间均匀摊开，完全校准时严格等高。</div></div>
+    <div class="card"><div class="muted"><b>③ 区间覆盖</b>：标称 vs 实际</div>
+      ${covRows || `<div class="muted">证据不足</div>`}
+      ${covLeadRows ? `<table style="margin-top:10px"><thead><tr><th>提前量</th>${
+        (S.interval_coverage||[]).map(c => `<th>${(c.nominal*100).toFixed(0)}%</th>`).join("")
+      }</tr></thead><tbody>${covLeadRows}</tbody></table>` : ""}
+      <div class="muted" style="margin-top:6px;font-size:12px">每个预测取中间 1−α 区间
+      [q<sub>α/2</sub>, q<sub>1−α/2</sub>]，数真值落进去的比例，黑竖线是标称值。
+      实际低于标称＝偏自信，例如 90% 区间只覆盖 78% 就是自信过头 12 点。
+      离散档位上整档区间天然多覆盖，这里与 PIT 同口径按真值档在分布里的区间摊开，校准时恰好等于标称；
+      ± 是按事件日整天重采样的 95% 半宽。</div></div>
+  </div>
 
   ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>

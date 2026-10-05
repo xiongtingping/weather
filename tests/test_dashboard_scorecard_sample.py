@@ -231,6 +231,30 @@ def test_randomised_pit_is_exactly_uniform_under_a_calibrated_forecast():
     assert max(abs(value - 0.1) for value in mid) > 0.2
 
 
+def test_interval_coverage_equals_nominal_under_a_calibrated_forecast():
+    # Whole-rung intervals would over-cover on this ladder; spread over the
+    # truth rung's PIT span, the calibrated expectation is exactly 1 - alpha.
+    forecast = {"17": 0.05, "18": 0.15, "19": 0.40, "20": 0.25, "21": 0.15}
+    for level in C.COVERAGE_LEVELS:
+        name = f"coverage_{round(level * 100)}"
+        expected = sum(
+            weight * C._prediction_scores(forecast, CENTERS, float(key))[name]
+            for key, weight in forecast.items()
+        )
+        assert expected == pytest.approx(level, abs=1e-12)
+
+
+def test_an_overconfident_forecast_under_covers():
+    # All mass on 20 while the truth spreads 19/20/21: the 90% interval
+    # catches only the middle third.
+    forecast = _point(20)
+    covered = sum(
+        C._prediction_scores(forecast, CENTERS, float(key))["coverage_90"]
+        for key in ("19", "20", "21")
+    ) / 3
+    assert covered == pytest.approx(0.9 / 3)
+
+
 def test_the_probability_sentence_is_worded_on_the_lamp_lines():
     good, warn = C.SCORECARD_THRESHOLDS["pit_deviation"]
     between = (good + warn) / 2
