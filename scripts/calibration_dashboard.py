@@ -16006,6 +16006,35 @@ color-scheme:dark}
 --why-bg:rgba(9,105,218,.06);--why-fg:#2b3648;--bar-bg:#e6e9ef;
 --shadow:0 1px 2px rgba(27,31,36,.06);color-scheme:light}
 *{box-sizing:border-box}
+/* 单站日面板 (stationDayPanel). */
+.sd-ctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:6px 0;font-size:12.5px}
+.sd-ctl input,.sd-ctl select,.sd-in{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font:inherit}
+.sd-in{width:76px}
+.sd-btn{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
+.sd-btn:hover{border-color:var(--accent)}.sd-btn:disabled{opacity:.5;cursor:wait}
+.sd-note{font-size:12px;margin:2px 0 8px}.sd-sub{font-size:11.5px;font-weight:400}
+.sd-day{margin:12px 0;padding:10px 12px;min-width:0}.sd-day h3{margin:2px 0 8px;font-size:15px}
+.sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
+.sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:900px){.sd-grid{grid-template-columns:minmax(0,1fr)}}
+.sd-svg{width:100%;height:auto;display:block}
+table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
+table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
+table.sd-tab th{color:var(--muted);font-weight:600}
+table.sd-tab tr.sd-on td{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
+.sd-metar{max-height:360px;overflow:auto}
+.sd-chips{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.sd-div{width:10px}
+.sd-chip{font:inherit;font-size:11.5px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.sd-chip[style]{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
+.sd-chip.on{color:var(--text);background:color-mix(in srgb,var(--c,var(--accent)) 22%,transparent)}
+.sd-wbar{display:inline-block;width:70px;height:7px;background:var(--bar-bg);border-radius:4px;margin-right:6px;vertical-align:middle;overflow:hidden}
+.sd-wbar i{display:block;height:100%;background:var(--accent)}
+.sd-ev{font-size:12.5px;margin:3px 0;line-height:1.55}
+.sd-rain{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:4px;max-width:480px}
+.sd-rain i{flex:1;background:var(--accent);min-height:1px;opacity:.75}
+.sd-kpis{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0;font-size:12.5px}
+.sd-kpis div{display:flex;flex-direction:column}.sd-kpis b{font-size:15px}
 .box{border:1px solid var(--line);border-left:4px solid var(--box);border-radius:12px;
   padding:10px 14px 6px;margin:18px 0;background:color-mix(in srgb,var(--box) 5%,var(--card) 95%)}
 .box-t{font-weight:700;font-size:16px;color:var(--text);display:flex;align-items:center;gap:8px}
@@ -21676,6 +21705,672 @@ const BOX_KIND = {
   stage:  {tone:"#f0883e", word:"后段"},
   shadow: {tone:"#8b949e", word:"影子"},
 };
+// ---------------------------------------------------------------------------
+// 单站日面板 (user 2026-10-05: ZUUU 单站每日的概率分布——模型 run 与权重、温度竖排
+// 的分布、均值桶/众数桶对市场、P0→P0-M→P1 三阶段变化、温度桶概率趋势，只显示今日
+// 与次日；含 TAF、METAR、辐射偏移、云雨；均值、方差、离散度；篮子保本计算器；本区
+// 自动刷新与一键刷新).  Not part of the page render: the panel fetches the control
+// server's read-only GET /api/station-day (bayes_basket_target.station_day_board),
+// so it moves every minute while the rest of the page waits for its render.
+const SD = {station:"ZUUU", data:null, err:null, timer:null, busy:false,
+  every:30, fetchedAt:null, checkedAt:null, calc:{}, trendMode:{}, focus:{}, pendingRender:false};
+try{ const raw = localStorage.getItem("sd-every"); const v = Number(raw); if(raw != null && raw !== "" && [0, 15, 30, 60].includes(v)) SD.every = v; }catch(e){}
+try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s)) SD.station = s; }catch(e){}
+const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba"};
+const SD_BKT = ["#58a6ff","#3fb950","#d29922","#f778ba","#a371f7","#56d4dd","#ff7b72","#e3b341","#8b949e","#7ee787"];
+const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
+const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
+const sdSg = (v, d) => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d == null ? 2 : d);
+function sdLocal(t, withDay){
+  if(!t || !SD.data) return "—";
+  try{
+    return new Intl.DateTimeFormat("zh-CN", {timeZone: SD.data.timezone, hour12:false,
+      ...(withDay ? {month:"2-digit", day:"2-digit"} : {}), hour:"2-digit", minute:"2-digit"})
+      .format(new Date(t)).replace(/\//g, "-");
+  }catch(e){ return String(t).slice(5, 16); }
+}
+function sdAgo(t){
+  const s = (Date.now() - new Date(t).getTime()) / 1000;
+  if(!isFinite(s)) return "—";
+  return s < 90 ? Math.round(s) + " 秒前" : s < 5400 ? Math.round(s / 60) + " 分钟前" : (s / 3600).toFixed(1) + " 小时前";
+}
+
+function stationDayPanel(){
+  setTimeout(sdBoot, 0);
+  const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
+    .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
+  return `<h2>单站日：${sdEsc(SD.station)} 今日与次日的概率分布</h2>
+  <div class="sd-ctl">
+    <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
+    <button type="button" id="sd-refresh" class="sd-btn">⟳ 立即刷新</button>
+    <label title="按这个间隔只问一次「有没有新的已提交概率」（一次索引查找）；有新的 P0/P0-M/P1 才重读并重画，盘口随之一起刷新">自动刷新：概率有更新才刷新，检查间隔 <select id="sd-every">${opts}</select></label>
+    <span id="sd-status" class="muted">读取中…</span>
+  </div>
+  <div class="muted sd-note">本区不随整页渲染：直接读控制服务 127.0.0.1:8788 的只读接口（生产已存的信封、回执、官方 WS 盘口、报文），一次约 0.5 秒。
+    颜色：<b style="color:${SD_COL.P0}">P0</b> · <b style="color:${SD_COL["P0-M"]}">P0-M</b> · <b style="color:${SD_COL.P1}">P1</b> · <b style="color:${SD_COL.MKT}">市场（归一中价，宪章 249 的众数口径）</b>。</div>
+  <div id="sd-body"></div>`;
+}
+
+function sdBoot(){
+  const btn = document.getElementById("sd-refresh");
+  if(!btn || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () => sdFetch(true));
+  document.getElementById("sd-every").addEventListener("change", e => {
+    SD.every = Number(e.target.value) || 0;
+    try{ localStorage.setItem("sd-every", String(SD.every)); }catch(err){}
+    sdSchedule();
+  });
+  document.getElementById("sd-station").addEventListener("change", e => {
+    const v = String(e.target.value || "").trim().toUpperCase();
+    if(!/^[A-Z]{4}$/.test(v)){ e.target.value = SD.station; return; }
+    SD.station = v; SD.calc = {}; SD.data = null;
+    try{ localStorage.setItem("sd-station", v); }catch(err){}
+    const h2 = e.target.closest(".sec") && e.target.closest(".sec").querySelector("h2");
+    if(h2) h2.textContent = `单站日：${v} 今日与次日的概率分布`;
+    sdFetch(true);
+  });
+  const body = document.getElementById("sd-body");
+  // Inputs live in the panel's own state, so a refresh redraws around them;
+  // while a field has focus the redraw waits for it to blur.
+  body.addEventListener("input", sdOnInput);
+  body.addEventListener("change", sdOnInput);
+  body.addEventListener("focusout", () => { if(SD.pendingRender) setTimeout(sdRender, 0); });
+  body.addEventListener("click", sdOnClick);
+  document.addEventListener("visibilitychange", () => { if(!document.hidden && SD.every) sdPoll(); });
+  sdFetch(false);
+  sdSchedule();
+}
+function sdSchedule(){
+  if(SD.timer) clearInterval(SD.timer);
+  SD.timer = SD.every ? setInterval(() => { if(!document.hidden) sdPoll(); }, SD.every * 1000) : null;
+}
+// The poll asks only for the probability token; a new committed envelope on
+// either day is what triggers a rebuild (user 2026-10-05「概率有更新才刷新」).
+function sdPoll(){
+  if(SD.busy) return;
+  if(!SD.data){ sdFetch(false); return; }
+  fetch(`http://127.0.0.1:8788/api/station-day?station=${encodeURIComponent(SD.station)}&token_only=1`)
+    .then(r => r.json())
+    .then(j => {
+      SD.checkedAt = Date.now();
+      if(j && j.token && j.token !== SD.data.token) sdFetch(true);
+      else { SD.err = null; sdStatus(); }
+    })
+    .catch(() => { SD.err = "控制服务未连接（127.0.0.1:8788）——launchctl kickstart -k gui/$(id -u)/com.weather.live_control"; sdStatus(); });
+}
+function sdStatus(){
+  const el = document.getElementById("sd-status");
+  if(!el) return;
+  if(SD.err){ el.innerHTML = `<span class="down">读取失败：${sdEsc(SD.err)}</span>${SD.data ? "（下面是上一次的数据）" : ""}`; return; }
+  if(!SD.data){ el.textContent = "读取中…"; return; }
+  el.innerHTML = `数据构建于 ${sdLocal(SD.data.built_at_utc, true)}（当地，${sdAgo(SD.data.built_at_utc)}） · 读库 ${sdN(SD.data.build_sec, 2)} 秒 · ${
+    SD.data.cache === "hit" ? "共享缓存" : "现读"}${SD.checkedAt ? ` · 上次检查 ${sdAgo(new Date(SD.checkedAt).toISOString())}：概率无更新` : ""}${SD.busy ? " · 刷新中…" : ""}`;
+}
+function sdFetch(force){
+  if(SD.busy) return;
+  SD.busy = true; sdStatus();
+  const btn = document.getElementById("sd-refresh");
+  if(btn) btn.disabled = true;
+  fetch(`http://127.0.0.1:8788/api/station-day?station=${encodeURIComponent(SD.station)}${force ? "&force=1" : ""}`)
+    .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
+    .then(j => { SD.data = j; SD.err = null; SD.fetchedAt = Date.now(); SD.checkedAt = null; })
+    .catch(e => { SD.err = /Failed to fetch|NetworkError|Load failed/.test(String(e))
+      ? "控制服务未连接（127.0.0.1:8788）——launchctl kickstart -k gui/$(id -u)/com.weather.live_control" : String(e.message || e); })
+    .finally(() => { SD.busy = false; if(btn) btn.disabled = false; sdRender(); });
+}
+function sdRender(){
+  const body = document.getElementById("sd-body");
+  if(!body) return;
+  const active = document.activeElement;
+  if(active && body.contains(active) && /INPUT|SELECT/.test(active.tagName) && active.type !== "checkbox"){
+    SD.pendingRender = true; sdStatus(); return;
+  }
+  SD.pendingRender = false;
+  sdStatus();
+  const d = SD.data;
+  if(!d){ body.innerHTML = ""; return; }
+  if(!d.available){ body.innerHTML = `<div class="card muted">${sdEsc(d.station_id)}：${sdEsc(d.reason || "无数据")}</div>`; return; }
+  body.innerHTML = (d.days || []).map(sdDay).join("") + sdTafRaw(d);
+}
+
+// ---------------------------------------------------------------------------
+// One day.
+function sdSeries(day){
+  const out = [];
+  ["P0", "P0-M", "P1"].forEach(s => { const e = (day.stages || {})[s]; if(e) out.push({key:s, label:s, vector:e.vector, stats:e.stats, at:e.decided_at_utc, version:e.version}); });
+  const m = day.market || {};
+  if(m.available && m.stats) out.push({key:"MKT", label:"市场", vector:m.vector, stats:m.stats, at:m.observed_at_utc});
+  return out;
+}
+function sdDay(day){
+  const roleWord = day.role === "today" ? "今日" : "次日";
+  if(!day.available) return `<div class="sd-day card"><h3>${roleWord} ${sdEsc(day.event_date)}</h3><div class="muted">这一天还没有任何已提交的概率信封。</div></div>`;
+  const S = sdSeries(day);
+  const head = (day.stages || {})[day.head_stage] || {};
+  return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}">
+    <h3>${roleWord} ${sdEsc(day.event_date)} <span class="pill">当日口径 ${sdEsc(day.head_stage)}</span>
+      <span class="muted sd-sub">最新决策 ${sdLocal(head.decided_at_utc, true)}（${sdAgo(head.decided_at_utc)}）${
+      day.running_high_c != null ? ` · 已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : ""}${
+      head.fresh_until_utc ? ` · 信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""}</span></h3>
+    ${sdStatsTable(day, S)}
+    <div class="sd-grid">
+      <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
+      <div class="sd-cell">${sdBucketTable(day, S)}</div>
+    </div>
+    ${sdTrend(day)}
+    ${sdModels(day)}
+    ${sdEvidence(day)}
+    ${sdCalc(day)}
+  </div>`;
+}
+
+function sdStatsTable(day, S){
+  const mk = (day.market || {}).stats;
+  const rows = S.map(s => {
+    const st = s.stats || {};
+    const dm = mk && s.key !== "MKT" && st.mean_c != null ? st.mean_c - mk.mean_c : null;
+    return `<tr><td><b style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</b></td>
+      <td class="mono">${sdLocal(s.at, true)}</td>
+      <td class="mono"><b>${sdN(st.mean_c, 2)}°C</b></td>
+      <td><b>${sdEsc(st.mean_bucket || "—")}</b></td>
+      <td><b>${sdEsc(st.mode || "—")}</b> <span class="muted">${sdPc(st.mode_p)}</span></td>
+      <td class="mono">${sdN(st.var_c2, 3)}</td><td class="mono">${sdN(st.sd_c, 2)}°C</td>
+      <td class="mono">${sdN(st.skew, 2)}</td>
+      <td class="mono">${sdN(st.entropy_bits, 2)} / ${sdN(st.effective_rungs, 1)}</td>
+      <td>${sdEsc((st.interval80 || [])[0] || "—")} ~ ${sdEsc((st.interval80 || [])[1] || "—")}</td>
+      <td class="mono">${sdPc(st.mass_mode_pm1)}</td>
+      <td class="mono ${dm == null ? "" : Math.abs(dm) >= 0.5 ? "down" : ""}">${s.key === "MKT" ? "—" : sdSg(dm, 2) + (dm == null ? "" : "°C")}</td></tr>`;
+  }).join("");
+  const modes = S.filter(s => s.key !== "MKT").map(s => s.stats && s.stats.mode);
+  const agree = mk ? modes.map((m, i) => `${S[i].label}${m === mk.mode ? "＝" : "≠"}市场`).join(" · ") : "市场盘口不可读";
+  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>序列</th><th>时间（当地）</th><th>均值</th><th>均值桶</th><th>众数桶</th>
+    <th title="Σp(t−均值)²，t 取桶中点（开口桶取向内半档）">方差 °C²</th><th>标准差</th><th title="三阶矩/σ³；正＝暖尾长">偏度</th>
+    <th title="熵（bit）/ 有效档数 2^熵：多少档在分概率">离散度 熵/有效档</th><th>80% 区间</th><th>众数±1 档</th><th>均值−市场</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">众数桶对市场：${agree}</div>`;
+}
+
+// Temperature on the vertical axis: rows are rungs, the warmest on top.
+function sdDistSvg(day, S){
+  const axis = (day.axis || []).slice().reverse();
+  if(!axis.length) return "";
+  const n = S.length, barH = 5, gap = 1, rowH = n * (barH + gap) + 8, top = 14, left = 96, W = 520, right = 40;
+  const H = top + axis.length * rowH + 22;
+  let pmax = 0.05;
+  S.forEach(s => Object.values(s.vector || {}).forEach(v => { if(v > pmax) pmax = v; }));
+  pmax = Math.min(1, Math.ceil(pmax * 10) / 10);
+  const x = p => left + (W - left - right) * p / pmax;
+  const excl = new Set([].concat(((day.stages || {})["P1"] || {}).excluded || [], ((day.stages || {})["P0-M"] || {}).excluded || []));
+  // y of a temperature: its rung's row, linearly inside the rung.
+  const yOf = t => {
+    if(t == null) return null;
+    for(let i = 0; i < axis.length; i++){
+      const r = axis[i];
+      const w = r.lo_c != null && r.hi_c != null ? r.hi_c - r.lo_c : 1;
+      const lo = r.lo_c != null ? r.lo_c : r.hi_c - w, hi = r.hi_c != null ? r.hi_c : r.lo_c + w;
+      if(t >= lo && t < hi || (i === 0 && t >= hi) || (i === axis.length - 1 && t < lo)){
+        const f = Math.max(0, Math.min(1, (t - lo) / (hi - lo)));
+        return top + i * rowH + (1 - f) * rowH;
+      }
+    }
+    return null;
+  };
+  let g = "";
+  axis.forEach((r, i) => {
+    const y0 = top + i * rowH;
+    g += `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="${i % 2 ? "var(--soft)" : "transparent"}" opacity=".35"/>`;
+    g += `<text x="${left - 6}" y="${y0 + rowH / 2 + 4}" text-anchor="end" class="trend-lb"${excl.has(r.bucket) ? ' text-decoration="line-through" opacity=".5"' : ""}>${sdEsc(r.bucket)}</text>`;
+    S.forEach((s, k) => {
+      const p = (s.vector || {})[r.bucket] || 0;
+      const y = y0 + 4 + k * (barH + gap);
+      g += `<rect x="${left}" y="${y}" width="${Math.max(0.5, x(p) - left).toFixed(1)}" height="${barH}" fill="${SD_COL[s.key]}"${s.key === "MKT" ? ' opacity=".75"' : ""}><title>${sdEsc(s.label)} ${sdEsc(r.bucket)}：${sdPc(p, 2)}</title></rect>`;
+      if(s.stats && s.stats.mode === r.bucket) g += `<text x="${x(p) + 3}" y="${y + barH}" font-size="8" fill="${SD_COL[s.key]}">◆${sdPc(p, 0)}</text>`;
+    });
+  });
+  // Mean of each series as a tick on the left margin, at its temperature.
+  S.forEach((s, k) => {
+    const y = yOf(s.stats && s.stats.mean_c);
+    if(y == null) return;
+    g += `<line x1="${left - 2}" x2="${W - right}" y1="${y}" y2="${y}" stroke="${SD_COL[s.key]}" stroke-dasharray="${s.key === "MKT" ? "2 3" : "6 3"}" opacity=".7"><title>${sdEsc(s.label)} 均值 ${sdN(s.stats.mean_c, 2)}°C</title></line>`;
+  });
+  const marks = [];
+  if(day.running_high_c != null) marks.push([day.running_high_c, "已报最高", "var(--red)"]);
+  const tx = ((day.stages || {})["P0-M"] || {}).tx_c;
+  if(tx != null) marks.push([tx, "TAF TX", "var(--violet)"]);
+  marks.forEach(([t, label, col]) => {
+    const y = yOf(t);
+    if(y == null) return;
+    g += `<line x1="${left}" x2="${W - right}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="1.5"/><text x="${W - right + 2}" y="${y + 3}" font-size="9" fill="${col}">${label} ${sdN(t, 0)}</text>`;
+  });
+  for(let p = 0; p <= pmax + 1e-9; p += pmax / 4){
+    g += `<line x1="${x(p)}" x2="${x(p)}" y1="${top}" y2="${H - 18}" stroke="var(--line)"/><text x="${x(p)}" y="${H - 6}" text-anchor="middle" class="trend-ax">${Math.round(p * 100)}%</text>`;
+  }
+  return `<svg class="sd-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>
+    <div class="muted sd-sub">每档四条横条依次为 ${S.map(s => `<b style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</b>`).join("、")}；虚线＝各序列均值所在温度；◆＝众数；划线桶＝报文已排除。</div>`;
+}
+
+function sdBucketTable(day, S){
+  const head = (day.stages || {})[day.head_stage] || {};
+  const book = {};
+  ((day.market || {}).book || []).forEach(b => book[b.bucket] = b);
+  const mk = (day.market || {}).vector || {};
+  const rows = (day.axis || []).slice().reverse().map(r => {
+    const p = (head.vector || {})[r.bucket], q = mk[r.bucket], b = book[r.bucket] || {};
+    const diff = p != null && q != null ? p - q : null;
+    return `<tr><td>${sdEsc(r.bucket)}</td>${S.map(s => `<td class="mono">${sdPc((s.vector || {})[r.bucket])}</td>`).join("")}
+      <td class="mono ${diff == null ? "" : diff > 0.03 ? "up" : diff < -0.03 ? "down" : ""}">${diff == null ? "—" : sdSg(100 * diff, 1)}</td>
+      <td class="mono">${sdN(b.best_bid, 3)}</td><td class="mono">${sdN(b.best_ask, 3)}</td></tr>`;
+  }).join("");
+  return `<div class="sd-t">逐档读数（当日口径 ${sdEsc(day.head_stage)} 对市场，点）</div><div class="scroll"><table class="sd-tab"><thead><tr><th>桶</th>${
+    S.map(s => `<th style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</th>`).join("")}<th>模型−市场</th><th>买一</th><th>卖一</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
+      (day.market || {}).reference_state !== "complete" ? ` · <span class="down">市场向量不完整：${sdEsc((day.market || {}).reference_reason)}</span>` : ""} · 中价和 ${sdN((day.market || {}).mid_sum, 3)}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Trend: bucket probabilities through the day, model (solid) against market
+// (dashed); and the mean ± σ against the market mean, the running high and TX.
+function sdHeadSeries(day, mode){
+  const tl = day.timeline || [];
+  if(mode && mode !== "head") return tl.filter(e => e.stage === mode);
+  // The day's word at each instant: the newest envelope of the furthest stage reached so far.
+  const rank = {"P0":0, "P0-M":1, "P1":2};
+  let best = -1; const out = [];
+  tl.forEach(e => { const r = rank[e.stage]; if(r == null) return; if(r >= best){ best = r; out.push(e); } });
+  return out;
+}
+function sdTrend(day){
+  const key = day.event_date;
+  const mode = SD.trendMode[key] || "head";
+  const model = sdHeadSeries(day, mode);
+  const market = ((day.market || {}).trend) || [];
+  const axis = day.axis || [];
+  let focus = SD.focus[key];
+  if(!focus){
+    const peak = {};
+    model.concat(market).forEach(e => Object.entries(e.vector || {}).forEach(([b, v]) => { peak[b] = Math.max(peak[b] || 0, v); }));
+    focus = axis.map(r => r.bucket).filter(b => (peak[b] || 0) >= 0.08)
+      .sort((a, b) => peak[b] - peak[a]).slice(0, 6);
+    SD.focus[key] = focus;
+  }
+  const colour = {};
+  axis.forEach((r, i) => colour[r.bucket] = SD_BKT[i % SD_BKT.length]);
+  const times = model.map(e => +new Date(e.at_utc)).concat(market.map(e => +new Date(e.at_utc)));
+  if(!times.length) return "";
+  const t0 = Math.min(...times), t1 = Math.max(Math.max(...times), Date.now());
+  const W = 760, H = 230, L = 40, R = 12, T = 10, B = 24;
+  const x = t => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0);
+  let pmax = 0.1;
+  focus.forEach(b => model.concat(market).forEach(e => { pmax = Math.max(pmax, (e.vector || {})[b] || 0); }));
+  pmax = Math.min(1, Math.ceil(pmax * 10) / 10);
+  const y = p => T + (H - T - B) * (1 - p / pmax);
+  let g = "";
+  for(let p = 0; p <= pmax + 1e-9; p += pmax / 5) g += `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(p) + 3}" text-anchor="end" class="trend-ax">${Math.round(p * 100)}%</text>`;
+  g += sdTimeTicks(t0, t1, x, H - B, T);
+  // Stage bands under the lines (head mode): where each stage took over.
+  if(mode === "head"){
+    let prev = null;
+    model.forEach((e, i) => {
+      if(e.stage !== prev){
+        const xe = x(+new Date(e.at_utc));
+        g += `<line x1="${xe}" x2="${xe}" y1="${T}" y2="${H - B}" stroke="${SD_COL[e.stage]}" stroke-dasharray="3 3"/><text x="${xe + 2}" y="${T + 9}" font-size="9" fill="${SD_COL[e.stage]}">${e.stage}</text>`;
+        prev = e.stage;
+      }
+    });
+  }
+  const path = (rows, b) => {
+    // Step lines: a vector holds until the next one replaces it.
+    let d = "", last = null;
+    rows.forEach(e => {
+      const v = (e.vector || {})[b];
+      if(v == null) return;
+      const xx = x(+new Date(e.at_utc)).toFixed(1), yy = y(v).toFixed(1);
+      d += last == null ? `M${xx},${yy}` : `H${xx}V${yy}`;
+      last = yy;
+    });
+    if(last != null) d += `H${x(t1).toFixed(1)}`;
+    return d;
+  };
+  focus.forEach(b => {
+    g += `<path d="${path(model, b)}" fill="none" stroke="${colour[b]}" stroke-width="1.8"><title>模型 ${sdEsc(b)}</title></path>`;
+    g += `<path d="${path(market, b)}" fill="none" stroke="${colour[b]}" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8"><title>市场 ${sdEsc(b)}</title></path>`;
+    model.forEach(e => { const v = (e.vector || {})[b]; if(v != null) g += `<circle cx="${x(+new Date(e.at_utc)).toFixed(1)}" cy="${y(v).toFixed(1)}" r="2" fill="${colour[b]}"><title>${e.stage} ${sdLocal(e.at_utc, true)} ${sdEsc(b)} ${sdPc(v, 1)}</title></circle>`; });
+  });
+  const chips = axis.slice().reverse().map(r => `<button type="button" class="sd-chip${focus.includes(r.bucket) ? " on" : ""}" data-sd-focus="${sdEsc(key)}" data-b="${sdEsc(r.bucket)}" style="--c:${colour[r.bucket]}">${sdEsc(r.bucket)}</button>`).join("");
+  const modes = [["head","当日口径"],["P0","仅 P0"],["P0-M","仅 P0-M"],["P1","仅 P1"]]
+    .map(([v, l]) => `<button type="button" class="sd-chip${mode === v ? " on" : ""}" data-sd-mode="${sdEsc(key)}" data-v="${v}">${l}</button>`).join("");
+  return `<div class="sd-t">温度桶概率趋势（实线＝模型，虚线＝市场；阶梯＝每次决策/每 15 分钟一点盘口）</div>
+    <div class="sd-chips">${modes}<span class="sd-div"></span>${chips}</div>
+    <svg class="sd-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>
+    ${sdMeanTrend(day, model, market, t0, t1)}`;
+}
+function sdTimeTicks(t0, t1, x, yb, yt){
+  let g = "";
+  const span = t1 - t0, step = span > 36 * 3600e3 ? 6 * 3600e3 : span > 12 * 3600e3 ? 3 * 3600e3 : 3600e3;
+  for(let t = Math.ceil(t0 / step) * step; t <= t1; t += step){
+    g += `<line x1="${x(t)}" x2="${x(t)}" y1="${yt}" y2="${yb}" stroke="var(--line)" opacity=".6"/><text x="${x(t)}" y="${yb + 14}" text-anchor="middle" class="trend-ax">${sdLocal(new Date(t).toISOString(), (t % (24 * 3600e3)) < step)}</text>`;
+  }
+  return g;
+}
+function sdMeanTrend(day, model, market, t0, t1){
+  const W = 760, H = 190, L = 40, R = 12, T = 10, B = 24;
+  const vals = [];
+  model.forEach(e => { vals.push(e.stats.mean_c - e.stats.sd_c, e.stats.mean_c + e.stats.sd_c); });
+  market.forEach(e => vals.push(e.stats.mean_c));
+  (day.metar || []).forEach(m => { if(m.temp_c != null) vals.push(m.temp_c); });
+  const tx = ((day.stages || {})["P0-M"] || {}).tx_c;
+  if(tx != null) vals.push(tx);
+  if(!vals.length) return "";
+  const lo = Math.floor(Math.min(...vals)) - 0.5, hi = Math.ceil(Math.max(...vals)) + 0.5;
+  const x = t => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0);
+  const y = c => T + (H - T - B) * (hi - c) / (hi - lo);
+  let g = "";
+  for(let c = Math.ceil(lo); c <= hi; c += (hi - lo > 8 ? 2 : 1)) g += `<line x1="${L}" x2="${W - R}" y1="${y(c)}" y2="${y(c)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(c) + 3}" text-anchor="end" class="trend-ax">${c}°</text>`;
+  g += sdTimeTicks(t0, t1, x, H - B, T);
+  if(model.length){
+    const up = model.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c + e.stats.sd_c).toFixed(1)}`);
+    const dn = model.slice().reverse().map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c - e.stats.sd_c).toFixed(1)}`);
+    g += `<polygon points="${up.concat(dn).join(" ")}" fill="var(--accent)" opacity=".12"/>`;
+    g += `<polyline points="${model.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.8"/>`;
+    model.forEach(e => g += `<circle cx="${x(+new Date(e.at_utc)).toFixed(1)}" cy="${y(e.stats.mean_c).toFixed(1)}" r="2.4" fill="${SD_COL[e.stage]}"><title>${e.stage} ${sdLocal(e.at_utc, true)} 均值 ${sdN(e.stats.mean_c, 2)}°C σ ${sdN(e.stats.sd_c, 2)}</title></circle>`);
+  }
+  if(market.length) g += `<polyline points="${market.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c).toFixed(1)}`).join(" ")}" fill="none" stroke="${SD_COL.MKT}" stroke-width="1.3" stroke-dasharray="4 3"/>`;
+  const met = (day.metar || []).filter(m => m.temp_c != null);
+  if(met.length){
+    g += `<polyline points="${met.map(m => `${x(+new Date(m.valid_at_utc)).toFixed(1)},${y(m.temp_c).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1"/>`;
+    met.forEach(m => g += `<circle cx="${x(+new Date(m.valid_at_utc)).toFixed(1)}" cy="${y(m.temp_c).toFixed(1)}" r="2" fill="var(--muted)"><title>METAR ${sdEsc(m.local)} ${m.temp_c}°C</title></circle>`);
+    let d = "", prev = null;
+    met.forEach(m => { const xx = x(+new Date(m.valid_at_utc)).toFixed(1), yy = y(m.running_high_c).toFixed(1); d += prev == null ? `M${xx},${yy}` : `H${xx}V${yy}`; prev = yy; });
+    g += `<path d="${d}H${x(t1).toFixed(1)}" fill="none" stroke="var(--red)" stroke-width="1.5"/>`;
+  }
+  if(tx != null) g += `<line x1="${L}" x2="${W - R}" y1="${y(tx)}" y2="${y(tx)}" stroke="var(--violet)" stroke-dasharray="6 3"/><text x="${W - R - 2}" y="${y(tx) - 3}" text-anchor="end" font-size="9" fill="var(--violet)">TAF TX ${tx}°C</text>`;
+  return `<div class="sd-t">均值 ± 1σ 走势（蓝带＝模型当日口径，点色＝阶段；粉虚线＝市场均值；灰＝METAR 实测；红阶梯＝已报最高；紫虚线＝TAF TX）</div>
+    <svg class="sd-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// Models: the P0 seat -- each system's run, arrival, weight and own shape.
+function sdModels(day){
+  const p0 = (day.stages || {})["P0"];
+  if(!p0) return "";
+  const models = p0.models || [];
+  const wmax = Math.max(0.01, ...models.map(m => m.weight || 0));
+  const rows = models.map(m => {
+    const st = m.stats || {};
+    return `<tr><td><b>${sdEsc(m.system_id)}</b><div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
+      <td class="mono">${sdEsc(m.run_cycle || "—")}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}</div></td>
+      <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
+      <td class="mono">${sdLocal(m.arrived_at_utc, true)}</td>
+      <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${m.seated ? "" : ' <span class="pill red">未入座</span>'}</td>
+      <td class="mono">${sdN(m.calibrated_centre_c, 2)}°C</td>
+      <td class="mono">${sdN(st.mean_c, 2)}°C</td><td class="mono">${sdN(st.sd_c, 2)}</td>
+      <td>${sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span></td></tr>`;
+  }).join("");
+  const W = p0.width || {}, Bg = p0.bridge || {};
+  const wh = day.weight_history || [];
+  const sys = models.map(m => m.system_id);
+  const hist = wh.slice(-12).reverse().map(e => `<tr><td class="mono">${sdLocal(e.at_utc, true)}</td>${sys.map(s => {
+    const w = (e.weights || {})[s];
+    const init = (e.run_init_utc || {})[s];
+    return `<td class="mono" title="run ${sdEsc(init || "—")}">${w == null ? "—" : sdPc(w, 0)}<div class="muted sd-sub">${init ? String(init).slice(8, 13).replace("T", " ") + "Z" : ""}</div></td>`;
+  }).join("")}</tr>`).join("");
+  return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>系统</th><th>run（起报，当地）</th><th>校准提前量</th><th>到货（当地）</th><th>权重</th><th>校准中心</th><th>单系统均值</th><th>σ</th><th>众数桶</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">合成中心 ${sdN(p0.model_center_c, 2)}°C · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、σ ${sdN(W.sigma_c, 2)}°C、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
+      Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>
+    ${hist ? `<details><summary class="muted">权重与 run 随每次 P0 决策的变化（最近 ${Math.min(12, wh.length)} 次，新的在上；小字＝起报日 时Z）</summary>
+      <div class="scroll"><table class="sd-tab"><thead><tr><th>决策</th>${sys.map(s => `<th>${sdEsc(s.replace(/_GLOBAL|_ENS|_EPS|_OPEN_PF50|_025|_05/g, ""))}</th>`).join("")}</tr></thead><tbody>${hist}</tbody></table></div></details>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence: radiation shift, TAF, METAR, cloud and rain.
+function sdEvidence(day){
+  const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
+  const R = p0.radiation;
+  const rad = R ? `<div class="sd-ev"><b>辐射偏移（宪章 222）</b>：${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")} · 辐射总量 ${sdN(R.radiation_sum_mj, 2)} MJ/m² ·
+      晴空指数 ${sdN(R.clearness_index, 3)}（历史 ${sdN(R.clearness_mean, 3)} ± ${sdN(R.clearness_sd, 3)}，标准化 ${sdSg(R.standardised, 2)}）·
+      <b>平移 ${sdSg(R.shift_c, 2)}°C</b>（系数 暖 ${sdN(R.sigma_warm, 2)} / 冷 ${sdN(R.sigma_cold, 2)}）· ${sdEsc(R.state || "")}</div>` : `<div class="sd-ev muted">辐射偏移：P0 回执无记录</div>`;
+  const tw = p0.taf_witness;
+  const tafP0 = tw ? `<div class="sd-ev"><b>P0 见到的 TAF</b>：签发 ${sdLocal(tw.issued_at_utc, true)} · TX ${tw.tx_c == null ? "—" : tw.tx_c + "°C"} · 云量 ${sdPc(tw.cloud_cover_fraction, 0)} · 降水概率 ${sdPc(tw.precipitation_probability, 0)} · 风 ${sdN(tw.wind_speed_mps, 1)} m/s</div>` : "";
+  const tafPm = pm ? `<div class="sd-ev"><b>P0-M（TAF 似然）</b>：${sdEsc(pm.taf_state || "—")} · TX ${pm.tx_c == null ? "无" : pm.tx_c + "°C"} · 根中心 ${sdN(pm.root_center_c, 2)}°C${
+      pm.x_c != null ? ` · x ${sdN(pm.x_c, 2)} b ${sdN(pm.b, 2)} τ ${sdN(pm.tau, 2)}` : ""}${pm.observed_running_high_c != null ? ` · 观测下界 ${pm.observed_running_high_c}°C` : ""}${
+      (pm.excluded || []).length ? ` · 排除 ${sdEsc(pm.excluded.join("、"))}` : ""}</div>` : `<div class="sd-ev muted">P0-M：还没有（TAF 未覆盖到这一天）</div>`;
+  const F = (p1 || {}).features || {};
+  const p1Line = p1 ? `<div class="sd-ev"><b>P1（METAR 似然）</b>：${sdEsc(p1.state || "—")}${p1.update ? " · " + sdEsc(p1.update) : ""} · 已报最高 ${sdN(p1.running_high_c, 0)}°C · 再升概率 ${sdPc(p1.rise_probability)}${
+      p1.alpha != null ? ` · α ${sdN(p1.alpha, 2)}` : ""}${p1.lambda != null ? ` · λ ${sdN(p1.lambda, 2)}` : ""} ·
+      云量 ${sdPc(F.cloud_cover_fraction, 0)} · 降水 ${F.precipitation_present ? "有" : "无"} · 风 ${sdN(F.wind_speed_mps, 1)} m/s · 露点差 ${sdN(F.dewpoint_depression_c, 1)}°C · 剩余 ${sdN(F.remaining_hours, 1)} h · 区域模型余量 ${sdSg(F.regional_headroom_c, 1)}°C${
+      (p1.excluded || []).length ? ` · 排除 ${sdEsc(p1.excluded.join("、"))}` : ""}</div>` : "";
+  const caps = ((day.taf || {}).captures || []).slice(-6).reverse().map(c => `<tr><td class="mono">${sdLocal(c.issued_at_utc, true)}</td><td>${sdEsc(c.kind || "")} #${sdEsc(c.sequence)}</td>
+      <td class="mono">${c.tx_c == null ? "—" : c.tx_c + "°C"}</td><td class="mono">${sdPc(c.cloud_cover_fraction, 0)}</td><td class="mono">${sdPc(c.precipitation_probability, 0)}</td><td class="mono">${sdN(c.wind_speed_mps, 1)}</td></tr>`).join("");
+  const met = (day.metar || []).slice().reverse().map(m => `<tr><td class="mono">${sdEsc(m.local)}</td><td><span class="pill${/SPECI|COR/.test(m.kind) ? " red" : ""}">${sdEsc(m.kind)}</span></td>
+      <td class="mono"><b>${m.temp_c == null ? "—" : m.temp_c + "°C"}</b></td><td class="mono">${m.dew_c == null ? "—" : m.dew_c + "°C"}</td>
+      <td class="mono">${sdPc(m.cloud_cover, 0)}</td><td class="mono">${sdN(m.wind_mps, 1)}</td><td>${m.precip ? '<b class="down">降水</b> ' : ""}${sdEsc((m.weathers || []).join(" "))}</td>
+      <td class="mono">${m.running_high_c == null ? "—" : m.running_high_c + "°C"}</td><td class="mono sd-raw">${sdEsc(m.raw)}</td></tr>`).join("");
+  const P = day.precip;
+  let rain = `<div class="sd-ev muted">逐小时降水预报：无</div>`;
+  if(P){
+    const hrs = Array.isArray(P.hourly_mm) ? P.hourly_mm : P.hourly_mm && typeof P.hourly_mm === "object" ? Object.values(P.hourly_mm) : [];
+    const mx = Math.max(0.5, ...hrs.map(v => Number(v) || 0));
+    const bars = hrs.map((v, i) => `<i title="${i} 时 ${sdN(Number(v) || 0, 1)} mm" style="height:${(100 * (Number(v) || 0) / mx).toFixed(0)}%"></i>`).join("");
+    rain = `<div class="sd-ev"><b>云雨</b>：逐小时降水预报（${sdEsc(P.source_id)}，${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc, true)}）当日合计 <b>${sdN(P.sum_mm, 1)} mm</b> · 湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)} · 首个湿小时 ${sdEsc(P.first_wet_hour == null ? "—" : P.first_wet_hour)} · 峰值小时 ${sdEsc(P.peak_hour == null ? "—" : P.peak_hour)}
+      ${hrs.length ? `<div class="sd-rain">${bars}</div><div class="muted sd-sub">0 时 → 23 时（当地）</div>` : ""}</div>`;
+  }
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div>${rad}${tafP0}${tafPm}${p1Line}${rain}
+    ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
+    ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="scroll sd-metar"><table class="sd-tab"><thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead><tbody>${met}</tbody></table></div></details>` : ""}`;
+}
+function sdTafRaw(d){
+  const list = d.taf_raw || [];
+  if(!list.length) return "";
+  return `<details class="card"><summary class="muted">${sdEsc(d.station_id)} 最新 TAF 原文（${list.length} 份）</summary>${
+    list.map(t => `<div class="rep"><span class="mono">签发 ${sdLocal(t.issued_at_utc, true)}</span><div class="mono rep-raw">${sdEsc(t.raw)}</div></div>`).join("")}</details>`;
+}
+
+// ---------------------------------------------------------------------------
+// 篮子保本计算器 (user 2026-10-05: 选定某几个桶、输入其中一些桶的买入金额，自动算其余
+// 选中桶最少要买多少，及每个桶命中时的盈亏、概率覆盖).  Pure arithmetic on the book
+// the panel already holds; nothing is sent anywhere.
+//   命中桶 k 的盈亏 = 份数_k × 1 − 总花费；没选中的桶命中 = −总花费。
+//   填了金额的桶固定；空着的选中桶取最少份数，使它命中时盈亏 ≥ 地板 F：
+//   份数_u = 总花费 + F，总花费 = 固定金额 + Σ 成本_u(份数_u)，迭代到不动点
+//   （单价合计 < 1 才有解）。吃单按卖一逐档深度走，手续费 = 费率 × p × (1−p) 每份。
+function sdCalcState(key){
+  if(!SD.calc[key]) SD.calc[key] = {sel:{}, amt:{}, px:{}, mode:"taker", fee:null, floor:0};
+  return SD.calc[key];
+}
+function sdCostOf(levels, shares, rate){
+  // USDC to buy ``shares`` walking ``levels`` [[price, size], ...]; null past the book.
+  let left = shares, cost = 0;
+  for(const [p, s] of levels){
+    const take = Math.min(left, s);
+    cost += take * (p + rate * p * (1 - p));
+    left -= take;
+    if(left <= 1e-9) return cost;
+  }
+  return null;
+}
+function sdSharesFor(levels, usdc, rate){
+  let left = usdc, shares = 0;
+  for(const [p, s] of levels){
+    const unit = p + rate * p * (1 - p);
+    const take = Math.min(s, left / unit);
+    shares += take; left -= take * unit;
+    if(left <= 1e-9) return shares;
+  }
+  return null;
+}
+function sdLevels(day, b, st){
+  const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+  const manual = Number(st.px[b]);
+  if(st.mode === "manual") return manual > 0 && manual < 1 ? [[manual, 1e12]] : [];
+  if(st.mode === "maker"){
+    const tick = book.tick || 0.001;
+    let p = book.best_bid != null ? book.best_bid + tick : book.best_ask != null ? book.best_ask - tick : null;
+    if(p != null && book.best_ask != null && p >= book.best_ask) p = book.best_ask - tick;
+    if(manual > 0 && manual < 1) p = manual;
+    return p != null && p > 0 && p < 1 ? [[Math.round(p * 1e4) / 1e4, 1e12]] : [];
+  }
+  if(manual > 0 && manual < 1) return [[manual, 1e12]];
+  return (book.ask_levels || []).filter(l => l[0] > 0 && l[0] < 1 && l[1] > 0);
+}
+function sdSolve(day, st){
+  const rate = st.mode === "taker" ? (st.fee == null ? (SD.data.taker_fee_rate || 0) : Number(st.fee) || 0) : (Number(st.fee) || 0);
+  const F = Number(st.floor) || 0;
+  const chosen = (day.axis || []).map(r => r.bucket).filter(b => st.sel[b]);
+  const res = {rate, F, legs:{}, warn:[], ok:true};
+  let fixed = 0;
+  const auto = [];
+  chosen.forEach(b => {
+    const lv = sdLevels(day, b, st);
+    const raw = st.amt[b];
+    const amt = raw === "" || raw == null ? null : Number(raw);
+    if(!lv.length){ res.warn.push(`${b} 没有可用价格`); res.ok = false; return; }
+    if(amt != null && isFinite(amt) && amt > 0){
+      const sh = sdSharesFor(lv, amt, rate);
+      if(sh == null){ res.warn.push(`${b}：${amt} U 超过卖盘深度`); res.ok = false; return; }
+      res.legs[b] = {shares:sh, cost:amt, fixed:true, levels:lv};
+      fixed += amt;
+    } else auto.push([b, lv]);
+  });
+  if(!res.ok) return res;
+  let T = fixed, conv = false;
+  for(let it = 0; it < 200; it++){
+    let next = fixed, broke = false;
+    for(const [b, lv] of auto){
+      const need = Math.max(0, T + F);
+      const c = sdCostOf(lv, need, rate);
+      if(c == null){ broke = true; res.warn.push(`${b}：需要 ${need.toFixed(2)} 份，超过卖盘深度`); break; }
+      res.legs[b] = {shares:need, cost:c, fixed:false, levels:lv};
+      next += c;
+    }
+    if(broke){ res.ok = false; return res; }
+    if(next > 1e7){ break; }
+    if(Math.abs(next - T) < 1e-7){ T = next; conv = true; break; }
+    T = next;
+  }
+  if(auto.length && !conv){
+    res.ok = false;
+    res.warn.push("无解：空着的桶单价（含费）合计 ≥ 1，买得越多需要越多，保本不可能");
+    return res;
+  }
+  // Shares go in hundredths: round the automatic legs up and re-price once.
+  if(auto.length){
+    let total = fixed;
+    auto.forEach(([b, lv]) => { const s = Math.ceil((T + F) * 100 - 1e-6) / 100; const c = sdCostOf(lv, s, rate); res.legs[b] = {shares:s, cost:c, fixed:false, levels:lv}; total += c; });
+    // Rounding the costs up can leave a hundredth short: one more pass.
+    auto.forEach(([b, lv]) => { const leg = res.legs[b]; if(leg.shares < total + F - 1e-9){ leg.shares = Math.ceil((total + F) * 100 - 1e-6) / 100; const c = sdCostOf(lv, leg.shares, rate); total += c - leg.cost; leg.cost = c; } });
+  }
+  res.total = Object.values(res.legs).reduce((a, l) => a + l.cost, 0);
+  Object.entries(res.legs).forEach(([b, l]) => {
+    l.avg = l.shares > 0 ? l.cost / l.shares : null;
+    const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+    if(l.shares > 0 && book.min_order_size && l.shares < book.min_order_size) res.warn.push(`${b}：${l.shares.toFixed(2)} 份低于交易所最小单 ${book.min_order_size} 份`);
+    if(l.fixed && l.shares - res.total < F - 1e-9) res.warn.push(`${b}：固定金额买到的 ${l.shares.toFixed(2)} 份 < 总花费 ${res.total.toFixed(2)} + 地板 ${F}，命中这桶也${l.shares - res.total < 0 ? "亏" : "不到地板"}`);
+  });
+  return res;
+}
+function sdCalc(day){
+  const key = day.event_date, st = sdCalcState(key);
+  const head = (day.stages || {})[day.head_stage] || {};
+  const p = head.vector || {}, q = (day.market || {}).vector || {};
+  const book = {};
+  ((day.market || {}).book || []).forEach(r => book[r.bucket] = r);
+  const res = Object.keys(st.sel).some(b => st.sel[b]) ? sdSolve(day, st) : null;
+  const axis = (day.axis || []).slice().reverse();
+  const rows = axis.map(r => {
+    const b = r.bucket, leg = res && res.legs[b], on = !!st.sel[b];
+    const profit = res && res.ok ? (leg ? leg.shares : 0) - res.total : null;
+    const defPx = st.mode === "maker" ? (sdLevels(day, b, {...st, px:{}})[0] || [])[0] : book[b] && book[b].best_ask;
+    return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
+      <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
+      <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
+      <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"${on ? "" : " disabled"}></td>
+      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? "自动" : ""}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"${on ? "" : " disabled"}></td>
+      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : ' <span class="pill">算出</span>'}` : "—"}</td>
+      <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
+      <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td></tr>`;
+  }).join("");
+  let summary = `<div class="muted">勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。</div>`;
+  if(res){
+    if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
+    else {
+      const chosen = Object.keys(res.legs);
+      const cover = chosen.reduce((a, b) => a + (p[b] || 0), 0), coverQ = chosen.reduce((a, b) => a + (q[b] || 0), 0);
+      const profits = chosen.map(b => res.legs[b].shares - res.total);
+      const floorIn = Math.min(...profits), best = Math.max(...profits);
+      const ev = vec => (day.axis || []).reduce((a, r) => a + (vec[r.bucket] || 0) * ((res.legs[r.bucket] ? res.legs[r.bucket].shares : 0) - res.total), 0);
+      const lossP = (day.axis || []).reduce((a, r) => a + ((res.legs[r.bucket] ? res.legs[r.bucket].shares : 0) - res.total < -1e-9 ? (p[r.bucket] || 0) : 0), 0);
+      summary = `<div class="sd-kpis">
+        <div><span class="muted">总花费</span><b>${sdN(res.total, 2)} U</b></div>
+        <div><span class="muted">选中桶内最低（地板）</span><b class="${floorIn >= 0 ? "up" : "down"}">${sdSg(floorIn, 2)} U</b></div>
+        <div><span class="muted">选中桶内最高</span><b class="up">${sdSg(best, 2)} U</b></div>
+        <div><span class="muted">未覆盖命中</span><b class="down">${sdSg(-res.total, 2)} U</b></div>
+        <div><span class="muted">概率覆盖 模型/市场</span><b>${sdPc(cover)} / ${sdPc(coverQ)}</b></div>
+        <div><span class="muted">期望盈亏 按模型/按市场</span><b>${sdSg(ev(p), 2)} / ${sdSg(ev(q), 2)} U</b></div>
+        <div><span class="muted">亏钱概率（模型）</span><b>${sdPc(lossP)}</b></div>
+      </div>${res.warn.length ? `<div class="down sd-sub">${res.warn.map(sdEsc).join("；")}</div>` : ""}`;
+    }
+  }
+  const feeVal = st.fee == null ? (st.mode === "taker" ? SD.data.taker_fee_rate : 0) : st.fee;
+  return `<div class="sd-t">篮子保本计算器（${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价；只算不下单）</div>
+    <div class="sd-ctl">
+      <label>价格口径 <select data-sd-mode="${sdEsc(key)}" data-calc="1">
+        <option value="taker"${st.mode === "taker" ? " selected" : ""}>吃卖一（逐档深度）</option>
+        <option value="maker"${st.mode === "maker" ? " selected" : ""}>挂买一+1（不保证成交）</option>
+        <option value="manual"${st.mode === "manual" ? " selected" : ""}>手填价格</option></select></label>
+      <label>手续费率 <input class="sd-in" type="number" step="0.01" min="0" data-sd-fee="${sdEsc(key)}" value="${sdEsc(feeVal)}"></label>
+      <label>命中地板 F <input class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>
+      <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
+    </div>
+    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th>价格（空＝默认）</th><th>金额 U（空＝自动）</th><th>花费 U</th><th>份数</th><th>均价（含费）</th><th>命中该桶盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${summary}
+    <div class="muted sd-sub">命中桶 k 盈亏＝份数ₖ×1 − 总花费；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。例：选 24、25，24 填 10 U、25 空着 → 25 给出命中保本的最少金额，24 一行给出命中盈亏。</div>`;
+}
+function sdOnInput(e){
+  const t = e.target, ds = t.dataset;
+  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || (ds.calc ? ds.sdMode : null);
+  if(!key) return;
+  const st = sdCalcState(key);
+  if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
+  else if(ds.sdAmt) st.amt[ds.b] = t.value;
+  else if(ds.sdPx) st.px[ds.b] = t.value;
+  else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
+  else if(ds.sdFloor) st.floor = Number(t.value) || 0;
+  else if(ds.calc){ st.mode = t.value; st.fee = null; }
+  // Typing recomputes the outputs in place; the field keeps its focus.
+  if(e.type === "input" && (ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor)){ sdRefreshCalc(key, t); return; }
+  sdRender();
+}
+function sdRefreshCalc(key, input){
+  const day = ((SD.data || {}).days || []).find(d => d.event_date === key);
+  const card = document.querySelector(`.sd-day[data-day="${key}"]`);
+  if(!day || !card) return;
+  const holder = document.createElement("div");
+  holder.innerHTML = sdCalc(day);
+  // Swap the result cells and summary, leave every input element alone.
+  const oldRows = card.querySelectorAll(".sd-calc tbody tr"), newRows = holder.querySelectorAll(".sd-calc tbody tr");
+  oldRows.forEach((tr, i) => { const nr = newRows[i]; if(!nr) return; [6, 7, 8, 9].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; }); });
+  const oldSum = card.querySelector(".sd-calc").parentElement.nextElementSibling;
+  const newSum = holder.querySelector(".sd-calc").parentElement.nextElementSibling;
+  if(oldSum && newSum) oldSum.outerHTML = newSum.outerHTML;
+}
+function sdOnClick(e){
+  const t = e.target.closest("button");
+  if(!t) return;
+  const ds = t.dataset;
+  if(ds.sdFocus){
+    const list = SD.focus[ds.sdFocus] || [];
+    SD.focus[ds.sdFocus] = list.includes(ds.b) ? list.filter(x => x !== ds.b) : list.concat([ds.b]);
+    sdRender();
+  } else if(ds.sdMode && !ds.calc){
+    SD.trendMode[ds.sdMode] = ds.v; sdRender();
+  } else if(ds.sdClear){
+    SD.calc[ds.sdClear] = null; sdRender();
+  }
+}
+
 const GROUPS = [
   // One area per layer, in the order of the chain (user rulings,
   // 2026-09-16), and inside the model area one container per layer of the
@@ -22044,6 +22739,7 @@ document.getElementById("app").innerHTML =
     <div class="grouptitle">${TOP_AREA.label}<span class="muted">${TOP_AREA.note}</span></div>` +
   sec(moneyBoard, "资金看板", "sec-money") +
   sec(liveReadiness, "站点实盘上线闸门", "sec-live") +
+  sec(stationDayPanel, "单站日", "sec-station-day") +
   `</section>` +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·

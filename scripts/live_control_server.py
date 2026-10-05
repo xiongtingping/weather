@@ -42,6 +42,8 @@ POST /api/station-bar     {"station": "KSEA", "barred": true}
 POST /api/station-waiver  {"station": "LIMC", "waived": true}
 POST /api/station-hold    {"station": "KDAL", "held": true}
 POST /api/station-bulk    {"action": "waive_all" | "bar_all"}
+GET  /api/station-day?station=ZUUU[&force=1|&token_only=1] -> one station's today and day-ahead
+                  distributions, market, TAF/METAR (read-only; the board's 单站日 panel)
 
 The three per-station ones are the station gate, one click each: 禁入 (the bar), 豁免
 (trade before the evidence is in) and 待观察 (hold a qualified station back).
@@ -62,6 +64,8 @@ import re
 import sqlite3
 import sys
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1267,6 +1271,39 @@ def set_allowlist(stations: list) -> dict:
     return state()
 
 
+# The board's one-station panel (user 2026-10-05: ZUUU 单站日分布，自动刷新与一键
+# 刷新).  A reader of what production stored, built on demand
+# (bayes_basket_target.station_day_board, ~0.5 s of read-only reads); answers
+# within STATION_DAY_CACHE_SEC are shared so several open tabs poll one read,
+# and ``force=1`` (the panel's refresh button) skips the cache.
+STATION_DAY_CACHE_SEC = 20.0
+_STATION_DAY_CACHE: dict[str, tuple[float, dict]] = {}
+_STATION_DAY_LOCK = threading.Lock()
+
+
+def station_day(query: str) -> dict:
+    from urllib.parse import parse_qs  # noqa: PLC0415
+
+    from bayes_basket_target import station_day_board  # noqa: PLC0415
+
+    params = parse_qs(query or "")
+    station = str((params.get("station") or ["ZUUU"])[0]).strip().upper()
+    if not re.fullmatch(r"[A-Z]{4}", station):
+        raise ValueError(f"station must be four letters: {station!r}")
+    force = str((params.get("force") or ["0"])[0]) == "1"
+    if str((params.get("token_only") or ["0"])[0]) == "1":
+        # The panel's poll: one index seek a day, no build.
+        return station_day_board.probability_token(station)
+    with _STATION_DAY_LOCK:
+        cached = _STATION_DAY_CACHE.get(station)
+        if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
+                and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
+            return {**cached[1], "cache": "hit"}
+        payload = station_day_board.build(station)
+        _STATION_DAY_CACHE[station] = (time.monotonic(), payload)
+        return {**payload, "cache": "miss"}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -1283,8 +1320,14 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True})
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path.rstrip("/") == "/api/state":
+        path, _, query = self.path.partition("?")
+        if path.rstrip("/") == "/api/state":
             self._send(200, state())
+        elif path.rstrip("/") == "/api/station-day":
+            try:
+                self._send(200, station_day(query))
+            except Exception as exc:  # noqa: BLE001 -- the board shows the reason
+                self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
         else:
             self._send(404, {"error": "unknown endpoint"})
 
