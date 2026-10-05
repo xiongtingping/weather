@@ -11,7 +11,16 @@ import json
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
+
+# The gateway is on loopback and is never reached through a proxy.  urllib
+# otherwise follows HTTP_PROXY or, with none set, the Mac's system proxy --
+# and the system's bypass list names "localhost" but not 127.0.0.1, so a
+# process started without NO_PROXY (the board's control server under
+# launchd) sent its place-order to the proxy on 127.0.0.1:1082, which hung
+# up: gateway_transport:RemoteDisconnected, nothing reached the gateway
+# (2026-10-05 12:12Z, the first one-click basket).
+_DIRECT = build_opener(ProxyHandler({}))
 
 
 SCHEMA_VERSION = "clob_order_service_client_v1"
@@ -45,7 +54,7 @@ class ClobOrderServiceClient:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
+            with _DIRECT.open(request, timeout=self.timeout_seconds) as response:
                 raw = response.read()
                 value = json.loads(raw.decode("utf-8")) if raw else {}
                 return dict(value) if isinstance(value, Mapping) else {"ok": False, "error": "gateway_payload_invalid"}

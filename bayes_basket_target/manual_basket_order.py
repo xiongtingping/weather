@@ -111,9 +111,20 @@ def fillable_within(asks: list[tuple[float, float]], shares: float, cap: float) 
     return sum(size for price, size in asks if price <= cap + 1e-12)
 
 
-def _on_tick(price: float, tick: float) -> float:
-    steps = round(price / tick)
-    return round(steps * tick, 6)
+def venue_tick(price: float) -> float:
+    """The exchange's price step at ``price``: a cent in the middle of the
+    range, a tenth of a cent near either end.  The snapshot's registry tick
+    (0.001 on every rung) is not it -- the gateway answered
+    ``exchange_price_min_tick_size: 0.01`` for a 0.29 rung on 2026-10-05."""
+
+    return 0.001 if price < 0.04 or price > 0.96 else 0.01
+
+
+def _on_tick(price: float) -> float:
+    """Down to the venue's grid: a buy never pays more than it was told to."""
+
+    tick = venue_tick(price)
+    return round(math.floor(price / tick + 1e-9) * tick, 6)
 
 
 def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
@@ -155,7 +166,7 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
             raise ManualOrderError(f"{bucket} 份数或价格不是数") from exc
         if not (0.0 < price < 1.0):
             raise ManualOrderError(f"{bucket} 价格必须在 0 与 1 之间")
-        price = _on_tick(price, row["tick"])
+        price = _on_tick(price)
         if not (0.0 < price < 1.0):
             raise ManualOrderError(f"{bucket} 价格按 tick 取整后不在 0 与 1 之间")
         if shares < row["min_order_size"]:
@@ -186,7 +197,6 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
                 "side": "BUY",
                 "price": price,
                 "size": shares,
-                "tick_size": row["tick"],
                 **order,
             },
         })

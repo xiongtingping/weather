@@ -84,3 +84,27 @@ class _Conn:
 
     def close(self):
         pass
+
+
+def test_prices_go_down_to_the_venues_grid() -> None:
+    assert M._on_tick(0.299) == 0.29 and M._on_tick(0.29) == 0.29
+    assert M._on_tick(0.0315) == 0.031
+    plan = M.plan_orders(_request(mode="manual", legs=[{"bucket": "25°C", "shares": 10, "limit_price": 0.157}]), BOOK, now=NOW)
+    assert plan["legs"][0]["payload"]["price"] == 0.15 and "tick_size" not in plan["legs"][0]["payload"]
+
+
+def test_the_gateway_client_never_goes_through_a_proxy(monkeypatch) -> None:
+    import urllib.request
+
+    import clob_order_service_client as C
+
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    # An empty ProxyHandler replaces the default one that reads the
+    # environment and the system settings; having no proxies it opens
+    # nothing itself, so the opener holds no proxying handler at all.
+    assert not any(isinstance(h, urllib.request.ProxyHandler) and h.proxies
+                   for h in C._DIRECT.handlers)
+    assert not any(hasattr(h, "http_open") and isinstance(h, urllib.request.ProxyHandler)
+                   for h in C._DIRECT.handlers)
+    default = urllib.request.build_opener()
+    assert any(isinstance(h, urllib.request.ProxyHandler) for h in default.handlers)

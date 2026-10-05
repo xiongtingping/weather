@@ -22392,9 +22392,11 @@ function sdLevels(day, b, st){
   const manual = Number(st.px[b]);
   if(st.mode === "manual") return manual > 0 && manual < 1 ? [[manual, 1e12]] : [];
   if(st.mode === "maker"){
-    const tick = book.tick || 0.001;
-    let p = book.best_bid != null ? book.best_bid + tick : book.best_ask != null ? book.best_ask - tick : null;
-    if(p != null && book.best_ask != null && p >= book.best_ask) p = book.best_ask - tick;
+    // The venue's step, not the registry's: a cent mid-range, a tenth of a
+    // cent below 0.04 / above 0.96 (bayes_basket_target.manual_basket_order).
+    const tickAt = v => v < 0.04 || v > 0.96 ? 0.001 : 0.01;
+    let p = book.best_bid != null ? book.best_bid + tickAt(book.best_bid) : book.best_ask != null ? book.best_ask - tickAt(book.best_ask) : null;
+    if(p != null && book.best_ask != null && p >= book.best_ask) p = book.best_ask - tickAt(book.best_ask);
     if(manual > 0 && manual < 1) p = manual;
     return p != null && p > 0 && p < 1 ? [[Math.round(p * 1e4) / 1e4, 1e12]] : [];
   }
