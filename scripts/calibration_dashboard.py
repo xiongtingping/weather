@@ -22039,6 +22039,7 @@ function sdDay(day){
       <span class="muted sd-sub">最新决策 ${sdLocal(head.decided_at_utc, true)}（${sdAgo(head.decided_at_utc)}）${
       day.running_high_c != null ? ` · 已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : ""}${
       head.fresh_until_utc ? ` · 信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""}</span></h3>
+    <div class="muted sd-sub" style="margin:-4px 0 6px">本卡所有概率、均值、众数都是对 <b>${sdEsc(day.event_date)}</b> 当地最高温的预测；表中带日期的时间是数据产出时刻（决策、模型起报、到货、TAF 签发、盘口），不是预测对象。</div>
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
       <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
@@ -22070,7 +22071,7 @@ function sdStatsTable(day, S){
   }).join("");
   const modes = S.filter(s => s.key !== "MKT").map(s => s.stats && s.stats.mode);
   const agree = mk ? modes.map((m, i) => `${S[i].label}${m === mk.mode ? "＝" : "≠"}市场`).join(" · ") : "市场盘口不可读";
-  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>序列</th><th>时间（当地）</th><th>均值</th><th>均值桶</th><th>众数桶</th>
+  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>序列</th><th title="这一行概率是什么时候算出来的；预测的对象是卡片标题的日期">产出时刻（当地）</th><th>均值</th><th>均值桶</th><th>众数桶</th>
     <th title="Σp(t−均值)²，t 取桶中点（开口桶取向内半档）">方差 °C²</th><th>标准差</th><th title="三阶矩/σ³；正＝暖尾长">偏度</th>
     <th title="熵（bit）/ 有效档数 2^熵：多少档在分概率">离散度 熵/有效档</th><th>80% 区间</th><th>众数±1 档</th><th>均值−市场</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
