@@ -18185,9 +18185,6 @@ function hitRate(){
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
-  ${hasServed ? `<div class="why"><b>实际权重</b>＝P0 此刻真正用来合成概率的配比：从上面赛出来的「起点（席位）」出发，
-  再按宪章 242 用这个站自己的历史按站重新分配（历史越长越按本站表现走）。卡片大字是实际权重在 ${W.scope_count} 个站日上的平均占比（不在场记 0，六家合计 100%）；
-  每个站的实际配比见下方逐格明细。${Object.entries(W.fusion_states || {}).map(([k, v]) => `${h({APPLIED:"按站重配已生效", SHADOW:"影子（服务起点）", SEAT_NO_STATION_PARAMS:"本站参数未就绪（服务起点）"}[k] || k)} ${v}`).join(" · ")}</div>` : ""}
   <div class="grid g4" style="margin-top:12px">${cards}</div>
   <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
   全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
@@ -20239,6 +20236,9 @@ function servingWeights(){
   权重每天随新证据重赛，所以同一格子的配比会换代；
   「窗至」是该格子当前配比所依据的检验窗最后一天，
   日期旧说明这个格子还在服旧一轮的赛果——换代受快照新鲜度限速，逐格推进，属正常。</div>
+  ${hasServed ? `<div class="why"><b>实际权重</b>＝P0 此刻真正用来合成概率的配比：从上面赛出来的「起点（席位）」出发，
+  再按宪章 242 用这个站自己的历史按站重新分配（历史越长越按本站表现走）。卡片大字是实际权重在 ${W.scope_count} 个站日上的平均占比（不在场记 0，六家合计 100%）；
+  每个站的实际配比见下方逐格明细。${Object.entries(W.fusion_states || {}).map(([k, v]) => `${h({APPLIED:"按站重配已生效", SHADOW:"影子（服务起点）", SEAT_NO_STATION_PARAMS:"本站参数未就绪（服务起点）"}[k] || k)} ${v}`).join(" · ")}</div>` : ""}
   <div class="grid g4" style="margin-top:12px">${cards}</div>
   ${servingWeightTrend(W, summary)}
   <table style="margin-top:12px"><thead><tr>
