@@ -17550,10 +17550,12 @@ function moneyDataBoard(){
   if(!M.available) return `<div class="card"><span class="dot amber"></span>
     ${h(M.reason || "实盘还读不出来")}。</div>`;
   const NAMES = {proper_bet:"Proper", tail_short:"远尾做空", tiebreak:"秤砣线",
-    basket:"篮子", p1_tail:"P1 尾段", p1_consensus:"同心线"};
-  const ORDER = ["proper_bet","tail_short","tiebreak","basket","p1_tail","p1_consensus"];
+    basket:"篮子", p1_tail:"P1 尾段"};
+  // 同心线 has no column (user 2026-10-05: 去掉同心线); its money stays in
+  // 合计, the whole book.  Columns in this fixed order, never re-sorted.
+  const ORDER = ["proper_bet","tail_short","tiebreak","basket","p1_tail"];
   const BL = M.by_lane || {};
-  const lanes = ORDER.filter(k => BL[k]).concat(Object.keys(BL).filter(k => !ORDER.includes(k)).sort());
+  const lanes = ORDER.filter(k => BL[k]);
   const RW = M.risk || {}, EW = M.economics || {};
   const cols = [{name:"合计", pnl: RW.available ? RW.realised_pnl_usdc : EW.pnl_usdc,
       stake: RW.available ? RW.total_staked_usdc : EW.stake_usdc, rows: M.settled_rows,
@@ -17599,7 +17601,7 @@ function moneyDataBoard(){
   const head = `<tr><th></th>${cols.map(c => `<th class="${c.whole ? "mb-whole" : ""}">${h(c.name)}</th>`).join("")}</tr>`;
   const body = ROWS.map(([label, val, tone]) => `<tr><td class="muted">${label}</td>${
     cols.map(c => `<td class="mono ${tone(c)}${c.whole ? " mb-whole" : ""}">${val(c)}</td>`).join("")}</tr>`).join("");
-  return `<div class="scroll"><table class="mb-cmp"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+  return `<div class="scroll"><table class="mb-cmp" data-grouped="1"><thead>${head}</thead><tbody>${body}</tbody></table></div>
     <div class="muted" style="font-size:11.5px;margin-top:4px">本金 ${num(M.capital_usdc,0)} U（预算旋钮，${h(M.capital_source||"")}）；
     权益曲线、夏普、回撤、最差一天与 CVaR 至少 3 个结算日才算；覆盖率与每股期望按股加权；远尾做空是 NO 腿，没有「声称覆盖」。</div>`;
 }
@@ -17710,7 +17712,7 @@ function pnlCalendar(){
   const rows = D.daily || [];
   if(!rows.length) return "";
   return `<h2>盈亏日历：每个事件日的已结算实盘盈亏（全部策略合计）</h2>
-  <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、P1 尾段、同心线），读实盘成交与结算（与资金看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
+  <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、P1 尾段、同心线历史），读实盘成交与结算（与资金看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
   悬停看当天投入、成交站数与腿数；未结算的日子标「待结算」。「周」列是该周合计，上方四格是最近 1/7/30/90 个已结算日。</p>
   <style>
   .pcal-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
@@ -18877,11 +18879,9 @@ function liveReadiness(){
   const lsign = v => v==null ? "" : (v>=0?"up":"down");
   const LT = L.lane_pnl_totals || {};
   const LANE_ORDER = [["proper_bet","Proper"],["tail_short","远尾做空"],
-    ["tiebreak","秤砣线"],["basket","篮子"],["p1_tail","P1 尾段"],["p1_consensus","同心线"]];
-  const LANES_SHOWN = [
-    ...LANE_ORDER.filter(([lane])=>LT[lane]),
-    ...Object.keys(LT).filter(lane=>!LANE_ORDER.some(([k])=>k===lane)).sort().map(lane=>[lane, lane]),
-  ];
+    ["tiebreak","秤砣线"],["basket","篮子"],["p1_tail","P1 尾段"]];
+  // 同心线 has no column (user 2026-10-05: 去掉同心线); 合计 still sums every lane.
+  const LANES_SHOWN = LANE_ORDER.filter(([lane])=>LT[lane]);
   const LANE_FIELDS = ["cost_usdc","payout_usdc","sell_proceeds_usdc","pnl_usdc","settled_legs","pending_legs"];
   const laneSum = o => Object.values(o||{}).reduce((a,x)=>{
     LANE_FIELDS.forEach(k=>{ a[k]+=Number((x||{})[k]||0); }); return a;
@@ -18916,7 +18916,7 @@ function liveReadiness(){
   })).join("");
   const groupBlock = groupRows ? `<details class="note" style="margin-top:12px">
     <summary>按气候带 × 海陆分组小计（实盘，按车道）</summary>
-    <div class="scroll"><table><thead><tr>
+    <div class="scroll"><table data-grouped="1"><thead><tr>
       <th>气候带</th><th>海陆</th><th>站数</th>${LANES_SHOWN.map(([_, name])=>`<th>${h(name)}</th>`).join("")}<th>合计</th>
       </tr></thead><tbody>${groupRows}</tbody></table></div>
     <div class="muted" style="margin-top:6px">禁入站也计入小计。每格：已结算现金盈亏(U) 与 ROI。</div>
@@ -19013,7 +19013,7 @@ function liveReadiness(){
       现金口径：卖出回款按各买腿持股比例摊回，剩余份额按结算赔付。</div>
     ${groupBlock}
     <div class="scroll" style="max-height:420px;margin-top:6px">
-    <table style="white-space:nowrap"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
+    <table style="white-space:nowrap" data-grouped="1"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
