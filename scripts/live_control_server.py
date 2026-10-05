@@ -1280,6 +1280,50 @@ MANUAL_ORDER_ORIGINS = frozenset({
     "http://127.0.0.1:8791", "http://localhost:8791",
 })
 
+NATIVE_CONFIRM_TIMEOUT_SEC = 120
+
+
+def native_order_confirmation(body: dict) -> tuple[bool, str]:
+    """Ask the operator on this Mac, in a system dialog, to confirm the basket."""
+
+    import subprocess  # noqa: PLC0415
+
+    legs = "\n".join(
+        f"  {leg.get('bucket')}：{leg.get('shares')} 份 × 限价 {leg.get('limit_price')}"
+        for leg in (body.get("legs") or [])[:12]
+    )
+    mode = {"taker": "吃卖一（限价 FOK）", "maker": "挂买一+1（post-only GTC）",
+            "manual": "手填价格（GTC）"}.get(str(body.get("mode")), str(body.get("mode")))
+    text = (f"看板请求用实盘钱包买入 YES\n\n{body.get('station')} {body.get('event_date')}\n"
+            f"{legs}\n\n方式：{mode}\n\n只有点「下单」才会发出。")
+    script = [
+        "on run argv",
+        "activate",
+        'set r to display dialog (item 1 of argv) with title "一键下单确认" '
+        'buttons {"取消", "下单"} default button "取消" cancel button "取消" '
+        f"with icon caution giving up after {NATIVE_CONFIRM_TIMEOUT_SEC}",
+        "if gave up of r then return \"timeout\"",
+        "return button returned of r",
+        "end run",
+    ]
+    args = ["osascript"]
+    for line in script:
+        args += ["-e", line]
+    try:
+        out = subprocess.run(args + [text], capture_output=True, text=True,
+                             timeout=NATIVE_CONFIRM_TIMEOUT_SEC + 15)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"确认框无法弹出：{type(exc).__name__}"
+    answer = (out.stdout or "").strip()
+    if out.returncode == 0 and answer == "下单":
+        return True, "confirmed"
+    if answer == "timeout":
+        return False, "超时未点"
+    if "-128" in (out.stderr or ""):
+        return False, "点了取消"
+    return False, (out.stderr or answer or "未知").strip()[:120]
+
+
 # The board's one-station panel (user 2026-10-05: ZUUU 单站日分布，自动刷新与一键
 # 刷新).  A reader of what production stored, built on demand
 # (bayes_basket_target.station_day_board, ~0.5 s of read-only reads); answers
@@ -1403,7 +1447,16 @@ class Handler(BaseHTTPRequestHandler):
                 # The CORS answer above lets any page's script reach this
                 # loopback port, so the Origin is checked here, by name.
                 origin = str(self.headers.get("Origin") or "")
-                if origin not in MANUAL_ORDER_ORIGINS:
+                if origin == "null":
+                    # The board opened as a file:// page sends Origin: null --
+                    # and so can any site's sandboxed frame.  Such a request
+                    # goes ahead only after the operator says yes in a dialog
+                    # on this Mac, which no web page can click.
+                    confirmed, why = native_order_confirmation(body)
+                    if not confirmed:
+                        self._send(403, {"error": f"本机确认框未确认（{why}）"})
+                        return
+                elif origin not in MANUAL_ORDER_ORIGINS:
                     self._send(403, {"error": f"来源不被允许下单：{origin or '无 Origin'}"})
                     return
                 from bayes_basket_target.manual_basket_order import (  # noqa: PLC0415

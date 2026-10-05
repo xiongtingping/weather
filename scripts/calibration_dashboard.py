@@ -22584,7 +22584,7 @@ function sdOrderLegs(day, st){
 function sdOrderResult(key){
   const r = (SD.orders || {})[key];
   if(!r) return "";
-  if(r.busy) return `<div class="sd-ev">下单中…（${sdEsc(r.batch_id)}）</div>`;
+  if(r.busy) return `<div class="sd-ev">下单中…（${sdEsc(r.batch_id)}）${location.protocol === "file:" ? "<b>本地文件打开的看板：请在 Mac 弹出的系统确认框里点「下单」</b>（2 分钟内；用 http://127.0.0.1:8791/cal_dashboard.html 打开则不弹）" : ""}</div>`;
   if(r.error) return `<div class="sd-ev down">下单未发出：${sdEsc(r.error)}</div>`;
   const word = {FILL:"成交", POST_ACK:"已挂单", EXPIRED:"FOK 未成交（已作废）", SUBMIT_REFUSED:"网关拒绝", UNKNOWN_POST:"结果未知（需对账）", NOT_SENT:"未发送"};
   const rows = (r.results || []).map(x => `<tr><td>${sdEsc(x.bucket)}</td><td class="${x.event_type === "FILL" || x.event_type === "POST_ACK" ? "up" : "down"}">${sdEsc(word[x.event_type] || x.event_type)}</td>
