@@ -15975,7 +15975,7 @@ color-scheme:dark}
 .box-k{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid var(--box);color:var(--text)}
 .box-n{font-size:12.5px;margin:3px 0 4px}
 .box > .sec{margin-top:10px}
-.kpis .kpi{padding:10px 12px}.kpi-l{font-weight:600;display:flex;gap:6px;align-items:center}
+.kpis .kpi{padding:10px 12px}.kpis>.kpi{display:block;min-width:0}.kpi-l{font-weight:600;display:flex;gap:6px;align-items:center}
 .kpi-v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
 .kpi-q{font-size:11.5px}.kpi-p{font-size:12px;margin-top:4px}
 .vstrip{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -20326,7 +20326,7 @@ function modelAccuracyBoard(){
   <div class="grid g3" style="margin-top:12px">${NS.coreCharts}</div>`}
   ${lamps ? `<div class="card lamps" style="margin-top:12px"><span class="muted">诊断灯 · 六层</span>${lamps}
     <span class="pill ${S.overall || "muted"}" style="margin-left:auto">${VERDICT_WORD[S.overall] || "证据不足"}</span></div>` : ""}
-  <details class="note diag"><summary>诊断：中心 μ · 宽度 σ / 形状 · 概率行为（找病用，不判决）</summary>
+  <div class="note diag" style="margin-top:12px"><div style="font-weight:600;margin-bottom:6px">诊断：中心 μ · 宽度 σ / 形状 · 概率行为（找病用，不判决）</div>
     <div class="grid g3 kpis kpis-diag">${kpis}</div>
     ${NS.diagCards ? `<div class="grid g3 ns-grid" style="margin-top:10px">${NS.diagCards}</div>` : ""}
     ${NS.identity ? `<div class="muted" style="font-size:12px;margin-top:4px">${NS.identity}</div>` : ""}
@@ -20334,7 +20334,7 @@ function modelAccuracyBoard(){
     <p class="sub" style="margin-top:6px">走势按事件日画最近 ${T.days || 21} 天，跨版本不截断；竖线是每次升版的起点。
       中心/宽度四张读 P0 的前瞻预测（总检同一份样本），其余读服务出去的分布（真值离均值同一份样本）。${
       thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>：${h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
-      thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></details>
+      thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></div>
   ${scoreBody ? `<details class="note diag"><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT、融合重解、上一版）</summary>${scoreBody}</details>` : ""}
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
