@@ -562,7 +562,7 @@ def test_the_truth_lamp_stands_when_its_table_is_unread(monkeypatch, tmp_path) -
 
 
 def test_live_readiness_takes_the_difficulty_it_is_handed(monkeypatch) -> None:
-    """The gates are the live book's; the two difficulty readings are a paged section."""
+    """The lanes' money is the live book's; the two difficulty readings are a paged section."""
 
     def forbidden(conn):
         raise AssertionError("handed in; do not read every truth row again")
@@ -570,11 +570,6 @@ def test_live_readiness_takes_the_difficulty_it_is_handed(monkeypatch) -> None:
     monkeypatch.setattr(C, "collect_station_difficulty", forbidden)
     monkeypatch.setattr(C, "_collect_live_orders", lambda conn: {"pnl": {"by_station": []}})
     monkeypatch.setattr(C, "_render_live_book", lambda conn: {"settlements": []})
-    monkeypatch.setattr(C.live_book, "station_days", lambda book: [])
-    monkeypatch.setattr(
-        C.live_book, "station_quality",
-        lambda s, d: {"stations": {}, "split_event_date": None, "thresholds": {}},
-    )
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE calibration_station_daily_high_truth"

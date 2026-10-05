@@ -393,86 +393,6 @@ def _completeness(baskets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _station_day_hits(days: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """The two station-day verdicts, counted: 每日统计's columns per station.
-
-    ``days`` are ``live_book.station_days`` records.  篮子命中 is over every
-    settled station-day, filled or not; 持仓命中 only over the ones that
-    filled -- the gap between the two is the legs that did not fill, which
-    is an execution number, not a model one.
-    """
-
-    settled = [d for d in days if d["settled_bucket"] is not None]
-    held = [d for d in settled if d["filled_legs"]]
-    return {
-        "settled_station_days": len(settled),
-        "basket_hit_station_days": sum(1 for d in settled if d["basket_hit"]),
-        "held_station_days": len(held),
-        "held_hit_station_days": sum(1 for d in held if d["held_hit"]),
-    }
-
-
-def station_stats(
-    book: Mapping[str, Any], seats: Mapping[str, Mapping[str, Any]]
-) -> list[dict[str, Any]]:
-    """One row per station that minted a live intent, across the window.
-
-    Every live intent counts toward the order columns -- refused by the send
-    gate, posted and unfilled, or filled -- so a barred station's orders are
-    on its row rather than missing from it.
-    """
-
-    legs_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for leg in book.get("legs") or []:
-        legs_by_station[str(leg["station_id"])].append(leg)
-    rows_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for row in book.get("settlements") or []:
-        rows_by_station[str(row["station_id"])].append(row)
-    seats_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for seat in seats.values():
-        seats_by_station[str(seat["station_id"])].append(seat)
-    days_by_station: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for day in live_book.station_days(book):
-        days_by_station[str(day["station_id"])].append(day)
-    out = []
-    for station in sorted(legs_by_station):
-        legs = legs_by_station[station]
-        reached = [leg for leg in legs if reached_exchange(leg)]
-        filled = [leg for leg in legs if float(leg["filled_size"] or 0) > 0]
-        seat = _seat_account(seats_by_station.get(station, []))
-        out.append({
-            "station_id": station,
-            "station_label": STATION_LABELS.get(station, ""),
-            # 笔: a (day, stage) that filled anything, settled or not -- the
-            # settlement row's grain before the truth lands.
-            "position_count": len({
-                (leg["event_date"], leg["stage"]) for leg in filled
-            }),
-            "intent_leg_total": len(legs),
-            "reached_leg_total": len(reached),
-            "refused_leg_total": len(legs) - len(reached),
-            "filled_leg_total": len(filled),
-            "intent_notional_usdc": sum(
-                float(leg.get("requested_notional_usdc") or 0.0) for leg in legs
-            ),
-            "reached_notional_usdc": sum(
-                float(leg.get("requested_notional_usdc") or 0.0)
-                for leg in reached
-            ),
-            "filled_notional_usdc": sum(
-                float(leg.get("filled_notional_usdc") or 0.0) for leg in filled
-            ),
-            "event_days": len({leg["event_date"] for leg in legs}),
-            "completeness": _completeness(_baskets(legs)),
-            "sides": seat["sides"],
-            "model_coverage_mean": seat["model_coverage_mean"],
-            "seat_ask_total_mean": seat["seat_ask_total_mean"],
-            **_station_day_hits(days_by_station.get(station, [])),
-            **_money_account(rows_by_station.get(station, [])),
-        })
-    return out
-
-
 def _gate_refusals(
     conn: sqlite3.Connection, intents: Sequence[str]
 ) -> dict[str, str]:
@@ -724,7 +644,6 @@ def build(
             "day_count": len({s["event_date"] for s in seat_list}),
             **_money_account(rows),
         },
-        "station_stats": station_stats(book, seats),
         "basket_completeness": _completeness(_baskets(book.get("legs") or [])),
         "basket_hit_by_size": basket_hit_by_width(book),
         "chosen_basket_hit": chosen_basket_hit_trend(chains),

@@ -746,93 +746,19 @@ def test_a_station_that_traded_live_has_a_row_with_its_live_money(
     ready = _readiness_book(monkeypatch)
     by = {r["station"]: r for r in ready["stations"]}
     assert "NZWN" in by
-    live = by["NZWN"]["live"]
-    assert live["settled_legs"] == 1 and live["won"] == 1
-    assert live["roi"] == round(6.0 / 4.0, 6)
-    # And the row reads the same collector the money card does.
+    # Its money is per lane since 2026-10-05; the fixture's decisions are
+    # plain ids, so the one leg is the basket's.
+    lane = by["NZWN"]["lane_pnl"]["basket"]
+    assert lane["settled_legs"] == 1 and lane["won_legs"] == 1
+    assert lane["pnl_usdc"] == pytest.approx(6.0)
+    assert lane["roi"] == round(6.0 / 4.0, 6)
+    # With nothing sold the cash P&L is the money card's held-to-settlement.
     card = {
         item["station_id"]: item
         for item in ready["live_orders"]["pnl"]["by_station"]
     }
-    assert card["NZWN"] == live
-
-
-def test_release_candidacy_reads_the_rows_own_gates(monkeypatch) -> None:
-    """Each barred station is judged on its own centre, not the last row's.
-
-    The criterion read ``gates`` and ``sid`` left over from the loop that
-    built the rows, so AAAA -- clean centre, positive five days -- was held
-    to ZZZZ's 2°C bias and never offered for release.
-    """
-
-    ready = _readiness_book(monkeypatch)
-    by = {r["station"]: r for r in ready["stations"]}
-    assert by["AAAA"]["gates"]["centre_bias"] is True
-    assert by["ZZZZ"]["gates"]["centre_bias"] is False
-    assert by["AAAA"]["release_candidate"] is True
-    assert by["ZZZZ"]["release_candidate"] is False
-    assert ready["release_candidates"] == ["AAAA"]
-
-
-def test_the_gates_and_candidates_read_live_money_not_paper(monkeypatch) -> None:
-    """User ruling 2026-09-16: the paper ledger is a rule comparator.
-
-    The fixture's paper book lost every day and its live book won every
-    day.  The gates' ROI, the recent window the release reads, and the
-    sort all follow the live one; the paper figures ride along under their
-    own names for comparison and decide nothing.
-    """
-
-    ready = _readiness_book(monkeypatch)
-    row = {r["station"]: r for r in ready["stations"]}["AAAA"]
-    assert row["roi"] == round(18.0 / 12.0, 6)
-    assert row["gates"]["roi"] is True
-    assert row["chains"] == 3 and row["gates"]["chains"] is False
-    assert row["recent_days"] == 3 and row["recent_roi"] > 0
-    # No paper figure rides along any more (user ruling, 2026-09-16: the
-    # paper columns left the go-live table with the rest of the paper
-    # readings).
-    assert not any(key.startswith("paper_") for key in row)
-    assert "bar_split" not in ready
-
-
-def test_claim_centre_and_the_five_dimensions_read_live_not_paper(
-    monkeypatch,
-) -> None:
-    """User ruling 2026-09-16: 过闸、未过项、不行、不行的维度 all on live data.
-
-    The live decisions of AAAA stood on a centre 0.1C off truth and ZZZZ's
-    on one 2.0C off; the paper positions carry the reverse.  The centre gate,
-    the claim gate and the five-dimension read follow the live envelopes, and
-    the gate and the dimension are the same number.
-    """
-
-    ready = _readiness_book(monkeypatch)
-    by = {r["station"]: r for r in ready["stations"]}
-    clean, off = by["AAAA"], by["ZZZZ"]
-    assert clean["bias_c"] == pytest.approx(0.1)
-    assert off["bias_c"] == pytest.approx(2.0)
-    assert "paper_bias_c" not in clean
-    # Three wins at a claim of 0.95.
-    assert clean["ratio"] == pytest.approx(1.0 / 0.95)
-    assert clean["gates"]["claim_honest"] is True
-    assert clean["failure"]["calibration_ratio"] == clean["ratio"]
-    assert clean["failure"]["centre_residual_c"] == clean["bias_c"]
-    assert clean["failure"]["flags"]["centre"] is False
-    assert off["failure"]["flags"]["centre"] is True
-    assert off["failure"]["flag_count"] == 1
-    assert clean["failure"]["settled_days"] == 3
-    # NZWN traded live without a bound envelope: no claim, no centre -- not
-    # a pass and not a zero.
-    nzwn = by["NZWN"]
-    assert nzwn["ratio"] is None and nzwn["bias_c"] is None
-    assert nzwn["gates"]["claim_honest"] is False
-    assert ready["failure"]["available"] is True
-    # A station with no live settlement has no five-dimension entry at all.
-    assert all(
-        r["failure"] is None for r in ready["stations"]
-        if not (r["live"] or {}).get("settled_legs")
-    )
+    assert card["NZWN"]["pnl_usdc"] == pytest.approx(lane["pnl_usdc"])
+    assert ready["lane_pnl_totals"]["basket"]["settled_legs"] >= 1
 
 
 def test_the_daily_table_and_roster_read_the_live_book_at_two_named_grains(
@@ -887,12 +813,3 @@ def test_the_daily_table_and_roster_read_the_live_book_at_two_named_grains(
     # the legs are still counted under that key rather than dropped.
     assert roster["KMIA"]["stages"]["?"]["filled_legs"] == 2
 
-    # The go-live table counts the same verdicts by station: summed over
-    # stations they are the day's row.
-    import live_selection  # noqa: PLC0415
-
-    stats = live_selection.station_stats(board.live_book.build(conn), {})
-    assert sum(x["settled_station_days"] for x in stats) == row["settled_station_days"]
-    assert sum(x["basket_hit_station_days"] for x in stats) == row["basket_hit_station_days"]
-    assert sum(x["held_station_days"] for x in stats) == row["held_station_days"]
-    assert sum(x["held_hit_station_days"] for x in stats) == row["held_hit_station_days"]

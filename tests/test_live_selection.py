@@ -206,13 +206,12 @@ def test_the_seat_side_is_productions_two_centres_on_envelope_ordinals() -> None
     assert abs(account["ev_per_usdc_mean"] - (0.9 / 0.8 - 1)) < 1e-9
 
 
-def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
-) -> None:
-    """The merged station table reads every live intent, refused ones too.
+def test_baskets_count_what_reached_the_exchange_and_what_filled() -> None:
+    """The fleet completeness card: refused legs make no basket.
 
-    EGLC's only orders were refused by the send gate: its row still exists,
-    with every leg counted as refused and no basket (no market was asked).
-    KMIA posted three buckets and bought two: one basket, 2/3 complete.
+    EGLC's only orders were refused by the send gate: no basket (no market
+    was asked).  KMIA posted three buckets and bought two: one basket, 2/3
+    complete.
     """
 
     day = "2026-09-10"
@@ -225,14 +224,6 @@ def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
         _leg("i4", "d2", "EGLC", day, "P0", "20", state="failed"),
         _leg("i5", "d2", "EGLC", day, "P0", "21", state="failed"),
     ]
-    book = _book(legs, {})
-    rows = {r["station_id"]: r for r in LS.station_stats(book, {})}
-    eglc = rows["EGLC"]
-    assert eglc["intent_leg_total"] == 2 and eglc["refused_leg_total"] == 2
-    assert eglc["reached_leg_total"] == 0
-    assert eglc["completeness"]["baskets"] == 0
-    kmia = rows["KMIA"]
-    assert kmia["reached_leg_total"] == 3 and kmia["filled_leg_total"] == 2
     fleet = LS._completeness(LS._baskets(legs))
     assert fleet["baskets"] == 1 and fleet["complete"] == 0
     assert abs(fleet["mean"] - 2 / 3) < 1e-9
@@ -240,50 +231,13 @@ def test_a_barred_stations_orders_are_on_its_row_and_baskets_count_what_filled(
     assert "matrix" not in fleet
 
 
-def test_each_station_row_counts_its_hits_at_the_daily_tables_grains() -> None:
-    """The go-live table's hit columns, per station (2026-09-17).
-
-    KMIA, day 1: posted 30/31, filled 30, truth 31 -- a basket hit, a held
-    miss.  Day 2: filled 40, truth 40 -- both.  Day 3: filled, no truth yet
-    -- neither.  EGLC's only day was refused whole by the send gate on the
-    truth's bucket: a basket hit (production chose it) with no held day and
-    no 笔.  笔 are (day, stage) that filled and settled, with the interval
-    on their hit rate.
-    """
-
-    legs = [
-        _leg("a1", "d1", "KMIA", "2026-09-10", "P0", "30", filled=5,
-             notional=1, state="filled", claim=0.4),
-        _leg("a2", "d1", "KMIA", "2026-09-10", "P0", "31", claim=0.2),
-        _leg("b1", "d2", "KMIA", "2026-09-11", "P0", "40", filled=5,
-             notional=1, state="filled", claim=0.5),
-        _leg("c1", "d3", "KMIA", "2026-09-12", "P0", "50", filled=5,
-             notional=1, state="filled", claim=0.5),
-        _leg("e1", "d4", "EGLC", "2026-09-10", "P0", "20", state="failed"),
-    ]
-    settled = {("KMIA", "2026-09-10"): ("31", "truth"),
-               ("KMIA", "2026-09-11"): ("40", "truth"),
-               ("EGLC", "2026-09-10"): ("20", "truth")}
-    rows = {r["station_id"]: r for r in LS.station_stats(_book(legs, settled), {})}
-    kmia = rows["KMIA"]
-    assert (kmia["basket_hit_station_days"], kmia["settled_station_days"]) == (2, 2)
-    assert (kmia["held_hit_station_days"], kmia["held_station_days"]) == (1, 2)
-    assert (kmia["hit_count"], kmia["claimed_count"]) == (1, 2)
-    assert abs(kmia["claimed_win_probability_mean"] - 0.45) < 1e-9
-    low, high = kmia["hit_rate_interval_90"]
-    assert 0.0 < low < 0.5 < high < 1.0
-    eglc = rows["EGLC"]
-    assert (eglc["basket_hit_station_days"], eglc["settled_station_days"]) == (1, 1)
-    assert eglc["held_station_days"] == 0
-    assert eglc["claimed_count"] == 0 and eglc["hit_rate_interval_90"] is None
-
-
 def test_the_board_counts_station_day_verdicts_from_the_live_book_only() -> None:
-    """每日统计 and the go-live table read one decision of a day's verdict.
+    """每日统计 reads one decision of a day's verdict.
 
-    Both used to be free to compute 篮子命中/持仓命中 on their own; the
-    verdict now lives in ``live_book.station_days`` and neither caller may
-    restate the membership test.
+    It used to be free to compute 篮子命中/持仓命中 on its own; the verdict
+    lives in ``live_book.station_days`` and the caller may not restate the
+    membership test.  (The go-live table's per-station hit columns left the
+    board on 2026-10-05.)
     """
 
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(
@@ -300,17 +254,6 @@ def test_the_board_counts_station_day_verdicts_from_the_live_book_only() -> None
     }
     assert "live_book.station_days" in calls
     assert "live_book.stage_summary" not in calls
-    selection = ast.parse(
-        (ROOT / "scripts" / "live_selection.py").read_text(encoding="utf-8")
-    )
-    stats = next(
-        node for node in ast.walk(selection)
-        if isinstance(node, ast.FunctionDef) and node.name == "station_stats"
-    )
-    assert "live_book.station_days" in {
-        ast.unparse(node.func) for node in ast.walk(stats)
-        if isinstance(node, ast.Call)
-    }
 
 
 def test_the_funnel_names_each_station_day_it_counted_as_not_built() -> None:

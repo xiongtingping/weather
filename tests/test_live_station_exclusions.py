@@ -311,9 +311,11 @@ def test_a_new_station_is_not_live_until_it_has_earned_it() -> None:
     # A waiver cannot smuggle a barred station back in: the bar is checked
     # first, so this must hold no matter what anybody writes in the list.
     assert not (waived & set(scope["barred"]))
-    # A station nobody has ever settled is not live and not barred.
-    assert "LLBG" not in scope["stations"]
-    assert "LLBG" not in scope["barred"]
+    # A station nobody has ever settled or ruled on is not live and not
+    # barred.  An id outside the fleet: since 2026-10-04 every fleet station
+    # carries an operator ruling, LLBG/LTFM/UUWW included.
+    assert "ZZZZ" not in scope["stations"]
+    assert "ZZZZ" not in scope["barred"]
 
 
 def test_the_three_states_are_disjoint_and_cover_what_trades() -> None:
@@ -377,20 +379,22 @@ def test_the_live_batch_is_the_bars_complement_not_a_list() -> None:
 
 
 def test_a_station_the_model_never_computed_is_not_in_the_batch() -> None:
-    """Membership comes from book history, not the coordinate roster.
+    """Membership comes from rulings and book history, not the coordinate roster.
 
-    LLBG, LTFM and UUWW are on the roster and have never produced a
-    position, so a complement over the roster would put stations into a
-    live batch that cannot trade.
+    A complement over the roster would put stations into a live batch that
+    cannot trade.  Every station in the batch is either one the operator
+    waived in or one production's own record of intent-minting decisions
+    carries.  (Until the 2026-10-04 waivers this named LLBG, LTFM and UUWW
+    as never in the batch; that was a fact about those days, not the rule.)
     """
 
     scope = set(control.live_stations()["stations"])
-    for station in ("LLBG", "LTFM", "UUWW"):
-        assert station not in scope
-        # And the roster the board draws its probation column from does not
-        # carry them either: it reads production's own record of decisions
-        # that minted intents, which these three have never produced.
-        assert station not in control.tradeable_stations()
+    import bayes_basket_target.live_station_scope as rules  # noqa: PLC0415
+
+    waived = rules.operator_overrides()["waived"]
+    roster = set(control.tradeable_stations())
+    assert scope <= (set(waived) | roster)
+    assert "ZZZZ" not in scope and "ZZZZ" not in roster
 
 
 def test_the_bar_has_no_ceiling() -> None:
@@ -1211,15 +1215,17 @@ def test_the_ledger_is_not_a_source_for_who_may_trade(
 
     _config_copies(tmp_path, monkeypatch)
     # A station only the ledger knows is not in the roster the board draws.
-    conn = _roster_conn(production=(), ledger=("LLBG",))
+    # ZZZZ: an id no ruling names (every fleet station carries one since
+    # 2026-10-04); the rules treat it like any other station.
+    conn = _roster_conn(production=(), ledger=("ZZZZ",))
     assert rules.tradeable_stations(conn) == set()
     # ...and it does not trade, whatever the ledger holds.
-    assert rules.admission("LLBG", conn=conn)["admitted"] is False
+    assert rules.admission("ZZZZ", conn=conn)["admitted"] is False
     # The roster reads production's own append-only record instead.
-    conn = _roster_conn(production=("LLBG",), ledger=())
-    assert rules.tradeable_stations(conn) == {"LLBG"}
+    conn = _roster_conn(production=("ZZZZ",), ledger=())
+    assert rules.tradeable_stations(conn) == {"ZZZZ"}
     # Being in the roster is still not admission: the gate decides.
-    assert rules.admission("LLBG", conn=conn)["reason"] == (
+    assert rules.admission("ZZZZ", conn=conn)["reason"] == (
         "live_station_probation"
     )
 
@@ -1253,10 +1259,10 @@ def test_a_held_station_is_told_apart_from_one_nobody_waived(
     holds = list(doc.get("station_probation_holds") or [])
     # A fleet station nobody has ruled on, or -- when every one carries a
     # ruling, as all 45 did that day -- an id outside the fleet, which the
-    # rules treat like any other station (LLBG below is one).
+    # rules treat like any other station (ZZZZ below is one).
     free = [
         s for s in sorted(STATION_LABELS)
-        if s not in barred and s not in waivers and s not in holds and s != "LLBG"
+        if s not in barred and s not in waivers and s not in holds and s != "ZZZZ"
     ]
     if not set(waivers) - barred:
         doc["station_probation_waivers"] = waivers + [free.pop(0) if free else "ZZWV"]
@@ -1281,7 +1287,7 @@ def test_a_held_station_is_told_apart_from_one_nobody_waived(
         assert rules.admission(station, conn=conn)["reason"] == (
             "live_station_barred"
         )
-    assert rules.admission("LLBG", conn=conn)["reason"] == (
+    assert rules.admission("ZZZZ", conn=conn)["reason"] == (
         "live_station_probation"
     )
     # The board can still say its display roster was unreadable; it just

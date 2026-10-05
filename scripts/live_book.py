@@ -53,6 +53,7 @@ exactly as before.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
@@ -539,6 +540,132 @@ def _payout(
     return max(0.0, kept) + no_paid + sum(proceeds for _shares, proceeds in sold.values())
 
 
+#: A side lane's decision id: ``<lane>_decision_<STATION>_<YYYY-MM-DD>``.
+LANE_DECISION_RE = re.compile(
+    r"^(?P<lane>[a-z0-9_]+?)_decision_(?P<station>[A-Z0-9]{3,5})_"
+    r"(?P<day>\d{4}-\d{2}-\d{2})"
+)
+
+
+def intent_lane(decision_id: str) -> str:
+    """The lane that minted an intent: ``basket`` for a plain decision id,
+    else the prefix a side lane writes (recycle998, misbuyexit, tiebreak,
+    p1_tail, p1_consensus, proper_bet, tail_short).  The prefix may carry
+    underscores: until 2026-09-23 the pattern stopped at the first one, so
+    every P1 尾段线 and 同心线 order read as a basket buy."""
+
+    match = LANE_DECISION_RE.match(str(decision_id))
+    return match.group("lane") if match else "basket"
+
+
+def allocate_no_sells_by_intent(
+    legs: list[dict[str, Any]], sells: list[dict[str, Any]],
+) -> dict[str, tuple[float, float]]:
+    """``allocate_sells_by_intent`` for the NO side: each NO sale shared over
+    the live NO buys of its station-day and bucket, in proportion to filled
+    shares, at its own average price, never beyond what they held."""
+
+    held: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for leg in legs:
+        if leg["filled_size"] > 0 and leg.get("side", "YES") == "NO":
+            held[(leg["station_id"], leg["event_date"], leg["bucket"])].append(leg)
+    sold: dict[tuple[str, str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for sale in sells:
+        if sale.get("side", "YES") != "NO":
+            continue
+        slot = sold[(sale["station_id"], sale["event_date"], sale["bucket"])]
+        slot[0] += sale["sold_size"]
+        slot[1] += sale["proceeds_usdc"]
+    out: dict[str, tuple[float, float]] = {}
+    for key, (shares, proceeds) in sold.items():
+        buyers = held.get(key) or []
+        total = sum(leg["filled_size"] for leg in buyers)
+        if total <= 0.0 or shares <= 0.0:
+            continue
+        take = min(shares, total)
+        price = proceeds / shares
+        for leg in buyers:
+            part = take * leg["filled_size"] / total
+            out[leg["order_intent_id"]] = (part, part * price)
+    return out
+
+
+def lane_station_pnl(book: Mapping[str, Any]) -> dict[str, Any]:
+    """Settled cash P&L per station and per lane, leg by leg.
+
+    User ruling 2026-10-05 (「按照车道分别统计盈亏」): a station's money was
+    one sum over every lane that bought there -- the far-tail NO lane, the
+    tiebreak lane, the basket, P1 tail, Proper, concentric.  Here each filled
+    buy leg is scored on its own and summed under the lane that minted it, so
+    the lanes add up to the station.
+
+    Cash, not held-to-settlement: what the leg cost, what its share of any
+    sale of that bucket brought back (YES and NO alike, in proportion to the
+    shares each buy held), and what the shares still held paid at
+    settlement -- one unit each on the truth bucket for YES, on any other
+    bucket for NO.  A leg whose station-day has no settled bucket yet is
+    pending and carries no P&L.
+    """
+
+    legs = list(book.get("legs") or [])
+    settled = book.get("settled") or {}
+    yes_sold = book.get("sold_by_intent")
+    if yes_sold is None:
+        yes_sold = allocate_sells_by_intent(legs, list(book.get("exit_sells") or []))
+    no_sold = allocate_no_sells_by_intent(legs, list(book.get("exit_sells") or []))
+    stations: dict[str, dict[str, dict[str, float]]] = defaultdict(dict)
+    lanes: dict[str, dict[str, float]] = {}
+
+    def _slot(table: dict[str, dict[str, float]], key: str) -> dict[str, float]:
+        return table.setdefault(key, {
+            "cost_usdc": 0.0, "payout_usdc": 0.0, "sell_proceeds_usdc": 0.0,
+            "settled_legs": 0, "pending_legs": 0, "won_legs": 0,
+        })
+
+    for leg in legs:
+        if leg["filled_size"] <= 0:
+            continue
+        lane = intent_lane(leg["decision_id"])
+        station = str(leg["station_id"])
+        targets = (_slot(stations[station], lane), _slot(lanes, lane))
+        landed = settled.get((station, str(leg["event_date"])))
+        if landed is None:
+            for slot in targets:
+                slot["pending_legs"] += 1
+            continue
+        side = str(leg.get("side", "YES")).upper()
+        sold_shares, proceeds = (no_sold if side == "NO" else yes_sold).get(
+            leg["order_intent_id"], (0.0, 0.0)
+        )
+        kept = max(0.0, float(leg["filled_size"]) - float(sold_shares))
+        pays = (str(leg["bucket"]) == str(landed[0])) != (side == "NO")
+        payout = (kept if pays else 0.0) + float(proceeds)
+        cost = float(leg["filled_notional_usdc"] or 0.0)
+        for slot in targets:
+            slot["cost_usdc"] += cost
+            slot["payout_usdc"] += payout
+            slot["sell_proceeds_usdc"] += float(proceeds)
+            slot["settled_legs"] += 1
+            slot["won_legs"] += 1 if payout > cost else 0
+
+    def _finish(slot: dict[str, float]) -> dict[str, Any]:
+        pnl = slot["payout_usdc"] - slot["cost_usdc"]
+        return {
+            **{key: round(value, 4) if isinstance(value, float) else value
+               for key, value in slot.items()},
+            "pnl_usdc": round(pnl, 4),
+            "roi": round(pnl / slot["cost_usdc"], 6) if slot["cost_usdc"] > 0 else None,
+        }
+
+    return {
+        "by_station": {
+            station: {lane: _finish(slot) for lane, slot in table.items()}
+            for station, table in stations.items()
+        },
+        "by_lane": {lane: _finish(slot) for lane, slot in lanes.items()},
+    }
+
+
 def basket_belief(
     legs: Iterable[Mapping[str, Any]], *, strict: bool = True
 ) -> Mapping[str, float] | None:
@@ -800,149 +927,6 @@ def settlement_rows(
             "intended_buckets": summary["intended_buckets"],
         })
     return out
-
-
-#: Where each quality dimension stops being noise (the paper-era matrix's
-#: thresholds, kept when it moved onto live fills on 2026-09-16).
-CLAIM_FLOOR = 0.75          # hit rate under three quarters of the claim
-CENTRE_LIMIT_C = 0.8        # most of a bucket, after every correction
-BASKET_HIT_FLOOR = 0.45     # the basket missed more often than not
-
-
-def station_quality(
-    rows: list[dict[str, Any]], days: Iterable[Mapping[str, Any]]
-) -> dict[str, Any]:
-    """Per station, what its live settlements say about each layer.
-
-    User ruling 2026-09-16: the go-live table's gates and its five-dimension
-    read (过闸、未过项、不行、不行的维度) all read the live book.  ``rows`` is
-    ``settlement_rows`` -- one per settled (station, day, stage) that filled;
-    ``days`` is ``station_days`` of the same book.
-
-    Two grains, each where its question lives.  Claim and realisation are
-    per stage row: each stage held its own basket at its own claim.  The
-    basket hit, centre and the two halves are per station-day: truth is one
-    value a day, so three stages holding the same day are one observation of
-    it.
-
-    * ``calibration_ratio`` -- hit rate over the mean claim, rows whose claim
-      is known.  The gate wants it in [0.88, 1.18]; under ``CLAIM_FLOOR`` is
-      the 声称 dimension.
-    * ``realization_ratio`` -- realised PnL over claimed EV, same rows.
-      Negative is the 实现 dimension.
-    * ``centre_residual_c`` -- mean over days of the held centre minus truth.
-      The gate wants |x| <= 0.8; past ``CENTRE_LIMIT_C`` is 中心.
-    * ``basket_hit_rate`` -- over the settled station-days that filled, the
-      share whose posted buckets held truth: ``station_days``' own 篮子命中
-      verdict (every stage's posted buckets, filled or not), so it is the
-      table's 篮子命中·站日 on the days that filled.  Named 覆盖率 until
-      2026-09-17 and read off the filled stages' posts alone, so a stage
-      that posted the truth and filled nothing did not count (KSFO); under
-      ``BASKET_HIT_FLOOR`` is the 篮子命中 dimension.
-    * the halves split at the fleet's median settled day; losing in both is
-      持续.
-
-    A station with no settled live row has no entry: no evidence, not a pass
-    and not a failure.
-    """
-
-    dates = sorted({str(row["event_date"]) for row in rows})
-    cut = dates[len(dates) // 2] if dates else ""
-    per: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        per[str(row["station_id"])].append(row)
-    basket_hit: dict[tuple[str, str], bool] = {
-        (str(day["station_id"]), str(day["event_date"])): bool(day["basket_hit"])
-        for day in days
-        if day["settled_bucket"] is not None and day["filled_legs"]
-    }
-    out: dict[str, dict[str, Any]] = {}
-    for station, group in sorted(per.items()):
-        claimed = [
-            row for row in group
-            if row.get("claimed_win_probability") is not None
-        ]
-        hits = sum(int(row["hit"]) for row in claimed)
-        claim_mean = (
-            sum(float(row["claimed_win_probability"]) for row in claimed)
-            / len(claimed) if claimed else None
-        )
-        calibration = (
-            (hits / len(claimed)) / claim_mean
-            if claimed and claim_mean else None
-        )
-        expected = sum(
-            float(row["claimed_ev_usdc"]) for row in claimed
-            if row.get("claimed_ev_usdc") is not None
-        )
-        realised_claimed = sum(float(row["pnl_usdc"]) for row in claimed)
-        by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for row in group:
-            by_day[str(row["event_date"])].append(row)
-        verdicts = [
-            basket_hit[(station, day)] for day in by_day
-            if (station, day) in basket_hit
-        ]
-        residuals = []
-        for day_rows in by_day.values():
-            errors = [
-                float(row["center_error_c"]) for row in day_rows
-                if row.get("center_error_c") is not None
-            ]
-            if errors:
-                residuals.append(sum(errors) / len(errors))
-        halves = [0.0, 0.0]
-        counts = [0, 0]
-        for day, day_rows in by_day.items():
-            index = 0 if day < cut else 1
-            halves[index] += sum(float(row["pnl_usdc"]) for row in day_rows)
-            counts[index] += 1
-        ratio = (
-            realised_claimed / expected if abs(expected) > 1e-9 else None
-        )
-        centre = sum(residuals) / len(residuals) if residuals else None
-        basket_hits = sum(1 for hit in verdicts if hit)
-        basket_rate = basket_hits / len(verdicts) if verdicts else None
-        flags = {
-            "realization": ratio is not None and ratio < 0,
-            "claim": calibration is not None and calibration < CLAIM_FLOOR,
-            "centre": centre is not None and abs(centre) > CENTRE_LIMIT_C,
-            "basket_hit": (
-                basket_rate is not None and basket_rate < BASKET_HIT_FLOOR
-            ),
-            "persistence": bool(
-                counts[0] and counts[1] and halves[0] < 0 and halves[1] < 0
-            ),
-        }
-        out[station] = {
-            "station_id": station,
-            "settled_count": len(group),
-            "settled_days": len(by_day),
-            "hit_count": hits,
-            "claimed_win_probability_mean": claim_mean,
-            "calibration_ratio": calibration,
-            "expected_usdc": expected,
-            "realized_usdc": sum(float(row["pnl_usdc"]) for row in group),
-            "realization_ratio": ratio,
-            "centre_residual_c": centre,
-            "basket_hit_days": basket_hits,
-            "basket_hit_rate": basket_rate,
-            "early_pnl_usdc": halves[0],
-            "late_pnl_usdc": halves[1],
-            "early_chains": counts[0],
-            "late_chains": counts[1],
-            "flags": flags,
-            "flag_count": sum(1 for value in flags.values() if value),
-        }
-    return {
-        "split_event_date": cut,
-        "thresholds": {
-            "claim_floor": CLAIM_FLOOR,
-            "centre_limit_c": CENTRE_LIMIT_C,
-            "basket_hit_floor": BASKET_HIT_FLOOR,
-        },
-        "stations": out,
-    }
 
 
 def pending_sales(book: Mapping[str, Any]) -> dict[str, Any]:
