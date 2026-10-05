@@ -20444,7 +20444,7 @@ function modelAccuracyBoard(){
       中心/宽度四张读 P0 的前瞻预测（总检同一份样本），其余读服务出去的分布（真值离均值同一份样本）。${
       thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>：${h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
       thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></div>
-  ${scoreBody ? `<details class="note diag"><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT、融合重解、上一版）</summary>${scoreBody}</details>` : ""}
+  ${scoreBody ? `<details class="note diag" open><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT、融合重解、上一版）</summary>${scoreBody}</details>` : ""}
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
