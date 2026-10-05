@@ -7,7 +7,7 @@ used to compute these itself by calling production's own functions; it now
 only reads the files this job writes (``data/board_readings/<name>.json``),
 and ``tests/test_board_is_read_only.py`` keeps it that way.
 
-Four readings, each with production's functions and nothing re-derived:
+Five readings, each with production's functions and nothing re-derived:
 
 * ``seat_windows`` -- charter 131's seat window for every served cell the
   board's landing tables read (``serving_cells_by_day``), not only the
@@ -19,6 +19,9 @@ Four readings, each with production's functions and nothing re-derived:
 * ``centre_shape`` -- the P0 gap to the market split into centre and shape.
 * ``l4_lane`` -- the L4 rows' forward skill and the settled-window
   realisation table.
+* ``basket_shadow`` -- the basket's P0 ladder per station-day (window, legs,
+  gate) from the preselection plans production compiled, and how its
+  choices settled.  Incremental: a rowid cursor, chunked short reads.
 
 Read-only against the SSOT (``mode=ro``); the job is a reader beside the
 writer (charter: read-only work runs on its own executor, never in a writer
@@ -53,7 +56,9 @@ SEAT_LOOKBACK_DAYS = 45
 #: How far before the last run's start the seat windows are read again: a
 #: three-hour block's median cell can move until the block closes, plus margin.
 SEAT_REREAD_HOURS = 6
-READING_NAMES = ("seat_windows", "fusion_resolve", "centre_shape", "l4_lane")
+READING_NAMES = (
+    "seat_windows", "fusion_resolve", "centre_shape", "l4_lane", "basket_shadow",
+)
 
 
 def _now() -> datetime:
@@ -1097,6 +1102,314 @@ def l4_lane(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# the basket's shadow ladder (user 2026-10-05 「前端增加篮子策略（梯子）的显示和
+# 评估：按照篮子策略选桶下单」, answered 「影子显示+评估」)
+# ---------------------------------------------------------------------------
+
+#: The basket buys in P0 only (charter 229), so only P0 preselection plans
+#: say what it would have bought.
+BASKET_SHADOW_STAGE = "P0"
+#: Event days kept in the reading.
+BASKET_SHADOW_DAYS = 45
+#: Plans read per query: each query is its own short read transaction, so
+#: the job never holds a snapshot across the table (WAL pinning).
+BASKET_SHADOW_CHUNK_ROWS = 1500
+#: Wall-clock budget of one run; the cursor carries the rest to the next.
+BASKET_SHADOW_BUDGET_SEC = float(os.environ.get("PM_BASKET_SHADOW_BUDGET_SEC") or 600.0)
+#: Bumped when a record's meaning changes: the stored cursor and records are
+#: then dropped and the table is re-walked.
+BASKET_SHADOW_STATE_VERSION = 3
+BASKET_SHADOW_BOOTSTRAP_DRAWS = 2000
+
+_BASKET_SHADOW_SQL = (
+    "SELECT rowid, station_id, event_date, decision_at_utc,"
+    " json_extract(plan_json,'$.compiled_plan.plan.basket_target_activated'),"
+    " json_extract(plan_json,'$.compiled_plan.delta_v2_audit.window_gate_counts'),"
+    " json_extract(plan_json,'$.compiled_plan.delta_v2_audit.candidate_windows'),"
+    " CASE WHEN json_extract(plan_json,'$.compiled_plan.plan.basket_target_activated')"
+    "  THEN json_extract(plan_json,'$.compiled_plan.plan.targets') END,"
+    " json_extract(plan_json,'$.compiled_plan.plan.reason_codes')"
+    " FROM basket_p0_preselection_plan"
+    " WHERE rowid>? AND rowid<=? AND probability_stage=?"
+    " ORDER BY rowid"
+)
+
+
+def _basket_window(raw: Any) -> dict[str, Any] | None:
+    """The first admissible candidate window, as the board shows it."""
+
+    try:
+        windows = json.loads(raw) if isinstance(raw, str) else (raw or [])
+    except ValueError:
+        return None
+    for w in windows if isinstance(windows, list) else []:
+        if not isinstance(w, Mapping) or w.get("admissible") is not True:
+            continue
+        legs = w.get("leg_claim_cost") or {}
+        return {
+            "buckets": [str(b) for b in (w.get("buckets") or [])],
+            "all_in_price": w.get("all_in_price"),
+            "win_probability": w.get("win_probability"),
+            "market_mid": w.get("market_mid"),
+            "hours_to_cutoff": w.get("hours_to_cutoff"),
+            # bucket -> [model claim, all-in ask]
+            "legs": {str(b): list(v) for b, v in legs.items()
+                     if isinstance(v, (list, tuple)) and len(v) == 2},
+        }
+    return None
+
+
+def _basket_targets(raw: Any) -> list[dict[str, Any]]:
+    try:
+        rows = json.loads(raw) if isinstance(raw, str) else (raw or [])
+    except ValueError:
+        return []
+    out = []
+    for t in rows if isinstance(rows, list) else []:
+        if not isinstance(t, Mapping):
+            continue
+        shares = float(t.get("delta_shares") or t.get("target_shares") or 0.0)
+        price = t.get("limit_price") if t.get("limit_price") is not None else t.get("effective_price")
+        mode = str(t.get("execution_candidate") or "").upper()
+        # Plans before ~09-19 carry target shapes with no execution (mode
+        # NONE, price 0.0): a shape, not an order, and free legs would read
+        # as profit.  Only a priced leg with an execution family counts.
+        if shares <= 0 or price is None or float(price) <= 0 or mode in ("", "NONE"):
+            continue
+        out.append({
+            "bucket": str(t.get("bucket")),
+            "shares": round(shares, 4),
+            "price": float(price),
+            "mode": mode,
+            "role": str(t.get("role") or ""),
+        })
+    return out
+
+
+def _basket_shadow_walk(
+    conn: sqlite3.Connection,
+    state: dict[str, Any],
+    *,
+    budget_sec: float,
+) -> None:
+    """Advance ``state`` over the plans written since its cursor."""
+
+    started = time.perf_counter()
+    (top,) = conn.execute("SELECT MAX(rowid) FROM basket_p0_preselection_plan").fetchone()
+    top = int(top or 0)
+    floor_day = (_now().date() - timedelta(days=BASKET_SHADOW_DAYS)).isoformat()
+    cursor = int(state.get("cursor") or 0)
+    if cursor == 0:
+        row = conn.execute(
+            "SELECT MIN(rowid) FROM basket_p0_preselection_plan WHERE created_at>=?",
+            (floor_day,),
+        ).fetchone()
+        cursor = max(0, int(row[0] or 1) - 1)
+    days: dict[str, Any] = state.setdefault("station_days", {})
+    while cursor < top and time.perf_counter() - started < budget_sec:
+        hi = min(top, cursor + BASKET_SHADOW_CHUNK_ROWS)
+        for (rowid, station, day, at, activated, gates_raw, windows_raw,
+             targets_raw, reasons_raw) in conn.execute(
+                 _BASKET_SHADOW_SQL, (cursor, hi, BASKET_SHADOW_STAGE)):
+            if str(day) < floor_day:
+                continue
+            key = f"{station}|{day}"
+            rec = days.setdefault(key, {
+                "station_id": str(station), "event_date": str(day),
+                "plans": 0, "first_at": str(at),
+                "windowed_plans": 0, "activated_plans": 0,
+                "gates": {}, "first_window": None, "open": None,
+            })
+            rec["plans"] += 1
+            rec["last_at"] = str(at)
+            try:
+                gates = json.loads(gates_raw) if gates_raw else {}
+            except ValueError:
+                gates = {}
+            gate = str((gates or {}).get("last_refusing_gate") or "")
+            window = _basket_window(windows_raw)
+            if window is not None:
+                rec["windowed_plans"] += 1
+                if rec["first_window"] is None:
+                    rec["first_window"] = {**window, "at": str(at)}
+            if gate:
+                rec["gates"][gate] = rec["gates"].get(gate, 0) + 1
+            targets = _basket_targets(targets_raw) if activated else []
+            if targets:
+                rec["activated_plans"] += 1
+                if rec["open"] is None:
+                    # The same plan's all-in ask per bucket, when its window
+                    # priced the leg: the taker end of the fill assumption.
+                    asks = (window or {}).get("legs") or {}
+                    rec["open"] = {
+                        "at": str(at),
+                        "legs": [
+                            {**t, "ask": (asks.get(t["bucket"]) or [None, None])[1]}
+                            for t in targets
+                        ],
+                        "cost_usdc": round(sum(t["shares"] * t["price"] for t in targets), 4),
+                    }
+            try:
+                reasons = json.loads(reasons_raw) if reasons_raw else []
+            except ValueError:
+                reasons = []
+            rec["latest"] = {
+                "at": str(at),
+                "window": window,
+                "gate": gate or None,
+                "activated": bool(targets),
+                "legs": targets,
+                "reasons": [str(r) for r in reasons][:6],
+            }
+        cursor = hi
+    state["cursor"] = cursor
+    state["cursor_top"] = top
+    state["caught_up"] = cursor >= top
+    for key in [k for k, v in days.items() if v.get("event_date", "") < floor_day]:
+        del days[key]
+
+
+def _basket_shadow_labels(conn: sqlite3.Connection, floor_day: str) -> dict[str, str]:
+    """Production's settlement label, standing revision, per station-day."""
+
+    out: dict[str, str] = {}
+    for station, day, bucket in conn.execute(
+        "SELECT station_id, event_date, settled_bucket"
+        " FROM basket_station_day_settlement_label l"
+        " WHERE event_date>=? AND truth_revision_no=("
+        "  SELECT MAX(truth_revision_no) FROM basket_station_day_settlement_label x"
+        "  WHERE x.station_id=l.station_id AND x.event_date=l.event_date)",
+        (floor_day,),
+    ):
+        out[f"{station}|{day}"] = str(bucket)
+    return out
+
+
+def _day_bootstrap(rows: Sequence[Mapping[str, Any]], *, seed: int) -> list[float] | None:
+    """95% interval of sum(pnl)/sum(cost), resampling event days."""
+
+    by_day: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for r in rows:
+        acc = by_day[str(r["event_date"])]
+        acc[0] += float(r["pnl"])
+        acc[1] += float(r["cost"])
+    blocks = list(by_day.values())
+    if len(blocks) < 3:
+        return None
+    rng = random.Random(seed)
+    draws = []
+    for _ in range(BASKET_SHADOW_BOOTSTRAP_DRAWS):
+        pnl = cost = 0.0
+        for _ in blocks:
+            b = blocks[rng.randrange(len(blocks))]
+            pnl += b[0]
+            cost += b[1]
+        if cost > 0:
+            draws.append(pnl / cost)
+    if not draws:
+        return None
+    draws.sort()
+    return [draws[int(0.025 * len(draws))], draws[int(0.975 * len(draws)) - 1]]
+
+
+def _basket_shadow_score(records: Sequence[Mapping[str, Any]], labels: Mapping[str, str]) -> dict[str, Any]:
+    """Two readings on the settled station-days.
+
+    * ``open`` -- the basket's own opening order (first activated P0 plan):
+      its legs, shares and limit prices, assumed filled in full at the limit.
+      An upper bound: a resting maker order is not certain to fill.
+    * ``open_at_ask`` -- the same legs and shares bought at that plan's
+      all-in ask instead (taker), where its window priced every leg.
+    * ``window`` -- the basket's chosen window at the first plan that had
+      one, one share per leg at the all-in ask (taker): the bucket choice
+      judged without the sizing that usually zeroes it.
+    """
+
+    open_rows, open_ask_rows, window_rows = [], [], []
+    for rec in records:
+        key = f"{rec['station_id']}|{rec['event_date']}"
+        settled = labels.get(key)
+        if settled is None:
+            continue
+        if rec.get("open"):
+            legs = rec["open"]["legs"]
+            payout = sum(t["shares"] for t in legs if t["bucket"] == settled)
+            cost = float(rec["open"]["cost_usdc"])
+            open_rows.append({"event_date": rec["event_date"], "pnl": payout - cost,
+                              "cost": cost, "hit": payout > 0})
+            if all(t.get("ask") is not None for t in legs):
+                ask_cost = sum(t["shares"] * float(t["ask"]) for t in legs)
+                open_ask_rows.append({"event_date": rec["event_date"],
+                                      "pnl": payout - ask_cost, "cost": ask_cost,
+                                      "hit": payout > 0})
+        w = rec.get("first_window")
+        if w and w.get("all_in_price") is not None:
+            hit = settled in (w.get("buckets") or [])
+            cost = float(w["all_in_price"])
+            window_rows.append({
+                "event_date": rec["event_date"], "pnl": (1.0 if hit else 0.0) - cost,
+                "cost": cost, "hit": hit,
+                "claim": w.get("win_probability"), "mid": w.get("market_mid"),
+            })
+
+    def summary(rows: list[dict[str, Any]], seed: int) -> dict[str, Any]:
+        cost = sum(r["cost"] for r in rows)
+        pnl = sum(r["pnl"] for r in rows)
+        out = {
+            "n": len(rows),
+            "days": len({r["event_date"] for r in rows}),
+            "hits": sum(1 for r in rows if r["hit"]),
+            "cost": round(cost, 4),
+            "pnl": round(pnl, 4),
+            "roi": (pnl / cost) if cost > 0 else None,
+            "roi_ci95": _day_bootstrap(rows, seed=seed),
+        }
+        claims = [float(r["claim"]) for r in rows if r.get("claim") is not None]
+        mids = [float(r["mid"]) for r in rows if r.get("mid") is not None]
+        if claims:
+            out["mean_claim"] = sum(claims) / len(claims)
+        if mids:
+            out["mean_mid"] = sum(mids) / len(mids)
+        if rows:
+            out["hit_rate"] = out["hits"] / len(rows)
+            out["mean_cost"] = cost / len(rows)
+        return out
+
+    return {
+        "open": summary(open_rows, 11),
+        "open_at_ask": summary(open_ask_rows, 12),
+        "window": summary(window_rows, 13),
+    }
+
+
+def basket_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
+    """What the basket would buy (its P0 ladder) per station-day, and how
+    those choices settled -- read from the P0 preselection plans production
+    already compiled; nothing is recomputed and no order is placed."""
+
+    previous = (load_reading("basket_shadow") or {}).get("value") or {}
+    state = previous.get("state") if isinstance(previous.get("state"), dict) else {}
+    if state.get("version") != BASKET_SHADOW_STATE_VERSION:
+        state = {"version": BASKET_SHADOW_STATE_VERSION}
+    _basket_shadow_walk(conn, state, budget_sec=BASKET_SHADOW_BUDGET_SEC)
+    floor_day = (_now().date() - timedelta(days=BASKET_SHADOW_DAYS)).isoformat()
+    labels = _basket_shadow_labels(conn, floor_day)
+    records = sorted(
+        state["station_days"].values(),
+        key=lambda r: (r["event_date"], r["station_id"]),
+        reverse=True,
+    )
+    for rec in records:
+        rec["settled_bucket"] = labels.get(f"{rec['station_id']}|{rec['event_date']}")
+    return {
+        "state": state,
+        "stage": BASKET_SHADOW_STAGE,
+        "days_kept": BASKET_SHADOW_DAYS,
+        "score": _basket_shadow_score(records, labels),
+    }
+
+
+# ---------------------------------------------------------------------------
 # the run
 # ---------------------------------------------------------------------------
 
@@ -1113,6 +1426,11 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
          centre_shape_row, _ladder_rps),
     ),
     "l4_lane": (l4_lane, (l4_lane,)),
+    "basket_shadow": (
+        basket_shadow,
+        (basket_shadow, _basket_shadow_walk, _basket_window, _basket_targets,
+         _basket_shadow_labels, _basket_shadow_score, _day_bootstrap),
+    ),
 }
 
 

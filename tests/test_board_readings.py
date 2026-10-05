@@ -159,3 +159,69 @@ def test_the_slow_readings_are_kept_while_current_and_recomputed_when_due(tmp_pa
     assert calls[-1] == "l4", "six hours on, the reading is due again"
     BR.run(db, ("l4_lane",), force=True)
     assert calls[-1] == "l4" and calls.count("l4") == 3
+
+
+def _basket_plan(activated, targets, windows, gate="edge"):
+    return json.dumps({"compiled_plan": {
+        "plan": {"basket_target_activated": activated, "targets": targets,
+                 "reason_codes": ["x"]},
+        "delta_v2_audit": {"window_gate_counts": {"last_refusing_gate": gate},
+                           "candidate_windows": windows},
+    }})
+
+
+def test_basket_shadow_reads_the_p0_ladder_incrementally_and_scores_settled_days(tmp_path, monkeypatch) -> None:
+    """User 2026-10-05 「前端增加篮子策略（梯子）的显示和评估」: the reading
+    walks production's P0 preselection plans (P0-M skipped: the basket buys
+    in P0 only), a target shape without an execution (price 0, mode NONE)
+    is not an order, and each settled station-day is scored."""
+
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path / "readings")
+    db = tmp_path / "ssot.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE basket_p0_preselection_plan (station_id, event_date,"
+                 " probability_stage, decision_at_utc, plan_json, created_at)")
+    conn.execute("CREATE TABLE basket_station_day_settlement_label (station_id,"
+                 " event_date, truth_revision_no, settled_bucket)")
+    day = (BR._now().date()).isoformat()
+    window = [{"admissible": True, "buckets": ["20°C", "21°C"], "all_in_price": 0.7,
+               "win_probability": 0.8, "market_mid": 0.6,
+               "leg_claim_cost": {"20°C": [0.5, 0.45], "21°C": [0.3, 0.25]}}]
+    shape = [{"bucket": "20°C", "delta_shares": 3, "limit_price": 0.0,
+              "execution_candidate": "NONE"}]
+    legs = [{"bucket": "20°C", "delta_shares": 4, "limit_price": 0.40,
+             "execution_candidate": "MAKER"},
+            {"bucket": "21°C", "delta_shares": 2, "limit_price": 0.20,
+             "execution_candidate": "MAKER"}]
+    rows = [
+        ("KAAA", day, "P0", "t1", _basket_plan(True, shape, window)),
+        ("KAAA", day, "P0-M", "t2", _basket_plan(True, legs, window)),
+        ("KAAA", day, "P0", "t3", _basket_plan(True, legs, window)),
+    ]
+    conn.executemany("INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?,?,?)",
+                     [(*r, day + "T00:00:00Z") for r in rows])
+    conn.execute("INSERT INTO basket_station_day_settlement_label VALUES ('KAAA',?,0,'21°C')", (day,))
+    conn.commit()
+    conn.close()
+
+    assert BR.run(db, ("basket_shadow",), force=True)[0].startswith("basket_shadow ")
+    value = BR.load_reading("basket_shadow")["value"]
+    rec = value["state"]["station_days"][f"KAAA|{day}"]
+    assert rec["plans"] == 2 and rec["activated_plans"] == 1
+    assert rec["open"]["at"] == "t3" and rec["open"]["cost_usdc"] == 2.0
+    assert [t["ask"] for t in rec["open"]["legs"]] == [0.45, 0.25]
+    score = value["score"]
+    assert score["open"]["n"] == 1 and abs(score["open"]["pnl"] - 0.0) < 1e-9
+    assert abs(score["open_at_ask"]["cost"] - 2.3) < 1e-9
+    assert score["window"]["hits"] == 1 and abs(score["window"]["pnl"] - 0.3) < 1e-9
+
+    # A second run reads only what was written after the cursor.
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO basket_p0_preselection_plan VALUES (?,?,?,?,?,?)",
+                 ("KAAA", day, "P0", "t4", _basket_plan(False, [], [], "shape"), day))
+    conn.commit()
+    conn.close()
+    BR.run(db, ("basket_shadow",), force=True)
+    rec = BR.load_reading("basket_shadow")["value"]["state"]["station_days"][f"KAAA|{day}"]
+    assert rec["plans"] == 3 and rec["latest"]["gate"] == "shape"
+    assert rec["gates"] == {"edge": 2, "shape": 1} and rec["open"]["at"] == "t3"

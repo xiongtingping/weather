@@ -21867,6 +21867,13 @@ const SD = {station:"ZUUU", data:null, err:null, timer:null, busy:false,
   every:30, fetchedAt:null, checkedAt:null, calc:{}, trendMode:{}, focus:{}, pendingRender:false};
 try{ const raw = localStorage.getItem("sd-every"); const v = Number(raw); if(raw != null && raw !== "" && [0, 15, 30, 60].includes(v)) SD.every = v; }catch(e){}
 try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s)) SD.station = s; }catch(e){}
+// The calculator's inputs, the trend choices: kept for this tab, so a reload
+// (the board's hot update) puts them back (user 2026-10-05「不要整页刷新渲染，丢失视角和输入」).
+try{ const kept = JSON.parse(sessionStorage.getItem("sd-state") || "null");
+  if(kept && kept.station === SD.station){ SD.calc = kept.calc || {}; SD.focus = kept.focus || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
+function sdSave(){
+  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, calc:SD.calc, focus:SD.focus, trendMode:SD.trendMode})); }catch(e){}
+}
 const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba"};
 const SD_BKT = ["#58a6ff","#3fb950","#d29922","#f778ba","#a371f7","#56d4dd","#ff7b72","#e3b341","#8b949e","#7ee787"];
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
@@ -21989,7 +21996,28 @@ function sdRender(){
   const pastNote = pk ? `<div class="card muted sd-sub" style="margin:8px 0">今日 ${sdEsc(pk.event_date)} 已过峰，不再显示：模型温度曲线最高点在当地 ${
     sdEsc((pk.peak || {}).peak_local || "—")}（${sdN((pk.peak || {}).curve_peak_c, 1)}°C，逐 3 小时曲线），已报最高 <b>${sdN(pk.running_high_c, 0)}°C</b>，最新 METAR ${
     sdEsc(pk.latest_local || "—")} ${sdN(pk.latest_temp_c, 0)}°C 已回落。</div>` : "";
+  // A redraw on new data keeps the reader where they were: the first panel
+  // element on screen stays at the same height.
+  const anchor = [...body.querySelectorAll(".sd-day, .sd-t, table, svg")]
+    .find(el => el.getBoundingClientRect().bottom > 0);
+  const anchorPath = anchor ? sdPathOf(anchor, body) : null;
+  const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
   body.innerHTML = pastNote + (d.days || []).map(sdDay).join("") + sdTafRaw(d);
+  if(anchorPath){
+    const again = sdFromPath(anchorPath, body);
+    if(again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
+  }
+  if(typeof window.__boardRestoreAnchor === "function") window.__boardRestoreAnchor();
+}
+function sdPathOf(el, root){
+  const path = [];
+  for(let n = el; n && n !== root; n = n.parentElement) path.unshift([...n.parentElement.children].indexOf(n));
+  return path;
+}
+function sdFromPath(path, root){
+  let n = root;
+  for(const i of path){ n = n && n.children[i]; }
+  return n || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -22386,7 +22414,11 @@ function sdSolve(day, st){
     if(!lv.length){ res.warn.push(`${b} 没有可用价格`); res.ok = false; return; }
     if(amt != null && isFinite(amt) && amt > 0){
       const sh = sdSharesFor(lv, amt, rate);
-      if(sh == null){ res.warn.push(`${b}：${amt} U 超过卖盘深度`); res.ok = false; return; }
+      if(sh == null){
+        const depth = lv.reduce((a, [p, q]) => a + q * (p + rate * p * (1 - p)), 0);
+        res.warn.push(`${b}：${amt} U 超过卖盘深度（卖盘全部只有 ${depth.toFixed(2)} U、${lv.reduce((a, l) => a + l[1], 0).toFixed(2)} 份；可改小金额，或把价格口径换成「挂买一+1」/「手填价格」按单一价格算）`);
+        res.ok = false; return;
+      }
       res.legs[b] = {shares:sh, cost:amt, fixed:true, levels:lv};
       fixed += amt;
     } else auto.push([b, lv]);
@@ -22398,7 +22430,7 @@ function sdSolve(day, st){
     for(const [b, lv] of auto){
       const need = Math.max(0, T + F);
       const c = sdCostOf(lv, need, rate);
-      if(c == null){ broke = true; res.warn.push(`${b}：需要 ${need.toFixed(2)} 份，超过卖盘深度`); break; }
+      if(c == null){ broke = true; res.warn.push(`${b}：需要 ${need.toFixed(2)} 份，超过卖盘深度（卖盘全部只有 ${lv.reduce((a, l) => a + l[1], 0).toFixed(2)} 份；可换「挂买一+1」/「手填价格」）`); break; }
       res.legs[b] = {shares:need, cost:c, fixed:false, levels:lv};
       next += c;
     }
@@ -22443,8 +22475,8 @@ function sdCalc(day){
     return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
       <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
       <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
-      <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"${on ? "" : " disabled"}></td>
-      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? "自动" : ""}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"${on ? "" : " disabled"}></td>
+      <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
+      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? "自动" : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
       <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : ' <span class="pill">算出</span>'}` : "—"}</td>
       <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
       <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td></tr>`;
@@ -22491,24 +22523,41 @@ function sdOnInput(e){
   if(!key) return;
   const st = sdCalcState(key);
   if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
-  else if(ds.sdAmt) st.amt[ds.b] = t.value;
-  else if(ds.sdPx) st.px[ds.b] = t.value;
+  else if(ds.sdAmt){ st.amt[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
+  else if(ds.sdPx){ st.px[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
   else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
   else if(ds.sdFloor) st.floor = Number(t.value) || 0;
   else if(ds.calc){ st.mode = t.value; st.fee = null; }
-  // Typing recomputes the outputs in place; the field keeps its focus.
-  if(e.type === "input" && (ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor)){ sdRefreshCalc(key, t); return; }
-  sdRender();
+  sdSave();
+  // Every change recomputes in place: the fields, the focus and the page
+  // position stay where the reader left them.
+  sdRefreshCalc(key, t);
 }
 function sdRefreshCalc(key, input){
   const day = ((SD.data || {}).days || []).find(d => d.event_date === key);
   const card = document.querySelector(`.sd-day[data-day="${key}"]`);
-  if(!day || !card) return;
+  if(!day || !card || !card.querySelector(".sd-calc")){ sdRender(); return; }
   const holder = document.createElement("div");
   holder.innerHTML = sdCalc(day);
-  // Swap the result cells and summary, leave every input element alone.
   const oldRows = card.querySelectorAll(".sd-calc tbody tr"), newRows = holder.querySelectorAll(".sd-calc tbody tr");
-  oldRows.forEach((tr, i) => { const nr = newRows[i]; if(!nr) return; [6, 7, 8, 9].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; }); });
+  oldRows.forEach((tr, i) => {
+    const nr = newRows[i];
+    if(!nr) return;
+    tr.className = nr.className;
+    [...tr.querySelectorAll("input")].forEach((el, j) => {
+      const ne = nr.querySelectorAll("input")[j];
+      if(!ne) return;
+      if(el.type === "checkbox") el.checked = ne.checked;
+      else{
+        el.placeholder = ne.placeholder;
+        // The field being typed in keeps what the reader typed.
+        if(el !== input && el !== document.activeElement) el.value = ne.value;
+      }
+    });
+    [1, 2, 3, 6, 7, 8, 9].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; });
+  });
+  const fee = card.querySelector(`input[data-sd-fee="${key}"]`), nfee = holder.querySelector(`input[data-sd-fee="${key}"]`);
+  if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
   const oldSum = card.querySelector(".sd-calc").parentElement.nextElementSibling;
   const newSum = holder.querySelector(".sd-calc").parentElement.nextElementSibling;
   if(oldSum && newSum) oldSum.outerHTML = newSum.outerHTML;
@@ -22520,11 +22569,11 @@ function sdOnClick(e){
   if(ds.sdFocus){
     const list = SD.focus[ds.sdFocus] || [];
     SD.focus[ds.sdFocus] = list.includes(ds.b) ? list.filter(x => x !== ds.b) : list.concat([ds.b]);
-    sdRender();
+    sdSave(); sdRender();
   } else if(ds.sdMode && !ds.calc){
-    SD.trendMode[ds.sdMode] = ds.v; sdRender();
+    SD.trendMode[ds.sdMode] = ds.v; sdSave(); sdRender();
   } else if(ds.sdClear){
-    SD.calc[ds.sdClear] = null; sdRender();
+    SD.calc[ds.sdClear] = null; sdSave(); sdRefreshCalc(ds.sdClear, null);
   }
 }
 
@@ -23220,21 +23269,64 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
 // waiting for -- and not on a copy served from anywhere but this machine.
 (function(){
   const KEY = "board-hot-scroll";
+  // Where the reader was, by the section on screen and how far into it --
+  // not a bare pixel offset, which the 单站日 panel (drawn a moment after
+  // load, from the control server) would push off by its own height.
+  const anchorNow = () => {
+    const nav = document.getElementById("topnav");
+    const navH = nav ? nav.getBoundingClientRect().bottom : 0;
+    const secs = [...document.querySelectorAll(".sec")].filter(e => e.offsetParent);
+    const sec = secs.find(e => e.getBoundingClientRect().bottom > navH + 4);
+    return {path: location.pathname, y: window.scrollY,
+      id: sec ? sec.id : null, off: sec ? sec.getBoundingClientRect().top : 0};
+  };
   try{
     const saved = JSON.parse(sessionStorage.getItem(KEY) || "null");
     if(saved && saved.path === location.pathname){
       sessionStorage.removeItem(KEY);
-      window.addEventListener("load", () => window.scrollTo(0, saved.y));
-      setTimeout(() => window.scrollTo(0, saved.y), 0);
+      let until = Date.now() + 8000;
+      const put = () => {
+        if(Date.now() > until) return;
+        const el = saved.id && document.getElementById(saved.id);
+        if(el) window.scrollBy(0, el.getBoundingClientRect().top - saved.off);
+        else window.scrollTo(0, saved.y);
+      };
+      // Late layout (the panel's first draw) calls this again; a reader who
+      // scrolls in the meantime takes over.
+      window.__boardRestoreAnchor = put;
+      ["wheel", "touchstart", "keydown", "mousedown"].forEach(ev =>
+        window.addEventListener(ev, () => { until = 0; }, {once: true, passive: true}));
+      window.addEventListener("load", put);
+      setTimeout(put, 0); setTimeout(put, 1500); setTimeout(put, 4000);
     }
   }catch(e){}
   const local = location.protocol === "file:"
     || location.hostname === "127.0.0.1" || location.hostname === "localhost";
   if(!local || !/\.html?$/.test(location.pathname)) return;
   const file = location.pathname.split("/").pop().replace(/\.html?$/, "_version.js");
-  let asking = false;
+  let asking = false, waiting = false;
+  // User 2026-10-05「不要整页刷新渲染，丢失视角和输入」: a newer page never
+  // reloads under the reader.  While the tab is in view it only offers a
+  // button; it reloads by itself while the tab is in the background, and the
+  // position and the 单站日 inputs come back with it.
+  const reload = () => {
+    if(typeof lcBusy !== "undefined" && lcBusy > 0) return;
+    try{ sessionStorage.setItem(KEY, JSON.stringify(anchorNow())); }catch(e){}
+    if(typeof sdSave === "function") sdSave();
+    location.reload();
+  };
+  const offer = () => {
+    if(document.getElementById("hot-offer")) return;
+    const b = document.createElement("button");
+    b.id = "hot-offer"; b.type = "button";
+    b.textContent = "看板有新版本 · 点此刷新（保留位置与输入）";
+    b.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:60;padding:7px 12px;border-radius:8px;"
+      + "border:1px solid var(--accent);background:var(--card);color:var(--text);cursor:pointer;font:inherit;box-shadow:0 2px 8px rgba(0,0,0,.25)";
+    b.addEventListener("click", reload);
+    document.body.appendChild(b);
+  };
   // Hidden tabs ask too: a tab reloaded in the background is already new
-  // when the reader comes back to it, and coming back asks at once.
+  // when the reader comes back to it.
   const ask = () => {
     if(asking) return;
     asking = true;
@@ -23245,20 +23337,16 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
       done();
       const seen = Number(window.__BOARD_VERSION__);
       if(!(seen > Number(PAGE_STAMP) + 0.0005)) return;
-      if(typeof lcBusy !== "undefined" && lcBusy > 0) return;
-      try{
-        sessionStorage.setItem(KEY, JSON.stringify(
-          {path: location.pathname, y: window.scrollY}));
-      }catch(e){}
-      location.reload();
+      waiting = true;
+      if(document.hidden) reload(); else offer();
     };
     probe.src = file + "?t=" + Date.now();
     document.head.appendChild(probe);
   };
-  setInterval(ask, 10000);
   document.addEventListener("visibilitychange", () => {
-    if(!document.hidden) ask();
+    if(document.hidden && waiting) reload();
   });
+  setInterval(ask, 10000);
 })();
 </script></body></html>"""
 
