@@ -4137,6 +4137,28 @@ def close_target_cycle(
 LIVE_TERMINAL_INTENT_STATES = frozenset({"filled", "failed", "cancelled"})
 
 
+def _intent_execution_fact_present(
+    conn: sqlite3.Connection, order_intent_id: str,
+) -> bool:
+    """Whether any execution-fact table names this intent (missing tables skip)."""
+
+    tables = {
+        str(item[0])
+        for item in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    for table, column in _EXECUTION_FACT_CHECKS:
+        if table not in tables:
+            continue
+        if conn.execute(
+            f"SELECT 1 FROM {table} WHERE {column}=? LIMIT 1",
+            (str(order_intent_id),),
+        ).fetchone() is not None:
+            return True
+    return False
+
+
 def settle_live_cycle_after_terminal_intents(
     conn: sqlite3.Connection,
     *,
@@ -4208,6 +4230,15 @@ def settle_live_cycle_after_terminal_intents(
         consumed = 0.0
         filled_intents: list[str] = []
         refused_intents: list[str] = []
+        # Cancelled before it ever left the process: no reconciliation and no
+        # execution fact of any kind.  Beside a refused sibling it ends the
+        # cycle the same way a refusal does.  2026-10-05 ZSQD 10-05: two legs
+        # NEVER_REACHED_EXCHANGE (resolved_not_placed), the third cancelled by
+        # the quote-lease retire before submission -- not "all refused", so
+        # this refused to settle, and the refusals' facts made supersession
+        # refuse too; the station-day's every later decision was refused
+        # ``prepared_supersession_execution_fact_present``.
+        unsent_cancelled: list[str] = []
         for intent_id, intent_state, recon_state, notional, filled_size in intents:
             if str(intent_state) not in LIVE_TERMINAL_INTENT_STATES:
                 raise AtomicLedgerError(
@@ -4242,7 +4273,16 @@ def settle_live_cycle_after_terminal_intents(
                 filled_intents.append(str(intent_id))
             elif str(recon_state or "") in {"resolved_not_placed", "resolved_cancelled"}:
                 refused_intents.append(str(intent_id))
-        if not filled_intents and len(refused_intents) != len(intents):
+            elif (
+                str(intent_state) == "cancelled"
+                and recon_state is None
+                and not _intent_execution_fact_present(conn, str(intent_id))
+            ):
+                unsent_cancelled.append(str(intent_id))
+        if not filled_intents and (
+            not refused_intents
+            or len(refused_intents) + len(unsent_cancelled) != len(intents)
+        ):
             # Nothing reached the exchange and nothing says so on the
             # ledger: an inert candidate, which supersession retires.
             raise AtomicLedgerError("live_cycle_settle_nothing_filled")
@@ -4309,6 +4349,7 @@ def settle_live_cycle_after_terminal_intents(
         "reservation_released_usdc": released,
         "filled_intent_ids": filled_intents,
         "refused_intent_ids": refused_intents,
+        "unsent_cancelled_intent_ids": unsent_cancelled,
     }
 
 
