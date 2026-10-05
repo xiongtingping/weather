@@ -86,46 +86,21 @@ LIVE = {"live_readiness": {"available": True,
                            "live_orders": {"intent_count": 7}}}
 
 
-def _panes(html: str) -> list[tuple[str, str, bool]]:
-    """(category, pane key, hidden) in page order."""
-
-    out = []
-    for cat in re.finditer(r'data-daytabs="money-(\w+)"(.*?)(?=data-daytabs="money-|\Z)', html, re.S):
-        for pane in re.finditer(r'data-daypane="(\w+)" id="[\w-]+"( hidden)?', cat.group(2)):
-            out.append((cat.group(1), pane.group(1), bool(pane.group(2))))
-    return out
-
-
 def test_one_live_category_with_the_data_board_over_the_orders():
     html = _render(LIVE)
 
-    # Charter 146 (6cf2a530) gave the tiebreak lane the third pane.
-    assert _panes(html) == [
-        ("live", "orders", False),
-        ("live", "tiebreak", True),
-        # Charter 231: the Proper lane's own page.
-        ("live", "proper", True),
-        # Charter 234: H1 historical FOK fills and NO result.
-        ("live", "tailshort", True),
-    ]
+    # No tabs since 2026-10-05: the comparison leads, each lane's page folds
+    # under it, in board order.
+    assert "data-daytabs" not in html and 'class="daytabs"' not in html
+    assert re.findall(r'<details class="mb-fold" id="([\w-]+)"', html) == [
+        "sec-tiebreak", "sec-proper-bet", "sec-tail-short"]
+    assert html.index("DATA") < html.index('class="mb-fold"')
     assert 'data-daytabs="money-paper"' not in html
-    for label in ("实盘", "实盘 · 数据看板"):
-        assert label in html
     assert "DATA" in html
     for removed in ("实盘意向簿", "P1 尾段线", "同心线"):
         assert removed not in html
     # The 订单数量 card left on 2026-10-05.
     assert "ORDERS" not in html
-
-
-def test_every_tab_has_a_pane_and_a_single_block_draws_no_strip():
-    html = _render(LIVE)
-
-    for cat in re.finditer(r'data-daytabs="money-\w+"(.*?)(?=data-daytabs="money-|\Z)', html, re.S):
-        tabs = re.findall(r'<button type="button" data-day="(\w+)"', cat.group(1))
-        panes = re.findall(r'data-daypane="(\w+)"', cat.group(1))
-        assert tabs == (panes + ["all"] if len(panes) > 1 else [])
-        assert ('class="daytabs"' in cat.group(1)) is (len(panes) > 1)
 
 
 def test_a_block_that_throws_does_not_blank_the_others():

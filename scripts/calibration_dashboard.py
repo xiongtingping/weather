@@ -11523,29 +11523,6 @@ def _live_runtime_config() -> tuple[Path, dict[str, Any]]:
         return path, {}
 
 
-def _live_bar_sides(
-    rows: Sequence[Mapping[str, Any]],
-    sides: Mapping[str, set[str]],
-) -> dict[str, dict[str, Any]]:
-    """The live money on each side of the station bar."""
-
-    out: dict[str, dict[str, Any]] = {}
-    for name, members in sides.items():
-        picked = [r for r in rows if r["station_id"] in members]
-        stake = sum(float(r["stake_usdc"]) for r in picked)
-        pnl = sum(float(r["pnl_usdc"]) for r in picked)
-        out[name] = {
-            "stations": len({r["station_id"] for r in picked}),
-            "settled_days": len({
-                (r["station_id"], r["event_date"]) for r in picked
-            }),
-            "staked_usdc": stake,
-            "pnl_usdc": pnl,
-            "roi": (pnl / stake) if stake else None,
-        }
-    return out
-
-
 def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
     """The money board, off the live book (user ruling, 2026-09-16).
 
@@ -11575,6 +11552,56 @@ def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
         if leg["filled_size"] > 0
         and (leg["station_id"], leg["event_date"]) not in book["settled"]
     )
+    economics, risk = _live_economics_and_risk(rows, capital)
+    # Each lane's own book (user 2026-10-05: 分别按照各个策略统计曲线、对比 ·
+    # 按股 · 整本账、风险): the same arithmetic on the settlement rows its
+    # legs alone make, against the same capital base so the lanes compare.
+    by_lane: dict[str, Any] = {}
+    lanes = sorted({live_book.intent_lane(leg["decision_id"]) for leg in book["legs"]
+                    if leg["filled_size"] > 0})
+    for lane in lanes:
+        legs = [leg for leg in book["legs"]
+                if live_book.intent_lane(leg["decision_id"]) == lane]
+        lane_rows = live_book.settlement_rows(
+            legs, book["settled"], None,
+            live_book.allocate_sells(legs, book["exit_sells"],
+                                     by_intent=book["sold_by_intent"]),
+        )
+        lane_economics, lane_risk = _live_economics_and_risk(lane_rows, capital)
+        by_lane[lane] = {
+            "settled_rows": len(lane_rows),
+            "pnl_usdc": round(sum(float(r["pnl_usdc"]) for r in lane_rows), 4),
+            "stake_usdc": round(sum(float(r["stake_usdc"]) for r in lane_rows), 4),
+            "settled_days": len({r["event_date"] for r in lane_rows}),
+            "hits": sum(int(r["hit"]) for r in lane_rows),
+            "pending_legs": sum(
+                1 for leg in legs if leg["filled_size"] > 0
+                and (leg["station_id"], leg["event_date"]) not in book["settled"]
+            ),
+            "economics": lane_economics,
+            "risk": lane_risk,
+        }
+    return {
+        "available": bool(rows),
+        "reason": "" if rows else "还没有已结算的实盘成交",
+        "capital_usdc": capital,
+        "capital_source": runtime_path.name,
+        "settled_rows": len(rows),
+        "pending_legs": pending_legs,
+        # Sales on days not settled yet (charter 100 recycle, charter 144
+        # exit): realised at the sale, in the settled book from settlement.
+        "pending_sales": live_book.pending_sales(book),
+        "economics": economics,
+        "risk": risk,
+        "by_lane": by_lane,
+    }
+
+
+def _live_economics_and_risk(
+    rows: list[dict[str, Any]], capital: float | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Entry economics and the day-series risk of one set of settlement rows."""
+
     economics = _entry_economics_from_rows([
         (r["stage"], r["claimed_win_probability"], r["hit"],
          r["intended_hit"], r["basket_all_in_cost"], r["stake_usdc"],
@@ -11609,25 +11636,7 @@ def collect_live_money(conn: sqlite3.Connection) -> dict[str, Any]:
                 "reason": "预算旋钮读不出来，没有本金基数"}
     else:
         risk = _risk_metrics_from_days(days, capital)
-    scope = _live_scope()
-    return {
-        "available": bool(rows),
-        "reason": "" if rows else "还没有已结算的实盘成交",
-        "capital_usdc": capital,
-        "capital_source": runtime_path.name,
-        "settled_rows": len(rows),
-        "pending_legs": pending_legs,
-        # Sales on days not settled yet (charter 100 recycle, charter 144
-        # exit): realised at the sale, in the settled book from settlement.
-        "pending_sales": live_book.pending_sales(book),
-        "economics": economics,
-        "risk": risk,
-        "bar_split": _live_bar_sides(rows, {
-            "live": set(scope["stations"]),
-            "probation": set(scope["probation"]),
-            "barred": set(scope.get("barred") or barred_station_set()),
-        }),
-    }
+    return economics, risk
 
 
 def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -15984,6 +15993,13 @@ a.mkt:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .hcat{background:var(--soft-bg,rgba(127,127,127,.05));border:1px solid var(--line);border-radius:10px;padding:10px}
 .hcat-t{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:8px;letter-spacing:.02em}
 .hcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px}
+.mb-cmp{width:100%;border-collapse:collapse;font-size:12.5px}
+.mb-cmp th{text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.mb-cmp th:first-child,.mb-cmp td:first-child{text-align:left}
+.mb-cmp td{text-align:right;padding:3px 8px;border-bottom:1px solid var(--soft,var(--line));white-space:nowrap}
+.mb-cmp .mb-whole{background:rgba(127,127,127,.07)}
+.mb-fold{margin-top:6px;border-top:1px solid var(--line);padding-top:6px}
+.mb-fold>summary{cursor:pointer;font-weight:600;font-size:13px}
 /* One row, no ragged second line (user 2026-10-05: 一排显示。其他地方也是，
    不要跨行留空白).  On a wide screen a card grid of up to eight lays its cards
    out in a single row of equal columns; more than eight, or a narrow screen,
@@ -17527,222 +17543,65 @@ function charterEv(){
 // ledger's chain_credible rule; the foot says how many whenever there are any.
 // Each verdict rests on an identity pinned in tests/test_entry_economics_section.py.
 function moneyDataBoard(){
-  // The live book since 2026-09-16 (user ruling: the paper ledger is a rule
-  // comparator, not the account).  Same four blocks, same arithmetic, read
-  // off live fills; the capital is the budget knob as it stands now.
+  // One table, one column per strategy (user 2026-10-05: 分别按照各个策略统计
+  // 曲线、对比 · 按股 · 整本账、风险).  The whole book is the first column;
+  // every lane is the same arithmetic on its own legs (live_money.by_lane).
   const M = D.live_money || {};
-  const E = M.economics || {};
-  const R = M.risk || {};
-  const SP = M.bar_split || {};
-  const S = (E.weightings || {}).share || {};
-  const pct = (v,d=1)=>v==null?"—":(100*v).toFixed(d)+"%";
+  if(!M.available) return `<div class="card"><span class="dot amber"></span>
+    ${h(M.reason || "实盘还读不出来")}。</div>`;
+  const NAMES = {proper_bet:"Proper", tail_short:"远尾做空", tiebreak:"秤砣线",
+    basket:"篮子", p1_tail:"P1 尾段", p1_consensus:"同心线"};
+  const ORDER = ["proper_bet","tail_short","tiebreak","basket","p1_tail","p1_consensus"];
+  const BL = M.by_lane || {};
+  const lanes = ORDER.filter(k => BL[k]).concat(Object.keys(BL).filter(k => !ORDER.includes(k)).sort());
+  const RW = M.risk || {}, EW = M.economics || {};
+  const cols = [{name:"合计", pnl: RW.available ? RW.realised_pnl_usdc : EW.pnl_usdc,
+      stake: RW.available ? RW.total_staked_usdc : EW.stake_usdc, rows: M.settled_rows,
+      days: RW.days, E: EW, R: RW, pending: M.pending_legs, whole: true}]
+    .concat(lanes.map(k => ({name: NAMES[k] || k, pnl: BL[k].pnl_usdc, stake: BL[k].stake_usdc,
+      rows: BL[k].settled_rows, days: BL[k].settled_days, E: BL[k].economics || {},
+      R: BL[k].risk || {}, pending: BL[k].pending_legs})));
+  const num = (v,d=2)=>v==null?"—":(+v).toFixed(d);
+  const usd = (v,d=2)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
   const spct = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"%");
-  const pts = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+" 点");
-  const cent = (v,d=1)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(d)+"¢");
-  const usd = (v,d=2)=>v==null?"—":((v>=0?"+":"")+v.toFixed(d)+" U");
-  const num = (v,d=2)=>v==null?"—":v.toFixed(d);
-  const tone = (v)=>v==null?"muted":(v>=0?"green":"red");
-  const text = (v)=>v==null?"":(v>=0?"up":"down");
-  const cap = (t)=>`<div class="pb-cap">${t}</div>`;
-
-  // ---- 总账
-  const whole = R.available;
-  const pnl = whole ? R.realised_pnl_usdc : E.pnl_usdc;
-  const stake = whole ? R.total_staked_usdc : E.stake_usdc;
-  if(pnl==null) return `<div class="card"><span class="dot amber"></span>
-    ${h(M.reason||E.reason||R.reason||"实盘还读不出来")}。</div>`;
-  const roi = stake>0 ? pnl/stake : null;
-  const head = `<div class="card ee-top">
-    <span class="pill ${tone(pnl)} ee-verdict">${pnl>=0 ? "赚" : "亏"}</span>
-    ${whole ? `<span class="pb-kv"><span class="muted">权益</span>
-      <b class="big">${num(R.final_equity_usdc)}</b></span>` : ""}
-    <span class="pb-kv"><span class="muted">盈亏</span>
-      <b class="big ${text(pnl)}">${usd(pnl)}</b></span>
-    <span class="pb-kv"><span class="muted">投入回报</span>
-      <b class="${text(roi)}">${spct(roi)}</b></span>
-    ${whole ? `<span class="pb-kv"><span class="muted">本金回报</span>
-      <b class="${text(R.total_return)}">${spct(R.total_return,2)}</b></span>` : ""}
-    <span class="pb-kv"><span class="muted">投入</span><b>${num(stake)} U</b></span>
-    <span class="pb-kv"><span class="muted">已结算</span><b>${whole ? R.chain_count : E.chains} 笔</b></span>
-    ${whole ? `<span class="pb-kv"><span class="muted">结算日</span><b>${R.days}</b></span>` : ""}
-    <span class="muted">${h(whole ? R.first_day : E.first_day)} → ${
-      h(whole ? R.last_day : E.last_day)}</span>
-    <span class="muted" title="一笔＝一个站日的一个阶段里成交过的腿；本金＝预算旋钮当前值，账户没有历史余额记录，预算更大的日子会被读成更高的回报率">本金 ${
-      M.capital_usdc==null ? "—" : num(M.capital_usdc,0)+" U"}（预算旋钮）${
-      M.pending_legs ? ` · 待结算 ${M.pending_legs} 腿不计` : ""}</span>
-    ${(M.pending_sales||{}).sold_shares > 0 ? `<span class="pb-kv"
-      title="还没结算的站日上主动卖出（0.998 回收、144 卖回）的股：卖出时就已实现；站日结算后并入上面的总账"><span class="muted">未结算日已卖出</span>
-      <b>${num(M.pending_sales.proceeds_usdc)} U</b>
-      <span class="muted">成本 ${num(M.pending_sales.cost_usdc)} U · ${M.pending_sales.station_days} 站日</span>
-      <b class="${text(M.pending_sales.realised_pnl_usdc)}">${usd(M.pending_sales.realised_pnl_usdc)}</b></span>` : ""}
-  </div>`;
-
-  // ---- 对比
-  const bars = (rows) => {
-    const top = Math.max(...rows.map(r => Math.abs(r[1] || 0))) || 1;
-    return rows.map(([label, v, shown, fill]) => `<div class="ee-row">
-      <span class="muted">${label}</span>
-      <span class="ee-track"><span class="ee-fill ${fill}" style="width:${
-        (100 * Math.abs(v || 0) / top).toFixed(1)}%"></span></span>
-      <span class="ee-v">${shown}</span></div>`).join("");
+  const pct = (v,d=0)=>v==null?"—":(100*v).toFixed(d)+"%";
+  const cent = (v)=>v==null?"—":((v>=0?"+":"")+(100*v).toFixed(1)+"¢");
+  const cls = v => v==null ? "muted" : (v>=0 ? "up" : "down");
+  const spark = c => {
+    const ser = (c.R.series || []).map(r => r.equity_usdc);
+    if(ser.length < 2) return `<span class="muted">${c.days||0} 天</span>`;
+    const W=120, H=30, lo=Math.min(...ser), hi=Math.max(...ser), sp=(hi-lo)||1;
+    const d = ser.map((v,i)=>`${i?"L":"M"}${(W*i/(ser.length-1)).toFixed(1)},${(H-2-(H-4)*(v-lo)/sp).toFixed(1)}`).join("");
+    const up = ser[ser.length-1] >= ser[0];
+    return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"><path d="${d}" fill="none"
+      stroke="var(--${up?"up":"down"})" stroke-width="1.6"/></svg>`;
   };
-  const card = (title, verdict, verdictTone, rows, foot) => `<div class="card ee-cmp">
-    <div class="ee-h"><b>${title}</b><span class="pill ${verdictTone}">${verdict}</span></div>
-    ${bars(rows)}${foot ? `<div class="ee-d">${foot}</div>` : ""}</div>`;
-  const cards = [];
-
-  if(E.available){
-    const gains = (E.win_count||0) * (E.mean_win_usdc||0);
-    const losses = (E.loss_count||0) * Math.abs(E.mean_loss_usdc||0);
-    cards.push(card("赚的钱 vs 亏的钱",
-      gains>=losses ? "赢 ＞ 亏" : "亏 ＞ 赢", gains>=losses ? "green" : "red",
-      [[`赢 ${E.win_count||0} 条`, gains, num(gains)+" U", "green"],
-       [`亏 ${E.loss_count||0} 条`, losses, num(losses)+" U", "red"]],
-      `⑥ 平均盈利 <b class="up">${usd(E.mean_win_usdc)}</b> · ⑦ 平均亏损 <b class="down">${
-        usd(E.mean_loss_usdc)}</b>${E.flat_count ? ` · 平 ${E.flat_count} 条` : ""}`));
-
-    const margin = S.margin_over_breakeven;
-    const sameHit = S.profitable_rate!=null && S.realised_coverage!=null
-      && Math.abs(S.profitable_rate - S.realised_coverage) < 5e-4;
-    cards.push(card("实际命中 vs 保本线",
-      margin==null ? "—" : `${margin>=0 ? "盖过" : "低于"} ${pts(margin)}`, tone(margin),
-      [["② 实际覆盖率", S.realised_coverage, pct(S.realised_coverage), tone(margin)],
-       ["④ 保本命中率", S.breakeven_hit_rate, pct(S.breakeven_hit_rate), "ee-base"]],
-      `⑧ 每股成本 ＝ ④ · ③ 盈利率 ${sameHit ? "＝ ②" : `<b>${pct(S.profitable_rate)}</b>`} · ⑤ 净赔率 <b>${
-        num(S.net_odds)}x</b>`));
-
-    const said = S.ev_per_share_claimed, got = S.ev_per_share_realised;
-    const kept = said>0 && got!=null ? got/said : null;
-    const daily = whole ? ` · 兑现比 中位日 <b>${num(R.ev_realisation_daily_median)}×</b> · 近 7 日 <b>${
-      num(R.ev_realisation_trailing_7d)}×</b> · 跑赢声称 <b>${R.days_beating_claim}/${R.days}</b> 天` : "";
-    cards.push(card("⑨ 每股期望：声称 vs 实际",
-      said==null||got==null ? "—" : said<=0 ? "声称不为正" : got>=said ? "实际 ≥ 声称" : `兑现 ${pct(kept,0)}`,
-      got==null ? "muted" : got<0 ? "red" : (kept!=null && kept<1 ? "amber" : "green"),
-      [["声称", said, cent(said), "ee-base"],
-       ["实际", got, cent(got), tone(got)]],
-      `① 声称覆盖率 <b>${pct(S.claimed_coverage)}</b> · 声称累计 <b>${
-        usd(said!=null && E.shares!=null ? said*E.shares : null)}</b>${daily}`));
-  }
-
-  // The three sides of the bar.  全舰队 is not a row: it is the whole book,
-  // which the headline already is.
-  if(SP.barred){
-    const sides = [["live","上线"],["probation","待观察"],["barred","禁入"]]
-      .map(([key,label]) => [label, SP[key] || {}]);
-    const live = (SP.live||{}).roi, barred = (SP.barred||{}).roi;
-    cards.push(card("上线 / 待观察 / 禁入",
-      live==null||barred==null ? "—" : live>=barred ? "上线 ＞ 禁入" : "禁入 ≥ 上线",
-      live==null||barred==null ? "muted" : live>=barred ? "green" : "red",
-      sides.map(([label, g]) => [`${label} ${g.stations||0} 站`, g.roi,
-        `${spct(g.roi)} <span class="muted">${usd(g.pnl_usdc)}</span>`, tone(g.roi)]),
-      sides.map(([label, g]) => `${label} <b>${g.settled_days||0}</b> 站日 / <b>${
-        num(g.staked_usdc||0)}</b> U`).join(" · ")));
-  }
-
-  const stages = (E.by_stage||[]).filter(s => s.chains);
-  if(stages.length){
-    const up = stages.filter(s => (s.pnl_usdc||0) >= 0).map(s => s.stage);
-    const down = stages.filter(s => (s.pnl_usdc||0) < 0);
-    cards.push(card("分阶段",
-      !down.length ? "各阶段都赚" : !up.length ? "各阶段都亏" : `赚在 ${up.map(h).join("、")}`,
-      !down.length ? "green" : !up.length ? "red" : "amber",
-      stages.map(s => [`${h(s.stage)} · ${s.chains} 笔`, s.roi,
-        `${spct(s.roi)} <span class="muted">${usd(s.pnl_usdc,1)}</span>`, tone(s.roi)]), ""));
-  }
-
-  // ---- 风险
-  let risk = "";
-  if(whole){
-    const CI = R.sharpe_ci || [];
-    const decided = CI.length===2 && (CI[0]>0 || CI[1]<0);
-    const kpi = (label, value, sub, cls) => `<div class="pb-k"><span class="muted">${label}</span>
-      <b class="${cls||""}">${value}</b><span class="muted pb-s">${sub}</span></div>`;
-    // A tail that is only the worst day is the worst day; print it once.
-    const tail = (R.tails||[]).filter(t => t.tail_days > 1)
-      .sort((a, b) => b.tail_days - a.tail_days)[0];
-    risk = cap("风险") + `<div class="pb-kpis">
-      ${kpi("夏普", num(R.sharpe), `[${num(CI[0])}, ${num(CI[1])}] · ${
-        decided ? "与 0 可分" : `与 0 不可分 · 需 ${R.days_to_separate_from_zero ?? "—"} 天`}`,
-        decided ? text(R.sharpe) : "muted")}
-      ${kpi("Sortino", num(R.sortino), `下行波动 ${pct(R.downside_deviation,2)}/天`,
-        decided ? text(R.sortino) : "muted")}
-      ${kpi("最大回撤", spct(R.max_drawdown), `${h(R.max_drawdown_peak_day||"—")} → ${
-        h(R.max_drawdown_trough_day||"—")}`, R.max_drawdown<=-0.15 ? "down" : "")}
-      ${kpi("年化收益", spct(R.annualised_return_geometric), `几何 · 算术 ${
-        spct(R.annualised_return_arithmetic)}`, text(R.annualised_return_geometric))}
-      ${kpi("年化波动", pct(R.annualised_volatility), `日波动 ${pct(R.daily_volatility,2)}`, "")}
-      ${kpi("最差一天", spct(R.worst_day,2), `${h(R.worst_day_date||"—")} · ${
-        usd(R.worst_day*R.final_equity_usdc,1)} · 亏损日 ${R.losing_days}/${R.days} 平均 ${
-        spct(R.mean_losing_day,2)}`, "down")}
-      ${tail ? kpi(`CVaR ${(100*tail.level).toFixed(0)}%`, spct(tail.cvar,2),
-        `尾部 ${tail.tail_days} 天${tail.tail_days<5 ? ` · <span class="pill amber">样本不足</span>` : ""}`,
-        "down") : ""}
-    </div>`;
-  }
-
-  // ---- 曲线: two panels, because the claim can run far enough past the
-  // equity to flatten it on a shared axis.
-  let curves = "";
-  const series = whole ? (R.series || []) : [];
-  if(series.length >= 2){
-    const W = 900, PADX = 46, PADY = 16;
-    const X = i => PADX + (W-PADX-10) * (i/(series.length-1));
-    const eq = series.map(r => r.equity_usdc);
-    const panel = (H, lines, extra, label) => {
-      const all = [R.initial_equity_usdc].concat(...lines.map(l => l.vals));
-      const lo = Math.min(...all), hi = Math.max(...all), span = (hi-lo)||1;
-      const Y = v => PADY + (H-2*PADY) * (1 - (v-lo)/span);
-      const path = vals => vals.map((v,i)=>`${i?"L":"M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
-      const ticks = [hi, lo].map(v => `<text x="6" y="${(Y(v)+4).toFixed(1)}"
-        fill="var(--muted)" font-size="11">${v.toFixed(0)}</text>`).join("");
-      return `<div class="scroll"><svg viewBox="0 0 ${W} ${H}" width="100%"
-        style="min-width:520px;height:${H}px;display:block" role="img" aria-label="${label}">
-        ${extra(Y, H)}${ticks}
-        <line x1="${PADX}" y1="${Y(R.initial_equity_usdc).toFixed(1)}" x2="${W-10}"
-          y2="${Y(R.initial_equity_usdc).toFixed(1)}" stroke="var(--muted)"
-          stroke-width="1" stroke-dasharray="3 3"></line>
-        ${lines.map(l => `<path d="${path(l.vals)}" fill="none" stroke="${l.stroke}"
-          stroke-width="${l.width}"${l.dash ? ` stroke-dasharray="${l.dash}"` : ""}></path>`).join("")}
-      </svg></div>`;
-    };
-    const trough = series.findIndex(r => r.event_date === R.max_drawdown_trough_day);
-    const peak = series.findIndex(r => r.event_date === R.max_drawdown_peak_day);
-    const band = (Y, H) => {
-      const x0 = peak >= 0 ? X(peak) : X(0);
-      return trough >= 0 && X(trough) > x0
-        ? `<rect x="${x0.toFixed(1)}" y="${PADY}" width="${(X(trough)-x0).toFixed(1)}"
-            height="${H-2*PADY}" fill="var(--pill-red-bg)"></rect>` : "";
-    };
-    const trend = series.map((_, i) => R.trend_intercept_usdc
-      + R.trend_slope_usdc_per_day*(i+1) + R.initial_equity_usdc);
-    const legend = (items) => `<div class="pb-legend">${items.map(([color, dash, word]) =>
-      `<span><i style="border-top:2px ${dash ? "dashed" : "solid"} ${color}"></i>${word}</span>`).join("")}</div>`;
-    curves = cap("曲线") + `<div class="card">
-      ${legend([["var(--up)", false, "实际权益"],
-        ["var(--accent)", true, `趋势 ${usd(R.trend_slope_usdc_per_day)}/天 · R² ${num(R.trend_r_squared)}`],
-        ["var(--muted)", true, `本金 ${num(R.initial_equity_usdc,0)}（预算旋钮）`],
-        ["var(--pill-red-fg)", false, "回撤区间"]])}
-      ${panel(190, [
-        {vals: trend, stroke: "var(--accent)", width: 1.5, dash: "6 4"},
-        {vals: eq, stroke: "var(--up)", width: 2}], band, "权益曲线与趋势线")}
-      ${legend([["var(--up)", false, "实际权益"],
-        ["var(--violet)", true, "声称 EV 累计到的权益"]])}
-      ${panel(140, [
-        {vals: series.map(r => r.claimed_equity_usdc), stroke: "var(--violet)", width: 1.5, dash: "2 3"},
-        {vals: eq, stroke: "var(--up)", width: 2}], () => "", "声称权益与实际权益")}
-    </div>`;
-  }
-
-  const excluded = [
-    E.dust_excluded ? `对比不含 ${E.dust_excluded} 笔整篮成本 &lt; ${
-      (100*(E.dust_cost_floor||0.01)).toFixed(0)}¢ 的链（${usd(E.dust_excluded_pnl_usdc)}）` : "",
-    E.cost_missing ? `对比不含 ${E.cost_missing} 行缺成本` : "",
-  ].filter(Boolean).join(" · ");
-
-  return head
-    + (cards.length ? cap("对比 · 按股 · 整本账") + `<div class="ee-cmps">${cards.join("")}</div>` : "")
-    + risk + curves
-    + (excluded ? `<div class="muted ee-foot">${excluded}</div>` : "");
+  const shareOf = E => ((E.weightings||{}).share) || {};
+  const tail = R => (R.tails||[]).filter(t => t.tail_days > 1).sort((a,b) => b.tail_days - a.tail_days)[0];
+  const ROWS = [
+    ["权益曲线", c => spark(c), c => ""],
+    ["盈亏 U", c => `<b>${usd(c.pnl)}</b>`, c => cls(c.pnl)],
+    ["投入回报", c => spct(c.stake>0 ? c.pnl/c.stake : null), c => cls(c.pnl)],
+    ["投入 U", c => num(c.stake,1), c => ""],
+    ["已结算 笔 · 天", c => `${c.rows||0} · ${c.days||0}`, c => ""],
+    ["胜 / 负", c => c.E.available ? `${c.E.win_count||0} / ${c.E.loss_count||0}` : "—", c => ""],
+    ["平均盈利 / 亏损", c => c.E.available ? `<span class="up">${usd(c.E.mean_win_usdc)}</span> / <span class="down">${usd(c.E.mean_loss_usdc)}</span>` : "—", c => ""],
+    ["覆盖率 / 保本线", c => { const S = shareOf(c.E); return S.realised_coverage==null ? "—" : `${pct(S.realised_coverage)} / ${pct(S.breakeven_hit_rate)}`; },
+      c => { const m = shareOf(c.E).margin_over_breakeven; return cls(m); }],
+    ["每股期望 声称 / 实际", c => { const S = shareOf(c.E); return S.ev_per_share_claimed==null ? "—" : `${cent(S.ev_per_share_claimed)} / ${cent(S.ev_per_share_realised)}`; },
+      c => cls(shareOf(c.E).ev_per_share_realised)],
+    ["夏普", c => c.R.available ? `${num(c.R.sharpe)} <span class="muted">[${num((c.R.sharpe_ci||[])[0],1)}, ${num((c.R.sharpe_ci||[])[1],1)}]</span>` : "—", c => ""],
+    ["最大回撤", c => c.R.available ? spct(c.R.max_drawdown) : "—", c => c.R.available && c.R.max_drawdown <= -0.15 ? "down" : ""],
+    ["最差一天", c => c.R.available ? `${spct(c.R.worst_day,2)} <span class="muted">${h((c.R.worst_day_date||"").slice(5))}</span>` : "—", c => c.R.available ? "down" : ""],
+    ["CVaR", c => { const t = c.R.available ? tail(c.R) : null; return t ? `${spct(t.cvar,2)} <span class="muted">${(100*t.level).toFixed(0)}%</span>` : "—"; }, c => ""],
+    ["待结算腿", c => c.pending || 0, c => "muted"],
+  ];
+  const head = `<tr><th></th>${cols.map(c => `<th class="${c.whole ? "mb-whole" : ""}">${h(c.name)}</th>`).join("")}</tr>`;
+  const body = ROWS.map(([label, val, tone]) => `<tr><td class="muted">${label}</td>${
+    cols.map(c => `<td class="mono ${tone(c)}${c.whole ? " mb-whole" : ""}">${val(c)}</td>`).join("")}</tr>`).join("");
+  return `<div class="scroll"><table class="mb-cmp"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">本金 ${num(M.capital_usdc,0)} U（预算旋钮，${h(M.capital_source||"")}）；
+    权益曲线、夏普、回撤、最差一天与 CVaR 至少 3 个结算日才算；覆盖率与每股期望按股加权；远尾做空是 NO 腿，没有「声称覆盖」。</div>`;
 }
 
 
@@ -18804,24 +18663,19 @@ function tiebreakLane(){
 }
 
 function moneyBoard(){
+  // No tabs (user 2026-10-05: 不要tab，独立对比统计展示各个策略！内容紧凑一点):
+  // the strategy comparison first, each lane's own page folded under it.
   const cats = MONEY_BOARD.map(c => {
-    const nav = c.panes.map(([key, label], i) =>
-      `<button type="button" data-day="${key}"${i ? "" : ` data-active="1"`}>${
-        h(label)}</button>`).join("");
-    const panes = c.panes.map(([key, label, fn, id], i) =>
-      `<div class="mb-pane" data-daypane="${key}" id="${id}"${i ? " hidden" : ""}>${
-        safe(fn, label)}</div>`).join("");
-    return `<div class="card mb-cat" data-daytabs="money-${c.id}" data-remember="1"
-      style="--tone:${c.tone}">
-      <div class="grouptitle">${h(c.label)}<span class="muted">${h(c.note)}</span></div>
-      ${c.panes.length > 1
-        ? `<div class="daytabs">${nav}<button type="button" data-day="all">全部</button></div>`
-        : ""}
-      ${panes}</div>`;
+    const [first, ...rest] = c.panes;
+    const lead = first ? `<div class="mb-pane" id="${first[3]}">${safe(first[2], first[1])}</div>` : "";
+    const folds = rest.map(([key, label, fn, id]) =>
+      `<details class="mb-fold" id="${id}"><summary>${h(label)}</summary>
+        <div class="mb-pane">${safe(fn, label)}</div></details>`).join("");
+    return `<div class="card mb-cat" style="--tone:${c.tone}">${lead}${folds}</div>`;
   }).join("");
-  return `<h2>资金看板：实盘的盈亏和风险</h2>
-  <p class="sub">全部读<b>实盘成交</b>。第一页上面是数据看板（总账、对比、风险、曲线，每个数只出现一次），
-  纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
+  return `<h2>资金看板：实盘的盈亏和风险（按策略）</h2>
+  <p class="sub">实盘成交，每个策略单独一列、最左一列是合计；同一本金基数（预算旋钮），各列相加等于合计。
+  各策略自己的开关、规则与逐笔订单在下面的折叠块里。</p>
   ${cats}`;
 }
 
