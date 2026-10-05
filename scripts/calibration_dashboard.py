@@ -13207,123 +13207,6 @@ def collect_realisation_layer(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
-def collect_posterior_lane(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The L4 posterior lane (first-principles baseline, shadow): the served
-    ``(alpha, gamma, w)`` rows per stage and lead band with the in-sample
-    skill the fit stored, the registered hypotheses, what the shadow
-    recorded on recent decisions, and the backend's forward skill and
-    realisation readings -- nothing re-judged here.
-    """
-
-    out: dict[str, Any] = {"available": False}
-    try:
-        from bayes_basket_target.basket_kernel.posterior_v1 import (  # noqa: PLC0415
-            POSTERIOR_MODE,
-            POSTERIOR_RULE,
-        )
-        from bayes_basket_target.posterior_store import (  # noqa: PLC0415
-            LEAD_BAND_LABELS,
-            MIN_DAYS,
-            MIN_STATION_DAYS,
-            load_posterior_tables,
-        )
-    except ImportError:
-        return out
-    try:
-        served = load_posterior_tables(conn)
-    except sqlite3.Error:
-        return out
-
-    def _row(row: dict[str, Any] | None) -> dict[str, Any] | None:
-        if row is None:
-            return None
-        return {
-            key: row.get(key) for key in (
-                "lead_band", "alpha", "gamma", "w", "w_lcb", "w_ucb",
-                "accumulating", "decision_count", "station_day_count",
-                "day_count", "fit_cutoff_utc", "activated_at_utc", "skill", "ci",
-                # Charter 230: the row serves only on its own verdict.
-                "admitted", "verdict",
-            )
-        }
-
-    # Read-only (user rulings 2026-10-02 「所有前端都改为只读」 / 「新开一个后端
-    # 读数任务」): the served rows, the hypotheses and the planner's shadow
-    # off the store; the forward skill and the realisation table -- every
-    # decision re-judged with the L4 rows -- as the backend board-readings
-    # job computed them (``board_readings.l4_lane``).
-    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
-
-    l4 = load_reading("l4_lane") or {}
-    l4_value = l4.get("value") or {}
-    stages: list[dict[str, Any]] = []
-    for scope in ("P0", "P0-M", "P1"):
-        row = served.get(scope)
-        forward = (l4_value.get("forward") or {}).get(scope)
-        stages.append({
-            "stage": scope,
-            "served": None if row is None else {
-                **(_row(row) or {}),
-                "lead_bands": {
-                    label: _row((row.get("lead_bands") or {}).get(label))
-                    for label in LEAD_BAND_LABELS
-                },
-            },
-            "forward": forward if isinstance(forward, dict) and "error" not in forward else None,
-        })
-    shadow = {"decisions": 0, "states": {}, "would_admit": 0, "would_refuse": 0}
-    try:
-        # The plan header lives on the training fact, one per decision;
-        # auto_trade_decisions carries it on a few rows only (2 of 121 on
-        # 2026-09-17), so reading it there counted almost nothing.  The
-        # table is append-only, so the newest rows are the highest rowids.
-        rows = conn.execute(
-            "SELECT feature_json FROM basket_policy_training_fact"
-            " ORDER BY rowid DESC LIMIT 300"
-        ).fetchall()
-    except sqlite3.Error:
-        rows = []
-    for (payload,) in rows:
-        try:
-            detail = json.loads(payload or "{}")
-        except ValueError:
-            continue
-        stack = [detail]
-        while stack:
-            node = stack.pop()
-            if isinstance(node, dict):
-                if "posterior_state" in node:
-                    shadow["decisions"] += 1
-                    state = str(node.get("posterior_state"))
-                    shadow["states"][state] = shadow["states"].get(state, 0) + 1
-                    shadow["would_admit"] += int(node.get("posterior_would_admit_count") or 0)
-                    shadow["would_refuse"] += int(node.get("posterior_would_refuse_count") or 0)
-                    continue
-                stack.extend(node.values())
-            elif isinstance(node, list):
-                stack.extend(node)
-    hypotheses: list[dict[str, Any]] = []
-    try:
-        for hid, status, min_days, expected in conn.execute(
-            "SELECT hypothesis_id, status, min_event_days, expected_sign"
-            " FROM calibration_posterior_hypothesis ORDER BY hypothesis_id"
-        ):
-            hypotheses.append({
-                "id": hid, "status": status, "min_event_days": min_days,
-                "expected_sign": expected,
-            })
-    except sqlite3.Error:
-        pass
-    out.update({
-        "available": True, "mode": POSTERIOR_MODE, "rule": POSTERIOR_RULE,
-        "stages": stages, "shadow": shadow, "hypotheses": hypotheses,
-        "min_station_days": MIN_STATION_DAYS, "min_days": MIN_DAYS,
-        "realisation": l4_value.get("realisation"),
-        "readings_at_utc": l4.get("computed_at_utc"),
-    })
-    return out
-
-
 def charter_ev_identity(
     rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
@@ -14159,12 +14042,6 @@ SECTION_CACHE_TTL_SEC = {
     # Refits the fleet's bias under each half-life (~5 min); the verdict
     # moves with a settled day at most.
     "center_landing": 255 * 60,
-    # Three small tables plus one population read per stage for the forward
-    # skill score; the journal moves once a day.  Six hours, not 55
-    # minutes: on the swapping machine a read cost up to 1,417 s, and an
-    # hourly lifetime asked the research render for 1,546 s an hour of the
-    # ~800 it had (2026-10-02, the scorecard 7 h overdue behind it).
-    "posterior_lane": 6 * 60 * 60 + 13 * 60,
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
@@ -15938,10 +15815,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             # The card reads ``days || []`` and hides when there are none.
             _unavailable={}
         ),
-        "posterior_lane": _cached_section(
-            "posterior_lane", collect_posterior_lane, conn,
-            _unavailable={"available": False},
-        ),
         "charter_ev": _cached_section(
             "charter_ev", collect_charter_ev, conn,
             _unavailable={"available": False},
@@ -17442,43 +17315,7 @@ function truthLanding(){
 // interval, on a beta axis with its two meanings marked.  Shared by the
 // per-stage reading, the lead cut, the station cut and the walk-forward.
 const TH_BETA=[-0.5,1.5];
-function thForest(rows,{labelW=70,width=430,rowH=22,marks=true}={}){
-  const L=labelW,R=14,T=marks?26:6,AX=22;
-  const H=T+rows.length*rowH+AX;
-  const x=v=>(L+(Math.max(TH_BETA[0],Math.min(TH_BETA[1],v))-TH_BETA[0])
-    /(TH_BETA[1]-TH_BETA[0])*(width-L-R)).toFixed(1);
-  const ticks=[-0.5,0,0.5,1,1.5].map(v=>`<text x="${x(v)}" y="${H-6}"
-    text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${v}</text>`).join("");
-  const ref=(v,label)=>`<line x1="${x(v)}" x2="${x(v)}" y1="${T-4}" y2="${H-AX+2}"
-    style="stroke:var(--muted);stroke-width:1;opacity:.7"/>${marks?`<text x="${x(v)}"
-    y="${T-10}" text-anchor="middle" style="fill:var(--muted);font-size:10.5px">${label}</text>`:""}`;
-  const body=rows.map((r,i)=>{
-    const y=T+i*rowH+rowH/2;
-    const bar=r.lo==null?"":`<line x1="${x(r.lo)}" x2="${x(r.hi)}" y1="${y}" y2="${y}"
-      style="stroke:var(--${r.emph?"th-claim":"text"});stroke-width:2.5;
-      opacity:${r.emph?.8:.42};stroke-linecap:round"/>`;
-    const dot=r.from==null?"":`<circle cx="${x(r.from)}" cy="${y}" r="4.5"
-      style="fill:var(--card);stroke:var(--muted);stroke-width:2"/><line x1="${x(r.from)}"
-      x2="${x(r.v)}" y1="${y}" y2="${y}" style="stroke:var(--muted);stroke-width:1.5"/>`;
-    return `<g class="th-row"><title>${h(r.title||r.label)}</title>
-      <rect x="0" y="${(y-rowH/2).toFixed(1)}" width="${width}" height="${rowH}"
-        class="th-hit" style="fill:transparent"/>
-      <text x="${L-8}" y="${(y+4).toFixed(1)}" text-anchor="end"
-        style="fill:var(--text);font-size:11px">${h(r.label)}</text>
-      ${bar}${dot}<circle class="th-dot" cx="${x(r.v)}" cy="${y}" r="4.5"
-        style="fill:var(--${r.emph?"th-claim":"text"});stroke:var(--card);stroke-width:2"/></g>`;
-  }).join("");
-  return `<svg viewBox="0 0 ${width} ${H}" width="100%" role="img">${
-    ref(0,"0 · 信价格")}${ref(1,"1 · 全额兑现")}${ticks}${body}</svg>`;
-}
 
-// The edge area's map (user rulings, 2026-09-17: "把前端显式按照这个逻辑改一下",
-// then "我说的是 l4 的逻辑").  Drawn as L4's own formula,
-//   logit b = logit m + w·(logit p − logit m) + c(m),
-// one box per term, each listing the sections that measure or serve that
-// term; then the verdict the formula is judged on and the direction it
-// falls without evidence.  Every section node jumps to its section, and its
-// status is read from LANES so the map and the strips cannot disagree.
 // Dated readings (config/ui/board_evidence_v1.json via payload.board_evidence).
 // A site prints its reading through withEv; an id the registry lacks prints
 // 依据未登记 rather than a number remembered by the template.
@@ -17492,98 +17329,7 @@ const evPct = (v, d=0) => v==null ? "—" : (100*v).toFixed(d) + "%";
 const evSg = (v, d=1, unit="") => v==null ? "—" : (v>0?"+":(v<0?"−":"")) + Math.abs(v).toFixed(d) + unit;
 const evSgPct = (v, d=1) => v==null ? "—" : evSg(100*v, d, "%");
 const evCi = (ci, f) => Array.isArray(ci) && ci.length===2 ? `[${f(ci[0])}, ${f(ci[1])}]` : "";
-function posteriorLane(){
-  const V=D.posterior_lane||{};
-  if(!V.available) return "";
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const n4=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(4));
-  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
-  const cards=(V.stages||[]).map(st=>{
-    const s=st.served, f=st.forward||{}, sk=(s&&s.skill)||{}, c=(s&&s.ci)||{};
-    const vd=(s&&s.verdict)||{};
-    const vls=vd.d_logscore||[], vbr=vd.d_brier||[];
-    const word=!s?"无拟合，b = m 不买":(s.accumulating?"累积中，b = m 不买":(s.admitted?"准入：服务后验":"未准入，b = m 不买"))
-      +(vd.test_days?`（前推 ${vd.test_days} 天：LogScore ${n4(vls[0])} [${n4(vls[1])}, ${n4(vls[2])}]，Brier ${n4(vbr[0])} [${n4(vbr[1])}, ${n4(vbr[2])}]）`:"");
-    const tone=s&&s.admitted?"green":"amber";
-    const bands=Object.values((s&&s.lead_bands)||{}).filter(Boolean).map(b=>`<tr><td>${h(b.lead_band)}</td>
-      <td class="mono">${b.decision_count} / ${b.day_count}</td>
-      <td class="mono">${b.accumulating?"<span class='muted'>累积中</span>":n3(b.w)+ci([b.w_lcb,b.w_ucb],n3)}</td>
-      <td class="mono">${b.accumulating?"—":n3(b.gamma)}</td>
-      <td class="mono">${b.accumulating?"—":n4((b.skill||{}).s_in_sample)}</td></tr>`).join("");
-    return `<div class="card">
-      <div style="display:flex;align-items:center;gap:8px"><b>${h(st.stage)}</b><span style="flex:1"></span>
-        <span class="pill ${tone}">${word}</span></div>
-      <div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap">
-        <div><div class="muted">分歧权重 w（logit）</div>
-          <div class="big">${s&&!s.accumulating?n3(s.w):"—"}</div>
-          <div class="muted">${s&&!s.accumulating?`[${n3(s.w_lcb)}, ${n3(s.w_ucb)}]`:""} · ${s?s.decision_count:"—"} 决策 / ${s?s.station_day_count:"—"} 站日 / ${s?s.day_count:"—"} 天</div></div>
-        <div><div class="muted">市场自校正 γ · α</div>
-          <div class="big">${s&&!s.accumulating?n3(s.gamma):"—"}</div>
-          <div class="muted">${s&&!s.accumulating?`γ ${ci(c.gamma,n3)||""} · α ${n3(s.alpha)}${ci(c.alpha,n3)}`:""}</div></div>
-        <div><div class="muted">技能分 S = log b − log m（样本内）</div>
-          <div class="big ${sk.s_in_sample==null?"":(sk.s_in_sample<0?"down":"up")}">${n4(sk.s_in_sample)}</div>
-          <div class="muted">${ci(sk.s_in_sample_ci,n4)||"—"} nat · IC ${n3(sk.ic_in_sample)}</div></div>
-        <div><div class="muted">技能分 S（前瞻，按当时服务的拟合）</div>
-          <div class="big ${f.s_forward==null?"":(f.s_forward<0?"down":"up")}">${n4(f.s_forward)}</div>
-          <div class="muted">${ci(f.s_forward_ci,n4)||"—"} nat · IC ${n3(f.ic_forward)} · ${f.decisions||0} 决策 / ${f.days||0} 天${f.served_market?` · 其中 ${f.served_market} 次服务的是市场`:""}</div></div>
-      </div>
-      <table style="margin-top:10px"><thead><tr><th>提前量档</th><th>决策 / 天</th><th>w · 90%</th><th>γ</th><th>S 样本内</th></tr></thead>
-      <tbody>${bands||"<tr><td colspan=5 class='muted'>无档行</td></tr>"}</tbody></table>
-    </div>`;
-  }).join("");
-  const sh=V.shadow||{};
-  const states=Object.entries(sh.states||{}).map(([k,c])=>`${h(k)} ${c}`).join(" · ")||"重启后开始记录";
-  const hyps=(V.hypotheses||[]).map(x=>`${h(x.id)}（${h(x.status)}）`).join("、")||"未注册";
-  return `<h2>L4 后验层（宪章 230；宪章 231 起下线，留档）：先信市场，再看分歧兑现几成</h2>
-  <p class="sub">第一性原理基线 §4.4：<span class="mono">logit b = logit m + w·(logit p − logit m) + α + γ·logit m</span>，
-  在全部站日 × 整梯全部桶上前瞻拟合，先验 w = γ = α = 0（市场对）。
-  按宪章 211 以整梯多类 LogLoss 拟合；<b>每行前推判决：LogScore 显著胜市场（单侧 95%）且桶 Brier 点估计也变好才服务，否则 b = m，闸门什么都不买</b>。
-  门槛 ${V.min_station_days} 站日 / ${V.min_days} 事件日；判决至少 8 个检验日。</p>
-  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px">${cards}</div>
-  <p class="note" style="margin-top:10px">影子（最近 ${sh.decisions||0} 份计划头）：${states}；
-  会多放行 ${sh.would_admit||0} 窗 · 会拒 ${sh.would_refuse||0} 窗。已注册假设（E11）：${hyps}。</p>
-  ${posteriorRealisation(V.realisation)}`;
-}
 
-// L4's money edge (user ruling, 2026-09-17 "补"): the windows L4 would buy,
-// after they settled.  Every settled window production enumerated in the
-// last 14 days, re-judged with the L4 row that was active at its decision,
-// crossed with the verdict the live lambda gate gave the same window.
-function posteriorRealisation(R){
-  const title=`<h3 style="margin-top:18px">兑现表：L4 会买的窗，结算后赚没赚</h3>`;
-  if(!R) return `${title}<div class="card muted">未采集。</div>`;
-  if(R.error) return `${title}<div class="card muted">不可读：${h(R.error)}。</div>`;
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const pp=v=>v==null?"—":((v>=0?"+":"")+(v*100).toFixed(1)+" 点");
-  const ci=c=>!c||c[0]==null?"":` <span class="muted">[${pp(c[0])}, ${pp(c[1])}]</span>`;
-  const tone=x=>x.hit_minus_price==null?"":(x.ci&&x.ci[0]!=null&&x.ci[0]>0?"up":(x.ci&&x.ci[1]!=null&&x.ci[1]<0?"down":""));
-  const row=(label,x,strong)=>{x=x||{};return `<tr${strong?' style="font-weight:620"':""}><td>${label}</td>
-    <td class="mono">${x.n||0} / ${x.station_days||0} / ${x.days||0}</td>
-    <td class="mono">${n3(x.price)}</td><td class="mono">${n3(x.hit)}</td>
-    <td class="mono">${pp(x.claimed_edge)}</td>
-    <td class="mono ${tone(x)}"><b>${pp(x.hit_minus_price)}</b>${ci(x.ci)}</td></tr>`;};
-  const c=R.cells||{};
-  // The acceptance sample (user ruling, 2026-09-17): the disagreement class
-  // the band table cannot see; L4's edge is read here first.
-  const A=R.acceptance;
-  const pc=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const acceptRows=!A?`<tr><td colspan="6" class="muted">验收样本：本页数据还没带这一项，等下一轮整库渲染。</td></tr>`
-    :`<tr><td colspan="6" style="padding-top:10px"><b>验收样本</b>：模型说 ≥${pc(A.claim_floor)} 而市场中价 &lt;${pc(A.market_ceiling)} 的窗——已结算 ${A.windows}、已判 ${A.judged}${A.windows?"":"（累积中）"}</td></tr>
-    ${row("　这类窗全部（不论谁买）",A.all)}${row("　其中 L4 会买",A.l4_admitted,true)}${row("　其中实盘 λ 会买",A.lambda_admitted)}`;
-  const stages=Object.entries(R.by_stage||{}).map(([st,v])=>`${h(st)}：L4 会买 ${(v.l4_admitted||{}).n||0} 窗 ${pp((v.l4_admitted||{}).hit_minus_price)} · λ 会买 ${(v.lambda_admitted||{}).n||0} 窗 ${pp((v.lambda_admitted||{}).hit_minus_price)}`).join("；");
-  const empty=!R.judged;
-  return `${title}
-  <p class="sub">最近 14 天（${h(R.since)} 起）生产枚举过、已结算的每个定价窗，用<b>决策当时生效的 L4 拟合</b>重判买不买，
-  再和实盘 λ 闸对同一个窗的判决交叉。「L4 声称 edge」= L4 信念 − 全含价；「实际」= 命中 − 全含价，按事件日自助 90%。
-  L4 放行那两行的实际值区间下界 &gt; 0 才算 L4 的 edge 兑现了。</p>
-  <div class="card" style="overflow-x:auto"><table><thead><tr><th>哪些窗</th><th>窗 / 站日 / 天</th><th>平均价</th><th>命中率</th><th>L4 声称 edge</th><th>实际 命中 − 价 · 90%</th></tr></thead>
-  <tbody>${row("L4 会买（合计）",R.l4_admitted,true)}${row("实盘 λ 会买（合计，对照）",R.lambda_admitted,true)}
-  ${row("两边都买",c.both_admit)}${row("只有 L4 买",c.l4_only)}${row("只有 λ 买",c.lambda_only)}${row("两边都不买",c.both_refuse)}
-  ${acceptRows}</tbody></table>
-  <div class="muted" style="margin-top:6px;font-size:11.5px">${empty
-    ?`还没有可判的窗：已结算窗 ${R.windows} 个，其中当时 L4 还在累积中 ${R.accumulating} 个（服务 b = m，不给判决）、当时还没有拟合 ${R.no_fit} 个、盘口或向量不全 ${R.no_vector} 个。L4 过门槛（约 09-25）后开始出数。`
-    :`已判 ${R.judged} 窗；累积中未判 ${R.accumulating}、无拟合 ${R.no_fit}、盘口或向量不全 ${R.no_vector}。${stages}`}</div></div>`;
-}
 
 
 
@@ -19065,7 +18811,7 @@ function moneyBoard(){
   }).join("");
   return `<h2>资金看板：实盘的盈亏和风险</h2>
   <p class="sub">全部读<b>实盘成交</b>。第一页上面是数据看板（总账、对比、风险、曲线，每个数只出现一次），
-  下面是订单数量与站明细。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
+  纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
   ${cats}`;
 }
 
@@ -21881,14 +21627,11 @@ const GROUPS = [
   // select and sizing areas and the edge map left with the basket lane
   // (2026-09-26, user rulings 「还有β 车道」「检查统一估值车道」「整区删除」).
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；兑现层自成一个板块；② L4 后验已下线，只留档",
+   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；兑现层自成一个板块",
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
-      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
-     {box:"② L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
-      note:"已下线：篮子车道关闭，下注改由 Proper 下注线按天气模型 p 与市场 q 直接生成仓位（宪章 231），L4 不再计算、夜间不再重拟；下表是下线前最后一版行。原设计：b 由整梯多类 LogLoss 拟合，每行前推判决 LogScore 显著胜市场且桶 Brier 点估计也变好才服务",
-      sections:[[posteriorLane,"L4 后验层（已下线）"]]}]},
+      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]}]},
   // Charter 254, its own area (user 2026-10-05: 兑现层单独一个层级板块):
   // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
   // what settled.  Shadow: nothing here trades.
@@ -21997,8 +21740,6 @@ const LANES = {
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
   "兑现层（影子）": {layer:"兑现层", status:"shadow",
     role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
-  "L4 后验层（已下线）": {layer:"边际层 · ② L4", status:"off",
-    role:"logit b = logit m + w·(logit p − logit m) + c(m)：宪章 231 起下线，不计算、不重拟，下表是下线前最后一版"},
   // --- live: the lanes that send, and the book they send into ---
   "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",
     role:"阶段首个决策，模型众数桶被市场定在价带内 → 买一上方一档挂 post-only，一站日一笔"},
@@ -22010,7 +21751,7 @@ const LANES = {
     role:"宪章 199：09-24 起服务融合权重；前向记账比融合与席位权重，并列切换后的研究候选"},
   // --- the book's own account ---
   "资金看板": {layer:"实盘 · 读数", status:"audit",
-    role:"实盘赚没赚：总账、对比、风险、曲线，订单数量与站明细"},
+    role:"实盘赚没赚：总账、对比、风险、曲线"},
   "站点实盘上线闸门": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"实盘 · 读数", status:"audit",
@@ -22065,7 +21806,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     precip_classification:"降水分类",regional_usage:"区域模型使用",
     p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",station_bayes:"逐站贝叶斯",
     correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
-    center_width:"宽度层",posterior_lane:"后验车道",live_days:"每日统计",live_selection:"选站",
+    center_width:"宽度层",live_days:"每日统计",live_selection:"选站",
     live_readiness:"上线闸门",live_money:"资金",observation_intake:"观测入库",hosted_sweeps:"托管 sweep"};
 // The caches this section read, and the caches that fed those, that were
 // reused from an earlier build: named in the section, oldest first, amber when
