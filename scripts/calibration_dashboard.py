@@ -4339,8 +4339,10 @@ def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
         " FROM calibration_native_ensemble_activation"
         " WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
     ).fetchone()
-    lag = conn.execute(
-        "SELECT COUNT(*) FROM ("
+    # The lagging cells and the cells that have weights at all, so the board
+    # can say what share lags (user 2026-10-05「换成百分比」).
+    lag, lag_total = conn.execute(
+        "SELECT SUM(julianday(corr_end) - julianday(weight_end) >= 3), COUNT(*) FROM ("
         " SELECT s.station_id, s.lead_bucket, s.run_cycle,"
         "  MAX(s.train_end_date) AS corr_end,"
         "  (SELECT MAX(e.train_end_date)"
@@ -4351,9 +4353,9 @@ def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
         " FROM calibration_native_ensemble_system_artifact s"
         " WHERE s.lead_bucket IN ('h00_12','h12_24','h24_48')"
         " GROUP BY s.station_id, s.lead_bucket, s.run_cycle)"
-        " WHERE weight_end IS NOT NULL AND julianday(corr_end)"
-        " - julianday(weight_end) >= 3"
-    ).fetchone()[0]
+        " WHERE weight_end IS NOT NULL"
+    ).fetchone()
+    lag, lag_total = int(lag or 0), int(lag_total or 0)
     return {
         "correction": {
             "activations": correction[0],
@@ -4368,6 +4370,7 @@ def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
             "age_hours": _age_hours(weights[2]),
         },
         "weight_lag_scopes": lag,
+        "weight_scopes": lag_total,
     }
 
 
@@ -10994,8 +10997,10 @@ def collect_gaps(
         gaps.append({
             "severity": "medium",
             "what": (
-                f"{tables['weight_lag_scopes']} 个站×提前量的融合权重"
-                "落后于偏差订正 3 天以上"
+                (f"{100 * tables['weight_lag_scopes'] / tables['weight_scopes']:.0f}%"
+                 f"（{tables['weight_lag_scopes']} / {tables['weight_scopes']}）"
+                 if tables.get("weight_scopes") else f"{tables['weight_lag_scopes']} 个")
+                + "站×提前量的融合权重落后于偏差订正 3 天以上"
             ),
             "cost": "这些格子的权重仍是旧证据算的，融合比例可能不是当前最优",
             "self_heals": True,
@@ -17416,8 +17421,8 @@ function tables(){
         最近更新 ${hours(t.weights.age_hours)}</div></div>
     <div class="card"><div class="muted">权重落后订正的格子</div>
       <div class="big ${t.weight_lag_scopes ? "down" : ""}">
-        ${t.weight_lag_scopes}</div>
-      <div class="muted">落后 3 天以上的站×提前量组合；
+        ${lagShare(t)}</div>
+      <div class="muted">${lagCount(t)}落后 3 天以上的站×提前量组合；
         权重要过检验才换代，持续不过就会停在旧版本</div></div>
   </div>`;
 }
@@ -20923,8 +20928,16 @@ function tablesWeights(){
     <div class="big">${t.weights.stations} 站</div>
     <div class="muted">${t.weights.activations.toLocaleString()} 次激活 · 最近更新 ${hours(t.weights.age_hours)}</div></div>
     <div class="card"><div class="muted">权重落后订正的格子</div>
-      <div class="big ${t.weight_lag_scopes ? "down" : ""}">${t.weight_lag_scopes}</div>
-      <div class="muted">落后 3 天以上的站×提前量组合；持续过不了检验就停在旧版本</div></div></div>`;
+      <div class="big ${t.weight_lag_scopes ? "down" : ""}">${lagShare(t)}</div>
+      <div class="muted">${lagCount(t)}落后 3 天以上的站×提前量组合；持续过不了检验就停在旧版本</div></div></div>`;
+}
+// User 2026-10-05「换成百分比」: the lagging cells as a share of the cells
+// that have weights, the count beside it.
+function lagShare(t){
+  return t.weight_scopes ? (100 * t.weight_lag_scopes / t.weight_scopes).toFixed(0) + "%" : String(t.weight_lag_scopes);
+}
+function lagCount(t){
+  return t.weight_scopes ? `${t.weight_lag_scopes} / ${t.weight_scopes} 格 · ` : "";
 }
 
 function singleSystemWidth(){
