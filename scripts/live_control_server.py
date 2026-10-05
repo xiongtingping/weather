@@ -42,6 +42,9 @@ POST /api/station-bar     {"station": "KSEA", "barred": true}
 POST /api/station-waiver  {"station": "LIMC", "waived": true}
 POST /api/station-hold    {"station": "KDAL", "held": true}
 POST /api/station-bulk    {"action": "waive_all" | "bar_all"}
+POST /api/manual-basket-order {"confirm":"BUY","station":"ZUUU","event_date":...,"batch_id":...,
+                  "mode":"taker|maker|manual","legs":[{"bucket","shares","limit_price"}]}
+                  -> the operator's own basket through the local gateway (board origin only)
 GET  /api/station-day?station=ZUUU[&force=1|&token_only=1] -> one station's today and day-ahead
                   distributions, market, TAF/METAR (read-only; the board's 单站日 panel)
 
@@ -1271,6 +1274,12 @@ def set_allowlist(stations: list) -> dict:
     return state()
 
 
+# The board's one-click basket (user 2026-10-05「点击确认一键下单」): the
+# pages allowed to send it -- the board as the static server serves it.
+MANUAL_ORDER_ORIGINS = frozenset({
+    "http://127.0.0.1:8791", "http://localhost:8791",
+})
+
 # The board's one-station panel (user 2026-10-05: ZUUU 单站日分布，自动刷新与一键
 # 刷新).  A reader of what production stored, built on demand
 # (bayes_basket_target.station_day_board, ~0.5 s of read-only reads); answers
@@ -1389,6 +1398,18 @@ class Handler(BaseHTTPRequestHandler):
                     bool(body.get("held")),
                     str(body.get("by") or ""),
                 )
+            elif self.path.rstrip("/") == "/api/manual-basket-order":
+                # Money leaves the wallet: only the board's own page may ask.
+                # The CORS answer above lets any page's script reach this
+                # loopback port, so the Origin is checked here, by name.
+                origin = str(self.headers.get("Origin") or "")
+                if origin not in MANUAL_ORDER_ORIGINS:
+                    self._send(403, {"error": f"来源不被允许下单：{origin or '无 Origin'}"})
+                    return
+                from bayes_basket_target.manual_basket_order import (  # noqa: PLC0415
+                    place_manual_basket,
+                )
+                out = place_manual_basket(body)
             elif self.path.rstrip("/") == "/api/station-bulk":
                 out = set_all_stations(
                     str(body.get("action") or ""),
