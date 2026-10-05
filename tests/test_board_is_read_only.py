@@ -19,7 +19,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BOARD_SOURCES = (
     ROOT / "scripts" / "calibration_dashboard.py",
-    ROOT / "scripts" / "dashboard_ai_models.py",
 )
 FORBIDDEN_CALLS = (
     "_fit_parameters", "_load_cases", "_logloss_refit",

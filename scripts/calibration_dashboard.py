@@ -82,7 +82,6 @@ from bayes_basket_target.strategy_lanes import (  # noqa: E402
 # and the live fills (same ruling).  The paper selection payload they read
 # until then is no longer built here.
 import live_selection  # noqa: E402
-from dashboard_ai_models import collect_ai_models  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
 )
@@ -14456,13 +14455,6 @@ SECTION_CACHE_TTL_SEC = {
     # Seven minutes off the scorecard's three hours: cached sections expire
     # on distinct clocks so the slow ones never rebuild in the same render.
     "precip_classification": 3 * 60 * 60 + 7 * 60,
-    # One stage-clock seek over a day of P0 rows plus ~1,200 lineage reads;
-    # the products it reads change by the cycle (six hours), not the minute.
-    # Three hours since 2026-10-02: the read was ~20 s when its lifetime was
-    # set to 15 minutes, 143-913 s now (most of it parsing lineage), and at
-    # four reads an hour it alone asked the research render for 1,800 s an
-    # hour of the ~800 it had.
-    "ai_models": 3 * 60 * 60 + 11,
 }
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
@@ -15922,9 +15914,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     # Heavy pages from here down declare what to show without a page, so
     # the page render never reads one whole past its deadline (9d40f09a).
-    ai_models = _cached_section(
-        "ai_models", collect_ai_models, conn, _unavailable={"available": False}
-    )
     p1_joint_likelihood = _cached_section(
         "p1_joint_likelihood", collect_p1_joint_likelihood, conn
     )
@@ -16175,7 +16164,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "observation_intake": observation_intake,
         "cycle_time": cycle_time,
         "regional_usage": regional_usage,
-        "ai_models": ai_models,
         "p1_joint_likelihood": p1_joint_likelihood,
         "p0m_taf_likelihood": p0m_taf_likelihood,
         "station_bayes": station_bayes,
@@ -16963,43 +16951,6 @@ const shares = (v) => {
   return Math.abs(n - Math.round(n)) < 1e-6
     ? String(Math.round(n)) : String(Number(n.toFixed(4)));
 };
-// Rungs read left to right, coldest first (user ruling, 2026-09-12).
-// Nothing upstream promises ladder order.  The live legs arrive in the
-// order their intents were minted -- newest first -- which is why one
-// EPWA basket printed 19°C 20°C 18°C: three rungs of one ladder, drawn
-// out of order, read as three unrelated buys.  The other ladders on this
-// page happen to arrive sorted today; they are sorted here too, so
-// left-to-right is a property of the page rather than of whichever writer
-// last touched the table it came from.
-//
-// Every label this book mints is one of four shapes -- "18°C",
-// "78-79°F", "17°C or below", "21°C or higher" -- and a few older lanes
-// write "<=17°C" / ">=21°C".  A range sorts on its lower bound.  An open
-// end sorts half a rung outside the degree it names, so the bottom bucket
-// lands below its own number and the top one above it, which is where
-// they sit on the ladder.  A label that parses to no number sorts last
-// and keeps the order it came in: inventing a rung for it would be worse
-// than admitting the page cannot place it.
-const rungValue = (b) => {
-  const s = String(b == null ? "" : b);
-  const m = s.match(/-?\d+(?:\.\d+)?/);
-  if (!m) return NaN;
-  const v = Number(m[0]);
-  if (!isFinite(v)) return NaN;
-  if (/below|^\s*<=|^\s*\u2264/.test(s)) return v - 0.5;
-  if (/higher|above|^\s*>=|^\s*\u2265/.test(s)) return v + 0.5;
-  return v;
-};
-// Array.prototype.sort is stable, so ties and unplaceable labels keep the
-// order they arrived in.
-const byRung = (x, y) => {
-  const a = rungValue(x), b = rungValue(y);
-  if (!isFinite(a)) return isFinite(b) ? 1 : 0;
-  if (!isFinite(b)) return -1;
-  return a - b;
-};
-const rungSorted = (list, pick) => (list || []).slice()
-  .sort((x, y) => byRung(pick ? pick(x) : x, pick ? pick(y) : y));
 const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
   amber:["有需要留意的地方","不影响出数，但有环节慢了或在攒数据"],
   red:["有环节断了","看下面三排灯，红的那盏就是断的那一环"]};
@@ -18491,94 +18442,132 @@ function moneyDataBoard(){
 // strip (user ruling, 2026-08-21): one row per event day, and it answers
 // "what happened yesterday" without choosing a group first.
 //
-// The live book since 2026-09-16 (user ruling: 每日统计、逐站逐日明细也改为
-// 实盘数据; the paper ledger is a rule comparator).  Two grains, each named
-// in its header: a station-day for the basket verdicts, a 笔 (one stage of
-// one station-day that filled) for the claim, the hit rate against it and
-// the odds -- the grain the money board's nine numbers read, so the two
-// agree.
-function daily(){
-  const rows=D.daily||[];
-  if(!rows.length) return "";
-  // A hot update can draw this template around a payload built before the
-  // table moved to the live book; its rows are the paper table's shape.
-  if(rows[0].stations_posted===undefined)
-    return `<h2>每日统计：按天汇总实盘下单、成交与结算</h2>
-    <div class="card muted">这一节已改读实盘，当前数据来自改动之前的整库渲染，下一轮整库渲染后显示。</div>`;
-  const STAGES=["P0","P0-M","P1"];
-  const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const usd=v=>v==null?"—":v.toFixed(2);
-  const signed=v=>v==null?"—":((v>=0?"+":"")+v.toFixed(2));
-  // Newest five open, the rest folded (user ruling, 2026-09-11).
-  const OPEN_DAYS=5;
-  const rowHtml=r=>{
-    const byStage=r.filled_leg_by_stage||{};
-    const stageTxt=STAGES.map(st=>{
-      const n=byStage[st]||0;
-      return n?`<span title="${st}：${n} 条成交腿">${st} <b>${n}</b></span>`
-        :`<span class="muted">${st} —</span>`;
-    }).join(`<span class="muted"> · </span>`);
-    const cal=r.calibration_ratio;
-    const calCls=cal==null?"":(cal>=0.9&&cal<=1.15?"up":"down");
-    const frac=(a,b)=>b?`${a}/${b} <span class="muted">${pct(a/b)}</span>`:"—";
-    return `<tr>
-      <td class="mono">${h(r.event_date)}</td>
-      <td class="mono">${r.stations_posted}<span class="muted"> / ${r.stations_filled}</span></td>
-      <td class="mono">${r.baskets}</td>
-      <td class="mono">${r.filled_legs}<span class="muted">/${r.posted_legs}</span>
-        <div class="muted" style="font-size:11px;margin-top:2px">${stageTxt}</div></td>
-      <td class="mono">${usd(r.staked_usdc)}</td>
-      <td class="mono">${r.settled_station_days}${r.open_station_days
-        ?`<span class="muted"> · 未结 ${r.open_station_days}</span>`:""}</td>
-      <td class="mono">${frac(r.basket_hit_station_days, r.settled_station_days)}</td>
-      <td class="mono">${frac(r.held_hit_station_days, r.held_station_days)}</td>
-      <td class="mono">${r.settled_rows||"—"}</td>
-      <td>${pct(r.hit_rate)}</td>
-      <td>${pct(r.claimed_win_probability_mean)}</td>
-      <td class="factor ${calCls}">${cal==null?"—":cal.toFixed(2)+"×"}</td>
-      <td>${r.odds_mean==null?"—":r.odds_mean.toFixed(2)+"x"}</td>
-      <td class="mono">${r.settled_rows?usd(r.settled_staked_usdc):"—"}</td>
-      <td class="mono ${r.pnl_usdc==null?"":(r.pnl_usdc>=0?"up":"down")}">${signed(r.pnl_usdc)}</td>
-      <td class="mono ${r.roi==null?"":(r.roi>=0?"up":"down")}">${r.roi==null?"—":((r.roi>=0?"+":"")+(100*r.roi).toFixed(1)+"%")}</td>
-    </tr>`;
+// 盈亏日历 (user 2026-10-05: 每日统计、站明细、逐站逐日明细三块都改为一个
+// 清晰的日历视图).  One cell per event day: the day's settled live P&L
+// (D.daily, the live book's settlement rows -- the money board's grain),
+// green up, red down, deeper the larger.  Daily / monthly, $ / %, a week
+// column, and the 1D / 7D / 30D / 90D strip over the settled days.
+let PNL_CAL = {month: null, mode: "daily", unit: "usd"};
+function pnlCalendarSet(key, value){
+  if(key === "shift"){
+    const [y, m] = PNL_CAL.month.split("-").map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + value, 1));
+    PNL_CAL.month = d.toISOString().slice(0, 7);
+  } else PNL_CAL[key] = value;
+  const box = document.getElementById("pnl-cal");
+  if(box) box.innerHTML = pnlCalendarBody();
+}
+function pnlCalendarBody(){
+  const rows = (D.daily || []).filter(r => r.pnl_usdc != null);
+  const byDay = {};
+  rows.forEach(r => { byDay[r.event_date] = r; });
+  const days = Object.keys(byDay).sort();
+  if(!days.length) return `<div class="muted">还没有已结算的实盘日。</div>`;
+  if(!PNL_CAL.month) PNL_CAL.month = days[days.length - 1].slice(0, 7);
+  const pctOf = (pnl, stake) => stake > 0 ? pnl / stake : null;
+  const money = v => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(Math.abs(v) >= 100 ? 0 : 2);
+  const pctTxt = v => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(100 * v).toFixed(1) + "%";
+  const val = (pnl, stake) => PNL_CAL.unit === "usd" ? money(pnl) : pctTxt(pctOf(pnl, stake));
+  const sum = list => list.reduce((a, r) => ({pnl: a.pnl + r.pnl_usdc, stake: a.stake + (r.settled_staked_usdc || 0)}), {pnl: 0, stake: 0});
+  // The strip: the last N settled days.
+  const strip = [1, 7, 30, 90].map(n => {
+    const t = sum(days.slice(-n).map(d => byDay[d]));
+    return `<div class="pcal-card"><div class="pcal-k">${n}D</div>
+      <div class="pcal-v ${t.pnl >= 0 ? "up" : "down"}">${money(t.pnl)}</div>
+      <div class="pcal-s ${t.pnl >= 0 ? "up" : "down"}">${pctTxt(pctOf(t.pnl, t.stake))}</div></div>`;
+  }).join("");
+  const tone = (pnl, scale) => {
+    const a = Math.min(1, Math.abs(pnl) / (scale || 1));
+    const alpha = (0.18 + 0.62 * a).toFixed(2);
+    return pnl >= 0 ? `background:rgba(46,160,67,${alpha})` : `background:rgba(218,54,51,${alpha})`;
   };
-  const recent=rows.slice(0,OPEN_DAYS).map(rowHtml).join("");
-  const older=rows.slice(OPEN_DAYS);
-  const head=`<thead><tr>
-    <th>事件日</th>
-    <th title="当天有实盘意向的站 / 其中真有腿成交的站">站数<br><span class="muted">下单/成交</span></th>
-    <th title="决策数：每个决策是一个篮子">篮子</th>
-    <th title="成交腿 / 挂出的腿，下面按阶段拆成交腿">腿<br><span class="muted">成交/挂出 · 分阶段</span></th>
-    <th title="当天所有成交腿的实付，不等结算">投入</th>
-    <th title="有真值的站日（不论成交没有）· 还没真值的站日">已结算<br><span class="muted">站日</span></th>
-    <th title="真值落在挂出的桶里，成交与否都算（2026-09-14 裁决）">篮子命中<br><span class="muted">站日</span></th>
-    <th title="真值落在成交的桶里，只数有成交的站日">持仓命中<br><span class="muted">站日</span></th>
-    <th title="一笔＝一个站日一个阶段里成交过的腿，资金看板的九个数按这个口径">已结算<br><span class="muted">笔</span></th>
-    <th title="按笔：持有的桶里含真值的比例">命中率<br><span class="muted">笔</span></th>
-    <th title="按笔：下单决策绑定的概率包里，持有各桶概率之和">声称<br><span class="muted">笔</span></th>
-    <th title="命中率 ÷ 声称，1.00× 是说得准">实现/声称</th>
-    <th title="(1−成本)/成本，成本按投入加权后再取倒数">赔率</th>
-    <th title="已结算笔的实付">结算投入</th><th>盈亏</th><th>ROI</th>
-  </tr></thead>`;
-  return `<h2>每日统计：按天汇总实盘下单、成交与结算</h2>
-  <p class="sub">全部读<b>实盘成交</b>（<span class="mono">live_submit_authorized=1</span>）：
-  钱是交易所报回来的成交名义，结算桶与资金看板同一个解析器。纸面账本从 2026-09-16 起只当规则对比器，不在这里。</p>
-  <div class="why"><b>两种口径，列头写明：</b><b>站日</b>＝一个站一个事件日，不论交易了几个阶段——
-  「篮子命中」看真值是否落在挂出的桶里（成交没有都算），「持仓命中」看是否落在成交的桶里；
-  <b>笔</b>＝一个站日里一个阶段成交过的腿，「命中率 / 声称 / 实现/声称 / 赔率 / 盈亏」按笔算，和资金看板的九个数同一口径。
-  「投入」是当天全部成交的实付、不等结算；「盈亏」只属于已结算的笔，所以未结算日这两列不能相除，ROI 用的是「结算投入」。</div>
-  <div class="card"><table>${head}<tbody>${recent}</tbody></table>${older.length ? `<details style="margin-top:10px">
-      <summary class="muted" style="cursor:pointer">更早的 ${older.length} 天
-        （${h(older[older.length-1].event_date)} 到 ${h(older[0].event_date)}）</summary>
-      <table style="margin-top:8px">${head}
-        <tbody>${older.map(rowHtml).join("")}</tbody></table></details>` : ""}</div>`;
+  const [y, m] = PNL_CAL.month.split("-").map(Number);
+  const monthRows = days.filter(d => d.startsWith(PNL_CAL.month)).map(d => byDay[d]);
+  const mt = sum(monthRows);
+  const wins = monthRows.filter(r => r.pnl_usdc > 0).length;
+  const losses = monthRows.filter(r => r.pnl_usdc < 0).length;
+  const best = monthRows.length ? Math.max(...monthRows.map(r => r.pnl_usdc)) : null;
+  const worst = monthRows.length ? Math.min(...monthRows.map(r => r.pnl_usdc)) : null;
+  const btn = (key, value, label, on) =>
+    `<button type="button" class="pcal-b${on ? " on" : ""}" onclick="pnlCalendarSet('${key}', ${typeof value === "number" ? value : `'${value}'`})">${label}</button>`;
+  const head = `<div class="pcal-head">
+    ${btn("shift", -1, "‹", false)}${btn("shift", 1, "›", false)}
+    <span class="pcal-title">${PNL_CAL.mode === "daily" ? `${y} 年 ${m} 月` : `${y} 年`}</span>
+    <span class="pcal-total ${(PNL_CAL.mode === "daily" ? mt.pnl : 0) >= 0 ? "up" : "down"}">${PNL_CAL.mode === "daily" ? val(mt.pnl, mt.stake) : ""}</span>
+    <span class="pcal-seg">${btn("mode", "daily", "按日", PNL_CAL.mode === "daily")}${btn("mode", "monthly", "按月", PNL_CAL.mode === "monthly")}</span>
+    <span class="pcal-seg">${btn("unit", "usd", "$", PNL_CAL.unit === "usd")}${btn("unit", "pct", "%", PNL_CAL.unit === "pct")}</span></div>`;
+  let grid;
+  if(PNL_CAL.mode === "monthly"){
+    const months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, "0")}`);
+    const totals = months.map(mm => sum(days.filter(d => d.startsWith(mm)).map(d => byDay[d])));
+    const scale = Math.max(1, ...totals.map(t => Math.abs(t.pnl)));
+    grid = `<div class="pcal-grid pcal-months">${months.map((mm, i) => {
+      const t = totals[i], has = days.some(d => d.startsWith(mm));
+      return `<div class="pcal-cell${has ? "" : " empty"}" style="${has ? tone(t.pnl, scale) : ""}"
+        ${has ? `onclick="pnlCalendarSet('month','${mm}');pnlCalendarSet('mode','daily')"` : ""}>
+        <div class="pcal-d">${i + 1} 月</div>${has ? `<div class="pcal-p">${val(t.pnl, t.stake)}</div>` : ""}</div>`;
+    }).join("")}</div>`;
+  } else {
+    const first = new Date(Date.UTC(y, m - 1, 1));
+    const lead = first.getUTCDay();
+    const n = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const scale = Math.max(1, ...monthRows.map(r => Math.abs(r.pnl_usdc)));
+    const cells = [];
+    for(let i = 0; i < lead; i++) cells.push(null);
+    for(let d = 1; d <= n; d++) cells.push(`${PNL_CAL.month}-${String(d).padStart(2, "0")}`);
+    while(cells.length % 7) cells.push(null);
+    const weeks = [];
+    for(let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    const dayCell = d => {
+      if(!d) return `<div class="pcal-cell empty"></div>`;
+      const r = byDay[d];
+      const raw = (D.daily || []).find(x => x.event_date === d);
+      const tip = raw ? `${d} · 投入 ${(raw.staked_usdc || 0).toFixed(2)} U · 已结算投入 ${(raw.settled_staked_usdc || 0).toFixed(2)} U · ${raw.stations_filled || 0} 站成交 · ${raw.filled_legs || 0} 腿${raw.open_station_days ? ` · 未结算 ${raw.open_station_days} 站日` : ""}` : d;
+      return `<div class="pcal-cell${r ? "" : " idle"}" style="${r ? tone(r.pnl_usdc, scale) : ""}" title="${attr(tip)}">
+        <div class="pcal-d">${Number(d.slice(8))}</div>${r ? `<div class="pcal-p">${val(r.pnl_usdc, r.settled_staked_usdc)}</div>`
+          : raw ? `<div class="pcal-p muted">待结算</div>` : ""}</div>`;
+    };
+    grid = `<div class="pcal-grid">${["日","一","二","三","四","五","六","周"].map(x => `<div class="pcal-wd">${x}</div>`).join("")}${
+      weeks.map(w => {
+        const t = sum(w.filter(d => d && byDay[d]).map(d => byDay[d]));
+        const any = w.some(d => d && byDay[d]);
+        return w.map(dayCell).join("") + `<div class="pcal-wk ${t.pnl >= 0 ? "up" : "down"}">${any ? val(t.pnl, t.stake) : ""}</div>`;
+      }).join("")}</div>`;
+  }
+  const stats = PNL_CAL.mode === "daily" && monthRows.length ? `<div class="pcal-stats">
+    胜率 <b>${(100 * wins / Math.max(1, wins + losses)).toFixed(0)}%</b> <span class="muted">(${wins} 盈 ${losses} 亏)</span>
+    · 最好 <b class="up">${money(best)}</b> · 最差 <b class="down">${money(worst)}</b></div>` : "";
+  return `<div class="pcal-strip">${strip}</div><div class="pcal-box">${head}${stats}${grid}</div>`;
+}
+function pnlCalendar(){
+  const rows = D.daily || [];
+  if(!rows.length) return "";
+  return `<h2>盈亏日历：每个事件日的已结算实盘盈亏（全部策略合计）</h2>
+  <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、P1 尾段、同心线），读实盘成交与结算（与资金看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
+  悬停看当天投入、成交站数与腿数；未结算的日子标「待结算」。「周」列是该周合计，上方四格是最近 1/7/30/90 个已结算日。</p>
+  <style>
+  .pcal-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+  .pcal-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+  .pcal-k{font-weight:600}.pcal-v{font-size:22px;font-weight:700}.pcal-s{font-size:13px}
+  .pcal-box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;max-width:760px}
+  .pcal-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .pcal-title{font-size:20px;font-weight:700;margin-left:6px}.pcal-total{font-size:18px;font-weight:600}
+  .pcal-seg{display:inline-flex;gap:2px;margin-left:6px}
+  .pcal-b{background:transparent;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;color:inherit}
+  .pcal-b.on{background:rgba(46,160,67,.55);border-color:transparent}
+  .pcal-stats{margin:8px 0 4px}
+  .pcal-grid{display:grid;grid-template-columns:repeat(7,1fr) 0.9fr;gap:6px;margin-top:8px}
+  .pcal-months{grid-template-columns:repeat(6,1fr)}
+  .pcal-wd{text-align:center;color:var(--muted);font-size:12px}
+  .pcal-cell{border-radius:8px;min-height:54px;padding:4px;text-align:center;background:rgba(127,127,127,.08)}
+  .pcal-cell.empty{background:transparent}.pcal-cell.idle{opacity:.7}
+  .pcal-d{font-size:14px}.pcal-p{font-size:12px;font-weight:600;font-family:ui-monospace,monospace}
+  .pcal-wk{display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;font-family:ui-monospace,monospace}
+  @media (max-width:600px){.pcal-strip{grid-template-columns:repeat(2,1fr)}}
+  </style>
+  <div id="pnl-cal">${pnlCalendarBody()}</div>`;
 }
 
-// A station's whole-window account, one row per station.  These averages
-// used to ride along on every row of the daily roster, where a station with
-// no book that day still showed an ask total and an EV and read as that
-// day's price.  Here the window is stated once in the header and a row is a
-// station, so the number cannot be mistaken for a date's.
 // Station geography, [latitude, coastal], and the climate bands the station
 // table groups by.  Top level since 逐站汇总（跨日） merged into the go-live
 // station table (user ruling, 2026-09-16).
@@ -18606,122 +18595,6 @@ const BAND_ORDER=["北半球·高纬","北半球·温带","北半球·副热带"
   "南半球·副热带","南半球·温带"];
 const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
 
-
-
-// 逐站逐日明细 off the live book (user ruling, 2026-09-16).  One row per
-// station that minted a live intent that day, one cell per stage: every
-// bucket the stage posted, cold to warm, struck through where nothing
-// filled; what the held legs claimed and cost; and the per-leg fill under a
-// fold.  Stations with no live intent are not listed -- there is no live
-// account of them to show -- and the day line counts them.
-function roster(){
-  const R=D.live_roster||{};
-  const dates=Object.keys(R).sort().reverse();
-  if(!dates.length) return "";
-  const short=x=>String(x).replace("°C","").replace("°F","");
-  const usd2=v=>v==null?"—":v.toFixed(2);
-  const pctS=v=>v==null?"—":(v*100).toFixed(0)+"%";
-  const STATE={
-    hit:["st-hit","持仓命中"],basket:["st-open","篮子命中·没买到"],
-    miss:["st-miss","未命中"],open:["st-open","未结算"],flat:["st-flat","未成交"],
-  };
-  const stateOf=(e)=>{
-    if(e.settled_bucket==null) return e.filled_legs?"open":"flat";
-    if(e.held_hit) return "hit";
-    if(e.basket_hit) return "basket";
-    return e.filled_legs?"miss":"flat";
-  };
-  const cell=(s, truth)=>{
-    if(!s) return `<td class="muted">—</td>`;
-    const ladder=rungSorted(s.buckets, b=>b.bucket);
-    const chips=ladder.map(b=>{
-      const got=b.filled_size>0;
-      const isTruth=truth!=null&&String(b.bucket)===String(truth);
-      return `<span class="mono ${got?(truth==null?"":(isTruth?"up":"down")):"muted"}"
-        style="${got?"":"text-decoration:line-through"}"
-        title="${h(b.bucket)} · 挂 ${shares(b.posted_size)} 份 · 成交 ${shares(b.filled_size)} 份 · 声称 ${pctS(b.claimed_probability)}${isTruth?" · 结算桶":""}">${h(short(b.bucket))}${isTruth?"✓":""}</span>`;
-    }).join("+");
-    const claim=s.claimed_win_probability, cost=s.basket_all_in_cost;
-    const odds=cost?((1-cost)/cost):null;
-    const money=s.filled_legs
-      ? `<div class="muted">${pctS(claim)} @ ${cost==null?"—":cost.toFixed(3)} · ${odds==null?"—":odds.toFixed(2)+"x"}</div>
-         <div class="muted" style="font-size:11px">实投 ${usd2(s.stake_usdc)} · ${s.filled_legs}/${s.posted_legs} 腿成交${s.baskets>1?` · ${s.baskets} 篮`:""}</div>`
-      : `<div class="muted" style="font-size:11px">${s.posted_legs} 腿挂出、一腿都没成交${s.baskets>1?` · ${s.baskets} 篮`:""}</div>`;
-    const legs=ladder.map(b=>`<tr${b.filled_size>0?"":' class="muted"'}>
-      <td>${h(b.bucket)}</td><td>${shares(b.posted_size)}</td>
-      <td>${b.filled_size>0?shares(b.filled_size):"<b>0</b>"}</td>
-      <td>${b.filled_size>0?(b.filled_notional_usdc/b.filled_size).toFixed(4):"—"}</td>
-      <td>${b.filled_size>0?usd2(b.filled_notional_usdc):"—"}</td>
-      <td>${pctS(b.claimed_probability)}</td></tr>`).join("");
-    return `<td><div class="mono" style="font-size:11.5px">${chips}</div>${money}
-      <details style="font-size:11px"><summary class="muted">逐腿</summary>
-      <table class="mono" style="font-size:11px"><thead><tr>
-        <th>桶</th><th>挂出份</th><th>成交份</th><th>均价</th><th>资金</th><th>声称</th>
-      </tr></thead><tbody>${legs}</tbody></table></details></td>`;
-  };
-  const row=(e)=>{
-    const state=stateOf(e);
-    const src=e.settled_source==="truth_lane"
-      ?`<div class="muted" style="font-size:11px" title="结算桶取自真值车道，按当日自己的桶阶梯落桶">真值车道</div>`:"";
-    const pnl=e.pnl_usdc==null
-      ?`<span class="muted">—</span>`
-      :`<span class="${e.pnl_usdc>=0?"up":"down"}">${e.pnl_usdc>=0?"+":""}${e.pnl_usdc.toFixed(2)}</span>`;
-    return `<tr>
-      <td class="st ${STATE[state][0]}" title="${STATE[state][1]}">
-        <div class="mono">${e.market_slug
-          ? `<a class="mkt" target="_blank" rel="noopener noreferrer"
-              href="https://polymarket.com/event/${encodeURIComponent(e.market_slug)}"
-              title="打开 ${h(e.station_id)} ${h(e.event_date)} 的盘口">${h(e.station_id)} ↗</a>`
-          : h(e.station_id)}</div>
-        <div class="muted">${h(e.station_label)}</div>
-        <div class="muted" style="font-size:11px">${STATE[state][1]}</div></td>
-      ${cell(e.stages.P0, e.settled_bucket)}
-      ${cell(e.stages["P0-M"], e.settled_bucket)}
-      ${cell(e.stages.P1, e.settled_bucket)}
-      <td class="mono">${e.settled_bucket==null?`<span class="muted">未结算</span>`:h(e.settled_bucket)}${src}</td>
-      <td class="mono">${pnl}<div class="muted" style="font-size:11px">投入 ${usd2(e.staked_usdc)}</div></td></tr>`;
-  };
-  const head=`<tr><th>站点</th><th>P0 建仓</th><th>P0-M 确认</th><th>P1 盯盘</th>
-    <th>结算桶</th><th>实得</th></tr>`;
-  const blocks=dates.map(day=>{
-    const rows=R[day]||[];
-    const filled=rows.filter(e=>e.filled_legs).length;
-    const staked=rows.reduce((a,e)=>a+(e.staked_usdc||0),0);
-    const settled=rows.filter(e=>e.pnl_usdc!=null);
-    const pnl=settled.reduce((a,e)=>a+e.pnl_usdc,0);
-    const money=settled.length
-      ?` · <span class="${pnl>=0?"up":"down"}">${pnl>=0?"+":""}${pnl.toFixed(2)} U</span>`:"";
-    return {day, count:rows.length, filled,
-      pane:`<div data-daypane="${h(day)}" hidden>
-      <div class="card">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline">
-          <b class="mono">${h(day)}</b>
-          <span class="muted">${rows.length} 站下单 · ${filled} 站成交 · 实投 ${usd2(staked)} U${money}</span></div>
-        ${rows.length?`<div class="scroll" style="margin-top:10px"><table>
-          <thead>${head}</thead><tbody>${rows.map(row).join("")}</tbody></table></div>`:""}
-      </div></div>`};
-  });
-  // Nothing open until a date is clicked (user ruling, 2026-09-11).
-  const dayNav=`<nav class="daytabs">${blocks.map(b=>
-    `<button type="button" data-day="${h(b.day)}"
-      title="${b.count} 站下单 · ${b.filled} 站成交">${h(b.day)}
-      <span class="muted">成交 ${b.filled}</span></button>`).join("")
-    }<button type="button" data-day="all">全部 <span class="muted">${
-      blocks.length} 天</span></button></nav>`;
-  return `<h2>逐站逐日明细：逐个站日核对实盘挂了哪些桶、买到了哪些</h2>
-  <p class="sub">全部读<b>实盘成交</b>。每个事件日一组，表里列当天铸出过实盘意向的站（各车道合在一起）。
-  每格上行是这一阶段挂出的桶（冷到暖，划线＝一份没成交，✓＝结算桶），下方是持有各桶的声称 @ 成本 · 赔率、实投与成交腿数，
-  展开「逐腿」是每个桶挂出份数 / 成交份数 / 均价 / 资金 / 声称。
-  <b>默认一天都不展开</b>——点日期展开，「全部」是通栏视图。</p>
-  <div class="why"><b>站点格的底色＝这个站日最后怎么了：</b>
-  <span class="pill green">持仓命中</span>成交的桶里有真值 ·
-  <span class="pill amber">篮子命中·没买到</span>挂出的桶里有真值、但那一桶没成交 ·
-  <span class="pill red">未命中</span>挂出的桶里没有真值 ·
-  <span class="pill amber">未结算</span>买了但真值还没到 ·
-  <span class="pill">未成交</span>挂了一腿都没成交。
-  <b>声称</b>＝下单那个决策绑定的概率包里该桶的概率；份数不等的持仓按概率加权份数算成本，保证「投入×(声称÷成本−1)」就是这些腿声称能赚的钱。</div>
-  <div data-daytabs="roster">${dayNav}${blocks.map(b=>b.pane).join("")}</div>`;
-}
 
 
 const pct1 = (v) => v == null ? "—" : (v * 100).toFixed(1) + "%";
@@ -19309,346 +19182,6 @@ function liveOrderCard(L){
     <div class="muted">${lab}</div>
     <div class="big ${klass||""}">${val}</div>
     <div class="muted" style="font-size:11.5px">${sub2}</div></div>`;
-  // Grouped by decision, because the decision is the basket.  The solver
-  // sizes the whole support set as one joint action and the selector
-  // refuses any proper subset of it -- then the exchange, which has no
-  // basket primitive, takes one order per bucket.  A flat leg table shows
-  // the exchange's shape and hides ours: read row by row it says the
-  // system picks temperature buckets one at a time, when in fact 31°C and
-  // 32°C on 2026-08-31 were two legs of a single WMKK basket that stood
-  // or fell together.  So legs sit under their basket, and a basket that
-  // is one leg wide says so rather than being indistinguishable from a
-  // leg that lost its siblings.
-  const groups = [];
-  const byDecision = new Map();
-  for (const r of (O.rows||[])){
-    let g = byDecision.get(r.decision_id);
-    if (!g){
-      g = {decision_id:r.decision_id, station_id:r.station_id||"",
-            event_date:r.event_date||"", window:r.execution_window_seconds,
-            legs:[], notional:0, latest:r.created_at};
-      byDecision.set(r.decision_id, g);
-      groups.push(g);
-    }
-    g.legs.push(r);
-    g.notional += (r.requested_notional_usdc||0);
-    if (String(r.created_at) > String(g.latest)) g.latest = r.created_at;
-  }
-  // Legs of one basket carry one deadline; if they ever disagree the
-  // narrower one is the one that governs, so show that rather than the
-  // first row's.
-  for (const g of groups){
-    const w = g.legs.map(l=>l.execution_window_seconds).filter(v=>v!=null);
-    g.window = w.length ? Math.min(...w) : null;
-    // And the basket's own ladder, coldest rung first.  Everything else
-    // this loop's readers ask of ``legs`` -- the deadline, the fills, the
-    // centre -- is order-free, so the one order that survives is the one
-    // the chips are drawn in.
-    g.legs = rungSorted(g.legs, l=>l.bucket);
-  }
-  // One line per basket, one <details> per event date, settled dates
-  // closed by default (user ruling, 2026-09-05: the leg table grew with
-  // every order and took the viewport).  A leg is a chip: bucket, price x
-  // shares, its end state, and -- when the state alone says nothing --
-  // the reason its latest event carried.  A settled date shows the bucket
-  // the day landed in and each basket's money.
-  const short = (r)=>{
-    const v = String(r||"");
-    if(!v) return "";
-    if(v.startsWith("invalid amount")) return "低于$1";
-    if(v==="clob_collateral_evidence_unavailable") return "网关抵押读数缺失";
-    if(v==="live_station_held") return "站被暂扣";
-    if(v==="live_station_barred") return "站被禁入";
-    if(v==="live_station_probation") return "站在考察期";
-    if(v==="live_intent_disarmed") return "实盘旗未举";
-    if(v==="live_submit_not_authorized") return "合同未授权";
-    return v.length>28 ? v.slice(0,26)+"…" : v;
-  };
-  // What the basket's own plan recorded, keyed by the decision that is the
-  // basket.  Nothing here is derived: a basket whose plan is no longer in
-  // the store gets no ring and no state, because an unmarked basket beats a
-  // guessed one.
-  const SEATS = O.plan_state || {};
-  // The market this station-day traded, straight from the registry the
-  // collector read (user ruling, 2026-09-15: 点击即可跳转市场盘口).  No slug,
-  // no link: a guessed URL is worse than plain text.
-  const SLUGS = O.market_slugs || {};
-  const stationLink = (station, day)=>{
-    const slug = SLUGS[station + "|" + day];
-    return slug
-      ? `<a class="mkt" style="color:inherit" target="_blank" rel="noopener noreferrer"
-          href="https://polymarket.com/event/${encodeURIComponent(slug)}"
-          title="打开 ${h(station)} ${h(day)} 的盘口">${h(station)} ↗</a>`
-      : h(station);
-  };
-  const planOf = (g)=>SEATS[g.decision_id] || null;
-  const centerOf = (g)=>String((planOf(g)||{}).center||"");
-  // The day's shape, in the words charter 75 places the window with.  Left
-  // is the cold tail, right the warm one -- named by where the tail runs,
-  // not by which way the page happens to draw the ladder.
-  const SKEW_LABEL = {
-    SYMMETRIC: ["对称日", "均值与众数相差不到 0.35 σ —— 宪章 131 把席位定为均值桶±1"],
-    RIGHT_SKEWED: ["右偏 · 暖尾", "均值在众数之上超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
-    LEFT_SKEWED: ["左偏 · 冷尾", "均值在众数之下超过 0.35 σ：席位为 {均值桶, 尾侧一格(, 尾侧两格)}，众数桶在窗外"],
-  };
-  // Charter 131: the windows the day was allowed, as the plan recorded them
-  // (ordinal sets, widest first).
-  const allowedText = (plan)=>{
-    let a = plan.seat_shape_allowed;
-    if(typeof a === "string"){ try { a = JSON.parse(a); } catch(e) { a = null; } }
-    if(!Array.isArray(a) || !a.length) return "";
-    return a.map(w => Array.isArray(w) ? `${w[0]}–${w[w.length-1]}` : String(w)).join(" / ") + " 格序数";
-  };
-  const skewChip = (g)=>{
-    const plan = planOf(g);
-    if(!plan || !plan.skew) return "";
-    const label = SKEW_LABEL[String(plan.skew)];
-    if(!label) return "";
-    const gap = plan.gap_buckets;
-    const read = plan.skew_source === "reading";
-    const detail = read
-      ? `均值−众数 = ${gap==null?"—":(gap>0?"+":"")+Number(gap).toFixed(2)} 格`
-        + `（判定阈 ±${plan.threshold_buckets==null?"0.50":Number(plan.threshold_buckets).toFixed(2)} 格${plan.threshold_sigma==null?"":" = "+Number(plan.threshold_sigma).toFixed(2)+" σ"}）`
-        + (plan.sigma_buckets==null ? "" : ` · 服务宽度 σ ${Number(plan.sigma_buckets).toFixed(2)} 格`)
-        + (plan.seat_shape_rule==null ? "" :
-            ` · 第 131 条席位形状：${allowedText(plan) || "无可坐窗"}`)
-        + " · 取自该决策自己的计划所记形态读数"
-      : "取自该计划记下的方向（宪章 75 下方向就是偏态符号）。"
-        + "证据不新鲜的那天一律记 NEUTRAL，所以这一路读数可能把当天读成对称——"
-        + "形态读数是 2026-09-06 起才写进计划的。";
-    const tone = String(plan.skew)==="SYMMETRIC" ? "" : "down";
-    return `<span class="pill ${tone}" style="font-size:10px"
-      title="${h(label[1])} · ${h(detail)}">${h(label[0])}${read?"":"*"}</span>`;
-  };
-  // A sell leg (0.99 recycle, charter 144 sell-back) is drawn as a sell:
-  // 卖 before the price, and its own words for its states -- a resting GTC
-  // sell is 挂着, not the … a buy rung waiting on a fill wears.
-  const LANE_WORD = {recycle998:"0.998 回收", misbuyexit:"144 卖回", tiebreak:"秤砣线",
-    p1_tail:"P1 尾段线", p1_consensus:"同心线", proper_bet:"Proper 下注线",
-    tail_short:"远尾做空 H1", basket:"篮子"};
-  const sellChip = (r)=>{
-    const st = String(r.state||"");
-    const sold = Number(r.filled_size||0);
-    const mark = st==="filled" ? `✓卖出 ${shares(sold||r.requested_size)}`
-      : st==="failed" ? "✗" : st==="cancelled" ? "—撤" : "挂着";
-    const cls = st==="filled" ? "up" : (st==="failed"||st==="cancelled") ? "muted" : "";
-    const why = (st==="failed"||st==="cancelled") ? short(r.reason) : "";
-    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px dashed var(--amber,#c90);border-radius:5px;font-size:11.5px;white-space:nowrap"
-      title="卖单 · ${h(LANE_WORD[r.lane]||r.lane||"")} · ${h(r.bucket)} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}${sold?" · 成交 "+shares(sold)+" 份 / "+Number(r.filled_notional_usdc||0).toFixed(2)+" U":""}">卖 ${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
-  };
-  const isSell = (g)=> g.legs.length>0 && g.legs.every(l=>String(l.order_action||"BUY")==="SELL");
-  const legChip = (r, truth, center)=>{
-    if(String(r.order_action||"BUY")==="SELL") return sellChip(r);
-    const st = String(r.state||"");
-    // Charter 231: a NO leg pays when its bucket does NOT settle.
-    const isNo = String(r.side||"YES").toUpperCase()==="NO";
-    const hit = truth && ((String(r.bucket)===truth) !== isNo);
-    const cls = st==="filled" ? (truth ? (hit?"up":"down") : "") : "muted";
-    const mark = st==="filled" ? (truth ? (hit?"✓中":"✗") : "●")
-      : st==="failed" ? "✗" : st==="cancelled" ? "—" : "…";
-    const why = (st==="failed"||st==="cancelled") ? short(r.reason) : "";
-    // The centre is marked on the frame, not on the text: the text colour
-    // already carries the leg's own outcome (filled, hit, refused), and
-    // painting the centre green there would make one colour answer two
-    // different questions.
-    const mid = center && String(r.bucket)===String(center);
-    const ring = mid
-      ? "border-color:var(--up);box-shadow:inset 0 0 0 1px var(--up)"
-      : "border-color:var(--line,#ddd)";
-    return `<span class="mono ${cls}" style="display:inline-block;padding:1px 6px;margin:1px 3px 1px 0;border:1px solid;${ring};border-radius:5px;font-size:11.5px;white-space:nowrap"
-      title="${isNo?"买 NO · ":""}${h(r.bucket)}${mid?" · 均值中心桶":""} · ${h(r.order_intent_id)} · ${h(st)}${r.reason?" · "+h(r.reason):""} · ${h(r.created_at)}">${isNo?"NO ":""}${h(r.bucket)} ${r.limit_price}×${shares(r.requested_size)} <b>${mark}</b>${why?" <span class='muted'>"+h(why)+"</span>":""}</span>`;
-  };
-  const byDate = new Map();
-  for (const g of groups){
-    const key = g.event_date || "?";
-    if(!byDate.has(key)) byDate.set(key, []);
-    byDate.get(key).push(g);
-  }
-  const truthOf = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket || "";
-  // Where that label came from.  ``production_label`` is production's own
-  // settlement label; ``truth_lane`` is a day whose label is not written
-  // yet, scored off the truth that stands and the day's own ladder.  The two
-  // are different claims and the page says which.
-  const truthSrc = (g)=> (g.legs.find(l=>l.settled_bucket)||{}).settled_bucket_source || "";
-  const dates = [...byDate.keys()].sort().reverse();
-  // A date folds once its money is counted, or once it is behind us: a
-  // past day the paper settler never seated (a held station's refused
-  // basket) has no settlement row and would otherwise stay open forever.
-  const today = new Date().toISOString().slice(0,10);
-  // Money and verdicts per station-day are the collector's
-  // (live_orders.station_days); the browser draws them.  A payload from
-  // before that field draws the lines without money and says so.
-  const SDX = (L.live_orders||{}).station_days || null;
-  const sdMap = new Map(((SDX||{}).rows||[]).map(s=>[s.station_id+"|"+s.event_date, s]));
-  const dayMap = new Map(((SDX||{}).days||[]).map(d=>[d.event_date, d]));
-  // A basket every leg of which the station bar refused never reached the
-  // exchange: no fill, no cost, no payout.  Six of the ten lines on the
-  // book this morning were these, and they crowded out the four that
-  // bought something (user ruling, 2026-09-06: do not list barred
-  // stations).  Dropped from the listing, counted on the date line -- a
-  // silently shorter list reads as "this is everything".
-  const barred = (g)=> g.legs.length > 0
-    && g.legs.every(l=>String(l.reason||"")==="live_station_barred");
-  // One line per station-day (user ruling, 2026-09-14: 把同一站点的合并在一起).
-  // A basket that never reached the exchange is decided again next cycle
-  // and mints a fresh one, so the disarmed morning of 2026-09-12 printed
-  // ZBAA four times and ZGSZ three, each with a verdict of its own.  The
-  // station now wears one verdict over all its baskets, and its baskets sit
-  // under it.  Baskets that bought nothing and repeat one another's legs
-  // fold into one line with a count; a basket that filled anything is never
-  // folded, because its fills are money.
-  const foldKey = (g)=> g.legs.map(l=>[l.bucket, l.state, l.reason||""].join("|")).join(",")
-    + "#" + String((planOf(g)||{}).skew||"");
-  const clock = (t)=> { const m = String(t||"").match(/T(\d{2}:\d{2})/); return m ? m[1]+"Z" : ""; };
-  const rows = dates.map(day=>{
-    const all = byDate.get(day).slice().sort((a,b)=>
-      String(a.station_id).localeCompare(String(b.station_id))
-      || String(a.latest).localeCompare(String(b.latest)));
-    const hidden = all.filter(barred);
-    const gsAll = all.filter(g=>!barred(g));
-    const gs = gsAll.filter(g=>!isSell(g));
-    const sellsOf = new Map();
-    for (const g of gsAll.filter(isSell)){
-      const key = g.station_id || "?";
-      if(!sellsOf.has(key)) sellsOf.set(key, []);
-      sellsOf.get(key).push(g);
-    }
-    const dd = dayMap.get(day) || null;
-    const daySettled = !!dd && !!dd.day_settled;
-    const folded = daySettled || (day < today);
-    const stations = [];
-    const byStation = new Map();
-    for (const g of gs){
-      const key = g.station_id || "?";
-      if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
-      byStation.get(key).push(g);
-    }
-    // A station whose only line today is a sell (its basket fell outside
-    // the listing) still gets its line.
-    for (const key of sellsOf.keys()){
-      if(!byStation.has(key)){ byStation.set(key, []); stations.push(key); }
-    }
-    const stationLines = stations.map(station=>{
-      const baskets = byStation.get(station);
-      const sells = sellsOf.get(station) || [];
-      const sd = sdMap.get(station+"|"+day) || null;
-      const truth = sd ? String(sd.settled_bucket||"") : (baskets.concat(sells).map(truthOf).find(Boolean) || "");
-      const sLegs=sd?sd.buy_legs:null, sFilled=sd?sd.filled_legs:null, sCost=sd?sd.cost_usdc:null,
-        sProceeds=sd?sd.sell_proceeds_usdc:null, sSold=sd?sd.sold_legs:null, sResting=sd?sd.resting_sells:null;
-      const sellLegs = sells.flatMap(g=>g.legs);
-      const covered = !!sd && !!truth && !!sd.basket_covered;
-      const src = baskets.map(truthSrc).find(Boolean)==="truth_lane"
-        ? "　真值取自真值车道（生产结算标签还没写），按当日自己的桶阶梯落桶"
-        : "";
-      // The verdict is the basket's (user ruling, 2026-09-14: 命中不管成不成交，
-      // 都要显示是否篮子命中真值): 命中 when the settled bucket is one of the
-      // buckets this station-day's baskets asked for, 未命中 when it is not,
-      // filled or not.  What the fills did is a second word beside it --
-      // 持仓命中, 持仓未中, 未成交 -- because the two part company exactly where
-      // money is lost: a window that held the truth and a rung that did not
-      // fill.  Both words and every number beside them are the collector's.
-      const verdict = !baskets.length
-        ? ["amber", "只有卖单", "这个站日的买入篮子不在本列表的窗口里，只列出卖单"]
-        : !sd
-        ? ["amber", "待整库渲染", "站日的金额与判定由 collector 出；这份 payload 早于那个字段"]
-        : !truth
-        ? ["amber", "未结算", "这个站日的真值还没到"]
-        : covered
-          ? ["green", "命中", "篮子挂出的桶里有结算桶 " + truth + src]
-          : ["red", "未命中", "篮子挂出的桶里没有结算桶 " + truth + src];
-      const fill = (!sd || !truth || !baskets.length) ? ""
-        : `<span class="pill ${!sFilled ? "" : sd.holding_hit ? "green" : "red"}" style="font-size:10px"
-            title="${!sFilled ? "一条腿都没成交" : sd.holding_hit ? "成交的腿里有结算桶或已卖出回款" : "成交的腿都不在结算桶"}">${
-            !sFilled ? "未成交" : sd.holding_hit ? "持仓命中" : "持仓未中"}</span>`;
-      const money = !sd ? ""
-        : !truth
-        ? `<span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} U</span>`
-        : (sFilled
-            ? `<span class="mono ${sd.pnl_usdc>=0?"up":"down"}" style="font-size:11px">${(sd.pnl_usdc>=0?"+":"")+sd.pnl_usdc.toFixed(2)} U</span>
-               <span class="muted mono" style="font-size:11px">投入 ${sCost.toFixed(2)} · 赔付 ${sd.settlement_usdc.toFixed(2)}${sProceeds?" · 卖出回款 "+sProceeds.toFixed(2):""}</span>`
-            : "")
-          + `<span class="muted mono" style="font-size:11px">落在 ${h(truth)}</span>`;
-
-      const lines = [];
-      const foldAt = new Map();
-      for (const g of baskets){
-        const key = g.legs.some(l=>l.state==="filled") ? null : foldKey(g);
-        if(key!=null && foldAt.has(key)){ lines[foldAt.get(key)].push(g); continue; }
-        if(key!=null) foldAt.set(key, lines.length);
-        lines.push([g]);
-      }
-      const legsOf = (items)=>{
-        const g = items[items.length-1];
-        // A basket whose centre it does not itself hold has no green rung,
-        // and an unmarked line is indistinguishable from a line whose plan
-        // is missing.  Two of the fifty-three baskets on the book are this:
-        // gap fills and top-ups that bought a shoulder without the centre.
-        // Say which rung is missing rather than leaving the reader to guess
-        // whether the mark is broken.
-        const mid = centerOf(g);
-        const offCenter = mid && !g.legs.some(l=>String(l.bucket)===mid)
-          ? `<span class="muted mono" style="font-size:11px"
-              title="中心桶取自该决策自己的计划">中心 ${h(mid)} 不在本篮</span>`
-          : "";
-        const count = items.length > 1
-          ? `<span class="pill" style="font-size:10px" title="${h(items.length + " 篮同一窗口、都没成交，显示最新一篮的价："
-              + items.map(x=>clock(x.latest)+" "+x.decision_id).join("；"))}">×${items.length} 篮</span>`
-          : "";
-        // Several different baskets under one station each say whether
-        // they held the truth, since the station's word is their union.
-        const own = truth && lines.length > 1
-          ? `<span class="mono ${g.legs.some(l=>String(l.bucket)===truth)?"up":"down"}" style="font-size:11px">${
-              g.legs.some(l=>String(l.bucket)===truth) ? "含" : "不含"}真值</span>`
-          : "";
-        return `${skewChip(g)}<span>${g.legs.map(l=>legChip(l, truth, mid)).join("")}</span>${offCenter}${count}${own}`;
-      };
-      const head = `<span class="pill red" style="font-size:10px">LIVE</span>
-        <b class="mono pill ${verdict[0]}" title="${h(verdict[2])} · ${
-          h(baskets.map(g=>g.decision_id).join("、"))}">${stationLink(station, day)} ${verdict[1]}</b>${fill}
-        <span class="muted" style="font-size:11px">${baskets.length>1 ? baskets.length+" 篮 · " : ""}${
-          sd ? `${sLegs} 腿 · ${sFilled} 成交` : "金额待整库渲染"}${sellLegs.length ? ` · 卖单 ${sellLegs.length}（挂着 ${sResting==null?"—":sResting} · 卖出 ${sSold==null?"—":sSold}）` : ""}</span>`;
-      const row = `display:flex;flex-wrap:wrap;align-items:center;gap:6px`;
-      // The sells, one line per lane, under the baskets they sell from.
-      const byLane = new Map();
-      for (const l of sellLegs){
-        const k = l.lane || "?";
-        if(!byLane.has(k)) byLane.set(k, []);
-        byLane.get(k).push(l);
-      }
-      const sellLines = [...byLane.entries()].map(([lane, legs])=>`<div style="${row};margin:3px 0 0 18px">
-          <span class="pill amber" style="font-size:10px" title="卖出车道挂在交易所的卖单：旧 0.99 单按确认状态撤换；0.998 回收单只在交易所允许该刻度时挂出，宪章 144 卖回单按买一价卖出">挂单卖出 · ${h(LANE_WORD[lane]||lane)}</span>
-          <span>${rungSorted(legs, l=>l.bucket).map(l=>sellChip(l)).join("")}</span></div>`).join("");
-      if(lines.length === 1 && !sellLines) return `<div style="${row};padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        ${head}${legsOf(lines[0])}${money}</div>`;
-      return `<div style="padding:5px 0;border-top:1px dashed var(--line,#eee)">
-        <div style="${row}">${head}${lines.length===1 ? legsOf(lines[0]) : ""}${money}</div>
-        ${lines.length===1 ? "" : lines.map(items=>`<div style="${row};margin:3px 0 0 18px">
-          <span class="muted mono" style="font-size:11px">${h(clock(items[items.length-1].latest))}</span>
-          ${legsOf(items)}</div>`).join("")}${sellLines}</div>`;
-    }).join("");
-    const pnl = daySettled && dd.pnl_usdc != null ? dd.pnl_usdc : null;
-    const barredNote = hidden.length
-      ? ` · <span class="muted" title="${h(hidden.map(g=>g.station_id).join("、"))}"
-          >禁入 ${hidden.length} 篮未列</span>`
-      : "";
-    const head = `${h(day)} · ${stations.length} 站 · ${gs.length} 篮${
-        dd && dd.settled_stations ? ` · 篮子命中 ${dd.hit_stations}/${dd.settled_stations} 站` : ""} · ${
-        dd ? `${dd.buy_legs} 腿 · ${dd.filled_legs} 成交 · 投入 ${dd.cost_usdc.toFixed(2)} U` : "金额待整库渲染"}`
-      + (dd && (dd.resting_sells||dd.sold_legs) ? ` · 卖单 挂着 ${dd.resting_sells} · 卖出 ${dd.sold_legs}${dd.sell_proceeds_usdc?"（回款 "+dd.sell_proceeds_usdc.toFixed(2)+" U）":""}` : "") + (pnl==null
-        ? ` · <span class="muted">未结算</span>`
-        : ` · <span class="${pnl>=0?"up":"down"}">${(pnl>=0?"+":"")+pnl.toFixed(2)} U</span> · 已结算`)
-      + barredNote;
-    // A date whose every basket was barred still gets a line: the day had
-    // intents, and a missing date answers a different question than an
-    // empty one.
-    const body = gs.length ? stationLines
-      : `<div class="muted" style="font-size:12px;padding:5px 0">
-         这一天铸出的 ${hidden.length} 篮全部被站级禁入挡在交易所之外，未列出。</div>`;
-    return `<details ${folded?"":"open"} style="margin-top:6px">
-      <summary class="mono" style="cursor:pointer;font-size:12.5px">${head}</summary>
-      <div style="margin-left:4px">${body}</div></details>`;
-  }).join("");
-  const moreGroups = "";
   // Everything above is counted off our own tables.  This one row is not:
   // it is what the exchange says is resting on the account right now.  On
   // 2026-08-31 an order this machine placed and then lost track of rested
@@ -19733,11 +19266,7 @@ function liveOrderCard(L){
     ${(X.blocking||[]).length?`<div class="muted" style="margin-top:8px;font-size:11.5px">
       对账阻断：${(X.blocking||[]).map(b=>h(b.reason)+" ×"+b.count).join(" · ")}</div>`:""}
   </div>
-  <h3 style="margin-top:22px;font-size:15px">站明细 · 逐日逐站的实盘篮子</h3>
-  <div class="card">
-    ${rows?`<div>${rows}</div>${moreGroups}`
-      :`<div class="muted">尚无实盘意向。第一条出现时此表自动列出。</div>`}
-  </div>`;
+`;
 }
 
 
@@ -22702,97 +22231,6 @@ function p1PathSkill(){
       <tbody>${rows}</tbody></table></div></details>`;
 }
 
-// AI 模型 (user, 2026-09-23: 「前端增加AIGFS、AIFS相关信息」).  Three products
-// with three standings on one board, each read from where it lives: AIFS
-// ENS is a P0 member (charter 204), the deterministic feature family --
-// AIFS single point among it -- is a gated shadow (charter 201), AIGEFS is a
-// research backfill with no production reader.  Readings only.
-function aiModelsBoard(){
-  const A = D.ai_models || {};
-  if(!A.available) return `<h2>AI 模型：AIFS ENS、AIFS 单点特征、AIGEFS</h2><div class="card">未采集。</div>`;
-  const E = A.aifs_ens || {}, S = E.standing || {}, F = E.forward || {}, V = E.served || {};
-  const T = A.deterministic_family || {}, G = A.aigefs || {};
-  const n = v => v == null ? "—" : Number(v).toLocaleString();
-  const w3 = v => v == null ? "—" : Number(v).toFixed(3);
-  const short = s => String(s || "").replace("_GLOBAL_EPS", "").replace("_GLOBAL_ENS", "").replace("_OPEN_PF50", "")
-    .replace("ECMWF_IFS_ENS", "IFS").replace("ECMWF_AIFS_ENS", "AIFS").replace("NOAA_GEFS_05", "GEFS")
-    .replace("NOAA_AIGEFS_025", "AIGEFS").replace("DWD_ICON", "ICON").replace("ECCC_GEM", "GEM");
-  const byDay = Object.entries(V.by_event_date || {}).map(([d, s]) => `<tr><td class="mono">${h(d)}</td>
-    <td class="mono">${s.scopes}</td><td class="mono"><span class="pill ${s.with_aifs ? "green" : ""}">${s.with_aifs}</span></td>
-    <td class="mono">${s.scopes ? (100 * s.with_aifs / s.scopes).toFixed(0) + "%" : "—"}</td>
-    <td class="mono"><span class="pill ${s.with_aigefs ? "green" : ""}">${s.with_aigefs ?? "—"}</span></td>
-    <td class="mono">${s.scopes && s.with_aigefs != null ? (100 * s.with_aigefs / s.scopes).toFixed(0) + "%" : "—"}</td></tr>`).join("");
-  const pools = (V.pools || []).slice(0, 8).map(p => `<tr><td>${p.systems.map(short).map(h).join(" + ")}</td>
-    <td class="mono">${p.systems.length}</td><td class="mono">${n(p.count)}</td>
-    <td class="mono">${p.systems.includes("ECMWF_AIFS_ENS_GLOBAL") ? "含 AIFS" : ""}</td></tr>`).join("");
-  const seated = (V.scopes || []).filter(s => s.aifs_weight != null).map(s => `<tr><td class="mono"><b>${h(s.station_id)}</b></td>
-    <td class="mono">${h(s.event_date)}</td><td class="mono">${whenZ(s.decision_at_utc)}</td>
-    <td class="mono"><b>${w3(s.aifs_weight)}</b></td>
-    <td class="mono">${Object.entries(s.weights || {}).map(([k, v]) => `${h(short(k))} ${w3(v)}`).join(" · ")}</td></tr>`).join("");
-  const fwd = Object.entries(F.stations || {}).sort().map(([sid, e]) => `<tr><td class="mono"><b>${h(sid)}</b></td>
-    <td class="mono">${h(e.event_date)}</td><td class="mono">${whenZ(e.run_init_utc)}</td>
-    <td class="mono">${h(e.run_cycle || "—")} / ${h(e.lead_bucket || "—")}</td><td class="mono">${whenZ(e.received_at_utc)}</td></tr>`).join("");
-  const rps = v => Array.isArray(v) ? `${Number(v[0]).toFixed(3)} [${Number(v[1]).toFixed(3)}, ${Number(v[2]).toFixed(3)}]` : "—";
-  const fam = (T.by_station || []).map(r => `<tr><td class="mono"><b>${h(r.station_id)}</b></td>
-    <td>${h(r.candidate_system || "—")}</td>
-    <td>${r.selected_system ? `<span class="pill green">${h(r.selected_system)}</span>` : `<span class="pill">未过闸</span>`}</td>
-    <td class="mono">${r.event_days ?? "—"}</td><td class="mono">${rps(r.d_rps)}</td><td class="mono">${h(r.verdict || "—")}</td>
-    <td class="mono">${rps(r.aifs_single)}</td></tr>`).join("");
-  const famSys = Object.entries(T.systems || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${h(k)} ${v} 站`).join(" · ");
-  const R = G.runs || {}, M = G.member_rows || {};
-  return `<h2>AI 模型：AIFS ENS 与 AIGEFS 入座了没、AIFS 单点特征在影子里如何</h2>
-  <p class="sub">三个产品三种身份，别混着读：<b>ECMWF AIFS ENS</b> 是 P0 的正式成员（第 204 条，${h(S.expected_member_count || 51)} 个成员，第 217 条起自成独立家族，不再和 IFS 同属 ECMWF）；
-    <b>AIFS 单点</b>只是「确定性特征族」六个候选之一（第 201 条），按站过样本外闸后才改中心，现在模式是 <b>${h(T.mode || "shadow")}</b>；
-    <b>NOAA AIGEFS</b> 也是 P0 的正式成员（第 212 条，2026-09-24 起），入座情况见下表；它在冷盘研究库里的历史回填另列在最后。</p>
-  <div class="card"><b>AIFS ENS（在用）</b>
-    <span class="pill ${S.registered ? "green" : "red"}">${S.registered ? "已登记" : "未登记"}</span>
-    <span class="pill ${(S.artifacts || {}).stations ? "green" : "amber"}">资格件 ${n((S.artifacts || {}).count)} 份 · ${n((S.artifacts || {}).stations)} 站 · ${n((S.artifacts || {}).cells)} 格</span>
-    <span class="pill">激活 ${n((S.activations || {}).count)}，最新 ${whenZ((S.activations || {}).latest_at_utc)}</span>
-    <span class="pill">历史回填 ${n((S.history || {}).rows)} 行 · ${n((S.history || {}).stations)} 站 · ${h((S.history || {}).first_date || "?")}…${h((S.history || {}).last_date || "?")}</span>
-    <div style="margin-top:6px"><span class="muted">前向 run：</span>${F.available
-      ? `收件箱 ${n(F.packets)} 包里 ${n(F.packets_with_aifs)} 包带 AIFS（${n(F.stations_with_aifs)} 站），最新起报 ${whenZ(F.latest_run_init_utc)}（${hours(F.latest_run_age_hours)}）`
-      : "收件箱不可读"}</div>
-    <div style="margin-top:6px"><span class="muted">过去 ${h(V.window_hours || 24)} 小时服务出去的 P0：</span>${n(V.p0_packets)} 包，其中 ${n(V.with_aifs)} 包坐着 AIFS；
-      按站日看最新一包：${n(V.scopes_seated)}/${n(V.scopes_seen)} 个站日坐着，权重中位 ${w3(V.aifs_weight_median)}、最高 ${w3(V.aifs_weight_max)}；
-      版本 ${Object.entries(V.versions || {}).map(([k, v]) => h(k.replace("calibrated_native_cross_ensemble_p0_", "P0 ")) + " ×" + v).join("、") || "—"}</div>
-    <p class="sub" style="margin-top:6px">白话：AIFS 只在<b>它那一天的 run 已经到手</b>的站日入座——D+1 用 00Z/06Z run，D+2 要等 18Z run，所以 D+2 那一行常常是 0，不是没入座。入座后它是五家池里的一家，权重由技能权重和家族均分各半决定（第 134 条），和 IFS 同一家族共用上限。</p>
-    <div class="scroll" style="margin-top:8px"><table><thead><tr><th>事件日</th><th>站日</th><th>坐着 AIFS</th><th>占比</th><th>坐着 AIGEFS</th><th>占比</th></tr></thead><tbody>${byDay || `<tr><td colspan="6" class="muted">窗口内没有 P0</td></tr>`}</tbody></table></div>
-    <details class="note"><summary>这 24 小时的池子组成（每包按坐着的系统集合数）</summary>
-      <div class="scroll"><table><thead><tr><th>系统集合</th><th>家数</th><th>包数</th><th></th></tr></thead><tbody>${pools}</tbody></table></div></details>
-    <details class="note"><summary>逐站日：最新一包里 AIFS 的权重（只列坐着的）</summary>
-      <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>事件日</th><th>决策时刻</th><th>AIFS 权重</th><th>全部权重</th></tr></thead>
-        <tbody>${seated || `<tr><td colspan="5" class="muted">窗口内没有坐着 AIFS 的站日</td></tr>`}</tbody></table></div></details>
-    <details class="note"><summary>逐站：收件箱里的 AIFS run</summary>
-      <div class="scroll" style="max-height:360px"><table><thead><tr><th>站</th><th>事件日</th><th>起报</th><th>周期 / 提前量档</th><th>收到</th></tr></thead>
-        <tbody>${fwd || `<tr><td colspan="5" class="muted">没有</td></tr>`}</tbody></table></div></details>
-  </div>
-  <div class="card" style="margin-top:10px"><b>确定性特征族（影子，第 201 条）</b>
-    <span class="pill ${T.mode === "shadow" ? "" : "green"}">模式 ${h(T.mode || "—")}</span>
-    <span class="pill ${T.gate_available ? "" : "red"}">${T.gate_available ? `闸门拟合 ${whenZ(T.fitted_at_utc)}，窗 ${(T.window || []).map(h).join("…")}` : "闸门件缺失"}</span>
-    <span class="pill ${T.selected ? "green" : ""}">过闸 ${n(T.selected)}/${n(T.stations)} 站</span>
-    <span class="pill">AIFS 单点是 ${n(T.aifs_single_stations)} 站的候选</span>
-    <div style="margin-top:6px"><span class="muted">各站首选候选：</span>${famSys || "—"}</div>
-    <div style="margin-top:6px"><span class="muted">服务回执：</span>${Object.entries((T.served || {}).states || {}).map(([k, v]) => h(k) + " " + v).join(" · ") || "—"}；
-      影子若生效会把中心平均挪 ${w3((T.served || {}).mean_abs_shift_c)}°C，最多 ${w3((T.served || {}).max_abs_shift_c)}°C（上限 ${h(T.cap_c)}°C），<b>服务出去的中心一律未动</b></div>
-    <p class="sub" style="margin-top:6px">白话：每个站从六个单点模型里挑一个当中心订正的候选（AIFS 单点、HRRR、NBM、ICON-EU、MSM、CMA），要在自己站的样本外攒够 ${h(T.gate_min_event_days)} 个事件日且 RPS 区间上界小于 0 才过闸；现在一个站都没过，所以什么都没改。</p>
-    <details class="note"><summary>逐站：候选、判定、RPS 变化（负＝更好）</summary>
-      <div class="scroll" style="max-height:420px"><table><thead><tr><th>站</th><th>首选候选</th><th>过闸</th><th>事件日</th><th>ΔRPS [95%]</th><th>判定</th><th>AIFS 单点 ΔRPS</th></tr></thead>
-        <tbody>${fam || `<tr><td colspan="7" class="muted">—</td></tr>`}</tbody></table></div></details>
-  </div>
-  <div class="card" style="margin-top:10px"><b>NOAA AIGEFS（第 212 条起 P0 正式成员）</b>
-    <span class="pill ${V.with_aigefs ? "green" : "amber"}">最近 ${h(V.window_hours ?? "—")} 小时 ${n(V.with_aigefs)} / ${n(V.p0_packets)} 份 P0 坐着它${V.aigefs_weight_median != null ? " · 权重中位 " + w3(V.aigefs_weight_median) : ""}</span>
-    <div class="muted" style="margin-top:6px">研究库回填：</div>
-    <span class="pill ${G.available ? "green" : "amber"}">${G.available ? "研究库可读" : "研究库不可读（冷盘未挂或缺文件）"}</span>
-    ${G.available ? `<span class="pill">${n(R.count)} 个 run · ${h((R.first_run_init_utc || "").slice(0, 13))}Z…${h((R.last_run_init_utc || "").slice(0, 13))}Z</span>
-    <span class="pill">${n(M.rows)} 行成员 · ${n(M.stations)} 站 · ${h(M.first_date || "?")}…${h(M.last_date || "?")}</span>
-    <span class="pill ${G.missing_runs ? "amber" : "green"}">缺 run ${n(G.missing_runs)}</span>
-    <span class="pill">最近完成 ${whenZ(R.last_finished_at_utc)}</span>` : ""}
-    ${G.plan ? `<span class="pill">计划 ${h(G.plan.from)}…${h(G.plan.to)}</span>` : ""}
-    ${G.log_updated_at_utc ? `<span class="pill">日志 ${hours(G.log_age_hours)} 前</span>` : ""}
-    <p class="sub" style="margin-top:6px">白话：AIGEFS 是 NOAA 的 AI 集合（31 个成员，每 6 小时一个 run），第 212 条起和其他五家一起进 P0；上面一行是它在实际服务的 P0 里入座的份数，下面是 6 月以来的 run 在冷盘研究库里的回填进度，只供回放研究用。</p>
-  </div>`;
-}
-
 function regionalBoard(){
   const R = D.regional || {}, U = D.regional_usage || {};
   const A = U.arms || {};
@@ -22992,9 +22430,6 @@ const GROUPS = [
      {box:"②′ 融合权重：宪章 199 在服务、前向记账与研究候选", kind:"live",
       note:"09-24 起服务融合权重；前向记账在同批已结算站日上比融合与它取代的席位权重（桶 Brier、LogScore 带区间），下面列切换后试过的全部融合层候选",
       sections:[[fusionCandidates,"融合权重候选"]]},
-     {box:"②″ AI 模型：AIFS ENS（在用）、AIGEFS（在用）、确定性特征族含 AIFS 单点（影子）", kind:"live",
-      note:"三个身份别混着读：AIFS ENS（第 204 条）与 AIGEFS（第 212 条）都是 P0 正式成员，只在各自那天的 run 到手的站日入座；AIFS 单点只是第 201 条特征族的候选之一，过闸前不改任何中心",
-      sections:[[aiModelsBoard,"AI 模型"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
@@ -23198,7 +22633,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
     refusal_history:"拒单历史",station_difficulty:"站点难度",synoptic_cooling:"辐射平移",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",metar_board:"METAR 板",
-    precip_classification:"降水分类",regional_usage:"区域模型使用",ai_models:"AI 模型",
+    precip_classification:"降水分类",regional_usage:"区域模型使用",
     p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",station_bayes:"逐站贝叶斯",
     correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
     center_width:"宽度层",posterior_lane:"后验车道",live_days:"每日统计",live_selection:"选站",
@@ -23295,12 +22730,12 @@ const groupHtml = GROUPS.map(g => `<section class="group" data-group="${g.id}"
 // 2026-09-16 (user rulings): 逐站汇总（跨日） merged into the go-live
 // station table, 没建仓是因为什么 moved inside 逐站逐日明细, and the
 // ledger ↔ production guard left the page with the paper readings.
-const TOP = [[daily, "每日统计"], [roster, "逐站逐日明细"]];
+const TOP = [[pnlCalendar, "盈亏日历"]];
 // The area above the tabs is the fifth kind of reading and wears a title
 // and a colour like the four below it; the jump bar paints its chips in the
 // same colour.
 const TOP_AREA = {label:"实盘", tone:"#7ee787",
-  note:"打开页面先看：资金、站点上线闸门、每日统计、逐站逐日明细"};
+  note:"打开页面先看：盈亏日历（页首）、资金、站点上线闸门"};
 
 // Which sections on this page were reused from the previous build, and how
 // old each one is.  A cached section that quietly stops refreshing is the
@@ -23337,12 +22772,15 @@ document.getElementById("app").innerHTML =
       ${tabs}<span class="nav-fill"></span>${safe(liveControlStrip, "实盘控制")}
       <span id="nav-theme"></span></div>
     <nav class="jump" id="jump" aria-label="区块"></nav></div>` +
+  // The P&L calendar first, above everything (user 2026-10-05: 盈亏日历放在顶部).
+  `<section class="toparea" style="--tone:${TOP_AREA.tone}">` +
+  TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
+  `</section>` +
   safe(head, "页头") +
   `<section class="toparea" style="--tone:${TOP_AREA.tone}">
     <div class="grouptitle">${TOP_AREA.label}<span class="muted">${TOP_AREA.note}</span></div>` +
   sec(moneyBoard, "资金看板", "sec-money") +
   sec(liveReadiness, "站点实盘上线闸门", "sec-live") +
-  TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   `</section>` +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
