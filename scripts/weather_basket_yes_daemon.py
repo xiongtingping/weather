@@ -745,7 +745,52 @@ def sweep_finish_serves_writer_turn(name: str) -> bool:
     ledger, settlement_truth and a ten-minute retention lane all waited.
     """
 
-    return str(name) not in WRITER_TURN_EXEMPT_SWEEPS
+    return (
+        str(name) not in WRITER_TURN_EXEMPT_SWEEPS
+        and str(name) not in WRITER_INDEPENDENT_SWEEPS
+    )
+
+
+# Read-only sweeps that start when due, whoever holds the writer.
+#
+# The single-writer rule (2026-08-29) puts read-only work on its own
+# executor, but every hosted sweep was admitted only in a sweeps writer turn
+# with no production cycle in flight -- write domain ``none`` included.  The
+# supply watch (charter 197) is the one that cannot wait for that: the send
+# gate reads its file and fails OPEN once it is fifteen minutes old, so a
+# long cycle switched the egress guard off exactly when production was busy.
+# 2026-10-05 03:0xZ, after a restart and a 735 s first cycle: 「守望扫描 16
+# 分钟没有跑」 on the board.  Members must be write domain ``none``; they
+# take no writer turn, and their finish serves none.
+WRITER_INDEPENDENT_SWEEPS: frozenset[str] = frozenset({"supply_watch"})
+
+
+def writer_turn_sweeps_due(
+    *, now_mono: float, next_due: "Mapping[str, float]",
+) -> bool:
+    """Whether a sweep that needs a writer turn is due (independents never do)."""
+
+    return any(
+        now_mono >= next_due[name]
+        for name, _, _, _ in HOSTED_SWEEPS
+        if name in next_due and name not in WRITER_INDEPENDENT_SWEEPS
+    )
+
+
+def writer_independent_admissions(
+    due: "list[tuple[float, int, str, str, float]]",
+    *,
+    running_names: "Iterable[str]",
+    max_concurrency: int = HOSTED_SWEEP_MAX_CONCURRENCY,
+) -> "list[tuple[float, int, str, str, float]]":
+    """The due independent sweeps that may start now, within the total cap."""
+
+    running = set(running_names)
+    room = max(0, int(max_concurrency) - len(running))
+    return [
+        item for item in sorted(due, key=lambda entry: (-entry[0], entry[1]))
+        if item[2] in WRITER_INDEPENDENT_SWEEPS and item[2] not in running
+    ][:room]
 
 
 def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
@@ -7030,9 +7075,8 @@ def main() -> int:
             # the lanes that are due, serve the one served longest ago.  No
             # lane can then run twice while another due lane waits, whatever
             # the relative length of their passes.
-            sweeps_due = any(
-                now_mono >= next_hosted_sweep[name]
-                for name, _, _, _ in HOSTED_SWEEPS
+            sweeps_due = writer_turn_sweeps_due(
+                now_mono=now_mono, next_due=next_hosted_sweep,
             )
             writer_idle = (
                 storage_ok
@@ -7219,6 +7263,29 @@ def main() -> int:
                     writer_last_served["sweeps"] = time.monotonic()
                     _persist_writer_turn()
             state["hosted_sweeps"]["running"] = sorted(hosted_sweep_futures)
+            # WRITER_INDEPENDENT_SWEEPS: due is enough.  No writer turn is
+            # taken and ``last_writer_slot`` is left alone.
+            if storage_ok:
+                for _overdue, _index, name, sweep_script, sweep_timeout in (
+                    writer_independent_admissions(
+                        due_hosted_sweeps(
+                            now_mono=now_mono,
+                            next_due=next_hosted_sweep,
+                            skip_names=hosted_sweep_futures,
+                            priority_intervals=hosted_priority_intervals,
+                        ),
+                        running_names=hosted_sweep_futures.keys(),
+                    )
+                ):
+                    hosted_sweep_futures[name] = sweep_executor.submit(
+                        run_hosted_sweep,
+                        str(ROOT / sweep_script),
+                        sweep_timeout,
+                    )
+                    state["hosted_sweeps"]["started_at"][name] = utc_now()
+                    state["hosted_sweeps"]["running"] = sorted(
+                        hosted_sweep_futures
+                    )
             if (
                 storage_ok
                 # A slot may still admit a sweep whose database nothing running
