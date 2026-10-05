@@ -6527,6 +6527,49 @@ def collect_oos_scores(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+#: Event days back the served-weight trend reaches.
+SERVED_WEIGHT_HISTORY_DAYS = 30
+
+
+def _served_weight_history(conn: sqlite3.Connection, labels: Mapping[str, str]) -> list[dict[str, Any]]:
+    """Each event day's fleet-average served weight per model (user
+    2026-10-05「增加每个模型权重的趋势图」): every station's newest P0 for the
+    day, its stored ``system_weights_json`` -- what P0 multiplied -- with a
+    model not seated counted 0, so a day's shares add to 1."""
+
+    today = _now().date()
+    out = []
+    for offset in range(-SERVED_WEIGHT_HISTORY_DAYS, 3):
+        day = (today + timedelta(days=offset)).isoformat()
+        heads = conn.execute(
+            "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
+            " WHERE state='COMMITTED' AND event_date=? AND stage='P0' GROUP BY station_id",
+            (day,),
+        ).fetchall()
+        totals: dict[str, float] = defaultdict(float)
+        n = 0
+        for station, decided in heads:
+            row = conn.execute(
+                "SELECT json_extract(lineage_json,'$.system_weights_json')"
+                " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+                " AND stage='P0' AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+                (station, day, decided),
+            ).fetchone()
+            try:
+                weights = json.loads(row[0]) if row and row[0] else {}
+            except (TypeError, ValueError):
+                continue
+            if not weights:
+                continue
+            n += 1
+            for system, value in weights.items():
+                totals[labels.get(str(system), str(system))] += float(value)
+        if n:
+            out.append({"event_date": day, "stations": n,
+                        "mean_by_model": {k: v / n for k, v in totals.items()}})
+    return out
+
+
 def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     """Every active P0 blend, spelled out: which models, at what weight.
 
@@ -6558,9 +6601,29 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
             selected = json.loads(seat["selected_system_ids_json"])
         except (ValueError, TypeError):
             continue
+        # What the P0 actually multiplied: the seat's weights after charter
+        # 242's per-station re-weighting, as the envelope stored them (user
+        # 2026-10-05「这个也看不出来模型实际的权重」: the seat's alone were shown).
+        served_row = conn.execute(
+            "SELECT json_extract(lineage_json,'$.system_weights_json'),"
+            " json_extract(lineage_json,'$.fusion_blend_json')"
+            " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+            " AND stage='P0' AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
+            (station, seat["event_date"], seat["decision_at_utc"]),
+        ).fetchone()
+        try:
+            served = json.loads(served_row[0]) if served_row and served_row[0] else {}
+            blend = json.loads(served_row[1]) if served_row and served_row[1] else {}
+        except (ValueError, TypeError):
+            served, blend = {}, {}
         rows.append({
             "station": str(station),
             "event_date": str(seat["event_date"]),
+            "served": {
+                labels.get(str(system), str(system)): float(value)
+                for system, value in served.items()
+            },
+            "fusion_state": str(blend.get("state") or "") or None,
             "season": str(season),
             "lead_bucket": str(lead),
             "lead_label": dict(LEAD_LABELS).get(str(lead), str(lead)),
@@ -6593,17 +6656,24 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
     for _system, label, _transport, _backfillable in MEMBER_FAMILIES:
         seated = [r for r in rows if label in r["weights"]]
         candidacies = sum(label in r["candidates"] for r in rows)
+        served_in = [r["served"][label] for r in rows if label in r["served"]]
         by_lead = {}
         for lead, _lead_label in LEAD_LABELS:
             lead_weights = [
                 r["weights"][label] for r in seated
                 if r["lead_bucket"] == lead
             ]
+            lead_served = [
+                r["served"][label] for r in rows
+                if r["lead_bucket"] == lead and label in r["served"]
+            ]
             by_lead[lead] = {
                 "seats": len(lead_weights),
                 "median_weight": (
                     median(lead_weights) if lead_weights else None
                 ),
+                "served_count": len(lead_served),
+                "median_served": median(lead_served) if lead_served else None,
             }
         summary.append({
             "label": label,
@@ -6614,12 +6684,19 @@ def collect_serving_weights(conn: sqlite3.Connection) -> dict[str, Any]:
                 median(r["weights"][label] for r in seated)
                 if seated else None
             ),
+            "served_count": len(served_in),
+            "median_served": median(served_in) if served_in else None,
+            # Over every station-day, 0 where the model is not seated: the
+            # six shares then add to 100 %.
+            "mean_served": (sum(served_in) / len(rows)) if rows and served_in else None,
             "by_lead": by_lead,
         })
     return {
         "rows": rows,
         "summary": summary,
+        "history": _served_weight_history(conn, labels),
         "scope_count": len(rows),
+        "fusion_states": dict(Counter(r["fusion_state"] or "NONE" for r in rows)),
         "newest_holdout_end": newest_holdout or None,
         "stale_cut": stale_cut or None,
         "stale_count": sum(
@@ -18108,6 +18185,9 @@ function hitRate(){
   <p class="sub">把一个模型的成员均值当成它的答案，看它落在市场的哪个桶里，
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
+  ${hasServed ? `<div class="why"><b>实际权重</b>＝P0 此刻真正用来合成概率的配比：从上面赛出来的「起点（席位）」出发，
+  再按宪章 242 用这个站自己的历史按站重新分配（历史越长越按本站表现走）。卡片大字是实际权重在 ${W.scope_count} 个站日上的平均占比（不在场记 0，六家合计 100%）；
+  每个站的实际配比见下方逐格明细。${Object.entries(W.fusion_states || {}).map(([k, v]) => `${h({APPLIED:"按站重配已生效", SHADOW:"影子（服务起点）", SEAT_NO_STATION_PARAMS:"本站参数未就绪（服务起点）"}[k] || k)} ${v}`).join(" · ")}</div>` : ""}
   <div class="grid g4" style="margin-top:12px">${cards}</div>
   <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
   全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
@@ -20082,12 +20162,36 @@ function scorecard(){
   ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
 }
 
+// Each model's served weight by event day (user 2026-10-05「增加每个模型权重
+// 的趋势图」): the fleet average of every station's newest P0, 0 where unseated.
+function servingWeightTrend(W, summary){
+  const hist = W.history || [];
+  if(!hist.length) return "";
+  const dates = hist.map(d => d.event_date);
+  const marks = ((D.model_accuracy_trend || {}).version_marks || []).filter(mk => mk.stage === "P0")
+    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
+  const series = summary.map(s => ({name: s.label,
+    values: hist.map(d => { const v = (d.mean_by_model || {})[s.label]; return v == null ? 0 : v; })}));
+  return `<div style="margin-top:12px;max-width:820px">${trendChart({
+    title: "各模型实际权重走势（全队平均占比，按事件日）",
+    sub: `每个站当天最新一期 P0 实际用的权重取平均，不在场记 0，六家合计 100%；竖线＝P0 版本切换`,
+    dates, marks, series, fmt: v => (100 * v).toFixed(0) + "%"})}</div>`;
+}
+
 function servingWeights(){
   const W = D.serving_weights || {}; const rows = W.rows || [];
   if(!rows.length) return "";
   const summary = W.summary || [];
   const pct = w => w == null ? "—" : (w * 100).toFixed(0) + "%";
-  const cards = summary.map(s => `<div class="card">
+  // The served weight first (what P0 multiplied, after charter 242's
+  // per-station re-weighting); the seat it started from beside it.
+  const hasServed = summary.some(s => s.median_served != null);
+  const cards = summary.map(s => hasServed ? `<div class="card">
+    <div class="muted">${h(s.label)}</div>
+    <div class="big">${pct(s.mean_served)} <span class="muted"
+      style="font-size:14px">实际平均占比</span></div>
+    <div class="muted">各站实际权重中位数 ${pct(s.median_served)} · 起点（席位）中位数 ${pct(s.median_weight)} ·
+      在场 ${s.seats} / ${W.scope_count} 个站日</div></div>` : `<div class="card">
     <div class="muted">${h(s.label)}</div>
     <div class="big">${s.seats} <span class="muted"
       style="font-size:14px">/ ${W.scope_count} 个格子在场</span></div>
@@ -20103,7 +20207,9 @@ function servingWeights(){
     leadOrder.map(bucket => {
       const cell = (s.by_lead || {})[bucket];
       if(!cell || !cell.seats) return `<td class="muted">—</td>`;
-      return `<td class="mono">${pct(cell.median_weight)}
+      return hasServed
+        ? `<td class="mono"><b>${pct(cell.median_served)}</b> <span class="muted">起点 ${pct(cell.median_weight)} ×${cell.seats}</span></td>`
+        : `<td class="mono">${pct(cell.median_weight)}
         <span class="muted">×${cell.seats}</span></td>`;
     }).join("")}</tr>`).join("");
   const modelCols = summary.map(s => s.label);
@@ -20111,7 +20217,8 @@ function servingWeights(){
     const stale = W.stale_cut && r.holdout_end < W.stale_cut;
     const cells = modelCols.map(label => {
       if(label in r.weights)
-        return `<td class="mono"><b>${pct(r.weights[label])}</b></td>`;
+        return `<td class="mono"><b>${pct((r.served || {})[label] != null ? r.served[label] : r.weights[label])}</b>${
+          (r.served || {})[label] != null ? ` <span class="muted">起点 ${pct(r.weights[label])}</span>` : ""}</td>`;
       if(r.candidates.includes(label))
         return `<td class="muted">落选</td>`;
       return `<td class="muted">—</td>`;
@@ -20133,16 +20240,17 @@ function servingWeights(){
   「窗至」是该格子当前配比所依据的检验窗最后一天，
   日期旧说明这个格子还在服旧一轮的赛果——换代受快照新鲜度限速，逐格推进，属正常。</div>
   <div class="grid g4" style="margin-top:12px">${cards}</div>
+  ${servingWeightTrend(W, summary)}
   <table style="margin-top:12px"><thead><tr>
     <th>模型</th>${matrixHead}
   </tr></thead><tbody>${matrixBody}</tbody></table>
-  <div class="muted" style="margin-top:6px">格子里是「上场时权重中位数 × 席位数」，
+  <div class="muted" style="margin-top:6px">${hasServed ? "粗体是实际权重中位数，小字是起点（席位）中位数 × 席位数，" : "格子里是「上场时权重中位数 × 席位数」，"}
   按提前量分列。${W.stale_count ? `目前 <b>${W.stale_count}</b> 个格子仍在服
     ${h(W.stale_cut)} 之前的赛果（最新窗至 ${h(W.newest_holdout_end)}），
     重绑进行中。` : `全部格子的检验窗都在 ${h(W.newest_holdout_end)} 附近，无积压。`}</div>
   <details style="margin-top:10px">
     <summary class="muted" style="cursor:pointer">
-      逐格明细：${W.scope_count} 个格子的完整权重（可排序）</summary>
+      逐格明细：${W.scope_count} 个站日的完整权重（粗体＝实际，小字＝起点；可排序）</summary>
     <table style="margin-top:8px"><thead><tr>
       <th>站</th><th>提前量</th><th>cycle</th>
       ${modelCols.map(label => `<th>${h(label)}</th>`).join("")}
