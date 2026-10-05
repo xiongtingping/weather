@@ -17731,66 +17731,24 @@ function publishTimes(){
 // 模型 run 采集健康度 (user, 2026-10-01: 「前端突出模型run采集健康度的看不出
 // 来」).  The capture lamps say a family's newest run landed; the admission
 // lamps carried one day each, D+2 was green by rule, and on 2026-10-01 nine in
-// ten P0s 48-60 h out lacked ECCC or ICON with every lamp green.  One row per
-// family: for each open day, the run its P0 seats and on how many stations
-// (member_admission, read every render), then the recent runs with how many
-// stations each was read for per day (recent_runs) -- a run read only for the
-// stations listed at the time shows as the short count it is.
+// ten P0s 48-60 h out lacked ECCC or ICON with every lamp green.  The
+// per-family table left on 2026-10-05 (不显示明细); the lamp stays.
 function modelRunHealth(){
+  // The lamp only (user 2026-10-05: 不显示明细): the worst family-day state
+  // over the open event days.
   const A = D.member_admission || {};
   const F = A.families || [];
   const days = A.open_event_dates || [];
   if(!F.length || !days.length) return "";
-  const RR = D.recent_runs || {};
-  const todayUtc = Date.parse(new Date().toISOString().slice(0, 10));
-  const dTag = d => {
-    const n = Math.round((Date.parse(d) - todayUtc) / 864e5);
-    return n === 0 ? "当天" : `D+${n}`;
-  };
-  const hm = s => { const m = String(s || "").match(/T(\d{2}):(\d{2})/); return m ? `${m[1]}:${m[2]}Z` : "—"; };
   const rank = {green: 0, amber: 1, red: 2};
   let worst = "green";
-  const rows = F.map(f => {
-    const byDay = {};
-    (f.days || []).forEach(x => { byDay[x.event_date] = x; });
-    const cells = days.map(d => {
-      const x = byDay[d];
-      if(!x) return `<td class="muted">—</td>`;
-      if(rank[x.health] > rank[worst]) worst = x.health;
-      const tip = [
-        x.note || "",
-        x.captured_run_utc ? `这一天采到的最新一轮 ${runLabel(x.captured_run_utc)}` : "这一天还没采到这家",
-        Object.keys(x.other_runs || {}).length
-          ? "其余站用 " + Object.entries(x.other_runs).map(([r, n]) => `${runLabel(r)}×${n}`).join("、") : "",
-      ].filter(Boolean).join("\n");
-      return `<td class="mono" title="${attr(tip)}"><span class="dot ${x.health || "muted"}"></span> ${
-        x.served_run_utc ? h(runLabel(x.served_run_utc)) : "<b>不在包里</b>"} · ${
-        x.stations_seated}/${x.stations} 站</td>`;
-    }).join("");
-    const runs = (RR[f.system_id] || []).slice(0, 4);
-    const best = {};
-    runs.forEach(r => Object.entries(r.days || {}).forEach(([d, n]) => {
-      best[d] = Math.max(best[d] || 0, n);
-    }));
-    const recent = runs.map(r => `<div>${h(runLabel(r.run_utc))} <span class="muted">到货 ${
-      h(hm(r.capture_utc))}</span>：${days.filter(d => (r.days || {})[d] != null).map(d => {
-        const n = r.days[d];
-        // Half, not any shortfall: a run issued inside a station's day cannot
-        // cover it, so a same-day run is a few short by construction.
-        return n * 2 < best[d]
-          ? `<span class="pub-late" title="同一天这家别的轮次采到 ${best[d]} 站">${h(d.slice(5))} ${n}</span>`
-          : `${h(d.slice(5))} ${n}`;
-      }).join(" · ") || "<span class=\"muted\">不服务开放日</span>"}</div>`).join("");
-    return `<tr><td><b>${h(f.label)}</b></td>${cells}<td class="mono" style="font-size:12px">${
-      recent || "<span class=\"muted\">36 小时内没有落库</span>"}</td></tr>`;
-  });
+  F.forEach(f => (f.days || []).forEach(x => {
+    if(days.includes(x.event_date) && rank[x.health] > rank[worst]) worst = x.health;
+  }));
   return `<div class="lampdeck"><span class="lampcap"><span class="dot ${worst}"></span>
-    模型 run 采集健康度 · 每个开放事件日 P0 实际用的是哪一轮、几站入座（悬停看原因）；
-    右列是最近几轮各给每一天采到几站，红字＝不到同一天这家别的轮次的一半（采集时那些站还没挂牌）。
-    不到九成的站有这家亮黄；D+1 及更近不到一半亮红，D+2 最多亮黄——它的 ICON/ECCC 合同轮次 D-2 12Z 傍晚才到，之前只有证书成熟的早轮次能入座</span>
-    <div class="pubt-wrap"><table class="pubt"><thead><tr><th>模型</th>${
-      days.map(d => `<th>${h(d.slice(5))} <span class="muted">${dTag(d)}</span></th>`).join("")
-    }<th>最近几轮 · 每天采到几站</th></tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
+    模型 run 采集健康度：
+    不到九成的站有某家亮黄；D+1 及更近不到一半亮红，D+2 最多亮黄——它的 ICON/ECCC 合同轮次 D-2 12Z 傍晚才到，之前只有证书成熟的早轮次能入座</span>
+</div>`;
 }
 
 function healthLamps(){
@@ -19927,18 +19885,9 @@ function tailShortLane(){
     <td>${h(t.book_source||"—")} · ${t.book_age_seconds==null?"—":Math.round(+t.book_age_seconds)+"s"}</td>
     <td>${t.settled_bucket?h(t.settled_bucket):(t.close_reason==="sale"?"已卖出":"未结算")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const orders=`<details open style="margin-top:8px;min-width:0;max-width:100%"><summary>H1 送达交易所的历史订单（${exchangeRows.length} 笔；未送达 ${(R.rows||[]).length-exchangeRows.length} 笔见阻断原因）</summary>
+  const orders=`<details style="margin-top:8px;min-width:0;max-width:100%"><summary>H1 送达交易所的历史订单（${exchangeRows.length} 笔；未送达 ${(R.rows||[]).length-exchangeRows.length} 笔）</summary>
     ${rows?`<div class="scroll" style="min-width:0;max-width:100%;max-height:520px"><table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>YES 买一</th><th>NO 限价</th><th>实付价</th><th>净赔率</th><th>成交股</th><th>实付</th><th>回收股 / 收益</th><th>状态</th><th>盘口 / 年龄</th><th>结算桶</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>`:"<div class='muted'>暂无发单。</div>"}</details>`;
-  const refusals=(E.refusals||[]).map(r=>`<tr><td>${h(r.reason)}</td><td>${r.count}</td></tr>`).join("");
-  const why=refusals?`<details style="margin-top:8px"><summary>评估结果与阻断原因</summary><table><thead><tr><th>结果</th><th>次数</th></tr></thead><tbody>${refusals}</tbody></table></details>`:"";
-  const signals=(E.recent||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td>${h(r.event_date)}</td>
-    <td>${h(r.bucket)}</td><td>${r.market_q==null?"—":pct(r.market_q)}</td>
-    <td>${r.rungs_from_mode==null?"—":r.rungs_from_mode}</td>
-    <td>${r.yes_bid==null?"—":pct(r.yes_bid)}</td><td>${h(r.refusal||"已出单")}</td>
-    <td class="mono">${h(r.evaluated_at_utc||"—")}</td></tr>`).join("");
-  const recent=signals?`<details style="margin-top:8px"><summary>最近 30 条市场信号</summary>
-    <table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>市场价</th><th>离众数</th><th>YES 买一</th><th>结果</th><th>评估于</th></tr></thead><tbody>${signals}</tbody></table></details>`:"";
-  return settings+totals+orders+why+recent;
+  return settings+totals+orders;
 }
 
 // 「Proper 下注线」(charter 231): p is the weather model, q the market's
@@ -20065,17 +20014,6 @@ function properBetLane(){
     ${tile("盈亏 / ROI",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${cnt(R.hits)} / ${R.settled}`)}
     ${tile("命中率",pc(R.hit_rate),"按订单计：YES 单桶落中算中，NO 单桶没落中算中")}
   </div>`:"";
-  const refusals=(E.refusals||[]).map(r=>`<tr><td class="mono">${h(r.refusal)}</td><td class="mono">${r.count}</td></tr>`).join("");
-  const refTable=E.available&&refusals?`<details style="margin-top:8px"><summary>为什么没出计划（评估结果分布，${E.total} 条）</summary>
-    <table><thead><tr><th>结果 / 原因</th><th>条数</th></tr></thead><tbody>${refusals}</tbody></table>
-    <div class="muted">first_decision_stale 是首决策到本线时已超出新鲜窗；settlement_day_closed 是站日已收盘；station_not_admitted:* 是站点闸（禁入、待观察）挡下；planned 是出了计划。</div></details>`:"";
-  const recent=(E.recent||[]).map(r=>`<tr><td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td>${h(r.stage||"")}</td>
-      <td class="mono">${h((r.decision_at_utc||"").slice(5,16).replace("T"," "))}</td><td class="mono">${r.hours_to_settlement==null?"—":n2(r.hours_to_settlement)+"h"}</td>
-      <td class="mono">${r.divergence_kl==null?"—":n3(r.divergence_kl)}</td><td class="mono">${r.planned_legs||0} 腿 · ${usd(r.planned_cost_usdc)}</td>
-      <td class="mono">${(r.top_positions||[]).map(x=>`${h(x.bucket)} ${sg(x.s)}`).join("、")||"—"}</td>
-      <td class="mono">${r.refusal?h(r.refusal):h([r.plan_state,r.plan_state_reason].filter(Boolean).join(" · ")||"planned")}</td></tr>`).join("");
-  const recentTable=E.available?`<details style="margin-top:8px"><summary>最近判过的首决策（不含过期与已收盘，${(E.recent||[]).length} 条）</summary>
-    ${recent?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>决策</th><th>距结算</th><th>D</th><th>计划</th><th>|s| 最大的桶（s）</th><th>结果 / 计划状态</th></tr></thead><tbody>${recent}</tbody></table>`:`<div class="muted">还没有。</div>`}</details>`:"";
   // One row per order (station day × bucket × side), its reposted rungs
   // summed by the backend; orders that never filled and have nothing
   // working are not trades and are not sent.
@@ -20094,12 +20032,12 @@ function properBetLane(){
     <td>${stateTxt(t)}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}${t.stats_excluded?` <span class="pill amber">不计入统计</span>`:""}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔${excluded.length?`，其中 ${excluded.length} 笔不计入统计`:""}，同站日同桶同方向合并为一笔，新的在上）</summary>
+  const tradeTable=`<details style="margin-top:8px"><summary>逐笔订单（全部 ${shown.length} 笔${excluded.length?`，其中 ${excluded.length} 笔不计入统计`:""}，同站日同桶同方向合并为一笔，新的在上）</summary>
     ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>桶</th><th>方向</th><th>成交均价</th><th>目标股</th><th>成交股</th><th>成交额</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const days=(E.by_day||[]).map(r=>`<tr><td class="mono">${h(r.event_date)}</td><td class="mono">${r.evaluated}</td><td class="mono">${r.planned}</td><td class="mono">${r.legs}</td><td class="mono">${usd(r.cost_usdc)}</td></tr>`).join("");
   const daysTable=days?`<details style="margin-top:8px"><summary>按事件日</summary>
     <table><thead><tr><th>事件日</th><th>判过</th><th>出计划</th><th>计划腿</th><th>计划成本</th></tr></thead><tbody>${days}</tbody></table></details>`:"";
-  return settings+evalTiles+money+excludedNote+refTable+recentTable+tradeTable+daysTable;
+  return settings+evalTiles+money+excludedNote+tradeTable+daysTable;
 }
 
 // 「秤砣线」(charter 146): the lane's switch and stake, the first decisions it
@@ -20189,7 +20127,7 @@ function tiebreakLane(){
     <td>${h(t.state||"")}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
     <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
     <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details open style="margin-top:8px"><summary>逐笔（${shown.length} 笔）：全部已成交订单，含部分成交与未结算，新的在上</summary>
+  const tradeTable=`<details style="margin-top:8px"><summary>逐笔（${shown.length} 笔）：全部已成交订单，含部分成交与未结算，新的在上</summary>
     ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>规则版本</th><th>桶</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>已卖股</th><th>卖出回款</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
   const H=T.registered_hypotheses||{};
   const hp=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)}%`;
@@ -23142,20 +23080,20 @@ const GROUPS = [
   // select and sizing areas and the edge map left with the basket lane
   // (2026-09-26, user rulings 「还有β 车道」「检查统一估值车道」「整区删除」).
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；② 兑现层（影子，宪章 254）：以市场为条件的兑现概率 b，检查两条线声称的 edge 兑现了多少；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；③ L4 后验已下线，只留档",
+   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；兑现层自成一个板块；② L4 后验已下线，只留档",
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
       sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]},
-     // Charter 254 (user 2026-10-05 「兑现层应该放在边际板块里……主要是检查
-     // 边际的兑现情况」): the edge the lanes claim, priced on b = P(Y | p, q)
-     // and checked against what settled.  Shadow: nothing here trades.
-     {box:"② 兑现层（影子，宪章 254）：edge 说多少、兑现多少", kind:"shadow",
-      note:"b = P(Y | p, q)：看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单",
-      sections:[[realisationLayer,"兑现层（影子）"]]},
-     {box:"③ L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
+     {box:"② L4 后验（宪章 230；宪章 231 起下线，代码保留）", kind:"off",
       note:"已下线：篮子车道关闭，下注改由 Proper 下注线按天气模型 p 与市场 q 直接生成仓位（宪章 231），L4 不再计算、夜间不再重拟；下表是下线前最后一版行。原设计：b 由整梯多类 LogLoss 拟合，每行前推判决 LogScore 显著胜市场且桶 Brier 点估计也变好才服务",
       sections:[[posteriorLane,"L4 后验层（已下线）"]]}]},
+  // Charter 254, its own area (user 2026-10-05: 兑现层单独一个层级板块):
+  // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
+  // what settled.  Shadow: nothing here trades.
+  {id:"realisation", label:"兑现层", short:"兑现", tone:"#d2a8ff",
+   note:"兑现层（影子，宪章 254）：b = P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单",
+   sections:[[realisationLayer,"兑现层（影子）"]]},
 ];
 // Every section an area holds, through its containers.
 const groupSections = g => g.sections.flatMap(item =>
@@ -23256,9 +23194,9 @@ const LANES = {
     role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)，量的是服务 p 对 m（p 是概率层服务出来的天气模型向量；概率空间、整梯）；k 低于 1 才有 edge"},
   "真值落位": {layer:"边际层 · ① 验收", status:"audit",
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
-  "兑现层（影子）": {layer:"边际层 · ② 兑现层", status:"shadow",
+  "兑现层（影子）": {layer:"兑现层", status:"shadow",
     role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
-  "L4 后验层（已下线）": {layer:"边际层 · ③ L4", status:"off",
+  "L4 后验层（已下线）": {layer:"边际层 · ② L4", status:"off",
     role:"logit b = logit m + w·(logit p − logit m) + c(m)：宪章 231 起下线，不计算、不重拟，下表是下线前最后一版"},
   // --- live: the lanes that send, and the book they send into ---
   "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",
