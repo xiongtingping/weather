@@ -45,6 +45,8 @@ POST /api/station-bulk    {"action": "waive_all" | "bar_all"}
 POST /api/manual-basket-order {"confirm":"BUY","station":"ZUUU","event_date":...,"batch_id":...,
                   "mode":"taker|maker|manual","legs":[{"bucket","shares","limit_price"}]}
                   -> the operator's own basket through the local gateway (board origin only)
+GET  /api/station-day-holdings?station=ZUUU&event_date=... -> the wallet's shares (gateway) and
+                  average cost (data API) on each rung of that day (board origin only)
 GET  /api/station-day?station=ZUUU[&force=1|&token_only=1] -> one station's today and day-ahead
                   distributions, market, TAF/METAR (read-only; the board's 单站日 panel)
 
@@ -1376,6 +1378,28 @@ class Handler(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         if path.rstrip("/") == "/api/state":
             self._send(200, state())
+        elif path.rstrip("/") == "/api/station-day-holdings":
+            # Reads the account (gateway point lookups + the data API): the
+            # wallet's own positions are no one else's business, so the same
+            # origin rule as the order endpoint.
+            origin = str(self.headers.get("Origin") or "")
+            if origin not in MANUAL_ORDER_ORIGINS and origin != "null":
+                self._send(403, {"error": f"来源不被允许读取持仓：{origin or '无 Origin'}"})
+                return
+            from urllib.parse import parse_qs  # noqa: PLC0415
+
+            from bayes_basket_target.manual_basket_order import (  # noqa: PLC0415
+                ManualOrderError, station_day_holdings,
+            )
+            params = parse_qs(query or "")
+            try:
+                self._send(200, station_day_holdings(
+                    str((params.get("station") or [""])[0]),
+                    str((params.get("event_date") or [""])[0])))
+            except ManualOrderError as exc:
+                self._send(400, {"error": str(exc)})
+            except Exception as exc:  # noqa: BLE001 -- the board shows the reason
+                self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
         elif path.rstrip("/") == "/api/station-day":
             try:
                 self._send(200, station_day(query))

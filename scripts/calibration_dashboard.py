@@ -22403,12 +22403,19 @@ function sdLevels(day, b, st){
   if(manual > 0 && manual < 1) return [[manual, 1e12]];
   return (book.ask_levels || []).filter(l => l[0] > 0 && l[0] < 1 && l[1] > 0);
 }
+function sdHeld(st, b){ const v = Number((st.held || {})[b]); return isFinite(v) && v > 0 ? v : 0; }
+function sdHeldCost(st){ return Object.values(st.heldCost || {}).reduce((a, v) => a + (isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0), 0); }
+// 已持有 (user 2026-10-05「如果临时增加桶呢」): shares already on the account
+// pay out like new ones, and what they cost is part of the basket's spend.
+//   命中桶 k 盈亏 = (已持有ₖ + 新买ₖ) − (已花 + 新花)
+//   空着的选中桶补到 已持有ᵤ + 新买ᵤ ≥ 总花费 + F。
 function sdSolve(day, st){
   const rate = st.mode === "taker" ? (st.fee == null ? (SD.data.taker_fee_rate || 0) : Number(st.fee) || 0) : (Number(st.fee) || 0);
   const F = Number(st.floor) || 0;
   const chosen = (day.axis || []).map(r => r.bucket).filter(b => st.sel[b]);
-  const res = {rate, F, legs:{}, warn:[], ok:true};
-  let fixed = 0;
+  const sunk = sdHeldCost(st);
+  const res = {rate, F, legs:{}, warn:[], ok:true, sunk};
+  let fixed = sunk;
   const auto = [];
   chosen.forEach(b => {
     const lv = sdLevels(day, b, st);
@@ -22427,12 +22434,13 @@ function sdSolve(day, st){
     } else auto.push([b, lv]);
   });
   if(!res.ok) return res;
+  const needOf = (T, b) => Math.max(0, T + F - sdHeld(st, b));
   let T = fixed, conv = false;
   for(let it = 0; it < 200; it++){
     let next = fixed, broke = false;
     for(const [b, lv] of auto){
-      const need = Math.max(0, T + F);
-      const c = sdCostOf(lv, need, rate);
+      const need = needOf(T, b);
+      const c = need > 0 ? sdCostOf(lv, need, rate) : 0;
       if(c == null){ broke = true; res.warn.push(`${b}：需要 ${need.toFixed(2)} 份，超过卖盘深度（卖盘全部只有 ${lv.reduce((a, l) => a + l[1], 0).toFixed(2)} 份；可换「挂买一+1」/「手填价格」）`); break; }
       res.legs[b] = {shares:need, cost:c, fixed:false, levels:lv};
       next += c;
@@ -22450,68 +22458,77 @@ function sdSolve(day, st){
   // Shares go in hundredths: round the automatic legs up and re-price once.
   if(auto.length){
     let total = fixed;
-    auto.forEach(([b, lv]) => { const s = Math.ceil((T + F) * 100 - 1e-6) / 100; const c = sdCostOf(lv, s, rate); res.legs[b] = {shares:s, cost:c, fixed:false, levels:lv}; total += c; });
+    const up = v => v > 0 ? Math.ceil(v * 100 - 1e-6) / 100 : 0;
+    auto.forEach(([b, lv]) => { const s = up(needOf(T, b)); const c = s > 0 ? sdCostOf(lv, s, rate) : 0; res.legs[b] = {shares:s, cost:c, fixed:false, levels:lv}; total += c; });
     // Rounding the costs up can leave a hundredth short: one more pass.
-    auto.forEach(([b, lv]) => { const leg = res.legs[b]; if(leg.shares < total + F - 1e-9){ leg.shares = Math.ceil((total + F) * 100 - 1e-6) / 100; const c = sdCostOf(lv, leg.shares, rate); total += c - leg.cost; leg.cost = c; } });
+    auto.forEach(([b, lv]) => { const leg = res.legs[b]; const want = up(needOf(total, b)); if(want > leg.shares + 1e-9){ leg.shares = want; const c = sdCostOf(lv, leg.shares, rate); total += c - leg.cost; leg.cost = c; } });
   }
-  res.total = Object.values(res.legs).reduce((a, l) => a + l.cost, 0);
+  res.newTotal = Object.values(res.legs).reduce((a, l) => a + l.cost, 0);
+  res.total = sunk + res.newTotal;
+  res.payoff = b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) - res.total;
   Object.entries(res.legs).forEach(([b, l]) => {
     l.avg = l.shares > 0 ? l.cost / l.shares : null;
     const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
-    if(l.shares > 0 && book.min_order_size && l.shares < book.min_order_size) res.warn.push(`${b}：${l.shares.toFixed(2)} 份低于交易所最小单 ${book.min_order_size} 份`);
-    if(l.fixed && l.shares - res.total < F - 1e-9) res.warn.push(`${b}：固定金额买到的 ${l.shares.toFixed(2)} 份 < 总花费 ${res.total.toFixed(2)} + 地板 ${F}，命中这桶也${l.shares - res.total < 0 ? "亏" : "不到地板"}`);
+    if(l.shares > 0 && book.min_order_size && l.shares < book.min_order_size) res.warn.push(`${b}：新买 ${l.shares.toFixed(2)} 份低于交易所最小单 ${book.min_order_size} 份`);
+    if(l.fixed && res.payoff(b) < F - 1e-9) res.warn.push(`${b}：已持有 + 固定金额买到的 ${(sdHeld(st, b) + l.shares).toFixed(2)} 份 < 总花费 ${res.total.toFixed(2)} + 地板 ${F}，命中这桶也${res.payoff(b) < 0 ? "亏" : "不到地板"}`);
   });
   return res;
 }
 function sdCalc(day){
   const key = day.event_date, st = sdCalcState(key);
+  st.held = st.held || {}; st.heldCost = st.heldCost || {};
   const head = (day.stages || {})[day.head_stage] || {};
   const p = head.vector || {}, q = (day.market || {}).vector || {};
   const book = {};
   ((day.market || {}).book || []).forEach(r => book[r.bucket] = r);
-  const res = Object.keys(st.sel).some(b => st.sel[b]) ? sdSolve(day, st) : null;
+  const anyHeld = (day.axis || []).some(r => sdHeld(st, r.bucket) > 0);
+  const res = Object.keys(st.sel).some(b => st.sel[b]) || anyHeld ? sdSolve(day, st) : null;
   const axis = (day.axis || []).slice().reverse();
   const rows = axis.map(r => {
     const b = r.bucket, leg = res && res.legs[b], on = !!st.sel[b];
-    const profit = res && res.ok ? (leg ? leg.shares : 0) - res.total : null;
+    const profit = res && res.ok ? res.payoff(b) : null;
     const defPx = st.mode === "maker" ? (sdLevels(day, b, {...st, px:{}})[0] || [])[0] : book[b] && book[b].best_ask;
     return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
       <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
       <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
+      <td><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}"></td>
+      <td><input class="sd-in" type="number" step="0.01" min="0" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td>
       <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
       <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? "自动" : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
-      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : ' <span class="pill">算出</span>'}` : "—"}</td>
+      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>'}` : "—"}</td>
       <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
       <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td></tr>`;
   }).join("");
-  let summary = `<div class="muted">勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。</div>`;
+  let summary = `<div class="muted">勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。已有持仓填在「已持有」两列，或点「读取账户持仓」。</div>`;
   if(res){
     if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
     else {
-      const chosen = Object.keys(res.legs);
-      const cover = chosen.reduce((a, b) => a + (p[b] || 0), 0), coverQ = chosen.reduce((a, b) => a + (q[b] || 0), 0);
-      const profits = chosen.map(b => res.legs[b].shares - res.total);
-      const floorIn = Math.min(...profits), best = Math.max(...profits);
-      const ev = vec => (day.axis || []).reduce((a, r) => a + (vec[r.bucket] || 0) * ((res.legs[r.bucket] ? res.legs[r.bucket].shares : 0) - res.total), 0);
-      const small = chosen.filter(b => { const m = (book[b] || {}).min_order_size; return m && res.legs[b].shares < m; });
-      const lossP = (day.axis || []).reduce((a, r) => a + ((res.legs[r.bucket] ? res.legs[r.bucket].shares : 0) - res.total < -1e-9 ? (p[r.bucket] || 0) : 0), 0);
+      const covered = (day.axis || []).map(r => r.bucket).filter(b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) > 0);
+      const buying = Object.keys(res.legs).filter(b => res.legs[b].shares > 0);
+      const cover = covered.reduce((a, b) => a + (p[b] || 0), 0), coverQ = covered.reduce((a, b) => a + (q[b] || 0), 0);
+      const profits = covered.map(b => res.payoff(b));
+      const floorIn = profits.length ? Math.min(...profits) : null, best = profits.length ? Math.max(...profits) : null;
+      const ev = vec => (day.axis || []).reduce((a, r) => a + (vec[r.bucket] || 0) * res.payoff(r.bucket), 0);
+      const small = buying.filter(b => { const m = (book[b] || {}).min_order_size; return m && res.legs[b].shares < m; });
+      const lossP = (day.axis || []).reduce((a, r) => a + (res.payoff(r.bucket) < -1e-9 ? (p[r.bucket] || 0) : 0), 0);
       summary = `<div class="sd-kpis">
-        <div><span class="muted">总花费</span><b>${sdN(res.total, 2)} U</b></div>
-        <div><span class="muted">选中桶内最低（地板）</span><b class="${floorIn >= 0 ? "up" : "down"}">${sdSg(floorIn, 2)} U</b></div>
-        <div><span class="muted">选中桶内最高</span><b class="up">${sdSg(best, 2)} U</b></div>
+        <div><span class="muted">总花费（已花 + 新花）</span><b>${sdN(res.total, 2)} U</b><span class="muted sd-sub">${sdN(res.sunk, 2)} + ${sdN(res.newTotal, 2)}</span></div>
+        <div><span class="muted">覆盖桶内最低（地板）</span><b class="${floorIn >= 0 ? "up" : "down"}">${floorIn == null ? "—" : sdSg(floorIn, 2)} U</b></div>
+        <div><span class="muted">覆盖桶内最高</span><b class="up">${best == null ? "—" : sdSg(best, 2)} U</b></div>
         <div><span class="muted">未覆盖命中</span><b class="down">${sdSg(-res.total, 2)} U</b></div>
-        <div><span class="muted">概率覆盖 模型/市场</span><b>${sdPc(cover)} / ${sdPc(coverQ)}</b></div>
+        <div><span class="muted">概率覆盖 模型/市场</span><b>${sdPc(cover)} / ${sdPc(coverQ)}</b><span class="muted sd-sub">${covered.map(sdEsc).join("、") || "—"}</span></div>
         <div><span class="muted">期望盈亏 按模型/按市场</span><b>${sdSg(ev(p), 2)} / ${sdSg(ev(q), 2)} U</b></div>
         <div><span class="muted">亏钱概率（模型）</span><b>${sdPc(lossP)}</b></div>
       </div>${res.warn.length ? `<div class="down sd-sub">${res.warn.map(sdEsc).join("；")}</div>` : ""}
       ${small.length ? `<div class="down sd-sub">低于交易所最小单：${small.map(sdEsc).join("、")}——加大金额或去掉这些腿才能下单</div>` : ""}
-      <div class="sd-ctl"><button type="button" class="sd-btn sd-order" data-sd-order="${sdEsc(key)}"${SD.ordering || small.length ? " disabled" : ""}>✅ 确认下单（${chosen.length} 腿 · ${sdN(res.total, 2)} U）</button>
-        <span class="muted sd-sub">经本机网关逐腿买入 YES；${st.mode === "taker" ? "吃单＝限价 FOK（全成或零成，价格上限＝走到的最深一档）" : st.mode === "maker" ? "挂单＝post-only GTC，不保证成交" : "手填价＝GTC 限价"}；一腿失败即停发后面的腿；不记入系统账本</span></div>`;
+      ${buying.length ? `<div class="sd-ctl"><button type="button" class="sd-btn sd-order" data-sd-order="${sdEsc(key)}"${SD.ordering || small.length ? " disabled" : ""}>✅ 确认下单（新买 ${buying.length} 腿 · ${sdN(res.newTotal, 2)} U）</button>
+        <span class="muted sd-sub">经本机网关逐腿买入 YES；${st.mode === "taker" ? "吃单＝限价 FOK（全成或零成，价格上限＝走到的最深一档）" : st.mode === "maker" ? "挂单＝post-only GTC，不保证成交" : "手填价＝GTC 限价"}；一腿失败即停发后面的腿；不记入系统账本</span></div>` : `<div class="muted sd-sub">已有持仓已经满足地板，不需要新买。</div>`}`;
     }
   }
   const feeVal = st.fee == null ? (st.mode === "taker" ? SD.data.taker_fee_rate : 0) : st.fee;
   const orderOut = sdOrderResult(key);
-  return `<div class="sd-t">篮子保本计算器（${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价；只算不下单）</div>
+  const holdNote = st.holdNote ? `<span class="muted sd-sub">${sdEsc(st.holdNote)}</span>` : "";
+  return `<div class="sd-t">篮子保本计算器（${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价）</div>
     <div class="sd-ctl">
       <label>价格口径 <select data-sd-mode="${sdEsc(key)}" data-calc="1">
         <option value="taker"${st.mode === "taker" ? " selected" : ""}>吃卖一（逐档深度）</option>
@@ -22519,20 +22536,48 @@ function sdCalc(day){
         <option value="manual"${st.mode === "manual" ? " selected" : ""}>手填价格</option></select></label>
       <label>手续费率 <input class="sd-in" type="number" step="0.01" min="0" data-sd-fee="${sdEsc(key)}" value="${sdEsc(feeVal)}"></label>
       <label>命中地板 F <input class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>
+      <button type="button" class="sd-btn" data-sd-hold="${sdEsc(key)}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button>
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
+      <span class="sd-holdnote">${holdNote}</span>
     </div>
-    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th>价格（空＝默认）</th><th>金额 U（空＝自动）</th><th>花费 U</th><th>份数</th><th>均价（含费）</th><th>命中该桶盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选（新买）</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th title="账户里这一桶已有的 YES 份数">已持有 份</th><th title="这些份数当初花了多少（均价×份数）；算进总花费">已花 U</th><th>价格（空＝默认）</th><th>金额 U（空＝自动）</th><th>新花 U</th><th>新买 份</th><th>均价（含费）</th><th>命中该桶盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="sd-summary">${summary}${orderOut}</div>
-    <div class="muted sd-sub">命中桶 k 盈亏＝份数ₖ×1 − 总花费；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。例：选 24、25，24 填 10 U、25 空着 → 25 给出命中保本的最少金额，24 一行给出命中盈亏。</div>`;
+    <div class="muted sd-sub">命中桶 k 盈亏＝（已持有ₖ＋新买ₖ）×1 − （已花＋新花）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div>`;
+}
+// 读取账户持仓: shares from the gateway's point lookup (the exchange's own
+// balance), cost from the data API's average price.
+function sdLoadHoldings(key){
+  if(SD.holding) return;
+  SD.holding = true;
+  const st = sdCalcState(key);
+  st.holdNote = "读取中…（约 10 秒）";
+  sdRefreshCalc(key, null);
+  fetch(`http://127.0.0.1:8788/api/station-day-holdings?station=${encodeURIComponent(SD.station)}&event_date=${encodeURIComponent(key)}`)
+    .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
+    .then(j => {
+      st.held = {}; st.heldCost = {};
+      const flags = [];
+      (j.rows || []).forEach(r => {
+        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null) st.heldCost[r.bucket] = String(r.cost_usdc); else flags.push(`${r.bucket} 无均价，已花请手填`); }
+        if(r.gateway_error) flags.push(`${r.bucket} 份数读取失败（${r.gateway_error}）`);
+        if(r.disagrees) flags.push(`${r.bucket} 交易所 ${r.shares} 份 ≠ 公开接口 ${r.data_api_size} 份`);
+      });
+      const n = Object.keys(st.held).length;
+      st.holdNote = `账户持仓 ${sdLocal(j.observed_at_utc, true)}：${n ? Object.entries(st.held).map(([b, s]) => `${b} ${s} 份`).join("、") : "这一天没有持仓"}${j.data_api_error ? `（均价读取失败：${j.data_api_error}）` : ""}${flags.length ? "；" + flags.join("；") : ""}`;
+    })
+    .catch(e => { st.holdNote = "读取失败：" + (/Failed to fetch|NetworkError|Load failed/.test(String(e)) ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e)); })
+    .finally(() => { SD.holding = false; sdSave(); sdRefreshCalc(key, null); });
 }
 function sdOnInput(e){
   const t = e.target, ds = t.dataset;
-  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || (ds.calc ? ds.sdMode : null);
+  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || ds.sdHeld || ds.sdHcost || (ds.calc ? ds.sdMode : null);
   if(!key) return;
   const st = sdCalcState(key);
   if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
   else if(ds.sdAmt){ st.amt[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
   else if(ds.sdPx){ st.px[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
+  else if(ds.sdHeld){ st.held = st.held || {}; st.held[ds.b] = t.value; }
+  else if(ds.sdHcost){ st.heldCost = st.heldCost || {}; st.heldCost[ds.b] = t.value; }
   else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
   else if(ds.sdFloor) st.floor = Number(t.value) || 0;
   else if(ds.calc){ st.mode = t.value; st.fee = null; }
@@ -22562,10 +22607,14 @@ function sdRefreshCalc(key, input){
         if(el !== input && el !== document.activeElement) el.value = ne.value;
       }
     });
-    [1, 2, 3, 6, 7, 8, 9].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; });
+    [1, 2, 3, 8, 9, 10, 11].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; });
   });
   const fee = card.querySelector(`input[data-sd-fee="${key}"]`), nfee = holder.querySelector(`input[data-sd-fee="${key}"]`);
   if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
+  const oldNote = card.querySelector(".sd-holdnote"), newNote = holder.querySelector(".sd-holdnote");
+  if(oldNote && newNote) oldNote.innerHTML = newNote.innerHTML;
+  const oldHold = card.querySelector("[data-sd-hold]"), newHold = holder.querySelector("[data-sd-hold]");
+  if(oldHold && newHold) oldHold.disabled = newHold.disabled;
   const oldSum = card.querySelector(".sd-summary"), newSum = holder.querySelector(".sd-summary");
   if(oldSum && newSum) oldSum.innerHTML = newSum.innerHTML;
 }
@@ -22576,7 +22625,7 @@ function sdRefreshCalc(key, input){
 function sdOrderLegs(day, st){
   const res = sdSolve(day, st);
   if(!res.ok) return {res, legs: []};
-  const legs = Object.entries(res.legs).map(([bucket, leg]) => {
+  const legs = Object.entries(res.legs).filter(([, leg]) => leg.shares > 0).map(([bucket, leg]) => {
     let left = leg.shares, cap = leg.levels[0][0];
     for(const [p, q] of leg.levels){ cap = p; left -= q; if(left <= 1e-9) break; }
     return {bucket, shares: Math.floor(leg.shares * 100 + 1e-6) / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
@@ -22613,10 +22662,10 @@ function sdPlaceOrderNow(key){
   const st = sdCalcState(key);
   if(!day) return;
   const {res, legs} = sdOrderLegs(day, st);
-  if(!res.ok || !legs.length){ alert("计算器没有可下的篮子：" + (res.warn || []).join("；")); return; }
+  if(!res.ok || !legs.length){ alert("计算器没有可下的篮子：" + ((res.warn || []).join("；") || "已有持仓已满足地板，不需要新买")); return; }
   const modeWord = {taker:"吃卖一：限价 FOK，全成或零成", maker:"挂买一+1：post-only GTC，不保证成交", manual:"手填价格：GTC 限价"}[st.mode];
   const lines = legs.map(l => `  ${l.bucket}：${l.shares} 份 × 限价 ${l.limit_price}（约 ${l.cost.toFixed(2)} U）`).join("\n");
-  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key} 的 YES？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n合计约 ${res.total.toFixed(2)} U\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
+  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key} 的 YES？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n新花合计约 ${res.newTotal.toFixed(2)} U${res.sunk > 0 ? `（已花 ${res.sunk.toFixed(2)} U，全篮 ${res.total.toFixed(2)} U）` : ""}\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
   if(!ok) return;
   const batch = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2, 10));
   SD.orders = SD.orders || {};
@@ -22642,6 +22691,8 @@ function sdOnClick(e){
     sdSave(); sdRender();
   } else if(ds.sdMode && !ds.calc){
     SD.trendMode[ds.sdMode] = ds.v; sdSave(); sdRender();
+  } else if(ds.sdHold){
+    sdLoadHoldings(ds.sdHold);
   } else if(ds.sdOrder){
     sdPlaceOrder(ds.sdOrder);
   } else if(ds.sdClear){

@@ -278,3 +278,118 @@ def place_manual_basket(
     _receipt(record)
     return {"ok": stopped is None, **{k: record[k] for k in (
         "station_id", "event_date", "batch_id", "mode", "book_observed_at", "notional_usdc", "results")}}
+
+
+# ---------------------------------------------------------------------------
+# What the wallet already holds on a station-day (user 2026-10-05「如果临时增加
+# 桶呢」): the calculator adds a bucket to a basket already partly bought, so
+# it needs each rung's shares and what they cost.
+
+_ADDRESS_KEYS = ("POLY_DATA_API_USER", "PM_FUNDER_ADDRESS")
+
+
+def funder_address() -> str:
+    """The wallet's public address: the environment, else the repo's .env --
+    read for these two keys only, nothing else in that file."""
+
+    for key in _ADDRESS_KEYS:
+        if os.environ.get(key):
+            return str(os.environ[key]).strip()
+    try:
+        for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+            match = re.match(r"\s*(?:export\s+)?(POLY_DATA_API_USER|PM_FUNDER_ADDRESS)\s*=\s*['\"]?(0x[0-9a-fA-F]{40})", line)
+            if match:
+                return match.group(2)
+    except OSError:
+        pass
+    return ""
+
+
+def _data_api_positions(user: str, *, timeout: float = 10.0) -> dict[str, dict[str, float]]:
+    """asset -> {size, avg_price} off the public data API.  It is outside the
+    machine, so it goes through the Mac's proxy like any other venue read."""
+
+    import ssl  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    try:
+        import certifi  # noqa: PLC0415 -- this Python has no system CA bundle
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+
+    host = os.environ.get("POLY_DATA_API_HOST", "https://data-api.polymarket.com").rstrip("/")
+    out: dict[str, dict[str, float]] = {}
+    for offset in range(0, 2000, 500):
+        query = urlencode({"user": user, "sizeThreshold": 0, "limit": 500, "offset": offset})
+        request = Request(f"{host}/positions?{query}", headers={"User-Agent": "weather-board-holdings"})
+        with urlopen(request, timeout=timeout, context=context) as response:  # noqa: S310 -- fixed https host
+            rows = json.loads(response.read().decode("utf-8") or "[]")
+        for row in rows if isinstance(rows, list) else []:
+            asset = str(row.get("asset") or "")
+            if asset:
+                out[asset] = {"size": float(row.get("size") or 0.0),
+                              "avg_price": float(row.get("avgPrice") or 0.0)}
+        if not isinstance(rows, list) or len(rows) < 500:
+            break
+    return out
+
+
+def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
+                         lookup: Callable[[str], Mapping[str, Any]] | None = None,
+                         positions: Callable[[str], Mapping[str, Mapping[str, float]]] | None = None,
+                         ) -> dict[str, Any]:
+    """Each rung's shares on the account (the gateway's point lookup -- the
+    exchange's own balance) and their average cost (the data API).  A rung
+    the two disagree on is flagged; the shares shown are the gateway's."""
+
+    station = station.upper()
+    if not re.fullmatch(r"[A-Z]{4}", station) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise ManualOrderError("站点或日期不合法")
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
+    try:
+        book = latest_book(conn, station, day)
+    finally:
+        conn.close()
+    if lookup is None:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+        client = ClobOrderServiceClient(timeout_seconds=10.0)
+        lookup = lambda token: client._post("/lookup-position", {"token_id": token})  # noqa: E731
+    user = funder_address()
+    api_error = None
+    try:
+        api = (positions or _data_api_positions)(user) if user else {}
+        if not user:
+            api_error = "钱包地址未配置"
+    except Exception as exc:  # noqa: BLE001 -- shares still come from the gateway
+        api, api_error = {}, f"{type(exc).__name__}: {str(exc)[:120]}"
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    ladder = list(book["buckets"].items())
+    # One point lookup per rung, each a venue round trip through the
+    # gateway: side by side, not one after another (11 rungs took 17 s).
+    with ThreadPoolExecutor(max_workers=min(12, max(1, len(ladder)))) as pool:
+        answers = list(pool.map(lambda item: dict(lookup(item[1]["token_id"]) or {}), ladder))
+    rows = []
+    for (bucket, row), answer in zip(ladder, answers):
+        token = row["token_id"]
+        shares = float(answer["shares"]) if answer.get("ok") else None
+        from_api = api.get(token) or {}
+        avg = from_api.get("avg_price") or None
+        rows.append({
+            "bucket": bucket, "shares": shares,
+            "gateway_error": None if answer.get("ok") else answer.get("error") or "lookup_failed",
+            "avg_price": avg,
+            "cost_usdc": None if shares is None or avg is None else round(shares * avg, 4),
+            "data_api_size": from_api.get("size"),
+            "disagrees": (shares is not None and from_api.get("size") is not None
+                          and abs(shares - float(from_api["size"])) > 0.01),
+        })
+    return {"station_id": station, "event_date": day,
+            "observed_at_utc": _now().isoformat().replace("+00:00", "Z"),
+            "data_api_error": api_error, "rows": rows}
