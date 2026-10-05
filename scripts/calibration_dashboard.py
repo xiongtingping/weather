@@ -19051,7 +19051,7 @@ function liveReadiness(){
   const lanePnlCell = x => {
     if(!x || !(x.settled_legs || x.pending_legs)) return ['class="mono muted"', "—"];
     const wait = x.pending_legs ? ` · 待结算 ${x.pending_legs} 腿` : "";
-    if(!x.settled_legs) return ['class="mono muted"', `${x.pending_legs}待`];
+    if(!x.settled_legs) return ['class="mono muted" data-sort=""', `${x.pending_legs}待`];
     const roi = x.cost_usdc>0 ? x.pnl_usdc/x.cost_usdc : null;
     return [`class="mono ${lsign(x.pnl_usdc)}" data-sort="${x.pnl_usdc}" title="投入 ${x.cost_usdc.toFixed(2)} U · 回款 ${x.payout_usdc.toFixed(2)} U（其中卖出 ${x.sell_proceeds_usdc.toFixed(2)} U）· 已结算 ${x.settled_legs} 腿${wait}"`,
       `${(x.pnl_usdc>=0?"+":"")+x.pnl_usdc.toFixed(1)} <span class="muted">${lpct(roi)}</span>`];
@@ -19092,7 +19092,7 @@ function liveReadiness(){
   const MISS = ['class="mono muted"', "—"];
   const COLUMN_GROUPS = [
     ["站点与开关", [
-      {th:['', "站"], td:r=>['class="mono" style="white-space:nowrap"',
+      {th:['', "站"], td:r=>[`class="mono" style="white-space:nowrap" data-sort-text="${h(r.station)}"`,
         `<span data-lc-state="${h(r.station)}">${allow.has(r.station)?"✔ ":(barred.has(r.station)?"⛔ ":(waiting.has(r.station)?"⏳ ":""))}</span>${h(r.station)}${r.station_label?` <span class="muted">${h(r.station_label)}</span>`:""}`]},
       {th:['title="三个开关都是人工裁定，点击即开启关闭，改动立刻写盘并记审计。禁入=不下单（记账照旧）；豁免=证据不够也上线；待观察=够格也先不下单。三者互斥。"', "闸门（人工）"],
         td:r=>['style="white-space:nowrap"', lcGateButtons(r.station, barred.has(r.station),
@@ -19129,8 +19129,11 @@ function liveReadiness(){
     if(edge) a = a.includes('style="') ? a.replace('style="', 'style="border-left:1px solid var(--line);') : `${a} ${EDGE}`;
     return `<${tag}${a?" "+a:""}>${content}</${tag}>`;
   };
+  // The first two groups go untitled (user 2026-10-05: 去掉表头：站点和开关、
+  // 盈亏); the names stay in the list as labels for the code.
+  const UNTITLED_GROUPS = new Set(["站点与开关", "盈亏（按车道 · 已结算 · 含卖出回款）"]);
   const groupHead = COLUMN_GROUPS.map(([name, cols], gi) =>
-    `<th colspan="${cols.length}" style="text-align:center;font-weight:normal${gi?";border-left:1px solid var(--line)":""}" class="muted">${name}</th>`).join("");
+    `<th colspan="${cols.length}" style="text-align:center;font-weight:normal${gi?";border-left:1px solid var(--line)":""}" class="muted">${UNTITLED_GROUPS.has(name)?"":name}</th>`).join("");
   const columnHead = COLUMN_GROUPS.flatMap(([_, cols], gi) =>
     cols.map((c, ci) => cell("th", c.th, gi>0 && ci===0))).join("");
   const rows = (L.stations||[]).map(r=>`<tr class="${barred.has(r.station)?"muted":""}">${
@@ -19175,7 +19178,7 @@ function liveReadiness(){
       现金口径：卖出回款按各买腿持股比例摊回，剩余份额按结算赔付。</div>
     ${groupBlock}
     <div class="scroll" style="max-height:420px;margin-top:6px">
-    <table style="white-space:nowrap" data-grouped="1"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
+    <table style="white-space:nowrap"><thead><tr>${groupHead}</tr><tr>${columnHead}</tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
@@ -19623,6 +19626,16 @@ function makeSortable(table){
         // 89%" read as its first number sorted the hit columns by hit count,
         // so 1/1 sat under 8/9; the cell carries the rate instead, and an
         // empty value sinks like a dash.
+        // A cell whose shown text leads with a marker names its own text
+        // key (the gate table's station cell reads "✔ KLGA").
+        if(cell.dataset.sortText!==undefined) return {n:null,s:cell.dataset.sortText};
+        // A cell of switches sorts on which switch is on, read live: the
+        // gate buttons repaint in place after a click.
+        const sw=[...cell.querySelectorAll('[role="switch"]')];
+        if(sw.length){
+          const on=sw.findIndex(b=>b.getAttribute("aria-checked")==="true");
+          return {n:on<0?sw.length:on,s:""};
+        }
         if(cell.dataset.sort!==undefined){
           const n=cell.dataset.sort===""?NaN:parseFloat(cell.dataset.sort);
           return Number.isFinite(n)?{n:n,s:""}:{n:null,s:""};
