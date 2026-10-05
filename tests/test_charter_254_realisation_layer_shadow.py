@@ -252,3 +252,35 @@ def test_the_wiring_and_the_charter() -> None:
     for word in ("market_conditioned_realisation_v1", "realisation_layer_shadow", "refit_realisation_layer",
                  "active.json", "上影子", "前端增加对应显式看板", "裁决人：熊先生", "不改下单", "边际"):
         assert word in line, word
+
+
+def test_go_live_verdict_waits_for_settled_legs_and_blocks_on_the_replay() -> None:
+    """上线判定 (user 2026-10-05): b as the belief is ready on the gate; the
+    Proper filter change waits for ten settled event days and stays blocked
+    while the replay says reading b does worse per leg than reading p."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import calibration_dashboard as cd
+
+    fit = {"available": True, "gate": {
+        "state": "ADMITTED", "cells_outside": 1, "cells_allowed": 3,
+        "calibration_line": {"slope": [1.0, 0.93, 1.1]},
+        "logscore": {"layer_minus_market": [-0.03, -0.05, -0.01],
+                     "layer_minus_market_only_pool": [-0.002, -0.006, 0.003]}},
+        "realised": {"decided": [], "filled": []}}
+    worse = {"values": {"current_margin_pts": 8.1, "b_margin_pts": 4.3, "added_ci": [-2.5, 7.0]}}
+    out = cd.realisation_go_live(fit, worse)
+    states = {c["key"]: c["state"] for c in out["checks"]}
+    assert out["belief_ready"] is True
+    assert states["event_days"] == "wait" and states["filled_realised"] == "wait"
+    assert states["replay_vs_current"] == "fail" and out["trade"] == "blocked"
+
+    settled = dict(fit, realised={
+        "decided": [{"lane": "proper_bet", "side": "YES", "event_days": 12,
+                     "belief_minus_landed": [0.01, -0.03, 0.05]}],
+        "filled": [{"lane": "proper_bet", "side": "YES", "realised": [0.04, 0.01, 0.07]}]})
+    better = {"values": {"current_margin_pts": 4.0, "b_margin_pts": 5.0, "added_ci": [0.5, 7.0]}}
+    ready = cd.realisation_go_live(settled, better)
+    assert ready["trade"] == "ready"
+    assert cd.realisation_go_live(settled, None)["trade"] == "waiting"

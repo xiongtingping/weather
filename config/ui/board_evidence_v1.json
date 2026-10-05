@@ -96,6 +96,17 @@
       "window": "全队 9 月，旧法（辐射绝对量对 4 月以来均值）",
       "source": "宪章 160；记忆 charter-160-radiation-clearness-index",
       "values": {"fleet_september_z": -0.44, "seasonal_share": 0.9}
+    },
+    "realisation_proper_filter": {
+      "measured_on": "2026-10-05",
+      "window": "实服记录 P0>36h 市场众数桶 YES 挂买一+1，前推 13 天（2026-09-21..10-03），挂上即成交口径",
+      "source": "docs/research/realisation_layer_20261005/out_proper_filter.txt；宪章 254(五)",
+      "values": {
+        "current_days": 295, "current_margin_pts": 8.1, "current_ci": [3.6, 12.3],
+        "b_days": 503, "b_margin_pts": 4.3, "b_ci": [0.4, 8.0],
+        "b_low_days": 398, "b_low_margin_pts": 5.0, "b_low_ci": [1.7, 8.7],
+        "added_days": 425, "added_margin_pts": 2.3, "added_ci": [-2.5, 7.0], "p_only_days": 3
+      }
     }
   }
 }

@@ -13213,7 +13213,97 @@ def collect_realisation_layer(conn: sqlite3.Connection) -> dict[str, Any]:
                 "filled_size": float(r[23] or 0.0), "settled_bucket": r[24],
             })
         out["shadow"] = {"available": True, "counts": counts, "recent": recent}
+    out["go_live"] = realisation_go_live(out["fit"], collect_board_evidence()["entries"].get("realisation_proper_filter"))
     return out
+
+
+# What "上线" would have to clear (user 2026-10-05 「兑现层：给我一个可以上线的
+# 明确看板或总结」).  The layer's belief is judged by the nightly gate; the
+# change it would make -- the Proper lane posting on b instead of p, a
+# change to charter 231's 「p＝天气模型」 -- by the settled shadow legs and by
+# the research replay beside the current rule.  Ten event days is the count
+# charter 254(五) set for the re-read.
+REALISATION_GO_LIVE_MIN_EVENT_DAYS = 10
+
+
+def realisation_go_live(fit: Mapping[str, Any], evidence: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Each criterion as (value, state) with state ``pass`` / ``fail`` / ``wait``.
+
+    ``belief`` is ready when the calibration gate admits the fit and it beats
+    the market as it stands; ``trade`` (reading b in the Proper filter) needs
+    every criterion: enough settled event days, filled legs realising above
+    zero after fees with b saying what lands, and the replay showing reading
+    b does not do worse per leg than the rule it replaces.
+    """
+
+    def ci_state(interval: Any, want_below: bool) -> str:
+        if not isinstance(interval, (list, tuple)) or len(interval) < 3:
+            return "wait"
+        low, high = float(interval[1]), float(interval[2])
+        return "pass" if (high < 0 if want_below else low > 0) else "fail"
+
+    checks: list[dict[str, Any]] = []
+    gate = dict((fit or {}).get("gate") or {})
+    if not (fit or {}).get("available"):
+        checks.append({"key": "gate", "group": "belief", "label": "校准门", "value": None, "state": "wait"})
+    else:
+        line = dict(gate.get("calibration_line") or {})
+        checks.append({
+            "key": "gate", "group": "belief", "label": "校准门（说多少中多少）",
+            "value": {"state": gate.get("state"), "outside": gate.get("cells_outside"),
+                      "allowed": gate.get("cells_allowed"), "slope": line.get("slope")},
+            "state": {"ADMITTED": "pass", "REFUSED": "fail"}.get(str(gate.get("state")), "wait"),
+        })
+        logscore = dict(gate.get("logscore") or {})
+        checks.append({"key": "vs_market", "group": "belief", "label": "比市场原样准（LogScore 差）",
+                       "value": logscore.get("layer_minus_market"),
+                       "state": ci_state(logscore.get("layer_minus_market"), True)})
+        checks.append({"key": "model_increment", "group": "info", "label": "天气模型在市场之外的增量",
+                       "value": logscore.get("layer_minus_market_only_pool"),
+                       "state": ci_state(logscore.get("layer_minus_market_only_pool"), True)})
+    realised = dict((fit or {}).get("realised") or {})
+    proper_filled = next((r for r in realised.get("filled") or []
+                          if r.get("lane") == "proper_bet" and r.get("side") == "YES"), None)
+    proper_decided = next((r for r in realised.get("decided") or []
+                           if r.get("lane") == "proper_bet" and r.get("side") == "YES"), None)
+    days = int((proper_decided or {}).get("event_days") or 0)
+    enough = days >= REALISATION_GO_LIVE_MIN_EVENT_DAYS
+    checks.append({"key": "event_days", "group": "trade", "label": "Proper 影子腿已结算事件日",
+                   "value": {"days": days, "need": REALISATION_GO_LIVE_MIN_EVENT_DAYS},
+                   "state": "pass" if enough else "wait"})
+    checks.append({"key": "filled_realised", "group": "trade", "label": "Proper 已成交腿扣费后兑现（¢/份）",
+                   "value": (proper_filled or {}).get("realised"),
+                   "state": ci_state((proper_filled or {}).get("realised"), False) if enough else "wait"})
+    belief_gap = (proper_decided or {}).get("belief_minus_landed")
+    gap_state = "wait"
+    if enough and isinstance(belief_gap, (list, tuple)) and len(belief_gap) >= 3:
+        gap_state = "pass" if float(belief_gap[1]) <= 0.0 <= float(belief_gap[2]) else "fail"
+    checks.append({"key": "belief_on_legs", "group": "trade", "label": "影子腿上 b 说多少中多少（b−命中）",
+                   "value": belief_gap, "state": gap_state})
+    values = dict((evidence or {}).get("values") or {})
+    if values:
+        worse = float(values["b_margin_pts"]) < float(values["current_margin_pts"])
+        added_low = float((values.get("added_ci") or [0.0])[0])
+        checks.append({
+            "key": "replay_vs_current", "group": "trade", "label": "回放：改读 b 对现行「挂价<p」",
+            "value": {k: values.get(k) for k in (
+                "current_days", "current_margin_pts", "current_ci", "b_days", "b_margin_pts", "b_ci",
+                "added_days", "added_margin_pts", "added_ci", "p_only_days")},
+            "state": "fail" if (worse or added_low <= 0.0) else "pass",
+            "measured_on": (evidence or {}).get("measured_on"),
+        })
+    else:
+        checks.append({"key": "replay_vs_current", "group": "trade", "label": "回放：改读 b 对现行「挂价<p」",
+                       "value": None, "state": "wait"})
+    belief_ready = all(c["state"] == "pass" for c in checks if c["group"] == "belief")
+    trade_ready = belief_ready and all(c["state"] == "pass" for c in checks if c["group"] == "trade")
+    trade_blocked = any(c["state"] == "fail" for c in checks if c["group"] == "trade")
+    return {
+        "checks": checks,
+        "belief_ready": belief_ready,
+        "trade": "ready" if trade_ready else ("blocked" if trade_blocked else "waiting"),
+        "min_event_days": REALISATION_GO_LIVE_MIN_EVENT_DAYS,
+    }
 
 
 def charter_ev_identity(
@@ -18426,7 +18516,8 @@ function realisationLayer(){
     <span class="muted">模型向量 p 只看天气；这一层看到 p 又看到市场 q 之后给出每个桶的兑现概率 b，edge 只按 b 对可成交价算。
     形式：市场向量拉尖、市场众数桶与相邻两档各加一项、模型的宽度与形状（两个中心一致时权重大，不一致时小）；模型的中心分歧不进。
     每晚按已结算的 P0（距结算 &gt;36h）滚动 28 天重拟，逐日前推过校准门；Proper 与远尾做空两条线每判一条腿就记一行 b、区间与 edge。</span></div>`;
-  if(!F.available) return intro+`<div class="card muted">尚无拟合文件（data/realisation_layer/active.json）。后端读数任务每小时检查一次，满 20 小时或代码变更即重拟。</div>`+shadowBlock();
+  const verdict=goLive();
+  if(!F.available) return intro+verdict+`<div class="card muted">尚无拟合文件（data/realisation_layer/active.json）。后端读数任务每小时检查一次，满 20 小时或代码变更即重拟。</div>`+shadowBlock();
   const G=F.gate||{}, L=G.logscore||{}, line=G.calibration_line||{}, top=G.top_bucket||{}, pop=F.population||{};
   const state=G.state||"—";
   const pill=state==="ADMITTED"?"green":(state==="REFUSED"?"red":"amber");
@@ -18462,7 +18553,39 @@ function realisationLayer(){
   const realised=`<details open style="margin-top:8px"><summary>影子腿对结算：b 说的、实际中的、edge 声称与兑现（¢/份，已扣费；区间按事件日自助）</summary>
     ${settledRows?`<table><thead><tr><th>口径</th><th>车道</th><th>方向</th><th>腿</th><th>事件日</th><th>b（本方向）</th><th>实际</th><th>均价</th><th>声称 edge</th><th>兑现 [95%]</th><th>有把握的腿</th><th>有把握兑现</th></tr></thead><tbody>${settledRows}</tbody></table>`
       :`<div class="muted">尚无已结算的影子腿（${R.available===false?"影子表还没建":"等第一批站日结算"}）。</div>`}</details>`;
-  return intro+head+tiles+reliability+realised+shadowBlock();
+  return intro+verdict+head+tiles+reliability+realised+shadowBlock();
+  // 上线判定 (user 2026-10-05 「兑现层：给我一个可以上线的明确看板或总结」):
+  // the backend's criteria, each with its reading and a lamp; two verdicts --
+  // b as the betting belief, and the Proper lane posting on b instead of p.
+  function goLive(){
+    const V=T.go_live||{};
+    if(!(V.checks||[]).length) return "";
+    const lampOf={pass:["green","过"],fail:["red","不过"],wait:["amber","等待"]};
+    const ivl=(a,scale,d,unit)=>Array.isArray(a)?`${(+a[0]*scale).toFixed(d)} [${(+a[1]*scale).toFixed(d)}, ${(+a[2]*scale).toFixed(d)}]${unit}`:"—";
+    const show={
+      gate:v=>v?`${h(v.state||"—")} · 出区间 ${v.outside??"—"}/${v.allowed??"—"} 格 · 斜率 ${Array.isArray(v.slope)?(+v.slope[0]).toFixed(3):"—"}`:"尚无拟合",
+      vs_market:v=>ivl(v,1,4," nat"),
+      model_increment:v=>ivl(v,1,4," nat"),
+      event_days:v=>`${v.days} / ${v.need} 天`,
+      filled_realised:v=>ivl(v,100,2,"¢"),
+      belief_on_legs:v=>ivl(v,100,1," 点"),
+      replay_vs_current:v=>`现行 ${v.current_days} 站日 每腿 +${v.current_margin_pts} 点 [${v.current_ci}] ｜ 改读 b ${v.b_days} 站日 +${v.b_margin_pts} 点 [${v.b_ci}] ｜ 多放进来的 ${v.added_days} 站日 +${v.added_margin_pts} 点 [${v.added_ci}]`,
+    };
+    const want={gate:"ADMITTED",vs_market:"上界 < 0",model_increment:"仅参考，不作门",event_days:`≥ ${V.min_event_days} 天`,
+      filled_realised:"下界 > 0",belief_on_legs:"区间含 0",replay_vs_current:"每腿不差于现行，且多放的那批下界 > 0"};
+    const group={belief:"信念",info:"参考",trade:"改下单"};
+    const rows=V.checks.map(c=>{const [tone,word]=lampOf[c.state]||["muted",c.state];
+      return `<tr><td class="muted">${group[c.group]||c.group}</td><td>${h(c.label)}</td><td class="muted">${h(want[c.key]||"")}</td>
+        <td class="mono">${c.value==null?"—":(show[c.key]?show[c.key](c.value):h(JSON.stringify(c.value)))}</td>
+        <td><span class="dot ${tone}"></span>${word}</td></tr>`;}).join("");
+    const tradeWord={ready:["green","可以上线"],blocked:["red","不上线"],waiting:["amber","等结算"]}[V.trade]||["muted","—"];
+    return `<div class="card" style="margin-top:8px"><b>上线判定</b>
+      <div style="margin:6px 0">
+        <span class="pill ${V.belief_ready?"green":"amber"}">b 作下注信念：${V.belief_ready?"合格":"未合格"}</span>
+        <span class="pill ${tradeWord[0]}">Proper 改读 b 下单：${tradeWord[1]}</span>
+      </div>
+      <table data-grouped="1"><thead><tr><th>类</th><th>判据</th><th>门槛</th><th>当前</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
   function shadowBlock(){
     if(!S.available) return `<div class="card muted" style="margin-top:8px">影子表 realisation_layer_shadow 还没有行：两条线下一次判腿时写入。</div>`;
     const counts=(S.counts||[]).map(c=>`<tr><td>${h(c.lane)}</td><td>${h(c.kind)}</td><td>${h(c.state)}</td><td class="mono">${c.rows}</td><td class="mono">${h(c.last_at_utc||"—")}</td></tr>`).join("");
