@@ -22353,16 +22353,29 @@ function sdModels(day){
   if(!p0) return "";
   const models = p0.models || [];
   const wmax = Math.max(0.01, ...models.map(m => m.weight || 0));
+  // Against the P0 just before (user 2026-10-05「run的更新变化、权重的变化、
+  // 校准中心、均值等变化在表里标注」): a new run, and each number's move.
+  const dv = (now, before, d, unit, scale) => {
+    if(now == null || before == null) return "";
+    const x = (now - before) * (scale || 1);
+    if(Math.abs(x) < Math.pow(10, -d) / 2) return "";
+    return ` <span class="${x > 0 ? "up" : "down"} sd-sub">${x > 0 ? "↑+" : "↓−"}${Math.abs(x).toFixed(d)}${unit}</span>`;
+  };
   const rows = models.map(m => {
-    const st = m.stats || {};
-    return `<tr><td><b>${sdEsc(m.system_id)}</b><div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
-      <td class="mono">${sdEsc(m.run_cycle || "—")}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}</div></td>
+    const st = m.stats || {}, pv = m.prev;
+    const newRun = pv && pv.run_init_utc && m.run_init_utc && pv.run_init_utc !== m.run_init_utc;
+    const tag = m.dropped ? ' <span class="pill red">本期掉座</span>'
+      : !pv && p0.previous_decided_at_utc ? ' <span class="pill">新入座</span>'
+      : pv && !pv.seated && m.seated ? ' <span class="pill">重新入座</span>' : "";
+    return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
+      <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div></td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
       <td class="mono">${sdLocal(m.arrived_at_utc, true)}</td>
-      <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${m.seated ? "" : ' <span class="pill red">未入座</span>'}</td>
-      <td class="mono">${sdN(m.calibrated_centre_c, 2)}°C</td>
-      <td class="mono">${sdN(st.mean_c, 2)}°C</td><td class="mono">${sdN(st.sd_c, 2)}</td>
-      <td>${sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span></td></tr>`;
+      <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
+      <td class="mono">${sdN(m.calibrated_centre_c, 2)}°C${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
+      <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}</td>
+      <td class="mono">${sdN(st.sd_c, 2)}${pv ? dv(st.sd_c, pv.sd_c, 2, "") : ""}</td>
+      <td>${sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}</td></tr>`;
   }).join("");
   const W = p0.width || {}, Bg = p0.bridge || {};
   const wh = day.weight_history || [];
@@ -22372,7 +22385,12 @@ function sdModels(day){
     const init = (e.run_init_utc || {})[s];
     return `<td class="mono" title="run ${sdEsc(init || "—")}">${w == null ? "—" : sdPc(w, 0)}<div class="muted sd-sub">${init ? String(init).slice(8, 13).replace("T", " ") + "Z" : ""}</div></td>`;
   }).join("")}</tr>`).join("");
+  const changed = models.filter(m => m.dropped || !m.prev || (m.prev.run_init_utc !== m.run_init_utc)
+    || Math.abs((m.weight || 0) - (m.prev.weight || 0)) >= 0.0005).length;
+  const vsPrev = p0.previous_decided_at_utc
+    ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心/均值/σ 按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
+    ${vsPrev}
     <div class="scroll"><table class="sd-tab"><thead><tr><th>系统</th><th>run（起报，当地）</th><th>校准提前量</th><th>到货（当地）</th><th>权重</th><th>校准中心</th><th>单系统均值</th><th>σ</th><th>众数桶</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">合成中心 ${sdN(p0.model_center_c, 2)}°C · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、σ ${sdN(W.sigma_c, 2)}°C、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
       Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>

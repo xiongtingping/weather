@@ -229,15 +229,59 @@ def _models(lineage: Mapping[str, Any], axis) -> list[dict[str, Any]]:
     return out
 
 
-def _p0_brief(head: Mapping[str, Any], axis) -> dict[str, Any]:
+def _previous_p0(conn, station: str, day: str, before_utc: str) -> dict[str, Any] | None:
+    """The P0 decided just before ``before_utc`` for the same day."""
+
+    row = conn.execute(
+        "SELECT decision_at_utc, lineage_json FROM basket_probability_envelope"
+        " WHERE station_id=? AND event_date=? AND +stage='P0' AND state='COMMITTED'"
+        " AND decision_at_utc<? ORDER BY decision_at_utc DESC LIMIT 1",
+        (station, day, before_utc),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"decided_at_utc": row[0], "lineage": _json(row[1], {})}
+
+
+def _with_previous(models: list[dict[str, Any]], previous: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each model beside what the previous P0 had for it (user 2026-10-05
+    「run的更新变化、权重的变化、校准中心、均值等变化在表里标注」); a model the
+    previous P0 did not carry is marked new, one it carried and this one does
+    not is listed as dropped."""
+
+    before = {m["system_id"]: m for m in previous}
+    out = []
+    for m in models:
+        p = before.get(m["system_id"])
+        out.append({**m, "prev": None if p is None else {
+            "run_init_utc": p["run_init_utc"], "run_cycle": p["run_cycle"],
+            "weight": p["weight"], "calibrated_centre_c": p["calibrated_centre_c"],
+            "seated": p["seated"],
+            "mean_c": (p.get("stats") or {}).get("mean_c"),
+            "sd_c": (p.get("stats") or {}).get("sd_c"),
+            "mode": (p.get("stats") or {}).get("mode"),
+        }})
+    here = {m["system_id"] for m in models}
+    for p in previous:
+        if p["system_id"] not in here and p.get("seated"):
+            out.append({**p, "dropped": True, "weight": 0.0, "seated": False,
+                        "prev": {"weight": p["weight"], "run_init_utc": p["run_init_utc"]}})
+    return out
+
+
+def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
     L = head["lineage"]
     rad = _json(L.get("synoptic_cooling_json"), {})
     width = _json(L.get("center_width_json"), {})
     bridge = _json(L.get("consensus_bridge_json"), {})
     taf_w = _json(L.get("taf_envelope_witness_json"), {})
     ceiling = _json(L.get("far_peak_ceiling_json"), {})
+    models = _models(L, axis)
+    if previous is not None:
+        models = _with_previous(models, _models(previous["lineage"], axis))
     return {
-        "models": _models(L, axis),
+        "models": models,
+        "previous_decided_at_utc": None if previous is None else previous["decided_at_utc"],
         "run_cycle": L.get("run_cycle"), "lead_bucket": L.get("lead_bucket"),
         "season_bin": L.get("season_bin"),
         "model_center_c": _float(L.get("model_center_c")),
@@ -566,7 +610,8 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo) -> dict[str, A
             "stats": vector_stats(head["vector"], axis),
         }
         if stage == "P0":
-            entry.update(_p0_brief(head, axis))
+            entry.update(_p0_brief(head, axis, _previous_p0(
+                conn, station, day, str(head["decided_at_utc"]))))
         elif stage == "P0-M":
             entry.update(_p0m_brief(head))
         else:
