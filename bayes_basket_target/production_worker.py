@@ -597,7 +597,12 @@ ROTATION_AGEING_CAP_HOURS = 12.0
 # be filled against; half of it leaves room for the cycle to land.
 EVENT_DAY_CAPTURE_BOUND_SEC = 900.0
 
-MAX_FORWARD_P0_STATIONS = 45
+# The fleet, derived.  It was the literal 45 and survived the 2026-10-04
+# move to 48: the forward P0 compile takes the stations with a live cross
+# activation ``ORDER BY station_id LIMIT`` this, so once the three new
+# stations held activations the last three alphabetically (ZSQD, ZUCK, ZUUU)
+# fell off the end and their D+1/D+2 P0 stopped at the 12Z run.
+MAX_FORWARD_P0_STATIONS = expected_station_count()
 # Packets kept in the republisher forward inbox.  This has to stay under what
 # ``MAX_JSON_OUTPUT_BYTES`` permits, not merely be "a large number": each
 # packet carries every registered ensemble system, ~65KiB of JSON and up to

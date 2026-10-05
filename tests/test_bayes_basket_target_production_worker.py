@@ -3012,7 +3012,8 @@ def test_delta_v2_truth_restart_starts_with_newest_bounded_scope_page(
     )
 
     assert result["state"] == "complete"
-    assert observed == [5]
+    # The newest page is one fleet of station-days.
+    assert observed == [50 - production_worker_module.MAX_FORWARD_P0_STATIONS]
     assert worker._delta_v2_truth_fact_cursor == 50
     assert worker._delta_v2_truth_cursor_initialized is True
 
