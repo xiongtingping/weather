@@ -40,3 +40,27 @@ def test_the_redraw_cannot_fail_the_render() -> None:
         "set -e is on; a redraw that cannot parse the template must not make "
         "the render look like it failed after it already wrote the page"
     )
+
+
+def test_a_template_that_cannot_load_falls_back_to_the_imported_one(monkeypatch) -> None:
+    """2026-10-05: the redraw re-executes the file on disk with this process's
+    old sibling modules; an edit moving both failed the render at its last
+    step.  The imported renderer draws instead."""
+
+    import importlib.util
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import calibration_dashboard as cd
+
+    class _Boom:
+        def exec_module(self, module):
+            raise AttributeError("module 'live_book' has no attribute 'X'")
+
+    class _Spec:
+        loader = _Boom()
+
+    monkeypatch.setattr(cd, "_LOADED_SOURCE_LINES", ["changed\n"])
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *a, **k: _Spec())
+    monkeypatch.setattr(importlib.util, "module_from_spec", lambda spec: object())
+    assert cd._renderer_on_disk() is cd.render_html

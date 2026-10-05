@@ -24065,7 +24065,21 @@ def _renderer_on_disk() -> Any:
     )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 -- a redraw must not fail the build
+        # The file on disk is re-executed, its sibling modules are not: they
+        # are the ones this process imported twenty minutes ago.  An edit
+        # that moves both (2026-10-05: the lane classifier into live_book)
+        # failed the whole render at its last step, payload already saved.
+        # Draw with the template this process has; the hot-update watch
+        # redraws with the new one on the next save.
+        print(
+            f"on-disk template did not load ({type(exc).__name__}: "
+            f"{str(exc)[:160]}); drawing with the imported one",
+            file=sys.stderr,
+        )
+        return render_html
     return module.render_html
 
 
