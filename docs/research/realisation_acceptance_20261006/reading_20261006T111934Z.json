@@ -1,0 +1,121 @@
+{
+ "schema": "realisation_acceptance_reading_v1",
+ "read_at_utc": "2026-10-06T11:19:34Z",
+ "freeze_utc": "2026-10-05T13:46:56Z",
+ "frozen_fit_sha256": "76ff1003b99350d1fac42ed8677c38a80a151765b1fa5c6b8b1ef6a9d7e88dae",
+ "counts": {
+  "facts": 871,
+  "before_freeze": 0,
+  "no_label": 55,
+  "inside_36h": 9,
+  "not_first": 527,
+  "missing": 0,
+  "unusable": 280,
+  "label_off_ladder": 0
+ },
+ "summary": {
+  "event_days": [],
+  "station_days": 0,
+  "ready": false,
+  "all": {
+   "station_days": 0,
+   "dNLL_b_minus_p": null,
+   "dNLL_b_minus_q": null,
+   "dNLL_p_minus_q": null,
+   "four_cell_p_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "four_cell_b_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "fixed_p_legs_gap": {
+    "p": null,
+    "b": null
+   }
+  },
+  "C": {
+   "station_days": 0,
+   "dNLL_b_minus_p": null,
+   "dNLL_b_minus_q": null,
+   "dNLL_p_minus_q": null,
+   "four_cell_p_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "four_cell_b_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "fixed_p_legs_gap": {
+    "p": null,
+    "b": null
+   }
+  },
+  "F": {
+   "station_days": 0,
+   "dNLL_b_minus_p": null,
+   "dNLL_b_minus_q": null,
+   "dNLL_p_minus_q": null,
+   "four_cell_p_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "four_cell_b_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "fixed_p_legs_gap": {
+    "p": null,
+    "b": null
+   }
+  },
+  "modes_agree": {
+   "station_days": 0,
+   "dNLL_b_minus_p": null,
+   "dNLL_b_minus_q": null,
+   "dNLL_p_minus_q": null,
+   "four_cell_p_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "four_cell_b_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "fixed_p_legs_gap": {
+    "p": null,
+    "b": null
+   }
+  },
+  "modes_disagree": {
+   "station_days": 0,
+   "dNLL_b_minus_p": null,
+   "dNLL_b_minus_q": null,
+   "dNLL_p_minus_q": null,
+   "four_cell_p_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "four_cell_b_own_legs": {
+    "claim": 0.0,
+    "realised": 0.0,
+    "overclaim": 0.0
+   },
+   "fixed_p_legs_gap": {
+    "p": null,
+    "b": null
+   }
+  }
+ }
+}
