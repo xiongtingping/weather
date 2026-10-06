@@ -77,6 +77,7 @@ def test_the_excess_goes_to_the_neighbours_in_proportion() -> None:
     assert receipt == {
         "schema": "peak_ceiling_receipt_v1", "state": "APPLIED", "peak_ceiling": 0.45,
         "top_bucket": "c", "top_probability_before": pytest.approx(0.55), "moved_mass": pytest.approx(0.10),
+        "capped_buckets": ["c"],
     }
 
 
@@ -98,6 +99,17 @@ def test_a_neighbour_stops_at_the_ceiling_and_the_rest_goes_on() -> None:
     keys = ["a", "b", "c", "d", "e"]
     out, _ = apply_peak_ceiling(dict(zip(keys, [0.0, 0.40, 0.60, 0.0, 0.0])), ceiling=0.45, ordered_keys=keys)
     assert [out[k] for k in keys] == pytest.approx([0.0, 0.45, 0.45, 0.10, 0.0])
+    assert max(out.values()) <= 0.45 + 1e-12 and sum(out.values()) == pytest.approx(1.0)
+
+
+def test_a_neighbour_already_over_the_ceiling_is_capped_too() -> None:
+    # [0.48, 0.47, 0.05] used to come out [0.45, 0.47, 0.08]: only the first top was capped.
+    keys = ["a", "b", "c"]
+    out, receipt = apply_peak_ceiling(dict(zip(keys, [0.48, 0.47, 0.05])), ceiling=0.45, ordered_keys=keys)
+    assert [out[k] for k in keys] == pytest.approx([0.45, 0.45, 0.10])
+    assert receipt["capped_buckets"] == ["a", "b"] and receipt["top_bucket"] == "a"
+    keys = ["a", "b", "c", "d", "e"]
+    out, _ = apply_peak_ceiling(dict(zip(keys, [0.0, 0.46, 0.0, 0.50, 0.04])), ceiling=0.45, ordered_keys=keys)
     assert max(out.values()) <= 0.45 + 1e-12 and sum(out.values()) == pytest.approx(1.0)
 
 

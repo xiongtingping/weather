@@ -422,39 +422,50 @@ def apply_peak_ceiling(
             "top_probability_before": before,
             "moved_mass": 0.0,
         }
-    excess = before - c
-    values[top] = c
-    ring = 1
-    while excess > 1e-15 and ring < len(keys):
-        sides = [
-            index for index in (top - ring, top + ring)
-            if 0 <= index < len(keys) and keys[index] not in excluded
-        ]
-        if sides:
-            room = [max(c - values[index], 0.0) for index in sides]
-            mass = [values[index] for index in sides]
-            mass_total = sum(mass)
-            share = (
-                [value / mass_total for value in mass]
-                if mass_total > 0.0 else [1.0 / len(sides)] * len(sides)
-            )
-            give = [min(excess * part, space) for part, space in zip(share, room)]
-            left = excess - sum(give)
-            # What one side could not take the other may, up to its own room.
-            spare = [space - given for space, given in zip(room, give)]
-            spare_total = sum(spare)
-            if left > 1e-15 and spare_total > 0.0:
-                give = [
-                    given + min(space, left * space / spare_total)
-                    for given, space in zip(give, spare)
-                ]
+    # A neighbour that was itself above the ceiling before it received
+    # anything ([0.48, 0.47, 0.05]) is the next top and is capped the same
+    # way; a capped bucket has no room, so nothing flows back onto it.
+    capped: list[int] = []
+    current = top
+    while True:
+        excess = values[current] - c
+        values[current] = c
+        capped.append(current)
+        ring = 1
+        while excess > 1e-15 and ring < len(keys):
+            sides = [
+                index for index in (current - ring, current + ring)
+                if 0 <= index < len(keys) and keys[index] not in excluded
+            ]
+            if sides:
+                room = [max(c - values[index], 0.0) for index in sides]
+                mass = [values[index] for index in sides]
+                mass_total = sum(mass)
+                share = (
+                    [value / mass_total for value in mass]
+                    if mass_total > 0.0 else [1.0 / len(sides)] * len(sides)
+                )
+                give = [min(excess * part, space) for part, space in zip(share, room)]
                 left = excess - sum(give)
-            for index, given in zip(sides, give):
-                values[index] += given
-            excess = left
-        ring += 1
-    if excess > 1e-15:
-        values[top] += excess
+                # What one side could not take the other may, up to its own room.
+                spare = [space - given for space, given in zip(room, give)]
+                spare_total = sum(spare)
+                if left > 1e-15 and spare_total > 0.0:
+                    give = [
+                        given + min(space, left * space / spare_total)
+                        for given, space in zip(give, spare)
+                    ]
+                    left = excess - sum(give)
+                for index, given in zip(sides, give):
+                    values[index] += given
+                excess = left
+            ring += 1
+        if excess > 1e-15:
+            values[current] += excess
+            break
+        current = max(range(len(keys)), key=lambda index: (values[index], -index))
+        if values[current] <= c or current in capped:
+            break
     return dict(zip(keys, values)), {
         "schema": "peak_ceiling_receipt_v1",
         "state": "APPLIED",
@@ -462,6 +473,7 @@ def apply_peak_ceiling(
         "top_bucket": keys[top],
         "top_probability_before": before,
         "moved_mass": before - values[top],
+        "capped_buckets": [keys[index] for index in capped],
     }
 
 
