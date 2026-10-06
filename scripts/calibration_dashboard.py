@@ -18998,17 +18998,40 @@ function realisationLayer(){
   function shadowBlock(){
     if(!S.available) return `<div class="card muted" style="margin-top:8px">影子表 realisation_layer_shadow 还没有行：两条线下一次判腿时写入。</div>`;
     const counts=(S.counts||[]).map(c=>`<tr><td>${h(c.lane)}</td><td>${h(c.kind)}</td><td>${h(c.state)}</td><td class="mono">${c.rows}</td><td class="mono">${h(c.last_at_utc||"—")}</td></tr>`).join("");
-    const rows=(S.recent||[]).map(r=>{
+    // One row per leg (user 2026-10-06「合并同一站点」): a rung re-posted ten
+    // times was ten rows.  Grouped on lane, station, day, bucket and
+    // side (the plan and its rungs together); the newest judgement leads, the spread of price / q / edge and
+    // the order outcomes are summed up, every judgement is one click down.
+    const groups=new Map();
+    (S.recent||[]).forEach(r=>{
+      const k=[r.lane,r.station_id,r.event_date,r.bucket,r.side].join("|");
+      if(!groups.has(k)) groups.set(k,[]);
+      groups.get(k).push(r);
+    });
+    const span=(xs,f)=>{const v=xs.map(f).filter(x=>x!=null&&isFinite(+x)).map(Number); if(!v.length) return null; return [Math.min(...v),Math.max(...v)];};
+    const rng=(a,fmt)=>!a?"—":(Math.abs(a[1]-a[0])<1e-9?fmt(a[0]):`${fmt(a[0])}–${fmt(a[1])}`);
+    const rows=[...groups.values()].map(list=>{
+      list.sort((a,b)=>String(b.judged_at_utc).localeCompare(String(a.judged_at_utc)));
+      const r=list[0], n=list.length;
       const settled=r.settled_bucket?(r.settled_bucket===r.bucket?`<b>${h(r.settled_bucket)}</b>`:h(r.settled_bucket)):"未结算";
       const edgeColor=r.edge==null?"":(+r.edge>0?' style="color:#3fb950"':' style="color:#8b949e"');
-      return `<tr><td class="mono">${h(String(r.judged_at_utc||"").slice(5,16))}</td><td>${h(r.lane==="proper_bet"?"Proper":(r.lane==="tail_short"?"远尾":r.lane))}·${h(r.kind)}</td>
+      // A plan row has no order of its own: only the rungs' outcomes are counted.
+      const orders={}; list.forEach(x=>{if(!x.order_state) return; orders[x.order_state]=(orders[x.order_state]||0)+1;});
+      if(!Object.keys(orders).length) orders["—"]=1;
+      const filled=list.reduce((a,x)=>a+(+x.filled_size>0?+x.filled_size:0),0);
+      const first=String(list[n-1].judged_at_utc||"").slice(11,16), last=String(r.judged_at_utc||"").slice(5,16);
+      const when=n>1?`<details><summary class="mono">${h(last)} <span class="muted">· ${n} 次（${h(first)} 起）</span></summary>${
+        list.map(x=>`<div class="mono sd-sub">${h(String(x.judged_at_utc||"").slice(11,16))} ${h(x.kind)} 价 ${num(x.price)} q ${pct(x.q)} edge ${pt(x.edge,1)} ${h(x.order_state||"")}</div>`).join("")}</details>`
+        :`<span class="mono">${h(last)}</span>`;
+      const kinds=[...new Set(list.map(x=>x.kind))].reverse().join("+");
+      return `<tr><td>${when}</td><td>${h(r.lane==="proper_bet"?"Proper":(r.lane==="tail_short"?"远尾":r.lane))}·${h(kinds)}</td>
         <td>${h(r.station_id)}</td><td class="mono">${h(r.event_date)}</td><td>${h(r.bucket)}</td><td>${h(r.side)}</td>
-        <td class="mono">${num(r.price)}</td><td class="mono">${pct(r.p)}</td><td class="mono">${pct(r.q)}</td>
+        <td class="mono">${rng(span(list,x=>x.price),num)}</td><td class="mono">${pct(r.p)}</td><td class="mono">${rng(span(list,x=>x.q),pct)}</td>
         <td class="mono">${pct(r.b)} [${pct(r.b_low)}, ${pct(r.b_high)}]</td>
-        <td class="mono"${edgeColor}>${pt(r.edge,1)}</td><td class="mono">${pt(r.edge_sure,1)}</td>
-        <td>${h(r.outcome||"—")}</td><td>${h(r.order_state||"—")}${r.filled_size>0?" · 成交 "+(+r.filled_size).toFixed(2):""}</td>
+        <td class="mono"${edgeColor}>${pt(r.edge,1)}${n>1?`<div class="muted sd-sub">${rng(span(list,x=>x.edge),v=>pt(v,1))}</div>`:""}</td><td class="mono">${pt(r.edge_sure,1)}</td>
+        <td>${h(r.outcome||"—")}</td><td>${Object.entries(orders).map(([o,c])=>h(o)+(c>1?"×"+c:"")).join(" · ")}${filled>0?" · 累计成交 "+filled.toFixed(2)+" 份":""}</td>
         <td>${settled}</td><td class="muted">${h(r.state)}</td></tr>`;}).join("");
-    return `<details open style="margin-top:8px"><summary>两条线判过的腿，按兑现层读（最近 60 条；edge 单位：点/份，已扣手续费；正＝b 说这条腿有利）</summary>
+    return `<details open style="margin-top:8px"><summary>两条线判过的腿，按兑现层读（最近 60 条，同一条腿多次判定合成一行；价 / q / edge 写成区间，点「判于」展开每一次；edge 单位：点/份，已扣手续费；正＝b 说这条腿有利）</summary>
       <div class="scroll" style="max-height:520px"><table><thead><tr><th>判于</th><th>车道</th><th>站</th><th>事件日</th><th>桶</th><th>方向</th><th>价</th><th>模型 p</th><th>市场 q</th><th>兑现层 b [10%, 90%]</th><th>edge</th><th>有把握 edge</th><th>车道的决定</th><th>订单</th><th>结算桶</th><th>状态</th></tr></thead><tbody>${rows}</tbody></table></div></details>
       <details style="margin-top:8px"><summary>影子行计数</summary><table><thead><tr><th>车道</th><th>种类</th><th>状态</th><th>行数</th><th>最近</th></tr></thead><tbody>${counts}</tbody></table></details>`;
   }
