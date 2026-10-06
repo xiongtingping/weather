@@ -16167,6 +16167,7 @@ color-scheme:dark}
 .sd-daytab.on{background:var(--card);color:var(--text);border-color:var(--accent);border-bottom:1px solid var(--card)}
 .sd-daytab.off{cursor:default;opacity:.55;font-weight:400}
 .sd-day[hidden]{display:none}
+table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
 .sd-day{margin:12px 0;padding:10px 12px;min-width:0}.sd-day h3{margin:2px 0 8px;font-size:15px}
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
 .sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
@@ -22383,7 +22384,7 @@ function sdModels(day){
     return ` <span class="${x > 0 ? "up" : "down"} sd-sub">${x > 0 ? "↑+" : "↓−"}${Math.abs(x).toFixed(d)}${unit}</span>`;
   };
   const rows = models.map(m => {
-    const st = m.stats || {}, pv = m.prev;
+    const st = m.stats || {}, pv = m.prev, raw = m.raw;
     const newRun = pv && pv.run_init_utc && m.run_init_utc && pv.run_init_utc !== m.run_init_utc;
     const tag = m.dropped ? ' <span class="pill red">本期掉座</span>'
       : !pv && p0.previous_decided_at_utc ? ' <span class="pill">新入座</span>'
@@ -22393,10 +22394,12 @@ function sdModels(day){
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
       <td class="mono">${sdLocal(m.arrived_at_utc, true)}</td>
       <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
-      <td class="mono">${sdN(m.calibrated_centre_c, 2)}°C${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
-      <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}</td>
-      <td class="mono">${sdN(st.sd_c, 2)}${pv ? dv(st.sd_c, pv.sd_c, 2, "") : ""}</td>
-      <td>${sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}</td></tr>`;
+      <td class="mono sd-raw-c">${raw ? `${sdN(raw.mean_c, 2)}°C<div class="muted sd-sub">${raw.members} 成员 · σ ${sdN(raw.sd_c, 2)}</div>` : "—"}</td>
+      <td class="sd-raw-c">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span>` : "—"}</td>
+      <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}<div class="muted sd-sub">σ ${sdN(st.sd_c, 2)}${pv ? dv(st.sd_c, pv.sd_c, 2, "") : ""}</div></td>
+      <td>${sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}</td>
+      <td class="mono">${raw && st.mean_c != null ? `<b class="${st.mean_c - raw.mean_c >= 0 ? "up" : "down"}">${sdSg(st.mean_c - raw.mean_c, 2)}</b>` : "—"}${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<div class="muted sd-sub">众数 ${sdEsc(raw.mode)}→${sdEsc(st.mode)}</div>` : ""}</td>
+      <td class="mono">${sdN(m.calibrated_centre_c, 2)}°C${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td></tr>`;
   }).join("");
   const W = p0.width || {}, Bg = p0.bridge || {};
   const wh = day.weight_history || [];
@@ -22412,7 +22415,7 @@ function sdModels(day){
     ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心/均值/σ 按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th>系统</th><th>run（起报，当地）</th><th>校准提前量</th><th>到货（当地）</th><th>权重</th><th>校准中心</th><th>单系统均值</th><th>σ</th><th>众数桶</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>系统</th><th>run（起报，当地）</th><th>校准提前量</th><th>到货（当地）</th><th>权重</th><th class="sd-raw-c" title="这一期 P0 读到的原始成员：成员最高温的平均，和按当天桶统计的成员占比最大的桶">校准前 均值</th><th class="sd-raw-c">校准前 众数桶·概率</th><th title="订正偏差、调宽度之后这家模型自己的分布">校准后 均值</th><th>校准后 众数桶·概率</th><th title="校准后均值 − 校准前均值：订正把这家往暖（+）或往冷（−）挪了多少">校准移动</th><th title="校准层给出的分布中心（加宽核前）">校准中心</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">合成中心 ${sdN(p0.model_center_c, 2)}°C · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、σ ${sdN(W.sigma_c, 2)}°C、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
       Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>
     ${hist ? `<details><summary class="muted">权重与 run 随每次 P0 决策的变化（最近 ${Math.min(12, wh.length)} 次，新的在上；小字＝起报日 时Z）</summary>

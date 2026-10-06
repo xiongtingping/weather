@@ -34,6 +34,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 ARCHIVE_DB = ROOT / "data" / "archive.db"
 TAF_INBOX_PATH = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
+#: The member packets production compiled each P0 from, one file per packet,
+#: named by the first 16 hex of the snapshot sha the envelope's lineage keeps.
+FORWARD_PACKET_ARCHIVE = ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "forward_packet_archive"
 SCHEMA = "station_day_board_v1"
 STAGES = ("P0", "P0-M", "P1")
 #: One market point per this many minutes on the trend chart (plus the newest).
@@ -269,7 +272,56 @@ def _with_previous(models: list[dict[str, Any]], previous: list[dict[str, Any]])
     return out
 
 
-def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _raw_by_system(station: str, day: str, snapshot_sha: Any, axis) -> dict[str, dict[str, Any]]:
+    """Each system's members before calibration (user 2026-10-05「增加显示模型
+    校准前后的均值、众数桶和概率」): the very packet this P0 was compiled from,
+    found by the snapshot sha its lineage keeps; the raw member highs, their
+    mean and spread, and the share of members on each rung of the day's
+    ladder.  A packet past retention is simply absent."""
+
+    import gzip  # noqa: PLC0415
+
+    sha = str(snapshot_sha or "")
+    if len(sha) < 16:
+        return {}
+    path = FORWARD_PACKET_ARCHIVE / day / f"{station}-{sha[:16]}.json.gz"
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as handle:
+            packet = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    packet = packet.get("packet", packet) if isinstance(packet, Mapping) else {}
+    if str(packet.get("snapshot_content_sha256") or "") != sha:
+        return {}
+    out = {}
+    for system in packet.get("systems") or []:
+        values = [float(m["raw_tmax_c"]) for m in system.get("members") or []
+                  if _float(m.get("raw_tmax_c")) is not None]
+        if not values:
+            continue
+        counts: dict[str, float] = {}
+        for value in values:
+            bucket = bucket_of(axis, value)
+            if bucket is not None:
+                counts[bucket] = counts.get(bucket, 0.0) + 1.0
+        n = len(values)
+        mean = sum(values) / n
+        vector = {b: c / n for b, c in counts.items()}
+        stats = vector_stats(vector, axis) if vector else None
+        out[str(system.get("ensemble_system_id"))] = {
+            "members": n, "mean_c": round(mean, 3),
+            "sd_c": round(math.sqrt(sum((v - mean) ** 2 for v in values) / n), 3),
+            "min_c": round(min(values), 2), "max_c": round(max(values), 2),
+            "mode": None if stats is None else stats["mode"],
+            "mode_p": None if stats is None else stats["mode_p"],
+            "vector": {k: round(v, 4) for k, v in vector.items()},
+            "run_init_utc": system.get("run_init_utc"),
+        }
+    return out
+
+
+def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None = None,
+              *, station: str = "", day: str = "") -> dict[str, Any]:
     L = head["lineage"]
     rad = _json(L.get("synoptic_cooling_json"), {})
     width = _json(L.get("center_width_json"), {})
@@ -277,6 +329,9 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
     taf_w = _json(L.get("taf_envelope_witness_json"), {})
     ceiling = _json(L.get("far_peak_ceiling_json"), {})
     models = _models(L, axis)
+    raw = _raw_by_system(station, day, L.get("native_forward_snapshot_sha256"), axis)
+    for m in models:
+        m["raw"] = raw.get(m["system_id"])
     if previous is not None:
         models = _with_previous(models, _models(previous["lineage"], axis))
     return {
@@ -611,7 +666,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo) -> dict[str, A
         }
         if stage == "P0":
             entry.update(_p0_brief(head, axis, _previous_p0(
-                conn, station, day, str(head["decided_at_utc"]))))
+                conn, station, day, str(head["decided_at_utc"])), station=station, day=day))
         elif stage == "P0-M":
             entry.update(_p0m_brief(head))
         else:
