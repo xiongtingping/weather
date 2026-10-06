@@ -22643,15 +22643,22 @@ function sdLoadHoldings(key){
   fetch(`http://127.0.0.1:8788/api/station-day-holdings?station=${encodeURIComponent(SD.station)}&event_date=${encodeURIComponent(key)}`)
     .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
     .then(j => {
+      if(j.unknown){
+        // Neither the exchange nor the data API answered: the holdings are
+        // unknown, not empty, and what the fields held stays.
+        st.holdNote = `读取失败：交易所与公开接口都没有答复（${(j.rows || [])[0] ? (j.rows[0].gateway_error || "") : ""}${j.data_api_error ? " / " + j.data_api_error : ""}），持仓未知，已有输入保持不变；网络恢复后再点一次`;
+        return;
+      }
       st.held = {}; st.heldCost = {};
       const flags = [];
       (j.rows || []).forEach(r => {
         if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null) st.heldCost[r.bucket] = String(r.cost_usdc); else flags.push(`${r.bucket} 无均价，已花请手填`); }
-        if(r.gateway_error) flags.push(`${r.bucket} 份数读取失败（${r.gateway_error}）`);
+        if(r.gateway_error && r.shares_source !== "data_api") flags.push(`${r.bucket} 份数读取失败（${r.gateway_error}）`);
         if(r.disagrees) flags.push(`${r.bucket} 交易所 ${r.shares} 份 ≠ 公开接口 ${r.data_api_size} 份`);
       });
       const n = Object.keys(st.held).length;
-      st.holdNote = `账户持仓 ${sdLocal(j.observed_at_utc, true)}：${n ? Object.entries(st.held).map(([b, s]) => `${b} ${s} 份`).join("、") : "这一天没有持仓"}${j.data_api_error ? `（均价读取失败：${j.data_api_error}）` : ""}${flags.length ? "；" + flags.join("；") : ""}`;
+      const viaApi = (j.rows || []).some(r => r.shares_source === "data_api");
+      st.holdNote = `账户持仓 ${sdLocal(j.observed_at_utc, true)}${viaApi ? "（交易所查询超时，份数取自公开接口，可能滞后几分钟）" : ""}：${n ? Object.entries(st.held).map(([b, s]) => `${b} ${s} 份`).join("、") : "这一天没有持仓"}${j.data_api_error ? `（均价读取失败：${j.data_api_error}）` : ""}${flags.length ? "；" + flags.join("；") : ""}`;
     })
     .catch(e => { st.holdNote = "读取失败：" + (/Failed to fetch|NetworkError|Load failed/.test(String(e)) ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e)); })
     .finally(() => { SD.holding = false; sdSave(); sdRefreshCalc(key, null); });

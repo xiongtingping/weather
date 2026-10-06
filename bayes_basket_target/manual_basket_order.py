@@ -305,7 +305,7 @@ def funder_address() -> str:
     return ""
 
 
-def _data_api_positions(user: str, *, timeout: float = 10.0) -> dict[str, dict[str, float]]:
+def _data_api_positions(user: str, *, timeout: float = 20.0) -> dict[str, dict[str, float]]:
     """asset -> {size, avg_price} off the public data API.  It is outside the
     machine, so it goes through the Mac's proxy like any other venue read."""
 
@@ -358,7 +358,9 @@ def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
             sys.path.insert(0, str(ROOT))
         from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
 
-        client = ClobOrderServiceClient(timeout_seconds=10.0)
+        # 2026-10-06 01:48Z every rung timed out at 10 s while the egress was
+        # slow; a lookup is a read, so a longer wait costs nothing but time.
+        client = ClobOrderServiceClient(timeout_seconds=25.0)
         lookup = lambda token: client._post("/lookup-position", {"token_id": token})  # noqa: E731
     user = funder_address()
     api_error = None
@@ -378,11 +380,15 @@ def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
     rows = []
     for (bucket, row), answer in zip(ladder, answers):
         token = row["token_id"]
-        shares = float(answer["shares"]) if answer.get("ok") else None
         from_api = api.get(token) or {}
+        shares, source = (float(answer["shares"]), "gateway") if answer.get("ok") else (None, None)
+        if shares is None and api_error is None and user:
+            # The gateway's lookup failed but the data API answered: it lists
+            # every held asset, so a rung absent from it holds nothing.
+            shares, source = float(from_api.get("size") or 0.0), "data_api"
         avg = from_api.get("avg_price") or None
         rows.append({
-            "bucket": bucket, "shares": shares,
+            "bucket": bucket, "shares": shares, "shares_source": source,
             "gateway_error": None if answer.get("ok") else answer.get("error") or "lookup_failed",
             "avg_price": avg,
             "cost_usdc": None if shares is None or avg is None else round(shares * avg, 4),
@@ -392,4 +398,7 @@ def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
         })
     return {"station_id": station, "event_date": day,
             "observed_at_utc": _now().isoformat().replace("+00:00", "Z"),
-            "data_api_error": api_error, "rows": rows}
+            "data_api_error": api_error, "rows": rows,
+            # Nothing known: the board keeps what it had instead of reading
+            # "no holdings" off a read that never answered.
+            "unknown": all(r["shares"] is None for r in rows)}

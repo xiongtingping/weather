@@ -123,3 +123,22 @@ def test_holdings_read_shares_from_the_gateway_and_cost_from_the_data_api(monkey
     assert rows["24°C"]["shares"] == 17.0 and rows["24°C"]["cost_usdc"] == pytest.approx(4.59)
     assert rows["25°C"]["shares"] == 0.0 and rows["25°C"]["cost_usdc"] is None
     assert not rows["24°C"]["disagrees"]
+
+
+def test_holdings_unknown_when_nothing_answers_and_data_api_backs_up_the_gateway(monkeypatch) -> None:
+    monkeypatch.setattr(M, "latest_book", lambda *a: BOOK)
+    monkeypatch.setattr(M.sqlite3, "connect", lambda *a, **k: _Conn())
+    monkeypatch.setattr(M, "funder_address", lambda: "0x" + "1" * 40)
+    timeout = lambda token: {"ok": False, "error": "gateway_transport:TimeoutError"}  # noqa: E731
+
+    def no_api(user):
+        raise TimeoutError("timed out")
+
+    dead = M.station_day_holdings("ZUUU", "2026-10-06", lookup=timeout, positions=no_api)
+    assert dead["unknown"] is True and all(r["shares"] is None for r in dead["rows"])
+    backed = M.station_day_holdings("ZUUU", "2026-10-06", lookup=timeout,
+                                    positions=lambda user: {"t24": {"size": 17.0, "avg_price": 0.27}})
+    rows = {r["bucket"]: r for r in backed["rows"]}
+    assert backed["unknown"] is False
+    assert rows["24°C"]["shares"] == 17.0 and rows["24°C"]["shares_source"] == "data_api"
+    assert rows["25°C"]["shares"] == 0.0
