@@ -175,7 +175,9 @@ def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     strip = source[source.index("function liveControlStrip(){"):]
     strip = strip[: strip.index("\n}\n")]
-    titles = ["Proper 下注线", "远尾做空 H1", "秤砣线", "篮子", "0.998 回收"]
+    # Two rows since 3715a35f (user 2026-10-06 「重新排版策略开关按钮」): the
+    # one-dial lanes, then 0.998 回收 and the basket with its dials.
+    titles = ["Proper 下注线", "远尾做空 H1", "秤砣线", "0.998 回收", "篮子"]
     starts = [strip.index(f'${{group("{t}"') for t in titles]
     assert starts == sorted(starts)
     parts = {t: strip[a:b] for t, a, b in zip(titles, starts, starts[1:] + [len(strip)])}
