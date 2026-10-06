@@ -22578,7 +22578,11 @@ function sdTafRaw(d){
 //   份数_u = 总花费 + F，总花费 = 固定金额 + Σ 成本_u(份数_u)，迭代到不动点
 //   （单价合计 < 1 才有解）。吃单按卖一逐档深度走，手续费 = 费率 × p × (1−p) 每份。
 function sdCalcState(key){
-  if(!SD.calc[key]) SD.calc[key] = {sel:{}, amt:{}, px:{}, mode:"taker", fee:null, floor:0};
+  // goal (user 2026-10-06「不管保本，我有方向的敞口」): "direct" buys exactly
+  // the amounts typed and reads the payoff, nothing is topped up; "breakeven"
+  // tops every empty selected rung up to the floor.
+  if(!SD.calc[key]) SD.calc[key] = {sel:{}, amt:{}, px:{}, mode:"taker", fee:null, floor:0, goal:"direct"};
+  if(!SD.calc[key].goal) SD.calc[key].goal = "direct";
   return SD.calc[key];
 }
 function sdCostOf(levels, shares, rate){
@@ -22646,7 +22650,8 @@ function sdSolve(day, st){
       }
       res.legs[b] = {shares:sh, cost:amt, fixed:true, levels:lv};
       fixed += amt;
-    } else auto.push([b, lv]);
+    } else if(st.goal === "breakeven") auto.push([b, lv]);
+    else res.warn.push(`${b} 已勾选但没填金额，不买（方向敞口模式只按填写的金额买）`);
   });
   if(!res.ok){ res.legs = {}; return res; }
   // Every share an empty leg buys raises the spend it has to cover by its
@@ -22698,7 +22703,9 @@ function sdSolve(day, st){
     l.avg = l.shares > 0 ? l.cost / l.shares : null;
     const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
     if(l.shares > 0 && book.min_order_size && l.shares < book.min_order_size) res.warn.push(`${b}：新买 ${l.shares.toFixed(2)} 份低于交易所最小单 ${book.min_order_size} 份`);
-    if(l.fixed && res.payoff(b) < F - 1e-9) res.warn.push(`${b}：已持有 + 固定金额买到的 ${(sdHeld(st, b) + l.shares).toFixed(2)} 份 < 总花费 ${res.total.toFixed(2)} + 地板 ${F}，命中这桶也${res.payoff(b) < 0 ? "亏" : "不到地板"}`);
+    // A directional book is meant to lose on some rungs; only the
+    // break-even goal reads a losing hit as something to flag.
+    if(st.goal === "breakeven" && l.fixed && res.payoff(b) < F - 1e-9) res.warn.push(`${b}：已持有 + 固定金额买到的 ${(sdHeld(st, b) + l.shares).toFixed(2)} 份 < 总花费 ${res.total.toFixed(2)} + 地板 ${F}，命中这桶也${res.payoff(b) < 0 ? "亏" : "不到地板"}`);
   });
   return res;
 }
@@ -22722,12 +22729,14 @@ function sdCalc(day){
       <td><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}"></td>
       <td><input class="sd-in" type="number" step="0.01" min="0" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td>
       <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
-      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? "自动" : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
+      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
       <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>'}` : "—"}</td>
       <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
       <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td></tr>`;
   }).join("");
-  let summary = `<div class="muted">勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。已有持仓填在「已持有」两列，或点「读取账户持仓」。</div>`;
+  let summary = `<div class="muted">${st.goal === "breakeven"
+    ? "勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。"
+    : "在要买的桶填「金额」（USDC），计算器按卖盘深度换成份数，列出每个桶命中时的盈亏、概率覆盖与期望；不自动补任何桶。"}已有持仓填在「已持有」两列，或点「读取账户持仓」。</div>`;
   if(res){
     if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
     else {
@@ -22756,14 +22765,17 @@ function sdCalc(day){
   const feeVal = st.fee == null ? (st.mode === "taker" ? SD.data.taker_fee_rate : 0) : st.fee;
   const orderOut = sdOrderResult(key);
   const holdNote = st.holdNote ? `<span class="muted sd-sub">${sdEsc(st.holdNote)}</span>` : "";
-  return `<div class="sd-t">篮子保本计算器（${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价）</div>
+  return `<div class="sd-t">篮子计算器（${st.goal === "breakeven" ? "保本" : "方向敞口"}；${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价）</div>
     <div class="sd-ctl">
       <label>价格口径 <select data-sd-mode="${sdEsc(key)}" data-calc="1">
         <option value="taker"${st.mode === "taker" ? " selected" : ""}>吃卖一（逐档深度）</option>
         <option value="maker"${st.mode === "maker" ? " selected" : ""}>挂买一+1（不保证成交）</option>
         <option value="manual"${st.mode === "manual" ? " selected" : ""}>手填价格</option></select></label>
       <label>手续费率 <input class="sd-in" type="number" step="0.01" min="0" data-sd-fee="${sdEsc(key)}" value="${sdEsc(feeVal)}"></label>
-      <label>命中地板 F <input class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>
+      <label>目标 <select data-sd-goal="${sdEsc(key)}">
+        <option value="direct"${st.goal === "direct" ? " selected" : ""}>方向敞口：只按填写金额买</option>
+        <option value="breakeven"${st.goal === "breakeven" ? " selected" : ""}>保本：空着的桶自动补到地板</option></select></label>
+      ${st.goal === "breakeven" ? `<label>命中地板 F <input class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>` : ""}
       <button type="button" class="sd-btn" data-sd-hold="${sdEsc(key)}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button>
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
@@ -22805,7 +22817,7 @@ function sdLoadHoldings(key){
 }
 function sdOnInput(e){
   const t = e.target, ds = t.dataset;
-  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || ds.sdHeld || ds.sdHcost || (ds.calc ? ds.sdMode : null);
+  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || ds.sdHeld || ds.sdHcost || ds.sdGoal || (ds.calc ? ds.sdMode : null);
   if(!key) return;
   const st = sdCalcState(key);
   if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
@@ -22816,6 +22828,7 @@ function sdOnInput(e){
   else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
   else if(ds.sdFloor) st.floor = Number(t.value) || 0;
   else if(ds.calc){ st.mode = t.value; st.fee = null; }
+  else if(ds.sdGoal){ st.goal = t.value; sdSave(); sdRender(); return; }
   sdSave();
   // Every change recomputes in place: the fields, the focus and the page
   // position stay where the reader left them.
