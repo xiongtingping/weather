@@ -16167,6 +16167,8 @@ color-scheme:dark}
 .sd-daytab.on{background:var(--card);color:var(--text);border-color:var(--accent);border-bottom:1px solid var(--card)}
 .sd-daytab.off{cursor:default;opacity:.55;font-weight:400}
 .sd-day[hidden]{display:none}
+table.sd-tab th.sd-old,table.sd-tab td.sd-old{background:color-mix(in srgb,var(--muted) 8%,transparent)}
+table.sd-tab th.sd-add{color:var(--accent)}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
 .sd-day{margin:12px 0;padding:10px 12px;min-width:0}.sd-day h3{margin:2px 0 8px;font-size:15px}
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
@@ -22696,6 +22698,10 @@ function sdSolve(day, st){
     // Rounding the costs up can leave a hundredth short: one more pass.
     auto.forEach(([b, lv]) => { const leg = res.legs[b]; const want = up(needOf(total, b)); if(want > leg.shares + 1e-9){ leg.shares = want; const c = sdCostOf(lv, leg.shares, rate); total += c - leg.cost; leg.cost = c; } });
   }
+  (day.axis || []).forEach(r => {
+    const cost = Number((st.heldCost || {})[r.bucket]);
+    if(cost > 0 && !sdHeld(st, r.bucket)) res.warn.push(`${r.bucket}：「原持仓 已花」填了 ${cost} U 但原持仓 0 份——原持仓已花是旧仓位的成本，会整笔算进全篮花费；要追加买入请填在「追加金额 U」`);
+  });
   res.newTotal = Object.values(res.legs).reduce((a, l) => a + l.cost, 0);
   res.total = sunk + res.newTotal;
   res.payoff = b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) - res.total;
@@ -22726,13 +22732,13 @@ function sdCalc(day){
     return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
       <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
       <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
-      <td><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}"></td>
-      <td><input class="sd-in" type="number" step="0.01" min="0" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td>
+      <td class="sd-add"><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
       <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
-      <td><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
-      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>'}` : "—"}</td>
       <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
-      <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td></tr>`;
+      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>'}` : "—"}</td>
+      <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}" title="${profit == null ? "" : `命中 ${b}：持有 ${sdN(sdHeld(st, b) + (leg ? leg.shares : 0), 2)} 份 × 1 − 全篮花费 ${sdN(res.total, 2)}`}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td>
+      <td class="sd-old"><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}"></td>
+      <td class="sd-old"><input class="sd-in" type="number" step="0.01" min="0" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td></tr>`;
   }).join("");
   let summary = `<div class="muted">${st.goal === "breakeven"
     ? "勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。"
@@ -22780,7 +22786,7 @@ function sdCalc(day){
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
-    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选（新买）</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th title="账户里这一桶已有的 YES 份数">已持有 份</th><th title="这些份数当初花了多少（均价×份数）；算进总花费">已花 U</th><th>价格（空＝默认）</th><th>金额 U（空＝自动）</th><th>新花 U</th><th>新买 份</th><th>均价（含费）</th><th>命中该桶盈亏</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th class="sd-add">追加金额 U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>价格（空＝默认）</th><th>新买 份</th><th>均价（含费）</th><th>新花 U</th><th title="命中该桶时：（原持仓份数＋新买份数）×1 − 全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 份</th><th class="sd-old" title="原持仓当初花的钱（均价×份数），算进全篮花费；不是追加金额">原持仓 已花 U</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="sd-summary">${summary}${orderOut}</div>
     <div class="muted sd-sub">命中桶 k 盈亏＝（已持有ₖ＋新买ₖ）×1 − （已花＋新花）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div>`;
 }
@@ -22855,7 +22861,13 @@ function sdRefreshCalc(key, input){
         if(el !== input && el !== document.activeElement) el.value = ne.value;
       }
     });
-    [1, 2, 3, 8, 9, 10, 11].forEach(c => { if(tr.cells[c] && nr.cells[c]) tr.cells[c].innerHTML = nr.cells[c].innerHTML; });
+    // Every cell without a field is output: copy it whole, its class (the
+    // up/down colour) and tooltip included.
+    [...tr.cells].forEach((cell, c) => {
+      const nc = nr.cells[c];
+      if(!nc || cell.querySelector("input")) return;
+      cell.innerHTML = nc.innerHTML; cell.className = nc.className; cell.title = nc.title;
+    });
   });
   const fee = card.querySelector(`input[data-sd-fee="${key}"]`), nfee = holder.querySelector(`input[data-sd-fee="${key}"]`);
   if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
