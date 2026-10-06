@@ -16767,6 +16767,8 @@ border-radius:10px;padding:2px 3px;
    knobs rather than overflowing. */
 flex:0 1 auto;min-width:0}
 .navctl[data-lc="live"]{border-color:var(--red)}
+.navctl .lc-livesw{font-size:12px;padding:1px 8px;margin:0 3px;border-radius:7px}
+.navctl .lc-livesw #lc-head-note{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .navctl-k{display:inline-flex;align-items:center;gap:6px;padding:1px 7px;
 white-space:nowrap;border-left:1px solid var(--line)}
 .navctl-l{color:var(--muted)}
@@ -16974,8 +16976,6 @@ function head(){
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
     <span class="big">${t}</span>
     <span class="muted">${s}</span>
-    <span style="flex:1"></span>
-    ${liveSwitch()}
   </div>
   ${(()=>{
     // One dashboard, four rows, in the order the questions get asked (user
@@ -18647,12 +18647,14 @@ function lcArmEffect(L){
     : "举旗：代码仍编译为 no-live，它不下单，但 go-live 迁移以它为前提";
 }
 
+// The LIVE flag sits in the head bar beside the dials (user 2026-10-06
+// 「气温篮子全链看板里的live开关移动到上方head区」), not in the page banner.
 function liveSwitch(){
   const L = D.live_readiness || {};
   if(!L.available) return "";
   const on = !!L.live_enabled;
-  return `<span class="pill ${on?"red":""}" id="lc-head"
-    style="font-size:13px;display:inline-flex;gap:7px;align-items:center">
+  return `<span class="pill lc-livesw ${on?"red":""}" id="lc-head"
+    style="display:inline-flex;gap:6px;align-items:center">
     <b>LIVE</b>
     <button type="button" id="lc-live-btn" class="lc-sw" role="switch"
       aria-checked="${on}" aria-label="上线意向旗" disabled onclick="lcLive()"
@@ -19242,6 +19244,7 @@ function liveControlStrip(){
     <span class="navctl-s" id="lc-status"
       title="控制服务未连接——launchd 常驻 com.weather.live_control；拉起：launchctl kickstart -k gui/$(id -u)/com.weather.live_control"
       ><i></i><span id="lc-status-t">控制服务未连接</span></span>
+    ${liveSwitch()}
     ${group("Proper 下注线", "proper_bet", laneSwitch("proper_bet")
       + stakeKnob("proper_bet", "Proper 下注线每笔预算 stake_usdc（USDC；每个站日这一笔挂满这么多，不低于交易所最小单，受现金封顶；宪章 252）"))}
     ${group("远尾做空 H1", "tail_short", laneSwitch("tail_short")
@@ -19530,7 +19533,7 @@ function lcRender(s){
   // flag is actually up, so a glance at the top of the page answers "may
   // this book go live".
   const head=document.getElementById("lc-head");
-  if(head) head.className = "pill" + (s.live.enabled?" red":"");
+  if(head) head.className = "pill lc-livesw" + (s.live.enabled?" red":"");
   const headNote=document.getElementById("lc-head-note");
   if(headNote){
     const L = D.live_readiness || {};
@@ -19545,7 +19548,7 @@ function lcRender(s){
     // disagree, which only a hand `touch` or a failed lift can cause, and
     // the note says so instead of describing a step that no longer exists.
     const paused = s.live.submission_paused === true;
-    headNote.textContent = !s.live.enabled ? "控制服务已连接"
+    headNote.textContent = headNote.title = !s.live.enabled ? "控制服务已连接"
       : compiled && authorized && !paused
         ? "实盘中 · 网关正在下单"
         : compiled && authorized
