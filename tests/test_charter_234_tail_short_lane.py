@@ -431,8 +431,8 @@ def test_an_unadmitted_station_is_refused(store) -> None:
 def test_the_lane_is_registered_and_shipped_on() -> None:
     assert strategy_lanes.LANE_TAIL_SHORT in strategy_lanes.KNOWN_LANES
     served = strategy_lanes.TAIL_SHORT_DEFAULT_SETTINGS
-    # Charter 251 ships rule v2 (v1 plus the model filter); v1 stays selectable.
-    assert served["enabled"] is True and served["rule"] == lane.RULE_V2 and lane.RULE_V1 in lane.RULE_VERSIONS
+    # Charter 251 (六) ships rule v3 (the model filter on the market's centre); v1 and v2 stay selectable.
+    assert served["enabled"] is True and served["rule"] == lane.RULE_V3 and lane.RULE_V1 in lane.RULE_VERSIONS
     assert (served["max_market_price"], served["min_rungs_from_mode"], served["min_yes_bid"]) == (0.05, 3, 0.02)
     assert served["min_hours_to_settlement"] == 36.0 and served["opening_stages"] == ["P0"]
     assert served["taker_fee_rate"] == 0.05

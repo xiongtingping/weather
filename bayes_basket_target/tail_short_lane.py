@@ -57,6 +57,19 @@ lost, +0.69%; p at or over it 118 legs, 4 lost, -0.83% -- read after the fact
 and not significant.  The model still sets no price and no size; rule v1
 (``market_far_tail_no_taker_v1``) restores the market-only lane.
 
+**Centred filter** (rule v3, charter 251 (六), user ruling 2026-10-07 「改」):
+the filter reads the served P0 vector moved along the station's ladder to
+the market's own centre (``centred_vector``) -- the model's width and shape on
+the market's centre.  Where the model's centre leaves the market's, v2 read
+the far tail on the far side of the move as cheaper than it was (passing
+legs that lost) and the near side as dearer (refusing legs that won).
+Replayed through these functions (``docs/research/conditional_advantage_20261006``,
+REPORT_TAIL.md): 09-12..10-05 471 legs +0.0196 a share against v2's 480 legs
++0.0154; 08-17..09-11, a window the study had not read, 165 legs +0.0118
+against 171 legs +0.0005; the daily difference crosses zero in both, about two
+fewer lost legs a window.  Everything else -- the legs, judged once, the
+take, the limits -- is v2's.  ``model_p`` is the p the filter read.
+
 Held to settlement.  Every bucket the rule fires on is recorded -- sent,
 filled, killed or refused -- in ``tail_short_lane_evaluation``; a repeated
 refusal for the same reason is written once.
@@ -71,6 +84,8 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .certain_win_recycle import _registry_rows
@@ -87,7 +102,9 @@ from .p1_tail_lane import (
     live_ws_snapshot,
     open_buy_orders_on_station_day,
 )
+from .materialization import floor_probabilities
 from .proper_bet_lane import served_p0_vector
+from . import realisation_layer
 from . import realisation_store
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import LANE_TAIL_SHORT, TAIL_SHORT_DEFAULT_SETTINGS, lane_settings, opening_stages
@@ -100,9 +117,14 @@ SCHEMA = "tail_short_lane_plan_v1"
 RULE_V1 = "market_far_tail_no_taker_v1"
 #: Charter 251: v1 plus the model filter -- the served P0 p under the YES bid.
 RULE_V2 = "market_far_tail_no_taker_model_below_bid_v2"
-RULE_VERSIONS = {RULE_V1: "tail_short_lane_v1", RULE_V2: "tail_short_lane_v2"}
-MODEL_FILTER_RULES = frozenset({RULE_V2})
-DEFAULT_RULE = RULE_V2
+#: Charter 251 (六): the filter reads the served P0 vector moved along the
+#: ladder to the market's own centre -- the model's width and shape, the
+#: market's centre.
+RULE_V3 = "market_far_tail_no_taker_model_centred_below_bid_v3"
+RULE_VERSIONS = {RULE_V1: "tail_short_lane_v1", RULE_V2: "tail_short_lane_v2", RULE_V3: "tail_short_lane_v3"}
+MODEL_FILTER_RULES = frozenset({RULE_V2, RULE_V3})
+CENTRED_FILTER_RULES = frozenset({RULE_V3})
+DEFAULT_RULE = RULE_V3
 #: Refusals of the model filter: the served p is not under the bid, or there is
 #: no served p to read (no P0 envelope, unreadable, past its validity, or
 #: without the bucket) -- the filter fails closed.
@@ -190,6 +212,45 @@ def model_filter(served: Mapping[str, Any], bucket: str, yes_bid: float) -> dict
         return {"p": None, "refusal": f"{MODEL_UNAVAILABLE}:{why}"}
     p = float(p)
     return {"p": p, "refusal": None if p < float(yes_bid) else MODEL_NOT_BELOW_BID}
+
+
+def centred_vector(served: Mapping[str, Any], book_buckets: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Charter 251 (六): ``served`` moved along the ladder to the market's centre.
+
+    ``served`` is ``proper_bet_lane.served_p0_vector``.  The vector is moved on
+    the station's own rung axis (each rung a uniform block, the ladder's ends
+    absorbing what crosses them -- ``realisation_layer.shifted_to``) until its
+    mean is the mean of the market's normalised mid ladder, then floored as
+    the served vector is floored.  What the model says about the width and
+    the shape is kept; what it says about the centre -- measured worth
+    nothing against the market (``final_vector_acceptance_20261004``: the
+    centre's share of the claim realised -0.04, the width's +0.44, the
+    shape's +0.23) -- is the market's.  A served vector that is not ``ok``
+    passes through; a book whose market vector is incomplete, or a ladder
+    the vector does not cover exactly, answers a state that refuses without
+    barring.
+    """
+
+    if str(served.get("state") or "") != "ok":
+        return dict(served)
+    market = market_reference_v1(book_buckets)
+    if market.get("state") != "complete":
+        return {**served, "state": "market_incomplete", "probabilities": {}}
+    order = [str(r.get("bucket")) for r in sorted(
+        book_buckets, key=lambda r: (r.get("ordinal") is None, r.get("ordinal") or 0))]
+    order = [b for b in order if b in market["vector"]]
+    probabilities = served.get("probabilities") or {}
+    if not order or set(probabilities) != set(order):
+        return {**served, "state": "ladder_mismatch", "probabilities": {}}
+    p = np.asarray([float(probabilities[b]) for b in order], dtype=float)
+    p = p / p.sum()
+    q = realisation_layer.floored([market["vector"][b] for b in order])
+    market_mean, _ = realisation_layer.moments(q)
+    model_mean, _ = realisation_layer.moments(p)
+    moved = realisation_layer.shifted_to(p, market_mean)
+    floored, _lifted = floor_probabilities({b: float(v) for b, v in zip(order, moved / moved.sum())})
+    return {**served, "state": "ok", "probabilities": {b: float(v) for b, v in floored.items()},
+            "centre_shift_rungs": float(market_mean - model_mean)}
 
 
 def _utc(value: str) -> datetime:
@@ -561,6 +622,9 @@ def plan_tail_short(
             open_orders = open_buy_orders_on_station_day(target_conn, station, day)
         registry = None
         served = served_p0_vector(target_conn, station, day, valid_at=now) if filtered else None
+        # Charter 251 (六): v3 reads the served vector on the market's centre.
+        judged = (centred_vector(served, list(book["buckets"]))
+                  if served is not None and str(cfg["rule"]) in CENTRED_FILTER_RULES else served)
         # Charter 254: every leg this pass writes down, for the realisation
         # layer's shadow reading on the same book.
         shadow_legs: list[dict[str, Any]] = []
@@ -576,7 +640,7 @@ def plan_tail_short(
                 "rungs_from_mode": leg["rungs_from_mode"], "yes_bid": leg["bid"], "yes_bid_size": leg["bid_size"],
                 "yes_ask": leg["ask"],
             }
-            model = model_filter(served, bucket, leg["bid"]) if served is not None else None
+            model = model_filter(judged, bucket, leg["bid"]) if judged is not None else None
             if model is not None:
                 base.update(model_p=(round(model["p"], 6) if model["p"] is not None else None),
                             model_envelope_id=served.get("envelope_id"))
@@ -664,6 +728,7 @@ def plan_tail_short(
                 "model_p": base.get("model_p"), "model_envelope_id": base.get("model_envelope_id"),
                 "model_envelope_sha256": (served or {}).get("content_sha256"),
                 "model_decision_at_utc": (served or {}).get("decision_at_utc"),
+                "model_centre_shift_rungs": (judged or {}).get("centre_shift_rungs"),
                 **{k: base[k] for k in (
                     "hours_to_settlement", "snapshot_id", "book_source", "book_observed_at",
                     "book_age_seconds", "market_q", "market_mode_bucket", "rungs_from_mode",

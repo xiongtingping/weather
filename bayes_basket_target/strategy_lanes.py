@@ -309,10 +309,11 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
 #: H1's market-only arm); the sizing and the limits are the lane's own.
 #: Rule v2 (charter 251, user ruling 2026-10-04 「改规则，把模型当过滤器」) adds
 #: one condition: the served P0 p of the bucket under the YES bid; v1 is the
-#: market-only lane.
+#: market-only lane.  Rule v3 (charter 251 (六), user ruling 2026-10-07 「改」)
+#: reads that p on the served vector moved to the market's centre.
 TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": True,
-    "rule": "market_far_tail_no_taker_model_below_bid_v2",
+    "rule": "market_far_tail_no_taker_model_centred_below_bid_v3",
     # The window measured: P0, more than 36 hours to the settlement clock.
     "opening_stages": ["P0"],
     "min_hours_to_settlement": 36.0,

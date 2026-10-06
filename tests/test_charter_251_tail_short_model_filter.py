@@ -220,9 +220,12 @@ def test_proper_reads_the_same_served_vector(store) -> None:
 # Shipped and written down.
 
 
-def test_v2_is_the_shipped_rule() -> None:
-    assert strategy_lanes.TAIL_SHORT_DEFAULT_SETTINGS["rule"] == lane.RULE_V2 == lane.DEFAULT_RULE
-    assert lane.RULE_VERSIONS == {lane.RULE_V1: "tail_short_lane_v1", lane.RULE_V2: "tail_short_lane_v2"}
+def test_v2_stays_selectable() -> None:
+    # Charter 251 (六) ships v3 (tests/test_charter_251_tail_short_centred_filter.py);
+    # v2 stays the setting that restores this filter as it was.
+    assert lane.RULE_VERSIONS[lane.RULE_V1] == "tail_short_lane_v1"
+    assert lane.RULE_VERSIONS[lane.RULE_V2] == "tail_short_lane_v2"
+    assert lane.RULE_V2 in lane.MODEL_FILTER_RULES and lane.RULE_V2 not in lane.CENTRED_FILTER_RULES
 
 
 def test_the_charter_and_agents_carry_the_filter() -> None:
