@@ -16616,6 +16616,11 @@ font-weight:620;box-shadow:0 1px 2px rgba(0,0,0,.14)}
    size down and not sticky: this one picks which day a card shows, it is
    not a way around the page. */
 /* 降水分类评分: the 2×2 table and the six score cards. */
+.pc-defs{grid-template-columns:repeat(auto-fit,minmax(520px,1fr));align-items:start}
+.pc-defs > .card{margin-bottom:0}
+/* Half a page wide, six score cards in one row are 85 px each and wrap
+   every word; three a row here. */
+@media (min-width:900px){.pc-defs .pc-m{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}}
 .pc-ct{width:auto;border-collapse:separate;border-spacing:4px;font-size:13px;margin:4px 0 12px}
 .pc-ct th{font-weight:500;color:var(--muted);padding:6px 10px;text-align:center;border-bottom:none}
 .pc-ct th.pc-row{text-align:left;white-space:nowrap}
@@ -16862,6 +16867,21 @@ td{padding:3px 7px}
 .pc-m .pc-v{font-size:22px;margin:1px 0 4px}
 .pc-ct td{padding:6px 12px}
 footer{margin-top:20px}
+/* Each section opens on one line (user 2026-10-06「其他板块也有这种情况」):
+   title, then its lane tag, the stale note and the 说明 fold beside it --
+   four stacked blocks were ~110 px a section, ~4,000 px down the page.
+   Everything after the head keeps the full width.  The lane's role line
+   and the stale note's list ride their tooltips. */
+.sec{display:flex;flex-wrap:wrap;align-items:center;column-gap:10px;row-gap:0}
+.sec > *{flex:1 1 100%;min-width:0}
+.sec > h2{flex:0 1 auto;order:-4;margin:12px 0 4px}
+.sec > .lane{flex:0 1 auto;order:-3;margin:12px 0 4px;padding:1px 8px;gap:6px;
+  font-size:11.5px;border-radius:6px;background:transparent}
+.sec > .lane .lane-r,.sec > .lane .lane-s .muted{display:none}
+.sec > .stale-note{flex:0 1 auto;order:-2;margin:12px 0 4px;font-size:11.5px;
+  max-width:460px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec > details.note:first-of-type:not([open]){flex:0 0 auto;order:-1;margin:12px 0 4px}
+.sec > details.note:first-of-type:not([open]) > summary{margin:0}
 @media(min-width:1100px){.navctl .lc-l-min{display:none}}
 /* A laptop-width desktop: the coarse ±5/±50 steps, the stage tags and two
    dozen pixels of index column give the strip back its two rows. */
@@ -22057,7 +22077,9 @@ function precipScores(){
     每个提前量是版本表上的一个 as-of 切点。只读数，不进 P0/P0-M/P1，不改任何权重。${
     Q.open_days ? "还没过完的当地日 " + Q.open_days + " 个不配对。" : ""}</p>
     <div class="card">${precipContingency({}, true)}<div class="muted">a 命中＝报了雨也下了；b 漏报＝没报雨却下了；c 空报＝报了雨没下；d 正确否定＝没报雨也没下。N = a + b + c + d。</div></div>`;
-  return title + intro + (Q.definitions || []).map(def => precipDefCard(def, Q)).join("");
+  // The two readings side by side: each card is a narrow table and a score
+  // row, so stacked they left the right half of the page empty.
+  return title + intro + `<div class="grid pc-defs">${(Q.definitions || []).map(def => precipDefCard(def, Q)).join("")}</div>`;
 }
 const BOX_KIND = {
   audit:  {tone:"#d2a8ff", word:"读数"},
@@ -23097,7 +23119,7 @@ const LANE_NOTE = {
 const laneStrip = (name) => {
   const L = LANES[name];
   if(!L) return "";
-  return `<div class="lane" data-lane="${L.status}">
+  return `<div class="lane" data-lane="${L.status}" title="${h(L.layer)}：${h(L.role)}（${h(LANE_WORD[L.status] || L.status)}，${h(L.note || LANE_NOTE[L.status] || "")}）">
     <span class="lane-l">${h(L.layer)}</span>
     <span class="lane-r">${h(L.role)}</span>
     <span class="lane-s"><span class="pill ${LANE_TONE[L.status] || ""}">${
