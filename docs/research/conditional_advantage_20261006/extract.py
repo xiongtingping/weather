@@ -6,7 +6,7 @@ Protocol section 1 and 6.  Read-only, autocommit, one fetch per statement, so
 no long reader pins the SSOT WAL.  Resumable: station-days already written are
 skipped.  Output: rows/<station>.jsonl.gz, one line per decision fact.
 
-    python3 extract.py [budget_seconds] [since]
+    python3 extract.py [budget_seconds] [since] [until]      # CA_ROWS_DIR picks the output folder
 """
 import gzip
 import json
@@ -22,11 +22,12 @@ from bayes_basket_target.basket_kernel.valuation_v1 import market_reference_v1  
 from bayes_basket_target.settlement_time import hours_to_settlement  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROWS = os.path.join(HERE, "rows")
-DONE = os.path.join(HERE, "rows.done")
+ROWS = os.environ.get("CA_ROWS_DIR") or os.path.join(HERE, "rows")
+DONE = ROWS.rstrip("/") + ".done"
 DB = f"file:{ROOT}/data/bayes_basket_target_ssot.db?mode=ro"
 BUDGET_SECONDS = float(sys.argv[1]) if len(sys.argv) > 1 else 480.0
 SINCE = sys.argv[2] if len(sys.argv) > 2 else "2026-09-12"
+UNTIL = sys.argv[3] if len(sys.argv) > 3 else "9999-12-31"
 
 
 def levels(raw):
@@ -105,11 +106,11 @@ def main():
     labels = conn.execute(
         "SELECT station_id, event_date, settled_bucket, settled_tmax_c, truth_revision_no"
         " FROM basket_station_day_settlement_label l"
-        " WHERE event_date>=? AND truth_revision_no=(SELECT MAX(truth_revision_no)"
+        " WHERE event_date>=? AND event_date<=? AND truth_revision_no=(SELECT MAX(truth_revision_no)"
         "   FROM basket_station_day_settlement_label x"
         "   WHERE x.station_id=l.station_id AND x.event_date=l.event_date)"
         " ORDER BY event_date, station_id",
-        (SINCE,),
+        (SINCE, UNTIL),
     ).fetchall()
     done = set()
     if os.path.exists(DONE):

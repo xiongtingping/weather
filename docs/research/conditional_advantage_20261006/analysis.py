@@ -93,9 +93,9 @@ def family_of(r):
 # 1. load and feature rows
 
 
-def load():
+def load(rows_dir=None):
     rows = []
-    for f in sorted(glob.glob(os.path.join(HERE, "rows", "*.jsonl.gz"))):
+    for f in sorted(glob.glob(os.path.join(rows_dir or os.path.join(HERE, "rows"), "*.jsonl.gz"))):
         with gzip.open(f, "rt", encoding="utf-8") as fh:
             for line in fh:
                 rows.append(json.loads(line))

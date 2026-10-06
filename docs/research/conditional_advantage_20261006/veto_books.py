@@ -15,7 +15,8 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "books.jsonl.gz")
+OUT = os.environ.get("CA_BOOKS_FILE") or os.path.join(HERE, "books.jsonl.gz")
+ROWS = os.environ.get("CA_ROWS_DIR") or os.path.join(HERE, "rows")
 DB = f"file:{ROOT}/data/bayes_basket_target_ssot.db?mode=ro"
 BUDGET = float(sys.argv[1]) if len(sys.argv) > 1 else 480.0
 KEEP = ("bucket", "ordinal", "ask_available", "bid_available", "bid_price", "price_tick_size",
@@ -42,7 +43,7 @@ def main():
         with gzip.open(OUT, "rt") as fh:
             done = {json.loads(l)["sid"] for l in fh}
     want = []
-    for f in sorted(glob.glob(os.path.join(HERE, "rows", "*.jsonl.gz"))):
+    for f in sorted(glob.glob(os.path.join(ROWS, "*.jsonl.gz"))):
         with gzip.open(f, "rt") as fh:
             for l in fh:
                 r = json.loads(l)
