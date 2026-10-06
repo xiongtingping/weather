@@ -131,6 +131,24 @@ def venue_tick(price: float) -> float:
     return 0.001 if price < 0.04 or price > 0.96 else 0.01
 
 
+def fok_shares(price: float, shares: float) -> float:
+    """The most shares, down from ``shares`` in hundredths, whose cost at
+    ``price`` is a whole number of cents.
+
+    A FOK buy is a market order at the venue, and its maker amount (the USDC
+    paid) takes at most two decimals: 24.17 shares at 0.32 is 7.7344 USDC and
+    came back ``invalid amounts, the market buy orders maker amount supports
+    a max accuracy of 2 decimals`` (2026-10-07).  In integers: price in
+    thousandths times shares in hundredths has to be a multiple of 1000.
+    """
+
+    p = round(price * 1000)
+    s = int(math.floor(shares * 100 + 1e-6))
+    while s > 0 and (p * s) % 1000:
+        s -= 1
+    return s / 100
+
+
 def _on_tick(price: float) -> float:
     """Down to the venue's grid: a buy never pays more than it was told to."""
 
@@ -183,6 +201,11 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
         if shares < row["min_order_size"]:
             raise ManualOrderError(f"{bucket} {shares} 份低于最小单 {row['min_order_size']} 份")
         if mode == "taker":
+            asked = shares
+            shares = fok_shares(price, shares)
+            if shares < row["min_order_size"]:
+                raise ManualOrderError(
+                    f"{bucket} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
             available = fillable_within(row["asks"], shares, price)
             if available + 1e-9 < shares:
                 raise ManualOrderError(

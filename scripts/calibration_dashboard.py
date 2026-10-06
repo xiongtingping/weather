@@ -22963,7 +22963,11 @@ function sdOrderLegs(day, st){
   const legs = Object.entries(res.legs).filter(([, leg]) => leg.shares > 0).map(([bucket, leg]) => {
     let left = leg.shares, cap = leg.levels[0][0];
     for(const [p, q] of leg.levels){ cap = p; left -= q; if(left <= 1e-9) break; }
-    return {bucket, shares: Math.floor(leg.shares * 100 + 1e-6) / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
+    // A take is a market order at the venue: its USDC must be whole cents
+    // (manual_basket_order.fok_shares), so the dialog shows the size sent.
+    let n = Math.floor(leg.shares * 100 + 1e-6);
+    if(st.mode === "taker"){ const p = Math.round(cap * 1000); while(n > 0 && (p * n) % 1000) n -= 1; }
+    return {bucket, shares: n / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
   });
   return {res, legs};
 }

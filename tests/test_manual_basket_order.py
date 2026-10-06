@@ -142,3 +142,19 @@ def test_holdings_unknown_when_nothing_answers_and_data_api_backs_up_the_gateway
     assert backed["unknown"] is False
     assert rows["24°C"]["shares"] == 17.0 and rows["24°C"]["shares_source"] == "data_api"
     assert rows["25°C"]["shares"] == 0.0
+
+
+def test_a_take_is_sized_to_whole_cents() -> None:
+    """2026-10-07: 24.17 shares at 0.32 (7.7344 USDC) was refused by the venue."""
+
+    assert M.fok_shares(0.32, 24.17) == 24.0
+    assert round(0.32 * M.fok_shares(0.32, 24.17), 6) == 7.68
+    assert M.fok_shares(0.5, 13.33) == 13.32
+    assert M.fok_shares(0.031, 50) == 50.0
+    for price, shares in [(0.32, 24.17), (0.27, 33.3), (0.415, 17.77), (0.031, 49.99)]:
+        got = M.fok_shares(price, shares)
+        assert got <= shares and abs(round(price * got, 2) - price * got) < 1e-9
+    plan = M.plan_orders(_request(legs=[{"bucket": "25°C", "shares": 24.17, "limit_price": 0.16}]),
+                         BOOK, now=NOW)
+    leg = plan["legs"][0]["payload"]
+    assert abs(round(leg["price"] * leg["size"], 2) - leg["price"] * leg["size"]) < 1e-9
