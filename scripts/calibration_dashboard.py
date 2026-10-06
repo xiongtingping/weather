@@ -21997,7 +21997,11 @@ try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s))
 // The calculator's inputs, the trend choices: kept for this tab, so a reload
 // (the board's hot update) puts them back (user 2026-10-05「不要整页刷新渲染，丢失视角和输入」).
 try{ const kept = JSON.parse(sessionStorage.getItem("sd-state") || "null");
-  if(kept && kept.station === SD.station){ SD.dayTab = kept.dayTab || null; SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
+  if(kept && kept.station === SD.station){ SD.dayTab = kept.dayTab || null; SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {};
+    // A read's note describes that read: after a reload it is history and
+    // read as current (a 01:48Z timeout kept reappearing at 03:53Z).  The
+    // figures it filled stay.
+    Object.values(SD.calc).forEach(c => { if(c) delete c.holdNote; }); } }catch(e){}
 function sdSave(){
   try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
 }
