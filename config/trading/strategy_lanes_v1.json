@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-10-04T12:30:25Z",
+  "updated_at_utc": "2026-10-06T15:51:00Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane). Charter 231 (user rulings 2026-09-26 「调整下注规则」 and 「实盘上线，p＝天气模型」): the Proper 下注线 (proper_bet) replaces the basket's betting rule -- the basket is switched off here (it still compiles and records its decisions, which the new lane reads as its first decisions), and proper_bet opens on the P0 first decision. Charter 249 (user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」): proper_bet reopens on rule v3 -- YES on the market's modal bucket only, resting, P0 and more than 36 hours out; its sides switch reads [\"YES\"]. The far-tail lane (tail_short) keeps running beside it: another lane's acknowledged rung on a different bucket no longer holds its takes back.",
   "lanes": {
     "basket": {
@@ -108,12 +108,12 @@
       "rung_horizon_seconds": 900.0,
       "freshness": "envelope_validity",
       "freshness_note": "User ruling 2026-10-03 「按信封有效期」 (charter 249 (十)): a plan is made, and a rung re-posted, while the newest P0 decision's envelope is inside its own fresh_until_utc -- not only within first_decision_fresh_seconds of the decision. 'decision_age' restores the one-hour rule.",
-      "stake_usdc": 1.0,
+      "stake_usdc": 8.0,
       "stake_note": "Charter 252 (user ruling 2026-10-04 「还有Proper 下注线的单笔预算调整按钮」): the position is filled up to stake_usdc at the leg's planned price, never under the venue's five-share minimum, the stake cut to the free cash. A board dial (POST /api/lane-stake). At 1 USDC it is the minimum rule wherever the leg is priced at 0.20 or more; under 0.20 the plan carries the dollar charter 83 used to add at the send."
     },
     "tail_short": {
-      "enabled": true,
-      "rule": "market_far_tail_no_taker_model_below_bid_v2",
+      "enabled": false,
+      "rule": "market_far_tail_no_taker_model_centred_below_bid_v3",
       "opening_stages": [
         "P0"
       ],
@@ -121,7 +121,7 @@
       "max_market_price": 0.05,
       "min_rungs_from_mode": 3,
       "min_yes_bid": 0.02,
-      "stake_usdc": 10.0,
+      "stake_usdc": 5.0,
       "max_legs_per_station_day": 4,
       "max_daily_cost_usdc": 150.0,
       "enabled_at_utc": "2026-09-28T08:00:33Z",
@@ -133,8 +133,9 @@
       "send_book_fresh_seconds": 60.0,
       "live_ws_book": true,
       "lookback_days": 1,
-      "rule_changed_at_utc": "2026-10-04T12:27:00Z",
-      "rule_note": "Charter 251 (user ruling 2026-10-04 「改规则，把模型当过滤器」): v1 plus the model filter -- the station-day's newest P0 envelope, inside its validity, puts the bucket strictly under the YES best bid; judged where the leg is first sendable and at every send, a bucket once refused stays out for the station-day. Thrown after the resident restarted on b043d765 (pid 47301, 2026-10-04T12:25:26Z). market_far_tail_no_taker_v1 restores the market-only lane."
+      "rule_changed_at_utc": "2026-10-06T15:51:00Z",
+      "rule_note": "Charter 251 (user ruling 2026-10-04 「改规则，把模型当过滤器」): v1 plus the model filter -- the station-day's newest P0 envelope, inside its validity, puts the bucket strictly under the YES best bid; judged where the leg is first sendable and at every send, a bucket once refused stays out for the station-day. Thrown after the resident restarted on b043d765 (pid 47301, 2026-10-04T12:25:26Z). market_far_tail_no_taker_v1 restores the market-only lane. Charter 251 (六) (user ruling 2026-10-07 「改」): rule v3 -- the filter reads the served P0 vector moved along the station's ladder to the market's own centre (tail_short_lane.centred_vector), the model's width and shape on the market's centre; everything else is v2's. Thrown after the resident restarted on ba13a711 (pid 94340, 2026-10-06T15:50:26Z). market_far_tail_no_taker_model_below_bid_v2 restores the uncentred filter.",
+      "paused_at_utc": "2026-10-05T06:59:15Z"
     }
   }
 }
