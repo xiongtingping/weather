@@ -658,13 +658,46 @@ def _filesystem_free_bytes(path: Path) -> int:
     return int(shutil.disk_usage(candidate).free)
 
 
+def _header_free_page_bytes(path: Path) -> int:
+    """Freelist bytes as the main file's header states them.
+
+    In WAL mode page 1 may be newer in the WAL than in the file, so this can
+    lag a checkpoint: it under-counts pages freed since (conservative) and
+    over-counts pages reused since, which ``max_page_count`` still bounds
+    physically.  A connection-level caller passes ``PRAGMA freelist_count``
+    instead.
+    """
+
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(100)
+    except OSError:
+        return 0
+    if len(header) < 40 or not header.startswith(b"SQLite format 3\x00"):
+        return 0
+    page_size = int.from_bytes(header[16:18], "big")
+    if page_size == 1:
+        page_size = 65536
+    return int.from_bytes(header[36:40], "big") * page_size
+
+
 def assert_target_db_capacity(
     db_path: Path | str,
     *,
     projected_bytes: int = 0,
     min_free_bytes: int = MIN_TARGET_FREE_BYTES,
+    free_page_bytes: int | None = None,
 ) -> Path:
-    """Reject shared-live paths and target DB/WAL growth beyond hard limits."""
+    """Reject shared-live paths and target DB/WAL growth beyond hard limits.
+
+    The ceiling is on *live* pages -- the file less its freelist.  A delete
+    only puts pages on the freelist and every later write reuses them before
+    the file grows, so measuring the file meant a store that reached the
+    ceiling could never be reopened by retention or the cold offload, only
+    by raising the ceiling (eleven raises 2026-08-22..09-27; fail-closed
+    again 2026-10-06 04:07Z).  Physical growth stays bounded by the
+    ``max_page_count`` the connection guard sets.
+    """
 
     candidate = Path(db_path).expanduser()
     if candidate.name == ":memory:":
@@ -680,7 +713,10 @@ def assert_target_db_capacity(
     shm = resolved.with_name(resolved.name + "-shm")
     wal_size = int(wal.stat().st_size) if wal.is_file() else 0
     shm_size = int(shm.stat().st_size) if shm.is_file() else 0
-    if size + max(0, int(projected_bytes)) > MAX_TARGET_DB_BYTES:
+    if free_page_bytes is None:
+        free_page_bytes = _header_free_page_bytes(resolved) if size else 0
+    live = max(0, size - max(0, int(free_page_bytes)))
+    if live + max(0, int(projected_bytes)) > MAX_TARGET_DB_BYTES:
         raise ResourceBoundError("target_database_bytes_exceeded")
     if wal_size > MAX_TARGET_WAL_BYTES:
         raise ResourceBoundError("target_database_wal_bytes_exceeded")
@@ -843,7 +879,9 @@ def inspect_target_resource_budget(
     shm = resolved.with_name(resolved.name + "-shm") if resolved.name != ":memory:" else resolved
     wal_bytes = int(wal.stat().st_size) if wal.is_file() else 0
     shm_bytes = int(shm.stat().st_size) if shm.is_file() else 0
-    if db_bytes > MAX_TARGET_DB_BYTES:
+    db_free_page_bytes = _header_free_page_bytes(resolved) if db_bytes else 0
+    db_live_bytes = max(0, db_bytes - db_free_page_bytes)
+    if db_live_bytes > MAX_TARGET_DB_BYTES:
         violations.append("target_database_bytes_exceeded")
     if wal_bytes > MAX_TARGET_WAL_BYTES:
         violations.append("target_database_wal_bytes_exceeded")
@@ -889,6 +927,8 @@ def inspect_target_resource_budget(
         "violations": sorted(set(violations)),
         "database_path": str(resolved),
         "database_bytes": db_bytes,
+        "database_live_bytes": db_live_bytes,
+        "database_free_page_bytes": db_free_page_bytes,
         "wal_bytes": wal_bytes,
         "shm_bytes": shm_bytes,
         "raw_root": str(raw_resolved) if raw_resolved is not None else None,
@@ -923,8 +963,12 @@ def assert_connection_target_capacity(
             conn,
             limit=MAX_TARGET_WAL_BYTES,
         )
-    resolved = assert_target_db_capacity(path)
     page_size = int(conn.execute("PRAGMA page_size").fetchone()[0] or 4096)
+    free_pages = int(conn.execute("PRAGMA freelist_count").fetchone()[0] or 0)
+    resolved = assert_target_db_capacity(
+        path,
+        free_page_bytes=free_pages * page_size,
+    )
     max_pages = max(1, MAX_TARGET_DB_BYTES // page_size)
     conn.execute(f"PRAGMA max_page_count={max_pages}")
     conn.execute("PRAGMA wal_autocheckpoint=1000")

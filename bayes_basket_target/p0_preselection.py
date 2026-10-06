@@ -56,6 +56,34 @@ AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
 UNPERSISTED_MARKET_SNAPSHOT_KEY = "_production_market_snapshot"
 
 
+def _lifecycle_without_book_identity(
+    plan: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """The lifecycle projection minus the market snapshot's own hash.
+
+    ``snapshot_sha256`` is the content hash of the whole market snapshot --
+    every ask/bid level and its observation clock -- and
+    ``support_version_sha256`` hashes it in.  Both move on every cycle the
+    book ticks anywhere, while the lifecycle itself (state, reason,
+    transition, supports) and every economic consequence of the book (target
+    shares and costs, scenario PnL, delta score) are projected on their own.
+    Kept in, they made each cycle a new ``plan_sha256``, so the append
+    dedup this projection exists for never fired: measured 2026-10-06 over
+    CYYZ 2026-10-07, consecutive plans differed in these two fields and
+    nothing else, and the table took 72,794 rows (1.85 GB) in a day as the
+    cycle shortened -- the SSOT reached its ceiling at 04:07Z.
+    """
+
+    lifecycle = basket_lifecycle_projection(plan, required=False)
+    if lifecycle is None:
+        return None
+    return {
+        key: value
+        for key, value in lifecycle.items()
+        if key not in {"snapshot_sha256", "support_version_sha256"}
+    }
+
+
 def _decision_semantic_projection(
     compiled: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -143,10 +171,7 @@ def _decision_semantic_projection(
         },
         "plan": {
             "state": plan.get("state"),
-            "basket_lifecycle": basket_lifecycle_projection(
-                plan,
-                required=False,
-            ),
+            "basket_lifecycle": _lifecycle_without_book_identity(plan),
             "reason_codes": plan.get("reason_codes"),
             "center_bucket": plan.get("center_bucket"),
             "runner_up_bucket": plan.get("runner_up_bucket"),
