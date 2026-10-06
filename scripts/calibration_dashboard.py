@@ -16596,6 +16596,7 @@ color:var(--text);white-space:nowrap}
    row under them lists the sections themselves, and the count is in the
    hover.  "全部" is the last segment, with
    no dot, because it is not one of the areas; it is the way out of them. */
+.tabs[hidden]{display:none}
 .tabs{display:inline-flex;gap:2px;flex-wrap:wrap;align-items:center;
 margin:0;padding:3px;background:var(--bar-bg);border-radius:10px}
 .tabs button{cursor:pointer;background:none;color:var(--muted);border:0;
@@ -16768,7 +16769,9 @@ border-radius:10px;padding:2px 3px;
 flex:0 1 auto;min-width:0}
 .navctl[data-lc="live"]{border-color:var(--red)}
 .navctl .lc-livesw{font-size:12px;padding:1px 8px;margin:0 3px;border-radius:7px}
-.navctl .lc-livesw #lc-head-note{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The status at the strip's front already says it; the note rides the
+   switch's tooltip instead of a line of its own. */
+.navctl .lc-livesw #lc-head-note{display:none}
 .navctl-k{display:inline-flex;align-items:center;gap:6px;padding:1px 7px;
 white-space:nowrap;border-left:1px solid var(--line)}
 .navctl-l{color:var(--muted)}
@@ -16852,6 +16855,14 @@ color:var(--accent);vertical-align:1px}
 .navctl .lc-w{min-width:18px;height:20px;line-height:20px;padding:0 3px;font-size:13px}
 .navctl .lc-w.coarse{font-size:10.5px}
 .lc-sw{transform:scale(.88)}
+.navtop{flex-wrap:nowrap;align-items:flex-start}
+.navtop > .navctl{order:0;flex:1 1 0;min-width:0}
+.navtop > #nav-theme,.navtop > #theme{flex:none}
+.nav-fill,.nav-div{display:none}
+.navctl{column-gap:0;row-gap:3px}
+.navctl-br{flex-basis:100%;height:0}
+.navctl-g{align-items:center;padding:1px 6px 1px 8px}
+.navctl-gh{line-height:22px}
 .jump{position:fixed;left:0;top:0;bottom:0;width:204px;z-index:7;
   display:block;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
   padding:12px 8px 24px 10px;background:var(--bg);border-right:1px solid var(--line)}
@@ -19251,6 +19262,8 @@ function liveControlStrip(){
       + stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）"))}
     ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
+    <span class="navctl-br" aria-hidden="true"></span>
+    ${group("0.998 回收", "", laneSwitch("certain_win_recycle"))}
     ${group("篮子", "basket", laneSwitch("basket")
       + knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
         `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
@@ -19269,7 +19282,6 @@ function liveControlStrip(){
         `${b("budget",-50,"−50",true)}${b("budget",-5,"−")}<b id="lc-budget">${
           L.budget_usdc==null?"—":LC_KNOBS.budget.fmt(L.budget_usdc)}</b>${
           b("budget",5,"+")}${b("budget",50,"+50",true)}`))}
-    ${group("0.998 回收", "", laneSwitch("certain_win_recycle"))}
   </div>`;
 }
 // Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关」「秤砣线也
@@ -19548,7 +19560,7 @@ function lcRender(s){
     // disagree, which only a hand `touch` or a failed lift can cause, and
     // the note says so instead of describing a step that no longer exists.
     const paused = s.live.submission_paused === true;
-    headNote.textContent = headNote.title = !s.live.enabled ? "控制服务已连接"
+    headNote.textContent = headNote.title = head.title = !s.live.enabled ? "控制服务已连接"
       : compiled && authorized && !paused
         ? "实盘中 · 网关正在下单"
         : compiled && authorized
@@ -23207,7 +23219,7 @@ document.getElementById("app").innerHTML =
         stroke-linejoin="round" aria-hidden="true"><path
         d="M2.5 7.2 8 2.6l5.5 4.6V13a.9.9 0 0 1-.9.9H9.8V10H6.2v3.9H3.4a.9.9 0 0 1-.9-.9z"/></svg>首页</button>
       <span class="nav-div"></span>
-      ${tabs}<span class="nav-fill"></span>${safe(liveControlStrip, "实盘控制")}
+      ${tabs.replace('<nav class="tabs"', '<nav class="tabs" hidden')}${safe(liveControlStrip, "实盘控制")}
       <span id="nav-theme"></span></div>
     <nav class="jump" id="jump" aria-label="区块"></nav></div>` +
   // The P&L calendar first, above everything (user 2026-10-05: 盈亏日历放在顶部).
@@ -23233,11 +23245,9 @@ document.getElementById("app").innerHTML =
 (function(){
   const nav = document.getElementById("tabs");
   if(!nav) return;
-  let current = GROUPS[0].id;
-  try{
-    const saved = localStorage.getItem("board-tab");
-    if(saved) current = saved;
-  }catch(e){}
+  // User 2026-10-06「head区的分类去掉」: the area tabs are not shown; every
+  // area is on the page and the left index is the way around it.
+  let current = "all";
   const known = new Set(GROUPS.map(g=>g.id).concat(["all"]));
   if(!known.has(current)) current = GROUPS[0].id;
   const jump = document.getElementById("jump");
