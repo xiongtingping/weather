@@ -16161,6 +16161,12 @@ color-scheme:dark}
 .sd-btn{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
 .sd-btn:hover{border-color:var(--accent)}.sd-btn:disabled{opacity:.5;cursor:wait}
 .sd-note{font-size:12px;margin:2px 0 8px}.sd-sub{font-size:11.5px;font-weight:400}
+.sd-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;border-bottom:1px solid var(--line)}
+.sd-daytab{font:inherit;font-size:14px;font-weight:600;padding:7px 16px;border:1px solid var(--line);border-bottom:none;
+  border-radius:8px 8px 0 0;background:transparent;color:var(--muted);cursor:pointer;margin-bottom:-1px}
+.sd-daytab.on{background:var(--card);color:var(--text);border-color:var(--accent);border-bottom:1px solid var(--card)}
+.sd-daytab.off{cursor:default;opacity:.55;font-weight:400}
+.sd-day[hidden]{display:none}
 .sd-day{margin:12px 0;padding:10px 12px;min-width:0}.sd-day h3{margin:2px 0 8px;font-size:15px}
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
 .sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
@@ -21991,9 +21997,9 @@ try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s))
 // The calculator's inputs, the trend choices: kept for this tab, so a reload
 // (the board's hot update) puts them back (user 2026-10-05「不要整页刷新渲染，丢失视角和输入」).
 try{ const kept = JSON.parse(sessionStorage.getItem("sd-state") || "null");
-  if(kept && kept.station === SD.station){ SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
+  if(kept && kept.station === SD.station){ SD.dayTab = kept.dayTab || null; SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {}; } }catch(e){}
 function sdSave(){
-  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
+  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
 }
 const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba"};
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
@@ -22122,7 +22128,18 @@ function sdRender(){
     .find(el => el.getBoundingClientRect().bottom > 0);
   const anchorPath = anchor ? sdPathOf(anchor, body) : null;
   const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
-  body.innerHTML = pastNote + (d.days || []).map(sdDay).join("") + sdTafRaw(d);
+  // The two days as tabs (user 2026-10-06「tab形式，两个日期放在一起。tab切换」):
+  // every card is drawn and the others hidden, so a switch keeps each day's
+  // calculator as it was.
+  const days = d.days || [];
+  if(!days.some(x => x.event_date === SD.dayTab)) SD.dayTab = (days[0] || {}).event_date || null;
+  const tabs = `<div class="sd-tabs" role="tablist">${days.map(x => `<button type="button" role="tab" class="sd-daytab${
+      x.event_date === SD.dayTab ? " on" : ""}" data-sd-tab="${sdEsc(x.event_date)}" aria-selected="${x.event_date === SD.dayTab}">${
+      x.role === "today" ? "今日" : "明日（第二日）"} ${sdEsc(x.event_date.slice(5))}${
+      x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}</button>`).join("")}${
+    pk ? `<span class="sd-daytab off" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">今日 ${sdEsc(pk.event_date.slice(5))} 已过峰</span>` : ""}</div>`;
+  body.innerHTML = tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
+    `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`)).join("") + sdTafRaw(d);
   if(anchorPath){
     const again = sdFromPath(anchorPath, body);
     if(again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
@@ -22782,6 +22799,11 @@ function sdOnClick(e){
   const ds = t.dataset;
   if(ds.sdMode && !ds.calc){
     SD.trendMode[ds.sdMode] = ds.v; sdSave(); sdRender();
+  } else if(ds.sdTab){
+    SD.dayTab = ds.sdTab; sdSave();
+    document.querySelectorAll("#sd-body .sd-day").forEach(c => { c.hidden = c.dataset.day !== ds.sdTab; });
+    document.querySelectorAll("#sd-body .sd-daytab[data-sd-tab]").forEach(b => {
+      const on = b.dataset.sdTab === ds.sdTab; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
   } else if(ds.sdHold){
     sdLoadHoldings(ds.sdHold);
   } else if(ds.sdOrder){
