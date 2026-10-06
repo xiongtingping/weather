@@ -16172,7 +16172,7 @@ table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,v
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
 .sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:900px){.sd-grid{grid-template-columns:minmax(0,1fr)}}
-.sd-svg{width:100%;height:auto;display:block}
+.sd-svg{width:100%;max-width:820px;height:auto;display:block}
 table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
@@ -16831,6 +16831,34 @@ tr.buyable td{background:rgba(63,185,80,.07)}
 .jump button.star::before{content:"★";margin-right:3px;font-size:10px;
 color:var(--accent);vertical-align:1px}
 @media(max-width:820px){body > #theme{position:static;margin:14px 20px 0}}
+/* User 2026-10-06「head区和导航区占网页高度太高了，压缩高度。并把网页宽度拓宽，
+   导航区可以竖着移动到网页左边」: on a desktop the section index leaves the
+   sticky bar for a column down the left edge, the page widens into the
+   room it frees, and the bar's first row (home, areas, live dials, theme)
+   is set tighter.  Below 1100px the bar keeps both rows as before. */
+@media(min-width:1100px){
+.wrap{max-width:1720px;margin:0 0 0 214px;padding:14px 24px 72px}
+.topnav{padding:4px 0 0;margin:0 0 10px}
+.navtop{gap:4px 8px;padding:0 0 4px}
+.nav-home{font-size:13px;padding:3px 7px 3px 4px}
+.tabs{padding:2px}
+.tabs button,.tabs a{font-size:13px}
+.navctl{font-size:11.5px;padding:1px 2px;border-radius:8px}
+.navctl-k{gap:4px;padding:0 5px}
+.navctl-s{padding:0 6px 0 4px;font-size:11.5px}
+.stp b{min-width:2.6em;font-size:12.5px;line-height:20px}
+.navctl .lc-w{min-width:18px;height:20px;line-height:20px;padding:0 3px;font-size:13px}
+.navctl .lc-w.coarse{font-size:10.5px}
+.lc-sw{transform:scale(.88)}
+.jump{position:fixed;left:0;top:0;bottom:0;width:204px;z-index:7;
+  display:block;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;
+  padding:12px 8px 24px 10px;background:var(--bg);border-right:1px solid var(--line)}
+.jump-area{display:block;max-width:none;margin:0 0 10px}
+.jump-g{display:block;margin:0 0 3px;padding:1px 0 1px 7px;font-size:11.5px}
+.jump-run{display:flex;flex-direction:column;align-items:stretch;gap:0}
+.jump button{display:block;width:100%;text-align:left;white-space:normal;
+  padding:2px 6px 2px 10px;font-size:12.5px;line-height:1.35}
+}
 </style>
 <script>
 // Before first paint, so a light-mode reader does not get a dark flash.
