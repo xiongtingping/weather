@@ -303,8 +303,54 @@ def latest_book_by_bucket(
     ).fetchone()
     if row is None:
         return {}
+    return _book_rows(json.loads(row[0] or "[]"), str(row[1] or ""))
+
+
+def live_book_loader(
+    *, as_of_utc: str, manifest_path: Any = None,
+) -> Callable[..., dict[str, dict[str, float]]]:
+    """The book the lanes post on, for the pass that judges their rungs.
+
+    The Proper and tail lanes price a rung off the WS publisher's manifest
+    (``p1_tail_lane.live_ws_snapshot``, listing days included); this pass
+    used to judge the same rung against the committed snapshot, which the
+    resident writes once a cycle for a station.  2026-10-06 09:11Z, ZUUU
+    10-08 26°C: a rung posted at 0.33 on the live book was cancelled four
+    seconds later as five ticks off a committed bid of 0.28 read 43 s
+    earlier.  The freshest of the two is read now; the committed snapshot
+    stays the fallback when the publisher has no such scope.  The manifest
+    is read once per pass.
+    """
+
+    from .p1_tail_lane import _ws_manifest_root, live_ws_snapshot  # noqa: PLC0415
+
+    cache: dict[str, Any] = {}
+
+    def load(conn: sqlite3.Connection, *, station_id: str, event_date: str) -> dict[str, dict[str, float]]:
+        committed = latest_book_by_bucket(conn, station_id=station_id, event_date=event_date)
+        if "root" not in cache:
+            cache["root"] = _ws_manifest_root(manifest_path)
+        try:
+            live = live_ws_snapshot(
+                conn, cache["root"], station_id=station_id, event_date=event_date,
+                now_utc=as_of_utc, include_listing_days=True,
+            )
+        except Exception:  # noqa: BLE001 -- no live book: the committed one
+            live = None
+        if not live:
+            return committed
+        rows = _book_rows(live.get("buckets") or [], str(live.get("observed_at") or ""))
+        newest_committed = max((r["observed_at"] for r in committed.values()), default="")
+        if rows and str(live.get("observed_at") or "") >= newest_committed:
+            return rows
+        return committed
+
+    return load
+
+
+def _book_rows(buckets: Any, observed_at: str) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
-    for entry in json.loads(row[0] or "[]"):
+    for entry in buckets:
         if not isinstance(entry, Mapping):
             continue
         levels = entry.get("ask_levels") or []
@@ -318,7 +364,7 @@ def latest_book_by_bucket(
             # Charter 135 (三): the book's own clock, which this reader used
             # to drop -- without it a book from yesterday priced a rung the
             # same as one from a minute ago.
-            "observed_at": str(row[1] or ""),
+            "observed_at": observed_at,
         }
     return out
 
@@ -884,7 +930,7 @@ def reprice_resting_rungs(
     """
 
     write = write or (lambda: contextlib.nullcontext())
-    books = book_loader or latest_book_by_bucket
+    books = book_loader or live_book_loader(as_of_utc=as_of_utc)
     receipt: dict[str, Any] = {
         "schema": SCHEMA,
         "rule": RESTING_REPRICE_RULE_VERSION,

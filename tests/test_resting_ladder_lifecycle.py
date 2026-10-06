@@ -368,3 +368,28 @@ def test_exchange_reported_cancel_is_still_recorded() -> None:
 
     view = lane._exchange_view({"ok": True, "status": "canceled"})
     assert view["status_inferred_from_not_found"] is False
+
+
+def test_the_pass_judges_on_the_live_book_when_it_is_newer(monkeypatch) -> None:
+    """2026-10-06 09:11Z ZUUU 10-08 26°C: posted at 0.33 on the live book,
+    cancelled 4 s later against a committed bid of 0.28 read 43 s before."""
+
+    import bayes_basket_target.p1_tail_lane as tail
+    from bayes_basket_target import resting_ladder_lifecycle as lifecycle
+
+    committed = {"26°C": {"bid": 0.28, "ask": 0.47, "tick": 0.01, "observed_at": "2026-10-06T09:10:44Z"}}
+    monkeypatch.setattr(lifecycle, "latest_book_by_bucket", lambda conn, **k: dict(committed))
+    monkeypatch.setattr(tail, "_ws_manifest_root", lambda path: {"state": "connected"})
+    live = {"buckets": [{"bucket": "26°C", "bid_price": 0.33, "ask_levels": [{"price": 0.36, "shares": 10}],
+                         "price_tick_size": 0.01}], "observed_at": "2026-10-06T09:11:30Z"}
+    monkeypatch.setattr(tail, "live_ws_snapshot", lambda *a, **k: live)
+    load = lifecycle.live_book_loader(as_of_utc="2026-10-06T09:11:31Z")
+    assert load(None, station_id="ZUUU", event_date="2026-10-08")["26°C"]["bid"] == 0.33
+    # An older live book does not displace a newer committed one.
+    live["observed_at"] = "2026-10-06T09:09:00Z"
+    load = lifecycle.live_book_loader(as_of_utc="2026-10-06T09:11:31Z")
+    assert load(None, station_id="ZUUU", event_date="2026-10-08")["26°C"]["bid"] == 0.28
+    # No live scope: the committed book.
+    monkeypatch.setattr(tail, "live_ws_snapshot", lambda *a, **k: None)
+    load = lifecycle.live_book_loader(as_of_utc="2026-10-06T09:11:31Z")
+    assert load(None, station_id="ZUUU", event_date="2026-10-08")["26°C"]["bid"] == 0.28
