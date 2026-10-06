@@ -20279,7 +20279,10 @@ function servingWeightTrend(W, summary){
     .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
   const series = summary.map(s => ({name: s.label,
     values: hist.map(d => { const v = (d.mean_by_model || {})[s.label]; return v == null ? 0 : v; })}));
-  return `<div style="margin-top:12px;max-width:820px">${trendChart({
+  // User 2026-10-06「右边空白」: the whole row, on a canvas wide enough that
+  // the version marks and end labels fit at their own size.
+  return `<div style="margin-top:12px">${trendChart({
+    width: 1000, right: 110,
     title: "各模型实际权重走势（全队平均占比，按事件日）",
     sub: `每个站当天最新一期 P0 实际用的权重取平均，不在场记 0，六家合计 100%；竖线＝P0 版本切换`,
     dates, marks, series, fmt: v => (100 * v).toFixed(0) + "%"})}</div>`;
@@ -20383,7 +20386,9 @@ function servingWeights(){
 // marked, and a crosshair tooltip on hover.
 const TREND_COLORS = ["var(--th-claim)", "var(--th-price)", "var(--series-3)"];
 function trendChart(cfg){
-  const W = 380, H = 176, L = 42, R = 76, T = 24, B = 24;
+  // cfg.width / cfg.right: a chart given a whole row draws a wider canvas
+  // (and room for its end labels) instead of scaling a 380-wide one up.
+  const W = cfg.width || 380, H = 176, L = 42, R = cfg.right || 76, T = 24, B = 24;
   const dates = cfg.dates || [];
   const n = dates.length;
   const title = `<div class="trend-t">${h(cfg.title)}</div>${
