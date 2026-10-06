@@ -125,8 +125,33 @@ def _vector(conn, n: int, station: str, day: str, *, ws: str, instant: str, inve
     )
 
 
-BOOK_OLD, BOOK_HOT = "2026-08-10", "2026-09-10"     # the book window is 30 days: cutoff 08-28
+BOOK_OLD = "2026-08-10"                              # older than every window
+BOOK_HOT = "2026-09-10"   # outside the book window (7 days, cutoff 09-20), inside its readers' 30
 STATE_OLD, STATE_HOT = "2026-09-10", "2026-09-22"   # the state window is 7 days: cutoff 09-20
+
+
+def _readers_of_hot_books(conn) -> None:
+    """The two named readers, reduced to the columns their keep queries read."""
+
+    conn.execute("DROP TABLE IF EXISTS basket_policy_training_fact")
+    conn.execute("CREATE TABLE basket_policy_training_fact(fact_id TEXT, event_date TEXT, ws_snapshot_id TEXT)")
+    conn.execute("INSERT INTO basket_policy_training_fact VALUES('f0', ?, 'ws_hot_0')", (BOOK_HOT,))
+    conn.execute("DROP TABLE IF EXISTS basket_probability_envelope")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope(envelope_id TEXT, station_id TEXT, event_date TEXT,"
+        " state TEXT, stage TEXT, decision_at_utc TEXT, fresh_until_utc TEXT)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_probability_envelope_publisher_scope_idx ON basket_probability_envelope("
+        "state,event_date,station_id,decision_at_utc,stage)"
+    )
+    conn.executemany(
+        "INSERT INTO basket_probability_envelope VALUES(?,?,?,?,?,?,?)",
+        [
+            ("e1", "KLGA", BOOK_HOT, "COMMITTED", "P0", f"{BOOK_HOT}T00:00:01.500Z", ""),
+            ("e2", "KLGA", BOOK_HOT, "COMMITTED", "P1", f"{BOOK_HOT}T00:00:02.500Z", ""),
+        ],
+    )
 
 
 def _fixture(store: Path) -> None:
@@ -141,9 +166,13 @@ def _fixture(store: Path) -> None:
     # ZUUU: an order names a book that is not there -- the whole day stays.
     for seq in (0, 1):
         _book(conn, f"ws_zuuu_{seq}", "ZUUU", BOOK_OLD, seq)
-    # Inside the 30-day window: stays (the dashboard's valuation population).
-    for seq in (0, 1):
+    # Outside the 7-day window but inside its readers' 30 days: a book stays
+    # when a training fact names it (charter-EV / posterior pages) or when it
+    # is the newest book at or before a committed P0 envelope (the board's
+    # centre/shape reading); ws_hot_3 is the newest of its day; ws_hot_2 moves.
+    for seq in (0, 1, 2, 3):
         _book(conn, f"ws_hot_{seq}", "KLGA", BOOK_HOT, seq)
+    _readers_of_hot_books(conn)
     for table in (INVENTORY, ORDER_STATE):
         for n in (0, 1, 2):
             _inventory(conn, table, f"{table[:6]}_klga_{n}", "KLGA", STATE_OLD, f"v{n}")
@@ -193,7 +222,9 @@ def test_old_books_move_and_the_protected_ones_stay(store: Path, cold: Path, tmp
         "ws_eglc_0",                  # an executed order's book, found across spellings
         "ws_eglc_2",                  # newest of its day
         "ws_zuuu_0", "ws_zuuu_1",     # a named book missing: the whole day stays
-        "ws_hot_0", "ws_hot_1",       # inside the window
+        "ws_hot_0",                   # named by a training fact
+        "ws_hot_1",                   # the book at or before a P0 envelope
+        "ws_hot_3",                   # newest sequence of its station-day
     }
     for table in (INVENTORY, ORDER_STATE):
         prefix = table[:6]
@@ -208,7 +239,7 @@ def test_old_books_move_and_the_protected_ones_stay(store: Path, cold: Path, tmp
     cold_conn = off.open_cold_table(WS, root=cold)
     try:
         assert {r[0] for r in cold_conn.execute(f"SELECT snapshot_id FROM {WS}")} == {
-            "ws_klga_0", "ws_klga_1", "ws_eglc_1",
+            "ws_klga_0", "ws_klga_1", "ws_eglc_1", "ws_hot_2",
         }
     finally:
         cold_conn.close()
@@ -273,7 +304,7 @@ def test_a_table_never_moved_reads_as_it_is(store: Path, cold: Path, tmp_path: P
     reader = sqlite3.connect(f"file:{store}?mode=ro", uri=True)
     try:
         assert off.attach_cold_history(reader, [WS], root=cold, manifest=tmp_path / "none.jsonl") == {}
-        assert reader.execute(f"SELECT COUNT(*) FROM {WS}").fetchone()[0] == 10
+        assert reader.execute(f"SELECT COUNT(*) FROM {WS}").fetchone()[0] == 12
     finally:
         reader.close()
 
@@ -315,12 +346,14 @@ def test_the_windows_are_tied_to_their_readers() -> None:
         assert policy.keep_latest[0].key == ("station_id", "event_date")
     # The dashboard's charter-EV page joins the valuation population's facts
     # to their books over WINDOW_DAYS; the posterior page over 14 days.
-    assert off.POLICY_BY_TABLE[WS].hot_days > valuation_store.WINDOW_DAYS
+    named = {rule.name: rule for rule in off.POLICY_BY_TABLE[WS].keep_named}
+    assert named["training_fact_book"].window_days > valuation_store.WINDOW_DAYS
+    assert named["p0_envelope_book"].window_days > valuation_store.WINDOW_DAYS
     # The realisation reader moved to the backend board-readings job on
     # 2026-10-02 (the board only reads its file); same 14 days.
     readings = (ROOT / "bayes_basket_target" / "board_readings.py").read_text(encoding="utf-8")
     assert "since_event_date=(_now().date() - timedelta(days=14))" in readings
-    assert off.POLICY_BY_TABLE[WS].hot_days > 14
+    assert named["training_fact_book"].window_days > 14
     runtime = (ROOT / "bayes_basket_target" / "execution_transition_runtime.py").read_text(encoding="utf-8")
     for table, column in ((WS, "official_ws_quote_sha256"), (INVENTORY, "inventory_sha256"),
                           (ORDER_STATE, "order_state_sha256")):

@@ -228,6 +228,10 @@ class KeepNamed:
     column: str
     sql: str
     why: str
+    #: When set, ``sql`` takes ``:floor`` -- the run's as-of date less this
+    #: many days -- so a reader's window ages out with the run, not the wall
+    #: clock.
+    window_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -567,12 +571,22 @@ POLICIES: tuple[TablePolicy, ...] = (
     # before it starts.  The WS book is also read, through the training facts
     # that name it, by the dashboard's charter-EV page over the valuation
     # population's WINDOW_DAYS (28) and by its posterior page over 14 days,
-    # so its window is that population's plus two.  Offline readers of the
+    # so its window was that population's plus two.  Offline readers of the
     # whole history read the cold rows through :func:`attach_cold_history`.
+    #
+    # 2026-10-06 (SSOT fail-closed at the ceiling): a 30-day window kept
+    # every book of every cycle -- 134k rows / 1.3 GB a day by then, ~25 GB
+    # live -- for two readers that name a few thousand of them.  The window
+    # is now the paper ledger's, like the inventory and order-state books,
+    # and those two readers' books stay hot by name for the 30 days they
+    # read: the book each training fact priced against (charter-EV and
+    # posterior pages), and the newest book at or before each committed P0
+    # envelope (the board's centre/shape reading, board_readings).  Both
+    # read exactly the rows they read before.
     TablePolicy(
         table="basket_official_ws_snapshot",
         time_column="event_date",
-        hot_days=VALUATION_WINDOW_DAYS + 2,
+        hot_days=PAPER_LEDGER_EVENT_DAYS + 3,
         readers=(
             "market_ingress: MAX(sequence)+1 and by snapshot_id for the day being written; "
             "production_io / production_worker / atomic_ledger / tiebreak, p1_tail, "
@@ -595,6 +609,35 @@ POLICIES: tuple[TablePolicy, ...] = (
         keep_vector_refs=KeepVectorRefs(
             vector_column="official_ws_quote_sha256", instant_column="quote_observed_at",
             why="execution_transition_runtime re-reads the book an order executed against by its hash",
+        ),
+        keep_named=(
+            KeepNamed(
+                name="training_fact_book",
+                column="snapshot_id",
+                sql=(
+                    "SELECT f.ws_snapshot_id FROM basket_policy_training_fact f"
+                    " WHERE f.event_date >= :floor"
+                ),
+                why="valuation_store.population / posterior_store join each fact's book by snapshot_id",
+                window_days=VALUATION_WINDOW_DAYS + 2,
+            ),
+            KeepNamed(
+                name="p0_envelope_book",
+                column="snapshot_id",
+                sql=(
+                    "SELECT (SELECT s.snapshot_id FROM basket_official_ws_snapshot s"
+                    " INDEXED BY basket_official_ws_snapshot_asof_idx"
+                    " WHERE s.station_id = e.station_id AND s.event_date = e.event_date"
+                    " AND s.state = 'COMMITTED' AND s.observed_at <= e.decision_at_utc"
+                    " ORDER BY s.observed_at DESC, s.sequence DESC LIMIT 1)"
+                    " FROM basket_probability_envelope e"
+                    " INDEXED BY basket_probability_envelope_publisher_scope_idx"
+                    " WHERE e.state = 'COMMITTED'"
+                    " AND e.event_date >= :floor AND e.stage = 'P0'"
+                ),
+                why="board_readings' centre/shape reading takes the book at or before each P0 envelope",
+                window_days=VALUATION_WINDOW_DAYS + 2,
+            ),
         ),
     ),
     TablePolicy(
@@ -1137,7 +1180,17 @@ def plan_table(
     if days:
         wanted += [c for c in ("station_id", "event_date") if c != time_column]
     named: list[tuple[KeepNamed, set[str]]] = [
-        (rule, {str(r[0]) for r in conn.execute(rule.sql) if r[0] is not None})
+        (rule, {
+            str(r[0])
+            for r in conn.execute(
+                rule.sql,
+                {} if rule.window_days is None else {
+                    "floor": (as_of.astimezone(timezone.utc).date()
+                              - timedelta(days=int(rule.window_days))).isoformat(),
+                },
+            )
+            if r[0] is not None
+        })
         for rule in policy.keep_named
     ]
     wanted += [rule.column for rule, _ids in named if rule.column != time_column]
