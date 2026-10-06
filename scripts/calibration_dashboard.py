@@ -16836,6 +16836,42 @@ tr.buyable td{background:rgba(63,185,80,.07)}
 .jump button.star::before{content:"★";margin-right:3px;font-size:10px;
 color:var(--accent);vertical-align:1px}
 @media(max-width:820px){body > #theme{position:static;margin:14px 20px 0}}
+/* User 2026-10-06「不紧凑，有很多空白浪费啊，全面优化所有板块」: one density
+   pass over the shared pieces every section is built from -- type, section
+   and area spacing, cards, containers and table cells -- so all sections
+   tighten together rather than one at a time. */
+body{font-size:14px;line-height:1.5}
+h2{margin:14px 0 3px;font-size:15.5px}
+.sub{margin:0 0 8px;font-size:12.5px;line-height:1.5}
+.card{padding:8px 10px;margin-bottom:6px}
+.grid{gap:6px}
+.box{padding:8px 12px 4px;margin:12px 0}
+.box > .sec{margin-top:6px}
+.group,.toparea{margin-top:22px;padding-top:8px}
+.grouptitle{margin:10px 0 0}
+.group > .grouptitle,.toparea > .grouptitle{padding:6px 10px}
+.subgroup{margin:14px 0 6px;padding:6px 10px}
+table{font-size:13.5px}
+th{padding:3px 7px}
+td{padding:3px 7px}
+.why{padding:6px 10px;margin:6px 0}
+.kpi .k{padding:6px 9px}
+.kpis .kpi{padding:8px 10px}
+.kpi-v{font-size:21px;margin:2px 0 1px}
+.pc-m .pc-k{padding:8px 10px}
+.pc-m .pc-v{font-size:22px;margin:1px 0 4px}
+.pc-ct td{padding:6px 12px}
+footer{margin-top:20px}
+@media(min-width:1100px){.navctl .lc-l-min{display:none}}
+/* A laptop-width desktop: the coarse ±5/±50 steps, the stage tags and two
+   dozen pixels of index column give the strip back its two rows. */
+@media(min-width:1100px) and (max-width:1499px){
+.navctl .lc-w.coarse,.navctl-gh .lc-lane-st{display:none}
+.jump{width:176px}
+.wrap{margin-left:184px;padding-left:16px;padding-right:16px}
+.navctl-g{padding:1px 4px 1px 6px}
+.navctl-k{padding:0 3px}
+}
 /* User 2026-10-06「head区和导航区占网页高度太高了，压缩高度。并把网页宽度拓宽，
    导航区可以竖着移动到网页左边」: on a desktop the section index leaves the
    sticky bar for a column down the left edge, the page widens into the
@@ -18058,7 +18094,7 @@ function pnlCalendarBody(){
   const stats = PNL_CAL.mode === "daily" && monthRows.length ? `<div class="pcal-stats">
     胜率 <b>${(100 * wins / Math.max(1, wins + losses)).toFixed(0)}%</b> <span class="muted">(${wins} 盈 ${losses} 亏)</span>
     · 最好 <b class="up">${money(best)}</b> · 最差 <b class="down">${money(worst)}</b></div>` : "";
-  return `<div class="pcal-strip">${strip}</div><div class="pcal-box">${head}${stats}${grid}</div>`;
+  return `<div class="pcal-wrap"><div class="pcal-box">${head}${stats}${grid}</div><div class="pcal-strip">${strip}</div></div>`;
 }
 function pnlCalendar(){
   const rows = D.daily || [];
@@ -18067,20 +18103,22 @@ function pnlCalendar(){
   <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、P1 尾段、同心线历史），读实盘成交与结算（与资金看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
   悬停看当天投入、成交站数与腿数；未结算的日子标「待结算」。「周」列是该周合计，上方四格是最近 1/7/30/90 个已结算日。</p>
   <style>
-  .pcal-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+  .pcal-wrap{display:grid;grid-template-columns:minmax(0,640px) minmax(180px,1fr);gap:8px;align-items:start;margin:6px 0}
+  @media (max-width:900px){.pcal-wrap{grid-template-columns:minmax(0,1fr)}}
+  .pcal-strip{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0}
   .pcal-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
   .pcal-k{font-weight:600}.pcal-v{font-size:22px;font-weight:700}.pcal-s{font-size:13px}
-  .pcal-box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;max-width:760px}
+  .pcal-box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   .pcal-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .pcal-title{font-size:20px;font-weight:700;margin-left:6px}.pcal-total{font-size:18px;font-weight:600}
   .pcal-seg{display:inline-flex;gap:2px;margin-left:6px}
   .pcal-b{background:transparent;border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;color:inherit}
   .pcal-b.on{background:rgba(46,160,67,.55);border-color:transparent}
   .pcal-stats{margin:8px 0 4px}
-  .pcal-grid{display:grid;grid-template-columns:repeat(7,1fr) 0.9fr;gap:6px;margin-top:8px}
+  .pcal-grid{display:grid;grid-template-columns:repeat(7,1fr) 0.9fr;gap:4px;margin-top:6px}
   .pcal-months{grid-template-columns:repeat(6,1fr)}
   .pcal-wd{text-align:center;color:var(--muted);font-size:12px}
-  .pcal-cell{border-radius:8px;min-height:54px;padding:4px;text-align:center;background:rgba(127,127,127,.08)}
+  .pcal-cell{border-radius:7px;min-height:40px;padding:2px 3px;text-align:center;background:rgba(127,127,127,.08)}
   .pcal-cell.empty{background:transparent}.pcal-cell.idle{opacity:.7}
   .pcal-d{font-size:14px}.pcal-p{font-size:12px;font-weight:600;font-family:ui-monospace,monospace}
   .pcal-wk{display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;font-family:ui-monospace,monospace}
@@ -19242,7 +19280,7 @@ function liveControlStrip(){
   const stakeKnob=(key,title)=>knob(key, title,
     `${b(key,-5,"−5",true)}${b(key,-1,"−")}<b id="${LC_KNOBS[key].id}">${
       stakes[key]==null?"—":LC_KNOBS[key].fmt(stakes[key])}</b>${
-      b(key,1,"+")}${b(key,5,"+5",true)}`, "每笔");
+      b(key,1,"+")}${b(key,5,"+5",true)}`, "每笔").replace('class="navctl-l"', 'class="navctl-l lc-l-min"');
   // One group per strategy, its name first and then its own switch and
   // dials (user ruling 2026-10-04 「重新布局，分别按照策略+按钮的形式」).  A
   // dial sits in the group of the lane that reads it: the five capital dials
@@ -19315,7 +19353,7 @@ function laneSwitch(key){
   // The lane's name and stages are its group's heading (liveControlStrip).
   return `<span class="navctl-k navctl-lane" data-lc-lane-box="${key}"
     title="${h(spec.name)}车道开关（开：${h(spec.on)}；关：${h(spec.off)}）· 每次改动写 data/live_control_audit.jsonl"
-    ><span class="navctl-l">开关</span><button type="button"
+    ><span class="navctl-l lc-l-min">开关</span><button type="button"
       class="lc-sw lc-lane" role="switch" data-lc-lane="${key}"
       aria-checked="${on}" aria-label="${spec.name}车道开关" disabled
       onclick="lcLane(this)"></button></span>`;
