@@ -22648,7 +22648,19 @@ function sdSolve(day, st){
       fixed += amt;
     } else auto.push([b, lv]);
   });
-  if(!res.ok) return res;
+  if(!res.ok){ res.legs = {}; return res; }
+  // Every share an empty leg buys raises the spend it has to cover by its
+  // own price, so the legs can close only while their prices (fee in) add up
+  // to less than 1.  Say so up front, with the sum -- the fixed-point walk
+  // below would otherwise run into the end of a book first and leave its
+  // half-way legs on the rows (2026-10-06: 26/27/28°C at 0.24+0.74+0.13).
+  const unit = lv => { const p = lv[0][0]; return p + rate * p * (1 - p); };
+  const priceSum = auto.reduce((a, [, lv]) => a + unit(lv), 0);
+  if(auto.length && priceSum >= 1 - 1e-9){
+    res.ok = false; res.legs = {};
+    res.warn.push(`无解：要算的 ${auto.map(([b]) => b).join("、")} 卖一（含费）合计 ${priceSum.toFixed(3)} ≥ 1——这几个桶每多买 1 份，总花费就多出不止 1 份能赔回的钱，一起保本不可能。去掉一个桶，或给其中一些填固定金额，或换「挂买一+1」/「手填价格」压低价格`);
+    return res;
+  }
   const needOf = (T, b) => Math.max(0, T + F - sdHeld(st, b));
   let T = fixed, conv = false;
   for(let it = 0; it < 200; it++){
@@ -22660,14 +22672,15 @@ function sdSolve(day, st){
       res.legs[b] = {shares:need, cost:c, fixed:false, levels:lv};
       next += c;
     }
-    if(broke){ res.ok = false; return res; }
+    if(broke){ res.ok = false; res.legs = {}; return res; }
     if(next > 1e7){ break; }
     if(Math.abs(next - T) < 1e-7){ T = next; conv = true; break; }
     T = next;
   }
   if(auto.length && !conv){
     res.ok = false;
-    res.warn.push("无解：空着的桶单价（含费）合计 ≥ 1，买得越多需要越多，保本不可能");
+    res.legs = {};
+    res.warn.push("无解：按卖盘逐档深度走下去，价格越吃越贵，合计到达 1 之前算不出保本点；换「挂买一+1」/「手填价格」或少选一个桶");
     return res;
   }
   // Shares go in hundredths: round the automatic legs up and re-price once.
