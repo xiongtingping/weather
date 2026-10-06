@@ -15,7 +15,8 @@ Three properties make ICON different from the GEFS/ECMWF collectors:
   published.
 * The grid is ``unstructured_grid`` (icosahedral), so eccodes' nearest-point
   search over a regular lat/lon topology is unavailable.  Station indices are
-  resolved once against the time-invariant ``clat``/``clon`` fields and cached.
+  resolved against the run's own ``clat``/``clon`` fields and cached per grid
+  size: DWD moved ICON-EPS to a finer grid from the 2026-10-06 06Z run.
 * Objects are bzip2-compressed and carry no ``.idx`` sidecar, so a byte-range
   fetch of a single field is impossible: each lead is a whole ~36 MiB download.
 """
@@ -25,6 +26,7 @@ from __future__ import annotations
 import bz2
 import ctypes
 import hashlib
+import json
 import math
 import sqlite3
 import struct
@@ -224,13 +226,24 @@ LEAD_STEP_HOURS = PRIMARY_CYCLE_STEP_HOURS
 # day is 23 or 25 hours long and yields 7 or 9.
 MIN_LOCAL_DAY_HOURS = 7
 MAX_LOCAL_DAY_HOURS = 9
+# The icosahedral grids ICON-EPS has been published on, by point count.  DWD
+# moved from the first to the second with the 2026-10-06 06Z run (measured:
+# the 00Z t_2m messages carry 737,280 values, the 06Z and 12Z ones 1,310,720,
+# grid uuid 49c340e2248d11e58105c12d5e3b00a4, ~62 MB per lead against ~36 MB).
+# The collector had one hard-coded count and one grid cache, so every run from
+# 06Z on failed closed on ``icon_eps_archive_grid_point_count_invalid`` and
+# ICON stopped being captured.  Each run is now read on the grid its own
+# messages declare; a size not listed here still fails closed.
 GRID_POINT_COUNT = 737280
+GRID_POINT_COUNTS = frozenset({737280, 1310720})
 # One compressed lead is ~36 MiB.  A single station's local day needs up to
 # nine, but the 45-station union spans enough timezones to reach ~15 leads at
 # the 3-hour step, so the total budget is sized from the union rather than from
 # one station's day.
-MAX_OBJECT_BYTES = 64 * 1024 * 1024
-MAX_TOTAL_RESPONSE_BYTES = 1024 * 1024 * 1024
+# Sized for the 1,310,720-point grid's ~62 MB leads (2026-10-06): the old
+# 64 MiB per-object cap left 7% headroom, and fifteen leads come to ~0.94 GiB.
+MAX_OBJECT_BYTES = 96 * 1024 * 1024
+MAX_TOTAL_RESPONSE_BYTES = 1536 * 1024 * 1024
 MAX_STATION_COUNT = 64
 # Whole-object downloads, so concurrency is bounded by memory rather than by
 # request latency: each in-flight object holds its compressed and decompressed
@@ -324,7 +337,7 @@ def _message_values(
             raise ContractError("icon_eps_archive_perturbation_number_missing")
         size = ctypes.c_size_t()
         library.codes_get_size(handle, b"values", ctypes.byref(size))
-        if int(size.value) != GRID_POINT_COUNT:
+        if int(size.value) not in GRID_POINT_COUNTS:
             raise ContractError("icon_eps_archive_grid_point_count_invalid")
         values = (ctypes.c_double * size.value)()
         length = ctypes.c_size_t(size.value)
@@ -411,6 +424,14 @@ def _fetch(
     raise AssertionError("unreachable")
 
 
+def _grid_cache_paths(cache_dir: Path, point_count: int) -> dict[str, Path]:
+    """Where one grid's coordinates live.  The first grid kept its files at the
+    cache root (written 2026-08-07); every other grid has its own folder."""
+
+    base = cache_dir if point_count == GRID_POINT_COUNT else cache_dir / str(point_count)
+    return {field: base / f"{field}.f64" for field in ("clat", "clon")}
+
+
 def _grid_index(
     client: httpx.Client,
     library: ctypes.CDLL,
@@ -419,25 +440,42 @@ def _grid_index(
     cycle: str,
     station_ids: Sequence[str],
     cache_dir: Path,
+    point_count: int = GRID_POINT_COUNT,
 ) -> dict[str, int]:
     """Map each station to its nearest icosahedral grid point.
 
-    The grid is time-invariant, so this is resolved once and cached: refetching
-    1.5 MiB of coordinates for every capture would be pure waste, and the answer
-    cannot change between runs.
+    A grid is time-invariant, so its coordinates are fetched once (from the
+    run being captured, which publishes its own ``clat``/``clon``) and cached
+    by point count; the station-to-point map is cached beside them.  A run on
+    a grid whose published coordinates do not match its own point count fails
+    closed.
     """
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    if point_count not in GRID_POINT_COUNTS:
+        raise ContractError("icon_eps_archive_grid_point_count_invalid")
+    paths = _grid_cache_paths(cache_dir, point_count)
+    next(iter(paths.values())).parent.mkdir(parents=True, exist_ok=True)
+    index_path = next(iter(paths.values())).parent / "station_points.json"
+    try:
+        known = json.loads(index_path.read_text(encoding="utf-8"))
+        if not isinstance(known, dict) or known.get("point_count") != point_count:
+            known = {"point_count": point_count, "stations": {}}
+    except (OSError, ValueError):
+        known = {"point_count": point_count, "stations": {}}
+    stations: dict[str, int] = {
+        str(k): int(v) for k, v in (known.get("stations") or {}).items()
+    }
+    wanted = sorted(set(station_ids))
+    if all(station_id in stations for station_id in wanted):
+        return {station_id: stations[station_id] for station_id in wanted}
+
     coordinates: dict[str, list[float]] = {}
-    for field in ("clat", "clon"):
-        cached = cache_dir / f"{field}.f64"
+    for field, cached in paths.items():
         if cached.is_file():
             payload = cached.read_bytes()
-            if len(payload) != GRID_POINT_COUNT * 8:
+            if len(payload) != point_count * 8:
                 raise ContractError("icon_eps_archive_grid_cache_invalid")
-            coordinates[field] = list(
-                struct.unpack(f">{GRID_POINT_COUNT}d", payload)
-            )
+            coordinates[field] = list(struct.unpack(f">{point_count}d", payload))
             continue
         url = (
             f"{BASE_URL}/{cycle}/{field}/"
@@ -445,22 +483,25 @@ def _grid_index(
             f"{run_day}{cycle}_{field}.grib2.bz2"
         )
         values = _single_field(library, bz2.decompress(_fetch(client, url)))
-        if len(values) != GRID_POINT_COUNT:
+        if len(values) != point_count:
             raise ContractError("icon_eps_archive_grid_point_count_invalid")
-        cached.write_bytes(struct.pack(f">{GRID_POINT_COUNT}d", *values))
+        tmp = cached.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_bytes(struct.pack(f">{point_count}d", *values))
+        tmp.replace(cached)
         coordinates[field] = values
 
     latitudes = coordinates["clat"]
     longitudes = coordinates["clon"]
-    index: dict[str, int] = {}
-    for station_id in station_ids:
+    for station_id in wanted:
+        if station_id in stations:
+            continue
         scope = station_coordinates(station_id)
         latitude = math.radians(float(scope["latitude"]))
         longitude = math.radians(float(scope["longitude"]))
         cosine = math.cos(latitude)
         best_distance = None
         best_point = -1
-        for point in range(GRID_POINT_COUNT):
+        for point in range(point_count):
             delta_lat = math.radians(latitudes[point]) - latitude
             delta_lon = math.radians(longitudes[point]) - longitude
             if delta_lon > math.pi:
@@ -473,8 +514,12 @@ def _grid_index(
                 best_point = point
         if best_point < 0:
             raise ContractError("icon_eps_archive_station_grid_point_missing")
-        index[station_id] = best_point
-    return index
+        stations[station_id] = best_point
+    tmp = index_path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({"point_count": point_count, "stations": stations},
+                              sort_keys=True), encoding="utf-8")
+    tmp.replace(index_path)
+    return {station_id: stations[station_id] for station_id in wanted}
 
 
 def _forecast_hours(
@@ -690,14 +735,11 @@ def capture_icon_eps_station_days(
         follow_redirects=False,
         headers={"User-Agent": "weather-icon-eps-history/1"},
     ) as client:
-        grid = _grid_index(
-            client,
-            library,
-            run_day=run_day,
-            cycle=cycle,
-            station_ids=sorted(scopes),
-            cache_dir=Path(grid_cache_dir or DEFAULT_GRID_CACHE),
-        )
+        # The grid is the one the run's own messages are on (DWD changed it
+        # from the 2026-10-06 06Z run), resolved at the first message.  Every
+        # message of the run must then be on that same grid.
+        grid: dict[str, int] | None = None
+        grid_points: int | None = None
 
         store = _object_store()
 
@@ -749,6 +791,21 @@ def capture_icon_eps_station_days(
                             "icon_eps_archive_perturbation_number_invalid"
                         )
                     seen.add(perturbation)
+                    if grid is None:
+                        grid_points = len(values)
+                        grid = _grid_index(
+                            client,
+                            library,
+                            run_day=run_day,
+                            cycle=cycle,
+                            station_ids=sorted(scopes),
+                            cache_dir=Path(grid_cache_dir or DEFAULT_GRID_CACHE),
+                            point_count=grid_points,
+                        )
+                    elif len(values) != grid_points:
+                        raise ContractError(
+                            "icon_eps_archive_grid_point_count_invalid"
+                        )
                     member_id = f"member_{perturbation:02d}"
                     for station_id, point in grid.items():
                         if forecast_hour not in scopes[station_id]["hours"]:

@@ -51,3 +51,48 @@ def test_a_transfer_that_keeps_failing_still_fails_after_the_bound() -> None:
     with pytest.raises(httpx.ReadTimeout):
         icon._fetch(client, URL, sleep=lambda _s: None)
     assert len(calls) == icon.FETCH_TRANSPORT_ATTEMPTS
+
+
+def test_each_icon_grid_is_cached_by_its_own_point_count(tmp_path, monkeypatch) -> None:
+    """2026-10-06: DWD moved ICON-EPS from 737,280 to 1,310,720 grid points
+    with the 06Z run; one hard-coded count failed every run after that.  Each
+    grid is read and cached under its own size, the first grid keeps its root
+    files, the station map is cached, and an unknown size fails closed."""
+
+    import pytest
+
+    from bayes_basket_target import dwd_icon_eps_archive as A
+    from bayes_basket_target.contracts import ContractError
+
+    fetched: list[str] = []
+
+    def fake_fetch(_client, url):
+        fetched.append(url)
+        return b"x"
+
+    def fake_field(_library, _raw):
+        n = 1310720
+        field = "clat" if "clat" in fetched[-1] else "clon"
+        # Every point far away except point 7, which sits on the station.
+        base = 80.0 if field == "clat" else 170.0
+        values = [base] * n
+        values[7] = 30.578 if field == "clat" else 103.947  # ZUUU
+        return values
+
+    monkeypatch.setattr(A, "_fetch", fake_fetch)
+    monkeypatch.setattr(A, "_single_field", fake_field)
+    monkeypatch.setattr(A.bz2, "decompress", lambda raw: raw)
+    got = A._grid_index(None, None, run_day="20261006", cycle="06",
+                        station_ids=["ZUUU"], cache_dir=tmp_path, point_count=1310720)
+    assert got == {"ZUUU": 7}
+    assert (tmp_path / "1310720" / "clat.f64").stat().st_size == 1310720 * 8
+    assert not (tmp_path / "clat.f64").exists()
+    calls = len(fetched)
+    # The station map is cached: no fetch and no search the second time.
+    assert A._grid_index(None, None, run_day="20261007", cycle="00",
+                         station_ids=["ZUUU"], cache_dir=tmp_path,
+                         point_count=1310720) == {"ZUUU": 7}
+    assert len(fetched) == calls
+    with pytest.raises(ContractError, match="grid_point_count_invalid"):
+        A._grid_index(None, None, run_day="20261006", cycle="06",
+                      station_ids=["ZUUU"], cache_dir=tmp_path, point_count=999)
