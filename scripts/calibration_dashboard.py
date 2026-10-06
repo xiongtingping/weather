@@ -16174,7 +16174,7 @@ table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,v
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
 .sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:900px){.sd-grid{grid-template-columns:minmax(0,1fr)}}
-.sd-svg{width:100%;max-width:820px;height:auto;display:block}
+.sd-svg{width:100%;max-width:820px;height:auto;display:block}.sd-svg.sd-wide{max-width:none}
 table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
@@ -22429,16 +22429,51 @@ function sdTrend(day){
   return `<div class="sd-chips">${modes}</div>
     ${sdMeanTrend(day, model, market, t0, t1)}`;
 }
-function sdTimeTicks(t0, t1, x, yb, yt){
+function sdTimeTicks(t0, t1, x, yb, yt, fixedStep){
   let g = "";
-  const span = t1 - t0, step = span > 36 * 3600e3 ? 6 * 3600e3 : span > 12 * 3600e3 ? 3 * 3600e3 : 3600e3;
+  const span = t1 - t0, step = fixedStep || (span > 36 * 3600e3 ? 6 * 3600e3 : span > 12 * 3600e3 ? 3 * 3600e3 : 3600e3);
   for(let t = Math.ceil(t0 / step) * step; t <= t1; t += step){
     g += `<line x1="${x(t)}" x2="${x(t)}" y1="${yt}" y2="${yb}" stroke="var(--line)" opacity=".6"/><text x="${x(t)}" y="${yb + 14}" text-anchor="middle" class="trend-ax">${sdLocal(new Date(t).toISOString(), (t % (24 * 3600e3)) < step)}</text>`;
   }
   return g;
 }
+// User 2026-10-06「右边有空白，最近的时间太挤了」: the chart takes the day
+// panel's own width (the fixed 760 viewBox stopped at 820 px), and when the
+// window is longer than 12 hours its last 6 hours get 45% of the plot width,
+// hourly ticks, behind a faint divider -- the older stretch is compressed.
+const SD_RECENT_MS = 6 * 3600e3, SD_RECENT_SHARE = 0.45;
+function sdTrendWidth(){
+  const panel = [...document.querySelectorAll(".sd-day")].find(el => el.clientWidth > 0);
+  const avail = panel ? panel.clientWidth - 24 : (window.innerWidth || 800) - 80;
+  return Math.max(560, Math.min(1800, Math.round(avail)));
+}
+// A panel rendered while hidden measures nothing, so the chart's host is
+// watched and redrawn at its real width once it has one (and on resize).
+const SD_TREND_CALLS = new Map();
+let SD_TREND_SEQ = 0;
+const SD_TREND_RO = typeof ResizeObserver === "function" ? new ResizeObserver(entries => entries.forEach(en => {
+  const host = en.target, args = SD_TREND_CALLS.get(host.dataset.sdTrend);
+  const w = Math.max(560, Math.min(1800, Math.round(host.clientWidth)));
+  if(!args || host.clientWidth <= 0 || Math.abs(w - (+host.dataset.w || 0)) < 24) return;
+  host.dataset.w = String(w);
+  host.innerHTML = sdMeanTrendSvg(...args, w);
+})) : null;
 function sdMeanTrend(day, model, market, t0, t1){
-  const W = 760, H = 190, L = 40, R = 12, T = 10, B = 24;
+  const W = sdTrendWidth(), id = "t" + (++SD_TREND_SEQ);
+  const svg = sdMeanTrendSvg(day, model, market, t0, t1, W);
+  if(!svg) return "";
+  if(SD_TREND_RO){
+    for(const k of [...SD_TREND_CALLS.keys()]){
+      if(!document.querySelector(`[data-sd-trend="${k}"]`) && SD_TREND_CALLS.size > 40) SD_TREND_CALLS.delete(k);
+    }
+    SD_TREND_CALLS.set(id, [day, model, market, t0, t1]);
+    setTimeout(() => { const host = document.querySelector(`[data-sd-trend="${id}"]`); if(host) SD_TREND_RO.observe(host); }, 0);
+  }
+  return `<div class="sd-t">均值 ± 1σ 走势（蓝带＝模型当日口径，点色＝阶段；粉虚线＝市场均值；灰＝METAR 实测；红阶梯＝已报最高；紫虚线＝TAF TX）</div>
+    <div data-sd-trend="${id}" data-w="${W}">${svg}</div>`;
+}
+function sdMeanTrendSvg(day, model, market, t0, t1, W){
+  const H = 190, L = 40, R = 12, T = 10, B = 24;
   const vals = [];
   model.forEach(e => { vals.push(e.stats.mean_c - e.stats.sd_c, e.stats.mean_c + e.stats.sd_c); });
   market.forEach(e => vals.push(e.stats.mean_c));
@@ -22447,11 +22482,24 @@ function sdMeanTrend(day, model, market, t0, t1){
   if(tx != null) vals.push(tx);
   if(!vals.length) return "";
   const lo = Math.floor(Math.min(...vals)) - 0.5, hi = Math.ceil(Math.max(...vals)) + 0.5;
-  const x = t => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0);
+  const plotW = W - L - R;
+  const split = t1 - t0 > 2 * SD_RECENT_MS ? t1 - SD_RECENT_MS : null;
+  const x = split == null
+    ? t => L + plotW * (t - t0) / Math.max(1, t1 - t0)
+    : t => t <= split
+      ? L + plotW * (1 - SD_RECENT_SHARE) * (t - t0) / Math.max(1, split - t0)
+      : L + plotW * (1 - SD_RECENT_SHARE) + plotW * SD_RECENT_SHARE * (t - split) / SD_RECENT_MS;
   const y = c => T + (H - T - B) * (hi - c) / (hi - lo);
   let g = "";
   for(let c = Math.ceil(lo); c <= hi; c += (hi - lo > 8 ? 2 : 1)) g += `<line x1="${L}" x2="${W - R}" y1="${y(c)}" y2="${y(c)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(c) + 3}" text-anchor="end" class="trend-ax">${c}°</text>`;
-  g += sdTimeTicks(t0, t1, x, H - B, T);
+  if(split == null) g += sdTimeTicks(t0, t1, x, H - B, T);
+  else {
+    // Older stretch: the usual step, stopping an hour short of the divider so
+    // labels never collide; recent stretch: every hour.
+    g += sdTimeTicks(t0, split - 3600e3, x, H - B, T);
+    g += sdTimeTicks(split, t1, x, H - B, T, 3600e3);
+    g += `<line x1="${x(split).toFixed(1)}" x2="${x(split).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="2 3" opacity=".7"/><text x="${(x(split) + 3).toFixed(1)}" y="${T + 9}" font-size="9" fill="var(--muted)">最近 6 小时（放大）</text>`;
+  }
   if(model.length){
     const up = model.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c + e.stats.sd_c).toFixed(1)}`);
     const dn = model.slice().reverse().map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c - e.stats.sd_c).toFixed(1)}`);
@@ -22469,8 +22517,7 @@ function sdMeanTrend(day, model, market, t0, t1){
     g += `<path d="${d}H${x(t1).toFixed(1)}" fill="none" stroke="var(--red)" stroke-width="1.5"/>`;
   }
   if(tx != null) g += `<line x1="${L}" x2="${W - R}" y1="${y(tx)}" y2="${y(tx)}" stroke="var(--violet)" stroke-dasharray="6 3"/><text x="${W - R - 2}" y="${y(tx) - 3}" text-anchor="end" font-size="9" fill="var(--violet)">TAF TX ${tx}°C</text>`;
-  return `<div class="sd-t">均值 ± 1σ 走势（蓝带＝模型当日口径，点色＝阶段；粉虚线＝市场均值；灰＝METAR 实测；红阶梯＝已报最高；紫虚线＝TAF TX）</div>
-    <svg class="sd-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>`;
+  return `<svg class="sd-svg sd-wide" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>`;
 }
 
 // ---------------------------------------------------------------------------
