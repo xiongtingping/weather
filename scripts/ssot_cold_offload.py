@@ -1873,22 +1873,25 @@ def _store_pages(conn: sqlite3.Connection) -> dict[str, int]:
 def _ceiling(ssot_path: Path, pages: Mapping[str, int]) -> dict[str, Any]:
     """What the writers' capacity guard makes of the store right now.
 
-    ``resource_bounds.assert_target_db_capacity`` compares the file's size
-    with ``MAX_TARGET_DB_BYTES``, not its live pages, and this lane never
-    shrinks the file: a store whose file already sits on the ceiling stays
-    shut however much the lane frees (2026-09-27), and only a raise reopens
-    it.  Once open, writers reuse the free pages first and then grow the file
-    up to the ceiling, so the two together are what they can still write.
+    ``resource_bounds.assert_target_db_capacity`` compares the store's *live*
+    pages (file less freelist) with ``MAX_TARGET_DB_BYTES`` since 2026-10-06,
+    so the pages this lane frees reopen a store that sits on the ceiling.
+    Writers reuse the free pages first and then grow the file up to the
+    ceiling (``max_page_count``), so the two together are what they can
+    still write.
     """
 
     file_bytes = int(ssot_path.stat().st_size)
-    writers_open = file_bytes <= MAX_TARGET_DB_BYTES
+    free_page_bytes = int(pages["free_page_bytes"])
+    live_bytes = max(0, file_bytes - free_page_bytes)
+    writers_open = live_bytes <= MAX_TARGET_DB_BYTES
     growth = max(0, MAX_TARGET_DB_BYTES - int(pages["file_bytes_by_pages"]))
     return {
         "max_database_bytes": MAX_TARGET_DB_BYTES,
         "file_bytes": file_bytes,
+        "live_bytes": live_bytes,
         "writers_open": writers_open,
-        "writable_bytes": growth + int(pages["free_page_bytes"]) if writers_open else 0,
+        "writable_bytes": growth + free_page_bytes if writers_open else 0,
     }
 
 
@@ -2044,11 +2047,11 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
         return f"{int(value or 0) / GIB:.2f} GiB"
 
     def ceiling_words(ceiling: Mapping[str, Any]) -> str:
-        head = (f"  写者上限：文件 {gib(ceiling.get('file_bytes'))} / 上限 "
+        head = (f"  写者上限：在用 {gib(ceiling.get('live_bytes'))}（文件 {gib(ceiling.get('file_bytes'))}）/ 上限 "
                 f"{gib(ceiling.get('max_database_bytes'))}")
         if ceiling.get("writers_open"):
             return head + f" → 写者可开，还能写约 {gib(ceiling.get('writable_bytes'))}（先复用空闲页，再长到上限）"
-        return head + " → 写者拒开：闸量的是文件大小，搬行只腾空闲页、文件不缩，须先抬上限"
+        return head + " → 写者拒开：在用页超上限，须再搬或减写入"
 
     tier = receipt.get("cold_tier") or {}
     mode = "预演（只读，一行不动）" if receipt.get("mode") == "dry_run" else "执行"

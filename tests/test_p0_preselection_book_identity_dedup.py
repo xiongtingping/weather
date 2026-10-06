@@ -48,3 +48,29 @@ def test_lifecycle_still_projected():
     assert lifecycle["state"] == "HOLD"
     assert "snapshot_sha256" not in lifecycle
     assert "support_version_sha256" not in lifecycle
+
+
+def test_capacity_guard_counts_live_pages_not_the_file(tmp_path, monkeypatch):
+    """Freed pages reopen a store whose file sits on the ceiling."""
+
+    import sqlite3
+
+    import pytest
+
+    from bayes_basket_target import resource_bounds
+
+    path = tmp_path / "ssot.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE t(x BLOB)")
+    conn.executemany("INSERT INTO t VALUES(zeroblob(4000))", [()] * 200)
+    conn.commit()
+    size = path.stat().st_size
+    monkeypatch.setattr(resource_bounds, "MAX_TARGET_DB_BYTES", size - 4096)
+    with pytest.raises(resource_bounds.ResourceBoundError):
+        resource_bounds.assert_target_db_capacity(path)
+    conn.execute("DELETE FROM t")
+    conn.commit()
+    assert path.stat().st_size == size
+    resource_bounds.assert_target_db_capacity(path)
+    resource_bounds.assert_connection_target_capacity(conn)
+    conn.close()

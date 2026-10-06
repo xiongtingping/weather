@@ -362,8 +362,9 @@ def test_the_receipt_says_whether_the_writers_can_open(
     store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The writers' guard reads the file's size (2026-09-27): moving rows frees
-    pages but never shrinks a file that already sits on the ceiling."""
+    """The writers' guard reads the store's live pages (2026-10-06): moving
+    rows never shrinks the file, but the pages it frees reopen a store whose
+    file sits on the ceiling."""
 
     from bayes_basket_target import resource_bounds
 
@@ -374,10 +375,15 @@ def test_the_receipt_says_whether_the_writers_can_open(
     receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
     assert receipt["state"] == "applied" and receipt["moved_rows"] == 3
     assert receipt["ceiling_before"]["writers_open"] is False
-    assert receipt["ceiling_after"]["file_bytes"] == size
-    assert receipt["ceiling_after"]["writers_open"] is False
-    assert receipt["ceiling_after"]["writable_bytes"] == 0
+    after = receipt["ceiling_after"]
+    assert after["file_bytes"] == size
+    assert receipt["store_after"]["free_page_bytes"] > 0
+    assert after["live_bytes"] == size - receipt["store_after"]["free_page_bytes"]
+    assert after["writers_open"] is True
+    assert after["writable_bytes"] == receipt["store_after"]["free_page_bytes"]
     off._print_summary(receipt)
+    assert "写者可开" in capsys.readouterr().out
+    off._print_summary({**receipt, "ceiling_after": {**after, "writers_open": False}})
     assert "写者拒开" in capsys.readouterr().out
 
     monkeypatch.setattr(off, "MAX_TARGET_DB_BYTES", size + 10 * 4096)
