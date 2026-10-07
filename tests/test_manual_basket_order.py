@@ -158,3 +158,26 @@ def test_a_take_is_sized_to_whole_cents() -> None:
                          BOOK, now=NOW)
     leg = plan["legs"][0]["payload"]
     assert abs(round(leg["price"] * leg["size"], 2) - leg["price"] * leg["size"]) < 1e-9
+
+
+def test_a_no_leg_is_priced_on_the_mirrored_yes_bids_and_sent_on_the_no_token() -> None:
+    book = {**BOOK, "buckets": {
+        **BOOK["buckets"],
+        "24°C": {**BOOK["buckets"]["24°C"], "no_token": "n24",
+                 "no_asks": [(0.94, 30.0), (0.95, 500.0)], "no_best_bid": 0.93},
+    }}
+    plan = M.plan_orders(_request(legs=[
+        {"bucket": "24°C", "side": "YES", "shares": 50, "limit_price": 0.08},
+        {"bucket": "24°C", "side": "NO", "shares": 10, "limit_price": 0.94},
+    ]), book, now=NOW)
+    yes, no = (leg["payload"] for leg in plan["legs"])
+    assert yes["token_id"] == "t24" and yes["outcome_side"] == "YES"
+    assert no["token_id"] == "n24" and no["outcome_side"] == "NO" and no["side"] == "BUY"
+    assert no["order_type"] == "FOK" and no["fok_price_cap"] == 0.94
+    assert yes["idempotency_key"] != no["idempotency_key"]
+    with pytest.raises(M.ManualOrderError, match="盘口已变"):
+        M.plan_orders(_request(legs=[{"bucket": "24°C", "side": "NO", "shares": 100, "limit_price": 0.94}]),
+                      book, now=NOW)
+    with pytest.raises(M.ManualOrderError, match="NO token"):
+        M.plan_orders(_request(legs=[{"bucket": "25°C", "side": "NO", "shares": 10, "limit_price": 0.9}]),
+                      BOOK, now=NOW)

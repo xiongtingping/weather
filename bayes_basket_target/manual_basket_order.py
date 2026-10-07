@@ -12,7 +12,10 @@ What it is and is not:
   system's ledger, intents or reservations; each batch is appended to
   ``data/manual_basket_orders.jsonl`` as its own receipt, and the gateway
   keeps its idempotency rows as for every order.
-* BUY YES only.  No NO leg, no sell.
+* BUY only, YES or NO (user 2026-10-06「增加双边下单，增加no」: the
+  operator's own order, not an automatic lane).  A NO buy is matched
+  against YES bids, so its book is the YES bids mirrored: NO ask = 1 - YES
+  bid at that bid's size.  The NO token is the market registry's.  No sell.
 * The gateway's own gates hold unchanged: the pause flag, the read-only
   bit, the region block, collateral and the minimum lot.  The system's LIVE
   arming is the automatic lanes' switch and is not consulted.
@@ -47,7 +50,7 @@ RECEIPT_PATH = ROOT / "data" / "manual_basket_orders.jsonl"
 STRATEGY_ID = "operator_manual_board_v1"
 CONFIRM_WORD = "BUY"
 MODES = {"taker", "maker", "manual"}
-MAX_LEGS = 12
+MAX_LEGS = 24
 MAX_BOOK_AGE_SECONDS = 120.0
 #: A sanity ceiling on one batch, not a budget: the gateway still checks the
 #: wallet.  Raised by the environment when the operator wants more.
@@ -99,21 +102,52 @@ def latest_book(conn: sqlite3.Connection, station: str, day: str,
     ) or _latest_snapshot(conn, station, day)
     if book is None:
         raise ManualOrderError("没有这一天的官方 WS 盘口")
+    no_tokens = _no_tokens(conn, station, day)
     buckets = {}
     for b in book.get("buckets") or []:
         asks = sorted(
             (float(l["price"]), float(l["shares"])) for l in (b.get("ask_levels") or [])
             if float(l.get("price") or 0) > 0 and float(l.get("shares") or 0) > 0
         )
-        buckets[str(b.get("bucket"))] = {
+        bids = sorted(
+            ((float(l["price"]), float(l["shares"])) for l in (b.get("bid_levels") or [])
+             if float(l.get("price") or 0) > 0 and float(l.get("shares") or 0) > 0),
+            key=lambda x: -x[0])
+        asks = asks if b.get("ask_available", True) else []
+        bucket = str(b.get("bucket"))
+        buckets[bucket] = {
             "token_id": str(b.get("token_id") or ""),
-            "asks": asks if b.get("ask_available", True) else [],
+            "asks": asks,
             "best_bid": float(b.get("bid_price") or 0.0) or None,
             "tick": float(b.get("price_tick_size") or 0.001),
             "min_order_size": float(b.get("min_order_size") or 5.0),
+            # The NO side, mirrored off the YES book.
+            "no_token": no_tokens.get(bucket, ""),
+            "no_asks": [(round(1.0 - p, 6), q) for p, q in bids],
+            "no_best_bid": None if not asks else round(1.0 - asks[0][0], 6),
         }
     return {"observed_at": str(book.get("observed_at")), "buckets": buckets,
             "source": book.get("book_source") or "committed_snapshot"}
+
+
+def _no_tokens(conn: sqlite3.Connection, station: str, day: str) -> dict[str, str]:
+    """bucket -> NO token, off the market registry production trades from."""
+
+    from .certain_win_recycle import _registry_rows  # noqa: PLC0415
+
+    out = {}
+    try:
+        rows = _registry_rows(conn, None, station_id=station, event_date=day)
+    except Exception:  # noqa: BLE001 -- no NO token means no NO leg, said per leg
+        return out
+    for bucket, row in rows.items():
+        try:
+            raw = json.loads(row.get("registry_json") or "{}")
+        except (TypeError, ValueError):
+            raw = {}
+        if raw.get("no_token"):
+            out[str(bucket)] = str(raw["no_token"])
+    return out
 
 
 def fillable_within(asks: list[tuple[float, float]], shares: float, cap: float) -> float:
@@ -182,52 +216,60 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
     seen = set()
     for index, leg in enumerate(legs):
         bucket = str(leg.get("bucket") or "")
-        if bucket in seen:
-            raise ManualOrderError(f"{bucket} 重复")
-        seen.add(bucket)
+        side = str(leg.get("side") or "YES").upper()
+        if side not in {"YES", "NO"}:
+            raise ManualOrderError(f"{bucket} 方向不认识：{side}")
+        if (bucket, side) in seen:
+            raise ManualOrderError(f"{bucket} {side} 重复")
+        seen.add((bucket, side))
         row = (book.get("buckets") or {}).get(bucket)
         if not row or not row["token_id"]:
             raise ManualOrderError(f"{bucket} 不在这一天的梯子上")
+        token = row["token_id"] if side == "YES" else row.get("no_token") or ""
+        if not token:
+            raise ManualOrderError(f"{bucket} 没有登记 NO token，不能买 NO")
+        side_asks = row["asks"] if side == "YES" else row.get("no_asks") or []
+        label = bucket if side == "YES" else f"{bucket} NO"
         try:
             shares = math.floor(float(leg.get("shares")) * 100 + 1e-6) / 100
             price = float(leg.get("limit_price"))
         except (TypeError, ValueError) as exc:
-            raise ManualOrderError(f"{bucket} 份数或价格不是数") from exc
+            raise ManualOrderError(f"{label} 份数或价格不是数") from exc
         if not (0.0 < price < 1.0):
-            raise ManualOrderError(f"{bucket} 价格必须在 0 与 1 之间")
+            raise ManualOrderError(f"{label} 价格必须在 0 与 1 之间")
         price = _on_tick(price)
         if not (0.0 < price < 1.0):
-            raise ManualOrderError(f"{bucket} 价格按 tick 取整后不在 0 与 1 之间")
+            raise ManualOrderError(f"{label} 价格按 tick 取整后不在 0 与 1 之间")
         if shares < row["min_order_size"]:
-            raise ManualOrderError(f"{bucket} {shares} 份低于最小单 {row['min_order_size']} 份")
+            raise ManualOrderError(f"{label} {shares} 份低于最小单 {row['min_order_size']} 份")
         if mode == "taker":
             asked = shares
             shares = fok_shares(price, shares)
             if shares < row["min_order_size"]:
                 raise ManualOrderError(
-                    f"{bucket} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
-            available = fillable_within(row["asks"], shares, price)
+                    f"{label} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
+            available = fillable_within(side_asks, shares, price)
             if available + 1e-9 < shares:
                 raise ManualOrderError(
-                    f"{bucket} 盘口已变：上限价 {price} 内只剩 {available:.2f} 份，需要 {shares} 份")
+                    f"{label} 盘口已变：上限价 {price} 内只剩 {available:.2f} 份，需要 {shares} 份")
             order = {"order_type": "FOK", "post_only": False, "fok_price_cap": price}
         elif mode == "maker":
-            best_ask = row["asks"][0][0] if row["asks"] else None
+            best_ask = side_asks[0][0] if side_asks else None
             if best_ask is not None and price >= best_ask - 1e-12:
-                raise ManualOrderError(f"{bucket} 挂单价 {price} 不低于卖一 {best_ask}，会被当成吃单拒绝")
+                raise ManualOrderError(f"{label} 挂单价 {price} 不低于卖一 {best_ask}，会被当成吃单拒绝")
             order = {"order_type": "GTC", "post_only": True}
         else:
             order = {"order_type": "GTC", "post_only": False}
         total += shares * price
-        key = hashlib.sha256(f"{STRATEGY_ID}|{batch}|{station}|{day}|{bucket}".encode()).hexdigest()
+        key = hashlib.sha256(f"{STRATEGY_ID}|{batch}|{station}|{day}|{bucket}|{side}".encode()).hexdigest()
         payloads.append({
-            "bucket": bucket,
+            "bucket": bucket, "side": side,
             "payload": {
                 "strategy_id": STRATEGY_ID,
                 "order_intent_id": f"manual-{batch}-{index}",
                 "idempotency_key": key,
-                "token_id": row["token_id"],
-                "outcome_side": "YES",
+                "token_id": token,
+                "outcome_side": side,
                 "side": "BUY",
                 "price": price,
                 "size": shares,
@@ -271,14 +313,14 @@ def place_manual_basket(
     stopped = None
     for leg in plan["legs"]:
         if stopped is not None:
-            results.append({"bucket": leg["bucket"], "event_type": "NOT_SENT",
+            results.append({"bucket": leg["bucket"], "side": leg.get("side", "YES"), "event_type": "NOT_SENT",
                             "reason": f"前一腿 {stopped} 未干净成交，后面的腿不再发送"})
             continue
         response = dict(send(leg["payload"]))
         verdict = classify_submission_response(response, order_type=leg["payload"]["order_type"])
         fill = verdict.get("fill") or {}
         results.append({
-            "bucket": leg["bucket"], "event_type": verdict["event_type"],
+            "bucket": leg["bucket"], "side": leg.get("side", "YES"), "event_type": verdict["event_type"],
             "reason": verdict.get("reason") or "",
             "order_type": leg["payload"]["order_type"],
             "price": leg["payload"]["price"], "size": leg["payload"]["size"],
@@ -288,14 +330,14 @@ def place_manual_basket(
             "gateway_error": response.get("error"),
         })
         if verdict["event_type"] not in {"FILL", "POST_ACK"}:
-            stopped = leg["bucket"]
+            stopped = leg["bucket"] + ("" if leg.get("side", "YES") == "YES" else " NO")
     record = {
         "schema": "manual_basket_order_v1", "at_utc": now.isoformat().replace("+00:00", "Z"),
         "station_id": plan["station"], "event_date": plan["event_date"],
         "batch_id": plan["batch_id"], "mode": plan["mode"],
         "book_observed_at": plan["book_observed_at"], "book_source": book.get("source"),
         "notional_usdc": plan["notional_usdc"],
-        "legs": [leg["payload"] | {"bucket": leg["bucket"]} for leg in plan["legs"]],
+        "legs": [leg["payload"] | {"bucket": leg["bucket"], "side": leg.get("side", "YES")} for leg in plan["legs"]],
         "results": results,
     }
     _receipt(record)
@@ -396,28 +438,40 @@ def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
     from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
 
     ladder = list(book["buckets"].items())
-    # One point lookup per rung, each a venue round trip through the
-    # gateway: side by side, not one after another (11 rungs took 17 s).
-    with ThreadPoolExecutor(max_workers=min(12, max(1, len(ladder)))) as pool:
-        answers = list(pool.map(lambda item: dict(lookup(item[1]["token_id"]) or {}), ladder))
-    rows = []
-    for (bucket, row), answer in zip(ladder, answers):
-        token = row["token_id"]
+    # One point lookup per token -- the YES and the NO of each rung -- each a
+    # venue round trip through the gateway: side by side, not one after
+    # another (11 rungs took 17 s).
+    tokens = sorted({t for _b, row in ladder for t in (row["token_id"], row.get("no_token")) if t})
+    with ThreadPoolExecutor(max_workers=min(16, max(1, len(tokens)))) as pool:
+        answers = dict(zip(tokens, pool.map(lambda t: dict(lookup(t) or {}), tokens)))
+
+    def position(token: str) -> dict[str, Any]:
+        if not token:
+            return {"shares": 0.0, "source": None, "error": None, "avg": None, "api_size": None}
+        answer = answers.get(token) or {}
         from_api = api.get(token) or {}
         shares, source = (float(answer["shares"]), "gateway") if answer.get("ok") else (None, None)
         if shares is None and api_error is None and user:
             # The gateway's lookup failed but the data API answered: it lists
-            # every held asset, so a rung absent from it holds nothing.
+            # every held asset, so a token absent from it holds nothing.
             shares, source = float(from_api.get("size") or 0.0), "data_api"
-        avg = from_api.get("avg_price") or None
+        return {"shares": shares, "source": source,
+                "error": None if answer.get("ok") else answer.get("error") or "lookup_failed",
+                "avg": from_api.get("avg_price") or None, "api_size": from_api.get("size")}
+
+    rows = []
+    for bucket, row in ladder:
+        yes, no = position(row["token_id"]), position(row.get("no_token") or "")
+        cost = lambda x: None if x["shares"] is None or x["avg"] is None else round(x["shares"] * x["avg"], 4)  # noqa: E731
+        differs = lambda x: (x["shares"] is not None and x["api_size"] is not None  # noqa: E731
+                             and abs(x["shares"] - float(x["api_size"])) > 0.01)
         rows.append({
-            "bucket": bucket, "shares": shares, "shares_source": source,
-            "gateway_error": None if answer.get("ok") else answer.get("error") or "lookup_failed",
-            "avg_price": avg,
-            "cost_usdc": None if shares is None or avg is None else round(shares * avg, 4),
-            "data_api_size": from_api.get("size"),
-            "disagrees": (shares is not None and from_api.get("size") is not None
-                          and abs(shares - float(from_api["size"])) > 0.01),
+            "bucket": bucket, "shares": yes["shares"], "shares_source": yes["source"],
+            "gateway_error": yes["error"], "avg_price": yes["avg"], "cost_usdc": cost(yes),
+            "data_api_size": yes["api_size"], "disagrees": differs(yes),
+            "no_shares": no["shares"], "no_shares_source": no["source"],
+            "no_gateway_error": no["error"], "no_avg_price": no["avg"], "no_cost_usdc": cost(no),
+            "no_data_api_size": no["api_size"], "no_disagrees": differs(no),
         })
     return {"station_id": station, "event_date": day,
             "observed_at_utc": _now().isoformat().replace("+00:00", "Z"),

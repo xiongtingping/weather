@@ -16175,6 +16175,7 @@ table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted
 .sd-tag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;line-height:15px;
   font-weight:700;color:#fff;vertical-align:1px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 .sd-tag-o{background:transparent;border:1px solid;line-height:13px}
+table.sd-tab th.sd-noc,table.sd-tab td.sd-noc{background:color-mix(in srgb,var(--violet) 7%,transparent)}
 table.sd-tab th.sd-old,table.sd-tab td.sd-old{background:color-mix(in srgb,var(--muted) 8%,transparent)}
 table.sd-tab th.sd-add{color:var(--accent)}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
@@ -22719,6 +22720,27 @@ function sdLevels(day, b, st){
   if(manual > 0 && manual < 1) return [[manual, 1e12]];
   return (book.ask_levels || []).filter(l => l[0] > 0 && l[0] < 1 && l[1] > 0);
 }
+// The NO side (user 2026-10-06「增加双边下单，增加no」): a NO buy is matched
+// against YES bids, so NO asks are the YES bids mirrored (1 − p at that
+// bid's size) and the NO bid is 1 − the YES ask.
+function sdLevelsNo(day, b, st){
+  const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+  const manual = Number((st.pxNo || {})[b]);
+  const asks = (book.bid_levels || []).filter(l => l[0] > 0 && l[0] < 1 && l[1] > 0)
+    .map(([p, q]) => [Math.round((1 - p) * 1e6) / 1e6, q]).sort((x, y) => x[0] - y[0]);
+  if(st.mode === "manual") return manual > 0 && manual < 1 ? [[manual, 1e12]] : [];
+  if(st.mode === "maker"){
+    const tickAt = v => v < 0.04 || v > 0.96 ? 0.001 : 0.01;
+    const bid = book.best_ask != null ? 1 - book.best_ask : null, ask = asks.length ? asks[0][0] : null;
+    let p = bid != null ? bid + tickAt(bid) : ask != null ? ask - tickAt(ask) : null;
+    if(p != null && ask != null && p >= ask) p = ask - tickAt(ask);
+    if(manual > 0 && manual < 1) p = manual;
+    return p != null && p > 0 && p < 1 ? [[Math.round(p * 1e4) / 1e4, 1e12]] : [];
+  }
+  if(manual > 0 && manual < 1) return [[manual, 1e12]];
+  return asks;
+}
+function sdHeldNo(st, b){ const v = Number((st.heldNo || {})[b]); return isFinite(v) && v > 0 ? v : 0; }
 function sdHeld(st, b){ const v = Number((st.held || {})[b]); return isFinite(v) && v > 0 ? v : 0; }
 function sdHeldCost(st){ return Object.values(st.heldCost || {}).reduce((a, v) => a + (isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 0), 0); }
 // 已持有 (user 2026-10-05「如果临时增加桶呢」): shares already on the account
@@ -22730,9 +22752,24 @@ function sdSolve(day, st){
   const F = Number(st.floor) || 0;
   const chosen = (day.axis || []).map(r => r.bucket).filter(b => st.sel[b]);
   const sunk = sdHeldCost(st);
-  const res = {rate, F, legs:{}, warn:[], ok:true, sunk};
+  const res = {rate, F, legs:{}, noLegs:{}, warn:[], ok:true, sunk};
   let fixed = sunk;
   const auto = [];
+  // NO legs buy exactly the amount typed (no break-even top-up on that side).
+  (day.axis || []).forEach(r => {
+    const b = r.bucket, raw = (st.amtNo || {})[b];
+    const amt = raw === "" || raw == null ? null : Number(raw);
+    if(!(amt != null && isFinite(amt) && amt > 0)) return;
+    const lv = sdLevelsNo(day, b, st);
+    if(!lv.length){ res.warn.push(`${b} NO 没有可用价格`); res.ok = false; return; }
+    const sh = sdSharesFor(lv, amt, rate);
+    if(sh == null){ res.warn.push(`${b} NO：${amt} U 超过 NO 卖盘深度（NO 卖盘＝YES 买盘，全部只有 ${lv.reduce((a, l) => a + l[1], 0).toFixed(2)} 份）`); res.ok = false; return; }
+    res.noLegs[b] = {shares:sh, cost:amt, fixed:true, levels:lv};
+    fixed += amt;
+  });
+  // A NO share pays 1 on every rung but its own.
+  const noAll = (day.axis || []).reduce((a, r) => a + sdHeldNo(st, r.bucket) + (res.noLegs[r.bucket] ? res.noLegs[r.bucket].shares : 0), 0);
+  const noPay = b => noAll - sdHeldNo(st, b) - (res.noLegs[b] ? res.noLegs[b].shares : 0);
   chosen.forEach(b => {
     const lv = sdLevels(day, b, st);
     const raw = st.amt[b];
@@ -22750,7 +22787,7 @@ function sdSolve(day, st){
     } else if(st.goal === "breakeven") auto.push([b, lv]);
     else res.warn.push(`${b} 已勾选但没填金额，不买（方向敞口模式只按填写的金额买）`);
   });
-  if(!res.ok){ res.legs = {}; return res; }
+  if(!res.ok){ res.legs = {}; res.noLegs = {}; return res; }
   // Every share an empty leg buys raises the spend it has to cover by its
   // own price, so the legs can close only while their prices (fee in) add up
   // to less than 1.  Say so up front, with the sum -- the fixed-point walk
@@ -22763,7 +22800,7 @@ function sdSolve(day, st){
     res.warn.push(`无解：要算的 ${auto.map(([b]) => b).join("、")} 卖一（含费）合计 ${priceSum.toFixed(3)} ≥ 1——这几个桶每多买 1 份，总花费就多出不止 1 份能赔回的钱，一起保本不可能。去掉一个桶，或给其中一些填固定金额，或换「挂买一+1」/「手填价格」压低价格`);
     return res;
   }
-  const needOf = (T, b) => Math.max(0, T + F - sdHeld(st, b));
+  const needOf = (T, b) => Math.max(0, T + F - sdHeld(st, b) - noPay(b));
   let T = fixed, conv = false;
   for(let it = 0; it < 200; it++){
     let next = fixed, broke = false;
@@ -22795,11 +22832,18 @@ function sdSolve(day, st){
   }
   (day.axis || []).forEach(r => {
     const cost = Number((st.heldCost || {})[r.bucket]);
-    if(cost > 0 && !sdHeld(st, r.bucket)) res.warn.push(`${r.bucket}：「原持仓 已花」填了 ${cost} U 但原持仓 0 份——原持仓已花是旧仓位的成本，会整笔算进全篮花费；要追加买入请填在「追加金额 U」`);
+    if(cost > 0 && !sdHeld(st, r.bucket) && !sdHeldNo(st, r.bucket)) res.warn.push(`${r.bucket}：「原持仓 已花」填了 ${cost} U 但原持仓 0 份——原持仓已花是旧仓位的成本，会整笔算进全篮花费；要追加买入请填在「追加金额 U」`);
   });
-  res.newTotal = Object.values(res.legs).reduce((a, l) => a + l.cost, 0);
+  res.newTotal = Object.values(res.legs).reduce((a, l) => a + l.cost, 0)
+    + Object.values(res.noLegs).reduce((a, l) => a + l.cost, 0);
   res.total = sunk + res.newTotal;
-  res.payoff = b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) - res.total;
+  res.noPay = noPay;
+  res.payoff = b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) + noPay(b) - res.total;
+  Object.entries(res.noLegs).forEach(([b, l]) => {
+    l.avg = l.shares > 0 ? l.cost / l.shares : null;
+    const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+    if(book.min_order_size && l.shares < book.min_order_size) res.warn.push(`${b} NO：新买 ${l.shares.toFixed(2)} 份低于交易所最小单 ${book.min_order_size} 份`);
+  });
   Object.entries(res.legs).forEach(([b, l]) => {
     l.avg = l.shares > 0 ? l.cost / l.shares : null;
     const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
@@ -22813,26 +22857,38 @@ function sdSolve(day, st){
 function sdCalc(day){
   const key = day.event_date, st = sdCalcState(key);
   st.held = st.held || {}; st.heldCost = st.heldCost || {};
+  st.heldNo = st.heldNo || {}; st.amtNo = st.amtNo || {}; st.pxNo = st.pxNo || {};
   const head = (day.stages || {})[day.head_stage] || {};
   const p = head.vector || {}, q = (day.market || {}).vector || {};
   const book = {};
   ((day.market || {}).book || []).forEach(r => book[r.bucket] = r);
-  const anyHeld = (day.axis || []).some(r => sdHeld(st, r.bucket) > 0);
+  const anyHeld = (day.axis || []).some(r => sdHeld(st, r.bucket) > 0 || sdHeldNo(st, r.bucket) > 0
+    || Number(st.amtNo[r.bucket]) > 0);
   const res = Object.keys(st.sel).some(b => st.sel[b]) || anyHeld ? sdSolve(day, st) : null;
   const axis = (day.axis || []).slice().reverse();
   const rows = axis.map(r => {
-    const b = r.bucket, leg = res && res.legs[b], on = !!st.sel[b];
+    const b = r.bucket, leg = res && res.legs[b], noLeg = res && (res.noLegs || {})[b], on = !!st.sel[b];
     const profit = res && res.ok ? res.payoff(b) : null;
     const defPx = st.mode === "maker" ? (sdLevels(day, b, {...st, px:{}})[0] || [])[0] : book[b] && book[b].best_ask;
+    const noLv = sdLevelsNo(day, b, {...st, pxNo:{}});
+    const defPxNo = (noLv[0] || [])[0];
+    const noBid = book[b] && book[b].best_ask != null ? 1 - book[b].best_ask : null;
+    const noAsk = (sdLevelsNo(day, b, {...st, mode:"taker", pxNo:{}})[0] || [])[0];
+    const newCost = (leg ? leg.cost : 0) + (noLeg ? noLeg.cost : 0);
     return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
       <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
       <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
       <td class="sd-add"><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
       <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
-      <td class="mono">${leg ? sdN(leg.shares, 2) : "—"}</td><td class="mono">${leg && leg.avg != null ? sdN(leg.avg, 4) : "—"}</td>
-      <td class="mono">${leg ? `<b>${sdN(leg.cost, 2)}</b>${leg.fixed ? "" : leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>'}` : "—"}</td>
-      <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}" title="${profit == null ? "" : `命中 ${b}：持有 ${sdN(sdHeld(st, b) + (leg ? leg.shares : 0), 2)} 份 × 1 − 全篮花费 ${sdN(res.total, 2)}`}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td>
+      <td class="mono" title="${leg && leg.avg != null ? "含费均价 " + sdN(leg.avg, 4) : ""}">${leg ? sdN(leg.shares, 2) : "—"}${leg && !leg.fixed ? (leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>') : ""}</td>
+      <td class="mono sd-noc">${sdN(noBid, 3)} / ${sdN(noAsk, 3)}</td>
+      <td class="sd-add sd-noc"><input class="sd-in" type="number" step="0.5" min="0" placeholder="NO 金额" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amtNo[b] == null ? "" : st.amtNo[b])}"></td>
+      <td class="sd-noc"><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPxNo == null ? "—" : sdN(defPxNo, 3)}" data-sd-px-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.pxNo[b] == null ? "" : st.pxNo[b])}"></td>
+      <td class="mono sd-noc" title="${noLeg && noLeg.avg != null ? "含费均价 " + sdN(noLeg.avg, 4) : ""}">${noLeg ? sdN(noLeg.shares, 2) : "—"}</td>
+      <td class="mono">${newCost > 0 ? `<b>${sdN(newCost, 2)}</b>` : "—"}</td>
+      <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}" title="${profit == null ? "" : `命中 ${b}：YES ${sdN(sdHeld(st, b) + (leg ? leg.shares : 0), 2)} 份 + 其它桶的 NO ${sdN(res.noPay(b), 2)} 份，各赔 1 − 全篮花费 ${sdN(res.total, 2)}`}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td>
       <td class="sd-old"><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}"></td>
+      <td class="sd-old"><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldNo[b] == null ? "" : st.heldNo[b])}"></td>
       <td class="sd-old"><input class="sd-in" type="number" step="0.01" min="0" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td></tr>`;
   }).join("");
   let summary = `<div class="muted">${st.goal === "breakeven"
@@ -22841,13 +22897,15 @@ function sdCalc(day){
   if(res){
     if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
     else {
-      const covered = (day.axis || []).map(r => r.bucket).filter(b => sdHeld(st, b) + (res.legs[b] ? res.legs[b].shares : 0) > 0);
-      const buying = Object.keys(res.legs).filter(b => res.legs[b].shares > 0);
+      const covered = (day.axis || []).map(r => r.bucket).filter(b => res.payoff(b) > -res.total + 1e-9);
+      const buying = Object.keys(res.legs).filter(b => res.legs[b].shares > 0)
+        .concat(Object.keys(res.noLegs || {}).filter(b => res.noLegs[b].shares > 0).map(b => b + " NO"));
       const cover = covered.reduce((a, b) => a + (p[b] || 0), 0), coverQ = covered.reduce((a, b) => a + (q[b] || 0), 0);
       const profits = covered.map(b => res.payoff(b));
       const floorIn = profits.length ? Math.min(...profits) : null, best = profits.length ? Math.max(...profits) : null;
       const ev = vec => (day.axis || []).reduce((a, r) => a + (vec[r.bucket] || 0) * res.payoff(r.bucket), 0);
-      const small = buying.filter(b => { const m = (book[b] || {}).min_order_size; return m && res.legs[b].shares < m; });
+      const small = buying.filter(x => { const no = x.endsWith(" NO"), b = no ? x.slice(0, -3) : x;
+        const m = (book[b] || {}).min_order_size, l = no ? res.noLegs[b] : res.legs[b]; return m && l.shares < m; });
       const lossP = (day.axis || []).reduce((a, r) => a + (res.payoff(r.bucket) < -1e-9 ? (p[r.bucket] || 0) : 0), 0);
       summary = `<div class="sd-kpis">
         <div><span class="muted">总花费（已花 + 新花）</span><b>${sdN(res.total, 2)} U</b><span class="muted sd-sub">${sdN(res.sunk, 2)} + ${sdN(res.newTotal, 2)}</span></div>
@@ -22860,7 +22918,7 @@ function sdCalc(day){
       </div>${res.warn.length ? `<div class="down sd-sub">${res.warn.map(sdEsc).join("；")}</div>` : ""}
       ${small.length ? `<div class="down sd-sub">低于交易所最小单：${small.map(sdEsc).join("、")}——加大金额或去掉这些腿才能下单</div>` : ""}
       ${buying.length ? `<div class="sd-ctl"><button type="button" class="sd-btn sd-order" data-sd-order="${sdEsc(key)}"${SD.ordering || small.length ? " disabled" : ""}>✅ 确认下单（新买 ${buying.length} 腿 · ${sdN(res.newTotal, 2)} U）</button>
-        <span class="muted sd-sub">经本机网关逐腿买入 YES；${st.mode === "taker" ? "吃单＝限价 FOK（全成或零成，价格上限＝走到的最深一档）" : st.mode === "maker" ? "挂单＝post-only GTC，不保证成交" : "手填价＝GTC 限价"}；一腿失败即停发后面的腿；不记入系统账本</span></div>` : `<div class="muted sd-sub">已有持仓已经满足地板，不需要新买。</div>`}`;
+        <span class="muted sd-sub">经本机网关逐腿买入（YES / NO）；${st.mode === "taker" ? "吃单＝限价 FOK（全成或零成，价格上限＝走到的最深一档）" : st.mode === "maker" ? "挂单＝post-only GTC，不保证成交" : "手填价＝GTC 限价"}；一腿失败即停发后面的腿；不记入系统账本</span></div>` : `<div class="muted sd-sub">已有持仓已经满足地板，不需要新买。</div>`}`;
     }
   }
   const feeVal = st.fee == null ? (st.mode === "taker" ? SD.data.taker_fee_rate : 0) : st.fee;
@@ -22881,9 +22939,9 @@ function sdCalc(day){
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
-    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>买一/卖一</th><th class="sd-add">追加金额 U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>价格（空＝默认）</th><th>新买 份</th><th>均价（含费）</th><th>新花 U</th><th title="命中该桶时：（原持仓份数＋新买份数）×1 − 全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 份</th><th class="sd-old" title="原持仓当初花的钱（均价×份数），算进全篮花费；不是追加金额">原持仓 已花 U</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>YES 买一/卖一</th><th class="sd-add">追加 YES U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>YES 价格</th><th>新买 YES 份</th><th class="sd-noc">NO 买一/卖一</th><th class="sd-add sd-noc">追加 NO U</th><th class="sd-noc">NO 价格</th><th class="sd-noc">新买 NO 份</th><th>新花 U</th><th title="命中该桶时：这一桶的 YES 份数 + 其它所有桶的 NO 份数，每份赔 1，减去全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 YES 份</th><th class="sd-old" title="账户里这一桶原来就有的 NO 份数">原持仓 NO 份</th><th class="sd-old" title="原持仓（YES 和 NO 合计）当初花的钱，算进全篮花费；不是追加金额">原持仓 已花 U</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="sd-summary">${summary}${orderOut}</div>
-    <div class="muted sd-sub">命中桶 k 盈亏＝（已持有ₖ＋新买ₖ）×1 − （已花＋新花）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div>`;
+    <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div>`;
 }
 // 读取账户持仓: shares from the gateway's point lookup (the exchange's own
 // balance), cost from the data API's average price.
@@ -22891,7 +22949,7 @@ function sdLoadHoldings(key){
   if(SD.holding) return;
   SD.holding = true;
   const st = sdCalcState(key);
-  st.holdNote = "读取中…（约 10 秒）";
+  st.holdNote = "读取中…（YES 与 NO 两边，约 30 秒）";
   sdRefreshCalc(key, null);
   fetch(`http://127.0.0.1:8788/api/station-day-holdings?station=${encodeURIComponent(SD.station)}&event_date=${encodeURIComponent(key)}`)
     .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
@@ -22902,28 +22960,37 @@ function sdLoadHoldings(key){
         st.holdNote = `读取失败：交易所与公开接口都没有答复（${(j.rows || [])[0] ? (j.rows[0].gateway_error || "") : ""}${j.data_api_error ? " / " + j.data_api_error : ""}），持仓未知，已有输入保持不变；网络恢复后再点一次`;
         return;
       }
-      st.held = {}; st.heldCost = {};
+      st.held = {}; st.heldNo = {}; st.heldCost = {};
       const flags = [];
       (j.rows || []).forEach(r => {
-        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null) st.heldCost[r.bucket] = String(r.cost_usdc); else flags.push(`${r.bucket} 无均价，已花请手填`); }
+        let cost = 0, costKnown = true;
+        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null) cost += r.cost_usdc; else costKnown = false; }
+        if(r.no_shares > 0){ st.heldNo[r.bucket] = String(r.no_shares); if(r.no_cost_usdc != null) cost += r.no_cost_usdc; else costKnown = false; }
+        if(cost > 0) st.heldCost[r.bucket] = String(Math.round(cost * 1e4) / 1e4);
+        if(!costKnown) flags.push(`${r.bucket} 无均价，已花请手填`);
+        if(r.no_gateway_error && r.no_shares_source !== "data_api") flags.push(`${r.bucket} NO 份数读取失败（${r.no_gateway_error}）`);
         if(r.gateway_error && r.shares_source !== "data_api") flags.push(`${r.bucket} 份数读取失败（${r.gateway_error}）`);
         if(r.disagrees) flags.push(`${r.bucket} 交易所 ${r.shares} 份 ≠ 公开接口 ${r.data_api_size} 份`);
       });
-      const n = Object.keys(st.held).length;
+      const n = Object.keys(st.held).length + Object.keys(st.heldNo).length;
       const viaApi = (j.rows || []).some(r => r.shares_source === "data_api");
-      st.holdNote = `账户持仓 ${sdLocal(j.observed_at_utc, true)}${viaApi ? "（交易所查询超时，份数取自公开接口，可能滞后几分钟）" : ""}：${n ? Object.entries(st.held).map(([b, s]) => `${b} ${s} 份`).join("、") : "这一天没有持仓"}${j.data_api_error ? `（均价读取失败：${j.data_api_error}）` : ""}${flags.length ? "；" + flags.join("；") : ""}`;
+      st.holdNote = `账户持仓 ${sdLocal(j.observed_at_utc, true)}${viaApi ? "（交易所查询超时，份数取自公开接口，可能滞后几分钟）" : ""}：${n ? Object.entries(st.held).map(([b, s]) => `${b} YES ${s} 份`).concat(Object.entries(st.heldNo).map(([b, s]) => `${b} NO ${s} 份`)).join("、") : "这一天没有持仓"}${j.data_api_error ? `（均价读取失败：${j.data_api_error}）` : ""}${flags.length ? "；" + flags.join("；") : ""}`;
     })
     .catch(e => { st.holdNote = "读取失败：" + (/Failed to fetch|NetworkError|Load failed/.test(String(e)) ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e)); })
     .finally(() => { SD.holding = false; sdSave(); sdRefreshCalc(key, null); });
 }
 function sdOnInput(e){
   const t = e.target, ds = t.dataset;
-  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || ds.sdHeld || ds.sdHcost || ds.sdGoal || (ds.calc ? ds.sdMode : null);
+  const key = ds.sdSel || ds.sdAmt || ds.sdPx || ds.sdFee || ds.sdFloor || ds.sdHeld || ds.sdHcost || ds.sdGoal
+    || ds.sdAmtNo || ds.sdPxNo || ds.sdHeldNo || (ds.calc ? ds.sdMode : null);
   if(!key) return;
   const st = sdCalcState(key);
   if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
   else if(ds.sdAmt){ st.amt[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
   else if(ds.sdPx){ st.px[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
+  else if(ds.sdAmtNo){ st.amtNo = st.amtNo || {}; st.amtNo[ds.b] = t.value; }
+  else if(ds.sdPxNo){ st.pxNo = st.pxNo || {}; st.pxNo[ds.b] = t.value; }
+  else if(ds.sdHeldNo){ st.heldNo = st.heldNo || {}; st.heldNo[ds.b] = t.value; }
   else if(ds.sdHeld){ st.held = st.held || {}; st.held[ds.b] = t.value; }
   else if(ds.sdHcost){ st.heldCost = st.heldCost || {}; st.heldCost[ds.b] = t.value; }
   else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
@@ -22980,14 +23047,16 @@ function sdRefreshCalc(key, input){
 function sdOrderLegs(day, st){
   const res = sdSolve(day, st);
   if(!res.ok) return {res, legs: []};
-  const legs = Object.entries(res.legs).filter(([, leg]) => leg.shares > 0).map(([bucket, leg]) => {
+  const both = Object.entries(res.legs).map(([b, l]) => [b, l, "YES"])
+    .concat(Object.entries(res.noLegs || {}).map(([b, l]) => [b, l, "NO"]));
+  const legs = both.filter(([, leg]) => leg.shares > 0).map(([bucket, leg, side]) => {
     let left = leg.shares, cap = leg.levels[0][0];
     for(const [p, q] of leg.levels){ cap = p; left -= q; if(left <= 1e-9) break; }
     // A take is a market order at the venue: its USDC must be whole cents
     // (manual_basket_order.fok_shares), so the dialog shows the size sent.
     let n = Math.floor(leg.shares * 100 + 1e-6);
     if(st.mode === "taker"){ const p = Math.round(cap * 1000); while(n > 0 && (p * n) % 1000) n -= 1; }
-    return {bucket, shares: n / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
+    return {bucket, side, shares: n / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
   });
   return {res, legs};
 }
@@ -22997,7 +23066,7 @@ function sdOrderResult(key){
   if(r.busy) return `<div class="sd-ev">下单中…（${sdEsc(r.batch_id)}）${location.protocol === "file:" ? "<b>本地文件打开的看板：请在 Mac 弹出的系统确认框里点「下单」</b>（2 分钟内；用 http://127.0.0.1:8791/cal_dashboard.html 打开则不弹）" : ""}</div>`;
   if(r.error) return `<div class="sd-ev down">下单未发出：${sdEsc(r.error)}</div>`;
   const word = {FILL:"成交", POST_ACK:"已挂单", EXPIRED:"FOK 未成交（已作废）", SUBMIT_REFUSED:"网关拒绝", UNKNOWN_POST:"结果未知（需对账）", NOT_SENT:"未发送"};
-  const rows = (r.results || []).map(x => `<tr><td>${sdEsc(x.bucket)}</td><td class="${x.event_type === "FILL" || x.event_type === "POST_ACK" ? "up" : "down"}">${sdEsc(word[x.event_type] || x.event_type)}</td>
+  const rows = (r.results || []).map(x => `<tr><td>${sdEsc(x.bucket)} <b>${sdEsc(x.side || "YES")}</b></td><td class="${x.event_type === "FILL" || x.event_type === "POST_ACK" ? "up" : "down"}">${sdEsc(word[x.event_type] || x.event_type)}</td>
     <td class="mono">${sdEsc(x.order_type || "")}</td><td class="mono">${x.price == null ? "—" : sdN(x.price, 3)}</td><td class="mono">${x.size == null ? "—" : sdN(x.size, 2)}</td>
     <td class="mono">${x.shares_matched ? sdN(x.shares_matched, 2) : "—"}</td><td class="mono">${x.usdc_paid ? sdN(x.usdc_paid, 2) : "—"}</td>
     <td class="sd-raw">${sdEsc(x.reason || x.gateway_error || "")}${x.exchange_order_id ? " · " + sdEsc(x.exchange_order_id.slice(0, 12)) + "…" : ""}</td></tr>`).join("");
@@ -23023,8 +23092,8 @@ function sdPlaceOrderNow(key){
   const {res, legs} = sdOrderLegs(day, st);
   if(!res.ok || !legs.length){ alert("计算器没有可下的篮子：" + ((res.warn || []).join("；") || "已有持仓已满足地板，不需要新买")); return; }
   const modeWord = {taker:"吃卖一：限价 FOK，全成或零成", maker:"挂买一+1：post-only GTC，不保证成交", manual:"手填价格：GTC 限价"}[st.mode];
-  const lines = legs.map(l => `  ${l.bucket}：${l.shares} 份 × 限价 ${l.limit_price}（约 ${l.cost.toFixed(2)} U）`).join("\n");
-  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key} 的 YES？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n新花合计约 ${res.newTotal.toFixed(2)} U${res.sunk > 0 ? `（已花 ${res.sunk.toFixed(2)} U，全篮 ${res.total.toFixed(2)} U）` : ""}\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
+  const lines = legs.map(l => `  ${l.bucket} ${l.side}：${l.shares} 份 × 限价 ${l.limit_price}（约 ${l.cost.toFixed(2)} U）`).join("\n");
+  const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key}（${[...new Set(legs.map(l => l.side))].join(" + ")}）？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n新花合计约 ${res.newTotal.toFixed(2)} U${res.sunk > 0 ? `（已花 ${res.sunk.toFixed(2)} U，全篮 ${res.total.toFixed(2)} U）` : ""}\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
   if(!ok) return;
   const batch = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2, 10));
   SD.orders = SD.orders || {};
@@ -23033,7 +23102,7 @@ function sdPlaceOrderNow(key){
   sdRefreshCalc(key, null);
   fetch("http://127.0.0.1:8788/api/manual-basket-order", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({confirm: "BUY", station: SD.station, event_date: key, batch_id: batch, mode: st.mode,
-      legs: legs.map(l => ({bucket: l.bucket, shares: l.shares, limit_price: l.limit_price}))})})
+      legs: legs.map(l => ({bucket: l.bucket, side: l.side, shares: l.shares, limit_price: l.limit_price}))})})
     .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
     .then(j => { SD.orders[key] = j; })
     .catch(e => { SD.orders[key] = {error: /Failed to fetch|NetworkError|Load failed/.test(String(e))
