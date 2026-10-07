@@ -292,12 +292,47 @@ def _receipt(record: Mapping[str, Any]) -> None:
         pass
 
 
+COLLATERAL_STALE = "clob_collateral_evidence_unavailable"
+#: How long a refused leg waits for the gateway's balance reading to be fresh.
+COLLATERAL_WAIT_SECONDS = 45.0
+COLLATERAL_FRESH_MS = 30_000
+
+
+def _gateway_collateral_fresh() -> bool:
+    """The gateway's own health: is its balance reading recent?"""
+
+    from urllib.request import ProxyHandler, build_opener  # noqa: PLC0415
+
+    try:
+        with build_opener(ProxyHandler({})).open("http://127.0.0.1:8765/health", timeout=5) as resp:
+            health = json.loads(resp.read().decode("utf-8") or "{}")
+    except Exception:  # noqa: BLE001 -- unreachable reads as not fresh
+        return False
+    age = health.get("collateral_cache_age_ms")
+    return bool(health.get("collateral_cache_ready")) and age is not None and float(age) < COLLATERAL_FRESH_MS
+
+
+def _wait_collateral(fresh: Callable[[], bool] = _gateway_collateral_fresh,
+                     sleep: Callable[[float], Any] | None = None) -> bool:
+    import time  # noqa: PLC0415
+
+    sleep = sleep or time.sleep
+    waited = 0.0
+    while waited <= COLLATERAL_WAIT_SECONDS:
+        if fresh():
+            return True
+        sleep(3.0)
+        waited += 3.0
+    return False
+
+
 def place_manual_basket(
     request: Mapping[str, Any],
     *,
     db: Path = DEFAULT_DB,
     transport: Transport | None = None,
     now: datetime | None = None,
+    wait_collateral: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     now = now or _now()
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
@@ -309,6 +344,7 @@ def place_manual_basket(
         conn.close()
     plan = plan_orders(request, book, now=now)
     send = transport or _gateway
+    wait_collateral = wait_collateral or _wait_collateral
     results = []
     stopped = None
     for leg in plan["legs"]:
@@ -317,6 +353,14 @@ def place_manual_basket(
                             "reason": f"前一腿 {stopped} 未干净成交，后面的腿不再发送"})
             continue
         response = dict(send(leg["payload"]))
+        if (str(response.get("error") or "") == COLLATERAL_STALE
+                and response.get("exchange_post_started") is not True):
+            # The gateway refused before signing: its background balance read
+            # was older than its bound (2026-10-07 05:51Z).  Nothing left the
+            # machine and no idempotency row exists, so the same payload may
+            # go again once the reading is fresh.
+            if wait_collateral():
+                response = dict(send(leg["payload"]))
         verdict = classify_submission_response(response, order_type=leg["payload"]["order_type"])
         fill = verdict.get("fill") or {}
         results.append({
@@ -442,7 +486,10 @@ def station_day_holdings(station: str, day: str, *, db: Path = DEFAULT_DB,
     # venue round trip through the gateway: side by side, not one after
     # another (11 rungs took 17 s).
     tokens = sorted({t for _b, row in ladder for t in (row["token_id"], row.get("no_token")) if t})
-    with ThreadPoolExecutor(max_workers=min(16, max(1, len(tokens)))) as pool:
+    # Four at a time: these lookups share the gateway's balance limiter with
+    # its own background balance read, and 22 at once kept that read stale
+    # long enough to refuse an order (clob_collateral_evidence_unavailable).
+    with ThreadPoolExecutor(max_workers=min(4, max(1, len(tokens)))) as pool:
         answers = dict(zip(tokens, pool.map(lambda t: dict(lookup(t) or {}), tokens)))
 
     def position(token: str) -> dict[str, Any]:

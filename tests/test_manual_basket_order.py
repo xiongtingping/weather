@@ -181,3 +181,25 @@ def test_a_no_leg_is_priced_on_the_mirrored_yes_bids_and_sent_on_the_no_token() 
     with pytest.raises(M.ManualOrderError, match="NO token"):
         M.plan_orders(_request(legs=[{"bucket": "25°C", "side": "NO", "shares": 10, "limit_price": 0.9}]),
                       BOOK, now=NOW)
+
+
+def test_a_stale_balance_refusal_waits_for_a_fresh_reading_and_resends_once(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(M, "latest_book", lambda *a: BOOK)
+    monkeypatch.setattr(M, "RECEIPT_PATH", tmp_path / "r.jsonl")
+    monkeypatch.setattr(M.sqlite3, "connect", lambda *a, **k: _Conn())
+    calls = []
+
+    def gateway(payload):
+        calls.append(payload["idempotency_key"])
+        if len(calls) == 1:
+            return {"ok": False, "error": M.COLLATERAL_STALE, "exchange_post_started": False}
+        return {"ok": True, "orderID": "x1", "status": "matched", "size_matched": payload["size"]}
+
+    out = M.place_manual_basket(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.08}]),
+                                transport=gateway, now=NOW, wait_collateral=lambda: True)
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert out["results"][0]["event_type"] == "FILL"
+    calls.clear()
+    out = M.place_manual_basket(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.08}]),
+                                transport=gateway, now=NOW, wait_collateral=lambda: False)
+    assert len(calls) == 1 and out["results"][0]["event_type"] == "SUBMIT_REFUSED"
