@@ -16172,6 +16172,9 @@ color-scheme:dark}
 table.sd-tab td.sd-key{font-size:16px;font-weight:750;background:color-mix(in srgb,var(--accent) 9%,transparent)}
 table.sd-tab th.sd-key{color:var(--text);font-weight:700;background:color-mix(in srgb,var(--accent) 9%,transparent)}
 table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted)}
+.sd-tag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;line-height:15px;
+  font-weight:700;color:#fff;vertical-align:1px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.sd-tag-o{background:transparent;border:1px solid;line-height:13px}
 table.sd-tab th.sd-old,table.sd-tab td.sd-old{background:color-mix(in srgb,var(--muted) 8%,transparent)}
 table.sd-tab th.sd-add{color:var(--accent)}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
@@ -22425,13 +22428,25 @@ function sdBucketTable(day, S){
   const rows = (day.axis || []).slice().reverse().map(r => {
     const p = (head.vector || {})[r.bucket], q = mk[r.bucket], b = book[r.bucket] || {};
     const diff = p != null && q != null ? p - q : null;
-    return `<tr><td>${sdEsc(r.bucket)}</td>${S.map(s => `<td class="mono">${sdPc((s.vector || {})[r.bucket])}</td>`).join("")}
+    // Each series' mode and mean bucket marked in its own column (user
+    // 2026-10-07「突出均值桶和众数桶」): the mode cell bold on the series'
+    // tint, the mean bucket outlined; tags say which is which.
+    const cell = s => {
+      const st = s.stats || {}, isMode = st.mode === r.bucket, isMean = st.mean_bucket === r.bucket;
+      const c = SD_COL[s.key];
+      const style = (isMode ? `background:color-mix(in srgb,${c} 22%,transparent);font-weight:750;font-size:14.5px;` : "")
+        + (isMean ? `box-shadow:inset 0 0 0 2px ${c};` : "");
+      const tags = (isMode ? `<span class="sd-tag" style="background:${c}">众</span>` : "") + (isMean ? `<span class="sd-tag sd-tag-o" style="color:${c};border-color:${c}">均</span>` : "");
+      return `<td class="mono"${style ? ` style="${style}"` : ""}>${sdPc((s.vector || {})[r.bucket])}${tags}</td>`;
+    };
+    const anyKey = S.some(s => (s.stats || {}).mode === r.bucket || (s.stats || {}).mean_bucket === r.bucket);
+    return `<tr><td${anyKey ? ' style="font-weight:750"' : ""}>${sdEsc(r.bucket)}</td>${S.map(cell).join("")}
       <td class="mono ${diff == null ? "" : diff > 0.03 ? "up" : diff < -0.03 ? "down" : ""}">${diff == null ? "—" : sdSg(100 * diff, 1)}</td>
       <td class="mono">${sdN(b.best_bid, 3)}</td><td class="mono">${sdN(b.best_ask, 3)}</td></tr>`;
   }).join("");
   return `<div class="sd-t">逐档读数（当日口径 ${sdEsc(day.head_stage)} 对市场，点）</div><div class="scroll"><table class="sd-tab"><thead><tr><th>桶</th>${
     S.map(s => `<th style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</th>`).join("")}<th>模型−市场</th><th>买一</th><th>卖一</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted sd-sub">盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
+    <div class="muted sd-sub"><span class="sd-tag" style="background:var(--muted)">众</span>＝该序列众数桶（底色）· <span class="sd-tag sd-tag-o" style="color:var(--muted);border-color:var(--muted)">均</span>＝均值所在桶（描边）· 盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
       (day.market || {}).reference_state !== "complete" ? ` · <span class="down">市场向量不完整：${sdEsc((day.market || {}).reference_reason)}</span>` : ""} · 中价和 ${sdN((day.market || {}).mid_sum, 3)}</div>`;
 }
 
