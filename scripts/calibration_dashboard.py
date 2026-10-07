@@ -16167,6 +16167,11 @@ color-scheme:dark}
 .sd-daytab.on{background:var(--card);color:var(--text);border-color:var(--accent);border-bottom:1px solid var(--card)}
 .sd-daytab.off{cursor:default;opacity:.55;font-weight:400}
 .sd-day[hidden]{display:none}
+/* The three numbers a reader comes for (user 2026-10-07「表格突出这三列的数字」):
+   larger, heavier, on a tinted band; the mean wears its series colour. */
+table.sd-tab td.sd-key{font-size:16px;font-weight:750;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+table.sd-tab th.sd-key{color:var(--text);font-weight:700;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted)}
 table.sd-tab th.sd-old,table.sd-tab td.sd-old{background:color-mix(in srgb,var(--muted) 8%,transparent)}
 table.sd-tab th.sd-add{color:var(--accent)}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
@@ -22334,9 +22339,9 @@ function sdStatsTable(day, S){
     const dm = mk && s.key !== "MKT" && st.mean_c != null ? st.mean_c - mk.mean_c : null;
     return `<tr><td><b style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</b></td>
       <td class="mono">${sdLocal(s.at, true)}</td>
-      <td class="mono"><b>${sdN(st.mean_c, 2)}°C</b></td>
-      <td><b>${sdEsc(st.mean_bucket || "—")}</b></td>
-      <td><b>${sdEsc(st.mode || "—")}</b> <span class="muted">${sdPc(st.mode_p)}</span></td>
+      <td class="mono sd-key" style="color:${SD_COL[s.key]}">${sdN(st.mean_c, 2)}°C</td>
+      <td class="sd-key">${sdEsc(st.mean_bucket || "—")}</td>
+      <td class="sd-key">${sdEsc(st.mode || "—")} <span class="sd-keyp">${sdPc(st.mode_p)}</span></td>
       <td class="mono">${sdN(st.var_c2, 3)}</td><td class="mono">${sdN(st.sd_c, 2)}°C</td>
       <td class="mono">${sdN(st.skew, 2)}</td>
       <td class="mono">${sdN(st.entropy_bits, 2)} / ${sdN(st.effective_rungs, 1)}</td>
@@ -22346,7 +22351,7 @@ function sdStatsTable(day, S){
   }).join("");
   const modes = S.filter(s => s.key !== "MKT").map(s => s.stats && s.stats.mode);
   const agree = mk ? modes.map((m, i) => `${S[i].label}${m === mk.mode ? "＝" : "≠"}市场`).join(" · ") : "市场盘口不可读";
-  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>序列</th><th title="这一行概率是什么时候算出来的；预测的对象是卡片标题的日期">产出时刻（当地）</th><th>均值</th><th>均值桶</th><th>众数桶</th>
+  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>序列</th><th title="这一行概率是什么时候算出来的；预测的对象是卡片标题的日期">产出时刻（当地）</th><th class="sd-key">均值</th><th class="sd-key">均值桶</th><th class="sd-key">众数桶</th>
     <th title="Σp(t−均值)²，t 取桶中点（开口桶取向内半档）">方差 °C²</th><th>标准差</th><th title="三阶矩/σ³；正＝暖尾长">偏度</th>
     <th title="熵（bit）/ 有效档数 2^熵：多少档在分概率">离散度 熵/有效档</th><th>80% 区间</th><th>众数±1 档</th><th>均值−市场</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
