@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2025-01-01&end_date=2025-01-02&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+    "label": "ZUUU_jma_jaxa_himawari_2025-01-01_2025-01-02",
+    "fetch_started_at": "2026-10-07T10:17:15.078464+00:00",
+    "received_at": "2026-10-07T10:17:18.538581+00:00",
+    "sha256": "d742fba60631880813b6ad03dbbbbed2bbae9caf75616c6c3e79f08d125e1c50",
+    "bytes": 1431,
+    "source_class": "aggregator_republisher",
+    "historical_received_at_known": false
+  },
+  {
+    "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=51.5053&longitude=0.0553&timezone=Europe%2FLondon&start_date=2025-01-01&end_date=2025-01-02&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+    "label": "EGLC_dwd_sis_europe_africa_v4_2025-01-01_2025-01-02",
+    "fetch_started_at": "2026-10-07T10:17:18.543031+00:00",
+    "received_at": "2026-10-07T10:17:24.460983+00:00",
+    "sha256": "17e8d7c60b478ea1571b1711f37e383bb8947fcb67cccfc692f3f240f926746d",
+    "bytes": 1442,
+    "source_class": "aggregator_republisher",
+    "historical_received_at_known": false
+  }
+]

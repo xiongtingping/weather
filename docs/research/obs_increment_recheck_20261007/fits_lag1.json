@@ -1,0 +1,874 @@
+{
+  "fitted": {
+    "nll_radiation_2026-09-13": {
+      "beta": [
+        0.24406607301333835,
+        0.0
+      ],
+      "train_rows": 3124,
+      "train_days": 12,
+      "training_cutoff_utc": "2026-09-12T22:33:32.833000+00:00"
+    },
+    "nll_radiation_2026-09-14": {
+      "beta": [
+        0.2501751103038853,
+        0.0
+      ],
+      "train_rows": 3426,
+      "train_days": 13,
+      "training_cutoff_utc": "2026-09-13T22:59:51.432006+00:00"
+    },
+    "nll_radiation_2026-09-15": {
+      "beta": [
+        0.27327306319328104,
+        0.0
+      ],
+      "train_rows": 3741,
+      "train_days": 14,
+      "training_cutoff_utc": "2026-09-14T22:48:07.380004+00:00"
+    },
+    "nll_radiation_2026-09-16": {
+      "beta": [
+        0.24340829377550655,
+        0.0
+      ],
+      "train_rows": 4050,
+      "train_days": 15,
+      "training_cutoff_utc": "2026-09-15T22:35:24.354000+00:00"
+    },
+    "nll_radiation_2026-09-17": {
+      "beta": [
+        0.2378626651597813,
+        0.0
+      ],
+      "train_rows": 4353,
+      "train_days": 16,
+      "training_cutoff_utc": "2026-09-16T23:39:36.564000+00:00"
+    },
+    "nll_radiation_2026-09-18": {
+      "beta": [
+        0.1994198659369395,
+        0.0
+      ],
+      "train_rows": 4641,
+      "train_days": 17,
+      "training_cutoff_utc": "2026-09-17T22:35:50.047005+00:00"
+    },
+    "nll_radiation_2026-09-19": {
+      "beta": [
+        0.19863737096464631,
+        0.0
+      ],
+      "train_rows": 4948,
+      "train_days": 18,
+      "training_cutoff_utc": "2026-09-18T22:36:39.025000+00:00"
+    },
+    "nll_radiation_2026-09-20": {
+      "beta": [
+        0.1898155810987918,
+        0.0
+      ],
+      "train_rows": 5269,
+      "train_days": 19,
+      "training_cutoff_utc": "2026-09-20T03:16:32.649000+00:00"
+    },
+    "nll_radiation_2026-09-21": {
+      "beta": [
+        0.1888454632626542,
+        0.0
+      ],
+      "train_rows": 5498,
+      "train_days": 20,
+      "training_cutoff_utc": "2026-09-20T22:33:13.490000+00:00"
+    },
+    "nll_radiation_2026-09-22": {
+      "beta": [
+        0.18812367701968893,
+        0.0
+      ],
+      "train_rows": 5779,
+      "train_days": 21,
+      "training_cutoff_utc": "2026-09-21T23:26:08.311000+00:00"
+    },
+    "nll_radiation_2026-09-23": {
+      "beta": [
+        0.19106057605676174,
+        0.0
+      ],
+      "train_rows": 6069,
+      "train_days": 22,
+      "training_cutoff_utc": "2026-09-22T23:33:24.885000+00:00"
+    },
+    "nll_radiation_2026-09-24": {
+      "beta": [
+        0.1750939887831805,
+        0.0
+      ],
+      "train_rows": 6338,
+      "train_days": 23,
+      "training_cutoff_utc": "2026-09-23T22:33:05.572000+00:00"
+    },
+    "nll_radiation_2026-09-25": {
+      "beta": [
+        0.14477926866653548,
+        0.0
+      ],
+      "train_rows": 6650,
+      "train_days": 24,
+      "training_cutoff_utc": "2026-09-24T22:32:46.426000+00:00"
+    },
+    "nll_radiation_2026-09-26": {
+      "beta": [
+        0.13513935351477402,
+        0.0
+      ],
+      "train_rows": 6905,
+      "train_days": 25,
+      "training_cutoff_utc": "2026-09-25T22:44:13.771004+00:00"
+    },
+    "nll_radiation_2026-09-27": {
+      "beta": [
+        0.13640703348120267,
+        0.0
+      ],
+      "train_rows": 7142,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-26T21:33:30.640000+00:00"
+    },
+    "nll_radiation_2026-09-28": {
+      "beta": [
+        0.14098627418381182,
+        0.0
+      ],
+      "train_rows": 7240,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-27T21:32:42.628000+00:00"
+    },
+    "nll_radiation_2026-09-29": {
+      "beta": [
+        0.1569868932007531,
+        0.0
+      ],
+      "train_rows": 7605,
+      "train_days": 28,
+      "training_cutoff_utc": "2026-09-28T21:35:06.565000+00:00"
+    },
+    "nll_radiation_2026-09-30": {
+      "beta": [
+        0.15358769968017252,
+        0.0
+      ],
+      "train_rows": 7908,
+      "train_days": 29,
+      "training_cutoff_utc": "2026-09-29T21:35:52.106000+00:00"
+    },
+    "nll_radiation_2026-10-01": {
+      "beta": [
+        0.14678688328025608,
+        0.0
+      ],
+      "train_rows": 8221,
+      "train_days": 30,
+      "training_cutoff_utc": "2026-09-30T21:34:44.708000+00:00"
+    },
+    "nll_radiation_2026-10-02": {
+      "beta": [
+        0.15206464739396644,
+        0.0
+      ],
+      "train_rows": 8531,
+      "train_days": 31,
+      "training_cutoff_utc": "2026-10-01T21:36:04.345000+00:00"
+    },
+    "nll_radiation_2026-10-03": {
+      "beta": [
+        0.1626821394976103,
+        0.0
+      ],
+      "train_rows": 8918,
+      "train_days": 32,
+      "training_cutoff_utc": "2026-10-02T23:35:56.279000+00:00"
+    },
+    "nll_radiation_2026-10-04": {
+      "beta": [
+        0.14831813328022583,
+        0.0
+      ],
+      "train_rows": 9148,
+      "train_days": 33,
+      "training_cutoff_utc": "2026-10-03T21:34:35.876000+00:00"
+    },
+    "nll_radiation_2026-10-05": {
+      "beta": [
+        0.15847889061290737,
+        0.0
+      ],
+      "train_rows": 9477,
+      "train_days": 34,
+      "training_cutoff_utc": "2026-10-04T21:34:17.220000+00:00"
+    },
+    "nll_radiation_2026-10-06": {
+      "beta": [
+        0.1674517083596739,
+        0.0
+      ],
+      "train_rows": 9790,
+      "train_days": 35,
+      "training_cutoff_utc": "2026-10-05T21:35:10.384000+00:00"
+    },
+    "brier_radiation_2026-09-13": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 3124,
+      "train_days": 12,
+      "training_cutoff_utc": "2026-09-12T22:33:32.833000+00:00"
+    },
+    "brier_radiation_2026-09-14": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 3426,
+      "train_days": 13,
+      "training_cutoff_utc": "2026-09-13T22:59:51.432006+00:00"
+    },
+    "brier_radiation_2026-09-15": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 3741,
+      "train_days": 14,
+      "training_cutoff_utc": "2026-09-14T22:48:07.380004+00:00"
+    },
+    "brier_radiation_2026-09-16": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 4050,
+      "train_days": 15,
+      "training_cutoff_utc": "2026-09-15T22:35:24.354000+00:00"
+    },
+    "brier_radiation_2026-09-17": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 4353,
+      "train_days": 16,
+      "training_cutoff_utc": "2026-09-16T23:39:36.564000+00:00"
+    },
+    "brier_radiation_2026-09-18": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 4641,
+      "train_days": 17,
+      "training_cutoff_utc": "2026-09-17T22:35:50.047005+00:00"
+    },
+    "brier_radiation_2026-09-19": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 4948,
+      "train_days": 18,
+      "training_cutoff_utc": "2026-09-18T22:36:39.025000+00:00"
+    },
+    "brier_radiation_2026-09-20": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 5269,
+      "train_days": 19,
+      "training_cutoff_utc": "2026-09-20T03:16:32.649000+00:00"
+    },
+    "brier_radiation_2026-09-21": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 5498,
+      "train_days": 20,
+      "training_cutoff_utc": "2026-09-20T22:33:13.490000+00:00"
+    },
+    "brier_radiation_2026-09-22": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 5779,
+      "train_days": 21,
+      "training_cutoff_utc": "2026-09-21T23:26:08.311000+00:00"
+    },
+    "brier_radiation_2026-09-23": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 6069,
+      "train_days": 22,
+      "training_cutoff_utc": "2026-09-22T23:33:24.885000+00:00"
+    },
+    "brier_radiation_2026-09-24": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 6338,
+      "train_days": 23,
+      "training_cutoff_utc": "2026-09-23T22:33:05.572000+00:00"
+    },
+    "brier_radiation_2026-09-25": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 6650,
+      "train_days": 24,
+      "training_cutoff_utc": "2026-09-24T22:32:46.426000+00:00"
+    },
+    "brier_radiation_2026-09-26": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 6905,
+      "train_days": 25,
+      "training_cutoff_utc": "2026-09-25T22:44:13.771004+00:00"
+    },
+    "brier_radiation_2026-09-27": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 7142,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-26T21:33:30.640000+00:00"
+    },
+    "brier_radiation_2026-09-28": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 7240,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-27T21:32:42.628000+00:00"
+    },
+    "brier_radiation_2026-09-29": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 7605,
+      "train_days": 28,
+      "training_cutoff_utc": "2026-09-28T21:35:06.565000+00:00"
+    },
+    "brier_radiation_2026-09-30": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 7908,
+      "train_days": 29,
+      "training_cutoff_utc": "2026-09-29T21:35:52.106000+00:00"
+    },
+    "brier_radiation_2026-10-01": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 8221,
+      "train_days": 30,
+      "training_cutoff_utc": "2026-09-30T21:34:44.708000+00:00"
+    },
+    "brier_radiation_2026-10-02": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 8531,
+      "train_days": 31,
+      "training_cutoff_utc": "2026-10-01T21:36:04.345000+00:00"
+    },
+    "brier_radiation_2026-10-03": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 8918,
+      "train_days": 32,
+      "training_cutoff_utc": "2026-10-02T23:35:56.279000+00:00"
+    },
+    "brier_radiation_2026-10-04": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 9148,
+      "train_days": 33,
+      "training_cutoff_utc": "2026-10-03T21:34:35.876000+00:00"
+    },
+    "brier_radiation_2026-10-05": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 9477,
+      "train_days": 34,
+      "training_cutoff_utc": "2026-10-04T21:34:17.220000+00:00"
+    },
+    "brier_radiation_2026-10-06": {
+      "beta": [
+        0.0,
+        0.0
+      ],
+      "train_rows": 9790,
+      "train_days": 35,
+      "training_cutoff_utc": "2026-10-05T21:35:10.384000+00:00"
+    },
+    "nll_rain_2026-09-13": {
+      "beta": [
+        0.0,
+        0.7675890814955075
+      ],
+      "train_rows": 3124,
+      "train_days": 12,
+      "training_cutoff_utc": "2026-09-12T22:33:32.833000+00:00"
+    },
+    "nll_rain_2026-09-14": {
+      "beta": [
+        0.0,
+        0.7395253757648148
+      ],
+      "train_rows": 3426,
+      "train_days": 13,
+      "training_cutoff_utc": "2026-09-13T22:59:51.432006+00:00"
+    },
+    "nll_rain_2026-09-15": {
+      "beta": [
+        0.0,
+        0.6509998544042922
+      ],
+      "train_rows": 3741,
+      "train_days": 14,
+      "training_cutoff_utc": "2026-09-14T22:48:07.380004+00:00"
+    },
+    "nll_rain_2026-09-16": {
+      "beta": [
+        0.0,
+        0.6420978594080868
+      ],
+      "train_rows": 4050,
+      "train_days": 15,
+      "training_cutoff_utc": "2026-09-15T22:35:24.354000+00:00"
+    },
+    "nll_rain_2026-09-17": {
+      "beta": [
+        0.0,
+        0.585112507007636
+      ],
+      "train_rows": 4353,
+      "train_days": 16,
+      "training_cutoff_utc": "2026-09-16T23:39:36.564000+00:00"
+    },
+    "nll_rain_2026-09-18": {
+      "beta": [
+        0.0,
+        0.5637171161439218
+      ],
+      "train_rows": 4641,
+      "train_days": 17,
+      "training_cutoff_utc": "2026-09-17T22:35:50.047005+00:00"
+    },
+    "nll_rain_2026-09-19": {
+      "beta": [
+        0.0,
+        0.37209484330218645
+      ],
+      "train_rows": 4948,
+      "train_days": 18,
+      "training_cutoff_utc": "2026-09-18T22:36:39.025000+00:00"
+    },
+    "nll_rain_2026-09-20": {
+      "beta": [
+        0.0,
+        0.44200210014285085
+      ],
+      "train_rows": 5269,
+      "train_days": 19,
+      "training_cutoff_utc": "2026-09-20T03:16:32.649000+00:00"
+    },
+    "nll_rain_2026-09-21": {
+      "beta": [
+        0.0,
+        0.43660421145388484
+      ],
+      "train_rows": 5498,
+      "train_days": 20,
+      "training_cutoff_utc": "2026-09-20T22:33:13.490000+00:00"
+    },
+    "nll_rain_2026-09-22": {
+      "beta": [
+        0.0,
+        0.4644983358584265
+      ],
+      "train_rows": 5779,
+      "train_days": 21,
+      "training_cutoff_utc": "2026-09-21T23:26:08.311000+00:00"
+    },
+    "nll_rain_2026-09-23": {
+      "beta": [
+        0.0,
+        0.40759728000092516
+      ],
+      "train_rows": 6069,
+      "train_days": 22,
+      "training_cutoff_utc": "2026-09-22T23:33:24.885000+00:00"
+    },
+    "nll_rain_2026-09-24": {
+      "beta": [
+        0.0,
+        0.49833192077918353
+      ],
+      "train_rows": 6338,
+      "train_days": 23,
+      "training_cutoff_utc": "2026-09-23T22:33:05.572000+00:00"
+    },
+    "nll_rain_2026-09-25": {
+      "beta": [
+        0.0,
+        0.49474499591092774
+      ],
+      "train_rows": 6650,
+      "train_days": 24,
+      "training_cutoff_utc": "2026-09-24T22:32:46.426000+00:00"
+    },
+    "nll_rain_2026-09-26": {
+      "beta": [
+        0.0,
+        0.48986096632527915
+      ],
+      "train_rows": 6905,
+      "train_days": 25,
+      "training_cutoff_utc": "2026-09-25T22:44:13.771004+00:00"
+    },
+    "nll_rain_2026-09-27": {
+      "beta": [
+        0.0,
+        0.4948926799304724
+      ],
+      "train_rows": 7142,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-26T21:33:30.640000+00:00"
+    },
+    "nll_rain_2026-09-28": {
+      "beta": [
+        0.0,
+        0.4932516421981253
+      ],
+      "train_rows": 7240,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-27T21:32:42.628000+00:00"
+    },
+    "nll_rain_2026-09-29": {
+      "beta": [
+        0.0,
+        0.48322726032469737
+      ],
+      "train_rows": 7605,
+      "train_days": 28,
+      "training_cutoff_utc": "2026-09-28T21:35:06.565000+00:00"
+    },
+    "nll_rain_2026-09-30": {
+      "beta": [
+        0.0,
+        0.4808999716037623
+      ],
+      "train_rows": 7908,
+      "train_days": 29,
+      "training_cutoff_utc": "2026-09-29T21:35:52.106000+00:00"
+    },
+    "nll_rain_2026-10-01": {
+      "beta": [
+        0.0,
+        0.4937991472540504
+      ],
+      "train_rows": 8221,
+      "train_days": 30,
+      "training_cutoff_utc": "2026-09-30T21:34:44.708000+00:00"
+    },
+    "nll_rain_2026-10-02": {
+      "beta": [
+        0.0,
+        0.4860683219290882
+      ],
+      "train_rows": 8531,
+      "train_days": 31,
+      "training_cutoff_utc": "2026-10-01T21:36:04.345000+00:00"
+    },
+    "nll_rain_2026-10-03": {
+      "beta": [
+        0.0,
+        0.46444289147616297
+      ],
+      "train_rows": 8918,
+      "train_days": 32,
+      "training_cutoff_utc": "2026-10-02T23:35:56.279000+00:00"
+    },
+    "nll_rain_2026-10-04": {
+      "beta": [
+        0.0,
+        0.5023224200965254
+      ],
+      "train_rows": 9148,
+      "train_days": 33,
+      "training_cutoff_utc": "2026-10-03T21:34:35.876000+00:00"
+    },
+    "nll_rain_2026-10-05": {
+      "beta": [
+        0.0,
+        0.4987349709596182
+      ],
+      "train_rows": 9477,
+      "train_days": 34,
+      "training_cutoff_utc": "2026-10-04T21:34:17.220000+00:00"
+    },
+    "nll_rain_2026-10-06": {
+      "beta": [
+        0.0,
+        0.46902571381673797
+      ],
+      "train_rows": 9790,
+      "train_days": 35,
+      "training_cutoff_utc": "2026-10-05T21:35:10.384000+00:00"
+    },
+    "nll_joint_2026-09-13": {
+      "beta": [
+        0.24046297436385203,
+        0.747501709221605
+      ],
+      "train_rows": 3124,
+      "train_days": 12,
+      "training_cutoff_utc": "2026-09-12T22:33:32.833000+00:00"
+    },
+    "nll_joint_2026-09-14": {
+      "beta": [
+        0.24903698282870615,
+        0.7264278021870071
+      ],
+      "train_rows": 3426,
+      "train_days": 13,
+      "training_cutoff_utc": "2026-09-13T22:59:51.432006+00:00"
+    },
+    "nll_joint_2026-09-15": {
+      "beta": [
+        0.2696468291514442,
+        0.6347365024932402
+      ],
+      "train_rows": 3741,
+      "train_days": 14,
+      "training_cutoff_utc": "2026-09-14T22:48:07.380004+00:00"
+    },
+    "nll_joint_2026-09-16": {
+      "beta": [
+        0.23907915938379665,
+        0.6263382659688663
+      ],
+      "train_rows": 4050,
+      "train_days": 15,
+      "training_cutoff_utc": "2026-09-15T22:35:24.354000+00:00"
+    },
+    "nll_joint_2026-09-17": {
+      "beta": [
+        0.23378455508608892,
+        0.5748213607959193
+      ],
+      "train_rows": 4353,
+      "train_days": 16,
+      "training_cutoff_utc": "2026-09-16T23:39:36.564000+00:00"
+    },
+    "nll_joint_2026-09-18": {
+      "beta": [
+        0.19631635530838407,
+        0.5564191783595721
+      ],
+      "train_rows": 4641,
+      "train_days": 17,
+      "training_cutoff_utc": "2026-09-17T22:35:50.047005+00:00"
+    },
+    "nll_joint_2026-09-19": {
+      "beta": [
+        0.19284754592562273,
+        0.35627510124345
+      ],
+      "train_rows": 4948,
+      "train_days": 18,
+      "training_cutoff_utc": "2026-09-18T22:36:39.025000+00:00"
+    },
+    "nll_joint_2026-09-20": {
+      "beta": [
+        0.18394071058648764,
+        0.4285713816269235
+      ],
+      "train_rows": 5269,
+      "train_days": 19,
+      "training_cutoff_utc": "2026-09-20T03:16:32.649000+00:00"
+    },
+    "nll_joint_2026-09-21": {
+      "beta": [
+        0.1832210489992515,
+        0.42344810735169247
+      ],
+      "train_rows": 5498,
+      "train_days": 20,
+      "training_cutoff_utc": "2026-09-20T22:33:13.490000+00:00"
+    },
+    "nll_joint_2026-09-22": {
+      "beta": [
+        0.18156316938232098,
+        0.45113418813731015
+      ],
+      "train_rows": 5779,
+      "train_days": 21,
+      "training_cutoff_utc": "2026-09-21T23:26:08.311000+00:00"
+    },
+    "nll_joint_2026-09-23": {
+      "beta": [
+        0.18241399335729747,
+        0.38796831862473075
+      ],
+      "train_rows": 6069,
+      "train_days": 22,
+      "training_cutoff_utc": "2026-09-22T23:33:24.885000+00:00"
+    },
+    "nll_joint_2026-09-24": {
+      "beta": [
+        0.16327267123464453,
+        0.4801745170382366
+      ],
+      "train_rows": 6338,
+      "train_days": 23,
+      "training_cutoff_utc": "2026-09-23T22:33:05.572000+00:00"
+    },
+    "nll_joint_2026-09-25": {
+      "beta": [
+        0.13281828302567902,
+        0.48021209989666924
+      ],
+      "train_rows": 6650,
+      "train_days": 24,
+      "training_cutoff_utc": "2026-09-24T22:32:46.426000+00:00"
+    },
+    "nll_joint_2026-09-26": {
+      "beta": [
+        0.12337479639730588,
+        0.4765149774765894
+      ],
+      "train_rows": 6905,
+      "train_days": 25,
+      "training_cutoff_utc": "2026-09-25T22:44:13.771004+00:00"
+    },
+    "nll_joint_2026-09-27": {
+      "beta": [
+        0.12452921728597559,
+        0.4814573734071185
+      ],
+      "train_rows": 7142,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-26T21:33:30.640000+00:00"
+    },
+    "nll_joint_2026-09-28": {
+      "beta": [
+        0.1292668839250665,
+        0.4793986354122569
+      ],
+      "train_rows": 7240,
+      "train_days": 26,
+      "training_cutoff_utc": "2026-09-27T21:32:42.628000+00:00"
+    },
+    "nll_joint_2026-09-29": {
+      "beta": [
+        0.14622225287391938,
+        0.4682001049869075
+      ],
+      "train_rows": 7605,
+      "train_days": 28,
+      "training_cutoff_utc": "2026-09-28T21:35:06.565000+00:00"
+    },
+    "nll_joint_2026-09-30": {
+      "beta": [
+        0.14299176938397518,
+        0.4663498381523474
+      ],
+      "train_rows": 7908,
+      "train_days": 29,
+      "training_cutoff_utc": "2026-09-29T21:35:52.106000+00:00"
+    },
+    "nll_joint_2026-10-01": {
+      "beta": [
+        0.136505052910381,
+        0.48068362363831096
+      ],
+      "train_rows": 8221,
+      "train_days": 30,
+      "training_cutoff_utc": "2026-09-30T21:34:44.708000+00:00"
+    },
+    "nll_joint_2026-10-02": {
+      "beta": [
+        0.14234551567470088,
+        0.472738070369033
+      ],
+      "train_rows": 8531,
+      "train_days": 31,
+      "training_cutoff_utc": "2026-10-01T21:36:04.345000+00:00"
+    },
+    "nll_joint_2026-10-03": {
+      "beta": [
+        0.15285116163216875,
+        0.4499202490888207
+      ],
+      "train_rows": 8918,
+      "train_days": 32,
+      "training_cutoff_utc": "2026-10-02T23:35:56.279000+00:00"
+    },
+    "nll_joint_2026-10-04": {
+      "beta": [
+        0.1406419217735632,
+        0.4928585338990405
+      ],
+      "train_rows": 9148,
+      "train_days": 33,
+      "training_cutoff_utc": "2026-10-03T21:34:35.876000+00:00"
+    },
+    "nll_joint_2026-10-05": {
+      "beta": [
+        0.1512349824284032,
+        0.48875690012714335
+      ],
+      "train_rows": 9477,
+      "train_days": 34,
+      "training_cutoff_utc": "2026-10-04T21:34:17.220000+00:00"
+    },
+    "nll_joint_2026-10-06": {
+      "beta": [
+        0.16042748834808304,
+        0.4581444136141193
+      ],
+      "train_rows": 9790,
+      "train_days": 35,
+      "training_cutoff_utc": "2026-10-05T21:35:10.384000+00:00"
+    }
+  },
+  "excluded": {
+    "no_verified_source": 6021,
+    "missing_or_dark_shortwave": 3335,
+    "truth_outside_support": 36
+  },
+  "usable_rows": 10226
+}

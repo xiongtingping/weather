@@ -1,0 +1,2138 @@
+{
+  "counts": {
+    "old_rows": 19618,
+    "old_floor_resurrects_excluded": 19618,
+    "audited_rows": 19618,
+    "latest_valid_report_unavailable": 1214,
+    "any_prefix_report_unavailable": 3799,
+    "feature_diff_received_prefix": 863,
+    "high_diff_received_prefix": 408
+  },
+  "versions": {
+    "p1_joint_likelihood_v12": {
+      "rows": 263,
+      "days": 2,
+      "first": "2026-09-18",
+      "last": "2026-09-19",
+      "station_days": 45
+    },
+    "p1_joint_likelihood_v13": {
+      "rows": 56,
+      "days": 1,
+      "first": "2026-09-19",
+      "last": "2026-09-19",
+      "station_days": 29
+    },
+    "p1_joint_likelihood_v14": {
+      "rows": 27,
+      "days": 1,
+      "first": "2026-09-19",
+      "last": "2026-09-19",
+      "station_days": 27
+    },
+    "p1_joint_likelihood_v15": {
+      "rows": 111,
+      "days": 1,
+      "first": "2026-09-19",
+      "last": "2026-09-19",
+      "station_days": 41
+    },
+    "p1_joint_likelihood_v16": {
+      "rows": 70,
+      "days": 1,
+      "first": "2026-09-19",
+      "last": "2026-09-19",
+      "station_days": 28
+    },
+    "p1_joint_likelihood_v17": {
+      "rows": 1048,
+      "days": 3,
+      "first": "2026-09-19",
+      "last": "2026-09-21",
+      "station_days": 112
+    },
+    "p1_joint_likelihood_v18": {
+      "rows": 414,
+      "days": 2,
+      "first": "2026-09-21",
+      "last": "2026-09-22",
+      "station_days": 56
+    },
+    "p1_joint_likelihood_v19": {
+      "rows": 404,
+      "days": 2,
+      "first": "2026-09-22",
+      "last": "2026-09-23",
+      "station_days": 62
+    },
+    "p1_joint_likelihood_v20": {
+      "rows": 305,
+      "days": 1,
+      "first": "2026-09-23",
+      "last": "2026-09-23",
+      "station_days": 45
+    },
+    "p1_joint_likelihood_v21": {
+      "rows": 18,
+      "days": 1,
+      "first": "2026-09-23",
+      "last": "2026-09-23",
+      "station_days": 18
+    },
+    "p1_joint_likelihood_v22": {
+      "rows": 176,
+      "days": 2,
+      "first": "2026-09-23",
+      "last": "2026-09-24",
+      "station_days": 40
+    },
+    "p1_joint_likelihood_v23": {
+      "rows": 376,
+      "days": 2,
+      "first": "2026-09-23",
+      "last": "2026-09-24",
+      "station_days": 50
+    },
+    "p1_joint_likelihood_v24": {
+      "rows": 159,
+      "days": 2,
+      "first": "2026-09-24",
+      "last": "2026-09-25",
+      "station_days": 43
+    },
+    "p1_joint_likelihood_v25": {
+      "rows": 31,
+      "days": 2,
+      "first": "2026-09-24",
+      "last": "2026-09-25",
+      "station_days": 22
+    },
+    "p1_joint_likelihood_v26": {
+      "rows": 113,
+      "days": 2,
+      "first": "2026-09-24",
+      "last": "2026-09-25",
+      "station_days": 31
+    },
+    "p1_joint_likelihood_v27": {
+      "rows": 2,
+      "days": 1,
+      "first": "2026-09-25",
+      "last": "2026-09-25",
+      "station_days": 2
+    },
+    "p1_joint_likelihood_v29": {
+      "rows": 54,
+      "days": 1,
+      "first": "2026-09-25",
+      "last": "2026-09-25",
+      "station_days": 28
+    },
+    "p1_joint_likelihood_v30": {
+      "rows": 1166,
+      "days": 3,
+      "first": "2026-09-25",
+      "last": "2026-09-27",
+      "station_days": 118
+    },
+    "p1_joint_likelihood_v31": {
+      "rows": 2306,
+      "days": 5,
+      "first": "2026-09-27",
+      "last": "2026-10-01",
+      "station_days": 195
+    },
+    "p1_joint_likelihood_v32": {
+      "rows": 166,
+      "days": 2,
+      "first": "2026-10-01",
+      "last": "2026-10-02",
+      "station_days": 33
+    },
+    "p1_joint_likelihood_v33": {
+      "rows": 21,
+      "days": 2,
+      "first": "2026-10-01",
+      "last": "2026-10-02",
+      "station_days": 21
+    },
+    "p1_joint_likelihood_v34": {
+      "rows": 40,
+      "days": 1,
+      "first": "2026-10-02",
+      "last": "2026-10-02",
+      "station_days": 21
+    },
+    "p1_joint_likelihood_v35": {
+      "rows": 226,
+      "days": 1,
+      "first": "2026-10-02",
+      "last": "2026-10-02",
+      "station_days": 40
+    },
+    "p1_joint_likelihood_v36": {
+      "rows": 79,
+      "days": 1,
+      "first": "2026-10-02",
+      "last": "2026-10-02",
+      "station_days": 29
+    },
+    "p1_joint_likelihood_v37": {
+      "rows": 1127,
+      "days": 3,
+      "first": "2026-10-02",
+      "last": "2026-10-04",
+      "station_days": 117
+    },
+    "p1_joint_likelihood_v38": {
+      "rows": 1471,
+      "days": 3,
+      "first": "2026-10-04",
+      "last": "2026-10-06",
+      "station_days": 127
+    },
+    "p1_metar_trajectory_target_v10": {
+      "rows": 2336,
+      "days": 5,
+      "first": "2026-09-14",
+      "last": "2026-09-18",
+      "station_days": 209
+    },
+    "p1_metar_trajectory_target_v11": {
+      "rows": 255,
+      "days": 1,
+      "first": "2026-09-18",
+      "last": "2026-09-18",
+      "station_days": 44
+    },
+    "p1_metar_trajectory_target_v5": {
+      "rows": 625,
+      "days": 2,
+      "first": "2026-09-01",
+      "last": "2026-09-02",
+      "station_days": 72
+    },
+    "p1_metar_trajectory_target_v6": {
+      "rows": 2004,
+      "days": 5,
+      "first": "2026-09-02",
+      "last": "2026-09-06",
+      "station_days": 206
+    },
+    "p1_metar_trajectory_target_v7": {
+      "rows": 188,
+      "days": 1,
+      "first": "2026-09-06",
+      "last": "2026-09-06",
+      "station_days": 40
+    },
+    "p1_metar_trajectory_target_v8": {
+      "rows": 364,
+      "days": 2,
+      "first": "2026-09-06",
+      "last": "2026-09-07",
+      "station_days": 59
+    },
+    "p1_metar_trajectory_target_v9": {
+      "rows": 3617,
+      "days": 8,
+      "first": "2026-09-07",
+      "last": "2026-09-14",
+      "station_days": 343
+    }
+  },
+  "floor_delta_log_mean": -0.004001080834872752,
+  "artifact_sha": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+  "artifact_fitted_at": "2026-10-06T23:11:33Z",
+  "case": [
+    {
+      "hour": 7,
+      "at": "2026-10-06T23:07:51.217000Z",
+      "envelope_id": "p1_e729171a53e3bbdd13bd9d15f9874567",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0009975155146949174,
+        "21°C": 0.0009975155146949174,
+        "22°C": 0.0009975155146949174,
+        "23°C": 0.0009975155146949174,
+        "24°C": 0.0113839261053715,
+        "25°C": 0.08112735961922156,
+        "26°C": 0.3010875069149055,
+        "27°C": 0.40792392612747486,
+        "28°C": 0.18767412109077394,
+        "29°C or higher": 0.006813098083473019
+      },
+      "running_high": "20",
+      "receipt": {
+        "artifact_sha256": "be071722d9066a148ec6857e11bae1b1fe5d296aeb1d35a274963e37ac51df87",
+        "clock_hours": 17.6873,
+        "features": {
+          "cloud_cover_fraction": 0.0,
+          "curve_shape_realized": 0.0004,
+          "dewpoint_depression_c": 1.0,
+          "drawdown_from_high_c": 3.0,
+          "momentum_c_per_hour": 0.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": null,
+          "regional_live_gap_c": null,
+          "remaining_hours": 16.8691,
+          "root_bias_recent_c": -2.2175,
+          "warming_so_far_c": 0.0,
+          "wind_speed_mps": 1.0
+        },
+        "fleet_mean_features": [
+          "regional_headroom_c",
+          "regional_live_gap_c"
+        ],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "20°C": 0.651099,
+          "21°C": 0.079292,
+          "22°C": 0.173672,
+          "23°C": 0.329166,
+          "24°C": 0.539864,
+          "25°C": 0.766194,
+          "26°C": 0.940973,
+          "27°C": 1.0,
+          "28°C": 0.919617,
+          "29°C or higher": 0.327521
+        },
+        "log_update_by_bucket": {
+          "20°C": 0.0,
+          "21°C": -2.105529,
+          "22°C": -1.321496,
+          "23°C": -0.682101,
+          "24°C": -0.187345,
+          "25°C": 0.162773,
+          "26°C": 0.368252,
+          "27°C": 0.429093,
+          "28°C": 0.345296,
+          "29°C or higher": -0.68711
+        },
+        "regional_system_id": "NONE",
+        "rise_probability": 0.9992926482401108,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 6.654051,
+          "root_rise_mass": 0.999001
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": 0,
+          "21°C": 1,
+          "22°C": 2,
+          "23°C": 3,
+          "24°C": 4,
+          "25°C": 5,
+          "26°C": 6,
+          "27°C": 7,
+          "28°C": 8,
+          "29°C or higher": 9
+        },
+        "running_high_bucket": "20°C",
+        "running_high_c": 20.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-05",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_3efc27653242eecb0a4acec40ccaa19d",
+        "lane": "awc",
+        "valid": "2026-10-06T23:00:00.000Z",
+        "temp": 17.0,
+        "cloud": 0.0,
+        "rain": false,
+        "raw": "METAR ZUUU 062300Z 24001MPS 6000 NSC 17/16 Q1022 NOSIG",
+        "seen": "2026-10-06T23:06:27.429Z",
+        "committed": "2026-10-06T23:06:27.502Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 8,
+      "at": "2026-10-07T00:45:42.154002Z",
+      "envelope_id": "p1_8dc5bb9329db1d5b9fc63493009965b5",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0009970168517324728,
+        "21°C": 0.0009970168517324728,
+        "22°C": 0.0009970168517324728,
+        "23°C": 0.0009970168517324728,
+        "24°C": 0.006247482636629929,
+        "25°C": 0.07146016491575076,
+        "26°C": 0.329413389611383,
+        "27°C": 0.4166350201924391,
+        "28°C": 0.16948553760089746,
+        "29°C or higher": 0.0027703376359698244
+      },
+      "running_high": "20",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 16.0565,
+        "features": {
+          "cloud_cover_fraction": 0.0,
+          "curve_shape_realized": 0.1544,
+          "dewpoint_depression_c": 1.0,
+          "drawdown_from_high_c": 2.0,
+          "momentum_c_per_hour": 1.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": 4.1,
+          "regional_live_gap_c": -0.1,
+          "remaining_hours": 15.2383,
+          "root_bias_recent_c": -1.8381,
+          "warming_so_far_c": 0.0,
+          "wind_speed_mps": 1.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "20°C": 0.344957,
+          "21°C": 0.086475,
+          "22°C": 0.178909,
+          "23°C": 0.3258,
+          "24°C": 0.522212,
+          "25°C": 0.736751,
+          "26°C": 0.914896,
+          "27°C": 1.0,
+          "28°C": 0.962067,
+          "29°C or higher": 0.330669
+        },
+        "log_update_by_bucket": {
+          "20°C": 0.0,
+          "21°C": -1.383568,
+          "22°C": -0.656545,
+          "23°C": -0.057137,
+          "24°C": 0.414654,
+          "25°C": 0.75883,
+          "26°C": 0.975391,
+          "27°C": 1.064336,
+          "28°C": 1.025665,
+          "29°C or higher": -0.042302
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.9996285906535441,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 6.608534,
+          "root_rise_mass": 0.999001
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": 0,
+          "21°C": 1,
+          "22°C": 2,
+          "23°C": 3,
+          "24°C": 4,
+          "25°C": 5,
+          "26°C": 6,
+          "27°C": 7,
+          "28°C": 8,
+          "29°C or higher": 9
+        },
+        "running_high_bucket": "20°C",
+        "running_high_c": 20.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_de566dfc344ad2ca95f64d84925b38a6",
+        "lane": "awc",
+        "valid": "2026-10-07T00:00:00.000Z",
+        "temp": 18.0,
+        "cloud": 0.0,
+        "rain": false,
+        "raw": "METAR ZUUU 070000Z 22001MPS 6000 NSC 18/17 Q1022 NOSIG",
+        "seen": "2026-10-07T00:06:42.597Z",
+        "committed": "2026-10-07T00:06:42.656Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 9,
+      "at": "2026-10-07T01:23:58.847002Z",
+      "envelope_id": "p1_fd7498a10dcfc52fcd0067ab27920ff4",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.000997033946312001,
+        "21°C": 0.000997033946312001,
+        "22°C": 0.000997033946312001,
+        "23°C": 0.000997033946312001,
+        "24°C": 0.007105166971759792,
+        "25°C": 0.07790939260811279,
+        "26°C": 0.3412893533869307,
+        "27°C": 0.409638330267611,
+        "28°C": 0.15762562636727545,
+        "29°C or higher": 0.002443994613062243
+      },
+      "running_high": "20",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 15.4185,
+        "features": {
+          "cloud_cover_fraction": 0.0,
+          "curve_shape_realized": 0.2843,
+          "dewpoint_depression_c": 3.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 2.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": 4.1,
+          "regional_live_gap_c": 0.8,
+          "remaining_hours": 14.6003,
+          "root_bias_recent_c": -1.3436,
+          "warming_so_far_c": 0.0,
+          "wind_speed_mps": 2.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "20°C": 0.205507,
+          "21°C": 0.120929,
+          "22°C": 0.236591,
+          "23°C": 0.407422,
+          "24°C": 0.617543,
+          "25°C": 0.823887,
+          "26°C": 0.967487,
+          "27°C": 1.0,
+          "28°C": 0.909771,
+          "29°C or higher": 0.295697
+        },
+        "log_update_by_bucket": {
+          "20°C": 0.0,
+          "21°C": -0.530275,
+          "22°C": 0.140856,
+          "23°C": 0.684371,
+          "24°C": 1.100271,
+          "25°C": 1.388556,
+          "26°C": 1.549224,
+          "27°C": 1.582277,
+          "28°C": 1.487715,
+          "29°C or higher": 0.363857
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.9997829153860165,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 6.611286,
+          "root_rise_mass": 0.999001
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": 0,
+          "21°C": 1,
+          "22°C": 2,
+          "23°C": 3,
+          "24°C": 4,
+          "25°C": 5,
+          "26°C": 6,
+          "27°C": 7,
+          "28°C": 8,
+          "29°C or higher": 9
+        },
+        "running_high_bucket": "20°C",
+        "running_high_c": 20.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_dcd95d02a82832fe7f0dfbbd891fe933",
+        "lane": "awc",
+        "valid": "2026-10-07T01:00:00.000Z",
+        "temp": 20.0,
+        "cloud": 0.0,
+        "rain": false,
+        "raw": "METAR ZUUU 070100Z 21002MPS 8000 NSC 20/17 Q1023 NOSIG",
+        "seen": "2026-10-07T01:06:17.056Z",
+        "committed": "2026-10-07T01:06:17.098Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 10,
+      "at": "2026-10-07T02:05:53.219000Z",
+      "envelope_id": "p1_28aabdedbc8d7c686b5432472ab25e5c",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0009985185756820735,
+        "23°C": 0.0009985185756820735,
+        "24°C": 0.0049922681084115135,
+        "25°C": 0.06245466336045403,
+        "26°C": 0.312139862266949,
+        "27°C": 0.4274433074851284,
+        "28°C": 0.18765329752170135,
+        "29°C or higher": 0.0033195641059916114
+      },
+      "running_high": "22",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 14.7201,
+        "features": {
+          "cloud_cover_fraction": 0.0,
+          "curve_shape_realized": 0.4262,
+          "dewpoint_depression_c": 6.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 2.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": 2.1,
+          "regional_live_gap_c": 1.5,
+          "remaining_hours": 13.9019,
+          "root_bias_recent_c": -0.6459,
+          "warming_so_far_c": 2.0,
+          "wind_speed_mps": 2.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "22°C": 0.220349,
+          "23°C": 0.231662,
+          "24°C": 0.400617,
+          "25°C": 0.609791,
+          "26°C": 0.816978,
+          "27°C": 0.963422,
+          "28°C": 1.0,
+          "29°C or higher": 0.370822
+        },
+        "log_update_by_bucket": {
+          "22°C": 0.0,
+          "23°C": 0.050068,
+          "24°C": 0.597794,
+          "25°C": 1.017905,
+          "26°C": 1.3104,
+          "27°C": 1.47528,
+          "28°C": 1.512544,
+          "29°C or higher": 0.520511
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.9997482732659232,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 4.623522,
+          "root_rise_mass": 0.998999
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": 0,
+          "23°C": 1,
+          "24°C": 2,
+          "25°C": 3,
+          "26°C": 4,
+          "27°C": 5,
+          "28°C": 6,
+          "29°C or higher": 7
+        },
+        "running_high_bucket": "22°C",
+        "running_high_c": 22.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_5b00f31fc0bdff53624607a8302f78ce",
+        "lane": "awc",
+        "valid": "2026-10-07T02:00:00.000Z",
+        "temp": 22.0,
+        "cloud": 0.0,
+        "rain": false,
+        "raw": "METAR ZUUU 070200Z 23002MPS 190V280 CAVOK 22/16 Q1023 NOSIG",
+        "seen": "2026-10-07T02:05:53.028Z",
+        "committed": "2026-10-07T02:05:53.219Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 11,
+      "at": "2026-10-07T03:31:45.099003Z",
+      "envelope_id": "p1_aee3852cf4bf3f7b0d356972edfd0709",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0009995833935160967,
+        "24°C": 0.004760744265505192,
+        "25°C": 0.07271200350358616,
+        "26°C": 0.3494823909011342,
+        "27°C": 0.4248251810519208,
+        "28°C": 0.14601106425220253,
+        "29°C or higher": 0.0012090326321349027
+      },
+      "running_high": "23",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 13.289,
+        "features": {
+          "cloud_cover_fraction": 0.0,
+          "curve_shape_realized": 0.6789,
+          "dewpoint_depression_c": 7.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 1.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": 1.1,
+          "regional_live_gap_c": 1.3,
+          "remaining_hours": 12.4708,
+          "root_bias_recent_c": -0.4658,
+          "warming_so_far_c": 3.0,
+          "wind_speed_mps": 2.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "23°C": 0.559463,
+          "24°C": 0.696125,
+          "25°C": 0.889314,
+          "26°C": 1.0,
+          "27°C": 0.989742,
+          "28°C": 0.862227,
+          "29°C or higher": 0.268351
+        },
+        "log_update_by_bucket": {
+          "23°C": 0.0,
+          "24°C": 0.218553,
+          "25°C": 0.463474,
+          "26°C": 0.580779,
+          "27°C": 0.570468,
+          "28°C": 0.432542,
+          "29°C or higher": -0.73468
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.9994167801172025,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 3.655212,
+          "root_rise_mass": 0.999
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": 0,
+          "24°C": 1,
+          "25°C": 2,
+          "26°C": 3,
+          "27°C": 4,
+          "28°C": 5,
+          "29°C or higher": 6
+        },
+        "running_high_bucket": "23°C",
+        "running_high_c": 23.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_4917d8287b8bef9f133f225699a88495",
+        "lane": "awc",
+        "valid": "2026-10-07T03:00:00.000Z",
+        "temp": 23.0,
+        "cloud": 0.0,
+        "rain": false,
+        "raw": "METAR ZUUU 070300Z 24002MPS 150V310 CAVOK 23/16 Q1023 NOSIG",
+        "seen": "2026-10-07T03:06:38.197Z",
+        "committed": "2026-10-07T03:06:38.255Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 12,
+      "at": "2026-10-07T04:11:54.545004Z",
+      "envelope_id": "p1_0d208d31c2fd5541b057f9eca47a51ee",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.004740490156651709,
+        "25°C": 0.09183067244522454,
+        "26°C": 0.38248880767308235,
+        "27°C": 0.4015072056062233,
+        "28°C": 0.11843300660151693,
+        "29°C or higher": 0.0009998175173011649
+      },
+      "running_high": "24",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 12.6197,
+        "features": {
+          "cloud_cover_fraction": 0.5,
+          "curve_shape_realized": 0.7574,
+          "dewpoint_depression_c": 8.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 1.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": 0.1,
+          "regional_live_gap_c": 1.5,
+          "remaining_hours": 11.8015,
+          "root_bias_recent_c": -0.4933,
+          "warming_so_far_c": 4.0,
+          "wind_speed_mps": 1.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "24°C": 0.633517,
+          "25°C": 1.0,
+          "26°C": 0.968154,
+          "27°C": 0.825024,
+          "28°C": 0.618822,
+          "29°C or higher": 0.165824
+        },
+        "log_update_by_bucket": {
+          "24°C": 0.0,
+          "25°C": 0.456469,
+          "26°C": 0.424105,
+          "27°C": 0.264125,
+          "28°C": -0.02347,
+          "29°C or higher": -1.340361
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.9952586446280239,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 2.66031,
+          "root_rise_mass": 0.993644
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": 0,
+          "25°C": 1,
+          "26°C": 2,
+          "27°C": 3,
+          "28°C": 4,
+          "29°C or higher": 5
+        },
+        "running_high_bucket": "24°C",
+        "running_high_c": 24.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_c6dabfc59aea8eecc1ea9917a75bb879",
+        "lane": "awc",
+        "valid": "2026-10-07T04:00:00.000Z",
+        "temp": 24.0,
+        "cloud": 0.5,
+        "rain": false,
+        "raw": "METAR ZUUU 070400Z VRB01MPS 9999 SCT030 24/16 Q1022 NOSIG",
+        "seen": "2026-10-07T04:06:09.439Z",
+        "committed": "2026-10-07T04:06:09.494Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 13,
+      "at": "2026-10-07T05:56:35.105005Z",
+      "envelope_id": "p1_218f2b072d4d70bc7076f156c71598bf",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.0,
+        "25°C": 0.132340211283651,
+        "26°C": 0.5079807314247169,
+        "27°C": 0.30574057206751376,
+        "28°C": 0.052939241592590384,
+        "29°C or higher": 0.0009992436315280737
+      },
+      "running_high": "25",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 10.8751,
+        "features": {
+          "cloud_cover_fraction": 0.5,
+          "curve_shape_realized": 0.9617,
+          "dewpoint_depression_c": 10.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 1.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": -0.9,
+          "regional_live_gap_c": 1.9,
+          "remaining_hours": 10.0569,
+          "root_bias_recent_c": -0.6136,
+          "warming_so_far_c": 5.0,
+          "wind_speed_mps": 1.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "25°C": 1.0,
+          "26°C": 0.89338,
+          "27°C": 0.451346,
+          "28°C": 0.200706,
+          "29°C or higher": 0.031886
+        },
+        "log_update_by_bucket": {
+          "25°C": -0.0,
+          "26°C": -0.112744,
+          "27°C": -0.795521,
+          "28°C": -1.605913,
+          "29°C or higher": -3.445602
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.8675596149847136,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 1.664012,
+          "root_rise_mass": 0.91978
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": -1,
+          "25°C": 0,
+          "26°C": 1,
+          "27°C": 2,
+          "28°C": 3,
+          "29°C or higher": 4
+        },
+        "running_high_bucket": "25°C",
+        "running_high_c": 25.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_60f96ac22f36056377902f8f1dde3b75",
+        "lane": "awc",
+        "valid": "2026-10-07T05:00:00.000Z",
+        "temp": 25.0,
+        "cloud": 0.5,
+        "rain": false,
+        "raw": "METAR ZUUU 070500Z VRB01MPS 9999 SCT030 25/15 Q1021 NOSIG",
+        "seen": "2026-10-07T05:06:21.523Z",
+        "committed": "2026-10-07T05:06:21.714Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C,24°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 14,
+      "at": "2026-10-07T06:07:26.398000Z",
+      "envelope_id": "p1_efa5e134761e935c2ada44874b771aad",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.0,
+        "25°C": 0.1589536847253172,
+        "26°C": 0.5163895490326459,
+        "27°C": 0.279984847138262,
+        "28°C": 0.04367273778931006,
+        "29°C or higher": 0.0009991813144647717
+      },
+      "running_high": "25",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 10.6942,
+        "features": {
+          "cloud_cover_fraction": 0.5,
+          "curve_shape_realized": 0.9695,
+          "dewpoint_depression_c": 10.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 0.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": -0.8,
+          "regional_live_gap_c": 1.4,
+          "remaining_hours": 9.876,
+          "root_bias_recent_c": -0.8067,
+          "warming_so_far_c": 5.0,
+          "wind_speed_mps": 1.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "25°C": 1.0,
+          "26°C": 0.756114,
+          "27°C": 0.344122,
+          "28°C": 0.137853,
+          "29°C or higher": 0.019729
+        },
+        "log_update_by_bucket": {
+          "25°C": -0.0,
+          "26°C": -0.279563,
+          "27°C": -1.066759,
+          "28°C": -1.981571,
+          "29°C or higher": -3.925679
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.840916075566862,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 1.664012,
+          "root_rise_mass": 0.91978
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": -1,
+          "25°C": 0,
+          "26°C": 1,
+          "27°C": 2,
+          "28°C": 3,
+          "29°C or higher": 4
+        },
+        "running_high_bucket": "25°C",
+        "running_high_c": 25.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_493414b2271d51f50f4520d02335beb9",
+        "lane": "awc",
+        "valid": "2026-10-07T06:00:00.000Z",
+        "temp": 25.0,
+        "cloud": 0.5,
+        "rain": false,
+        "raw": "METAR ZUUU 070600Z VRB01MPS 9999 SCT030 25/15 Q1020 NOSIG",
+        "seen": "2026-10-07T06:06:44.656Z",
+        "committed": "2026-10-07T06:06:44.892Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C,24°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 15,
+      "at": "2026-10-07T07:57:13.636006Z",
+      "envelope_id": "p1_a681ad6785c9f0102c01629bdbca519f",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.0,
+        "25°C": 0.6242725123129249,
+        "26°C": 0.33931696549079005,
+        "27°C": 0.03441252364587945,
+        "28°C": 0.0009989992752028256,
+        "29°C or higher": 0.0009989992752028256
+      },
+      "running_high": "25",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 8.8644,
+        "features": {
+          "cloud_cover_fraction": 0.875,
+          "curve_shape_realized": 0.9822,
+          "dewpoint_depression_c": 10.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 0.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": -0.8,
+          "regional_live_gap_c": 1.0,
+          "remaining_hours": 8.0462,
+          "root_bias_recent_c": -1.027,
+          "warming_so_far_c": 5.0,
+          "wind_speed_mps": 2.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "25°C": 1.0,
+          "26°C": 0.15217,
+          "27°C": 0.013243,
+          "28°C": 0.001014,
+          "29°C or higher": 2.8e-05
+        },
+        "log_update_by_bucket": {
+          "25°C": -0.0,
+          "26°C": -1.882759,
+          "27°C": -4.324265,
+          "28°C": -6.893387,
+          "29°C or higher": -10.491806
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.37510213689976946,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 1.620311,
+          "root_rise_mass": 0.903321
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": -1,
+          "25°C": 0,
+          "26°C": 1,
+          "27°C": 2,
+          "28°C": 3,
+          "29°C or higher": 4
+        },
+        "running_high_bucket": "25°C",
+        "running_high_c": 25.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_f6a03c500c32722cf58a29fdf94d9771",
+        "lane": "awc",
+        "valid": "2026-10-07T07:00:00.000Z",
+        "temp": 25.0,
+        "cloud": 0.875,
+        "rain": false,
+        "raw": "METAR ZUUU 070700Z VRB02MPS 9999 BKN030 25/15 Q1019 NOSIG",
+        "seen": "2026-10-07T07:05:33.803Z",
+        "committed": "2026-10-07T07:05:33.869Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C,24°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 16,
+      "at": "2026-10-07T08:06:20.013000Z",
+      "envelope_id": "p1_492ba06e06878a9c68ee202bf72fe8e2",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.0,
+        "25°C": 0.7095211986052652,
+        "26°C": 0.2619668997193473,
+        "27°C": 0.02651436308105761,
+        "28°C": 0.0009987692971649437,
+        "29°C or higher": 0.0009987692971649437
+      },
+      "running_high": "25",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 8.7126,
+        "features": {
+          "cloud_cover_fraction": 0.5,
+          "curve_shape_realized": 0.9848,
+          "dewpoint_depression_c": 10.0,
+          "drawdown_from_high_c": 0.0,
+          "momentum_c_per_hour": 0.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": -1.0,
+          "regional_live_gap_c": 0.8,
+          "remaining_hours": 7.8944,
+          "root_bias_recent_c": -1.3744,
+          "warming_so_far_c": 5.0,
+          "wind_speed_mps": 2.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "25°C": 1.0,
+          "26°C": 0.103366,
+          "27°C": 0.008978,
+          "28°C": 0.000686,
+          "29°C or higher": 1.9e-05
+        },
+        "log_update_by_bucket": {
+          "25°C": -0.0,
+          "26°C": -2.269478,
+          "27°C": -4.713003,
+          "28°C": -7.284142,
+          "29°C or higher": -10.884578
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.2896045156581441,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 1.620311,
+          "root_rise_mass": 0.903321
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": -1,
+          "25°C": 0,
+          "26°C": 1,
+          "27°C": 2,
+          "28°C": 3,
+          "29°C or higher": 4
+        },
+        "running_high_bucket": "25°C",
+        "running_high_c": 25.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_dffa90181455c5a64fe1cafb08f79808",
+        "lane": "awc",
+        "valid": "2026-10-07T08:00:00.000Z",
+        "temp": 25.0,
+        "cloud": 0.5,
+        "rain": false,
+        "raw": "METAR ZUUU 070800Z 34002MPS 300V030 9999 SCT030 25/15 Q1018 NOSIG",
+        "seen": "2026-10-07T08:06:18.515Z",
+        "committed": "2026-10-07T08:06:18.581Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C,24°C",
+      "evidence_role": "observational_candidate_not_oos"
+    },
+    {
+      "hour": 17,
+      "at": "2026-10-07T09:33:00.148006Z",
+      "envelope_id": "p1_ab9adeb1576d9a49232522bd323bb69a",
+      "version": "p1_joint_likelihood_v38",
+      "p": {
+        "19°C or below": 0.0,
+        "20°C": 0.0,
+        "21°C": 0.0,
+        "22°C": 0.0,
+        "23°C": 0.0,
+        "24°C": 0.0,
+        "25°C": 0.9613462432302222,
+        "26°C": 0.03379357620816659,
+        "27°C": 0.0028640351278406825,
+        "28°C": 0.0009980727168852738,
+        "29°C or higher": 0.0009980727168852738
+      },
+      "running_high": "25",
+      "receipt": {
+        "artifact_sha256": "a4d89d9d55117389cda7fb93632d9619b22ff9e7511512c1d4268a8872f23e59",
+        "clock_hours": 7.2682,
+        "features": {
+          "cloud_cover_fraction": 0.5,
+          "curve_shape_realized": 0.896,
+          "dewpoint_depression_c": 8.0,
+          "drawdown_from_high_c": 1.0,
+          "momentum_c_per_hour": -1.0,
+          "precipitation_present": 0.0,
+          "regional_headroom_c": -1.8,
+          "regional_live_gap_c": 0.0,
+          "remaining_hours": 6.45,
+          "root_bias_recent_c": -1.797,
+          "warming_so_far_c": 5.0,
+          "wind_speed_mps": 3.0
+        },
+        "fleet_mean_features": [],
+        "lambda": 0.3,
+        "likelihood_by_bucket": {
+          "25°C": 1.0,
+          "26°C": 0.009888,
+          "27°C": 0.000738,
+          "28°C": 4.8e-05,
+          "29°C or higher": 1e-06
+        },
+        "log_update_by_bucket": {
+          "25°C": -0.0,
+          "26°C": -4.616447,
+          "27°C": -7.211521,
+          "28°C": -9.93421,
+          "29°C or higher": -13.686196
+        },
+        "regional_system_id": "CMA_GRAPES_GLOBAL_POINT",
+        "rise_probability": 0.036797392648568975,
+        "rise_probability_basis": "posterior_before_floor",
+        "root_features": {
+          "root_mean_minus_high_c": 1.601208,
+          "root_rise_mass": 0.900939
+        },
+        "rule": "p1_root_x_mask_x_exp_direct_log_update_v1",
+        "rung_by_bucket": {
+          "19°C or below": -1,
+          "20°C": -1,
+          "21°C": -1,
+          "22°C": -1,
+          "23°C": -1,
+          "24°C": -1,
+          "25°C": 0,
+          "26°C": 1,
+          "27°C": 2,
+          "28°C": 3,
+          "29°C or higher": 4
+        },
+        "running_high_bucket": "25°C",
+        "running_high_c": 25.0,
+        "schema": "p1_observation_likelihood_receipt_v1",
+        "state": "APPLIED",
+        "station_clock_offset_h": 0.8182,
+        "trained_through": "2026-10-06",
+        "update": "DIRECT_LOG_UPDATE_V1"
+      },
+      "observation": {
+        "id": "rtobs_fe0a645ab0b04b2f077896158d531204",
+        "lane": "awc",
+        "valid": "2026-10-07T09:00:00.000Z",
+        "temp": 24.0,
+        "cloud": 0.5,
+        "rain": false,
+        "raw": "METAR ZUUU 070900Z 01003MPS 9999 SCT030 24/16 Q1018 NOSIG",
+        "seen": "2026-10-07T09:06:33.759Z",
+        "committed": "2026-10-07T09:06:33.877Z",
+        "correction": 0
+      },
+      "intervals": {
+        "19°C or below": [
+          null,
+          19.5
+        ],
+        "20°C": [
+          19.5,
+          20.5
+        ],
+        "21°C": [
+          20.5,
+          21.5
+        ],
+        "22°C": [
+          21.5,
+          22.5
+        ],
+        "23°C": [
+          22.5,
+          23.5
+        ],
+        "24°C": [
+          23.5,
+          24.5
+        ],
+        "25°C": [
+          24.5,
+          25.5
+        ],
+        "26°C": [
+          25.5,
+          26.5
+        ],
+        "27°C": [
+          26.5,
+          27.5
+        ],
+        "28°C": [
+          27.5,
+          28.5
+        ],
+        "29°C or higher": [
+          28.5,
+          null
+        ]
+      },
+      "hard_excluded": "19°C or below,20°C,21°C,22°C,23°C,24°C",
+      "evidence_role": "observational_candidate_not_oos"
+    }
+  ],
+  "metars_today": [
+    {
+      "id": "rtobs_4074138904a8770191dc42946998e2e8",
+      "lane": "awc",
+      "valid": "2026-10-06T16:00:00.000Z",
+      "temp": 20.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 061600Z VRB01MPS CAVOK 20/15 Q1023 NOSIG",
+      "seen": "2026-10-06T16:06:35.826Z",
+      "committed": "2026-10-06T16:06:35.980Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_a766a2a9edb3e77b1fc2a42a5532c3de",
+      "lane": "awc",
+      "valid": "2026-10-06T17:00:00.000Z",
+      "temp": 19.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 061700Z 22001MPS CAVOK 19/16 Q1023 NOSIG",
+      "seen": "2026-10-06T17:05:49.034Z",
+      "committed": "2026-10-06T17:05:49.203Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_8633d50f1dfa2b899e8414436f914a52",
+      "lane": "awc",
+      "valid": "2026-10-06T18:00:00.000Z",
+      "temp": 18.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 061800Z VRB01MPS CAVOK 18/16 Q1022 NOSIG",
+      "seen": "2026-10-06T18:06:28.959Z",
+      "committed": "2026-10-06T18:06:28.988Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_b6625c9ab0343490e2cd97a08dbcde17",
+      "lane": "awc",
+      "valid": "2026-10-06T19:00:00.000Z",
+      "temp": 18.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 061900Z 18001MPS CAVOK 18/16 Q1022 NOSIG",
+      "seen": "2026-10-06T19:06:17.386Z",
+      "committed": "2026-10-06T19:06:17.578Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_c97ea2514e374e66108a4a515e340e5f",
+      "lane": "awc",
+      "valid": "2026-10-06T20:00:00.000Z",
+      "temp": 17.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 062000Z 20002MPS CAVOK 17/16 Q1021 NOSIG",
+      "seen": "2026-10-06T20:05:02.789Z",
+      "committed": "2026-10-06T20:05:02.871Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_0a853a19355ee5881ea1d6f671f3fed8",
+      "lane": "awc",
+      "valid": "2026-10-06T21:00:00.000Z",
+      "temp": 17.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 062100Z 21002MPS 8000 NSC 17/16 Q1021 NOSIG",
+      "seen": "2026-10-06T21:05:12.812Z",
+      "committed": "2026-10-06T21:05:12.866Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_fa9c9ab22d2a54fab54198a9ba12c5e3",
+      "lane": "awc",
+      "valid": "2026-10-06T22:00:00.000Z",
+      "temp": 17.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 062200Z 21002MPS 8000 NSC 17/16 Q1022 NOSIG",
+      "seen": "2026-10-06T22:06:34.302Z",
+      "committed": "2026-10-06T22:06:34.423Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_3efc27653242eecb0a4acec40ccaa19d",
+      "lane": "awc",
+      "valid": "2026-10-06T23:00:00.000Z",
+      "temp": 17.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 062300Z 24001MPS 6000 NSC 17/16 Q1022 NOSIG",
+      "seen": "2026-10-06T23:06:27.429Z",
+      "committed": "2026-10-06T23:06:27.502Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_de566dfc344ad2ca95f64d84925b38a6",
+      "lane": "awc",
+      "valid": "2026-10-07T00:00:00.000Z",
+      "temp": 18.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 070000Z 22001MPS 6000 NSC 18/17 Q1022 NOSIG",
+      "seen": "2026-10-07T00:06:42.597Z",
+      "committed": "2026-10-07T00:06:42.656Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_dcd95d02a82832fe7f0dfbbd891fe933",
+      "lane": "awc",
+      "valid": "2026-10-07T01:00:00.000Z",
+      "temp": 20.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 070100Z 21002MPS 8000 NSC 20/17 Q1023 NOSIG",
+      "seen": "2026-10-07T01:06:17.056Z",
+      "committed": "2026-10-07T01:06:17.098Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_5b00f31fc0bdff53624607a8302f78ce",
+      "lane": "awc",
+      "valid": "2026-10-07T02:00:00.000Z",
+      "temp": 22.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 070200Z 23002MPS 190V280 CAVOK 22/16 Q1023 NOSIG",
+      "seen": "2026-10-07T02:05:53.028Z",
+      "committed": "2026-10-07T02:05:53.219Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_4917d8287b8bef9f133f225699a88495",
+      "lane": "awc",
+      "valid": "2026-10-07T03:00:00.000Z",
+      "temp": 23.0,
+      "cloud": 0.0,
+      "rain": false,
+      "raw": "METAR ZUUU 070300Z 24002MPS 150V310 CAVOK 23/16 Q1023 NOSIG",
+      "seen": "2026-10-07T03:06:38.197Z",
+      "committed": "2026-10-07T03:06:38.255Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_c6dabfc59aea8eecc1ea9917a75bb879",
+      "lane": "awc",
+      "valid": "2026-10-07T04:00:00.000Z",
+      "temp": 24.0,
+      "cloud": 0.5,
+      "rain": false,
+      "raw": "METAR ZUUU 070400Z VRB01MPS 9999 SCT030 24/16 Q1022 NOSIG",
+      "seen": "2026-10-07T04:06:09.439Z",
+      "committed": "2026-10-07T04:06:09.494Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_60f96ac22f36056377902f8f1dde3b75",
+      "lane": "awc",
+      "valid": "2026-10-07T05:00:00.000Z",
+      "temp": 25.0,
+      "cloud": 0.5,
+      "rain": false,
+      "raw": "METAR ZUUU 070500Z VRB01MPS 9999 SCT030 25/15 Q1021 NOSIG",
+      "seen": "2026-10-07T05:06:21.523Z",
+      "committed": "2026-10-07T05:06:21.714Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_493414b2271d51f50f4520d02335beb9",
+      "lane": "awc",
+      "valid": "2026-10-07T06:00:00.000Z",
+      "temp": 25.0,
+      "cloud": 0.5,
+      "rain": false,
+      "raw": "METAR ZUUU 070600Z VRB01MPS 9999 SCT030 25/15 Q1020 NOSIG",
+      "seen": "2026-10-07T06:06:44.656Z",
+      "committed": "2026-10-07T06:06:44.892Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_f6a03c500c32722cf58a29fdf94d9771",
+      "lane": "awc",
+      "valid": "2026-10-07T07:00:00.000Z",
+      "temp": 25.0,
+      "cloud": 0.875,
+      "rain": false,
+      "raw": "METAR ZUUU 070700Z VRB02MPS 9999 BKN030 25/15 Q1019 NOSIG",
+      "seen": "2026-10-07T07:05:33.803Z",
+      "committed": "2026-10-07T07:05:33.869Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_dffa90181455c5a64fe1cafb08f79808",
+      "lane": "awc",
+      "valid": "2026-10-07T08:00:00.000Z",
+      "temp": 25.0,
+      "cloud": 0.5,
+      "rain": false,
+      "raw": "METAR ZUUU 070800Z 34002MPS 300V030 9999 SCT030 25/15 Q1018 NOSIG",
+      "seen": "2026-10-07T08:06:18.515Z",
+      "committed": "2026-10-07T08:06:18.581Z",
+      "correction": 0
+    },
+    {
+      "id": "rtobs_fe0a645ab0b04b2f077896158d531204",
+      "lane": "awc",
+      "valid": "2026-10-07T09:00:00.000Z",
+      "temp": 24.0,
+      "cloud": 0.5,
+      "rain": false,
+      "raw": "METAR ZUUU 070900Z 01003MPS 9999 SCT030 24/16 Q1018 NOSIG",
+      "seen": "2026-10-07T09:06:33.759Z",
+      "committed": "2026-10-07T09:06:33.877Z",
+      "correction": 0
+    }
+  ],
+  "input_sha": "f93ea5ea0d8acf73d14f1544e79d1f82384e0f0df7b421980de389ab689a4f17",
+  "audited_rows_sha": "860b5e25051bc65aaf4e078df4665e7efa0c7dd98fdeea59aec2f2d2cd5044d6",
+  "baseline": "stored served probabilities; no repeat floor",
+  "parent_version_rows": {
+    "P0": {
+      "calibrated_native_cross_ensemble_p0_v2": 4730,
+      "calibrated_native_cross_ensemble_p0_v3": 142,
+      "calibrated_native_cross_ensemble_p0_v4": 1877,
+      "calibrated_native_cross_ensemble_p0_v5": 2385,
+      "calibrated_native_cross_ensemble_p0_v6": 712,
+      "calibrated_native_cross_ensemble_p0_v7": 1125,
+      "calibrated_native_cross_ensemble_p0_v8": 417,
+      "calibrated_native_cross_ensemble_p0_v9": 699,
+      "calibrated_native_cross_ensemble_p0_v10": 28,
+      "calibrated_native_cross_ensemble_p0_v11": 186,
+      "calibrated_native_cross_ensemble_p0_v12": 356,
+      "calibrated_native_cross_ensemble_p0_v13": 168,
+      "calibrated_native_cross_ensemble_p0_v19": 1253,
+      "calibrated_native_cross_ensemble_p0_v20": 2217,
+      "calibrated_native_cross_ensemble_p0_v21": 166,
+      "calibrated_native_cross_ensemble_p0_v24": 226,
+      "calibrated_native_cross_ensemble_p0_v25": 79,
+      "calibrated_native_cross_ensemble_p0_v26": 1127,
+      "calibrated_native_cross_ensemble_p0_v27": 1471,
+      "calibrated_native_cross_ensemble_p0_v15": 113,
+      "calibrated_native_cross_ensemble_p0_v18": 56,
+      "calibrated_native_cross_ensemble_p0_v23": 40,
+      "calibrated_native_cross_ensemble_p0_v14": 24,
+      "calibrated_native_cross_ensemble_p0_v22": 21
+    },
+    "P0-M": {
+      "NOT_USED_DIRECT_P0_ROOT": 4601,
+      "p0m_taf_observed_v2": 1050,
+      "p0m_taf_observed_v3": 50,
+      "p0m_taf_observed_v4": 1133,
+      "p0m_taf_observed_v5": 2378,
+      "p0m_taf_observed_v6": 256,
+      "p0m_taf_likelihood_v7": 350,
+      "p0m_taf_likelihood_v8": 106,
+      "p0m_taf_likelihood_v9": 1098,
+      "p0m_taf_likelihood_v10": 418,
+      "p0m_taf_likelihood_v11": 698,
+      "p0m_taf_likelihood_v12": 28,
+      "p0m_taf_likelihood_v13": 186,
+      "p0m_taf_likelihood_v14": 356,
+      "p0m_taf_likelihood_v15": 168,
+      "p0m_taf_likelihood_v21": 1246,
+      "p0m_taf_likelihood_v22": 2074,
+      "p0m_taf_likelihood_v23": 129,
+      "p0m_taf_likelihood_v24": 166,
+      "p0m_taf_likelihood_v27": 218,
+      "p0m_taf_likelihood_v28": 76,
+      "p0m_taf_likelihood_v29": 1121,
+      "p0m_taf_likelihood_v30": 1458,
+      "p0m_taf_likelihood_v17": 113,
+      "p0m_taf_likelihood_v20": 56,
+      "p0m_taf_likelihood_v26": 40,
+      "p0m_taf_likelihood_v16": 24,
+      "p0m_taf_likelihood_v25": 21
+    }
+  },
+  "observation_source_lanes": {
+    "awc": 19618
+  }
+}

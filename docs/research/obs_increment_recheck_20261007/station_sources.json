@@ -1,0 +1,756 @@
+{
+  "stations": [
+    {
+      "station": "CYYZ",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "EDDM",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "EFHK",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "EGLC",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 855,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "EHAM",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "EPWA",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "FACT",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "KATL",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KAUS",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KBKF",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KDAL",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KHOU",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KLAX",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KLGA",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KMIA",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KORD",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KSEA",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "KSFO",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "LEMD",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "LFPB",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "LIMC",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 856,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "LLBG",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "LTAC",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "LTFM",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "MMMX",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "MPMG",
+      "model": null,
+      "status": "NO_VERIFIED_SATELLITE_SOURCE"
+    },
+    {
+      "station": "NZWN",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 871,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "OEJN",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "OPKC",
+      "model": "eumetsat_lsa_saf_iodc",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 614,
+      "source_class": "aggregator_republisher",
+      "source_product": "EUMETSAT_LSA_SAF_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "RCSS",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 864,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "RJTT",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 867,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "RKPK",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 867,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "RKSI",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 867,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "RPLL",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 866,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "SAEZ",
+      "model": "eumetsat_lsa_saf_msg",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 861,
+      "source_class": "aggregator_republisher",
+      "source_product": "EUMETSAT_LSA_SAF_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "SBGR",
+      "model": "eumetsat_lsa_saf_msg",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 861,
+      "source_class": "aggregator_republisher",
+      "source_product": "EUMETSAT_LSA_SAF_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "UUWW",
+      "model": "dwd_sis_europe_africa_v4",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 857,
+      "source_class": "aggregator_republisher",
+      "source_product": "DWD_MTG_SIS",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "VILK",
+      "model": "eumetsat_lsa_saf_iodc",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 614,
+      "source_class": "aggregator_republisher",
+      "source_product": "EUMETSAT_LSA_SAF_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "WMKK",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 866,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "WSSS",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 795,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZBAA",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 784,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZGGG",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 853,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZGSZ",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 854,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZHHH",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 865,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZSPD",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 849,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZSQD",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 866,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZUCK",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 866,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    },
+    {
+      "station": "ZUUU",
+      "model": "jma_jaxa_himawari",
+      "status": "HISTORICAL_CANDIDATE_ONLY",
+      "hours": 888,
+      "non_null": 858,
+      "source_class": "aggregator_republisher",
+      "source_product": "JAXA_HIMAWARI_SWR",
+      "historical_arrival_known": false
+    }
+  ],
+  "receipts": [
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=48.348&longitude=11.813&timezone=Europe%2FBerlin&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "EDDM_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:02.094601+00:00",
+      "received_at": "2026-10-07T10:10:08.661117+00:00",
+      "sha256": "1602b04cc618088557bb29b8b58dacde143c3bc4bf8093b1fd8163031d8c2d34",
+      "bytes": 21534,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=51.505&longitude=0.055&timezone=Europe%2FLondon&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "EGLC_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:02.090438+00:00",
+      "received_at": "2026-10-07T10:10:10.780203+00:00",
+      "sha256": "e618c0156cca0c5837d54a145252ce374df341f2d709a5438e23eb7786f5052b",
+      "bytes": 21516,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=60.327&longitude=24.957&timezone=Europe%2FHelsinki&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "EFHK_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:02.094444+00:00",
+      "received_at": "2026-10-07T10:10:11.553093+00:00",
+      "sha256": "afca4cc7e63e5c0b8cfb67f7353774424eefb14d1e8c84ff3d902484b0451a1a",
+      "bytes": 21458,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=52.315&longitude=4.79&timezone=Europe%2FAmsterdam&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "EHAM_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:08.667408+00:00",
+      "received_at": "2026-10-07T10:10:14.183968+00:00",
+      "sha256": "5950074bed9ae52e837dcdfacc17ca0281d5b623a05914efe25f85c061cc9c7e",
+      "bytes": 21517,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=-33.965&longitude=18.602&timezone=Africa%2FJohannesburg&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "FACT_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:11.558029+00:00",
+      "received_at": "2026-10-07T10:10:15.892682+00:00",
+      "sha256": "9dd3be11acc7d355114de326afe55232fac98283876d5116182ea40a04d0e902",
+      "bytes": 21555,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=52.163&longitude=20.961&timezone=Europe%2FWarsaw&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "EPWA_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:10.788930+00:00",
+      "received_at": "2026-10-07T10:10:16.290480+00:00",
+      "sha256": "8aa623207a01a7cd4a46fc26903734659052b411726085cf98898a3eb90843ee",
+      "bytes": 21510,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=48.967&longitude=2.428&timezone=Europe%2FParis&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LFPB_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:15.899756+00:00",
+      "received_at": "2026-10-07T10:10:27.213604+00:00",
+      "sha256": "034a70ac8e07c98bed6b409a00579ca01f1c8f4405793283c9ad1af3c6b720ba",
+      "bytes": 21529,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.466&longitude=-3.555&timezone=Europe%2FMadrid&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LEMD_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:14.197621+00:00",
+      "received_at": "2026-10-07T10:10:27.737637+00:00",
+      "sha256": "b8f2f93b4234200c0ab80d9ec3c329185bc405cf28ad43095652adf23272c4e8",
+      "bytes": 21556,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=45.631&longitude=8.728&timezone=Europe%2FRome&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LIMC_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:16.294774+00:00",
+      "received_at": "2026-10-07T10:10:30.395709+00:00",
+      "sha256": "2ed0823631f4d472239ec90a46853b1daea639ed75211e813be47bf369d3bbf0",
+      "bytes": 21545,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=32.011&longitude=34.887&timezone=Asia%2FJerusalem&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LLBG_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:27.223968+00:00",
+      "received_at": "2026-10-07T10:10:35.884988+00:00",
+      "sha256": "fdb3b959470694fcb67c0f7306788b3ca18b2442d43f05d859ec95bfdfef7c74",
+      "bytes": 21570,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.128&longitude=32.995&timezone=Europe%2FIstanbul&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LTAC_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:27.744526+00:00",
+      "received_at": "2026-10-07T10:10:38.583378+00:00",
+      "sha256": "46cffdf399efd3553710e77841f80a78e2f39f8a53d74486f00a64ccf8c01044",
+      "bytes": 21544,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=41.262&longitude=28.74&timezone=Europe%2FIstanbul&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "LTFM_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:30.409535+00:00",
+      "received_at": "2026-10-07T10:10:38.912765+00:00",
+      "sha256": "c25832be7e05b5d4c3d65e4c73c32d2d77edd7d0f6b6c72e8d43d219921ce31f",
+      "bytes": 21532,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=-41.331&longitude=174.806&timezone=Pacific%2FAuckland&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "NZWN_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:35.926061+00:00",
+      "received_at": "2026-10-07T10:10:42.358574+00:00",
+      "sha256": "202c7d0719e9895ffb16c6817d3820f8ebf85c96dff017adb4e2f405c624b141",
+      "bytes": 21470,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=21.685&longitude=39.166&timezone=Asia%2FRiyadh&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "OEJN_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:38.589594+00:00",
+      "received_at": "2026-10-07T10:10:44.880509+00:00",
+      "sha256": "af099315daef1da24aea7eb0a73ee555b8d46db3b454a1007f6624bde7718727",
+      "bytes": 21564,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=35.5494&longitude=139.7798&timezone=Asia%2FTokyo&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RJTT_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:53.593589+00:00",
+      "received_at": "2026-10-07T10:05:57.094867+00:00",
+      "sha256": "2d920ddb78b9a11f997c79f1eb54fd1d0aac37d6791551422af959f6ceb80d03",
+      "bytes": 21458,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=24.902&longitude=67.139&timezone=Asia%2FKarachi&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_iodc",
+      "label": "OPKC_eumetsat_lsa_saf_iodc_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:38.917430+00:00",
+      "received_at": "2026-10-07T10:10:45.907617+00:00",
+      "sha256": "a6e3e0614d35552dce87cfe7f41fdb4e027421aad6e9296b637d606f6f876f42",
+      "bytes": 21786,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=25.069&longitude=121.552&timezone=Asia%2FTaipei&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RCSS_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:42.368220+00:00",
+      "received_at": "2026-10-07T10:10:49.724207+00:00",
+      "sha256": "831f8644fb1df1af3c4645b02590dcf8046edfeda80f3fd94b626e20d9c3a084",
+      "bytes": 21522,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=37.469&longitude=126.451&timezone=Asia%2FSeoul&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RKSI_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:45.912801+00:00",
+      "received_at": "2026-10-07T10:10:53.743219+00:00",
+      "sha256": "90f1d9b62b474d36ad6c705f9119518acccda31c937f8df9dfed4486736e0691",
+      "bytes": 21543,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=35.179&longitude=128.938&timezone=Asia%2FSeoul&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RKPK_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:44.909715+00:00",
+      "received_at": "2026-10-07T10:10:54.892994+00:00",
+      "sha256": "4ed1f60b3c9f326849417806a0c1bd9089a653d3616998b772e7e366dab730ac",
+      "bytes": 21545,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=14.507&longitude=121.004&timezone=Asia%2FManila&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RPLL_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:49.755558+00:00",
+      "received_at": "2026-10-07T10:11:00.897274+00:00",
+      "sha256": "38059cfa3022cae98dc3db940f7cdfe2e29a386325936f1e62180cd976c84e3a",
+      "bytes": 21522,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=-34.822&longitude=-58.536&timezone=America%2FArgentina%2FBuenos_Aires&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_msg",
+      "label": "SAEZ_eumetsat_lsa_saf_msg_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:53.753011+00:00",
+      "received_at": "2026-10-07T10:11:06.584146+00:00",
+      "sha256": "7178b8ee1e3b4828b1616e4ce1827bd0bfd36cb6acc38f714ceed1f7453e1b65",
+      "bytes": 21521,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=-23.432&longitude=-46.469&timezone=America%2FSao_Paulo&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_msg",
+      "label": "SBGR_eumetsat_lsa_saf_msg_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:10:54.902269+00:00",
+      "received_at": "2026-10-07T10:11:07.321030+00:00",
+      "sha256": "7efeb4bb5cb390a7f2f60ee7fe5bed9e14e1b6c32df096f5c56b35f2850da2bb",
+      "bytes": 21368,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=55.592&longitude=37.261&timezone=Europe%2FMoscow&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=dwd_sis_europe_africa_v4",
+      "label": "UUWW_dwd_sis_europe_africa_v4_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:00.921231+00:00",
+      "received_at": "2026-10-07T10:11:09.752016+00:00",
+      "sha256": "be32affe316d4c66b0ec39d05c4e8f39ccd60629a74503eee9f2f6a2c6fe348f",
+      "bytes": 21475,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=2.747&longitude=101.714&timezone=Asia%2FKuala_Lumpur&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "WMKK_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:07.330641+00:00",
+      "received_at": "2026-10-07T10:11:13.080797+00:00",
+      "sha256": "277fc688bbb031296720c9f789f996d37a3ef39c490e1f86fc5f216021a3e724",
+      "bytes": 21512,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=26.761&longitude=80.889&timezone=Asia%2FKolkata&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_iodc",
+      "label": "VILK_eumetsat_lsa_saf_iodc_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:06.630851+00:00",
+      "received_at": "2026-10-07T10:11:13.617406+00:00",
+      "sha256": "9f70a09642b50791d4637e621cab92ed4ee94927e92004ea7327128084b9b618",
+      "bytes": 21698,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=1.368&longitude=103.982&timezone=Asia%2FSingapore&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "WSSS_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:09.783164+00:00",
+      "received_at": "2026-10-07T10:11:18.655750+00:00",
+      "sha256": "1c5766ca84e75c8ce8cfbe413234d89b35aa1ee802d490ceaa8fb3f3b1b87b17",
+      "bytes": 21455,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.082&longitude=116.603&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZBAA_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:13.100523+00:00",
+      "received_at": "2026-10-07T10:11:20.132699+00:00",
+      "sha256": "4fb79ea675f47a944f474e4e77046f05157d3f4d7dbd9d540b3a6a90ecacf960",
+      "bytes": 21570,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=23.392&longitude=113.307&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZGGG_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:13.622374+00:00",
+      "received_at": "2026-10-07T10:11:20.685147+00:00",
+      "sha256": "0de9756ccf0a43db69f1d1a0917f76c4555106851e0313758d45f487d83e034f",
+      "bytes": 21552,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=22.639&longitude=113.803&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZGSZ_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:18.666214+00:00",
+      "received_at": "2026-10-07T10:11:26.678538+00:00",
+      "sha256": "7e8c25634c71f1be06032c07536c6a7d49b1fa920d4b02d31759ade6b047c4d7",
+      "bytes": 21542,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.783&longitude=114.205&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZHHH_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:20.142474+00:00",
+      "received_at": "2026-10-07T10:11:28.077511+00:00",
+      "sha256": "9d0384c1f31bd8bb9c67a03e51d6c840696cf50cfe0ed13d39c8f226685d6b25",
+      "bytes": 21493,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=31.146&longitude=121.8&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZSPD_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:20.692193+00:00",
+      "received_at": "2026-10-07T10:11:28.821333+00:00",
+      "sha256": "02a619c35b05a822cd65e227281ba665d0b75b34dbf789c6b076f1623b45337e",
+      "bytes": 21523,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZUUU_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:38.243993+00:00",
+      "received_at": "2026-10-07T10:05:43.558640+00:00",
+      "sha256": "30b9eaba46bb4cc71c2c167598c16c401771c87065e4d4444e092c808461f90c",
+      "bytes": 21476,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=36.362&longitude=120.087&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZSQD_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:26.686693+00:00",
+      "received_at": "2026-10-07T10:11:30.409005+00:00",
+      "sha256": "9517e7d7433a82f73f2724b82c9c3a499d28e8cd0e71f3b03e94d6c306400cf3",
+      "bytes": 21540,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=29.718&longitude=106.639&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZUCK_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:11:28.081541+00:00",
+      "received_at": "2026-10-07T10:11:31.503198+00:00",
+      "sha256": "e921303455d8d32f0c632941dedf79cc4c294fabba0a5af4d99bee8a5e2f56bc",
+      "bytes": 21460,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    }
+  ]
+}

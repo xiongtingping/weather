@@ -1,0 +1,4415 @@
+{
+  "forced": {
+    "0.0": {
+      "all_mixed_descriptive_only": {
+        "rows": 6477,
+        "station_days": 740,
+        "days": 24,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "current_v38": {
+        "rows": 673,
+        "station_days": 84,
+        "days": 3,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_current_v38": {
+        "rows": 78,
+        "station_days": 26,
+        "days": 3,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_mixed_descriptive_only": {
+        "rows": 1104,
+        "station_days": 305,
+        "days": 24,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "bright_mixed_descriptive_only": {
+        "rows": 1443,
+        "station_days": 428,
+        "days": 24,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "zuuu_history": {
+        "rows": 192,
+        "station_days": 24,
+        "days": 24,
+        "delta": {
+          "logscore": 0.0,
+          "crps_c": 0.0,
+          "brier": 0.0
+        },
+        "ci95": {
+          "logscore": [
+            0.0,
+            0.0
+          ],
+          "crps_c": [
+            0.0,
+            0.0
+          ],
+          "brier": [
+            0.0,
+            0.0
+          ]
+        },
+        "statistical_gate": false
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 94,
+          "station_days": 20,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 41,
+          "station_days": 23,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 24,
+          "station_days": 24,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 76,
+          "station_days": 27,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 36,
+          "station_days": 14,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 445,
+          "station_days": 71,
+          "days": 3,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 178,
+          "station_days": 35,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 147,
+          "station_days": 37,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 199,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 12,
+          "station_days": 12,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 23,
+          "station_days": 11,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 250,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 35,
+          "station_days": 14,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 7,
+          "station_days": 6,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 74,
+          "station_days": 18,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "station_days": 2,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 38,
+          "station_days": 20,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 516,
+          "station_days": 67,
+          "days": 3,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 1122,
+          "station_days": 125,
+          "days": 5,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 19,
+          "station_days": 8,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 9,
+          "station_days": 9,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 33,
+          "station_days": 17,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 159,
+          "station_days": 29,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 41,
+          "station_days": 15,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 555,
+          "station_days": 78,
+          "days": 3,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 673,
+          "station_days": 84,
+          "days": 3,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 1166,
+          "station_days": 147,
+          "days": 5,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 151,
+          "station_days": 30,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 352,
+          "station_days": 49,
+          "days": 2,
+          "delta": {
+            "logscore": 0.0,
+            "crps_c": 0.0,
+            "brier": 0.0
+          },
+          "ci95": {
+            "logscore": [
+              0.0,
+              0.0
+            ],
+            "crps_c": [
+              0.0,
+              0.0
+            ],
+            "brier": [
+              0.0,
+              0.0
+            ]
+          },
+          "statistical_gate": false
+        }
+      }
+    },
+    "1.0": {
+      "all_mixed_descriptive_only": {
+        "rows": 6477,
+        "station_days": 740,
+        "days": 24,
+        "delta": {
+          "logscore": 0.012269092589497321,
+          "crps_c": 0.004641138132921221,
+          "brier": 0.00418838305108547
+        },
+        "ci95": {
+          "logscore": [
+            0.005897034558561148,
+            0.018913867341747152
+          ],
+          "crps_c": [
+            0.0009110130372946584,
+            0.00840054849562417
+          ],
+          "brier": [
+            0.0008140158760052919,
+            0.007677373121096595
+          ]
+        },
+        "statistical_gate": false
+      },
+      "current_v38": {
+        "rows": 673,
+        "station_days": 84,
+        "days": 3,
+        "delta": {
+          "logscore": -0.0013742871369068676,
+          "crps_c": -0.000850673565167312,
+          "brier": -0.0038019271987993837
+        },
+        "ci95": {
+          "logscore": [
+            -0.009956607494669985,
+            0.010450569618718684
+          ],
+          "crps_c": [
+            -0.0038248869465909037,
+            0.0032611166441765885
+          ],
+          "brier": [
+            -0.007602720744632616,
+            0.0006136854511167146
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_current_v38": {
+        "rows": 78,
+        "station_days": 26,
+        "days": 3,
+        "delta": {
+          "logscore": 0.02291436327003563,
+          "crps_c": 0.013423342796574762,
+          "brier": 0.006833305004572679
+        },
+        "ci95": {
+          "logscore": [
+            -0.004444575598785238,
+            0.028934555574691094
+          ],
+          "crps_c": [
+            -0.00020370241360168534,
+            0.01800991722842921
+          ],
+          "brier": [
+            -0.004457177739710138,
+            0.023658062440141105
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_mixed_descriptive_only": {
+        "rows": 1104,
+        "station_days": 305,
+        "days": 24,
+        "delta": {
+          "logscore": 0.011943872993562189,
+          "crps_c": 0.009143467009256704,
+          "brier": 0.0018409506783665455
+        },
+        "ci95": {
+          "logscore": [
+            -0.007257831718131921,
+            0.031775804816105716
+          ],
+          "crps_c": [
+            -0.002661153482245113,
+            0.02283334922682623
+          ],
+          "brier": [
+            -0.005619296156823272,
+            0.01022316746473859
+          ]
+        },
+        "statistical_gate": false
+      },
+      "bright_mixed_descriptive_only": {
+        "rows": 1443,
+        "station_days": 428,
+        "days": 24,
+        "delta": {
+          "logscore": 0.04001862934003043,
+          "crps_c": 0.01296284409515332,
+          "brier": 0.01383416360144993
+        },
+        "ci95": {
+          "logscore": [
+            0.01583482365801303,
+            0.06469594795878629
+          ],
+          "crps_c": [
+            -0.000891282827619823,
+            0.026621670883529538
+          ],
+          "brier": [
+            0.0017366449556703858,
+            0.025249126591711222
+          ]
+        },
+        "statistical_gate": false
+      },
+      "zuuu_history": {
+        "rows": 192,
+        "station_days": 24,
+        "days": 24,
+        "delta": {
+          "logscore": -0.03435685270298323,
+          "crps_c": -0.03467012779867171,
+          "brier": -0.017312506260080844
+        },
+        "ci95": {
+          "logscore": [
+            -0.10155743811197501,
+            0.028570008879652945
+          ],
+          "crps_c": [
+            -0.08904401778454388,
+            0.011015839918633424
+          ],
+          "brier": [
+            -0.048587433081759744,
+            0.01550530704587744
+          ]
+        },
+        "statistical_gate": false
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 94,
+          "station_days": 20,
+          "days": 2,
+          "delta": {
+            "logscore": 0.012894769830913793,
+            "crps_c": 0.012907710792178126,
+            "brier": 0.010707132859971269
+          },
+          "ci95": {
+            "logscore": [
+              0.0007602066111278705,
+              0.014243054633112226
+            ],
+            "crps_c": [
+              7.458432708272045e-06,
+              0.01434107216545255
+            ],
+            "brier": [
+              7.5296610229124226e-06,
+              0.011895977659854421
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 41,
+          "station_days": 23,
+          "days": 1,
+          "delta": {
+            "logscore": 0.015301649385213955,
+            "crps_c": 0.005751700987870519,
+            "brier": -0.001061767904680022
+          },
+          "ci95": {
+            "logscore": [
+              0.015301649385213955,
+              0.015301649385213955
+            ],
+            "crps_c": [
+              0.005751700987870519,
+              0.005751700987870519
+            ],
+            "brier": [
+              -0.001061767904680022,
+              -0.001061767904680022
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 24,
+          "station_days": 24,
+          "days": 1,
+          "delta": {
+            "logscore": 0.01046597924669075,
+            "crps_c": 0.006940748958454302,
+            "brier": 0.006721196754016439
+          },
+          "ci95": {
+            "logscore": [
+              0.01046597924669075,
+              0.01046597924669075
+            ],
+            "crps_c": [
+              0.006940748958454302,
+              0.006940748958454302
+            ],
+            "brier": [
+              0.006721196754016439,
+              0.006721196754016439
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 76,
+          "station_days": 27,
+          "days": 1,
+          "delta": {
+            "logscore": 0.026148914657279393,
+            "crps_c": 0.011653099280110445,
+            "brier": 0.015072549461865266
+          },
+          "ci95": {
+            "logscore": [
+              0.026148914657279393,
+              0.026148914657279393
+            ],
+            "crps_c": [
+              0.011653099280110445,
+              0.011653099280110445
+            ],
+            "brier": [
+              0.015072549461865266,
+              0.015072549461865266
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 36,
+          "station_days": 14,
+          "days": 1,
+          "delta": {
+            "logscore": 0.07221233542964654,
+            "crps_c": 0.034346401791828914,
+            "brier": 0.03175325210908539
+          },
+          "ci95": {
+            "logscore": [
+              0.07221233542964654,
+              0.07221233542964654
+            ],
+            "crps_c": [
+              0.034346401791828914,
+              0.034346401791828914
+            ],
+            "brier": [
+              0.03175325210908539,
+              0.03175325210908539
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 445,
+          "station_days": 71,
+          "days": 3,
+          "delta": {
+            "logscore": 0.011495455590813318,
+            "crps_c": 0.0011072921366301282,
+            "brier": 0.005438265581017089
+          },
+          "ci95": {
+            "logscore": [
+              0.004264497884731126,
+              0.04286502471114884
+            ],
+            "crps_c": [
+              -0.005200786270171382,
+              0.015058476694731848
+            ],
+            "brier": [
+              -0.0007871060935100542,
+              0.019665871160840283
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 178,
+          "station_days": 35,
+          "days": 2,
+          "delta": {
+            "logscore": 0.007481610149539914,
+            "crps_c": 0.01824420780547057,
+            "brier": 0.0005020359738501345
+          },
+          "ci95": {
+            "logscore": [
+              0.005462352424936389,
+              0.008674807895896546
+            ],
+            "crps_c": [
+              0.0019221396872766293,
+              0.02788906623894882
+            ],
+            "brier": [
+              -0.0010972522977078323,
+              0.003208523818025161
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 147,
+          "station_days": 37,
+          "days": 2,
+          "delta": {
+            "logscore": 0.00027004199044963013,
+            "crps_c": 0.0009076787110919623,
+            "brier": 0.0036688396409401526
+          },
+          "ci95": {
+            "logscore": [
+              -0.00035276253667727294,
+              0.0019516142136922696
+            ],
+            "crps_c": [
+              -0.0031124238400929405,
+              0.0117619555992912
+            ],
+            "brier": [
+              -0.0019353293164818446,
+              0.018800095825979548
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 199,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.041748672199452226,
+            "crps_c": 0.022941667097851462,
+            "brier": 0.014362964770057461
+          },
+          "ci95": {
+            "logscore": [
+              0.041748672199452226,
+              0.041748672199452226
+            ],
+            "crps_c": [
+              0.022941667097851462,
+              0.022941667097851462
+            ],
+            "brier": [
+              0.014362964770057461,
+              0.014362964770057461
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 12,
+          "station_days": 12,
+          "days": 1,
+          "delta": {
+            "logscore": -0.05059443234252723,
+            "crps_c": -0.022387580522128,
+            "brier": -0.016142214534098632
+          },
+          "ci95": {
+            "logscore": [
+              -0.05059443234252723,
+              -0.05059443234252723
+            ],
+            "crps_c": [
+              -0.022387580522128,
+              -0.022387580522128
+            ],
+            "brier": [
+              -0.016142214534098632,
+              -0.016142214534098632
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 23,
+          "station_days": 11,
+          "days": 2,
+          "delta": {
+            "logscore": -0.0007141277639345652,
+            "crps_c": -0.00040918910006758347,
+            "brier": -0.0011983191210916191
+          },
+          "ci95": {
+            "logscore": [
+              -0.0034923674687530213,
+              0.02706826928424999
+            ],
+            "crps_c": [
+              -0.001799036268162074,
+              0.013489282580877324
+            ],
+            "brier": [
+              -0.0036110483724964212,
+              0.02292897339295641
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 250,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.03624780681096682,
+            "crps_c": 0.021656463218196108,
+            "brier": 0.013118703885078162
+          },
+          "ci95": {
+            "logscore": [
+              0.03624780681096682,
+              0.03624780681096682
+            ],
+            "crps_c": [
+              0.021656463218196108,
+              0.021656463218196108
+            ],
+            "brier": [
+              0.013118703885078162,
+              0.013118703885078162
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 35,
+          "station_days": 14,
+          "days": 2,
+          "delta": {
+            "logscore": 0.002955115113982601,
+            "crps_c": 0.0009226998953225393,
+            "brier": 0.0011667108147920132
+          },
+          "ci95": {
+            "logscore": [
+              0.002919071063070347,
+              0.0034236877758418993
+            ],
+            "crps_c": [
+              0.0008318737490208411,
+              0.002103439797244616
+            ],
+            "brier": [
+              0.0009616226883058803,
+              0.0038328564591117442
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 7,
+          "station_days": 6,
+          "days": 1,
+          "delta": {
+            "logscore": -0.048999442790331804,
+            "crps_c": -0.034464154303108924,
+            "brier": -0.035880639072551394
+          },
+          "ci95": {
+            "logscore": [
+              -0.048999442790331804,
+              -0.048999442790331804
+            ],
+            "crps_c": [
+              -0.034464154303108924,
+              -0.034464154303108924
+            ],
+            "brier": [
+              -0.035880639072551394,
+              -0.035880639072551394
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 74,
+          "station_days": 18,
+          "days": 1,
+          "delta": {
+            "logscore": -0.0005401950210450063,
+            "crps_c": 0.003822589960516128,
+            "brier": -0.003956265460659944
+          },
+          "ci95": {
+            "logscore": [
+              -0.0005401950210450063,
+              -0.0005401950210450063
+            ],
+            "crps_c": [
+              0.003822589960516128,
+              0.003822589960516128
+            ],
+            "brier": [
+              -0.003956265460659944,
+              -0.003956265460659944
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "station_days": 2,
+          "days": 1,
+          "delta": {
+            "logscore": -0.004253633059643866,
+            "crps_c": 0.012530217199170865,
+            "brier": 0.021468089350743007
+          },
+          "ci95": {
+            "logscore": [
+              -0.004253633059643866,
+              -0.004253633059643866
+            ],
+            "crps_c": [
+              0.012530217199170865,
+              0.012530217199170865
+            ],
+            "brier": [
+              0.021468089350743007,
+              0.021468089350743007
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 38,
+          "station_days": 20,
+          "days": 1,
+          "delta": {
+            "logscore": 0.0039611629131134475,
+            "crps_c": 0.0017197315365470038,
+            "brier": 0.0030441611664217072
+          },
+          "ci95": {
+            "logscore": [
+              0.0039611629131134475,
+              0.0039611629131134475
+            ],
+            "crps_c": [
+              0.0017197315365470038,
+              0.0017197315365470038
+            ],
+            "brier": [
+              0.0030441611664217072,
+              0.0030441611664217072
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 516,
+          "station_days": 67,
+          "days": 3,
+          "delta": {
+            "logscore": 0.00619201559146211,
+            "crps_c": 0.0006162096569124594,
+            "brier": -0.001134468552383223
+          },
+          "ci95": {
+            "logscore": [
+              -0.0015608347856445146,
+              0.021196104699969475
+            ],
+            "crps_c": [
+              -0.005949535322985536,
+              0.012092916143088982
+            ],
+            "brier": [
+              -0.006319932937716124,
+              0.006223822964718471
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 1122,
+          "station_days": 125,
+          "days": 5,
+          "delta": {
+            "logscore": 0.006430298589018493,
+            "crps_c": 0.0024810111582681893,
+            "brier": 0.0010854219784120656
+          },
+          "ci95": {
+            "logscore": [
+              -0.0067353007354763504,
+              0.019421192499815436
+            ],
+            "crps_c": [
+              -0.00350623066320662,
+              0.00784847842212236
+            ],
+            "brier": [
+              -0.004404969225294938,
+              0.006309288049052727
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 19,
+          "station_days": 8,
+          "days": 2,
+          "delta": {
+            "logscore": -0.02913354306446709,
+            "crps_c": -0.010402598626861204,
+            "brier": -0.004521183715608475
+          },
+          "ci95": {
+            "logscore": [
+              -0.045217564117470854,
+              -0.002326841309460815
+            ],
+            "crps_c": [
+              -0.016577893769537565,
+              -0.0001104400557339345
+            ],
+            "brier": [
+              -0.007102665816395409,
+              -0.00021871354763025087
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 9,
+          "station_days": 9,
+          "days": 1,
+          "delta": {
+            "logscore": 0.028284820678602836,
+            "crps_c": 0.022987207893883775,
+            "brier": 0.016673345615196438
+          },
+          "ci95": {
+            "logscore": [
+              0.028284820678602836,
+              0.028284820678602836
+            ],
+            "crps_c": [
+              0.022987207893883775,
+              0.022987207893883775
+            ],
+            "brier": [
+              0.016673345615196438,
+              0.016673345615196438
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 33,
+          "station_days": 17,
+          "days": 1,
+          "delta": {
+            "logscore": 0.03753103660497247,
+            "crps_c": 0.02154756364660117,
+            "brier": 0.0355354770169608
+          },
+          "ci95": {
+            "logscore": [
+              0.03753103660497247,
+              0.03753103660497247
+            ],
+            "crps_c": [
+              0.02154756364660117,
+              0.02154756364660117
+            ],
+            "brier": [
+              0.0355354770169608,
+              0.0355354770169608
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 159,
+          "station_days": 29,
+          "days": 1,
+          "delta": {
+            "logscore": -0.013585050034360143,
+            "crps_c": -0.008991867384839728,
+            "brier": -0.008998393575470972
+          },
+          "ci95": {
+            "logscore": [
+              -0.013585050034360143,
+              -0.013585050034360143
+            ],
+            "crps_c": [
+              -0.008991867384839728,
+              -0.008991867384839728
+            ],
+            "brier": [
+              -0.008998393575470972,
+              -0.008998393575470972
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 41,
+          "station_days": 15,
+          "days": 1,
+          "delta": {
+            "logscore": 0.047920472324871094,
+            "crps_c": 0.023628440200643037,
+            "brier": 0.030627921721720963
+          },
+          "ci95": {
+            "logscore": [
+              0.047920472324871094,
+              0.047920472324871094
+            ],
+            "crps_c": [
+              0.023628440200643037,
+              0.023628440200643037
+            ],
+            "brier": [
+              0.030627921721720963,
+              0.030627921721720963
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 555,
+          "station_days": 78,
+          "days": 3,
+          "delta": {
+            "logscore": -0.002186455779035839,
+            "crps_c": -0.0028737354093181077,
+            "brier": -0.0057966510948318966
+          },
+          "ci95": {
+            "logscore": [
+              -0.007269652278996507,
+              0.007446352617133707
+            ],
+            "crps_c": [
+              -0.008269449196021716,
+              0.0027679571018437987
+            ],
+            "brier": [
+              -0.014232727286320317,
+              0.0042819327722619155
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 673,
+          "station_days": 84,
+          "days": 3,
+          "delta": {
+            "logscore": -0.0013742871369068676,
+            "crps_c": -0.000850673565167312,
+            "brier": -0.0038019271987993837
+          },
+          "ci95": {
+            "logscore": [
+              -0.009956607494669985,
+              0.010450569618718684
+            ],
+            "crps_c": [
+              -0.0038248869465909037,
+              0.0032611166441765885
+            ],
+            "brier": [
+              -0.007602720744632616,
+              0.0006136854511167146
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 1166,
+          "station_days": 147,
+          "days": 5,
+          "delta": {
+            "logscore": 0.02672608862981124,
+            "crps_c": 0.007902129780459293,
+            "brier": 0.01202919163394644
+          },
+          "ci95": {
+            "logscore": [
+              0.01104172552881164,
+              0.04123608251772486
+            ],
+            "crps_c": [
+              -0.0001478106620840934,
+              0.015130165170921656
+            ],
+            "brier": [
+              0.004406445570814811,
+              0.018300939435326957
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 151,
+          "station_days": 30,
+          "days": 1,
+          "delta": {
+            "logscore": 0.030749989530505062,
+            "crps_c": 0.013545155158068376,
+            "brier": 0.01367724350271147
+          },
+          "ci95": {
+            "logscore": [
+              0.030749989530505062,
+              0.030749989530505062
+            ],
+            "crps_c": [
+              0.013545155158068376,
+              0.013545155158068376
+            ],
+            "brier": [
+              0.01367724350271147,
+              0.01367724350271147
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 352,
+          "station_days": 49,
+          "days": 2,
+          "delta": {
+            "logscore": -0.019209042672282912,
+            "crps_c": -0.03021052297110343,
+            "brier": -0.0123233952656091
+          },
+          "ci95": {
+            "logscore": [
+              -0.061340480581519405,
+              0.005254372887918928
+            ],
+            "crps_c": [
+              -0.07142581772266464,
+              -0.0062790615024549985
+            ],
+            "brier": [
+              -0.039684566023327546,
+              0.0035637361420983826
+            ]
+          },
+          "statistical_gate": false
+        }
+      }
+    },
+    "2.0": {
+      "all_mixed_descriptive_only": {
+        "rows": 6477,
+        "station_days": 740,
+        "days": 24,
+        "delta": {
+          "logscore": 0.07250919385697518,
+          "crps_c": 0.047787440822727185,
+          "brier": 0.02706692324828235
+        },
+        "ci95": {
+          "logscore": [
+            0.05608657246822777,
+            0.09069181736696334
+          ],
+          "crps_c": [
+            0.036190520257066754,
+            0.0600941164405418
+          ],
+          "brier": [
+            0.019458399184712073,
+            0.03524497510014014
+          ]
+        },
+        "statistical_gate": false
+      },
+      "current_v38": {
+        "rows": 673,
+        "station_days": 84,
+        "days": 3,
+        "delta": {
+          "logscore": 0.037358205648795995,
+          "crps_c": 0.027969559496867597,
+          "brier": 0.008915897790656636
+        },
+        "ci95": {
+          "logscore": [
+            -0.006196794948665409,
+            0.04824892099341018
+          ],
+          "crps_c": [
+            -0.0060024644014057245,
+            0.05120896612142223
+          ],
+          "brier": [
+            -0.012784673424507472,
+            0.015325477557425398
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_current_v38": {
+        "rows": 78,
+        "station_days": 26,
+        "days": 3,
+        "delta": {
+          "logscore": 0.06814111860048894,
+          "crps_c": 0.03931554507220007,
+          "brier": 0.022249127905760745
+        },
+        "ci95": {
+          "logscore": [
+            -0.007091871633100296,
+            0.07860708714371539
+          ],
+          "crps_c": [
+            -0.00028857385093364796,
+            0.04871186228762635
+          ],
+          "brier": [
+            -0.00046151524649465484,
+            0.05656781564679074
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_mixed_descriptive_only": {
+        "rows": 1104,
+        "station_days": 305,
+        "days": 24,
+        "delta": {
+          "logscore": 0.06678488222050864,
+          "crps_c": 0.043556817025789764,
+          "brier": 0.019269591468062546
+        },
+        "ci95": {
+          "logscore": [
+            0.024505727400813398,
+            0.1105596084626555
+          ],
+          "crps_c": [
+            0.0188427399192351,
+            0.07188944554148416
+          ],
+          "brier": [
+            0.0034639633269599097,
+            0.036748186196405165
+          ]
+        },
+        "statistical_gate": false
+      },
+      "bright_mixed_descriptive_only": {
+        "rows": 1443,
+        "station_days": 428,
+        "days": 24,
+        "delta": {
+          "logscore": 0.19675047697631967,
+          "crps_c": 0.119971479235227,
+          "brier": 0.07282100909682812
+        },
+        "ci95": {
+          "logscore": [
+            0.14155833751463273,
+            0.25107680673959076
+          ],
+          "crps_c": [
+            0.08970596964385888,
+            0.15140001470139564
+          ],
+          "brier": [
+            0.048906004314874525,
+            0.09598215297070391
+          ]
+        },
+        "statistical_gate": false
+      },
+      "zuuu_history": {
+        "rows": 192,
+        "station_days": 24,
+        "days": 24,
+        "delta": {
+          "logscore": 0.027795343255833303,
+          "crps_c": 0.005476379454078755,
+          "brier": 0.004951585298741921
+        },
+        "ci95": {
+          "logscore": [
+            -0.10486678698188054,
+            0.1710977596375396
+          ],
+          "crps_c": [
+            -0.08807894821658306,
+            0.10681514311396627
+          ],
+          "brier": [
+            -0.05462955008011466,
+            0.07046474394447641
+          ]
+        },
+        "statistical_gate": false
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 94,
+          "station_days": 20,
+          "days": 2,
+          "delta": {
+            "logscore": 0.08714111035343891,
+            "crps_c": 0.06391610039702791,
+            "brier": 0.03275340652810176
+          },
+          "ci95": {
+            "logscore": [
+              0.002959115055328656,
+              0.09649466538656232
+            ],
+            "crps_c": [
+              7.771340532367522e-05,
+              0.07100925450721726
+            ],
+            "brier": [
+              7.919888275424444e-05,
+              0.03638387404425149
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 41,
+          "station_days": 23,
+          "days": 1,
+          "delta": {
+            "logscore": 0.057499305860155524,
+            "crps_c": 0.03362587302120837,
+            "brier": 0.007429841891271392
+          },
+          "ci95": {
+            "logscore": [
+              0.057499305860155524,
+              0.057499305860155524
+            ],
+            "crps_c": [
+              0.03362587302120837,
+              0.03362587302120837
+            ],
+            "brier": [
+              0.007429841891271392,
+              0.007429841891271392
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 24,
+          "station_days": 24,
+          "days": 1,
+          "delta": {
+            "logscore": 0.05244276512657722,
+            "crps_c": 0.0451299010080466,
+            "brier": 0.03046518361216562
+          },
+          "ci95": {
+            "logscore": [
+              0.05244276512657722,
+              0.05244276512657722
+            ],
+            "crps_c": [
+              0.0451299010080466,
+              0.0451299010080466
+            ],
+            "brier": [
+              0.03046518361216562,
+              0.03046518361216562
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 76,
+          "station_days": 27,
+          "days": 1,
+          "delta": {
+            "logscore": 0.11458760120788795,
+            "crps_c": 0.08594272269737689,
+            "brier": 0.05289194175478733
+          },
+          "ci95": {
+            "logscore": [
+              0.11458760120788795,
+              0.11458760120788795
+            ],
+            "crps_c": [
+              0.08594272269737689,
+              0.08594272269737689
+            ],
+            "brier": [
+              0.05289194175478733,
+              0.05289194175478733
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 36,
+          "station_days": 14,
+          "days": 1,
+          "delta": {
+            "logscore": 0.2252046617093702,
+            "crps_c": 0.14154263951452992,
+            "brier": 0.07783627740866925
+          },
+          "ci95": {
+            "logscore": [
+              0.2252046617093702,
+              0.2252046617093702
+            ],
+            "crps_c": [
+              0.14154263951452992,
+              0.14154263951452992
+            ],
+            "brier": [
+              0.07783627740866925,
+              0.07783627740866925
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 445,
+          "station_days": 71,
+          "days": 3,
+          "delta": {
+            "logscore": 0.07503736800717681,
+            "crps_c": 0.06161988992835822,
+            "brier": 0.03378875590499879
+          },
+          "ci95": {
+            "logscore": [
+              0.022085398492846256,
+              0.23167557775372663
+            ],
+            "crps_c": [
+              -0.004153159125981955,
+              0.21559465775381256
+            ],
+            "brier": [
+              -0.00027021310426821407,
+              0.11654059742955622
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 178,
+          "station_days": 35,
+          "days": 2,
+          "delta": {
+            "logscore": 0.05066906271173875,
+            "crps_c": 0.05803305912234907,
+            "brier": 0.013835443373826167
+          },
+          "ci95": {
+            "logscore": [
+              0.01769113867589941,
+              0.07015601782382562
+            ],
+            "crps_c": [
+              0.009424796474859705,
+              0.08675612341404736
+            ],
+            "brier": [
+              0.009802085759603844,
+              0.016218791054957545
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 147,
+          "station_days": 37,
+          "days": 2,
+          "delta": {
+            "logscore": 0.025183790781390852,
+            "crps_c": 0.019665283767190976,
+            "brier": 0.01688763936147396
+          },
+          "ci95": {
+            "logscore": [
+              0.024666103589983997,
+              0.026581546198189376
+            ],
+            "crps_c": [
+              0.012830114117170003,
+              0.03812024182224762
+            ],
+            "brier": [
+              0.005231900356961803,
+              0.04835813467365678
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 199,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.13633450963345517,
+            "crps_c": 0.07716648189557779,
+            "brier": 0.042978268828944774
+          },
+          "ci95": {
+            "logscore": [
+              0.13633450963345517,
+              0.13633450963345517
+            ],
+            "crps_c": [
+              0.07716648189557779,
+              0.07716648189557779
+            ],
+            "brier": [
+              0.042978268828944774,
+              0.042978268828944774
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 12,
+          "station_days": 12,
+          "days": 1,
+          "delta": {
+            "logscore": 0.034097768886747475,
+            "crps_c": 0.1170415901182192,
+            "brier": 0.030619217556164664
+          },
+          "ci95": {
+            "logscore": [
+              0.034097768886747475,
+              0.034097768886747475
+            ],
+            "crps_c": [
+              0.1170415901182192,
+              0.1170415901182192
+            ],
+            "brier": [
+              0.030619217556164664,
+              0.030619217556164664
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 23,
+          "station_days": 11,
+          "days": 2,
+          "delta": {
+            "logscore": 0.013278986498434108,
+            "crps_c": 0.005588604342172582,
+            "brier": 0.0006539430057362652
+          },
+          "ci95": {
+            "logscore": [
+              0.009102237751128995,
+              0.055046473971485266
+            ],
+            "crps_c": [
+              0.0033999792116488417,
+              0.027474855647409993
+            ],
+            "brier": [
+              -0.003924759345009521,
+              0.046440966513194126
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 250,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.11828969838542915,
+            "crps_c": 0.07415488830724412,
+            "brier": 0.038477095287100714
+          },
+          "ci95": {
+            "logscore": [
+              0.11828969838542915,
+              0.11828969838542915
+            ],
+            "crps_c": [
+              0.07415488830724412,
+              0.07415488830724412
+            ],
+            "brier": [
+              0.038477095287100714,
+              0.038477095287100714
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 35,
+          "station_days": 14,
+          "days": 2,
+          "delta": {
+            "logscore": 0.011366882937889932,
+            "crps_c": 0.004942246371876516,
+            "brier": 0.004343234454159869
+          },
+          "ci95": {
+            "logscore": [
+              0.0068906443458914834,
+              0.011711208983428272
+            ],
+            "crps_c": [
+              0.004233569495576961,
+              0.004996759977745713
+            ],
+            "brier": [
+              0.004083902036869847,
+              0.007714555878930163
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 7,
+          "station_days": 6,
+          "days": 1,
+          "delta": {
+            "logscore": -0.02717821390474251,
+            "crps_c": -0.012425789962152503,
+            "brier": -0.03037675217655024
+          },
+          "ci95": {
+            "logscore": [
+              -0.02717821390474251,
+              -0.02717821390474251
+            ],
+            "crps_c": [
+              -0.012425789962152503,
+              -0.012425789962152503
+            ],
+            "brier": [
+              -0.03037675217655024,
+              -0.03037675217655024
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 74,
+          "station_days": 18,
+          "days": 1,
+          "delta": {
+            "logscore": 0.029618479003009474,
+            "crps_c": 0.029689644451608647,
+            "brier": 0.009583445532604972
+          },
+          "ci95": {
+            "logscore": [
+              0.029618479003009474,
+              0.029618479003009474
+            ],
+            "crps_c": [
+              0.029689644451608647,
+              0.029689644451608647
+            ],
+            "brier": [
+              0.009583445532604972,
+              0.009583445532604972
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "station_days": 2,
+          "days": 1,
+          "delta": {
+            "logscore": 0.034918152114624665,
+            "crps_c": 0.04125077716497873,
+            "brier": 0.06994364064069408
+          },
+          "ci95": {
+            "logscore": [
+              0.034918152114624665,
+              0.034918152114624665
+            ],
+            "crps_c": [
+              0.04125077716497873,
+              0.04125077716497873
+            ],
+            "brier": [
+              0.06994364064069408,
+              0.06994364064069408
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 38,
+          "station_days": 20,
+          "days": 1,
+          "delta": {
+            "logscore": 0.01213440161383489,
+            "crps_c": 0.004179673720235304,
+            "brier": 0.007159380681870617
+          },
+          "ci95": {
+            "logscore": [
+              0.01213440161383489,
+              0.01213440161383489
+            ],
+            "crps_c": [
+              0.004179673720235304,
+              0.004179673720235304
+            ],
+            "brier": [
+              0.007159380681870617,
+              0.007159380681870617
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 516,
+          "station_days": 67,
+          "days": 3,
+          "delta": {
+            "logscore": 0.0460854153351569,
+            "crps_c": 0.02549368702153979,
+            "brier": 0.013277833913344719
+          },
+          "ci95": {
+            "logscore": [
+              0.025159706241972623,
+              0.08502809971378186
+            ],
+            "crps_c": [
+              0.0035487971461711293,
+              0.04972787817070276
+            ],
+            "brier": [
+              -0.0018131022845094113,
+              0.03367109369500879
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 1122,
+          "station_days": 125,
+          "days": 5,
+          "delta": {
+            "logscore": 0.05815135029101097,
+            "crps_c": 0.04521754659597816,
+            "brier": 0.02215967785901026
+          },
+          "ci95": {
+            "logscore": [
+              0.03421406090480334,
+              0.08108685243012027
+            ],
+            "crps_c": [
+              0.03256369683751983,
+              0.058358103960354415
+            ],
+            "brier": [
+              0.011815110137757844,
+              0.03508266931853749
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 19,
+          "station_days": 8,
+          "days": 2,
+          "delta": {
+            "logscore": -0.05300510862773408,
+            "crps_c": -0.01942122441724216,
+            "brier": -0.007793594139197181
+          },
+          "ci95": {
+            "logscore": [
+              -0.0838329838938689,
+              -0.0016253165175093905
+            ],
+            "crps_c": [
+              -0.031058177427404687,
+              -2.6302733637944767e-05
+            ],
+            "brier": [
+              -0.012352351344679758,
+              -0.00019566546339288746
+            ]
+          },
+          "statistical_gate": true
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 9,
+          "station_days": 9,
+          "days": 1,
+          "delta": {
+            "logscore": 0.10381299556719202,
+            "crps_c": 0.08493236546766252,
+            "brier": 0.04075915136403537
+          },
+          "ci95": {
+            "logscore": [
+              0.10381299556719202,
+              0.10381299556719202
+            ],
+            "crps_c": [
+              0.08493236546766252,
+              0.08493236546766252
+            ],
+            "brier": [
+              0.04075915136403537,
+              0.04075915136403537
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 33,
+          "station_days": 17,
+          "days": 1,
+          "delta": {
+            "logscore": 0.10848745304141624,
+            "crps_c": 0.05250168155268957,
+            "brier": 0.07818560326112536
+          },
+          "ci95": {
+            "logscore": [
+              0.10848745304141624,
+              0.10848745304141624
+            ],
+            "crps_c": [
+              0.05250168155268957,
+              0.05250168155268957
+            ],
+            "brier": [
+              0.07818560326112536,
+              0.07818560326112536
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 159,
+          "station_days": 29,
+          "days": 1,
+          "delta": {
+            "logscore": 0.001435853809586779,
+            "crps_c": 0.00042848193602981467,
+            "brier": 0.0022095533382898444
+          },
+          "ci95": {
+            "logscore": [
+              0.001435853809586779,
+              0.001435853809586779
+            ],
+            "crps_c": [
+              0.00042848193602981467,
+              0.00042848193602981467
+            ],
+            "brier": [
+              0.0022095533382898444,
+              0.0022095533382898444
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 41,
+          "station_days": 15,
+          "days": 1,
+          "delta": {
+            "logscore": 0.14173265302574925,
+            "crps_c": 0.07020796647250298,
+            "brier": 0.0467665156247194
+          },
+          "ci95": {
+            "logscore": [
+              0.14173265302574925,
+              0.14173265302574925
+            ],
+            "crps_c": [
+              0.07020796647250298,
+              0.07020796647250298
+            ],
+            "brier": [
+              0.0467665156247194,
+              0.0467665156247194
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 555,
+          "station_days": 78,
+          "days": 3,
+          "delta": {
+            "logscore": 0.03863439681149225,
+            "crps_c": 0.02667676390187161,
+            "brier": 0.009922555045309641
+          },
+          "ci95": {
+            "logscore": [
+              0.033211138484912396,
+              0.042617148067972434
+            ],
+            "crps_c": [
+              0.023681938800031044,
+              0.029525749038508846
+            ],
+            "brier": [
+              0.005479624210871194,
+              0.016796882689862663
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 673,
+          "station_days": 84,
+          "days": 3,
+          "delta": {
+            "logscore": 0.037358205648795995,
+            "crps_c": 0.027969559496867597,
+            "brier": 0.008915897790656636
+          },
+          "ci95": {
+            "logscore": [
+              -0.006196794948665409,
+              0.04824892099341018
+            ],
+            "crps_c": [
+              -0.0060024644014057245,
+              0.05120896612142223
+            ],
+            "brier": [
+              -0.012784673424507472,
+              0.015325477557425398
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 1166,
+          "station_days": 147,
+          "days": 5,
+          "delta": {
+            "logscore": 0.11625166879751715,
+            "crps_c": 0.06251388004844051,
+            "brier": 0.047096285131167086
+          },
+          "ci95": {
+            "logscore": [
+              0.0651138456242156,
+              0.15811563048005384
+            ],
+            "crps_c": [
+              0.03236435721246771,
+              0.09663459836591475
+            ],
+            "brier": [
+              0.02730503330445949,
+              0.06314742258163938
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 151,
+          "station_days": 30,
+          "days": 1,
+          "delta": {
+            "logscore": 0.10303883090392182,
+            "crps_c": 0.06092118643386751,
+            "brier": 0.04365233706728991
+          },
+          "ci95": {
+            "logscore": [
+              0.10303883090392182,
+              0.10303883090392182
+            ],
+            "crps_c": [
+              0.06092118643386751,
+              0.06092118643386751
+            ],
+            "brier": [
+              0.04365233706728991,
+              0.04365233706728991
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 352,
+          "station_days": 49,
+          "days": 2,
+          "delta": {
+            "logscore": 0.040657683547535205,
+            "crps_c": 0.019995713864669,
+            "brier": 0.011279782809494744
+          },
+          "ci95": {
+            "logscore": [
+              -0.05544397179470694,
+              0.09645864471399833
+            ],
+            "crps_c": [
+              -0.07887474422083852,
+              0.0774043669465766
+            ],
+            "brier": [
+              -0.041880162664938124,
+              0.04214684792368158
+            ]
+          },
+          "statistical_gate": false
+        }
+      }
+    },
+    "4.0": {
+      "all_mixed_descriptive_only": {
+        "rows": 6477,
+        "station_days": 740,
+        "days": 24,
+        "delta": {
+          "logscore": 0.3975684789908309,
+          "crps_c": 0.22611849811529317,
+          "brier": 0.11328359605770143
+        },
+        "ci95": {
+          "logscore": [
+            0.33583780384557566,
+            0.4664175263466843
+          ],
+          "crps_c": [
+            0.19214948685599048,
+            0.26178653068897084
+          ],
+          "brier": [
+            0.09799494858735629,
+            0.12962570726229367
+          ]
+        },
+        "statistical_gate": false
+      },
+      "current_v38": {
+        "rows": 673,
+        "station_days": 84,
+        "days": 3,
+        "delta": {
+          "logscore": 0.2879425727958936,
+          "crps_c": 0.1646238643638604,
+          "brier": 0.07758097151844964
+        },
+        "ci95": {
+          "logscore": [
+            0.0933711811264935,
+            0.4433421179624006
+          ],
+          "crps_c": [
+            0.05671191073755802,
+            0.2502155944408989
+          ],
+          "brier": [
+            0.043346245227909225,
+            0.09346730823177847
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_current_v38": {
+        "rows": 78,
+        "station_days": 26,
+        "days": 3,
+        "delta": {
+          "logscore": 0.22448445825908941,
+          "crps_c": 0.13175369275354518,
+          "brier": 0.06960611694782402
+        },
+        "ci95": {
+          "logscore": [
+            -0.009805368433339658,
+            0.2606933024788713
+          ],
+          "crps_c": [
+            -0.00034687809555038185,
+            0.15716736412894516
+          ],
+          "brier": [
+            -0.0005569043513146859,
+            0.13613757430555923
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_mixed_descriptive_only": {
+        "rows": 1104,
+        "station_days": 305,
+        "days": 24,
+        "delta": {
+          "logscore": 0.2595210067289103,
+          "crps_c": 0.1265578466988195,
+          "brier": 0.07126233417839815
+        },
+        "ci95": {
+          "logscore": [
+            0.16996189132680978,
+            0.3528819927589358
+          ],
+          "crps_c": [
+            0.082649136651668,
+            0.17597468173025452
+          ],
+          "brier": [
+            0.04247997187418035,
+            0.10370191153530689
+          ]
+        },
+        "statistical_gate": false
+      },
+      "bright_mixed_descriptive_only": {
+        "rows": 1443,
+        "station_days": 428,
+        "days": 24,
+        "delta": {
+          "logscore": 1.0641717178357972,
+          "crps_c": 0.6171288264172606,
+          "brier": 0.3089145860055771
+        },
+        "ci95": {
+          "logscore": [
+            0.91518901940077,
+            1.2037702634546796
+          ],
+          "crps_c": [
+            0.5454079712621608,
+            0.683619535850669
+          ],
+          "brier": [
+            0.26949905789521345,
+            0.3444863277883281
+          ]
+        },
+        "statistical_gate": false
+      },
+      "zuuu_history": {
+        "rows": 192,
+        "station_days": 24,
+        "days": 24,
+        "delta": {
+          "logscore": 0.41271106229378035,
+          "crps_c": 0.22620382360430816,
+          "brier": 0.12014833296722909
+        },
+        "ci95": {
+          "logscore": [
+            0.041547649434004796,
+            0.8882146084639471
+          ],
+          "crps_c": [
+            0.013743322780311498,
+            0.5263469913718292
+          ],
+          "brier": [
+            -0.0010208709443364024,
+            0.2619306522711035
+          ]
+        },
+        "statistical_gate": false
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 94,
+          "station_days": 20,
+          "days": 2,
+          "delta": {
+            "logscore": 0.3537495622007442,
+            "crps_c": 0.18094922427050072,
+            "brier": 0.08940471297039818
+          },
+          "ci95": {
+            "logscore": [
+              0.030224680248382964,
+              0.3896967713065622
+            ],
+            "crps_c": [
+              0.00787357524987631,
+              0.20017985193945897
+            ],
+            "brier": [
+              0.007894054899245728,
+              0.09846145275608177
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 41,
+          "station_days": 23,
+          "days": 1,
+          "delta": {
+            "logscore": 0.3163762347332465,
+            "crps_c": 0.21180249567501602,
+            "brier": 0.06927301418710305
+          },
+          "ci95": {
+            "logscore": [
+              0.3163762347332465,
+              0.3163762347332465
+            ],
+            "crps_c": [
+              0.21180249567501602,
+              0.21180249567501602
+            ],
+            "brier": [
+              0.06927301418710305,
+              0.06927301418710305
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 24,
+          "station_days": 24,
+          "days": 1,
+          "delta": {
+            "logscore": 0.37798415386197165,
+            "crps_c": 0.2881418294501176,
+            "brier": 0.14180468285581055
+          },
+          "ci95": {
+            "logscore": [
+              0.37798415386197165,
+              0.37798415386197165
+            ],
+            "crps_c": [
+              0.2881418294501176,
+              0.2881418294501176
+            ],
+            "brier": [
+              0.14180468285581055,
+              0.14180468285581055
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 76,
+          "station_days": 27,
+          "days": 1,
+          "delta": {
+            "logscore": 0.6704281864507278,
+            "crps_c": 0.43824728727948553,
+            "brier": 0.16659131691086745
+          },
+          "ci95": {
+            "logscore": [
+              0.6704281864507278,
+              0.6704281864507278
+            ],
+            "crps_c": [
+              0.43824728727948553,
+              0.43824728727948553
+            ],
+            "brier": [
+              0.16659131691086745,
+              0.16659131691086745
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 36,
+          "station_days": 14,
+          "days": 1,
+          "delta": {
+            "logscore": 0.8496203062615583,
+            "crps_c": 0.3950407666663027,
+            "brier": 0.17778932367480302
+          },
+          "ci95": {
+            "logscore": [
+              0.8496203062615583,
+              0.8496203062615583
+            ],
+            "crps_c": [
+              0.3950407666663027,
+              0.3950407666663027
+            ],
+            "brier": [
+              0.17778932367480302,
+              0.17778932367480302
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 445,
+          "station_days": 71,
+          "days": 3,
+          "delta": {
+            "logscore": 0.4640293509306846,
+            "crps_c": 0.25752702765715,
+            "brier": 0.11149637831532021
+          },
+          "ci95": {
+            "logscore": [
+              0.10163944061352535,
+              1.4295385810450343
+            ],
+            "crps_c": [
+              0.03213643858994641,
+              0.7853613946847655
+            ],
+            "brier": [
+              0.01593455292192662,
+              0.3451544927170755
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 178,
+          "station_days": 35,
+          "days": 2,
+          "delta": {
+            "logscore": 0.22130975155497795,
+            "crps_c": 0.16624399347442856,
+            "brier": 0.06273394396511811
+          },
+          "ci95": {
+            "logscore": [
+              0.09681468038524144,
+              0.2948750208825496
+            ],
+            "crps_c": [
+              0.07828834968951237,
+              0.2182177829836972
+            ],
+            "brier": [
+              0.03969003185757933,
+              0.07635080111957283
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 147,
+          "station_days": 37,
+          "days": 2,
+          "delta": {
+            "logscore": 0.23981432147374823,
+            "crps_c": 0.20123483957857177,
+            "brier": 0.09847631043829735
+          },
+          "ci95": {
+            "logscore": [
+              0.18564311943805792,
+              0.259877729635115
+            ],
+            "crps_c": [
+              0.1547779849974778,
+              0.21844108201601403
+            ],
+            "brier": [
+              0.09059266247972274,
+              0.11976215992644883
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 199,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.4350507075168277,
+            "crps_c": 0.19988074856416704,
+            "brier": 0.10462833808856194
+          },
+          "ci95": {
+            "logscore": [
+              0.4350507075168277,
+              0.4350507075168277
+            ],
+            "crps_c": [
+              0.19988074856416704,
+              0.19988074856416704
+            ],
+            "brier": [
+              0.10462833808856194,
+              0.10462833808856194
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 12,
+          "station_days": 12,
+          "days": 1,
+          "delta": {
+            "logscore": 0.850931549484547,
+            "crps_c": 0.4983367899804481,
+            "brier": 0.12273152459039671
+          },
+          "ci95": {
+            "logscore": [
+              0.850931549484547,
+              0.850931549484547
+            ],
+            "crps_c": [
+              0.4983367899804481,
+              0.4983367899804481
+            ],
+            "brier": [
+              0.12273152459039671,
+              0.12273152459039671
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 23,
+          "station_days": 11,
+          "days": 2,
+          "delta": {
+            "logscore": 0.24065448694260994,
+            "crps_c": 0.2880262851048254,
+            "brier": 0.11048610514632666
+          },
+          "ci95": {
+            "logscore": [
+              0.11381665346260517,
+              0.2533382702906104
+            ],
+            "crps_c": [
+              0.05692309630355841,
+              0.31113660398495213
+            ],
+            "brier": [
+              0.09503809580855019,
+              0.11203090608010431
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 250,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.42247358884587316,
+            "crps_c": 0.2255777880731744,
+            "brier": 0.10497234416735875
+          },
+          "ci95": {
+            "logscore": [
+              0.42247358884587316,
+              0.42247358884587316
+            ],
+            "crps_c": [
+              0.2255777880731744,
+              0.2255777880731744
+            ],
+            "brier": [
+              0.10497234416735875,
+              0.10497234416735875
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 35,
+          "station_days": 14,
+          "days": 2,
+          "delta": {
+            "logscore": 0.08368292847960965,
+            "crps_c": 0.0831872499284113,
+            "brier": 0.03884359950369242
+          },
+          "ci95": {
+            "logscore": [
+              0.013965443836027713,
+              0.0890458119137313
+            ],
+            "crps_c": [
+              0.008571665826869912,
+              0.0889269102439145
+            ],
+            "brier": [
+              0.015625930307613056,
+              0.04062957405723699
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 7,
+          "station_days": 6,
+          "days": 1,
+          "delta": {
+            "logscore": 0.22522378590558303,
+            "crps_c": 0.1332714259286004,
+            "brier": 0.054655727460102645
+          },
+          "ci95": {
+            "logscore": [
+              0.22522378590558303,
+              0.22522378590558303
+            ],
+            "crps_c": [
+              0.1332714259286004,
+              0.1332714259286004
+            ],
+            "brier": [
+              0.054655727460102645,
+              0.054655727460102645
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 74,
+          "station_days": 18,
+          "days": 1,
+          "delta": {
+            "logscore": 0.2081541826788737,
+            "crps_c": 0.14823658731231076,
+            "brier": 0.07255711818075447
+          },
+          "ci95": {
+            "logscore": [
+              0.2081541826788737,
+              0.2081541826788737
+            ],
+            "crps_c": [
+              0.14823658731231076,
+              0.14823658731231076
+            ],
+            "brier": [
+              0.07255711818075447,
+              0.07255711818075447
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "station_days": 2,
+          "days": 1,
+          "delta": {
+            "logscore": 0.1784729349432425,
+            "crps_c": 0.1203614564086208,
+            "brier": 0.1929508384862318
+          },
+          "ci95": {
+            "logscore": [
+              0.1784729349432425,
+              0.1784729349432425
+            ],
+            "crps_c": [
+              0.1203614564086208,
+              0.1203614564086208
+            ],
+            "brier": [
+              0.1929508384862318,
+              0.1929508384862318
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 38,
+          "station_days": 20,
+          "days": 1,
+          "delta": {
+            "logscore": 0.043806837735047385,
+            "crps_c": 0.01553302227065551,
+            "brier": 0.019274643091411595
+          },
+          "ci95": {
+            "logscore": [
+              0.043806837735047385,
+              0.043806837735047385
+            ],
+            "crps_c": [
+              0.01553302227065551,
+              0.01553302227065551
+            ],
+            "brier": [
+              0.019274643091411595,
+              0.019274643091411595
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 516,
+          "station_days": 67,
+          "days": 3,
+          "delta": {
+            "logscore": 0.29606598037820575,
+            "crps_c": 0.17333302552056576,
+            "brier": 0.10253662739946502
+          },
+          "ci95": {
+            "logscore": [
+              0.27840278359495496,
+              0.33138745009179327
+            ],
+            "crps_c": [
+              0.16252881425148175,
+              0.18208014643300702
+            ],
+            "brier": [
+              0.06704739683817487,
+              0.12163688069286399
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 1122,
+          "station_days": 125,
+          "days": 5,
+          "delta": {
+            "logscore": 0.36735730687003937,
+            "crps_c": 0.22454954010827619,
+            "brier": 0.10345037867301403
+          },
+          "ci95": {
+            "logscore": [
+              0.3132954694978735,
+              0.42568449972430505
+            ],
+            "crps_c": [
+              0.19452978727201578,
+              0.2494538240217532
+            ],
+            "brier": [
+              0.0842131698208903,
+              0.12258992533776618
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 19,
+          "station_days": 8,
+          "days": 2,
+          "delta": {
+            "logscore": -0.08295635807500251,
+            "crps_c": -0.030395907980967543,
+            "brier": -0.00888301230595478
+          },
+          "ci95": {
+            "logscore": [
+              -0.13692033885415772,
+              0.006983609890256165
+            ],
+            "crps_c": [
+              -0.04928643004223192,
+              0.0010882954544730809
+            ],
+            "brier": [
+              -0.014447789556149665,
+              0.0003916164443700295
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 9,
+          "station_days": 9,
+          "days": 1,
+          "delta": {
+            "logscore": 0.38902697580708145,
+            "crps_c": 0.20399705364418003,
+            "brier": 0.07713836361107185
+          },
+          "ci95": {
+            "logscore": [
+              0.38902697580708145,
+              0.38902697580708145
+            ],
+            "crps_c": [
+              0.20399705364418003,
+              0.20399705364418003
+            ],
+            "brier": [
+              0.07713836361107185,
+              0.07713836361107185
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 33,
+          "station_days": 17,
+          "days": 1,
+          "delta": {
+            "logscore": 0.31470839134445605,
+            "crps_c": 0.10593793451286507,
+            "brier": 0.14667955919106726
+          },
+          "ci95": {
+            "logscore": [
+              0.31470839134445605,
+              0.31470839134445605
+            ],
+            "crps_c": [
+              0.10593793451286507,
+              0.10593793451286507
+            ],
+            "brier": [
+              0.14667955919106726,
+              0.14667955919106726
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 159,
+          "station_days": 29,
+          "days": 1,
+          "delta": {
+            "logscore": 0.12535385714089603,
+            "crps_c": 0.06673368436065491,
+            "brier": 0.061465594685514074
+          },
+          "ci95": {
+            "logscore": [
+              0.12535385714089603,
+              0.12535385714089603
+            ],
+            "crps_c": [
+              0.06673368436065491,
+              0.06673368436065491
+            ],
+            "brier": [
+              0.061465594685514074,
+              0.061465594685514074
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 41,
+          "station_days": 15,
+          "days": 1,
+          "delta": {
+            "logscore": 0.530046269190897,
+            "crps_c": 0.2957052624573317,
+            "brier": 0.09711302582530817
+          },
+          "ci95": {
+            "logscore": [
+              0.530046269190897,
+              0.530046269190897
+            ],
+            "crps_c": [
+              0.2957052624573317,
+              0.2957052624573317
+            ],
+            "brier": [
+              0.09711302582530817,
+              0.09711302582530817
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 555,
+          "station_days": 78,
+          "days": 3,
+          "delta": {
+            "logscore": 0.35832709624296494,
+            "crps_c": 0.2340437351321804,
+            "brier": 0.1184304235734744
+          },
+          "ci95": {
+            "logscore": [
+              0.2604224748214178,
+              0.4403648178803522
+            ],
+            "crps_c": [
+              0.17108244052884833,
+              0.276022824399985
+            ],
+            "brier": [
+              0.08451054918685688,
+              0.14725597130746082
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 673,
+          "station_days": 84,
+          "days": 3,
+          "delta": {
+            "logscore": 0.2879425727958936,
+            "crps_c": 0.1646238643638604,
+            "brier": 0.07758097151844964
+          },
+          "ci95": {
+            "logscore": [
+              0.0933711811264935,
+              0.4433421179624006
+            ],
+            "crps_c": [
+              0.05671191073755802,
+              0.2502155944408989
+            ],
+            "brier": [
+              0.043346245227909225,
+              0.09346730823177847
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 1166,
+          "station_days": 147,
+          "days": 5,
+          "delta": {
+            "logscore": 0.545463012023637,
+            "crps_c": 0.2776992539540211,
+            "brier": 0.15671180781083563
+          },
+          "ci95": {
+            "logscore": [
+              0.3519165340145371,
+              0.712364762274804
+            ],
+            "crps_c": [
+              0.18082811560493373,
+              0.3616977414900076
+            ],
+            "brier": [
+              0.1158672119826924,
+              0.1879546590901302
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 151,
+          "station_days": 30,
+          "days": 1,
+          "delta": {
+            "logscore": 0.4984846148925199,
+            "crps_c": 0.24337863698992343,
+            "brier": 0.14756318634998306
+          },
+          "ci95": {
+            "logscore": [
+              0.4984846148925199,
+              0.4984846148925199
+            ],
+            "crps_c": [
+              0.24337863698992343,
+              0.24337863698992343
+            ],
+            "brier": [
+              0.14756318634998306,
+              0.14756318634998306
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 352,
+          "station_days": 49,
+          "days": 2,
+          "delta": {
+            "logscore": 0.45495044634673226,
+            "crps_c": 0.24309658651175517,
+            "brier": 0.11588141944894641
+          },
+          "ci95": {
+            "logscore": [
+              0.0948752536902825,
+              0.6640263646633803
+            ],
+            "crps_c": [
+              0.005200178523073313,
+              0.38122998469873165
+            ],
+            "brier": [
+              0.025281683867503943,
+              0.16848771752849367
+            ]
+          },
+          "statistical_gate": false
+        }
+      }
+    },
+    "8.0": {
+      "all_mixed_descriptive_only": {
+        "rows": 6477,
+        "station_days": 740,
+        "days": 24,
+        "delta": {
+          "logscore": 0.9228372635661227,
+          "crps_c": 0.4567612933506362,
+          "brier": 0.2350540057600421
+        },
+        "ci95": {
+          "logscore": [
+            0.8324150848628455,
+            1.016890654003298
+          ],
+          "crps_c": [
+            0.41044425623773284,
+            0.5057089018125667
+          ],
+          "brier": [
+            0.21311642973166922,
+            0.2580231626245172
+          ]
+        },
+        "statistical_gate": false
+      },
+      "current_v38": {
+        "rows": 673,
+        "station_days": 84,
+        "days": 3,
+        "delta": {
+          "logscore": 0.8277012963179115,
+          "crps_c": 0.42589246749816223,
+          "brier": 0.20596235032018195
+        },
+        "ci95": {
+          "logscore": [
+            0.5862046774102895,
+            0.9197837754610105
+          ],
+          "crps_c": [
+            0.33872933575010444,
+            0.45584343254007564
+          ],
+          "brier": [
+            0.19045083187780898,
+            0.21719069009012515
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_current_v38": {
+        "rows": 78,
+        "station_days": 26,
+        "days": 3,
+        "delta": {
+          "logscore": 0.7599672811329768,
+          "crps_c": 0.3781577763017978,
+          "brier": 0.17507742475697488
+        },
+        "ci95": {
+          "logscore": [
+            -0.011414032310199655,
+            0.8647048158290273
+          ],
+          "crps_c": [
+            -0.0003707996363336267,
+            0.43663190510645505
+          ],
+          "brier": [
+            -0.0005923237805284537,
+            0.26967536028578987
+          ]
+        },
+        "statistical_gate": false
+      },
+      "dark_mixed_descriptive_only": {
+        "rows": 1104,
+        "station_days": 305,
+        "days": 24,
+        "delta": {
+          "logscore": 0.6451211477521018,
+          "crps_c": 0.2504298279991276,
+          "brier": 0.1651255112776114
+        },
+        "ci95": {
+          "logscore": [
+            0.4881198456296524,
+            0.8057544969978809
+          ],
+          "crps_c": [
+            0.18161277606567872,
+            0.3252035773211546
+          ],
+          "brier": [
+            0.11748901340084558,
+            0.21750840542128724
+          ]
+        },
+        "statistical_gate": false
+      },
+      "bright_mixed_descriptive_only": {
+        "rows": 1443,
+        "station_days": 428,
+        "days": 24,
+        "delta": {
+          "logscore": 2.6424428718858866,
+          "crps_c": 1.3970059722893116,
+          "brier": 0.6746898255094235
+        },
+        "ci95": {
+          "logscore": [
+            2.444688684641272,
+            2.809776484509274
+          ],
+          "crps_c": [
+            1.3004433643741722,
+            1.4924475103333978
+          ],
+          "brier": [
+            0.6305548955793042,
+            0.7154318684059996
+          ]
+        },
+        "statistical_gate": false
+      },
+      "zuuu_history": {
+        "rows": 192,
+        "station_days": 24,
+        "days": 24,
+        "delta": {
+          "logscore": 1.2411711033813688,
+          "crps_c": 0.5500659728799441,
+          "brier": 0.3151929726121055
+        },
+        "ci95": {
+          "logscore": [
+            0.6248935529601215,
+            1.994332945758007
+          ],
+          "crps_c": [
+            0.24535375075081728,
+            0.9343284378917646
+          ],
+          "brier": [
+            0.1549299280839049,
+            0.5023197931442205
+          ]
+        },
+        "statistical_gate": false
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 94,
+          "station_days": 20,
+          "days": 2,
+          "delta": {
+            "logscore": 0.8729827045530676,
+            "crps_c": 0.40184227884209245,
+            "brier": 0.23551848905201073
+          },
+          "ci95": {
+            "logscore": [
+              0.5883434202339283,
+              0.9046092916996383
+            ],
+            "crps_c": [
+              0.3249461829225842,
+              0.41038628949981554
+            ],
+            "brier": [
+              0.22557814825929234,
+              0.3249815561864762
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 41,
+          "station_days": 23,
+          "days": 1,
+          "delta": {
+            "logscore": 0.8701529159725483,
+            "crps_c": 0.5688458498767234,
+            "brier": 0.20937939953876264
+          },
+          "ci95": {
+            "logscore": [
+              0.8701529159725483,
+              0.8701529159725483
+            ],
+            "crps_c": [
+              0.5688458498767234,
+              0.5688458498767234
+            ],
+            "brier": [
+              0.20937939953876264,
+              0.20937939953876264
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 24,
+          "station_days": 24,
+          "days": 1,
+          "delta": {
+            "logscore": 0.9997849139602725,
+            "crps_c": 0.5653414405419487,
+            "brier": 0.26279591609440056
+          },
+          "ci95": {
+            "logscore": [
+              0.9997849139602725,
+              0.9997849139602725
+            ],
+            "crps_c": [
+              0.5653414405419487,
+              0.5653414405419487
+            ],
+            "brier": [
+              0.26279591609440056,
+              0.26279591609440056
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 76,
+          "station_days": 27,
+          "days": 1,
+          "delta": {
+            "logscore": 1.1934988871758931,
+            "crps_c": 0.7058281683256722,
+            "brier": 0.2856353975495635
+          },
+          "ci95": {
+            "logscore": [
+              1.1934988871758931,
+              1.1934988871758931
+            ],
+            "crps_c": [
+              0.7058281683256722,
+              0.7058281683256722
+            ],
+            "brier": [
+              0.2856353975495635,
+              0.2856353975495635
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 36,
+          "station_days": 14,
+          "days": 1,
+          "delta": {
+            "logscore": 1.231586474606146,
+            "crps_c": 0.6429610720249951,
+            "brier": 0.31151353497141226
+          },
+          "ci95": {
+            "logscore": [
+              1.231586474606146,
+              1.231586474606146
+            ],
+            "crps_c": [
+              0.6429610720249951,
+              0.6429610720249951
+            ],
+            "brier": [
+              0.31151353497141226,
+              0.31151353497141226
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 445,
+          "station_days": 71,
+          "days": 3,
+          "delta": {
+            "logscore": 0.8391707790604417,
+            "crps_c": 0.43158990286937005,
+            "brier": 0.19948817831055074
+          },
+          "ci95": {
+            "logscore": [
+              0.3466923457204895,
+              1.9754473165309696
+            ],
+            "crps_c": [
+              0.14898160761045548,
+              1.0400049502967015
+            ],
+            "brier": [
+              0.07827595539958278,
+              0.5035139360246859
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 178,
+          "station_days": 35,
+          "days": 2,
+          "delta": {
+            "logscore": 0.6965493588746733,
+            "crps_c": 0.39911944791366427,
+            "brier": 0.16416982920681542
+          },
+          "ci95": {
+            "logscore": [
+              0.38907264966417643,
+              0.8782401415899667
+            ],
+            "crps_c": [
+              0.27360158065250906,
+              0.4732890967498016
+            ],
+            "brier": [
+              0.10863178674146093,
+              0.19698776339088842
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 147,
+          "station_days": 37,
+          "days": 2,
+          "delta": {
+            "logscore": 0.9180225102305039,
+            "crps_c": 0.6142267042168182,
+            "brier": 0.28455573464763917
+          },
+          "ci95": {
+            "logscore": [
+              0.5378548028615883,
+              1.0588253648115835
+            ],
+            "crps_c": [
+              0.38132534295629966,
+              0.7004864676466399
+            ],
+            "brier": [
+              0.25254419384727333,
+              0.2964118608699968
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 199,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.7956882311363225,
+            "crps_c": 0.3759455657348472,
+            "brier": 0.20178126022906578
+          },
+          "ci95": {
+            "logscore": [
+              0.7956882311363225,
+              0.7956882311363225
+            ],
+            "crps_c": [
+              0.3759455657348472,
+              0.3759455657348472
+            ],
+            "brier": [
+              0.20178126022906578,
+              0.20178126022906578
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 12,
+          "station_days": 12,
+          "days": 1,
+          "delta": {
+            "logscore": 0.9363042590192125,
+            "crps_c": 0.5050862919172027,
+            "brier": 0.11088113374975701
+          },
+          "ci95": {
+            "logscore": [
+              0.9363042590192125,
+              0.9363042590192125
+            ],
+            "crps_c": [
+              0.5050862919172027,
+              0.5050862919172027
+            ],
+            "brier": [
+              0.11088113374975701,
+              0.11088113374975701
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 23,
+          "station_days": 11,
+          "days": 2,
+          "delta": {
+            "logscore": 1.254303315736182,
+            "crps_c": 0.8115869825346241,
+            "brier": 0.33333870976022273
+          },
+          "ci95": {
+            "logscore": [
+              0.24322286607124494,
+              1.3554113607026754
+            ],
+            "crps_c": [
+              0.1215749744922475,
+              0.8805881833388616
+            ],
+            "brier": [
+              0.1969755414927959,
+              0.34697502658696533
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 250,
+          "station_days": 31,
+          "days": 1,
+          "delta": {
+            "logscore": 0.8475547939570796,
+            "crps_c": 0.4580438357516102,
+            "brier": 0.23417746045690718
+          },
+          "ci95": {
+            "logscore": [
+              0.8475547939570796,
+              0.8475547939570796
+            ],
+            "crps_c": [
+              0.4580438357516102,
+              0.4580438357516102
+            ],
+            "brier": [
+              0.23417746045690718,
+              0.23417746045690718
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 35,
+          "station_days": 14,
+          "days": 2,
+          "delta": {
+            "logscore": 0.32734429751275657,
+            "crps_c": 0.18843830147946164,
+            "brier": 0.0841181470337009
+          },
+          "ci95": {
+            "logscore": [
+              0.028674849659242163,
+              0.3503188704245654
+            ],
+            "crps_c": [
+              0.01755416997712983,
+              0.20158323467194872
+            ],
+            "brier": [
+              0.03203414071643307,
+              0.08812460905810612
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 7,
+          "station_days": 6,
+          "days": 1,
+          "delta": {
+            "logscore": 1.128838386251191,
+            "crps_c": 0.30854010639501367,
+            "brier": 0.17720731205281415
+          },
+          "ci95": {
+            "logscore": [
+              1.128838386251191,
+              1.128838386251191
+            ],
+            "crps_c": [
+              0.30854010639501367,
+              0.30854010639501367
+            ],
+            "brier": [
+              0.17720731205281415,
+              0.17720731205281415
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 74,
+          "station_days": 18,
+          "days": 1,
+          "delta": {
+            "logscore": 0.6260802215960009,
+            "crps_c": 0.30580621916566186,
+            "brier": 0.1965103878649882
+          },
+          "ci95": {
+            "logscore": [
+              0.6260802215960009,
+              0.6260802215960009
+            ],
+            "crps_c": [
+              0.30580621916566186,
+              0.30580621916566186
+            ],
+            "brier": [
+              0.1965103878649882,
+              0.1965103878649882
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "station_days": 2,
+          "days": 1,
+          "delta": {
+            "logscore": 0.636844508729916,
+            "crps_c": 0.31992508739574554,
+            "brier": 0.41236919423954543
+          },
+          "ci95": {
+            "logscore": [
+              0.636844508729916,
+              0.636844508729916
+            ],
+            "crps_c": [
+              0.31992508739574554,
+              0.31992508739574554
+            ],
+            "brier": [
+              0.41236919423954543,
+              0.41236919423954543
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 38,
+          "station_days": 20,
+          "days": 1,
+          "delta": {
+            "logscore": 0.32084623621775804,
+            "crps_c": 0.3135662514036245,
+            "brier": 0.16320180170194837
+          },
+          "ci95": {
+            "logscore": [
+              0.32084623621775804,
+              0.32084623621775804
+            ],
+            "crps_c": [
+              0.3135662514036245,
+              0.3135662514036245
+            ],
+            "brier": [
+              0.16320180170194837,
+              0.16320180170194837
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 516,
+          "station_days": 67,
+          "days": 3,
+          "delta": {
+            "logscore": 0.7838552066682515,
+            "crps_c": 0.36227319675088726,
+            "brier": 0.22014149447874565
+          },
+          "ci95": {
+            "logscore": [
+              0.5106624446971559,
+              0.8573516863386181
+            ],
+            "crps_c": [
+              0.3258527173418763,
+              0.4036915061632018
+            ],
+            "brier": [
+              0.13502678008255006,
+              0.2613560089862534
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 1122,
+          "station_days": 125,
+          "days": 5,
+          "delta": {
+            "logscore": 0.8589035122452958,
+            "crps_c": 0.4445577168233749,
+            "brier": 0.2140538146874916
+          },
+          "ci95": {
+            "logscore": [
+              0.7660007473999746,
+              0.943639897942986
+            ],
+            "crps_c": [
+              0.3876787981210978,
+              0.5113088870442278
+            ],
+            "brier": [
+              0.18688384592354332,
+              0.24302505152588033
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 19,
+          "station_days": 8,
+          "days": 2,
+          "delta": {
+            "logscore": -0.012992535087439,
+            "crps_c": 0.04900970021360465,
+            "brier": 0.024991459387130974
+          },
+          "ci95": {
+            "logscore": [
+              -0.08996117818435742,
+              0.11528853674075834
+            ],
+            "crps_c": [
+              0.02794329789801331,
+              0.08412037073959021
+            ],
+            "brier": [
+              0.016327814612773682,
+              0.039430867344393106
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 9,
+          "station_days": 9,
+          "days": 1,
+          "delta": {
+            "logscore": 0.4950696525531051,
+            "crps_c": 0.25080015835932723,
+            "brier": 0.10832128609685979
+          },
+          "ci95": {
+            "logscore": [
+              0.4950696525531051,
+              0.4950696525531051
+            ],
+            "crps_c": [
+              0.25080015835932723,
+              0.25080015835932723
+            ],
+            "brier": [
+              0.10832128609685979,
+              0.10832128609685979
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 33,
+          "station_days": 17,
+          "days": 1,
+          "delta": {
+            "logscore": 0.7701522553262494,
+            "crps_c": 0.16656908485452457,
+            "brier": 0.22576985147963072
+          },
+          "ci95": {
+            "logscore": [
+              0.7701522553262494,
+              0.7701522553262494
+            ],
+            "crps_c": [
+              0.16656908485452457,
+              0.16656908485452457
+            ],
+            "brier": [
+              0.22576985147963072,
+              0.22576985147963072
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 159,
+          "station_days": 29,
+          "days": 1,
+          "delta": {
+            "logscore": 0.5434190927923829,
+            "crps_c": 0.23819383638452274,
+            "brier": 0.18348763356380618
+          },
+          "ci95": {
+            "logscore": [
+              0.5434190927923829,
+              0.5434190927923829
+            ],
+            "crps_c": [
+              0.23819383638452274,
+              0.23819383638452274
+            ],
+            "brier": [
+              0.18348763356380618,
+              0.18348763356380618
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 41,
+          "station_days": 15,
+          "days": 1,
+          "delta": {
+            "logscore": 0.9678610883357862,
+            "crps_c": 0.5638948425614426,
+            "brier": 0.21649283402639646
+          },
+          "ci95": {
+            "logscore": [
+              0.9678610883357862,
+              0.9678610883357862
+            ],
+            "crps_c": [
+              0.5638948425614426,
+              0.5638948425614426
+            ],
+            "brier": [
+              0.21649283402639646,
+              0.21649283402639646
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 555,
+          "station_days": 78,
+          "days": 3,
+          "delta": {
+            "logscore": 1.0860853049471597,
+            "crps_c": 0.5407477888830222,
+            "brier": 0.2891548277726862
+          },
+          "ci95": {
+            "logscore": [
+              0.8442070517747051,
+              1.2707436786476187
+            ],
+            "crps_c": [
+              0.41679954840122097,
+              0.7668565281582667
+            ],
+            "brier": [
+              0.21862071147790565,
+              0.3779209296911026
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 673,
+          "station_days": 84,
+          "days": 3,
+          "delta": {
+            "logscore": 0.8277012963179115,
+            "crps_c": 0.42589246749816223,
+            "brier": 0.20596235032018195
+          },
+          "ci95": {
+            "logscore": [
+              0.5862046774102895,
+              0.9197837754610105
+            ],
+            "crps_c": [
+              0.33872933575010444,
+              0.45584343254007564
+            ],
+            "brier": [
+              0.19045083187780898,
+              0.21719069009012515
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 1166,
+          "station_days": 147,
+          "days": 5,
+          "delta": {
+            "logscore": 1.142666717916833,
+            "crps_c": 0.528477841330966,
+            "brier": 0.28751757441481607
+          },
+          "ci95": {
+            "logscore": [
+              0.8672773833397366,
+              1.372682525436741
+            ],
+            "crps_c": [
+              0.3884895241453504,
+              0.6550585719013865
+            ],
+            "brier": [
+              0.2378434264896761,
+              0.32742218019490404
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 151,
+          "station_days": 30,
+          "days": 1,
+          "delta": {
+            "logscore": 0.883381290271536,
+            "crps_c": 0.3798070130170782,
+            "brier": 0.2358177720249736
+          },
+          "ci95": {
+            "logscore": [
+              0.883381290271536,
+              0.883381290271536
+            ],
+            "crps_c": [
+              0.3798070130170782,
+              0.3798070130170782
+            ],
+            "brier": [
+              0.2358177720249736,
+              0.2358177720249736
+            ]
+          },
+          "statistical_gate": false
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 352,
+          "station_days": 49,
+          "days": 2,
+          "delta": {
+            "logscore": 1.0422647810126462,
+            "crps_c": 0.4593066924525628,
+            "brier": 0.23226303174583984
+          },
+          "ci95": {
+            "logscore": [
+              0.7085799021399368,
+              1.2360172913258318
+            ],
+            "crps_c": [
+              0.22632106568153063,
+              0.5945886692873555
+            ],
+            "brier": [
+              0.17191673014349382,
+              0.26730281977300846
+            ]
+          },
+          "statistical_gate": false
+        }
+      }
+    }
+  },
+  "legacy_reconciliation": {
+    "mean_station_day": [
+      -0.010361118021780403,
+      -0.007476948588467626
+    ],
+    "station_days": 1088,
+    "days": 24,
+    "role": "only reproduces arithmetic; does not validate timing or lineage"
+  },
+  "exclusions": {
+    "no_verified_source": 6021,
+    "missing_or_dark_shortwave": 4217,
+    "truth_outside_support": 36
+  },
+  "selected_winner": false,
+  "activation_eligible": false
+}

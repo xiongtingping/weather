@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "checks": [
+    "30 scalar-vs-vector, dark-bright reversal and support boundary cases",
+    "zero strength and zero evidence are exact identities",
+    "2F=10/9C CRPS distance, without hardcoded real market bucket widths",
+    "full 9344 rows: observation receipt cutoff, shortwave cutoff and zero mask",
+    "missing observations, explicit nulls and dark hours fail closed",
+    "training refuses a truth revision before its actual commit",
+    "default is not accepted as satellite; future satellite null; KLGA unavailable"
+  ],
+  "resource_guard": "RSS 1GiB, free disk 2GiB",
+  "production_modified": false,
+  "strict_asof_activation_eligible": false
+}

@@ -1,0 +1,586 @@
+{
+  "probes": [
+    {
+      "station": "ZUUU",
+      "model": "default",
+      "n": 888,
+      "non_null": 888,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T23:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 41.0,
+        "2026-10-07T09:00": 140.0,
+        "2026-10-07T10:00": 278.0,
+        "2026-10-07T11:00": 444.0,
+        "2026-10-07T12:00": 520.0,
+        "2026-10-07T13:00": 545.0,
+        "2026-10-07T14:00": 645.0,
+        "2026-10-07T15:00": 552.0,
+        "2026-10-07T16:00": 440.0,
+        "2026-10-07T17:00": 290.0,
+        "2026-10-07T18:00": 124.0,
+        "2026-10-07T19:00": 19.0,
+        "2026-10-07T20:00": 0.0,
+        "2026-10-07T21:00": 0.0,
+        "2026-10-07T22:00": 0.0,
+        "2026-10-07T23:00": 0.0
+      }
+    },
+    {
+      "station": "ZUUU",
+      "model": "satellite_radiation_seamless",
+      "n": 888,
+      "non_null": 858,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T17:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 46.7,
+        "2026-10-07T09:00": 242.7,
+        "2026-10-07T10:00": 365.0,
+        "2026-10-07T11:00": 459.5,
+        "2026-10-07T12:00": 497.8,
+        "2026-10-07T13:00": 448.2,
+        "2026-10-07T14:00": 443.3,
+        "2026-10-07T15:00": 411.0,
+        "2026-10-07T16:00": 206.5,
+        "2026-10-07T17:00": 267.5,
+        "2026-10-07T18:00": null,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    },
+    {
+      "station": "ZUUU",
+      "model": "jma_jaxa_himawari",
+      "n": 888,
+      "non_null": 858,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T17:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 46.7,
+        "2026-10-07T09:00": 242.7,
+        "2026-10-07T10:00": 365.0,
+        "2026-10-07T11:00": 459.5,
+        "2026-10-07T12:00": 497.8,
+        "2026-10-07T13:00": 448.2,
+        "2026-10-07T14:00": 443.3,
+        "2026-10-07T15:00": 411.0,
+        "2026-10-07T16:00": 206.5,
+        "2026-10-07T17:00": 267.5,
+        "2026-10-07T18:00": null,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    },
+    {
+      "station": "EGLC",
+      "model": "default",
+      "n": 888,
+      "non_null": 888,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T23:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 7.0,
+        "2026-10-07T09:00": 22.0,
+        "2026-10-07T10:00": 43.0,
+        "2026-10-07T11:00": 40.0,
+        "2026-10-07T12:00": 48.0,
+        "2026-10-07T13:00": 43.0,
+        "2026-10-07T14:00": 46.0,
+        "2026-10-07T15:00": 88.0,
+        "2026-10-07T16:00": 135.0,
+        "2026-10-07T17:00": 57.0,
+        "2026-10-07T18:00": 26.0,
+        "2026-10-07T19:00": 2.0,
+        "2026-10-07T20:00": 0.0,
+        "2026-10-07T21:00": 0.0,
+        "2026-10-07T22:00": 0.0,
+        "2026-10-07T23:00": 0.0
+      }
+    },
+    {
+      "station": "EGLC",
+      "model": "satellite_radiation_seamless",
+      "n": 888,
+      "non_null": 855,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T10:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 6.7,
+        "2026-10-07T09:00": 34.2,
+        "2026-10-07T10:00": 60.7,
+        "2026-10-07T11:00": null,
+        "2026-10-07T12:00": null,
+        "2026-10-07T13:00": null,
+        "2026-10-07T14:00": null,
+        "2026-10-07T15:00": null,
+        "2026-10-07T16:00": null,
+        "2026-10-07T17:00": null,
+        "2026-10-07T18:00": null,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    },
+    {
+      "station": "EGLC",
+      "model": "eumetsat_lsa_saf_msg",
+      "n": 888,
+      "non_null": 861,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T10:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 0.0,
+        "2026-10-07T09:00": 0.0,
+        "2026-10-07T10:00": 0.0,
+        "2026-10-07T11:00": null,
+        "2026-10-07T12:00": null,
+        "2026-10-07T13:00": null,
+        "2026-10-07T14:00": null,
+        "2026-10-07T15:00": null,
+        "2026-10-07T16:00": null,
+        "2026-10-07T17:00": null,
+        "2026-10-07T18:00": null,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    },
+    {
+      "station": "KLGA",
+      "model": "default",
+      "n": 888,
+      "non_null": 888,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T23:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 0.0,
+        "2026-10-07T08:00": 59.0,
+        "2026-10-07T09:00": 233.0,
+        "2026-10-07T10:00": 412.0,
+        "2026-10-07T11:00": 560.0,
+        "2026-10-07T12:00": 659.0,
+        "2026-10-07T13:00": 701.0,
+        "2026-10-07T14:00": 682.0,
+        "2026-10-07T15:00": 604.0,
+        "2026-10-07T16:00": 476.0,
+        "2026-10-07T17:00": 308.0,
+        "2026-10-07T18:00": 126.0,
+        "2026-10-07T19:00": 8.0,
+        "2026-10-07T20:00": 0.0,
+        "2026-10-07T21:00": 0.0,
+        "2026-10-07T22:00": 0.0,
+        "2026-10-07T23:00": 0.0
+      }
+    },
+    {
+      "station": "KLGA",
+      "model": "satellite_radiation_seamless",
+      "error": true
+    },
+    {
+      "station": "KLGA",
+      "model": "eumetsat_lsa_saf_msg",
+      "error": true
+    },
+    {
+      "station": "RJTT",
+      "model": "default",
+      "n": 888,
+      "non_null": 888,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T23:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 1.0,
+        "2026-10-07T07:00": 33.0,
+        "2026-10-07T08:00": 63.0,
+        "2026-10-07T09:00": 134.0,
+        "2026-10-07T10:00": 186.0,
+        "2026-10-07T11:00": 234.0,
+        "2026-10-07T12:00": 504.0,
+        "2026-10-07T13:00": 652.0,
+        "2026-10-07T14:00": 579.0,
+        "2026-10-07T15:00": 440.0,
+        "2026-10-07T16:00": 272.0,
+        "2026-10-07T17:00": 97.0,
+        "2026-10-07T18:00": 2.0,
+        "2026-10-07T19:00": 0.0,
+        "2026-10-07T20:00": 0.0,
+        "2026-10-07T21:00": 0.0,
+        "2026-10-07T22:00": 0.0,
+        "2026-10-07T23:00": 0.0
+      }
+    },
+    {
+      "station": "RJTT",
+      "model": "satellite_radiation_seamless",
+      "n": 888,
+      "non_null": 867,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T18:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 52.2,
+        "2026-10-07T08:00": 64.2,
+        "2026-10-07T09:00": 72.7,
+        "2026-10-07T10:00": 97.0,
+        "2026-10-07T11:00": 347.3,
+        "2026-10-07T12:00": 474.5,
+        "2026-10-07T13:00": 422.3,
+        "2026-10-07T14:00": 406.7,
+        "2026-10-07T15:00": 327.2,
+        "2026-10-07T16:00": 224.7,
+        "2026-10-07T17:00": 104.3,
+        "2026-10-07T18:00": 0.8,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    },
+    {
+      "station": "RJTT",
+      "model": "jma_jaxa_himawari",
+      "n": 888,
+      "non_null": 867,
+      "first": "2026-09-01T00:00",
+      "last": "2026-10-07T18:00",
+      "unit": {
+        "time": "iso8601",
+        "shortwave_radiation": "W/m²"
+      },
+      "day7": {
+        "2026-10-07T00:00": 0.0,
+        "2026-10-07T01:00": 0.0,
+        "2026-10-07T02:00": 0.0,
+        "2026-10-07T03:00": 0.0,
+        "2026-10-07T04:00": 0.0,
+        "2026-10-07T05:00": 0.0,
+        "2026-10-07T06:00": 0.0,
+        "2026-10-07T07:00": 52.2,
+        "2026-10-07T08:00": 64.2,
+        "2026-10-07T09:00": 72.7,
+        "2026-10-07T10:00": 97.0,
+        "2026-10-07T11:00": 347.3,
+        "2026-10-07T12:00": 474.5,
+        "2026-10-07T13:00": 422.3,
+        "2026-10-07T14:00": 406.7,
+        "2026-10-07T15:00": 327.2,
+        "2026-10-07T16:00": 224.7,
+        "2026-10-07T17:00": 104.3,
+        "2026-10-07T18:00": 0.8,
+        "2026-10-07T19:00": null,
+        "2026-10-07T20:00": null,
+        "2026-10-07T21:00": null,
+        "2026-10-07T22:00": null,
+        "2026-10-07T23:00": null
+      }
+    }
+  ],
+  "previous_runs": [
+    {
+      "first": "2026-09-01",
+      "last": "2026-10-07",
+      "fields": {
+        "temperature_2m_previous_day1": {
+          "n": 888,
+          "non_null": 888
+        },
+        "cloud_cover_previous_day1": {
+          "n": 888,
+          "non_null": 888
+        },
+        "cloud_cover_low_previous_day1": {
+          "n": 888,
+          "non_null": 0
+        },
+        "shortwave_radiation_previous_day1": {
+          "n": 888,
+          "non_null": 888
+        },
+        "precipitation_previous_day1": {
+          "n": 888,
+          "non_null": 888
+        }
+      }
+    },
+    {
+      "first": "2025-01-01",
+      "last": "2025-01-02",
+      "fields": {
+        "temperature_2m_previous_day1": {
+          "n": 48,
+          "non_null": 48
+        },
+        "cloud_cover_previous_day1": {
+          "n": 48,
+          "non_null": 48
+        },
+        "cloud_cover_low_previous_day1": {
+          "n": 48,
+          "non_null": 0
+        },
+        "shortwave_radiation_previous_day1": {
+          "n": 48,
+          "non_null": 48
+        },
+        "precipitation_previous_day1": {
+          "n": 48,
+          "non_null": 48
+        }
+      }
+    }
+  ],
+  "receipts": [
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=satellite_radiation_seamless",
+      "label": "ZUUU_satellite_radiation_seamless_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:38.243132+00:00",
+      "received_at": "2026-10-07T10:05:42.652735+00:00",
+      "sha256": "7389ab73a3779d883219ef193db009dcd436b2c1c3b94b828565f75a0c74bfda",
+      "bytes": 21476,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation",
+      "label": "ZUUU_default_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:38.243904+00:00",
+      "received_at": "2026-10-07T10:05:42.241169+00:00",
+      "sha256": "dd3bafa697219616f3b509c8ece97eb038e68df1b85c03e10f8b4ba503eaf76d",
+      "bytes": 21491,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "ZUUU_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:38.243993+00:00",
+      "received_at": "2026-10-07T10:05:43.558640+00:00",
+      "sha256": "30b9eaba46bb4cc71c2c167598c16c401771c87065e4d4444e092c808461f90c",
+      "bytes": 21476,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=51.5053&longitude=0.0553&timezone=Europe%2FLondon&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation",
+      "label": "EGLC_default_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:42.247121+00:00",
+      "received_at": "2026-10-07T10:05:46.299583+00:00",
+      "sha256": "dc07feb789bdd5e871399a97aacba42db79c55e4ced88fae40d7c729274f4079",
+      "bytes": 21488,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=51.5053&longitude=0.0553&timezone=Europe%2FLondon&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=satellite_radiation_seamless",
+      "label": "EGLC_satellite_radiation_seamless_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:42.655674+00:00",
+      "received_at": "2026-10-07T10:05:46.299316+00:00",
+      "sha256": "9991bfe2545c69cbfdf668e3ed1bb6c9c548a3674f69dcf205c539ee79a69184",
+      "bytes": 21516,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=51.5053&longitude=0.0553&timezone=Europe%2FLondon&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_msg",
+      "label": "EGLC_eumetsat_lsa_saf_msg_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:43.560708+00:00",
+      "received_at": "2026-10-07T10:05:47.912577+00:00",
+      "sha256": "d3121ebe77d3ca08838fc64fa28d9bf596917279c15531a9d34b98575a7bfc53",
+      "bytes": 21453,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.7769&longitude=-73.874&timezone=America%2FNew_York&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation",
+      "label": "KLGA_default_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:46.303271+00:00",
+      "received_at": "2026-10-07T10:05:53.583546+00:00",
+      "sha256": "5ffd32a6c0f281f2b3ec51d41a015963e3ac41af82e98643973f2a455b5a9ec0",
+      "bytes": 21509,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=35.5494&longitude=139.7798&timezone=Asia%2FTokyo&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation",
+      "label": "RJTT_default_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:51.224421+00:00",
+      "received_at": "2026-10-07T10:05:56.263276+00:00",
+      "sha256": "5c9edbbedfda5b920363aab596f39df9ba289b7086b3b3c6e4b32cd9d46542e7",
+      "bytes": 21442,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=35.5494&longitude=139.7798&timezone=Asia%2FTokyo&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=satellite_radiation_seamless",
+      "label": "RJTT_satellite_radiation_seamless_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:51.806062+00:00",
+      "received_at": "2026-10-07T10:05:56.558691+00:00",
+      "sha256": "321f8653e2d13898543566ec7edb012541c5ec44c21e29dd8ec7d2c68866198a",
+      "bytes": 21458,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=35.5494&longitude=139.7798&timezone=Asia%2FTokyo&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=jma_jaxa_himawari",
+      "label": "RJTT_jma_jaxa_himawari_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:05:53.593589+00:00",
+      "received_at": "2026-10-07T10:05:57.094867+00:00",
+      "sha256": "2d920ddb78b9a11f997c79f1eb54fd1d0aac37d6791551422af959f6ceb80d03",
+      "bytes": 21458,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.7769&longitude=-73.874&timezone=America%2FNew_York&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=satellite_radiation_seamless",
+      "label": "KLGA_satellite_radiation_seamless_2026-09-01_2026-10-07",
+      "error": "invalid_json:Expecting value: line 1 column 13 (char 12)",
+      "response_prefix": "{\"latitude\":nan,\"longitude\":nan,\"generationtime_ms\":0.010609626770019531,\"utc_offset_seconds\":-14400,\"timezone\":\"America/New_York\",\"timezone_abbreviation\":\"GMT-",
+      "sha256": "647c3c75d63d2d6b95124b9d2ead4deb3c1fe0ab38f1a4b43966dace4f1ef903",
+      "bytes": 163
+    },
+    {
+      "url": "https://satellite-api.open-meteo.com/v1/archive?latitude=40.7769&longitude=-73.874&timezone=America%2FNew_York&start_date=2026-09-01&end_date=2026-10-07&hourly=shortwave_radiation&models=eumetsat_lsa_saf_msg",
+      "label": "KLGA_eumetsat_lsa_saf_msg_2026-09-01_2026-10-07",
+      "error": "invalid_json:Expecting value: line 1 column 13 (char 12)",
+      "response_prefix": "{\"latitude\":nan,\"longitude\":nan,\"generationtime_ms\":0.007152557373046875,\"utc_offset_seconds\":-14400,\"timezone\":\"America/New_York\",\"timezone_abbreviation\":\"GMT-",
+      "sha256": "0b340ec28e13d41e0b0cdf7520bb2d776ae28baffaffe02c7bb95353bc716508",
+      "bytes": 163
+    },
+    {
+      "url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2026-09-01&end_date=2026-10-07&hourly=temperature_2m_previous_day1%2Ccloud_cover_previous_day1%2Ccloud_cover_low_previous_day1%2Cshortwave_radiation_previous_day1%2Cprecipitation_previous_day1",
+      "label": "ZUUU_previous_2026-09-01_2026-10-07",
+      "fetch_started_at": "2026-10-07T10:07:53.130295+00:00",
+      "received_at": "2026-10-07T10:08:03.580834+00:00",
+      "sha256": "ae5e97c436595f4e70f00af375f6d96f95f92e5aae9a9b49588bb09beae456b1",
+      "bytes": 38058,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    },
+    {
+      "url": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=30.5785&longitude=103.9471&timezone=Asia%2FShanghai&start_date=2025-01-01&end_date=2025-01-02&hourly=temperature_2m_previous_day1%2Ccloud_cover_previous_day1%2Ccloud_cover_low_previous_day1%2Cshortwave_radiation_previous_day1%2Cprecipitation_previous_day1",
+      "label": "ZUUU_previous_2025-01-01_2025-01-02",
+      "fetch_started_at": "2026-10-07T10:08:03.616704+00:00",
+      "received_at": "2026-10-07T10:08:12.721468+00:00",
+      "sha256": "f63221f652076cd9286dc28e1c63dcee44abb397de4744389126d93ea03c743b",
+      "bytes": 2556,
+      "source_class": "aggregator_republisher",
+      "historical_received_at_known": false
+    }
+  ]
+}
