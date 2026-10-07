@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "coverage",
+      "title": "历史TAF与METAR的配对覆盖",
+      "queries": [
+        {
+          "id": "paired-summary",
+          "source": {
+            "label": "本地TAF与METAR审计",
+            "files": [
+              {
+                "label": "results.json"
+              },
+              {
+                "label": "audit.py"
+              },
+              {
+                "label": "verification.json"
+              }
+            ],
+            "tables": [
+              {
+                "name": "calibration_forward_taf_capture"
+              },
+              {
+                "name": "reported_trajectory_observations"
+              }
+            ],
+            "metricDefinitions": [
+              {
+                "label": "配对率",
+                "definition": "有原文哈希对应的本地历史回执、且有效期覆盖实况的TAF行数，占19,618个已审计小时样本的比例。"
+              }
+            ],
+            "filters": [
+              "实况来源：AWC",
+              "排除疑似更正实况及COR预报",
+              "预报发行和到达均早于实况时刻"
+            ],
+            "caveats": [
+              "旧P1版本混合，现行P1仅有三个闭日；配对结果全部是研究候选，不是严格OOS。",
+              "回补原文哈希可以证明旧回执的身份，不能证明回补解码的历史可用性。"
+            ],
+            "evidenceFlow": [
+              {
+                "kind": "validation",
+                "title": "时序与边界",
+                "detail": "12组边界测试通过；全量29741对配对检查双时钟截止、有效期与云量区间方向。"
+              }
+            ]
+          },
+          "reportingPeriod": "2026-09-01至2026-10-06，48站",
+          "columns": [
+            "mode",
+            "matched",
+            "total",
+            "usable_6500_fresh"
+          ],
+          "rows": [
+            {
+              "mode": "latest",
+              "matched": 18734,
+              "total": 19618,
+              "usable_6500_fresh": 11973
+            },
+            {
+              "mode": "day1",
+              "matched": 11007,
+              "total": 19618,
+              "usable_6500_fresh": 7246
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zuuu",
+      "title": "成都云量增多与云底降低是两种变化",
+      "queries": [
+        {
+          "id": "case-clouds",
+          "source": {
+            "label": "ZUUU官方报文历史",
+            "files": [
+              {
+                "label": "results.json"
+              }
+            ],
+            "metricDefinitions": [
+              {
+                "label": "云层覆盖类别",
+                "definition": "SCT表示3–4/8天空，BKN表示5–7/8；云底单位为英尺离地高度。"
+              }
+            ],
+            "filters": [
+              "按各实况时刻已收到且有效的最新TAF比较"
+            ],
+            "caveats": [
+              "6500ft以下两层均纳入时，12–14时覆盖类别相同；15时实况覆盖类别高于预报。",
+              "云底降低不能直接推出更强遮阳，今天的案例也不是闭日OOS。"
+            ]
+          },
+          "reportingPeriod": "2026-10-07成都当地12–16时",
+          "columns": [
+            "local_hour",
+            "observed",
+            "forecast"
+          ],
+          "rows": [
+            {
+              "local_hour": 12,
+              "observed": "SCT3000",
+              "forecast": "SCT5000"
+            },
+            {
+              "local_hour": 13,
+              "observed": "SCT3000",
+              "forecast": "SCT5000"
+            },
+            {
+              "local_hour": 14,
+              "observed": "SCT3000",
+              "forecast": "SCT5000"
+            },
+            {
+              "local_hour": 15,
+              "observed": "BKN3000",
+              "forecast": "SCT5000"
+            },
+            {
+              "local_hour": 16,
+              "observed": "SCT3000",
+              "forecast": "SCT5000"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "boundary_test_groups": 12,
+  "full_data": {
+    "rows": 19618,
+    "matched_pairs": 29741,
+    "checks": [
+      "both receipt and issue cutoff",
+      "half-open validity",
+      "COR excluded",
+      "interval direction recomputed at 4 thresholds",
+      "candidate role preserved"
+    ]
+  },
+  "passed": true
+}

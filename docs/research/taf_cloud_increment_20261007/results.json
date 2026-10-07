@@ -1,0 +1,4218 @@
+{
+  "schema": "taf_metar_cloud_pairing_audit_v1",
+  "captured_at": "2026-10-07T11:11:00.562977Z",
+  "evidence_role": "observational_candidate_not_oos",
+  "production_modified": false,
+  "definition": "maximum reported layer coverage interval with cloud base < cutoff ft AGL, not total cloud fraction or low cloud top",
+  "mode_definitions": {
+    "latest": "latest issued and locally received TAF before observation time, valid at that observation",
+    "day1": "latest TAF issued AND locally received at least 24 hours before observation, valid at that observation"
+  },
+  "profile": {
+    "raw_rows": 16554,
+    "backfill_rows": 8814,
+    "canonical_outer_whitespace_rows": 76,
+    "forward_rows": 7740,
+    "missing_decoded_forecast_rows": 2443,
+    "duplicate_bulletin_rows": 86,
+    "native_bound_unique_bulletins": 10016,
+    "restored_bound_unique_bulletins": 5240,
+    "no_native_receipt_unique_bulletins": 3004,
+    "corrected_bulletins_excluded": 1000,
+    "receipt_validity_mismatch": 14,
+    "decode_conflict_bulletins": 5
+  },
+  "taf_domains": {
+    "station_id": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LLBG",
+      "LTAC",
+      "LTFM",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "UUWW",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "source_class": [
+      "official_forward_native_receipt"
+    ],
+    "authority_scope": [
+      "PRODUCTION_NO_LIVE_ONLY"
+    ]
+  },
+  "obs_domains": {
+    "station_id": [
+      "CYYZ",
+      "EDDM",
+      "EFHK",
+      "EGLC",
+      "EHAM",
+      "EPWA",
+      "FACT",
+      "KATL",
+      "KAUS",
+      "KBKF",
+      "KDAL",
+      "KHOU",
+      "KLAX",
+      "KLGA",
+      "KMIA",
+      "KORD",
+      "KSEA",
+      "KSFO",
+      "LEMD",
+      "LFPB",
+      "LIMC",
+      "LLBG",
+      "LTAC",
+      "LTFM",
+      "MMMX",
+      "MPMG",
+      "NZWN",
+      "OEJN",
+      "OPKC",
+      "RCSS",
+      "RJTT",
+      "RKPK",
+      "RKSI",
+      "RPLL",
+      "SAEZ",
+      "SBGR",
+      "UUWW",
+      "VILK",
+      "WMKK",
+      "WSSS",
+      "ZBAA",
+      "ZGGG",
+      "ZGSZ",
+      "ZHHH",
+      "ZSPD",
+      "ZSQD",
+      "ZUCK",
+      "ZUUU"
+    ],
+    "source_lane": [
+      "amsc",
+      "awc",
+      "madis_hfmetar"
+    ],
+    "report_type": [
+      "SPECI",
+      "METAR",
+      "ASOS_HF"
+    ]
+  },
+  "summaries": {
+    "latest": {
+      "rows": 19618,
+      "matched": 18734,
+      "stations": 48,
+      "days": 36,
+      "station_days": 1588,
+      "by_station": {
+        "CYYZ": {
+          "rows": 441,
+          "matched": 441,
+          "5000_less": 107,
+          "6500_less": 112,
+          "5000_overlap": 203,
+          "6500_overlap": 191,
+          "5000_more": 49,
+          "6500_more": 56,
+          "5000_unknown": 82,
+          "6500_unknown": 82
+        },
+        "EDDM": {
+          "rows": 430,
+          "matched": 430,
+          "5000_overlap": 279,
+          "6500_overlap": 22,
+          "5000_more": 56,
+          "6500_more": 22,
+          "5000_less": 53,
+          "6500_unknown": 373,
+          "5000_unknown": 42,
+          "6500_less": 13
+        },
+        "EFHK": {
+          "rows": 438,
+          "matched": 410,
+          "5000_overlap": 207,
+          "6500_overlap": 165,
+          "5000_unknown": 79,
+          "6500_unknown": 185,
+          "5000_less": 47,
+          "6500_less": 29,
+          "5000_more": 77,
+          "6500_more": 31
+        },
+        "EGLC": {
+          "rows": 441,
+          "matched": 312,
+          "5000_less": 123,
+          "6500_unknown": 200,
+          "5000_more": 61,
+          "6500_more": 56,
+          "5000_overlap": 82,
+          "6500_overlap": 46,
+          "6500_less": 10,
+          "5000_unknown": 46
+        },
+        "EHAM": {
+          "rows": 435,
+          "matched": 435,
+          "5000_unknown": 86,
+          "6500_unknown": 190,
+          "5000_overlap": 234,
+          "6500_overlap": 167,
+          "5000_more": 52,
+          "6500_more": 22,
+          "5000_less": 63,
+          "6500_less": 56
+        },
+        "EPWA": {
+          "rows": 430,
+          "matched": 404,
+          "5000_less": 69,
+          "6500_less": 36,
+          "5000_overlap": 269,
+          "6500_overlap": 51,
+          "6500_unknown": 310,
+          "5000_more": 40,
+          "6500_more": 7,
+          "5000_unknown": 26
+        },
+        "FACT": {
+          "rows": 439,
+          "matched": 439,
+          "5000_less": 91,
+          "6500_unknown": 252,
+          "5000_overlap": 287,
+          "5000_more": 53,
+          "6500_overlap": 123,
+          "6500_less": 29,
+          "6500_more": 35,
+          "5000_unknown": 8
+        },
+        "KATL": {
+          "rows": 434,
+          "matched": 434,
+          "5000_overlap": 258,
+          "6500_overlap": 218,
+          "5000_more": 105,
+          "6500_more": 98,
+          "5000_less": 71,
+          "6500_less": 118
+        },
+        "KAUS": {
+          "rows": 435,
+          "matched": 435,
+          "5000_less": 111,
+          "6500_less": 178,
+          "5000_overlap": 240,
+          "6500_overlap": 178,
+          "5000_more": 84,
+          "6500_more": 79
+        },
+        "KBKF": {
+          "rows": 447,
+          "matched": 433,
+          "5000_overlap": 354,
+          "6500_overlap": 332,
+          "6500_more": 33,
+          "5000_unknown": 11,
+          "6500_unknown": 11,
+          "5000_less": 41,
+          "6500_less": 57,
+          "5000_more": 27
+        },
+        "KDAL": {
+          "rows": 425,
+          "matched": 423,
+          "5000_overlap": 362,
+          "6500_overlap": 259,
+          "5000_more": 44,
+          "6500_more": 77,
+          "5000_less": 17,
+          "6500_less": 87
+        },
+        "KHOU": {
+          "rows": 430,
+          "matched": 423,
+          "5000_overlap": 181,
+          "6500_overlap": 192,
+          "5000_less": 153,
+          "6500_less": 131,
+          "5000_more": 89,
+          "6500_more": 100
+        },
+        "KLAX": {
+          "rows": 431,
+          "matched": 431,
+          "5000_overlap": 230,
+          "6500_overlap": 220,
+          "5000_more": 111,
+          "6500_more": 122,
+          "5000_less": 90,
+          "6500_less": 89
+        },
+        "KLGA": {
+          "rows": 437,
+          "matched": 437,
+          "5000_overlap": 270,
+          "6500_overlap": 229,
+          "5000_less": 69,
+          "6500_less": 97,
+          "5000_more": 98,
+          "6500_more": 111
+        },
+        "KMIA": {
+          "rows": 424,
+          "matched": 424,
+          "5000_less": 189,
+          "6500_less": 223,
+          "5000_overlap": 152,
+          "6500_overlap": 121,
+          "5000_more": 82,
+          "6500_more": 79,
+          "5000_unknown": 1,
+          "6500_unknown": 1
+        },
+        "KORD": {
+          "rows": 435,
+          "matched": 435,
+          "5000_overlap": 270,
+          "6500_more": 59,
+          "6500_overlap": 246,
+          "5000_more": 71,
+          "6500_less": 130,
+          "5000_less": 94
+        },
+        "KSEA": {
+          "rows": 432,
+          "matched": 432,
+          "5000_more": 121,
+          "6500_more": 117,
+          "5000_overlap": 176,
+          "6500_overlap": 182,
+          "5000_less": 129,
+          "6500_less": 127,
+          "5000_unknown": 6,
+          "6500_unknown": 6
+        },
+        "KSFO": {
+          "rows": 417,
+          "matched": 417,
+          "5000_less": 69,
+          "6500_less": 75,
+          "5000_overlap": 247,
+          "6500_overlap": 250,
+          "5000_more": 101,
+          "6500_more": 92
+        },
+        "LEMD": {
+          "rows": 431,
+          "matched": 431,
+          "5000_overlap": 377,
+          "6500_unknown": 335,
+          "5000_more": 22,
+          "5000_unknown": 2,
+          "5000_less": 30,
+          "6500_overlap": 54,
+          "6500_less": 23,
+          "6500_more": 19
+        },
+        "LFPB": {
+          "rows": 428,
+          "matched": 382,
+          "5000_more": 71,
+          "6500_unknown": 355,
+          "5000_overlap": 289,
+          "6500_overlap": 10,
+          "5000_less": 8,
+          "6500_more": 15,
+          "5000_unknown": 14,
+          "6500_less": 2
+        },
+        "LIMC": {
+          "rows": 437,
+          "matched": 423,
+          "5000_overlap": 286,
+          "6500_unknown": 296,
+          "5000_more": 29,
+          "6500_overlap": 67,
+          "5000_less": 108,
+          "6500_less": 37,
+          "6500_more": 23
+        },
+        "LLBG": {
+          "rows": 35,
+          "matched": 35,
+          "5000_overlap": 23,
+          "6500_unknown": 7,
+          "5000_less": 12,
+          "6500_overlap": 26,
+          "6500_more": 2
+        },
+        "LTAC": {
+          "rows": 440,
+          "matched": 413,
+          "5000_overlap": 321,
+          "6500_unknown": 157,
+          "5000_unknown": 22,
+          "6500_overlap": 194,
+          "5000_less": 41,
+          "6500_less": 34,
+          "5000_more": 29,
+          "6500_more": 28
+        },
+        "LTFM": {
+          "rows": 35,
+          "matched": 35,
+          "5000_overlap": 21,
+          "6500_overlap": 18,
+          "5000_unknown": 14,
+          "6500_unknown": 17
+        },
+        "MMMX": {
+          "rows": 424,
+          "matched": 360,
+          "5000_less": 127,
+          "6500_less": 127,
+          "5000_overlap": 189,
+          "6500_overlap": 189,
+          "5000_more": 44,
+          "6500_more": 44
+        },
+        "MPMG": {
+          "rows": 409,
+          "matched": 318,
+          "5000_overlap": 262,
+          "6500_overlap": 262,
+          "5000_less": 42,
+          "6500_less": 42,
+          "5000_more": 8,
+          "6500_more": 8,
+          "5000_unknown": 6,
+          "6500_unknown": 6
+        },
+        "NZWN": {
+          "rows": 445,
+          "matched": 444,
+          "5000_less": 71,
+          "6500_unknown": 444,
+          "5000_unknown": 285,
+          "5000_overlap": 88
+        },
+        "OEJN": {
+          "rows": 419,
+          "matched": 419,
+          "5000_less": 174,
+          "6500_unknown": 330,
+          "5000_overlap": 218,
+          "6500_overlap": 53,
+          "5000_more": 27,
+          "6500_less": 30,
+          "6500_more": 6
+        },
+        "OPKC": {
+          "rows": 438,
+          "matched": 437,
+          "5000_overlap": 204,
+          "6500_overlap": 137,
+          "5000_less": 113,
+          "6500_less": 72,
+          "5000_more": 119,
+          "6500_more": 63,
+          "6500_unknown": 165,
+          "5000_unknown": 1
+        },
+        "RCSS": {
+          "rows": 440,
+          "matched": 409,
+          "5000_less": 203,
+          "6500_less": 174,
+          "5000_overlap": 162,
+          "6500_overlap": 186,
+          "5000_more": 38,
+          "6500_more": 39,
+          "6500_unknown": 10,
+          "5000_unknown": 6
+        },
+        "RJTT": {
+          "rows": 426,
+          "matched": 416,
+          "5000_overlap": 245,
+          "6500_overlap": 266,
+          "5000_less": 75,
+          "5000_unknown": 79,
+          "6500_unknown": 89,
+          "5000_more": 17,
+          "6500_more": 19,
+          "6500_less": 42
+        },
+        "RKPK": {
+          "rows": 442,
+          "matched": 441,
+          "5000_overlap": 81,
+          "6500_overlap": 88,
+          "5000_less": 308,
+          "6500_less": 199,
+          "5000_more": 23,
+          "6500_more": 25,
+          "6500_unknown": 129,
+          "5000_unknown": 29
+        },
+        "RKSI": {
+          "rows": 434,
+          "matched": 434,
+          "5000_overlap": 353,
+          "6500_overlap": 23,
+          "5000_less": 45,
+          "6500_unknown": 399,
+          "6500_less": 11,
+          "5000_more": 36,
+          "6500_more": 1
+        },
+        "RPLL": {
+          "rows": 443,
+          "matched": 442,
+          "5000_overlap": 336,
+          "6500_overlap": 336,
+          "5000_more": 84,
+          "6500_more": 84,
+          "5000_less": 22,
+          "6500_less": 22
+        },
+        "SAEZ": {
+          "rows": 424,
+          "matched": 423,
+          "5000_more": 52,
+          "6500_more": 17,
+          "5000_less": 52,
+          "6500_less": 23,
+          "5000_overlap": 298,
+          "6500_unknown": 328,
+          "6500_overlap": 55,
+          "5000_unknown": 21
+        },
+        "SBGR": {
+          "rows": 413,
+          "matched": 396,
+          "5000_overlap": 121,
+          "6500_overlap": 84,
+          "5000_more": 100,
+          "6500_more": 92,
+          "5000_less": 75,
+          "6500_less": 39,
+          "6500_unknown": 181,
+          "5000_unknown": 100
+        },
+        "UUWW": {
+          "rows": 35,
+          "matched": 35,
+          "5000_less": 6,
+          "6500_unknown": 3,
+          "6500_less": 3,
+          "5000_overlap": 21,
+          "6500_overlap": 21,
+          "5000_more": 8,
+          "6500_more": 8
+        },
+        "VILK": {
+          "rows": 431,
+          "matched": 373,
+          "5000_overlap": 261,
+          "6500_overlap": 240,
+          "5000_more": 31,
+          "6500_more": 29,
+          "5000_less": 78,
+          "6500_less": 47,
+          "6500_unknown": 57,
+          "5000_unknown": 3
+        },
+        "WMKK": {
+          "rows": 430,
+          "matched": 417,
+          "5000_overlap": 334,
+          "6500_overlap": 334,
+          "5000_more": 83,
+          "6500_more": 83
+        },
+        "WSSS": {
+          "rows": 442,
+          "matched": 426,
+          "5000_overlap": 62,
+          "6500_overlap": 67,
+          "5000_less": 364,
+          "6500_less": 359
+        },
+        "ZBAA": {
+          "rows": 446,
+          "matched": 429,
+          "5000_overlap": 377,
+          "6500_unknown": 429,
+          "5000_more": 52
+        },
+        "ZGGG": {
+          "rows": 438,
+          "matched": 407,
+          "5000_overlap": 97,
+          "6500_overlap": 142,
+          "5000_less": 264,
+          "5000_more": 46,
+          "6500_more": 68,
+          "6500_less": 105,
+          "6500_unknown": 92
+        },
+        "ZGSZ": {
+          "rows": 433,
+          "matched": 403,
+          "5000_more": 64,
+          "6500_more": 78,
+          "5000_less": 232,
+          "6500_less": 105,
+          "5000_overlap": 107,
+          "6500_overlap": 134,
+          "6500_unknown": 86
+        },
+        "ZHHH": {
+          "rows": 437,
+          "matched": 392,
+          "5000_overlap": 202,
+          "6500_unknown": 252,
+          "5000_more": 132,
+          "5000_less": 40,
+          "5000_unknown": 18,
+          "6500_less": 18,
+          "6500_overlap": 28,
+          "6500_more": 94
+        },
+        "ZSPD": {
+          "rows": 439,
+          "matched": 420,
+          "5000_less": 296,
+          "6500_unknown": 185,
+          "6500_less": 111,
+          "5000_overlap": 79,
+          "6500_overlap": 79,
+          "5000_more": 45,
+          "6500_more": 45
+        },
+        "ZSQD": {
+          "rows": 446,
+          "matched": 402,
+          "5000_overlap": 305,
+          "6500_unknown": 375,
+          "5000_more": 69,
+          "5000_less": 28,
+          "6500_overlap": 7,
+          "6500_less": 16,
+          "6500_more": 4
+        },
+        "ZUCK": {
+          "rows": 438,
+          "matched": 397,
+          "5000_less": 130,
+          "6500_unknown": 63,
+          "5000_overlap": 213,
+          "5000_more": 54,
+          "6500_less": 99,
+          "6500_overlap": 202,
+          "6500_more": 33
+        },
+        "ZUUU": {
+          "rows": 439,
+          "matched": 380,
+          "5000_overlap": 169,
+          "6500_unknown": 90,
+          "5000_more": 96,
+          "6500_overlap": 164,
+          "5000_less": 115,
+          "6500_more": 45,
+          "6500_less": 81
+        }
+      },
+      "by_day": {
+        "2026-09-01": {
+          "rows": 441,
+          "matched": 338,
+          "5000_less": 99,
+          "6500_less": 69,
+          "5000_overlap": 174,
+          "6500_overlap": 142,
+          "5000_more": 45,
+          "6500_more": 35,
+          "6500_unknown": 92,
+          "5000_unknown": 20
+        },
+        "2026-09-02": {
+          "rows": 547,
+          "matched": 482,
+          "5000_overlap": 308,
+          "6500_overlap": 163,
+          "5000_more": 56,
+          "6500_more": 47,
+          "5000_less": 101,
+          "6500_less": 101,
+          "6500_unknown": 171,
+          "5000_unknown": 17
+        },
+        "2026-09-03": {
+          "rows": 541,
+          "matched": 498,
+          "5000_overlap": 303,
+          "6500_overlap": 179,
+          "5000_more": 68,
+          "6500_more": 46,
+          "5000_less": 104,
+          "5000_unknown": 23,
+          "6500_unknown": 174,
+          "6500_less": 99
+        },
+        "2026-09-04": {
+          "rows": 484,
+          "matched": 331,
+          "5000_overlap": 213,
+          "6500_less": 68,
+          "5000_more": 37,
+          "6500_overlap": 144,
+          "6500_more": 28,
+          "5000_less": 76,
+          "6500_unknown": 91,
+          "5000_unknown": 5
+        },
+        "2026-09-05": {
+          "rows": 497,
+          "matched": 334,
+          "5000_less": 104,
+          "6500_less": 75,
+          "5000_unknown": 16,
+          "6500_unknown": 119,
+          "5000_more": 43,
+          "5000_overlap": 171,
+          "6500_overlap": 102,
+          "6500_more": 38
+        },
+        "2026-09-06": {
+          "rows": 516,
+          "matched": 417,
+          "5000_unknown": 18,
+          "6500_unknown": 173,
+          "5000_overlap": 248,
+          "6500_overlap": 119,
+          "5000_less": 88,
+          "6500_less": 76,
+          "5000_more": 63,
+          "6500_more": 49
+        },
+        "2026-09-07": {
+          "rows": 497,
+          "matched": 466,
+          "5000_less": 102,
+          "6500_overlap": 122,
+          "5000_overlap": 264,
+          "5000_unknown": 19,
+          "6500_unknown": 197,
+          "5000_more": 81,
+          "6500_more": 66,
+          "6500_less": 81
+        },
+        "2026-09-08": {
+          "rows": 492,
+          "matched": 466,
+          "5000_overlap": 291,
+          "6500_less": 63,
+          "6500_overlap": 144,
+          "5000_more": 71,
+          "6500_more": 70,
+          "5000_less": 80,
+          "6500_unknown": 189,
+          "5000_unknown": 24
+        },
+        "2026-09-09": {
+          "rows": 480,
+          "matched": 448,
+          "5000_overlap": 251,
+          "6500_more": 65,
+          "6500_overlap": 150,
+          "5000_less": 99,
+          "6500_less": 64,
+          "5000_unknown": 23,
+          "6500_unknown": 169,
+          "5000_more": 75
+        },
+        "2026-09-10": {
+          "rows": 543,
+          "matched": 458,
+          "5000_overlap": 259,
+          "6500_overlap": 172,
+          "5000_less": 114,
+          "6500_less": 90,
+          "6500_more": 45,
+          "6500_unknown": 151,
+          "5000_unknown": 37,
+          "5000_more": 48
+        },
+        "2026-09-11": {
+          "rows": 543,
+          "matched": 522,
+          "5000_overlap": 313,
+          "6500_less": 81,
+          "6500_overlap": 190,
+          "5000_more": 62,
+          "6500_more": 52,
+          "5000_unknown": 33,
+          "6500_unknown": 199,
+          "5000_less": 114
+        },
+        "2026-09-12": {
+          "rows": 508,
+          "matched": 497,
+          "5000_overlap": 260,
+          "6500_more": 52,
+          "5000_less": 157,
+          "6500_overlap": 174,
+          "6500_less": 100,
+          "6500_unknown": 171,
+          "5000_more": 65,
+          "5000_unknown": 15
+        },
+        "2026-09-13": {
+          "rows": 568,
+          "matched": 567,
+          "5000_overlap": 288,
+          "6500_overlap": 194,
+          "5000_unknown": 29,
+          "6500_unknown": 201,
+          "5000_more": 69,
+          "6500_more": 55,
+          "5000_less": 181,
+          "6500_less": 117
+        },
+        "2026-09-14": {
+          "rows": 564,
+          "matched": 560,
+          "5000_overlap": 312,
+          "6500_overlap": 227,
+          "5000_more": 66,
+          "6500_more": 65,
+          "5000_less": 163,
+          "6500_less": 91,
+          "6500_unknown": 177,
+          "5000_unknown": 19
+        },
+        "2026-09-15": {
+          "rows": 576,
+          "matched": 570,
+          "5000_overlap": 299,
+          "6500_overlap": 198,
+          "5000_unknown": 31,
+          "6500_unknown": 203,
+          "6500_less": 125,
+          "5000_more": 76,
+          "5000_less": 164,
+          "6500_more": 44
+        },
+        "2026-09-16": {
+          "rows": 542,
+          "matched": 542,
+          "5000_less": 144,
+          "6500_less": 104,
+          "5000_overlap": 315,
+          "6500_overlap": 210,
+          "6500_unknown": 175,
+          "5000_unknown": 23,
+          "5000_more": 60,
+          "6500_more": 53
+        },
+        "2026-09-17": {
+          "rows": 569,
+          "matched": 569,
+          "5000_overlap": 282,
+          "6500_overlap": 236,
+          "5000_less": 171,
+          "6500_less": 144,
+          "6500_more": 60,
+          "5000_more": 76,
+          "6500_unknown": 129,
+          "5000_unknown": 40
+        },
+        "2026-09-18": {
+          "rows": 574,
+          "matched": 574,
+          "5000_overlap": 275,
+          "6500_overlap": 195,
+          "5000_more": 127,
+          "6500_more": 90,
+          "5000_less": 149,
+          "6500_less": 107,
+          "6500_unknown": 182,
+          "5000_unknown": 23
+        },
+        "2026-09-19": {
+          "rows": 576,
+          "matched": 572,
+          "5000_overlap": 311,
+          "6500_more": 78,
+          "5000_more": 92,
+          "6500_overlap": 206,
+          "5000_unknown": 18,
+          "6500_unknown": 187,
+          "5000_less": 151,
+          "6500_less": 101
+        },
+        "2026-09-20": {
+          "rows": 562,
+          "matched": 562,
+          "5000_overlap": 326,
+          "6500_overlap": 175,
+          "6500_more": 71,
+          "6500_less": 99,
+          "5000_more": 77,
+          "6500_unknown": 217,
+          "5000_less": 137,
+          "5000_unknown": 22
+        },
+        "2026-09-21": {
+          "rows": 525,
+          "matched": 525,
+          "5000_overlap": 284,
+          "6500_overlap": 168,
+          "5000_less": 160,
+          "6500_less": 129,
+          "6500_unknown": 194,
+          "5000_more": 55,
+          "6500_more": 34,
+          "5000_unknown": 26
+        },
+        "2026-09-22": {
+          "rows": 563,
+          "matched": 560,
+          "5000_less": 166,
+          "6500_less": 135,
+          "5000_overlap": 289,
+          "6500_overlap": 163,
+          "6500_unknown": 198,
+          "5000_more": 84,
+          "6500_more": 64,
+          "5000_unknown": 21
+        },
+        "2026-09-23": {
+          "rows": 542,
+          "matched": 542,
+          "5000_overlap": 298,
+          "6500_overlap": 188,
+          "5000_more": 78,
+          "6500_more": 66,
+          "5000_less": 129,
+          "6500_less": 110,
+          "6500_unknown": 178,
+          "5000_unknown": 37
+        },
+        "2026-09-24": {
+          "rows": 551,
+          "matched": 551,
+          "5000_overlap": 294,
+          "6500_overlap": 175,
+          "5000_more": 107,
+          "6500_more": 71,
+          "5000_unknown": 23,
+          "6500_unknown": 216,
+          "5000_less": 127,
+          "6500_less": 89
+        },
+        "2026-09-25": {
+          "rows": 572,
+          "matched": 572,
+          "5000_overlap": 268,
+          "6500_overlap": 198,
+          "5000_unknown": 32,
+          "6500_unknown": 177,
+          "5000_more": 97,
+          "6500_more": 73,
+          "5000_less": 175,
+          "6500_less": 124
+        },
+        "2026-09-26": {
+          "rows": 584,
+          "matched": 580,
+          "5000_overlap": 295,
+          "6500_overlap": 216,
+          "5000_less": 152,
+          "6500_less": 96,
+          "6500_unknown": 173,
+          "5000_more": 110,
+          "6500_more": 95,
+          "5000_unknown": 23
+        },
+        "2026-09-27": {
+          "rows": 326,
+          "matched": 326,
+          "5000_overlap": 169,
+          "6500_overlap": 121,
+          "5000_unknown": 23,
+          "6500_unknown": 101,
+          "5000_more": 91,
+          "6500_more": 64,
+          "6500_less": 40,
+          "5000_less": 43
+        },
+        "2026-09-28": {
+          "rows": 565,
+          "matched": 565,
+          "5000_less": 110,
+          "6500_less": 69,
+          "5000_overlap": 339,
+          "6500_overlap": 237,
+          "5000_more": 87,
+          "6500_more": 67,
+          "6500_unknown": 192,
+          "5000_unknown": 29
+        },
+        "2026-09-29": {
+          "rows": 584,
+          "matched": 584,
+          "5000_more": 93,
+          "6500_more": 72,
+          "5000_overlap": 343,
+          "6500_overlap": 209,
+          "5000_less": 121,
+          "6500_less": 101,
+          "6500_unknown": 202,
+          "5000_unknown": 27
+        },
+        "2026-09-30": {
+          "rows": 584,
+          "matched": 584,
+          "5000_overlap": 344,
+          "6500_overlap": 218,
+          "6500_more": 62,
+          "5000_unknown": 40,
+          "6500_unknown": 214,
+          "5000_more": 85,
+          "5000_less": 115,
+          "6500_less": 90
+        },
+        "2026-10-01": {
+          "rows": 585,
+          "matched": 573,
+          "5000_less": 145,
+          "6500_less": 109,
+          "6500_overlap": 183,
+          "5000_unknown": 36,
+          "6500_unknown": 207,
+          "5000_overlap": 304,
+          "5000_more": 88,
+          "6500_more": 74
+        },
+        "2026-10-02": {
+          "rows": 582,
+          "matched": 569,
+          "5000_less": 148,
+          "6500_less": 116,
+          "5000_unknown": 34,
+          "6500_unknown": 162,
+          "5000_overlap": 308,
+          "6500_overlap": 220,
+          "6500_more": 71,
+          "5000_more": 79
+        },
+        "2026-10-03": {
+          "rows": 581,
+          "matched": 576,
+          "5000_overlap": 334,
+          "6500_overlap": 241,
+          "5000_less": 118,
+          "6500_more": 70,
+          "5000_unknown": 41,
+          "6500_unknown": 180,
+          "6500_less": 85,
+          "5000_more": 83
+        },
+        "2026-10-04": {
+          "rows": 611,
+          "matched": 611,
+          "5000_overlap": 333,
+          "6500_more": 40,
+          "6500_less": 102,
+          "5000_more": 59,
+          "5000_less": 182,
+          "6500_overlap": 211,
+          "5000_unknown": 37,
+          "6500_unknown": 258
+        },
+        "2026-10-05": {
+          "rows": 622,
+          "matched": 622,
+          "5000_more": 69,
+          "6500_overlap": 235,
+          "5000_overlap": 376,
+          "6500_more": 58,
+          "5000_less": 133,
+          "6500_less": 92,
+          "5000_unknown": 44,
+          "6500_unknown": 237
+        },
+        "2026-10-06": {
+          "rows": 621,
+          "matched": 621,
+          "5000_overlap": 361,
+          "6500_less": 76,
+          "5000_unknown": 59,
+          "6500_unknown": 234,
+          "6500_overlap": 233,
+          "5000_less": 123,
+          "5000_more": 78,
+          "6500_more": 78
+        }
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 263,
+          "matched": 263,
+          "5000_less": 75,
+          "6500_less": 61,
+          "5000_overlap": 128,
+          "6500_overlap": 94,
+          "5000_more": 50,
+          "6500_unknown": 73,
+          "6500_more": 35,
+          "5000_unknown": 10
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 56,
+          "matched": 56,
+          "5000_overlap": 29,
+          "6500_unknown": 23,
+          "5000_more": 10,
+          "6500_more": 6,
+          "5000_less": 17,
+          "6500_less": 10,
+          "6500_overlap": 17
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 27,
+          "matched": 27,
+          "5000_overlap": 15,
+          "6500_unknown": 12,
+          "6500_overlap": 8,
+          "5000_more": 3,
+          "6500_more": 2,
+          "5000_less": 9,
+          "6500_less": 5
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 111,
+          "matched": 111,
+          "5000_overlap": 62,
+          "6500_more": 13,
+          "5000_more": 14,
+          "6500_overlap": 39,
+          "6500_unknown": 43,
+          "5000_less": 34,
+          "6500_less": 16,
+          "5000_unknown": 1
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 70,
+          "matched": 68,
+          "5000_unknown": 5,
+          "6500_unknown": 24,
+          "5000_overlap": 45,
+          "6500_overlap": 27,
+          "5000_more": 8,
+          "6500_more": 10,
+          "5000_less": 10,
+          "6500_less": 7
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 1048,
+          "matched": 1046,
+          "5000_unknown": 47,
+          "6500_unknown": 404,
+          "5000_overlap": 594,
+          "6500_overlap": 332,
+          "5000_more": 140,
+          "6500_more": 119,
+          "5000_less": 265,
+          "6500_less": 191
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 414,
+          "matched": 412,
+          "5000_less": 126,
+          "6500_less": 120,
+          "5000_overlap": 218,
+          "6500_unknown": 129,
+          "5000_more": 47,
+          "6500_more": 35,
+          "6500_overlap": 128,
+          "5000_unknown": 21
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 404,
+          "matched": 403,
+          "5000_less": 124,
+          "6500_less": 103,
+          "5000_overlap": 205,
+          "6500_overlap": 134,
+          "5000_more": 59,
+          "6500_more": 47,
+          "6500_unknown": 119,
+          "5000_unknown": 15
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 305,
+          "matched": 305,
+          "5000_overlap": 168,
+          "6500_overlap": 85,
+          "6500_unknown": 131,
+          "5000_more": 37,
+          "5000_unknown": 27,
+          "6500_more": 30,
+          "5000_less": 73,
+          "6500_less": 59
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 18,
+          "matched": 18,
+          "5000_more": 5,
+          "6500_more": 3,
+          "5000_overlap": 10,
+          "6500_unknown": 9,
+          "5000_less": 2,
+          "6500_overlap": 6,
+          "5000_unknown": 1
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 176,
+          "matched": 176,
+          "5000_more": 34,
+          "6500_more": 30,
+          "5000_less": 38,
+          "6500_less": 35,
+          "5000_overlap": 100,
+          "6500_overlap": 78,
+          "6500_unknown": 33,
+          "5000_unknown": 4
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 376,
+          "matched": 376,
+          "5000_overlap": 206,
+          "6500_overlap": 105,
+          "5000_more": 74,
+          "6500_more": 43,
+          "5000_unknown": 16,
+          "6500_unknown": 168,
+          "5000_less": 80,
+          "6500_less": 60
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 159,
+          "matched": 159,
+          "5000_unknown": 8,
+          "6500_unknown": 41,
+          "5000_more": 26,
+          "6500_more": 23,
+          "5000_overlap": 78,
+          "6500_overlap": 64,
+          "5000_less": 47,
+          "6500_less": 31
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 31,
+          "matched": 31,
+          "5000_more": 6,
+          "6500_less": 7,
+          "5000_less": 10,
+          "5000_overlap": 13,
+          "6500_overlap": 10,
+          "6500_more": 4,
+          "5000_unknown": 2,
+          "6500_unknown": 10
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 113,
+          "matched": 113,
+          "5000_more": 33,
+          "6500_unknown": 35,
+          "5000_unknown": 10,
+          "5000_overlap": 30,
+          "6500_overlap": 27,
+          "6500_more": 22,
+          "5000_less": 40,
+          "6500_less": 29
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "matched": 2,
+          "5000_overlap": 1,
+          "6500_overlap": 1,
+          "5000_more": 1,
+          "6500_more": 1
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 54,
+          "matched": 54,
+          "5000_unknown": 7,
+          "6500_unknown": 21,
+          "5000_overlap": 18,
+          "6500_overlap": 14,
+          "5000_more": 9,
+          "6500_more": 4,
+          "5000_less": 20,
+          "6500_less": 15
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 1166,
+          "matched": 1162,
+          "5000_overlap": 603,
+          "6500_overlap": 424,
+          "5000_unknown": 52,
+          "6500_unknown": 365,
+          "5000_less": 276,
+          "6500_less": 188,
+          "5000_more": 231,
+          "6500_more": 185
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 2306,
+          "matched": 2294,
+          "5000_overlap": 1335,
+          "6500_overlap": 851,
+          "5000_unknown": 135,
+          "6500_unknown": 821,
+          "5000_less": 481,
+          "6500_less": 356,
+          "5000_more": 343,
+          "6500_more": 266
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 166,
+          "matched": 166,
+          "5000_overlap": 78,
+          "6500_overlap": 67,
+          "5000_less": 46,
+          "6500_unknown": 24,
+          "5000_more": 34,
+          "6500_more": 32,
+          "6500_less": 43,
+          "5000_unknown": 8
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 21,
+          "matched": 21,
+          "5000_more": 4,
+          "6500_more": 4,
+          "5000_overlap": 11,
+          "6500_overlap": 7,
+          "5000_unknown": 1,
+          "6500_unknown": 6,
+          "5000_less": 5,
+          "6500_less": 4
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 40,
+          "matched": 40,
+          "5000_unknown": 3,
+          "6500_unknown": 15,
+          "5000_less": 12,
+          "6500_less": 9,
+          "5000_more": 5,
+          "5000_overlap": 20,
+          "6500_overlap": 12,
+          "6500_more": 4
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 226,
+          "matched": 218,
+          "5000_less": 58,
+          "6500_less": 40,
+          "5000_unknown": 12,
+          "6500_unknown": 84,
+          "5000_more": 29,
+          "6500_more": 23,
+          "5000_overlap": 119,
+          "6500_overlap": 71
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 79,
+          "matched": 76,
+          "5000_unknown": 3,
+          "6500_unknown": 19,
+          "5000_more": 17,
+          "6500_more": 14,
+          "5000_overlap": 44,
+          "6500_overlap": 33,
+          "5000_less": 12,
+          "6500_less": 10
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 1127,
+          "matched": 1120,
+          "5000_unknown": 74,
+          "6500_unknown": 398,
+          "5000_overlap": 606,
+          "6500_overlap": 411,
+          "6500_more": 112,
+          "5000_less": 305,
+          "6500_less": 199,
+          "5000_more": 135
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 1471,
+          "matched": 1471,
+          "5000_more": 173,
+          "6500_less": 198,
+          "5000_less": 294,
+          "6500_overlap": 591,
+          "5000_unknown": 114,
+          "6500_unknown": 527,
+          "5000_overlap": 890,
+          "6500_more": 155
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 2336,
+          "matched": 2326,
+          "5000_overlap": 1237,
+          "6500_overlap": 911,
+          "5000_more": 325,
+          "6500_more": 241,
+          "5000_less": 647,
+          "6500_less": 471,
+          "5000_unknown": 117,
+          "6500_unknown": 703
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 255,
+          "matched": 255,
+          "5000_overlap": 130,
+          "6500_overlap": 76,
+          "5000_more": 54,
+          "6500_more": 41,
+          "6500_unknown": 95,
+          "5000_less": 66,
+          "6500_less": 43,
+          "5000_unknown": 5
+        },
+        "p1_metar_trajectory_target_v5": {
+          "rows": 625,
+          "matched": 487,
+          "5000_less": 135,
+          "6500_less": 103,
+          "5000_overlap": 264,
+          "6500_overlap": 191,
+          "5000_more": 56,
+          "6500_more": 39,
+          "6500_unknown": 154,
+          "5000_unknown": 32
+        },
+        "p1_metar_trajectory_target_v6": {
+          "rows": 2004,
+          "matched": 1561,
+          "5000_overlap": 937,
+          "6500_overlap": 555,
+          "5000_more": 201,
+          "6500_more": 162,
+          "5000_less": 365,
+          "6500_less": 321,
+          "5000_unknown": 58,
+          "6500_unknown": 523
+        },
+        "p1_metar_trajectory_target_v7": {
+          "rows": 188,
+          "matched": 163,
+          "5000_unknown": 3,
+          "6500_unknown": 89,
+          "5000_overlap": 115,
+          "6500_overlap": 48,
+          "5000_less": 37,
+          "6500_less": 23,
+          "5000_more": 8,
+          "6500_more": 3
+        },
+        "p1_metar_trajectory_target_v8": {
+          "rows": 364,
+          "matched": 344,
+          "5000_unknown": 16,
+          "6500_unknown": 141,
+          "5000_overlap": 186,
+          "6500_overlap": 89,
+          "5000_less": 80,
+          "6500_less": 65,
+          "6500_more": 49,
+          "5000_more": 62
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 3617,
+          "matched": 3410,
+          "5000_less": 856,
+          "6500_overlap": 1152,
+          "5000_overlap": 1907,
+          "5000_unknown": 180,
+          "6500_unknown": 1251,
+          "6500_less": 596,
+          "5000_more": 467,
+          "6500_more": 411
+        }
+      },
+      "thresholds": {
+        "1500": {
+          "less": 666,
+          "overlap": 15915,
+          "more": 1166,
+          "unknown": 987
+        },
+        "3000": {
+          "less": 2259,
+          "overlap": 13001,
+          "more": 2487,
+          "unknown": 987
+        },
+        "5000": {
+          "less": 4645,
+          "overlap": 10402,
+          "more": 2700,
+          "unknown": 987
+        },
+        "6500": {
+          "less": 3418,
+          "overlap": 6658,
+          "more": 2168,
+          "unknown": 6490
+        }
+      },
+      "receipt_kinds": {
+        "ssot_raw_sha_bound_receipt": 9770,
+        "raw_archive_native": 8964
+      },
+      "restored_only_pairs": 8976,
+      "obs_stale_over_2h": 389,
+      "usable_nonstale_by_threshold": {
+        "1500": 17395,
+        "3000": 17395,
+        "5000": 17395,
+        "6500": 11973
+      }
+    },
+    "day1": {
+      "rows": 19618,
+      "matched": 11007,
+      "stations": 45,
+      "days": 36,
+      "station_days": 1305,
+      "by_station": {
+        "CYYZ": {
+          "rows": 441,
+          "matched": 360,
+          "5000_less": 118,
+          "6500_less": 120,
+          "5000_overlap": 102,
+          "6500_overlap": 87,
+          "5000_more": 45,
+          "6500_more": 58,
+          "5000_unknown": 95,
+          "6500_unknown": 95
+        },
+        "EDDM": {
+          "rows": 430,
+          "matched": 350,
+          "5000_unknown": 41,
+          "6500_unknown": 311,
+          "5000_less": 85,
+          "5000_overlap": 175,
+          "6500_less": 14,
+          "5000_more": 49,
+          "6500_more": 13,
+          "6500_overlap": 12
+        },
+        "EFHK": {
+          "rows": 438,
+          "matched": 66,
+          "5000_overlap": 25,
+          "6500_overlap": 24,
+          "5000_more": 15,
+          "6500_unknown": 33,
+          "5000_unknown": 18,
+          "5000_less": 8,
+          "6500_less": 4,
+          "6500_more": 5
+        },
+        "EGLC": {
+          "rows": 441
+        },
+        "EHAM": {
+          "rows": 435,
+          "matched": 341,
+          "5000_unknown": 68,
+          "6500_unknown": 155,
+          "5000_overlap": 122,
+          "6500_overlap": 84,
+          "5000_less": 90,
+          "6500_less": 68,
+          "5000_more": 61,
+          "6500_more": 34
+        },
+        "EPWA": {
+          "rows": 430
+        },
+        "FACT": {
+          "rows": 439,
+          "matched": 317,
+          "5000_overlap": 209,
+          "6500_unknown": 189,
+          "5000_less": 68,
+          "6500_less": 28,
+          "5000_more": 30,
+          "6500_more": 13,
+          "6500_overlap": 87,
+          "5000_unknown": 10
+        },
+        "KATL": {
+          "rows": 434,
+          "matched": 413,
+          "5000_overlap": 175,
+          "6500_overlap": 163,
+          "5000_more": 115,
+          "6500_more": 126,
+          "5000_less": 123,
+          "6500_less": 124
+        },
+        "KAUS": {
+          "rows": 435,
+          "matched": 409,
+          "5000_overlap": 150,
+          "6500_overlap": 109,
+          "5000_more": 112,
+          "6500_more": 114,
+          "5000_less": 147,
+          "6500_less": 186
+        },
+        "KBKF": {
+          "rows": 447,
+          "matched": 232,
+          "5000_overlap": 165,
+          "6500_overlap": 142,
+          "5000_unknown": 8,
+          "6500_unknown": 8,
+          "6500_less": 43,
+          "5000_more": 33,
+          "6500_more": 39,
+          "5000_less": 26
+        },
+        "KDAL": {
+          "rows": 425,
+          "matched": 47,
+          "5000_overlap": 36,
+          "6500_more": 10,
+          "6500_overlap": 27,
+          "5000_more": 5,
+          "6500_less": 10,
+          "5000_less": 6
+        },
+        "KHOU": {
+          "rows": 430,
+          "matched": 44,
+          "5000_less": 19,
+          "6500_less": 15,
+          "5000_more": 12,
+          "6500_more": 12,
+          "5000_overlap": 13,
+          "6500_overlap": 17
+        },
+        "KLAX": {
+          "rows": 431,
+          "matched": 381,
+          "5000_more": 126,
+          "6500_more": 130,
+          "5000_less": 100,
+          "6500_less": 102,
+          "5000_overlap": 155,
+          "6500_overlap": 149
+        },
+        "KLGA": {
+          "rows": 437,
+          "matched": 384,
+          "5000_less": 105,
+          "6500_less": 136,
+          "5000_overlap": 190,
+          "6500_overlap": 145,
+          "6500_more": 103,
+          "5000_more": 89
+        },
+        "KMIA": {
+          "rows": 424,
+          "matched": 388,
+          "5000_less": 140,
+          "6500_less": 170,
+          "5000_overlap": 142,
+          "6500_overlap": 144,
+          "5000_more": 105,
+          "6500_more": 73,
+          "5000_unknown": 1,
+          "6500_unknown": 1
+        },
+        "KORD": {
+          "rows": 435,
+          "matched": 397,
+          "5000_overlap": 206,
+          "6500_more": 97,
+          "5000_more": 98,
+          "6500_less": 107,
+          "6500_overlap": 193,
+          "5000_less": 93
+        },
+        "KSEA": {
+          "rows": 432,
+          "matched": 378,
+          "5000_more": 123,
+          "6500_more": 111,
+          "6500_overlap": 123,
+          "5000_less": 126,
+          "6500_less": 140,
+          "5000_overlap": 125,
+          "5000_unknown": 4,
+          "6500_unknown": 4
+        },
+        "KSFO": {
+          "rows": 417,
+          "matched": 376,
+          "5000_overlap": 145,
+          "6500_overlap": 141,
+          "5000_more": 151,
+          "6500_more": 150,
+          "5000_less": 80,
+          "6500_less": 85
+        },
+        "LEMD": {
+          "rows": 431,
+          "matched": 338,
+          "5000_overlap": 256,
+          "6500_unknown": 264,
+          "5000_unknown": 1,
+          "5000_more": 33,
+          "5000_less": 48,
+          "6500_more": 18,
+          "6500_overlap": 33,
+          "6500_less": 23
+        },
+        "LFPB": {
+          "rows": 428,
+          "matched": 35,
+          "5000_overlap": 25,
+          "6500_unknown": 34,
+          "5000_more": 6,
+          "5000_less": 3,
+          "6500_less": 1,
+          "5000_unknown": 1
+        },
+        "LIMC": {
+          "rows": 437,
+          "matched": 321,
+          "5000_overlap": 190,
+          "6500_unknown": 233,
+          "5000_more": 25,
+          "5000_less": 105,
+          "6500_less": 31,
+          "6500_overlap": 35,
+          "6500_more": 22,
+          "5000_unknown": 1
+        },
+        "LLBG": {
+          "rows": 35,
+          "matched": 4,
+          "5000_overlap": 3,
+          "6500_overlap": 3,
+          "5000_less": 1,
+          "6500_unknown": 1
+        },
+        "LTAC": {
+          "rows": 440,
+          "matched": 43,
+          "5000_overlap": 26,
+          "6500_unknown": 12,
+          "5000_less": 8,
+          "5000_more": 7,
+          "6500_more": 6,
+          "6500_less": 7,
+          "6500_overlap": 18,
+          "5000_unknown": 2
+        },
+        "LTFM": {
+          "rows": 35,
+          "matched": 26,
+          "5000_overlap": 8,
+          "6500_overlap": 8,
+          "5000_less": 11,
+          "6500_less": 11,
+          "5000_more": 1,
+          "6500_more": 1,
+          "5000_unknown": 6,
+          "6500_unknown": 6
+        },
+        "MMMX": {
+          "rows": 424,
+          "matched": 38,
+          "5000_more": 8,
+          "6500_more": 8,
+          "5000_less": 13,
+          "6500_less": 13,
+          "5000_overlap": 16,
+          "6500_overlap": 16,
+          "5000_unknown": 1,
+          "6500_unknown": 1
+        },
+        "MPMG": {
+          "rows": 409,
+          "matched": 23,
+          "5000_overlap": 22,
+          "6500_overlap": 22,
+          "5000_more": 1,
+          "6500_more": 1
+        },
+        "NZWN": {
+          "rows": 445,
+          "matched": 352,
+          "5000_less": 82,
+          "6500_unknown": 352,
+          "5000_unknown": 234,
+          "5000_overlap": 36
+        },
+        "OEJN": {
+          "rows": 419,
+          "matched": 324,
+          "5000_overlap": 174,
+          "6500_unknown": 283,
+          "5000_less": 107,
+          "5000_more": 43,
+          "6500_more": 3,
+          "6500_overlap": 19,
+          "6500_less": 19
+        },
+        "OPKC": {
+          "rows": 438,
+          "matched": 330,
+          "5000_overlap": 112,
+          "6500_overlap": 64,
+          "5000_more": 97,
+          "6500_more": 51,
+          "5000_less": 120,
+          "6500_less": 66,
+          "6500_unknown": 149,
+          "5000_unknown": 1
+        },
+        "RCSS": {
+          "rows": 440,
+          "matched": 63,
+          "5000_less": 33,
+          "6500_less": 30,
+          "5000_overlap": 24,
+          "6500_overlap": 23,
+          "5000_more": 5,
+          "6500_more": 7,
+          "6500_unknown": 3,
+          "5000_unknown": 1
+        },
+        "RJTT": {
+          "rows": 426,
+          "matched": 336,
+          "5000_overlap": 170,
+          "6500_overlap": 179,
+          "5000_less": 77,
+          "5000_unknown": 65,
+          "6500_unknown": 74,
+          "5000_more": 24,
+          "6500_more": 24,
+          "6500_less": 59
+        },
+        "RKPK": {
+          "rows": 442,
+          "matched": 346,
+          "5000_unknown": 26,
+          "6500_unknown": 114,
+          "5000_overlap": 43,
+          "6500_overlap": 58,
+          "5000_more": 18,
+          "6500_more": 21,
+          "5000_less": 259,
+          "6500_less": 153
+        },
+        "RKSI": {
+          "rows": 434,
+          "matched": 344,
+          "5000_more": 28,
+          "6500_more": 1,
+          "5000_overlap": 274,
+          "6500_unknown": 316,
+          "5000_less": 42,
+          "6500_less": 16,
+          "6500_overlap": 11
+        },
+        "RPLL": {
+          "rows": 443,
+          "matched": 341,
+          "5000_overlap": 210,
+          "6500_overlap": 210,
+          "5000_more": 122,
+          "6500_more": 122,
+          "5000_less": 9,
+          "6500_less": 9
+        },
+        "SAEZ": {
+          "rows": 424
+        },
+        "SBGR": {
+          "rows": 413,
+          "matched": 292,
+          "5000_overlap": 68,
+          "6500_overlap": 47,
+          "5000_more": 90,
+          "6500_more": 78,
+          "5000_less": 37,
+          "6500_less": 19,
+          "5000_unknown": 97,
+          "6500_unknown": 148
+        },
+        "UUWW": {
+          "rows": 35,
+          "matched": 1,
+          "5000_overlap": 1,
+          "6500_overlap": 1
+        },
+        "VILK": {
+          "rows": 431,
+          "matched": 216,
+          "5000_overlap": 150,
+          "6500_overlap": 128,
+          "5000_less": 43,
+          "6500_less": 29,
+          "5000_more": 14,
+          "6500_more": 11,
+          "6500_unknown": 48,
+          "5000_unknown": 9
+        },
+        "WMKK": {
+          "rows": 430,
+          "matched": 327,
+          "5000_overlap": 251,
+          "6500_overlap": 251,
+          "5000_more": 76,
+          "6500_more": 76
+        },
+        "WSSS": {
+          "rows": 442,
+          "matched": 332,
+          "5000_overlap": 48,
+          "6500_overlap": 51,
+          "5000_less": 284,
+          "6500_less": 281
+        },
+        "ZBAA": {
+          "rows": 446,
+          "matched": 349,
+          "5000_overlap": 296,
+          "6500_unknown": 349,
+          "5000_more": 53
+        },
+        "ZGGG": {
+          "rows": 438,
+          "matched": 358,
+          "5000_overlap": 89,
+          "6500_overlap": 116,
+          "5000_less": 229,
+          "5000_more": 40,
+          "6500_more": 68,
+          "6500_unknown": 68,
+          "6500_less": 106
+        },
+        "ZGSZ": {
+          "rows": 433,
+          "matched": 352,
+          "5000_more": 55,
+          "6500_more": 71,
+          "5000_less": 198,
+          "6500_unknown": 73,
+          "6500_overlap": 121,
+          "5000_overlap": 99,
+          "6500_less": 87
+        },
+        "ZHHH": {
+          "rows": 437,
+          "matched": 69,
+          "5000_overlap": 30,
+          "6500_unknown": 36,
+          "5000_more": 25,
+          "6500_overlap": 10,
+          "5000_unknown": 2,
+          "5000_less": 12,
+          "6500_more": 18,
+          "6500_less": 5
+        },
+        "ZSPD": {
+          "rows": 439,
+          "matched": 354,
+          "5000_less": 244,
+          "6500_unknown": 162,
+          "6500_less": 82,
+          "5000_overlap": 65,
+          "6500_overlap": 65,
+          "5000_more": 45,
+          "6500_more": 45
+        },
+        "ZSQD": {
+          "rows": 446,
+          "matched": 72,
+          "5000_overlap": 55,
+          "6500_unknown": 68,
+          "5000_more": 10,
+          "6500_overlap": 2,
+          "5000_less": 7,
+          "6500_less": 2
+        },
+        "ZUCK": {
+          "rows": 438,
+          "matched": 68,
+          "5000_less": 32,
+          "6500_unknown": 3,
+          "5000_overlap": 23,
+          "6500_overlap": 33,
+          "6500_less": 22,
+          "5000_more": 13,
+          "6500_more": 10
+        },
+        "ZUUU": {
+          "rows": 439,
+          "matched": 70,
+          "5000_overlap": 28,
+          "6500_unknown": 18,
+          "5000_more": 15,
+          "6500_overlap": 33,
+          "5000_less": 27,
+          "6500_more": 6,
+          "6500_less": 13
+        }
+      },
+      "by_day": {
+        "2026-09-01": {
+          "rows": 441,
+          "matched": 173,
+          "5000_less": 47,
+          "6500_less": 32,
+          "5000_overlap": 82,
+          "6500_overlap": 67,
+          "5000_unknown": 10,
+          "6500_unknown": 43,
+          "5000_more": 34,
+          "6500_more": 31
+        },
+        "2026-09-02": {
+          "rows": 547,
+          "matched": 182,
+          "5000_more": 20,
+          "6500_more": 24,
+          "5000_unknown": 13,
+          "6500_unknown": 52,
+          "5000_less": 68,
+          "5000_overlap": 81,
+          "6500_overlap": 66,
+          "6500_less": 40
+        },
+        "2026-09-03": {
+          "rows": 541,
+          "matched": 172,
+          "5000_less": 58,
+          "6500_less": 62,
+          "5000_overlap": 64,
+          "6500_overlap": 46,
+          "5000_unknown": 11,
+          "6500_unknown": 32,
+          "5000_more": 39,
+          "6500_more": 32
+        },
+        "2026-09-04": {
+          "rows": 484,
+          "matched": 157,
+          "5000_overlap": 61,
+          "6500_unknown": 25,
+          "5000_unknown": 1,
+          "5000_more": 43,
+          "6500_more": 43,
+          "6500_overlap": 34,
+          "5000_less": 52,
+          "6500_less": 55
+        },
+        "2026-09-05": {
+          "rows": 497,
+          "matched": 109,
+          "5000_unknown": 3,
+          "6500_unknown": 11,
+          "5000_overlap": 50,
+          "6500_overlap": 39,
+          "5000_less": 27,
+          "6500_less": 26,
+          "5000_more": 29,
+          "6500_more": 33
+        },
+        "2026-09-06": {
+          "rows": 516,
+          "matched": 122,
+          "5000_overlap": 40,
+          "6500_unknown": 17,
+          "6500_overlap": 35,
+          "5000_more": 35,
+          "6500_less": 39,
+          "5000_less": 43,
+          "6500_more": 31,
+          "5000_unknown": 4
+        },
+        "2026-09-07": {
+          "rows": 497,
+          "matched": 138,
+          "5000_unknown": 7,
+          "6500_unknown": 46,
+          "5000_overlap": 75,
+          "5000_less": 41,
+          "6500_less": 44,
+          "6500_overlap": 32,
+          "6500_more": 16,
+          "5000_more": 15
+        },
+        "2026-09-08": {
+          "rows": 492,
+          "matched": 126,
+          "5000_unknown": 8,
+          "6500_unknown": 35,
+          "5000_overlap": 62,
+          "5000_less": 42,
+          "6500_less": 29,
+          "6500_overlap": 39,
+          "6500_more": 23,
+          "5000_more": 14
+        },
+        "2026-09-09": {
+          "rows": 480,
+          "matched": 116,
+          "5000_overlap": 48,
+          "6500_more": 24,
+          "6500_overlap": 29,
+          "5000_less": 41,
+          "6500_less": 27,
+          "5000_more": 21,
+          "6500_unknown": 36,
+          "5000_unknown": 6
+        },
+        "2026-09-10": {
+          "rows": 543,
+          "matched": 135,
+          "5000_unknown": 13,
+          "6500_unknown": 41,
+          "5000_less": 63,
+          "6500_less": 42,
+          "5000_more": 24,
+          "6500_more": 19,
+          "5000_overlap": 35,
+          "6500_overlap": 33
+        },
+        "2026-09-11": {
+          "rows": 543,
+          "matched": 198,
+          "5000_overlap": 105,
+          "6500_overlap": 65,
+          "5000_more": 43,
+          "6500_more": 34,
+          "6500_unknown": 53,
+          "5000_unknown": 9,
+          "5000_less": 41,
+          "6500_less": 46
+        },
+        "2026-09-12": {
+          "rows": 508,
+          "matched": 287,
+          "5000_overlap": 128,
+          "6500_more": 33,
+          "5000_less": 107,
+          "6500_less": 72,
+          "5000_unknown": 21,
+          "6500_unknown": 96,
+          "6500_overlap": 86,
+          "5000_more": 31
+        },
+        "2026-09-13": {
+          "rows": 568,
+          "matched": 357,
+          "5000_overlap": 137,
+          "6500_overlap": 105,
+          "5000_more": 70,
+          "6500_more": 64,
+          "5000_less": 133,
+          "6500_less": 82,
+          "6500_unknown": 106,
+          "5000_unknown": 17
+        },
+        "2026-09-14": {
+          "rows": 564,
+          "matched": 386,
+          "5000_unknown": 26,
+          "6500_unknown": 134,
+          "5000_overlap": 176,
+          "6500_overlap": 129,
+          "5000_less": 139,
+          "6500_less": 87,
+          "5000_more": 45,
+          "6500_more": 36
+        },
+        "2026-09-15": {
+          "rows": 576,
+          "matched": 366,
+          "5000_overlap": 153,
+          "6500_overlap": 108,
+          "5000_unknown": 23,
+          "6500_unknown": 123,
+          "5000_less": 133,
+          "5000_more": 57,
+          "6500_less": 81,
+          "6500_more": 54
+        },
+        "2026-09-16": {
+          "rows": 542,
+          "matched": 372,
+          "5000_less": 109,
+          "6500_less": 82,
+          "5000_unknown": 29,
+          "6500_unknown": 126,
+          "5000_overlap": 176,
+          "5000_more": 58,
+          "6500_overlap": 104,
+          "6500_more": 60
+        },
+        "2026-09-17": {
+          "rows": 569,
+          "matched": 380,
+          "5000_overlap": 169,
+          "6500_overlap": 134,
+          "5000_less": 110,
+          "6500_less": 99,
+          "6500_more": 54,
+          "5000_more": 88,
+          "6500_unknown": 93,
+          "5000_unknown": 13
+        },
+        "2026-09-18": {
+          "rows": 574,
+          "matched": 399,
+          "5000_unknown": 16,
+          "6500_unknown": 113,
+          "5000_overlap": 141,
+          "6500_overlap": 110,
+          "5000_more": 89,
+          "6500_more": 71,
+          "5000_less": 153,
+          "6500_less": 105
+        },
+        "2026-09-19": {
+          "rows": 576,
+          "matched": 397,
+          "5000_less": 122,
+          "6500_overlap": 126,
+          "5000_more": 71,
+          "6500_more": 53,
+          "5000_overlap": 184,
+          "6500_less": 89,
+          "6500_unknown": 129,
+          "5000_unknown": 20
+        },
+        "2026-09-20": {
+          "rows": 562,
+          "matched": 399,
+          "5000_unknown": 25,
+          "6500_unknown": 161,
+          "5000_less": 142,
+          "6500_less": 95,
+          "6500_overlap": 91,
+          "5000_overlap": 182,
+          "5000_more": 50,
+          "6500_more": 52
+        },
+        "2026-09-21": {
+          "rows": 525,
+          "matched": 359,
+          "5000_overlap": 161,
+          "6500_overlap": 79,
+          "5000_less": 110,
+          "6500_less": 77,
+          "6500_unknown": 147,
+          "5000_more": 65,
+          "5000_unknown": 23,
+          "6500_more": 56
+        },
+        "2026-09-22": {
+          "rows": 563,
+          "matched": 303,
+          "5000_overlap": 140,
+          "6500_overlap": 64,
+          "6500_unknown": 139,
+          "5000_more": 49,
+          "6500_more": 31,
+          "5000_unknown": 24,
+          "5000_less": 90,
+          "6500_less": 69
+        },
+        "2026-09-23": {
+          "rows": 542,
+          "matched": 291,
+          "5000_more": 77,
+          "6500_more": 67,
+          "5000_less": 91,
+          "6500_less": 64,
+          "5000_overlap": 118,
+          "6500_overlap": 90,
+          "6500_unknown": 70,
+          "5000_unknown": 5
+        },
+        "2026-09-24": {
+          "rows": 551,
+          "matched": 382,
+          "5000_overlap": 136,
+          "6500_overlap": 84,
+          "5000_more": 96,
+          "6500_more": 71,
+          "6500_unknown": 151,
+          "5000_unknown": 22,
+          "5000_less": 128,
+          "6500_less": 76
+        },
+        "2026-09-25": {
+          "rows": 572,
+          "matched": 400,
+          "5000_overlap": 141,
+          "6500_overlap": 88,
+          "5000_unknown": 33,
+          "6500_unknown": 152,
+          "5000_less": 131,
+          "6500_less": 89,
+          "5000_more": 95,
+          "6500_more": 71
+        },
+        "2026-09-26": {
+          "rows": 584,
+          "matched": 405,
+          "5000_less": 102,
+          "6500_less": 56,
+          "5000_unknown": 23,
+          "6500_unknown": 144,
+          "5000_overlap": 192,
+          "6500_overlap": 134,
+          "5000_more": 88,
+          "6500_more": 71
+        },
+        "2026-09-27": {
+          "rows": 326,
+          "matched": 237,
+          "5000_less": 51,
+          "6500_less": 35,
+          "5000_overlap": 102,
+          "6500_unknown": 69,
+          "5000_unknown": 15,
+          "6500_overlap": 70,
+          "5000_more": 69,
+          "6500_more": 63
+        },
+        "2026-09-28": {
+          "rows": 565,
+          "matched": 385,
+          "5000_less": 68,
+          "6500_less": 48,
+          "5000_unknown": 34,
+          "6500_unknown": 147,
+          "5000_overlap": 221,
+          "5000_more": 62,
+          "6500_more": 52,
+          "6500_overlap": 138
+        },
+        "2026-09-29": {
+          "rows": 584,
+          "matched": 414,
+          "5000_more": 58,
+          "6500_more": 52,
+          "6500_overlap": 127,
+          "5000_less": 89,
+          "6500_less": 86,
+          "5000_overlap": 246,
+          "6500_unknown": 149,
+          "5000_unknown": 21
+        },
+        "2026-09-30": {
+          "rows": 584,
+          "matched": 405,
+          "5000_overlap": 201,
+          "6500_overlap": 131,
+          "6500_more": 57,
+          "5000_more": 79,
+          "6500_unknown": 144,
+          "5000_unknown": 30,
+          "5000_less": 95,
+          "6500_less": 73
+        },
+        "2026-10-01": {
+          "rows": 585,
+          "matched": 400,
+          "5000_less": 165,
+          "6500_less": 120,
+          "6500_overlap": 76,
+          "5000_unknown": 27,
+          "6500_unknown": 148,
+          "5000_overlap": 151,
+          "5000_more": 57,
+          "6500_more": 56
+        },
+        "2026-10-02": {
+          "rows": 582,
+          "matched": 414,
+          "5000_less": 101,
+          "6500_less": 84,
+          "5000_overlap": 191,
+          "5000_unknown": 34,
+          "6500_unknown": 127,
+          "6500_more": 81,
+          "6500_overlap": 122,
+          "5000_more": 88
+        },
+        "2026-10-03": {
+          "rows": 581,
+          "matched": 397,
+          "5000_more": 64,
+          "6500_more": 57,
+          "5000_unknown": 26,
+          "6500_unknown": 110,
+          "5000_less": 118,
+          "6500_less": 99,
+          "5000_overlap": 189,
+          "6500_overlap": 131
+        },
+        "2026-10-04": {
+          "rows": 611,
+          "matched": 397,
+          "5000_overlap": 171,
+          "6500_more": 43,
+          "5000_less": 130,
+          "6500_overlap": 116,
+          "5000_unknown": 35,
+          "6500_unknown": 158,
+          "5000_more": 61,
+          "6500_less": 80
+        },
+        "2026-10-05": {
+          "rows": 622,
+          "matched": 422,
+          "5000_overlap": 194,
+          "6500_overlap": 114,
+          "5000_unknown": 14,
+          "6500_unknown": 140,
+          "6500_less": 92,
+          "5000_less": 143,
+          "5000_more": 71,
+          "6500_more": 76
+        },
+        "2026-10-06": {
+          "rows": 621,
+          "matched": 425,
+          "5000_overlap": 224,
+          "6500_overlap": 162,
+          "5000_more": 68,
+          "6500_more": 65,
+          "5000_unknown": 51,
+          "6500_unknown": 144,
+          "5000_less": 82,
+          "6500_less": 54
+        }
+      },
+      "by_version": {
+        "p1_joint_likelihood_v12": {
+          "rows": 263,
+          "matched": 195,
+          "5000_less": 67,
+          "6500_less": 52,
+          "5000_overlap": 82,
+          "6500_overlap": 64,
+          "6500_unknown": 51,
+          "5000_unknown": 9,
+          "5000_more": 37,
+          "6500_more": 28
+        },
+        "p1_joint_likelihood_v13": {
+          "rows": 56,
+          "matched": 33,
+          "5000_overlap": 20,
+          "6500_unknown": 15,
+          "6500_overlap": 11,
+          "5000_more": 3,
+          "5000_less": 9,
+          "5000_unknown": 1,
+          "6500_less": 5,
+          "6500_more": 2
+        },
+        "p1_joint_likelihood_v14": {
+          "rows": 27,
+          "matched": 15,
+          "5000_overlap": 9,
+          "6500_unknown": 8,
+          "6500_overlap": 4,
+          "5000_less": 5,
+          "5000_more": 1,
+          "6500_more": 1,
+          "6500_less": 2
+        },
+        "p1_joint_likelihood_v15": {
+          "rows": 111,
+          "matched": 71,
+          "5000_less": 31,
+          "6500_overlap": 17,
+          "5000_more": 11,
+          "6500_more": 7,
+          "5000_overlap": 26,
+          "6500_unknown": 31,
+          "6500_less": 16,
+          "5000_unknown": 3
+        },
+        "p1_joint_likelihood_v16": {
+          "rows": 70,
+          "matched": 44,
+          "5000_overlap": 25,
+          "6500_overlap": 16,
+          "5000_less": 10,
+          "6500_less": 9,
+          "6500_unknown": 13,
+          "5000_more": 7,
+          "6500_more": 6,
+          "5000_unknown": 2
+        },
+        "p1_joint_likelihood_v17": {
+          "rows": 1048,
+          "matched": 744,
+          "5000_less": 235,
+          "6500_less": 158,
+          "5000_overlap": 345,
+          "6500_overlap": 179,
+          "5000_more": 113,
+          "6500_more": 106,
+          "5000_unknown": 51,
+          "6500_unknown": 301
+        },
+        "p1_joint_likelihood_v18": {
+          "rows": 414,
+          "matched": 273,
+          "5000_less": 100,
+          "6500_less": 81,
+          "5000_overlap": 100,
+          "6500_unknown": 92,
+          "5000_more": 56,
+          "6500_overlap": 52,
+          "5000_unknown": 17,
+          "6500_more": 48
+        },
+        "p1_joint_likelihood_v19": {
+          "rows": 404,
+          "matched": 165,
+          "5000_overlap": 82,
+          "6500_overlap": 38,
+          "5000_more": 29,
+          "6500_unknown": 70,
+          "5000_unknown": 10,
+          "6500_more": 17,
+          "5000_less": 44,
+          "6500_less": 40
+        },
+        "p1_joint_likelihood_v20": {
+          "rows": 305,
+          "matched": 158,
+          "5000_more": 31,
+          "6500_more": 26,
+          "5000_less": 54,
+          "6500_less": 32,
+          "5000_overlap": 69,
+          "6500_overlap": 42,
+          "6500_unknown": 58,
+          "5000_unknown": 4
+        },
+        "p1_joint_likelihood_v21": {
+          "rows": 18,
+          "matched": 10,
+          "5000_more": 4,
+          "6500_more": 3,
+          "5000_less": 2,
+          "6500_unknown": 3,
+          "5000_overlap": 4,
+          "6500_overlap": 4
+        },
+        "p1_joint_likelihood_v22": {
+          "rows": 176,
+          "matched": 135,
+          "5000_more": 43,
+          "6500_more": 34,
+          "5000_overlap": 49,
+          "6500_overlap": 48,
+          "5000_less": 42,
+          "6500_less": 33,
+          "6500_unknown": 20,
+          "5000_unknown": 1
+        },
+        "p1_joint_likelihood_v23": {
+          "rows": 376,
+          "matched": 256,
+          "5000_overlap": 98,
+          "6500_overlap": 50,
+          "5000_more": 58,
+          "6500_more": 35,
+          "6500_unknown": 121,
+          "5000_unknown": 17,
+          "5000_less": 83,
+          "6500_less": 50
+        },
+        "p1_joint_likelihood_v24": {
+          "rows": 159,
+          "matched": 115,
+          "5000_more": 32,
+          "6500_more": 33,
+          "5000_overlap": 32,
+          "6500_overlap": 27,
+          "6500_unknown": 28,
+          "5000_less": 41,
+          "5000_unknown": 10,
+          "6500_less": 27
+        },
+        "p1_joint_likelihood_v25": {
+          "rows": 31,
+          "matched": 22,
+          "5000_more": 6,
+          "6500_more": 4,
+          "5000_overlap": 9,
+          "6500_overlap": 7,
+          "5000_unknown": 3,
+          "6500_unknown": 9,
+          "5000_less": 4,
+          "6500_less": 2
+        },
+        "p1_joint_likelihood_v26": {
+          "rows": 113,
+          "matched": 85,
+          "5000_more": 27,
+          "6500_unknown": 38,
+          "5000_overlap": 23,
+          "6500_overlap": 17,
+          "5000_less": 26,
+          "6500_more": 12,
+          "5000_unknown": 9,
+          "6500_less": 18
+        },
+        "p1_joint_likelihood_v27": {
+          "rows": 2,
+          "matched": 1,
+          "5000_overlap": 1,
+          "6500_unknown": 1
+        },
+        "p1_joint_likelihood_v29": {
+          "rows": 54,
+          "matched": 36,
+          "5000_overlap": 13,
+          "6500_unknown": 18,
+          "6500_overlap": 7,
+          "5000_less": 14,
+          "6500_less": 8,
+          "5000_more": 6,
+          "5000_unknown": 3,
+          "6500_more": 3
+        },
+        "p1_joint_likelihood_v30": {
+          "rows": 1166,
+          "matched": 808,
+          "5000_overlap": 351,
+          "6500_overlap": 228,
+          "5000_unknown": 50,
+          "6500_unknown": 283,
+          "5000_less": 212,
+          "6500_less": 128,
+          "5000_more": 195,
+          "6500_more": 169
+        },
+        "p1_joint_likelihood_v31": {
+          "rows": 2306,
+          "matched": 1598,
+          "5000_less": 402,
+          "6500_less": 318,
+          "5000_unknown": 110,
+          "6500_unknown": 588,
+          "5000_more": 256,
+          "6500_more": 218,
+          "6500_overlap": 474,
+          "5000_overlap": 830
+        },
+        "p1_joint_likelihood_v32": {
+          "rows": 166,
+          "matched": 122,
+          "5000_less": 44,
+          "6500_less": 35,
+          "5000_unknown": 10,
+          "6500_unknown": 22,
+          "5000_overlap": 44,
+          "6500_overlap": 38,
+          "5000_more": 24,
+          "6500_more": 27
+        },
+        "p1_joint_likelihood_v33": {
+          "rows": 21,
+          "matched": 15,
+          "5000_more": 4,
+          "6500_more": 4,
+          "5000_overlap": 7,
+          "6500_overlap": 5,
+          "5000_unknown": 1,
+          "6500_unknown": 4,
+          "5000_less": 3,
+          "6500_less": 2
+        },
+        "p1_joint_likelihood_v34": {
+          "rows": 40,
+          "matched": 25,
+          "5000_unknown": 2,
+          "6500_unknown": 8,
+          "5000_less": 8,
+          "6500_less": 5,
+          "5000_more": 3,
+          "6500_more": 4,
+          "5000_overlap": 12,
+          "6500_overlap": 8
+        },
+        "p1_joint_likelihood_v35": {
+          "rows": 226,
+          "matched": 156,
+          "5000_less": 51,
+          "6500_less": 33,
+          "5000_unknown": 16,
+          "6500_unknown": 70,
+          "5000_overlap": 58,
+          "6500_overlap": 29,
+          "5000_more": 31,
+          "6500_more": 24
+        },
+        "p1_joint_likelihood_v36": {
+          "rows": 79,
+          "matched": 54,
+          "5000_overlap": 27,
+          "6500_less": 10,
+          "5000_unknown": 4,
+          "6500_unknown": 16,
+          "5000_more": 14,
+          "6500_more": 11,
+          "6500_overlap": 17,
+          "5000_less": 9
+        },
+        "p1_joint_likelihood_v37": {
+          "rows": 1127,
+          "matched": 768,
+          "5000_unknown": 54,
+          "6500_unknown": 248,
+          "5000_overlap": 346,
+          "6500_more": 115,
+          "5000_more": 132,
+          "5000_less": 236,
+          "6500_less": 180,
+          "6500_overlap": 225
+        },
+        "p1_joint_likelihood_v38": {
+          "rows": 1471,
+          "matched": 994,
+          "5000_overlap": 498,
+          "6500_overlap": 352,
+          "5000_unknown": 75,
+          "6500_unknown": 313,
+          "5000_more": 164,
+          "6500_less": 172,
+          "6500_more": 157,
+          "5000_less": 257
+        },
+        "p1_metar_trajectory_target_v10": {
+          "rows": 2336,
+          "matched": 1558,
+          "5000_unknown": 91,
+          "6500_unknown": 484,
+          "5000_overlap": 682,
+          "6500_overlap": 486,
+          "5000_less": 501,
+          "6500_less": 359,
+          "6500_more": 229,
+          "5000_more": 284
+        },
+        "p1_metar_trajectory_target_v11": {
+          "rows": 255,
+          "matched": 169,
+          "5000_unknown": 6,
+          "6500_unknown": 54,
+          "5000_overlap": 66,
+          "6500_overlap": 46,
+          "5000_more": 27,
+          "6500_more": 24,
+          "5000_less": 70,
+          "6500_less": 45
+        },
+        "p1_metar_trajectory_target_v5": {
+          "rows": 625,
+          "matched": 198,
+          "5000_less": 48,
+          "6500_less": 32,
+          "5000_overlap": 96,
+          "6500_overlap": 77,
+          "5000_unknown": 17,
+          "6500_unknown": 58,
+          "5000_more": 37,
+          "6500_more": 31
+        },
+        "p1_metar_trajectory_target_v6": {
+          "rows": 2004,
+          "matched": 636,
+          "5000_more": 133,
+          "6500_more": 136,
+          "5000_unknown": 25,
+          "6500_unknown": 122,
+          "5000_less": 214,
+          "6500_less": 191,
+          "5000_overlap": 264,
+          "6500_overlap": 187
+        },
+        "p1_metar_trajectory_target_v7": {
+          "rows": 188,
+          "matched": 7,
+          "5000_overlap": 4,
+          "6500_less": 4,
+          "5000_less": 3,
+          "6500_overlap": 3
+        },
+        "p1_metar_trajectory_target_v8": {
+          "rows": 364,
+          "matched": 87,
+          "5000_overlap": 23,
+          "6500_unknown": 10,
+          "5000_less": 34,
+          "6500_less": 29,
+          "6500_overlap": 21,
+          "6500_more": 27,
+          "5000_more": 30
+        },
+        "p1_metar_trajectory_target_v9": {
+          "rows": 3617,
+          "matched": 1454,
+          "5000_unknown": 91,
+          "6500_unknown": 454,
+          "5000_overlap": 632,
+          "6500_more": 215,
+          "6500_overlap": 425,
+          "5000_less": 506,
+          "6500_less": 360,
+          "5000_more": 225
+        }
+      },
+      "thresholds": {
+        "1500": {
+          "less": 495,
+          "overlap": 8958,
+          "more": 862,
+          "unknown": 692
+        },
+        "3000": {
+          "less": 1624,
+          "more": 1974,
+          "unknown": 692,
+          "overlap": 6717
+        },
+        "5000": {
+          "less": 3365,
+          "overlap": 4927,
+          "more": 2023,
+          "unknown": 692
+        },
+        "6500": {
+          "less": 2436,
+          "overlap": 3204,
+          "more": 1756,
+          "unknown": 3611
+        }
+      },
+      "receipt_kinds": {
+        "ssot_raw_sha_bound_receipt": 5337,
+        "raw_archive_native": 5670
+      },
+      "restored_only_pairs": 4810,
+      "obs_stale_over_2h": 389,
+      "usable_nonstale_by_threshold": {
+        "1500": 10126,
+        "3000": 10126,
+        "5000": 10126,
+        "6500": 7246
+      }
+    }
+  },
+  "case": [
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-06T23:07:51.217000Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_3efc27653242eecb0a4acec40ccaa19d",
+      "observation_valid_at": "2026-10-06T23:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "NSC",
+          "base": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.0,
+          0.0
+        ],
+        "6500": null
+      },
+      "raw_metar": "METAR ZUUU 062300Z 24001MPS 6000 NSC 17/16 Q1022 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "63adb123f50e5c490adeb403b2711b528e2c0add8eca06d3cb45ab0035c03b04",
+        "issue": "2026-10-06T15:01:00.000Z",
+        "known_at": "2026-10-06T16:02:01.729707Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "cd9ee4d12158e0e83a942ec736a1998362903b5bb6a59bf2ca7a0b7822adb7b5",
+        "restored_only": false,
+        "valid_from": "2026-10-06T18:00:00Z",
+        "valid_to": "2026-10-07T18:00:00Z",
+        "raw_taf": "TAF ZUUU 061501Z 0618/0718 22003MPS 6000 SCT050 TX28/0707Z TN17/0622Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 7.983333333333333
+      },
+      "day1": {
+        "taf_sha": "defcdafd6412b0dbe1849a3c646b73a106690565cb779c23768365c670c1f55a",
+        "issue": "2026-10-05T21:01:00.000Z",
+        "known_at": "2026-10-05T22:01:22.375429Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "36ab2e8a384f81da18b607a10efd77ab6c720700a4cc0d8875fd98fc926558d7",
+        "restored_only": false,
+        "valid_from": "2026-10-06T00:00:00Z",
+        "valid_to": "2026-10-07T00:00:00Z",
+        "raw_taf": "TAF ZUUU 052101Z 0600/0624 22003MPS 2300 BR SCT050 TX24/0607Z TN15/0622Z BECMG 0601/0602 6000",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 25.983333333333334
+      },
+      "local_hour": 7
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T00:45:42.154002Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_de566dfc344ad2ca95f64d84925b38a6",
+      "observation_valid_at": "2026-10-07T00:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "NSC",
+          "base": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.0,
+          0.0
+        ],
+        "6500": null
+      },
+      "raw_metar": "METAR ZUUU 070000Z 22001MPS 6000 NSC 18/17 Q1022 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 2.966666666666667
+      },
+      "day1": null,
+      "local_hour": 8
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T01:23:58.847002Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_dcd95d02a82832fe7f0dfbbd891fe933",
+      "observation_valid_at": "2026-10-07T01:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "NSC",
+          "base": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.0,
+          0.0
+        ],
+        "6500": null
+      },
+      "raw_metar": "METAR ZUUU 070100Z 21002MPS 8000 NSC 20/17 Q1023 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 3.966666666666667
+      },
+      "day1": null,
+      "local_hour": 9
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T02:05:53.219000Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_5b00f31fc0bdff53624607a8302f78ce",
+      "observation_valid_at": "2026-10-07T02:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "CAVOK",
+          "base": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.0,
+          0.0
+        ],
+        "6500": null
+      },
+      "raw_metar": "METAR ZUUU 070200Z 23002MPS 190V280 CAVOK 22/16 Q1023 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 4.966666666666667
+      },
+      "day1": null,
+      "local_hour": 10
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T03:31:45.099003Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_4917d8287b8bef9f133f225699a88495",
+      "observation_valid_at": "2026-10-07T03:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "CAVOK",
+          "base": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.0,
+          0.0
+        ],
+        "6500": null
+      },
+      "raw_metar": "METAR ZUUU 070300Z 24002MPS 150V310 CAVOK 23/16 Q1023 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "overlap",
+          "6500": "unknown"
+        },
+        "issue_lead_hours": 5.966666666666667
+      },
+      "day1": null,
+      "local_hour": 11
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T04:11:54.545004Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_c6dabfc59aea8eecc1ea9917a75bb879",
+      "observation_valid_at": "2026-10-07T04:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.375,
+          0.5
+        ],
+        "6500": [
+          0.375,
+          0.5
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070400Z VRB01MPS 9999 SCT030 24/16 Q1022 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 6.966666666666667
+      },
+      "day1": null,
+      "local_hour": 12
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T05:56:35.105005Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_60f96ac22f36056377902f8f1dde3b75",
+      "observation_valid_at": "2026-10-07T05:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.375,
+          0.5
+        ],
+        "6500": [
+          0.375,
+          0.5
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070500Z VRB01MPS 9999 SCT030 25/15 Q1021 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00.000Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "restored_only": false,
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "raw_taf": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 7.966666666666667
+      },
+      "day1": {
+        "taf_sha": "0f550f5bd9d825e4cb63e44ee0911dd051b41222de1b6f96bfd6dc9dc612346d",
+        "issue": "2026-10-06T03:02:00.000Z",
+        "known_at": "2026-10-06T04:00:58.647302Z",
+        "receipt_kind": "raw_archive_native",
+        "receipt_id": "0cd2fe10d3a9ff76f397b6bf2b8c8c681b1fa1fb2c23cf1c43dd01d425c8fad9",
+        "restored_only": false,
+        "valid_from": "2026-10-06T06:00:00Z",
+        "valid_to": "2026-10-07T06:00:00Z",
+        "raw_taf": "TAF ZUUU 060302Z 0606/0706 22003MPS 6000 SCT050 TX25/0607Z TN15/0622Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 25.966666666666665
+      },
+      "local_hour": 13
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T06:07:26.398000Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_493414b2271d51f50f4520d02335beb9",
+      "observation_valid_at": "2026-10-07T06:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.375,
+          0.5
+        ],
+        "6500": [
+          0.375,
+          0.5
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070600Z VRB01MPS 9999 SCT030 25/15 Q1020 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00.000Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "receipt_kind": "ssot_raw_sha_bound_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "restored_only": false,
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "raw_taf": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 2.9833333333333334
+      },
+      "day1": null,
+      "local_hour": 14
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T07:57:13.636006Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_f6a03c500c32722cf58a29fdf94d9771",
+      "observation_valid_at": "2026-10-07T07:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "BKN",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.625,
+          0.875
+        ],
+        "6500": [
+          0.625,
+          0.875
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070700Z VRB02MPS 9999 BKN030 25/15 Q1019 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00.000Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "receipt_kind": "ssot_raw_sha_bound_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "restored_only": false,
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "raw_taf": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "more"
+        },
+        "issue_lead_hours": 3.9833333333333334
+      },
+      "day1": null,
+      "local_hour": 15
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T08:06:20.013000Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_dffa90181455c5a64fe1cafb08f79808",
+      "observation_valid_at": "2026-10-07T08:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.375,
+          0.5
+        ],
+        "6500": [
+          0.375,
+          0.5
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070800Z 34002MPS 300V030 9999 SCT030 25/15 Q1018 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00.000Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "receipt_kind": "ssot_raw_sha_bound_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "restored_only": false,
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "raw_taf": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 4.983333333333333
+      },
+      "day1": null,
+      "local_hour": 16
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T09:33:00.148006Z",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_id": "rtobs_fe0a645ab0b04b2f077896158d531204",
+      "observation_valid_at": "2026-10-07T09:00:00.000Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "obs_intervals": {
+        "1500": [
+          0.0,
+          0.0
+        ],
+        "3000": [
+          0.0,
+          0.0
+        ],
+        "5000": [
+          0.375,
+          0.5
+        ],
+        "6500": [
+          0.375,
+          0.5
+        ]
+      },
+      "raw_metar": "METAR ZUUU 070900Z 01003MPS 9999 SCT030 24/16 Q1018 NOSIG",
+      "evidence_role": "observational_candidate_not_oos",
+      "strict_oos": false,
+      "latest": {
+        "taf_sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00.000Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "receipt_kind": "ssot_raw_sha_bound_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "restored_only": false,
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "raw_taf": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "base": 5000,
+              "cover": "SCT",
+              "type": null
+            }
+          ]
+        ],
+        "intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "directions": {
+          "1500": "overlap",
+          "3000": "overlap",
+          "5000": "more",
+          "6500": "overlap"
+        },
+        "issue_lead_hours": 5.983333333333333
+      },
+      "day1": null,
+      "local_hour": 17
+    }
+  ],
+  "current_chain": {
+    "P1": "p1_joint_likelihood_v38",
+    "closed_days": 3,
+    "not_a_current_chain_36day_oos": true
+  },
+  "blockers": [
+    "stored P1 sample mixes old production chains; current segment only 3 closed days",
+    "backfilled raw text may bind to old raw hash receipts but decoded groups have no historical decoding/QA receipt",
+    "METAR significant-cloud reporting is not a full-sky cloud fraction; broad threshold CAVOK/NSC is unknown",
+    "cloud base lowering is distinct from increased coverage and has no automatic temperature sign"
+  ],
+  "input_fingerprints": [
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-20.jsonl",
+      "bytes": 531022,
+      "sha256": "39f75478c357a69392928e2902c686716927ffa8dde3ab3684540f2da6043ca5"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-21.jsonl",
+      "bytes": 902515,
+      "sha256": "01397bc733d9c0f9779aaa9dc496a67c10979c8d3e646863832dfbddb600ec2c"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-22.jsonl",
+      "bytes": 937455,
+      "sha256": "a6b396a22f3070580680823f428766125bf8c1184c5f543a6dfd241133c605d7"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-23.jsonl",
+      "bytes": 874980,
+      "sha256": "a8bf80f8b324cec7ee6a88f324886ea756a6ad76d98384795ade62e4efd1c8ec"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-24.jsonl",
+      "bytes": 824147,
+      "sha256": "89095de1f4e654171b96af0eea17476fde5f5f1183c2b624bd7d6ee49cb9b924"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-25.jsonl",
+      "bytes": 802662,
+      "sha256": "cc249e3b7b07b7f8afa0eab10a24b16567cfd066eecc852eb2c37be665b091e0"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-26.jsonl",
+      "bytes": 917588,
+      "sha256": "72c504e584a0fb3fee87c408e2353d020aaba7a501d0ed703193fe58712867e1"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-27.jsonl",
+      "bytes": 970987,
+      "sha256": "587f9d444e85cf6f36845b863c57c43b58455ce4bce98fec49b2086c5623e362"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-28.jsonl",
+      "bytes": 865418,
+      "sha256": "034ef85f386c82dd9e6c5066515d145c959807270f6e51243797f8b592fceaf0"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-29.jsonl",
+      "bytes": 877197,
+      "sha256": "0b531ae2bfa615ef14c6f96767694a3dd5f8291a9da5e4fcd6346b050dc9f2a8"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-30.jsonl",
+      "bytes": 912942,
+      "sha256": "8398bbd7db0f8c50756249b7231b108f5e08ac01b68bea27e9265360ad5f2e88"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-08-31.jsonl",
+      "bytes": 913190,
+      "sha256": "780cf055cc78cff7901899b716f43a3cf996941180fd6ee280ac11115e5c4dbd"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-01.jsonl",
+      "bytes": 908230,
+      "sha256": "b7bf2d402e0930fc402943ab6b0ea41732bc49013b048fb4336b185298858a76"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-02.jsonl",
+      "bytes": 936069,
+      "sha256": "a6efad465b2d32e94387bd8253e10c3e8b01ffa14187d22c7e7e05d1cf67fd7f"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-03.jsonl",
+      "bytes": 892563,
+      "sha256": "1bb5b9e661afa7c8866b079e3e9e75a3fafd99cd6f9b8af909a3af142e5ab86a"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-04.jsonl",
+      "bytes": 839257,
+      "sha256": "476515a4585c0d27dfce3525c60dfc486a87d2457a728ad67649b8c01e809605"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-05.jsonl",
+      "bytes": 872979,
+      "sha256": "181981092ff9b126c20d0acfde9aa49edba6f054ea00bb0a38ca3be90c1e418e"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-06.jsonl",
+      "bytes": 855775,
+      "sha256": "424e44b5b479fb7559204df2f2ee004f55ebd048f79752ceb401ccbdf79b5220"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-07.jsonl",
+      "bytes": 837103,
+      "sha256": "6b8bc344c28619b42ca3201bdd726c2cf2fe8bc53980e6aa6486e7897d1b0928"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-08.jsonl",
+      "bytes": 831336,
+      "sha256": "a7ba0e94cf0dd21ff6d793a30a8796fca42247a4a67729c9b1f0762e72473a1b"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-09.jsonl",
+      "bytes": 856503,
+      "sha256": "0a35d5129e043045b47ce7c45c08fbcfe6d9485238cf8a79b57da4f1c0ab210f"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-10.jsonl",
+      "bytes": 829481,
+      "sha256": "8536a9e59d5e0cd860e959f78f13d080e66e94eb559831a68ad670cbdc46d23e"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-11.jsonl",
+      "bytes": 823685,
+      "sha256": "2a149226a4b2d49b0ecc33495ed069b0855e3f5295c0e993d77c14972573fa72"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-12.jsonl",
+      "bytes": 865531,
+      "sha256": "fcc51e03a6a9230b09e4bddc17e881f3540ed1d14dd2fce043e15781233269b8"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-13.jsonl",
+      "bytes": 906688,
+      "sha256": "696cfbb1b7535328483b817aa864276236b522a819699f48aeecc55356d79f90"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-14.jsonl",
+      "bytes": 818503,
+      "sha256": "9a30e6eeee84d25e0370d1aa3e8121ab812f13e827565a0cb68eb1e7d4654b69"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-15.jsonl",
+      "bytes": 872312,
+      "sha256": "f672ecc3dddaab4a21611dc2cc6047548c6bae0e121eb6cb79e83e3c7c97c27f"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-16.jsonl",
+      "bytes": 839681,
+      "sha256": "5be1b84cdda2dc34b39fe7148a88b9fcd20a76949d3962abd33b7436231dbfac"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-17.jsonl",
+      "bytes": 878691,
+      "sha256": "8b3bde224dba42d33a8f5c2fd249f277c77756ef54867b022a50952e5bcedc08"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-18.jsonl",
+      "bytes": 822449,
+      "sha256": "70a6e34f18f58d4819f7d3b52d883dfc8ce163df3b7c7b0ec544bcfc0cc6d915"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-19.jsonl",
+      "bytes": 924420,
+      "sha256": "7d1ecab921984b5dba4787821478bea08df2380392a7be200e2af8fafc3aa319"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-20.jsonl",
+      "bytes": 851817,
+      "sha256": "10b06203bb8e91afb2a4a405627b2673489d20d0fcef3ff213ae050280aaa9c4"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-21.jsonl",
+      "bytes": 546485,
+      "sha256": "7b12d4e4f66660a412c54fb65b56aefc96d154d5453e6d080ae6be641c68c249"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-22.jsonl",
+      "bytes": 1076885,
+      "sha256": "ff745722e51e1741fd3ba60d7a07c0fccdf252793a6b781104926a91009ba948"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-23.jsonl",
+      "bytes": 1146038,
+      "sha256": "5fbcd912e21493911209908130c0a04885ed3bd0d2d47bf969547e6715e286a6"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-24.jsonl",
+      "bytes": 924962,
+      "sha256": "706482bb967a212bcc6cee0590bba2703c11233d7283e5c25eda0f236feabdf6"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-25.jsonl",
+      "bytes": 1064800,
+      "sha256": "d95611ec47703afb7221b081d4d70f9ad101c366b32988b76c99cb56418fefb3"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-26.jsonl",
+      "bytes": 1012286,
+      "sha256": "cf4ef17869d46db55861a4056ae0d50b1e6dfbac712680477bbf45125429ce99"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-27.jsonl",
+      "bytes": 1104950,
+      "sha256": "0407935b7cb43d72d91369ddaaf2631764b888049288f7edac248c242e81f88f"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-28.jsonl",
+      "bytes": 1170731,
+      "sha256": "1e9ee2b5cafe7f8da66c0154c8ce4da30833956642d80822f3ff0919890b9879"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-29.jsonl",
+      "bytes": 1001653,
+      "sha256": "1ebb104bde03c271533699f66268af7e758beb7dadd34e388ec52b8df69eb171"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-09-30.jsonl",
+      "bytes": 1010578,
+      "sha256": "febc8f33507a7fb80df4d2e66f928cb3425f321a854a1cca7bdced792359c860"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-01.jsonl",
+      "bytes": 1080113,
+      "sha256": "89f596bca88d152e925befa694697fc6b5be78eadddb23449c22b2180b105476"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-02.jsonl",
+      "bytes": 1239432,
+      "sha256": "fdd9b616861da6b5b29f960feaa11b90c40bafc524b0f82439171b7fdc954ba6"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-03.jsonl",
+      "bytes": 1144320,
+      "sha256": "9f2728d8262cc6b4b6c24f35e9b425c7460065bc63645dd9568030df9bf5c193"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-04.jsonl",
+      "bytes": 1177784,
+      "sha256": "880d0cdb2f277b5acbbe8cd17b10a84612336474279d1aa7ce70dfb07c7eab31"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-05.jsonl",
+      "bytes": 1096787,
+      "sha256": "3d0c8c98e0f956096684f37c49dd26dbd37b5ab4e407dfd40ee3c17fde453623"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-06.jsonl",
+      "bytes": 1041868,
+      "sha256": "bea6145c43515f6dfa9a7ee61f36330729f5733b253d3267d9d5c822fbefb6f9"
+    },
+    {
+      "path": "data/runtime/taf_raw_archive/2026-10-07.jsonl",
+      "bytes": 498729,
+      "sha256": "c2509a13b131236680f8e0bac379d35d8ec6e83f613d4df9308bd8ff4ee08cb6"
+    }
+  ],
+  "research_input_sha256": "860b5e25051bc65aaf4e078df4665e7efa0c7dd98fdeea59aec2f2d2cd5044d6",
+  "paired_rows_sha256": "3843fb950dda51e62d92ba10dd5a681ed9c259503f45e548cf18ee66df67ea56",
+  "resource_limits": {
+    "rss_bytes": 1073741824,
+    "per_line_bytes": 2097152,
+    "input_bytes": 134217728,
+    "output_bytes": 134217728,
+    "min_free_disk_bytes": 2147483648
+  },
+  "executed_queries": [
+    {
+      "sql": "select distinct station_id from reported_trajectory_observations",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct source_lane from reported_trajectory_observations",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct report_type from reported_trajectory_observations",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct station_id from calibration_forward_taf_capture",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct source_class from calibration_forward_taf_capture",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct authority_scope from calibration_forward_taf_capture",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select * from calibration_forward_taf_capture",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select distinct station_id,settlement_timezone from calibration_station_market_timezone_binding",
+      "calls": 1,
+      "parameter_examples": [
+        []
+      ]
+    },
+    {
+      "sql": "select * from reported_trajectory_observations where observation_id=?",
+      "calls": 18851,
+      "parameter_examples": [
+        [
+          "rtobs_9cb3ffc394f22a1c16559556c98afcd7"
+        ],
+        [
+          "rtobs_7701a4867fa244090ccfee6523010c42"
+        ],
+        [
+          "rtobs_c67fb9d4daa6ccb8815bd4b275272896"
+        ]
+      ]
+    }
+  ]
+}
