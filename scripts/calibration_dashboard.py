@@ -16175,6 +16175,10 @@ table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted
 .sd-tag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;line-height:15px;
   font-weight:700;color:#fff;vertical-align:1px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 .sd-tag-o{background:transparent;border:1px solid;line-height:13px}
+table.sd-sky td.sd-hot{background:rgba(248,81,73,.16);font-weight:700}
+table.sd-sky td.sd-cold{background:rgba(210,153,34,.18);font-weight:700}
+table.sd-sky tr.sd-future td{opacity:.55}
+.sd-skybox{margin:6px 0}
 table.sd-tab th.sd-noc,table.sd-tab td.sd-noc{background:color-mix(in srgb,var(--violet) 7%,transparent)}
 table.sd-tab th.sd-old,table.sd-tab td.sd-old{background:color-mix(in srgb,var(--muted) 8%,transparent)}
 table.sd-tab th.sd-add{color:var(--accent)}
@@ -22656,9 +22660,42 @@ function sdEvidence(day){
     rain = `<div class="sd-ev"><b>云雨</b>：逐小时降水预报（${sdEsc(P.source_id)}，${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc, true)}）当日合计 <b>${sdN(P.sum_mm, 1)} mm</b> · 湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)} · 首个湿小时 ${sdEsc(P.first_wet_hour == null ? "—" : P.first_wet_hour)} · 峰值小时 ${sdEsc(P.peak_hour == null ? "—" : P.peak_hour)}
       ${hrs.length ? `<div class="sd-rain">${bars}</div><div class="muted sd-sub">0 时 → 23 时（当地）</div>` : ""}</div>`;
   }
-  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div>${rad}${tafP0}${tafPm}${p1Line}${rain}
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div>${sdSky(day)}${rad}${tafP0}${tafPm}${p1Line}${rain}
     ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="scroll sd-metar"><table class="sd-tab"><thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead><tbody>${met}</tbody></table></div></details>` : ""}`;
+}
+// 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
+// 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
+// only draws it: each past hour's report beside the forecast hour, the
+// differences tagged and the cells that differ tinted.
+function sdSky(day){
+  const H = day.hourly_sky;
+  if(!H) return "";
+  if(!H.available) return `<div class="sd-ev muted">逐小时云与辐射对照：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
+  const pc0 = v => v == null ? "—" : Math.round(v) + "%";
+  const w = v => v == null ? "—" : Math.round(v);
+  const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? (d.dir === "more" ? "sd-hot" : "sd-cold") : ""; };
+  const rows = (H.rows || []).map(r => {
+    const f = r.forecast || {}, o = r.obs;
+    const tags = (r.diffs || []).map(x => `<span class="pill ${x.kind === "haze" || x.kind === "rain" ? "" : x.dir === "more" ? "red" : "amber"}" style="margin:1px 2px">${sdEsc(x.text)}</span>`).join("");
+    return `<tr class="${r.past ? "" : "sd-future"}${(r.diffs || []).length ? " sd-diffrow" : ""}">
+      <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
+      <td class="mono">${o ? sdEsc((o.clouds || []).join(" ") || "—") : r.past ? "无报" : "—"}</td>
+      <td class="mono ${tone(r, "cloud")}">${o ? pc0(100 * (o.cloud_cover || 0)) : "—"}</td>
+      <td class="mono ${tone(r, "cloud")}">${pc0(f.cloud_low)} <span class="muted">/ ${pc0(f.cloud_low_d1)}</span></td>
+      <td class="mono muted">${pc0(f.cloud)} / ${pc0(f.cloud_d1)}</td>
+      <td class="mono ${tone(r, "sw")}">${o ? w(o.inferred_sw_wm2) : "—"}</td>
+      <td class="mono ${tone(r, "sw")}">${w(f.sw)} <span class="muted">/ ${w(f.sw_d1)}</span></td>
+      <td class="mono ${tone(r, "temp")}">${o && o.temp_c != null ? o.temp_c + "°" : "—"}</td>
+      <td class="mono ${tone(r, "temp")}">${f.temp_c == null ? "—" : sdN(f.temp_c, 1) + "°"} <span class="muted">/ ${f.temp_c_d1 == null ? "—" : sdN(f.temp_c_d1, 1) + "°"}</span></td>
+      <td class="mono">${o && o.visibility_m != null ? (o.visibility_m >= 10000 ? "≥10k" : w(o.visibility_m)) : "—"}${o && (o.weathers || []).length ? " " + sdEsc(o.weathers.join(" ")) : ""}</td>
+      <td style="white-space:normal">${tags}</td></tr>`;
+  }).join("");
+  const nDiff = (H.rows || []).filter(r => (r.diffs || []).some(x => x.kind === "cloud" || x.kind === "sw")).length;
+  return `<details class="sd-skybox"${day.role === "today" ? " open" : ""}><summary><b>逐小时云与辐射：实况对预报</b> <span class="muted sd-sub">${
+    nDiff ? `${nDiff} 个小时云或辐射与预报不符` : "已过去的小时云与辐射都和预报相符"} · 截至目前推断日照 ${sdN(H.inferred_sw_mj_so_far, 1)} MJ/m² 对预报 ${sdN(H.forecast_sw_mj_so_far, 1)} · 全天预报 ${sdN(H.forecast_sw_mj, 1)}（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）</span></summary>
+    <div class="scroll"><table class="sd-tab sd-sky"><thead><tr><th>当地</th><th>报文云</th><th>实况低云</th><th>预报低云 <span class="muted">最新/提前1天</span></th><th>预报总云</th><th title="按报文云量与太阳高度推算（晴空辐射 Haurwitz × (1−0.75N^3.4)）；报文只报低云，有高云时这是上限">推断日照 W/m²</th><th>预报日照 W/m²</th><th>实况气温</th><th>预报气温</th><th>能见度 / 天气</th><th>差异</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}。报文只报 1500 m 以下的云（CAVOK/NSC＝低空无云），所以拿它对比预报的<b>低云</b>，预报总云含高云只作参考。机场不测辐射，「推断日照」由报文云量推算，高云多时偏高。标注门槛：低云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。红＝实况比预报多/强/暖，黄＝少/弱/冷。</div></details>`;
 }
 function sdTafRaw(d){
   const list = d.taf_raw || [];

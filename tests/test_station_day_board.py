@@ -59,3 +59,13 @@ def test_today_is_past_its_peak_only_once_the_reading_turns_down(monkeypatch) ->
     early = datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(B, "_metar", reports(("2026-10-05T01:00:00Z", 19.0), ("2026-10-05T03:00:00Z", 18.0)))
     assert B.past_peak(None, "ZUUU", "2026-10-05", zone, early)["past"] is False
+
+
+def test_clear_sky_radiation_follows_the_sun() -> None:
+    from datetime import datetime, timezone
+
+    import bayes_basket_target.station_day_board as B
+
+    noon = B._clear_sky_ghi(30.576, 103.95, datetime(2026, 10, 7, 5, 0, tzinfo=timezone.utc))   # 13:00 local
+    night = B._clear_sky_ghi(30.576, 103.95, datetime(2026, 10, 7, 16, 0, tzinfo=timezone.utc))
+    assert 700 < noon < 900 and night == 0.0

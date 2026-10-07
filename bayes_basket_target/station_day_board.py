@@ -563,7 +563,10 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
             "SELECT valid_at, raw_text, reported_temperature_c, report_type, correction_suspected"
             " FROM reported_trajectory_observations WHERE station_id=? AND valid_at>=? AND valid_at<?"
             " AND raw_text IS NOT NULL AND raw_text<>'' ORDER BY valid_at",
-            (station, lo, hi),
+            # Compared on the bare second: stored stamps carry milliseconds
+            # ("...16:00:00.000Z" sorts before "...16:00:00Z"), which dropped
+            # the local-midnight report from its own day.
+            (station, lo[:19], hi[:19]),
         ).fetchall()
     finally:
         archive.close()
@@ -580,10 +583,17 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
         if t is not None:
             running = t if running is None else max(running, t)
         when = _utc(at)
+        tokens = str(raw).split()
+        body = tokens[:tokens.index("RMK")] if "RMK" in tokens else tokens
+        vis = 10000.0 if "CAVOK" in body else next(
+            (float(t) for t in body[2:8] if len(t) == 4 and t.isdigit()), None)
         out.append({
             "valid_at_utc": str(at),
             "local": when.astimezone(zone).strftime("%H:%M") if when else "",
             "raw": str(raw), "kind": parsed.get("kind") or kind,
+            "clouds": [t for t in body if t[:3] in ("FEW", "SCT", "BKN", "OVC", "VV/")
+                       or t in ("CAVOK", "NSC", "NCD", "SKC", "CLR")],
+            "visibility_m": vis,
             "correction_suspected": bool(cor),
             "temp_c": t, "dew_c": _float(parsed.get("dew_c")),
             "cloud_cover": _float(parsed.get("cover")),
@@ -593,6 +603,175 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
             "running_high_c": running,
         })
     return out
+
+
+# ---------------------------------------------------------------------------
+# 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差异
+# 在哪里，标注出来」).  The forecast is Open-Meteo's hourly model output -- an
+# aggregator republisher, read here for display only, nothing downstream
+# reads it -- in two versions: the newest run and the one issued a day
+# before.  The airport does not measure radiation, so the "observed" side is
+# inferred from the report's cloud and the sun's height: clear-sky GHI
+# (Haurwitz) x (1 - 0.75 N^3.4) (Kasten-Czeplak), N the reported cover.  A
+# METAR reports the low layers only (CAVOK/NSC: nothing below 1,500 m), so
+# it is compared with the forecast's LOW cloud, and the inferred radiation
+# is an upper bound under high cloud.
+
+FORECAST_CACHE_SECONDS = 1800.0
+_FORECAST_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
+CLOUD_DIFF = 0.375          # three oktas
+RADIATION_DIFF_FRAC = 0.25
+RADIATION_DIFF_MIN_WM2 = 100.0
+TEMP_DIFF_C = 1.0
+HAZE_VISIBILITY_M = 8000.0
+
+
+def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
+    row = conn.execute(
+        "SELECT latitude, longitude FROM calibration_station_forecast_physics_version"
+        " WHERE station_id=? AND latitude IS NOT NULL ORDER BY captured_at_utc DESC LIMIT 1",
+        (station,),
+    ).fetchone()
+    return None if row is None else (float(row[0]), float(row[1]))
+
+
+def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, Any]:
+    import ssl  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    key = (f"{lat:.3f},{lon:.3f}", day)
+    hit = _FORECAST_CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < FORECAST_CACHE_SECONDS:
+        return hit[1]
+    fields = ["cloud_cover", "cloud_cover_low", "shortwave_radiation", "temperature_2m"]
+    query = urlencode({
+        "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
+        "hourly": ",".join(fields + [f + "_previous_day1" for f in fields]),
+    })
+    try:
+        import certifi  # noqa: PLC0415
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    try:
+        with urlopen(Request(f"{OPEN_METEO_PREVIOUS_RUNS}?{query}",
+                             headers={"User-Agent": "weather-board-station-day"}),
+                     timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
+            data = json.loads(resp.read().decode("utf-8"))
+        out = {"available": "hourly" in data, "hourly": data.get("hourly") or {},
+               "fetched_at_utc": _iso(datetime.now(timezone.utc))}
+    except Exception as exc:  # noqa: BLE001 -- the timeline says why it is empty
+        out = {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    if out.get("available"):
+        _FORECAST_CACHE[key] = (time.monotonic(), out)
+    return out
+
+
+def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
+    """Haurwitz clear-sky global horizontal irradiance, W/m^2."""
+
+    n = when_utc.timetuple().tm_yday
+    hour = when_utc.hour + when_utc.minute / 60.0
+    gamma = 2 * math.pi / 365 * (n - 1 + (hour - 12) / 24)
+    decl = (0.006918 - 0.399912 * math.cos(gamma) + 0.070257 * math.sin(gamma)
+            - 0.006758 * math.cos(2 * gamma) + 0.000907 * math.sin(2 * gamma)
+            - 0.002697 * math.cos(3 * gamma) + 0.00148 * math.sin(3 * gamma))
+    eot = 229.18 * (0.000075 + 0.001868 * math.cos(gamma) - 0.032077 * math.sin(gamma)
+                    - 0.014615 * math.cos(2 * gamma) - 0.040849 * math.sin(2 * gamma))
+    solar_minutes = hour * 60 + eot + 4 * lon
+    ha = math.radians(solar_minutes / 4 - 180)
+    phi = math.radians(lat)
+    cosz = math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.cos(ha)
+    return 0.0 if cosz <= 0.01 else 1098.0 * cosz * math.exp(-0.057 / cosz)
+
+
+def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
+                        metar: list[dict[str, Any]]) -> dict[str, Any]:
+    where = _station_lat_lon(conn, station)
+    if where is None:
+        return {"available": False, "reason": "no_station_coordinates"}
+    lat, lon = where
+    fc = _open_meteo_hourly(lat, lon, str(zone.key), day)
+    hourly = fc.get("hourly") or {}
+    times = hourly.get("time") or []
+    by_hour: dict[int, dict[str, Any]] = {}
+    for m in metar:
+        when = _utc(m["valid_at_utc"])
+        if when is None:
+            continue
+        local = when.astimezone(zone)
+        if local.minute <= 10:             # the routine report at the hour
+            by_hour[local.hour] = m
+    now_local = datetime.now(timezone.utc).astimezone(zone)
+    d = datetime.fromisoformat(day).date()
+    rows = []
+    for h in range(24):
+        start = datetime.combine(d, dtime(h), zone)
+        def val(name: str, prev: bool = False) -> float | None:
+            arr = hourly.get(name + ("_previous_day1" if prev else "")) or []
+            return _float(arr[h]) if h < len(arr) else None
+        fc_row = {
+            "cloud": val("cloud_cover"), "cloud_low": val("cloud_cover_low"),
+            "sw": val("shortwave_radiation"), "temp_c": val("temperature_2m"),
+            "cloud_d1": val("cloud_cover", True), "cloud_low_d1": val("cloud_cover_low", True),
+            "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
+        } if times else {}
+        obs = by_hour.get(h)
+        row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None, "diffs": []}
+        if obs is not None:
+            prev = by_hour.get(h - 1)
+            covers = [x["cloud_cover"] for x in (prev, obs) if x and x.get("cloud_cover") is not None]
+            cover = sum(covers) / len(covers) if covers else None
+            # Open-Meteo's radiation at hh:00 is the mean over the hour before.
+            clear = _clear_sky_ghi(lat, lon, (start - timedelta(minutes=30)).astimezone(timezone.utc))
+            inferred = None if cover is None else clear * (1 - 0.75 * cover ** 3.4)
+            row["obs"] = {
+                "temp_c": obs.get("temp_c"), "cloud_cover": obs.get("cloud_cover"),
+                "clouds": obs.get("clouds") or [], "weathers": obs.get("weathers") or [],
+                "visibility_m": obs.get("visibility_m"), "precip": obs.get("precip"),
+                "clear_sky_wm2": round(clear, 0), "inferred_sw_wm2": None if inferred is None else round(inferred, 0),
+            }
+            diffs = row["diffs"]
+            low = fc_row.get("cloud_low")
+            if low is not None and obs.get("cloud_cover") is not None:
+                gap = obs["cloud_cover"] - low / 100.0
+                if gap >= CLOUD_DIFF:
+                    diffs.append({"kind": "cloud", "dir": "more", "text": f"比预报多云（低云实况 {obs['cloud_cover']:.0%} 对预报 {low:.0f}%）"})
+                elif gap <= -CLOUD_DIFF:
+                    diffs.append({"kind": "cloud", "dir": "less", "text": f"比预报晴（低云实况 {obs['cloud_cover']:.0%} 对预报 {low:.0f}%）"})
+            sw = fc_row.get("sw")
+            if inferred is not None and sw is not None and max(inferred, sw) >= RADIATION_DIFF_MIN_WM2:
+                gap = inferred - sw
+                if abs(gap) >= RADIATION_DIFF_MIN_WM2 and abs(gap) >= RADIATION_DIFF_FRAC * max(sw, 1.0):
+                    diffs.append({"kind": "sw", "dir": "more" if gap > 0 else "less",
+                                  "text": f"辐射{'强于' if gap > 0 else '弱于'}预报（推断 {inferred:.0f} 对预报 {sw:.0f} W/m²）"})
+            t_fc = fc_row.get("temp_c")
+            if t_fc is not None and obs.get("temp_c") is not None:
+                gap = obs["temp_c"] - t_fc
+                if abs(gap) >= TEMP_DIFF_C:
+                    diffs.append({"kind": "temp", "dir": "more" if gap > 0 else "less",
+                                  "text": f"比预报{'暖' if gap > 0 else '冷'} {abs(gap):.1f}°C"})
+            vis = obs.get("visibility_m")
+            if vis is not None and vis < HAZE_VISIBILITY_M:
+                diffs.append({"kind": "haze", "dir": "less", "text": f"能见度 {vis:.0f} m（霾/雾，削弱日照）"})
+            if obs.get("precip"):
+                diffs.append({"kind": "rain", "dir": "less", "text": "有降水"})
+        rows.append(row)
+    sums = {k: (round(sum(r["forecast"].get(k) or 0 for r in rows) * 0.0036, 2) if times else None)
+            for k in ("sw", "sw_d1")}
+    past = [r for r in rows if r["obs"] and r["obs"]["inferred_sw_wm2"] is not None]
+    return {
+        "available": bool(times), "reason": fc.get("reason"),
+        "source": "Open-Meteo 逐小时（aggregator_republisher，仅作参考，不进任何层）",
+        "fetched_at_utc": fc.get("fetched_at_utc"), "rows": rows,
+        "forecast_sw_mj": sums["sw"], "forecast_sw_d1_mj": sums["sw_d1"],
+        "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,
+        "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
+    }
 
 
 def _taf(conn, station: str, day: str) -> dict[str, Any]:
@@ -685,6 +864,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo) -> dict[str, A
         "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
         "taf": _taf(conn, station, day),
         "precip": _precip(conn, station, day),
+        "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
     }
 
 
