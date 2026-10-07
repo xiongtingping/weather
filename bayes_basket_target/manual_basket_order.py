@@ -292,6 +292,53 @@ def _receipt(record: Mapping[str, Any]) -> None:
         pass
 
 
+NEVER_REACHED = "NEVER_REACHED_EXCHANGE"
+RECONCILE_TRIES = 4
+RECONCILE_WAIT_SECONDS = 5.0
+
+
+def _gateway_reconcile(idempotency_key: str) -> Mapping[str, Any]:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+    return ClobOrderServiceClient(timeout_seconds=20.0).lookup_order({"idempotency_key": idempotency_key})
+
+
+def _settle_unknown(leg: Mapping[str, Any], reconcile: Callable[[str], Mapping[str, Any]],
+                    sleep: Callable[[float], Any] | None = None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """An unknown post, looked up -- read only -- until the gateway knows.
+
+    ``order_never_reached_exchange`` (the exchange has no order under the
+    id the signature fixes) is final: nothing was placed, the operator may
+    send again.  An accepted or matched answer is the order's own outcome.
+    Anything else stays unknown and says so.
+    """
+
+    import time  # noqa: PLC0415
+
+    sleep = sleep or time.sleep
+    order_type = leg["payload"]["order_type"]
+    last: dict[str, Any] = {}
+    for attempt in range(RECONCILE_TRIES):
+        if attempt:
+            sleep(RECONCILE_WAIT_SECONDS)
+        try:
+            last = dict(reconcile(leg["payload"]["idempotency_key"]) or {})
+        except Exception as exc:  # noqa: BLE001 -- unknown stays unknown
+            last = {"error": f"reconcile_failed:{type(exc).__name__}"}
+            continue
+        if str(last.get("error") or "") == "order_never_reached_exchange":
+            return ({"event_type": NEVER_REACHED, "submitted": False,
+                     "reason": "已对账：订单未到达交易所，没有成交，可以重下"}, last)
+        verdict = classify_submission_response(last, order_type=order_type)
+        if verdict["event_type"] in {"FILL", "POST_ACK", "EXPIRED"}:
+            return ({**verdict, "reason": "已对账：" + ({"FILL": "交易所已成交", "POST_ACK": "交易所已挂单",
+                                                        "EXPIRED": "FOK 到交易所后未成交、已作废"}[verdict["event_type"]])}, last)
+    return ({"event_type": "UNKNOWN_POST", "submitted": True,
+             "reason": "对账仍未确定：" + str(last.get("error") or last.get("status") or "无答复") + "——不要重下，稍后再查"}, last)
+
+
 COLLATERAL_STALE = "clob_collateral_evidence_unavailable"
 #: How long a refused leg waits for the gateway's balance reading to be fresh.
 COLLATERAL_WAIT_SECONDS = 45.0
@@ -333,6 +380,7 @@ def place_manual_basket(
     transport: Transport | None = None,
     now: datetime | None = None,
     wait_collateral: Callable[[], bool] | None = None,
+    reconcile: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     now = now or _now()
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
@@ -345,6 +393,7 @@ def place_manual_basket(
     plan = plan_orders(request, book, now=now)
     send = transport or _gateway
     wait_collateral = wait_collateral or _wait_collateral
+    reconcile = reconcile or _gateway_reconcile
     results = []
     stopped = None
     for leg in plan["legs"]:
@@ -362,6 +411,12 @@ def place_manual_basket(
             if wait_collateral():
                 response = dict(send(leg["payload"]))
         verdict = classify_submission_response(response, order_type=leg["payload"]["order_type"])
+        reconciled = None
+        if verdict["event_type"] == "UNKNOWN_POST":
+            # The request left and no answer settled it (2026-10-07 10:09Z:
+            # "clob_proxy_submit_failed: SSL connection timeout").  Never
+            # resend; ask the gateway what the exchange holds for this key.
+            verdict, reconciled = _settle_unknown(leg, reconcile)
         fill = verdict.get("fill") or {}
         results.append({
             "bucket": leg["bucket"], "side": leg.get("side", "YES"), "event_type": verdict["event_type"],
@@ -372,6 +427,7 @@ def place_manual_basket(
             "shares_matched": fill.get("shares_matched"),
             "usdc_paid": fill.get("making_amount"),
             "gateway_error": response.get("error"),
+            "reconciled": reconciled,
         })
         if verdict["event_type"] not in {"FILL", "POST_ACK"}:
             stopped = leg["bucket"] + ("" if leg.get("side", "YES") == "YES" else " NO")

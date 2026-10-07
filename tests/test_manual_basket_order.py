@@ -203,3 +203,27 @@ def test_a_stale_balance_refusal_waits_for_a_fresh_reading_and_resends_once(monk
     out = M.place_manual_basket(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.08}]),
                                 transport=gateway, now=NOW, wait_collateral=lambda: False)
     assert len(calls) == 1 and out["results"][0]["event_type"] == "SUBMIT_REFUSED"
+
+
+def test_an_unknown_post_is_reconciled_never_resent(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(M, "latest_book", lambda *a: BOOK)
+    monkeypatch.setattr(M, "RECEIPT_PATH", tmp_path / "r.jsonl")
+    monkeypatch.setattr(M.sqlite3, "connect", lambda *a, **k: _Conn())
+    monkeypatch.setattr(M, "RECONCILE_WAIT_SECONDS", 0.0)
+    sent = []
+
+    def gateway(payload):
+        sent.append(payload["idempotency_key"])
+        return {"ok": False, "error": "clob_proxy_submit_failed:curl: (28) SSL connection timeout",
+                "exchange_post_started": True, "reconcile_required": True}
+
+    leg = [{"bucket": "24°C", "shares": 50, "limit_price": 0.08}]
+    out = M.place_manual_basket(_request(legs=leg), transport=gateway, now=NOW,
+                                reconcile=lambda key: {"ok": False, "error": "order_never_reached_exchange"})
+    assert len(sent) == 1 and out["results"][0]["event_type"] == M.NEVER_REACHED
+    out = M.place_manual_basket(_request(legs=leg), transport=gateway, now=NOW,
+                                reconcile=lambda key: {"ok": True, "orderID": "x", "status": "matched", "size_matched": 50})
+    assert out["results"][0]["event_type"] == "FILL"
+    out = M.place_manual_basket(_request(legs=leg), transport=gateway, now=NOW,
+                                reconcile=lambda key: {"ok": False, "error": "lookup_timeout"})
+    assert out["results"][0]["event_type"] == "UNKNOWN_POST" and len(sent) == 3
