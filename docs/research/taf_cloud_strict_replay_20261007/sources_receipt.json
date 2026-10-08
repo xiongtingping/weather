@@ -141,6 +141,57 @@
           ]
         }
       ]
+    },
+    {
+      "id": "causal-fusion-closure",
+      "title": "融合账本与资源阶段核验",
+      "queries": [
+        {
+          "id": "fusion-serving-and-lossless-storage",
+          "source": {
+            "label": "隔离研究组件核验",
+            "files": [
+              "fusion_served_ledger.json",
+              "fusion_ledger_verification.json",
+              "fusion_compiler_comparison.json",
+              "nested_compaction.json",
+              "nested_multiday_inventory.json",
+              "nested_verification.multiday.json",
+              "compiler_multiday.json"
+            ],
+            "caveats": [
+              "原座位资格仍保留；没有完成整段现行父链，不能晋级生产。",
+              "恢复677个原始父时钟不等于恢复272个缺失原始包。"
+            ]
+          },
+          "rows": [
+            {
+              "metric": "因果服务代表决策",
+              "value": 2579
+            },
+            {
+              "metric": "每日否决截止时点",
+              "value": 38
+            },
+            {
+              "metric": "因果引用核验",
+              "value": 45650
+            },
+            {
+              "metric": "接入后概率精确相等站",
+              "value": 45
+            },
+            {
+              "metric": "无损去重节省MiB",
+              "value": 630.4
+            }
+          ],
+          "columns": [
+            "metric",
+            "value"
+          ]
+        }
+      ]
     }
   ]
 }

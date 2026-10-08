@@ -1,0 +1,486 @@
+{
+  "schema": "lossless_nested_storage_compaction_v1",
+  "passed": true,
+  "counts": {
+    "other_objects": 10029,
+    "cross_objects": 7843
+  },
+  "records": {
+    "CYYZ/2026-10-05": {
+      "counts": {
+        "other_objects": 216,
+        "cross_objects": 125
+      },
+      "summary_sha": "9c883d85dc4170bae10d3b923debe12b5241d9ddecc0d83d9d87943bfd903916",
+      "expanded_verified_bytes": 33251014,
+      "physical_before": 13993325,
+      "physical_after": 2929969
+    },
+    "EDDM/2026-10-05": {
+      "counts": {
+        "other_objects": 223,
+        "cross_objects": 184
+      },
+      "summary_sha": "65e05880bfcf389c4b4784cb316f8e738ee446ed2e6fd232fda38993126084da",
+      "expanded_verified_bytes": 45105549,
+      "physical_before": 19438845,
+      "physical_after": 3472050
+    },
+    "EFHK/2026-10-05": {
+      "counts": {
+        "other_objects": 222,
+        "cross_objects": 184
+      },
+      "summary_sha": "79b3af4e03786b24bb46c9be41ce318b0649fdee1e98c1a1bf8be05d01a05a11",
+      "expanded_verified_bytes": 44940886,
+      "physical_before": 19240319,
+      "physical_after": 3384589
+    },
+    "EGLC/2026-10-05": {
+      "counts": {
+        "other_objects": 223,
+        "cross_objects": 184
+      },
+      "summary_sha": "d5153a6f3a494590467f6f3057cfc62568d33f61e0125dc414c7a48126501e33",
+      "expanded_verified_bytes": 45102301,
+      "physical_before": 19410879,
+      "physical_after": 3456755
+    },
+    "EHAM/2026-10-05": {
+      "counts": {
+        "other_objects": 222,
+        "cross_objects": 184
+      },
+      "summary_sha": "548be3f2cd39e8dec1b333bd1558bfc6ecdf3eb4adb760dcb333a53aae07016d",
+      "expanded_verified_bytes": 45022202,
+      "physical_before": 19344766,
+      "physical_after": 3419420
+    },
+    "EPWA/2026-10-05": {
+      "counts": {
+        "other_objects": 225,
+        "cross_objects": 184
+      },
+      "summary_sha": "5a16c2187e8de5a6917350a511657ece34042141e9916b176c2139cffcf400eb",
+      "expanded_verified_bytes": 45077094,
+      "physical_before": 19364024,
+      "physical_after": 3428544
+    },
+    "FACT/2026-10-05": {
+      "counts": {
+        "other_objects": 222,
+        "cross_objects": 184
+      },
+      "summary_sha": "0752a45286a72b0bb00511154f5d5d1bfb0ece627eb68c846dff0dee64724d1d",
+      "expanded_verified_bytes": 45058132,
+      "physical_before": 19437858,
+      "physical_after": 3469843
+    },
+    "KATL/2026-10-05": {
+      "counts": {
+        "other_objects": 223,
+        "cross_objects": 125
+      },
+      "summary_sha": "aa641b11a18067dc5a13a4d3f051c3721641f54f73b90c9c990a397c55bc8ead",
+      "expanded_verified_bytes": 33819971,
+      "physical_before": 14089560,
+      "physical_after": 3025684
+    },
+    "KAUS/2026-10-05": {
+      "counts": {
+        "other_objects": 222,
+        "cross_objects": 125
+      },
+      "summary_sha": "efbd349d84ab193d45e0bf555d672778410cbcf0de5afb9573db0e13b96fd132",
+      "expanded_verified_bytes": 33898701,
+      "physical_before": 14112410,
+      "physical_after": 3030861
+    },
+    "KBKF/2026-10-05": {
+      "counts": {
+        "other_objects": 228,
+        "cross_objects": 125
+      },
+      "summary_sha": "2aec8fc713f92fb4373ff692cc1e6d5d3fe37a863a4857627052527822831e12",
+      "expanded_verified_bytes": 33991549,
+      "physical_before": 14208000,
+      "physical_after": 3089842
+    },
+    "KDAL/2026-10-05": {
+      "counts": {
+        "other_objects": 225,
+        "cross_objects": 125
+      },
+      "summary_sha": "220e6bb2e56234baed51cf0b1e141e978a0a4dde541cb789b6ef673d0b9fbc21",
+      "expanded_verified_bytes": 33979358,
+      "physical_before": 14148626,
+      "physical_after": 3069050
+    },
+    "KHOU/2026-10-05": {
+      "counts": {
+        "other_objects": 221,
+        "cross_objects": 125
+      },
+      "summary_sha": "6d4aecfaffce6f1796f64ab636fcf8f44d8a9b1430486630aa39395adcc64c20",
+      "expanded_verified_bytes": 33899428,
+      "physical_before": 14102504,
+      "physical_after": 3024832
+    },
+    "KLAX/2026-10-05": {
+      "counts": {
+        "other_objects": 280,
+        "cross_objects": 264
+      },
+      "summary_sha": "17c10fd5f060c405f9afd5b6007641e07125b8612b3a5d48bf6a9ec65b0fca30",
+      "expanded_verified_bytes": 68976640,
+      "physical_before": 29029122,
+      "physical_after": 5730002
+    },
+    "KLGA/2026-10-05": {
+      "counts": {
+        "other_objects": 224,
+        "cross_objects": 125
+      },
+      "summary_sha": "726ae795b8692549bcf69a8c8dfc6e46b7e809baf0c2849da6bd8581e1008187",
+      "expanded_verified_bytes": 33877462,
+      "physical_before": 14138775,
+      "physical_after": 3045665
+    },
+    "KMIA/2026-10-05": {
+      "counts": {
+        "other_objects": 223,
+        "cross_objects": 125
+      },
+      "summary_sha": "a406fcba42f3754f81f490d8e5f29800031f37542297360ef23a6d92cd2bcb83",
+      "expanded_verified_bytes": 33878048,
+      "physical_before": 14061491,
+      "physical_after": 3022041
+    },
+    "KORD/2026-10-05": {
+      "counts": {
+        "other_objects": 224,
+        "cross_objects": 125
+      },
+      "summary_sha": "d8e20136d37ecdc447abfacf734535a0427c71b0b7f1d781fa1e3a083a9ea431",
+      "expanded_verified_bytes": 33845069,
+      "physical_before": 14114429,
+      "physical_after": 3039282
+    },
+    "KSEA/2026-10-05": {
+      "counts": {
+        "other_objects": 238,
+        "cross_objects": 132
+      },
+      "summary_sha": "f7d140bd63ef6494c10d121aba73412b5214130382877edb49a6d109d82b54fd",
+      "expanded_verified_bytes": 35874690,
+      "physical_before": 14932893,
+      "physical_after": 3266506
+    },
+    "KSFO/2026-10-05": {
+      "counts": {
+        "other_objects": 280,
+        "cross_objects": 264
+      },
+      "summary_sha": "01194cb099e53640ddffd18e4db99c8dc3518b74dbf754490bc333bf8bb777e2",
+      "expanded_verified_bytes": 68950101,
+      "physical_before": 29056841,
+      "physical_after": 5750636
+    },
+    "LEMD/2026-10-05": {
+      "counts": {
+        "other_objects": 225,
+        "cross_objects": 184
+      },
+      "summary_sha": "3ee403523a2c7a9756cd14a9e22fa1f738baad371249a30d0f3045ab4096233d",
+      "expanded_verified_bytes": 45045524,
+      "physical_before": 19452707,
+      "physical_after": 3491168
+    },
+    "LFPB/2026-10-05": {
+      "counts": {
+        "other_objects": 225,
+        "cross_objects": 184
+      },
+      "summary_sha": "ee488454069ac654a9e14d0a66c71bd414143f4f848bbef5c40146b058048856",
+      "expanded_verified_bytes": 45072700,
+      "physical_before": 19390599,
+      "physical_after": 3463512
+    },
+    "LIMC/2026-10-05": {
+      "counts": {
+        "other_objects": 225,
+        "cross_objects": 184
+      },
+      "summary_sha": "f9f64e68acc6e0801d161090074a72443fd73fac6cbf272b801b4e49d7957dcc",
+      "expanded_verified_bytes": 45078034,
+      "physical_before": 19334673,
+      "physical_after": 3423812
+    },
+    "LLBG/2026-10-05": {
+      "counts": {},
+      "summary_sha": "9d6ecc569c19f93fb4716690c114d86f2f5eb23c5adadd930756af0411741bc5",
+      "expanded_verified_bytes": 0,
+      "physical_before": 0,
+      "physical_after": 0
+    },
+    "LTAC/2026-10-05": {
+      "counts": {
+        "other_objects": 224,
+        "cross_objects": 184
+      },
+      "summary_sha": "b4e6d95072c57f1fd8024ddcd5a9a4429b937725d28b5432971ba655c9adf317",
+      "expanded_verified_bytes": 45125026,
+      "physical_before": 19427832,
+      "physical_after": 3472730
+    },
+    "LTFM/2026-10-05": {
+      "counts": {},
+      "summary_sha": "fb0af0353053395e882d73aaac6233aeec5b398c2cd5c8c3d0b3a81e6a9b748d",
+      "expanded_verified_bytes": 0,
+      "physical_before": 0,
+      "physical_after": 0
+    },
+    "MMMX/2026-10-05": {
+      "counts": {
+        "other_objects": 217,
+        "cross_objects": 125
+      },
+      "summary_sha": "0042dab2f38671013582e951e3cf6f829ddade4a987791c5507e213e74afe063",
+      "expanded_verified_bytes": 33013457,
+      "physical_before": 13758356,
+      "physical_after": 2865436
+    },
+    "MPMG/2026-10-05": {
+      "counts": {
+        "other_objects": 259,
+        "cross_objects": 250
+      },
+      "summary_sha": "ac247c57dee9dcbd8cb179a68156f8628845e4404a24ec684734f0a34253b11b",
+      "expanded_verified_bytes": 63739344,
+      "physical_before": 26907481,
+      "physical_after": 5042400
+    },
+    "NZWN/2026-10-05": {
+      "counts": {
+        "other_objects": 191,
+        "cross_objects": 191
+      },
+      "summary_sha": "59d3e02b4f673cd25feb9acb891a00bd362c68965d9fafd59d6438c364a5943c",
+      "expanded_verified_bytes": 49072518,
+      "physical_before": 20809033,
+      "physical_after": 3092205
+    },
+    "OEJN/2026-10-05": {
+      "counts": {
+        "other_objects": 222,
+        "cross_objects": 184
+      },
+      "summary_sha": "51e5d3609ccb237d6fe6fd90336eeb300529cc911c12ffabded2f916d49cf698",
+      "expanded_verified_bytes": 44915832,
+      "physical_before": 19177839,
+      "physical_after": 3389010
+    },
+    "OPKC/2026-10-05": {
+      "counts": {
+        "other_objects": 226,
+        "cross_objects": 184
+      },
+      "summary_sha": "8c58f2fd38318978a176a2d4fce7436a019e120e5ac137adcc4913732b87caf4",
+      "expanded_verified_bytes": 45057105,
+      "physical_before": 19240452,
+      "physical_after": 3388770
+    },
+    "RCSS/2026-10-05": {
+      "counts": {
+        "other_objects": 215,
+        "cross_objects": 190
+      },
+      "summary_sha": "f7a6779940ecb45022e6eb18d750fcf6e34c1d7d1cb9f03c01e168740b679d71",
+      "expanded_verified_bytes": 47272367,
+      "physical_before": 20156668,
+      "physical_after": 3367266
+    },
+    "RJTT/2026-10-05": {
+      "counts": {
+        "other_objects": 215,
+        "cross_objects": 190
+      },
+      "summary_sha": "6a6ac87602f9161a58f7d914fb78077744fb01ef0509cec5fead9e74b2c02da5",
+      "expanded_verified_bytes": 47371130,
+      "physical_before": 20213200,
+      "physical_after": 3380752
+    },
+    "RKPK/2026-10-05": {
+      "counts": {
+        "other_objects": 216,
+        "cross_objects": 190
+      },
+      "summary_sha": "72a1cfa46d27febe6a75162f673a5adb56a715014ce043f1360ef266ca6f420f",
+      "expanded_verified_bytes": 47237243,
+      "physical_before": 20181156,
+      "physical_after": 3354841
+    },
+    "RKSI/2026-10-05": {
+      "counts": {
+        "other_objects": 216,
+        "cross_objects": 190
+      },
+      "summary_sha": "12b4dfdd548a4e5ef8eff58da24fad3c299a433341220b15db6c91d5e0f6c7c4",
+      "expanded_verified_bytes": 47376198,
+      "physical_before": 20243676,
+      "physical_after": 3379110
+    },
+    "RPLL/2026-10-05": {
+      "counts": {
+        "other_objects": 214,
+        "cross_objects": 190
+      },
+      "summary_sha": "0f7574e6d815be2ba148ba8e550dd8309940c1b2ec7eef23b89ad1ec8f7873cb",
+      "expanded_verified_bytes": 47385856,
+      "physical_before": 20120215,
+      "physical_after": 3338628
+    },
+    "SAEZ/2026-10-05": {
+      "counts": {
+        "other_objects": 217,
+        "cross_objects": 125
+      },
+      "summary_sha": "85229574f4a94337245091cbab1890e63909444fe4972ef630dd0332e7a11a2f",
+      "expanded_verified_bytes": 33222654,
+      "physical_before": 13994525,
+      "physical_after": 2926027
+    },
+    "SBGR/2026-10-05": {
+      "counts": {
+        "other_objects": 217,
+        "cross_objects": 125
+      },
+      "summary_sha": "5622369540c5c5dc1df4367e877973e576474755ed4aabd53045a2ff19d6fd7a",
+      "expanded_verified_bytes": 33191340,
+      "physical_before": 14003430,
+      "physical_after": 2919667
+    },
+    "UUWW/2026-10-05": {
+      "counts": {},
+      "summary_sha": "b1be9889e0e0afb6b61e67803824b36da7580e62691669e33bf5f823a6af3ee9",
+      "expanded_verified_bytes": 0,
+      "physical_before": 0,
+      "physical_after": 0
+    },
+    "VILK/2026-10-05": {
+      "counts": {
+        "other_objects": 233,
+        "cross_objects": 184
+      },
+      "summary_sha": "48ea99546a26021dc634a3830c7b4bf4cefbc2360aafff105ab53e20be0bd4b1",
+      "expanded_verified_bytes": 45233373,
+      "physical_before": 19430777,
+      "physical_after": 3525091
+    },
+    "WMKK/2026-10-05": {
+      "counts": {
+        "other_objects": 213,
+        "cross_objects": 190
+      },
+      "summary_sha": "2e36dcff152d27adb871d6b4ffebad141938751416414979ffe4c1104b0d4548",
+      "expanded_verified_bytes": 47301204,
+      "physical_before": 20138722,
+      "physical_after": 3348181
+    },
+    "WSSS/2026-10-05": {
+      "counts": {
+        "other_objects": 213,
+        "cross_objects": 190
+      },
+      "summary_sha": "3eb8dc7395bc33f16d3e5c0b456511aebf459aad1a583b91731b375774b189e7",
+      "expanded_verified_bytes": 47396221,
+      "physical_before": 20125699,
+      "physical_after": 3362667
+    },
+    "ZBAA/2026-10-05": {
+      "counts": {
+        "other_objects": 214,
+        "cross_objects": 190
+      },
+      "summary_sha": "817f5250ef6317731229ffa93997c7b10320ef6a66427b70680e87ce54ddd336",
+      "expanded_verified_bytes": 47337703,
+      "physical_before": 20239324,
+      "physical_after": 3377488
+    },
+    "ZGGG/2026-10-05": {
+      "counts": {
+        "other_objects": 212,
+        "cross_objects": 190
+      },
+      "summary_sha": "12879e0e38461a1e7685faf759f66bbe5545b80233c4187a9993a82c57c16eb2",
+      "expanded_verified_bytes": 47256942,
+      "physical_before": 20150939,
+      "physical_after": 3358773
+    },
+    "ZGSZ/2026-10-05": {
+      "counts": {
+        "other_objects": 212,
+        "cross_objects": 190
+      },
+      "summary_sha": "ee96fb0f9c81c76be2ae23c5462e988e6e3046f542e072b3274ba7d901cf5a2c",
+      "expanded_verified_bytes": 47370281,
+      "physical_before": 20167304,
+      "physical_after": 3351900
+    },
+    "ZHHH/2026-10-05": {
+      "counts": {
+        "other_objects": 213,
+        "cross_objects": 190
+      },
+      "summary_sha": "f430b777977605d7fe2bf71c7471f04fd67849ef298461a467ec303117abfb09",
+      "expanded_verified_bytes": 47309720,
+      "physical_before": 20288230,
+      "physical_after": 3403752
+    },
+    "ZSPD/2026-10-05": {
+      "counts": {
+        "other_objects": 215,
+        "cross_objects": 190
+      },
+      "summary_sha": "7c82549cdd108dd468f4790c942f4ec1cc03d773d788550f073c5e7c7ba3d333",
+      "expanded_verified_bytes": 47391716,
+      "physical_before": 20278048,
+      "physical_after": 3407018
+    },
+    "ZSQD/2026-10-05": {
+      "counts": {
+        "other_objects": 212,
+        "cross_objects": 190
+      },
+      "summary_sha": "3bc34fed702eec55ea43e8e6b6e99d476ea8e4ac74cba42015500d039d70253c",
+      "expanded_verified_bytes": 47225498,
+      "physical_before": 20165030,
+      "physical_after": 3354221
+    },
+    "ZUCK/2026-10-05": {
+      "counts": {
+        "other_objects": 214,
+        "cross_objects": 190
+      },
+      "summary_sha": "e52206d46f59e9a5f8a55279f0b066655f59c469473cc0d89e57cae57e942a8c",
+      "expanded_verified_bytes": 47332825,
+      "physical_before": 20312801,
+      "physical_after": 3411502
+    },
+    "ZUUU/2026-10-05": {
+      "counts": {
+        "other_objects": 213,
+        "cross_objects": 190
+      },
+      "summary_sha": "f5833530599e37bc9240c68eef2800c746561a507743b222283f78bf30d2d6fe",
+      "expanded_verified_bytes": 47317651,
+      "physical_before": 20188106,
+      "physical_after": 3383010
+    }
+  },
+  "physical_before": 844121489,
+  "physical_after": 183100855,
+  "physical_bytes_saved": 661020634,
+  "original_expanded_identities_preserved": true,
+  "production_modified": false
+}

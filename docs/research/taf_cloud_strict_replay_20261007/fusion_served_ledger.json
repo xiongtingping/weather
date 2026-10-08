@@ -1,0 +1,850 @@
+{
+  "schema": "causal_fusion_served_veto_ledger_v1",
+  "rows": 2579,
+  "counts": {
+    "SEAT_NO_STATION_PARAMS": 143,
+    "APPLIED": 2428,
+    "SEAT_NO_TRAINING_DAYS": 8
+  },
+  "days": {
+    "2026-08-31T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 0,
+        "event_days": 0,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": null,
+        "ci": null,
+        "vetoed": false,
+        "enough_evidence": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/f77c6f81070b07e506e7235a4dd0e5d95c66f73aba5c16497a62ccd14d4d5f84.json.gz",
+        "sha": "f77c6f81070b07e506e7235a4dd0e5d95c66f73aba5c16497a62ccd14d4d5f84"
+      },
+      "prior_serving_rows": 0,
+      "parameter_cutoff": "2026-08-31T00:00:00Z"
+    },
+    "2026-09-01T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 0,
+        "event_days": 0,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": null,
+        "ci": null,
+        "vetoed": false,
+        "enough_evidence": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/e1c7e69c2cff76afd0e33cebdabdce8bfb2fef4f4d0e3a2d96e15b6150f1e7cf.json.gz",
+        "sha": "e1c7e69c2cff76afd0e33cebdabdce8bfb2fef4f4d0e3a2d96e15b6150f1e7cf"
+      },
+      "prior_serving_rows": 11,
+      "parameter_cutoff": "2026-09-01T00:00:00Z"
+    },
+    "2026-09-02T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 0,
+        "event_days": 0,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": null,
+        "ci": null,
+        "vetoed": false,
+        "enough_evidence": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/d7dd1c2784c3d511cb79780d382cb4c0bfa67b997baf4b397a71f3c5fdcafd5e.json.gz",
+        "sha": "d7dd1c2784c3d511cb79780d382cb4c0bfa67b997baf4b397a71f3c5fdcafd5e"
+      },
+      "prior_serving_rows": 61,
+      "parameter_cutoff": "2026-09-02T00:00:00Z"
+    },
+    "2026-09-03T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 15,
+        "event_days": 1,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.020914182027871382,
+        "ci": [
+          -0.0652311521905917,
+          0.022609683803131504
+        ],
+        "enough_evidence": false,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/c39876c777dc75eed67f15511fac1321f44670bcd418cf6fb1b257e171f6c2ce.json.gz",
+        "sha": "c39876c777dc75eed67f15511fac1321f44670bcd418cf6fb1b257e171f6c2ce"
+      },
+      "prior_serving_rows": 124,
+      "parameter_cutoff": "2026-09-03T00:00:00Z"
+    },
+    "2026-09-04T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 41,
+        "event_days": 2,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.017596118699798487,
+        "ci": [
+          -0.035945803139135646,
+          0.0002742855057891886
+        ],
+        "enough_evidence": false,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/2b12013691f541339ac2c180866ec65f1a361749c06b17b9170a1acd45ff1ecd.json.gz",
+        "sha": "2b12013691f541339ac2c180866ec65f1a361749c06b17b9170a1acd45ff1ecd"
+      },
+      "prior_serving_rows": 186,
+      "parameter_cutoff": "2026-09-04T00:00:00Z"
+    },
+    "2026-09-05T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 73,
+        "event_days": 3,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.01842254105671516,
+        "ci": [
+          -0.03387839734705659,
+          -0.002757728148196371
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/dbe2f045633200dd6f0cb245bbf8a3dd773e317fd89498416dccc5335c98b07a.json.gz",
+        "sha": "dbe2f045633200dd6f0cb245bbf8a3dd773e317fd89498416dccc5335c98b07a"
+      },
+      "prior_serving_rows": 254,
+      "parameter_cutoff": "2026-09-05T00:00:00Z"
+    },
+    "2026-09-06T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 107,
+        "event_days": 4,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.013662385329225573,
+        "ci": [
+          -0.02742334215042046,
+          0.0010676540841922948
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/0d6e1a40130c07a1d33123f39fb3e19f502cf48467bec975be04aca559e864be.json.gz",
+        "sha": "0d6e1a40130c07a1d33123f39fb3e19f502cf48467bec975be04aca559e864be"
+      },
+      "prior_serving_rows": 331,
+      "parameter_cutoff": "2026-09-06T00:00:00Z"
+    },
+    "2026-09-07T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 143,
+        "event_days": 5,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.009274600685736215,
+        "ci": [
+          -0.02635341843569386,
+          0.007652751191013932
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/d18efd090c970e7d5dfbce8babb39d5e4b4bc798b9a034660824b15572ae4190.json.gz",
+        "sha": "d18efd090c970e7d5dfbce8babb39d5e4b4bc798b9a034660824b15572ae4190"
+      },
+      "prior_serving_rows": 419,
+      "parameter_cutoff": "2026-09-07T00:00:00Z"
+    },
+    "2026-09-08T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 180,
+        "event_days": 6,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.013733643160581222,
+        "ci": [
+          -0.027569388900216193,
+          0.0005453211092412294
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/775eb562c724fe432408d5c2bdd7f49019b907efb553baad550f146b03122aa2.json.gz",
+        "sha": "775eb562c724fe432408d5c2bdd7f49019b907efb553baad550f146b03122aa2"
+      },
+      "prior_serving_rows": 472,
+      "parameter_cutoff": "2026-09-08T00:00:00Z"
+    },
+    "2026-09-09T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 214,
+        "event_days": 7,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.009932622595442513,
+        "ci": [
+          -0.023772700478283525,
+          0.004251280251483667
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/055bd4bf0bcf6f7c98db9fac87cd070dcc1c881dfbb0c32e2256a7dded97568c.json.gz",
+        "sha": "055bd4bf0bcf6f7c98db9fac87cd070dcc1c881dfbb0c32e2256a7dded97568c"
+      },
+      "prior_serving_rows": 530,
+      "parameter_cutoff": "2026-09-09T00:00:00Z"
+    },
+    "2026-09-10T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 257,
+        "event_days": 8,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0027471619484756827,
+        "ci": [
+          -0.015749907678050765,
+          0.010237114888453433
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/55c2ddb0f73df57b9cc610b11b1c76f13f177e3aed884ace346cc34488e0ddb0.json.gz",
+        "sha": "55c2ddb0f73df57b9cc610b11b1c76f13f177e3aed884ace346cc34488e0ddb0"
+      },
+      "prior_serving_rows": 595,
+      "parameter_cutoff": "2026-09-10T00:00:00Z"
+    },
+    "2026-09-11T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 300,
+        "event_days": 9,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.007738632502381457,
+        "ci": [
+          -0.005589558120932945,
+          0.022796363543087696
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/4f9b00ffb51066e2fc79bc9be0ae1ff8299878e2b99b1dfbf0d3070af448a4f0.json.gz",
+        "sha": "4f9b00ffb51066e2fc79bc9be0ae1ff8299878e2b99b1dfbf0d3070af448a4f0"
+      },
+      "prior_serving_rows": 653,
+      "parameter_cutoff": "2026-09-11T00:00:00Z"
+    },
+    "2026-09-12T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 344,
+        "event_days": 10,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.0068614433358460455,
+        "ci": [
+          -0.007054862583433238,
+          0.021247119397399244
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/0db5498d37b6dd491dc192ca72693021c144b5d039f86dce172898f3188a4acf.json.gz",
+        "sha": "0db5498d37b6dd491dc192ca72693021c144b5d039f86dce172898f3188a4acf"
+      },
+      "prior_serving_rows": 722,
+      "parameter_cutoff": "2026-09-12T00:00:00Z"
+    },
+    "2026-09-13T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 389,
+        "event_days": 11,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.006476982475955237,
+        "ci": [
+          -0.005317298439390481,
+          0.019076987911546453
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/b51046c91e29383b4f4c4fc76854c367a71635292d36527d91c1c041a4624516.json.gz",
+        "sha": "b51046c91e29383b4f4c4fc76854c367a71635292d36527d91c1c041a4624516"
+      },
+      "prior_serving_rows": 791,
+      "parameter_cutoff": "2026-09-13T00:00:00Z"
+    },
+    "2026-09-14T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 433,
+        "event_days": 12,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.005541422274716434,
+        "ci": [
+          -0.00519352108970263,
+          0.01637700133623171
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/d57723b75bcb4f6763b8e87b908c26be906f271d88a432c386365facda6f46ab.json.gz",
+        "sha": "d57723b75bcb4f6763b8e87b908c26be906f271d88a432c386365facda6f46ab"
+      },
+      "prior_serving_rows": 858,
+      "parameter_cutoff": "2026-09-14T00:00:00Z"
+    },
+    "2026-09-15T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 477,
+        "event_days": 13,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.004454853701524751,
+        "ci": [
+          -0.0055724929551372385,
+          0.015639334487190737
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/acedb3dfb2ebb814f4e328b22bfddbb20fdef38948b5577cfbd23ffbedda7f93.json.gz",
+        "sha": "acedb3dfb2ebb814f4e328b22bfddbb20fdef38948b5577cfbd23ffbedda7f93"
+      },
+      "prior_serving_rows": 918,
+      "parameter_cutoff": "2026-09-15T00:00:00Z"
+    },
+    "2026-09-16T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 521,
+        "event_days": 14,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.002411966236622388,
+        "ci": [
+          -0.007088735461351979,
+          0.011840126325419276
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/0ba8ff7f5effad19ab38494caf519bdf32a6af9c5f7bc14f786eefa900a951c0.json.gz",
+        "sha": "0ba8ff7f5effad19ab38494caf519bdf32a6af9c5f7bc14f786eefa900a951c0"
+      },
+      "prior_serving_rows": 982,
+      "parameter_cutoff": "2026-09-16T00:00:00Z"
+    },
+    "2026-09-17T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 564,
+        "event_days": 15,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 9.204327701489929e-05,
+        "ci": [
+          -0.008956855255587535,
+          0.008576551297019357
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/01c22a40d8dd6a3f44f88c29a21662dcffa53e1197267bfa66dfea25900c1ee6.json.gz",
+        "sha": "01c22a40d8dd6a3f44f88c29a21662dcffa53e1197267bfa66dfea25900c1ee6"
+      },
+      "prior_serving_rows": 1052,
+      "parameter_cutoff": "2026-09-17T00:00:00Z"
+    },
+    "2026-09-18T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 608,
+        "event_days": 16,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.00333572866927452,
+        "ci": [
+          -0.006633700684102355,
+          0.013007198608405652
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/f1194e15fbdaf1268740669c1c5828ec28b8af9dd6e72189153779ac6092741e.json.gz",
+        "sha": "f1194e15fbdaf1268740669c1c5828ec28b8af9dd6e72189153779ac6092741e"
+      },
+      "prior_serving_rows": 1122,
+      "parameter_cutoff": "2026-09-18T00:00:00Z"
+    },
+    "2026-09-19T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 652,
+        "event_days": 17,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0002979120943873453,
+        "ci": [
+          -0.009984554365673592,
+          0.009015986967748902
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/ce89e1770f4cbd397b7ab2661cac65d6eaa2dc92d6ea9f34d741f22186505cd2.json.gz",
+        "sha": "ce89e1770f4cbd397b7ab2661cac65d6eaa2dc92d6ea9f34d741f22186505cd2"
+      },
+      "prior_serving_rows": 1191,
+      "parameter_cutoff": "2026-09-19T00:00:00Z"
+    },
+    "2026-09-20T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 697,
+        "event_days": 18,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.001462169483564189,
+        "ci": [
+          -0.01131773331937348,
+          0.007852086877044348
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/96f441e02873a603fb075634a2fe0bf1f2975aee19c355b5ff4d5f97800f0074.json.gz",
+        "sha": "96f441e02873a603fb075634a2fe0bf1f2975aee19c355b5ff4d5f97800f0074"
+      },
+      "prior_serving_rows": 1268,
+      "parameter_cutoff": "2026-09-20T00:00:00Z"
+    },
+    "2026-09-21T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 742,
+        "event_days": 19,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0010429743660967453,
+        "ci": [
+          -0.010278797355481921,
+          0.008803493609641886
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/bb663d6fda7563804afc25e658892fbc7b831b9b2f0457f6aed1057e87ab0783.json.gz",
+        "sha": "bb663d6fda7563804afc25e658892fbc7b831b9b2f0457f6aed1057e87ab0783"
+      },
+      "prior_serving_rows": 1359,
+      "parameter_cutoff": "2026-09-21T00:00:00Z"
+    },
+    "2026-09-22T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 787,
+        "event_days": 20,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -4.256787253139733e-06,
+        "ci": [
+          -0.010046282167241138,
+          0.009772825002254232
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/dea490cb13e1dbe6fa71957361bdfd93823982fe0aceb5e4e0745759c9434b54.json.gz",
+        "sha": "dea490cb13e1dbe6fa71957361bdfd93823982fe0aceb5e4e0745759c9434b54"
+      },
+      "prior_serving_rows": 1443,
+      "parameter_cutoff": "2026-09-22T00:00:00Z"
+    },
+    "2026-09-23T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 832,
+        "event_days": 21,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.00036481350581665903,
+        "ci": [
+          -0.009505763419523926,
+          0.010466751077823959
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/41010bc0ac8789e300a80930b2ff00359b9edcee50a846e5b4b14c4796d86839.json.gz",
+        "sha": "41010bc0ac8789e300a80930b2ff00359b9edcee50a846e5b4b14c4796d86839"
+      },
+      "prior_serving_rows": 1515,
+      "parameter_cutoff": "2026-09-23T00:00:00Z"
+    },
+    "2026-09-24T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 874,
+        "event_days": 22,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": 0.0008342982519255058,
+        "ci": [
+          -0.00858984251219779,
+          0.01049093694871073
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/fc35ce14dd5ca908d32260f9f79588b33a91e302d5fe6aef80517e3691f3f128.json.gz",
+        "sha": "fc35ce14dd5ca908d32260f9f79588b33a91e302d5fe6aef80517e3691f3f128"
+      },
+      "prior_serving_rows": 1600,
+      "parameter_cutoff": "2026-09-24T00:00:00Z"
+    },
+    "2026-09-25T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 919,
+        "event_days": 23,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0013774143324745659,
+        "ci": [
+          -0.010845851840771045,
+          0.008038082377088132
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/132a524c06c9c152dbf0112b5005d2668229138044a26bf939390a9362c978ba.json.gz",
+        "sha": "132a524c06c9c152dbf0112b5005d2668229138044a26bf939390a9362c978ba"
+      },
+      "prior_serving_rows": 1684,
+      "parameter_cutoff": "2026-09-25T00:00:00Z"
+    },
+    "2026-09-26T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 964,
+        "event_days": 24,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.002556799559086896,
+        "ci": [
+          -0.01202146489445935,
+          0.0062205080354599375
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/2d6a6f45e1aa639c33b027caceea5865b10947fb4c0076a1b45c7586ae1cc4a0.json.gz",
+        "sha": "2d6a6f45e1aa639c33b027caceea5865b10947fb4c0076a1b45c7586ae1cc4a0"
+      },
+      "prior_serving_rows": 1774,
+      "parameter_cutoff": "2026-09-26T00:00:00Z"
+    },
+    "2026-09-27T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1009,
+        "event_days": 25,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0022906607320305377,
+        "ci": [
+          -0.011121580810875387,
+          0.006968540943148574
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/2ddf8a4f3c6e5757f084fd774d1242fc0258681c7917c2b76525f2c0ac5f29a2.json.gz",
+        "sha": "2ddf8a4f3c6e5757f084fd774d1242fc0258681c7917c2b76525f2c0ac5f29a2"
+      },
+      "prior_serving_rows": 1864,
+      "parameter_cutoff": "2026-09-27T00:00:00Z"
+    },
+    "2026-09-28T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1025,
+        "event_days": 25,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0023543950115263584,
+        "ci": [
+          -0.011258212153746153,
+          0.006416277050099176
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/b0a6ca33d19c690ef3d7c96dccc1c9a2a8cb89aeacf2b223c73698cadd3de832.json.gz",
+        "sha": "b0a6ca33d19c690ef3d7c96dccc1c9a2a8cb89aeacf2b223c73698cadd3de832"
+      },
+      "prior_serving_rows": 1933,
+      "parameter_cutoff": "2026-09-28T00:00:00Z"
+    },
+    "2026-09-29T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1098,
+        "event_days": 27,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.004813206925585003,
+        "ci": [
+          -0.013227097644968861,
+          0.003988460065562815
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/83333ca53d5a2c09cee63db53466b083f57f6962f527cb518e8efa584a8bb354.json.gz",
+        "sha": "83333ca53d5a2c09cee63db53466b083f57f6962f527cb518e8efa584a8bb354"
+      },
+      "prior_serving_rows": 2028,
+      "parameter_cutoff": "2026-09-29T00:00:00Z"
+    },
+    "2026-09-30T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1143,
+        "event_days": 28,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.005505455792282509,
+        "ci": [
+          -0.013794586709429547,
+          0.003123065425903666
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/f13bbcd767ec2de31eb7dec1fad47b0746e92ca86382e1853299177398b527df.json.gz",
+        "sha": "f13bbcd767ec2de31eb7dec1fad47b0746e92ca86382e1853299177398b527df"
+      },
+      "prior_serving_rows": 2118,
+      "parameter_cutoff": "2026-09-30T00:00:00Z"
+    },
+    "2026-10-01T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1188,
+        "event_days": 29,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0061139486377063375,
+        "ci": [
+          -0.01412307426270071,
+          0.0020343977243647057
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/be0da01f913ef710a84a0fefde945008b2f0841cabb99fab2895c32a4e9631d0.json.gz",
+        "sha": "be0da01f913ef710a84a0fefde945008b2f0841cabb99fab2895c32a4e9631d0"
+      },
+      "prior_serving_rows": 2208,
+      "parameter_cutoff": "2026-10-01T00:00:00Z"
+    },
+    "2026-10-02T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1233,
+        "event_days": 30,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.006591231754890209,
+        "ci": [
+          -0.014918167397066388,
+          0.001781016087699086
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/34505cbb9d962d460a6cdb8394182da22feff5d04adca0cb62813bf7604dd331.json.gz",
+        "sha": "34505cbb9d962d460a6cdb8394182da22feff5d04adca0cb62813bf7604dd331"
+      },
+      "prior_serving_rows": 2283,
+      "parameter_cutoff": "2026-10-02T00:00:00Z"
+    },
+    "2026-10-03T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1275,
+        "event_days": 31,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.006206064861143961,
+        "ci": [
+          -0.014505413963609394,
+          0.0018776140793489713
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/d408dce4dfd4c21ddbb86cf7feae3167bc26befb73b27a4db790db53981ceaa8.json.gz",
+        "sha": "d408dce4dfd4c21ddbb86cf7feae3167bc26befb73b27a4db790db53981ceaa8"
+      },
+      "prior_serving_rows": 2341,
+      "parameter_cutoff": "2026-10-03T00:00:00Z"
+    },
+    "2026-10-04T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1320,
+        "event_days": 32,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.005967647271070065,
+        "ci": [
+          -0.013640187764000621,
+          0.0019624328307216183
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/0a131578ea4e2415fc1ccbba54597b718f258f3f4c430c18478adf899075d5f1.json.gz",
+        "sha": "0a131578ea4e2415fc1ccbba54597b718f258f3f4c430c18478adf899075d5f1"
+      },
+      "prior_serving_rows": 2397,
+      "parameter_cutoff": "2026-10-04T00:00:00Z"
+    },
+    "2026-10-05T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1363,
+        "event_days": 33,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.006843490904712063,
+        "ci": [
+          -0.014795721531649689,
+          0.0010320420642304217
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/d7326dbf8adf4ccc83808ef1a455f3dd17247cd790fc257af1cbd7a703cd2370.json.gz",
+        "sha": "d7326dbf8adf4ccc83808ef1a455f3dd17247cd790fc257af1cbd7a703cd2370"
+      },
+      "prior_serving_rows": 2462,
+      "parameter_cutoff": "2026-10-05T00:00:00Z"
+    },
+    "2026-10-06T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1405,
+        "event_days": 34,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.0050762224955703695,
+        "ci": [
+          -0.012918779813051272,
+          0.003479350752708883
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/ea4efeef44f4fd2cf2a2fe21f0adc2d4d2b6bde8a4014334b00866f66e7ab4a8.json.gz",
+        "sha": "ea4efeef44f4fd2cf2a2fe21f0adc2d4d2b6bde8a4014334b00866f66e7ab4a8"
+      },
+      "prior_serving_rows": 2519,
+      "parameter_cutoff": "2026-10-06T00:00:00Z"
+    },
+    "2026-10-07T00:00:00Z": {
+      "evidence": {
+        "rule": "served_minus_seat_pooled_logscore_station_day_bootstrap_v1",
+        "station_days": 1449,
+        "event_days": 35,
+        "min_days": 3,
+        "min_cells": 60,
+        "mean": -0.005900187732017581,
+        "ci": [
+          -0.013618112866281822,
+          0.0020792150467173445
+        ],
+        "enough_evidence": true,
+        "vetoed": false
+      },
+      "manifest": {
+        "path": "fusion_ledger_veto_manifests/1f6facb7fc5788e3d1b40646ac44cd3a63a7c88ec1e7f33e40ab275fb4d6a9cb.json.gz",
+        "sha": "1f6facb7fc5788e3d1b40646ac44cd3a63a7c88ec1e7f33e40ab275fb4d6a9cb"
+      },
+      "prior_serving_rows": 2579,
+      "parameter_cutoff": "2026-10-07T00:00:00Z"
+    }
+  },
+  "source_facts_sha": "a45b41b18d226eb86ba9e9d9407a1a0d6b9dda4839aa396066ddbfa03d6e6792",
+  "source_parameters_sha": "ddee2dc361d9d030daf02899d79f867b4f2b542d6a4e43c4807f8ff4f3e05818",
+  "source_formula_sha": "09c93d013b23fe1ffbc1b7c2617a3bf7dbb784eb78a3159ba3df162413f2670c",
+  "output_sha": "b8c302763e883f9debe37e5136c58b7912d0cd5000db6f58de1e50eab4b5ffd3",
+  "output_uncompressed_bytes": 38730779,
+  "production_modified": false,
+  "full_parent_chain_certified": false,
+  "limitations": [
+    "current formula, original seating qualifications",
+    "representative original hourly anchors only; not continuous full-root serving",
+    "fixed UTC-midnight counterfactual parameter and veto schedule"
+  ]
+}

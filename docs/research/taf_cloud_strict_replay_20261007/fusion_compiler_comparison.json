@@ -1,0 +1,204 @@
+{
+  "schema": "fleet_causal_fusion_ledger_integration_comparison_v1",
+  "passed": true,
+  "stations": {
+    "CYYZ": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "8d1db456def72184393179d07bb88b29813e494a8e14166ab9d27b39b086cf31"
+    },
+    "EDDM": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "c638f88263987a71478e2f83ed4471966f49fd026d6a85701bd3e279bf148ee9"
+    },
+    "EFHK": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "86c1c779ab2eae92d284a9e2ab6b1d048c1c59984d88e9b5a2b8c3a08cb5dd50"
+    },
+    "EGLC": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "39ef3bc426ecc7d0dba1b7ebc7dbbcd57a803ac3a1d2e122c5c8788a6af62152"
+    },
+    "EHAM": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "b4c930c805a549d906e37a4781aa0a573366634bbe694a25700524b676f5cdad"
+    },
+    "EPWA": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "c752b7c0999dd309f4fb4a61802fd539ed56940da05434b8b21390795a169abe"
+    },
+    "FACT": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "bbacc2a085262353b0df69015cfc4b2accb6c4cb7b75c953e07401e12a9c799a"
+    },
+    "KATL": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "59e382fddeb669228d3be28d1e7fd34690d194994b4cbf4cb7b80a3a67bac5ed"
+    },
+    "KAUS": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fde7ab51a2c7b6802664a34a6bd30c810e5117af30429a02c608fe6b8e7d106d"
+    },
+    "KBKF": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "b3e7d29584405794ad0d92d898098a3f2284853cef2948192e671fb9d25edc9c"
+    },
+    "KDAL": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "4e1179a41ca6bc2d1866cbe61d3eca99d3db7bfeadd124681d486ffae3f910f3"
+    },
+    "KHOU": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "e790dec359998d508cb105bb756f6552cbf9a39f48ca82d4d27b10bfa936c79f"
+    },
+    "KLAX": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "0d02df458736ceeab04aae9e7002e6ceffa382a53122e74bf4ef437256f03f68"
+    },
+    "KLGA": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "b8661bc45913b683953dad02f3fd137f0d61c4f5adf25add6b54846a31b22ba0"
+    },
+    "KMIA": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "094a4438145c04ea64c5dd3c8cad9e7ca3ab03bc55c9cb925447f0d5150fd13d"
+    },
+    "KORD": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "767c99c234c0206c0a694a26349e471b1c9e4d76341d3048cd58ea3a88d58676"
+    },
+    "KSEA": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "3fe8249630fe06946e712d1998172e09e5f812f9bfdfe21b57d722258d841c22"
+    },
+    "KSFO": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "33764ea46a9b1ef9afc254ea0a09093c9deba05786f2266f93ee193c1de254fc"
+    },
+    "LEMD": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "9e7af54ff9a63d885888305d9bdc19cd65a28728aa761351dc9f86bde47cc75a"
+    },
+    "LFPB": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "c39be0367a2ae5fcb5b1a11384491dd0551e83a82a098d491133dcd5eae87ba5"
+    },
+    "LIMC": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "9583489d888e1c5a4fa732180658c6ce058059de3a8bb783fc7c88497f1f100a"
+    },
+    "LLBG": {
+      "state": "REFUSAL_EXACTLY_EQUAL",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact"
+    },
+    "LTAC": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fda333474027d448ac47fa48c817ced2be2b365df37257fa3cc4c13610ce136b"
+    },
+    "LTFM": {
+      "state": "REFUSAL_EXACTLY_EQUAL",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact"
+    },
+    "MMMX": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "aa30cfd4b930ce8ddab42278e8f6c5bfae53d3e2777a15969d0cd75e758b0227"
+    },
+    "MPMG": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "7518d9ceba7f9ddfd42f4c730b56a1451f48810333452fc972516212300a592f"
+    },
+    "NZWN": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "0782b06a1a809f08d6e4f7ae9518e75bd93cf70afa1c9474d96deb2221e787f5"
+    },
+    "OEJN": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fdf2f37baf43e8b94db3d778298f659152b625e1cf355c09f889d952bc55c07a"
+    },
+    "OPKC": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "68d79d30cf517f79400680ae99e24ed8a6f6bfec2e1aca98fc06939619d4be46"
+    },
+    "RCSS": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fad0afb77d8007577ecb7a506113260055682dcc9d707793fa00da08848bebbd"
+    },
+    "RJTT": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "2f87169b4b07fab67901c3088d28887ec6f0deb9875bf6e01805ef08426cade0"
+    },
+    "RKPK": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "54d0c8582bdd3a34e016a1ecb303b940643a532b0babc151457c155f88c7d84b"
+    },
+    "RKSI": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "ddd6412f0137206739efa673382035a599e9ba755f1e609eb70c6d72611c94c3"
+    },
+    "RPLL": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "6929e525936822eedf8bc1a1f076810e4aa0ca1d67f93249477528df0afeba4e"
+    },
+    "SAEZ": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "7ac712d2c409aa4f8dbc0441c608d206bea78f8b8dbc04b4e9bf8bb8e87c28ae"
+    },
+    "SBGR": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "429be603beca040972f0affed2b2da9002995298fc02d3facb300d49240bdd5b"
+    },
+    "UUWW": {
+      "state": "REFUSAL_EXACTLY_EQUAL",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact"
+    },
+    "VILK": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "17eb634d96e7d253c117f902e901ba83504929c48023493dc329711052d670e4"
+    },
+    "WMKK": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fcd9c68de98c70c1fa6f036efcefba3c4c6023f52ee7e2cc082e37186d88fb8c"
+    },
+    "WSSS": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "bc69198d2826bba7d4e9634ac8e25bb2ddbeb20adfb2d78586b40ea35465f6f1"
+    },
+    "ZBAA": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "06f97d33df4de4830acc785cde9e47247eceae4875dce1b8600c420c9cf35efc"
+    },
+    "ZGGG": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "9a2eabe32cf77620af46b623c531b928687ff4bc0878f5bbccdfe37510a7fe14"
+    },
+    "ZGSZ": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "273945ce08b26b38b6b9ed6c1de9c7c2a978d643ad184e9cf5ab68846fb3f29c"
+    },
+    "ZHHH": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "4fdd50957825bf13d31f34c53ceb39508d8741641d840c6e346ac0190ccbc3c8"
+    },
+    "ZSPD": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "666dea647965f5bd6017a0ae5ab5518fcd8edc604c62f7186095e9551e5457a6"
+    },
+    "ZSQD": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "fc80376537874c810931afb20386055d0ee521de6741ae5a79894d7ece14da26"
+    },
+    "ZUCK": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "b298129ded73170a843607448cae62b6858a98a22e3910742a9d054f76d379a2"
+    },
+    "ZUUU": {
+      "state": "PROBABILITY_AND_WEIGHTS_EXACTLY_EQUAL",
+      "report_sha": "2c59f9bc8aded94c7c8fa0696835f800aafdac58ab67f8f880aee768619eb227"
+    }
+  },
+  "exact_probability_stations": 45,
+  "exact_refusal_stations": 3,
+  "compiler_before_sha": "94d968f7d95451e3c87b56867f9dc2cd246a38c339665ff81b8e9262e0680d36",
+  "compiler_after_sha": "f7c5cad33dbb297cbbef88c692990c225592167f1c72213d8e453e1ccd7d21fb",
+  "production_modified": false,
+  "whole_current_chain_certified": false
+}

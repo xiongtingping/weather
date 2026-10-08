@@ -1,0 +1,998 @@
+{
+  "schema": "chronological_station_date_nested_component_batch_v1",
+  "period": [
+    "2026-09-01",
+    "2026-10-06"
+  ],
+  "stations": [
+    "EGLC",
+    "KATL",
+    "ZUUU"
+  ],
+  "census": {
+    "root_without_committed_parent_clock": 36,
+    "root_refusal:ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 14,
+    "original_parent_clock_restored_independent_of_old_replay_gate": 36,
+    "root_refusal:FileNotFoundError": 22,
+    "scheduled_station_dates": 108
+  },
+  "counts": {
+    "COMPONENT_REPORT_BUILT": 12,
+    "PENDING": 96
+  },
+  "records": {
+    "EGLC/2026-09-01": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "EGLC",
+      "event": "2026-09-01",
+      "outer_cutoff": "2026-08-31T22:49:24.070Z",
+      "anchor_checkpoint": "p0-native-f6ff092adf7128f2a68c9b1c1d7c58d0",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/EGLC/2026-09-01/summary.json",
+      "summary_sha": "44f81f00f6bcf1315acd6151e53d9ec851cd05f87d940eda916a3bc65df46c38",
+      "objects": 92,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 24
+      },
+      "seconds": 18.94
+    },
+    "KATL/2026-09-01": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "KATL",
+      "event": "2026-09-01",
+      "outer_cutoff": "2026-09-01T11:28:14.405Z",
+      "anchor_checkpoint": "p0-native-d18c4a0d20e8d7fa686adcbdfdbd1bda",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/KATL/2026-09-01/summary.json",
+      "summary_sha": "7e5e9c2d3733fe6136d975339016f800c275912e71f449beb73b553bc88a95d6",
+      "objects": 92,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 16,
+        "OOS_REJECTED": 8
+      },
+      "seconds": 17.77
+    },
+    "ZUUU/2026-09-01": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "ZUUU",
+      "event": "2026-09-01",
+      "outer_cutoff": "2026-08-31T22:49:24.070Z",
+      "anchor_checkpoint": "p0-native-993a82bddfd20cadb6b48ef4dc83b8d4",
+      "clock_origin": "ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/ZUUU/2026-09-01/summary.json",
+      "summary_sha": "16dc8ddcf7ea8c88378fb375baccae2a1c4d6f917451ba28f9c25b8716a15aec",
+      "objects": 96,
+      "cross_states": {
+        "OOS_REJECTED": 4,
+        "PRODUCTION_NO_LIVE_OOS_PASS": 22
+      },
+      "seconds": 14.1
+    },
+    "EGLC/2026-09-02": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-02",
+      "outer_cutoff": "2026-09-01T21:30:33.745Z",
+      "anchor_checkpoint": "p0-native-fdcf25062f995947ea02a132d4d48d84",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-02": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-02",
+      "outer_cutoff": "2026-09-02T11:17:41.567Z",
+      "anchor_checkpoint": "p0-native-d4a6988759eac180adb271f8d5317f62",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-02": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-02",
+      "outer_cutoff": "2026-09-01T16:58:32.894Z",
+      "anchor_checkpoint": "p0-native-6e590d19bb3033ec50ff1ca6aacd962e",
+      "clock_origin": "ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-03": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-03",
+      "outer_cutoff": "2026-09-03T07:49:27.088Z",
+      "anchor_checkpoint": "p0-native-4dc4f45bf4121141c170d4270bb68da9",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-03": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-03",
+      "outer_cutoff": "2026-09-03T10:17:58.364Z",
+      "anchor_checkpoint": "p0-native-8af042a08f1b9340331826ceaa2de468",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-03": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-03",
+      "outer_cutoff": "2026-09-02T13:06:37.911Z",
+      "anchor_checkpoint": "p0-native-8743082e78a352f94fc29fde8a22a918",
+      "clock_origin": "ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-04": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-04",
+      "outer_cutoff": "2026-09-04T04:17:22.007Z",
+      "anchor_checkpoint": "p0-native-4f2c80aa35b6cb41bfa3d8aa51166121",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-04": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-04",
+      "outer_cutoff": "2026-09-04T11:01:13.475Z",
+      "anchor_checkpoint": "p0-native-64595c854db958f0fa9a52e79e31dfc1",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-04": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-04",
+      "outer_cutoff": "2026-09-04T01:43:50.580Z",
+      "anchor_checkpoint": "p0-native-8b9c21d9886ed499ff52b75f6e3a8a59",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-05": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-05",
+      "outer_cutoff": "2026-09-05T06:40:07.969Z",
+      "anchor_checkpoint": "p0-native-5eaafe7b63ade9d705b38fb4cf39bc6f",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-05": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-05",
+      "outer_cutoff": "2026-09-05T11:56:06.482Z",
+      "anchor_checkpoint": "p0-native-fd029b9fdc5efed4a6a2f1c0a97bd0d2",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-05": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-05",
+      "outer_cutoff": "2026-09-04T23:09:15.056Z",
+      "anchor_checkpoint": "p0-native-5551b5e5bc829da2c22e840482b02406",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-06": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-06",
+      "outer_cutoff": "2026-09-06T06:59:41.793Z",
+      "anchor_checkpoint": "p0-native-8235e358f48ed30fae026d3cffa729c1",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-06": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-06",
+      "outer_cutoff": "2026-09-06T11:38:11.913Z",
+      "anchor_checkpoint": "p0-native-3c1a850db663b073a37eda827210f157",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-06": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-06",
+      "outer_cutoff": "2026-09-06T01:28:53.331Z",
+      "anchor_checkpoint": "p0-native-e6428fad8481231a1bd5755eeb5702ac",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-07": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-07",
+      "outer_cutoff": "2026-09-07T06:27:49.859Z",
+      "anchor_checkpoint": "p0-native-d3c407c4fd73541a7acf0562b73e7faa",
+      "clock_origin": "ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-07": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-07",
+      "outer_cutoff": "2026-09-07T11:01:53.440Z",
+      "anchor_checkpoint": "p0-native-39491b63b2f42fece6cba30dd9750990",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-07": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-07",
+      "outer_cutoff": "2026-09-06T23:14:34.454Z",
+      "anchor_checkpoint": "p0-native-2a54550a454303155909aa8630cb04e8",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-08": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-08",
+      "outer_cutoff": "2026-09-08T04:27:55.276Z",
+      "anchor_checkpoint": "p0-native-0a227bdde084f4d1128ecee27ed94026",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-08": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-08",
+      "outer_cutoff": "2026-09-08T07:03:40.115Z",
+      "anchor_checkpoint": "p0-native-5aff5d2cda9bb3a2a90db823df6ed416",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-08": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-08",
+      "outer_cutoff": "2026-09-07T23:16:32.660Z",
+      "anchor_checkpoint": "p0-native-0c2d2651c339f2411984d0a6f3221360",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-09": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-09",
+      "outer_cutoff": "2026-09-09T06:18:15.873Z",
+      "anchor_checkpoint": "p0-native-1acb97dc6a4ffa62ea3a9660d0dcda5b",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-09": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-09",
+      "outer_cutoff": "2026-09-09T11:20:08.968Z",
+      "anchor_checkpoint": "p0-native-a304c8cf732ecc073b7392f04bd50fa3",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-09": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-09",
+      "outer_cutoff": "2026-09-08T23:49:10.274Z",
+      "anchor_checkpoint": "p0-native-df64357fc71e2294a4cabd97483c4c39",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-10": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-10",
+      "outer_cutoff": "2026-09-10T02:21:11.142Z",
+      "anchor_checkpoint": "p0-native-f65a7b1450e8437d8e5d96cd631ffba1",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-10": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-10",
+      "outer_cutoff": "2026-09-10T11:34:16.730Z",
+      "anchor_checkpoint": "p0-native-d06f1333886aa3d6c36b5e8ae78380e5",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-10": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-10",
+      "outer_cutoff": "2026-09-09T18:13:17.684Z",
+      "anchor_checkpoint": "p0-native-42fa8f901b243dfe6e9e82ad2a88e577",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-11": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-11",
+      "outer_cutoff": "2026-09-11T04:53:17.965Z",
+      "anchor_checkpoint": "p0-native-9ef84fd03eddcada61ec66902356ba86",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-11": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-11",
+      "outer_cutoff": "2026-09-11T11:05:08.361Z",
+      "anchor_checkpoint": "p0-native-e1a8bab6f2d633585959c6ca996325af",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-11": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-11",
+      "outer_cutoff": "2026-09-10T22:12:41.055Z",
+      "anchor_checkpoint": "p0-native-f4f5fefcce5646a68b02a6ee3c3c4e05",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-12": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-12",
+      "outer_cutoff": "2026-09-12T06:27:25.755Z",
+      "anchor_checkpoint": "p0-native-01ff6919410172eed9e85d81451db6e9",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-12": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-12",
+      "outer_cutoff": "2026-09-12T11:44:59.245Z",
+      "anchor_checkpoint": "p0-native-4fe0d38cb3a8961db3e78dd20e66b0fa",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-12": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-12",
+      "outer_cutoff": "2026-09-11T23:02:58.825Z",
+      "anchor_checkpoint": "p0-native-37114c45d1d6d63a9b617a97e8fbbc7d",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-13": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-13",
+      "outer_cutoff": "2026-09-13T06:37:58.846Z",
+      "anchor_checkpoint": "p0-native-a5bb3bf4d67ece7d403247abd6f25404",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-13": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-13",
+      "outer_cutoff": "2026-09-13T10:12:34.826Z",
+      "anchor_checkpoint": "p0-native-1eaee49ddca22a40ee4f1982f5faebf0",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-13": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-13",
+      "outer_cutoff": "2026-09-12T22:30:07.479Z",
+      "anchor_checkpoint": "p0-native-a59e60749d6a76abefc7c86ccfaedcb8",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-14": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-14",
+      "outer_cutoff": "2026-09-14T06:53:46.457Z",
+      "anchor_checkpoint": "p0-native-6a262489f99fddb4f01a9cae78a42b64",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-14": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-14",
+      "outer_cutoff": "2026-09-14T11:28:40.271Z",
+      "anchor_checkpoint": "p0-native-e2e97f595c10fcda96c7ac936d2a3fc6",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-14": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-14",
+      "outer_cutoff": "2026-09-13T20:14:34.747Z",
+      "anchor_checkpoint": "p0-native-13002ce6844e0c5b7c535d94c4305d48",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-15": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-15",
+      "outer_cutoff": "2026-09-15T05:53:11.333Z",
+      "anchor_checkpoint": "p0-native-698534056a550eed5fafd4aba539e4fa",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-15": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-15",
+      "outer_cutoff": "2026-09-15T10:34:42.680Z",
+      "anchor_checkpoint": "p0-native-53b0dc31a3173236c3a7964cf7ed6151",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-15": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-15",
+      "outer_cutoff": "2026-09-14T22:49:40.669Z",
+      "anchor_checkpoint": "p0-native-6ebfc062ff26b130cd6d682ef875cfcd",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-16": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-16",
+      "outer_cutoff": "2026-09-16T01:31:49.158Z",
+      "anchor_checkpoint": "p0-native-76374ee7699ba8fee0538c0312abd114",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-16": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-16",
+      "outer_cutoff": "2026-09-16T10:26:22.789Z",
+      "anchor_checkpoint": "p0-native-b5df21a0fddf493926908d23e542ccb5",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-16": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-16",
+      "outer_cutoff": "2026-09-15T22:18:04.463Z",
+      "anchor_checkpoint": "p0-native-9a159b3c11f19f92c0c5d4802aa33d0f",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-17": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-17",
+      "outer_cutoff": "2026-09-17T01:54:37.328Z",
+      "anchor_checkpoint": "p0-native-c62c4866dedf4a7abf34d88a31f8b8d7",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-17": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-17",
+      "outer_cutoff": "2026-09-17T10:15:09.212Z",
+      "anchor_checkpoint": "p0-native-bc6755f37c2762ed1fa72b24b68ced66",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-17": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-17",
+      "outer_cutoff": "2026-09-16T22:35:14.301Z",
+      "anchor_checkpoint": "p0-native-752b00219ea413bfacd50c35f445015d",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-18": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-18",
+      "outer_cutoff": "2026-09-18T06:10:32.574Z",
+      "anchor_checkpoint": "p0-native-16d2a43a8e59886dd4ca9734c544cbc6",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-18": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-18",
+      "outer_cutoff": "2026-09-18T10:50:15.047Z",
+      "anchor_checkpoint": "p0-native-e1f8f35035a0f0aee283693d4002cf45",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-18": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-18",
+      "outer_cutoff": "2026-09-17T22:37:09.017Z",
+      "anchor_checkpoint": "p0-native-ec79d2359b82773bdc8f25c09954eb8d",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-19": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-19",
+      "outer_cutoff": "2026-09-19T05:45:56.482Z",
+      "anchor_checkpoint": "p0-native-48b54b7b706b72c06f8da373f8d39054",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-19": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-19",
+      "outer_cutoff": "2026-09-19T10:55:39.789Z",
+      "anchor_checkpoint": "p0-native-7a5215cd32746abfe9e614f0d6f87780",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-19": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-19",
+      "outer_cutoff": "2026-09-18T22:30:45.857Z",
+      "anchor_checkpoint": "p0-native-8d0b74b19aeed32ae4e618b96433665b",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-20": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-20",
+      "outer_cutoff": "2026-09-20T05:43:18.872Z",
+      "anchor_checkpoint": "p0-native-72bc676bc70897929cbda4195ace6a55",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-20": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-20",
+      "outer_cutoff": "2026-09-20T10:47:44.533Z",
+      "anchor_checkpoint": "p0-native-ca265f9b7fdcbf04434c959fd69ac1d3",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-20": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-20",
+      "outer_cutoff": "2026-09-19T22:22:09.609Z",
+      "anchor_checkpoint": "p0-native-633b2aac79190fb95471c421636d397d",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-21": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "EGLC",
+      "event": "2026-09-21",
+      "outer_cutoff": "2026-09-21T06:06:06.380Z",
+      "anchor_checkpoint": "p0-native-b9e34115457f7dbabcf0675fe1b605f2",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/EGLC/2026-09-21/summary.json",
+      "summary_sha": "36d0bfa1dfcad25e916c64568fa57f536b254ae5707f6f58d036b0e4091615f6",
+      "objects": 158,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 51
+      },
+      "seconds": 27.83
+    },
+    "KATL/2026-09-21": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "KATL",
+      "event": "2026-09-21",
+      "outer_cutoff": "2026-09-21T10:09:00.695Z",
+      "anchor_checkpoint": "p0-native-6f291795332af7c9002b053c505a0a0e",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/KATL/2026-09-21/summary.json",
+      "summary_sha": "dc6a50583df494da357c06f34e2249814e994d96fe1bdf194e923ca9a29c1ffd",
+      "objects": 157,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 44,
+        "OOS_REJECTED": 2
+      },
+      "seconds": 30.05
+    },
+    "ZUUU/2026-09-21": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "ZUUU",
+      "event": "2026-09-21",
+      "outer_cutoff": "2026-09-20T22:58:41.902Z",
+      "anchor_checkpoint": "p0-native-8d0611784b033a599e5b870a289be9a9",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/ZUUU/2026-09-21/summary.json",
+      "summary_sha": "b45395168f3c5cbfc93c9fe23acbd06595741fb730876dbd75d9e826942c719c",
+      "objects": 153,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 45
+      },
+      "seconds": 22.15
+    },
+    "EGLC/2026-09-22": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-22",
+      "outer_cutoff": "2026-09-21T15:11:14.686Z",
+      "anchor_checkpoint": "p0-native-bb655cea4959e1bfbc273f659d08006a",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-22": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-22",
+      "outer_cutoff": "2026-09-22T11:34:24.336Z",
+      "anchor_checkpoint": "p0-native-049480c162b346eb8f9d81e56f313e8f",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-22": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-22",
+      "outer_cutoff": "2026-09-21T17:21:54.620Z",
+      "anchor_checkpoint": "p0-native-0b8e4954d8f6528ef0dabffea0816f61",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-23": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-23",
+      "outer_cutoff": "2026-09-23T06:47:33.888Z",
+      "anchor_checkpoint": "p0-native-b7ed2e7fe0d8aab2a573ecad7b9b67ec",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-23": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-23",
+      "outer_cutoff": "2026-09-23T10:41:18.215Z",
+      "anchor_checkpoint": "p0-native-84cba55c461a464b250770a7de7601b8",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-23": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-23",
+      "outer_cutoff": "2026-09-22T22:06:01.825Z",
+      "anchor_checkpoint": "p0-native-32526bbd89f9640c69f477d389fe4b04",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-24": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-24",
+      "outer_cutoff": "2026-09-24T04:39:11.103Z",
+      "anchor_checkpoint": "p0-native-148a1f680123249bd4175950206d481c",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-24": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-24",
+      "outer_cutoff": "2026-09-24T10:51:34.833Z",
+      "anchor_checkpoint": "p0-native-dab0f81a39d33c920512147ec7c09d41",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-24": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-24",
+      "outer_cutoff": "2026-09-23T22:08:17.516Z",
+      "anchor_checkpoint": "p0-native-30e2d6062a0514f64cc0f017b2ed3c09",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-25": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-25",
+      "outer_cutoff": "2026-09-25T06:35:20.823Z",
+      "anchor_checkpoint": "p0-native-2d91f10ac3c6964944ed44f370bcffaf",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-25": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-25",
+      "outer_cutoff": "2026-09-25T09:04:52.933Z",
+      "anchor_checkpoint": "p0-native-a80b47b5ad5babc5a8aa9958048a6e07",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-25": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-25",
+      "outer_cutoff": "2026-09-24T22:05:57.346Z",
+      "anchor_checkpoint": "p0-native-89c8eba650a72df26950f48b387e697e",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-26": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-26",
+      "outer_cutoff": "2026-09-26T06:52:16.706Z",
+      "anchor_checkpoint": "p0-native-749d0f24b77501c8b1463cbcd33a3e0a",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-26": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-26",
+      "outer_cutoff": "2026-09-26T10:06:57.198Z",
+      "anchor_checkpoint": "p0-native-cce678656722e07ee565ae5bd60dea7d",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-26": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-26",
+      "outer_cutoff": "2026-09-25T23:59:25.057Z",
+      "anchor_checkpoint": "p0-native-149bceb00e5d7051726be519fde607e3",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-27": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-27",
+      "outer_cutoff": "2026-09-27T06:14:15.775Z",
+      "anchor_checkpoint": "p0-native-2e7def3ddb0712789fc600bc81338a96",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-27": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-27",
+      "outer_cutoff": "2026-09-27T07:28:48.601Z",
+      "anchor_checkpoint": "p0-native-2fbd89467cfa6ca12b0c427230d24ed8",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-27": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-27",
+      "outer_cutoff": "2026-09-26T23:03:52.555Z",
+      "anchor_checkpoint": "p0-native-b46fecd9d98918c9d53836102620f3a6",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-28": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-28",
+      "outer_cutoff": "2026-09-28T06:54:34.437Z",
+      "anchor_checkpoint": "p0-native-39faf885b26d197f1829394c1927fe87",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-28": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-28",
+      "outer_cutoff": "2026-09-28T10:08:09.780Z",
+      "anchor_checkpoint": "p0-native-56119fd53831d3b14e464305b5eab060",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-28": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-28",
+      "outer_cutoff": "2026-09-28T01:00:46.032Z",
+      "anchor_checkpoint": "p0-native-68cd137dc4d28dff8b5d2b524aafe25a",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-29": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-29",
+      "outer_cutoff": "2026-09-29T06:54:47.370Z",
+      "anchor_checkpoint": "p0-native-c8f97d6155b63a776febdc3994ef9f85",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-29": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-29",
+      "outer_cutoff": "2026-09-29T10:00:45.859Z",
+      "anchor_checkpoint": "p0-native-2830c97101e753df7a44fa639a0ca9b7",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-29": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-29",
+      "outer_cutoff": "2026-09-28T22:41:26.057Z",
+      "anchor_checkpoint": "p0-native-1520cd45e88dbf6539ed2046caf478dd",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-09-30": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-09-30",
+      "outer_cutoff": "2026-09-30T06:47:05.890Z",
+      "anchor_checkpoint": "p0-native-9d5a5e4543ab2d03a631531accea0143",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-09-30": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-09-30",
+      "outer_cutoff": "2026-09-30T10:00:26.501Z",
+      "anchor_checkpoint": "p0-native-81d4c6126329ce9c6ff6ac385faad7c7",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-09-30": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-09-30",
+      "outer_cutoff": "2026-09-29T23:35:09.141Z",
+      "anchor_checkpoint": "p0-native-eab8f6e7a2c3cd45471fe8fd3f39d5b9",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-10-01": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-10-01",
+      "outer_cutoff": "2026-10-01T06:58:33.654Z",
+      "anchor_checkpoint": "p0-native-3b3ee7f628579d06170b46d794d3c9b0",
+      "clock_origin": "ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-10-01": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-10-01",
+      "outer_cutoff": "2026-10-01T10:29:38.587Z",
+      "anchor_checkpoint": "p0-native-be921114d835533685020a1be7144da0",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-10-01": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-10-01",
+      "outer_cutoff": "2026-09-30T23:15:27.867Z",
+      "anchor_checkpoint": "p0-native-2da51e57210691da4a017747d55722a1",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-10-02": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-10-02",
+      "outer_cutoff": "2026-10-02T05:48:33.421Z",
+      "anchor_checkpoint": "p0-native-b428bad0034a975ab0f989986929883b",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-10-02": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-10-02",
+      "outer_cutoff": "2026-10-02T10:02:55.136Z",
+      "anchor_checkpoint": "p0-native-97f5fed15eba6bb636876ffa03dc3900",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-10-02": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-10-02",
+      "outer_cutoff": "2026-10-01T22:10:12.642Z",
+      "anchor_checkpoint": "p0-native-6d5c24cbd3eb51967f974fbf2aad8d62",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-10-03": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-10-03",
+      "outer_cutoff": "2026-10-03T06:43:32.710Z",
+      "anchor_checkpoint": "p0-native-fb0dd572221676999dcb93732b730fe5",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-10-03": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-10-03",
+      "outer_cutoff": "2026-10-03T10:39:50.293Z",
+      "anchor_checkpoint": "p0-native-923d38ebe40886e8fdb724cfa9e077f3",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-10-03": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-10-03",
+      "outer_cutoff": "2026-10-02T22:09:34.556Z",
+      "anchor_checkpoint": "p0-native-a7c919434512a0d31701da17bbcf4a5c",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-10-04": {
+      "state": "PENDING",
+      "station": "EGLC",
+      "event": "2026-10-04",
+      "outer_cutoff": "2026-10-04T06:45:42.515Z",
+      "anchor_checkpoint": "p0-native-0106fd838c608083573ccfd11a171173",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "KATL/2026-10-04": {
+      "state": "PENDING",
+      "station": "KATL",
+      "event": "2026-10-04",
+      "outer_cutoff": "2026-10-04T09:58:57.624Z",
+      "anchor_checkpoint": "p0-native-34f6d6eaa1639ac5397dc0aee2aa72f9",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "ZUUU/2026-10-04": {
+      "state": "PENDING",
+      "station": "ZUUU",
+      "event": "2026-10-04",
+      "outer_cutoff": "2026-10-03T22:08:13.581Z",
+      "anchor_checkpoint": "p0-native-5cee40b8b324be8bcd1a7abe00186c52",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT"
+    },
+    "EGLC/2026-10-05": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "EGLC",
+      "event": "2026-10-05",
+      "outer_cutoff": "2026-10-05T06:36:53.207Z",
+      "anchor_checkpoint": "p0-native-0636453c34d9498ea3e24798640c3e51",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/EGLC/2026-10-05/summary.json",
+      "summary_sha": "d5153a6f3a494590467f6f3057cfc62568d33f61e0125dc414c7a48126501e33",
+      "objects": 407,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 183,
+        "OOS_REJECTED": 1
+      },
+      "reused_existing": true
+    },
+    "KATL/2026-10-05": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "KATL",
+      "event": "2026-10-05",
+      "outer_cutoff": "2026-10-05T10:08:08.103Z",
+      "anchor_checkpoint": "p0-native-456e86d7e5849a5f7b96f7625a3925ad",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/KATL/2026-10-05/summary.json",
+      "summary_sha": "aa641b11a18067dc5a13a4d3f051c3721641f54f73b90c9c990a397c55bc8ead",
+      "objects": 348,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 125
+      },
+      "reused_existing": true
+    },
+    "ZUUU/2026-10-05": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "ZUUU",
+      "event": "2026-10-05",
+      "outer_cutoff": "2026-10-04T16:25:26.679Z",
+      "anchor_checkpoint": "p0-native-ec970370594dba4c9ad386070a715c07",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/ZUUU/2026-10-05/summary.json",
+      "summary_sha": "f5833530599e37bc9240c68eef2800c746561a507743b222283f78bf30d2d6fe",
+      "objects": 403,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 190
+      },
+      "reused_existing": true
+    },
+    "EGLC/2026-10-06": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "EGLC",
+      "event": "2026-10-06",
+      "outer_cutoff": "2026-10-06T06:37:59.695Z",
+      "anchor_checkpoint": "p0-native-801c9a04f38452346cf706f7b02e45d4",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/EGLC/2026-10-06/summary.json",
+      "summary_sha": "ae9237c2e9a4c3e9befa17c5b58349a22afe914d5d2719ffb027707d2b691349",
+      "objects": 465,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 230,
+        "OOS_REJECTED": 2
+      },
+      "seconds": 80.3
+    },
+    "KATL/2026-10-06": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "KATL",
+      "event": "2026-10-06",
+      "outer_cutoff": "2026-10-06T10:38:36.633Z",
+      "anchor_checkpoint": "p0-native-5ee330930e688b5b72dc54d2a01ffb98",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/KATL/2026-10-06/summary.json",
+      "summary_sha": "b37e399a8b9f088c5b6cb6885617071d8d1fc11a1063307ab6a2e7d048498390",
+      "objects": 388,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 147
+      },
+      "seconds": 44.43
+    },
+    "ZUUU/2026-10-06": {
+      "state": "COMPONENT_REPORT_BUILT",
+      "station": "ZUUU",
+      "event": "2026-10-06",
+      "outer_cutoff": "2026-10-05T22:10:24.604Z",
+      "anchor_checkpoint": "p0-native-cfbac46bb309698cd028de035a2ba389",
+      "clock_origin": "PREVIOUSLY_AUDITED_ORIGINAL_P0_SOURCE_RECEIPT",
+      "path": "nested_oos/ZUUU/2026-10-06/summary.json",
+      "summary_sha": "8e49fea0a4e879787883923ec3e4c8a9f71b54db0fb5f43b9bd996fd3e3a48b1",
+      "objects": 440,
+      "cross_states": {
+        "PRODUCTION_NO_LIVE_OOS_PASS": 222
+      },
+      "seconds": 76.39
+    }
+  },
+  "source_roots": {
+    "EGLC": "28f8db40a9ce143220d52a4ebc72a1468178ded9f9bb734f7e16c3f0892ac4cc",
+    "KATL": "70e45871f16d92d42a2bbe07201024ea6dbd6cfcd1f755edc730562cad272429",
+    "ZUUU": "1dc08696ad8066bc3adb944568aa4fdc13cb1830d31e3a3fd4f3c5af61a76b69"
+  },
+  "source_code": {
+    "docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py": "4059d86e0da66cebdd8e636f43eddd1ef6dfdf588c599ff01bc85ebc8e41c95b",
+    "docs/research/taf_cloud_strict_replay_20261007/nested_storage.py": "6d9313b1bd6944c58c039638755e496116bf7168c1f237ace0ebe3209af5fd28",
+    "docs/research/taf_cloud_strict_replay_20261007/parent_clock.py": "e7c9db88eaf29df42af20fb35c165f07c5e3dbf7abac6de5e96f0805d37c4d62",
+    "bayes_basket_target/native_ensemble_oos.py": "91793b01e28dd9797a1593a4ac4b5aea7cad4cfa333a13494276cd38ba949d53",
+    "bayes_basket_target/center_width_store.py": "27c8708c88c9ddd96818bff80ad53a11f58e764335f66a6a21b5a2404cff0379"
+  },
+  "complete_component_schedule": false,
+  "production_modified": false,
+  "whole_current_chain_certified": false,
+  "limitations": [
+    "first committed parent per station event-day only",
+    "center/width tables still historical; full causal table refit and downstream reroot pending",
+    "alternative native candidates are not substituted for absent original anchors"
+  ]
+}

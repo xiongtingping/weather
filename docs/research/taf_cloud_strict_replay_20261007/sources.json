@@ -74,6 +74,38 @@
     {
       "path": "cleanup.json",
       "sha256": "5855da0a9fdb77473e3f1018a614453fb03beaa72b36c5b9f55233fb4996f1db"
+    },
+    {
+      "path": "fusion_served_ledger.json",
+      "sha256": "11fca8e1fd0804b1858d80543c9894065434f61602c2384848db151b0e02f10d"
+    },
+    {
+      "path": "fusion_ledger_verification.json",
+      "sha256": "9966f7a675a35c1e1a0666277be18194b6f266ae8fb804df9b4a60dc010008dc"
+    },
+    {
+      "path": "compiler_batch.ledger.json",
+      "sha256": "f7c5cad33dbb297cbbef88c692990c225592167f1c72213d8e453e1ccd7d21fb"
+    },
+    {
+      "path": "fusion_compiler_comparison.json",
+      "sha256": "3a000836ce3a8b5569c65e5923118816f0ff4b07bb97917120b32ba5ea768ec4"
+    },
+    {
+      "path": "nested_compaction.json",
+      "sha256": "f397a1a6231decb7483d0f9f9930be53be2d8e8c1c72492adc9e2b1f1e84bf41"
+    },
+    {
+      "path": "nested_multiday_inventory.json",
+      "sha256": "49b87fd0cd73a8a8175a705f26c5fd2472dfde33190e8fedd6aa53ab2fbf076c"
+    },
+    {
+      "path": "nested_verification.multiday.json",
+      "sha256": "da0c3732eb3652c513398db40347da6545ba7b25228423dc40bfb16e3e082279"
+    },
+    {
+      "path": "compiler_multiday.json",
+      "sha256": "59121d85257a4a43cba3cb65bf74056195137725789398be97b8aaf3bd7188c5"
     }
   ]
 }

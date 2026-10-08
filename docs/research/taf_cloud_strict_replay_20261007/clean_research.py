@@ -3,6 +3,7 @@ import gzip
 import json
 from rebuild import HERE,guard,MAX_BYTES
 from bayes_basket_target.contracts import content_sha256
+from nested_storage import referenced_shared_paths
 
 
 def remove_unreferenced(folder,keep):
@@ -16,12 +17,13 @@ def remove_unreferenced(folder,keep):
 
 
 def main():
-    guard();keep=set()
-    for path in (HERE/'nested_oos').glob('*/2026-10-05/summary.json'):
+    guard();keep=set();shared_keep=set()
+    for path in (HERE/'nested_oos').glob('*/*/summary.json'):
         s=json.loads(path.read_text())
         if s.get('method_version')!='actual_arrival_inner_truth_ladder_v3' or 'report_header' not in s:raise ValueError('cleanup_requires_complete_current_nested_reports')
-        for ref in s['objects']:keep.add((HERE/ref['path']).resolve())
-    result=dict(nested=remove_unreferenced(HERE/'nested_oos',keep));keep=set()
+        for ref in s['objects']:
+            target=HERE/ref['path'];keep.add(target.resolve());shared_keep.update(referenced_shared_paths(target))
+    result=dict(nested=remove_unreferenced(HERE/'nested_oos',keep),nested_shared=remove_unreferenced(HERE/'nested_shared_objects',shared_keep));keep=set()
     for path in (HERE/'p0_refitted_roots').glob('*.jsonl.gz'):
         used=0
         for line in gzip.open(path,'rt'):

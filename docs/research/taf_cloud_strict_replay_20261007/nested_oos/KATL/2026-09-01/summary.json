@@ -1,0 +1,1267 @@
+{
+  "schema": "actual_arrival_nested_oos_probe_v1",
+  "method_version": "actual_arrival_inner_truth_ladder_v3",
+  "decision_clock": "maximum of actual member arrival and actual first target ladder availability",
+  "station": "KATL",
+  "outer_cutoff": "2026-09-01T11:28:14.405Z",
+  "event": "2026-09-01",
+  "anchor_checkpoint": "p0-native-d18c4a0d20e8d7fa686adcbdfdbd1bda",
+  "member_source": {
+    "domains": {
+      "ensemble_system_id": [
+        "DWD_ICON_EPS_SEAMLESS",
+        "DWD_ICON_GLOBAL_EPS",
+        "ECCC_GEM_GLOBAL_ENS",
+        "ECMWF_AIFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "GOOGLE_WEATHERNEXT2_ENS",
+        "METAR_PHYSICAL_PATH_TMAX",
+        "NCEP_HRRR_POINT",
+        "NCEP_NBM_POINT",
+        "NOAA_AIGEFS_025",
+        "NOAA_GEFS_025",
+        "NOAA_GEFS_05",
+        "NOAA_GEFS_SEAMLESS",
+        "UKMO_GLOBAL_ENS"
+      ],
+      "transport_provider_id": [
+        "AWC_METAR_PHYSICAL_PATH",
+        "DWD_OPENDATA_ICON_EPS",
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3",
+        "NOAA_HRRR_PDS_S3",
+        "NOAA_NBM_PDS_S3",
+        "OPEN_METEO"
+      ],
+      "archive_lead_bucket": [
+        "d0",
+        "d1",
+        "d2",
+        "h00_12",
+        "h12_24",
+        "h24_48",
+        "h48_plus"
+      ],
+      "run_cycle": [
+        "00Z",
+        "06Z",
+        "12Z",
+        "18Z",
+        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
+      ],
+      "authority_scope": [
+        "CALIBRATION_TRAIN_ONLY"
+      ],
+      "qc_status": [
+        "ACCEPTED"
+      ]
+    },
+    "rows": 138350,
+    "bytes": 90796285,
+    "sha256": "d4853ceec81b5fd1b2c393b08e05c4ec1ca02ff8eedfa187ad983c5922315beb",
+    "groups": 3556,
+    "invalid": {},
+    "query": "select ensemble_system_id,target_local_date,native_run_init_utc,archive_lead_bucket,run_cycle,extraction_version,transport_provider_id,member_id,raw_tmax_c,archive_query_at_utc,source_object_sha256,content_sha256,qc_status,authority_scope from calibration_native_ensemble_historical_member_run INDEXED BY calibration_native_ensemble_historical_member_run_scope_idx where station_id=? and target_local_date>=? and target_local_date<=? and ensemble_system_id IN (?,?,?,?,?,?) and transport_provider_id<>?"
+  },
+  "input_rejections": {
+    "retrospective_train_only": 333,
+    "missing_asof_market_ladder_train_only": 334
+  },
+  "readiness": [
+    {
+      "ensemble_system_id": "CMA_GRAPES_GLOBAL_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_D2_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EPS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 22,
+      "training_case_count": 14,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 6,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 21,
+      "training_case_count": 13,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 7,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 16,
+      "training_case_count": 8,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 12,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 50,
+      "train_n": 42,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6184627526401972,
+        "nll": 1.1330838169659456,
+        "crps": 0.42188729656620105
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 48,
+      "train_n": 40,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7263935548907748,
+        "nll": 1.5023787032953406,
+        "crps": 0.7177396816676695
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 38,
+      "train_n": 30,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7409639067021451,
+        "nll": 1.6085569258123191,
+        "crps": 0.793472407619639
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 39,
+      "training_case_count": 37,
+      "strict_holdout_case_count": 2,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 6
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 58,
+      "train_n": 50,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5529358963256171,
+        "nll": 1.0293094251980612,
+        "crps": 0.3313454044600861
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 11,
+      "training_case_count": 3,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 17,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 3,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 3,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 5
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 5,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 5,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 3
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 3,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 3,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 5
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 5,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 5,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 3
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6564747488217839,
+        "nll": 1.2345946174725952,
+        "crps": 0.42803918054790563
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 1,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 1,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 7
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 52,
+      "train_n": 44,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7349766813850763,
+        "nll": 1.4045955334745392,
+        "crps": 0.565925778856362
+      }
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "JMA_MSM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METAR_PHYSICAL_PATH_TMAX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH1_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_HRRR_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_NBM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_025",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 53,
+      "train_n": 45,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8055770636372214,
+        "nll": 1.5678269775476128,
+        "crps": 0.6656011548732271
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 18,
+      "training_case_count": 10,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 10,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 18,
+      "training_case_count": 10,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 10,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 19,
+      "training_case_count": 11,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 9,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 8,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.792508773929515,
+        "nll": 1.6495314081996797,
+        "crps": 0.7272078286669162
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 1,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 1,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 7
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 52,
+      "train_n": 44,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7009205252138379,
+        "nll": 1.3476413676643844,
+        "crps": 0.5267637986683591
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_UK_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    }
+  ],
+  "report_header": {
+    "schema": "native_ensemble_strict_forward_oos_v1",
+    "station_id": "KATL",
+    "as_of_utc": "2026-09-01T11:28:14.405Z",
+    "min_train_days": 20,
+    "min_holdout_days": 8,
+    "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "historical_event_date_cutoff": "2026-08-31",
+    "formal_promotion_threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "formal_promotion_min_train_days": 20,
+    "formal_promotion_min_holdout_days": 8,
+    "registered_system_count": 26,
+    "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+    "formal_p0_eligible": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false,
+    "content_sha256": "6c219890e7eb99eb7981644be8952bcd15e45a3c963a442678c6b693d5bcdff3"
+  },
+  "cross_states": {
+    "PRODUCTION_NO_LIVE_OOS_PASS": 16,
+    "OOS_REJECTED": 8
+  },
+  "objects": [
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/c742a225571f5e0e5c64c5c43acc57d3b7eb94f0100b6350968b0e2a244393b0.json.gz",
+      "sha256": "c742a225571f5e0e5c64c5c43acc57d3b7eb94f0100b6350968b0e2a244393b0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/432970c49bfae4d1e042ff94bcfae02ba52f7727f71972b8d5fcff9ddddfa1da.json.gz",
+      "sha256": "432970c49bfae4d1e042ff94bcfae02ba52f7727f71972b8d5fcff9ddddfa1da"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/56427a63896296c540517b3b86a507352e5441ee181ace20428529fffec009ef.json.gz",
+      "sha256": "56427a63896296c540517b3b86a507352e5441ee181ace20428529fffec009ef"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/87ec90898f968f146b05e72ae1b12e56192fcb19c70b00300cdf5b4f8fe15949.json.gz",
+      "sha256": "87ec90898f968f146b05e72ae1b12e56192fcb19c70b00300cdf5b4f8fe15949"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/bc53123ed78e7b5b2075e05b6a9b6e078c5bfbc0b8bb375bdc7d8492e34801a9.json.gz",
+      "sha256": "bc53123ed78e7b5b2075e05b6a9b6e078c5bfbc0b8bb375bdc7d8492e34801a9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/cee711fbe282aa9c5183270ad0dfafa3fb4bf808a73acf5f0e113b2fa47ddf71.json.gz",
+      "sha256": "cee711fbe282aa9c5183270ad0dfafa3fb4bf808a73acf5f0e113b2fa47ddf71"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/4343d7d6831f5c59070e07884d95aac90ee4f113f7b03e4a11606c9f6b404914.json.gz",
+      "sha256": "4343d7d6831f5c59070e07884d95aac90ee4f113f7b03e4a11606c9f6b404914"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/f6a73f4e963eed1fb2c3911668878492cdfb699a00935b8ee82c575f2bcbf0d7.json.gz",
+      "sha256": "f6a73f4e963eed1fb2c3911668878492cdfb699a00935b8ee82c575f2bcbf0d7"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/7a621d59171d992cba547c38ebe945ebde6d05a7f55abba9799cbb63d3f1266c.json.gz",
+      "sha256": "7a621d59171d992cba547c38ebe945ebde6d05a7f55abba9799cbb63d3f1266c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/eb189a702b8ed213ece2bbfc6e778fa4253ac25ca2aadd8c2c3a2b6d04554891.json.gz",
+      "sha256": "eb189a702b8ed213ece2bbfc6e778fa4253ac25ca2aadd8c2c3a2b6d04554891"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/3983fa3962ee9b93c13e3ea7b9f11d3a4a2d67b5a06e0661a4ee602489684f19.json.gz",
+      "sha256": "3983fa3962ee9b93c13e3ea7b9f11d3a4a2d67b5a06e0661a4ee602489684f19"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/9082710419cb0bade3b1a7ae2fda0da2aa88f8b62f100ab03fc601a6a5af5feb.json.gz",
+      "sha256": "9082710419cb0bade3b1a7ae2fda0da2aa88f8b62f100ab03fc601a6a5af5feb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/ef53138ad7df9c5ef73d31640f985ebc8e074d9caddcec0f3c9a7842a3f9f573.json.gz",
+      "sha256": "ef53138ad7df9c5ef73d31640f985ebc8e074d9caddcec0f3c9a7842a3f9f573"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/454c9c0a5ab8666f48b73b16dee6c18180ac6add88ad6606ed0a214152d8348b.json.gz",
+      "sha256": "454c9c0a5ab8666f48b73b16dee6c18180ac6add88ad6606ed0a214152d8348b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/096051b1bcc316cc83f1474bd0d2204a155e2d8a9ab79da0d3f03f2d48c19d47.json.gz",
+      "sha256": "096051b1bcc316cc83f1474bd0d2204a155e2d8a9ab79da0d3f03f2d48c19d47"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/283757f6347281313d8fc1f87ec8ff7bd6015f9532801b50f89734710871fc62.json.gz",
+      "sha256": "283757f6347281313d8fc1f87ec8ff7bd6015f9532801b50f89734710871fc62"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/afcec000ab62dae9bd259c16bba03e6f73f691858a92e70040d4ba720552ebe2.json.gz",
+      "sha256": "afcec000ab62dae9bd259c16bba03e6f73f691858a92e70040d4ba720552ebe2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/35d2fe3668463c8a30baafb7445bcfe240654a97b725eac0283855701408eec2.json.gz",
+      "sha256": "35d2fe3668463c8a30baafb7445bcfe240654a97b725eac0283855701408eec2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/bbe5242a1a1e57792f16f72c6ef62b8bfb8ca9df00955aa095d510898a7e4709.json.gz",
+      "sha256": "bbe5242a1a1e57792f16f72c6ef62b8bfb8ca9df00955aa095d510898a7e4709"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/6b7967a305bbe009129a97e687577a0a6aa6fdb00ce58976c8948e58ac1a37a7.json.gz",
+      "sha256": "6b7967a305bbe009129a97e687577a0a6aa6fdb00ce58976c8948e58ac1a37a7"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/81615519ff9edff4cad144d42b520d10061436640fb058b2f972372d91e3fd8e.json.gz",
+      "sha256": "81615519ff9edff4cad144d42b520d10061436640fb058b2f972372d91e3fd8e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/0029d9aa29719371d4e768c2597e51f834a6ce821e596d4bb5053caf506fb066.json.gz",
+      "sha256": "0029d9aa29719371d4e768c2597e51f834a6ce821e596d4bb5053caf506fb066"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/b07524cf522a1c775632a115788cc5ddfb0e8a773a77b9028f7c8bda19014713.json.gz",
+      "sha256": "b07524cf522a1c775632a115788cc5ddfb0e8a773a77b9028f7c8bda19014713"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/eeda4ed473f35249189c2df6cd37e1e94c64e4df9badefb27d3f651293b22c53.json.gz",
+      "sha256": "eeda4ed473f35249189c2df6cd37e1e94c64e4df9badefb27d3f651293b22c53"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/1317caa291c55d976e68acd2acb65f3f74adde0542b77607a5d6cd607b819a8e.json.gz",
+      "sha256": "1317caa291c55d976e68acd2acb65f3f74adde0542b77607a5d6cd607b819a8e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/8b0a3a5b2a9b96e0d47f7ff4ecce471bc5455583682a4933004d5195395c79b0.json.gz",
+      "sha256": "8b0a3a5b2a9b96e0d47f7ff4ecce471bc5455583682a4933004d5195395c79b0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KATL/2026-09-01/6f6fd8ec11c352abd9c3fb608024552f3184141b1afe56beb21977b3ebe1bb00.json.gz",
+      "sha256": "6f6fd8ec11c352abd9c3fb608024552f3184141b1afe56beb21977b3ebe1bb00"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/c3ecf28480b9ce69fd46a406f451a80854b9da101929e3061a10c060043ea8c6.json.gz",
+      "sha256": "c3ecf28480b9ce69fd46a406f451a80854b9da101929e3061a10c060043ea8c6"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/36902a458ccef0f1ebdae84f5b58806ca8383a47032e17300c5d431aebe04519.json.gz",
+      "sha256": "36902a458ccef0f1ebdae84f5b58806ca8383a47032e17300c5d431aebe04519"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/6d5c901938eb9ae88f19fac54fdcb0f96397a54173b73b61452821ef916040e0.json.gz",
+      "sha256": "6d5c901938eb9ae88f19fac54fdcb0f96397a54173b73b61452821ef916040e0"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/c659182f2f410b2ba4b9fd5a1ad64cad5cf3f5d589f09cc3593a1d4f4adbf6d5.json.gz",
+      "sha256": "c659182f2f410b2ba4b9fd5a1ad64cad5cf3f5d589f09cc3593a1d4f4adbf6d5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/1a4648bbf519b3cd7f54d338e4151a04fb44bcc6241ed369996c93c60c9b2641.json.gz",
+      "sha256": "1a4648bbf519b3cd7f54d338e4151a04fb44bcc6241ed369996c93c60c9b2641"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/0f86156e37013775192bef716e6eba47d46e060f3239b708c91899aef978d300.json.gz",
+      "sha256": "0f86156e37013775192bef716e6eba47d46e060f3239b708c91899aef978d300"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/2d49f16d6d531684b0d740937ee1a0e58971ae8914530f709807d57e4f143e35.json.gz",
+      "sha256": "2d49f16d6d531684b0d740937ee1a0e58971ae8914530f709807d57e4f143e35"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/5bf9a1057eeef7cf23878c8e223976a362a852881b9c7a3067a620bb3949eb41.json.gz",
+      "sha256": "5bf9a1057eeef7cf23878c8e223976a362a852881b9c7a3067a620bb3949eb41"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/9d15b0b1224e497aea1424207e9c4529418cbbc8594867b3425c3e3791a8faf2.json.gz",
+      "sha256": "9d15b0b1224e497aea1424207e9c4529418cbbc8594867b3425c3e3791a8faf2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/3e4f0d9e53846c0b90cf434e64b72d7f765078ba012fa9c34c8be4e0c66cfa05.json.gz",
+      "sha256": "3e4f0d9e53846c0b90cf434e64b72d7f765078ba012fa9c34c8be4e0c66cfa05"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/890d188b65303c36dbd24f85e4757353b76cbc4c1c351b7e778d1367ea92b813.json.gz",
+      "sha256": "890d188b65303c36dbd24f85e4757353b76cbc4c1c351b7e778d1367ea92b813"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/c8d27a58acc51fb8b1bd4460a505cbb127f0c8fa5d7be69f5e464a5163f96dc3.json.gz",
+      "sha256": "c8d27a58acc51fb8b1bd4460a505cbb127f0c8fa5d7be69f5e464a5163f96dc3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/485c2615f53d4f664dfb5cb97b23f57595d617b67c0fecf90e2021446a5a9395.json.gz",
+      "sha256": "485c2615f53d4f664dfb5cb97b23f57595d617b67c0fecf90e2021446a5a9395"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/4275c1ac292ba559d3a8cee079e04aba957d8eeaee0db8b01c1c9fe3a310fe94.json.gz",
+      "sha256": "4275c1ac292ba559d3a8cee079e04aba957d8eeaee0db8b01c1c9fe3a310fe94"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/6de499cc89d20032cee4e4581197b368d448bf960422958b74d00c5a2f0d7e46.json.gz",
+      "sha256": "6de499cc89d20032cee4e4581197b368d448bf960422958b74d00c5a2f0d7e46"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/6dafc12155910e9952f3421aa703d584b3c561dad849414340c11981ddfa2ea2.json.gz",
+      "sha256": "6dafc12155910e9952f3421aa703d584b3c561dad849414340c11981ddfa2ea2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/eb02708349507176a64ef6c575c4b30aafbbf4804451d5d10ca4865b1d12e917.json.gz",
+      "sha256": "eb02708349507176a64ef6c575c4b30aafbbf4804451d5d10ca4865b1d12e917"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KATL/2026-09-01/8977de4bd937d80e6f407269542041101f2f84e0931e17ce67964623326c5c9c.json.gz",
+      "sha256": "8977de4bd937d80e6f407269542041101f2f84e0931e17ce67964623326c5c9c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/fbe3bb2689cfb3009a25186a51c269fe31c87952d47f839875575aefd5d8ea7b.json.gz",
+      "sha256": "fbe3bb2689cfb3009a25186a51c269fe31c87952d47f839875575aefd5d8ea7b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/efaba65fd8777cfdc84407d9bc499e514952d90147641b57cfba29951c7bed90.json.gz",
+      "sha256": "efaba65fd8777cfdc84407d9bc499e514952d90147641b57cfba29951c7bed90"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/a0daab799f43a211b12e44da3a662dd2b131a1211bc98fc74393e648758cab20.json.gz",
+      "sha256": "a0daab799f43a211b12e44da3a662dd2b131a1211bc98fc74393e648758cab20"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/b3bde1922020290de4f8715b2c7aab0eacfc2955483ce8bac17c37488e8b3c57.json.gz",
+      "sha256": "b3bde1922020290de4f8715b2c7aab0eacfc2955483ce8bac17c37488e8b3c57"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/30a5a95780a7d257089e302909014322331e49674727302d24c1fd417b882992.json.gz",
+      "sha256": "30a5a95780a7d257089e302909014322331e49674727302d24c1fd417b882992"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/8fe7e6d1f5758db8fb03d27520aa5b8f2c4f36bd244973a06ee67cacbcf5c978.json.gz",
+      "sha256": "8fe7e6d1f5758db8fb03d27520aa5b8f2c4f36bd244973a06ee67cacbcf5c978"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/c4ee2e9c4f7b4ed1cee274fc0771eafbde641a52b8b99cb44849804595e3c345.json.gz",
+      "sha256": "c4ee2e9c4f7b4ed1cee274fc0771eafbde641a52b8b99cb44849804595e3c345"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/ebfa22dc2cb98aba69f9f1ad45f9f5ac432061d78c7600e1fa93e92ac6950648.json.gz",
+      "sha256": "ebfa22dc2cb98aba69f9f1ad45f9f5ac432061d78c7600e1fa93e92ac6950648"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/d9ea0a2ab9a5d59401b1b63043b3f53508c116c5675be63add5884678a260994.json.gz",
+      "sha256": "d9ea0a2ab9a5d59401b1b63043b3f53508c116c5675be63add5884678a260994"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/1325cb8c469db7126a1d02bcea90fad108cc4b7be9f2c92c16d27d5911ff4f36.json.gz",
+      "sha256": "1325cb8c469db7126a1d02bcea90fad108cc4b7be9f2c92c16d27d5911ff4f36"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/9323aab5552e6b03e8a1d42a6cc811c7f3db1b25400cc6361d6e9e7bc9a4a04b.json.gz",
+      "sha256": "9323aab5552e6b03e8a1d42a6cc811c7f3db1b25400cc6361d6e9e7bc9a4a04b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/1795da385433764420b154236aafd3ad52e090c8e465517d25db1c9d68ae855f.json.gz",
+      "sha256": "1795da385433764420b154236aafd3ad52e090c8e465517d25db1c9d68ae855f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/ea63d9edd7afbdb0997935fcc792edb29626d8cf100111addafcdeedc7ec2ab5.json.gz",
+      "sha256": "ea63d9edd7afbdb0997935fcc792edb29626d8cf100111addafcdeedc7ec2ab5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/14cb012cc8ec6c347e9f8fdda54f8a4da8999735c81ddb8addcddfd681f35c60.json.gz",
+      "sha256": "14cb012cc8ec6c347e9f8fdda54f8a4da8999735c81ddb8addcddfd681f35c60"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/82038b043312b7063ef04f9f32cb2b3aa185713754104b5420cd6633244c23af.json.gz",
+      "sha256": "82038b043312b7063ef04f9f32cb2b3aa185713754104b5420cd6633244c23af"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/a5127a8213cf8e306b891c083cf83f680771bf09f0bd9a4ed177eed33cc20d51.json.gz",
+      "sha256": "a5127a8213cf8e306b891c083cf83f680771bf09f0bd9a4ed177eed33cc20d51"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/a9a0fe1a2599ccae24efc6a29ca8b5d0793866da5de199dcffe253d789fe679b.json.gz",
+      "sha256": "a9a0fe1a2599ccae24efc6a29ca8b5d0793866da5de199dcffe253d789fe679b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/f83fff5b8dfb83496fcac8f5df119f45c45757ea7e80d15c5ab06b7ad44824be.json.gz",
+      "sha256": "f83fff5b8dfb83496fcac8f5df119f45c45757ea7e80d15c5ab06b7ad44824be"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/5d47260624a1aa2fb3c5bc1129cd4ca36a6cffca49c89eb4cce2cdef75b9e103.json.gz",
+      "sha256": "5d47260624a1aa2fb3c5bc1129cd4ca36a6cffca49c89eb4cce2cdef75b9e103"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/f712cd68684fab36835ded0d0ed68d60e35c5f6891e434c0d190923b82cd5ddd.json.gz",
+      "sha256": "f712cd68684fab36835ded0d0ed68d60e35c5f6891e434c0d190923b82cd5ddd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/19dee986a3a6cc4dd3d6060d865623152f74a04d0cb443b523bfdbea3871fdea.json.gz",
+      "sha256": "19dee986a3a6cc4dd3d6060d865623152f74a04d0cb443b523bfdbea3871fdea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/e88d0fbe9d71c1bf0243358f6269af7d8690ed21908aaf85783226a5b4da59b8.json.gz",
+      "sha256": "e88d0fbe9d71c1bf0243358f6269af7d8690ed21908aaf85783226a5b4da59b8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/7de590871deb9a2cb4f3b89f3038bc5e99d9e45556e48debbda2c079411d1835.json.gz",
+      "sha256": "7de590871deb9a2cb4f3b89f3038bc5e99d9e45556e48debbda2c079411d1835"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KATL/2026-09-01/b866797eca2c981d7bae13b0193418eaf95a594ad27958171dd47234df256a87.json.gz",
+      "sha256": "b866797eca2c981d7bae13b0193418eaf95a594ad27958171dd47234df256a87"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/fe3d6b99da9c4d64592cbfbddf938fb5248531351d2912122cfb17ca8fe5c727.json.gz",
+      "sha256": "fe3d6b99da9c4d64592cbfbddf938fb5248531351d2912122cfb17ca8fe5c727"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/5de1097a4d46fda9128b6e56e43c62a04dd4c8a9fdbd27ce80716535396728e4.json.gz",
+      "sha256": "5de1097a4d46fda9128b6e56e43c62a04dd4c8a9fdbd27ce80716535396728e4"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/819056e13d405fe292afe81ccc7753b860b2dcdd3248b415b034ee4e57b3ffe3.json.gz",
+      "sha256": "819056e13d405fe292afe81ccc7753b860b2dcdd3248b415b034ee4e57b3ffe3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/021ddf9b4678af2a3b4ce3d86c60a38f978b7501a1736b56f0e8ecaf311bfde8.json.gz",
+      "sha256": "021ddf9b4678af2a3b4ce3d86c60a38f978b7501a1736b56f0e8ecaf311bfde8"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/f8b8b72a5dfea36aa978fbc409af9d49b8097a925270b757e0464c06ea3dc6bc.json.gz",
+      "sha256": "f8b8b72a5dfea36aa978fbc409af9d49b8097a925270b757e0464c06ea3dc6bc"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/aaeb2acf4796617c4eaf167e80555be6986cefef2a0b24a78ccb3680a8aea497.json.gz",
+      "sha256": "aaeb2acf4796617c4eaf167e80555be6986cefef2a0b24a78ccb3680a8aea497"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/1dc69fd44a0068807340b9d6da8382c3c5a08cdeb80d52fb75e298435d69022c.json.gz",
+      "sha256": "1dc69fd44a0068807340b9d6da8382c3c5a08cdeb80d52fb75e298435d69022c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/da25a681849e8a06701a2a72756bb65e8dd5dd71ba96a24a0a1544bac0a4f693.json.gz",
+      "sha256": "da25a681849e8a06701a2a72756bb65e8dd5dd71ba96a24a0a1544bac0a4f693"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/3039618c19bd62a86ac93e662620e848caad5d05631d89ce4429a2d3c13ff72e.json.gz",
+      "sha256": "3039618c19bd62a86ac93e662620e848caad5d05631d89ce4429a2d3c13ff72e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/fbf52c155c0f8757fd8b9ee24bb53d32afecc8af61b6909a8704aebd77a37108.json.gz",
+      "sha256": "fbf52c155c0f8757fd8b9ee24bb53d32afecc8af61b6909a8704aebd77a37108"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/46a50a17df8c0cb10d8bc086d8f305ae34a50fc43daac04b3a91fd2e2fbd6c36.json.gz",
+      "sha256": "46a50a17df8c0cb10d8bc086d8f305ae34a50fc43daac04b3a91fd2e2fbd6c36"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/580cdd8985e86895ba6fb22e45c40d5b4684c140350d95a7c5dd125dceae350f.json.gz",
+      "sha256": "580cdd8985e86895ba6fb22e45c40d5b4684c140350d95a7c5dd125dceae350f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/68dcc270efc65b3c48bb14271f613feda51c50b1a0f77a920e1d63a87931a3d4.json.gz",
+      "sha256": "68dcc270efc65b3c48bb14271f613feda51c50b1a0f77a920e1d63a87931a3d4"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/829bcd93ab4ef65cb9ca08842e35c8b67268a6a30b467d8567056916db9b1be7.json.gz",
+      "sha256": "829bcd93ab4ef65cb9ca08842e35c8b67268a6a30b467d8567056916db9b1be7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/1c6ed29dfacb94f00390e589ed6cd44bfd62bcbf55c2b423a72c0d0f7d82f561.json.gz",
+      "sha256": "1c6ed29dfacb94f00390e589ed6cd44bfd62bcbf55c2b423a72c0d0f7d82f561"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/e94bafd2f92474001c6316a28dc83ad76fe591f5153766cb03541a48c7e54902.json.gz",
+      "sha256": "e94bafd2f92474001c6316a28dc83ad76fe591f5153766cb03541a48c7e54902"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/a6e61d7f9a8c9501a2afa974736bcfff8b35e2019760ab717da4ee03f7d04462.json.gz",
+      "sha256": "a6e61d7f9a8c9501a2afa974736bcfff8b35e2019760ab717da4ee03f7d04462"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/b3a6212914d93b397b22281ebb8e77230d203077e1e8a42ece73c4832e37487e.json.gz",
+      "sha256": "b3a6212914d93b397b22281ebb8e77230d203077e1e8a42ece73c4832e37487e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/22326244ab5fc45d77606008fa30e5e16747477f8444a0a45edad838b97a13b6.json.gz",
+      "sha256": "22326244ab5fc45d77606008fa30e5e16747477f8444a0a45edad838b97a13b6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/fb7677feb6e46759c946ec0fd5d708ef745dc2001283e31e699b055373cb4100.json.gz",
+      "sha256": "fb7677feb6e46759c946ec0fd5d708ef745dc2001283e31e699b055373cb4100"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/ec8e611b91abffbefc547c1cb4784756543c036179f518b2b69ac9eda7524abf.json.gz",
+      "sha256": "ec8e611b91abffbefc547c1cb4784756543c036179f518b2b69ac9eda7524abf"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/378d922e1c1e774acefe490b9e451f8d3dad9519827c18e4228793280f143da1.json.gz",
+      "sha256": "378d922e1c1e774acefe490b9e451f8d3dad9519827c18e4228793280f143da1"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KATL/2026-09-01/d345f87f42677217344bc7c5cab604945da00ef6bc59e933b67b5a6dc10d466b.json.gz",
+      "sha256": "d345f87f42677217344bc7c5cab604945da00ef6bc59e933b67b5a6dc10d466b"
+    }
+  ],
+  "production_modified": false,
+  "current_chain_certified": false,
+  "limitations": [
+    "historical center/width table fits still require current-method reconstruction",
+    "fusion weights still require current-method historical refit",
+    "candidate reports have not been activated or used as replacement parents"
+  ],
+  "original_parent_clock_receipt": {
+    "station": "KATL",
+    "event": "2026-09-01",
+    "anchor_checkpoint": "p0-native-d18c4a0d20e8d7fa686adcbdfdbd1bda",
+    "outer_cutoff": "2026-09-01T11:28:14.405Z",
+    "parent_decision_at": "2026-09-01T11:28:14.405Z",
+    "original_envelope_content_sha": "a269f5c235b84ec244ed327888e4f44874929577e6650c12e3a2c443ca8020f7",
+    "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+  }
+}

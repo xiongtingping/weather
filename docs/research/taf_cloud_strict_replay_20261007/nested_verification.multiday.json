@@ -1,0 +1,185 @@
+{
+  "schema": "fleet_nested_objects_and_inner_truth_audit_v1",
+  "passed": true,
+  "counts": {
+    "COMPONENT_AUDIT_PASS": 9,
+    "original_parent_clocks_verified": 9,
+    "objects": 2041,
+    "fit_objects": 609,
+    "fit_rows": 30089,
+    "system_objects": 235,
+    "cross_objects": 817,
+    "ladder_objects": 380,
+    "system_holdout_rows": 1880,
+    "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 801,
+    "cross_holdout_rows": 6536,
+    "cross_state:OOS_REJECTED": 16
+  },
+  "stations": {
+    "EGLC/2026-09-01": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 92,
+        "fit_objects": 27,
+        "fit_rows": 1224,
+        "system_objects": 18,
+        "cross_objects": 24,
+        "ladder_objects": 23,
+        "system_holdout_rows": 144,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 24,
+        "cross_holdout_rows": 192
+      },
+      "summary_sha": "44f81f00f6bcf1315acd6151e53d9ec851cd05f87d940eda916a3bc65df46c38",
+      "input_uncompressed_bytes": 5595239
+    },
+    "EGLC/2026-09-21": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 158,
+        "fit_objects": 47,
+        "fit_rows": 2177,
+        "system_objects": 16,
+        "cross_objects": 51,
+        "ladder_objects": 44,
+        "system_holdout_rows": 128,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 51,
+        "cross_holdout_rows": 408
+      },
+      "summary_sha": "36d0bfa1dfcad25e916c64568fa57f536b254ae5707f6f58d036b0e4091615f6",
+      "input_uncompressed_bytes": 11421930
+    },
+    "EGLC/2026-10-06": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 465,
+        "fit_objects": 129,
+        "fit_rows": 6710,
+        "system_objects": 45,
+        "cross_objects": 232,
+        "ladder_objects": 59,
+        "system_holdout_rows": 360,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 230,
+        "cross_holdout_rows": 1856,
+        "cross_state:OOS_REJECTED": 2
+      },
+      "summary_sha": "ae9237c2e9a4c3e9befa17c5b58349a22afe914d5d2719ffb027707d2b691349",
+      "input_uncompressed_bytes": 61085969
+    },
+    "KATL/2026-09-01": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 92,
+        "fit_objects": 27,
+        "fit_rows": 1198,
+        "system_objects": 18,
+        "cross_objects": 24,
+        "ladder_objects": 23,
+        "system_holdout_rows": 144,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 16,
+        "cross_holdout_rows": 192,
+        "cross_state:OOS_REJECTED": 8
+      },
+      "summary_sha": "7e5e9c2d3733fe6136d975339016f800c275912e71f449beb73b553bc88a95d6",
+      "input_uncompressed_bytes": 5672169
+    },
+    "KATL/2026-09-21": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 157,
+        "fit_objects": 51,
+        "fit_rows": 2212,
+        "system_objects": 17,
+        "cross_objects": 46,
+        "ladder_objects": 43,
+        "system_holdout_rows": 136,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 44,
+        "cross_holdout_rows": 368,
+        "cross_state:OOS_REJECTED": 2
+      },
+      "summary_sha": "dc6a50583df494da357c06f34e2249814e994d96fe1bdf194e923ca9a29c1ffd",
+      "input_uncompressed_bytes": 10842527
+    },
+    "KATL/2026-10-06": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 388,
+        "fit_objects": 136,
+        "fit_rows": 7056,
+        "system_objects": 47,
+        "cross_objects": 147,
+        "ladder_objects": 58,
+        "system_holdout_rows": 376,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 147,
+        "cross_holdout_rows": 1176
+      },
+      "summary_sha": "b37e399a8b9f088c5b6cb6885617071d8d1fc11a1063307ab6a2e7d048498390",
+      "input_uncompressed_bytes": 41017882
+    },
+    "ZUUU/2026-09-01": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 96,
+        "fit_objects": 27,
+        "fit_rows": 1236,
+        "system_objects": 18,
+        "cross_objects": 26,
+        "ladder_objects": 25,
+        "system_holdout_rows": 144,
+        "cross_state:OOS_REJECTED": 4,
+        "cross_holdout_rows": 208,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 22
+      },
+      "summary_sha": "16dc8ddcf7ea8c88378fb375baccae2a1c4d6f917451ba28f9c25b8716a15aec",
+      "input_uncompressed_bytes": 5927557
+    },
+    "ZUUU/2026-09-21": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 153,
+        "fit_objects": 48,
+        "fit_rows": 2170,
+        "system_objects": 15,
+        "cross_objects": 45,
+        "ladder_objects": 45,
+        "system_holdout_rows": 120,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 45,
+        "cross_holdout_rows": 360
+      },
+      "summary_sha": "b45395168f3c5cbfc93c9fe23acbd06595741fb730876dbd75d9e826942c719c",
+      "input_uncompressed_bytes": 10157841
+    },
+    "ZUUU/2026-10-06": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "original_parent_clocks_verified": 1,
+        "objects": 440,
+        "fit_objects": 117,
+        "fit_rows": 6106,
+        "system_objects": 41,
+        "cross_objects": 222,
+        "ladder_objects": 60,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 222,
+        "cross_holdout_rows": 1776
+      },
+      "summary_sha": "8e49fea0a4e879787883923ec3e4c8a9f71b54db0fb5f43b9bd996fd3e3a48b1",
+      "input_uncompressed_bytes": 56848666
+    }
+  },
+  "production_modified": false,
+  "whole_current_chain_certified": false,
+  "scope": "all referenced hashes, inner fit truth revisions/clocks, current parameter bindings, real geometry availability and holdout dates",
+  "event_days": [
+    "2026-09-01",
+    "2026-09-21",
+    "2026-10-06"
+  ]
+}

@@ -3,27 +3,35 @@ import collections
 import gzip
 import json
 import math
+import argparse
 from rebuild import HERE,ROOT,old,fetch,guard,utc,MAX_BYTES
 from upstream import day_clock,truth_at
 from recompile_nested import read_report
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL
+from nested_storage import read_object
+from parent_clock import original_parent_clock
 
 
 def main():
-    guard();c=old.connect(ROOT/'data/bayes_basket_target_ssot.db');stations=sorted(json.loads((HERE/'upstream.json').read_text())['stations']);counts=collections.Counter();records={}
-    for station in stations:
-        path=HERE/'nested_oos'/station/'2026-10-05'/'summary.json';s=json.loads(path.read_text());sc=collections.Counter()
+    ap=argparse.ArgumentParser();ap.add_argument('--stations',nargs='*');ap.add_argument('--days',nargs='*');args=ap.parse_args()
+    guard();c=old.connect(ROOT/'data/bayes_basket_target_ssot.db');stations=sorted(args.stations or json.loads((HERE/'upstream.json').read_text())['stations']);days=sorted(args.days or ['2026-10-05']);counts=collections.Counter();records={}
+    for station,day in [(station,day) for station in stations for day in days]:
+        key=station if days==['2026-10-05'] else station+'/'+day
+        path=HERE/'nested_oos'/station/day/'summary.json';sc=collections.Counter()
+        if not path.exists():records[key]=dict(state='PENDING_REPORT');counts['PENDING_REPORT']+=1;continue
+        s=json.loads(path.read_text())
         if s.get('method_version')!='actual_arrival_inner_truth_ladder_v3' or 'report_header' not in s:
-            records[station]=dict(state='PENDING_REPORT');counts['PENDING_REPORT']+=1;continue
-        summary,report=read_report(station);tz=fetch(c,'select settlement_timezone from calibration_station_market_timezone_binding where station_id=?',(station,)).fetchone()[0];outer=utc(s['outer_cutoff']);truths=collections.defaultdict(list);used=0;param_shas=set();system_objects=[];ladders={}
+            records[key]=dict(state='PENDING_REPORT');counts['PENDING_REPORT']+=1;continue
+        summary,report=read_report(station,day);tz=fetch(c,'select settlement_timezone from calibration_station_market_timezone_binding where station_id=?',(station,)).fetchone()[0];outer=utc(s['outer_cutoff']);truths=collections.defaultdict(list);used=0;param_shas=set();system_objects=[];ladders={}
+        if s.get('original_parent_clock_receipt'):
+            clock=original_parent_clock(c,station,day,s['anchor_checkpoint'])
+            if clock!=s['original_parent_clock_receipt'] or utc(clock['outer_cutoff'])!=outer:raise ValueError('nested_original_parent_clock_proof_failed')
+            sc['original_parent_clocks_verified']+=1
         for r in fetch(c,'select * from calibration_station_daily_high_truth where station_id=? and source_lane IN '+FORMAL_TRUTH_LANES_SQL,(station,)):truths[r['local_date']].append(dict(r))
         for ref in s['objects']:
-            with gzip.open(HERE/ref['path'],'rb') as f:body=f.read(2*1024**2+1)
-            used+=len(body)
-            if len(body)>2*1024**2 or used>MAX_BYTES:raise RuntimeError('nested_verify_station_input_limit')
-            obj=json.loads(body)
-            if content_sha256(obj)!=ref['sha256']:raise ValueError('nested_ref_identity_failed')
+            obj,size=read_object(HERE/ref['path'],ref['sha256']);used+=size
+            if used>MAX_BYTES:raise RuntimeError('nested_verify_station_input_limit')
             sc['objects']+=1;sc[ref['kind']+'_objects']+=1
             if ref['kind']=='fit':
                 at=utc(obj['cutoff']);rows=obj['train_manifest']
@@ -58,9 +66,9 @@ def main():
             for p in cross['predictions']:
                 if p['trained_through_event_date']>=p['event_date'] or p['event_date']>=s['event'] or utc(p['decision_at_utc'])>=day_clock(p['event_date'],tz,True) or set(p['probability'])!=ladders.get(p['event_date']):raise ValueError('nested_cross_clock_or_geometry_failed')
                 sc['cross_holdout_rows']+=1
-        records[station]=dict(state='COMPONENT_AUDIT_PASS',counts=dict(sc),summary_sha=old.sha_file(path),input_uncompressed_bytes=used);counts['COMPONENT_AUDIT_PASS']+=1;counts.update(sc);print(station,json.dumps(sc),flush=True);guard()
-    out=dict(schema='fleet_nested_objects_and_inner_truth_audit_v1',passed=counts['COMPONENT_AUDIT_PASS']==len(stations),counts=dict(counts),stations=records,production_modified=False,whole_current_chain_certified=False,scope='all referenced hashes, inner fit truth revisions/clocks, current parameter bindings, real geometry availability and holdout dates')
-    (HERE/'nested_verification.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+        records[key]=dict(state='COMPONENT_AUDIT_PASS',counts=dict(sc),summary_sha=old.sha_file(path),input_uncompressed_bytes=used);counts['COMPONENT_AUDIT_PASS']+=1;counts.update(sc);print(key,json.dumps(sc),flush=True);guard()
+    out=dict(schema='fleet_nested_objects_and_inner_truth_audit_v1',passed=counts['COMPONENT_AUDIT_PASS']==len(stations)*len(days),counts=dict(counts),stations=records,production_modified=False,whole_current_chain_certified=False,scope='all referenced hashes, inner fit truth revisions/clocks, current parameter bindings, real geometry availability and holdout dates',event_days=days)
+    (HERE/('nested_verification.multiday.json' if args.days or args.stations else 'nested_verification.json')).write_text(json.dumps(out,ensure_ascii=False,indent=2))
 
 
 if __name__=='__main__':main()

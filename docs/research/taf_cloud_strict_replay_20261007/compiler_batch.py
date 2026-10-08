@@ -9,7 +9,7 @@ from rebuild import HERE,guard,old
 
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('--fusion-refit',action='store_true');args=ap.parse_args();suffix='.fusion' if args.fusion_refit else '';guard();stations=sorted(json.loads((HERE/'upstream.json').read_text())['stations']);records={};profile=collections.Counter()
+    ap=argparse.ArgumentParser();group=ap.add_mutually_exclusive_group();group.add_argument('--fusion-refit',action='store_true');group.add_argument('--fusion-ledger',action='store_true');args=ap.parse_args();suffix='.ledger' if args.fusion_ledger else '.fusion' if args.fusion_refit else '';guard();stations=sorted(json.loads((HERE/'upstream.json').read_text())['stations']);records={};profile=collections.Counter()
     for station in stations:
         guard();summary=json.loads((HERE/'nested_oos'/station/'2026-10-05'/'summary.json').read_text());out=HERE/'nested_compiler_probes'/(station+suffix+'.json')
         if summary.get('method_version')!='actual_arrival_inner_truth_ladder_v3' or 'report_header' not in summary:
@@ -19,7 +19,7 @@ def main():
         else:
             start=time.monotonic()
             try:
-                r=subprocess.run([sys.executable,str(HERE/'recompile_nested.py'),'--station',station]+(['--fusion-refit'] if args.fusion_refit else []),capture_output=True,text=True,timeout=150)
+                r=subprocess.run([sys.executable,str(HERE/'recompile_nested.py'),'--station',station]+(['--fusion-ledger'] if args.fusion_ledger else ['--fusion-refit'] if args.fusion_refit else []),capture_output=True,text=True,timeout=150)
                 if len((r.stdout+r.stderr).encode())>2*1024**2:raise RuntimeError('compiler_batch_log_limit')
                 if r.returncode:record=dict(state='PROBE_PROCESS_REFUSED',reason=(r.stdout+r.stderr)[-2000:])
                 else:
@@ -28,7 +28,7 @@ def main():
             record['seconds']=round(time.monotonic()-start,2)
         if out.exists() and record['state'] in ('OFFLINE_NESTED_CERTIFICATE_P0_COMPILED','REFUSED'):record['output_sha']=old.sha_file(out)
         records[station]=record;profile[record['state']]+=1;print(station,json.dumps(record),flush=True)
-        (HERE/('compiler_batch'+suffix+'.json')).write_text(json.dumps(dict(schema='fleet_isolated_nested_certificate_compiler_v1',counts=dict(profile),stations=records,production_modified=False,whole_current_chain_certified=False,fusion_refit=bool(args.fusion_refit)),ensure_ascii=False,indent=2))
+        (HERE/('compiler_batch'+suffix+'.json')).write_text(json.dumps(dict(schema='fleet_isolated_nested_certificate_compiler_v1',counts=dict(profile),stations=records,production_modified=False,whole_current_chain_certified=False,fusion_refit=bool(args.fusion_refit),fusion_ledger=bool(args.fusion_ledger)),ensure_ascii=False,indent=2))
     guard()
 
 

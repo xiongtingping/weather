@@ -18,6 +18,8 @@ from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL
 from bayes_basket_target.station_season import station_season_bin
 from bayes_basket_target.follow_run import live_never_seats
+from nested_storage import store_object
+from parent_clock import original_parent_clock
 
 
 class ActualCases:
@@ -82,15 +84,18 @@ class ReadScope:
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('--station',default='ZUUU');ap.add_argument('--day',default='2026-10-05');args=ap.parse_args();guard()
-    roots=[];used=0
+    roots=[];used=0;c=old.connect(ROOT/'data/bayes_basket_target_ssot.db')
     with gzip.open(HERE/'p0_roots'/(args.station+'.jsonl.gz'),'rt') as inp:
         for ln in inp:
             used+=len(ln.encode())
             if used>MAX_BYTES:raise RuntimeError('nested_anchor_input_limit')
             r=json.loads(ln)
-            if r['day']==args.day and 'parent_committed_at' in r:roots.append(r)
+            if r['day']==args.day:
+                clock=original_parent_clock(c,args.station,args.day,r['original_checkpoint'])
+                if 'parent_committed_at' in r and r['parent_committed_at']!=clock['outer_cutoff']:raise ValueError('nested_original_parent_clock_changed')
+                roots.append({**r,'parent_committed_at':clock['outer_cutoff'],'original_clock_receipt':clock})
     if not roots:raise ValueError('nested_outer_anchor_missing')
-    anchor=min(roots,key=lambda r:utc(r['parent_committed_at']));at=anchor['parent_committed_at'];c=old.connect(ROOT/'data/bayes_basket_target_ssot.db');cases=ActualCases(c,args.station,at,args.day);scope=ReadScope(c,args.station,cases.tz)
+    anchor=min(roots,key=lambda r:utc(r['parent_committed_at']));at=anchor['parent_committed_at'];cases=ActualCases(c,args.station,at,args.day);scope=ReadScope(c,args.station,cases.tz)
     original_load,original_fit,original_evaluate,original_ladder=OOS._load_cases,OOS._fit_parameters,OOS._evaluate_system,OOS._station_day_ladder
     arrivals={};first_geometry={}
     for values in cases.scopes.values():
@@ -136,10 +141,10 @@ def main():
         sha=content_sha256(obj);body=json.dumps(obj,ensure_ascii=False).encode();nbytes+=len(body)
         if len(body)>2*1024**2 or nbytes>MAX_BYTES:raise RuntimeError('nested_output_limit')
         path=out/(sha+'.json.gz')
-        if not path.exists():
-            with gzip.open(path,'wb') as f:f.write(body)
+        if not path.exists():store_object(path,obj)
         refs.append(dict(kind=kind,path=str(path.relative_to(HERE)),sha256=sha))
     summary=dict(schema='actual_arrival_nested_oos_probe_v1',method_version='actual_arrival_inner_truth_ladder_v3',decision_clock='maximum of actual member arrival and actual first target ladder availability',station=args.station,outer_cutoff=at,event=args.day,anchor_checkpoint=anchor['original_checkpoint'],member_source=cases.receipt,input_rejections=dict(cases.rejections),readiness=result['readiness'],report_header={k:v for k,v in result.items() if k not in ('readiness','ready_system_evaluations','cross_candidates')},cross_states=dict(collections.Counter(x['state'] for x in result['cross_candidates'])),objects=refs,production_modified=False,current_chain_certified=False,limitations=['historical center/width table fits still require current-method reconstruction','fusion weights still require current-method historical refit','candidate reports have not been activated or used as replacement parents'])
+    summary['original_parent_clock_receipt']=anchor['original_clock_receipt']
     (out/'summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2));print(json.dumps(dict(station=args.station,readiness_states=dict(collections.Counter(r['state'] for r in result['readiness'])),cross_states=summary['cross_states'],fits=len(cases.proofs),objects=len(refs))),flush=True)
 
 

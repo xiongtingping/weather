@@ -1,0 +1,18 @@
+{
+  "schema": "chronological_fusion_ledger_audit_v1",
+  "passed": true,
+  "counts": {
+    "veto_cutoffs": 38,
+    "veto_training_references": 45650,
+    "vetoed_cutoffs": 0,
+    "serving_rows": 2579,
+    "state:SEAT_NO_STATION_PARAMS": 143,
+    "state:APPLIED": 2428,
+    "state:SEAT_NO_TRAINING_DAYS": 8
+  },
+  "source_ledger_sha": "11fca8e1fd0804b1858d80543c9894065434f61602c2384848db151b0e02f10d",
+  "source_facts_sha": "a45b41b18d226eb86ba9e9d9407a1a0d6b9dda4839aa396066ddbfa03d6e6792",
+  "production_modified": false,
+  "whole_current_chain_certified": false,
+  "scope": "all source roots, actual family caps, parameter cutoff, serving weights, latest knowable truth revisions and all veto references"
+}

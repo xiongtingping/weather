@@ -22,6 +22,16 @@ def main():
     for title,key,group in [('最新覆盖差：全部','latest_6500_coverage_logscore','all'),('最新覆盖差：可比云证据','latest_6500_coverage_logscore','known_only'),('最新覆盖差：更多云','latest_6500_coverage_logscore','more'),('提前≥24h覆盖差：全部','day1_6500_coverage_logscore','all'),('提前≥24h覆盖差：可比云证据','day1_6500_coverage_logscore','known_only'),('最新云底差：可比证据','latest_6500_base_logscore','known_only'),('提前≥24h云底差：可比证据','day1_6500_base_logscore','known_only')]:
         x=fit['variants'][key][group];rows.append(f"|{title}|{x.get('rows',0):,}|{x.get('station_days',0)}|{metric(x)}|{metric(x,1)}|")
     flags=f"嵌套候选：{nested['counts'] if nested else '未结束'}；隔离编译：{compiler['counts'] if compiler else '未结束'}；组件全量核验：{audit['counts'].get('COMPONENT_AUDIT_PASS',0) if audit else 0}/48站。"
+    ledger=load('fusion_served_ledger.json');ledger_audit=load('fusion_ledger_verification.json');comparison=load('fusion_compiler_comparison.json');compaction=load('nested_compaction.json');inventory=load('nested_multiday_inventory.json');multi=load('nested_verification.multiday.json');multi_compile=load('compiler_multiday.json')
+    additions=''
+    if ledger and ledger_audit and comparison:
+        additions+=f"\n新增融合账本：{ledger['rows']:,}条代表决策、{ledger_audit['counts']['veto_cutoffs']}个每日截止时点、{ledger_audit['counts']['veto_training_references']:,}条因果引用全量核验通过；这份限定账本上未触发否决。接入后{comparison['exact_probability_stations']}站概率及权重与仅重拟版逐项精确相等，{comparison['exact_refusal_stations']}站仍因原始精确资格不足拒绝。它仍使用原来的座位资格，不是完整新父链的连续服务账本。\n"
+    if compaction:
+        additions+=f"\n资源闭环：{sum(compaction['counts'].values()):,}个嵌套对象的展开内容哈希全部保持一致；仅去除重复系统评估的序列化，存储从{compaction['physical_before']/1024**2:.1f}MiB降到{compaction['physical_after']/1024**2:.1f}MiB，2MiB单对象及128MiB阶段上限保持。\n"
+    if inventory:
+        additions+=f"\n多日期盘点恢复了{inventory['census'].get('original_parent_clock_restored_independent_of_old_replay_gate',0)}个旧研究行缺失的父包时钟：它们的原始提交回执实际仍在，不能因旧重放被拒就抹掉。可调度的原始站日为{inventory['census']['scheduled_station_dates']:,}，盘点时已有48份单日期报告；其余仍待展开。缺失的272个原始包仍独立登记，恢复时钟没有恢复文件。\n"
+    if multi:
+        additions+=f"\n日期边界验收：成都、美国、欧洲各取9月1日、9月21日、10月6日，{multi['counts'].get('COMPONENT_AUDIT_PASS',0)}/9份新增报告通过原始父时钟、内层真值修订、参数、真实桶合同和所有引用对象核验。该9份边界覆盖不代表全日期资格已完成。隔离编译：{multi_compile['counts'] if multi_compile else '尚未结束'}。\n"
     text=f'''# 实况减预报云增量：严格重放研究（2026-10-08）
 
 熊先生，**覆盖差有小幅改善信号，强似然尚未获准；云底差的物理方向没有证实。完整现行链检验仍未完成，生产没有修改。** 本报告替代此前“尚未计算任何概率成绩”的阶段记录。
@@ -33,8 +43,9 @@ def main():
 已完成：29,602对原文/实况重建；48站原生上游审计；11,156个P0锚点的当前单系统参数重拟（{p0['counts']['ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS']:,}成功）；{prefix['counts']['OFFLINE_PREFIX_REBUILT_NOT_PROMOTED']:,}条正式前缀研究锚点；P0-M和P1逐日因果拟合；16日限定样本评分。已恢复区域特征真实fetch时钟、辐射历史version视图和真值修订时钟。
 
 {flags}
+{additions}
 
-仍未完成：整段日期的exact-scope嵌套资格与完整父概率替换；融合权重、中心/宽度参数及否决规则的完整因果重拟；将新父概率接回整段P0-M/P1后重新评分。当前嵌套探针只覆盖每站一个10-05外层时点，不能称作全日期OOS。
+仍未完成：整段日期的exact-scope嵌套资格与完整父概率替换；中心/宽度参数及完整新父链下融合权重、否决规则的因果重拟；将新父概率接回整段P0-M/P1后重新评分。全站探针目前仍只覆盖每站一个10-05外层时点，另有日期边界验收，不能称作全日期OOS。
 
 ## 哪里取得可比较的低层云
 
@@ -76,7 +87,7 @@ def main():
 
 隔离编译使用SQLite内存库，SSOT以`mode=ro`附加；只在内存写研究证书/模拟激活。对source的增删改及结构写入已做拒绝测试。证书通过只代表该组件可编译，不代表当年已有这些激活，也不代表完整P1已通过。
 
-融合重拟输入现已重建{facts['counts']['representative_facts']:,}条代表事实、{facts['counts']['truth_revisions']:,}份真值修订。使用现行单系统概率、真实C/F市场桶边界与原始父提交时钟，不沿用整数°C或模型化到达的旧回放。按UTC午夜固定研究时刻拟合当前融合公式，逐折保存真实可见真值与完整训练引用；它仍使用原来的seating资格，且尚无新父链的连续served账本来重建veto，所以明确为研究参数，不能单独授予全链资格。
+融合重拟输入现已重建{facts['counts']['representative_facts']:,}条代表事实、{facts['counts']['truth_revisions']:,}份真值修订。使用现行单系统概率、真实C/F市场桶边界与原始父提交时钟，不沿用整数°C或模型化到达的旧回放。按UTC午夜固定研究时刻拟合当前融合公式，逐折保存真实可见真值与完整训练引用；其代表决策的连续服务权重和否决证据已重建并核验，但仍使用原来的seating资格，缺完整新父链的全部根决策账本，不能单独授予全链资格。
 
 本地精确输入包检索：{missing['counts']['date_directories']}个日期目录、{missing['counts']['filenames_scanned']:,}文件，{missing['counts']['EXACT_SHA_NOT_IN_LOCAL_ARCHIVE']}个缺包均未找到同SHA副本。没有替换或伪造父输入；其他同站日候选已检索：{alternates['counts']['packet_objects_scanned']:,}个对象中，6个SHA/站日不一致的对象被拒绝；272锚点均找到提前收到且几何一致的候选，并通过至少两独立家族的历史成员精确来源绑定。它们仍需自己的嵌套资格与完整下游重放，未替换或激活任何父概率。
 
@@ -84,14 +95,14 @@ ASOS审计发现旧artifact声明MADIS，而匹配事实属于IEM，不能改名
 
 ## 检验、复跑与下一个主线
 
-原文14组边界、23/25小时DST及29,602对全量核验已通过；数值7组/1000随机支持集、来源5组、隔离2组、融合时钟/真值/F桶3组、存储2组，共33组边界检查通过；相关生产pytest此前26 passed。组件全量验证记录在`current_verification.json`和`nested_verification.json`，其中后者必须48站全部COMPONENT_AUDIT_PASS才算阶段闭环。
+原文14组边界、23/25小时DST及29,602对全量核验已通过；研究测试现共48组通过（原33组，加融合账本5组、无损存储5组、多日期调度2组、原始父时钟3组）；相关生产pytest此前26 passed。组件全量验证记录在`current_verification.json`和`nested_verification.json`，其中后者必须48站全部COMPONENT_AUDIT_PASS才算阶段闭环。
 
-入口：`nested_batch.py --summarize-only`汇总当前版本；`verify_nested.py`核验每个引用对象；`compiler_batch.py`只在内存编译；`fusion_facts.py`/`fusion_refit.py`重建融合输入/参数；`compiler_batch.py --fusion-refit`接入研究融合参数；`report.py`刷新报告与Sources receipt。全程资源有界、SSOT只读，未重启服务或修改生产配置。
+入口：`nested_batch.py --summarize-only`汇总当前版本；`verify_nested.py`核验每个引用对象，`--stations/--days`验指定日期；`fusion_ledger.py`与`verify_fusion_ledger.py`构建、核验代表服务账本；`compiler_batch.py --fusion-ledger`只在内存接入该账本；`nested_multiday.py --inventory-only`盘点实际父时钟；`compact_nested.py`去重存储并核验原始哈希；`report.py`刷新报告与Sources receipt。全程资源有界、SSOT只读，未重启服务或修改生产配置。
 
 **下一个主线任务：补齐中心/宽度及完整融合父链，完成全日期现行P0→P0-M→P1严格重放，再复验独立覆盖/云底增量；未过完整门前不改生产。**
 '''
     (HERE/'RESULTS.md').write_text(text)
-    names=['results.json','verification.json','current_verification.json','restricted_refitted_fit.json','score_sensitivity.json','case_increment_math.json','nested_batch.json','nested_verification.json','compiler_batch.json','compiler_batch.fusion.json','fusion_facts.json','fusion_refit.json','missing_packets.json','alternative_packets.json','alternative_member_verification.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json','cleanup.json']
+    names=['results.json','verification.json','current_verification.json','restricted_refitted_fit.json','score_sensitivity.json','case_increment_math.json','nested_batch.json','nested_verification.json','compiler_batch.json','compiler_batch.fusion.json','fusion_facts.json','fusion_refit.json','missing_packets.json','alternative_packets.json','alternative_member_verification.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json','cleanup.json','fusion_served_ledger.json','fusion_ledger_verification.json','compiler_batch.ledger.json','fusion_compiler_comparison.json','nested_compaction.json','nested_multiday_inventory.json','nested_verification.multiday.json','compiler_multiday.json']
     fingerprint=dict(schema='research_current_evidence_fingerprints_v2',production_modified=False,claim_scope='limited component and restricted population evidence; no full-chain promotion',sources=[dict(path=name,sha256=old.sha_file(HERE/name)) for name in names if (HERE/name).exists()]);(HERE/'sources.json').write_text(json.dumps(fingerprint,ensure_ascii=False,indent=2))
     latest=fit['variants']['latest_6500_coverage_logscore'];day1=fit['variants']['day1_6500_coverage_logscore']
     receipt=dict(schemaVersion=1,items=[dict(id='restricted-cloud-increment',title='云覆盖差的限定样本结果',queries=[dict(id='restricted-walk-forward',source=dict(label='正式观测前缀研究',files=['restricted_refitted_fit.json','strict_fit.py','current_verification.json','score_sensitivity.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json'],filters=['先站日等权，再按日期块统计','每个外推日只用此前且真值当时已知的数据训练','覆盖差阈值6500ft','245条缺唯一可见官方origin的云证据已设为未知并重跑'],metricDefinitions=['负LogScore和Brier差值为云增量候选减相同基准，负值表示改善。'],caveats=['这些结果仅覆盖输入获准子群，父链资格和融合/中心宽度重拟尚未完整，不是全48站晋级证据。']),reportingPeriod='2026-09-21至2026-10-06：16个外推日',rows=[dict(group='最新覆盖：全部',rows=latest['all']['rows'],station_days=latest['all']['station_days'],delta_logscore=latest['all']['mean'][0],ci=latest['all']['ci95'][0]),dict(group='最新覆盖：可比证据',rows=latest['known_only']['rows'],station_days=latest['known_only']['station_days'],delta_logscore=latest['known_only']['mean'][0],ci=latest['known_only']['ci95'][0]),dict(group='提前24h覆盖：全部',rows=day1['all']['rows'],station_days=day1['all']['station_days'],delta_logscore=day1['all']['mean'][0],ci=day1['all']['ci95'][0])],columns=['group','rows','station_days','delta_logscore','ci'])]),dict(id='chengdu-cloud-change',title='成都10月7日的覆盖与云底变化',queries=[dict(id='raw-cloud-and-odds',source=dict(label='真实回执绑定TAF与官方报文',files=['results.json','verification.json','case_increment_math.json','case_increment_math.py'],metricDefinitions=['6500ft覆盖增量比较报文云层最大覆盖区间；云底差只比较唯一同覆盖码/云型匹配。'],filters=['ZUUU：2026-10-07当地12–16时'],caveats=['云底下降不能直接等同于遮阳增强。','odds乘数仅是独立项数学诊断，未复现完整P(25)。']),summary='12–14时覆盖差为零、云底降低约610m；15时BKN相对SCT至少增加1/8天空。')]),dict(id='replay-and-missing-packets',title='父链重建与缺失输入',queries=[dict(id='parent-input-search',source=dict(label='本地原生包归档与隔离研究',files=['missing_packets.json','nested_batch.json','compiler_batch.json','fusion_facts.json','fusion_refit.json'],caveats=['每站10-05嵌套探针和研究融合重拟不等于全日期完整链检验。','所有生产概率、SSOT和服务保持未修改。']),rows=[dict(metric='已扫描日期目录',value=missing['counts']['date_directories']),dict(metric='已扫描文件',value=missing['counts']['filenames_scanned']),dict(metric='未找到同SHA的原始父包',value=missing['counts']['EXACT_SHA_NOT_IN_LOCAL_ARCHIVE']),dict(metric='重建融合代表事实',value=facts['counts']['representative_facts'])],columns=['metric','value'])])])
@@ -100,6 +111,8 @@ ASOS审计发现旧artifact声明MADIS，而匹配事实属于IEM，不能改名
             if 'ci' in query.get('columns',[]):
                 query['columns']=[c for c in query['columns'] if c!='ci']+['ci95_low','ci95_high']
                 for row in query['rows']:row['ci95_low'],row['ci95_high']=row.pop('ci')
+    if ledger and ledger_audit and comparison:
+        receipt['items'].append(dict(id='causal-fusion-closure',title='融合账本与资源阶段核验',queries=[dict(id='fusion-serving-and-lossless-storage',source=dict(label='隔离研究组件核验',files=['fusion_served_ledger.json','fusion_ledger_verification.json','fusion_compiler_comparison.json','nested_compaction.json','nested_multiday_inventory.json','nested_verification.multiday.json','compiler_multiday.json'],caveats=['原座位资格仍保留；没有完成整段现行父链，不能晋级生产。','恢复677个原始父时钟不等于恢复272个缺失原始包。']),rows=[dict(metric='因果服务代表决策',value=ledger['rows']),dict(metric='每日否决截止时点',value=ledger_audit['counts']['veto_cutoffs']),dict(metric='因果引用核验',value=ledger_audit['counts']['veto_training_references']),dict(metric='接入后概率精确相等站',value=comparison['exact_probability_stations']),dict(metric='无损去重节省MiB',value=round(compaction['physical_bytes_saved']/1024**2,1) if compaction else 0)],columns=['metric','value'])]))
     (HERE/'sources_receipt.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
 
 
