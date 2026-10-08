@@ -18,6 +18,8 @@
 
 日期边界验收：成都、美国、欧洲各取9月1日、9月21日、10月6日，9/9份新增报告通过原始父时钟、内层真值修订、参数、真实桶合同和所有引用对象核验。该9份边界覆盖不代表全日期资格已完成。隔离编译：{'OFFLINE_NESTED_CERTIFICATE_P0_COMPILED': 9}。
 
+回绕核验：57份已建报告的原始native包均通过内容哈希、站点、事件日及实际到达≤父决策提交时钟的全量补验；编译入口增加同一检查，未知/迟到包立即拒绝。
+
 
 仍未完成：整段日期的exact-scope嵌套资格与完整父概率替换；中心/宽度参数及完整新父链下融合权重、否决规则的因果重拟；将新父概率接回整段P0-M/P1后重新评分。全站探针目前仍只覆盖每站一个10-05外层时点，另有日期边界验收，不能称作全日期OOS。
 
@@ -75,7 +77,7 @@ ASOS审计发现旧artifact声明MADIS，而匹配事实属于IEM，不能改名
 
 ## 检验、复跑与下一个主线
 
-原文14组边界、23/25小时DST及29,602对全量核验已通过；研究测试现共48组通过（原33组，加融合账本5组、无损存储5组、多日期调度2组、原始父时钟3组）；相关生产pytest此前26 passed。组件全量验证记录在`current_verification.json`和`nested_verification.json`，其中后者必须48站全部COMPONENT_AUDIT_PASS才算阶段闭环。
+原文14组边界、23/25小时DST及29,602对全量核验已通过；研究测试现共50组通过（原33组，加融合账本5组、无损存储5组、多日期调度2组、原始父时钟及包到达5组）；相关生产pytest此前26 passed。组件全量验证记录在`current_verification.json`和`nested_verification.json`，其中后者必须48站全部COMPONENT_AUDIT_PASS才算阶段闭环。
 
 入口：`nested_batch.py --summarize-only`汇总当前版本；`verify_nested.py`核验每个引用对象，`--stations/--days`验指定日期；`fusion_ledger.py`与`verify_fusion_ledger.py`构建、核验代表服务账本；`compiler_batch.py --fusion-ledger`只在内存接入该账本；`nested_multiday.py --inventory-only`盘点实际父时钟；`compact_nested.py`去重存储并核验原始哈希；`report.py`刷新报告与Sources receipt。全程资源有界、SSOT只读，未重启服务或修改生产配置。
 

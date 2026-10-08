@@ -157,7 +157,8 @@
               "nested_compaction.json",
               "nested_multiday_inventory.json",
               "nested_verification.multiday.json",
-              "compiler_multiday.json"
+              "compiler_multiday.json",
+              "original_packet_clock_verification.json"
             ],
             "caveats": [
               "原座位资格仍保留；没有完成整段现行父链，不能晋级生产。",
@@ -184,6 +185,10 @@
             {
               "metric": "无损去重节省MiB",
               "value": 630.4
+            },
+            {
+              "metric": "原始包身份及到达时钟核验",
+              "value": 57
             }
           ],
           "columns": [

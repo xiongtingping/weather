@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from parent_clock import original_parent_clock
+from parent_clock import original_parent_clock,validate_original_packet_clock
 import nested_multiday as M
 
 
@@ -42,6 +42,20 @@ class ParentClock(unittest.TestCase):
             self.assertEqual(records['ZUUU/2026-09-02']['state'],'SCHEDULED')
             self.assertEqual(records['ZUUU/2026-09-02']['outer_cutoff'],'2026-09-02T10:00:00Z')
             self.assertEqual(census['original_parent_clock_restored_independent_of_old_replay_gate'],1)
+
+    def test_packet_arrival_exact_cutoff_and_future_receipt_rejected(self):
+        clock=original_parent_clock(self.c,'ZUUU','2026-09-02','old-gate-refused')
+        packet=dict(station_id='ZUUU',event_date='2026-09-02',received_at_utc=clock['outer_cutoff'])
+        validate_original_packet_clock(packet,clock)
+        packet['received_at_utc']='2026-09-02T10:00:00.000001Z'
+        with self.assertRaises(ValueError):validate_original_packet_clock(packet,clock)
+        del packet['received_at_utc']
+        with self.assertRaises(KeyError):validate_original_packet_clock(packet,clock)
+
+    def test_packet_station_day_binding_cannot_be_substituted(self):
+        clock=original_parent_clock(self.c,'ZUUU','2026-09-02','old-gate-refused')
+        for station,day in [('KATL','2026-09-02'),('ZUUU','2026-09-03')]:
+            with self.assertRaises(ValueError):validate_original_packet_clock(dict(station_id=station,event_date=day,received_at_utc=clock['outer_cutoff']),clock)
 
 
 if __name__=='__main__':unittest.main()

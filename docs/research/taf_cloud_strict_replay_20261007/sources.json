@@ -106,6 +106,10 @@
     {
       "path": "compiler_multiday.json",
       "sha256": "59121d85257a4a43cba3cb65bf74056195137725789398be97b8aaf3bd7188c5"
+    },
+    {
+      "path": "original_packet_clock_verification.json",
+      "sha256": "206a4f96b730d1e20200b0e38be650ad27c34b3392d66bd1fca153efc80fe0b9"
     }
   ]
 }

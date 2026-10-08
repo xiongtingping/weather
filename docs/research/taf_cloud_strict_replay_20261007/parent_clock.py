@@ -13,3 +13,10 @@ def original_parent_clock(c,station,day,checkpoint):
         outer_cutoff=r['created_at'],parent_decision_at=r['decision_at_utc'],
         original_envelope_content_sha=r['content_sha256'],
         clock_source='original_committed_P0_envelope_independent_of_old_replay_gate')
+
+
+def validate_original_packet_clock(packet,clock):
+    if (packet['station_id'],packet['event_date'])!=(clock['station'],clock['event']):
+        raise ValueError('original_parent_packet_station_day_mismatch')
+    if utc(packet['received_at_utc'])>utc(clock['outer_cutoff']):
+        raise ValueError('original_parent_packet_arrived_after_commit')

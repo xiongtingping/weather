@@ -1,0 +1,809 @@
+{
+  "schema": "original_native_packet_and_parent_clock_audit_v1",
+  "passed": true,
+  "counts": {
+    "passed": 57
+  },
+  "records": {
+    "CYYZ/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "CYYZ",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-56b6a7bf4a99d276af22c81df13de3c7",
+        "outer_cutoff": "2026-10-05T10:08:07.877Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "4f48ddbfd1bfaeeab9bbb9014f9f172f82b422fa2a817ea3596dc54f79d54d3b",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "cf497b4b499e57e1d4cd5f6e76fc13e479d3977863a05ffef09e5dcbb44eaaf2",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "EDDM/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EDDM",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-52378aaa34755129195d6dc60bdf26dc",
+        "outer_cutoff": "2026-10-05T05:15:30.681Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "de660b0ae188f76c0dc68dc193d041dbb4f0a794749ef0508599bcdcac309c6f",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "6f1cc0b2e12e6637c255bc43e91497935e23e04d09f0611bd26c2f4101a7ae14",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "EFHK/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EFHK",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-fa35a868008348c1b6c527ee174f3d9f",
+        "outer_cutoff": "2026-10-05T04:13:00.333Z",
+        "parent_decision_at": "2026-10-05T04:12:49.936Z",
+        "original_envelope_content_sha": "7fad93e244f46cec348b13b259ba2e59be1e42b5f6b003af45eca8e1b9e6013f",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "84ab8eeaae816edefa69e7d898794931a6545b216454b91ac7c87fabb53b6cea",
+      "received_at": "2026-10-05T04:09:58.592000Z"
+    },
+    "EGLC/2026-09-01": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EGLC",
+        "event": "2026-09-01",
+        "anchor_checkpoint": "p0-native-f6ff092adf7128f2a68c9b1c1d7c58d0",
+        "outer_cutoff": "2026-08-31T22:49:24.070Z",
+        "parent_decision_at": "2026-08-31T22:49:24.070Z",
+        "original_envelope_content_sha": "bf37065e7e2f32d48cf7fe16ed724fa2e75bcd73150b113240ca60cd18b3ec29",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "00efc7d23df01d4c3e9afdacb10a80a899e3508901701bd8b6c50682bde12578",
+      "received_at": "2026-08-31T16:57:59.713000Z"
+    },
+    "EGLC/2026-09-21": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EGLC",
+        "event": "2026-09-21",
+        "anchor_checkpoint": "p0-native-b9e34115457f7dbabcf0675fe1b605f2",
+        "outer_cutoff": "2026-09-21T06:06:06.380Z",
+        "parent_decision_at": "2026-09-21T06:04:28.352Z",
+        "original_envelope_content_sha": "0f7880db4374ea8135b86db8a3d654534c5d5f49bbcdec450b767bfefbc14e5d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "2fc4b394b16ee79e01d512cbb893d00b5096603da84782548b7418bb5dc5042e",
+      "received_at": "2026-09-21T05:46:28.676000Z"
+    },
+    "EGLC/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EGLC",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-0636453c34d9498ea3e24798640c3e51",
+        "outer_cutoff": "2026-10-05T06:36:53.207Z",
+        "parent_decision_at": "2026-10-05T06:36:29.384Z",
+        "original_envelope_content_sha": "0525ff5df15a4fadb0cc77743bf8ef7b420e48d91f2dc74249b957837c3e6c2d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "53306e511549f08b19cab9416cabf087e319097dbfc7a15a966d9072ad73a3ba",
+      "received_at": "2026-10-05T06:33:16.939000Z"
+    },
+    "EGLC/2026-10-06": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EGLC",
+        "event": "2026-10-06",
+        "anchor_checkpoint": "p0-native-801c9a04f38452346cf706f7b02e45d4",
+        "outer_cutoff": "2026-10-06T06:37:59.695Z",
+        "parent_decision_at": "2026-10-06T06:37:42.656Z",
+        "original_envelope_content_sha": "6931e8654770d13697eabba276776e1bb4ade35129592d92af0810a9f691e02d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "6807082babda45b8659f4cbac3741bc46d73e96119da477596415650a73e61e1",
+      "received_at": "2026-10-06T06:34:39.495000Z"
+    },
+    "EHAM/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EHAM",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-1b0506c11f1a66857e3e52629caaa60c",
+        "outer_cutoff": "2026-10-05T05:15:30.743Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "6bc32c4f1f4bbe76d895a9977b2da93b1c8fd3cb7411eca61fe67abceba8ecf3",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "9b4a6f342270f85934362907e1ed24710ae1b407ff95e5d4c5cf159668701795",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "EPWA/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "EPWA",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-1bd8db1d96c18a741e44e99b2c243941",
+        "outer_cutoff": "2026-10-05T05:15:30.759Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "1f0fe9ab4efb8536f31093a9db064b3f400ba1cd4cf647f29e637b5f2ea9ee8e",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "a0b40b5828a902b877d4a676c347d383744864b3f57fb471fa39dda0f230055d",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "FACT/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "FACT",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-24f67d517a72c669a0aae2c4f32d662d",
+        "outer_cutoff": "2026-10-05T05:15:30.788Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "b060e6342e2323445b0ddb863e9c47395f0a8ba523040bbb9df143eacb265eba",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "7a2af1b85992080701a00f68ca2d7925de1d79757b2511cdc06354eb8e91c132",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "KATL/2026-09-01": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KATL",
+        "event": "2026-09-01",
+        "anchor_checkpoint": "p0-native-d18c4a0d20e8d7fa686adcbdfdbd1bda",
+        "outer_cutoff": "2026-09-01T11:28:14.405Z",
+        "parent_decision_at": "2026-09-01T11:28:14.405Z",
+        "original_envelope_content_sha": "a269f5c235b84ec244ed327888e4f44874929577e6650c12e3a2c443ca8020f7",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "9c5be7e4fbdc29386a11e1c9ff939aa4cc148090e922c6b64f20bd08e10859cc",
+      "received_at": "2026-09-01T10:24:23.442000Z"
+    },
+    "KATL/2026-09-21": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KATL",
+        "event": "2026-09-21",
+        "anchor_checkpoint": "p0-native-6f291795332af7c9002b053c505a0a0e",
+        "outer_cutoff": "2026-09-21T10:09:00.695Z",
+        "parent_decision_at": "2026-09-21T10:08:10.375Z",
+        "original_envelope_content_sha": "7c83d8b107ef73ca57740326441dacc8fa95d8ea80b01850da8ef9e56077c597",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "1218d57e1d7c522d5ae66d57c86d8ec602f209cd22210284545538752058f3e8",
+      "received_at": "2026-09-21T10:02:31.869000Z"
+    },
+    "KATL/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KATL",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-456e86d7e5849a5f7b96f7625a3925ad",
+        "outer_cutoff": "2026-10-05T10:08:08.103Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "c8849fcbb7949f13071f2bf7a26d9b1101d82d20b42c0f7cba6528b7fb3bbf63",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "723e8e0097b627c91b797177f88ec2e23f3cc270e1eb3e6e802d173917238690",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "KATL/2026-10-06": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KATL",
+        "event": "2026-10-06",
+        "anchor_checkpoint": "p0-native-5ee330930e688b5b72dc54d2a01ffb98",
+        "outer_cutoff": "2026-10-06T10:38:36.633Z",
+        "parent_decision_at": "2026-10-06T10:38:30.268Z",
+        "original_envelope_content_sha": "ce226801c8d4f98089a06e5673c9a138e7ad441293e67e1157d18b1705de2b10",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "17f27fe1a2a4a7319ca431154f8add898b3260cc541c8e8040c30f793d6c21f8",
+      "received_at": "2026-10-06T10:37:01.314000Z"
+    },
+    "KAUS/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KAUS",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-01a23e062260b13c2aa4d635e9baf4be",
+        "outer_cutoff": "2026-10-05T12:37:00.652Z",
+        "parent_decision_at": "2026-10-05T12:36:51.341Z",
+        "original_envelope_content_sha": "c106617cf89c0879f40544065dc17dfb408bf628424eb0acfee5a4bcdd6a8f94",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "765ac4f6f8693fc0c52bb82758b2b3baa25895b518c7cabbf82962151ee826e5",
+      "received_at": "2026-10-05T12:33:44.413000Z"
+    },
+    "KBKF/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KBKF",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-37a317e31c41eeddab7eeef276d8c264",
+        "outer_cutoff": "2026-10-05T13:21:08.793Z",
+        "parent_decision_at": "2026-10-05T13:21:01.631Z",
+        "original_envelope_content_sha": "f8fb2666ba74de3b7267e2d91589dfb8f118ceb6b406f63d0404325e4a9fdb00",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "c2138acb4646564a3d147d02252e9bfce0f2d1b54258e539a21e00259544875c",
+      "received_at": "2026-10-05T13:12:54.395000Z"
+    },
+    "KDAL/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KDAL",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-f225c6ea26aaab6e76f3c5451c74750e",
+        "outer_cutoff": "2026-10-05T12:37:00.704Z",
+        "parent_decision_at": "2026-10-05T12:36:51.341Z",
+        "original_envelope_content_sha": "627b957f22b774dea05c2ec1a5d3a24032588f3fbae3099398a853a1681c42ca",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "4eccb1aa3c4fadbf8a4212742f2ee358ea6fe3c8f19c5daee518074cc136f887",
+      "received_at": "2026-10-05T12:33:44.413000Z"
+    },
+    "KHOU/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KHOU",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-fbaaaa33a410577c8fabd8ccaf2f078f",
+        "outer_cutoff": "2026-10-05T12:37:00.730Z",
+        "parent_decision_at": "2026-10-05T12:36:51.341Z",
+        "original_envelope_content_sha": "8012bae304b33eecf91819397e99bda6f85d9df8089d840826c78b034fbda6f0",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "8e59f4af7f0471576905efdab92e98cb2f7d95cf42b460c80e3f1bbbfcc51c92",
+      "received_at": "2026-10-05T12:33:44.413000Z"
+    },
+    "KLAX/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KLAX",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-f0c3f234ba614b770eed1b6969d8996e",
+        "outer_cutoff": "2026-10-05T14:52:53.803Z",
+        "parent_decision_at": "2026-10-05T14:52:45.599Z",
+        "original_envelope_content_sha": "96cfdbf3f576fd49c65c74b42a2884b15f796fda2594c6aa13b17cbb24b0d1a3",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "2f5cb73d166d36c3f5fad22db32b67d00ce56660af2a0a11e42c64b6ce6fea38",
+      "received_at": "2026-10-05T14:47:03.817000Z"
+    },
+    "KLGA/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KLGA",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-4355264cb9593ba294a1349fa7875849",
+        "outer_cutoff": "2026-10-05T10:08:08.258Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "251bc4be5bcb0b5089f66da748e90078b26f32515da2514c9b0caedb94723d1f",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "b9b180a8718c9ed85d390200736b6e66717107f7457583bdbdd1ac30243e1cc4",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "KMIA/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KMIA",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-1d6180ab49fd512e74c63e47291aef9f",
+        "outer_cutoff": "2026-10-05T10:08:08.274Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "2195a8b39847022d75c6754fddcb3e3e8c5ac81da76294308daeb0b514094f0c",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "59e28748dcb6075902f5c3664a3e94a36b575d233e11bff385e6a7507273d9a2",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "KORD/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KORD",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-f1ae9f8b8fc38ba9dd71e70ab4d02dce",
+        "outer_cutoff": "2026-10-05T12:37:00.840Z",
+        "parent_decision_at": "2026-10-05T12:36:51.341Z",
+        "original_envelope_content_sha": "e0b51d506007088673ecd7026bcd1f50b8f8421ac72c5ac938782fe8223d61fd",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "2d46ea07cea902b63fbcdb4dd3ebc4926b3f0d65b3da1b61edfde2c42ecc91a0",
+      "received_at": "2026-10-05T12:33:44.413000Z"
+    },
+    "KSEA/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KSEA",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-aa7aec41a2384bd20424b52c56e08ba2",
+        "outer_cutoff": "2026-10-05T14:52:53.868Z",
+        "parent_decision_at": "2026-10-05T14:52:45.599Z",
+        "original_envelope_content_sha": "2b39b8e4402033ab48c17c5e7ad5c22a4bdb2edc7876d0a2fcab304380c18268",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "5ac5a8a5f799efe0f30ee1f626fe415b1a73b09206d445cc3a4ff2dac01529a5",
+      "received_at": "2026-10-05T14:47:03.817000Z"
+    },
+    "KSFO/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "KSFO",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-2d18180138bb578ccd2d5f9bdc917535",
+        "outer_cutoff": "2026-10-05T14:52:53.884Z",
+        "parent_decision_at": "2026-10-05T14:52:45.599Z",
+        "original_envelope_content_sha": "db2f5283ecf6ccfde271c25461431ddac4821be001b05fd23e43d8cc8762e623",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "55ab5a1f7d43ab597f9e6f03d1b5954122f835ea579099eee5055c2bf37fb0c1",
+      "received_at": "2026-10-05T14:47:03.817000Z"
+    },
+    "LEMD/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LEMD",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-81b8f0c9a4b16f87e9ba1d4f62ddf28d",
+        "outer_cutoff": "2026-10-05T05:15:31.102Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "509884b99f7a0a507587c7fa7b8826bdda8eba450c04d70f0ce10ea75a38bfb1",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "90ee18ac94155d0e2630cd0eb8d8d308020c0ca2965c6dd1e79a7d2f8d28aa36",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "LFPB/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LFPB",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-ba75cbd5b5ff8ae9d255a0a18cd69f63",
+        "outer_cutoff": "2026-10-05T05:15:31.119Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "e4ff0b6ab0f9a8a0527ed192580efe6b03e013cc94c8847532f424998e685a52",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "957c7b5e2b00c4e97d0eda2df0ce7a3567d3c8ad36309f4eb71c850adb371fa1",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "LIMC/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LIMC",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-aecf70a7a37c2b31a4f446c38746bc86",
+        "outer_cutoff": "2026-10-05T05:15:31.133Z",
+        "parent_decision_at": "2026-10-05T05:15:12.616Z",
+        "original_envelope_content_sha": "5d3d8f3ecd0133eab8d3780e4a80339e86cebc8b530f754f8a888a674ff38ee9",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "b717ae3540406d0acaa41ce1afdc378c812afe2a8aab89a5ffc30a2dc4d10c7c",
+      "received_at": "2026-10-05T05:05:03.917000Z"
+    },
+    "LLBG/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LLBG",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-74b52d3b17e3f92fd3f36e3cf73fc1ef",
+        "outer_cutoff": "2026-10-04T14:41:38.398Z",
+        "parent_decision_at": "2026-10-04T14:40:32.229Z",
+        "original_envelope_content_sha": "e5dfc7eddb1002e6a865576591d3c74f9997e2848a624c5ff86ca828ec64213c",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "5b178efcb479aa02f483146f2ff0e85120b2ecf6ad928fc7cd764210788c7e7e",
+      "received_at": "2026-10-04T13:26:17.609000Z"
+    },
+    "LTAC/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LTAC",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-eb7012513fe703ffb15348232c15e505",
+        "outer_cutoff": "2026-10-05T04:13:00.737Z",
+        "parent_decision_at": "2026-10-05T04:12:49.936Z",
+        "original_envelope_content_sha": "2d79db47a36f6bed34c254bca42c8cbdca1e239c09b2299ac6ff5cd3d7cc8121",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "5bcf5c53713af8efe7ae278664f60bc2a9ed4b182204edea619719be75f2bdc2",
+      "received_at": "2026-10-05T04:09:58.592000Z"
+    },
+    "LTFM/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "LTFM",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-659a42209021bd1f37827737b8785a6e",
+        "outer_cutoff": "2026-10-04T14:41:38.483Z",
+        "parent_decision_at": "2026-10-04T14:40:32.229Z",
+        "original_envelope_content_sha": "5d9053ee9272e02075d76fadad8912ab210e4b4a6b30053f9b5f99976de1e718",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "43ad2c1e3be8129210b834478ce0275e9e83da9e35cfee7bb0e408e496f7067b",
+      "received_at": "2026-10-04T13:26:17.609000Z"
+    },
+    "MMMX/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "MMMX",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-32702a72aeab290843e64dd5351150d4",
+        "outer_cutoff": "2026-10-05T13:21:09.042Z",
+        "parent_decision_at": "2026-10-05T13:21:01.631Z",
+        "original_envelope_content_sha": "744c30562347587cdb825535d07c6e240c2e171c417b0ecb4a936260520cccf0",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "246419c4434916e3972f306edae3462a730d4f925c4847e1f3cb5df856c856d7",
+      "received_at": "2026-10-05T13:12:54.395000Z"
+    },
+    "MPMG/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "MPMG",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-d7165c1947007562635db0c320003933",
+        "outer_cutoff": "2026-10-05T12:37:01.050Z",
+        "parent_decision_at": "2026-10-05T12:36:51.341Z",
+        "original_envelope_content_sha": "0480278be3ad97731438174551975bdbf8939a4a13a98b77c90fe99f366b1fbb",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "2d148cb7dfc9bf14726c94ec0d80f43119c70607ad57ff438754532061221aea",
+      "received_at": "2026-10-05T12:33:44.413000Z"
+    },
+    "NZWN/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "NZWN",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-99dccf588ad65d1f1133d832015eadc0",
+        "outer_cutoff": "2026-10-04T18:55:35.276Z",
+        "parent_decision_at": "2026-10-04T18:55:25.380Z",
+        "original_envelope_content_sha": "69729fde1f995643b81dcd1866b9b970c9273f59bff9c3b78803471686f49670",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "b2958269293b32572831d8a0d52a8c9baed331f4e04456350e4acdf89268f2e6",
+      "received_at": "2026-10-04T18:51:53.420000Z"
+    },
+    "OEJN/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "OEJN",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-a89420f029014875e666711e14a79ad9",
+        "outer_cutoff": "2026-10-05T04:13:00.800Z",
+        "parent_decision_at": "2026-10-05T04:12:49.936Z",
+        "original_envelope_content_sha": "1f815f18e1316f36732f8d548bfd72a44ffd3e842eabbc29a1ee830962d1d47d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "cae9aa6c2c8a004f13db0d75e3dcff581b781b78edc48f0342486ed45ddb7306",
+      "received_at": "2026-10-05T04:09:58.592000Z"
+    },
+    "OPKC/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "OPKC",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-6caef9daaf5d6c4f6e945341da6b58de",
+        "outer_cutoff": "2026-10-05T02:56:04.560Z",
+        "parent_decision_at": "2026-10-05T02:55:55.309Z",
+        "original_envelope_content_sha": "8575c54068b32f6d4b55522ee2df4dfbd1623e254297b716ef0dfe656ad4bc42",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "e2690dce3828ae38ab3a54d80e2b10e1dc53dd78a87d45b0b01cf354e909012b",
+      "received_at": "2026-10-05T02:51:29.082000Z"
+    },
+    "RCSS/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "RCSS",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-c23f31789bd8969bd28267370e5fddb3",
+        "outer_cutoff": "2026-10-04T22:07:14.356Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "ccc596cdc4f3d18a365da5bfe715b7481944bad74bed3a70ce0c07addec08c1c",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "a9a2829e609ccf37278632e62e3d013f023128f8e6086a4f17d6c3382728cb3e",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "RJTT/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "RJTT",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-f519276f216b1ee86514c4bb3900b0ae",
+        "outer_cutoff": "2026-10-04T22:07:14.371Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "fdf4410f6a0428955340b2eb1a5924bed4202b2726c212af6e432208b5cd81ae",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "fa06d629ff13ce68316b449f223db65baea32ca49d6e439ab2256629cfbbdc56",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "RKPK/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "RKPK",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-d91e95af8d43de632a64faaeb995a5f5",
+        "outer_cutoff": "2026-10-04T22:07:14.386Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "ac447a73e10bbd01731f9614987d47f9c55235e5e4f976c0d309d217a5ad7db2",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "0bba31df8dd7bd197e48e03541a7a932b58e1b5e77edf406f648c1d91199075f",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "RKSI/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "RKSI",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-ff4e88f81faa1af8df16259aad3e8f98",
+        "outer_cutoff": "2026-10-04T22:07:14.403Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "0c5770484fd00692fa562942a22bf254b2c37ace6d73753408fb85095e11808a",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "4a99b84b7b13b13bd238f86e805e7f713db6a9c0487a77211f03aa43b1d540ff",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "RPLL/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "RPLL",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-5b54e85204b321d850516877e22e4543",
+        "outer_cutoff": "2026-10-04T22:07:14.417Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "253bdb2c86e7cfdbb4013b3cee03cc5ce9c3f1931323b3d299fd2f465a684b36",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "104c30b73819996c81cc0940ac6ed7ea4b98a7d6f63f55e1f63a490248143d9a",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "SAEZ/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "SAEZ",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-b909ac3ab466126b9f8b5364a4047e4d",
+        "outer_cutoff": "2026-10-05T10:08:08.654Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "d3b91357a1976cda8aecaf283094d166dce0615c9f667b4b4868a0d6a8bdfa41",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "9d0c87c3767026d8440b9c70ff2206f4e39c09ed7fc181ae359981cd267285bb",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "SBGR/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "SBGR",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-b66c4d9bcf1faf52143665782066902e",
+        "outer_cutoff": "2026-10-05T10:08:08.688Z",
+        "parent_decision_at": "2026-10-05T10:07:58.731Z",
+        "original_envelope_content_sha": "34e398f019adbad27197cc9adec982ccfc673cf888dd27ab86ecc16a12af53fe",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "1f0f0a3bbba9b743926d3b68162d9f0932a5f46b847e59dcbac29738f7134d40",
+      "received_at": "2026-10-05T10:06:46.777000Z"
+    },
+    "UUWW/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "UUWW",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-b2a3a6104f447a70ec0fc817f31a7bf9",
+        "outer_cutoff": "2026-10-04T14:41:39.341Z",
+        "parent_decision_at": "2026-10-04T14:40:32.229Z",
+        "original_envelope_content_sha": "21bdbc4a00901c8a93fa3a1d5ea44a3c2ffcad3dd78280d15c691f228509e6bd",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "7fe4c2fde266c8c828034984a046ce5419d859fec76032ca90fe902a4eac1aeb",
+      "received_at": "2026-10-04T13:26:17.609000Z"
+    },
+    "VILK/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "VILK",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-0521850cb9eec95c4c6e9da0f14fe586",
+        "outer_cutoff": "2026-10-05T01:24:27.218Z",
+        "parent_decision_at": "2026-10-05T01:24:15.277Z",
+        "original_envelope_content_sha": "e0241433da6e5a6b221821b764fc2885e26adb8f673de7d90f9fc172414228b8",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "003d276e375fd165ff071779d8bf1c9e6b2966f9f82773180efb398a745d213c",
+      "received_at": "2026-10-05T01:17:23.443000Z"
+    },
+    "WMKK/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "WMKK",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-012bbf83df5e29d29bf9572f17de212d",
+        "outer_cutoff": "2026-10-04T22:07:14.479Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "caf3f7812a68292fc9bcb9aafd0e1796b70c1dcd389d1d75ee51f9a26932645b",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "d6cbd578a4f53cd6a99a8afffc19913c3d68b5f193db6236eb3fff4c169c9b45",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "WSSS/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "WSSS",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-33be9648a0d259df46b3f868d780992a",
+        "outer_cutoff": "2026-10-04T22:07:14.497Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "46af1f8184cbdfb3f4d51717649c219ecdfd14254635d6a76814b3de9ecc099a",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "8999402c747e87729ccc8674bc8a631a4eb761cb6bc79d6bff50758163692727",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZBAA/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZBAA",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-4139a960dac4d79a023b927b6c583440",
+        "outer_cutoff": "2026-10-04T22:07:14.513Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "240108e21ceccb6f6a7182b5994496fc4735065964d928ddfb1e3e98aea28c63",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "4b0c62c97ef8ac93a8f20463034f1b8669119d1aa01e93ad7009578596a96aeb",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZGGG/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZGGG",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-7e2ea4cc0ba66879cfae9bd5a62d5a21",
+        "outer_cutoff": "2026-10-04T22:07:14.526Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "d339c56c2e7a24e82ac21cff16aa3b4f8dd88b66c79f6de72212de036b106a5b",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "41dcfaa978b4edca0221a9e7e6a5108ce40b1f4d67c0d6fee063fe1ff1db8fc7",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZGSZ/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZGSZ",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-5ceebb4c1a14e8299ce358d1ca310e85",
+        "outer_cutoff": "2026-10-04T22:07:14.543Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "e52e4d4c67f1603f7094abfaedb25271ef8fceb4bb0ea51e1f9c114c557b7d6d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "f2c3d3eeaecb0d4a4d75ceb9ab663752d734aa696cedc06701f9f47411626208",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZHHH/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZHHH",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-2872e2915bac52ab1f939a7f2c055f3a",
+        "outer_cutoff": "2026-10-04T22:07:14.557Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "ccb8e74e3f7acfc5d316b4e522b7272d867d04331aa154790067cbf028d896ac",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "1694ed95c5db77956b3aa26629c01b9a4fc2d6a496ecab9ed349220d98a4543c",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZSPD/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZSPD",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-5459112929c7ccf9a7b5f154886c648b",
+        "outer_cutoff": "2026-10-04T22:07:14.573Z",
+        "parent_decision_at": "2026-10-04T22:06:59.749Z",
+        "original_envelope_content_sha": "f12fd2f8c836409ebe2ffed63db32717b24b726e284b0264f0226f30d03e3748",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "37270ae8b11ac80dc8690d22fdff2c52773af92800690386fc34b1eb14489705",
+      "received_at": "2026-10-04T22:05:30.706000Z"
+    },
+    "ZSQD/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZSQD",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-0811a6136b7621e52e788d5f11749ad3",
+        "outer_cutoff": "2026-10-04T17:59:38.636Z",
+        "parent_decision_at": "2026-10-04T17:59:28.528Z",
+        "original_envelope_content_sha": "292a812c40b138a7edeb6b872067239ff9758d5ebb2bc6f7060a717aff4c886d",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "e94e0251c6a2748a5c6a4ce8d3f7c4c0eb1714850040f06b732ffb00379aa9dc",
+      "received_at": "2026-10-04T17:15:30.095000Z"
+    },
+    "ZUCK/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZUCK",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-df425a45539e18da12a8fcc7d13659b7",
+        "outer_cutoff": "2026-10-04T16:25:26.619Z",
+        "parent_decision_at": "2026-10-04T16:25:02.831Z",
+        "original_envelope_content_sha": "459f058408918a77d3a04c6fda4d96ac4128b3043081cd034d9a77565720674f",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "b7bf18134cd24937bcb7324db34b30c6a0158e522c935dc655e0ebb63cf6c476",
+      "received_at": "2026-10-04T16:20:08.680000Z"
+    },
+    "ZUUU/2026-09-01": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZUUU",
+        "event": "2026-09-01",
+        "anchor_checkpoint": "p0-native-993a82bddfd20cadb6b48ef4dc83b8d4",
+        "outer_cutoff": "2026-08-31T22:49:24.070Z",
+        "parent_decision_at": "2026-08-31T22:49:24.070Z",
+        "original_envelope_content_sha": "465f0e6a70f069260fd78fab0d651625bce9120160a5a7c4982d44ac9a6b2863",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "2180099d13707d6ecf09e8c0f1a58d67c4a6f5e1a6158044be5496ec6b339911",
+      "received_at": "2026-08-31T16:57:59.713000Z"
+    },
+    "ZUUU/2026-09-21": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZUUU",
+        "event": "2026-09-21",
+        "anchor_checkpoint": "p0-native-8d0611784b033a599e5b870a289be9a9",
+        "outer_cutoff": "2026-09-20T22:58:41.902Z",
+        "parent_decision_at": "2026-09-20T22:56:30.967Z",
+        "original_envelope_content_sha": "578c65b060d3c386e053ddf256b9df791bd42b287ede6229e00596d69aeeec58",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "51d3e384be145b76e5f3829cab7c3e7e0a74337f19f94ed952e2d0bba361969f",
+      "received_at": "2026-09-20T22:51:23.099000Z"
+    },
+    "ZUUU/2026-10-05": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZUUU",
+        "event": "2026-10-05",
+        "anchor_checkpoint": "p0-native-ec970370594dba4c9ad386070a715c07",
+        "outer_cutoff": "2026-10-04T16:25:26.679Z",
+        "parent_decision_at": "2026-10-04T16:25:02.831Z",
+        "original_envelope_content_sha": "43f2e406641f3258daec78ea3c67704bb0511fcd11168d90d5cfb2462686a5ce",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "497a3b63b20a030811dd642b655b545d4ae2da673e28abb97f9db05af1e9eab0",
+      "received_at": "2026-10-04T16:20:08.680000Z"
+    },
+    "ZUUU/2026-10-06": {
+      "state": "ORIGINAL_PACKET_CLOCK_AND_IDENTITY_PASS",
+      "parent_clock": {
+        "station": "ZUUU",
+        "event": "2026-10-06",
+        "anchor_checkpoint": "p0-native-cfbac46bb309698cd028de035a2ba389",
+        "outer_cutoff": "2026-10-05T22:10:24.604Z",
+        "parent_decision_at": "2026-10-05T22:10:10.162Z",
+        "original_envelope_content_sha": "96b0088d4fb9c721608663be256564b6ee1fa646237fc9fc49e05a7839be510e",
+        "clock_source": "original_committed_P0_envelope_independent_of_old_replay_gate"
+      },
+      "packet_sha": "a951ee69f816edae88568b270efbf36feb53c0ed4c7804b5a060d44250e11589",
+      "received_at": "2026-10-05T22:06:04.064000Z"
+    }
+  },
+  "production_modified": false,
+  "whole_current_chain_certified": false
+}

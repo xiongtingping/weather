@@ -17,7 +17,7 @@ from bayes_basket_target.native_ensemble_p0 import compile_native_ensemble_p0
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target import fusion_blend as FB
 from nested_storage import read_object
-from parent_clock import original_parent_clock
+from parent_clock import original_parent_clock,validate_original_packet_clock
 from bayes_basket_target.materialization import rehydrate_lineage_documents
 
 OWN={'calibration_native_ensemble_system_artifact','calibration_cross_native_ensemble_selection_evidence','calibration_cross_native_ensemble_artifact','calibration_cross_native_ensemble_oos_evaluation','calibration_cross_native_ensemble_oos_prediction','calibration_native_ensemble_promotion','calibration_native_ensemble_activation','calibration_native_ensemble_certificate_renewal','calibration_seat_weight_rule_journal'}
@@ -120,6 +120,7 @@ def main():
     if len(body)>2*1024**2:raise RuntimeError('nested_compile_packet_limit')
     packet=json.loads(body)
     if content_sha256({k:v for k,v in packet.items() if k!='snapshot_content_sha256'})!=packet_sha:raise ValueError('nested_compile_packet_identity_failed')
+    validate_original_packet_clock(packet,clock)
     proofs=[dict(x) for x in fetch(source,"select * from basket_probability_bridge_history where checkpoint_id=? and state='COMMITTED'",(root['original_checkpoint'],))]
     proofs=[x for x in proofs if json.loads(x['bucket_intervals_json'])==packet['bucket_intervals'] and utc(x['created_at_utc'])<=utc(at)]
     if len(proofs)!=1:raise ValueError('nested_compile_geometry_not_unique')
