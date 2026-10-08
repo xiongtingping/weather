@@ -22,7 +22,9 @@ so the board can poll it every minute instead of waiting for the page render.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
+import re
 import sqlite3
 import sys
 from datetime import datetime, time as dtime, timedelta, timezone
@@ -365,6 +367,8 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
                    "consensus_center_c": _float(bridge.get("consensus_center_c")),
                    "center_gap_c": _float(bridge.get("center_gap_c"))} if bridge else None,
         "taf_witness": {
+            "forecast_revision_id": taf_w.get("forecast_revision_id"),
+            "capture_content_sha256": taf_w.get("capture_content_sha256"),
             "issued_at_utc": taf_w.get("issued_at_utc"), "tx_c": _float(taf_w.get("tx_c")),
             "cloud_cover_fraction": _float(taf_w.get("cloud_cover_fraction")),
             "precipitation_probability": _float(taf_w.get("precipitation_probability")),
@@ -382,6 +386,7 @@ def _p0m_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     L = head["lineage"]
     receipt = _json(L.get("p0m_taf_likelihood_json"), {})
     return {
+        "model_center_c": _float(L.get("model_center_c")),
         "taf_state": receipt.get("state") or L.get("taf_revision_state"),
         "tx_c": _float(L.get("taf_observed_tx_c")),
         "root_center_c": _float(receipt.get("root_center_c")),
@@ -397,6 +402,7 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     L = head["lineage"]
     receipt = _json(L.get("p1_observation_likelihood_json"), {})
     return {
+        "model_center_c": _float(L.get("model_center_c")),
         "state": receipt.get("state"), "update": receipt.get("update"),
         "running_high_c": _float(L.get("metar_trajectory_running_high_c")),
         "rise_probability": _float(receipt.get("rise_probability")),
@@ -408,9 +414,34 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _p1_root_center(conn, head: Mapping[str, Any], station: str, day: str) -> float | None:
+    """Read the exact committed prediction root, never the latest stage head."""
+    lineage = head["lineage"]
+    checkpoint = lineage.get("prediction_root_checkpoint_id")
+    digest = lineage.get("prediction_root_content_sha256")
+    stage = lineage.get("prediction_root_stage")
+    if not checkpoint or not digest or stage not in {"P0", "P0-M"}:
+        return None
+    row = conn.execute(
+        "SELECT lineage_json, decision_at_utc FROM basket_probability_envelope"
+        " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
+        " AND stage=? AND state='COMMITTED' LIMIT 1",
+        (checkpoint, digest, station, day, stage),
+    ).fetchone()
+    if row is None:
+        return None
+    root_time, head_time = _utc(row[1]), _utc(head["decided_at_utc"])
+    # Millisecond and microsecond strings are not lexically comparable:
+    # .844Z is earlier than .844006Z even though it sorts after it.
+    if root_time is None or head_time is None or root_time > head_time:
+        return None
+    return _float(_json(row[0], {}).get("model_center_c"))
+
+
 def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
     rows = conn.execute(
-        "SELECT stage, decision_at_utc, probabilities_json, posterior_version"
+        "SELECT stage, decision_at_utc, probabilities_json, posterior_version,"
+        " json_extract(lineage_json,'$.model_center_c')"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND state='COMMITTED' ORDER BY decision_at_utc",
         (station, day),
@@ -423,7 +454,7 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
     p1 = [k for k in keep if k[0] == "P1"]
     drop = set(sorted(p1, key=lambda k: k[1])[:-P1_TREND_MAX]) if len(p1) > P1_TREND_MAX else set()
     out = []
-    for key, (stage, at, probs, version) in keep.items():
+    for key, (stage, at, probs, version, center) in keep.items():
         if key in drop:
             continue
         vec = _norm(_json(probs, {}))
@@ -431,6 +462,7 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         if stats is None:
             continue
         out.append({"stage": stage, "at_utc": str(at), "version": version,
+                    "center_c": _float(center),
                     "vector": {k: round(v, 5) for k, v in vec.items()}, "stats": stats})
     out.sort(key=lambda e: (e["at_utc"], STAGES.index(e["stage"]) if e["stage"] in STAGES else 9))
     return out
@@ -754,7 +786,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                 gap = obs["temp_c"] - t_fc
                 if abs(gap) >= TEMP_DIFF_C:
                     diffs.append({"kind": "temp", "dir": "more" if gap > 0 else "less",
-                                  "text": f"比预报{'暖' if gap > 0 else '冷'} {abs(gap):.1f}°C"})
+                                  "text": f"比预报{'暖' if gap > 0 else '冷'} {abs(gap):.2f}°C"})
             vis = obs.get("visibility_m")
             if vis is not None and vis < HAZE_VISIBILITY_M:
                 diffs.append({"kind": "haze", "dir": "less", "text": f"能见度 {vis:.0f} m（霾/雾，削弱日照）"})
@@ -791,11 +823,72 @@ def _taf(conn, station: str, day: str) -> dict[str, Any]:
     return {"captures": captures}
 
 
-def _taf_raw(station: str) -> list[dict[str, Any]]:
+def _taf_inbox() -> dict[str, Any]:
+    """A bounded read shared by the raw-text and exact cloud-height displays."""
     try:
-        inbox = json.loads(TAF_INBOX_PATH.read_text(encoding="utf-8"))
+        with TAF_INBOX_PATH.open("rb") as handle:
+            blob = handle.read(8 * 1024 * 1024 + 1)
+        if len(blob) > 8 * 1024 * 1024:
+            return {}
+        inbox = json.loads(blob)
     except (OSError, ValueError):
-        return []
+        return {}
+    if not isinstance(inbox, dict) or not isinstance(inbox.get("captures"), list) or len(inbox["captures"]) > 2048:
+        return {}
+    return inbox
+
+
+def _taf_cloud_layers(raw: str) -> list[dict[str, Any]]:
+    """Display cloud bases from report tokens, without deriving new cloud fractions."""
+    layers = []
+    seen = set()
+    for token in raw.split():
+        match = re.fullmatch(r"(FEW|SCT|BKN|OVC|VV)(\d{3}|///)(CB|TCU)?", token)
+        if match is None or token in seen:
+            continue
+        seen.add(token)
+        cover, height, convective = match.groups()
+        feet = None if height == "///" else int(height) * 100
+        metres = None if feet is None else feet * 0.3048
+        band = "vertical_visibility" if cover == "VV" else "unknown" if metres is None else (
+            "below_2km" if metres < 2000 else "2_to_6km" if metres < 6000 else "at_or_above_6km")
+        layers.append({"code": token, "cover": cover, "height_ft_agl": feet,
+                       "height_m_agl": None if metres is None else round(metres, 1),
+                       "base_band": band, "convective": convective})
+    return layers
+
+
+def _taf_cloud_evidence(conn, station: str, day: str, witness: Mapping[str, Any], inbox: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind report-height facts to the capture the P0 actually witnessed."""
+    absent = {"state": "unavailable", "layers": []}
+    revision, digest = witness.get("forecast_revision_id"), witness.get("capture_content_sha256")
+    if not revision or not digest:
+        return absent
+    row = conn.execute(
+        "SELECT source_object_sha256 FROM calibration_forward_taf_capture"
+        " WHERE station_id=? AND event_date=? AND revision_id=? AND content_sha256=?"
+        " AND source_class='official_forward_native_receipt' LIMIT 1",
+        (station, day, revision, digest),
+    ).fetchone()
+    if row is None:
+        return absent
+    for capture in inbox.get("captures") or []:
+        if not isinstance(capture, Mapping):
+            continue
+        reference = capture.get("forecast_revision") or {}
+        if not isinstance(reference, Mapping) or (
+            reference.get("station_id"), reference.get("event_date"), reference.get("revision_id"),
+            reference.get("source_object_sha256")) != (station, day, revision, row[0]):
+            continue
+        raw = capture.get("raw_taf")
+        if not isinstance(raw, str) or len(raw) > 16384 or hashlib.sha256(raw.encode("utf-8")).hexdigest() != row[0]:
+            return absent
+        return {"state": "matched", "source_object_sha256": row[0], "layers": _taf_cloud_layers(raw)}
+    return absent
+
+
+def _taf_raw(station: str, inbox: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    inbox = _taf_inbox() if inbox is None else inbox
     out: dict[str, dict[str, Any]] = {}
     for capture in inbox.get("captures") or []:
         revision = capture.get("forecast_revision") or {}
@@ -826,7 +919,7 @@ def _precip(conn, station: str, day: str) -> dict[str, Any] | None:
             "lineage": "aggregator_republisher（参考，不进任何层）"}
 
 
-def _day(conn, station: str, day: str, role: str, zone: ZoneInfo) -> dict[str, Any]:
+def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: Mapping[str, Any] | None = None) -> dict[str, Any]:
     heads = {stage: _envelope_head(conn, station, day, stage) for stage in STAGES}
     newest = max((h for h in heads.values() if h), key=lambda h: str(h["decided_at_utc"]), default=None)
     if newest is None:
@@ -846,10 +939,14 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo) -> dict[str, A
         if stage == "P0":
             entry.update(_p0_brief(head, axis, _previous_p0(
                 conn, station, day, str(head["decided_at_utc"])), station=station, day=day))
+            if entry.get("taf_witness"):
+                entry["taf_witness"]["cloud_evidence"] = _taf_cloud_evidence(
+                    conn, station, day, entry["taf_witness"], taf_inbox or {})
         elif stage == "P0-M":
             entry.update(_p0m_brief(head))
         else:
             entry.update(_p1_brief(head))
+            entry["root_center_c"] = _p1_root_center(conn, head, station, day)
         stages[stage] = entry
     # The day's word: the newest stage decided (P1 > P0-M > P0 on a tie).
     head_stage = max(stages, key=lambda s: (str(stages[s]["decided_at_utc"])[:19], STAGES.index(s)))
@@ -982,7 +1079,8 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         tz_name, event_days = resolved
         zone = ZoneInfo(tz_name)
         token = _token(conn, station, event_days)
-        days = [_day(conn, station, day, role, zone) for role, day in event_days]
+        taf_inbox = _taf_inbox()
+        days = [_day(conn, station, day, role, zone, taf_inbox=taf_inbox) for role, day in event_days]
         today = now.astimezone(zone).date().isoformat()
         peak_today = past_peak(conn, station, today, zone, now)
         for day in days:
@@ -1000,7 +1098,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         "local_now": now.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
         "built_at_utc": _iso(finished),
         "build_sec": round((finished - started).total_seconds(), 2),
-        "taf_raw": _taf_raw(station),
+        "taf_raw": _taf_raw(station, taf_inbox),
         "taker_fee_rate": DEFAULT_TAKER_FEE_RATE,
         "days": days,
     }
