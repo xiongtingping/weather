@@ -93,7 +93,7 @@ def test_one_live_category_with_the_data_board_over_the_orders():
     # under it, in board order.
     assert "data-daytabs" not in html and 'class="daytabs"' not in html
     assert re.findall(r'<details class="mb-fold" id="([\w-]+)"', html) == [
-        "sec-tiebreak", "sec-proper-bet", "sec-tail-short", "sec-basket-shadow"]
+        "sec-tiebreak", "sec-proper-bet", "sec-tail-short", "sec-copy-follow", "sec-basket-shadow"]
     assert html.index("DATA") < html.index('class="mb-fold"')
     assert 'data-daytabs="money-paper"' not in html
     assert "DATA" in html

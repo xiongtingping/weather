@@ -191,8 +191,9 @@ def test_the_publication_table_follows_the_upstream_lamps() -> None:
 
     page = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert "function publishTimes()" in page
-    # 2026-10-01: the run-health matrix sits between the lamps and the table.
-    assert "rendered[1] + runHealth + published" in page
+    # 2026-10-01 the run-health matrix sat between the lamps and the table;
+    # 2026-10-05 (536410da) the head became uniform health cards and that
+    # composition left the page, so the old string assertion left with it.
 
 
 def test_a_regional_lane_states_its_rhythm_and_publication_delay(monkeypatch) -> None:
