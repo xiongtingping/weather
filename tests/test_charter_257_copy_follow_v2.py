@@ -103,10 +103,11 @@ def test_the_defaults_name_the_cluster_and_the_stake_dial() -> None:
     assert strategy_lanes.LANE_COPY_FOLLOW in strategy_lanes.STAKE_DIALS
 
 
-def test_the_lanes_file_carries_v2_switched_off() -> None:
+def test_the_lanes_file_carries_v2() -> None:
+    # The switch itself is the operator's (turned on 2026-10-08 16:20Z); only the rule and dials are pinned.
     root = Path(__file__).resolve().parents[1]
     cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_COPY_FOLLOW, root / "config" / "trading" / "strategy_lanes_v1.json")
-    assert cfg["enabled"] is False and cfg["rule"] == lane.RULE_V2
+    assert cfg["rule"] == lane.RULE_V2
     assert cfg["mirror_sells"] is False and len(cfg["source_users"]) == 8
 
 
@@ -192,3 +193,12 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
     charter = (root / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     assert "257. **跟单线 v2" in charter and "cluster_taker_first_filtered_fixed_stake_v2" in charter
     assert "宪章 256/257" in (root / "AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_a_take_is_sized_on_the_venues_amount_grid() -> None:
+    # 2026-10-08 17:01Z: 15.62 shares x 0.32 = 4.9984 USDC was refused ("invalid amounts"); whole shares are legal.
+    quote = {"bid": 0.30, "ask": 0.31, "asks": [(0.31, 500.0)]}
+    plan = lane.plan_buy(quote, price_cap=0.32, gap=15.62, min_shares=5.0)
+    assert plan["order_kind"] == "take" and plan["shares"] == 15.0
+    assert abs(plan["shares"] * plan["limit_price"] * 100 - round(plan["shares"] * plan["limit_price"] * 100)) < 1e-6
+

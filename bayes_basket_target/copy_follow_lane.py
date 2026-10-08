@@ -67,7 +67,9 @@ from .contracts import content_sha256
 from .delta_v2_runtime import EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
 from .exit_orders import Transport, default_position_reader, send_exit_sell
 from .lane_orders import send_lane_buy
-from .p1_tail_lane import DEPTH_HEADROOM_FRACTION, _latest_snapshot, _ws_manifest_root, live_ws_snapshot
+from .p1_tail_lane import (
+    DEPTH_HEADROOM_FRACTION, _latest_snapshot, _sendable_shares, _ws_manifest_root, live_ws_snapshot,
+)
 from .strategy_lanes import COPY_FOLLOW_DEFAULT_SETTINGS, LANE_COPY_FOLLOW, lane_settings
 from .tiebreak_lane import _cash_refusal, resting_order_fields, settle_stuck_lane_cycles
 
@@ -900,7 +902,11 @@ def plan_buy(quote: Mapping[str, Any], *, price_cap: float, gap: float, min_shar
     ask = quote.get("ask")
     if ask is not None and float(ask) <= limit + 1e-9:
         depth = sum(s for p, s in asks if p <= limit + 1e-9)
-        shares = _floor_shares(min(float(gap), depth * DEPTH_HEADROOM_FRACTION))
+        # A FOK's two amounts must both sit on the venue's grid (cost on two
+        # decimals, shares on four): 15.62 x 0.32 = 4.9984 was refused on
+        # 2026-10-08 17:01Z (「invalid amounts」), so the take is sized the way
+        # the far-tail lane sizes its FOKs -- whole shares first.
+        shares = _sendable_shares(limit, min(float(gap), depth * DEPTH_HEADROOM_FRACTION)) or 0.0
         if shares >= float(min_shares) and shares * float(ask) >= EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
             return {"order_kind": "take", "limit_price": limit, "fok_price_cap": limit, "shares": shares,
                     "notional_usdc": round(shares * limit, 6)}
