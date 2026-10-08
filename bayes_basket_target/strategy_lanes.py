@@ -24,12 +24,14 @@ for it:
 * ``p1_tail`` / ``p1_consensus`` -- charters 166 and 203.
 * ``proper_bet`` -- charter 231's Proper 下注线, which replaced the basket's
   betting rule on 2026-09-26.
+* ``copy_follow`` -- charter 256's 跟单线: one Polymarket account's weather
+  trades, mirrored at our scale.  Off unless the file switches it on.
 
 Read fresh on every call, never cached: a cached answer keeps sending after
 the operator has thrown the switch, which is the failure the arming flag
 already closed once.  A MISSING file means the defaults -- every lane
-enabled, the tiebreak lane at its measured settings -- so a test or a
-rebuilt checkout runs the system as designed; a file that exists but cannot
+enabled but the 跟单线, the tiebreak lane at its measured settings -- so a
+test or a rebuilt checkout runs the system as designed; a file that exists but cannot
 be read is not a ruling anyone can act on, and reads as every lane paused,
 because this file authorises spending and a switch nobody can read is not
 permission.  ``PM_STRATEGY_LANES_CONFIG`` points a test at its own copy.
@@ -57,6 +59,7 @@ LANE_P1_TAIL = "p1_tail"
 LANE_P1_CONSENSUS = "p1_consensus"
 LANE_PROPER_BET = "proper_bet"
 LANE_TAIL_SHORT = "tail_short"
+LANE_COPY_FOLLOW = "copy_follow"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -66,6 +69,7 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_P1_CONSENSUS,
     LANE_PROPER_BET,
     LANE_TAIL_SHORT,
+    LANE_COPY_FOLLOW,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -340,6 +344,39 @@ TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "lookback_days": 1,
 }
 
+#: Charter 256's 跟单线 (user rulings 2026-10-08 「不用研究，开始做跟单策略」「按照等比例
+#: 缩小，我资金没有他多」「按他已投入仓位算」).  Off by default: a missing lane
+#: file must not start spending on another account's trades.
+COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": False,
+    "rule": "source_positions_value_ratio_at_source_price_v1",
+    # The account followed (badatmath., the copy lane of July's v1 too).
+    "source_user": "0x8fbd7cf5f806f563080864694415829f7229a959",
+    # Our scale against theirs: our account equity over the marked value of
+    # the source's open positions (its idle cash is not counted).
+    "ratio_basis": "source_positions_value",
+    # Source trades before this instant are history, not orders to follow;
+    # unset, the lane's first pass stamps it.
+    "follow_from_utc": None,
+    # A source trade older than this when first seen is recorded, not followed.
+    "max_source_age_seconds": 21600.0,
+    "sides": ["YES", "NO"],
+    "mirror_sells": True,
+    # How far past the source's own price a BUY may pay (and a SELL may
+    # accept under it), in price units.
+    "max_slippage": 0.02,
+    "min_order_shares": 5.0,
+    # A resting rung (and a resting sell) lives this long, then is re-posted.
+    "rung_horizon_seconds": 900.0,
+    "send_book_fresh_seconds": 120.0,
+    "live_ws_book": True,
+    "max_daily_cost_usdc": 100.0,
+    "max_sends_per_pass": 8,
+    # An order that never reached the venue waits this long before the next.
+    "unsent_retry_seconds": 300.0,
+    "source_value_refresh_seconds": 300.0,
+}
+
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak
 #: lane's since charter 146, the far-tail and Proper lanes' since charter 252
 #: (user rulings 2026-10-04 「顶部增加：远尾做空 H1 的单笔预算调整」「还有Proper 下注线
@@ -360,6 +397,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_P1_CONSENSUS: dict(P1_CONSENSUS_DEFAULT_SETTINGS),
     LANE_PROPER_BET: dict(PROPER_BET_DEFAULT_SETTINGS),
     LANE_TAIL_SHORT: dict(TAIL_SHORT_DEFAULT_SETTINGS),
+    LANE_COPY_FOLLOW: dict(COPY_FOLLOW_DEFAULT_SETTINGS),
 }
 
 
@@ -483,7 +521,9 @@ __all__ = [
     "ENV_VAR",
     "KNOWN_LANES",
     "KNOWN_STAGES",
+    "COPY_FOLLOW_DEFAULT_SETTINGS",
     "LANE_BASKET",
+    "LANE_COPY_FOLLOW",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",
     "LANE_P1_CONSENSUS",

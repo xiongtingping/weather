@@ -116,6 +116,7 @@ from bayes_basket_target.market_registry import (
 from bayes_basket_target.settlement_time import settlement_day_window
 from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
+    LANE_COPY_FOLLOW,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
     LANE_PROPER_BET,
@@ -4009,6 +4010,29 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 256: the 跟单线 at the head too -- the source's trades since the
+    # previous cycle's tail are followed before this cycle's long work, not
+    # after it.  A failure is a receipt, never a stop.
+    copy_follow_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_COPY_FOLLOW)
+    ):
+        try:
+            from bayes_basket_target.copy_follow_lane import execute_copy_follow
+            from bayes_basket_target.exit_orders import (
+                default_transport as _copy_head_transport,
+            )
+            copy_follow_head_receipt = execute_copy_follow(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_copy_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            copy_follow_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -4263,6 +4287,27 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 256: the 跟单线, on the source's trades since the head.
+    copy_follow_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_COPY_FOLLOW
+    ):
+        copy_follow_receipt = {"state": "lane_paused", "lane": LANE_COPY_FOLLOW}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.copy_follow_lane import execute_copy_follow
+            from bayes_basket_target.exit_orders import (
+                default_transport as _copy_transport,
+            )
+            copy_follow_receipt = execute_copy_follow(
+                connection,
+                canonical,
+                transport=_copy_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            copy_follow_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4285,6 +4330,8 @@ def run_target_production_cycle(
         **({"proper_bet_lane_head": proper_bet_head_receipt} if proper_bet_head_receipt else {}),
         **({"proper_bet_lane": proper_bet_receipt} if proper_bet_receipt else {}),
         **({"tail_short_lane": tail_short_receipt} if tail_short_receipt else {}),
+        **({"copy_follow_lane_head": copy_follow_head_receipt} if copy_follow_head_receipt else {}),
+        **({"copy_follow_lane": copy_follow_receipt} if copy_follow_receipt else {}),
     }
 
 

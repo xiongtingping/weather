@@ -35,7 +35,11 @@ def _lanes_file(tmp_path: Path, table: dict, name: str = "lanes.json") -> Path:
 def test_missing_is_the_defaults_and_unreadable_pauses_everything(tmp_path) -> None:
     absent = lanes.load_strategy_lanes(tmp_path / "absent.json")
     assert absent["source"] == "defaults"
-    assert all(absent["lanes"][name]["enabled"] is True for name in lanes.KNOWN_LANES)
+    # Every lane on, except charter 256's 跟单线: a lost file must not start
+    # spending on another account's trades.
+    assert all(absent["lanes"][name]["enabled"] is True
+               for name in lanes.KNOWN_LANES if name != lanes.LANE_COPY_FOLLOW)
+    assert absent["lanes"][lanes.LANE_COPY_FOLLOW]["enabled"] is False
     assert absent["lanes"]["tiebreak"]["stake_usdc"] == 5.0
     broken = tmp_path / "broken.json"
     broken.write_text("{not json", encoding="utf-8")

@@ -19387,6 +19387,7 @@ function liveControlStrip(){
       + stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）"))}
     ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
+    ${group("跟单线", "", laneSwitch("copy_follow"))}
     <span class="navctl-br" aria-hidden="true"></span>
     ${group("0.998 回收", "", laneSwitch("certain_win_recycle"))}
     ${group("篮子", "basket", laneSwitch("basket")
@@ -19427,6 +19428,9 @@ const LC_LANES = {
   tail_short: {name:"远尾做空 H1",
     on:"实盘举旗时，P0 首决策、距结算 >36h 的远尾桶照常按 NO 卖价吃单（宪章 234/251）",
     off:"整条车道跳过：不评估、不发新单；已买到的 NO 照常持有到结算"},
+  copy_follow: {name:"跟单线",
+    on:"实盘举旗时，跟随对标账户的天气成交，按 我方净值÷对方持仓市值 等比例缩小；买不高于对方价、卖不低于对方价（宪章 256）",
+    off:"整条车道跳过：不读对方成交、不发新单；已跟到的仓位照常持有"},
   certain_win_recycle: {name:"0.998 回收",
     on:"对持有的 YES/NO 腿，在交易所允许 0.998 刻度时挂回收卖单；旧 0.99 单先确认撤销及成交",
     off:"停止新增回收卖单；已在交易所的卖单仍须按订单页核对"},
