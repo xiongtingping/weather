@@ -64,6 +64,23 @@
 
 **判读**：按宪章 240，研究样本上 LogScore 主判据显著改善、CRPS 同向、Brier 护栏不劣（下午两项显著），且对父链与到达延迟稳健——这是"观测云/日照增量"系列第一次样本外成立；但量级约 0.004 nat，集中在美国站、站日少，且仍是限定人群与研究父链，不是全链准入。**上线前提**：AGENTS 规定 Open-Meteo 转发源不得进入 P1，实测侧只能用官方源（GOES 为 NOAA 官方，已可用；亚洲需 JAXA 官方、欧洲需 EUMETSAT 官方），预报侧短波也须换成官方原生 NWP 的短波（现生产只采温度）。
 
+## 换官方预报短波复验（2026-10-08 晚）：不过，不接生产
+
+熊先生「做」：预报侧换成生产 active registry 家族的官方原生产品——NOAA GEFS 集合平均 `geavg` pgrb2a 0.5° `DSWRF`（00/06/12/18Z，按 .idx 字节区间取，带 S3 Last-Modified 回执，6 小时累计平均还原为 3 小时段均值；`gefs_dswrf_extract.py`，08-30..10-06 全部 152 个 run，0 失败）。实测侧不变。其对卫星实测的技巧与 Open-Meteo 相当（GOES 站 r 0.906 vs 0.889，MAE 85 vs 79 W/m²）。
+
+| 预报来源 | 拟合强度 | ΔLogScore 全部 48 站 | GOES 16 站 | 强度=1 |
+|---|---|---|---|---|
+| Open-Meteo 日前（转发源，不能进 P1） | 0.15→0.36 | **−0.0040 [−0.0074, −0.0007]** | −0.012 [−0.023, −0.003] | 0.000 |
+| GEFS 最新已到 run（研究父） | 0→0.17 | −0.0005 [−0.0015, +0.0005] | −0.0034 [−0.0074, −0.00001] | **+0.015 显著差** |
+| GEFS 最新已到 run（服务父） | 0.02→0.20 | −0.0007 [−0.0019, +0.0005] | −0.0046 [−0.0096, −0.0005] | +0.015 显著差 |
+| GEFS 日前 run（≥24h，研究父） | 0.08→0.24 | −0.0005 [−0.0030, +0.0021] | −0.0041 [−0.0133, +0.0035] | +0.020 显著差 |
+
+- 换成官方预报后，全站效应从 −0.0040 缩到 ≈0；提前量（最新 vs 日前）不是原因，差别在产品本身。
+- GOES 16 站仍有 −0.003~−0.005 的小改善、个别臂刚过零，但"按 GOES 站拆"是看过上一轮结果后才分的组，属事后切片，不能单独作准入证据（宪章 240 + "样本内漂亮样本外崩"判例）。
+- AGENTS 规定确定性产品（GFS/HRRR）与 Open-Meteo 转发都不得进 P1，官方可用的只有六家集合；GEFS 均值这条已测，不过。
+
+**结论：按计划"通过了再接 P1"，官方版没过预设门（全站跨零），不接生产、不建采集车道。** 数据与脚本保留：卫星实测辐射 48 站、GEFS 官方短波 152+156 个 run，可供日后其他集合家族（ECMWF ENS/ICON EPS 若开放短波）复测。
+
 ## 复跑
 
-`.venv-sat`（h5py/requests/certifi，仓库根，本地排除）→ `run_chunk.sh <分钟>`（GOES 与 Himawari 各一进程池，可续跑）→ `run_dsr_chunk.sh <分钟>`（GOES 地面短波）→ `coverage.py`（覆盖与 METAR 相关）→ `../taf_cloud_strict_replay_20261007/strict_fit.py --sky satellite --sat-stations-only`（卫星增量）与 `--sat-stations-only`（同站 METAR 对照）；`strict_fit.py --sky radiation [--parent served]`，`RAD_OPEN_METEO_LAG_HOURS=2` 为延迟敏感性。只读 SSOT/archive；原始 NetCDF 不落盘，只按字节区间读所需分块。
+`.venv-sat`（h5py/requests/certifi，仓库根，本地排除）→ `run_chunk.sh <分钟>`（GOES 与 Himawari 各一进程池，可续跑）→ `run_dsr_chunk.sh <分钟>`（GOES 地面短波）→ `coverage.py`（覆盖与 METAR 相关）→ `../taf_cloud_strict_replay_20261007/strict_fit.py --sky satellite --sat-stations-only`（卫星增量）与 `--sat-stations-only`（同站 METAR 对照）；`strict_fit.py --sky radiation [--parent served]`，`RAD_OPEN_METEO_LAG_HOURS=2` 为延迟敏感性；`gefs_dswrf_extract.py`（`GEFS_STEP_SET=d1` 取 f021–f042）后 `RAD_FORECAST=gefs|gefs_d1` 换官方预报。只读 SSOT/archive；原始 NetCDF 不落盘，只按字节区间读所需分块。

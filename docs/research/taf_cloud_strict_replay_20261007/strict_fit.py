@@ -346,7 +346,8 @@ def main():
     result['by_station']=by_station
     if args.sky=='radiation':
         lag=__import__('os').environ.get('RAD_OPEN_METEO_LAG_HOURS','1');result['open_meteo_lag_hours']=float(lag)
-        dst=HERE/('restricted_radiation_fit'+('' if args.parent=='research' else '_'+args.parent+'_parent')+('' if lag=='1' else '_lag'+lag)+'.json')
+        fc=__import__('os').environ.get('RAD_FORECAST','openmeteo');result['radiation_forecast_source']=fc
+        dst=HERE/('restricted_radiation_fit'+('' if fc=='openmeteo' else '_'+fc)+('' if args.parent=='research' else '_'+args.parent+'_parent')+('' if lag=='1' else '_lag'+lag)+'.json')
     elif args.sky=='satellite' or args.sat_stations_only:
         dst=HERE/f"restricted_{args.sky}_sky_32st_fit.json"
     else:

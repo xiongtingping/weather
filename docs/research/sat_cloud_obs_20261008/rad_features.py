@@ -50,6 +50,54 @@ def _local_hourly(payload: dict, key: str) -> dict[datetime, float]:
             for t, v in zip(h["time"], h[key]) if v is not None}
 
 
+FORECAST_SOURCE = __import__("os").environ.get("RAD_FORECAST", "openmeteo")
+
+
+class GefsForecast:
+    """Official NOAA GEFS ensemble-mean DSWRF (gefs_dswrf_extract.py), strictly
+    as of the anchor: only steps whose object was public by then, newest run
+    first.  GEFS writes means since the last 6 h boundary; they are turned
+    into 3-hour block means centred at run + step - 1.5 h and interpolated
+    linearly between centres."""
+
+    def __init__(self, folder: str = "gefs_dswrf", min_lead_hours: float = 0.0) -> None:
+        # min_lead_hours=24 reads only runs issued at least a day before the
+        # instant -- the same meaning as Open-Meteo's previous_day1.
+        self.min_lead = timedelta(hours=min_lead_hours)
+        self.runs: list[dict] = []
+        for path in sorted((HERE / folder).glob("*/*.json.gz")):
+            body = json.load(gzip.open(path, "rt"))
+            run = utc(body["run"])
+            steps = {r["step"]: r for r in body["steps"]}
+            blocks = []
+            for step in sorted(steps):
+                r = steps[step]
+                if r["avg_from"] == step - 3:
+                    vals = r["values"]
+                elif r["avg_from"] == step - 6 and step - 3 in steps:
+                    prev = steps[step - 3]["values"]
+                    vals = {k: max(0.0, (6 * v - 3 * prev[k]) / 3) for k, v in r["values"].items()}
+                else:
+                    continue
+                from email.utils import parsedate_to_datetime
+                blocks.append(dict(centre=run + timedelta(hours=step - 1.5), available=parsedate_to_datetime(r["last_modified"]), values=vals))
+            self.runs.append(dict(run=run, blocks=blocks))
+        self.runs.sort(key=lambda r: r["run"], reverse=True)
+
+    def at(self, st: str, instant: datetime, as_of: datetime) -> float | None:
+        for run in self.runs:
+            if run["run"] > as_of or run["run"] > instant - self.min_lead:
+                continue
+            seen = [b for b in run["blocks"] if b["available"] <= as_of]
+            for a, b in zip(seen, seen[1:]):
+                if a["centre"] <= instant <= b["centre"] and st in a["values"] and st in b["values"]:
+                    w = (instant - a["centre"]).total_seconds() / (b["centre"] - a["centre"]).total_seconds()
+                    return a["values"][st] * (1 - w) + b["values"][st] * w
+            if run["run"] < as_of - self.min_lead - timedelta(hours=30):
+                return None
+        return None
+
+
 class Radiation:
     def __init__(self) -> None:
         self.obs: dict[str, list[dict]] = {}
@@ -79,6 +127,8 @@ class Radiation:
             self.obs[st] = [dict(at=t - timedelta(minutes=30), available=t + OPEN_METEO_LAG, sw=v, kind="hour_mean")
                             for t, v in sorted(hourly.items())]
             self.source[st] = "open_meteo_" + model
+        self.gefs = (GefsForecast() if FORECAST_SOURCE == "gefs"
+                     else GefsForecast("gefs_dswrf_d1", 24.0) if FORECAST_SOURCE == "gefs_d1" else None)
         for path in sorted(FORECAST.glob("*.json.gz")):
             payload = json.load(gzip.open(path, "rt"))
             self.fc[path.name.split(".")[0]] = _local_hourly(payload, "shortwave_radiation_previous_day1")
@@ -103,11 +153,14 @@ class Radiation:
         last = seen[-2:]
         # An hour-mean observation sits at its hour's middle, where the
         # forecast_at interpolation returns exactly that hour's forecast mean.
-        fcs = [self.forecast_at(st, x["at"]) for x in last]
+        if self.gefs is not None:
+            fcs = [self.gefs.at(st, x["at"], t) for x in last]
+        else:
+            fcs = [self.forecast_at(st, x["at"]) for x in last]
         if any(f is None for f in fcs) or max(fcs) < 50:
             return None
         obs, fc = sum(x["sw"] for x in last), sum(fcs)
         deficit = max(-1.0, min(1.0, (fc - obs) / max(fc, 200.0 * len(last))))
-        return dict(source=self.source[st], valid_at=last[-1]["at"].isoformat().replace("+00:00", "Z"),
+        return dict(source=self.source[st], forecast_source=FORECAST_SOURCE, valid_at=last[-1]["at"].isoformat().replace("+00:00", "Z"),
                     available_at=last[-1]["available"].isoformat().replace("+00:00", "Z"),
                     observed_sw=round(obs / 2, 1), forecast_sw=round(fc / 2, 1), deficit=round(deficit, 4))
