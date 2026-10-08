@@ -1,0 +1,770 @@
+{
+  "schema": "fleet_nested_objects_and_inner_truth_audit_v1",
+  "passed": true,
+  "counts": {
+    "COMPONENT_AUDIT_PASS": 48,
+    "objects": 17872,
+    "fit_objects": 5375,
+    "fit_rows": 279840,
+    "system_objects": 2017,
+    "cross_objects": 7843,
+    "ladder_objects": 2637,
+    "system_holdout_rows": 16136,
+    "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 7510,
+    "cross_holdout_rows": 62744,
+    "cross_state:OOS_REJECTED": 333
+  },
+  "stations": {
+    "CYYZ": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 341,
+        "fit_objects": 118,
+        "fit_rows": 6110,
+        "system_objects": 41,
+        "cross_objects": 125,
+        "ladder_objects": 57,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "9c883d85dc4170bae10d3b923debe12b5241d9ddecc0d83d9d87943bfd903916",
+      "input_uncompressed_bytes": 33251014
+    },
+    "EDDM": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 407,
+        "fit_objects": 122,
+        "fit_rows": 6406,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 58,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "65e05880bfcf389c4b4784cb316f8e738ee446ed2e6fd232fda38993126084da",
+      "input_uncompressed_bytes": 45105549
+    },
+    "EFHK": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 120,
+        "fit_rows": 6340,
+        "system_objects": 42,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 336,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "79b3af4e03786b24bb46c9be41ce318b0649fdee1e98c1a1bf8be05d01a05a11",
+      "input_uncompressed_bytes": 44940886
+    },
+    "EGLC": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 407,
+        "fit_objects": 122,
+        "fit_rows": 6412,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 58,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 183,
+        "cross_holdout_rows": 1472,
+        "cross_state:OOS_REJECTED": 1
+      },
+      "summary_sha": "d5153a6f3a494590467f6f3057cfc62568d33f61e0125dc414c7a48126501e33",
+      "input_uncompressed_bytes": 45102301
+    },
+    "EHAM": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 120,
+        "fit_rows": 6330,
+        "system_objects": 42,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 336,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "548be3f2cd39e8dec1b333bd1558bfc6ecdf3eb4adb760dcb333a53aae07016d",
+      "input_uncompressed_bytes": 45022202
+    },
+    "EPWA": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 409,
+        "fit_objects": 122,
+        "fit_rows": 6399,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "5a16c2187e8de5a6917350a511657ece34042141e9916b176c2139cffcf400eb",
+      "input_uncompressed_bytes": 45077094
+    },
+    "FACT": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 120,
+        "fit_rows": 6330,
+        "system_objects": 42,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 336,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "0752a45286a72b0bb00511154f5d5d1bfb0ece627eb68c846dff0dee64724d1d",
+      "input_uncompressed_bytes": 45058132
+    },
+    "KATL": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 348,
+        "fit_objects": 123,
+        "fit_rows": 6432,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 57,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "aa641b11a18067dc5a13a4d3f051c3721641f54f73b90c9c990a397c55bc8ead",
+      "input_uncompressed_bytes": 33819971
+    },
+    "KAUS": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 347,
+        "fit_objects": 123,
+        "fit_rows": 6390,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 56,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "efbd349d84ab193d45e0bf555d672778410cbcf0de5afb9573db0e13b96fd132",
+      "input_uncompressed_bytes": 33898701
+    },
+    "KBKF": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 353,
+        "fit_objects": 125,
+        "fit_rows": 6528,
+        "system_objects": 44,
+        "cross_objects": 125,
+        "ladder_objects": 59,
+        "system_holdout_rows": 352,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "2aec8fc713f92fb4373ff692cc1e6d5d3fe37a863a4857627052527822831e12",
+      "input_uncompressed_bytes": 33991549
+    },
+    "KDAL": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 350,
+        "fit_objects": 125,
+        "fit_rows": 6528,
+        "system_objects": 44,
+        "cross_objects": 125,
+        "ladder_objects": 56,
+        "system_holdout_rows": 352,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "220e6bb2e56234baed51cf0b1e141e978a0a4dde541cb789b6ef673d0b9fbc21",
+      "input_uncompressed_bytes": 33979358
+    },
+    "KHOU": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 346,
+        "fit_objects": 123,
+        "fit_rows": 6417,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 55,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "6d4aecfaffce6f1796f64ab636fcf8f44d8a9b1430486630aa39395adcc64c20",
+      "input_uncompressed_bytes": 33899428
+    },
+    "KLAX": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 544,
+        "fit_objects": 133,
+        "fit_rows": 6802,
+        "system_objects": 92,
+        "cross_objects": 264,
+        "ladder_objects": 55,
+        "system_holdout_rows": 736,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 212,
+        "cross_holdout_rows": 2112,
+        "cross_state:OOS_REJECTED": 52
+      },
+      "summary_sha": "17c10fd5f060c405f9afd5b6007641e07125b8612b3a5d48bf6a9ec65b0fca30",
+      "input_uncompressed_bytes": 68976640
+    },
+    "KLGA": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 349,
+        "fit_objects": 123,
+        "fit_rows": 6423,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 58,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "726ae795b8692549bcf69a8c8dfc6e46b7e809baf0c2849da6bd8581e1008187",
+      "input_uncompressed_bytes": 33877462
+    },
+    "KMIA": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 348,
+        "fit_objects": 123,
+        "fit_rows": 6423,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 57,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "a406fcba42f3754f81f490d8e5f29800031f37542297360ef23a6d92cd2bcb83",
+      "input_uncompressed_bytes": 33878048
+    },
+    "KORD": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 349,
+        "fit_objects": 123,
+        "fit_rows": 6411,
+        "system_objects": 43,
+        "cross_objects": 125,
+        "ladder_objects": 58,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "d8e20136d37ecdc447abfacf734535a0427c71b0b7f1d781fa1e3a083a9ea431",
+      "input_uncompressed_bytes": 33845069
+    },
+    "KSEA": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 370,
+        "fit_objects": 133,
+        "fit_rows": 6811,
+        "system_objects": 46,
+        "cross_objects": 132,
+        "ladder_objects": 59,
+        "system_holdout_rows": 368,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 132,
+        "cross_holdout_rows": 1056
+      },
+      "summary_sha": "f7d140bd63ef6494c10d121aba73412b5214130382877edb49a6d109d82b54fd",
+      "input_uncompressed_bytes": 35874690
+    },
+    "KSFO": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 544,
+        "fit_objects": 133,
+        "fit_rows": 6814,
+        "system_objects": 92,
+        "cross_objects": 264,
+        "ladder_objects": 55,
+        "system_holdout_rows": 736,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 264,
+        "cross_holdout_rows": 2112
+      },
+      "summary_sha": "01194cb099e53640ddffd18e4db99c8dc3518b74dbf754490bc333bf8bb777e2",
+      "input_uncompressed_bytes": 68950101
+    },
+    "LEMD": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 409,
+        "fit_objects": 122,
+        "fit_rows": 6414,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "3ee403523a2c7a9756cd14a9e22fa1f738baad371249a30d0f3045ab4096233d",
+      "input_uncompressed_bytes": 45045524
+    },
+    "LFPB": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 409,
+        "fit_objects": 122,
+        "fit_rows": 6406,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "ee488454069ac654a9e14d0a66c71bd414143f4f848bbef5c40146b058048856",
+      "input_uncompressed_bytes": 45072700
+    },
+    "LIMC": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 409,
+        "fit_objects": 122,
+        "fit_rows": 6408,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "f9f64e68acc6e0801d161090074a72443fd73fac6cbf272b801b4e49d7957dcc",
+      "input_uncompressed_bytes": 45078034
+    },
+    "LLBG": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {},
+      "summary_sha": "9d6ecc569c19f93fb4716690c114d86f2f5eb23c5adadd930756af0411741bc5",
+      "input_uncompressed_bytes": 0
+    },
+    "LTAC": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 408,
+        "fit_objects": 122,
+        "fit_rows": 6416,
+        "system_objects": 43,
+        "cross_objects": 184,
+        "ladder_objects": 59,
+        "system_holdout_rows": 344,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "b4e6d95072c57f1fd8024ddcd5a9a4429b937725d28b5432971ba655c9adf317",
+      "input_uncompressed_bytes": 45125026
+    },
+    "LTFM": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {},
+      "summary_sha": "fb0af0353053395e882d73aaac6233aeec5b398c2cd5c8c3d0b3a81e6a9b748d",
+      "input_uncompressed_bytes": 0
+    },
+    "MMMX": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 342,
+        "fit_objects": 118,
+        "fit_rows": 6086,
+        "system_objects": 41,
+        "cross_objects": 125,
+        "ladder_objects": 58,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "0042dab2f38671013582e951e3cf6f829ddade4a987791c5507e213e74afe063",
+      "input_uncompressed_bytes": 33013457
+    },
+    "MPMG": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 509,
+        "fit_objects": 118,
+        "fit_rows": 5976,
+        "system_objects": 82,
+        "cross_objects": 250,
+        "ladder_objects": 59,
+        "system_holdout_rows": 656,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 240,
+        "cross_holdout_rows": 2000,
+        "cross_state:OOS_REJECTED": 10
+      },
+      "summary_sha": "ac247c57dee9dcbd8cb179a68156f8628845e4404a24ec684734f0a34253b11b",
+      "input_uncompressed_bytes": 63739344
+    },
+    "NZWN": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 382,
+        "fit_objects": 98,
+        "fit_rows": 5009,
+        "system_objects": 35,
+        "cross_objects": 191,
+        "ladder_objects": 58,
+        "system_holdout_rows": 280,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 187,
+        "cross_holdout_rows": 1528,
+        "cross_state:OOS_REJECTED": 4
+      },
+      "summary_sha": "59d3e02b4f673cd25feb9acb891a00bd362c68965d9fafd59d6438c364a5943c",
+      "input_uncompressed_bytes": 49072518
+    },
+    "OEJN": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 120,
+        "fit_rows": 6352,
+        "system_objects": 42,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 336,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "51e5d3609ccb237d6fe6fd90336eeb300529cc911c12ffabded2f916d49cf698",
+      "input_uncompressed_bytes": 44915832
+    },
+    "OPKC": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 410,
+        "fit_objects": 124,
+        "fit_rows": 6475,
+        "system_objects": 42,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 336,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 184,
+        "cross_holdout_rows": 1472
+      },
+      "summary_sha": "8c58f2fd38318978a176a2d4fce7436a019e120e5ac137adcc4913732b87caf4",
+      "input_uncompressed_bytes": 45057105
+    },
+    "RCSS": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 405,
+        "fit_objects": 114,
+        "fit_rows": 5916,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 61,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 188,
+        "cross_holdout_rows": 1520,
+        "cross_state:OOS_REJECTED": 2
+      },
+      "summary_sha": "f7a6779940ecb45022e6eb18d750fcf6e34c1d7d1cb9f03c01e168740b679d71",
+      "input_uncompressed_bytes": 47272367
+    },
+    "RJTT": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 405,
+        "fit_objects": 115,
+        "fit_rows": 5991,
+        "system_objects": 41,
+        "cross_objects": 190,
+        "ladder_objects": 59,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "6a6ac87602f9161a58f7d914fb78077744fb01ef0509cec5fead9e74b2c02da5",
+      "input_uncompressed_bytes": 47371130
+    },
+    "RKPK": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 113,
+        "fit_rows": 5906,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 63,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "72a1cfa46d27febe6a75162f673a5adb56a715014ce043f1360ef266ca6f420f",
+      "input_uncompressed_bytes": 47237243
+    },
+    "RKSI": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 406,
+        "fit_objects": 115,
+        "fit_rows": 5991,
+        "system_objects": 41,
+        "cross_objects": 190,
+        "ladder_objects": 60,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "12b4dfdd548a4e5ef8eff58da24fad3c299a433341220b15db6c91d5e0f6c7c4",
+      "input_uncompressed_bytes": 47376198
+    },
+    "RPLL": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 404,
+        "fit_objects": 114,
+        "fit_rows": 5985,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 60,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "0f7574e6d815be2ba148ba8e550dd8309940c1b2ec7eef23b89ad1ec8f7873cb",
+      "input_uncompressed_bytes": 47385856
+    },
+    "SAEZ": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 342,
+        "fit_objects": 118,
+        "fit_rows": 6103,
+        "system_objects": 41,
+        "cross_objects": 125,
+        "ladder_objects": 58,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 124,
+        "cross_holdout_rows": 1000,
+        "cross_state:OOS_REJECTED": 1
+      },
+      "summary_sha": "85229574f4a94337245091cbab1890e63909444fe4972ef630dd0332e7a11a2f",
+      "input_uncompressed_bytes": 33222654
+    },
+    "SBGR": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 342,
+        "fit_objects": 117,
+        "fit_rows": 6082,
+        "system_objects": 41,
+        "cross_objects": 125,
+        "ladder_objects": 59,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 125,
+        "cross_holdout_rows": 1000
+      },
+      "summary_sha": "5622369540c5c5dc1df4367e877973e576474755ed4aabd53045a2ff19d6fd7a",
+      "input_uncompressed_bytes": 33191340
+    },
+    "UUWW": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {},
+      "summary_sha": "b1be9889e0e0afb6b61e67803824b36da7580e62691669e33bf5f823a6af3ee9",
+      "input_uncompressed_bytes": 0
+    },
+    "VILK": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 417,
+        "fit_objects": 128,
+        "fit_rows": 6603,
+        "system_objects": 45,
+        "cross_objects": 184,
+        "ladder_objects": 60,
+        "system_holdout_rows": 360,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 182,
+        "cross_holdout_rows": 1472,
+        "cross_state:OOS_REJECTED": 2
+      },
+      "summary_sha": "48ea99546a26021dc634a3830c7b4bf4cefbc2360aafff105ab53e20be0bd4b1",
+      "input_uncompressed_bytes": 45233373
+    },
+    "WMKK": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 403,
+        "fit_objects": 114,
+        "fit_rows": 5958,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 59,
+        "system_holdout_rows": 320,
+        "cross_state:OOS_REJECTED": 145,
+        "cross_holdout_rows": 1520,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 45
+      },
+      "summary_sha": "2e36dcff152d27adb871d6b4ffebad141938751416414979ffe4c1104b0d4548",
+      "input_uncompressed_bytes": 47301204
+    },
+    "WSSS": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 403,
+        "fit_objects": 116,
+        "fit_rows": 6063,
+        "system_objects": 41,
+        "cross_objects": 190,
+        "ladder_objects": 56,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 82,
+        "cross_holdout_rows": 1520,
+        "cross_state:OOS_REJECTED": 108
+      },
+      "summary_sha": "3eb8dc7395bc33f16d3e5c0b456511aebf459aad1a583b91731b375774b189e7",
+      "input_uncompressed_bytes": 47396221
+    },
+    "ZBAA": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 404,
+        "fit_objects": 114,
+        "fit_rows": 5922,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 60,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "817f5250ef6317731229ffa93997c7b10320ef6a66427b70680e87ce54ddd336",
+      "input_uncompressed_bytes": 47337703
+    },
+    "ZGGG": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 402,
+        "fit_objects": 114,
+        "fit_rows": 5913,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 58,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "12879e0e38461a1e7685faf759f66bbe5545b80233c4187a9993a82c57c16eb2",
+      "input_uncompressed_bytes": 47256942
+    },
+    "ZGSZ": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 402,
+        "fit_objects": 114,
+        "fit_rows": 5910,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 58,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 182,
+        "cross_holdout_rows": 1520,
+        "cross_state:OOS_REJECTED": 8
+      },
+      "summary_sha": "ee96fb0f9c81c76be2ae23c5462e988e6e3046f542e072b3274ba7d901cf5a2c",
+      "input_uncompressed_bytes": 47370281
+    },
+    "ZHHH": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 403,
+        "fit_objects": 114,
+        "fit_rows": 5907,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 59,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "f430b777977605d7fe2bf71c7471f04fd67849ef298461a467ec303117abfb09",
+      "input_uncompressed_bytes": 47309720
+    },
+    "ZSPD": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 405,
+        "fit_objects": 116,
+        "fit_rows": 5988,
+        "system_objects": 41,
+        "cross_objects": 190,
+        "ladder_objects": 58,
+        "system_holdout_rows": 328,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "7c82549cdd108dd468f4790c942f4ec1cc03d773d788550f073c5e7c7ba3d333",
+      "input_uncompressed_bytes": 47391716
+    },
+    "ZSQD": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 402,
+        "fit_objects": 114,
+        "fit_rows": 5910,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 58,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "3bc34fed702eec55ea43e8e6b6e99d476ea8e4ac74cba42015500d039d70253c",
+      "input_uncompressed_bytes": 47225498
+    },
+    "ZUCK": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 404,
+        "fit_objects": 114,
+        "fit_rows": 5919,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 60,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "e52206d46f59e9a5f8a55279f0b066655f59c469473cc0d89e57cae57e942a8c",
+      "input_uncompressed_bytes": 47332825
+    },
+    "ZUUU": {
+      "state": "COMPONENT_AUDIT_PASS",
+      "counts": {
+        "objects": 403,
+        "fit_objects": 114,
+        "fit_rows": 5925,
+        "system_objects": 40,
+        "cross_objects": 190,
+        "ladder_objects": 59,
+        "system_holdout_rows": 320,
+        "cross_state:PRODUCTION_NO_LIVE_OOS_PASS": 190,
+        "cross_holdout_rows": 1520
+      },
+      "summary_sha": "f5833530599e37bc9240c68eef2800c746561a507743b222283f78bf30d2d6fe",
+      "input_uncompressed_bytes": 47317651
+    }
+  },
+  "production_modified": false,
+  "whole_current_chain_certified": false,
+  "scope": "all referenced hashes, inner fit truth revisions/clocks, current parameter bindings, real geometry availability and holdout dates"
+}

@@ -1,0 +1,1066 @@
+{
+  "schema": "strict_prefix_current_parameter_research_rows_v1",
+  "counts": {
+    "REFUSED": 11600,
+    "p0_rebuild_unavailable": 6169,
+    "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 8018,
+    "prefix_origin_not_visible": 248,
+    "current_formal_prefix_missing": 3470,
+    "correction_visible_requires_manual_review": 1713
+  },
+  "stations": {
+    "CYYZ": {
+      "counts": {
+        "REFUSED": 188,
+        "p0_rebuild_unavailable": 182,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 253,
+        "prefix_origin_not_visible": 6
+      },
+      "source_arbitration": {
+        "selected:AWC": 441
+      },
+      "regional_profile": {
+        "rows": 3157,
+        "source_eligible": 2362,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4768119,
+      "output_bytes": 12998408,
+      "prefix_input_bytes": 1588503,
+      "sha256": "23299d373c26d3d14230b2a6e5ac7fdf93257dcc5207ffc7df5b4204cd25c16b"
+    },
+    "EDDM": {
+      "counts": {
+        "REFUSED": 430,
+        "current_formal_prefix_missing": 294,
+        "p0_rebuild_unavailable": 62,
+        "correction_visible_requires_manual_review": 74
+      },
+      "source_arbitration": {
+        "selected:AWC": 430
+      },
+      "regional_profile": {
+        "rows": 1321,
+        "source_eligible": 526,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2089590,
+      "output_bytes": 180982,
+      "prefix_input_bytes": 3373718,
+      "sha256": "2058e7dfa2137e65426b38ad0e57f9652c3fdc5bdd9fd52e6dafdb7b95e29eeb"
+    },
+    "EFHK": {
+      "counts": {
+        "REFUSED": 438,
+        "current_formal_prefix_missing": 341,
+        "correction_visible_requires_manual_review": 21,
+        "p0_rebuild_unavailable": 76
+      },
+      "source_arbitration": {
+        "selected:AWC": 438
+      },
+      "regional_profile": {
+        "rows": 1322,
+        "source_eligible": 527,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2092598,
+      "output_bytes": 183569,
+      "prefix_input_bytes": 3366985,
+      "sha256": "efae8bfe85f70db59f46e7d1d01559ac16ff8b525fa114882494f78345efdedb"
+    },
+    "EGLC": {
+      "counts": {
+        "REFUSED": 441,
+        "current_formal_prefix_missing": 381,
+        "p0_rebuild_unavailable": 60
+      },
+      "source_arbitration": {
+        "selected:AWC": 441
+      },
+      "regional_profile": {
+        "rows": 1298,
+        "source_eligible": 503,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2060050,
+      "output_bytes": 184663,
+      "prefix_input_bytes": 3143326,
+      "sha256": "f2930649e84b2a3e2400cd252b97d5e161eae543c84d54577144534e4dcf6f47"
+    },
+    "EHAM": {
+      "counts": {
+        "REFUSED": 435,
+        "current_formal_prefix_missing": 298,
+        "correction_visible_requires_manual_review": 77,
+        "p0_rebuild_unavailable": 60
+      },
+      "source_arbitration": {
+        "selected:AWC": 435
+      },
+      "regional_profile": {
+        "rows": 1321,
+        "source_eligible": 526,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2094617,
+      "output_bytes": 183117,
+      "prefix_input_bytes": 3359793,
+      "sha256": "6f52472162013b37e31cd5b75f79a0e0ddaaee900862c6e9d373915707b928d9"
+    },
+    "EPWA": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 338,
+        "REFUSED": 92,
+        "prefix_origin_not_visible": 2,
+        "p0_rebuild_unavailable": 67,
+        "correction_visible_requires_manual_review": 23
+      },
+      "source_arbitration": {
+        "selected:AWC": 430
+      },
+      "regional_profile": {
+        "rows": 1321,
+        "source_eligible": 526,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2091474,
+      "output_bytes": 16440780,
+      "prefix_input_bytes": 3316069,
+      "sha256": "4e988c770bb994d28c36f6d0fa4bb96fad8e12326a4b670491df0bdbdac823e9"
+    },
+    "FACT": {
+      "counts": {
+        "REFUSED": 189,
+        "p0_rebuild_unavailable": 70,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 250,
+        "prefix_origin_not_visible": 16,
+        "correction_visible_requires_manual_review": 103
+      },
+      "source_arbitration": {
+        "selected:AWC": 439
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1183684,
+      "output_bytes": 12096305,
+      "prefix_input_bytes": 1862179,
+      "sha256": "e5f1fbb51da2dbe4b6461bb8ec67514c702fdaa8ba8168de51270e3300f83060"
+    },
+    "KATL": {
+      "counts": {
+        "REFUSED": 384,
+        "current_formal_prefix_missing": 149,
+        "correction_visible_requires_manual_review": 112,
+        "p0_rebuild_unavailable": 123,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 50
+      },
+      "source_arbitration": {
+        "selected:AWC": 434,
+        "IEM:coverage_False": 434,
+        "IEM:qualification_False": 434,
+        "MADIS:coverage_False": 382,
+        "MADIS:qualification_False": 434,
+        "MADIS:coverage_True": 52
+      },
+      "regional_profile": {
+        "rows": 3240,
+        "source_eligible": 2445,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4868868,
+      "output_bytes": 2952515,
+      "prefix_input_bytes": 2015601,
+      "sha256": "426e2d91aef1775b7bd9a82cc8c1c596bc6cdb05b478a0413ea2e4e0f24b23a4"
+    },
+    "KAUS": {
+      "counts": {
+        "REFUSED": 288,
+        "p0_rebuild_unavailable": 132,
+        "current_formal_prefix_missing": 94,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 147,
+        "prefix_origin_not_visible": 1,
+        "correction_visible_requires_manual_review": 61
+      },
+      "source_arbitration": {
+        "selected:AWC": 435,
+        "IEM:coverage_False": 435,
+        "IEM:qualification_False": 435,
+        "MADIS:coverage_True": 74,
+        "MADIS:qualification_False": 435,
+        "MADIS:coverage_False": 361
+      },
+      "regional_profile": {
+        "rows": 3251,
+        "source_eligible": 2456,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4880611,
+      "output_bytes": 7186299,
+      "prefix_input_bytes": 1932991,
+      "sha256": "c0f50442f332a97e9eeab05809eb206cea3c1093f78cda1bc748d9e3417c0ff9"
+    },
+    "KBKF": {
+      "counts": {
+        "REFUSED": 395,
+        "current_formal_prefix_missing": 238,
+        "correction_visible_requires_manual_review": 43,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 52,
+        "p0_rebuild_unavailable": 114
+      },
+      "source_arbitration": {
+        "selected:AWC": 447,
+        "IEM:coverage_False": 447,
+        "IEM:qualification_False": 447,
+        "MADIS:coverage_False": 447,
+        "MADIS:qualification_False": 447
+      },
+      "regional_profile": {
+        "rows": 3309,
+        "source_eligible": 2514,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4975450,
+      "output_bytes": 2853854,
+      "prefix_input_bytes": 1923743,
+      "sha256": "3a1592d9859aa2225f5a5bd14011e44bb0132ea8fd7a382218f6cdcc30d97783"
+    },
+    "KDAL": {
+      "counts": {
+        "REFUSED": 406,
+        "p0_rebuild_unavailable": 135,
+        "correction_visible_requires_manual_review": 81,
+        "current_formal_prefix_missing": 190,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 19
+      },
+      "source_arbitration": {
+        "selected:AWC": 425,
+        "IEM:coverage_False": 425,
+        "IEM:qualification_False": 425,
+        "MADIS:coverage_True": 60,
+        "MADIS:qualification_False": 425,
+        "MADIS:coverage_False": 365
+      },
+      "regional_profile": {
+        "rows": 3233,
+        "source_eligible": 2438,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4882364,
+      "output_bytes": 1477039,
+      "prefix_input_bytes": 1773820,
+      "sha256": "cd014b71684861d5e2d77de02675f3fcb366ca0c22108f7e4d00c8cc6cc1f984"
+    },
+    "KHOU": {
+      "counts": {
+        "REFUSED": 367,
+        "p0_rebuild_unavailable": 153,
+        "current_formal_prefix_missing": 168,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 63,
+        "correction_visible_requires_manual_review": 45,
+        "prefix_origin_not_visible": 1
+      },
+      "source_arbitration": {
+        "selected:AWC": 430,
+        "IEM:coverage_False": 430,
+        "IEM:qualification_False": 430,
+        "MADIS:coverage_True": 67,
+        "MADIS:qualification_False": 430,
+        "MADIS:coverage_False": 363
+      },
+      "regional_profile": {
+        "rows": 3257,
+        "source_eligible": 2462,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4910633,
+      "output_bytes": 3345546,
+      "prefix_input_bytes": 1728235,
+      "sha256": "3daeba4554b8e6445956e26673b7ba59becb9982dd85a608a84ece3df9de07dd"
+    },
+    "KLAX": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 162,
+        "REFUSED": 269,
+        "correction_visible_requires_manual_review": 50,
+        "current_formal_prefix_missing": 94,
+        "p0_rebuild_unavailable": 125
+      },
+      "source_arbitration": {
+        "selected:AWC": 431,
+        "IEM:coverage_False": 431,
+        "IEM:qualification_False": 431,
+        "MADIS:coverage_False": 384,
+        "MADIS:qualification_False": 431,
+        "MADIS:coverage_True": 47
+      },
+      "regional_profile": {
+        "rows": 1617,
+        "source_eligible": 1055,
+        "not_p1_pair": 562
+      },
+      "regional_input_bytes": 2529001,
+      "output_bytes": 7226211,
+      "prefix_input_bytes": 1737985,
+      "sha256": "3358e3e4cd6a6dc734fc42e2bc71d4efa4902bff4840d0932171d7cf99d341f1"
+    },
+    "KLGA": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 122,
+        "REFUSED": 315,
+        "correction_visible_requires_manual_review": 90,
+        "current_formal_prefix_missing": 121,
+        "p0_rebuild_unavailable": 104
+      },
+      "source_arbitration": {
+        "selected:AWC": 437,
+        "IEM:coverage_False": 437,
+        "IEM:qualification_False": 437,
+        "MADIS:coverage_False": 428,
+        "MADIS:qualification_False": 437,
+        "MADIS:coverage_True": 9
+      },
+      "regional_profile": {
+        "rows": 3303,
+        "source_eligible": 2508,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4967940,
+      "output_bytes": 6327848,
+      "prefix_input_bytes": 2030431,
+      "sha256": "43d886839cbc0dfeaa5998cf35d71116eabb0ad1e92967913d851ee3ebbae086"
+    },
+    "KMIA": {
+      "counts": {
+        "REFUSED": 386,
+        "p0_rebuild_unavailable": 168,
+        "correction_visible_requires_manual_review": 153,
+        "current_formal_prefix_missing": 65,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 38
+      },
+      "source_arbitration": {
+        "selected:AWC": 424,
+        "IEM:coverage_False": 424,
+        "IEM:qualification_False": 424,
+        "MADIS:coverage_False": 375,
+        "MADIS:qualification_False": 424,
+        "MADIS:coverage_True": 49
+      },
+      "regional_profile": {
+        "rows": 3208,
+        "source_eligible": 2413,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4852811,
+      "output_bytes": 2326001,
+      "prefix_input_bytes": 1849454,
+      "sha256": "f3ebffb9c2dfd0b3940964a27d2296d7e76541a147604133f1743c8c1e1c93e3"
+    },
+    "KORD": {
+      "counts": {
+        "REFUSED": 304,
+        "correction_visible_requires_manual_review": 28,
+        "current_formal_prefix_missing": 139,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 131,
+        "p0_rebuild_unavailable": 137
+      },
+      "source_arbitration": {
+        "selected:AWC": 435,
+        "IEM:coverage_False": 435,
+        "IEM:qualification_False": 435,
+        "MADIS:coverage_True": 75,
+        "MADIS:qualification_False": 435,
+        "MADIS:coverage_False": 360
+      },
+      "regional_profile": {
+        "rows": 3251,
+        "source_eligible": 2456,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 4888245,
+      "output_bytes": 6889847,
+      "prefix_input_bytes": 2134753,
+      "sha256": "f8e713e89967bc9babb1a64ee31d255e3448a5341afca70a9fba3ff720154010"
+    },
+    "KSEA": {
+      "counts": {
+        "REFUSED": 265,
+        "p0_rebuild_unavailable": 163,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 167,
+        "current_formal_prefix_missing": 102
+      },
+      "source_arbitration": {
+        "selected:AWC": 432,
+        "IEM:coverage_False": 432,
+        "IEM:qualification_False": 432,
+        "MADIS:coverage_True": 9,
+        "MADIS:qualification_False": 432,
+        "MADIS:coverage_False": 423
+      },
+      "regional_profile": {
+        "rows": 2787,
+        "source_eligible": 2169,
+        "not_p1_pair": 618
+      },
+      "regional_input_bytes": 4183621,
+      "output_bytes": 7934251,
+      "prefix_input_bytes": 1703824,
+      "sha256": "4a2ebadae88397902a2eb1cbac069b1d4b7acc7a789ee34c17d5b65ef0900f88"
+    },
+    "KSFO": {
+      "counts": {
+        "REFUSED": 238,
+        "current_formal_prefix_missing": 74,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 179,
+        "prefix_origin_not_visible": 2,
+        "p0_rebuild_unavailable": 148,
+        "correction_visible_requires_manual_review": 14
+      },
+      "source_arbitration": {
+        "selected:AWC": 417,
+        "IEM:coverage_False": 417,
+        "IEM:qualification_False": 417,
+        "MADIS:coverage_True": 48,
+        "MADIS:qualification_False": 417,
+        "MADIS:coverage_False": 369
+      },
+      "regional_profile": {
+        "rows": 2593,
+        "retired_cell": 581,
+        "source_eligible": 1450,
+        "not_p1_pair": 562
+      },
+      "regional_input_bytes": 3895811,
+      "output_bytes": 7928780,
+      "prefix_input_bytes": 1627897,
+      "sha256": "34da600308d1389bb14914f90cdb8a68f35ecb3f1a5bb010696d1db500b394af"
+    },
+    "LEMD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 343,
+        "REFUSED": 88,
+        "p0_rebuild_unavailable": 58,
+        "prefix_origin_not_visible": 7,
+        "correction_visible_requires_manual_review": 23
+      },
+      "source_arbitration": {
+        "selected:AWC": 431
+      },
+      "regional_profile": {
+        "rows": 1321,
+        "source_eligible": 526,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2092588,
+      "output_bytes": 17094945,
+      "prefix_input_bytes": 3347094,
+      "sha256": "874591cd0c0f878248070bd6aa30afbf802420d9af184b7420d2031a74686f72"
+    },
+    "LFPB": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 363,
+        "REFUSED": 65,
+        "prefix_origin_not_visible": 9,
+        "p0_rebuild_unavailable": 55,
+        "current_formal_prefix_missing": 1
+      },
+      "source_arbitration": {
+        "selected:AWC": 428
+      },
+      "regional_profile": {
+        "rows": 1321,
+        "source_eligible": 526,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2092652,
+      "output_bytes": 17491790,
+      "prefix_input_bytes": 3281894,
+      "sha256": "348b6811ef30f3c06202aca44d9a30bf03433c66fa0a94bc99bf5b8e9aaebed7"
+    },
+    "LIMC": {
+      "counts": {
+        "REFUSED": 437,
+        "p0_rebuild_unavailable": 122,
+        "current_formal_prefix_missing": 312,
+        "correction_visible_requires_manual_review": 3
+      },
+      "source_arbitration": {
+        "selected:AWC": 437
+      },
+      "regional_profile": {
+        "rows": 1309,
+        "source_eligible": 514,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2072083,
+      "output_bytes": 182641,
+      "prefix_input_bytes": 2834117,
+      "sha256": "ea33c7b01ec80648a1cc5b89832be7c09571446ab97be9e20be5db36cdfd6380"
+    },
+    "LLBG": {
+      "counts": {
+        "REFUSED": 35,
+        "current_formal_prefix_missing": 24,
+        "correction_visible_requires_manual_review": 11
+      },
+      "source_arbitration": {
+        "selected:AWC": 35
+      },
+      "regional_profile": {
+        "rows": 122,
+        "not_p1_pair": 122
+      },
+      "regional_input_bytes": 178618,
+      "output_bytes": 14832,
+      "prefix_input_bytes": 278897,
+      "sha256": "f6429dfbb26d2d9cdc56125f23db80d1c76ca07eaa5969fc50ed83d441a3736b"
+    },
+    "LTAC": {
+      "counts": {
+        "REFUSED": 397,
+        "p0_rebuild_unavailable": 125,
+        "current_formal_prefix_missing": 260,
+        "correction_visible_requires_manual_review": 12,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 43
+      },
+      "source_arbitration": {
+        "selected:AWC": 440
+      },
+      "regional_profile": {
+        "rows": 1322,
+        "source_eligible": 527,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 2093808,
+      "output_bytes": 2167161,
+      "prefix_input_bytes": 3077027,
+      "sha256": "40d08e48ec518b17338cd3ac67a43f62fd23004c06b6304e17d1ad270b05d2ca"
+    },
+    "LTFM": {
+      "counts": {
+        "REFUSED": 35,
+        "current_formal_prefix_missing": 35
+      },
+      "source_arbitration": {
+        "selected:AWC": 35
+      },
+      "regional_profile": {
+        "rows": 122,
+        "not_p1_pair": 122
+      },
+      "regional_input_bytes": 178713,
+      "output_bytes": 14700,
+      "prefix_input_bytes": 302876,
+      "sha256": "72d5ce166b257b27b76111abc71bd7f7ad6b1f3e6a19d0359d46aed2d26f9982"
+    },
+    "MMMX": {
+      "counts": {
+        "REFUSED": 299,
+        "p0_rebuild_unavailable": 155,
+        "current_formal_prefix_missing": 90,
+        "prefix_origin_not_visible": 6,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 125,
+        "correction_visible_requires_manual_review": 48
+      },
+      "source_arbitration": {
+        "selected:AWC": 424
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177725,
+      "output_bytes": 5451973,
+      "prefix_input_bytes": 2333162,
+      "sha256": "bba0710cb5a0c6175a8ea412ff852145d1ebc3cd81be50ffa76ce4e4f3b516cf"
+    },
+    "MPMG": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 234,
+        "REFUSED": 175,
+        "prefix_origin_not_visible": 7,
+        "p0_rebuild_unavailable": 121,
+        "correction_visible_requires_manual_review": 47
+      },
+      "source_arbitration": {
+        "selected:AWC": 409
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177548,
+      "output_bytes": 9963529,
+      "prefix_input_bytes": 1757988,
+      "sha256": "445451a52462554f34ba7ca19a604ee0f81f431f0bc6f9c9bb929cea458184b3"
+    },
+    "NZWN": {
+      "counts": {
+        "REFUSED": 295,
+        "p0_rebuild_unavailable": 295,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 150
+      },
+      "source_arbitration": {
+        "selected:AWC": 445
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1180799,
+      "output_bytes": 7600940,
+      "prefix_input_bytes": 1849680,
+      "sha256": "3ddf959a05430c5d663821c6702eb28f33fd1d3d2033ce6ecf96d012eb5bb17a"
+    },
+    "OEJN": {
+      "counts": {
+        "REFUSED": 81,
+        "p0_rebuild_unavailable": 71,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 338,
+        "prefix_origin_not_visible": 10
+      },
+      "source_arbitration": {
+        "selected:AWC": 419
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177247,
+      "output_bytes": 15977437,
+      "prefix_input_bytes": 1649910,
+      "sha256": "306bf47b5ffdc32cb4e09f25f3e0051ef06fd2bddd7df4f0a17f8867e3aaa548"
+    },
+    "OPKC": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 322,
+        "REFUSED": 116,
+        "prefix_origin_not_visible": 9,
+        "p0_rebuild_unavailable": 107
+      },
+      "source_arbitration": {
+        "selected:AWC": 438
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177545,
+      "output_bytes": 15245802,
+      "prefix_input_bytes": 3375852,
+      "sha256": "01f98af1c979504bf1867179af84292fbcf538ba4615ab88d2cb1caab34db963"
+    },
+    "RCSS": {
+      "counts": {
+        "REFUSED": 177,
+        "p0_rebuild_unavailable": 174,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 263,
+        "prefix_origin_not_visible": 3
+      },
+      "source_arbitration": {
+        "selected:AWC": 440
+      },
+      "regional_profile": {
+        "rows": 1088,
+        "source_eligible": 314,
+        "not_p1_pair": 774
+      },
+      "regional_input_bytes": 1668538,
+      "output_bytes": 13348763,
+      "prefix_input_bytes": 3241538,
+      "sha256": "4dcc63a71daffe2d646d1fc35866d30f3bcf2cc6e44a2a2cc3faaafd6c8fe17f"
+    },
+    "RJTT": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 237,
+        "REFUSED": 189,
+        "prefix_origin_not_visible": 8,
+        "p0_rebuild_unavailable": 181
+      },
+      "source_arbitration": {
+        "selected:AWC": 426
+      },
+      "regional_profile": {
+        "rows": 1068,
+        "source_eligible": 301,
+        "not_p1_pair": 767
+      },
+      "regional_input_bytes": 1651309,
+      "output_bytes": 11562912,
+      "prefix_input_bytes": 3202311,
+      "sha256": "4cfe3151ea71e8b9f16fca8bcd6c629e00b5bf0f19ade22cfd69b98d27bd15c6"
+    },
+    "RKPK": {
+      "counts": {
+        "REFUSED": 317,
+        "p0_rebuild_unavailable": 222,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 125,
+        "correction_visible_requires_manual_review": 92,
+        "prefix_origin_not_visible": 3
+      },
+      "source_arbitration": {
+        "selected:AWC": 442
+      },
+      "regional_profile": {
+        "rows": 1060,
+        "source_eligible": 293,
+        "not_p1_pair": 767
+      },
+      "regional_input_bytes": 1640063,
+      "output_bytes": 6758164,
+      "prefix_input_bytes": 1593491,
+      "sha256": "e098f5d0d17b49463073312bcff142344735805194c72edd125dee9f93bb0381"
+    },
+    "RKSI": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 246,
+        "REFUSED": 188,
+        "prefix_origin_not_visible": 8,
+        "p0_rebuild_unavailable": 177,
+        "correction_visible_requires_manual_review": 3
+      },
+      "source_arbitration": {
+        "selected:AWC": 434
+      },
+      "regional_profile": {
+        "rows": 1075,
+        "source_eligible": 308,
+        "not_p1_pair": 767
+      },
+      "regional_input_bytes": 1664253,
+      "output_bytes": 12032854,
+      "prefix_input_bytes": 3219689,
+      "sha256": "cbae41a80ae878b181393143f6e7f08f765c7baf6d5f9316028980135471e2a3"
+    },
+    "RPLL": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 185,
+        "REFUSED": 258,
+        "prefix_origin_not_visible": 11,
+        "correction_visible_requires_manual_review": 101,
+        "p0_rebuild_unavailable": 146
+      },
+      "source_arbitration": {
+        "selected:AWC": 443
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177609,
+      "output_bytes": 9439447,
+      "prefix_input_bytes": 1888555,
+      "sha256": "fae0fd4183e35992679e565035d6ee53c9b32061e78c77248cb50cd86cdd6912"
+    },
+    "SAEZ": {
+      "counts": {
+        "REFUSED": 201,
+        "correction_visible_requires_manual_review": 99,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 223,
+        "prefix_origin_not_visible": 13,
+        "p0_rebuild_unavailable": 89
+      },
+      "source_arbitration": {
+        "selected:AWC": 424
+      },
+      "regional_profile": {
+        "rows": 736,
+        "not_p1_pair": 736
+      },
+      "regional_input_bytes": 1089144,
+      "output_bytes": 10561034,
+      "prefix_input_bytes": 1803863,
+      "sha256": "1262d3f709d5b9c7fdc57f3bcdba1c222e5d130da469233719800890377aadbd"
+    },
+    "SBGR": {
+      "counts": {
+        "REFUSED": 145,
+        "p0_rebuild_unavailable": 104,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 268,
+        "prefix_origin_not_visible": 5,
+        "correction_visible_requires_manual_review": 36
+      },
+      "source_arbitration": {
+        "selected:AWC": 413
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177907,
+      "output_bytes": 12903958,
+      "prefix_input_bytes": 1770426,
+      "sha256": "d0d9562128df3ec2264a9e8915d492ecd0225da9d2b1576e01820c5ed835540e"
+    },
+    "UUWW": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 35
+      },
+      "source_arbitration": {
+        "selected:AWC": 35
+      },
+      "regional_profile": {
+        "rows": 122,
+        "not_p1_pair": 122
+      },
+      "regional_input_bytes": 177510,
+      "output_bytes": 1557590,
+      "prefix_input_bytes": 328239,
+      "sha256": "13e93716f59a2069f625c0f97ad6c4cda01f77c3a541c3c4c34ddbcb6885ded6"
+    },
+    "VILK": {
+      "counts": {
+        "REFUSED": 297,
+        "p0_rebuild_unavailable": 180,
+        "correction_visible_requires_manual_review": 117,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 134
+      },
+      "source_arbitration": {
+        "selected:AWC": 431
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177450,
+      "output_bytes": 7208851,
+      "prefix_input_bytes": 2847242,
+      "sha256": "7b6610572cba70c22398694f11d1dbbfcb90165972cd7094492f038c131419ed"
+    },
+    "WMKK": {
+      "counts": {
+        "REFUSED": 283,
+        "p0_rebuild_unavailable": 172,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 147,
+        "prefix_origin_not_visible": 5,
+        "correction_visible_requires_manual_review": 106
+      },
+      "source_arbitration": {
+        "selected:AWC": 430
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1177509,
+      "output_bytes": 7046305,
+      "prefix_input_bytes": 3324558,
+      "sha256": "3dccb7c29a68fd65038c05f019f711caf7eb0356a63cd97c360218f99759cc3f"
+    },
+    "WSSS": {
+      "counts": {
+        "REFUSED": 200,
+        "p0_rebuild_unavailable": 173,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 242,
+        "prefix_origin_not_visible": 5,
+        "correction_visible_requires_manual_review": 22
+      },
+      "source_arbitration": {
+        "selected:AWC": 442
+      },
+      "regional_profile": {
+        "rows": 795,
+        "not_p1_pair": 795
+      },
+      "regional_input_bytes": 1183378,
+      "output_bytes": 11798930,
+      "prefix_input_bytes": 3329123,
+      "sha256": "0796ca81db8fdcf379d6fe8bbecf472dc9371f8e9d565154d04eebcca2674b1f"
+    },
+    "ZBAA": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 248,
+        "REFUSED": 198,
+        "prefix_origin_not_visible": 12,
+        "p0_rebuild_unavailable": 172,
+        "correction_visible_requires_manual_review": 14
+      },
+      "source_arbitration": {
+        "selected:AWC": 446
+      },
+      "regional_profile": {
+        "rows": 880,
+        "not_admissible_origin": 278,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1305245,
+      "output_bytes": 12249932,
+      "prefix_input_bytes": 3253209,
+      "sha256": "4c8c38b6c4afdb2480f4afdfb1908a141c0ceb026affc2620ad2f936f0e76d7f"
+    },
+    "ZGGG": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 282,
+        "REFUSED": 156,
+        "prefix_origin_not_visible": 8,
+        "p0_rebuild_unavailable": 148
+      },
+      "source_arbitration": {
+        "selected:AWC": 438
+      },
+      "regional_profile": {
+        "rows": 888,
+        "not_admissible_origin": 286,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1317912,
+      "output_bytes": 13809410,
+      "prefix_input_bytes": 3461108,
+      "sha256": "6ac1f34d246f5019f05b6ecbc01e9015d522b2049b5360ef3f5efaf2545ee665"
+    },
+    "ZGSZ": {
+      "counts": {
+        "REFUSED": 196,
+        "p0_rebuild_unavailable": 188,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 237,
+        "prefix_origin_not_visible": 8
+      },
+      "source_arbitration": {
+        "selected:AWC": 433
+      },
+      "regional_profile": {
+        "rows": 888,
+        "not_admissible_origin": 286,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1317980,
+      "output_bytes": 11898960,
+      "prefix_input_bytes": 1573278,
+      "sha256": "52fd58daf0737d270e4601583ffbd20ac0621bd18c380972ff06cab8194a96e2"
+    },
+    "ZHHH": {
+      "counts": {
+        "REFUSED": 204,
+        "p0_rebuild_unavailable": 195,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 233,
+        "prefix_origin_not_visible": 9
+      },
+      "source_arbitration": {
+        "selected:AWC": 437
+      },
+      "regional_profile": {
+        "rows": 880,
+        "not_admissible_origin": 278,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1305774,
+      "output_bytes": 11780247,
+      "prefix_input_bytes": 1526797,
+      "sha256": "8a3a0bbe38f3a62d8f86e797c40c12e8fb8442e73a2796661c2e2e74494a70a3"
+    },
+    "ZSPD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 279,
+        "REFUSED": 160,
+        "prefix_origin_not_visible": 3,
+        "p0_rebuild_unavailable": 157
+      },
+      "source_arbitration": {
+        "selected:AWC": 439
+      },
+      "regional_profile": {
+        "rows": 1174,
+        "not_admissible_origin": 286,
+        "source_eligible": 286,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1801668,
+      "output_bytes": 13897237,
+      "prefix_input_bytes": 3352166,
+      "sha256": "ce1d424f59241d5d8076c1ce386a96b6b83585f163a02b047db1cb105173041a"
+    },
+    "ZSQD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 257,
+        "REFUSED": 189,
+        "prefix_origin_not_visible": 32,
+        "p0_rebuild_unavailable": 157
+      },
+      "source_arbitration": {
+        "selected:AWC": 446
+      },
+      "regional_profile": {
+        "rows": 1174,
+        "not_admissible_origin": 286,
+        "source_eligible": 286,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1801979,
+      "output_bytes": 13034293,
+      "prefix_input_bytes": 1657846,
+      "sha256": "53c8c856d2b588eb6da9a422cfcf6a7dc57b27c332225708bf434919485e8584"
+    },
+    "ZUCK": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 249,
+        "REFUSED": 189,
+        "prefix_origin_not_visible": 30,
+        "p0_rebuild_unavailable": 155,
+        "correction_visible_requires_manual_review": 4
+      },
+      "source_arbitration": {
+        "selected:AWC": 438
+      },
+      "regional_profile": {
+        "rows": 886,
+        "not_admissible_origin": 284,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1315706,
+      "output_bytes": 12249790,
+      "prefix_input_bytes": 1630404,
+      "sha256": "da2442093f21b2c1102e828279992ba5833ed374b2d98acb2ba54bc9a12f42be"
+    },
+    "ZUUU": {
+      "counts": {
+        "REFUSED": 200,
+        "p0_rebuild_unavailable": 191,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 239,
+        "prefix_origin_not_visible": 9
+      },
+      "source_arbitration": {
+        "selected:AWC": 439
+      },
+      "regional_profile": {
+        "rows": 888,
+        "not_admissible_origin": 286,
+        "not_p1_pair": 602
+      },
+      "regional_input_bytes": 1317750,
+      "output_bytes": 11842095,
+      "prefix_input_bytes": 1529478,
+      "sha256": "5b3355497c32181da3a93725a0bddc87fa5034e4ae04a2368b4fd9f9f8885961"
+    }
+  },
+  "production_modified": false,
+  "whole_chain_current_authority_certified": false,
+  "exclusions": [
+    "Existing ASOS artifacts lack exact-source current P1 binding; actual historical coverage evaluated, AWC fallback evaluated",
+    "Unresolved corrections and unsupported raw TX grammar fail closed"
+  ],
+  "grain": "fixed_hourly_old_service_anchors_at_actual_output_availability",
+  "source_profile": {
+    "raw_rows": 16554,
+    "decode_reject:overlapping_prevailing_change": 15,
+    "decode_reject:fm_token_invalid": 27,
+    "decode_reject:unrecognised_cloud_token": 31,
+    "decode_reject:issue_mismatch": 2,
+    "decode_reject:window_order_invalid": 9,
+    "decode_reject:window_token_invalid": 8,
+    "decode_reject:fm_outside_validity": 5,
+    "decode_reject:change_outside_validity": 14,
+    "decode_reject:prevailing_order_invalid": 3,
+    "decode_reject:initial_cloud_missing": 1,
+    "decode_reject:nil_or_cancelled": 16,
+    "decoded_whole_validity_mismatch_rows": 7,
+    "decode_reject:invalid_day_hour": 1,
+    "decode_reject:fm_cloud_missing": 1,
+    "decoded_unique": 14441,
+    "receipt_bound_decoded_unique": 10454,
+    "no_real_local_receipt": 2984,
+    "COR_excluded": 1003,
+    "ssot_validity_mismatch": 14
+  }
+}

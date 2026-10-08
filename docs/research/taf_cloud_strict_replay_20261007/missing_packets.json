@@ -1,0 +1,2461 @@
+{
+  "schema": "missing_exact_parent_packet_archive_search_v1",
+  "counts": {
+    "date_directories": 45,
+    "filenames_scanned": 45200,
+    "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE": 272
+  },
+  "scan_path_bytes": 5469200,
+  "rows": [
+    {
+      "station": "LEMD",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-01b5b29d41f75e6155e76f1d44c6edc4",
+      "packet_sha": "285ed5703550166c3c9a47918ae981ec69fd77868a034af6a2d6018c4628aa89",
+      "parent_available_at": "2026-09-21T05:50:15.198Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-029d6b7bf5fc56f81a19909a3002f27c",
+      "packet_sha": "c1bae6ded3bd9a0e2b0764b9a73ddee1946c430ed66a4e211df6cc32608a9c5d",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "CYYZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-03be7b046241c167a056c5aa91fbc337",
+      "packet_sha": "517e57a784ce666e2a9f59fd6d1a3fe98a97369b38d0be37ce11e84193effa3d",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-05a0fe7cd2a08d5e04113ffd8e0c6f4c",
+      "packet_sha": "a75a7e46d5b51573275bb4410270d48eb87eecda5ff9978a7e5411e614a9d8e3",
+      "parent_available_at": "2026-10-01T12:47:32.720Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-068143effdd5f7234385087d718f0735",
+      "packet_sha": "70748322ebb3738395fd0029c2606d9af63b9f04abb46cd28e3c6610da50cbaa",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-06932e8c068a6ef19b1b6fc864977804",
+      "packet_sha": "c257d361cc1ef4217d899320bf93de8e278ff098dada77cdacd63715a349ea8c",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-06f179481d213edd6238b529f9d3f210",
+      "packet_sha": "1eab65638364c4921e8ccac8b35f1225f7581a3a87f7529c459426348a3d99e7",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-090b544bba5938fcfeb23267bc789a83",
+      "packet_sha": "11b90bc671f811b760672d183988680f4a8ace341b28abe336637c94c434f98b",
+      "parent_available_at": "2026-10-01T06:58:37.006Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-09b4da2534ec1165916001931b88127c",
+      "packet_sha": "85d72b48e578ed2d593f470da197c31a479f69f124602991cab2594fb7c9e58f",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KDAL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-0b55ff8b2f4b88a346542abc81d33fc2",
+      "packet_sha": "a542fdd9ff9634ebfbdaff144e5e614a95e137090c6f6e5cbc91bebee2fb7c04",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SBGR",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-0bc5d2bf9cccfc8ab839a0385f927062",
+      "packet_sha": "ecc71506dbe3d91eb72956d95410e629d8c116affd0ee5a6bfffbc758b8d219c",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-0e81a77b601e728e69290ca7b7ac849a",
+      "packet_sha": "fea2b7d0eb2a91dc22271da3b4f4027885576e6b5510e0e495463f827dcaab0b",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-10458c9a8b3b83733c45544a760a64a0",
+      "packet_sha": "5f47fb1c074323a0bc3a861c4be6a0f15edc4152ca6cebdc262fe82b7d0c8f1e",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-110215dcc6a837228213f957f47ed178",
+      "packet_sha": "5faf8d8aa7608f710d2f6d16794208975a90d9b376ea225034abab77c177285e",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-09-24",
+      "checkpoint": "p0-native-111ba4a86c82b6902cee491a9da0b764",
+      "packet_sha": "37cd0752f87449b1699707ec4cea5b51b723f054bbfcda072448430b3f64d864",
+      "parent_available_at": "2026-09-24T08:01:58.837Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-13a16fc3d46e15d7e2c4ae8ecce3411d",
+      "packet_sha": "594173a7a6e12ca235f2d62993472bb203e60962115ebed373e92ca7b8ef0fa5",
+      "parent_available_at": "2026-09-23T07:50:48.726Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-13d1adebd2da5bf907b7607530867ab6",
+      "packet_sha": "68b66c6dd7b98a3cd525786b3dca9f05c99011dece7b1f2fa721926f4efd550e",
+      "parent_available_at": "2026-10-01T06:58:35.118Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "CYYZ",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-1404d1c26ac7ca86893a4c3a2fbc45b1",
+      "packet_sha": "b5fe45e1171aa75d543c68cf6f412c3759c3c4bda575f777cd67b28cb3bf258d",
+      "parent_available_at": "2026-10-01T12:47:32.152Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-144c3ef154787cc075fa25c13068af8d",
+      "packet_sha": "e8ee205b8513e1337ad6ae3df9d2b5c9fe04e2179695ff52f524906c7d1fb4e1",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-14971d40361bbcbdd249fcc8156fc5da",
+      "packet_sha": "5d313c143b528cdf90e21183e76b357303f74b52da43c9eee577482c2c8314cf",
+      "parent_available_at": "2026-09-23T07:50:49.497Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-152ef11a71c6a501be73d99d212dd4d8",
+      "packet_sha": "fac0d7bcd96eb5be133680fe889c2db3cc793d655dd2f825c9a4760d0c851e12",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SBGR",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-15c1317cfb3513500a893335aaad18cd",
+      "packet_sha": "01f64836815071b377048ea8b057fdc1ff451b23ed35687821d2bc5eaaafafe7",
+      "parent_available_at": "2026-10-01T12:47:33.007Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "VILK",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-177e2b351a9ebe38549754a014d38625",
+      "packet_sha": "4539ba4fa53410e1d9f7c0b120e61154a3a75ee457d5f06ef973f0b74c015151",
+      "parent_available_at": "2026-09-23T07:50:48.183Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-17cc9b4228dc24d570c4873d8e1535bf",
+      "packet_sha": "60466c3ca27f187f5b4dba83c38ed6c2183901883d14017be6ecfc59a0ec1312",
+      "parent_available_at": "2026-09-23T07:50:47.422Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-188a5fc659117f7676fd283c7ad4876e",
+      "packet_sha": "8d6bbde9f4e0ad7bd36ae12b04a3de6b6d3c5fff0990d89b9ea2b0d5d7e461f1",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-196b4d191dd90ef6381f57d4b499f327",
+      "packet_sha": "70748322ebb3738395fd0029c2606d9af63b9f04abb46cd28e3c6610da50cbaa",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-19951d39c3a71fdc079dcdcf77dc1097",
+      "packet_sha": "85d72b48e578ed2d593f470da197c31a479f69f124602991cab2594fb7c9e58f",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-19c30d7d7ba8a5f756932ef9d86648f7",
+      "packet_sha": "f006ff30baf968cb421693d6f5f5eb14e4f1e6545ba20f7086401d63161ac920",
+      "parent_available_at": "2026-09-23T07:50:48.381Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-1ae7fba3fbbd1067a10a75dd939f79ab",
+      "packet_sha": "9619b88bc065d287019a1dd0d4f633bba6c0bed93c863c8f963b2e9f86917589",
+      "parent_available_at": "2026-09-21T05:50:15.752Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-1d17af7d83293a6f810fee33c3ac8337",
+      "packet_sha": "9e5f7ff07f86ceaa083b81b0ce812b49db31179f363465504cae59f4253a14d5",
+      "parent_available_at": "2026-10-01T06:58:34.846Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-1d7bb6f9c270aecc66d2a6f08cef40ac",
+      "packet_sha": "1a09025c2d24be9fe80c4ab79f0b10909e8f27461ecfd0ffdd7a9cd23d213a8f",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-1dafbca68bb1f6f1a7f42d53b27b6a0f",
+      "packet_sha": "e8f71f5a334b691aec53355c2a54c6780778d963e2a6bef9f7f509da09005774",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-1f4023ff00cc5fe3dd430c6792b5edf0",
+      "packet_sha": "0fbdce7d6f346f22dc373e50209c57df0198f1c7780eed86898b89b37e28ae1b",
+      "parent_available_at": "2026-09-21T05:50:16.097Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KBKF",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-215020658c5c2c2cd171bfe6dc35eb12",
+      "packet_sha": "e5bb62aed30d78e89f7e36ba9c60ccd660bfc4427e958069232cb37b65bbc227",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KORD",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-226f58cc135fbe3f8c6beaa981c434db",
+      "packet_sha": "4a47b5b81317a22613c470a5c2800904612ea2b9a55cbc6fdcdbaca8011ca2cd",
+      "parent_available_at": "2026-10-01T12:47:32.603Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-23e2d117f75cf2fd98339a65bec8d170",
+      "packet_sha": "15abcb5b0d363a8c966f0cd23f9cc734d8a9413b823fe832b18bbe3ca4361432",
+      "parent_available_at": "2026-09-23T07:50:48.594Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-241b9b60371178afb2866f038b679713",
+      "packet_sha": "e8ee205b8513e1337ad6ae3df9d2b5c9fe04e2179695ff52f524906c7d1fb4e1",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KBKF",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-268c4d647d5857e1050c262a785e9289",
+      "packet_sha": "d14b9c42272a3b0db24a2a8700802ef2ceb05feb505e2b10a188a29bbf69e5b5",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KSEA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-26a4a4fce65cb630f58ce6fa6ee8a90b",
+      "packet_sha": "51ce13fef2c8ffca350a33f5a524bc591b8d77083a222cebd077d622805f9a88",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-296218722b49e2f65b9e8531a050970d",
+      "packet_sha": "377a573f5e72d197cfcee2c3dc628f9bf5aef760f2d6203ff6d69cce4ad57a18",
+      "parent_available_at": "2026-10-01T06:58:36.291Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KDAL",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-2b4368461c49ce9bdf2f0c936cd3c245",
+      "packet_sha": "3e5a0dfca6f764795bbbdef663512c09bf3582d94b8b8e6499a8008275c823e7",
+      "parent_available_at": "2026-10-01T12:47:32.455Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-2b5d0309467562468ba0c80274ae184b",
+      "packet_sha": "cf24546eaee61773739b3affe008347170ca05ec66b3aeac4684cf599a285913",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-2ba31c17ae20aad736ff14551d0aac78",
+      "packet_sha": "8bda0215c9a646aacb5801b0bdeaa85d3db61fe283c53be33a0d931631fba78d",
+      "parent_available_at": "2026-09-21T05:50:16.027Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-2dcd145c2ca5bd6884196819866280ec",
+      "packet_sha": "9596f9272f4d59ff54be22b267ec6f220ff8261f6d5d782eebc43db7d1931bdf",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-2e39d1674de631f7bb5831aa8772914a",
+      "packet_sha": "9586b40bbaf5f832fc4366bbce09e8daf343e1a684ab3406cbe200f9703c134d",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-2f8ba083efb19db544adc4ff437c9d84",
+      "packet_sha": "9596f9272f4d59ff54be22b267ec6f220ff8261f6d5d782eebc43db7d1931bdf",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-2fbb94b85c5984ea89df9f25ff265cdb",
+      "packet_sha": "c663669af10520e6fced5dad31894dd8f37f469e49d227430ac5fe547ba28006",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-30135e7b250e2dd116dbb78a218f0958",
+      "packet_sha": "15aaefe9a4ebb44f75dbe81a82a9c277446ab3d90904b72145e054cf3777b74d",
+      "parent_available_at": "2026-09-23T07:50:46.316Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-31aace5c5a94aa34b997fc2c8ad9a0bc",
+      "packet_sha": "c663669af10520e6fced5dad31894dd8f37f469e49d227430ac5fe547ba28006",
+      "parent_available_at": "2026-09-07T08:30:56.626Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-3288879ca4300860cc950633a6e261f9",
+      "packet_sha": "4a3d42f30a498fc06b914686b1492488234960944a462ea6ef894a8e9e138ffa",
+      "parent_available_at": "2026-09-23T07:50:47.310Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KORD",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-34c3270bb25e563fba363f87bbc6a05b",
+      "packet_sha": "a3846d31c2ba2ce41e2c6e5e1cb8732e5cbe368e82201867b45fd942c97e3ce1",
+      "parent_available_at": "2026-09-06T16:41:57.379Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-3588da71f1c2384e30d84864ecac4564",
+      "packet_sha": "5e35af1d5b1213016697c4d7803e631d6d798a93946e8a4b5feb8d5cf7f42269",
+      "parent_available_at": "2026-09-21T05:50:15.302Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-3600eeba6df5b6f1fded9687706c0e0c",
+      "packet_sha": "933e0e6690b162e544b9a62844d36d63d5b3def59b017261cb41815fa7ea9216",
+      "parent_available_at": "2026-09-25T01:24:56.825Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-36b9e856e4b5cdc4b20542281e4777d6",
+      "packet_sha": "8018af8bc278369856af9d12c560ae638b527d9b57a868f6682527dc0d61b102",
+      "parent_available_at": "2026-09-25T01:24:56.601Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-373b8ea112a6c8180e5b73471c315a7f",
+      "packet_sha": "ccc90a096912ab87e7e50c0c39a06b258b969b57e547aee00898e4ceb86e1174",
+      "parent_available_at": "2026-09-23T07:50:46.455Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-384ac99ecc23b4b0c5d853b85d56ca75",
+      "packet_sha": "8289c219bc8cfe03e4426ab2e73875544c331a9017f9f4800d096d90cc003d1f",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KATL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-3944d6cfb80fa5499eb091a2589b3a48",
+      "packet_sha": "4f37a38dd1b044d3b31f1c1da71c5cd6d106d2e8bb5411e088508db4858fff94",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RJTT",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-398de335175f2553184eecab3cede0eb",
+      "packet_sha": "c59b09d188cecf19feca98f75fa5feac7529a6dc0d7f1c035ffed4f65dcd9e10",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-39e42b8001c4771ca4f9dd0882f3bda1",
+      "packet_sha": "d7942b2142e46535205514d5396853b0f72ce287d42bc60f2124a77096e286b2",
+      "parent_available_at": "2026-09-25T01:24:56.953Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-3a02c48ee485a7828d96f8da9cc0372f",
+      "packet_sha": "350c1af838ea76b7fba64e715307e2543595fd1adbce7c5245af36cefdc6c672",
+      "parent_available_at": "2026-09-21T05:50:16.217Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-3a1eb6dac6d8c97a5a39c8f10160a209",
+      "packet_sha": "d5233767e88dd28888a29caca971c44823ac266ead27ba84dab4b2a4b739f7ef",
+      "parent_available_at": "2026-10-01T12:47:32.747Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-3ab5dad686a576010d4f3e0d41020b02",
+      "packet_sha": "60fea664ed9bff99d1d2275b9f1be2fc80dfb174d30ab5c9f8324cb73cd88c1c",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-3b3ee7f628579d06170b46d794d3c9b0",
+      "packet_sha": "966a7e2230b5e935f9cf53b4a40e7bef0df2d141b1cc0593faa65c4e1bcb8e2b",
+      "parent_available_at": "2026-10-01T06:58:33.654Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-3d16c61db07cf4502a93fdcc6bcb521c",
+      "packet_sha": "37d9ec4f0da2a700439dba6fd35eaabb3800b50010fb5c232b08af36e15eb361",
+      "parent_available_at": "2026-10-01T12:47:32.981Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-3dd7eb3d38ecfa3044cbeb27650dfa27",
+      "packet_sha": "c2acae622b0557f4cc0eb8d74b7595acd16aab52e0e0b22b5e07811a1ffaca1d",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-3eb13aa7c59ad3494d1048b215eac1d4",
+      "packet_sha": "b472112975de9a92911a3aad1508f000966860657f81f8586e257cc0f968f41a",
+      "parent_available_at": "2026-09-23T07:50:47.118Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-09-24",
+      "checkpoint": "p0-native-3f403f76983dcde9c8fe7907f663a34e",
+      "packet_sha": "c7a878e1ee5ebc09db3e1e25920141b1a55abe92c2e237d9c18da9fb7ac94b8c",
+      "parent_available_at": "2026-09-24T08:02:12.670Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RJTT",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-40220009716fc573ec02bb61ebf380cd",
+      "packet_sha": "34ed8901f9fcf9386bb535cdcb450e39ff33cfbe12b2f89004d6f6452b00f8e3",
+      "parent_available_at": "2026-10-01T06:58:35.054Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-427ee469274ee330c44728c04e216eee",
+      "packet_sha": "7636a472a4245fd99b26f512c23bc013d932908392bd32aeeff58c1d59cc82fe",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-43d3eb90097b1dc707345397dc84731f",
+      "packet_sha": "cf24546eaee61773739b3affe008347170ca05ec66b3aeac4684cf599a285913",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-453cd2cfc1575b0da20a13c73912e4b3",
+      "packet_sha": "e9ae1a4fe4fa0c744841e5c133173b1551575cdbb317d14e6cd0685142556c7c",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-45d8f0475578c15bf42ae2609232a602",
+      "packet_sha": "87c91c752d00335d9421035c89e3df68212ee02333233b6a5514f50505e0eed5",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-460a56728cb370c4f44d223d05456aa5",
+      "packet_sha": "85d72b48e578ed2d593f470da197c31a479f69f124602991cab2594fb7c9e58f",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KHOU",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-463c441ef0e46bb95ceee5342e1c2fe0",
+      "packet_sha": "cb68bc97b2014bfd6f0c7dada466c0675f45bbc8059e79a63ad43918a5bd7995",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-467e0a5784239aac3deea9b4e606aba9",
+      "packet_sha": "cf48d174d82602ee9813d05fa547571953fd1c267fdb019f129dbf59a7abf5b7",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-46aad39ef7c406f624886f819765a2d9",
+      "packet_sha": "bae99c542edbe454f495020fc10ea68674e625f3480503bed4115c0a19c5ae01",
+      "parent_available_at": "2026-09-23T07:50:49.879Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KMIA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-46f3b9e1e3414a3c03deaac003edf1a5",
+      "packet_sha": "b6b6d166713fd6248d071e58f9a75542c376b76aaf93d10a21de7a336cfcf5f9",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-48c98ebbfe0c50b7715443f2256417ea",
+      "packet_sha": "3a3a37ddedbf0468e38d131a39c07c3a973cfea15d8e7d9619f4f7536608798a",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KBKF",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-49f676074db0323136528fc30ffabc61",
+      "packet_sha": "e5bb62aed30d78e89f7e36ba9c60ccd660bfc4427e958069232cb37b65bbc227",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KLAX",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-4bced00e13e1340388c94f0f4cbf8d6c",
+      "packet_sha": "0ca4da56b09acb2b04652c4942c68a18036832b0973096cdbdd19f61c8968c39",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-4de3edd9282cbde8b54086bb1af6652c",
+      "packet_sha": "3a3a37ddedbf0468e38d131a39c07c3a973cfea15d8e7d9619f4f7536608798a",
+      "parent_available_at": "2026-09-07T06:12:54.033Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-4fa3dc8de4a41e4676ba1d2f50c36bef",
+      "packet_sha": "553066f2cd0cca546142c94bbf89687cfd28a72b927e981286bdc9327ccb1b27",
+      "parent_available_at": "2026-09-23T07:50:49.638Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-4fb646ff07cd73b1ca7e038b77fd3eda",
+      "packet_sha": "cd79f01455526c187cf1da4126c05a5e4ebd46e355bd1fc439ee86e0c048cefb",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-51175976f9ab4cb3091506bc0cc52ead",
+      "packet_sha": "b11e2f6d56dbb192e4d1f8b6b6d8e247661b1fa2d5652ec9121e316867577670",
+      "parent_available_at": "2026-10-01T12:47:32.695Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KHOU",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-524d5fe7ac1c1f9be788fd34443226b1",
+      "packet_sha": "4155d113411de3fe5e5720b80bc04f145854d577f31fae0dc8cfbd5b490e6ea8",
+      "parent_available_at": "2026-10-01T12:47:32.482Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-558f41c6330c5201e85a4e95bfec89cf",
+      "packet_sha": "1e78924add862652266074b9b19e4d2a6508cf8681e6af999b564fe4f8988902",
+      "parent_available_at": "2026-10-01T06:58:36.058Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-56abb57451ebd31347bcee4fb4515d4b",
+      "packet_sha": "7b7a6288427e3bac110a6c4f119135bf398acfaf250cbaaf25806bbe30a1bf17",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-57cdcd44a210ea3b994fac1b613b907e",
+      "packet_sha": "8eae44542617d9b1bd76f91bf8aa7e20a97660cc6a0af27a18563b10f3c85725",
+      "parent_available_at": "2026-09-25T01:24:56.979Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-58aba87598b2641aea9ac7619111c4aa",
+      "packet_sha": "18eb18a58cd58dc25d00f2a205144b33db9c42ce31a6b628aa1ef5ea5b274465",
+      "parent_available_at": "2026-09-21T05:50:15.932Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-58e105d462afb43aae75baacdaa16681",
+      "packet_sha": "81a5da65563a2db443db67e12ca26e40956dd49fb8fe797c58a2f38333747ed3",
+      "parent_available_at": "2026-10-01T06:58:36.899Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-5a87013898633da012f530d29380bb8e",
+      "packet_sha": "d6f355454f3a6666734006daa6ae64926c2329fdc6754355d0defb83d62d077e",
+      "parent_available_at": "2026-10-01T06:58:36.433Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-09-13",
+      "checkpoint": "p0-native-5bc3901b35506378ba53b929bfb5217f",
+      "packet_sha": "6ef5f85217abc8676fcdcee564819815ab013aedbc60119cbcf8f741955b8b64",
+      "parent_available_at": "2026-09-13T12:43:57.760Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KBKF",
+      "day": "2026-09-11",
+      "checkpoint": "p0-native-608e22287b8c76b2a8ada123e28bcc56",
+      "packet_sha": "7f5a7ee1d37a029029b0970812efc68d5d2711628c851b04e88f38ba8c0e8fca",
+      "parent_available_at": "2026-09-12T00:38:47.653Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-60cfaf3fdc56f8787d0140eba5225d50",
+      "packet_sha": "42683750070aabd108d37bc2ac73a6fc257cd995d754ec599bbfadcf0a9c9ad8",
+      "parent_available_at": "2026-10-01T12:47:32.778Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KSFO",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-61c4adc8432a90f27232bfbb94f6b025",
+      "packet_sha": "32ff545bacbe5adf7e1b996a4e41f77d389957d8906478d83a1969c9f1efb4ad",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-620980010faa7d13fdb22b5fbcdebbd8",
+      "packet_sha": "9a5b82b367e51f21a02318aaaa848ae0b3e290ee9375301b05b65103bcf0ae6b",
+      "parent_available_at": "2026-09-23T07:50:44.692Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-624c7b50ef3e1a96bb24c5f56e801dec",
+      "packet_sha": "c59d69cfc93fd8b7f7feb43afc59f8cb76f47620cab0da2cecd677980704a986",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-63fd7f9b6ea61a9c7840be817dcfe590",
+      "packet_sha": "8fe76da835dd47ea66bff46c9f80f78659df75810f787f52db328a231ffeb0bb",
+      "parent_available_at": "2026-09-23T07:50:48.784Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-64f8f7399ba332a4ebb693db14a96efb",
+      "packet_sha": "ba1dd79571027adef2a97bb3e132a748863f6c8a78d2c762ec6f6a9a5b1ffff0",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-650f0f90b45ad545e34eb5d04af5f193",
+      "packet_sha": "1e4b1de54691cf4d74649b86a40a9ed1817bb3d16eaa75c839a8336d728f7c11",
+      "parent_available_at": "2026-09-21T05:50:16.299Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-6731c78c2bf45a5f134496e5e2d378ef",
+      "packet_sha": "d7e9394aec61edba665b001a863fe086d0450e02e3cf6e82ebaed5b39a97420c",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-67acace78e135ebb364c4ecd4f5b8e4d",
+      "packet_sha": "bd11aca6144dafa6cf7ba50326465c4307a5f8b41998494719ce09886d3469fc",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-67c2ca3ddb5e6443881ed471013275c2",
+      "packet_sha": "cab8c934ee2f5dbf008d71354ce2984fc6f114f370b5d95ed6e392525d16ce54",
+      "parent_available_at": "2026-09-21T05:50:14.414Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-67d6b83181ce909c2872715507800bda",
+      "packet_sha": "8669d54b3973d5c49d17fa47885ea993f1342841d7df17f3ed3f0f175e48b25d",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-68fa3fbde02f1a6582311df1ec27638d",
+      "packet_sha": "39c38343cb29462103fc5c3c1fb0f2aec6dde4c76809556f0ac4bebfdd1fa444",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-6973ff0cf5264793956318d4070baa2c",
+      "packet_sha": "44e0cc1bc410920a9bae49648803c84096b94cf1bdc1ca487d9802fd3b2e1703",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-699ab3402624944e68e6f2b5e40477be",
+      "packet_sha": "c35cae4c2cf7e83be878c3fb77e8c0e8a66a29cc29284b401c67772be3aabbee",
+      "parent_available_at": "2026-10-01T06:58:33.791Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "NZWN",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-6b8fec2312a1b14433203b03ffbd4c33",
+      "packet_sha": "bc40b6f39b08826cf710ab5b1166fe30635baed9853f879018d1768ac26fc3fa",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-6b93be44c0124a1461751c50e960d12f",
+      "packet_sha": "8cdf8c367e3a5e7ea44f0c3b88684c3d97e066457410844954bd91869002dd04",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-6c28f7eaf552199aefbf900f8bf4b24c",
+      "packet_sha": "e902647e24701181a67533e3d19fcea1a59b78f6ecd18db1b375484c23a2d2e4",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-6f47582245a395dd1e8a9e2dd12cefe0",
+      "packet_sha": "4834b6fdd899d8abd23eeeba08a442e86dd96fbe7e63f23b9e083b206be1bba9",
+      "parent_available_at": "2026-09-23T07:50:46.549Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KLAX",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-6fc637c68fd4b1ed0d622a7ac0c8ab38",
+      "packet_sha": "14831d7301452cffae6ae1cd64b1a5bbcbdb61e9db4241839d9675621a30599e",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-708424ed07b5f0d6df60771a4a4d1166",
+      "packet_sha": "9e97f00b36930a37928b2a5d15fe873a15590865fcd3d2ca2d11bf144ae72ad6",
+      "parent_available_at": "2026-10-01T12:47:32.894Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-70c54649eae907b351917756db6b2e4a",
+      "packet_sha": "e9ae1a4fe4fa0c744841e5c133173b1551575cdbb317d14e6cd0685142556c7c",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-70cadad0782d793e24ad38b9d1f73ad6",
+      "packet_sha": "b734a056034660f512f2c37e81e7882a3ff6b442be37487c942f4f94f850b815",
+      "parent_available_at": "2026-09-21T05:50:14.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKPK",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-7260d3298c6aab77a9e7d294baa52899",
+      "packet_sha": "17592b1713ede9b811af629d8c281978d5326bb3ed2f3a7edd8e1ef1bf3d6335",
+      "parent_available_at": "2026-09-21T05:50:15.849Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-7371bdff2635ca50af86706de47c8df1",
+      "packet_sha": "6c28dc59999d795f7f0c29dcb35b3bef9a074f8e7e1a533d7782c9d58560a929",
+      "parent_available_at": "2026-09-23T07:50:44.648Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-17",
+      "checkpoint": "p0-native-746b10f2440008378654abeb033a312d",
+      "packet_sha": "2422013c453e484bedc03a73e1cf9238a9d02ea461fa5fbc1ffac60a91a2c211",
+      "parent_available_at": "2026-09-17T09:12:15.516Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-7633df5627eaaca8db8abd3ccf8ab38c",
+      "packet_sha": "c49f4a449c5db3f733674a61e8e8b086273af801d1fedf916bb1cd9e2c3a52b1",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-03",
+      "checkpoint": "p0-native-779b508093bc464090361225dd729e6a",
+      "packet_sha": "07a5f588e8a30322ff5bb3e05b695be929c44966f95f1e375a7b6048fe0143b5",
+      "parent_available_at": "2026-09-03T15:52:47.465Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "VILK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-77ed8302ce96ccec2cdbd66f7f955495",
+      "packet_sha": "ffa6be7aa09eaacbbc0649513b80cf8b6a95ba9ccc329cedd0c84672ddd080eb",
+      "parent_available_at": "2026-10-01T12:47:33.036Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-77f5c6e99503060e7f5106a98c7ec548",
+      "packet_sha": "b7c7eb659042371c9c16df2b792d4f11fecc6e90fb42cfc753000eee9fc29834",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "NZWN",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-781985de15524cae18716e859b31c0e7",
+      "packet_sha": "61d4e3411c6e389b872f98a1d521d72926927e0ff90607bd4e65cb94f6560689",
+      "parent_available_at": "2026-09-21T05:50:15.467Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-783d98413bd7cbba69b67712a3cb17d3",
+      "packet_sha": "82507b09b656680d8776bc6411214b31d7b74c877995ecf40c0ae9b89719f87c",
+      "parent_available_at": "2026-10-01T06:58:34.948Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-7999c4df0c39621b485f4cdad8488fa7",
+      "packet_sha": "2f47a38cd96adfe9503b5d5fb9c4b187387c1bf7c43a590d7c9d029d5892d6d2",
+      "parent_available_at": "2026-10-01T12:47:32.405Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-79bd65646c37e952c636f4b2fceab183",
+      "packet_sha": "48ecba777191e9362517ee36cddce2a3cbf13eaf6693dfd770910a8c4f30acd1",
+      "parent_available_at": "2026-10-01T12:47:32.232Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-7b0372456a39e57bfcfcc530a298ae13",
+      "packet_sha": "f7743588a90f41cd08482590e80128976d8cd93a8fc1357633c85992ac1d745b",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-7bb5bb9b7b1664396ba333918eacc0bf",
+      "packet_sha": "b8b4fb588889c88a6a9edda422876e345b7940b1951c0e80cf7627504feebbee",
+      "parent_available_at": "2026-10-01T06:58:35.237Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-7c7eb232ef072cd4b0c14c29e9bd93b6",
+      "packet_sha": "0d97e85e7b64831bf6ab0a1224e14053526920b776a5aba427f8cb4d14c61229",
+      "parent_available_at": "2026-10-01T06:58:36.706Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-7e55f8d2b593ff51c3cf2668a2b4ce30",
+      "packet_sha": "476f5377076ddf4e1c060f1af442906674e77308e0bf8347daababb4c8d4c7fe",
+      "parent_available_at": "2026-09-07T06:12:54.033Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-7f52fa1e253cd0c20e99ff09ba5d015b",
+      "packet_sha": "08045c4a1dba036a952145eab36ffca41dde5bf0c79a7d5931a523073fd19197",
+      "parent_available_at": "2026-09-25T01:24:56.751Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-812892fda4567be52e2faa70ba666116",
+      "packet_sha": "56c3ef842fb13548c6c6a5f36169ee1604a3e2ec222aef06ae7be5369f5b598c",
+      "parent_available_at": "2026-09-23T07:50:44.552Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SBGR",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-8414546c6b909eebce3d0758c30b92f2",
+      "packet_sha": "17557012fce18cf61141c0770d1bd9b92d207105cdd6ef8e7b7c5e84c60301b8",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KDAL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-8434e026b70f7d07e4ba8d8aded3f3b8",
+      "packet_sha": "a542fdd9ff9634ebfbdaff144e5e614a95e137090c6f6e5cbc91bebee2fb7c04",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-8519940987bd46baf74c72333860a715",
+      "packet_sha": "79603cc1713aa80c48bef4fc6dfd729b1ef3b1ed0f0fb74aca4b2f7b611c387b",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-853de9d296532bfc21a9048cf457c6e0",
+      "packet_sha": "30cdf9459e9ecb21777ddc8bf3b287ca39b573b1340d6f6f2f2bba3df4310ad3",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KATL",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-87118a0389762ca2742e92ac4caf0d1b",
+      "packet_sha": "935c9d93f53669f1130f9e816e1daf6828a5f36a7b5013f45057e89dcae02eb2",
+      "parent_available_at": "2026-10-01T12:47:32.378Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-8967a92b9bd95ac6324df24ac1f1030d",
+      "packet_sha": "44e0cc1bc410920a9bae49648803c84096b94cf1bdc1ca487d9802fd3b2e1703",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RJTT",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-8a3574d507a151ab6fc43ba896e196f0",
+      "packet_sha": "a0e1c82a2a9f52c1828ba9db94ea20a2d7219ba201e62ebd6bb2ccdace2c63c7",
+      "parent_available_at": "2026-09-25T01:24:56.575Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "MPMG",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-8ae8ae36fd4f5a889327b8b32a46057f",
+      "packet_sha": "d94f9f9f6439d33910151de975c6babd3cf7aa6124b4ef2b93a20e5d54ab7731",
+      "parent_available_at": "2026-10-01T12:47:32.839Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "NZWN",
+      "day": "2026-10-02",
+      "checkpoint": "p0-native-8b66126fe92d8abd89060e71127b879c",
+      "packet_sha": "f692b4eb6261468fef7620f44752436ef554e882e2334d60bdbb4cfa29d480e8",
+      "parent_available_at": "2026-10-01T18:53:44.250Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-8b87a95812c1f29099df8851853e907b",
+      "packet_sha": "5cdb6e798868d1aeeddf71b5b5785647e08b6c3b5c7da7f3af1c36654081f342",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-91bb1b749e83233a8dc9e19f07f64f6c",
+      "packet_sha": "86807b1c735ba39532163f114236b316b6c68a5affe94ffcaf578955360d9e42",
+      "parent_available_at": "2026-09-21T05:50:15.887Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-9536e6243e5f6effe6a1e54618bdcf22",
+      "packet_sha": "0a5b9fceae2f660ff21628a266be5fbb984b3eec2e8bfbb927bd1c655f7a9bd2",
+      "parent_available_at": "2026-09-21T05:50:15.344Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-95ee6e8d4ed22dc85f75e3df77ea8c46",
+      "packet_sha": "9b5e38571b7f68d5d36e2b2afa8039c5644a605838baa9b94a9b9c6065fc886f",
+      "parent_available_at": "2026-09-21T05:50:14.295Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-966659a65bcc7be9faa20f9a241c37f7",
+      "packet_sha": "f25ab1357fd8d582df7d42308dc1b928f5b9a818cf1f1954273dda1b32f1d330",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-973a2db5841c377bd7c9db85b88b6a2a",
+      "packet_sha": "4c69e76d611c00bc7de147092fbc04291441ce52e4692469690764e69597b9e1",
+      "parent_available_at": "2026-10-01T06:58:34.701Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-97c0a5902f13804c42d814406fe367b4",
+      "packet_sha": "92a38bc71d801b01a1b651cf322b9614d6a940ea4795c04462aa0fb34e76a4f8",
+      "parent_available_at": "2026-10-01T06:58:36.647Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-983239ca2fffa22fde504a6837c22604",
+      "packet_sha": "fe2a27adb14ade5ae4160796e2f67f927a9ab9d03af13e71828502b0aaa5d29d",
+      "parent_available_at": "2026-09-23T07:50:44.597Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-986563c0811b32735a82a92464103557",
+      "packet_sha": "e902647e24701181a67533e3d19fcea1a59b78f6ecd18db1b375484c23a2d2e4",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-993fb5f814db64b5a6b4e329fd5cbd34",
+      "packet_sha": "25208e26e1eb7e6aba4e9e1cc957961ae238316dc60a4ff329d65fa0114d3bc3",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-9a86fccff6cadbea98e8dd917b3865c9",
+      "packet_sha": "2695938c1c4fafa3e29ddce3decb37a8a2534de7158b463345ab6a35f7a0d41c",
+      "parent_available_at": "2026-09-25T01:24:56.772Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-9b62784a64c9c0553309dfed3255c23f",
+      "packet_sha": "b11fb3001c97e8de2a4db5e1c62ca4beece62acac7d4b600627764b9e35ac3bb",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "CYYZ",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-9b7252283a8ee68d83c600bd31576548",
+      "packet_sha": "f10adbc9d52d301d3e3ad1630317b72a225e9d02f6541bb3d5e68c0c52dc3e4a",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-08",
+      "checkpoint": "p0-native-9d2768f9e6d0b16067004cc8b3204b22",
+      "packet_sha": "3c4b0bab88fd047bca69d20fdb4030112efb4a2d76af18c5b71305941897b617",
+      "parent_available_at": "2026-09-08T01:00:24.961Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "CYYZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-9df092677f3229a973e609bc3a245bea",
+      "packet_sha": "517e57a784ce666e2a9f59fd6d1a3fe98a97369b38d0be37ce11e84193effa3d",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-9f5ccd3d5d7143c41971fd5811152126",
+      "packet_sha": "9dc4186c3f82a3fb319a256866f88f8771c3bd415e3baaef91a75c76d93d400f",
+      "parent_available_at": "2026-10-01T12:47:32.868Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-a0fb4a8bbff96d2e9b19792ebf4fffe6",
+      "packet_sha": "231ba06b6cd92bcd2e859e66abf82bc58461b62d2c29d745495e4bd67001beba",
+      "parent_available_at": "2026-09-21T05:50:15.516Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-a10252689c367207e94d427e8152ec17",
+      "packet_sha": "136de3a8252f481dabb067e2821f2a7138406de5f62d9fee57ac90267ce8d0da",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-a1f682e9939d426201d52378ae52dc05",
+      "packet_sha": "a72790a02c03dde3d43e82529cb3837fd2ecf008e47ac91c08d84d201e7c5832",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-a2506b6c4e2d27ec30296eb976af0783",
+      "packet_sha": "c0913be70be98b38b4252c7e8d5ac3f77b79202d587a7ea934d62c662c99656c",
+      "parent_available_at": "2026-09-25T01:24:57.000Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KMIA",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-a403d1e6c800e317ea7b3b9e55e7ceeb",
+      "packet_sha": "1b01b3efd3c5bf3e7b1b3cb732238006c7221b8c840db324617886b145723de4",
+      "parent_available_at": "2026-10-01T12:47:32.565Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-a4f1ca22c4a48d30243643b689e0b587",
+      "packet_sha": "d89e4960d297b9dc0c230098214fbb3b904ad0e1eb2b44bd02b5c9dcfcc5fc2c",
+      "parent_available_at": "2026-09-23T07:50:48.901Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-a5c9cd1cde43c60faca0ffe74eec4947",
+      "packet_sha": "419ddb0ab8fa1ec24ec35c0fecf4f7c9396e559c94a3b1b81179a05a05e6344f",
+      "parent_available_at": "2026-09-21T05:50:16.133Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-a8a6dd5a2f95e7ef385644fe0d9a5fde",
+      "packet_sha": "cd79f01455526c187cf1da4126c05a5e4ebd46e355bd1fc439ee86e0c048cefb",
+      "parent_available_at": "2026-09-07T06:12:54.033Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-a8b74fb69858ae40b5eef8afdbe7510b",
+      "packet_sha": "1e2b259392be79bd4f2164d2edcc091cf095ee38e2aa73dc593a2240afb35c61",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-aab5f4f0a759b904d9ce582ab9c4b9b0",
+      "packet_sha": "849ef847b8b086d79f4d3545647e12787a71197482a90238153a12defbd87083",
+      "parent_available_at": "2026-09-21T05:50:14.116Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-aaddfd47830eb2a12362786d4fe75966",
+      "packet_sha": "e8f71f5a334b691aec53355c2a54c6780778d963e2a6bef9f7f509da09005774",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ab1b5deedff7a1195a006d6f6593ce67",
+      "packet_sha": "136de3a8252f481dabb067e2821f2a7138406de5f62d9fee57ac90267ce8d0da",
+      "parent_available_at": "2026-09-07T15:04:50.096Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SAEZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ad6eca4e016db9f5809ab48c2feb67f2",
+      "packet_sha": "8a517b78a76a67fbaf504fba9a237138d192f61ace2192201dc2700436c45798",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-aead42a1174de016b9d31772705571b0",
+      "packet_sha": "7d5a41d3d05e8183880da18a27e8e6550aa3353f73fc978cb7544d8249e5094c",
+      "parent_available_at": "2026-09-21T05:50:15.234Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KHOU",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-af4911adc738b7f5adf0c42fd5852c92",
+      "packet_sha": "7b00b908e66c04499fcd17d3a6b5641e17df34f01efb2092087fdf1d9fa2bc17",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KORD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-b06eef3ace80da9c3e1da010034f0653",
+      "packet_sha": "0035f5f93138faa704bc08181fcbb0fb9a5b49041f2781290af548f3f6c71268",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-b1ad1bebf355ff3bf707891103a21453",
+      "packet_sha": "5cdb6e798868d1aeeddf71b5b5785647e08b6c3b5c7da7f3af1c36654081f342",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-b2083d9e4a72349658ca42ebd0e59ab8",
+      "packet_sha": "10e000e3cee70e47c07857da5876a8fc7b834b1612ffec08aae71fd9bd237380",
+      "parent_available_at": "2026-10-01T06:58:33.840Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KDAL",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-b406e9cb738b02ebe6f00d2bcd858f70",
+      "packet_sha": "371380d56d654a4d119ed0b44dfe79d40051b6b40eb628b43e4d8ca92961886e",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-b490d01d2afbfe032c3901b1eb6dcd3d",
+      "packet_sha": "451ed208ce9cac7315efd4e7f334e988c25fe0cc0902c813f2391b6f4f0a9a76",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-b51dca5a2e0fba6c671f4a8920f35329",
+      "packet_sha": "3e21d7849d59a24cab4249fe138805731624e8b160187ad6ee616f21d1c671c6",
+      "parent_available_at": "2026-09-25T01:24:56.731Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-b7173d75f12ebde4bda1be8ec3de2256",
+      "packet_sha": "58be22401e5a722710b32b4d717ebe3835a6d11fabf85803ee1e14b49b606b02",
+      "parent_available_at": "2026-09-25T01:24:56.648Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-b77eb3c0f63c8f552d2047c6cdc21777",
+      "packet_sha": "70748322ebb3738395fd0029c2606d9af63b9f04abb46cd28e3c6610da50cbaa",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-b78bfe392a52b7062ac17c742ee89285",
+      "packet_sha": "c42eac1e8405200d3aa9552b7e17ebf0d77a3df878a81b8b7ac3bac348bcf6f6",
+      "parent_available_at": "2026-10-01T06:58:34.798Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-b841d8c9eb5d3454a6763df4e5161401",
+      "packet_sha": "0060f4bb16a7fb381cfdbcbf5f20fa6723a7cf1fe0e8393eebc981543b91f034",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-03",
+      "checkpoint": "p0-native-b96dbe0d3fd614daaf964c0265d4baa8",
+      "packet_sha": "2f660b92840cae881ab6c2dbfc7e859a73037be17ee5c4f5428d01b121a2e2f4",
+      "parent_available_at": "2026-09-03T15:52:47.465Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-b99b6048206080f01ff65f6aa6e077b1",
+      "packet_sha": "43c5acb5b3d55a12dea67cd31bde1f4b388f8feeb87babad1c49a6b874b09142",
+      "parent_available_at": "2026-10-01T06:58:35.024Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-b99f81f878095df62eb295b8408f9518",
+      "packet_sha": "a678128db0172a602aefe0b9ff25be75c68d29527b1d3b949dde354f80d6af1a",
+      "parent_available_at": "2026-10-01T06:58:34.743Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "MPMG",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-b9b4029097826abc57945348c79d5e6a",
+      "packet_sha": "11e1b152010716d4daaf571472568d5da17cebd423138c90df7ab410ed1f5d7d",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KSEA",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-b9ba7a3b79d82e3e772d683314146ee5",
+      "packet_sha": "68cf410ab6d9850ce9ca1c5a42cb6e1645d5c49ea16dc10e5e691377dc03035a",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-ba7e2c0d3889d3d0ee7cd4ec360a4f2b",
+      "packet_sha": "2cd4a438a7e86126e526e1f3dcea7207e40c52f6af7ddfec225cd46a90ebff04",
+      "parent_available_at": "2026-09-06T05:43:46.004Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-bab28a9f75660da4f347af43e06c2828",
+      "packet_sha": "5dae88542135848bdebf467e08d6a0e789415818550a8cda066b7411768414d9",
+      "parent_available_at": "2026-09-07T02:15:09.628Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-bc547f8d1e2b581a6056345c1cfdc539",
+      "packet_sha": "39c38343cb29462103fc5c3c1fb0f2aec6dde4c76809556f0ac4bebfdd1fa444",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-24",
+      "checkpoint": "p0-native-bca5214bc7d56c4c1698dd66eb1d7a38",
+      "packet_sha": "1b71797349c041caa999f55529ec2be446b5867e0a57ce8ac8bad874d99fcf0f",
+      "parent_available_at": "2026-09-24T08:02:14.738Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-bcb5e3ea8c43987341aabdb36958cd33",
+      "packet_sha": "c663669af10520e6fced5dad31894dd8f37f469e49d227430ac5fe547ba28006",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-be4c6b9a2a1b8f28581700c22020a0a2",
+      "packet_sha": "46a3a1c476e2ced12d832b7648436eb2c2a7e21b894a18b945c14b654cf6dbc6",
+      "parent_available_at": "2026-09-23T07:50:46.672Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-be530a8885be7ad27d8a66acb4385cd3",
+      "packet_sha": "28fcdaec38368dcd8556ce9fbf60dac6666914e5ffd8da78af3bbc786ed586e5",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c008237ee845b59b5f3ee6989def2cbb",
+      "packet_sha": "5f47fb1c074323a0bc3a861c4be6a0f15edc4152ca6cebdc262fe82b7d0c8f1e",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c373d2be898ad34e7b929c478dd7091d",
+      "packet_sha": "60fea664ed9bff99d1d2275b9f1be2fc80dfb174d30ab5c9f8324cb73cd88c1c",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c3ae35a4fe16e4b5a47afb8149dbce68",
+      "packet_sha": "30cdf9459e9ecb21777ddc8bf3b287ca39b573b1340d6f6f2f2bba3df4310ad3",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c47bb5e95795a59add4da44709ca41d1",
+      "packet_sha": "5a103f5d6087665dc6588f5feca77581ca325e60e0ec1e051dc1bd8a88192704",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-c514bc8cd3fcbd72b6a3206dd305db74",
+      "packet_sha": "b1d1437b25572a5ec1ccb4c9a6542bd5d146bf239f8c162d770834cd987d01e1",
+      "parent_available_at": "2026-10-01T06:58:33.534Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c63f2908f16acb6b813004b9f1fc51d3",
+      "packet_sha": "bd11aca6144dafa6cf7ba50326465c4307a5f8b41998494719ce09886d3469fc",
+      "parent_available_at": "2026-09-07T06:12:54.033Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-c6e18b62ea54132355298c3f8528f82e",
+      "packet_sha": "b7d53c002ecce4aa545c7d470e976677d4388f6378c85aa4fd6756e4378bc0d1",
+      "parent_available_at": "2026-10-01T06:58:33.597Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KATL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c7b40ca87eca11e4297cec4608f30a2c",
+      "packet_sha": "4f37a38dd1b044d3b31f1c1da71c5cd6d106d2e8bb5411e088508db4858fff94",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OEJN",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c8546762ea1c24b6b3f827762d9073d9",
+      "packet_sha": "8cdf8c367e3a5e7ea44f0c3b88684c3d97e066457410844954bd91869002dd04",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-c864b16b9c77745e1c645d40606e1f18",
+      "packet_sha": "7e672fc7238e293ce341450ffd53eb0e1bd3413bb9ff4b20a2a3360db4df2944",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "NZWN",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-c8f45d4851d0e9faaffd0d8f7bc7e1a2",
+      "packet_sha": "cd5a5e35ace72cfbfc3bb3a3d9801ddccba9e694118dbf5c74d8c120bc498b65",
+      "parent_available_at": "2026-09-25T01:24:56.414Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-c9f25c9096725d9fc30bf9ebe0fabee1",
+      "packet_sha": "e276dd2761ed68539b38219fa8332ee418d86b28b50b47a1a605ed782e5204ee",
+      "parent_available_at": "2026-09-23T07:50:49.767Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-cad06464734cd2a2d9ff74505a245450",
+      "packet_sha": "b7c7eb659042371c9c16df2b792d4f11fecc6e90fb42cfc753000eee9fc29834",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUCK",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-cb24a30381c0efc36bb674fdfec5bc07",
+      "packet_sha": "a9ffdb8677a258cb54652215ec05c75bdd612379c18ed336e897e1f21afe54d6",
+      "parent_available_at": "2026-09-21T05:50:16.271Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-cb403c1df5b171f7d2d6c20efe5c2271",
+      "packet_sha": "0b45d7f1b2576bec8a85bff0462f55af27fdcbda14cd4f3a85a72bb880dc7816",
+      "parent_available_at": "2026-10-01T06:58:37.095Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LIMC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-cbaf57e0cfe2a706adbe2cf6b796886d",
+      "packet_sha": "5f47fb1c074323a0bc3a861c4be6a0f15edc4152ca6cebdc262fe82b7d0c8f1e",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LFPB",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-cbed37401801e1c31551c0bbc4e98337",
+      "packet_sha": "23599c118490b753b181aea6acd632baa11f34678fe92309df4b109464653a5b",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-ce82a3448c28253096cf20091f2dd142",
+      "packet_sha": "137ee40f11f5fa48315eab56b1ed1390494fd7f617f0d92afda37fe8168f7ee7",
+      "parent_available_at": "2026-09-25T01:24:56.623Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-cec41310070be86306fb527f9cc68393",
+      "packet_sha": "c49f4a449c5db3f733674a61e8e8b086273af801d1fedf916bb1cd9e2c3a52b1",
+      "parent_available_at": "2026-09-07T01:39:10.387Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WMKK",
+      "day": "2026-09-17",
+      "checkpoint": "p0-native-cf670162e9db9fde5f869a626e6f45c3",
+      "packet_sha": "353e4a2a81efc905e56f6eac29feacd97768bcc928d76ae79353551333375aec",
+      "parent_available_at": "2026-09-17T09:12:15.415Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-cf77992377080831c497c8419f9f1730",
+      "packet_sha": "26434454630cda7e387cf2f84c556eec101db7a6729fa0de2c5eb0ad277a6f52",
+      "parent_available_at": "2026-09-21T05:50:16.162Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-cfb91f9eed4af830b6a15137bd1602de",
+      "packet_sha": "5a103f5d6087665dc6588f5feca77581ca325e60e0ec1e051dc1bd8a88192704",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KMIA",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-d14da469b85edafc68d4663dfb1b9ecc",
+      "packet_sha": "28b09d8f0e01486c378d840c66d0ba7ff3582f77d2cf4d01d3b5dc2e25a7a58e",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "SBGR",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-d2b3fd88a008d399ee7cd57fdae8cec9",
+      "packet_sha": "2351655e1526f021b383ca848bcafb84dbe9f6ec2b8b435e732260604b2255a0",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-d3c407c4fd73541a7acf0562b73e7faa",
+      "packet_sha": "c663669af10520e6fced5dad31894dd8f37f469e49d227430ac5fe547ba28006",
+      "parent_available_at": "2026-09-07T06:27:49.859Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-d527a3645ebd672830d9ebc45ff22289",
+      "packet_sha": "99f1db60dc4c84425ea0978cc1bee127ee2c4182d640e7a80820d33d0b1d25a9",
+      "parent_available_at": "2026-09-21T05:50:15.585Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-d5cc28671eb1f29c2efd2549451326c5",
+      "packet_sha": "fcac6f8729877a8aab9b5c213831ed5cf50457c3df194baf285ce9f1cc5730be",
+      "parent_available_at": "2026-10-01T06:58:33.727Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-d5fa17335fd9737a7e45eb8a2434b7b5",
+      "packet_sha": "cb7b625a540bf42473d4457ed1e22a3ffb3e9c3d5f6d50d74157b0ba06cc2f83",
+      "parent_available_at": "2026-09-21T05:50:14.349Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-d83181783bcad7f411a428a44c9367fa",
+      "packet_sha": "b08554261a2a5e6788bbd6bdecf17c2406278dc29b0373aee0189107c4922700",
+      "parent_available_at": "2026-10-01T06:58:36.607Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSQD",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-d983c8e6884f7fe72be8a0ee50f11076",
+      "packet_sha": "a4c88cb2bb756278436469c940ff2c6928f7b47b4ac66652482c1df21270ebb9",
+      "parent_available_at": "2026-09-21T05:50:16.243Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "MMMX",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-dc4d76b1ba4325c16edc029e8ea98c1b",
+      "packet_sha": "ae3c5265dccb20d0053cbc36abb6a60f62c1db6874c2793490594b74bd04d26f",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-dd2895c0cc77da5d212ff42459919815",
+      "packet_sha": "fac0d7bcd96eb5be133680fe889c2db3cc793d655dd2f825c9a4760d0c851e12",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "WSSS",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-de2e100c680e2e96b8970ef46a136e6e",
+      "packet_sha": "67972426bac792d385569115b9de156f7850436ff700abcdedb5adc533fa81b4",
+      "parent_available_at": "2026-09-21T05:50:16.062Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-df38286370cc36f3ea4f980a4c87669b",
+      "packet_sha": "f6caaeb0aa1727a711df4d09cf4b797d28117ca6b36bf232b765afdd31acc261",
+      "parent_available_at": "2026-10-01T12:47:32.289Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-e156b2a6a02f67a30a544cc1eae94364",
+      "packet_sha": "a95cffba616f75f8561a31ffe40f7b60688c524c0cdfba248e4db6001088a15c",
+      "parent_available_at": "2026-10-01T12:47:32.201Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "MPMG",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-e18edf45898a1fe610b7537fd9a34452",
+      "packet_sha": "6f87a41b3042b43503edf9de8c2f87f874e081a413afbe518ca8381ea5363d9b",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-e1aa4b9bff51abe05a150e4457e232e2",
+      "packet_sha": "dedcdee34a37b02585a7a19b835952692d8214b9908d829b86eab48b91270e10",
+      "parent_available_at": "2026-10-01T06:58:34.983Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KSFO",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-e1b70a13df399cfb39e2c3d2aa3ff88e",
+      "packet_sha": "7e533ca119906e8dc244ed7a1f29804e5603cc230d59129665e0795cf0ddc5db",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-e1fea6649d835b4897f4a3a5bdc83fd8",
+      "packet_sha": "fea2b7d0eb2a91dc22271da3b4f4027885576e6b5510e0e495463f827dcaab0b",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "VILK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-e388dbeab4f0405df5fc41e0baa6c457",
+      "packet_sha": "4c3a904a4efb75f7f59d26177e4de0e3ac10877747427ea82c1950bb90798e11",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-e44cdb7e37daad4dc5222a8822fcba7e",
+      "packet_sha": "e30c1323adb80be37e92b58dc86f2d136feae8a1218b14e743ebb9928bbdf4f2",
+      "parent_available_at": "2026-10-01T12:47:32.352Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-e591f659eb4005dcd585ec60a866c8d2",
+      "packet_sha": "6839e4dfdb1a55ed7551fc65cc87dff49ebd9d4a20d750fe20a2a46cc3d68b36",
+      "parent_available_at": "2026-09-06T05:43:46.004Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-e6d2e8f83e856521cc63aef97c3b7222",
+      "packet_sha": "7685bac594cb131fa062cfedc5b5b7efcd09b82d9379ef2abe3aebc61a32ef3a",
+      "parent_available_at": "2026-10-01T12:47:32.541Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "OPKC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-e6d3f2bd504a403a766e4dc84124ad0c",
+      "packet_sha": "7b7a6288427e3bac110a6c4f119135bf398acfaf250cbaaf25806bbe30a1bf17",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-e94fac2b080f2f77343100abf20e25e4",
+      "packet_sha": "1f3e4d992412b1091c8596c2309faebebf012b4a3e07467d11475fde02caf881",
+      "parent_available_at": "2026-09-07T14:49:35.755Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-17",
+      "checkpoint": "p0-native-e950c4056cd566789f2fb96998a7e29e",
+      "packet_sha": "8ea69a9f45561e4adc388c36a98f39e3654f50d18f6c8576f0bac9a85f2ce393",
+      "parent_available_at": "2026-09-17T09:12:15.463Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RCSS",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-ea761b9197977b0773b3fe604c7267ae",
+      "packet_sha": "b8c23e3c4b662ffc4c13fafd0a594a965fe27ca94b6e9d2cd67c35602a9d9814",
+      "parent_available_at": "2026-09-25T01:24:56.509Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ea84264384ff37f7db97f748fb9f2349",
+      "packet_sha": "30baa2c0bf5eccfc65d48b7dbc2222bb73cbcda54ef119ec4539bac6034d88b7",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-eb0cc6d88b5567bce6ea77150f29bf48",
+      "packet_sha": "5a103f5d6087665dc6588f5feca77581ca325e60e0ec1e051dc1bd8a88192704",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RKSI",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-eb4c34f9de1dd61f0fa77ec33019acf6",
+      "packet_sha": "701747b0dd3bba8da5afb07417790137ec8f3b23dfff14313fe37cb19d118997",
+      "parent_available_at": "2026-10-01T06:58:35.188Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-eb9f1311145abe61cc030820cc8164c8",
+      "packet_sha": "36ebbedf620fc774ea014de0aa28c83f7def196b9aa57666751ca789ec6dda96",
+      "parent_available_at": "2026-09-23T07:50:48.996Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EHAM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ec332ab00d28c459a4b8c400120e8211",
+      "packet_sha": "5a103f5d6087665dc6588f5feca77581ca325e60e0ec1e051dc1bd8a88192704",
+      "parent_available_at": "2026-09-07T08:30:56.626Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RJTT",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ecc9f421c7be5f7182c4aa7bda65350f",
+      "packet_sha": "c59b09d188cecf19feca98f75fa5feac7529a6dc0d7f1c035ffed4f65dcd9e10",
+      "parent_available_at": "2026-09-07T06:12:54.033Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ed171e7693b3ddfd480d6a6727efc5e7",
+      "packet_sha": "7e672fc7238e293ce341450ffd53eb0e1bd3413bb9ff4b20a2a3360db4df2944",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-ed4ccef82806d663d59f489efc131400",
+      "packet_sha": "29a345abdc9e9857d3ec75532094fd3840219492650c488d49c06940c4a8bc84",
+      "parent_available_at": "2026-09-25T01:24:56.926Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "MMMX",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-edee23580e1065d491ff5c50c48057e6",
+      "packet_sha": "3d4e16f7aa97986bddd972266bf52001a60237f367bac20e2bc49129fc4d42c9",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "VILK",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-eeda6c784c530a5f249634b2c58e4680",
+      "packet_sha": "babe5686589f9ee2c57797f3ab19f30d56a454898e7b7569b1958f1be8a7bcd9",
+      "parent_available_at": "2026-09-25T01:24:56.710Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZBAA",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f13bc673c14000830f37eca25e330e15",
+      "packet_sha": "87c91c752d00335d9421035c89e3df68212ee02333233b6a5514f50505e0eed5",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-f18da548e7c27050e2e181720ac17bdf",
+      "packet_sha": "229597a97d75051caa88f12da093e8716511591432e24e2041eac0012a129043",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EFHK",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-f1d7fb598e17e7292725b28628049901",
+      "packet_sha": "7bbebf1a8b13a9a7ec27777bdea307171ebb9b34fe37746d0dfee66b6e6241a7",
+      "parent_available_at": "2026-09-23T07:50:44.488Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "NZWN",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f1fb745373e64bede883c9bd56c34a43",
+      "packet_sha": "bc40b6f39b08826cf710ab5b1166fe30635baed9853f879018d1768ac26fc3fa",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-f58e085131c7c98e2331e3a310a494a9",
+      "packet_sha": "f4f732c24aab9e8e8d4a598a7186e60a31da988b8282b869d509fd1ddfd48971",
+      "parent_available_at": "2026-09-23T07:50:44.423Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGSZ",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f5d3b221efaf3e83d8ec7379dc1c00e9",
+      "packet_sha": "8669d54b3973d5c49d17fa47885ea993f1342841d7df17f3ed3f0f175e48b25d",
+      "parent_available_at": "2026-09-07T00:08:47.260Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EDDM",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f6001c437ffae55411305aee6ca04030",
+      "packet_sha": "b7c7eb659042371c9c16df2b792d4f11fecc6e90fb42cfc753000eee9fc29834",
+      "parent_available_at": "2026-09-07T06:03:20.171Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RJTT",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-f606fbf3673d86b59a9544676a9159d1",
+      "packet_sha": "6b901d962d2efe354937537c2a44a7d77ec555be2a0654fa204161438350b7f7",
+      "parent_available_at": "2026-09-21T05:50:15.799Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "VILK",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f67a4b1b9a8308b14e9a22207fa3cacd",
+      "packet_sha": "4c3a904a4efb75f7f59d26177e4de0e3ac10877747427ea82c1950bb90798e11",
+      "parent_available_at": "2026-09-07T07:46:05.666Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LEMD",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-f73c2827509b046c15c1b5a7b8dc7e65",
+      "packet_sha": "56133f16721688c076d3b0e8cb8ddd0389e4db917e78577000c2b568baf98ae9",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-09-21",
+      "checkpoint": "p0-native-f7c626e9c6c43d917f4787d45994fec2",
+      "packet_sha": "bd84bad5d4e3eed4ff08a499244dad14c8af6a02c0693d0888ac3a719ed57126",
+      "parent_available_at": "2026-09-21T05:50:16.189Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-f883ccb57ff95ffa2d16b02c6580dcd5",
+      "packet_sha": "dcd25e90155eb7b08a9f80d29bb1a927f55b420f414f2f8c248de8f799b6aa65",
+      "parent_available_at": "2026-09-06T05:43:46.004Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-fb016fd06eb87269d166427087524062",
+      "packet_sha": "b0b3d181f78e9ce6efefd35c7f5f63e2a1f4b9b2d08ee4eec16f72ddcd519e05",
+      "parent_available_at": "2026-10-01T12:47:32.262Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZHHH",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-fb272f7f89356668614e0402c60ac8bf",
+      "packet_sha": "30572a101f281d9f1085bb4e759b86c8edd21d801014f4f9d8b698c59ae35322",
+      "parent_available_at": "2026-09-25T01:24:56.848Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZSPD",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-fb6a05d607feb76bb27dbb1307d0b552",
+      "packet_sha": "adb526391f69453afb395fa963a103926396d46947b391447e9ad4c7f07e6c68",
+      "parent_available_at": "2026-10-01T06:58:36.813Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-10-01",
+      "checkpoint": "p0-native-fc7dbe99fe15d28acb71a0d4256a2bfd",
+      "packet_sha": "b10e8dd3136bb84ffcd9c7f554d275817a6683be9f9340a222e85353cef52228",
+      "parent_available_at": "2026-10-01T12:47:32.323Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "ZGGG",
+      "day": "2026-09-25",
+      "checkpoint": "p0-native-fc9121530008993b552d510063f024e3",
+      "packet_sha": "0550ee34ac89f28f1b4e3c85b8fce379bb5931e4eb6c2a3024858d9a42b2bffa",
+      "parent_available_at": "2026-09-25T01:24:56.792Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "FACT",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-fd205c3a58dd66db0f9c21ed95ab4b49",
+      "packet_sha": "19a368abb29286991c5080633f3be9b25cad7542bf335dc07a4974e4ee3fb5e2",
+      "parent_available_at": "2026-09-07T14:29:41.249Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "KATL",
+      "day": "2026-09-06",
+      "checkpoint": "p0-native-fdf4a2a921fb7131711b547f1551dfb2",
+      "packet_sha": "c15b169edf297f10cebdea59b1dd9f36451e2a8c885f7ee92dabb070c77e86a7",
+      "parent_available_at": "2026-09-06T16:35:16.641Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "LTAC",
+      "day": "2026-09-07",
+      "checkpoint": "p0-native-ff62aaedcb27f2e1867b4a44be0f4c7c",
+      "packet_sha": "476f5377076ddf4e1c060f1af442906674e77308e0bf8347daababb4c8d4c7fe",
+      "parent_available_at": "2026-09-07T10:05:19.479Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    },
+    {
+      "station": "RPLL",
+      "day": "2026-09-23",
+      "checkpoint": "p0-native-ff76c7f0dcd6a81a4a5b2fb4b7f14224",
+      "packet_sha": "ccefda4028d6b2fe06dbacfd6fccf20b106ba4c7c0b9d4bd3753e74c7a0b0a72",
+      "parent_available_at": "2026-09-23T07:50:47.800Z",
+      "state": "EXACT_SHA_NOT_IN_LOCAL_ARCHIVE",
+      "matches": []
+    }
+  ],
+  "production_modified": false,
+  "replacement_inputs_used": false
+}

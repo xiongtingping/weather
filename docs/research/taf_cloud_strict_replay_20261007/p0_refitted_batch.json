@@ -1,0 +1,796 @@
+{
+  "schema": "p0_asof_input_arithmetic_rebuild_v1",
+  "counts": {
+    "REFUSED": 3449,
+    "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 405,
+    "FileNotFoundError:exact_root_packet_missing": 272,
+    "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 7707,
+    "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 1478,
+    "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 813,
+    "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 126,
+    "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 355
+  },
+  "stations": {
+    "CYYZ": {
+      "profile": {
+        "REFUSED": 108,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 41,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 145,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 27,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 36
+      },
+      "roots": 253,
+      "output_bytes": 8090530,
+      "physics_input_bytes": 159101,
+      "fit_manifest_bytes": 58881,
+      "sha256": "3455abbdfc8c110069b90a409c56fb1ba806fcd3ae2502af6d5282708fee858a",
+      "seconds": 16.0
+    },
+    "EDDM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 223,
+        "REFUSED": 33,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 3,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 18
+      },
+      "roots": 256,
+      "output_bytes": 12080031,
+      "physics_input_bytes": 149802,
+      "fit_manifest_bytes": 1700397,
+      "sha256": "be52fe288fd9c6d69ee4f16724686a9bcda77954a36b4d3ad29118d85afe654c",
+      "seconds": 16.38
+    },
+    "EFHK": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 207,
+        "REFUSED": 46,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 32,
+        "FileNotFoundError:exact_root_packet_missing": 7,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 2,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 5
+      },
+      "roots": 253,
+      "output_bytes": 11097024,
+      "physics_input_bytes": 152313,
+      "fit_manifest_bytes": 878212,
+      "sha256": "8aeaaa07185b0424b25d7c5fd7f1cbb302af2c7d2f86da5f7b7d0a5c2cd56174",
+      "seconds": 15.8
+    },
+    "EGLC": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 222,
+        "REFUSED": 38,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 25,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 2
+      },
+      "roots": 260,
+      "output_bytes": 12096054,
+      "physics_input_bytes": 166929,
+      "fit_manifest_bytes": 1907937,
+      "sha256": "05eafc1a2c4203d522b9c7e816cd3cbd23d76b731d05cd2b033cd8763b09a78a",
+      "seconds": 16.12
+    },
+    "EHAM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 235,
+        "REFUSED": 42,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 11,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 29
+      },
+      "roots": 277,
+      "output_bytes": 12407778,
+      "physics_input_bytes": 185706,
+      "fit_manifest_bytes": 1132725,
+      "sha256": "e950d34f206ab6a89a5c8003f4b6c3265bf72d0626cf69afcb9dd7d1a12334ec",
+      "seconds": 29.61
+    },
+    "EPWA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 221,
+        "REFUSED": 42,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 8,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 28,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4
+      },
+      "roots": 263,
+      "output_bytes": 11960920,
+      "physics_input_bytes": 152124,
+      "fit_manifest_bytes": 956947,
+      "sha256": "a1515ddc6b78332da1675c78326559d11b7adb8a16fbef02a77971fa34eca9e3",
+      "seconds": 16.71
+    },
+    "FACT": {
+      "profile": {
+        "REFUSED": 38,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 8,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 199,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 18,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 3
+      },
+      "roots": 237,
+      "output_bytes": 10914855,
+      "physics_input_bytes": 132962,
+      "fit_manifest_bytes": 905913,
+      "sha256": "23de79c693f43eca7e9a63a50472734011b162daaedb3af0dc8fb89917a427af",
+      "seconds": 14.73
+    },
+    "KATL": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 187,
+        "REFUSED": 72,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 32,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 36
+      },
+      "roots": 259,
+      "output_bytes": 9710098,
+      "physics_input_bytes": 158222,
+      "fit_manifest_bytes": 688922,
+      "sha256": "450c48c11087e132fa9bf3e39883a5f76723d0f5a241d608a8d81700f4edf057",
+      "seconds": 15.2
+    },
+    "KAUS": {
+      "profile": {
+        "REFUSED": 78,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 6,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 177,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 27,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 41
+      },
+      "roots": 255,
+      "output_bytes": 9384359,
+      "physics_input_bytes": 162111,
+      "fit_manifest_bytes": 1179976,
+      "sha256": "2da6aad053abe51d25b85fad92774e425b74d8f1d265dafe1a87ca89876d971b",
+      "seconds": 13.3
+    },
+    "KBKF": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 160,
+        "REFUSED": 70,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 46
+      },
+      "roots": 230,
+      "output_bytes": 8412520,
+      "physics_input_bytes": 160716,
+      "fit_manifest_bytes": 774367,
+      "sha256": "ce08f5e53dd1c20dfdc71876f03646d0787a23f22601e6e2addff3c433e1c20a",
+      "seconds": 11.21
+    },
+    "KDAL": {
+      "profile": {
+        "REFUSED": 90,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 31,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 154,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 14,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 41
+      },
+      "roots": 244,
+      "output_bytes": 8170037,
+      "physics_input_bytes": 159864,
+      "fit_manifest_bytes": 0,
+      "sha256": "afa771f5de1703c56247133b7362df7a11ca24b6d574015bbf92b5df4dd6758d",
+      "seconds": 1.12
+    },
+    "KHOU": {
+      "profile": {
+        "REFUSED": 94,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 28,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 157,
+        "FileNotFoundError:exact_root_packet_missing": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 22,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 41
+      },
+      "roots": 251,
+      "output_bytes": 8522906,
+      "physics_input_bytes": 163283,
+      "fit_manifest_bytes": 0,
+      "sha256": "75f3b97a57a26343adec34bc7baf6e48ea5ee40c0306559844dc040806baf0aa",
+      "seconds": 0.95
+    },
+    "KLAX": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 165,
+        "REFUSED": 76,
+        "FileNotFoundError:exact_root_packet_missing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 25,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 1,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 48
+      },
+      "roots": 241,
+      "output_bytes": 8047664,
+      "physics_input_bytes": 152892,
+      "fit_manifest_bytes": 715025,
+      "sha256": "7cfdc9fb61019e01d9bff05c3fd88548713031ecad135999a84026eb96821033",
+      "seconds": 13.48
+    },
+    "KLGA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 195,
+        "REFUSED": 58,
+        "FileNotFoundError:exact_root_packet_missing": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 36
+      },
+      "roots": 253,
+      "output_bytes": 10031048,
+      "physics_input_bytes": 157945,
+      "fit_manifest_bytes": 579436,
+      "sha256": "59b3a16e0cc66b3f702cb49fffcda57ac0132f8ade458e6daafe750662f691ec",
+      "seconds": 13.11
+    },
+    "KMIA": {
+      "profile": {
+        "REFUSED": 107,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 38,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 150,
+        "FileNotFoundError:exact_root_packet_missing": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 30,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 36
+      },
+      "roots": 257,
+      "output_bytes": 8397618,
+      "physics_input_bytes": 161827,
+      "fit_manifest_bytes": 278019,
+      "sha256": "18af4736b839cd7642a46c725d5a8abf038e3878ba62c10947ee92d655d1e139",
+      "seconds": 11.02
+    },
+    "KORD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 173,
+        "REFUSED": 78,
+        "FileNotFoundError:exact_root_packet_missing": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 34,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 41
+      },
+      "roots": 251,
+      "output_bytes": 9109149,
+      "physics_input_bytes": 162701,
+      "fit_manifest_bytes": 330458,
+      "sha256": "eb38e64594e16285fe64e33f9cf8b81279dc373f030d1a8852d2407b39f6256c",
+      "seconds": 11.17
+    },
+    "KSEA": {
+      "profile": {
+        "REFUSED": 100,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 8,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 158,
+        "FileNotFoundError:exact_root_packet_missing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 40,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 50
+      },
+      "roots": 258,
+      "output_bytes": 8150031,
+      "physics_input_bytes": 158166,
+      "fit_manifest_bytes": 492035,
+      "sha256": "9d1a63ff5f0d72ac47a6f65f79e26db34980dc7759963c0c2ea594c8cc400068",
+      "seconds": 12.09
+    },
+    "KSFO": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 168,
+        "REFUSED": 90,
+        "FileNotFoundError:exact_root_packet_missing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 37,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 1,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 50
+      },
+      "roots": 258,
+      "output_bytes": 8467407,
+      "physics_input_bytes": 157473,
+      "fit_manifest_bytes": 482862,
+      "sha256": "a35a046d80f5a5e96a1af452c246c315b15cd3fd524ec55c3cd7de41df7aea20",
+      "seconds": 13.61
+    },
+    "LEMD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 219,
+        "REFUSED": 34,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 24,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 1
+      },
+      "roots": 253,
+      "output_bytes": 12030278,
+      "physics_input_bytes": 141343,
+      "fit_manifest_bytes": 1555575,
+      "sha256": "8b7d7cec25927a427278f49ede5d37456de79af2d5b352a396dfff437ea483f1",
+      "seconds": 13.13
+    },
+    "LFPB": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 220,
+        "REFUSED": 32,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 23
+      },
+      "roots": 252,
+      "output_bytes": 11804346,
+      "physics_input_bytes": 147937,
+      "fit_manifest_bytes": 1519777,
+      "sha256": "c1e3af08e1f8b4ea58065b919a8c6f9a67f30e9f8cc23c7c5bf2fe9004feab4e",
+      "seconds": 12.66
+    },
+    "LIMC": {
+      "profile": {
+        "REFUSED": 75,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 44,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 185,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 22
+      },
+      "roots": 260,
+      "output_bytes": 10765320,
+      "physics_input_bytes": 144891,
+      "fit_manifest_bytes": 197487,
+      "sha256": "4c9c64b01841c69bace5c8175c655bd7debec6f461d57f9b3c1340286e96b4fa",
+      "seconds": 17.92
+    },
+    "LLBG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 194612,
+      "physics_input_bytes": 14872,
+      "fit_manifest_bytes": 125070,
+      "sha256": "a9e9df82270a6792e75f2d0192d43d7f8891fa1c8c8532241824425f71e70afe",
+      "seconds": 3.53
+    },
+    "LTAC": {
+      "profile": {
+        "REFUSED": 72,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 34,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 182,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 1,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 26,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 5
+      },
+      "roots": 254,
+      "output_bytes": 10406100,
+      "physics_input_bytes": 141048,
+      "fit_manifest_bytes": 381324,
+      "sha256": "2ffa3be8eb1f4fd8754625053f96483f41ecad3d1dafa4db1968eab328e04a5f",
+      "seconds": 16.7
+    },
+    "LTFM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 212556,
+      "physics_input_bytes": 14862,
+      "fit_manifest_bytes": 414587,
+      "sha256": "7979e741044fed05897e3632cb62707153e0a08d4453f09d6b894697d0ad6e96",
+      "seconds": 2.03
+    },
+    "MMMX": {
+      "profile": {
+        "REFUSED": 86,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 3,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 142,
+        "FileNotFoundError:exact_root_packet_missing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 36,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 45
+      },
+      "roots": 228,
+      "output_bytes": 7444304,
+      "physics_input_bytes": 134382,
+      "fit_manifest_bytes": 624409,
+      "sha256": "54d56fd7f0c3db0cd74de80d15deeac0fc4d296b2976fe55f726787bec06bf0c",
+      "seconds": 14.68
+    },
+    "MPMG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 152,
+        "REFUSED": 70,
+        "FileNotFoundError:exact_root_packet_missing": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 26,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 41
+      },
+      "roots": 222,
+      "output_bytes": 7462654,
+      "physics_input_bytes": 130641,
+      "fit_manifest_bytes": 473593,
+      "sha256": "a1dabb270cda9b2cbfe30b25b62da1e9a04f3a5cc496b9f68aab40340721bfa9",
+      "seconds": 14.29
+    },
+    "NZWN": {
+      "profile": {
+        "REFUSED": 156,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 42,
+        "FileNotFoundError:exact_root_packet_missing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 89,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 60,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 26,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 19
+      },
+      "roots": 245,
+      "output_bytes": 5258261,
+      "physics_input_bytes": 128105,
+      "fit_manifest_bytes": 109428,
+      "sha256": "7a1326a6b51e65757ae2822ba29a809a1893372c9a9b127ee65601182ff640c4",
+      "seconds": 11.08
+    },
+    "OEJN": {
+      "profile": {
+        "REFUSED": 43,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 201,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 28,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 2,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 5
+      },
+      "roots": 244,
+      "output_bytes": 10743357,
+      "physics_input_bytes": 130487,
+      "fit_manifest_bytes": 874449,
+      "sha256": "e2628f3998a2e10766f6847586866fca3f55a84f12c67a84fcf43b98b60b8848",
+      "seconds": 14.1
+    },
+    "OPKC": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 194,
+        "REFUSED": 59,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 7,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 3,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 32,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 14,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 1
+      },
+      "roots": 253,
+      "output_bytes": 10631942,
+      "physics_input_bytes": 127610,
+      "fit_manifest_bytes": 811016,
+      "sha256": "6c62d99aa1d84dd03a557263651377101fad0dea359b87761db9258fd3c99edb",
+      "seconds": 15.46
+    },
+    "RCSS": {
+      "profile": {
+        "REFUSED": 96,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 4,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 161,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 53,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 257,
+      "output_bytes": 9176370,
+      "physics_input_bytes": 132518,
+      "fit_manifest_bytes": 665452,
+      "sha256": "83f282b950f25b5eaad9f56be1a3f58aa2b3228bfdf7334abeb53a2304814b2f",
+      "seconds": 16.31
+    },
+    "RJTT": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 133,
+        "REFUSED": 107,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 63,
+        "FileNotFoundError:exact_root_packet_missing": 5,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 9,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 240,
+      "output_bytes": 7544145,
+      "physics_input_bytes": 136596,
+      "fit_manifest_bytes": 867253,
+      "sha256": "02d635f5139116a49f655c635addbd02421734b9b791edfd18bb2d82d838d607",
+      "seconds": 11.58
+    },
+    "RKPK": {
+      "profile": {
+        "REFUSED": 114,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 12,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 127,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 60,
+        "FileNotFoundError:exact_root_packet_missing": 7,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 6,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 241,
+      "output_bytes": 7398928,
+      "physics_input_bytes": 136758,
+      "fit_manifest_bytes": 835024,
+      "sha256": "b6c4e7df32ef266622e6ad597aba578f843f82d23576a57a23ae0b58b96a8f41",
+      "seconds": 14.8
+    },
+    "RKSI": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 147,
+        "REFUSED": 97,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 1,
+        "FileNotFoundError:exact_root_packet_missing": 8,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 53,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 6,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 244,
+      "output_bytes": 8095551,
+      "physics_input_bytes": 133663,
+      "fit_manifest_bytes": 1119858,
+      "sha256": "2e12777894731c837a0ec328eb36e3665b55bf9cfdb9d63a3dcd9e1456abdcff",
+      "seconds": 12.88
+    },
+    "RPLL": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 168,
+        "REFUSED": 82,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 42,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 5,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 250,
+      "output_bytes": 9309950,
+      "physics_input_bytes": 134504,
+      "fit_manifest_bytes": 1485197,
+      "sha256": "b9493b668433a7d3d253b9b17a2ab5788184e861ffea63902e3fede5cb440f3e",
+      "seconds": 19.43
+    },
+    "SAEZ": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 147,
+        "REFUSED": 52,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 11,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 35
+      },
+      "roots": 199,
+      "output_bytes": 7842885,
+      "physics_input_bytes": 132081,
+      "fit_manifest_bytes": 386183,
+      "sha256": "6fbe0671741acde53b27690429474f9dddcd7b8a2d6a8e85d5829c4300e9bee6",
+      "seconds": 18.83
+    },
+    "SBGR": {
+      "profile": {
+        "REFUSED": 58,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 152,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 14,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 35
+      },
+      "roots": 210,
+      "output_bytes": 8108616,
+      "physics_input_bytes": 134092,
+      "fit_manifest_bytes": 751907,
+      "sha256": "b86f28ff918623303c3b4972150de79b49afa4d2c08fda83c7b5e531d41b5277",
+      "seconds": 12.68
+    },
+    "UUWW": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 213473,
+      "physics_input_bytes": 14959,
+      "fit_manifest_bytes": 414598,
+      "sha256": "6c1d8c85c45da61037849200907f8e70ddaeb6cb56c1c2cf5f1748eb11866202",
+      "seconds": 1.55
+    },
+    "VILK": {
+      "profile": {
+        "REFUSED": 83,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 31,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 28,
+        "FileNotFoundError:exact_root_packet_missing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 159,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 3,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 6,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 10
+      },
+      "roots": 242,
+      "output_bytes": 9209544,
+      "physics_input_bytes": 126890,
+      "fit_manifest_bytes": 103900,
+      "sha256": "1644454ffd401681ef30c980bbee6785eb93fd870a1403865f502ea431df12ec",
+      "seconds": 11.32
+    },
+    "WMKK": {
+      "profile": {
+        "REFUSED": 89,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 159,
+        "FileNotFoundError:exact_root_packet_missing": 7,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 11,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 37,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 20,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 248,
+      "output_bytes": 8793213,
+      "physics_input_bytes": 129322,
+      "fit_manifest_bytes": 880516,
+      "sha256": "3114dcec99a22e02363e24e0beae74146a3049cfeb2756c5ff20d868b655b593",
+      "seconds": 12.81
+    },
+    "WSSS": {
+      "profile": {
+        "REFUSED": 87,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 6,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 168,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 9,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 38,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 255,
+      "output_bytes": 9363574,
+      "physics_input_bytes": 132773,
+      "fit_manifest_bytes": 908179,
+      "sha256": "f7b811f82ebe30e6340066205f0d5411abdc7723834e9dcd7b3a9861d3051cf1",
+      "seconds": 10.29
+    },
+    "ZBAA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 167,
+        "REFUSED": 92,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 4,
+        "FileNotFoundError:exact_root_packet_missing": 11,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 35,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 14,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 259,
+      "output_bytes": 9467257,
+      "physics_input_bytes": 130913,
+      "fit_manifest_bytes": 418493,
+      "sha256": "80e98ddd1244b03a6eb74f72e0640f09bb88f3c9a97586dad16c1d3b6949ebbe",
+      "seconds": 9.6
+    },
+    "ZGGG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 173,
+        "REFUSED": 76,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 37,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 5,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 249,
+      "output_bytes": 9676792,
+      "physics_input_bytes": 132429,
+      "fit_manifest_bytes": 745869,
+      "sha256": "748ec8bd6ee807a9da5274733c18a3df78f31153a4e1e1170653b28b887d77d4",
+      "seconds": 10.03
+    },
+    "ZGSZ": {
+      "profile": {
+        "REFUSED": 94,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 13,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 151,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 41,
+        "FileNotFoundError:exact_root_packet_missing": 8,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 245,
+      "output_bytes": 8706232,
+      "physics_input_bytes": 131778,
+      "fit_manifest_bytes": 651255,
+      "sha256": "e1ee3de4caecb3e8e274b63b598bd1228676d514a64d4538c90709e386880931",
+      "seconds": 12.51
+    },
+    "ZHHH": {
+      "profile": {
+        "REFUSED": 91,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 11,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 155,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 42,
+        "FileNotFoundError:exact_root_packet_missing": 6,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 246,
+      "output_bytes": 8996400,
+      "physics_input_bytes": 132261,
+      "fit_manifest_bytes": 517649,
+      "sha256": "fbe569e1d0d5e710f1a070e1c64044bcef485b3adee5d7124f6d3356f68452e2",
+      "seconds": 10.44
+    },
+    "ZSPD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 170,
+        "REFUSED": 87,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 1,
+        "FileNotFoundError:exact_root_packet_missing": 10,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 43,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 5,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 9
+      },
+      "roots": 257,
+      "output_bytes": 9575953,
+      "physics_input_bytes": 130671,
+      "fit_manifest_bytes": 662169,
+      "sha256": "1ce61fb70a902299e8da0fa7feb124ac318bae8310119493108edc464fae7ccd",
+      "seconds": 13.62
+    },
+    "ZSQD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 167,
+        "REFUSED": 80,
+        "FileNotFoundError:exact_root_packet_missing": 8,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 40,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 6,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 7
+      },
+      "roots": 247,
+      "output_bytes": 9509304,
+      "physics_input_bytes": 124296,
+      "fit_manifest_bytes": 1775256,
+      "sha256": "2beef97403adb5407b9861791e3827db7e124a01452f8140e9858d101a367323",
+      "seconds": 11.97
+    },
+    "ZUCK": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 160,
+        "REFUSED": 83,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 44,
+        "FileNotFoundError:exact_root_packet_missing": 7,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 7
+      },
+      "roots": 243,
+      "output_bytes": 9051917,
+      "physics_input_bytes": 132543,
+      "fit_manifest_bytes": 644349,
+      "sha256": "ba5dcf40473a2afc903de37b9ebf57878d75eaa5e8010baf921b38b212853b80",
+      "seconds": 13.17
+    },
+    "ZUUU": {
+      "profile": {
+        "REFUSED": 94,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 12,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 148,
+        "ValueError:current_parameter_train_days_below_20:ECMWF_IFS_ENS_OPEN_PF50": 43,
+        "FileNotFoundError:exact_root_packet_missing": 9,
+        "ValueError:current_parameter_train_days_below_20:NOAA_GEFS_05": 4,
+        "ValueError:current_parameter_train_days_below_20:ECCC_GEM_GLOBAL_ENS": 19,
+        "ValueError:current_parameter_train_days_below_20:DWD_ICON_GLOBAL_EPS": 7
+      },
+      "roots": 242,
+      "output_bytes": 8597251,
+      "physics_input_bytes": 126886,
+      "fit_manifest_bytes": 494527,
+      "sha256": "1869b0ff906c99135e3c33029d341afaa9af0b6941eb3f801749ad079e9708b5",
+      "seconds": 12.05
+    }
+  },
+  "current_chain_oos_complete": false,
+  "production_modified": false,
+  "compiler_sha256": "81315392ea1bd8462c96c62319890dfb25785c9cdec7cfc5fd3fc59e60a1bea6",
+  "native_oos_sha256": "91793b01e28dd9797a1593a4ac4b5aea7cad4cfa333a13494276cd38ba949d53"
+}

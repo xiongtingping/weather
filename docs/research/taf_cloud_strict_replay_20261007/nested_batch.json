@@ -1,0 +1,202 @@
+{
+  "schema": "fleet_actual_arrival_nested_probe_v1",
+  "stations": {
+    "CYYZ": {
+      "state": "PROBED",
+      "path": "nested_oos/CYYZ/2026-10-05/summary.json"
+    },
+    "EDDM": {
+      "state": "PROBED",
+      "path": "nested_oos/EDDM/2026-10-05/summary.json"
+    },
+    "EFHK": {
+      "state": "PROBED",
+      "path": "nested_oos/EFHK/2026-10-05/summary.json"
+    },
+    "EGLC": {
+      "state": "PROBED",
+      "path": "nested_oos/EGLC/2026-10-05/summary.json"
+    },
+    "EHAM": {
+      "state": "PROBED",
+      "path": "nested_oos/EHAM/2026-10-05/summary.json"
+    },
+    "EPWA": {
+      "state": "PROBED",
+      "path": "nested_oos/EPWA/2026-10-05/summary.json"
+    },
+    "FACT": {
+      "state": "PROBED",
+      "path": "nested_oos/FACT/2026-10-05/summary.json"
+    },
+    "KATL": {
+      "state": "PROBED",
+      "path": "nested_oos/KATL/2026-10-05/summary.json"
+    },
+    "KAUS": {
+      "state": "PROBED",
+      "path": "nested_oos/KAUS/2026-10-05/summary.json"
+    },
+    "KBKF": {
+      "state": "PROBED",
+      "path": "nested_oos/KBKF/2026-10-05/summary.json"
+    },
+    "KDAL": {
+      "state": "PROBED",
+      "path": "nested_oos/KDAL/2026-10-05/summary.json"
+    },
+    "KHOU": {
+      "state": "PROBED",
+      "path": "nested_oos/KHOU/2026-10-05/summary.json"
+    },
+    "KLAX": {
+      "state": "PROBED",
+      "path": "nested_oos/KLAX/2026-10-05/summary.json"
+    },
+    "KLGA": {
+      "state": "PROBED",
+      "path": "nested_oos/KLGA/2026-10-05/summary.json"
+    },
+    "KMIA": {
+      "state": "PROBED",
+      "path": "nested_oos/KMIA/2026-10-05/summary.json"
+    },
+    "KORD": {
+      "state": "PROBED",
+      "path": "nested_oos/KORD/2026-10-05/summary.json"
+    },
+    "KSEA": {
+      "state": "PROBED",
+      "path": "nested_oos/KSEA/2026-10-05/summary.json"
+    },
+    "KSFO": {
+      "state": "PROBED",
+      "path": "nested_oos/KSFO/2026-10-05/summary.json"
+    },
+    "LEMD": {
+      "state": "PROBED",
+      "path": "nested_oos/LEMD/2026-10-05/summary.json"
+    },
+    "LFPB": {
+      "state": "PROBED",
+      "path": "nested_oos/LFPB/2026-10-05/summary.json"
+    },
+    "LIMC": {
+      "state": "PROBED",
+      "path": "nested_oos/LIMC/2026-10-05/summary.json"
+    },
+    "LLBG": {
+      "state": "PROBED",
+      "path": "nested_oos/LLBG/2026-10-05/summary.json"
+    },
+    "LTAC": {
+      "state": "PROBED",
+      "path": "nested_oos/LTAC/2026-10-05/summary.json"
+    },
+    "LTFM": {
+      "state": "PROBED",
+      "path": "nested_oos/LTFM/2026-10-05/summary.json"
+    },
+    "MMMX": {
+      "state": "PROBED",
+      "path": "nested_oos/MMMX/2026-10-05/summary.json"
+    },
+    "MPMG": {
+      "state": "PROBED",
+      "path": "nested_oos/MPMG/2026-10-05/summary.json"
+    },
+    "NZWN": {
+      "state": "PROBED",
+      "path": "nested_oos/NZWN/2026-10-05/summary.json"
+    },
+    "OEJN": {
+      "state": "PROBED",
+      "path": "nested_oos/OEJN/2026-10-05/summary.json"
+    },
+    "OPKC": {
+      "state": "PROBED",
+      "path": "nested_oos/OPKC/2026-10-05/summary.json"
+    },
+    "RCSS": {
+      "state": "PROBED",
+      "path": "nested_oos/RCSS/2026-10-05/summary.json"
+    },
+    "RJTT": {
+      "state": "PROBED",
+      "path": "nested_oos/RJTT/2026-10-05/summary.json"
+    },
+    "RKPK": {
+      "state": "PROBED",
+      "path": "nested_oos/RKPK/2026-10-05/summary.json"
+    },
+    "RKSI": {
+      "state": "PROBED",
+      "path": "nested_oos/RKSI/2026-10-05/summary.json"
+    },
+    "RPLL": {
+      "state": "PROBED",
+      "path": "nested_oos/RPLL/2026-10-05/summary.json"
+    },
+    "SAEZ": {
+      "state": "PROBED",
+      "path": "nested_oos/SAEZ/2026-10-05/summary.json"
+    },
+    "SBGR": {
+      "state": "PROBED",
+      "path": "nested_oos/SBGR/2026-10-05/summary.json"
+    },
+    "UUWW": {
+      "state": "PROBED",
+      "path": "nested_oos/UUWW/2026-10-05/summary.json"
+    },
+    "VILK": {
+      "state": "PROBED",
+      "path": "nested_oos/VILK/2026-10-05/summary.json"
+    },
+    "WMKK": {
+      "state": "PROBED",
+      "path": "nested_oos/WMKK/2026-10-05/summary.json"
+    },
+    "WSSS": {
+      "state": "PROBED",
+      "path": "nested_oos/WSSS/2026-10-05/summary.json"
+    },
+    "ZBAA": {
+      "state": "PROBED",
+      "path": "nested_oos/ZBAA/2026-10-05/summary.json"
+    },
+    "ZGGG": {
+      "state": "PROBED",
+      "path": "nested_oos/ZGGG/2026-10-05/summary.json"
+    },
+    "ZGSZ": {
+      "state": "PROBED",
+      "path": "nested_oos/ZGSZ/2026-10-05/summary.json"
+    },
+    "ZHHH": {
+      "state": "PROBED",
+      "path": "nested_oos/ZHHH/2026-10-05/summary.json"
+    },
+    "ZSPD": {
+      "state": "PROBED",
+      "path": "nested_oos/ZSPD/2026-10-05/summary.json"
+    },
+    "ZSQD": {
+      "state": "PROBED",
+      "path": "nested_oos/ZSQD/2026-10-05/summary.json"
+    },
+    "ZUCK": {
+      "state": "PROBED",
+      "path": "nested_oos/ZUCK/2026-10-05/summary.json"
+    },
+    "ZUUU": {
+      "state": "PROBED",
+      "path": "nested_oos/ZUUU/2026-10-05/summary.json"
+    }
+  },
+  "counts": {
+    "PROBED": 48
+  },
+  "whole_current_chain_certified": false,
+  "production_modified": false
+}

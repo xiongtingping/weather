@@ -1,0 +1,19 @@
+{
+  "nested": {
+    "removed_objects": 259,
+    "removed_compressed_bytes": 6657314
+  },
+  "refit_manifests": {
+    "removed_objects": 2256,
+    "removed_compressed_bytes": 167875873
+  },
+  "p0_envelope_cache": {
+    "removed_objects": 5799,
+    "removed_compressed_bytes": 42333310
+  },
+  "removed_superseded_debug_outputs": [
+    "restricted_baseline_fit.json",
+    "nested_compiler_probe.json"
+  ],
+  "production_modified": false
+}

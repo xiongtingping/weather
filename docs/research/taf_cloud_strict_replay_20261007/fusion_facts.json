@@ -1,0 +1,403 @@
+{
+  "schema": "current_fit_actual_ladder_fusion_facts_v1",
+  "counts": {
+    "roots": 11156,
+    "representative_facts": 2579,
+    "truth_revisions": 3339
+  },
+  "stations": {
+    "CYYZ": {
+      "counts": {
+        "roots": 253,
+        "representative_facts": 51,
+        "truth_revisions": 67
+      },
+      "input_sha": "3455abbdfc8c110069b90a409c56fb1ba806fcd3ae2502af6d5282708fee858a"
+    },
+    "EDDM": {
+      "counts": {
+        "roots": 256,
+        "representative_facts": 71,
+        "truth_revisions": 91
+      },
+      "input_sha": "be52fe288fd9c6d69ee4f16724686a9bcda77954a36b4d3ad29118d85afe654c"
+    },
+    "EFHK": {
+      "counts": {
+        "roots": 253,
+        "representative_facts": 64,
+        "truth_revisions": 82
+      },
+      "input_sha": "8aeaaa07185b0424b25d7c5fd7f1cbb302af2c7d2f86da5f7b7d0a5c2cd56174"
+    },
+    "EGLC": {
+      "counts": {
+        "roots": 260,
+        "representative_facts": 71,
+        "truth_revisions": 90
+      },
+      "input_sha": "05eafc1a2c4203d522b9c7e816cd3cbd23d76b731d05cd2b033cd8763b09a78a"
+    },
+    "EHAM": {
+      "counts": {
+        "roots": 277,
+        "representative_facts": 72,
+        "truth_revisions": 93
+      },
+      "input_sha": "e950d34f206ab6a89a5c8003f4b6c3265bf72d0626cf69afcb9dd7d1a12334ec"
+    },
+    "EPWA": {
+      "counts": {
+        "roots": 263,
+        "representative_facts": 69,
+        "truth_revisions": 83
+      },
+      "input_sha": "a1515ddc6b78332da1675c78326559d11b7adb8a16fbef02a77971fa34eca9e3"
+    },
+    "FACT": {
+      "counts": {
+        "roots": 237,
+        "representative_facts": 68,
+        "truth_revisions": 84
+      },
+      "input_sha": "23de79c693f43eca7e9a63a50472734011b162daaedb3af0dc8fb89917a427af"
+    },
+    "KATL": {
+      "counts": {
+        "roots": 259,
+        "representative_facts": 61,
+        "truth_revisions": 78
+      },
+      "input_sha": "450c48c11087e132fa9bf3e39883a5f76723d0f5a241d608a8d81700f4edf057"
+    },
+    "KAUS": {
+      "counts": {
+        "roots": 255,
+        "representative_facts": 59,
+        "truth_revisions": 73
+      },
+      "input_sha": "2da6aad053abe51d25b85fad92774e425b74d8f1d265dafe1a87ca89876d971b"
+    },
+    "KBKF": {
+      "counts": {
+        "roots": 230,
+        "representative_facts": 62,
+        "truth_revisions": 122
+      },
+      "input_sha": "ce08f5e53dd1c20dfdc71876f03646d0787a23f22601e6e2addff3c433e1c20a"
+    },
+    "KDAL": {
+      "counts": {
+        "roots": 244,
+        "representative_facts": 56,
+        "truth_revisions": 71
+      },
+      "input_sha": "afa771f5de1703c56247133b7362df7a11ca24b6d574015bbf92b5df4dd6758d"
+    },
+    "KHOU": {
+      "counts": {
+        "roots": 251,
+        "representative_facts": 57,
+        "truth_revisions": 71
+      },
+      "input_sha": "75f3b97a57a26343adec34bc7baf6e48ea5ee40c0306559844dc040806baf0aa"
+    },
+    "KLAX": {
+      "counts": {
+        "roots": 241,
+        "representative_facts": 56,
+        "truth_revisions": 73
+      },
+      "input_sha": "7cfdc9fb61019e01d9bff05c3fd88548713031ecad135999a84026eb96821033"
+    },
+    "KLGA": {
+      "counts": {
+        "roots": 253,
+        "representative_facts": 62,
+        "truth_revisions": 82
+      },
+      "input_sha": "59b3a16e0cc66b3f702cb49fffcda57ac0132f8ade458e6daafe750662f691ec"
+    },
+    "KMIA": {
+      "counts": {
+        "roots": 257,
+        "representative_facts": 52,
+        "truth_revisions": 69
+      },
+      "input_sha": "18af4736b839cd7642a46c725d5a8abf038e3878ba62c10947ee92d655d1e139"
+    },
+    "KORD": {
+      "counts": {
+        "roots": 251,
+        "representative_facts": 60,
+        "truth_revisions": 80
+      },
+      "input_sha": "eb38e64594e16285fe64e33f9cf8b81279dc373f030d1a8852d2407b39f6256c"
+    },
+    "KSEA": {
+      "counts": {
+        "roots": 258,
+        "representative_facts": 52,
+        "truth_revisions": 67
+      },
+      "input_sha": "9d1a63ff5f0d72ac47a6f65f79e26db34980dc7759963c0c2ea594c8cc400068"
+    },
+    "KSFO": {
+      "counts": {
+        "roots": 258,
+        "representative_facts": 53,
+        "truth_revisions": 69
+      },
+      "input_sha": "a35a046d80f5a5e96a1af452c246c315b15cd3fd524ec55c3cd7de41df7aea20"
+    },
+    "LEMD": {
+      "counts": {
+        "roots": 253,
+        "representative_facts": 71,
+        "truth_revisions": 89
+      },
+      "input_sha": "8b7d7cec25927a427278f49ede5d37456de79af2d5b352a396dfff437ea483f1"
+    },
+    "LFPB": {
+      "counts": {
+        "roots": 252,
+        "representative_facts": 72,
+        "truth_revisions": 88
+      },
+      "input_sha": "c1e3af08e1f8b4ea58065b919a8c6f9a67f30e9f8cc23c7c5bf2fe9004feab4e"
+    },
+    "LIMC": {
+      "counts": {
+        "roots": 260,
+        "representative_facts": 58,
+        "truth_revisions": 77
+      },
+      "input_sha": "4c9c64b01841c69bace5c8175c655bd7debec6f461d57f9b3c1340286e96b4fa"
+    },
+    "LLBG": {
+      "counts": {
+        "roots": 5,
+        "representative_facts": 4,
+        "truth_revisions": 4
+      },
+      "input_sha": "a9e9df82270a6792e75f2d0192d43d7f8891fa1c8c8532241824425f71e70afe"
+    },
+    "LTAC": {
+      "counts": {
+        "roots": 254,
+        "representative_facts": 56,
+        "truth_revisions": 80
+      },
+      "input_sha": "2ffa3be8eb1f4fd8754625053f96483f41ecad3d1dafa4db1968eab328e04a5f"
+    },
+    "LTFM": {
+      "counts": {
+        "roots": 5,
+        "representative_facts": 4,
+        "truth_revisions": 4
+      },
+      "input_sha": "7979e741044fed05897e3632cb62707153e0a08d4453f09d6b894697d0ad6e96"
+    },
+    "MMMX": {
+      "counts": {
+        "roots": 228,
+        "representative_facts": 55,
+        "truth_revisions": 71
+      },
+      "input_sha": "54d56fd7f0c3db0cd74de80d15deeac0fc4d296b2976fe55f726787bec06bf0c"
+    },
+    "MPMG": {
+      "counts": {
+        "roots": 222,
+        "representative_facts": 59,
+        "truth_revisions": 72
+      },
+      "input_sha": "a1dabb270cda9b2cbfe30b25b62da1e9a04f3a5cc496b9f68aab40340721bfa9"
+    },
+    "NZWN": {
+      "counts": {
+        "roots": 245,
+        "representative_facts": 29,
+        "truth_revisions": 38
+      },
+      "input_sha": "7a1326a6b51e65757ae2822ba29a809a1893372c9a9b127ee65601182ff640c4"
+    },
+    "OEJN": {
+      "counts": {
+        "roots": 244,
+        "representative_facts": 63,
+        "truth_revisions": 77
+      },
+      "input_sha": "e2628f3998a2e10766f6847586866fca3f55a84f12c67a84fcf43b98b60b8848"
+    },
+    "OPKC": {
+      "counts": {
+        "roots": 253,
+        "representative_facts": 60,
+        "truth_revisions": 76
+      },
+      "input_sha": "6c62d99aa1d84dd03a557263651377101fad0dea359b87761db9258fd3c99edb"
+    },
+    "RCSS": {
+      "counts": {
+        "roots": 257,
+        "representative_facts": 53,
+        "truth_revisions": 68
+      },
+      "input_sha": "83f282b950f25b5eaad9f56be1a3f58aa2b3228bfdf7334abeb53a2304814b2f"
+    },
+    "RJTT": {
+      "counts": {
+        "roots": 240,
+        "representative_facts": 51,
+        "truth_revisions": 62
+      },
+      "input_sha": "02d635f5139116a49f655c635addbd02421734b9b791edfd18bb2d82d838d607"
+    },
+    "RKPK": {
+      "counts": {
+        "roots": 241,
+        "representative_facts": 46,
+        "truth_revisions": 58
+      },
+      "input_sha": "b6c4e7df32ef266622e6ad597aba578f843f82d23576a57a23ae0b58b96a8f41"
+    },
+    "RKSI": {
+      "counts": {
+        "roots": 244,
+        "representative_facts": 53,
+        "truth_revisions": 65
+      },
+      "input_sha": "2e12777894731c837a0ec328eb36e3665b55bf9cfdb9d63a3dcd9e1456abdcff"
+    },
+    "RPLL": {
+      "counts": {
+        "roots": 250,
+        "representative_facts": 56,
+        "truth_revisions": 74
+      },
+      "input_sha": "b9493b668433a7d3d253b9b17a2ab5788184e861ffea63902e3fede5cb440f3e"
+    },
+    "SAEZ": {
+      "counts": {
+        "roots": 199,
+        "representative_facts": 61,
+        "truth_revisions": 85
+      },
+      "input_sha": "6fbe0671741acde53b27690429474f9dddcd7b8a2d6a8e85d5829c4300e9bee6"
+    },
+    "SBGR": {
+      "counts": {
+        "roots": 210,
+        "representative_facts": 60,
+        "truth_revisions": 73
+      },
+      "input_sha": "b86f28ff918623303c3b4972150de79b49afa4d2c08fda83c7b5e531d41b5277"
+    },
+    "UUWW": {
+      "counts": {
+        "roots": 5,
+        "representative_facts": 4,
+        "truth_revisions": 4
+      },
+      "input_sha": "6c1d8c85c45da61037849200907f8e70ddaeb6cb56c1c2cf5f1748eb11866202"
+    },
+    "VILK": {
+      "counts": {
+        "roots": 242,
+        "representative_facts": 46,
+        "truth_revisions": 62
+      },
+      "input_sha": "1644454ffd401681ef30c980bbee6785eb93fd870a1403865f502ea431df12ec"
+    },
+    "WMKK": {
+      "counts": {
+        "roots": 248,
+        "representative_facts": 53,
+        "truth_revisions": 69
+      },
+      "input_sha": "3114dcec99a22e02363e24e0beae74146a3049cfeb2756c5ff20d868b655b593"
+    },
+    "WSSS": {
+      "counts": {
+        "roots": 255,
+        "representative_facts": 53,
+        "truth_revisions": 69
+      },
+      "input_sha": "f7b811f82ebe30e6340066205f0d5411abdc7723834e9dcd7b3a9861d3051cf1"
+    },
+    "ZBAA": {
+      "counts": {
+        "roots": 259,
+        "representative_facts": 53,
+        "truth_revisions": 70
+      },
+      "input_sha": "80e98ddd1244b03a6eb74f72e0640f09bb88f3c9a97586dad16c1d3b6949ebbe"
+    },
+    "ZGGG": {
+      "counts": {
+        "roots": 249,
+        "representative_facts": 57,
+        "truth_revisions": 75
+      },
+      "input_sha": "748ec8bd6ee807a9da5274733c18a3df78f31153a4e1e1170653b28b887d77d4"
+    },
+    "ZGSZ": {
+      "counts": {
+        "roots": 245,
+        "representative_facts": 49,
+        "truth_revisions": 60
+      },
+      "input_sha": "e1ee3de4caecb3e8e274b63b598bd1228676d514a64d4538c90709e386880931"
+    },
+    "ZHHH": {
+      "counts": {
+        "roots": 246,
+        "representative_facts": 47,
+        "truth_revisions": 60
+      },
+      "input_sha": "fbe569e1d0d5e710f1a070e1c64044bcef485b3adee5d7124f6d3356f68452e2"
+    },
+    "ZSPD": {
+      "counts": {
+        "roots": 257,
+        "representative_facts": 55,
+        "truth_revisions": 70
+      },
+      "input_sha": "1ce61fb70a902299e8da0fa7feb124ac318bae8310119493108edc464fae7ccd"
+    },
+    "ZSQD": {
+      "counts": {
+        "roots": 247,
+        "representative_facts": 54,
+        "truth_revisions": 68
+      },
+      "input_sha": "2beef97403adb5407b9861791e3827db7e124a01452f8140e9858d101a367323"
+    },
+    "ZUCK": {
+      "counts": {
+        "roots": 243,
+        "representative_facts": 53,
+        "truth_revisions": 65
+      },
+      "input_sha": "ba5dcf40473a2afc903de37b9ebf57878d75eaa5e8010baf921b38b212853b80"
+    },
+    "ZUUU": {
+      "counts": {
+        "roots": 242,
+        "representative_facts": 48,
+        "truth_revisions": 61
+      },
+      "input_sha": "1869b0ff906c99135e3c33029d341afaa9af0b6941eb3f801749ad079e9708b5"
+    }
+  },
+  "output_bytes": 11187999,
+  "output_sha": "a45b41b18d226eb86ba9e9d9407a1a0d6b9dda4839aa396066ddbfa03d6e6792",
+  "production_modified": false,
+  "full_parent_chain_certified": false,
+  "limitations": [
+    "seating still uses original qualifications",
+    "facts available only on fixed old hourly-anchor roots",
+    "fusion must be refitted using newest truth revision visible at each fit cutoff"
+  ]
+}

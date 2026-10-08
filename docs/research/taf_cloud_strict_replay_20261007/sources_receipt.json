@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "restricted-cloud-increment",
+      "title": "云覆盖差的限定样本结果",
+      "queries": [
+        {
+          "id": "restricted-walk-forward",
+          "source": {
+            "label": "正式观测前缀研究",
+            "files": [
+              "restricted_refitted_fit.json",
+              "strict_fit.py",
+              "current_verification.json",
+              "score_sensitivity.json",
+              "cloud_origin_audit.json",
+              "cloud_origin_rescore_validation.json"
+            ],
+            "filters": [
+              "先站日等权，再按日期块统计",
+              "每个外推日只用此前且真值当时已知的数据训练",
+              "覆盖差阈值6500ft",
+              "245条缺唯一可见官方origin的云证据已设为未知并重跑"
+            ],
+            "metricDefinitions": [
+              "负LogScore和Brier差值为云增量候选减相同基准，负值表示改善。"
+            ],
+            "caveats": [
+              "这些结果仅覆盖输入获准子群，父链资格和融合/中心宽度重拟尚未完整，不是全48站晋级证据。"
+            ]
+          },
+          "reportingPeriod": "2026-09-21至2026-10-06：16个外推日",
+          "rows": [
+            {
+              "group": "最新覆盖：全部",
+              "rows": 4624,
+              "station_days": 494,
+              "delta_logscore": -0.001118760976308295,
+              "ci95_low": -0.0021022182725054864,
+              "ci95_high": -0.00011440419273688846
+            },
+            {
+              "group": "最新覆盖：可比证据",
+              "rows": 2682,
+              "station_days": 355,
+              "delta_logscore": -0.0014856677903076502,
+              "ci95_low": -0.0032934424666294336,
+              "ci95_high": 0.000411499314902656
+            },
+            {
+              "group": "提前24h覆盖：全部",
+              "rows": 4624,
+              "station_days": 494,
+              "delta_logscore": -0.0020101985282461898,
+              "ci95_low": -0.0048684229038734326,
+              "ci95_high": 0.0006361501102980974
+            }
+          ],
+          "columns": [
+            "group",
+            "rows",
+            "station_days",
+            "delta_logscore",
+            "ci95_low",
+            "ci95_high"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chengdu-cloud-change",
+      "title": "成都10月7日的覆盖与云底变化",
+      "queries": [
+        {
+          "id": "raw-cloud-and-odds",
+          "source": {
+            "label": "真实回执绑定TAF与官方报文",
+            "files": [
+              "results.json",
+              "verification.json",
+              "case_increment_math.json",
+              "case_increment_math.py"
+            ],
+            "metricDefinitions": [
+              "6500ft覆盖增量比较报文云层最大覆盖区间；云底差只比较唯一同覆盖码/云型匹配。"
+            ],
+            "filters": [
+              "ZUUU：2026-10-07当地12–16时"
+            ],
+            "caveats": [
+              "云底下降不能直接等同于遮阳增强。",
+              "odds乘数仅是独立项数学诊断，未复现完整P(25)。"
+            ]
+          },
+          "summary": "12–14时覆盖差为零、云底降低约610m；15时BKN相对SCT至少增加1/8天空。"
+        }
+      ]
+    },
+    {
+      "id": "replay-and-missing-packets",
+      "title": "父链重建与缺失输入",
+      "queries": [
+        {
+          "id": "parent-input-search",
+          "source": {
+            "label": "本地原生包归档与隔离研究",
+            "files": [
+              "missing_packets.json",
+              "nested_batch.json",
+              "compiler_batch.json",
+              "fusion_facts.json",
+              "fusion_refit.json"
+            ],
+            "caveats": [
+              "每站10-05嵌套探针和研究融合重拟不等于全日期完整链检验。",
+              "所有生产概率、SSOT和服务保持未修改。"
+            ]
+          },
+          "rows": [
+            {
+              "metric": "已扫描日期目录",
+              "value": 45
+            },
+            {
+              "metric": "已扫描文件",
+              "value": 45200
+            },
+            {
+              "metric": "未找到同SHA的原始父包",
+              "value": 272
+            },
+            {
+              "metric": "重建融合代表事实",
+              "value": 2579
+            }
+          ],
+          "columns": [
+            "metric",
+            "value"
+          ]
+        }
+      ]
+    }
+  ]
+}

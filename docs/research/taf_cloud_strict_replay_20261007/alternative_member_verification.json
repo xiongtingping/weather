@@ -1,0 +1,241 @@
+{
+  "schema": "alternate_native_packet_exact_member_bindings_v1",
+  "counts": {
+    "TWO_FAMILY_EXACT_SOURCE_CANDIDATE": 272
+  },
+  "station_proofs": {
+    "CYYZ": {
+      "path": "alternative_member_proofs/CYYZ.json.gz",
+      "sha": "f305b84056523c1c0fb23164f880fbe2d78aa6f8f7ac708de6e4fa7a14e6a420",
+      "rows": 4
+    },
+    "EDDM": {
+      "path": "alternative_member_proofs/EDDM.json.gz",
+      "sha": "480069ad619f9190b11f90dbe8a3b271201ac32866006fed6e82c92757352d68",
+      "rows": 9
+    },
+    "EFHK": {
+      "path": "alternative_member_proofs/EFHK.json.gz",
+      "sha": "1a3d1a3264004cbe8b0f9bbefff827f7b8f33d8d29cb29a3c2f0e0238ec2300a",
+      "rows": 7
+    },
+    "EGLC": {
+      "path": "alternative_member_proofs/EGLC.json.gz",
+      "sha": "91a10bc0510f0091d8789050d6ef8834a96c9df46845c6dcda738107417d03d3",
+      "rows": 9
+    },
+    "EHAM": {
+      "path": "alternative_member_proofs/EHAM.json.gz",
+      "sha": "3a8cf17e0db01a182ccc89c72dcc7bbdbd89560dedf57e3c72d463d72c9c39a0",
+      "rows": 11
+    },
+    "EPWA": {
+      "path": "alternative_member_proofs/EPWA.json.gz",
+      "sha": "c4adda5ed79370991694c8dacb63c3d52974161be2419796987d1a937708e27b",
+      "rows": 8
+    },
+    "FACT": {
+      "path": "alternative_member_proofs/FACT.json.gz",
+      "sha": "eac6d90d0dd954ae9c01974b300e1d48b19c43abe15326a417b7e47b7626d779",
+      "rows": 9
+    },
+    "KATL": {
+      "path": "alternative_member_proofs/KATL.json.gz",
+      "sha": "af7dfcad2acf432899367edead0fa4b5a7c28b07b4fc960a883983f1dde98829",
+      "rows": 4
+    },
+    "KAUS": {
+      "path": "alternative_member_proofs/KAUS.json.gz",
+      "sha": "c01ca92da84ce595b5e4e8518150eaebfec5b3df6a99206c143c86a27b36b20e",
+      "rows": 4
+    },
+    "KBKF": {
+      "path": "alternative_member_proofs/KBKF.json.gz",
+      "sha": "8ce6292e161a65f7c7457aa3fe74281160660ebcb7dacb8ff337a77995e751b2",
+      "rows": 4
+    },
+    "KDAL": {
+      "path": "alternative_member_proofs/KDAL.json.gz",
+      "sha": "69cec43368c455c8dcf4fab8ae5ea4bedd6c3f0dea5367fc3a7e12a0e859a0cf",
+      "rows": 4
+    },
+    "KHOU": {
+      "path": "alternative_member_proofs/KHOU.json.gz",
+      "sha": "0cffc2f6172623b6d85733ca6e930a02d86f67269dcfc63b4fdd7c74df832fe0",
+      "rows": 3
+    },
+    "KLAX": {
+      "path": "alternative_member_proofs/KLAX.json.gz",
+      "sha": "57cae110d2ce51d9219178b0553d37ebc9313a473889f954a7d191fa307fdd54",
+      "rows": 2
+    },
+    "KLGA": {
+      "path": "alternative_member_proofs/KLGA.json.gz",
+      "sha": "e1c843ebef68b64b8330296976338f719e7bb4d701b203fc06f7cd437b9b89b8",
+      "rows": 3
+    },
+    "KMIA": {
+      "path": "alternative_member_proofs/KMIA.json.gz",
+      "sha": "36effff3aa666a7eb21d7f64eea1e5d801b648fc935871068e0d95dd0a4c1ea8",
+      "rows": 3
+    },
+    "KORD": {
+      "path": "alternative_member_proofs/KORD.json.gz",
+      "sha": "a8d63c9b0954d1d0292f96b119ef0ae4efc2946920a601eedf41c04ae9d2c8af",
+      "rows": 3
+    },
+    "KSEA": {
+      "path": "alternative_member_proofs/KSEA.json.gz",
+      "sha": "8eb4825660b2bbcb7993e5a33d96590658ffcfec2849d0b6575c103b07898b3d",
+      "rows": 2
+    },
+    "KSFO": {
+      "path": "alternative_member_proofs/KSFO.json.gz",
+      "sha": "be597d1d0c1c86d646e1c333857014bb55b3fe9d8c99c09e429e20a4cc33f999",
+      "rows": 2
+    },
+    "LEMD": {
+      "path": "alternative_member_proofs/LEMD.json.gz",
+      "sha": "da10e81a68c9408db4683626586ea63f4ed8ad1d9634ce340bd1fe0563ef4fbc",
+      "rows": 9
+    },
+    "LFPB": {
+      "path": "alternative_member_proofs/LFPB.json.gz",
+      "sha": "38f1776078cc7e8fde5dc81eba34af5ead6b7fde6b0eca58ef663b1afbf521e4",
+      "rows": 9
+    },
+    "LIMC": {
+      "path": "alternative_member_proofs/LIMC.json.gz",
+      "sha": "e8f02278a53bbd5ff1f0681cbec38c4e3a6e5ce9a00783a2280cdb24e6e0df37",
+      "rows": 9
+    },
+    "LTAC": {
+      "path": "alternative_member_proofs/LTAC.json.gz",
+      "sha": "bee0bbea89148f4850bac2862de2490ac0d0cb9fb315cfd8ebd457588a58cd0b",
+      "rows": 6
+    },
+    "MMMX": {
+      "path": "alternative_member_proofs/MMMX.json.gz",
+      "sha": "bf19a4a146fdc28b87dab528dba367a2d5c8859f2907c02a034a9ed99f964601",
+      "rows": 2
+    },
+    "MPMG": {
+      "path": "alternative_member_proofs/MPMG.json.gz",
+      "sha": "8886dcc7b5342548254ebc9659522e229d25b87d66dd6e6120ac3d8310f740b9",
+      "rows": 3
+    },
+    "NZWN": {
+      "path": "alternative_member_proofs/NZWN.json.gz",
+      "sha": "e557f9e9c35fb119e88b6ace3718083663882898730f6c5a4d3ded27cf3b2499",
+      "rows": 5
+    },
+    "OEJN": {
+      "path": "alternative_member_proofs/OEJN.json.gz",
+      "sha": "da1310cc1fd19d083b148913e4628342386211082a6baf30dbcffdd00aecbfbc",
+      "rows": 6
+    },
+    "OPKC": {
+      "path": "alternative_member_proofs/OPKC.json.gz",
+      "sha": "9d6d371fd027cba7d2e9d18fa2c173787a7e21e8d4515ea43f097af66618fb57",
+      "rows": 7
+    },
+    "RCSS": {
+      "path": "alternative_member_proofs/RCSS.json.gz",
+      "sha": "8fb383cf0fda88714f0a32ca658cd4445c3188fca13093bcff266b54c5934300",
+      "rows": 6
+    },
+    "RJTT": {
+      "path": "alternative_member_proofs/RJTT.json.gz",
+      "sha": "9f671f635fd27ade07e384c92d23c3c190de94a0fea0ad0cb55263aeb5afc79b",
+      "rows": 5
+    },
+    "RKPK": {
+      "path": "alternative_member_proofs/RKPK.json.gz",
+      "sha": "d1b6e8e6932b2bc6a2cfc0d0b389750aba5fd73b688099a56bb48c7913cca353",
+      "rows": 7
+    },
+    "RKSI": {
+      "path": "alternative_member_proofs/RKSI.json.gz",
+      "sha": "0c2dc05fc46ad9f1d06bf0ae30bcf469737fe5f885d48c8bee48ecb9901d3308",
+      "rows": 8
+    },
+    "RPLL": {
+      "path": "alternative_member_proofs/RPLL.json.gz",
+      "sha": "7d0917ab7ced523c7e313c1aba66d9899955268bbdb62c47a49a97084364d056",
+      "rows": 6
+    },
+    "SAEZ": {
+      "path": "alternative_member_proofs/SAEZ.json.gz",
+      "sha": "4f457cd598621ca969713bc695d89341910214fcf379bfbfe76f8b1d986712ac",
+      "rows": 6
+    },
+    "SBGR": {
+      "path": "alternative_member_proofs/SBGR.json.gz",
+      "sha": "3d43aa27615a2cbb089b1f966c13af9324ac5fbfa5e0553ada0cf6cd962ef3f6",
+      "rows": 4
+    },
+    "VILK": {
+      "path": "alternative_member_proofs/VILK.json.gz",
+      "sha": "b51f99c1829827ea7149df27bb58302c4ca62b56f1eef9c2b8d8681b76cd1635",
+      "rows": 5
+    },
+    "WMKK": {
+      "path": "alternative_member_proofs/WMKK.json.gz",
+      "sha": "e84e842f1b0ddd72700e10490d979e427c67435cffd03ea44b66599201378a68",
+      "rows": 7
+    },
+    "WSSS": {
+      "path": "alternative_member_proofs/WSSS.json.gz",
+      "sha": "28eb6a104985cd11eb4897f87d7ee152e0e50404859beefffc2e3d816afa6fa3",
+      "rows": 6
+    },
+    "ZBAA": {
+      "path": "alternative_member_proofs/ZBAA.json.gz",
+      "sha": "02a6b71b3ba00754f877371ae1c73d2b7dea60d79e0c4922d6b11cafaf8e467e",
+      "rows": 11
+    },
+    "ZGGG": {
+      "path": "alternative_member_proofs/ZGGG.json.gz",
+      "sha": "7909a8addcbccbd6a5c6cd2c9862824d1e27513e3c3059797f65e123a5e605ed",
+      "rows": 6
+    },
+    "ZGSZ": {
+      "path": "alternative_member_proofs/ZGSZ.json.gz",
+      "sha": "870e85e30f13510ed725c02aba06e1ba6e9c7bcd8302b00926dc3bfb9bfca5db",
+      "rows": 8
+    },
+    "ZHHH": {
+      "path": "alternative_member_proofs/ZHHH.json.gz",
+      "sha": "3eecdd58d6714055495c606a91273a417996ee2d743ebf078a9d5de52aa53a41",
+      "rows": 6
+    },
+    "ZSPD": {
+      "path": "alternative_member_proofs/ZSPD.json.gz",
+      "sha": "9584274d4a3bd1ce258457afc39a99cebdbc5662ca27abfb02778f36d48c75da",
+      "rows": 10
+    },
+    "ZSQD": {
+      "path": "alternative_member_proofs/ZSQD.json.gz",
+      "sha": "decbc69e7308c3aeea05d635e8969714a5201374e9e46f99f8fbf23d05592ee5",
+      "rows": 8
+    },
+    "ZUCK": {
+      "path": "alternative_member_proofs/ZUCK.json.gz",
+      "sha": "4b2fb78cdf01047edcded87a3b6eb5a8ae7803c6941b81392f42da0c391861f4",
+      "rows": 7
+    },
+    "ZUUU": {
+      "path": "alternative_member_proofs/ZUUU.json.gz",
+      "sha": "315f49dbd54e360ab6423a33e80453513a344c90b121cccdb66612775817294c",
+      "rows": 9
+    }
+  },
+  "source_index_sha": "85107590a1700d2950daec94f5059356a8e5c3190001df4d30f7b1f14e635bcb",
+  "production_modified": false,
+  "replacement_inputs_activated": 0,
+  "remaining_checks": [
+    "nested exact-scope OOS",
+    "compiler geometry and parent role",
+    "full downstream causal replay"
+  ]
+}

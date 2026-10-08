@@ -1,0 +1,32 @@
+{
+  "schema": "raw_cloud_rebuild_verification_v1",
+  "passed": true,
+  "counts": {
+    "rows": 19618,
+    "pairs": 29602
+  },
+  "independent_boundary_tests": 14,
+  "dst_boundaries": 2,
+  "qa_reasons": {
+    "cfddb1104c44e7afa2d7dd26c6485d4866b30a46047a95abe8a412f2cf9e4a35": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "5fb9bb5c8212f7640fc758c0c3e8e087114016cfa98776d7e8dad060c7a09e90": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "30d42b33477d92f459211c6321e48631bf34fc87574b93e09b2572a4664e7823": "COR_excluded",
+    "177b803a40353a26662da6e48947273f8d66a38500da2afc3c0fbd9da2dcb571": "COR_excluded",
+    "cf932976f3ff5fe18ef69e6b383b058327e593229231283eb7c1386b6c3bfc4a": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "880742ea2d8577f23a124d31897b56005e9b1a91200e5dc0467812b42f065ec2": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "d3d3a7c1c86751afdc64f12fe48bd3f02d539a01de8c4bf9ef491aee7af8a2cb": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "b991dda54b98cb824821b41a1a38db4add3e6125cfb8a97a76872f06c3422f2d": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "64a32ef1ffea6d6928bf9c757140ed558f867e190698236c8795efb37afbc5c5": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "2d274110157831a95629af5bb94a8bd86940f5c96c133d5257c79bfb4081fdfe": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "d164a24df11c966e0a2a6d7c4b3d6bbaca88318ec5310766e7c3247e72ac7385": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "b34f45d4101c0ab723ab2ec77a400328e3e2b926321e031405e6acff18ce4757": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "5eab58205b9e2efd7b0cdcf9508f659d28fefd64960f550bf36c38af43e73bb3": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "971caaed83d517b5e9ea1c2eb43fa2bdc6645a4ad39d75d397942ccb87faeb78": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "95bd40604cb5dcb567a3380fd0082ef2200b53544568d76ebee2d73f1ac18a0a": "AWC_missing_fourth_cloud_layer_raw_retained",
+    "d60d41a9db00352dc54eb23d416ba3a4a02e31b6f0023a41ecefa336e668083f": "AWC_missing_fourth_cloud_layer_raw_retained"
+  },
+  "source_sha256": "b5fee40253d92817814c2b424769e525587a2971e1abc179b2931d14135122aa",
+  "raw_pairs_sha256": "5226dca1dc7f208b915f9a694d02d74723534445e7b419ebe7f0f1d977f4264b",
+  "scores_computed": false,
+  "production_modified": false
+}

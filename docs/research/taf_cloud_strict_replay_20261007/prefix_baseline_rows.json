@@ -1,0 +1,570 @@
+{
+  "schema": "strict_prefix_current_parameter_research_rows_v1",
+  "counts": {
+    "REFUSED": 9781,
+    "p0_rebuild_unavailable": 1187,
+    "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 9837,
+    "prefix_origin_not_visible": 346,
+    "current_formal_prefix_missing": 2323,
+    "correction_visible_requires_manual_review": 1384,
+    "canonical_asos_exact_historical_authority_not_rebuilt": 4541
+  },
+  "stations": {
+    "CYYZ": {
+      "counts": {
+        "REFUSED": 73,
+        "p0_rebuild_unavailable": 66,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 368,
+        "prefix_origin_not_visible": 7
+      },
+      "output_bytes": 16071571,
+      "prefix_input_bytes": 1579497,
+      "sha256": "9e57d92428a9953cace39db13e64fb81b704c99e452b005a29e84630f0556074"
+    },
+    "EDDM": {
+      "counts": {
+        "REFUSED": 430,
+        "current_formal_prefix_missing": 332,
+        "p0_rebuild_unavailable": 16,
+        "correction_visible_requires_manual_review": 82
+      },
+      "output_bytes": 110880,
+      "prefix_input_bytes": 3373718,
+      "sha256": "dacf63f5f49cbfe43c7d20d76de0b7ba922cd955e68121abc4ae627cb0dc3e9d"
+    },
+    "EFHK": {
+      "counts": {
+        "REFUSED": 438,
+        "current_formal_prefix_missing": 407,
+        "correction_visible_requires_manual_review": 21,
+        "p0_rebuild_unavailable": 10
+      },
+      "output_bytes": 112199,
+      "prefix_input_bytes": 3366985,
+      "sha256": "afffa0492995333c6bcd52e5aed880dd4399420e78f8131658b1679ab3f798d0"
+    },
+    "EGLC": {
+      "counts": {
+        "REFUSED": 441,
+        "current_formal_prefix_missing": 427,
+        "p0_rebuild_unavailable": 14
+      },
+      "output_bytes": 112661,
+      "prefix_input_bytes": 3220268,
+      "sha256": "83b6ce9c1609dac6ebb0192a1fc8b25dff40defbbb4c09827236732b15dccca3"
+    },
+    "EHAM": {
+      "counts": {
+        "REFUSED": 435,
+        "current_formal_prefix_missing": 334,
+        "correction_visible_requires_manual_review": 86,
+        "p0_rebuild_unavailable": 15
+      },
+      "output_bytes": 112200,
+      "prefix_input_bytes": 3359793,
+      "sha256": "d57c61835e3f90daa783a320c44c0e0ae641b20bc317be4e9527174a0b160b1a"
+    },
+    "EPWA": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 387,
+        "REFUSED": 43,
+        "prefix_origin_not_visible": 2,
+        "p0_rebuild_unavailable": 15,
+        "correction_visible_requires_manual_review": 26
+      },
+      "output_bytes": 15589657,
+      "prefix_input_bytes": 3316069,
+      "sha256": "af380ff314bf50b741e34fd5030b1bd3fe12c330e7dbef0e368fe6ef287249e0"
+    },
+    "FACT": {
+      "counts": {
+        "REFUSED": 158,
+        "p0_rebuild_unavailable": 32,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 281,
+        "prefix_origin_not_visible": 19,
+        "correction_visible_requires_manual_review": 107
+      },
+      "output_bytes": 11614578,
+      "prefix_input_bytes": 1862179,
+      "sha256": "3e8fa9cabece9b6064d63bd756e8a7f4cb42638e5356d97f0a40a76a0cae438b"
+    },
+    "KATL": {
+      "counts": {
+        "REFUSED": 434,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 430,
+        "p0_rebuild_unavailable": 4
+      },
+      "output_bytes": 121318,
+      "prefix_input_bytes": 0,
+      "sha256": "443a56e419311c9b38ce96df22ee62671481328de9bd875228e2dc2955f2b7c3"
+    },
+    "KAUS": {
+      "counts": {
+        "REFUSED": 435,
+        "p0_rebuild_unavailable": 14,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 421
+      },
+      "output_bytes": 121303,
+      "prefix_input_bytes": 0,
+      "sha256": "f7dc86165d4bce92c9cd3528cbd1257b0591730ce82df1f3fecb003a23d0733a"
+    },
+    "KBKF": {
+      "counts": {
+        "REFUSED": 447,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 443,
+        "p0_rebuild_unavailable": 4
+      },
+      "output_bytes": 124949,
+      "prefix_input_bytes": 0,
+      "sha256": "702d372e80706d17c8aa7d6281d39c74279354d55cbcc5ef8dfeeb49fe190b46"
+    },
+    "KDAL": {
+      "counts": {
+        "REFUSED": 425,
+        "p0_rebuild_unavailable": 50,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 375
+      },
+      "output_bytes": 117374,
+      "prefix_input_bytes": 0,
+      "sha256": "bc10ab58db1e410a192a4223ac925ba9630c8df58f4e84999e6dbe783fef5323"
+    },
+    "KHOU": {
+      "counts": {
+        "REFUSED": 430,
+        "p0_rebuild_unavailable": 48,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 382
+      },
+      "output_bytes": 118825,
+      "prefix_input_bytes": 0,
+      "sha256": "a5f6df0686927046121231fed68f6836c67e470695db0d935c6de9342a8801a7"
+    },
+    "KLAX": {
+      "counts": {
+        "REFUSED": 431,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 428,
+        "p0_rebuild_unavailable": 3
+      },
+      "output_bytes": 120500,
+      "prefix_input_bytes": 0,
+      "sha256": "2fef89492c768fc1cbd578e4eb1fa0a8e61d9347c40266e6972acb61029f10de"
+    },
+    "KLGA": {
+      "counts": {
+        "REFUSED": 437,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 433,
+        "p0_rebuild_unavailable": 4
+      },
+      "output_bytes": 122139,
+      "prefix_input_bytes": 0,
+      "sha256": "d015b608f55f0a74a0f87b30033ee50a1b628f5f484e62d40f8b6736f1d77434"
+    },
+    "KMIA": {
+      "counts": {
+        "REFUSED": 424,
+        "p0_rebuild_unavailable": 59,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 365
+      },
+      "output_bytes": 116782,
+      "prefix_input_bytes": 0,
+      "sha256": "59e787a00e9d356d0888cd660dd75d7570348a00e9e9917d3376c9e04c755147"
+    },
+    "KORD": {
+      "counts": {
+        "REFUSED": 435,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 431,
+        "p0_rebuild_unavailable": 4
+      },
+      "output_bytes": 121574,
+      "prefix_input_bytes": 0,
+      "sha256": "2b30cae332658ceb41cbe9d90372b9a26e1d326bcb1b46c29082861da7c4826c"
+    },
+    "KSEA": {
+      "counts": {
+        "REFUSED": 432,
+        "p0_rebuild_unavailable": 13,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 419
+      },
+      "output_bytes": 120487,
+      "prefix_input_bytes": 0,
+      "sha256": "f52864ddb5889ce3b5543f6fb37c44ae71e2a456295ffbc164f3909eb9dc824b"
+    },
+    "KSFO": {
+      "counts": {
+        "REFUSED": 417,
+        "canonical_asos_exact_historical_authority_not_rebuilt": 414,
+        "p0_rebuild_unavailable": 3
+      },
+      "output_bytes": 116603,
+      "prefix_input_bytes": 0,
+      "sha256": "91a999ee895db0221e6f0dddaf5b83904467154c2cd2a21067e152a9589ff882"
+    },
+    "LEMD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 388,
+        "REFUSED": 43,
+        "p0_rebuild_unavailable": 13,
+        "prefix_origin_not_visible": 7,
+        "correction_visible_requires_manual_review": 23
+      },
+      "output_bytes": 16063233,
+      "prefix_input_bytes": 3347094,
+      "sha256": "1db5f0afc8040ba297eeb7357b15699acc1431f12b4cf27ec7718e8c5e52a886"
+    },
+    "LFPB": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 404,
+        "REFUSED": 24,
+        "prefix_origin_not_visible": 10,
+        "p0_rebuild_unavailable": 13,
+        "current_formal_prefix_missing": 1
+      },
+      "output_bytes": 16137523,
+      "prefix_input_bytes": 3281894,
+      "sha256": "c5bfe7b30fe71df2411df31e3e48bf12570c9256e0280eb8c5cd2a9c05d8f1c7"
+    },
+    "LIMC": {
+      "counts": {
+        "REFUSED": 437,
+        "p0_rebuild_unavailable": 80,
+        "current_formal_prefix_missing": 354,
+        "correction_visible_requires_manual_review": 3
+      },
+      "output_bytes": 111267,
+      "prefix_input_bytes": 2834117,
+      "sha256": "bb68d74073c5a3953cfae22e05f5d4bf72cd4f2f66b7b0ab578f28944cf69d4f"
+    },
+    "LLBG": {
+      "counts": {
+        "REFUSED": 35,
+        "current_formal_prefix_missing": 24,
+        "correction_visible_requires_manual_review": 11
+      },
+      "output_bytes": 9092,
+      "prefix_input_bytes": 278897,
+      "sha256": "f03ec841b09c0d48b0761255f5bcecd0899d910f7a8ecb314de51f2255fea228"
+    },
+    "LTAC": {
+      "counts": {
+        "REFUSED": 389,
+        "p0_rebuild_unavailable": 68,
+        "current_formal_prefix_missing": 305,
+        "correction_visible_requires_manual_review": 16,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 51
+      },
+      "output_bytes": 2002571,
+      "prefix_input_bytes": 3077027,
+      "sha256": "d3ed6bdd049bfbfa74430db4935ecb36735281c9a677d1c96c192befebe40fa0"
+    },
+    "LTFM": {
+      "counts": {
+        "REFUSED": 35,
+        "current_formal_prefix_missing": 35
+      },
+      "output_bytes": 8960,
+      "prefix_input_bytes": 302876,
+      "sha256": "46766e06f44fd4be55aea794a857d9f27aa2d534bc382688b61d3096ec9df408"
+    },
+    "MMMX": {
+      "counts": {
+        "REFUSED": 233,
+        "p0_rebuild_unavailable": 7,
+        "current_formal_prefix_missing": 104,
+        "prefix_origin_not_visible": 7,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 191,
+        "correction_visible_requires_manual_review": 115
+      },
+      "output_bytes": 7094157,
+      "prefix_input_bytes": 2466766,
+      "sha256": "d2d4d3976b0a336d4f88513a090cf775d0fade6e35a7192573e94d23c4216014"
+    },
+    "MPMG": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 307,
+        "REFUSED": 102,
+        "prefix_origin_not_visible": 7,
+        "p0_rebuild_unavailable": 4,
+        "correction_visible_requires_manual_review": 91
+      },
+      "output_bytes": 11749290,
+      "prefix_input_bytes": 1747207,
+      "sha256": "25ce0168aabee01b06c4730299b1db811114ec62ddddf3322737550aa8a99cf6"
+    },
+    "NZWN": {
+      "counts": {
+        "REFUSED": 117,
+        "p0_rebuild_unavailable": 117,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 328
+      },
+      "output_bytes": 13551519,
+      "prefix_input_bytes": 2405486,
+      "sha256": "51ddac8d93152d71d3aa0c175424342ebcb39af1f57706cd54efad7aa39eaf89"
+    },
+    "OEJN": {
+      "counts": {
+        "REFUSED": 25,
+        "p0_rebuild_unavailable": 13,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 394,
+        "prefix_origin_not_visible": 12
+      },
+      "output_bytes": 15773673,
+      "prefix_input_bytes": 1649910,
+      "sha256": "1d36bc22b2cfb102156ec3852a31ffca43a72bdc25399c07ecfba7508018eab3"
+    },
+    "OPKC": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 415,
+        "REFUSED": 23,
+        "prefix_origin_not_visible": 11,
+        "p0_rebuild_unavailable": 12
+      },
+      "output_bytes": 16596112,
+      "prefix_input_bytes": 3375852,
+      "sha256": "6b4bea380bc7382c202f70d2966c609f054b8436e78c191866074a88219fcf09"
+    },
+    "RCSS": {
+      "counts": {
+        "REFUSED": 33,
+        "p0_rebuild_unavailable": 26,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 407,
+        "prefix_origin_not_visible": 7
+      },
+      "output_bytes": 16888279,
+      "prefix_input_bytes": 3241538,
+      "sha256": "a908f29c64e28e2e12572368c22ea9e032ec146bfee335800b8c4d4e7b2fe259"
+    },
+    "RJTT": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 410,
+        "REFUSED": 16,
+        "prefix_origin_not_visible": 8,
+        "p0_rebuild_unavailable": 8
+      },
+      "output_bytes": 16597911,
+      "prefix_input_bytes": 3392297,
+      "sha256": "9519147f594aade3b7751952d5f5073dd0d5b12acc7b8994e53b6803a08696f8"
+    },
+    "RKPK": {
+      "counts": {
+        "REFUSED": 170,
+        "p0_rebuild_unavailable": 48,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 272,
+        "correction_visible_requires_manual_review": 111,
+        "prefix_origin_not_visible": 11
+      },
+      "output_bytes": 11539344,
+      "prefix_input_bytes": 1679447,
+      "sha256": "6a62a301382cedf00cc3a76713d318533bf1b1b78010e4b1e270caa287319b19"
+    },
+    "RKSI": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 402,
+        "REFUSED": 32,
+        "prefix_origin_not_visible": 10,
+        "p0_rebuild_unavailable": 12,
+        "correction_visible_requires_manual_review": 10
+      },
+      "output_bytes": 16581595,
+      "prefix_input_bytes": 3311654,
+      "sha256": "492a90fce8dc1d8ab9d0639b241239427400d78da24334959cbd5cc853912464"
+    },
+    "RPLL": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 281,
+        "REFUSED": 162,
+        "prefix_origin_not_visible": 16,
+        "correction_visible_requires_manual_review": 137,
+        "p0_rebuild_unavailable": 9
+      },
+      "output_bytes": 11931117,
+      "prefix_input_bytes": 1888555,
+      "sha256": "e52907adbb3462c705fcf3fdcbda4b21badcfb237e30ed1d97140fc68ae25e0b"
+    },
+    "SAEZ": {
+      "counts": {
+        "REFUSED": 153,
+        "correction_visible_requires_manual_review": 125,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 271,
+        "prefix_origin_not_visible": 13,
+        "p0_rebuild_unavailable": 15
+      },
+      "output_bytes": 11266009,
+      "prefix_input_bytes": 1783966,
+      "sha256": "da38fac93ae5422d86d899a9c771a4ef21d59899819ac3b226995372477d7f5a"
+    },
+    "SBGR": {
+      "counts": {
+        "REFUSED": 79,
+        "p0_rebuild_unavailable": 24,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 334,
+        "prefix_origin_not_visible": 6,
+        "correction_visible_requires_manual_review": 49
+      },
+      "output_bytes": 14246932,
+      "prefix_input_bytes": 1760851,
+      "sha256": "e4a06091a6c08b97e7a8c8feec311208f4be5223f528b24feb4cbc8a69db2bd3"
+    },
+    "UUWW": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 35
+      },
+      "output_bytes": 1444963,
+      "prefix_input_bytes": 328239,
+      "sha256": "ce5094fe277be1d69dbd0326de1d4be036a2b67fc25bdabf2651328692d21c3b"
+    },
+    "VILK": {
+      "counts": {
+        "REFUSED": 230,
+        "p0_rebuild_unavailable": 79,
+        "correction_visible_requires_manual_review": 148,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 201,
+        "prefix_origin_not_visible": 3
+      },
+      "output_bytes": 8590418,
+      "prefix_input_bytes": 2943147,
+      "sha256": "24ceabf4a95922a6abff381061789cdfe00126a9a2dcf1d6eabce45d05752db4"
+    },
+    "WMKK": {
+      "counts": {
+        "REFUSED": 193,
+        "p0_rebuild_unavailable": 27,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 237,
+        "prefix_origin_not_visible": 5,
+        "correction_visible_requires_manual_review": 161
+      },
+      "output_bytes": 9393783,
+      "prefix_input_bytes": 3324558,
+      "sha256": "04e66f2b3ecb8241e219388e97dc07422088420e01b23ae26d352dfebbe82fd9"
+    },
+    "WSSS": {
+      "counts": {
+        "REFUSED": 61,
+        "p0_rebuild_unavailable": 28,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 381,
+        "prefix_origin_not_visible": 8,
+        "correction_visible_requires_manual_review": 25
+      },
+      "output_bytes": 15427902,
+      "prefix_input_bytes": 3329123,
+      "sha256": "9eeec1d54bc735f8271a97893590dc24404fb5930e5f18fffff1d5d3699e6080"
+    },
+    "ZBAA": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 386,
+        "REFUSED": 60,
+        "prefix_origin_not_visible": 15,
+        "p0_rebuild_unavailable": 21,
+        "correction_visible_requires_manual_review": 24
+      },
+      "output_bytes": 15850524,
+      "prefix_input_bytes": 3345553,
+      "sha256": "16e2514290d4703c138eac69eefac1ef8df7a8b8b269c64ab3646a7040ca8db8"
+    },
+    "ZGGG": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 416,
+        "REFUSED": 22,
+        "prefix_origin_not_visible": 13,
+        "p0_rebuild_unavailable": 9
+      },
+      "output_bytes": 17215425,
+      "prefix_input_bytes": 3461108,
+      "sha256": "5bd7aa990c66b886cb15cfab89e3b0c02630373e5f8bfe16d75240b32c6e90dd"
+    },
+    "ZGSZ": {
+      "counts": {
+        "REFUSED": 63,
+        "p0_rebuild_unavailable": 46,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 370,
+        "prefix_origin_not_visible": 17
+      },
+      "output_bytes": 15390862,
+      "prefix_input_bytes": 1573278,
+      "sha256": "ecc7b5e09d5856d77e014756e240d058d00abba0884d20cacd9629082740a934"
+    },
+    "ZHHH": {
+      "counts": {
+        "REFUSED": 71,
+        "p0_rebuild_unavailable": 40,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 366,
+        "prefix_origin_not_visible": 31
+      },
+      "output_bytes": 15226231,
+      "prefix_input_bytes": 1572845,
+      "sha256": "20d448131eff9ebd5c1ff10a5bcfc0d865dff24881949c5a9a697ec92517d3b7"
+    },
+    "ZSPD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 418,
+        "REFUSED": 21,
+        "prefix_origin_not_visible": 6,
+        "p0_rebuild_unavailable": 15
+      },
+      "output_bytes": 17343338,
+      "prefix_input_bytes": 3352166,
+      "sha256": "ac86e71b29252d4346be421b8806ef38c475032d1fbfb087037d154d128bb9db"
+    },
+    "ZSQD": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 388,
+        "REFUSED": 58,
+        "prefix_origin_not_visible": 45,
+        "p0_rebuild_unavailable": 13
+      },
+      "output_bytes": 16186721,
+      "prefix_input_bytes": 1657846,
+      "sha256": "a672e0635c70b61ee72084d6aea075ab2bea4cdd12112aad1404787546c94a54"
+    },
+    "ZUCK": {
+      "counts": {
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 378,
+        "REFUSED": 60,
+        "prefix_origin_not_visible": 35,
+        "p0_rebuild_unavailable": 12,
+        "correction_visible_requires_manual_review": 13
+      },
+      "output_bytes": 15504575,
+      "prefix_input_bytes": 1677004,
+      "sha256": "b46b9b915846f33bc04cf84fffe3cc7ffd2704732db144cdcefa7445b13a5721"
+    },
+    "ZUUU": {
+      "counts": {
+        "REFUSED": 69,
+        "p0_rebuild_unavailable": 54,
+        "OFFLINE_PREFIX_REBUILT_NOT_PROMOTED": 370,
+        "prefix_origin_not_visible": 15
+      },
+      "output_bytes": 15209296,
+      "prefix_input_bytes": 1529478,
+      "sha256": "91ad732a131567cf6e5c1e42c8e960b7256e92f9c3d10c513c417420daed9d2b"
+    }
+  },
+  "production_modified": false,
+  "whole_chain_current_authority_certified": false,
+  "exclusions": [
+    "US ASOS exact-match historical authority still requires independent reconstruction",
+    "Unresolved corrections and unsupported raw TX grammar fail closed"
+  ],
+  "grain": "fixed_hourly_old_service_anchors_at_actual_output_availability",
+  "source_profile": {
+    "raw_rows": 16554,
+    "decode_reject:overlapping_prevailing_change": 15,
+    "decode_reject:fm_token_invalid": 27,
+    "decode_reject:unrecognised_cloud_token": 31,
+    "decode_reject:issue_mismatch": 2,
+    "decode_reject:window_order_invalid": 9,
+    "decode_reject:window_token_invalid": 8,
+    "decode_reject:fm_outside_validity": 5,
+    "decode_reject:change_outside_validity": 14,
+    "decode_reject:prevailing_order_invalid": 3,
+    "decode_reject:initial_cloud_missing": 1,
+    "decode_reject:nil_or_cancelled": 16,
+    "decoded_whole_validity_mismatch_rows": 7,
+    "decode_reject:invalid_day_hour": 1,
+    "decode_reject:fm_cloud_missing": 1,
+    "decoded_unique": 14441,
+    "receipt_bound_decoded_unique": 10454,
+    "no_real_local_receipt": 2984,
+    "COR_excluded": 1003,
+    "ssot_validity_mismatch": 14
+  }
+}

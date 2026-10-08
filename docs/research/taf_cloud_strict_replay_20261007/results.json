@@ -1,0 +1,1033 @@
+{
+  "schema": "raw_cloud_current_chain_replay_readiness_v1",
+  "captured_at": "2026-10-07T13:27:27.391718Z",
+  "source_profile": {
+    "raw_rows": 16554,
+    "decode_reject:overlapping_prevailing_change": 15,
+    "decode_reject:fm_token_invalid": 27,
+    "decode_reject:unrecognised_cloud_token": 31,
+    "decode_reject:issue_mismatch": 2,
+    "decode_reject:window_order_invalid": 9,
+    "decode_reject:window_token_invalid": 8,
+    "decode_reject:fm_outside_validity": 5,
+    "decode_reject:change_outside_validity": 14,
+    "decode_reject:prevailing_order_invalid": 3,
+    "decode_reject:initial_cloud_missing": 1,
+    "decode_reject:nil_or_cancelled": 16,
+    "decoded_whole_validity_mismatch_rows": 7,
+    "decode_reject:invalid_day_hour": 1,
+    "decode_reject:fm_cloud_missing": 1,
+    "decoded_unique": 14441,
+    "receipt_bound_decoded_unique": 10454,
+    "no_real_local_receipt": 2984,
+    "COR_excluded": 1003,
+    "ssot_validity_mismatch": 14
+  },
+  "raw_awc_crosscheck": {
+    "compared_1500": 353890,
+    "compared_3000": 353890,
+    "compared_5000": 353890,
+    "compared_6500": 294739,
+    "uncomparable_6500": 74034,
+    "uncomparable_1500": 14883,
+    "uncomparable_3000": 14883,
+    "uncomparable_5000": 14883,
+    "mismatch_3000": 54,
+    "mismatch_5000": 102,
+    "mismatch_6500": 102
+  },
+  "exceptions": [
+    {
+      "station": "EDDM",
+      "sha": "4cec599bb560867092c7cef27b139c2d00b5713fe39741b33d5095779d85aca0",
+      "reason": "overlapping_prevailing_change",
+      "raw": "TAF EDDM 201700Z 2018/2124 18004KT 9999 SCT040 TEMPO 2018/2023 SHRA BKN030CB PROB30 TEMPO 2019/2021 TSRA PROB30 TEMPO 2103/2109 BKN010 BECMG 2109/2111 03006KT TEMPO 2111/2115 1500 TSRA FEW004 BKN008 OVC012CB BECMG 2113/2115 33012KT 4000 RA FEW004 OVC010 PROB30 TEMPO 2113/2116 0800 +RADZ BECMG 2116/2118 26007KT BECMG 2117/2119 8000 NSW SCT010 BKN020 PROB30 TEMPO 2119/2124 BKN010"
+    },
+    {
+      "station": "EHAM",
+      "sha": "48eb004ed2d7636c53f9ad08efc45adeb8a14c71f1e2eb5ee720a550b544b498",
+      "reason": "overlapping_prevailing_change",
+      "raw": "TAF EHAM 201657Z 2018/2124 21012KT 9999 SCT020 BECMG 2018/2021 20007KT TEMPO 2018/2021 6000 SHRA SCT020CB BKN030 PROB40 TEMPO 2018/2021 25017G27KT 3500 TSRA PROB30 TEMPO 2021/2106 7000 -SHRA SCT020CB BECMG 2106/2109 36010KT TEMPO 2106/2112 6000 SHRA SCT020CB BKN030 BECMG 2108/2111 33010KT BECMG 2121/2124 30005KT"
+    },
+    {
+      "station": "OPKC",
+      "sha": "33c39862dbc4a9090554f55d826381b93450c179c3305a9ff98e4932f046ea7d",
+      "reason": "fm_token_invalid",
+      "raw": "TAF OPKC 210500Z 2106/2212 25010G20KT 5000 HZ FEW020 BKN030 FM 211900 26007KT 4000 HZ SCT020 BKN030 BECMG 2204/2206 25010G20KT 5000 HZ FEW020 BKN030"
+    },
+    {
+      "station": "KBKF",
+      "sha": "305c86fa1a6812ce47eee54ec22237b8cf35e42d6b8a25f7188de202ac2b0dd8",
+      "reason": "overlapping_prevailing_change",
+      "raw": "TAF KBKF 211700Z 2117/2223 VRB06KT 9999 FEW160 QNH3029INS BECMG 2121/2222 02010G20KT 9000 -SHRA BKN120 QNH3020INS BECMG 2200/2201 VRB06KT 9999 SKC QNH3022INS TX34/2121Z TN17/2212Z"
+    },
+    {
+      "station": "OPKC",
+      "sha": "60a3fe3cc2bd66f39d000a8d4a377b4a6c7890f4b70e501efd787063eee16a0d",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF OPKC 211700Z 2118/2224 26005G15KT 4000 HZ SCT020 BKN030 FM220500 25012G22KT 5000 HZ FEW025 BKN030 BECMG 2217/2219 27005G15KT 4000 HZSCT020 BKN025"
+    },
+    {
+      "station": "VILK",
+      "sha": "6bf330bc3062ee76f9e22af6f03b28bddeb7a4e3e0124c71ce6e4c1cc63780c7",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF VILK 212300Z 2200/2306 VRB02KT 3000 -RA BR SCT020 BKN90 TEMPO 2200/2204 07005KT 3000 -TSRA -RA SCT020 FEW030CB OVC090 BECMG 2204/2206 24005KT 4000 -RA BR SCT020 BKN100 TEMPO 2207/2211 FEW030CB BECMG 2215/2217 27004KT 4000 BR SCT020 BKN090 BECMG 2300/2302 23005KT 3000 -RA BR SCT020 BKN100 TEMPO 2302/2306 27008KT 4000 -TSRA -RA SCT020 FEW030CB OVC090"
+    },
+    {
+      "station": "VILK",
+      "sha": "7c308a96509b92e609f9af854ba4a2ede77d026079f56ed8340c55ca479e102b",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF VILK 220500Z 2206/2312 07005KT 4000 BR SCT020 OVC090 BECMG 2207/2209 32005KT 5000 BR HZ SCT025 BKN090 BECMG 2222/2224 4000 -RA BR SCT20 BKN090 TEMPO 2302/2306 12005KT 2500 -TSRA -RA BKN20 FEW030CB OVC090 BECMG 2306/2308 4000 -RA BR SCT25 BKN100 TEMPO 2308/2312 05005KT 2500 -TSRA -RA BKN20 FEW030CB OVC090"
+    },
+    {
+      "station": "OPKC",
+      "sha": "60395b7fcaafc343feb24d9007c5a0dd144892826b9e59aa9f7ae2fd4dc8efee",
+      "reason": "fm_token_invalid",
+      "raw": "TAF OPKC 221100Z 2212/2318 24010G20KT 5000 HZ SCT020 BKN030 BECMG 2220/2222 26008G18KT 4000 HZ SCT018 BKN025 FM 230600 24010G20KT 5000 HZ SCT020 BKN030"
+    },
+    {
+      "station": "OPKC",
+      "sha": "536a8ceb88566ba02d51c5b1ca69a51fa5e91d0977cdef58c1c7105e12d5e630",
+      "reason": "fm_token_invalid",
+      "raw": "TAF OPKC 221700Z 2218/2324 26008G18KT 4000 HZ SCT018 BKN025 FM 230600 24010G20KT 5000 HZ SCT020 BKN030"
+    },
+    {
+      "station": "VILK",
+      "sha": "e2f7f7bc62f83060952fbb75b1feb625d53f1159e2bcfcdcefc67639ddb428d5",
+      "reason": "issue_mismatch",
+      "raw": "TAF VILK 221700 2218/2324 VRB02KT 4000 BR SCT020 BKN100 TEMPO 2223/2303 2000 -TSRA RA BKN018 FEW030CB OVC090 BECMG 2303/2305 3000 -RA BR BKN018 OVC090 TEMPO 2308/2312 2000 -TSRA RA BKN018 FEW030CB OVC090 BECMG 2314/2316 4000 -RA BR SCT020 BKN090 TEMPO 2318/2322 2500 -TSRA RA BKN018 FEW030CB OVC090"
+    },
+    {
+      "station": "VILK",
+      "sha": "11a2243f1f28fd7e4694643c763539cf0a8e936940117dc27fab82b25dca0f40",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF VILK 230500Z 2306/2412 25006KT 5000 BR SCT020 SCT025 TEMPO 2308/2312 15008KT 4000 -TSRA BR FEW030CB BKN090 BECMG 2316/2318 VRB02KT 4000 BR SCT20 BKN090 TEMPO 2402/2406 07008KT 2500 -TSRA -RA SCT010 SCT020 FEW030CB OVC090 BECMG 2406/2408 5000 BR HZ SCT018 SCT025 BKN090 TEMPO 2408/2412 4000 -TSRA BR FEW030CB"
+    },
+    {
+      "station": "MMMX",
+      "sha": "89010244f76cb3b38c821b90b2bce53cc0a928d8b167cb82409a3ba62c8f6cfb",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF COR MMMX 231151Z 2312/2412 00000KT P6SM BKN080 OVC220 TX20/2321Z TN13/2313Z FM231900 11010KT P6SM BKN020 OVC080 FM232200 06010KT 6SM TSRA BKN020CB OVC080OVC080 TEMPO 2323/2403 VRB20KT 3SM TSRA BKN015CB FM240300 09005KT P6SM BKN020 OVC080 TEMPO 2407/2411 6SM -RA"
+    },
+    {
+      "station": "MMMX",
+      "sha": "916777418f33954faa4670a8624dbd57abf228855c5282527d93e8857986b041",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF COR MMMX 231246Z 2312/2412 06005KT P6SM SCT020 SCT080 BKN220 TX20/2321Z TN13/2313Z TEMPO 2313/2316 5SM HZ BKN020 FM231900 11010KT P6SM BKN020 OVC080 FM232200 06010KT 6SM TSRA BKN020CB OVC080OVC080 TEMPO 2323/2403 VRB20KT 3SM TSRA BKN015CB FM240300 09005KT P6SM BKN020 OVC080 TEMPO 2407/2411 6SM -RA"
+    },
+    {
+      "station": "MMMX",
+      "sha": "54da5139af2b6a76c815885e2ec282af37202119645daa35d5c34a4e46b98e7b",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF COR MMMX 231358Z 2312/2412 06005KT P6SM SCT020 BKN080 BKN220 TX20/2321Z TN13/2313Z TEMPO 2313/2316 5SM HZ BKN020 FM231900 11010KT P6SM BKN020 OVC080 FM232200 06010KT 6SM TSRA BKN020CB OVC080OVC080 TEMPO 2323/2403 VRB20KT 3SM TSRA BKN015CB FM240300 09005KT P6SM BKN020 OVC080 TEMPO 2407/2411 6SM -RA"
+    },
+    {
+      "station": "MMMX",
+      "sha": "09f5d7ad0cd2f5733c2d1ef19cd5edf3714a3e71441483768d29625151ae2fd5",
+      "reason": "unrecognised_cloud_token",
+      "raw": "TAF COR MMMX 231504Z 2312/2412 06005KT P6SM SCT020 BKN080 BKN220 TX20/2321Z TN13/2313Z TEMPO 2313/2316 5SM HZ BKN020 FM231900 11010KT P6SM BKN020 OVC080 FM232200 06010KT 6SM TSRA BKN020CB OVC080OVC080 TEMPO 2323/2403 VRB20KT 3SM TSRA BKN015CB FM240300 09005KT P6SM BKN020 OVC080 TEMPO 2407/2411 6SM -RA"
+    },
+    {
+      "station": "OPKC",
+      "sha": "aaa465c316eb470403cdd81ae3b29acfb42a4ea305fc6e66927b9d67cb3eb150",
+      "reason": "fm_token_invalid",
+      "raw": "TAF OPKC 231700Z 2318/2424 26005G15KT 4000 HZ SCT020 BKN025 BECMG 2405/2407 24010G20KT 5000 HZ BKN025 FM 241700 26005G15KT 4000 HZ SCT020 BKN025"
+    },
+    {
+      "station": "SBGR",
+      "sha": "3776f17c2a1b01895ff32552844b2a3d0602c35847e8b2f161190e3bb4b221bf",
+      "reason": "window_order_invalid",
+      "raw": "TAF SBGR 240900Z 2412/2518 09010KT 9999 BKN020 TN13/2508Z TX21/2517Z BECMG 2413/2415 09005KT SCT025 BECMG 2416/2418 15007KT PROB30 2419/2421 16010KT 7000 BKN013 FEW040TCU BECMG 2421/2423 10005KT 8000 OVC009 BECMG 2509/2511 13004KT OVC011 BECMG 2512/2514 11006KT 9999 SCT013 BECMG 2514/2514 07006KT SCT022 RMK PHG"
+    },
+    {
+      "station": "MPMG",
+      "sha": "b2f4f5adf4a8a9b795754fedeaf9f4a7d484353d63aedb23a8c022d3b928dc53",
+      "reason": "window_token_invalid",
+      "raw": "TAF MPMG 251100Z 2512/2524 33006KT 9999 SCT018 TEMPO 2512//2516 VRB02KT PROB30 2519/2523 17008KT 6000 TSRA SCT015CB BKN090"
+    },
+    {
+      "station": "OPKC",
+      "sha": "d0a8053e49818ecb5c0a70a55ade83462efe5636397090d1f2a3bd717a63883e",
+      "reason": "fm_token_invalid",
+      "raw": "TAF OPKC 260500Z 2606/2712 23008G18KT 6000 SCT030 FM 261900 26007KT 4000 HZ BKN030 BECMG 2704/2706 25010G20KT 5000 HZ FEW020 SCT030"
+    },
+    {
+      "station": "FACT",
+      "sha": "cd69b82c7608c1bc10401ae9000094a2c207ecb717a8f023f899a4766f9c1b07",
+      "reason": "fm_outside_validity",
+      "raw": "TAF FACT 261000Z 2612/2718 18010KT CAVOK TX25/2712Z TN12/2705Z FM261800 VRB02KT CAVOK FM271100 34010KT CAVOK FM271800 VRB02KT 9999 FEW008"
+    }
+  ],
+  "lineage": {
+    "counts": {
+      "old_p1_method_tag": 18147,
+      "old_or_missing_p0_parent": 18147,
+      "p1_fitted_receipt_missing": 9389,
+      "rows": 19618,
+      "old_p0m_parent": 13559,
+      "parent_not_committed_asof": 4357,
+      "p1_parameter_training_cutoff_not_earlier": 1180,
+      "exact_current_parent_chain": 871
+    },
+    "parent_versions": {
+      "calibrated_native_cross_ensemble_p0_v2 / calibrated_native_cross_ensemble_p0_v2": 3679,
+      "calibrated_native_cross_ensemble_p0_v2 / p0m_taf_observed_v2": 1050,
+      "calibrated_native_cross_ensemble_p0_v3 / p0m_taf_observed_v3": 49,
+      "calibrated_native_cross_ensemble_p0_v3 / calibrated_native_cross_ensemble_p0_v3": 85,
+      "calibrated_native_cross_ensemble_p0_v4 / calibrated_native_cross_ensemble_p0_v4": 752,
+      "calibrated_native_cross_ensemble_p0_v4 / p0m_taf_observed_v4": 1125,
+      "calibrated_native_cross_ensemble_p0_v5 / p0m_taf_observed_v5": 2378,
+      "calibrated_native_cross_ensemble_p0_v6 / p0m_taf_observed_v6": 256,
+      "calibrated_native_cross_ensemble_p0_v6 / p0m_taf_likelihood_v7": 350,
+      "calibrated_native_cross_ensemble_p0_v6 / p0m_taf_likelihood_v8": 106,
+      "calibrated_native_cross_ensemble_p0_v7 / p0m_taf_likelihood_v9": 1098,
+      "calibrated_native_cross_ensemble_p0_v7 / p0m_taf_likelihood_v10": 3,
+      "calibrated_native_cross_ensemble_p0_v8 / p0m_taf_likelihood_v10": 415,
+      "calibrated_native_cross_ensemble_p0_v9 / p0m_taf_likelihood_v11": 698,
+      "calibrated_native_cross_ensemble_p0_v10 / p0m_taf_likelihood_v12": 28,
+      "calibrated_native_cross_ensemble_p0_v11 / p0m_taf_likelihood_v13": 186,
+      "calibrated_native_cross_ensemble_p0_v12 / p0m_taf_likelihood_v14": 356,
+      "calibrated_native_cross_ensemble_p0_v13 / p0m_taf_likelihood_v15": 168,
+      "calibrated_native_cross_ensemble_p0_v19 / p0m_taf_likelihood_v21": 1246,
+      "calibrated_native_cross_ensemble_p0_v20 / p0m_taf_likelihood_v22": 2074,
+      "calibrated_native_cross_ensemble_p0_v20 / p0m_taf_likelihood_v23": 129,
+      "calibrated_native_cross_ensemble_p0_v21 / p0m_taf_likelihood_v24": 166,
+      "calibrated_native_cross_ensemble_p0_v24 / p0m_taf_likelihood_v27": 218,
+      "calibrated_native_cross_ensemble_p0_v25 / p0m_taf_likelihood_v28": 76,
+      "calibrated_native_cross_ensemble_p0_v26 / p0m_taf_likelihood_v29": 1121,
+      "calibrated_native_cross_ensemble_p0_v27 / p0m_taf_likelihood_v30": 1458,
+      "calibrated_native_cross_ensemble_p0_v15 / p0m_taf_likelihood_v17": 113,
+      "calibrated_native_cross_ensemble_p0_v18 / p0m_taf_likelihood_v20": 56,
+      "calibrated_native_cross_ensemble_p0_v2 / p0m_taf_observed_v3": 1,
+      "calibrated_native_cross_ensemble_p0_v7 / calibrated_native_cross_ensemble_p0_v7": 24,
+      "calibrated_native_cross_ensemble_p0_v23 / p0m_taf_likelihood_v26": 40,
+      "calibrated_native_cross_ensemble_p0_v5 / calibrated_native_cross_ensemble_p0_v5": 7,
+      "calibrated_native_cross_ensemble_p0_v8 / calibrated_native_cross_ensemble_p0_v8": 2,
+      "calibrated_native_cross_ensemble_p0_v19 / calibrated_native_cross_ensemble_p0_v19": 7,
+      "calibrated_native_cross_ensemble_p0_v26 / calibrated_native_cross_ensemble_p0_v26": 6,
+      "calibrated_native_cross_ensemble_p0_v3 / p0m_taf_observed_v4": 8,
+      "calibrated_native_cross_ensemble_p0_v14 / p0m_taf_likelihood_v16": 24,
+      "calibrated_native_cross_ensemble_p0_v22 / p0m_taf_likelihood_v25": 21,
+      "calibrated_native_cross_ensemble_p0_v20 / calibrated_native_cross_ensemble_p0_v20": 14,
+      "calibrated_native_cross_ensemble_p0_v24 / calibrated_native_cross_ensemble_p0_v24": 8,
+      "calibrated_native_cross_ensemble_p0_v25 / calibrated_native_cross_ensemble_p0_v25": 3,
+      "calibrated_native_cross_ensemble_p0_v27 / calibrated_native_cross_ensemble_p0_v27": 13,
+      "calibrated_native_cross_ensemble_p0_v9 / calibrated_native_cross_ensemble_p0_v9": 1
+    },
+    "p1_parameter_train_ends": {
+      "NONE": 9502,
+      "2026-09-18": 583,
+      "2026-09-19": 580,
+      "2026-09-20": 525,
+      "2026-09-21": 554,
+      "2026-09-22": 526,
+      "2026-09-23": 555,
+      "2026-09-24": 557,
+      "2026-09-25": 588,
+      "2026-09-26": 822,
+      "2026-09-28": 587,
+      "2026-09-29": 579,
+      "2026-09-30": 602,
+      "2026-10-01": 586,
+      "2026-10-02": 579,
+      "2026-10-03": 615,
+      "2026-10-04": 633,
+      "2026-10-05": 615,
+      "2026-10-06": 30
+    },
+    "exact_current_days_by_station": {
+      "CYYZ": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "EDDM": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "EFHK": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "EGLC": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "EHAM": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "EPWA": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "FACT": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KATL": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KAUS": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KBKF": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KDAL": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KHOU": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KLAX": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KLGA": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KMIA": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KORD": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KSEA": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "KSFO": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LEMD": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LFPB": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LIMC": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LLBG": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LTAC": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "LTFM": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "MMMX": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "MPMG": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "NZWN": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "OEJN": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "OPKC": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "RCSS": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "RJTT": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "RKPK": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "RKSI": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "RPLL": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "SAEZ": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "SBGR": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "UUWW": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "VILK": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "WMKK": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "WSSS": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZBAA": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZGGG": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZGSZ": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZHHH": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZSPD": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZSQD": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZUCK": [
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "ZUUU": [
+        "2026-10-05",
+        "2026-10-06"
+      ]
+    }
+  },
+  "summaries": {
+    "latest": {
+      "rows": 19618,
+      "taf_paired": 18685,
+      "1500_less": 671,
+      "3000_less": 2248,
+      "5000_less": 4654,
+      "6500_less": 3405,
+      "1500_overlap": 16082,
+      "3000_overlap": 13128,
+      "5000_overlap": 10510,
+      "6500_overlap": 6737,
+      "5000_more": 2769,
+      "6500_more": 2208,
+      "unique_base_comparison": 1885,
+      "1500_more": 1180,
+      "3000_more": 2557,
+      "stale_observation": 377,
+      "current_chain_cloud_rows": 608,
+      "6500_unknown": 5958,
+      "1500_unknown": 375,
+      "3000_unknown": 375,
+      "5000_unknown": 375,
+      "no_taf": 933
+    },
+    "day1": {
+      "rows": 19618,
+      "taf_paired": 10917,
+      "1500_less": 511,
+      "3000_less": 1646,
+      "5000_less": 3410,
+      "6500_less": 2450,
+      "no_taf": 8701,
+      "1500_overlap": 9043,
+      "5000_overlap": 4978,
+      "6500_overlap": 3245,
+      "1500_more": 881,
+      "3000_more": 2005,
+      "5000_more": 2047,
+      "6500_more": 1791,
+      "3000_overlap": 6784,
+      "unique_base_comparison": 1176,
+      "stale_observation": 199,
+      "current_chain_cloud_rows": 407,
+      "6500_unknown": 3232,
+      "1500_unknown": 283,
+      "3000_unknown": 283,
+      "5000_unknown": 283
+    }
+  },
+  "case": [
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T04:11:54.545004Z",
+      "observation_id": "rtobs_c6dabfc59aea8eecc1ea9917a75bb879",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_valid_at": "2026-10-07T04:00:00Z",
+      "observation_first_seen": "2026-10-07T04:06:09.439Z",
+      "observation_committed": "2026-10-07T04:06:09.494Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "truth": null,
+      "running_high": "24",
+      "evidence_role": "observational_candidate_not_oos",
+      "latest": {
+        "sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "receipt_kind": "official_local_raw_receipt",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "raw": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.375,
+            0.5
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.375,
+          "6500": 0.0
+        },
+        "base_lowering_km": 0.6095999999999999
+      },
+      "day1": null,
+      "local_hour": 12
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T05:56:35.105005Z",
+      "observation_id": "rtobs_60f96ac22f36056377902f8f1dde3b75",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_valid_at": "2026-10-07T05:00:00Z",
+      "observation_first_seen": "2026-10-07T05:06:21.523Z",
+      "observation_committed": "2026-10-07T05:06:21.714Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "truth": null,
+      "running_high": "25",
+      "evidence_role": "observational_candidate_not_oos",
+      "latest": {
+        "sha": "024a98dcb9d88ea6fc53933afdae8be9fe0ec09cb7a0b7f99014b59917c423fe",
+        "issue": "2026-10-06T21:02:00Z",
+        "known_at": "2026-10-06T22:02:59.949608Z",
+        "valid_from": "2026-10-07T00:00:00Z",
+        "valid_to": "2026-10-08T00:00:00Z",
+        "receipt_kind": "official_local_raw_receipt",
+        "receipt_id": "46e3e87c44e4c78a04ec868edacb9eb82f69dc7ec93a74a0f670eb161080150a",
+        "raw": "TAF ZUUU 062102Z 0700/0724 22003MPS 6000 SCT050 TX28/0707Z TN19/0722Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.375,
+            0.5
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.375,
+          "6500": 0.0
+        },
+        "base_lowering_km": 0.6095999999999999
+      },
+      "day1": {
+        "sha": "0f550f5bd9d825e4cb63e44ee0911dd051b41222de1b6f96bfd6dc9dc612346d",
+        "issue": "2026-10-06T03:02:00Z",
+        "known_at": "2026-10-06T04:00:58.647302Z",
+        "valid_from": "2026-10-06T06:00:00Z",
+        "valid_to": "2026-10-07T06:00:00Z",
+        "receipt_kind": "official_local_raw_receipt",
+        "receipt_id": "0cd2fe10d3a9ff76f397b6bf2b8c8c681b1fa1fb2c23cf1c43dd01d425c8fad9",
+        "raw": "TAF ZUUU 060302Z 0606/0706 22003MPS 6000 SCT050 TX25/0607Z TN15/0622Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.375,
+            0.5
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.375,
+          "6500": 0.0
+        },
+        "base_lowering_km": 0.6095999999999999
+      },
+      "local_hour": 13
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T06:07:26.398000Z",
+      "observation_id": "rtobs_493414b2271d51f50f4520d02335beb9",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_valid_at": "2026-10-07T06:00:00Z",
+      "observation_first_seen": "2026-10-07T06:06:44.656Z",
+      "observation_committed": "2026-10-07T06:06:44.892Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "truth": null,
+      "running_high": "25",
+      "evidence_role": "observational_candidate_not_oos",
+      "latest": {
+        "sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "receipt_kind": "raw_sha_bound_local_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "raw": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.375,
+            0.5
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.375,
+          "6500": 0.0
+        },
+        "base_lowering_km": 0.6095999999999999
+      },
+      "day1": null,
+      "local_hour": 14
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T07:57:13.636006Z",
+      "observation_id": "rtobs_f6a03c500c32722cf58a29fdf94d9771",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_valid_at": "2026-10-07T07:00:00Z",
+      "observation_first_seen": "2026-10-07T07:05:33.803Z",
+      "observation_committed": "2026-10-07T07:05:33.869Z",
+      "obs_layers": [
+        {
+          "cover": "BKN",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "truth": null,
+      "running_high": "25",
+      "evidence_role": "observational_candidate_not_oos",
+      "latest": {
+        "sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "receipt_kind": "raw_sha_bound_local_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "raw": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.625,
+            0.875
+          ],
+          "6500": [
+            0.625,
+            0.875
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.625,
+          "6500": 0.125
+        },
+        "base_lowering_km": null
+      },
+      "day1": null,
+      "local_hour": 15
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-07",
+      "decided_at": "2026-10-07T08:06:20.013000Z",
+      "observation_id": "rtobs_dffa90181455c5a64fe1cafb08f79808",
+      "posterior_version": "p1_joint_likelihood_v38",
+      "observation_valid_at": "2026-10-07T08:00:00Z",
+      "observation_first_seen": "2026-10-07T08:06:18.515Z",
+      "observation_committed": "2026-10-07T08:06:18.581Z",
+      "obs_layers": [
+        {
+          "cover": "SCT",
+          "base": 3000,
+          "type": null
+        }
+      ],
+      "truth": null,
+      "running_high": "25",
+      "evidence_role": "observational_candidate_not_oos",
+      "latest": {
+        "sha": "aa40e9c6c2e535f18ec35b49262365732e680425a9ae1942ed4c4249f2be54fc",
+        "issue": "2026-10-07T03:01:00Z",
+        "known_at": "2026-10-07T04:01:39Z",
+        "valid_from": "2026-10-07T06:00:00Z",
+        "valid_to": "2026-10-08T06:00:00Z",
+        "receipt_kind": "raw_sha_bound_local_receipt",
+        "receipt_id": "taf-capture-2fbeba11d7115e556f33aaf744cf6e66",
+        "raw": "TAF ZUUU 070301Z 0706/0806 22003MPS 6000 SCT050 TX28/0707Z TN18/0722Z",
+        "scenarios": [
+          [
+            {
+              "cover": "SCT",
+              "base": 5000,
+              "type": null
+            }
+          ]
+        ],
+        "forecast_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.0,
+            0.0
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "obs_intervals": {
+          "1500": [
+            0.0,
+            0.0
+          ],
+          "3000": [
+            0.0,
+            0.0
+          ],
+          "5000": [
+            0.375,
+            0.5
+          ],
+          "6500": [
+            0.375,
+            0.5
+          ]
+        },
+        "coverage_increment": {
+          "1500": 0.0,
+          "3000": 0.0,
+          "5000": 0.375,
+          "6500": 0.0
+        },
+        "base_lowering_km": 0.6095999999999999
+      },
+      "day1": null,
+      "local_hour": 16
+    }
+  ],
+  "gate": {
+    "state": "UPSTREAM_REBUILD_REQUIRED",
+    "required_train_days": 20,
+    "required_holdout_days": 8,
+    "eligible_days_by_mode": {
+      "latest": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ],
+      "day1": [
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06"
+      ]
+    },
+    "scores_computed": false,
+    "production_modified": false,
+    "current_artifact_train_end": "2026-10-06",
+    "current_artifact_fitted_at": "2026-10-06T23:11:33Z",
+    "fitting_today_artifact_on_prior_test_days_forbidden": true,
+    "reason": "cloud evidence now raw-reconstructible; full historical current P0/P0-M parents are still absent from this sample set; refitting only P1 on old parents is not current-chain OOS"
+  },
+  "evidence_role": "observational_candidate_not_oos",
+  "fingerprints": {
+    "raw_pairs": "5226dca1dc7f208b915f9a694d02d74723534445e7b419ebe7f0f1d977f4264b",
+    "previous_audit": "1f6094c5009c24a9fca19ed029d15d7b8f7afed96bd32961e5b23b5bbe18e4b5",
+    "input_rows": "860b5e25051bc65aaf4e078df4665e7efa0c7dd98fdeea59aec2f2d2cd5044d6",
+    "raw_decoder": "ba6dbc359be7d968602b21592e6f3dfb74f63fe29fdd5c5f888315bda29d01f6"
+  },
+  "limits": {
+    "rss_bytes": 1073741824,
+    "input_bytes": 134217728,
+    "output_bytes": 134217728,
+    "min_disk_bytes": 2147483648,
+    "sql_seconds": 45
+  }
+}

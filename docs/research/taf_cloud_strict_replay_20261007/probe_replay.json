@@ -1,0 +1,175 @@
+{
+  "schema": "current_p0_archived_scope_compiler_probe_v1",
+  "results": [
+    {
+      "station": "EGLC",
+      "day": "2026-09-02",
+      "decided_at": "2026-09-02T11:53:46.574000Z",
+      "packet_sha": "0f1264e9a4ab7bd3cb1c2385629e645355fc4f51f1bda7363b36180422abd52f",
+      "geometry_history_id": "xsb_ce74003375da8cf300bc86bc3a132dcd",
+      "geometry_content_sha": "ce74003375da8cf300bc86bc3a132dcd648d452374d0e98bde3d190dcd06965b",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "4709041b6a02b27cbd71ec5a6cc9fdc289e6df351f0d636a3fe49966eca6fe05",
+      "elapsed_seconds": 0.212
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-09-22",
+      "decided_at": "2026-09-22T11:53:12.135000Z",
+      "packet_sha": "cc705d3a6bc4d0a46bb4dae75eee83e86f676b3cf99c762bb1a4cf175654a1a8",
+      "geometry_history_id": "xsb_245c10f383dc7eccdcdb9400bc921512",
+      "geometry_content_sha": "245c10f383dc7eccdcdb9400bc921512a58536eb92990a8b35b0379a0bcf3b15",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "6bed9b23fd7b7958a3b2a1465cb5f4a88d0136a02ade638b108217bad882748a",
+      "elapsed_seconds": 0.269
+    },
+    {
+      "station": "EGLC",
+      "day": "2026-10-05",
+      "decided_at": "2026-10-05T11:54:49.664000Z",
+      "packet_sha": "50cf2b205f538bd59782b9fd111fc75dd0405d76a552de6fd1eee5f6b0fcf116",
+      "geometry_history_id": "xsb_bab325ac205fef10e9e1cae28af6dca0",
+      "geometry_content_sha": "bab325ac205fef10e9e1cae28af6dca0d4f039078c6d925f0edac51a4d13ff87",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "1957d5efdc8e1da1b0daee2b748c06c29f9438d12a400731259f2bb4c3f7c202",
+      "elapsed_seconds": 0.404
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-09-02",
+      "decided_at": "2026-09-02T16:58:31.688004Z",
+      "packet_sha": "5d27ba1e7ba9cf09e5e44d2d8a9318010ce2b8bb579f8c2a89298e7a8da60c49",
+      "geometry_history_id": "xsb_83cf28341a2463b79db602a1bae4d9fe",
+      "geometry_content_sha": "83cf28341a2463b79db602a1bae4d9fe5f5d299fe955a1451cd9751bebac8ccc",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "8920f91333dd7f7efdd26dda66ebf2473f43ebbe3a6b9279eca20927562a8c0e",
+      "elapsed_seconds": 0.182
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-09-22",
+      "decided_at": "2026-09-22T16:51:40.400000Z",
+      "packet_sha": "d8b17e1af8df68f51ecf5c35de604099df84f01dbc46e274f4601f618153d932",
+      "geometry_history_id": "xsb_382f2b55d1d75f04e7ceefc18284756e",
+      "geometry_content_sha": "382f2b55d1d75f04e7ceefc18284756e699df8277e10b5f23ce81bf1a4f2ccd2",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "163e5cc0752da096cca08c1b60680a970e9fc812ac74f66abad2b298fcccea27",
+      "elapsed_seconds": 0.169
+    },
+    {
+      "station": "KLGA",
+      "day": "2026-10-05",
+      "decided_at": "2026-10-05T16:52:56.234000Z",
+      "packet_sha": "bbce5d1ce1f7acb9f553f76d990612e9b1fc4b29d626990ddf9a469bf8e59bc1",
+      "geometry_history_id": "xsb_7bb589bbd2e07167bf7f3d6a0de300fe",
+      "geometry_content_sha": "7bb589bbd2e07167bf7f3d6a0de300fecbcf6359444e39c4d797d60a0785fa35",
+      "state": "COMPILED_ARITHMETIC_ONLY_NOT_OOS",
+      "output_keys": [
+        "activation_id",
+        "calls_order_gateway",
+        "cross_ensemble_artifact_id",
+        "forward_prediction",
+        "live_submit_authorized",
+        "orders_submitted",
+        "packet",
+        "packet_content_sha256",
+        "schema",
+        "selection_evidence_sha256",
+        "source_class"
+      ],
+      "output_sha": "4fbeedd9d1fc42e241f99f42aa244d8bb9e880fbc1ff98d56384c64e448a0c29",
+      "elapsed_seconds": 0.365
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-09-02",
+      "decided_at": "2026-09-02T04:05:31.874000Z",
+      "packet_sha": "cdd2d8b5499f4ae765490d70a6455c696bdd0e432e40df08d4fb2ae96462d1eb",
+      "geometry_history_id": "xsb_0d474ef61d45ace5e721123ccc740c28",
+      "geometry_content_sha": "0d474ef61d45ace5e721123ccc740c28b8e57044cb5f7f9d62230be0faa16ffd",
+      "state": "REFUSED",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing",
+      "elapsed_seconds": 0.251
+    },
+    {
+      "station": "ZUUU",
+      "day": "2026-10-05",
+      "decided_at": "2026-10-05T04:12:49.937002Z",
+      "state": "MISSING_ASOF_GEOMETRY_PROOF"
+    }
+  ],
+  "profile": {
+    "COMPILED_ARITHMETIC_ONLY_NOT_OOS": 6,
+    "REFUSED": 1
+  },
+  "scores_computed": false,
+  "production_modified": false,
+  "compiler_code_sha256": "81315392ea1bd8462c96c62319890dfb25785c9cdec7cfc5fd3fc59e60a1bea6",
+  "native_oos_code_sha256": "91793b01e28dd9797a1593a4ac4b5aea7cad4cfa333a13494276cd38ba949d53",
+  "not_a_complete_p1_replay": true
+}

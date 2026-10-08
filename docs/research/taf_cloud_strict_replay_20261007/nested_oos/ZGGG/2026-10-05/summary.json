@@ -1,0 +1,3200 @@
+{
+  "schema": "actual_arrival_nested_oos_probe_v1",
+  "method_version": "actual_arrival_inner_truth_ladder_v3",
+  "decision_clock": "maximum of actual member arrival and actual first target ladder availability",
+  "station": "ZGGG",
+  "outer_cutoff": "2026-10-04T22:07:14.526Z",
+  "event": "2026-10-05",
+  "anchor_checkpoint": "p0-native-7e2ea4cc0ba66879cfae9bd5a62d5a21",
+  "member_source": {
+    "domains": {
+      "ensemble_system_id": [
+        "DWD_ICON_EPS_SEAMLESS",
+        "DWD_ICON_GLOBAL_EPS",
+        "ECCC_GEM_GLOBAL_ENS",
+        "ECMWF_AIFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "GOOGLE_WEATHERNEXT2_ENS",
+        "METAR_PHYSICAL_PATH_TMAX",
+        "NOAA_AIGEFS_025",
+        "NOAA_GEFS_025",
+        "NOAA_GEFS_05",
+        "NOAA_GEFS_SEAMLESS",
+        "OFFICIAL_AIRPORT_TAF_TX",
+        "UKMO_GLOBAL_ENS"
+      ],
+      "transport_provider_id": [
+        "AWC_METAR_PHYSICAL_PATH",
+        "AWC_TAF_DATA_API",
+        "DWD_OPENDATA_ICON_EPS",
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3",
+        "OPEN_METEO"
+      ],
+      "archive_lead_bucket": [
+        "d0",
+        "d1",
+        "d2",
+        "h00_12",
+        "h12_24",
+        "h24_48"
+      ],
+      "run_cycle": [
+        "00Z",
+        "06Z",
+        "12Z",
+        "18Z",
+        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
+      ],
+      "authority_scope": [
+        "CALIBRATION_TRAIN_ONLY"
+      ],
+      "qc_status": [
+        "ACCEPTED"
+      ]
+    },
+    "rows": 128531,
+    "bytes": 84365130,
+    "sha256": "08569507e435a76e2776ceeebcf6c50ef978f55981401554314d54da5b1796f9",
+    "groups": 3297,
+    "invalid": {
+      "superseded_or_unregistered_extraction_scope": 1
+    },
+    "query": "select ensemble_system_id,target_local_date,native_run_init_utc,archive_lead_bucket,run_cycle,extraction_version,transport_provider_id,member_id,raw_tmax_c,archive_query_at_utc,source_object_sha256,content_sha256,qc_status,authority_scope from calibration_native_ensemble_historical_member_run INDEXED BY calibration_native_ensemble_historical_member_run_scope_idx where station_id=? and target_local_date>=? and target_local_date<=? and ensemble_system_id IN (?,?,?,?,?,?) and transport_provider_id<>?"
+  },
+  "input_rejections": {
+    "never_seated_run": 268,
+    "retrospective_train_only": 1439,
+    "missing_asof_market_ladder_train_only": 552
+  },
+  "readiness": [
+    {
+      "ensemble_system_id": "CMA_GRAPES_GLOBAL_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_D2_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EPS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 55,
+      "train_n": 47,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6700751915482541,
+        "nll": 1.3926181489985598,
+        "crps": 0.46879199767252433
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5737396852892906,
+        "nll": 1.136065291006359,
+        "crps": 0.34466629989287384
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 5,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 5,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 3
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 11,
+      "training_case_count": 3,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 17,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5806156118784082,
+        "nll": 1.1243408930186927,
+        "crps": 0.33613341712995637
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 82,
+      "train_n": 57,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6550800589076085,
+        "nll": 1.2857410692751448,
+        "crps": 0.4086388357709729
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 82,
+      "train_n": 57,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6069783637015039,
+        "nll": 1.176812897821725,
+        "crps": 0.3757737504319796
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 48,
+      "training_case_count": 14,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 6,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6128189699005995,
+        "nll": 1.2149569249871472,
+        "crps": 0.386676529890185
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6898731463812597,
+        "nll": 1.2801688503076327,
+        "crps": 0.44680958687409345
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6469502817907832,
+        "nll": 1.2546079034213995,
+        "crps": 0.3895977514978242
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6623271614360167,
+        "nll": 1.2868878981322274,
+        "crps": 0.39779292479168155
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6670702074747451,
+        "nll": 1.2660092703166208,
+        "crps": 0.38637240895102976
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7107311194835741,
+        "nll": 1.3462450120296447,
+        "crps": 0.4437088682670522
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7022204602549899,
+        "nll": 1.3566649050629818,
+        "crps": 0.46851401896118255
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7080357228084204,
+        "nll": 1.4322165637769801,
+        "crps": 0.5034585138189852
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6579297039686492,
+        "nll": 1.2946771058412316,
+        "crps": 0.4023306720536482
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6787816672669701,
+        "nll": 1.3487994159606695,
+        "crps": 0.45998496668879146
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 88,
+      "train_n": 55,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5703991905865018,
+        "nll": 1.033236989661517,
+        "crps": 0.2988994889375595
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6620851986241489,
+        "nll": 1.298887302198077,
+        "crps": 0.43086063821791376
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 36,
+      "train_n": 28,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6091471029432877,
+        "nll": 1.12723018009333,
+        "crps": 0.36734445953787215
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 32,
+      "train_n": 24,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5551170262844619,
+        "nll": 1.0482147523977456,
+        "crps": 0.29651405341194015
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 86,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5750544458061402,
+        "nll": 1.0841929171313835,
+        "crps": 0.3093945800708836
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 87,
+      "train_n": 53,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5634695000313764,
+        "nll": 1.0565791053817222,
+        "crps": 0.29582680026301833
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 25,
+      "training_case_count": 17,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 3,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 40,
+      "train_n": 32,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5965607489760004,
+        "nll": 1.155043664431467,
+        "crps": 0.3571749882178272
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6248663891150086,
+        "nll": 1.20424282884108,
+        "crps": 0.36138014796094703
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 39,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "JMA_MSM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METAR_PHYSICAL_PATH_TMAX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH1_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_HRRR_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_NBM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7894195128252844,
+        "nll": 1.5448129111366558,
+        "crps": 0.5994463040897129
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 68,
+      "train_n": 56,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7469077747997943,
+        "nll": 1.5631771192143686,
+        "crps": 0.5356530373694661
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 69,
+      "train_n": 58,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7856480186014019,
+        "nll": 1.6057610589480569,
+        "crps": 0.5830034368372964
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.821068385551262,
+        "nll": 1.661666671559124,
+        "crps": 0.706128710943852
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 69,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7465237656590191,
+        "nll": 1.519361108860432,
+        "crps": 0.5757549734421705
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7973373696368621,
+        "nll": 1.61630723632151,
+        "crps": 0.6086841869399036
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 69,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7468581111895839,
+        "nll": 1.546974302716294,
+        "crps": 0.5088210396068665
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 68,
+      "train_n": 55,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.714879865686317,
+        "nll": 1.4358917046727728,
+        "crps": 0.41125903282567133
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7030113744248144,
+        "nll": 1.3792946702998754,
+        "crps": 0.4315521894002189
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_025",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 84,
+      "train_n": 52,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.603050194807729,
+        "nll": 1.1383250335946038,
+        "crps": 0.33596776983751486
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 52,
+      "train_n": 44,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6615269109806252,
+        "nll": 1.3024082498560061,
+        "crps": 0.39474515919419767
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 45,
+      "train_n": 37,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6015231510992808,
+        "nll": 1.1473201608232855,
+        "crps": 0.36487109927910377
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 33,
+      "train_n": 25,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6321827659177585,
+        "nll": 1.21114013894503,
+        "crps": 0.36009390700959826
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 88,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6690351501662316,
+        "nll": 1.3404789905106365,
+        "crps": 0.46647024392448005
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 89,
+      "train_n": 55,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6199203342622385,
+        "nll": 1.213119673023883,
+        "crps": 0.36912164812746345
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 27,
+      "training_case_count": 19,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 1,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 40,
+      "train_n": 32,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6981256882806041,
+        "nll": 1.3680514676787137,
+        "crps": 0.4232901290914029
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 43,
+      "train_n": 35,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6038797580531527,
+        "nll": 1.2119043114110313,
+        "crps": 0.34595479700096526
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_UK_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    }
+  ],
+  "report_header": {
+    "schema": "native_ensemble_strict_forward_oos_v1",
+    "station_id": "ZGGG",
+    "as_of_utc": "2026-10-04T22:07:14.526Z",
+    "min_train_days": 20,
+    "min_holdout_days": 8,
+    "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "historical_event_date_cutoff": "2026-10-04",
+    "formal_promotion_threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "formal_promotion_min_train_days": 20,
+    "formal_promotion_min_holdout_days": 8,
+    "registered_system_count": 26,
+    "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+    "formal_p0_eligible": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false,
+    "content_sha256": "9a2eabe32cf77620af46b623c531b928687ff4bc0878f5bbccdfe37510a7fe14"
+  },
+  "cross_states": {
+    "PRODUCTION_NO_LIVE_OOS_PASS": 190
+  },
+  "objects": [
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/9eaf44a96d98a30b00fa30e9735b053a113a48018af2b862a7d13aa6bf82ab88.json.gz",
+      "sha256": "9eaf44a96d98a30b00fa30e9735b053a113a48018af2b862a7d13aa6bf82ab88"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5e7249f3e87bc6e1f480ce8d1c8ac3e3397062f6b474ea2b74981e2d8eff5c6f.json.gz",
+      "sha256": "5e7249f3e87bc6e1f480ce8d1c8ac3e3397062f6b474ea2b74981e2d8eff5c6f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/54379549022f015117b3df77f4a46f5963a27415cb9a226e50fe1c78224bdc9d.json.gz",
+      "sha256": "54379549022f015117b3df77f4a46f5963a27415cb9a226e50fe1c78224bdc9d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/04eb64a19efabe5546f8a6faec72655f0f8fc2c2545be3dd87b9fb0673ef90df.json.gz",
+      "sha256": "04eb64a19efabe5546f8a6faec72655f0f8fc2c2545be3dd87b9fb0673ef90df"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/e4f23bf135466913775a9beaddbbc62f1d970966a416504a34ff5a0bd4f9db0f.json.gz",
+      "sha256": "e4f23bf135466913775a9beaddbbc62f1d970966a416504a34ff5a0bd4f9db0f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/0509dbc0ac7a9b2bce7145303c573bc2f1bad7b6dc3c8deb48d30e57b75ef52a.json.gz",
+      "sha256": "0509dbc0ac7a9b2bce7145303c573bc2f1bad7b6dc3c8deb48d30e57b75ef52a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/f67e5c2e5fe9963c4544e05d485a48d5a060c1179cb98579d7bd6d26c8993bad.json.gz",
+      "sha256": "f67e5c2e5fe9963c4544e05d485a48d5a060c1179cb98579d7bd6d26c8993bad"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/7d0b2c9c5158e03f78c230f3b3e92653a4a9181c54bb1b657bab177abdd80f4c.json.gz",
+      "sha256": "7d0b2c9c5158e03f78c230f3b3e92653a4a9181c54bb1b657bab177abdd80f4c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/77706b4cc9b036a426d1caff60a8154f861aadcce13e705474796dccc88f6e6e.json.gz",
+      "sha256": "77706b4cc9b036a426d1caff60a8154f861aadcce13e705474796dccc88f6e6e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c1540986d48f72f08c5acedfec6fcdfcc0a9cb9a8a6917beb6512894eed152f3.json.gz",
+      "sha256": "c1540986d48f72f08c5acedfec6fcdfcc0a9cb9a8a6917beb6512894eed152f3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/8ce512aecb00d254f05585ad29e55166e449d7ab3c74977d13353a82d6725189.json.gz",
+      "sha256": "8ce512aecb00d254f05585ad29e55166e449d7ab3c74977d13353a82d6725189"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/bb7c94eeb75532b3b58267b2aee59afc0add87a79c589253bcd179a3492d12c1.json.gz",
+      "sha256": "bb7c94eeb75532b3b58267b2aee59afc0add87a79c589253bcd179a3492d12c1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5cc06abb2d0c3387369a512dc98b3507d2c008a6add02fe85dfac050ace9f3d0.json.gz",
+      "sha256": "5cc06abb2d0c3387369a512dc98b3507d2c008a6add02fe85dfac050ace9f3d0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/f67283b4097710bb45be5dbfb286894fd22d017dc7c3caccc5086369c69340ab.json.gz",
+      "sha256": "f67283b4097710bb45be5dbfb286894fd22d017dc7c3caccc5086369c69340ab"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/a729594b180be3350dd13d4a54f04d173993f76a8fb4d105ffbbb60702e9b232.json.gz",
+      "sha256": "a729594b180be3350dd13d4a54f04d173993f76a8fb4d105ffbbb60702e9b232"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/6c8d6a9e37978602be3610f864fa94fd7c1f0d10867bc844b854c978b06c4dd1.json.gz",
+      "sha256": "6c8d6a9e37978602be3610f864fa94fd7c1f0d10867bc844b854c978b06c4dd1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4c8decde9593c07196f8ada735771641f928befe11552d521279e52128cb1016.json.gz",
+      "sha256": "4c8decde9593c07196f8ada735771641f928befe11552d521279e52128cb1016"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/23888b4f53ad32dafe6c3efb4630770c0d190be03ab71861ba9fff37068fcf0f.json.gz",
+      "sha256": "23888b4f53ad32dafe6c3efb4630770c0d190be03ab71861ba9fff37068fcf0f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/f93d20c86eb0f340fed06b4320f14eeb8d6d2b3bf5efeab014860d4b23e168a8.json.gz",
+      "sha256": "f93d20c86eb0f340fed06b4320f14eeb8d6d2b3bf5efeab014860d4b23e168a8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/2f401af129a39784386b2ca0a42cb72cba8baca66b4e03e3017ad2e206105d3d.json.gz",
+      "sha256": "2f401af129a39784386b2ca0a42cb72cba8baca66b4e03e3017ad2e206105d3d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/7f77ed3cdbcedf8978fe2d95f236519d526ce68d20f3b7e0607f31493de32f75.json.gz",
+      "sha256": "7f77ed3cdbcedf8978fe2d95f236519d526ce68d20f3b7e0607f31493de32f75"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/7e419f49116bc86f36c560aed82d3f705e7d042345dcb0ee017a349c38539e88.json.gz",
+      "sha256": "7e419f49116bc86f36c560aed82d3f705e7d042345dcb0ee017a349c38539e88"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/6a0e55c5c5b16e6b4c06e17a9c5de7ae7520ed054445e68262b44ebfbdebf36b.json.gz",
+      "sha256": "6a0e55c5c5b16e6b4c06e17a9c5de7ae7520ed054445e68262b44ebfbdebf36b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/a2d76ccef3f3baa0a4d179401292b49f0b45d88a658375bfcd4d64c0ed86749f.json.gz",
+      "sha256": "a2d76ccef3f3baa0a4d179401292b49f0b45d88a658375bfcd4d64c0ed86749f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/95725c233e8376ec279ed7c80b3d024bb86de668d554c6d7f7f4b67635580048.json.gz",
+      "sha256": "95725c233e8376ec279ed7c80b3d024bb86de668d554c6d7f7f4b67635580048"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/52baca2dba7f8bc2e8bfdc27ad0791d6976e1f05af760c9cd2ba0303c4613b67.json.gz",
+      "sha256": "52baca2dba7f8bc2e8bfdc27ad0791d6976e1f05af760c9cd2ba0303c4613b67"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/247bd7f71d43ee90285aebdf35ff3bd8f311a98bed5ac13b0e9b36eef0323f32.json.gz",
+      "sha256": "247bd7f71d43ee90285aebdf35ff3bd8f311a98bed5ac13b0e9b36eef0323f32"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/f1da3c037dbcb4de405f4a7e4c9e26889e9599ffcd072bb0730347a4193d63af.json.gz",
+      "sha256": "f1da3c037dbcb4de405f4a7e4c9e26889e9599ffcd072bb0730347a4193d63af"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/fe59e3dd20d8cc967a2f26c16ba8697189b783eb341ec9dbd53e678dae23d6bc.json.gz",
+      "sha256": "fe59e3dd20d8cc967a2f26c16ba8697189b783eb341ec9dbd53e678dae23d6bc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/fd7119f6b733be4527745a31122e197303c9712aa28ca649633d85d4cdaa6e0e.json.gz",
+      "sha256": "fd7119f6b733be4527745a31122e197303c9712aa28ca649633d85d4cdaa6e0e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/89d20ede026e53283c5ff11bc83122500ebfb893d1ac6f36d887f5e470d091de.json.gz",
+      "sha256": "89d20ede026e53283c5ff11bc83122500ebfb893d1ac6f36d887f5e470d091de"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/446551950321ef08c39cf9264c55d5d2e617df16d6ac9e61e93fe4152e61fc4f.json.gz",
+      "sha256": "446551950321ef08c39cf9264c55d5d2e617df16d6ac9e61e93fe4152e61fc4f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/50bdb408b5650d1f4542faae5ae7b0c3541fff57b878961ca15db358208263eb.json.gz",
+      "sha256": "50bdb408b5650d1f4542faae5ae7b0c3541fff57b878961ca15db358208263eb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/94b78204782a8e790d0e0d9dd00b08bfeb53620a576e7b8862bd5ef257934818.json.gz",
+      "sha256": "94b78204782a8e790d0e0d9dd00b08bfeb53620a576e7b8862bd5ef257934818"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/70502363b917f302d7bad9cbbab3e7268eb0f90d349428ffac2fd15263495d11.json.gz",
+      "sha256": "70502363b917f302d7bad9cbbab3e7268eb0f90d349428ffac2fd15263495d11"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/147726872aa71912a52e5644428c878048426c5230dc1e7918146c02fd2e1a37.json.gz",
+      "sha256": "147726872aa71912a52e5644428c878048426c5230dc1e7918146c02fd2e1a37"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/01cd747ac8588f1833481045d5adfccee62df3414def062600d829991787a587.json.gz",
+      "sha256": "01cd747ac8588f1833481045d5adfccee62df3414def062600d829991787a587"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c95f19feb5e0d2bae95f974990217be1763081dd24141ac6733f18103de65f62.json.gz",
+      "sha256": "c95f19feb5e0d2bae95f974990217be1763081dd24141ac6733f18103de65f62"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/fe71f0ab2da324a424ac6695d3a7bcfdc0d6307425793e2bfd12a296f8ff6ba8.json.gz",
+      "sha256": "fe71f0ab2da324a424ac6695d3a7bcfdc0d6307425793e2bfd12a296f8ff6ba8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/70a69be746e6d704dfadfc602117c728f23b91ae39aaa181322f017e65ce550c.json.gz",
+      "sha256": "70a69be746e6d704dfadfc602117c728f23b91ae39aaa181322f017e65ce550c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/1a5cf4c2ff921737aa13eae14d9aaca8cf46ce43ef3bb7ba0985bbfbae02c8c9.json.gz",
+      "sha256": "1a5cf4c2ff921737aa13eae14d9aaca8cf46ce43ef3bb7ba0985bbfbae02c8c9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4ba2c680e58d905e36de59abc81c5cbda62b5a93effb0bddceb828d2d2750dd0.json.gz",
+      "sha256": "4ba2c680e58d905e36de59abc81c5cbda62b5a93effb0bddceb828d2d2750dd0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/86ae3960c3a8850718a5656687eb7308d9cb168b3520556ba4e2c985deb2cad9.json.gz",
+      "sha256": "86ae3960c3a8850718a5656687eb7308d9cb168b3520556ba4e2c985deb2cad9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/d71be0488e521390f7c0e20faa1e7ca9822e64ba55ed83e7f27130291c59c75e.json.gz",
+      "sha256": "d71be0488e521390f7c0e20faa1e7ca9822e64ba55ed83e7f27130291c59c75e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/83f22f52f879e011f735c290d3c477949e1fa3ecaf3f2e9cb20180ae3eb857f2.json.gz",
+      "sha256": "83f22f52f879e011f735c290d3c477949e1fa3ecaf3f2e9cb20180ae3eb857f2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/7954b3f80aa0cf15ed056b82e28f7b716a6e808d9f9883e15919e1ed75706ddf.json.gz",
+      "sha256": "7954b3f80aa0cf15ed056b82e28f7b716a6e808d9f9883e15919e1ed75706ddf"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/6e88e21b6ef33b85c3f278077392456bc40c4c46d29ae8b25566e95d515733ee.json.gz",
+      "sha256": "6e88e21b6ef33b85c3f278077392456bc40c4c46d29ae8b25566e95d515733ee"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c76a722793792a2a45e244a17f27c0e3905ac8b5ea5a92c15871acd711d480c6.json.gz",
+      "sha256": "c76a722793792a2a45e244a17f27c0e3905ac8b5ea5a92c15871acd711d480c6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/23255cbbb770d1d601b6b4b24b1d6c1177408db0a661f7f330f147b5a3ebc3d7.json.gz",
+      "sha256": "23255cbbb770d1d601b6b4b24b1d6c1177408db0a661f7f330f147b5a3ebc3d7"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/ed3c283e8b19815f0483f1812a73b0768f4dc24dbd68893616929ba0d2d4661f.json.gz",
+      "sha256": "ed3c283e8b19815f0483f1812a73b0768f4dc24dbd68893616929ba0d2d4661f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/64078b96e81b6c3e3c6504d6c15e71547e160720deeda61cb3daba6eaaaab18a.json.gz",
+      "sha256": "64078b96e81b6c3e3c6504d6c15e71547e160720deeda61cb3daba6eaaaab18a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/b7f0b55bdae3ac964a60714e5fe998fe199a532ca392ccf121d9f743fa092986.json.gz",
+      "sha256": "b7f0b55bdae3ac964a60714e5fe998fe199a532ca392ccf121d9f743fa092986"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5b088325bad8b381cd9c15b8fe6db06fc4e443f6f92f9546dd73fff82d748c80.json.gz",
+      "sha256": "5b088325bad8b381cd9c15b8fe6db06fc4e443f6f92f9546dd73fff82d748c80"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/28838af75572054857e6bf4df692f031eeca7e6c5caf6f950a78af563fb005b5.json.gz",
+      "sha256": "28838af75572054857e6bf4df692f031eeca7e6c5caf6f950a78af563fb005b5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/9f62014362b93b05c9b17611cabc6a517a15dbc14a59b02b884c39d524047177.json.gz",
+      "sha256": "9f62014362b93b05c9b17611cabc6a517a15dbc14a59b02b884c39d524047177"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/9741ba720041c9ec3d6bdba5931c3760dced4e01e3762238a47c52b6da673954.json.gz",
+      "sha256": "9741ba720041c9ec3d6bdba5931c3760dced4e01e3762238a47c52b6da673954"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/fbe5a353fa734ae54fabc399110378147e0e2adb44df20e2b2da3be5465f444a.json.gz",
+      "sha256": "fbe5a353fa734ae54fabc399110378147e0e2adb44df20e2b2da3be5465f444a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/fddcd439fee23d5d8337d3653361e228eabcc7f4f1748a98bf175ec15ed2ba52.json.gz",
+      "sha256": "fddcd439fee23d5d8337d3653361e228eabcc7f4f1748a98bf175ec15ed2ba52"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/ac4509dde4f4ab4b6543cc7374c72248a9b08cb6a7066f6c5043096f4505e75a.json.gz",
+      "sha256": "ac4509dde4f4ab4b6543cc7374c72248a9b08cb6a7066f6c5043096f4505e75a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4d9457910b3d99928e1c7f2c6ac2ba08b0b52242fda2e2614c58362b7539d1fd.json.gz",
+      "sha256": "4d9457910b3d99928e1c7f2c6ac2ba08b0b52242fda2e2614c58362b7539d1fd"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/6b2c5a8b8713af6efbfa8ce577e7877a1485de436e6aa45174f111e414b0debc.json.gz",
+      "sha256": "6b2c5a8b8713af6efbfa8ce577e7877a1485de436e6aa45174f111e414b0debc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/556bb40cec42aec76aa277c51928a74f342a5cfae9c58f6d56aca74e8ec955b4.json.gz",
+      "sha256": "556bb40cec42aec76aa277c51928a74f342a5cfae9c58f6d56aca74e8ec955b4"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/75d13b69e78817a5ca6aef832a56a5d5083552b8784295480f269ae78605e6a0.json.gz",
+      "sha256": "75d13b69e78817a5ca6aef832a56a5d5083552b8784295480f269ae78605e6a0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5fe41824be530a1cfb951560afcd0d7cc2ea34af2061e95b98ab857ae1c3da55.json.gz",
+      "sha256": "5fe41824be530a1cfb951560afcd0d7cc2ea34af2061e95b98ab857ae1c3da55"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/db9746e2dd44ea79aef8d99193ddb143b8c9c72a92b598ed79ebe115d68ff1d6.json.gz",
+      "sha256": "db9746e2dd44ea79aef8d99193ddb143b8c9c72a92b598ed79ebe115d68ff1d6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4426a73378b5b454ebb09499cef86ef3db0ba81093064ee67a76385ebf2a3ea5.json.gz",
+      "sha256": "4426a73378b5b454ebb09499cef86ef3db0ba81093064ee67a76385ebf2a3ea5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/91331ace4898108c6b680710706dbd5c3471081844f2159eda94888486888464.json.gz",
+      "sha256": "91331ace4898108c6b680710706dbd5c3471081844f2159eda94888486888464"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/024462e6c55a86457cdcbc3c26ec5c55253ae4082a0f092b7326a4f4a15d4376.json.gz",
+      "sha256": "024462e6c55a86457cdcbc3c26ec5c55253ae4082a0f092b7326a4f4a15d4376"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5b0bba865d51893869edfbd0cacf9b71510e5909c131fe61b66dd6bcfe767761.json.gz",
+      "sha256": "5b0bba865d51893869edfbd0cacf9b71510e5909c131fe61b66dd6bcfe767761"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4fd0b24fcc1db229e7096bcc84ebdf516962619de630184f3031d7df90f0a518.json.gz",
+      "sha256": "4fd0b24fcc1db229e7096bcc84ebdf516962619de630184f3031d7df90f0a518"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/564f961eab8a23dcbe3a0fe628a0c5b4018a558e44d02fc65e9d552bce6d8961.json.gz",
+      "sha256": "564f961eab8a23dcbe3a0fe628a0c5b4018a558e44d02fc65e9d552bce6d8961"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/b0406e13b546e4bfbbddabc48524ef0c34e60a6342e39d13e744b05244295aba.json.gz",
+      "sha256": "b0406e13b546e4bfbbddabc48524ef0c34e60a6342e39d13e744b05244295aba"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/9e4f22e11730e242a10e2bdd279179638764ec3cd82602375973b6d79ca6a96d.json.gz",
+      "sha256": "9e4f22e11730e242a10e2bdd279179638764ec3cd82602375973b6d79ca6a96d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/1d450d76868857aa890f9a05e44b90596c49153e06c7407e0b10dff6a687bb33.json.gz",
+      "sha256": "1d450d76868857aa890f9a05e44b90596c49153e06c7407e0b10dff6a687bb33"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/0cc67f5db446badf4b004eb5f75ec89a79ff695bba443e6a3ada483904a9602a.json.gz",
+      "sha256": "0cc67f5db446badf4b004eb5f75ec89a79ff695bba443e6a3ada483904a9602a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/0d243614e18cd079e99cff047c51bfbb65c3c80cb185d16adf78a0db316bd7b4.json.gz",
+      "sha256": "0d243614e18cd079e99cff047c51bfbb65c3c80cb185d16adf78a0db316bd7b4"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/83a928515eeec8f5a6e261098e4d31d2252c0d12fc1e33516d4dda4303ace852.json.gz",
+      "sha256": "83a928515eeec8f5a6e261098e4d31d2252c0d12fc1e33516d4dda4303ace852"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/19a3e9ba31e11c67137467b06f0e2fa655af8b2501a2b78ee6e60dfce7680638.json.gz",
+      "sha256": "19a3e9ba31e11c67137467b06f0e2fa655af8b2501a2b78ee6e60dfce7680638"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c9cca765ea818093c5e5c8a1b690062825dd18e3c9293654eea2ec0b85a58649.json.gz",
+      "sha256": "c9cca765ea818093c5e5c8a1b690062825dd18e3c9293654eea2ec0b85a58649"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/707807e97fb14eeed38d43b8d6609e4482c833f49ec78b60e0e0d6d64816b2dc.json.gz",
+      "sha256": "707807e97fb14eeed38d43b8d6609e4482c833f49ec78b60e0e0d6d64816b2dc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4a5bde5d7a5f8f0801257ce24c6308ff99a64941be3973632fc396e70cf39fbe.json.gz",
+      "sha256": "4a5bde5d7a5f8f0801257ce24c6308ff99a64941be3973632fc396e70cf39fbe"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/25227e74bd804b6e15fbf6b61e124481bfb1ca5a8a6a6408fe116eff41d836e6.json.gz",
+      "sha256": "25227e74bd804b6e15fbf6b61e124481bfb1ca5a8a6a6408fe116eff41d836e6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c58d0e090de2ffdaa0139bbaeebcdb973eb473508fc73b495fb23bfcd6e7a75c.json.gz",
+      "sha256": "c58d0e090de2ffdaa0139bbaeebcdb973eb473508fc73b495fb23bfcd6e7a75c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/bd837191ea39bf25d12c28f47fe33c1a87e969232037a73e6378d74ccdacae7a.json.gz",
+      "sha256": "bd837191ea39bf25d12c28f47fe33c1a87e969232037a73e6378d74ccdacae7a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/bab8934b942fe1534a3fe9c650e49296229a57bc346fc9fca15baa388157577e.json.gz",
+      "sha256": "bab8934b942fe1534a3fe9c650e49296229a57bc346fc9fca15baa388157577e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/99a76a69dbd2e0599780af2a529a39e434e62683cdfcb591de026ad878297acb.json.gz",
+      "sha256": "99a76a69dbd2e0599780af2a529a39e434e62683cdfcb591de026ad878297acb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/adcd3085748316df3106ba4a5d473fb477e91809777607740d71208f1196f4bf.json.gz",
+      "sha256": "adcd3085748316df3106ba4a5d473fb477e91809777607740d71208f1196f4bf"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/bfd066c7626069a5b33df6fb970c1458827c1517ffcfae13a5210c1b20d7e321.json.gz",
+      "sha256": "bfd066c7626069a5b33df6fb970c1458827c1517ffcfae13a5210c1b20d7e321"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5d03df544666b03826c2cbfa36d0b423168350c1ad74a66ab43223e0a925823f.json.gz",
+      "sha256": "5d03df544666b03826c2cbfa36d0b423168350c1ad74a66ab43223e0a925823f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/0326e2a3875e03b20150ac1f81af90498b9e70d571fbd64d2d65319285083daa.json.gz",
+      "sha256": "0326e2a3875e03b20150ac1f81af90498b9e70d571fbd64d2d65319285083daa"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/e75f0684c17460ba5e7ace8886b226889b04074ac281991920b642daef232315.json.gz",
+      "sha256": "e75f0684c17460ba5e7ace8886b226889b04074ac281991920b642daef232315"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c9f135ff864b16467bbf81b9feffcffdb6952cc8a7e45fa4ecc8d6b9a12c53a6.json.gz",
+      "sha256": "c9f135ff864b16467bbf81b9feffcffdb6952cc8a7e45fa4ecc8d6b9a12c53a6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/079f2322d34fc199add25840b9834c0e98f7cdc024456a7128b132097171290f.json.gz",
+      "sha256": "079f2322d34fc199add25840b9834c0e98f7cdc024456a7128b132097171290f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/3a11545582fdea1f3e204d64b146e56d690b06e54e7fa1395a7301aab51b803b.json.gz",
+      "sha256": "3a11545582fdea1f3e204d64b146e56d690b06e54e7fa1395a7301aab51b803b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/66c636c1a1b0cb2a1711852a82a2cb6b76b7d2cfc9129afb96e80be9127582ec.json.gz",
+      "sha256": "66c636c1a1b0cb2a1711852a82a2cb6b76b7d2cfc9129afb96e80be9127582ec"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/185fabe4ebb6bbf0880de505c5e09ddf53b1c5118aecd803ccaaf8f6e7f43101.json.gz",
+      "sha256": "185fabe4ebb6bbf0880de505c5e09ddf53b1c5118aecd803ccaaf8f6e7f43101"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/a2bca027b4f94ba5895ee6787291298de16bc6acb64c279f02783360f99bfbe0.json.gz",
+      "sha256": "a2bca027b4f94ba5895ee6787291298de16bc6acb64c279f02783360f99bfbe0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/4c66b890ec6ab677267f1a624366bbfd3d787e20917288096a33c5307d188e8c.json.gz",
+      "sha256": "4c66b890ec6ab677267f1a624366bbfd3d787e20917288096a33c5307d188e8c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/2b9ce372a89d9d2ff7639377d53997beb839cdbbaf7a587c53ca9dd5e24975b4.json.gz",
+      "sha256": "2b9ce372a89d9d2ff7639377d53997beb839cdbbaf7a587c53ca9dd5e24975b4"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/00c0ffc12a7085e700d3af4a1d8c3328bd00a709295a1b3043a7e05954eb67d1.json.gz",
+      "sha256": "00c0ffc12a7085e700d3af4a1d8c3328bd00a709295a1b3043a7e05954eb67d1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/398c532c38934c674f28474213cfa74cb5035bd7cc393241cd668d165d5123ff.json.gz",
+      "sha256": "398c532c38934c674f28474213cfa74cb5035bd7cc393241cd668d165d5123ff"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/8a995d77b97c8e6f5bd6d135e15f22907bcdddacdf4fe594dd06538c614c7f25.json.gz",
+      "sha256": "8a995d77b97c8e6f5bd6d135e15f22907bcdddacdf4fe594dd06538c614c7f25"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/718095a10bd497ede13e94dbcd307248321ce0ebad56c0f5f05b1490382a1dc0.json.gz",
+      "sha256": "718095a10bd497ede13e94dbcd307248321ce0ebad56c0f5f05b1490382a1dc0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/91b0d98d2176ebce90d801c5e9c01162f9a02c897d67c892f3dcd422665b4896.json.gz",
+      "sha256": "91b0d98d2176ebce90d801c5e9c01162f9a02c897d67c892f3dcd422665b4896"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/f306240fdde278853cd14639dd0b605e27ad6d3d4211761eb33b9958d8aeccd0.json.gz",
+      "sha256": "f306240fdde278853cd14639dd0b605e27ad6d3d4211761eb33b9958d8aeccd0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/d443ce324dd288da3c9f6e2f42cd6c1bc01faba87c6f120e2f33f7ece9a83b5b.json.gz",
+      "sha256": "d443ce324dd288da3c9f6e2f42cd6c1bc01faba87c6f120e2f33f7ece9a83b5b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/5803ac84767e082143730d2753920c5f667754da159bb602cb25158f1f653c0b.json.gz",
+      "sha256": "5803ac84767e082143730d2753920c5f667754da159bb602cb25158f1f653c0b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/e74cfb2be9bca7034021d0241f335a030b277d57484b7f08d187d0c341e15f99.json.gz",
+      "sha256": "e74cfb2be9bca7034021d0241f335a030b277d57484b7f08d187d0c341e15f99"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/24e19329039c459cea4cf6bb8989b8883317176fcdc213abd9f70ab08758a279.json.gz",
+      "sha256": "24e19329039c459cea4cf6bb8989b8883317176fcdc213abd9f70ab08758a279"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/87bbb9a3dae7ddce96569738d951fcb76c377deac606d5953957adfceb9d500e.json.gz",
+      "sha256": "87bbb9a3dae7ddce96569738d951fcb76c377deac606d5953957adfceb9d500e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/bb5332af263299c5f15830bb6276e1f7a02802d5c5b13a098ab74aadb0a81eba.json.gz",
+      "sha256": "bb5332af263299c5f15830bb6276e1f7a02802d5c5b13a098ab74aadb0a81eba"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/7841c425a7cd5e71f039f4f90127523c7e826945f5b84e4f686a5516656cfdda.json.gz",
+      "sha256": "7841c425a7cd5e71f039f4f90127523c7e826945f5b84e4f686a5516656cfdda"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/a415d195a74c4b784601656593ffd6af7b7cf4bb2d208779e96bf41e1ed6ba85.json.gz",
+      "sha256": "a415d195a74c4b784601656593ffd6af7b7cf4bb2d208779e96bf41e1ed6ba85"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/ZGGG/2026-10-05/c69a6274a11aeb541977e11263b74c955c56e0c054bee116f16dd9b5f5c1a5f1.json.gz",
+      "sha256": "c69a6274a11aeb541977e11263b74c955c56e0c054bee116f16dd9b5f5c1a5f1"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/ae2c72da9d181a9be60067462a9632d264a05730f8b672b91a4771f4e1717b17.json.gz",
+      "sha256": "ae2c72da9d181a9be60067462a9632d264a05730f8b672b91a4771f4e1717b17"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/ec68f798c168e82867ff5040f6988158e1062d6dbe68bd66072713422721db30.json.gz",
+      "sha256": "ec68f798c168e82867ff5040f6988158e1062d6dbe68bd66072713422721db30"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/e11c6b411d0aebca4a2cd25e65d9ad7329c9fcfd5eedf01491ffce7772761788.json.gz",
+      "sha256": "e11c6b411d0aebca4a2cd25e65d9ad7329c9fcfd5eedf01491ffce7772761788"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/c67e544cd9d74940932da2906664d4f0ad8960e20db9539ac2c4e0fb415908e5.json.gz",
+      "sha256": "c67e544cd9d74940932da2906664d4f0ad8960e20db9539ac2c4e0fb415908e5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/34558f65f57b83426a6a4b2397d36709ec72449d4b151829d7cc0f8750779df2.json.gz",
+      "sha256": "34558f65f57b83426a6a4b2397d36709ec72449d4b151829d7cc0f8750779df2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/14e2cfe9b77760e3a7e878d0317ec056e03255ac59529fb608981f9659eb4233.json.gz",
+      "sha256": "14e2cfe9b77760e3a7e878d0317ec056e03255ac59529fb608981f9659eb4233"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/4f18550ab10958714136f3b3943c9138791da2f53f006a5a40cb423fb3ec31b2.json.gz",
+      "sha256": "4f18550ab10958714136f3b3943c9138791da2f53f006a5a40cb423fb3ec31b2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/1333ac023d390bf99526670b45201c3c4e186cf00d1c2ca6c3e9ba270308d98d.json.gz",
+      "sha256": "1333ac023d390bf99526670b45201c3c4e186cf00d1c2ca6c3e9ba270308d98d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/8e5b1fcc1a835941e1f802b18a4ad5cd8ad57dd3ee9f8553a44aa65a7b66b3ef.json.gz",
+      "sha256": "8e5b1fcc1a835941e1f802b18a4ad5cd8ad57dd3ee9f8553a44aa65a7b66b3ef"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/2f6355271a31c2c5328dbd073e77d543dfcb7bf9eb808b649b8bbdeb36f88def.json.gz",
+      "sha256": "2f6355271a31c2c5328dbd073e77d543dfcb7bf9eb808b649b8bbdeb36f88def"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/33622fea4fc2cbc6bc87b05dcc881b2c26ef76380d275ef41b3a07808f0ec46c.json.gz",
+      "sha256": "33622fea4fc2cbc6bc87b05dcc881b2c26ef76380d275ef41b3a07808f0ec46c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/ddd4211f3fe2b3a297e18d3a25bcd9af36ef6b3be8068022d5dbde92f30112e1.json.gz",
+      "sha256": "ddd4211f3fe2b3a297e18d3a25bcd9af36ef6b3be8068022d5dbde92f30112e1"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/2997a2bf14dacf0eefbba68b3d341d16fa50ab814b4410dfdd4f18838085e986.json.gz",
+      "sha256": "2997a2bf14dacf0eefbba68b3d341d16fa50ab814b4410dfdd4f18838085e986"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/a4e086ee2ae0721d8e34a7f0f3337a9019af475d72471333e1a7dbbeb8e3fd19.json.gz",
+      "sha256": "a4e086ee2ae0721d8e34a7f0f3337a9019af475d72471333e1a7dbbeb8e3fd19"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/1d9a94166cd26a873c00dfc2a111102a1dab33430d57addea9c13354798ecc51.json.gz",
+      "sha256": "1d9a94166cd26a873c00dfc2a111102a1dab33430d57addea9c13354798ecc51"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/7266efdd3d2b284597c89e3ead694ab224a6df1befb9345d644c4bef9a3e52d1.json.gz",
+      "sha256": "7266efdd3d2b284597c89e3ead694ab224a6df1befb9345d644c4bef9a3e52d1"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/63632151ab4e953e4e5ae0db35c168dc7fac1b3a05275ec1443c0456642f4717.json.gz",
+      "sha256": "63632151ab4e953e4e5ae0db35c168dc7fac1b3a05275ec1443c0456642f4717"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/b0cd572b8985add04f17d376db96ed541b681ceb39acc1ad65e784360f852d37.json.gz",
+      "sha256": "b0cd572b8985add04f17d376db96ed541b681ceb39acc1ad65e784360f852d37"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/17c531dafd9529ae7ed7f1596462a9d9f7c3d0545aacf3e90b6a441016a8d097.json.gz",
+      "sha256": "17c531dafd9529ae7ed7f1596462a9d9f7c3d0545aacf3e90b6a441016a8d097"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/c8bd037060c7e4daa80f3427836de02b36c8958d5b31aa8fb8854833fbbb245d.json.gz",
+      "sha256": "c8bd037060c7e4daa80f3427836de02b36c8958d5b31aa8fb8854833fbbb245d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/ba9e82b96e4299356f770564dcdb524d533db08c9dd98d1d1255b5b8f7a7bfd8.json.gz",
+      "sha256": "ba9e82b96e4299356f770564dcdb524d533db08c9dd98d1d1255b5b8f7a7bfd8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/e3148903de147bb862ff35aee452ca91017d982fbe436585d03339faeb87220a.json.gz",
+      "sha256": "e3148903de147bb862ff35aee452ca91017d982fbe436585d03339faeb87220a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/c17e68f751124abf04c9c85fcacce46defbc3db415cf31c3e62e9e01ddfb0249.json.gz",
+      "sha256": "c17e68f751124abf04c9c85fcacce46defbc3db415cf31c3e62e9e01ddfb0249"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/5477649ed1482e432cecbca6b1caf378b137fa2401e672cc9614ab7d4dad72e3.json.gz",
+      "sha256": "5477649ed1482e432cecbca6b1caf378b137fa2401e672cc9614ab7d4dad72e3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/ef021f6ba875ef8ccc7365c66988dcc3cae24bb4989ba20052ee456a668a7558.json.gz",
+      "sha256": "ef021f6ba875ef8ccc7365c66988dcc3cae24bb4989ba20052ee456a668a7558"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/a3c9d1bd98248f050ecce0492ae64705a4b43f76df490e079e877b050a1c0763.json.gz",
+      "sha256": "a3c9d1bd98248f050ecce0492ae64705a4b43f76df490e079e877b050a1c0763"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/34528ec92a4dd17da62cae1857e2fadfa9660030791a060454fb06289b68003d.json.gz",
+      "sha256": "34528ec92a4dd17da62cae1857e2fadfa9660030791a060454fb06289b68003d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/a0234bf728628dc03e77f9cc4b5202c95a17608439592d974a303bd6a339a7b3.json.gz",
+      "sha256": "a0234bf728628dc03e77f9cc4b5202c95a17608439592d974a303bd6a339a7b3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/2ccb3130d3964363dffa25c9c77e2380db49026eddbd35a4ee2909f0b8ef0efa.json.gz",
+      "sha256": "2ccb3130d3964363dffa25c9c77e2380db49026eddbd35a4ee2909f0b8ef0efa"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/6a5f04fee94176e76600a73edd11a13d1bf2e7d8392deb0673b6c44e7ee105ee.json.gz",
+      "sha256": "6a5f04fee94176e76600a73edd11a13d1bf2e7d8392deb0673b6c44e7ee105ee"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/1554d5c6ab83fdeae9ada6cdb034234dd6cd60a197c17df63920f895a79848fc.json.gz",
+      "sha256": "1554d5c6ab83fdeae9ada6cdb034234dd6cd60a197c17df63920f895a79848fc"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/5df1a99ebabdca7eb046b1c923f09f8fad8ff6f9be2b50b75570009a1c7474c8.json.gz",
+      "sha256": "5df1a99ebabdca7eb046b1c923f09f8fad8ff6f9be2b50b75570009a1c7474c8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/de51e4fca207e8f0049caa59e40116ad7dec5140c238d131c94168925ebee9a4.json.gz",
+      "sha256": "de51e4fca207e8f0049caa59e40116ad7dec5140c238d131c94168925ebee9a4"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/a459815837549808b84a155d0d50b31d67c6daae1fa112d9d946719377d55e48.json.gz",
+      "sha256": "a459815837549808b84a155d0d50b31d67c6daae1fa112d9d946719377d55e48"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/5ef78980707c15609ec50ec31d54740b14705537c796a6f566cbe4df00b17e99.json.gz",
+      "sha256": "5ef78980707c15609ec50ec31d54740b14705537c796a6f566cbe4df00b17e99"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/2475c8920a6c942328775121dfb1b2c51355da03ff969c28bafcee803c89cd82.json.gz",
+      "sha256": "2475c8920a6c942328775121dfb1b2c51355da03ff969c28bafcee803c89cd82"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/157e26fefbc89753cc9d34fe9d73bde27fd5f134970877a59834be5636b3e638.json.gz",
+      "sha256": "157e26fefbc89753cc9d34fe9d73bde27fd5f134970877a59834be5636b3e638"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/914b98f405deb2764dc805d886c1361f4997020dc51c92c934ddde5b1d9c49ef.json.gz",
+      "sha256": "914b98f405deb2764dc805d886c1361f4997020dc51c92c934ddde5b1d9c49ef"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/6a0d422a83baae128016e182d35914502e0d6e650a364970edbc166f3cfcba51.json.gz",
+      "sha256": "6a0d422a83baae128016e182d35914502e0d6e650a364970edbc166f3cfcba51"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/ZGGG/2026-10-05/d6f13f741799a7324a14bb7323065b5fec738b99baa223eb4025fe7659865c3f.json.gz",
+      "sha256": "d6f13f741799a7324a14bb7323065b5fec738b99baa223eb4025fe7659865c3f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f6aed3b99c6add1ecfe42ad6df6b55ea03f857e8b0bb9973c80b9c3548dd5ee5.json.gz",
+      "sha256": "f6aed3b99c6add1ecfe42ad6df6b55ea03f857e8b0bb9973c80b9c3548dd5ee5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c48036ae851e58ba26ff89ff90ef8c92e6cdcc0276f8aa75ad950c5785d48f5f.json.gz",
+      "sha256": "c48036ae851e58ba26ff89ff90ef8c92e6cdcc0276f8aa75ad950c5785d48f5f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/5a881f224c66c4f3ab2946e25d0bdf916de9240815a143dda09786a7f9737f01.json.gz",
+      "sha256": "5a881f224c66c4f3ab2946e25d0bdf916de9240815a143dda09786a7f9737f01"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c7c1a36a3c906ba56a2242a43bce5d0392af509a0e4a81c8cb45d354684a472c.json.gz",
+      "sha256": "c7c1a36a3c906ba56a2242a43bce5d0392af509a0e4a81c8cb45d354684a472c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/818d9c6649ebdcebda3b89357c0580f937f6d38e1294a98a289ea4bc1bf13d4c.json.gz",
+      "sha256": "818d9c6649ebdcebda3b89357c0580f937f6d38e1294a98a289ea4bc1bf13d4c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/96b8daa5ebb602daea9383e1ec58c18432064e7a0a287b7263d84e1fd38a0e77.json.gz",
+      "sha256": "96b8daa5ebb602daea9383e1ec58c18432064e7a0a287b7263d84e1fd38a0e77"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a9d65a01e481e92c238e7ca12d3244048c141bda2b9cc25df18dbbce3c9bc51c.json.gz",
+      "sha256": "a9d65a01e481e92c238e7ca12d3244048c141bda2b9cc25df18dbbce3c9bc51c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ff45542f906e8302e0156ae00b6220d211b6f130d5f3299b86ddad827b944cf6.json.gz",
+      "sha256": "ff45542f906e8302e0156ae00b6220d211b6f130d5f3299b86ddad827b944cf6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/5318c3aa3b923cdb0bc37574b44b227cc17000b79ebb56de5a473aa7cc89c4a9.json.gz",
+      "sha256": "5318c3aa3b923cdb0bc37574b44b227cc17000b79ebb56de5a473aa7cc89c4a9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f0e910ffad71a6772fb3282a8d3ba144d3e5aacf0b2664f52bd1f9d3026c0f9b.json.gz",
+      "sha256": "f0e910ffad71a6772fb3282a8d3ba144d3e5aacf0b2664f52bd1f9d3026c0f9b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/94773468cdd19aa9e16763d04a7e588626a267f8fffa8f6f7f653f34e75115b4.json.gz",
+      "sha256": "94773468cdd19aa9e16763d04a7e588626a267f8fffa8f6f7f653f34e75115b4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/4ef400c3def2a0280e0644eeb744dda7319d661852c411163e330ad67e72fa45.json.gz",
+      "sha256": "4ef400c3def2a0280e0644eeb744dda7319d661852c411163e330ad67e72fa45"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/44684c43e859fcc919cb20a023fbd58564d01dcebd214f490ae72bc5e4091f92.json.gz",
+      "sha256": "44684c43e859fcc919cb20a023fbd58564d01dcebd214f490ae72bc5e4091f92"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/1bb009f11735d0e620dfbece36f55af33a4b00d60de145bfe4e1a02fe99bbcbd.json.gz",
+      "sha256": "1bb009f11735d0e620dfbece36f55af33a4b00d60de145bfe4e1a02fe99bbcbd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b3a60e2e8aff79fc95202c7026169fe6476bd7ce4b7eb7a77840667672366c7b.json.gz",
+      "sha256": "b3a60e2e8aff79fc95202c7026169fe6476bd7ce4b7eb7a77840667672366c7b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/13b0cf0160090900ffbc1267db5c84ffe3d90d572b086dfdb618d2ee98a12250.json.gz",
+      "sha256": "13b0cf0160090900ffbc1267db5c84ffe3d90d572b086dfdb618d2ee98a12250"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a932e8ca970400a886b4eda5317881fce2965d5cf66f5b830be8c3997a0fd715.json.gz",
+      "sha256": "a932e8ca970400a886b4eda5317881fce2965d5cf66f5b830be8c3997a0fd715"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/9698aea99c246028a60098d95119ccebcc05ba831a5414102369749ac6212fd6.json.gz",
+      "sha256": "9698aea99c246028a60098d95119ccebcc05ba831a5414102369749ac6212fd6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/58924de01b2ae72c30c37d56a77bf08891ba53636308c6eb23b5526828187e06.json.gz",
+      "sha256": "58924de01b2ae72c30c37d56a77bf08891ba53636308c6eb23b5526828187e06"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ca59d5988cea1d879091a3c978cda5a7b1ceeac5988fabe11476302a526a4c12.json.gz",
+      "sha256": "ca59d5988cea1d879091a3c978cda5a7b1ceeac5988fabe11476302a526a4c12"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2f624ad9384b066b832c1191d86f4ee64e4befb239ccb165f6a7d4fafed84691.json.gz",
+      "sha256": "2f624ad9384b066b832c1191d86f4ee64e4befb239ccb165f6a7d4fafed84691"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/16411451b459ec9ed79a4cbb1a8555312ff45fc388f00d1d3422d94fee3a8170.json.gz",
+      "sha256": "16411451b459ec9ed79a4cbb1a8555312ff45fc388f00d1d3422d94fee3a8170"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3eaf4ef6a91b7dc1bc02d8ab7255589a9859cb7d25336bc2de207f99c7818b71.json.gz",
+      "sha256": "3eaf4ef6a91b7dc1bc02d8ab7255589a9859cb7d25336bc2de207f99c7818b71"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/087ca4463d0cfe10e2d18d4607e3e93a16a873f92cb469ecf2e4621addcfaf5c.json.gz",
+      "sha256": "087ca4463d0cfe10e2d18d4607e3e93a16a873f92cb469ecf2e4621addcfaf5c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8005c37fc77e1bad3f454eab29cec6d66c1ba07df32aac8c6213bcb0cac7748b.json.gz",
+      "sha256": "8005c37fc77e1bad3f454eab29cec6d66c1ba07df32aac8c6213bcb0cac7748b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d1ea433c079cb4471ccf2012ce6bda7a477e5eceb465dbd8d96585c9429ef4f6.json.gz",
+      "sha256": "d1ea433c079cb4471ccf2012ce6bda7a477e5eceb465dbd8d96585c9429ef4f6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ad5e7917fb830a08a0205a836a69ce5f61776420f84ba78940ebce5f5d1fbcab.json.gz",
+      "sha256": "ad5e7917fb830a08a0205a836a69ce5f61776420f84ba78940ebce5f5d1fbcab"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/63f706eb11f4cc4b19641d2cbd2688ef3d9c771851f6de0e32192e68695fa4da.json.gz",
+      "sha256": "63f706eb11f4cc4b19641d2cbd2688ef3d9c771851f6de0e32192e68695fa4da"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3a3e05816138de4ebb5331e0f083740f63182307936a31f983a81bfde3b68604.json.gz",
+      "sha256": "3a3e05816138de4ebb5331e0f083740f63182307936a31f983a81bfde3b68604"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/88f48e6d301e3453590496a5ecae3c101db6ff3b646ff7b9fd29e584df97873b.json.gz",
+      "sha256": "88f48e6d301e3453590496a5ecae3c101db6ff3b646ff7b9fd29e584df97873b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/493296c4d9744aeebe5803b8fae9194530bf2a07d529d8c43e81a635a88a3c94.json.gz",
+      "sha256": "493296c4d9744aeebe5803b8fae9194530bf2a07d529d8c43e81a635a88a3c94"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/175ae64ccfccb93dcf6d0150a5f891e77be2669264963b442ab208d9802c145b.json.gz",
+      "sha256": "175ae64ccfccb93dcf6d0150a5f891e77be2669264963b442ab208d9802c145b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/1cf4bbce40e24677a170d116523c65c7f31a09043aa3d01e690176dd90937d71.json.gz",
+      "sha256": "1cf4bbce40e24677a170d116523c65c7f31a09043aa3d01e690176dd90937d71"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8564649fcad2af68ffcb6c7733a444c538777c6fcbf60341f15849659c31aa1f.json.gz",
+      "sha256": "8564649fcad2af68ffcb6c7733a444c538777c6fcbf60341f15849659c31aa1f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/0ce81d9129d4328e1d30edf713a75701f9fed2e740b96d759f623dcf34123b19.json.gz",
+      "sha256": "0ce81d9129d4328e1d30edf713a75701f9fed2e740b96d759f623dcf34123b19"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c1ad98f87a949d00c3004fc2dbfb280ff4ae12b2ab357a01d11ebb1111baeef2.json.gz",
+      "sha256": "c1ad98f87a949d00c3004fc2dbfb280ff4ae12b2ab357a01d11ebb1111baeef2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7bf2dcd120ab9582d6a9a9e9e25897df7345de9d755ed619314b28175c141486.json.gz",
+      "sha256": "7bf2dcd120ab9582d6a9a9e9e25897df7345de9d755ed619314b28175c141486"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/14388fa09d524ea5788e257884d47f6eaf7ba938eec3057d8def2f8d9daf9c8d.json.gz",
+      "sha256": "14388fa09d524ea5788e257884d47f6eaf7ba938eec3057d8def2f8d9daf9c8d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/29cf7a171ef658501fd408030bd82ed90e4e803337015cd1c45df71b522a14eb.json.gz",
+      "sha256": "29cf7a171ef658501fd408030bd82ed90e4e803337015cd1c45df71b522a14eb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/dd037a8e9e72fc7f911a6a39fca7b606ad996cedaeda4ecc534a90e44b08925a.json.gz",
+      "sha256": "dd037a8e9e72fc7f911a6a39fca7b606ad996cedaeda4ecc534a90e44b08925a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/bbe9dcd89fe3d85652a84b165723596252e4ee45072484839204726069f6479c.json.gz",
+      "sha256": "bbe9dcd89fe3d85652a84b165723596252e4ee45072484839204726069f6479c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/feeb8a67ecc782bd4cba3741510ea1265b5900555341858ce2d681c4a39438dd.json.gz",
+      "sha256": "feeb8a67ecc782bd4cba3741510ea1265b5900555341858ce2d681c4a39438dd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/19ef6d29c90c4d1254f1dd41bcd30b20da637809183a1db49a96715a79cb35b0.json.gz",
+      "sha256": "19ef6d29c90c4d1254f1dd41bcd30b20da637809183a1db49a96715a79cb35b0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/056e115d8d059c80508244edee649ef330e5ac37ed49578284ae3e39e5f9135d.json.gz",
+      "sha256": "056e115d8d059c80508244edee649ef330e5ac37ed49578284ae3e39e5f9135d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8ac23176b888eef2e8993becdde954ed9dc485a413bd02adfa2170945f6cdc50.json.gz",
+      "sha256": "8ac23176b888eef2e8993becdde954ed9dc485a413bd02adfa2170945f6cdc50"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/0def5c49529dc080fab3b840f5fea25bf2036c58abcf069ac07094ad229c304d.json.gz",
+      "sha256": "0def5c49529dc080fab3b840f5fea25bf2036c58abcf069ac07094ad229c304d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d39651de0fb4456e2a26dea4217c56c5c2a85650853ea4198c04de9bee413de3.json.gz",
+      "sha256": "d39651de0fb4456e2a26dea4217c56c5c2a85650853ea4198c04de9bee413de3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/47d81b0961916b41917a6558746c3c4ceea7834ee5db8627e4792c1d1bf502d5.json.gz",
+      "sha256": "47d81b0961916b41917a6558746c3c4ceea7834ee5db8627e4792c1d1bf502d5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/9b5014b5dffa37fdf08b92b39ead65ec52e882a2d06dc214c18b8c89688e3038.json.gz",
+      "sha256": "9b5014b5dffa37fdf08b92b39ead65ec52e882a2d06dc214c18b8c89688e3038"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c2f5cc305fa888bd3e79f970c4b233134fd5f4d19700f07ff170aaa5b0ee9a47.json.gz",
+      "sha256": "c2f5cc305fa888bd3e79f970c4b233134fd5f4d19700f07ff170aaa5b0ee9a47"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3dac28996c98a5b2fbe58f4fd4edb38eaa38b3b90257681b396ef6ea34329b8e.json.gz",
+      "sha256": "3dac28996c98a5b2fbe58f4fd4edb38eaa38b3b90257681b396ef6ea34329b8e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3f2cb6c2fa298bdf7d59d7f1f1bb00afaf0aac85994adcf8557eb85031f12899.json.gz",
+      "sha256": "3f2cb6c2fa298bdf7d59d7f1f1bb00afaf0aac85994adcf8557eb85031f12899"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/37408d349e1b174b7e3ef8a215ff2a9766e3a80664bf9940b8c3998f82c2d02e.json.gz",
+      "sha256": "37408d349e1b174b7e3ef8a215ff2a9766e3a80664bf9940b8c3998f82c2d02e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/be09d08954b4824f6d6018bbad4567811befc5987a2fd7f637b27cb968a62752.json.gz",
+      "sha256": "be09d08954b4824f6d6018bbad4567811befc5987a2fd7f637b27cb968a62752"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/82d557ba4113b2996ca31ac155a46da352322018da6955880e63af5954e90738.json.gz",
+      "sha256": "82d557ba4113b2996ca31ac155a46da352322018da6955880e63af5954e90738"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/5d729b7da4b94c5554f37dc5b4af7ffad995904e6b59f3569df6ce04d6cbf09a.json.gz",
+      "sha256": "5d729b7da4b94c5554f37dc5b4af7ffad995904e6b59f3569df6ce04d6cbf09a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/64592276fa106f27d5a7c0a0f91ea0b0e1b8c4b4d27a40b16994908c8038b1b7.json.gz",
+      "sha256": "64592276fa106f27d5a7c0a0f91ea0b0e1b8c4b4d27a40b16994908c8038b1b7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/dee5d852bac8b9b07223e41c4ceef745e251784a1de9f3025d0ea8ae86071753.json.gz",
+      "sha256": "dee5d852bac8b9b07223e41c4ceef745e251784a1de9f3025d0ea8ae86071753"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ebe9aac5ebbe46d0b50d58c97542dcd7877775171ec414c6d67150e27fecbd81.json.gz",
+      "sha256": "ebe9aac5ebbe46d0b50d58c97542dcd7877775171ec414c6d67150e27fecbd81"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/eb5ba05dc1ccde88dad42f6d0a8a4fc28f063d94c447da21f50d377b2f26ae16.json.gz",
+      "sha256": "eb5ba05dc1ccde88dad42f6d0a8a4fc28f063d94c447da21f50d377b2f26ae16"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/416d1a4b5861ae360a28ffea421e5ea7cabd2c6b52a3dcc8be3e6f52a298d398.json.gz",
+      "sha256": "416d1a4b5861ae360a28ffea421e5ea7cabd2c6b52a3dcc8be3e6f52a298d398"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2203bc7dadd34cf20d4e8d2037a60ef5b39ffbd05f9d690acf5e1f232776eb86.json.gz",
+      "sha256": "2203bc7dadd34cf20d4e8d2037a60ef5b39ffbd05f9d690acf5e1f232776eb86"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c3a6515e8d7d42bfe7c4df8381c83c7905f55ece7d929d42cd6442c4fff932fd.json.gz",
+      "sha256": "c3a6515e8d7d42bfe7c4df8381c83c7905f55ece7d929d42cd6442c4fff932fd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/89e4e32d6fdd5924e39db689a6cad7824a9664625fb748b3aa0126b5d6b7c6da.json.gz",
+      "sha256": "89e4e32d6fdd5924e39db689a6cad7824a9664625fb748b3aa0126b5d6b7c6da"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2aae36a8aa35f5df41663a60d8484ae38b1daa7a82d0c5e433d40e5237b05429.json.gz",
+      "sha256": "2aae36a8aa35f5df41663a60d8484ae38b1daa7a82d0c5e433d40e5237b05429"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/45e163c05487e2c4767eefe4262f994d498360cc09ddbb41e9e05e5df2b509a0.json.gz",
+      "sha256": "45e163c05487e2c4767eefe4262f994d498360cc09ddbb41e9e05e5df2b509a0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d558fbbfa6e182ca2f92cc998097d857014b2aa5afac38da8f27a064aa369a53.json.gz",
+      "sha256": "d558fbbfa6e182ca2f92cc998097d857014b2aa5afac38da8f27a064aa369a53"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/433c265e7c51a602ff2e85bdcd5ccb88e6063766caf9a83e255409ea8cabbfc0.json.gz",
+      "sha256": "433c265e7c51a602ff2e85bdcd5ccb88e6063766caf9a83e255409ea8cabbfc0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2da68adade56a150df1a6f79b572dc50af6a0b11e2fedf5489ee4503ed7a394d.json.gz",
+      "sha256": "2da68adade56a150df1a6f79b572dc50af6a0b11e2fedf5489ee4503ed7a394d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/9c6a9cde6ceca7ebd4ec58b7ce2e82c052762fa00f6230712b6047f476e9ab2b.json.gz",
+      "sha256": "9c6a9cde6ceca7ebd4ec58b7ce2e82c052762fa00f6230712b6047f476e9ab2b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ec41a6cbc3dd22b1d6a072534be46a334cc0153760e51119a3be5a47734d5806.json.gz",
+      "sha256": "ec41a6cbc3dd22b1d6a072534be46a334cc0153760e51119a3be5a47734d5806"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d477ddc92f8413a4ae628a6af67a1cf4ed33e1ac4486a4cc6920d26252b28eb6.json.gz",
+      "sha256": "d477ddc92f8413a4ae628a6af67a1cf4ed33e1ac4486a4cc6920d26252b28eb6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/300c65844f040db319420292b3b87ab9e4d711b5f85f5c45359a2ebeb2574286.json.gz",
+      "sha256": "300c65844f040db319420292b3b87ab9e4d711b5f85f5c45359a2ebeb2574286"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/344f322cd6ec48dcb948815665c3996e345a70f34a641d7b193b82431293b5cb.json.gz",
+      "sha256": "344f322cd6ec48dcb948815665c3996e345a70f34a641d7b193b82431293b5cb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8251b37c0313ca5caa6f80e80a02c9dcba56acba18a983438e9d97a91bd5ec9c.json.gz",
+      "sha256": "8251b37c0313ca5caa6f80e80a02c9dcba56acba18a983438e9d97a91bd5ec9c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/47a212a66c7ea4091d1fb07a221b48b325f8da1e9b7a269028ec6f61462e901b.json.gz",
+      "sha256": "47a212a66c7ea4091d1fb07a221b48b325f8da1e9b7a269028ec6f61462e901b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c836cb494c71179d98187e04cab6a4449b5d2669c9bb3ba0a817d453a25ed49f.json.gz",
+      "sha256": "c836cb494c71179d98187e04cab6a4449b5d2669c9bb3ba0a817d453a25ed49f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b7053a0516b11ef17d9e08fdad6c48e06f31a260e9831bea15200fec943e8c8c.json.gz",
+      "sha256": "b7053a0516b11ef17d9e08fdad6c48e06f31a260e9831bea15200fec943e8c8c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/567f3907d835050725e35dd372875113a5c33182aa44a9fa18fbde163c341cd1.json.gz",
+      "sha256": "567f3907d835050725e35dd372875113a5c33182aa44a9fa18fbde163c341cd1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b01af48ac28a71eb5c2fa20617b305dd7454c574de1403d7bcb57d6ae408f3fe.json.gz",
+      "sha256": "b01af48ac28a71eb5c2fa20617b305dd7454c574de1403d7bcb57d6ae408f3fe"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/9d5c204bec316a0d8e9f37bbb1be16953a3665d75e8a0429116069f405986a46.json.gz",
+      "sha256": "9d5c204bec316a0d8e9f37bbb1be16953a3665d75e8a0429116069f405986a46"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c1fdf168e4cac3e27561b3ac66dbfb856f1ff00def395b03d47fc5f330f939fd.json.gz",
+      "sha256": "c1fdf168e4cac3e27561b3ac66dbfb856f1ff00def395b03d47fc5f330f939fd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/87538fd04aa451388345cc04d19bb517646459e96987e5e361b22c90e37a2ce1.json.gz",
+      "sha256": "87538fd04aa451388345cc04d19bb517646459e96987e5e361b22c90e37a2ce1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d1b8f613306e47735206ad55a9fa511b3c49d2aae327e0b062d1a5e545e66937.json.gz",
+      "sha256": "d1b8f613306e47735206ad55a9fa511b3c49d2aae327e0b062d1a5e545e66937"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/01fb2dc812ebb2ace0831af5389b11c712c30cc655441ba877bc3dc3a3281b27.json.gz",
+      "sha256": "01fb2dc812ebb2ace0831af5389b11c712c30cc655441ba877bc3dc3a3281b27"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/eb6c14f20775516ab30d765252bb214a25c845418e920e89be8362facec5b9f8.json.gz",
+      "sha256": "eb6c14f20775516ab30d765252bb214a25c845418e920e89be8362facec5b9f8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ada550d5a74813a7c4b69dae9c04f00a7522ac68cfdada692fe701ce33ec5cd0.json.gz",
+      "sha256": "ada550d5a74813a7c4b69dae9c04f00a7522ac68cfdada692fe701ce33ec5cd0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a2127c963602e52183a6584d8aed1a9f74954371a6812d7bfe47bcbdd3a1dc55.json.gz",
+      "sha256": "a2127c963602e52183a6584d8aed1a9f74954371a6812d7bfe47bcbdd3a1dc55"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7d60f13f3e4403deba569871acf456e26898304a66ec90e0069470d20732ec77.json.gz",
+      "sha256": "7d60f13f3e4403deba569871acf456e26898304a66ec90e0069470d20732ec77"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ba9eec5d198f031646010b0624de32ef36bc3336401b21ee96293287b4585729.json.gz",
+      "sha256": "ba9eec5d198f031646010b0624de32ef36bc3336401b21ee96293287b4585729"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/13d3b1c74ac38bcc22a40c839899b06ecc62a1ddd7c0c9c0e81efe4ffa8a7e8f.json.gz",
+      "sha256": "13d3b1c74ac38bcc22a40c839899b06ecc62a1ddd7c0c9c0e81efe4ffa8a7e8f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/39ac33b1e7c89d6883ec48451c2279f3d1151d2c4bea247d0c8c763106ca4bce.json.gz",
+      "sha256": "39ac33b1e7c89d6883ec48451c2279f3d1151d2c4bea247d0c8c763106ca4bce"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/6ac701c882710b58e044d88489a49b85f5bfdd8626cb5fe07275efb61fc75717.json.gz",
+      "sha256": "6ac701c882710b58e044d88489a49b85f5bfdd8626cb5fe07275efb61fc75717"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/89490d3cd4b987b50e5df263b1ee5b294a8aeba322337ddf1b228f694428dd4e.json.gz",
+      "sha256": "89490d3cd4b987b50e5df263b1ee5b294a8aeba322337ddf1b228f694428dd4e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/4fdcc29adaf564f7a6931f2e16aee84a4c6267cd60cae171bdb288353cf98d65.json.gz",
+      "sha256": "4fdcc29adaf564f7a6931f2e16aee84a4c6267cd60cae171bdb288353cf98d65"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/69815a387117794b785809a83ca1f6c6ac4be5728eee75f87bdb711ca7e38b45.json.gz",
+      "sha256": "69815a387117794b785809a83ca1f6c6ac4be5728eee75f87bdb711ca7e38b45"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f86dbb2af74a96b67225207980ff84c27198a5f5d9233cd5a474fee969f2831a.json.gz",
+      "sha256": "f86dbb2af74a96b67225207980ff84c27198a5f5d9233cd5a474fee969f2831a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f1edacdaeedb81a19279c912a64e60da626a88a2d9b30baced2f8c94ea7c1601.json.gz",
+      "sha256": "f1edacdaeedb81a19279c912a64e60da626a88a2d9b30baced2f8c94ea7c1601"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a85a3bea214f8073ebcabe3ee24d124a0d22148214badebfa58a4baa73cb4fe8.json.gz",
+      "sha256": "a85a3bea214f8073ebcabe3ee24d124a0d22148214badebfa58a4baa73cb4fe8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ff4bfe2a2cf1d0371e76998220d7978c64667c1baca4600dfd57fb1f56c510af.json.gz",
+      "sha256": "ff4bfe2a2cf1d0371e76998220d7978c64667c1baca4600dfd57fb1f56c510af"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c609f06bb459edb6a926bcfd569f526cce0526c523632ecdbf83d22eb6d9e446.json.gz",
+      "sha256": "c609f06bb459edb6a926bcfd569f526cce0526c523632ecdbf83d22eb6d9e446"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/425ef05cfd83836fef64c3e5fc287e4da82993c14d44d3876343fbea5a25b155.json.gz",
+      "sha256": "425ef05cfd83836fef64c3e5fc287e4da82993c14d44d3876343fbea5a25b155"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/1a83acc22f76b7dff10f253397f7a46167c15bcef77c396922b24daef9d00423.json.gz",
+      "sha256": "1a83acc22f76b7dff10f253397f7a46167c15bcef77c396922b24daef9d00423"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/bb63b367e994279249f90285a42027e2cd9c047df81fa7fdd9c9d33b5c9d565a.json.gz",
+      "sha256": "bb63b367e994279249f90285a42027e2cd9c047df81fa7fdd9c9d33b5c9d565a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/280903cbbdecf9caab1e4c4aa655ce1aaab69635bbb631e95d6291cd4e1ee4aa.json.gz",
+      "sha256": "280903cbbdecf9caab1e4c4aa655ce1aaab69635bbb631e95d6291cd4e1ee4aa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/578a0e13310375fb00628878e359195bab65e706e40eae3ecc57d7e2a77c2855.json.gz",
+      "sha256": "578a0e13310375fb00628878e359195bab65e706e40eae3ecc57d7e2a77c2855"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a05c6f4f3364c8e8db07422e70e8b8837dfec21ddfc1a8a435d572d1b3215b43.json.gz",
+      "sha256": "a05c6f4f3364c8e8db07422e70e8b8837dfec21ddfc1a8a435d572d1b3215b43"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7c307262b97518f6cb24d6cf30daf9b0346192329ce2d6aa8e2109f1227facdf.json.gz",
+      "sha256": "7c307262b97518f6cb24d6cf30daf9b0346192329ce2d6aa8e2109f1227facdf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f1765947e6b23c38761b1b433a426ec5c6b4886c427e18ae49bd92d1faf47051.json.gz",
+      "sha256": "f1765947e6b23c38761b1b433a426ec5c6b4886c427e18ae49bd92d1faf47051"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/25f2e47a17aadcd0df6733ac22247e9a29efa1822cbbe9ab14f9ce19528212c6.json.gz",
+      "sha256": "25f2e47a17aadcd0df6733ac22247e9a29efa1822cbbe9ab14f9ce19528212c6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d0d35cb55c8bb3284c1af7c2b0e9a8032c1ae251b046cb7055b80bdf7dd38b8a.json.gz",
+      "sha256": "d0d35cb55c8bb3284c1af7c2b0e9a8032c1ae251b046cb7055b80bdf7dd38b8a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/0bc156ec35b08e3391775ea196e4cb0e296752ae96bb20cb9f8fa37fac0f73a6.json.gz",
+      "sha256": "0bc156ec35b08e3391775ea196e4cb0e296752ae96bb20cb9f8fa37fac0f73a6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/eff0324e0c40875387c9eb16d4c8c29e8409672aa5ae7dc7068ab788714ec24c.json.gz",
+      "sha256": "eff0324e0c40875387c9eb16d4c8c29e8409672aa5ae7dc7068ab788714ec24c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/e0c71b21e20548461a6eae03dad416df0305f7165b267f02a51c49da4ecd9655.json.gz",
+      "sha256": "e0c71b21e20548461a6eae03dad416df0305f7165b267f02a51c49da4ecd9655"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2705cc81730a10df2f271943949326cffac2a21dd19b44702672f15c81b442e1.json.gz",
+      "sha256": "2705cc81730a10df2f271943949326cffac2a21dd19b44702672f15c81b442e1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/ece0a8c6e98de5a1bbd63067e4a90c6870010c36a2b4121bc8bb55802fcd0be2.json.gz",
+      "sha256": "ece0a8c6e98de5a1bbd63067e4a90c6870010c36a2b4121bc8bb55802fcd0be2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/0b76a84b22ebb12fe7521aca7dc3dbf1e62d184ae4b987d2d58859e9108072e9.json.gz",
+      "sha256": "0b76a84b22ebb12fe7521aca7dc3dbf1e62d184ae4b987d2d58859e9108072e9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/20f502a92e74a1aaded6a3131458a2047facf6a0ab946cbbaf6a70f15ace5a43.json.gz",
+      "sha256": "20f502a92e74a1aaded6a3131458a2047facf6a0ab946cbbaf6a70f15ace5a43"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/1681cc89b9863d18064c2dedf7399d157e91a97fc0ada8823b224d393b82c0a6.json.gz",
+      "sha256": "1681cc89b9863d18064c2dedf7399d157e91a97fc0ada8823b224d393b82c0a6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/59bd87d5290251426da01d2dbda28e6ee301ee2d6bf9031503a1c19047c49617.json.gz",
+      "sha256": "59bd87d5290251426da01d2dbda28e6ee301ee2d6bf9031503a1c19047c49617"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2f279c25d80387d87ab6bf3459cea074e6232e68f8ce20ead3c8faf95c229df6.json.gz",
+      "sha256": "2f279c25d80387d87ab6bf3459cea074e6232e68f8ce20ead3c8faf95c229df6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/bc34ca8e02ce815060c2dfe7240d89ee009bfa4670830d6d36d212c4dc8996ec.json.gz",
+      "sha256": "bc34ca8e02ce815060c2dfe7240d89ee009bfa4670830d6d36d212c4dc8996ec"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/0ecad5d3dc5f29a0f9384b35c434053c65a90c9454b26450585c7ea39c547dc3.json.gz",
+      "sha256": "0ecad5d3dc5f29a0f9384b35c434053c65a90c9454b26450585c7ea39c547dc3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/92f10a6f97c38ae2a744b496fe5b343f08a83427912e73272b694b9301119695.json.gz",
+      "sha256": "92f10a6f97c38ae2a744b496fe5b343f08a83427912e73272b694b9301119695"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f02ff074bf1b97af58f690f0fd986608b991a5e2df68630a73288c27540fd34b.json.gz",
+      "sha256": "f02ff074bf1b97af58f690f0fd986608b991a5e2df68630a73288c27540fd34b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/aab1a3cade76a7406a292835a5adb775c7193f25efa65b47b977b0fd0d52ceab.json.gz",
+      "sha256": "aab1a3cade76a7406a292835a5adb775c7193f25efa65b47b977b0fd0d52ceab"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3f0e48b88aa8c72b6eed524b8c8a707d0871a8745ae2ef7650d3b0415b19900f.json.gz",
+      "sha256": "3f0e48b88aa8c72b6eed524b8c8a707d0871a8745ae2ef7650d3b0415b19900f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b9ef2aa64d136c16c1aaf36ccccd58c03f2244f46e540d61dafedd34bf026164.json.gz",
+      "sha256": "b9ef2aa64d136c16c1aaf36ccccd58c03f2244f46e540d61dafedd34bf026164"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/5d0560fa2b1f6de241636de57a7a5705ea23eb767998f5727bb1f4b115771ca9.json.gz",
+      "sha256": "5d0560fa2b1f6de241636de57a7a5705ea23eb767998f5727bb1f4b115771ca9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8e7cadb236998ae58f2dcd3c29e8d5e49523f14b75626da3f3407a2058ee6319.json.gz",
+      "sha256": "8e7cadb236998ae58f2dcd3c29e8d5e49523f14b75626da3f3407a2058ee6319"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/e414a08b82c3784107f86594135fd267fef9ea02c36de6ead18239c0951e509c.json.gz",
+      "sha256": "e414a08b82c3784107f86594135fd267fef9ea02c36de6ead18239c0951e509c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/1fd428cb56e54af2c4e74d8e084d3b5a0e08715a5c641c147f46789908282cd3.json.gz",
+      "sha256": "1fd428cb56e54af2c4e74d8e084d3b5a0e08715a5c641c147f46789908282cd3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/53cffd20c191c2f3aa79d511d0e01013171b1919d86e2f4c38d253c1b7c48620.json.gz",
+      "sha256": "53cffd20c191c2f3aa79d511d0e01013171b1919d86e2f4c38d253c1b7c48620"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8998f6b00bbfcf647511e1c61966df6e2faed6185801dceac76574f44874c610.json.gz",
+      "sha256": "8998f6b00bbfcf647511e1c61966df6e2faed6185801dceac76574f44874c610"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/66ea5cb90bae310e0bd1a6439aa1e6ec25deec18d520e4a00e61a40baebe12d0.json.gz",
+      "sha256": "66ea5cb90bae310e0bd1a6439aa1e6ec25deec18d520e4a00e61a40baebe12d0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/6acaba401c19d51192b2ed264b8a5c7ce53ef0650e119bda9ba1d8c13eac47b5.json.gz",
+      "sha256": "6acaba401c19d51192b2ed264b8a5c7ce53ef0650e119bda9ba1d8c13eac47b5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/bf62bea71552127c83c8fe0d58deb92c76b8c944fef51b3d88394041e29358f4.json.gz",
+      "sha256": "bf62bea71552127c83c8fe0d58deb92c76b8c944fef51b3d88394041e29358f4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/6b9c12aec126b8625e5584f741bfe660f4b9dfb3f5fb0c16fa53703318efe7e4.json.gz",
+      "sha256": "6b9c12aec126b8625e5584f741bfe660f4b9dfb3f5fb0c16fa53703318efe7e4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a9d0aad895b1ae4a84a1ef1ac9afb6c5279f1307b54faee6f77bc21ca411ce71.json.gz",
+      "sha256": "a9d0aad895b1ae4a84a1ef1ac9afb6c5279f1307b54faee6f77bc21ca411ce71"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7fca076202ba56834dcf64a9d7e23a6388e179ba06f81d326b76231375d2c698.json.gz",
+      "sha256": "7fca076202ba56834dcf64a9d7e23a6388e179ba06f81d326b76231375d2c698"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/d6f49b9bc3cd82633cee2a70eee224c81455090188f7c71af9a86120fd906f39.json.gz",
+      "sha256": "d6f49b9bc3cd82633cee2a70eee224c81455090188f7c71af9a86120fd906f39"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/eab819e52849e73887c7e82015f8b3983f3711cbb05f9725389989617fcaa35a.json.gz",
+      "sha256": "eab819e52849e73887c7e82015f8b3983f3711cbb05f9725389989617fcaa35a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7212347fcbbb965be1c36529c47325886164393636211da8471a4445ecf94367.json.gz",
+      "sha256": "7212347fcbbb965be1c36529c47325886164393636211da8471a4445ecf94367"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/536037447d05121ef15455fb6b7e7e460597861d06d285b6dcaad71976e2f0b2.json.gz",
+      "sha256": "536037447d05121ef15455fb6b7e7e460597861d06d285b6dcaad71976e2f0b2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/24d97dab2bdcda5ca1e0bff84e66c343513e8d86945a8414b8f32dbc9387bc62.json.gz",
+      "sha256": "24d97dab2bdcda5ca1e0bff84e66c343513e8d86945a8414b8f32dbc9387bc62"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/3531cadae4570fb70d31f6a2842351f4a5b62f6abb1c1100db83a3a6162b40e0.json.gz",
+      "sha256": "3531cadae4570fb70d31f6a2842351f4a5b62f6abb1c1100db83a3a6162b40e0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/f52bcf0248e6c4e42abc4a06f86b60ddb43ae9df6d243836ff2af4c6c78f3789.json.gz",
+      "sha256": "f52bcf0248e6c4e42abc4a06f86b60ddb43ae9df6d243836ff2af4c6c78f3789"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/cf770db7276c16685ddeec2c26d636acbe5136eeecee8f8cfed9622b6e5843b7.json.gz",
+      "sha256": "cf770db7276c16685ddeec2c26d636acbe5136eeecee8f8cfed9622b6e5843b7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7e07a796a84dffbc8eff7640e49904f65e702a9c3baceb122b055253a6b01520.json.gz",
+      "sha256": "7e07a796a84dffbc8eff7640e49904f65e702a9c3baceb122b055253a6b01520"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/2e3443c5b2fe74699a233bdd0f95267f6eb6a02f30fc267cc3e9d2ff89b588d5.json.gz",
+      "sha256": "2e3443c5b2fe74699a233bdd0f95267f6eb6a02f30fc267cc3e9d2ff89b588d5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/687dbe1685db9becf2ec77d9f7db1a485ba26be744f7d0a32919d25ced6828c0.json.gz",
+      "sha256": "687dbe1685db9becf2ec77d9f7db1a485ba26be744f7d0a32919d25ced6828c0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/dc8650f59dfc233c6fbadc43265656fcf54554adb0717805e5f5c0b4fe481ed8.json.gz",
+      "sha256": "dc8650f59dfc233c6fbadc43265656fcf54554adb0717805e5f5c0b4fe481ed8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/c48f629ec00948b936303822485aca12fdabe4becd08cf9a3d8db19f12e2bc80.json.gz",
+      "sha256": "c48f629ec00948b936303822485aca12fdabe4becd08cf9a3d8db19f12e2bc80"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/96912a6b70b08f80775d729f26ce77423f5cd0823e5ccf631181c4a2b5818cb5.json.gz",
+      "sha256": "96912a6b70b08f80775d729f26ce77423f5cd0823e5ccf631181c4a2b5818cb5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/784d6bd9d70f77997490e87fb4f750cc017061b5dc380a9b1b7cf88b26c79d09.json.gz",
+      "sha256": "784d6bd9d70f77997490e87fb4f750cc017061b5dc380a9b1b7cf88b26c79d09"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/59972aa3009084b269e4975b9aba039e62145e4dc3d07abc2580333ef3ded7cc.json.gz",
+      "sha256": "59972aa3009084b269e4975b9aba039e62145e4dc3d07abc2580333ef3ded7cc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8a7b8ac3494c46a7e417100373f9b39ded750d8f5522b5559fa84503b17e9eff.json.gz",
+      "sha256": "8a7b8ac3494c46a7e417100373f9b39ded750d8f5522b5559fa84503b17e9eff"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/20a3be911fad10c7b63121ee5028de648369220b9fc46c5524b10b41f412e980.json.gz",
+      "sha256": "20a3be911fad10c7b63121ee5028de648369220b9fc46c5524b10b41f412e980"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/eda276d820c9b22f02be1aa3e0bb20439d6674f5c3c24a29446c7bbeb6c5a36a.json.gz",
+      "sha256": "eda276d820c9b22f02be1aa3e0bb20439d6674f5c3c24a29446c7bbeb6c5a36a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a6590c7bc9075c42112fbcf19591fac4f95071c0e56932eef863540f5af21915.json.gz",
+      "sha256": "a6590c7bc9075c42112fbcf19591fac4f95071c0e56932eef863540f5af21915"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/12ae22e3d81e0dfcef66059f814b560c3805755948509a5a6d2d95f0fe6910d3.json.gz",
+      "sha256": "12ae22e3d81e0dfcef66059f814b560c3805755948509a5a6d2d95f0fe6910d3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/75920962dc5635a0194f7fff5b701eb4d11a37d58c0f10085b2809976847692e.json.gz",
+      "sha256": "75920962dc5635a0194f7fff5b701eb4d11a37d58c0f10085b2809976847692e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7bb9ad585f76e9892603dca20cb3337cf397881828cdc36d3fcf4f40af288583.json.gz",
+      "sha256": "7bb9ad585f76e9892603dca20cb3337cf397881828cdc36d3fcf4f40af288583"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/805c8c31a99088f3332f48c19675dd6506add7003d9c6ee3a0a86af2a02273e1.json.gz",
+      "sha256": "805c8c31a99088f3332f48c19675dd6506add7003d9c6ee3a0a86af2a02273e1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/381719c4c7a729f60e7e558f4787f368bbd676dbefb67f6af30eb1d0d5149c5b.json.gz",
+      "sha256": "381719c4c7a729f60e7e558f4787f368bbd676dbefb67f6af30eb1d0d5149c5b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/9378300a33b351a88b44a62677d9d99b0e2cb62e194ff3f50f89db5705fb28ec.json.gz",
+      "sha256": "9378300a33b351a88b44a62677d9d99b0e2cb62e194ff3f50f89db5705fb28ec"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a5501236c8c4c5a80b910e272592b432854e990505d20147f4fd93ae753a6c7f.json.gz",
+      "sha256": "a5501236c8c4c5a80b910e272592b432854e990505d20147f4fd93ae753a6c7f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/134a591adf15a2c730219f71781f00bb428442efedc827097023a1e41dcd726d.json.gz",
+      "sha256": "134a591adf15a2c730219f71781f00bb428442efedc827097023a1e41dcd726d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/e93b74184335e14e10c09b5881e281f3bd2354343ab5a1f906845582ffd03b24.json.gz",
+      "sha256": "e93b74184335e14e10c09b5881e281f3bd2354343ab5a1f906845582ffd03b24"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b0dda4aa69807dcc34ac8102c15e2ae351f33c435a9cc2bfe03e420eb87a7f5a.json.gz",
+      "sha256": "b0dda4aa69807dcc34ac8102c15e2ae351f33c435a9cc2bfe03e420eb87a7f5a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7bca5ace4844825457b5be1af3cfd129f5784fa81a04b034f24e48bd5514101b.json.gz",
+      "sha256": "7bca5ace4844825457b5be1af3cfd129f5784fa81a04b034f24e48bd5514101b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/5b8d38b00184a9aa39c886d23e1898b821a2c5be02656dfcf6943d8844589aac.json.gz",
+      "sha256": "5b8d38b00184a9aa39c886d23e1898b821a2c5be02656dfcf6943d8844589aac"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8ec6bc34f05c26e69b40f44056e0e2270dfd1889c2e1961b78eb3d7afea8d0ee.json.gz",
+      "sha256": "8ec6bc34f05c26e69b40f44056e0e2270dfd1889c2e1961b78eb3d7afea8d0ee"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8e7d46c827736416fb0fa5c025cf5d6cd913273de3fc307a9334eabc9836aaa0.json.gz",
+      "sha256": "8e7d46c827736416fb0fa5c025cf5d6cd913273de3fc307a9334eabc9836aaa0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/15f840f243267da4eab085621f9ec64bff3014dab474a7f96a98d068b74d0ffa.json.gz",
+      "sha256": "15f840f243267da4eab085621f9ec64bff3014dab474a7f96a98d068b74d0ffa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/058004942ff789799f1b1640099c3c8dc9e9ef3850d613666b4244c6904d05d6.json.gz",
+      "sha256": "058004942ff789799f1b1640099c3c8dc9e9ef3850d613666b4244c6904d05d6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/171d934c382e9715afe9c95393ef7bad56c3caa8d87275b1c1969dfe185bef35.json.gz",
+      "sha256": "171d934c382e9715afe9c95393ef7bad56c3caa8d87275b1c1969dfe185bef35"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a38682cff6d2c0ae2202149e6776379f5d8d95d9f674322fc51b935d2c830134.json.gz",
+      "sha256": "a38682cff6d2c0ae2202149e6776379f5d8d95d9f674322fc51b935d2c830134"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/008c3f1bac66c6d807398c46396ef488c618de0a7c6c17ad578e374fb51ca020.json.gz",
+      "sha256": "008c3f1bac66c6d807398c46396ef488c618de0a7c6c17ad578e374fb51ca020"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/63dc8a6cfa380abcf0c8b7cf13f6c4e354654820d8de4a2ec1cd321598e7b919.json.gz",
+      "sha256": "63dc8a6cfa380abcf0c8b7cf13f6c4e354654820d8de4a2ec1cd321598e7b919"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a83797c4dd1e6ed451a73d906dc1af975ebe12e901cc58e834f2de640e059b88.json.gz",
+      "sha256": "a83797c4dd1e6ed451a73d906dc1af975ebe12e901cc58e834f2de640e059b88"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/17c673dc4b5c56ef658657985a264dfdb1fc5219fd67c8a7b37552f5c13e3b2f.json.gz",
+      "sha256": "17c673dc4b5c56ef658657985a264dfdb1fc5219fd67c8a7b37552f5c13e3b2f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a0e9acdcdb9e862b7fd23fb9c4ec7303c6332676d65146f46c3d881f0f09d5e1.json.gz",
+      "sha256": "a0e9acdcdb9e862b7fd23fb9c4ec7303c6332676d65146f46c3d881f0f09d5e1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/7b4cbbd0b24b45f21978add6ad776a1fb21ab2f447588f26fa5a6886eae52557.json.gz",
+      "sha256": "7b4cbbd0b24b45f21978add6ad776a1fb21ab2f447588f26fa5a6886eae52557"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/cae1b0b4811ae571b7b38e6161b93b9172750d532fd74aae6919e1245d4b95d6.json.gz",
+      "sha256": "cae1b0b4811ae571b7b38e6161b93b9172750d532fd74aae6919e1245d4b95d6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/b1c52d9f8c68a1e6372ff4263bae2c9d50397f0f423e6d9defaaf426d69d8a1f.json.gz",
+      "sha256": "b1c52d9f8c68a1e6372ff4263bae2c9d50397f0f423e6d9defaaf426d69d8a1f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8065a255c0e0ff17923ad06840c5c79a4814f1106117afb49488075cf8995c87.json.gz",
+      "sha256": "8065a255c0e0ff17923ad06840c5c79a4814f1106117afb49488075cf8995c87"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/279b958b980394db24ea25fcd96dc2aef84373b4f89d6b8db65e310094fa2d9b.json.gz",
+      "sha256": "279b958b980394db24ea25fcd96dc2aef84373b4f89d6b8db65e310094fa2d9b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/8a80d3607f6945a11b8b9d245d0bfa074221df8b73522e30a57f8a99a3330c6f.json.gz",
+      "sha256": "8a80d3607f6945a11b8b9d245d0bfa074221df8b73522e30a57f8a99a3330c6f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/ZGGG/2026-10-05/a8f8bce1b95f41f00875be250035e8acefffa618a0e634509a0f4945a42f6999.json.gz",
+      "sha256": "a8f8bce1b95f41f00875be250035e8acefffa618a0e634509a0f4945a42f6999"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/d0078b4a9493a702e45470aeab8016c731b18efc767a936718cfd662510e75e7.json.gz",
+      "sha256": "d0078b4a9493a702e45470aeab8016c731b18efc767a936718cfd662510e75e7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/323b9fbb5e651d6d84a31d2315a4380ca3e4c014672fdd4611f00e3c7e844394.json.gz",
+      "sha256": "323b9fbb5e651d6d84a31d2315a4380ca3e4c014672fdd4611f00e3c7e844394"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/9c4bd33c68e7a2d861ec5cd982d5781107a37b9eef9ceec42cbd118c964bc332.json.gz",
+      "sha256": "9c4bd33c68e7a2d861ec5cd982d5781107a37b9eef9ceec42cbd118c964bc332"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/8eb5371f3a5529757943e464526d01c6fb2be0ff37406e2e6cad986a986a4e6b.json.gz",
+      "sha256": "8eb5371f3a5529757943e464526d01c6fb2be0ff37406e2e6cad986a986a4e6b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/baf906bba851faaff29d99ee25dedf0a0c761cf536ec7b2dfc2b583a0f3cce7d.json.gz",
+      "sha256": "baf906bba851faaff29d99ee25dedf0a0c761cf536ec7b2dfc2b583a0f3cce7d"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/66f5a26350e0e711fe18c825e805d1764eefb3ad89698a82a1c9c07c7139b06c.json.gz",
+      "sha256": "66f5a26350e0e711fe18c825e805d1764eefb3ad89698a82a1c9c07c7139b06c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/33fa2528a5840ca9a0c32154cb2f7db4739f625cb60329e4c0cde4b489faa808.json.gz",
+      "sha256": "33fa2528a5840ca9a0c32154cb2f7db4739f625cb60329e4c0cde4b489faa808"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/4abe7e94c9352d945657bb7df4a328606b95de5b7f26f235d87cb9eb441be70b.json.gz",
+      "sha256": "4abe7e94c9352d945657bb7df4a328606b95de5b7f26f235d87cb9eb441be70b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/d3b7a562e5d44d762ad65bb8c403119b3c890aafeac066b289ac4a1655e97c42.json.gz",
+      "sha256": "d3b7a562e5d44d762ad65bb8c403119b3c890aafeac066b289ac4a1655e97c42"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/e95043703ee2f9700547a6a75731ed0fad72bb6846d26efe7f937f530b6648d9.json.gz",
+      "sha256": "e95043703ee2f9700547a6a75731ed0fad72bb6846d26efe7f937f530b6648d9"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/54882e04830bfbe53b91c9b498f6db3601a7fcce464c58a9a66cda4623e7f466.json.gz",
+      "sha256": "54882e04830bfbe53b91c9b498f6db3601a7fcce464c58a9a66cda4623e7f466"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/91eec25865faf491aa80deef2ad535264205be2fee85329620ac69cc865461f7.json.gz",
+      "sha256": "91eec25865faf491aa80deef2ad535264205be2fee85329620ac69cc865461f7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/8e1e3ef79c4baad0f5c92fd304e343d96ab308a4523b29d05dea1a35df1f48be.json.gz",
+      "sha256": "8e1e3ef79c4baad0f5c92fd304e343d96ab308a4523b29d05dea1a35df1f48be"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/48b1d2964974e88f523d0bc6706d27a3bd9ef5e0c6c6e96f4f571b41eee5b3f2.json.gz",
+      "sha256": "48b1d2964974e88f523d0bc6706d27a3bd9ef5e0c6c6e96f4f571b41eee5b3f2"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/41edd9a3e25cc29d4205e55f9da3ed0c8922721daec4c6ea491c8ce43ee220a7.json.gz",
+      "sha256": "41edd9a3e25cc29d4205e55f9da3ed0c8922721daec4c6ea491c8ce43ee220a7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/ec2910882030b108a3186a61871d69976238329082090a2dde1728f926b9f6b0.json.gz",
+      "sha256": "ec2910882030b108a3186a61871d69976238329082090a2dde1728f926b9f6b0"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/c95348d90c1fe1a0fef2e50d20abc8d21df32739f0d15020bdf27b09cb4a69dc.json.gz",
+      "sha256": "c95348d90c1fe1a0fef2e50d20abc8d21df32739f0d15020bdf27b09cb4a69dc"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/411b7a3b1b8bce33b649a254a62a28882c6fbdf33cad248ba330e828a6dc5668.json.gz",
+      "sha256": "411b7a3b1b8bce33b649a254a62a28882c6fbdf33cad248ba330e828a6dc5668"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/69348301da02f3b97daebba23bb369dcfe72c6a8effc2528952e9f7380443b54.json.gz",
+      "sha256": "69348301da02f3b97daebba23bb369dcfe72c6a8effc2528952e9f7380443b54"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/fc58b9a5883db2390756e4ba133c0aed6322ce0e47ba22c1108b5d1a4ffe9514.json.gz",
+      "sha256": "fc58b9a5883db2390756e4ba133c0aed6322ce0e47ba22c1108b5d1a4ffe9514"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/07dc412138a054aae644996a3e54719a26e9beccf0aa8aa10671982f8ab7249f.json.gz",
+      "sha256": "07dc412138a054aae644996a3e54719a26e9beccf0aa8aa10671982f8ab7249f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/0cff2fcd8a3711b9086a790631330ef9c7c964728ab3ab7c2e1f509e333e213f.json.gz",
+      "sha256": "0cff2fcd8a3711b9086a790631330ef9c7c964728ab3ab7c2e1f509e333e213f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/a8e39085f74d0ffbb9f0e3da02a0ba64b679c686042fc705f925fdfec046e946.json.gz",
+      "sha256": "a8e39085f74d0ffbb9f0e3da02a0ba64b679c686042fc705f925fdfec046e946"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/9a0727704282f376751d7ba76d5372098ed65c45bb257c3c0c349571c7d52abe.json.gz",
+      "sha256": "9a0727704282f376751d7ba76d5372098ed65c45bb257c3c0c349571c7d52abe"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/a9cabe87ac38a1a558a1feea1d7c07927649e76b27bad67ff77f6e7ad30bd6ef.json.gz",
+      "sha256": "a9cabe87ac38a1a558a1feea1d7c07927649e76b27bad67ff77f6e7ad30bd6ef"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/de7640b95e9a061af904231ab765b975ac1b8eb3137dea037cb09172ec63f172.json.gz",
+      "sha256": "de7640b95e9a061af904231ab765b975ac1b8eb3137dea037cb09172ec63f172"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/f84c952ee5d7f4428649e6046c2a49101eff7f90bf426407a126c3448839aec7.json.gz",
+      "sha256": "f84c952ee5d7f4428649e6046c2a49101eff7f90bf426407a126c3448839aec7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/20159c206dd9d0f79193abdc3036efc5081c96161469bdb29a1a2c831f3bface.json.gz",
+      "sha256": "20159c206dd9d0f79193abdc3036efc5081c96161469bdb29a1a2c831f3bface"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/440ea49954d1a4c7d7d0695162752fbac93ae839be0b966daadee3a659f704f5.json.gz",
+      "sha256": "440ea49954d1a4c7d7d0695162752fbac93ae839be0b966daadee3a659f704f5"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/6287d892aaf8d42f59937367df69ed447e498137ce59ae6aa93209aff1eaef9a.json.gz",
+      "sha256": "6287d892aaf8d42f59937367df69ed447e498137ce59ae6aa93209aff1eaef9a"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/255a524f9b8496656de4e93da61042cdae16dee0a59c3aea0831aebd3e657fa8.json.gz",
+      "sha256": "255a524f9b8496656de4e93da61042cdae16dee0a59c3aea0831aebd3e657fa8"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/2a17b576af900a3d82e51001a782a21adc77607df382614531d08e6a59809221.json.gz",
+      "sha256": "2a17b576af900a3d82e51001a782a21adc77607df382614531d08e6a59809221"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/06ce6f941c53adf3ba0dfd428e68b1951616f08a8619d6f9e70803430bea9ef6.json.gz",
+      "sha256": "06ce6f941c53adf3ba0dfd428e68b1951616f08a8619d6f9e70803430bea9ef6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/cac0ebaa27143c398fb2101de3f7c3874350cf47bdafd2a6afc33f5fb9a6a484.json.gz",
+      "sha256": "cac0ebaa27143c398fb2101de3f7c3874350cf47bdafd2a6afc33f5fb9a6a484"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/7c3a714e3454fadb9b47cf89dece2e852c367a7c11d00e4f306f5ae5563e1bfb.json.gz",
+      "sha256": "7c3a714e3454fadb9b47cf89dece2e852c367a7c11d00e4f306f5ae5563e1bfb"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/d49dfed709abc655de07abf07533854e8d3a968564ad7c9a8b78aa4bf72d1da1.json.gz",
+      "sha256": "d49dfed709abc655de07abf07533854e8d3a968564ad7c9a8b78aa4bf72d1da1"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/bdf4cb6a06844e593baf92eb11b634f0a92954a7fa960d6b6cbe6914e73d26b8.json.gz",
+      "sha256": "bdf4cb6a06844e593baf92eb11b634f0a92954a7fa960d6b6cbe6914e73d26b8"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/74cb642bc10e5751180e1323eafc99be594a472044ad6b8cfe9ee7fa72442877.json.gz",
+      "sha256": "74cb642bc10e5751180e1323eafc99be594a472044ad6b8cfe9ee7fa72442877"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/d36fa37918d6fb1b48a11500591ad03285efa7836749c35ba5cd2f7d55f7f763.json.gz",
+      "sha256": "d36fa37918d6fb1b48a11500591ad03285efa7836749c35ba5cd2f7d55f7f763"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/100effec9a727e9dc519a4269773ebdfc7a566dc6c651ae7079cad03a6f55983.json.gz",
+      "sha256": "100effec9a727e9dc519a4269773ebdfc7a566dc6c651ae7079cad03a6f55983"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/07bf509e94b55808621f1e75b4c5a343ce3b4094f5e8b4a54dd17c3db656178b.json.gz",
+      "sha256": "07bf509e94b55808621f1e75b4c5a343ce3b4094f5e8b4a54dd17c3db656178b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/1bf5309f4cee42ff76e1375876057a8a8859f509866ddfe6dd60c80305722ba3.json.gz",
+      "sha256": "1bf5309f4cee42ff76e1375876057a8a8859f509866ddfe6dd60c80305722ba3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/697f99026ca98e0c37ca6a09748bab9da9c93782b1d3cc24f80d25dfab4326f4.json.gz",
+      "sha256": "697f99026ca98e0c37ca6a09748bab9da9c93782b1d3cc24f80d25dfab4326f4"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/1fb2cf033d0b8caa24035a4046de108816027d0fb22b90f4c9f904bbbdcd68d3.json.gz",
+      "sha256": "1fb2cf033d0b8caa24035a4046de108816027d0fb22b90f4c9f904bbbdcd68d3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/2eea44e8bdedf165aece455505db088869f99c3531f137458f5e08f98b42061c.json.gz",
+      "sha256": "2eea44e8bdedf165aece455505db088869f99c3531f137458f5e08f98b42061c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/6f708f6792adaf3443875a2f070b44116a6828f3daf68adef43c619e10306599.json.gz",
+      "sha256": "6f708f6792adaf3443875a2f070b44116a6828f3daf68adef43c619e10306599"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/73e558d5353ccca39f237ca7bbf62a9e0100d30adfcfa8bd6639d2078257534d.json.gz",
+      "sha256": "73e558d5353ccca39f237ca7bbf62a9e0100d30adfcfa8bd6639d2078257534d"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/041359731b3e21e4a3ebe1327441536a1e052a021e1b657bf01a49dc824bae7e.json.gz",
+      "sha256": "041359731b3e21e4a3ebe1327441536a1e052a021e1b657bf01a49dc824bae7e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/4d11eeb93c00839ebbb6ab7a598bbdbd9f4019ab6f5a8c12c280750c790117df.json.gz",
+      "sha256": "4d11eeb93c00839ebbb6ab7a598bbdbd9f4019ab6f5a8c12c280750c790117df"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/9dfaacb0a70c1f9d84b019c26d65f26f864820559cb6953e51e94a81ce524f3a.json.gz",
+      "sha256": "9dfaacb0a70c1f9d84b019c26d65f26f864820559cb6953e51e94a81ce524f3a"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/43c5f92c8e9dad575899a9fe3918e26f8d38dcc8fe28c0eb4d80be2eb5721bee.json.gz",
+      "sha256": "43c5f92c8e9dad575899a9fe3918e26f8d38dcc8fe28c0eb4d80be2eb5721bee"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/f1f0873c37a59646df1ed8b285a57c7bd16613da6efcbd605896b67c47f30d24.json.gz",
+      "sha256": "f1f0873c37a59646df1ed8b285a57c7bd16613da6efcbd605896b67c47f30d24"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/89cacdd90b2c77c5cb2a520d308d90714330dee100e5bcb93d52bda6c6c92c85.json.gz",
+      "sha256": "89cacdd90b2c77c5cb2a520d308d90714330dee100e5bcb93d52bda6c6c92c85"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/5ad01a139ace7fb97c11cc70decfbcaf9ac2aba814656732d2a5b27f9585ef15.json.gz",
+      "sha256": "5ad01a139ace7fb97c11cc70decfbcaf9ac2aba814656732d2a5b27f9585ef15"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/ae4a54f47bec0ef04fbb90afcfc1718a9e380b7ebfca69536041d4f71db7bfb1.json.gz",
+      "sha256": "ae4a54f47bec0ef04fbb90afcfc1718a9e380b7ebfca69536041d4f71db7bfb1"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/808fab2429a789c00219bbd9f7e6e0899c1410bdbd1c9c683927a5deb9485a80.json.gz",
+      "sha256": "808fab2429a789c00219bbd9f7e6e0899c1410bdbd1c9c683927a5deb9485a80"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/c58679bf916734917c4eccb9b7b9826a8a3cdde88364d74dd16ededdccc4e3d6.json.gz",
+      "sha256": "c58679bf916734917c4eccb9b7b9826a8a3cdde88364d74dd16ededdccc4e3d6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/ZGGG/2026-10-05/17716d963ec7fa9aa754830ace7ae1f3ad0535bf057ee56ff55162931cf8cf76.json.gz",
+      "sha256": "17716d963ec7fa9aa754830ace7ae1f3ad0535bf057ee56ff55162931cf8cf76"
+    }
+  ],
+  "production_modified": false,
+  "current_chain_certified": false,
+  "limitations": [
+    "historical center/width table fits still require current-method reconstruction",
+    "fusion weights still require current-method historical refit",
+    "candidate reports have not been activated or used as replacement parents"
+  ]
+}

@@ -1,0 +1,4082 @@
+{
+  "schema": "actual_arrival_nested_oos_probe_v1",
+  "method_version": "actual_arrival_inner_truth_ladder_v3",
+  "decision_clock": "maximum of actual member arrival and actual first target ladder availability",
+  "station": "KSFO",
+  "outer_cutoff": "2026-10-05T14:52:53.884Z",
+  "event": "2026-10-05",
+  "anchor_checkpoint": "p0-native-2d18180138bb578ccd2d5f9bdc917535",
+  "member_source": {
+    "domains": {
+      "ensemble_system_id": [
+        "DWD_ICON_EPS_SEAMLESS",
+        "DWD_ICON_GLOBAL_EPS",
+        "ECCC_GEM_GLOBAL_ENS",
+        "ECMWF_AIFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "GOOGLE_WEATHERNEXT2_ENS",
+        "METAR_PHYSICAL_PATH_TMAX",
+        "NCEP_HRRR_POINT",
+        "NOAA_AIGEFS_025",
+        "NOAA_GEFS_025",
+        "NOAA_GEFS_05",
+        "NOAA_GEFS_SEAMLESS",
+        "UKMO_GLOBAL_ENS"
+      ],
+      "transport_provider_id": [
+        "AWC_METAR_PHYSICAL_PATH",
+        "DWD_OPENDATA_ICON_EPS",
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3",
+        "NOAA_HRRR_PDS_S3",
+        "OPEN_METEO"
+      ],
+      "archive_lead_bucket": [
+        "d0",
+        "d1",
+        "d2",
+        "h00_12",
+        "h12_24",
+        "h24_48",
+        "h48_plus"
+      ],
+      "run_cycle": [
+        "00Z",
+        "06Z",
+        "12Z",
+        "18Z",
+        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
+      ],
+      "authority_scope": [
+        "CALIBRATION_TRAIN_ONLY"
+      ],
+      "qc_status": [
+        "ACCEPTED"
+      ]
+    },
+    "rows": 136025,
+    "bytes": 89315836,
+    "sha256": "68b026da29b9c4f9d4aad5e7c360135086e00c0928cee9b7be65e55462d10081",
+    "groups": 3490,
+    "invalid": {},
+    "query": "select ensemble_system_id,target_local_date,native_run_init_utc,archive_lead_bucket,run_cycle,extraction_version,transport_provider_id,member_id,raw_tmax_c,archive_query_at_utc,source_object_sha256,content_sha256,qc_status,authority_scope from calibration_native_ensemble_historical_member_run INDEXED BY calibration_native_ensemble_historical_member_run_scope_idx where station_id=? and target_local_date>=? and target_local_date<=? and ensemble_system_id IN (?,?,?,?,?,?) and transport_provider_id<>?"
+  },
+  "input_rejections": {
+    "retrospective_train_only": 1785,
+    "missing_asof_market_ladder_train_only": 792
+  },
+  "readiness": [
+    {
+      "ensemble_system_id": "CMA_GRAPES_GLOBAL_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_D2_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EPS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7516401197711944,
+        "nll": 1.5561847811946672,
+        "crps": 0.5362434696084358
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 14,
+      "training_case_count": 6,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 14,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 14,
+      "training_case_count": 6,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 14,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 14,
+      "training_case_count": 6,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 14,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 55,
+      "train_n": 47,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8096375924061997,
+        "nll": 1.7595570685528195,
+        "crps": 0.819929348483099
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 40,
+      "train_n": 32,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8034018038493055,
+        "nll": 1.7756945362289966,
+        "crps": 0.8526152746024832
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 3,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 3,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 5
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 84,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9754944999984451,
+        "nll": 2.379056639753449,
+        "crps": 1.4719894539727065
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 82,
+      "train_n": 57,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9636187743788108,
+        "nll": 2.3426476378447947,
+        "crps": 1.3912740694592411
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 61,
+      "train_n": 41,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9195882493818379,
+        "nll": 2.162319781404842,
+        "crps": 1.1790585606173793
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 40,
+      "training_case_count": 37,
+      "strict_holdout_case_count": 3,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 5
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7332938322624977,
+        "nll": 1.495441441199879,
+        "crps": 0.6017159990162465
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7155470254701167,
+        "nll": 1.486746702420754,
+        "crps": 0.6279035866454822
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7157714057614228,
+        "nll": 1.4709789232133101,
+        "crps": 0.6010884820954211
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7006766390908525,
+        "nll": 1.4023189435272707,
+        "crps": 0.5559059038547618
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6942187647989998,
+        "nll": 1.41088404931995,
+        "crps": 0.5463793764833107
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7241029405994744,
+        "nll": 1.463924378332157,
+        "crps": 0.5782604290130354
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7092450916897945,
+        "nll": 1.520963412314942,
+        "crps": 0.6313635917150145
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7065725632637057,
+        "nll": 1.4787066031980256,
+        "crps": 0.5984153277736687
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7070862587932856,
+        "nll": 1.5115953596325618,
+        "crps": 0.6454163479353586
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7649302201471897,
+        "nll": 1.637370346742537,
+        "crps": 0.7239407887483768
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 67,
+      "training_case_count": 60,
+      "strict_holdout_case_count": 7,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 1
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7061863096697223,
+        "nll": 1.5143270948664431,
+        "crps": 0.708052942677777
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 89,
+      "train_n": 56,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8242215385112525,
+        "nll": 1.745882155413716,
+        "crps": 0.90753076662373
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7910492639025822,
+        "nll": 1.6731877159748267,
+        "crps": 0.8584817673654183
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 38,
+      "train_n": 30,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8214111778000003,
+        "nll": 1.767900098838609,
+        "crps": 0.9275587690625355
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 42,
+      "train_n": 34,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8513256256861572,
+        "nll": 1.784087183959523,
+        "crps": 0.995079821641644
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 36,
+      "train_n": 28,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8441912135184997,
+        "nll": 1.9808833286374383,
+        "crps": 1.126273579626596
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 32,
+      "train_n": 24,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9527252925372209,
+        "nll": 2.2308060193020145,
+        "crps": 1.3074628840672045
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 86,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7711956394451276,
+        "nll": 1.7151171538172556,
+        "crps": 0.8098244160713506
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 34,
+      "train_n": 26,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7697946695486828,
+        "nll": 1.6870330087637833,
+        "crps": 0.8482930039530828
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 29,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 40,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8605883512401431,
+        "nll": 1.9906313072500093,
+        "crps": 1.1318988883388557
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 29,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "JMA_MSM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METAR_PHYSICAL_PATH_TMAX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH1_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_HRRR_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_NBM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7734077623379773,
+        "nll": 1.6952093685575835,
+        "crps": 0.7915045590240579
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7781249476207371,
+        "nll": 1.7198889454787132,
+        "crps": 0.728781108140134
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8051473035976815,
+        "nll": 1.7408943991322408,
+        "crps": 0.8026314651766646
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8439213003015064,
+        "nll": 1.7845511056460304,
+        "crps": 0.7797767598607259
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7909691601576835,
+        "nll": 1.7497767764953975,
+        "crps": 0.8103672821911673
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7687555760132235,
+        "nll": 1.6868301087950872,
+        "crps": 0.7841550718904735
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8045565802193569,
+        "nll": 1.8290028257489912,
+        "crps": 0.8377453690030006
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7421443211560261,
+        "nll": 1.6245876341411312,
+        "crps": 0.6359089070912328
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8203116471548915,
+        "nll": 1.8773347679669066,
+        "crps": 0.9409113913272518
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8054140529886095,
+        "nll": 1.8288077187164886,
+        "crps": 0.8942963999479937
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 66,
+      "training_case_count": 59,
+      "strict_holdout_case_count": 7,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 1
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 69,
+      "train_n": 56,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7757705914426676,
+        "nll": 1.70278255207421,
+        "crps": 0.7167647735064903
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_025",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 85,
+      "train_n": 53,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8548286867526882,
+        "nll": 1.9382892300097248,
+        "crps": 0.9055336056066082
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 51,
+      "train_n": 43,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.83676142632631,
+        "nll": 1.8945063439253598,
+        "crps": 0.8878831867598064
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 50,
+      "train_n": 42,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8283552510278892,
+        "nll": 1.8950089562111205,
+        "crps": 0.8295053056626285
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 50,
+      "train_n": 42,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8219002519305828,
+        "nll": 1.7558791440479242,
+        "crps": 0.7657158222764994
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8961790255378911,
+        "nll": 2.022747528154219,
+        "crps": 1.0091380974433692
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h12_24",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 33,
+      "train_n": 25,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8860024978450726,
+        "nll": 2.064854453930282,
+        "crps": 1.024106409306804
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 88,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8772600336435763,
+        "nll": 2.011269396389844,
+        "crps": 0.9987689951695644
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 40,
+      "train_n": 32,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8822046358011061,
+        "nll": 1.966767196428727,
+        "crps": 0.9263903296417287
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 28,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 76,
+      "train_n": 42,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.881496781431237,
+        "nll": 2.0509087186459114,
+        "crps": 1.072326770539839
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "PEAK",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 28,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_UK_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    }
+  ],
+  "report_header": {
+    "schema": "native_ensemble_strict_forward_oos_v1",
+    "station_id": "KSFO",
+    "as_of_utc": "2026-10-05T14:52:53.884Z",
+    "min_train_days": 20,
+    "min_holdout_days": 8,
+    "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "historical_event_date_cutoff": "2026-10-04",
+    "formal_promotion_threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "formal_promotion_min_train_days": 20,
+    "formal_promotion_min_holdout_days": 8,
+    "registered_system_count": 26,
+    "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+    "formal_p0_eligible": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false,
+    "content_sha256": "33764ea46a9b1ef9afc254ea0a09093c9deba05786f2266f93ee193c1de254fc"
+  },
+  "cross_states": {
+    "PRODUCTION_NO_LIVE_OOS_PASS": 264
+  },
+  "objects": [
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/e5e1a0fe0d1471a098bd0def8904fae86df1ea05aa5c3fe2c977478c41fd7458.json.gz",
+      "sha256": "e5e1a0fe0d1471a098bd0def8904fae86df1ea05aa5c3fe2c977478c41fd7458"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/494cc6e41a4a529036423ab437e21e02e17222013716f3a1248020029ed779a8.json.gz",
+      "sha256": "494cc6e41a4a529036423ab437e21e02e17222013716f3a1248020029ed779a8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/af5a4858b4f063c19efc8c38a1daf1c6609a8d8b0f4999bcb9691e26a50b5f63.json.gz",
+      "sha256": "af5a4858b4f063c19efc8c38a1daf1c6609a8d8b0f4999bcb9691e26a50b5f63"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a78dc93d35688313199f51cf3b3a42af9b498a8209fcfdfce4b6cc7e6b1fd45e.json.gz",
+      "sha256": "a78dc93d35688313199f51cf3b3a42af9b498a8209fcfdfce4b6cc7e6b1fd45e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d01b0f1971ade255fe5c2cd5d31359332b9b2f48792376beb3f0d74e62e64e77.json.gz",
+      "sha256": "d01b0f1971ade255fe5c2cd5d31359332b9b2f48792376beb3f0d74e62e64e77"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/2a6173b9ca2c428931e60a97594a9f55b2028b389524c7832a384b8eebee2c7d.json.gz",
+      "sha256": "2a6173b9ca2c428931e60a97594a9f55b2028b389524c7832a384b8eebee2c7d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d0758dc92fb09ebb36a13b3d7add5ceee0412a476addabb45048cfd21cebba1c.json.gz",
+      "sha256": "d0758dc92fb09ebb36a13b3d7add5ceee0412a476addabb45048cfd21cebba1c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3e4a05828bb369f4915e556773488663e2431e8ce168526729ae06123cba069e.json.gz",
+      "sha256": "3e4a05828bb369f4915e556773488663e2431e8ce168526729ae06123cba069e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f0e376e8bcc537a3afdc5f3d951d3bf7a49f1f127819c69a4ea39f20ae067ec5.json.gz",
+      "sha256": "f0e376e8bcc537a3afdc5f3d951d3bf7a49f1f127819c69a4ea39f20ae067ec5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/6ded217c35f5f6a5d92c681bf1619700165646300cb7fb70492bc2eeb5d2fa37.json.gz",
+      "sha256": "6ded217c35f5f6a5d92c681bf1619700165646300cb7fb70492bc2eeb5d2fa37"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/8c9263f3969e1b0acf922b409577e5ea4c8a1a292b26e80e492b18f494dee1e6.json.gz",
+      "sha256": "8c9263f3969e1b0acf922b409577e5ea4c8a1a292b26e80e492b18f494dee1e6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a6ecd96efa9b35a907455c5302d3c8f3e97d284de033dcdb601a69d1d9735d75.json.gz",
+      "sha256": "a6ecd96efa9b35a907455c5302d3c8f3e97d284de033dcdb601a69d1d9735d75"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/6a024f6bb7e86c39356696ea212dabd446528ab5e639b7acb25268133a0674bd.json.gz",
+      "sha256": "6a024f6bb7e86c39356696ea212dabd446528ab5e639b7acb25268133a0674bd"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/14fde90d85ee90bd6704fa1ab2bdf343e2b64e72ee30813ea7188585191568e6.json.gz",
+      "sha256": "14fde90d85ee90bd6704fa1ab2bdf343e2b64e72ee30813ea7188585191568e6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/c9150ac1ad21b046023a603c525cf7a49544ef262514fcfaaf21b5121aefcc04.json.gz",
+      "sha256": "c9150ac1ad21b046023a603c525cf7a49544ef262514fcfaaf21b5121aefcc04"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9236bc0992f3dd8c49808564a22c80367445f9a839955ebdb8db9d2ab9212a42.json.gz",
+      "sha256": "9236bc0992f3dd8c49808564a22c80367445f9a839955ebdb8db9d2ab9212a42"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/485620b9d40ce1c63165bddbdaa7b0e3a7c818a9d73da0981f130a2b043a3ce5.json.gz",
+      "sha256": "485620b9d40ce1c63165bddbdaa7b0e3a7c818a9d73da0981f130a2b043a3ce5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/1a827af0c6334ebcc6d80e1b051ab198028d367a92926bf19faf43f5507b3a9b.json.gz",
+      "sha256": "1a827af0c6334ebcc6d80e1b051ab198028d367a92926bf19faf43f5507b3a9b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d610bf24c12211940462fb009ee0a4a1b1642440d9c4e5d553c81ae42e369bab.json.gz",
+      "sha256": "d610bf24c12211940462fb009ee0a4a1b1642440d9c4e5d553c81ae42e369bab"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d389dbef287403e772706d12fc3cf488748bf11df3ba25becc5114232773f067.json.gz",
+      "sha256": "d389dbef287403e772706d12fc3cf488748bf11df3ba25becc5114232773f067"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/18c08a7522b75b9a92b7dc02f7edaf57ebee6705d91de7f39d404aed7835d266.json.gz",
+      "sha256": "18c08a7522b75b9a92b7dc02f7edaf57ebee6705d91de7f39d404aed7835d266"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/20bee03bd672fc72b8168e4ae134621ddbf9f2a84d13a70e6dabd8d904696829.json.gz",
+      "sha256": "20bee03bd672fc72b8168e4ae134621ddbf9f2a84d13a70e6dabd8d904696829"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/c08505b027454e7054fa35bf7e38ce7da7ac0dd7f142d80abbd9d0114504e622.json.gz",
+      "sha256": "c08505b027454e7054fa35bf7e38ce7da7ac0dd7f142d80abbd9d0114504e622"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/04fda3e3e616d1e5796733eb4a4f1729741c99ca191ef154b5f8790fe45786ca.json.gz",
+      "sha256": "04fda3e3e616d1e5796733eb4a4f1729741c99ca191ef154b5f8790fe45786ca"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3a3e94f63a5450caa8d1ebcc8eac34216828d29e4bc7300b0ff49175cd494be2.json.gz",
+      "sha256": "3a3e94f63a5450caa8d1ebcc8eac34216828d29e4bc7300b0ff49175cd494be2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/bf207916cca2796d85f99cb245b8ad366427e6a437d72146d7d3f70f57455224.json.gz",
+      "sha256": "bf207916cca2796d85f99cb245b8ad366427e6a437d72146d7d3f70f57455224"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/72de04c168c2d5c819fd848892debe8852d87e7f4b5d4a64065ef7124c151c1e.json.gz",
+      "sha256": "72de04c168c2d5c819fd848892debe8852d87e7f4b5d4a64065ef7124c151c1e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/8e587f1384c763261496f85e6f498057b6e355e81e30cada6c157d60dc8db828.json.gz",
+      "sha256": "8e587f1384c763261496f85e6f498057b6e355e81e30cada6c157d60dc8db828"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/ec06fe6237605e71894bddde88f4a8b7efcb054712187593e6a8a7a69c2acdd5.json.gz",
+      "sha256": "ec06fe6237605e71894bddde88f4a8b7efcb054712187593e6a8a7a69c2acdd5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/dde68ae76800f080945b5454558c473d4f3fa0ce3e68271408e90b88723a2f1e.json.gz",
+      "sha256": "dde68ae76800f080945b5454558c473d4f3fa0ce3e68271408e90b88723a2f1e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a160c0c3225a03c4d218b08ddb76bb4c5c768a75a97e7f6731d146d68b7a0420.json.gz",
+      "sha256": "a160c0c3225a03c4d218b08ddb76bb4c5c768a75a97e7f6731d146d68b7a0420"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/7e269bff1795a115a0c291d1f6294be98350ee122f33d663b9f588d6f7134183.json.gz",
+      "sha256": "7e269bff1795a115a0c291d1f6294be98350ee122f33d663b9f588d6f7134183"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/54d8684396f8c3dd5f72b980eefc506f79e26f995c4d57beffd0fee30810a5be.json.gz",
+      "sha256": "54d8684396f8c3dd5f72b980eefc506f79e26f995c4d57beffd0fee30810a5be"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/e8355e66176557e755225a78d13c397c6cb2a3a09335d2b6b2ce4ae16f3eac4c.json.gz",
+      "sha256": "e8355e66176557e755225a78d13c397c6cb2a3a09335d2b6b2ce4ae16f3eac4c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/038f7cebbf0d0cff500032281eef1cf7bac605e423f3afd72d45e218d8f1d316.json.gz",
+      "sha256": "038f7cebbf0d0cff500032281eef1cf7bac605e423f3afd72d45e218d8f1d316"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9163d772cc5f3972004391a34d113609398fe28b684bd8b2a8a81df5f861d8b2.json.gz",
+      "sha256": "9163d772cc5f3972004391a34d113609398fe28b684bd8b2a8a81df5f861d8b2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9765363994ea773d6733dd9d15854e3033c56d10442381439716f86d6b29c36b.json.gz",
+      "sha256": "9765363994ea773d6733dd9d15854e3033c56d10442381439716f86d6b29c36b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/852024b9e0281c40a400141a119b04653110efb1a04fa57164a0c640b3e52a25.json.gz",
+      "sha256": "852024b9e0281c40a400141a119b04653110efb1a04fa57164a0c640b3e52a25"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/e18452cdd61621e634db7f4343f891dc75051dc947a83ca670b2cca689569b05.json.gz",
+      "sha256": "e18452cdd61621e634db7f4343f891dc75051dc947a83ca670b2cca689569b05"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/dba1df3a338c749fe1b9603a0561262336e84bbf7d50d34f1e5d6410778cc4cc.json.gz",
+      "sha256": "dba1df3a338c749fe1b9603a0561262336e84bbf7d50d34f1e5d6410778cc4cc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9b1a8d201d4756fc39ad07746a0ad36965cd70e78182e7258abad3808337eba5.json.gz",
+      "sha256": "9b1a8d201d4756fc39ad07746a0ad36965cd70e78182e7258abad3808337eba5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/27cd3072f419b9db93f7675e3d65c7f43778b97a15df6902f38d074566188331.json.gz",
+      "sha256": "27cd3072f419b9db93f7675e3d65c7f43778b97a15df6902f38d074566188331"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/00ab9c2bd0e6d4b0dddb6be8325077e33ebd398cdbbe4b54f5d80c401c627198.json.gz",
+      "sha256": "00ab9c2bd0e6d4b0dddb6be8325077e33ebd398cdbbe4b54f5d80c401c627198"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/42319f81b38db71fba0a9fb0943b9d62e247230c55e495d258055ba34f249d55.json.gz",
+      "sha256": "42319f81b38db71fba0a9fb0943b9d62e247230c55e495d258055ba34f249d55"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/caef47b8b00f90aa491f1bfdc904c3706edce9fb14c3ad766a97ff4513512848.json.gz",
+      "sha256": "caef47b8b00f90aa491f1bfdc904c3706edce9fb14c3ad766a97ff4513512848"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/c9b060afa3719441db47a37c24069b4ed2586a8cde76665fcd8761bcef10b7ca.json.gz",
+      "sha256": "c9b060afa3719441db47a37c24069b4ed2586a8cde76665fcd8761bcef10b7ca"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0ae9647aa12679ea88f3b516329c2fb389414ae3515740515de3780a76fcdc7a.json.gz",
+      "sha256": "0ae9647aa12679ea88f3b516329c2fb389414ae3515740515de3780a76fcdc7a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/b9ceed6d2bd8a30632586a43eec82360d70033e625178aca9f60a1f94b5aa0a6.json.gz",
+      "sha256": "b9ceed6d2bd8a30632586a43eec82360d70033e625178aca9f60a1f94b5aa0a6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/b51849bbd061150f2b564fd268e56c00a372035f6da460cb64f5fed09de71754.json.gz",
+      "sha256": "b51849bbd061150f2b564fd268e56c00a372035f6da460cb64f5fed09de71754"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/885ed1beb25188211a8101c2561a6980889435885cfbd1c941eef9716f1b6fdb.json.gz",
+      "sha256": "885ed1beb25188211a8101c2561a6980889435885cfbd1c941eef9716f1b6fdb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/11abf2d6bc5f1626d2fba728b63b7cc89e6764c5a4bc8bf7a80469338d1b5ea9.json.gz",
+      "sha256": "11abf2d6bc5f1626d2fba728b63b7cc89e6764c5a4bc8bf7a80469338d1b5ea9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/cefe93618976570f3f1aff43fe94fa13d39d9d69d570d0e0e9f219879661ec52.json.gz",
+      "sha256": "cefe93618976570f3f1aff43fe94fa13d39d9d69d570d0e0e9f219879661ec52"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/729209063c99c440a0d499859bd80c1b2a389307f8a7c6ff167fbe995201bcb8.json.gz",
+      "sha256": "729209063c99c440a0d499859bd80c1b2a389307f8a7c6ff167fbe995201bcb8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/da8d3397608625fae08bfa1aeda1147fc933b2ce4013b782efe3abff0307ffe7.json.gz",
+      "sha256": "da8d3397608625fae08bfa1aeda1147fc933b2ce4013b782efe3abff0307ffe7"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/34df0bcb3bd13440cb73553ceee8e55c86193f5170fcd56e63a6b19c6f8572b9.json.gz",
+      "sha256": "34df0bcb3bd13440cb73553ceee8e55c86193f5170fcd56e63a6b19c6f8572b9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f0a36930e08c0af4cc0ffda5eae84bfe3e54964ff52369d247e38decf227d9c0.json.gz",
+      "sha256": "f0a36930e08c0af4cc0ffda5eae84bfe3e54964ff52369d247e38decf227d9c0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/17aca870176b86b5c35447c5dd3b61b0e302adc05f96e9b0c7879a8dd0a21f4c.json.gz",
+      "sha256": "17aca870176b86b5c35447c5dd3b61b0e302adc05f96e9b0c7879a8dd0a21f4c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/62255fa3f2cccec203c89545657ddac24f9ce83020952751d20493be5834d66e.json.gz",
+      "sha256": "62255fa3f2cccec203c89545657ddac24f9ce83020952751d20493be5834d66e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9b286921be1d712132740fa97b3c3fb302759aa9867dfbda6ed6f7e2796c02f3.json.gz",
+      "sha256": "9b286921be1d712132740fa97b3c3fb302759aa9867dfbda6ed6f7e2796c02f3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/ddec5f9b1330650d75fbda432779d3da598924dae87cd001815eedcbfab15493.json.gz",
+      "sha256": "ddec5f9b1330650d75fbda432779d3da598924dae87cd001815eedcbfab15493"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3e38ce70d48aa61cafb50db991db2c741e5d893dd6c17b1a2b3cc2ae90e32a38.json.gz",
+      "sha256": "3e38ce70d48aa61cafb50db991db2c741e5d893dd6c17b1a2b3cc2ae90e32a38"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/dedce40029dbd8d7c93c7c0067f19f6c4e4f9a758f997528ebdf700451930e8a.json.gz",
+      "sha256": "dedce40029dbd8d7c93c7c0067f19f6c4e4f9a758f997528ebdf700451930e8a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/cdb5a99e68252ee98afec71fefac7bc0cf955c4dc55b5a6afd2b22cc076cd334.json.gz",
+      "sha256": "cdb5a99e68252ee98afec71fefac7bc0cf955c4dc55b5a6afd2b22cc076cd334"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/6aa8c1e470fd80f36080ff22ee27f7dca599011166afd831f36c4d280f5d5933.json.gz",
+      "sha256": "6aa8c1e470fd80f36080ff22ee27f7dca599011166afd831f36c4d280f5d5933"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/47cbc540eecfe122febe0509ca5c2ecf4fe962dc3c3fcd5fdab6174f670ea67b.json.gz",
+      "sha256": "47cbc540eecfe122febe0509ca5c2ecf4fe962dc3c3fcd5fdab6174f670ea67b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3dc15a21f597fe8c298bab6c486ebc4bfa9c09d43e210b730493ec8d68a1fee2.json.gz",
+      "sha256": "3dc15a21f597fe8c298bab6c486ebc4bfa9c09d43e210b730493ec8d68a1fee2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3fa6f58de64797a62ba48c51e8d39045ea468cb608a1d881b39722b0be61ed93.json.gz",
+      "sha256": "3fa6f58de64797a62ba48c51e8d39045ea468cb608a1d881b39722b0be61ed93"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/50e576e973872c541a67324e6848e679c3cdbcb29553dd915994a8a32f03479a.json.gz",
+      "sha256": "50e576e973872c541a67324e6848e679c3cdbcb29553dd915994a8a32f03479a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3dc1069704fffe38614111fe807d59ab91438970d8f7ed3f35beb0142133e82a.json.gz",
+      "sha256": "3dc1069704fffe38614111fe807d59ab91438970d8f7ed3f35beb0142133e82a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0e4ffecda74004871c55ab4057e5bc6eb254b16499261ad20f8e2c58d540625d.json.gz",
+      "sha256": "0e4ffecda74004871c55ab4057e5bc6eb254b16499261ad20f8e2c58d540625d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/9c705ef7ce8f8dd222780e7f344e2bf5eab100b93eaa3da421c7fb213b04a417.json.gz",
+      "sha256": "9c705ef7ce8f8dd222780e7f344e2bf5eab100b93eaa3da421c7fb213b04a417"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d9e6e59261c0a6d23c4a878a5a0604bf31bdecd12cd2acacbe522bd55e3c2b84.json.gz",
+      "sha256": "d9e6e59261c0a6d23c4a878a5a0604bf31bdecd12cd2acacbe522bd55e3c2b84"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/bdceaabc36ed0ebc5c64d4e4d20409ab3c17909e53c4b006fdd780ef1ca415ce.json.gz",
+      "sha256": "bdceaabc36ed0ebc5c64d4e4d20409ab3c17909e53c4b006fdd780ef1ca415ce"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/c08f4ae3c7c6fe4d8b0273dce386884c89c99cfc6407dbd17a2a192ad2272c89.json.gz",
+      "sha256": "c08f4ae3c7c6fe4d8b0273dce386884c89c99cfc6407dbd17a2a192ad2272c89"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a750bd389a68e6b051afd2e891209beaf2d80636f1a9d3cf9f1f87a2ee99bf1e.json.gz",
+      "sha256": "a750bd389a68e6b051afd2e891209beaf2d80636f1a9d3cf9f1f87a2ee99bf1e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/7724d7089c2deaf682f94cc95e760e0dd6647a860e409c990d913a894377c71e.json.gz",
+      "sha256": "7724d7089c2deaf682f94cc95e760e0dd6647a860e409c990d913a894377c71e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/b7539d6947b4ac046f804d0baa62f4602e5e63d96d84c0bc9233a5b6d55c6612.json.gz",
+      "sha256": "b7539d6947b4ac046f804d0baa62f4602e5e63d96d84c0bc9233a5b6d55c6612"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f4c322cf0b9e9d1b2cd2505270eff748c6962cb94ce36b599ebedb3a951e59ad.json.gz",
+      "sha256": "f4c322cf0b9e9d1b2cd2505270eff748c6962cb94ce36b599ebedb3a951e59ad"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/09be68a1de71e06519bad83016bce25e08f676b2e141a68cbe17a29c246bad69.json.gz",
+      "sha256": "09be68a1de71e06519bad83016bce25e08f676b2e141a68cbe17a29c246bad69"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f6ce80c65c1e19b246f376de4e16b1f24276f773988bf1de65bbd41fea229021.json.gz",
+      "sha256": "f6ce80c65c1e19b246f376de4e16b1f24276f773988bf1de65bbd41fea229021"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/7a7268e1f69ca6b4119340778b0685939239e6efc5becc98071b85182662cd1b.json.gz",
+      "sha256": "7a7268e1f69ca6b4119340778b0685939239e6efc5becc98071b85182662cd1b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/7e8a93f49bdffe8f3d5397fd3952f7353c871a196236164a2a93f31f9a14a99e.json.gz",
+      "sha256": "7e8a93f49bdffe8f3d5397fd3952f7353c871a196236164a2a93f31f9a14a99e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/fac7cc02425c2ff0458a72e23d0da4eba2ae51aa07ac1a39dc99b987e32ffd69.json.gz",
+      "sha256": "fac7cc02425c2ff0458a72e23d0da4eba2ae51aa07ac1a39dc99b987e32ffd69"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/160dc0dd86b983aeef6bf4eacc7951eac7a71509db12e770b231fd240260173a.json.gz",
+      "sha256": "160dc0dd86b983aeef6bf4eacc7951eac7a71509db12e770b231fd240260173a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/e0b71b3c3e9fc10f5f7f18abd0b59cce507061eace2f9a70e89c0203c51bcf00.json.gz",
+      "sha256": "e0b71b3c3e9fc10f5f7f18abd0b59cce507061eace2f9a70e89c0203c51bcf00"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/67abbc2929574620b79b08b2b28f960fece959877f7a6649ae760566ec3f797d.json.gz",
+      "sha256": "67abbc2929574620b79b08b2b28f960fece959877f7a6649ae760566ec3f797d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/78b943ce0de0c86799780ce86d537517f1634bf5ae45a1fb8a710fe681e39b65.json.gz",
+      "sha256": "78b943ce0de0c86799780ce86d537517f1634bf5ae45a1fb8a710fe681e39b65"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/b41cee1931b8bd1fa3a5e82a9dbc6c0aa2bd157c0398f90bfbe22e979f34ed8e.json.gz",
+      "sha256": "b41cee1931b8bd1fa3a5e82a9dbc6c0aa2bd157c0398f90bfbe22e979f34ed8e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/1824eb032974cd1454c6dfb05265eefbb5b4fd80c02cad6b1b062203e9f75753.json.gz",
+      "sha256": "1824eb032974cd1454c6dfb05265eefbb5b4fd80c02cad6b1b062203e9f75753"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/4f8eaa77c45332db5660ded490d85042eccd84ac8ca3a29ab56a03f70546aaba.json.gz",
+      "sha256": "4f8eaa77c45332db5660ded490d85042eccd84ac8ca3a29ab56a03f70546aaba"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3a34fe2432497b39d15151c4c10b608ce37df357436ce46c8aa259cd99f5bf95.json.gz",
+      "sha256": "3a34fe2432497b39d15151c4c10b608ce37df357436ce46c8aa259cd99f5bf95"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/725c587b3381f8a0c6261be67d31ecff2ffaf560fad9825509beb9dbfe806ce5.json.gz",
+      "sha256": "725c587b3381f8a0c6261be67d31ecff2ffaf560fad9825509beb9dbfe806ce5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0f660824c396b8a25d2b3d195973c1f1dddb228e2195ec86560562f4fc536529.json.gz",
+      "sha256": "0f660824c396b8a25d2b3d195973c1f1dddb228e2195ec86560562f4fc536529"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0f800c4de87baedaca835bf75eedee7605564aeb056127201228c37f75f352b8.json.gz",
+      "sha256": "0f800c4de87baedaca835bf75eedee7605564aeb056127201228c37f75f352b8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0e73dbc87c6ef5b834a8c3917e2c9c261c991c8ace85562778bb06dd17e35603.json.gz",
+      "sha256": "0e73dbc87c6ef5b834a8c3917e2c9c261c991c8ace85562778bb06dd17e35603"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3803e29362ebcdd969f42f0c61b7dd20a5b7468a2ca7cac426b23cea50c6f4de.json.gz",
+      "sha256": "3803e29362ebcdd969f42f0c61b7dd20a5b7468a2ca7cac426b23cea50c6f4de"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/98e6d0ad580972c50b175897be9c09d4af044c493004c5c035e904896c6cc62f.json.gz",
+      "sha256": "98e6d0ad580972c50b175897be9c09d4af044c493004c5c035e904896c6cc62f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/1b6e740a6d8e50ffff5e21272c3f6134d8ae91790b70e2f7f30dfa0641ff5568.json.gz",
+      "sha256": "1b6e740a6d8e50ffff5e21272c3f6134d8ae91790b70e2f7f30dfa0641ff5568"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f82aaf8c536344592f07196fe747f0a9b12bd68e3d275770c3b2b0d665cf26c3.json.gz",
+      "sha256": "f82aaf8c536344592f07196fe747f0a9b12bd68e3d275770c3b2b0d665cf26c3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/4cdc6382d091b7b54cfdc8c1adfc7d12088690e63b7e1eceebc9355f8e613337.json.gz",
+      "sha256": "4cdc6382d091b7b54cfdc8c1adfc7d12088690e63b7e1eceebc9355f8e613337"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/3021b5b063e1956e7fe8ee2935be30fd673c523bb01fd273cced95d97cee1c90.json.gz",
+      "sha256": "3021b5b063e1956e7fe8ee2935be30fd673c523bb01fd273cced95d97cee1c90"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/b263890632ee5586794c79ca1a9d87b4e0709763dea6c22f7d07ddde7c108b3f.json.gz",
+      "sha256": "b263890632ee5586794c79ca1a9d87b4e0709763dea6c22f7d07ddde7c108b3f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/830820e0eeae1b9ee1240464f481f6e6261d364f711ffaac275eb866cb4680a8.json.gz",
+      "sha256": "830820e0eeae1b9ee1240464f481f6e6261d364f711ffaac275eb866cb4680a8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/c04f6de21f85db3520cce18fe6f016c9c4b75e74799743fde5f6e88b9d8e5e58.json.gz",
+      "sha256": "c04f6de21f85db3520cce18fe6f016c9c4b75e74799743fde5f6e88b9d8e5e58"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/80c037f37a8a6006575f987873312ef4dfe5ecfb7c053e8495b0d58a829d792a.json.gz",
+      "sha256": "80c037f37a8a6006575f987873312ef4dfe5ecfb7c053e8495b0d58a829d792a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/26e542d6b3ce94f07603b7ad0521bb20a0f6c9d2a1122db4bcde0408718ea81c.json.gz",
+      "sha256": "26e542d6b3ce94f07603b7ad0521bb20a0f6c9d2a1122db4bcde0408718ea81c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/08bbd68784794324d9ce42217436912b0ec2b824db83edff3f9c978d0ef8cedb.json.gz",
+      "sha256": "08bbd68784794324d9ce42217436912b0ec2b824db83edff3f9c978d0ef8cedb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a84514c6cc91674c6aea0f1159cae9e1f3964e69a87df374981d33b53b51af35.json.gz",
+      "sha256": "a84514c6cc91674c6aea0f1159cae9e1f3964e69a87df374981d33b53b51af35"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/2007229b75963fb29e4b54f21bffdec3e99b7631a3ab67918d7da3cc01a8e323.json.gz",
+      "sha256": "2007229b75963fb29e4b54f21bffdec3e99b7631a3ab67918d7da3cc01a8e323"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/8194120a6e9b8a4690195e48757c834240150ff00aca9300255d3ec571ef6d59.json.gz",
+      "sha256": "8194120a6e9b8a4690195e48757c834240150ff00aca9300255d3ec571ef6d59"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/62df9a5c42691832a5f74b1f100cdef04c741cbea805ef469bdf6108e5b71cf9.json.gz",
+      "sha256": "62df9a5c42691832a5f74b1f100cdef04c741cbea805ef469bdf6108e5b71cf9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/136db7f14196b62658b2162fb0eab4affb3f3fdb358918c21d588230e737a10a.json.gz",
+      "sha256": "136db7f14196b62658b2162fb0eab4affb3f3fdb358918c21d588230e737a10a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/2fa34177067c5953dac8cae4111653758a5a8f3c67bd1a256247b3611cd456cc.json.gz",
+      "sha256": "2fa34177067c5953dac8cae4111653758a5a8f3c67bd1a256247b3611cd456cc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/1607b13efe4f73ce3446ce45f15bd3ed748eb99693a70f22106592fe315a79c8.json.gz",
+      "sha256": "1607b13efe4f73ce3446ce45f15bd3ed748eb99693a70f22106592fe315a79c8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/a4553a3e0da0f55a0ee5f38971c48f8e83d97e53931d9df5374f0e1d0dd73986.json.gz",
+      "sha256": "a4553a3e0da0f55a0ee5f38971c48f8e83d97e53931d9df5374f0e1d0dd73986"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/00e9c5b0ed6596da2f0651d5b85623563261a9a0afa738fbf763d164c52e42f1.json.gz",
+      "sha256": "00e9c5b0ed6596da2f0651d5b85623563261a9a0afa738fbf763d164c52e42f1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/0e526e66ec11fb2382d533c715a3cce019e1573cee553673c84c6227ae5bc487.json.gz",
+      "sha256": "0e526e66ec11fb2382d533c715a3cce019e1573cee553673c84c6227ae5bc487"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/f8dde514965f8492139a2f9112ea307566f334d1a6624c885a987d84cdda6eba.json.gz",
+      "sha256": "f8dde514965f8492139a2f9112ea307566f334d1a6624c885a987d84cdda6eba"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/96737d6cf5b3d9ece6a0f693f54c70d1012cb83074cdbf777146d2369840297a.json.gz",
+      "sha256": "96737d6cf5b3d9ece6a0f693f54c70d1012cb83074cdbf777146d2369840297a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/d5af55c2af234ebfbf4b07614aa017624094a60699d9625eff88dc71ff3346ee.json.gz",
+      "sha256": "d5af55c2af234ebfbf4b07614aa017624094a60699d9625eff88dc71ff3346ee"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/314dae8d4dbb976e6d624197c7423276450dfba8c59f25194a690155217f7e69.json.gz",
+      "sha256": "314dae8d4dbb976e6d624197c7423276450dfba8c59f25194a690155217f7e69"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/12d2afd05214646b35bbb1d38082ad90553834b39d3c63515cede276db51360d.json.gz",
+      "sha256": "12d2afd05214646b35bbb1d38082ad90553834b39d3c63515cede276db51360d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/ec6965c9d4ea8630f756afda151a44751b406775aa4a3398c498c29ce3c44327.json.gz",
+      "sha256": "ec6965c9d4ea8630f756afda151a44751b406775aa4a3398c498c29ce3c44327"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/37e12b9356f8467788a92ef8cb2c34bda35ee6dbbe1ecf61ae74d2d1adc96929.json.gz",
+      "sha256": "37e12b9356f8467788a92ef8cb2c34bda35ee6dbbe1ecf61ae74d2d1adc96929"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/1018826e19d45b2c69b54f67727f44ddc74e8cc95fd0a4905f35ea30da45acdb.json.gz",
+      "sha256": "1018826e19d45b2c69b54f67727f44ddc74e8cc95fd0a4905f35ea30da45acdb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/79610816dbafc42a1c445e32de46011eed16a790389ddbb4b35a9ba99cfe80e5.json.gz",
+      "sha256": "79610816dbafc42a1c445e32de46011eed16a790389ddbb4b35a9ba99cfe80e5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/884707a67db46ac4469c6647bcd5a15599c591ade5a344f178962ca26010ce9b.json.gz",
+      "sha256": "884707a67db46ac4469c6647bcd5a15599c591ade5a344f178962ca26010ce9b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/4c8dd9855e6796da8e85a675fecbbd4443e587b8913c8d1d560aa9913887aa75.json.gz",
+      "sha256": "4c8dd9855e6796da8e85a675fecbbd4443e587b8913c8d1d560aa9913887aa75"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/99e5738f572aa4907b0a2d7892ee9acbcac8627ef95f01acc00e7ea5321e8a84.json.gz",
+      "sha256": "99e5738f572aa4907b0a2d7892ee9acbcac8627ef95f01acc00e7ea5321e8a84"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/ff313ec62e203ff5cd783e2906e7940980be0a103647be1d7679c2682c1ea835.json.gz",
+      "sha256": "ff313ec62e203ff5cd783e2906e7940980be0a103647be1d7679c2682c1ea835"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/52de31c8797d58da1aca426191fca889df4e4b63021d6c69524ecec2a6c65870.json.gz",
+      "sha256": "52de31c8797d58da1aca426191fca889df4e4b63021d6c69524ecec2a6c65870"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/10c1048a299658f54be5d4cb9ac056680ce51dad9794a9a3c4bd7254789acb5f.json.gz",
+      "sha256": "10c1048a299658f54be5d4cb9ac056680ce51dad9794a9a3c4bd7254789acb5f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KSFO/2026-10-05/bf5b6590309610f4e89d8839203418327642fe5f0751507d54f980683233f56c.json.gz",
+      "sha256": "bf5b6590309610f4e89d8839203418327642fe5f0751507d54f980683233f56c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ed658e61a2cae3f928c4d6dacab30da82fb318693c48fc6fcedd98a3cd169f53.json.gz",
+      "sha256": "ed658e61a2cae3f928c4d6dacab30da82fb318693c48fc6fcedd98a3cd169f53"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/b3fd9b987ac0f819b21171fb23b09d6d41e333f3447c3319e1a9073bcf3530ed.json.gz",
+      "sha256": "b3fd9b987ac0f819b21171fb23b09d6d41e333f3447c3319e1a9073bcf3530ed"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/d5967fa6da842d0072ed492e96bf2580976a0a07b9834c79792d8ee84028d962.json.gz",
+      "sha256": "d5967fa6da842d0072ed492e96bf2580976a0a07b9834c79792d8ee84028d962"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/df088c9df484aec919d5c8f02510a215d575dcd37809edb570ba6e22872b1685.json.gz",
+      "sha256": "df088c9df484aec919d5c8f02510a215d575dcd37809edb570ba6e22872b1685"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f35e324d60fb7a26c21b1f1c023b9ad5ac3adc6d24d6ced363d5a56a864fa943.json.gz",
+      "sha256": "f35e324d60fb7a26c21b1f1c023b9ad5ac3adc6d24d6ced363d5a56a864fa943"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/6923ea906561dfbb36c169dbe460708020009b97c92056925333cbe8a4d5ba8a.json.gz",
+      "sha256": "6923ea906561dfbb36c169dbe460708020009b97c92056925333cbe8a4d5ba8a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/4a3a9d56984aaffe784febe64101846f0d5a81b370feadb3e3f996f1db1190c3.json.gz",
+      "sha256": "4a3a9d56984aaffe784febe64101846f0d5a81b370feadb3e3f996f1db1190c3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/9aa00b03c8e41d5fcd8c61ed3f49d99b696ad638b7349015aef5da2f0fd1523d.json.gz",
+      "sha256": "9aa00b03c8e41d5fcd8c61ed3f49d99b696ad638b7349015aef5da2f0fd1523d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ac595e6dcd64314ed22bcbde7029250a7329be26a0b3324f7cc190887aa47f37.json.gz",
+      "sha256": "ac595e6dcd64314ed22bcbde7029250a7329be26a0b3324f7cc190887aa47f37"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/6a807ac02347e80164b95bc2e2d205c9f7fda2314258dfdec7abcb0492990152.json.gz",
+      "sha256": "6a807ac02347e80164b95bc2e2d205c9f7fda2314258dfdec7abcb0492990152"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/517d0543fd4085823886a6896296071bcb9a54e57c0879bfe83b9f69dacdb429.json.gz",
+      "sha256": "517d0543fd4085823886a6896296071bcb9a54e57c0879bfe83b9f69dacdb429"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f6eed10672ea60216f348653f64ef37260db2dbf66d7e85e8f469db52b576dfc.json.gz",
+      "sha256": "f6eed10672ea60216f348653f64ef37260db2dbf66d7e85e8f469db52b576dfc"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/6d62f44d6cd7761822c98322e30f827c604faa257ec34b259eeec55c85e93a2a.json.gz",
+      "sha256": "6d62f44d6cd7761822c98322e30f827c604faa257ec34b259eeec55c85e93a2a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/041ae4402f8e7c43a6cc5fb4f684b76f6cb9dbeeb469ba4cc638569615c56f89.json.gz",
+      "sha256": "041ae4402f8e7c43a6cc5fb4f684b76f6cb9dbeeb469ba4cc638569615c56f89"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/be82fdaf756b0bbbde9e6df2ffcda905d3445dbb41ad20f13a83ce32679fb087.json.gz",
+      "sha256": "be82fdaf756b0bbbde9e6df2ffcda905d3445dbb41ad20f13a83ce32679fb087"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/04a31adf0f8eabdec022a6159e8b498e863cf0cd9a1e00097973286bd617239f.json.gz",
+      "sha256": "04a31adf0f8eabdec022a6159e8b498e863cf0cd9a1e00097973286bd617239f"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f9a5d1918c2eb980f25b9e7c0c847962f3f44371aa0d1c072dbaa3e299263dc9.json.gz",
+      "sha256": "f9a5d1918c2eb980f25b9e7c0c847962f3f44371aa0d1c072dbaa3e299263dc9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f28714a34b0fbda52fac86ca5ba352de2464d18aa93bf05a41d09380135f6d39.json.gz",
+      "sha256": "f28714a34b0fbda52fac86ca5ba352de2464d18aa93bf05a41d09380135f6d39"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/dbf6f84bb77fdf7fdc5b86492d1c7bd3382ac69b590dfc31b44d1db5ab4ddeba.json.gz",
+      "sha256": "dbf6f84bb77fdf7fdc5b86492d1c7bd3382ac69b590dfc31b44d1db5ab4ddeba"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/97b7756153ed1d8f7827eb2255ba154d341cbd0ab1f47d0a15b03959f3adc8a5.json.gz",
+      "sha256": "97b7756153ed1d8f7827eb2255ba154d341cbd0ab1f47d0a15b03959f3adc8a5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/158296d816d2cedc73163c5d425e8be66b52afa43d1952aa5ff22d84a2eb8373.json.gz",
+      "sha256": "158296d816d2cedc73163c5d425e8be66b52afa43d1952aa5ff22d84a2eb8373"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/4fe54a9a18afc86e9efa1c430aa3f61404eade9146381f83a57737a2febd4883.json.gz",
+      "sha256": "4fe54a9a18afc86e9efa1c430aa3f61404eade9146381f83a57737a2febd4883"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/3a58a7857cc82f57df284d15b81eeb3527a7373290814017ba7bc0b529da137a.json.gz",
+      "sha256": "3a58a7857cc82f57df284d15b81eeb3527a7373290814017ba7bc0b529da137a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/20b961d1e2365efd9f0201260ab0239b2ffbe306ea97bf0373721d9b18d8b8b3.json.gz",
+      "sha256": "20b961d1e2365efd9f0201260ab0239b2ffbe306ea97bf0373721d9b18d8b8b3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/e6d82885b7f46bb624e1e49ab1d5a2fba9f265e1bd2728ffe2016427693d9ac9.json.gz",
+      "sha256": "e6d82885b7f46bb624e1e49ab1d5a2fba9f265e1bd2728ffe2016427693d9ac9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/508bfdd5fe5cc6d5ba24300609c40dd9dae5334d1ea4cd20a31b16f137f1e1c1.json.gz",
+      "sha256": "508bfdd5fe5cc6d5ba24300609c40dd9dae5334d1ea4cd20a31b16f137f1e1c1"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f69b108875efe80c6eb2577d0b379a6202181ebebcc87b7bcccb62cdbaa1e605.json.gz",
+      "sha256": "f69b108875efe80c6eb2577d0b379a6202181ebebcc87b7bcccb62cdbaa1e605"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/3de92aa629abcdaab6ac4428561cf3e6d1959ffe98df0d7e6648c841d91e0b8f.json.gz",
+      "sha256": "3de92aa629abcdaab6ac4428561cf3e6d1959ffe98df0d7e6648c841d91e0b8f"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/2fb4a937025bd7d5e8dbc138a5a223c15b474250a7a2301ea74d76fd4cd2e944.json.gz",
+      "sha256": "2fb4a937025bd7d5e8dbc138a5a223c15b474250a7a2301ea74d76fd4cd2e944"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/dcb2acefe51747080c5a99a66bf2e13a09b9962603f2a5de6018ffffdedec683.json.gz",
+      "sha256": "dcb2acefe51747080c5a99a66bf2e13a09b9962603f2a5de6018ffffdedec683"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ad81bf158e0fe893a628bc4990c5e8868fa128ccab294e0b99a70ceb48c05780.json.gz",
+      "sha256": "ad81bf158e0fe893a628bc4990c5e8868fa128ccab294e0b99a70ceb48c05780"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/777087f1f9a1d65c6b3b42055b0b69a08ffd562856a7c5e34dfbda6181138fc8.json.gz",
+      "sha256": "777087f1f9a1d65c6b3b42055b0b69a08ffd562856a7c5e34dfbda6181138fc8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/5055c8622ed5953668b1b150c75dcd5391a324be8815a4106335261e842d94eb.json.gz",
+      "sha256": "5055c8622ed5953668b1b150c75dcd5391a324be8815a4106335261e842d94eb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/7e147e1e82e67c56f9564056d883c7928ab51461b2496a7cb72a842ed49524ea.json.gz",
+      "sha256": "7e147e1e82e67c56f9564056d883c7928ab51461b2496a7cb72a842ed49524ea"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/de8d7980a8e2c7b9b19144df3f683004f8d9c9ff1619073237659e63d7bc955e.json.gz",
+      "sha256": "de8d7980a8e2c7b9b19144df3f683004f8d9c9ff1619073237659e63d7bc955e"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0771fdd774cb8c57215c464ac6b02700dc5d007a52d02397d69d2bcdd2ecc62e.json.gz",
+      "sha256": "0771fdd774cb8c57215c464ac6b02700dc5d007a52d02397d69d2bcdd2ecc62e"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/80a36ac16f956ff07ffb33e0175964ada335de594bc2e4f54930e38726a8a63b.json.gz",
+      "sha256": "80a36ac16f956ff07ffb33e0175964ada335de594bc2e4f54930e38726a8a63b"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/4dcf2724901fb53a0d2a611ff5950447b2bdb3307bc65210cf6d05e4ef0598c9.json.gz",
+      "sha256": "4dcf2724901fb53a0d2a611ff5950447b2bdb3307bc65210cf6d05e4ef0598c9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/9ea0c42b42093c103611655b8b0dc11892db49aa8a0538827fd1581a025addf2.json.gz",
+      "sha256": "9ea0c42b42093c103611655b8b0dc11892db49aa8a0538827fd1581a025addf2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/eeb63e011f000ea1aaf47250288df8a3c7567d07cfdfcf8baa925d5cd42de9f2.json.gz",
+      "sha256": "eeb63e011f000ea1aaf47250288df8a3c7567d07cfdfcf8baa925d5cd42de9f2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/22e9f76b3dd8d83cbfafc10b2ee6544a53c8d3afb4241f740dcc13309b1c364a.json.gz",
+      "sha256": "22e9f76b3dd8d83cbfafc10b2ee6544a53c8d3afb4241f740dcc13309b1c364a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f410982ac2c4b015342bb867cacd15a95b78d62b556929417625704a43ee7707.json.gz",
+      "sha256": "f410982ac2c4b015342bb867cacd15a95b78d62b556929417625704a43ee7707"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ae7b101d9726ea8101139a30d46f568616be8aa4c22b6606f01bd6d1757d5fd3.json.gz",
+      "sha256": "ae7b101d9726ea8101139a30d46f568616be8aa4c22b6606f01bd6d1757d5fd3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/4bf3b3a823ab442803041d6d8799c5a4f2da62ffd4303ef49b0a02b42e1e58b2.json.gz",
+      "sha256": "4bf3b3a823ab442803041d6d8799c5a4f2da62ffd4303ef49b0a02b42e1e58b2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/3677842cf4789976b1f8e2fcd68cc48966c6e0fdffaccc54e7dd884d5e18cdd9.json.gz",
+      "sha256": "3677842cf4789976b1f8e2fcd68cc48966c6e0fdffaccc54e7dd884d5e18cdd9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/922447c4524520852128ae8e3cb35b9a2f9dbb3f3c008b34511182bf9f3f3ded.json.gz",
+      "sha256": "922447c4524520852128ae8e3cb35b9a2f9dbb3f3c008b34511182bf9f3f3ded"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ae44f2fab57edf3704782395019b2fd766f402e30dce37e3cc779d9e541fa81f.json.gz",
+      "sha256": "ae44f2fab57edf3704782395019b2fd766f402e30dce37e3cc779d9e541fa81f"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/9960a4c9f36e9f6e5595ee1ec4ef074df389e2fd6aaa4b1f4b155cef1f414583.json.gz",
+      "sha256": "9960a4c9f36e9f6e5595ee1ec4ef074df389e2fd6aaa4b1f4b155cef1f414583"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/8e5837a5ae220a4a16496f8f38de3bff8f6fd90a94cd43179f9c20a9b82e0d4a.json.gz",
+      "sha256": "8e5837a5ae220a4a16496f8f38de3bff8f6fd90a94cd43179f9c20a9b82e0d4a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/3cb9927f98e000058609dc319dd12539d56d5bad97dc9fb9508219bd839372b3.json.gz",
+      "sha256": "3cb9927f98e000058609dc319dd12539d56d5bad97dc9fb9508219bd839372b3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0b19a507505c4a9df32a5b0bf4964c15de444ff9416be9ed5cdf7b0a60f25555.json.gz",
+      "sha256": "0b19a507505c4a9df32a5b0bf4964c15de444ff9416be9ed5cdf7b0a60f25555"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/279b1e202db66d88bbd3268c40d9c91e40b0f9571cad485de5dfbb79ab0a4810.json.gz",
+      "sha256": "279b1e202db66d88bbd3268c40d9c91e40b0f9571cad485de5dfbb79ab0a4810"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/7c722d4ebbcf9a269e87ed72f63fe767b23b2b2df54a2cd0d9a88854347fa941.json.gz",
+      "sha256": "7c722d4ebbcf9a269e87ed72f63fe767b23b2b2df54a2cd0d9a88854347fa941"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/24503ca8cc23486d604840808be170f9775d354091dbdd255143bb1fdae8d66c.json.gz",
+      "sha256": "24503ca8cc23486d604840808be170f9775d354091dbdd255143bb1fdae8d66c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/cbdee01bfc73f9849c32acae9d44896b37330b183dd552bcd4180ef148d3e941.json.gz",
+      "sha256": "cbdee01bfc73f9849c32acae9d44896b37330b183dd552bcd4180ef148d3e941"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/8afa403f98033085de049f2d9cfa7c52604d1f30b0a8de0eee093370a6029dd8.json.gz",
+      "sha256": "8afa403f98033085de049f2d9cfa7c52604d1f30b0a8de0eee093370a6029dd8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/bc36fa8955dff2843eb1c9097800114f1040e68d660cfc5fddec3f0fe7cae18d.json.gz",
+      "sha256": "bc36fa8955dff2843eb1c9097800114f1040e68d660cfc5fddec3f0fe7cae18d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ae8b848700af337101d754a55282676e1b5a2702a3b1f9b20ed460928ef36812.json.gz",
+      "sha256": "ae8b848700af337101d754a55282676e1b5a2702a3b1f9b20ed460928ef36812"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ff3b72b275eef6253338a4cda55294e33eb293f189aa056fcd7569c8ed470c44.json.gz",
+      "sha256": "ff3b72b275eef6253338a4cda55294e33eb293f189aa056fcd7569c8ed470c44"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/c7c35a03dce8da42dbae6c8f0dbc88da5b0d7a431ef530f388c4f7a2aee8c932.json.gz",
+      "sha256": "c7c35a03dce8da42dbae6c8f0dbc88da5b0d7a431ef530f388c4f7a2aee8c932"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/9912f8ad7f101b621b35ce92359c16feee54f3feef5b3943678fb1af2390c8cb.json.gz",
+      "sha256": "9912f8ad7f101b621b35ce92359c16feee54f3feef5b3943678fb1af2390c8cb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/4482fb8393beab3d2164ecd7157df3fb250b94fef0b7fbc42c66f817e8c53c46.json.gz",
+      "sha256": "4482fb8393beab3d2164ecd7157df3fb250b94fef0b7fbc42c66f817e8c53c46"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/a405cb7f9a282dcf2af79a71032d3adc0d671cf76aed878de1256d1ad826b1cc.json.gz",
+      "sha256": "a405cb7f9a282dcf2af79a71032d3adc0d671cf76aed878de1256d1ad826b1cc"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0e7e312638d40e0b9fe59e03143d3cfa005c7059a1a8c133ece3be9b97df2925.json.gz",
+      "sha256": "0e7e312638d40e0b9fe59e03143d3cfa005c7059a1a8c133ece3be9b97df2925"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/410a480c48a0e0ab024e7f0400bd0eab5ab45e002ef5761184deaa8ff9cc49f6.json.gz",
+      "sha256": "410a480c48a0e0ab024e7f0400bd0eab5ab45e002ef5761184deaa8ff9cc49f6"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/958041a91e656fb43925000125190da83bbf6c23c333e605b8164b5f337f2a90.json.gz",
+      "sha256": "958041a91e656fb43925000125190da83bbf6c23c333e605b8164b5f337f2a90"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/b47aee6d9f917ee04babdfce5693ad209c383c05737cb6eaba09f2d013941462.json.gz",
+      "sha256": "b47aee6d9f917ee04babdfce5693ad209c383c05737cb6eaba09f2d013941462"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/9a0ff25c4618d655e90e60c9a21769e8ac114d2a6a423d3bb8bb33051c5ac464.json.gz",
+      "sha256": "9a0ff25c4618d655e90e60c9a21769e8ac114d2a6a423d3bb8bb33051c5ac464"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/2dbdf6d22fe50093db546ac6c44d25e8e5571454d5e044facfea3bd312cb9ed1.json.gz",
+      "sha256": "2dbdf6d22fe50093db546ac6c44d25e8e5571454d5e044facfea3bd312cb9ed1"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/634f305a0df6dcfbd7910f6fcea93b1d39be6f26ba700ec5af49867d640db85c.json.gz",
+      "sha256": "634f305a0df6dcfbd7910f6fcea93b1d39be6f26ba700ec5af49867d640db85c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/789918720c242b64b6d38cea99393c13228f4f8980bd09f75fc36f0df94adf4f.json.gz",
+      "sha256": "789918720c242b64b6d38cea99393c13228f4f8980bd09f75fc36f0df94adf4f"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f6ac7445333d8c76ed4df9fb1956b1c9771d5d32a8fb83d196a64fc2c201f904.json.gz",
+      "sha256": "f6ac7445333d8c76ed4df9fb1956b1c9771d5d32a8fb83d196a64fc2c201f904"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/7f45e4619908fffa73e8e68557f24c9e815a4d9d2a59905eaf6d23074993c12c.json.gz",
+      "sha256": "7f45e4619908fffa73e8e68557f24c9e815a4d9d2a59905eaf6d23074993c12c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/ef4a9f8c3aaaa4815d610e88c792ff6e7cd76b3e9c78acc4e2c698f2f198c94e.json.gz",
+      "sha256": "ef4a9f8c3aaaa4815d610e88c792ff6e7cd76b3e9c78acc4e2c698f2f198c94e"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/35755ea77a565d5683254196466004aacb412f84a2f704274ea5133b0e22770a.json.gz",
+      "sha256": "35755ea77a565d5683254196466004aacb412f84a2f704274ea5133b0e22770a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/42f58cd5a6394ab55f113946b116d3c3cfdae4e6d6441055952ea9953abd13e8.json.gz",
+      "sha256": "42f58cd5a6394ab55f113946b116d3c3cfdae4e6d6441055952ea9953abd13e8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0cd9d6fa457ee87eac221b6a383a09018abc696c77628962664377dd9b3c78ca.json.gz",
+      "sha256": "0cd9d6fa457ee87eac221b6a383a09018abc696c77628962664377dd9b3c78ca"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/f2bac1196ca62b10a6d98d2010711830b2eece7f41c4d0c557565c57333126bb.json.gz",
+      "sha256": "f2bac1196ca62b10a6d98d2010711830b2eece7f41c4d0c557565c57333126bb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/1a8d85c2afe3be2dc0e0d50cec9aa12a8e14be701c99e9f3b286186e5350db56.json.gz",
+      "sha256": "1a8d85c2afe3be2dc0e0d50cec9aa12a8e14be701c99e9f3b286186e5350db56"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/1ddb2de2e7b2c5320bd71a19c8d49f80d66856852715e9f159fab9998ca06cc7.json.gz",
+      "sha256": "1ddb2de2e7b2c5320bd71a19c8d49f80d66856852715e9f159fab9998ca06cc7"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/a78f74322a2dee47ea28c00925971e7820a946e27e239ba61bd02d0875597285.json.gz",
+      "sha256": "a78f74322a2dee47ea28c00925971e7820a946e27e239ba61bd02d0875597285"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/a942d16e132bdb2f8620704f75d1b31eab850d15ba1c4367d6f9c0db6a9ca618.json.gz",
+      "sha256": "a942d16e132bdb2f8620704f75d1b31eab850d15ba1c4367d6f9c0db6a9ca618"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/708428a7482b2d2ae76360e892f63e42f7da760798aae9d785175bf074ab9152.json.gz",
+      "sha256": "708428a7482b2d2ae76360e892f63e42f7da760798aae9d785175bf074ab9152"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/58c75da523b8a290f1682b5dcf3e87a56bb1e49ee06a6a4c22ed43d818a5713d.json.gz",
+      "sha256": "58c75da523b8a290f1682b5dcf3e87a56bb1e49ee06a6a4c22ed43d818a5713d"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/a787395d7211c3cd6199c70434635cb60784ebaf4bf40374467fc977850348ab.json.gz",
+      "sha256": "a787395d7211c3cd6199c70434635cb60784ebaf4bf40374467fc977850348ab"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0627dca410d430ce550e137c632cdbd8f0ed74f4684b466fa4fa434596681ee0.json.gz",
+      "sha256": "0627dca410d430ce550e137c632cdbd8f0ed74f4684b466fa4fa434596681ee0"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/017413c0fe7fe5b78f6d17165fed5a7decc390f536e626bcac217990b5a1a828.json.gz",
+      "sha256": "017413c0fe7fe5b78f6d17165fed5a7decc390f536e626bcac217990b5a1a828"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/015045a5345d8d31c3b0312963d369ef9fe44e46e53c181723006214e553c6b6.json.gz",
+      "sha256": "015045a5345d8d31c3b0312963d369ef9fe44e46e53c181723006214e553c6b6"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/cc3d08fde385291cd9c4756925b4de97e8f62117ec980b88d0ab630a93835539.json.gz",
+      "sha256": "cc3d08fde385291cd9c4756925b4de97e8f62117ec980b88d0ab630a93835539"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/bcd6958e7fa69bb15334d245fda49331fcdc168865aa739d42509d50dd145948.json.gz",
+      "sha256": "bcd6958e7fa69bb15334d245fda49331fcdc168865aa739d42509d50dd145948"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/38fb114a671e69e8347c46e8e36d7d0a7b2643e8d38dfeb350d1091eeedab5fb.json.gz",
+      "sha256": "38fb114a671e69e8347c46e8e36d7d0a7b2643e8d38dfeb350d1091eeedab5fb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KSFO/2026-10-05/0d284c91ae6ccc8f35f29489b2e38c0959a0c9838bf681b16ff8abf2e70caaa4.json.gz",
+      "sha256": "0d284c91ae6ccc8f35f29489b2e38c0959a0c9838bf681b16ff8abf2e70caaa4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/dfd656a00ccaef6d61c7402f05c477f213e150d1ec878b9565632d5c65f3ec4d.json.gz",
+      "sha256": "dfd656a00ccaef6d61c7402f05c477f213e150d1ec878b9565632d5c65f3ec4d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/03e0d6cf80afdddff249b644bbb8d01d2eb5e17790f8aa325c261071d6fa8226.json.gz",
+      "sha256": "03e0d6cf80afdddff249b644bbb8d01d2eb5e17790f8aa325c261071d6fa8226"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3672adea62eadd58abcd037b92df8aa482a1d5fd1fa59a2a79eb9663ff49b161.json.gz",
+      "sha256": "3672adea62eadd58abcd037b92df8aa482a1d5fd1fa59a2a79eb9663ff49b161"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b0829d89efcef08a6586e0a4181aa5c441eab25d1b3ce3d6981f058bfa930712.json.gz",
+      "sha256": "b0829d89efcef08a6586e0a4181aa5c441eab25d1b3ce3d6981f058bfa930712"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/250419bb45a4e888bf4602cdced8dfc36f0ca708420e23651fe5911f75dcecd0.json.gz",
+      "sha256": "250419bb45a4e888bf4602cdced8dfc36f0ca708420e23651fe5911f75dcecd0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d260a48cab02b0e05723c67b01e3f76531e53abdcea51d652844b2d60f69a0c7.json.gz",
+      "sha256": "d260a48cab02b0e05723c67b01e3f76531e53abdcea51d652844b2d60f69a0c7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1ebd20df45a3de6d60881b80514ae2936d453696cc3309e3e9ca826b7c3caf94.json.gz",
+      "sha256": "1ebd20df45a3de6d60881b80514ae2936d453696cc3309e3e9ca826b7c3caf94"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bc271b44b30aa54bb80e6bcea03ccc86c66e63946570a993bccb647273a260dd.json.gz",
+      "sha256": "bc271b44b30aa54bb80e6bcea03ccc86c66e63946570a993bccb647273a260dd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/dc528d904d107377f9f623edaf0ce9026a72724f4f421db60036a97315848dea.json.gz",
+      "sha256": "dc528d904d107377f9f623edaf0ce9026a72724f4f421db60036a97315848dea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/20d3262382e3f6df5f7d99a7baf57946009f2078413b08e1f11cf4e6258e66c8.json.gz",
+      "sha256": "20d3262382e3f6df5f7d99a7baf57946009f2078413b08e1f11cf4e6258e66c8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/eb7a1bc9ebebc57707997a9dbb0c9690299ecc62e5a98ba3df52cefcd1b4726c.json.gz",
+      "sha256": "eb7a1bc9ebebc57707997a9dbb0c9690299ecc62e5a98ba3df52cefcd1b4726c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/8c86f568d47e7f3fb5b72278b533a9f606db3d5ed7c665f1be943cbf7e2c4e41.json.gz",
+      "sha256": "8c86f568d47e7f3fb5b72278b533a9f606db3d5ed7c665f1be943cbf7e2c4e41"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/77242779c7d3d28329ae2c38a30bcc1556db3e549a3f70a8ddd76af785805976.json.gz",
+      "sha256": "77242779c7d3d28329ae2c38a30bcc1556db3e549a3f70a8ddd76af785805976"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f517ca49629f90178eaa08e99a6b566bf4b3cef55697600bea1e3a00fcc8b0db.json.gz",
+      "sha256": "f517ca49629f90178eaa08e99a6b566bf4b3cef55697600bea1e3a00fcc8b0db"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/35aa08290672a34a660a0ea2395c4416bddb912aab02bf331c875533c32561bc.json.gz",
+      "sha256": "35aa08290672a34a660a0ea2395c4416bddb912aab02bf331c875533c32561bc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2fbfbbdfde6849a18a3d251ce3d29980bd7206320702e157b718548f6021c801.json.gz",
+      "sha256": "2fbfbbdfde6849a18a3d251ce3d29980bd7206320702e157b718548f6021c801"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1e7d8ce96ba8bbd13d4cbd2ee8f6524dedec6e70b97be180c2b6ef7b31c74a01.json.gz",
+      "sha256": "1e7d8ce96ba8bbd13d4cbd2ee8f6524dedec6e70b97be180c2b6ef7b31c74a01"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e8c3bc01e77d34b01eca0265748569ea3c5fd6cf7b67cdae84c2c2d8e53e10cb.json.gz",
+      "sha256": "e8c3bc01e77d34b01eca0265748569ea3c5fd6cf7b67cdae84c2c2d8e53e10cb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4887b098161e1b3f9efb82ce5e1f5ed7b162668ba55283a5eb2d366f1236c260.json.gz",
+      "sha256": "4887b098161e1b3f9efb82ce5e1f5ed7b162668ba55283a5eb2d366f1236c260"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/55eac67f30903bc9cc541a7e75be893c5202f1e496b140cb94d1427bf8398836.json.gz",
+      "sha256": "55eac67f30903bc9cc541a7e75be893c5202f1e496b140cb94d1427bf8398836"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cbba6e84c3281d1b4518a5eab9c95de4da57e5d257d325445900fe328c29f634.json.gz",
+      "sha256": "cbba6e84c3281d1b4518a5eab9c95de4da57e5d257d325445900fe328c29f634"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/52bcb0f18e68ea998f55eef52597e46431b9cbb344ca7b213ec772015a13d7df.json.gz",
+      "sha256": "52bcb0f18e68ea998f55eef52597e46431b9cbb344ca7b213ec772015a13d7df"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a56346759f3c0c359b7a20e0037c2ac3c411375c5f0495d7fa8424d242e1b9ea.json.gz",
+      "sha256": "a56346759f3c0c359b7a20e0037c2ac3c411375c5f0495d7fa8424d242e1b9ea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bf82b5276f83ad796fcfc55dbea34f0faf1b0761e3f4660e778e78548a75e0c6.json.gz",
+      "sha256": "bf82b5276f83ad796fcfc55dbea34f0faf1b0761e3f4660e778e78548a75e0c6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f5c37ad5d6bbf3591ddcf6031eb37ef8cb90a0175e5b54ebe1841e76bd5db9f0.json.gz",
+      "sha256": "f5c37ad5d6bbf3591ddcf6031eb37ef8cb90a0175e5b54ebe1841e76bd5db9f0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3b6e7d0bd8c7856b6747e826c41ec51bb9e11a19b33d3d13833c32b812e60543.json.gz",
+      "sha256": "3b6e7d0bd8c7856b6747e826c41ec51bb9e11a19b33d3d13833c32b812e60543"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/04c39a7aea27dacd21c3cafb9117ba2ae3690d2c2df22ab254d13ad4eb326d7a.json.gz",
+      "sha256": "04c39a7aea27dacd21c3cafb9117ba2ae3690d2c2df22ab254d13ad4eb326d7a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/ae475b70bfb59b1c5883724d0682fcef401326738578589df91450cbf59f449e.json.gz",
+      "sha256": "ae475b70bfb59b1c5883724d0682fcef401326738578589df91450cbf59f449e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/981694bf78710a602774e67f30c62d5252127b98e06eab427b8dc87a462b27fe.json.gz",
+      "sha256": "981694bf78710a602774e67f30c62d5252127b98e06eab427b8dc87a462b27fe"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e9c877457c80eb33f37c6b21e945175bfbd900671c77afcfc2d4c6d6cbe43f6c.json.gz",
+      "sha256": "e9c877457c80eb33f37c6b21e945175bfbd900671c77afcfc2d4c6d6cbe43f6c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/be14f32ce91d9270d4578d4a76698eabdb19af005faeef47f6aff6932ca28ddf.json.gz",
+      "sha256": "be14f32ce91d9270d4578d4a76698eabdb19af005faeef47f6aff6932ca28ddf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cf1ab4568b9ffe65a99de7c4f34b198b5f14ee184e39238199c218f4e03ffc4e.json.gz",
+      "sha256": "cf1ab4568b9ffe65a99de7c4f34b198b5f14ee184e39238199c218f4e03ffc4e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/47efbcf2b90dce6c88be054b9ff9541344d153cc95b039eb9388710c3633ce07.json.gz",
+      "sha256": "47efbcf2b90dce6c88be054b9ff9541344d153cc95b039eb9388710c3633ce07"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/017021423e169e23537b23e12a9ecaa97d19a3139ac433a88c5c7a433713866c.json.gz",
+      "sha256": "017021423e169e23537b23e12a9ecaa97d19a3139ac433a88c5c7a433713866c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b6c40f154455ec470d2babd97f8ece56f6c8f38727d609515cf2ac0e44949125.json.gz",
+      "sha256": "b6c40f154455ec470d2babd97f8ece56f6c8f38727d609515cf2ac0e44949125"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e31c2d5238d53dd2fecda78490799b05c4d4c30d769e1caa92693974c432c57a.json.gz",
+      "sha256": "e31c2d5238d53dd2fecda78490799b05c4d4c30d769e1caa92693974c432c57a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1494253062a79d1c607448a2ec7096a535b465c7abe4a51284b95ab64455d85c.json.gz",
+      "sha256": "1494253062a79d1c607448a2ec7096a535b465c7abe4a51284b95ab64455d85c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2d1d0c1dab106d176de4dfd2e84375599b717c7558510e4df87e5903cd1d04d0.json.gz",
+      "sha256": "2d1d0c1dab106d176de4dfd2e84375599b717c7558510e4df87e5903cd1d04d0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7a8881a7ce4e762adab3aa6a815525d9c51ee80245461bab92e1787d29e18371.json.gz",
+      "sha256": "7a8881a7ce4e762adab3aa6a815525d9c51ee80245461bab92e1787d29e18371"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d7532d053f78d3c8dd4f86e343b396024ea091184e2b14abf77da8a06a2cc01d.json.gz",
+      "sha256": "d7532d053f78d3c8dd4f86e343b396024ea091184e2b14abf77da8a06a2cc01d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f7ab3e5f4436e3042435aa618296ee2c95587ca05d0e70a192c776567f3ef32a.json.gz",
+      "sha256": "f7ab3e5f4436e3042435aa618296ee2c95587ca05d0e70a192c776567f3ef32a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/421e3e8f18ffef2756ed8531ab10484eae7467c33468bf33abbed4c72326af29.json.gz",
+      "sha256": "421e3e8f18ffef2756ed8531ab10484eae7467c33468bf33abbed4c72326af29"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3b45056fb6e2d37a8d434dc9c642ea1e1e955fc188b8e67f696944683a2caeda.json.gz",
+      "sha256": "3b45056fb6e2d37a8d434dc9c642ea1e1e955fc188b8e67f696944683a2caeda"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1049df8c240c051122d62c089c99f1d7b74fe51f5dc91962887d60fafc8c1b8b.json.gz",
+      "sha256": "1049df8c240c051122d62c089c99f1d7b74fe51f5dc91962887d60fafc8c1b8b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a95d60710cf1cd01cb05b902ec9d3f8b7ef95f228c362815c6b43c1d009bbcd6.json.gz",
+      "sha256": "a95d60710cf1cd01cb05b902ec9d3f8b7ef95f228c362815c6b43c1d009bbcd6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6d724203760594beaf15901ec8c8604c6ba8bc70701094a396155fa472a6bd21.json.gz",
+      "sha256": "6d724203760594beaf15901ec8c8604c6ba8bc70701094a396155fa472a6bd21"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0ecda64937a81a3f2eff357014dd309acc13f1c51e6bb092c7049e29fc8644ec.json.gz",
+      "sha256": "0ecda64937a81a3f2eff357014dd309acc13f1c51e6bb092c7049e29fc8644ec"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bd36ae0509b70971fbffbd837a280115e7fd1550d6c217db180730580fc1758e.json.gz",
+      "sha256": "bd36ae0509b70971fbffbd837a280115e7fd1550d6c217db180730580fc1758e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2b689569b7d09b3245d2e7f4bb3660b9a13caf9199cc760e1c84d469a1cb7be9.json.gz",
+      "sha256": "2b689569b7d09b3245d2e7f4bb3660b9a13caf9199cc760e1c84d469a1cb7be9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/51ff55accb583d60855ee5ecd3477e7dc17d517aa9d6dd514d47b2d5a8c50c2c.json.gz",
+      "sha256": "51ff55accb583d60855ee5ecd3477e7dc17d517aa9d6dd514d47b2d5a8c50c2c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/43dcf8c9959d992fdfeb6626248cce1332a7c78c9e1c3016fe8f2d0447b82291.json.gz",
+      "sha256": "43dcf8c9959d992fdfeb6626248cce1332a7c78c9e1c3016fe8f2d0447b82291"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/17546ed1f319060a0c94df4ce4432114d08dcfbcdbdfb9d4909189fcdda3460e.json.gz",
+      "sha256": "17546ed1f319060a0c94df4ce4432114d08dcfbcdbdfb9d4909189fcdda3460e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/60a18f9f307f4351ca388b045395ec5609505526d0e262161fca581c8ef448ec.json.gz",
+      "sha256": "60a18f9f307f4351ca388b045395ec5609505526d0e262161fca581c8ef448ec"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/dffa31232c93ed1af8558a0c011fd9c5d347eca13486b02f1c706b8902ddcb43.json.gz",
+      "sha256": "dffa31232c93ed1af8558a0c011fd9c5d347eca13486b02f1c706b8902ddcb43"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9cbdaab203b5f830963980bedee2c60a2ae5902a5521f222f01b71d889f8ce2c.json.gz",
+      "sha256": "9cbdaab203b5f830963980bedee2c60a2ae5902a5521f222f01b71d889f8ce2c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/94bc7fd4debb1995d7b2eb41c5035469e50cbe0f3489ec49865927e1f075a403.json.gz",
+      "sha256": "94bc7fd4debb1995d7b2eb41c5035469e50cbe0f3489ec49865927e1f075a403"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e3aa4cda0ec515314a6db9e97ae7fe9d5be4932dc4bb8ec01bc34d14a431da0f.json.gz",
+      "sha256": "e3aa4cda0ec515314a6db9e97ae7fe9d5be4932dc4bb8ec01bc34d14a431da0f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0c0ba00b8f70fb0ff02b9df66fdacce7fd344d8b174f2960cf915c66e48b94b4.json.gz",
+      "sha256": "0c0ba00b8f70fb0ff02b9df66fdacce7fd344d8b174f2960cf915c66e48b94b4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/15f72302144d59b02f4bb30ce0f13bbbb48581ab2e8225c4744aa747321052e8.json.gz",
+      "sha256": "15f72302144d59b02f4bb30ce0f13bbbb48581ab2e8225c4744aa747321052e8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/ecb3300721a3756d7570b0852e974e5c9dcff6589f9179ca8c152936ad58a679.json.gz",
+      "sha256": "ecb3300721a3756d7570b0852e974e5c9dcff6589f9179ca8c152936ad58a679"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bdc4c6e9ad96dc037ebceb6fae986fe0283b8fe237f2d4c44417c6659e541b22.json.gz",
+      "sha256": "bdc4c6e9ad96dc037ebceb6fae986fe0283b8fe237f2d4c44417c6659e541b22"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e81335693ba0661301a01bad27fe767d8a9655ebd41da9597b9a337157bff555.json.gz",
+      "sha256": "e81335693ba0661301a01bad27fe767d8a9655ebd41da9597b9a337157bff555"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f634f70199ec0bee610abd44adaa7f3ac6b00eeba573ce18c15565511bc209f9.json.gz",
+      "sha256": "f634f70199ec0bee610abd44adaa7f3ac6b00eeba573ce18c15565511bc209f9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c3069ffbf3efaeade29c366f14485dc8b8107e7a8c8e919bc32607efcbbdc133.json.gz",
+      "sha256": "c3069ffbf3efaeade29c366f14485dc8b8107e7a8c8e919bc32607efcbbdc133"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bfe840e56a69da312b279370442dd5c95251cacc21d052565c1f79f08637fe0d.json.gz",
+      "sha256": "bfe840e56a69da312b279370442dd5c95251cacc21d052565c1f79f08637fe0d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bc4fd30dfdc3f8c4b82b2b5ddff3b29e5a3d215b7b06e254265c3cb6e1f90b09.json.gz",
+      "sha256": "bc4fd30dfdc3f8c4b82b2b5ddff3b29e5a3d215b7b06e254265c3cb6e1f90b09"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/30b3f430520d268e06af97aa01b70d90d254b5e130810bd5724f09e8279f03bc.json.gz",
+      "sha256": "30b3f430520d268e06af97aa01b70d90d254b5e130810bd5724f09e8279f03bc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/ca48b823f347a60de2637e7c93476c5e7accd0926cf2b92a819e617d671920b3.json.gz",
+      "sha256": "ca48b823f347a60de2637e7c93476c5e7accd0926cf2b92a819e617d671920b3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4e5bdce7de11f84afca992a82a4df3272f541292afb667887835bff19e8aacaa.json.gz",
+      "sha256": "4e5bdce7de11f84afca992a82a4df3272f541292afb667887835bff19e8aacaa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c381dc73792b17c548b087e716bcfe9d3493d017c5bb13f23f6e9eb04b44d596.json.gz",
+      "sha256": "c381dc73792b17c548b087e716bcfe9d3493d017c5bb13f23f6e9eb04b44d596"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7b3edf9aa3eacadb72695d7b05db94600163549aa96e738d728c6ca788fe7dd6.json.gz",
+      "sha256": "7b3edf9aa3eacadb72695d7b05db94600163549aa96e738d728c6ca788fe7dd6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/065b160eeef8d6eec29d1291f81404381a20d534f62ff2559fcfe21aeb5a8919.json.gz",
+      "sha256": "065b160eeef8d6eec29d1291f81404381a20d534f62ff2559fcfe21aeb5a8919"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/50993c40a772faccb34bd0b2571bed6b763077a901ba1a0c63d7b80141f8b605.json.gz",
+      "sha256": "50993c40a772faccb34bd0b2571bed6b763077a901ba1a0c63d7b80141f8b605"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0f29a51a1a11e71a15eba3e3826e4852e8609ed7acee37ff721d7dc1f302713e.json.gz",
+      "sha256": "0f29a51a1a11e71a15eba3e3826e4852e8609ed7acee37ff721d7dc1f302713e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f5b1f5e1927c9f453da03af8d39c96b65f4bf686d8e0c96c77f8e8cf8cc1bfb5.json.gz",
+      "sha256": "f5b1f5e1927c9f453da03af8d39c96b65f4bf686d8e0c96c77f8e8cf8cc1bfb5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/86441fb4e12a2a0a281e26306784c5cb43ab6ac08a9baf6288de0636479db4e0.json.gz",
+      "sha256": "86441fb4e12a2a0a281e26306784c5cb43ab6ac08a9baf6288de0636479db4e0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cc3b31032b257dcd874a40cb6705ee11d560d5da42e29e55e8038a3fd904f8be.json.gz",
+      "sha256": "cc3b31032b257dcd874a40cb6705ee11d560d5da42e29e55e8038a3fd904f8be"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/05cd2fcd562524ec44e71a54dd2ff160596fb25e9b6ed857507f1c3fac7a3ba9.json.gz",
+      "sha256": "05cd2fcd562524ec44e71a54dd2ff160596fb25e9b6ed857507f1c3fac7a3ba9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b341b76bed242ed5c6c066adad76092cc0324e71fe7a8d09e8555c504da6dab0.json.gz",
+      "sha256": "b341b76bed242ed5c6c066adad76092cc0324e71fe7a8d09e8555c504da6dab0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e06b59436c7b2e6feab65d468076966565059ba70b3757c6fd7e11cdee598078.json.gz",
+      "sha256": "e06b59436c7b2e6feab65d468076966565059ba70b3757c6fd7e11cdee598078"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9c2912c4b68a94e59c71f0fa9c8c6b5967cbd97096531b3e5af5d4fa6d178f98.json.gz",
+      "sha256": "9c2912c4b68a94e59c71f0fa9c8c6b5967cbd97096531b3e5af5d4fa6d178f98"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5472b0d5fce3ec54e4d9c3a6accfb8e74e89b7810782ce32c9bac31d836963be.json.gz",
+      "sha256": "5472b0d5fce3ec54e4d9c3a6accfb8e74e89b7810782ce32c9bac31d836963be"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5ff428f847b73be41ee194351721b27539fc7a795f2e90c590e71bb54332f652.json.gz",
+      "sha256": "5ff428f847b73be41ee194351721b27539fc7a795f2e90c590e71bb54332f652"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/121aaf3044a19120e137c31a1051e7901814ade94c214bc7dfceb3f3ffa5e2cc.json.gz",
+      "sha256": "121aaf3044a19120e137c31a1051e7901814ade94c214bc7dfceb3f3ffa5e2cc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/eabd61c6550d320e717809025a43322f44ae88ab105b4b64eec77a0df16b0c67.json.gz",
+      "sha256": "eabd61c6550d320e717809025a43322f44ae88ab105b4b64eec77a0df16b0c67"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0abc4b98296879d1f3d901db012fecedf7765a197f27844e9c22650463da4240.json.gz",
+      "sha256": "0abc4b98296879d1f3d901db012fecedf7765a197f27844e9c22650463da4240"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b18d9bc02be16927fe95e1beca87beb0e2de97ed893b960b05d4051edb82f49f.json.gz",
+      "sha256": "b18d9bc02be16927fe95e1beca87beb0e2de97ed893b960b05d4051edb82f49f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/fb194fef97d1858a2a412e01cbda16abbad378b57882c01212c8b627b4a055b2.json.gz",
+      "sha256": "fb194fef97d1858a2a412e01cbda16abbad378b57882c01212c8b627b4a055b2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c2d688e4439e5c8170779be57718ee979bf9f2d765657a16bdb1434f21f21bfe.json.gz",
+      "sha256": "c2d688e4439e5c8170779be57718ee979bf9f2d765657a16bdb1434f21f21bfe"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/926d01a2e1bd221fec2fd6f5fb39844f6a59135f0789a0bb4696478cf54db8e3.json.gz",
+      "sha256": "926d01a2e1bd221fec2fd6f5fb39844f6a59135f0789a0bb4696478cf54db8e3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f94b95fc900274916fab02bc3efa91af020b0215fd9981f8de3eda45cf38a2b3.json.gz",
+      "sha256": "f94b95fc900274916fab02bc3efa91af020b0215fd9981f8de3eda45cf38a2b3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/846c1bc9630d371fa4b4ddb0c059e3a2151d0d72f0577d1a7e4f43af91e95e75.json.gz",
+      "sha256": "846c1bc9630d371fa4b4ddb0c059e3a2151d0d72f0577d1a7e4f43af91e95e75"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e5b873a7dc07e02dca1a3e4fd159336ccc5900be2954ef37c250470cd48d1027.json.gz",
+      "sha256": "e5b873a7dc07e02dca1a3e4fd159336ccc5900be2954ef37c250470cd48d1027"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/28f8893667dfc680ed009f323bd68915496103bbfe00a40d56effe84a28bf9aa.json.gz",
+      "sha256": "28f8893667dfc680ed009f323bd68915496103bbfe00a40d56effe84a28bf9aa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/136b78d377f9116c58580989b9d2c60a028159a6bba4d56740c2ca4fa2689698.json.gz",
+      "sha256": "136b78d377f9116c58580989b9d2c60a028159a6bba4d56740c2ca4fa2689698"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/46f4e1b1ba632edae21f28907ab10245e11e0418fe36c33e8a379ad8387a16e4.json.gz",
+      "sha256": "46f4e1b1ba632edae21f28907ab10245e11e0418fe36c33e8a379ad8387a16e4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9fc6201f0aace251f84289402cec6294e90ea72887166357656de7b5d422911e.json.gz",
+      "sha256": "9fc6201f0aace251f84289402cec6294e90ea72887166357656de7b5d422911e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c75c9e47b17b3a321adcb15981476cacb36a283bc09f5658dc6154a73c0667f4.json.gz",
+      "sha256": "c75c9e47b17b3a321adcb15981476cacb36a283bc09f5658dc6154a73c0667f4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/64290f5128342dca31536d4b66b8a57edf39b187106b874b8dee8da6c15432d7.json.gz",
+      "sha256": "64290f5128342dca31536d4b66b8a57edf39b187106b874b8dee8da6c15432d7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d243d3b245c1496da7585849df095970d3c0b4908dbc85a1c66c56fc4d3ad325.json.gz",
+      "sha256": "d243d3b245c1496da7585849df095970d3c0b4908dbc85a1c66c56fc4d3ad325"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/68065aea1077f2bcf59c0d72d99f19dd6f3860aea0d4599364661f3acd643a8d.json.gz",
+      "sha256": "68065aea1077f2bcf59c0d72d99f19dd6f3860aea0d4599364661f3acd643a8d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cf2957a9cb0fe5b0cc0af974e24bf72a808aaa25f3b5f39978a36cadde86474b.json.gz",
+      "sha256": "cf2957a9cb0fe5b0cc0af974e24bf72a808aaa25f3b5f39978a36cadde86474b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c61855ca3e8d1dcd38cbeae52344da79cae3cbb8d671c2cec75ccf0ebc703683.json.gz",
+      "sha256": "c61855ca3e8d1dcd38cbeae52344da79cae3cbb8d671c2cec75ccf0ebc703683"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/efb44941e6a3cdbe7fe23e98c8bfdd6c9afab3c890586e021ef0c04e2ef0840c.json.gz",
+      "sha256": "efb44941e6a3cdbe7fe23e98c8bfdd6c9afab3c890586e021ef0c04e2ef0840c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c5d95afd5138536030fcf10cf8ced94c151cf34f386e6f8f41b6ccf5af5a1c0d.json.gz",
+      "sha256": "c5d95afd5138536030fcf10cf8ced94c151cf34f386e6f8f41b6ccf5af5a1c0d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3cf7d17b689f4223a82689903280ac0436efa2648271119b3699c9034569ebeb.json.gz",
+      "sha256": "3cf7d17b689f4223a82689903280ac0436efa2648271119b3699c9034569ebeb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/dd8a5b5d5630ed72ffd2f1a6103fe433125e406ac5adb84ca933beff4df89960.json.gz",
+      "sha256": "dd8a5b5d5630ed72ffd2f1a6103fe433125e406ac5adb84ca933beff4df89960"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/02cddb960f1aef704c6b41cea4670a247d76de54850271d46bb30c90d086f748.json.gz",
+      "sha256": "02cddb960f1aef704c6b41cea4670a247d76de54850271d46bb30c90d086f748"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/053e641f8ffc3d69e9fe575fe47b15c04785aae23426e0d5a47642476094f1c6.json.gz",
+      "sha256": "053e641f8ffc3d69e9fe575fe47b15c04785aae23426e0d5a47642476094f1c6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/963bbea2e4cb8987874fdab6db3b10d91cae9553e451571edc8cc69584d7d676.json.gz",
+      "sha256": "963bbea2e4cb8987874fdab6db3b10d91cae9553e451571edc8cc69584d7d676"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/fe6adb0968c0c8346b4973918555e3fe2d0de92d346c817f3a5d3c5090d2fc7c.json.gz",
+      "sha256": "fe6adb0968c0c8346b4973918555e3fe2d0de92d346c817f3a5d3c5090d2fc7c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2daadc9ce7ffcfbb9af4911d974c3090fa258dadb5aa55e9239a8329d508abcd.json.gz",
+      "sha256": "2daadc9ce7ffcfbb9af4911d974c3090fa258dadb5aa55e9239a8329d508abcd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/25bf672ccdbee0d530b294dc575e0b7b81e1880234aa049b929e9f1564fd03c8.json.gz",
+      "sha256": "25bf672ccdbee0d530b294dc575e0b7b81e1880234aa049b929e9f1564fd03c8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/fa26714bd5e755b32f8b5e9ec10159d86b549b4a39a7417872ca33e25dddeb41.json.gz",
+      "sha256": "fa26714bd5e755b32f8b5e9ec10159d86b549b4a39a7417872ca33e25dddeb41"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3f2f896bcdcbd465f3f53eb481ae3b931208828b6c896bd7fcb8d21d73ccc234.json.gz",
+      "sha256": "3f2f896bcdcbd465f3f53eb481ae3b931208828b6c896bd7fcb8d21d73ccc234"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/78cf6aefe5de0f968e24f528fcdf2fccd114f5cc78fa5f68bc47bd8464806e0d.json.gz",
+      "sha256": "78cf6aefe5de0f968e24f528fcdf2fccd114f5cc78fa5f68bc47bd8464806e0d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a81000fa1e5293b42e20de817883900e06ff7d11b4b38977f27bfb997b5f85a5.json.gz",
+      "sha256": "a81000fa1e5293b42e20de817883900e06ff7d11b4b38977f27bfb997b5f85a5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e2fc88ba68db0f25d1a17d21db243685484ddfe78eca735ced03da37527faf2f.json.gz",
+      "sha256": "e2fc88ba68db0f25d1a17d21db243685484ddfe78eca735ced03da37527faf2f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/701d9ef2dc8cb9c0ec5251cc1333897c7bef20e7de4297917e97f6f7d911b4bc.json.gz",
+      "sha256": "701d9ef2dc8cb9c0ec5251cc1333897c7bef20e7de4297917e97f6f7d911b4bc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2ebe10801cf58009380fa7391ee0870dfbb46c7e308bee1f56eafab12dc9efd7.json.gz",
+      "sha256": "2ebe10801cf58009380fa7391ee0870dfbb46c7e308bee1f56eafab12dc9efd7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9ef7b1cf9477d43bab15c7443519ed9fc5ac1165d8d30a5f3b7bfb1e09dd6f3f.json.gz",
+      "sha256": "9ef7b1cf9477d43bab15c7443519ed9fc5ac1165d8d30a5f3b7bfb1e09dd6f3f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3e7e1693f735e1dd8ebe3db7711de31351fee5019c97f99b31ec0706937a90d8.json.gz",
+      "sha256": "3e7e1693f735e1dd8ebe3db7711de31351fee5019c97f99b31ec0706937a90d8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/88626e90a2841f6aa750a0d3bf284e5c5a4c378e9a05e40c4c4ac79c35fd16f9.json.gz",
+      "sha256": "88626e90a2841f6aa750a0d3bf284e5c5a4c378e9a05e40c4c4ac79c35fd16f9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d51babbc2e9a3a44eaea9b77aa7d60711cf125e846a121b29647a02de8cf5c6d.json.gz",
+      "sha256": "d51babbc2e9a3a44eaea9b77aa7d60711cf125e846a121b29647a02de8cf5c6d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/656ba42eaa8c9b34133434753fca912e8973153e8db826da029981edd80bb869.json.gz",
+      "sha256": "656ba42eaa8c9b34133434753fca912e8973153e8db826da029981edd80bb869"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5ff847a58d51eca10948cda9ff49cef724d32c9bd19f3a818e93e581d8cb5828.json.gz",
+      "sha256": "5ff847a58d51eca10948cda9ff49cef724d32c9bd19f3a818e93e581d8cb5828"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9ed86077b8c5d340ebc8758ca934216208d9a80f5d8a47ca6d36d9452eeaa366.json.gz",
+      "sha256": "9ed86077b8c5d340ebc8758ca934216208d9a80f5d8a47ca6d36d9452eeaa366"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/87ab57378784f83c9cc11f3ef05cb8ab9973ecbe3e69f6572ae3e545d9f69ebe.json.gz",
+      "sha256": "87ab57378784f83c9cc11f3ef05cb8ab9973ecbe3e69f6572ae3e545d9f69ebe"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0053afd61192d6878f18568a0d65850c55c0aebe07f2e4034d0cabcda84e5b61.json.gz",
+      "sha256": "0053afd61192d6878f18568a0d65850c55c0aebe07f2e4034d0cabcda84e5b61"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/04f9e7e297064d3d4f91a7856e6f9314f4f881dac56c1c10e1b3a08de31ed8b3.json.gz",
+      "sha256": "04f9e7e297064d3d4f91a7856e6f9314f4f881dac56c1c10e1b3a08de31ed8b3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9cc935c7dd38adf6805d3da7ab39024d8440111118c1de5df6f22ef4673af524.json.gz",
+      "sha256": "9cc935c7dd38adf6805d3da7ab39024d8440111118c1de5df6f22ef4673af524"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1b317dee63063c70fcd2c44113851ebb022ef2bf3601e82b25daaef271c38752.json.gz",
+      "sha256": "1b317dee63063c70fcd2c44113851ebb022ef2bf3601e82b25daaef271c38752"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b4bcd68b3d3615a88aeaf4c7abe2ea26a4a5b0bb3706437428e57f4d255e483a.json.gz",
+      "sha256": "b4bcd68b3d3615a88aeaf4c7abe2ea26a4a5b0bb3706437428e57f4d255e483a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7ee0b131a48914ec267bb26c1f2743d7503528d1e2b7782949008e2ec21db4a9.json.gz",
+      "sha256": "7ee0b131a48914ec267bb26c1f2743d7503528d1e2b7782949008e2ec21db4a9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/811e237191bedf44406a1d390f6484eaa710bb52f19b9ef78e7940c0a7ce16f7.json.gz",
+      "sha256": "811e237191bedf44406a1d390f6484eaa710bb52f19b9ef78e7940c0a7ce16f7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/aede14827eb9af1ce1fb0c5bc21be7e84c707f0788e6feff631e902ce21eb842.json.gz",
+      "sha256": "aede14827eb9af1ce1fb0c5bc21be7e84c707f0788e6feff631e902ce21eb842"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a817601f684a42d8f77481b40065d676a9455de14a1adb75a89c0922cec7b4bf.json.gz",
+      "sha256": "a817601f684a42d8f77481b40065d676a9455de14a1adb75a89c0922cec7b4bf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b7b031350939c9ae386c9eada464bf84ad0e370708f62479b42f67efefccc3da.json.gz",
+      "sha256": "b7b031350939c9ae386c9eada464bf84ad0e370708f62479b42f67efefccc3da"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/373d99174cef3702408f70beac2c94a05e7c27c856d37706b00032d98821eab0.json.gz",
+      "sha256": "373d99174cef3702408f70beac2c94a05e7c27c856d37706b00032d98821eab0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/31d7cba92c59c8924920c004ecacc3efa915565e4f80b16d74bac103c09ed207.json.gz",
+      "sha256": "31d7cba92c59c8924920c004ecacc3efa915565e4f80b16d74bac103c09ed207"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bb6f227b69c2b24b43b9cd8299ed745c68c121152ad64f488234cab930affdd1.json.gz",
+      "sha256": "bb6f227b69c2b24b43b9cd8299ed745c68c121152ad64f488234cab930affdd1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/382bffd815fed27ee346e70b45b9b76b4c6b8d1e72de9b33f458556e3f10f2f8.json.gz",
+      "sha256": "382bffd815fed27ee346e70b45b9b76b4c6b8d1e72de9b33f458556e3f10f2f8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/084498dfa40acfcbeb55397376bf63e78ffc8e05d2532e02b3f5e4dac9bc4639.json.gz",
+      "sha256": "084498dfa40acfcbeb55397376bf63e78ffc8e05d2532e02b3f5e4dac9bc4639"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1daea0e9f49599a6409025952e0f128b7db8a9233740defd5669849334fc0e3d.json.gz",
+      "sha256": "1daea0e9f49599a6409025952e0f128b7db8a9233740defd5669849334fc0e3d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4e4a7dcbcfab2193e2e01c4f296b2aa52ad2eb7cdfdbe916788962477c906eaf.json.gz",
+      "sha256": "4e4a7dcbcfab2193e2e01c4f296b2aa52ad2eb7cdfdbe916788962477c906eaf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1f77dbb9b7e1a16f6af4370a1dbefb3a2fe033a68647c6229eb383684f57e68b.json.gz",
+      "sha256": "1f77dbb9b7e1a16f6af4370a1dbefb3a2fe033a68647c6229eb383684f57e68b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f2debc2aeeb36523b099b5c56e549ccc0e441aed7e1bd33622ad120419deec52.json.gz",
+      "sha256": "f2debc2aeeb36523b099b5c56e549ccc0e441aed7e1bd33622ad120419deec52"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e0ab494ab5819a408078b2355bf36fbd9212be5cfcaaa4213ac8868c51aa2be7.json.gz",
+      "sha256": "e0ab494ab5819a408078b2355bf36fbd9212be5cfcaaa4213ac8868c51aa2be7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4b5ff42ac50a70f048504610a90e412a48df94c261cc168bd97f6cff7fd5aaf8.json.gz",
+      "sha256": "4b5ff42ac50a70f048504610a90e412a48df94c261cc168bd97f6cff7fd5aaf8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5605859dc89955f11c4c891865226ae4fe2cc4cf49834496681a6e1aeb7ae25e.json.gz",
+      "sha256": "5605859dc89955f11c4c891865226ae4fe2cc4cf49834496681a6e1aeb7ae25e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6bbff3030b00950ae22a38d132c9dfaa3637ac7f302c70e67ffffabe41874758.json.gz",
+      "sha256": "6bbff3030b00950ae22a38d132c9dfaa3637ac7f302c70e67ffffabe41874758"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/740cfa6a8cebde4ad343a0bd47e1bb70c95bfe8fc9ccf1249fdf0a458890d553.json.gz",
+      "sha256": "740cfa6a8cebde4ad343a0bd47e1bb70c95bfe8fc9ccf1249fdf0a458890d553"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b248eb9cf76c325b0e83b33f1c9584f779a5d2218d54258e45b39b64cda6a72a.json.gz",
+      "sha256": "b248eb9cf76c325b0e83b33f1c9584f779a5d2218d54258e45b39b64cda6a72a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/73d6c187f84f55a86e74863bce12024899b6407aa99fa0afbc9ab2b8c00d31a2.json.gz",
+      "sha256": "73d6c187f84f55a86e74863bce12024899b6407aa99fa0afbc9ab2b8c00d31a2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e932826bf7b66c7c077b295d3d93adaa585ceda0f0a928e8a747175f5c555344.json.gz",
+      "sha256": "e932826bf7b66c7c077b295d3d93adaa585ceda0f0a928e8a747175f5c555344"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/00a8990027d1718ed4bd4d7014ddc859370298a33aba7fede872f237f5ac502b.json.gz",
+      "sha256": "00a8990027d1718ed4bd4d7014ddc859370298a33aba7fede872f237f5ac502b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c33088ad729515eb0abb967f3087348ea4efd778033730ca64af2f4beafac410.json.gz",
+      "sha256": "c33088ad729515eb0abb967f3087348ea4efd778033730ca64af2f4beafac410"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/920658bd46b45e2d8f3513122b345942adb7c79f7f4f46d2ff6eac2426b8d518.json.gz",
+      "sha256": "920658bd46b45e2d8f3513122b345942adb7c79f7f4f46d2ff6eac2426b8d518"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3d9b9de348654e4e434370ccce6526928a0d92c5f7ec96dbe434152aa46f9103.json.gz",
+      "sha256": "3d9b9de348654e4e434370ccce6526928a0d92c5f7ec96dbe434152aa46f9103"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1a595c44db3e8578016cab91f11efc0b98f4743ee1709a1b5bc45077cbd43d55.json.gz",
+      "sha256": "1a595c44db3e8578016cab91f11efc0b98f4743ee1709a1b5bc45077cbd43d55"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bd4d68d47f75576a9a4598d985f997d40e93b0c4eff34a30fd429cb2678de519.json.gz",
+      "sha256": "bd4d68d47f75576a9a4598d985f997d40e93b0c4eff34a30fd429cb2678de519"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/856be502b503a5f7ff62e2c8c853d72fcbd32fc222cda5cdfd4d64858dde2a8f.json.gz",
+      "sha256": "856be502b503a5f7ff62e2c8c853d72fcbd32fc222cda5cdfd4d64858dde2a8f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/3d88806b585c0f2f66758699c5613f77682917b384c8ce1660c87b7bccdd74c9.json.gz",
+      "sha256": "3d88806b585c0f2f66758699c5613f77682917b384c8ce1660c87b7bccdd74c9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6f22e3da2bb96182bb2b9f364f23ed68af9346e4a4f87de8921a9d2471f7581c.json.gz",
+      "sha256": "6f22e3da2bb96182bb2b9f364f23ed68af9346e4a4f87de8921a9d2471f7581c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5f20d472c0220497da994d2eef736726adbc6ad0e9fb00c2ea76d719aff71e45.json.gz",
+      "sha256": "5f20d472c0220497da994d2eef736726adbc6ad0e9fb00c2ea76d719aff71e45"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6d968e27fcf3f3e4895bb298489441009e4271d8d7084d17151eeca742c05fbd.json.gz",
+      "sha256": "6d968e27fcf3f3e4895bb298489441009e4271d8d7084d17151eeca742c05fbd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6ceb6a97ef82c678ab073f6f63d315ffb7b12c87334b9f837b1ad1e7511efdb4.json.gz",
+      "sha256": "6ceb6a97ef82c678ab073f6f63d315ffb7b12c87334b9f837b1ad1e7511efdb4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e91471b430fe3c220257fe30464de109d26a8beee5ca5f36d6d2ffa2a173ad93.json.gz",
+      "sha256": "e91471b430fe3c220257fe30464de109d26a8beee5ca5f36d6d2ffa2a173ad93"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6833108a61dbb0d9c0e686bdd229f5309d2e3cb1a5a17fe05e613e68e6d97ff9.json.gz",
+      "sha256": "6833108a61dbb0d9c0e686bdd229f5309d2e3cb1a5a17fe05e613e68e6d97ff9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f86760bf61893cb18b7982757fff86ca13316640935f0e54493c210af7998f35.json.gz",
+      "sha256": "f86760bf61893cb18b7982757fff86ca13316640935f0e54493c210af7998f35"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4008dae88540e5772a25761f2d2069b408876a1fa49e8233a502e7fe09fc875b.json.gz",
+      "sha256": "4008dae88540e5772a25761f2d2069b408876a1fa49e8233a502e7fe09fc875b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/47a1e99c01439926227a71a0070c19f25a081cc38a1659d0c780219d9392a873.json.gz",
+      "sha256": "47a1e99c01439926227a71a0070c19f25a081cc38a1659d0c780219d9392a873"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/23ddf7bea0a21f1d223a8aaf14ac431506fcc53267534c99d9ae3a990326d6b9.json.gz",
+      "sha256": "23ddf7bea0a21f1d223a8aaf14ac431506fcc53267534c99d9ae3a990326d6b9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5f3a770b86530c2028eeafad094a9d8ba3d01f592db927b9d01dd4df9df552ec.json.gz",
+      "sha256": "5f3a770b86530c2028eeafad094a9d8ba3d01f592db927b9d01dd4df9df552ec"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/8a0887b49a1bfede24c5d5502d14237a38a41bb2f54413653c3ebe272ddc8929.json.gz",
+      "sha256": "8a0887b49a1bfede24c5d5502d14237a38a41bb2f54413653c3ebe272ddc8929"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4c922516167a1fee3134d415aa89fe2207763a583a885442230cca8f1ae12a6f.json.gz",
+      "sha256": "4c922516167a1fee3134d415aa89fe2207763a583a885442230cca8f1ae12a6f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cfc431211aa3d621115ee3fc7a5ee889d8dd4c360606f943920a210d4c844791.json.gz",
+      "sha256": "cfc431211aa3d621115ee3fc7a5ee889d8dd4c360606f943920a210d4c844791"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7210d418cdd804330f0104774c94f5c57c61d2cc363cb0286134052d408ccfcf.json.gz",
+      "sha256": "7210d418cdd804330f0104774c94f5c57c61d2cc363cb0286134052d408ccfcf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c01363b075da3fa9c3d6f22656109656777979309ce34fa30d57e8a1393c2ff7.json.gz",
+      "sha256": "c01363b075da3fa9c3d6f22656109656777979309ce34fa30d57e8a1393c2ff7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/25db8d3a83c27f6b34be0e5a4e007161118b946916e60973b134534a23443139.json.gz",
+      "sha256": "25db8d3a83c27f6b34be0e5a4e007161118b946916e60973b134534a23443139"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6d3856602560d54b116a7aef72ac4f351dfd4ccc5046b3a7649a31714727d8a7.json.gz",
+      "sha256": "6d3856602560d54b116a7aef72ac4f351dfd4ccc5046b3a7649a31714727d8a7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/66ae14ef3a392117264f7f6eaaa148f9d9cd64c4b8e53812869e5a0e7f4b289e.json.gz",
+      "sha256": "66ae14ef3a392117264f7f6eaaa148f9d9cd64c4b8e53812869e5a0e7f4b289e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/940a4134d6437973eef4fdeddd95b1618ea658e085413f32ca34246077f64655.json.gz",
+      "sha256": "940a4134d6437973eef4fdeddd95b1618ea658e085413f32ca34246077f64655"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/780664eb698e9a38127eaae36edd7ad18f004e49416400a82c53977f2a797323.json.gz",
+      "sha256": "780664eb698e9a38127eaae36edd7ad18f004e49416400a82c53977f2a797323"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/639c09b04f40f951daece03089fe33ac9bb21d5089901be5bba3aa3010209675.json.gz",
+      "sha256": "639c09b04f40f951daece03089fe33ac9bb21d5089901be5bba3aa3010209675"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/570a6c7058a544c603a7e5fe5dfeb2cbb86a8a99145f1586c6890109a4745b52.json.gz",
+      "sha256": "570a6c7058a544c603a7e5fe5dfeb2cbb86a8a99145f1586c6890109a4745b52"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c5022e508ef6626a8dbced1491c86cd499a384e508ca7c1d7ea9c3f66a0a1c1c.json.gz",
+      "sha256": "c5022e508ef6626a8dbced1491c86cd499a384e508ca7c1d7ea9c3f66a0a1c1c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bf99fc39f4c9f57c00fe03b7edf59fa428665aa50aff440761b57a34e573afd1.json.gz",
+      "sha256": "bf99fc39f4c9f57c00fe03b7edf59fa428665aa50aff440761b57a34e573afd1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/282aea35a8cac7156e3a6d4dfc38447697dce16163ced7b54c753635f59636bf.json.gz",
+      "sha256": "282aea35a8cac7156e3a6d4dfc38447697dce16163ced7b54c753635f59636bf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5974213be45548e3802169a4b2903b054a3ba5a2eb3566da16428fa735b13e12.json.gz",
+      "sha256": "5974213be45548e3802169a4b2903b054a3ba5a2eb3566da16428fa735b13e12"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/51ed209e172866179be75d7b5ad676db61536be566e990d3b07ee59e4f74e48b.json.gz",
+      "sha256": "51ed209e172866179be75d7b5ad676db61536be566e990d3b07ee59e4f74e48b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6ead92a0233f83258ce6520fd5fa3fc3c7e429327b4eec296147a4e8edeebb01.json.gz",
+      "sha256": "6ead92a0233f83258ce6520fd5fa3fc3c7e429327b4eec296147a4e8edeebb01"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9ae422387f9fad5eb4c67d5465fcb7914ccbe06bdbf12dd62933db6b4bb6f74a.json.gz",
+      "sha256": "9ae422387f9fad5eb4c67d5465fcb7914ccbe06bdbf12dd62933db6b4bb6f74a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/898e07afcc684c9f101aacbf47b02defaa7f7877eddaf7b4c76f932f475b9923.json.gz",
+      "sha256": "898e07afcc684c9f101aacbf47b02defaa7f7877eddaf7b4c76f932f475b9923"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0bffac7691920c6048e6b904a61bb37d67259cd6ac1d2ff8010d13193db7c1ad.json.gz",
+      "sha256": "0bffac7691920c6048e6b904a61bb37d67259cd6ac1d2ff8010d13193db7c1ad"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/12b02ed0ef5a28d4647603652a8aaa98095a755f52297214de8923afe4384d57.json.gz",
+      "sha256": "12b02ed0ef5a28d4647603652a8aaa98095a755f52297214de8923afe4384d57"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9763ff2c12f860dc8088fb5d67dfa5703cb128aac76b314906f0d239369f3a72.json.gz",
+      "sha256": "9763ff2c12f860dc8088fb5d67dfa5703cb128aac76b314906f0d239369f3a72"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f548f755ac35a6e124edd0a1fe2a64b3388dfdcd6b1357734e5a5c3e171205a6.json.gz",
+      "sha256": "f548f755ac35a6e124edd0a1fe2a64b3388dfdcd6b1357734e5a5c3e171205a6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/bff1483854de40334fc2f1bdfb056fa9e897ad81810adc8cef9cfb6369ee0285.json.gz",
+      "sha256": "bff1483854de40334fc2f1bdfb056fa9e897ad81810adc8cef9cfb6369ee0285"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/972816554cc8347fa4847431607f5686ea16162ad0351e42999a6ed65a9b8276.json.gz",
+      "sha256": "972816554cc8347fa4847431607f5686ea16162ad0351e42999a6ed65a9b8276"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/06b93221d0f7428f255305579d550e639171c012713366f5ab604d3cf2fb7a54.json.gz",
+      "sha256": "06b93221d0f7428f255305579d550e639171c012713366f5ab604d3cf2fb7a54"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/78bbf3f78cf16247304e3f1e84108c4a1f0c63b8716adabb95e118ae650b4163.json.gz",
+      "sha256": "78bbf3f78cf16247304e3f1e84108c4a1f0c63b8716adabb95e118ae650b4163"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0e02b901ae459af960419f932e60c16bc835d7c260f3467211fcaa6ea801474f.json.gz",
+      "sha256": "0e02b901ae459af960419f932e60c16bc835d7c260f3467211fcaa6ea801474f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0ac637c28507c4e82dcbbf98fc66c62757708bb37a9b223f9e518272b3e40ff8.json.gz",
+      "sha256": "0ac637c28507c4e82dcbbf98fc66c62757708bb37a9b223f9e518272b3e40ff8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/2736ab3efb1b810b7cca5f32be6230e03f7af17c787ac8dd12335186a9eb0f87.json.gz",
+      "sha256": "2736ab3efb1b810b7cca5f32be6230e03f7af17c787ac8dd12335186a9eb0f87"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d77378ec51071e242d62756bee50a09d91f422c0a6d1a0c388467198b83e9a59.json.gz",
+      "sha256": "d77378ec51071e242d62756bee50a09d91f422c0a6d1a0c388467198b83e9a59"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4ba6fe2977bf155096a0bd1cf8ed84cab69d0ed6147712e90f806fe02d4f5614.json.gz",
+      "sha256": "4ba6fe2977bf155096a0bd1cf8ed84cab69d0ed6147712e90f806fe02d4f5614"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/cf0fa7c9272c19bc4632b5c6acb0fa5a1ff0f14994fbaad1a3c4f0ccb7d5d2c9.json.gz",
+      "sha256": "cf0fa7c9272c19bc4632b5c6acb0fa5a1ff0f14994fbaad1a3c4f0ccb7d5d2c9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d348394294938067f8892a1435338879b50f7fcb530e25eb164307fd4c2c366e.json.gz",
+      "sha256": "d348394294938067f8892a1435338879b50f7fcb530e25eb164307fd4c2c366e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0304ed389f657781217d4d5282d7dc1c0b6af28277d35079ce6ac416a185e72a.json.gz",
+      "sha256": "0304ed389f657781217d4d5282d7dc1c0b6af28277d35079ce6ac416a185e72a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9a720d322438dae726cc82fe1f832553c0408e2e27937104633c06553d30f2b8.json.gz",
+      "sha256": "9a720d322438dae726cc82fe1f832553c0408e2e27937104633c06553d30f2b8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/063e328e8399235becccda3b2aa7e89380bf86d459e53854f2e5d56c10dee890.json.gz",
+      "sha256": "063e328e8399235becccda3b2aa7e89380bf86d459e53854f2e5d56c10dee890"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7f012dc9d358625785b0f70b21bfa68e21c919dba0c820d8350ca68cd584b26c.json.gz",
+      "sha256": "7f012dc9d358625785b0f70b21bfa68e21c919dba0c820d8350ca68cd584b26c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1549a52e70c9eaf8cd200d3dbb3408df11ca105e40170afbe3b6ccd788463242.json.gz",
+      "sha256": "1549a52e70c9eaf8cd200d3dbb3408df11ca105e40170afbe3b6ccd788463242"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f6a559584eed1959c94319aa9774b96963446886ebb43e55ea49f2fd69f4dc61.json.gz",
+      "sha256": "f6a559584eed1959c94319aa9774b96963446886ebb43e55ea49f2fd69f4dc61"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d134a78222b004fa3fb312f6796ca6a5a35f272475bb0b1d0aa5260683eb66ca.json.gz",
+      "sha256": "d134a78222b004fa3fb312f6796ca6a5a35f272475bb0b1d0aa5260683eb66ca"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e7790bb35c9afe8cd53d63d03e6319bbf0bc968fd978936fe87101e8856ea66e.json.gz",
+      "sha256": "e7790bb35c9afe8cd53d63d03e6319bbf0bc968fd978936fe87101e8856ea66e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/df1863aa0a9c47d5add8b38706730f3c42b8d8cff3696101dbd9067d1b442c5d.json.gz",
+      "sha256": "df1863aa0a9c47d5add8b38706730f3c42b8d8cff3696101dbd9067d1b442c5d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/1f3c95803672f1061cdd972cde8fb28c9801004eac4d118e0b8c3b87d74c1f60.json.gz",
+      "sha256": "1f3c95803672f1061cdd972cde8fb28c9801004eac4d118e0b8c3b87d74c1f60"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d0038299db0d489ce840f3e17d97d6a3ef5edd6e99b95943712a52aa66e5120a.json.gz",
+      "sha256": "d0038299db0d489ce840f3e17d97d6a3ef5edd6e99b95943712a52aa66e5120a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/76d95ead4e1d451ea49aaa13b53edebe23382d235bd3410cd9563e53eb23f57d.json.gz",
+      "sha256": "76d95ead4e1d451ea49aaa13b53edebe23382d235bd3410cd9563e53eb23f57d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4bd8449a2a5d5911a6c95169b1ed4e2fc077819057432c9c64da531f9d8ec177.json.gz",
+      "sha256": "4bd8449a2a5d5911a6c95169b1ed4e2fc077819057432c9c64da531f9d8ec177"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/8c76834001a3a382a192ee45f65ff5296f21c49dde881584d641ba3b4fcff97b.json.gz",
+      "sha256": "8c76834001a3a382a192ee45f65ff5296f21c49dde881584d641ba3b4fcff97b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/ebb711de7f996eaded7accb87283f050a06c408a593003288696b22d0ffceecd.json.gz",
+      "sha256": "ebb711de7f996eaded7accb87283f050a06c408a593003288696b22d0ffceecd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/04361f7a97b924e6f5f4456e8958edc447f8144782c60ea95da9ab4516be64c9.json.gz",
+      "sha256": "04361f7a97b924e6f5f4456e8958edc447f8144782c60ea95da9ab4516be64c9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b120a07d82a5b9518aa1176e996972938aa7db0e51ba3a72376acabb96deb676.json.gz",
+      "sha256": "b120a07d82a5b9518aa1176e996972938aa7db0e51ba3a72376acabb96deb676"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/f352192c1f0605070eed8bb8bfccaac0d2630751269781c54021195bce3357ff.json.gz",
+      "sha256": "f352192c1f0605070eed8bb8bfccaac0d2630751269781c54021195bce3357ff"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a6eb962782d9b8c0cc7f21abc9ef73251cdf219631d9abcaaab1d44310a3eb73.json.gz",
+      "sha256": "a6eb962782d9b8c0cc7f21abc9ef73251cdf219631d9abcaaab1d44310a3eb73"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/339d6a93bb35eefe22a10de52c159eb183c1eca97faebbe6d7a8ec5d5aef196e.json.gz",
+      "sha256": "339d6a93bb35eefe22a10de52c159eb183c1eca97faebbe6d7a8ec5d5aef196e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/55a9ecd7357123da4ae04b0d919f483d0ef35eb4afa72aa3825b9f25d12fc322.json.gz",
+      "sha256": "55a9ecd7357123da4ae04b0d919f483d0ef35eb4afa72aa3825b9f25d12fc322"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a57f74f681d214f4c16a3c47fb88a6625117214bf6a4eb57c0634d7f50c9506e.json.gz",
+      "sha256": "a57f74f681d214f4c16a3c47fb88a6625117214bf6a4eb57c0634d7f50c9506e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/38ee356d5bb1f2b58c9acd251f87cb00fa8b44cafaeac22353a9a2dcfa49963a.json.gz",
+      "sha256": "38ee356d5bb1f2b58c9acd251f87cb00fa8b44cafaeac22353a9a2dcfa49963a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9a091dc52012c806cf7ad8c8f2d012198a1f1f7f4f56440596a93631653f5e90.json.gz",
+      "sha256": "9a091dc52012c806cf7ad8c8f2d012198a1f1f7f4f56440596a93631653f5e90"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/707d081d412e04553e498deb0adc9a2d92ad4a5a0bb02de690cef55c897a746b.json.gz",
+      "sha256": "707d081d412e04553e498deb0adc9a2d92ad4a5a0bb02de690cef55c897a746b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4b17134480aea12fe86d2b1bdf02b0a6e1c195cd6f1c97a2c62f60f1922be1b2.json.gz",
+      "sha256": "4b17134480aea12fe86d2b1bdf02b0a6e1c195cd6f1c97a2c62f60f1922be1b2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/816a5434cbc04dad9fb099a14eb50ef3c120aa87967a74bb40311180b4166f61.json.gz",
+      "sha256": "816a5434cbc04dad9fb099a14eb50ef3c120aa87967a74bb40311180b4166f61"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/0603403760a601b558d67a7c9723749f2eabe973a8d4d9e81f40df93a6109aee.json.gz",
+      "sha256": "0603403760a601b558d67a7c9723749f2eabe973a8d4d9e81f40df93a6109aee"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/37cd168b543d4b79c4d0ef487802d6ac175a9e596ffedb0c8d17670d83fa89d0.json.gz",
+      "sha256": "37cd168b543d4b79c4d0ef487802d6ac175a9e596ffedb0c8d17670d83fa89d0"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a9da224d045ac41a959748429cb2924a5628f648b57bdbdc0a1274805ecaa7f4.json.gz",
+      "sha256": "a9da224d045ac41a959748429cb2924a5628f648b57bdbdc0a1274805ecaa7f4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/d2c70f26ae0ea36e0fdc51d26ce57bf8de57c04e8163d5360557fc316f0a5540.json.gz",
+      "sha256": "d2c70f26ae0ea36e0fdc51d26ce57bf8de57c04e8163d5360557fc316f0a5540"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/30de7b73a80caa37afedea0514f99544819e3e9da9f5f237bf8aa29c31ccf048.json.gz",
+      "sha256": "30de7b73a80caa37afedea0514f99544819e3e9da9f5f237bf8aa29c31ccf048"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c388912ff04c32763519e790f3ef7efe8a181cc8fcf7bea2e13aee5d401ca79d.json.gz",
+      "sha256": "c388912ff04c32763519e790f3ef7efe8a181cc8fcf7bea2e13aee5d401ca79d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/a0c5731967e2d35ae5228780dc9823292b39ef9306d670d49164f18441b85715.json.gz",
+      "sha256": "a0c5731967e2d35ae5228780dc9823292b39ef9306d670d49164f18441b85715"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/9960f9f8a151a6c8471928f4e0832892c1bd3f839566ecb1e13ce4332b4c553c.json.gz",
+      "sha256": "9960f9f8a151a6c8471928f4e0832892c1bd3f839566ecb1e13ce4332b4c553c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/28800bf462d634643e34a741498a6e157288770e9f284ab0735fd0dbe0df9ac5.json.gz",
+      "sha256": "28800bf462d634643e34a741498a6e157288770e9f284ab0735fd0dbe0df9ac5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/58ce459e766f98fed4808458dcf8290f26e47503109791dd905180c5db07863c.json.gz",
+      "sha256": "58ce459e766f98fed4808458dcf8290f26e47503109791dd905180c5db07863c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5387500172c79f27bf2673f7e7d89dcc18158c599618a862c83c0dffc393343c.json.gz",
+      "sha256": "5387500172c79f27bf2673f7e7d89dcc18158c599618a862c83c0dffc393343c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/c2cb625d97bbc92b357b7260145921e0c2b4f1db849dd1a2bde9cd78cb8864a6.json.gz",
+      "sha256": "c2cb625d97bbc92b357b7260145921e0c2b4f1db849dd1a2bde9cd78cb8864a6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/fa7e25406f71f93be9b6ae727a94a9d6838cbcf350ada8466b4c40b561601c30.json.gz",
+      "sha256": "fa7e25406f71f93be9b6ae727a94a9d6838cbcf350ada8466b4c40b561601c30"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b626fd405bc85a8cdd1a725d3856c87e27c7d70426090719079f1361bd7e6bf5.json.gz",
+      "sha256": "b626fd405bc85a8cdd1a725d3856c87e27c7d70426090719079f1361bd7e6bf5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/5d769a9a597b20fe8fdf607deb3419ed1076c28aacd0589dc674dd482e19a5df.json.gz",
+      "sha256": "5d769a9a597b20fe8fdf607deb3419ed1076c28aacd0589dc674dd482e19a5df"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/62ccbd49a9726cf530dc236e5fc67c513aa62ffbb564c9cd703eba6cf8d7a0bc.json.gz",
+      "sha256": "62ccbd49a9726cf530dc236e5fc67c513aa62ffbb564c9cd703eba6cf8d7a0bc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/b2b0808eb1f3b9bfc6ccc9d1093c837d3d17cb47ba9d687690ddeb2ebe0de8b2.json.gz",
+      "sha256": "b2b0808eb1f3b9bfc6ccc9d1093c837d3d17cb47ba9d687690ddeb2ebe0de8b2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/48fdd33254ddb9e82944b8a12985b15445d555817c04c56f308ff852fd8e5dea.json.gz",
+      "sha256": "48fdd33254ddb9e82944b8a12985b15445d555817c04c56f308ff852fd8e5dea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/456b06f75cbe3bee972080ee473f275272d1d4ed0421ba60ffd2a9ebdecd849b.json.gz",
+      "sha256": "456b06f75cbe3bee972080ee473f275272d1d4ed0421ba60ffd2a9ebdecd849b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e82f9259dee9e682ec8e5c71cdadad0ae2e6e80b5a8fcf20fd9a73b92e77a06c.json.gz",
+      "sha256": "e82f9259dee9e682ec8e5c71cdadad0ae2e6e80b5a8fcf20fd9a73b92e77a06c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/6a8cf4b984f574fe75b3fbd10da03f5663514de0dc9a4d68869d564e10362eef.json.gz",
+      "sha256": "6a8cf4b984f574fe75b3fbd10da03f5663514de0dc9a4d68869d564e10362eef"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/79658be3e7a7ba9db6d7ac99b4d3a43d8d9551d5b77d6d20acc8413755b6fc8c.json.gz",
+      "sha256": "79658be3e7a7ba9db6d7ac99b4d3a43d8d9551d5b77d6d20acc8413755b6fc8c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/e9d5da5ea886e552a434af588c0fedd27011cf6475f2f4c939c8aa9184829c0a.json.gz",
+      "sha256": "e9d5da5ea886e552a434af588c0fedd27011cf6475f2f4c939c8aa9184829c0a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/17791994b43c4803bdaa2350d6ef7c0c341007b37a5526e3f166d5d7a15e2099.json.gz",
+      "sha256": "17791994b43c4803bdaa2350d6ef7c0c341007b37a5526e3f166d5d7a15e2099"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/7505bc4bf81f38c448512eb4e38ce32253dc4625e24e33d74e28b18055ab3377.json.gz",
+      "sha256": "7505bc4bf81f38c448512eb4e38ce32253dc4625e24e33d74e28b18055ab3377"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/4054f24fd7fcde7b0049c5690255e3d9630e7f3c718ad03fe0c75612109e8318.json.gz",
+      "sha256": "4054f24fd7fcde7b0049c5690255e3d9630e7f3c718ad03fe0c75612109e8318"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/503b18edbbf8464da6527a24d71b901c6973be405101e2f54d69bd297640fa95.json.gz",
+      "sha256": "503b18edbbf8464da6527a24d71b901c6973be405101e2f54d69bd297640fa95"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KSFO/2026-10-05/09bf2aacfb9e41640341ee11d0f135da0e457b33b76efd5459fd157d004d0f74.json.gz",
+      "sha256": "09bf2aacfb9e41640341ee11d0f135da0e457b33b76efd5459fd157d004d0f74"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/925b8eda50096138739203282f8b0f740b0f0ad458aa2f3a7dfe351554ff4001.json.gz",
+      "sha256": "925b8eda50096138739203282f8b0f740b0f0ad458aa2f3a7dfe351554ff4001"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/a97232fb69d9d630410249c50d7eb4b9b0223d9912e78872823caadaed6815ea.json.gz",
+      "sha256": "a97232fb69d9d630410249c50d7eb4b9b0223d9912e78872823caadaed6815ea"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f1a096b8b63c6fa5d1463d5cf32aeed0cea4cef5f12bd78d0979b0b19bf852da.json.gz",
+      "sha256": "f1a096b8b63c6fa5d1463d5cf32aeed0cea4cef5f12bd78d0979b0b19bf852da"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f0e902c1fab7d5f3c18767acf6d9055a74f61c9d2c9e9bff06eb1a53e8498c5a.json.gz",
+      "sha256": "f0e902c1fab7d5f3c18767acf6d9055a74f61c9d2c9e9bff06eb1a53e8498c5a"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/dfe954551047fbb71a9ef9be85ff71aa1f3d5a509b31a88e4244a5e8acc4b947.json.gz",
+      "sha256": "dfe954551047fbb71a9ef9be85ff71aa1f3d5a509b31a88e4244a5e8acc4b947"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/beab3a0d286b6d38254715e4250d873149a8a3f4cf5c053d1c8e216c11b0d7d6.json.gz",
+      "sha256": "beab3a0d286b6d38254715e4250d873149a8a3f4cf5c053d1c8e216c11b0d7d6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/1419a0ecbae6b0cacd721aae7a2ee3f282af324048cf95ad971c4549110b6840.json.gz",
+      "sha256": "1419a0ecbae6b0cacd721aae7a2ee3f282af324048cf95ad971c4549110b6840"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/088258941b0cdfbbc91cd5abfc93412fb925a85a34628d8ac3d46c324b0269cf.json.gz",
+      "sha256": "088258941b0cdfbbc91cd5abfc93412fb925a85a34628d8ac3d46c324b0269cf"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/02564517566091044d77b983e1b31f5b0ef747fc02274d584890288548e4ce6e.json.gz",
+      "sha256": "02564517566091044d77b983e1b31f5b0ef747fc02274d584890288548e4ce6e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/6612ae81f8bd2b199525e4faffe18ebe667a9738d5304636ba5da33065cb5ba6.json.gz",
+      "sha256": "6612ae81f8bd2b199525e4faffe18ebe667a9738d5304636ba5da33065cb5ba6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/cc19af0c45d51aeea0a5a1682dcca27b8a2454d188ce19a36d256f26ff8b13fd.json.gz",
+      "sha256": "cc19af0c45d51aeea0a5a1682dcca27b8a2454d188ce19a36d256f26ff8b13fd"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/a4821455f871defa69c21fd4f37247875b79e5c7cdfaf9478b4ef62ba3346728.json.gz",
+      "sha256": "a4821455f871defa69c21fd4f37247875b79e5c7cdfaf9478b4ef62ba3346728"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f47da782dc35b26c6a7f08993f7051f8b3a4c596390786841c6dfe509415a232.json.gz",
+      "sha256": "f47da782dc35b26c6a7f08993f7051f8b3a4c596390786841c6dfe509415a232"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/0b6fd38c4e22c8d2b4b4bdb9d2a11cec383c44c1c06824dc331c137bdfa86b19.json.gz",
+      "sha256": "0b6fd38c4e22c8d2b4b4bdb9d2a11cec383c44c1c06824dc331c137bdfa86b19"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f66712d1d4afa45ed3e93ba5857a673cef1079c65c324e7aa5227751145c3fc3.json.gz",
+      "sha256": "f66712d1d4afa45ed3e93ba5857a673cef1079c65c324e7aa5227751145c3fc3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f66d27cbdc92478fe3f67a957a10565ea5725b61bc5c0d1c22549b4fd7b40114.json.gz",
+      "sha256": "f66d27cbdc92478fe3f67a957a10565ea5725b61bc5c0d1c22549b4fd7b40114"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/d31d7568d85b37e568e8c0fc1caaad8075bacbcf8fc5c50af9a44958d1886440.json.gz",
+      "sha256": "d31d7568d85b37e568e8c0fc1caaad8075bacbcf8fc5c50af9a44958d1886440"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/55ed992b49f5b983244355a107e7307b87f295211fa23e485408c95c8b6cfc0d.json.gz",
+      "sha256": "55ed992b49f5b983244355a107e7307b87f295211fa23e485408c95c8b6cfc0d"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/c444bf4347c1b9a17370577911f18f619ffff5973b01d797978f8f79d6dfd641.json.gz",
+      "sha256": "c444bf4347c1b9a17370577911f18f619ffff5973b01d797978f8f79d6dfd641"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/87c524e0b2df839204a14b47c5d54bf29def6b295c71710e25984887adee31aa.json.gz",
+      "sha256": "87c524e0b2df839204a14b47c5d54bf29def6b295c71710e25984887adee31aa"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/48e355634cad48bdaceb6eafa720c1a4718222edfa898530d8549dc11bbd613b.json.gz",
+      "sha256": "48e355634cad48bdaceb6eafa720c1a4718222edfa898530d8549dc11bbd613b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/1cb6e66688640fbac6ff0a7a6ca38b9526d1cea19e78ee7c0e14ae3c58ffc338.json.gz",
+      "sha256": "1cb6e66688640fbac6ff0a7a6ca38b9526d1cea19e78ee7c0e14ae3c58ffc338"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/03eb47a932bc75ebaf1728c024c1d6e99079aa91a866e48a7f1dd31a7df7c627.json.gz",
+      "sha256": "03eb47a932bc75ebaf1728c024c1d6e99079aa91a866e48a7f1dd31a7df7c627"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/f6cf1ae01ab2a6f0e55e0048d92cdda7c0950799c314af4ae103caae4263e2c3.json.gz",
+      "sha256": "f6cf1ae01ab2a6f0e55e0048d92cdda7c0950799c314af4ae103caae4263e2c3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/e44704bcaad18257ce9b4d8205991c02117337bf529e83571cce3eec9341cea1.json.gz",
+      "sha256": "e44704bcaad18257ce9b4d8205991c02117337bf529e83571cce3eec9341cea1"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/e8c3934ab6b2f33b8e8af788f65c0fd2001d950c9c2dddf1d4130fd6d735b416.json.gz",
+      "sha256": "e8c3934ab6b2f33b8e8af788f65c0fd2001d950c9c2dddf1d4130fd6d735b416"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/58363461f222e5cfc545e5453bc78e7189c16ee923138bbbe374ddd84ff7aabe.json.gz",
+      "sha256": "58363461f222e5cfc545e5453bc78e7189c16ee923138bbbe374ddd84ff7aabe"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/c0563ef758460311be39c0ff6b91b3093425481a4cb2a1f9dadd3b2a47725767.json.gz",
+      "sha256": "c0563ef758460311be39c0ff6b91b3093425481a4cb2a1f9dadd3b2a47725767"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/5a883871a558377dc5d992d01e5651b4a8504fdb7a0ab7da6efab8c3c19a9d08.json.gz",
+      "sha256": "5a883871a558377dc5d992d01e5651b4a8504fdb7a0ab7da6efab8c3c19a9d08"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/09c3650a7ded0ea2388396ec5f8d36592922344e3973510596377908feaeb73f.json.gz",
+      "sha256": "09c3650a7ded0ea2388396ec5f8d36592922344e3973510596377908feaeb73f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/87a71abb4d50fcbde4304a5afd9f7125c540df8ebc603075142ffee0d42a51de.json.gz",
+      "sha256": "87a71abb4d50fcbde4304a5afd9f7125c540df8ebc603075142ffee0d42a51de"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/7a1263845559e82da5b8e84696c1c00eb152045b10141abc601e1a3267464c98.json.gz",
+      "sha256": "7a1263845559e82da5b8e84696c1c00eb152045b10141abc601e1a3267464c98"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/b3c06598f325fb4b80d70bf746525cad288f640138ddddcf9f98f34a83d4af64.json.gz",
+      "sha256": "b3c06598f325fb4b80d70bf746525cad288f640138ddddcf9f98f34a83d4af64"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/fb9f199bb9739c9dbf31b1a47e13ad5fc2761183c65b2bd7c6059f1a405900b8.json.gz",
+      "sha256": "fb9f199bb9739c9dbf31b1a47e13ad5fc2761183c65b2bd7c6059f1a405900b8"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/01ec9caee9312f05a25300c386f537ac511bc29e26e7f60ecc0a728acc551d27.json.gz",
+      "sha256": "01ec9caee9312f05a25300c386f537ac511bc29e26e7f60ecc0a728acc551d27"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/83ef8825fa9b7bf839a1dae322272b1fbea3672b65174cb5f81d5403ec35b5ce.json.gz",
+      "sha256": "83ef8825fa9b7bf839a1dae322272b1fbea3672b65174cb5f81d5403ec35b5ce"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/0ed948b13650c29b003e65b6c7070df016a9c9d978f941c49bb30437b2358725.json.gz",
+      "sha256": "0ed948b13650c29b003e65b6c7070df016a9c9d978f941c49bb30437b2358725"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/d0c4a5de3ab4b51e465602102e2d14f28975e9103eeb4e9f159e3514f3c06c0f.json.gz",
+      "sha256": "d0c4a5de3ab4b51e465602102e2d14f28975e9103eeb4e9f159e3514f3c06c0f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/a761c090153f8a7330f22c771e21dd138465285b43a1afc354e7f452a231e431.json.gz",
+      "sha256": "a761c090153f8a7330f22c771e21dd138465285b43a1afc354e7f452a231e431"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/76c93d16a78fe315786a660260d60814ae77cd5508d1c2f2dcf2804e73607c95.json.gz",
+      "sha256": "76c93d16a78fe315786a660260d60814ae77cd5508d1c2f2dcf2804e73607c95"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/e620bb6bdfcbe1d9edda5843237a2fb965099e71dd98575f42ad0c1f76c1c714.json.gz",
+      "sha256": "e620bb6bdfcbe1d9edda5843237a2fb965099e71dd98575f42ad0c1f76c1c714"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/51b526959944fd40bd075d406c30adc474cac2189450c5ba47a5f96bdeca99c0.json.gz",
+      "sha256": "51b526959944fd40bd075d406c30adc474cac2189450c5ba47a5f96bdeca99c0"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/c791ae49c9b243ce006de561f83f5828cc7040e0fbc0da69a5de2500a6c46a28.json.gz",
+      "sha256": "c791ae49c9b243ce006de561f83f5828cc7040e0fbc0da69a5de2500a6c46a28"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/c0e846792d0a9d3d069c43b38eea1331a3aec6593f1875aa01a47e8818f3020b.json.gz",
+      "sha256": "c0e846792d0a9d3d069c43b38eea1331a3aec6593f1875aa01a47e8818f3020b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/fe1de05b476de55fb7f60cf68d98435a8d55acebce22c57ac6e827c6f2519192.json.gz",
+      "sha256": "fe1de05b476de55fb7f60cf68d98435a8d55acebce22c57ac6e827c6f2519192"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/b9363c9c438581ccd069f54f5b46df8f2908c61839c2512d0e0ceb3adf475130.json.gz",
+      "sha256": "b9363c9c438581ccd069f54f5b46df8f2908c61839c2512d0e0ceb3adf475130"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/d6fce9e94e84e5299af60a876e9da16c15232a255d8f6d2e73bdd7bf26f67bec.json.gz",
+      "sha256": "d6fce9e94e84e5299af60a876e9da16c15232a255d8f6d2e73bdd7bf26f67bec"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/4c9f410ef99e1fcc300be483118d1978e6f00bd1f9e97151423778b4a2cfb143.json.gz",
+      "sha256": "4c9f410ef99e1fcc300be483118d1978e6f00bd1f9e97151423778b4a2cfb143"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/b4d90f9376e9cf05369f1912333fdde71099dd9d0308ae5a613f450428d73951.json.gz",
+      "sha256": "b4d90f9376e9cf05369f1912333fdde71099dd9d0308ae5a613f450428d73951"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/3b8be909645c0d8102e809c56d6ea1b7ac27c0524a59371a369a621465579232.json.gz",
+      "sha256": "3b8be909645c0d8102e809c56d6ea1b7ac27c0524a59371a369a621465579232"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/ff094e5f36816f60bf89b4a5a65d96424ad473ba2997050069a525c4179f093a.json.gz",
+      "sha256": "ff094e5f36816f60bf89b4a5a65d96424ad473ba2997050069a525c4179f093a"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/6f3c21a8dd30e9fdc23b08b5c78118befd468456042214e79045b4a5649bd185.json.gz",
+      "sha256": "6f3c21a8dd30e9fdc23b08b5c78118befd468456042214e79045b4a5649bd185"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/b463513d6a68a886fb5a00a517174014588404b8280b560ce12ff195845343a0.json.gz",
+      "sha256": "b463513d6a68a886fb5a00a517174014588404b8280b560ce12ff195845343a0"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/038a9bc988848e6ed9b3f94dcc7b94a8e84b466ae78cfeafc47424fa2f5b5ece.json.gz",
+      "sha256": "038a9bc988848e6ed9b3f94dcc7b94a8e84b466ae78cfeafc47424fa2f5b5ece"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KSFO/2026-10-05/b25c437582d2600519c27e75924fc4ea19447099c4590b583ac17e6fa9354db4.json.gz",
+      "sha256": "b25c437582d2600519c27e75924fc4ea19447099c4590b583ac17e6fa9354db4"
+    }
+  ],
+  "production_modified": false,
+  "current_chain_certified": false,
+  "limitations": [
+    "historical center/width table fits still require current-method reconstruction",
+    "fusion weights still require current-method historical refit",
+    "candidate reports have not been activated or used as replacement parents"
+  ]
+}

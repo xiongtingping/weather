@@ -1,0 +1,223 @@
+{
+  "schema": "fleet_actual_arrival_nested_probe_v1",
+  "stations": {
+    "CYYZ": {
+      "state": "PROBED",
+      "path": "nested_oos/CYYZ/2026-10-05/summary.json"
+    },
+    "EDDM": {
+      "state": "PROBED",
+      "path": "nested_oos/EDDM/2026-10-05/summary.json"
+    },
+    "EFHK": {
+      "state": "PROBED",
+      "path": "nested_oos/EFHK/2026-10-05/summary.json"
+    },
+    "EGLC": {
+      "state": "PROBED",
+      "path": "nested_oos/EGLC/2026-10-05/summary.json"
+    },
+    "EHAM": {
+      "state": "PROBED",
+      "path": "nested_oos/EHAM/2026-10-05/summary.json"
+    },
+    "EPWA": {
+      "state": "PROBED",
+      "path": "nested_oos/EPWA/2026-10-05/summary.json"
+    },
+    "FACT": {
+      "state": "PROBED",
+      "path": "nested_oos/FACT/2026-10-05/summary.json"
+    },
+    "KATL": {
+      "state": "PROBED",
+      "path": "nested_oos/KATL/2026-10-05/summary.json"
+    },
+    "KAUS": {
+      "state": "PROBED",
+      "path": "nested_oos/KAUS/2026-10-05/summary.json"
+    },
+    "KBKF": {
+      "state": "PROBED",
+      "path": "nested_oos/KBKF/2026-10-05/summary.json"
+    },
+    "KDAL": {
+      "state": "PROBED",
+      "path": "nested_oos/KDAL/2026-10-05/summary.json"
+    },
+    "KHOU": {
+      "state": "PROBED",
+      "path": "nested_oos/KHOU/2026-10-05/summary.json"
+    },
+    "KLAX": {
+      "state": "PROBED",
+      "path": "nested_oos/KLAX/2026-10-05/summary.json"
+    },
+    "KLGA": {
+      "state": "PROBED",
+      "path": "nested_oos/KLGA/2026-10-05/summary.json"
+    },
+    "KMIA": {
+      "state": "PROBED",
+      "path": "nested_oos/KMIA/2026-10-05/summary.json"
+    },
+    "KORD": {
+      "state": "PROBED",
+      "path": "nested_oos/KORD/2026-10-05/summary.json"
+    },
+    "KSEA": {
+      "state": "PROBED",
+      "path": "nested_oos/KSEA/2026-10-05/summary.json"
+    },
+    "KSFO": {
+      "state": "PROBED",
+      "path": "nested_oos/KSFO/2026-10-05/summary.json"
+    },
+    "LEMD": {
+      "state": "PROBED",
+      "path": "nested_oos/LEMD/2026-10-05/summary.json"
+    },
+    "LFPB": {
+      "state": "PROBED",
+      "path": "nested_oos/LFPB/2026-10-05/summary.json"
+    },
+    "LIMC": {
+      "state": "PROBED",
+      "path": "nested_oos/LIMC/2026-10-05/summary.json"
+    },
+    "LLBG": {
+      "state": "PROBED",
+      "path": "nested_oos/LLBG/2026-10-05/summary.json"
+    },
+    "LTAC": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/LTAC/2026-10-05/summary.json"
+    },
+    "LTFM": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/LTFM/2026-10-05/summary.json"
+    },
+    "MMMX": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/MMMX/2026-10-05/summary.json"
+    },
+    "MPMG": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/MPMG/2026-10-05/summary.json"
+    },
+    "NZWN": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/NZWN/2026-10-05/summary.json"
+    },
+    "OEJN": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/OEJN/2026-10-05/summary.json"
+    },
+    "OPKC": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/OPKC/2026-10-05/summary.json"
+    },
+    "RCSS": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/RCSS/2026-10-05/summary.json"
+    },
+    "RJTT": {
+      "state": "PENDING_CURRENT_REPORT",
+      "path": "nested_oos/RJTT/2026-10-05/summary.json"
+    },
+    "RKPK": {
+      "state": "REFUSED",
+      "exit_code": 1,
+      "seconds": 76.86,
+      "diagnostic": "Traceback (most recent call last):\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 146, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 93, in main\n    anchor=min(roots,key=lambda r:utc(r['parent_committed_at']));at=anchor['parent_committed_at'];c=old.connect(ROOT/'data/bayes_basket_target_ssot.db');cases=ActualCases(c,args.station,at,args.day);scope=ReadScope(c,args.station,cases.tz)\n                                                                                                                                                               ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 29, in __init__\n    raw,self.receipt=load_members(c,station,self.tz,self.registry);self.truths=collections.defaultdict(list)\n                     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/upstream.py\", line 47, in load_members\n    for rr in fetch(c,sql,(station,'2026-07-03','2026-10-06',*SYSTEMS,'OPEN_METEO')):\n              ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsqlite3.OperationalError: interrupted\n"
+    },
+    "RKSI": {
+      "state": "REFUSED",
+      "exit_code": 1,
+      "seconds": 114.39,
+      "diagnostic": "Traceback (most recent call last):\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 146, in <module>\n    if __name__=='__main__':main()\n                            ~~~~^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 93, in main\n    anchor=min(roots,key=lambda r:utc(r['parent_committed_at']));at=anchor['parent_committed_at'];c=old.connect(ROOT/'data/bayes_basket_target_ssot.db');cases=ActualCases(c,args.station,at,args.day);scope=ReadScope(c,args.station,cases.tz)\n                                                                                                                                                               ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/nested_oos_probe.py\", line 29, in __init__\n    raw,self.receipt=load_members(c,station,self.tz,self.registry);self.truths=collections.defaultdict(list)\n                     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xiong/weather/docs/research/taf_cloud_strict_replay_20261007/upstream.py\", line 47, in load_members\n    for rr in fetch(c,sql,(station,'2026-07-03','2026-10-06',*SYSTEMS,'OPEN_METEO')):\n              ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsqlite3.OperationalError: interrupted\n"
+    },
+    "RPLL": {
+      "state": "PROBED",
+      "exit_code": 0,
+      "seconds": 164.04,
+      "diagnostic": "{\"station\": \"RPLL\", \"readiness_states\": {\"ACCUMULATING_STRICT_OOS\": 31, \"OOS_READY\": 40}, \"cross_states\": {\"PRODUCTION_NO_LIVE_OOS_PASS\": 190}, \"fits\": 114, \"objects\": 404}\n",
+      "path": "nested_oos/RPLL/2026-10-05/summary.json"
+    },
+    "SAEZ": {
+      "state": "PROBED",
+      "exit_code": 0,
+      "seconds": 42.26,
+      "diagnostic": "{\"station\": \"SAEZ\", \"readiness_states\": {\"ACCUMULATING_STRICT_OOS\": 38, \"OOS_READY\": 41}, \"cross_states\": {\"PRODUCTION_NO_LIVE_OOS_PASS\": 124, \"OOS_REJECTED\": 1}, \"fits\": 118, \"objects\": 342}\n",
+      "path": "nested_oos/SAEZ/2026-10-05/summary.json"
+    },
+    "SBGR": {
+      "state": "PROBED",
+      "exit_code": 0,
+      "seconds": 67.1,
+      "diagnostic": "{\"station\": \"SBGR\", \"readiness_states\": {\"ACCUMULATING_STRICT_OOS\": 38, \"OOS_READY\": 41}, \"cross_states\": {\"PRODUCTION_NO_LIVE_OOS_PASS\": 125}, \"fits\": 117, \"objects\": 342}\n",
+      "path": "nested_oos/SBGR/2026-10-05/summary.json"
+    },
+    "UUWW": {
+      "state": "PROBED",
+      "exit_code": 0,
+      "seconds": 7.44,
+      "diagnostic": "{\"station\": \"UUWW\", \"readiness_states\": {\"ACCUMULATING_STRICT_OOS\": 38}, \"cross_states\": {}, \"fits\": 0, \"objects\": 0}\n",
+      "path": "nested_oos/UUWW/2026-10-05/summary.json"
+    },
+    "VILK": {
+      "state": "PROBED",
+      "exit_code": 0,
+      "seconds": 74.58,
+      "diagnostic": "{\"station\": \"VILK\", \"readiness_states\": {\"ACCUMULATING_STRICT_OOS\": 31, \"OOS_READY\": 45}, \"cross_states\": {\"PRODUCTION_NO_LIVE_OOS_PASS\": 182, \"OOS_REJECTED\": 2}, \"fits\": 128, \"objects\": 417}\n",
+      "path": "nested_oos/VILK/2026-10-05/summary.json"
+    },
+    "WMKK": {
+      "state": "PROBED",
+      "path": "nested_oos/WMKK/2026-10-05/summary.json"
+    },
+    "WSSS": {
+      "state": "PROBED",
+      "path": "nested_oos/WSSS/2026-10-05/summary.json"
+    },
+    "ZBAA": {
+      "state": "PROBED",
+      "path": "nested_oos/ZBAA/2026-10-05/summary.json"
+    },
+    "ZGGG": {
+      "state": "PROBED",
+      "path": "nested_oos/ZGGG/2026-10-05/summary.json"
+    },
+    "ZGSZ": {
+      "state": "PROBED",
+      "path": "nested_oos/ZGSZ/2026-10-05/summary.json"
+    },
+    "ZHHH": {
+      "state": "PROBED",
+      "path": "nested_oos/ZHHH/2026-10-05/summary.json"
+    },
+    "ZSPD": {
+      "state": "PROBED",
+      "path": "nested_oos/ZSPD/2026-10-05/summary.json"
+    },
+    "ZSQD": {
+      "state": "PROBED",
+      "path": "nested_oos/ZSQD/2026-10-05/summary.json"
+    },
+    "ZUCK": {
+      "state": "PROBED",
+      "path": "nested_oos/ZUCK/2026-10-05/summary.json"
+    },
+    "ZUUU": {
+      "state": "PROBED",
+      "path": "nested_oos/ZUUU/2026-10-05/summary.json"
+    }
+  },
+  "counts": {
+    "PROBED": 37,
+    "PENDING_CURRENT_REPORT": 9,
+    "REFUSED": 2
+  },
+  "whole_current_chain_certified": false,
+  "production_modified": false
+}

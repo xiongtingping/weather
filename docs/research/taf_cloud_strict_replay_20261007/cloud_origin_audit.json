@@ -1,0 +1,824 @@
+{
+  "schema": "independent_cloud_observation_official_origin_audit_v1",
+  "passed": false,
+  "counts": {
+    "rows": 8018,
+    "visible_official_cloud_origin": 7773,
+    "cloud_observation_is_temperature_prefix_member:True": 3905,
+    "cloud_observation_is_temperature_prefix_member:False": 4113,
+    "not_unique_visible_official_origin": 245
+  },
+  "stations": {
+    "CYYZ": {
+      "counts": {
+        "rows": 253,
+        "visible_official_cloud_origin": 253,
+        "cloud_observation_is_temperature_prefix_member:True": 252,
+        "cloud_observation_is_temperature_prefix_member:False": 1
+      },
+      "input_sha": "23299d373c26d3d14230b2a6e5ac7fdf93257dcc5207ffc7df5b4204cd25c16b",
+      "eligibility_path": "cloud_origin_eligibility/CYYZ.json.gz",
+      "eligibility_sha": "9056c8b620c2a809e3a181d1412f1216e588a90482e308edb11a654e1e2fd25a"
+    },
+    "EDDM": {
+      "counts": {},
+      "input_sha": "2058e7dfa2137e65426b38ad0e57f9652c3fdc5bdd9fd52e6dafdb7b95e29eeb",
+      "eligibility_path": "cloud_origin_eligibility/EDDM.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "EFHK": {
+      "counts": {},
+      "input_sha": "efae8bfe85f70db59f46e7d1d01559ac16ff8b525fa114882494f78345efdedb",
+      "eligibility_path": "cloud_origin_eligibility/EFHK.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "EGLC": {
+      "counts": {},
+      "input_sha": "f2930649e84b2a3e2400cd252b97d5e161eae543c84d54577144534e4dcf6f47",
+      "eligibility_path": "cloud_origin_eligibility/EGLC.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "EHAM": {
+      "counts": {},
+      "input_sha": "6f52472162013b37e31cd5b75f79a0e0ddaaee900862c6e9d373915707b928d9",
+      "eligibility_path": "cloud_origin_eligibility/EHAM.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "EPWA": {
+      "counts": {
+        "rows": 338,
+        "visible_official_cloud_origin": 323,
+        "cloud_observation_is_temperature_prefix_member:False": 292,
+        "cloud_observation_is_temperature_prefix_member:True": 46,
+        "not_unique_visible_official_origin": 15
+      },
+      "input_sha": "4e988c770bb994d28c36f6d0fa4bb96fad8e12326a4b670491df0bdbdac823e9",
+      "eligibility_path": "cloud_origin_eligibility/EPWA.json.gz",
+      "eligibility_sha": "d8d654abce0d47aa717747454bd8ce06c00cab2538c1a68b25672980d201f790"
+    },
+    "FACT": {
+      "counts": {
+        "rows": 250,
+        "visible_official_cloud_origin": 250,
+        "cloud_observation_is_temperature_prefix_member:True": 249,
+        "cloud_observation_is_temperature_prefix_member:False": 1
+      },
+      "input_sha": "e5f1fbb51da2dbe4b6461bb8ec67514c702fdaa8ba8168de51270e3300f83060",
+      "eligibility_path": "cloud_origin_eligibility/FACT.json.gz",
+      "eligibility_sha": "717ba9e3accf50792320f62bbc9ed625bf9d56e07d568163a3a78c426c70c992"
+    },
+    "KATL": {
+      "counts": {
+        "rows": 50,
+        "visible_official_cloud_origin": 49,
+        "cloud_observation_is_temperature_prefix_member:False": 45,
+        "cloud_observation_is_temperature_prefix_member:True": 5,
+        "not_unique_visible_official_origin": 1
+      },
+      "input_sha": "426e2d91aef1775b7bd9a82cc8c1c596bc6cdb05b478a0413ea2e4e0f24b23a4",
+      "eligibility_path": "cloud_origin_eligibility/KATL.json.gz",
+      "eligibility_sha": "777fb993a9e8e477cf8d74b6d03cad56c589a56db666c5c9e19f0758fa50969d"
+    },
+    "KAUS": {
+      "counts": {
+        "rows": 147,
+        "visible_official_cloud_origin": 124,
+        "cloud_observation_is_temperature_prefix_member:True": 6,
+        "cloud_observation_is_temperature_prefix_member:False": 141,
+        "not_unique_visible_official_origin": 23
+      },
+      "input_sha": "c0f50442f332a97e9eeab05809eb206cea3c1093f78cda1bc748d9e3417c0ff9",
+      "eligibility_path": "cloud_origin_eligibility/KAUS.json.gz",
+      "eligibility_sha": "bb7205809fef4131d41297199e489b7e5bb65bcf6b828262c624aaa36f795932"
+    },
+    "KBKF": {
+      "counts": {
+        "rows": 52,
+        "visible_official_cloud_origin": 49,
+        "cloud_observation_is_temperature_prefix_member:False": 38,
+        "not_unique_visible_official_origin": 3,
+        "cloud_observation_is_temperature_prefix_member:True": 14
+      },
+      "input_sha": "3a1592d9859aa2225f5a5bd14011e44bb0132ea8fd7a382218f6cdcc30d97783",
+      "eligibility_path": "cloud_origin_eligibility/KBKF.json.gz",
+      "eligibility_sha": "12f096dff24fc569fc4f6bd92336539a73f5da381856f9f01f79d24dd4782ff3"
+    },
+    "KDAL": {
+      "counts": {
+        "rows": 19,
+        "visible_official_cloud_origin": 19,
+        "cloud_observation_is_temperature_prefix_member:False": 18,
+        "cloud_observation_is_temperature_prefix_member:True": 1
+      },
+      "input_sha": "cd014b71684861d5e2d77de02675f3fcb366ca0c22108f7e4d00c8cc6cc1f984",
+      "eligibility_path": "cloud_origin_eligibility/KDAL.json.gz",
+      "eligibility_sha": "ffb1e52100caee5fe3c59db6ce4f787caaacd07eccb927d19ebcea37015cfddc"
+    },
+    "KHOU": {
+      "counts": {
+        "rows": 63,
+        "visible_official_cloud_origin": 60,
+        "cloud_observation_is_temperature_prefix_member:False": 60,
+        "cloud_observation_is_temperature_prefix_member:True": 3,
+        "not_unique_visible_official_origin": 3
+      },
+      "input_sha": "3daeba4554b8e6445956e26673b7ba59becb9982dd85a608a84ece3df9de07dd",
+      "eligibility_path": "cloud_origin_eligibility/KHOU.json.gz",
+      "eligibility_sha": "74129d9f5793c1691c3a7246bbed0c65298fab075379c7029bf6113790f6139b"
+    },
+    "KLAX": {
+      "counts": {
+        "rows": 162,
+        "not_unique_visible_official_origin": 10,
+        "cloud_observation_is_temperature_prefix_member:False": 160,
+        "visible_official_cloud_origin": 152,
+        "cloud_observation_is_temperature_prefix_member:True": 2
+      },
+      "input_sha": "3358e3e4cd6a6dc734fc42e2bc71d4efa4902bff4840d0932171d7cf99d341f1",
+      "eligibility_path": "cloud_origin_eligibility/KLAX.json.gz",
+      "eligibility_sha": "41206812551f0062e49fdf05ac9c2092c0e4b50218375caffacaca00f5c51dac"
+    },
+    "KLGA": {
+      "counts": {
+        "rows": 122,
+        "visible_official_cloud_origin": 116,
+        "cloud_observation_is_temperature_prefix_member:True": 10,
+        "cloud_observation_is_temperature_prefix_member:False": 112,
+        "not_unique_visible_official_origin": 6
+      },
+      "input_sha": "43d886839cbc0dfeaa5998cf35d71116eabb0ad1e92967913d851ee3ebbae086",
+      "eligibility_path": "cloud_origin_eligibility/KLGA.json.gz",
+      "eligibility_sha": "84357c581bccb94668813c245ac6de719c54630632e175b1ebf60556c0eb2690"
+    },
+    "KMIA": {
+      "counts": {
+        "rows": 38,
+        "visible_official_cloud_origin": 37,
+        "cloud_observation_is_temperature_prefix_member:False": 37,
+        "not_unique_visible_official_origin": 1,
+        "cloud_observation_is_temperature_prefix_member:True": 1
+      },
+      "input_sha": "f3ebffb9c2dfd0b3940964a27d2296d7e76541a147604133f1743c8c1e1c93e3",
+      "eligibility_path": "cloud_origin_eligibility/KMIA.json.gz",
+      "eligibility_sha": "8307b693b21c91567ea68b03296f34f41abab9047768b9e88080733ac136809b"
+    },
+    "KORD": {
+      "counts": {
+        "rows": 131,
+        "visible_official_cloud_origin": 130,
+        "cloud_observation_is_temperature_prefix_member:False": 126,
+        "cloud_observation_is_temperature_prefix_member:True": 5,
+        "not_unique_visible_official_origin": 1
+      },
+      "input_sha": "f8e713e89967bc9babb1a64ee31d255e3448a5341afca70a9fba3ff720154010",
+      "eligibility_path": "cloud_origin_eligibility/KORD.json.gz",
+      "eligibility_sha": "01233e84cf2a1f7030a438fbc4f179762f7ac8642050efdeeba230ff1a8f80d7"
+    },
+    "KSEA": {
+      "counts": {
+        "rows": 167,
+        "visible_official_cloud_origin": 157,
+        "cloud_observation_is_temperature_prefix_member:False": 160,
+        "not_unique_visible_official_origin": 10,
+        "cloud_observation_is_temperature_prefix_member:True": 7
+      },
+      "input_sha": "4a2ebadae88397902a2eb1cbac069b1d4b7acc7a789ee34c17d5b65ef0900f88",
+      "eligibility_path": "cloud_origin_eligibility/KSEA.json.gz",
+      "eligibility_sha": "8cfdb049f07c603b33cd76a2f8ac05827945c833d138eb127e5542402ed27043"
+    },
+    "KSFO": {
+      "counts": {
+        "rows": 179,
+        "visible_official_cloud_origin": 163,
+        "cloud_observation_is_temperature_prefix_member:True": 11,
+        "not_unique_visible_official_origin": 16,
+        "cloud_observation_is_temperature_prefix_member:False": 168
+      },
+      "input_sha": "34da600308d1389bb14914f90cdb8a68f35ecb3f1a5bb010696d1db500b394af",
+      "eligibility_path": "cloud_origin_eligibility/KSFO.json.gz",
+      "eligibility_sha": "e12146bb727d396b8ead4482f259cafd701a424d92261b56a139f6f4f107fc13"
+    },
+    "LEMD": {
+      "counts": {
+        "rows": 343,
+        "visible_official_cloud_origin": 313,
+        "cloud_observation_is_temperature_prefix_member:False": 299,
+        "not_unique_visible_official_origin": 30,
+        "cloud_observation_is_temperature_prefix_member:True": 44
+      },
+      "input_sha": "874591cd0c0f878248070bd6aa30afbf802420d9af184b7420d2031a74686f72",
+      "eligibility_path": "cloud_origin_eligibility/LEMD.json.gz",
+      "eligibility_sha": "879044e11337b93cbbbef3e1c79a25c4812b4492f3093d121dbc82dbce7dd9e8"
+    },
+    "LFPB": {
+      "counts": {
+        "rows": 363,
+        "visible_official_cloud_origin": 342,
+        "cloud_observation_is_temperature_prefix_member:False": 326,
+        "cloud_observation_is_temperature_prefix_member:True": 37,
+        "not_unique_visible_official_origin": 21
+      },
+      "input_sha": "348b6811ef30f3c06202aca44d9a30bf03433c66fa0a94bc99bf5b8e9aaebed7",
+      "eligibility_path": "cloud_origin_eligibility/LFPB.json.gz",
+      "eligibility_sha": "80c701d461b5d368237c09351473e6d4a222b755e57d0d99e3aa0cd1755b6943"
+    },
+    "LIMC": {
+      "counts": {},
+      "input_sha": "ea33c7b01ec80648a1cc5b89832be7c09571446ab97be9e20be5db36cdfd6380",
+      "eligibility_path": "cloud_origin_eligibility/LIMC.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "LLBG": {
+      "counts": {},
+      "input_sha": "f6429dfbb26d2d9cdc56125f23db80d1c76ca07eaa5969fc50ed83d441a3736b",
+      "eligibility_path": "cloud_origin_eligibility/LLBG.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "LTAC": {
+      "counts": {
+        "rows": 43,
+        "visible_official_cloud_origin": 43,
+        "cloud_observation_is_temperature_prefix_member:False": 43
+      },
+      "input_sha": "40d08e48ec518b17338cd3ac67a43f62fd23004c06b6304e17d1ad270b05d2ca",
+      "eligibility_path": "cloud_origin_eligibility/LTAC.json.gz",
+      "eligibility_sha": "c8958ca13d59e8da7cee748a4e0d8b3b8fd5f4126ff19427fa829845ee7f9d6b"
+    },
+    "LTFM": {
+      "counts": {},
+      "input_sha": "72d5ce166b257b27b76111abc71bd7f7ad6b1f3e6a19d0359d46aed2d26f9982",
+      "eligibility_path": "cloud_origin_eligibility/LTFM.json.gz",
+      "eligibility_sha": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "MMMX": {
+      "counts": {
+        "rows": 125,
+        "visible_official_cloud_origin": 109,
+        "cloud_observation_is_temperature_prefix_member:False": 107,
+        "cloud_observation_is_temperature_prefix_member:True": 18,
+        "not_unique_visible_official_origin": 16
+      },
+      "input_sha": "bba0710cb5a0c6175a8ea412ff852145d1ebc3cd81be50ffa76ce4e4f3b516cf",
+      "eligibility_path": "cloud_origin_eligibility/MMMX.json.gz",
+      "eligibility_sha": "6d8c0da69b289ad540aeb5f0fbfd3ea0a7c99873debabc0039f3146316ddb83b"
+    },
+    "MPMG": {
+      "counts": {
+        "rows": 234,
+        "visible_official_cloud_origin": 234,
+        "cloud_observation_is_temperature_prefix_member:True": 232,
+        "cloud_observation_is_temperature_prefix_member:False": 2
+      },
+      "input_sha": "445451a52462554f34ba7ca19a604ee0f81f431f0bc6f9c9bb929cea458184b3",
+      "eligibility_path": "cloud_origin_eligibility/MPMG.json.gz",
+      "eligibility_sha": "2b3ac6579b921b34cefc7fe7fdce620c985ed17a29f77831032a936bc92a90be"
+    },
+    "NZWN": {
+      "counts": {
+        "rows": 150,
+        "visible_official_cloud_origin": 147,
+        "cloud_observation_is_temperature_prefix_member:False": 132,
+        "not_unique_visible_official_origin": 3,
+        "cloud_observation_is_temperature_prefix_member:True": 18
+      },
+      "input_sha": "3ddf959a05430c5d663821c6702eb28f33fd1d3d2033ce6ecf96d012eb5bb17a",
+      "eligibility_path": "cloud_origin_eligibility/NZWN.json.gz",
+      "eligibility_sha": "0cbeaee5e81b7466e77d8da5c3021843a8ecc6565e4cd23fbc4249a93ba6911a"
+    },
+    "OEJN": {
+      "counts": {
+        "rows": 338,
+        "visible_official_cloud_origin": 338,
+        "cloud_observation_is_temperature_prefix_member:True": 338
+      },
+      "input_sha": "306bf47b5ffdc32cb4e09f25f3e0051ef06fd2bddd7df4f0a17f8867e3aaa548",
+      "eligibility_path": "cloud_origin_eligibility/OEJN.json.gz",
+      "eligibility_sha": "faa87d35c3a6ce275239697742057fb4e219ce3793d2f690dcc738b9d56d5958"
+    },
+    "OPKC": {
+      "counts": {
+        "rows": 322,
+        "visible_official_cloud_origin": 310,
+        "cloud_observation_is_temperature_prefix_member:True": 56,
+        "not_unique_visible_official_origin": 12,
+        "cloud_observation_is_temperature_prefix_member:False": 266
+      },
+      "input_sha": "01f98af1c979504bf1867179af84292fbcf538ba4615ab88d2cb1caab34db963",
+      "eligibility_path": "cloud_origin_eligibility/OPKC.json.gz",
+      "eligibility_sha": "f0839c3bb62a324a9d462541e09e794f6d62a785fe8f51aa0627630f3caa0940"
+    },
+    "RCSS": {
+      "counts": {
+        "rows": 263,
+        "visible_official_cloud_origin": 260,
+        "cloud_observation_is_temperature_prefix_member:True": 73,
+        "cloud_observation_is_temperature_prefix_member:False": 190,
+        "not_unique_visible_official_origin": 3
+      },
+      "input_sha": "4dcc63a71daffe2d646d1fc35866d30f3bcf2cc6e44a2a2cc3faaafd6c8fe17f",
+      "eligibility_path": "cloud_origin_eligibility/RCSS.json.gz",
+      "eligibility_sha": "6aa3549cd687beac921629228e49f047498a041f0a6ab6e194e4e9bfaae2e655"
+    },
+    "RJTT": {
+      "counts": {
+        "rows": 237,
+        "not_unique_visible_official_origin": 11,
+        "cloud_observation_is_temperature_prefix_member:False": 195,
+        "visible_official_cloud_origin": 226,
+        "cloud_observation_is_temperature_prefix_member:True": 42
+      },
+      "input_sha": "4cfe3151ea71e8b9f16fca8bcd6c629e00b5bf0f19ade22cfd69b98d27bd15c6",
+      "eligibility_path": "cloud_origin_eligibility/RJTT.json.gz",
+      "eligibility_sha": "a2609e90eb8f2ce528dbe36bd88497e7d2f1489d7fbf7ac3c079e02c2da50376"
+    },
+    "RKPK": {
+      "counts": {
+        "rows": 125,
+        "visible_official_cloud_origin": 125,
+        "cloud_observation_is_temperature_prefix_member:True": 125
+      },
+      "input_sha": "e098f5d0d17b49463073312bcff142344735805194c72edd125dee9f93bb0381",
+      "eligibility_path": "cloud_origin_eligibility/RKPK.json.gz",
+      "eligibility_sha": "7525e78aecfbc5f30152168e43638c8cccfdb39e08217ed00fa6492fb0bbea65"
+    },
+    "RKSI": {
+      "counts": {
+        "rows": 246,
+        "not_unique_visible_official_origin": 8,
+        "cloud_observation_is_temperature_prefix_member:False": 194,
+        "visible_official_cloud_origin": 238,
+        "cloud_observation_is_temperature_prefix_member:True": 52
+      },
+      "input_sha": "cbae41a80ae878b181393143f6e7f08f765c7baf6d5f9316028980135471e2a3",
+      "eligibility_path": "cloud_origin_eligibility/RKSI.json.gz",
+      "eligibility_sha": "af88a149404c6f04abb5e26bbd446d185e4c14652287ce283b57321ed5988cac"
+    },
+    "RPLL": {
+      "counts": {
+        "rows": 185,
+        "visible_official_cloud_origin": 185,
+        "cloud_observation_is_temperature_prefix_member:True": 185
+      },
+      "input_sha": "fae0fd4183e35992679e565035d6ee53c9b32061e78c77248cb50cd86cdd6912",
+      "eligibility_path": "cloud_origin_eligibility/RPLL.json.gz",
+      "eligibility_sha": "94e9fecdd0a62f34160feb27ebeb509ccdf4d105c2128aade2d4dd8ec9be2436"
+    },
+    "SAEZ": {
+      "counts": {
+        "rows": 223,
+        "visible_official_cloud_origin": 223,
+        "cloud_observation_is_temperature_prefix_member:True": 220,
+        "cloud_observation_is_temperature_prefix_member:False": 3
+      },
+      "input_sha": "1262d3f709d5b9c7fdc57f3bcdba1c222e5d130da469233719800890377aadbd",
+      "eligibility_path": "cloud_origin_eligibility/SAEZ.json.gz",
+      "eligibility_sha": "aa902741a8ef58f9c6eb1ba69850d3276067189e979d0d39f9f2637bd6804bf7"
+    },
+    "SBGR": {
+      "counts": {
+        "rows": 268,
+        "visible_official_cloud_origin": 268,
+        "cloud_observation_is_temperature_prefix_member:True": 268
+      },
+      "input_sha": "d0d9562128df3ec2264a9e8915d492ecd0225da9d2b1576e01820c5ed835540e",
+      "eligibility_path": "cloud_origin_eligibility/SBGR.json.gz",
+      "eligibility_sha": "86559fa8a232b37c8f4047c2ccfc178cbb04a72239530890d8d09d6844ebfade"
+    },
+    "UUWW": {
+      "counts": {
+        "rows": 35,
+        "visible_official_cloud_origin": 35,
+        "cloud_observation_is_temperature_prefix_member:False": 32,
+        "cloud_observation_is_temperature_prefix_member:True": 3
+      },
+      "input_sha": "13e93716f59a2069f625c0f97ad6c4cda01f77c3a541c3c4c34ddbcb6885ded6",
+      "eligibility_path": "cloud_origin_eligibility/UUWW.json.gz",
+      "eligibility_sha": "7f1214f97f55f2cb0d85acab96396afef0902a43be94bc76406e9adbef2d1697"
+    },
+    "VILK": {
+      "counts": {
+        "rows": 134,
+        "visible_official_cloud_origin": 134,
+        "cloud_observation_is_temperature_prefix_member:True": 129,
+        "cloud_observation_is_temperature_prefix_member:False": 5
+      },
+      "input_sha": "7b6610572cba70c22398694f11d1dbbfcb90165972cd7094492f038c131419ed",
+      "eligibility_path": "cloud_origin_eligibility/VILK.json.gz",
+      "eligibility_sha": "fe57302affb6e3757110cd12b4023ffa58afbf4076ca3dc6eb62557fef0fe8c9"
+    },
+    "WMKK": {
+      "counts": {
+        "rows": 147,
+        "visible_official_cloud_origin": 143,
+        "cloud_observation_is_temperature_prefix_member:True": 31,
+        "not_unique_visible_official_origin": 4,
+        "cloud_observation_is_temperature_prefix_member:False": 116
+      },
+      "input_sha": "3dccb7c29a68fd65038c05f019f711caf7eb0356a63cd97c360218f99759cc3f",
+      "eligibility_path": "cloud_origin_eligibility/WMKK.json.gz",
+      "eligibility_sha": "eff0c42983038f6226579fd2f8b27d5cf63fd98ea8cf8d2118e125a7f917a7eb"
+    },
+    "WSSS": {
+      "counts": {
+        "rows": 242,
+        "visible_official_cloud_origin": 233,
+        "cloud_observation_is_temperature_prefix_member:True": 51,
+        "not_unique_visible_official_origin": 9,
+        "cloud_observation_is_temperature_prefix_member:False": 191
+      },
+      "input_sha": "0796ca81db8fdcf379d6fe8bbecf472dc9371f8e9d565154d04eebcca2674b1f",
+      "eligibility_path": "cloud_origin_eligibility/WSSS.json.gz",
+      "eligibility_sha": "240c049efdc0ad3c86272d5308fafbac7bd78e14347db11a01d3f73e73cfa633"
+    },
+    "ZBAA": {
+      "counts": {
+        "rows": 248,
+        "visible_official_cloud_origin": 231,
+        "cloud_observation_is_temperature_prefix_member:False": 205,
+        "not_unique_visible_official_origin": 17,
+        "cloud_observation_is_temperature_prefix_member:True": 43
+      },
+      "input_sha": "4c8c38b6c4afdb2480f4afdfb1908a141c0ceb026affc2620ad2f936f0e76d7f",
+      "eligibility_path": "cloud_origin_eligibility/ZBAA.json.gz",
+      "eligibility_sha": "ef1b9d1f83fc8e10621dc74ab7737874f742e72b1246aad7b3c1103d1703fdf0"
+    },
+    "ZGGG": {
+      "counts": {
+        "rows": 282,
+        "not_unique_visible_official_origin": 15,
+        "cloud_observation_is_temperature_prefix_member:False": 226,
+        "visible_official_cloud_origin": 267,
+        "cloud_observation_is_temperature_prefix_member:True": 56
+      },
+      "input_sha": "6ac1f34d246f5019f05b6ecbc01e9015d522b2049b5360ef3f5efaf2545ee665",
+      "eligibility_path": "cloud_origin_eligibility/ZGGG.json.gz",
+      "eligibility_sha": "5eb539c2d1c4357780d359d29052e57ab10adcea4e8ae61c89eef8a5f886a312"
+    },
+    "ZGSZ": {
+      "counts": {
+        "rows": 237,
+        "visible_official_cloud_origin": 237,
+        "cloud_observation_is_temperature_prefix_member:True": 237
+      },
+      "input_sha": "52fd58daf0737d270e4601583ffbd20ac0621bd18c380972ff06cab8194a96e2",
+      "eligibility_path": "cloud_origin_eligibility/ZGSZ.json.gz",
+      "eligibility_sha": "e5e0cf28be1b899ed5d093b5b377a36af1115575ad231fe65bd3ec638137855e"
+    },
+    "ZHHH": {
+      "counts": {
+        "rows": 233,
+        "visible_official_cloud_origin": 233,
+        "cloud_observation_is_temperature_prefix_member:True": 233
+      },
+      "input_sha": "8a3a0bbe38f3a62d8f86e797c40c12e8fb8442e73a2796661c2e2e74494a70a3",
+      "eligibility_path": "cloud_origin_eligibility/ZHHH.json.gz",
+      "eligibility_sha": "c41cd1e0f544f636e6b6da68f45c45747f12890515491c24d7d17669b556c166"
+    },
+    "ZSPD": {
+      "counts": {
+        "rows": 279,
+        "visible_official_cloud_origin": 272,
+        "cloud_observation_is_temperature_prefix_member:False": 222,
+        "cloud_observation_is_temperature_prefix_member:True": 57,
+        "not_unique_visible_official_origin": 7
+      },
+      "input_sha": "ce1d424f59241d5d8076c1ce386a96b6b83585f163a02b047db1cb105173041a",
+      "eligibility_path": "cloud_origin_eligibility/ZSPD.json.gz",
+      "eligibility_sha": "02f43060a37a62e38b2d21fd8786b3f66900e9ca7c2cedaedde9043398b1d7b1"
+    },
+    "ZSQD": {
+      "counts": {
+        "rows": 257,
+        "visible_official_cloud_origin": 257,
+        "cloud_observation_is_temperature_prefix_member:True": 257
+      },
+      "input_sha": "53c8c856d2b588eb6da9a422cfcf6a7dc57b27c332225708bf434919485e8584",
+      "eligibility_path": "cloud_origin_eligibility/ZSQD.json.gz",
+      "eligibility_sha": "89c4e830b8a6268053dacc7117fb9e0e1949c5626d3f086185d7c1bd9d8f81a9"
+    },
+    "ZUCK": {
+      "counts": {
+        "rows": 249,
+        "visible_official_cloud_origin": 249,
+        "cloud_observation_is_temperature_prefix_member:True": 249
+      },
+      "input_sha": "da2442093f21b2c1102e828279992ba5833ed374b2d98acb2ba54bc9a12f42be",
+      "eligibility_path": "cloud_origin_eligibility/ZUCK.json.gz",
+      "eligibility_sha": "2860a1c4244ea3a6c0e5048ed0156b0a5346e985dd54e1c60f4b0ce49ef9ea32"
+    },
+    "ZUUU": {
+      "counts": {
+        "rows": 239,
+        "visible_official_cloud_origin": 239,
+        "cloud_observation_is_temperature_prefix_member:True": 239
+      },
+      "input_sha": "5b3355497c32181da3a93725a0bddc87fa5034e4ae04a2368b4fd9f9f8885961",
+      "eligibility_path": "cloud_origin_eligibility/ZUUU.json.gz",
+      "eligibility_sha": "c80d513042c791c5a96f64723124f00a81209e7fc4f843915188aabe2f7e5c88"
+    }
+  },
+  "exceptions": [
+    {
+      "station": "EPWA",
+      "day": "2026-09-02",
+      "at": "2026-09-02T06:31:59.716000Z",
+      "observation": "rtobs_acaafb97a4c068abcd4d88cd4b482f23",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-02T06:31:59.717Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-02",
+      "at": "2026-09-02T07:31:46.254000Z",
+      "observation": "rtobs_6113da29293f499c034acac70ea8e1f9",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-02T07:31:46.255Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-03",
+      "at": "2026-09-03T09:31:56.767000Z",
+      "observation": "rtobs_03632c5df34092bbb7e64126469d9199",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T09:31:56.772Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-03",
+      "at": "2026-09-03T10:31:59.548000Z",
+      "observation": "rtobs_16a5c96854eb86246a1f8a3780f2dee9",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T10:31:59.549Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-03",
+      "at": "2026-09-03T12:31:49.693000Z",
+      "observation": "rtobs_77417180f54eff086363d32254cf77f5",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T12:31:49.694Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-05",
+      "at": "2026-09-05T10:31:39.488000Z",
+      "observation": "rtobs_14b048cd3a1ea192740b41b1361bb05c",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-05T10:31:39.493Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-06",
+      "at": "2026-09-06T08:31:57.723000Z",
+      "observation": "rtobs_65227e30e19ef679a11080ef08c27b64",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-06T08:31:57.726Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-07",
+      "at": "2026-09-07T12:31:57.727000Z",
+      "observation": "rtobs_4e4c03d0024650dfad268ae11011a75a",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-07T12:31:57.728Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-08",
+      "at": "2026-09-08T08:32:29.660000Z",
+      "observation": "rtobs_d9ac0310583b74f12558da566d0e5952",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-08T08:32:29.663Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-08",
+      "at": "2026-09-08T09:31:36.198000Z",
+      "observation": "rtobs_303f8411a82f4e84e2f03a924dea14df",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-08T09:31:36.199Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-08",
+      "at": "2026-09-08T10:31:34.693000Z",
+      "observation": "rtobs_ccc30c5a686d21e8d3f53343509f2887",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-08T10:31:34.694Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-08",
+      "at": "2026-09-08T12:31:28.490000Z",
+      "observation": "rtobs_6c4822d974e8614fa245a9a72331ef49",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-08T12:31:28.491Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-09",
+      "at": "2026-09-09T11:32:07.300000Z",
+      "observation": "rtobs_1944bd319e724fd4e6252b6d0b79e75b",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-09T11:32:07.519Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-11",
+      "at": "2026-09-11T10:31:39.870000Z",
+      "observation": "rtobs_f04df8fa4773c66c5f920551fbf2b74b",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-11T10:31:39.871Z"
+        }
+      ]
+    },
+    {
+      "station": "EPWA",
+      "day": "2026-09-13",
+      "at": "2026-09-13T08:31:07.990000Z",
+      "observation": "rtobs_77bdfdea34f0660ed6e1766cd0589279",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "EPWA",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-13T08:31:07.991Z"
+        }
+      ]
+    },
+    {
+      "station": "KATL",
+      "day": "2026-09-12",
+      "at": "2026-09-12T13:53:10.539000Z",
+      "observation": "rtobs_729a33808b871a7d1a138b0bdfdaa8e3",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "KATL",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-12T13:53:10.640Z"
+        }
+      ]
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-03",
+      "at": "2026-09-03T16:54:57.949000Z",
+      "observation": "rtobs_35c02ba7ce2c274212e685cef9c1314d",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "KAUS",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T16:54:57.951Z"
+        }
+      ]
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-03",
+      "at": "2026-09-03T17:55:50.407000Z",
+      "observation": "rtobs_f690c9dc0da61e1fe79aab4da91d8ff0",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "KAUS",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T17:55:50.409Z"
+        }
+      ]
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-03",
+      "at": "2026-09-03T18:55:40.670000Z",
+      "observation": "rtobs_00dc078b636c8a6ae50ed7093500dcc4",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "KAUS",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T18:55:40.672Z"
+        }
+      ]
+    },
+    {
+      "station": "KAUS",
+      "day": "2026-09-03",
+      "at": "2026-09-03T19:55:48.701000Z",
+      "observation": "rtobs_778e0cc6cddf8a475badef8bf75bfcdd",
+      "origins": [
+        {
+          "source_lane": "awc",
+          "station_id": "KAUS",
+          "origin_source_id": "global_noaa_awc_relay",
+          "origin_transport": "official_awc_raw_metar_batch_direct",
+          "committed_at": "2026-09-03T19:55:48.702Z"
+        }
+      ]
+    }
+  ],
+  "production_modified": false,
+  "definition": "The cloud item is a separate actual official report; a non-00 METAR may provide cloud evidence without being admitted as canonical temperature truth."
+}

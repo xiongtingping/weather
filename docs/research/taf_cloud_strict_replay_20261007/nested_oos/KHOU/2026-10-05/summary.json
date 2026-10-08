@@ -1,0 +1,3050 @@
+{
+  "schema": "actual_arrival_nested_oos_probe_v1",
+  "method_version": "actual_arrival_inner_truth_ladder_v3",
+  "decision_clock": "maximum of actual member arrival and actual first target ladder availability",
+  "station": "KHOU",
+  "outer_cutoff": "2026-10-05T12:37:00.730Z",
+  "event": "2026-10-05",
+  "anchor_checkpoint": "p0-native-fbaaaa33a410577c8fabd8ccaf2f078f",
+  "member_source": {
+    "domains": {
+      "ensemble_system_id": [
+        "DWD_ICON_EPS_SEAMLESS",
+        "DWD_ICON_GLOBAL_EPS",
+        "ECCC_GEM_GLOBAL_ENS",
+        "ECMWF_AIFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_GLOBAL",
+        "ECMWF_IFS_ENS_OPEN_PF50",
+        "GOOGLE_WEATHERNEXT2_ENS",
+        "METAR_PHYSICAL_PATH_TMAX",
+        "NCEP_HRRR_POINT",
+        "NCEP_NBM_POINT",
+        "NOAA_AIGEFS_025",
+        "NOAA_GEFS_025",
+        "NOAA_GEFS_05",
+        "NOAA_GEFS_SEAMLESS",
+        "UKMO_GLOBAL_ENS"
+      ],
+      "transport_provider_id": [
+        "AWC_METAR_PHYSICAL_PATH",
+        "DWD_OPENDATA_ICON_EPS",
+        "ECCC_DD_WEATHER",
+        "ECMWF_OPEN_DATA_S3",
+        "NOAA_GEFS_PDS_S3",
+        "NOAA_HRRR_PDS_S3",
+        "NOAA_NBM_PDS_S3",
+        "OPEN_METEO"
+      ],
+      "archive_lead_bucket": [
+        "d0",
+        "d1",
+        "d2",
+        "h00_12",
+        "h12_24",
+        "h24_48",
+        "h48_plus"
+      ],
+      "run_cycle": [
+        "00Z",
+        "06Z",
+        "12Z",
+        "18Z",
+        "AGGREGATOR_UNKNOWN_NATIVE_CYCLE"
+      ],
+      "authority_scope": [
+        "CALIBRATION_TRAIN_ONLY"
+      ],
+      "qc_status": [
+        "ACCEPTED"
+      ]
+    },
+    "rows": 138386,
+    "bytes": 90779274,
+    "sha256": "c98dd2743069fde8e4b099cc25e71ad2524e806155996fa7ba6792b4b5070b34",
+    "groups": 3554,
+    "invalid": {},
+    "query": "select ensemble_system_id,target_local_date,native_run_init_utc,archive_lead_bucket,run_cycle,extraction_version,transport_provider_id,member_id,raw_tmax_c,archive_query_at_utc,source_object_sha256,content_sha256,qc_status,authority_scope from calibration_native_ensemble_historical_member_run INDEXED BY calibration_native_ensemble_historical_member_run_scope_idx where station_id=? and target_local_date>=? and target_local_date<=? and ensemble_system_id IN (?,?,?,?,?,?) and transport_provider_id<>?"
+  },
+  "input_rejections": {
+    "never_seated_run": 147,
+    "retrospective_train_only": 1662,
+    "missing_asof_market_ladder_train_only": 739
+  },
+  "readiness": [
+    {
+      "ensemble_system_id": "CMA_GRAPES_GLOBAL_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_D2_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EPS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_EPS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_EU_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 56,
+      "train_n": 48,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8130745109212363,
+        "nll": 1.5294416916474383,
+        "crps": 0.6820803949876469
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 14,
+      "training_case_count": 6,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 14,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 14,
+      "training_case_count": 6,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 14,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 12,
+      "training_case_count": 4,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 16,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 55,
+      "train_n": 47,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7329186721377243,
+        "nll": 1.3822079605017683,
+        "crps": 0.6281554366208314
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 11,
+      "training_case_count": 3,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 17,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "OOS_READY",
+      "case_count": 46,
+      "train_n": 38,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7949410943570938,
+        "nll": 1.5028909900398215,
+        "crps": 0.678151247728115
+      }
+    },
+    {
+      "ensemble_system_id": "DWD_ICON_GLOBAL_EPS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "DWD_OPENDATA_ICON_EPS",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 84,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.811029819024056,
+        "nll": 1.6717235014313743,
+        "crps": 0.9191451580546649
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 13,
+      "training_case_count": 5,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 15,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 82,
+      "train_n": 57,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8744213470650544,
+        "nll": 1.8685981364927557,
+        "crps": 1.031739184145059
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "OOS_READY",
+      "case_count": 67,
+      "train_n": 47,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9246499955830139,
+        "nll": 2.029158566248106,
+        "crps": 1.1054543494564633
+      }
+    },
+    {
+      "ensemble_system_id": "ECCC_GEM_GLOBAL_ENS",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECCC_DD_WEATHER",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 42,
+      "training_case_count": 38,
+      "strict_holdout_case_count": 4,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 4
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6945003110666942,
+        "nll": 1.3890530356639057,
+        "crps": 0.5973291203184911
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7070115325796688,
+        "nll": 1.4737698839452003,
+        "crps": 0.6376738949586154
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 74,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6705917263277915,
+        "nll": 1.2093943701159413,
+        "crps": 0.48838640603446615
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6967126873418303,
+        "nll": 1.4274010157314088,
+        "crps": 0.5929196711558424
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6970577318473528,
+        "nll": 1.6238541015815393,
+        "crps": 0.6504537117554503
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6532324049687064,
+        "nll": 1.2982530486687653,
+        "crps": 0.5199596622040628
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 73,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.749752230455081,
+        "nll": 1.5216514628729918,
+        "crps": 0.7269551541431315
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7308207949249674,
+        "nll": 1.4580265398963497,
+        "crps": 0.6728504712055924
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7740421081547614,
+        "nll": 1.4926463619421777,
+        "crps": 0.7469673608875586
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7817430683257728,
+        "nll": 1.6331099784912047,
+        "crps": 0.8880698730960255
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_AIFS_ENS_GLOBAL",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 67,
+      "training_case_count": 60,
+      "strict_holdout_case_count": 7,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 1
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_EUROPE",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_GLOBAL",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 89,
+      "train_n": 56,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7959705570186733,
+        "nll": 1.5113971080406026,
+        "crps": 0.6665551405899393
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7422441283070472,
+        "nll": 1.467143903212034,
+        "crps": 0.6601543285533945
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 36,
+      "train_n": 28,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5862459618780236,
+        "nll": 1.0934713485545118,
+        "crps": 0.4760533402938621
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 41,
+      "train_n": 33,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.5654393056573953,
+        "nll": 1.0838022178485758,
+        "crps": 0.3754570403919993
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 34,
+      "train_n": 26,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6598033775432202,
+        "nll": 1.3764261518479899,
+        "crps": 0.6486571026689916
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 36,
+      "train_n": 28,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6487196171239057,
+        "nll": 1.2552974953034297,
+        "crps": 0.5644479055184385
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 85,
+      "train_n": 53,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.814713341601922,
+        "nll": 1.5924234539522961,
+        "crps": 0.7465441349234372
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 29,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 30,
+      "train_n": 22,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7970932709903019,
+        "nll": 1.793788212539543,
+        "crps": 0.8181885065007344
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "OOS_READY",
+      "case_count": 81,
+      "train_n": 47,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7196955624735056,
+        "nll": 1.4585035827721113,
+        "crps": 0.6971789792589533
+      }
+    },
+    {
+      "ensemble_system_id": "ECMWF_IFS_ENS_OPEN_PF50",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "ECMWF_OPEN_DATA_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 23,
+      "training_case_count": 15,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 5,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "GOOGLE_WEATHERNEXT2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "JMA_MSM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METAR_PHYSICAL_PATH_TMAX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH1_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "METEOSWISS_ICON_CH2_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_HRRR_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NCEP_NBM_POINT",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.808698248130063,
+        "nll": 1.5688026903234034,
+        "crps": 0.7308266457470665
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7093417156144691,
+        "nll": 1.3497288583567069,
+        "crps": 0.5882048407367333
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 59,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7576838258245899,
+        "nll": 1.5237764656706916,
+        "crps": 0.6358576030703188
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.715711647428704,
+        "nll": 1.4051269951494636,
+        "crps": 0.6232207462732471
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 70,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8616451664764702,
+        "nll": 1.7041974068956398,
+        "crps": 0.8056239183276979
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 72,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8378348227300474,
+        "nll": 1.7026980196459396,
+        "crps": 0.8330860818466124
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8477142032781443,
+        "nll": 1.7344550725150347,
+        "crps": 0.9050222862373558
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 69,
+      "train_n": 56,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9140647471695037,
+        "nll": 1.9604132015186357,
+        "crps": 0.9493675953754496
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9043615223833569,
+        "nll": 2.0035877899511565,
+        "crps": 1.0793712276649676
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 71,
+      "train_n": 60,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.8806120181687064,
+        "nll": 1.7981741089137329,
+        "crps": 0.9231999396255097
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_AIGEFS_025",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 66,
+      "training_case_count": 59,
+      "strict_holdout_case_count": 7,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 0,
+      "missing_strict_holdout_case_count": 1
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_025",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 85,
+      "train_n": 53,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.799807287551316,
+        "nll": 1.7706954440296516,
+        "crps": 0.6688162172003371
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 51,
+      "train_n": 43,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6948390920868627,
+        "nll": 1.2668828409611421,
+        "crps": 0.504076395902341
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 50,
+      "train_n": 42,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7424438124080418,
+        "nll": 1.4288391324902916,
+        "crps": 0.5665493686457995
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h00_12",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 53,
+      "train_n": 45,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.9182955733197152,
+        "nll": 2.265360210201836,
+        "crps": 0.8286993647122756
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 40,
+      "train_n": 32,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6934015136595538,
+        "nll": 1.3608226214225523,
+        "crps": 0.49180792578378657
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h12_24",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 44,
+      "train_n": 36,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.7321710760484235,
+        "nll": 1.3961234694069167,
+        "crps": 0.5267729809141593
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 88,
+      "train_n": 54,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6460933039865722,
+        "nll": 1.2217072497262464,
+        "crps": 0.43191343789545794
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "06Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 29,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "12Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 29,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h24_48",
+      "run_cycle": "18Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "OOS_READY",
+      "case_count": 83,
+      "train_n": 49,
+      "holdout_n": 8,
+      "oos_metrics": {
+        "brier": 0.6992330363665277,
+        "nll": 1.3335892609888482,
+        "crps": 0.46851680978777765
+      }
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_05",
+      "season_bin": "DESCENT",
+      "lead_bucket": "h48_plus",
+      "run_cycle": "00Z",
+      "transport_provider_id": "NOAA_GEFS_PDS_S3",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 23,
+      "training_case_count": 15,
+      "strict_holdout_case_count": 8,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 5,
+      "missing_strict_holdout_case_count": 0
+    },
+    {
+      "ensemble_system_id": "NOAA_GEFS_SEAMLESS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "OFFICIAL_AIRPORT_TAF_TX",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_GLOBAL_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    },
+    {
+      "ensemble_system_id": "UKMO_UK_ENS",
+      "season_bin": "*",
+      "lead_bucket": "*",
+      "run_cycle": "*",
+      "state": "ACCUMULATING_STRICT_OOS",
+      "case_count": 0,
+      "training_case_count": 0,
+      "strict_holdout_case_count": 0,
+      "required_train_case_count": 20,
+      "required_strict_holdout_case_count": 8,
+      "missing_train_case_count": 20,
+      "missing_strict_holdout_case_count": 8
+    }
+  ],
+  "report_header": {
+    "schema": "native_ensemble_strict_forward_oos_v1",
+    "station_id": "KHOU",
+    "as_of_utc": "2026-10-05T12:37:00.730Z",
+    "min_train_days": 20,
+    "min_holdout_days": 8,
+    "threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "historical_event_date_cutoff": "2026-10-04",
+    "formal_promotion_threshold_profile": "FORMAL_PROMOTION_20_TRAIN_8_HOLDOUT",
+    "formal_promotion_min_train_days": 20,
+    "formal_promotion_min_holdout_days": 8,
+    "registered_system_count": 26,
+    "probability_pathway": "CALIBRATED_NATIVE_MEMBERS_CROSS_ENSEMBLE",
+    "formal_p0_eligible": false,
+    "calls_order_gateway": false,
+    "orders_submitted": 0,
+    "live_submit_authorized": false,
+    "content_sha256": "e790dec359998d508cb105bb756f6552cbf9a39f48ca82d4d27b10bfa936c79f"
+  },
+  "cross_states": {
+    "PRODUCTION_NO_LIVE_OOS_PASS": 125
+  },
+  "objects": [
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/63ccaa563ed68b38c6a880e87bcc239e3539fa1a61630b86419230c01fc1c388.json.gz",
+      "sha256": "63ccaa563ed68b38c6a880e87bcc239e3539fa1a61630b86419230c01fc1c388"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0d4a30753edc81c390b34b0c7c842fb3490a67c7b2ab17ce1894872c39cc421f.json.gz",
+      "sha256": "0d4a30753edc81c390b34b0c7c842fb3490a67c7b2ab17ce1894872c39cc421f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d8f812dabc800ae26be0c6c6df799c6a472129f8ae57a87a7ac250f32b107f85.json.gz",
+      "sha256": "d8f812dabc800ae26be0c6c6df799c6a472129f8ae57a87a7ac250f32b107f85"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/cb5f568ce8133c76ede5e2426b6586dcffe0291ab8fa1a222227350048625423.json.gz",
+      "sha256": "cb5f568ce8133c76ede5e2426b6586dcffe0291ab8fa1a222227350048625423"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/b9be497b643c7e61326a2d62a058c80ef84b7ea1a597a42e70d6a5bea70ba61b.json.gz",
+      "sha256": "b9be497b643c7e61326a2d62a058c80ef84b7ea1a597a42e70d6a5bea70ba61b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/796be4a08718a9b4fc592398d2543c2d1c4bd7ea7f510a8488751f53a9451248.json.gz",
+      "sha256": "796be4a08718a9b4fc592398d2543c2d1c4bd7ea7f510a8488751f53a9451248"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/785e2a36a73b1e7b575fef195fb0b75467023a273b9549b2079695d3abd41204.json.gz",
+      "sha256": "785e2a36a73b1e7b575fef195fb0b75467023a273b9549b2079695d3abd41204"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/c5305e323ccdb3f123266ef21f94acf37f7e89ac978dde0db47cdc0a08dee796.json.gz",
+      "sha256": "c5305e323ccdb3f123266ef21f94acf37f7e89ac978dde0db47cdc0a08dee796"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/394588a1c75f50d10fbbe13b78f3bc891221f0a866662797cc52a688a4b41153.json.gz",
+      "sha256": "394588a1c75f50d10fbbe13b78f3bc891221f0a866662797cc52a688a4b41153"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e6e5581954170354499adda8fcc19a75edb4c62698f5d7aeebd595b516ab0298.json.gz",
+      "sha256": "e6e5581954170354499adda8fcc19a75edb4c62698f5d7aeebd595b516ab0298"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/141dd8c14c82ebca81756fcc0083e40252ac2dc3623642506fe7201d69d1c645.json.gz",
+      "sha256": "141dd8c14c82ebca81756fcc0083e40252ac2dc3623642506fe7201d69d1c645"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/91ad1f773b1cc72248af7f7a7188a9c613ff16ceff7354f2b8118eedfdb33695.json.gz",
+      "sha256": "91ad1f773b1cc72248af7f7a7188a9c613ff16ceff7354f2b8118eedfdb33695"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/150551990c82899209a124a84006570f79e853ac9c6a91523e1d999822b3a192.json.gz",
+      "sha256": "150551990c82899209a124a84006570f79e853ac9c6a91523e1d999822b3a192"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e4db73f7598f6121a9057e7d05df6cf4993c574e2e62fa85a227771c124b3cf1.json.gz",
+      "sha256": "e4db73f7598f6121a9057e7d05df6cf4993c574e2e62fa85a227771c124b3cf1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/6436cfd269dfd9fc79d3864e6ef2c08890934f5c4d30e5f07f2337cb3fb6c8d9.json.gz",
+      "sha256": "6436cfd269dfd9fc79d3864e6ef2c08890934f5c4d30e5f07f2337cb3fb6c8d9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/14c4d0a74f2f5557e92d231a59d9a72e46b590df691d35bbd60b44f9afdcc022.json.gz",
+      "sha256": "14c4d0a74f2f5557e92d231a59d9a72e46b590df691d35bbd60b44f9afdcc022"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/6520ac51f75777b08e3818cf73adbb38efe1f26d9fe555fcb20fd429d6f16b73.json.gz",
+      "sha256": "6520ac51f75777b08e3818cf73adbb38efe1f26d9fe555fcb20fd429d6f16b73"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0ef1481388180f6cf8f4a213a94d5c1ba83f36472453059f6825501632863f48.json.gz",
+      "sha256": "0ef1481388180f6cf8f4a213a94d5c1ba83f36472453059f6825501632863f48"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d5ca35b3d7591d82ebc3aaf809a683fdc534e4758dbd084d2e3d715f390d78cf.json.gz",
+      "sha256": "d5ca35b3d7591d82ebc3aaf809a683fdc534e4758dbd084d2e3d715f390d78cf"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/194cbc7a09ecd8608cde1bb41f6c41c35c48fb4b6499015e603fc9b3f33ddfe5.json.gz",
+      "sha256": "194cbc7a09ecd8608cde1bb41f6c41c35c48fb4b6499015e603fc9b3f33ddfe5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/1708e5c1ba3997d9cecff4fc3712685293835af6f8d9c02866449d098690b0c8.json.gz",
+      "sha256": "1708e5c1ba3997d9cecff4fc3712685293835af6f8d9c02866449d098690b0c8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/5acaf152a65f62e9f9d9a52ab7e17c108667a5c057d2b3f0dba1abf7d24bd070.json.gz",
+      "sha256": "5acaf152a65f62e9f9d9a52ab7e17c108667a5c057d2b3f0dba1abf7d24bd070"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d0bffa8de8a24d00e420aea55b19ab02e7f685492b9a165437db1cd01296d731.json.gz",
+      "sha256": "d0bffa8de8a24d00e420aea55b19ab02e7f685492b9a165437db1cd01296d731"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a89ef4e01eb4e68f5e27b41f455ee841681b9133696eb039d5ee784303109a2d.json.gz",
+      "sha256": "a89ef4e01eb4e68f5e27b41f455ee841681b9133696eb039d5ee784303109a2d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/04a7d643fdba97e2e95e2b4e99b196ee90698d2891a4286f969a0ecc61a9d17e.json.gz",
+      "sha256": "04a7d643fdba97e2e95e2b4e99b196ee90698d2891a4286f969a0ecc61a9d17e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d847d1bfe4819cb4ca17145fc88396f73f1a9a3081bde8e9c94ec8fb5577b502.json.gz",
+      "sha256": "d847d1bfe4819cb4ca17145fc88396f73f1a9a3081bde8e9c94ec8fb5577b502"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e9f44015b56f790837ff7a5b1d2758193e482a4de46486b002de24d4e996b20f.json.gz",
+      "sha256": "e9f44015b56f790837ff7a5b1d2758193e482a4de46486b002de24d4e996b20f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/608f21055206b1aa741b62bc95e99bd5d02885ddc3c4ec36a0db8fd562a545d2.json.gz",
+      "sha256": "608f21055206b1aa741b62bc95e99bd5d02885ddc3c4ec36a0db8fd562a545d2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/988e60012204aef956dfb60d33b4f31a52b0ec9199218611c06a0301f05b0f91.json.gz",
+      "sha256": "988e60012204aef956dfb60d33b4f31a52b0ec9199218611c06a0301f05b0f91"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/84a3ac59da32179296f610320ecaff6961df57173061336fb10282c8bc3d6040.json.gz",
+      "sha256": "84a3ac59da32179296f610320ecaff6961df57173061336fb10282c8bc3d6040"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/cbc535bd6c18eddaca57fbda9413d0f691db4f8c6efe6f955bbdbf1dd83ea88e.json.gz",
+      "sha256": "cbc535bd6c18eddaca57fbda9413d0f691db4f8c6efe6f955bbdbf1dd83ea88e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/36c3f19f10f45f1f77412a37518a018e77defe69e3ef60dfc1aeace6b76b7d60.json.gz",
+      "sha256": "36c3f19f10f45f1f77412a37518a018e77defe69e3ef60dfc1aeace6b76b7d60"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e13688be8f5929c75607661ae2efe1ab83818ad11838c4bda749a710f4e039cf.json.gz",
+      "sha256": "e13688be8f5929c75607661ae2efe1ab83818ad11838c4bda749a710f4e039cf"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/738f4a7d67479eea9830286b4c69f8b46fec443a94b51f663a945f3eddb30d4b.json.gz",
+      "sha256": "738f4a7d67479eea9830286b4c69f8b46fec443a94b51f663a945f3eddb30d4b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a75851f0cde351a98235def682d0961153f3cff0c7ee7304b22a3d7a9bf741a2.json.gz",
+      "sha256": "a75851f0cde351a98235def682d0961153f3cff0c7ee7304b22a3d7a9bf741a2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/451e0412297f213eb4efdfe8163cad0ed6ead92e14c3efa1b457040fc8477c94.json.gz",
+      "sha256": "451e0412297f213eb4efdfe8163cad0ed6ead92e14c3efa1b457040fc8477c94"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/c4db9edd32190b9c40f28ef925e6497b05aaa6dde08b41574fee732aab56ac7c.json.gz",
+      "sha256": "c4db9edd32190b9c40f28ef925e6497b05aaa6dde08b41574fee732aab56ac7c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/8b3401663c09c2ec714ac0b6301beb124fe701199b85cc1549b69f155cbd70f5.json.gz",
+      "sha256": "8b3401663c09c2ec714ac0b6301beb124fe701199b85cc1549b69f155cbd70f5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/2aada5cc6510dec442124595eb4441efab66d56949b6fa6a3914020c0ad5ee5b.json.gz",
+      "sha256": "2aada5cc6510dec442124595eb4441efab66d56949b6fa6a3914020c0ad5ee5b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/296cf6864bd6115c6bed62773a4e5d0dad9167d1bdd850c427796c5d47ac3c9a.json.gz",
+      "sha256": "296cf6864bd6115c6bed62773a4e5d0dad9167d1bdd850c427796c5d47ac3c9a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/4e4361eaaf45dd97891b3ae1377d5f130ac083d76485e22b664e2d7654246937.json.gz",
+      "sha256": "4e4361eaaf45dd97891b3ae1377d5f130ac083d76485e22b664e2d7654246937"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0a123acd45b92be12afe7a643a3dab4451250afa79db6bf123c9279c6cd7fa41.json.gz",
+      "sha256": "0a123acd45b92be12afe7a643a3dab4451250afa79db6bf123c9279c6cd7fa41"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/cfe88a765e15cf9eaaa5e1ffb46a0712316345672d6da6ed58ea73937cdde34e.json.gz",
+      "sha256": "cfe88a765e15cf9eaaa5e1ffb46a0712316345672d6da6ed58ea73937cdde34e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/777697f6cd7adedd9b2d58bdeb499c822d3a8f0158d370d19314b86b9ca2e187.json.gz",
+      "sha256": "777697f6cd7adedd9b2d58bdeb499c822d3a8f0158d370d19314b86b9ca2e187"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/75a38f4131a6e1874f75df7571506c5c8c59c0edd25103d32ad94cdea2b10e1d.json.gz",
+      "sha256": "75a38f4131a6e1874f75df7571506c5c8c59c0edd25103d32ad94cdea2b10e1d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/df58f9ddc3e38c8c948fa339e458e9cef1a6200f9f1ebff1d7c4ffd83ed38fd8.json.gz",
+      "sha256": "df58f9ddc3e38c8c948fa339e458e9cef1a6200f9f1ebff1d7c4ffd83ed38fd8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/727c9f549796a19f47288fd3041c8cfd5f524885c4bb9a9677761e3f8c63ccb8.json.gz",
+      "sha256": "727c9f549796a19f47288fd3041c8cfd5f524885c4bb9a9677761e3f8c63ccb8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/847ed5fbdb4c288c859977284cb2922a7267dac2f546727088d451fbccc94706.json.gz",
+      "sha256": "847ed5fbdb4c288c859977284cb2922a7267dac2f546727088d451fbccc94706"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/05155d4cbcc5963e8e83efcfd1e562e1ad1de56d1d643d544367c75c6c4b5ab1.json.gz",
+      "sha256": "05155d4cbcc5963e8e83efcfd1e562e1ad1de56d1d643d544367c75c6c4b5ab1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/1bb5c3ce2648f61dda0fb58cea3746e8df83bebd2346b5cb087c2caed22563af.json.gz",
+      "sha256": "1bb5c3ce2648f61dda0fb58cea3746e8df83bebd2346b5cb087c2caed22563af"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e55aa0aa976c8833c0e3de370516b813b0d7f453c1c8f97eb15d8cca6a0a4595.json.gz",
+      "sha256": "e55aa0aa976c8833c0e3de370516b813b0d7f453c1c8f97eb15d8cca6a0a4595"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/ea108678680546bba6662122cbb02e3917cc4a8c34057d390d2be0045ae75ff3.json.gz",
+      "sha256": "ea108678680546bba6662122cbb02e3917cc4a8c34057d390d2be0045ae75ff3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/46be40276d44e3a2a5a3918492fcd346844c38d77e7ff2b78d3bb0d658dab383.json.gz",
+      "sha256": "46be40276d44e3a2a5a3918492fcd346844c38d77e7ff2b78d3bb0d658dab383"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/1a124dc259a29d85ce56cee879f3d727aa3a95087ae470432f5f2d932f61ad76.json.gz",
+      "sha256": "1a124dc259a29d85ce56cee879f3d727aa3a95087ae470432f5f2d932f61ad76"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/5a8ab8c14ed3a735fbf35b1461ccea4f46e994449acabb4fcb7852aed47d9be1.json.gz",
+      "sha256": "5a8ab8c14ed3a735fbf35b1461ccea4f46e994449acabb4fcb7852aed47d9be1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/cebe7b1954c5963123c980fcfff3bf293e4a4745b566a263db01267911ea29e0.json.gz",
+      "sha256": "cebe7b1954c5963123c980fcfff3bf293e4a4745b566a263db01267911ea29e0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/9047c9d18e9146bfa052734e84dcdf4b8b251a552066bfaa480fc9aed5ba898d.json.gz",
+      "sha256": "9047c9d18e9146bfa052734e84dcdf4b8b251a552066bfaa480fc9aed5ba898d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/97a359535dd76d5c67561f12d90a60b815d90bfb583043ff2af9cb6abd492fae.json.gz",
+      "sha256": "97a359535dd76d5c67561f12d90a60b815d90bfb583043ff2af9cb6abd492fae"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/590612e1e28ac53fec19373e24c1edb64d709ddec144edac7c8bc826f3717d0c.json.gz",
+      "sha256": "590612e1e28ac53fec19373e24c1edb64d709ddec144edac7c8bc826f3717d0c"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0700774f318d90fdd55683f31eeb12497d48748e3bf3860d712529575940e750.json.gz",
+      "sha256": "0700774f318d90fdd55683f31eeb12497d48748e3bf3860d712529575940e750"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/4646af080f97b85549e1646dd2b48b2ff11f86b4744894b56b7c6f212566d371.json.gz",
+      "sha256": "4646af080f97b85549e1646dd2b48b2ff11f86b4744894b56b7c6f212566d371"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/3e66adb5fecffcba1991e5e48aaf558feeba461a34ec3a12b8509f82d538c630.json.gz",
+      "sha256": "3e66adb5fecffcba1991e5e48aaf558feeba461a34ec3a12b8509f82d538c630"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/bd360436e2bad149ee84db07eb212abfe68b31df247a4099868e49b71f7ca8b1.json.gz",
+      "sha256": "bd360436e2bad149ee84db07eb212abfe68b31df247a4099868e49b71f7ca8b1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/ea7ca319c46baf3985b1e9d9c683ce04714ffaa6c339a5ced25a1a99706b0850.json.gz",
+      "sha256": "ea7ca319c46baf3985b1e9d9c683ce04714ffaa6c339a5ced25a1a99706b0850"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/60f5e441dd097f17a1dddb7cdebb2509091b1419b37d1a94fa22d83fefdd6b94.json.gz",
+      "sha256": "60f5e441dd097f17a1dddb7cdebb2509091b1419b37d1a94fa22d83fefdd6b94"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/9a7ceff84abb19f552249bca81052ff4b3b3473699a2d5348240c6075ad8fcd2.json.gz",
+      "sha256": "9a7ceff84abb19f552249bca81052ff4b3b3473699a2d5348240c6075ad8fcd2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/6ece01e75babed0608d2d26d8fe15bdd206c14f589a63ebe6288dd06cda1a639.json.gz",
+      "sha256": "6ece01e75babed0608d2d26d8fe15bdd206c14f589a63ebe6288dd06cda1a639"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/02167563d76fec60b745fbe691cad14872208ffb4263762104ae9929d4055640.json.gz",
+      "sha256": "02167563d76fec60b745fbe691cad14872208ffb4263762104ae9929d4055640"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/3f9e04062340ade45192ab2ec23163f700796b0ce59c92bf3dda14479041feb2.json.gz",
+      "sha256": "3f9e04062340ade45192ab2ec23163f700796b0ce59c92bf3dda14479041feb2"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a401e9c386e0d877b3b9a07cc7459d9e6b29d5a8f7ef48cc559fb9e94fc82d5f.json.gz",
+      "sha256": "a401e9c386e0d877b3b9a07cc7459d9e6b29d5a8f7ef48cc559fb9e94fc82d5f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/7146d62f19200e8c47a133bfda43fcf2dd7f59ca596886a738b8b5f4e7e21332.json.gz",
+      "sha256": "7146d62f19200e8c47a133bfda43fcf2dd7f59ca596886a738b8b5f4e7e21332"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/05e5f82bd656f6ab73160412f26fbafb588cf4fcfb73b3aca793f10d4398f902.json.gz",
+      "sha256": "05e5f82bd656f6ab73160412f26fbafb588cf4fcfb73b3aca793f10d4398f902"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/3b3ce921f1d2e9b6e713fec44a9bba2b5b2ec6a05ee35367ef08cf29423ca62d.json.gz",
+      "sha256": "3b3ce921f1d2e9b6e713fec44a9bba2b5b2ec6a05ee35367ef08cf29423ca62d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/af7d7605632f6dc4852214ab8665600ca7c2bf6eef7871475a1b306d25482612.json.gz",
+      "sha256": "af7d7605632f6dc4852214ab8665600ca7c2bf6eef7871475a1b306d25482612"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/57da09aff079e00fcf51b3b67d63b5a3689979e4fa4381fa74abdf6bc090a3ba.json.gz",
+      "sha256": "57da09aff079e00fcf51b3b67d63b5a3689979e4fa4381fa74abdf6bc090a3ba"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/24c62d23a5f06a2cee28f90e31485873fffa170a9a5599bcccd25397311c3eea.json.gz",
+      "sha256": "24c62d23a5f06a2cee28f90e31485873fffa170a9a5599bcccd25397311c3eea"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0b6820096114f6c8ee75a3b7a36b4b5b2ed2eeea37644223d82b5c41b3395cb7.json.gz",
+      "sha256": "0b6820096114f6c8ee75a3b7a36b4b5b2ed2eeea37644223d82b5c41b3395cb7"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/3c5bf241e3dd50f1ea9e8cdd3548396774d949ba5dd1707fb92e8bf3729b3d65.json.gz",
+      "sha256": "3c5bf241e3dd50f1ea9e8cdd3548396774d949ba5dd1707fb92e8bf3729b3d65"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/cd2a819eac5117b22636307071d745daf99b07c3be4fa445884202bf340d1736.json.gz",
+      "sha256": "cd2a819eac5117b22636307071d745daf99b07c3be4fa445884202bf340d1736"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/baa8488e8a8c8340a3536060d72d2336763461bdf56c8c75f5bd46575fe72750.json.gz",
+      "sha256": "baa8488e8a8c8340a3536060d72d2336763461bdf56c8c75f5bd46575fe72750"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/b23e00f758eeff7dda06bfd0c0f193da2f8adeca6cdccb779ad061e61fe29e65.json.gz",
+      "sha256": "b23e00f758eeff7dda06bfd0c0f193da2f8adeca6cdccb779ad061e61fe29e65"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/364c41f39ce47af9e3278db2a576fab6150b3fa6bf9f82aa2889dee878b04e59.json.gz",
+      "sha256": "364c41f39ce47af9e3278db2a576fab6150b3fa6bf9f82aa2889dee878b04e59"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/1bfaff05b1bd09177ebb8b41f318a7b7ee42fa18251315820f1e0be1bd004ca5.json.gz",
+      "sha256": "1bfaff05b1bd09177ebb8b41f318a7b7ee42fa18251315820f1e0be1bd004ca5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/2e3efaba490dc3afb1440dec15e24c155eb493c86f66037c9035028e56c83b70.json.gz",
+      "sha256": "2e3efaba490dc3afb1440dec15e24c155eb493c86f66037c9035028e56c83b70"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0b8a0106769690cc0ce8480a793fa3eca9130fa7a0051ca6a38686c0e720d826.json.gz",
+      "sha256": "0b8a0106769690cc0ce8480a793fa3eca9130fa7a0051ca6a38686c0e720d826"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/f623c8f34fc1303e55b6812885e27dc13206c789e4a053659b3eb5f70cffbbda.json.gz",
+      "sha256": "f623c8f34fc1303e55b6812885e27dc13206c789e4a053659b3eb5f70cffbbda"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/bc9b1e6b979d2dc83bb89aa38feee6bbb61db5d6b3f92e4720c49b0527b95950.json.gz",
+      "sha256": "bc9b1e6b979d2dc83bb89aa38feee6bbb61db5d6b3f92e4720c49b0527b95950"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/0694c6e07606394daf63cd32d9ca1ba6f751349da53e38d1ba4261ddf6a6eb07.json.gz",
+      "sha256": "0694c6e07606394daf63cd32d9ca1ba6f751349da53e38d1ba4261ddf6a6eb07"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/82b69896088a06998710dc288205847c339b96eba3c19541ab9542bd48cd32ce.json.gz",
+      "sha256": "82b69896088a06998710dc288205847c339b96eba3c19541ab9542bd48cd32ce"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/9e97d0cbc83a52246767b32603eccfd9e2c3264b0acf96b6850dbd7020c1c7d9.json.gz",
+      "sha256": "9e97d0cbc83a52246767b32603eccfd9e2c3264b0acf96b6850dbd7020c1c7d9"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/896ec9c8738a73e2be0d3fdfcf780eeddd2282c67680a73edd0c36d6a267e278.json.gz",
+      "sha256": "896ec9c8738a73e2be0d3fdfcf780eeddd2282c67680a73edd0c36d6a267e278"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/15ca0db803d7da80b1fe10d45206c7720e5528128ae2ea61fa275a7c0b695f73.json.gz",
+      "sha256": "15ca0db803d7da80b1fe10d45206c7720e5528128ae2ea61fa275a7c0b695f73"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/16555dac6e6a0d04f59cd075a76ca782b85bb25fc47a14a2c50c1080c34ae43f.json.gz",
+      "sha256": "16555dac6e6a0d04f59cd075a76ca782b85bb25fc47a14a2c50c1080c34ae43f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/8318dc1250b58042b03f0919e0e3a7b7cae023bcd60d532a0fc9c1d35918603b.json.gz",
+      "sha256": "8318dc1250b58042b03f0919e0e3a7b7cae023bcd60d532a0fc9c1d35918603b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a36059c75acb173b1461cf439d61982fe276eb552c5bd1aa3658d4482bf83a1a.json.gz",
+      "sha256": "a36059c75acb173b1461cf439d61982fe276eb552c5bd1aa3658d4482bf83a1a"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/68d67658e5b4f1ec06f472bd09d86bab02f89f940a3c847094e03ab7bd1ec741.json.gz",
+      "sha256": "68d67658e5b4f1ec06f472bd09d86bab02f89f940a3c847094e03ab7bd1ec741"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d1a9a9089c25393fa5bfabe54a7d613bfbf8d81ca7ee0c836355c9bcc3ae44c1.json.gz",
+      "sha256": "d1a9a9089c25393fa5bfabe54a7d613bfbf8d81ca7ee0c836355c9bcc3ae44c1"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/98d336d8ccaec703ee7cf8c1e496ad050f1ed9ca2d479ed5f54314ce289b1c23.json.gz",
+      "sha256": "98d336d8ccaec703ee7cf8c1e496ad050f1ed9ca2d479ed5f54314ce289b1c23"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/77c9125b4c9fbb22e3a5c35fc98957461a0d7c35d62a3b75bbfc0508ab0a198e.json.gz",
+      "sha256": "77c9125b4c9fbb22e3a5c35fc98957461a0d7c35d62a3b75bbfc0508ab0a198e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/5c955496c02262a50af21612bee25462e654c3652d5e37fef4b1863c3fe9184d.json.gz",
+      "sha256": "5c955496c02262a50af21612bee25462e654c3652d5e37fef4b1863c3fe9184d"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/1c1e883cf376a219619d7ec5575b5e73ea3fd07d83bc8acfe7817211d73c405b.json.gz",
+      "sha256": "1c1e883cf376a219619d7ec5575b5e73ea3fd07d83bc8acfe7817211d73c405b"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/e3599d11a91aa53bca5634e3522d6ffa1eea23c0946e08c6cf4676e7aa6f40c4.json.gz",
+      "sha256": "e3599d11a91aa53bca5634e3522d6ffa1eea23c0946e08c6cf4676e7aa6f40c4"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/562b47a994d5c5af505bee95663000eda2ad5cdf21ad8182c304736600c734f5.json.gz",
+      "sha256": "562b47a994d5c5af505bee95663000eda2ad5cdf21ad8182c304736600c734f5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/72477467a825abfc49fffa2432bb7abbe0ea4c988579d2055b8aa6b846bf26cb.json.gz",
+      "sha256": "72477467a825abfc49fffa2432bb7abbe0ea4c988579d2055b8aa6b846bf26cb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a0b061df9dfb267ae9378ae6bc2a527838e28702d2f99fca1a9458258cd3eb96.json.gz",
+      "sha256": "a0b061df9dfb267ae9378ae6bc2a527838e28702d2f99fca1a9458258cd3eb96"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/5ab3c595f0082432eb8468ebc16596977271b7b097568ea61514825d6cacc059.json.gz",
+      "sha256": "5ab3c595f0082432eb8468ebc16596977271b7b097568ea61514825d6cacc059"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/c319c166077078c187482efd9acda8494ff22c8460f36c54e851234cb337b9dc.json.gz",
+      "sha256": "c319c166077078c187482efd9acda8494ff22c8460f36c54e851234cb337b9dc"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/ecd243ba200da52a59637ed5d4f47694fadfbac4e947e26704ffde92f99795f3.json.gz",
+      "sha256": "ecd243ba200da52a59637ed5d4f47694fadfbac4e947e26704ffde92f99795f3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a14b5f6520293828d8de06748cec4bdcb6c450e03781f624d63da62b53668819.json.gz",
+      "sha256": "a14b5f6520293828d8de06748cec4bdcb6c450e03781f624d63da62b53668819"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/179971c1eb9270acd6239a9e6d5274e5488794d7d6daeb4502a2be5975d7e922.json.gz",
+      "sha256": "179971c1eb9270acd6239a9e6d5274e5488794d7d6daeb4502a2be5975d7e922"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/a4513b28f1ed886368066f171b415e6f266846e53b8992004e8b6044224dfca3.json.gz",
+      "sha256": "a4513b28f1ed886368066f171b415e6f266846e53b8992004e8b6044224dfca3"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/c7c58c6fa84610b403608b52eba47ea813b074cabd16431383c1efdbe45743a5.json.gz",
+      "sha256": "c7c58c6fa84610b403608b52eba47ea813b074cabd16431383c1efdbe45743a5"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/9cbf0640d0ef7a9e1896836b427af5e069361c9a1196a798cc7d8b50c335abb8.json.gz",
+      "sha256": "9cbf0640d0ef7a9e1896836b427af5e069361c9a1196a798cc7d8b50c335abb8"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/ab672d234d8b7c252a7558fd29600ab84f3aea0673c06ca01da53a682dcd8c5e.json.gz",
+      "sha256": "ab672d234d8b7c252a7558fd29600ab84f3aea0673c06ca01da53a682dcd8c5e"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/8432c4ba35862449801daaec5e5a80922f0ac4a398eaf2dfdc244f53407150cd.json.gz",
+      "sha256": "8432c4ba35862449801daaec5e5a80922f0ac4a398eaf2dfdc244f53407150cd"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/7acf68536b2f8b6f00f6631e70c350292353e0cc0a94130a32ccaf22cb4c7fe6.json.gz",
+      "sha256": "7acf68536b2f8b6f00f6631e70c350292353e0cc0a94130a32ccaf22cb4c7fe6"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/fa07348715c0b87be883bcf15b93b9ab287a5e49db666a205b42e9d8b403dec0.json.gz",
+      "sha256": "fa07348715c0b87be883bcf15b93b9ab287a5e49db666a205b42e9d8b403dec0"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/bd0e62c63b245a4271fd221072b37e286ce6dc3d70e1d52de32071535e11d182.json.gz",
+      "sha256": "bd0e62c63b245a4271fd221072b37e286ce6dc3d70e1d52de32071535e11d182"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/d7331e70e861165f1a38472742c88299a03cf610159a5371edbf14ed155c5987.json.gz",
+      "sha256": "d7331e70e861165f1a38472742c88299a03cf610159a5371edbf14ed155c5987"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/5a426fc92c74049267d8f66c06e56b85b5cdfd0ee3e63d7ef7351a337faad345.json.gz",
+      "sha256": "5a426fc92c74049267d8f66c06e56b85b5cdfd0ee3e63d7ef7351a337faad345"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/2e2cbfb65ffeac9ea69ba3440089c44494983772318377fd3be0d06a257a8deb.json.gz",
+      "sha256": "2e2cbfb65ffeac9ea69ba3440089c44494983772318377fd3be0d06a257a8deb"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/f6d1f00706ad2acc0d5042fa7bedec72d8dcb1ecc615623e936e71ea6f90fa6f.json.gz",
+      "sha256": "f6d1f00706ad2acc0d5042fa7bedec72d8dcb1ecc615623e936e71ea6f90fa6f"
+    },
+    {
+      "kind": "fit",
+      "path": "nested_oos/KHOU/2026-10-05/9927c4f1e7b6553242e73b4190989a92009354b37c9c07cdf586a06044dcbc3a.json.gz",
+      "sha256": "9927c4f1e7b6553242e73b4190989a92009354b37c9c07cdf586a06044dcbc3a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/09e64dfaa5f787213ead95f2bf408419bf58b622aa8b51a18b624dc071c5dbf8.json.gz",
+      "sha256": "09e64dfaa5f787213ead95f2bf408419bf58b622aa8b51a18b624dc071c5dbf8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/2131dc1c2d26a83ec48134ff95620e78b8545ce23c815d574144e57d237a78af.json.gz",
+      "sha256": "2131dc1c2d26a83ec48134ff95620e78b8545ce23c815d574144e57d237a78af"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/6f4c36a75937aea8cbed2f89be05584d1e6bf62f6caf605ce143dd565439b0e9.json.gz",
+      "sha256": "6f4c36a75937aea8cbed2f89be05584d1e6bf62f6caf605ce143dd565439b0e9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/a168e2600f47dbcdf136267fefe079a208ab20ec45c2147e015c95d314ec6575.json.gz",
+      "sha256": "a168e2600f47dbcdf136267fefe079a208ab20ec45c2147e015c95d314ec6575"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/31a8c5ba5fc835539f83b843c285a0126fe718445b612779e5c10246fd94ffa5.json.gz",
+      "sha256": "31a8c5ba5fc835539f83b843c285a0126fe718445b612779e5c10246fd94ffa5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/4987febe3653ba23f72ec62ed698693badd1a8c8208a88681647590ec44247b9.json.gz",
+      "sha256": "4987febe3653ba23f72ec62ed698693badd1a8c8208a88681647590ec44247b9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/d1c9302663c7169c149dff3b4227a4a2959eb6364681e66ab9a856f882fd6e7f.json.gz",
+      "sha256": "d1c9302663c7169c149dff3b4227a4a2959eb6364681e66ab9a856f882fd6e7f"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/96c0b6d9bae17cbc234af24aed3b305c7bd4c601bfb87e916d3b2896db5a13c6.json.gz",
+      "sha256": "96c0b6d9bae17cbc234af24aed3b305c7bd4c601bfb87e916d3b2896db5a13c6"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/556709c726175e8012f49f891d75f98ef794247e8d04e5e37a928026d2435126.json.gz",
+      "sha256": "556709c726175e8012f49f891d75f98ef794247e8d04e5e37a928026d2435126"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/069f480dd808ed1671f4eb929e0bdb043b09b60b89bbc7f93d51431954cff307.json.gz",
+      "sha256": "069f480dd808ed1671f4eb929e0bdb043b09b60b89bbc7f93d51431954cff307"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/3c64eade161c8d79bd0e25c9322185e6aa749ccf486221fba1d8216a7610f1d9.json.gz",
+      "sha256": "3c64eade161c8d79bd0e25c9322185e6aa749ccf486221fba1d8216a7610f1d9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/81495b14d772eb7b2753322da9508dbcdad4905c07b42eb5c4bb84a07e751411.json.gz",
+      "sha256": "81495b14d772eb7b2753322da9508dbcdad4905c07b42eb5c4bb84a07e751411"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/edf5fa08bc563d789be909b989cebeaa2a3bcb8b92020a6d8f9df6428dff4b7c.json.gz",
+      "sha256": "edf5fa08bc563d789be909b989cebeaa2a3bcb8b92020a6d8f9df6428dff4b7c"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/e9f45b7328e1864142e1b3b44994d83c86b104e7acb6c2af97690c67a3205cc6.json.gz",
+      "sha256": "e9f45b7328e1864142e1b3b44994d83c86b104e7acb6c2af97690c67a3205cc6"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/dbb1676582f97a9866fda506afa16b6d9471392ad56f4c1eb45d043fd3bd0eb9.json.gz",
+      "sha256": "dbb1676582f97a9866fda506afa16b6d9471392ad56f4c1eb45d043fd3bd0eb9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/4934592a633631d9ca9fdd7dc352d104c9a09428f61ad67fef536beabb656050.json.gz",
+      "sha256": "4934592a633631d9ca9fdd7dc352d104c9a09428f61ad67fef536beabb656050"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/34ce22965833e84d223e5d3fcc9e7686295993e78a07079e5116b000a470bfac.json.gz",
+      "sha256": "34ce22965833e84d223e5d3fcc9e7686295993e78a07079e5116b000a470bfac"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/89fdf20b88eb29aee9a2acf93c14c3e1db7e11128f02b7596264650c2e569683.json.gz",
+      "sha256": "89fdf20b88eb29aee9a2acf93c14c3e1db7e11128f02b7596264650c2e569683"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/6ad32ff86055faadba5b912833f3cef08661388ccc25df17078c6466d252c437.json.gz",
+      "sha256": "6ad32ff86055faadba5b912833f3cef08661388ccc25df17078c6466d252c437"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/b252e796e2ede0f94b868fd2c78b503b7db86a82b545d5bfb6e8af2adbf801e5.json.gz",
+      "sha256": "b252e796e2ede0f94b868fd2c78b503b7db86a82b545d5bfb6e8af2adbf801e5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/afa5b505016e69e7718f93ac7364eb41ac96653f0013488d0e12734e6996ba51.json.gz",
+      "sha256": "afa5b505016e69e7718f93ac7364eb41ac96653f0013488d0e12734e6996ba51"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/4231421f29a8bf9eb2b9f5cb63d3632a9821ebd7bb1373c784164612b3c322a2.json.gz",
+      "sha256": "4231421f29a8bf9eb2b9f5cb63d3632a9821ebd7bb1373c784164612b3c322a2"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/d39f7d9fac9ba285dd3221c3b1f1625f6bb382c8ad9bd93c174e21bf2e22f50a.json.gz",
+      "sha256": "d39f7d9fac9ba285dd3221c3b1f1625f6bb382c8ad9bd93c174e21bf2e22f50a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/681c68d41d3f8a648a86225277fec26bf6ddcb817ae0b15a5ec8fe87d1586fae.json.gz",
+      "sha256": "681c68d41d3f8a648a86225277fec26bf6ddcb817ae0b15a5ec8fe87d1586fae"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/3dd548458fddfa2d50934817448f61afcc4a54b41644e684de85ff34dd504d4a.json.gz",
+      "sha256": "3dd548458fddfa2d50934817448f61afcc4a54b41644e684de85ff34dd504d4a"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/35faa724f5663306742eb91d6b64c82fe10696d3915776fbd962f9a4ba3644c4.json.gz",
+      "sha256": "35faa724f5663306742eb91d6b64c82fe10696d3915776fbd962f9a4ba3644c4"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/fb5cce543dc1eacdd5ed0212d276ff3bc750f4781139f93955c088d35f973642.json.gz",
+      "sha256": "fb5cce543dc1eacdd5ed0212d276ff3bc750f4781139f93955c088d35f973642"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/45060958e84e31f95db29fc912128b34b75f830a084e6b8616a3cfcd34c523e9.json.gz",
+      "sha256": "45060958e84e31f95db29fc912128b34b75f830a084e6b8616a3cfcd34c523e9"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/08feea392f6309ed77d6cc95284bd8be7679205ac746e7242b23d63ee61718cb.json.gz",
+      "sha256": "08feea392f6309ed77d6cc95284bd8be7679205ac746e7242b23d63ee61718cb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/919005db49edd2c164dc655384f6221c6eced7550e795aee34e03e55e36de7fb.json.gz",
+      "sha256": "919005db49edd2c164dc655384f6221c6eced7550e795aee34e03e55e36de7fb"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/a9fb425f61daf9b5e80d839e785e80370d4b8f9a92384b09bb85c453b76b04df.json.gz",
+      "sha256": "a9fb425f61daf9b5e80d839e785e80370d4b8f9a92384b09bb85c453b76b04df"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/0a8b87034b6b467f7ed50fe4a26cacce33dbc96b9d33f0d825a54b00bc1e5045.json.gz",
+      "sha256": "0a8b87034b6b467f7ed50fe4a26cacce33dbc96b9d33f0d825a54b00bc1e5045"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/834f2b26777b532f97c991c88f1824a15ec1f57e989a9ce08d0234e28a124506.json.gz",
+      "sha256": "834f2b26777b532f97c991c88f1824a15ec1f57e989a9ce08d0234e28a124506"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/938ce182fcf94e1acbfe258453504f1cd39b7893a347540c1fd83311d1bf0141.json.gz",
+      "sha256": "938ce182fcf94e1acbfe258453504f1cd39b7893a347540c1fd83311d1bf0141"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/c826d9131bcb46b6b0a950a0dc12b92d263be11827dc96fb8a69891590aa29cc.json.gz",
+      "sha256": "c826d9131bcb46b6b0a950a0dc12b92d263be11827dc96fb8a69891590aa29cc"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/ca08e3e5a9382ab66c45237dbb0816c1194ab81661d9c45da1d59d8470eb3ef3.json.gz",
+      "sha256": "ca08e3e5a9382ab66c45237dbb0816c1194ab81661d9c45da1d59d8470eb3ef3"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/11499101b35dd8611ee341761e3c3cac56188b2ce109a24a45d287ecb202422b.json.gz",
+      "sha256": "11499101b35dd8611ee341761e3c3cac56188b2ce109a24a45d287ecb202422b"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/8ac68dd4b867a7ea97db00af1d015a5027c09d7af370ccb5f72e4b6eead61fc8.json.gz",
+      "sha256": "8ac68dd4b867a7ea97db00af1d015a5027c09d7af370ccb5f72e4b6eead61fc8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/4e6a1788b10c936a7d5497a389d8015113aadf9ce1cff918a989db1ad1751ba5.json.gz",
+      "sha256": "4e6a1788b10c936a7d5497a389d8015113aadf9ce1cff918a989db1ad1751ba5"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/1b0e37cbc1602b353444a5a40616372899ec109c3618003cb084f046c49995a8.json.gz",
+      "sha256": "1b0e37cbc1602b353444a5a40616372899ec109c3618003cb084f046c49995a8"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/8b38cdf05dab26cf7759d1eb768264263fc747e29a23a53d45c56f08eab1f33e.json.gz",
+      "sha256": "8b38cdf05dab26cf7759d1eb768264263fc747e29a23a53d45c56f08eab1f33e"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/07562f13636e9ec7fa397a4883ba406782a7dcb101ba3c17ab512f1161160445.json.gz",
+      "sha256": "07562f13636e9ec7fa397a4883ba406782a7dcb101ba3c17ab512f1161160445"
+    },
+    {
+      "kind": "system",
+      "path": "nested_oos/KHOU/2026-10-05/15106e5add0b0d2acc59afbce5b2d27bceccf2278a28d7a563afdee43c551526.json.gz",
+      "sha256": "15106e5add0b0d2acc59afbce5b2d27bceccf2278a28d7a563afdee43c551526"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/33c143f9d9d7bd51a6aae4afdcdb61a3d6901a8adbb458079b25fb70525d524f.json.gz",
+      "sha256": "33c143f9d9d7bd51a6aae4afdcdb61a3d6901a8adbb458079b25fb70525d524f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/473f73b73b57cc78284ae43dfc34629c44956a4392964264f47d9b51df2a3d41.json.gz",
+      "sha256": "473f73b73b57cc78284ae43dfc34629c44956a4392964264f47d9b51df2a3d41"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/a4e8c84fd1548ddf1e74d3b50bda69228d2e9ce8d5afca596ff785fc2b362d31.json.gz",
+      "sha256": "a4e8c84fd1548ddf1e74d3b50bda69228d2e9ce8d5afca596ff785fc2b362d31"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/427979155d85182809b23f2df123286a8ef48e69560fbcf6e4d3966212b846dd.json.gz",
+      "sha256": "427979155d85182809b23f2df123286a8ef48e69560fbcf6e4d3966212b846dd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/989f5a442360c0065eed606b9daaa81d2aece0636f4930b9c4be404f115537ad.json.gz",
+      "sha256": "989f5a442360c0065eed606b9daaa81d2aece0636f4930b9c4be404f115537ad"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c0b6bdd7859c79fe062c91206a193b401917dfebc3c773376c8b17caa5d91d1c.json.gz",
+      "sha256": "c0b6bdd7859c79fe062c91206a193b401917dfebc3c773376c8b17caa5d91d1c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/d2180db6b68f7f41cb6636e0c36f5ae8fd105d3b60505985c0bbda8434db3bbb.json.gz",
+      "sha256": "d2180db6b68f7f41cb6636e0c36f5ae8fd105d3b60505985c0bbda8434db3bbb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/77e7047179c34814c17e70051578ea5e0157a0185dd3d8e3a0e60c4dd415f5f8.json.gz",
+      "sha256": "77e7047179c34814c17e70051578ea5e0157a0185dd3d8e3a0e60c4dd415f5f8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/e55c96e63d85c664cbe8a8093c4683cd956ca5721ea334499090a1f02bf5671c.json.gz",
+      "sha256": "e55c96e63d85c664cbe8a8093c4683cd956ca5721ea334499090a1f02bf5671c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/09875708e317f72d563e19153ecd9e396d7e8f99e965363624438bf207760069.json.gz",
+      "sha256": "09875708e317f72d563e19153ecd9e396d7e8f99e965363624438bf207760069"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/80a5ed1b2438f898b61f38a45e548893ee548bc7068e69b89e64e3ca6121c814.json.gz",
+      "sha256": "80a5ed1b2438f898b61f38a45e548893ee548bc7068e69b89e64e3ca6121c814"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/15152d9afe49ef16c7fdac73a26a1648b41150e563aee9ff4f042e49acc218be.json.gz",
+      "sha256": "15152d9afe49ef16c7fdac73a26a1648b41150e563aee9ff4f042e49acc218be"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/cf22e8cd121fcc01575b6bba1939e91a62206aa07e7dd35b915d23bcf7e7b4cc.json.gz",
+      "sha256": "cf22e8cd121fcc01575b6bba1939e91a62206aa07e7dd35b915d23bcf7e7b4cc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/3bd447e875d0fd9a01585eac94858302121e8d619506b712a2cf4c95c2c05bb5.json.gz",
+      "sha256": "3bd447e875d0fd9a01585eac94858302121e8d619506b712a2cf4c95c2c05bb5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9c36e14495c481e46400c51a440f2b9760bc80e8a210860eec3e973538994975.json.gz",
+      "sha256": "9c36e14495c481e46400c51a440f2b9760bc80e8a210860eec3e973538994975"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/8a83e5bfb494d744991e3f2b3fe671ad69fd2d23dcd9a8b7c8f21e7b77db2dcd.json.gz",
+      "sha256": "8a83e5bfb494d744991e3f2b3fe671ad69fd2d23dcd9a8b7c8f21e7b77db2dcd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/acc4208559a5061cc0e9e57b94e632249e7081bf3351b1873524117ed7133f50.json.gz",
+      "sha256": "acc4208559a5061cc0e9e57b94e632249e7081bf3351b1873524117ed7133f50"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4ff2cceb72e317224ed40293248e60d0451f068caba30327ed50c2f46eb7702b.json.gz",
+      "sha256": "4ff2cceb72e317224ed40293248e60d0451f068caba30327ed50c2f46eb7702b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/da1249f5624a98b9b715caec1464098d7ce7cb9ed36d2b9acd70d72faf343e93.json.gz",
+      "sha256": "da1249f5624a98b9b715caec1464098d7ce7cb9ed36d2b9acd70d72faf343e93"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/373a95a895ea51a67b821655f569ed934fb17e1fce025e67254e7f579f3512cd.json.gz",
+      "sha256": "373a95a895ea51a67b821655f569ed934fb17e1fce025e67254e7f579f3512cd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0ee4fa91d4da51ed4308738afd60a1adba8e8286c3c2a078a872b2c9d10ced23.json.gz",
+      "sha256": "0ee4fa91d4da51ed4308738afd60a1adba8e8286c3c2a078a872b2c9d10ced23"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/b6987caf0af067618f6955c3d58279b3a80753e10b3d7e1bed85ec901500ea43.json.gz",
+      "sha256": "b6987caf0af067618f6955c3d58279b3a80753e10b3d7e1bed85ec901500ea43"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/ecfe49d41cc50873b19fe7f602ac49865fd51cc464dd9515be747d7401b895d9.json.gz",
+      "sha256": "ecfe49d41cc50873b19fe7f602ac49865fd51cc464dd9515be747d7401b895d9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/6fea8cedc5dc408d15e0cd245144e92ab9e39fe009bbfe43b52f1b2bb3a27f12.json.gz",
+      "sha256": "6fea8cedc5dc408d15e0cd245144e92ab9e39fe009bbfe43b52f1b2bb3a27f12"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/b6fd0a347e0ed2a2ab0af6a25430bd9ebbb973aeab0af703bcb4b98923b24444.json.gz",
+      "sha256": "b6fd0a347e0ed2a2ab0af6a25430bd9ebbb973aeab0af703bcb4b98923b24444"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/fff6ee9b16a32ec6fb0af2fafa3432c5c9cd1b45f29d308bf5d44c0eb463931f.json.gz",
+      "sha256": "fff6ee9b16a32ec6fb0af2fafa3432c5c9cd1b45f29d308bf5d44c0eb463931f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4a32218191e518ccdbddeb9e2b85ee52d2ba494b3c6c0af468fef05a3e9c3052.json.gz",
+      "sha256": "4a32218191e518ccdbddeb9e2b85ee52d2ba494b3c6c0af468fef05a3e9c3052"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c4fb59dab495366274b8c0e21a798b308fbd85255b048632aa80e54d8a5643ae.json.gz",
+      "sha256": "c4fb59dab495366274b8c0e21a798b308fbd85255b048632aa80e54d8a5643ae"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/3ccb0c87918cbdcef9204f255d3019afe376dae9ef18fe0048b5f9087da746ea.json.gz",
+      "sha256": "3ccb0c87918cbdcef9204f255d3019afe376dae9ef18fe0048b5f9087da746ea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/258ee3f18b6294e4b47f96839cf6ca5f926760c03faf43f1e56358724346be96.json.gz",
+      "sha256": "258ee3f18b6294e4b47f96839cf6ca5f926760c03faf43f1e56358724346be96"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0fe4a3a1b4b185871293c9ac97654827e92d0f2bc60d8720ca8a81058623f3d4.json.gz",
+      "sha256": "0fe4a3a1b4b185871293c9ac97654827e92d0f2bc60d8720ca8a81058623f3d4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/bef372d72bbe929752bd6109b3f2cea6c13c197f1a87067d54be34050cf95697.json.gz",
+      "sha256": "bef372d72bbe929752bd6109b3f2cea6c13c197f1a87067d54be34050cf95697"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4a86f11f4fd7b8f40f23f937a94716371ecfffc745f8c37f50115699f4d90e4a.json.gz",
+      "sha256": "4a86f11f4fd7b8f40f23f937a94716371ecfffc745f8c37f50115699f4d90e4a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0e17f860c6d69e6d9ec6704bcee9226952fcbcd83ccf7ad4a56bafc3dd998a76.json.gz",
+      "sha256": "0e17f860c6d69e6d9ec6704bcee9226952fcbcd83ccf7ad4a56bafc3dd998a76"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/d90201cc3b06b7a70e5a215937eeff449e3860ffcfbaa259739d998974dcff1c.json.gz",
+      "sha256": "d90201cc3b06b7a70e5a215937eeff449e3860ffcfbaa259739d998974dcff1c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0718a8558b0376a93e28245dff1eedbb0482eaf42ea64b004da08c401df1158d.json.gz",
+      "sha256": "0718a8558b0376a93e28245dff1eedbb0482eaf42ea64b004da08c401df1158d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/d1bbcc72d9a5b32b4b77aa38ce97a15f54ba741e83ee3bbc405acd58a438592f.json.gz",
+      "sha256": "d1bbcc72d9a5b32b4b77aa38ce97a15f54ba741e83ee3bbc405acd58a438592f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/1601d40b518df89d486f469e46d0ae09c13a662f86adeaf01af63cf1749d21ca.json.gz",
+      "sha256": "1601d40b518df89d486f469e46d0ae09c13a662f86adeaf01af63cf1749d21ca"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/aa9f7393b5ce71868323a401cd5f29e38d2e3223e8fd504b29543b961b7c54fa.json.gz",
+      "sha256": "aa9f7393b5ce71868323a401cd5f29e38d2e3223e8fd504b29543b961b7c54fa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5686e92c3cc6fff865ab3395a1d3441299cfb1f377bc0139e5965dacc7fccbd6.json.gz",
+      "sha256": "5686e92c3cc6fff865ab3395a1d3441299cfb1f377bc0139e5965dacc7fccbd6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/168abc23ac9874d0a419e4da6431d8ce1db31db2ffd94aeae2567185b1aab91d.json.gz",
+      "sha256": "168abc23ac9874d0a419e4da6431d8ce1db31db2ffd94aeae2567185b1aab91d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/dcdbcf1ae14a91f6475c228942c14dc849dce883a1c180c3b58c9377a08d7eea.json.gz",
+      "sha256": "dcdbcf1ae14a91f6475c228942c14dc849dce883a1c180c3b58c9377a08d7eea"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c6679f20daa2c3944a297be3689bceb23c620761f94380af358d20888c95a0e2.json.gz",
+      "sha256": "c6679f20daa2c3944a297be3689bceb23c620761f94380af358d20888c95a0e2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0ee3de8e663718b8e631f3084b293b9ea1a5693cee08882440cae47a905a058e.json.gz",
+      "sha256": "0ee3de8e663718b8e631f3084b293b9ea1a5693cee08882440cae47a905a058e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/73202ef283445ddba13af8a9349173aa452b5a3cbd16ffa7af55a0e6db16ee64.json.gz",
+      "sha256": "73202ef283445ddba13af8a9349173aa452b5a3cbd16ffa7af55a0e6db16ee64"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c67603a46eaa973840ee184402b8ccbd81ce4d179717189682780b87fe332562.json.gz",
+      "sha256": "c67603a46eaa973840ee184402b8ccbd81ce4d179717189682780b87fe332562"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/064cca98378a4046c799c10e7f585bdb4c21af7d8bd56b2d09459757ca0ed54f.json.gz",
+      "sha256": "064cca98378a4046c799c10e7f585bdb4c21af7d8bd56b2d09459757ca0ed54f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c16bedc002565fe34a3797ebc47bc7200af8b386ddc5ee932b76384cd6613439.json.gz",
+      "sha256": "c16bedc002565fe34a3797ebc47bc7200af8b386ddc5ee932b76384cd6613439"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0de4377d2d6ac12b2b398cc5429989102fb905d73a3832f2f4c39fe56000ddb7.json.gz",
+      "sha256": "0de4377d2d6ac12b2b398cc5429989102fb905d73a3832f2f4c39fe56000ddb7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0786d2dcba048c303a07c0d629fe30dc9876b52b55ea54d721c1f2c4d87914af.json.gz",
+      "sha256": "0786d2dcba048c303a07c0d629fe30dc9876b52b55ea54d721c1f2c4d87914af"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/2e0680a112d6e2eca8ef528faca1866b3dcd175ba939862f9d88445ca825760f.json.gz",
+      "sha256": "2e0680a112d6e2eca8ef528faca1866b3dcd175ba939862f9d88445ca825760f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/439175df9523e9c198b783b33475bb6b3fba05209d71795ddcf7f39cef067ddd.json.gz",
+      "sha256": "439175df9523e9c198b783b33475bb6b3fba05209d71795ddcf7f39cef067ddd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/e5bb624d9de702616933c98de0742ba57f6e10f838fe064031ee0469202f37e6.json.gz",
+      "sha256": "e5bb624d9de702616933c98de0742ba57f6e10f838fe064031ee0469202f37e6"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/50821c745a04329d13dbdca0dfda3ff56feaa63524ab4415593315b3869c589c.json.gz",
+      "sha256": "50821c745a04329d13dbdca0dfda3ff56feaa63524ab4415593315b3869c589c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/643d9e95c99769828594cb359083a4683123903f346199e36e9795258e4047e8.json.gz",
+      "sha256": "643d9e95c99769828594cb359083a4683123903f346199e36e9795258e4047e8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/eb1a6828e3148fcee942697a94f216d45808663c2439456b6c299168dda5cc80.json.gz",
+      "sha256": "eb1a6828e3148fcee942697a94f216d45808663c2439456b6c299168dda5cc80"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/a18d3bbba8ae8a7442c28c4bc758bb8a2dded1f900852eb7e477ebbdf343b64c.json.gz",
+      "sha256": "a18d3bbba8ae8a7442c28c4bc758bb8a2dded1f900852eb7e477ebbdf343b64c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/81aad638c0e2129fc66a92bcd64d6319e4f5ee1baedd057de777a9d8d9b54e69.json.gz",
+      "sha256": "81aad638c0e2129fc66a92bcd64d6319e4f5ee1baedd057de777a9d8d9b54e69"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/00b472329c1238156fcdc597dfb9121e0b936b1677a784275daabb16de939ee4.json.gz",
+      "sha256": "00b472329c1238156fcdc597dfb9121e0b936b1677a784275daabb16de939ee4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/abdcd108b98307d8767c7b6441ee1b657e42289385544b6523e452f26b5490d4.json.gz",
+      "sha256": "abdcd108b98307d8767c7b6441ee1b657e42289385544b6523e452f26b5490d4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/f9f20a9c4f4b5b2d8d42ae9356b9b9e51de284c2dc4a6a5f2555deb6e1a0e9b1.json.gz",
+      "sha256": "f9f20a9c4f4b5b2d8d42ae9356b9b9e51de284c2dc4a6a5f2555deb6e1a0e9b1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/28c730f9f589e78c1fde4d753c27365c0fc713594c18ff4a99ba7ee6275c78f1.json.gz",
+      "sha256": "28c730f9f589e78c1fde4d753c27365c0fc713594c18ff4a99ba7ee6275c78f1"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/081cc3f9831d07a609b1b046152fb71a8a608104a4bb2c7bc63ac1794322b16e.json.gz",
+      "sha256": "081cc3f9831d07a609b1b046152fb71a8a608104a4bb2c7bc63ac1794322b16e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/f85cd2213929241aca60dedec338f807dddeedaa10a120b8a7ba12efd690a65e.json.gz",
+      "sha256": "f85cd2213929241aca60dedec338f807dddeedaa10a120b8a7ba12efd690a65e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c9f7f3cce484f6a7cdc5c926894410d443956ab8f4954e1b43ac3aab80cfebfd.json.gz",
+      "sha256": "c9f7f3cce484f6a7cdc5c926894410d443956ab8f4954e1b43ac3aab80cfebfd"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/e5504797c361b216cd7cad4e9c79a38255df1051bf8944493a496647e923de89.json.gz",
+      "sha256": "e5504797c361b216cd7cad4e9c79a38255df1051bf8944493a496647e923de89"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/d1c45b63a4675dfabd9edcf45cedbd35e492f78c80a10c3f80831e9c0aea5111.json.gz",
+      "sha256": "d1c45b63a4675dfabd9edcf45cedbd35e492f78c80a10c3f80831e9c0aea5111"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/2a602aa0220edb258451ac0b34cbc070461279766290cb4a363770026e007d00.json.gz",
+      "sha256": "2a602aa0220edb258451ac0b34cbc070461279766290cb4a363770026e007d00"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/8d66f969566ab26cac3f5972873657a43959396235f21f7d4739586cf0555bb9.json.gz",
+      "sha256": "8d66f969566ab26cac3f5972873657a43959396235f21f7d4739586cf0555bb9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9ab0ee1c32786cbd6e9aacea12ac14cf6810ef863eb242cc2145289c0b151743.json.gz",
+      "sha256": "9ab0ee1c32786cbd6e9aacea12ac14cf6810ef863eb242cc2145289c0b151743"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c09e86b67557118ad703499b94e3894a6c7b3f65ae1fd28d29706b7f182050e4.json.gz",
+      "sha256": "c09e86b67557118ad703499b94e3894a6c7b3f65ae1fd28d29706b7f182050e4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/cf72a979941f1565f80d31d0b4968f8d69ed92d0fc56bb1f8a7b243fdc770516.json.gz",
+      "sha256": "cf72a979941f1565f80d31d0b4968f8d69ed92d0fc56bb1f8a7b243fdc770516"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9dc3f452c5d389b2cc8e8fa0ef942ba1b0a03056e5daf4f1c754206367e5f6cc.json.gz",
+      "sha256": "9dc3f452c5d389b2cc8e8fa0ef942ba1b0a03056e5daf4f1c754206367e5f6cc"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/df0e4b1c562c6e8cf203b3e32cb5ea82e68ae2238799d81f79cb09e50fd999aa.json.gz",
+      "sha256": "df0e4b1c562c6e8cf203b3e32cb5ea82e68ae2238799d81f79cb09e50fd999aa"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/2645357e596b1ef16c4fdcc0993b9cdcfd8ba3faeb36d5b86c4ae8dcc792b512.json.gz",
+      "sha256": "2645357e596b1ef16c4fdcc0993b9cdcfd8ba3faeb36d5b86c4ae8dcc792b512"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4895d8ba8f9b00d8dd1a705eba4eaaf6360578fa7344c2dce5f5fd575caf3861.json.gz",
+      "sha256": "4895d8ba8f9b00d8dd1a705eba4eaaf6360578fa7344c2dce5f5fd575caf3861"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/1aa2f03ad262ccdeda5127381024c620ce064d057acffd3d11a3a75ac9782edf.json.gz",
+      "sha256": "1aa2f03ad262ccdeda5127381024c620ce064d057acffd3d11a3a75ac9782edf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/2faec13560d3c27503e4f7d105eef8e9a13087df19c7eb7908d09c01c35fc63c.json.gz",
+      "sha256": "2faec13560d3c27503e4f7d105eef8e9a13087df19c7eb7908d09c01c35fc63c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4bef05a5d83e59ea90d818924039f137af5593e9c6729a436af0b7d4d6951e2e.json.gz",
+      "sha256": "4bef05a5d83e59ea90d818924039f137af5593e9c6729a436af0b7d4d6951e2e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/86d4ecc544299efaf17ca788fc1c51b7d0d9b4269894f09abb4f171f9ee6499b.json.gz",
+      "sha256": "86d4ecc544299efaf17ca788fc1c51b7d0d9b4269894f09abb4f171f9ee6499b"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/511122c5eb90e39cd64936bdbef6999afc1ca500f8a3dcb43e35cf2bd0e61c39.json.gz",
+      "sha256": "511122c5eb90e39cd64936bdbef6999afc1ca500f8a3dcb43e35cf2bd0e61c39"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/904b5000ff443d61cb379d6b7a4150024b138e6f1dcbf1af897bd8e0879ad150.json.gz",
+      "sha256": "904b5000ff443d61cb379d6b7a4150024b138e6f1dcbf1af897bd8e0879ad150"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/aa0da2e990bb960dca897ea02dcdcb41c32c1acb0ff1a178f9a4f77d16e7a68d.json.gz",
+      "sha256": "aa0da2e990bb960dca897ea02dcdcb41c32c1acb0ff1a178f9a4f77d16e7a68d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/45f8e8ec533c4e64166cc60cd8edc6a55ff5d80aef24599cbf1fb0e5e2c2d82e.json.gz",
+      "sha256": "45f8e8ec533c4e64166cc60cd8edc6a55ff5d80aef24599cbf1fb0e5e2c2d82e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/3d6ac9cee98c382dbaa39de8c45bb52e81a1547b85f5f95fd07acb5b465a98bb.json.gz",
+      "sha256": "3d6ac9cee98c382dbaa39de8c45bb52e81a1547b85f5f95fd07acb5b465a98bb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5fe65a761d124bf45ee101ad4bb3c025582ba01cb3329b583d5b9b5e155d3090.json.gz",
+      "sha256": "5fe65a761d124bf45ee101ad4bb3c025582ba01cb3329b583d5b9b5e155d3090"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/dd4166001d20022eb4dc4ce803747f48ba10f6d67c38fa53933a3419a736967f.json.gz",
+      "sha256": "dd4166001d20022eb4dc4ce803747f48ba10f6d67c38fa53933a3419a736967f"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/b32a2d84caacd2fa00c381956f50767adbf90813affffaa88463d0baf911238d.json.gz",
+      "sha256": "b32a2d84caacd2fa00c381956f50767adbf90813affffaa88463d0baf911238d"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0b513f44ef37b87856f632672fd83efafc8c241285593c18c6137b7e1f58d463.json.gz",
+      "sha256": "0b513f44ef37b87856f632672fd83efafc8c241285593c18c6137b7e1f58d463"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/3b8077544ac529f101e06995ed5f31201f657b0d3891eccf6b4db7c4fe75c690.json.gz",
+      "sha256": "3b8077544ac529f101e06995ed5f31201f657b0d3891eccf6b4db7c4fe75c690"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9481d6365b20470b6f5d4b1b336448a6177952d2007b92491fdc114eab8990b7.json.gz",
+      "sha256": "9481d6365b20470b6f5d4b1b336448a6177952d2007b92491fdc114eab8990b7"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/79e17b347d25a879919e32d079002928bbc138abb3c91b22dadd67d45f2c77f5.json.gz",
+      "sha256": "79e17b347d25a879919e32d079002928bbc138abb3c91b22dadd67d45f2c77f5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/d023013c85ffd4bc2ee150d6bb0a58f342f96b43ddafcc73ab940396a67cadde.json.gz",
+      "sha256": "d023013c85ffd4bc2ee150d6bb0a58f342f96b43ddafcc73ab940396a67cadde"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/05790648f5da3a89243df44214c3819feb3fe2f0ea47e145aef8b704b1208554.json.gz",
+      "sha256": "05790648f5da3a89243df44214c3819feb3fe2f0ea47e145aef8b704b1208554"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4c71c24c0378e72042dd159a4074fdc9af525a91a5d712e7834259c9e64fcaa3.json.gz",
+      "sha256": "4c71c24c0378e72042dd159a4074fdc9af525a91a5d712e7834259c9e64fcaa3"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/95c400dee075fe030d6e0b79371b90afcc61ac148ff7d8568abfb9a68a7ce0d9.json.gz",
+      "sha256": "95c400dee075fe030d6e0b79371b90afcc61ac148ff7d8568abfb9a68a7ce0d9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/20a516b8360640ac6722a07c6608bcff10c61853603be166d10e9458cf79c7f9.json.gz",
+      "sha256": "20a516b8360640ac6722a07c6608bcff10c61853603be166d10e9458cf79c7f9"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/49c61d6ce41ad1e6159e56f8e4ac6266ef3913bd43bf66f03bfbeac74eb28899.json.gz",
+      "sha256": "49c61d6ce41ad1e6159e56f8e4ac6266ef3913bd43bf66f03bfbeac74eb28899"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/f22c3fafdb3198067f6bf7d255510b4981911bb2191b3053b1047f23b3e06580.json.gz",
+      "sha256": "f22c3fafdb3198067f6bf7d255510b4981911bb2191b3053b1047f23b3e06580"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5d55f39cafcc0cec8fad6f2b63c8803290b3d8b3940c6bc865d4156953a0d96e.json.gz",
+      "sha256": "5d55f39cafcc0cec8fad6f2b63c8803290b3d8b3940c6bc865d4156953a0d96e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/91baaa4ec1e8fdade2ae871157e72adebd4a671346e7dfe7adf2ae084f7f1da2.json.gz",
+      "sha256": "91baaa4ec1e8fdade2ae871157e72adebd4a671346e7dfe7adf2ae084f7f1da2"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/0714e1f8caaa97c69c9ebd77fb7259ced5295c36e264d7c6f4f908fda21ff92a.json.gz",
+      "sha256": "0714e1f8caaa97c69c9ebd77fb7259ced5295c36e264d7c6f4f908fda21ff92a"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9be2d4b5fae20eaf7181cf124d29b172645dd652207c8a70d0da3676a387fa33.json.gz",
+      "sha256": "9be2d4b5fae20eaf7181cf124d29b172645dd652207c8a70d0da3676a387fa33"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/bc37d9245761940d38df877f9352ac52377cfdceb2094d678902e69102b054af.json.gz",
+      "sha256": "bc37d9245761940d38df877f9352ac52377cfdceb2094d678902e69102b054af"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/963743677a4dcbdd2d4b43d61406c90578d2f75d6f6ffe49612913e3a366efbe.json.gz",
+      "sha256": "963743677a4dcbdd2d4b43d61406c90578d2f75d6f6ffe49612913e3a366efbe"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/fae089510a7aeb36961310995a132f413ec15bd1004ac727dccf4c46443a27ab.json.gz",
+      "sha256": "fae089510a7aeb36961310995a132f413ec15bd1004ac727dccf4c46443a27ab"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c295d13ea62405f6c67a3e103fc132f662dbcb5de07cb6de9eda826cb5c118d5.json.gz",
+      "sha256": "c295d13ea62405f6c67a3e103fc132f662dbcb5de07cb6de9eda826cb5c118d5"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/01e5427180092aba60b4e7471210b20f4bc18c8780fc1f635a5e2cfc2310955c.json.gz",
+      "sha256": "01e5427180092aba60b4e7471210b20f4bc18c8780fc1f635a5e2cfc2310955c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5cab958ccf3913d58d27fb7d29bbc95b8a6ed69b2186112f3486cb0a217cbfce.json.gz",
+      "sha256": "5cab958ccf3913d58d27fb7d29bbc95b8a6ed69b2186112f3486cb0a217cbfce"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9915764c93af1aba7d4168a9fe86a3cbe8d01a8cf372c3770990d1012dc8e569.json.gz",
+      "sha256": "9915764c93af1aba7d4168a9fe86a3cbe8d01a8cf372c3770990d1012dc8e569"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/6bce13962edc784f4dc3d4fb870198dce75d2d52621ceb61fd3f9a96bf5ddedb.json.gz",
+      "sha256": "6bce13962edc784f4dc3d4fb870198dce75d2d52621ceb61fd3f9a96bf5ddedb"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/8efb117283c2035aafb6cad506e963dfc8fb6bb66ee6864d91ff7dd7a7469674.json.gz",
+      "sha256": "8efb117283c2035aafb6cad506e963dfc8fb6bb66ee6864d91ff7dd7a7469674"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/54b0c36755ecbc57e3a6a3f5f6640961bb64bbe3d8a522e8dda0b3a64fa9f0e4.json.gz",
+      "sha256": "54b0c36755ecbc57e3a6a3f5f6640961bb64bbe3d8a522e8dda0b3a64fa9f0e4"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/662dced445f1455b80e638f96b28b2687ddbb35804b91e6c20245dd0568f18af.json.gz",
+      "sha256": "662dced445f1455b80e638f96b28b2687ddbb35804b91e6c20245dd0568f18af"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/2d279ecc27a66cc98e97b9f269a23b08b7911ef10d7cbb27ba99c1da36aede8c.json.gz",
+      "sha256": "2d279ecc27a66cc98e97b9f269a23b08b7911ef10d7cbb27ba99c1da36aede8c"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/9f6138f31efa0a28911aa7c81e10151724636589e8d296fc6ddd534cb3c81674.json.gz",
+      "sha256": "9f6138f31efa0a28911aa7c81e10151724636589e8d296fc6ddd534cb3c81674"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/4a3dc34829b57bcb8de58de16a0148d4f7c96eeb6431690fd83884bf2efe09d8.json.gz",
+      "sha256": "4a3dc34829b57bcb8de58de16a0148d4f7c96eeb6431690fd83884bf2efe09d8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/43a9b7a258697aa461b4bca514b1c644f58fd3e991289d2061878f446f2880cf.json.gz",
+      "sha256": "43a9b7a258697aa461b4bca514b1c644f58fd3e991289d2061878f446f2880cf"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/c16c5aed91b7d3a43231072b3feea8df9fd4ec5aa34b4d666f51df5075f67e33.json.gz",
+      "sha256": "c16c5aed91b7d3a43231072b3feea8df9fd4ec5aa34b4d666f51df5075f67e33"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5395fab13d25d740bf61f9f1ff11b4928bb9cbb56a6b12d3e45c99da90b33df8.json.gz",
+      "sha256": "5395fab13d25d740bf61f9f1ff11b4928bb9cbb56a6b12d3e45c99da90b33df8"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/f00afd57a7636a863f0ea9632a94cbfa66a0c8b71ec630c3afa2c2099654aaef.json.gz",
+      "sha256": "f00afd57a7636a863f0ea9632a94cbfa66a0c8b71ec630c3afa2c2099654aaef"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/597366ae716e0ec867ea52f3e112307b6f642402a56225282d09edf7ed276649.json.gz",
+      "sha256": "597366ae716e0ec867ea52f3e112307b6f642402a56225282d09edf7ed276649"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/5f10b910fd2d0f7d283e41a1c24deb81021f7f4924a61290b3ba189c4fa12c2e.json.gz",
+      "sha256": "5f10b910fd2d0f7d283e41a1c24deb81021f7f4924a61290b3ba189c4fa12c2e"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/19b037362386aeec5517d1fe2911d0474df23a574392347d4408688ebe4c9480.json.gz",
+      "sha256": "19b037362386aeec5517d1fe2911d0474df23a574392347d4408688ebe4c9480"
+    },
+    {
+      "kind": "cross",
+      "path": "nested_oos/KHOU/2026-10-05/f35283db7450c81829ce6364362fe8b7c753a6f44aa81f1bfc89257cae13b2b6.json.gz",
+      "sha256": "f35283db7450c81829ce6364362fe8b7c753a6f44aa81f1bfc89257cae13b2b6"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/2c618f2e4cb729b18077be2a8bf482082e6375b2885b03a63e59ce765d6852d9.json.gz",
+      "sha256": "2c618f2e4cb729b18077be2a8bf482082e6375b2885b03a63e59ce765d6852d9"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/68a38af43079ba0978e3dbc7ac07bd3030165d14d1a199f706e6abcfce125106.json.gz",
+      "sha256": "68a38af43079ba0978e3dbc7ac07bd3030165d14d1a199f706e6abcfce125106"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/c27eedf42189fd2499b230f6d4233c57d64e49b10b7844a789f1a1957af45369.json.gz",
+      "sha256": "c27eedf42189fd2499b230f6d4233c57d64e49b10b7844a789f1a1957af45369"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/63d42db0d2ab9340f4006ea64bc957eb571dc1ea77517206917278c7f6b3a63b.json.gz",
+      "sha256": "63d42db0d2ab9340f4006ea64bc957eb571dc1ea77517206917278c7f6b3a63b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/6ddc17259d18559594501b31fb04c83553d8f63116012d6b7324eaaa256a8d4d.json.gz",
+      "sha256": "6ddc17259d18559594501b31fb04c83553d8f63116012d6b7324eaaa256a8d4d"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/46159eaa973433aa4e5c14da4656fb8a018e5b64a5ec795e0af431a6e74acb6d.json.gz",
+      "sha256": "46159eaa973433aa4e5c14da4656fb8a018e5b64a5ec795e0af431a6e74acb6d"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/df17d9593cde4b372a85d4fbc3e51c9c193a4776dd30569ce2aa571f2022ce7b.json.gz",
+      "sha256": "df17d9593cde4b372a85d4fbc3e51c9c193a4776dd30569ce2aa571f2022ce7b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/e07bc806b382fe70122b4e64a85e207df499b34735b5bc25be5c981a9b6f7391.json.gz",
+      "sha256": "e07bc806b382fe70122b4e64a85e207df499b34735b5bc25be5c981a9b6f7391"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/9a83abdfa1b5accad0e1085d864c3b88badce4e749f57f913bab816b0f4792c4.json.gz",
+      "sha256": "9a83abdfa1b5accad0e1085d864c3b88badce4e749f57f913bab816b0f4792c4"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/aba7e40e47d88e7db1eb613ad0a530ddcc479d06cb67d6919073c0a7d600c99b.json.gz",
+      "sha256": "aba7e40e47d88e7db1eb613ad0a530ddcc479d06cb67d6919073c0a7d600c99b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/028dd5bd093fb7d9085332ce961252672ea4dc9e2d727dab42e39215795c573c.json.gz",
+      "sha256": "028dd5bd093fb7d9085332ce961252672ea4dc9e2d727dab42e39215795c573c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/977031f70538f0a991cccff57f3fefa66be109ace7eb822d35a73efd4b737185.json.gz",
+      "sha256": "977031f70538f0a991cccff57f3fefa66be109ace7eb822d35a73efd4b737185"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/173f6baa296934e4ad60ad9e39c5a76277847957756b0287fabd6fb031bc8aa7.json.gz",
+      "sha256": "173f6baa296934e4ad60ad9e39c5a76277847957756b0287fabd6fb031bc8aa7"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/e8240b42f775e9f48b97300add57eb3340ffe3e757d351cf53a4d384cc492c61.json.gz",
+      "sha256": "e8240b42f775e9f48b97300add57eb3340ffe3e757d351cf53a4d384cc492c61"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/cc6a52ff1a386571c154ece4b06efa611985229a3a15c872dc9bb338189d9dff.json.gz",
+      "sha256": "cc6a52ff1a386571c154ece4b06efa611985229a3a15c872dc9bb338189d9dff"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/1c9b634ad7591963dff6af8fc75526323a5e0e84e7a6eac3f10642d8c8156a70.json.gz",
+      "sha256": "1c9b634ad7591963dff6af8fc75526323a5e0e84e7a6eac3f10642d8c8156a70"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/67456b7dc35b47f1a6393d691cda237a02f917478782b8e4404848aacdeb1958.json.gz",
+      "sha256": "67456b7dc35b47f1a6393d691cda237a02f917478782b8e4404848aacdeb1958"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d54a4fa9b5ea53f2668a26549e9f9c500f546f884c9b3769f372418db65b64ea.json.gz",
+      "sha256": "d54a4fa9b5ea53f2668a26549e9f9c500f546f884c9b3769f372418db65b64ea"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/b797ed2b807dbe7a313dd4db917f39041f62fa6ac1451b22634e7b39214026c8.json.gz",
+      "sha256": "b797ed2b807dbe7a313dd4db917f39041f62fa6ac1451b22634e7b39214026c8"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/08005636d45e51b3e21f713b735e8abe44784da5218ec5318cffcaab0e77253f.json.gz",
+      "sha256": "08005636d45e51b3e21f713b735e8abe44784da5218ec5318cffcaab0e77253f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/8a350f6f0329ffa3db0e27a6b85f03330f92845a8c7ea3dc8c1106000c76875b.json.gz",
+      "sha256": "8a350f6f0329ffa3db0e27a6b85f03330f92845a8c7ea3dc8c1106000c76875b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/40347a94e6a59ae8a9f205cb23787111423813330f0b74561d4429496ae17396.json.gz",
+      "sha256": "40347a94e6a59ae8a9f205cb23787111423813330f0b74561d4429496ae17396"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/41f862b4627a50e490432b68d5119f208a0777657d2a768e0a7507359a8e6aa9.json.gz",
+      "sha256": "41f862b4627a50e490432b68d5119f208a0777657d2a768e0a7507359a8e6aa9"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/2a6c3792172edf807b67e68fd64bd6eb2753bf5d7f3396fd77a448fa0c914636.json.gz",
+      "sha256": "2a6c3792172edf807b67e68fd64bd6eb2753bf5d7f3396fd77a448fa0c914636"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/2016a0016980fad0363f49c7cbaff1fe2d85d611f2b37bee8fbcdaf661eb95f4.json.gz",
+      "sha256": "2016a0016980fad0363f49c7cbaff1fe2d85d611f2b37bee8fbcdaf661eb95f4"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/15ac25029c690d43dd5aef0dc37c2a500e1ef91c545517d3760441208c51dba5.json.gz",
+      "sha256": "15ac25029c690d43dd5aef0dc37c2a500e1ef91c545517d3760441208c51dba5"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d10cf490d51a6a3fe48f7ec26aea39f6a84933a010766c636aed717519c7026e.json.gz",
+      "sha256": "d10cf490d51a6a3fe48f7ec26aea39f6a84933a010766c636aed717519c7026e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/9e5dc17242a4c7df554a288a5bacbd9cf0496e29e443dc430148b3129c0a0343.json.gz",
+      "sha256": "9e5dc17242a4c7df554a288a5bacbd9cf0496e29e443dc430148b3129c0a0343"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d4872f824f254840fd38e4aa05d652be9ff3a1b78f044f250513cc3845912ba0.json.gz",
+      "sha256": "d4872f824f254840fd38e4aa05d652be9ff3a1b78f044f250513cc3845912ba0"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/91154aa17e8d31f2769b194422296640b23abc9d60547efc0aa6e3a720ad67de.json.gz",
+      "sha256": "91154aa17e8d31f2769b194422296640b23abc9d60547efc0aa6e3a720ad67de"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/eb808e722adee50c05c4045b2a9779e9a95a23dad85bc535b0275cbe5375f714.json.gz",
+      "sha256": "eb808e722adee50c05c4045b2a9779e9a95a23dad85bc535b0275cbe5375f714"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/8967b3665fea876a5c3ce69416c0bdcdd7495977cff69e11cf4bfd631a4f28cb.json.gz",
+      "sha256": "8967b3665fea876a5c3ce69416c0bdcdd7495977cff69e11cf4bfd631a4f28cb"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/c7a1054626f1a129f09663247519b3bfbd2a6bcf617e7b7d4ec4e66b320418b3.json.gz",
+      "sha256": "c7a1054626f1a129f09663247519b3bfbd2a6bcf617e7b7d4ec4e66b320418b3"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/c984a74d755cc09942a0eaa64dd2f38261fa8638f972afdcb20c64a1e6228d0c.json.gz",
+      "sha256": "c984a74d755cc09942a0eaa64dd2f38261fa8638f972afdcb20c64a1e6228d0c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/32c054b1f5780a80285d9edf588fdb3657f77509cd8fb08adf3760a77ee1223f.json.gz",
+      "sha256": "32c054b1f5780a80285d9edf588fdb3657f77509cd8fb08adf3760a77ee1223f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/4abf43287849082d83b3573903db1115f773e3c09b6efdf22095e5c99e7fb36e.json.gz",
+      "sha256": "4abf43287849082d83b3573903db1115f773e3c09b6efdf22095e5c99e7fb36e"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d5536f039377439e630272c83aedbc9c9f1489e9d876a7e99ea545495692dbda.json.gz",
+      "sha256": "d5536f039377439e630272c83aedbc9c9f1489e9d876a7e99ea545495692dbda"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d731492d72b874a812c0c4931fc106452ae0ace163308dc4ed71438d0aa0b7d2.json.gz",
+      "sha256": "d731492d72b874a812c0c4931fc106452ae0ace163308dc4ed71438d0aa0b7d2"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d1fbe51f435ca96bcb8908070cffb5680ffaeae738024cb30dc91a0cedd8bcef.json.gz",
+      "sha256": "d1fbe51f435ca96bcb8908070cffb5680ffaeae738024cb30dc91a0cedd8bcef"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/0cd4c5fd7f410e1dd5f37b3457455f0ae6cdc77bdbf55fba2b0caaf612ffdd0c.json.gz",
+      "sha256": "0cd4c5fd7f410e1dd5f37b3457455f0ae6cdc77bdbf55fba2b0caaf612ffdd0c"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/63daf7f468cd6faee638f301151b55f6c7307216ae3616f5488adc85b810998b.json.gz",
+      "sha256": "63daf7f468cd6faee638f301151b55f6c7307216ae3616f5488adc85b810998b"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/83694380e519c86f87262f10b35045b4f97dcd37f72563d2ded46f8fa126e903.json.gz",
+      "sha256": "83694380e519c86f87262f10b35045b4f97dcd37f72563d2ded46f8fa126e903"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/04707c01b4938c1ac1bcf61c58515e74538dbba87c23c797a7f415b53cbf44a5.json.gz",
+      "sha256": "04707c01b4938c1ac1bcf61c58515e74538dbba87c23c797a7f415b53cbf44a5"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/a7dac058da4048e8dd95aaca9640c2f116da525eb942e247eb6d95d1e1bd8e53.json.gz",
+      "sha256": "a7dac058da4048e8dd95aaca9640c2f116da525eb942e247eb6d95d1e1bd8e53"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/4731cabce64db4bc50dc27c887be32cfd5488909ac2a78b5d87bf3cb3557a862.json.gz",
+      "sha256": "4731cabce64db4bc50dc27c887be32cfd5488909ac2a78b5d87bf3cb3557a862"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/15c4664e67486d1310197d8d9bff0d0eef14e722e852765527494093d16b357a.json.gz",
+      "sha256": "15c4664e67486d1310197d8d9bff0d0eef14e722e852765527494093d16b357a"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/b155a46b3fa88a1ab82a5b3f1814e950456254d88f4458d33d4a20481f16adb1.json.gz",
+      "sha256": "b155a46b3fa88a1ab82a5b3f1814e950456254d88f4458d33d4a20481f16adb1"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/b86dcd743fdfb300683410c85a20cb30d25c00309095ce04b76e1e82e6a24a11.json.gz",
+      "sha256": "b86dcd743fdfb300683410c85a20cb30d25c00309095ce04b76e1e82e6a24a11"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/d7380d1f4f54a502ac7c5ab5af0faeca2eba95b6b6a47f66b13c7c07318bde61.json.gz",
+      "sha256": "d7380d1f4f54a502ac7c5ab5af0faeca2eba95b6b6a47f66b13c7c07318bde61"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/2c04cc66ff0b2c7b722f890bd2c37267a3c9ed7b73c61c6d4e37a679562de599.json.gz",
+      "sha256": "2c04cc66ff0b2c7b722f890bd2c37267a3c9ed7b73c61c6d4e37a679562de599"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/e2e5a3fb36a99c3289edc9c1fa6416a0ff0f5097847843dfd626c7d9c76ef66f.json.gz",
+      "sha256": "e2e5a3fb36a99c3289edc9c1fa6416a0ff0f5097847843dfd626c7d9c76ef66f"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/93be9e94c46402be0f3f79c184a12731da35fadec067f0a600808fa810010877.json.gz",
+      "sha256": "93be9e94c46402be0f3f79c184a12731da35fadec067f0a600808fa810010877"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/a84f70eec2c17e5dfc10a32e7c6ad54877a973d1c30a79f090b3e977665a25bb.json.gz",
+      "sha256": "a84f70eec2c17e5dfc10a32e7c6ad54877a973d1c30a79f090b3e977665a25bb"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/458a52d86425efa8037fa513cfa8186eabcc81a7cbd3470475b23387a68f2d86.json.gz",
+      "sha256": "458a52d86425efa8037fa513cfa8186eabcc81a7cbd3470475b23387a68f2d86"
+    },
+    {
+      "kind": "ladder",
+      "path": "nested_oos/KHOU/2026-10-05/0c1dc894a6e2e6aa69faa1599c438a708110fd193a43829d21493dc3ca316c7f.json.gz",
+      "sha256": "0c1dc894a6e2e6aa69faa1599c438a708110fd193a43829d21493dc3ca316c7f"
+    }
+  ],
+  "production_modified": false,
+  "current_chain_certified": false,
+  "limitations": [
+    "historical center/width table fits still require current-method reconstruction",
+    "fusion weights still require current-method historical refit",
+    "candidate reports have not been activated or used as replacement parents"
+  ]
+}

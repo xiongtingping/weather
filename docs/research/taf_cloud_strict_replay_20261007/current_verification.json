@@ -1,0 +1,21 @@
+{
+  "schema": "reconstructed_current_components_verification_v1",
+  "passed": true,
+  "counts": {
+    "prefix_rows": 19618,
+    "authorized_rows": 8018,
+    "cloud_time_pairs": 12233,
+    "regional_present": 2941,
+    "root_rows": 11156,
+    "unique_fit_manifests": 11991,
+    "refit_references": 33812,
+    "p0m_materializer_sample_days": 16,
+    "production_formula_sample_days": 16,
+    "cloud_origin_rejections_neutral": 245
+  },
+  "prefix_summary_sha": "61d5115eb97e11d2929a1725e7c9ddd0ddf99f453ed365e2933937572617fd31",
+  "score_sha": "b971c6292a5ee7dd991c052d8b018e6b8043049771db798ad1fff62049c01203",
+  "production_modified": false,
+  "current_chain_certified": false,
+  "scope": "row clocks, fit bindings, direct scalar formula and one-floor identities; no cross-activation certification"
+}

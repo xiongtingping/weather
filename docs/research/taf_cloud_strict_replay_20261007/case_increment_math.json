@@ -1,0 +1,186 @@
+{
+  "schema": "chengdu_frozen_increment_odds_diagnostic_v1",
+  "coefficient_cutoff": "2026-10-06T04:39:23.380000Z",
+  "trained_through": "2026-10-05",
+  "case": [
+    {
+      "local_hour": 12,
+      "observation_id": "rtobs_c6dabfc59aea8eecc1ea9917a75bb879",
+      "as_of": "2026-10-07T04:11:54.545004Z",
+      "running_high_bucket": "24",
+      "cloud_origin_eligible": true,
+      "cloud_origin": {
+        "source_lane": "awc",
+        "station_id": "ZUUU",
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "committed_at": "2026-10-07T04:06:09.494Z"
+      },
+      "terms": {
+        "latest_6500_coverage_logscore": {
+          "increment": 0.0,
+          "beta": 0.2677520351129613,
+          "one_c_rise_odds_multiplier": 1.0,
+          "evidence_known": true
+        },
+        "latest_5000_coverage_logscore": {
+          "increment": 0.375,
+          "beta": 0.062089755757795406,
+          "one_c_rise_odds_multiplier": 0.9769853143643605,
+          "evidence_known": true
+        },
+        "latest_6500_base_logscore": {
+          "increment": 0.6095999999999999,
+          "beta": -0.05219098157740411,
+          "one_c_rise_odds_multiplier": 1.0323271497233237,
+          "evidence_known": true
+        }
+      }
+    },
+    {
+      "local_hour": 13,
+      "observation_id": "rtobs_60f96ac22f36056377902f8f1dde3b75",
+      "as_of": "2026-10-07T05:56:35.105005Z",
+      "running_high_bucket": "25",
+      "cloud_origin_eligible": true,
+      "cloud_origin": {
+        "source_lane": "awc",
+        "station_id": "ZUUU",
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "committed_at": "2026-10-07T05:06:21.716Z"
+      },
+      "terms": {
+        "latest_6500_coverage_logscore": {
+          "increment": 0.0,
+          "beta": 0.2677520351129613,
+          "one_c_rise_odds_multiplier": 1.0,
+          "evidence_known": true
+        },
+        "latest_5000_coverage_logscore": {
+          "increment": 0.375,
+          "beta": 0.062089755757795406,
+          "one_c_rise_odds_multiplier": 0.9769853143643605,
+          "evidence_known": true
+        },
+        "latest_6500_base_logscore": {
+          "increment": 0.6095999999999999,
+          "beta": -0.05219098157740411,
+          "one_c_rise_odds_multiplier": 1.0323271497233237,
+          "evidence_known": true
+        }
+      }
+    },
+    {
+      "local_hour": 14,
+      "observation_id": "rtobs_493414b2271d51f50f4520d02335beb9",
+      "as_of": "2026-10-07T06:07:26.398000Z",
+      "running_high_bucket": "25",
+      "cloud_origin_eligible": true,
+      "cloud_origin": {
+        "source_lane": "awc",
+        "station_id": "ZUUU",
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "committed_at": "2026-10-07T06:06:44.893Z"
+      },
+      "terms": {
+        "latest_6500_coverage_logscore": {
+          "increment": 0.0,
+          "beta": 0.2677520351129613,
+          "one_c_rise_odds_multiplier": 1.0,
+          "evidence_known": true
+        },
+        "latest_5000_coverage_logscore": {
+          "increment": 0.375,
+          "beta": 0.062089755757795406,
+          "one_c_rise_odds_multiplier": 0.9769853143643605,
+          "evidence_known": true
+        },
+        "latest_6500_base_logscore": {
+          "increment": 0.6095999999999999,
+          "beta": -0.05219098157740411,
+          "one_c_rise_odds_multiplier": 1.0323271497233237,
+          "evidence_known": true
+        }
+      }
+    },
+    {
+      "local_hour": 15,
+      "observation_id": "rtobs_f6a03c500c32722cf58a29fdf94d9771",
+      "as_of": "2026-10-07T07:57:13.636006Z",
+      "running_high_bucket": "25",
+      "cloud_origin_eligible": true,
+      "cloud_origin": {
+        "source_lane": "awc",
+        "station_id": "ZUUU",
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "committed_at": "2026-10-07T07:05:33.874Z"
+      },
+      "terms": {
+        "latest_6500_coverage_logscore": {
+          "increment": 0.125,
+          "beta": 0.2677520351129613,
+          "one_c_rise_odds_multiplier": 0.9670848861536739,
+          "evidence_known": true
+        },
+        "latest_5000_coverage_logscore": {
+          "increment": 0.625,
+          "beta": 0.062089755757795406,
+          "one_c_rise_odds_multiplier": 0.9619372132400695,
+          "evidence_known": true
+        },
+        "latest_6500_base_logscore": {
+          "increment": null,
+          "beta": -0.05219098157740411,
+          "one_c_rise_odds_multiplier": 1.0,
+          "evidence_known": false
+        }
+      }
+    },
+    {
+      "local_hour": 16,
+      "observation_id": "rtobs_dffa90181455c5a64fe1cafb08f79808",
+      "as_of": "2026-10-07T08:06:20.013000Z",
+      "running_high_bucket": "25",
+      "cloud_origin_eligible": true,
+      "cloud_origin": {
+        "source_lane": "awc",
+        "station_id": "ZUUU",
+        "origin_source_id": "global_noaa_awc_relay",
+        "origin_transport": "official_awc_raw_metar_batch_direct",
+        "committed_at": "2026-10-07T08:06:18.581Z"
+      },
+      "terms": {
+        "latest_6500_coverage_logscore": {
+          "increment": 0.0,
+          "beta": 0.2677520351129613,
+          "one_c_rise_odds_multiplier": 1.0,
+          "evidence_known": true
+        },
+        "latest_5000_coverage_logscore": {
+          "increment": 0.375,
+          "beta": 0.062089755757795406,
+          "one_c_rise_odds_multiplier": 0.9769853143643605,
+          "evidence_known": true
+        },
+        "latest_6500_base_logscore": {
+          "increment": 0.6095999999999999,
+          "beta": -0.05219098157740411,
+          "one_c_rise_odds_multiplier": 1.0323271497233237,
+          "evidence_known": true
+        }
+      }
+    }
+  ],
+  "production_modified": false,
+  "evidence_role": "restricted_model_sensitivity_not_full_current_p1_replay",
+  "limitations": [
+    "odds multipliers are independent likelihood terms only; no absolute P(25) has been reconstructed",
+    "coefficients come from the restricted parent reconstruction and cannot authorize production",
+    "cloud-base direction is fitted and not assumed to imply less radiation"
+  ],
+  "source_sha": "b5fee40253d92817814c2b424769e525587a2971e1abc179b2931d14135122aa",
+  "score_sha": "b971c6292a5ee7dd991c052d8b018e6b8043049771db798ad1fff62049c01203"
+}

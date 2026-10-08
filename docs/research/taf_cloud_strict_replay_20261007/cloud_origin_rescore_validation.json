@@ -1,0 +1,11 @@
+{
+  "schema": "cloud_origin_rescore_comparator_identity_v1",
+  "passed": true,
+  "baseline_p1_days": 16,
+  "baseline_taf_days": 36,
+  "fixed_strength_score_groups_identical": true,
+  "neutral_cloud_source_rejections": 245,
+  "before_sha": "249416a906b166d044f0a855662d5d1939fe8ae2c63cbd0fbb7c55a125616a20",
+  "after_sha": "b971c6292a5ee7dd991c052d8b018e6b8043049771db798ad1fff62049c01203",
+  "production_modified": false
+}

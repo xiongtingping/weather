@@ -1,0 +1,689 @@
+{
+  "schema": "fleet_isolated_nested_certificate_compiler_v1",
+  "counts": {
+    "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED": 45,
+    "REFUSED": 3
+  },
+  "stations": {
+    "CYYZ": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 166
+      },
+      "output": "nested_compiler_probes/CYYZ.fusion.json",
+      "output_sha": "b995b421e65c95de6f63461b42a4caa91bad04d87ff4efca6d65fd477593390f"
+    },
+    "EDDM": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/EDDM.fusion.json",
+      "output_sha": "108971dd506ef77ab43d99d9c93f1f9689ebf624815b50bad1242a74ed758d83"
+    },
+    "EFHK": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 42,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/EFHK.fusion.json",
+      "output_sha": "1c1bd53ac6fa9eb7e9d3c5ff10508e5bdd6f6e2772cb0f32af076d9c4ef57bf1"
+    },
+    "EGLC": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 183,
+        "cross_artifacts": 183,
+        "oos_evaluations": 184,
+        "oos_predictions": 1464,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/EGLC.fusion.json",
+      "output_sha": "bd3002cc06acb733f38c6d9486a2377c8178b8ead5257c5195c8e59d88255b58"
+    },
+    "EHAM": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 42,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/EHAM.fusion.json",
+      "output_sha": "f1aed7597f9bda8fd8bf0cdf1b0061a663cad4ad930608c57ccb37033cd36992"
+    },
+    "EPWA": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/EPWA.fusion.json",
+      "output_sha": "3ff86d6808e08a673f86bd7be0ffaa234f7b1c900e95819ad8b1346258b0d091"
+    },
+    "FACT": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 42,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/FACT.fusion.json",
+      "output_sha": "28b851940ee7e9989f006653b440b8d62ce30273d786b06f0a9d3919ed354828"
+    },
+    "KATL": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KATL.fusion.json",
+      "output_sha": "4156f5ddee87fa327dc24b132075a8d71e81ff719eab38ac65a0a269ecc0e791"
+    },
+    "KAUS": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KAUS.fusion.json",
+      "output_sha": "319d195aa6b32700ea0ed07ce4eee835db3847e07e0ddffe2ee0611aef492e09"
+    },
+    "KBKF": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 44,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 169
+      },
+      "output": "nested_compiler_probes/KBKF.fusion.json",
+      "output_sha": "ee2998a3a76ccd016712fb44eac9bc09dc818f069e79e1f17e14c4ba6c606107"
+    },
+    "KDAL": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 44,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 169
+      },
+      "output": "nested_compiler_probes/KDAL.fusion.json",
+      "output_sha": "dad1f8ec811e67eb1b9f71deb1752d8c09b5a95b52742fe17757b48df5f8bed9"
+    },
+    "KHOU": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KHOU.fusion.json",
+      "output_sha": "46b531a908fdb9d5e3614212343992423ecf67df07db7b3b8eeb8f32a6aebeb9"
+    },
+    "KLAX": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 92,
+        "selection_evidence": 212,
+        "cross_artifacts": 212,
+        "oos_evaluations": 264,
+        "oos_predictions": 1696,
+        "activations": 304
+      },
+      "output": "nested_compiler_probes/KLAX.fusion.json",
+      "output_sha": "25df1adfae9c94246b2c6982b7781d67ad8195a72105e5233d8f409883d7d90b"
+    },
+    "KLGA": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KLGA.fusion.json",
+      "output_sha": "82afa354262ea9279bbfb2a63f2e7e72d10e4f091cddd86515ce6e5139dce1b4"
+    },
+    "KMIA": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KMIA.fusion.json",
+      "output_sha": "01312e4cf5e56247d0d14b83ad3dc5139fcc99528b7d27e26a168d154b1bc2a6"
+    },
+    "KORD": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 168
+      },
+      "output": "nested_compiler_probes/KORD.fusion.json",
+      "output_sha": "ad0d51b984d9d1420bb1e87726a6c58154c5b99284822239071911fd0c8ebd46"
+    },
+    "KSEA": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 46,
+        "selection_evidence": 132,
+        "cross_artifacts": 132,
+        "oos_evaluations": 132,
+        "oos_predictions": 1056,
+        "activations": 178
+      },
+      "output": "nested_compiler_probes/KSEA.fusion.json",
+      "output_sha": "3a2013a43280f7a21eec137be0bc5a3a98be0dc5448095a06037bc5942071335"
+    },
+    "KSFO": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 92,
+        "selection_evidence": 264,
+        "cross_artifacts": 264,
+        "oos_evaluations": 264,
+        "oos_predictions": 2112,
+        "activations": 356
+      },
+      "output": "nested_compiler_probes/KSFO.fusion.json",
+      "output_sha": "a861d435cd083a0a953032fb02566f085fb42ac86e91880d21e4ce050c4ed0a3"
+    },
+    "LEMD": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/LEMD.fusion.json",
+      "output_sha": "cf4571feec0029d1b14e5b4755042d92c5da2f383607c757eb6bced824a2a7df"
+    },
+    "LFPB": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/LFPB.fusion.json",
+      "output_sha": "f5c67f4c381b84f631035127c77ed13c1a0f7ef62730d2f9da3e7aedd06a771e"
+    },
+    "LIMC": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/LIMC.fusion.json",
+      "output_sha": "5eb214f9314dc27d9faf85c5b1aee92c5b8eddda286c45173ded4133b0cd651a"
+    },
+    "LLBG": {
+      "state": "REFUSED",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact",
+      "certificate_counts": {
+        "system_artifacts": 0,
+        "selection_evidence": 0,
+        "cross_artifacts": 0,
+        "oos_evaluations": 0,
+        "oos_predictions": 0,
+        "activations": 0
+      },
+      "output": "nested_compiler_probes/LLBG.fusion.json",
+      "output_sha": "f39d4e6ce342dbb21606a29f914ffa80416099d22ad63654d01eebfc9ddbde09"
+    },
+    "LTAC": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 43,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/LTAC.fusion.json",
+      "seconds": 6.39,
+      "output_sha": "c4dcc452784b8783fd5820524d34298d0e8ad7827b1aa3f640a09eef659513a2"
+    },
+    "LTFM": {
+      "state": "REFUSED",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact",
+      "certificate_counts": {
+        "system_artifacts": 0,
+        "selection_evidence": 0,
+        "cross_artifacts": 0,
+        "oos_evaluations": 0,
+        "oos_predictions": 0,
+        "activations": 0
+      },
+      "output": "nested_compiler_probes/LTFM.fusion.json",
+      "output_sha": "4a745a13e5b7e23ae60a79543a924f76388f7309552c07bb4ef525057eb03edb"
+    },
+    "MMMX": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 166
+      },
+      "output": "nested_compiler_probes/MMMX.fusion.json",
+      "output_sha": "522487ece3409913a7140d4ff8aeb4e32cf637f45f0f6cca759556854eb7f8c7"
+    },
+    "MPMG": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 82,
+        "selection_evidence": 240,
+        "cross_artifacts": 240,
+        "oos_evaluations": 250,
+        "oos_predictions": 1920,
+        "activations": 322
+      },
+      "output": "nested_compiler_probes/MPMG.fusion.json",
+      "output_sha": "c88d8bd90a6400725dc6e451ce98fc3edfb98f5ecfb905a81f81764785e0dd0d"
+    },
+    "NZWN": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 35,
+        "selection_evidence": 187,
+        "cross_artifacts": 187,
+        "oos_evaluations": 191,
+        "oos_predictions": 1496,
+        "activations": 222
+      },
+      "output": "nested_compiler_probes/NZWN.fusion.json",
+      "output_sha": "7b1be711e6173c698f5160b76be62281f8313463641171e890969cb16d01c73c"
+    },
+    "OEJN": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 42,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/OEJN.fusion.json",
+      "output_sha": "fd2a3dfe48e66b4d59d1f37aae500b55429a4e4e15970052ee56023b6c4aa371"
+    },
+    "OPKC": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 42,
+        "selection_evidence": 184,
+        "cross_artifacts": 184,
+        "oos_evaluations": 184,
+        "oos_predictions": 1472,
+        "activations": 226
+      },
+      "output": "nested_compiler_probes/OPKC.fusion.json",
+      "output_sha": "2e27f94a709f7b3e961a96f890e590e07f524246e9f88f2b7771196f35cc55d9"
+    },
+    "RCSS": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 188,
+        "cross_artifacts": 188,
+        "oos_evaluations": 190,
+        "oos_predictions": 1504,
+        "activations": 228
+      },
+      "output": "nested_compiler_probes/RCSS.fusion.json",
+      "seconds": 5.73,
+      "output_sha": "1fdfae0769344200bd9f818368719e13ef8ae077e77f8e7781dcb0a9c39fa736"
+    },
+    "RJTT": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 231
+      },
+      "output": "nested_compiler_probes/RJTT.fusion.json",
+      "seconds": 6.12,
+      "output_sha": "bb489c2b4e48d756f38a45bdb6f4d5dcc9dc9c0396556544e23943ab0e8ace48"
+    },
+    "RKPK": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/RKPK.fusion.json",
+      "seconds": 6.32,
+      "output_sha": "c9b9e9c880ff571cc26451b28a31b256e7d39df10eb0f9da3274c061ba8ff24d"
+    },
+    "RKSI": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 231
+      },
+      "output": "nested_compiler_probes/RKSI.fusion.json",
+      "seconds": 6.71,
+      "output_sha": "fb25b154b7ff07de6a8e35d2b6de7f1665ca0941642cc4a0fa7e2f0424c40b9a"
+    },
+    "RPLL": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/RPLL.fusion.json",
+      "output_sha": "9dcd8224b0a68c71f135e02a09f56715657f5805667c836f46d785c064fc53fa"
+    },
+    "SAEZ": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 124,
+        "cross_artifacts": 124,
+        "oos_evaluations": 125,
+        "oos_predictions": 992,
+        "activations": 165
+      },
+      "output": "nested_compiler_probes/SAEZ.fusion.json",
+      "output_sha": "c3dda2c94979baeed19af5c40b82b202d17a6503dc4bd267c7e556bba2946e10"
+    },
+    "SBGR": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 125,
+        "cross_artifacts": 125,
+        "oos_evaluations": 125,
+        "oos_predictions": 1000,
+        "activations": 166
+      },
+      "output": "nested_compiler_probes/SBGR.fusion.json",
+      "output_sha": "60155d0b9eb578bb79a30f793b57547d2969e1e5aca71e13161ead2dbcb65263"
+    },
+    "UUWW": {
+      "state": "REFUSED",
+      "reason": "ContractError:FAIL_CLOSED_NO_P0:native_cross_ensemble_activation_not_exact",
+      "certificate_counts": {
+        "system_artifacts": 0,
+        "selection_evidence": 0,
+        "cross_artifacts": 0,
+        "oos_evaluations": 0,
+        "oos_predictions": 0,
+        "activations": 0
+      },
+      "output": "nested_compiler_probes/UUWW.fusion.json",
+      "output_sha": "a65a51cac9770d81eed000d1e62c60a948991be00ddc5be1306830e64696e18c"
+    },
+    "VILK": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 45,
+        "selection_evidence": 182,
+        "cross_artifacts": 182,
+        "oos_evaluations": 184,
+        "oos_predictions": 1456,
+        "activations": 227
+      },
+      "output": "nested_compiler_probes/VILK.fusion.json",
+      "output_sha": "87a5587bea67658b5cb322ae24e9ef123e3b289de49b744b4b12ea57da0d1d33"
+    },
+    "WMKK": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 45,
+        "cross_artifacts": 45,
+        "oos_evaluations": 190,
+        "oos_predictions": 360,
+        "activations": 85
+      },
+      "output": "nested_compiler_probes/WMKK.fusion.json",
+      "output_sha": "15d7edb03a4fdd6e855224cecaee4fc61fbdcfae8ec6011217f9e17980aa8eef"
+    },
+    "WSSS": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 82,
+        "cross_artifacts": 82,
+        "oos_evaluations": 190,
+        "oos_predictions": 656,
+        "activations": 123
+      },
+      "output": "nested_compiler_probes/WSSS.fusion.json",
+      "output_sha": "f8e4b53dfb5bba5fa3b92ae1098810f829934594758fe5c7e668930d6871cd81"
+    },
+    "ZBAA": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZBAA.fusion.json",
+      "output_sha": "d640a800019cdc2bcf0b463944485c8ea5bf725d460ff119f27d3c885a12e671"
+    },
+    "ZGGG": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZGGG.fusion.json",
+      "output_sha": "6b4a9d3304778eda82353a6daddd4d17b3991964c7b9b4517fa88d1762a11a04"
+    },
+    "ZGSZ": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 182,
+        "cross_artifacts": 182,
+        "oos_evaluations": 190,
+        "oos_predictions": 1456,
+        "activations": 222
+      },
+      "output": "nested_compiler_probes/ZGSZ.fusion.json",
+      "output_sha": "ad26343924056e45fbd1bae0343eb59d877095e776ef2dbcf865a8c456976810"
+    },
+    "ZHHH": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZHHH.fusion.json",
+      "output_sha": "a9fa49bb45828fd8551caad944c6951b2168ad09b65f89cb1bd6d5dba36bb0e2"
+    },
+    "ZSPD": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 41,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 231
+      },
+      "output": "nested_compiler_probes/ZSPD.fusion.json",
+      "output_sha": "25e4b6a956d869f237c3c0d13efcdac088197a495e37666e786f444a5eb5f4e4"
+    },
+    "ZSQD": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZSQD.fusion.json",
+      "output_sha": "3c8792cd62facb2bc866134a2f32f8fc708749ec4787f1c48d02f84fcff5f243"
+    },
+    "ZUCK": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZUCK.fusion.json",
+      "output_sha": "2019fae54abd975275801043a7fa9cfe4cc716c1581cdac97aa34b8ba8eff82e"
+    },
+    "ZUUU": {
+      "state": "OFFLINE_NESTED_CERTIFICATE_P0_COMPILED",
+      "reason": null,
+      "certificate_counts": {
+        "system_artifacts": 40,
+        "selection_evidence": 190,
+        "cross_artifacts": 190,
+        "oos_evaluations": 190,
+        "oos_predictions": 1520,
+        "activations": 230
+      },
+      "output": "nested_compiler_probes/ZUUU.fusion.json",
+      "output_sha": "cd8f6d69d601507d3b9af416d33c6024151a65f91f340e3f5be61ab74a87ae8c"
+    }
+  },
+  "production_modified": false,
+  "whole_current_chain_certified": false,
+  "fusion_refit": true
+}

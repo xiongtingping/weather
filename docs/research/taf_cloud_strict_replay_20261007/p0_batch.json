@@ -1,0 +1,616 @@
+{
+  "schema": "p0_asof_input_arithmetic_rebuild_v1",
+  "counts": {
+    "REFUSED": 677,
+    "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 405,
+    "FileNotFoundError:exact_root_packet_missing": 272,
+    "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 10479
+  },
+  "stations": {
+    "CYYZ": {
+      "profile": {
+        "REFUSED": 45,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 41,
+        "FileNotFoundError:exact_root_packet_missing": 4,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 208
+      },
+      "roots": 253,
+      "output_bytes": 10329922,
+      "physics_input_bytes": 159101,
+      "sha256": "ee6f01e23334eeab5a479f31a209edecd496f89f823d5646f621ff028732a450",
+      "seconds": 11.56
+    },
+    "EDDM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 244,
+        "REFUSED": 12,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 3,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 256,
+      "output_bytes": 11547857,
+      "physics_input_bytes": 149802,
+      "sha256": "9f629507f9045646de936d62b45a909555b90c9a6afb9edd2ea866e1d247fd50",
+      "seconds": 6.33
+    },
+    "EFHK": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 246,
+        "REFUSED": 7,
+        "FileNotFoundError:exact_root_packet_missing": 7
+      },
+      "roots": 253,
+      "output_bytes": 11494530,
+      "physics_input_bytes": 152313,
+      "sha256": "086f96d313031230ff899035d410cb52ee765aa86cfebb08568738bda089d23b",
+      "seconds": 3.99
+    },
+    "EGLC": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 249,
+        "REFUSED": 11,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 260,
+      "output_bytes": 11774701,
+      "physics_input_bytes": 166929,
+      "sha256": "28f8db40a9ce143220d52a4ebc72a1468178ded9f9bb734f7e16c3f0892ac4cc",
+      "seconds": 3.55
+    },
+    "EHAM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 264,
+        "REFUSED": 13,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 11
+      },
+      "roots": 277,
+      "output_bytes": 12189423,
+      "physics_input_bytes": 185706,
+      "sha256": "97cd6113c99b8d245a90ad951cb69563f2da4aabf825aa53fca48cb0a15f2d71",
+      "seconds": 3.26
+    },
+    "EPWA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 253,
+        "REFUSED": 10,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 8
+      },
+      "roots": 263,
+      "output_bytes": 11880560,
+      "physics_input_bytes": 152124,
+      "sha256": "807406420eec0025102f1b9142a19d508fa51a626ed475e15880ff4520d7dc1f",
+      "seconds": 5.39
+    },
+    "FACT": {
+      "profile": {
+        "REFUSED": 17,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 8,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 220,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 237,
+      "output_bytes": 10504439,
+      "physics_input_bytes": 132962,
+      "sha256": "6c9ade8c74d323d725d34b3274b43252d484d534af7831f2900d5d2da7bb0b34",
+      "seconds": 5.53
+    },
+    "KATL": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 255,
+        "REFUSED": 4,
+        "FileNotFoundError:exact_root_packet_missing": 4
+      },
+      "roots": 259,
+      "output_bytes": 12131635,
+      "physics_input_bytes": 158222,
+      "sha256": "70e45871f16d92d42a2bbe07201024ea6dbd6cfcd1f755edc730562cad272429",
+      "seconds": 3.48
+    },
+    "KAUS": {
+      "profile": {
+        "REFUSED": 10,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 6,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 245,
+        "FileNotFoundError:exact_root_packet_missing": 4
+      },
+      "roots": 255,
+      "output_bytes": 11883261,
+      "physics_input_bytes": 162111,
+      "sha256": "03b3fb0e9be1c9e836ee5a74ba045835ebf5f58e1cf9f30f8f77591480d21187",
+      "seconds": 2.62
+    },
+    "KBKF": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 226,
+        "REFUSED": 4,
+        "FileNotFoundError:exact_root_packet_missing": 4
+      },
+      "roots": 230,
+      "output_bytes": 11058384,
+      "physics_input_bytes": 160716,
+      "sha256": "8ff6d2ac612853e102ca09db4f1b43eedf967a6fe3e4348dc43957efaff4365e",
+      "seconds": 6.48
+    },
+    "KDAL": {
+      "profile": {
+        "REFUSED": 35,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 31,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 209,
+        "FileNotFoundError:exact_root_packet_missing": 4
+      },
+      "roots": 244,
+      "output_bytes": 10304004,
+      "physics_input_bytes": 159864,
+      "sha256": "81646840e28ea8a700afd76f2a28195fb23510d2b971894d9b1e904f029efe7e",
+      "seconds": 2.88
+    },
+    "KHOU": {
+      "profile": {
+        "REFUSED": 31,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 28,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 220,
+        "FileNotFoundError:exact_root_packet_missing": 3
+      },
+      "roots": 251,
+      "output_bytes": 10898236,
+      "physics_input_bytes": 163283,
+      "sha256": "334f7dfd56a02260b178b8759687995b1b26a328ddfb7704021c8e0b15d1cbb9",
+      "seconds": 2.91
+    },
+    "KLAX": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 239,
+        "REFUSED": 2,
+        "FileNotFoundError:exact_root_packet_missing": 2
+      },
+      "roots": 241,
+      "output_bytes": 11156801,
+      "physics_input_bytes": 152892,
+      "sha256": "df23fdfb90be88c51d0539294a315c6c6215cbc96a8a220369b92bf792d8c18f",
+      "seconds": 2.95
+    },
+    "KLGA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 250,
+        "REFUSED": 3,
+        "FileNotFoundError:exact_root_packet_missing": 3
+      },
+      "roots": 253,
+      "output_bytes": 11898658,
+      "physics_input_bytes": 157945,
+      "sha256": "9fc512a42e25251527d4eb716dbb992fe8537545f37fb80b8d5474f064dbb0ea",
+      "seconds": 5.84
+    },
+    "KMIA": {
+      "profile": {
+        "REFUSED": 41,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 38,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 216,
+        "FileNotFoundError:exact_root_packet_missing": 3
+      },
+      "roots": 257,
+      "output_bytes": 10805930,
+      "physics_input_bytes": 161827,
+      "sha256": "84ce66f19b78f4de7fd5c5887aec285c89f37323411643c2b892fdc04acc76c9",
+      "seconds": 4.09
+    },
+    "KORD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 248,
+        "REFUSED": 3,
+        "FileNotFoundError:exact_root_packet_missing": 3
+      },
+      "roots": 251,
+      "output_bytes": 11912751,
+      "physics_input_bytes": 162701,
+      "sha256": "9f80e7a9919a3effe2b911c7cf78ef1679b3c2c782eb9b0c0790793627b7900b",
+      "seconds": 5.81
+    },
+    "KSEA": {
+      "profile": {
+        "REFUSED": 10,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 8,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 248,
+        "FileNotFoundError:exact_root_packet_missing": 2
+      },
+      "roots": 258,
+      "output_bytes": 11830755,
+      "physics_input_bytes": 158166,
+      "sha256": "7e9c2da2811324f67c7e23d3cf32a7488705c4a68266c57dcb4283ac148d14d5",
+      "seconds": 3.4
+    },
+    "KSFO": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 256,
+        "REFUSED": 2,
+        "FileNotFoundError:exact_root_packet_missing": 2
+      },
+      "roots": 258,
+      "output_bytes": 11946816,
+      "physics_input_bytes": 157473,
+      "sha256": "6e6b8f666330ee30dc0b0e273760271e117227923c11ae725eaee758b3835a09",
+      "seconds": 2.65
+    },
+    "LEMD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 244,
+        "REFUSED": 9,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 253,
+      "output_bytes": 11624015,
+      "physics_input_bytes": 141343,
+      "sha256": "7b57bdaf33d87aeb58f7a17357566d40955dd7406a12aed63d5dd5467787a44c",
+      "seconds": 6.03
+    },
+    "LFPB": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 243,
+        "REFUSED": 9,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 252,
+      "output_bytes": 11354140,
+      "physics_input_bytes": 147937,
+      "sha256": "708b40554da22534d426f1d6304e3c45cdf6f8f908e5bf49b1b7a85832f3eb5f",
+      "seconds": 6.13
+    },
+    "LIMC": {
+      "profile": {
+        "REFUSED": 53,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 44,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 207,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 260,
+      "output_bytes": 10318250,
+      "physics_input_bytes": 144891,
+      "sha256": "8e05a2e6209969b63d32d3505863c09b2f38f34c2c906e41cafbc0e2be61f761",
+      "seconds": 4.3
+    },
+    "LLBG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 184755,
+      "physics_input_bytes": 14872,
+      "sha256": "d4400c7df87d53158e6cbcfd7bb60b15866848b311f18d8153eaf6ef601f6d51",
+      "seconds": 0.03
+    },
+    "LTAC": {
+      "profile": {
+        "REFUSED": 40,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 34,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 214,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 254,
+      "output_bytes": 10574816,
+      "physics_input_bytes": 141048,
+      "sha256": "51d58596c8fd42c9b1144aec23ec23d0d82d9dec0e98678e9008c02dee0ba12f",
+      "seconds": 5.57
+    },
+    "LTFM": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 197064,
+      "physics_input_bytes": 14862,
+      "sha256": "f0cf32b6339a15c9368c75770470f7a1c2847d010512b715db8bf646a7140f63",
+      "seconds": 0.03
+    },
+    "MMMX": {
+      "profile": {
+        "REFUSED": 5,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 3,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 223,
+        "FileNotFoundError:exact_root_packet_missing": 2
+      },
+      "roots": 228,
+      "output_bytes": 10631149,
+      "physics_input_bytes": 134382,
+      "sha256": "206c14c8c94bf7d889fe833efb38df75a63525847c5f78a88bf2ff9518062669",
+      "seconds": 4.2
+    },
+    "MPMG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 219,
+        "REFUSED": 3,
+        "FileNotFoundError:exact_root_packet_missing": 3
+      },
+      "roots": 222,
+      "output_bytes": 10080090,
+      "physics_input_bytes": 130641,
+      "sha256": "c6bba1d938fac46daf8000098755b94f5029cacea665328652040d232620f426",
+      "seconds": 4.47
+    },
+    "NZWN": {
+      "profile": {
+        "REFUSED": 47,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 42,
+        "FileNotFoundError:exact_root_packet_missing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 198
+      },
+      "roots": 245,
+      "output_bytes": 9780642,
+      "physics_input_bytes": 128105,
+      "sha256": "5e3e9b524fd5840c6008da208270d121c9db5cc2ede91b476e3b462b615956dc",
+      "seconds": 5.61
+    },
+    "OEJN": {
+      "profile": {
+        "REFUSED": 8,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 236,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 244,
+      "output_bytes": 10979711,
+      "physics_input_bytes": 130487,
+      "sha256": "79528149bfb9fc81fa4a7316db5fc6b5d78101b9ca5c6709d4a5f5489b514a3d",
+      "seconds": 6.48
+    },
+    "OPKC": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 244,
+        "REFUSED": 9,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 7
+      },
+      "roots": 253,
+      "output_bytes": 11657668,
+      "physics_input_bytes": 127610,
+      "sha256": "574620c8ce0898a1a8bed882577d8c9d007762e7ed3b1239f3ffb4829330b339",
+      "seconds": 5.93
+    },
+    "RCSS": {
+      "profile": {
+        "REFUSED": 10,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 4,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 247,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 257,
+      "output_bytes": 12100375,
+      "physics_input_bytes": 132518,
+      "sha256": "5edc4136492b860231cb178b89c51fe66381c053e08a384aab5283ae37b6b6e4",
+      "seconds": 7.62
+    },
+    "RJTT": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 233,
+        "REFUSED": 7,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 5
+      },
+      "roots": 240,
+      "output_bytes": 11234610,
+      "physics_input_bytes": 136596,
+      "sha256": "c250cf5a9b7ed64648baf5becf7b776b96b5eec941060411d8e0a5cf2aea1559",
+      "seconds": 10.03
+    },
+    "RKPK": {
+      "profile": {
+        "REFUSED": 19,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 12,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 222,
+        "FileNotFoundError:exact_root_packet_missing": 7
+      },
+      "roots": 241,
+      "output_bytes": 11002267,
+      "physics_input_bytes": 136758,
+      "sha256": "c3bee809bef53f17da0323fc1091be9654a0e9e1eab6f6b4949243aca9b58d79",
+      "seconds": 9.06
+    },
+    "RKSI": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 235,
+        "REFUSED": 9,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 1,
+        "FileNotFoundError:exact_root_packet_missing": 8
+      },
+      "roots": 244,
+      "output_bytes": 11412282,
+      "physics_input_bytes": 133663,
+      "sha256": "19f9aa66915cb83ea02b2cba1574d56f6afa5ea47bd6e14cc5cfce527a8556f6",
+      "seconds": 7.46
+    },
+    "RPLL": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 244,
+        "REFUSED": 6,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 250,
+      "output_bytes": 11819940,
+      "physics_input_bytes": 134504,
+      "sha256": "675d4748315c99afc850f6488088eafc78a47db7096c2e6bf58df07e8da2f0f6",
+      "seconds": 9.04
+    },
+    "SAEZ": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 193,
+        "REFUSED": 6,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 199,
+      "output_bytes": 9442921,
+      "physics_input_bytes": 132081,
+      "sha256": "799f7bb8263815a10fe7b4b959218ffbe25f347bb02612d865e8ae6cb066dc62",
+      "seconds": 8.28
+    },
+    "SBGR": {
+      "profile": {
+        "REFUSED": 9,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 201,
+        "FileNotFoundError:exact_root_packet_missing": 4
+      },
+      "roots": 210,
+      "output_bytes": 9780991,
+      "physics_input_bytes": 134092,
+      "sha256": "6b83ff49ad078ca4bdefb53e2e1e7de599c9fd3393908128952cf357a9decbb1",
+      "seconds": 7.01
+    },
+    "UUWW": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 5
+      },
+      "roots": 5,
+      "output_bytes": 198005,
+      "physics_input_bytes": 14959,
+      "sha256": "b25fd992bb87a91ba702861384cc57d657d7b20608d3fce28401b92e9bb9aa6d",
+      "seconds": 0.04
+    },
+    "VILK": {
+      "profile": {
+        "REFUSED": 36,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 31,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 206,
+        "FileNotFoundError:exact_root_packet_missing": 5
+      },
+      "roots": 242,
+      "output_bytes": 10192268,
+      "physics_input_bytes": 126890,
+      "sha256": "4b54b7210e1656c20da9bc94b1f176c2df828e59eb8a9fdb3caf0d2b9e8e9840",
+      "seconds": 6.0
+    },
+    "WMKK": {
+      "profile": {
+        "REFUSED": 12,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 5,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 236,
+        "FileNotFoundError:exact_root_packet_missing": 7
+      },
+      "roots": 248,
+      "output_bytes": 11270652,
+      "physics_input_bytes": 129322,
+      "sha256": "c99bae06c2ce48aa6c2f541d4f8be48e1c393b62d0e03a70547436d0066797a8",
+      "seconds": 4.41
+    },
+    "WSSS": {
+      "profile": {
+        "REFUSED": 12,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 6,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 243,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 255,
+      "output_bytes": 11729272,
+      "physics_input_bytes": 132773,
+      "sha256": "f962ca084e9b8ab6869e6112215146d183dc795d160e2c9c82a127f4605e5818",
+      "seconds": 5.18
+    },
+    "ZBAA": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 244,
+        "REFUSED": 15,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 4,
+        "FileNotFoundError:exact_root_packet_missing": 11
+      },
+      "roots": 259,
+      "output_bytes": 11994958,
+      "physics_input_bytes": 130913,
+      "sha256": "92640591e2052c9d7187502a8b1b228144a9c086bac99692a65d8acbf960a190",
+      "seconds": 5.88
+    },
+    "ZGGG": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 243,
+        "REFUSED": 6,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 249,
+      "output_bytes": 11917219,
+      "physics_input_bytes": 132429,
+      "sha256": "632ba69d913bc43cc1294a1ac20c95ec423d971d6f5938980d190cd9debdba38",
+      "seconds": 6.33
+    },
+    "ZGSZ": {
+      "profile": {
+        "REFUSED": 21,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 13,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 224,
+        "FileNotFoundError:exact_root_packet_missing": 8
+      },
+      "roots": 245,
+      "output_bytes": 11137449,
+      "physics_input_bytes": 131778,
+      "sha256": "7beebcb62f20773dd7ac95cf3537567eba07cb9450e7810e66315cefc42b9d03",
+      "seconds": 5.33
+    },
+    "ZHHH": {
+      "profile": {
+        "REFUSED": 17,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 11,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 229,
+        "FileNotFoundError:exact_root_packet_missing": 6
+      },
+      "roots": 246,
+      "output_bytes": 11458835,
+      "physics_input_bytes": 132261,
+      "sha256": "bc3ca3ea71f3e9f8112451dc88a3dc11cdc898ccec79d08ed78ec2e0965b557d",
+      "seconds": 6.96
+    },
+    "ZSPD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 246,
+        "REFUSED": 11,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 1,
+        "FileNotFoundError:exact_root_packet_missing": 10
+      },
+      "roots": 257,
+      "output_bytes": 12145130,
+      "physics_input_bytes": 130671,
+      "sha256": "d18895e6a58a6e28fa35bbeeb9942c61b2f21b43daa8bc75506736a66be9dbae",
+      "seconds": 5.4
+    },
+    "ZSQD": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 239,
+        "REFUSED": 8,
+        "FileNotFoundError:exact_root_packet_missing": 8
+      },
+      "roots": 247,
+      "output_bytes": 11897569,
+      "physics_input_bytes": 124296,
+      "sha256": "c838880cd3798ec6e34bf4b66e6fc276a80c1f4db036e4a10a24d599d51e6508",
+      "seconds": 7.79
+    },
+    "ZUCK": {
+      "profile": {
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 234,
+        "REFUSED": 9,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 2,
+        "FileNotFoundError:exact_root_packet_missing": 7
+      },
+      "roots": 243,
+      "output_bytes": 11496942,
+      "physics_input_bytes": 132543,
+      "sha256": "f210be2ebdca5f90009caa59e4ca346a40fd459a51427d7b3114e19412309aef",
+      "seconds": 8.27
+    },
+    "ZUUU": {
+      "profile": {
+        "REFUSED": 21,
+        "ContractError:FAIL_CLOSED_NO_P0:native_cross_oos_evaluation_not_passing": 12,
+        "ASOF_INPUT_ARITHMETIC_NOT_CURRENT_CHAIN_OOS": 221,
+        "FileNotFoundError:exact_root_packet_missing": 9
+      },
+      "roots": 242,
+      "output_bytes": 11036667,
+      "physics_input_bytes": 126886,
+      "sha256": "1dc08696ad8066bc3adb944568aa4fdc13cb1830d31e3a3fd4f3c5af61a76b69",
+      "seconds": 5.8
+    }
+  },
+  "current_chain_oos_complete": false,
+  "production_modified": false,
+  "compiler_sha256": "81315392ea1bd8462c96c62319890dfb25785c9cdec7cfc5fd3fc59e60a1bea6",
+  "native_oos_sha256": "91793b01e28dd9797a1593a4ac4b5aea7cad4cfa333a13494276cd38ba949d53"
+}

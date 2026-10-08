@@ -1,0 +1,13 @@
+*.jsonl.gz
+__pycache__/
+*.log
+*.tmp.gz
+p0_refit_manifests/
+p0_envelope_cache/
+nested_oos/**/*.json.gz
+fusion_refit_manifests/
+nested_compiler_probes/
+cloud_origin_eligibility/
+component_fit_receipts/
+restricted_refitted_fit.pre_cloud_origin.json
+alternative_member_proofs/
