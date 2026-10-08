@@ -2792,12 +2792,29 @@ def _refresh_forecast_physics(
         receipt = json.loads(
             completed.stdout.decode("utf-8", "replace").strip().splitlines()[-1]
         )
+        # 2026-10-08: the 10-07 15:31Z and 21:31Z rounds failed all 48
+        # stations in ~3 s each and this receipt said only ``captured: 0``;
+        # the per-station reasons were dropped, so nobody could tell a 429
+        # from anything else.  Keep them, counted by reason.
+        failed = [
+            row for row in receipt.get("failed") or ()
+            if isinstance(row, Mapping)
+        ]
+        failed_reasons: dict[str, int] = {}
+        for row in failed:
+            reason = str(row.get("reason") or row.get("state") or "unknown")[:120]
+            failed_reasons[reason] = failed_reasons.get(reason, 0) + 1
         state = {
             "state": "captured",
             "started_at_utc": started,
             "completed_at_utc": utc_now(),
             "station_count": receipt.get("station_count"),
             "captured": receipt.get("captured"),
+            "failed_count": len(failed),
+            "failed_reasons": failed_reasons,
+            "deferred_past_deadline": len(
+                receipt.get("deferred_past_deadline") or ()
+            ),
             "table_rows": receipt.get("table_rows"),
             "reference_only": True,
             "writes_truth_table": False,

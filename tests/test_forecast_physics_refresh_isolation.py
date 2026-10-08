@@ -80,3 +80,31 @@ def test_the_capture_is_pointed_at_the_workers_own_database(daemon, monkeypatch,
     assert len(seen) == 1
     argv = seen[0]
     assert argv[argv.index("--db") + 1] == str(tmp_path / "ssot.db")
+
+
+def test_the_resident_keeps_the_failure_reasons(daemon, monkeypatch, tmp_path):
+    """2026-10-07 15:31Z/21:31Z: 48 of 48 failed in ~3 s each and the receipt
+    said only ``captured: 0`` -- the reasons were dropped."""
+
+    monkeypatch.setenv("PM_FORECAST_PHYSICS_REFRESH", "on")
+    receipt = {
+        "station_count": 3, "captured": 1, "table_rows": 9,
+        "failed": [
+            {"station_id": "A", "state": "FAILED", "reason": "OSError:forecast_physics_http_status_429"},
+            {"station_id": "B", "state": "FAILED", "reason": "OSError:forecast_physics_http_status_429"},
+        ],
+        "deferred_past_deadline": ["C", "D"],
+    }
+    monkeypatch.setattr(
+        daemon.subprocess, "run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(
+            argv, 0, stdout=json.dumps(receipt).encode(), stderr=b""),
+    )
+
+    class Worker:
+        db_path = tmp_path / "ssot.db"
+
+    state = daemon._refresh_forecast_physics(Worker())
+    assert state["failed_count"] == 2
+    assert state["failed_reasons"] == {"OSError:forecast_physics_http_status_429": 2}
+    assert state["deferred_past_deadline"] == 2

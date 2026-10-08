@@ -62,6 +62,16 @@ SOURCE_ID = "OPEN_METEO_MODEL_FORECAST"
 TABLE = "calibration_station_forecast_physics"
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 REQUEST_SPACING_SECONDS = 0.8
+# The resident kills a forward run at 300 s (weather_basket_yes_daemon
+# ``_refresh_forecast_physics``).  Measured 2026-10-08 03:31Z: a loaded host
+# took ~15 s a station, the kill came after 19 of 48 and took the receipt with
+# it, and because the round always started at CYYZ the 29 stations from LFPB
+# on kept their 10-07 09:31Z forecast.  So a forward round starts with the
+# station whose last forward capture is oldest and stops starting fetches at
+# this deadline; the ones it did not reach go first next round.  Fetching all
+# 48 takes ~110 s; the worst case after the deadline is one fetch at curl's
+# 90 s cap plus the 60 s wait for the write lock, so 150 + 90 + 60 = 300.
+FORWARD_DEADLINE_SECONDS = 150.0
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -325,6 +335,64 @@ def ensure_schema(conn: sqlite3.Connection) -> int:
     return int(added or 0)
 
 
+def stalest_first(conn: sqlite3.Connection, stations: list[str]) -> list[str]:
+    """Never-captured stations, then the oldest last forward capture first.
+
+    Ties keep the given order (the sort is stable), so an all-fresh fleet
+    runs in canonical order.
+    """
+
+    last = dict(conn.execute(
+        f"SELECT station_id, MAX(captured_at_utc) FROM {TABLE}"
+        " WHERE capture_mode='forward' GROUP BY station_id"
+    ).fetchall())
+    return sorted(stations, key=lambda station: str(last.get(station) or ""))
+
+
+def write_fetched(
+    conn: sqlite3.Connection,
+    fetched: list[tuple[str, str, dict]],
+    *,
+    mode: str,
+) -> list[dict]:
+    """All fetched stations in one IMMEDIATE transaction, a savepoint each.
+
+    A station whose rows fail is rolled back alone; a failure to take the
+    write lock at all fails every station of the round, each saying so.
+    """
+
+    receipts: list[dict] = []
+    try:
+        conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+    except sqlite3.Error as exc:
+        reason = f"{type(exc).__name__}:{str(exc)[:160]}"
+        return [{"station_id": station_id, "state": "FAILED", "reason": reason}
+                for station_id, _tz, _fetched in fetched]
+    for station_id, settlement_timezone, payload in fetched:
+        conn.execute("SAVEPOINT station_capture")
+        try:
+            receipt = write_station(
+                conn,
+                station_id=station_id,
+                fetched=payload,
+                settlement_timezone=settlement_timezone,
+                mode=mode,
+            )
+            conn.execute("RELEASE station_capture")
+            receipts.append({**receipt, "state": "CAPTURED"})
+        except Exception as exc:  # noqa: BLE001 -- per-station isolation
+            conn.execute("ROLLBACK TO station_capture")
+            conn.execute("RELEASE station_capture")
+            receipts.append({
+                "station_id": station_id,
+                "state": "FAILED",
+                "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+            })
+    conn.commit()
+    return receipts
+
+
 def _fetch_json(url: str, *, timeout_seconds: int) -> dict:
     """One bounded HTTPS read through the platform trust store."""
 
@@ -378,6 +446,35 @@ def capture_station(
     a historical backfill of the hourly lane must not overwrite the daily
     rows the forward captures wrote for the same dates."""
 
+    fetched = fetch_station(
+        station_id=station_id,
+        start_date=start_date,
+        end_date=end_date,
+        settlement_timezone=settlement_timezone,
+        mode=mode,
+        timeout_seconds=timeout_seconds,
+    )
+    return write_station(
+        conn,
+        station_id=station_id,
+        fetched=fetched,
+        settlement_timezone=settlement_timezone,
+        mode=mode,
+        hourly_only=hourly_only,
+    )
+
+
+def fetch_station(
+    *,
+    station_id: str,
+    start_date: str,
+    end_date: str,
+    settlement_timezone: str,
+    mode: str,
+    timeout_seconds: int,
+) -> dict:
+    """The network half of a capture; touches no database."""
+
     scope = station_coordinates(station_id)
     query = {
         "latitude": scope["latitude"],
@@ -396,9 +493,26 @@ def capture_station(
     payload = _fetch_json(
         f"{base}?{urlencode(query)}", timeout_seconds=timeout_seconds
     )
+    captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return {"scope": scope, "payload": payload, "captured_at": captured_at}
+
+
+def write_station(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    fetched: dict,
+    settlement_timezone: str,
+    mode: str,
+    hourly_only: bool = False,
+) -> dict:
+    """The database half: the station's rows, versions and hourly versions."""
+
+    scope = fetched["scope"]
+    payload = fetched["payload"]
+    captured_at = fetched["captured_at"]
     daily = payload.get("daily") or {}
     days = daily.get("time") or []
-    captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     written = 0
     versions = 0
     for index, local_date in enumerate(days if not hourly_only else []):
@@ -488,6 +602,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--start-date", default=None)
     parser.add_argument("--end-date", default=None)
     parser.add_argument("--timeout-seconds", type=int, default=45)
+    parser.add_argument(
+        "--deadline-seconds", type=float, default=None,
+        help="stop starting stations after this many seconds "
+             f"(forward default {FORWARD_DEADLINE_SECONDS:g}; 0 = none)",
+    )
     parser.add_argument("--station", action="append", default=None)
     parser.add_argument(
         "--hourly-only", action="store_true",
@@ -515,8 +634,26 @@ def main(argv: list[str] | None = None) -> int:
     start_date = args.start_date or (today - timedelta(days=120)).isoformat()
     end_date = args.end_date or (today - timedelta(days=1)).isoformat()
     stations = args.station or list(CANONICAL_TARGET_STATIONS)
+    if args.mode == "forward":
+        stations = stalest_first(conn, stations)
+    deadline_seconds = (
+        args.deadline_seconds if args.deadline_seconds is not None
+        else FORWARD_DEADLINE_SECONDS if args.mode == "forward" else 0.0
+    )
+    started = time.monotonic()
     receipts = []
+    deferred: list[str] = []
+    # A forward round fetches every station it reaches first and writes them
+    # in one short IMMEDIATE transaction: one wait for the write lock instead
+    # of one per station.  2026-10-08: a station's writes take ~0.05 s, yet
+    # the per-station commits cost ~12 s each behind the production writer.
+    # A historical backfill runs for hours by hand, so it keeps committing
+    # each station as it goes.
+    fetched: list[tuple[str, str, dict]] = []
     for index, station_id in enumerate(stations):
+        if deadline_seconds > 0 and time.monotonic() - started >= deadline_seconds:
+            deferred = list(stations[index:])
+            break
         settlement_timezone = timezones.get(station_id)
         if not settlement_timezone:
             receipts.append({
@@ -525,18 +662,28 @@ def main(argv: list[str] | None = None) -> int:
             })
             continue
         try:
-            receipt = capture_station(
-                conn,
-                station_id=station_id,
-                start_date=start_date,
-                end_date=end_date,
-                settlement_timezone=settlement_timezone,
-                mode=args.mode,
-                timeout_seconds=args.timeout_seconds,
-                hourly_only=bool(args.hourly_only),
-            )
-            conn.commit()
-            receipts.append({**receipt, "state": "CAPTURED"})
+            if args.mode == "forward":
+                fetched.append((station_id, settlement_timezone, fetch_station(
+                    station_id=station_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    settlement_timezone=settlement_timezone,
+                    mode=args.mode,
+                    timeout_seconds=args.timeout_seconds,
+                )))
+            else:
+                receipt = capture_station(
+                    conn,
+                    station_id=station_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    settlement_timezone=settlement_timezone,
+                    mode=args.mode,
+                    timeout_seconds=args.timeout_seconds,
+                    hourly_only=bool(args.hourly_only),
+                )
+                conn.commit()
+                receipts.append({**receipt, "state": "CAPTURED"})
         except Exception as exc:  # noqa: BLE001 -- per-station isolation
             conn.rollback()
             receipts.append({
@@ -546,6 +693,8 @@ def main(argv: list[str] | None = None) -> int:
             })
         if index + 1 < len(stations):
             time.sleep(REQUEST_SPACING_SECONDS)
+    if fetched:
+        receipts.extend(write_fetched(conn, fetched, mode=args.mode))
     total = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
     version_total = conn.execute(
         f"SELECT COUNT(*) FROM {VERSION_TABLE}"
@@ -562,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
         "station_count": len(stations),
         "captured": sum(1 for r in receipts if r.get("state") == "CAPTURED"),
         "failed": [r for r in receipts if r.get("state") != "CAPTURED"],
+        "deferred_past_deadline": deferred,
         "table_rows": total,
         "version_rows": version_total,
         "versions_added": seeded_versions + sum(
