@@ -375,6 +375,27 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     # An order that never reached the venue waits this long before the next.
     "unsent_retry_seconds": 300.0,
     "source_value_refresh_seconds": 300.0,
+    # Charter 257 (rule ``cluster_taker_first_filtered_fixed_stake_v2``; user
+    # rulings 2026-10-09 「开实盘，利用现有的跟单策略，但是我的资金量有限，如何跟单」): the
+    # eight-wallet cluster the research found behind the account, followed on
+    # the FIRST taker buy of a bucket episode only, at a fixed stake, and only
+    # where our own served probability agrees by ``model_margin``.  Unused by v1.
+    "source_users": [
+        "0x8fbd7cf5f806f563080864694415829f7229a959",
+        "0x6fdd2bda5c031d551f588f176535f061a29a0b07",
+        "0x5bae7577f470244ce8e678d20693eee2b8ffed25",
+        "0x30200b893530920f253846199a153e6ac725df2b",
+        "0x0e0e8174e213ff2c2ccb30c5652a7b7d77c72d75",
+        "0x7076cb961e87bd22199445d02fe22973510cd0d9",
+        "0x7d640ebd20cf136bee351100438bba44ca2e07f8",
+        "0xf4d89f7e8c2fc8d2303e0f6b63cdff37fe304c91",
+    ],
+    "stake_usdc": 5.0,
+    "model_margin": 0.05,
+    "lead_hours": [12.0, 48.0],
+    "station_units": ["C"],
+    "model_stages": ["P0", "P0-M"],
+    "episode_gap_seconds": 3600.0,
 }
 
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak
@@ -386,6 +407,7 @@ STAKE_DIALS: dict[str, dict[str, Any]] = {
     LANE_TIEBREAK: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_TAIL_SHORT: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_PROPER_BET: {"bounds": (1.0, 100.0), "step": 1.0},
+    LANE_COPY_FOLLOW: {"bounds": (1.0, 50.0), "step": 1.0},
 }
 
 DEFAULT_LANES: dict[str, dict[str, Any]] = {

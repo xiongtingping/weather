@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-10-06T15:51:00Z",
+  "updated_at_utc": "2026-10-08T16:07:29Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane). Charter 231 (user rulings 2026-09-26 「调整下注规则」 and 「实盘上线，p＝天气模型」): the Proper 下注线 (proper_bet) replaces the basket's betting rule -- the basket is switched off here (it still compiles and records its decisions, which the new lane reads as its first decisions), and proper_bet opens on the P0 first decision. Charter 249 (user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」): proper_bet reopens on rule v3 -- YES on the market's modal bucket only, resting, P0 and more than 36 hours out; its sides switch reads [\"YES\"]. The far-tail lane (tail_short) keeps running beside it: another lane's acknowledged rung on a different bucket no longer holds its takes back.",
   "lanes": {
     "basket": {
@@ -108,7 +108,7 @@
       "rung_horizon_seconds": 900.0,
       "freshness": "envelope_validity",
       "freshness_note": "User ruling 2026-10-03 「按信封有效期」 (charter 249 (十)): a plan is made, and a rung re-posted, while the newest P0 decision's envelope is inside its own fresh_until_utc -- not only within first_decision_fresh_seconds of the decision. 'decision_age' restores the one-hour rule.",
-      "stake_usdc": 8.0,
+      "stake_usdc": 5.0,
       "stake_note": "Charter 252 (user ruling 2026-10-04 「还有Proper 下注线的单笔预算调整按钮」): the position is filled up to stake_usdc at the leg's planned price, never under the venue's five-share minimum, the stake cut to the free cash. A board dial (POST /api/lane-stake). At 1 USDC it is the minimum rule wherever the leg is priced at 0.20 or more; under 0.20 the plan carries the dollar charter 83 used to add at the send."
     },
     "tail_short": {
@@ -136,6 +136,51 @@
       "rule_changed_at_utc": "2026-10-06T15:51:00Z",
       "rule_note": "Charter 251 (user ruling 2026-10-04 「改规则，把模型当过滤器」): v1 plus the model filter -- the station-day's newest P0 envelope, inside its validity, puts the bucket strictly under the YES best bid; judged where the leg is first sendable and at every send, a bucket once refused stays out for the station-day. Thrown after the resident restarted on b043d765 (pid 47301, 2026-10-04T12:25:26Z). market_far_tail_no_taker_v1 restores the market-only lane. Charter 251 (六) (user ruling 2026-10-07 「改」): rule v3 -- the filter reads the served P0 vector moved along the station's ladder to the market's own centre (tail_short_lane.centred_vector), the model's width and shape on the market's centre; everything else is v2's. Thrown after the resident restarted on ba13a711 (pid 94340, 2026-10-06T15:50:26Z). market_far_tail_no_taker_model_below_bid_v2 restores the uncentred filter.",
       "paused_at_utc": "2026-10-05T06:59:15Z"
+    },
+    "copy_follow": {
+      "enabled": false,
+      "rule": "cluster_taker_first_filtered_fixed_stake_v2",
+      "source_user": "0x8fbd7cf5f806f563080864694415829f7229a959",
+      "source_users": [
+        "0x8fbd7cf5f806f563080864694415829f7229a959",
+        "0x6fdd2bda5c031d551f588f176535f061a29a0b07",
+        "0x5bae7577f470244ce8e678d20693eee2b8ffed25",
+        "0x30200b893530920f253846199a153e6ac725df2b",
+        "0x0e0e8174e213ff2c2ccb30c5652a7b7d77c72d75",
+        "0x7076cb961e87bd22199445d02fe22973510cd0d9",
+        "0x7d640ebd20cf136bee351100438bba44ca2e07f8",
+        "0xf4d89f7e8c2fc8d2303e0f6b63cdff37fe304c91"
+      ],
+      "sides": [
+        "YES",
+        "NO"
+      ],
+      "mirror_sells": false,
+      "stake_usdc": 5.0,
+      "model_margin": 0.05,
+      "max_slippage": 0.06,
+      "lead_hours": [
+        12.0,
+        48.0
+      ],
+      "station_units": [
+        "C"
+      ],
+      "model_stages": [
+        "P0",
+        "P0-M"
+      ],
+      "episode_gap_seconds": 3600.0,
+      "max_source_age_seconds": 1800.0,
+      "min_order_shares": 5.0,
+      "rung_horizon_seconds": 900.0,
+      "send_book_fresh_seconds": 120.0,
+      "live_ws_book": true,
+      "max_daily_cost_usdc": 40.0,
+      "max_sends_per_pass": 8,
+      "unsent_retry_seconds": 300.0,
+      "rule_changed_at_utc": "2026-10-08T16:07:29Z",
+      "note": "Charter 257 (user ruling 2026-10-09 「开实盘，利用现有的跟单策略，但是我的资金量有限，如何跟单」): follow the eight-wallet cluster's FIRST taker buy of a bucket episode only, fixed stake_usdc per leg, daily budget max_daily_cost_usdc, legs ranked by our margin; admitted only at 12-48h to the event's local noon, on C stations, when our served P0/P0-M probability clears the source price by model_margin; the cap is min(source price + max_slippage, our p - model_margin); sells and merges are not mirrored (winners leave through the 0.998 recycle lane). Research: docs/research/benchmark_account_0x8fbd_20261008 rounds 7 and 10 -- +4.8c/share at a 2c cost, three weeks positive; backtest at B=40/L=5/K=8: +131.9 U over 15 days, worst day -17.9 U. Default off; the board switch is the operator's. v1 (source_positions_value_ratio_at_source_price_v1) remains selectable."
     }
   }
 }

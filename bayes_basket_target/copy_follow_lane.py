@@ -76,7 +76,10 @@ LANE_TITLE = "跟单线"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "copy_follow_lane_plan_v1"
 RULE_V1 = "source_positions_value_ratio_at_source_price_v1"
-RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1"}
+#: Charter 257: the first taker buy of a bucket episode by any wallet of the
+#: cluster, followed at a fixed stake where our served probability agrees.
+RULE_V2 = "cluster_taker_first_filtered_fixed_stake_v2"
+RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1", RULE_V2: "copy_follow_lane_v2"}
 RATIO_BASES = frozenset({"source_positions_value"})
 SOURCE_TABLE = "copy_follow_source_trades"
 EVALUATION_TABLE = "copy_follow_lane_evaluation"
@@ -88,6 +91,14 @@ DATA_API_HOST = os.environ.get("POLY_DATA_API_HOST", "https://data-api.polymarke
 #: The data API refuses an activity offset past this.
 MAX_ACTIVITY_OFFSET = 5000
 ACTIVITY_PAGE_SIZE = 500
+#: ``/trades?takerOnly=true`` pages newest first; a pass reads back to its cursor.
+TRADES_PAGE_SIZE = 500
+MAX_TRADES_OFFSET = 2000
+#: Charter 257: the extra columns v2 stamps on each source trade and plan.
+SOURCE_V2_COLUMNS = (("taker", "INTEGER"), ("model_stage", "TEXT"), ("our_p", "REAL"),
+                     ("price_cap", "REAL"), ("model_margin", "REAL"))
+EVALUATION_V2_COLUMNS = (("our_p", "REAL"), ("price_cap", "REAL"), ("model_stage", "TEXT"),
+                         ("model_margin", "REAL"))
 HTTP_TIMEOUT_SECONDS = 10.0
 #: The gateway signs a BUY at its default tick (the payload carries none), so
 #: a price off the cent grid is one nobody quoted -- see ``tail_short_lane``.
@@ -191,6 +202,11 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     conn.execute(EVALUATION_INDEX_DDL)
     conn.execute(STATE_DDL)
+    for table, columns in ((SOURCE_TABLE, SOURCE_V2_COLUMNS), (EVALUATION_TABLE, EVALUATION_V2_COLUMNS)):
+        present = {str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})")}
+        for column, decl in columns:
+            if column not in present:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +321,78 @@ def fetch_source_positions_value(user: str, *, fetch: Fetch = _http_get) -> floa
     return value
 
 
+def fetch_source_taker_trades(user: str, *, start_ts: int, fetch: Fetch = _http_get) -> list[dict[str, Any]]:
+    """The wallet's TAKER fills at or after ``start_ts`` (``/trades`` with
+    ``takerOnly=true`` pages newest first; the read stops at the first page
+    that reaches back past the cursor).  Charter 257: a maker fill of the
+    source is somebody else's decision to trade with it, not its own."""
+
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while offset <= MAX_TRADES_OFFSET:
+        page = fetch("/trades", {"user": user, "takerOnly": "true", "limit": TRADES_PAGE_SIZE, "offset": offset})
+        if not isinstance(page, list):
+            raise ValueError(f"copy_follow_trades_not_a_list:{str(page)[:120]}")
+        kept = [dict(r) for r in page if isinstance(r, Mapping) and int(r.get("timestamp") or 0) >= int(start_ts)]
+        rows.extend(kept)
+        if len(page) < TRADES_PAGE_SIZE or len(kept) < len(page):
+            break
+        offset += TRADES_PAGE_SIZE
+    rows.sort(key=lambda r: (int(r.get("timestamp") or 0), str(r.get("transactionHash") or "")))
+    return rows
+
+
+def served_side_probability(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str, side: str,
+    stages: Sequence[str], now_utc: str,
+) -> dict[str, Any]:
+    """Our newest committed served probability of ``bucket`` on ``side`` from a
+    stage in ``stages`` (charter 257): ``{"state": "ok", "p", "stage",
+    "decision_at_utc"}``, else a named state.  Normalised over the ladder and
+    floored at 1e-3 the way the lanes read it."""
+
+    wanted = [str(x) for x in stages]
+    if not wanted:
+        return {"state": "no_stage_allowed"}
+    marks = ",".join("?" for _ in wanted)
+    row = conn.execute(
+        "SELECT history_id, stage, decision_at_utc FROM basket_probability_bridge_history"
+        f" WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage IN ({marks}) AND decision_at_utc<=?"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station_id, event_date, *wanted, now_utc),
+    ).fetchone()
+    if row is None:
+        return {"state": "no_served_probability"}
+    probs = {str(b): float(p) for b, p in conn.execute(
+        "SELECT bucket, probability FROM basket_probability_bridge_bucket_probability WHERE history_id=?", (row[0],),
+    )}
+    total = sum(probs.values())
+    if not probs or not (total > 0.0 and math.isfinite(total)):
+        return {"state": "served_probability_unreadable"}
+    floored = {b: max(v / total, 1e-3) for b, v in probs.items()}
+    scale = sum(floored.values())
+    p_yes = floored.get(str(bucket))
+    if p_yes is None:
+        return {"state": "bucket_not_served"}
+    p_yes /= scale
+    return {"state": "ok", "p": p_yes if side == "YES" else 1.0 - p_yes, "stage": str(row[1]),
+            "decision_at_utc": str(row[2])}
+
+
+def lead_hours(event_date: str, settlement_timezone: str, now_utc: str) -> float | None:
+    """Hours from ``now_utc`` to the event day's local noon (the research
+    clock the charter 257 window is stated on)."""
+
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    try:
+        zone = ZoneInfo(settlement_timezone or "UTC")
+        noon = datetime.combine(date.fromisoformat(event_date), datetime.min.time(), tzinfo=zone).replace(hour=12)
+    except (ValueError, KeyError):
+        return None
+    return (noon.astimezone(timezone.utc) - _utc(now_utc)).total_seconds() / 3600.0
+
+
 def source_key(trade: Mapping[str, Any], occurrence: int) -> str:
     """One activity row, the same on every read of it: the fields the API
     returns for a fill, and its place among identical rows of one read."""
@@ -373,7 +461,7 @@ def map_source_token(
     if not station:
         return {"refusal": f"city_not_in_fleet:{city}"}
     row = conn.execute(
-        "SELECT outcome, yes_token, no_token, settlement_timezone FROM basket_target_market_registry"
+        "SELECT outcome, yes_token, no_token, settlement_timezone, settlement_unit FROM basket_target_market_registry"
         " WHERE station_id=? AND event_date=? AND slug=? AND (yes_token=? OR no_token=?)"
         " ORDER BY rowid DESC LIMIT 1",
         (station, event_date, str(event_slug), token, token),
@@ -384,6 +472,7 @@ def map_source_token(
         "station_id": station, "event_date": event_date, "bucket": str(row[0]),
         "side": "YES" if str(row[1]) == token else "NO",
         "settlement_timezone": str(row[3] or ""),
+        "settlement_unit": str(row[4] or ""),
     }
     _TOKEN_CACHE[token] = mapped
     return dict(mapped)
@@ -535,6 +624,155 @@ def ingest_source_trades(
         )
     return {"state": "ingested", "cursor_ts": cursor, "fetched": len(trades), "ingested": len(fresh),
             "admitted": admitted, "ratio": ratio}
+
+
+def ingest_cluster_taker_trades(
+    conn: sqlite3.Connection, *, cfg: Mapping[str, Any], now_utc: str, fetch: Fetch,
+) -> dict[str, Any]:
+    """Charter 257: read every cluster wallet's new TAKER fills and write each
+    one, admitted (the first buy of a bucket episode, inside the lead window,
+    on a station in ``station_units``, where our served probability from a
+    stage in ``model_stages`` clears the source's price by ``model_margin``)
+    or refused by name.  An admitted trade's ``scaled_shares`` is the fixed
+    ``stake_usdc`` worth of shares at the price cap."""
+
+    users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
+    cities = city_stations()
+    sides = {str(x).strip().upper() for x in (cfg.get("sides") or ())}
+    units = {str(x).strip().upper() for x in (cfg.get("station_units") or ())}
+    stages = [str(x) for x in (cfg.get("model_stages") or ())]
+    window = list(cfg.get("lead_hours") or (0.0, 0.0))
+    lead_lo, lead_hi = float(window[0]), float(window[1])
+    gap = float(cfg.get("episode_gap_seconds") or 0.0)
+    stake = float(cfg.get("stake_usdc") or 0.0)
+    margin = float(cfg.get("model_margin") or 0.0)
+    slippage = max(0.0, float(cfg.get("max_slippage") or 0.0))
+    max_age = float(cfg.get("max_source_age_seconds") or 0.0)
+    now = _utc(now_utc).timestamp()
+    receipt: dict[str, Any] = {"state": "ingested", "users": {}, "fetched": 0, "ingested": 0, "admitted": 0}
+    if not (stake > 0.0):
+        return {**receipt, "state": "stake_not_positive"}
+    for user in users:
+        start = follow_start(conn, user=user, cfg=cfg, now_utc=now_utc)
+        cursor = source_cursor(conn, user=user, floor_ts=start)
+        try:
+            trades = fetch_source_taker_trades(user, start_ts=cursor, fetch=fetch)
+        except Exception as exc:  # noqa: BLE001 -- one wallet's failed read does not stop the others
+            receipt["users"][user] = {"state": "read_failed", "reason": f"{type(exc).__name__}:{exc}"[:160]}
+            continue
+        known = {str(r[0]) for r in conn.execute(
+            f"SELECT source_key FROM {SOURCE_TABLE} WHERE source_user=? AND source_ts>=?", (user, cursor))}
+        seen: dict[tuple, int] = {}
+        fresh: list[tuple[str, dict[str, Any]]] = []
+        for trade in trades:
+            identity = (trade.get("transactionHash"), trade.get("asset"), trade.get("side"),
+                        trade.get("size"), trade.get("price"), trade.get("timestamp"))
+            occurrence = seen.get(identity, 0)
+            seen[identity] = occurrence + 1
+            key = source_key(trade, occurrence)
+            if key not in known:
+                fresh.append((key, trade))
+        admitted = 0
+        for key, trade in fresh:
+            try:
+                ts = int(trade["timestamp"])
+                size = float(trade["size"])
+                price = float(trade["price"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            action = str(trade.get("side") or "").strip().upper()
+            token = str(trade.get("asset") or "").strip()
+            mapped = map_source_token(conn, event_slug=str(trade.get("eventSlug") or ""), token_id=token, cities=cities)
+            refusal = mapped.get("refusal")
+            served: dict[str, Any] = {}
+            cap = None
+            if refusal is None and action != "BUY":
+                refusal = f"action_not_followed:{action}"
+            if refusal is None and mapped["side"] not in sides:
+                refusal = f"side_not_followed:{mapped['side']}"
+            if refusal is None and ts < start:
+                refusal = "before_follow_start"
+            if refusal is None and max_age > 0.0 and now - ts > max_age:
+                refusal = "source_trade_stale"
+            if refusal is None and not (size > 0.0 and 0.0 < price < 1.0):
+                refusal = "trade_invalid"
+            if refusal is None and str(mapped.get("settlement_unit") or "").upper() not in units:
+                refusal = f"station_unit_not_followed:{mapped.get('settlement_unit')}"
+            if refusal is None:
+                lead = lead_hours(str(mapped["event_date"]), str(mapped.get("settlement_timezone") or ""), now_utc)
+                if lead is None:
+                    refusal = "lead_unknown"
+                elif not (lead_lo <= lead < lead_hi):
+                    refusal = f"lead_outside_window:{lead:.1f}h"
+            if refusal is None and gap > 0.0:
+                earlier = conn.execute(
+                    f"SELECT 1 FROM {SOURCE_TABLE} WHERE token_id=? AND refusal IS NULL AND source_ts>=? AND source_ts<=? LIMIT 1",
+                    (token, ts - int(gap), ts),
+                ).fetchone()
+                if earlier is not None:
+                    refusal = "episode_already_followed"
+            if refusal is None:
+                served = served_side_probability(
+                    conn, station_id=str(mapped["station_id"]), event_date=str(mapped["event_date"]),
+                    bucket=str(mapped["bucket"]), side=str(mapped["side"]), stages=stages, now_utc=now_utc,
+                )
+                if served.get("state") != "ok":
+                    refusal = f"model:{served.get('state')}"
+                else:
+                    cap = min(price + slippage, float(served["p"]) - margin, MAX_PRICE)
+                    if cap < price - 1e-9:
+                        refusal = f"model_margin_short:{float(served['p']):.3f}<{price + margin:.3f}"
+            scaled = round(stake / cap, 6) if refusal is None and cap else None
+            admitted += int(refusal is None)
+            conn.execute(
+                f"INSERT OR IGNORE INTO {SOURCE_TABLE}(source_key, source_user, source_ts, source_at_utc,"
+                " transaction_hash, token_id, condition_id, order_action, outcome_side, size, price, usdc_size,"
+                " event_slug, title, station_id, event_date, bucket, settlement_timezone, ratio, our_equity_usdc,"
+                " source_value_usdc, scaled_shares, refusal, ingested_at_utc, taker, model_stage, our_p, price_cap,"
+                " model_margin)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (key, user, ts, _z(datetime.fromtimestamp(ts, timezone.utc)), str(trade.get("transactionHash") or ""),
+                 token, str(trade.get("conditionId") or ""), action, mapped.get("side"), size, price,
+                 trade.get("usdcSize", round(size * price, 6)), str(trade.get("eventSlug") or ""),
+                 str(trade.get("title") or ""), mapped.get("station_id"), mapped.get("event_date"),
+                 mapped.get("bucket"), mapped.get("settlement_timezone"), None, None, None, scaled, refusal, now_utc,
+                 1, served.get("stage"), served.get("p"), cap,
+                 (float(served["p"]) - price) if served.get("state") == "ok" else None),
+            )
+        receipt["users"][user] = {"state": "ingested", "cursor_ts": cursor, "fetched": len(trades),
+                                  "ingested": len(fresh), "admitted": admitted}
+        receipt["fetched"] += len(trades)
+        receipt["ingested"] += len(fresh)
+        receipt["admitted"] += admitted
+    return receipt
+
+
+def cluster_targets(conn: sqlite3.Connection, *, users: Sequence[str], since_event_date: str) -> dict[str, dict[str, Any]]:
+    """Charter 257: per token, the admitted cluster buys since ``since_event_date``
+    -- the fixed stake's shares, the newest source price, our probability and
+    the cap stamped at admission, and the margin the pass ranks on."""
+
+    out: dict[str, dict[str, Any]] = {}
+    if not users:
+        return out
+    marks = ",".join("?" for _ in users)
+    for (token, user, station, day, bucket, side, tz, scaled, price, ts, our_p, cap, margin, stage) in conn.execute(
+        f"SELECT token_id, source_user, station_id, event_date, bucket, outcome_side, settlement_timezone,"
+        f" scaled_shares, price, source_ts, our_p, price_cap, model_margin, model_stage FROM {SOURCE_TABLE}"
+        f" WHERE source_user IN ({marks}) AND event_date>=? AND refusal IS NULL AND order_action='BUY'"
+        f" ORDER BY source_ts, source_key",
+        (*users, since_event_date),
+    ):
+        entry = out.setdefault(str(token), {
+            "token_id": str(token), "station_id": str(station), "event_date": str(day), "bucket": str(bucket),
+            "side": str(side), "settlement_timezone": str(tz or ""), "target": 0.0, "buy_price": None,
+            "sell_price": None, "last_ts": None, "source_user": str(user), "our_p": None, "price_cap": None,
+            "model_margin": None, "model_stage": None,
+        })
+        entry["target"] = entry["target"] + float(scaled or 0.0)
+        entry.update(buy_price=float(price), last_ts=int(ts), source_user=str(user), our_p=our_p, price_cap=cap,
+                     model_margin=margin, model_stage=stage)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -768,19 +1006,39 @@ def execute_copy_follow(
     if str(cfg.get("rule")) not in RULE_VERSIONS:
         raise ValueError(f"copy_follow_rule_unknown:{cfg.get('rule')}")
     rule_version = RULE_VERSIONS[str(cfg["rule"])]
-    user = str(cfg.get("source_user") or "").strip().lower()
-    if not re.fullmatch(r"0x[0-9a-f]{40}", user):
-        raise ValueError(f"copy_follow_source_user_invalid:{user}")
-    cfg["source_user"] = user
+    cluster_rule = str(cfg["rule"]) == RULE_V2
+    if cluster_rule:
+        users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
+        for candidate in users:
+            if not re.fullmatch(r"0x[0-9a-f]{40}", candidate):
+                raise ValueError(f"copy_follow_source_user_invalid:{candidate}")
+        if not users:
+            raise ValueError("copy_follow_source_users_empty")
+        cfg["source_users"] = users
+        user = users[0]
+    else:
+        user = str(cfg.get("source_user") or "").strip().lower()
+        if not re.fullmatch(r"0x[0-9a-f]{40}", user):
+            raise ValueError(f"copy_follow_source_user_invalid:{user}")
+        cfg["source_user"] = user
     ensure_lane_schema(target_conn)
     cycles_settled = settle_stuck_lane_cycles(target_conn)
     cache = _RATIO_CACHE if ratio_cache is None else ratio_cache
-    try:
-        ingest = ingest_source_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, ratio_cache=cache)
-    except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
-        ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
     since = (_utc(now_utc) - timedelta(days=1)).date().isoformat()
-    targets = source_targets(target_conn, user=user, since_event_date=since)
+    if cluster_rule:
+        try:
+            ingest = ingest_cluster_taker_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch)
+        except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
+            ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
+        targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since)
+    else:
+        try:
+            ingest = ingest_source_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, ratio_cache=cache)
+        except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
+            ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
+        targets = source_targets(target_conn, user=user, since_event_date=since)
+    margin = float(cfg.get("model_margin") or 0.0)
+    stages = [str(x) for x in (cfg.get("model_stages") or ())]
     min_shares = float(cfg.get("min_order_shares") or 5.0)
     slippage = max(0.0, float(cfg.get("max_slippage") or 0.0))
     horizon = float(cfg.get("rung_horizon_seconds") or 0.0)
@@ -797,13 +1055,15 @@ def execute_copy_follow(
     receipts: list[dict[str, Any]] = []
     refusals: dict[str, int] = {}
     budget_left = float(cfg.get("max_daily_cost_usdc") or 0.0) - lane_cost_today(target_conn, now_utc=now_utc)
-    for token, want in sorted(targets.items(), key=lambda kv: -(kv[1]["last_ts"] or 0)):
+    ranking = ((lambda kv: -(kv[1].get("model_margin") or 0.0)) if cluster_rule
+               else (lambda kv: -(kv[1]["last_ts"] or 0)))
+    for token, want in sorted(targets.items(), key=ranking):
         station, day, bucket, side = want["station_id"], want["event_date"], want["bucket"], want["side"]
         position = lane_position(target_conn, station_id=station, event_date=day, token_id=token)
         target = round(float(want["target"]), 6)
         gap = round(target - float(position["held"]), 6)
         row: dict[str, Any] = {
-            "source_user": user, "token_id": token, "station_id": station, "event_date": day,
+            "source_user": want.get("source_user") or user, "token_id": token, "station_id": station, "event_date": day,
             "bucket": bucket, "side": side, "evaluated_at_utc": now_utc, "rule_version": rule_version,
             "target_shares": target, "held_shares": float(position["held"]), "gap_shares": gap,
         }
@@ -814,7 +1074,7 @@ def execute_copy_follow(
         row["order_action"] = action
         if position["open_order"]:
             plan = {"refusal": "order_open"}
-        elif action == "SELL" and cfg.get("mirror_sells", True) is not True:
+        elif action == "SELL" and (cluster_rule or cfg.get("mirror_sells", True) is not True):
             plan = {"refusal": "sells_not_mirrored"}
         elif action == "SELL" and want["sell_price"] is None:
             plan = {"refusal": "no_source_sell_price"}
@@ -840,8 +1100,24 @@ def execute_copy_follow(
                     plan = {"refusal": "bucket_not_on_book"}
                 elif action == "BUY":
                     row["source_price"] = want["buy_price"]
-                    plan = plan_buy(quote, price_cap=min(float(want["buy_price"]) + slippage, MAX_PRICE),
-                                    gap=gap, min_shares=min_shares)
+                    cap = min(float(want["buy_price"]) + slippage, MAX_PRICE)
+                    if cluster_rule:
+                        # Charter 257: judged again at the send -- our newest served probability
+                        # must still clear the cap by the margin, else the follow waits.
+                        served = served_side_probability(
+                            target_conn, station_id=station, event_date=day, bucket=bucket, side=side,
+                            stages=stages, now_utc=now_utc,
+                        )
+                        if served.get("state") != "ok":
+                            plan = {"refusal": f"model:{served.get('state')}"}
+                        else:
+                            cap = min(cap, float(served["p"]) - margin)
+                            row.update(our_p=float(served["p"]), model_stage=served.get("stage"),
+                                       model_margin=float(served["p"]) - float(want["buy_price"]), price_cap=cap)
+                            if cap < float(want["buy_price"]) - 1e-9:
+                                plan = {"refusal": f"model_margin_short:{float(served['p']):.3f}<{float(want['buy_price']) + margin:.3f}"}
+                    if not plan:
+                        plan = plan_buy(quote, price_cap=cap, gap=gap, min_shares=min_shares)
                     if not plan.get("refusal") and float(plan["notional_usdc"]) > budget_left + 1e-9:
                         plan = {"refusal": f"daily_cost_limit:{max(budget_left, 0.0):.2f}"}
                     if not plan.get("refusal"):
@@ -870,8 +1146,9 @@ def execute_copy_follow(
         _record(target_conn, row)
         plan_body = {**{k: row.get(k) for k in ("token_id", "station_id", "event_date", "bucket", "side",
                                                  "target_shares", "held_shares", "gap_shares", "source_price",
-                                                 "book_source", "book_observed_at", "bid", "ask")},
-                     **plan, "source_user": user, "rule": rule_version}
+                                                 "book_source", "book_observed_at", "bid", "ask", "our_p",
+                                                 "price_cap", "model_stage", "model_margin")},
+                     **plan, "source_user": row["source_user"], "rule": rule_version}
         sends += 1
         if action == "BUY":
             venue: dict[str, Any] = {}
@@ -933,6 +1210,7 @@ def execute_copy_follow(
         "state": "ran",
         "rule": rule_version,
         "source_user": user,
+        **({"source_users": cfg["source_users"]} if cluster_rule else {}),
         "ingest": ingest,
         "tokens": len(targets),
         "planned": len(receipts),
@@ -953,6 +1231,12 @@ __all__ = [
     "LANE",
     "LANE_TITLE",
     "RULE_V1",
+    "RULE_V2",
+    "cluster_targets",
+    "fetch_source_taker_trades",
+    "ingest_cluster_taker_trades",
+    "lead_hours",
+    "served_side_probability",
     "SOURCE_TABLE",
     "copy_ratio",
     "ensure_lane_schema",

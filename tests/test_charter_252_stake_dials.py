@@ -117,10 +117,13 @@ def test_the_planner_reads_the_dial(store, monkeypatch) -> None:
 # The dials.
 
 
-def test_one_stake_table_for_the_three_lanes() -> None:
-    assert set(lanes.STAKE_DIALS) == {lanes.LANE_TIEBREAK, lanes.LANE_TAIL_SHORT, lanes.LANE_PROPER_BET}
-    for dial in lanes.STAKE_DIALS.values():
-        assert dial["bounds"] == (1.0, 100.0) and dial["step"] == 1.0
+def test_one_stake_table_for_the_dialled_lanes() -> None:
+    # Charter 252's three, plus charter 257's copy-follow stake (bounded 1..50).
+    assert set(lanes.STAKE_DIALS) == {lanes.LANE_TIEBREAK, lanes.LANE_TAIL_SHORT, lanes.LANE_PROPER_BET,
+                                      lanes.LANE_COPY_FOLLOW}
+    for name, dial in lanes.STAKE_DIALS.items():
+        assert dial["bounds"] == ((1.0, 50.0) if name == lanes.LANE_COPY_FOLLOW else (1.0, 100.0))
+        assert dial["step"] == 1.0
     assert lanes.validate_lane_stake("tail_short", 12.345) == 12.35
     for lane_name, bad in (("tail_short", 0.5), ("proper_bet", 101), ("proper_bet", "x"),
                            ("tail_short", float("nan")), ("p1_consensus", 5)):

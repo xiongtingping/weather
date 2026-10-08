@@ -62,7 +62,7 @@ def _seed(conn, *, book=None, observed=NOW, equity=200.0):
     for bucket in LADDER:
         _insert(conn, "basket_target_market_registry", {
             "snapshot_sha256": registry_sha, "slug": SLUG, "event_date": ED, "outcome": bucket,
-            "city_slug": "shanghai", "station_id": ST, "settlement_timezone": TZ,
+            "city_slug": "shanghai", "station_id": ST, "settlement_timezone": TZ, "settlement_unit": "C",
             "yes_token": f"yes_{bucket}", "no_token": f"no_{bucket}", "market_active": 1,
             "market_accepting_orders": 1, "registry_json": json.dumps({"order_min_size": 5.0}),
             "refreshed_at": NOW, "source_eligible": 1, "source_lane": "awc",
@@ -165,7 +165,8 @@ def test_a_token_maps_to_its_registry_row_yes_or_no(store) -> None:
     cities = lane.city_stations()
     assert cities["shanghai"] == ST
     assert lane.map_source_token(store, event_slug=SLUG, token_id="yes_28°C", cities=cities) == {
-        "station_id": ST, "event_date": ED, "bucket": "28°C", "side": "YES", "settlement_timezone": TZ}
+        "station_id": ST, "event_date": ED, "bucket": "28°C", "side": "YES", "settlement_timezone": TZ,
+        "settlement_unit": "C"}
     assert lane.map_source_token(store, event_slug=SLUG, token_id="no_27°C", cities=cities)["side"] == "NO"
     assert lane.map_source_token(store, event_slug=SLUG, token_id="other", cities=cities) == {
         "refusal": "token_not_on_registry"}
