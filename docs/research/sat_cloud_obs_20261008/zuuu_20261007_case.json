@@ -1,0 +1,105 @@
+{
+ "source": "https://previous-runs-api.open-meteo.com/v1/forecast?latitude=30.576&longitude=103.95&timezone=Asia%2FShanghai&start_date=2026-10-07&end_date=2026-10-07&hourly=cloud_cover_previous_day1,cloud_cover_low_previous_day1,shortwave_radiation_previous_day1",
+ "rows": [
+  {
+   "local": "09:00",
+   "sat_cloudy": 0.84,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 6112.0,
+   "fc_total": 58,
+   "fc_low": null,
+   "fc_sw": 144.0,
+   "public": "01:18Z"
+  },
+  {
+   "local": "10:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 8369.0,
+   "fc_total": 63,
+   "fc_low": null,
+   "fc_sw": 323.0,
+   "public": "02:18Z"
+  },
+  {
+   "local": "11:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 10244.0,
+   "fc_total": 44,
+   "fc_low": null,
+   "fc_sw": 544.0,
+   "public": "03:17Z"
+  },
+  {
+   "local": "12:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.08,
+   "top_median_m": 4287.0,
+   "fc_total": 37,
+   "fc_low": null,
+   "fc_sw": 614.0,
+   "public": "04:17Z"
+  },
+  {
+   "local": "13:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 4121.0,
+   "fc_total": 48,
+   "fc_low": null,
+   "fc_sw": 704.0,
+   "public": "05:18Z"
+  },
+  {
+   "local": "14:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 4756.0,
+   "fc_total": 41,
+   "fc_low": null,
+   "fc_sw": 629.0,
+   "public": "06:18Z"
+  },
+  {
+   "local": "15:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 3846.0,
+   "fc_total": 40,
+   "fc_low": null,
+   "fc_sw": 470.0,
+   "public": "07:17Z"
+  },
+  {
+   "local": "16:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.12,
+   "top_median_m": 3055.0,
+   "fc_total": 53,
+   "fc_low": null,
+   "fc_sw": 347.0,
+   "public": "08:18Z"
+  },
+  {
+   "local": "17:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 3139.0,
+   "fc_total": 33,
+   "fc_low": null,
+   "fc_sw": 227.0,
+   "public": "09:17Z"
+  },
+  {
+   "local": "18:00",
+   "sat_cloudy": 1.0,
+   "sat_low_top6500": 0.0,
+   "top_median_m": 3165.0,
+   "fc_total": 13,
+   "fc_low": null,
+   "fc_sw": 137.0,
+   "public": "10:17Z"
+  }
+ ]
+}

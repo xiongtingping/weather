@@ -1,0 +1,4 @@
+__pycache__/
+*.log
+.goes_chunk.log
+*.tmp.gz

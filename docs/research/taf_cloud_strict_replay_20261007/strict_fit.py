@@ -23,6 +23,9 @@ from clock_offsets import ClosedClocks
 from fit_storage import write_fit_report
 
 
+SAT_STATIONS={'CYYZ','KATL','KAUS','KBKF','KDAL','KHOU','KLAX','KLGA','KMIA','KORD','KSEA','KSFO','MMMX','MPMG','SAEZ','SBGR','NZWN','RCSS','RJTT','RKPK','RKSI','RPLL','WMKK','WSSS','ZBAA','ZGGG','ZGSZ','ZHHH','ZSPD','ZSQD','ZUCK','ZUUU'}
+
+
 def label_at(r,at=None):
     eligible=[x for x in r['truth_revisions'] if at is None or utc(x['known_at'])<=at]
     if not eligible:return None
@@ -51,7 +54,41 @@ def served_parent(source,r):
     return dict(p,probabilities=probs,posterior_sha256=content_sha256(probs),lineage=lineage)
 
 
-def read_rows(folder,parent='research'):
+def satellite_sky(r,sky):
+    """Replace the METAR side of each TAF cloud pair with the satellite's own
+    fraction (docs/research/sat_cloud_obs_20261008): the newest scan public
+    (S3 LastModified) at the anchor and begun within 2 h of it, against the
+    same TAF coverage interval.  Heights without a satellite reading become
+    unknown; stations without a satellite stay without evidence."""
+    rec=sky.at(r['station'],r['as_of'])
+    if rec is None:
+        r['cloud_pairs']={m:None for m in ('latest','day1','nwp')};return False
+    r['cloud_observation_valid_at']=rec['scan_start'];r['cloud_observation_origin_eligible']=True;r['satellite_scan']=rec
+    for m,p in list(r['cloud_pairs'].items()):
+        if p is None:continue
+        inc={}
+        for h in ('1500','3000','5000','6500'):
+            value=rec.get('low_'+h)
+            inc[h]=sky.increment(value,p['forecast_intervals'].get(h)) if value is not None else None
+        r['cloud_pairs'][m]=dict(p,coverage_increment=inc,base_lowering_km=None)
+    # Like for like: the satellite's total cloud against the NWP's total
+    # cloud forecast issued a day before (not the TAF's base-defined cover).
+    fc=sky.features.forecast_total(r['station'],rec['scan_start'])
+    r['cloud_pairs']['nwp']=None if fc is None else dict(coverage_increment={'total':rec['cloudy']-fc},base_lowering_km=None,
+        sha='open-meteo:cloud_cover_previous_day1',known_at=stamp(utc(rec['scan_start'])-timedelta(hours=24)),forecast_total=fc)
+    return True
+
+
+class SatelliteSky:
+    def __init__(self):
+        sys.path.insert(0,str(ROOT/'docs/research/sat_cloud_obs_20261008'))
+        import sat_features
+        self.features=sat_features;self.by=sat_features.load();self.increment=sat_features.increment
+    def at(self,station,as_of):
+        return self.features.at(self.by[station],as_of) if station in self.by else None
+
+
+def read_rows(folder,parent='research',sky=None,sat_stations_only=False):
     allrows=[];profile=collections.Counter();slimbytes=0;cache=HERE/'p0_envelope_cache';cache.mkdir(exist_ok=True);origin_audit=json.loads((HERE/'cloud_origin_audit.json').read_text())
     source=old.connect(ROOT/'data/bayes_basket_target_ssot.db') if parent=='served' else None
     for path in sorted(folder.glob('*.jsonl.gz')):
@@ -70,7 +107,10 @@ def read_rows(folder,parent='research'):
                 origin_key=content_sha256([r['station'],r['day'],r['as_of'],r['observation_id']])
                 if origin_key not in eligibility:raise ValueError('cloud_origin_eligibility_missing')
                 r['cloud_observation_origin_eligible']=eligibility[origin_key]['eligible']
-                if not r['cloud_observation_origin_eligible']:
+                if sat_stations_only and r['station'] not in SAT_STATIONS:profile['not_a_satellite_station']+=1;continue
+                if sky is not None:
+                    profile['satellite_scan_at_anchor:'+str(satellite_sky(r,sky))]+=1
+                elif not r['cloud_observation_origin_eligible']:
                     r['cloud_pairs']={m:None for m in ('latest','day1')};profile['cloud_increment_refused_origin_not_visible']+=1
                 # Keep only the geometry/probabilities and fitted root
                 # provenance this stage actually uses; raw manifests remain
@@ -220,8 +260,8 @@ def ci_by_date(records):
 
 
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('--baseline',action='store_true');ap.add_argument('--parent',choices=('research','served'),default='research');ap.add_argument('--variants',nargs='*');args=ap.parse_args();guard()
-    folder=HERE/('prefix_baseline_rows' if args.baseline else 'prefix_refitted_rows');rows,profile=read_rows(folder,args.parent)
+    ap=argparse.ArgumentParser();ap.add_argument('--baseline',action='store_true');ap.add_argument('--parent',choices=('research','served'),default='research');ap.add_argument('--variants',nargs='*');ap.add_argument('--sky',choices=('metar','satellite'),default='metar');ap.add_argument('--sat-stations-only',action='store_true');args=ap.parse_args();guard()
+    folder=HERE/('prefix_baseline_rows' if args.baseline else 'prefix_refitted_rows');rows,profile=read_rows(folder,args.parent,SatelliteSky() if args.sky=='satellite' else None,args.sat_stations_only)
     if not rows:raise ValueError('no_authorized_prefix_rows')
     rows,taf_receipts=p0m_rebuild(rows);days=sorted({r['day'] for r in rows});scores=collections.defaultdict(list);fit_receipts=[];clocks=ClosedClocks()
     # Models, objectives, height sensitivity and comparison modes are
@@ -231,6 +271,7 @@ def main():
     # Strong effects are a fixed sensitivity experiment, not chosen after
     # seeing the test labels and not candidates for automatic promotion.
     variants += [(mode,6500,'coverage','fixed_'+str(b)) for mode in ('latest','day1') for b in (1,2,4)]
+    if args.sky=='satellite':variants += [('nwp','total','coverage',obj) for obj in ('logscore','brier','fixed_1','fixed_2')]
     if args.variants:variants=[v for v in variants if f'{v[0]}_{v[1]}_{v[2]}_{v[3]}' in args.variants]
     for day in days:
         test=[r for r in rows if r['day']==day];cut=min(utc(r['as_of']) for r in test);train=[];trainlabs=[]
@@ -264,7 +305,12 @@ def main():
                 production_modified=False,production_gate=dict(state='NOT_ELIGIBLE_INCOMPLETE_CURRENT_CHAIN',scores_are_full_fleet_oos=False,reasons=['station clocks rebuilt on authorized prefixes only, not the complete fleet','P0 system refits are offline overrides, not regenerated exact-scope nested activation artifacts','fusion and center/width parameters still use original history, not a full current-method causal refit'],source_note='ASOS coverage and exact-source qualification checked; unqualified high-frequency sources legitimately fall back to official AWC'),interpretation='restricted research evidence only; neither full P1 efficacy verdict nor promotion evidence',score_formula='unfloored direct posterior -> independent increment likelihood -> same service floor once',zero_evidence_identity='verified on every scored row')
     result['cloud_origin_audit_sha']=old.sha_file(HERE/'cloud_origin_audit.json')
     if args.parent=='served':result['parent_arm']='served_p0_at_research_root_instant'
-    dst=HERE/('restricted_baseline_fit.json' if args.baseline else 'restricted_served_parent_fit.json' if args.parent=='served' else 'restricted_refitted_fit.json');write_fit_report(dst,result)
+    result['sky']=args.sky;result['sat_stations_only']=args.sat_stations_only
+    if args.sky=='satellite' or args.sat_stations_only:
+        dst=HERE/f"restricted_{args.sky}_sky_32st_fit.json"
+    else:
+        dst=HERE/('restricted_baseline_fit.json' if args.baseline else 'restricted_served_parent_fit.json' if args.parent=='served' else 'restricted_refitted_fit.json')
+    write_fit_report(dst,result)
 
 
 if __name__=='__main__':main()
