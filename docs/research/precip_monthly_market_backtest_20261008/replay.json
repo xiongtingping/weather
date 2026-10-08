@@ -1,0 +1,187 @@
+{
+ "protocol": "Taker replay on real fills (secondary to backtest.py's proper-score verdict).\n\nProtocol (fixed 2026-10-08 before the replay was run):\n* A taker BUY of YES (resp. NO) at price x, time tau, is evidence that YES\n  (resp. NO) could be bought at x at tau.  We would have bought 1 share at the\n  same x when p_model - x - fee(x) >= MARGIN, p_model being the model's\n  probability for that side at the latest 12Z decision point <= tau.\n* fee(x) = 0.05 * x * (1 - x) per share (venue taker fee, as in the L4 replays).\n* At most one fill per (bucket, side, decision day): the first qualifying trade.\n* PnL per share = payout - x - fee.  Primary: YES side, forecast arm, MARGIN\n  0.05.  Reported alongside: NO side, climatology arm, MARGIN 0.02 / 0.10.\n* Interval: event-block bootstrap (10,000 reps) of total PnL / total cost.\n",
+ "results": [
+  {
+   "label": "PRIMARY fc YES margin0.05",
+   "fills": 336,
+   "events": 20,
+   "pnl_per_share": 0.0603,
+   "roi": 0.2606,
+   "roi_ci95": [
+    -0.0996,
+    0.633
+   ],
+   "win_rate": 0.292,
+   "mean_price": 0.225,
+   "events_positive": 13
+  },
+  {
+   "label": "  fc YES 0.05 Seattle",
+   "fills": 153,
+   "events": 10,
+   "pnl_per_share": 0.0616,
+   "roi": 0.2443,
+   "roi_ci95": [
+    -0.0352,
+    0.5697
+   ],
+   "win_rate": 0.314,
+   "mean_price": 0.246,
+   "events_positive": 7
+  },
+  {
+   "label": "  fc YES 0.05 NYC",
+   "fills": 183,
+   "events": 10,
+   "pnl_per_share": 0.0592,
+   "roi": 0.2766,
+   "roi_ci95": [
+    -0.3409,
+    0.9703
+   ],
+   "win_rate": 0.273,
+   "mean_price": 0.208,
+   "events_positive": 6
+  },
+  {
+   "label": "  fc YES 0.05 day -7..0",
+   "fills": 3,
+   "events": 2,
+   "pnl_per_share": 0.1428,
+   "roi": 0.7493,
+   "roi_ci95": [
+    -1.0,
+    10.9503
+   ],
+   "win_rate": 0.333,
+   "mean_price": 0.183,
+   "events_positive": 1
+  },
+  {
+   "label": "  fc YES 0.05 day 1..10",
+   "fills": 74,
+   "events": 11,
+   "pnl_per_share": 0.0885,
+   "roi": 0.5256,
+   "roi_ci95": [
+    -0.1785,
+    1.5197
+   ],
+   "win_rate": 0.257,
+   "mean_price": 0.162,
+   "events_positive": 5
+  },
+  {
+   "label": "  fc YES 0.05 day 11..20",
+   "fills": 128,
+   "events": 18,
+   "pnl_per_share": 0.052,
+   "roi": 0.2625,
+   "roi_ci95": [
+    -0.3788,
+    1.0392
+   ],
+   "win_rate": 0.25,
+   "mean_price": 0.191,
+   "events_positive": 8
+  },
+  {
+   "label": "  fc YES 0.05 day 21..31",
+   "fills": 131,
+   "events": 19,
+   "pnl_per_share": 0.0506,
+   "roi": 0.1684,
+   "roi_ci95": [
+    -0.0937,
+    0.4104
+   ],
+   "win_rate": 0.351,
+   "mean_price": 0.294,
+   "events_positive": 11
+  },
+  {
+   "label": "  fc YES 0.05 price<0.90",
+   "fills": 329,
+   "events": 20,
+   "pnl_per_share": 0.06,
+   "roi": 0.2768,
+   "roi_ci95": [
+    -0.1158,
+    0.6725
+   ],
+   "win_rate": 0.277,
+   "mean_price": 0.21,
+   "events_positive": 13
+  },
+  {
+   "label": "fc No margin0.05",
+   "fills": 436,
+   "events": 20,
+   "pnl_per_share": 0.0846,
+   "roi": 0.125,
+   "roi_ci95": [
+    0.0296,
+    0.213
+   ],
+   "win_rate": 0.761,
+   "mean_price": 0.668,
+   "events_positive": 15
+  },
+  {
+   "label": "clim Yes margin0.05",
+   "fills": 323,
+   "events": 20,
+   "pnl_per_share": 0.0429,
+   "roi": 0.2471,
+   "roi_ci95": [
+    -0.2665,
+    0.7868
+   ],
+   "win_rate": 0.217,
+   "mean_price": 0.168,
+   "events_positive": 8
+  },
+  {
+   "label": "clim No margin0.05",
+   "fills": 465,
+   "events": 19,
+   "pnl_per_share": 0.0677,
+   "roi": 0.1068,
+   "roi_ci95": [
+    0.0231,
+    0.1847
+   ],
+   "win_rate": 0.701,
+   "mean_price": 0.624,
+   "events_positive": 15
+  },
+  {
+   "label": "fc Yes margin0.02",
+   "fills": 447,
+   "events": 20,
+   "pnl_per_share": 0.0396,
+   "roi": 0.1665,
+   "roi_ci95": [
+    -0.1016,
+    0.4242
+   ],
+   "win_rate": 0.277,
+   "mean_price": 0.231,
+   "events_positive": 12
+  },
+  {
+   "label": "fc Yes margin0.1",
+   "fills": 219,
+   "events": 20,
+   "pnl_per_share": 0.068,
+   "roi": 0.3098,
+   "roi_ci95": [
+    -0.1749,
+    0.8579
+   ],
+   "win_rate": 0.288,
+   "mean_price": 0.213,
+   "events_positive": 11
+  }
+ ]
+}
