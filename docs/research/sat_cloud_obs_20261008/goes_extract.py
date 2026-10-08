@@ -54,7 +54,7 @@ STATIONS = {
 }
 # GOES-West for the Pacific coast; GOES-East for everything else (smaller view angle).
 SATELLITE = {s: ("noaa-goes18" if lon < -110 else "noaa-goes19") for s, (_, lon) in STATIONS.items()}
-PRODUCTS = {"ABI-L2-CCLF": ("CF1", "TCF", "DQF"), "ABI-L2-DSRF": ("DSR", "DQF")}
+PRODUCTS = {"ABI-L2-CCLF": ("CF1", "TCF", "DQF"), "ABI-L2-DSRF": ("DSR",)}  # DSR fill marks invalid; its DQF doubles the bytes
 BOX = {"ABI-L2-CCLF": 1, "ABI-L2-DSRF": 2}  # half-width in pixels: 3x3 of 10 km, 5x5 of 2 km
 
 
