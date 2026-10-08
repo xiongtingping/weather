@@ -1,0 +1,81 @@
+snapshots found 2034, missing 646, stake/leg 30.0 U, taker at best ask (NO ask = 1 - YES bid)
+--- decision time D-1 12:00 ---
+  A: NO on market mode                       n= 154 avgp=0.555 hit=0.604 ret=  +8.7%  pnl=  +361.0
+  A: NO on market mode |model agrees         n= 100 avgp=0.547 hit=0.613 ret= +12.0%  pnl=  +322.3
+  A: NO on market mode |model disagrees      n=  54 avgp=0.572 hit=0.587 ret=  +2.6%  pnl=   +38.7
+  A: YES on mode+1                           n= 109 avgp=0.248 hit=0.211 ret= -15.1%  pnl=  -382.7
+  A: YES on mode+1 |model agrees             n=  37 avgp=0.203 hit=0.150 ret= -26.1%  pnl=  -204.3
+  A: YES on mode+1 |model disagrees          n=  72 avgp=0.276 hit=0.248 ret= -10.2%  pnl=  -178.4
+  A: YES on mode-1                           n= 116 avgp=0.224 hit=0.261 ret= +16.6%  pnl=  +379.1
+  A: YES on mode-1 |model agrees             n=  49 avgp=0.203 hit=0.284 ret= +40.3%  pnl=  +356.7
+  A: YES on mode-1 |model disagrees          n=  67 avgp=0.240 hit=0.244 ret=  +1.6%  pnl=   +22.4
+  B: YES on market mode (Proper-like)        n= 143 avgp=0.451 hit=0.403 ret= -10.7%  pnl=  -378.4
+  B: YES on market mode (Proper-like) |model agrees n=  37 avgp=0.445 hit=0.443 ret=  -0.5%  pnl=    -4.6
+  B: YES on market mode (Proper-like) |model disagrees n= 106 avgp=0.453 hit=0.387 ret= -14.6%  pnl=  -373.8
+  C: YES on mode+2                           n=  28 avgp=0.090 hit=0.141 ret= +56.8%  pnl=  +234.8
+  C: YES on mode+2 |model agrees             n=  10 avgp=0.108 hit=0.000 ret=-100.0%  pnl=  -150.1
+  C: YES on mode+2 |model disagrees          n=  18 avgp=0.082 hit=0.203 ret=+146.3%  pnl=  +384.9
+  C: YES on mode-2                           n=  22 avgp=0.090 hit=0.000 ret=-100.0%  pnl=  -322.6
+  C: YES on mode-2 |model agrees             n=  10 avgp=0.084 hit=0.000 ret=-100.0%  pnl=  -136.2
+  C: YES on mode-2 |model disagrees          n=  12 avgp=0.096 hit=0.000 ret=-100.0%  pnl=  -186.4
+  market mode calibration: n=177 norm-mid 0.436 bid 0.440 ask 0.462 hit 0.407
+--- decision time D-1 18:00 ---
+  A: NO on market mode                       n= 161 avgp=0.552 hit=0.573 ret=  +3.8%  pnl=  +156.6
+  A: NO on market mode |model agrees         n= 120 avgp=0.550 hit=0.603 ret=  +9.7%  pnl=  +297.8
+  A: NO on market mode |model disagrees      n=  41 avgp=0.558 hit=0.483 ret= -13.5%  pnl=  -141.2
+  A: YES on mode+1                           n= 107 avgp=0.244 hit=0.318 ret= +30.2%  pnl=  +608.7
+  A: YES on mode+1 |model agrees             n=  35 avgp=0.247 hit=0.129 ret= -47.8%  pnl=  -322.8
+  A: YES on mode+1 |model disagrees          n=  72 avgp=0.242 hit=0.411 ret= +69.5%  pnl=  +931.5
+  A: YES on mode-1                           n= 117 avgp=0.250 hit=0.192 ret= -23.2%  pnl=  -537.4
+  A: YES on mode-1 |model agrees             n=  51 avgp=0.245 hit=0.190 ret= -22.3%  pnl=  -216.8
+  A: YES on mode-1 |model disagrees          n=  66 avgp=0.253 hit=0.193 ret= -23.8%  pnl=  -320.6
+  B: YES on market mode (Proper-like)        n= 149 avgp=0.453 hit=0.392 ret= -13.3%  pnl=  -468.6
+  B: YES on market mode (Proper-like) |model agrees n=  30 avgp=0.451 hit=0.532 ret= +18.1%  pnl=  +133.8
+  B: YES on market mode (Proper-like) |model disagrees n= 119 avgp=0.453 hit=0.355 ret= -21.7%  pnl=  -602.4
+  C: YES on mode+2                           n=  23 avgp=0.068 hit=0.038 ret= -44.6%  pnl=  -129.1
+  C: YES on mode+2 |model agrees             n=  10 avgp=0.063 hit=0.000 ret=-100.0%  pnl=  -158.3
+  C: YES on mode+2 |model disagrees          n=  13 avgp=0.075 hit=0.092 ret= +22.2%  pnl=   +29.2
+  C: YES on mode-2                           n=  29 avgp=0.083 hit=0.120 ret= +45.0%  pnl=  +172.8
+  C: YES on mode-2 |model agrees             n=  17 avgp=0.080 hit=0.192 ret=+141.1%  pnl=  +325.9
+  C: YES on mode-2 |model disagrees          n=  12 avgp=0.089 hit=0.000 ret=-100.0%  pnl=  -153.1
+  market mode calibration: n=175 norm-mid 0.442 bid 0.443 ask 0.465 hit 0.429
+--- decision time D0 02:00 ---
+  A: NO on market mode                       n= 422 avgp=0.497 hit=0.478 ret=  -3.9%  pnl=  -371.2
+  A: NO on market mode |model agrees         n= 296 avgp=0.478 hit=0.454 ret=  -5.1%  pnl=  -337.1
+  A: NO on market mode |model disagrees      n= 126 avgp=0.548 hit=0.542 ret=  -1.2%  pnl=   -34.1
+  A: YES on mode+1                           n= 235 avgp=0.219 hit=0.175 ret= -20.1%  pnl=  -920.0
+  A: YES on mode+1 |model agrees             n=  92 avgp=0.209 hit=0.150 ret= -28.2%  pnl=  -496.6
+  A: YES on mode+1 |model disagrees          n= 143 avgp=0.226 hit=0.192 ret= -15.1%  pnl=  -423.4
+  A: YES on mode-1                           n= 248 avgp=0.248 hit=0.267 ret=  +7.5%  pnl=  +375.6
+  A: YES on mode-1 |model agrees             n= 126 avgp=0.245 hit=0.258 ret=  +5.3%  pnl=  +132.1
+  A: YES on mode-1 |model disagrees          n= 122 avgp=0.252 hit=0.276 ret=  +9.8%  pnl=  +243.5
+  B: YES on market mode (Proper-like)        n= 348 avgp=0.502 hit=0.495 ret=  -1.2%  pnl=   -94.5
+  B: YES on market mode (Proper-like) |model agrees n=  65 avgp=0.460 hit=0.393 ret= -14.6%  pnl=  -198.4
+  B: YES on market mode (Proper-like) |model disagrees n= 283 avgp=0.511 hit=0.520 ret=  +1.6%  pnl=  +103.9
+  C: YES on mode+2                           n=  41 avgp=0.085 hit=0.070 ret= -18.2%  pnl=  -104.0
+  C: YES on mode+2 |model agrees             n=  14 avgp=0.071 hit=0.130 ret= +83.5%  pnl=  +129.0
+  C: YES on mode+2 |model disagrees          n=  27 avgp=0.092 hit=0.041 ret= -56.0%  pnl=  -233.0
+  C: YES on mode-2                           n=  59 avgp=0.086 hit=0.059 ret= -31.7%  pnl=  -272.5
+  C: YES on mode-2 |model agrees             n=  28 avgp=0.079 hit=0.086 ret=  +9.2%  pnl=   +39.3
+  C: YES on mode-2 |model disagrees          n=  31 avgp=0.095 hit=0.027 ret= -71.9%  pnl=  -311.8
+  market mode calibration: n=511 norm-mid 0.482 bid 0.480 ask 0.507 hit 0.472
+--- decision time D0 08:00 ---
+  A: NO on market mode                       n= 401 avgp=0.474 hit=0.453 ret=  -4.4%  pnl=  -379.7
+  A: NO on market mode |model agrees         n= 284 avgp=0.448 hit=0.418 ret=  -6.6%  pnl=  -407.4
+  A: NO on market mode |model disagrees      n= 117 avgp=0.553 hit=0.559 ret=  +1.1%  pnl=   +27.7
+  A: YES on mode+1                           n= 217 avgp=0.204 hit=0.178 ret= -12.5%  pnl=  -498.7
+  A: YES on mode+1 |model agrees             n=  91 avgp=0.177 hit=0.117 ret= -34.1%  pnl=  -578.1
+  A: YES on mode+1 |model disagrees          n= 126 avgp=0.230 hit=0.238 ret=  +3.5%  pnl=   +79.4
+  A: YES on mode-1                           n= 225 avgp=0.226 hit=0.187 ret= -17.1%  pnl=  -686.8
+  A: YES on mode-1 |model agrees             n= 112 avgp=0.226 hit=0.212 ret=  -6.0%  pnl=  -113.4
+  A: YES on mode-1 |model disagrees          n= 113 avgp=0.226 hit=0.165 ret= -26.8%  pnl=  -573.3
+  B: YES on market mode (Proper-like)        n= 366 avgp=0.514 hit=0.492 ret=  -4.3%  pnl=  -313.9
+  B: YES on market mode (Proper-like) |model agrees n=  70 avgp=0.459 hit=0.419 ret=  -8.6%  pnl=  -123.3
+  B: YES on market mode (Proper-like) |model disagrees n= 296 avgp=0.529 hit=0.512 ret=  -3.3%  pnl=  -190.7
+  C: YES on mode+2                           n=  34 avgp=0.088 hit=0.062 ret= -28.8%  pnl=  -147.0
+  C: YES on mode+2 |model agrees             n=  16 avgp=0.087 hit=0.073 ret= -15.5%  pnl=   -34.5
+  C: YES on mode+2 |model disagrees          n=  18 avgp=0.089 hit=0.054 ret= -38.9%  pnl=  -112.5
+  C: YES on mode-2                           n=  40 avgp=0.083 hit=0.073 ret= -11.6%  pnl=   -65.7
+  C: YES on mode-2 |model agrees             n=  19 avgp=0.066 hit=0.053 ret= -18.9%  pnl=   -53.7
+  C: YES on mode-2 |model disagrees          n=  21 avgp=0.111 hit=0.107 ret=  -4.3%  pnl=   -12.0
+  market mode calibration: n=516 norm-mid 0.495 bid 0.488 ask 0.523 hit 0.506
