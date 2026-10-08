@@ -24,6 +24,25 @@ def main():
     flags=f"嵌套候选：{nested['counts'] if nested else '未结束'}；隔离编译：{compiler['counts'] if compiler else '未结束'}；组件全量核验：{audit['counts'].get('COMPONENT_AUDIT_PASS',0) if audit else 0}/48站。"
     ledger=load('fusion_served_ledger.json');ledger_audit=load('fusion_ledger_verification.json');comparison=load('fusion_compiler_comparison.json');compaction=load('nested_compaction.json');inventory=load('nested_multiday_inventory.json');multi=load('nested_verification.multiday.json');multi_compile=load('compiler_multiday.json');packet_clocks=load('original_packet_clock_verification.json')
     additions=''
+    served=load_fit_report(HERE/'restricted_served_parent_fit.json') if (HERE/'restricted_served_parent_fit.json').exists() else None
+    parent_section=''
+    if served:
+        prow=[]
+        for title,key,group in [('最新覆盖差：全部','latest_6500_coverage_logscore','all'),('最新覆盖差：可比云证据','latest_6500_coverage_logscore','known_only'),('最新覆盖差：12–18时','latest_6500_coverage_logscore','afternoon'),('提前≥24h覆盖差：全部','day1_6500_coverage_logscore','all'),('最新云底差：12–18时','latest_6500_base_logscore','afternoon'),('最新覆盖β=1：全部','latest_6500_coverage_fixed_1','all')]:
+            x=fit['variants'][key][group];y=served['variants'][key][group]
+            prow.append(f"|{title}|{metric(x)}|{metric(y)}|{metric(x,1)}|{metric(y,1)}|")
+        sb=[next(x['beta'] for x in r['increments'] if x['variant']=='latest_6500_coverage_logscore') for r in served['p1_fit_receipts']]
+        parent_section=f'''
+## 父链敏感性：把P0父概率换成当时实际服务的P0（2026-10-08）
+
+同一批8,018锚点、同一云差、同一P0-M/P1逐日因果重拟，只把P0父换成生产在该时刻实际已服务的最新P0（22个历史版本，与研究重拟父的概率差平均TV 0.106、中心差平均|0.195|°C）。若增量结论对父链不敏感，补全父链就不会改判；反之补全父链才有意义。
+
+|独立项与群体|ΔLogScore 研究父|ΔLogScore 服务父|ΔBrier 研究父|ΔBrier 服务父|
+|---|---|---|---|---|
+{chr(10).join(prow)}
+
+服务父下最新覆盖β约{min(sb):.3f}–{max(sb):.3f}，与研究父同量级。**结论：最新覆盖差的“两分数同时显著”只在研究父上成立，换成服务父后Brier区间跨零、LogScore上界贴零；提前24小时覆盖则反过来只在服务父上LogScore显著、Brier跨零。两种父下效应都在约0.001 nat量级，符号稳定但显著性随父链翻转——增量本身弱到父链差异就能改判。** 云底差两种父下12–18时都显著变差，确认不用。
+'''
     if ledger and ledger_audit and comparison:
         additions+=f"\n新增融合账本：{ledger['rows']:,}条代表决策、{ledger_audit['counts']['veto_cutoffs']}个每日截止时点、{ledger_audit['counts']['veto_training_references']:,}条因果引用全量核验通过；这份限定账本上未触发否决。接入后{comparison['exact_probability_stations']}站概率及权重与仅重拟版逐项精确相等，{comparison['exact_refusal_stations']}站仍因原始精确资格不足拒绝。它仍使用原来的座位资格，不是完整新父链的连续服务账本。\n"
     if compaction:
@@ -75,6 +94,7 @@ def main():
 
 固定强度β=1/2/4是预先列出的敏感性实验。最新β=1全部样本ΔLogScore约−0.00315但区间跨零；提前24小时β=1的可比证据组约+0.00767且区间跨零，最高温均值MAE显著变差。**没有证据支持“越强一定越差”，也没有强似然晋级证据。** 晴于预报的子群在拟合强度下最高温均值MAE变差，需在完整链上复核。
 
+{parent_section}
 ## 成都10月7日25°C案例
 
 12–14时实况SCT030，对比已收到的SCT050：6500ft覆盖差=0，云底约降低610m；15时BKN030，对比SCT050，覆盖至少增加1/8天空；16时回SCT030。5000ft阈值会排除SCT050，产生阈值敏感的“低层更多云”。不能把这两类变化混为一谈。
@@ -101,10 +121,10 @@ ASOS审计发现旧artifact声明MADIS，而匹配事实属于IEM，不能改名
 
 入口：`nested_batch.py --summarize-only`汇总当前版本；`verify_nested.py`核验每个引用对象，`--stations/--days`验指定日期；`fusion_ledger.py`与`verify_fusion_ledger.py`构建、核验代表服务账本；`compiler_batch.py --fusion-ledger`只在内存接入该账本；`nested_multiday.py --inventory-only`盘点实际父时钟；`compact_nested.py`去重存储并核验原始哈希；`report.py`刷新报告与Sources receipt。全程资源有界、SSOT只读，未重启服务或修改生产配置。
 
-**下一个主线任务：补齐中心/宽度及完整融合父链，完成全日期现行P0→P0-M→P1严格重放，再复验独立覆盖/云底增量；未过完整门前不改生产。**
+**下一个主线（2026-10-08 复盘后改）：云覆盖/云底增量作P1似然建议结案，生产不改。** 两种父链下覆盖增量都只有约0.001 nat、显著性随父链翻转，云底增量12–18时两种父下都显著变差。补全父链还剩1,578站日组件（KLGA 09-25实测28.5秒/站日、234MB，合计约15小时整机负载），之后还要做中心/宽度与融合的因果重拟及全段P0-M/P1重放；这些只为裁决一个约0.001 nat的项。要重开须换信息源（有历史的实测低云/日照），不是补父链。
 '''
     (HERE/'RESULTS.md').write_text(text)
-    names=['results.json','verification.json','current_verification.json','restricted_refitted_fit.json','score_sensitivity.json','case_increment_math.json','nested_batch.json','nested_verification.json','compiler_batch.json','compiler_batch.fusion.json','fusion_facts.json','fusion_refit.json','missing_packets.json','alternative_packets.json','alternative_member_verification.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json','cleanup.json','fusion_served_ledger.json','fusion_ledger_verification.json','compiler_batch.ledger.json','fusion_compiler_comparison.json','nested_compaction.json','nested_multiday_inventory.json','nested_verification.multiday.json','compiler_multiday.json','original_packet_clock_verification.json']
+    names=['results.json','verification.json','current_verification.json','restricted_refitted_fit.json','score_sensitivity.json','case_increment_math.json','nested_batch.json','nested_verification.json','compiler_batch.json','compiler_batch.fusion.json','fusion_facts.json','fusion_refit.json','missing_packets.json','alternative_packets.json','alternative_member_verification.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json','cleanup.json','fusion_served_ledger.json','fusion_ledger_verification.json','compiler_batch.ledger.json','fusion_compiler_comparison.json','nested_compaction.json','nested_multiday_inventory.json','nested_verification.multiday.json','compiler_multiday.json','original_packet_clock_verification.json','restricted_served_parent_fit.json']
     fingerprint=dict(schema='research_current_evidence_fingerprints_v2',production_modified=False,claim_scope='limited component and restricted population evidence; no full-chain promotion',sources=[dict(path=name,sha256=old.sha_file(HERE/name)) for name in names if (HERE/name).exists()]);(HERE/'sources.json').write_text(json.dumps(fingerprint,ensure_ascii=False,indent=2))
     latest=fit['variants']['latest_6500_coverage_logscore'];day1=fit['variants']['day1_6500_coverage_logscore']
     receipt=dict(schemaVersion=1,items=[dict(id='restricted-cloud-increment',title='云覆盖差的限定样本结果',queries=[dict(id='restricted-walk-forward',source=dict(label='正式观测前缀研究',files=['restricted_refitted_fit.json','strict_fit.py','current_verification.json','score_sensitivity.json','cloud_origin_audit.json','cloud_origin_rescore_validation.json'],filters=['先站日等权，再按日期块统计','每个外推日只用此前且真值当时已知的数据训练','覆盖差阈值6500ft','245条缺唯一可见官方origin的云证据已设为未知并重跑'],metricDefinitions=['负LogScore和Brier差值为云增量候选减相同基准，负值表示改善。'],caveats=['这些结果仅覆盖输入获准子群，父链资格和融合/中心宽度重拟尚未完整，不是全48站晋级证据。']),reportingPeriod='2026-09-21至2026-10-06：16个外推日',rows=[dict(group='最新覆盖：全部',rows=latest['all']['rows'],station_days=latest['all']['station_days'],delta_logscore=latest['all']['mean'][0],ci=latest['all']['ci95'][0]),dict(group='最新覆盖：可比证据',rows=latest['known_only']['rows'],station_days=latest['known_only']['station_days'],delta_logscore=latest['known_only']['mean'][0],ci=latest['known_only']['ci95'][0]),dict(group='提前24h覆盖：全部',rows=day1['all']['rows'],station_days=day1['all']['station_days'],delta_logscore=day1['all']['mean'][0],ci=day1['all']['ci95'][0])],columns=['group','rows','station_days','delta_logscore','ci'])]),dict(id='chengdu-cloud-change',title='成都10月7日的覆盖与云底变化',queries=[dict(id='raw-cloud-and-odds',source=dict(label='真实回执绑定TAF与官方报文',files=['results.json','verification.json','case_increment_math.json','case_increment_math.py'],metricDefinitions=['6500ft覆盖增量比较报文云层最大覆盖区间；云底差只比较唯一同覆盖码/云型匹配。'],filters=['ZUUU：2026-10-07当地12–16时'],caveats=['云底下降不能直接等同于遮阳增强。','odds乘数仅是独立项数学诊断，未复现完整P(25)。']),summary='12–14时覆盖差为零、云底降低约610m；15时BKN相对SCT至少增加1/8天空。')]),dict(id='replay-and-missing-packets',title='父链重建与缺失输入',queries=[dict(id='parent-input-search',source=dict(label='本地原生包归档与隔离研究',files=['missing_packets.json','nested_batch.json','compiler_batch.json','fusion_facts.json','fusion_refit.json'],caveats=['每站10-05嵌套探针和研究融合重拟不等于全日期完整链检验。','所有生产概率、SSOT和服务保持未修改。']),rows=[dict(metric='已扫描日期目录',value=missing['counts']['date_directories']),dict(metric='已扫描文件',value=missing['counts']['filenames_scanned']),dict(metric='未找到同SHA的原始父包',value=missing['counts']['EXACT_SHA_NOT_IN_LOCAL_ARCHIVE']),dict(metric='重建融合代表事实',value=facts['counts']['representative_facts'])],columns=['metric','value'])])])

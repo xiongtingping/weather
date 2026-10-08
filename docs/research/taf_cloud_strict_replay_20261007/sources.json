@@ -110,6 +110,10 @@
     {
       "path": "original_packet_clock_verification.json",
       "sha256": "206a4f96b730d1e20200b0e38be650ad27c34b3392d66bd1fca153efc80fe0b9"
+    },
+    {
+      "path": "restricted_served_parent_fit.json",
+      "sha256": "226d2218c4cfb995e1d2a62c0223e292854db32e8c29d0dba38ce1ea95f465bb"
     }
   ]
 }
