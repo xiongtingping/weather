@@ -16302,7 +16302,8 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 .sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
-.sd-metar{max-height:360px;overflow:auto}
+.sd-metar{max-height:420px;overflow:auto}
+.sd-older{margin-top:4px}.sd-older>summary{cursor:pointer;font-size:12px}
 .sd-chips{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.sd-div{width:10px}
 .sd-chip{font:inherit;font-size:11.5px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
 .sd-chip[style]{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
@@ -22964,10 +22965,11 @@ function sdEvidence(day){
       (p1.excluded || []).length ? ` · 排除 ${sdEsc(p1.excluded.join("、"))}` : ""}` : "等待 P1 概率信封");
   const caps = ((day.taf || {}).captures || []).slice(-6).reverse().map(c => `<tr><td class="mono">${sdLocal(c.issued_at_utc, true)}</td><td>${sdEsc(c.kind || "")} #${sdEsc(c.sequence)}</td>
       <td class="mono">${c.tx_c == null ? "—" : sdN(c.tx_c,2) + "°C"}</td><td class="mono">${sdPc(c.cloud_cover_fraction, 0)}</td><td class="mono">${sdPc(c.precipitation_probability, 0)}</td><td class="mono">${sdN(c.wind_speed_mps, 1)}</td></tr>`).join("");
-  const met = (day.metar || []).slice().reverse().map(m => `<tr><td class="mono">${sdEsc(m.local)}</td><td><span class="pill${/SPECI|COR/.test(m.kind) ? " red" : ""}">${sdEsc(m.kind)}</span></td>
+  const metRows = (day.metar || []).slice().reverse().map(m => `<tr><td class="mono">${sdEsc(m.local)}</td><td><span class="pill${/SPECI|COR/.test(m.kind) ? " red" : ""}">${sdEsc(m.kind)}</span></td>
       <td class="mono"><b>${m.temp_c == null ? "—" : sdN(m.temp_c,2) + "°C"}</b></td><td class="mono">${m.dew_c == null ? "—" : sdN(m.dew_c,2) + "°C"}</td>
       <td class="mono">${sdPc(m.cloud_cover, 0)}</td><td class="mono">${sdN(m.wind_mps, 1)}</td><td>${m.precip ? '<b class="down">降水</b> ' : ""}${sdEsc((m.weathers || []).join(" "))}</td>
-      <td class="mono">${m.running_high_c == null ? "—" : sdN(m.running_high_c,2) + "°C"}</td><td class="mono sd-raw">${sdEsc(m.raw)}</td></tr>`).join("");
+      <td class="mono">${m.running_high_c == null ? "—" : sdN(m.running_high_c,2) + "°C"}</td><td class="mono sd-raw">${sdEsc(m.raw)}</td></tr>`);
+  const met = metRows.length ? sdNewestFive(metRows, `<thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead>`, "sd-tab", n => `更早的 ${n} 份`) : "";
   const P = day.precip;
   let rain = sdEvidenceCard("云雨 · 逐小时降水预报", SD_COL.P0, "<b>无记录</b>", "暂无逐小时降水预报", true);
   if(P){
@@ -22978,7 +22980,14 @@ function sdEvidence(day){
   }
   return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
-    ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="scroll sd-metar"><table class="sd-tab"><thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead><tbody>${met}</tbody></table></div></details>` : ""}`;
+    ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="sd-metar">${met}</div></details>` : ""}`;
+}
+// Newest five rows shown, the rest folded (user 2026-10-09「只显示最近最新的5条，
+// 其他默认折叠」): ``rows`` are already newest first.
+function sdNewestFive(rows, head, cls, label){
+  const first = rows.slice(0, 5), rest = rows.slice(5);
+  return `<div class="scroll"><table class="${cls}">${head}<tbody>${first.join("")}</tbody></table></div>${rest.length
+    ? `<details class="sd-older"><summary class="muted">${label(rest.length)}</summary><div class="scroll"><table class="${cls}">${head}<tbody>${rest.join("")}</tbody></table></div></details>` : ""}`;
 }
 // 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
 // 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
@@ -23007,18 +23016,21 @@ function sdSky(day){
       <td class="mono ${tone(r, "temp")}">${f.temp_c == null ? "—" : sdN(f.temp_c, 2) + "°"} <span class="muted">/ ${f.temp_c_d1 == null ? "—" : sdN(f.temp_c_d1, 2) + "°"}</span></td>
       <td class="mono">${o && o.visibility_m != null ? (o.visibility_m >= 10000 ? "≥10k" : w(o.visibility_m)) : "—"}${o && (o.weathers || []).length ? " " + sdEsc(o.weathers.join(" ")) : ""}</td>
       <td style="white-space:normal">${tags}</td></tr>`;
-  }).join("");
+  });
   const differences = ordered.filter(r => r.obs && (r.diffs || []).length);
   const nDiff = differences.filter(r => r.diffs.some(x => x.kind === "cloud" || x.kind === "sw")).length;
   const compared = (H.rows || []).filter(r => r.obs).length;
   const swDiff = H.inferred_sw_mj_so_far != null && H.forecast_sw_mj_so_far != null
     ? H.inferred_sw_mj_so_far - H.forecast_sw_mj_so_far : null;
-  const diffCards = differences.map(r => `<div class="sd-sky-diff"><b>${String(r.hour).padStart(2,"0")}:00</b> · ${r.diffs.map(x => sdEsc(x.text)).join(" · ")}</div>`).join("");
+  const diffCard = r => `<div class="sd-sky-diff"><b>${String(r.hour).padStart(2,"0")}:00</b> · ${r.diffs.map(x => sdEsc(x.text)).join(" · ")}</div>`;
+  const diffCards = differences.slice(0, 5).map(diffCard).join("");
+  const olderDiffs = differences.slice(5);
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="${nDiff ? "down" : "muted"} sd-sub">${
     compared ? `${compared} 个小时有实况，${nDiff} 个小时云或辐射达到差异门槛` : "尚无实况可对照"}</span></summary>
     <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj,2)} MJ/m² · 提前 1 天 ${sdN(H.forecast_sw_d1_mj,2)} MJ/m²</div>
     <div class="sd-sky-diffs"><div class="sd-sky-diff">截至目前推断日照 <b>${sdN(H.inferred_sw_mj_so_far,2)}</b> 对预报 <b>${sdN(H.forecast_sw_mj_so_far,2)}</b> MJ/m²<br>差值 <b class="${swDiff == null ? "" : swDiff >= 0 ? "up" : "down"}">${sdSg(swDiff,2)} MJ/m²</b>（报文推断）</div>${diffCards}</div>
-    <div class="scroll"><table class="sd-tab sd-sky"><thead><tr><th title="已过去时段在前，按当地时间倒序；未来预报时段在后">当地 · 最新在上</th><th>报文云</th><th>实况低云</th><th>预报低云 <span class="muted">最新/提前1天</span></th><th>预报总云</th><th title="按报文云量与太阳高度推算（晴空辐射 Haurwitz × (1−0.75N^3.4)）；报文只报低云，有高云时这是上限">推断日照 W/m²</th><th>预报日照 W/m²</th><th>实况气温</th><th>预报气温</th><th>能见度 / 天气</th><th>差异</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${olderDiffs.length ? `<details class="sd-older"><summary class="muted">更早的 ${olderDiffs.length} 条差异</summary><div class="sd-sky-diffs">${olderDiffs.map(diffCard).join("")}</div></details>` : ""}
+    ${sdNewestFive(rows, `<thead><tr><th title="已过去时段在前，按当地时间倒序；未来预报时段在后">当地 · 最新在上</th><th>报文云</th><th>实况低云</th><th>预报低云 <span class="muted">最新/提前1天</span></th><th>预报总云</th><th title="按报文云量与太阳高度推算（晴空辐射 Haurwitz × (1−0.75N^3.4)）；报文只报低云，有高云时这是上限">推断日照 W/m²</th><th>预报日照 W/m²</th><th>实况气温</th><th>预报气温</th><th>能见度 / 天气</th><th>差异</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}。报文只报 1500 m 以下的云（CAVOK/NSC＝低空无云），所以拿它对比预报的<b>低云</b>，预报总云含高云只作参考。机场不测辐射，「推断日照」由报文云量推算，高云多时偏高。标注门槛：低云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。红＝实况比预报多/强/暖，黄＝少/弱/冷。</div></details>`;
 }
 function sdTafRaw(d){
