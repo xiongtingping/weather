@@ -19198,7 +19198,52 @@ function bucketCalibration(){
     <tbody>${lrow("全部车道",LB.all,FP.all)}${laneKeys.map(k=>lrow(TC_LANE_NAMES[k]||k,ladderOf[k],boughtOf[k])).join("")}</tbody></table></div>
     <div class="muted">左半：每个车道买入那一刻它读到的服务向量，在整条梯子的每个桶上对同刻市场参考向量打分；同一站日同一份向量与盘口只算一次（全部车道一行也只算一次）。右半：同一批买入腿上被买的那个桶（第二层口径）。
     买入腿 ${LC.legs??"—"} 条，买入时点没有 ${Math.round((+B.book_window_sec||1800)/60)} 分钟内完整盘口的 ${LC.no_market_reference??"—"} 条，梯子对不上 ${LC.ladder_mismatch??"—"} 条。车道行不设腿数下限，样本薄的车道请看样本数。</div></details>`:"";
-  if(!B.available||!A) return intro+both+lanesTbl;
+  // The paired diagnosis (user 2026-10-09 「下一步继续切」): where the gap is
+  // born and where it widens -- the P0 layers, the funnel from every bucket
+  // to the filled ones, the whole distribution, and each bought leg paired.
+  const NL=v=>v==null?"—":(+v).toFixed(4);
+  const dcell=(v,c)=>`<td class="mono ${tone(v)}">${v==null?"—":ci(v,c)}</td>`;
+  const FN=T.funnel||{};
+  const frow=(name,dir,r,unit)=>r?`<tr><td>${name}</td><td>${dir}</td><td class="mono">${r.buckets} ${unit} · ${r.event_days} 日</td><td class="mono">${NL(r.logloss_ours)}</td><td class="mono">${NL(r.logloss_market)}</td>${dcell(r.logloss_diff,r.logloss_diff_ci)}<td class="mono">${pct(r.said_ours)} / ${pct(r.said_market)} → ${pct(r.landed)}</td></tr>`:"";
+  const bdir=d=>(B.slices||[]).find(r=>r.group==="分歧方向"&&r.slice===d);
+  const fget=(pop,d)=>(FN.rows||[]).find(r=>r.population===pop&&r.direction===d);
+  const funnel=`<details open style="margin-top:8px"><summary>漏斗：全部候选桶 → 策略信号桶 → 实际成交桶，劣势从哪一步扩大（同一把市场参考向量）</summary><div class="scroll"><table>
+    <thead><tr><th>样本</th><th>分歧方向</th><th>样本数</th><th>LL 我方</th><th>LL 市场</th><th>Δ 我方−市场 [95%]</th><th>说 我/市 → 中</th></tr></thead><tbody>
+    ${[["<b>全部候选桶</b>",d=>d==="全部"?A:bdir(d),"桶"],["<b>策略信号桶</b>（全部意图）",d=>fget("信号桶（全部意图）",d),"腿"],
+       ["其中未成交",d=>fget("其中未成交",d),"腿"],["<b>实际成交桶</b>",d=>fget("其中成交",d),"腿"]].map(([label,get,unit])=>
+      ["全部","p > q","p ≤ q"].map(d=>[d,get(d)]).filter(([_d,r])=>r).map(([d,r],i)=>frow(i===0?label:"",d,r,unit)).join("")).join("")}
+    </tbody></table></div><div class="muted">信号桶＝各车道发出的每条买单（Proper 每 15 分钟重挂各算一条），按方向记（NO 腿取 NO 一侧的 p、q、结果）；市场 q 与「全部候选桶」同一把：下单时刻 30 分钟内整条梯子的市场参考向量。
+    意图 ${FN.counts?.legs??"—"} 条，下单时刻没有完整盘口的 ${FN.counts?.no_market_reference??"—"} 条。全部候选桶的样本单位是桶，各桶多为远尾、LogLoss 天然低，跨行比 Δ 不比绝对值。</div></details>`;
+  const PL=B.p0_layers||{}, PA=PL.all, C0=B.counts||{};
+  const LNM={pool:"融合池（分布层之前）",input:"分布层输入（共识桥＋辐射之后）",served:"服务 P0",market:"市场"};
+  const lrow3=r=>["pool","input","served","market"].map(k=>`<tr><td><b>${LNM[k]}</b></td><td class="mono">${NL(r[`logloss_${k}`])}</td>${k==="market"?"<td>—</td>":dcell(r[`logloss_${k}_vs_market`],r[`logloss_${k}_vs_market_ci`])}
+      <td class="mono">${NL(r[`logscore_${k}`])}</td>${k==="market"?"<td>—</td>":dcell(r[`logscore_${k}_vs_market`],r[`logscore_${k}_vs_market_ci`])}
+      <td class="mono">${NL(r[`crps_${k}`])}</td>${k==="market"?"<td>—</td>":dcell(r[`crps_${k}_vs_market`],r[`crps_${k}_vs_market_ci`])}</tr>`).join("")
+    +[["bridge_radiation","这一步：共识桥＋辐射（输入−池）"],["distribution_layer","这一步：中心/宽度、远端尾、压顶（服务−输入）"]].map(([k,label])=>`<tr><td class="muted">${label}</td><td></td>${dcell(r[`logloss_step_${k}`],r[`logloss_step_${k}_ci`])}<td></td>${dcell(r[`logscore_step_${k}`],r[`logscore_step_${k}_ci`])}<td></td>${dcell(r[`crps_step_${k}`],r[`crps_step_${k}_ci`])}</tr>`).join("");
+  const lslice=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${NL(r.logloss_pool)}</td><td class="mono">${NL(r.logloss_input)}</td><td class="mono">${NL(r.logloss_served)}</td><td class="mono">${NL(r.logloss_market)}</td>
+      ${dcell(r.logloss_pool_vs_market,r.logloss_pool_vs_market_ci)}${dcell(r.logloss_step_bridge_radiation,r.logloss_step_bridge_radiation_ci)}${dcell(r.logloss_step_distribution_layer,r.logloss_step_distribution_layer_ci)}</tr>`;
+  const layers=PA?`<details open style="margin-top:8px"><summary>原始 → 校准：同一时点 P0 信封的三层各自对市场（${PA.buckets} 桶 · ${PA.samples} 时点 · ${PA.event_days} 日）</summary>
+    <div class="scroll"><table><thead><tr><th>层</th><th>二元 LL/桶</th><th>Δ 对市场 [95%]</th><th>LogScore/时点</th><th>Δ 对市场</th><th>CRPS °C/时点</th><th>Δ 对市场</th></tr></thead><tbody>${lrow3(PA)}</tbody></table></div>
+    <div class="scroll" style="margin-top:6px"><table><thead><tr><th>组</th><th>切片</th><th>桶</th><th>LL 池</th><th>LL 输入</th><th>LL 服务</th><th>LL 市场</th><th>池−市场</th><th>桥＋辐射这一步</th><th>分布层这一步</th></tr></thead><tbody>${(PL.slices||[]).map(lslice).join("")}</tbody></table></div>
+    <div class="muted">融合池＝六家向量按服务权重线性合成（各家已过单系统订正；未订正的原始成员分布信封不存）；三层都过宪章 224 下限后打分。信封自 2026-09-22 起才留各家向量，此前的时点不进这张表（${C0.p0_layers_missing??"—"} 个时点）。Δ 负＝这一层／这一步更准。</div></details>`:"";
+  const DS=B.distribution||{};
+  const drow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.samples} · ${r.event_days} 日</td><td class="mono">${NL(r.logscore_ours)}</td><td class="mono">${NL(r.logscore_market)}</td>${dcell(r.logscore_diff,r.logscore_diff_ci)}<td class="mono">${NL(r.crps_ours)}</td><td class="mono">${NL(r.crps_market)}</td>${dcell(r.crps_diff,r.crps_diff_ci)}</tr>`;
+  const dist=DS.all?`<details style="margin-top:8px"><summary>完整分布：同一批时点的 LogScore 与 CRPS（桶级劣势是否也在整体分布里）</summary><div class="scroll"><table>
+    <thead><tr><th>组</th><th>切片</th><th>时点</th><th>LogScore 我方</th><th>LogScore 市场</th><th>Δ [95%]</th><th>CRPS °C 我方</th><th>CRPS °C 市场</th><th>Δ [95%]</th></tr></thead>
+    <tbody>${drow({group:"全部",slice:"—",...DS.all})}${(DS.slices||[]).map(drow).join("")}</tbody></table></div><div class="muted">CRPS＝梯子上的 RPS × 该站桶宽（从桶边界现算，宪章 53）。</div></details>`:"";
+  const PG=T.paired_legs||{}, PS=PG.summary||{};
+  const prow=l=>`<tr><td class="mono">${h((l.created_at||"").slice(5,16))}</td><td class="mono">${h((l.filled_at||"").slice(11,16))}</td><td>${h(TC_LANE_NAMES[l.lane]||l.lane)}</td><td>${h(l.station_id)}</td><td class="mono">${h(l.event_date)}</td><td>${h(l.bucket)} ${h(l.side)}</td><td>${h(l.stage||"—")}${l.stage_at_fill&&l.stage_at_fill!==l.stage?"→"+h(l.stage_at_fill):""}</td>
+     <td class="mono">${n3(l.p)}</td><td class="mono">${n3(l.p_ladder)}</td><td class="mono">${n3(l.p_at_fill)}</td><td class="mono">${n3(l.q_mid)}</td><td class="mono">${n3(l.q_ref)}</td><td class="mono">${n3(l.paid)}</td><td>${h(l.settled_bucket)}</td><td class="${l.win?"up":"down"}">${l.win?"中":"未中"}</td>
+     <td class="mono">${n3(l.ll_p)}</td><td class="mono">${n3(l.ll_q_mid)}</td><td class="mono">${n3(l.ll_paid)}</td></tr>`;
+  const pairing=PS.legs?`<details style="margin-top:8px"><summary>逐笔配对：${PS.legs} 条成交腿的成交前模型概率、市场中价、结算结果，二元 LogLoss 的计算对象与口径核对</summary>
+    <div class="grid g3" style="margin-top:6px">
+      <div class="card"><div class="muted">我方 p：第二层所用 = 同刻梯子所读</div><div class="mono" style="font-size:1.25em">${PS.p_same_vector} / ${PS.legs}</div><div class="muted">最大差 ${PS.p_max_abs_gap==null?"—":(+PS.p_max_abs_gap).toExponential(1)}；结果与结算桶一致 ${PS.outcome_consistent} / ${PS.legs}</div></div>
+      <div class="card"><div class="muted">市场 q：双边中价 vs 整条梯子参考向量</div><div class="mono" style="font-size:1.25em">平均差 ${PS.q_mean_abs_gap==null?"—":(+PS.q_mean_abs_gap).toFixed(4)}</div><div class="muted">${PS.q_ref_available} 腿可比；LL 中价 ${NL(PS.ll_q_mid_on_ref_legs)} / 参考 ${NL(PS.ll_q_ref_on_ref_legs)}</div></div>
+      <div class="card"><div class="muted">下单 → 首次成交</div><div class="mono" style="font-size:1.25em">中位 ${PS.minutes_to_fill_median==null?"—":(+PS.minutes_to_fill_median).toFixed(1)} 分钟</div><div class="muted">阶段变了 ${PS.stage_changed_by_fill} 腿；p 动 >0.01 的 ${PS.p_moved_by_fill_over_0_01} 腿（平均 ${PS.p_mean_abs_move_by_fill==null?"—":(+PS.p_mean_abs_move_by_fill).toFixed(3)}）；LL 下单时 ${NL(PS.ll_p_at_intent_on_fill_legs)} / 成交时 ${NL(PS.ll_p_at_fill_on_fill_legs)}</div></div>
+    </div>
+    <div class="scroll" style="max-height:560px;margin-top:6px"><table><thead><tr><th>下单</th><th>成交</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>p 第二层</th><th>p 梯子</th><th>p 成交时</th><th>q 中价</th><th>q 参考</th><th>实付</th><th>结算桶</th><th>结果</th><th>LL 我</th><th>LL 市</th><th>LL 付</th></tr></thead>
+    <tbody>${(PG.legs||[]).map(prow).join("")}</tbody></table></div><div class="muted">p、q、实付与结果都按腿的方向记（NO 腿取 NO 一侧）；结算桶是正式真值（宪章 225）。</div></details>`:"";
+  if(!B.available||!A) return intro+both+funnel+lanesTbl+pairing;
   const C=B.counts||{};
   const srow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${r.samples}</td><td class="mono">${r.event_days}</td>
      <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
@@ -19211,7 +19256,7 @@ function bucketCalibration(){
   const rel=`<details style="margin-top:8px"><summary>校准每个桶的发生概率：可靠性图（全部桶），按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(B.reliability_ours||[]),"按我方 p 分档")}${tbl(mk(B.reliability_market||[]),"按市场 q 分档")}</div></details>`;
   const foot=`<div class="muted" style="margin-top:6px">自 ${h(B.since)}：已结算站日 ${C.station_days??"—"}，取到时点 ${C.samples??"—"}，档内前 ${h(B.tries_per_band)} 个决策时点都没有 ${Math.round((+B.book_window_sec||0)/60)} 分钟内完整盘口的档 ${C.band_unpaired??"—"}，梯子对不上 ${C.ladder_mismatch??"—"}。
     评价实际买入的桶按车道、条件切片与可靠性图见下一节「交易概率校准（第二层）」。读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
-  return intro+both+lanesTbl+slices+rel+foot;
+  return intro+both+funnel+layers+dist+lanesTbl+pairing+slices+rel+foot;
 }
 
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
@@ -24169,7 +24214,7 @@ const LANES = {
   "兑现层（影子）": {layer:"兑现层", status:"shadow",
     role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
   "每个桶与买入的桶（二元 LogLoss）": {layer:"兑现层 · 第二层", status:"audit",
-    role:"同一把二元 LogLoss、两批样本：整条梯子每个桶的发生概率（每站日每距结算档一个时点，我方服务向量对市场参考向量）与实际买入的桶（已成交腿）；只评价，不作训练目标"},
+    role:"同一把二元 LogLoss、两批样本：整条梯子每个桶的发生概率（每站日每距结算档一个时点，我方服务向量对市场参考向量）与实际买入的桶（已成交腿）；配对诊断：全部候选桶→信号桶→成交桶漏斗、P0 融合池→分布层输入→服务三层、完整分布 LogScore/CRPS、按车道、成交腿逐笔配对；只评价，不作训练目标"},
   "交易概率校准（第二层）": {layer:"兑现层 · 第二层", status:"audit",
     role:"第一层评整条分布（211/240），这一层只评被交易的桶：实际成交腿上我方 p、市场 q、实付价的二元 LogLoss 与十分档可靠性成对比较；只评价，不作训练目标（宪章 259）"},
   // --- live: the lanes that send, and the book they send into ---

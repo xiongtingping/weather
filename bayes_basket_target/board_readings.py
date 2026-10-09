@@ -1465,10 +1465,12 @@ def _binary_logloss(p: float, hit: float) -> float:
 
 def _served_belief_vector(
     conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
-) -> tuple[str | None, dict[str, float] | None, dict[str, int] | None]:
+) -> tuple[str | None, dict[str, float] | None, dict[str, int] | None, float | None]:
     """The most informed committed served vector at ``at_utc`` -- P1 if one
     stands, else P0-M, else P0 (the chain's precedence, charter 229) -- floored
-    as serving floors it (charter 224) and renormalised, with its ladder order.
+    as serving floors it (charter 224) and renormalised, with its ladder order
+    and its rung in °C (the bounded buckets' width, from the row's own edges --
+    never a unit constant, charter 53).
 
     Not "the newest of any stage": a P0-M decision committed after a P1 on the
     same day is the staler belief (2026-10-09: same-day P0-M past the local
@@ -1486,29 +1488,34 @@ def _served_belief_vector(
     belief = served_belief_row(conn, station_id=station, event_date=day, at_utc=at_utc)
     row = None if belief is None else (belief["history_id"], belief["stage"])
     if row is None:
-        cache[key] = (None, None, None)
+        cache[key] = (None, None, None, None)
         return cache[key]
     raw: dict[str, float] = {}
     order: dict[str, int] = {}
-    for b, v, o in conn.execute(
-        "SELECT bucket, probability, ordinal FROM basket_probability_bridge_bucket_probability WHERE history_id=?",
+    widths: list[float] = []
+    for b, v, o, lower, upper in conn.execute(
+        "SELECT bucket, probability, ordinal, lower_c, upper_c FROM basket_probability_bridge_bucket_probability"
+        " WHERE history_id=?",
         (row[0],),
     ):
         raw[str(b)], order[str(b)] = float(v), int(o)
+        if lower is not None and upper is not None and float(upper) > float(lower):
+            widths.append(float(upper) - float(lower))
     total = sum(raw.values())
     if total <= 0.0:
-        cache[key] = (str(row[1]), None, None)
+        cache[key] = (str(row[1]), None, None, None)
         return cache[key]
     floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
     norm = sum(floored.values()) or 1.0
-    cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()}, order)
+    cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()}, order,
+                  median(widths) if widths else None)
     return cache[key]
 
 
 def _traded_served_vector(
     conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
 ) -> tuple[str | None, dict[str, float] | None]:
-    stage, vector, _order = _served_belief_vector(conn, station, day, at_utc, cache)
+    stage, vector, _order, _rung = _served_belief_vector(conn, station, day, at_utc, cache)
     return stage, vector
 
 
@@ -1731,7 +1738,7 @@ def traded_calibration_ladder_by_lane(
     for leg in legs:
         counts["legs"] += 1
         station, day, at = str(leg["station_id"]), str(leg["event_date"]), str(leg["created_at"])
-        stage, p, order = _served_belief_vector(conn, station, day, at, served_cache)
+        stage, p, order, _rung = _served_belief_vector(conn, station, day, at, served_cache)
         q = _ladder_market_reference(conn, station, day, at, market_cache)
         if p is None or order is None or q is None:
             counts["no_market_reference"] += 1
@@ -1752,6 +1759,122 @@ def traded_calibration_ladder_by_lane(
         "counts": counts, "all": bucket_calibration_group(whole),
         "lanes": [{"lane": lane, **(bucket_calibration_group(rows) or {})} for lane, rows in sorted(by_lane.items())],
     }
+
+
+def _event_week(day: str) -> str:
+    """The Monday of the event day's week (the 「日期」 cut, week by week)."""
+
+    d = date.fromisoformat(str(day))
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def _side(value: float | None, is_no: bool) -> float | None:
+    return None if value is None else ((1.0 - float(value)) if is_no else float(value))
+
+
+def traded_calibration_funnel(conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Where the gap widens (user 2026-10-09 「下一步继续切」: 全部候选桶 vs 策略
+    信号桶 vs 实际成交桶): every leg a lane sent (its signal), the ones that did
+    not fill and the ones that did, each scored on its bucket with the same
+    market reference the every-bucket sample uses (``_ladder_market_reference``),
+    so the three rows and the every-bucket row share one q.  Side-oriented: a
+    NO leg's p, q and outcome are the NO side's (binary LogLoss is the same on
+    either side; the direction cut is not)."""
+
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
+    counts = {"legs": 0, "no_market_reference": 0, "ladder_mismatch": 0}
+    rows: list[dict[str, Any]] = []
+    for leg in legs:
+        counts["legs"] += 1
+        station, day, at, bucket = str(leg["station_id"]), str(leg["event_date"]), str(leg["created_at"]), str(leg["bucket"])
+        _stage, p, _order, _rung = _served_belief_vector(conn, station, day, at, served_cache)
+        q = _ladder_market_reference(conn, station, day, at, market_cache)
+        if p is None or q is None:
+            counts["no_market_reference"] += 1
+            continue
+        if bucket not in p or bucket not in q:
+            counts["ladder_mismatch"] += 1
+            continue
+        is_no = leg["side"] == "NO"
+        rows.append({"station_id": station, "event_date": day, "at": at, "lane": leg["lane"], "filled": bool(leg["filled"]),
+                     "p": _side(p[bucket], is_no), "q": _side(q[bucket], is_no), "win": float(leg["win"])})
+    out: list[dict[str, Any]] = []
+    for population, pick in (("信号桶（全部意图）", lambda r: True), ("其中未成交", lambda r: not r["filled"]),
+                             ("其中成交", lambda r: r["filled"])):
+        for direction, cut in (("全部", lambda r: True), ("p > q", lambda r: r["p"] > r["q"]),
+                               ("p ≤ q", lambda r: r["p"] <= r["q"])):
+            group = bucket_calibration_group([r for r in rows if pick(r) and cut(r)])
+            if group is not None:
+                out.append({"population": population, "direction": direction, **group})
+    return {"counts": counts, "rows": out}
+
+
+def traded_calibration_paired_legs(conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Every bought leg paired one by one (user 2026-10-09: 把实际买入的腿与它们在
+    成交前的模型概率、市场中价、最终结算结果逐笔配对，确认二元 LogLoss 的计算对象和
+    概率口径完全一致): our p as the second layer scored it (the belief at the
+    intent) and as the ladder reads it at the same instant, our p at the first
+    fill, the two-sided mid and the ladder's market reference, the paid price,
+    the settled bucket and the outcome, and each one's binary LogLoss."""
+
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
+    paired: list[dict[str, Any]] = []
+    for leg in sorted((l for l in legs if l["filled"]), key=lambda l: l["created_at"]):
+        station, day, at, bucket = str(leg["station_id"]), str(leg["event_date"]), str(leg["created_at"]), str(leg["bucket"])
+        is_no = leg["side"] == "NO"
+        fill_row = conn.execute(
+            "SELECT MIN(observed_at) FROM basket_target_order_events WHERE order_intent_id=? AND matched_size>0",
+            (str(leg["order_intent_id"]),),
+        ).fetchone()
+        filled_at = str(fill_row[0]) if fill_row and fill_row[0] else None
+        _stage, p, _order, _rung = _served_belief_vector(conn, station, day, at, served_cache)
+        q = _ladder_market_reference(conn, station, day, at, market_cache)
+        fill_stage, p_fill = None, None
+        if filled_at:
+            fill_stage, fill_vector, _o, _r = _served_belief_vector(conn, station, day, filled_at, served_cache)
+            p_fill = _side(fill_vector.get(bucket), is_no) if fill_vector else None
+        row = {
+            "created_at": at, "filled_at": filled_at, "lane": leg["lane"], "station_id": station, "event_date": day,
+            "bucket": bucket, "side": leg["side"], "stage": leg["stage"], "stage_at_fill": fill_stage,
+            "p": float(leg["p"]), "p_ladder": _side(p.get(bucket), is_no) if p else None, "p_at_fill": p_fill,
+            "q_mid": float(leg["q"]), "q_ref": _side(q.get(bucket), is_no) if q else None, "paid": float(leg["paid"]),
+            "settled_bucket": leg["settled_bucket"], "win": float(leg["win"]), "shares": float(leg["shares"]),
+        }
+        for name in ("p", "p_ladder", "p_at_fill", "q_mid", "q_ref", "paid"):
+            row[f"ll_{name}"] = None if row[name] is None else _binary_logloss(row[name], row["win"])
+        paired.append(row)
+
+    def _mean(values: Sequence[float | None]) -> float | None:
+        kept = [float(v) for v in values if v is not None]
+        return (sum(kept) / len(kept)) if kept else None
+
+    with_ref = [r for r in paired if r["q_ref"] is not None]
+    with_fill = [r for r in paired if r["p_at_fill"] is not None]
+    gaps = [abs(r["p"] - r["p_ladder"]) for r in paired if r["p_ladder"] is not None]
+    win_check = [r for r in paired
+                 if r["win"] == ((0.0 if r["settled_bucket"] == r["bucket"] else 1.0) if r["side"] == "NO"
+                                 else (1.0 if r["settled_bucket"] == r["bucket"] else 0.0))]
+    summary = {
+        "legs": len(paired),
+        "p_same_vector": sum(1 for g in gaps if g < 1e-12), "p_max_abs_gap": max(gaps) if gaps else None,
+        "outcome_consistent": len(win_check),
+        "q_ref_available": len(with_ref),
+        "q_mean_abs_gap": _mean([abs(r["q_mid"] - r["q_ref"]) for r in with_ref]),
+        "ll_q_mid_on_ref_legs": _mean([r["ll_q_mid"] for r in with_ref]),
+        "ll_q_ref_on_ref_legs": _mean([r["ll_q_ref"] for r in with_ref]),
+        "ll_p_on_ref_legs": _mean([r["ll_p"] for r in with_ref]),
+        "fill_known": len(with_fill),
+        "stage_changed_by_fill": sum(1 for r in with_fill if r["stage_at_fill"] != r["stage"]),
+        "p_moved_by_fill_over_0_01": sum(1 for r in with_fill if abs(r["p_at_fill"] - r["p"]) > 0.01),
+        "p_mean_abs_move_by_fill": _mean([abs(r["p_at_fill"] - r["p"]) for r in with_fill]),
+        "ll_p_at_intent_on_fill_legs": _mean([r["ll_p"] for r in with_fill]),
+        "ll_p_at_fill_on_fill_legs": _mean([r["ll_p_at_fill"] for r in with_fill]),
+        "minutes_to_fill_median": (median([(_utc_instant(r["filled_at"]) - _utc_instant(r["created_at"])).total_seconds() / 60.0
+                                           for r in with_fill]) if with_fill else None),
+    }
+    return {"summary": summary, "legs": paired}
 
 
 def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -1779,6 +1902,8 @@ def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     if split:
         specs.append(("时段", f"前半（< {split}）", lambda l, v=split: l["event_date"] < v))
         specs.append(("时段", f"后半（≥ {split}）", lambda l, v=split: l["event_date"] >= v))
+    for week in sorted({_event_week(l["event_date"]) for l in legs}):
+        specs.append(("事件周", f"{week} 起一周", lambda l, v=week: _event_week(l["event_date"]) == v))
     out: list[dict[str, Any]] = []
     for group, name, predicate in specs:
         row = traded_calibration_group([l for l in legs if predicate(l)], min_legs=1 if group == "车道" else None)
@@ -1806,10 +1931,12 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
         }
     populations["filled"]["ladder_by_lane"] = traded_calibration_ladder_by_lane(
         conn, [l for l in legs if l["filled"]])
+    funnel = traded_calibration_funnel(conn, legs)
+    paired = traded_calibration_paired_legs(conn, legs)
     return {
         "rule": "traded_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
         "min_legs": TRADED_CALIBRATION_MIN_LEGS, "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC,
-        "populations": populations,
+        "populations": populations, "funnel": funnel, "paired_legs": paired,
         "recent": [
             {k: l[k] for k in ("created_at", "lane", "station_id", "event_date", "bucket", "side", "stage",
                                "p", "q", "paid", "win", "filled", "shares")}
@@ -1834,7 +1961,23 @@ BUCKET_CALIBRATION_BINS = (0.0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0
 #: Decision instants tried per band before the band counts as unpaired.
 BUCKET_CALIBRATION_TRIES = 8
 _BUCKET_POSITIONS = (("市场众数桶", 0, 0), ("离众数 ±1", 1, 1), ("离众数 ±2", 2, 2), ("离众数 ≥ 3", 3, 10 ** 6))
-_BUCKET_SIDE_BANDS = (("p−q < −0.05", -1.01, -0.05), ("p−q −0.05–0", -0.05, 0.0)) + _TRADED_SIDE_BANDS[1:]
+_BUCKET_SIDE_BANDS = (("p−q < −0.20", -1.01, -0.20), ("p−q −0.20–−0.10", -0.20, -0.10),
+                      ("p−q −0.10–−0.05", -0.10, -0.05), ("p−q −0.05–0", -0.05, 0.0)) + _TRADED_SIDE_BANDS[1:]
+_BUCKET_PRICE_BANDS = (("市场 q < 0.05", 0.0, 0.05), ("市场 q 0.05–0.20", 0.05, 0.20), ("市场 q 0.20–0.40", 0.20, 0.40),
+                       ("市场 q 0.40–0.60", 0.40, 0.60), ("市场 q ≥ 0.60", 0.60, 1.01))
+#: The P0 envelope's own layers, upstream first: the fused pool of the
+#: families' vectors (each already through its single-system correction --
+#: the uncorrected member distributions are not kept), the distribution
+#: layer's input (after the consensus bridge and the radiation term), and the
+#: served P0 (centre/width, far-end tails, peak ceiling).  Each is floored as
+#: serving floors (charter 224) before it is scored.
+P0_LAYERS = ("pool", "input", "served")
+_P0_LAYER_SQL = (
+    "SELECT probabilities_json, json_extract(lineage_json,'$.native_system_probabilities_json'),"
+    " json_extract(lineage_json,'$.system_weights_json'), json_extract(lineage_json,'$.center_width_json')"
+    " FROM basket_probability_envelope{hint} WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+    " AND stage='P0' AND decision_at_utc<=? ORDER BY decision_at_utc DESC LIMIT 1"
+)
 
 
 def _ladder_market_reference(
@@ -1888,7 +2031,59 @@ def _ladder_rows(
     } for bucket in p]
 
 
-def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def _ladder_scores(
+    vectors: Mapping[str, Mapping[str, float]], order: Mapping[str, int], settled: str, rung_c: float | None,
+) -> dict[str, float | None]:
+    """The whole distribution's scores on one ladder for each named vector:
+    LogScore (−log of the settled bucket, clipped as the binary scores are)
+    and CRPS in °C (the ladder RPS times the rung, charter 53)."""
+
+    keys = sorted(order, key=lambda b: order[b])
+    out: dict[str, float | None] = {}
+    for name, vector in vectors.items():
+        out[f"logscore_{name}"] = -math.log(max(TRADED_CALIBRATION_CLIP, float(vector.get(settled, 0.0) or 0.0)))
+        out[f"crps_{name}_c"] = (_ladder_rps(vector, keys, settled) * rung_c) if rung_c else None
+    return out
+
+
+def _p0_layers(conn: sqlite3.Connection, station: str, day: str, at_utc: str) -> dict[str, dict[str, float]] | None:
+    """The P0 standing at ``at_utc``, layer by layer (``P0_LAYERS``); None when
+    the envelope predates the per-family vectors (2026-09-22) or a layer is
+    not on the served ladder."""
+
+    from .materialization import floor_probabilities  # noqa: PLC0415
+
+    params = (station, day, at_utc)
+    try:
+        row = conn.execute(_P0_LAYER_SQL.format(hint=" INDEXED BY basket_probability_envelope_asof_idx"), params).fetchone()
+    except sqlite3.OperationalError:
+        # A store without the index (fixtures): the same seek unhinted.
+        row = conn.execute(_P0_LAYER_SQL.format(hint=""), params).fetchone()
+    if row is None or not row[1] or not row[2] or not row[3]:
+        return None
+    try:
+        served = {str(b): float(v) for b, v in json.loads(row[0]).items()}
+        systems = json.loads(row[1])
+        weights = {str(k): float(v) for k, v in json.loads(row[2]).items() if k in systems}
+        given = json.loads(row[3]).get("input_probability")
+    except (TypeError, ValueError, AttributeError):
+        return None
+    total = sum(weights.values())
+    if total <= 0.0 or not isinstance(given, dict) or set(map(str, given)) != set(served):
+        return None
+    pool = {b: sum(w * float((systems[k] or {}).get(b, 0.0) or 0.0) for k, w in weights.items()) / total for b in served}
+    out: dict[str, dict[str, float]] = {}
+    for name, vector in (("pool", pool), ("input", {str(b): float(v or 0.0) for b, v in given.items()}), ("served", served)):
+        mass = sum(vector.values())
+        if mass <= 0.0:
+            return None
+        floored, _lifted = floor_probabilities({b: v / mass for b, v in vector.items()})
+        norm = sum(floored.values()) or 1.0
+        out[name] = {b: v / norm for b, v in floored.items()}
+    return out
+
+
+def bucket_calibration_rows(conn: sqlite3.Connection) -> dict[str, Any]:
     """Every bucket of the ladder, scored where the lanes could have traded it.
 
     Sample: each settled station-day since ``TRADED_CALIBRATION_SINCE``, and in
@@ -1896,16 +2091,22 @@ def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, An
     complete market reference at most ``TRADED_CALIBRATION_BOOK_WINDOW_SEC``
     old (``_ladder_market_reference``).  Our vector is the belief standing at
     that instant (charter 260, floored as served); each bucket k of the ladder
-    is one row with our p_k, the market's q_k and whether k landed.
+    is one row with our p_k, the market's q_k and whether k landed.  Each
+    sample also carries the whole distribution's LogScore and CRPS, and the
+    P0 standing at the same instant layer by layer against the same q.
     """
 
     from .label_knowability import knowable_labels  # noqa: PLC0415
     from .settlement_time import hours_to_settlement_if_known  # noqa: PLC0415
 
-    counts = {"station_days": 0, "samples": 0, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 0}
+    counts = {"station_days": 0, "samples": 0, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 0,
+              "p0_layers": 0, "p0_layers_missing": 0}
     served_cache: dict[tuple[str, str, str], Any] = {}
     market_cache: dict[tuple[str, str, str], Any] = {}
     rows: list[dict[str, Any]] = []
+    samples: list[dict[str, Any]] = []
+    layer_rows: list[dict[str, Any]] = []
+    layer_samples: list[dict[str, Any]] = []
     labels = {k: v for k, v in knowable_labels(conn).items() if str(k[1]) >= TRADED_CALIBRATION_SINCE}
     for (station, day), label in sorted(labels.items()):
         # The instants alone, off the as-of index (about 190 a station-day;
@@ -1938,15 +2139,15 @@ def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, An
                 q = _ladder_market_reference(conn, str(station), str(day), at, market_cache)
                 if q is None:
                     continue
-                stage, vector, order = _served_belief_vector(conn, str(station), str(day), at, served_cache)
+                stage, vector, order, rung = _served_belief_vector(conn, str(station), str(day), at, served_cache)
                 if vector is None or order is None:
                     continue
-                picked = (at, stage, vector, order, q)
+                picked = (at, stage, vector, order, rung, q)
                 break
             if picked is None:
                 counts["band_unpaired"] += 1
                 continue
-            at, stage, p, order, q = picked
+            at, stage, p, order, rung, q = picked
             ladder = _ladder_rows(
                 station=str(station), day=str(day), at=at, stage=stage, settled=str(label["bucket"]),
                 hours=hours_to_settlement_if_known(str(day), as_of_utc=at, settlement_timezone=tz),
@@ -1958,7 +2159,82 @@ def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, An
             counts["samples"] += 1
             counts["buckets"] += len(ladder)
             rows.extend(ladder)
-    return rows, counts
+            settled = str(label["bucket"])
+            meta = {"station_id": str(station), "event_date": str(day), "at": at, "band": band, "stage": stage,
+                    "unit": ladder[0]["unit"]}
+            samples.append({**meta, **_ladder_scores({"ours": p, "market": q}, order, settled, rung)})
+            layers = _p0_layers(conn, str(station), str(day), at)
+            if layers is None or set(layers["served"]) != set(q):
+                counts["p0_layers_missing"] += 1
+                continue
+            counts["p0_layers"] += 1
+            for row in ladder:
+                layer_rows.append({**{k: row[k] for k in ("station_id", "event_date", "at", "band", "bucket", "from_mode",
+                                                          "q", "win")},
+                                   **{f"p_{name}": layers[name][row["bucket"]] for name in P0_LAYERS}})
+            layer_samples.append({**meta, **_ladder_scores({**layers, "market": q}, order, settled, rung)})
+    return {"rows": rows, "samples": samples, "layer_rows": layer_rows, "layer_samples": layer_samples,
+            "counts": counts}
+
+
+def _paired_mean(items: Sequence[Mapping[str, Any]], a: Sequence[float | None],
+                 b: Sequence[float | None]) -> tuple[float | None, list[float] | None]:
+    """Mean of a−b over the items where both exist, with the event-day interval."""
+
+    kept = [(item, float(x) - float(y)) for item, x, y in zip(items, a, b) if x is not None and y is not None]
+    if not kept:
+        return None, None
+    diff = [d for _i, d in kept]
+    return _traded_mean(diff), _traded_day_bootstrap([i for i, _d in kept], diff)
+
+
+def distribution_group(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The whole distribution on the same instants: LogScore and CRPS (°C),
+    ours beside the market's, paired with an event-day interval."""
+
+    if not samples:
+        return None
+    out: dict[str, Any] = {"samples": len(samples), "event_days": len({s["event_date"] for s in samples})}
+    for score in ("logscore", "crps"):
+        suffix = "_c" if score == "crps" else ""
+        ours = [s.get(f"{score}_ours{suffix}") for s in samples]
+        market = [s.get(f"{score}_market{suffix}") for s in samples]
+        out[f"{score}_ours"] = _traded_mean([v for v in ours if v is not None])
+        out[f"{score}_market"] = _traded_mean([v for v in market if v is not None])
+        out[f"{score}_diff"], out[f"{score}_diff_ci"] = _paired_mean(samples, ours, market)
+    return out
+
+
+def p0_layer_group(rows: Sequence[Mapping[str, Any]], samples: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The P0 layers against the market on the same buckets and instants:
+    binary LogLoss per bucket, LogScore and CRPS per instant; each layer's
+    difference to the market and each step's difference to the layer before
+    it, with event-day intervals."""
+
+    if not rows:
+        return None
+    out: dict[str, Any] = {"buckets": len(rows), "samples": len(samples),
+                           "event_days": len({r["event_date"] for r in rows})}
+    ll = {name: [_binary_logloss(r[f"p_{name}"], r["win"]) for r in rows] for name in P0_LAYERS}
+    ll["market"] = [_binary_logloss(r["q"], r["win"]) for r in rows]
+    for name, values in ll.items():
+        out[f"logloss_{name}"] = _traded_mean(values)
+    for name in P0_LAYERS:
+        out[f"logloss_{name}_vs_market"], out[f"logloss_{name}_vs_market_ci"] = _paired_mean(rows, ll[name], ll["market"])
+    steps = (("bridge_radiation", "input", "pool"), ("distribution_layer", "served", "input"))
+    for step, after, before in steps:
+        out[f"logloss_step_{step}"], out[f"logloss_step_{step}_ci"] = _paired_mean(rows, ll[after], ll[before])
+    for score in ("logscore", "crps"):
+        suffix = "_c" if score == "crps" else ""
+        values = {name: [s.get(f"{score}_{name}{suffix}") for s in samples] for name in (*P0_LAYERS, "market")}
+        for name, column in values.items():
+            out[f"{score}_{name}"] = _traded_mean([v for v in column if v is not None])
+        for name in P0_LAYERS:
+            out[f"{score}_{name}_vs_market"], out[f"{score}_{name}_vs_market_ci"] = _paired_mean(
+                samples, values[name], values["market"])
+        for step, after, before in steps:
+            out[f"{score}_step_{step}"], out[f"{score}_step_{step}_ci"] = _paired_mean(samples, values[after], values[before])
+    return out
 
 
 def bucket_calibration_group(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -1997,9 +2273,13 @@ def bucket_calibration_reliability(rows: Sequence[Mapping[str, Any]], key: str) 
 def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
     """Every bucket's occurrence probability on the ladder, ours beside the
     market's, binary LogLoss: the whole, by stage, lead, unit, the bucket's
-    distance from the market's mode, our-minus-market, and the two halves."""
+    distance from the market's mode, the direction and size of our-minus-market,
+    the market's price, the halves and the weeks; the whole distribution's
+    LogScore/CRPS on the same instants; and the P0 standing at each instant
+    layer by layer (user 2026-10-09 「下一步继续切」)."""
 
-    rows, counts = bucket_calibration_rows(conn)
+    built = bucket_calibration_rows(conn)
+    rows, samples, counts = built["rows"], built["samples"], built["counts"]
     days = sorted({r["event_date"] for r in rows})
     split = days[len(days) // 2] if days else None
     specs: list[tuple[str, str, Any]] = []
@@ -2011,20 +2291,50 @@ def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
         specs.append(("结算单位", unit, lambda r, v=unit: r["unit"] == v))
     for name, lo, hi in _BUCKET_POSITIONS:
         specs.append(("桶位置", name, lambda r, a=lo, b=hi: a <= r["from_mode"] <= b))
+    specs.append(("分歧方向", "p > q", lambda r: r["p"] > r["q"]))
+    specs.append(("分歧方向", "p ≤ q", lambda r: r["p"] <= r["q"]))
     for name, lo, hi in _BUCKET_SIDE_BANDS:
         specs.append(("我方对市场", name, lambda r, a=lo, b=hi: a <= r["p"] - r["q"] < b))
+    for name, lo, hi in _BUCKET_PRICE_BANDS:
+        specs.append(("市场价", name, lambda r, a=lo, b=hi: a <= r["q"] < b))
     if split:
         specs.append(("时段", f"前半（< {split}）", lambda r, v=split: r["event_date"] < v))
         specs.append(("时段", f"后半（≥ {split}）", lambda r, v=split: r["event_date"] >= v))
+    weeks = sorted({_event_week(d) for d in days})
+    for week in weeks:
+        specs.append(("事件周", f"{week} 起一周", lambda r, v=week: _event_week(r["event_date"]) == v))
     slices = []
     for group, name, predicate in specs:
         row = bucket_calibration_group([r for r in rows if predicate(r)])
         if row is not None:
             slices.append({"group": group, "slice": name, **row})
+    # The whole distribution on the same instants, and the P0 layers.
+    dist_specs: list[tuple[str, str, Any]] = [("阶段", st, lambda x, v=st: x["stage"] == v) for st in ("P0", "P0-M", "P1")]
+    dist_specs += [("提前量", name, lambda x, v=name: x["band"] == v) for name, _lo, _hi in BUCKET_CALIBRATION_BANDS]
+    dist_specs += [("结算单位", u, lambda x, v=u: x["unit"] == v) for u in ("C", "F")]
+    dist_specs += [("事件周", f"{w} 起一周", lambda x, v=w: _event_week(x["event_date"]) == v) for w in weeks]
+    dist_slices = []
+    for group, name, predicate in dist_specs:
+        got = distribution_group([x for x in samples if predicate(x)])
+        if got is not None:
+            dist_slices.append({"group": group, "slice": name, **got})
+    distribution = {"all": distribution_group(samples), "slices": dist_slices}
+    layer_rows, layer_samples = built["layer_rows"], built["layer_samples"]
+    layer_slices = []
+    for name, _lo, _hi in BUCKET_CALIBRATION_BANDS:
+        got = p0_layer_group([r for r in layer_rows if r["band"] == name], [x for x in layer_samples if x["band"] == name])
+        if got is not None:
+            layer_slices.append({"group": "提前量", "slice": name, **got})
+    for name, lo, hi in _BUCKET_POSITIONS:
+        got = p0_layer_group([r for r in layer_rows if lo <= r["from_mode"] <= hi], [])
+        if got is not None:
+            layer_slices.append({"group": "桶位置", "slice": name, **got})
+    p0_layers = {"all": p0_layer_group(layer_rows, layer_samples), "slices": layer_slices}
     return {
         "rule": "every_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
         "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC, "tries_per_band": BUCKET_CALIBRATION_TRIES,
         "all": bucket_calibration_group(rows), "slices": slices,
+        "distribution": distribution, "p0_layers": p0_layers,
         "reliability_ours": bucket_calibration_reliability(rows, "p"),
         "reliability_market": bucket_calibration_reliability(rows, "q"),
     }
@@ -2051,12 +2361,14 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
         (traded_calibration, traded_calibration_legs, traded_calibration_group,
          traded_calibration_reliability, traded_calibration_reliability_by_lane, _traded_slices,
          _served_belief_vector, _traded_served_vector, _traded_market_mid,
-         traded_calibration_ladder_by_lane, _ladder_market_reference, _ladder_rows, bucket_calibration_group),
+         traded_calibration_ladder_by_lane, _ladder_market_reference, _ladder_rows, bucket_calibration_group,
+         traded_calibration_funnel, traded_calibration_paired_legs, _event_week, _side),
     ),
     "bucket_calibration": (
         bucket_calibration,
         (bucket_calibration, bucket_calibration_rows, bucket_calibration_group, bucket_calibration_reliability,
-         _served_belief_vector, _ladder_market_reference, _ladder_rows, _binary_logloss, _traded_day_bootstrap),
+         _served_belief_vector, _ladder_market_reference, _ladder_rows, _binary_logloss, _traded_day_bootstrap,
+         _ladder_scores, _p0_layers, _paired_mean, distribution_group, p0_layer_group, _event_week, _ladder_rps),
     ),
     "basket_shadow": (
         basket_shadow,

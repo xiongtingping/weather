@@ -264,8 +264,10 @@ def test_every_bucket_of_the_ladder_is_one_row_with_our_p_the_markets_q_and_the_
     _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)},
                observed="2026-09-18T11:20:00Z", snapshot_id="snapA")
     _label(store, "28°C")
-    rows, counts = BR.bucket_calibration_rows(store)
-    assert counts == {"station_days": 1, "samples": 1, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 3}
+    built = BR.bucket_calibration_rows(store)
+    rows, counts = built["rows"], built["counts"]
+    assert counts == {"station_days": 1, "samples": 1, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 3,
+                      "p0_layers": 0, "p0_layers_missing": 1}
     by = {r["bucket"]: r for r in rows}
     assert {r["band"] for r in rows} == {"距结算 36–60h"} and {r["stage"] for r in rows} == {"P0"}
     assert by["28°C"]["win"] == 1.0 and by["27°C"]["win"] == 0.0
@@ -275,6 +277,14 @@ def test_every_bucket_of_the_ladder_is_one_row_with_our_p_the_markets_q_and_the_
     assert row["buckets"] == 3 and row["samples"] == 1
     assert row["logloss_ours"] == pytest.approx((_ll(0.2, 0) + _ll(0.5, 1) + _ll(0.3, 0)) / 3)
     assert row["logloss_diff"] == pytest.approx(row["logloss_ours"] - row["logloss_market"])
+    # The whole distribution on the same instant: LogScore of the settled
+    # bucket, CRPS = ladder RPS x the rung read from the bucket edges (1 °C).
+    (sample,) = built["samples"]
+    assert sample["logscore_ours"] == pytest.approx(-math.log(0.5))
+    assert sample["logscore_market"] == pytest.approx(-math.log(0.40 / 0.89))
+    assert sample["crps_ours_c"] == pytest.approx(0.2 ** 2 + (0.7 - 1.0) ** 2)
+    q27, q28 = 0.19 / 0.89, 0.40 / 0.89
+    assert sample["crps_market_c"] == pytest.approx(q27 ** 2 + (q27 + q28 - 1.0) ** 2)
 
 
 def test_every_bucket_at_each_lanes_buy_instants_one_ladder_per_vector(store) -> None:  # noqa: F811
@@ -301,14 +311,86 @@ def test_every_bucket_at_each_lanes_buy_instants_one_ladder_per_vector(store) ->
     assert [r["lane"] for r in value["populations"]["filled"]["ladder_by_lane"]["lanes"]] == ["proper_bet", "tail_short"]
 
 
+def _p0_envelope(conn, *, served, systems, weights, given, decided="2026-09-18T11:30:00Z"):
+    _insert(conn, "basket_probability_envelope", {
+        "envelope_id": "env1", "station_id": ST, "event_date": ED, "settlement_timezone": TZ, "stage": "P0",
+        "decision_at_utc": decided, "fresh_until_utc": "2026-09-19T00:00:00Z", "state": "COMMITTED",
+        "probabilities_json": json.dumps(served),
+        "lineage_json": json.dumps({"native_system_probabilities_json": json.dumps(systems),
+                                    "system_weights_json": json.dumps(weights),
+                                    "center_width_json": json.dumps({"input_probability": given})}),
+    })
+
+
+def test_the_p0_standing_at_the_instant_is_scored_layer_by_layer(store) -> None:  # noqa: F811
+    """User 2026-10-09 「下一步继续切」 (原始模型概率 vs 市场中价，校准后概率 vs 市场
+    中价): the fused pool, the distribution layer's input and the served P0 of
+    the same envelope, each against the same market reference."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)},
+          observed="2026-09-18T11:20:00Z", snapshot_id="snapA")
+    _label(store, "28°C")
+    _p0_envelope(store, served={"27°C": 0.2, "28°C": 0.5, "29°C": 0.3},
+                 systems={"A": {"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, "B": {"27°C": 0.2, "28°C": 0.6, "29°C": 0.2}},
+                 weights={"A": 0.25, "B": 0.75}, given={"27°C": 0.3, "28°C": 0.5, "29°C": 0.2})
+    built = BR.bucket_calibration_rows(store)
+    assert built["counts"]["p0_layers"] == 1
+    by = {r["bucket"]: r for r in built["layer_rows"]}
+    pool27 = 0.25 * 0.6 + 0.75 * 0.2
+    assert by["27°C"]["p_pool"] == pytest.approx(pool27) and by["27°C"]["p_input"] == pytest.approx(0.3)
+    assert by["28°C"]["p_served"] == pytest.approx(0.5) and by["28°C"]["win"] == 1.0
+    group = BR.p0_layer_group(built["layer_rows"], built["layer_samples"])
+    assert group["logloss_pool"] == pytest.approx((_ll(pool27, 0) + _ll(0.25 * 0.3 + 0.75 * 0.6, 1)
+                                                   + _ll(0.25 * 0.1 + 0.75 * 0.2, 0)) / 3)
+    assert group["logloss_input"] == pytest.approx((_ll(0.3, 0) + _ll(0.5, 1) + _ll(0.2, 0)) / 3)
+    assert group["logloss_step_distribution_layer"] == pytest.approx(group["logloss_served"] - group["logloss_input"])
+    assert group["logscore_served_vs_market"] == pytest.approx(-math.log(0.5) + math.log(0.40 / 0.89))
+    value = BR.bucket_calibration(store)
+    assert value["p0_layers"]["all"]["samples"] == 1 and value["distribution"]["all"]["samples"] == 1
+
+
+def test_the_funnel_and_the_leg_by_leg_pairing_share_one_belief_and_one_outcome(store) -> None:  # noqa: F811
+    """全部候选桶 vs 策略信号桶 vs 实际成交桶 on one market reference; each bought
+    leg paired with our p at the intent (the second layer's and the ladder's --
+    the same vector), our p at the fill, both market prices and the outcome."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)})
+    _label(store, "28°C")
+    _leg(store, "i_yes", decision_id="proper_bet_decision_ZSPD_2026-09-20", bucket="28°C", side="YES", price=0.40,
+         size=10, filled=10, notional=4.0)
+    _leg(store, "i_no", decision_id="tail_short_decision_ZSPD_2026-09-20", bucket="29°C", side="NO", price=0.70,
+         size=5, filled=5, notional=3.5)
+    _leg(store, "i_unfilled", decision_id="basket_plan_x", bucket="27°C", side="YES", price=0.19, size=10,
+         filled=0, notional=0.0)
+    _insert(store, "basket_target_order_events", {
+        "event_id": "e1", "order_intent_id": "i_yes", "event_type": "FILL", "observed_at": "2026-09-18T12:05:00Z",
+        "matched_size": 10.0, "matched_notional_usdc": 4.0, "event_json": "{}"})
+    legs, _counts = BR.traded_calibration_legs(store)
+    funnel = BR.traded_calibration_funnel(store, legs)
+    rows = {(r["population"], r["direction"]): r for r in funnel["rows"]}
+    assert rows[("信号桶（全部意图）", "全部")]["buckets"] == 3
+    assert rows[("其中成交", "全部")]["buckets"] == 2 and rows[("其中未成交", "全部")]["buckets"] == 1
+    paired = BR.traded_calibration_paired_legs(store, legs)
+    summary = paired["summary"]
+    assert (summary["legs"], summary["p_same_vector"], summary["outcome_consistent"]) == (2, 2, 2)
+    assert summary["fill_known"] == 1 and summary["stage_changed_by_fill"] == 0
+    no = next(r for r in paired["legs"] if r["side"] == "NO")
+    assert no["p"] == pytest.approx(0.7) and no["p_ladder"] == pytest.approx(0.7) and no["win"] == 1.0
+    assert no["q_ref"] == pytest.approx(1 - 0.30 / 0.89) and no["ll_p"] == pytest.approx(_ll(0.7, 1))
+    yes = next(r for r in paired["legs"] if r["side"] == "YES")
+    assert yes["filled_at"] == "2026-09-18T12:05:00Z" and yes["p_at_fill"] == pytest.approx(0.5)
+
+
 def test_a_band_without_a_fresh_complete_book_is_unpaired(store) -> None:  # noqa: F811
     _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
     # Older than the window before the instant: not the book the instant saw.
     _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)},
                observed="2026-09-18T10:30:00Z", snapshot_id="snapOld")
     _label(store, "28°C")
-    rows, counts = BR.bucket_calibration_rows(store)
-    assert rows == [] and counts["band_unpaired"] == 1
+    built = BR.bucket_calibration_rows(store)
+    assert built["rows"] == [] and built["counts"]["band_unpaired"] == 1
 
 
 def test_the_bucket_reading_slices_and_bins() -> None:
@@ -364,12 +446,25 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
                                "slices": [{"group": "桶位置", "slice": "市场众数桶", **group}],
                                "reliability_ours": [{"bin": [0.0, 0.01], "buckets": 3, "said_ours": 0.004,
                                                      "said_market": 0.01, "landed": 0.0}],
-                               "reliability_market": [], "counts": {"station_days": 4}},
+                               "reliability_market": [], "counts": {"station_days": 4},
+                               "p0_layers": {"all": {"buckets": 30, "samples": 10, "event_days": 4,
+                                                     **{f"{sc}_{k}": 0.2 for sc in ("logloss", "logscore", "crps")
+                                                        for k in ("pool", "input", "served", "market")},
+                                                     "logloss_pool_vs_market": 0.027, "logloss_pool_vs_market_ci": [0.02, 0.03]},
+                                             "slices": []},
+                               "distribution": {"all": {"samples": 10, "event_days": 4, "logscore_ours": 1.44,
+                                                        "logscore_market": 1.23, "logscore_diff": 0.21,
+                                                        "logscore_diff_ci": [0.17, 0.26]}, "slices": []}},
         "traded_calibration": {"populations": {"filled": {
             "all": {**group, "legs": 20, "logloss_paid": 0.19},
             "slices": [{"group": "车道", "slice": "tiebreak", **group, "legs": 7, "logloss_paid": 0.2}],
             "ladder_by_lane": {"all": group, "lanes": [{"lane": "tiebreak", **group, "buckets": 70}],
-                               "counts": {"legs": 20}}}}},
+                               "counts": {"legs": 20}}}},
+            "funnel": {"counts": {"legs": 25}, "rows": [{"population": "其中成交", "direction": "p > q", **group,
+                                                         "buckets": 9}]},
+            "paired_legs": {"summary": {"legs": 20, "p_same_vector": 20, "outcome_consistent": 20},
+                            "legs": [{"created_at": "2026-09-20T06:00:00Z", "lane": "proper_bet", "bucket": "28°C",
+                                      "side": "YES", "p": 0.5, "win": 1.0, "settled_bucket": "28°C"}]}},
     }
     script = ("const D = " + json.dumps(payload, ensure_ascii=False) + ";\nconst h = s => String(s == null ? '' : s);\n"
               + source[start:end] + "\nconsole.log(bucketCalibration());\n")
@@ -380,3 +475,7 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     assert "<b>评价实际买入的桶</b>" in html and "20 腿 · 4 日" in html and "0.1900" in html
     assert "+0.0300 [+0.0100, +0.0500]*" in html and "市场众数桶" in html
     assert "<b>秤砣线</b>" in html and "70 桶 · 10 时点 · 4 日" in html and "7 腿 · 4 日" in html
+    assert "<b>实际成交桶</b>" in html and "9 腿 · 4 日" in html, "the funnel's filled row"
+    assert "融合池（分布层之前）" in html and "+0.0270 [+0.0200, +0.0300]*" in html, "the P0 layers"
+    assert "+0.2100 [+0.1700, +0.2600]*" in html, "the whole distribution's LogScore"
+    assert "20 / 20" in html and "Proper" in html, "the leg-by-leg pairing"
