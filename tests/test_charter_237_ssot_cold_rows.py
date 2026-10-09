@@ -127,7 +127,9 @@ def _plan(conn, pid: str, station: str, day: str, created: str, width: int = 300
         (
             pid, station, day, f"cp-{pid}", "P0", created, created, _sha("q" + pid), "act",
             "PRODUCTION_NO_LIVE_CANDIDATE",
-            json.dumps({"compiled_plan": {"pid": pid, "pad": "x" * width}}),
+            json.dumps({"compiled_plan": {
+                "pid": pid, "production_plan_sha256": _sha("prod" + pid), "pad": "x" * width,
+            }}),
             _sha("p" + pid), "PRELIMINARY_NO_LIVE", "P1", 0, 0, 0, created,
         ),
     )
@@ -235,6 +237,29 @@ def test_a_value_that_changed_its_storage_class_is_not_the_same_row() -> None:
 # --------------------------------------------------------------------------
 
 
+def _live_decision(conn, did: str, station: str, day: str, created: str, details: dict) -> None:
+    conn.execute(
+        "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,"
+        "settlement_timezone,strategy_lane,decided_state,will_order,reason_codes_json,"
+        "details_json,decision_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (did, "c_" + did, "plan_" + did, station, day, "UTC", "basket",
+         "submitted", 1, "[]", json.dumps(details), _sha(did), created),
+    )
+    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(basket_target_order_intents)")]
+    values = {
+        "order_intent_id": "i_" + did, "decision_id": did, "cycle_id": "c_" + did,
+        "bucket": "20°C", "token_id": "tok", "side": "YES", "order_action": "BUY",
+        "limit_price": 0.4, "requested_size": 5.0, "requested_notional_usdc": 2.0,
+        "state": "filled", "live_submit_authorized": 1, "idempotency_key": "k_" + did,
+        "intent_json": "{}", "intent_sha256": _sha("i" + did), "created_at": created,
+    }
+    listed = [c for c in columns if c in values]
+    conn.execute(
+        f"INSERT INTO basket_target_order_intents({','.join(listed)}) VALUES({','.join('?' * len(listed))})",
+        tuple(values[c] for c in listed),
+    )
+
+
 def _plans_fixture(store: Path) -> None:
     conn = sqlite3.connect(store)
     rows = [
@@ -247,6 +272,8 @@ def _plans_fixture(store: Path) -> None:
         ("latest_zuuu_old_forever", "ZUUU", "2026-09-11", "2026-09-09T11:00:00.000Z"),
         ("hot_klga", "KLGA", "2026-09-28", "2026-09-26T10:00:00.000Z"),
         ("hot_eglc", "EGLC", "2026-09-28", "2026-09-26T11:00:00.000Z"),
+        ("old_lfpg_a", "LFPG", "2026-09-09", "2026-09-07T10:00:00.000Z"),
+        ("old_lfpg_b", "LFPG", "2026-09-09", "2026-09-07T12:00:00.000Z"),
     ]
     for pid, station, day, created in rows:
         _plan(conn, pid, station, day, created)
@@ -254,27 +281,15 @@ def _plans_fixture(store: Path) -> None:
         "INSERT INTO basket_p0_preselection_blob VALUES(?,?,?)",
         (_sha("blob"), '{"beta":1}', "2026-09-08T10:00:00Z"),
     )
-    # EGLC 09-12 carried real money.
-    conn.execute(
-        "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,"
-        "settlement_timezone,strategy_lane,decided_state,will_order,reason_codes_json,"
-        "details_json,decision_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("d_live", "c_live", "plan_x", "EGLC", "2026-09-12", "Europe/London", "basket",
-         "submitted", 1, "[]", "{}", _sha("d"), "2026-09-10T10:00:00.000Z"),
-    )
-    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(basket_target_order_intents)")]
-    values = {
-        "order_intent_id": "i_live", "decision_id": "d_live", "cycle_id": "c_live",
-        "bucket": "20°C", "token_id": "tok", "side": "YES", "order_action": "BUY",
-        "limit_price": 0.4, "requested_size": 5.0, "requested_notional_usdc": 2.0,
-        "state": "filled", "live_submit_authorized": 1, "idempotency_key": "k",
-        "intent_json": "{}", "intent_sha256": _sha("i"), "created_at": "2026-09-10T10:01:00Z",
-    }
-    listed = [c for c in columns if c in values]
-    conn.execute(
-        f"INSERT INTO basket_target_order_intents({','.join(listed)}) VALUES({','.join('?' * len(listed))})",
-        tuple(values[c] for c in listed),
-    )
+    # EGLC 09-12 carried real money, and its decision names the plan it acted
+    # on (committed in the same transaction: the same created_at).
+    _live_decision(conn, "d_live", "EGLC", "2026-09-12", "2026-09-10T10:00:00.000Z",
+                   {"production_plan_sha256": _sha("prodold_live_day")})
+    # KLGA 09-10 carried money from a lane that compiles no plan: nothing named.
+    _live_decision(conn, "d_unnamed", "KLGA", "2026-09-10", "2026-09-08T10:00:00.000Z", {})
+    # LFPG 09-09 names a plan no row carries at that instant: the day stays whole.
+    _live_decision(conn, "d_lost", "LFPG", "2026-09-09", "2026-09-07T12:00:00.000Z",
+                   {"production_plan_sha256": _sha("not_stored")})
     conn.commit()
     conn.close()
 
@@ -291,12 +306,15 @@ def test_old_unprotected_plans_move_and_every_protected_one_stays(
     assert receipt["state"] == "applied"
     summary = receipt["tables"][0]
     assert summary["cutoff_before"] == "2026-09-20"
-    assert summary["kept"] == {"latest_0:station_id": 3, "station_day": 1}
+    assert summary["kept"] == {
+        "latest_0:station_id": 3, "live_decision_plan": 1,
+        "live_decision_plan_unresolved_station_day": 2,
+    }
     after = _table_rows(store, PLAN)
     stayed = {row[1] for row in after.values()}
     assert stayed == {
         "latest_klga_before_cutoff", "old_live_day", "latest_eglc_before_cutoff",
-        "latest_zuuu_old_forever", "hot_klga", "hot_eglc",
+        "latest_zuuu_old_forever", "hot_klga", "hot_eglc", "old_lfpg_a", "old_lfpg_b",
     }
     moved = {rowid: row for rowid, row in before.items() if rowid not in after}
     assert {row[1] for row in moved.values()} == {"old_a", "old_b", "old_c"}
@@ -349,9 +367,9 @@ def test_a_dry_run_touches_nothing_and_says_how_big_each_table_is(
     assert hashlib.sha256(store.read_bytes()).hexdigest() == digest
     assert not (cold / off.COLD_SUBDIR).exists()
     plans = next(row for row in receipt["tables"] if row["table"] == PLAN)
-    assert plans["table_rows"] == 9
+    assert plans["table_rows"] == 11
     # Nine rows of ~3 KB each: the whole-table estimate is the rows' payload.
-    assert 9 * 3000 < plans["table_estimated_bytes"] < 9 * 4000
+    assert 11 * 3000 < plans["table_estimated_bytes"] < 11 * 4000
     assert 0 < plans["estimated_bytes"] < plans["table_estimated_bytes"]
     off._print_summary(receipt)
     printed = capsys.readouterr().out
@@ -459,7 +477,7 @@ def test_a_crash_after_the_copy_is_finished_by_the_next_run(
     monkeypatch.setattr(off, "_wait_for_wal", real_wait)
     receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
     assert receipt["state"] == "applied"
-    assert len(_table_rows(store, PLAN)) == 6
+    assert len(_table_rows(store, PLAN)) == 8
     assert len(_table_rows(_cold_file(cold, PLAN), PLAN)) == 3   # once, not twice
     off._print_summary(receipt)
 
@@ -682,7 +700,7 @@ def test_plans_around_an_unacknowledged_fingerprint_stay_for_the_audit(
     # 09-09 08:00 minus the audit's twelve hours is 09-08 20:00: that whole day stays.
     assert summary["floors"] == {"serving_arithmetic_audit": "2026-09-08"}
     assert summary["candidate_rows"] == 0
-    assert len(_table_rows(store, PLAN)) == 9
+    assert len(_table_rows(store, PLAN)) == 11
 
 
 def test_an_unreadable_watchdog_leaves_the_plans_alone(
@@ -696,7 +714,7 @@ def test_an_unreadable_watchdog_leaves_the_plans_alone(
     monkeypatch.setattr(serving_arithmetic, "watchdog", broken)
     receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
     assert receipt["tables"][0]["state"] == "refused"
-    assert len(_table_rows(store, PLAN)) == 9
+    assert len(_table_rows(store, PLAN)) == 11
 
 
 def test_the_real_watchdog_reads_a_fresh_store_as_no_floor(
@@ -716,7 +734,7 @@ def test_restore_puts_rows_back_verbatim_and_holds_them(
     _plans_fixture(store)
     before = _table_rows(store, PLAN)
     _run(store, cold, tmp_path, apply=True, tables=[PLAN])
-    assert len(_table_rows(store, PLAN)) == 6
+    assert len(_table_rows(store, PLAN)) == 8
     outcome = off.restore_table(
         ssot_path=store, cold_root=cold, table=PLAN, since="2026-09-01",
         holds_path=tmp_path / "holds.json", sleep=lambda _s: None,
@@ -726,7 +744,7 @@ def test_restore_puts_rows_back_verbatim_and_holds_them(
     receipt = _run(store, cold, tmp_path, apply=True, tables=[PLAN])
     assert receipt["tables"][0]["candidate_rows"] == 0
     # The hold keeps every old row dated on or after it, whatever else would.
-    assert receipt["tables"][0]["kept"] == {"hold": 7}
+    assert receipt["tables"][0]["kept"] == {"hold": 9}
     assert _table_rows(store, PLAN) == before
 
 
@@ -766,7 +784,9 @@ def test_the_station_days_that_carried_money_come_from_live_intents(store: Path)
     _plans_fixture(store)
     conn = sqlite3.connect(store)
     try:
-        assert off._intent_station_days(conn, live_only=True) == {("EGLC", "2026-09-12")}
+        assert off._intent_station_days(conn, live_only=True) == {
+            ("EGLC", "2026-09-12"), ("KLGA", "2026-09-10"), ("LFPG", "2026-09-09"),
+        }
     finally:
         conn.close()
 

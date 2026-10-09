@@ -163,7 +163,8 @@ def _fixture(store: Path) -> None:
     # unless it is the newest of its day, so give the day a third book.
     for seq in (0, 1, 2):
         _book(conn, f"ws_eglc_{seq}", "EGLC", BOOK_OLD, seq)
-    # ZUUU: an order names a book that is not there -- the whole day stays.
+    # ZUUU: an order names a book its day does not hold -- nothing to keep
+    # (the day is not kept whole: no reader could find the book there).
     for seq in (0, 1):
         _book(conn, f"ws_zuuu_{seq}", "ZUUU", BOOK_OLD, seq)
     # Outside the 7-day window but inside its readers' 30 days: a book stays
@@ -184,6 +185,10 @@ def _fixture(store: Path) -> None:
     _vector(conn, 2, "EGLC", STATE_OLD, ws=_sha("absent"), instant=f"{STATE_OLD}T00:00:00.000000Z",
             inventory=_sha(f"{INVENTORY[:6]}_eglc_0"), order_state=_sha(f"{ORDER_STATE[:6]}_eglc_0"))
     _vector(conn, 3, "ZUUU", BOOK_OLD, ws=_sha("not_written"), instant=f"{BOOK_OLD}T00:00:00.000000Z",
+            inventory=_sha("x"), order_state=_sha("x"))
+    # KLGA: a vector whose instant matches no book of its day still finds
+    # the book it names by hash across the day.
+    _vector(conn, 4, "KLGA", BOOK_OLD, ws=_sha("ws_klga_0"), instant=f"{BOOK_OLD}T09:09:09.000000Z",
             inventory=_sha("x"), order_state=_sha("x"))
     conn.commit()
     conn.close()
@@ -218,10 +223,11 @@ def test_old_books_move_and_the_protected_ones_stay(store: Path, cold: Path, tmp
     _fixture(store)
     receipt = _run(store, cold, tmp_path, apply=True, tables=list(NEW_TABLES))
     assert _ids(store, WS) == {
+        "ws_klga_0",                  # named by hash, found across the day off its instant
         "ws_klga_2",                  # newest sequence of its station-day
         "ws_eglc_0",                  # an executed order's book, found across spellings
         "ws_eglc_2",                  # newest of its day
-        "ws_zuuu_0", "ws_zuuu_1",     # a named book missing: the whole day stays
+        "ws_zuuu_1",                  # newest of its day (its named book was never there)
         "ws_hot_0",                   # named by a training fact
         "ws_hot_1",                   # the book at or before a P0 envelope
         "ws_hot_3",                   # newest sequence of its station-day
@@ -234,12 +240,14 @@ def test_old_books_move_and_the_protected_ones_stay(store: Path, cold: Path, tmp
             f"{prefix}_hot",
         }
     kept = {plan["table"]: plan["kept"] for plan in receipt["tables"]}
-    assert kept[WS].get("execution_vector") == 1
-    assert kept[WS].get("execution_vector_unresolved_station_day") == 2
+    assert kept[WS].get("execution_vector") == 2
+    assert "execution_vector_unresolved_station_day" not in kept[WS]
+    absent = {plan["table"]: plan["absent_vector_refs"] for plan in receipt["tables"]}
+    assert absent[WS] == 2            # EGLC's "absent" and ZUUU's "not_written"
     cold_conn = off.open_cold_table(WS, root=cold)
     try:
         assert {r[0] for r in cold_conn.execute(f"SELECT snapshot_id FROM {WS}")} == {
-            "ws_klga_0", "ws_klga_1", "ws_eglc_1", "ws_hot_2",
+            "ws_klga_1", "ws_eglc_1", "ws_zuuu_0", "ws_hot_2",
         }
     finally:
         cold_conn.close()

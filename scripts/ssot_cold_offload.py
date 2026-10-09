@@ -207,13 +207,36 @@ class KeepVectorRefs:
     station-day index, so no large row body is read except the matches.
     ``instant_column`` narrows a station-day to the rows whose instant equals
     the vector's ``quote_observed_at`` (parsed: the two are spelled with
-    different precisions) before their hashes are read.  A hash that cannot
-    be found keeps its whole station-day.
+    different precisions) before their hashes are read.  A hash not found at
+    its instant is looked for across its whole station-day; a hash the
+    station-day does not hold at all names a book this table never had (or
+    no longer has under that hash), and keeping the day would protect no row
+    a reader can find -- so it is counted (``absent_vector_refs``), not kept.
     """
 
     vector_column: str
     why: str
     instant_column: str | None = None
+
+
+@dataclass(frozen=True)
+class KeepDecisionPlans:
+    """The plan each live decision acted on stays hot, by name.
+
+    A decision with a live-authorised intent names the compiled plan it acted
+    on in ``details_json.production_plan_sha256``, and the preselection row
+    carrying that plan is committed in the same transaction, so its
+    ``created_at`` is the decision's to the millisecond.  The row is found off
+    ``instant_index`` at that instant and confirmed by the plan's own hash
+    (``plan_json.compiled_plan.production_plan_sha256``, the key the
+    dashboard's live book reads), so only those rows' JSON is read.  A
+    decision whose plan cannot be found that way keeps its whole station-day.
+    Decisions that name no plan (the lanes that do not compile one) keep
+    nothing.
+    """
+
+    instant_index: str
+    why: str
 
 
 @dataclass(frozen=True)
@@ -259,6 +282,7 @@ class TablePolicy:
     keep_latest: tuple[KeepLatest, ...] = ()
     keep_station_days: KeepStationDays | None = None
     keep_vector_refs: KeepVectorRefs | None = None
+    keep_decision_plans: KeepDecisionPlans | None = None
     keep_named: tuple[KeepNamed, ...] = ()
     floors: tuple[DynamicFloor, ...] = ()
     #: Content-addressed side tables the moved rows name, COPIED (never
@@ -287,6 +311,10 @@ class TablePolicy:
                 "vector_column": self.keep_vector_refs.vector_column,
                 "instant_column": self.keep_vector_refs.instant_column,
                 "why": self.keep_vector_refs.why,
+            },
+            "keep_decision_plans": None if self.keep_decision_plans is None else {
+                "instant_index": self.keep_decision_plans.instant_index,
+                "why": self.keep_decision_plans.why,
             },
             "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
@@ -465,8 +493,9 @@ POLICIES: tuple[TablePolicy, ...] = (
             "atomic_ledger (preliminary decision) and the p0_preselection writer: by "
             "the preselection_id being committed; calibration_refit's "
             "acknowledge_serving_arithmetic --audit: 12h either side of an "
-            "unacknowledged fingerprint; dashboard: plans of live baskets.  The paper "
-            "ledger reads the recorded plan from the training fact, not from here."
+            "unacknowledged fingerprint; dashboard: the plan each live decision names "
+            "by production_plan_sha256.  The paper ledger reads the recorded plan from "
+            "the training fact, not from here."
         ),
         keep_latest=(
             KeepLatest(
@@ -474,9 +503,14 @@ POLICIES: tuple[TablePolicy, ...] = (
                 why="_station_edge_evidence reads the newest plan of each station, whatever its age",
             ),
         ),
-        keep_station_days=KeepStationDays(
-            live_only=True,
-            why="the dashboard reads the plans of live baskets; real money stays in the SSOT whole",
+        # Not the live station-day whole: once every lane traded, nearly every
+        # station-day carried a live intent, and on 2026-10-08 that kept
+        # 73,815 of the 73,835 plans past the window -- the lane moved nothing,
+        # the file reached the ceiling and every writer stopped.  The money's
+        # audit trail is the plan each live decision acted on, kept by name.
+        keep_decision_plans=KeepDecisionPlans(
+            instant_index="basket_p0_preselection_created_idx",
+            why="the dashboard re-reads the plan each live decision names; real money's plan stays",
         ),
         floors=(
             DynamicFloor(
@@ -930,6 +964,14 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         needed.update({"station_id", "event_date", "content_sha256"})
         if policy.keep_vector_refs.instant_column:
             needed.add(policy.keep_vector_refs.instant_column)
+    if policy.keep_decision_plans is not None:
+        needed.update({"station_id", "event_date", "created_at", "plan_json"})
+        indexed = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND tbl_name=? AND name=?",
+            (table, policy.keep_decision_plans.instant_index),
+        ).fetchone()
+        if indexed is None:
+            reasons.append("index_missing:" + policy.keep_decision_plans.instant_index)
     missing = sorted(needed - columns)
     if missing:
         reasons.append("columns_missing:" + ",".join(missing))
@@ -995,6 +1037,8 @@ class TablePlan:
     newest: str | None = None
     table_rows: int | None = None
     table_estimated_bytes: int | None = None
+    #: Hashes an execution vector names that its station-day does not hold.
+    absent_vector_refs: int = 0
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -1014,6 +1058,7 @@ class TablePlan:
             "newest_candidate": self.newest,
             "table_rows": self.table_rows,
             "table_estimated_bytes": self.table_estimated_bytes,
+            "absent_vector_refs": self.absent_vector_refs,
         }
 
 
@@ -1045,11 +1090,14 @@ def _instant(value: Any) -> datetime | None:
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
 
 
-def _vector_ref_rowids(conn: sqlite3.Connection, table: str, rule: KeepVectorRefs) -> dict[int, str]:
-    """The rowids of ``table`` an execution vector names (see :class:`KeepVectorRefs`)."""
+def _vector_ref_rowids(
+    conn: sqlite3.Connection, table: str, rule: KeepVectorRefs,
+) -> tuple[dict[int, str], int]:
+    """The rowids of ``table`` an execution vector names, and how many named
+    hashes their station-day does not hold (see :class:`KeepVectorRefs`)."""
 
     if not (_table_exists(conn, VECTOR_TABLE) and _table_exists(conn, CYCLE_TABLE)):
-        return {}
+        return {}, 0
     wanted: dict[tuple[str, str], dict[str, set[Any]]] = {}
     for station, day, sha, instant in conn.execute(
         f"SELECT c.station_id, c.event_date, v.{_q(rule.vector_column)}, v.quote_observed_at"
@@ -1058,6 +1106,7 @@ def _vector_ref_rowids(conn: sqlite3.Connection, table: str, rule: KeepVectorRef
     ):
         wanted.setdefault((str(station), str(day)), {}).setdefault(str(sha), set()).add(_instant(instant))
     kept: dict[int, str] = {}
+    absent = 0
     for (station, day), shas in wanted.items():
         if rule.instant_column:
             instants = set().union(*shas.values())
@@ -1083,11 +1132,57 @@ def _vector_ref_rowids(conn: sqlite3.Connection, table: str, rule: KeepVectorRef
                     kept[int(rowid)] = "execution_vector"
                     found.add(str(sha))
         if set(shas) - found:
-            # Fail closed: a named row not found keeps its whole station-day.
+            # Not at its instant: look across the whole station-day.  What
+            # the day does not hold under that hash, no reader can find there
+            # either (the reader looks the hash up), so it keeps nothing: on
+            # 2026-10-08 keeping such days whole held 173,448 books of 398
+            # live station-days whose named books were never written here.
+            for rowid, sha in conn.execute(
+                f"SELECT rowid, content_sha256 FROM {_q(table)} WHERE station_id=? AND event_date=?",
+                (station, day),
+            ):
+                if str(sha) in shas:
+                    kept[int(rowid)] = "execution_vector"
+                    found.add(str(sha))
+            absent += len(set(shas) - found)
+    return kept, absent
+
+
+def _decision_plan_rowids(conn: sqlite3.Connection, table: str, rule: KeepDecisionPlans) -> dict[int, str]:
+    """The rowids of ``table`` a live decision names (see :class:`KeepDecisionPlans`)."""
+
+    if not _table_exists(conn, "auto_trade_decisions"):
+        return {}
+    named: set[tuple[str, str, str, str]] = set()
+    for intents in ("basket_target_order_intents", "basket_target_order_intents_pre_go_live"):
+        if not _table_exists(conn, intents):
+            continue
+        for station, day, at, sha in conn.execute(
+            "SELECT DISTINCT d.station_id, d.event_date, d.created_at,"
+            " json_extract(d.details_json, '$.production_plan_sha256')"
+            f" FROM {_q(intents)} i JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+            " WHERE i.live_submit_authorized<>0"
+        ):
+            if sha:
+                named.add((str(station), str(day), str(at), str(sha)))
+    kept: dict[int, str] = {}
+    for station, day, at, sha in sorted(named):
+        found = [
+            int(rowid) for rowid, plan_sha in conn.execute(
+                "SELECT rowid, json_extract(plan_json, '$.compiled_plan.production_plan_sha256')"
+                f" FROM {_q(table)} INDEXED BY {_q(rule.instant_index)}"
+                " WHERE created_at=? AND station_id=? AND event_date=?",
+                (at, station, day),
+            ) if str(plan_sha) == sha
+        ]
+        for rowid in found:
+            kept[rowid] = "live_decision_plan"
+        if not found:
+            # Fail closed: a named plan not found keeps its whole station-day.
             for (rowid,) in conn.execute(
                 f"SELECT rowid FROM {_q(table)} WHERE station_id=? AND event_date=?", (station, day),
             ):
-                kept.setdefault(int(rowid), "execution_vector_unresolved_station_day")
+                kept.setdefault(int(rowid), "live_decision_plan_unresolved_station_day")
     return kept
 
 
@@ -1242,7 +1337,14 @@ def plan_table(
                     protected.setdefault(rowid, f"named:{rule.name}")
     if policy.keep_vector_refs is not None and len(older):
         old_set = set(older)
-        for rowid, label in _vector_ref_rowids(conn, table, policy.keep_vector_refs).items():
+        refs, plan.absent_vector_refs = _vector_ref_rowids(conn, table, policy.keep_vector_refs)
+        for rowid, label in refs.items():
+            if rowid in old_set:
+                protected.setdefault(rowid, label)
+        del old_set
+    if policy.keep_decision_plans is not None and len(older):
+        old_set = set(older)
+        for rowid, label in _decision_plan_rowids(conn, table, policy.keep_decision_plans).items():
             if rowid in old_set:
                 protected.setdefault(rowid, label)
         del old_set
@@ -2092,7 +2194,8 @@ _STATE_WORDS = {
     "stopped": "中途停下", "not_started_budget": "预算用完未开始", "not_started_after_stop": "前表停下未开始",
 }
 _KEPT_WORDS = {"station_day": "真钱站日", "newest_rowid": "最大 rowid", "hold": "hold",
-               "serving_arithmetic_audit": "指纹审计"}
+               "serving_arithmetic_audit": "指纹审计", "live_decision_plan": "实盘决策点名的计划",
+               "live_decision_plan_unresolved_station_day": "点名计划找不到·整站日留"}
 
 
 def _print_summary(receipt: Mapping[str, Any]) -> None:
@@ -2130,6 +2233,8 @@ def _print_summary(receipt: Mapping[str, Any]) -> None:
               f"；{row['time_column']} 早于 {row['cutoff_before']} 的旧行 {int(row['older_than_cutoff']):,}"
               + (f"（且 {row['candidate_where']}）" if row.get("candidate_where") else ""))
         print(f"      保留：{kept}")
+        if row.get("absent_vector_refs"):
+            print(f"      执行向量点名、但本站日没有这份哈希的盘口：{row['absent_vector_refs']:,} 个（不留整站日）")
         print(f"      可搬 {int(row['candidate_rows']):,} 行 ≈ {gib(row.get('estimated_bytes'))}"
               + (f"（{row['oldest_candidate']} … {row['newest_candidate']}）" if row.get("oldest_candidate") else ""))
     print(f"  合计：七张表约 {gib(receipt.get('table_estimated_bytes'))}，可搬约 {gib(receipt.get('estimated_bytes'))}"
