@@ -305,6 +305,14 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # Charter 249: the buckets a leg may sit on -- ``market_mode`` (the
     # market's own modal bucket, the lower rung on a tie) or ``all``.
     "buckets": "market_mode",
+    # Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的
+    # 对手盘」 and 「先卖出，反向买no，和跟单线不冲突！可以重叠」): what the lane does
+    # on a bucket where the benchmark cluster (``BENCHMARK_CLUSTER_WALLETS``)
+    # has traded the other side of its leg.  ``flip``: the bucket is sealed --
+    # no plan, no further rung, a resting rung cancelled -- and a YES the
+    # lane holds there is sold, then reversed into NO; ``seal`` stops at the
+    # seal; ``off`` restores the lane before the ruling.
+    "benchmark_counterparty": "flip",
 }
 
 #: 远尾做空线 (charter 234, user rulings 2026-09-28 「上线：只按市场自己的价格结构
@@ -344,6 +352,22 @@ TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "lookback_days": 1,
 }
 
+#: The benchmark account (charter 256's badatmath., ``0x8fbd7cf5``) is one
+#: wallet of an eight-wallet bot cluster that trades on one clock
+#: (docs/research/benchmark_account_0x8fbd_20261008, round 6).  The one list:
+#: the 跟单线 follows it (charter 257), the Proper 下注线 never takes its other
+#: side (charter 258).
+BENCHMARK_CLUSTER_WALLETS: tuple[str, ...] = (
+    "0x8fbd7cf5f806f563080864694415829f7229a959",
+    "0x6fdd2bda5c031d551f588f176535f061a29a0b07",
+    "0x5bae7577f470244ce8e678d20693eee2b8ffed25",
+    "0x30200b893530920f253846199a153e6ac725df2b",
+    "0x0e0e8174e213ff2c2ccb30c5652a7b7d77c72d75",
+    "0x7076cb961e87bd22199445d02fe22973510cd0d9",
+    "0x7d640ebd20cf136bee351100438bba44ca2e07f8",
+    "0xf4d89f7e8c2fc8d2303e0f6b63cdff37fe304c91",
+)
+
 #: Charter 256's 跟单线 (user rulings 2026-10-08 「不用研究，开始做跟单策略」「按照等比例
 #: 缩小，我资金没有他多」「按他已投入仓位算」).  Off by default: a missing lane
 #: file must not start spending on another account's trades.
@@ -380,16 +404,7 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     # eight-wallet cluster the research found behind the account, followed on
     # the FIRST taker buy of a bucket episode only, at a fixed stake, and only
     # where our own served probability agrees by ``model_margin``.  Unused by v1.
-    "source_users": [
-        "0x8fbd7cf5f806f563080864694415829f7229a959",
-        "0x6fdd2bda5c031d551f588f176535f061a29a0b07",
-        "0x5bae7577f470244ce8e678d20693eee2b8ffed25",
-        "0x30200b893530920f253846199a153e6ac725df2b",
-        "0x0e0e8174e213ff2c2ccb30c5652a7b7d77c72d75",
-        "0x7076cb961e87bd22199445d02fe22973510cd0d9",
-        "0x7d640ebd20cf136bee351100438bba44ca2e07f8",
-        "0xf4d89f7e8c2fc8d2303e0f6b63cdff37fe304c91",
-    ],
+    "source_users": list(BENCHMARK_CLUSTER_WALLETS),
     "stake_usdc": 5.0,
     "model_margin": 0.05,
     "lead_hours": [12.0, 48.0],
@@ -537,6 +552,7 @@ def validate_lane_stake(lane: str, value: Any) -> float:
 
 __all__ = [
     "DEFAULT_LANES",
+    "BENCHMARK_CLUSTER_WALLETS",
     "STAKE_DIALS",
     "validate_lane_stake",
     "DEFAULT_PATH",

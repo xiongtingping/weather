@@ -54,6 +54,17 @@ def _realisation_layer_reads_no_live_artifact(monkeypatch: pytest.MonkeyPatch, t
 
 
 @pytest.fixture(autouse=True)
+def _no_test_reads_the_benchmark_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Charter 258: the Proper lane reads the benchmark cluster's fills off the
+    public data API on every pass.  A suite reads none -- an empty tape, so
+    nothing is sealed -- and a test of the seal hands in its own fetch."""
+
+    from bayes_basket_target import benchmark_cluster
+
+    monkeypatch.setattr(benchmark_cluster, "DEFAULT_FETCH", lambda path, params: [])
+
+
+@pytest.fixture(autouse=True)
 def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
     """Map the fixture station ``TEST`` like a northern mid-latitude station.
 

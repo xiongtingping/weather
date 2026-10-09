@@ -11209,6 +11209,7 @@ class TargetProductionWorker:
             from clob_order_service_client import (  # noqa: PLC0415
                 ClobOrderServiceClient,
             )
+            from .proper_bet_lane import benchmark_sealed_rung  # noqa: PLC0415
             from .resting_ladder_lifecycle import (  # noqa: PLC0415
                 RESTING_LOOKUP_CONCURRENCY,
                 reprice_resting_rungs,
@@ -11236,6 +11237,9 @@ class TargetProductionWorker:
             start_index=int(getattr(self, "_resting_reprice_cursor", 0) or 0),
             # Charter 180: the lookups overlap; the pass does not.
             lookup_concurrency=RESTING_LOOKUP_CONCURRENCY,
+            # Charter 258: a Proper rung on a bucket the benchmark cluster
+            # has traded against is cancelled.
+            benchmark_seal_loader=benchmark_sealed_rung,
         )
         self._resting_reprice_cursor = int(receipt.get("next_start_index") or 0)
         # Charter 186: which orders the resting lane has just read, by their

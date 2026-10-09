@@ -107,12 +107,16 @@ from .delta_v2_runtime import (
     EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC,
     bid_anchored_ladder,
 )
-from .exit_orders import Transport
-from .lane_orders import send_lane_buy
+from . import benchmark_cluster
+from .execution_reconciliation import can_submit_next_order
+from .exit_orders import Transport, default_position_reader, lane_sold_and_open, send_exit_sell
+from .lane_orders import lane_decision_id, send_lane_buy
 from .live_station_scope import admission as live_station_admission
 from .materialization import floor_probabilities
 from . import realisation_store
-from .p1_tail_lane import _latest_snapshot, _ws_manifest_root, live_ws_snapshot
+from .p1_tail_lane import (
+    DEPTH_HEADROOM_FRACTION, _latest_snapshot, _sendable_shares, _ws_manifest_root, live_ws_snapshot,
+)
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import (
     LANE_PROPER_BET,
@@ -137,6 +141,30 @@ DEFAULT_MIN_ORDER_SHARES = 5.0
 DEFAULT_LOOKBACK_DAYS = 3
 SHARE_PRECISION = 2
 OPEN_STATES = ("prepared", "submitting", "submitted", "reconcile_required")
+
+#: Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的对手盘」
+#: and 「先卖出，反向买no，和跟单线不冲突！可以重叠」): the ``benchmark_counterparty``
+#: setting.  ``flip`` seals the bucket and reverses what the lane holds there
+#: into NO; ``seal`` only seals; ``off`` is the lane before the ruling.
+BENCHMARK_FLIP = "flip"
+BENCHMARK_SEAL = "seal"
+BENCHMARK_OFF = "off"
+BENCHMARK_MODES = (BENCHMARK_FLIP, BENCHMARK_SEAL, BENCHMARK_OFF)
+BENCHMARK_OPPOSITE = "benchmark_opposite"
+BENCHMARK_UNREADABLE = "benchmark_unreadable"
+SEAL_TABLE = "proper_bet_benchmark_seals"
+FLIP_SELL_PREFIX = f"{INTENT_PREFIX}_flipsell"
+FLIP_NO_PREFIX = f"{INTENT_PREFIX}_flipno"
+FLIP_SCHEMA = "proper_bet_benchmark_flip_v1"
+FLIP_EXECUTION_CANDIDATE = "TAKER_FOK"
+#: Polymarket's weather taker fee: shares x rate x p x (1 - p) (charter 234).
+TAKER_FEE_RATE = 0.05
+#: How far back the flip pass looks for held legs; a settled day drops out on
+#: its own clock (``settlement_day_closed``).
+FLIP_LOOKBACK_DAYS = 3
+#: A NO shortfall under one share is rounding left by partial fills, not a
+#: position to reverse.
+FLIP_MIN_NO_SHARES = 1.0
 
 #: The two directions a leg can take, as the ledger spells the outcome leg.
 SIDE_YES = "YES"
@@ -201,12 +229,43 @@ PLAN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("passes", "INTEGER"),
     ("last_pass_at_utc", "TEXT"),
 )
+#: Charter 258: one row per bucket the cluster has traded against a leg of
+#: this lane -- the first opposite fill seen is the evidence, and the row is
+#: the seal.  The flip's progress is kept on it for the receipt and board;
+#: what the flip still needs is always recomputed from the order store.
+SEAL_DDL = (
+    f"CREATE TABLE IF NOT EXISTS {SEAL_TABLE} ("
+    " station_id TEXT NOT NULL,"
+    " event_date TEXT NOT NULL,"
+    " bucket TEXT NOT NULL,"
+    " side TEXT NOT NULL,"
+    " yes_token TEXT NOT NULL,"
+    " no_token TEXT NOT NULL,"
+    " condition_id TEXT NOT NULL,"
+    " sealed_at_utc TEXT NOT NULL,"
+    " sealed_by TEXT NOT NULL,"
+    " wallet TEXT NOT NULL,"
+    " fill_ts INTEGER NOT NULL,"
+    " fill_tx TEXT,"
+    " fill_token_side TEXT NOT NULL,"
+    " fill_action TEXT NOT NULL,"
+    " fill_price REAL NOT NULL,"
+    " fill_size REAL NOT NULL,"
+    " implied_price REAL NOT NULL,"
+    " opposite_fills INTEGER NOT NULL,"
+    " flip_state TEXT,"
+    " flip_json TEXT,"
+    " flip_updated_at_utc TEXT,"
+    " PRIMARY KEY (station_id, event_date, bucket, side)"
+    ")"
+)
 
 Admission = Callable[[str, sqlite3.Connection], Mapping[str, Any]]
 
 
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
+    conn.execute(SEAL_DDL)
     have = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
     for name, kind in PLAN_COLUMNS:
         if name not in have:
@@ -304,6 +363,15 @@ def entry_rule(settings: Mapping[str, Any]) -> str:
     declared = str(settings.get("entry", ENTRY_FIRST_DECISION) or "").strip().lower()
     if declared not in {ENTRY_FIRST_DECISION, ENTRY_LATEST_DECISION}:
         raise ValueError(f"proper_bet_entry_unknown:{settings.get('entry')!r}")
+    return declared
+
+
+def benchmark_mode(settings: Mapping[str, Any]) -> str:
+    """``flip``, ``seal`` or ``off`` (charter 258); anything else raises."""
+
+    declared = str(settings.get("benchmark_counterparty", BENCHMARK_OFF) or "").strip().lower()
+    if declared not in BENCHMARK_MODES:
+        raise ValueError(f"proper_bet_benchmark_counterparty_unknown:{settings.get('benchmark_counterparty')!r}")
     return declared
 
 
@@ -921,6 +989,126 @@ def _leg_key(leg: Mapping[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Charter 258: the benchmark cluster on the lane's buckets.
+
+
+def market_ids(
+    conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
+) -> dict[str, str]:
+    """The bucket's YES token, NO token and condition id off its newest
+    registry row (the station-day index walked backwards, as
+    ``certain_win_recycle._registry_rows`` reads it); the NO token and the
+    condition id from the row's own record, as the plan reads them.  An
+    empty string where the row does not say."""
+
+    row = conn.execute(
+        "SELECT yes_token, registry_json FROM basket_target_market_registry"
+        " WHERE station_id=? AND event_date=? AND outcome=? ORDER BY rowid DESC LIMIT 1",
+        (station_id, event_date, bucket),
+    ).fetchone()
+    try:
+        raw = json.loads((row[1] if row else None) or "{}") or {}
+    except ValueError:
+        raw = {}
+    return {"yes_token": str((row[0] if row else None) or ""), "no_token": str(raw.get("no_token") or ""),
+            "condition_id": str(raw.get("condition_id") or "")}
+
+
+def _seal_row(conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
+              side: str) -> dict[str, Any] | None:
+    cursor = conn.execute(
+        f"SELECT * FROM {SEAL_TABLE} WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
+        (station_id, event_date, bucket, side),
+    )
+    row = cursor.fetchone()
+    return None if row is None else dict(zip([c[0] for c in cursor.description], row))
+
+
+class BenchmarkView:
+    """One pass's reading of the benchmark cluster (charter 258).
+
+    ``verdict`` answers a leg -- ``{station_id, event_date, bucket, side,
+    yes_token, no_token, condition_id}`` -- with ``clear``, ``sealed`` (and the
+    seal row, written the first time) or ``unreadable``.  A sealed bucket is
+    never read again; every other market is read at most once a pass, the
+    ones ``prefetch`` is handed in a single read of all eight wallets."""
+
+    def __init__(self, conn: sqlite3.Connection, *, now_utc: str, mode: str,
+                 fetch: benchmark_cluster.Fetch | None = None) -> None:
+        self.conn = conn
+        self.now_utc = now_utc
+        self.mode = mode
+        self.fetch = fetch
+        self.fills: dict[str, list[dict[str, Any]]] = {}
+        self.unreadable: set[str] = set()
+        self.reads: list[dict[str, Any]] = []
+        self.sealed_new: list[dict[str, Any]] = []
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != BENCHMARK_OFF
+
+    def prefetch(self, targets: list[Mapping[str, Any]]) -> None:
+        if not self.enabled:
+            return
+        wanted = sorted({
+            str(t.get("condition_id") or "") for t in targets
+            if t.get("condition_id") and str(t["condition_id"]) not in self.fills
+            and str(t["condition_id"]) not in self.unreadable
+            and _seal_row(self.conn, str(t["station_id"]), str(t["event_date"]), str(t["bucket"]),
+                          str(t["side"])) is None
+        })
+        if not wanted:
+            return
+        read = benchmark_cluster.read_cluster(wanted, fetch=self.fetch)
+        self.reads.append({"markets": len(wanted), "seconds": read["seconds"],
+                           "unreadable": len(read["unreadable"]), "errors": read["errors"][:4]})
+        for cond in wanted:
+            if cond in read["unreadable"]:
+                self.unreadable.add(cond)
+            else:
+                self.fills[cond] = list(read["fills"].get(cond) or [])
+
+    def verdict(self, target: Mapping[str, Any], *, sealed_by: str) -> tuple[str, dict[str, Any] | None]:
+        if not self.enabled:
+            return "clear", None
+        where = (str(target["station_id"]), str(target["event_date"]), str(target["bucket"]), str(target["side"]))
+        seal = _seal_row(self.conn, *where)
+        if seal is not None:
+            return "sealed", seal
+        cond, no_token = str(target.get("condition_id") or ""), str(target.get("no_token") or "")
+        if not cond or not no_token or not target.get("yes_token"):
+            return "unreadable", None
+        if cond not in self.fills and cond not in self.unreadable:
+            self.prefetch([target])
+        if cond in self.unreadable or cond not in self.fills:
+            return "unreadable", None
+        evidence = benchmark_cluster.opposite_evidence(
+            self.fills[cond], side=where[3], yes_token=str(target["yes_token"]), no_token=no_token,
+        )
+        if evidence is None:
+            return "clear", None
+        row = {
+            "station_id": where[0], "event_date": where[1], "bucket": where[2], "side": where[3],
+            "yes_token": str(target["yes_token"]), "no_token": no_token, "condition_id": cond,
+            "sealed_at_utc": self.now_utc, "sealed_by": sealed_by,
+            "wallet": evidence["wallet"], "fill_ts": evidence["fill_ts"], "fill_tx": evidence["fill_tx"],
+            "fill_token_side": evidence["fill_token_side"], "fill_action": evidence["fill_action"],
+            "fill_price": evidence["fill_price"], "fill_size": evidence["fill_size"],
+            "implied_price": evidence["implied_price"], "opposite_fills": evidence["opposite_fills"],
+            "flip_state": None, "flip_json": None, "flip_updated_at_utc": None,
+        }
+        self.conn.execute(
+            f"INSERT OR IGNORE INTO {SEAL_TABLE}({','.join(row)}) VALUES({','.join('?' for _ in row)})",
+            tuple(row.values()),
+        )
+        self.sealed_new.append({k: row[k] for k in (
+            "station_id", "event_date", "bucket", "side", "sealed_by", "wallet", "fill_action",
+            "fill_token_side", "fill_price", "fill_size", "implied_price", "opposite_fills")})
+        return "sealed", row
+
+
+# ---------------------------------------------------------------------------
 # Plan: judge each new first decision once.
 
 
@@ -933,6 +1121,7 @@ def plan_new_first_decisions(
     gate: Admission,
     manifest_root: Callable[[], Mapping[str, Any] | None],
     cash: dict[str, Any],
+    view: BenchmarkView | None = None,
 ) -> dict[str, Any]:
     rule_version = RULE_VERSIONS[str(cfg["rule"])]
     fresh_seconds = float(cfg["first_decision_fresh_seconds"])
@@ -1038,6 +1227,7 @@ def plan_new_first_decisions(
             tokens[bucket] = {
                 SIDE_YES: str(row.get("yes_token") or ""),
                 SIDE_NO: str(raw.get("no_token") or ""),
+                "condition_id": str(raw.get("condition_id") or ""),
                 "accepting_orders": bool(row.get("accepting_orders")),
             }
         if "cash" not in cash:
@@ -1072,8 +1262,33 @@ def plan_new_first_decisions(
                 "target_shares": leg["target_shares"], "planned_price": leg["price"],
                 "planned_cost_usdc": leg["cost_usdc"],
             })
+        benchmark: dict[str, str] = {}
+        if view is not None and view.enabled:
+            # Charter 258: no leg on a bucket the benchmark cluster has traded
+            # the other side of, and none on one whose cluster read failed.
+            kept: list[dict[str, Any]] = []
+            for leg in legs:
+                token = tokens.get(str(leg["bucket"])) or {}
+                verdict, _seal = view.verdict({
+                    "station_id": key["station_id"], "event_date": key["event_date"],
+                    "bucket": leg["bucket"], "side": leg["side"], "yes_token": token.get(SIDE_YES),
+                    "no_token": token.get(SIDE_NO), "condition_id": token.get("condition_id"),
+                }, sealed_by="plan")
+                if verdict == "clear":
+                    kept.append(leg)
+                else:
+                    benchmark[str(leg["bucket"])] = (
+                        BENCHMARK_OPPOSITE if verdict == "sealed" else BENCHMARK_UNREADABLE)
+            legs = kept
+            unsendable.update(benchmark)
         reading = {**reading, "legs": [l for l in reading["legs"] if str(l["bucket"]) not in unsendable],
                    "dropped": {**reading["dropped"], **unsendable}}
+        if not legs and benchmark:
+            # Not terminal: the market's mode can move to a bucket the cluster
+            # has not traded against, and an unreadable read is retried.
+            reason = BENCHMARK_OPPOSITE if BENCHMARK_OPPOSITE in benchmark.values() else BENCHMARK_UNREADABLE
+            refuse(reason, envelope=envelope, book=book, reading=reading, hours=hours)
+            continue
         if not legs:
             refuse("no_sendable_leg", envelope=envelope, book=book, reading=reading, hours=hours)
             continue
@@ -1133,6 +1348,7 @@ def plan_rungs(
     gate: Admission,
     manifest_root: Callable[[], Mapping[str, Any] | None],
     cash: dict[str, Any],
+    view: BenchmarkView | None = None,
 ) -> dict[str, Any]:
     """Every active plan: close it if its window has, else price the rungs it
     still needs on the book that stands, each under the rule."""
@@ -1150,6 +1366,18 @@ def plan_rungs(
         f" FROM {EVALUATION_TABLE} WHERE plan_state=?",
         (PLAN_ACTIVE,),
     ).fetchall()
+    targets: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    if view is not None and view.enabled:
+        # Charter 258: every active leg's market, read in one pass of the
+        # cluster -- a resting rung included, so its seal reaches the
+        # resting-ladder pass that cancels it.
+        for station, day, _stage, plan_json, _legs, _n in rows:
+            for leg in json.loads(plan_json).get("legs") or []:
+                targets[(str(station), str(day), str(leg["bucket"]), str(leg["side"]))] = {
+                    "station_id": str(station), "event_date": str(day), "bucket": str(leg["bucket"]),
+                    "side": str(leg["side"]), **market_ids(target_conn, str(station), str(day), str(leg["bucket"])),
+                }
+        view.prefetch(list(targets.values()))
     for station, day, stage, plan_json, legs_json, n_passes in rows:
         plan = json.loads(plan_json)
         state = json.loads(legs_json or "{}")
@@ -1179,6 +1407,7 @@ def plan_rungs(
         book_refusal = None
         outstanding = 0
         stopped: set[str] = set()
+        sealed = False
         for leg in plan["legs"]:
             leg_state = state.setdefault(_leg_key(leg), {"intents": []})
             filled, open_rung = _leg_progress(target_conn, list(leg_state["intents"]))
@@ -1194,6 +1423,19 @@ def plan_rungs(
                 leg_state["status"] = f"{SIDE_STOPPED}:{leg['side']}"
                 stopped.add(str(leg["side"]))
                 continue
+            target = targets.get((str(station), str(day), str(leg["bucket"]), str(leg["side"])))
+            if target is not None and view is not None:
+                verdict, _seal = view.verdict(target, sealed_by="rung")
+                if verdict == "sealed":
+                    # Charter 258: no further rung; a resting one is cancelled
+                    # by the resting-ladder pass, what filled is the flip's.
+                    leg_state["status"] = f"sealed:{BENCHMARK_OPPOSITE}"
+                    sealed = True
+                    continue
+                if verdict == "unreadable" and not open_rung:
+                    outstanding += 1
+                    leg_state["status"] = f"waiting:{BENCHMARK_UNREADABLE}"
+                    continue
             outstanding += 1
             if open_rung:
                 leg_state["status"] = "resting"
@@ -1301,7 +1543,9 @@ def plan_rungs(
                 f"UPDATE {EVALUATION_TABLE} SET legs_state_json=? WHERE station_id=? AND event_date=? AND stage=?",
                 (json.dumps(state, ensure_ascii=False, sort_keys=True), *where),
             )
-            if stopped:
+            if sealed:
+                close(BENCHMARK_OPPOSITE)
+            elif stopped:
                 close(f"{SIDE_STOPPED}:{','.join(sorted(stopped))}")
             else:
                 close("all_legs_filled", final=PLAN_DONE)
@@ -1313,6 +1557,307 @@ def plan_rungs(
         )
         passes.append({"station_id": station, "event_date": day, "outstanding_legs": outstanding})
     return {"rungs": rungs, "passes": passes}
+
+
+# ---------------------------------------------------------------------------
+# Charter 258: 「先卖出，反向买no」 -- a sealed bucket the lane holds is reversed.
+
+
+def _held_yes(conn: sqlite3.Connection, *, now_utc: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """The YES the lane's own plans bought on station-days not yet closed,
+    by bucket: shares filled, whether a rung is still out, and what the flip
+    needs to send (the plan's timezone, the leg's tick and minimum)."""
+
+    floor = (_utc(now_utc) - timedelta(days=FLIP_LOOKBACK_DAYS)).date().isoformat()
+    rows = conn.execute(
+        f"SELECT station_id, event_date, plan_json, legs_state_json FROM {EVALUATION_TABLE}"
+        " WHERE event_date >= ? AND plan_json IS NOT NULL",
+        (floor,),
+    ).fetchall()
+    held: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for station, day, plan_json, legs_json in rows:
+        plan = json.loads(plan_json)
+        try:
+            closed = settlement_day_state(str(day), as_of_utc=now_utc,
+                                          settlement_timezone=str(plan["settlement_timezone"])).get("state") == "closed"
+        except Exception:  # noqa: BLE001 -- the flip's own window check reports it
+            closed = False
+        if closed:
+            continue
+        state = json.loads(legs_json or "{}")
+        for leg in plan.get("legs") or []:
+            if str(leg.get("side")) != SIDE_YES:
+                continue
+            filled, open_rung = _leg_progress(conn, list((state.get(_leg_key(leg)) or {}).get("intents") or []))
+            if filled <= 0.0 and not open_rung:
+                continue
+            entry = held.setdefault((str(station), str(day), str(leg["bucket"])), {
+                "station_id": str(station), "event_date": str(day), "bucket": str(leg["bucket"]),
+                "side": SIDE_YES, "settlement_timezone": str(plan["settlement_timezone"]),
+                "tick_size": leg.get("tick_size"),
+                "min_size": float(leg.get("min_size") or DEFAULT_MIN_ORDER_SHARES),
+                "bought_yes": 0.0, "rung_open": False,
+            })
+            entry["bought_yes"] += float(filled)
+            entry["rung_open"] = entry["rung_open"] or open_rung
+    return held
+
+
+def _lane_no(conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str,
+             no_token: str) -> tuple[float, bool]:
+    """NO the lane has bought on the bucket, and whether such a buy is still open."""
+
+    rows = conn.execute(
+        "SELECT i.state, COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
+        " FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.bucket=? AND i.token_id=? AND i.decision_id=? AND i.order_action='BUY'",
+        (bucket, no_token, lane_decision_id(LANE, station_id, event_date)),
+    ).fetchall()
+    bought, open_order = 0.0, False
+    for intent_state, reconciliation_state, filled in rows:
+        bought += float(filled or 0.0)
+        if str(intent_state) in OPEN_STATES and not str(reconciliation_state).startswith("resolved_"):
+            open_order = True
+    return bought, open_order
+
+
+def _best_bid(row: Mapping[str, Any] | None) -> tuple[float | None, float]:
+    bids = sorted(_levels((row or {}).get("bid_levels")), reverse=True)
+    return (bids[0][0], bids[0][1]) if bids else (None, 0.0)
+
+
+def plan_flips(
+    target_conn: sqlite3.Connection,
+    *,
+    now_utc: str,
+    cfg: Mapping[str, Any],
+    gate: Admission,
+    manifest_root: Callable[[], Mapping[str, Any] | None],
+    cash: dict[str, Any],
+    view: BenchmarkView,
+    position_reader: Callable[[str], Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Every bucket the lane holds YES on (or has a rung out on), read against
+    the cluster; on a sealed one under ``flip``, the next step of the
+    reversal: SELL the YES while a sellable lot is held, then BUY NO until
+    the lane is short what it bought -- ``NO = bought YES + YES still held``,
+    so YES too small for the venue to take is paired off rather than left
+    long.  One order a bucket a pass, never while one of the lane's own is
+    still out on either token."""
+
+    out: dict[str, Any] = {"orders": [], "flips": []}
+    if not view.enabled:
+        return out
+    held = _held_yes(target_conn, now_utc=now_utc)
+    targets = {key: {**entry, **market_ids(target_conn, *key)} for key, entry in held.items()}
+    view.prefetch(list(targets.values()))
+    book_fresh = float(cfg["send_book_fresh_seconds"])
+    live = cfg.get("live_ws_book", True) is True
+    books: dict[tuple[str, str], tuple[dict[str, Any] | None, str | None]] = {}
+    for key in sorted(targets):
+        target = targets[key]
+        verdict, _seal = view.verdict(target, sealed_by="holding")
+        if verdict != "sealed" or view.mode != BENCHMARK_FLIP:
+            continue
+        station, day, bucket = key
+        yes_token, no_token = str(target["yes_token"]), str(target["no_token"])
+        sold, sell_open = lane_sold_and_open(target_conn, lane=LANE, station_id=station, event_date=day,
+                                             bucket=bucket)
+        no_held, no_open = _lane_no(target_conn, station_id=station, event_date=day, bucket=bucket,
+                                    no_token=no_token)
+        bought = float(target["bought_yes"])
+        progress: dict[str, Any] = {"bought_yes": round(bought, 4), "sold_yes": round(sold, 4),
+                                    "held_yes": round(max(bought - sold, 0.0), 4), "bought_no": round(no_held, 4)}
+        order: dict[str, Any] | None = None
+
+        def settle(state: str) -> None:
+            target_conn.execute(
+                f"UPDATE {SEAL_TABLE} SET flip_state=?, flip_json=?, flip_updated_at_utc=?"
+                " WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
+                (state, json.dumps({**progress, **({"order": order} if order else {})}, ensure_ascii=False,
+                                   sort_keys=True), now_utc, station, day, bucket, SIDE_YES),
+            )
+            out["flips"].append({"station_id": station, "event_date": day, "bucket": bucket, "state": state,
+                                 **progress})
+
+        if target["rung_open"] or sell_open or no_open:
+            settle("waiting:order_open")
+            continue
+        if bought <= 0.0:
+            settle("no_position")
+            continue
+        refusal, hours = _window_refusal(
+            target_conn, station_id=station, event_date=day, settlement_timezone=str(target["settlement_timezone"]),
+            now_utc=now_utc, min_hours=-math.inf, gate=gate,
+        )
+        if refusal:
+            settle(f"closed:{refusal}" if refusal == "settlement_day_closed" else f"waiting:{refusal}")
+            continue
+        if (station, day) not in books:
+            books[(station, day)] = _book(target_conn, manifest_root(), station_id=station, event_date=day,
+                                          now_utc=now_utc, fresh_seconds=book_fresh, live=live)
+        book, book_refusal = books[(station, day)]
+        if book is None:
+            settle(f"waiting:{book_refusal}")
+            continue
+        row = next((r for r in book["buckets"] if str(r.get("bucket")) == bucket), None)
+        tick = max(float(target.get("tick_size") or (row or {}).get("price_tick_size") or 0.01), 0.01)
+        yes_bid, bid_size = _best_bid(row)
+        if yes_bid is None:
+            settle("waiting:no_yes_bid")
+            continue
+        if not benchmark_cluster.OPPOSITE_IMPLIED_MIN <= yes_bid <= benchmark_cluster.OPPOSITE_IMPLIED_MAX:
+            # The bucket is all but decided: a flip there buys NO at 0.99 or
+            # sells a winner at 0.99 -- nobody's view, the cluster's neither.
+            settle(f"waiting:bucket_decided:{yes_bid:.3f}")
+            continue
+        try:
+            position = position_reader(yes_token)
+        except Exception as exc:  # noqa: BLE001 -- no wallet reading, no order
+            position = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+        if position.get("ok") is not True:
+            settle(f"waiting:position_unreadable:{str(position.get('error') or '')[:60]}")
+            continue
+        wallet = float(position.get("shares") or 0.0)
+        yes_now = max(min(bought - sold, wallet), 0.0)
+        progress.update(wallet_yes=round(wallet, 4), yes_now=round(yes_now, 4), yes_bid=yes_bid,
+                        yes_bid_size=bid_size, hours_to_settlement=hours)
+        min_size = float(target["min_size"])
+        sell_shares = math.floor(yes_now * 100 + 1e-6) / 100
+        if sell_shares >= min_size and sell_shares * yes_bid >= EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
+            # 「先卖出」: a GTD limit at the YES bid takes the bid and rests
+            # the remainder for the venue's minimum horizon.
+            if can_submit_next_order(target_conn, bucket=bucket, token_id=yes_token).get("allowed") is not True:
+                settle("waiting:same_bucket_pending")
+                continue
+            order = {"kind": "sell_yes", "token_id": yes_token, "price": yes_bid, "shares": sell_shares,
+                     "tick": tick}
+        else:
+            need = bought + yes_now - no_held
+            progress["no_needed"] = round(need, 4)
+            if need < FLIP_MIN_NO_SHARES:
+                settle("done")
+                continue
+            # 「反向买no」: FOK at the NO ask (1 - YES bid), within the depth
+            # resting at the bid, at least the venue's minimum.
+            no_price = round(1.0 - yes_bid, _tick_decimals(tick))
+            if not 0.0 < no_price < 1.0:
+                settle("waiting:no_price_invalid")
+                continue
+            usable = max(min(bid_size * DEPTH_HEADROOM_FRACTION, bid_size - 1.0), 0.0)
+            want = max(math.ceil(need - 1e-9), min_size,
+                       math.ceil(EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC / no_price - 1e-9))
+            shares = _sendable_shares(no_price, min(float(want), usable))
+            if shares is None or shares < min_size:
+                settle(f"waiting:thin_bid:{bid_size:.2f}")
+                continue
+            cost = round(shares * no_price, 6)
+            fee = round(shares * TAKER_FEE_RATE * no_price * (1.0 - no_price), 6)
+            if cash.get("cash") is not None and float(cash["cash"]) < cost + fee - 1e-9:
+                settle(f"waiting:insufficient_cash:{float(cash['cash']):.2f}<{cost + fee:.2f}")
+                continue
+            if can_submit_next_order(target_conn, bucket=bucket, token_id=no_token).get("allowed") is not True:
+                settle("waiting:same_bucket_pending")
+                continue
+            if cash.get("cash") is not None:
+                cash["cash"] = float(cash["cash"]) - cost - fee
+            order = {"kind": "buy_no", "token_id": no_token, "price": no_price, "shares": shares,
+                     "cost_usdc": cost, "fee_usdc_est": fee, "tick": tick}
+        settle("selling_yes" if order["kind"] == "sell_yes" else "buying_no")
+        out["orders"].append({**order, "station_id": station, "event_date": day, "bucket": bucket,
+                              "settlement_timezone": str(target["settlement_timezone"]), "seal": {
+                                  k: _seal.get(k) for k in ("wallet", "fill_ts", "fill_tx", "fill_action",
+                                                            "fill_token_side", "fill_price", "fill_size",
+                                                            "implied_price", "sealed_at_utc")
+                              } if _seal else {}, "progress": dict(progress)})
+    return out
+
+
+def send_flips(
+    target_conn: sqlite3.Connection,
+    orders: list[Mapping[str, Any]],
+    *,
+    now_utc: str,
+    transport: Transport,
+    live_submit_authorized: bool,
+) -> list[dict[str, Any]]:
+    """Send each flip order the pass planned and keep its answer on the seal."""
+
+    receipts: list[dict[str, Any]] = []
+    for order in orders:
+        station, day, bucket = str(order["station_id"]), str(order["event_date"]), str(order["bucket"])
+        body = {"schema": FLIP_SCHEMA, "rule": "charter_258_benchmark_flip", "strategy_id": STRATEGY_ID,
+                "kind": order["kind"], "seal": order["seal"], "progress": order["progress"]}
+        intent_id = (FLIP_SELL_PREFIX if order["kind"] == "sell_yes" else FLIP_NO_PREFIX) + "_" + content_sha256(
+            {"bucket": [station, day, bucket], "kind": order["kind"], "at": now_utc})[:32]
+        if order["kind"] == "sell_yes":
+            expiry = resting_order_fields(now_utc=now_utc, limit_price=float(order["price"]),
+                                          belief_fresh_until_utc=now_utc)["expiration"]
+            entry = send_exit_sell(
+                target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
+                settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
+                token_id=str(order["token_id"]), price=float(order["price"]), shares=float(order["shares"]),
+                order_type="GTD", post_only=False, expiration=int(expiry), tick_size=float(order["tick"]),
+                outcome_side=SIDE_YES, intent_body=body, transport=transport,
+                live_submit_authorized=live_submit_authorized,
+            )
+        else:
+            stage = _latest_stage(target_conn, station, day) or "P0"
+            entry = send_lane_buy(
+                target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
+                settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
+                token_id=str(order["token_id"]), price=float(order["price"]), shares=float(order["shares"]),
+                side=SIDE_NO, execution_candidate=FLIP_EXECUTION_CANDIDATE, fok_price_cap=float(order["price"]),
+                tick_size=float(order["tick"]),
+                intent_body={**body, "order_type": "FOK", "post_only": False},
+                transport=transport, live_submit_authorized=live_submit_authorized,
+                decision_details={
+                    "schema": "proper_bet_lane_decision_v2", "lane": LANE, "title": LANE_TITLE,
+                    "rule": body["rule"],
+                    "decision_signature": {"stage": stage, "lane": LANE, "rule": body["rule"]},
+                    "forward_evidence_binding": {"decision_at_utc": now_utc, "probability_stage": stage},
+                    "seal": order["seal"],
+                },
+            )
+        send = {"order_intent_id": intent_id, "kind": order["kind"], "price": order["price"],
+                "shares": order["shares"], "state": entry.get("state"), "event_type": entry.get("event_type"),
+                "reason": entry.get("reason"), "matched_size": entry.get("matched_size"), "at": now_utc}
+        row = target_conn.execute(
+            f"SELECT flip_json FROM {SEAL_TABLE} WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
+            (station, day, bucket, SIDE_YES),
+        ).fetchone()
+        flip = json.loads((row[0] if row else None) or "{}")
+        flip["last_send"] = send
+        target_conn.execute(
+            f"UPDATE {SEAL_TABLE} SET flip_json=? WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
+            (json.dumps(flip, ensure_ascii=False, sort_keys=True), station, day, bucket, SIDE_YES),
+        )
+        receipts.append({"station_id": station, "event_date": day, "bucket": bucket, **send})
+    return receipts
+
+
+def benchmark_sealed_rung(conn: sqlite3.Connection, intent: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Charter 258, for the resting-ladder pass: the seal a resting rung of
+    this lane sits on, or None.  Only the lane's own BUY rungs; the flip's
+    orders are its own, and another lane's rung on the same bucket is not
+    this ruling's."""
+
+    intent_id = str(intent.get("order_intent_id") or "")
+    if not intent_id.startswith(f"{INTENT_PREFIX}_") or intent_id.startswith((FLIP_SELL_PREFIX, FLIP_NO_PREFIX)):
+        return None
+    if str(intent.get("order_action") or "BUY").upper() != "BUY":
+        return None
+    try:
+        mode = benchmark_mode({**PROPER_BET_DEFAULT_SETTINGS, **lane_settings(LANE)})
+    except ValueError:
+        mode = BENCHMARK_FLIP
+    if mode == BENCHMARK_OFF or conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (SEAL_TABLE,)
+    ).fetchone() is None:
+        return None
+    return _seal_row(conn, str(intent.get("station_id") or ""), str(intent.get("event_date") or ""),
+                     str(intent.get("bucket") or ""), str(intent.get("side") or SIDE_YES).upper())
 
 
 def _append_intent(conn: sqlite3.Connection, where: tuple[str, str, str], leg: Mapping[str, Any],
@@ -1345,8 +1890,11 @@ def execute_proper_bets(
     settings: Mapping[str, Any] | None = None,
     admission: Admission | None = None,
     ws_manifest_path: Any = None,
+    benchmark_fetch: benchmark_cluster.Fetch | None = None,
+    position_reader: Callable[[str], Mapping[str, Any]] = default_position_reader,
 ) -> dict[str, Any]:
-    """Judge new first decisions, then post every rung an active plan needs."""
+    """Judge new first decisions, then post every rung an active plan needs,
+    then take the next step of every charter-258 flip."""
 
     ensure_lane_schema(target_conn)
     cfg = {**PROPER_BET_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
@@ -1357,6 +1905,7 @@ def execute_proper_bets(
     entry_rule(cfg)
     rung_horizon_seconds(cfg)
     freshness_rule(cfg)
+    view = BenchmarkView(target_conn, now_utc=now_utc, mode=benchmark_mode(cfg), fetch=benchmark_fetch)
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
@@ -1369,7 +1918,7 @@ def execute_proper_bets(
     cash: dict[str, Any] = {}
     judged = plan_new_first_decisions(
         target_conn, canonical_conn, now_utc=now_utc, cfg=cfg, gate=gate,
-        manifest_root=manifest_root, cash=cash,
+        manifest_root=manifest_root, cash=cash, view=view,
     )
     # A fresh cash read for the rungs: planning only reserved on paper.
     cash = {}
@@ -1377,7 +1926,7 @@ def execute_proper_bets(
     if cash.get("refusal"):
         cash["cash"] = 0.0
     pending = plan_rungs(target_conn, now_utc=now_utc, cfg=cfg, gate=gate,
-                         manifest_root=manifest_root, cash=cash)
+                         manifest_root=manifest_root, cash=cash, view=view)
     receipts: list[dict[str, Any]] = []
     submitted = 0
     filled = 0
@@ -1428,6 +1977,11 @@ def execute_proper_bets(
         _append_intent(target_conn, rung["where"], leg, rung["intent_id"], send)
         receipts.append({"station_id": plan["station_id"], "event_date": plan["event_date"],
                          "bucket": leg["bucket"], "side": leg["side"], **send})
+    # Charter 258: what the lane holds where the cluster is on the other side.
+    flips = plan_flips(target_conn, now_utc=now_utc, cfg=cfg, gate=gate, manifest_root=manifest_root,
+                       cash=cash, view=view, position_reader=position_reader)
+    flip_receipts = send_flips(target_conn, flips["orders"], now_utc=now_utc, transport=transport,
+                               live_submit_authorized=live_submit_authorized)
     return {
         "schema": "proper_bet_lane_receipt_v2",
         "lane": LANE,
@@ -1451,10 +2005,26 @@ def execute_proper_bets(
         "filled": filled,
         "refusals": sorted({str(e["refusal"]) for e in judged["evaluations"] if e.get("refusal")}),
         "receipts": receipts,
+        "benchmark": {
+            "mode": view.mode, "reads": view.reads, "sealed_new": view.sealed_new,
+            "flips": flips["flips"], "flip_orders": flip_receipts,
+        },
     }
 
 
 __all__ = [
+    "BENCHMARK_FLIP",
+    "BENCHMARK_OFF",
+    "BENCHMARK_OPPOSITE",
+    "BENCHMARK_SEAL",
+    "BENCHMARK_UNREADABLE",
+    "BenchmarkView",
+    "SEAL_TABLE",
+    "benchmark_mode",
+    "benchmark_sealed_rung",
+    "market_ids",
+    "plan_flips",
+    "send_flips",
     "BUCKETS_ALL",
     "BUCKETS_MARKET_MODE",
     "DEFAULT_RULE",

@@ -118,7 +118,7 @@ def _seed(conn, *, stage="P0", decided=DECIDED, observed=None, no_token=True, bo
     _insert(conn, "basket_target_market_registry_snapshot",
             {"snapshot_sha256": registry_sha, "source_scope": "shared_live_registry_export_only"})
     for bucket, (yes, no) in TOKENS.items():
-        raw = {"order_price_min_tick_size": 0.01, "order_min_size": 5.0}
+        raw = {"order_price_min_tick_size": 0.01, "order_min_size": 5.0, "condition_id": f"cond_{bucket}"}
         if no_token:
             raw["no_token"] = no
         _insert(conn, "basket_target_market_registry", {
@@ -446,8 +446,21 @@ def test_a_waiting_decision_says_what_it_waits_on(store) -> None:
 def test_a_missing_no_token_is_not_sent(store) -> None:
     _seed(store, no_token=False)
     sent: list = []
-    _run(store, sent)
+    _run(store, sent, benchmark_counterparty="off")
     assert [payload["token_id"] for _path, payload in sent] == ["t29"]
+
+
+def test_without_a_no_token_no_leg_can_be_read_against_the_cluster(store) -> None:
+    """Charter 258: the cluster's NO buys are invisible without the NO token,
+    so even the YES leg is not sent -- fail closed, never assumed clear."""
+
+    _seed(store, no_token=False)
+    sent: list = []
+    receipt = _run(store, sent)
+    assert sent == []
+    row = store.execute("SELECT refusal FROM proper_bet_lane_evaluation").fetchone()
+    assert row[0] == "benchmark_unreadable"
+    assert receipt["benchmark"]["mode"] == "flip"
 
 
 def test_the_yes_inventory_never_reads_a_no_fill(store) -> None:

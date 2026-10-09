@@ -78,6 +78,13 @@ if RESTING_BOOK_STALE_SECONDS <= 0.0:
     )
 STALE_BOOK_CANCEL_RULE_VERSION = "resting_buy_on_unseen_book_v1"
 DeadBucketLoader = Callable[..., tuple[tuple[str, ...], float | None]]
+# Charter 258 (user ruling 2026-10-09 「proper线增加一条规则：不做对标账号的对手
+# 盘」): a Proper rung resting on a bucket the benchmark cluster has traded the
+# other side of is cancelled -- its next fill would be theirs.  The loader is
+# the lane's (``proper_bet_lane.benchmark_sealed_rung``): it answers only for
+# that lane's own rungs, with the seal row or None.
+BENCHMARK_SEAL_CANCEL_RULE_VERSION = "resting_buy_on_benchmark_sealed_bucket_v1"
+BenchmarkSealLoader = Callable[[sqlite3.Connection, Mapping[str, Any]], Mapping[str, Any] | None]
 # How long a rung that has fallen out of the ladder is left standing before
 # it is cancelled.  The ledger measured that re-posting every 15 minutes
 # lost queue position for nothing; a one-tick flicker of the bid should not
@@ -235,6 +242,7 @@ def resting_rung_keep_or_cancel(
     stale_book_seconds: float,
     dwell_seconds: float | None = None,
     far_ticks: float | None = None,
+    benchmark_seal: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Keep or cancel one resting rung, in the order the rules bind.
 
@@ -260,6 +268,18 @@ def resting_rung_keep_or_cancel(
             "observed_running_high_c": running_high,
             "limit_price": intent["limit_price"],
             "cancel_rule": DEAD_BUCKET_CANCEL_RULE_VERSION,
+        }
+    if benchmark_seal and str(intent.get("order_action") or "BUY").upper() == "BUY":
+        # Charter 258: needs no book either -- the seal is about who is on
+        # the other side, not the price.
+        return {
+            "rule": BENCHMARK_SEAL_CANCEL_RULE_VERSION,
+            "action": "cancel",
+            "reason": "benchmark_opposite",
+            "benchmark_wallet": benchmark_seal.get("wallet"),
+            "benchmark_fill_ts": benchmark_seal.get("fill_ts"),
+            "limit_price": intent["limit_price"],
+            "cancel_rule": BENCHMARK_SEAL_CANCEL_RULE_VERSION,
         }
     book = load_book()
     age = book_age_seconds(book, as_of_utc=as_of_utc)
@@ -899,6 +919,7 @@ def reprice_resting_rungs(
     start_index: int = 0,
     lookup_concurrency: int = 1,
     gtc_sell_lookup_interval_sec: float | None = None,
+    benchmark_seal_loader: BenchmarkSealLoader | None = None,
 ) -> dict[str, Any]:
     """One pass over every resting rung: sync it, then keep or cancel it.
 
@@ -968,6 +989,10 @@ def reprice_resting_rungs(
             RESTING_BOOK_STALE_SECONDS if stale_book_seconds is None
             else float(stale_book_seconds)
         ),
+        # Charter 258: cancels asked for because the benchmark cluster traded
+        # the other side of the rung's bucket.  Also in cancel_requested.
+        "cancel_requested_benchmark_seal": 0,
+        "benchmark_seal_rule": BENCHMARK_SEAL_CANCEL_RULE_VERSION,
         "failures": [],
         "rungs": [],
         "places_orders": False,
@@ -1204,6 +1229,15 @@ def reprice_resting_rungs(
                     return mirror_book(row)
                 return row
 
+            seal = None
+            if benchmark_seal_loader is not None:
+                try:
+                    seal = benchmark_seal_loader(conn, intent)
+                except Exception as exc:  # noqa: BLE001 -- the other rules still run
+                    receipt["failures"].append({
+                        "order_intent_id": intent_id,
+                        "reason": f"benchmark_seal_read:{type(exc).__name__}:{exc}"[:160],
+                    })
             verdict = resting_rung_keep_or_cancel(
                 intent=intent,
                 dead_buckets=dead_buckets,
@@ -1213,10 +1247,13 @@ def reprice_resting_rungs(
                 stale_book_seconds=float(receipt["stale_book_seconds"]),
                 dwell_seconds=dwell_seconds,
                 far_ticks=far_ticks,
+                benchmark_seal=seal,
             )
             cancel_rule = str(verdict.pop("cancel_rule", "") or "")
             if verdict["action"] == "cancel" and cancel_rule == DEAD_BUCKET_CANCEL_RULE_VERSION:
                 receipt["cancel_requested_dead_bucket"] += 1
+            elif verdict["action"] == "cancel" and cancel_rule == BENCHMARK_SEAL_CANCEL_RULE_VERSION:
+                receipt["cancel_requested_benchmark_seal"] += 1
             elif verdict["action"] == "cancel" and cancel_rule == STALE_BOOK_CANCEL_RULE_VERSION:
                 receipt["cancel_requested_stale_book"] += 1
             elif verdict.get("reason") == "no_book" and not cancel_rule:
@@ -1290,6 +1327,7 @@ def reprice_resting_rungs(
 
 
 __all__ = [
+    "BENCHMARK_SEAL_CANCEL_RULE_VERSION",
     "DEAD_BUCKET_CANCEL_RULE_VERSION",
     "mirror_book",
     "RESTING_BOOK_STALE_SECONDS",
