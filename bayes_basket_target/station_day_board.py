@@ -1094,8 +1094,22 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
         "taf": _taf(conn, station, day),
         "precip": _precip(conn, station, day),
+        "precip_5min": _precip_5min(station, day, zone),
         "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
     }
+
+
+def _precip_5min(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:
+    """MADIS five-minute rain for US ASOS stations (board only); None elsewhere."""
+
+    if not station.upper().startswith("K"):
+        return None
+    from . import madis_precip_board  # noqa: PLC0415
+
+    try:
+        return madis_precip_board.station_day(station, day, zone)
+    except Exception as exc:  # noqa: BLE001 -- the card says why
+        return {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
 def _event_days(conn, station: str, now: datetime) -> tuple[str, list[tuple[str, str]]] | None:

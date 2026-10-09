@@ -103,3 +103,40 @@ def test_goes_hours_zero_the_night_skip_the_unpublished_and_place_each_reading(m
     assert values[12] == 640.0 and values[11] is None  # placed on its hour; one still pending
     assert all(instant <= datetime(2026, 10, 8, 16, 35, tzinfo=timezone.utc) for instant in asked)
     assert out["pending_hours"] >= 1
+
+
+def test_madis_five_minute_rain_lands_on_the_hour_its_accumulation_closes(monkeypatch) -> None:
+    """MADIS precipAccum is the rain since the last routine report (reset just
+    after ~:53): a record before :53 belongs to the hour ending at the next
+    top of the hour, one from :53 on to the hour after; VC is not the station."""
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from bayes_basket_target import madis_precip_board as madis
+
+    utc = lambda h, m: datetime(2026, 10, 8, h, m, tzinfo=timezone.utc)  # noqa: E731
+    rows = [(utc(7, 40), "-RA BR", 0.25), (utc(7, 50), "-RA", 0.51), (utc(7, 55), "-RA", 0.0),
+            (utc(8, 20), "VCSH", 0.0), (utc(8, 45), "", 0.0)]
+    fresh = madis.time.monotonic()
+    for hour in range(0, 24):
+        name = f"20261008_{hour:02d}00"
+        madis._OBJECTS[name] = (fresh, {"KLGA": [r for r in rows if r[0].hour == hour]})
+    monkeypatch.setitem(madis.__dict__, "_PENDING", set())
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 8, 9, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(madis, "datetime", Clock)
+    monkeypatch.setattr(madis, "_WORKER", type("Alive", (), {"is_alive": lambda self: True})())
+    madis._STATIONS.add("KLGA")
+    out = madis.station_day("KLGA", "2026-10-08", ZoneInfo("America/New_York"))  # EDT: 07:40Z is 03:40
+    assert out["available"]
+    assert out["hourly"]["04"]["mm"] == 0.51 and out["hourly"]["04"]["wet"]   # 03:40, 03:50 -> hour ending 04:00
+    assert out["hourly"]["05"]["mm"] == 0.0 and out["hourly"]["05"]["wet"]    # 03:55 opens the next window
+    assert out["hourly"]["05"]["wx"] == ["-RA"]                                # 04:20 VCSH is not rain here
+    assert out["latest"] == {"local": "04:45", "wx": "", "accum_mm": 0.0, "wet": False}
+    for hour in range(24):
+        madis._OBJECTS.pop(f"20261008_{hour:02d}00", None)

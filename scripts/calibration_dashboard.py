@@ -22920,9 +22920,18 @@ function sdRainObs(day){
     if(m.precip_1h_mm != null && !/SPECI/.test(String(m.kind))) at.mm = Math.max(at.mm == null ? 0 : at.mm, m.precip_1h_mm);
     lastAt = m.local;
   }
+  // MADIS five-minute (US ASOS): the hour's accumulation and its present
+  // weather; where it has an hour, its amount is the one shown.
+  const M = day.precip_5min && day.precip_5min.available ? day.precip_5min : null;
+  if(M) Object.entries(M.hourly || {}).forEach(([key, cell]) => {
+    const at = hours[key] || (hours[key] = {wet:false, desc:[], mm:null, reports:0});
+    if(cell.mm != null) at.mm = cell.mm;
+    if(cell.wet){ at.wet = true; at.desc.push(`5 分钟 ${cell.wx.join(" / ")}`); }
+    at.reports = Math.max(at.reports, 1);
+  });
   const list = Object.values(hours);
   const mms = list.filter(h => h.mm != null);
-  return {hours, reported: list.length > 0, lastAt, lastWet,
+  return {hours, reported: list.length > 0, lastAt, lastWet, madis: M,
     wetHours: list.filter(h => h.wet).length, mm: mms.length ? mms.reduce((a, h) => a + h.mm, 0) : null};
 }
 function sdRainSvg(P, O){
@@ -22946,7 +22955,7 @@ function sdRainSvg(P, O){
   });
   hours.forEach((h,i) => {
     const x = left+i*step, missing = h.value == null, height = missing ? 3 : Math.max(1,bottom-y(h.value));
-    const o = obs[h.hour], half = o && o.mm != null;
+    const o = obs[h.hour], half = o && o.mm != null && o.mm > 0;
     g += `<rect data-hour="${h.hour}" x="${x+2}" y="${bottom-height}" width="${half ? (step-4)/2 : step-4}" height="${height}" fill="${missing ? "var(--muted)" : "var(--accent)"}" opacity="${missing ? .35 : .85}"><title>${h.hour}:00（当地）预报 ${missing ? "无数据" : sdN(h.value,2)+" mm"}</title></rect>`;
     if(half){
       const oh = Math.max(1, bottom - y(o.mm));
@@ -23010,15 +23019,17 @@ function sdEvidence(day){
   const met = metRows.length ? sdNewestFive(metRows, `<thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead>`, "sd-tab", n => `更早的 ${n} 份`) : "";
   const P = day.precip;
   const O = sdRainObs(day);
-  const obsLine = !O.reported ? "<b>实况 尚无报文</b>"
+  const fiveMin = O.madis ? `<b class="${O.madis.latest.wet ? "down" : "up"}" title="NOAA MADIS 5 分钟；本小时累计＝上一份整点报文之后的降水">5 分钟 ${sdEsc(O.madis.latest.local)} ${O.madis.latest.wet ? sdEsc(O.madis.latest.wx) : "无降水"}${O.madis.latest.accum_mm != null ? ` · 本小时累计 ${sdN(O.madis.latest.accum_mm, 2)} mm` : ""}</b>`
+    : day.precip_5min && day.precip_5min.reason === "reading" ? '<b class="muted">5 分钟数据读取中</b>' : "";
+  const obsLine = (!O.reported ? "<b>实况 尚无报文</b>"
     : O.wetHours ? `<b class="down">实况 已降水 ${O.wetHours} 小时</b>${O.mm != null ? `<b>报文雨量 ${sdN(O.mm, 1)} mm</b>` : ""}<b>最近 ${sdEsc(O.lastWet)}</b>`
-    : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`;
+    : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`) + fiveMin;
   let rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0, `<b>预报 无记录</b>${obsLine}`, "暂无逐小时降水预报", true);
   if(P){
     const hourLabel = v => v == null ? "—" : String(v).padStart(2,"0")+":00";
     rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0,
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
-      `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）`, true);
+      `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
   return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
