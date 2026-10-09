@@ -244,7 +244,8 @@ def test_the_wiring_and_the_charter() -> None:
     assert "def collect_realisation_layer(" in board and '"realisation_layer"' in board
     # in the edge area (user 2026-10-05 「兑现层应该放在边际板块里」), not the money board
     edge = board[board.index('{id:"edge", label:"边际"'):]
-    assert "sections:[[realisationLayer,\"兑现层（影子）\"]]" in edge[:edge.index("];")]
+    # Its own area, which charter 259's second layer shares (2026-10-09).
+    assert '[realisationLayer,"兑现层（影子）"]' in edge[:edge.index("];")]
     money = board[board.index("const MONEY_BOARD = ["):]
     assert "realisationLayer" not in money[:money.index("];")]
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")

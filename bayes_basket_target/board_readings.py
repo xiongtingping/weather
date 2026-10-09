@@ -7,7 +7,7 @@ used to compute these itself by calling production's own functions; it now
 only reads the files this job writes (``data/board_readings/<name>.json``),
 and ``tests/test_board_is_read_only.py`` keeps it that way.
 
-Five readings, each with production's functions and nothing re-derived:
+Six readings, each with production's functions and nothing re-derived:
 
 * ``seat_windows`` -- charter 131's seat window for every served cell the
   board's landing tables read (``serving_cells_by_day``), not only the
@@ -22,6 +22,10 @@ Five readings, each with production's functions and nothing re-derived:
 * ``basket_shadow`` -- the basket's P0 ladder per station-day (window, legs,
   gate) from the preselection plans production compiled, and how its
   choices settled.  Incremental: a rowid cursor, chunked short reads.
+* ``traded_calibration`` -- charter 259's second layer: on the buckets the
+  lanes actually bought (and the ones they sent for), the binary log loss
+  and reliability of our served probability beside the market's mid at the
+  same instant, by lane, side, stage and condition.
 
 Read-only against the SSOT (``mode=ro``); the job is a reader beside the
 writer (charter: read-only work runs on its own executor, never in a writer
@@ -36,6 +40,7 @@ import json
 import math
 import os
 import random
+import re
 import sqlite3
 import sys
 import time
@@ -58,6 +63,7 @@ SEAT_LOOKBACK_DAYS = 45
 SEAT_REREAD_HOURS = 6
 READING_NAMES = (
     "seat_windows", "fusion_resolve", "centre_shape", "l4_lane", "basket_shadow",
+    "traded_calibration",
 )
 
 
@@ -1409,6 +1415,318 @@ def basket_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Charter 259: trading probability calibration -- the second layer
+# (user 2026-10-09: 把「校准」明确拆成两层 -- A. Distribution Calibration,
+# LogScore/CRPS/Brier/PIT on the whole P(T=k); B. Trading Probability
+# Calibration, binary LogLoss + reliability on the bucket actually traded:
+# 「我实际下注的桶，概率是不是可信？」)
+# ---------------------------------------------------------------------------
+
+#: The first live fills (charter 123's go-live); nothing earlier reached the venue.
+TRADED_CALIBRATION_SINCE = "2026-09-06"
+TRADED_CALIBRATION_BINS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
+#: A slice is reported only from this many legs (the research cut, round 11).
+TRADED_CALIBRATION_MIN_LEGS = 15
+TRADED_CALIBRATION_BOOTSTRAP_DRAWS = 2000
+TRADED_CALIBRATION_SEED = 20261009
+#: The market mid is read from the newest committed book at most this far
+#: before the intent (the lanes send on a book this fresh or fresher).
+TRADED_CALIBRATION_BOOK_WINDOW_SEC = 1800
+#: Scores clip every probability here (the served vector is already floored by
+#: charter 224; the market mid and the paid price are not vectors).
+TRADED_CALIBRATION_CLIP = 1e-3
+#: ``scripts/live_book.LANE_DECISION_RE``: a lane's decision id carries the lane
+#: before ``_decision_``; the basket's decision ids carry no lane.
+_TRADED_LANE_RE = re.compile(r"^(?P<lane>[a-z0-9_]+?)_decision_[A-Z0-9]{3,5}_\d{4}-\d{2}-\d{2}")
+_TRADED_SIDE_BANDS = (("p−q < 0", -1.0, 0.0), ("p−q 0–0.05", 0.0, 0.05), ("p−q 0.05–0.10", 0.05, 0.10),
+                      ("p−q 0.10–0.20", 0.10, 0.20), ("p−q ≥ 0.20", 0.20, 1.01))
+_TRADED_PRICE_BANDS = (("价 < 0.20", 0.0, 0.20), ("价 0.20–0.40", 0.20, 0.40), ("价 0.40–0.60", 0.40, 0.60),
+                       ("价 0.60–0.80", 0.60, 0.80), ("价 ≥ 0.80", 0.80, 1.01))
+_TRADED_LEAD_BANDS = (("距结算 < 12h", -1e9, 12.0), ("距结算 12–36h", 12.0, 36.0), ("距结算 36–60h", 36.0, 60.0),
+                      ("距结算 ≥ 60h", 60.0, 1e9))
+
+
+def _traded_lane(decision_id: str) -> str:
+    match = _TRADED_LANE_RE.match(str(decision_id or ""))
+    return match.group("lane") if match else "basket"
+
+
+def _binary_logloss(p: float, hit: float) -> float:
+    clipped = min(1.0 - TRADED_CALIBRATION_CLIP, max(TRADED_CALIBRATION_CLIP, float(p)))
+    return -(hit * math.log(clipped) + (1.0 - hit) * math.log(1.0 - clipped))
+
+
+def _traded_served_vector(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
+) -> tuple[str | None, dict[str, float] | None]:
+    """The newest committed served vector at ``at_utc`` (any stage), floored
+    as serving floors it (charter 224) and renormalised."""
+
+    from .materialization import floor_probabilities  # noqa: PLC0415
+
+    key = (station, day, at_utc)
+    if key in cache:
+        return cache[key]
+    row = conn.execute(
+        "SELECT history_id, stage FROM basket_probability_bridge_history"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND decision_at_utc<=?"
+        " ORDER BY decision_at_utc DESC LIMIT 1",
+        (station, day, at_utc),
+    ).fetchone()
+    if row is None:
+        cache[key] = (None, None)
+        return cache[key]
+    raw = {str(b): float(v) for b, v in conn.execute(
+        "SELECT bucket, probability FROM basket_probability_bridge_bucket_probability WHERE history_id=?",
+        (row[0],),
+    )}
+    total = sum(raw.values())
+    if total <= 0.0:
+        cache[key] = (str(row[1]), None)
+        return cache[key]
+    floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
+    norm = sum(floored.values()) or 1.0
+    cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()})
+    return cache[key]
+
+
+def _traded_market_mid(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
+) -> dict[str, float] | None:
+    """The normalised two-sided mid of the newest committed book inside the
+    window before ``at_utc``; None when the ladder is not healthy (fewer than
+    three two-sided buckets, or the mids do not sum near one)."""
+
+    key = (station, day, at_utc)
+    if key in cache:
+        return cache[key]
+    floor = (_utc_instant(at_utc) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC)).isoformat()
+    floor = floor.replace("+00:00", "Z")
+    row = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? AND observed_at>=?"
+        " ORDER BY observed_at DESC LIMIT 1",
+        (station, day, at_utc, floor),
+    ).fetchone()
+    mids: dict[str, float] = {}
+    if row is not None:
+        try:
+            buckets = json.loads(row[0] or "[]")
+        except (TypeError, ValueError):
+            buckets = []
+        for b in buckets if isinstance(buckets, list) else []:
+            bid, ask = b.get("bid_price"), b.get("best_ask")
+            if isinstance(bid, (int, float)) and isinstance(ask, (int, float)) and 0.0 < ask - bid < 0.2:
+                mids[str(b.get("bucket"))] = (float(bid) + float(ask)) / 2.0
+    total = sum(mids.values())
+    if len(mids) < 3 or not 0.85 <= total <= 1.2:
+        cache[key] = None
+        return None
+    cache[key] = {b: v / total for b, v in mids.items()}
+    return cache[key]
+
+
+def _utc_instant(value: str) -> datetime:
+    text = str(value or "").replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(text)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def traded_calibration_legs(conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Every live-authorised BUY intent since ``TRADED_CALIBRATION_SINCE`` on a
+    settled station-day, with our served probability and the market's mid for
+    the leg's side at the instant it was minted, what it paid, and whether
+    it won.  ``filled`` marks the legs that became positions."""
+
+    from .label_knowability import knowable_labels  # noqa: PLC0415
+    from .settlement_time import hours_to_settlement_if_known  # noqa: PLC0415
+
+    labels = knowable_labels(conn)
+    counts = {"intents": 0, "no_label": 0, "no_served_p": 0, "bucket_off_vector": 0, "no_market_mid": 0, "legs": 0}
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    mid_cache: dict[tuple[str, str, str], Any] = {}
+    legs: list[dict[str, Any]] = []
+    rows = conn.execute(
+        "SELECT i.order_intent_id, i.decision_id, c.station_id, c.event_date, c.settlement_timezone, i.bucket,"
+        " i.side, i.limit_price, i.created_at, COALESCE(r.filled_size, 0), COALESCE(r.filled_notional_usdc, 0)"
+        " FROM basket_target_order_intents i"
+        " JOIN basket_target_execution_cycles c ON c.cycle_id = i.cycle_id"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id = i.order_intent_id"
+        " WHERE i.live_submit_authorized=1 AND i.order_action='BUY' AND i.created_at>=?"
+        " ORDER BY i.created_at",
+        (TRADED_CALIBRATION_SINCE,),
+    ).fetchall()
+    for intent_id, decision_id, station, day, tz, bucket, side, limit_price, created, filled, notional in rows:
+        counts["intents"] += 1
+        label = labels.get((str(station), str(day)))
+        if label is None:
+            counts["no_label"] += 1
+            continue
+        stage, vector = _traded_served_vector(conn, str(station), str(day), str(created), served_cache)
+        if vector is None:
+            counts["no_served_p"] += 1
+            continue
+        if str(bucket) not in vector:
+            counts["bucket_off_vector"] += 1
+            continue
+        mids = _traded_market_mid(conn, str(station), str(day), str(created), mid_cache)
+        if mids is None or str(bucket) not in mids:
+            counts["no_market_mid"] += 1
+            continue
+        p_yes, q_yes = float(vector[str(bucket)]), float(mids[str(bucket)])
+        win_yes = 1.0 if str(label["bucket"]) == str(bucket) else 0.0
+        is_no = str(side).upper() == "NO"
+        p, q, win = ((1.0 - p_yes, 1.0 - q_yes, 1.0 - win_yes) if is_no else (p_yes, q_yes, win_yes))
+        filled_size = float(filled or 0.0)
+        paid = (float(notional) / filled_size) if filled_size > 0 and notional else float(limit_price)
+        hours = hours_to_settlement_if_known(str(day), as_of_utc=str(created), settlement_timezone=tz)
+        legs.append({
+            "order_intent_id": str(intent_id), "lane": _traded_lane(str(decision_id)), "station_id": str(station),
+            "event_date": str(day), "bucket": str(bucket), "side": "NO" if is_no else "YES", "stage": stage,
+            "unit": "F" if "°F" in str(bucket) else "C", "created_at": str(created), "hours": hours,
+            "p": p, "q": q, "paid": paid, "win": win, "filled": filled_size > 0,
+            "shares": filled_size, "usdc": float(notional or 0.0) if filled_size > 0 else 0.0,
+        })
+        counts["legs"] += 1
+    return legs, counts
+
+
+def _traded_mean(values: Sequence[float]) -> float | None:
+    return (sum(values) / len(values)) if values else None
+
+
+def _traded_day_bootstrap(legs: Sequence[Mapping[str, Any]], diff: Sequence[float]) -> list[float] | None:
+    """95% interval of the mean paired difference, resampling event days."""
+
+    by_day: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for leg, d in zip(legs, diff):
+        acc = by_day[str(leg["event_date"])]
+        acc[0] += float(d)
+        acc[1] += 1.0
+    blocks = list(by_day.values())
+    if len(blocks) < 3:
+        return None
+    rng = random.Random(TRADED_CALIBRATION_SEED)
+    draws: list[float] = []
+    for _ in range(TRADED_CALIBRATION_BOOTSTRAP_DRAWS):
+        total = count = 0.0
+        for _ in blocks:
+            b = blocks[rng.randrange(len(blocks))]
+            total += b[0]
+            count += b[1]
+        if count > 0:
+            draws.append(total / count)
+    if not draws:
+        return None
+    draws.sort()
+    return [draws[int(0.025 * len(draws))], draws[int(0.975 * len(draws)) - 1]]
+
+
+def traded_calibration_group(legs: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """One row of the second layer: our p, the market's q and the paid price
+    scored on the same legs -- binary log loss, Brier, said vs landed, the
+    share of legs where ours is closer to the outcome, and the paired
+    ours−market log-loss difference with a day-bootstrap interval."""
+
+    if len(legs) < TRADED_CALIBRATION_MIN_LEGS:
+        return None
+    ll_p = [_binary_logloss(l["p"], l["win"]) for l in legs]
+    ll_q = [_binary_logloss(l["q"], l["win"]) for l in legs]
+    ll_paid = [_binary_logloss(l["paid"], l["win"]) for l in legs]
+    diff = [a - b for a, b in zip(ll_p, ll_q)]
+    filled = [l for l in legs if l.get("filled")]
+    cost = sum(float(l["paid"]) * float(l["shares"]) for l in filled)
+    payout = sum(float(l["win"]) * float(l["shares"]) for l in filled)
+    return {
+        "legs": len(legs), "event_days": len({l["event_date"] for l in legs}),
+        "filled_legs": len(filled), "usdc": round(cost, 2),
+        "logloss_ours": _traded_mean(ll_p), "logloss_market": _traded_mean(ll_q), "logloss_paid": _traded_mean(ll_paid),
+        "logloss_diff": _traded_mean(diff), "logloss_diff_ci": _traded_day_bootstrap(legs, diff),
+        "brier_ours": _traded_mean([(l["p"] - l["win"]) ** 2 for l in legs]),
+        "brier_market": _traded_mean([(l["q"] - l["win"]) ** 2 for l in legs]),
+        "said_ours": _traded_mean([l["p"] for l in legs]), "said_market": _traded_mean([l["q"] for l in legs]),
+        "paid": _traded_mean([l["paid"] for l in legs]), "landed": _traded_mean([l["win"] for l in legs]),
+        "ours_closer_share": _traded_mean([1.0 if abs(l["p"] - l["win"]) < abs(l["q"] - l["win"]) else 0.0 for l in legs]),
+        "return": ((payout / cost) - 1.0) if cost > 0 else None,
+    }
+
+
+def traded_calibration_reliability(legs: Sequence[Mapping[str, Any]], key: str) -> list[dict[str, Any]]:
+    """Reliability by decile of ``key`` (``p`` ours, ``q`` market): what was
+    said by both and what landed, so the two diagrams are read side by side
+    on the same legs."""
+
+    out: list[dict[str, Any]] = []
+    for lo, hi in zip(TRADED_CALIBRATION_BINS[:-1], TRADED_CALIBRATION_BINS[1:]):
+        inside = [l for l in legs if lo <= float(l[key]) < hi]
+        if not inside:
+            continue
+        out.append({
+            "bin": [lo, min(hi, 1.0)], "legs": len(inside),
+            "said_ours": _traded_mean([l["p"] for l in inside]), "said_market": _traded_mean([l["q"] for l in inside]),
+            "paid": _traded_mean([l["paid"] for l in inside]), "landed": _traded_mean([l["win"] for l in inside]),
+        })
+    return out
+
+
+def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    days = sorted({l["event_date"] for l in legs})
+    split = days[len(days) // 2] if days else None
+    specs: list[tuple[str, str, Any]] = []
+    for lane in sorted({l["lane"] for l in legs}):
+        specs.append(("车道", lane, lambda l, v=lane: l["lane"] == v))
+    for side in ("YES", "NO"):
+        specs.append(("方向", side, lambda l, v=side: l["side"] == v))
+    for stage in ("P0", "P0-M", "P1"):
+        specs.append(("阶段", stage, lambda l, v=stage: l["stage"] == v))
+    for unit in ("C", "F"):
+        specs.append(("结算单位", unit, lambda l, v=unit: l["unit"] == v))
+    for name, lo, hi in _TRADED_SIDE_BANDS:
+        specs.append(("我方对市场", name, lambda l, a=lo, b=hi: a <= l["p"] - l["q"] < b))
+    for name, lo, hi in _TRADED_PRICE_BANDS:
+        specs.append(("实付价", name, lambda l, a=lo, b=hi: a <= l["paid"] < b))
+    for name, lo, hi in _TRADED_LEAD_BANDS:
+        specs.append(("提前量", name, lambda l, a=lo, b=hi: l["hours"] is not None and a <= l["hours"] < b))
+    if split:
+        specs.append(("时段", f"前半（< {split}）", lambda l, v=split: l["event_date"] < v))
+        specs.append(("时段", f"后半（≥ {split}）", lambda l, v=split: l["event_date"] >= v))
+    out: list[dict[str, Any]] = []
+    for group, name, predicate in specs:
+        row = traded_calibration_group([l for l in legs if predicate(l)])
+        if row is not None:
+            out.append({"group": group, "slice": name, **row})
+    return out
+
+
+def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Charter 259: the second layer on the legs the lanes bought (``filled``)
+    and on every leg they sent for (``intended``) -- the whole, the slices,
+    and the paired reliability diagrams."""
+
+    legs, counts = traded_calibration_legs(conn)
+    populations: dict[str, Any] = {}
+    for name, subset in (("filled", [l for l in legs if l["filled"]]), ("intended", legs)):
+        populations[name] = {
+            "legs": len(subset),
+            "all": traded_calibration_group(subset),
+            "slices": _traded_slices(subset),
+            "reliability_ours": traded_calibration_reliability(subset, "p"),
+            "reliability_market": traded_calibration_reliability(subset, "q"),
+            "lanes": sorted(Counter(l["lane"] for l in subset).items()),
+        }
+    return {
+        "rule": "traded_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
+        "min_legs": TRADED_CALIBRATION_MIN_LEGS, "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC,
+        "populations": populations,
+        "recent": [
+            {k: l[k] for k in ("created_at", "lane", "station_id", "event_date", "bucket", "side", "stage",
+                               "p", "q", "paid", "win", "filled", "shares")}
+            for l in sorted(legs, key=lambda l: l["created_at"], reverse=True)[:60]
+        ],
+    }
+
 # ---------------------------------------------------------------------------
 # the run
 # ---------------------------------------------------------------------------
@@ -1426,6 +1744,11 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
          centre_shape_row, _ladder_rps),
     ),
     "l4_lane": (l4_lane, (l4_lane,)),
+    "traded_calibration": (
+        traded_calibration,
+        (traded_calibration, traded_calibration_legs, traded_calibration_group,
+         traded_calibration_reliability, _traded_slices, _traded_served_vector, _traded_market_mid),
+    ),
     "basket_shadow": (
         basket_shadow,
         (basket_shadow, _basket_shadow_walk, _basket_window, _basket_targets,
@@ -1443,6 +1766,9 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
 READING_MAX_AGE_SEC: dict[str, float] = {
     "centre_shape": 3 * 3600.0,
     "l4_lane": 6 * 3600.0,
+    # Charter 259: settled legs change once a day; the as-of reads behind it
+    # are a few thousand point look-ups.
+    "traded_calibration": 3 * 3600.0,
 }
 
 
