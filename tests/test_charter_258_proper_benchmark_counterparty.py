@@ -4,11 +4,12 @@ User rulings 2026-10-09 「proper线增加一条规则：不做对标账号的�
 that Proper YES rungs had been filled by the cluster's NO buys at the exact
 complement of our price and size, 「先卖出，反向买no，和跟单线不冲突！可以重叠」.
 
-A bucket on which any of the eight cluster wallets has bought NO or sold YES
-(maker or taker, at an implied YES price inside [0.02, 0.98]) is sealed: no
-plan, no further rung, a resting rung cancelled by the resting-ladder pass.
-A YES the lane holds there is sold first, then reversed into NO until the lane
-is short what it bought.  A failed read seals nothing and opens nothing.
+Then 「买no线交给跟单线」 and 「proper线以对标账号为筛子，不做对标账号的对手盘！」:
+the cluster is the lane's filter.  A bucket on which any of the eight wallets
+has bought NO or sold YES (maker or taker, at an implied YES price inside
+[0.02, 0.98]) is sealed: no plan, no further rung, a resting rung cancelled by
+the resting-ladder pass.  ``sell`` also sells a YES the lane holds there; no
+mode buys NO.  A failed read seals nothing and opens nothing.
 """
 
 from __future__ import annotations
@@ -171,7 +172,7 @@ def test_the_cluster_is_one_list() -> None:
     assert strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS["source_users"] == list(
         strategy_lanes.BENCHMARK_CLUSTER_WALLETS)
     assert len(set(strategy_lanes.BENCHMARK_CLUSTER_WALLETS)) == 8
-    assert strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["benchmark_counterparty"] == "flip"
+    assert strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["benchmark_counterparty"] == "seal"
     with pytest.raises(ValueError, match="benchmark_counterparty_unknown"):
         lane.benchmark_mode({"benchmark_counterparty": "sometimes"})
 
@@ -235,8 +236,8 @@ def test_a_seal_after_the_plan_stops_the_reposts_and_closes_the_plan(store, warm
         f"SELECT plan_state, plan_state_reason FROM {lane.EVALUATION_TABLE}").fetchone()
     assert (state, reason) == (lane.PLAN_CLOSED, lane.BENCHMARK_OPPOSITE)
     assert _seal(store)["sealed_by"] == "rung"
-    # Nothing was held, so there is nothing to reverse.
-    assert receipt["benchmark"]["flip_orders"] == []
+    # Nothing was held, so there is nothing to sell.
+    assert receipt["benchmark"]["sell_orders"] == []
 
 
 def test_a_resting_proper_rung_on_a_sealed_bucket_is_cancelled(store, warm) -> None:
@@ -259,15 +260,15 @@ def test_a_resting_proper_rung_on_a_sealed_bucket_is_cancelled(store, warm) -> N
     assert verdict["cancel_rule"] == BENCHMARK_SEAL_CANCEL_RULE_VERSION
     # Another lane's rung on the same bucket is not this ruling's.
     assert lane.benchmark_sealed_rung(store, {**intent, "order_intent_id": "tailshort_x"}) is None
-    assert lane.benchmark_sealed_rung(store, {**intent, "order_intent_id": "proper_flipno_x"}) is None
+    assert lane.benchmark_sealed_rung(store, {**intent, "order_intent_id": "proper_flipsell_x"}) is None
 
 
 # ---------------------------------------------------------------------------
-# 「先卖出，反向买no」.
+# What the lane holds on a sealed bucket: sold under ``sell``, never a NO buy.
 
 
 def _held(store, sent, shares: float) -> str:
-    """A plan whose rung filled ``shares`` YES at 0.49, then a seal."""
+    """A plan whose rung filled ``shares`` YES at 0.49."""
 
     _seed(store, fresh_until=LONG)
     _run(store, sent, fetch=_tape())
@@ -281,52 +282,42 @@ def _held(store, sent, shares: float) -> str:
     return rung
 
 
-def test_the_held_yes_is_sold_first_then_reversed_into_no(store, warm) -> None:
+def test_sell_mode_sells_the_held_yes_at_the_bid_and_never_buys_no(store, warm) -> None:
     sent: list = []
     _held(store, sent, 10.0)
     opposite = _tape(_fill("n27", "BUY", 0.52))
     t1 = "2026-09-18T12:10:00.000Z"
     _snapshot(store, "snap_f2", t1, _ladder(), 2)
-    first = _run(store, sent, fetch=opposite, now=t1, wallet=_wallet(10.0))
-    (sell,) = first["benchmark"]["flip_orders"]
+    first = _run(store, sent, fetch=opposite, now=t1, wallet=_wallet(10.0), benchmark_counterparty="sell")
+    (sell,) = first["benchmark"]["sell_orders"]
     assert sell["kind"] == "sell_yes" and sell["price"] == pytest.approx(0.48) and sell["shares"] == 10.0
-    path, payload = sent[-1]
+    _path, payload = sent[-1]
     assert payload["side"] == "SELL" and payload["token_id"] == "t27" and payload["order_type"] == "GTD"
     assert payload["post_only"] is False
     assert _seal(store)["flip_state"] == "selling_yes"
-    # The sale filled whole; the next pass buys back the reversal in NO.
+    # Sold whole: done, and nothing on the NO token, ever (「买no线交给跟单线」).
     t2 = "2026-09-18T12:13:00.000Z"
     _snapshot(store, "snap_f3", t2, _ladder(), 3)
-    second = _run(store, sent, fetch=opposite, now=t2, wallet=_wallet(0.0))
-    (buy,) = second["benchmark"]["flip_orders"]
-    assert buy["kind"] == "buy_no" and buy["price"] == pytest.approx(0.52) and buy["shares"] == 10.0
-    path, payload = sent[-1]
-    assert payload["side"] == "BUY" and payload["outcome_side"] == "NO" and payload["token_id"] == "n27"
-    assert payload["order_type"] == "FOK"
-    # Short what it bought: done.
-    t3 = "2026-09-18T12:16:00.000Z"
-    _snapshot(store, "snap_f4", t3, _ladder(), 4)
-    third = _run(store, sent, fetch=opposite, now=t3, wallet=_wallet(0.0))
-    assert third["benchmark"]["flip_orders"] == []
-    seal = _seal(store)
-    flip = json.loads(seal["flip_json"])
-    assert seal["flip_state"] == "done"
-    assert (flip["bought_yes"], flip["sold_yes"], flip["bought_no"]) == (10.0, 10.0, 10.0)
+    second = _run(store, sent, fetch=opposite, now=t2, wallet=_wallet(0.0), benchmark_counterparty="sell")
+    assert second["benchmark"]["sell_orders"] == []
+    assert _seal(store)["flip_state"] == "done"
+    assert not any(p["token_id"] == "n27" for _path, p in sent)
+    assert not any(p.get("outcome_side") == "NO" for _path, p in sent)
 
 
-def test_yes_too_small_to_sell_is_paired_off_in_the_no_buy(store, warm) -> None:
+def test_yes_under_the_venue_minimum_is_held(store, warm) -> None:
     sent: list = []
-    _held(store, sent, 3.0)                       # under the five-share minimum
+    _held(store, sent, 3.0)
     t1 = "2026-09-18T12:10:00.000Z"
     _snapshot(store, "snap_f2", t1, _ladder(), 2)
-    first = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(3.0))
-    (buy,) = first["benchmark"]["flip_orders"]
-    # Short three: three NO for the reversal plus three to pair the YES left.
-    assert buy["kind"] == "buy_no" and buy["shares"] == 6.0
-    assert not any(p["side"] == "SELL" for _path, p in sent)
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(3.0),
+                   benchmark_counterparty="sell")
+    assert receipt["benchmark"]["sell_orders"] == []
+    assert _seal(store)["flip_state"] == "done:below_venue_minimum"
+    assert len(sent) == 1
 
 
-def test_no_flip_order_while_the_lanes_own_rung_is_out(store, warm) -> None:
+def test_no_sell_while_the_lanes_own_rung_is_out(store, warm) -> None:
     sent: list = []
     _seed(store, fresh_until=LONG)
     _run(store, sent, fetch=_tape())
@@ -341,38 +332,42 @@ def test_no_flip_order_while_the_lanes_own_rung_is_out(store, warm) -> None:
     })
     t1 = "2026-09-18T12:05:00.000Z"
     _snapshot(store, "snap_f2", t1, _ladder(), 2)
-    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(2.0))
-    assert receipt["benchmark"]["flip_orders"] == []
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(2.0),
+                   benchmark_counterparty="sell")
+    assert receipt["benchmark"]["sell_orders"] == []
     assert _seal(store)["flip_state"] == "waiting:order_open"
 
 
-def test_seal_mode_seals_without_reversing(store, warm) -> None:
+def test_the_default_is_the_filter_alone(store, warm) -> None:
+    """「proper线以对标账号为筛子」: sealed and its rungs stopped, the YES held."""
+
     sent: list = []
     _held(store, sent, 10.0)
     t1 = "2026-09-18T12:10:00.000Z"
     _snapshot(store, "snap_f2", t1, _ladder(), 2)
-    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0),
-                   benchmark_counterparty="seal")
-    assert receipt["benchmark"]["flip_orders"] == [] and _seal(store) is not None
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0))
+    assert receipt["benchmark"]["mode"] == "seal"
+    assert receipt["benchmark"]["sell_orders"] == [] and _seal(store) is not None
     assert len(sent) == 1
 
 
-def test_no_flip_on_a_bucket_the_book_has_all_but_decided(store, warm) -> None:
+def test_no_sell_on_a_bucket_the_book_has_all_but_decided(store, warm) -> None:
     sent: list = []
     _held(store, sent, 10.0)
     t1 = "2026-09-18T12:10:00.000Z"
     decided = _ladder()
     decided[0] = base._row("27°C", 27, [(0.99, 200.0)], [(0.995, 200.0)], tick=0.001)
     _snapshot(store, "snap_f2", t1, decided, 2)
-    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0))
-    assert receipt["benchmark"]["flip_orders"] == []
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0),
+                   benchmark_counterparty="sell")
+    assert receipt["benchmark"]["sell_orders"] == []
     assert _seal(store)["flip_state"] == "waiting:bucket_decided:0.990"
 
 
 def test_the_charter_and_agents_carry_the_ruling() -> None:
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     clause = next(line for line in charter.splitlines() if line.startswith("258. "))
-    assert "不做对标账号的对手盘" in clause and "先卖出，反向买no" in clause
+    assert "不做对标账号的对手盘" in clause and "买no线交给跟单线" in clause and "筛子" in clause
     assert "proper_bet_benchmark_seals" in clause and "benchmark_counterparty" in clause
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert "宪章 258" in agents and "先卖出再反手买 NO" in agents
+    assert "宪章 258" in agents and "买 NO 归跟单线" in agents and "筛子" in agents

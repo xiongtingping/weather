@@ -110,13 +110,11 @@ from .delta_v2_runtime import (
 from . import benchmark_cluster
 from .execution_reconciliation import can_submit_next_order
 from .exit_orders import Transport, default_position_reader, lane_sold_and_open, send_exit_sell
-from .lane_orders import lane_decision_id, send_lane_buy
+from .lane_orders import send_lane_buy
 from .live_station_scope import admission as live_station_admission
 from .materialization import floor_probabilities
 from . import realisation_store
-from .p1_tail_lane import (
-    DEPTH_HEADROOM_FRACTION, _latest_snapshot, _sendable_shares, _ws_manifest_root, live_ws_snapshot,
-)
+from .p1_tail_lane import _latest_snapshot, _ws_manifest_root, live_ws_snapshot
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import (
     LANE_PROPER_BET,
@@ -142,29 +140,25 @@ DEFAULT_LOOKBACK_DAYS = 3
 SHARE_PRECISION = 2
 OPEN_STATES = ("prepared", "submitting", "submitted", "reconcile_required")
 
-#: Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的对手盘」
-#: and 「先卖出，反向买no，和跟单线不冲突！可以重叠」): the ``benchmark_counterparty``
-#: setting.  ``flip`` seals the bucket and reverses what the lane holds there
-#: into NO; ``seal`` only seals; ``off`` is the lane before the ruling.
-BENCHMARK_FLIP = "flip"
+#: Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的对手盘」,
+#: 「买no线交给跟单线」 and 「proper线以对标账号为筛子，不做对标账号的对手盘！」): the
+#: ``benchmark_counterparty`` setting.  ``seal`` uses the cluster as the
+#: lane's filter -- no leg, no rung, a resting rung cancelled, on a bucket it
+#: has traded against; ``sell`` also sells a YES the lane holds there (the
+#: earlier 「先卖出」); ``off`` is the lane before the ruling.  Buying the NO
+#: is the copy-follow lane's, never this lane's.
+BENCHMARK_SELL = "sell"
 BENCHMARK_SEAL = "seal"
 BENCHMARK_OFF = "off"
-BENCHMARK_MODES = (BENCHMARK_FLIP, BENCHMARK_SEAL, BENCHMARK_OFF)
+BENCHMARK_MODES = (BENCHMARK_SELL, BENCHMARK_SEAL, BENCHMARK_OFF)
 BENCHMARK_OPPOSITE = "benchmark_opposite"
 BENCHMARK_UNREADABLE = "benchmark_unreadable"
 SEAL_TABLE = "proper_bet_benchmark_seals"
-FLIP_SELL_PREFIX = f"{INTENT_PREFIX}_flipsell"
-FLIP_NO_PREFIX = f"{INTENT_PREFIX}_flipno"
-FLIP_SCHEMA = "proper_bet_benchmark_flip_v1"
-FLIP_EXECUTION_CANDIDATE = "TAKER_FOK"
-#: Polymarket's weather taker fee: shares x rate x p x (1 - p) (charter 234).
-TAKER_FEE_RATE = 0.05
-#: How far back the flip pass looks for held legs; a settled day drops out on
+SELL_PREFIX = f"{INTENT_PREFIX}_flipsell"
+SELL_SCHEMA = "proper_bet_benchmark_sell_v1"
+#: How far back the sell pass looks for held legs; a settled day drops out on
 #: its own clock (``settlement_day_closed``).
-FLIP_LOOKBACK_DAYS = 3
-#: A NO shortfall under one share is rounding left by partial fills, not a
-#: position to reverse.
-FLIP_MIN_NO_SHARES = 1.0
+SELL_LOOKBACK_DAYS = 3
 
 #: The two directions a leg can take, as the ledger spells the outcome leg.
 SIDE_YES = "YES"
@@ -1568,7 +1562,7 @@ def _held_yes(conn: sqlite3.Connection, *, now_utc: str) -> dict[tuple[str, str,
     by bucket: shares filled, whether a rung is still out, and what the flip
     needs to send (the plan's timezone, the leg's tick and minimum)."""
 
-    floor = (_utc(now_utc) - timedelta(days=FLIP_LOOKBACK_DAYS)).date().isoformat()
+    floor = (_utc(now_utc) - timedelta(days=SELL_LOOKBACK_DAYS)).date().isoformat()
     rows = conn.execute(
         f"SELECT station_id, event_date, plan_json, legs_state_json FROM {EVALUATION_TABLE}"
         " WHERE event_date >= ? AND plan_json IS NOT NULL",
@@ -1603,50 +1597,29 @@ def _held_yes(conn: sqlite3.Connection, *, now_utc: str) -> dict[tuple[str, str,
     return held
 
 
-def _lane_no(conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str,
-             no_token: str) -> tuple[float, bool]:
-    """NO the lane has bought on the bucket, and whether such a buy is still open."""
-
-    rows = conn.execute(
-        "SELECT i.state, COALESCE(r.state, ''), COALESCE(r.filled_size, 0)"
-        " FROM basket_target_order_intents i"
-        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
-        " WHERE i.bucket=? AND i.token_id=? AND i.decision_id=? AND i.order_action='BUY'",
-        (bucket, no_token, lane_decision_id(LANE, station_id, event_date)),
-    ).fetchall()
-    bought, open_order = 0.0, False
-    for intent_state, reconciliation_state, filled in rows:
-        bought += float(filled or 0.0)
-        if str(intent_state) in OPEN_STATES and not str(reconciliation_state).startswith("resolved_"):
-            open_order = True
-    return bought, open_order
-
-
 def _best_bid(row: Mapping[str, Any] | None) -> tuple[float | None, float]:
     bids = sorted(_levels((row or {}).get("bid_levels")), reverse=True)
     return (bids[0][0], bids[0][1]) if bids else (None, 0.0)
 
 
-def plan_flips(
+def plan_sells(
     target_conn: sqlite3.Connection,
     *,
     now_utc: str,
     cfg: Mapping[str, Any],
     gate: Admission,
     manifest_root: Callable[[], Mapping[str, Any] | None],
-    cash: dict[str, Any],
     view: BenchmarkView,
     position_reader: Callable[[str], Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Every bucket the lane holds YES on (or has a rung out on), read against
-    the cluster; on a sealed one under ``flip``, the next step of the
-    reversal: SELL the YES while a sellable lot is held, then BUY NO until
-    the lane is short what it bought -- ``NO = bought YES + YES still held``,
-    so YES too small for the venue to take is paired off rather than left
-    long.  One order a bucket a pass, never while one of the lane's own is
-    still out on either token."""
+    the cluster -- so a seal reaches the resting rung, whatever the mode.
+    Under ``sell``, a sealed bucket's YES is sold: a GTD limit at the YES bid
+    while a lot the venue takes (five shares and a dollar) is held, one order
+    a bucket a pass, never while one of the lane's own is still out on it.
+    Nothing here buys: the NO is the copy-follow lane's (「买no线交给跟单线」)."""
 
-    out: dict[str, Any] = {"orders": [], "flips": []}
+    out: dict[str, Any] = {"orders": [], "sells": []}
     if not view.enabled:
         return out
     held = _held_yes(target_conn, now_utc=now_utc)
@@ -1657,18 +1630,16 @@ def plan_flips(
     books: dict[tuple[str, str], tuple[dict[str, Any] | None, str | None]] = {}
     for key in sorted(targets):
         target = targets[key]
-        verdict, _seal = view.verdict(target, sealed_by="holding")
-        if verdict != "sealed" or view.mode != BENCHMARK_FLIP:
+        verdict, seal = view.verdict(target, sealed_by="holding")
+        if verdict != "sealed" or view.mode != BENCHMARK_SELL:
             continue
         station, day, bucket = key
-        yes_token, no_token = str(target["yes_token"]), str(target["no_token"])
+        yes_token = str(target["yes_token"])
         sold, sell_open = lane_sold_and_open(target_conn, lane=LANE, station_id=station, event_date=day,
                                              bucket=bucket)
-        no_held, no_open = _lane_no(target_conn, station_id=station, event_date=day, bucket=bucket,
-                                    no_token=no_token)
         bought = float(target["bought_yes"])
         progress: dict[str, Any] = {"bought_yes": round(bought, 4), "sold_yes": round(sold, 4),
-                                    "held_yes": round(max(bought - sold, 0.0), 4), "bought_no": round(no_held, 4)}
+                                    "held_yes": round(max(bought - sold, 0.0), 4)}
         order: dict[str, Any] | None = None
 
         def settle(state: str) -> None:
@@ -1678,14 +1649,14 @@ def plan_flips(
                 (state, json.dumps({**progress, **({"order": order} if order else {})}, ensure_ascii=False,
                                    sort_keys=True), now_utc, station, day, bucket, SIDE_YES),
             )
-            out["flips"].append({"station_id": station, "event_date": day, "bucket": bucket, "state": state,
+            out["sells"].append({"station_id": station, "event_date": day, "bucket": bucket, "state": state,
                                  **progress})
 
-        if target["rung_open"] or sell_open or no_open:
+        if target["rung_open"] or sell_open:
             settle("waiting:order_open")
             continue
-        if bought <= 0.0:
-            settle("no_position")
+        if bought - sold <= 0.0:
+            settle("done" if bought > 0.0 else "no_position")
             continue
         refusal, hours = _window_refusal(
             target_conn, station_id=station, event_date=day, settlement_timezone=str(target["settlement_timezone"]),
@@ -1708,8 +1679,8 @@ def plan_flips(
             settle("waiting:no_yes_bid")
             continue
         if not benchmark_cluster.OPPOSITE_IMPLIED_MIN <= yes_bid <= benchmark_cluster.OPPOSITE_IMPLIED_MAX:
-            # The bucket is all but decided: a flip there buys NO at 0.99 or
-            # sells a winner at 0.99 -- nobody's view, the cluster's neither.
+            # The bucket is all but decided: selling a winner at 0.99 or a
+            # loser at 0.01 is nobody's view, the cluster's neither.
             settle(f"waiting:bucket_decided:{yes_bid:.3f}")
             continue
         try:
@@ -1723,58 +1694,26 @@ def plan_flips(
         yes_now = max(min(bought - sold, wallet), 0.0)
         progress.update(wallet_yes=round(wallet, 4), yes_now=round(yes_now, 4), yes_bid=yes_bid,
                         yes_bid_size=bid_size, hours_to_settlement=hours)
-        min_size = float(target["min_size"])
-        sell_shares = math.floor(yes_now * 100 + 1e-6) / 100
-        if sell_shares >= min_size and sell_shares * yes_bid >= EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
-            # 「先卖出」: a GTD limit at the YES bid takes the bid and rests
-            # the remainder for the venue's minimum horizon.
-            if can_submit_next_order(target_conn, bucket=bucket, token_id=yes_token).get("allowed") is not True:
-                settle("waiting:same_bucket_pending")
-                continue
-            order = {"kind": "sell_yes", "token_id": yes_token, "price": yes_bid, "shares": sell_shares,
-                     "tick": tick}
-        else:
-            need = bought + yes_now - no_held
-            progress["no_needed"] = round(need, 4)
-            if need < FLIP_MIN_NO_SHARES:
-                settle("done")
-                continue
-            # 「反向买no」: FOK at the NO ask (1 - YES bid), within the depth
-            # resting at the bid, at least the venue's minimum.
-            no_price = round(1.0 - yes_bid, _tick_decimals(tick))
-            if not 0.0 < no_price < 1.0:
-                settle("waiting:no_price_invalid")
-                continue
-            usable = max(min(bid_size * DEPTH_HEADROOM_FRACTION, bid_size - 1.0), 0.0)
-            want = max(math.ceil(need - 1e-9), min_size,
-                       math.ceil(EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC / no_price - 1e-9))
-            shares = _sendable_shares(no_price, min(float(want), usable))
-            if shares is None or shares < min_size:
-                settle(f"waiting:thin_bid:{bid_size:.2f}")
-                continue
-            cost = round(shares * no_price, 6)
-            fee = round(shares * TAKER_FEE_RATE * no_price * (1.0 - no_price), 6)
-            if cash.get("cash") is not None and float(cash["cash"]) < cost + fee - 1e-9:
-                settle(f"waiting:insufficient_cash:{float(cash['cash']):.2f}<{cost + fee:.2f}")
-                continue
-            if can_submit_next_order(target_conn, bucket=bucket, token_id=no_token).get("allowed") is not True:
-                settle("waiting:same_bucket_pending")
-                continue
-            if cash.get("cash") is not None:
-                cash["cash"] = float(cash["cash"]) - cost - fee
-            order = {"kind": "buy_no", "token_id": no_token, "price": no_price, "shares": shares,
-                     "cost_usdc": cost, "fee_usdc_est": fee, "tick": tick}
-        settle("selling_yes" if order["kind"] == "sell_yes" else "buying_no")
+        shares = math.floor(yes_now * 100 + 1e-6) / 100
+        if shares < float(target["min_size"]) or shares * yes_bid < EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
+            # What is left is under the venue's minimum: held to settlement.
+            settle("done:below_venue_minimum" if yes_now > 0.0 else "done")
+            continue
+        if can_submit_next_order(target_conn, bucket=bucket, token_id=yes_token).get("allowed") is not True:
+            settle("waiting:same_bucket_pending")
+            continue
+        order = {"kind": "sell_yes", "token_id": yes_token, "price": yes_bid, "shares": shares, "tick": tick}
+        settle("selling_yes")
         out["orders"].append({**order, "station_id": station, "event_date": day, "bucket": bucket,
                               "settlement_timezone": str(target["settlement_timezone"]), "seal": {
-                                  k: _seal.get(k) for k in ("wallet", "fill_ts", "fill_tx", "fill_action",
-                                                            "fill_token_side", "fill_price", "fill_size",
-                                                            "implied_price", "sealed_at_utc")
-                              } if _seal else {}, "progress": dict(progress)})
+                                  k: seal.get(k) for k in ("wallet", "fill_ts", "fill_tx", "fill_action",
+                                                           "fill_token_side", "fill_price", "fill_size",
+                                                           "implied_price", "sealed_at_utc")
+                              } if seal else {}, "progress": dict(progress)})
     return out
 
 
-def send_flips(
+def send_sells(
     target_conn: sqlite3.Connection,
     orders: list[Mapping[str, Any]],
     *,
@@ -1782,44 +1721,24 @@ def send_flips(
     transport: Transport,
     live_submit_authorized: bool,
 ) -> list[dict[str, Any]]:
-    """Send each flip order the pass planned and keep its answer on the seal."""
+    """Send each sell the pass planned and keep its answer on the seal."""
 
     receipts: list[dict[str, Any]] = []
     for order in orders:
         station, day, bucket = str(order["station_id"]), str(order["event_date"]), str(order["bucket"])
-        body = {"schema": FLIP_SCHEMA, "rule": "charter_258_benchmark_flip", "strategy_id": STRATEGY_ID,
-                "kind": order["kind"], "seal": order["seal"], "progress": order["progress"]}
-        intent_id = (FLIP_SELL_PREFIX if order["kind"] == "sell_yes" else FLIP_NO_PREFIX) + "_" + content_sha256(
+        intent_id = SELL_PREFIX + "_" + content_sha256(
             {"bucket": [station, day, bucket], "kind": order["kind"], "at": now_utc})[:32]
-        if order["kind"] == "sell_yes":
-            expiry = resting_order_fields(now_utc=now_utc, limit_price=float(order["price"]),
-                                          belief_fresh_until_utc=now_utc)["expiration"]
-            entry = send_exit_sell(
-                target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
-                settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
-                token_id=str(order["token_id"]), price=float(order["price"]), shares=float(order["shares"]),
-                order_type="GTD", post_only=False, expiration=int(expiry), tick_size=float(order["tick"]),
-                outcome_side=SIDE_YES, intent_body=body, transport=transport,
-                live_submit_authorized=live_submit_authorized,
-            )
-        else:
-            stage = _latest_stage(target_conn, station, day) or "P0"
-            entry = send_lane_buy(
-                target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
-                settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
-                token_id=str(order["token_id"]), price=float(order["price"]), shares=float(order["shares"]),
-                side=SIDE_NO, execution_candidate=FLIP_EXECUTION_CANDIDATE, fok_price_cap=float(order["price"]),
-                tick_size=float(order["tick"]),
-                intent_body={**body, "order_type": "FOK", "post_only": False},
-                transport=transport, live_submit_authorized=live_submit_authorized,
-                decision_details={
-                    "schema": "proper_bet_lane_decision_v2", "lane": LANE, "title": LANE_TITLE,
-                    "rule": body["rule"],
-                    "decision_signature": {"stage": stage, "lane": LANE, "rule": body["rule"]},
-                    "forward_evidence_binding": {"decision_at_utc": now_utc, "probability_stage": stage},
-                    "seal": order["seal"],
-                },
-            )
+        expiry = resting_order_fields(now_utc=now_utc, limit_price=float(order["price"]),
+                                      belief_fresh_until_utc=now_utc)["expiration"]
+        entry = send_exit_sell(
+            target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
+            settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
+            token_id=str(order["token_id"]), price=float(order["price"]), shares=float(order["shares"]),
+            order_type="GTD", post_only=False, expiration=int(expiry), tick_size=float(order["tick"]),
+            outcome_side=SIDE_YES, transport=transport, live_submit_authorized=live_submit_authorized,
+            intent_body={"schema": SELL_SCHEMA, "rule": "charter_258_benchmark_sell", "strategy_id": STRATEGY_ID,
+                         "seal": order["seal"], "progress": order["progress"]},
+        )
         send = {"order_intent_id": intent_id, "kind": order["kind"], "price": order["price"],
                 "shares": order["shares"], "state": entry.get("state"), "event_type": entry.get("event_type"),
                 "reason": entry.get("reason"), "matched_size": entry.get("matched_size"), "at": now_utc}
@@ -1827,11 +1746,11 @@ def send_flips(
             f"SELECT flip_json FROM {SEAL_TABLE} WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
             (station, day, bucket, SIDE_YES),
         ).fetchone()
-        flip = json.loads((row[0] if row else None) or "{}")
-        flip["last_send"] = send
+        state = json.loads((row[0] if row else None) or "{}")
+        state["last_send"] = send
         target_conn.execute(
             f"UPDATE {SEAL_TABLE} SET flip_json=? WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
-            (json.dumps(flip, ensure_ascii=False, sort_keys=True), station, day, bucket, SIDE_YES),
+            (json.dumps(state, ensure_ascii=False, sort_keys=True), station, day, bucket, SIDE_YES),
         )
         receipts.append({"station_id": station, "event_date": day, "bucket": bucket, **send})
     return receipts
@@ -1844,14 +1763,14 @@ def benchmark_sealed_rung(conn: sqlite3.Connection, intent: Mapping[str, Any]) -
     this ruling's."""
 
     intent_id = str(intent.get("order_intent_id") or "")
-    if not intent_id.startswith(f"{INTENT_PREFIX}_") or intent_id.startswith((FLIP_SELL_PREFIX, FLIP_NO_PREFIX)):
+    if not intent_id.startswith(f"{INTENT_PREFIX}_") or intent_id.startswith(SELL_PREFIX):
         return None
     if str(intent.get("order_action") or "BUY").upper() != "BUY":
         return None
     try:
         mode = benchmark_mode({**PROPER_BET_DEFAULT_SETTINGS, **lane_settings(LANE)})
     except ValueError:
-        mode = BENCHMARK_FLIP
+        mode = BENCHMARK_SEAL
     if mode == BENCHMARK_OFF or conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (SEAL_TABLE,)
     ).fetchone() is None:
@@ -1894,7 +1813,7 @@ def execute_proper_bets(
     position_reader: Callable[[str], Mapping[str, Any]] = default_position_reader,
 ) -> dict[str, Any]:
     """Judge new first decisions, then post every rung an active plan needs,
-    then take the next step of every charter-258 flip."""
+    then sell what charter 258 says the lane no longer holds."""
 
     ensure_lane_schema(target_conn)
     cfg = {**PROPER_BET_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
@@ -1978,9 +1897,9 @@ def execute_proper_bets(
         receipts.append({"station_id": plan["station_id"], "event_date": plan["event_date"],
                          "bucket": leg["bucket"], "side": leg["side"], **send})
     # Charter 258: what the lane holds where the cluster is on the other side.
-    flips = plan_flips(target_conn, now_utc=now_utc, cfg=cfg, gate=gate, manifest_root=manifest_root,
-                       cash=cash, view=view, position_reader=position_reader)
-    flip_receipts = send_flips(target_conn, flips["orders"], now_utc=now_utc, transport=transport,
+    sells = plan_sells(target_conn, now_utc=now_utc, cfg=cfg, gate=gate, manifest_root=manifest_root,
+                       view=view, position_reader=position_reader)
+    sell_receipts = send_sells(target_conn, sells["orders"], now_utc=now_utc, transport=transport,
                                live_submit_authorized=live_submit_authorized)
     return {
         "schema": "proper_bet_lane_receipt_v2",
@@ -2007,13 +1926,13 @@ def execute_proper_bets(
         "receipts": receipts,
         "benchmark": {
             "mode": view.mode, "reads": view.reads, "sealed_new": view.sealed_new,
-            "flips": flips["flips"], "flip_orders": flip_receipts,
+            "sells": sells["sells"], "sell_orders": sell_receipts,
         },
     }
 
 
 __all__ = [
-    "BENCHMARK_FLIP",
+    "BENCHMARK_SELL",
     "BENCHMARK_OFF",
     "BENCHMARK_OPPOSITE",
     "BENCHMARK_SEAL",
@@ -2023,8 +1942,8 @@ __all__ = [
     "benchmark_mode",
     "benchmark_sealed_rung",
     "market_ids",
-    "plan_flips",
-    "send_flips",
+    "plan_sells",
+    "send_sells",
     "BUCKETS_ALL",
     "BUCKETS_MARKET_MODE",
     "DEFAULT_RULE",
