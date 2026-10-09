@@ -22929,14 +22929,14 @@ function sdModels(day){
     return `<tr${m.dropped ? ' style="opacity:.6"' : ""}><td><b>${sdEsc(m.system_id)}</b>${tag}<div class="muted sd-sub">${sdEsc(m.family || "")}</div></td>
       <td class="mono">${sdEsc(m.run_cycle || "—")}${newRun ? ' <span class="pill">新 run</span>' : ""}<div class="muted sd-sub">${sdLocal(m.run_init_utc, true)}${newRun ? `（上期 ${sdLocal(pv.run_init_utc, true)}）` : ""}</div></td>
       <td class="mono">${sdEsc(m.lead_bucket || "—")}</td>
-      <td class="mono">${sdLocal(m.arrived_at_utc, true)}</td>
       <td><div class="sd-wbar"><i style="width:${(100 * (m.weight || 0) / wmax).toFixed(1)}%"></i></div><span class="mono">${sdPc(m.weight)}</span>${pv ? dv(m.weight, pv.weight, 1, "点", 100) : ""}${m.seated || m.dropped ? "" : ' <span class="pill red">未入座</span>'}</td>
+      <td class="mono"><b>${sdN(m.calibrated_centre_c, 2)}°C</b>${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td>
       <td class="mono sd-raw-c sd-gl">${raw ? `${sdN(raw.mean_c, 2)}°C<div class="muted sd-sub">${raw.members} 成员 · σ ${sdN(raw.sd_c, 2)}</div>` : "—"}</td>
       <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}<div class="muted sd-sub">σ ${sdN(st.sd_c, 2)}${pv ? dv(st.sd_c, pv.sd_c, 2, "") : ""}</div></td>
       <td class="mono">${raw && st.mean_c != null ? `<b class="${st.mean_c - raw.mean_c >= 0 ? "up" : "down"}">${sdSg(st.mean_c - raw.mean_c, 2)}</b>` : "—"}</td>
       <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span>` : "—"}</td>
       <td>${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<b title="校准把众数桶从 ${sdEsc(raw.mode)} 挪到了这里">${sdEsc(st.mode)}</b>` : sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}</td>
-      <td class="mono sd-gl">${sdN(m.calibrated_centre_c, 2)}°C${pv ? dv(m.calibrated_centre_c, pv.calibrated_centre_c, 2, "") : ""}</td></tr>`;
+</tr>`;
   }).join("");
   const W = p0.width || {}, Bg = p0.bridge || {};
   const wh = day.weight_history || [];
@@ -22952,7 +22952,7 @@ function sdModels(day){
     ? `<div class="muted sd-sub">箭头＝与上一期 P0（${sdLocal(p0.previous_decided_at_utc, true)}）相比的变化：权重按百分点、中心/均值/σ 按 °C；「新 run」＝这家换了起报轮次。${changed ? `本期有 ${changed} 家换了 run 或权重。` : "本期 run 与权重都没变。"}</div>` : "";
   return `<div class="sd-t">模型 run 与权重（最新 P0 ${sdLocal(p0.decided_at_utc, true)} · ${sdEsc(p0.version || "")} · 提前量 ${sdEsc(p0.lead_bucket || "—")} · 相位 ${sdEsc(p0.season_bin || "—")}）</div>
     ${vsPrev}
-    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">到货（当地）</th><th rowspan="2">权重</th><th colspan="3" class="sd-grp sd-gl">均值</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th><th rowspan="2" class="sd-gl" title="校准层给出的分布中心（加宽核前）">校准中心</th></tr>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th colspan="3" class="sd-grp sd-gl">均值</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
       <tr><th class="sd-raw-c sd-gl" title="这一期 P0 读到的原始成员最高温的平均">校准前</th><th title="订正偏差、调宽度之后这家模型自己分布的均值；箭头＝对上一期 P0">校准后</th><th title="校准后均值 − 校准前均值：订正把这家往暖（+）或往冷（−）挪了多少">移动</th><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、σ ${sdN(W.sigma_c, 2)}°C、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
       Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>
