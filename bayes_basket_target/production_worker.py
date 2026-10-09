@@ -1401,6 +1401,19 @@ ARRIVAL_TRIGGER_ENABLED = (
 # in-memory "already triggered" set is empty, and replaying three days of
 # sightings would only re-read retained archives.
 ARRIVAL_TRIGGER_WINDOW_SEC = 3 * 3600.0
+# Charter 263: a station-day the registry lists but the official inbox holds no
+# packet for starts its capture on the next forecast refresh
+# (``run_listing_triggered_captures``), not when the rotation cursor reaches
+# it.  Charter 195 (三) already runs a listed scope's pass once, past the
+# held-run retirement and the retry floor -- but only from the rotation step
+# that visits the scope: 393 scopes, 66 a poll, a poll every ten minutes, so
+# the ~05:00Z listing batch waited 4-28 minutes (median 12 over
+# 2026-09-26..10-09) for its first capture and a production cycle more for
+# its first P0.  "0" leaves the rotation as the only listing trigger.
+LISTING_TRIGGER_ENABLED = (
+    os.environ.get("PM_NWP_LISTING_TRIGGER", "1").strip().lower()
+    not in {"0", "off", "false", "no", ""}
+)
 # Which of an ICON/ECCC run's leads the main pass reads as the lead's own
 # cycle (``RUN_CYCLE_HOUR_BY_LEAD`` in both archive modules); any other cycle
 # is a followed run and belongs to the follow lane (charter 192).
@@ -6396,6 +6409,132 @@ class TargetProductionWorker:
                 if state not in {"IN_FLIGHT", "DEFERRED_CAPTURE_SLOTS_BUSY"}:
                     stages.pop(day, None)
                 outcomes.append({"event_date": day, "step": "full", "state": state})
+        return {"state": "RAN", "outcomes": outcomes, **boundary}
+
+    def run_listing_triggered_captures(self, *, as_of_utc: str) -> dict[str, Any]:
+        """Charter 263: a newly listed station-day starts its capture now.
+
+        Called on the forecast thread every refresh, beside the arrival step.
+        Every (station, day) the forward registry lists whose local day has
+        not closed and for which the official inbox holds no packet goes
+        through the rotation's own entry with ``listing_station`` set, so
+        the once-per-(day, station) record, the throttle bypass and the
+        attempt log are charter 195 (三)'s, not a second copy.  One
+        submission per event date per call: a pass is a model run, not a
+        station, and covers every station of the date the registry held
+        when it started; a station that pass still left without a packet
+        is the next call's candidate.
+        """
+
+        boundary = {
+            "calls_order_gateway": False,
+            "places_orders": False,
+            "live_submit_authorized": False,
+            "orders_submitted": 0,
+        }
+        if not LISTING_TRIGGER_ENABLED:
+            return {"state": "DISABLED", **boundary}
+        registry_path = self.nwp_runtime_root / "market_registry_forward.json"
+        inbox_path = (
+            self.nwp_runtime_root / "official_native_ensemble_forward_inbox.json"
+        )
+        if not registry_path.is_file():
+            return {"state": "NO_REGISTRY", **boundary}
+        try:
+            registry = load_market_registry_snapshot(registry_path)
+        except Exception as exc:  # noqa: BLE001 -- the rotation is the fallback
+            return {
+                "state": "REGISTRY_UNREADABLE",
+                "reason": f"{type(exc).__name__}:{exc}"[:200],
+                **boundary,
+            }
+        filters = registry.get("filters")
+        if not (
+            isinstance(filters, Mapping)
+            and bool(filters.get("include_not_started_for_p0"))
+        ):
+            # The capture pass itself refuses a registry without the forward
+            # boundary (``p0_forward_registry_scope_not_authorized``).
+            return {"state": "REGISTRY_NOT_FORWARD", **boundary}
+        held: set[tuple[str, str]] = set()
+        if inbox_path.is_file():
+            try:
+                for packet in _load_native_forward_inbox(
+                    inbox_path,
+                    error_code="official_native_forward_inbox_invalid",
+                ):
+                    if (
+                        str(packet.get("schema") or "")
+                        != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
+                    ):
+                        continue
+                    held.add((
+                        str(packet.get("station_id") or "").strip().upper(),
+                        str(packet.get("event_date") or "").strip(),
+                    ))
+            except ContractError as exc:
+                return {
+                    "state": "INBOX_UNREADABLE",
+                    "reason": f"{type(exc).__name__}:{exc}"[:200],
+                    **boundary,
+                }
+        attempted: set[tuple[str, str]] = getattr(
+            self, "_official_native_listing_attempts", None
+        ) or set()
+        allow = {
+            str(item).strip().upper()
+            for item in (getattr(self, "station_allowlist", None) or ())
+        }
+        try:
+            today = date.fromisoformat(str(as_of_utc)[:10])
+        except ValueError:
+            return {"state": "CLOCK_INVALID", **boundary}
+        scopes: set[tuple[str, str, str]] = set()
+        for row in registry.get("rows") or ():
+            if not isinstance(row, Mapping):
+                continue
+            station = str(row.get("station_id") or "").strip().upper()
+            day = str(row.get("event_date") or "").strip()
+            timezone_name = str(row.get("settlement_timezone") or "").strip()
+            if not station or not day or not timezone_name:
+                continue
+            if allow and station not in allow:
+                continue
+            if (station, day) in held or (day, station) in attempted:
+                continue
+            scopes.add((day, station, timezone_name))
+        candidates: dict[str, list[str]] = {}
+        for day, station, timezone_name in sorted(scopes):
+            try:
+                day_state = str(event_day_window(
+                    day, as_of_utc=as_of_utc, target_timezone=timezone_name
+                )["state"])
+            except Exception:  # noqa: BLE001 -- a bad row is not a trigger
+                continue
+            if day_state == "closed":
+                continue
+            candidates.setdefault(day, []).append(station)
+        outcomes: list[dict[str, Any]] = []
+        for day in sorted(candidates):
+            stations = candidates[day]
+            try:
+                lead_days = max(0, min(2, (date.fromisoformat(day) - today).days))
+            except ValueError:
+                continue
+            result = self._capture_official_native_packet(
+                station_id=stations[0],
+                event_date=day,
+                as_of_utc=as_of_utc,
+                inbox_path=inbox_path,
+                listing_station=stations[0],
+                lead_days=lead_days,
+            )
+            outcomes.append({
+                "event_date": day,
+                "station_id": stations[0],
+                "stations_without_packet": len(stations),
+                "state": str(result.get("state") or ""),
+            })
         return {"state": "RAN", "outcomes": outcomes, **boundary}
 
     def _enqueue_arrival_follow(

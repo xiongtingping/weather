@@ -59,7 +59,7 @@
     "awc_settlement_lookback_margin_hours": 1,
     "awc_settlement_lookback_max_hours": 30,
     "market_registry_gamma_max_pages": 4,
-    "market_registry_refresh_sec": 300,
+    "market_registry_refresh_sec": 60,
     "market_registry_retry_sec": 30,
     "market_date_horizon_days": 2,
     "awc_fast_lane": "on",

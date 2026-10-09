@@ -2900,6 +2900,19 @@ def run_target_forecast_refresh_cycle(
                 "reason": f"{type(exc).__name__}:{exc}"[:200],
             }
     arrival_state["network_recovery"] = recovery_state
+    # Charter 263: a station-day the registry lists and the inbox has no
+    # packet for is captured now, not when the rotation reaches it.
+    listing_state: dict[str, Any] = {"state": "not_run"}
+    listing = getattr(worker, "run_listing_triggered_captures", None)
+    if callable(listing) and not bool(getattr(worker, "skip_nwp_refresh", False)):
+        try:
+            listing_state = dict(listing(as_of_utc=utc_now()))
+        except Exception as exc:  # noqa: BLE001 -- the rotation is the fallback
+            listing_state = {
+                "state": "failed",
+                "reason": f"{type(exc).__name__}:{exc}"[:200],
+            }
+    arrival_state["listing"] = listing_state
     step_timings_ms["nwp_arrival_triggers"] = round(
         (time.perf_counter() - step_started) * 1000.0, 1
     )
