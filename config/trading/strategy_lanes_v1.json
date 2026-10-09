@@ -157,8 +157,8 @@
       ],
       "mirror_sells": false,
       "stake_usdc": 5.0,
-      "model_margin": 0.05,
-      "max_slippage": 0.06,
+      "model_margin": 0.03,
+      "max_slippage": 0.15,
       "lead_hours": [
         12.0,
         48.0
@@ -172,6 +172,8 @@
         "P1"
       ],
       "episode_gap_seconds": 3600.0,
+      "take_only": true,
+      "take_window_seconds": 1800.0,
       "max_source_age_seconds": 1800.0,
       "min_order_shares": 5.0,
       "rung_horizon_seconds": 900.0,
@@ -180,7 +182,8 @@
       "max_daily_cost_usdc": null,
       "max_sends_per_pass": 8,
       "unsent_retry_seconds": 300.0,
-      "rule_changed_at_utc": "2026-10-08T16:07:29Z",
+      "rule_changed_at_utc": "2026-10-09T12:01:12Z",
+      "take_only_note": "Charter 257 补记 (user ruling 2026-10-09 「3+5」): model_margin 0.05 -> 0.03 and max_slippage 0.06 -> 0.15; take_only -- a follow is a FOK at or under the cap within take_window_seconds (1800) of the episode buy, or nothing; no resting rung; an episode whose take did not happen is not chased by the next. Replay 09-21..10-08 (16.9 d, C stations): 38 legs/day, 190 U/day, locked median 390 U peak 550 U, +6.3% +/-10.6% a leg.",
       "note": "Charter 257 (user ruling 2026-10-09 「开实盘，利用现有的跟单策略，但是我的资金量有限，如何跟单」): follow the eight-wallet cluster's FIRST taker buy of a bucket episode only, fixed stake_usdc per leg, daily budget max_daily_cost_usdc, legs ranked by our margin; admitted only at 12-48h to the event's local noon, on C stations, when our served P0/P0-M probability clears the source price by model_margin; the cap is min(source price + max_slippage, our p - model_margin); sells and merges are not mirrored (winners leave through the 0.998 recycle lane). Research: docs/research/benchmark_account_0x8fbd_20261008 rounds 7 and 10 -- +4.8c/share at a 2c cost, three weeks positive; backtest at B=40/L=5/K=8: +131.9 U over 15 days, worst day -17.9 U. Default off; the board switch is the operator's. v1 (source_positions_value_ratio_at_source_price_v1) remains selectable."
     }
   }
