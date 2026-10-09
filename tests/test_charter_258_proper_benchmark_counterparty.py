@@ -463,3 +463,81 @@ def test_an_earlier_criterions_seal_borne_out_is_rewritten(store, warm) -> None:
     assert seal["criterion"] == cluster.SEAL_CRITERION and seal["sealed_by"] == "plan"
     assert (seal["opposite_shares"], seal["same_side_shares"]) == (40.0, 10.0)
     assert seal["fill_ts"] == 1_790_000_500 and seal["flip_state"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# A NO the lane holds on the cluster's YES side: 「EHAM 和 WMKK卖掉」「并反向买入yes」.
+
+
+def _held_no(store, shares: float = 14.0) -> None:
+    """The NO the 01:54Z flip left: bought by the lane at 0.52."""
+
+    from bayes_basket_target.lane_orders import send_lane_buy
+    from tests.test_tiebreak_lane import TZ
+
+    _seed(store, fresh_until=LONG)
+    lane.ensure_lane_schema(store)
+    entry = send_lane_buy(
+        store, lane=lane.LANE, intent_id="proper_flipno_test", station_id=ST, event_date=ED,
+        settlement_timezone=TZ, bucket="27°C", token_id="n27", price=0.52, shares=shares, side="NO",
+        execution_candidate="TAKER_FOK", fok_price_cap=0.52, tick_size=0.01,
+        intent_body={"schema": "test", "rule": "test", "strategy_id": "bayes_basket_target_v1",
+                     "order_type": "FOK", "post_only": False},
+        transport=_transport([]), live_submit_authorized=True,
+        decision_details={"schema": "test", "decision_signature": {"stage": "P0"}},
+    )
+    assert float(entry["matched_size"]) == shares
+
+
+def _wallet_by_token(**shares: float):
+    return lambda token_id: {"ok": True, "shares": shares.get(token_id, 0.0)}
+
+
+def test_a_no_on_the_clusters_yes_side_is_sold_then_mirrored_into_yes(store, warm) -> None:
+    _held_no(store, 14.0)
+    yes_side = _tape(_fill("t27", "BUY", 0.42, size=783.0), _fill("n27", "BUY", 0.56, size=444.0))
+    sent: list = []
+    t1 = "2026-09-18T12:10:00.000Z"
+    _snapshot(store, "snap_f2", t1, _ladder(), 2)          # 27°C 0.48 / 0.50
+    first = lane.execute_benchmark_sells(
+        store, transport=_transport(sent), now_utc=t1, live_submit_authorized=True, settings=V3,
+        admission=ADMIT, benchmark_fetch=yes_side, position_reader=_wallet_by_token(n27=14.0))
+    (sell,) = first["benchmark"]["sell_orders"]
+    assert sell["kind"] == "sell_no" and sell["price"] == pytest.approx(0.50) and sell["shares"] == 14.0
+    assert (sent[-1][1]["side"], sent[-1][1]["token_id"]) == ("SELL", "n27")
+    seal = lane._seal_row(store, ST, ED, "27°C", "NO")
+    assert seal is not None and (seal["opposite_shares"], seal["same_side_shares"]) == (783.0, 444.0)
+    # Sold whole: the reversal buys the same 14 shares of YES at the ask.
+    t2 = "2026-09-18T12:13:00.000Z"
+    _snapshot(store, "snap_f3", t2, _ladder(), 3)
+    second = lane.execute_benchmark_sells(
+        store, transport=_transport(sent), now_utc=t2, live_submit_authorized=True, settings=V3,
+        admission=ADMIT, benchmark_fetch=yes_side, position_reader=_wallet_by_token())
+    (buy,) = second["benchmark"]["sell_orders"]
+    assert buy["kind"] == "buy_yes" and buy["price"] == pytest.approx(0.50) and buy["shares"] == 14.0
+    payload = sent[-1][1]
+    assert (payload["side"], payload["token_id"], payload["order_type"]) == ("BUY", "t27", "FOK")
+    assert buy["order_intent_id"].startswith(lane.REVERSE_YES_PREFIX)
+    # Mirrored: done, and the YES bought back is not taken for a sealed YES.
+    t3 = "2026-09-18T12:16:00.000Z"
+    _snapshot(store, "snap_f4", t3, _ladder(), 4)
+    third = lane.execute_benchmark_sells(
+        store, transport=_transport(sent), now_utc=t3, live_submit_authorized=True, settings=V3,
+        admission=ADMIT, benchmark_fetch=yes_side, position_reader=_wallet_by_token(t27=14.0))
+    assert third["benchmark"]["sell_orders"] == []
+    assert lane._seal_row(store, ST, ED, "27°C", "NO")["flip_state"] == "done"
+    assert lane._seal_row(store, ST, ED, "27°C", "YES") is None
+
+
+def test_a_no_on_the_clusters_own_side_is_held(store, warm) -> None:
+    _held_no(store, 14.0)
+    sent: list = []
+    t1 = "2026-09-18T12:10:00.000Z"
+    _snapshot(store, "snap_f2", t1, _ladder(), 2)
+    receipt = lane.execute_benchmark_sells(
+        store, transport=_transport(sent), now_utc=t1, live_submit_authorized=True, settings=V3,
+        admission=ADMIT, benchmark_fetch=_tape(_fill("n27", "BUY", 0.52, size=848.0),
+                                               _fill("t27", "BUY", 0.48, size=628.0)),
+        position_reader=_wallet_by_token(n27=14.0))
+    assert receipt["benchmark"]["sell_orders"] == [] and not sent
+    assert lane._seal_row(store, ST, ED, "27°C", "NO") is None
