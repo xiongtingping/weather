@@ -1,0 +1,19 @@
+moments with both vectors: 3476
+
+== Ours − market under two rulers (negative = ours better) ==
+  ALL                          n= 3476 | whole-ladder ΔLogScore +0.2314 [+0.1908,+0.2725]* | binary ΔLL on market mode +0.0730 [+0.0503,+0.0985]* | on our mode +0.0523 [+0.0384,+0.0660]* | on mkt mode +1 +0.0701 [+0.0497,+0.0918]* | on mkt mode −1 +0.0595 [+0.0419,+0.0775]* | on mkt mode ±2 (sum both) +0.0577 [+0.0401,+0.0774]* |
+      ours better share: LogScore 0.38 | binary on mkt mode 0.51 | on our mode 0.39
+  P0                           n=  818 | whole-ladder ΔLogScore +0.3336 [+0.2430,+0.4288]* | binary ΔLL on market mode +0.1364 [+0.0725,+0.2146]* | on our mode +0.0743 [+0.0446,+0.1001]* | on mkt mode +1 +0.1113 [+0.0627,+0.1617]* | on mkt mode −1 +0.0876 [+0.0521,+0.1245]* | on mkt mode ±2 (sum both) +0.0556 [+0.0206,+0.0907]* |
+      ours better share: LogScore 0.38 | binary on mkt mode 0.53 | on our mode 0.37
+  P0-M                         n= 1411 | whole-ladder ΔLogScore +0.1749 [+0.1256,+0.2277]* | binary ΔLL on market mode +0.0386 [+0.0160,+0.0620]* | on our mode +0.0399 [+0.0228,+0.0573]* | on mkt mode +1 +0.0536 [+0.0279,+0.0829]* | on mkt mode −1 +0.0472 [+0.0240,+0.0714]* | on mkt mode ±2 (sum both) +0.0598 [+0.0334,+0.0938]* |
+      ours better share: LogScore 0.39 | binary on mkt mode 0.53 | on our mode 0.41
+  P1                           n= 1247 | whole-ladder ΔLogScore +0.2283 [+0.1771,+0.2805]* | binary ΔLL on market mode +0.0702 [+0.0413,+0.1006]* | on our mode +0.0520 [+0.0322,+0.0706]* | on mkt mode +1 +0.0621 [+0.0398,+0.0872]* | on mkt mode −1 +0.0549 [+0.0285,+0.0817]* | on mkt mode ±2 (sum both) +0.0566 [+0.0334,+0.0833]* |
+      ours better share: LogScore 0.37 | binary on mkt mode 0.48 | on our mode 0.39
+  cluster-traded station-days  n= 1588 | whole-ladder ΔLogScore +0.1647 [+0.1161,+0.2142]* | binary ΔLL on market mode +0.0442 [+0.0216,+0.0678]* | on our mode +0.0374 [+0.0200,+0.0544]* | on mkt mode +1 +0.0611 [+0.0388,+0.0845]* | on mkt mode −1 +0.0337 [+0.0099,+0.0588]* | on mkt mode ±2 (sum both) +0.0451 [+0.0205,+0.0725]* |
+      ours better share: LogScore 0.40 | binary on mkt mode 0.52 | on our mode 0.41
+  untouched station-days       n= 1888 | whole-ladder ΔLogScore +0.2875 [+0.2274,+0.3468]* | binary ΔLL on market mode +0.0972 [+0.0588,+0.1381]* | on our mode +0.0649 [+0.0441,+0.0856]* | on mkt mode +1 +0.0778 [+0.0446,+0.1112]* | on mkt mode −1 +0.0811 [+0.0563,+0.1063]* | on mkt mode ±2 (sum both) +0.0682 [+0.0427,+0.0954]* |
+      ours better share: LogScore 0.37 | binary on mkt mode 0.51 | on our mode 0.37
+  our mode = market mode       n= 1975 | whole-ladder ΔLogScore +0.0968 [+0.0668,+0.1266]* | binary ΔLL on market mode +0.0221 [+0.0102,+0.0347]* | on our mode +0.0221 [+0.0102,+0.0347]* | on mkt mode +1 +0.0418 [+0.0237,+0.0599]* | on mkt mode −1 +0.0263 [+0.0089,+0.0429]* | on mkt mode ±2 (sum both) +0.0279 [+0.0129,+0.0435]* |
+      ours better share: LogScore 0.42 | binary on mkt mode 0.48 | on our mode 0.48
+  modes differ                 n= 1501 | whole-ladder ΔLogScore +0.4085 [+0.3386,+0.4865]* | binary ΔLL on market mode +0.1399 [+0.0913,+0.1949]* | on our mode +0.0920 [+0.0678,+0.1180]* | on mkt mode +1 +0.1078 [+0.0700,+0.1500]* | on mkt mode −1 +0.1036 [+0.0705,+0.1352]* | on mkt mode ±2 (sum both) +0.0968 [+0.0605,+0.1378]* |
+      ours better share: LogScore 0.34 | binary on mkt mode 0.56 | on our mode 0.28

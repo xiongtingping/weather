@@ -1,0 +1,16 @@
+== 1. Decomposition on all served decisions (n=15873): one-vs-rest sum = LogScore + spread penalty ==
+  ALL   LogScore 1.3070 | one-vs-rest Σ_k LL_k 1.9856 = LogScore + spread 0.6786 | LL on top bucket 0.5927 | LL on ±1 (sum) 0.8939 | LL on |d|≥2 (sum) 0.4990 | mean p_truth 0.396, p_top 0.508
+  P0    LogScore 1.5469 | one-vs-rest Σ_k LL_k 2.2999 = LogScore + spread 0.7531 | LL on top bucket 0.6636 | LL on ±1 (sum) 1.0237 | LL on |d|≥2 (sum) 0.6126 | mean p_truth 0.299, p_top 0.423
+  P0-M  LogScore 1.3030 | one-vs-rest Σ_k LL_k 2.0390 = LogScore + spread 0.7360 | LL on top bucket 0.6165 | LL on ±1 (sum) 0.9185 | LL on |d|≥2 (sum) 0.5040 | mean p_truth 0.376, p_top 0.492
+  P1    LogScore 0.7375 | one-vs-rest Σ_k LL_k 1.1387 = LogScore + spread 0.4013 | LL on top bucket 0.3818 | LL on ±1 (sum) 0.5396 | LL on |d|≥2 (sum) 0.2173 | mean p_truth 0.661, p_top 0.740
+
+== 2. Same transform, two rulers (Δ = after − before; station-day bootstrap 95%) ==
+  ceiling 0.45 on P0 rows with p_top>0.45        n= 2925 | ΔLogScore -0.0073 [-0.0190,+0.0040]  | ΔLL top -0.0075 [-0.0182,+0.0034]  | ΔLL ±1 -0.0034 [-0.0124,+0.0050]  | ΔLL far -0.0005 [-0.0019,+0.0005]  | ΔΣLL -0.0115 [-0.0309,+0.0069]  |
+  ceiling 0.45 on P0 ≤36h rows                   n= 1952 | ΔLogScore -0.0012 [-0.0138,+0.0115]  | ΔLL top -0.0002 [-0.0120,+0.0112]  | ΔLL ±1 -0.0004 [-0.0101,+0.0091]  | ΔLL far -0.0001 [-0.0016,+0.0007]  | ΔΣLL -0.0008 [-0.0214,+0.0197]  |
+  ceiling 0.53 on P0-M rows with p_top>0.53      n= 1569 | ΔLogScore +0.1494 [+0.1325,+0.1661]* | ΔLL top +0.1419 [+0.1240,+0.1588]* | ΔLL ±1 +0.1513 [+0.1356,+0.1667]* | ΔLL far +0.0000 [+0.0000,+0.0000]* | ΔΣLL +0.2931 [+0.2599,+0.3254]* |
+  tail mix ε=0.15 on F stations >36h             n= 1036 | ΔLogScore -0.0257 [-0.0449,-0.0091]* | ΔLL top -0.0014 [-0.0030,+0.0003]  | ΔLL ±1 +0.0014 [-0.0021,+0.0048]  | ΔLL far -0.0266 [-0.0453,-0.0109]* | ΔΣLL -0.0267 [-0.0467,-0.0093]* |
+  tail mix ε=0.15 on P0 ≤36h C stations          n= 3440 | ΔLogScore +0.0020 [-0.0064,+0.0094]  | ΔLL top +0.0005 [-0.0003,+0.0012]  | ΔLL ±1 +0.0014 [-0.0006,+0.0034]  | ΔLL far +0.0009 [-0.0066,+0.0077]  | ΔΣLL +0.0027 [-0.0060,+0.0105]  |
+
+== 3. Two vectors, same LogScore, different binary losses (worked example from the data) ==
+  KHOU 2026-09-19 P0 h36_48: truth=92-93°F p_truth=0.380 LogScore=0.968 | top=92-93°F p_top=0.380 | ±1 mass 0.473 far mass 0.147 | ΣLL_k=1.670 (spread 0.703)
+  ZBAA 2026-09-16 P1 h12_24: truth=31°C p_truth=0.420 LogScore=0.868 | top=31°C p_top=0.420 | ±1 mass 0.409 far mass 0.172 | ΣLL_k=1.502 (spread 0.635)
