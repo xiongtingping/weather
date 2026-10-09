@@ -873,3 +873,111 @@ def test_charter_237_names_the_lane() -> None:
     for policy in off.POLICIES:
         # Charter 238 added the market snapshots to the same lane.
         assert policy.table in article or policy.table in widened
+
+
+# --------------------------------------------------------------------------
+# Training facts (2026-10-09 amendment): 47 days, foreign-key and live keeps.
+# --------------------------------------------------------------------------
+
+
+FACT = "basket_policy_training_fact"
+
+
+def _fact(conn, fid: str, station: str, day: str, *, decision: str | None = None) -> None:
+    columns = [str(r[1]) for r in conn.execute(f"PRAGMA table_info({FACT})")]
+    values: dict[str, object] = {}
+    for column in columns:
+        if column.endswith("sha256"):
+            values[column] = _sha(column + fid)
+        elif column in {"source_sequence", "intent_count"}:
+            values[column] = 0
+        elif column.endswith("_json"):
+            values[column] = "{}"
+        else:
+            values[column] = f"{column}-{fid}"
+    values.update({
+        "fact_id": fid, "station_id": station, "event_date": day, "stage": "P0",
+        "decision_at_utc": f"{day}T00:00:00Z", "created_at_utc": f"{day}T00:00:00Z",
+        "authority_scope": "PRODUCTION_NO_LIVE_FORWARD", "decision_id": decision or f"d-{fid}",
+    })
+    conn.execute(
+        f"INSERT INTO {FACT}({','.join(values)}) VALUES({','.join('?' * len(values))})",
+        tuple(values.values()),
+    )
+
+
+def _label(conn, fid: str) -> None:
+    conn.execute(
+        "INSERT INTO basket_policy_training_label(label_id,fact_id,truth_id,truth_revision_no,"
+        "truth_sha256,official_tmax_c,winning_bucket,settlement_closed_at_utc,labeled_at_utc,"
+        "outcome_json,authority_scope,supersedes_label_id,content_sha256)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (f"l-{fid}", fid, f"t-{fid}", 0, _sha("t" + fid), 20.0, "20°C", "2026-08-10T00:00:00Z",
+         "2026-08-10T00:00:00Z", "{}", "NO_LIVE_REPLAY_CANDIDATE", None, _sha("l" + fid)),
+    )
+
+
+def _facts_fixture(store: Path) -> None:
+    """AS_OF 09-27: the facts' window ends 08-11."""
+
+    conn = sqlite3.connect(store)
+    _fact(conn, "d2fact_old", "KLGA", "2026-08-01")
+    _label(conn, "d2fact_old")
+    _fact(conn, "fact_legacy", "KLGA", "2026-08-02")            # never labelled: not a d2fact
+    _fact(conn, "d2fact_unlabelled", "KLGA", "2026-08-03")      # the label lane still owes it
+    _fact(conn, "d2fact_live", "EGLC", "2026-08-04", decision="d_live")
+    _label(conn, "d2fact_live")
+    _fact(conn, "d2fact_superseded", "ZUUU", "2026-08-05")
+    _label(conn, "d2fact_superseded")
+    _fact(conn, "d2fact_hot", "KLGA", "2026-09-01")
+    _label(conn, "d2fact_hot")
+    _live_decision(conn, "d_live", "EGLC", "2026-08-04", "2026-08-03T00:00:00Z", {})
+    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(basket_target_prepared_supersession_receipts)")]
+    values = {c: (_sha(c) if c.endswith("sha256") else f"{c}-x") for c in columns}
+    values.update({"old_training_fact_id": "d2fact_superseded", "released_amount_usdc": 0.0,
+                   "reason": "authority_input_superseded"})
+    conn.execute(
+        "INSERT INTO basket_target_prepared_supersession_receipts"
+        f"({','.join(values)}) VALUES({','.join('?' * len(values))})", tuple(values.values()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_old_facts_move_and_the_named_ones_stay(store: Path, cold: Path, tmp_path: Path) -> None:
+    _facts_fixture(store)
+    conn = sqlite3.connect(store)
+    policy = off.POLICY_BY_TABLE[FACT]
+    assert off.eligibility(conn, policy) == []
+    # Without the declared keep, a table other tables point at stays refused.
+    bare = off.TablePolicy(table=FACT, time_column="event_date", hot_days=policy.hot_days, readers="t")
+    assert off.eligibility(conn, bare) == ["foreign_key_children:basket_target_prepared_supersession_receipts"]
+    conn.close()
+
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[FACT])
+
+    summary = receipt["tables"][0]
+    assert summary["cutoff_before"] == "2026-08-11"
+    assert summary["kept"] == {
+        "named:fk:basket_target_prepared_supersession_receipts.old_training_fact_id": 1,
+        "named:live_decision": 1,
+        "named:unlabelled_d2fact": 1,
+    }
+    stayed = {row[1] for row in _table_rows(store, FACT).values()}
+    assert stayed == {"d2fact_unlabelled", "d2fact_live", "d2fact_superseded", "d2fact_hot"}
+    landed = {row[1] for row in _table_rows(_cold_file(cold, FACT), FACT).values()}
+    assert landed == {"d2fact_old", "fact_legacy"}
+
+
+def test_the_fact_window_is_tied_to_its_readers() -> None:
+    from bayes_basket_target import posterior_store, realisation_store, valuation_store
+
+    reconcile = (ROOT / "scripts" / "settlement_truth_reconciliation.py").read_text(encoding="utf-8")
+    assert re.search(r"^MAX_DAYS = (\d+)$", reconcile, re.M).group(1) == str(off.RECONCILIATION_MAX_DAYS)
+    policy = off.POLICY_BY_TABLE[FACT]
+    for window in (off.RECONCILIATION_MAX_DAYS, valuation_store.WINDOW_DAYS,
+                   realisation_store.WINDOW_DAYS, posterior_store.WINDOW_DAYS):
+        assert policy.hot_days > window
+    assert policy.keep_foreign_key_refs
+    label_lane = (ROOT / "bayes_basket_target" / "delta_v2_settlement_label.py").read_text(encoding="utf-8")
+    assert "AND f.fact_id LIKE 'd2fact_%'" in label_lane

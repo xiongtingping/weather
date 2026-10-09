@@ -217,6 +217,9 @@ def main() -> int:
     args = parser.parse_args()
     conn = sqlite3.connect(f"file:{PRODUCTION_SSOT_DB}?mode=ro", uri=True, timeout=300.0)
     conn.execute("PRAGMA busy_timeout=300000")
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_policy_training_fact",))  # charter 237: whole fact history
     rows = rescan(conn, floor=args.floor)
     fired = [r for r in rows if r["fired"] and r["best_ask"]]
 

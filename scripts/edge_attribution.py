@@ -271,8 +271,9 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=180.0)
     from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
 
-    # Charter 238: whole history of the books and envelopes its legs name.
-    attach_cold_history(conn, ("basket_official_ws_snapshot", "basket_probability_envelope"))
+    # Charter 238: whole history of the books, envelopes and facts its legs name.
+    attach_cold_history(conn, ("basket_official_ws_snapshot", "basket_probability_envelope",
+                               "basket_policy_training_fact"))
     try:
         legs, counts = load_legs(conn)
     finally:

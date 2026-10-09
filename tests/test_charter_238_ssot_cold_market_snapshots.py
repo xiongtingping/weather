@@ -395,6 +395,27 @@ ENVELOPE_WHOLE_HISTORY_READERS = (
 )
 
 
+FACT = "basket_policy_training_fact"
+FACT_WHOLE_HISTORY_READERS = (
+    "scripts/edge_attribution.py",
+    "scripts/trace_tiebreak_entry_paths.py",
+    "scripts/scan_tiebreak_loss_cells.py",
+    "scripts/scan_tiebreak_entry_hours.py",
+)
+
+
+def test_every_fact_history_reader_attaches_the_cold_rows() -> None:
+    for name in FACT_WHOLE_HISTORY_READERS:
+        tree = ast.parse((ROOT / name).read_text(encoding="utf-8"))
+        tables = {
+            elt.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "attach_cold_history"
+            for arg in node.args[1:2] for elt in getattr(arg, "elts", [])
+        }
+        assert FACT in tables, name
+
+
 def _scheduled_scripts() -> set[str]:
     """Every script a schedule runs: shell sweeps, the daemon and worker, LaunchAgents."""
 
@@ -437,7 +458,7 @@ def test_no_scheduled_job_reads_the_cold_tier() -> None:
     helper = dashboard[dashboard.index("def _history_conn("):]
     helper = helper[:helper.index("\ndef ")]
     assert "raise SectionNotReady" in helper
-    for name in ENVELOPE_WHOLE_HISTORY_READERS + WHOLE_HISTORY_READERS:
+    for name in ENVELOPE_WHOLE_HISTORY_READERS + WHOLE_HISTORY_READERS + FACT_WHOLE_HISTORY_READERS:
         assert Path(name).name not in _scheduled_scripts(), name
 
 

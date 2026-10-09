@@ -307,6 +307,9 @@ class TablePolicy:
     keep_vector_refs: KeepVectorRefs | None = None
     keep_decision_plans: KeepDecisionPlans | None = None
     keep_decision_envelopes: KeepDecisionEnvelopes | None = None
+    #: Every row another table names by a declared FOREIGN KEY stays hot.
+    #: Without it a table with foreign-key children is refused outright.
+    keep_foreign_key_refs: bool = False
     keep_named: tuple[KeepNamed, ...] = ()
     floors: tuple[DynamicFloor, ...] = ()
     #: Content-addressed side tables the moved rows name, COPIED (never
@@ -345,6 +348,7 @@ class TablePolicy:
                 "scope_index": self.keep_decision_envelopes.scope_index,
                 "why": self.keep_decision_envelopes.why,
             },
+            "keep_foreign_key_refs": self.keep_foreign_key_refs,
             "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
             "mirror_tables": list(self.mirror_tables),
@@ -389,6 +393,11 @@ def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
 #: Pinned by the test to ``scripts/fit_deterministic_feature_gate.py`` and
 #: ``scripts/p1_likelihood_refit_sweep.sh``.
 FEATURE_GATE_WINDOW_DAYS = 60
+#: How far back a hand-run truth reconciliation may revise a settled day
+#: (``scripts/settlement_truth_reconciliation.py`` MAX_DAYS; the daily repair
+#: looks back 10).  A revision gives every fact of that day a new label, so a
+#: fact stays while its day can still be revised.  Pinned by the test.
+RECONCILIATION_MAX_DAYS = 45
 P1_LIKELIHOOD_WINDOW_DAYS = 44
 #: A decision for event date D is taken up to two days before D, so an
 #: anchor on the decision clock keeps event dates from two days before it.
@@ -759,6 +768,56 @@ POLICIES += (
     # no caller, and no envelope since 09-28 carries the release_state the
     # production check reads.  Offline whole-history readers attach the cold
     # rows.
+    # Charter 237 amendment (2026-10-09): the decisions' training facts.
+    # Production reads the current station-day, a fact by id / scope key /
+    # cycle, or windows of 28 event days (valuation, realisation, posterior);
+    # the label lane relabels a day whenever its truth is revised, which a
+    # hand-run reconciliation may do 45 days back.  Rows the prepared-
+    # supersession receipts name by foreign key, the facts of live decisions
+    # (live_selection re-reads them by decision id) and settled d2facts the
+    # label lane has not labelled stay whatever their age.
+    TablePolicy(
+        table="basket_policy_training_fact",
+        time_column="event_date",
+        hot_days=max(RECONCILIATION_MAX_DAYS, VALUATION_WINDOW_DAYS) + 2,
+        readers=(
+            "production (worker, ledger, production, lanes, mis_bought_leg_exit, "
+            "delta_v2_training): the current station-day or a fact by id, scope key or "
+            "cycle; valuation_store / realisation_store / posterior_store: 28 event days; "
+            "tiebreak/tail-short/p1-consensus lanes: event days from a recent floor; "
+            "settlement_truth / forward_observation_store: rowid cursors over new rows; "
+            "delta_v2_settlement_label: every settled d2fact not labelled against its day's "
+            "newest truth (a revision up to RECONCILIATION_MAX_DAYS back relabels); "
+            "live_station_scope: the stations with any fact (each decides daily); "
+            "live_selection (dashboard): the fact of every live decision; "
+            "the paper ledger: its few-day window."
+        ),
+        keep_foreign_key_refs=True,
+        keep_named=(
+            KeepNamed(
+                name="live_decision",
+                column="decision_id",
+                sql=(
+                    "SELECT d.decision_id FROM basket_target_order_intents i"
+                    " JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
+                    " WHERE i.live_submit_authorized <> 0"
+                ),
+                why="live_selection re-reads the fact of every live decision; real money's facts stay",
+            ),
+            KeepNamed(
+                name="unlabelled_d2fact",
+                column="fact_id",
+                sql=(
+                    "SELECT f.fact_id FROM basket_policy_training_fact f"
+                    " WHERE f.event_date < :floor AND f.fact_id LIKE 'd2fact_%'"
+                    " AND NOT EXISTS (SELECT 1 FROM basket_policy_training_label l"
+                    " WHERE l.fact_id = f.fact_id)"
+                ),
+                window_days=max(RECONCILIATION_MAX_DAYS, VALUATION_WINDOW_DAYS) + 2,
+                why="the label lane still owes a settled d2fact its label",
+            ),
+        ),
+    ),
     #
     # Two windows (2026-10-09): only P0 and P0-M rows are read for long -- the
     # feature gate re-scores P0 over 60 event days and P1's likelihood refit
@@ -989,6 +1048,25 @@ def _foreign_key_children(conn: sqlite3.Connection, table: str) -> list[str]:
     return sorted(set(children))
 
 
+def _foreign_key_refs(conn: sqlite3.Connection, table: str) -> list[tuple[str, str, str]]:
+    """Each ``(child table, child column, referenced column)`` that names ``table``.
+
+    Single-column keys only; a composite key is refused by the caller.
+    """
+
+    refs: list[tuple[str, str, str]] = []
+    for child in _foreign_key_children(conn, table):
+        keys: dict[int, list[tuple[str, str]]] = {}
+        for row in conn.execute(f"PRAGMA foreign_key_list({_q(child)})"):
+            if str(row[2]) == table:
+                keys.setdefault(int(row[0]), []).append((str(row[3]), str(row[4] or "")))
+        for columns in keys.values():
+            if len(columns) != 1 or not columns[0][1]:
+                raise OffloadRefused(f"foreign_key_not_single_named_column:{child}")
+            refs.append((child, columns[0][0], columns[0][1]))
+    return refs
+
+
 def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
     """Why ``policy.table`` may not be offloaded here (empty when it may)."""
 
@@ -1029,12 +1107,19 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         ).fetchone()
         if indexed is None:
             reasons.append("index_missing:" + policy.keep_decision_envelopes.scope_index)
+    children = _foreign_key_children(conn, table)
+    if children and not policy.keep_foreign_key_refs:
+        reasons.append("foreign_key_children:" + ",".join(children))
+    elif children:
+        # Kept by name instead (each referenced value stays hot); the delete
+        # connection enforces foreign keys besides, so a miss fails the batch.
+        try:
+            needed.update(parent for _child, _column, parent in _foreign_key_refs(conn, table))
+        except OffloadRefused as exc:
+            reasons.append(str(exc))
     missing = sorted(needed - columns)
     if missing:
         reasons.append("columns_missing:" + ",".join(missing))
-    children = _foreign_key_children(conn, table)
-    if children:
-        reasons.append("foreign_key_children:" + ",".join(children))
     for name, trigger_sql in _triggers(conn, table):
         text = _normalized_sql(trigger_sql)
         if " DELETE ON " in text and not _is_append_only_guard(trigger_sql):
@@ -1371,6 +1456,15 @@ def plan_table(
         })
         for rule in policy.keep_named
     ]
+    if policy.keep_foreign_key_refs:
+        for child, column, parent in _foreign_key_refs(conn, table):
+            named.append((
+                KeepNamed(name=f"fk:{child}.{column}", column=parent, sql="",
+                          why="a declared foreign key names the row"),
+                {str(r[0]) for r in conn.execute(
+                    f"SELECT DISTINCT {_q(column)} FROM {_q(child)} WHERE {_q(column)} IS NOT NULL"
+                )},
+            ))
     wanted += [rule.column for rule, _ids in named if rule.column != time_column]
     wanted = list(dict.fromkeys(wanted))
     at = {column: index for index, column in enumerate(wanted)}
@@ -2280,6 +2374,7 @@ _KEPT_WORDS = {"newest_rowid": "最大 rowid", "hold": "hold",
                "recent:root_stages": "P0/P0-M 长窗", "live_decision_envelope": "实盘决策点名的信封",
                "live_decision_envelope_unresolved_station_day": "点名信封找不到·整站日留",
                "serving_arithmetic_audit": "指纹审计", "live_decision_plan": "实盘决策点名的计划",
+               "named:live_decision": "实盘决策的事实", "named:unlabelled_d2fact": "待贴标签",
                "live_decision_plan_unresolved_station_day": "点名计划找不到·整站日留"}
 
 

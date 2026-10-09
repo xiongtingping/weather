@@ -231,7 +231,8 @@ def main() -> int:
     conn.execute("PRAGMA busy_timeout=300000")
     from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
 
-    attach_cold_history(conn, ("basket_official_ws_snapshot",))  # charter 238: whole book history
+    # Charter 238: whole history of the books and the facts it walks.
+    attach_cold_history(conn, ("basket_official_ws_snapshot", "basket_policy_training_fact"))
     traced = trace(conn, replay_cell(conn, floor_event_date=args.floor))
     stages = [s for s in args.stages.split(",") if s]
     result = {"schema": "tiebreak_entry_path_v1", "rows": len(traced),

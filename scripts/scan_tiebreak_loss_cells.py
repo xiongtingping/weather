@@ -202,6 +202,9 @@ def main() -> int:
     args = parser.parse_args()
     conn = sqlite3.connect(f"file:{PRODUCTION_SSOT_DB}?mode=ro", uri=True, timeout=180.0)
     conn.execute("PRAGMA busy_timeout=180000")
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    attach_cold_history(conn, ("basket_policy_training_fact",))  # charter 237: whole fact history
     rows = derive(replay_cell(conn, floor_event_date=args.floor), conn)
     cells = candidate_cells()
     days = sorted({r["event_date"] for r in rows})
