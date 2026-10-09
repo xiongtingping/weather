@@ -27,7 +27,12 @@ from .contracts import (
 EPS = 1e-9
 from .station_registry import station_coordinates
 from .station_season import station_season_bin
-from .center_width_calibration import FAR_PEAK_CEILING_METHOD_TAG, served_bucket_axis
+from .center_width_calibration import (
+    F_FAR_TAIL_METHOD_TAG,
+    FAR_PEAK_CEILING_METHOD_TAG,
+    is_f_ladder,
+    served_bucket_axis,
+)
 from .center_width_store import (
     CENTER_WIDTH_METHOD_TAG,
     STATION_WIDTH_METHOD_TAG,
@@ -66,6 +71,7 @@ from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_f_far_tail,
     with_peak_ceiling,
     with_width_slice,
 )
@@ -206,7 +212,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # replacing it.
 # Charter 253 (2026-10-04 ruling 「先查峰，修概率」): past 36 hours no bucket
 # is served above 0.45 -- the top bucket's excess goes to its neighbours.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v27"
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v28"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4355,6 +4361,17 @@ def compile_native_ensemble_p0(
         center_width_layer, width_slices,
         seated_system_count=seated_system_count,
         hours_to_settlement=hours_to_settlement,
+    )
+    # Charter 261: an F station past 36 h is served the fixed far tail mix
+    # where the lane admitted no slice of its own, exactly when this
+    # artifact's holdout was scored with it (the combination method carries
+    # the tag).  Resolved after the slice and before the ceiling, like the
+    # layer applies them.
+    center_width_layer = with_f_far_tail(
+        center_width_layer,
+        hours_to_settlement=hours_to_settlement,
+        f_ladder=is_f_ladder(ordered),
+        enabled=F_FAR_TAIL_METHOD_TAG in artifact_combination_method,
     )
     # Charter 253: the far-peak ceiling, applied exactly when this artifact's
     # holdout was scored with it (the combination method carries the tag) --

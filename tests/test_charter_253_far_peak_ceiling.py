@@ -254,8 +254,8 @@ def test_serving_the_gate_the_certificate_and_the_charter_say_the_same_thing() -
     assert served.index("apply_tail_mix(") < served.index("shaped, ceiling_receipt = apply_peak_ceiling(")
     from bayes_basket_target import native_ensemble_p0 as P0
     from bayes_basket_target import serving_arithmetic as sa
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v27"
-    declared = sa.version_effective_from("P0", P0.POSTERIOR_VERSION)
+    # The versions moved on (charter 261 bumped to v28/v31/v39); 253's own bump is pinned by its declared instant.
+    declared = sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v27")
     assert declared and declared == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v30") \
         == sa.version_effective_from("P1", "p1_joint_likelihood_v38")
     charter = read("docs/constitution/SYSTEM_CHARTER.md")

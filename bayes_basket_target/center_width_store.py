@@ -2986,6 +2986,97 @@ def _thin_far_slice_veto(
     }
 
 
+def _f_far_tail_reading(
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Charter 261: is the F-station far tail mix earning its place?  A
+    reading journalled with every fit, like the ceiling's; the rule is fixed
+    in code and comes off by its switch.
+
+    Each cell served under the ``f_far`` slice is scored as served -- its
+    pre-mix vector (re-served from the recorded input) mixed at the receipt's
+    weight and capped at the receipt's ceiling where one stands -- against
+    the same vector capped but unmixed, under the stage's ranked verdict.
+    Beside it: the mass said and landed two or more rungs off the mode.
+    """
+
+    from .center_width_calibration import F_FAR_TAIL_SLICE_NAME  # noqa: PLC0415
+
+    kept: list[tuple[float, float, float]] = []
+    undone: list[tuple[float, float, float]] = []
+    clusters: list[tuple[Any, str]] = []
+    skipped: dict[str, int] = {}
+    judged_days: set[str] = set()
+    tail_said_mixed: list[float] = []
+    tail_said_plain: list[float] = []
+    tail_landed: list[float] = []
+    for day in sorted(by_day):
+        for cell in by_day[day]:
+            receipt = cell.get("center_width_receipt") or {}
+            if receipt.get("width_slice") != F_FAR_TAIL_SLICE_NAME:
+                continue
+            weight = float(receipt.get("width_slice_tail_weight") or 0.0)
+            if weight <= 0.0:
+                continue
+            if not cell.get("reserved_under_current_width"):
+                skipped["no_recorded_input"] = skipped.get("no_recorded_input", 0) + 1
+                continue
+            keys = list(cell["ordered_keys"])
+            try:
+                plain: Mapping[str, float] = cell["probabilities"]
+                mixed, _ = apply_tail_mix(
+                    plain,
+                    weight=weight,
+                    scale=float(receipt.get("width_slice_tail_scale") or TAIL_MIX_SCALE),
+                    ordered_keys=keys,
+                    key_centers_c=cell["key_centers_c"],
+                    excluded_buckets=cell["excluded_buckets"],
+                    open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+                )
+                ceiling = receipt.get("peak_ceiling")
+                if ceiling is not None:
+                    plain, _ = apply_peak_ceiling(
+                        plain, ceiling=float(ceiling), ordered_keys=keys,
+                        excluded_buckets=cell["excluded_buckets"],
+                    )
+                    mixed, _ = apply_peak_ceiling(
+                        mixed, ceiling=float(ceiling), ordered_keys=keys,
+                        excluded_buckets=cell["excluded_buckets"],
+                    )
+            except (TypeError, ValueError):
+                skipped["malformed"] = skipped.get("malformed", 0) + 1
+                continue
+            score = dict(
+                ordered_keys=keys,
+                settled_bucket=cell["settled_bucket"],
+                excluded_buckets=cell["excluded_buckets"],
+                key_centers_c=cell["key_centers_c"],
+            )
+            kept.append(_served_scores(mixed, **score))
+            undone.append(_served_scores(plain, **score))
+            clusters.append((cell.get("station_id"), day))
+            judged_days.add(day)
+            top = max(range(len(keys)), key=lambda index: (float(plain[keys[index]]), -index))
+            far = [index for index in range(len(keys)) if abs(index - top) >= 2]
+            tail_said_plain.append(sum(float(plain[keys[index]]) for index in far))
+            tail_said_mixed.append(sum(float(mixed[keys[index]]) for index in far))
+            hit = keys.index(str(cell["settled_bucket"])) if str(cell["settled_bucket"]) in keys else top
+            tail_landed.append(1.0 if abs(hit - top) >= 2 else 0.0)
+    gate = _proper_score_gate(undone, kept, clusters)
+    count = len(kept)
+    return {
+        "schema": "center_width_f_far_tail_reading_v1",
+        "day_count": len(judged_days),
+        "cell_count": count,
+        "skipped": skipped,
+        # The mixed vector against the unmixed one: negative is the mix's gain.
+        "gate_mixed_vs_unmixed": gate,
+        "tail_said_unmixed": (sum(tail_said_plain) / count) if count else None,
+        "tail_said_mixed": (sum(tail_said_mixed) / count) if count else None,
+        "tail_landed": (sum(tail_landed) / count) if count else None,
+    }
+
+
 def _far_peak_ceiling_reading(
     by_day: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> dict[str, Any]:
@@ -4086,6 +4177,7 @@ def fit_center_width(
     # ceiling was served to.  A record; nothing below reads it.
     if stage_id == "P0":
         evidence["far_peak_ceiling"] = _far_peak_ceiling_reading(by_day)
+        evidence["f_far_tail_mix"] = _f_far_tail_reading(by_day)
     # The TAF-conditional lane (charter 57, distance axis): each cell fits
     # its own scalars from its own slice of the same train/forward split --
     # the shift along each day's TAF direction, the width unsigned -- and is

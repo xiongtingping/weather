@@ -361,6 +361,73 @@ def far_peak_ceiling_method_tag_suffix() -> str:
     return "::" + FAR_PEAK_CEILING_METHOD_TAG if far_peak_ceiling_serves() else ""
 
 
+# Charter 261 (user ruling 2026-10-09 「落地」): past 36 hours an F-station P0
+# vector is served a fixed tail mix -- ``apply_tail_mix`` at
+# ``F_FAR_TAIL_MIX_WEIGHT`` with the slice scale -- on the pair's output,
+# before the far-peak ceiling.  Measured on the served record 09-05..10-08
+# (docs/research/arms_peak_tail_20261009, PROTOCOL first): F stations past
+# 36 h said 0.125 on |d|>=2 where 0.146 landed, the mix at 0.15 took LogScore
+# -0.0235 [-0.0465, -0.0037] with CRPS and Brier none worse; re-served from the
+# envelope receipts' recorded inputs in production order the fixed weight
+# passed at 0.10 (-0.0197 [-0.0375, -0.0029]) and 0.15 (-0.0242), the
+# lane-style walk-forward choice (0.2-0.3) did not; on C stations and inside
+# 36 h the same mix made every score worse, so it reaches neither.  0.10 is
+# the conservative end of what passed.  A fixed rule like the ceiling: the
+# holdout scores it, the certificate carries the tag, serving applies it
+# exactly where the tag is; the width lane keeps fitting on the pre-mix
+# vector (the receipt's input) and journals a nightly reading.
+F_FAR_TAIL_METHOD_TAG = "f_far_tail_mix_v1"
+F_FAR_TAIL_SLICE_NAME = "f_far"
+F_FAR_TAIL_MIX_WEIGHT = 0.10
+F_FAR_TAIL_MIN_HOURS_TO_SETTLEMENT = 36.0
+F_FAR_TAIL_MODE = (
+    os.environ.get("PM_P0_F_FAR_TAIL_MIX", "").strip().lower() or "serve"
+)
+if F_FAR_TAIL_MODE not in {"serve", "off"}:
+    raise RuntimeError(f"unknown F far-tail mix mode: {F_FAR_TAIL_MODE}")
+
+
+def f_far_tail_mix_serves() -> bool:
+    return F_FAR_TAIL_MODE == "serve"
+
+
+def f_far_tail_method_tag_suffix() -> str:
+    """What a certificate appends for the holdout it scored: the tag while
+    the rule serves, nothing while it is off."""
+
+    return "::" + F_FAR_TAIL_METHOD_TAG if f_far_tail_mix_serves() else ""
+
+
+def is_f_ladder(ordered_keys: Sequence[str]) -> bool:
+    """Whether this ladder is a Fahrenheit market's (charter 53: the unit is a
+    station property and the labels carry it)."""
+
+    return any("°F" in str(key) for key in ordered_keys)
+
+
+def f_far_tail_weight_for(
+    *,
+    hours_to_settlement: float | None,
+    f_ladder: bool,
+    enabled: bool = True,
+) -> float | None:
+    """The tail-mix weight a decision is served under this rule, or None.
+
+    Fails closed on an unknown horizon, as the ceiling does; reaches only an
+    F ladder strictly past the horizon, while the rule serves and the
+    artifact carries the tag."""
+
+    if not enabled or not f_far_tail_mix_serves() or not f_ladder or hours_to_settlement is None:
+        return None
+    try:
+        hours = float(hours_to_settlement)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(hours) or not hours > F_FAR_TAIL_MIN_HOURS_TO_SETTLEMENT:
+        return None
+    return F_FAR_TAIL_MIX_WEIGHT
+
+
 def far_peak_ceiling_for(
     *,
     hours_to_settlement: float | None,

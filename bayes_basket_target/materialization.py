@@ -1001,9 +1001,11 @@ def materialize_p0m_observed(
     # width laid on by widening the kernel, not stretching the members.
     # v29 (charter 248, 2026-10-03): the root (P0 v26) -- the thin-far
     # slice is a tail mix on the stage pair.
+    # v31 (charter 261, 2026-10-09): the root (P0 v28) -- past 36 h an F
+    # station is served the fixed tail mix.
     # v30 (charter 253, 2026-10-04): the root (P0 v27) -- past 36 h no
     # bucket is served above 0.45.
-    posterior_version: str = "p0m_taf_likelihood_v30",
+    posterior_version: str = "p0m_taf_likelihood_v31",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1403,7 +1405,7 @@ def materialize_p1(
     # the thin-far slice is a tail mix on the stage pair.
     # v38 (charter 253, 2026-10-04): the root again (P0 v27, P0-M v30) --
     # past 36 h no bucket is served above 0.45.
-    posterior_version: str = "p1_joint_likelihood_v38",
+    posterior_version: str = "p1_joint_likelihood_v39",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

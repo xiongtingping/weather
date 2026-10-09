@@ -410,6 +410,11 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # far-peak ceiling), on artifacts whose holdout scored it.  Declared
         # past the push and past the restart that deploys it.
         "calibrated_native_cross_ensemble_p0_v27": "2026-10-04T15:45:00Z",
+        # Charter 261: past 36 hours an F-station vector is served the fixed
+        # tail mix (weight 0.10, scale 1.5), on artifacts whose holdout
+        # scored it.  Declared past the push and past the restart that
+        # deploys it.
+        "calibrated_native_cross_ensemble_p0_v28": "2026-10-09T06:20:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -474,6 +479,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v29": "2026-10-02T17:30:00Z",
         # Charter 253: root bump at the instant P0 v27 declares.
         "p0m_taf_likelihood_v30": "2026-10-04T15:45:00Z",
+        # Charter 261: root bump at the instant P0 v28 declares.
+        "p0m_taf_likelihood_v31": "2026-10-09T06:20:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -548,6 +555,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v37": "2026-10-02T17:30:00Z",
         # Charter 253: root bump at the instant P0 v27 declares.
         "p1_joint_likelihood_v38": "2026-10-04T15:45:00Z",
+        # Charter 261: root bump at the instant P0 v28 declares.
+        "p1_joint_likelihood_v39": "2026-10-09T06:20:00Z",
     },
 }
 

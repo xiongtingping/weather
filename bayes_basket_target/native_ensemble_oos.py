@@ -34,8 +34,11 @@ from .forecast_physics_asof import resolve_radiation_as_of
 from .station_registry import station_coordinates
 from .station_season import season_bins_for_window, station_season_bin
 from .center_width_calibration import (
+    f_far_tail_method_tag_suffix,
+    f_far_tail_mix_serves,
     far_peak_ceiling_method_tag_suffix,
     far_peak_ceiling_serves,
+    is_f_ladder,
     served_bucket_axis,
 )
 from .station_day_ladder import settled_rung, station_day_ladder
@@ -70,6 +73,7 @@ from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
     model_center_c as served_model_center_c,
+    with_f_far_tail,
     with_peak_ceiling,
     with_width_slice,
 )
@@ -2626,6 +2630,7 @@ def _day_center_width_layer(
     weights: Mapping[str, float],
     day: str,
     settlement_timezone: str | None,
+    f_ladder: bool = False,
 ) -> CenterWidthLayer | None:
     """Charter 239: the width layer for one holdout day, with the slice this
     day's decision would be in resolved onto it -- the seated count from the
@@ -2640,7 +2645,8 @@ def _day_center_width_layer(
     ceiling serving will apply.  A day with no horizon resolves to none."""
 
     ceiling_serves = far_peak_ceiling_serves()
-    if layer is None or not (slices or ceiling_serves):
+    f_far_serves = f_far_tail_mix_serves()
+    if layer is None or not (slices or ceiling_serves or f_far_serves):
         return layer
     seated = [system for system, weight in weights.items() if float(weight) > 0.0]
     decided = max(
@@ -2661,6 +2667,11 @@ def _day_center_width_layer(
             seated_system_count=len(seated),
             hours_to_settlement=hours,
         )
+    # Charter 261: the F-station far tail mix, after the slice and before the
+    # ceiling, by the resolver serving calls, while the rule serves.
+    layer = with_f_far_tail(
+        layer, hours_to_settlement=hours, f_ladder=f_ladder, enabled=f_far_serves,
+    )
     return with_peak_ceiling(
         layer, hours_to_settlement=hours, enabled=ceiling_serves,
     )
@@ -2843,6 +2854,7 @@ def _select_minimum_crps_subset(
                     predictions_by_system=predictions_by_system,
                     weights=weights, day=day,
                     settlement_timezone=settlement_timezone,
+                    f_ladder=is_f_ladder(ordered_keys),
                 ),
                 ladder=day_ladder,
             )
@@ -4279,6 +4291,11 @@ def _load_cases(
             "evidence_timing_class": evidence_timing_class,
             "transport_provider_id": transport_provider_id,
             "actual_tmax_c": truth[day]["actual_tmax_c"],
+            # Keep the exact label's clock. Offline consumers must not attach
+            # a station-day's first publication time to a later revision.
+            "truth_id": truth[day]["truth_id"],
+            "truth_revision_no": truth[day]["revision_no"],
+            "truth_canonical_committed_at_utc": truth[day]["canonical_committed_at_utc"],
             "historical_closed_day": True,
             "oos_event_temporal_scope": HISTORICAL_OOS_TEMPORAL_SCOPE,
             "future_event_count": 0,
@@ -5832,6 +5849,7 @@ def build_native_ensemble_oos(
                 predictions_by_system=predictions_by_system,
                 weights=weights, day=day,
                 settlement_timezone=scope_timezone,
+                f_ladder=is_f_ladder(ordered_keys),
             )
 
             def _shaped(
@@ -7703,6 +7721,8 @@ def persist_native_ensemble_oos(
                         # absent where no layer was scored or the rule is
                         # off.
                         + far_peak_ceiling_method_tag_suffix()
+                        # Charter 261: likewise the F-station far tail mix.
+                        + f_far_tail_method_tag_suffix()
                         if candidate.get("center_width_sha256")
                         else ""
                     )

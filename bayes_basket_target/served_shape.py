@@ -39,8 +39,11 @@ import dataclasses
 
 from .center_width_calibration import (
     apply_center_width_calibration,
+    F_FAR_TAIL_SLICE_NAME,
+    TAIL_MIX_SCALE,
     apply_peak_ceiling,
     apply_tail_mix,
+    f_far_tail_weight_for,
     far_peak_ceiling_for,
     width_slice_for,
 )
@@ -100,6 +103,46 @@ def with_peak_ceiling(
     if ceiling == layer.peak_ceiling:
         return layer
     return dataclasses.replace(layer, peak_ceiling=ceiling)
+
+
+def with_f_far_tail(
+    layer: CenterWidthLayer | None,
+    *,
+    hours_to_settlement: float | None,
+    f_ladder: bool,
+    enabled: bool,
+) -> CenterWidthLayer | None:
+    """The layer with charter 261's F-station far-lead tail mix resolved onto
+    it, as a slice named ``F_FAR_TAIL_SLICE_NAME`` at the fixed weight.
+
+    Resolved after the lane's own slice (charter 248) and before the ceiling:
+    a slice the lane fitted and admitted stands -- this rule fills in only
+    where no slice applies -- so the two never stack.  One resolver for
+    serving and the gate; ``enabled`` is the artifact's own word (the tag).
+    A layer of ``None`` stays ``None``.
+    """
+
+    if layer is None:
+        return None
+    weight = f_far_tail_weight_for(
+        hours_to_settlement=hours_to_settlement, f_ladder=f_ladder, enabled=enabled,
+    )
+    if weight is None:
+        if layer.width_slice == F_FAR_TAIL_SLICE_NAME:
+            return dataclasses.replace(
+                layer, width_slice=None, width_slice_tail_weight=None, width_slice_tail_scale=None,
+            )
+        return layer
+    if (
+        layer.width_slice is not None
+        and layer.width_slice != F_FAR_TAIL_SLICE_NAME
+        and float(layer.width_slice_tail_weight or 0.0) > 0.0
+    ):
+        return layer
+    return dataclasses.replace(
+        layer, width_slice=F_FAR_TAIL_SLICE_NAME,
+        width_slice_tail_weight=float(weight), width_slice_tail_scale=float(TAIL_MIX_SCALE),
+    )
 
 
 def with_width_slice(
