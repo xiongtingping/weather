@@ -1,0 +1,32 @@
+=== 1. agreement by update size ===
+   natd:ECMWF_AIFS_ENS_GLOBAL         |d| 0.0-0.3  n= 647  agree 0.552  update skill +0.024  theirs +0.118
+   natd:ECMWF_AIFS_ENS_GLOBAL         |d| 0.3-0.6  n= 218  agree 0.606  update skill +0.192  theirs +0.245
+   natd:ECMWF_AIFS_ENS_GLOBAL         |d| 0.6-1.0  n=  81  agree 0.593  update skill +0.157  theirs +0.241
+   ptd:ECMWF_IFS_9KM_RELAY_POINT      |d| 0.0-0.3  n= 392  agree 0.523  update skill -0.003  theirs +0.180
+   ptd:ECMWF_IFS_9KM_RELAY_POINT      |d| 0.3-0.6  n= 254  agree 0.567  update skill +0.189  theirs +0.156
+   ptd:ECMWF_IFS_9KM_RELAY_POINT      |d| 0.6-1.0  n= 140  agree 0.571  update skill -0.013  theirs +0.211
+   ptd:ECMWF_IFS_9KM_RELAY_POINT      |d| 1.0-9.0  n= 120  agree 0.542  update skill +0.098  theirs +0.082
+   natd:ECMWF_IFS_ENS_OPEN_PF50       |d| 0.0-0.3  n= 643  agree 0.535  update skill +0.017  theirs +0.158
+   natd:ECMWF_IFS_ENS_OPEN_PF50       |d| 0.3-0.6  n= 226  agree 0.562  update skill +0.083  theirs +0.220
+   natd:ECMWF_IFS_ENS_OPEN_PF50       |d| 0.6-1.0  n=  99  agree 0.424  update skill +0.119  theirs +0.063
+
+=== 2. events where the ECMWF-family update is silent: n=263, their skill +0.157 ===
+   ptd:CMA_GRAPES_GLOBAL_POINT              n= 117 agree 0.624  own skill -0.022
+   natd:NOAA_GEFS_05                        n=  84 agree 0.583  own skill -0.005
+   skew                                     n= 108 agree 0.574  own skill +0.031
+   nat:NOAA_AIGEFS_025                      n= 182 agree 0.571  own skill +0.031
+   natd:NOAA_AIGEFS_025                     n= 109 agree 0.560  own skill -0.019
+   nat:DWD_ICON_GLOBAL_EPS                  n= 177 agree 0.531  own skill +0.092
+   pt:ECMWF_AIFS_SINGLE_POINT               n= 137 agree 0.526  own skill +0.005
+   ptd:ECMWF_IFS_9KM_RELAY_POINT            n=  63 agree 0.524  own skill +0.185
+   om:ecmwf_aifs025_single                  n= 159 agree 0.509  own skill -0.074
+   om:icon_global                           n= 167 agree 0.509  own skill +0.095
+   nat:NOAA_GEFS_05                         n= 185 agree 0.503  own skill -0.045
+   served                                   n= 134 agree 0.500  own skill -0.024
+
+=== 3. consensus of every system newest update (natd:* and ptd:*) ===
+   net votes >= 1: n= 881 agree 0.593  consensus skill +0.078  theirs +0.167
+   net votes >= 2: n= 638 agree 0.605  consensus skill +0.094  theirs +0.175
+   net votes >= 3: n= 406 agree 0.635  consensus skill +0.102  theirs +0.158
+   non-ECMWF systems, net votes >= 1: n= 815 agree 0.564  skill +0.012
+   non-ECMWF systems, net votes >= 2: n= 460 agree 0.570  skill +0.061

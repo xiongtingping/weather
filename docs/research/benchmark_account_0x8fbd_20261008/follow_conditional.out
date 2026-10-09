@@ -54,3 +54,13 @@ events with a mid 10 min after the first fill: 3648
    NO off mode                        n= 114   +4.6c [ -2.7,+10.9]  H1  +2.0 H2  +5.9  days+ 9/15  BOTH+
    C, >=12h, not YES-mode (joined subset) n= 222   +6.0c [ -0.7,+13.2]  H1  +8.6 H2  +4.8  days+ 12/15  BOTH+
      + q_mode<0.45                    n= 110   +8.9c [ +0.9,+17.5]  H1 +15.3 H2  +5.0  days+ 10/14  BOTH+
+
+-- round 18: ECMWF-family newest update vs their direction (off-mode events joined)
+   all follow events: update agree    n= 413   +6.9c [ +2.6,+11.8]  H1  +6.4 H2  +7.1  days+ 13/15  BOTH+
+   all follow events: update disagree n= 292   -2.6c [ -7.7, +2.3]  H1  -4.6 H2  -1.0  days+ 5/15  
+   all follow events: update silent   n= 235   -3.3c [ -9.2, +3.4]  H1  -6.2 H2  -1.2  days+ 7/15  
+   within round-10 filter: update agree n= 120  +11.5c [ +4.3,+18.6]  H1 +18.7 H2  +7.1  days+ 12/15  BOTH+
+   within round-10 filter: update disagree n=  92   -4.0c [-12.1, +4.1]  H1  -4.6 H2  -3.1  days+ 5/15  
+   within round-10 filter: update silent n=  66   +0.8c [-10.4,+12.0]  H1  -4.1 H2  +4.0  days+ 9/15  
+   round-10 filter + C + >=12h + update agrees n=  63  +17.3c [ +7.3,+28.0]  H1 +28.4 H2 +11.3  days+ 12/15  BOTH+
+   round-10 filter + C + >=12h + update not disagreeing n=  97  +11.6c [ +1.8,+22.1]  H1 +21.9 H2  +6.6  days+ 10/15  BOTH+

@@ -132,3 +132,23 @@ for lab, fn in (('q_mode<0.35', lambda r: r['qm2'] < 0.35), ('q_mode 0.35-0.45',
     line(lab, [r for r in F2 if fn(r)])
 line('C, >=12h, not YES-mode (joined subset)', [r for r in F2 if r['unit'] == 'C' and r['lead'] >= 12 and not (r['side'] == 'Yes' and r['d2'] == 0)])
 line('  + q_mode<0.45', [r for r in F2 if r['unit'] == 'C' and r['lead'] >= 12 and not (r['side'] == 'Yes' and r['d2'] == 0) and r['qm2'] < 0.45])
+
+# ---- round 18: split by whether the ECMWF-family newest update agrees with their direction
+DR = {(d['station'], d['ed'], d['ts']): d for d in json.load(open(f'{B}/direction_rows.json'))}
+FAM = ['natd:ECMWF_AIFS_ENS_GLOBAL', 'natd:ECMWF_IFS_ENS_OPEN_PF50', 'ptd:ECMWF_IFS_9KM_RELAY_POINT', 'ptd:ECMWF_AIFS_SINGLE_POINT']
+evs_ft = [e for e in E if e['first_taker'] and e['truth_ord'] is not None and mid_at(e['cid'], e['ts'] + 600, 900) is not None]
+for r, e in zip(R, evs_ft):
+    d = DR.get((e['station'], e['event_date'], e['ts']))
+    r['fam'] = None
+    if d:
+        v = [d['sig'][k] for k in FAM if k in d['sig']]
+        if v and abs(sum(v)) >= 0.3:
+            r['fam'] = 'agree' if (1 if sum(v) > 0 else -1) == d['s'] else 'disagree'
+        else:
+            r['fam'] = 'silent'
+print('\n-- round 18: ECMWF-family newest update vs their direction (off-mode events joined)')
+for lab, flt in (('all follow events', lambda r: True), ('within round-10 filter', lambda r: r['ours'] is not None and r['ours'] > r['own'] + COST)):
+    for st_ in ('agree', 'disagree', 'silent'):
+        line(f'{lab}: update {st_}', [r for r in R if r.get('fam') == st_ and flt(r)])
+line('round-10 filter + C + >=12h + update agrees', [r for r in R if r.get('fam') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
+line('round-10 filter + C + >=12h + update not disagreeing', [r for r in R if r.get('fam') in ('agree', 'silent') and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
