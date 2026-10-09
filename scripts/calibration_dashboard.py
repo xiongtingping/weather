@@ -23000,6 +23000,7 @@ function sdSky(day){
   const H = day.hourly_sky;
   if(!H) return "";
   if(!H.available) return `<div class="sd-ev muted">逐小时云与辐射：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
+  const sat = H.satellite || {};
   const pc0 = v => v == null ? "—" : Math.round(v) + "%";
   const w = v => v == null ? "—" : String(Math.round(v));
   const deg = v => v == null ? "—" : sdN(v, 1) + "°";
@@ -23019,7 +23020,10 @@ function sdSky(day){
     return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
       ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
-      ${pair(o ? w(o.inferred_sw_wm2) : "—", w(f.sw), f.sw_d1 == null ? null : `${w(f.sw_d1)} W/m²`, tone(r, "sw"))}
+      ${sat.product
+        ? pair(r.sat_sw_wm2 != null ? w(r.sat_sw_wm2) : r.past || o ? '<span class="muted" title="卫星约晚 1 小时">未到</span>' : "—", w(f.sw),
+            `${f.sw_d1 == null ? "" : w(f.sw_d1) + " W/m²"}${o && o.inferred_sw_wm2 != null ? `；报文推算 ${w(o.inferred_sw_wm2)}（霾与中高云下偏高，不作判断）` : ""}`, tone(r, "sw"))
+        : pair(o ? `<span title="无卫星覆盖，按报文云量推算">≈${w(o.inferred_sw_wm2)}</span>` : "—", w(f.sw), f.sw_d1 == null ? null : `${w(f.sw_d1)} W/m²`, tone(r, "sw"))}
       ${pair(o && o.temp_c != null ? deg(o.temp_c) : "—", deg(f.temp_c), f.temp_c_d1 == null ? null : deg(f.temp_c_d1), tone(r, "temp"))}
       <td class="mono sd-sky-wx">${sdEsc(weather) || '<span class="muted">—</span>'}</td>
       <td class="sd-sky-tags">${tags || '<span class="muted">—</span>'}</td></tr>`;
@@ -23027,14 +23031,19 @@ function sdSky(day){
   const observed = (H.rows || []).filter(r => r.obs);
   const off = observed.filter(r => (r.diffs || []).some(x => x.kind === "cloud" || x.kind === "sw")).length;
   const latest = observed.reduce((a, r) => Math.max(a, Number(r.hour)), -1);
-  const swObs = H.inferred_sw_mj_so_far, swFc = H.forecast_sw_mj_so_far;
+  const bySat = Boolean(sat.product);
+  const swObs = bySat ? H.sat_sw_mj_so_far : H.inferred_sw_mj_so_far;
+  const swFc = bySat ? H.sat_forecast_sw_mj_so_far : H.forecast_sw_mj_so_far;
+  const swTo = bySat ? sat.last_hour : latest;
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
+  const sunLine = swObs == null ? (bySat ? `卫星日照未到（${sdEsc(sat.reason || "约晚 1 小时")}）` : "")
+    : `截至 ${String(swTo).padStart(2, "0")}:00 ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "up" : "down"}">${sdSg(swPct, 0)}%</b>）`}`;
   const headline = observed.length
-    ? `截至 ${String(latest).padStart(2, "0")}:00 日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "up" : "down"}">${sdSg(swPct, 0)}%</b>）`} · <b class="${off ? "down" : ""}">${off}</b>/${observed.length} 小时云或日照偏离预报`
+    ? `${sunLine}${sunLine ? " · " : ""}<b class="${off ? "down" : ""}">${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
-    ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="报文云量推算的日照 · 预报日照（W/m²）">日照 W/m² <span class="muted">实况 · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
-    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射，日照由报文云量推算，高云多时偏高；报文只报低云，所以对比的是预报低云。红＝实况比预报多/强/暖，黄＝少/弱/冷；门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
+    ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，经 Open-Meteo 转发，约晚 1 小时）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
+    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。红＝实况比预报多/强/暖，黄＝少/弱/冷；门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
 }
 function sdTafRaw(d){

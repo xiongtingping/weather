@@ -652,6 +652,35 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
 FORECAST_CACHE_SECONDS = 1800.0
 _FORECAST_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
+# Measured sunshine (user 2026-10-09「实况日照数据源是什么？感觉有点高了」): the
+# METAR-inferred figure read 483-807 W/m2 at ZUUU 10-09 10-13h against a
+# satellite 83-254 -- the report sees only low cloud, and haze and the
+# clean-air clear-sky model add more.  The geostationary products below
+# (Open-Meteo's satellite archive, a republisher: board only) are measured
+# irradiance; the product follows the longitude the way the 2026-10-07 source
+# check picked it per station.  West of 60W none is real (the default there
+# is forecast-filled), so those stations keep the inferred figure, labelled.
+OPEN_METEO_SATELLITE = "https://satellite-api.open-meteo.com/v1/archive"
+SATELLITE_CACHE_SECONDS = 900.0
+_SATELLITE_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
+SATELLITE_PRODUCTS = {
+    "jma_jaxa_himawari": "JAXA Himawari",
+    "eumetsat_lsa_saf_iodc": "EUMETSAT 印度洋（IODC）",
+    "dwd_sis_europe_africa_v4": "DWD SIS 欧洲/非洲",
+    "eumetsat_lsa_saf_msg": "EUMETSAT MSG",
+}
+
+
+def _satellite_product(lon: float) -> str | None:
+    if lon >= 90.0 or lon <= -150.0:
+        return "jma_jaxa_himawari"
+    if lon >= 45.0:
+        return "eumetsat_lsa_saf_iodc"
+    if lon >= -20.0:
+        return "dwd_sis_europe_africa_v4"
+    if lon >= -60.0:
+        return "eumetsat_lsa_saf_msg"
+    return None
 CLOUD_DIFF = 0.375          # three oktas
 RADIATION_DIFF_FRAC = 0.25
 RADIATION_DIFF_MIN_WM2 = 100.0
@@ -703,6 +732,41 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     return out
 
 
+def _open_meteo_satellite(lat: float, lon: float, tz: str, day: str, model: str) -> dict[str, Any]:
+    """Hourly measured shortwave (W/m2, the mean of the hour ending at the
+    stamp, local time) from the named satellite product; cached briefly."""
+
+    import ssl  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    key = (f"{lat:.3f},{lon:.3f}", day, model)
+    hit = _SATELLITE_CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < SATELLITE_CACHE_SECONDS:
+        return hit[1]
+    query = urlencode({"latitude": lat, "longitude": lon, "timezone": tz, "start_date": day,
+                       "end_date": day, "hourly": "shortwave_radiation", "models": model})
+    try:
+        import certifi  # noqa: PLC0415
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    try:
+        with urlopen(Request(f"{OPEN_METEO_SATELLITE}?{query}", headers={"User-Agent": "weather-board-station-day"}),
+                     timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
+            data = json.loads(resp.read().decode("utf-8"))
+        values = (data.get("hourly") or {}).get("shortwave_radiation") or []
+        out = {"available": any(v is not None for v in values), "values": [_float(v) for v in values],
+               "fetched_at_utc": _iso(datetime.now(timezone.utc))}
+    except Exception as exc:  # noqa: BLE001 -- the panel falls back and says why
+        out = {"available": False, "values": [], "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    if out.get("available"):
+        _SATELLITE_CACHE[key] = (time.monotonic(), out)
+    return out
+
+
 def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
     """Haurwitz clear-sky global horizontal irradiance, W/m^2."""
 
@@ -728,6 +792,12 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         return {"available": False, "reason": "no_station_coordinates"}
     lat, lon = where
     fc = _open_meteo_hourly(lat, lon, str(zone.key), day)
+    product = _satellite_product(lon)
+    started = datetime.fromisoformat(day).date() <= datetime.now(timezone.utc).astimezone(zone).date()
+    # A day not begun has nothing measured yet (the archive answers 400).
+    sat = (_open_meteo_satellite(lat, lon, str(zone.key), day, product) if product and started
+           else {"available": False, "reason": None if started else "day_not_started"})
+    sat_values = sat.get("values") or []
     hourly = fc.get("hourly") or {}
     times = hourly.get("time") or []
     by_hour: dict[int, dict[str, Any]] = {}
@@ -753,7 +823,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
         } if times else {}
         obs = by_hour.get(h)
-        row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None, "diffs": []}
+        sat_sw = sat_values[h] if h < len(sat_values) else None
+        row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None,
+                               "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0), "diffs": []}
         if obs is not None:
             prev = by_hour.get(h - 1)
             covers = [x["cloud_cover"] for x in (prev, obs) if x and x.get("cloud_cover") is not None]
@@ -776,11 +848,15 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                 elif gap <= -CLOUD_DIFF:
                     diffs.append({"kind": "cloud", "dir": "less", "text": f"比预报晴（低云实况 {obs['cloud_cover']:.0%} 对预报 {low:.0f}%）"})
             sw = fc_row.get("sw")
-            if inferred is not None and sw is not None and max(inferred, sw) >= RADIATION_DIFF_MIN_WM2:
-                gap = inferred - sw
+            # Measured where a satellite covers the station; the inferred
+            # figure judges only where none does (it reads high under haze
+            # and mid/high cloud the report cannot see).
+            seen, basis = (sat_sw, "卫星实测") if product else (inferred, "报文推算")
+            if seen is not None and sw is not None and max(seen, sw) >= RADIATION_DIFF_MIN_WM2:
+                gap = seen - sw
                 if abs(gap) >= RADIATION_DIFF_MIN_WM2 and abs(gap) >= RADIATION_DIFF_FRAC * max(sw, 1.0):
                     diffs.append({"kind": "sw", "dir": "more" if gap > 0 else "less",
-                                  "text": f"辐射{'强于' if gap > 0 else '弱于'}预报（推断 {inferred:.0f} 对预报 {sw:.0f} W/m²）"})
+                                  "text": f"日照{'强于' if gap > 0 else '弱于'}预报（{basis} {seen:.0f} 对预报 {sw:.0f} W/m²）"})
             t_fc = fc_row.get("temp_c")
             if t_fc is not None and obs.get("temp_c") is not None:
                 gap = obs["temp_c"] - t_fc
@@ -796,11 +872,18 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
     sums = {k: (round(sum(r["forecast"].get(k) or 0 for r in rows) * 0.0036, 2) if times else None)
             for k in ("sw", "sw_d1")}
     past = [r for r in rows if r["obs"] and r["obs"]["inferred_sw_wm2"] is not None]
+    measured = [r for r in rows if r["past"] and r["sat_sw_wm2"] is not None]
     return {
         "available": bool(times), "reason": fc.get("reason"),
         "source": "Open-Meteo 逐小时（aggregator_republisher，仅作参考，不进任何层）",
         "fetched_at_utc": fc.get("fetched_at_utc"), "rows": rows,
         "forecast_sw_mj": sums["sw"], "forecast_sw_d1_mj": sums["sw_d1"],
+        "satellite": {"product": product, "label": SATELLITE_PRODUCTS.get(product or "", ""),
+                      "available": bool(sat.get("available")), "reason": sat.get("reason"),
+                      "fetched_at_utc": sat.get("fetched_at_utc"),
+                      "last_hour": max((r["hour"] for r in measured), default=None)},
+        "sat_sw_mj_so_far": round(sum(r["sat_sw_wm2"] for r in measured) * 0.0036, 2) if measured else None,
+        "sat_forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in measured) * 0.0036, 2) if measured and times else None,
         "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,
         "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
     }
