@@ -18,13 +18,13 @@ shares; ``0x8fbd7cf5`` bought 16 NO at 0.59 that second), 「先卖出，反向�
   YES token; against a NO leg, the mirror.  Only at an implied YES price
   inside ``[OPPOSITE_IMPLIED_MIN, OPPOSITE_IMPLIED_MAX]``: a 0.998 sale of a
   settled winner (the cluster's recycle) or a sub-cent NO is not a view.
-* **the verdict** (``SEAL_CRITERION``, user ruling 2026-10-09 「改封桶口径」):
-  the cluster is on the other side of the leg when the shares it traded on
-  the other side outnumber those it traded on the leg's own side, all eight
-  wallets together, maker and taker, inside the same price band.  One
-  opposite fill does not decide it: on EGLC 10-09 20°C the lead wallet's one
-  maker NO fill (31 shares, inside its own 183.7-share YES take of the same
-  second) stood against 1,044 shares the cluster bought YES.
+* **the verdict** (``SEAL_CRITERION``, user rulings 2026-10-09 「改封桶口径」 and
+  「不做对手盘：要区分yes和no的份额和时间轴」): the cluster's position on the
+  bucket, its YES shares and its NO shares apart, walked fill by fill in time
+  order; equal amounts are locked pairs, the excess is its stance, and the
+  stance as it stands at the read decides.  One opposite fill does not: on
+  EGLC 10-09 20°C the lead wallet's one maker NO fill (31 shares, inside its
+  own 183.7-share YES take of the same second) stood against 1,044 YES.
 
 Pure apart from the HTTP read; nothing here writes.
 """
@@ -173,27 +173,65 @@ def is_opposite(fill: Mapping[str, Any], *, side: str, yes_token: str, no_token:
     return implied is not None and OPPOSITE_IMPLIED_MIN <= implied <= OPPOSITE_IMPLIED_MAX
 
 
-SEAL_CRITERION = "cluster_net_side_v2"
+SEAL_CRITERION = "cluster_position_v3"
+
+
+def cluster_position(
+    fills: Iterable[Mapping[str, Any]], *, yes_token: str, no_token: str,
+) -> dict[str, Any]:
+    """The cluster's position on one bucket, YES and NO apart, walked in time
+    order (user ruling 2026-10-09 「不做对手盘：要区分yes和no的份额和时间轴」).
+
+    ``yes_shares`` and ``no_shares`` are each token's buys less its sells, all
+    eight wallets, inside the price band.  Equal amounts of the two are a
+    locked pair -- worth a dollar whatever the weather -- and say nothing;
+    ``net_yes = yes_shares - no_shares`` is the stance (above zero long YES,
+    below zero short).  ``since_ts`` is the fill at which the stance last took
+    its present sign, so a stance and how long it has held are read together:
+    EHAM 10-09 17°C was short from 10-08 13:00Z (421 NO on 19 YES) and long
+    again from 22:00Z (650 YES), its 444 NO from then on locked against YES."""
+
+    yes = no = 0.0
+    sign = 0
+    since: int | None = None
+    count = 0
+    for fill in sorted(fills, key=lambda f: (int(f.get("timestamp") or 0), str(f.get("transactionHash") or ""))):
+        implied = implied_yes_price(fill, yes_token=yes_token, no_token=no_token)
+        if implied is None or not OPPOSITE_IMPLIED_MIN <= implied <= OPPOSITE_IMPLIED_MAX:
+            continue
+        size = float(fill.get("size") or 0.0) * (1.0 if str(fill.get("side") or "").upper() == "BUY" else -1.0)
+        if str(fill.get("asset") or "") == yes_token:
+            yes += size
+        else:
+            no += size
+        count += 1
+        net = yes - no
+        now_sign = (net > 1e-9) - (net < -1e-9)
+        if now_sign != sign:
+            sign, since = now_sign, int(fill.get("timestamp") or 0)
+    return {"yes_shares": round(yes, 4), "no_shares": round(no, 4), "paired_shares": round(max(min(yes, no), 0.0), 4),
+            "net_yes": round(yes - no, 4), "since_ts": since if sign else None, "fills": count}
 
 
 def opposite_evidence(
     fills: Iterable[Mapping[str, Any]], *, side: str, yes_token: str, no_token: str,
 ) -> dict[str, Any] | None:
-    """The cluster's two sides of the bucket in shares, and -- when the other
-    side outnumbers the leg's own (``SEAL_CRITERION``) -- the evidence: the
-    tallies and the latest opposite fill; None otherwise."""
+    """The cluster's position when its stance is against a ``side`` leg --
+    short (more NO than YES) against YES, long against NO -- with the latest
+    fill that moved it that way; None otherwise (``SEAL_CRITERION``)."""
 
+    if side not in (SIDE_YES, SIDE_NO):
+        raise ValueError(f"benchmark_side_invalid:{side!r}")
     rows = list(fills)
-    against = [f for f in rows if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)]
-    mirror = SIDE_NO if side == SIDE_YES else SIDE_YES
-    along = [f for f in rows if is_opposite(f, side=mirror, yes_token=yes_token, no_token=no_token)]
-    opposite_shares = sum(float(f.get("size") or 0.0) for f in against)
-    same_shares = sum(float(f.get("size") or 0.0) for f in along)
-    if not against or not opposite_shares > same_shares:
+    position = cluster_position(rows, yes_token=yes_token, no_token=no_token)
+    against = position["net_yes"] < 0.0 if side == SIDE_YES else position["net_yes"] > 0.0
+    if not against:
         return None
-    last = max(against, key=lambda f: (int(f.get("timestamp") or 0), str(f.get("transactionHash") or "")))
+    movers = [f for f in rows if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)]
+    last = max(movers, key=lambda f: (int(f.get("timestamp") or 0), str(f.get("transactionHash") or "")))
     return {
         "criterion": SEAL_CRITERION,
+        **position,
         "wallet": str(last.get("_wallet") or last.get("proxyWallet") or ""),
         "fill_ts": int(last.get("timestamp") or 0),
         "fill_tx": str(last.get("transactionHash") or ""),
@@ -202,31 +240,14 @@ def opposite_evidence(
         "fill_price": float(last.get("price")),
         "fill_size": float(last.get("size") or 0.0),
         "implied_price": round(float(implied_yes_price(last, yes_token=yes_token, no_token=no_token)), 6),
-        "opposite_fills": len(against),
-        "opposite_shares": round(opposite_shares, 4),
-        "same_side_shares": round(same_shares, 4),
-    }
-
-
-def side_tallies(
-    fills: Iterable[Mapping[str, Any]], *, side: str, yes_token: str, no_token: str,
-) -> dict[str, float]:
-    """The cluster's shares on each side of a ``side`` leg, inside the band."""
-
-    rows = list(fills)
-    mirror = SIDE_NO if side == SIDE_YES else SIDE_YES
-    return {
-        "opposite_shares": round(sum(float(f.get("size") or 0.0) for f in rows
-                                     if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)), 4),
-        "same_side_shares": round(sum(float(f.get("size") or 0.0) for f in rows
-                                      if is_opposite(f, side=mirror, yes_token=yes_token, no_token=no_token)), 4),
+        "opposite_fills": len(movers),
     }
 
 
 __all__ = [
     "DEFAULT_FETCH",
     "SEAL_CRITERION",
-    "side_tallies",
+    "cluster_position",
     "OPPOSITE_IMPLIED_MAX",
     "OPPOSITE_IMPLIED_MIN",
     "implied_yes_price",

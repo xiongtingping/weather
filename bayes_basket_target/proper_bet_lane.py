@@ -231,12 +231,14 @@ PLAN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("passes", "INTEGER"),
     ("last_pass_at_utc", "TEXT"),
 )
-#: Charter 258: one row per bucket the cluster stands against a leg of this
-#: lane on -- its two sides in shares and its latest opposite fill are the
-#: evidence, and a row of the current ``criterion`` is the seal.  A row of an
-#: earlier criterion is judged again on its next read: sealed under this one
-#: it is rewritten, otherwise it is marked ``SEAL_LIFTED`` and kept as the
-#: record of what the earlier rule did.  The sell step's progress is kept on
+#: Charter 258: one row per bucket the cluster has stood against a leg of
+#: this lane on -- its position (YES and NO shares apart, the stance and since
+#: when) and the latest fill that moved it there are the evidence, and a row of
+#: the current ``criterion`` is the seal.  Every read judges the bucket again
+#: on the position as it stands (user ruling 「不做对手盘：要区分yes和no的份额和时间
+#: 轴」): a seal whose stance has turned is marked ``SEAL_LIFTED`` with when,
+#: and sealed again if it turns back; a row of an earlier criterion is
+#: rewritten either way.  The sell step's progress is kept on
 #: it (the ``flip_*`` columns); what it still needs is always recomputed from
 #: the order store.
 SEAL_DDL = (
@@ -266,10 +268,20 @@ SEAL_DDL = (
     ")"
 )
 #: Added with the net-side criterion (user ruling 2026-10-09 「改封桶口径」).
+#: ``opposite_shares``/``same_side_shares`` are the v2 criterion's flows and
+#: stay on its rows only; v3 (「要区分yes和no的份额和时间轴」) records the
+#: cluster's YES and NO shares apart, the locked pairs, the stance and since
+#: when, and when a seal lifted.
 SEAL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("criterion", "TEXT"),
     ("opposite_shares", "REAL"),
     ("same_side_shares", "REAL"),
+    ("yes_shares", "REAL"),
+    ("no_shares", "REAL"),
+    ("paired_shares", "REAL"),
+    ("net_yes", "REAL"),
+    ("since_ts", "INTEGER"),
+    ("lifted_at_utc", "TEXT"),
 )
 SEAL_LIFTED = f"lifted:{benchmark_cluster.SEAL_CRITERION}"
 
@@ -1077,8 +1089,6 @@ class BenchmarkView:
             str(t.get("condition_id") or "") for t in targets
             if t.get("condition_id") and str(t["condition_id"]) not in self.fills
             and str(t["condition_id"]) not in self.unreadable
-            and _seal_row(self.conn, str(t["station_id"]), str(t["event_date"]), str(t["bucket"]),
-                          str(t["side"])) is None
         })
         if not wanted:
             return
@@ -1096,8 +1106,6 @@ class BenchmarkView:
             return "clear", None
         where = (str(target["station_id"]), str(target["event_date"]), str(target["bucket"]), str(target["side"]))
         seal = _seal_row(self.conn, *where)
-        if seal is not None:
-            return "sealed", seal
         cond, no_token = str(target.get("condition_id") or ""), str(target.get("no_token") or "")
         if not cond or not no_token or not target.get("yes_token"):
             return "unreadable", None
@@ -1109,15 +1117,23 @@ class BenchmarkView:
             self.fills[cond], side=where[3], yes_token=str(target["yes_token"]), no_token=no_token,
         )
         if evidence is None:
-            # A seal an earlier criterion made, not borne out by this one.
-            tallies = benchmark_cluster.side_tallies(
-                self.fills[cond], side=where[3], yes_token=str(target["yes_token"]), no_token=no_token)
+            # Not against the leg now: a seal of this criterion whose stance
+            # has turned, or one an earlier criterion made, is lifted.
+            position = benchmark_cluster.cluster_position(
+                self.fills[cond], yes_token=str(target["yes_token"]), no_token=no_token)
             self.conn.execute(
-                f"UPDATE {SEAL_TABLE} SET criterion=?, opposite_shares=?, same_side_shares=?"
-                " WHERE station_id=? AND event_date=? AND bucket=? AND side=? AND criterion IS NULL",
-                (SEAL_LIFTED, tallies["opposite_shares"], tallies["same_side_shares"], *where),
+                f"UPDATE {SEAL_TABLE} SET criterion=?, yes_shares=?, no_shares=?, paired_shares=?, net_yes=?,"
+                " since_ts=?, lifted_at_utc=?"
+                " WHERE station_id=? AND event_date=? AND bucket=? AND side=? AND COALESCE(criterion, '')<>?"
+                " AND COALESCE(criterion, '') NOT LIKE 'lifted:%'",
+                (SEAL_LIFTED, position["yes_shares"], position["no_shares"], position["paired_shares"],
+                 position["net_yes"], position["since_ts"], self.now_utc, *where, SEAL_LIFTED),
             )
             return "clear", None
+        if seal is not None and all(
+            seal.get(k) == evidence[k] for k in ("yes_shares", "no_shares", "fill_ts", "since_ts")
+        ):
+            return "sealed", seal
         row = {
             "station_id": where[0], "event_date": where[1], "bucket": where[2], "side": where[3],
             "yes_token": str(target["yes_token"]), "no_token": no_token, "condition_id": cond,
@@ -1126,9 +1142,13 @@ class BenchmarkView:
             "fill_token_side": evidence["fill_token_side"], "fill_action": evidence["fill_action"],
             "fill_price": evidence["fill_price"], "fill_size": evidence["fill_size"],
             "implied_price": evidence["implied_price"], "opposite_fills": evidence["opposite_fills"],
-            "criterion": evidence["criterion"], "opposite_shares": evidence["opposite_shares"],
-            "same_side_shares": evidence["same_side_shares"],
+            "criterion": evidence["criterion"], "yes_shares": evidence["yes_shares"],
+            "no_shares": evidence["no_shares"], "paired_shares": evidence["paired_shares"],
+            "net_yes": evidence["net_yes"], "since_ts": evidence["since_ts"], "lifted_at_utc": None,
         }
+        if seal is not None:
+            # Still sealed, the position moved: keep when it was sealed.
+            row["sealed_at_utc"], row["sealed_by"] = seal["sealed_at_utc"], seal["sealed_by"]
         # An earlier criterion's row for the bucket is rewritten; the sell
         # step's own columns are left as they stand.
         keys = ("station_id", "event_date", "bucket", "side")
@@ -1138,10 +1158,11 @@ class BenchmarkView:
             + ",".join(f"{k}=excluded.{k}" for k in row if k not in keys),
             tuple(row.values()),
         )
-        self.sealed_new.append({k: row[k] for k in (
-            "station_id", "event_date", "bucket", "side", "sealed_by", "wallet", "fill_action",
-            "fill_token_side", "fill_price", "fill_size", "implied_price", "opposite_fills",
-            "opposite_shares", "same_side_shares")})
+        if seal is None:
+            self.sealed_new.append({k: row[k] for k in (
+                "station_id", "event_date", "bucket", "side", "sealed_by", "wallet", "fill_action",
+                "fill_token_side", "fill_price", "fill_size", "implied_price", "opposite_fills",
+                "yes_shares", "no_shares", "paired_shares", "net_yes", "since_ts")})
         return "sealed", row
 
 
@@ -1784,7 +1805,8 @@ def _next_step(
     base = {"station_id": station, "event_date": day, "bucket": bucket,
             "settlement_timezone": str(target["settlement_timezone"]), "tick": tick,
             "seal": {k: (seal or {}).get(k) for k in (
-                "criterion", "opposite_shares", "same_side_shares", "wallet", "fill_ts", "fill_tx",
+                "criterion", "yes_shares", "no_shares", "paired_shares", "net_yes", "since_ts", "wallet",
+                "fill_ts", "fill_tx",
                 "fill_action", "fill_token_side", "fill_price", "implied_price", "sealed_at_utc")}}
     if bid is not None and shares >= min_size and shares * bid >= EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
         if can_submit_next_order(conn, bucket=bucket, token_id=token).get("allowed") is not True:

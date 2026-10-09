@@ -148,13 +148,32 @@ def test_an_opposite_fill_is_a_no_buy_or_a_yes_sale_inside_the_price_band(asset,
         assert cluster.is_opposite(fill, side="NO", yes_token="t27", no_token="n27") is (not against)
 
 
-def test_the_evidence_is_the_net_side_and_the_latest_opposite_fill() -> None:
+def test_the_evidence_is_the_position_yes_and_no_apart_on_the_time_axis() -> None:
     fills = [_fill("n27", "BUY", 0.60, ts=20, size=10), _fill("n27", "BUY", 0.59, ts=10, size=8),
              _fill("t27", "BUY", 0.4, ts=5, size=12)]
     evidence = cluster.opposite_evidence(fills, side="YES", yes_token="t27", no_token="n27")
     assert evidence["criterion"] == cluster.SEAL_CRITERION
     assert evidence["fill_ts"] == 20 and evidence["implied_price"] == pytest.approx(0.40)
-    assert (evidence["opposite_shares"], evidence["same_side_shares"], evidence["opposite_fills"]) == (18.0, 12.0, 2)
+    # 12 YES and 18 NO: 12 locked pairs, short 6 -- since the fill at ts 20
+    # (at ts 10 the 8 NO only locked 8 of the 12 YES, still long).
+    assert (evidence["yes_shares"], evidence["no_shares"], evidence["paired_shares"]) == (12.0, 18.0, 12.0)
+    assert (evidence["net_yes"], evidence["since_ts"], evidence["opposite_fills"]) == (-6.0, 20, 2)
+
+
+def test_the_stance_follows_the_time_axis() -> None:
+    """EHAM 10-09 17°C: short from 10-08 13:00Z (421 NO on 19 YES), long again
+    from 22:00Z (650 YES) -- the 444 NO then locked against YES, not a view."""
+
+    fills = [_fill("t27", "BUY", 0.40, ts=100, size=19.0), _fill("n27", "BUY", 0.56, ts=200, size=421.0),
+             _fill("n27", "BUY", 0.57, ts=300, size=23.0), _fill("t27", "BUY", 0.42, ts=400, size=650.0)]
+    early = cluster.cluster_position(fills[:3], yes_token="t27", no_token="n27")
+    assert (early["net_yes"], early["since_ts"]) == (-425.0, 200)
+    assert cluster.opposite_evidence(fills[:3], side="YES", yes_token="t27", no_token="n27") is not None
+    late = cluster.cluster_position(fills, yes_token="t27", no_token="n27")
+    assert (late["yes_shares"], late["no_shares"], late["paired_shares"]) == (669.0, 444.0, 444.0)
+    assert (late["net_yes"], late["since_ts"]) == (225.0, 400)
+    assert cluster.opposite_evidence(fills, side="YES", yes_token="t27", no_token="n27") is None
+    assert cluster.opposite_evidence(fills, side="NO", yes_token="t27", no_token="n27")["net_yes"] == 225.0
 
 
 def test_one_opposite_fill_inside_a_yes_accumulation_does_not_seal() -> None:
@@ -165,8 +184,8 @@ def test_one_opposite_fill_inside_a_yes_accumulation_does_not_seal() -> None:
     fills = [_fill("n27", "BUY", 0.44, ts=10, size=31.0)] + [
         _fill("t27", "BUY", 0.42, ts=10 + i, size=104.4) for i in range(10)]
     assert cluster.opposite_evidence(fills, side="YES", yes_token="t27", no_token="n27") is None
-    assert cluster.side_tallies(fills, side="YES", yes_token="t27", no_token="n27") == {
-        "opposite_shares": 31.0, "same_side_shares": 1044.0}
+    position = cluster.cluster_position(fills, yes_token="t27", no_token="n27")
+    assert (position["yes_shares"], position["no_shares"], position["paired_shares"]) == (1044.0, 31.0, 31.0)
     # Selling the NO it held is the YES side too; a tie does not seal.
     tie = [_fill("n27", "BUY", 0.6, size=10), _fill("n27", "SELL", 0.6, size=10)]
     assert cluster.opposite_evidence(tie, side="YES", yes_token="t27", no_token="n27") is None
@@ -208,12 +227,27 @@ def test_no_plan_on_a_bucket_the_cluster_has_bought_no_on(store, warm) -> None:
     assert seal["sealed_by"] == "plan" and seal["wallet"] == LEAD
     assert (seal["fill_token_side"], seal["fill_action"]) == ("NO", "BUY")
     assert seal["implied_price"] == pytest.approx(0.49)
-    # Sealed for the station-day: the next pass reads nothing and still waits.
-    tape = _tape()
+    # Judged again on every read: still short, still sealed, nothing written.
     _snapshot(store, "snap_f2", "2026-09-18T12:03:00.000Z", _ladder(), 2)
-    again = _run(store, sent, fetch=tape, now="2026-09-18T12:03:30.000Z")
+    again = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.51)), now="2026-09-18T12:03:30.000Z")
     assert again["waiting_reasons"] == {lane.BENCHMARK_OPPOSITE: 1} and not sent
-    assert not any(COND in params["market"] for _p, params in tape.calls)
+    assert _seal(store)["sealed_at_utc"] == NOW
+
+
+def test_a_seal_lifts_when_the_cluster_turns_back_and_the_lane_opens(store, warm) -> None:
+    _seed(store, fresh_until=LONG)
+    sent: list = []
+    short = _tape(_fill("n27", "BUY", 0.51, size=16.0, ts=100))
+    _run(store, sent, fetch=short)
+    assert _seal(store) is not None and not sent
+    # The cluster buys 40 YES: 16 locked pairs, long 24 -- no longer against us.
+    _snapshot(store, "snap_f2", "2026-09-18T12:03:00.000Z", _ladder(), 2)
+    long_now = _tape(_fill("n27", "BUY", 0.51, size=16.0, ts=100), _fill("t27", "BUY", 0.49, size=40.0, ts=200))
+    receipt = _run(store, sent, fetch=long_now, now="2026-09-18T12:03:30.000Z")
+    assert receipt["planned"] == 1 and len(sent) == 1
+    row = store.execute(f"SELECT criterion, yes_shares, no_shares, net_yes, since_ts, lifted_at_utc"
+                        f" FROM {lane.SEAL_TABLE}").fetchone()
+    assert row == (lane.SEAL_LIFTED, 40.0, 16.0, 24.0, 200, "2026-09-18T12:03:30.000Z")
 
 
 def test_the_cluster_on_our_side_does_not_seal(store, warm) -> None:
@@ -448,8 +482,8 @@ def test_an_earlier_criterions_seal_not_borne_out_is_lifted_and_kept(store, warm
     receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.44, size=31.0),
                                              _fill("t27", "BUY", 0.42, size=1044.0)))
     assert receipt["planned"] == 1 and len(sent) == 1
-    row = store.execute(f"SELECT criterion, opposite_shares, same_side_shares, flip_state FROM {lane.SEAL_TABLE}").fetchone()
-    assert row == (lane.SEAL_LIFTED, 31.0, 1044.0, "done")
+    row = store.execute(f"SELECT criterion, yes_shares, no_shares, flip_state FROM {lane.SEAL_TABLE}").fetchone()
+    assert row == (lane.SEAL_LIFTED, 1044.0, 31.0, "done")
 
 
 def test_an_earlier_criterions_seal_borne_out_is_rewritten(store, warm) -> None:
@@ -461,7 +495,7 @@ def test_an_earlier_criterions_seal_borne_out_is_rewritten(store, warm) -> None:
     assert receipt["planned"] == 0 and not sent
     seal = _seal(store)
     assert seal["criterion"] == cluster.SEAL_CRITERION and seal["sealed_by"] == "plan"
-    assert (seal["opposite_shares"], seal["same_side_shares"]) == (40.0, 10.0)
+    assert (seal["yes_shares"], seal["no_shares"], seal["net_yes"]) == (10.0, 40.0, -30.0)
     assert seal["fill_ts"] == 1_790_000_500 and seal["flip_state"] == "done"
 
 
@@ -506,7 +540,7 @@ def test_a_no_on_the_clusters_yes_side_is_sold_then_mirrored_into_yes(store, war
     assert sell["kind"] == "sell_no" and sell["price"] == pytest.approx(0.50) and sell["shares"] == 14.0
     assert (sent[-1][1]["side"], sent[-1][1]["token_id"]) == ("SELL", "n27")
     seal = lane._seal_row(store, ST, ED, "27°C", "NO")
-    assert seal is not None and (seal["opposite_shares"], seal["same_side_shares"]) == (783.0, 444.0)
+    assert seal is not None and (seal["yes_shares"], seal["no_shares"], seal["paired_shares"]) == (783.0, 444.0, 444.0)
     # Sold whole: the reversal buys the same 14 shares of YES at the ask.
     t2 = "2026-09-18T12:13:00.000Z"
     _snapshot(store, "snap_f3", t2, _ladder(), 3)
