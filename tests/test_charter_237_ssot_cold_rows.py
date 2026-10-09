@@ -981,3 +981,81 @@ def test_the_fact_window_is_tied_to_its_readers() -> None:
     assert policy.keep_foreign_key_refs
     label_lane = (ROOT / "bayes_basket_target" / "delta_v2_settlement_label.py").read_text(encoding="utf-8")
     assert "AND f.fact_id LIKE 'd2fact_%'" in label_lane
+
+
+# --------------------------------------------------------------------------
+# Native member history (2026-10-09 amendment): the fit's window, kept writers.
+# --------------------------------------------------------------------------
+
+
+MEMBERS = "calibration_native_ensemble_historical_member_run"
+
+
+def _member(conn, rid: str, system: str, station: str, day: str, member: str = "1") -> None:
+    conn.execute(
+        f"INSERT INTO {MEMBERS}(historical_member_run_id,ensemble_system_id,station_id,target_local_date,"
+        "archive_lead_bucket,run_cycle,member_id,member_role,raw_tmax_c,settlement_definition,"
+        "extraction_version,provider_id,transport_provider_id,native_run_init_utc,offline_oos_eligible,"
+        "archive_query_at_utc,source_url,raw_object_ref,source_object_sha256,qc_status,authority_scope,"
+        "holdout_eligible,content_sha256) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (rid, system, station, day, "h24_48", "00Z", member, "PERTURBED", 20.0, "def", "v1", "p",
+         "ECMWF_OPEN_DATA_S3", f"{day}T00:00:00Z", 1, f"{day}T06:00:00Z", "u", "r", _sha("s" + rid),
+         "ACCEPTED", "CALIBRATION_TRAIN_ONLY", 0, _sha(rid)),
+    )
+
+
+def test_members_past_the_fit_window_move_and_the_reprojected_systems_stay(
+    store: Path, cold: Path, tmp_path: Path
+) -> None:
+    """AS_OF 09-27: the window ends 06-29."""
+
+    conn = sqlite3.connect(store)
+    _member(conn, "ifs_old_1", "ECMWF_IFS_ENS_OPEN_PF50", "KLGA", "2026-05-01", "1")
+    _member(conn, "ifs_old_2", "ECMWF_IFS_ENS_OPEN_PF50", "KLGA", "2026-05-01", "2")
+    _member(conn, "ifs_older", "ECMWF_IFS_ENS_OPEN_PF50", "KLGA", "2026-01-10")
+    _member(conn, "gefs_newest_old", "NOAA_GEFS_05", "KLGA", "2026-04-01")
+    _member(conn, "metar_old", "METAR_PHYSICAL_PATH_TMAX", "KLGA", "2026-05-01")
+    _member(conn, "ifs_hot", "ECMWF_IFS_ENS_OPEN_PF50", "EGLC", "2026-09-01")
+    conn.commit()
+    policy = off.POLICY_BY_TABLE[MEMBERS]
+    assert off.eligibility(conn, policy) == []
+    conn.close()
+
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[MEMBERS])
+
+    summary = receipt["tables"][0]
+    assert summary["cutoff_before"] == "2026-06-29"
+    # The newest old row of each system at each station stays (one of the
+    # two 05-01 IFS members; the GEFS one); METAR's re-projected row is not
+    # a candidate at all.
+    assert summary["kept"] == {"latest_0:ensemble_system_id+station_id": 2}
+    stayed = {row[1] for row in _table_rows(store, MEMBERS).values()}
+    assert {"metar_old", "ifs_hot", "gefs_newest_old"} <= stayed
+    assert "ifs_older" not in stayed and len(stayed & {"ifs_old_1", "ifs_old_2"}) == 1
+    landed = {row[1] for row in _table_rows(_cold_file(cold, MEMBERS), MEMBERS).values()}
+    assert "ifs_older" in landed and len(landed) == 2
+
+
+def test_the_member_window_is_tied_to_the_fit_and_the_backfills_respect_it() -> None:
+    from datetime import date
+
+    from bayes_basket_target import metar_physical_tmax, native_ensemble_oos
+
+    policy = off.POLICY_BY_TABLE[MEMBERS]
+    assert policy.hot_days == (native_ensemble_oos.ROLLING_TRAIN_WINDOW_DAYS
+                               + native_ensemble_oos.DEFAULT_MIN_HOLDOUT_DAYS
+                               + off.MEMBER_RUN_LAG_MARGIN_DAYS)
+    fit = (ROOT / "bayes_basket_target" / "native_ensemble_oos.py").read_text(encoding="utf-8")
+    assert "- timedelta(days=ROLLING_TRAIN_WINDOW_DAYS)" in fit
+    assert metar_physical_tmax.SYSTEM_ID in off.MEMBER_RUN_STAYING_SYSTEMS
+    with pytest.raises(off.OffloadRefused, match="backfill_older_than_hot_window"):
+        off.assert_within_hot_window(MEMBERS, "2026-05-01", today=date(2026, 9, 27))
+    off.assert_within_hot_window(MEMBERS, "2026-07-01", today=date(2026, 9, 27))
+    for name in ("run_native_history_backfill.py", "backfill_aifs_ens_history_from_research.py"):
+        tree = ast.parse((ROOT / "scripts" / name).read_text(encoding="utf-8"))
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "assert_within_hot_window"
+            and isinstance(node.args[0], ast.Constant) and node.args[0].value == MEMBERS
+        ]
+        assert calls, name

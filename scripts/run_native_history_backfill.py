@@ -652,6 +652,14 @@ def main() -> int:
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
 
+    # Charter 237: days past the member table's hot window live on the cold
+    # tier; writing one back would leave it in both places.
+    from scripts.ssot_cold_offload import OffloadRefused, assert_within_hot_window  # noqa: PLC0415
+
+    try:
+        assert_within_hot_window("calibration_native_ensemble_historical_member_run", args.to_date)
+    except OffloadRefused as exc:
+        raise SystemExit(str(exc)) from exc
     db = args.db.expanduser().resolve(strict=True)
     providers = [p.strip().lower() for p in args.providers.split(",") if p.strip()]
     unknown = set(providers) - set(PROVIDERS)

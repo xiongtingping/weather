@@ -94,6 +94,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
+    DEFAULT_MIN_HOLDOUT_DAYS,
+    ROLLING_TRAIN_WINDOW_DAYS,
     STABLE_POOL_GATE_LOOKBACK_DAYS,
     _EVALUATION_READER_KEY as OOS_EVALUATION_READER_KEY,
 )
@@ -398,6 +400,16 @@ FEATURE_GATE_WINDOW_DAYS = 60
 #: looks back 10).  A revision gives every fact of that day a new label, so a
 #: fact stays while its day can still be revised.  Pinned by the test.
 RECONCILIATION_MAX_DAYS = 45
+#: The native members the weights/OOS fit reads: ROLLING_TRAIN_WINDOW_DAYS
+#: before a key's own last DEFAULT_MIN_HOLDOUT_DAYS holdout days.  A key's
+#: holdout lags the newest closed day when its lane misses days (the d2 lane
+#: was dead 09-03..09-21, eighteen days), so the window carries a margin.
+MEMBER_RUN_LAG_MARGIN_DAYS = 22
+MEMBER_RUN_HOT_DAYS = ROLLING_TRAIN_WINDOW_DAYS + DEFAULT_MIN_HOLDOUT_DAYS + MEMBER_RUN_LAG_MARGIN_DAYS
+#: Writers that re-project any day they find missing from a fixed start
+#: (metar_physical_forward from 2026-08-01) would write a moved row back;
+#: their rows stay.  The TAF TX rows are few and stay with them.
+MEMBER_RUN_STAYING_SYSTEMS = ("METAR_PHYSICAL_PATH_TMAX", "OFFICIAL_AIRPORT_TAF_TX")
 P1_LIKELIHOOD_WINDOW_DAYS = 44
 #: A decision for event date D is taken up to two days before D, so an
 #: anchor on the decision clock keeps event dates from two days before it.
@@ -768,6 +780,38 @@ POLICIES += (
     # no caller, and no envelope since 09-28 carries the release_state the
     # production check reads.  Offline whole-history readers attach the cold
     # rows.
+    # Charter 237 amendment (2026-10-09, second): the native ensemble member
+    # history.  The weights/OOS fit (native_ensemble_oos) reads a station's
+    # rows and keeps the ROLLING_TRAIN_WINDOW_DAYS before its holdout; every
+    # other production reader reads the day being captured or decided.  The
+    # 2025-12-29 onward history backfill beyond that window has no
+    # production reader.
+    TablePolicy(
+        table="calibration_native_ensemble_historical_member_run",
+        time_column="target_local_date",
+        hot_days=MEMBER_RUN_HOT_DAYS,
+        candidate_where=(
+            "ensemble_system_id NOT IN ("
+            + ",".join(f"'{system}'" for system in MEMBER_RUN_STAYING_SYSTEMS)
+            + ")"
+        ),
+        readers=(
+            "native_ensemble_oos (weights and OOS, nightly and in the resident): a "
+            "station's rows, fitted on ROLLING_TRAIN_WINDOW_DAYS before the key's last "
+            "DEFAULT_MIN_HOLDOUT_DAYS holdout days; the six archive writers, "
+            "native_ensemble_training_facts, retained_native_ensemble_canonical_adapter and "
+            "rolling_native_taf_oos: the station-day being captured or predicted; "
+            "metar_physical_forward: its own system's rows from 2026-08-01 (kept); the "
+            "dashboard: the last few target days.  run_native_history_backfill and "
+            "backfill_aifs_ens_history_from_research refuse days older than this window."
+        ),
+        keep_latest=(
+            KeepLatest(
+                key=("ensemble_system_id", "station_id"), order=("target_local_date",), count=1,
+                why="a reader of a system's newest member at a station finds it whatever its age",
+            ),
+        ),
+    ),
     # Charter 237 amendment (2026-10-09): the decisions' training facts.
     # Production reads the current station-day, a fact by id / scope key /
     # cycle, or windows of 28 event days (valuation, realisation, posterior);
@@ -1801,6 +1845,26 @@ def _moved_tables(manifest: Path = MANIFEST) -> set[str]:
     return moved
 
 
+def assert_within_hot_window(table: str, oldest_day: str, *, today: date | None = None) -> None:
+    """Refuse a backfill of days this lane moves out of the SSOT.
+
+    A row written older than its table's window leaves again on the next
+    nightly run, and while the cold copy holds the first one an offline
+    reader of the whole history sees the day twice.  So a historical writer
+    stays inside the window; restore the day first if it must be rewritten.
+    """
+
+    policy = POLICY_BY_TABLE.get(table)
+    if policy is None:
+        return
+    now = today or datetime.now(timezone.utc).date()
+    cutoff = (now - timedelta(days=int(policy.hot_days))).isoformat()
+    if str(oldest_day)[:10] < cutoff:
+        raise OffloadRefused(
+            f"backfill_older_than_hot_window:{table}:{str(oldest_day)[:10]}<{cutoff}"
+        )
+
+
 def attach_cold_history(
     conn: sqlite3.Connection,
     tables: Iterable[str],
@@ -2375,6 +2439,7 @@ _KEPT_WORDS = {"newest_rowid": "最大 rowid", "hold": "hold",
                "live_decision_envelope_unresolved_station_day": "点名信封找不到·整站日留",
                "serving_arithmetic_audit": "指纹审计", "live_decision_plan": "实盘决策点名的计划",
                "named:live_decision": "实盘决策的事实", "named:unlabelled_d2fact": "待贴标签",
+               "latest_0:ensemble_system_id+station_id": "每系统×站最新",
                "live_decision_plan_unresolved_station_day": "点名计划找不到·整站日留"}
 
 

@@ -188,6 +188,14 @@ def main() -> int:
     first = args.first_run or (
         datetime.now(timezone.utc).date() - timedelta(days=DEFAULT_WINDOW_DAYS)
     ).isoformat()
+    # Charter 237: days past the member table's hot window live on the cold
+    # tier; writing one back would leave it in both places.
+    from scripts.ssot_cold_offload import OffloadRefused, assert_within_hot_window  # noqa: PLC0415
+
+    try:
+        assert_within_hot_window("calibration_native_ensemble_historical_member_run", first)
+    except OffloadRefused as exc:
+        raise SystemExit(str(exc)) from exc
     research_path = assert_present(args.research_db, what=f"{args.system.upper()} research capture")
     research = sqlite3.connect(f"file:{research_path}?mode=ro", uri=True, timeout=60)
     reader = sqlite3.connect(f"file:{args.ssot}?mode=ro", uri=True, timeout=60)
