@@ -22609,6 +22609,10 @@ function sdProbabilityCards(day){
     const modeMove = pv && ps.mode && st.mode && ps.mode !== st.mode ? ` <span class="flat sd-sub">原 ${sdEsc(ps.mode)}</span>` : "";
     const meanBucketMove = pv && ps.mean_bucket && st.mean_bucket && ps.mean_bucket !== st.mean_bucket ? ` <span class="flat sd-sub">原 ${sdEsc(ps.mean_bucket)}</span>` : "";
     const modeP = pv ? dv(st.mode_p, ((pv.vector || {})[st.mode]), 2, "点", 100) : "";
+    // User 2026-10-09「卡片：均值桶增加概率」: the mean bucket's own probability,
+    // and its change on that same bucket, as the mode row reads.
+    const meanP = e && st.mean_bucket ? (e.vector || {})[st.mean_bucket] : null;
+    const meanPMove = pv && meanP != null ? dv(meanP, ((pv.vector || {})[st.mean_bucket]), 2, "点", 100) : "";
     const centerLabel = stage === "P0" ? "模型加权温度中心" : "本阶段融合后中心";
     const rootLabel = stage === "P0-M" ? "根中心（P0）" : `根中心（${sdEsc((e || {}).root_stage || "前序阶段")}）`;
     return `<div class="sd-prob-card${e ? "" : " sd-prob-empty"}" style="--c:${SD_COL[stage]}">
@@ -22618,7 +22622,7 @@ function sdProbabilityCards(day){
       <div class="sd-prob-bucket">${e ? sdTemperature(e.model_center_c) + (pv ? dv(e.model_center_c, pv.center_c, 2, "") : "") : "尚未生成"}</div>
       ${e ? `<dl class="sd-prob-summary">${stage !== "P0" ? `<dt title="本阶段实际引用的前序信封中心，更新前的输入">${rootLabel}</dt><dd>${sdTemperature(e.root_center_c)}</dd>` : ""}
         <dt title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值</dt><dd>${sdTemperature(st.mean_c)}${pv ? dv(st.mean_c, ps.mean_c, 2, "") : ""}</dd>
-        <dt>均值桶</dt><dd>${sdEsc(st.mean_bucket || "—")}${meanBucketMove}</dd>
+        <dt title="分布均值所在的桶；概率＝这一桶在最终向量里的概率，变化＝同一桶在上一次决策里的概率">均值桶</dt><dd>${sdEsc(st.mean_bucket || "—")}${meanP != null ? ` <small>· ${sdPc(meanP,2)}</small>` : ""}${meanPMove}${meanBucketMove}</dd>
         <dt title="最终概率向量中概率最大的桶，并列取低档；变化＝同一桶在上一次决策里的概率">众数桶</dt><dd>${sdEsc(st.mode || "—")} <small>· ${sdPc(st.mode_p,2)}</small>${modeP}${modeMove}</dd>
         <dt title="标准差变化">σ</dt><dd>${sdN(st.sd_c, 2)}°C${pv ? dv(st.sd_c, ps.sd_c, 2, "") : ""}</dd></dl>
         <div class="muted sd-sub">更新 ${sdLocal(e.decided_at_utc,true)}${e.fresh_until_utc ? ` · 有效至 ${sdLocal(e.fresh_until_utc,true)}` : ""}</div>
