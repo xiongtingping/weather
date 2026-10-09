@@ -12,7 +12,7 @@
     },
     "certain_win_recycle": {
       "enabled": true,
-      "note": "Charter 100: held YES/NO shares may carry a resting GTC sell at exactly 0.998 only on a fresh official 0.001-tick book. Old 0.99 offers are cancelled and their terminal exchange state confirmed before remaining shares are reoffered. An ambiguous cancel keeps the old offer reserved. A resting recycle sell neither freezes its station-day quotes nor shuts its token to the next order. At most 8 sends a cycle, highest bid first. Operator ruling 2026-09-29: 0.998 and an independent dashboard switch.",
+      "note": "Charter 100: held YES/NO shares may carry a resting GTC sell at exactly 0.999 (charter 264, user ruling 2026-10-09 「把我的卖出车道0.998也改为0.999」; 0.998 before) only on a fresh official 0.001-tick book. Old 0.99 offers are cancelled and their terminal exchange state confirmed before remaining shares are reoffered. An ambiguous cancel keeps the old offer reserved. A resting recycle sell neither freezes its station-day quotes nor shuts its token to the next order. At most 8 sends a cycle, highest bid first. Operator ruling 2026-09-29: 0.998 and an independent dashboard switch.",
       "enabled_at_utc": "2026-09-18T08:50:01Z",
       "reopened_at_utc": "2026-09-28T13:52:03Z",
       "reopen_note": "User ruling 2026-09-28: restart 0.99 resting sells for all held YES and NO positions, including H1."
