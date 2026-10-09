@@ -797,8 +797,8 @@ def cluster_targets(
             continue
         episode_start[str(token)] = int(ts)
         entry["target"] = entry["target"] + float(scaled or 0.0)
-        entry.update(buy_price=float(price), last_ts=int(ts), source_user=str(user), our_p=our_p, price_cap=cap,
-                     model_margin=margin, model_stage=stage)
+        entry.update(buy_price=float(price), last_ts=int(ts), last_scaled=float(scaled or 0.0), source_user=str(user),
+                     our_p=our_p, price_cap=cap, model_margin=margin, model_stage=stage)
     return out
 
 
@@ -854,6 +854,21 @@ def lane_position(conn: sqlite3.Connection, *, station_id: str, event_date: str,
         if str(state) in OPEN_INTENT_STATES and not str(r_state).startswith("resolved_"):
             open_order = str(intent_id)
     return {"held": round(bought - sold, 6), "bought": bought, "sold": sold, "open_order": open_order}
+
+
+def lane_bought_since(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str, token_id: str, since_utc: str,
+) -> float:
+    """Shares this lane's BUYs on the token filled from intents minted at or
+    after ``since_utc`` -- what the newest episode has already bought."""
+
+    row = conn.execute(
+        "SELECT COALESCE(SUM(COALESCE(r.filled_size,0)),0) FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.decision_id=? AND i.token_id=? AND i.order_action='BUY' AND i.created_at>=?",
+        (lane_orders.lane_decision_id(LANE, station_id, event_date), token_id, since_utc),
+    ).fetchone()
+    return float(row[0] or 0.0)
 
 
 def lane_cost_today(conn: sqlite3.Connection, *, now_utc: str) -> float:
@@ -914,10 +929,13 @@ def fresh_book(
 # The order a gap asks for.
 
 
-def plan_buy(quote: Mapping[str, Any], *, price_cap: float, gap: float, min_shares: float) -> dict[str, Any]:
+def plan_buy(
+    quote: Mapping[str, Any], *, price_cap: float, gap: float, min_shares: float, take_only: bool = False,
+) -> dict[str, Any]:
     """Never above the cap (the source's price plus ``max_slippage``): take an
     ask at or under it, else rest a post-only rung at bid+1 under it and under
-    the ask, else wait."""
+    the ask, else wait.  ``take_only`` (charter 257, 2026-10-09 「3+5」) never
+    rests: no take is a refusal by name."""
 
     limit = _floor_grid(price_cap)
     if limit < SIGNING_TICK:
@@ -935,6 +953,10 @@ def plan_buy(quote: Mapping[str, Any], *, price_cap: float, gap: float, min_shar
         if shares >= float(min_shares) and shares * float(ask) >= EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC - 1e-9:
             return {"order_kind": "take", "limit_price": limit, "fok_price_cap": limit, "shares": shares,
                     "notional_usdc": round(shares * limit, 6)}
+        if take_only:
+            return {"refusal": "take_too_thin"}
+    if take_only:
+        return {"refusal": "no_ask" if ask is None else "ask_above_price_cap"}
     rest = limit
     if bid is not None:
         rest = min(rest, _floor_grid(float(bid) + SIGNING_TICK + 1e-9))
@@ -1073,6 +1095,11 @@ def execute_copy_follow(
     stages = [str(x) for x in (cfg.get("model_stages") or ())]
     min_shares = float(cfg.get("min_order_shares") or 5.0)
     slippage = max(0.0, float(cfg.get("max_slippage") or 0.0))
+    # Charter 257 (2026-10-09 「3+5」): take or nothing -- only the newest
+    # episode, only inside its window, never a resting rung.
+    take_only = cluster_rule and cfg.get("take_only") is True
+    take_window = float(cfg.get("take_window_seconds") or 0.0)
+    now_ts = _utc(now_utc).timestamp()
     horizon = float(cfg.get("rung_horizon_seconds") or 0.0)
     live = cfg.get("live_ws_book", True) is True
     manifest: dict[str, Any] = {}
@@ -1099,6 +1126,12 @@ def execute_copy_follow(
         position = lane_position(target_conn, station_id=station, event_date=day, token_id=token)
         target = round(float(want["target"]), 6)
         gap = round(target - float(position["held"]), 6)
+        if take_only:
+            # An episode whose take did not happen is not chased by the next one:
+            # the gap is the newest episode's stake less what it already bought.
+            since = _z(datetime.fromtimestamp(int(want["last_ts"]), timezone.utc))
+            gap = round(float(want.get("last_scaled") or 0.0) - lane_bought_since(
+                target_conn, station_id=station, event_date=day, token_id=token, since_utc=since), 6)
         row: dict[str, Any] = {
             "source_user": want.get("source_user") or user, "token_id": token, "station_id": station, "event_date": day,
             "bucket": bucket, "side": side, "evaluated_at_utc": now_utc, "rule_version": rule_version,
@@ -1115,6 +1148,8 @@ def execute_copy_follow(
             plan = {"refusal": "sells_not_mirrored"}
         elif action == "SELL" and want["sell_price"] is None:
             plan = {"refusal": "no_source_sell_price"}
+        elif take_only and action == "BUY" and take_window > 0.0 and now_ts - float(want["last_ts"]) > take_window:
+            plan = {"refusal": "take_window_passed"}
         elif sends >= int(cfg.get("max_sends_per_pass") or 0):
             plan = {"refusal": "pass_send_limit"}
         elif _unsent_recently(target_conn, token, now_utc=now_utc,
@@ -1154,7 +1189,7 @@ def execute_copy_follow(
                             if cap < float(want["buy_price"]) - 1e-9:
                                 plan = {"refusal": f"model_margin_short:{float(served['p']):.3f}<{float(want['buy_price']) + margin:.3f}"}
                     if not plan:
-                        plan = plan_buy(quote, price_cap=cap, gap=gap, min_shares=min_shares)
+                        plan = plan_buy(quote, price_cap=cap, gap=gap, min_shares=min_shares, take_only=take_only)
                     if (not plan.get("refusal") and not unlimited_day
                             and float(plan["notional_usdc"]) > budget_left + 1e-9):
                         plan = {"refusal": f"daily_cost_limit:{max(budget_left, 0.0):.2f}"}

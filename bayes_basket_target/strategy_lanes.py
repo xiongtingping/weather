@@ -415,6 +415,11 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     # Charter 260: once a P1 stands it is the belief, so the lane may read it.
     "model_stages": ["P0", "P0-M", "P1"],
     "episode_gap_seconds": 3600.0,
+    # Charter 257 (2026-10-09 「3+5」): take or nothing -- a follow is a FOK at
+    # or under the cap within ``take_window_seconds`` of the episode's buy, or
+    # no order at all; never a resting rung.  Off here, set in the lane file.
+    "take_only": False,
+    "take_window_seconds": 1800.0,
 }
 
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak
