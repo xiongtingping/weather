@@ -64,3 +64,12 @@ events with a mid 10 min after the first fill: 3648
    within round-10 filter: update silent n=  66   +0.8c [-10.4,+12.0]  H1  -4.1 H2  +4.0  days+ 9/15  
    round-10 filter + C + >=12h + update agrees n=  63  +17.3c [ +7.3,+28.0]  H1 +28.4 H2 +11.3  days+ 12/15  BOTH+
    round-10 filter + C + >=12h + update not disagreeing n=  97  +11.6c [ +1.8,+22.1]  H1 +21.9 H2  +6.6  days+ 10/15  BOTH+
+
+-- round 19: ECMWF momentum |M|>=1 vs their direction (off-mode events joined)
+   all follow events: momentum agree  n= 346   +7.1c [ +2.6,+11.4]  H1  +5.8 H2  +7.8  days+ 11/15  BOTH+
+   all follow events: momentum disagree n= 252   -3.5c [ -9.1, +1.8]  H1  -6.5 H2  -1.2  days+ 6/15  
+   all follow events: momentum quiet  n= 341   -0.8c [ -5.7, +4.9]  H1  -2.3 H2  +0.1  days+ 7/15  
+   within round-10 filter: momentum agree n=  95  +12.7c [ +4.4,+21.4]  H1 +18.7 H2  +9.3  days+ 12/15  BOTH+
+   within round-10 filter: momentum disagree n=  77   -6.9c [-16.0, +3.8]  H1  -6.7 H2  -7.1  days+ 4/15  
+   within round-10 filter: momentum quiet n= 106   +3.8c [ -5.3,+13.0]  H1  +3.8 H2  +3.8  days+ 8/15  BOTH+
+   round-10 filter + C + >=12h + momentum agrees n=  48  +18.8c [ +6.2,+30.5]  H1 +27.3 H2 +15.3  days+ 11/14  BOTH+

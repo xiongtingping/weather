@@ -1,0 +1,22 @@
+=== quiet (|M|<0.5): n=226 ===
+   consensus all levels               n= 106 agree 0.377 skill -0.060  theirs agree/disagree +0.198/+0.215
+   consensus natives                  n= 123 agree 0.447 skill +0.061  theirs agree/disagree +0.224/+0.072
+   consensus points                   n= 127 agree 0.370 skill -0.082  theirs agree/disagree +0.211/+0.254
+   consensus open-meteo global        n= 106 agree 0.387 skill +0.004  theirs agree/disagree +0.243/+0.146
+   consensus regional                 n=  54 agree 0.463 skill +0.282  theirs agree/disagree +0.485/-0.107
+   ECMWF-family level minus rest      n= 123 agree 0.504 skill -0.079  theirs agree/disagree +0.029/+0.190
+   rest minus ECMWF-family level      n= 123 agree 0.496 skill +0.079  theirs agree/disagree +0.190/+0.029
+   model spread 0-0.8C: n=  98 their skill +0.187
+   model spread 0.8-1.5C: n= 114 their skill +0.216
+   model spread 1.5-99C: n=  11 their skill +0.236
+=== all off-mode: n=1009 ===
+   consensus all levels               n= 496 agree 0.363 skill -0.041  theirs agree/disagree +0.188/+0.172
+   consensus natives                  n= 540 agree 0.407 skill -0.010  theirs agree/disagree +0.166/+0.130
+   consensus points                   n= 593 agree 0.383 skill -0.048  theirs agree/disagree +0.153/+0.173
+   consensus open-meteo global        n= 562 agree 0.384 skill -0.004  theirs agree/disagree +0.206/+0.136
+   consensus regional                 n= 287 agree 0.415 skill +0.066  theirs agree/disagree +0.211/+0.037
+   ECMWF-family level minus rest      n= 599 agree 0.529 skill -0.085  theirs agree/disagree +0.051/+0.239
+   rest minus ECMWF-family level      n= 599 agree 0.471 skill +0.085  theirs agree/disagree +0.239/+0.051
+   model spread 0-0.8C: n= 423 their skill +0.179
+   model spread 0.8-1.5C: n= 516 their skill +0.124
+   model spread 1.5-99C: n=  62 their skill +0.382

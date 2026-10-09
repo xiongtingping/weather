@@ -1,0 +1,26 @@
+=== A. two-run trend ===
+   ECMWF_AIFS_ENS_GLOBAL newest - previous              n= 318 agree 0.594 [0.522,0.659] skill +0.166 [+0.079,+0.269] theirs agree/disagree +0.332/+0.078
+   ECMWF_AIFS_ENS_GLOBAL newest - two runs ago          n= 373 agree 0.574 [0.513,0.629] skill +0.105 [+0.012,+0.192] theirs agree/disagree +0.244/+0.081
+   ECMWF_AIFS_ENS_GLOBAL previous update only (one run back) n= 291 agree 0.488 [0.422,0.548] skill +0.020 [-0.076,+0.115] theirs agree/disagree +0.234/+0.184
+   ECMWF_AIFS_ENS_GLOBAL both last updates same way (sum) n= 407 agree 0.558 [0.508,0.610] skill +0.110 [+0.022,+0.193] theirs agree/disagree +0.225/+0.036
+   ECMWF_IFS_ENS_OPEN_PF50 newest - previous            n= 342 agree 0.529 [0.480,0.595] skill +0.075 [-0.013,+0.152] theirs agree/disagree +0.245/+0.116
+   ECMWF_IFS_ENS_OPEN_PF50 newest - two runs ago        n= 427 agree 0.541 [0.493,0.597] skill +0.101 [+0.018,+0.177] theirs agree/disagree +0.215/+0.033
+   ECMWF_IFS_ENS_OPEN_PF50 previous update only (one run back) n= 320 agree 0.534 [0.466,0.600] skill +0.089 [+0.007,+0.166] theirs agree/disagree +0.227/+0.068
+   ECMWF_IFS_ENS_OPEN_PF50 both last updates same way (sum) n= 398 agree 0.533 [0.477,0.594] skill +0.086 [-0.005,+0.178] theirs agree/disagree +0.258/+0.110
+   ECMWF_IFS_9KM_RELAY_POINT newest - previous          n= 512 agree 0.562 [0.516,0.610] skill +0.113 [+0.045,+0.181] theirs agree/disagree +0.231/+0.038
+   ECMWF_IFS_9KM_RELAY_POINT newest - two runs ago      n= 612 agree 0.528 [0.489,0.570] skill +0.040 [-0.024,+0.100] theirs agree/disagree +0.187/+0.123
+   ECMWF_IFS_9KM_RELAY_POINT previous update only (one run back) n= 503 agree 0.479 [0.431,0.527] skill +0.004 [-0.072,+0.079] theirs agree/disagree +0.132/+0.115
+   ECMWF_IFS_9KM_RELAY_POINT both last updates same way (sum) n= 342 agree 0.526 [0.462,0.598] skill +0.057 [-0.050,+0.157] theirs agree/disagree +0.238/+0.143
+   ECMWF_AIFS_SINGLE_POINT newest - previous            n= 273 agree 0.557 [0.494,0.624] skill +0.085 [-0.024,+0.173] theirs agree/disagree +0.235/+0.104
+   ECMWF_AIFS_SINGLE_POINT newest - two runs ago        n= 385 agree 0.551 [0.489,0.603] skill +0.139 [+0.051,+0.240] theirs agree/disagree +0.237/-0.019
+   ECMWF_AIFS_SINGLE_POINT previous update only (one run back) n= 266 agree 0.538 [0.472,0.607] skill +0.109 [+0.002,+0.216] theirs agree/disagree +0.237/+0.039
+   ECMWF_AIFS_SINGLE_POINT both last updates same way (sum) n= 452 agree 0.584 [0.531,0.638] skill +0.142 [+0.065,+0.220] theirs agree/disagree +0.223/-0.028
+
+=== B. market-error persistence (their events) ===
+   err(D-2): market error two days earlier              n= 361 agree 0.529 [0.447,0.608] skill -0.107 [-0.224,+0.028] theirs agree/disagree +0.006/+0.234
+   err(D-1) where D-1 had ended by the trade            n= 146 agree 0.418 [0.329,0.500] skill -0.058 [-0.213,+0.089] theirs agree/disagree +0.165/+0.219
+   mean of err(D-2), err(D-3)                           n= 109 agree 0.495 [0.352,0.636] skill -0.059 [-0.275,+0.135] theirs agree/disagree +0.042/+0.158
+
+=== B2. market error autocorrelation on every station-day (local-midnight market) ===
+   lag 1 day: n=127 corr +0.109  same sign when both |err|>=0.5C: 0.622  mean err -0.059C
+   lag 2 day: n=133 corr -0.006  same sign when both |err|>=0.5C: 0.545  mean err -0.119C

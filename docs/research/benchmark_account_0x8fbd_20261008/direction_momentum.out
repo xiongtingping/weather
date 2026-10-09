@@ -1,0 +1,9 @@
+component std (C): {'AIFS ENS d1': 0.369, 'IFS ENS d1': 0.383, 'HRES d1': 0.676, 'AIFS single d2': 0.473}
+their skill on all 1009 off-mode events: +0.159
+|M|>=0.0: n=1008 agree 0.549 [0.515,0.587] M-skill +0.094 [+0.038,+0.149]  theirs agree +0.230 (n=553) / disagree +0.072 (n=455)  H1 0.51/+0.047 H2 0.57/+0.129
+|M|>=0.5: n= 783 agree 0.567 [0.527,0.608] M-skill +0.104 [+0.033,+0.164]  theirs agree +0.222 (n=444) / disagree +0.051 (n=339)  H1 0.51/+0.053 H2 0.61/+0.143
+|M|>=1.0: n= 633 agree 0.578 [0.530,0.620] M-skill +0.121 [+0.047,+0.182]  theirs agree +0.247 (n=366) / disagree +0.051 (n=267)  H1 0.53/+0.070 H2 0.62/+0.159
+|M|>=1.5: n= 457 agree 0.586 [0.528,0.637] M-skill +0.163 [+0.094,+0.243]  theirs agree +0.275 (n=268) / disagree -0.004 (n=189)  H1 0.54/+0.105 H2 0.62/+0.208
+|M|>=2.0: n= 344 agree 0.581 [0.522,0.639] M-skill +0.147 [+0.052,+0.231]  theirs agree +0.291 (n=200) / disagree +0.052 (n=144)  H1 0.52/+0.077 H2 0.63/+0.205
+
+round-18 silent events 263: momentum |M|>=1 on 55; agree 0.418; M-skill +0.022; theirs +0.013

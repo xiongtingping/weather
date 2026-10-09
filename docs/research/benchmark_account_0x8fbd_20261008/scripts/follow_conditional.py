@@ -152,3 +152,17 @@ for lab, flt in (('all follow events', lambda r: True), ('within round-10 filter
         line(f'{lab}: update {st_}', [r for r in R if r.get('fam') == st_ and flt(r)])
 line('round-10 filter + C + >=12h + update agrees', [r for r in R if r.get('fam') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
 line('round-10 filter + C + >=12h + update not disagreeing', [r for r in R if r.get('fam') in ('agree', 'silent') and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
+
+# ---- round 19: split by the unfitted ECMWF momentum M (direction_momentum.py)
+MM = json.load(open(f'{B}/momentum_M.json'))
+for r, e in zip(R, evs_ft):
+    d = DR.get((e['station'], e['event_date'], e['ts']))
+    m = MM.get(f'{e["station"]}|{e["event_date"]}|{e["ts"]}')
+    r['mom'] = None
+    if d is not None and m is not None:
+        r['mom'] = 'quiet' if abs(m) < 1.0 else ('agree' if (1 if m > 0 else -1) == d['s'] else 'disagree')
+print('\n-- round 19: ECMWF momentum |M|>=1 vs their direction (off-mode events joined)')
+for lab, flt in (('all follow events', lambda r: True), ('within round-10 filter', lambda r: r['ours'] is not None and r['ours'] > r['own'] + COST)):
+    for st_ in ('agree', 'disagree', 'quiet'):
+        line(f'{lab}: momentum {st_}', [r for r in R if r.get('mom') == st_ and flt(r)])
+line('round-10 filter + C + >=12h + momentum agrees', [r for r in R if r.get('mom') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
