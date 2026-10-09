@@ -20,7 +20,10 @@ def _scope(station: str, tz: str) -> dict[str, object]:
             "latitude": 0.0, "longitude": 0.0, "registry_rows": []}
 
 
-def test_a_d3_18z_capture_keeps_only_the_stations_plus_72h_reaches() -> None:
+def test_a_d3_18z_capture_reads_the_americas_past_72h() -> None:
+    # Until charter 263 (四) the follow-only lead stopped at +72h and left
+    # KLGA and KSFO out; it now reads on to their day, while the stations
+    # +72h already sealed keep exactly the steps they were trained on.
     kept, left_out = capture_script.split_coverable(
         [
             _scope("ZUUU", "Asia/Shanghai"),
@@ -32,8 +35,23 @@ def test_a_d3_18z_capture_keeps_only_the_stations_plus_72h_reaches() -> None:
         lead_days=3,
         run_cycle_hour=18,
     )
-    assert [scope["station_id"] for scope in kept] == ["ZUUU", "EDDM"]
-    assert left_out == ["KLGA", "KSFO"]
+    assert [scope["station_id"] for scope in kept] == [
+        "ZUUU", "EDDM", "KLGA", "KSFO",
+    ]
+    assert left_out == []
+    from datetime import datetime, timezone
+
+    from bayes_basket_target import ecmwf_ifs_archive as ecmwf
+
+    run_init = datetime(2026, 9, 7, 18, tzinfo=timezone.utc)
+    for zone in ("Asia/Shanghai", "Europe/Berlin"):
+        assert ecmwf.follow_period_end_steps(
+            event_date="2026-09-10", settlement_timezone=zone,
+            run_init_utc=run_init,
+        ) == ecmwf._period_end_steps(
+            event_date="2026-09-10", settlement_timezone=zone,
+            run_init_utc=run_init,
+        )
 
 
 def test_the_lane_stands_aside_while_a_production_capture_runs() -> None:

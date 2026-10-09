@@ -6444,8 +6444,34 @@ class TargetProductionWorker:
         inbox_path = (
             self.nwp_runtime_root / "official_native_ensemble_forward_inbox.json"
         )
+        # Charter 263 (四): a day whose event-run follow files were topped up
+        # for stations listed after their first read gets its pass again
+        # once that job is done -- the packets come from a pass, and the
+        # listing pass ran before the stations were in the files.
+        reseat_outcomes = self._reseat_after_listing_follow(
+            as_of_utc=as_of_utc, inbox_path=inbox_path
+        )
+        # A listing whose follow job could not be queued because the day's
+        # job was already running (it read the registry before the listing)
+        # is asked again every refresh until a job of its own is queued.
+        follow_pending: set[str] | None = getattr(
+            self, "_official_native_listing_follow_pending", None
+        )
+        if follow_pending is None:
+            follow_pending = set()
+            self._official_native_listing_follow_pending = follow_pending
+        follow_retries: dict[str, str] = {}
+        for day in sorted(follow_pending):
+            follow_retries[day] = self._enqueue_listing_follow(event_date=day)
+            if follow_retries[day] != "ALREADY_QUEUED":
+                follow_pending.discard(day)
         if not registry_path.is_file():
-            return {"state": "NO_REGISTRY", **boundary}
+            return {
+                "state": "NO_REGISTRY",
+                "reseat": reseat_outcomes,
+                "follow_retries": follow_retries,
+                **boundary,
+            }
         try:
             registry = load_market_registry_snapshot(registry_path)
         except Exception as exc:  # noqa: BLE001 -- the rotation is the fallback
@@ -6530,6 +6556,12 @@ class TargetProductionWorker:
                 lead_days = max(0, min(2, (date.fromisoformat(day) - today).days))
             except ValueError:
                 continue
+            # The event-run files may lack these stations too (ECMWF's D-3
+            # 18Z held for the day until its own D-2 00Z lands): their
+            # follow job starts now, beside the pass, not after it.
+            follow_state = self._enqueue_listing_follow(event_date=day)
+            if follow_state == "ALREADY_QUEUED":
+                follow_pending.add(day)
             result = self._capture_official_native_packet(
                 station_id=stations[0],
                 event_date=day,
@@ -6548,9 +6580,85 @@ class TargetProductionWorker:
                 "stations_recorded_attempted": (
                     len(stations) if state == "SUBMITTED" else 0
                 ),
+                "follow": follow_state,
                 "state": state,
             })
-        return {"state": "RAN", "outcomes": outcomes, **boundary}
+        return {
+            "state": "RAN",
+            "outcomes": outcomes,
+            "reseat": reseat_outcomes,
+            "follow_retries": follow_retries,
+            **boundary,
+        }
+
+    def _enqueue_listing_follow(self, *, event_date: str) -> str:
+        """Charter 263 (四): queue the day's follow job for a listing's gaps."""
+
+        if not follow_run.follow_enabled():
+            return "FOLLOW_DISABLED"
+        registry_path = self.nwp_runtime_root / "market_registry_forward.json"
+        if not registry_path.is_file():
+            return "REGISTRY_MISSING"
+        capture_root = self.nwp_runtime_root / "official_native_capture"
+        capture_root.mkdir(parents=True, exist_ok=True)
+        return self._enqueue_follow_run_capture(
+            event_date=event_date,
+            run_ladder=[],
+            registry_path=registry_path,
+            capture_root=capture_root,
+            env={
+                **os.environ,
+                "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
+            },
+        )
+
+    def _reseat_after_listing_follow(
+        self, *, as_of_utc: str, inbox_path: Path
+    ) -> list[dict[str, Any]]:
+        """Run the day's pass once its gap-driven follow job has finished.
+
+        The same step the arrival lane takes after a follow job (charter 195
+        (二)): the newest rung, forced past the held-run retirement and the
+        retry floor, because the run it reads is one the day already holds --
+        what changed is which stations the event-run files carry.
+        """
+
+        reseat: dict[str, Any] | None = getattr(
+            self, "_official_native_follow_reseat", None
+        )
+        if not reseat:
+            return []
+        follow_jobs = getattr(self, "_official_native_follow_inflight", None) or {}
+        outcomes: list[dict[str, Any]] = []
+        for day in sorted(reseat):
+            future = follow_jobs.get(day)
+            if future is not None and not future.done():
+                continue
+            ladder = _official_native_run_ladder(
+                event_date=day,
+                as_of_utc=as_of_utc,
+                probe_state=self._arrival_probe_state(),
+            )
+            result = (
+                self._capture_official_native_packet(
+                    station_id="",
+                    event_date=day,
+                    as_of_utc=as_of_utc,
+                    inbox_path=inbox_path,
+                    arrival={"family": "listing_follow_reseat"},
+                    forced_rungs=ladder[:1],
+                )
+                if ladder else {"state": "SKIPPED"}
+            )
+            state = str(result.get("state") or "")
+            outcomes.append({
+                "event_date": day,
+                "follow_files": list(reseat.get(day) or ()),
+                "state": state,
+            })
+            if state not in {"IN_FLIGHT", "DEFERRED_CAPTURE_SLOTS_BUSY"}:
+                reseat.pop(day, None)
+        return outcomes
 
     def _enqueue_arrival_follow(
         self, *, event_date: str, lead: int, run_init: datetime
@@ -7318,6 +7426,9 @@ class TargetProductionWorker:
         trigger = (
             f"recovery:{'required' if hold_families else 'full'}"
             if isinstance(arrival, Mapping) and arrival.get("family") == "recovery"
+            else "listing_follow_reseat"
+            if isinstance(arrival, Mapping)
+            and arrival.get("family") == "listing_follow_reseat"
             else f"arrival:{arrival.get('family')}|{arrival.get('run_init_utc')}"
             if isinstance(arrival, Mapping)
             else f"listing:{listing_key[1]}" if listing_new and listing_key
@@ -7414,7 +7525,17 @@ class TargetProductionWorker:
             for family in follow_run.EVENT_RUN_FAMILIES
             for lead, hour in follow_run.event_follow_runs(family)
         )
-        if not rungs and not event_run_missing:
+        # Charter 263 (四): ... or its file is on disk without a station
+        # listed since, which the job's revisit adds.  Each gap is asked about
+        # once: a supplement that fails leaves the same gap, and re-queueing
+        # it every pass would re-download for nothing; the arrival and rung
+        # triggers keep queueing the job as they always did.
+        new_gaps = self._unfollowed_event_run_gaps(
+            event_date=event_date,
+            registry_path=registry_path,
+            capture_root=capture_root,
+        )
+        if not rungs and not event_run_missing and not new_gaps:
             return "NO_FOLLOW_RUNG"
         with _FOLLOW_LANE_LOCK:
             pool = getattr(self, "_official_native_follow_pool", None)
@@ -7498,7 +7619,76 @@ class TargetProductionWorker:
                 return outcome
 
             queued[event_date] = pool.submit(_run_follow)
+            if new_gaps:
+                # Recorded only once the job that reads them is queued: one
+                # already running started from an older registry and may not
+                # hold the new stations, so its gap is asked about again.
+                seen = getattr(
+                    self, "_official_native_follow_gaps_seen", None
+                )
+                if seen is None:
+                    seen = set()
+                    self._official_native_follow_gaps_seen = seen
+                seen.update(new_gaps)
+                # The packets are built by a pass, not by the follow job: the
+                # listing step re-runs the day's pass once this job is done.
+                reseat = getattr(
+                    self, "_official_native_follow_reseat", None
+                )
+                if reseat is None:
+                    reseat = {}
+                    self._official_native_follow_reseat = reseat
+                reseat[event_date] = sorted({gap[1] for gap in new_gaps})
         return "QUEUED"
+
+    def _unfollowed_event_run_gaps(
+        self,
+        *,
+        event_date: str,
+        registry_path: Path,
+        capture_root: Path,
+    ) -> set[tuple[str, str, tuple[str, ...]]]:
+        """Charter 263 (四): event-run station gaps no follow job has been given.
+
+        ``(event_date, file name, missing stations)`` for every held event-run
+        file (``follow_run.event_run_station_gaps``) lacking a station the
+        forward registry lists for the day and the run covers -- the same
+        listing ``capture_follow_runs`` reads (active, source-eligible rows)
+        -- less the gaps already handed to a queued job.  Never raises: a gap
+        check that cannot read leaves the follow lane exactly as it was.
+        """
+
+        try:
+            registry = load_market_registry_snapshot(registry_path)
+            station_timezones: dict[str, str] = {}
+            for row in registry.get("rows") or ():
+                if not isinstance(row, Mapping):
+                    continue
+                if (
+                    str(row.get("event_date") or "") != str(event_date)
+                    or int(row.get("market_active") or 0) != 1
+                    or int(row.get("source_eligible") or 0) != 1
+                ):
+                    continue
+                station = str(row.get("station_id") or "").strip().upper()
+                zone = str(row.get("settlement_timezone") or "").strip()
+                if station and zone:
+                    station_timezones.setdefault(station, zone)
+            if not station_timezones:
+                return set()
+            gaps = follow_run.event_run_station_gaps(
+                capture_root,
+                event_date=str(event_date),
+                station_timezones=station_timezones,
+                as_of=datetime.now(timezone.utc),
+            )
+        except Exception:  # noqa: BLE001 - the follow lane's other triggers stand
+            return set()
+        seen = getattr(self, "_official_native_follow_gaps_seen", None) or set()
+        return {
+            (str(event_date), str(gap["path"]), tuple(gap["missing_station_ids"]))
+            for gap in gaps
+        } - seen
 
     def _metar_trajectory_training_due(
         self, *, station_id: str

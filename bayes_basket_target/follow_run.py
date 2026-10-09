@@ -60,6 +60,7 @@ from .ecmwf_ifs_archive import (
     FOLLOW_ONLY_LEAD_CYCLES as ECMWF_FOLLOW_ONLY_LEAD_CYCLES,
     MULTISTATION_SCHEMA as ECMWF_MULTISTATION_SCHEMA,
     SYSTEM_ID as ECMWF_SYSTEM_ID,
+    follow_period_end_steps as _ecmwf_follow_steps,
 )
 from .eccc_geps_archive import (
     ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as ECCC_ARCHIVE_CYCLES_BY_LEAD,
@@ -89,7 +90,7 @@ from .noaa_aigefs_archive import (
     SYSTEM_ID as AIGEFS_SYSTEM_ID,
 )
 from .native_archive_lead import capture_lead_bucket
-from .resource_bounds import load_bounded_json
+from .resource_bounds import load_bounded_json, load_verified_file_cached
 from .station_season import station_season_bin
 
 
@@ -142,6 +143,10 @@ _ALL_RUN_FAMILIES = (AIFS_FAMILY, AIGEFS_FAMILY)
 # are what can seat ICON/ECCC in a D+2 packet from its listing (~05Z D-2)
 # instead of from ~15-17Z, and 18Z follows 12Z.
 FOLLOW_LEADS = (0, 1, 2)
+# A held follow file is revisited for stations listed since its first read
+# while every publisher still serves its run (DWD keeps ICON about a day).
+# One bound for the capture's revisit and the worker's gap check.
+FOLLOW_SUPPLEMENT_MAX_RUN_AGE = timedelta(hours=24)
 FOLLOW_RUN_MIN_FIT_CASES = 10
 # ... and those cases have to be recent.  ``train_n_effective`` is the fit's
 # Kish size under the bias half-life (5 days): ten consecutive days give 8.7,
@@ -757,7 +762,120 @@ def archive_station_ids(archive: Mapping[str, Any]) -> set[str]:
     }
 
 
+def event_run_covers_station(
+    family: str,
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init: datetime,
+) -> bool:
+    """Whether the follow capture of an event run seals this station's day.
+
+    The same seals ``capture_follow_runs`` applies to the families followed
+    per event date: ECMWF's follow-only steps (charter 263 (四) reach
+    included) and the AI ensembles' six-hourly instants.
+    """
+
+    if family == ECMWF_FAMILY:
+        return _ecmwf_follow_steps(
+            event_date=str(event_date),
+            settlement_timezone=str(settlement_timezone),
+            run_init_utc=run_init,
+        ) is not None
+    if family in (AIFS_FAMILY, AIGEFS_FAMILY):
+        return _aifs_day_instants(
+            event_date=str(event_date),
+            settlement_timezone=str(settlement_timezone),
+            run_init_utc=run_init,
+        ) is not None
+    raise ValueError(f"not_an_event_run_family:{family}")
+
+
+def held_station_ids(
+    path: Path, *, family: str, event_date: str, run_init: datetime
+) -> frozenset[str] | None:
+    """The stations a held follow file carries, or None if it is not one.
+
+    Answered from memory while the file is unchanged: the gap check runs at
+    the end of every pass and the files are several megabytes each.
+    """
+
+    def _load(resolved: Path) -> list[str] | None:
+        archive = load_follow_archive(
+            resolved, family=family, event_date=event_date, run_init=run_init
+        )
+        return None if archive is None else sorted(archive_station_ids(archive))
+
+    ids = load_verified_file_cached(
+        path,
+        _load,
+        namespace=(
+            f"follow_held_station_ids:{family}:{event_date}:"
+            f"{run_init.astimezone(timezone.utc).isoformat()}"
+        ),
+    )
+    return None if ids is None else frozenset(ids)
+
+
+def event_run_station_gaps(
+    root: Path,
+    *,
+    event_date: str,
+    station_timezones: Mapping[str, str],
+    as_of: datetime,
+) -> list[dict[str, Any]]:
+    """Charter 263 (四): held event-run files lacking a listed station they cover.
+
+    A follow file holds the stations listed when its run was first read; D+2
+    lists over D-2's morning, so a station listed after that read is not in
+    it, and the follow job that would add it (``capture_follow_runs``'s
+    revisit) was queued only when a ladder rung named an ICON/ECCC cycle or
+    an event-run file was missing outright.  A gap here is the third reason.
+    Only files the revisit itself would still touch (run no older than
+    ``FOLLOW_SUPPLEMENT_MAX_RUN_AGE``), only stations the run's seal covers.
+    """
+
+    gaps: list[dict[str, Any]] = []
+    for family in EVENT_RUN_FAMILIES:
+        for run_init, path in follow_archive_paths(root, family, event_date):
+            if as_of - run_init > FOLLOW_SUPPLEMENT_MAX_RUN_AGE:
+                continue
+            if not path.is_file():
+                continue
+            held = held_station_ids(
+                path, family=family, event_date=event_date, run_init=run_init
+            )
+            if held is None:
+                continue
+            missing = sorted(
+                str(station).strip().upper()
+                for station, zone in station_timezones.items()
+                if str(station).strip().upper() not in held
+                and event_run_covers_station(
+                    family,
+                    event_date=event_date,
+                    settlement_timezone=str(zone),
+                    run_init=run_init,
+                )
+            )
+            if missing:
+                gaps.append({
+                    "family": family,
+                    "run_init_utc": (
+                        run_init.astimezone(timezone.utc)
+                        .isoformat().replace("+00:00", "Z")
+                    ),
+                    "path": path.name,
+                    "missing_station_ids": missing,
+                })
+    return gaps
+
+
 __all__ = [
+    "FOLLOW_SUPPLEMENT_MAX_RUN_AGE",
+    "event_run_covers_station",
+    "event_run_station_gaps",
+    "held_station_ids",
     "AIFS_FAMILY",
     "AIFS_SERVING_ENV",
     "AIGEFS_FAMILY",

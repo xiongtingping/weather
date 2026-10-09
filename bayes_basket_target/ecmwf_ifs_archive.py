@@ -432,17 +432,35 @@ def _run_after_local_day_start(
     return run_start >= day_start
 
 
+# How far a capture reads into a run.  Every lead the ladder serves (d0-d2)
+# finds its station-days inside +72h, and every certificate the ladder seats
+# was trained on steps drawn under this ceiling.
+LADDER_MAX_FORECAST_STEP = 72
+# Charter 263 (四): the follow-only lead -- D-3 18Z for a D+2 day -- reads on
+# to the station's own day where +72h stops short of it.  The ceiling cut the
+# whole of the Americas out of that run: 10-11 in New York closes at +82h
+# from 10-08 18Z and in Los Angeles at +85h (+86h in winter), so no American
+# station ever held the run, ever trained its scope, and every one waited for
+# ECMWF's own D-2 00Z (~08:03Z) however early it was listed.  The open-data
+# ENS is three-hourly to +144h; 90 clears the fleet's westernmost day with a
+# step to spare.  The extended read is only ever a fallback: a station the
+# ladder ceiling already seals keeps exactly those steps (and so exactly the
+# history and certificate it has), see ``station_period_end_steps``.
+FOLLOW_ONLY_MAX_FORECAST_STEP = 90
+
+
 def _period_end_steps(
     *,
     event_date: str,
     settlement_timezone: str,
     run_init_utc: datetime,
+    max_step: int = LADDER_MAX_FORECAST_STEP,
 ) -> list[int]:
     target = date.fromisoformat(event_date)
     zone = ZoneInfo(settlement_timezone)
     result = [
         step
-        for step in range(3, 73, 3)
+        for step in range(3, int(max_step) + 1, 3)
         if (
             run_init_utc + timedelta(hours=step)
         ).astimezone(zone).date() == target
@@ -468,6 +486,38 @@ def _period_end_steps(
     return result
 
 
+def station_period_end_steps(
+    *,
+    event_date: str,
+    settlement_timezone: str,
+    run_init_utc: datetime,
+    lead_days: int,
+) -> list[int]:
+    """The steps a capture of this run reads for one station.
+
+    The ladder ceiling first, always: a station it seals is read exactly as it
+    always was.  Only on the follow-only lead, and only for a station the
+    ceiling cannot seal, the read goes on to ``FOLLOW_ONLY_MAX_FORECAST_STEP``
+    (charter 263 (四)).  Raises like ``_period_end_steps`` when neither seals.
+    """
+
+    try:
+        return _period_end_steps(
+            event_date=event_date,
+            settlement_timezone=settlement_timezone,
+            run_init_utc=run_init_utc,
+        )
+    except ContractError:
+        if int(lead_days) not in FOLLOW_ONLY_LEAD_CYCLES:
+            raise
+    return _period_end_steps(
+        event_date=event_date,
+        settlement_timezone=settlement_timezone,
+        run_init_utc=run_init_utc,
+        max_step=FOLLOW_ONLY_MAX_FORECAST_STEP,
+    )
+
+
 def follow_period_end_steps(
     *,
     event_date: str,
@@ -477,17 +527,22 @@ def follow_period_end_steps(
     """Charter 193: the steps a follow run seals for one station, or None.
 
     ``_period_end_steps`` raises for the whole batch; a follow capture asks per
-    station first and leaves out the ones the run cannot seal (D-3 18Z reaches
-    +72h, so the far west is left out), plus those the curve seal would refuse.
+    station first and leaves out the ones the run cannot seal, plus those the
+    curve seal would refuse.  The lead is the run's own distance to the day,
+    so D-3 18Z reads on past +72h for the stations only that reach covers
+    (charter 263 (四)).
     """
 
+    run_start = run_init_utc.astimezone(timezone.utc)
     try:
-        steps = _period_end_steps(
+        lead_days = (date.fromisoformat(str(event_date)) - run_start.date()).days
+        steps = station_period_end_steps(
             event_date=event_date,
             settlement_timezone=settlement_timezone,
             run_init_utc=run_init_utc,
+            lead_days=lead_days,
         )
-    except ContractError:
+    except (ContractError, ValueError):
         return None
     same_day = _run_after_local_day_start(
         event_date=event_date,
@@ -1032,10 +1087,11 @@ def capture_ecmwf_station_days(
             "latitude": latitude,
             "longitude": longitude,
             "registry_rows": list(registry_rows),
-            "forecast_steps": _period_end_steps(
+            "forecast_steps": station_period_end_steps(
                 event_date=event_date,
                 settlement_timezone=timezone_name,
                 run_init_utc=run_init,
+                lead_days=lead_days,
             ),
         }
     union_steps = sorted({

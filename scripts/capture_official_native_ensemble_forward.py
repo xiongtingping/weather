@@ -1559,7 +1559,7 @@ def capture_official_native_forward(
 
 # How old a followed run may be and still be read again for stations listed
 # after its first read: DWD serves ICON objects for about a day.
-FOLLOW_SUPPLEMENT_MAX_RUN_AGE = timedelta(hours=24)
+FOLLOW_SUPPLEMENT_MAX_RUN_AGE = follow_run.FOLLOW_SUPPLEMENT_MAX_RUN_AGE
 # What a follow file must agree on with a supplement before the two are one
 # run's archive.  Any of these differing means the supplement is not the same
 # run read the same way, and the file keeps what it had.

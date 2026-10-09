@@ -186,12 +186,21 @@ def _station_steps(
 
     try:
         if family == ECMWF_FAMILY:
-            from .ecmwf_ifs_archive import _period_end_steps  # noqa: PLC0415
+            from .ecmwf_ifs_archive import (  # noqa: PLC0415
+                station_period_end_steps,
+            )
 
-            return list(_period_end_steps(
+            # The capture's own per-station read, follow-only reach included
+            # (charter 263 (四)), so a run is not declared landed for a
+            # station before the steps that station is read at are up.
+            return list(station_period_end_steps(
                 event_date=event_date,
                 settlement_timezone=settlement_timezone,
                 run_init_utc=run_init,
+                lead_days=(
+                    date.fromisoformat(str(event_date))
+                    - run_init.astimezone(timezone.utc).date()
+                ).days,
             ))
         if family == GEFS_FAMILY:
             from .noaa_gefs_archive import _forecast_hours  # noqa: PLC0415

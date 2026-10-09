@@ -22,6 +22,9 @@ def _worker(tmp_path):
     worker = object.__new__(pw.TargetProductionWorker)
     worker.nwp_runtime_root = tmp_path
     worker.station_allowlist = ()
+    # The follow job a listing queues (263 (四)) is tested on its own below;
+    # here it must not start a capture subprocess.
+    worker._enqueue_listing_follow = lambda *, event_date: "NO_FOLLOW_RUNG"
     (tmp_path / "market_registry_forward.json").write_bytes(b"{}")
     (tmp_path / "official_native_ensemble_forward_inbox.json").write_bytes(b"{}")
     return worker
@@ -89,6 +92,7 @@ def test_a_listed_day_without_a_packet_is_captured_once_per_date(
         "station_id": "EDDM",
         "stations_without_packet": 2,
         "stations_recorded_attempted": 2,
+        "follow": "NO_FOLLOW_RUNG",
         "state": "SUBMITTED",
     }]
     assert receipt["places_orders"] is False
