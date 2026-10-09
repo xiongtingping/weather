@@ -16219,6 +16219,10 @@ color-scheme:dark}
 .sd-prob-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
 .sd-prob-card{border:1px solid color-mix(in srgb,var(--c) 45%,var(--line));border-top:3px solid var(--c);border-radius:8px;padding:12px;background:color-mix(in srgb,var(--c) 7%,var(--card));min-width:0}
 .sd-prob-title{font-size:16px;font-weight:750;color:var(--c)}
+.sd-prob-card{position:relative}
+.sd-prob-tx{position:absolute;top:10px;right:12px;text-align:right;line-height:1.2}
+.sd-prob-tx b{display:block;font-size:26px;font-weight:800;color:var(--c);font-variant-numeric:tabular-nums}
+.sd-prob-tx span{display:block;font-size:11px;color:var(--muted)}
 .sd-prob-value{font-size:18px;font-weight:650;color:var(--c);font-variant-numeric:tabular-nums;line-height:1.4;margin:4px 0}
 .sd-prob-bucket{font-size:32px;font-weight:800;color:var(--c);line-height:1.25;margin:6px 0}
 .sd-prob-card .sd-sub{line-height:1.6;overflow-wrap:anywhere}
@@ -16299,11 +16303,12 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
    right in whatever is left (the venue's own page keeps its order panel
    there); below 280 px of room the panel wraps under the ladder instead of
    squeezing it (2026-10-09: at 1440 px the payoff column was clipped). */
-.sd-calc-wrap{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px 22px}
+.sd-calc-wrap{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:14px 22px}
 .sd-calc-left{flex:0 1 auto;min-width:0;max-width:100%}
+@media (max-width:900px){.sd-calc-wrap{flex-wrap:wrap}.sd-calc-wrap>.sd-summary{flex:1 1 100%}}
 /* The footnote wraps to the ladder's width instead of setting it. */
 .sd-calc-left>.sd-sub{width:0;min-width:100%}
-.sd-calc-wrap>.sd-summary{flex:1 1 300px;min-width:280px;position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.sd-calc-wrap>.sd-summary{flex:1 0 300px;min-width:300px;position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
 .sd-tk-h{font-size:15px;font-weight:700;margin:0 0 6px;min-height:22px}
@@ -22648,7 +22653,10 @@ function sdProbabilityCards(day){
     const meanPMove = pv && meanP != null ? dv(meanP, ((pv.vector || {})[st.mean_bucket]), 2, "点", 100) : "";
     const centerLabel = stage === "P0" ? "模型加权温度中心" : "本阶段融合后中心";
     const rootLabel = stage === "P0-M" ? "根中心（P0）" : `根中心（${sdEsc((e || {}).root_stage || "前序阶段")}）`;
-    return `<div class="sd-prob-card${e ? "" : " sd-prob-empty"}" style="--c:${SD_COL[stage]}">
+    // P0-M's evidence, top right: the TAF's forecast maximum and how far it
+    // sits from P0's model centre (x, what the likelihood reads).
+    const txBadge = stage === "P0-M" && e ? `<div class="sd-prob-tx" title="TAF 预报最高温 TX；x＝TX − P0 模型加权中心 ${sdN(e.root_center_c, 2)}°C；似然状态 ${sdEsc(e.taf_state || "—")}"><span>TAF TX</span><b>${e.tx_c == null ? "—" : sdN(e.tx_c, 0) + "°C"}</b><span>${e.tx_c == null ? "这份 TAF 没有 TX" : e.x_c == null ? sdEsc(e.taf_state || "") : `比 P0 中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`}</span></div>` : "";
+    return `<div class="sd-prob-card${e ? "" : " sd-prob-empty"}" style="--c:${SD_COL[stage]}">${txBadge}
       <div class="sd-prob-title">${stage} 概率</div>
       <div class="muted sd-sub">${descriptions[stage]}</div>
       <div class="muted sd-sub">${centerLabel}</div>
