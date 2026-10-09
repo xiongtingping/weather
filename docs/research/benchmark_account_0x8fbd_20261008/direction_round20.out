@@ -1,0 +1,24 @@
+=== A. bucket-level momentum ===
+   ECMWF_AIFS_ENS_GLOBAL      No  dp at picked > 0                     n= 288 share 0.524
+   ECMWF_AIFS_ENS_GLOBAL      No  picked > mirror                      n= 282 share 0.567
+   ECMWF_AIFS_ENS_GLOBAL      Yes dp at picked > 0                     n= 669 share 0.540
+   ECMWF_AIFS_ENS_GLOBAL      Yes picked > mirror                      n= 661 share 0.524
+   ECMWF_AIFS_ENS_GLOBAL      Yes picked > same-side other distance    n= 667 share 0.524
+   ECMWF_IFS_ENS_OPEN_PF50    No  dp at picked > 0                     n= 291 share 0.488
+   ECMWF_IFS_ENS_OPEN_PF50    No  picked > mirror                      n= 286 share 0.491
+   ECMWF_IFS_ENS_OPEN_PF50    Yes dp at picked > 0                     n= 691 share 0.535
+   ECMWF_IFS_ENS_OPEN_PF50    Yes picked > mirror                      n= 681 share 0.509
+   ECMWF_IFS_ENS_OPEN_PF50    Yes picked > same-side other distance    n= 687 share 0.537
+   bucket-level skill: excess hit (truth - market q) at buckets whose member share moved >= 6 points
+   ECMWF_AIFS_ENS_GLOBAL      dp up: n= 1285 excess +0.003
+   ECMWF_AIFS_ENS_GLOBAL      dp down: n= 1286 excess -0.018
+   ECMWF_IFS_ENS_OPEN_PF50    dp up: n= 1628 excess -0.009
+   ECMWF_IFS_ENS_OPEN_PF50    dp down: n= 1659 excess -0.003
+
+=== B. model-error persistence ===
+   all off-mode   ECMWF_AIFS_ENS_GLOBAL      n= 679 agree 0.485  persistence skill -0.017  theirs +0.183
+   all off-mode   ECMWF_IFS_ENS_OPEN_PF50    n= 714 agree 0.542  persistence skill +0.055  theirs +0.187
+   all off-mode   mean of both               n= 638 agree 0.528  persistence skill +0.012  theirs +0.168
+   quiet |M|<0.5  ECMWF_AIFS_ENS_GLOBAL      n= 139 agree 0.475  persistence skill -0.071  theirs +0.247
+   quiet |M|<0.5  ECMWF_IFS_ENS_OPEN_PF50    n= 135 agree 0.570  persistence skill +0.156  theirs +0.272
+   quiet |M|<0.5  mean of both               n= 127 agree 0.559  persistence skill +0.028  theirs +0.263

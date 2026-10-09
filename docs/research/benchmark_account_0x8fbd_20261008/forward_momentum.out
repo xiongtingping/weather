@@ -1,0 +1,5 @@
+taker BUY fills 844, first-fill episodes 375
+off-mode episodes with a ladder: 120; with momentum: 120; with truth: 0
+|M|>=0.5: n=96 agree 0.479 (+-0.100)  by event date {'2026-10-09': 67, '2026-10-10': 27, '2026-10-11': 2}
+|M|>=1.0: n=71 agree 0.549 (+-0.116)  by event date {'2026-10-09': 51, '2026-10-10': 19, '2026-10-11': 1}
+|M|>=1.5: n=58 agree 0.569 (+-0.127)  by event date {'2026-10-09': 41, '2026-10-10': 17}

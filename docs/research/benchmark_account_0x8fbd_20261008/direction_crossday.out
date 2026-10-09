@@ -1,0 +1,22 @@
+=== all off-mode ===
+   next day:DWD_ICON_GLOBAL_EPS             n= 206 agree 0.485  cross-day skill +0.139  theirs agree/disagree +0.195/-0.087
+   next day:ECMWF_AIFS_ENS_GLOBAL           n= 186 agree 0.516  cross-day skill +0.072  theirs agree/disagree +0.188/+0.053
+   next day:ECMWF_IFS_ENS_OPEN_PF50         n= 208 agree 0.558  cross-day skill +0.018  theirs agree/disagree +0.095/+0.079
+   next day:NOAA_GEFS_05                    n= 221 agree 0.493  cross-day skill -0.035  theirs agree/disagree +0.078/+0.145
+   next day:mean                            n= 168 agree 0.500  cross-day skill -0.008  theirs agree/disagree +0.104/+0.120
+   prev day:DWD_ICON_GLOBAL_EPS             n= 235 agree 0.528  cross-day skill +0.076  theirs agree/disagree +0.227/+0.093
+   prev day:ECMWF_AIFS_ENS_GLOBAL           n= 221 agree 0.489  cross-day skill -0.037  theirs agree/disagree +0.184/+0.249
+   prev day:ECMWF_IFS_ENS_OPEN_PF50         n= 230 agree 0.478  cross-day skill -0.033  theirs agree/disagree +0.142/+0.193
+   prev day:NOAA_GEFS_05                    n= 255 agree 0.529  cross-day skill +0.078  theirs agree/disagree +0.290/+0.161
+   prev day:mean                            n= 182 agree 0.489  cross-day skill +0.064  theirs agree/disagree +0.243/+0.107
+=== quiet |M|<0.5 ===
+   next day:DWD_ICON_GLOBAL_EPS             n=  39 agree 0.410  cross-day skill +0.060  theirs agree/disagree +0.139/-0.004
+   next day:ECMWF_AIFS_ENS_GLOBAL           n=  43 agree 0.512  cross-day skill +0.047  theirs agree/disagree +0.287/+0.204
+   next day:ECMWF_IFS_ENS_OPEN_PF50         n=  47 agree 0.617  cross-day skill -0.022  theirs agree/disagree +0.055/+0.147
+   next day:NOAA_GEFS_05                    n=  51 agree 0.490  cross-day skill -0.135  theirs agree/disagree -0.010/+0.256
+   next day:mean                            n=  41 agree 0.463  cross-day skill -0.163  theirs agree/disagree -0.053/+0.257
+   prev day:DWD_ICON_GLOBAL_EPS             n=  54 agree 0.463  cross-day skill +0.111  theirs agree/disagree +0.293/+0.045
+   prev day:ECMWF_AIFS_ENS_GLOBAL           n=  54 agree 0.611  cross-day skill +0.011  theirs agree/disagree +0.251/+0.366
+   prev day:ECMWF_IFS_ENS_OPEN_PF50         n=  55 agree 0.509  cross-day skill +0.131  theirs agree/disagree +0.527/+0.281
+   prev day:NOAA_GEFS_05                    n=  65 agree 0.554  cross-day skill +0.207  theirs agree/disagree +0.471/+0.122
+   prev day:mean                            n=  42 agree 0.524  cross-day skill +0.186  theirs agree/disagree +0.472/+0.128
