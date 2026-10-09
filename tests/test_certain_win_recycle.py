@@ -536,3 +536,103 @@ def test_each_sell_is_sized_to_what_the_account_holds_outside_the_ledgers_knowle
         transport=lambda path, payload: (sent3.append(payload["size"]), _resting(path, payload))[1],
     )
     assert sent3 == [6.0]
+
+
+# Charter 262 (user ruling 2026-10-09): every held leg of the account, from any
+# lane or bought by hand on the board, is offered at 0.998 -- not only what the
+# two ledgers record.
+
+def _canonical_with_tokens(canonical, rows):
+    canonical.execute("ALTER TABLE reported_trajectory_market_registry ADD COLUMN no_token TEXT")
+    for bucket, yes_token, no_token, accepting in rows:
+        canonical.execute(
+            "INSERT INTO reported_trajectory_market_registry(station_id,event_date,outcome,yes_token,no_token,"
+            "market_accepting_orders,registry_json,refreshed_at) VALUES(?,?,?,?,?,?,?,?)",
+            (ST, ED, bucket, yes_token, no_token, accepting,
+             json.dumps({"order_price_min_tick_size": 0.001, "order_min_size": 5.0, "no_token": no_token}),
+             "2026-09-16T09:10:00Z"),
+        )
+
+
+def test_a_leg_no_ledger_records_is_offered_from_the_account_itself() -> None:
+    # The ledgers hold nothing; the account holds 26°C YES bought by hand and
+    # 25°C NO bought by another lane.
+    conn, canonical = _store(holdings={})
+    conn.execute("DELETE FROM basket_target_market_registry")
+    _canonical_with_tokens(canonical, [("25°C", "t25", "n25", 1), ("26°C", "t26", "n26", 1)])
+    _book(conn)
+    plans = lane.plan_certain_win_recycles(
+        conn, canonical, now_utc=NOW,
+        account_reader=lambda: {"t26": {"size": 12.345}, "n25": {"size": 7.0}, "elsewhere": {"size": 99.0}},
+    )
+    got = sorted((p["bucket"], p["side"], p["token_id"], p["shares"], p["limit_price"], p["source"]) for p in plans)
+    assert got == [("25°C", "NO", "n25", 7.0, 0.998, "account_positions"),
+                   ("26°C", "YES", "t26", 12.34, 0.998, "account_positions")]
+    # A token outside the weather registry is not this lane's to sell.
+    assert all(p["token_id"] != "elsewhere" for p in plans)
+
+
+def test_the_account_source_keeps_every_venue_rule() -> None:
+    conn, canonical = _store(holdings={})
+    conn.execute("DELETE FROM basket_target_market_registry")
+    _canonical_with_tokens(canonical, [("25°C", "t25", "n25", 0), ("26°C", "t26", "n26", 1)])
+    _book(conn)
+    # Closed market (25°C) and a holding under the venue minimum (26°C): nothing.
+    assert lane.plan_certain_win_recycles(
+        conn, canonical, now_utc=NOW, account_reader=lambda: {"t25": {"size": 50.0}, "t26": {"size": 4.99}},
+    ) == []
+    # A coarse tick cannot carry 0.998: nothing, never a guess.
+    conn2, canonical2 = _store(holdings={})
+    conn2.execute("DELETE FROM basket_target_market_registry")
+    conn2.execute("DELETE FROM basket_official_ws_snapshot")
+    _canonical_with_tokens(canonical2, [("25°C", "t25", "n25", 1), ("26°C", "t26", "n26", 1)])
+    _book(conn2, tick=0.01)
+    assert lane.plan_certain_win_recycles(
+        conn2, canonical2, now_utc=NOW, account_reader=lambda: {"t26": {"size": 20.0}},
+    ) == []
+
+
+def test_the_account_source_adds_only_what_no_ledger_plan_already_covers() -> None:
+    # The ledger holds 25°C YES 6 and plans it; the account also lists it (and
+    # 26°C, which the ledger does not hold): 25°C is planned once, 26°C added.
+    conn, canonical = _store(holdings={"25°C": 6.0})
+    _canonical_with_tokens(canonical, [("25°C", "t25", "n25", 1), ("26°C", "t26", "n26", 1)])
+    _book(conn)
+    plans = lane.plan_certain_win_recycles(
+        conn, canonical, now_utc=NOW, account_reader=lambda: {"t25": {"size": 6.0}, "t26": {"size": 8.0}},
+    )
+    assert sorted((p["token_id"], p.get("source", "ledger")) for p in plans) == [
+        ("t25", "ledger"), ("t26", "account_positions")]
+
+
+def test_an_unreadable_account_list_leaves_the_ledger_plans_alone() -> None:
+    conn, canonical = _store(holdings={"25°C": 6.0})
+    _book(conn)
+
+    def broken():
+        raise TimeoutError("data api down")
+
+    plans = lane.plan_certain_win_recycles(conn, canonical, now_utc=NOW, account_reader=broken)
+    assert [(p["token_id"], p.get("source", "ledger")) for p in plans] == [("t25", "ledger")]
+
+
+def test_an_account_leg_is_sold_through_the_same_sender_and_sized_on_the_balance(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store(holdings={})
+    conn.execute("DELETE FROM basket_target_market_registry")
+    _canonical_with_tokens(canonical, [("25°C", "t25", "n25", 1), ("26°C", "t26", "n26", 1)])
+    _book(conn)
+    _armed(monkeypatch)
+    sent: list[dict] = []
+    receipt = lane.execute_certain_win_recycles(
+        conn, canonical, now_utc=NOW, live_submit_authorized=True,
+        transport=lambda path, payload: (sent.append(dict(payload)), _resting(path, payload))[1],
+        position_reader=lambda token: {"ok": True, "shares": 9.0},
+        account_reader=lambda: {"t26": {"size": 12.0}},
+    )
+    assert receipt["sent"] == 1 and receipt["account_positions"]["planned_from_account"] == 1
+    assert [(p["token_id"], p["side"], p["price"], p["size"], p["order_type"]) for p in sent] == [
+        ("t26", "SELL", 0.998, 9.0, "GTC")]  # capped by the gateway's own balance read
+    # Resting now: the next pass offers nothing more of it.
+    assert lane.plan_certain_win_recycles(
+        conn, canonical, now_utc="2026-09-16T09:31:00.000Z", account_reader=lambda: {"t26": {"size": 9.0}},
+    ) == []

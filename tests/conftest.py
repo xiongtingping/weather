@@ -65,6 +65,19 @@ def _no_test_reads_the_benchmark_cluster(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.fixture(autouse=True)
+def _no_test_reads_the_account_position_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Charter 262: the 0.998 recycle lane reads the account's own position
+    list off the public data API.  A suite reads an empty list (and no cached
+    one); a test of that source hands in its own reader."""
+
+    from bayes_basket_target import certain_win_recycle
+
+    monkeypatch.setattr(certain_win_recycle, "_read_account_positions", lambda: {})
+    monkeypatch.setitem(certain_win_recycle._ACCOUNT_POSITIONS, "at", -1e18)
+    monkeypatch.setitem(certain_win_recycle._TOKEN_LEGS, "at", -1e18)
+
+
+@pytest.fixture(autouse=True)
 def _map_the_fixture_station_season(monkeypatch: pytest.MonkeyPatch) -> None:
     """Map the fixture station ``TEST`` like a northern mid-latitude station.
 

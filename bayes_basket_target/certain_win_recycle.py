@@ -59,6 +59,21 @@ BALANCE_REFUSAL_MARK = "not enough balance"
 ACCOUNT_SHORT_RECHECK_SECONDS = 1200.0
 _ACCOUNT_SHORT: dict[str, float] = {}
 _MIGRATION_CURSOR = 0
+# Charter 262 (user ruling 2026-10-09「0.998卖出车道是对所有策略和手动买单都要
+# 生效」): the held legs come from the account itself, not only from the two
+# ledgers this lane read before -- the basket's confirmed YES inventory (the
+# basket closed under charter 231, so it no longer saw the Proper line's YES)
+# and the execution-cycle NO fills (which the Proper and copy-follow lanes do
+# not write).  Measured 2026-10-09 06:20Z: 66 of 68 weather positions in the
+# account carried no 0.998 offer -- Proper YES/NO, copy-follow YES/NO, and the
+# board's manual buys, which no ledger records at all.  The account list is
+# the venue's public data API (minutes behind at most); each send is still
+# sized on the gateway's own balance read just before it goes.
+ACCOUNT_POSITIONS_TTL_SECONDS = 300.0
+ACCOUNT_POSITIONS_TIMEOUT_SECONDS = 8.0
+TOKEN_LEGS_TTL_SECONDS = 600.0
+_ACCOUNT_POSITIONS: dict[str, Any] = {"at": -1e18, "positions": None, "error": None}
+_TOKEN_LEGS: dict[str, Any] = {"at": -1e18, "oldest": None, "legs": {}}
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -383,15 +398,169 @@ def retire_old_price_orders(
     return result
 
 
+def _read_account_positions() -> Mapping[str, Any]:
+    """The account's whole position list off the venue's public data API
+    (the same reader the board's holdings use)."""
+
+    from .manual_basket_order import _data_api_positions, funder_address  # noqa: PLC0415
+
+    user = funder_address()
+    if not user:
+        raise ValueError("funder_address_unknown")
+    return _data_api_positions(user, timeout=ACCOUNT_POSITIONS_TIMEOUT_SECONDS)
+
+
+def _account_positions(
+    reader: Callable[[], Mapping[str, Any]] | None = None,
+) -> dict[str, float] | None:
+    """token -> shares the account holds, read at most every few minutes.
+
+    None when the list cannot be read: the ledger sources still plan, and
+    nothing is inferred from a missing answer."""
+
+    now = time.monotonic()
+    if reader is None and now - _ACCOUNT_POSITIONS["at"] < ACCOUNT_POSITIONS_TTL_SECONDS:
+        return _ACCOUNT_POSITIONS["positions"]
+    try:
+        rows = _read_account_positions() if reader is None else reader()
+        positions = {}
+        for token, row in (rows or {}).items():
+            size = float((row or {}).get("size") or 0.0) if isinstance(row, Mapping) else float(row or 0.0)
+            if str(token) and math.isfinite(size) and size > 1e-9:
+                positions[str(token)] = size
+        error = None
+    except Exception as exc:  # noqa: BLE001 -- read again next window
+        positions, error = None, f"{type(exc).__name__}:{exc}"[:160]
+    if reader is None:
+        _ACCOUNT_POSITIONS.update(at=now, positions=positions, error=error)
+    return positions
+
+
+def _token_legs(
+    canonical_conn: sqlite3.Connection | None, oldest_date: str,
+) -> dict[str, tuple[str, str, str, str]]:
+    """token -> (station, event date, bucket, side) for the markets of the
+    days this lane still sells, off the canonical registry (one row per
+    outcome).  Only the columns stored before the registry JSON are read, so
+    no overflow page is touched; cached for a few minutes."""
+
+    now = time.monotonic()
+    key = (oldest_date, id(canonical_conn))
+    if now - _TOKEN_LEGS["at"] < TOKEN_LEGS_TTL_SECONDS and _TOKEN_LEGS["oldest"] == key:
+        return _TOKEN_LEGS["legs"]
+    legs: dict[str, tuple[str, str, str, str]] = {}
+    if canonical_conn is not None and _has_table(canonical_conn, "reported_trajectory_market_registry"):
+        for station, day, outcome, yes_token, no_token in canonical_conn.execute(
+            "SELECT station_id, event_date, outcome, yes_token, no_token"
+            " FROM reported_trajectory_market_registry WHERE event_date>=?",
+            (oldest_date,),
+        ):
+            for token, side in ((yes_token, "YES"), (no_token, "NO")):
+                if token:
+                    legs[str(token)] = (str(station), str(day), str(outcome), side)
+    _TOKEN_LEGS.update(at=now, oldest=key, legs=legs)
+    return legs
+
+
+def _account_plans(
+    target_conn: sqlite3.Connection,
+    canonical_conn: sqlite3.Connection | None,
+    *,
+    now_utc: str,
+    oldest_date: str,
+    planned_tokens: set[str],
+    positions: Mapping[str, float],
+) -> list[dict[str, Any]]:
+    """Charter 262: every held leg of the account no ledger plan covers --
+    whatever lane, or no lane, bought it -- under the same venue rules."""
+
+    plans: list[dict[str, Any]] = []
+    legs = _token_legs(canonical_conn, oldest_date)
+    books: dict[tuple[str, str], dict[str, Any]] = {}
+    for token, account_shares in sorted(positions.items()):
+        if token in planned_tokens or token not in legs:
+            continue
+        station_id, event_date, bucket, side = legs[token]
+        if event_date < oldest_date:
+            continue
+        registry = _registry_rows(
+            target_conn, canonical_conn, station_id=station_id, event_date=event_date, outcome=bucket,
+        ).get(bucket) or {}
+        if not registry or (registry.get("accepting_orders") is not None
+                            and int(registry["accepting_orders"] or 0) != 1):
+            continue
+        # The token must still be this outcome's token on the newest row.
+        if side == "YES" and registry.get("yes_token") != token:
+            continue
+        if side == "NO":
+            try:
+                if str((json.loads(registry["registry_json"]) or {}).get("no_token") or "") != token:
+                    continue
+            except (TypeError, ValueError):
+                continue
+        own = _own_sells(
+            target_conn, station_id=station_id, event_date=event_date, bucket=bucket,
+            counted=set(), side=side,
+        )
+        if own["failed"] >= MAX_FAILED_SENDS_PER_LEG or own["sends"] >= MAX_SENDS_PER_LEG or own["no_balance"]:
+            continue
+        # The account's own count already nets every sale; only the shares
+        # this lane still offers are taken off.
+        uncovered = _floor_cents(float(account_shares) - own["offered"])
+        try:
+            min_size = float(registry.get("min_size") or DEFAULT_MIN_ORDER_SHARES)
+        except (TypeError, ValueError):
+            continue
+        if uncovered + 1e-9 < max(min_size, 1e-6):
+            continue
+        key = (station_id, event_date)
+        if key not in books:
+            books[key] = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        book = books[key]
+        leg = book["legs"].get(bucket) or {}
+        try:
+            tick_size = float(leg.get("tick_size"))
+            limit_price = recycle_price(tick_size)
+        except (TypeError, ValueError):
+            continue
+        timezone_name = _settlement_timezone(
+            canonical_conn, station_id=station_id, event_date=event_date,
+            book_timezone=book["settlement_timezone"],
+        )
+        if not timezone_name:
+            continue
+        best_bid = (float(leg.get("best_bid") or 0.0) if side == "YES"
+                    else max(0.0, 1.0 - float(leg.get("best_ask") or 1.0)))
+        plans.append({
+            "schema": SCHEMA, "rule": RULE_VERSION, "source": "account_positions",
+            "order_intent_id": _intent_id(
+                station_id=station_id, event_date=event_date, bucket=bucket,
+                token_id=token, now_utc=now_utc, side=side,
+            ),
+            "station_id": station_id, "event_date": event_date,
+            "settlement_timezone": timezone_name, "bucket": bucket,
+            "side": side, "token_id": token, "shares": uncovered,
+            "limit_price": limit_price, "tick_size": tick_size,
+            "min_size": min_size, "best_bid": best_bid,
+            "held_shares": round(float(account_shares), 6),
+            "offered_before_shares": round(own["offered"], 6),
+            "sold_before_shares": 0.0,
+        })
+    return plans
+
+
 def plan_certain_win_recycles(
     target_conn: sqlite3.Connection,
     canonical_conn: sqlite3.Connection | None,
     *,
     now_utc: str,
+    account_reader: Callable[[], Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """The 0.998 sells to place: for every held leg of a market still taking
     orders, the shares no open sell of this lane already offers and the
     inventory has not seen sold, when that is at least the venue minimum.
+    Held legs come from the two ledgers and, under charter 262, from the
+    account's own position list for everything the ledgers do not cover.
 
     Reads only.  Ordered by the leg's best bid, highest first, so the sends
     a cycle can make go to the legs closest to paying.
@@ -570,6 +739,12 @@ def plan_certain_win_recycles(
             "offered_before_shares": round(own["offered"], 6),
             "sold_before_shares": round(own["sold_unseen"], 6),
         })
+    positions = _account_positions(account_reader)
+    if positions:
+        plans.extend(_account_plans(
+            target_conn, canonical_conn, now_utc=now_utc, oldest_date=oldest_date,
+            planned_tokens={str(plan["token_id"]) for plan in plans}, positions=positions,
+        ))
     plans.sort(key=lambda plan: (-plan["best_bid"], plan["station_id"], plan["event_date"], plan["bucket"]))
     return plans
 
@@ -584,6 +759,7 @@ def execute_certain_win_recycles(
     max_sends: int = MAX_SENDS_PER_CYCLE,
     position_reader: Callable[[str], Mapping[str, Any]] | None = None,
     cancellation_client: Any | None = None,
+    account_reader: Callable[[], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Mint the intents, place the resting sells, record what came back --
     through the same sender and ledger path every other order uses."""
@@ -602,7 +778,8 @@ def execute_certain_win_recycles(
     # on the receipt with the reason.  Resting sells are untouched.
     egress_gate = egress_send_gate()
     if egress_gate.get("hold"):
-        plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
+        plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc,
+                                          account_reader=account_reader)
         return {
             "schema": "certain_win_recycle_receipt_v1",
             "rule": RULE_VERSION,
@@ -626,7 +803,8 @@ def execute_certain_win_recycles(
     migration = retire_old_price_orders(
         target_conn, now_utc=now_utc, client=cancellation_client,
     )
-    plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc)
+    plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc,
+                                      account_reader=account_reader)
     read_position = position_reader or default_position_reader
     receipts: list[dict[str, Any]] = []
     submitted = 0
@@ -684,6 +862,12 @@ def execute_certain_win_recycles(
         "deferred_to_next_cycle": max(0, len(plans) - sent),
         "submitted": submitted,
         "egress_gate": dict(egress_gate),
+        "account_positions": {
+            "read": _ACCOUNT_POSITIONS["positions"] is not None,
+            "held_tokens": len(_ACCOUNT_POSITIONS["positions"] or {}),
+            "error": _ACCOUNT_POSITIONS["error"],
+            "planned_from_account": sum(1 for plan in plans if plan.get("source") == "account_positions"),
+        },
         "receipts": receipts,
     }
 
