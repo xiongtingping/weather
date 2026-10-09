@@ -16295,6 +16295,16 @@ table.sd-pm .sd-pm-note{font-size:11.5px;min-width:112px;padding-left:4px;line-h
 .sd-pm-tag.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
 table.sd-pm .sd-pm-pl{text-align:right;min-width:104px;padding-left:16px}
 table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+/* Ladder left, the basket's totals and the order button right (the venue's
+   own page keeps its order panel there); stacked when the card is narrow. */
+.sd-calc-wrap{display:grid;grid-template-columns:minmax(0,max-content) minmax(300px,1fr);gap:14px 22px;align-items:start}
+.sd-calc-left{min-width:0}
+/* The footnote wraps to the ladder's width instead of setting it. */
+.sd-calc-left>.sd-sub{width:0;min-width:100%}
+.sd-calc-wrap>.sd-summary{position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
+.sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
+@media (max-width:1100px){.sd-calc-wrap{grid-template-columns:minmax(0,1fr)}.sd-calc-wrap>.sd-summary{position:static}}
 .sd-calc-more{margin-top:8px}.sd-calc-more>summary{cursor:pointer}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
 .sd-metar{max-height:360px;overflow:auto}
@@ -23350,8 +23360,8 @@ function sdCalc(day){
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
-    ${sdPmLadder(day, st, res, key)}
-    <div class="sd-summary">${summary}${orderOut}</div>
+    <div class="sd-calc-wrap"><div class="sd-calc-left">${sdPmLadder(day, st, res, key)}</div>
+    <div class="sd-summary">${summary}${orderOut}</div></div>
     <details class="sd-calc-more" data-sd-more="${sdEsc(key)}"${st.detailOpen ? " open" : ""}><summary class="muted">明细表：手填价格、手填持仓与净投入、持仓卖出</summary>
     <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>YES 买一/卖一</th><th class="sd-add">追加 YES U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>YES 价格</th><th>新买 YES 份</th><th class="sd-noc">NO 买一/卖一</th><th class="sd-add sd-noc">追加 NO U</th><th class="sd-noc">NO 价格</th><th class="sd-noc">新买 NO 份</th><th>新花 U</th><th title="命中该桶时：这一桶的 YES 份数 + 其它所有桶的 NO 份数，每份赔 1，减去全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 YES 份</th><th class="sd-old" title="账户里这一桶原来就有的 NO 份数">原持仓 NO 份</th><th class="sd-old" title="原持仓 YES 与 NO 的净投入＝已花−已确认卖出回款；可以为负">原持仓 净投入 U</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">持仓旁的卖出 25% / 50% / 75% / 100% 按本桶对应 YES 或 NO 的交易所份额计算，向下保留两位小数；读取最新持仓与买盘后确认，FOK 全成或零成。低于最小单或深度不足时不发送。100% 可能留下不足 0.01 份的尾数。</div>
