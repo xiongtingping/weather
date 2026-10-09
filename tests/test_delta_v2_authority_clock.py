@@ -290,9 +290,10 @@ def test_the_board_goes_red_before_the_end_and_green_after_renewal():
     assert health["health"] == "green", health
     assert health["fill_days_left"] > 360 and health["policy_days_left"] > 360
 
-    # Two missed weekly refits read amber, not green, on a year of validity.
-    stale = clock.authority_health(conn, now=now + timedelta(days=15))
-    assert stale["health"] == "amber" and "没有新批次" in stale["note"]
+    # No refit clock (the maker shadow book that fed it was retired on
+    # 2026-10-02): a renewed batch weeks old reads green, not amber.
+    later_still = clock.authority_health(conn, now=now + timedelta(days=15))
+    assert later_still["health"] == "green" and "没有新批次" not in later_still["note"]
 
 
 def _shadow_book(rows):

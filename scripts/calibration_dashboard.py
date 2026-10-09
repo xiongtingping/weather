@@ -15749,22 +15749,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "truth_materialization", collect_truth_materialization, conn,
         truth_coverage,
     )
-    # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
-    live_days = _cached_section("live_days", collect_live_days, conn)
-    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
-    # their facts no longer change, so they are read once a day, not every
-    # render; a page for an earlier ``through`` is still exact for its own
-    # days, and the funnel reads everything after it.
-    refusal_first_day, refusal_through = _refusal_history_window(conn)
-    refusal_history = _cached_section(
-        "refusal_history", _collect_refusal_history, conn,
-        refusal_first_day, refusal_through,
-        _salt=f"{refusal_first_day}|{refusal_through}",
-        _unavailable=None,
-    ) if refusal_first_day else None
-    live_selection_payload = _cached_section(
-        "live_selection", _build_live_selection, conn, refusal_history
-    )
     station_difficulty = _cached_section(
         "station_difficulty", collect_station_difficulty, conn,
         _unavailable={},
@@ -15787,6 +15771,27 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     realisation_layer = _cached_section(
         "realisation_layer", collect_realisation_layer, conn
+    )
+    # The two heaviest live reads come after the money and the lanes
+    # (2026-10-09): live_days and live_selection took 98-586 s a run,
+    # and at 12:29Z their 856 s left the lanes, the live book's money and its
+    # readiness to the deadline -- served an hour old -- on a run nothing in
+    # them depended on.  A run that runs out now loses these two first.
+    # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
+    live_days = _cached_section("live_days", collect_live_days, conn)
+    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
+    # their facts no longer change, so they are read once a day, not every
+    # render; a page for an earlier ``through`` is still exact for its own
+    # days, and the funnel reads everything after it.
+    refusal_first_day, refusal_through = _refusal_history_window(conn)
+    refusal_history = _cached_section(
+        "refusal_history", _collect_refusal_history, conn,
+        refusal_first_day, refusal_through,
+        _salt=f"{refusal_first_day}|{refusal_through}",
+        _unavailable=None,
+    ) if refusal_first_day else None
+    live_selection_payload = _cached_section(
+        "live_selection", _build_live_selection, conn, refusal_history
     )
     previous_windows = _previous_version_windows(conn)
     previous_salt = json.dumps(previous_windows, sort_keys=True)
@@ -16287,8 +16292,8 @@ table.sd-pm .sd-pm-note>div{margin:3px 0}
 .sd-pm-tag.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
 .sd-pm-tag.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
 table.sd-pm .sd-pm-pl{text-align:right;min-width:92px;padding-left:10px}
-table.sd-pm .sd-pm-inv{font-size:12px;line-height:1.55;text-align:right;padding-right:10px}
-table.sd-pm:not(.has-held) .sd-pm-inv{display:none}
+table.sd-pm .sd-pm-inv{font-size:11.5px;color:var(--muted);margin-top:2px;white-space:nowrap}
+table.sd-pm .sd-pm-inv b{color:var(--text)}
 table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 /* Ladder left at its own width, the basket's totals and the order button
    right in whatever is left (the venue's own page keeps its order panel
@@ -17696,7 +17701,7 @@ function healthLamps(){
     L.push(lamp(A.health, "执行授权有效期",
       `成交概率 ${days(A.fill_days_left)} · 策略 ${days(A.policy_days_left)}`,
       (A.note ? A.note + " · " : "")
-      + `成交概率是 ${A.fit_age_days == null ? "—" : A.fit_age_days.toFixed(0)} 天前拟合的（每周重拟合）`
+      + `成交概率是 ${A.fit_age_days == null ? "—" : A.fit_age_days.toFixed(0)} 天前拟合的（挂单探针 10-02 退役后不再重拟合，每日续期保持有效）`
       + " · 到期＝每个候选都解析不出成交概率或策略，全队当场停"));
   } else {
     L.push(lamp("amber", "执行授权有效期", "读不出", A.note || ""));
@@ -23388,16 +23393,18 @@ function sdPmLadder(day, st, res, key){
     // 已投入 (user 2026-10-09「篮子计算器里增加各桶目前实际投入金额」): what
     // the shares held on this rung cost, per side -- the account's average
     // price (data API) times the shares, the same money the summary's 持仓已花 sums.
+    // Under the holding chips, not a column of its own: a column pushed the
+    // ticket off the ladder's right (user 2026-10-09「买卖按钮被挤到下方一排了」).
     const inv = side => {
       const sh = side === "YES" ? sdHeld(st, b) : sdHeldNo(st, b);
-      if(!(sh > 0)) return "";
+      if(!(sh > 0)) return null;
       const avg = (side === "YES" ? (st.heldAvg || {}) : (st.heldAvgNo || {}))[b];
-      return `<div><span class="sd-pm-tag ${side === "YES" ? "yes" : "no"}">${side === "YES" ? "Yes" : "No"}</span> ${avg != null ? `<b>${sdN(sh * avg, 2)}</b> U` : '<span class="muted">均价未知</span>'}</div>`;
+      return avg != null ? `<b>${sdN(sh * avg, 2)}</b> U` : "均价未知";
     };
-    const invested = inv("YES") + inv("NO");
+    const invY = inv("YES"), invN = inv("NO");
+    const invested = invY && invN ? `Yes ${invY} · No ${invN}` : invY || invN;
     return `<tr class="sd-pm-row${onY ? " sd-pm-y" : ""}${onN ? " sd-pm-n" : ""}" data-b="${sdEsc(b)}">
-      <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip(b, "YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip(b, "NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div></td>
-      <td class="sd-pm-inv mono" title="这一桶持仓的实际投入＝持有份数 × 账户均价（公开接口）">${invested ? `<div class="muted">已投入</div>${invested}` : ""}</td>
+      <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip(b, "YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip(b, "NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div>${invested ? `<div class="sd-pm-inv mono" title="这一桶持仓的实际投入＝持有份数 × 账户均价（公开接口）">已投入 ${invested}</div>` : ""}</td>
       <td class="sd-pm-c"><span class="sd-pm-pct${chance != null && chance < 0.01 ? " faint" : ""}">${chance == null ? "—" : chance < 0.01 ? "&lt;1%" : Math.round(chance * 100) + "%"}</span>${arrow}<div class="muted sd-sub" title="当日口径 ${sdEsc(day.head_stage)} 的模型概率">模型 ${p[b] == null ? "—" : p[b] < 0.01 ? "&lt;1%" : Math.round(p[b] * 100) + "%"}</div></td>
       <td><button type="button" class="sd-pm-btn yes${onY ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="YES"${yesAsk == null && !onY ? " disabled" : ""} title="YES 卖一；点选这一腿">Buy Yes ${sdCents(yesAsk)}</button></td>
       <td><button type="button" class="sd-pm-btn no${onN ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="NO"${noAsk == null && !onN ? " disabled" : ""} title="NO 卖一＝1 − YES 买一；点选这一腿">Buy No ${sdCents(noAsk)}</button></td>
@@ -23409,8 +23416,7 @@ function sdPmLadder(day, st, res, key){
   // unpicked, the ladder is just rung | chance | Yes | No | payoff.  Yes and
   // No share them, stacked, so picking both sides does not widen the table.
   const anySel = (day.axis || []).some(r => st.sel[r.bucket] || (st.selNo || {})[r.bucket]);
-  const anyHeld = (day.axis || []).some(r => sdHeld(st, r.bucket) > 0 || sdHeldNo(st, r.bucket) > 0);
-  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}${anyHeld ? " has-held" : ""}"><tbody>${rows}</tbody></table></div>
+  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}"><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏；点持仓标签到右侧 Sell 页卖出。</div>`;
 }
 // PM-style trade ticket (user 2026-10-09「没有卖出」「和市场盘口一样这种」): Buy | Sell

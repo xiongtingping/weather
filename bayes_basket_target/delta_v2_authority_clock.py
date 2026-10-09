@@ -58,14 +58,15 @@ from .delta_v2_fill_artifact import (
 VALIDITY_DAYS = 365
 RENEW_WITHIN_DAYS = 60
 HANDOFF_LEAD_MINUTES = 30
-# The board's two questions.  An authority ending inside a month is amber and
+# The board's question.  An authority ending inside a month is amber and
 # inside a week red: the daily lane renews at sixty days, so either reading
-# means that lane has not run for a month.  A scope that has had no new fill
-# batch for two weeks missed two weekly refits.
+# means that lane has not run for a month.  There is no refit clock to watch:
+# the weekly refit read the maker shadow book, retired 2026-10-02 (user ruling
+# 「去掉挂单探针采集」, scripts/delta_v2_authority_sweep.sh), so a batch can
+# never be newer than its last renewal and "no new batch for two weeks" was an
+# amber nothing could clear (16 days on 2026-10-09).
 EXPIRY_WARN_DAYS = 30
 EXPIRY_RED_DAYS = 7
-REFIT_EVERY_DAYS = 7
-REFIT_STALE_DAYS = 14
 # One price every minted grid carries (0.001..0.999 per tick), so the board
 # reads a batch's window from a handful of index rows instead of walking the
 # ~80k rows of a scope.  The renewal and the re-pin do not use it: they must
@@ -659,8 +660,6 @@ def authority_health(
             red = True
         elif row["days_left"] < EXPIRY_WARN_DAYS:
             amber = True
-        if row["newest_batch_age_days"] > REFIT_STALE_DAYS:
-            amber = True
     for row in policy:
         if row["days_left"] < EXPIRY_RED_DAYS:
             red = True
@@ -672,12 +671,6 @@ def authority_health(
         notes.append(f"成交概率批次还剩 {min(fill_left):.1f} 天到期")
     if policy_left and min(policy_left) < EXPIRY_WARN_DAYS:
         notes.append(f"策略激活还剩 {min(policy_left):.1f} 天到期")
-    stale = [
-        row["newest_batch_age_days"] for row in fill
-        if row.get("active") and row["newest_batch_age_days"] > REFIT_STALE_DAYS
-    ]
-    if stale:
-        notes.append(f"成交概率 {max(stale):.0f} 天没有新批次（应每周重拟合）")
     if not policy:
         red = True
         notes.append("没有任何策略激活")
