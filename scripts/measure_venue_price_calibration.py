@@ -38,8 +38,6 @@ import argparse
 import json
 import sqlite3
 import sys
-
-from bayes_basket_target.maker_shadow_store import attach_maker_shadow  # noqa: E402
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -48,8 +46,11 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from live_book import _settled_bucket  # noqa: E402
+from scripts.maker_shadow_store import attach_maker_shadow  # noqa: E402
 
 # Bins on the mid.  Deliberately finer at the cheap end: that is where the
 # overround lives and where the $1 notional floor forces the most shares.

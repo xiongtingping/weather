@@ -51,7 +51,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from .offloaded_paths import DEFAULT_COLD_TIER_ROOT
+from bayes_basket_target.offloaded_paths import DEFAULT_COLD_TIER_ROOT
 
 _ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_SSOT_DB = _ROOT / "data" / "bayes_basket_target_ssot.db"

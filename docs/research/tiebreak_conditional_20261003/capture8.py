@@ -30,7 +30,7 @@ for p in (ROOT, ROOT / "scripts", HERE):
 from bayes_basket_target import tiebreak_cell_shadow as shadow  # noqa: E402
 from bayes_basket_target import tiebreak_lane as lane  # noqa: E402
 from bayes_basket_target.basket_kernel.valuation_v1 import market_reference_v1  # noqa: E402
-from bayes_basket_target.maker_shadow_store import MAKER_SHADOW_DB  # noqa: E402
+from scripts.maker_shadow_store import MAKER_SHADOW_DB  # noqa: E402
 import calibration_dashboard as board  # noqa: E402
 import capture3  # noqa: E402
 

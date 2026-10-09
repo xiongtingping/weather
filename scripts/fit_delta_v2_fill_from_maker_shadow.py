@@ -73,7 +73,7 @@ from bayes_basket_target.delta_v2_authority_clock import (  # noqa: E402
     utc_text,
     write_fill_batch,
 )
-from bayes_basket_target.maker_shadow_store import attach_maker_shadow  # noqa: E402
+from scripts.maker_shadow_store import attach_maker_shadow  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 SCHEMA = "delta_basket_score_v2_fill_distribution_artifact_v1"
