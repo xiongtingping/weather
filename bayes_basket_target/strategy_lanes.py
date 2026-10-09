@@ -394,7 +394,9 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     "rung_horizon_seconds": 900.0,
     "send_book_fresh_seconds": 120.0,
     "live_ws_book": True,
-    "max_daily_cost_usdc": 100.0,
+    # No daily cap (user ruling 2026-10-09 「40 U 日预算改为不设置上限」); a positive
+    # value would be the UTC day's budget.  Cash stays the hard stop.
+    "max_daily_cost_usdc": None,
     "max_sends_per_pass": 8,
     # An order that never reached the venue waits this long before the next.
     "unsent_retry_seconds": 300.0,

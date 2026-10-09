@@ -40,9 +40,10 @@ ratio is taken on, 「按他已投入仓位算」.
   4-6 cents above the source's price, and a cap at the source's own price
   would fill only the trades the market then proved wrong.
 * **limits**: one open order per token; at most ``max_sends_per_pass`` sends
-  a pass; this lane's BUYs cost at most ``max_daily_cost_usdc`` a UTC day
-  (open orders at their full notional, filled ones at what they filled); a
-  BUY needs the account's free cash.
+  a pass; a positive ``max_daily_cost_usdc`` caps this lane's BUYs a UTC day
+  (open orders at their full notional, filled ones at what they filled) --
+  null or non-positive is no daily cap (user ruling 2026-10-09 「40 U 日预算改为
+  不设置上限」); a BUY needs the account's free cash.
 
 Nothing is read or written while ``data/live_paused.flag`` is up or the
 arming flag is down.  Every planned order and every changed refusal is a row
@@ -1081,7 +1082,12 @@ def execute_copy_follow(
     submitted = filled = 0
     receipts: list[dict[str, Any]] = []
     refusals: dict[str, int] = {}
-    budget_left = float(cfg.get("max_daily_cost_usdc") or 0.0) - lane_cost_today(target_conn, now_utc=now_utc)
+    # Charter 257 amendment (user ruling 2026-10-09 「40 U 日预算改为不设置上限」):
+    # a null or non-positive cap is no cap -- read as "zero" it would refuse
+    # every buy -- and a positive one is the UTC day's budget.
+    daily_cap = cfg.get("max_daily_cost_usdc")
+    unlimited_day = daily_cap is None or not (float(daily_cap) > 0.0)
+    budget_left = math.inf if unlimited_day else float(daily_cap) - lane_cost_today(target_conn, now_utc=now_utc)
     ranking = ((lambda kv: -(kv[1].get("model_margin") or 0.0)) if cluster_rule
                else (lambda kv: -(kv[1]["last_ts"] or 0)))
     for token, want in sorted(targets.items(), key=ranking):
@@ -1145,7 +1151,8 @@ def execute_copy_follow(
                                 plan = {"refusal": f"model_margin_short:{float(served['p']):.3f}<{float(want['buy_price']) + margin:.3f}"}
                     if not plan:
                         plan = plan_buy(quote, price_cap=cap, gap=gap, min_shares=min_shares)
-                    if not plan.get("refusal") and float(plan["notional_usdc"]) > budget_left + 1e-9:
+                    if (not plan.get("refusal") and not unlimited_day
+                            and float(plan["notional_usdc"]) > budget_left + 1e-9):
                         plan = {"refusal": f"daily_cost_limit:{max(budget_left, 0.0):.2f}"}
                     if not plan.get("refusal"):
                         cash = _cash_refusal(target_conn, now_utc=now_utc, needed=float(plan["notional_usdc"]))

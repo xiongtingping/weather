@@ -191,7 +191,10 @@ def test_the_pass_ranks_candidates_by_our_margin(store) -> None:
 def test_the_charter_and_agents_carry_the_ruling() -> None:
     root = Path(__file__).resolve().parents[1]
     charter = (root / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
-    assert "257. **跟单线 v2" in charter and "cluster_taker_first_filtered_fixed_stake_v2" in charter
+    clause = charter[charter.index("\n257. ") + 1:charter.index("\n258. ")]
+    assert "跟单线 v2（cluster_taker_first_filtered_fixed_stake_v2）" in clause
+    # 2026-10-09 amendment: NO legs allowed, no daily cap.
+    assert "可以买no" in clause and "不设置上限" in clause
     assert "宪章 256/257" in (root / "AGENTS.md").read_text(encoding="utf-8")
 
 
@@ -261,3 +264,19 @@ def test_a_cycle_this_lane_left_open_is_settled_by_the_shared_repair() -> None:
     from bayes_basket_target import tiebreak_lane
 
     assert "copy_follow_cycle_" in tiebreak_lane.LANE_CYCLE_PREFIXES
+
+
+def test_a_null_daily_budget_is_no_cap_and_a_positive_one_still_holds(store) -> None:
+    """User ruling 2026-10-09 「40 U 日预算改为不设置上限」: null (the code's
+    default now) means no daily cap -- read as zero it would refuse every buy
+    -- while a positive cap is still the UTC day's budget."""
+
+    assert strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS["max_daily_cost_usdc"] is None
+    _seed(store)
+    _served(store, {"27°C": 0.2, "28°C": 0.45, "29°C": 0.35})
+    sent: list = []
+    receipt = _run(store, Cluster([_taker(price=0.30, tx="0x1")]), sent, max_daily_cost_usdc=None, stake_usdc=60.0)
+    assert "daily_cost_limit" not in receipt["refusals"] and len(_intents(store)) == 1
+    held = _run(store, Cluster([_taker(bucket="29°C", price=0.19, tx="0x2", token="yes_29°C")]), sent,
+                max_daily_cost_usdc=1.0, stake_usdc=5.0)
+    assert held["refusals"].get("daily_cost_limit") and len(_intents(store)) == 1
