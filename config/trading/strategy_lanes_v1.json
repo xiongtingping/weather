@@ -168,7 +168,8 @@
       ],
       "model_stages": [
         "P0",
-        "P0-M"
+        "P0-M",
+        "P1"
       ],
       "episode_gap_seconds": 3600.0,
       "max_source_age_seconds": 1800.0,
