@@ -205,3 +205,16 @@ def test_the_wiring_and_the_charter() -> None:
     clause = charter[charter.index("\n259. ") + 1:]
     for phrase in ("两层", "Binary LogLoss", "LogScore", "可靠性", "不作训练目标", "traded_calibration"):
         assert phrase in clause, phrase
+
+
+def test_the_leg_reads_the_most_informed_stage_not_the_newest(store) -> None:  # noqa: F811
+    """2026-10-09: a same-day P0-M committed after the P1 is the staler belief
+    (its upside mass is dead once the peak has passed); the reading takes P1
+    when one stands, then P0-M, then P0."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3}, stage="P1", decided="2026-09-18T11:00:00Z", hid="h_p1")
+    _served(store, {"27°C": 0.1, "28°C": 0.3, "29°C": 0.6}, stage="P0-M", decided="2026-09-18T11:40:00Z", hid="h_pm")
+    stage, vector = BR._traded_served_vector(store, ST, ED, AT, {})
+    assert stage == "P1" and vector["28°C"] == pytest.approx(0.5)
+    stage, vector = BR._traded_served_vector(store, ST, ED, "2026-09-18T10:00:00Z", {})
+    assert stage is None and vector is None, "no decision stood yet"

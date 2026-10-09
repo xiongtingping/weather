@@ -1437,6 +1437,9 @@ TRADED_CALIBRATION_BOOK_WINDOW_SEC = 1800
 #: Scores clip every probability here (the served vector is already floored by
 #: charter 224; the market mid and the paid price are not vectors).
 TRADED_CALIBRATION_CLIP = 1e-3
+#: The stage read for a leg: the most informed one with a committed decision
+#: at the instant (charter 229's chain order), not the newest of any stage.
+TRADED_CALIBRATION_STAGE_PRECEDENCE = ("P1", "P0-M", "P0")
 #: ``scripts/live_book.LANE_DECISION_RE``: a lane's decision id carries the lane
 #: before ``_decision_``; the basket's decision ids carry no lane.
 _TRADED_LANE_RE = re.compile(r"^(?P<lane>[a-z0-9_]+?)_decision_[A-Z0-9]{3,5}_\d{4}-\d{2}-\d{2}")
@@ -1461,20 +1464,31 @@ def _binary_logloss(p: float, hit: float) -> float:
 def _traded_served_vector(
     conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
 ) -> tuple[str | None, dict[str, float] | None]:
-    """The newest committed served vector at ``at_utc`` (any stage), floored
-    as serving floors it (charter 224) and renormalised."""
+    """The most informed committed served vector at ``at_utc`` -- P1 if one
+    stands, else P0-M, else P0 (the chain's precedence, charter 229) -- floored
+    as serving floors it (charter 224) and renormalised.
+
+    Not "the newest of any stage": a P0-M decision committed after a P1 on the
+    same day is the staler belief (2026-10-09: same-day P0-M past the local
+    peak keeps 26% of its mass above its mode where the truth lands 1.4% of
+    the time, LogScore 0.85 against P1's 0.18 on the same station-day-hours).
+    """
 
     from .materialization import floor_probabilities  # noqa: PLC0415
 
     key = (station, day, at_utc)
     if key in cache:
         return cache[key]
-    row = conn.execute(
-        "SELECT history_id, stage FROM basket_probability_bridge_history"
-        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND decision_at_utc<=?"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
-        (station, day, at_utc),
-    ).fetchone()
+    row = None
+    for stage_name in TRADED_CALIBRATION_STAGE_PRECEDENCE:
+        row = conn.execute(
+            "SELECT history_id, stage FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=? AND decision_at_utc<=?"
+            " ORDER BY decision_at_utc DESC LIMIT 1",
+            (station, day, stage_name, at_utc),
+        ).fetchone()
+        if row is not None:
+            break
     if row is None:
         cache[key] = (None, None)
         return cache[key]
