@@ -196,3 +196,40 @@ def test_a_missing_registry_is_not_an_error(tmp_path) -> None:
     worker = _worker(tmp_path)
     (tmp_path / "market_registry_forward.json").unlink()
     assert worker.run_listing_triggered_captures(as_of_utc=AS_OF)["state"] == "NO_REGISTRY"
+
+
+def test_the_batch_is_recorded_where_the_capture_entry_reads_it(
+    monkeypatch, tmp_path
+) -> None:
+    """A capture entry that swaps the record for a new set must not lose it.
+
+    Regression for 2026-10-09 12:50Z: right after a restart the record was
+    empty, the entry replaced it (``getattr(...) or set()``), and the batch
+    recorded into the discarded set -- one pass per West Coast station.
+    """
+
+    worker = _worker(tmp_path)
+    registry = {
+        "filters": {"include_not_started_for_p0": True},
+        "rows": [_row("KLAX", DAY, "America/Los_Angeles"),
+                 _row("KSEA", DAY, "America/Los_Angeles"),
+                 _row("KSFO", DAY, "America/Los_Angeles")],
+    }
+    monkeypatch.setattr(pw, "load_market_registry_snapshot", lambda path: registry)
+    monkeypatch.setattr(pw, "_load_native_forward_inbox", lambda path, error_code: [])
+    calls = []
+
+    def entry_like(**kwargs):
+        calls.append(kwargs)
+        fresh = set()  # what the old ``or set()`` did to an empty record
+        fresh.add((kwargs["event_date"], kwargs["listing_station"]))
+        worker._official_native_listing_attempts = fresh
+        return {"state": "SUBMITTED"}
+
+    monkeypatch.setattr(worker, "_capture_official_native_packet", entry_like)
+    worker.run_listing_triggered_captures(as_of_utc=AS_OF)
+    assert worker._official_native_listing_attempts == {
+        (DAY, "KLAX"), (DAY, "KSEA"), (DAY, "KSFO"),
+    }
+    worker.run_listing_triggered_captures(as_of_utc=AS_OF)
+    assert len(calls) == 1

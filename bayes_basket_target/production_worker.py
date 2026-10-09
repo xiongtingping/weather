@@ -6575,6 +6575,11 @@ class TargetProductionWorker:
             )
             state = str(result.get("state") or "")
             if state == "SUBMITTED":
+                # The record the capture entry reads, whatever object it is now.
+                attempted = getattr(
+                    self, "_official_native_listing_attempts", None
+                ) or attempted
+                self._official_native_listing_attempts = attempted
                 attempted.update((day, station) for station in stations)
             outcomes.append({
                 "event_date": day,
@@ -6940,10 +6945,17 @@ class TargetProductionWorker:
         # retirement and the retry floor: the run it needs is the one the day
         # already holds, the object store has every step of it, and re-reading
         # costs extraction, not a download.
-        listing_seen: set[tuple[str, str]] = getattr(
+        # Created only when missing: an empty set is falsy, and ``or set()``
+        # replaced the listing step's own (still empty) set with a new one, so
+        # what that step recorded after this call went into a set nobody read
+        # -- after the 2026-10-09 12:41Z restart the West Coast batch ran one
+        # pass per station (KLAX 12:50, KSEA 12:55, KSFO 12:57) instead of one.
+        listing_seen: set[tuple[str, str]] | None = getattr(
             self, "_official_native_listing_attempts", None
-        ) or set()
-        self._official_native_listing_attempts = listing_seen
+        )
+        if listing_seen is None:
+            listing_seen = set()
+            self._official_native_listing_attempts = listing_seen
         listing_key = (
             (event_date, str(listing_station).strip().upper())
             if listing_station else None
