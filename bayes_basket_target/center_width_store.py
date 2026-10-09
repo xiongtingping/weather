@@ -1999,12 +1999,25 @@ def serving_cells_by_day(
     # lane this was measured against it is NULL on every row, and the cost
     # being removed was never that column -- it was the per-row query,
     # rebuild and re-hash behind it.
+    # Charter 260: a P0-M decision taken at or after the station-day's first
+    # P1 is not a belief anyone serves (P1 stands in for it), so it is not
+    # evidence about the P0-M distribution either -- on the served record
+    # those rows ran 0.57C warm with a dead upside and would pull the stage's
+    # pair toward a correction no live P0-M reader needs.
+    from .stage_authority import first_p1_decisions, p0m_superseded  # noqa: PLC0415
+
+    first_p1 = (
+        first_p1_decisions(conn, min_decision_at_utc=min_decision_at_utc)
+        if stage_id == "P0-M" else {}
+    )
     candidates: dict[tuple[str, str, int], list[tuple[float, tuple]]] = {}
     for (
         station, day, decided, tz_name, checkpoint, sha, stored
     ) in conn.execute(query, parameters):
         actual = truth.get((str(station), str(day)))
         if actual is None or not tz_name:
+            continue
+        if first_p1 and p0m_superseded(stage_id, str(station), str(day), str(decided), first_p1):
             continue
         try:
             zone = ZoneInfo(str(tz_name))

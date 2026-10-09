@@ -412,7 +412,8 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     "model_margin": 0.05,
     "lead_hours": [12.0, 48.0],
     "station_units": ["C"],
-    "model_stages": ["P0", "P0-M"],
+    # Charter 260: once a P1 stands it is the belief, so the lane may read it.
+    "model_stages": ["P0", "P0-M", "P1"],
     "episode_gap_seconds": 3600.0,
 }
 

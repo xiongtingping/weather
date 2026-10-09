@@ -21,7 +21,7 @@
 - 默认直接实施并验证，不以 review-only/仅建议作为交付；明确退役的旧代码直接删除，不保留兼容分叉。
 - `ΔBasketScore v2` 的未来日时序观察与 `production_no_live`、RKPK 单站闭环和 45 站扩展并行；未来/forward 数据不构成 OOS、硬门或晋级依据，未完成不得阻断生产 no-live 主链。参数/权重 artifact 的 `FORMAL_PROMOTED` 与 live 晋级只接受闭日、strict-as-of 历史 OOS；P0 模型组合自身要求的离线严格 OOS artifact 同样只用历史数据。
 - 未来日/forward 数据一律登记为 `observational_candidate_not_oos` 到达、接口与时序验证证据：不是 OOS、不计入任何 OOS、20 train/8 holdout 或 TAF 24 样本门，也不阻断 `production_no_live`；只有已闭日且 strict-as-of 的canonical ASOS优先/AWC后备truth（或宪章 225 的结算源修补真值）才能形成严格OOS。Open-Meteo可作为显式`aggregator_republisher`的历史同日calibration/OOS fallback，并在该历史激活存在时服务原生缺失的no-live P0；仍绝不进入native arrival、P1或formal/live authority。旧回放与旧版本服务记录按宪章 255 写明版本口径、分版本段报；只有现行段服务记录或现行链严格 as-of 重放可作现行规则依据。
-- 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；canonical ASOS一分钟/AWC METAR-SPECI观测生成P1。禁止P0-F/P0-F^r分支。校准分两层（宪章 259）：A 分布校准评整条 P(T=k)（211/240：LogScore 主裁、CRPS、Brier、PIT），B 交易概率校准只评被交易的桶（二元 LogLoss＋可靠性图，对市场成对、只认前推），B 只评价、不进校准链、不作训练目标。
+- 概率阶段唯一口径为：NWP生成P0；校准后TAF TX先确认/有限修正，云量、降水和风场再做物理一致性二次确认，二者原子生成P0-M；canonical ASOS一分钟/AWC METAR-SPECI观测生成P1。禁止P0-F/P0-F^r分支。校准分两层（宪章 259）：A 分布校准评整条 P(T=k)（211/240：LogScore 主裁、CRPS、Brier、PIT），B 交易概率校准只评被交易的桶（二元 LogLoss＋可靠性图，对市场成对、只认前推），B 只评价、不进校准链、不作训练目标。P1 存在后 P0-M 当日决策不是独立信念（宪章 260）：读我方概率一律 `stage_authority.served_belief_row`（P1 > P0-M > P0，不取任一阶段最新行），宽度车道剔除被 P1 取代的 P0-M 格。
 - 篮子 lane 仅可读取已物化且带 lineage 的 P0/P0-M/P1、regime、官方报文硬事实排除集合和官方 CLOB WS 证据，缺证据即 fail closed；篮子不得生成 BUY NO intent（NO 腿只属宪章 231 与 234）。
 - 外置盘仅用于非关键、无用数据的异步冷归档；禁止作为生产数据库备份、回滚、切换、readiness 或服务启停依赖，任何外置盘异常不得影响 AWC/METAR/SPECI、SSOT 或交易。
 - 禁止把日常生产操作设计为交互sudo；用户域迁移后所有常规服务控制必须由当前登录用户完成。

@@ -349,23 +349,27 @@ def served_side_probability(
     conn: sqlite3.Connection, *, station_id: str, event_date: str, bucket: str, side: str,
     stages: Sequence[str], now_utc: str,
 ) -> dict[str, Any]:
-    """Our newest committed served probability of ``bucket`` on ``side`` from a
-    stage in ``stages`` (charter 257): ``{"state": "ok", "p", "stage",
+    """Our served probability of ``bucket`` on ``side`` at ``now_utc`` -- the
+    belief stage standing then (charter 260: P1 before P0-M before P0), which
+    must be one of ``stages`` (charter 257): ``{"state": "ok", "p", "stage",
     "decision_at_utc"}``, else a named state.  Normalised over the ladder and
     floored at 1e-3 the way the lanes read it."""
 
     wanted = [str(x) for x in stages]
     if not wanted:
         return {"state": "no_stage_allowed"}
-    marks = ",".join("?" for _ in wanted)
-    row = conn.execute(
-        "SELECT history_id, stage, decision_at_utc FROM basket_probability_bridge_history"
-        f" WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage IN ({marks}) AND decision_at_utc<=?"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
-        (station_id, event_date, *wanted, now_utc),
-    ).fetchone()
-    if row is None:
+    # Charter 260: the belief at the instant is the most informed stage
+    # standing (P1 > P0-M > P0), not the newest row among the allowed stages;
+    # a belief stage the lane does not read is a refusal by name, never a fall
+    # back to a staler stage.
+    from .stage_authority import served_belief_row  # noqa: PLC0415
+
+    belief = served_belief_row(conn, station_id=station_id, event_date=event_date, at_utc=now_utc)
+    if belief is None:
         return {"state": "no_served_probability"}
+    if belief["stage"] not in wanted:
+        return {"state": f"stage_not_allowed:{belief['stage']}"}
+    row = (belief["history_id"], belief["stage"], belief["decision_at_utc"])
     probs = {str(b): float(p) for b, p in conn.execute(
         "SELECT bucket, probability FROM basket_probability_bridge_bucket_probability WHERE history_id=?", (row[0],),
     )}

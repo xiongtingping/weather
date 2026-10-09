@@ -1437,9 +1437,8 @@ TRADED_CALIBRATION_BOOK_WINDOW_SEC = 1800
 #: Scores clip every probability here (the served vector is already floored by
 #: charter 224; the market mid and the paid price are not vectors).
 TRADED_CALIBRATION_CLIP = 1e-3
-#: The stage read for a leg: the most informed one with a committed decision
-#: at the instant (charter 229's chain order), not the newest of any stage.
-TRADED_CALIBRATION_STAGE_PRECEDENCE = ("P1", "P0-M", "P0")
+#: The stage read for a leg: the belief standing at the instant (charter 260,
+#: ``stage_authority.served_belief_row``), not the newest of any stage.
 #: ``scripts/live_book.LANE_DECISION_RE``: a lane's decision id carries the lane
 #: before ``_decision_``; the basket's decision ids carry no lane.
 _TRADED_LANE_RE = re.compile(r"^(?P<lane>[a-z0-9_]+?)_decision_[A-Z0-9]{3,5}_\d{4}-\d{2}-\d{2}")
@@ -1479,16 +1478,10 @@ def _traded_served_vector(
     key = (station, day, at_utc)
     if key in cache:
         return cache[key]
-    row = None
-    for stage_name in TRADED_CALIBRATION_STAGE_PRECEDENCE:
-        row = conn.execute(
-            "SELECT history_id, stage FROM basket_probability_bridge_history"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=? AND decision_at_utc<=?"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
-            (station, day, stage_name, at_utc),
-        ).fetchone()
-        if row is not None:
-            break
+    from .stage_authority import served_belief_row  # noqa: PLC0415
+
+    belief = served_belief_row(conn, station_id=station, event_date=day, at_utc=at_utc)
+    row = None if belief is None else (belief["history_id"], belief["stage"])
     if row is None:
         cache[key] = (None, None)
         return cache[key]
