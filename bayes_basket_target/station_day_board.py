@@ -619,6 +619,15 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
         body = tokens[:tokens.index("RMK")] if "RMK" in tokens else tokens
         vis = 10000.0 if "CAVOK" in body else next(
             (float(t) for t in body[2:8] if len(t) == 4 and t.isdigit()), None)
+        # Observed rain (user 2026-10-09「云雨 · 逐小时降水预报：增加实时的数据显示」):
+        # US ASOS reports the last hour's amount in its remarks as Pnnnn
+        # (hundredths of an inch; P0000 a trace); recent rain since the last
+        # report as RE groups.  Nothing is inferred where neither is reported.
+        remarks = tokens[tokens.index("RMK") + 1:] if "RMK" in tokens else []
+        p_group = next((t for t in remarks if re.fullmatch(r"P\d{4}", t)), None)
+        # Taiwan's CAA writes the amount in millimetres: "RA AMT 2.6MM".
+        amount = re.search(r"\bAMT (\d+(?:\.\d+)?)MM\b", " ".join(remarks))
+        recent = [t for t in body if re.fullmatch(r"RE(?:SH|TS|FZ)?(?:RA|DZ|SN|GR|GS|PL|UP)+", t)]
         out.append({
             "valid_at_utc": str(at),
             "local": when.astimezone(zone).strftime("%H:%M") if when else "",
@@ -632,6 +641,10 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
             "wind_mps": _float(parsed.get("wind_mps")),
             "precip": bool(parsed.get("precip")),
             "weathers": parsed.get("weathers") or [],
+            "recent_precip": recent,
+            "precip_1h_mm": (round(int(p_group[1:]) * 0.254, 2) if p_group is not None
+                             else float(amount.group(1)) if amount else None),
+            "precip_1h_trace": p_group == "P0000",
             "running_high_c": running,
         })
     return out

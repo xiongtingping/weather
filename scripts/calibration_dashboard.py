@@ -22899,7 +22899,33 @@ function sdModels(day){
 function sdEvidenceCard(title, color, main, details, wide, extra){
   return `<div class="sd-evidence-card${wide ? " sd-evidence-wide" : ""}" style="--c:${color}"><div class="sd-evidence-title">${title}</div><div class="sd-evidence-main">${main}</div><div class="muted sd-sub">${details}</div>${extra || ""}</div>`;
 }
-function sdRainSvg(P){
+// Observed rain per local hour (user 2026-10-09「云雨 · 逐小时降水预报：增加实时的数据显示」),
+// from the day's reports: the stamp h covers (h-1:00, h:00], like the
+// forecast's hourly sums.  Wet = rain at the station in a report of that
+// hour (VC "in the vicinity" is not the station) or an RE group; the amount
+// is what a report wrote (ASOS Pnnnn, Taiwan RA AMT), never inferred.
+function sdRainObs(day){
+  const hours = {}; let lastAt = null, lastWet = null;
+  for(const m of (day.metar || [])){
+    const [hh, mm] = String(m.local || "").split(":").map(Number);
+    if(!Number.isFinite(hh)) continue;
+    // A report after 23:00 belongs to the day's last hour, not to 00:00.
+    const stamp = mm > 0 ? Math.min(hh + 1, 23) : hh;
+    const key = String(stamp).padStart(2, "0");
+    const at = hours[key] || (hours[key] = {wet:false, desc:[], mm:null, reports:0});
+    const station = (m.weathers || []).filter(w => !/^附近/.test(String(w)));
+    const wet = (m.precip && station.length > 0) || (m.recent_precip || []).length > 0;
+    at.reports += 1;
+    if(wet){ at.wet = true; at.desc.push(`${m.local} ${station.concat(m.recent_precip || []).join(" ")}`); lastWet = `${m.local} ${station.join(" ") || (m.recent_precip || []).join(" ")}`; }
+    if(m.precip_1h_mm != null && !/SPECI/.test(String(m.kind))) at.mm = Math.max(at.mm == null ? 0 : at.mm, m.precip_1h_mm);
+    lastAt = m.local;
+  }
+  const list = Object.values(hours);
+  const mms = list.filter(h => h.mm != null);
+  return {hours, reported: list.length > 0, lastAt, lastWet,
+    wetHours: list.filter(h => h.wet).length, mm: mms.length ? mms.reduce((a, h) => a + h.mm, 0) : null};
+}
+function sdRainSvg(P, O){
   // The canonical series is {"HH": mm}; JS enumerates integer-like keys
   // 10..23 before 00..09, so Object.values would silently move the hours.
   const series = P.hourly_mm;
@@ -22910,8 +22936,9 @@ function sdRainSvg(P){
   }
   const hours = Array.from({length:24}, (_, i) => ({hour:String(i).padStart(2,"0"), value:series[String(i).padStart(2,"0")]}));
   if(!Object.keys(series).length) return `<div class="muted sd-sub">逐小时降水图：无小时数据。</div>`;
-  const W = 640, H = 150, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
-  const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value));
+  const obs = (O || {}).hours || {};
+  const W = 640, H = 176, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
+  const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value), ...Object.values(obs).map(o => o.mm || 0));
   const y = v => bottom - (bottom-top)*v/max;
   let g = `<text x="${left}" y="12" font-size="11" fill="var(--muted)">降水 mm</text>`;
   [0,max/2,max].forEach(v => {
@@ -22919,11 +22946,22 @@ function sdRainSvg(P){
   });
   hours.forEach((h,i) => {
     const x = left+i*step, missing = h.value == null, height = missing ? 3 : Math.max(1,bottom-y(h.value));
-    g += `<rect data-hour="${h.hour}" x="${x+2}" y="${bottom-height}" width="${step-4}" height="${height}" fill="${missing ? "var(--muted)" : "var(--accent)"}" opacity="${missing ? .35 : .85}"><title>${h.hour}:00（当地） ${missing ? "无数据" : sdN(h.value,2)+" mm"}</title></rect>`;
+    const o = obs[h.hour], half = o && o.mm != null;
+    g += `<rect data-hour="${h.hour}" x="${x+2}" y="${bottom-height}" width="${half ? (step-4)/2 : step-4}" height="${height}" fill="${missing ? "var(--muted)" : "var(--accent)"}" opacity="${missing ? .35 : .85}"><title>${h.hour}:00（当地）预报 ${missing ? "无数据" : sdN(h.value,2)+" mm"}</title></rect>`;
+    if(half){
+      const oh = Math.max(1, bottom - y(o.mm));
+      g += `<rect x="${x+2+(step-4)/2}" y="${bottom-oh}" width="${(step-4)/2}" height="${oh}" fill="#1c7ed6" opacity=".9"><title>${h.hour}:00 实况报文雨量 ${sdN(o.mm,2)} mm</title></rect>`;
+    }
+    if(o){
+      g += o.wet
+        ? `<circle cx="${x+step/2}" cy="${bottom+34}" r="5" fill="#1c7ed6"><title>${h.hour}:00 实况降水：${sdEsc(o.desc.join("；"))}${o.mm != null ? `（报文雨量 ${sdN(o.mm,2)} mm）` : ""}</title></circle>`
+        : `<circle cx="${x+step/2}" cy="${bottom+34}" r="2.5" fill="var(--muted)" opacity=".6"><title>${h.hour}:00 实况无降水（${o.reports} 份报文）</title></circle>`;
+    }
     if(i%3===0 || i===23) g += `<line x1="${x+step/2}" x2="${x+step/2}" y1="${bottom}" y2="${bottom+4}" stroke="var(--muted)"/><text x="${x+step/2}" y="${bottom+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${h.hour}:00</text>`;
   });
-  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">当地时间 · 缺失小时灰色标记</text>`;
-  return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div><div class="muted sd-sub">横轴为当地时间；窄屏可横向滑动查看全天，悬停柱子可查看小时与降水量。</div>`;
+  g += `<text x="${left-5}" y="${bottom+38}" text-anchor="end" font-size="10" fill="var(--muted)">实况</text>`;
+  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 实况行：蓝点＝本站降水，灰点＝报了无降水</text>`;
+  return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报与实况，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
 }
 function sdTafCloudDetails(witness){
   const evidence = witness.cloud_evidence || {};
@@ -22971,12 +23009,16 @@ function sdEvidence(day){
       <td class="mono">${m.running_high_c == null ? "—" : sdN(m.running_high_c,2) + "°C"}</td><td class="mono sd-raw">${sdEsc(m.raw)}</td></tr>`);
   const met = metRows.length ? sdNewestFive(metRows, `<thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead>`, "sd-tab", n => `更早的 ${n} 份`) : "";
   const P = day.precip;
-  let rain = sdEvidenceCard("云雨 · 逐小时降水预报", SD_COL.P0, "<b>无记录</b>", "暂无逐小时降水预报", true);
+  const O = sdRainObs(day);
+  const obsLine = !O.reported ? "<b>实况 尚无报文</b>"
+    : O.wetHours ? `<b class="down">实况 已降水 ${O.wetHours} 小时</b>${O.mm != null ? `<b>报文雨量 ${sdN(O.mm, 1)} mm</b>` : ""}<b>最近 ${sdEsc(O.lastWet)}</b>`
+    : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`;
+  let rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0, `<b>预报 无记录</b>${obsLine}`, "暂无逐小时降水预报", true);
   if(P){
     const hourLabel = v => v == null ? "—" : String(v).padStart(2,"0")+":00";
-    rain = sdEvidenceCard("云雨 · 逐小时降水预报", SD_COL.P0,
-      `<b class="sd-evidence-primary">当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>`,
-      `${sdRainSvg(P)}${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}<br>取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）`, true);
+    rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0,
+      `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
+      `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）`, true);
   }
   return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
