@@ -16399,6 +16399,8 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .ns-p{grid-column:2;font-size:11.5px}.ns-verdict{margin:0;padding-left:18px}.ns-verdict li{margin:3px 0}
 .trend{padding:8px 10px}.trend-t{font-weight:600}.trend-s{font-size:11px}
 .trend svg{display:block;margin-top:4px}
+.rel-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:4px 0 2px;font-size:12px}
+.rel-key{display:inline-flex;align-items:center;gap:4px}
 .trend-ax{font-size:10px;fill:var(--muted)}.trend-lb{font-size:10.5px;fill:var(--text)}
 .trend-tip{position:fixed;z-index:50;background:var(--card);border:1px solid var(--line);
   border-radius:8px;padding:6px 9px;font-size:12px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.25)}
@@ -19148,6 +19150,53 @@ function copyFollowLane(){
 // 样本binary logloss」): one ruler on two samples -- every bucket of the
 // ladder (data/board_readings/bucket_calibration.json) and the buckets the
 // lanes bought (traded_calibration's filled population, the next section's).
+// A reliability diagram (user 2026-10-10 「把logloss的可靠性图画出来显式」): x is
+// what a bin said on average, y how often it landed, the diagonal is "said
+// 30%, landed 30%".  Series slots are the page's --th-claim (ours) /
+// --th-price (market) / --series-3 (paid), validated on both surfaces (light
+// aqua 2.82:1, so each series also has its own marker shape and the legend
+// names it; the tables under the charts hold every value).  Each point
+// carries its bin's 95% interval and a hover title with the count; its size
+// grows with the count, and the joining line stays faint, so a bin of two
+// legs does not read like a bin of two hundred.
+const REL_SHAPES = {circle:(x,y,c,r=4.5)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" stroke="var(--card)" stroke-width="2"/>`,
+  square:(x,y,c,r=4.5)=>`<rect x="${x-r}" y="${y-r}" width="${2*r}" height="${2*r}" rx="1.5" fill="${c}" stroke="var(--card)" stroke-width="2"/>`,
+  diamond:(x,y,c,r=4.5)=>`<path d="M${x} ${y-r*1.2}L${x+r*1.2} ${y}L${x} ${y+r*1.2}L${x-r*1.2} ${y}Z" fill="${c}" stroke="var(--card)" stroke-width="2"/>`};
+const REL_SERIES = {ours:{name:"我方 p",color:"var(--th-claim)",shape:"circle",said:"said_ours"},
+  market:{name:"市场 q",color:"var(--th-price)",shape:"square",said:"said_market"},
+  paid:{name:"实付价",color:"var(--series-3)",shape:"diamond",said:"paid"}};
+function reliabilityChart(cfg){
+  // cfg: {title, sub, unit, sets: {ours: {bins, summary}, market: {...}, paid?: {...}}}
+  const W=300, H=286, L=40, R=14, T=10, B=36, pw=W-L-R, ph=H-T-B;
+  const x=v=>L+v*pw, y=v=>T+(1-v)*ph;
+  const pc=v=>v==null?"—":(v*100).toFixed(v<0.1?1:0)+"%";
+  const keys=Object.keys(REL_SERIES).filter(k=>cfg.sets[k]&&(cfg.sets[k].bins||[]).length);
+  const legend=keys.map(k=>{const S=REL_SERIES[k], sm=cfg.sets[k].summary||{};
+    return `<span class="rel-key"><svg width="14" height="14" aria-hidden="true">${REL_SHAPES[S.shape](7,7,S.color)}</svg>${S.name}
+      <span class="mono muted">LL ${sm.logloss==null?"—":(+sm.logloss).toFixed(4)} · REL ${sm.rel==null?"—":(+sm.rel).toFixed(4)} · ECE ${sm.ece==null?"—":(+sm.ece).toFixed(3)}</span></span>`;}).join("");
+  const diagKey=`<span class="rel-key"><svg width="16" height="10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="var(--muted)" stroke-width="1"/></svg><span class="muted">说＝中</span></span>`;
+  const head=`<div class="trend-t">${h(cfg.title)}</div>${cfg.sub?`<div class="muted trend-s">${h(cfg.sub)}</div>`:""}<div class="rel-legend">${legend}${diagKey}</div>`;
+  if(!keys.length) return `<div class="card trend">${head}<div class="muted" style="padding:18px 0">还没有可画的数据。</div></div>`;
+  const ticks=[0,0.25,0.5,0.75,1];
+  const grid=ticks.map(t=>`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/>
+    <text x="${L-6}" y="${y(t)+3.5}" text-anchor="end" class="trend-ax">${t*100}%</text>
+    <text x="${x(t)}" y="${H-B+14}" text-anchor="middle" class="trend-ax">${t*100}%</text>`).join("");
+  const diag=`<line x1="${x(0)}" y1="${y(0)}" x2="${x(1)}" y2="${y(1)}" stroke="var(--muted)" stroke-width="1"/>`;
+  const countOf=b=>+(b[cfg.unit==="桶"?"buckets":"legs"]||0);
+  const nmax=Math.max(1,...keys.flatMap(k=>(cfg.sets[k].bins||[]).map(countOf)));
+  const axes=`<text x="${L+pw/2}" y="${H-4}" text-anchor="middle" class="trend-ax">档内平均说的概率</text>
+    <text x="10" y="${T+ph/2}" text-anchor="middle" class="trend-ax" transform="rotate(-90 10 ${T+ph/2})">实际发生率</text>`;
+  const marks=keys.map(k=>{const S=REL_SERIES[k];
+    const pts=(cfg.sets[k].bins||[]).filter(b=>b[S.said]!=null&&b.landed!=null).map(b=>({b,px:x(+b[S.said]),py:y(+b.landed)})).sort((a,c)=>a.px-c.px);
+    const line=pts.length>1?`<path d="${pts.map((q,i)=>(i?"L":"M")+q.px.toFixed(1)+" "+q.py.toFixed(1)).join(" ")}" fill="none" stroke="${S.color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" opacity=".45"/>`:"";
+    const whisk=pts.map(q=>Array.isArray(q.b.landed_ci)?`<line x1="${q.px}" x2="${q.px}" y1="${y(q.b.landed_ci[0])}" y2="${y(q.b.landed_ci[1])}" stroke="${S.color}" stroke-width="1" opacity=".55"/>`:"").join("");
+    const dots=pts.map(q=>{const n=countOf(q.b), r=3+4*Math.sqrt(n/nmax);
+      const tip=`${S.name} · 档 ${pc(q.b.bin[0])}–${pc(q.b.bin[1])} · ${n} ${cfg.unit||"腿"} · 说 ${pc(+q.b[S.said])} · 中 ${pc(+q.b.landed)}${Array.isArray(q.b.landed_ci)?` [${pc(q.b.landed_ci[0])}–${pc(q.b.landed_ci[1])}]`:""}`;
+      return `<g>${REL_SHAPES[S.shape](+q.px.toFixed(1),+q.py.toFixed(1),S.color,+r.toFixed(1))}<circle cx="${q.px.toFixed(1)}" cy="${q.py.toFixed(1)}" r="${Math.max(11,r+4).toFixed(1)}" fill="transparent"><title>${h(tip)}</title></circle></g>`;}).join("");
+    return line+whisk+dots;}).join("");
+  return `<div class="card trend">${head}<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${h(cfg.title)}：可靠性图">${grid}${diag}${axes}${marks}</svg></div>`;
+}
+
 // The lanes' names on the two charter-259 sections, in a fixed order; a lane
 // the board has no name for prints its key and sorts last.
 const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",
@@ -19210,9 +19259,10 @@ function bucketCalibration(){
   const funnel=`<details open style="margin-top:8px"><summary>漏斗：全部候选桶 → 策略信号桶 → 实际成交桶，劣势从哪一步扩大（同一把市场参考向量）</summary><div class="scroll"><table>
     <thead><tr><th>样本</th><th>分歧方向</th><th>样本数</th><th>LL 我方</th><th>LL 市场</th><th>Δ 我方−市场 [95%]</th><th>说 我/市 → 中</th></tr></thead><tbody>
     ${[["<b>全部候选桶</b>",d=>d==="全部"?A:bdir(d),"桶"],["<b>策略信号桶</b>（全部意图）",d=>fget("信号桶（全部意图）",d),"腿"],
-       ["其中未成交",d=>fget("其中未成交",d),"腿"],["<b>实际成交桶</b>",d=>fget("其中成交",d),"腿"]].map(([label,get,unit])=>
+       ["其中没到交易所（被拒／没发出）",d=>fget("其中没到交易所",d),"腿"],["其中挂上未成交",d=>fget("其中挂上未成交",d),"腿"],
+       ["<b>实际成交桶</b>",d=>fget("其中成交",d),"腿"]].map(([label,get,unit])=>
       ["全部","p > q","p ≤ q"].map(d=>[d,get(d)]).filter(([_d,r])=>r).map(([d,r],i)=>frow(i===0?label:"",d,r,unit)).join("")).join("")}
-    </tbody></table></div><div class="muted">信号桶＝各车道发出的每条买单（Proper 每 15 分钟重挂各算一条），按方向记（NO 腿取 NO 一侧的 p、q、结果）；市场 q 与「全部候选桶」同一把：下单时刻 30 分钟内整条梯子的市场参考向量。
+    </tbody></table></div><div class="muted">信号桶＝各车道发出的每条买单（Proper 每 15 分钟重挂各算一条），按方向记（NO 腿取 NO 一侧的 p、q、结果）；没到交易所＝从未收到交易所任何回执（被拒、暂停旗、现金不足），没有成交机会，不进成交对照；市场 q 与「全部候选桶」同一把：下单时刻 30 分钟内整条梯子的市场参考向量。
     意图 ${FN.counts?.legs??"—"} 条，下单时刻没有完整盘口的 ${FN.counts?.no_market_reference??"—"} 条。全部候选桶的样本单位是桶，各桶多为远尾、LogLoss 天然低，跨行比 Δ 不比绝对值。</div></details>`;
   const PL=B.p0_layers||{}, PA=PL.all, C0=B.counts||{};
   const LNM={pool:"融合池（分布层之前）",input:"分布层输入（共识桥＋辐射之后）",served:"服务 P0",market:"市场"};
@@ -19243,7 +19293,50 @@ function bucketCalibration(){
     </div>
     <div class="scroll" style="max-height:560px;margin-top:6px"><table><thead><tr><th>下单</th><th>成交</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>p 第二层</th><th>p 梯子</th><th>p 成交时</th><th>q 中价</th><th>q 参考</th><th>实付</th><th>结算桶</th><th>结果</th><th>LL 我</th><th>LL 市</th><th>LL 付</th></tr></thead>
     <tbody>${(PG.legs||[]).map(prow).join("")}</tbody></table></div><div class="muted">p、q、实付与结果都按腿的方向记（NO 腿取 NO 一侧）；结算桶是正式真值（宪章 225）。</div></details>`:"";
-  if(!B.available||!A) return intro+both+funnel+lanesTbl+pairing;
+  // The reliability diagrams, drawn (user 2026-10-10 「把logloss的可靠性图画出来显式」).
+  const relSet=(o,keys)=>Object.fromEntries(keys.map(k=>[k,{bins:(o||{})[`reliability_${k}`]||[],summary:((o||{}).reliability_summary||{})[k]||{}}]));
+  const IP=(T.populations||{}).intended||{};
+  const relCharts=`<details open style="margin-top:8px"><summary>可靠性图（二元 LogLoss 这一层）：预测 30% 的桶是否约有 30% 发生——全部候选桶 · 策略信号桶 · 实际成交桶</summary>
+    <div class="grid g3">${reliabilityChart({title:"全部候选桶",sub:A?`${A.buckets} 桶 · ${A.samples} 时点 · ${A.event_days} 日`:"",unit:"桶",sets:relSet(B,["ours","market"])})}
+      ${reliabilityChart({title:"策略信号桶（全部意图）",sub:`${IP.legs??0} 腿`,unit:"腿",sets:relSet(IP,["ours","market","paid"])})}
+      ${reliabilityChart({title:"实际成交桶",sub:`${FP.legs??0} 腿`,unit:"腿",sets:relSet(FP,["ours","market","paid"])})}</div>
+    <div class="muted">每点＝一个概率档（0–5%、5–10%，之后每 10%）：横轴是档内平均说的概率，纵轴是实际发生率，竖线是发生率的 95% 区间（Wilson），点越大档内个数越多，对角线上＝说多少中多少；悬停看档、个数与区间。
+    REL＝Σ n·(说−中)²/N，ECE＝Σ n·|说−中|/N，越小越校准；LL＝该样本上的二元 LogLoss。信号桶与成交桶按腿的方向记；实付价那条按实付价分档。各档数值见下方表格。</div></details>`;
+  const laneRel=(rows,unit,keys,label)=>{const sorted=[...(rows||[])].sort((a,b)=>tcLaneSort(a.lane,b.lane));
+    return sorted.length?`<details style="margin-top:8px"><summary>${label}</summary><div class="grid g3">${sorted.map(r=>reliabilityChart({
+      title:TC_LANE_NAMES[r.lane]||r.lane,sub:unit==="桶"?`${r.buckets??0} 桶 · ${r.samples??0} 时点 · ${r.event_days??0} 日`:`${r.legs??0} 腿 · ${r.event_days??0} 日`,
+      unit,sets:relSet(r,keys)})).join("")}</div></details>`:"";};
+  const relLanes=laneRel(FP.reliability_by_lane,"腿",["ours","market","paid"],"可靠性图按车道：实际买入的桶（已成交腿）")
+    +laneRel((FP.ladder_by_lane||{}).lanes,"桶",["ours","market"],"可靠性图按车道：该车道买入时点的整条梯子（每个桶）");
+  // Filled against rested-unfilled on one signal set (user 2026-10-10 四项验证).
+  const FS=T.fill_selection||{}, FI=FS.in_sample||{}, FF=FS.forward||{};
+  const est=(name,v,c,note)=>`<tr><td><b>${name}</b></td><td class="mono ${tone(v)}">${v==null?"—":ci(v,c)}</td><td class="muted">${note}</td></tr>`;
+  const estTbl=r=>`<table><thead><tr><th>估计（成交 − 挂上未成交，d＝我方−市场二元 LogLoss）</th><th>值 [95%]</th><th>口径</th></tr></thead><tbody>
+    ${est("原始差",r.raw_gap,r.raw_gap_ci,`成交 ${r.filled??0} 腿（d 均值 ${NL(r.mean_d_filled)}）对挂上未成交 ${r.unfilled??0} 腿（${NL(r.mean_d_unfilled)}），不控制组成`)}
+    ${est("分层差（主指标）",(r.stratified||{}).estimate,(r.stratified||{}).ci,`层＝车道×提前量×市场价×分歧方向，两组都有的层才计，权重 n_f·n_u/(n_f+n_u)；${(r.stratified||{}).strata??0} 层，覆盖成交 ${(r.stratified||{}).filled_covered??0}、未成交 ${(r.stratified||{}).unfilled_covered??0} 腿`)}
+    ${est("配对差",(r.matched||{}).gap,(r.matched||{}).gap_ci,`同车道同站日同桶同方向、两组都有：${(r.matched||{}).groups??0} 组（成交 ${(r.matched||{}).filled??0} / 未成交 ${(r.matched||{}).unfilled??0} 腿）；组内结果相同，差拆成我方 ${NL((r.matched||{}).gap_ll_p)}、市场 ${NL((r.matched||{}).gap_ll_q)}`)}
+    ${est("回归：成交系数",(r.regression||{}).coefficient,(r.regression||{}).ci,`d ~ 成交 + 车道 + 提前量档 + 市场价档 + 方向 + |p−q|，最小二乘（${(r.regression||{}).columns??0} 列）`)}
+    </tbody></table>`;
+  const O2=FI.order_to_fill||{};
+  const orow=(name,o)=>o?`<tr><td>${name}</td><td class="mono">${o.legs} · ${o.event_days} 日</td><td class="mono">${(+o.minutes_median).toFixed(1)} 分</td>
+     <td class="mono">${n3(o.q_order)} → ${n3(o.q_end)}</td><td class="mono">${sgn(o.move,3)}</td><td class="mono">${pct(o.share_down,0)} / ${pct(o.share_up,0)}</td>
+     <td class="mono">${n3(o.p_order)} → ${n3(o.p_end)}</td><td class="mono">${n3(o.paid)}</td><td class="mono">${pct(o.landed)}</td>
+     <td class="mono">${NL(o.ll_q_order)} → ${NL(o.ll_q_end)}</td><td class="mono">${NL(o.ll_paid)}</td><td class="mono ${tone(o.d_order)}">${sgn(o.d_order)}</td><td class="mono ${tone(o.d_end)}">${sgn(o.d_end)}</td></tr>`:"";
+  const otf=`<table style="margin-top:6px"><thead><tr><th>腿</th><th>样本</th><th>中位间隔</th><th>市场 q 下单 → 成交/撤单</th><th>Δq</th><th>q 降 / 升 &gt;${(+O2.flat||0.01).toFixed(2)}</th><th>我方 p 下单 → 末</th><th>实付</th><th>中</th><th>LL 市场 下单 → 末</th><th>LL 实付</th><th>d 下单</th><th>d 末</th></tr></thead><tbody>
+    ${orow(`立即成交（≤ ${O2.instant_minutes??1} 分钟，吃单）`,O2.filled_instant)}${orow("挂单等待后成交",O2.filled_waited)}${orow("挂上未成交（到撤单/过期）",O2.unfilled)}
+    ${(O2.waited_by_move||[]).map(r=>orow("　└ 等待后成交："+h(r.move_class),r)).join("")}</tbody></table>
+    <div class="muted">「末」＝成交腿的首次成交时刻、未成交腿的最后一条回执（撤单/过期）。已提交盘口只在生产读这个站日时才有，等了半小时以上的挂单常常成交前 30 分钟内没有盘口：取到成交前的 ${O2.books?.before??"—"} 条、改用成交后 30 分钟内第一份的 ${O2.books?.after??"—"} 条、两边都没有的 ${O2.books?.none??"—"} 条不进表。</div>`;
+  const J=FF.judgement||{};
+  const jtxt=J.verdict?`<b>${h(J.verdict)}</b>（${h(J.judged_at||"")} 判，分层差 ${J.estimate==null?"—":ci(J.estimate,J.ci)}，成交 ${J.filled??"—"} 腿 / ${J.filled_event_days??"—"} 日）`
+    :(J.state==="deferred"?`首次检查 ${h(J.first_check_at||"")} 样本不足，顺延到 ${h(FS.read_fallback)} 判一次`:`累计中，${h(FS.read_on)} 后第一次读数且成交 ≥ ${FS.min_filled} 腿、≥ ${FS.min_days} 个事件日时判一次`);
+  const fwd=`<div class="card" style="margin-top:8px"><b>前瞻样本外（事先登记，<span class="mono">${h(FS.protocol||"")}</span>）</b>
+    <div class="muted">事件日 ≥ ${h(FS.forward_from)}；分组、主指标（分层差）与排除规则已在样本到来前提交，只判一次，之后只报告不改判。</div>
+    <div style="margin-top:4px">判读：${jtxt}</div>
+    <div class="muted">累计：成交 ${FF.filled??0} 腿 / ${FF.filled_event_days??0} 日，挂上未成交 ${FF.unfilled??0} 腿${(FF.stratified||{}).estimate!=null?`；当前分层差 ${ci(FF.stratified.estimate,FF.stratified.ci)}（判读前只作报告）`:""}。</div></div>`;
+  const fillSel=FI.filled!=null?`<details open style="margin-top:8px"><summary>成交与未成交：同一信号集合、控制组成之后，成交与否还说不说明我方对市场更差（样本内：事件日 &lt; ${h(FS.forward_from)}）</summary>
+    <div class="scroll">${estTbl(FI)}</div><div class="muted">只比到过交易所的腿；d 按腿方向记，市场 q 是下单时刻整条梯子的参考向量；区间按事件日整块自助。</div>
+    <div style="margin-top:8px"><b>下单 → 成交期间的变化</b></div><div class="scroll">${otf}</div>${fwd}</details>`:"";
+  if(!B.available||!A) return intro+both+relCharts+funnel+fillSel+lanesTbl+relLanes+pairing;
   const C=B.counts||{};
   const srow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${r.samples}</td><td class="mono">${r.event_days}</td>
      <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
@@ -19256,7 +19349,7 @@ function bucketCalibration(){
   const rel=`<details style="margin-top:8px"><summary>校准每个桶的发生概率：可靠性图（全部桶），按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(B.reliability_ours||[]),"按我方 p 分档")}${tbl(mk(B.reliability_market||[]),"按市场 q 分档")}</div></details>`;
   const foot=`<div class="muted" style="margin-top:6px">自 ${h(B.since)}：已结算站日 ${C.station_days??"—"}，取到时点 ${C.samples??"—"}，档内前 ${h(B.tries_per_band)} 个决策时点都没有 ${Math.round((+B.book_window_sec||0)/60)} 分钟内完整盘口的档 ${C.band_unpaired??"—"}，梯子对不上 ${C.ladder_mismatch??"—"}。
     评价实际买入的桶按车道、条件切片与可靠性图见下一节「交易概率校准（第二层）」。读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
-  return intro+both+funnel+layers+dist+lanesTbl+pairing+slices+rel+foot;
+  return intro+both+relCharts+funnel+fillSel+layers+dist+lanesTbl+relLanes+pairing+slices+rel+foot;
 }
 
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served

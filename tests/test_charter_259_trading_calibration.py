@@ -152,7 +152,7 @@ def test_reliability_bins_say_both_sides_on_the_same_legs() -> None:
     legs = [{"p": 0.05, "q": 0.5, "paid": 0.5, "win": 0.0}, {"p": 0.08, "q": 0.6, "paid": 0.6, "win": 1.0},
             {"p": 0.95, "q": 0.9, "paid": 0.9, "win": 1.0}]
     ours = BR.traded_calibration_reliability(legs, "p")
-    assert [(b["bin"], b["legs"]) for b in ours] == [([0.0, 0.1], 2), ([0.9, 1.0], 1)]
+    assert [(b["bin"], b["legs"]) for b in ours] == [([0.05, 0.1], 2), ([0.9, 1.0], 1)]
     assert ours[0]["said_ours"] == pytest.approx(0.065) and ours[0]["said_market"] == pytest.approx(0.55)
     assert ours[0]["landed"] == pytest.approx(0.5)
     market = BR.traded_calibration_reliability(legs, "q")
@@ -368,10 +368,12 @@ def test_the_funnel_and_the_leg_by_leg_pairing_share_one_belief_and_one_outcome(
         "event_id": "e1", "order_intent_id": "i_yes", "event_type": "FILL", "observed_at": "2026-09-18T12:05:00Z",
         "matched_size": 10.0, "matched_notional_usdc": 4.0, "event_json": "{}"})
     legs, _counts = BR.traded_calibration_legs(store)
-    funnel = BR.traded_calibration_funnel(store, legs)
+    assert {l["order_intent_id"]: l["reached"] for l in legs} == {"i_yes": True, "i_no": True, "i_unfilled": False}
+    funnel = BR.traded_calibration_funnel(*BR._ladder_leg_rows(store, legs))
     rows = {(r["population"], r["direction"]): r for r in funnel["rows"]}
     assert rows[("信号桶（全部意图）", "全部")]["buckets"] == 3
-    assert rows[("其中成交", "全部")]["buckets"] == 2 and rows[("其中未成交", "全部")]["buckets"] == 1
+    assert rows[("其中成交", "全部")]["buckets"] == 2 and rows[("其中没到交易所", "全部")]["buckets"] == 1
+    assert ("其中挂上未成交", "全部") not in rows, "a never-sent order is not a rested one"
     paired = BR.traded_calibration_paired_legs(store, legs)
     summary = paired["summary"]
     assert (summary["legs"], summary["p_same_vector"], summary["outcome_consistent"]) == (2, 2, 2)
@@ -381,6 +383,84 @@ def test_the_funnel_and_the_leg_by_leg_pairing_share_one_belief_and_one_outcome(
     assert no["q_ref"] == pytest.approx(1 - 0.30 / 0.89) and no["ll_p"] == pytest.approx(_ll(0.7, 1))
     yes = next(r for r in paired["legs"] if r["side"] == "YES")
     assert yes["filled_at"] == "2026-09-18T12:05:00Z" and yes["p_at_fill"] == pytest.approx(0.5)
+
+
+def _fill_row(day, lane, filled, d, *, p=0.5, q=0.4, hours=40.0, bucket="28°C", station="ZSPD"):
+    return {"event_date": day, "lane": lane, "filled": filled, "reached": True, "d": d, "ll_p": d, "ll_q": 0.0,
+            "p": p, "q": q, "hours": hours, "bucket": bucket, "station_id": station, "side": "YES"}
+
+
+def test_the_fill_gap_is_read_within_strata_and_within_matched_groups() -> None:
+    """User 2026-10-10 「同一信号集合，比较成交与未成交：按站点、桶、报价时刻、市场价、
+    提前量和车道分层或配对」: a stratum (lane x lead x price x direction) only
+    counts with both groups in it, weighted n_f*n_u/(n_f+n_u); a matched group
+    is one lane, station-day, bucket and side holding both."""
+
+    rows = [_fill_row("2026-09-20", "proper_bet", True, 0.3), _fill_row("2026-09-20", "proper_bet", False, 0.1),
+            _fill_row("2026-09-20", "proper_bet", False, 0.0),
+            # A second stratum (other lane), and one with filled legs only -- not counted.
+            _fill_row("2026-09-21", "tiebreak", True, 0.2, station="EGLC"), _fill_row("2026-09-21", "tiebreak", False, 0.4, station="EGLC"),
+            _fill_row("2026-09-22", "basket", True, 0.9, station="KMIA")]
+    staged = [{**r, "_stratum": BR._fill_stratum(r)} for r in rows]
+    got = BR._stratified_fill_gap(staged)
+    w1, w2 = 1 * 2 / 3, 1 * 1 / 2
+    assert got["strata"] == 2 and got["filled_covered"] == 2 and got["unfilled_covered"] == 3
+    assert got["estimate"] == pytest.approx((w1 * (0.3 - 0.05) + w2 * (0.2 - 0.4)) / (w1 + w2))
+    groups = BR._matched_fill_gap(staged)
+    assert [(g["lane"], g["filled"], g["unfilled"]) for g in groups] == [("proper_bet", 1, 2), ("tiebreak", 1, 1)]
+    assert groups[0]["d"] == pytest.approx(0.25)
+    reading = BR._fill_selection_reading(staged, draws=50)
+    assert reading["filled"] == 3 and reading["unfilled"] == 3
+    assert reading["stratified"]["estimate"] == pytest.approx(got["estimate"])
+    assert reading["matched"]["gap"] == pytest.approx((0.25 - 0.2) / 2)
+
+
+def test_order_to_fill_splits_takes_from_rested_fills_and_reads_the_book_after_when_none_before(store) -> None:  # noqa: F811
+    """User 2026-10-10 「分解下单到成交期间的变化」: a fill within a minute is a
+    take; a rested fill is read at its first fill, from the book just after it
+    when production committed none in the half hour before."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)})  # 11:50
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.33, 0.37), "29°C": (0.33, 0.37)},
+          observed="2026-09-18T13:10:00Z", snapshot_id="snapLate")
+    _label(store, "28°C")
+    _leg(store, "i_take", decision_id="tail_short_decision_ZSPD_2026-09-20", bucket="29°C", side="NO", price=0.70,
+         size=5, filled=5, notional=3.5)
+    _leg(store, "i_rest", decision_id="proper_bet_decision_ZSPD_2026-09-20", bucket="28°C", side="YES", price=0.40,
+         size=10, filled=10, notional=4.0)
+    for eid, iid, at in (("e1", "i_take", "2026-09-18T12:00:20Z"), ("e2", "i_rest", "2026-09-18T13:00:00Z")):
+        _insert(store, "basket_target_order_events", {"event_id": eid, "order_intent_id": iid, "event_type": "FILL",
+                                                      "observed_at": at, "matched_size": 1.0, "event_json": "{}"})
+    legs, _counts = BR.traded_calibration_legs(store)
+    rows, _ = BR._ladder_leg_rows(store, legs)
+    out = BR._order_to_fill(store, rows)
+    assert out["filled_instant"]["legs"] == 1 and out["filled_waited"]["legs"] == 1
+    assert out["books"] == {"before": 1, "after": 1, "none": 0}, "no book in the half hour before 13:00 -> 13:10's"
+    waited = out["filled_waited"]
+    assert waited["q_order"] == pytest.approx(0.40 / 0.89) and waited["q_end"] == pytest.approx(0.35 / 0.89)
+    assert waited["share_down"] == 1.0 and waited["minutes_median"] == pytest.approx(60.0)
+
+
+def test_the_forward_judgement_is_made_once_and_carried(monkeypatch) -> None:
+    """The protocol's single reading: accumulate before the read date, defer
+    once when short, judge on the interval, and never re-judge."""
+
+    reading = {"filled": 45, "filled_event_days": 12, "stratified": {"estimate": 0.05, "ci": [0.01, 0.09]}}
+    monkeypatch.setattr(BR, "_now", lambda: BR.datetime(2026, 10, 20, tzinfo=BR.timezone.utc))
+    assert BR._forward_status(reading, None)["state"] == "accumulating"
+    monkeypatch.setattr(BR, "_now", lambda: BR.datetime(2026, 10, 25, tzinfo=BR.timezone.utc))
+    judged = BR._forward_status(reading, None)
+    assert judged["verdict"] == "成交这一步放大劣势：前瞻成立" and judged["judged_at"] == "2026-10-25"
+    later = {**reading, "stratified": {"estimate": -0.1, "ci": [-0.2, -0.05]}}
+    assert BR._forward_status(later, {"judgement": judged}) == judged, "judged once, carried unchanged"
+    short = {**reading, "filled": 10}
+    deferred = BR._forward_status(short, None)
+    assert deferred["state"] == "deferred" and deferred["first_check_at"] == "2026-10-25"
+    monkeypatch.setattr(BR, "_now", lambda: BR.datetime(2026, 11, 8, tzinfo=BR.timezone.utc))
+    assert BR._forward_status(short, {"judgement": deferred})["verdict"] == "样本不足，不判"
+    crossing = {**reading, "stratified": {"estimate": 0.01, "ci": [-0.02, 0.04]}}
+    assert BR._forward_status(crossing, {"judgement": deferred})["verdict"] == "前瞻不成立（跨零）"
 
 
 def test_a_band_without_a_fresh_complete_book_is_unpaired(store) -> None:  # noqa: F811
@@ -399,7 +479,12 @@ def test_the_bucket_reading_slices_and_bins() -> None:
              "from_mode": k, "p": p, "q": q, "win": w}
             for d in range(4) for k, p, q, w in ((0, 0.6, 0.5, 1.0), (1, 0.3, 0.3, 0.0), (3, 0.004, 0.02, 0.0))]
     value_bins = BR.bucket_calibration_reliability(rows, "p")
-    assert [(b["bin"], b["buckets"]) for b in value_bins] == [([0.0, 0.01], 4), ([0.3, 0.4], 4), ([0.6, 0.7], 4)]
+    assert [(b["bin"], b["buckets"]) for b in value_bins] == [([0.0, 0.05], 4), ([0.3, 0.4], 4), ([0.6, 0.7], 4)]
+    assert value_bins[1]["landed_ci"][0] == 0.0 and 0.0 < value_bins[1]["landed_ci"][1] < 1.0, "Wilson, 0 of 4"
+    whole = BR.bucket_reliability_set(rows)["reliability_summary"]["ours"]
+    # Murphy REL / ECE: bins (0.004 said, 0 landed), (0.3, 0), (0.6, 1), four buckets each.
+    assert whole["rel"] == pytest.approx((0.004 ** 2 + 0.3 ** 2 + 0.4 ** 2) / 3)
+    assert whole["ece"] == pytest.approx((0.004 + 0.3 + 0.4) / 3)
     group = BR.bucket_calibration_group(rows)
     assert group["event_days"] == 4 and isinstance(group["logloss_diff_ci"], list)
     assert BR.bucket_calibration_group([]) is None
@@ -430,8 +515,8 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
     source = C.HTML_TEMPLATE
-    # From the shared lane names the two sections read down to the function's end.
-    start = source.index("const TC_LANE_NAMES=")
+    # From the shared chart helper and lane names down to the function's end.
+    start = source.index("const REL_SHAPES")
     depth, end = 0, None
     for index in range(source.index("{", source.index("function bucketCalibration(")), len(source)):
         depth += {"{": 1, "}": -1}.get(source[index], 0)
@@ -444,8 +529,11 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     payload = {
         "bucket_calibration": {"available": True, "since": "2026-09-06", "all": group,
                                "slices": [{"group": "桶位置", "slice": "市场众数桶", **group}],
-                               "reliability_ours": [{"bin": [0.0, 0.01], "buckets": 3, "said_ours": 0.004,
-                                                     "said_market": 0.01, "landed": 0.0}],
+                               "reliability_ours": [{"bin": [0.0, 0.05], "buckets": 3, "said_ours": 0.004,
+                                                     "said_market": 0.01, "landed": 0.0, "landed_ci": [0.0, 0.56]},
+                                                    {"bin": [0.3, 0.4], "buckets": 9, "said_ours": 0.33,
+                                                     "said_market": 0.3, "landed": 0.4, "landed_ci": [0.1, 0.7]}],
+                               "reliability_summary": {"ours": {"n": 12, "rel": 0.0123, "ece": 0.05, "logloss": 0.2}},
                                "reliability_market": [], "counts": {"station_days": 4},
                                "p0_layers": {"all": {"buckets": 30, "samples": 10, "event_days": 4,
                                                      **{f"{sc}_{k}": 0.2 for sc in ("logloss", "logscore", "crps")
@@ -462,6 +550,15 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
                                "counts": {"legs": 20}}}},
             "funnel": {"counts": {"legs": 25}, "rows": [{"population": "其中成交", "direction": "p > q", **group,
                                                          "buckets": 9}]},
+            "fill_selection": {"protocol": "docs/research/x/PROTOCOL.md", "forward_from": "2026-10-11",
+                               "read_on": "2026-10-24", "min_filled": 40, "min_days": 10,
+                               "in_sample": {"filled": 11, "unfilled": 20, "raw_gap": 0.09, "raw_gap_ci": [-0.02, 0.19],
+                                             "stratified": {"estimate": 0.0095, "ci": [-0.08, 0.1], "strata": 9},
+                                             "matched": {"groups": 14, "gap": -0.0065}, "regression": {"coefficient": 0.0186},
+                                             "order_to_fill": {"filled_waited": {"legs": 52, "event_days": 18, "minutes_median": 10.3,
+                                                                                 "q_order": 0.42, "q_end": 0.42, "move": 0.0,
+                                                                                 "share_down": 0.13, "share_up": 0.12}}},
+                               "forward": {"filled": 0, "judgement": {"state": "accumulating"}}},
             "paired_legs": {"summary": {"legs": 20, "p_same_vector": 20, "outcome_consistent": 20},
                             "legs": [{"created_at": "2026-09-20T06:00:00Z", "lane": "proper_bet", "bucket": "28°C",
                                       "side": "YES", "p": 0.5, "win": 1.0, "settled_bucket": "28°C"}]}},
@@ -479,3 +576,7 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     assert "融合池（分布层之前）" in html and "+0.0270 [+0.0200, +0.0300]*" in html, "the P0 layers"
     assert "+0.2100 [+0.1700, +0.2600]*" in html, "the whole distribution's LogScore"
     assert "20 / 20" in html and "Proper" in html, "the leg-by-leg pairing"
+    assert "<svg viewBox" in html and "REL 0.0123" in html and "说＝中" in html, "the reliability diagram is drawn"
+    assert "分层差（主指标）" in html and "+0.0095 [-0.0800, +0.1000]" in html, "filled against rested-unfilled"
+    assert "挂单等待后成交" in html and "10.3 分" in html, "order to fill"
+    assert "docs/research/x/PROTOCOL.md" in html and "累计中" in html, "the forward protocol's state"

@@ -1429,7 +1429,12 @@ def basket_shadow(conn: sqlite3.Connection) -> dict[str, Any]:
 
 #: The first live fills (charter 123's go-live); nothing earlier reached the venue.
 TRADED_CALIBRATION_SINCE = "2026-09-06"
-TRADED_CALIBRATION_BINS = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
+#: Reliability bins (user 2026-10-10 「要回答的问题是预测30%的桶是否约有30%发
+#: 生」): 0–0.05, 0.05–0.1, then tenths -- the bins the single-system
+#: binary-LogLoss protocol reads its REL/ECE on, so the two pages agree.
+TRADED_CALIBRATION_BINS = (0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
+#: An order event that only the exchange sends: the leg reached the venue.
+_EXCHANGE_EVENTS = frozenset({"POST_ACK", "FILL", "PARTIAL_FILL", "CANCEL_ACK", "EXPIRED", "LATE_FILL"})
 #: A slice is reported only from this many legs (the research cut, round 11).
 TRADED_CALIBRATION_MIN_LEGS = 15
 TRADED_CALIBRATION_BOOTSTRAP_DRAWS = 2000
@@ -1609,6 +1614,10 @@ def traded_calibration_legs(conn: sqlite3.Connection) -> tuple[list[dict[str, An
         filled_size = float(filled or 0.0)
         paid = (float(notional) / filled_size) if filled_size > 0 and notional else float(limit_price)
         hours = hours_to_settlement_if_known(str(day), as_of_utc=str(created), settlement_timezone=tz)
+        events = conn.execute(
+            "SELECT event_type, observed_at, matched_size FROM basket_target_order_events"
+            " WHERE order_intent_id=? ORDER BY observed_at", (str(intent_id),),
+        ).fetchall()
         legs.append({
             "order_intent_id": str(intent_id), "lane": _traded_lane(str(decision_id)), "station_id": str(station),
             "event_date": str(day), "bucket": str(bucket), "side": "NO" if is_no else "YES", "stage": stage,
@@ -1616,6 +1625,11 @@ def traded_calibration_legs(conn: sqlite3.Connection) -> tuple[list[dict[str, An
             "settled_bucket": str(label["bucket"]),
             "p": p, "q": q, "paid": paid, "win": win, "filled": filled_size > 0,
             "shares": filled_size, "usdc": float(notional or 0.0) if filled_size > 0 else 0.0,
+            # Whether the venue ever saw it (a refused or never-sent order had
+            # no chance to fill), its first fill, and its last event.
+            "reached": filled_size > 0 or any(str(e[0]) in _EXCHANGE_EVENTS for e in events),
+            "filled_at": min((str(e[1]) for e in events if float(e[2] or 0.0) > 0.0), default=None),
+            "end_at": str(events[-1][1]) if events else None,
         })
         counts["legs"] += 1
     return legs, counts
@@ -1681,21 +1695,63 @@ def traded_calibration_group(legs: Sequence[Mapping[str, Any]], *, min_legs: int
     }
 
 
+def _wilson(hits: float, n: int) -> list[float] | None:
+    """95% Wilson interval of a landed rate -- a thin bin reads as thin."""
+
+    if n <= 0:
+        return None
+    z = 1.959963984540054
+    rate = hits / n
+    denom = 1.0 + z * z / n
+    centre = (rate + z * z / (2.0 * n)) / denom
+    half = z * math.sqrt(rate * (1.0 - rate) / n + z * z / (4.0 * n * n)) / denom
+    return [max(0.0, centre - half), min(1.0, centre + half)]
+
+
+def reliability_summary(bins: Sequence[Mapping[str, Any]], said: str, count: str) -> dict[str, Any]:
+    """Murphy's REL (Σ n_k (p̄_k − ō_k)² / N) and ECE (Σ n_k |p̄_k − ō_k| / N)
+    of one reliability diagram: how far what was said sits from what landed."""
+
+    n = sum(int(b[count]) for b in bins)
+    if not n:
+        return {"n": 0, "rel": None, "ece": None}
+    return {"n": n,
+            "rel": sum(b[count] * (b[said] - b["landed"]) ** 2 for b in bins) / n,
+            "ece": sum(b[count] * abs(b[said] - b["landed"]) for b in bins) / n}
+
+
 def traded_calibration_reliability(legs: Sequence[Mapping[str, Any]], key: str) -> list[dict[str, Any]]:
-    """Reliability by decile of ``key`` (``p`` ours, ``q`` market): what was
-    said by both and what landed, so the two diagrams are read side by side
-    on the same legs."""
+    """Reliability by bin of ``key`` (``p`` ours, ``q`` market, ``paid`` the
+    price): what was said by each and what landed, with the landed rate's 95%
+    interval, so the diagrams are read side by side on the same legs."""
 
     out: list[dict[str, Any]] = []
     for lo, hi in zip(TRADED_CALIBRATION_BINS[:-1], TRADED_CALIBRATION_BINS[1:]):
         inside = [l for l in legs if lo <= float(l[key]) < hi]
         if not inside:
             continue
+        hits = sum(float(l["win"]) for l in inside)
         out.append({
             "bin": [lo, min(hi, 1.0)], "legs": len(inside),
             "said_ours": _traded_mean([l["p"] for l in inside]), "said_market": _traded_mean([l["q"] for l in inside]),
-            "paid": _traded_mean([l["paid"] for l in inside]), "landed": _traded_mean([l["win"] for l in inside]),
+            "paid": _traded_mean([l["paid"] for l in inside]), "landed": hits / len(inside),
+            "landed_ci": _wilson(hits, len(inside)),
         })
+    return out
+
+
+def _traded_reliability_set(legs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The three reliability diagrams of a set of legs -- by our p, by the
+    market's q, by the paid price -- each with its REL, ECE and binary LogLoss."""
+
+    out: dict[str, Any] = {}
+    summary: dict[str, Any] = {}
+    for name, key, said in (("ours", "p", "said_ours"), ("market", "q", "said_market"), ("paid", "paid", "paid")):
+        bins = traded_calibration_reliability(legs, key)
+        out[f"reliability_{name}"] = bins
+        summary[name] = {**reliability_summary(bins, said, "legs"),
+                         "logloss": _traded_mean([_binary_logloss(l[key], l["win"]) for l in legs])}
+    out["reliability_summary"] = summary
     return out
 
 
@@ -1712,8 +1768,7 @@ def traded_calibration_reliability_by_lane(legs: Sequence[Mapping[str, Any]]) ->
             "lane": lane, "legs": len(inside), "event_days": len({l["event_date"] for l in inside}),
             "said_ours": _traded_mean([l["p"] for l in inside]), "said_market": _traded_mean([l["q"] for l in inside]),
             "paid": _traded_mean([l["paid"] for l in inside]), "landed": _traded_mean([l["win"] for l in inside]),
-            "reliability_ours": traded_calibration_reliability(inside, "p"),
-            "reliability_market": traded_calibration_reliability(inside, "q"),
+            **_traded_reliability_set(inside),
         })
     return out
 
@@ -1757,7 +1812,8 @@ def traded_calibration_ladder_by_lane(
             whole.extend(ladder)
     return {
         "counts": counts, "all": bucket_calibration_group(whole),
-        "lanes": [{"lane": lane, **(bucket_calibration_group(rows) or {})} for lane, rows in sorted(by_lane.items())],
+        "lanes": [{"lane": lane, **(bucket_calibration_group(rows) or {}), **bucket_reliability_set(rows)}
+                  for lane, rows in sorted(by_lane.items())],
     }
 
 
@@ -1772,14 +1828,10 @@ def _side(value: float | None, is_no: bool) -> float | None:
     return None if value is None else ((1.0 - float(value)) if is_no else float(value))
 
 
-def traded_calibration_funnel(conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Where the gap widens (user 2026-10-09 「下一步继续切」: 全部候选桶 vs 策略
-    信号桶 vs 实际成交桶): every leg a lane sent (its signal), the ones that did
-    not fill and the ones that did, each scored on its bucket with the same
-    market reference the every-bucket sample uses (``_ladder_market_reference``),
-    so the three rows and the every-bucket row share one q.  Side-oriented: a
-    NO leg's p, q and outcome are the NO side's (binary LogLoss is the same on
-    either side; the direction cut is not)."""
+def _ladder_leg_rows(conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Each leg on its bucket with the every-bucket sample's market reference
+    at the order instant (``_ladder_market_reference``) and the belief standing
+    then; side-oriented (a NO leg's p, q and outcome are the NO side's)."""
 
     served_cache: dict[tuple[str, str, str], Any] = {}
     market_cache: dict[tuple[str, str, str], Any] = {}
@@ -1797,17 +1849,34 @@ def traded_calibration_funnel(conn: sqlite3.Connection, legs: Sequence[Mapping[s
             counts["ladder_mismatch"] += 1
             continue
         is_no = leg["side"] == "NO"
-        rows.append({"station_id": station, "event_date": day, "at": at, "lane": leg["lane"], "filled": bool(leg["filled"]),
-                     "p": _side(p[bucket], is_no), "q": _side(q[bucket], is_no), "win": float(leg["win"])})
+        row = {k: leg[k] for k in ("order_intent_id", "lane", "station_id", "event_date", "bucket", "side", "hours",
+                                   "created_at", "filled_at", "end_at", "paid", "win")}
+        row.update({"at": at, "filled": bool(leg["filled"]), "reached": bool(leg["reached"]),
+                    "p": _side(p[bucket], is_no), "q": _side(q[bucket], is_no)})
+        row["ll_p"], row["ll_q"] = _binary_logloss(row["p"], row["win"]), _binary_logloss(row["q"], row["win"])
+        row["d"] = row["ll_p"] - row["ll_q"]
+        rows.append(row)
+    return rows, counts
+
+
+def traded_calibration_funnel(rows: Sequence[Mapping[str, Any]], counts: Mapping[str, int]) -> dict[str, Any]:
+    """Where the gap widens (user 2026-10-09 「下一步继续切」: 全部候选桶 vs 策略
+    信号桶 vs 实际成交桶): every leg a lane sent (its signal), split into the
+    ones that never reached the venue, the ones that rested and did not fill,
+    and the ones that filled, each scored on its bucket with the same market
+    reference as the every-bucket sample (user 2026-10-10: 控制两组的组成差异 --
+    a refused order had no chance to fill)."""
+
     out: list[dict[str, Any]] = []
-    for population, pick in (("信号桶（全部意图）", lambda r: True), ("其中未成交", lambda r: not r["filled"]),
+    for population, pick in (("信号桶（全部意图）", lambda r: True), ("其中没到交易所", lambda r: not r["reached"]),
+                             ("其中挂上未成交", lambda r: r["reached"] and not r["filled"]),
                              ("其中成交", lambda r: r["filled"])):
         for direction, cut in (("全部", lambda r: True), ("p > q", lambda r: r["p"] > r["q"]),
                                ("p ≤ q", lambda r: r["p"] <= r["q"])):
             group = bucket_calibration_group([r for r in rows if pick(r) and cut(r)])
             if group is not None:
                 out.append({"population": population, "direction": direction, **group})
-    return {"counts": counts, "rows": out}
+    return {"counts": dict(counts), "rows": out}
 
 
 def traded_calibration_paired_legs(conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1824,11 +1893,7 @@ def traded_calibration_paired_legs(conn: sqlite3.Connection, legs: Sequence[Mapp
     for leg in sorted((l for l in legs if l["filled"]), key=lambda l: l["created_at"]):
         station, day, at, bucket = str(leg["station_id"]), str(leg["event_date"]), str(leg["created_at"]), str(leg["bucket"])
         is_no = leg["side"] == "NO"
-        fill_row = conn.execute(
-            "SELECT MIN(observed_at) FROM basket_target_order_events WHERE order_intent_id=? AND matched_size>0",
-            (str(leg["order_intent_id"]),),
-        ).fetchone()
-        filled_at = str(fill_row[0]) if fill_row and fill_row[0] else None
+        filled_at = leg.get("filled_at")
         _stage, p, _order, _rung = _served_belief_vector(conn, station, day, at, served_cache)
         q = _ladder_market_reference(conn, station, day, at, market_cache)
         fill_stage, p_fill = None, None
@@ -1875,6 +1940,304 @@ def traded_calibration_paired_legs(conn: sqlite3.Connection, legs: Sequence[Mapp
                                            for r in with_fill]) if with_fill else None),
     }
     return {"summary": summary, "legs": paired}
+
+
+# The fill step, filled against rested-unfilled on one signal set (user
+# 2026-10-10: 同一信号集合比较成交与未成交、分解下单到成交期间的变化、检验成交与
+# 预测误差的关系、固定规则做前瞻样本外验证) -- the rules of
+# docs/research/fill_selection_forward_20261010/PROTOCOL.md.
+FILL_SELECTION_PROTOCOL = "docs/research/fill_selection_forward_20261010/PROTOCOL.md"
+FILL_SELECTION_FORWARD_FROM = "2026-10-11"
+FILL_SELECTION_READ_ON = "2026-10-24"
+FILL_SELECTION_READ_FALLBACK = "2026-11-07"
+FILL_SELECTION_MIN_FILLED = 40
+FILL_SELECTION_MIN_DAYS = 10
+FILL_SELECTION_SEED = 20261010
+FILL_SELECTION_DRAWS = 2000
+#: A market move between the order and its fill smaller than this is flat.
+FILL_MOVE_FLAT = 0.01
+
+
+def _band_of(value: float | None, bands: Sequence[tuple[str, float, float]]) -> str:
+    if value is None:
+        return "—"
+    for name, lo, hi in bands:
+        if lo <= value < hi:
+            return name
+    return "—"
+
+
+def _fill_stratum(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    return (str(row["lane"]), _band_of(row["hours"], _TRADED_LEAD_BANDS), _band_of(row["q"], _TRADED_PRICE_BANDS),
+            "p>q" if row["p"] > row["q"] else "p≤q")
+
+
+def _stratified_fill_gap(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Within each stratum (lane × lead × the side's market price × direction)
+    the filled mean of d minus the rested-unfilled mean, pooled with weights
+    n_f·n_u/(n_f+n_u) over the strata that hold both."""
+
+    cells: dict[Any, list[list[float]]] = defaultdict(lambda: [[], []])
+    for r in rows:
+        cells[r["_stratum"]][0 if r["filled"] else 1].append(float(r["d"]))
+    num = den = 0.0
+    strata = covered_f = covered_u = 0
+    for filled, unfilled in cells.values():
+        if filled and unfilled:
+            w = len(filled) * len(unfilled) / (len(filled) + len(unfilled))
+            num += w * (sum(filled) / len(filled) - sum(unfilled) / len(unfilled))
+            den += w
+            strata += 1
+            covered_f += len(filled)
+            covered_u += len(unfilled)
+    return {"estimate": (num / den) if den else None, "strata": strata,
+            "filled_covered": covered_f, "unfilled_covered": covered_u}
+
+
+def _matched_fill_gap(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Groups of the same lane, station-day, bucket and side holding both a
+    filled and a rested-unfilled leg; the outcome is the same inside a group,
+    so its gap comes from our p and the market's q at the two instants."""
+
+    groups: dict[Any, list[list[Mapping[str, Any]]]] = defaultdict(lambda: [[], []])
+    for r in rows:
+        groups[(r["lane"], r["station_id"], r["event_date"], r["bucket"], r["side"])][0 if r["filled"] else 1].append(r)
+    out = []
+    for (lane, station, day, bucket, side), (filled, unfilled) in sorted(groups.items()):
+        if filled and unfilled:
+            mean = lambda xs, k: sum(float(x[k]) for x in xs) / len(xs)  # noqa: E731
+            out.append({"lane": lane, "station_id": station, "event_date": day, "bucket": bucket, "side": side,
+                        "filled": len(filled), "unfilled": len(unfilled),
+                        "d": mean(filled, "d") - mean(unfilled, "d"),
+                        "ll_p": mean(filled, "ll_p") - mean(unfilled, "ll_p"),
+                        "ll_q": mean(filled, "ll_q") - mean(unfilled, "ll_q")})
+    return out
+
+
+def _fill_regression(rows: Sequence[Mapping[str, Any]]) -> tuple[float | None, int]:
+    """d ~ filled + lane + lead band + price band + direction + |p−q|, least
+    squares; the filled coefficient."""
+
+    import numpy as np  # noqa: PLC0415
+
+    if len(rows) < 8 or not any(r["filled"] for r in rows) or all(r["filled"] for r in rows):
+        return None, 0
+    levels = [sorted({r["_stratum"][i] for r in rows}) for i in range(3)]
+    columns = []
+    for r in rows:
+        x = [1.0, 1.0 if r["filled"] else 0.0]
+        for i, values in enumerate(levels):
+            x.extend(1.0 if r["_stratum"][i] == v else 0.0 for v in values[1:])
+        x.extend([1.0 if r["p"] > r["q"] else 0.0, abs(float(r["p"]) - float(r["q"]))])
+        columns.append(x)
+    beta, *_rest = np.linalg.lstsq(np.asarray(columns), np.asarray([float(r["d"]) for r in rows]), rcond=None)
+    return float(beta[1]), len(columns[0])
+
+
+def _day_draws(rows: Sequence[Mapping[str, Any]], statistic: Any, *, draws: int = FILL_SELECTION_DRAWS) -> list[float] | None:
+    """95% interval of ``statistic`` over whole event days resampled."""
+
+    by_day: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for r in rows:
+        by_day[str(r["event_date"])].append(r)
+    days = list(by_day)
+    if len(days) < 3:
+        return None
+    rng = random.Random(FILL_SELECTION_SEED)
+    values = []
+    for _ in range(draws):
+        sample = [r for _d in days for r in by_day[days[rng.randrange(len(days))]]]
+        got = statistic(sample)
+        if got is not None:
+            values.append(got)
+    if len(values) < 10:
+        return None
+    values.sort()
+    return [values[int(0.025 * len(values))], values[int(0.975 * len(values)) - 1]]
+
+
+def _fill_selection_reading(rows: Sequence[Mapping[str, Any]], *, draws: int = FILL_SELECTION_DRAWS) -> dict[str, Any]:
+    """The three estimates of the protocol on one sample: the stratified gap
+    (primary), the matched groups and the controlled regression, each with
+    its event-day interval, and the raw filled-minus-unfilled gap beside."""
+
+    sample = [r for r in rows if r["reached"]]
+    filled = [r for r in sample if r["filled"]]
+    unfilled = [r for r in sample if not r["filled"]]
+    raw = (lambda xs: (sum(r["d"] for r in xs if r["filled"]) / max(1, sum(1 for r in xs if r["filled"]))
+                       - sum(r["d"] for r in xs if not r["filled"]) / max(1, sum(1 for r in xs if not r["filled"])))
+           if any(r["filled"] for r in xs) and any(not r["filled"] for r in xs) else None)
+    stratified = _stratified_fill_gap(sample)
+    matched = _matched_fill_gap(sample)
+
+    def _matched_mean(xs: Sequence[Mapping[str, Any]], key: str = "d") -> float | None:
+        got = _matched_fill_gap(xs)
+        return (sum(g[key] for g in got) / len(got)) if got else None
+
+    return {
+        "filled": len(filled), "unfilled": len(unfilled),
+        "event_days": len({r["event_date"] for r in sample}),
+        "filled_event_days": len({r["event_date"] for r in filled}),
+        "mean_d_filled": _traded_mean([r["d"] for r in filled]), "mean_d_unfilled": _traded_mean([r["d"] for r in unfilled]),
+        "raw_gap": raw(sample), "raw_gap_ci": _day_draws(sample, raw, draws=draws),
+        "stratified": {**stratified, "ci": _day_draws(sample, lambda xs: _stratified_fill_gap(xs)["estimate"], draws=draws)},
+        "matched": {"groups": len(matched), "filled": sum(g["filled"] for g in matched),
+                    "unfilled": sum(g["unfilled"] for g in matched),
+                    "gap": _matched_mean(sample), "gap_ci": _day_draws(sample, _matched_mean, draws=draws),
+                    "gap_ll_p": _matched_mean(sample, "ll_p"), "gap_ll_q": _matched_mean(sample, "ll_q")},
+        "regression": {"coefficient": _fill_regression(sample)[0], "columns": _fill_regression(sample)[1],
+                       "ci": _day_draws(sample, lambda xs: _fill_regression(xs)[0], draws=max(200, draws // 4))},
+    }
+
+
+#: A fill this soon after its order was a take: nothing happened in between.
+FILL_INSTANT_MINUTES = 1.0
+
+
+def _ladder_market_reference_near(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
+) -> tuple[dict[str, float] | None, str | None]:
+    """The market reference at ``at_utc`` for the order-to-fill decomposition:
+    the newest committed book in the window before it, else the first one in
+    the window after it.  Committed books exist only where production read the
+    station-day, so a maker leg that rested half an hour often has none
+    before its fill (2026-10-10: 12 of 112 filled legs, all maker, 30–186 min
+    of rest); the book just after the fill is what the market said then."""
+
+    before = _ladder_market_reference(conn, station, day, at_utc, cache)
+    if before is not None:
+        return before, "before"
+    from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+
+    ceiling = (_utc_instant(at_utc) + timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
+    snap = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at>=? AND observed_at<=?"
+        " ORDER BY observed_at ASC, sequence ASC LIMIT 1",
+        (station, day, at_utc, ceiling.isoformat().replace("+00:00", "Z")),
+    ).fetchone()
+    if snap is None:
+        return None, None
+    try:
+        market = market_reference_v1(json.loads(snap[0] or "[]"))
+    except (TypeError, ValueError):
+        return None, None
+    if market.get("state") != "complete":
+        return None, None
+    return {str(b): float(v) for b, v in market["vector"].items()}, "after"
+
+
+def _order_to_fill(conn: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """What moved between the order and its end (user 2026-10-10: 比较下单时市场
+    中价、成交时中价、成交价与最终结算；中位间隔 1.9 分钟并不能排除期间的信息变化):
+    for a filled leg the instant of its first fill, for a rested-unfilled leg
+    its last event (cancel or expiry); the market reference and our belief at
+    that instant, against the ones at the order."""
+
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
+    moved: list[dict[str, Any]] = []
+    books = {"before": 0, "after": 0, "none": 0}
+    for r in rows:
+        if not r["reached"]:
+            continue
+        at = r["filled_at"] if r["filled"] else r["end_at"]
+        if not at:
+            continue
+        is_no = r["side"] == "NO"
+        _stage, p_at, _o, _r = _served_belief_vector(conn, r["station_id"], r["event_date"], str(at), served_cache)
+        q_at, side_of_book = _ladder_market_reference_near(conn, r["station_id"], r["event_date"], str(at), market_cache)
+        if p_at is None or q_at is None or r["bucket"] not in p_at or r["bucket"] not in q_at:
+            books["none"] += 1
+            continue
+        books[str(side_of_book)] += 1
+        moved.append({**r, "end": str(at), "p_end": _side(p_at[r["bucket"]], is_no), "q_end": _side(q_at[r["bucket"]], is_no),
+                      "book": side_of_book,
+                      "minutes": (_utc_instant(str(at)) - _utc_instant(r["created_at"])).total_seconds() / 60.0})
+
+    def _summary(xs: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+        if not xs:
+            return None
+        move = [x["q_end"] - x["q"] for x in xs]
+        out = {
+            "legs": len(xs), "event_days": len({x["event_date"] for x in xs}),
+            "minutes_median": median([x["minutes"] for x in xs]),
+            "q_order": _traded_mean([x["q"] for x in xs]), "q_end": _traded_mean([x["q_end"] for x in xs]),
+            "p_order": _traded_mean([x["p"] for x in xs]), "p_end": _traded_mean([x["p_end"] for x in xs]),
+            "landed": _traded_mean([x["win"] for x in xs]),
+            "move": _traded_mean(move),
+            "share_down": sum(1 for m in move if m < -FILL_MOVE_FLAT) / len(xs),
+            "share_up": sum(1 for m in move if m > FILL_MOVE_FLAT) / len(xs),
+            "ll_q_order": _traded_mean([x["ll_q"] for x in xs]),
+            "ll_q_end": _traded_mean([_binary_logloss(x["q_end"], x["win"]) for x in xs]),
+            "ll_p_order": _traded_mean([x["ll_p"] for x in xs]),
+            "ll_p_end": _traded_mean([_binary_logloss(x["p_end"], x["win"]) for x in xs]),
+            "ll_paid": _traded_mean([_binary_logloss(x["paid"], x["win"]) for x in xs]),
+            "paid": _traded_mean([x["paid"] for x in xs]),
+        }
+        out["d_order"] = out["ll_p_order"] - out["ll_q_order"]
+        out["d_end"] = out["ll_p_end"] - out["ll_q_end"]
+        return out
+
+    filled = [x for x in moved if x["filled"]]
+    instant = [x for x in filled if x["minutes"] <= FILL_INSTANT_MINUTES]
+    waited = [x for x in filled if x["minutes"] > FILL_INSTANT_MINUTES]
+    unfilled = [x for x in moved if not x["filled"]]
+    by_move = []
+    for name, pick in (("市场在成交前压低我方这一边（q 降 > 0.01）", lambda x: x["q_end"] - x["q"] < -FILL_MOVE_FLAT),
+                       ("基本不动（|Δq| ≤ 0.01）", lambda x: abs(x["q_end"] - x["q"]) <= FILL_MOVE_FLAT),
+                       ("市场在成交前抬高我方这一边（q 升 > 0.01）", lambda x: x["q_end"] - x["q"] > FILL_MOVE_FLAT)):
+        got = _summary([x for x in waited if pick(x)])
+        if got is not None:
+            by_move.append({"move_class": name, **got})
+    return {"filled": _summary(filled), "filled_instant": _summary(instant), "filled_waited": _summary(waited),
+            "unfilled": _summary(unfilled), "waited_by_move": by_move, "books": books,
+            "flat": FILL_MOVE_FLAT, "instant_minutes": FILL_INSTANT_MINUTES}
+
+
+def _forward_status(reading: Mapping[str, Any], previous: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The protocol's one judgement, carried unchanged once made."""
+
+    prior = dict((previous or {}).get("judgement") or {})
+    if prior.get("verdict"):
+        return prior
+    today = _now().date().isoformat()
+    enough = (reading["filled"] >= FILL_SELECTION_MIN_FILLED
+              and reading["filled_event_days"] >= FILL_SELECTION_MIN_DAYS)
+    if today < FILL_SELECTION_READ_ON:
+        return {"state": "accumulating"}
+    if not prior.get("first_check_at"):
+        prior["first_check_at"] = today
+        if not enough:
+            return {**prior, "state": "deferred"}
+    elif today < FILL_SELECTION_READ_FALLBACK:
+        return {**prior, "state": "deferred"}
+    if not enough:
+        return {**prior, "state": "judged", "verdict": "样本不足，不判", "judged_at": today}
+    ci = reading["stratified"].get("ci")
+    verdict = ("前瞻不成立（跨零）" if not ci or ci[0] <= 0.0 <= ci[1]
+               else ("成交这一步放大劣势：前瞻成立" if ci[0] > 0.0 else "反向成立：成交的腿更准"))
+    return {**prior, "state": "judged", "verdict": verdict, "judged_at": today,
+            "estimate": reading["stratified"].get("estimate"), "ci": ci,
+            "filled": reading["filled"], "filled_event_days": reading["filled_event_days"]}
+
+
+def traded_calibration_fill_selection(conn: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    staged = [{**r, "_stratum": _fill_stratum(r)} for r in rows]
+    in_sample = [r for r in staged if r["event_date"] < FILL_SELECTION_FORWARD_FROM]
+    forward = [r for r in staged if r["event_date"] >= FILL_SELECTION_FORWARD_FROM]
+    forward_reading = _fill_selection_reading(forward)
+    try:
+        previous = ((load_reading("traded_calibration") or {}).get("value") or {}).get("fill_selection", {}).get("forward")
+    except Exception:  # noqa: BLE001 -- no previous reading is a first reading
+        previous = None
+    return {
+        "protocol": FILL_SELECTION_PROTOCOL, "forward_from": FILL_SELECTION_FORWARD_FROM,
+        "read_on": FILL_SELECTION_READ_ON, "read_fallback": FILL_SELECTION_READ_FALLBACK,
+        "min_filled": FILL_SELECTION_MIN_FILLED, "min_days": FILL_SELECTION_MIN_DAYS,
+        "in_sample": {**_fill_selection_reading(in_sample), "order_to_fill": _order_to_fill(conn, in_sample)},
+        "forward": {**forward_reading, "judgement": _forward_status(forward_reading, previous)},
+    }
 
 
 def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -1924,19 +2287,20 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
             "legs": len(subset),
             "all": traded_calibration_group(subset),
             "slices": _traded_slices(subset),
-            "reliability_ours": traded_calibration_reliability(subset, "p"),
-            "reliability_market": traded_calibration_reliability(subset, "q"),
+            **_traded_reliability_set(subset),
             "reliability_by_lane": traded_calibration_reliability_by_lane(subset),
             "lanes": sorted(Counter(l["lane"] for l in subset).items()),
         }
     populations["filled"]["ladder_by_lane"] = traded_calibration_ladder_by_lane(
         conn, [l for l in legs if l["filled"]])
-    funnel = traded_calibration_funnel(conn, legs)
+    ladder_rows, ladder_counts = _ladder_leg_rows(conn, legs)
+    funnel = traded_calibration_funnel(ladder_rows, ladder_counts)
     paired = traded_calibration_paired_legs(conn, legs)
+    fill_selection = traded_calibration_fill_selection(conn, ladder_rows)
     return {
         "rule": "traded_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
         "min_legs": TRADED_CALIBRATION_MIN_LEGS, "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC,
-        "populations": populations, "funnel": funnel, "paired_legs": paired,
+        "populations": populations, "funnel": funnel, "paired_legs": paired, "fill_selection": fill_selection,
         "recent": [
             {k: l[k] for k in ("created_at", "lane", "station_id", "event_date", "bucket", "side", "stage",
                                "p", "q", "paid", "win", "filled", "shares")}
@@ -1955,9 +2319,7 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
 BUCKET_CALIBRATION_BANDS = (("距结算 < 12h", -1e9, 12.0), ("距结算 12–24h", 12.0, 24.0),
                             ("距结算 24–36h", 24.0, 36.0), ("距结算 36–60h", 36.0, 60.0),
                             ("距结算 ≥ 60h", 60.0, 1e9))
-#: Reliability bins: most buckets of a ladder are said below 10%, so the first
-#: decile is cut three ways.
-BUCKET_CALIBRATION_BINS = (0.0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
+BUCKET_CALIBRATION_BINS = TRADED_CALIBRATION_BINS
 #: Decision instants tried per band before the band counts as unpaired.
 BUCKET_CALIBRATION_TRIES = 8
 _BUCKET_POSITIONS = (("市场众数桶", 0, 0), ("离众数 ±1", 1, 1), ("离众数 ±2", 2, 2), ("离众数 ≥ 3", 3, 10 ** 6))
@@ -2263,11 +2625,25 @@ def bucket_calibration_reliability(rows: Sequence[Mapping[str, Any]], key: str) 
     for lo, hi in zip(BUCKET_CALIBRATION_BINS[:-1], BUCKET_CALIBRATION_BINS[1:]):
         inside = [r for r in rows if lo <= float(r[key]) < hi]
         if inside:
+            hits = sum(float(r["win"]) for r in inside)
             out.append({"bin": [lo, min(hi, 1.0)], "buckets": len(inside),
                         "said_ours": _traded_mean([r["p"] for r in inside]),
                         "said_market": _traded_mean([r["q"] for r in inside]),
-                        "landed": _traded_mean([r["win"] for r in inside])})
+                        "landed": hits / len(inside), "landed_ci": _wilson(hits, len(inside))})
     return out
+
+
+def bucket_reliability_set(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Our and the market's reliability diagrams on every bucket, each with
+    its REL, ECE and binary LogLoss."""
+
+    ours = bucket_calibration_reliability(rows, "p")
+    market = bucket_calibration_reliability(rows, "q")
+    return {"reliability_ours": ours, "reliability_market": market, "reliability_summary": {
+        "ours": {**reliability_summary(ours, "said_ours", "buckets"),
+                 "logloss": _traded_mean([_binary_logloss(r["p"], r["win"]) for r in rows])},
+        "market": {**reliability_summary(market, "said_market", "buckets"),
+                   "logloss": _traded_mean([_binary_logloss(r["q"], r["win"]) for r in rows])}}}
 
 
 def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -2335,8 +2711,7 @@ def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
         "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC, "tries_per_band": BUCKET_CALIBRATION_TRIES,
         "all": bucket_calibration_group(rows), "slices": slices,
         "distribution": distribution, "p0_layers": p0_layers,
-        "reliability_ours": bucket_calibration_reliability(rows, "p"),
-        "reliability_market": bucket_calibration_reliability(rows, "q"),
+        **bucket_reliability_set(rows),
     }
 
 # ---------------------------------------------------------------------------
@@ -2362,13 +2737,18 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
          traded_calibration_reliability, traded_calibration_reliability_by_lane, _traded_slices,
          _served_belief_vector, _traded_served_vector, _traded_market_mid,
          traded_calibration_ladder_by_lane, _ladder_market_reference, _ladder_rows, bucket_calibration_group,
-         traded_calibration_funnel, traded_calibration_paired_legs, _event_week, _side),
+         bucket_calibration_reliability, bucket_reliability_set,
+         traded_calibration_funnel, traded_calibration_paired_legs, _event_week, _side,
+         _wilson, reliability_summary, _traded_reliability_set, _ladder_leg_rows, _band_of, _fill_stratum,
+         _stratified_fill_gap, _matched_fill_gap, _fill_regression, _day_draws, _fill_selection_reading,
+         _order_to_fill, _forward_status, traded_calibration_fill_selection, _ladder_market_reference_near),
     ),
     "bucket_calibration": (
         bucket_calibration,
         (bucket_calibration, bucket_calibration_rows, bucket_calibration_group, bucket_calibration_reliability,
          _served_belief_vector, _ladder_market_reference, _ladder_rows, _binary_logloss, _traded_day_bootstrap,
-         _ladder_scores, _p0_layers, _paired_mean, distribution_group, p0_layer_group, _event_week, _ladder_rps),
+         _ladder_scores, _p0_layers, _paired_mean, distribution_group, p0_layer_group, _event_week, _ladder_rps,
+         _wilson, reliability_summary, bucket_reliability_set),
     ),
     "basket_shadow": (
         basket_shadow,
