@@ -18,6 +18,13 @@ shares; ``0x8fbd7cf5`` bought 16 NO at 0.59 that second), 「先卖出，反向�
   YES token; against a NO leg, the mirror.  Only at an implied YES price
   inside ``[OPPOSITE_IMPLIED_MIN, OPPOSITE_IMPLIED_MAX]``: a 0.998 sale of a
   settled winner (the cluster's recycle) or a sub-cent NO is not a view.
+* **the verdict** (``SEAL_CRITERION``, user ruling 2026-10-09 「改封桶口径」):
+  the cluster is on the other side of the leg when the shares it traded on
+  the other side outnumber those it traded on the leg's own side, all eight
+  wallets together, maker and taker, inside the same price band.  One
+  opposite fill does not decide it: on EGLC 10-09 20°C the lead wallet's one
+  maker NO fill (31 shares, inside its own 183.7-share YES take of the same
+  second) stood against 1,044 shares the cluster bought YES.
 
 Pure apart from the HTTP read; nothing here writes.
 """
@@ -166,31 +173,60 @@ def is_opposite(fill: Mapping[str, Any], *, side: str, yes_token: str, no_token:
     return implied is not None and OPPOSITE_IMPLIED_MIN <= implied <= OPPOSITE_IMPLIED_MAX
 
 
+SEAL_CRITERION = "cluster_net_side_v2"
+
+
 def opposite_evidence(
     fills: Iterable[Mapping[str, Any]], *, side: str, yes_token: str, no_token: str,
 ) -> dict[str, Any] | None:
-    """The first opposite fill (the earliest; a tie by transaction), with how
-    many there are, or None."""
+    """The cluster's two sides of the bucket in shares, and -- when the other
+    side outnumbers the leg's own (``SEAL_CRITERION``) -- the evidence: the
+    tallies and the latest opposite fill; None otherwise."""
 
-    against = [f for f in fills if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)]
-    if not against:
+    rows = list(fills)
+    against = [f for f in rows if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)]
+    mirror = SIDE_NO if side == SIDE_YES else SIDE_YES
+    along = [f for f in rows if is_opposite(f, side=mirror, yes_token=yes_token, no_token=no_token)]
+    opposite_shares = sum(float(f.get("size") or 0.0) for f in against)
+    same_shares = sum(float(f.get("size") or 0.0) for f in along)
+    if not against or not opposite_shares > same_shares:
         return None
-    first = min(against, key=lambda f: (int(f.get("timestamp") or 0), str(f.get("transactionHash") or "")))
+    last = max(against, key=lambda f: (int(f.get("timestamp") or 0), str(f.get("transactionHash") or "")))
     return {
-        "wallet": str(first.get("_wallet") or first.get("proxyWallet") or ""),
-        "fill_ts": int(first.get("timestamp") or 0),
-        "fill_tx": str(first.get("transactionHash") or ""),
-        "fill_token_side": SIDE_YES if str(first.get("asset") or "") == yes_token else SIDE_NO,
-        "fill_action": str(first.get("side") or "").upper(),
-        "fill_price": float(first.get("price")),
-        "fill_size": float(first.get("size") or 0.0),
-        "implied_price": round(float(implied_yes_price(first, yes_token=yes_token, no_token=no_token)), 6),
+        "criterion": SEAL_CRITERION,
+        "wallet": str(last.get("_wallet") or last.get("proxyWallet") or ""),
+        "fill_ts": int(last.get("timestamp") or 0),
+        "fill_tx": str(last.get("transactionHash") or ""),
+        "fill_token_side": SIDE_YES if str(last.get("asset") or "") == yes_token else SIDE_NO,
+        "fill_action": str(last.get("side") or "").upper(),
+        "fill_price": float(last.get("price")),
+        "fill_size": float(last.get("size") or 0.0),
+        "implied_price": round(float(implied_yes_price(last, yes_token=yes_token, no_token=no_token)), 6),
         "opposite_fills": len(against),
+        "opposite_shares": round(opposite_shares, 4),
+        "same_side_shares": round(same_shares, 4),
+    }
+
+
+def side_tallies(
+    fills: Iterable[Mapping[str, Any]], *, side: str, yes_token: str, no_token: str,
+) -> dict[str, float]:
+    """The cluster's shares on each side of a ``side`` leg, inside the band."""
+
+    rows = list(fills)
+    mirror = SIDE_NO if side == SIDE_YES else SIDE_YES
+    return {
+        "opposite_shares": round(sum(float(f.get("size") or 0.0) for f in rows
+                                     if is_opposite(f, side=side, yes_token=yes_token, no_token=no_token)), 4),
+        "same_side_shares": round(sum(float(f.get("size") or 0.0) for f in rows
+                                      if is_opposite(f, side=mirror, yes_token=yes_token, no_token=no_token)), 4),
     }
 
 
 __all__ = [
     "DEFAULT_FETCH",
+    "SEAL_CRITERION",
+    "side_tallies",
     "OPPOSITE_IMPLIED_MAX",
     "OPPOSITE_IMPLIED_MIN",
     "implied_yes_price",

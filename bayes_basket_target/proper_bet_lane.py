@@ -223,10 +223,14 @@ PLAN_COLUMNS: tuple[tuple[str, str], ...] = (
     ("passes", "INTEGER"),
     ("last_pass_at_utc", "TEXT"),
 )
-#: Charter 258: one row per bucket the cluster has traded against a leg of
-#: this lane -- the first opposite fill seen is the evidence, and the row is
-#: the seal.  The flip's progress is kept on it for the receipt and board;
-#: what the flip still needs is always recomputed from the order store.
+#: Charter 258: one row per bucket the cluster stands against a leg of this
+#: lane on -- its two sides in shares and its latest opposite fill are the
+#: evidence, and a row of the current ``criterion`` is the seal.  A row of an
+#: earlier criterion is judged again on its next read: sealed under this one
+#: it is rewritten, otherwise it is marked ``SEAL_LIFTED`` and kept as the
+#: record of what the earlier rule did.  The sell step's progress is kept on
+#: it (the ``flip_*`` columns); what it still needs is always recomputed from
+#: the order store.
 SEAL_DDL = (
     f"CREATE TABLE IF NOT EXISTS {SEAL_TABLE} ("
     " station_id TEXT NOT NULL,"
@@ -253,6 +257,13 @@ SEAL_DDL = (
     " PRIMARY KEY (station_id, event_date, bucket, side)"
     ")"
 )
+#: Added with the net-side criterion (user ruling 2026-10-09 「改封桶口径」).
+SEAL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("criterion", "TEXT"),
+    ("opposite_shares", "REAL"),
+    ("same_side_shares", "REAL"),
+)
+SEAL_LIFTED = f"lifted:{benchmark_cluster.SEAL_CRITERION}"
 
 Admission = Callable[[str, sqlite3.Connection], Mapping[str, Any]]
 
@@ -260,6 +271,10 @@ Admission = Callable[[str, sqlite3.Connection], Mapping[str, Any]]
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     conn.execute(SEAL_DDL)
+    have_seal = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({SEAL_TABLE})")}
+    for name, kind in SEAL_COLUMNS:
+        if name not in have_seal:
+            conn.execute(f"ALTER TABLE {SEAL_TABLE} ADD COLUMN {name} {kind}")
     have = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({EVALUATION_TABLE})")}
     for name, kind in PLAN_COLUMNS:
         if name not in have:
@@ -1010,9 +1025,12 @@ def market_ids(
 
 def _seal_row(conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
               side: str) -> dict[str, Any] | None:
+    """The bucket's seal under the current criterion, or None."""
+
     cursor = conn.execute(
-        f"SELECT * FROM {SEAL_TABLE} WHERE station_id=? AND event_date=? AND bucket=? AND side=?",
-        (station_id, event_date, bucket, side),
+        f"SELECT * FROM {SEAL_TABLE} WHERE station_id=? AND event_date=? AND bucket=? AND side=?"
+        " AND criterion=?",
+        (station_id, event_date, bucket, side, benchmark_cluster.SEAL_CRITERION),
     )
     row = cursor.fetchone()
     return None if row is None else dict(zip([c[0] for c in cursor.description], row))
@@ -1081,6 +1099,14 @@ class BenchmarkView:
             self.fills[cond], side=where[3], yes_token=str(target["yes_token"]), no_token=no_token,
         )
         if evidence is None:
+            # A seal an earlier criterion made, not borne out by this one.
+            tallies = benchmark_cluster.side_tallies(
+                self.fills[cond], side=where[3], yes_token=str(target["yes_token"]), no_token=no_token)
+            self.conn.execute(
+                f"UPDATE {SEAL_TABLE} SET criterion=?, opposite_shares=?, same_side_shares=?"
+                " WHERE station_id=? AND event_date=? AND bucket=? AND side=? AND criterion IS NULL",
+                (SEAL_LIFTED, tallies["opposite_shares"], tallies["same_side_shares"], *where),
+            )
             return "clear", None
         row = {
             "station_id": where[0], "event_date": where[1], "bucket": where[2], "side": where[3],
@@ -1090,15 +1116,22 @@ class BenchmarkView:
             "fill_token_side": evidence["fill_token_side"], "fill_action": evidence["fill_action"],
             "fill_price": evidence["fill_price"], "fill_size": evidence["fill_size"],
             "implied_price": evidence["implied_price"], "opposite_fills": evidence["opposite_fills"],
-            "flip_state": None, "flip_json": None, "flip_updated_at_utc": None,
+            "criterion": evidence["criterion"], "opposite_shares": evidence["opposite_shares"],
+            "same_side_shares": evidence["same_side_shares"],
         }
+        # An earlier criterion's row for the bucket is rewritten; the sell
+        # step's own columns are left as they stand.
+        keys = ("station_id", "event_date", "bucket", "side")
         self.conn.execute(
-            f"INSERT OR IGNORE INTO {SEAL_TABLE}({','.join(row)}) VALUES({','.join('?' for _ in row)})",
+            f"INSERT INTO {SEAL_TABLE}({','.join(row)}) VALUES({','.join('?' for _ in row)})"
+            f" ON CONFLICT({','.join(keys)}) DO UPDATE SET "
+            + ",".join(f"{k}=excluded.{k}" for k in row if k not in keys),
             tuple(row.values()),
         )
         self.sealed_new.append({k: row[k] for k in (
             "station_id", "event_date", "bucket", "side", "sealed_by", "wallet", "fill_action",
-            "fill_token_side", "fill_price", "fill_size", "implied_price", "opposite_fills")})
+            "fill_token_side", "fill_price", "fill_size", "implied_price", "opposite_fills",
+            "opposite_shares", "same_side_shares")})
         return "sealed", row
 
 
@@ -1980,6 +2013,7 @@ __all__ = [
     "BENCHMARK_SEAL",
     "BENCHMARK_UNREADABLE",
     "BenchmarkView",
+    "SEAL_LIFTED",
     "SEAL_TABLE",
     "benchmark_mode",
     "benchmark_sealed_rung",

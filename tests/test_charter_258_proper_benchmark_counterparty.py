@@ -148,11 +148,28 @@ def test_an_opposite_fill_is_a_no_buy_or_a_yes_sale_inside_the_price_band(asset,
         assert cluster.is_opposite(fill, side="NO", yes_token="t27", no_token="n27") is (not against)
 
 
-def test_the_evidence_is_the_first_opposite_fill_and_counts_them() -> None:
-    fills = [_fill("n27", "BUY", 0.60, ts=20), _fill("n27", "BUY", 0.59, ts=10), _fill("t27", "BUY", 0.4, ts=5)]
+def test_the_evidence_is_the_net_side_and_the_latest_opposite_fill() -> None:
+    fills = [_fill("n27", "BUY", 0.60, ts=20, size=10), _fill("n27", "BUY", 0.59, ts=10, size=8),
+             _fill("t27", "BUY", 0.4, ts=5, size=12)]
     evidence = cluster.opposite_evidence(fills, side="YES", yes_token="t27", no_token="n27")
-    assert evidence["fill_ts"] == 10 and evidence["implied_price"] == pytest.approx(0.41)
-    assert evidence["opposite_fills"] == 2 and evidence["fill_token_side"] == "NO"
+    assert evidence["criterion"] == cluster.SEAL_CRITERION
+    assert evidence["fill_ts"] == 20 and evidence["implied_price"] == pytest.approx(0.40)
+    assert (evidence["opposite_shares"], evidence["same_side_shares"], evidence["opposite_fills"]) == (18.0, 12.0, 2)
+
+
+def test_one_opposite_fill_inside_a_yes_accumulation_does_not_seal() -> None:
+    """「改封桶口径」: EGLC 10-09 20°C -- one 31-share maker NO fill of the lead
+    wallet, inside its own 183.7-share YES take of the same second, against
+    1,044 shares the cluster stood YES on that bucket."""
+
+    fills = [_fill("n27", "BUY", 0.44, ts=10, size=31.0)] + [
+        _fill("t27", "BUY", 0.42, ts=10 + i, size=104.4) for i in range(10)]
+    assert cluster.opposite_evidence(fills, side="YES", yes_token="t27", no_token="n27") is None
+    assert cluster.side_tallies(fills, side="YES", yes_token="t27", no_token="n27") == {
+        "opposite_shares": 31.0, "same_side_shares": 1044.0}
+    # Selling the NO it held is the YES side too; a tie does not seal.
+    tie = [_fill("n27", "BUY", 0.6, size=10), _fill("n27", "SELL", 0.6, size=10)]
+    assert cluster.opposite_evidence(tie, side="YES", yes_token="t27", no_token="n27") is None
 
 
 def test_one_wallet_failing_leaves_every_market_unreadable() -> None:
@@ -408,3 +425,41 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
     assert "proper_bet_benchmark_seals" in clause and "benchmark_counterparty" in clause
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     assert "宪章 258" in agents and "买 NO 归跟单线" in agents and "筛子" in agents
+
+
+def _legacy_seal(conn) -> None:
+    """A seal the first-fill criterion wrote before 「改封桶口径」."""
+
+    lane.ensure_lane_schema(conn)
+    conn.execute(
+        f"INSERT INTO {lane.SEAL_TABLE}(station_id, event_date, bucket, side, yes_token, no_token, condition_id,"
+        " sealed_at_utc, sealed_by, wallet, fill_ts, fill_tx, fill_token_side, fill_action, fill_price, fill_size,"
+        " implied_price, opposite_fills, flip_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (ST, ED, "27°C", "YES", "t27", "n27", COND, NOW, "holding", LEAD, 1, "0x1", "NO", "BUY", 0.44, 31.0,
+         0.56, 1, "done"),
+    )
+
+
+def test_an_earlier_criterions_seal_not_borne_out_is_lifted_and_kept(store, warm) -> None:
+    _seed(store, fresh_until=LONG)
+    _legacy_seal(store)
+    assert _seal(store) is None                    # not a seal under this criterion
+    sent: list = []
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.44, size=31.0),
+                                             _fill("t27", "BUY", 0.42, size=1044.0)))
+    assert receipt["planned"] == 1 and len(sent) == 1
+    row = store.execute(f"SELECT criterion, opposite_shares, same_side_shares, flip_state FROM {lane.SEAL_TABLE}").fetchone()
+    assert row == (lane.SEAL_LIFTED, 31.0, 1044.0, "done")
+
+
+def test_an_earlier_criterions_seal_borne_out_is_rewritten(store, warm) -> None:
+    _seed(store, fresh_until=LONG)
+    _legacy_seal(store)
+    sent: list = []
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52, size=40.0, ts=1_790_000_500),
+                                             _fill("t27", "BUY", 0.48, size=10.0)))
+    assert receipt["planned"] == 0 and not sent
+    seal = _seal(store)
+    assert seal["criterion"] == cluster.SEAL_CRITERION and seal["sealed_by"] == "plan"
+    assert (seal["opposite_shares"], seal["same_side_shares"]) == (40.0, 10.0)
+    assert seal["fill_ts"] == 1_790_000_500 and seal["flip_state"] == "done"
