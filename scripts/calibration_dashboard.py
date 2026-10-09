@@ -16301,6 +16301,35 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 .sd-calc-wrap>.sd-summary{flex:1 1 300px;min-width:280px;position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
+.sd-tk-h{font-size:15px;font-weight:700;margin:0 0 6px;min-height:22px}
+.sd-tk-h .yes{color:#2f9e44}.sd-tk-h .no{color:#e03131}
+.sd-tk-pick{font:inherit;font-size:15px;font-weight:700;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 6px;max-width:100%}
+.sd-tk-tabs{display:flex;align-items:flex-end;gap:20px;border-bottom:1px solid var(--line);margin:0 -14px 12px;padding:0 14px}
+.sd-tk-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:4px 0 7px;font:inherit;font-size:16px;font-weight:700;color:var(--muted);cursor:pointer}
+.sd-tk-tabs button.on{color:var(--text);border-bottom-color:var(--text)}
+.sd-tk-tabs .sd-tk-mode{margin-left:auto;font-size:12.5px;padding-bottom:9px}
+.sd-tk-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+.sd-tk-side{border:1px solid var(--line);background:var(--card);color:var(--muted);border-radius:8px;padding:11px 0;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+.sd-tk-side.yes.on{background:#2f9e44;border-color:#2f9e44;color:#fff}
+.sd-tk-side.no.on{background:#e03131;border-color:#e03131;color:#fff}
+.sd-tk-side:disabled{opacity:.4;cursor:default}
+.sd-tk-field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px}
+.sd-tk-field:empty{display:none}
+.sd-tk-lab b{display:block;font-size:15px}
+.sd-tk-num{display:flex;align-items:baseline;gap:4px}
+.sd-tk-in{width:120px;text-align:right;font:inherit;font-size:30px;font-weight:750;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:0 2px;-moz-appearance:textfield}
+.sd-tk-in::-webkit-inner-spin-button,.sd-tk-in::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.sd-tk-in:focus{outline:none;border-bottom-color:var(--accent)}
+.sd-tk-quick{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.sd-tk-quick button{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:7px;padding:4px 11px;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}
+.sd-tk-quick button:hover{border-color:var(--accent)}
+.sd-tk-est{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px;margin:0 0 10px}
+.sd-tk-est>span{color:var(--muted)}.sd-tk-est>b{text-align:right;font-variant-numeric:tabular-nums}
+.sd-tk-go{width:100%;border:0;border-radius:8px;padding:11px;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;color:#fff;margin:2px 0 6px}
+.sd-tk-go.yes{background:#2f9e44}.sd-tk-go.no{background:#e03131}
+.sd-tk-go:disabled{opacity:.4;cursor:default}
+button.sd-pm-chip{border:0;cursor:pointer;font:inherit;font-size:11.5px;font-weight:650}
+button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
 .sd-metar{max-height:420px;overflow:auto}
 .sd-older{margin-top:4px}.sd-older>summary{cursor:pointer;font-size:12px}
@@ -23125,6 +23154,7 @@ function sdCalcState(key){
   // prices come from the book only, holdings from the account only.
   if(st.mode !== "taker" && st.mode !== "maker"){ st.mode = "taker"; st.fee = null; }
   delete st.px; delete st.pxNo; delete st.saleCosts; delete st.sellCostUnknown; delete st.detailOpen;
+  if(st.tab !== "sell") st.tab = "buy";
   return st;
 }
 function sdCostOf(levels, shares, rate){
@@ -23307,7 +23337,8 @@ function sdPmLadder(day, st, res, key){
     if(ref && Date.parse(ref.at_utc) >= latestAt - 60e3) ref = null;
   }
   const refAgo = ref ? Math.round((latestAt - Date.parse(ref.at_utc)) / 3600e3) : null;
-  const chip = (side, shares, avg) => shares > 0 ? `<span class="sd-pm-chip ${side === "YES" ? "yes" : "no"}">${side === "YES" ? "Yes" : "No"} ${sdN(shares, shares % 1 ? 2 : 0)}${avg != null ? " · " + sdCents(avg) : ""}</span>` : "";
+  // A holding chip opens that leg in the ticket's Sell tab.
+  const chip = (b, side, shares, avg) => shares > 0 ? `<button type="button" class="sd-pm-chip ${side === "YES" ? "yes" : "no"}" data-sd-sellpick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="${side}" title="在右侧 Sell 页卖出这部分持仓">${side === "YES" ? "Yes" : "No"} ${sdN(shares, shares % 1 ? 2 : 0)}${avg != null ? " · " + sdCents(avg) : ""}</button>` : "";
   const rows = (day.axis || []).slice().reverse().map(r => {
     const b = r.bucket, bk = book[b] || {};
     const yesAsk = bk.best_ask, noAsk = bk.best_bid != null ? 1 - bk.best_bid : null;
@@ -23322,7 +23353,7 @@ function sdPmLadder(day, st, res, key){
       return side === "YES" && onY && st.goal === "breakeven" ? `<div class="muted">${tag} 空＝自动补到地板</div>` : "";
     };
     return `<tr class="sd-pm-row${onY ? " sd-pm-y" : ""}${onN ? " sd-pm-n" : ""}" data-b="${sdEsc(b)}">
-      <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip("YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip("NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div></td>
+      <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip(b, "YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip(b, "NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div></td>
       <td class="sd-pm-c"><span class="sd-pm-pct${chance != null && chance < 0.01 ? " faint" : ""}">${chance == null ? "—" : chance < 0.01 ? "&lt;1%" : Math.round(chance * 100) + "%"}</span>${arrow}<div class="muted sd-sub" title="当日口径 ${sdEsc(day.head_stage)} 的模型概率">模型 ${p[b] == null ? "—" : p[b] < 0.01 ? "&lt;1%" : Math.round(p[b] * 100) + "%"}</div></td>
       <td><button type="button" class="sd-pm-btn yes${onY ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="YES"${yesAsk == null && !onY ? " disabled" : ""} title="YES 卖一；点选这一腿">Buy Yes ${sdCents(yesAsk)}</button></td>
       <td><button type="button" class="sd-pm-btn no${onN ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="NO"${noAsk == null && !onN ? " disabled" : ""} title="NO 卖一＝1 − YES 买一；点选这一腿">Buy No ${sdCents(noAsk)}</button></td>
@@ -23335,7 +23366,106 @@ function sdPmLadder(day, st, res, key){
   // No share them, stacked, so picking both sides does not widen the table.
   const anySel = (day.axis || []).some(r => st.sel[r.bucket] || (st.selNo || {})[r.bucket]);
   return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}"><tbody>${rows}</tbody></table></div>
-    <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏。</div>`;
+    <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏；点持仓标签到右侧 Sell 页卖出。</div>`;
+}
+// PM-style trade ticket (user 2026-10-09「没有卖出」「和市场盘口一样这种」): Buy | Sell
+// on the right of the ladder.  Buy edits the focused leg of the basket (the
+// ladder's amount fields hold the same numbers) above the basket's payoff;
+// Sell takes one held leg out as a limit FOK against the bids -- the control
+// server re-reads the exchange's own position and the book, quotes the exact
+// share count, and only then is the sale confirmed and sent.
+function sdBidLevels(day, b, side){
+  const book = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+  // A NO sale is matched against YES asks: NO bids are those mirrored.
+  const lv = side === "YES" ? (book.bid_levels || [])
+    : (book.ask_levels || []).map(([p, q]) => [Math.round((1 - p) * 1e6) / 1e6, q]);
+  return lv.filter(l => l[0] > 0 && l[0] < 1 && l[1] > 0).sort((x, y) => y[0] - x[0]);
+}
+function sdSellWalk(levels, shares, rate){
+  let left = shares, gross = 0, fee = 0;
+  for(const [p, q] of levels){
+    const take = Math.min(left, q);
+    gross += take * p; fee += take * rate * p * (1 - p); left -= take;
+    if(left <= 1e-9) return {gross, fee, net: gross - fee, floor: p, avg: gross / shares};
+  }
+  return null;
+}
+function sdHeldLegs(day, st){
+  const out = [];
+  (day.axis || []).slice().reverse().forEach(r => {
+    if(sdHeld(st, r.bucket) > 0) out.push([r.bucket, "YES", sdHeld(st, r.bucket)]);
+    if(sdHeldNo(st, r.bucket) > 0) out.push([r.bucket, "NO", sdHeldNo(st, r.bucket)]);
+  });
+  return out;
+}
+function sdBuyFocus(day, st){
+  const f = st.focus;
+  if(f && (f.side === "YES" ? st.sel[f.b] : (st.selNo || {})[f.b])) return f;
+  const r = (day.axis || []).slice().reverse().find(r => st.sel[r.bucket] || (st.selNo || {})[r.bucket]);
+  return r ? {b: r.bucket, side: st.sel[r.bucket] ? "YES" : "NO"} : null;
+}
+function sdTicket(day, st, res, key, buyBody, orderOut){
+  const bk = b => ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+  const word = s => s === "YES" ? "Yes" : "No";
+  const head = (b, s) => `<b>${sdEsc(b)}</b> · <span class="${s === "YES" ? "yes" : "no"}">${word(s)}</span>`;
+  const sell = st.tab === "sell", K = sdEsc(key), none = `<div class="sd-tk-field" data-tk="none"></div>`;
+  const tabs = `<div class="sd-tk-tabs"><button type="button" data-sd-ttab="${K}" data-v="buy" class="${sell ? "" : "on"}">Buy</button><button type="button" data-sd-ttab="${K}" data-v="sell" class="${sell ? "on" : ""}">Sell</button><span class="muted sd-tk-mode">${sell ? "吃买盘 · FOK" : st.mode === "taker" ? "吃卖一 · FOK" : "挂买一+1 · GTC"}</span></div>`;
+  if(!sell){
+    const f = sdBuyFocus(day, st);
+    if(!f) return {top: `<div class="sd-tk-h muted">篮子 · 点左侧 Buy Yes / Buy No 选桶</div>${tabs}`, field: none, body: buyBody + orderOut};
+    const b = f.b, k = bk(b), yes = f.side === "YES", B = sdEsc(b);
+    const yesAsk = k.best_ask, noAsk = k.best_bid != null ? 1 - k.best_bid : null;
+    const leg = res && res.ok ? (yes ? res.legs[b] : (res.noLegs || {})[b]) : null;
+    const amt = yes ? st.amt[b] : (st.amtNo || {})[b], held = yes ? sdHeld(st, b) : sdHeldNo(st, b);
+    const top = `<div class="sd-tk-h">${head(b, f.side)}</div>${tabs}
+      <div class="sd-tk-sides"><button type="button" class="sd-tk-side yes${yes ? " on" : ""}" data-sd-tside="${K}" data-b="${B}" data-side="YES"${yesAsk == null ? " disabled" : ""} title="YES 卖一">Yes ${sdCents(yesAsk)}</button><button type="button" class="sd-tk-side no${yes ? "" : " on"}" data-sd-tside="${K}" data-b="${B}" data-side="NO"${noAsk == null ? " disabled" : ""} title="NO 卖一＝1 − YES 买一">No ${sdCents(noAsk)}</button></div>`;
+    const lab = `<b>Amount</b><span class="muted sd-sub">${leg && leg.shares > 0 ? `≈ ${sdN(leg.shares, 2)} 份 · 均价 ${sdCents(leg.avg)}<br>命中可得 ${sdN(leg.shares, 2)} U` : "USDC"}${held > 0 ? `<br>已持有 ${sdN(held, 2)} 份` : ""}</span>`;
+    const field = `<div class="sd-tk-field" data-tk="buy|${B}|${f.side}"><div class="sd-tk-lab">${lab}</div><span class="sd-tk-num"><input autocomplete="off" class="sd-tk-in" type="number" step="0.5" min="0" placeholder="0" ${yes ? "data-sd-amt" : "data-sd-amt-no"}="${K}" data-b="${B}" value="${sdEsc(amt == null ? "" : amt)}"><span class="muted">U</span></span></div>`;
+    const quick = `<div class="sd-tk-quick">${[1, 5, 10, 100].map(v => `<button type="button" data-sd-qadd="${K}" data-b="${B}" data-side="${f.side}" data-v="${v}">+${v}</button>`).join("")}</div>`;
+    return {top, field, body: quick + buyBody + orderOut};
+  }
+  if(!st.heldAt) return {top: `<div class="sd-tk-h muted">卖出 · 先读取账户持仓</div>${tabs}`, field: none,
+    body: `<div class="sd-ev">只卖账户里已有的份额。<button type="button" class="sd-btn" data-sd-hold="${K}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button></div>${orderOut}`};
+  const legs = sdHeldLegs(day, st);
+  if(!legs.length) return {top: `<div class="sd-tk-h muted">卖出 · 这一天没有持仓</div>${tabs}`, field: none,
+    body: `<div class="muted sd-ev">账户持仓（${sdLocal(st.heldAt, true)}）里这一天没有份额。</div>${orderOut}`};
+  const [b, side, held] = legs.find(([lb, ls]) => lb === st.sellB && ls === st.sellSide) || legs[0];
+  st.sellB = b; st.sellSide = side;
+  const k = bk(b), yes = side === "YES", B = sdEsc(b);
+  const yesBid = k.best_bid, noBid = k.best_ask != null ? 1 - k.best_ask : null;
+  const pick = legs.length > 1 ? `<select class="sd-tk-pick" data-sd-sellb="${K}" title="换一条持仓">${legs.map(([lb, ls, lh]) => `<option value="${sdEsc(lb)}|${ls}"${lb === b && ls === side ? " selected" : ""}>${sdEsc(lb)} · ${word(ls)} · ${sdN(lh, 2)} 份</option>`).join("")}</select>` : head(b, side);
+  const top = `<div class="sd-tk-h">${pick}</div>${tabs}
+    <div class="sd-tk-sides"><button type="button" class="sd-tk-side yes${yes ? " on" : ""}" data-sd-sside="${K}" data-b="${B}" data-side="YES"${sdHeld(st, b) > 0 ? "" : " disabled"} title="YES 买一（持有 ${sdN(sdHeld(st, b), 2)} 份）">Yes ${sdCents(yesBid)}</button><button type="button" class="sd-tk-side no${yes ? "" : " on"}" data-sd-sside="${K}" data-b="${B}" data-side="NO"${sdHeldNo(st, b) > 0 ? "" : " disabled"} title="NO 买一＝1 − YES 卖一（持有 ${sdN(sdHeldNo(st, b), 2)} 份）">No ${sdCents(noBid)}</button></div>`;
+  const avgCost = (yes ? (st.heldAvg || {}) : (st.heldAvgNo || {}))[b];
+  const raw = st.sellShares, want = raw === "" || raw == null ? null : Math.floor(Number(raw) * 100 + 1e-6) / 100;
+  const lab = `<b>Shares</b><span class="muted sd-sub">持有 ${sdN(held, 2)} 份${avgCost != null ? ` · 均价 ${sdCents(avgCost)}` : ""}</span>`;
+  const field = `<div class="sd-tk-field" data-tk="sell|${B}|${side}"><div class="sd-tk-lab">${lab}</div><span class="sd-tk-num"><input autocomplete="off" class="sd-tk-in" type="number" step="1" min="0" placeholder="0" data-sd-sshares="${K}" value="${sdEsc(raw == null ? "" : raw)}"><span class="muted">份</span></span></div>`;
+  const quick = `<div class="sd-tk-quick">${[[25, "25%"], [50, "50%"], [100, "Max"]].map(([v, t]) => `<button type="button" data-sd-spct="${K}" data-v="${v}">${t}</button>`).join("")}</div>`;
+  // Selling is always a take: the taker fee, the typed rate when the
+  // calculator is on taker pricing.
+  const rate = st.mode === "taker" && st.fee != null ? Number(st.fee) || 0 : (SD.data.taker_fee_rate || 0);
+  const lv = sdBidLevels(day, b, side), minSize = k.min_order_size;
+  let est = "", why = "", ok = false;
+  if(want != null && isFinite(want) && want > 0){
+    const w = sdSellWalk(lv, want, rate);
+    if(want > held + 1e-9) why = `超过持有 ${sdN(held, 2)} 份`;
+    else if(minSize && want < minSize) why = `低于交易所最小单 ${minSize} 份`;
+    else if(!w) why = `买盘深度不足：买盘合计只有 ${sdN(lv.reduce((a, l) => a + l[1], 0), 2)} 份`;
+    if(w) est = `<div class="sd-tk-est"><span>均价 / 最低价</span><b>${sdCents(w.avg)} / ${sdCents(w.floor)}</b><span>收回（未扣费）</span><b>${sdN(w.gross, 2)} U</b><span>手续费约</span><b>${sdN(w.fee, 2)} U</b><span>到手约</span><b class="up">${sdN(w.net, 2)} U</b>${avgCost != null ? `<span>对持仓均价</span><b class="${w.net - want * avgCost >= 0 ? "up" : "down"}">${sdSg(w.net - want * avgCost, 2)} U</b>` : ""}</div>`;
+    ok = !why && !!w;
+  } else if(!lv.length) why = "这一边没有买盘";
+  const btn = `<button type="button" class="sd-tk-go ${yes ? "yes" : "no"}" data-sd-sell="${K}"${ok && !SD.ordering ? "" : " disabled"}>卖出 ${word(side)}${want > 0 ? ` · ${sdN(want, 2)} 份` : ""}</button>`;
+  return {top, field, body: quick + est + (why ? `<div class="down sd-sub">${sdEsc(why)}</div>` : "") + btn
+    + `<div class="muted sd-sub">吃买盘：限价 FOK，全成或零成，最低价＝走到的最深一档买价。点击后控制服务先向交易所核对持仓、按最新盘口重新报价，再弹确认框；不进系统账本，成交后自动重读持仓。</div>` + orderOut};
+}
+function sdFocusTicket(key, b, side){
+  // The ticket's field when it is on screen, else the ladder row's own.
+  const card = document.querySelector(`.sd-day[data-day="${key}"]`);
+  if(!card) return;
+  const tk = card.querySelector(".sd-summary .sd-tk-in"), r = tk && tk.getBoundingClientRect();
+  if(tk && r.top >= 0 && r.bottom <= window.innerHeight){ tk.focus({preventScroll: true}); return; }
+  const row = card.querySelector(`.sd-pm input[data-b="${b}"][${side === "YES" ? "data-sd-amt" : "data-sd-amt-no"}]`);
+  if(row) row.focus();
 }
 function sdCalc(day){
   const key = day.event_date, st = sdCalcState(key);
@@ -23380,7 +23510,7 @@ function sdCalc(day){
     }
   }
   const feeVal = st.fee == null ? (st.mode === "taker" ? SD.data.taker_fee_rate : 0) : st.fee;
-  const orderOut = sdOrderResult(key);
+  const orderOut = sdOrderResult(key), tk = sdTicket(day, st, res, key, summary, orderOut);
   const holdNote = st.holdNote ? `<span class="muted sd-sub">${sdEsc(st.holdNote)}</span>` : "";
   return `<div class="sd-t">篮子计算器（${st.goal === "breakeven" ? "保本" : "方向敞口"}；${sdEsc(key)}；模型列＝当日口径 ${sdEsc(day.head_stage)}，市场列＝归一中价）</div>
     <div class="sd-ctl">
@@ -23399,7 +23529,7 @@ function sdCalc(day){
       <span class="sd-holdnote">${holdNote}</span>
     </div>
     <div class="sd-calc-wrap"><div class="sd-calc-left">${sdPmLadder(day, st, res, key)}</div>
-    <div class="sd-summary">${summary}${orderOut}</div></div>
+    <div class="sd-summary"><div class="sd-tk-top">${tk.top}</div>${tk.field}<div class="sd-tk-body">${tk.body}</div></div></div>
     <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （持仓已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再选要加的桶、金额空着（保本目标）→ 给出把整个篮子拉回地板所需的最少金额。</div>`;
 }
 // 刷新盘口 (user 2026-10-09「篮子计算器增加刷新盘口功能」): the panel redraws on
@@ -23441,6 +23571,7 @@ function sdLoadHoldings(key){
         return;
       }
       st.held = {}; st.heldNo = {}; st.heldCost = {}; st.heldAvg = {}; st.heldAvgNo = {};
+      st.heldAt = j.observed_at_utc || new Date().toISOString();
       const flags = [];
       (j.rows || []).forEach(r => {
         let cost = 0, costKnown = true;
@@ -23461,12 +23592,14 @@ function sdLoadHoldings(key){
 }
 function sdOnInput(e){
   const t = e.target, ds = t.dataset;
-  const key = ds.sdAmt || ds.sdFee || ds.sdFloor || ds.sdGoal || ds.sdAmtNo || (ds.calc ? ds.sdMode : null);
+  const key = ds.sdAmt || ds.sdFee || ds.sdFloor || ds.sdGoal || ds.sdAmtNo || ds.sdSshares || ds.sdSellb || (ds.calc ? ds.sdMode : null);
   if(!key) return;
   const st = sdCalcState(key);
   if(ds.sdAmt){ st.amt[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
   else if(ds.sdAmtNo){ st.amtNo = st.amtNo || {}; st.amtNo[ds.b] = t.value; if(t.value !== ""){ st.selNo = st.selNo || {}; st.selNo[ds.b] = true; } }
   else if(ds.sdFee) st.fee = t.value === "" ? null : Number(t.value);
+  else if(ds.sdSshares) st.sellShares = t.value;
+  else if(ds.sdSellb){ const i = t.value.lastIndexOf("|"); st.sellB = t.value.slice(0, i); st.sellSide = t.value.slice(i + 1); delete st.sellShares; }
   else if(ds.sdFloor) st.floor = Number(t.value) || 0;
   else if(ds.calc){ st.mode = t.value; st.fee = null; }
   else if(ds.sdGoal){ st.goal = t.value; sdSave(); sdRender(); return; }
@@ -23517,7 +23650,22 @@ function sdRefreshCalc(key, input){
   const oldHold = card.querySelector("[data-sd-hold]"), newHold = holder.querySelector("[data-sd-hold]");
   if(oldHold && newHold) oldHold.disabled = newHold.disabled;
   const oldSum = card.querySelector(".sd-summary"), newSum = holder.querySelector(".sd-summary");
-  if(oldSum && newSum) oldSum.innerHTML = newSum.innerHTML;
+  if(oldSum && newSum){
+    ["sd-tk-top", "sd-tk-body"].forEach(c => {
+      const o = oldSum.querySelector("." + c), n = newSum.querySelector("." + c);
+      if(o && n) o.innerHTML = n.innerHTML;
+    });
+    const of = oldSum.querySelector(".sd-tk-field"), nf = newSum.querySelector(".sd-tk-field");
+    if(of && nf){
+      if(of.dataset.tk !== nf.dataset.tk) of.replaceWith(nf);
+      else {
+        const ol = of.querySelector(".sd-tk-lab"), nl = nf.querySelector(".sd-tk-lab");
+        if(ol && nl) ol.innerHTML = nl.innerHTML;
+        const oi = of.querySelector("input"), ni = nf.querySelector("input");
+        if(oi && ni && oi !== input && oi !== document.activeElement) oi.value = ni.value;
+      }
+    }
+  }
 }
 // ---------------------------------------------------------------------------
 // 一键下单 (user 2026-10-05「选择篮子后，点击确认一键下单，按输入的金额买入」).
@@ -23543,14 +23691,15 @@ function sdOrderResult(key){
   const r = (SD.orders || {})[key];
   if(!r) return "";
   if(r.busy) return `<div class="sd-ev">${r.action === "SELL" ? "卖出处理中" : "下单中"}…（${sdEsc(r.batch_id)}）${location.protocol === "file:" ? "<b>本地文件打开的看板：请在 Mac 弹出的系统确认框里点「下单」</b>（2 分钟内；用 http://127.0.0.1:8791/cal_dashboard.html 打开则不弹）" : ""}</div>`;
-  if(r.error) return `<div class="sd-ev down">下单未发出：${sdEsc(r.error)}</div>`;
+  if(r.error) return `<div class="sd-ev down">${r.action === "SELL" ? "卖出" : "下单"}未发出：${sdEsc(r.error)}</div>`;
   const selling = r.action === "SELL";
   const word = {FILL:"成交", POST_ACK:"已挂单", EXPIRED:"FOK 未成交（已作废）", SUBMIT_REFUSED:"网关拒绝", UNKNOWN_POST:"结果未知（对账未定，勿重下）", NEVER_REACHED_EXCHANGE:"未到达交易所（已对账，可重下）", NOT_SENT:"未发送"};
   const rows = (r.results || []).map(x => `<tr><td>${sdEsc(x.bucket)} <b>${sdEsc(x.side || "YES")}</b></td><td class="${x.event_type === "FILL" || x.event_type === "POST_ACK" ? "up" : "down"}">${sdEsc(word[x.event_type] || x.event_type)}</td>
     <td class="mono">${sdEsc(x.order_type || "")}</td><td class="mono">${x.price == null ? "—" : sdN(x.price, 3)}</td><td class="mono">${x.size == null ? "—" : sdN(x.size, 2)}</td>
     <td class="mono">${x.shares_matched ? sdN(x.shares_matched, 2) : "—"}</td><td class="mono">${(selling ? x.usdc_received : x.usdc_paid) == null ? "—" : sdN(selling ? x.usdc_received : x.usdc_paid, 2)}</td>
     <td class="sd-raw">${sdEsc(x.reason || x.gateway_error || "")}${x.exchange_order_id ? " · " + sdEsc(x.exchange_order_id.slice(0, 12)) + "…" : ""}</td></tr>`).join("");
-  return `<div class="sd-t">${selling ? "卖出" : "下单"}结果 ${r.ok ? '<span class="pill">全部发出</span>' : '<span class="pill red">有腿未完成</span>'} <span class="muted sd-sub">批次 ${sdEsc(r.batch_id)} · 盘口 ${sdLocal(r.book_observed_at, true)} · 名义 ${sdN(r.notional_usdc, 2)} U</span></div>
+  return `<div class="sd-t">${selling ? "卖出" : "下单"}结果 ${r.ok ? `<span class="pill">${selling ? "已成交" : "全部发出"}</span>` : '<span class="pill red">有腿未完成</span>'} <span class="muted sd-sub">批次 ${sdEsc(r.batch_id)} · 盘口 ${sdLocal(r.book_observed_at, true)} · 名义 ${sdN(r.notional_usdc, 2)} U${selling && r.position_after != null ? ` · 卖出后交易所持仓 ${sdN(r.position_after, 2)} 份` : ""}</span></div>
+    ${r.reconcile_required ? `<div class="down sd-sub">结果未知，已对账仍未确定：下一次卖出会先对账，确定前不会重发</div>` : ""}
     <div class="scroll"><table class="sd-tab"><thead><tr><th>桶</th><th>结果</th><th>类型</th><th>限价</th><th>份数</th><th>成交份数</th><th>${selling ? "收回 U" : "付出 U"}</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function sdPlaceOrder(key){
@@ -23589,6 +23738,49 @@ function sdPlaceOrderNow(key){
       ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e), batch_id: batch}; })
     .finally(() => { SD.ordering = false; sdRefreshCalc(key, null); });
 }
+// 卖出 (user 2026-10-09「没有卖出」): the server quotes the exact share count on
+// the exchange's own position and its newest book; the dialog shows that
+// quote, and the sale is sent with the position it was quoted on (a changed
+// position refuses it there).
+function sdPlaceSell(key){
+  if(SD.ordering) return;
+  const st = sdCalcState(key), b = st.sellB, side = st.sellSide;
+  const shares = Math.floor(Number(st.sellShares) * 100 + 1e-6) / 100;
+  if(!b || !(shares > 0)) return;
+  const post = (path, body) => fetch(`http://127.0.0.1:8788/api/${path}`, {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+    .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }));
+  const why = e => /Failed to fetch|NetworkError|Load failed/.test(String(e)) ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e);
+  SD.orders = SD.orders || {};
+  SD.ordering = true;
+  SD.orders[key] = {busy: true, action: "SELL", batch_id: "向交易所核对持仓与盘口"};
+  sdRefreshCalc(key, null);
+  let filled = false;
+  post("manual-basket-sell-quote", {station: SD.station, event_date: key, bucket: b, side, shares})
+    .then(q => {
+      delete SD.orders[key];
+      SD.ordering = false;
+      sdRefreshCalc(key, null);
+      const rate = st.mode === "taker" && st.fee != null ? Number(st.fee) || 0 : (SD.data.taker_fee_rate || 0);
+      const avg = q.estimated_proceeds / q.shares, fee = q.shares * rate * avg * (1 - avg);
+      const ok = confirm(`确认用实盘钱包卖出 ${SD.station} ${key} ${b} ${side}？\n\n交易所持仓 ${q.held_shares} 份，卖出 ${q.shares} 份\n最低成交价 ${q.limit_price}（走到的最深一档买价），均价约 ${avg.toFixed(3)}\n预计收回 ${q.estimated_proceeds.toFixed(2)} U，手续费约 ${fee.toFixed(2)} U\n盘口 ${sdLocal(q.book_observed_at, true)}\n\n方式：吃买盘，限价 FOK，全成或零成；经本机网关发送。`);
+      if(!ok) return;
+      const batch = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2, 10));
+      SD.ordering = true;
+      SD.orders[key] = {busy: true, action: "SELL", batch_id: batch};
+      sdRefreshCalc(key, null);
+      return post("manual-basket-sell", {confirm: "SELL", station: SD.station, event_date: key, batch_id: batch,
+        bucket: b, side, expected_held_shares: q.held_shares, shares: q.shares, limit_price: q.limit_price})
+        .then(j => {
+          SD.orders[key] = j;
+          filled = (j.results || []).some(x => x.event_type === "FILL");
+          if(filled) delete st.sellShares;
+        })
+        .catch(e => { SD.orders[key] = {error: why(e), action: "SELL", batch_id: batch}; });
+    })
+    .catch(e => { SD.orders[key] = {error: why(e), action: "SELL", batch_id: "—"}; })
+    .finally(() => { SD.ordering = false; sdSave(); sdRefreshCalc(key, null); if(filled) sdLoadHoldings(key); });
+}
 function sdOnClick(e){
   const t = e.target.closest("button");
   if(!t) return;
@@ -23609,12 +23801,44 @@ function sdOnClick(e){
     let on;
     if(ds.side === "YES"){ on = st.sel[b] = !st.sel[b]; if(!on) delete st.amt[b]; }
     else { on = st.selNo[b] = !st.selNo[b]; if(!on) delete st.amtNo[b]; }
+    // The ticket follows the leg just picked, on its Buy tab.
+    if(on){ st.focus = {b, side: ds.side}; st.tab = "buy"; }
+    else if(st.focus && st.focus.b === b && st.focus.side === ds.side) st.focus = null;
     sdSave(); sdRefreshCalc(key, null);
-    if(on){
-      const card = document.querySelector(`.sd-day[data-day="${key}"]`);
-      const field = card && card.querySelector(`.sd-pm input[data-b="${b}"][${ds.side === "YES" ? "data-sd-amt" : "data-sd-amt-no"}]`);
-      if(field) field.focus();
-    }
+    if(on) sdFocusTicket(key, b, ds.side);
+  } else if(ds.sdTtab){
+    const st = sdCalcState(ds.sdTtab);
+    st.tab = ds.v === "sell" ? "sell" : "buy"; sdSave(); sdRefreshCalc(ds.sdTtab, null);
+  } else if(ds.sdTside){
+    // PM's Yes / No switch on the Buy tab: the bucket's other side goes
+    // with it unless that side already carries an amount.
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const key = ds.sdTside, st = sdCalcState(key), b = ds.b;
+    st.selNo = st.selNo || {}; st.amtNo = st.amtNo || {};
+    if(ds.side === "NO" && !(Number(st.amt[b]) > 0)){ delete st.sel[b]; delete st.amt[b]; }
+    if(ds.side === "YES" && !(Number(st.amtNo[b]) > 0)){ delete st.selNo[b]; delete st.amtNo[b]; }
+    if(ds.side === "YES") st.sel[b] = true; else st.selNo[b] = true;
+    st.focus = {b, side: ds.side}; sdSave(); sdRefreshCalc(key, null); sdFocusTicket(key, b, ds.side);
+  } else if(ds.sdQadd){
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const key = ds.sdQadd, st = sdCalcState(key), b = ds.b, yes = ds.side === "YES";
+    st.selNo = st.selNo || {}; st.amtNo = st.amtNo || {};
+    const box = yes ? st.amt : st.amtNo;
+    box[b] = String(Math.round(((Number(box[b]) || 0) + Number(ds.v)) * 100) / 100);
+    if(yes) st.sel[b] = true; else st.selNo[b] = true;
+    st.focus = {b, side: ds.side}; sdSave(); sdRefreshCalc(key, null);
+  } else if(ds.sdSellpick || ds.sdSside){
+    const key = ds.sdSellpick || ds.sdSside, st = sdCalcState(key);
+    st.tab = "sell"; st.sellB = ds.b; st.sellSide = ds.side; delete st.sellShares;
+    sdSave(); sdRefreshCalc(key, null);
+  } else if(ds.sdSpct){
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const key = ds.sdSpct, st = sdCalcState(key);
+    const held = st.sellSide === "NO" ? sdHeldNo(st, st.sellB) : sdHeld(st, st.sellB);
+    st.sellShares = String(Math.floor(held * Number(ds.v) + 1e-7) / 100);
+    sdSave(); sdRefreshCalc(key, null);
+  } else if(ds.sdSell){
+    sdPlaceSell(ds.sdSell);
   } else if(ds.sdBook){
     sdRefreshBook(ds.sdBook);
   } else if(ds.sdHold){
