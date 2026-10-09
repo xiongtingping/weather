@@ -1,0 +1,54 @@
+== 1. multiclass reliability: every bucket's claimed p vs landing frequency, by stage (all leads) ==
+  ALL      : [0.00-0.01) said 0.001 landed 0.003 (n=98727) [0.01-0.03) said 0.019 landed 0.024 (n=12723) [0.03-0.06) said 0.044 landed 0.042 (n=9575) [0.06-0.10) said 0.078 landed 0.084 (n=8687) [0.10-0.15) said 0.124 landed 0.134 (n=8063) [0.15-0.20) said 0.174 landed 0.177 (n=6407) [0.20-0.30) said 0.248 landed 0.251 (n=10083) [0.30-0.40) said 0.349 landed 0.336 (n=8203) [0.40-0.50) said 0.446 landed 0.430 (n=6260) [0.50-0.60) said 0.540 landed 0.495 (n=2824) [0.60-0.70) said 0.642 landed 0.582 (n=765) [0.70-0.85) said 0.768 landed 0.775 (n=511) [0.85-1.01) said 0.976 landed 0.984 (n=1775)
+  P0 >36h  : [0.00-0.01) said 0.002 landed 0.004 (n=15437) [0.01-0.03) said 0.019 landed 0.028 (n=2934) [0.03-0.06) said 0.045 landed 0.046 (n=2310) [0.06-0.10) said 0.078 landed 0.097 (n=2146) [0.10-0.15) said 0.125 landed 0.140 (n=1986) [0.15-0.20) said 0.174 landed 0.181 (n=1584) [0.20-0.30) said 0.246 landed 0.247 (n=2396) [0.30-0.40) said 0.348 landed 0.321 (n=1798) [0.40-0.50) said 0.445 landed 0.410 (n=1323) [0.50-0.60) said 0.536 landed 0.453 (n=413)
+  P0 ≤36h  : [0.00-0.01) said 0.002 landed 0.003 (n=25073) [0.01-0.03) said 0.019 landed 0.020 (n=4324) [0.03-0.06) said 0.044 landed 0.036 (n=3195) [0.06-0.10) said 0.078 landed 0.073 (n=2953) [0.10-0.15) said 0.124 landed 0.126 (n=2731) [0.15-0.20) said 0.174 landed 0.176 (n=2096) [0.20-0.30) said 0.248 landed 0.260 (n=3308) [0.30-0.40) said 0.350 landed 0.356 (n=2769) [0.40-0.50) said 0.445 landed 0.444 (n=2048) [0.50-0.60) said 0.539 landed 0.507 (n=908)
+  P0-M     : [0.00-0.01) said 0.001 landed 0.003 (n=33033) [0.01-0.03) said 0.019 landed 0.025 (n=4128) [0.03-0.06) said 0.044 landed 0.045 (n=3156) [0.06-0.10) said 0.079 landed 0.081 (n=2859) [0.10-0.15) said 0.124 landed 0.131 (n=2687) [0.15-0.20) said 0.174 landed 0.176 (n=2176) [0.20-0.30) said 0.248 landed 0.245 (n=3376) [0.30-0.40) said 0.348 landed 0.321 (n=2819) [0.40-0.50) said 0.447 landed 0.429 (n=2238) [0.50-0.60) said 0.541 landed 0.490 (n=1068) [0.60-0.70) said 0.644 landed 0.705 (n=329) [0.70-0.85) said 0.774 landed 0.879 (n=373) [0.85-1.01) said 0.921 landed 0.976 (n=245)
+  P1       : [0.00-0.01) said 0.001 landed 0.001 (n=25184) [0.01-0.03) said 0.018 landed 0.026 (n=1337) [0.03-0.06) said 0.044 landed 0.045 (n=914) [0.06-0.10) said 0.078 landed 0.096 (n=729) [0.10-0.15) said 0.125 landed 0.156 (n=659) [0.15-0.20) said 0.174 landed 0.178 (n=551) [0.20-0.30) said 0.249 landed 0.253 (n=1003) [0.30-0.40) said 0.349 landed 0.357 (n=817) [0.40-0.50) said 0.449 landed 0.433 (n=651) [0.50-0.60) said 0.546 landed 0.524 (n=435) [0.60-0.70) said 0.647 landed 0.493 (n=213) [0.85-1.01) said 0.985 landed 0.985 (n=1530)
+
+== 2. PIT shape and z by stage x lead (U = too narrow, hump = too wide; mean z = centre bias in sigma units) ==
+  P0 >36h    n= 2945 PIT deciles 0.09 0.09 0.10 0.10 0.10 0.10 0.10 0.10 0.10 0.10 | mean z +0.044 [-0.012,+0.099] | E[z²] 1.23 [1.07,1.43] | mean σ 1.13°C
+  P0 ≤36h    n= 4509 PIT deciles 0.08 0.08 0.11 0.11 0.11 0.11 0.11 0.11 0.09 0.08 | mean z +0.022 [-0.028,+0.071] | E[z²] 1.03 [0.88,1.22] | mean σ 1.05°C
+  P0-M >36h  n= 1227 PIT deciles 0.10 0.09 0.08 0.11 0.11 0.09 0.11 0.11 0.11 0.10 | mean z +0.043 [-0.014,+0.100] | E[z²] 1.19 [1.01,1.46] | mean σ 1.12°C
+  P0-M ≤36h  n= 4090 PIT deciles 0.10 0.11 0.14 0.16 0.15 0.07 0.08 0.07 0.05 0.06 | mean z -0.275 [-0.326,-0.221] | E[z²] 1.12 [0.97,1.31] | mean σ 0.89°C
+  P1         n= 3102 PIT deciles 0.05 0.05 0.06 0.06 0.53 0.06 0.05 0.05 0.05 0.04 | mean z -0.083 [-0.134,-0.038] | E[z²] 0.83 [0.56,1.20] | mean σ 0.57°C
+  unit F     n= 3878 PIT deciles 0.08 0.09 0.10 0.11 0.19 0.10 0.08 0.08 0.07 0.10 | mean z +0.000 [-0.101,+0.102] | E[z²] 1.16 [0.98,1.38] | mean σ 1.02°C
+  unit C     n=11995 PIT deciles 0.08 0.09 0.11 0.11 0.21 0.09 0.09 0.09 0.08 0.07 | mean z -0.092 [-0.142,-0.041] | E[z²] 1.03 [0.86,1.24] | mean σ 0.91°C
+
+== 3. centre bias (truth − mean, in °C) by lead band, by unit, by local decision hour ==
+  by lead band:
+     h0_12    n= 4339 bias -0.169°C [-0.204,-0.134]* | LogScore 0.782
+     h12_24   n= 4459 bias -0.038°C [-0.092,+0.017] | LogScore 1.349
+     h24_36   n= 2893 bias -0.014°C [-0.069,+0.044] | LogScore 1.535
+     h36_48   n= 2743 bias +0.045°C [-0.019,+0.110] | LogScore 1.613
+     h48+     n= 1439 bias +0.054°C [-0.020,+0.126] | LogScore 1.720
+  by unit:
+     C        n=11995 bias -0.065°C [-0.114,-0.012]* | LogScore 1.293
+     F        n= 3878 bias +0.008°C [-0.112,+0.122] | LogScore 1.350
+  by local hour block:
+     00-06    n=  295 bias -0.033°C [-0.187,+0.109] | LogScore 1.679
+     06-12    n= 6987 bias -0.008°C [-0.066,+0.049] | LogScore 1.444
+     12-18    n=  502 bias -0.165°C [-0.252,-0.067]* | LogScore 1.165
+     18-24    n= 8089 bias -0.074°C [-0.119,-0.028]* | LogScore 1.184
+  by stage:
+     P0       n= 7454 bias +0.031°C [-0.025,+0.091] | LogScore 1.547
+     P0-M     n= 5317 bias -0.161°C [-0.213,-0.109]* | LogScore 1.303
+     P1       n= 3102 bias -0.038°C [-0.069,-0.009]* | LogScore 0.737
+
+== 4. centre bias by station (P0+P0-M only, °C, day bootstrap), sorted; * = interval excludes 0 ==
+  stations with ≥60 decisions: 45; with bias interval excluding 0: 2
+     KSFO (F) n= 285 bias -0.49°C [-0.98,+0.01]  E[z²] 1.22
+     RKPK (C) n= 289 bias -0.35°C [-0.65,-0.03]* E[z²] 1.07
+     LEMD (C) n= 291 bias +0.33°C [+0.11,+0.55]* E[z²] 0.98
+
+== 5. what a perfect fix of each defect alone would be worth (LogScore, oracle shift/scale applied to the served vector) ==
+  share of total LogScore by segment (where the loss actually sits):
+     ('P0', '≤36h', 'C')          n= 3440 mean 1.435 share of total 0.238
+     ('P0-M', '≤36h', 'C')        n= 3043 mean 1.222 share of total 0.179
+     ('P0', '>36h', 'C')          n= 2222 mean 1.669 share of total 0.179
+     ('P1', '≤36h', 'C')          n= 2376 mean 0.742 share of total 0.085
+     ('P0', '≤36h', 'F')          n= 1069 mean 1.520 share of total 0.078
+     ('P0-M', '>36h', 'C')        n=  914 mean 1.511 share of total 0.067
+     ('P0-M', '≤36h', 'F')        n= 1047 mean 1.241 share of total 0.063
+     ('P0', '>36h', 'F')          n=  723 mean 1.742 share of total 0.061
+     ('P0-M', '>36h', 'F')        n=  313 mean 1.690 share of total 0.025
+     ('P1', '≤36h', 'F')          n=  726 mean 0.721 share of total 0.025

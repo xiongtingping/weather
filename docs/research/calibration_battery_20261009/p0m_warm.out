@@ -1,0 +1,43 @@
+== P0-M ≤36h warm bias, sliced ==
+  band h0_12                         n=1321 bias -0.568°C [-0.608,-0.525]* | mean z -0.758 [-0.804,-0.709] | σ 0.65 | LogScore 0.854
+  band h12_24                        n=1417 bias -0.109°C [-0.172,-0.047]* | mean z -0.078 [-0.145,-0.009] | σ 0.94 | LogScore 1.316
+  band h24_36                        n=1347 bias -0.011°C [-0.072,+0.056]  | mean z -0.011 [-0.062,+0.047] | σ 1.09 | LogScore 1.496
+  local hour 00-06                   n=  90 bias +0.133°C [-0.057,+0.361]  | mean z +0.220 [+0.009,+0.465] | σ 0.99 | LogScore 1.616
+  local hour 06-12                   n=1332 bias -0.126°C [-0.193,-0.061]* | mean z -0.097 [-0.167,-0.024] | σ 0.93 | LogScore 1.299
+  local hour 12-18                   n= 278 bias -0.331°C [-0.447,-0.209]* | mean z -0.428 [-0.556,-0.307] | σ 0.80 | LogScore 1.107
+  local hour 18-24                   n=2390 bias -0.282°C [-0.330,-0.230]* | mean z -0.375 [-0.422,-0.325] | σ 0.88 | LogScore 1.186
+  before 09-25 (pre-222 radiation 0.18/0.06) n=2275 bias -0.233°C [-0.302,-0.161]* | mean z -0.291 [-0.354,-0.216] | σ 0.91 | LogScore 1.317
+  09-25..09-30                       n= 778 bias -0.289°C [-0.386,-0.201]* | mean z -0.336 [-0.416,-0.259] | σ 0.94 | LogScore 1.093
+  ≥10-01 (post-241 censoring)        n=1037 bias -0.160°C [-0.247,-0.075]* | mean z -0.196 [-0.290,-0.100] | σ 0.84 | LogScore 1.129
+  unit C                             n=3043 bias -0.238°C [-0.292,-0.178]* | mean z -0.302 [-0.358,-0.238] | σ 0.86 | LogScore 1.222
+  unit F                             n=1047 bias -0.187°C [-0.305,-0.077]* | mean z -0.199 [-0.301,-0.099] | σ 0.98 | LogScore 1.241
+
+== same station-day-band: P0 vs P0-M (the TAF/physics adjustment) ==
+  pairs n=4077 | P0-M mean − P0 mean +0.249°C [+0.231,+0.269] | share warm-adjusted 0.53 cold-adjusted 0.07
+  adjusted warm (>+0.05)   n=2141 | P0 bias +0.155 → P0-M bias -0.348 [-0.408,-0.287] | ΔLogScore P0-M−P0 -0.3612 [-0.4823,-0.2220] | mean adjustment +0.50°C
+  adjusted cold (<−0.05)   n= 305 | P0 bias -0.142 → P0-M bias +0.107 [-0.022,+0.239] | ΔLogScore P0-M−P0 +0.0575 [-0.0306,+0.1757] | mean adjustment -0.25°C
+  unchanged                n=1631 | P0 bias -0.120 → P0-M bias -0.130 [-0.203,-0.063] | ΔLogScore P0-M−P0 -0.0779 [-0.1785,-0.0038] | mean adjustment +0.01°C
+
+== P0-M ≤36h by station (bias in °C), stations with ≥40 decisions and interval excluding 0 ==
+  KSFO (F) n=97 bias -0.60 [-1.04,-0.20]
+  ZUUU (C) n=91 bias -0.46 [-0.90,-0.05]
+  ZUCK (C) n=88 bias -0.46 [-0.84,-0.07]
+  ZHHH (C) n=89 bias -0.45 [-0.75,-0.16]
+  ZBAA (C) n=90 bias -0.42 [-0.65,-0.19]
+  RKPK (C) n=93 bias -0.40 [-0.67,-0.12]
+  NZWN (C) n=95 bias -0.38 [-0.67,-0.12]
+  RKSI (C) n=91 bias -0.34 [-0.57,-0.11]
+  EPWA (C) n=84 bias -0.32 [-0.60,-0.08]
+  ZGSZ (C) n=93 bias -0.31 [-0.56,-0.05]
+  ZSQD (C) n=94 bias -0.30 [-0.49,-0.10]
+  WSSS (C) n=91 bias -0.30 [-0.56,-0.04]
+  ZSPD (C) n=91 bias -0.26 [-0.50,-0.07]
+  RCSS (C) n=88 bias -0.26 [-0.49,-0.03]
+  VILK (C) n=85 bias -0.25 [-0.50,-0.00]
+  KATL (F) n=96 bias -0.24 [-0.46,-0.02]
+  (stations ≥40: 45; warm-biased share of all stations ≥40: 0.96)
+
+== P1: the 0.6–0.7 bin over-claim, by band and local hour ==
+  all P1       buckets claiming 0.50–0.75: n=701 said 0.590 landed 0.516
+  h12_24       buckets claiming 0.50–0.75: n=666 said 0.590 landed 0.511
+  local 06-12  buckets claiming 0.50–0.75: n=666 said 0.590 landed 0.511
