@@ -2035,6 +2035,24 @@ def collect_traded_calibration() -> dict[str, Any]:
             "build_sec": reading.get("build_sec"), **value}
 
 
+def collect_bucket_calibration() -> dict[str, Any]:
+    """校准每个桶的发生概率 (user 2026-10-09 「前端合适位置增加“校准每个桶的发生
+    概率”统计，用指标binary logloss」).  A file read of what the backend
+    board-readings job wrote (``board_readings.bucket_calibration``): every
+    bucket of the ladder, our served P(T=k) and the market's, binary log loss.
+    The board scores nothing itself.
+    """
+
+    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
+
+    reading = load_reading("bucket_calibration")
+    if not reading:
+        return {"available": False, "error": "后端读数任务还没写出这一项"}
+    value = dict(reading.get("value") or {})
+    return {"available": True, "computed_at_utc": reading.get("computed_at_utc"),
+            "build_sec": reading.get("build_sec"), **value}
+
+
 def collect_basket_shadow() -> dict[str, Any]:
     """The basket's shadow ladder, as the backend board-readings job wrote it
     (``board_readings.basket_shadow``; user 2026-10-05 「前端增加篮子策略（梯
@@ -16119,6 +16137,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "copy_follow_lane": copy_follow_lane,
         "basket_shadow": collect_basket_shadow(),
         "traded_calibration": collect_traded_calibration(),
+        "bucket_calibration": collect_bucket_calibration(),
         "realisation_layer": realisation_layer,
         "chain": chain,
         "hosted_sweeps": hosted_sweeps,
@@ -19124,6 +19143,48 @@ function copyFollowLane(){
 // normalised mid, and s = log(p/q) on every bucket is each leg's direction
 // and size -- YES where s > 0, NO where s < 0.  Its own page, like every
 // lane's (user ruling 2026-09-26 「前端没有proper线相关内容」).
+// 「每个桶与买入的桶（二元 LogLoss）」(user 2026-10-09 「前端合适位置增加“校准
+// 每个桶的发生概率”统计，用指标binary logloss」「增加“评价实际买入的桶”，用买入
+// 样本binary logloss」): one ruler on two samples -- every bucket of the
+// ladder (data/board_readings/bucket_calibration.json) and the buckets the
+// lanes bought (traded_calibration's filled population, the next section's).
+function bucketCalibration(){
+  const B=D.bucket_calibration||{}, T=D.traded_calibration||{};
+  const n4=v=>v==null?"—":(+v).toFixed(4);
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const pct=(v,d=1)=>v==null?"—":((+v)*100).toFixed(d)+"%";
+  const sgn=(v,d=4)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
+  const ci=(v,a)=>Array.isArray(a)?`${sgn(v)} [${sgn(a[0])}, ${sgn(a[1])}]${(a[0]>0||a[1]<0)?"*":""}`:sgn(v);
+  const tone=v=>v==null?"":((+v)<0?"up":"down");
+  const intro=`<h2>每个桶与买入的桶（二元 LogLoss）：整条梯子上我给每个桶的发生概率准不准，实际买入的桶上又准不准</h2>
+    <div class="card"><span class="pill amber">只评价，不改下单，不进校准链</span>
+    <span class="muted">同一把尺子、两批样本。<b>校准每个桶的发生概率</b>：每个已结算站日、每个距结算档取一个时点，当时服务的向量（P1 &gt; P0-M &gt; P0，宪章 260；过宪章 224 下限）里梯子上的每个桶 k 都是一行，
+    记我方 P(T=k)、同一时刻市场参考向量（整条梯子，单边尾桶按 EV 页口径）的 q_k，以及 k 中没中。<b>评价实际买入的桶</b>：只取各车道实际成交的腿（宪章 259 第二层的已成交样本，NO 腿按 NO 方向记）。
+    二元 LogLoss＝−[y·log p + (1−y)·log(1−p)]，低者好；Δ＝我方−市场，负＝我方更准，区间按事件日自助 95%，带 * 为不跨零。两批样本的市场 q 口径不同：买入桶用双边归一中价（第二层口径）。</span></div>`;
+  const A=B.all, F=((T.populations||{}).filled||{}).all;
+  const row=(name,sample,r,paid)=>`<tr><td><b>${name}</b></td><td class="mono">${sample}</td><td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono">${paid}</td>
+     <td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td><td class="mono">${n4(r.brier_ours)} / ${n4(r.brier_market)}</td>
+     <td class="mono">${pct(r.said_ours)} / ${pct(r.said_market)} → ${pct(r.landed)}</td></tr>`;
+  const both=`<div class="scroll" style="margin-top:8px"><table><thead><tr><th>统计</th><th>样本</th><th>LL 我方</th><th>LL 市场</th><th>LL 实付</th><th>Δ 我方−市场 [95%]</th><th>Brier 我/市</th><th>说 我/市 → 中</th></tr></thead><tbody>
+    ${B.available&&A?row("校准每个桶的发生概率",`${A.buckets} 桶 · ${A.samples} 时点 · ${A.event_days} 日`,A,"—"):`<tr><td><b>校准每个桶的发生概率</b></td><td colspan="7" class="muted">读数这一轮没有生成${B.error?"："+h(B.error):""}</td></tr>`}
+    ${F?row("评价实际买入的桶",`${F.legs} 腿 · ${F.event_days} 日`,F,n4(F.logloss_paid)):`<tr><td><b>评价实际买入的桶</b></td><td colspan="7" class="muted">买入样本不足或第二层读数没有生成</td></tr>`}
+    </tbody></table></div>`;
+  if(!B.available||!A) return intro+both;
+  const C=B.counts||{};
+  const srow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${r.samples}</td><td class="mono">${r.event_days}</td>
+     <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
+     <td class="mono">${n4(r.brier_ours)} / ${n4(r.brier_market)}</td><td class="mono">${pct(r.said_ours)} / ${pct(r.said_market)} → ${pct(r.landed)}</td></tr>`;
+  const slices=`<details open style="margin-top:8px"><summary>校准每个桶的发生概率：按条件切片（桶位置按市场众数的档距；我方对市场＝该桶 p−q）</summary><div class="scroll" style="max-height:620px"><table>
+    <thead><tr><th>组</th><th>切片</th><th>桶</th><th>时点</th><th>日</th><th>LL 我方</th><th>LL 市场</th><th>Δ 我方−市场 [95%]</th><th>Brier 我/市</th><th>说 我/市 → 中</th></tr></thead>
+    <tbody>${srow({group:"全部",slice:"—",...A})}${(B.slices||[]).map(srow).join("")}</tbody></table></div></details>`;
+  const mk=rows=>rows.map(b=>`<tr><td class="mono">${n3(b.bin[0])}–${n3(b.bin[1])}</td><td class="mono">${b.buckets}</td><td class="mono">${pct(b.said_ours,2)}</td><td class="mono">${pct(b.said_market,2)}</td><td class="mono">${pct(b.landed,2)}</td></tr>`).join("");
+  const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>桶</th><th>我方说</th><th>市场说</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
+  const rel=`<details style="margin-top:8px"><summary>校准每个桶的发生概率：可靠性图（全部桶），按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(B.reliability_ours||[]),"按我方 p 分档")}${tbl(mk(B.reliability_market||[]),"按市场 q 分档")}</div></details>`;
+  const foot=`<div class="muted" style="margin-top:6px">自 ${h(B.since)}：已结算站日 ${C.station_days??"—"}，取到时点 ${C.samples??"—"}，档内前 ${h(B.tries_per_band)} 个决策时点都没有 ${Math.round((+B.book_window_sec||0)/60)} 分钟内完整盘口的档 ${C.band_unpaired??"—"}，梯子对不上 ${C.ladder_mismatch??"—"}。
+    评价实际买入的桶按车道、条件切片与可靠性图见下一节「交易概率校准（第二层）」。读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
+  return intro+both+slices+rel+foot;
+}
+
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
 // distribution (charters 211/240: LogScore, CRPS, Brier, PIT); this layer
 // judges only the bucket a lane actually bought -- binary log loss and
@@ -23976,8 +24037,9 @@ const GROUPS = [
   // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
   // what settled.  Shadow: nothing here trades.
   {id:"realisation", label:"兑现层", short:"兑现", tone:"#d2a8ff",
-   note:"兑现层（影子，宪章 254）：b = P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单。第二层（宪章 259）在同一板块：只在实际下注的桶上，用二元 LogLoss 与可靠性图对比我方 p 与市场 q",
-   sections:[[realisationLayer,"兑现层（影子）"],[tradedCalibration,"交易概率校准（第二层）"]]},
+   note:"兑现层（影子，宪章 254）：b = P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单。第二层（宪章 259）在同一板块：先用同一把二元 LogLoss 并排看「校准每个桶的发生概率」（整条梯子每个桶）与「评价实际买入的桶」（买入样本），再只在实际下注的桶上按车道、条件与可靠性图对比我方 p 与市场 q",
+   sections:[[realisationLayer,"兑现层（影子）"],[bucketCalibration,"每个桶与买入的桶（二元 LogLoss）"],
+     [tradedCalibration,"交易概率校准（第二层）"]]},
 ];
 // Every section an area holds, through its containers.
 const groupSections = g => g.sections.flatMap(item =>
@@ -24080,6 +24142,8 @@ const LANES = {
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
   "兑现层（影子）": {layer:"兑现层", status:"shadow",
     role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
+  "每个桶与买入的桶（二元 LogLoss）": {layer:"兑现层 · 第二层", status:"audit",
+    role:"同一把二元 LogLoss、两批样本：整条梯子每个桶的发生概率（每站日每距结算档一个时点，我方服务向量对市场参考向量）与实际买入的桶（已成交腿）；只评价，不作训练目标"},
   "交易概率校准（第二层）": {layer:"兑现层 · 第二层", status:"audit",
     role:"第一层评整条分布（211/240），这一层只评被交易的桶：实际成交腿上我方 p、市场 q、实付价的二元 LogLoss 与十分档可靠性成对比较；只评价，不作训练目标（宪章 259）"},
   // --- live: the lanes that send, and the book they send into ---

@@ -252,3 +252,100 @@ def test_the_leg_reads_the_most_informed_stage_not_the_newest(store) -> None:  #
     assert stage == "P1" and vector["28°C"] == pytest.approx(0.5)
     stage, vector = BR._traded_served_vector(store, ST, ED, "2026-09-18T10:00:00Z", {})
     assert stage is None and vector is None, "no decision stood yet"
+
+
+def test_every_bucket_of_the_ladder_is_one_row_with_our_p_the_markets_q_and_the_outcome(store) -> None:  # noqa: F811
+    """User 2026-10-09 「校准每个桶的发生概率，用指标binary logloss」: one sample
+    per settled station-day per hours-to-settlement band, at the first decision
+    instant with a complete market reference; every bucket of the ladder is a
+    row, its distance from the market's mode carried for the position slices."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})  # decided 09-18 11:30Z, ~52h out
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)},
+               observed="2026-09-18T11:20:00Z", snapshot_id="snapA")
+    _label(store, "28°C")
+    rows, counts = BR.bucket_calibration_rows(store)
+    assert counts == {"station_days": 1, "samples": 1, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 3}
+    by = {r["bucket"]: r for r in rows}
+    assert {r["band"] for r in rows} == {"距结算 36–60h"} and {r["stage"] for r in rows} == {"P0"}
+    assert by["28°C"]["win"] == 1.0 and by["27°C"]["win"] == 0.0
+    assert by["28°C"]["p"] == pytest.approx(0.5) and by["28°C"]["q"] == pytest.approx(0.40 / 0.89)
+    assert [by[b]["from_mode"] for b in ("27°C", "28°C", "29°C")] == [1, 0, 1]
+    row = BR.bucket_calibration_group(rows)
+    assert row["buckets"] == 3 and row["samples"] == 1
+    assert row["logloss_ours"] == pytest.approx((_ll(0.2, 0) + _ll(0.5, 1) + _ll(0.3, 0)) / 3)
+    assert row["logloss_diff"] == pytest.approx(row["logloss_ours"] - row["logloss_market"])
+
+
+def test_a_band_without_a_fresh_complete_book_is_unpaired(store) -> None:  # noqa: F811
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
+    # Older than the window before the instant: not the book the instant saw.
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)},
+               observed="2026-09-18T10:30:00Z", snapshot_id="snapOld")
+    _label(store, "28°C")
+    rows, counts = BR.bucket_calibration_rows(store)
+    assert rows == [] and counts["band_unpaired"] == 1
+
+
+def test_the_bucket_reading_slices_and_bins() -> None:
+    rows = [{"station_id": "S", "event_date": f"2026-09-2{d}", "band": "距结算 12–24h", "stage": "P1", "unit": "C",
+             "from_mode": k, "p": p, "q": q, "win": w}
+            for d in range(4) for k, p, q, w in ((0, 0.6, 0.5, 1.0), (1, 0.3, 0.3, 0.0), (3, 0.004, 0.02, 0.0))]
+    value_bins = BR.bucket_calibration_reliability(rows, "p")
+    assert [(b["bin"], b["buckets"]) for b in value_bins] == [([0.0, 0.01], 4), ([0.3, 0.4], 4), ([0.6, 0.7], 4)]
+    group = BR.bucket_calibration_group(rows)
+    assert group["event_days"] == 4 and isinstance(group["logloss_diff_ci"], list)
+    assert BR.bucket_calibration_group([]) is None
+
+
+def test_the_bucket_reading_is_wired_and_the_board_reads_its_file(tmp_path, monkeypatch) -> None:
+    assert "bucket_calibration" in BR.READING_NAMES and "bucket_calibration" in BR._READINGS
+    assert "bucket_calibration" in BR.READING_MAX_AGE_SEC
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path)
+    assert C.collect_bucket_calibration()["available"] is False
+    BR.write_reading("bucket_calibration", {"rule": "every_bucket_binary_logloss_v1", "all": {"buckets": 3}},
+                     code="c", build_sec=1.0)
+    assert C.collect_bucket_calibration()["all"]["buckets"] == 3
+    board = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "function bucketCalibration()" in board and '"bucket_calibration": collect_bucket_calibration()' in board
+    area = board[board.index('{id:"realisation"'):]
+    area = area[:area.index("]},")]
+    assert area.index("[bucketCalibration,") < area.index("[tradedCalibration,"), "the two samples sit before the drill-down"
+    for phrase in ("校准每个桶的发生概率", "评价实际买入的桶"):
+        assert phrase in board[board.index("function bucketCalibration()"):board.index("function tradedCalibration()")]
+
+
+def test_the_board_renders_both_samples_side_by_side() -> None:
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    source = C.HTML_TEMPLATE
+    start = source.index("function bucketCalibration(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    group = {"buckets": 30, "samples": 10, "event_days": 4, "logloss_ours": 0.21, "logloss_market": 0.18,
+             "logloss_diff": 0.03, "logloss_diff_ci": [0.01, 0.05], "brier_ours": 0.06, "brier_market": 0.05,
+             "said_ours": 0.1, "said_market": 0.1, "landed": 0.1}
+    payload = {
+        "bucket_calibration": {"available": True, "since": "2026-09-06", "all": group,
+                               "slices": [{"group": "桶位置", "slice": "市场众数桶", **group}],
+                               "reliability_ours": [{"bin": [0.0, 0.01], "buckets": 3, "said_ours": 0.004,
+                                                     "said_market": 0.01, "landed": 0.0}],
+                               "reliability_market": [], "counts": {"station_days": 4}},
+        "traded_calibration": {"populations": {"filled": {"all": {**group, "legs": 20, "logloss_paid": 0.19}}}},
+    }
+    script = ("const D = " + json.dumps(payload, ensure_ascii=False) + ";\nconst h = s => String(s == null ? '' : s);\n"
+              + source[start:end] + "\nconsole.log(bucketCalibration());\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    html = result.stdout
+    assert "<b>校准每个桶的发生概率</b>" in html and "30 桶 · 10 时点 · 4 日" in html
+    assert "<b>评价实际买入的桶</b>" in html and "20 腿 · 4 日" in html and "0.1900" in html
+    assert "+0.0300 [+0.0100, +0.0500]*" in html and "市场众数桶" in html

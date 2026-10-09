@@ -26,6 +26,9 @@ Six readings, each with production's functions and nothing re-derived:
   lanes actually bought (and the ones they sent for), the binary log loss
   and reliability of our served probability beside the market's mid at the
   same instant, by lane, side, stage and condition.
+* ``bucket_calibration`` -- every bucket of the ladder, not only the traded
+  ones: our served P(T=k) beside the market reference, binary log loss, one
+  sample per settled station-day per hours-to-settlement band.
 
 Read-only against the SSOT (``mode=ro``); the job is a reader beside the
 writer (charter: read-only work runs on its own executor, never in a writer
@@ -63,7 +66,7 @@ SEAT_LOOKBACK_DAYS = 45
 SEAT_REREAD_HOURS = 6
 READING_NAMES = (
     "seat_windows", "fusion_resolve", "centre_shape", "l4_lane", "basket_shadow",
-    "traded_calibration",
+    "traded_calibration", "bucket_calibration",
 )
 
 
@@ -1460,12 +1463,12 @@ def _binary_logloss(p: float, hit: float) -> float:
     return -(hit * math.log(clipped) + (1.0 - hit) * math.log(1.0 - clipped))
 
 
-def _traded_served_vector(
+def _served_belief_vector(
     conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
-) -> tuple[str | None, dict[str, float] | None]:
+) -> tuple[str | None, dict[str, float] | None, dict[str, int] | None]:
     """The most informed committed served vector at ``at_utc`` -- P1 if one
     stands, else P0-M, else P0 (the chain's precedence, charter 229) -- floored
-    as serving floors it (charter 224) and renormalised.
+    as serving floors it (charter 224) and renormalised, with its ladder order.
 
     Not "the newest of any stage": a P0-M decision committed after a P1 on the
     same day is the staler belief (2026-10-09: same-day P0-M past the local
@@ -1483,20 +1486,30 @@ def _traded_served_vector(
     belief = served_belief_row(conn, station_id=station, event_date=day, at_utc=at_utc)
     row = None if belief is None else (belief["history_id"], belief["stage"])
     if row is None:
-        cache[key] = (None, None)
+        cache[key] = (None, None, None)
         return cache[key]
-    raw = {str(b): float(v) for b, v in conn.execute(
-        "SELECT bucket, probability FROM basket_probability_bridge_bucket_probability WHERE history_id=?",
+    raw: dict[str, float] = {}
+    order: dict[str, int] = {}
+    for b, v, o in conn.execute(
+        "SELECT bucket, probability, ordinal FROM basket_probability_bridge_bucket_probability WHERE history_id=?",
         (row[0],),
-    )}
+    ):
+        raw[str(b)], order[str(b)] = float(v), int(o)
     total = sum(raw.values())
     if total <= 0.0:
-        cache[key] = (str(row[1]), None)
+        cache[key] = (str(row[1]), None, None)
         return cache[key]
     floored, _lifted = floor_probabilities({b: v / total for b, v in raw.items()})
     norm = sum(floored.values()) or 1.0
-    cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()})
+    cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()}, order)
     return cache[key]
+
+
+def _traded_served_vector(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
+) -> tuple[str | None, dict[str, float] | None]:
+    stage, vector, _order = _served_belief_vector(conn, station, day, at_utc, cache)
+    return stage, vector
 
 
 def _traded_market_mid(
@@ -1759,6 +1772,185 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 # ---------------------------------------------------------------------------
+# bucket_calibration -- every bucket's occurrence probability, binary LogLoss
+# (user 2026-10-09 「前端合适位置增加“校准每个桶的发生概率”统计，用指标binary
+# logloss」, beside 「增加“评价实际买入的桶”，用买入样本binary logloss」 --
+# the second is traded_calibration's filled population)
+# ---------------------------------------------------------------------------
+
+#: Hours-to-settlement bands; one sample per settled station-day per band.
+BUCKET_CALIBRATION_BANDS = (("距结算 < 12h", -1e9, 12.0), ("距结算 12–24h", 12.0, 24.0),
+                            ("距结算 24–36h", 24.0, 36.0), ("距结算 36–60h", 36.0, 60.0),
+                            ("距结算 ≥ 60h", 60.0, 1e9))
+#: Reliability bins: most buckets of a ladder are said below 10%, so the first
+#: decile is cut three ways.
+BUCKET_CALIBRATION_BINS = (0.0, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0001)
+#: Decision instants tried per band before the band counts as unpaired.
+BUCKET_CALIBRATION_TRIES = 8
+_BUCKET_POSITIONS = (("市场众数桶", 0, 0), ("离众数 ±1", 1, 1), ("离众数 ±2", 2, 2), ("离众数 ≥ 3", 3, 10 ** 6))
+_BUCKET_SIDE_BANDS = (("p−q < −0.05", -1.01, -0.05), ("p−q −0.05–0", -0.05, 0.0)) + _TRADED_SIDE_BANDS[1:]
+
+
+def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Every bucket of the ladder, scored where the lanes could have traded it.
+
+    Sample: each settled station-day since ``TRADED_CALIBRATION_SINCE``, and in
+    each hours-to-settlement band the first committed decision instant with a
+    complete market reference at most ``TRADED_CALIBRATION_BOOK_WINDOW_SEC``
+    old (``market_reference_v1``: the whole ladder, one-sided tails priced as
+    the EV page prices them).  Our vector is the belief standing at that
+    instant (charter 260, floored as served); each bucket k of the ladder is
+    one row with our p_k, the market's q_k and whether k landed.
+    """
+
+    from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+    from .label_knowability import knowable_labels  # noqa: PLC0415
+    from .settlement_time import hours_to_settlement_if_known  # noqa: PLC0415
+
+    counts = {"station_days": 0, "samples": 0, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 0}
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    rows: list[dict[str, Any]] = []
+    labels = {k: v for k, v in knowable_labels(conn).items() if str(k[1]) >= TRADED_CALIBRATION_SINCE}
+    for (station, day), label in sorted(labels.items()):
+        # The instants alone, off the as-of index (about 190 a station-day;
+        # pulling a non-indexed column with them cost a row read each, ~300 s
+        # of the first build); the time zone once.
+        instants = [str(r[0]) for r in conn.execute(
+            "SELECT decision_at_utc FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED' ORDER BY decision_at_utc",
+            (str(station), str(day)),
+        )]
+        if not instants:
+            continue
+        tz = conn.execute(
+            "SELECT settlement_timezone FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED' LIMIT 1",
+            (str(station), str(day)),
+        ).fetchone()[0]
+        counts["station_days"] += 1
+        bands: dict[str, list[str]] = defaultdict(list)
+        for decided in instants:
+            hours = hours_to_settlement_if_known(str(day), as_of_utc=str(decided), settlement_timezone=tz)
+            for name, lo, hi in BUCKET_CALIBRATION_BANDS:
+                if hours is not None and lo <= hours < hi:
+                    if not bands[name] or bands[name][-1] != str(decided):
+                        bands[name].append(str(decided))
+                    break
+        for band, candidates in bands.items():
+            picked = None
+            for at in candidates[:BUCKET_CALIBRATION_TRIES]:
+                floor = (_utc_instant(at) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
+                snap = conn.execute(
+                    "SELECT buckets_json FROM basket_official_ws_snapshot"
+                    " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? AND observed_at>=?"
+                    " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
+                    (str(station), str(day), at, floor.isoformat().replace("+00:00", "Z")),
+                ).fetchone()
+                if snap is None:
+                    continue
+                try:
+                    market = market_reference_v1(json.loads(snap[0] or "[]"))
+                except (TypeError, ValueError):
+                    continue
+                if market.get("state") != "complete":
+                    continue
+                stage, vector, order = _served_belief_vector(conn, str(station), str(day), at, served_cache)
+                if vector is None or order is None:
+                    continue
+                picked = (at, stage, vector, order, {str(b): float(v) for b, v in market["vector"].items()})
+                break
+            if picked is None:
+                counts["band_unpaired"] += 1
+                continue
+            at, stage, p, order, q = picked
+            settled = str(label["bucket"])
+            if set(p) != set(q) or settled not in p:
+                counts["ladder_mismatch"] += 1
+                continue
+            # The market's mode; a tie goes to the lower rung, as charter 249 picks it.
+            mode = max(sorted(q, key=lambda b: order[b]), key=lambda b: q[b])
+            hours = hours_to_settlement_if_known(str(day), as_of_utc=at, settlement_timezone=tz)
+            counts["samples"] += 1
+            for bucket in p:
+                rows.append({
+                    "station_id": str(station), "event_date": str(day), "band": band, "at": at, "stage": stage,
+                    "unit": "F" if "°F" in bucket else "C", "hours": hours, "bucket": bucket,
+                    "from_mode": abs(order[bucket] - order[mode]),
+                    "p": float(p[bucket]), "q": float(q[bucket]), "win": 1.0 if bucket == settled else 0.0,
+                })
+                counts["buckets"] += 1
+    return rows, counts
+
+
+def bucket_calibration_group(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Binary LogLoss and Brier of ours and the market's on the same buckets,
+    said vs landed, and the paired difference with an event-day interval."""
+
+    if not rows:
+        return None
+    ll_p = [_binary_logloss(r["p"], r["win"]) for r in rows]
+    ll_q = [_binary_logloss(r["q"], r["win"]) for r in rows]
+    diff = [a - b for a, b in zip(ll_p, ll_q)]
+    return {
+        "buckets": len(rows), "samples": len({(r["station_id"], r["event_date"], r["band"]) for r in rows}),
+        "event_days": len({r["event_date"] for r in rows}),
+        "logloss_ours": _traded_mean(ll_p), "logloss_market": _traded_mean(ll_q),
+        "logloss_diff": _traded_mean(diff), "logloss_diff_ci": _traded_day_bootstrap(rows, diff),
+        "brier_ours": _traded_mean([(r["p"] - r["win"]) ** 2 for r in rows]),
+        "brier_market": _traded_mean([(r["q"] - r["win"]) ** 2 for r in rows]),
+        "said_ours": _traded_mean([r["p"] for r in rows]), "said_market": _traded_mean([r["q"] for r in rows]),
+        "landed": _traded_mean([r["win"] for r in rows]),
+    }
+
+
+def bucket_calibration_reliability(rows: Sequence[Mapping[str, Any]], key: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for lo, hi in zip(BUCKET_CALIBRATION_BINS[:-1], BUCKET_CALIBRATION_BINS[1:]):
+        inside = [r for r in rows if lo <= float(r[key]) < hi]
+        if inside:
+            out.append({"bin": [lo, min(hi, 1.0)], "buckets": len(inside),
+                        "said_ours": _traded_mean([r["p"] for r in inside]),
+                        "said_market": _traded_mean([r["q"] for r in inside]),
+                        "landed": _traded_mean([r["win"] for r in inside])})
+    return out
+
+
+def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Every bucket's occurrence probability on the ladder, ours beside the
+    market's, binary LogLoss: the whole, by stage, lead, unit, the bucket's
+    distance from the market's mode, our-minus-market, and the two halves."""
+
+    rows, counts = bucket_calibration_rows(conn)
+    days = sorted({r["event_date"] for r in rows})
+    split = days[len(days) // 2] if days else None
+    specs: list[tuple[str, str, Any]] = []
+    for stage in ("P0", "P0-M", "P1"):
+        specs.append(("阶段", stage, lambda r, v=stage: r["stage"] == v))
+    for name, _lo, _hi in BUCKET_CALIBRATION_BANDS:
+        specs.append(("提前量", name, lambda r, v=name: r["band"] == v))
+    for unit in ("C", "F"):
+        specs.append(("结算单位", unit, lambda r, v=unit: r["unit"] == v))
+    for name, lo, hi in _BUCKET_POSITIONS:
+        specs.append(("桶位置", name, lambda r, a=lo, b=hi: a <= r["from_mode"] <= b))
+    for name, lo, hi in _BUCKET_SIDE_BANDS:
+        specs.append(("我方对市场", name, lambda r, a=lo, b=hi: a <= r["p"] - r["q"] < b))
+    if split:
+        specs.append(("时段", f"前半（< {split}）", lambda r, v=split: r["event_date"] < v))
+        specs.append(("时段", f"后半（≥ {split}）", lambda r, v=split: r["event_date"] >= v))
+    slices = []
+    for group, name, predicate in specs:
+        row = bucket_calibration_group([r for r in rows if predicate(r)])
+        if row is not None:
+            slices.append({"group": group, "slice": name, **row})
+    return {
+        "rule": "every_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
+        "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC, "tries_per_band": BUCKET_CALIBRATION_TRIES,
+        "all": bucket_calibration_group(rows), "slices": slices,
+        "reliability_ours": bucket_calibration_reliability(rows, "p"),
+        "reliability_market": bucket_calibration_reliability(rows, "q"),
+    }
+
+# ---------------------------------------------------------------------------
 # the run
 # ---------------------------------------------------------------------------
 
@@ -1779,7 +1971,12 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
         traded_calibration,
         (traded_calibration, traded_calibration_legs, traded_calibration_group,
          traded_calibration_reliability, traded_calibration_reliability_by_lane, _traded_slices,
-         _traded_served_vector, _traded_market_mid),
+         _served_belief_vector, _traded_served_vector, _traded_market_mid),
+    ),
+    "bucket_calibration": (
+        bucket_calibration,
+        (bucket_calibration, bucket_calibration_rows, bucket_calibration_group, bucket_calibration_reliability,
+         _served_belief_vector, _binary_logloss, _traded_day_bootstrap),
     ),
     "basket_shadow": (
         basket_shadow,
@@ -1801,6 +1998,7 @@ READING_MAX_AGE_SEC: dict[str, float] = {
     # Charter 259: settled legs change once a day; the as-of reads behind it
     # are a few thousand point look-ups.
     "traded_calibration": 3 * 3600.0,
+    "bucket_calibration": 3 * 3600.0,
 }
 
 
