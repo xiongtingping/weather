@@ -1606,6 +1606,7 @@ def traded_calibration_legs(conn: sqlite3.Connection) -> tuple[list[dict[str, An
             "order_intent_id": str(intent_id), "lane": _traded_lane(str(decision_id)), "station_id": str(station),
             "event_date": str(day), "bucket": str(bucket), "side": "NO" if is_no else "YES", "stage": stage,
             "unit": "F" if "°F" in str(bucket) else "C", "created_at": str(created), "hours": hours,
+            "settled_bucket": str(label["bucket"]),
             "p": p, "q": q, "paid": paid, "win": win, "filled": filled_size > 0,
             "shares": filled_size, "usdc": float(notional or 0.0) if filled_size > 0 else 0.0,
         })
@@ -1710,6 +1711,49 @@ def traded_calibration_reliability_by_lane(legs: Sequence[Mapping[str, Any]]) ->
     return out
 
 
+def traded_calibration_ladder_by_lane(
+    conn: sqlite3.Connection, legs: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Every bucket of the ladder at the instants each lane bought (user
+    2026-10-09 「校准每个桶的发生概率和实际买入的桶：按照车道区分」): the
+    vector the lane read, scored on the whole ladder beside the market
+    reference, so a lane's bought bucket can be read against the ladder it was
+    picked from.  One ladder per distinct (station-day, our vector, market
+    vector) a lane bought on; the whole counts each such ladder once."""
+
+    served_cache: dict[tuple[str, str, str], Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
+    counts = {"legs": 0, "no_market_reference": 0, "ladder_mismatch": 0}
+    by_lane: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    whole: list[dict[str, Any]] = []
+    seen_lane: set[Any] = set()
+    seen: set[Any] = set()
+    for leg in legs:
+        counts["legs"] += 1
+        station, day, at = str(leg["station_id"]), str(leg["event_date"]), str(leg["created_at"])
+        stage, p, order = _served_belief_vector(conn, station, day, at, served_cache)
+        q = _ladder_market_reference(conn, station, day, at, market_cache)
+        if p is None or order is None or q is None:
+            counts["no_market_reference"] += 1
+            continue
+        ladder = _ladder_rows(station=station, day=day, at=at, stage=stage, hours=leg.get("hours"),
+                              settled=str(leg["settled_bucket"]), p=p, order=order, q=q)
+        if ladder is None:
+            counts["ladder_mismatch"] += 1
+            continue
+        ident = (station, day, tuple(sorted(p.items())), tuple(sorted(q.items())))
+        if (leg["lane"], ident) not in seen_lane:
+            seen_lane.add((leg["lane"], ident))
+            by_lane[str(leg["lane"])].extend(ladder)
+        if ident not in seen:
+            seen.add(ident)
+            whole.extend(ladder)
+    return {
+        "counts": counts, "all": bucket_calibration_group(whole),
+        "lanes": [{"lane": lane, **(bucket_calibration_group(rows) or {})} for lane, rows in sorted(by_lane.items())],
+    }
+
+
 def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     days = sorted({l["event_date"] for l in legs})
     split = days[len(days) // 2] if days else None
@@ -1760,6 +1804,8 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
             "reliability_by_lane": traded_calibration_reliability_by_lane(subset),
             "lanes": sorted(Counter(l["lane"] for l in subset).items()),
         }
+    populations["filled"]["ladder_by_lane"] = traded_calibration_ladder_by_lane(
+        conn, [l for l in legs if l["filled"]])
     return {
         "rule": "traded_bucket_binary_logloss_v1", "since": TRADED_CALIBRATION_SINCE, "counts": counts,
         "min_legs": TRADED_CALIBRATION_MIN_LEGS, "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC,
@@ -1791,24 +1837,74 @@ _BUCKET_POSITIONS = (("市场众数桶", 0, 0), ("离众数 ±1", 1, 1), ("离�
 _BUCKET_SIDE_BANDS = (("p−q < −0.05", -1.01, -0.05), ("p−q −0.05–0", -0.05, 0.0)) + _TRADED_SIDE_BANDS[1:]
 
 
+def _ladder_market_reference(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str, cache: dict[tuple[str, str, str], Any],
+) -> dict[str, float] | None:
+    """The market's whole-ladder vector (``market_reference_v1``, one-sided
+    tails priced as the EV page prices them) from the newest committed book at
+    most ``TRADED_CALIBRATION_BOOK_WINDOW_SEC`` before ``at_utc``; None when
+    there is none or it is not complete."""
+
+    from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+
+    key = (station, day, at_utc)
+    if key in cache:
+        return cache[key]
+    floor = (_utc_instant(at_utc) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
+    snap = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? AND observed_at>=?"
+        " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
+        (station, day, at_utc, floor.isoformat().replace("+00:00", "Z")),
+    ).fetchone()
+    vector = None
+    if snap is not None:
+        try:
+            market = market_reference_v1(json.loads(snap[0] or "[]"))
+        except (TypeError, ValueError):
+            market = {}
+        if market.get("state") == "complete":
+            vector = {str(b): float(v) for b, v in market["vector"].items()}
+    cache[key] = vector
+    return vector
+
+
+def _ladder_rows(
+    *, station: str, day: str, at: str, stage: str | None, hours: float | None, settled: str,
+    p: Mapping[str, float], order: Mapping[str, int], q: Mapping[str, float], **extra: Any,
+) -> list[dict[str, Any]] | None:
+    """One row per bucket of the ladder -- our p_k, the market's q_k, whether
+    k landed, and k's distance from the market's mode; None when the two
+    vectors are not the same ladder or the settled bucket is not on it."""
+
+    if set(p) != set(q) or set(p) != set(order) or settled not in p:
+        return None
+    # The market's mode; a tie goes to the lower rung, as charter 249 picks it.
+    mode = max(sorted(q, key=lambda b: order[b]), key=lambda b: q[b])
+    return [{
+        "station_id": station, "event_date": day, "at": at, "stage": stage, "hours": hours,
+        "unit": "F" if "°F" in bucket else "C", "bucket": bucket, "from_mode": abs(order[bucket] - order[mode]),
+        "p": float(p[bucket]), "q": float(q[bucket]), "win": 1.0 if bucket == settled else 0.0, **extra,
+    } for bucket in p]
+
+
 def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Every bucket of the ladder, scored where the lanes could have traded it.
 
     Sample: each settled station-day since ``TRADED_CALIBRATION_SINCE``, and in
     each hours-to-settlement band the first committed decision instant with a
     complete market reference at most ``TRADED_CALIBRATION_BOOK_WINDOW_SEC``
-    old (``market_reference_v1``: the whole ladder, one-sided tails priced as
-    the EV page prices them).  Our vector is the belief standing at that
-    instant (charter 260, floored as served); each bucket k of the ladder is
-    one row with our p_k, the market's q_k and whether k landed.
+    old (``_ladder_market_reference``).  Our vector is the belief standing at
+    that instant (charter 260, floored as served); each bucket k of the ladder
+    is one row with our p_k, the market's q_k and whether k landed.
     """
 
-    from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
     from .label_knowability import knowable_labels  # noqa: PLC0415
     from .settlement_time import hours_to_settlement_if_known  # noqa: PLC0415
 
     counts = {"station_days": 0, "samples": 0, "band_unpaired": 0, "ladder_mismatch": 0, "buckets": 0}
     served_cache: dict[tuple[str, str, str], Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
     rows: list[dict[str, Any]] = []
     labels = {k: v for k, v in knowable_labels(conn).items() if str(k[1]) >= TRADED_CALIBRATION_SINCE}
     for (station, day), label in sorted(labels.items()):
@@ -1839,46 +1935,29 @@ def bucket_calibration_rows(conn: sqlite3.Connection) -> tuple[list[dict[str, An
         for band, candidates in bands.items():
             picked = None
             for at in candidates[:BUCKET_CALIBRATION_TRIES]:
-                floor = (_utc_instant(at) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
-                snap = conn.execute(
-                    "SELECT buckets_json FROM basket_official_ws_snapshot"
-                    " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? AND observed_at>=?"
-                    " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
-                    (str(station), str(day), at, floor.isoformat().replace("+00:00", "Z")),
-                ).fetchone()
-                if snap is None:
-                    continue
-                try:
-                    market = market_reference_v1(json.loads(snap[0] or "[]"))
-                except (TypeError, ValueError):
-                    continue
-                if market.get("state") != "complete":
+                q = _ladder_market_reference(conn, str(station), str(day), at, market_cache)
+                if q is None:
                     continue
                 stage, vector, order = _served_belief_vector(conn, str(station), str(day), at, served_cache)
                 if vector is None or order is None:
                     continue
-                picked = (at, stage, vector, order, {str(b): float(v) for b, v in market["vector"].items()})
+                picked = (at, stage, vector, order, q)
                 break
             if picked is None:
                 counts["band_unpaired"] += 1
                 continue
             at, stage, p, order, q = picked
-            settled = str(label["bucket"])
-            if set(p) != set(q) or settled not in p:
+            ladder = _ladder_rows(
+                station=str(station), day=str(day), at=at, stage=stage, settled=str(label["bucket"]),
+                hours=hours_to_settlement_if_known(str(day), as_of_utc=at, settlement_timezone=tz),
+                p=p, order=order, q=q, band=band,
+            )
+            if ladder is None:
                 counts["ladder_mismatch"] += 1
                 continue
-            # The market's mode; a tie goes to the lower rung, as charter 249 picks it.
-            mode = max(sorted(q, key=lambda b: order[b]), key=lambda b: q[b])
-            hours = hours_to_settlement_if_known(str(day), as_of_utc=at, settlement_timezone=tz)
             counts["samples"] += 1
-            for bucket in p:
-                rows.append({
-                    "station_id": str(station), "event_date": str(day), "band": band, "at": at, "stage": stage,
-                    "unit": "F" if "°F" in bucket else "C", "hours": hours, "bucket": bucket,
-                    "from_mode": abs(order[bucket] - order[mode]),
-                    "p": float(p[bucket]), "q": float(q[bucket]), "win": 1.0 if bucket == settled else 0.0,
-                })
-                counts["buckets"] += 1
+            counts["buckets"] += len(ladder)
+            rows.extend(ladder)
     return rows, counts
 
 
@@ -1892,7 +1971,7 @@ def bucket_calibration_group(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any
     ll_q = [_binary_logloss(r["q"], r["win"]) for r in rows]
     diff = [a - b for a, b in zip(ll_p, ll_q)]
     return {
-        "buckets": len(rows), "samples": len({(r["station_id"], r["event_date"], r["band"]) for r in rows}),
+        "buckets": len(rows), "samples": len({(r["station_id"], r["event_date"], r["at"]) for r in rows}),
         "event_days": len({r["event_date"] for r in rows}),
         "logloss_ours": _traded_mean(ll_p), "logloss_market": _traded_mean(ll_q),
         "logloss_diff": _traded_mean(diff), "logloss_diff_ci": _traded_day_bootstrap(rows, diff),
@@ -1971,12 +2050,13 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
         traded_calibration,
         (traded_calibration, traded_calibration_legs, traded_calibration_group,
          traded_calibration_reliability, traded_calibration_reliability_by_lane, _traded_slices,
-         _served_belief_vector, _traded_served_vector, _traded_market_mid),
+         _served_belief_vector, _traded_served_vector, _traded_market_mid,
+         traded_calibration_ladder_by_lane, _ladder_market_reference, _ladder_rows, bucket_calibration_group),
     ),
     "bucket_calibration": (
         bucket_calibration,
         (bucket_calibration, bucket_calibration_rows, bucket_calibration_group, bucket_calibration_reliability,
-         _served_belief_vector, _binary_logloss, _traded_day_bootstrap),
+         _served_belief_vector, _ladder_market_reference, _ladder_rows, _binary_logloss, _traded_day_bootstrap),
     ),
     "basket_shadow": (
         basket_shadow,

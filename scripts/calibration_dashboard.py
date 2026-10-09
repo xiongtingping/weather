@@ -19148,6 +19148,13 @@ function copyFollowLane(){
 // 样本binary logloss」): one ruler on two samples -- every bucket of the
 // ladder (data/board_readings/bucket_calibration.json) and the buckets the
 // lanes bought (traded_calibration's filled population, the next section's).
+// The lanes' names on the two charter-259 sections, in a fixed order; a lane
+// the board has no name for prints its key and sorts last.
+const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",
+  p1_consensus:"同心线",p1_tail:"P1 尾段"};
+const TC_LANE_ORDER=["proper_bet","tail_short","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
+const tcLaneSort=(a,b)=>{const i=TC_LANE_ORDER.indexOf(a),j=TC_LANE_ORDER.indexOf(b);
+  return (i<0?99:i)-(j<0?99:j)||String(a).localeCompare(String(b));};
 function bucketCalibration(){
   const B=D.bucket_calibration||{}, T=D.traded_calibration||{};
   const n4=v=>v==null?"—":(+v).toFixed(4);
@@ -19169,7 +19176,29 @@ function bucketCalibration(){
     ${B.available&&A?row("校准每个桶的发生概率",`${A.buckets} 桶 · ${A.samples} 时点 · ${A.event_days} 日`,A,"—"):`<tr><td><b>校准每个桶的发生概率</b></td><td colspan="7" class="muted">读数这一轮没有生成${B.error?"："+h(B.error):""}</td></tr>`}
     ${F?row("评价实际买入的桶",`${F.legs} 腿 · ${F.event_days} 日`,F,n4(F.logloss_paid)):`<tr><td><b>评价实际买入的桶</b></td><td colspan="7" class="muted">买入样本不足或第二层读数没有生成</td></tr>`}
     </tbody></table></div>`;
-  if(!B.available||!A) return intro+both;
+  // By lane (user 2026-10-09 「校准每个桶的发生概率和实际买入的桶：按照车道区分」):
+  // the whole ladder at the instants each lane bought, beside the bucket it bought.
+  const FP=(T.populations||{}).filled||{}, LB=FP.ladder_by_lane||{};
+  const ladderOf=Object.fromEntries((LB.lanes||[]).map(r=>[r.lane,r]));
+  const boughtOf=Object.fromEntries((FP.slices||[]).filter(r=>r.group==="车道").map(r=>[r.slice,r]));
+  const laneKeys=[...new Set([...Object.keys(ladderOf),...Object.keys(boughtOf)])].sort(tcLaneSort);
+  const lrow=(name,l,b)=>`<tr><td><b>${h(name)}</b></td>
+     <td class="mono">${l&&l.buckets?`${l.buckets} 桶 · ${l.samples} 时点 · ${l.event_days} 日`:"—"}</td>
+     <td class="mono">${n4(l&&l.logloss_ours)}</td><td class="mono">${n4(l&&l.logloss_market)}</td>
+     <td class="mono ${tone(l&&l.logloss_diff)}">${l?ci(l.logloss_diff,l.logloss_diff_ci):"—"}</td>
+     <td class="mono">${b&&b.legs?`${b.legs} 腿 · ${b.event_days} 日`:"—"}</td>
+     <td class="mono">${n4(b&&b.logloss_ours)}</td><td class="mono">${n4(b&&b.logloss_market)}</td><td class="mono">${n4(b&&b.logloss_paid)}</td>
+     <td class="mono ${tone(b&&b.logloss_diff)}">${b?ci(b.logloss_diff,b.logloss_diff_ci):"—"}</td>
+     <td class="mono">${b?`${pct(b.said_ours)} / ${pct(b.said_market)} / ${pct(b.paid)} → ${pct(b.landed)}`:"—"}</td></tr>`;
+  const LC=LB.counts||{};
+  const lanesTbl=laneKeys.length?`<details open style="margin-top:8px"><summary>按车道：该车道买入时点的整条梯子（每个桶） · 该车道实际买入的桶</summary>
+    <div class="scroll"><table><thead>
+      <tr><th rowspan="2">车道</th><th colspan="4">校准每个桶的发生概率（该车道买入时点的整条梯子）</th><th colspan="6">评价实际买入的桶（买入样本）</th></tr>
+      <tr><th>样本</th><th>LL 我方</th><th>LL 市场</th><th>Δ [95%]</th><th>样本</th><th>LL 我方</th><th>LL 市场</th><th>LL 实付</th><th>Δ [95%]</th><th>说 我/市/付 → 中</th></tr></thead>
+    <tbody>${lrow("全部车道",LB.all,FP.all)}${laneKeys.map(k=>lrow(TC_LANE_NAMES[k]||k,ladderOf[k],boughtOf[k])).join("")}</tbody></table></div>
+    <div class="muted">左半：每个车道买入那一刻它读到的服务向量，在整条梯子的每个桶上对同刻市场参考向量打分；同一站日同一份向量与盘口只算一次（全部车道一行也只算一次）。右半：同一批买入腿上被买的那个桶（第二层口径）。
+    买入腿 ${LC.legs??"—"} 条，买入时点没有 ${Math.round((+B.book_window_sec||1800)/60)} 分钟内完整盘口的 ${LC.no_market_reference??"—"} 条，梯子对不上 ${LC.ladder_mismatch??"—"} 条。车道行不设腿数下限，样本薄的车道请看样本数。</div></details>`:"";
+  if(!B.available||!A) return intro+both+lanesTbl;
   const C=B.counts||{};
   const srow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${r.samples}</td><td class="mono">${r.event_days}</td>
      <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
@@ -19182,7 +19211,7 @@ function bucketCalibration(){
   const rel=`<details style="margin-top:8px"><summary>校准每个桶的发生概率：可靠性图（全部桶），按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(B.reliability_ours||[]),"按我方 p 分档")}${tbl(mk(B.reliability_market||[]),"按市场 q 分档")}</div></details>`;
   const foot=`<div class="muted" style="margin-top:6px">自 ${h(B.since)}：已结算站日 ${C.station_days??"—"}，取到时点 ${C.samples??"—"}，档内前 ${h(B.tries_per_band)} 个决策时点都没有 ${Math.round((+B.book_window_sec||0)/60)} 分钟内完整盘口的档 ${C.band_unpaired??"—"}，梯子对不上 ${C.ladder_mismatch??"—"}。
     评价实际买入的桶按车道、条件切片与可靠性图见下一节「交易概率校准（第二层）」。读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
-  return intro+both+slices+rel+foot;
+  return intro+both+lanesTbl+slices+rel+foot;
 }
 
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
@@ -19229,16 +19258,13 @@ function tradedCalibration(){
     // Per lane (user 2026-10-09 「可靠性图（已成交腿），按照车道区分」): the
     // same two diagrams on each lane's own legs, in a fixed order; a lane the
     // board has no name for prints its key.
-    const LN={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",
-      p1_consensus:"同心线",p1_tail:"P1 尾段"};
-    const LO=["proper_bet","tail_short","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
     const block=(title,r)=>`<div style="margin-top:10px"><b>${h(title)}</b> <span class="muted">${r.legs} 腿 / ${r.event_days??"—"} 日；说 我 ${pct(r.said_ours)} · 市 ${pct(r.said_market)} · 付 ${pct(r.paid)} → 中 ${pct(r.landed)}</span>
       <div class="grid g2">${tbl(mk(r.reliability_ours||[]),"按我方 p 的十分档")}${tbl(mk(r.reliability_market||[]),"按市场 q 的十分档")}</div></div>`;
-    const lanes=[...(pop.reliability_by_lane||[])].sort((a,b)=>{const i=LO.indexOf(a.lane),j=LO.indexOf(b.lane);return (i<0?99:i)-(j<0?99:j)||String(a.lane).localeCompare(String(b.lane));});
+    const lanes=[...(pop.reliability_by_lane||[])].sort((a,b)=>tcLaneSort(a.lane,b.lane));
     const A=pop.all||{};
     const whole=block("全部车道",{legs:pop.legs??0,event_days:A.event_days,said_ours:A.said_ours,said_market:A.said_market,paid:A.paid,landed:A.landed,
       reliability_ours:pop.reliability_ours,reliability_market:pop.reliability_market});
-    const byLane=lanes.length?lanes.map(r=>block(LN[r.lane]||r.lane,r)).join(""):`<div class="muted" style="margin-top:8px">按车道的读数要等后端读数任务下一轮重算。</div>`;
+    const byLane=lanes.length?lanes.map(r=>block(TC_LANE_NAMES[r.lane]||r.lane,r)).join(""):`<div class="muted" style="margin-top:8px">按车道的读数要等后端读数任务下一轮重算。</div>`;
     return `<details style="margin-top:8px"><summary>可靠性图（已成交腿）：全部车道与按车道分开，按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary>${whole}${byLane}</details>`;};
   const recent=(T.recent||[]).map(l=>`<tr><td class="mono">${h((l.created_at||"").slice(5,16))}</td><td>${h(l.lane)}</td><td>${h(l.station_id)}</td><td class="mono">${h(l.event_date)}</td><td>${h(l.bucket)} ${h(l.side)}</td><td>${h(l.stage||"—")}</td><td class="mono">${n3(l.p)}</td><td class="mono">${n3(l.q)}</td><td class="mono">${n3(l.paid)}</td><td>${l.filled?"成交 "+(+l.shares).toFixed(2):"未成交"}</td><td class="${l.win?"up":"down"}">${l.win?"中":"未中"}</td></tr>`).join("");
   const recentTbl=`<details style="margin-top:8px"><summary>最近 ${(T.recent||[]).length} 条已结算腿（含未成交的意图）</summary><div class="scroll" style="max-height:520px"><table><thead><tr><th>时间</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>我方 p</th><th>市场 q</th><th>实付</th><th>状态</th><th>结果</th></tr></thead><tbody>${recent}</tbody></table></div></details>`;

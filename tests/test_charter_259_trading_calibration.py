@@ -277,6 +277,30 @@ def test_every_bucket_of_the_ladder_is_one_row_with_our_p_the_markets_q_and_the_
     assert row["logloss_diff"] == pytest.approx(row["logloss_ours"] - row["logloss_market"])
 
 
+def test_every_bucket_at_each_lanes_buy_instants_one_ladder_per_vector(store) -> None:  # noqa: F811
+    """User 2026-10-09 「校准每个桶的发生概率和实际买入的桶：按照车道区分」: at the
+    instants a lane bought, the whole ladder it read is scored; two lanes that
+    bought on the same vector and book each get the ladder, the whole once."""
+
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
+    _book(store, {"27°C": (0.18, 0.20), "28°C": (0.38, 0.42), "29°C": (0.28, 0.32)})
+    _label(store, "28°C")
+    _leg(store, "i_yes", decision_id="proper_bet_decision_ZSPD_2026-09-20", bucket="28°C", side="YES", price=0.40,
+         size=10, filled=10, notional=4.0)
+    _leg(store, "i_no", decision_id="tail_short_decision_ZSPD_2026-09-20", bucket="29°C", side="NO", price=0.70,
+         size=5, filled=5, notional=3.5)
+    legs, _counts = BR.traded_calibration_legs(store)
+    out = BR.traded_calibration_ladder_by_lane(store, legs)
+    assert out["counts"] == {"legs": 2, "no_market_reference": 0, "ladder_mismatch": 0}
+    lanes = {r["lane"]: r for r in out["lanes"]}
+    assert set(lanes) == {"proper_bet", "tail_short"}
+    assert (lanes["proper_bet"]["buckets"], lanes["proper_bet"]["samples"]) == (3, 1)
+    assert lanes["proper_bet"]["logloss_ours"] == pytest.approx((_ll(0.2, 0) + _ll(0.5, 1) + _ll(0.3, 0)) / 3)
+    assert out["all"]["buckets"] == 3, "the same ladder bought on by two lanes counts once in the whole"
+    value = BR.traded_calibration(store)
+    assert [r["lane"] for r in value["populations"]["filled"]["ladder_by_lane"]["lanes"]] == ["proper_bet", "tail_short"]
+
+
 def test_a_band_without_a_fresh_complete_book_is_unpaired(store) -> None:  # noqa: F811
     _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
     # Older than the window before the instant: not the book the instant saw.
@@ -288,7 +312,8 @@ def test_a_band_without_a_fresh_complete_book_is_unpaired(store) -> None:  # noq
 
 
 def test_the_bucket_reading_slices_and_bins() -> None:
-    rows = [{"station_id": "S", "event_date": f"2026-09-2{d}", "band": "距结算 12–24h", "stage": "P1", "unit": "C",
+    rows = [{"station_id": "S", "event_date": f"2026-09-2{d}", "at": f"2026-09-2{d}T06:00:00Z", "band": "距结算 12–24h",
+             "stage": "P1", "unit": "C",
              "from_mode": k, "p": p, "q": q, "win": w}
             for d in range(4) for k, p, q, w in ((0, 0.6, 0.5, 1.0), (1, 0.3, 0.3, 0.0), (3, 0.004, 0.02, 0.0))]
     value_bins = BR.bucket_calibration_reliability(rows, "p")
@@ -323,9 +348,10 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
     source = C.HTML_TEMPLATE
-    start = source.index("function bucketCalibration(")
+    # From the shared lane names the two sections read down to the function's end.
+    start = source.index("const TC_LANE_NAMES=")
     depth, end = 0, None
-    for index in range(source.index("{", start), len(source)):
+    for index in range(source.index("{", source.index("function bucketCalibration(")), len(source)):
         depth += {"{": 1, "}": -1}.get(source[index], 0)
         if depth == 0:
             end = index + 1
@@ -339,7 +365,11 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
                                "reliability_ours": [{"bin": [0.0, 0.01], "buckets": 3, "said_ours": 0.004,
                                                      "said_market": 0.01, "landed": 0.0}],
                                "reliability_market": [], "counts": {"station_days": 4}},
-        "traded_calibration": {"populations": {"filled": {"all": {**group, "legs": 20, "logloss_paid": 0.19}}}},
+        "traded_calibration": {"populations": {"filled": {
+            "all": {**group, "legs": 20, "logloss_paid": 0.19},
+            "slices": [{"group": "车道", "slice": "tiebreak", **group, "legs": 7, "logloss_paid": 0.2}],
+            "ladder_by_lane": {"all": group, "lanes": [{"lane": "tiebreak", **group, "buckets": 70}],
+                               "counts": {"legs": 20}}}}},
     }
     script = ("const D = " + json.dumps(payload, ensure_ascii=False) + ";\nconst h = s => String(s == null ? '' : s);\n"
               + source[start:end] + "\nconsole.log(bucketCalibration());\n")
@@ -349,3 +379,4 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     assert "<b>校准每个桶的发生概率</b>" in html and "30 桶 · 10 时点 · 4 日" in html
     assert "<b>评价实际买入的桶</b>" in html and "20 腿 · 4 日" in html and "0.1900" in html
     assert "+0.0300 [+0.0100, +0.0500]*" in html and "市场众数桶" in html
+    assert "<b>秤砣线</b>" in html and "70 桶 · 10 时点 · 4 日" in html and "7 腿 · 4 日" in html
