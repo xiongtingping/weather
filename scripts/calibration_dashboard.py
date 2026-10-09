@@ -16264,6 +16264,28 @@ table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
 table.sd-tab tr.sd-on td{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+table.sd-pm{border-collapse:separate;border-spacing:0 2px;min-width:760px}
+table.sd-pm td{vertical-align:middle;padding:8px 8px;border-top:1px solid var(--line)}
+table.sd-pm td.sd-pm-b b{font-size:17px}
+table.sd-pm .sd-pm-c{text-align:center;min-width:120px}
+table.sd-pm .sd-pm-pct{font-size:26px;font-weight:750;letter-spacing:-.5px}
+table.sd-pm .sd-pm-pct.faint{color:var(--muted)}
+table.sd-pm .sd-pm-chg{font-size:12px;font-weight:700;margin-left:6px}
+.sd-pm-btn{border:0;border-radius:8px;padding:10px 14px;min-width:132px;font-size:15px;font-weight:650;cursor:pointer}
+.sd-pm-btn.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
+.sd-pm-btn.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
+.sd-pm-btn.yes.on{background:#2f9e44;color:#fff}
+.sd-pm-btn.no.on{background:#e03131;color:#fff}
+.sd-pm-btn:disabled{opacity:.45;cursor:default}
+.sd-pm-chip{display:inline-block;margin-top:4px;margin-right:4px;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:650}
+.sd-pm-chip.yes{background:color-mix(in srgb,#2f9e44 14%,transparent);color:#2f9e44}
+.sd-pm-chip.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
+table.sd-pm .sd-pm-amt input{width:96px}
+table.sd-pm tr:not(.sd-pm-y) .sd-pm-amt.y input,table.sd-pm tr:not(.sd-pm-n) .sd-pm-amt.n input{visibility:hidden}
+table.sd-pm .sd-pm-note{font-size:12px;min-width:110px}
+table.sd-pm .sd-pm-pl{text-align:right;white-space:nowrap}
+table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.sd-calc-more{margin-top:8px}.sd-calc-more>summary{cursor:pointer}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
 .sd-metar{max-height:360px;overflow:auto}
 .sd-chips{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.sd-div{width:10px}
@@ -22393,6 +22415,8 @@ function sdBoot(){
   body.addEventListener("change", sdOnInput);
   body.addEventListener("focusout", () => { if(SD.pendingRender) setTimeout(sdRender, 0); });
   body.addEventListener("click", sdOnClick);
+  // <details> toggles do not bubble; listen in the capture phase.
+  body.addEventListener("toggle", e => { const k = e.target.dataset && e.target.dataset.sdMore; if(k){ sdCalcState(k).detailOpen = e.target.open; sdSave(); } }, true);
   document.addEventListener("visibilitychange", () => { if(!document.hidden && SD.every) sdPoll(); });
   sdFetch(false);
   sdSchedule();
@@ -23179,8 +23203,54 @@ function sdSolve(day, st){
   });
   return res;
 }
+// Polymarket-style ladder (user 2026-10-09「篮子计算器：改为pm市场盘口直观的」):
+// one row per rung, warmest on top -- the market's chance (normalised mid)
+// with its change since about a day ago, the model's own number beneath it,
+// "Buy Yes" at the YES best ask and "Buy No" at 1 − the YES best bid, the
+// account's holdings as a chip.  A click on Buy Yes / Buy No picks that leg
+// and opens its amount field; everything is priced by sdSolve, unchanged.
+const sdCents = v => v == null || !isFinite(v) ? "--" : `${(Math.round(v * 1000) / 10).toString()}¢`;
+function sdPmLadder(day, st, res, key){
+  const m = day.market || {}, q = m.vector || {};
+  const head = (day.stages || {})[day.head_stage] || {}, p = head.vector || {};
+  const book = {}; (m.book || []).forEach(r => book[r.bucket] = r);
+  // The chance's arrow: against the market reference about 24 h earlier,
+  // else the day's first snapshot (the board keeps the day's trend only).
+  const trend = m.trend || [], latestAt = Date.parse(m.observed_at_utc || "");
+  let ref = null;
+  if(trend.length && isFinite(latestAt)){
+    const target = latestAt - 24 * 3600e3;
+    ref = trend.filter(t => Date.parse(t.at_utc) <= target).pop() || trend[0];
+    if(ref && Date.parse(ref.at_utc) >= latestAt - 60e3) ref = null;
+  }
+  const refAgo = ref ? Math.round((latestAt - Date.parse(ref.at_utc)) / 3600e3) : null;
+  const chip = (side, shares, avg) => shares > 0 ? `<span class="sd-pm-chip ${side === "YES" ? "yes" : "no"}">${side === "YES" ? "Yes" : "No"} ${sdN(shares, shares % 1 ? 2 : 0)}${avg != null ? " · " + sdCents(avg) : ""}</span>` : "";
+  const rows = (day.axis || []).slice().reverse().map(r => {
+    const b = r.bucket, bk = book[b] || {};
+    const yesAsk = bk.best_ask, noAsk = bk.best_bid != null ? 1 - bk.best_bid : null;
+    const onY = !!st.sel[b], onN = !!(st.selNo || {})[b];
+    const leg = res && res.ok ? res.legs[b] : null, noLeg = res && res.ok ? (res.noLegs || {})[b] : null;
+    const chance = q[b], d = ref && chance != null && ref.vector[b] != null ? chance - ref.vector[b] : null;
+    const arrow = d == null || Math.abs(d) < 0.005 ? "" : `<span class="${d > 0 ? "up" : "down"} sd-pm-chg" title="对 ${refAgo} 小时前的市场归一中价">${d > 0 ? "▲" : "▼"}${Math.round(Math.abs(d) * 100)}%</span>`;
+    const profit = res && res.ok ? res.payoff(b) : null;
+    const legNote = (l, side) => l && l.shares > 0 ? `≈ ${sdN(l.shares, 2)} 份 · 均价 ${sdCents(l.avg)}<br><span class="muted">命中赔 ${sdN(l.shares, 2)} U</span>` : (side === "YES" && onY && st.goal === "breakeven" ? '<span class="muted">空着＝自动补到地板</span>' : "");
+    return `<tr class="sd-pm-row${onY ? " sd-pm-y" : ""}${onN ? " sd-pm-n" : ""}" data-b="${sdEsc(b)}">
+      <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip("YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip("NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div></td>
+      <td class="sd-pm-c"><span class="sd-pm-pct${chance != null && chance < 0.01 ? " faint" : ""}">${chance == null ? "—" : chance < 0.01 ? "&lt;1%" : Math.round(chance * 100) + "%"}</span>${arrow}<div class="muted sd-sub" title="当日口径 ${sdEsc(day.head_stage)} 的模型概率">模型 ${p[b] == null ? "—" : p[b] < 0.01 ? "&lt;1%" : Math.round(p[b] * 100) + "%"}</div></td>
+      <td><button type="button" class="sd-pm-btn yes${onY ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="YES"${yesAsk == null && !onY ? " disabled" : ""} title="YES 卖一；点选这一腿">Buy Yes ${sdCents(yesAsk)}</button></td>
+      <td><button type="button" class="sd-pm-btn no${onN ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="NO"${noAsk == null && !onN ? " disabled" : ""} title="NO 卖一＝1 − YES 买一；点选这一腿">Buy No ${sdCents(noAsk)}</button></td>
+      <td class="sd-pm-amt y"><input class="sd-in" type="number" step="0.5" min="0" placeholder="YES 金额 U" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
+      <td class="sd-pm-note mono">${legNote(leg, "YES")}</td>
+      <td class="sd-pm-amt n"><input class="sd-in" type="number" step="0.5" min="0" placeholder="NO 金额 U" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc((st.amtNo || {})[b] == null ? "" : st.amtNo[b])}"></td>
+      <td class="sd-pm-note mono">${legNote(noLeg, "NO")}</td>
+      <td class="sd-pm-pl mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}">${profit == null ? "" : `<span class="muted">命中</span> <b>${sdSg(profit, 2)}</b> U`}</td></tr>`;
+  }).join("");
+  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm"><tbody>${rows}</tbody></table></div>
+    <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏。</div>`;
+}
 function sdCalc(day){
   const key = day.event_date, st = sdCalcState(key);
+  st.selNo = st.selNo || {};
   st.held = st.held || {}; st.heldCost = st.heldCost || {};
   st.heldNo = st.heldNo || {}; st.amtNo = st.amtNo || {}; st.pxNo = st.pxNo || {};
   const head = (day.stages || {})[day.head_stage] || {};
@@ -23264,10 +23334,12 @@ function sdCalc(day){
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
-    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>YES 买一/卖一</th><th class="sd-add">追加 YES U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>YES 价格</th><th>新买 YES 份</th><th class="sd-noc">NO 买一/卖一</th><th class="sd-add sd-noc">追加 NO U</th><th class="sd-noc">NO 价格</th><th class="sd-noc">新买 NO 份</th><th>新花 U</th><th title="命中该桶时：这一桶的 YES 份数 + 其它所有桶的 NO 份数，每份赔 1，减去全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 YES 份</th><th class="sd-old" title="账户里这一桶原来就有的 NO 份数">原持仓 NO 份</th><th class="sd-old" title="原持仓 YES 与 NO 的净投入＝已花−已确认卖出回款；可以为负">原持仓 净投入 U</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${sdPmLadder(day, st, res, key)}
     <div class="sd-summary">${summary}${orderOut}</div>
+    <details class="sd-calc-more" data-sd-more="${sdEsc(key)}"${st.detailOpen ? " open" : ""}><summary class="muted">明细表：手填价格、手填持仓与净投入、持仓卖出</summary>
+    <div class="scroll"><table class="sd-tab sd-calc"><thead><tr><th>选</th><th>模型 p</th><th>市场 q</th><th>YES 买一/卖一</th><th class="sd-add">追加 YES U${st.goal === "breakeven" ? "（空＝自动）" : ""}</th><th>YES 价格</th><th>新买 YES 份</th><th class="sd-noc">NO 买一/卖一</th><th class="sd-add sd-noc">追加 NO U</th><th class="sd-noc">NO 价格</th><th class="sd-noc">新买 NO 份</th><th>新花 U</th><th title="命中该桶时：这一桶的 YES 份数 + 其它所有桶的 NO 份数，每份赔 1，减去全篮花费（原持仓已花＋新花）">命中该桶盈亏</th><th class="sd-old" title="账户里这一桶原来就有的 YES 份数；点「读取账户持仓」自动填">原持仓 YES 份</th><th class="sd-old" title="账户里这一桶原来就有的 NO 份数">原持仓 NO 份</th><th class="sd-old" title="原持仓 YES 与 NO 的净投入＝已花−已确认卖出回款；可以为负">原持仓 净投入 U</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">持仓旁的卖出 25% / 50% / 75% / 100% 按本桶对应 YES 或 NO 的交易所份额计算，向下保留两位小数；读取最新持仓与买盘后确认，FOK 全成或零成。低于最小单或深度不足时不发送。100% 可能留下不足 0.01 份的尾数。</div>
-    <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div>`;
+    <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再勾选要加的桶、金额空着 → 给出把整个篮子拉回地板所需的最少金额。</div></details>`;
 }
 // 读取账户持仓: shares from the gateway's point lookup (the exchange's own
 // balance), cost from the data API's average price.
@@ -23287,12 +23359,12 @@ function sdLoadHoldings(key){
         return;
       }
       const saleCosts = st.saleCosts || {};
-      st.held = {}; st.heldNo = {}; st.heldCost = {...saleCosts};
+      st.held = {}; st.heldNo = {}; st.heldCost = {...saleCosts}; st.heldAvg = {}; st.heldAvgNo = {};
       const flags = [];
       (j.rows || []).forEach(r => {
         let cost = 0, costKnown = true;
-        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null) cost += r.cost_usdc; else costKnown = false; }
-        if(r.no_shares > 0){ st.heldNo[r.bucket] = String(r.no_shares); if(r.no_cost_usdc != null) cost += r.no_cost_usdc; else costKnown = false; }
+        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null){ cost += r.cost_usdc; st.heldAvg[r.bucket] = r.cost_usdc / r.shares; } else costKnown = false; }
+        if(r.no_shares > 0){ st.heldNo[r.bucket] = String(r.no_shares); if(r.no_cost_usdc != null){ cost += r.no_cost_usdc; st.heldAvgNo[r.bucket] = r.no_cost_usdc / r.no_shares; } else costKnown = false; }
         if(cost > 0 && saleCosts[r.bucket] == null) st.heldCost[r.bucket] = String(Math.round(cost * 1e4) / 1e4);
         if(!costKnown) flags.push(`${r.bucket} 无均价，已花请手填`);
         if(r.no_gateway_error && r.no_shares_source !== "data_api") flags.push(`${r.bucket} NO 份数读取失败（${r.no_gateway_error}）`);
@@ -23315,7 +23387,7 @@ function sdOnInput(e){
   if(ds.sdSel){ st.sel[ds.b] = t.checked; if(!t.checked){ delete st.amt[ds.b]; delete st.px[ds.b]; } }
   else if(ds.sdAmt){ st.amt[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
   else if(ds.sdPx){ st.px[ds.b] = t.value; if(t.value !== "") st.sel[ds.b] = true; }
-  else if(ds.sdAmtNo){ st.amtNo = st.amtNo || {}; st.amtNo[ds.b] = t.value; }
+  else if(ds.sdAmtNo){ st.amtNo = st.amtNo || {}; st.amtNo[ds.b] = t.value; if(t.value !== ""){ st.selNo = st.selNo || {}; st.selNo[ds.b] = true; } }
   else if(ds.sdPxNo){ st.pxNo = st.pxNo || {}; st.pxNo[ds.b] = t.value; }
   else if(ds.sdHeldNo){ st.heldNo = st.heldNo || {}; st.heldNo[ds.b] = t.value; }
   else if(ds.sdHeld){ st.held = st.held || {}; st.held[ds.b] = t.value; }
@@ -23503,6 +23575,21 @@ function sdOnClick(e){
     document.querySelectorAll("#sd-body .sd-day").forEach(c => { c.hidden = c.dataset.day !== ds.sdTab; });
     document.querySelectorAll("#sd-body .sd-daytab[data-sd-tab]").forEach(b => {
       const on = b.dataset.sdTab === ds.sdTab; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  } else if(ds.sdPick){
+    // A click on a button does not move focus out of a field in every
+    // browser (WebKit keeps it), and a focused field keeps what it shows.
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const key = ds.sdPick, st = sdCalcState(key), b = ds.b;
+    st.selNo = st.selNo || {}; st.amtNo = st.amtNo || {}; st.pxNo = st.pxNo || {};
+    let on;
+    if(ds.side === "YES"){ on = st.sel[b] = !st.sel[b]; if(!on){ delete st.amt[b]; delete st.px[b]; } }
+    else { on = st.selNo[b] = !st.selNo[b]; if(!on){ delete st.amtNo[b]; delete st.pxNo[b]; } }
+    sdSave(); sdRefreshCalc(key, null);
+    if(on){
+      const card = document.querySelector(`.sd-day[data-day="${key}"]`);
+      const field = card && card.querySelector(`.sd-pm input[data-b="${b}"][${ds.side === "YES" ? "data-sd-amt" : "data-sd-amt-no"}]`);
+      if(field) field.focus();
+    }
   } else if(ds.sdHold){
     sdLoadHoldings(ds.sdHold);
   } else if(ds.sdSell){
@@ -23510,6 +23597,7 @@ function sdOnClick(e){
   } else if(ds.sdOrder){
     sdPlaceOrder(ds.sdOrder);
   } else if(ds.sdClear){
+    if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
     SD.calc[ds.sdClear] = null; sdSave(); sdRefreshCalc(ds.sdClear, null);
   }
 }
