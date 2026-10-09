@@ -16264,26 +16264,36 @@ table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
 table.sd-tab tr.sd-on td{background:color-mix(in srgb,var(--accent) 8%,transparent)}
-table.sd-pm{border-collapse:separate;border-spacing:0 2px;min-width:760px}
-table.sd-pm td{vertical-align:middle;padding:8px 8px;border-top:1px solid var(--line)}
-table.sd-pm td.sd-pm-b b{font-size:17px}
-table.sd-pm .sd-pm-c{text-align:center;min-width:120px}
-table.sd-pm .sd-pm-pct{font-size:26px;font-weight:750;letter-spacing:-.5px}
+table.sd-pm{border-collapse:collapse;width:auto;max-width:100%}
+table.sd-pm td{vertical-align:middle;padding:7px 10px;border-top:1px solid var(--line);white-space:nowrap}
+table.sd-pm td:first-child{padding-left:4px}
+table.sd-pm td.sd-pm-b{min-width:92px}
+table.sd-pm td.sd-pm-b b{font-size:16px}
+table.sd-pm .sd-pm-c{text-align:center;min-width:84px;padding-right:18px}
+table.sd-pm .sd-pm-pct{font-size:24px;font-weight:750;letter-spacing:-.5px}
 table.sd-pm .sd-pm-pct.faint{color:var(--muted)}
-table.sd-pm .sd-pm-chg{font-size:12px;font-weight:700;margin-left:6px}
-.sd-pm-btn{border:0;border-radius:8px;padding:10px 14px;min-width:132px;font-size:15px;font-weight:650;cursor:pointer}
+table.sd-pm .sd-pm-chg{font-size:11px;font-weight:700;margin-left:4px}
+.sd-pm-btn{border:0;border-radius:8px;padding:9px 0;width:124px;font-size:14px;font-weight:650;cursor:pointer;text-align:center}
 .sd-pm-btn.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
 .sd-pm-btn.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
 .sd-pm-btn.yes.on{background:#2f9e44;color:#fff}
 .sd-pm-btn.no.on{background:#e03131;color:#fff}
 .sd-pm-btn:disabled{opacity:.45;cursor:default}
-.sd-pm-chip{display:inline-block;margin-top:4px;margin-right:4px;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:650}
+table.sd-pm td:has(> .sd-pm-btn){padding-left:4px;padding-right:4px}
+.sd-pm-chip{display:inline-block;margin-top:3px;margin-right:4px;padding:1px 7px;border-radius:6px;font-size:11.5px;font-weight:650}
 .sd-pm-chip.yes{background:color-mix(in srgb,#2f9e44 14%,transparent);color:#2f9e44}
 .sd-pm-chip.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
-table.sd-pm .sd-pm-amt input{width:96px}
-table.sd-pm tr:not(.sd-pm-y) .sd-pm-amt.y input,table.sd-pm tr:not(.sd-pm-n) .sd-pm-amt.n input{visibility:hidden}
-table.sd-pm .sd-pm-note{font-size:12px;min-width:110px}
-table.sd-pm .sd-pm-pl{text-align:right;white-space:nowrap}
+table.sd-pm .sd-pm-amt{padding-left:12px;padding-right:4px}
+table.sd-pm .sd-pm-amt input{display:block;width:84px;margin:2px 0}
+table.sd-pm .sd-pm-amt input.y{border-left:3px solid #2f9e44}
+table.sd-pm .sd-pm-amt input.n{border-left:3px solid #e03131}
+table.sd-pm:not(.has-sel) .sel{display:none}
+table.sd-pm tr:not(.sd-pm-y) input.y,table.sd-pm tr:not(.sd-pm-n) input.n{display:none}
+table.sd-pm .sd-pm-note{font-size:11.5px;min-width:112px;padding-left:4px;line-height:1.9}
+.sd-pm-tag{display:inline-block;padding:0 5px;border-radius:4px;font-size:10.5px;font-weight:700}
+.sd-pm-tag.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
+.sd-pm-tag.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
+table.sd-pm .sd-pm-pl{text-align:right;min-width:104px;padding-left:16px}
 table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
 .sd-calc-more{margin-top:8px}.sd-calc-more>summary{cursor:pointer}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
@@ -23233,19 +23243,25 @@ function sdPmLadder(day, st, res, key){
     const chance = q[b], d = ref && chance != null && ref.vector[b] != null ? chance - ref.vector[b] : null;
     const arrow = d == null || Math.abs(d) < 0.005 ? "" : `<span class="${d > 0 ? "up" : "down"} sd-pm-chg" title="对 ${refAgo} 小时前的市场归一中价">${d > 0 ? "▲" : "▼"}${Math.round(Math.abs(d) * 100)}%</span>`;
     const profit = res && res.ok ? res.payoff(b) : null;
-    const legNote = (l, side) => l && l.shares > 0 ? `≈ ${sdN(l.shares, 2)} 份 · 均价 ${sdCents(l.avg)}<br><span class="muted">命中赔 ${sdN(l.shares, 2)} U</span>` : (side === "YES" && onY && st.goal === "breakeven" ? '<span class="muted">空着＝自动补到地板</span>' : "");
+    const legNote = (l, side) => {
+      const tag = `<span class="sd-pm-tag ${side === "YES" ? "yes" : "no"}">${side === "YES" ? "Yes" : "No"}</span>`;
+      if(l && l.shares > 0) return `<div title="含费均价；命中时每份赔 1">${tag} ${sdN(l.shares, 2)} 份 · ${sdCents(l.avg)}</div>`;
+      return side === "YES" && onY && st.goal === "breakeven" ? `<div class="muted">${tag} 空＝自动补到地板</div>` : "";
+    };
     return `<tr class="sd-pm-row${onY ? " sd-pm-y" : ""}${onN ? " sd-pm-n" : ""}" data-b="${sdEsc(b)}">
       <td class="sd-pm-b"><b>${sdEsc(b)}</b><div>${chip("YES", sdHeld(st, b), (st.heldAvg || {})[b])}${chip("NO", sdHeldNo(st, b), (st.heldAvgNo || {})[b])}</div></td>
       <td class="sd-pm-c"><span class="sd-pm-pct${chance != null && chance < 0.01 ? " faint" : ""}">${chance == null ? "—" : chance < 0.01 ? "&lt;1%" : Math.round(chance * 100) + "%"}</span>${arrow}<div class="muted sd-sub" title="当日口径 ${sdEsc(day.head_stage)} 的模型概率">模型 ${p[b] == null ? "—" : p[b] < 0.01 ? "&lt;1%" : Math.round(p[b] * 100) + "%"}</div></td>
       <td><button type="button" class="sd-pm-btn yes${onY ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="YES"${yesAsk == null && !onY ? " disabled" : ""} title="YES 卖一；点选这一腿">Buy Yes ${sdCents(yesAsk)}</button></td>
       <td><button type="button" class="sd-pm-btn no${onN ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="NO"${noAsk == null && !onN ? " disabled" : ""} title="NO 卖一＝1 − YES 买一；点选这一腿">Buy No ${sdCents(noAsk)}</button></td>
-      <td class="sd-pm-amt y"><input class="sd-in" type="number" step="0.5" min="0" placeholder="YES 金额 U" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
-      <td class="sd-pm-note mono">${legNote(leg, "YES")}</td>
-      <td class="sd-pm-amt n"><input class="sd-in" type="number" step="0.5" min="0" placeholder="NO 金额 U" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc((st.amtNo || {})[b] == null ? "" : st.amtNo[b])}"></td>
-      <td class="sd-pm-note mono">${legNote(noLeg, "NO")}</td>
+      <td class="sd-pm-amt sel"><input class="sd-in y" type="number" step="0.5" min="0" placeholder="Yes 金额 U" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"><input class="sd-in n" type="number" step="0.5" min="0" placeholder="No 金额 U" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc((st.amtNo || {})[b] == null ? "" : st.amtNo[b])}"></td>
+      <td class="sd-pm-note sel mono">${legNote(leg, "YES")}${legNote(noLeg, "NO")}</td>
       <td class="sd-pm-pl mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}">${profit == null ? "" : `<span class="muted">命中</span> <b>${sdSg(profit, 2)}</b> U`}</td></tr>`;
   }).join("");
-  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm"><tbody>${rows}</tbody></table></div>
+  // The amount and shares columns exist only while some leg is picked:
+  // unpicked, the ladder is just rung | chance | Yes | No | payoff.  Yes and
+  // No share them, stacked, so picking both sides does not widen the table.
+  const anySel = (day.axis || []).some(r => st.sel[r.bucket] || (st.selNo || {})[r.bucket]);
+  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}"><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏。</div>`;
 }
 function sdCalc(day){
@@ -23430,6 +23446,8 @@ function sdRefreshCalc(key, input){
       cell.innerHTML = nc.innerHTML; cell.className = nc.className; cell.title = nc.title;
     });
   });
+  const pm = card.querySelector(".sd-pm"), npm = holder.querySelector(".sd-pm");
+  if(pm && npm) pm.className = npm.className;
   const fee = card.querySelector(`input[data-sd-fee="${key}"]`), nfee = holder.querySelector(`input[data-sd-fee="${key}"]`);
   if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
   const oldNote = card.querySelector(".sd-holdnote"), newNote = holder.querySelector(".sd-holdnote");
