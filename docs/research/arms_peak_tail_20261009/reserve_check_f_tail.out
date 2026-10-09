@@ -1,0 +1,14 @@
+F station-days with truth 1096
+P0 cells (F stations) 7111 with recorded input 4796 8 s
+>36h cells 2211 | with receipt ceiling 244 | with slice tail weight 0
+scored 10 s
+== F stations, P0, >36h: tail mix in production order, from recorded inputs ==
+  fixed ε=0.1                              n=2211/237d ΔLog -0.0197 [-0.0375,-0.0029]* ΔCRPS -0.0013 [-0.0030,+0.0002] ΔBrier -0.0002 [-0.0013,+0.0010] -> PASS
+  fixed ε=0.15                             n=2211/237d ΔLog -0.0242 [-0.0486,-0.0013]* ΔCRPS -0.0018 [-0.0043,+0.0006] ΔBrier -0.0001 [-0.0018,+0.0017] -> PASS
+  fixed ε=0.2                              n=2211/237d ΔLog -0.0262 [-0.0555,+0.0019] ΔCRPS -0.0021 [-0.0054,+0.0012] ΔBrier +0.0002 [-0.0022,+0.0026] -> no
+  walk-forward ε (chosen {0.15: 472, 0.2: 696, 0.3: 200}) n=1368/139d ΔLog -0.0136 [-0.0517,+0.0159] ΔCRPS -0.0003 [-0.0042,+0.0032] ΔBrier +0.0009 [-0.0022,+0.0038] -> no
+  fixed ε=0.15 first half                  n=1043/120d ΔLog -0.0198 [-0.0505,+0.0071] ΔCRPS -0.0013 [-0.0047,+0.0018] ΔBrier +0.0007 [-0.0019,+0.0031] -> no
+  fixed ε=0.15 second half                 n=1168/117d ΔLog -0.0281 [-0.0717,+0.0047] ΔCRPS -0.0023 [-0.0060,+0.0011] ΔBrier -0.0007 [-0.0036,+0.0019] -> no
+  fixed ε=0.15 current segment ≥10-05      n= 428/40d ΔLog -0.0846 [-0.1875,-0.0079]* ΔCRPS -0.0088 [-0.0157,-0.0025]* ΔBrier -0.0064 [-0.0110,-0.0016]* -> PASS
+  tail |d|≥2: served says 0.175 → ε=0.15 says 0.204, landed 0.234
+done 10 s

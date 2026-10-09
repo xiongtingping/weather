@@ -1,0 +1,29 @@
+== P1 buckets claiming 0.50–0.75: said vs landed by slice ==
+  all P1                             n= 701 said 0.590 landed 0.516 (gap -0.074)
+  band h12_24                        n= 666 said 0.590 landed 0.511 (gap -0.080)
+  hours 12-15                        n= 666 said 0.590 landed 0.511 (gap -0.080)
+  local hour 10-12                   n= 659 said 0.590 landed 0.510 (gap -0.081)
+  unit C                             n= 536 said 0.589 landed 0.524 (gap -0.065)
+  unit F                             n= 165 said 0.594 landed 0.491 (gap -0.103)
+  09-05..09-21                       n= 295 said 0.593 landed 0.502 (gap -0.092)
+  09-22..09-30                       n= 212 said 0.587 landed 0.524 (gap -0.063)
+  ≥10-01 (trajectory fix)            n= 194 said 0.589 landed 0.531 (gap -0.058)
+
+== the same bucket in the P0-M root (same station-day-band): what did P0-M say, and P1's move ==
+  n=657 | P1 said 0.591 | root said on same bucket 0.480 | landed 0.510 | bucket is root's mode 0.78, is P1's mode 1.00
+   P1 raised it ≥0.15 over root   n=212 P1 said 0.625 root said 0.351 landed 0.439
+   P1 raised 0.05–0.15            n=178 P1 said 0.580 root said 0.482 landed 0.596
+   P1 within ±0.05 of root        n=221 P1 said 0.564 root said 0.550 landed 0.480
+   P1 lowered it                  n= 46 P1 said 0.603 root said 0.732 landed 0.652
+
+== P1 reliability, every bin, h12_24 vs h0_12 ==
+  h12_24: [0.00-0.05) 0.004->0.006 (n=11731) [0.05-0.15) 0.094->0.118 (n=1461) [0.15-0.30) 0.222->0.230 (n=1468) [0.30-0.50) 0.393->0.393 (n=1399) [0.50-0.75) 0.590->0.511 (n=666) [0.75-0.90) 0.812->0.547 (n=53)
+     mean z -0.056 E[z²] 1.16 PIT deciles 0.09 0.10 0.11 0.10 0.12 0.12 0.09 0.10 0.09 0.08
+  h0_12: [0.00-0.05) 0.001->0.001 (n=15070) [0.05-0.15) 0.084->0.014 (n=71) [0.90-1.01) 0.988->0.990 (n=1466)
+     mean z -0.102 E[z²] 0.46 PIT deciles 0.01 0.00 0.01 0.01 0.97 0.01 0.00 0.00 0.00 0.01
+
+== arm: widen P1 h12_24 by lambda>1 (production transport), walk-forward by prefix LogScore, 240 gate ==
+  n=1123 ΔLog +0.0089 [-0.0026,+0.0189] ΔCRPS +0.0012 [-0.0011,+0.0033] ΔBrier +0.0015 [-0.0000,+0.0031] -> no | λ chosen {1.1: 898, 1.2: 225}
+  fixed λ=1.1: n=1528 ΔLog -0.0094 [-0.0210,+0.0010] ΔCRPS -0.0013 [-0.0027,-0.0001]* ΔBrier -0.0003 [-0.0014,+0.0008] -> no
+  fixed λ=1.2: n=1528 ΔLog +0.0031 [-0.0133,+0.0182] ΔCRPS -0.0001 [-0.0028,+0.0024] ΔBrier +0.0017 [-0.0006,+0.0038] -> no
+  fixed λ=1.3: n=1528 ΔLog +0.0248 [+0.0051,+0.0434]* ΔCRPS +0.0042 [+0.0003,+0.0080]* ΔBrier +0.0062 [+0.0028,+0.0095]* -> no
