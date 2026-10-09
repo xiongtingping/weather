@@ -1779,6 +1779,48 @@ def benchmark_sealed_rung(conn: sqlite3.Connection, intent: Mapping[str, Any]) -
                      str(intent.get("bucket") or ""), str(intent.get("side") or SIDE_YES).upper())
 
 
+def execute_benchmark_sells(
+    target_conn: sqlite3.Connection,
+    *,
+    transport: Transport,
+    now_utc: str,
+    live_submit_authorized: bool,
+    settings: Mapping[str, Any] | None = None,
+    admission: Admission | None = None,
+    ws_manifest_path: Any = None,
+    benchmark_fetch: benchmark_cluster.Fetch | None = None,
+    position_reader: Callable[[str], Mapping[str, Any]] = default_position_reader,
+) -> dict[str, Any]:
+    """Charter 258's sell step alone, for a cycle in which the lane is paused
+    (user ruling 2026-10-09 「是对标账号的对手盘的yes全部卖掉」): pausing the lane
+    stops its plans and rungs, not the exit of a YES it holds on the cluster's
+    other side.  ``benchmark_counterparty`` still decides: only ``sell`` sells."""
+
+    ensure_lane_schema(target_conn)
+    cfg = {**PROPER_BET_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
+    view = BenchmarkView(target_conn, now_utc=now_utc, mode=benchmark_mode(cfg), fetch=benchmark_fetch)
+    gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
+    live = cfg.get("live_ws_book", True) is True
+    manifest: dict[str, Any] = {}
+
+    def manifest_root() -> Mapping[str, Any] | None:
+        if "root" not in manifest:
+            manifest["root"] = _ws_manifest_root(ws_manifest_path) if live else None
+        return manifest["root"]
+
+    sells = plan_sells(target_conn, now_utc=now_utc, cfg=cfg, gate=gate, manifest_root=manifest_root,
+                       view=view, position_reader=position_reader)
+    sell_receipts = send_sells(target_conn, sells["orders"], now_utc=now_utc, transport=transport,
+                               live_submit_authorized=live_submit_authorized)
+    return {
+        "schema": "proper_bet_benchmark_sell_receipt_v1",
+        "lane": LANE,
+        "state": "lane_paused_exits_only",
+        "benchmark": {"mode": view.mode, "reads": view.reads, "sealed_new": view.sealed_new,
+                      "sells": sells["sells"], "sell_orders": sell_receipts},
+    }
+
+
 def _append_intent(conn: sqlite3.Connection, where: tuple[str, str, str], leg: Mapping[str, Any],
                    intent_id: str, send: Mapping[str, Any]) -> None:
     row = conn.execute(
@@ -1941,6 +1983,7 @@ __all__ = [
     "SEAL_TABLE",
     "benchmark_mode",
     "benchmark_sealed_rung",
+    "execute_benchmark_sells",
     "market_ids",
     "plan_sells",
     "send_sells",

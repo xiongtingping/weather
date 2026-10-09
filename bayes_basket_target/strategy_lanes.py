@@ -306,13 +306,14 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # market's own modal bucket, the lower rung on a tie) or ``all``.
     "buckets": "market_mode",
     # Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的
-    # 对手盘」, 「买no线交给跟单线」, 「proper线以对标账号为筛子，不做对标账号的对手盘！」):
-    # the benchmark cluster (``BENCHMARK_CLUSTER_WALLETS``) is the lane's
-    # filter.  ``seal``: a bucket the cluster has traded the other side of
-    # gets no plan and no further rung, and a resting rung is cancelled;
-    # ``sell`` also sells a YES the lane holds there; ``off`` restores the
-    # lane before the ruling.  The NO is the copy-follow lane's to buy.
-    "benchmark_counterparty": "seal",
+    # 对手盘」, 「买no线交给跟单线」, 「proper线以对标账号为筛子，不做对标账号的对手盘！」,
+    # 「是对标账号的对手盘的yes全部卖掉」): the benchmark cluster
+    # (``BENCHMARK_CLUSTER_WALLETS``) is the lane's filter.  ``seal``: a bucket
+    # the cluster has traded the other side of gets no plan and no further
+    # rung, and a resting rung is cancelled; ``sell`` also sells a YES the
+    # lane holds there, the lane paused or not; ``off`` restores the lane
+    # before the ruling.  The NO is the copy-follow lane's to buy.
+    "benchmark_counterparty": "sell",
 }
 
 #: 远尾做空线 (charter 234, user rulings 2026-09-28 「上线：只按市场自己的价格结构

@@ -172,7 +172,7 @@ def test_the_cluster_is_one_list() -> None:
     assert strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS["source_users"] == list(
         strategy_lanes.BENCHMARK_CLUSTER_WALLETS)
     assert len(set(strategy_lanes.BENCHMARK_CLUSTER_WALLETS)) == 8
-    assert strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["benchmark_counterparty"] == "seal"
+    assert strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["benchmark_counterparty"] == "sell"
     with pytest.raises(ValueError, match="benchmark_counterparty_unknown"):
         lane.benchmark_mode({"benchmark_counterparty": "sometimes"})
 
@@ -338,17 +338,54 @@ def test_no_sell_while_the_lanes_own_rung_is_out(store, warm) -> None:
     assert _seal(store)["flip_state"] == "waiting:order_open"
 
 
-def test_the_default_is_the_filter_alone(store, warm) -> None:
+def test_seal_mode_is_the_filter_alone(store, warm) -> None:
     """「proper线以对标账号为筛子」: sealed and its rungs stopped, the YES held."""
 
     sent: list = []
     _held(store, sent, 10.0)
     t1 = "2026-09-18T12:10:00.000Z"
     _snapshot(store, "snap_f2", t1, _ladder(), 2)
-    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0))
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0),
+                   benchmark_counterparty="seal")
     assert receipt["benchmark"]["mode"] == "seal"
     assert receipt["benchmark"]["sell_orders"] == [] and _seal(store) is not None
     assert len(sent) == 1
+
+
+def test_the_default_sells_every_yes_on_the_clusters_other_side(store, warm) -> None:
+    """「是对标账号的对手盘的yes全部卖掉」."""
+
+    sent: list = []
+    _held(store, sent, 10.0)
+    t1 = "2026-09-18T12:10:00.000Z"
+    _snapshot(store, "snap_f2", t1, _ladder(), 2)
+    receipt = _run(store, sent, fetch=_tape(_fill("n27", "BUY", 0.52)), now=t1, wallet=_wallet(10.0))
+    assert receipt["benchmark"]["mode"] == "sell"
+    (sell,) = receipt["benchmark"]["sell_orders"]
+    assert sell["shares"] == 10.0 and sent[-1][1]["side"] == "SELL"
+
+
+def test_a_paused_lane_still_sells_and_opens_nothing(store, warm) -> None:
+    sent: list = []
+    _held(store, sent, 10.0)
+    t1 = "2026-09-18T12:10:00.000Z"
+    _snapshot(store, "snap_f2", t1, _ladder(), 2)
+    receipt = lane.execute_benchmark_sells(
+        store, transport=base._resting_transport(sent), now_utc=t1, live_submit_authorized=True,
+        settings={**V3, "enabled": False}, admission=ADMIT,
+        benchmark_fetch=_tape(_fill("n27", "BUY", 0.52)), position_reader=_wallet(10.0),
+    )
+    assert receipt["state"] == "lane_paused_exits_only"
+    (sell,) = receipt["benchmark"]["sell_orders"]
+    assert sell["kind"] == "sell_yes" and sell["shares"] == 10.0
+    assert [p["side"] for _path, p in sent] == ["BUY", "SELL"]        # the old rung, then the sale
+    # Nothing on a clear bucket, and nothing at all under ``seal``.
+    quiet = lane.execute_benchmark_sells(
+        store, transport=base._resting_transport(sent), now_utc=t1, live_submit_authorized=True,
+        settings={**V3, "benchmark_counterparty": "seal"}, admission=ADMIT,
+        benchmark_fetch=_tape(), position_reader=_wallet(10.0),
+    )
+    assert quiet["benchmark"]["sell_orders"] == [] and len(sent) == 2
 
 
 def test_no_sell_on_a_bucket_the_book_has_all_but_decided(store, warm) -> None:

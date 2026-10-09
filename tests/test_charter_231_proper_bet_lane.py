@@ -460,7 +460,7 @@ def test_without_a_no_token_no_leg_can_be_read_against_the_cluster(store) -> Non
     assert sent == []
     row = store.execute("SELECT refusal FROM proper_bet_lane_evaluation").fetchone()
     assert row[0] == "benchmark_unreadable"
-    assert receipt["benchmark"]["mode"] == "seal"
+    assert receipt["benchmark"]["mode"] == "sell"
 
 
 def test_the_yes_inventory_never_reads_a_no_fill(store) -> None:

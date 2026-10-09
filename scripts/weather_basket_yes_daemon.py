@@ -4278,7 +4278,25 @@ def run_target_production_cycle(
     if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
         LANE_PROPER_BET
     ):
-        proper_bet_receipt = {"state": "lane_paused", "lane": LANE_PROPER_BET}
+        # Charter 258: a paused lane opens nothing, but a YES it holds on
+        # the benchmark cluster's other side is still sold (user ruling
+        # 2026-10-09 「是对标账号的对手盘的yes全部卖掉」).
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _proper_sell_transport,
+            )
+            from bayes_basket_target.proper_bet_lane import execute_benchmark_sells
+            proper_bet_receipt = execute_benchmark_sells(
+                connection,
+                transport=_proper_sell_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            proper_bet_receipt = {
+                "state": "lane_paused", "lane": LANE_PROPER_BET,
+                "ok": False, "error": f"{type(exc).__name__}:{exc}",
+            }
     elif PRODUCTION_EXECUTION_MODE == "production_live":
         try:
             from bayes_basket_target.exit_orders import (
