@@ -1,0 +1,21 @@
+== A. follower flow: non-cluster BUYs of the same outcome around the cluster's first taker buy (70 tapes) ==
+  entries 106 | non-cluster same-side buying: 60 min before $90.2 vs 60 min after $120.1 per entry | followers' equal-dollar return (settled) -0.2% on n=2271 fills | cluster sells of that outcome later (price <0.9, i.e. before the end): 10 rows $148, mean exit − entry price +0.211, sold to non-cluster 10/10
+
+== B. who is on the other side of the cluster's buys (same tx, non-cluster row) ==
+== D. merges and complete sets (cluster activity) ==
+  0xf4d89f7e MERGE $    1014 (365 ops) | TRADE $       0 | REWARD $0
+  0x7076cb96 MERGE $    5222 (379 ops) | TRADE $       0 | REWARD $43
+  0x0e0e8174 MERGE $    5824 (209 ops) | TRADE $       0 | REWARD $52
+  0x30200b89 MERGE $    4048 (124 ops) | TRADE $       0 | REWARD $0
+  0x6fdd2bda MERGE $    9958 (146 ops) | TRADE $       0 | REWARD $0
+  0x7d640ebd MERGE $      82 (9 ops) | TRADE $       0 | REWARD $18
+  0x5bae7577 MERGE $    6870 (188 ops) | TRADE $       0 | REWARD $5
+  cluster MERGE $33017 vs TRADE $0 (3301727.8%)
+Traceback (most recent call last):
+  File "/private/tmp/claude-501/-Users-xiong-weather/8e8e0e0f-2636-45a0-a0af-fe34e79a733b/scratchpad/bench/angles_new.py", line 87, in <module>
+    print(f"  buckets traded {len(by)} | with BOTH yes and no bought {len(both)} ({len(both)/len(by):.2f}) | in those, pair cost per share (yes+no avg) {mean([(v['yes_cost']/v['Yes']+v['no_cost']/v['No']) for k,v in both]):.3f}, min-side shares {sum(min(v['Yes'],v['No']) for k,v in both):.0f} of total {sum(v['Yes']+v['No'] for k,v in by.values()):.0f}")
+                                                                                                                                                                                                                                                                                                                ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/claude-501/-Users-xiong-weather/8e8e0e0f-2636-45a0-a0af-fe34e79a733b/scratchpad/bench/angles_new.py", line 87, in <genexpr>
+    print(f"  buckets traded {len(by)} | with BOTH yes and no bought {len(both)} ({len(both)/len(by):.2f}) | in those, pair cost per share (yes+no avg) {mean([(v['yes_cost']/v['Yes']+v['no_cost']/v['No']) for k,v in both]):.3f}, min-side shares {sum(min(v['Yes'],v['No']) for k,v in both):.0f} of total {sum(v['Yes']+v['No'] for k,v in by.values()):.0f}")
+                                                                                                                                                                                                                                                                                                                                         ^^^
+ValueError: too many values to unpack (expected 2)

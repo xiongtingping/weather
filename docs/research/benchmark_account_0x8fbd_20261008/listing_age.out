@@ -1,0 +1,10 @@
+station-days with a first snapshot 664 93 s
+events with age 2540 | age median 21.3h, share within 1h of listing 0.13, within 10 min 0.10, before our first snapshot (age<0) 0.09
+age bin: n | hit | price | equal-dollar return | mean size
+  before our first snapshot  n= 239 hit 0.385 price 0.311 ret +23.9% size 40 U
+  0-10 min                   n=  24 hit 0.458 price 0.340 ret +34.7% size 22 U
+  10-60 min                  n=  68 hit 0.309 price 0.291 ret +6.2% size 30 U
+  1-6 h                      n= 264 hit 0.326 price 0.266 ret +22.3% size 35 U
+  6-24 h                     n= 783 hit 0.326 price 0.261 ret +25.0% size 47 U
+  >24 h                      n=1162 hit 0.336 price 0.287 ret +17.0% size 59 U
+  within first hour: return +14.6% 95% by station blocks [-13.9, +45.1] (n=92) | later: +20.3% [+11.4, +30.0] (n=2209)
