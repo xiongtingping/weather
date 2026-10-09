@@ -176,7 +176,7 @@
       "rung_horizon_seconds": 900.0,
       "send_book_fresh_seconds": 120.0,
       "live_ws_book": true,
-      "max_daily_cost_usdc": 40.0,
+      "max_daily_cost_usdc": null,
       "max_sends_per_pass": 8,
       "unsent_retry_seconds": 300.0,
       "rule_changed_at_utc": "2026-10-08T16:07:29Z",
