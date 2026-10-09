@@ -16259,46 +16259,48 @@ table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
 table.sd-pm{border-collapse:collapse;width:auto;max-width:100%}
-table.sd-pm td{vertical-align:middle;padding:7px 10px;border-top:1px solid var(--line);white-space:nowrap}
+table.sd-pm td{vertical-align:middle;padding:7px 8px;border-top:1px solid var(--line);white-space:nowrap}
 table.sd-pm td:first-child{padding-left:4px}
-table.sd-pm td.sd-pm-b{min-width:92px}
+table.sd-pm td.sd-pm-b{min-width:84px}
 table.sd-pm td.sd-pm-b b{font-size:16px}
-table.sd-pm .sd-pm-c{text-align:center;min-width:84px;padding-right:18px}
-table.sd-pm .sd-pm-pct{font-size:24px;font-weight:750;letter-spacing:-.5px}
+table.sd-pm .sd-pm-c{text-align:center;min-width:78px;padding-right:10px}
+table.sd-pm .sd-pm-pct{font-size:22px;font-weight:750;letter-spacing:-.5px}
 table.sd-pm .sd-pm-pct.faint{color:var(--muted)}
 table.sd-pm .sd-pm-chg{font-size:11px;font-weight:700;margin-left:4px}
-.sd-pm-btn{border:0;border-radius:8px;padding:9px 0;width:124px;font-size:14px;font-weight:650;cursor:pointer;text-align:center}
+.sd-pm-btn{border:0;border-radius:8px;padding:9px 0;width:112px;font-size:13.5px;font-weight:650;cursor:pointer;text-align:center}
 .sd-pm-btn.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
 .sd-pm-btn.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
 .sd-pm-btn.yes.on{background:#2f9e44;color:#fff}
 .sd-pm-btn.no.on{background:#e03131;color:#fff}
 .sd-pm-btn:disabled{opacity:.45;cursor:default}
-table.sd-pm td:has(> .sd-pm-btn){padding-left:4px;padding-right:4px}
+table.sd-pm td:has(> .sd-pm-btn){padding-left:3px;padding-right:3px}
 .sd-pm-chip{display:inline-block;margin-top:3px;margin-right:4px;padding:1px 7px;border-radius:6px;font-size:11.5px;font-weight:650}
 .sd-pm-chip.yes{background:color-mix(in srgb,#2f9e44 14%,transparent);color:#2f9e44}
 .sd-pm-chip.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
-table.sd-pm .sd-pm-amt{padding-left:12px;padding-right:4px}
-table.sd-pm .sd-pm-amt input{display:block;width:84px;margin:2px 0}
+table.sd-pm .sd-pm-amt{padding-left:10px;padding-right:4px}
+table.sd-pm .sd-pm-amt input{display:block;width:76px;margin:2px 0}
 table.sd-pm .sd-pm-amt input.y{border-left:3px solid #2f9e44}
 table.sd-pm .sd-pm-amt input.n{border-left:3px solid #e03131}
 table.sd-pm:not(.has-sel) .sel{display:none}
 table.sd-pm tr:not(.sd-pm-y) input.y,table.sd-pm tr:not(.sd-pm-n) input.n{display:none}
-table.sd-pm .sd-pm-note{font-size:11.5px;min-width:112px;padding-left:4px;line-height:1.9}
+table.sd-pm .sd-pm-note{font-size:11px;min-width:84px;max-width:120px;padding-left:4px;line-height:1.5;white-space:normal}
+table.sd-pm .sd-pm-note>div{margin:3px 0}
 .sd-pm-tag{display:inline-block;padding:0 5px;border-radius:4px;font-size:10.5px;font-weight:700}
 .sd-pm-tag.yes{background:color-mix(in srgb,#2f9e44 16%,transparent);color:#2f9e44}
 .sd-pm-tag.no{background:color-mix(in srgb,#e03131 12%,transparent);color:#e03131}
-table.sd-pm .sd-pm-pl{text-align:right;min-width:104px;padding-left:16px}
+table.sd-pm .sd-pm-pl{text-align:right;min-width:92px;padding-left:10px}
 table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb,var(--accent) 5%,transparent)}
-/* Ladder left, the basket's totals and the order button right (the venue's
-   own page keeps its order panel there); stacked when the card is narrow. */
-.sd-calc-wrap{display:grid;grid-template-columns:minmax(0,max-content) minmax(300px,1fr);gap:14px 22px;align-items:start}
-.sd-calc-left{min-width:0}
+/* Ladder left at its own width, the basket's totals and the order button
+   right in whatever is left (the venue's own page keeps its order panel
+   there); below 280 px of room the panel wraps under the ladder instead of
+   squeezing it (2026-10-09: at 1440 px the payoff column was clipped). */
+.sd-calc-wrap{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px 22px}
+.sd-calc-left{flex:0 1 auto;min-width:0;max-width:100%}
 /* The footnote wraps to the ladder's width instead of setting it. */
 .sd-calc-left>.sd-sub{width:0;min-width:100%}
-.sd-calc-wrap>.sd-summary{position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.sd-calc-wrap>.sd-summary{flex:1 1 300px;min-width:280px;position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
 .sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
-@media (max-width:1100px){.sd-calc-wrap{grid-template-columns:minmax(0,1fr)}.sd-calc-wrap>.sd-summary{position:static}}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
 .sd-metar{max-height:360px;overflow:auto}
 .sd-chips{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.sd-div{width:10px}
@@ -23312,6 +23314,8 @@ function sdCalc(day){
         <option value="direct"${st.goal === "direct" ? " selected" : ""}>方向敞口：只按填写金额买</option>
         <option value="breakeven"${st.goal === "breakeven" ? " selected" : ""}>保本：空着的桶自动补到地板</option></select></label>
       ${st.goal === "breakeven" ? `<label>命中地板 F <input autocomplete="off" class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>` : ""}
+      <button type="button" class="sd-btn" data-sd-book="${sdEsc(key)}"${SD.bookBusy ? " disabled" : ""} title="立即重读交易所盘口（不等概率更新）；输入与选中的腿保持不变">🔄 刷新盘口</button>
+      <span class="muted sd-sub sd-bookage">${sdBookAge(day, st)}</span>
       <button type="button" class="sd-btn" data-sd-hold="${sdEsc(key)}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button>
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
@@ -23319,6 +23323,27 @@ function sdCalc(day){
     <div class="sd-calc-wrap"><div class="sd-calc-left">${sdPmLadder(day, st, res, key)}</div>
     <div class="sd-summary">${summary}${orderOut}</div></div>
     <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （持仓已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再选要加的桶、金额空着（保本目标）→ 给出把整个篮子拉回地板所需的最少金额。</div>`;
+}
+// 刷新盘口 (user 2026-10-09「篮子计算器增加刷新盘口功能」): the panel redraws on
+// new probabilities, not on every move of the book; this re-reads the live
+// book on demand and reprices the calculator in place.
+function sdBookAge(day, st){
+  const at = (day.market || {}).observed_at_utc;
+  if(SD.bookBusy) return "盘口刷新中…";
+  if(st.bookNote) return `<span class="down">${sdEsc(st.bookNote)}</span>`;
+  return at ? `盘口 ${sdLocal(at, true)}（${sdAgo(at)}）` : "盘口不可读";
+}
+function sdRefreshBook(key){
+  if(SD.bookBusy) return;
+  SD.bookBusy = true;
+  const st = sdCalcState(key);
+  delete st.bookNote;
+  sdRefreshCalc(key, null);
+  fetch(`http://127.0.0.1:8788/api/station-day?station=${encodeURIComponent(SD.station)}&force=1`)
+    .then(r => r.json().then(j => { if(!r.ok || j.error) throw new Error(j.error || ("HTTP " + r.status)); return j; }))
+    .then(j => { if(j && j.available) SD.data = j; else throw new Error((j && j.reason) || "盘口不可读"); })
+    .catch(e => { st.bookNote = "刷新失败：" + (/Failed to fetch|NetworkError|Load failed/.test(String(e)) ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e)); })
+    .finally(() => { SD.bookBusy = false; sdRefreshCalc(key, null); });
 }
 // 读取账户持仓: shares from the gateway's point lookup (the exchange's own
 // balance), cost from the data API's average price.
@@ -23405,6 +23430,10 @@ function sdRefreshCalc(key, input){
   if(pm && npm) pm.className = npm.className;
   const fee = card.querySelector(`input[data-sd-fee="${key}"]`), nfee = holder.querySelector(`input[data-sd-fee="${key}"]`);
   if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
+  const oldAge = card.querySelector(".sd-bookage"), newAge = holder.querySelector(".sd-bookage");
+  if(oldAge && newAge) oldAge.innerHTML = newAge.innerHTML;
+  const oldBook = card.querySelector("[data-sd-book]"), newBook = holder.querySelector("[data-sd-book]");
+  if(oldBook && newBook) oldBook.disabled = newBook.disabled;
   const oldNote = card.querySelector(".sd-holdnote"), newNote = holder.querySelector(".sd-holdnote");
   if(oldNote && newNote) oldNote.innerHTML = newNote.innerHTML;
   const oldHold = card.querySelector("[data-sd-hold]"), newHold = holder.querySelector("[data-sd-hold]");
@@ -23508,6 +23537,8 @@ function sdOnClick(e){
       const field = card && card.querySelector(`.sd-pm input[data-b="${b}"][${ds.side === "YES" ? "data-sd-amt" : "data-sd-amt-no"}]`);
       if(field) field.focus();
     }
+  } else if(ds.sdBook){
+    sdRefreshBook(ds.sdBook);
   } else if(ds.sdHold){
     sdLoadHoldings(ds.sdHold);
   } else if(ds.sdOrder){
