@@ -1,0 +1,31 @@
+pairs 587
+
+== (1) next served model decision after their fill: does the mean move toward their side? ==
+  first P0/P0-M decision ≥3h later   n=578 (|Δmean|>0.05 bucket: 446) | model moves toward their side 0.507 vs away 0.493 | toward market-skew side 0.471 | toward truth side 0.534 | mean signed shift toward their side -0.004 buckets
+      ≥50 U legs: toward 0.540 vs away 0.460 (n=150)
+  first ≥9h later                    n=571 (|Δmean|>0.05 bucket: 493) | model moves toward their side 0.527 vs away 0.473 | toward market-skew side 0.456 | toward truth side 0.585 | mean signed shift toward their side +0.015 buckets
+      ≥50 U legs: toward 0.537 vs away 0.463 (n=162)
+  first ≥20h later                   n=392 (|Δmean|>0.05 bucket: 350) | model moves toward their side 0.557 vs away 0.443 | toward market-skew side 0.454 | toward truth side 0.640 | mean signed shift toward their side +0.042 buckets
+      ≥50 U legs: toward 0.562 vs away 0.438 (n=128)
+
+== (2) regional coherence of same-day direction calls (region = ICAO prefix) ==
+  region-days with ≥2 stations called: 71 | pairwise same-side rate of their calls 0.500 (n=532; independence with 52% warm → 0.501) | pairwise same-side rate of TRUTH (off-mode days) 0.524 (n=187)
+  permutation null for their calls: 0.499 [0.459, 0.541]
+
+== (3) per-station: direction-call accuracy (their side vs other side) and within-cell gap, n≥15 ==
+  SBGR S.America                calls n= 17 their side 0.41 vs other 0.00 (edge +0.41) | cell YES±1: picked hit 0.41 (n=17) vs not 0.16
+  EDDM N.Europe                 calls n= 16 their side 0.44 vs other 0.06 (edge +0.38) | cell YES±1: picked hit 0.41 (n=17) vs not 0.25
+  WSSS SE Asia                  calls n= 15 their side 0.40 vs other 0.07 (edge +0.33) | cell YES±1: picked hit 0.40 (n=15) vs not 0.16
+  ZBAA China                    calls n= 18 their side 0.33 vs other 0.00 (edge +0.33) | cell YES±1: picked hit 0.29 (n=17) vs not 0.16
+  LFPB S.Europe                 calls n= 16 their side 0.38 vs other 0.06 (edge +0.31) | cell YES±1: picked hit 0.31 (n=16) vs not 0.16
+  CYYZ Canada                   calls n= 19 their side 0.32 vs other 0.11 (edge +0.21) | cell YES±1: picked hit 0.28 (n=18) vs not 0.21
+  KORD US                       calls n= 20 their side 0.40 vs other 0.20 (edge +0.20) | cell YES±1: picked hit 0.43 (n=21) vs not 0.22
+  EFHK N.Europe                 calls n= 15 their side 0.20 vs other 0.07 (edge +0.13) | cell YES±1: picked hit 0.07 (n=14) vs not 0.10
+  KMIA US                       calls n= 18 their side 0.28 vs other 0.17 (edge +0.11) | cell YES±1: picked hit 0.29 (n=17) vs not 0.15
+  KBKF US                       calls n= 24 their side 0.21 vs other 0.12 (edge +0.08) | cell YES±1: picked hit 0.22 (n=23) vs not 0.25
+  MPMG Mexico/CAm               calls n= 19 their side 0.47 vs other 0.47 (edge +0.00) | cell YES±1: picked hit 0.19 (n=21) vs not 0.27
+  KSEA US                       calls n= 15 their side 0.33 vs other 0.40 (edge -0.07) | cell YES±1: picked hit 0.27 (n=15) vs not 0.29
+  KLGA US                       calls n= 20 their side 0.30 vs other 0.40 (edge -0.10) | cell YES±1: picked hit 0.10 (n=20) vs not 0.36
+  EPWA N.Europe                 calls n= 18 their side 0.22 vs other 0.33 (edge -0.11) | cell YES±1: picked hit 0.12 (n=17) vs not 0.16
+  ZGSZ China                    calls n= 16 their side 0.38 vs other 0.50 (edge -0.12) | cell YES±1: picked hit 0.19 (n=16) vs not 0.44
+  KDAL US                       calls n= 19 their side 0.00 vs other 0.58 (edge -0.58) | cell YES±1: picked hit 0.00 (n=19) vs not 0.40
