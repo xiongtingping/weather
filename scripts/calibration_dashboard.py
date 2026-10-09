@@ -23203,6 +23203,19 @@ function sdSolve(day, st){
     const cost = Number((st.heldCost || {})[r.bucket]);
     if(cost > 0 && !sdHeld(st, r.bucket) && !sdHeldNo(st, r.bucket)) res.warn.push(`${r.bucket}：「原持仓 已花」填了 ${cost} U 但原持仓 0 份——原持仓已花是旧仓位的成本，会整笔算进全篮花费；要追加买入请填在「追加金额 U」`);
   });
+  // Typed prices override the book in every mode; when one sits far from
+  // the book's own price for that side, the reader must see it before
+  // anything is sent.
+  const bookPx = (b, side) => { const bk = ((day.market || {}).book || []).find(r => r.bucket === b) || {};
+    return side === "YES" ? bk.best_ask : (bk.best_bid != null ? 1 - bk.best_bid : null); };
+  const typed = (b, side) => { const v = Number((side === "YES" ? st.px : (st.pxNo || {}))[b]); return v > 0 && v < 1 ? v : null; };
+  [["YES", res.legs], ["NO", res.noLegs]].forEach(([side, legs]) => Object.keys(legs).forEach(b => {
+    const v = typed(b, side), ref = bookPx(b, side);
+    if(v == null) return;
+    legs[b].typedPrice = v;
+    if(ref != null && st.mode !== "manual" && (Math.abs(v - ref) > 0.1 || v < ref / 3 || v > Math.min(0.999, ref * 3)))
+      res.warn.push(`⚠ ${b} ${side} 用的是明细表里手填的价格 ${v}（盘口 ${side === "YES" ? "卖一" : "NO 卖一"} ${ref.toFixed(3)}）——份数与盈亏都按手填价算；不是有意的话在阶梯上取消再点选这一腿，或清空明细表里这个价格`);
+  }));
   res.newTotal = Object.values(res.legs).reduce((a, l) => a + l.cost, 0)
     + Object.values(res.noLegs).reduce((a, l) => a + l.cost, 0);
   res.total = sunk + res.newTotal;
@@ -23255,7 +23268,7 @@ function sdPmLadder(day, st, res, key){
     const profit = res && res.ok ? res.payoff(b) : null;
     const legNote = (l, side) => {
       const tag = `<span class="sd-pm-tag ${side === "YES" ? "yes" : "no"}">${side === "YES" ? "Yes" : "No"}</span>`;
-      if(l && l.shares > 0) return `<div title="含费均价；命中时每份赔 1">${tag} ${sdN(l.shares, 2)} 份 · ${sdCents(l.avg)}</div>`;
+      if(l && l.shares > 0) return `<div title="含费均价；命中时每份赔 1">${tag} ${sdN(l.shares, 2)} 份 · ${sdCents(l.avg)}${l.typedPrice != null ? ` <span class="down" title="明细表里手填的价格，盖过盘口">手填 ${sdCents(l.typedPrice)}</span>` : ""}</div>`;
       return side === "YES" && onY && st.goal === "breakeven" ? `<div class="muted">${tag} 空＝自动补到地板</div>` : "";
     };
     return `<tr class="sd-pm-row${onY ? " sd-pm-y" : ""}${onN ? " sd-pm-n" : ""}" data-b="${sdEsc(b)}">
@@ -23263,7 +23276,7 @@ function sdPmLadder(day, st, res, key){
       <td class="sd-pm-c"><span class="sd-pm-pct${chance != null && chance < 0.01 ? " faint" : ""}">${chance == null ? "—" : chance < 0.01 ? "&lt;1%" : Math.round(chance * 100) + "%"}</span>${arrow}<div class="muted sd-sub" title="当日口径 ${sdEsc(day.head_stage)} 的模型概率">模型 ${p[b] == null ? "—" : p[b] < 0.01 ? "&lt;1%" : Math.round(p[b] * 100) + "%"}</div></td>
       <td><button type="button" class="sd-pm-btn yes${onY ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="YES"${yesAsk == null && !onY ? " disabled" : ""} title="YES 卖一；点选这一腿">Buy Yes ${sdCents(yesAsk)}</button></td>
       <td><button type="button" class="sd-pm-btn no${onN ? " on" : ""}" data-sd-pick="${sdEsc(key)}" data-b="${sdEsc(b)}" data-side="NO"${noAsk == null && !onN ? " disabled" : ""} title="NO 卖一＝1 − YES 买一；点选这一腿">Buy No ${sdCents(noAsk)}</button></td>
-      <td class="sd-pm-amt sel"><input class="sd-in y" type="number" step="0.5" min="0" placeholder="Yes 金额 U" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"><input class="sd-in n" type="number" step="0.5" min="0" placeholder="No 金额 U" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc((st.amtNo || {})[b] == null ? "" : st.amtNo[b])}"></td>
+      <td class="sd-pm-amt sel"><input autocomplete="off" class="sd-in y" type="number" step="0.5" min="0" placeholder="Yes 金额 U" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"><input autocomplete="off" class="sd-in n" type="number" step="0.5" min="0" placeholder="No 金额 U" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc((st.amtNo || {})[b] == null ? "" : st.amtNo[b])}"></td>
       <td class="sd-pm-note sel mono">${legNote(leg, "YES")}${legNote(noLeg, "NO")}</td>
       <td class="sd-pm-pl mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}">${profit == null ? "" : `<span class="muted">命中</span> <b>${sdSg(profit, 2)}</b> U`}</td></tr>`;
   }).join("");
@@ -23299,18 +23312,18 @@ function sdCalc(day){
     return `<tr class="${on ? "sd-on" : ""}"><td><label><input type="checkbox" data-sd-sel="${sdEsc(key)}" data-b="${sdEsc(b)}"${on ? " checked" : ""}> ${sdEsc(b)}</label></td>
       <td class="mono">${sdPc(p[b])}</td><td class="mono">${sdPc(q[b])}</td>
       <td class="mono">${sdN(book[b] && book[b].best_bid, 3)} / ${sdN(book[b] && book[b].best_ask, 3)}</td>
-      <td class="sd-add"><input class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
-      <td><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
+      <td class="sd-add"><input autocomplete="off" class="sd-in" type="number" step="0.5" min="0" placeholder="${on ? (st.goal === "breakeven" ? "自动" : "填金额") : "输入即选中"}" data-sd-amt="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amt[b] == null ? "" : st.amt[b])}"></td>
+      <td><input autocomplete="off" class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPx == null ? "—" : sdN(defPx, 3)}" data-sd-px="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.px[b] == null ? "" : st.px[b])}"></td>
       <td class="mono" title="${leg && leg.avg != null ? "含费均价 " + sdN(leg.avg, 4) : ""}">${leg ? sdN(leg.shares, 2) : "—"}${leg && !leg.fixed ? (leg.shares > 0 ? ' <span class="pill">算出</span>' : ' <span class="muted">已够</span>') : ""}</td>
       <td class="mono sd-noc">${sdN(noBid, 3)} / ${sdN(noAsk, 3)}</td>
-      <td class="sd-add sd-noc"><input class="sd-in" type="number" step="0.5" min="0" placeholder="NO 金额" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amtNo[b] == null ? "" : st.amtNo[b])}"></td>
-      <td class="sd-noc"><input class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPxNo == null ? "—" : sdN(defPxNo, 3)}" data-sd-px-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.pxNo[b] == null ? "" : st.pxNo[b])}"></td>
+      <td class="sd-add sd-noc"><input autocomplete="off" class="sd-in" type="number" step="0.5" min="0" placeholder="NO 金额" data-sd-amt-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.amtNo[b] == null ? "" : st.amtNo[b])}"></td>
+      <td class="sd-noc"><input autocomplete="off" class="sd-in" type="number" step="0.001" min="0" max="0.999" placeholder="${defPxNo == null ? "—" : sdN(defPxNo, 3)}" data-sd-px-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.pxNo[b] == null ? "" : st.pxNo[b])}"></td>
       <td class="mono sd-noc" title="${noLeg && noLeg.avg != null ? "含费均价 " + sdN(noLeg.avg, 4) : ""}">${noLeg ? sdN(noLeg.shares, 2) : "—"}</td>
       <td class="mono">${newCost > 0 ? `<b>${sdN(newCost, 2)}</b>` : "—"}</td>
       <td class="mono ${profit == null ? "" : profit >= 0 ? "up" : "down"}" title="${profit == null ? "" : `命中 ${b}：YES ${sdN(sdHeld(st, b) + (leg ? leg.shares : 0), 2)} 份 + 其它桶的 NO ${sdN(res.noPay(b), 2)} 份，各赔 1 − 全篮花费 ${sdN(res.total, 2)}`}"><b>${profit == null ? "—" : sdSg(profit, 2)}</b>${profit != null && res.total > 0 ? ` <span class="muted">${sdSg(100 * profit / res.total, 1)}%</span>` : ""}</td>
-      <td class="sd-old"><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}">${sdSellButtons(key,b,"YES",sdHeld(st,b))}</td>
-      <td class="sd-old"><input class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldNo[b] == null ? "" : st.heldNo[b])}">${sdSellButtons(key,b,"NO",sdHeldNo(st,b))}</td>
-      <td class="sd-old"><input class="sd-in" type="number" step="0.01" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td></tr>`;
+      <td class="sd-old"><input autocomplete="off" class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.held[b] == null ? "" : st.held[b])}">${sdSellButtons(key,b,"YES",sdHeld(st,b))}</td>
+      <td class="sd-old"><input autocomplete="off" class="sd-in" type="number" step="1" min="0" placeholder="0" data-sd-held-no="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldNo[b] == null ? "" : st.heldNo[b])}">${sdSellButtons(key,b,"NO",sdHeldNo(st,b))}</td>
+      <td class="sd-old"><input autocomplete="off" class="sd-in" type="number" step="0.01" placeholder="0" data-sd-hcost="${sdEsc(key)}" data-b="${sdEsc(b)}" value="${sdEsc(st.heldCost[b] == null ? "" : st.heldCost[b])}"></td></tr>`;
   }).join("");
   let summary = `<div class="muted">${st.goal === "breakeven"
     ? "勾选要买的桶；在其中一些桶填「金额」（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。"
@@ -23351,11 +23364,11 @@ function sdCalc(day){
         <option value="taker"${st.mode === "taker" ? " selected" : ""}>吃卖一（逐档深度）</option>
         <option value="maker"${st.mode === "maker" ? " selected" : ""}>挂买一+1（不保证成交）</option>
         <option value="manual"${st.mode === "manual" ? " selected" : ""}>手填价格</option></select></label>
-      <label>手续费率 <input class="sd-in" type="number" step="0.01" min="0" data-sd-fee="${sdEsc(key)}" value="${sdEsc(feeVal)}"></label>
+      <label>手续费率 <input autocomplete="off" class="sd-in" type="number" step="0.01" min="0" data-sd-fee="${sdEsc(key)}" value="${sdEsc(feeVal)}"></label>
       <label>目标 <select data-sd-goal="${sdEsc(key)}">
         <option value="direct"${st.goal === "direct" ? " selected" : ""}>方向敞口：只按填写金额买</option>
         <option value="breakeven"${st.goal === "breakeven" ? " selected" : ""}>保本：空着的桶自动补到地板</option></select></label>
-      ${st.goal === "breakeven" ? `<label>命中地板 F <input class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>` : ""}
+      ${st.goal === "breakeven" ? `<label>命中地板 F <input autocomplete="off" class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>` : ""}
       <button type="button" class="sd-btn" data-sd-hold="${sdEsc(key)}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button>
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
@@ -23610,8 +23623,11 @@ function sdOnClick(e){
     const key = ds.sdPick, st = sdCalcState(key), b = ds.b;
     st.selNo = st.selNo || {}; st.amtNo = st.amtNo || {}; st.pxNo = st.pxNo || {};
     let on;
-    if(ds.side === "YES"){ on = st.sel[b] = !st.sel[b]; if(!on){ delete st.amt[b]; delete st.px[b]; } }
-    else { on = st.selNo[b] = !st.selNo[b]; if(!on){ delete st.amtNo[b]; delete st.pxNo[b]; } }
+    // A pick from the ladder is priced on the book: a price typed earlier in
+    // the folded table must not ride along unseen (2026-10-09: a stale NO
+    // price of 0.002 turned 10 U into 4,762 shares at the 70¢ button).
+    if(ds.side === "YES"){ on = st.sel[b] = !st.sel[b]; if(!on){ delete st.amt[b]; } if(!on || st.mode !== "manual") delete st.px[b]; }
+    else { on = st.selNo[b] = !st.selNo[b]; if(!on){ delete st.amtNo[b]; } if(!on || st.mode !== "manual") delete st.pxNo[b]; }
     sdSave(); sdRefreshCalc(key, null);
     if(on){
       const card = document.querySelector(`.sd-day[data-day="${key}"]`);
