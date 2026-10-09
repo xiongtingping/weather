@@ -420,23 +420,18 @@ def test_a_rung_on_the_same_bucket_still_holds_the_take_back(store, monkeypatch,
 # What ships.
 
 
-def test_the_lane_ships_v3_yes_on_the_market_mode() -> None:
+def test_v3_stays_selectable_after_charter_265() -> None:
+    # Charter 265 (user ruling 2026-10-10 「改」) ships v4 -- the standard rule
+    # on the realisation layer's belief, see test_charter_265_run_change_belief;
+    # v3 (YES on the market mode, read off the weather vector) stays a rule the
+    # lane file can name, and this suite pins it through V3.
+    assert lane.RULE_VERSIONS[lane.RULE_MAKER_MODE_YES_V3] == "proper_bet_lane_v3"
+    assert lane.allowed_sides(V3) == YES_ONLY and lane.bucket_scope(V3) == "market_mode"
+    assert lane.belief_source(V3) == "weather_p"
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
-    assert defaults["rule"] == lane.RULE_MAKER_MODE_YES_V3 == lane.DEFAULT_RULE
-    assert defaults["sides"] == ["YES"] and defaults["buckets"] == "market_mode"
     assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
     assert defaults["min_hours_to_settlement"] == 36.0 and defaults["rung_horizon_seconds"] == 900.0
     assert defaults["freshness"] == "envelope_validity"
-    shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
-    assert shipped["source"] == "file"
-    proper = shipped["lanes"]["proper_bet"]
-    # The on/off switch is the operator's; the rule it runs when on is pinned.
-    assert proper["rule"] == lane.RULE_MAKER_MODE_YES_V3
-    assert proper["sides"] == ["YES"] and proper["buckets"] == "market_mode"
-    assert proper["entry"] == "latest_decision" and proper["opening_stages"] == ["P0"]
-    assert proper["rung_horizon_seconds"] == 900.0
-    assert proper["freshness"] == "envelope_validity" == lane.freshness_rule(proper)
-    assert lane.allowed_sides(proper) == YES_ONLY
 
 
 def test_the_charter_and_agents_carry_the_ruling() -> None:

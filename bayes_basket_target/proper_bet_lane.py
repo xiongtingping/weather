@@ -132,8 +132,14 @@ STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "proper_bet_lane_plan_v2"
 RULE_MAKER_V2 = "log_proper_maker_bid_plus_one_min_horizon_v2"
 RULE_MAKER_MODE_YES_V3 = "log_proper_maker_market_mode_yes_v3"
-RULE_VERSIONS = {RULE_MAKER_V2: "proper_bet_lane_v2", RULE_MAKER_MODE_YES_V3: "proper_bet_lane_v3"}
-DEFAULT_RULE = RULE_MAKER_MODE_YES_V3
+# Charter 265 (user ruling 2026-10-10 「改」): back to charter 231's standard
+# rule -- every bucket, both sides, x_k = lambda * |s_k| -- with s read off the
+# realisation layer's belief b (its three latest-run change columns), not the
+# weather vector's level.
+RULE_MAKER_BELIEF_B_V4 = "log_proper_maker_realisation_belief_v4"
+RULE_VERSIONS = {RULE_MAKER_V2: "proper_bet_lane_v2", RULE_MAKER_MODE_YES_V3: "proper_bet_lane_v3",
+                 RULE_MAKER_BELIEF_B_V4: "proper_bet_lane_v4"}
+DEFAULT_RULE = RULE_MAKER_BELIEF_B_V4
 EXECUTION_CANDIDATE = "MAKER"
 EVALUATION_TABLE = "proper_bet_lane_evaluation"
 INTENT_PREFIX = "proper"
@@ -401,6 +407,21 @@ def benchmark_mode(settings: Mapping[str, Any]) -> str:
     declared = str(settings.get("benchmark_counterparty", BENCHMARK_OFF) or "").strip().lower()
     if declared not in BENCHMARK_MODES:
         raise ValueError(f"proper_bet_benchmark_counterparty_unknown:{settings.get('benchmark_counterparty')!r}")
+    return declared
+
+
+BELIEF_WEATHER_P = "weather_p"
+BELIEF_REALISATION_B = "realisation_b"
+
+
+def belief_source(settings: Mapping[str, Any]) -> str:
+    """``weather_p`` (charters 231/249: the served P0 vector) or
+    ``realisation_b`` (charter 265: the realisation layer's belief with the
+    latest-run change); anything else raises."""
+
+    declared = str(settings.get("belief", BELIEF_WEATHER_P) or "").strip().lower()
+    if declared not in {BELIEF_WEATHER_P, BELIEF_REALISATION_B}:
+        raise ValueError(f"proper_bet_belief_unknown:{settings.get('belief')!r}")
     return declared
 
 
@@ -1193,6 +1214,7 @@ def plan_new_first_decisions(
     entry = entry_rule(cfg)
     latest = entry == ENTRY_LATEST_DECISION
     by_envelope = freshness_rule(cfg) == FRESH_BY_ENVELOPE_VALIDITY
+    belief = belief_source(cfg)
     now = _utc(now_utc)
     done = _evaluated(
         target_conn,
@@ -1261,10 +1283,26 @@ def plan_new_first_decisions(
         if book is None:
             waiting.append({**key, "reason": book_refusal})
             continue
+        vector = envelope["probabilities"]
+        belief_read: dict[str, Any] = {"belief": belief}
+        if belief == BELIEF_REALISATION_B:
+            # Charter 265: s is read off b -- the market, the P0 vector this
+            # decision read, and the latest-run change in hand now -- under a
+            # fit the realisation gate admitted; no such b, no plan this pass.
+            read = realisation_store.belief_vector(
+                target_conn, station_id=key["station_id"], event_date=key["event_date"], as_of_utc=now_utc,
+                p_raw=envelope["probabilities"], book_buckets=list(book["buckets"]),
+            )
+            if read.get("state") != "ok":
+                waiting.append({**key, "reason": f"belief:{read.get('state')}"})
+                continue
+            vector = read["b"]
+            belief_read.update(belief_fit_id=read.get("fit_id"), belief_change=read.get("change"),
+                               belief_change_rule=read.get("change_rule"))
         if latest:
             # Most station-days fire nothing on most passes: read the rule
             # off the book before paying for the registry.
-            glance = evaluate_ladder(envelope["probabilities"], list(book["buckets"]), cash_usdc=None,
+            glance = evaluate_ladder(vector, list(book["buckets"]), cash_usdc=None,
                                      min_shares={}, ticks={}, sides=sides, buckets=buckets)
             if glance.get("refusal"):
                 detail = f":{glance.get('market_reason')}" if glance["refusal"] == "market_incomplete" else ""
@@ -1293,7 +1331,7 @@ def plan_new_first_decisions(
         if cash.get("refusal"):
             refuse(cash["refusal"], envelope=envelope, book=book, hours=hours)
             continue
-        reading = evaluate_ladder(envelope["probabilities"], list(book["buckets"]),
+        reading = evaluate_ladder(vector, list(book["buckets"]),
                                   cash_usdc=cash.get("cash"), min_shares=min_shares, ticks=ticks,
                                   sides=sides, buckets=buckets, stake_usdc=stake)
         if reading.get("refusal") == "market_incomplete":
@@ -1367,6 +1405,7 @@ def plan_new_first_decisions(
             "divergence_kl": reading["divergence_kl"], "min_hours_to_settlement": min_hours,
             "sides": sorted(sides), "buckets": buckets, "entry": entry,
             "market_mode_bucket": reading.get("market_mode_bucket"), "legs": legs,
+            **belief_read,
         }
         plan["plan_id"] = f"{INTENT_PREFIX}_{content_sha256({'plan': plan})[:32]}"
         evaluations.append(_record(target_conn, key, fact, rule_version=rule_version, now_utc=now_utc,
@@ -1417,6 +1456,7 @@ def plan_rungs(
     sides = allowed_sides(cfg)
     horizon = rung_horizon_seconds(cfg)
     by_envelope = freshness_rule(cfg) == FRESH_BY_ENVELOPE_VALIDITY
+    belief_reads: dict[tuple[str, str], dict[str, Any]] = {}
     rungs: list[dict[str, Any]] = []
     passes: list[dict[str, Any]] = []
     rows = target_conn.execute(
@@ -1539,6 +1579,33 @@ def plan_rungs(
                     p_now = float(newest)
                     p_read = newest_read
                 s_now = math.log(p_now / q_now[str(leg["bucket"])])
+            elif plan.get("belief") == BELIEF_REALISATION_B:
+                # Charter 265: every re-post reads b again -- the newest P0
+                # envelope still valid, the standing book, the change in hand
+                # now -- and the rung waits while b does not carry it.
+                if (str(station), str(day)) not in belief_reads:
+                    served = served_p0_vector(target_conn, str(station), str(day),
+                                              valid_at=_utc(now_utc) if by_envelope else None)
+                    if served["state"] != "ok":
+                        belief_reads[(str(station), str(day))] = {"state": str(served["state"])}
+                    else:
+                        read = realisation_store.belief_vector(
+                            target_conn, station_id=str(station), event_date=str(day), as_of_utc=now_utc,
+                            p_raw=served["probabilities"], book_buckets=list(book["buckets"]),
+                        )
+                        market = market_reference_v1(book["buckets"])
+                        read["q"] = ({str(k): float(v) for k, v in market["vector"].items()}
+                                     if market.get("state") == "complete" else None)
+                        read["p_read"] = _envelope_read(served.get("envelope_id"), served.get("content_sha256"),
+                                                        served.get("decision_at_utc"))
+                        belief_reads[(str(station), str(day))] = read
+                read = belief_reads[(str(station), str(day))]
+                if read.get("state") != "ok" or not read.get("q") or str(leg["bucket"]) not in read["b"]:
+                    leg_state["status"] = f"waiting:belief:{read.get('state') if read.get('state') != 'ok' else 'market_incomplete'}"
+                    continue
+                p_now = float(read["b"][str(leg["bucket"])])
+                s_now = math.log(p_now / read["q"][str(leg["bucket"])])
+                p_read = read["p_read"]
             quote = leg_quote(str(leg["bucket"]), p_now, s_now, row, tick)
             if quote["reason"] or quote["side"] != leg["side"]:
                 leg_state["status"] = f"waiting:{quote['reason'] or 'side_changed'}"
@@ -1715,7 +1782,8 @@ def plan_sells(
                 continue
             order = _next_step(target_conn, target, side, seal, now_utc=now_utc, gate=gate,
                                manifest_root=manifest_root, books=books, book_fresh=book_fresh, live=live,
-                               position_reader=position_reader, cash=cash, out=out)
+                               position_reader=position_reader, cash=cash, out=out,
+                               reverse_no=str(cfg.get("rule")) != RULE_MAKER_BELIEF_B_V4)
             if order is not None:
                 out["orders"].append(order)
     return out
@@ -1726,16 +1794,22 @@ def _next_step(
     now_utc: str, gate: Admission, manifest_root: Callable[[], Mapping[str, Any] | None],
     books: dict[tuple[str, str], tuple[dict[str, Any] | None, str | None]], book_fresh: float, live: bool,
     position_reader: Callable[[str], Mapping[str, Any]], cash: dict[str, Any], out: dict[str, Any],
+    reverse_no: bool = True,
 ) -> dict[str, Any] | None:
     """The one order this pass sends on a sealed side of a held bucket, or None
-    (the reason is written on the seal row either way)."""
+    (the reason is written on the seal row either way).
+
+    ``reverse_no`` (charter 265): the YES mirror of a sealed NO belongs to the
+    NO the 01:54Z flip left, when the lane bought no NO; under the v4 rule the
+    lane buys NO on its own belief, and a sealed NO is sold like a sealed YES
+    and nothing is bought back."""
 
     station, day, bucket = str(target["station_id"]), str(target["event_date"]), str(target["bucket"])
     own = target[side]
     held = max(float(own["bought"]) - float(own["sold"]), 0.0)
     progress: dict[str, Any] = {"side": side, "bought": round(float(own["bought"]), 4),
                                 "sold": round(float(own["sold"]), 4), "held": round(held, 4)}
-    if side == SIDE_NO:
+    if side == SIDE_NO and reverse_no:
         progress["reversal_yes"] = round(float(target["reversal_yes"]), 4)
     order: dict[str, Any] | None = None
 
@@ -1752,7 +1826,8 @@ def _next_step(
     if target[SIDE_YES]["open"] or target[SIDE_NO]["open"]:
         settle("waiting:order_open")
         return None
-    reversal_need = (float(own["bought"]) + held - float(target["reversal_yes"])) if side == SIDE_NO else 0.0
+    reversal_need = ((float(own["bought"]) + held - float(target["reversal_yes"]))
+                     if side == SIDE_NO and reverse_no else 0.0)
     if held <= 0.0 and reversal_need < 1.0:
         settle("done" if float(own["bought"]) > 0.0 else "no_position")
         return None
@@ -1815,7 +1890,7 @@ def _next_step(
         order = {"kind": f"sell_{side.lower()}", "side": side, "token_id": token, "price": bid, "shares": shares}
         settle(f"selling_{side.lower()}")
         return {**base, **order, "progress": dict(progress)}
-    if side == SIDE_YES:
+    if side == SIDE_YES or not reverse_no:
         # What is left is under the venue's minimum: held to settlement.
         settle("done:below_venue_minimum" if now_held > 0.0 else "done")
         return None

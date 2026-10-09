@@ -8,7 +8,8 @@ The weather vector ``p`` answers "the weather alone".  This layer answers
 belief an edge is priced on.  It changes no probability the stages serve and
 enters no calibration chain; it is read by the betting lanes, in shadow.
 
-Form (``RULE``, research docs/research/realisation_layer_20261005, arm M5):
+Form (``RULE_V1``, research docs/research/realisation_layer_20261005, arm M5;
+``RULE`` adds charter 265's three change columns below):
 a multiclass log pool over the ladder, renormalised,
 
     log b_k  =  const + a * log q_k                      the market, sharpened
@@ -26,7 +27,7 @@ and ``D_shape = log(p/v2)``.  The centre part, ``log(v1/q)``, is left out:
 measured on the served record its weight was zero (10-04 acceptance).  The
 centres agree when the two means are within ``CENTRE_AGREE_RUNGS``.
 
-The seven numbers are fitted by the multiclass log loss of the floored
+The seven numbers (ten under charter 265) are fitted by the multiclass log loss of the floored
 ladder (``fit``), each station-day weighted one; the band around ``b`` is the
 10% and 90% points over ``theta`` refitted on bootstrapped event days.
 Measured walk-forward over 13 event days (5,465 P0 decisions more than 36 h
@@ -47,14 +48,29 @@ import numpy as np
 
 from .materialization import floor_probabilities
 
-RULE = "market_conditioned_realisation_v1"
-PARAM_NAMES = (
+RULE_V1 = "market_conditioned_realisation_v1"
+PARAM_NAMES_V1 = (
     "market_power",
     "width_agree", "shape_agree",
     "width_disagree", "shape_disagree",
     "modal_bucket", "beside_mode",
 )
-START = (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+START_V1 = (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+# Charter 265 (user rulings 2026-10-10 「加」「作为模型的分辨率和条件性」「改」):
+# three more columns, the latest-run change of AIFS ENS, AIFS single and GEFS
+# (``run_change.SYSTEMS`` order), each in rungs and weighed by its freshness,
+# laid on the ladder as a tilt about the market's mode -- the column for
+# bucket k is x * clip(k - mode, -CHANGE_REACH_RUNGS, CHANGE_REACH_RUNGS) -- so
+# a positive weight moves mass to the side the change points to and leaves
+# the mode where the market has it (research: the change moves mass between
+# the mode's two sides, not the mode itself).  The first seven columns are
+# v1's unchanged, so a v1 artifact still reads them (the locked 10-16
+# acceptance reads v1 with its frozen theta).
+RULE = "market_conditioned_realisation_v2_run_change"
+CHANGE_PARAM_NAMES = ("change_aifs_ens", "change_aifs_single", "change_gefs")
+PARAM_NAMES = PARAM_NAMES_V1 + CHANGE_PARAM_NAMES
+START = START_V1 + (0.0, 0.0, 0.0)
+CHANGE_REACH_RUNGS = 2.0
 CENTRE_AGREE_RUNGS = 0.25
 #: The variance of a uniform density inside one rung.
 WITHIN_RUNG_VARIANCE = 1.0 / 12.0
@@ -186,13 +202,18 @@ def matched_to(vector: np.ndarray, mean: float, spread: float) -> np.ndarray:
 # The features of one decision.
 
 
-def features(p_raw: Sequence[float], q_raw: Sequence[float]) -> dict[str, Any]:
+def features(
+    p_raw: Sequence[float], q_raw: Sequence[float], change: Sequence[float] | None = None,
+) -> dict[str, Any]:
     """The pool's terms for one ladder, buckets in ladder order.
 
     ``p_raw`` is the weather vector as the envelope holds it and ``q_raw`` the
     market's normalised mid ladder (``market_reference_v1``), both unfloored;
     each is floored here once.  The market's modal bucket is the largest raw
     mid, the lower rung on a tie -- the mode the betting lanes read.
+
+    ``change`` (charter 265) is ``run_change.change_columns``' three numbers;
+    without it the terms are v1's seven columns, with it v2's ten.
     """
 
     if len(p_raw) != len(q_raw) or len(q_raw) < 2:
@@ -215,6 +236,11 @@ def features(p_raw: Sequence[float], q_raw: Sequence[float]) -> dict[str, Any]:
         width * (1.0 - agree), shape * (1.0 - agree),
         (distance == 0).astype(float), (distance == 1).astype(float),
     ], axis=1)
+    if change is not None:
+        if len(change) != len(CHANGE_PARAM_NAMES):
+            raise ValueError("realisation_change_columns_invalid")
+        reach = np.clip(np.arange(len(q)) - mode, -CHANGE_REACH_RUNGS, CHANGE_REACH_RUNGS)
+        terms = np.concatenate([terms, np.stack([float(x) * reach for x in change], axis=1)], axis=1)
     return {
         "terms": terms, "p": p, "q": q, "mode": int(mode),
         "centre_gap_rungs": abs(mean_p - mean_q), "centres_agree": bool(agree),
@@ -248,7 +274,11 @@ def stack(decisions: Sequence[Mapping[str, Any]]) -> dict[str, np.ndarray]:
 
     width = max(len(d["terms"]) for d in decisions)
     count = len(decisions)
-    terms = np.zeros((count, width, len(PARAM_NAMES)))
+    # v1's seven columns or v2's ten (charter 265): the rows say which.
+    columns = {np.asarray(d["terms"]).shape[1] for d in decisions}
+    if len(columns) != 1:
+        raise ValueError("realisation_terms_width_mixed")
+    terms = np.zeros((count, width, columns.pop()))
     mask = np.zeros((count, width), dtype=bool)
     for row, decision in enumerate(decisions):
         k = len(decision["terms"])
@@ -280,14 +310,16 @@ def fit(
     arrays: Mapping[str, np.ndarray],
     *,
     weights: np.ndarray | None = None,
-    start: Sequence[float] = START,
+    start: Sequence[float] | None = None,
 ) -> np.ndarray:
-    """``theta`` minimising the weighted multiclass log loss."""
+    """``theta`` minimising the weighted multiclass log loss.  Without
+    ``start``, the market itself (``START`` cut to the rows' columns: v1's
+    seven or v2's ten)."""
 
     X, y = arrays["X"], arrays["y"]
     w = arrays["w"] if weights is None else weights
     rows = np.arange(len(y))
-    theta = np.asarray(start, dtype=float).copy()
+    theta = np.asarray(START[: X.shape[2]] if start is None else start, dtype=float).copy()
 
     def objective(t: np.ndarray) -> float:
         b = _pool(arrays, t)
@@ -340,7 +372,8 @@ def leg_edge(
 
 
 __all__ = [
-    "BAND_QUANTILES", "CENTRE_AGREE_RUNGS", "PARAM_NAMES", "RULE", "START",
+    "BAND_QUANTILES", "CENTRE_AGREE_RUNGS", "CHANGE_PARAM_NAMES", "CHANGE_REACH_RUNGS", "PARAM_NAMES",
+    "PARAM_NAMES_V1", "RULE", "RULE_V1", "START", "START_V1",
     "belief", "belief_band", "features", "fit", "floored", "leg_edge", "log_loss",
     "matched_to", "moments", "shifted_to", "stack",
 ]

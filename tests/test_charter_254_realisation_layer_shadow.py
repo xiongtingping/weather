@@ -37,7 +37,7 @@ def test_the_features_on_one_ladder() -> None:
     p = [0.01, 0.05, 0.30, 0.40, 0.20, 0.04, 0.0]
     q = [0.02, 0.10, 0.25, 0.33, 0.20, 0.07, 0.03]
     f = layer.features(p, q)
-    assert f["terms"].shape == (7, len(layer.PARAM_NAMES))
+    assert f["terms"].shape == (7, len(layer.PARAM_NAMES_V1))
     assert f["mode"] == 3
     # floored once, the served floor (charter 224)
     assert f["p"].min() > 0 and math.isclose(f["p"].sum(), 1.0)
@@ -47,7 +47,7 @@ def test_the_features_on_one_ladder() -> None:
     live = np.abs(f["terms"][:, 1:3]).sum() > 0, np.abs(f["terms"][:, 3:5]).sum() > 0
     assert live == ((True, False) if f["centres_agree"] else (False, True))
     # the market at theta = START is the floored market itself
-    assert np.allclose(layer.belief(f["terms"], layer.START), f["q"])
+    assert np.allclose(layer.belief(f["terms"], layer.START_V1), f["q"])
     # the lower rung wins a tie for the mode
     assert layer.features([0.1] * 4, [0.3, 0.3, 0.2, 0.2])["mode"] == 0
 
@@ -81,7 +81,7 @@ def test_the_fit_recovers_the_pool_it_was_drawn_from() -> None:
     theta = layer.fit(layer.stack(decisions))
     assert theta[0] == pytest.approx(truth[0], abs=0.15)
     assert theta[5] == pytest.approx(truth[5], abs=0.2) and theta[6] == pytest.approx(truth[6], abs=0.2)
-    assert layer.log_loss(layer.stack(decisions), theta) <= layer.log_loss(layer.stack(decisions), layer.START)
+    assert layer.log_loss(layer.stack(decisions), theta) <= layer.log_loss(layer.stack(decisions), layer.START_V1)
 
 
 def test_the_gate_reads_reliability_cells_and_the_line() -> None:

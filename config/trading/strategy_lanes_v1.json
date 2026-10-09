@@ -86,7 +86,7 @@
     "proper_bet": {
       "enabled": true,
       "enabled_at_utc": "2026-09-26T11:40:00Z",
-      "rule": "log_proper_maker_market_mode_yes_v3",
+      "rule": "log_proper_maker_realisation_belief_v4",
       "opening_stages": [
         "P0"
       ],
@@ -99,9 +99,10 @@
       "paused_at_utc": "2026-09-28T08:00:33Z",
       "pause_note": "User ruling 2026-09-28: only H1 market-only far-tail NO and tiebreak run as live strategies; stop Proper's production cycle.",
       "sides": [
-        "YES"
+        "YES",
+        "NO"
       ],
-      "buckets": "market_mode",
+      "buckets": "all",
       "entry": "latest_decision",
       "reopened_at_utc": "2026-10-03T07:40:32Z",
       "reopen_note": "User rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」 (charter 249): reopened on rule v3 -- YES on the market's modal bucket, resting at the best bid plus one tick, P0 and more than 36 hours out. Thrown after the resident restarted on commit 2b153128 (pid 13929, 2026-10-03T07:27:42Z).",
@@ -109,7 +110,10 @@
       "freshness": "envelope_validity",
       "freshness_note": "User ruling 2026-10-03 「按信封有效期」 (charter 249 (十)): a plan is made, and a rung re-posted, while the newest P0 decision's envelope is inside its own fresh_until_utc -- not only within first_decision_fresh_seconds of the decision. 'decision_age' restores the one-hour rule.",
       "stake_usdc": 5.0,
-      "stake_note": "Charter 252 (user ruling 2026-10-04 「还有Proper 下注线的单笔预算调整按钮」): the position is filled up to stake_usdc at the leg's planned price, never under the venue's five-share minimum, the stake cut to the free cash. A board dial (POST /api/lane-stake). At 1 USDC it is the minimum rule wherever the leg is priced at 0.20 or more; under 0.20 the plan carries the dollar charter 83 used to add at the send."
+      "stake_note": "Charter 252 (user ruling 2026-10-04 「还有Proper 下注线的单笔预算调整按钮」): the position is filled up to stake_usdc at the leg's planned price, never under the venue's five-share minimum, the stake cut to the free cash. A board dial (POST /api/lane-stake). At 1 USDC it is the minimum rule wherever the leg is priced at 0.20 or more; under 0.20 the plan carries the dollar charter 83 used to add at the send.",
+      "belief": "realisation_b",
+      "rule_changed_at_utc": "2026-10-10T03:00:00Z",
+      "charter_265_note": "Charter 265 (user rulings 2026-10-10 「加，并把这个研究结果写进宪章」「作为执行层的选桶、作为模型的分辨率和条件性」「并不一定是ECMWF家族，去研究一下其他家族」「改」): rule v4 -- charter 231's standard rule again, every bucket, both sides, x_k = lambda*|s_k|, resting at bid+1t of each leg's own side, with s = log(b_k/q_k) read off the realisation layer's belief b (charter 254) whose v2 fit carries the latest-run change of AIFS ENS, AIFS single and GEFS, freshness exp(-h/6); b is read at the plan and again at every re-post, and only under an admitted, current v2 fit (else the station-day waits belief:<state>). v3's YES-on-the-mode was a restriction fitted to a belief whose level had no resolution. Measured on the standard rule (docs/research/run_change_families_20261010 addendum 1): market-only b at the ask -6.2% [-11.3,-2.0]; b with the three changes +1.0% [-0.8,+2.7] at the ask, +2.2% [+1.0,+3.3] in the resting scenario (fills assumed). Under v4 a NO the lane bought is sold when the cluster seals it and nothing is bought back (charter 258's YES mirror stays the 01:54Z flip's)."
     },
     "tail_short": {
       "enabled": false,

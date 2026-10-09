@@ -50,6 +50,7 @@ from typing import Any
 import numpy as np
 
 from . import realisation_layer as layer
+from . import run_change
 from .basket_kernel.valuation_v1 import market_reference_v1
 from .contracts import content_sha256
 from .settlement_time import hours_to_settlement_if_known
@@ -74,6 +75,16 @@ POSITION_GROUPS = (("all", None), ("modal", 0), ("beside", 1), ("far", 2))
 #: The pool without the weather terms: the market sharpened plus the two
 #: position intercepts.  What the weather vector adds is read against it.
 MARKET_ONLY_COLUMNS = (0, 5, 6)
+#: Charter 265: the pool without the three change columns -- v1's seven.  What
+#: the latest-run change adds is read against it.
+WITHOUT_CHANGE_COLUMNS = tuple(range(len(layer.PARAM_NAMES_V1)))
+#: Charter 265: a change column is fitted only when this many station-days of
+#: the training rows carry it (the acceptance's own readiness bar); until then
+#: its weight is held at zero.  Measured 2026-10-10: the walk-forward day whose
+#: prefix held 27 rows of AIFS change fitted weights of 6.4 and 5.7 and cost
+#: that day 0.82 nat a decision; the same columns fitted on 1,300+ rows sit at
+#: 0.1-0.5.
+MIN_CHANGE_SUPPORT_STATION_DAYS = 150.0
 #: How old the artifact may be before the hourly job fits again.
 REFIT_MAX_AGE_HOURS = 20.0
 SHADOW_TABLE = "realisation_layer_shadow"
@@ -139,8 +150,9 @@ def code_sha256() -> str:
     """The fingerprint of the arithmetic an artifact was fitted by: a change
     to the layer or its fit refits on the next run whatever the artifact's age."""
 
-    source = inspect.getsource(layer) + "\n".join(
-        inspect.getsource(fn) for fn in (population, walk_forward, calibration_gate, refit, _ladder_inputs)
+    source = inspect.getsource(layer) + inspect.getsource(run_change) + "\n".join(
+        inspect.getsource(fn) for fn in (population, walk_forward, calibration_gate, refit, _ladder_inputs,
+                                         supported_columns, fit_supported)
     )
     return hashlib.sha256(source.encode()).hexdigest()
 
@@ -151,9 +163,12 @@ def code_sha256() -> str:
 
 def _ladder_inputs(
     p_raw: Mapping[str, float], book_buckets: Sequence[Mapping[str, Any]],
+    change_parts: Mapping[str, Mapping[str, float]] | None = None,
 ) -> dict[str, Any]:
     """The ladder in order, its weather and market vectors, and the layer's
-    terms -- or ``state`` naming why there are none."""
+    terms -- or ``state`` naming why there are none.  With ``change_parts``
+    (``run_change.latest_change``, charter 265) the terms are v2's ten
+    columns; without, v1's seven."""
 
     market = market_reference_v1(list(book_buckets))
     if market.get("state") != "complete":
@@ -164,11 +179,14 @@ def _ladder_inputs(
     p = {str(k): float(v) for k, v in (p_raw or {}).items()}
     if set(p) != set(q):
         return {"state": "ladder_mismatch"}
+    change = None
+    if change_parts is not None:
+        change = run_change.change_columns(change_parts, rung_c=run_change.ladder_rung_c(order))
     try:
-        f = layer.features([p[b] for b in order], [q[b] for b in order])
+        f = layer.features([p[b] for b in order], [q[b] for b in order], change)
     except ValueError as exc:
         return {"state": f"invalid:{exc}"}
-    return {"state": "ok", "order": order, "features": f}
+    return {"state": "ok", "order": order, "features": f, "change": change}
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +226,7 @@ def population(
         (floor_day, latest),
     ).fetchall()
     decisions: list[dict[str, Any]] = []
+    runs_cache: dict[tuple[str, str], dict[str, list[tuple]]] = {}
     for station, day, decided, envelope_id, snapshot_id, tz in facts:
         counts["facts_read"] += 1
         label = labels.get((str(station), str(day)))
@@ -238,7 +257,11 @@ def population(
         except (TypeError, ValueError):
             counts["invalid"] += 1
             continue
-        inputs = _ladder_inputs(p_raw, buckets)
+        key = (str(station), str(day))
+        if key not in runs_cache:
+            runs_cache[key] = run_change.family_runs(conn, station_id=key[0], event_date=key[1])
+        parts = run_change.latest_change(runs_cache[key], as_of=str(decided))
+        inputs = _ladder_inputs(p_raw, buckets, parts)
         state = str(inputs["state"])
         if state != "ok":
             key = state.split(":")[0]
@@ -272,6 +295,36 @@ def _columns(arrays: Mapping[str, np.ndarray], columns: Sequence[int]) -> dict[s
     return {**arrays, "X": arrays["X"][:, :, list(columns)]}
 
 
+def supported_columns(arrays: Mapping[str, np.ndarray]) -> list[int]:
+    """Every v1 column, and each change column carried by at least
+    ``MIN_CHANGE_SUPPORT_STATION_DAYS`` station-days of these rows."""
+
+    columns = list(WITHOUT_CHANGE_COLUMNS)
+    X, w = arrays["X"], arrays["w"]
+    for column in range(len(WITHOUT_CHANGE_COLUMNS), X.shape[2]):
+        carried = np.abs(X[:, :, column]).max(axis=1) > 1e-12
+        if float(w[carried].sum()) >= MIN_CHANGE_SUPPORT_STATION_DAYS:
+            columns.append(column)
+    return columns
+
+
+def fit_supported(
+    arrays: Mapping[str, np.ndarray],
+    *,
+    weights: np.ndarray | None = None,
+    columns: Sequence[int] | None = None,
+    start: Sequence[float] | None = None,
+) -> tuple[np.ndarray, list[int]]:
+    """``layer.fit`` on the supported columns; the rest held at zero."""
+
+    cols = list(columns) if columns is not None else supported_columns(arrays)
+    origin = layer.START if start is None else start
+    theta = layer.fit(_columns(arrays, cols), weights=weights, start=[origin[c] for c in cols])
+    full = np.zeros(arrays["X"].shape[2])
+    full[cols] = theta
+    return full, cols
+
+
 def walk_forward(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Each day with at least ``MIN_PREFIX_DAYS`` of earlier evidence,
     predicted by the layer and by the market-only pool fitted on the days at
@@ -280,6 +333,7 @@ def walk_forward(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     days = sorted({d["event_date"] for d in decisions})
     layer_b: dict[int, np.ndarray] = {}
     market_b: dict[int, np.ndarray] = {}
+    without_b: dict[int, np.ndarray] = {}
     scored: list[str] = []
     for day in days:
         cut = (date.fromisoformat(day) - timedelta(days=2)).isoformat()
@@ -290,15 +344,18 @@ def walk_forward(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             continue
         test = [i for i, d in enumerate(decisions) if d["event_date"] == day]
         arrays = layer.stack([decisions[i] for i in prefix])
-        theta = layer.fit(arrays)
+        theta, _cols = fit_supported(arrays)
         theta_m = layer.fit(_columns(arrays, MARKET_ONLY_COLUMNS),
                             start=[layer.START[c] for c in MARKET_ONLY_COLUMNS])
+        theta_w = layer.fit(_columns(arrays, WITHOUT_CHANGE_COLUMNS),
+                            start=[layer.START[c] for c in WITHOUT_CHANGE_COLUMNS])
         for i in test:
             terms = decisions[i]["terms"]
             layer_b[i] = layer.belief(terms, theta)
             market_b[i] = layer.belief(terms[:, list(MARKET_ONLY_COLUMNS)], theta_m)
+            without_b[i] = layer.belief(terms[:, list(WITHOUT_CHANGE_COLUMNS)], theta_w)
         scored.append(day)
-    return {"days": scored, "layer": layer_b, "market_only": market_b}
+    return {"days": scored, "layer": layer_b, "market_only": market_b, "without_change": without_b}
 
 
 def _binomial_allowance(count: int, rate: float, confidence: float) -> int:
@@ -337,6 +394,7 @@ def calibration_gate(decisions: Sequence[Mapping[str, Any]], forward: Mapping[st
     n_days = len(day_index)
     b_all, y_all, w_all, pos_all, day_all = [], [], [], [], []
     ls_layer, ls_market, ls_market_only, top_layer, top_market, weights, codes = [], [], [], [], [], [], []
+    ls_without: list[float] = []
     for i in scored:
         d = decisions[i]
         b = forward["layer"][i]
@@ -350,6 +408,8 @@ def calibration_gate(decisions: Sequence[Mapping[str, Any]], forward: Mapping[st
         ls_layer.append(-math.log(b[d["y"]]))
         ls_market.append(-math.log(d["q"][d["y"]]))
         ls_market_only.append(-math.log(forward["market_only"][i][d["y"]]))
+        if "without_change" in forward:
+            ls_without.append(-math.log(forward["without_change"][i][d["y"]]))
         top_layer.append(float(b.max()))
         top_market.append(float(np.max(d["q"])))
         weights.append(d["weight"])
@@ -416,6 +476,11 @@ def calibration_gate(decisions: Sequence[Mapping[str, Any]], forward: Mapping[st
             # Negative: the weather vector carries something the market's own
             # pool does not.
             "layer_minus_market_only_pool": interval(ls_layer - ls_market_only, weights, codes),
+            # Charter 265, negative: the latest-run change carries something
+            # the v1 pool (market and weather level) does not.
+            **({"layer_without_change": interval(np.asarray(ls_without), weights, codes),
+                "layer_minus_layer_without_change": interval(ls_layer - np.asarray(ls_without), weights, codes)}
+               if len(ls_without) == len(ls_layer) and ls_without else {}),
         },
         "top_bucket": {"layer": float(np.average(top_layer, weights=weights)),
                        "market": float(np.average(top_market, weights=weights))},
@@ -450,7 +515,7 @@ def refit(
         forward = walk_forward(decisions)
         out["gate"] = calibration_gate(decisions, forward)
         arrays = layer.stack(decisions)
-        theta = layer.fit(arrays)
+        theta, fitted = fit_supported(arrays)
         days = sorted({d["event_date"] for d in decisions})
         index = {day: k for k, day in enumerate(days)}
         codes = np.asarray([index[d["event_date"]] for d in decisions])
@@ -458,9 +523,11 @@ def refit(
         draws = []
         for _ in range(BAND_DRAWS):
             mult = np.bincount(rng.integers(0, len(days), size=len(days)), minlength=len(days)).astype(float)
-            draws.append([float(v) for v in layer.fit(arrays, weights=arrays["w"] * mult[codes], start=theta)])
+            draw, _cols = fit_supported(arrays, weights=arrays["w"] * mult[codes], columns=fitted, start=theta)
+            draws.append([float(v) for v in draw])
         out.update(theta=[float(v) for v in theta], draws=draws,
-                   theta_named=dict(zip(layer.PARAM_NAMES, (float(v) for v in theta))))
+                   theta_named=dict(zip(layer.PARAM_NAMES, (float(v) for v in theta))),
+                   fitted_columns=[layer.PARAM_NAMES[c] for c in fitted])
     out["shadow"] = shadow_realisation(conn, cutoff_utc=cutoff)
     out["fit_id"] = f"realisation_{content_sha256({k: out[k] for k in ('fitted_at_utc', 'theta', 'code_sha256')})[:24]}"
     return out
@@ -542,10 +609,19 @@ def envelope_probabilities(conn: sqlite3.Connection, envelope_id: str | None) ->
 
 
 def _belief_of(p_raw: Mapping[str, float] | None, book_buckets: Sequence[Mapping[str, Any]],
-               artifact: Mapping[str, Any] | None) -> dict[str, Any]:
+               artifact: Mapping[str, Any] | None,
+               change_parts: Mapping[str, Mapping[str, float]] | None = None) -> dict[str, Any]:
+    """``b`` on one ladder under ``artifact``: a v2 fit (charter 265, ten
+    weights) reads the change columns from ``change_parts``, a v1 fit its
+    seven columns alone."""
+
     if p_raw is None:
         return {"state": "no_p0"}
-    inputs = _ladder_inputs(p_raw, book_buckets)
+    theta = (artifact or {}).get("theta") or []
+    v2 = len(theta) == len(layer.PARAM_NAMES)
+    if v2 and change_parts is None:
+        return {"state": "no_change_read"}
+    inputs = _ladder_inputs(p_raw, book_buckets, change_parts if v2 else None)
     if inputs["state"] != "ok":
         return inputs
     f = inputs["features"]
@@ -589,7 +665,8 @@ def record_legs(
         if book is None:
             reading: dict[str, Any] = {"state": "no_book"}
         else:
-            reading = _belief_of(p_raw, list(book.get("buckets") or []), active)
+            parts = run_change.change_at(conn, station_id=station_id, event_date=event_date, as_of=judged_at_utc)
+            reading = _belief_of(p_raw, list(book.get("buckets") or []), active, parts)
     except Exception as exc:  # noqa: BLE001 -- the shadow never stops the lane
         active, reading = None, {"state": f"error:{type(exc).__name__}:{str(exc)[:120]}"}
     fit_age = None
@@ -655,6 +732,42 @@ def record_legs(
     except Exception as exc:  # noqa: BLE001 -- the shadow never stops the lane
         return {"state": f"write_failed:{type(exc).__name__}:{str(exc)[:120]}", "rows": written}
     return {"state": str(reading.get("state")), "rows": written}
+
+
+def belief_vector(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    as_of_utc: str,
+    p_raw: Mapping[str, float] | None,
+    book_buckets: Sequence[Mapping[str, Any]],
+    artifact: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Charter 265: the belief a lane bets on -- ``b`` under the active fit,
+    with the three systems' latest-run change read at ``as_of_utc`` -- or a
+    named refusal.  Only a v2 fit (the change columns) whose gate admitted it,
+    fitted by this code and young enough is read; anything else fails closed
+    rather than betting on a belief nobody certified."""
+
+    active = artifact if artifact is not None else load_active()
+    if not active or not active.get("theta"):
+        return {"state": "no_fit"}
+    if active.get("rule") != layer.RULE or len(active["theta"]) != len(layer.PARAM_NAMES):
+        return {"state": "fit_without_change_terms"}
+    gate_state = str((active.get("gate") or {}).get("state") or "")
+    if gate_state != STATE_ADMITTED:
+        return {"state": f"fit_{gate_state.lower() or 'ungated'}"}
+    if not artifact_is_current(active, now=_instant(as_of_utc)):
+        return {"state": "fit_not_current"}
+    parts = run_change.change_at(conn, station_id=station_id, event_date=event_date, as_of=as_of_utc)
+    reading = _belief_of(p_raw, book_buckets, active, parts)
+    if reading.get("state") != "ok":
+        return {"state": str(reading.get("state"))}
+    return {
+        "state": "ok", "b": {bucket: float(v) for bucket, v in zip(reading["order"], reading["b"])},
+        "fit_id": active.get("fit_id"), "change": parts, "change_rule": run_change.RULE,
+    }
 
 
 def taker_fee_per_share(price: float, rate: float) -> float:

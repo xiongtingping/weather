@@ -246,7 +246,19 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # v3 (charter 249, user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，
     # 市场众数桶，挂单」「限p0」): the same resting rung, on one leg a
     # station-day -- YES on the market's modal bucket.
-    "rule": "log_proper_maker_market_mode_yes_v3",
+    #
+    # v4 (charter 265, user ruling 2026-10-10 「改」): charter 231's standard
+    # rule again -- every bucket, both sides, x_k = lambda * |s_k| -- with s
+    # read off the realisation layer's belief b, which carries the latest-run
+    # change of AIFS ENS, AIFS single and GEFS (the one resolution the model
+    # was found to have beyond the market), instead of the weather vector's
+    # level.  v3's YES-on-the-mode was a restriction fitted to a belief with
+    # no resolution of its own.
+    "rule": "log_proper_maker_realisation_belief_v4",
+    # Charter 265: the vector s is read off -- ``realisation_b`` (the
+    # realisation layer's belief under an admitted v2 fit, read at the pass)
+    # or ``weather_p`` (the served P0 vector, charters 231/249).
+    "belief": "realisation_b",
     # 「预算提高到最低要求」 left lambda at the smallest the venue allows for
     # the whole position (the smallest leg at the five-share minimum), capped
     # by the free cash.  Charter 252 (user ruling 2026-10-04 「还有Proper 下注线
@@ -301,10 +313,16 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # from the market's mode it is the YES legs two or more rungs out that
     # lose under every execution tried, and the YES leg on the modal bucket
     # that does not (proper_conditional_edge_20261003, section 14).
-    "sides": ["YES"],
+    #
+    # Charter 265 (2026-10-10 「改」): both sides again.  Measured on b with
+    # the change (docs/research/run_change_families_20261010, addendum 1):
+    # the standard rule's cost is 94-96% NO legs on the far side of the change
+    # and 4-6% YES on the near neighbour.
+    "sides": ["YES", "NO"],
     # Charter 249: the buckets a leg may sit on -- ``market_mode`` (the
     # market's own modal bucket, the lower rung on a tie) or ``all``.
-    "buckets": "market_mode",
+    # Charter 265: ``all``.
+    "buckets": "all",
     # Charter 258 (user rulings 2026-10-09 「proper线增加一条规则：不做对标账号的
     # 对手盘」, 「买no线交给跟单线」, 「proper线以对标账号为筛子，不做对标账号的对手盘！」,
     # 「是对标账号的对手盘的yes全部卖掉」): the benchmark cluster
@@ -312,7 +330,10 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # the cluster has traded the other side of gets no plan and no further
     # rung, and a resting rung is cancelled; ``sell`` also sells a YES the
     # lane holds there, the lane paused or not; ``off`` restores the lane
-    # before the ruling.  The NO is the copy-follow lane's to buy.
+    # before the ruling.  The NO is the copy-follow lane's to buy.  Charter
+    # 265: under v4 the lane buys NO on its own belief; a sealed NO is sold
+    # like a sealed YES and nothing is bought back (the YES mirror stays the
+    # 01:54Z flip's).
     "benchmark_counterparty": "sell",
 }
 
