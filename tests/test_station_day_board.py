@@ -69,3 +69,37 @@ def test_clear_sky_radiation_follows_the_sun() -> None:
     noon = B._clear_sky_ghi(30.576, 103.95, datetime(2026, 10, 7, 5, 0, tzinfo=timezone.utc))   # 13:00 local
     night = B._clear_sky_ghi(30.576, 103.95, datetime(2026, 10, 7, 16, 0, tzinfo=timezone.utc))
     assert 700 < noon < 900 and night == 0.0
+
+
+def test_goes_hours_zero_the_night_skip_the_unpublished_and_place_each_reading(monkeypatch) -> None:
+    """User 2026-10-09「全部都用卫星实测日照」: the Americas read NOAA GOES DSR.
+    Hour h is the scan nearest h-1:30 local; night hours are zero without a
+    read; a scan not public yet is not asked for; readings land on their hour."""
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from bayes_basket_target import goes_surface_radiation as goes
+    from bayes_basket_target import station_day_board as board
+
+    asked: list[datetime] = []
+
+    def fake_measured(station, lat, lon, instants):
+        asked.extend(instants)
+        # 12:00 local (EDT) is the scan nearest 11:30 local = 15:30Z.
+        return {datetime(2026, 10, 8, 15, 30, tzinfo=timezone.utc).isoformat(): 640.0}
+
+    monkeypatch.setattr(goes, "measured", fake_measured)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 8, 17, 0, tzinfo=timezone.utc)  # 13:00 EDT
+
+    monkeypatch.setattr(board, "datetime", Clock)
+    out = board._goes_hours("KLGA", 40.77945, -73.88027, "2026-10-08", ZoneInfo("America/New_York"))
+    values = out["values"]
+    assert values[2] == 0.0 and values[22] is None  # night zero; the evening not reached
+    assert values[12] == 640.0 and values[11] is None  # placed on its hour; one still pending
+    assert all(instant <= datetime(2026, 10, 8, 16, 35, tzinfo=timezone.utc) for instant in asked)
+    assert out["pending_hours"] >= 1
