@@ -1,0 +1,62 @@
+first-taker events with market+our p: 1075 | with our mode: 880
+YES 588 NO 487
+
+== A. YES first-taker buys: three pickers on the same events ==
+  ALL YES                        n= 472 | hit: their 0.343 mkt-mode 0.413 our-mode 0.360 | said on their bucket: ours 0.252 mkt 0.280 | said on own mode: ours 0.428 mkt 0.438 | our mode=mkt mode 0.62, their=mkt 0.22, their=ours 0.23
+  stage P0                       n=  91 | hit: their 0.385 mkt-mode 0.363 our-mode 0.264 | said on their bucket: ours 0.228 mkt 0.220 | said on own mode: ours 0.410 mkt 0.390 | our mode=mkt mode 0.62, their=mkt 0.16, their=ours 0.20
+  stage P0-M                     n= 245 | hit: their 0.339 mkt-mode 0.429 our-mode 0.363 | said on their bucket: ours 0.256 mkt 0.292 | said on own mode: ours 0.422 mkt 0.439 | our mode=mkt mode 0.63, their=mkt 0.23, their=ours 0.23
+  stage P1                       n= 136 | hit: their 0.324 mkt-mode 0.419 our-mode 0.419 | said on their bucket: ours 0.260 mkt 0.300 | said on own mode: ours 0.452 mkt 0.470 | our mode=mkt mode 0.60, their=mkt 0.25, their=ours 0.25
+  unit C                         n= 335 | hit: their 0.334 mkt-mode 0.430 our-mode 0.391 | said on their bucket: ours 0.255 mkt 0.279 | said on own mode: ours 0.433 mkt 0.443 | our mode=mkt mode 0.65, their=mkt 0.21, their=ours 0.24
+  unit F                         n= 137 | hit: their 0.365 mkt-mode 0.372 our-mode 0.285 | said on their bucket: ours 0.244 mkt 0.285 | said on own mode: ours 0.417 mkt 0.427 | our mode=mkt mode 0.53, their=mkt 0.25, their=ours 0.21
+  their high-info stations       n=  52 | hit: their 0.385 mkt-mode 0.423 our-mode 0.442 | said on their bucket: ours 0.266 mkt 0.263 | said on own mode: ours 0.438 mkt 0.431 | our mode=mkt mode 0.69, their=mkt 0.19, their=ours 0.17
+  other stations                 n= 420 | hit: their 0.338 mkt-mode 0.412 our-mode 0.350 | said on their bucket: ours 0.250 mkt 0.283 | said on own mode: ours 0.427 mkt 0.439 | our mode=mkt mode 0.61, their=mkt 0.23, their=ours 0.24
+  lead 0-12h                     n= 140 | hit: their 0.300 mkt-mode 0.464 our-mode 0.364 | said on their bucket: ours 0.260 mkt 0.309 | said on own mode: ours 0.450 mkt 0.470 | our mode=mkt mode 0.55, their=mkt 0.27, their=ours 0.23
+  lead 12-24h                    n= 140 | hit: their 0.379 mkt-mode 0.386 our-mode 0.400 | said on their bucket: ours 0.267 mkt 0.303 | said on own mode: ours 0.430 mkt 0.448 | our mode=mkt mode 0.62, their=mkt 0.28, their=ours 0.26
+  lead 24-48h                    n= 153 | hit: their 0.320 mkt-mode 0.418 our-mode 0.346 | said on their bucket: ours 0.243 mkt 0.255 | said on own mode: ours 0.410 mkt 0.404 | our mode=mkt mode 0.65, their=mkt 0.17, their=ours 0.24
+  lead 48-200h                   n=  21 | hit: their 0.524 mkt-mode 0.333 our-mode 0.190 | said on their bucket: ours 0.209 mkt 0.154 | said on own mode: ours 0.414 mkt 0.405 | our mode=mkt mode 0.67, their=mkt 0.05, their=ours 0.10
+  size small                     n= 132 | hit: their 0.326 mkt-mode 0.424 our-mode 0.326 | said on their bucket: ours 0.218 mkt 0.250 | said on own mode: ours 0.419 mkt 0.426 | our mode=mkt mode 0.61, their=mkt 0.17, their=ours 0.14
+  size mid                       n= 172 | hit: their 0.337 mkt-mode 0.366 our-mode 0.337 | said on their bucket: ours 0.246 mkt 0.272 | said on own mode: ours 0.433 mkt 0.441 | our mode=mkt mode 0.61, their=mkt 0.17, their=ours 0.23
+  size large                     n= 168 | hit: their 0.363 mkt-mode 0.452 our-mode 0.411 | said on their bucket: ours 0.284 mkt 0.313 | said on own mode: ours 0.431 mkt 0.446 | our mode=mkt mode 0.63, their=mkt 0.32, their=ours 0.30
+
+== B. Their YES bucket relative to OUR mode (ordinal, + = warmer) ==
+  rel   n   landed  our p   mkt q   their-bucket share | truth rel to our mode: mean, P(warm) P(at) P(cold)
+  -2     23  0.174  0.087  0.188  0.04 | -1.30, 0.04 0.13 0.83
+  -1    116  0.388  0.233  0.268  0.20 | -0.38, 0.18 0.35 0.47
+  +0    108  0.407  0.432  0.364  0.18 | +0.00, 0.31 0.41 0.29
+  +1    171  0.339  0.234  0.284  0.29 | +0.38, 0.43 0.44 0.13
+  +2     36  0.194  0.068  0.169  0.06 | +0.89, 0.69 0.14 0.17
+  +3     12  0.250  0.045  0.130  0.02 | +2.17, 0.83 0.17 0.00
+
+== C. Their YES bucket relative to MARKET mode ==
+  -2   n=  23  landed 0.174  our p 0.144  mkt q 0.123  LL ours 0.410 mkt 0.438
+  -1   n= 174  landed 0.316  our p 0.251  mkt q 0.239  LL ours 0.671 mkt 0.630
+  +0   n= 127  landed 0.457  our p 0.351  mkt q 0.453  LL ours 0.754 mkt 0.705
+  +1   n= 231  landed 0.307  our p 0.220  mkt q 0.239  LL ours 0.656 mkt 0.686
+  +2   n=  28  landed 0.214  our p 0.116  mkt q 0.133  LL ours 0.550 mkt 0.459
+
+== D. Reliability of OUR p on their YES buckets vs on OUR own mode ==
+  our p bin | on THEIR bucket: n said landed (mkt said) | on OUR mode: n said landed (mkt said)
+  0.00-0.05 |   41 0.027 0.146 (0.139) |    -
+  0.05-0.10 |   56 0.076 0.196 (0.179) |    -
+  0.10-0.20 |  145 0.153 0.297 (0.222) |    2 0.183 0.500 (0.312)
+  0.20-0.30 |  139 0.246 0.345 (0.281) |   44 0.266 0.205 (0.328)
+  0.30-0.40 |  121 0.349 0.372 (0.328) |  129 0.358 0.233 (0.392)
+  0.40-0.50 |   57 0.451 0.561 (0.373) |  192 0.450 0.458 (0.459)
+  0.50-0.70 |   28 0.547 0.357 (0.453) |  103 0.539 0.398 (0.502)
+  0.70-1.01 |    1 0.850 0.000 (0.587) |    2 0.914 0.500 (0.773)
+
+== E. When they and we disagree on the mode (their bucket != our mode): who is right ==
+  n=364 their bucket landed 0.324 | our mode landed 0.346 | neither 0.330 | truth on their side of our mode 0.514
+   P0: n=73 their 0.397 ours 0.247 truth-their-side 0.630
+   P0-M: n=189 their 0.312 ours 0.344 truth-their-side 0.519
+   P1: n=102 their 0.294 ours 0.422 truth-their-side 0.422
+   hi-info: n=43 their 0.326 ours 0.395 truth-their-side 0.558
+   others: n=321 their 0.324 ours 0.340 truth-their-side 0.508
+
+== F. NO first-taker buys (they bet the bucket does NOT land) ==
+  n=408 bucket landed 0.297 | our p on it 0.333 mkt q 0.359 | share where bucket==mkt mode 0.46, ==our mode 0.46
+   rel to our mode -2: n=19 landed 0.000 our p 0.096 mkt q 0.176
+   rel to our mode -1: n=104 landed 0.202 our p 0.264 mkt q 0.304
+   rel to our mode +0: n=186 landed 0.376 our p 0.453 mkt q 0.426
+   rel to our mode +1: n=82 landed 0.354 our p 0.256 mkt q 0.348
+   rel to our mode +2: n=17 landed 0.059 our p 0.077 mkt q 0.213
