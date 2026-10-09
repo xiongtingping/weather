@@ -39,7 +39,7 @@ def _packet(station, day):
     }
 
 
-def _wire(monkeypatch, worker, *, rows, packets, forward=True):
+def _wire(monkeypatch, worker, *, rows, packets, forward=True, state="SUBMITTED"):
     registry = {
         "filters": {"include_not_started_for_p0": forward},
         "rows": rows,
@@ -52,7 +52,7 @@ def _wire(monkeypatch, worker, *, rows, packets, forward=True):
 
     def fake_capture(**kwargs):
         calls.append(kwargs)
-        return {"state": "CAPTURED"}
+        return {"state": state}
 
     monkeypatch.setattr(worker, "_capture_official_native_packet", fake_capture)
     return calls
@@ -88,10 +88,34 @@ def test_a_listed_day_without_a_packet_is_captured_once_per_date(
         "event_date": DAY,
         "station_id": "EDDM",
         "stations_without_packet": 2,
-        "state": "CAPTURED",
+        "stations_recorded_attempted": 2,
+        "state": "SUBMITTED",
     }]
     assert receipt["places_orders"] is False
     assert receipt["calls_order_gateway"] is False
+    # One pass per listing batch: the submitted pass covers every station of
+    # the date, so both are recorded in charter 195 (三)'s own record and the
+    # next refresh does not run the same pass again for EFHK.
+    assert worker._official_native_listing_attempts == {(DAY, "EDDM"), (DAY, "EFHK")}
+    assert worker.run_listing_triggered_captures(as_of_utc=AS_OF)["outcomes"] == []
+    assert len(calls) == 1
+
+
+def test_a_pass_that_did_not_start_records_nobody(monkeypatch, tmp_path) -> None:
+    worker = _worker(tmp_path)
+    calls = _wire(
+        monkeypatch,
+        worker,
+        rows=[_row("EDDM", DAY, "Europe/Berlin"), _row("EFHK", DAY, "Europe/Helsinki")],
+        packets=[],
+        state="DEFERRED_CAPTURE_SLOTS_BUSY",
+    )
+    receipt = worker.run_listing_triggered_captures(as_of_utc=AS_OF)
+    assert receipt["outcomes"][0]["stations_recorded_attempted"] == 0
+    assert worker._official_native_listing_attempts == set()
+    # The next refresh asks again.
+    worker.run_listing_triggered_captures(as_of_utc=AS_OF)
+    assert len(calls) == 2
 
 
 def test_a_station_the_pass_already_attempted_yields_to_the_next(

@@ -6420,10 +6420,16 @@ class TargetProductionWorker:
         through the rotation's own entry with ``listing_station`` set, so
         the once-per-(day, station) record, the throttle bypass and the
         attempt log are charter 195 (三)'s, not a second copy.  One
-        submission per event date per call: a pass is a model run, not a
-        station, and covers every station of the date the registry held
-        when it started; a station that pass still left without a packet
-        is the next call's candidate.
+        submission per event date per call, and one per listing batch: a
+        pass is a model run, not a station, and covers every station of the
+        date the registry held when it started, so every station it was
+        asked for is recorded as attempted the moment it is submitted.  A
+        station the pass still leaves without a packet -- ECMWF held on a
+        banked run that does not seat it (charter 193 amendment C) -- waits
+        for the next run arrival (195 (二)) or the rotation, exactly as
+        before this trigger; re-running the same pass per station re-held
+        the same run (six 70s passes for the 2026-10-11 US batch, 2026-10-09
+        07:42Z-07:56Z, none of them seating anyone).
         """
 
         boundary = {
@@ -6478,9 +6484,12 @@ class TargetProductionWorker:
                     "reason": f"{type(exc).__name__}:{exc}"[:200],
                     **boundary,
                 }
-        attempted: set[tuple[str, str]] = getattr(
+        attempted: set[tuple[str, str]] | None = getattr(
             self, "_official_native_listing_attempts", None
-        ) or set()
+        )
+        if attempted is None:
+            attempted = set()
+            self._official_native_listing_attempts = attempted
         allow = {
             str(item).strip().upper()
             for item in (getattr(self, "station_allowlist", None) or ())
@@ -6529,11 +6538,17 @@ class TargetProductionWorker:
                 listing_station=stations[0],
                 lead_days=lead_days,
             )
+            state = str(result.get("state") or "")
+            if state == "SUBMITTED":
+                attempted.update((day, station) for station in stations)
             outcomes.append({
                 "event_date": day,
                 "station_id": stations[0],
                 "stations_without_packet": len(stations),
-                "state": str(result.get("state") or ""),
+                "stations_recorded_attempted": (
+                    len(stations) if state == "SUBMITTED" else 0
+                ),
+                "state": state,
             })
         return {"state": "RAN", "outcomes": outcomes, **boundary}
 
