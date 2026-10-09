@@ -16240,15 +16240,15 @@ table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted
 .sd-tag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;line-height:15px;
   font-weight:700;color:#fff;vertical-align:1px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 .sd-tag-o{background:transparent;border:1px solid;line-height:13px}
-table.sd-sky td.sd-hot{background:rgba(248,81,73,.16);font-weight:700}
-table.sd-sky td.sd-cold{background:rgba(210,153,34,.18);font-weight:700}
+table.sd-sky td.sd-hot{background:rgba(248,81,73,.16)}
+table.sd-sky td.sd-cold{background:rgba(210,153,34,.18)}
 table.sd-sky tr.sd-future td{opacity:.55}
+table.sd-sky td{white-space:nowrap}
+table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
+table.sd-sky td.sd-sky-tags{white-space:normal}
+table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-skybox{margin:6px 0}
-.sd-sky-diffs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
-.sd-sky-diff{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:6px;padding:8px 10px;background:color-mix(in srgb,var(--amber) 7%,var(--card));font-size:13px}
-.sd-sky-diff b{font-size:17px;font-variant-numeric:tabular-nums}
-table.sd-sky tr.sd-diffrow td:first-child{border-left:3px solid var(--amber);color:var(--amber)}
-table.sd-sky tr.sd-diffrow td:last-child{background:color-mix(in srgb,var(--amber) 10%,transparent);font-weight:700}
+.sd-skybox>summary .sd-sub b{font-size:13px}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
 .sd-day{margin:12px 0;padding:10px 12px;min-width:0}.sd-day h3{margin:2px 0 8px;font-size:15px}
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
@@ -22994,44 +22994,48 @@ function sdNewestFive(rows, head, cls, label){
 // only draws it: each past hour's report beside the forecast hour, the
 // differences tagged and the cells that differ tinted.
 function sdSky(day){
+  // User 2026-10-09「内容排版太复杂、有重复内容」: one summary line, one table
+  // whose cells read 实况 · 预报 with the off-forecast cells tinted, the
+  // differences written once (the table's last column), and a two-line note.
   const H = day.hourly_sky;
   if(!H) return "";
-  if(!H.available) return `<div class="sd-ev muted">逐小时云与辐射对照：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
+  if(!H.available) return `<div class="sd-ev muted">逐小时云与辐射：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
   const pc0 = v => v == null ? "—" : Math.round(v) + "%";
-  const w = v => v == null ? "—" : Math.round(v);
-  const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? (d.dir === "more" ? "sd-hot" : "sd-cold") : ""; };
+  const w = v => v == null ? "—" : String(Math.round(v));
+  const deg = v => v == null ? "—" : sdN(v, 1) + "°";
+  const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? (d.dir === "more" ? " sd-hot" : " sd-cold") : ""; };
+  // Observed hours newest first, then the hours still to come.
   const ordered = (H.rows || []).slice().sort((a,b) => Number(Boolean(b.past || b.obs)) - Number(Boolean(a.past || a.obs)) || Number(b.hour) - Number(a.hour));
+  const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
   const rows = ordered.map(r => {
     const f = r.forecast || {}, o = r.obs;
-    const tags = (r.diffs || []).map(x => `<span class="pill ${x.kind === "haze" || x.kind === "rain" ? "" : x.dir === "more" ? "red" : "amber"}" style="margin:1px 2px">${sdEsc(x.text)}</span>`).join("");
-    return `<tr class="${r.past ? "" : "sd-future"}${(r.diffs || []).length ? " sd-diffrow" : ""}">
+    const cloudObs = o ? pc0(100 * (o.cloud_cover || 0)) : r.past ? "无报" : "—";
+    const weather = o ? [(o.clouds || []).join(" "), o.visibility_m != null && o.visibility_m < 10000 ? `能见 ${w(o.visibility_m)} m` : "", (o.weathers || []).join(" ")].filter(Boolean).join(" · ") : "";
+    // The numbers are in the cells already; the column names the direction
+    // only, the full sentence on hover.
+    const word = x => ({cloud: x.dir === "more" ? "多云" : "偏晴", sw: x.dir === "more" ? "日照偏强" : "日照偏弱",
+      temp: x.dir === "more" ? "偏暖" : "偏冷", haze: "霾/雾", rain: "降水"})[x.kind] || x.text;
+    const tags = (r.diffs || []).map(x => `<span class="pill ${x.kind === "haze" || x.kind === "rain" ? "" : x.dir === "more" ? "red" : "amber"}" title="${sdEsc(x.text)}">${sdEsc(word(x))}</span>`).join(" ");
+    return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
-      <td class="mono">${o ? sdEsc((o.clouds || []).join(" ") || "—") : r.past ? "无报" : "—"}</td>
-      <td class="mono ${tone(r, "cloud")}">${o ? pc0(100 * (o.cloud_cover || 0)) : "—"}</td>
-      <td class="mono ${tone(r, "cloud")}">${pc0(f.cloud_low)} <span class="muted">/ ${pc0(f.cloud_low_d1)}</span></td>
-      <td class="mono muted">${pc0(f.cloud)} / ${pc0(f.cloud_d1)}</td>
-      <td class="mono ${tone(r, "sw")}">${o ? w(o.inferred_sw_wm2) : "—"}</td>
-      <td class="mono ${tone(r, "sw")}">${w(f.sw)} <span class="muted">/ ${w(f.sw_d1)}</span></td>
-      <td class="mono ${tone(r, "temp")}">${o && o.temp_c != null ? sdN(o.temp_c, 2) + "°" : "—"}</td>
-      <td class="mono ${tone(r, "temp")}">${f.temp_c == null ? "—" : sdN(f.temp_c, 2) + "°"} <span class="muted">/ ${f.temp_c_d1 == null ? "—" : sdN(f.temp_c_d1, 2) + "°"}</span></td>
-      <td class="mono">${o && o.visibility_m != null ? (o.visibility_m >= 10000 ? "≥10k" : w(o.visibility_m)) : "—"}${o && (o.weathers || []).length ? " " + sdEsc(o.weathers.join(" ")) : ""}</td>
-      <td style="white-space:normal">${tags}</td></tr>`;
+      ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
+      ${pair(o ? w(o.inferred_sw_wm2) : "—", w(f.sw), f.sw_d1 == null ? null : `${w(f.sw_d1)} W/m²`, tone(r, "sw"))}
+      ${pair(o && o.temp_c != null ? deg(o.temp_c) : "—", deg(f.temp_c), f.temp_c_d1 == null ? null : deg(f.temp_c_d1), tone(r, "temp"))}
+      <td class="mono sd-sky-wx">${sdEsc(weather) || '<span class="muted">—</span>'}</td>
+      <td class="sd-sky-tags">${tags || '<span class="muted">—</span>'}</td></tr>`;
   });
-  const differences = ordered.filter(r => r.obs && (r.diffs || []).length);
-  const nDiff = differences.filter(r => r.diffs.some(x => x.kind === "cloud" || x.kind === "sw")).length;
-  const compared = (H.rows || []).filter(r => r.obs).length;
-  const swDiff = H.inferred_sw_mj_so_far != null && H.forecast_sw_mj_so_far != null
-    ? H.inferred_sw_mj_so_far - H.forecast_sw_mj_so_far : null;
-  const diffCard = r => `<div class="sd-sky-diff"><b>${String(r.hour).padStart(2,"0")}:00</b> · ${r.diffs.map(x => sdEsc(x.text)).join(" · ")}</div>`;
-  const diffCards = differences.slice(0, 5).map(diffCard).join("");
-  const olderDiffs = differences.slice(5);
-  return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="${nDiff ? "down" : "muted"} sd-sub">${
-    compared ? `${compared} 个小时有实况，${nDiff} 个小时云或辐射达到差异门槛` : "尚无实况可对照"}</span></summary>
-    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj,2)} MJ/m² · 提前 1 天 ${sdN(H.forecast_sw_d1_mj,2)} MJ/m²</div>
-    <div class="sd-sky-diffs"><div class="sd-sky-diff">截至目前推断日照 <b>${sdN(H.inferred_sw_mj_so_far,2)}</b> 对预报 <b>${sdN(H.forecast_sw_mj_so_far,2)}</b> MJ/m²<br>差值 <b class="${swDiff == null ? "" : swDiff >= 0 ? "up" : "down"}">${sdSg(swDiff,2)} MJ/m²</b>（报文推断）</div>${diffCards}</div>
-    ${olderDiffs.length ? `<details class="sd-older"><summary class="muted">更早的 ${olderDiffs.length} 条差异</summary><div class="sd-sky-diffs">${olderDiffs.map(diffCard).join("")}</div></details>` : ""}
-    ${sdNewestFive(rows, `<thead><tr><th title="已过去时段在前，按当地时间倒序；未来预报时段在后">当地 · 最新在上</th><th>报文云</th><th>实况低云</th><th>预报低云 <span class="muted">最新/提前1天</span></th><th>预报总云</th><th title="按报文云量与太阳高度推算（晴空辐射 Haurwitz × (1−0.75N^3.4)）；报文只报低云，有高云时这是上限">推断日照 W/m²</th><th>预报日照 W/m²</th><th>实况气温</th><th>预报气温</th><th>能见度 / 天气</th><th>差异</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
-    <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}。报文只报 1500 m 以下的云（CAVOK/NSC＝低空无云），所以拿它对比预报的<b>低云</b>，预报总云含高云只作参考。机场不测辐射，「推断日照」由报文云量推算，高云多时偏高。标注门槛：低云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。红＝实况比预报多/强/暖，黄＝少/弱/冷。</div></details>`;
+  const observed = (H.rows || []).filter(r => r.obs);
+  const off = observed.filter(r => (r.diffs || []).some(x => x.kind === "cloud" || x.kind === "sw")).length;
+  const latest = observed.reduce((a, r) => Math.max(a, Number(r.hour)), -1);
+  const swObs = H.inferred_sw_mj_so_far, swFc = H.forecast_sw_mj_so_far;
+  const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
+  const headline = observed.length
+    ? `截至 ${String(latest).padStart(2, "0")}:00 日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "up" : "down"}">${sdSg(swPct, 0)}%</b>）`} · <b class="${off ? "down" : ""}">${off}</b>/${observed.length} 小时云或日照偏离预报`
+    : "尚无实况可对照";
+  return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
+    ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="报文云量推算的日照 · 预报日照（W/m²）">日照 W/m² <span class="muted">实况 · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
+    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射，日照由报文云量推算，高云多时偏高；报文只报低云，所以对比的是预报低云。红＝实况比预报多/强/暖，黄＝少/弱/冷；门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
+    <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
 }
 function sdTafRaw(d){
   const list = d.taf_raw || [];
