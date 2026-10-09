@@ -19165,7 +19165,20 @@ function tradedCalibration(){
     return `<details ${open?"open":""} style="margin-top:8px"><summary>${label}：按条件切片（每片 ≥ ${h(T.min_legs)} 腿；共 ${pop.legs??0} 腿）</summary>${rows?`<div class="scroll" style="max-height:560px"><table>${head}<tbody>${pop.all?row({group:"全部",slice:"—",...pop.all}):""}${rows}</tbody></table></div>`:"<div class='muted'>样本不足。</div>"}</details>`;};
   const rel=pop=>{const mk=rows=>rows.map(b=>`<tr><td class="mono">${n3(b.bin[0])}–${n3(b.bin[1])}</td><td class="mono">${b.legs}</td><td class="mono">${pct(b.said_ours)}</td><td class="mono">${pct(b.said_market)}</td><td class="mono">${pct(b.paid)}</td><td class="mono">${pct(b.landed)}</td></tr>`).join("");
     const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>腿</th><th>我方说</th><th>市场说</th><th>实付</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
-    return `<details style="margin-top:8px"><summary>可靠性图（已成交腿）：按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(pop.reliability_ours||[]),"按我方 p 的十分档")}${tbl(mk(pop.reliability_market||[]),"按市场 q 的十分档")}</div></details>`;};
+    // Per lane (user 2026-10-09 「可靠性图（已成交腿），按照车道区分」): the
+    // same two diagrams on each lane's own legs, in a fixed order; a lane the
+    // board has no name for prints its key.
+    const LN={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",
+      p1_consensus:"同心线",p1_tail:"P1 尾段"};
+    const LO=["proper_bet","tail_short","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
+    const block=(title,r)=>`<div style="margin-top:10px"><b>${h(title)}</b> <span class="muted">${r.legs} 腿 / ${r.event_days??"—"} 日；说 我 ${pct(r.said_ours)} · 市 ${pct(r.said_market)} · 付 ${pct(r.paid)} → 中 ${pct(r.landed)}</span>
+      <div class="grid g2">${tbl(mk(r.reliability_ours||[]),"按我方 p 的十分档")}${tbl(mk(r.reliability_market||[]),"按市场 q 的十分档")}</div></div>`;
+    const lanes=[...(pop.reliability_by_lane||[])].sort((a,b)=>{const i=LO.indexOf(a.lane),j=LO.indexOf(b.lane);return (i<0?99:i)-(j<0?99:j)||String(a.lane).localeCompare(String(b.lane));});
+    const A=pop.all||{};
+    const whole=block("全部车道",{legs:pop.legs??0,event_days:A.event_days,said_ours:A.said_ours,said_market:A.said_market,paid:A.paid,landed:A.landed,
+      reliability_ours:pop.reliability_ours,reliability_market:pop.reliability_market});
+    const byLane=lanes.length?lanes.map(r=>block(LN[r.lane]||r.lane,r)).join(""):`<div class="muted" style="margin-top:8px">按车道的读数要等后端读数任务下一轮重算。</div>`;
+    return `<details style="margin-top:8px"><summary>可靠性图（已成交腿）：全部车道与按车道分开，按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary>${whole}${byLane}</details>`;};
   const recent=(T.recent||[]).map(l=>`<tr><td class="mono">${h((l.created_at||"").slice(5,16))}</td><td>${h(l.lane)}</td><td>${h(l.station_id)}</td><td class="mono">${h(l.event_date)}</td><td>${h(l.bucket)} ${h(l.side)}</td><td>${h(l.stage||"—")}</td><td class="mono">${n3(l.p)}</td><td class="mono">${n3(l.q)}</td><td class="mono">${n3(l.paid)}</td><td>${l.filled?"成交 "+(+l.shares).toFixed(2):"未成交"}</td><td class="${l.win?"up":"down"}">${l.win?"中":"未中"}</td></tr>`).join("");
   const recentTbl=`<details style="margin-top:8px"><summary>最近 ${(T.recent||[]).length} 条已结算腿（含未成交的意图）</summary><div class="scroll" style="max-height:520px"><table><thead><tr><th>时间</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>我方 p</th><th>市场 q</th><th>实付</th><th>状态</th><th>结果</th></tr></thead><tbody>${recent}</tbody></table></div></details>`;
   const foot=`<div class="muted" style="margin-top:6px">读数由后端读数任务每小时写出（data/board_readings/traded_calibration.json，算于 ${h(T.computed_at_utc||"—")}，${T.build_sec==null?"—":T.build_sec+" 秒"}）。</div>`;

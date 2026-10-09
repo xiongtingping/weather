@@ -1678,6 +1678,25 @@ def traded_calibration_reliability(legs: Sequence[Mapping[str, Any]], key: str) 
     return out
 
 
+def traded_calibration_reliability_by_lane(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """The two reliability diagrams per lane (user 2026-10-09 「可靠性图（已成交
+    腿），按照车道区分」): each lane's legs binned by our p and by the market's
+    q, with what that lane said and what landed overall.  No leg floor -- a
+    bin carries its count, so a thin lane reads as thin."""
+
+    out: list[dict[str, Any]] = []
+    for lane in sorted({str(l["lane"]) for l in legs}):
+        inside = [l for l in legs if l["lane"] == lane]
+        out.append({
+            "lane": lane, "legs": len(inside), "event_days": len({l["event_date"] for l in inside}),
+            "said_ours": _traded_mean([l["p"] for l in inside]), "said_market": _traded_mean([l["q"] for l in inside]),
+            "paid": _traded_mean([l["paid"] for l in inside]), "landed": _traded_mean([l["win"] for l in inside]),
+            "reliability_ours": traded_calibration_reliability(inside, "p"),
+            "reliability_market": traded_calibration_reliability(inside, "q"),
+        })
+    return out
+
+
 def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     days = sorted({l["event_date"] for l in legs})
     split = days[len(days) // 2] if days else None
@@ -1721,6 +1740,7 @@ def traded_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
             "slices": _traded_slices(subset),
             "reliability_ours": traded_calibration_reliability(subset, "p"),
             "reliability_market": traded_calibration_reliability(subset, "q"),
+            "reliability_by_lane": traded_calibration_reliability_by_lane(subset),
             "lanes": sorted(Counter(l["lane"] for l in subset).items()),
         }
     return {
@@ -1754,7 +1774,8 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "traded_calibration": (
         traded_calibration,
         (traded_calibration, traded_calibration_legs, traded_calibration_group,
-         traded_calibration_reliability, _traded_slices, _traded_served_vector, _traded_market_mid),
+         traded_calibration_reliability, traded_calibration_reliability_by_lane, _traded_slices,
+         _traded_served_vector, _traded_market_mid),
     ),
     "basket_shadow": (
         basket_shadow,

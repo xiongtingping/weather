@@ -159,6 +159,23 @@ def test_reliability_bins_say_both_sides_on_the_same_legs() -> None:
     assert [(b["bin"], b["legs"]) for b in market] == [([0.5, 0.6], 1), ([0.6, 0.7], 1), ([0.9, 1.0], 1)]
 
 
+def test_reliability_is_split_by_lane_on_each_lanes_own_legs() -> None:
+    """User 2026-10-09 「可靠性图（已成交腿），按照车道区分」: each lane gets the
+    same two diagrams on its own legs; no leg floor, a bin carries its count."""
+
+    legs = [{"lane": "tiebreak", "p": 0.55, "q": 0.5, "paid": 0.5, "win": 1.0, "event_date": "2026-09-20"},
+            {"lane": "tiebreak", "p": 0.52, "q": 0.45, "paid": 0.46, "win": 0.0, "event_date": "2026-09-21"},
+            {"lane": "tail_short", "p": 0.97, "q": 0.93, "paid": 0.93, "win": 1.0, "event_date": "2026-09-20"}]
+    by_lane = {r["lane"]: r for r in BR.traded_calibration_reliability_by_lane(legs)}
+    assert set(by_lane) == {"tiebreak", "tail_short"}
+    tb = by_lane["tiebreak"]
+    assert (tb["legs"], tb["event_days"]) == (2, 2) and tb["landed"] == pytest.approx(0.5)
+    assert tb["reliability_ours"] == BR.traded_calibration_reliability(legs[:2], "p")
+    assert [(b["bin"], b["legs"]) for b in tb["reliability_market"]] == [([0.4, 0.5], 1), ([0.5, 0.6], 1)]
+    ts = by_lane["tail_short"]
+    assert [(b["bin"], b["legs"]) for b in ts["reliability_ours"]] == [([0.9, 1.0], 1)]
+
+
 def test_the_reading_has_two_populations_and_a_stale_or_one_sided_book_drops_the_leg(store, monkeypatch) -> None:  # noqa: F811
     monkeypatch.setattr(BR, "TRADED_CALIBRATION_MIN_LEGS", 1)
     _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})
@@ -176,6 +193,9 @@ def test_the_reading_has_two_populations_and_a_stale_or_one_sided_book_drops_the
     assert value["rule"] == "traded_bucket_binary_logloss_v1"
     assert value["populations"]["filled"]["legs"] == 1 and value["populations"]["intended"]["legs"] == 2
     assert value["populations"]["intended"]["all"]["legs"] == 2
+    assert [(r["lane"], r["legs"]) for r in value["populations"]["intended"]["reliability_by_lane"]] == [
+        ("basket", 1), ("proper_bet", 1)]
+    assert [r["lane"] for r in value["populations"]["filled"]["reliability_by_lane"]] == ["proper_bet"]
     assert {s["group"] for s in value["populations"]["intended"]["slices"]} >= {"车道", "方向", "阶段", "结算单位", "提前量"}
     assert len(value["recent"]) == 2 and value["recent"][0]["bucket"] in {"27°C", "28°C"}
     # A station-day without a standing label is not scored.
