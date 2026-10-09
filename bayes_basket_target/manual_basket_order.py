@@ -118,12 +118,14 @@ def latest_book(conn: sqlite3.Connection, station: str, day: str,
         buckets[bucket] = {
             "token_id": str(b.get("token_id") or ""),
             "asks": asks,
+            "bids": bids,
             "best_bid": float(b.get("bid_price") or 0.0) or None,
             "tick": float(b.get("price_tick_size") or 0.001),
-            "min_order_size": float(b.get("min_order_size") or 5.0),
+            "min_order_size": float(b["min_order_size"]) if b.get("min_order_size") is not None else None,
             # The NO side, mirrored off the YES book.
             "no_token": no_tokens.get(bucket, ""),
             "no_asks": [(round(1.0 - p, 6), q) for p, q in bids],
+            "no_bids": [(round(1.0 - p, 6), q) for p, q in asks],
             "no_best_bid": None if not asks else round(1.0 - asks[0][0], 6),
         }
     return {"observed_at": str(book.get("observed_at")), "buckets": buckets,
@@ -240,6 +242,8 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
         price = _on_tick(price)
         if not (0.0 < price < 1.0):
             raise ManualOrderError(f"{label} 价格按 tick 取整后不在 0 与 1 之间")
+        if row.get("min_order_size") is None or not math.isfinite(row["min_order_size"]) or row["min_order_size"] <= 0:
+            raise ManualOrderError(f"{label} 交易所最小单量缺失或无效")
         if shares < row["min_order_size"]:
             raise ManualOrderError(f"{label} {shares} 份低于最小单 {row['min_order_size']} 份")
         if mode == "taker":

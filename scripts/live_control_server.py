@@ -1290,13 +1290,17 @@ def native_order_confirmation(body: dict) -> tuple[bool, str]:
 
     import subprocess  # noqa: PLC0415
 
+    selling = body.get("confirm") == "SELL"
+    order_legs = [body] if selling else (body.get("legs") or [])
     legs = "\n".join(
-        f"  {leg.get('bucket')}：{leg.get('shares')} 份 × 限价 {leg.get('limit_price')}"
-        for leg in (body.get("legs") or [])[:12]
+        f"  {leg.get('bucket')} {leg.get('side', 'YES')}：{leg.get('shares')} 份 × {'最低价' if selling else '限价'} {leg.get('limit_price')}"
+        for leg in order_legs[:24]
     )
     mode = {"taker": "吃卖一（限价 FOK）", "maker": "挂买一+1（post-only GTC）",
             "manual": "手填价格（GTC）"}.get(str(body.get("mode")), str(body.get("mode")))
-    text = (f"看板请求用实盘钱包买入 YES\n\n{body.get('station')} {body.get('event_date')}\n"
+    if selling:
+        mode = "吃买盘（限价 FOK，全成或零成）"
+    text = (f"看板请求用实盘钱包{'卖出' if selling else '买入'}\n\n{body.get('station')} {body.get('event_date')}\n"
             f"{legs}\n\n方式：{mode}\n\n只有点「下单」才会发出。")
     script = [
         "on run argv",
@@ -1466,12 +1470,13 @@ class Handler(BaseHTTPRequestHandler):
                     bool(body.get("held")),
                     str(body.get("by") or ""),
                 )
-            elif self.path.rstrip("/") == "/api/manual-basket-order":
+            elif self.path.rstrip("/") in {"/api/manual-basket-order", "/api/manual-basket-sell", "/api/manual-basket-sell-quote"}:
                 # Money leaves the wallet: only the board's own page may ask.
                 # The CORS answer above lets any page's script reach this
                 # loopback port, so the Origin is checked here, by name.
                 origin = str(self.headers.get("Origin") or "")
-                if origin == "null":
+                quoting = self.path.rstrip("/") == "/api/manual-basket-sell-quote"
+                if origin == "null" and not quoting:
                     # The board opened as a file:// page sends Origin: null --
                     # and so can any site's sandboxed frame.  Such a request
                     # goes ahead only after the operator says yes in a dialog
@@ -1480,13 +1485,17 @@ class Handler(BaseHTTPRequestHandler):
                     if not confirmed:
                         self._send(403, {"error": f"本机确认框未确认（{why}）"})
                         return
-                elif origin not in MANUAL_ORDER_ORIGINS:
+                elif origin not in MANUAL_ORDER_ORIGINS and origin != "null":
                     self._send(403, {"error": f"来源不被允许下单：{origin or '无 Origin'}"})
                     return
                 from bayes_basket_target.manual_basket_order import (  # noqa: PLC0415
                     place_manual_basket,
                 )
-                out = place_manual_basket(body)
+                if self.path.rstrip("/") == "/api/manual-basket-order":
+                    out = place_manual_basket(body)
+                else:
+                    from bayes_basket_target.manual_basket_sell import quote_manual_sell, place_manual_sell
+                    out = quote_manual_sell(body) if quoting else place_manual_sell(body)
             elif self.path.rstrip("/") == "/api/station-bulk":
                 out = set_all_stations(
                     str(body.get("action") or ""),
