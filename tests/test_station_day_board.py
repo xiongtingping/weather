@@ -14,18 +14,36 @@ def _axis():
     return ladder_axis(ordinals, intervals)
 
 
-def test_open_edges_sit_half_a_rung_inside() -> None:
+def test_open_edges_sit_where_production_places_them() -> None:
+    # User 2026-10-09「统一」: production's axis, an open edge 1°C inside.
     axis = _axis()
-    assert [r["centre_c"] for r in axis] == [20.0, 21.0, 22.0, 23.0]
+    assert [r["centre_c"] for r in axis] == [19.5, 21.0, 22.0, 23.5]
     assert bucket_of(axis, 21.49) == "21°C"
     assert bucket_of(axis, 30.0) == "23°C or higher"
+
+
+def test_board_mean_is_the_served_stage_anchor() -> None:
+    """The panel's 分布均值 and the P0-M / P1 served centre are one number on
+    one vector (ZUUU 2026-10-10 P0-M read 21.67 beside 21.66 before)."""
+
+    from bayes_basket_target.materialization import _bucket_centers_c, _stage_anchor
+
+    ordinals = {"20°C or below": 0, "21°C": 1, "22°C": 2, "23°C or higher": 3}
+    intervals = {"20°C or below": [None, 20.5], "21°C": [20.5, 21.5],
+                 "22°C": [21.5, 22.5], "23°C or higher": [22.5, None]}
+    vector = {"20°C or below": 0.2, "21°C": 0.35, "22°C": 0.3, "23°C or higher": 0.15}
+    import json
+    keys, centres = _bucket_centers_c({"bucket_intervals_c_json": json.dumps(intervals)}, bucket_ordinals=ordinals)
+    served = _stage_anchor(vector, bucket_ordinals=ordinals, centers_c=dict(zip(keys, centres)),
+                           upper_bounds_c={b: v[1] for b, v in intervals.items()}, excluded=set())
+    assert math.isclose(vector_stats(vector, ladder_axis(ordinals, intervals))["mean_c"], round(served[1], 3))
 
 
 def test_mean_variance_mode_and_spread() -> None:
     axis = _axis()
     s = vector_stats({"20°C or below": 0.1, "21°C": 0.4, "22°C": 0.4, "23°C or higher": 0.1}, axis)
     assert math.isclose(s["mean_c"], 21.5)
-    assert math.isclose(s["var_c2"], 0.65, abs_tol=1e-9)
+    assert math.isclose(s["var_c2"], 1.0, abs_tol=1e-9)
     # A tie goes to the lower rung, as the market mode does (charter 249).
     assert s["mode"] == "21°C" and s["mean_bucket"] == "22°C"
     assert s["interval80"] == ["20°C or below", "22°C"]

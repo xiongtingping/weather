@@ -3664,18 +3664,14 @@ def _bucket_axis(lineage: Mapping[str, Any], ordinals: Mapping[str, Any]) -> lis
         intervals = json.loads(str(lineage.get("bucket_intervals_c_json") or "{}"))
     except (TypeError, ValueError):
         intervals = {}
-    out = []
-    for bucket in sorted(ordinals, key=lambda b: int(ordinals[b])):
-        bounds = intervals.get(bucket) or [None, None]
-        lo, hi = bounds[0], bounds[1]
-        centre = (
-            None if lo is None and hi is None
-            else float(hi) - 0.5 if lo is None
-            else float(lo) + 0.5 if hi is None
-            else (float(lo) + float(hi)) / 2.0
-        )
-        out.append({"bucket": str(bucket), "centre_c": centre})
-    return out
+    # Production's representative temperatures (user 2026-10-09「统一」): the
+    # axis the P0-M / P1 stage anchors weight, open edges 1°C inside their
+    # bound -- the same one the 单站日 panel reads (station_day_board.ladder_axis).
+    from bayes_basket_target.station_day_board import ladder_axis  # noqa: PLC0415
+
+    if not isinstance(intervals, Mapping):
+        intervals = {}
+    return [{"bucket": r["bucket"], "centre_c": r["centre_c"]} for r in ladder_axis(ordinals, intervals)]
 
 
 def _vector_shape(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]]) -> dict[str, Any]:

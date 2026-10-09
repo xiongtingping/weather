@@ -86,35 +86,32 @@ def _float(value: Any) -> float | None:
 
 
 def ladder_axis(ordinals: Mapping[str, Any], intervals: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Each rung with its °C bounds and midpoint, lowest first.
+    """Each rung with its °C bounds and representative temperature, lowest first.
 
-    An open edge takes its neighbour's width (a C rung is 1°C, an F rung
-    2°F = 1.111°C), so its midpoint sits one half-rung inside the bound.
+    The representative temperatures are production's own
+    (``center_width_calibration.bucket_centers_from_intervals`` at
+    ``center_width_store.EDGE_WIDTH_C``, the axis the P0-M and P1 stage
+    anchors weight): a finite rung at its midpoint, an open edge 1°C inside
+    its bound.  User 2026-10-09「统一」: the board had put the edges half a rung
+    inside, so its 分布均值 read 21.67 beside the served centre 21.66 on the
+    same P0-M vector.  An axis production could not place has no centres.
     """
 
+    from .center_width_calibration import bucket_centers_from_intervals  # noqa: PLC0415
+    from .center_width_store import EDGE_WIDTH_C  # noqa: PLC0415
+
     order = sorted(ordinals, key=lambda b: int(ordinals[b]))
-    widths = []
+    bounds = {}
     for b in order:
         lo, hi = (list(intervals.get(b) or [None, None]) + [None, None])[:2]
-        if lo is not None and hi is not None:
-            widths.append(float(hi) - float(lo))
-    rung = min(widths) if widths else 1.0
-    out = []
-    for b in order:
-        lo, hi = (list(intervals.get(b) or [None, None]) + [None, None])[:2]
-        lo = _float(lo)
-        hi = _float(hi)
-        if lo is not None and hi is not None:
-            centre = (lo + hi) / 2.0
-        elif hi is not None:
-            centre = hi - rung / 2.0
-        elif lo is not None:
-            centre = lo + rung / 2.0
-        else:
-            centre = None
-        out.append({"bucket": str(b), "ordinal": int(ordinals[b]), "lo_c": lo, "hi_c": hi,
-                    "centre_c": None if centre is None else round(centre, 4)})
-    return out
+        bounds[b] = (_float(lo), _float(hi))
+    try:
+        centres = bucket_centers_from_intervals(
+            {b: list(v) for b, v in bounds.items()}, ordered_keys=order, edge_width_c=EDGE_WIDTH_C)
+    except (TypeError, ValueError):
+        centres = [None] * len(order)
+    return [{"bucket": str(b), "ordinal": int(ordinals[b]), "lo_c": bounds[b][0], "hi_c": bounds[b][1],
+             "centre_c": None if c is None else round(float(c), 4)} for b, c in zip(order, centres)]
 
 
 def bucket_of(axis: Sequence[Mapping[str, Any]], celsius: float | None) -> str | None:
