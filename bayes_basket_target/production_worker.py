@@ -4474,6 +4474,13 @@ FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
     os.environ.get("PM_FAST_LANE_CHECKPOINT_INTERVAL_SEC", "").strip() or 45.0
 )
 TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC = 30.0
+#: Charter 257 补记三 (user ruling 2026-10-09 「提高跟单线的权重！加一个快速读取通道」):
+#: the copy-follow lane at the cycle's checkpoints too -- at most every
+#: COPY_FOLLOW_CHECK_INTERVAL_SEC when the fast feed brought a fill not seen
+#: before, and at least every COPY_FOLLOW_IDLE_RECHECK_SEC otherwise (a take
+#: whose ask was over the cap may come under it inside its window).
+COPY_FOLLOW_CHECK_INTERVAL_SEC = 20.0
+COPY_FOLLOW_IDLE_RECHECK_SEC = 120.0
 #: ... and never more often than the last pass took.  Measured on the first
 #: cycle that ran the re-armed checkpoints (2026-09-20T12:09:53Z): six of
 #: them cost 403s of a 1366s cycle, one of them 242s on its own, against a
@@ -18663,6 +18670,64 @@ class TargetProductionWorker:
         self._last_tail_short_market_check_mono = now
         return self._tail_short_check(reason=f"checkpoint:{label}")
 
+    def _copy_follow_if_due(self, label: str) -> dict[str, Any] | None:
+        """Charter 257 补记三: the copy-follow lane at a safe writer checkpoint.
+
+        The cluster's fills reach the resident through the fast feed (its own
+        read-only executor, every 15 s); this is where the writer acts on
+        them mid-cycle instead of at the next head or tail -- the head and the
+        tail runs stay, and every write is idempotent on the source key and
+        the intent id.  Never raises: the cycle is not the lane's to stop.
+        """
+
+        if PRODUCTION_EXECUTION_MODE != "production_live":
+            return None
+        connection = getattr(self, "commit_conn", None)
+        if connection is None or getattr(connection, "in_transaction", False):
+            return None
+        from .copy_follow_feed import FEED  # noqa: PLC0415
+        from .strategy_lanes import LANE_COPY_FOLLOW, lane_enabled  # noqa: PLC0415
+
+        now = time.monotonic()
+        last = getattr(self, "_last_copy_follow_check_mono", None)
+        seen = getattr(self, "_copy_follow_seen_feed_version", None)
+        if last is not None:
+            since = now - float(last)
+            if since < COPY_FOLLOW_CHECK_INTERVAL_SEC:
+                return None
+            if FEED.version == seen and since < COPY_FOLLOW_IDLE_RECHECK_SEC:
+                return None
+        if not lane_enabled(LANE_COPY_FOLLOW):
+            return None
+        self._last_copy_follow_check_mono = now
+        self._copy_follow_seen_feed_version = FEED.version
+        started = time.perf_counter()
+        try:
+            from .copy_follow_lane import execute_copy_follow  # noqa: PLC0415
+            from .exit_orders import default_transport  # noqa: PLC0415
+
+            receipt = execute_copy_follow(
+                connection,
+                getattr(self, "canonical_source_conn", None),
+                transport=default_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+                ws_manifest_path=getattr(self, "market_manifest_path", None),
+                feed=FEED,
+            )
+        except Exception as exc:  # noqa: BLE001 -- a lane failure is a receipt
+            receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
+        receipt = {**receipt, "reason": f"checkpoint:{label}"}
+        receipts = getattr(self, "_copy_follow_receipts", None)
+        if not isinstance(receipts, list):
+            receipts = []
+            self._copy_follow_receipts = receipts
+        receipts.append({k: receipt.get(k) for k in (
+            "reason", "state", "planned", "submitted", "filled", "refusals", "error", "ok")})
+        del receipts[:-20]
+        self._add_span("copy_follow_checkpoint", (time.perf_counter() - started) * 1000.0, label=label)
+        return receipt
+
     def _p1_tail_after_p1(self, reason: str) -> dict[str, Any] | None:
         """Charter 166 (2026-09-21 ruling 「把车道挂到 P1 刚写完那一刻」).
 
@@ -19055,6 +19120,7 @@ class TargetProductionWorker:
         """
 
         self._tail_short_market_if_due(label)
+        self._copy_follow_if_due(label)
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
         spent = float(getattr(self, "_fast_lane_cycle_spent_sec", 0.0) or 0.0)
@@ -21418,6 +21484,7 @@ class TargetProductionWorker:
         self._fast_lane_receipts = []
         self._p1_tail_receipts = []
         self._tail_short_receipts = []
+        self._copy_follow_receipts = []
         self._probability_chain_ran = False
         self._regime_ran_this_cycle = False
         early_report_watermark = _live_observation_watermark(
@@ -22720,6 +22787,7 @@ class TargetProductionWorker:
             )
             self._mark("committed_scope_sweep")
             # Decisions price the freshest update there is.
+            self._copy_follow_if_due("before_decisions")
             self._fast_lane_checkpoint("before_decisions")
             # ...and every envelope committed since the regime pass gets its
             # companion before anything prices it.
@@ -23217,6 +23285,9 @@ class TargetProductionWorker:
                         self._tail_short_after_p0_decision(
                             station_id=station, event_date=day,
                         )
+                    # Charter 257 补记三: the decision loop is the cycle's
+                    # longest stage; the copy-follow lane looks between scopes.
+                    self._copy_follow_if_due("in_decision_loop")
                     results.append(candidate)
                 except Exception as exc:
                     reason = f"{type(exc).__name__}:{exc}"
@@ -23403,6 +23474,7 @@ class TargetProductionWorker:
                     {k: v for k, v in receipt.items() if k not in {"receipts", "settings"}}
                     for receipt in self._tail_short_receipts
                 ],
+                "copy_follow_checkpoints": list(getattr(self, "_copy_follow_receipts", None) or []),
                 "listing_scope_turn": serve_listing,
                 "account_equity": account_equity_receipt,
                 "intent_reconcile": intent_reconcile,

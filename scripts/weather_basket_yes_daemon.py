@@ -126,6 +126,10 @@ from bayes_basket_target.strategy_lanes import (
     lane_enabled,
 )
 from bayes_basket_target import nwp_arrival_probe
+from bayes_basket_target.copy_follow_feed import (
+    FEED as COPY_FOLLOW_FEED,
+    POLL_INTERVAL_SECONDS as COPY_FOLLOW_FEED_INTERVAL_SEC,
+)
 from bayes_basket_target.production_worker import (
     DEFAULT_TARGET_ACTIVATION,
     DEFAULT_TARGET_MARKET_MANIFEST,
@@ -3890,6 +3894,25 @@ PRODUCTION_CYCLE_TARGET_SEC = 300.0
 PRODUCTION_CYCLE_WARN_SEC = 450.0
 
 
+def copy_follow_feed_users() -> list[str]:
+    """Charter 257 补记三: the wallets the fast feed polls -- the cluster of the
+    copy-follow lane's v2 rule, while that lane is switched on in a live
+    resident; none otherwise (a paused lane costs no network)."""
+
+    if PRODUCTION_EXECUTION_MODE != "production_live":
+        return []
+    try:
+        from bayes_basket_target.copy_follow_lane import RULE_V2  # noqa: PLC0415
+        from bayes_basket_target.strategy_lanes import lane_settings  # noqa: PLC0415
+
+        cfg = lane_settings(LANE_COPY_FOLLOW)
+    except Exception:  # noqa: BLE001 -- an unreadable lane file polls nothing
+        return []
+    if cfg.get("enabled") is not True or str(cfg.get("rule")) != RULE_V2:
+        return []
+    return [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
+
+
 def run_target_production_cycle(
     worker: TargetProductionWorker,
 ) -> dict[str, Any]:
@@ -3930,6 +3953,31 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 256: the 跟单线 at the head too -- the source's trades since the
+    # previous cycle's tail are followed before this cycle's long work, not
+    # after it.  Charter 257 补记三 (「提高跟单线的权重」): right after H1, ahead of
+    # every other head lane.  A failure is a receipt, never a stop.
+    copy_follow_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_COPY_FOLLOW)
+    ):
+        try:
+            from bayes_basket_target.copy_follow_lane import execute_copy_follow
+            from bayes_basket_target.exit_orders import (
+                default_transport as _copy_head_transport,
+            )
+            copy_follow_head_receipt = execute_copy_follow(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_copy_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+                feed=COPY_FOLLOW_FEED,
+            )
+        except Exception as exc:
+            copy_follow_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     if (
         PRODUCTION_EXECUTION_MODE == "production_live"
         and head_connection is not None
@@ -4030,29 +4078,6 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
-    # Charter 256: the 跟单线 at the head too -- the source's trades since the
-    # previous cycle's tail are followed before this cycle's long work, not
-    # after it.  A failure is a receipt, never a stop.
-    copy_follow_head_receipt: dict[str, Any] | None = None
-    if (
-        PRODUCTION_EXECUTION_MODE == "production_live"
-        and head_connection is not None
-        and lane_enabled(LANE_COPY_FOLLOW)
-    ):
-        try:
-            from bayes_basket_target.copy_follow_lane import execute_copy_follow
-            from bayes_basket_target.exit_orders import (
-                default_transport as _copy_head_transport,
-            )
-            copy_follow_head_receipt = execute_copy_follow(
-                head_connection,
-                getattr(worker, "canonical_source_conn", None),
-                transport=_copy_head_transport,
-                now_utc=utc_now(),
-                live_submit_authorized=True,
-            )
-        except Exception as exc:
-            copy_follow_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     try:
         result = worker.run()
     except sqlite3.OperationalError as exc:
@@ -4142,6 +4167,29 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 256: the 跟单线, on the source's trades since the head -- right
+    # after H1 and ahead of the other tail lanes (charter 257 补记三).
+    copy_follow_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
+        LANE_COPY_FOLLOW
+    ):
+        copy_follow_receipt = {"state": "lane_paused", "lane": LANE_COPY_FOLLOW}
+    elif PRODUCTION_EXECUTION_MODE == "production_live":
+        try:
+            from bayes_basket_target.copy_follow_lane import execute_copy_follow
+            from bayes_basket_target.exit_orders import (
+                default_transport as _copy_transport,
+            )
+            copy_follow_receipt = execute_copy_follow(
+                connection,
+                canonical,
+                transport=_copy_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+                feed=COPY_FOLLOW_FEED,
+            )
+        except Exception as exc:
+            copy_follow_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # The recycle lane (operator ruling 2026-08-31; ruled again 2026-09-18:
     # 「一直挂」, 「改为0.99」; revised 2026-09-29 to 0.998): a held leg
     # may carry a resting 0.998 sell when the current venue tick permits it,
@@ -4325,27 +4373,6 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
-    # Charter 256: the 跟单线, on the source's trades since the head.
-    copy_follow_receipt: dict[str, Any] | None = None
-    if PRODUCTION_EXECUTION_MODE == "production_live" and not lane_enabled(
-        LANE_COPY_FOLLOW
-    ):
-        copy_follow_receipt = {"state": "lane_paused", "lane": LANE_COPY_FOLLOW}
-    elif PRODUCTION_EXECUTION_MODE == "production_live":
-        try:
-            from bayes_basket_target.copy_follow_lane import execute_copy_follow
-            from bayes_basket_target.exit_orders import (
-                default_transport as _copy_transport,
-            )
-            copy_follow_receipt = execute_copy_follow(
-                connection,
-                canonical,
-                transport=_copy_transport,
-                now_utc=utc_now(),
-                live_submit_authorized=True,
-            )
-        except Exception as exc:
-            copy_follow_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -6351,6 +6378,15 @@ def main() -> int:
         )
         nwp_probe_future: Any = None
         next_nwp_probe = 0.0
+        # Charter 257 补记三: the copy-follow lane's fast feed -- read-only
+        # (the cluster's taker fills over the network into memory), so its
+        # own single-worker executor and never a writer turn.
+        copy_feed_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="copy-follow-feed",
+        )
+        copy_feed_future: Any = None
+        next_copy_feed = 0.0
         argmax_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
@@ -7272,6 +7308,21 @@ def main() -> int:
                     run_nwp_arrival_probe_round,
                 )
                 next_nwp_probe = time.monotonic() + NWP_ARRIVAL_PROBE_INTERVAL_SEC
+            if storage_ok and now_mono >= next_copy_feed and (
+                copy_feed_future is None or copy_feed_future.done()
+            ):
+                if copy_feed_future is not None:
+                    try:
+                        state["copy_follow_feed"] = copy_feed_future.result()
+                    except Exception as exc:  # noqa: BLE001 -- published, never raised
+                        state["copy_follow_feed"] = {
+                            "state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160],
+                        }
+                    copy_feed_future = None
+                feed_users = copy_follow_feed_users()
+                if feed_users:
+                    copy_feed_future = copy_feed_executor.submit(COPY_FOLLOW_FEED.poll, feed_users)
+                next_copy_feed = time.monotonic() + COPY_FOLLOW_FEED_INTERVAL_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -7614,6 +7665,7 @@ def main() -> int:
             "forecast_executor",
             "fast_taf_executor",
             "nwp_probe_executor",
+            "copy_feed_executor",
             "registry_executor",
             "argmax_executor",
             "sweep_executor",
