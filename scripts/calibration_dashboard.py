@@ -19162,7 +19162,7 @@ function tradedCalibration(){
      <td class="mono">${pct(r.ours_closer_share,0)}</td><td class="mono">${r.return==null?"—":sgn(r.return*100,1)+"%"}</td></tr>`;
   const head=`<thead><tr><th>组</th><th>切片</th><th>腿</th><th>日</th><th>LL 我方</th><th>LL 市场</th><th>LL 实付</th><th>Δ 我方−市场 [95%]</th><th>Brier 我/市</th><th>说 我/市/付 → 中</th><th>我更近</th><th>回报</th></tr></thead>`;
   const slices=(pop,label,open)=>{const rows=(pop.slices||[]).map(row).join("");
-    return `<details ${open?"open":""} style="margin-top:8px"><summary>${label}：按条件切片（每片 ≥ ${h(T.min_legs)} 腿；共 ${pop.legs??0} 腿）</summary>${rows?`<div class="scroll" style="max-height:560px"><table>${head}<tbody>${pop.all?row({group:"全部",slice:"—",...pop.all}):""}${rows}</tbody></table></div>`:"<div class='muted'>样本不足。</div>"}</details>`;};
+    return `<details ${open?"open":""} style="margin-top:8px"><summary>${label}：按条件切片（每片 ≥ ${h(T.min_legs)} 腿，车道行不设下限；共 ${pop.legs??0} 腿）</summary>${rows?`<div class="scroll" style="max-height:560px"><table>${head}<tbody>${pop.all?row({group:"全部",slice:"—",...pop.all}):""}${rows}</tbody></table></div>`:"<div class='muted'>样本不足。</div>"}</details>`;};
   const rel=pop=>{const mk=rows=>rows.map(b=>`<tr><td class="mono">${n3(b.bin[0])}–${n3(b.bin[1])}</td><td class="mono">${b.legs}</td><td class="mono">${pct(b.said_ours)}</td><td class="mono">${pct(b.said_market)}</td><td class="mono">${pct(b.paid)}</td><td class="mono">${pct(b.landed)}</td></tr>`).join("");
     const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>腿</th><th>我方说</th><th>市场说</th><th>实付</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
     // Per lane (user 2026-10-09 「可靠性图（已成交腿），按照车道区分」): the

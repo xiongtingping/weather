@@ -176,6 +176,20 @@ def test_reliability_is_split_by_lane_on_each_lanes_own_legs() -> None:
     assert [(b["bin"], b["legs"]) for b in ts["reliability_ours"]] == [([0.9, 1.0], 1)]
 
 
+def test_every_lane_has_its_slice_row_while_other_groups_keep_the_floor() -> None:
+    """User 2026-10-09 「为什么没有proper车道的数据，增加」: a lane under the
+    leg floor still gets its row; the floor still holds for the other groups."""
+
+    legs = [{"lane": "proper_bet", "side": "YES", "stage": "P0", "unit": "C", "hours": 40.0,
+             "p": 0.45, "q": 0.40, "paid": 0.42, "win": float(i % 3 == 0), "event_date": f"2026-09-2{i % 3}",
+             "filled": True, "shares": 2.0} for i in range(14)]
+    rows = BR._traded_slices(legs)
+    lane_rows = [r for r in rows if r["group"] == "车道"]
+    assert [(r["slice"], r["legs"]) for r in lane_rows] == [("proper_bet", 14)]
+    assert lane_rows[0]["logloss_diff_ci"] is not None, "three event days give the day-bootstrap interval"
+    assert not [r for r in rows if r["group"] != "车道"], "14 legs stay under the floor for the other groups"
+
+
 def test_the_reading_has_two_populations_and_a_stale_or_one_sided_book_drops_the_leg(store, monkeypatch) -> None:  # noqa: F811
     monkeypatch.setattr(BR, "TRADED_CALIBRATION_MIN_LEGS", 1)
     _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3})

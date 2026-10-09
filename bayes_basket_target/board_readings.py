@@ -1631,13 +1631,13 @@ def _traded_day_bootstrap(legs: Sequence[Mapping[str, Any]], diff: Sequence[floa
     return [draws[int(0.025 * len(draws))], draws[int(0.975 * len(draws)) - 1]]
 
 
-def traded_calibration_group(legs: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+def traded_calibration_group(legs: Sequence[Mapping[str, Any]], *, min_legs: int | None = None) -> dict[str, Any] | None:
     """One row of the second layer: our p, the market's q and the paid price
     scored on the same legs -- binary log loss, Brier, said vs landed, the
     share of legs where ours is closer to the outcome, and the paired
     ours−market log-loss difference with a day-bootstrap interval."""
 
-    if len(legs) < TRADED_CALIBRATION_MIN_LEGS:
+    if len(legs) < max(1, TRADED_CALIBRATION_MIN_LEGS if min_legs is None else min_legs):
         return None
     ll_p = [_binary_logloss(l["p"], l["win"]) for l in legs]
     ll_q = [_binary_logloss(l["q"], l["win"]) for l in legs]
@@ -1701,7 +1701,11 @@ def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     days = sorted({l["event_date"] for l in legs})
     split = days[len(days) // 2] if days else None
     specs: list[tuple[str, str, Any]] = []
-    for lane in sorted({l["lane"] for l in legs}):
+    # Every lane gets its row whatever its count (user 2026-10-09 「为什么没有
+    # proper车道的数据，增加」: Proper had 14 filled legs, one under the floor);
+    # the other groups keep the floor.
+    lanes = sorted({l["lane"] for l in legs})
+    for lane in lanes:
         specs.append(("车道", lane, lambda l, v=lane: l["lane"] == v))
     for side in ("YES", "NO"):
         specs.append(("方向", side, lambda l, v=side: l["side"] == v))
@@ -1720,7 +1724,7 @@ def _traded_slices(legs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
         specs.append(("时段", f"后半（≥ {split}）", lambda l, v=split: l["event_date"] >= v))
     out: list[dict[str, Any]] = []
     for group, name, predicate in specs:
-        row = traded_calibration_group([l for l in legs if predicate(l)])
+        row = traded_calibration_group([l for l in legs if predicate(l)], min_legs=1 if group == "车道" else None)
         if row is not None:
             out.append({"group": group, "slice": name, **row})
     return out
