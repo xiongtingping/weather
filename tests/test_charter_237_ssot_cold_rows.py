@@ -780,17 +780,6 @@ def test_an_offline_reader_is_told_when_the_volume_is_gone(tmp_path: Path) -> No
         off.open_cold_table(PLAN, root=link)
 
 
-def test_the_station_days_that_carried_money_come_from_live_intents(store: Path) -> None:
-    _plans_fixture(store)
-    conn = sqlite3.connect(store)
-    try:
-        assert off._intent_station_days(conn, live_only=True) == {
-            ("EGLC", "2026-09-12"), ("KLGA", "2026-09-10"), ("LFPG", "2026-09-09"),
-        }
-    finally:
-        conn.close()
-
-
 # --------------------------------------------------------------------------
 # What production may not do, and what each window is tied to.
 # --------------------------------------------------------------------------

@@ -349,7 +349,7 @@ def test_the_windows_are_tied_to_their_readers() -> None:
         policy = off.POLICY_BY_TABLE[table]
         assert policy.time_column == "event_date"
         assert policy.hot_days > off.PAPER_LEDGER_EVENT_DAYS
-        assert policy.keep_station_days is None
+        assert policy.keep_recent == ()
         assert policy.keep_vector_refs is not None
         assert policy.keep_latest[0].key == ("station_id", "event_date")
     # The dashboard's charter-EV page joins the valuation population's facts
@@ -461,14 +461,30 @@ def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
     assert re.search(r"^WINDOW_DAYS = (\d+)$", gate, re.M).group(1) == str(off.FEATURE_GATE_WINDOW_DAYS)
     sweep = (ROOT / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
     assert f"timedelta(days={off.P1_LIKELIHOOD_WINDOW_DAYS})" in sweep
-    assert policy.hot_days > off.FEATURE_GATE_WINDOW_DAYS and policy.hot_days > off.P1_LIKELIHOOD_WINDOW_DAYS
+    # Only P0 and P0-M rows are read for long: the gate re-scores P0, the
+    # likelihood refit reads its P0/P0-M roots.  Every stage keeps the
+    # table's window, which covers the board's seat windows (three stages,
+    # 45 days, a launchd job) and the 28-day reads.
+    assert "AND state='COMMITTED' AND stage='P0'" in gate
+    hazard = (ROOT / "scripts" / "build_metar_phase_hazard_samples.py").read_text(encoding="utf-8")
+    assert "stage IN ('P0','P0-M')" in hazard
+    from bayes_basket_target import board_readings, posterior_store, realisation_store, valuation_store
+
+    assert off.BOARD_SEAT_LOOKBACK_DAYS == board_readings.SEAT_LOOKBACK_DAYS
+    for window in (board_readings.SEAT_LOOKBACK_DAYS, valuation_store.WINDOW_DAYS,
+                   realisation_store.WINDOW_DAYS, posterior_store.WINDOW_DAYS):
+        assert policy.hot_days > window
+    (roots,) = policy.keep_recent
+    assert set(roots.values) == {"P0", "P0-M"} and roots.column == "stage"
+    for window in (off.FEATURE_GATE_WINDOW_DAYS, off.P1_LIKELIHOOD_WINDOW_DAYS, board_readings.SEAT_LOOKBACK_DAYS):
+        assert roots.days > window
     assert {f.name for f in policy.floors} == {
         "calibration_evidence_anchor", "taf_case_cache", "metar_trajectory_training",
     }
     # The dashboard's fixed-start sections recompute through the cold tier
     # instead of holding rows back (「在外置硬盘」).
     assert off.POLICY_BY_TABLE[WS].floors == ()
-    assert policy.keep_station_days is not None and policy.keep_station_days.live_only
+    assert policy.keep_decision_envelopes is not None
 
 
 def test_an_unanchored_calibration_lane_moves_nothing(
@@ -548,9 +564,102 @@ def test_an_unlabelled_fact_keeps_its_envelope(store: Path, cold: Path, tmp_path
                                   sql="SELECT 'env_0'", why="test"),),
     )
     conn = sqlite3.connect(store)
-    plan = off.plan_table(conn, reduced, as_of=AS_OF, holds={}, station_days=lambda _live: set())
+    plan = off.plan_table(conn, reduced, as_of=AS_OF, holds={})
     conn.close()
     assert plan.kept.get("named:unlabelled_fact") == 1
     assert plan.kept.get("latest_0:station_id+stage") == 1
     assert len(plan.candidates) == 1
     assert fact_columns   # the production schema carries the table the real query reads
+
+
+def _envelope(conn, eid: str, station: str, day: str, stage: str, decided: str) -> None:
+    columns = [r[1] for r in conn.execute(f"PRAGMA table_info({ENVELOPE})")]
+    values = {c: f"{c}-{eid}" for c in columns}
+    values.update({
+        "envelope_id": eid, "stage": stage, "checkpoint_id": f"cp_{eid}", "station_id": station,
+        "event_date": day, "decision_at_utc": decided, "state": "COMMITTED",
+        "content_sha256": _sha(eid), "posterior_sha256": _sha("p"), "bridge_sha256": _sha("b"),
+        "lineage_json": "{}", "probabilities_json": "{}", "bucket_ordinals_json": "{}",
+    })
+    conn.execute(
+        f"INSERT INTO {ENVELOPE}({','.join(values)}) VALUES({','.join('?' * len(values))})",
+        tuple(values.values()),
+    )
+
+
+def _live_decision(conn, did: str, station: str, day: str, binding: dict) -> None:
+    conn.execute(
+        "INSERT INTO auto_trade_decisions(decision_id,cycle_id,plan_id,station_id,event_date,"
+        "settlement_timezone,strategy_lane,decided_state,will_order,reason_codes_json,"
+        "details_json,decision_sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (did, "c_" + did, "plan_" + did, station, day, "UTC", "basket", "submitted", 1, "[]",
+         json.dumps({"forward_evidence_binding": binding}), _sha(did), f"{day}T00:00:00Z"),
+    )
+    columns = [str(r[1]) for r in conn.execute("PRAGMA table_info(basket_target_order_intents)")]
+    values = {
+        "order_intent_id": "i_" + did, "decision_id": did, "cycle_id": "c_" + did, "bucket": "20°C",
+        "token_id": "tok", "side": "YES", "order_action": "BUY", "limit_price": 0.4,
+        "requested_size": 5.0, "requested_notional_usdc": 2.0, "state": "filled",
+        "live_submit_authorized": 1, "idempotency_key": "k_" + did, "intent_json": "{}",
+        "intent_sha256": _sha("i" + did), "created_at": f"{day}T00:00:00Z",
+    }
+    listed = [c for c in columns if c in values]
+    conn.execute(
+        f"INSERT INTO basket_target_order_intents({','.join(listed)}) VALUES({','.join('?' * len(listed))})",
+        tuple(values[c] for c in listed),
+    )
+
+
+def test_p1_rows_take_the_table_window_and_the_roots_keep_theirs(store: Path) -> None:
+    """AS_OF 09-27: the table's window ends 08-11, the roots' 07-27."""
+
+    conn = sqlite3.connect(store)
+    for n, day in enumerate(("2026-08-01", "2026-08-02", "2026-08-03")):
+        _envelope(conn, f"p1_klga_{n}", "KLGA", day, "P1", f"{day}T01:00:00Z")
+    for n, day in enumerate(("2026-08-01", "2026-08-02")):
+        _envelope(conn, f"p0_klga_{n}", "KLGA", day, "P0", f"{day}T01:00:00Z")
+        _envelope(conn, f"p0m_klga_{n}", "KLGA", day, "P0-M", f"{day}T02:00:00Z")
+    _envelope(conn, "p0_klga_old", "KLGA", "2026-07-20", "P0", "2026-07-20T01:00:00Z")
+    # A live decision names its P1 envelope by second and hash (live_book's
+    # key; the instant is spelled with fewer digits than the row).
+    _envelope(conn, "p1_eglc_named", "EGLC", "2026-08-02", "P1", "2026-08-01T10:00:00.123Z")
+    _envelope(conn, "p1_eglc_other", "EGLC", "2026-08-02", "P1", "2026-08-01T11:00:00Z")
+    _envelope(conn, "p1_eglc_newest", "EGLC", "2026-08-03", "P1", "2026-08-02T11:00:00Z")
+    _live_decision(conn, "d_named", "EGLC", "2026-08-02", {
+        "probability_stage": "P1", "probability_decision_at_utc": "2026-08-01T10:00:00.123000Z",
+        "probability_artifact_sha256": _sha("p1_eglc_named"),
+    })
+    # One names an envelope that is not there: its station-day stays whole.
+    for n in range(2):
+        _envelope(conn, f"p1_zuuu_{n}", "ZUUU", "2026-08-02", "P1", f"2026-08-01T0{n}:00:00Z")
+    _envelope(conn, "p1_zuuu_newest", "ZUUU", "2026-08-03", "P1", "2026-08-02T05:00:00Z")
+    _live_decision(conn, "d_lost", "ZUUU", "2026-08-02", {
+        "probability_stage": "P1", "probability_decision_at_utc": "2026-08-01T09:00:00Z",
+        "probability_artifact_sha256": _sha("never_written"),
+    })
+    # A decision that names no envelope keeps nothing.
+    _live_decision(conn, "d_unbound", "KLGA", "2026-08-01", {})
+    conn.commit()
+    policy = off.POLICY_BY_TABLE[ENVELOPE]
+    reduced = off.TablePolicy(
+        table=ENVELOPE, time_column="event_date", hot_days=policy.hot_days, readers="test",
+        keep_latest=policy.keep_latest, keep_recent=policy.keep_recent,
+        keep_decision_envelopes=policy.keep_decision_envelopes,
+    )
+    assert off.eligibility(conn, reduced) == []
+    plan = off.plan_table(conn, reduced, as_of=AS_OF, holds={})
+    moving = {
+        str(r[0]) for r in conn.execute(
+            f"SELECT envelope_id FROM {ENVELOPE} WHERE rowid IN ({','.join('?' * len(plan.candidates))})",
+            tuple(plan.candidates),
+        )
+    }
+    conn.close()
+    assert moving == {"p1_klga_0", "p1_klga_1", "p0_klga_old", "p1_eglc_other"}
+    assert plan.kept == {
+        "recent:root_stages": 4,                                # KLGA P0/P0-M of 08-01/02
+        "live_decision_envelope": 1,                            # EGLC's named envelope
+        "live_decision_envelope_unresolved_station_day": 2,     # ZUUU 08-02 whole
+        "latest_0:station_id+stage": 3,                         # newest P1 of each station
+    }
+

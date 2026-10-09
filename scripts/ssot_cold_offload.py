@@ -106,6 +106,7 @@ from bayes_basket_target.offloaded_paths import (  # noqa: E402
 )
 from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES  # noqa: E402
 from bayes_basket_target.valuation_store import WINDOW_DAYS as VALUATION_WINDOW_DAYS  # noqa: E402
+from bayes_basket_target.board_readings import SEAT_LOOKBACK_DAYS as BOARD_SEAT_LOOKBACK_DAYS  # noqa: E402
 
 SCHEMA = "ssot_cold_offload_v1"
 BATCH_SCHEMA = "ssot_cold_offload_batch_v1"
@@ -185,14 +186,18 @@ class KeepLatest:
 
 
 @dataclass(frozen=True)
-class KeepStationDays:
-    """Every row of a station-day that had an order intent stays hot.
+class KeepRecent:
+    """Rows whose ``column`` is one of ``values`` keep a longer window.
 
-    ``live_only`` narrows it to intents authorised for live submission --
-    the audit trail of real money, which the SSOT keeps whole.
+    For a table whose readers want some kinds of row for longer than others:
+    a row of one of those kinds stays while its time is on or after the run's
+    as-of date less ``days``, though the table's own window has passed.
     """
 
-    live_only: bool
+    name: str
+    column: str
+    values: tuple[str, ...]
+    days: int
     why: str
 
 
@@ -240,6 +245,24 @@ class KeepDecisionPlans:
 
 
 @dataclass(frozen=True)
+class KeepDecisionEnvelopes:
+    """The envelope each live decision stood on stays hot, by name.
+
+    A decision with a live-authorised intent records, in
+    ``details_json.forward_evidence_binding``, the stage, the decision instant
+    and the ``content_sha256`` of the probability envelope it acted on -- the
+    key ``live_book`` re-reads it by.  The row is found the same way: the
+    committed envelopes of that station-day and stage within that second, off
+    ``scope_index``, then the hash picks the one.  A decision whose envelope
+    cannot be found that way keeps its whole station-day; one that names no
+    envelope keeps nothing.
+    """
+
+    scope_index: str
+    why: str
+
+
+@dataclass(frozen=True)
 class KeepNamed:
     """Every row whose ``column`` a reader's own query still names stays hot.
 
@@ -280,9 +303,10 @@ class TablePolicy:
     #: An SQL predicate a row must also satisfy to leave at all.
     candidate_where: str | None = None
     keep_latest: tuple[KeepLatest, ...] = ()
-    keep_station_days: KeepStationDays | None = None
+    keep_recent: tuple[KeepRecent, ...] = ()
     keep_vector_refs: KeepVectorRefs | None = None
     keep_decision_plans: KeepDecisionPlans | None = None
+    keep_decision_envelopes: KeepDecisionEnvelopes | None = None
     keep_named: tuple[KeepNamed, ...] = ()
     floors: tuple[DynamicFloor, ...] = ()
     #: Content-addressed side tables the moved rows name, COPIED (never
@@ -304,9 +328,10 @@ class TablePolicy:
                 {"key": list(r.key), "order": list(r.order), "count": r.count, "why": r.why}
                 for r in self.keep_latest
             ],
-            "keep_station_days": None if self.keep_station_days is None else {
-                "live_only": self.keep_station_days.live_only, "why": self.keep_station_days.why,
-            },
+            "keep_recent": [
+                {"name": r.name, "column": r.column, "values": list(r.values), "days": r.days, "why": r.why}
+                for r in self.keep_recent
+            ],
             "keep_vector_refs": None if self.keep_vector_refs is None else {
                 "vector_column": self.keep_vector_refs.vector_column,
                 "instant_column": self.keep_vector_refs.instant_column,
@@ -315,6 +340,10 @@ class TablePolicy:
             "keep_decision_plans": None if self.keep_decision_plans is None else {
                 "instant_index": self.keep_decision_plans.instant_index,
                 "why": self.keep_decision_plans.why,
+            },
+            "keep_decision_envelopes": None if self.keep_decision_envelopes is None else {
+                "scope_index": self.keep_decision_envelopes.scope_index,
+                "why": self.keep_decision_envelopes.why,
             },
             "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
@@ -730,18 +759,27 @@ POLICIES += (
     # no caller, and no envelope since 09-28 carries the release_state the
     # production check reads.  Offline whole-history readers attach the cold
     # rows.
+    #
+    # Two windows (2026-10-09): only P0 and P0-M rows are read for long -- the
+    # feature gate re-scores P0 over 60 event days and P1's likelihood refit
+    # reads its P0/P0-M roots over 44 -- so a P1 row keeps the table's window,
+    # set by the readers of every stage: the board's seat windows (45 days,
+    # three stages, a launchd job) and the 28-day valuation/realisation/
+    # posterior reads.  The 08-16..09-08 P1 rows alone were 3.8 GiB.
     TablePolicy(
         table="basket_probability_envelope",
         time_column="event_date",
-        hot_days=max(FEATURE_GATE_WINDOW_DAYS, P1_LIKELIHOOD_WINDOW_DAYS) + 2,
+        hot_days=max(BOARD_SEAT_LOOKBACK_DAYS, VALUATION_WINDOW_DAYS) + 2,
         readers=(
             "production (worker, io, ledger, lanes, bridge, materialization): the current "
             "station-day, an envelope by id, or the newest per station; "
             "fit_deterministic_feature_gate: P0 of the last 60 event days; "
-            "build_metar_phase_hazard_samples / fit_p1_observation_likelihood: 44 days; "
+            "build_metar_phase_hazard_samples / fit_p1_observation_likelihood: P0/P0-M "
+            "roots of 44 days; board_readings.seat_windows: three stages, 45 days; "
             "fit_taf_likelihood: from 2026-08-16 via its case cache; refit_center_width / "
             "refit_off_centre_claim and serving_arithmetic: from the evidence anchor; "
-            "dashboard: valuation 28 days, posterior 14, live_book every live decision, "
+            "dashboard: valuation 28 days, posterior 14, live_book the envelope each live "
+            "decision names, "
             "truth landing and H5 from their cache, recomputing through the cold tier; "
             "delta_v2_settlement_label: the envelope an unlabelled fact names; "
             "the METAR trajectory packet (production, one due station a cycle): every "
@@ -753,9 +791,20 @@ POLICIES += (
                 why="native_ensemble_oos and rolling_native_taf_oos read each station's newest P0",
             ),
         ),
-        keep_station_days=KeepStationDays(
-            live_only=True,
-            why="live_book re-reads the envelope of every live decision; real money stays whole",
+        keep_recent=(
+            KeepRecent(
+                name="root_stages",
+                column="stage",
+                values=("P0", "P0-M"),
+                days=max(FEATURE_GATE_WINDOW_DAYS, P1_LIKELIHOOD_WINDOW_DAYS, BOARD_SEAT_LOOKBACK_DAYS) + 2,
+                why="the feature gate reads P0 for 60 event days, P1's likelihood refit P0/P0-M roots for 44",
+            ),
+        ),
+        # Not the live station-day whole (the plan table's lesson of 10-08):
+        # live_book re-reads the one envelope each live decision names.
+        keep_decision_envelopes=KeepDecisionEnvelopes(
+            scope_index="basket_probability_envelope_publisher_scope_idx",
+            why="live_book re-reads the envelope each live decision names; real money's envelope stays",
         ),
         keep_named=(
             KeepNamed(
@@ -956,8 +1005,8 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
     needed = {policy.time_column}
     for rule in policy.keep_latest:
         needed.update(c for c in (*rule.key, *rule.order) if c != "rowid")
-    if policy.keep_station_days is not None:
-        needed.update({"station_id", "event_date"})
+    for rule in policy.keep_recent:
+        needed.add(rule.column)
     for rule in policy.keep_named:
         needed.add(rule.column)
     if policy.keep_vector_refs is not None:
@@ -972,6 +1021,14 @@ def eligibility(conn: sqlite3.Connection, policy: TablePolicy) -> list[str]:
         ).fetchone()
         if indexed is None:
             reasons.append("index_missing:" + policy.keep_decision_plans.instant_index)
+    if policy.keep_decision_envelopes is not None:
+        needed.update({"station_id", "event_date", "stage", "state", "decision_at_utc", "content_sha256"})
+        indexed = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND tbl_name=? AND name=?",
+            (table, policy.keep_decision_envelopes.scope_index),
+        ).fetchone()
+        if indexed is None:
+            reasons.append("index_missing:" + policy.keep_decision_envelopes.scope_index)
     missing = sorted(needed - columns)
     if missing:
         reasons.append("columns_missing:" + ",".join(missing))
@@ -1060,22 +1117,6 @@ class TablePlan:
             "table_estimated_bytes": self.table_estimated_bytes,
             "absent_vector_refs": self.absent_vector_refs,
         }
-
-
-def _intent_station_days(conn: sqlite3.Connection, *, live_only: bool) -> set[tuple[str, str]]:
-    days: set[tuple[str, str]] = set()
-    if not _table_exists(conn, "auto_trade_decisions"):
-        return days
-    for table in ("basket_target_order_intents", "basket_target_order_intents_pre_go_live"):
-        if not _table_exists(conn, table):
-            continue
-        where = " WHERE i.live_submit_authorized<>0" if live_only else ""
-        for station, day in conn.execute(
-            f"SELECT DISTINCT d.station_id, d.event_date FROM {_q(table)} i"
-            f" JOIN auto_trade_decisions d ON d.decision_id=i.decision_id{where}"
-        ):
-            days.add((str(station), str(day)))
-    return days
 
 
 VECTOR_TABLE = "basket_target_execution_version_vectors"
@@ -1186,6 +1227,50 @@ def _decision_plan_rowids(conn: sqlite3.Connection, table: str, rule: KeepDecisi
     return kept
 
 
+def _decision_envelope_rowids(
+    conn: sqlite3.Connection, table: str, rule: KeepDecisionEnvelopes,
+) -> dict[int, str]:
+    """The rowids of ``table`` a live decision names (see :class:`KeepDecisionEnvelopes`)."""
+
+    if not _table_exists(conn, "auto_trade_decisions"):
+        return {}
+    binding = "$.forward_evidence_binding"
+    named: set[tuple[str, str, str, str, str]] = set()
+    for intents in ("basket_target_order_intents", "basket_target_order_intents_pre_go_live"):
+        if not _table_exists(conn, intents):
+            continue
+        for station, day, at, sha, stage in conn.execute(
+            "SELECT DISTINCT d.station_id, d.event_date,"
+            f" json_extract(d.details_json, '{binding}.probability_decision_at_utc'),"
+            f" json_extract(d.details_json, '{binding}.probability_artifact_sha256'),"
+            f" coalesce(json_extract(d.details_json, '{binding}.probability_stage'),"
+            "          json_extract(d.details_json, '$.decision_signature.stage'))"
+            f" FROM {_q(intents)} i JOIN auto_trade_decisions d ON d.decision_id=i.decision_id"
+            " WHERE i.live_submit_authorized<>0"
+        ):
+            if at and sha and stage and len(str(at)) >= 19:
+                named.add((str(station), str(day), str(at)[:19], str(sha), str(stage)))
+    kept: dict[int, str] = {}
+    for station, day, second, sha, stage in sorted(named):
+        found = [
+            int(rowid) for rowid, content in conn.execute(
+                f"SELECT rowid, content_sha256 FROM {_q(table)} INDEXED BY {_q(rule.scope_index)}"
+                " WHERE state='COMMITTED' AND event_date=? AND station_id=?"
+                " AND decision_at_utc>=? AND decision_at_utc<=? AND stage=?",
+                (day, station, second, second + "z", stage),
+            ) if str(content) == sha
+        ]
+        for rowid in found:
+            kept[rowid] = "live_decision_envelope"
+        if not found:
+            # Fail closed: a named envelope not found keeps its whole station-day.
+            for (rowid,) in conn.execute(
+                f"SELECT rowid FROM {_q(table)} WHERE station_id=? AND event_date=?", (station, day),
+            ):
+                kept.setdefault(int(rowid), "live_decision_envelope_unresolved_station_day")
+    return kept
+
+
 def _sql_order_key(value: Any) -> tuple:
     """SQLite's ORDER BY across storage classes: NULL, numbers, text, blobs."""
 
@@ -1204,7 +1289,6 @@ def plan_table(
     *,
     as_of: datetime,
     holds: Mapping[str, Mapping[str, Any]],
-    station_days: Callable[[bool], set[tuple[str, str]]],
     estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
 ) -> TablePlan:
     """Every rowid of ``policy.table`` that may leave, and what was kept and why.
@@ -1265,15 +1349,14 @@ def plan_table(
             if held:
                 kept[name] = held
             effective = lowest
-    days = (
-        station_days(policy.keep_station_days.live_only)
-        if policy.keep_station_days is not None else set()
-    )
+    recent = [
+        (rule, (as_of.astimezone(timezone.utc).date() - timedelta(days=int(rule.days))).isoformat())
+        for rule in policy.keep_recent
+    ]
     wanted: list[str] = []
     for rule in policy.keep_latest:
         wanted += [c for c in (*rule.key, *rule.order) if c not in {"rowid", time_column}]
-    if days:
-        wanted += [c for c in ("station_id", "event_date") if c != time_column]
+    wanted += [rule.column for rule, _floor in recent if rule.column != time_column]
     named: list[tuple[KeepNamed, set[str]]] = [
         (rule, {
             str(r[0])
@@ -1304,7 +1387,7 @@ def plan_table(
             break
         stamps = {int(rowid): stamp for rowid, stamp in chunk}
         older.extend(stamps)
-        if not wanted and not days and not named:
+        if not wanted and not named:
             continue
         rows: Iterable[Sequence[Any]] = [(rowid,) for rowid in stamps]
         if wanted:
@@ -1330,8 +1413,9 @@ def plan_table(
                 heapq.heappush(entries, (order, rowid))
                 if len(entries) > rule.count:
                     heapq.heappop(entries)
-            if days and (str(value("station_id")), str(value("event_date"))) in days:
-                protected.setdefault(rowid, "station_day")
+            for rule, floor_day in recent:
+                if str(value(rule.column)) in rule.values and str(value(time_column)) >= floor_day:
+                    protected.setdefault(rowid, f"recent:{rule.name}")
             for rule, ids in named:
                 if str(value(rule.column)) in ids:
                     protected.setdefault(rowid, f"named:{rule.name}")
@@ -1345,6 +1429,12 @@ def plan_table(
     if policy.keep_decision_plans is not None and len(older):
         old_set = set(older)
         for rowid, label in _decision_plan_rowids(conn, table, policy.keep_decision_plans).items():
+            if rowid in old_set:
+                protected.setdefault(rowid, label)
+        del old_set
+    if policy.keep_decision_envelopes is not None and len(older):
+        old_set = set(older)
+        for rowid, label in _decision_envelope_rowids(conn, table, policy.keep_decision_envelopes).items():
             if rowid in old_set:
                 protected.setdefault(rowid, label)
         del old_set
@@ -2100,13 +2190,6 @@ def run(
         receipt["ceiling_before"] = _ceiling(ssot_path, receipt["store_before"])
         holds = load_holds(holds_path)
         receipt["holds"] = holds
-        day_cache: dict[bool, set[tuple[str, str]]] = {}
-
-        def station_days(live_only: bool) -> set[tuple[str, str]]:
-            if live_only not in day_cache:
-                day_cache[live_only] = _intent_station_days(read, live_only=live_only)
-            return day_cache[live_only]
-
         budget = MoveBudget(
             deadline=(started + float(budget_seconds)) if budget_seconds and budget_seconds > 0 else None,
             pause_factor=float(pause_factor), batch_rows=int(batch_rows), batch_bytes=int(batch_bytes),
@@ -2124,7 +2207,7 @@ def run(
         # candidate rowids are ever held.
         for policy in selected:
             try:
-                plan = plan_table(read, policy, as_of=moment, holds=holds, station_days=station_days,
+                plan = plan_table(read, policy, as_of=moment, holds=holds,
                                   estimate_sample=estimate_sample)
             except sqlite3.Error as exc:
                 # A table that cannot be planned is left alone; the others go on.
@@ -2193,7 +2276,9 @@ _STATE_WORDS = {
     "refused": "拒绝", "moved": "已搬", "nothing_moved": "未搬", "partial_budget": "预算到点、下次续搬",
     "stopped": "中途停下", "not_started_budget": "预算用完未开始", "not_started_after_stop": "前表停下未开始",
 }
-_KEPT_WORDS = {"station_day": "真钱站日", "newest_rowid": "最大 rowid", "hold": "hold",
+_KEPT_WORDS = {"newest_rowid": "最大 rowid", "hold": "hold",
+               "recent:root_stages": "P0/P0-M 长窗", "live_decision_envelope": "实盘决策点名的信封",
+               "live_decision_envelope_unresolved_station_day": "点名信封找不到·整站日留",
                "serving_arithmetic_audit": "指纹审计", "live_decision_plan": "实盘决策点名的计划",
                "live_decision_plan_unresolved_station_day": "点名计划找不到·整站日留"}
 
