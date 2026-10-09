@@ -1,0 +1,21 @@
+== A. YES on mode±1 priced 0.1–0.5, split by whether the bucket is the DEARER neighbour (market skew side) ==
+  dearer   picked  n= 337 hit 0.359 price 0.314 equal-dollar return +14.3%
+  dearer   not     n=1091 hit 0.297 price 0.319 equal-dollar return -6.9%
+  cheaper  picked  n= 226 hit 0.204 price 0.190 equal-dollar return +7.3%
+  cheaper  not     n= 909 hit 0.133 price 0.179 equal-dollar return -25.5%
+
+== B. same events: the pair of neighbours when they bought one of them ==
+  n=587 | dearer neighbour at ask: hit 0.298 price 0.304 ret -2.1% | cheaper: hit 0.150 price 0.169 ret -11.1% | they picked the dearer 0.59
+   picked dearer  n=344 their pick hit 0.360 @ 0.312 ret +15.7% | the other neighbour hit 0.110
+   picked cheaper n=243 their pick hit 0.206 @ 0.185 ret +11.4% | the other neighbour hit 0.210
+
+== C. neutral baseline (1,480 station-days x moments with quotes): 'buy the dearer neighbour of the market mode at the ask' for everyone ==
+  ALL        n=3394 | dearer nb: hit 0.308 ask 0.310 ret -0.5% | cheaper nb: hit 0.134 ask 0.148 ret -9.3% | mode: hit 0.460 ask 0.491 ret -6.4%
+  D-2 12:00  n= 124 | dearer nb: hit 0.266 ask 0.323 ret -17.6% | cheaper nb: hit 0.145 ask 0.196 ret -26.1% | mode: hit 0.444 ask 0.427 ret +3.9%
+  D-1 06:00  n= 358 | dearer nb: hit 0.327 ask 0.305 ret +7.1% | cheaper nb: hit 0.145 ask 0.162 ret -10.5% | mode: hit 0.399 ask 0.446 ret -10.5%
+  D-1 12:00  n= 421 | dearer nb: hit 0.323 ask 0.306 ret +5.7% | cheaper nb: hit 0.147 ask 0.157 ret -5.9% | mode: hit 0.406 ask 0.457 ret -11.2%
+  D-1 18:00  n= 399 | dearer nb: hit 0.296 ask 0.309 ret -4.2% | cheaper nb: hit 0.145 ask 0.150 ret -3.2% | mode: hit 0.444 ask 0.471 ret -5.9%
+  D0 02:00   n=1085 | dearer nb: hit 0.304 ask 0.310 ret -1.9% | cheaper nb: hit 0.130 ask 0.142 ret -8.3% | mode: hit 0.476 ask 0.508 ret -6.2%
+  D0 08:00   n=1007 | dearer nb: hit 0.311 ask 0.313 ret -0.8% | cheaper nb: hit 0.122 ask 0.138 ret -11.3% | mode: hit 0.495 ask 0.520 ret -4.9%
+  traded     n=1557 | dearer nb: hit 0.302 ask 0.318 ret -5.2% | cheaper nb: hit 0.144 ask 0.149 ret -3.7% | mode: hit 0.464 ask 0.493 ret -6.0%
+  untouched  n=1837 | dearer nb: hit 0.314 ask 0.303 ret +3.5% | cheaper nb: hit 0.125 ask 0.146 ret -14.2% | mode: hit 0.457 ask 0.490 ret -6.8%

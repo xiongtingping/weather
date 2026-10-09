@@ -1,0 +1,25 @@
+pairs 587 | their side right (truth on their side of mode): 0.365 | truth on other side: 0.184 | truth at mode: 0.451
+
+== agreement of their side with each signal, and their hit when the signal agrees / disagrees ==
+  always warm                          n=587 agree 0.52 | their hit when agree 0.311 (n=305) vs disagree 0.280 (n=282) | signal alone: truth on its side 0.290, opposite 0.259
+  cheaper neighbour                    n=569 agree 0.41 | their hit when agree 0.208 (n=236) vs disagree 0.360 (n=333) | signal alone: truth on its side 0.185, opposite 0.366
+  deeper neighbour                     n=566 agree 0.51 | their hit when agree 0.293 (n=290) vs disagree 0.301 (n=276) | signal alone: truth on its side 0.265, opposite 0.286
+  market q: warm nb > cold nb          n=576 agree 0.59 | their hit when agree 0.358 (n=338) vs disagree 0.202 (n=238) | signal alone: truth on its side 0.366, opposite 0.182
+  neighbour whose mid FELL last hour   n=342 agree 0.58 | their hit when agree 0.330 (n=200) vs disagree 0.261 (n=142) | signal alone: truth on its side 0.307, opposite 0.243
+  our mean vs mode                     n=587 agree 0.50 | their hit when agree 0.331 (n=296) vs disagree 0.261 (n=291) | signal alone: truth on its side 0.303, opposite 0.245
+  our mode vs mode                     n=217 agree 0.53 | their hit when agree 0.319 (n=116) vs disagree 0.248 (n=101) | signal alone: truth on its side 0.327, opposite 0.240
+  our p: warm nb > cold nb             n=587 agree 0.51 | their hit when agree 0.332 (n=298) vs disagree 0.260 (n=289) | signal alone: truth on its side 0.296, opposite 0.252
+  station sample-mean side             n=587 agree 0.50 | their hit when agree 0.342 (n=292) vs disagree 0.251 (n=295) | signal alone: truth on its side 0.315, opposite 0.233
+  today's running max side (D0)        n=235 agree 0.46 | their hit when agree 0.306 (n=108) vs disagree 0.268 (n=127) | signal alone: truth on its side 0.289, opposite 0.255
+  yesterday's truth side of mode       n=485 agree 0.46 | their hit when agree 0.293 (n=225) vs disagree 0.308 (n=260) | signal alone: truth on its side 0.282, opposite 0.266
+
+== their direction call by size, lead and stage ==
+  size <20 U n=241 their side right 0.361 vs other side 0.195 | hit 0.282 @ 0.250
+  20–100 U   n=278 their side right 0.349 vs other side 0.180 | hit 0.284 @ 0.260
+  ≥100 U     n= 68 their side right 0.441 vs other side 0.162 | hit 0.397 @ 0.288
+  lead <12h  n=205 their side right 0.298 vs other side 0.215 | hit 0.229 @ 0.266
+  12–36h     n=285 their side right 0.396 vs other side 0.179 | hit 0.330 @ 0.258
+  ≥36h       n= 97 their side right 0.412 vs other side 0.134 | hit 0.340 @ 0.250
+  P0         n=128 their side right 0.414 vs other side 0.195 | hit 0.328 @ 0.241
+  P0-M       n=286 their side right 0.353 vs other side 0.178 | hit 0.290 @ 0.265
+  P1         n=173 their side right 0.347 vs other side 0.185 | hit 0.283 @ 0.263

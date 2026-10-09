@@ -1,0 +1,29 @@
+== (a) their picks by how typical the choice model found them (test ≥10-01) ==
+  rank 1 (model agrees)    n=160 hit 0.394 return +28.2% | median size 32 U | mean price 0.32 | NO share 0.15
+  rank 2–3                 n=288 hit 0.417 return +20.4% | median size 46 U | mean price 0.37 | NO share 0.32
+  rank 4–8                 n=319 hit 0.665 return +8.6% | median size 68 U | mean price 0.59 | NO share 0.78
+  rank ≥9 (atypical)       n= 11 hit 0.818 return -10.1% | median size 22 U | mean price 0.75 | NO share 0.82
+
+== (c) size vs typicality (test): correlation of log size with choice-model probability of their pick ==
+  corr(log usdc, log P_model) = -0.126
+  size <10 U   n=115 hit 0.365 return +15.3% | model P of their pick 0.190 | rank≥4 share 0.35
+  10–50 U      n=276 hit 0.475 return +12.4% | model P of their pick 0.188 | rank≥4 share 0.36
+  ≥50 U        n=387 hit 0.597 return +20.2% | model P of their pick 0.160 | rank≥4 share 0.50
+
+== (b) 'fade the last hour's move' as a rule for everyone (all events, all alternatives with a 60-min mid) ==
+  ('No', 'down')   their picks n= 68 hit 0.676 ret +0.5% | NOT picked n= 1069 hit 0.756 ret -5.5% (mean price 0.80)
+  ('No', 'flat')   their picks n=135 hit 0.674 ret +7.2% | NOT picked n= 2448 hit 0.869 ret -0.7% (mean price 0.88)
+  ('No', 'up')     their picks n=208 hit 0.663 ret +9.0% | NOT picked n=  884 hit 0.722 ret +0.3% (mean price 0.73)
+  ('Yes', 'down')  their picks n=211 hit 0.346 ret +30.3% | NOT picked n=  926 hit 0.227 ret +11.5% (mean price 0.23)
+  ('Yes', 'flat')  their picks n=202 hit 0.356 ret +19.5% | NOT picked n= 2381 hit 0.123 ret +27.3% (mean price 0.14)
+  ('Yes', 'up')    their picks n=137 hit 0.314 ret -6.0% | NOT picked n=  955 hit 0.286 ret -12.3% (mean price 0.33)
+
+== (d) persistence: buy YES on yesterday's-truth bucket (and +1) at the ask, everyone vs their picks (all events, |d_mode|≤2) ==
+  centre − yesterday truth = -1: their picks n=116 hit 0.362 ret +23.9% | not picked n= 861 hit 0.187 ret -21.4% price 0.24
+  centre − yesterday truth = +0: their picks n=164 hit 0.329 ret +4.9% | not picked n= 886 hit 0.257 ret -12.8% price 0.28
+  centre − yesterday truth = +1: their picks n=156 hit 0.288 ret -1.8% | not picked n= 904 hit 0.225 ret +61.2% price 0.24
+
+== (e) within their favourite cells (YES mode±1 priced 0.1–0.5; NO mode/−1 priced 0.3–0.7): picked vs not picked ==
+  YES mode±1 @0.1–0.5    picked n=585 hit 0.303 ret +17.3% price 0.26 | not picked n=2046 hit 0.224 ret -15.4% price 0.26
+  NO mode/−1 @0.3–0.7    picked n=327 hit 0.602 ret +11.1% price 0.54 | not picked n=1252 hit 0.566 ret +1.1% price 0.56
+  YES mode @0.2–0.6      picked n=172 hit 0.465 ret +4.8% price 0.46 | not picked n=1127 hit 0.406 ret -7.3% price 0.44

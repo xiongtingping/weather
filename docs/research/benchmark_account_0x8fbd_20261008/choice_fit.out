@@ -1,0 +1,112 @@
+events 1491 | alternatives per event (mean) 21.9
+train 713 test 778
+
+== conditional logit: fit on <10-01, test on ≥10-01 ==
+  train  n=713 | NLL/event 1.897 vs uniform 3.087 | top-1 0.275 (uniform 0.046) | top-3 0.665
+  test   n=778 | NLL/event 1.925 vs uniform 3.087 | top-1 0.206 (uniform 0.046) | top-3 0.576
+  standardised coefficients (|β| large = matters; sign = direction of preference):
+    log_price      +2.748
+    is_no          -2.666
+    no_x_q         +1.360
+    abs_d_mode     -1.064
+    q              -0.501
+    abs_d_our      -0.339
+    is_mode        -0.336
+    c_ytruth       -0.252
+    no_x_absd      -0.230
+    c_stmean       -0.222
+    log_depth      +0.176
+    c_obs          +0.130
+    no_x_logprice  +0.124
+    log_pq         -0.116
+    d_our          -0.092
+    d_mode         -0.091
+    c_tmax         -0.088
+    spread         +0.053
+    no_x_logpq     -0.020
+    mom            +0.005
+
+== picks judged against settled truth (test ≥10-01) ==
+  THEIR actual pick                            agree-with-them 1.000 | hit 0.519 | return at their-time price +16.7%
+  conditional-logit top pick                   agree-with-them 0.206 | hit 0.287 | return at their-time price -10.1%
+  market mode YES                              agree-with-them 0.103 | hit 0.422 | return at their-time price -11.2%
+  our max log(p/q) (side-aware)                agree-with-them 0.023 | hit 0.049 | return at their-time price -51.9%
+  cheapest non-mode YES                        agree-with-them 0.000 | hit 0.000 | return at their-time price -100.0%
+
+== lift tables (all events): share of choices vs share of available alternatives ==
+  side × d_mode:
+     ('No', -3)         chosen    6 (0.004) available  5342 (0.163) lift 0.02
+     ('No', -2)         chosen   20 (0.013) available  1484 (0.045) lift 0.30
+     ('No', -1)         chosen  167 (0.112) available  1482 (0.045) lift 2.47
+     ('No', 0)          chosen  279 (0.187) available  1491 (0.046) lift 4.10
+     ('No', 1)          chosen   94 (0.063) available  1458 (0.045) lift 1.41
+     ('No', 2)          chosen   14 (0.009) available  1446 (0.044) lift 0.21
+     ('No', 3)          chosen    3 (0.002) available  3641 (0.111) lift 0.02
+     ('Yes', -3)        chosen    6 (0.004) available  5342 (0.163) lift 0.02
+     ('Yes', -2)        chosen   61 (0.041) available  1484 (0.045) lift 0.90
+     ('Yes', -1)        chosen  293 (0.197) available  1482 (0.045) lift 4.33
+     ('Yes', 0)         chosen  196 (0.131) available  1491 (0.046) lift 2.88
+     ('Yes', 1)         chosen  306 (0.205) available  1458 (0.045) lift 4.60
+     ('Yes', 2)         chosen   43 (0.029) available  1446 (0.044) lift 0.65
+     ('Yes', 3)         chosen    3 (0.002) available  3641 (0.111) lift 0.02
+  side × price decile:
+     ('No', 0.3)        chosen   33 (0.022) available    92 (0.003) lift 7.86
+     ('No', 0.4)        chosen   80 (0.054) available   348 (0.011) lift 5.04
+     ('No', 0.5)        chosen  128 (0.086) available   611 (0.019) lift 4.59
+     ('No', 0.6)        chosen  143 (0.096) available   907 (0.028) lift 3.46
+     ('No', 0.7)        chosen   98 (0.066) available  1010 (0.031) lift 2.13
+     ('No', 0.8)        chosen   71 (0.048) available  1360 (0.042) lift 1.14
+     ('No', 0.9)        chosen   26 (0.017) available 12000 (0.367) lift 0.05
+     ('Yes', 0.0)       chosen   36 (0.024) available 11444 (0.350) lift 0.07
+     ('Yes', 0.1)       chosen  188 (0.126) available  1389 (0.042) lift 2.97
+     ('Yes', 0.2)       chosen  326 (0.219) available  1317 (0.040) lift 5.43
+     ('Yes', 0.3)       chosen  153 (0.103) available   881 (0.027) lift 3.81
+     ('Yes', 0.4)       chosen  127 (0.085) available   776 (0.024) lift 3.59
+     ('Yes', 0.5)       chosen   59 (0.040) available   374 (0.011) lift 3.46
+     ('Yes', 0.6)       chosen   15 (0.010) available   133 (0.004) lift 2.47
+  YES: our log(p/q) band:
+     ('No', 'lpq<-0.5') chosen   99 (0.066) available  4197 (0.128) lift 0.52
+     ('No', 'lpq<0')    chosen  246 (0.165) available  2949 (0.090) lift 1.83
+     ('No', 'lpq<0.5')  chosen  204 (0.137) available  5962 (0.182) lift 0.75
+     ('No', 'lpq>=0.5') chosen   34 (0.023) available  3236 (0.099) lift 0.23
+     ('Yes', 'lpq<-0.5') chosen  217 (0.146) available  4197 (0.128) lift 1.13
+     ('Yes', 'lpq<0')   chosen  332 (0.223) available  2949 (0.090) lift 2.47
+     ('Yes', 'lpq<0.5') chosen  281 (0.188) available  5962 (0.182) lift 1.03
+     ('Yes', 'lpq>=0.5') chosen   78 (0.052) available  3236 (0.099) lift 0.53
+  D0 only: centre − current obs (buckets):
+     ('No', -3)         chosen    0 (0.000) available   296 (0.019) lift 0.00
+     ('No', -2)         chosen    0 (0.000) available   243 (0.015) lift 0.00
+     ('No', -1)         chosen    0 (0.000) available   319 (0.020) lift 0.00
+     ('No', 0)          chosen   10 (0.014) available   400 (0.025) lift 0.55
+     ('No', 1)          chosen   24 (0.033) available   464 (0.029) lift 1.14
+     ('No', 2)          chosen   23 (0.032) available   525 (0.033) lift 0.96
+     ('No', 3)          chosen  280 (0.387) available  5705 (0.359) lift 1.08
+     ('Yes', -3)        chosen    0 (0.000) available   296 (0.019) lift 0.00
+     ('Yes', -2)        chosen    2 (0.003) available   243 (0.015) lift 0.18
+     ('Yes', -1)        chosen    1 (0.001) available   319 (0.020) lift 0.07
+     ('Yes', 0)         chosen   17 (0.024) available   400 (0.025) lift 0.93
+     ('Yes', 1)         chosen   27 (0.037) available   464 (0.029) lift 1.28
+     ('Yes', 2)         chosen   29 (0.040) available   525 (0.033) lift 1.22
+     ('Yes', 3)         chosen  310 (0.429) available  5705 (0.359) lift 1.20
+  centre − yesterday truth (buckets):
+     ('No', -3)         chosen   75 (0.050) available  5416 (0.166) lift 0.30
+     ('No', -2)         chosen   52 (0.035) available  1351 (0.041) lift 0.84
+     ('No', -1)         chosen  114 (0.076) available  1368 (0.042) lift 1.83
+     ('No', 0)          chosen  115 (0.077) available  1349 (0.041) lift 1.87
+     ('No', 1)          chosen   93 (0.062) available  1363 (0.042) lift 1.50
+     ('No', 2)          chosen   48 (0.032) available  1265 (0.039) lift 0.83
+     ('No', 3)          chosen   86 (0.058) available  4232 (0.129) lift 0.45
+     ('Yes', -3)        chosen  143 (0.096) available  5416 (0.166) lift 0.58
+     ('Yes', -2)        chosen   81 (0.054) available  1351 (0.041) lift 1.31
+     ('Yes', -1)        chosen  117 (0.078) available  1368 (0.042) lift 1.88
+     ('Yes', 0)         chosen  164 (0.110) available  1349 (0.041) lift 2.67
+     ('Yes', 1)         chosen  158 (0.106) available  1363 (0.042) lift 2.54
+     ('Yes', 2)         chosen   90 (0.060) available  1265 (0.039) lift 1.56
+     ('Yes', 3)         chosen  155 (0.104) available  4232 (0.129) lift 0.80
+  60-min momentum of the bucket mid:
+     ('No', 'down')     chosen   69 (0.046) available  1270 (0.039) lift 1.19
+     ('No', 'flat')     chosen  303 (0.203) available 13928 (0.426) lift 0.48
+     ('No', 'up')       chosen  211 (0.142) available  1146 (0.035) lift 4.04
+     ('Yes', 'down')    chosen  211 (0.142) available  1270 (0.039) lift 3.64
+     ('Yes', 'flat')    chosen  557 (0.374) available 13928 (0.426) lift 0.88
+     ('Yes', 'up')      chosen  140 (0.094) available  1146 (0.035) lift 2.68
