@@ -166,3 +166,21 @@ for lab, flt in (('all follow events', lambda r: True), ('within round-10 filter
     for st_ in ('agree', 'disagree', 'quiet'):
         line(f'{lab}: momentum {st_}', [r for r in R if r.get('mom') == st_ and flt(r)])
 line('round-10 filter + C + >=12h + momentum agrees', [r for r in R if r.get('mom') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST and r['unit'] == 'C' and r['lead'] >= 12])
+
+# ---- round 21: ICON forecast radiation anomaly with the momentum
+RAD = json.load(open(f'{B}/icon_rad.json'))
+for r, e in zip(R, evs_ft):
+    d = DR.get((e['station'], e['event_date'], e['ts']))
+    z = RAD.get(f'{e["station"]}|{e["event_date"]}|{e["ts"]}')
+    r['rad_ag'] = None
+    if d is not None and z is not None and abs(z) >= 0.5:
+        r['rad_ag'] = (1 if z > 0 else -1) == d['s']
+print('\n-- round 21: ICON radiation anomaly vs their direction, with momentum (off-mode events joined)')
+line('rad agrees', [r for r in R if r.get('rad_ag') is True])
+line('rad disagrees', [r for r in R if r.get('rad_ag') is False])
+line('momentum agrees and rad agrees', [r for r in R if r.get('mom') == 'agree' and r.get('rad_ag') is True])
+line('momentum agrees and rad disagrees', [r for r in R if r.get('mom') == 'agree' and r.get('rad_ag') is False])
+line('momentum quiet and rad agrees', [r for r in R if r.get('mom') == 'quiet' and r.get('rad_ag') is True])
+line('momentum quiet and rad disagrees', [r for r in R if r.get('mom') == 'quiet' and r.get('rad_ag') is False])
+line('momentum disagrees (any rad)', [r for r in R if r.get('mom') == 'disagree'])
+line('either agrees, neither opposes', [r for r in R if (r.get('mom') == 'agree' and r.get('rad_ag') is not False) or (r.get('mom') == 'quiet' and r.get('rad_ag') is True)])

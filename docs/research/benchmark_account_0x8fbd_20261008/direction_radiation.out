@@ -1,0 +1,22 @@
+=== all off-mode: n=1009 ===
+   ecmwf_ifs025 level     n= 700 agree 0.581 [0.530,0.630] skill +0.012 [-0.076,+0.097]  theirs agree/disagree +0.127/+0.149
+   icon_global level      n= 715 agree 0.601 [0.548,0.659] skill +0.114 [+0.034,+0.198]  theirs agree/disagree +0.239/+0.076
+   ecmwf_ifs025 update    n= 347 agree 0.490 [0.426,0.561] skill +0.032 [-0.093,+0.147]  theirs agree/disagree +0.160/+0.091
+   icon_global update     n= 390 agree 0.549 [0.491,0.609] skill +0.019 [-0.093,+0.126]  theirs agree/disagree +0.076/+0.051
+=== quiet |M|<0.5: n=226 ===
+   ecmwf_ifs025 level     n= 158 agree 0.576 [0.484,0.656] skill -0.029 [-0.154,+0.101]  theirs agree/disagree +0.123/+0.236
+   icon_global level      n= 162 agree 0.630 [0.543,0.712] skill +0.099 [-0.019,+0.234]  theirs agree/disagree +0.267/+0.187
+   ecmwf_ifs025 update    n=  62 agree 0.468 [0.339,0.612] skill -0.039 [-0.272,+0.209]  theirs agree/disagree +0.081/+0.145
+   icon_global update     n=  80 agree 0.500 [0.392,0.605] skill +0.034 [-0.169,+0.221]  theirs agree/disagree +0.090/+0.023
+
+=== robustness of ICON radiation level ===
+   H1: n=312 agree 0.554 skill +0.073
+   H2: n=403 agree 0.638 skill +0.145
+   |z| 0.5-1.0: n=366 agree 0.574 skill +0.112
+   |z| 1.0-1.5: n=167 agree 0.599 skill +0.145
+   |z| 1.5-9: n=182 agree 0.659 skill +0.090
+   with ECMWF momentum (|M|>=1):
+     momentum agrees with rad   n= 235 rad skill +0.240  their agree w/ rad 0.630  theirs +0.252
+     momentum opposes rad       n= 209 rad skill -0.032  their agree w/ rad 0.531  theirs +0.066
+     momentum quiet             n= 271 rad skill +0.117  their agree w/ rad 0.631  theirs +0.190
+   momentum + rad agree, their direction = that side: 0.630; their skill when they follow it +0.391

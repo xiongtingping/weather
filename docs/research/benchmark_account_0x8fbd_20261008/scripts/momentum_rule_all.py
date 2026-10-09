@@ -108,9 +108,38 @@ for st in sorted({x['station_id'] for x in reg if x['event_date'] in DATES}):
                              unit='F' if '°F' in next(iter(lad[0])) else 'C'))
 print('instances', len(inst), file=sys.stderr)
 
+# ---- round 21: ICON forecast radiation anomaly (Open-Meteo previous runs), as of t
+SW = json.load(open(f'{B}/prev_sw.json'))
+RAD = {}
+for key, v in SW.items():
+    if 'time' not in v or not key.endswith('|icon_global'):
+        continue
+    st = key.split('|')[0]
+    acc = collections.defaultdict(lambda: [0.0, 0.0, 0, 0])
+    for tt, a, b2 in zip(v['time'], v['d1'], v['d2']):
+        if 9 <= int(tt[11:13]) <= 16:
+            if a is not None: acc[tt[:10]][0] += a; acc[tt[:10]][2] += 1
+            if b2 is not None: acc[tt[:10]][1] += b2; acc[tt[:10]][3] += 1
+    RAD[st] = {d: (x[0] if x[2] == 8 else None, x[1] if x[3] == 8 else None) for d, x in acc.items()}
+for r in inst:
+    dd = RAD.get(r['st'], {})
+    r['rad'] = None
+    if r['ed'] not in dd:
+        continue
+    D = datetime.fromisoformat(r['ed']).replace(tzinfo=timezone.utc)
+    use1 = r['t'] >= (D - timedelta(days=1) + timedelta(hours=8)).timestamp()
+    use2 = r['t'] >= (D - timedelta(days=2) + timedelta(hours=8)).timestamp()
+    s1, s2 = dd[r['ed']]
+    val, lag = (s1, 0) if use1 and s1 is not None else (s2, 1) if use2 and s2 is not None else (None, None)
+    if val is None:
+        continue
+    others = [x[lag] for d2, x in dd.items() if d2 != r['ed'] and x[lag] is not None]
+    if len(others) >= 6:
+        r['rad'] = (val - statistics.mean(others)) / (statistics.pstdev(others) or 1.0)
 
-def ev(r):
-    side = 1 if r['M'] > 0 else -1
+
+def ev(r, side=None):
+    side = side if side is not None else (1 if r['M'] > 0 else -1)
     out, s = r['lad']
     q = {o: (bid + ask) / 2 / s for bk, (o, bid, ask) in out.items()}
     ords = {bk: o for bk, (o, bid, ask) in out.items()}
@@ -160,6 +189,31 @@ for label, flt in (('|M|>=1.0', lambda r: abs(r['M']) >= 1.0), ('|M|>=1.5', lamb
         h2 = [e[key] for r, e in rows if e.get(key) is not None and r['ed'] >= '2026-09-30']
         parts.append(f'{key} {sc*sum(vals)/len(vals):+.3f} [{sc*lo:+.3f},{sc*hi:+.3f}] H1/H2 {sc*sum(h1)/max(1,len(h1)):+.3f}/{sc*sum(h2)/max(1,len(h2)):+.3f}')
     print(f'   {label:40s} n={len(rows):5d}  ' + ' | '.join(parts))
+
+print('=== round 21: ICON radiation anomaly and the momentum combination on every station-day ===')
+def rule_report(label, rows_sides):
+    rows = [(r, ev(r, sd)) for r, sd in rows_sides]
+    rows = [(r, e) for r, e in rows if e is not None]
+    parts = []
+    for key, sc in (('score', 1), ('taker', 100), ('maker', 100)):
+        G = collections.defaultdict(list)
+        for r, e in rows:
+            if e.get(key) is not None:
+                G[(r['st'], r['ed'])].append(e[key])
+        vals = [v for g in G.values() for v in g]
+        if not vals:
+            continue
+        lo, hi = boot(G)
+        h1 = [e[key] for r, e in rows if e.get(key) is not None and r['ed'] < '2026-09-30']
+        h2 = [e[key] for r, e in rows if e.get(key) is not None and r['ed'] >= '2026-09-30']
+        parts.append(f'{key} {sc*sum(vals)/len(vals):+.3f} [{sc*lo:+.3f},{sc*hi:+.3f}] H1/H2 {sc*sum(h1)/max(1,len(h1)):+.3f}/{sc*sum(h2)/max(1,len(h2)):+.3f}')
+    print(f'   {label:44s} n={len(rows):5d}  ' + ' | '.join(parts))
+sg = lambda x: 1 if x > 0 else -1
+rule_report('ICON rad |z|>=1.0', [(r, sg(r['rad'])) for r in inst if r['rad'] is not None and abs(r['rad']) >= 1.0])
+rule_report('ICON rad |z|>=1.5', [(r, sg(r['rad'])) for r in inst if r['rad'] is not None and abs(r['rad']) >= 1.5])
+rule_report('M>=1 and ICON rad z>=0.5 same side', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and abs(r['rad']) >= 0.5 and sg(r['M']) == sg(r['rad'])])
+rule_report('M>=1.5 and ICON rad z>=1 same side', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1.5 and abs(r['rad']) >= 1 and sg(r['M']) == sg(r['rad'])])
+rule_report('M>=1 and ICON rad opposite', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and abs(r['rad']) >= 0.5 and sg(r['M']) != sg(r['rad'])])
 
 # their silent-event skill with CI
 R = json.load(open(f'{B}/direction_rows.json'))

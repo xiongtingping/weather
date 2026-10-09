@@ -1,0 +1,39 @@
+=== all off-mode: n=1009 ===
+   taf_tx         n= 199 agree 0.492 [0.406,0.578] skill -0.095 [-0.231,+0.049]  theirs agree/disagree +0.079/+0.263
+   taf_tx_upd     n=  49 agree 0.490 [0.353,0.638] skill +0.040 [-0.139,+0.238]  theirs agree/disagree +0.146/+0.062
+   taf_cloud      n= 522 agree 0.565 [0.517,0.619] skill -0.008 [-0.100,+0.076]  theirs agree/disagree +0.148/+0.211
+   taf_rain       n= 387 agree 0.581 [0.515,0.639] skill -0.017 [-0.116,+0.093]  theirs agree/disagree +0.072/+0.140
+   taf_cloud_upd  n= 193 agree 0.430 [0.353,0.519] skill -0.050 [-0.163,+0.063]  theirs agree/disagree -0.022/+0.071
+   taf_rain_upd   n= 103 agree 0.505 [0.402,0.606] skill -0.004 [-0.175,+0.150]  theirs agree/disagree +0.097/+0.107
+   pfc_before     n= 604 agree 0.609 [0.562,0.655] skill -0.033 [-0.112,+0.052]  theirs agree/disagree +0.107/+0.252
+   pfc_wet        n= 566 agree 0.602 [0.548,0.657] skill -0.019 [-0.111,+0.067]  theirs agree/disagree +0.144/+0.267
+   pfc_upd        n= 398 agree 0.515 [0.453,0.581] skill -0.018 [-0.102,+0.071]  theirs agree/disagree +0.134/+0.180
+   obs_cloud      n= 445 agree 0.573 [0.512,0.634] skill +0.050 [-0.049,+0.141]  theirs agree/disagree +0.203/+0.155
+   obs_rain       n=  79 agree 0.532 [0.365,0.679] skill +0.001 [-0.266,+0.282]  theirs agree/disagree +0.209/+0.234
+   obs_anom       n= 517 agree 0.571 [0.518,0.622] skill -0.000 [-0.080,+0.075]  theirs agree/disagree +0.160/+0.213
+=== quiet |M|<0.5: n=226 ===
+   taf_tx         n=  41 agree 0.537 [0.366,0.674] skill -0.169 [-0.465,+0.112]  theirs agree/disagree -0.045/+0.314
+   taf_tx_upd     n=12
+   taf_cloud      n= 117 agree 0.556 [0.463,0.650] skill -0.014 [-0.187,+0.135]  theirs agree/disagree +0.149/+0.218
+   taf_rain       n=  86 agree 0.593 [0.494,0.697] skill -0.014 [-0.208,+0.183]  theirs agree/disagree +0.094/+0.173
+   taf_cloud_upd  n=  39 agree 0.410 [0.250,0.568] skill +0.005 [-0.236,+0.268]  theirs agree/disagree -0.110/-0.085
+   taf_rain_upd   n=5
+   pfc_before     n= 135 agree 0.600 [0.500,0.693] skill -0.025 [-0.150,+0.127]  theirs agree/disagree +0.139/+0.270
+   pfc_wet        n= 127 agree 0.591 [0.504,0.683] skill -0.059 [-0.203,+0.088]  theirs agree/disagree +0.122/+0.319
+   pfc_upd        n=  87 agree 0.552 [0.437,0.667] skill +0.011 [-0.174,+0.190]  theirs agree/disagree +0.207/+0.231
+   obs_cloud      n= 114 agree 0.632 [0.532,0.719] skill +0.025 [-0.119,+0.172]  theirs agree/disagree +0.174/+0.232
+   obs_rain       n=17
+   obs_anom       n= 128 agree 0.570 [0.481,0.654] skill +0.054 [-0.099,+0.213]  theirs agree/disagree +0.234/+0.186
+=== lead < 18h: n=511 ===
+   taf_tx         n= 130 agree 0.492 [0.373,0.597] skill -0.041 [-0.208,+0.134]  theirs agree/disagree +0.116/+0.194
+   taf_tx_upd     n=  30 agree 0.400 [0.241,0.560] skill +0.108 [-0.095,+0.355]  theirs agree/disagree +0.194/-0.050
+   taf_cloud      n= 329 agree 0.553 [0.484,0.620] skill -0.030 [-0.134,+0.075]  theirs agree/disagree +0.073/+0.157
+   taf_rain       n= 243 agree 0.564 [0.486,0.638] skill -0.036 [-0.163,+0.098]  theirs agree/disagree -0.017/+0.061
+   taf_cloud_upd  n= 134 agree 0.381 [0.297,0.465] skill -0.033 [-0.183,+0.107]  theirs agree/disagree -0.039/+0.030
+   taf_rain_upd   n=  64 agree 0.500 [0.366,0.645] skill -0.020 [-0.219,+0.155]  theirs agree/disagree +0.033/+0.073
+   pfc_before     n= 306 agree 0.627 [0.556,0.703] skill -0.051 [-0.155,+0.049]  theirs agree/disagree +0.036/+0.198
+   pfc_wet        n= 261 agree 0.632 [0.560,0.703] skill +0.025 [-0.106,+0.149]  theirs agree/disagree +0.122/+0.142
+   pfc_upd        n= 213 agree 0.488 [0.418,0.567] skill +0.001 [-0.116,+0.122]  theirs agree/disagree +0.095/+0.089
+   obs_cloud      n= 220 agree 0.600 [0.519,0.676] skill +0.058 [-0.075,+0.170]  theirs agree/disagree +0.144/+0.070
+   obs_rain       n=  33 agree 0.576 [0.382,0.759] skill -0.035 [-0.361,+0.329]  theirs agree/disagree +0.090/+0.205
+   obs_anom       n= 240 agree 0.500 [0.425,0.574] skill -0.031 [-0.126,+0.075]  theirs agree/disagree +0.088/+0.151
