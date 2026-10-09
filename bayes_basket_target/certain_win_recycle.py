@@ -1,9 +1,14 @@
-"""Offer held YES and NO shares at 0.998 when the venue tick permits it.
+"""Offer held YES and NO shares at 0.999 when the venue tick permits it.
 
-The official WS book must provide a fresh tick that quotes 0.998 exactly.
-Old 0.99 GTC offers are cancelled and reconciled before their shares can be
-reoffered. An unknown cancellation or fill remains reserved in the ledger.
-The historic ``recycle998`` intent prefix is retained for the same lineage.
+The official WS book must provide a fresh tick that quotes 0.999 exactly.
+Older offers under the price (the 0.99 GTCs, then the 0.998 ones) are
+cancelled and reconciled before their shares can be reoffered. An unknown
+cancellation or fill remains reserved in the ledger. The historic
+``recycle998`` intent prefix is retained for the same lineage.
+
+Charter 264 (user ruling 2026-10-09 「把我的卖出车道0.998也改为0.999」): the
+price moved from 0.998 to 0.999 -- the price the benchmark cluster recycles
+its own winners at.
 """
 
 from __future__ import annotations
@@ -23,11 +28,11 @@ from .contracts import content_sha256
 from .exit_orders import TRANSPORT_TIMEOUT_SECONDS, default_position_reader, send_exit_sell
 from .supply_watch import EGRESS_HOLD_REASON, egress_held_sql, egress_send_gate
 
-RECYCLE_PRICE = 0.998
+RECYCLE_PRICE = 0.999
 STRATEGY_ID = "bayes_basket_target_v1"
 INTENT_PREFIX = "recycle998"
 SCHEMA = "certain_win_recycle_plan_v1"
-RULE_VERSION = "certain_win_recycle_resting_0998_v5"
+RULE_VERSION = "certain_win_recycle_resting_0999_v6"
 DEFAULT_MIN_ORDER_SHARES = 5.0
 DEFAULT_TICK_SIZE = 0.01
 # A market takes orders until a few hours after its day ends (18-300 min,
@@ -330,7 +335,8 @@ def retire_old_price_orders(
     conn: sqlite3.Connection, *, now_utc: str, client: Any,
     max_attempts: int = MAX_SENDS_PER_CYCLE,
 ) -> dict[str, Any]:
-    """Cancel the old 0.99 GTC offers before their shares can be reoffered.
+    """Cancel the offers under the current price (0.99, then 0.998) before their
+    shares can be reoffered.
 
     A cancel response alone does not prove that no shares remain at the
     exchange.  Only its explicit terminal order view closes the ledger;
@@ -369,7 +375,7 @@ def retire_old_price_orders(
         try:
             cancel = client.cancel_order({
                 "order_id": str(order_id),
-                "idempotency_key": f"{intent_id}:cancel:recycle_0998_v5",
+                "idempotency_key": f"{intent_id}:cancel:recycle_0999_v6",
             })
             if cancel.get("ok") is not True:
                 entry["reason"] = "cancel_unconfirmed"
@@ -556,7 +562,7 @@ def plan_certain_win_recycles(
     now_utc: str,
     account_reader: Callable[[], Mapping[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """The 0.998 sells to place: for every held leg of a market still taking
+    """The 0.999 sells to place: for every held leg of a market still taking
     orders, the shares no open sell of this lane already offers and the
     inventory has not seen sold, when that is at least the venue minimum.
     Held legs come from the two ledgers and, under charter 262, from the
@@ -655,7 +661,7 @@ def plan_certain_win_recycles(
                 )
             if not timezone_name:
                 continue
-            # 0.998 is legal only on a current fine-tick official WS book.
+            # 0.999 is legal only on a current fine-tick official WS book.
             # Registry metadata can lag a tick_size_change; never guess.
             tick = leg.get("tick_size")
             try:

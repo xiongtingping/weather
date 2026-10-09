@@ -635,6 +635,7 @@ def ingest_source_trades(
 
 def ingest_cluster_taker_trades(
     conn: sqlite3.Connection, *, cfg: Mapping[str, Any], now_utc: str, fetch: Fetch, feed: Any = None,
+    api_fallback: bool = True,
 ) -> dict[str, Any]:
     """Charter 257: read every cluster wallet's new TAKER fills and write each
     one, admitted (the first buy of a bucket episode, inside the lead window,
@@ -665,6 +666,11 @@ def ingest_cluster_taker_trades(
         # Charter 257 补记三: the resident's fast feed when its page is fresh and
         # reaches back past the cursor; the API itself otherwise.
         cached = feed.rows_since(user, cursor) if feed is not None else None
+        if cached is None and not api_fallback:
+            # Mid-cycle (charter 264): a slow API read must not hold the
+            # writer inside the cycle; the head or the tail reads it.
+            receipt["users"][user] = {"state": "feed_not_covering"}
+            continue
         try:
             trades = cached if cached is not None else fetch_source_taker_trades(user, start_ts=cursor, fetch=fetch)
         except Exception as exc:  # noqa: BLE001 -- one wallet's failed read does not stop the others
@@ -1051,6 +1057,7 @@ def execute_copy_follow(
     ws_manifest_path: Any = None,
     ratio_cache: dict[str, Any] | None = None,
     feed: Any = None,
+    api_fallback: bool = True,
 ) -> dict[str, Any]:
     """Read the source's new trades, then close every token's gap it can."""
 
@@ -1085,7 +1092,8 @@ def execute_copy_follow(
     since = (_utc(now_utc) - timedelta(days=1)).date().isoformat()
     if cluster_rule:
         try:
-            ingest = ingest_cluster_taker_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, feed=feed)
+            ingest = ingest_cluster_taker_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, feed=feed,
+                                                 api_fallback=api_fallback)
         except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
             ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
         targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since,

@@ -933,9 +933,6 @@ STAGE_TIER: dict[str, int] = {
     # BOUNDARIES have no such coupling and stay.  The label is kept so an
     # older cycle's receipt still reads.
     "fast_lane_in_decision_loop": STAGE_TIER_R0_DECISION,
-    # Charter 166: the tail lane, run where P1 is written.
-    "p1_tail_after_early_p1": STAGE_TIER_R0_DECISION,
-    "p1_tail_after_chain": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
     "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
@@ -4473,7 +4470,6 @@ FAST_LANE_CHECKPOINTS_ENABLED = (
 FAST_LANE_CHECKPOINT_MIN_INTERVAL_SEC = float(
     os.environ.get("PM_FAST_LANE_CHECKPOINT_INTERVAL_SEC", "").strip() or 45.0
 )
-TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC = 30.0
 #: Charter 257 补记三 (user ruling 2026-10-09 「提高跟单线的权重！加一个快速读取通道」):
 #: the copy-follow lane at the cycle's checkpoints too -- at most every
 #: COPY_FOLLOW_CHECK_INTERVAL_SEC when the fast feed brought a fill not seen
@@ -18458,13 +18454,6 @@ class TargetProductionWorker:
                 early["p1"], late, late_scopes=rerooted
             )
         self._mark("probability_p1")
-        # Charter 166: the third place P1 is written, and the last one before
-        # the decision loop prices anything.
-        if str((p1 or {}).get("state") or "").upper() in {
-            "COMMITTED", "PARTIAL_FAIL_CLOSED",
-        }:
-            self._p1_tail_after_p1("probability_chain")
-            self._mark("p1_tail_after_chain")
         blocked_stages = [
             stage
             for stage, receipt in (("P0", p0), ("P0-M", p0m), ("P1", p1))
@@ -18605,71 +18594,6 @@ class TargetProductionWorker:
             **boundary,
         }
 
-    def _tail_short_check(
-        self, *, reason: str, only_station_day: tuple[str, str] | None = None,
-    ) -> dict[str, Any] | None:
-        """Check H1 at a safe writer checkpoint using current market WS books."""
-
-        connection = getattr(self, "commit_conn", None)
-        if PRODUCTION_EXECUTION_MODE != "production_live" or connection is None:
-            return None
-        if getattr(connection, "in_transaction", False):
-            return None
-        from .strategy_lanes import LANE_TAIL_SHORT, lane_enabled  # noqa: PLC0415
-        if not lane_enabled(LANE_TAIL_SHORT):
-            return None
-        started = time.perf_counter()
-        try:
-            from .exit_orders import default_transport  # noqa: PLC0415
-            from .tail_short_lane import execute_tail_short  # noqa: PLC0415
-            receipt = execute_tail_short(
-                connection,
-                getattr(self, "canonical_source_conn", None),
-                transport=default_transport,
-                now_utc=utc_now(),
-                live_submit_authorized=True,
-                ws_manifest_path=getattr(self, "market_manifest_path", None),
-                only_station_day=only_station_day,
-            )
-        except Exception as exc:  # noqa: BLE001 -- trading failure stays visible
-            receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
-        receipts = getattr(self, "_tail_short_receipts", None)
-        if not isinstance(receipts, list):
-            receipts = []
-            self._tail_short_receipts = receipts
-        receipts.append({"reason": reason, "station_day": only_station_day, **receipt})
-        self._add_span(
-            "tail_short_after_p0_decision" if only_station_day else "tail_short_market_checkpoint",
-            (time.perf_counter() - started) * 1000.0,
-            label=f"{only_station_day[0]}|{only_station_day[1]}" if only_station_day else reason,
-        )
-        return receipt
-
-    def _tail_short_after_p0_decision(
-        self, *, station_id: str, event_date: str,
-    ) -> dict[str, Any] | None:
-        """Check H1 immediately after this station-day's P0 decision commits."""
-
-        return self._tail_short_check(
-            reason="p0_decision_committed",
-            only_station_day=(station_id, event_date),
-        )
-
-    def _tail_short_market_if_due(self, label: str) -> dict[str, Any] | None:
-        """Recheck changing market books during a long probability cycle."""
-
-        if PRODUCTION_EXECUTION_MODE != "production_live":
-            return None
-        connection = getattr(self, "commit_conn", None)
-        if connection is None or getattr(connection, "in_transaction", False):
-            return None
-        now = time.monotonic()
-        last = getattr(self, "_last_tail_short_market_check_mono", None)
-        if last is not None and now - last < TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC:
-            return None
-        self._last_tail_short_market_check_mono = now
-        return self._tail_short_check(reason=f"checkpoint:{label}")
-
     def _copy_follow_if_due(self, label: str) -> dict[str, Any] | None:
         """Charter 257 补记三: the copy-follow lane at a safe writer checkpoint.
 
@@ -18714,6 +18638,9 @@ class TargetProductionWorker:
                 live_submit_authorized=True,
                 ws_manifest_path=getattr(self, "market_manifest_path", None),
                 feed=FEED,
+                # Charter 264: inside the cycle the lane reads the feed only;
+                # an uncovered wallet waits for the head or the tail.
+                api_fallback=False,
             )
         except Exception as exc:  # noqa: BLE001 -- a lane failure is a receipt
             receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
@@ -18726,62 +18653,6 @@ class TargetProductionWorker:
             "reason", "state", "planned", "submitted", "filled", "refusals", "error", "ok")})
         del receipts[:-20]
         self._add_span("copy_follow_checkpoint", (time.perf_counter() - started) * 1000.0, label=label)
-        return receipt
-
-    def _p1_tail_after_p1(self, reason: str) -> dict[str, Any] | None:
-        """Charter 166 (2026-09-21 ruling 「把车道挂到 P1 刚写完那一刻」).
-
-        The tail lane's edge keeps 83% of itself five minutes after the
-        report and its lower bound crosses zero by eight, so the lane has a
-        five-minute window to act in.  Run from the daemon alone it only
-        looked twice a cycle -- the head and the tail -- and a cycle is five
-        to ten minutes: measured over the first 56 evaluations, the median
-        envelope was 552 seconds old and 80% were refused ``envelope_stale``.
-        Worse than the lost trades, the 20% that DID land were the ones the
-        cycle happened to line up with, which is a selected sample and would
-        have made the 09-27 review unreadable.
-
-        So the lane looks where P1 is written: here, right after a pass that
-        committed envelopes.  The daemon's head and tail runs stay as the
-        fallback -- every write is idempotent on the evaluation row's unique
-        key and the intent id, so a second look costs a query and sends
-        nothing twice.
-
-        Never raises: the cycle is not the lane's to stop.
-        """
-
-        if PRODUCTION_EXECUTION_MODE != "production_live":
-            return None
-        connection = getattr(self, "commit_conn", None)
-        if connection is None:
-            return None
-        started = time.perf_counter()
-        try:
-            from .exit_orders import default_transport  # noqa: PLC0415
-            from .p1_tail_lane import execute_p1_tail_entries  # noqa: PLC0415
-            from .strategy_lanes import LANE_P1_TAIL, lane_enabled  # noqa: PLC0415
-
-            if not lane_enabled(LANE_P1_TAIL):
-                return None
-            receipt = execute_p1_tail_entries(
-                connection,
-                getattr(self, "canonical_source_conn", None),
-                transport=default_transport,
-                now_utc=utc_now(),
-                live_submit_authorized=True,
-                ws_manifest_path=getattr(self, "market_manifest_path", None),
-            )
-        except Exception as exc:  # noqa: BLE001 -- a lane failure is a receipt
-            receipt = {"ok": False, "error": f"{type(exc).__name__}:{str(exc)[:200]}"}
-        receipt = {**receipt, "reason": reason}
-        receipts = getattr(self, "_p1_tail_receipts", None)
-        if not isinstance(receipts, list):
-            receipts = []
-            self._p1_tail_receipts = receipts
-        receipts.append(receipt)
-        self._add_span(
-            "p1_tail_after_p1", (time.perf_counter() - started) * 1000.0, label=reason
-        )
         return receipt
 
     def _fast_lane_official_p0(
@@ -19035,10 +18906,6 @@ class TargetProductionWorker:
                     self._early_p1_watermark = _later_report_watermark(
                         getattr(self, "_early_p1_watermark", None), report_mark
                     )
-        # Charter 166: P1 has just moved, so the tail lane looks now rather
-        # than at the end of the cycle.
-        if (p1 or {}).get("ran") is True:
-            self._p1_tail_after_p1(f"checkpoint:{label}")
         # A checkpoint inside the decision loop commits envelopes a later
         # scope in the same loop may price: give them their companions now.
         self._regime_catch_up(label=f"checkpoint_{label}")
@@ -19119,7 +18986,9 @@ class TargetProductionWorker:
         raises.  Before the chain that means P1 alone.
         """
 
-        self._tail_short_market_if_due(label)
+        # Charter 264 (user ruling 2026-10-09 「把其他策略移除快车道」): the
+        # copy-follow lane is the only strategy at the cycle's checkpoints;
+        # H1 and the P1 tail lane run at the head and the tail alone.
         self._copy_follow_if_due(label)
         if not FAST_LANE_CHECKPOINTS_ENABLED:
             return None
@@ -21482,8 +21351,6 @@ class TargetProductionWorker:
         self._early_p1_this_cycle = None
         self._early_p0m_this_cycle = None
         self._fast_lane_receipts = []
-        self._p1_tail_receipts = []
-        self._tail_short_receipts = []
         self._copy_follow_receipts = []
         self._probability_chain_ran = False
         self._regime_ran_this_cycle = False
@@ -21508,11 +21375,6 @@ class TargetProductionWorker:
         self._mark("early_p1")
         self._last_fast_lane_checkpoint_mono = time.monotonic()
         self._last_fast_lane_checkpoint_cost_sec = 0.0
-        # Charter 166: and again here -- the head pass is where the reports
-        # that landed during the previous cycle become P1.
-        if (self._early_p1_this_cycle or {}).get("ran") is True:
-            self._p1_tail_after_p1("early_p1")
-            self._mark("p1_tail_after_early_p1")
         # Close intents the exchange has already answered about, before the
         # cycle spends anything on anything else.
         #
@@ -22277,18 +22139,6 @@ class TargetProductionWorker:
                 for key, value in (self._early_p1_this_cycle or {}).items()
                 if key != "p1"
             }
-            # Charter 166: what the tail lane did at each of the moments P1
-            # moved, so a cycle's receipt says whether the lane was late.
-            tail_receipts = getattr(self, "_p1_tail_receipts", None) or []
-            if tail_receipts:
-                resident_probability_chain["p1_tail_lane_passes"] = [
-                    {
-                        key: value
-                        for key, value in receipt.items()
-                        if key not in {"receipts", "settings"}
-                    }
-                    for receipt in tail_receipts
-                ]
             # A correction/revision halt belongs to one station-day.  It must
             # remain fail-closed for that scope, but must not suppress healthy
             # stations from reaching their own WS/decision path.  Only a
@@ -23277,14 +23127,6 @@ class TargetProductionWorker:
                         plan=candidate,
                         decided_at_utc=now,
                     )
-                    probability = candidate.get("probability_envelope")
-                    if (
-                        isinstance(probability, Mapping)
-                        and str(probability.get("stage") or "").upper() == "P0"
-                    ):
-                        self._tail_short_after_p0_decision(
-                            station_id=station, event_date=day,
-                        )
                     # Charter 257 补记三: the decision loop is the cycle's
                     # longest stage; the copy-follow lane looks between scopes.
                     self._copy_follow_if_due("in_decision_loop")
@@ -23470,10 +23312,6 @@ class TargetProductionWorker:
                 "execution_mode": PRODUCTION_EXECUTION_MODE,
                 "candidate_count": len(results),
                 "candidates": results,
-                "tail_short_after_p0_decision": [
-                    {k: v for k, v in receipt.items() if k not in {"receipts", "settings"}}
-                    for receipt in self._tail_short_receipts
-                ],
                 "copy_follow_checkpoints": list(getattr(self, "_copy_follow_receipts", None) or []),
                 "listing_scope_turn": serve_listing,
                 "account_equity": account_equity_receipt,

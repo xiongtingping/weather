@@ -396,7 +396,6 @@ def no_take(
 
 def station_days_in_window(
     conn: sqlite3.Connection, *, now_utc: str, lookback_days: int, stages: frozenset[str],
-    only_station_day: tuple[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """Station-days whose newest decision is in an opening stage."""
 
@@ -405,17 +404,16 @@ def station_days_in_window(
     ).fetchone() is None:
         return []
     floor = (_utc(now_utc) - timedelta(days=int(lookback_days))).date().isoformat()
-    restriction = " AND station_id=? AND event_date=?" if only_station_day else ""
     rows = conn.execute(
         "SELECT f.station_id, f.event_date, f.stage, f.settlement_timezone"
         " FROM basket_policy_training_fact f"
         " JOIN (SELECT station_id, event_date, MAX(decision_at_utc) AS newest"
-        "       FROM basket_policy_training_fact WHERE event_date >= ?" + restriction +
+        "       FROM basket_policy_training_fact WHERE event_date >= ?"
         "       GROUP BY station_id, event_date) n"
         "   ON n.station_id = f.station_id AND n.event_date = f.event_date"
         "  AND n.newest = f.decision_at_utc"
         " ORDER BY f.decision_at_utc DESC, f.created_at_utc DESC, f.rowid DESC",
-        (floor, *only_station_day) if only_station_day else (floor,),
+        (floor,),
     ).fetchall()
     seen: dict[tuple[str, str], dict[str, str]] = {}
     for station, day, stage, tz in rows:
@@ -559,7 +557,6 @@ def plan_tail_short(
     cfg: Mapping[str, Any],
     gate: Admission,
     manifest_root: Callable[[], Mapping[str, Any] | None],
-    only_station_day: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Every station-day in the window: read the book, fire the rule, plan the takes."""
 
@@ -580,7 +577,7 @@ def plan_tail_short(
 
     for scope in station_days_in_window(
         target_conn, now_utc=now_utc, lookback_days=int(cfg.get("lookback_days", DEFAULT_LOOKBACK_DAYS)),
-        stages=stages, only_station_day=only_station_day,
+        stages=stages,
     ):
         station, day, tz = scope["station_id"], scope["event_date"], scope["settlement_timezone"]
         try:
@@ -766,7 +763,6 @@ def execute_tail_short(
     settings: Mapping[str, Any] | None = None,
     admission: Admission | None = None,
     ws_manifest_path: Any = None,
-    only_station_day: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fire the rule on every station-day in the window and send the takes."""
 
@@ -792,7 +788,7 @@ def execute_tail_short(
         return manifest["root"]
 
     planned = plan_tail_short(target_conn, canonical_conn, now_utc=now_utc, cfg=cfg, gate=gate,
-                              manifest_root=manifest_root, only_station_day=only_station_day)
+                              manifest_root=manifest_root)
     receipts: list[dict[str, Any]] = []
     submitted = filled = 0
     for plan in planned["plans"]:

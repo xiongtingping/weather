@@ -19042,7 +19042,7 @@ function tailShortLane(){
   const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
   const settings=`<div class="card"><b>远尾做空 H1</b> <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
     <span class="muted">纯市场规则；P0 首决策、距结算 &gt; ${h(S.min_hours_to_settlement)}h、市场价 ≤ ${pct(S.max_market_price)}、离市场众数 ≥ ${h(S.min_rungs_from_mode)} 档、YES 买一 ≥ ${pct(S.min_yes_bid)}。每笔最多 ${usd(S.stake_usdc)}（顶部「远尾每笔」旋钮可调），每站日至多 ${h(S.max_legs_per_station_day)} 桶，每天最多 ${usd(S.max_daily_cost_usdc)}；实际股数可因深度缩小。</span>
-    <div class="muted">FOK 吃单成交后没有当前挂单；下方列出历史成交。0.998 回收卖单在实盘订单页单独显示。</div></div>`;
+    <div class="muted">FOK 吃单成交后没有当前挂单；下方列出历史成交。0.999 回收卖单在实盘订单页单独显示。</div></div>`;
   const totals=`<div class="grid g3" style="margin-top:8px">
     ${tile("评估 / 发单 / 成交",`${E.available?E.total:"—"} / ${R.available?R.sent:"—"} / ${R.available?R.filled:"—"}`,`最近评估 ${h(E.last_at_utc||"—")}`)}
     ${tile("NO 股数 / 实付",`${R.available?(+R.filled_shares).toFixed(2):"—"} / ${R.available?usd(R.spent_usdc):"—"}`,`未结算投入 ${R.available?usd(R.in_flight_usdc):"—"}`)}
@@ -19384,7 +19384,7 @@ function tiebreakLane(){
       <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
       <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${/paid_cap/.test(S.rule||"")?`≥ ${n3(S.min_market_share_on_model_mode)}（归一化中价）、挂单实付价 ≤ ${S.max_paid_price==null?"0.600":n3(S.max_paid_price)}`:`${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}`}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/spread/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
       <span style="flex:1"></span>
-      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.998 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
+      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.999 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
     </div>
     <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：${Array.isArray(S.opening_stages)?`${S.opening_stages.map(x=>h(String(x))).join("、")} 阶段的首个决策（宪章 229：P0 留给篮子，P0 首决策照常打分入表、命中也不挂单）`:"每个阶段的首个决策"}，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
   const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
@@ -19584,7 +19584,7 @@ function liveControlStrip(){
   // dials (user ruling 2026-10-04 「重新布局，分别按照策略+按钮的形式」).  A
   // dial sits in the group of the lane that reads it: the five capital dials
   // are read by the basket alone (``basket_kernel.delta_v2``, the pool the
-  // budget caps); the 0.998 sell recycles what every lane won.
+  // budget caps); the 0.999 sell recycles what every lane won.
   const group=(title,lane,body)=>`<span class="navctl-g" role="group" aria-label="${title}">
     <span class="navctl-gh">${title}${lane?`<small class="lc-lane-st" data-lc-lane-stages="${lane}"></small>`:""}</span><span class="navctl-gb">${body}</span></span>`;
   return `<div class="navctl" id="lc-strip" data-lc="down" role="group"
@@ -19601,7 +19601,7 @@ function liveControlStrip(){
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
     ${group("跟单线", "", laneSwitch("copy_follow"))}
     <span class="navctl-br" aria-hidden="true"></span>
-    ${group("0.998 回收", "", laneSwitch("certain_win_recycle"))}
+    ${group("0.999 回收", "", laneSwitch("certain_win_recycle"))}
     ${group("篮子", "basket", laneSwitch("basket")
       + knob("kelly", "凯利系数 kelly_fraction（每个篮子押完整凯利的几分之几；宪章 141）",
         `${b("kelly",-0.05,"−")}<b id="lc-kelly">${
@@ -19643,8 +19643,8 @@ const LC_LANES = {
   copy_follow: {name:"跟单线",
     on:"实盘举旗时，跟随对标账户的天气成交，按 我方净值÷对方持仓市值 等比例缩小；买不高于对方价、卖不低于对方价（宪章 256）",
     off:"整条车道跳过：不读对方成交、不发新单；已跟到的仓位照常持有"},
-  certain_win_recycle: {name:"0.998 回收",
-    on:"对持有的 YES/NO 腿，在交易所允许 0.998 刻度时挂回收卖单；旧 0.99 单先确认撤销及成交",
+  certain_win_recycle: {name:"0.999 回收",
+    on:"对持有的 YES/NO 腿，在交易所允许 0.999 刻度时挂回收卖单；低于 0.999 的旧单（0.99、0.998）先确认撤销及成交（宪章 264）",
     off:"停止新增回收卖单；已在交易所的卖单仍须按订单页核对"},
 };
 // Drawn disabled from the page snapshot, like every control here: only the

@@ -179,8 +179,8 @@ def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
     strip = source[source.index("function liveControlStrip(){"):]
     strip = strip[: strip.index("\n}\n")]
     # Two rows since 3715a35f (user 2026-10-06 「重新排版策略开关按钮」): the
-    # one-dial lanes, then 0.998 回收 and the basket with its dials.
-    titles = ["Proper 下注线", "远尾做空 H1", "秤砣线", "0.998 回收", "篮子"]
+    # one-dial lanes, then 0.999 回收 and the basket with its dials.
+    titles = ["Proper 下注线", "远尾做空 H1", "秤砣线", "0.999 回收", "篮子"]
     starts = [strip.index(f'${{group("{t}"') for t in titles]
     assert starts == sorted(starts)
     parts = {t: strip[a:b] for t, a, b in zip(titles, starts, starts[1:] + [len(strip)])}
@@ -190,7 +190,7 @@ def test_the_bar_is_one_group_per_strategy_with_its_own_dials() -> None:
         "秤砣线": ['laneSwitch("tiebreak")', 'stakeKnob("tiebreak"'],
         "篮子": ['laneSwitch("basket")', 'knob("kelly"', 'knob("exposure"', 'knob("sizing"',
                  'knob("ceiling"', 'knob("budget"', 'id="lc-capital"'],
-        "0.998 回收": ['laneSwitch("certain_win_recycle")'],
+        "0.999 回收": ['laneSwitch("certain_win_recycle")'],
     }
     for title, members in expected.items():
         for member in members:

@@ -161,10 +161,10 @@ def test_every_eligible_held_leg_is_offered_at_0998_while_its_day_is_open() -> N
     conn, canonical = _store()
     _book(conn)
     plans = _plans(conn, canonical)
-    assert lane.RULE_VERSION == "certain_win_recycle_resting_0998_v5"
+    assert lane.RULE_VERSION == "certain_win_recycle_resting_0999_v6"
     assert [(p["bucket"], p["shares"], p["limit_price"], p["token_id"], p["best_bid"]) for p in plans] == [
-        ("25°C", 6.0, 0.998, "t25", 0.999),  # the leg the market bids highest goes first
-        ("26°C", 5.0, 0.998, "t26", 0.001),
+        ("25°C", 6.0, 0.999, "t25", 0.999),  # the leg the market bids highest goes first
+        ("26°C", 5.0, 0.999, "t26", 0.001),
     ]
     assert all(p["settlement_timezone"] == TZ and p["order_intent_id"].startswith("recycle998_") for p in plans)
     # No current official tick: do not guess from the registry.
@@ -206,7 +206,7 @@ def test_no_holding_recycles_its_own_token_once_and_never_the_yes_token(monkeypa
                               "order_price_min_tick_size": 0.01}),))
     plans = _plans(conn, canonical)
     assert [(p["side"], p["token_id"], p["shares"], p["limit_price"]) for p in plans] == [
-        ("NO", "no_t25", 6.0, 0.998),
+        ("NO", "no_t25", 6.0, 0.999),
     ]
     _armed(monkeypatch)
     calls = []
@@ -229,7 +229,7 @@ def test_no_holding_recycles_its_own_token_once_and_never_the_yes_token(monkeypa
 
 
 def test_0998_requires_an_exact_fine_tick() -> None:
-    assert lane.recycle_price(0.001) == 0.998
+    assert lane.recycle_price(0.001) == 0.999
     for tick in (0.01, 0.1, None, 0, float("nan")):
         with pytest.raises(ValueError):
             lane.recycle_price(tick)
@@ -320,7 +320,7 @@ def test_a_market_the_venue_closed_is_not_offered_and_the_newest_registry_row_de
 def test_the_token_survives_the_target_registry_being_pruned() -> None:
     conn, canonical = _store(target_registry=False)
     assert [(p["bucket"], p["token_id"], p["limit_price"]) for p in _plans(conn, canonical)] == [
-        ("25°C", "t25", 0.998), ("26°C", "t26", 0.998),
+        ("25°C", "t25", 0.999), ("26°C", "t26", 0.999),
     ]
 
 
@@ -353,7 +353,7 @@ def test_the_sell_is_a_gtc_limit_at_0998_not_post_only_and_a_standing_bid_fills_
     assert sent == [{
         "strategy_id": "weather_basket_yes_v2", "order_intent_id": sent[0]["order_intent_id"],
         "idempotency_key": sent[0]["order_intent_id"], "token_id": "t25", "outcome_side": "YES",
-        "side": "SELL", "price": 0.998, "size": 6.0, "order_type": "GTC", "post_only": False,
+        "side": "SELL", "price": 0.999, "size": 6.0, "order_type": "GTC", "post_only": False,
         "tick_size": 0.001,
     }]
     row = conn.execute(
@@ -566,8 +566,8 @@ def test_a_leg_no_ledger_records_is_offered_from_the_account_itself() -> None:
         account_reader=lambda: {"t26": {"size": 12.345}, "n25": {"size": 7.0}, "elsewhere": {"size": 99.0}},
     )
     got = sorted((p["bucket"], p["side"], p["token_id"], p["shares"], p["limit_price"], p["source"]) for p in plans)
-    assert got == [("25°C", "NO", "n25", 7.0, 0.998, "account_positions"),
-                   ("26°C", "YES", "t26", 12.34, 0.998, "account_positions")]
+    assert got == [("25°C", "NO", "n25", 7.0, 0.999, "account_positions"),
+                   ("26°C", "YES", "t26", 12.34, 0.999, "account_positions")]
     # A token outside the weather registry is not this lane's to sell.
     assert all(p["token_id"] != "elsewhere" for p in plans)
 
@@ -631,7 +631,7 @@ def test_an_account_leg_is_sold_through_the_same_sender_and_sized_on_the_balance
     )
     assert receipt["sent"] == 1 and receipt["account_positions"]["planned_from_account"] == 1
     assert [(p["token_id"], p["side"], p["price"], p["size"], p["order_type"]) for p in sent] == [
-        ("t26", "SELL", 0.998, 9.0, "GTC")]  # capped by the gateway's own balance read
+        ("t26", "SELL", 0.999, 9.0, "GTC")]  # capped by the gateway's own balance read
     # Resting now: the next pass offers nothing more of it.
     assert lane.plan_certain_win_recycles(
         conn, canonical, now_utc="2026-09-16T09:31:00.000Z", account_reader=lambda: {"t26": {"size": 9.0}},

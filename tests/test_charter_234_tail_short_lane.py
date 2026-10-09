@@ -336,76 +336,18 @@ def test_the_daily_budget_bounds_the_lane(store) -> None:
     assert any(r.startswith("daily_budget:") for r in receipt["refusals"])
 
 
-def test_immediate_p0_pass_checks_only_the_committed_station_day(store) -> None:
-    _seed(store)
-    assert lane.station_days_in_window(
-        store, now_utc=NOW, lookback_days=1, stages=frozenset({"P0"}),
-        only_station_day=("KJFK", ED),
-    ) == []
-    sent = []
-    receipt = lane.execute_tail_short(
-        store, transport=_fill_transport(sent), now_utc=NOW,
-        live_submit_authorized=True, only_station_day=(ST, ED),
-        settings={**strategy_lanes.TAIL_SHORT_DEFAULT_SETTINGS, **SETTINGS},
-        admission=ADMIT,
-    )
-    assert receipt["planned"] == 3 and receipt["submitted"] == 3
-    assert len(sent) == 3
+def test_h1_is_off_the_fast_lane() -> None:
+    """Charter 264 (user ruling 2026-10-09 「把其他策略移除快车道」): H1 no longer
+    runs at the cycle's checkpoints or after each P0 decision -- only at the
+    daemon's head and tail."""
 
-
-def test_worker_checks_h1_on_the_same_writer_after_p0_commit(monkeypatch, store) -> None:
     from bayes_basket_target import production_worker
 
-    calls = []
-    monkeypatch.setattr(production_worker, "PRODUCTION_EXECUTION_MODE", "production_live")
-    monkeypatch.setattr(strategy_lanes, "lane_enabled", lambda name: name == strategy_lanes.LANE_TAIL_SHORT)
-    monkeypatch.setattr(lane, "execute_tail_short", lambda conn, canonical, **kwargs: (
-        calls.append((conn, kwargs["only_station_day"])), {"state": "checked"}
-    )[1])
-
-    class Worker:
-        commit_conn = store
-        canonical_source_conn = None
-        market_manifest_path = None
-        _tail_short_receipts = None
-        _tail_short_check = production_worker.TargetProductionWorker._tail_short_check
-
-        def _add_span(self, *args, **kwargs):
-            pass
-
-    worker = Worker()
-    receipt = production_worker.TargetProductionWorker._tail_short_after_p0_decision(
-        worker, station_id=ST, event_date=ED,
-    )
-    assert receipt["state"] == "checked"
-    assert calls == [(store, (ST, ED))]
-    assert worker._tail_short_receipts[0]["state"] == "checked"
-
-
-def test_market_checkpoint_rechecks_during_cycle_without_parallel_writer(monkeypatch, store) -> None:
-    from bayes_basket_target import production_worker
-
-    monkeypatch.setattr(production_worker, "PRODUCTION_EXECUTION_MODE", "production_live")
-    clock = [100.0]
-    monkeypatch.setattr(production_worker.time, "monotonic", lambda: clock[0])
-    calls = []
-
-    class Worker:
-        commit_conn = store
-        _last_tail_short_market_check_mono = None
-
-        def _tail_short_check(self, *, reason):
-            calls.append(reason)
-            return {"reason": reason}
-
-    worker = Worker()
-    check = production_worker.TargetProductionWorker._tail_short_market_if_due
-    assert check(worker, "after_native") == {"reason": "checkpoint:after_native"}
-    clock[0] += 29.0
-    assert check(worker, "after_market") is None
-    clock[0] += 1.0
-    assert check(worker, "after_market") == {"reason": "checkpoint:after_market"}
-    assert calls == ["checkpoint:after_native", "checkpoint:after_market"]
+    source = Path(production_worker.__file__).read_text(encoding="utf-8")
+    for name in ("_tail_short_check", "_tail_short_after_p0_decision", "_tail_short_market_if_due",
+                 "execute_tail_short", "TAIL_SHORT_MARKET_CHECK_INTERVAL_SEC"):
+        assert name not in source
+    assert "only_station_day" not in Path(lane.__file__).read_text(encoding="utf-8")
 
 
 def test_the_station_day_leg_cap_bounds_the_lane(store) -> None:

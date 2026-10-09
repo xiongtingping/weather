@@ -4191,8 +4191,9 @@ def run_target_production_cycle(
         except Exception as exc:
             copy_follow_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # The recycle lane (operator ruling 2026-08-31; ruled again 2026-09-18:
-    # 「一直挂」, 「改为0.99」; revised 2026-09-29 to 0.998): a held leg
-    # may carry a resting 0.998 sell when the current venue tick permits it,
+    # 「一直挂」, 「改为0.99」; revised 2026-09-29 to 0.998, 2026-10-09 to 0.999,
+    # charter 264): a held leg may carry a resting 0.999 sell when the current
+    # venue tick permits it,
     # which a standing bid at or above it fills
     # at once; the freed capital re-enters the budget.  Runs after the main cycle on the same writer
     # connection, and a failure here is reported on the receipt rather than

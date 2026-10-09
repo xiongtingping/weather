@@ -16,7 +16,7 @@ for it:
   paused lane still compiles, reserves, records its decision and writes the
   evidence the ledger fits on; only the send is held, and the intent ends
   ``failed`` with ``strategy_lane_paused:basket`` on its event.
-* ``certain_win_recycle`` -- the 0.998 sell of a won position.
+* ``certain_win_recycle`` -- the 0.999 sell of a won position (charter 264; 0.998 before).
 * ``mis_bought_leg_exit`` -- charter 144's sell-back of legs bought outside
   the completion rule.
 * ``tiebreak`` -- the lane this ruling puts live.  Its settings (stake, the

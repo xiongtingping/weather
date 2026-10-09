@@ -504,67 +504,23 @@ def test_stuck_cycles_of_this_lane_are_settled_with_the_others() -> None:
 # Charter 166 (2026-09-21): the lane looks where P1 is written.
 
 
-def test_the_lane_runs_at_every_moment_p1_is_written() -> None:
-    """Run from the daemon alone the lane looked twice a cycle, and a cycle
-    is five to ten minutes: 80% of its first 56 evaluations were refused
-    ``envelope_stale`` against a five-minute window.  The three places P1
-    is committed each call it."""
+def test_the_lane_is_off_the_fast_lane() -> None:
+    """Charter 264 (user ruling 2026-10-09 「把其他策略移除快车道」): the P1 tail
+    lane no longer runs where P1 is written mid-cycle -- only the daemon's
+    head and tail run it; the copy-follow lane is the fast lane's one
+    strategy."""
 
     import ast  # noqa: PLC0415
 
     import bayes_basket_target.production_worker as pw  # noqa: PLC0415
 
-    tree = ast.parse(Path(pw.__file__).read_text())
-    reasons = sorted(
-        node.args[0].value for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "_p1_tail_after_p1" and node.args
-        and isinstance(node.args[0], ast.Constant)
-    )
-    assert reasons == ["early_p1", "probability_chain"]
-    # ... and the checkpoint's, which names the label it ran under.
-    templated = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "_p1_tail_after_p1" and node.args
-        and isinstance(node.args[0], ast.JoinedStr)
-    ]
-    assert len(templated) == 1
+    source = Path(pw.__file__).read_text()
+    assert "_p1_tail_after_p1" not in source and "execute_p1_tail_entries" not in source
+    assert not hasattr(pw.TargetProductionWorker, "_p1_tail_after_p1")
     for stage in ("p1_tail_after_early_p1", "p1_tail_after_chain"):
-        assert pw.STAGE_TIER[stage] == pw.STAGE_TIER_R0_DECISION
-
-
-def test_a_lane_failure_is_a_receipt_and_never_stops_the_cycle(monkeypatch) -> None:
-    import bayes_basket_target.production_worker as pw  # noqa: PLC0415
-
-    worker = object.__new__(pw.TargetProductionWorker)
-    worker.commit_conn = object()
-    worker._stage_timings_ms = {}
-    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_live")
-    monkeypatch.setattr(pw.TargetProductionWorker, "_add_span",
-                        lambda self, name, ms, label="": None, raising=False)
-    monkeypatch.setattr(lane, "execute_p1_tail_entries",
-                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("venue down")))
-    receipt = worker._p1_tail_after_p1("checkpoint:after_regime")
-    assert receipt["ok"] is False and "venue down" in receipt["error"]
-    assert receipt["reason"] == "checkpoint:after_regime"
-    assert worker._p1_tail_receipts == [receipt]
-
-
-def test_a_paused_lane_or_a_no_live_mode_costs_nothing(monkeypatch) -> None:
-    import bayes_basket_target.production_worker as pw  # noqa: PLC0415
-
-    worker = object.__new__(pw.TargetProductionWorker)
-    worker.commit_conn = object()
-    monkeypatch.setattr(lane, "execute_p1_tail_entries",
-                        lambda *a, **k: pytest.fail("the lane must not run"))
-    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_no_live")
-    assert worker._p1_tail_after_p1("early_p1") is None
-    monkeypatch.setattr(pw, "PRODUCTION_EXECUTION_MODE", "production_live")
-    from bayes_basket_target import strategy_lanes  # noqa: PLC0415
-
-    monkeypatch.setattr(strategy_lanes, "lane_enabled", lambda name, path=None: False)
-    assert worker._p1_tail_after_p1("early_p1") is None
+        assert stage not in pw.STAGE_TIER
+    tree = ast.parse(source)
+    assert not [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == "execute_p1_tail_entries"]
 
 
 # ---------------------------------------------------------------------------
@@ -767,13 +723,6 @@ def test_a_fresh_snapshot_never_reads_the_manifest(store, tmp_path, monkeypatch)
     planned = _plan(store, ws_manifest_path=tmp_path / "unused.json")
     assert planned["plans"]
     assert planned["plans"][0]["book_source"] == "committed_snapshot"
-
-
-def test_the_worker_hands_the_lane_its_own_manifest() -> None:
-    source = (ROOT / "bayes_basket_target" / "production_worker.py").read_text(encoding="utf-8")
-    start = source.index("def _p1_tail_after_p1")
-    body = source[start:source.index("\n    def ", start + 10)]
-    assert 'ws_manifest_path=getattr(self, "market_manifest_path", None)' in body
 
 
 # ---------------------------------------------------------------------------
