@@ -1,0 +1,56 @@
+=== 1. YES information models (nats/event over market; out-of-sample H1->H2, H2->H1) ===
+-- all YES n=904
+   pure gauss L=N(k+delta, sigma)         in +0.0370 params [0, 2.0]   oos +0.0329/+0.0334
+   tempered gauss L=1+A N(k,sigma)        in +0.0380 params [2.0, 12]   oos +0.0334/+0.0399
+   centre shift s buckets toward pick     in +0.0115 params [0.1]   oos +0.0148/+0.0083
+-- YES off-mode (|d|>=1) n=708
+   pure gauss L=N(k+delta, sigma)         in +0.0397 params [-0.25, 2.0]   oos +0.0383/+0.0352
+   tempered gauss L=1+A N(k,sigma)        in +0.0411 params [2.0, 12]   oos +0.0391/+0.0420
+   centre shift s buckets toward pick     in +0.0160 params [0.1]   oos +0.0177/+0.0142
+-- YES on mode n=196
+   pure gauss L=N(k+delta, sigma)         in +0.0309 params [0.25, 2.0]   oos +0.0202/+0.0299
+   tempered gauss L=1+A N(k,sigma)        in +0.0268 params [2.0, 12]   oos +0.0191/+0.0333
+   centre shift s buckets toward pick     in -0.0000 params [0]   oos -0.0000/-0.0109
+   C off-mode n=501: pure gauss sigma=2.0 bkt = 2.00 C (delta 0), gain +0.0516;  shift s=0.1 bkt = 0.10 C, gain +0.0125
+   F off-mode n=207: pure gauss sigma=2.5 bkt = 2.78 C (delta -0.25), gain +0.0212;  shift s=0.1 bkt = 0.11 C, gain +0.0244
+
+=== 2. NO on the mode: dispersion (q^tau) ===
+   NO-mode n=279: best tau=0.9 (<1 = wider than market) in-sample +0.0083  oos [-0.0231425566113052, -0.031087821693298028]
+   control YES-mode n=196: best tau=1.25 in-sample +0.0095
+   |truth-mode| distribution, NO-mode events vs market: 0:0.427/0.483 1:0.416/0.419 2:0.133/0.073 3:0.022/0.017
+   NO-mode q_mode mean 0.483 vs all events 0.442
+
+=== 3. multivariable: excess ~ conditions (OLS, station-day bootstrap CI) ===
+   term                      coef    95%CI            H1      H2
+   const                    +0.007  [-0.094,+0.126]  +0.022 -0.009
+   lead 12-48h              +0.034  [-0.035,+0.102]  +0.006 +0.064
+   lead >=48h               +0.076  [-0.082,+0.241]  -0.156 +0.225
+   lead <6h                 +0.071  [-0.009,+0.153]  +0.054 +0.086
+   stage P1                 -0.050  [-0.114,+0.006]  -0.096 -0.017
+   Asia                     +0.054  [-0.057,+0.160]  +0.102 +0.023
+   Europe                   +0.021  [-0.111,+0.129]  +0.053 -0.004
+   F unit                   -0.037  [-0.139,+0.049]  -0.065 -0.012
+   q_mode<0.35              +0.047  [-0.034,+0.119]  +0.023 +0.061
+   q_mode>=0.45             -0.027  [-0.085,+0.038]  +0.005 -0.040
+   YES on mode              -0.043  [-0.132,+0.060]  -0.022 -0.059
+   our p>q+0.05             +0.037  [-0.020,+0.088]  +0.014 +0.050
+   |yday-mean|>=1.5 bkt     +0.010  [-0.047,+0.066]  +0.013 +0.004
+   size>=100U               +0.029  [-0.023,+0.073]  -0.033 +0.053
+
+=== 4. pure-gauss width by condition (YES off-mode) ===
+   lead    12-48h    n= 425  sigma=2.00 bkt  delta=+0.00  gain +0.0482  oos +0.0519/+0.0363
+   lead    <12h      n= 254  sigma=2.50 bkt  delta=-0.25  gain +0.0211  oos -0.0589/+0.0206
+   region  Americas  n= 293  sigma=2.50 bkt  delta=-0.25  gain +0.0233  oos -0.0054/+0.0225
+   region  Asia      n= 273  sigma=1.50 bkt  delta=-0.25  gain +0.0846  oos +0.0839/+0.0695
+   region  Europe    n= 142  sigma=3.00 bkt  delta=+0.50  gain +0.0238  oos +0.0271/-0.0276
+   q_mode  <0.35     n= 193  sigma=2.00 bkt  delta=-0.25  gain +0.0715  oos +0.0621/+0.0768
+   q_mode  >=0.35    n= 515  sigma=2.00 bkt  delta=+0.00  gain +0.0289  oos +0.0283/+0.0246
+   stage   P0        n= 153  sigma=2.50 bkt  delta=+0.25  gain +0.0518  oos +0.0571/-0.0279
+   stage   P0-M      n= 348  sigma=2.00 bkt  delta=+0.00  gain +0.0441  oos +0.0312/+0.0586
+   stage   P1        n= 207  sigma=2.00 bkt  delta=-0.25  gain +0.0276  oos -0.0034/+0.0281
+
+=== 5. persistence: YES off-mode picks when the market expects a change ===
+   expected change >=1 bucket: n=444; picked toward yesterday 198 (45%), away 246
+   toward yesterday (persistence)         n=198 hit 0.263 vs q 0.217  excess +0.045  H1/H2 -0.007/+0.093
+   away from yesterday (with the change)  n=246 hit 0.289 vs q 0.212  excess +0.077  H1/H2 +0.061/+0.094
+   on those days truth lands on yesterday side of the market mean: 0.493

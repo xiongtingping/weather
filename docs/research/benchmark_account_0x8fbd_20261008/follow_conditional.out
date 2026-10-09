@@ -1,0 +1,56 @@
+events with a mid 10 min after the first fill: 3648
+
+-- reference
+   all (no filter)                    n=3648   +1.5c [ -0.5, +3.5]  H1  +0.0 H2  +2.6  days+ 9/15  BOTH+
+   round-10 filter: our p > entry     n=1073   +4.7c [ +1.1, +8.3]  H1  +1.8 H2  +6.9  days+ 10/15  BOTH+
+
+-- within the round-10 filter, by condition
+  region
+   Americas                           n= 393   +3.9c [ -1.8, +9.1]  H1  -3.2 H2 +10.0  days+ 8/14  
+   Asia                               n= 431   +8.7c [ +2.9,+13.9]  H1 +11.7 H2  +6.8  days+ 11/14  BOTH+
+   Europe                             n= 249   -0.7c [ -8.2, +7.1]  H1  -5.1 H2  +2.6  days+ 9/15  
+  unit
+   C                                  n= 799   +5.1c [ +1.2, +9.3]  H1  +4.7 H2  +5.3  days+ 13/15  BOTH+
+   F                                  n= 274   +3.8c [ -3.1,+10.8]  H1  -5.6 H2 +12.0  days+ 8/14  
+  market q_mode
+   0.35-0.45                          n= 119   +2.3c [ -6.4,+10.9]  H1  +0.0 H2  +3.1  days+ 8/14  BOTH+
+   <0.35                              n=  49   +6.0c [ -3.6,+17.2]  H1  -4.0 H2  +8.8  days+ 7/11  
+   >=0.45                             n= 187   -0.5c [ -7.8, +8.1]  H1 -10.1 H2  +2.0  days+ 5/15  
+   n/a                                n= 718   +6.4c [ +2.2,+10.7]  H1  +3.3 H2  +9.8  days+ 12/15  BOTH+
+  lead h
+   12-48                              n= 750   +5.8c [ +1.8, +9.7]  H1  +2.9 H2  +7.9  days+ 12/15  BOTH+
+   <12                                n= 235   +0.5c [ -6.1, +7.6]  H1  -3.9 H2  +4.3  days+ 10/15  
+   >=48                               n=  88   +7.3c [ -1.8,+16.4]  H1 +12.3 H2  +5.3  days+ 12/14  BOTH+
+  first-fill size
+   30-100U                            n= 309   +5.5c [ -0.3,+11.1]  H1  +6.2 H2  +5.0  days+ 12/15  BOTH+
+   <30U                               n= 472   +3.6c [ -0.8, +8.4]  H1  +1.1 H2  +6.0  days+ 10/15  BOTH+
+   >=100U                             n= 292   +5.8c [ -0.1,+11.9]  H1  -2.6 H2  +9.8  days+ 9/15  
+  side x offset
+   No mode                            n= 146   -0.3c [ -8.9, +8.6]  H1 -16.3 H2  +3.6  days+ 5/14  
+   No n/a                             n= 367   +6.4c [ +1.7,+11.2]  H1  +2.7 H2  +9.3  days+ 12/15  BOTH+
+   No off-mode                        n=  88   +5.0c [ -3.9,+12.4]  H1  +0.7 H2  +6.1  days+ 9/13  BOTH+
+   Yes n/a                            n= 351   +6.5c [ +0.5,+12.4]  H1  +3.7 H2 +10.6  days+ 12/15  BOTH+
+   Yes off-mode                       n= 105   +2.8c [ -6.2,+13.0]  H1  +5.1 H2  +2.0  days+ 7/15  BOTH+
+
+-- candidate composite rules (applied on top of the round-10 filter)
+   keep: drop F stations              n= 799   +5.1c [ +1.5, +9.0]  H1  +4.7 H2  +5.3  days+ 13/15  BOTH+
+     dropped by it                    n= 274   +3.8c [ -3.7,+10.5]  H1  -5.6 H2 +12.0  days+ 8/14  
+   keep: drop <12h                    n= 838   +5.9c [ +2.5,+10.1]  H1  +3.6 H2  +7.6  days+ 12/15  BOTH+
+     dropped by it                    n= 235   +0.5c [ -5.5, +7.1]  H1  -3.9 H2  +4.3  days+ 10/15  
+   keep: drop F and <12h              n= 658   +6.5c [ +1.6,+11.2]  H1  +6.2 H2  +6.6  days+ 12/15  BOTH+
+     dropped by it                    n= 415   +2.0c [ -4.1, +7.6]  H1  -4.2 H2  +7.4  days+ 8/15  
+   keep: drop YES on the mode         n=1057   +5.0c [ +1.8, +8.1]  H1  +2.0 H2  +7.2  days+ 10/15  BOTH+
+   keep: q_mode<0.45 only             n= 168   +3.4c [ -3.9,+10.0]  H1  -1.1 H2  +4.8  days+ 8/14  
+     dropped by it                    n= 905   +5.0c [ +1.5, +9.2]  H1  +2.1 H2  +7.5  days+ 11/15  BOTH+
+   keep: C, >=12h, not YES-mode       n= 647   +7.0c [ +2.3,+11.4]  H1  +6.7 H2  +7.2  days+ 12/15  BOTH+
+     dropped by it                    n= 426   +1.4c [ -4.4, +6.9]  H1  -4.7 H2  +6.5  days+ 8/15  
+
+-- market concentration from the full ladder (joined: 472 of 1073 filtered events)
+   q_mode<0.35                        n=  71  +10.4c [ -0.4,+21.1]  H1 +13.7 H2  +7.7  days+ 10/12  BOTH+
+   q_mode 0.35-0.45                   n= 161   +3.0c [ -4.8, +9.6]  H1  +1.0 H2  +4.3  days+ 9/15  BOTH+
+   q_mode>=0.45                       n= 240   -1.5c [ -8.8, +5.6]  H1  -6.5 H2  +1.1  days+ 6/15  
+   YES off mode                       n= 166   +3.2c [ -4.3,+11.3]  H1  +5.2 H2  +1.2  days+ 8/15  BOTH+
+   NO on mode                         n= 168   -0.7c [ -9.5, +7.7]  H1 -13.2 H2  +3.7  days+ 6/14  
+   NO off mode                        n= 114   +4.6c [ -2.7,+10.9]  H1  +2.0 H2  +5.9  days+ 9/15  BOTH+
+   C, >=12h, not YES-mode (joined subset) n= 222   +6.0c [ -0.7,+13.2]  H1  +8.6 H2  +4.8  days+ 12/15  BOTH+
+     + q_mode<0.45                    n= 110   +8.9c [ +0.9,+17.5]  H1 +15.3 H2  +5.0  days+ 10/14  BOTH+
