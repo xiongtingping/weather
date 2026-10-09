@@ -212,10 +212,13 @@ def test_a_flat_file_over_a_growing_database_still_reports_a_rate(
     assert guard["growth_bytes_per_day"] == pytest.approx(100_000, rel=0.05)
     assert guard["days_to_ceiling"] is not None
     # Free pages are headroom -- rows land there before the file grows --
-    # while the ceiling itself stays on the file, which is what the
-    # writers fail closed against.
+    # and since 2026-10-06 the ceiling is on live pages too, which is what
+    # the writers fail closed against (``assert_target_db_capacity``); the
+    # file's own headroom stays reported beside it (2026-10-09: judged on
+    # the file this card read blocked with 1.75 GB of free pages in hand).
     assert guard["free_page_bytes"] == free_now
-    assert guard["remaining_bytes"] == (
+    assert guard["remaining_bytes"] == daemon.MAX_TARGET_DB_BYTES - live_now
+    assert guard["file_remaining_bytes"] == (
         daemon.MAX_TARGET_DB_BYTES - database.stat().st_size
     )
     expected_days = (

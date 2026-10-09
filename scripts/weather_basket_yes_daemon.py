@@ -2198,10 +2198,16 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
     wal = Path(str(database) + "-wal")
     wal_bytes = int(wal.stat().st_size) if wal.exists() else 0
     live_bytes, free_page_bytes = _target_ssot_live_bytes(database)
-    # The violation stays on the file: ``MAX_TARGET_DB_BYTES`` is what the
-    # writers fail closed against, and free pages inside the file do not
-    # move it.  Only the time axis below counts them.
-    remaining = MAX_TARGET_DB_BYTES - db_bytes
+    # The violation is on live pages, the file less its freelist: since
+    # 2026-10-06 that is what the writers fail closed against
+    # (``resource_bounds.assert_target_db_capacity``), and a file that has
+    # reached the ceiling stays there -- SQLite never shrinks it -- while
+    # the cold offload frees pages inside it that every write reuses.  Judged
+    # on the file this card read ``blocked_fail_closed`` on 2026-10-09 with
+    # 1.75 GB of free pages in hand.  The file's own headroom stays
+    # reported beside it.
+    file_remaining = MAX_TARGET_DB_BYTES - db_bytes
+    remaining = MAX_TARGET_DB_BYTES - (live_bytes if live_bytes is not None else db_bytes)
     violations: list[str] = []
     warnings: list[str] = []
     if remaining <= 0:
@@ -2246,6 +2252,7 @@ def target_ssot_capacity_guard(db_path: Path) -> dict[str, Any]:
         "database_bytes": db_bytes,
         "max_database_bytes": MAX_TARGET_DB_BYTES,
         "remaining_bytes": remaining,
+        "file_remaining_bytes": file_remaining,
         "warn_remaining_bytes": TARGET_SSOT_WARN_REMAINING_BYTES,
         "wal_bytes": wal_bytes,
         "warn_wal_bytes": TARGET_SSOT_WARN_WAL_BYTES,

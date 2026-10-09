@@ -311,3 +311,39 @@ def test_resource_snapshot_is_read_only_and_reports_target_only_usage(tmp_path: 
     assert snapshot["raw_file_count"] == 1
     assert db.read_bytes() == b"x" * 7
     assert (raw / "object.bin").read_bytes() == b"y" * 5
+
+
+def test_the_capacity_gate_reads_the_freelist_the_writers_see_not_the_stale_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-09 00:00Z-01:00Z: the cold offload had freed 1.75 GB of pages
+    inside a file sitting at the ceiling, but page 1 with the new freelist
+    count was only in the WAL (a reader pinned the checkpoint before it), the
+    header still said zero, and every path-level caller of the gate failed
+    closed for an hour while the writers' own view had the room.  The gate
+    reads ``PRAGMA freelist_count`` through a read-only connection and keeps
+    the header only as a fallback."""
+
+    db = tmp_path / "target.db"
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA wal_autocheckpoint=0")
+    conn.execute("CREATE TABLE bulk (id INTEGER PRIMARY KEY, body BLOB)")
+    conn.executemany("INSERT INTO bulk VALUES (?, ?)", [(i, b"x" * 3500) for i in range(400)])
+    conn.commit()
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.execute("DELETE FROM bulk WHERE id < 300")
+    conn.commit()  # the freed pages are in the WAL; the main file's header is a checkpoint behind
+    page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+    free = int(conn.execute("PRAGMA freelist_count").fetchone()[0]) * page_size
+    assert free > 0 and resource_bounds._header_free_page_bytes(db) == 0, "the header must be stale here"
+    size = db.stat().st_size
+    assert resource_bounds._free_page_bytes(db) == free
+    # A ceiling between the live bytes and the file: judged on the header this
+    # fails closed, judged on the freelist the writers see it passes.
+    monkeypatch.setattr(resource_bounds, "MAX_TARGET_DB_BYTES", size - free // 2)
+    monkeypatch.setattr(resource_bounds, "MIN_TARGET_FREE_BYTES", 0)
+    assert resource_bounds.assert_target_db_capacity(db) == db.resolve()
+    with pytest.raises(resource_bounds.ResourceBoundError, match="target_database_bytes_exceeded"):
+        resource_bounds.assert_target_db_capacity(db, free_page_bytes=0)
+    conn.close()

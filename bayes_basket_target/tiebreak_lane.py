@@ -895,7 +895,7 @@ def _record(conn: sqlite3.Connection, key: Mapping[str, Any], fact: Mapping[str,
 # Planning.
 
 
-LANE_CYCLE_PREFIXES: tuple[str, ...] = ("tiebreak_cycle_", "misbuyexit_cycle_", "recycle998_cycle_", "p1_tail_cycle_", "p1_consensus_cycle_", "tail_short_cycle_")
+LANE_CYCLE_PREFIXES: tuple[str, ...] = ("tiebreak_cycle_", "misbuyexit_cycle_", "recycle998_cycle_", "p1_tail_cycle_", "p1_consensus_cycle_", "tail_short_cycle_", "copy_follow_cycle_")
 TERMINAL_INTENT_STATES = frozenset({"filled", "failed", "cancelled"})
 
 

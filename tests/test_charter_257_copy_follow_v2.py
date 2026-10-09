@@ -202,3 +202,62 @@ def test_a_take_is_sized_on_the_venues_amount_grid() -> None:
     assert plan["order_kind"] == "take" and plan["shares"] == 15.0
     assert abs(plan["shares"] * plan["limit_price"] * 100 - round(plan["shares"] * plan["limit_price"] * 100)) < 1e-6
 
+
+
+def test_a_second_wallets_fill_read_later_but_timed_earlier_does_not_add(store) -> None:
+    """OEJN 2026-10-08 19:01Z: two cluster wallets bought the same NO bucket a
+    second apart; the second wallet's fill (a second EARLIER) reached the tape
+    five minutes later, found no admitted trade before it, was admitted too,
+    and the leg carried two stakes (16.18 shares for a 5 U stake).  The
+    episode window looks both ways, and the target is one stake an episode."""
+
+    _seed(store)
+    _served(store, {"27°C": 0.2, "28°C": 0.45, "29°C": 0.35})
+    sent: list = []
+    first = Cluster([_taker(price=0.30, tx="0x1", at="2026-09-18T12:00:01Z")])
+    _run(store, first, sent)
+    assert len(_intents(store)) == 1
+    later = Cluster([_taker(price=0.30, tx="0x1", at="2026-09-18T12:00:01Z"),
+                     _taker(user=W2, price=0.29, at="2026-09-18T12:00:00Z", tx="0x2")])
+    _run(store, later, sent, now="2026-09-18T12:07:30.000Z")
+    rows = _sources(store)
+    assert {r[0]: r[3] for r in rows} == {USER: None, W2: "episode_already_followed"}
+    targets = lane.cluster_targets(store, users=[USER, W2], since_event_date="2026-09-01", episode_gap_seconds=3600.0)
+    assert len(targets) == 1 and next(iter(targets.values()))["target"] == pytest.approx(5.0 / 0.36, rel=1e-6)
+    assert len(_intents(store)) == 1, "the second read adds no second order"
+
+
+def test_two_admitted_rows_of_one_episode_count_one_stake(store) -> None:
+    """Rows admitted before the fix can still carry both wallets; the target
+    builder counts the episode's first and nothing within the gap after it,
+    while a buy an episode later adds its own stake."""
+
+    _seed(store)
+    lane.ensure_lane_schema(store)
+    base = dict(source_at_utc=NOW, transaction_hash="0x", token_id="yes_28°C", condition_id="0xc", order_action="BUY",
+                outcome_side="YES", size=10.0, usdc_size=3.0, event_slug=SLUG, title="t", station_id=ST,
+                event_date=ED, bucket="28°C", settlement_timezone=TZ, ratio=None, our_equity_usdc=None,
+                source_value_usdc=None, refusal=None, ingested_at_utc=NOW, taker=1, model_stage="P0",
+                our_p=0.45, model_margin=0.15)
+    rows = [("k1", USER, 1_000, 0.30, 0.36, round(5 / 0.36, 6)), ("k2", W2, 999, 0.29, 0.35, round(5 / 0.35, 6)),
+            ("k3", USER, 1_000 + 7200, 0.31, 0.37, round(5 / 0.37, 6))]
+    for key, user, ts, price, cap, scaled in rows:
+        body = {**base, "source_key": key, "source_user": user, "source_ts": ts, "price": price,
+                "price_cap": cap, "scaled_shares": scaled}
+        store.execute(f"INSERT INTO {lane.SOURCE_TABLE}({','.join(body)}) VALUES({','.join('?' for _ in body)})",
+                      tuple(body.values()))
+    target = lane.cluster_targets(store, users=[USER, W2], since_event_date="2026-09-01", episode_gap_seconds=3600.0)
+    assert target["yes_28°C"]["target"] == pytest.approx(5 / 0.35 + 5 / 0.37, rel=1e-6)
+    assert target["yes_28°C"]["buy_price"] == 0.31
+    summed = lane.cluster_targets(store, users=[USER, W2], since_event_date="2026-09-01")
+    assert summed["yes_28°C"]["target"] == pytest.approx(5 / 0.35 + 5 / 0.36 + 5 / 0.37, rel=1e-6), "no gap: legacy sum"
+
+
+def test_a_cycle_this_lane_left_open_is_settled_by_the_shared_repair() -> None:
+    """2026-10-09 00:00Z: a send that died before its intent row (the store
+    at its ceiling) left ``copy_follow_cycle_*`` rows at ``submitting``, which
+    the market ingress reads as a non-quiescent station-day."""
+
+    from bayes_basket_target import tiebreak_lane
+
+    assert "copy_follow_cycle_" in tiebreak_lane.LANE_CYCLE_PREFIXES

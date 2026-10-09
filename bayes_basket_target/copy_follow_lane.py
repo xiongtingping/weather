@@ -707,11 +707,18 @@ def ingest_cluster_taker_trades(
                 elif not (lead_lo <= lead < lead_hi):
                     refusal = f"lead_outside_window:{lead:.1f}h"
             if refusal is None and gap > 0.0:
-                earlier = conn.execute(
-                    f"SELECT 1 FROM {SOURCE_TABLE} WHERE token_id=? AND refusal IS NULL AND source_ts>=? AND source_ts<=? LIMIT 1",
-                    (token, ts - int(gap), ts),
+                # The episode is the token's admitted buys within ``gap`` of each
+                # other, whichever was READ first owns it: the cluster's wallets
+                # fill a second apart and the public tape shows them in any
+                # order (OEJN 2026-10-08 19:01Z: the second wallet's fill, a
+                # second EARLIER, arrived five minutes later, found no admitted
+                # trade before it, and doubled the leg to two stakes).
+                within = conn.execute(
+                    f"SELECT 1 FROM {SOURCE_TABLE} WHERE token_id=? AND refusal IS NULL"
+                    " AND source_ts>=? AND source_ts<=? LIMIT 1",
+                    (token, ts - int(gap), ts + int(gap)),
                 ).fetchone()
-                if earlier is not None:
+                if within is not None:
                     refusal = "episode_already_followed"
             if refusal is None:
                 served = served_side_probability(
@@ -749,14 +756,23 @@ def ingest_cluster_taker_trades(
     return receipt
 
 
-def cluster_targets(conn: sqlite3.Connection, *, users: Sequence[str], since_event_date: str) -> dict[str, dict[str, Any]]:
+def cluster_targets(
+    conn: sqlite3.Connection, *, users: Sequence[str], since_event_date: str, episode_gap_seconds: float = 0.0,
+) -> dict[str, dict[str, Any]]:
     """Charter 257: per token, the admitted cluster buys since ``since_event_date``
     -- the fixed stake's shares, the newest source price, our probability and
-    the cap stamped at admission, and the margin the pass ranks on."""
+    the cap stamped at admission, and the margin the pass ranks on.
+
+    One stake per episode: admitted rows on the same token within
+    ``episode_gap_seconds`` of the episode's first add nothing (the ingest
+    refuses them by name now; rows admitted before 2026-10-09 can still carry
+    two)."""
 
     out: dict[str, dict[str, Any]] = {}
     if not users:
         return out
+    gap = max(0.0, float(episode_gap_seconds or 0.0))
+    episode_start: dict[str, int] = {}
     marks = ",".join("?" for _ in users)
     for (token, user, station, day, bucket, side, tz, scaled, price, ts, our_p, cap, margin, stage) in conn.execute(
         f"SELECT token_id, source_user, station_id, event_date, bucket, outcome_side, settlement_timezone,"
@@ -771,6 +787,10 @@ def cluster_targets(conn: sqlite3.Connection, *, users: Sequence[str], since_eve
             "sell_price": None, "last_ts": None, "source_user": str(user), "our_p": None, "price_cap": None,
             "model_margin": None, "model_stage": None,
         })
+        first = episode_start.get(str(token))
+        if gap > 0.0 and first is not None and int(ts) - first <= gap:
+            continue
+        episode_start[str(token)] = int(ts)
         entry["target"] = entry["target"] + float(scaled or 0.0)
         entry.update(buy_price=float(price), last_ts=int(ts), source_user=str(user), our_p=our_p, price_cap=cap,
                      model_margin=margin, model_stage=stage)
@@ -1036,7 +1056,8 @@ def execute_copy_follow(
             ingest = ingest_cluster_taker_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch)
         except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
             ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
-        targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since)
+        targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since,
+                                  episode_gap_seconds=float(cfg.get("episode_gap_seconds") or 0.0))
     else:
         try:
             ingest = ingest_source_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, ratio_cache=cache)

@@ -664,8 +664,8 @@ def _header_free_page_bytes(path: Path) -> int:
     In WAL mode page 1 may be newer in the WAL than in the file, so this can
     lag a checkpoint: it under-counts pages freed since (conservative) and
     over-counts pages reused since, which ``max_page_count`` still bounds
-    physically.  A connection-level caller passes ``PRAGMA freelist_count``
-    instead.
+    physically.  The fallback for ``_free_page_bytes`` when the store cannot
+    be opened; a connection-level caller passes ``PRAGMA freelist_count``.
     """
 
     try:
@@ -679,6 +679,37 @@ def _header_free_page_bytes(path: Path) -> int:
     if page_size == 1:
         page_size = 65536
     return int.from_bytes(header[36:40], "big") * page_size
+
+
+def _free_page_bytes(path: Path) -> int:
+    """Freelist bytes as every connection sees them: ``PRAGMA freelist_count``
+    through a short read-only connection, which reads page 1 from the WAL.
+
+    The header alone is not enough (2026-10-09 00:00Z-01:00Z): the cold
+    offload had freed 1.75 GB of pages, but a reader held the WAL at a frame
+    before that page 1, the passive checkpoint could not copy it, the header
+    kept saying zero free pages, and every path-level caller of the gate --
+    the market ingress, the P0/P0-M/P1 ingress -- failed closed on
+    ``target_database_bytes_exceeded`` for an hour while the writers' own
+    view had 1.75 GB to reuse.  Falls back to the header when the store
+    cannot be opened.
+    """
+
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1.0)
+    except sqlite3.Error:
+        return _header_free_page_bytes(path)
+    try:
+        conn.execute("PRAGMA busy_timeout=1000")
+        page_size = int(conn.execute("PRAGMA page_size").fetchone()[0] or 0)
+        freelist = int(conn.execute("PRAGMA freelist_count").fetchone()[0] or 0)
+    except (sqlite3.Error, TypeError, ValueError):
+        return _header_free_page_bytes(path)
+    finally:
+        conn.close()
+    if page_size <= 0:
+        return _header_free_page_bytes(path)
+    return freelist * page_size
 
 
 def assert_target_db_capacity(
@@ -714,7 +745,7 @@ def assert_target_db_capacity(
     wal_size = int(wal.stat().st_size) if wal.is_file() else 0
     shm_size = int(shm.stat().st_size) if shm.is_file() else 0
     if free_page_bytes is None:
-        free_page_bytes = _header_free_page_bytes(resolved) if size else 0
+        free_page_bytes = _free_page_bytes(resolved) if size else 0
     live = max(0, size - max(0, int(free_page_bytes)))
     if live + max(0, int(projected_bytes)) > MAX_TARGET_DB_BYTES:
         raise ResourceBoundError("target_database_bytes_exceeded")
