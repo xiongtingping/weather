@@ -1,5 +1,7 @@
 # 对标账号 0x8fbd…a959 近一月交易拆解（2026-10-08）
 
+> 全景汇总（策略、选桶、方向、时机、已证实／前推在跑／已否定清单、实盘读数）：见同目录 `REPORT.md`（2026-10-10）。
+
 账号：`0x8fbd7cf5f806f563080864694415829f7229a959`（Polymarket 公开地址）。数据全部来自公开接口
 （data-api `/trades`、`/activity`、`/positions`；CLOB `/prices-history`）与本仓 SSOT 只读表
 （结算赢桶 `basket_station_day_settlement_label`、官方盘口快照 `basket_official_ws_snapshot`、
