@@ -158,3 +158,27 @@ def test_madis_five_minute_rain_lands_on_the_hour_its_accumulation_closes(monkey
     assert out["latest"] == {"local": "04:45", "wx": "", "accum_mm": 0.0, "wet": False}
     for hour in range(24):
         madis._OBJECTS.pop(f"20261008_{hour:02d}00", None)
+
+
+def test_the_picker_groups_by_settlement_timezone() -> None:
+    """User 2026-10-10「增加所有站，按照区域分区，比如欧洲、美国、亚洲等」."""
+
+    from bayes_basket_target import station_day_board as B
+
+    assert B._region("ZUUU", "Asia/Shanghai") == "中国"
+    assert B._region("RPLL", "Asia/Manila") == "亚洲"
+    assert B._region("LTFM", "Europe/Istanbul") == "欧洲"
+    assert B._region("KLGA", "America/New_York") == "美国"
+    assert B._region("CYYZ", "America/Toronto") == "美洲"
+    assert B._region("FACT", "Africa/Johannesburg") == "非洲·大洋洲"
+    assert B._region("NZWN", "Pacific/Auckland") == "非洲·大洋洲"
+
+
+def test_every_contract_city_has_a_display_name() -> None:
+    import json
+
+    from bayes_basket_target import station_day_board as B
+
+    cities = json.loads(B.CITY_CONTRACT_PATH.read_text(encoding="utf-8"))["settlement_source_contract"]["cities"]
+    names = json.loads(B.CITY_NAMES_PATH.read_text(encoding="utf-8"))["names"]
+    assert set(cities) == set(names)

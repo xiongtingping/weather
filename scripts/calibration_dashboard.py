@@ -16229,10 +16229,13 @@ color-scheme:dark}
 .sd-in{width:76px}
 .sd-btn{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
 .sd-btn:hover{border-color:var(--accent)}.sd-btn:disabled{opacity:.5;cursor:wait}
-.sd-st-pick{display:inline-flex;gap:6px}
-.sd-st-btn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:5px 12px;font:inherit;font-size:13.5px;font-weight:650;cursor:pointer}
+.sd-st-pick{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;margin:8px 0 6px}
+.sd-st-pick:empty{display:none}
+.sd-st-reg{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
+.sd-st-row{display:flex;flex-wrap:wrap;gap:5px}
+.sd-st-btn{border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:7px;padding:3px 10px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .sd-st-btn:hover{border-color:var(--accent)}
-.sd-st-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}.sd-st-btn.on .muted{color:rgba(255,255,255,.8)}
+.sd-st-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
 /* The panel's refresh at the row's right end, filled (user 2026-10-10「立即刷新按钮移动到右侧并突出」). */
 .sd-btn.sd-refresh-main{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px;font-weight:700;padding:7px 18px;border-radius:8px}
 .sd-btn.sd-refresh-main:hover{filter:brightness(1.08)}
@@ -22729,8 +22732,8 @@ function stationDayPanel(){
   const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
     .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
   return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
+  <div id="sd-st-pick" class="sd-st-pick">${sdStationPicker()}</div>
   <div class="sd-ctl">
-    <span class="sd-st-pick">${SD_STATIONS.map(([c, n]) => `<button type="button" class="sd-st-btn${c === SD.station ? " on" : ""}" data-sd-st="${c}">${n} <span class="muted">${c}</span></button>`).join("")}</span>
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
     <label title="按这个间隔只问一次「有没有新的已提交概率或新报文」（每天一次索引查找）；有新的 P0/P0-M/P1、METAR/SPECI 或 TAF 才重读并重画，盘口随之一起刷新">自动刷新：有更新才刷新，检查间隔 <select id="sd-every">${opts}</select></label>
     <span id="sd-status" class="muted">读取中…</span>
@@ -22739,8 +22742,19 @@ function stationDayPanel(){
   <div id="sd-body"></div>`;
 }
 
-// Quick stations (user 2026-10-10「单站日增加：Manila」); any other by its code.
-const SD_STATIONS = [["ZUUU", "成都"], ["RPLL", "马尼拉"]];
+// Every station, one row per region (user 2026-10-10「单站日增加：Manila」「增加所有站，
+// 按照区域分区，比如欧洲、美国、亚洲等」): the list is the payload's ``fleet``
+// (the settlement-source contract's cities), kept from the last read so a
+// switch does not blank it; any other station still by its code.
+try{ const f = JSON.parse(localStorage.getItem("sd-fleet") || "null"); if(Array.isArray(f)) SD.fleet = f; }catch(e){}
+function sdStationPicker(){
+  const fleet = SD.fleet || [];
+  if(!fleet.length) return "";
+  const regions = [];
+  fleet.forEach(r => { let g = regions.find(x => x[0] === r.region); if(!g) regions.push(g = [r.region, []]); g[1].push(r); });
+  return regions.map(([name, list]) => `<span class="sd-st-reg">${sdEsc(name)}</span><div class="sd-st-row">${list.map(r =>
+    `<button type="button" class="sd-st-btn${r.station_id === SD.station ? " on" : ""}" data-sd-st="${sdEsc(r.station_id)}" title="${sdEsc(r.station_id)}">${sdEsc(r.name)}</button>`).join("")}</div>`).join("");
+}
 function sdSwitchStation(v){
   if(SD.ordering || SD.holding || v === SD.station) return false;
   SD.station = v; SD.calc = {}; SD.data = null;
@@ -22768,7 +22782,7 @@ function sdBoot(){
     const v = String(e.target.value || "").trim().toUpperCase();
     if(!/^[A-Z]{4}$/.test(v) || !sdSwitchStation(v)) e.target.value = SD.station;
   });
-  document.querySelectorAll("[data-sd-st]").forEach(b => b.addEventListener("click", () => sdSwitchStation(b.dataset.sdSt)));
+  document.getElementById("sd-st-pick").addEventListener("click", e => { const b = e.target.closest("[data-sd-st]"); if(b) sdSwitchStation(b.dataset.sdSt); });
   const body = document.getElementById("sd-body");
   // Inputs live in the panel's own state, so a refresh redraws around them;
   // while a field has focus the redraw waits for it to blur.
@@ -22816,7 +22830,13 @@ function sdFetch(force){
     .then(j => {
       // A read for a station switched away from while it ran is dropped and re-read.
       if(j.station_id && j.station_id !== SD.station){ SD.reread = true; return; }
-      SD.data = j; SD.err = null; SD.fetchedAt = Date.now(); SD.checkedAt = null; })
+      SD.data = j; SD.err = null; SD.fetchedAt = Date.now(); SD.checkedAt = null;
+      if(Array.isArray(j.fleet) && j.fleet.length && JSON.stringify(j.fleet) !== JSON.stringify(SD.fleet)){
+        SD.fleet = j.fleet;
+        try{ localStorage.setItem("sd-fleet", JSON.stringify(j.fleet)); }catch(e){}
+        const pick = document.getElementById("sd-st-pick");
+        if(pick) pick.innerHTML = sdStationPicker();
+      } })
     .catch(e => { SD.err = /Failed to fetch|NetworkError|Load failed/.test(String(e))
       ? "控制服务未连接（127.0.0.1:8788）——launchctl kickstart -k gui/$(id -u)/com.weather.live_control" : String(e.message || e); })
     .finally(() => { SD.busy = false; if(btn) btn.disabled = false; sdRender();

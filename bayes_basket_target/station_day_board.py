@@ -36,6 +36,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 ARCHIVE_DB = ROOT / "data" / "archive.db"
 TAF_INBOX_PATH = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
+# The fleet's one list of cities, and their display names (user 2026-10-10
+# 「增加所有站，按照区域分区，比如欧洲、美国、亚洲等」).
+CITY_CONTRACT_PATH = ROOT / "config" / "trading" / "awc_truth_ingress_v1.json"
+CITY_NAMES_PATH = ROOT / "config" / "ui" / "station_city_names_v1.json"
+REGIONS = ("中国", "亚洲", "欧洲", "美国", "美洲", "非洲·大洋洲")
 #: The member packets production compiled each P0 from, one file per packet,
 #: named by the first 16 hex of the snapshot sha the envelope's lineage keeps.
 FORWARD_PACKET_ARCHIVE = ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "forward_packet_archive"
@@ -184,6 +189,44 @@ def station_timezone(conn: sqlite3.Connection, station: str) -> str | None:
         " WHERE station_id=? LIMIT 1", (station,),
     ).fetchone()
     return str(row[0]) if row and row[0] else None
+
+
+def _region(station: str, tz_name: str) -> str:
+    """The picker's group, from the settlement timezone: China apart from the
+    rest of Asia, the US (ICAO K) apart from the rest of the Americas."""
+
+    if tz_name == "Asia/Shanghai":
+        return "中国"
+    if tz_name.startswith("America/"):
+        return "美国" if station.startswith("K") else "美洲"
+    return {"Asia": "亚洲", "Europe": "欧洲"}.get(tz_name.split("/")[0], "非洲·大洋洲")
+
+
+def fleet(conn: sqlite3.Connection, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Every station the settlement-source contract lists, grouped for the
+    picker and ordered east to west inside a group; [] when unreadable."""
+
+    try:
+        cities = (json.loads(CITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+                  .get("settlement_source_contract") or {}).get("cities") or {}
+    except (OSError, ValueError):
+        return []
+    try:
+        names = json.loads(CITY_NAMES_PATH.read_text(encoding="utf-8")).get("names") or {}
+    except (OSError, ValueError):
+        names = {}
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for slug, entry in cities.items():
+        station = str((entry or {}).get("station_id") or "") if isinstance(entry, Mapping) else ""
+        tz_name = station_timezone(conn, station) if station else None
+        if not tz_name:
+            continue
+        out.append({"station_id": station, "city_slug": slug,
+                    "name": names.get(slug) or slug.replace("-", " ").title(),
+                    "region": _region(station, tz_name),
+                    "utc_offset_h": now.astimezone(ZoneInfo(tz_name)).utcoffset().total_seconds() / 3600})
+    return sorted(out, key=lambda r: (REGIONS.index(r["region"]), -r["utc_offset_h"], r["station_id"]))
 
 
 def _envelope_head(conn, station: str, day: str, stage: str) -> dict[str, Any] | None:
@@ -1262,6 +1305,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         tz_name, event_days = resolved
         zone = ZoneInfo(tz_name)
         token = _token(conn, station, event_days, zone)
+        stations = fleet(conn, now)
         taf_inbox = _taf_inbox()
         days = [_day(conn, station, day, role, zone, taf_inbox=taf_inbox) for role, day in event_days]
         today = now.astimezone(zone).date().isoformat()
@@ -1283,6 +1327,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         "build_sec": round((finished - started).total_seconds(), 2),
         "taf_raw": _taf_raw(station, taf_inbox),
         "taker_fee_rate": DEFAULT_TAKER_FEE_RATE,
+        "fleet": stations,
         "days": days,
     }
 
