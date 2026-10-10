@@ -734,6 +734,21 @@ def _latest_stage(conn: sqlite3.Connection, station_id: str, event_date: str) ->
     return str(row[0]) if row else None
 
 
+def _belief_stage(conn: sqlite3.Connection, station_id: str, event_date: str) -> str | None:
+    """The station-day's belief stage now (charter 260): the most informed
+    stage with a decision fact -- P1 before P0-M before P0 -- not the stage
+    of the newest row (P0-M keeps being compiled after the day's first P1,
+    P0 after its first P0-M)."""
+
+    from .stage_authority import BELIEF_STAGE_PRECEDENCE  # noqa: PLC0415
+
+    present = {str(r[0]) for r in conn.execute(
+        "SELECT DISTINCT stage FROM basket_policy_training_fact WHERE station_id=? AND event_date=?",
+        (station_id, event_date),
+    )}
+    return next((stage for stage in BELIEF_STAGE_PRECEDENCE if stage in present), None)
+
+
 def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         "SELECT probabilities_json, content_sha256, decision_at_utc, stage,"
@@ -752,6 +767,37 @@ def _envelope(conn: sqlite3.Connection, envelope_id: str) -> dict[str, Any] | No
         "decision_at_utc": str(row[2]), "stage": str(row[3]),
         "fresh_until_utc": str(row[4] or ""),
     }
+
+
+def belief_stage_decisions(
+    conn: sqlite3.Connection, *, now_utc: str, lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+) -> list[dict[str, Any]]:
+    """Every recent station-day's newest fact of its belief stage (charter
+    231 补记二 under charter 260): the most informed stage with a fact, P1
+    before P0-M before P0, and that stage's newest decision."""
+
+    from .stage_authority import BELIEF_STAGE_PRECEDENCE  # noqa: PLC0415
+
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='basket_policy_training_fact'"
+    ).fetchone() is None:
+        return []
+    floor = (_utc(now_utc) - timedelta(days=int(lookback_days))).date().isoformat()
+    rank = {stage: i for i, stage in enumerate(BELIEF_STAGE_PRECEDENCE)}
+    best: dict[tuple[str, str], tuple[int, str, str]] = {}
+    for station, day, stage, newest in conn.execute(
+        "SELECT station_id, event_date, stage, MAX(decision_at_utc) FROM basket_policy_training_fact"
+        " WHERE event_date >= ? GROUP BY station_id, event_date, stage",
+        (floor,),
+    ):
+        if str(stage) not in rank:
+            continue
+        key = (str(station), str(day))
+        candidate = (rank[str(stage)], str(stage), str(newest))
+        if key not in best or candidate[0] < best[key][0]:
+            best[key] = candidate
+    return [{"station_id": st, "event_date": d, "stage": stage, "decision_at_utc": at}
+            for (st, d), (_r, stage, at) in sorted(best.items())]
 
 
 def latest_stage_decisions(
@@ -801,13 +847,23 @@ def served_p0_vector(
     validity at that instant (charter 249 (十)) -- ``ENVELOPE_EXPIRED``.  The
     far-tail lane's model filter (charter 251) reads the same vector."""
 
+    return served_stage_vector(conn, station_id, event_date, stage="P0", valid_at=valid_at)
+
+
+def served_stage_vector(
+    conn: sqlite3.Connection, station_id: str, event_date: str,
+    *, stage: str, valid_at: datetime | None = None,
+) -> dict[str, Any]:
+    """``served_p0_vector`` for any belief stage (charter 231 补记二): the
+    station-day's newest ``stage`` envelope; ``no_p0`` when it has none."""
+
     out: dict[str, Any] = {"state": "no_p0", "envelope_id": None, "content_sha256": None,
                            "decision_at_utc": None, "probabilities": {}}
     row = conn.execute(
         "SELECT probability_envelope_id FROM basket_policy_training_fact"
-        " WHERE station_id=? AND event_date=? AND stage='P0'"
+        " WHERE station_id=? AND event_date=? AND stage=?"
         " ORDER BY decision_at_utc DESC LIMIT 1",
-        (station_id, event_date),
+        (station_id, event_date, str(stage)),
     ).fetchone()
     if row is None:
         return out
@@ -831,7 +887,7 @@ def served_p0_vector(
 
 def _latest_p0_probability(
     conn: sqlite3.Connection, station_id: str, event_date: str, bucket: str,
-    *, valid_at: datetime | None = None,
+    *, valid_at: datetime | None = None, stage: str = "P0",
 ) -> tuple[float | str | None, dict[str, Any]]:
     """``p`` of one bucket in the station-day's newest P0 envelope, floored as
     ``evaluate_ladder`` floors it, and that envelope's identity; the number is
@@ -839,7 +895,7 @@ def _latest_p0_probability(
     envelope past its own validity at that instant answers
     ``ENVELOPE_EXPIRED`` instead of a number."""
 
-    served = served_p0_vector(conn, station_id, event_date, valid_at=valid_at)
+    served = served_stage_vector(conn, station_id, event_date, stage=stage, valid_at=valid_at)
     read = _envelope_read(served.get("envelope_id"), served.get("content_sha256"),
                           served.get("decision_at_utc"))
     if served["state"] == ENVELOPE_EXPIRED:
@@ -1030,6 +1086,7 @@ def _record(
             conn, lane=LANE, kind="plan", station_id=str(key["station_id"]), event_date=str(key["event_date"]),
             judged_at_utc=now_utc, hours_to_settlement=hours, book=book,
             p_raw=envelope.get("probabilities"), envelope_id=(fact or {}).get("envelope_id"), legs=legs,
+            stage=str(key.get("stage") or "P0"),
         )
     return row
 
@@ -1223,7 +1280,7 @@ def plan_new_first_decisions(
     evaluations: list[dict[str, Any]] = []
     waiting: list[dict[str, Any]] = []
     decisions = (
-        latest_stage_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS)
+        belief_stage_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS)
         if latest else
         stage_first_decisions(target_conn, now_utc=now_utc, lookback_days=DEFAULT_LOOKBACK_DAYS)
     )
@@ -1291,7 +1348,7 @@ def plan_new_first_decisions(
             # fit the realisation gate admitted; no such b, no plan this pass.
             read = realisation_store.belief_vector(
                 target_conn, station_id=key["station_id"], event_date=key["event_date"], as_of_utc=now_utc,
-                p_raw=envelope["probabilities"], book_buckets=list(book["buckets"]),
+                p_raw=envelope["probabilities"], book_buckets=list(book["buckets"]), stage=str(key["stage"]),
             )
             if read.get("state") != "ok":
                 waiting.append({**key, "reason": f"belief:{read.get('state')}"})
@@ -1497,9 +1554,12 @@ def plan_rungs(
         if refusal:
             close(refusal)
             continue
-        latest_stage = _latest_stage(target_conn, str(station), str(day))
-        if latest_stage and latest_stage != "P0":
-            close(f"stage_left_p0:{latest_stage}")
+        # Charter 231 补记二: a plan bets its own stage; once the station-day's
+        # belief stage moves on (charter 260's order) it closes, and the new
+        # stage is planned afresh at its own decision.
+        latest_stage = _belief_stage(target_conn, str(station), str(day))
+        if latest_stage and latest_stage != str(stage):
+            close(f"stage_left_{str(stage).lower().replace('-', '')}:{latest_stage}")
             continue
         book = None
         book_refusal = None
@@ -1570,7 +1630,7 @@ def plan_rungs(
                     continue
                 newest, newest_read = _latest_p0_probability(
                     target_conn, str(station), str(day), str(leg["bucket"]),
-                    valid_at=_utc(now_utc) if by_envelope else None,
+                    valid_at=_utc(now_utc) if by_envelope else None, stage=str(stage),
                 )
                 if newest == ENVELOPE_EXPIRED:
                     leg_state["status"] = f"waiting:{ENVELOPE_EXPIRED}"
@@ -1584,14 +1644,14 @@ def plan_rungs(
                 # envelope still valid, the standing book, the change in hand
                 # now -- and the rung waits while b does not carry it.
                 if (str(station), str(day)) not in belief_reads:
-                    served = served_p0_vector(target_conn, str(station), str(day),
-                                              valid_at=_utc(now_utc) if by_envelope else None)
+                    served = served_stage_vector(target_conn, str(station), str(day), stage=str(stage),
+                                                 valid_at=_utc(now_utc) if by_envelope else None)
                     if served["state"] != "ok":
                         belief_reads[(str(station), str(day))] = {"state": str(served["state"])}
                     else:
                         read = realisation_store.belief_vector(
                             target_conn, station_id=str(station), event_date=str(day), as_of_utc=now_utc,
-                            p_raw=served["probabilities"], book_buckets=list(book["buckets"]),
+                            p_raw=served["probabilities"], book_buckets=list(book["buckets"]), stage=str(stage),
                         )
                         market = market_reference_v1(book["buckets"])
                         read["q"] = ({str(k): float(v) for k, v in market["vector"].items()}
@@ -1655,6 +1715,7 @@ def plan_rungs(
                 envelope_id=p_read.get("p_envelope_id"),
                 legs=[{"bucket": leg["bucket"], "side": leg["side"], "price": float(quote["price"]),
                        "fee_per_share": 0.0, "outcome": "posting", "order_intent_id": intent_id}],
+                stage=str(stage),
             )
             rungs.append({
                 "where": where, "plan": plan, "leg": leg, "intent_id": intent_id,
@@ -1945,7 +2006,7 @@ def send_sells(
         stamp = content_sha256({"bucket": [station, day, bucket], "kind": order["kind"], "at": now_utc})[:32]
         if order["kind"] == "buy_yes":
             intent_id = f"{REVERSE_YES_PREFIX}_{stamp}"
-            stage = _latest_stage(target_conn, station, day) or "P0"
+            stage = _belief_stage(target_conn, station, day) or "P0"
             entry = send_lane_buy(
                 target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
                 settlement_timezone=str(order["settlement_timezone"]), bucket=bucket,
@@ -2248,7 +2309,9 @@ __all__ = [
     "bucket_scope",
     "divergence_kl",
     "entry_rule",
+    "belief_stage_decisions",
     "latest_stage_decisions",
+    "served_stage_vector",
     "market_mode_bucket",
     "ensure_lane_schema",
     "evaluate_ladder",

@@ -59,6 +59,26 @@ from .settlement_time import hours_to_settlement_if_known
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACT_DIR = Path(os.environ.get("PM_REALISATION_LAYER_DIR") or (ROOT / "data" / "realisation_layer"))
 ACTIVE_NAME = "active.json"
+#: Charter 231 补记二 (user ruling 2026-10-10 「把 P0-M、P1 阶段也放开」): the Proper
+#: lane bets every belief stage, so b is fitted and gated per stage on that
+#: stage's own decisions.  P0 keeps ``active.json`` (the board and the far-tail
+#: shadow read it); the others write ``active_<slug>.json``.
+STAGES = ("P0", "P0-M", "P1")
+_STAGE_SLUGS = {"P0": "p0", "P0-M": "p0m", "P1": "p1"}
+
+
+def _stage_slug(stage: str) -> str:
+    try:
+        return _STAGE_SLUGS[str(stage)]
+    except KeyError as exc:
+        raise ValueError(f"realisation_stage_unknown:{stage}") from exc
+
+
+def active_name(stage: str = "P0") -> str:
+    """The artifact file of ``stage``'s fit."""
+
+    slug = _stage_slug(stage)
+    return ACTIVE_NAME if slug == "p0" else f"active_{slug}.json"
 HISTORY_KEEP = 30
 SCHEMA = "realisation_layer_fit_v1"
 WINDOW_DAYS = 28
@@ -207,10 +227,12 @@ def population(
     *,
     cutoff_utc: str,
     window_days: int = WINDOW_DAYS,
+    stage: str = "P0",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Every P0 decision more than ``MIN_HOURS_TO_SETTLEMENT`` out a fit at
-    ``cutoff_utc`` could use: its label knowable by then, its book complete,
-    its envelope's ladder the book's."""
+    """Every ``stage`` decision more than ``MIN_HOURS_TO_SETTLEMENT`` out a
+    fit at ``cutoff_utc`` could use: its label knowable by then, its book
+    complete, its envelope's ladder the book's.  A P0-M decision taken at or
+    after the day's first P1 is not one (charter 260: it is no belief)."""
 
     from .label_knowability import knowable_labels  # noqa: PLC0415
 
@@ -219,9 +241,10 @@ def population(
         for key, label in knowable_labels(conn).items()
         if str(label["known_at"]) <= cutoff_utc
     }
-    counts: dict[str, int] = {
-        "facts_read": 0, "no_label": 0, "inside_window": 0, "decided_after_cutoff": 0,
-        "row_missing": 0, "market_incomplete": 0, "ladder_mismatch": 0, "invalid": 0,
+    _stage_slug(stage)
+    counts: dict[str, Any] = {
+        "stage": str(stage), "facts_read": 0, "no_label": 0, "inside_window": 0, "decided_after_cutoff": 0,
+        "superseded_by_p1": 0, "row_missing": 0, "market_incomplete": 0, "ladder_mismatch": 0, "invalid": 0,
         "label_outside_ladder": 0,
     }
     if not labels:
@@ -231,9 +254,14 @@ def population(
     facts = conn.execute(
         "SELECT station_id, event_date, decision_at_utc, probability_envelope_id, ws_snapshot_id,"
         " settlement_timezone FROM basket_policy_training_fact"
-        " WHERE stage='P0' AND event_date > ? AND event_date <= ?",
-        (floor_day, latest),
+        " WHERE stage=? AND event_date > ? AND event_date <= ?",
+        (str(stage), floor_day, latest),
     ).fetchall()
+    first_p1: dict[tuple[str, str], str] = {}
+    if str(stage) == "P0-M":
+        from .stage_authority import first_p1_decisions  # noqa: PLC0415
+
+        first_p1 = first_p1_decisions(conn, min_decision_at_utc=f"{floor_day}T00:00:00Z")
     decisions: list[dict[str, Any]] = []
     runs_cache: dict[tuple[str, str], dict[str, list[tuple]]] = {}
     for station, day, decided, envelope_id, snapshot_id, tz in facts:
@@ -245,6 +273,12 @@ def population(
         if str(decided) > cutoff_utc:
             counts["decided_after_cutoff"] += 1
             continue
+        if first_p1:
+            from .stage_authority import p0m_superseded  # noqa: PLC0415
+
+            if p0m_superseded("P0-M", str(station), str(day), str(decided), first_p1):
+                counts["superseded_by_p1"] += 1
+                continue
         hours = hours_to_settlement_if_known(str(day), as_of_utc=str(decided), settlement_timezone=tz)
         if hours is None or not hours > MIN_HOURS_TO_SETTLEMENT:
             counts["inside_window"] += 1
@@ -505,14 +539,15 @@ def refit(
     *,
     cutoff_utc: str | None = None,
     window_days: int = WINDOW_DAYS,
+    stage: str = "P0",
 ) -> dict[str, Any]:
-    """The whole night's work on a read-only connection: population, gate,
-    fit, band, and the shadow legs' realisation so far."""
+    """The whole night's work on a read-only connection for one belief stage:
+    population, gate, fit, band, and the shadow legs' realisation so far."""
 
     cutoff = str(cutoff_utc or _now_iso())
-    decisions, counts = population(conn, cutoff_utc=cutoff, window_days=window_days)
+    decisions, counts = population(conn, cutoff_utc=cutoff, window_days=window_days, stage=stage)
     out: dict[str, Any] = {
-        "schema": SCHEMA, "rule": layer.RULE, "param_names": list(layer.PARAM_NAMES),
+        "schema": SCHEMA, "rule": layer.RULE, "param_names": list(layer.PARAM_NAMES), "stage": str(stage),
         "fitted_at_utc": _now_iso(), "cutoff_utc": cutoff, "window_days": window_days,
         "min_hours_to_settlement": MIN_HOURS_TO_SETTLEMENT, "code_sha256": code_sha256(),
         "population": counts,
@@ -538,7 +573,7 @@ def refit(
                    theta_named=dict(zip(layer.PARAM_NAMES, (float(v) for v in theta))),
                    fitted_columns=[layer.PARAM_NAMES[c] for c in fitted])
     out["shadow"] = shadow_realisation(conn, cutoff_utc=cutoff)
-    out["fit_id"] = f"realisation_{content_sha256({k: out[k] for k in ('fitted_at_utc', 'theta', 'code_sha256')})[:24]}"
+    out["fit_id"] = f"realisation_{content_sha256({k: out[k] for k in ('fitted_at_utc', 'theta', 'code_sha256', 'stage')})[:24]}"
     return out
 
 
@@ -547,37 +582,43 @@ def write_artifact(artifact: Mapping[str, Any], directory: Path | None = None) -
 
     folder = Path(directory or ARTIFACT_DIR)
     (folder / "history").mkdir(parents=True, exist_ok=True)
+    stage = str(artifact.get("stage") or "P0")
+    slug = _stage_slug(stage)
     text = json.dumps(artifact, ensure_ascii=False, sort_keys=True, default=float)
     stamp = str(artifact["fitted_at_utc"]).replace(":", "").replace("-", "")[:15]
-    (folder / "history" / f"fit_{stamp}Z.json").write_text(text, encoding="utf-8")
+    # P0's history keeps its names; another stage's files carry its slug.
+    prefix = "fit_" if slug == "p0" else f"fit-{slug}_"
+    (folder / "history" / f"{prefix}{stamp}Z.json").write_text(text, encoding="utf-8")
     handle, temporary = tempfile.mkstemp(dir=folder, prefix=".active.", suffix=".json")
     with os.fdopen(handle, "w", encoding="utf-8") as fh:
         fh.write(text)
-    os.replace(temporary, folder / ACTIVE_NAME)
-    kept = sorted((folder / "history").glob("fit_*.json"))
+    target = folder / active_name(stage)
+    os.replace(temporary, target)
+    kept = sorted((folder / "history").glob("fit_[0-9]*.json" if slug == "p0" else f"{prefix}*.json"))
     for old in kept[:-HISTORY_KEEP]:
         old.unlink()
-    return folder / ACTIVE_NAME
+    return target
 
 
 _ACTIVE_CACHE: dict[str, Any] = {}
 
 
-def load_active(directory: Path | None = None) -> dict[str, Any] | None:
-    """The newest artifact, re-read only when the file changed."""
+def load_active(directory: Path | None = None, *, stage: str = "P0") -> dict[str, Any] | None:
+    """``stage``'s newest artifact, re-read only when its file changed."""
 
-    path = Path(directory or ARTIFACT_DIR) / ACTIVE_NAME
+    path = Path(directory or ARTIFACT_DIR) / active_name(stage)
     try:
         stamp = path.stat().st_mtime_ns
     except OSError:
         return None
-    if _ACTIVE_CACHE.get("path") == str(path) and _ACTIVE_CACHE.get("stamp") == stamp:
-        return _ACTIVE_CACHE["artifact"]
+    held = _ACTIVE_CACHE.get(str(path))
+    if held is not None and held["stamp"] == stamp:
+        return held["artifact"]
     try:
         artifact = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    _ACTIVE_CACHE.update(path=str(path), stamp=stamp, artifact=artifact)
+    _ACTIVE_CACHE[str(path)] = {"stamp": stamp, "artifact": artifact}
     return artifact
 
 
@@ -659,8 +700,9 @@ def record_legs(
     envelope_id: str | None,
     legs: Sequence[Mapping[str, Any]],
     artifact: Mapping[str, Any] | None = None,
+    stage: str = "P0",
 ) -> dict[str, Any]:
-    """One shadow row per leg; never raises into the lane.
+    """One shadow row per leg, read under ``stage``'s fit; never raises into the lane.
 
     ``legs``: ``bucket``, ``side`` ("YES"/"NO"), ``price`` (per share on the
     leg's own side), ``fee_per_share``, ``outcome`` (what the lane did), and
@@ -670,7 +712,7 @@ def record_legs(
     if not legs:
         return {"state": "no_leg", "rows": 0}
     try:
-        active = artifact if artifact is not None else load_active()
+        active = artifact if artifact is not None else load_active(stage=stage)
         if book is None:
             reading: dict[str, Any] = {"state": "no_book"}
         else:
@@ -752,16 +794,20 @@ def belief_vector(
     p_raw: Mapping[str, float] | None,
     book_buckets: Sequence[Mapping[str, Any]],
     artifact: Mapping[str, Any] | None = None,
+    stage: str = "P0",
 ) -> dict[str, Any]:
-    """Charter 265: the belief a lane bets on -- ``b`` under the active fit,
+    """Charter 265: the belief a lane bets on -- ``b`` under ``stage``'s fit
+    (charter 231 补记二: one per belief stage, ``p_raw`` that stage's vector),
     with the three systems' latest-run change read at ``as_of_utc`` -- or a
     named refusal.  Only a v2 fit (the change columns) whose gate admitted it,
     fitted by this code and young enough is read; anything else fails closed
     rather than betting on a belief nobody certified."""
 
-    active = artifact if artifact is not None else load_active()
+    active = artifact if artifact is not None else load_active(stage=stage)
     if not active or not active.get("theta"):
         return {"state": "no_fit"}
+    if str(active.get("stage") or "P0") != str(stage):
+        return {"state": "fit_stage_mismatch"}
     if active.get("rule") != layer.RULE or len(active["theta"]) != len(layer.PARAM_NAMES):
         return {"state": "fit_without_change_terms"}
     gate_state = str((active.get("gate") or {}).get("state") or "")
@@ -868,7 +914,7 @@ def shadow_realisation(conn: sqlite3.Connection, *, cutoff_utc: str) -> dict[str
 
 
 __all__ = [
-    "ACTIVE_NAME", "ARTIFACT_DIR", "MIN_HOURS_TO_SETTLEMENT", "SCHEMA", "SHADOW_TABLE",
+    "ACTIVE_NAME", "ARTIFACT_DIR", "MIN_HOURS_TO_SETTLEMENT", "SCHEMA", "SHADOW_TABLE", "STAGES", "active_name",
     "STATE_ACCUMULATING", "STATE_ADMITTED", "STATE_REFUSED", "WINDOW_DAYS",
     "artifact_is_current", "calibration_gate", "code_sha256", "ensure_shadow_schema",
     "envelope_probabilities", "load_active", "population", "record_legs", "refit",

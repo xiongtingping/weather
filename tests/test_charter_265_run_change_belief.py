@@ -158,7 +158,7 @@ V4 = {**SETTINGS, "rule": lane.RULE_MAKER_BELIEF_B_V4, "belief": "realisation_b"
 
 def test_no_admitted_b_no_plan(store, monkeypatch) -> None:
     _seed(store)
-    monkeypatch.setattr(rstore, "load_active", lambda directory=None: None)
+    monkeypatch.setattr(rstore, "load_active", lambda directory=None, stage="P0": None)
     receipt = _run(store, [], **V4)
     assert receipt["rule"] == "proper_bet_lane_v4"
     assert _intents(store) == []

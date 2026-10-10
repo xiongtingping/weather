@@ -557,7 +557,8 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
     # v2 stays a rule the lane knows; which rule ships is charter 249's suite.
     assert lane.RULE_VERSIONS[lane.RULE_MAKER_V2] == "proper_bet_lane_v2"
-    assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0"]
+    # Charter 231 补记二 (2026-10-10 「把 P0-M、P1 阶段也放开」): every belief stage opens.
+    assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0", "P0-M", "P1"]
     # Charter 231 补记 (2026-10-10 「按照proper线本来的设计来」): no hour window.
     assert defaults["min_hours_to_settlement"] == 0.0
     # The budget is charter 252's dial; its suite pins the rule and the default.
@@ -568,7 +569,7 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     # The on/off switch is the operator's; the window is pinned here, the rule
     # it runs in charter 249's suite.
     assert proper["rule"] in lane.RULE_VERSIONS
-    assert proper["min_hours_to_settlement"] == 0.0 and proper["opening_stages"] == ["P0"]
+    assert proper["min_hours_to_settlement"] == 0.0 and proper["opening_stages"] == ["P0", "P0-M", "P1"]
     assert shipped["lanes"]["basket"]["enabled"] is False
 
 

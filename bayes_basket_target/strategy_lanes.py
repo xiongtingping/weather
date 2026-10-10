@@ -269,9 +269,10 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # the send.
     "budget_rule": "stake_full_position",
     "stake_usdc": 1.0,
-    # 「仅p0阶段下单」 / 「限p0」: only a station-day that is in P0 opens, and the
-    # plan is posted while it still is.
-    "opening_stages": ["P0"],
+    # Was 「仅p0阶段下单」 / 「限p0」 (2026-09-26 / 10-03): only a station-day in
+    # P0 opened.  Charter 231 补记二 (user ruling 2026-10-10 「把 P0-M、P1 阶段也放开」): every
+    # belief stage opens a plan, each read off its own stage's b.
+    "opening_stages": ["P0", "P0-M", "P1"],
     # Charter 249: which decision opens the station-day.  ``latest_decision``
     # judges its newest P0 decision on every pass until a plan is made;
     # ``first_decision`` (charter 231) judged only the first, inside its first

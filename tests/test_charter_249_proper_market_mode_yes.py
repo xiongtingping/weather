@@ -429,7 +429,7 @@ def test_v3_stays_selectable_after_charter_265() -> None:
     assert lane.allowed_sides(V3) == YES_ONLY and lane.bucket_scope(V3) == "market_mode"
     assert lane.belief_source(V3) == "weather_p"
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
-    assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
+    assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0", "P0-M", "P1"]
     assert defaults["min_hours_to_settlement"] == 0.0 and defaults["rung_horizon_seconds"] == 900.0
     assert defaults["freshness"] == "envelope_validity"
 
