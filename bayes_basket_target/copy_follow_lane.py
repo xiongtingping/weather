@@ -55,6 +55,10 @@ and momentum is not against -- ``model_agrees``; else v2's probability filter
 passes and neither is against -- ``probability``; a leg either signal is
 against is refused ``direction_disagrees:*``.  The two direction tiers need no
 probability margin: their cap is the source's price plus ``max_slippage``.
+Charter 266 补记一 (user ruling 2026-10-10 「大单增加预算」): an episode whose
+cluster taker buys within ``big_episode_window_seconds`` of its first fill add
+up to ``big_episode_usdc`` is staked ``big_episode_multiplier`` times, the
+fills the tape delivers late topping the leg up inside the take window.
 
 Nothing is read or written while ``data/live_paused.flag`` is up or the
 arming flag is down.  Every planned order and every changed refusal is a row
@@ -131,7 +135,7 @@ EVALUATION_V2_COLUMNS = (("our_p", "REAL"), ("price_cap", "REAL"), ("model_stage
 #: Charter 266: the tier a v3 leg was staked at, its stake and the direction
 #: reading behind it (mode, leg side, momentum, model, physics lineage).
 SOURCE_V3_COLUMNS = (("stake_tier", "TEXT"), ("stake_usdc", "REAL"), ("direction_json", "TEXT"))
-EVALUATION_V3_COLUMNS = (("stake_tier", "TEXT"),)
+EVALUATION_V3_COLUMNS = (("stake_tier", "TEXT"), ("episode_usdc", "REAL"), ("size_multiplier", "REAL"))
 HTTP_TIMEOUT_SECONDS = 10.0
 #: The gateway signs a BUY at its default tick (the payload carries none), so
 #: a price off the cent grid is one nobody quoted -- see ``tail_short_lane``.
@@ -704,6 +708,53 @@ def stake_tier_multipliers(cfg: Mapping[str, Any]) -> dict[str, float]:
     return out
 
 
+def big_episode_rule(cfg: Mapping[str, Any]) -> tuple[float, float, float]:
+    """Charter 266 补记一 (user ruling 2026-10-10 「大单增加预算」):
+    ``(big_episode_usdc, big_episode_window_seconds, big_episode_multiplier)``
+    -- an episode whose cluster taker buys within the window from its first
+    fill add up to at least ``big_episode_usdc`` is staked ``multiplier``
+    times; a multiplier of 1 is off.  A malformed value stops the lane."""
+
+    try:
+        usdc = float(cfg.get("big_episode_usdc") if cfg.get("big_episode_usdc") is not None else 0.0)
+        window = float(cfg.get("big_episode_window_seconds") or 0.0)
+        mult = float(cfg.get("big_episode_multiplier") if cfg.get("big_episode_multiplier") is not None else 1.0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("copy_follow_big_episode_rule_invalid") from exc
+    if not all(math.isfinite(x) for x in (usdc, window, mult)) or usdc < 0.0 or mult < 1.0 or (mult > 1.0 and window <= 0.0):
+        raise ValueError("copy_follow_big_episode_rule_invalid")
+    return usdc, window, mult
+
+
+def cluster_buy_flow(conn: sqlite3.Connection, *, users: Sequence[str], since_event_date: str) -> dict[str, list[tuple[int, float]]]:
+    """Per token, every cluster taker BUY the lane has seen since
+    ``since_event_date`` -- admitted or refused, any wallet -- as ``(ts,
+    usdc)`` in time order: the episode's size is the cluster's own money, not
+    only the fill the lane followed."""
+
+    out: dict[str, list[tuple[int, float]]] = {}
+    if not users:
+        return out
+    marks = ",".join("?" for _ in users)
+    for token, ts, usdc, size, price in conn.execute(
+        f"SELECT token_id, source_ts, usdc_size, size, price FROM {SOURCE_TABLE}"
+        f" WHERE source_user IN ({marks}) AND event_date>=? AND order_action='BUY' AND taker=1"
+        f" ORDER BY source_ts, source_key",
+        (*users, since_event_date),
+    ):
+        amount = float(usdc) if usdc is not None else float(size or 0.0) * float(price or 0.0)
+        out.setdefault(str(token), []).append((int(ts), amount))
+    return out
+
+
+def episode_usdc(flow: Sequence[tuple[int, float]], *, start_ts: int, window_seconds: float) -> float:
+    """The cluster's taker USDC on a token from ``start_ts`` to ``start_ts +
+    window_seconds`` inclusive."""
+
+    end = int(start_ts) + float(window_seconds)
+    return round(sum(u for t, u in flow if int(start_ts) <= t <= end), 6)
+
+
 def ingest_cluster_taker_trades(
     conn: sqlite3.Connection, *, cfg: Mapping[str, Any], now_utc: str, fetch: Fetch, feed: Any = None,
     api_fallback: bool = True, physics: Any = None,
@@ -870,6 +921,7 @@ def ingest_cluster_taker_trades(
 
 def cluster_targets(
     conn: sqlite3.Connection, *, users: Sequence[str], since_event_date: str, episode_gap_seconds: float = 0.0,
+    big_episode: tuple[float, float, float] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Charter 257: per token, the admitted cluster buys since ``since_event_date``
     -- the fixed stake's shares, the newest source price, our probability and
@@ -878,12 +930,21 @@ def cluster_targets(
     One stake per episode: admitted rows on the same token within
     ``episode_gap_seconds`` of the episode's first add nothing (the ingest
     refuses them by name now; rows admitted before 2026-10-09 can still carry
-    two)."""
+    two).
+
+    ``big_episode`` (charter 266 补记一): ``(usdc, window_seconds,
+    multiplier)`` -- an episode whose cluster taker buys within the window
+    from its first fill reach ``usdc`` adds ``multiplier`` stakes; read on
+    every pass, so fills the public tape delivers late raise the target and
+    the take-or-nothing gap tops the leg up inside its window."""
 
     out: dict[str, dict[str, Any]] = {}
     if not users:
         return out
     gap = max(0.0, float(episode_gap_seconds or 0.0))
+    big_usdc, big_window, big_mult = big_episode if big_episode is not None else (0.0, 0.0, 1.0)
+    flow = (cluster_buy_flow(conn, users=users, since_event_date=since_event_date)
+            if big_episode is not None and big_mult > 1.0 else {})
     episode_start: dict[str, int] = {}
     marks = ",".join("?" for _ in users)
     for (token, user, station, day, bucket, side, tz, scaled, price, ts, our_p, cap, margin, stage,
@@ -899,15 +960,20 @@ def cluster_targets(
             "token_id": str(token), "station_id": str(station), "event_date": str(day), "bucket": str(bucket),
             "side": str(side), "settlement_timezone": str(tz or ""), "target": 0.0, "buy_price": None,
             "sell_price": None, "last_ts": None, "source_user": str(user), "our_p": None, "price_cap": None,
-            "model_margin": None, "model_stage": None, "stake_tier": None,
+            "model_margin": None, "model_stage": None, "stake_tier": None, "episode_usdc": None,
+            "size_multiplier": 1.0,
         })
         first = episode_start.get(str(token))
         if gap > 0.0 and first is not None and int(ts) - first <= gap:
             continue
         episode_start[str(token)] = int(ts)
-        entry["target"] = entry["target"] + float(scaled or 0.0)
-        entry.update(buy_price=float(price), last_ts=int(ts), last_scaled=float(scaled or 0.0), source_user=str(user),
-                     our_p=our_p, price_cap=cap, model_margin=margin, model_stage=stage, stake_tier=tier)
+        size = episode_usdc(flow.get(str(token), ()), start_ts=int(ts), window_seconds=big_window) if flow else None
+        mult = big_mult if (size is not None and size >= big_usdc - 1e-9) else 1.0
+        shares = float(scaled or 0.0) * mult
+        entry["target"] = entry["target"] + shares
+        entry.update(buy_price=float(price), last_ts=int(ts), last_scaled=shares, source_user=str(user),
+                     our_p=our_p, price_cap=cap, model_margin=margin, model_stage=stage, stake_tier=tier,
+                     episode_usdc=size, size_multiplier=mult)
     return out
 
 
@@ -1171,8 +1237,10 @@ def execute_copy_follow(
     if str(cfg.get("rule")) not in RULE_VERSIONS:
         raise ValueError(f"copy_follow_rule_unknown:{cfg.get('rule')}")
     rule_version = RULE_VERSIONS[str(cfg["rule"])]
+    big_episode = None
     if str(cfg["rule"]) == RULE_V3:
         stake_tier_multipliers(cfg)  # a malformed tier table stops the lane, loudly
+        big_episode = big_episode_rule(cfg)
     cluster_rule = str(cfg["rule"]) in CLUSTER_RULES
     if cluster_rule:
         users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
@@ -1199,7 +1267,8 @@ def execute_copy_follow(
         except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
             ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
         targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since,
-                                  episode_gap_seconds=float(cfg.get("episode_gap_seconds") or 0.0))
+                                  episode_gap_seconds=float(cfg.get("episode_gap_seconds") or 0.0),
+                                  big_episode=big_episode)
     else:
         try:
             ingest = ingest_source_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, ratio_cache=cache)
@@ -1236,6 +1305,7 @@ def execute_copy_follow(
     budget_left = math.inf if unlimited_day else float(daily_cap) - lane_cost_today(target_conn, now_utc=now_utc)
     tier_rank = {tier: i for i, tier in enumerate(TIER_ORDER)}
     ranking = ((lambda kv: (tier_rank.get(kv[1].get("stake_tier") or TIER_PROBABILITY, len(TIER_ORDER)),
+                            -float(kv[1].get("size_multiplier") or 1.0),
                             -(kv[1].get("model_margin") or 0.0))) if cluster_rule
                else (lambda kv: -(kv[1]["last_ts"] or 0)))
     for token, want in sorted(targets.items(), key=ranking):
@@ -1256,6 +1326,8 @@ def execute_copy_follow(
         }
         if cluster_rule:
             row["stake_tier"] = want.get("stake_tier")
+            row["episode_usdc"] = want.get("episode_usdc")
+            row["size_multiplier"] = want.get("size_multiplier")
         action = "BUY" if gap >= min_shares else "SELL" if -gap >= min_shares else None
         plan: dict[str, Any] = {}
         if action is None:
@@ -1350,7 +1422,8 @@ def execute_copy_follow(
         plan_body = {**{k: row.get(k) for k in ("token_id", "station_id", "event_date", "bucket", "side",
                                                  "target_shares", "held_shares", "gap_shares", "source_price",
                                                  "book_source", "book_observed_at", "bid", "ask", "our_p",
-                                                 "price_cap", "model_stage", "model_margin", "stake_tier")},
+                                                 "price_cap", "model_stage", "model_margin", "stake_tier",
+                                                 "episode_usdc", "size_multiplier")},
                      **plan, "source_user": row["source_user"], "rule": rule_version}
         sends += 1
         if action == "BUY":
@@ -1441,7 +1514,10 @@ __all__ = [
     "TIER_MODEL",
     "TIER_MOMENTUM",
     "TIER_PROBABILITY",
+    "big_episode_rule",
+    "cluster_buy_flow",
     "direction_stake_tier",
+    "episode_usdc",
     "stake_tier_multipliers",
     "cluster_targets",
     "fetch_source_taker_trades",

@@ -447,6 +447,13 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     # (momentum not against) 2x, the probability filter alone 1x; a leg either
     # signal is against is skipped.  Unused by v1/v2.
     "stake_tiers": {"momentum_agrees": 3.0, "model_agrees": 2.0, "probability": 1.0},
+    # Charter 266 补记一 (user ruling 2026-10-10 「大单增加预算」): an episode
+    # whose cluster taker buys within ``big_episode_window_seconds`` of its first
+    # fill reach ``big_episode_usdc`` is staked ``big_episode_multiplier`` times.
+    # 1.0 here is off; the lane file turns it on.  Unused by v1/v2.
+    "big_episode_usdc": 30.0,
+    "big_episode_window_seconds": 60.0,
+    "big_episode_multiplier": 1.0,
 }
 
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak

@@ -326,3 +326,8 @@ for lab, w in TIERS.items():
         print(f'      base {b:4.1f}U: profit {prof:+7.1f}U ({prof/days_n:+5.1f}/day)  H1/H2 {ph["H1"]:+6.1f}/{ph["H2"]:+6.1f}  utilisation {100*util:4.0f}%  legs taken {taken:4d} skipped {skipped:4d}{mark}')
     best.append((top[0], lab, top[1], top[2]))
 print('   best per scheme:', [(lab, b, round(p, 1), f'{100*u:.0f}%') for p, lab, b, u in sorted(best, reverse=True)])
+
+# ---- export (round 23, 「大单增加预算」): one row per followed event for follow_size.py
+json.dump([dict({k: r.get(k) for k in ('st', 'ed', 'side', 'own', 'hit', 'ours', 'lead', 'unit', 'half', 'usdc', 'mom', 'm4', 'ts')},
+                cid=e['cid'], outcome=e['outcome'], pf=bool(pf(r)), inwin=bool(inwin(r))) for r, e in zip(R, evs_ft)],
+          open(f'{B}/follow_rows.json', 'w'))

@@ -366,3 +366,92 @@ def test_the_resident_fetches_physics_only_for_a_live_v3_reader(monkeypatch) -> 
 def test_the_resident_refresh_job_never_raises(tmp_path) -> None:
     out = ds.refresh_fleet_physics(tmp_path / "missing.db", cache=ds.PhysicsCache(tmp_path / "p.json"))
     assert out["state"] in {"zones_unreadable", "ran"}
+
+
+# ---------------------------------------------------------------------------
+# 补记一: big episodes are staked more (user ruling 2026-10-10 「大单增加预算」).
+
+BIG = {"big_episode_usdc": 30.0, "big_episode_window_seconds": 60.0, "big_episode_multiplier": 2.0}
+
+
+def test_the_big_episode_rule_is_validated_and_off_by_default() -> None:
+    assert lane.big_episode_rule(BIG) == (30.0, 60.0, 2.0)
+    cfg = strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS
+    assert lane.big_episode_rule(cfg)[2] == 1.0  # the code default is off; the lane file turns it on
+    for broken in ({**BIG, "big_episode_multiplier": 0.5}, {**BIG, "big_episode_usdc": -1.0},
+                   {**BIG, "big_episode_window_seconds": 0.0}, {**BIG, "big_episode_multiplier": "x"}):
+        with pytest.raises(ValueError, match="big_episode"):
+            lane.big_episode_rule(broken)
+
+
+def test_episode_usdc_counts_the_window_inclusive() -> None:
+    flow = [(100, 5.0), (130, 10.0), (160, 20.0), (161, 50.0)]
+    assert lane.episode_usdc(flow, start_ts=100, window_seconds=60) == 35.0
+    assert lane.episode_usdc(flow, start_ts=130, window_seconds=60) == 80.0
+
+
+def _big_run(store, monkeypatch, tmp_path, trades, *, now="2026-09-18T12:02:30.000Z", seed=True, sent=None):
+    _patch_runs(monkeypatch, _runs(aifs=[20.0, 20.5]))
+    if seed:
+        _seed_mode_snapshot(store)
+        _seed(store)
+        _served(store, {"27°C": 0.40, "28°C": 0.45, "29°C": 0.15})
+    sent = [] if sent is None else sent
+    receipt = lane.execute_copy_follow(
+        store, transport=_transport(sent), now_utc=now, live_submit_authorized=True,
+        settings={**strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS, **V3, **BIG, "take_only": True},
+        fetch=Cluster(trades), position_reader=lambda token: {"ok": True, "shares": 1e9}, ratio_cache={},
+        physics=_empty_physics(tmp_path),
+    )
+    return receipt, sent
+
+
+def test_a_big_episode_doubles_the_stake(store, monkeypatch, tmp_path) -> None:
+    # 8 U first fill, then 31.5 U by a second wallet 30 s later: 39.5 U inside 60 s -> a big episode.
+    trades = [_taker("29°C", price=0.20, size=40.0, at=TRADE_AT, tx="0x1"),
+              _taker("29°C", user=W2, price=0.21, size=150.0, at="2026-09-18T12:00:30Z", tx="0x2")]
+    receipt, sent = _big_run(store, monkeypatch, tmp_path, trades)
+    assert receipt["planned"] == 1
+    plan = json.loads(_intents(store)[0][6])["plan"]
+    assert plan["stake_tier"] == "momentum_agrees" and plan["size_multiplier"] == 2.0
+    assert plan["episode_usdc"] == pytest.approx(39.5)
+    # momentum tier 3 x 3 U = 9 U at the 0.26 cap, doubled.
+    assert plan["target_shares"] == pytest.approx(2 * 9.0 / 0.26, abs=1e-3)
+
+
+def test_fills_after_the_window_do_not_make_it_big(store, monkeypatch, tmp_path) -> None:
+    trades = [_taker("29°C", price=0.20, size=40.0, at=TRADE_AT, tx="0x1"),
+              _taker("29°C", user=W2, price=0.21, size=150.0, at="2026-09-18T12:01:30Z", tx="0x2")]
+    _receipt, _sent = _big_run(store, monkeypatch, tmp_path, trades)
+    plan = json.loads(_intents(store)[0][6])["plan"]
+    assert plan["size_multiplier"] == 1.0 and plan["episode_usdc"] == pytest.approx(8.0)
+
+
+def test_a_late_fill_on_the_tape_tops_the_leg_up(store, monkeypatch, tmp_path) -> None:
+    first = _taker("29°C", price=0.20, size=40.0, at=TRADE_AT, tx="0x1")
+    late = _taker("29°C", user=W2, price=0.21, size=150.0, at="2026-09-18T12:00:30Z", tx="0x2")
+    sent: list = []
+    _big_run(store, monkeypatch, tmp_path, [first], sent=sent)
+    assert len(_intents(store)) == 1
+    base = float(_intents(store)[0][5])
+    # The second wallet's fill reaches the public tape a few minutes later: the episode turns big
+    # inside the take window and the next pass buys the difference (on a book fresh then).
+    _insert(store, "basket_official_ws_snapshot", {
+        "snapshot_id": "snap2", "market_id": "m", "station_id": ST, "event_date": ED, "settlement_timezone": TZ,
+        "sequence": 2, "observed_at": "2026-09-18T12:05:50.000Z", "quote_version": "v2",
+        "quote_observed_at": "2026-09-18T12:05:50.000Z", "quote_expires_at": "2026-09-18T13:00:00Z",
+        "quote_source": "OFFICIAL_CLOB_WS", "remaining_budget_usdc": 100.0, "buckets_json": json.dumps(_book()),
+        "state": "COMMITTED", "created_at": "2026-09-18T12:05:50.000Z",
+    })
+    _big_run(store, monkeypatch, tmp_path, [first, late], now="2026-09-18T12:06:00.000Z", seed=False, sent=sent)
+    intents = _intents(store)
+    refusals = store.execute(f"SELECT evaluated_at_utc, refusal, gap_shares FROM {lane.EVALUATION_TABLE}").fetchall()
+    assert len(intents) == 2, refusals
+    top_up = json.loads(intents[1][6])["plan"]
+    assert top_up["size_multiplier"] == 2.0 and float(intents[1][5]) == pytest.approx(base, rel=0.05)
+
+
+def test_the_lanes_file_turns_big_episodes_on() -> None:
+    cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_COPY_FOLLOW,
+                                       ROOT / "config" / "trading" / "strategy_lanes_v1.json")
+    assert lane.big_episode_rule(cfg) == (30.0, 60.0, 2.0)
