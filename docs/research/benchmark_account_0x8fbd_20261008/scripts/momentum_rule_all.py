@@ -214,6 +214,11 @@ rule_report('ICON rad |z|>=1.5', [(r, sg(r['rad'])) for r in inst if r['rad'] is
 rule_report('M>=1 and ICON rad z>=0.5 same side', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and abs(r['rad']) >= 0.5 and sg(r['M']) == sg(r['rad'])])
 rule_report('M>=1.5 and ICON rad z>=1 same side', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1.5 and abs(r['rad']) >= 1 and sg(r['M']) == sg(r['rad'])])
 rule_report('M>=1 and ICON rad opposite', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and abs(r['rad']) >= 0.5 and sg(r['M']) != sg(r['rad'])])
+# 10-10 user's wording: |M|>=1 and the ICON anomaly on the same side, any size.
+rule_report('M>=1, rad same sign (any z)', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and sg(r['M']) == sg(r['rad'])])
+rule_report('M>=1, rad same sign, 0<|z|<0.5', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and abs(r['rad']) < 0.5 and sg(r['M']) == sg(r['rad'])])
+rule_report('M>=1, rad opposite sign (any z)', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1 and sg(r['M']) != sg(r['rad'])])
+rule_report('M>=1, all with rad known', [(r, sg(r['M'])) for r in inst if r['rad'] is not None and abs(r['M']) >= 1])
 
 # their silent-event skill with CI
 R = json.load(open(f'{B}/direction_rows.json'))
