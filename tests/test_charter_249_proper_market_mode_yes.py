@@ -430,7 +430,7 @@ def test_v3_stays_selectable_after_charter_265() -> None:
     assert lane.belief_source(V3) == "weather_p"
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
     assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0"]
-    assert defaults["min_hours_to_settlement"] == 36.0 and defaults["rung_horizon_seconds"] == 900.0
+    assert defaults["min_hours_to_settlement"] == 0.0 and defaults["rung_horizon_seconds"] == 900.0
     assert defaults["freshness"] == "envelope_validity"
 
 
@@ -443,5 +443,6 @@ def test_the_charter_and_agents_carry_the_ruling() -> None:
                    "envelope_expired"):
         assert phrase in body
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert f"宪章 {CHARTER}" in agents and "市场众数桶" in agents
+    # Charter 265 rewrote the AGENTS line: v3 (YES on the market mode) is named there as the fitted restriction.
+    assert f"宪章 {CHARTER}" in agents and "众数 YES" in agents
     assert len(agents.splitlines()) <= 104

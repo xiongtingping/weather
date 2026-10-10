@@ -10,8 +10,9 @@ to trade: the lanes decide exactly as before.
 
 * ``population`` -- every P0 decision more than ``MIN_HOURS_TO_SETTLEMENT``
   before its settlement clock, with a complete book and a knowable label, over
-  the rolling ``WINDOW_DAYS``: the scope both lanes act in.  Each station-day
-  weighs one.
+  the rolling ``WINDOW_DAYS``: the scope the Proper lane acts in (charter 231
+  补记 2026-10-10 dropped its >36 h window, so the population is every P0
+  decision before the clock).  Each station-day weighs one.
 * ``refit`` -- the walk-forward gate (every day with at least
   ``MIN_PREFIX_DAYS`` of earlier evidence is predicted from the days at least
   two before it whose labels were knowable by its midnight), then the fit on
@@ -61,7 +62,11 @@ ACTIVE_NAME = "active.json"
 HISTORY_KEEP = 30
 SCHEMA = "realisation_layer_fit_v1"
 WINDOW_DAYS = 28
-MIN_HOURS_TO_SETTLEMENT = 36.0
+#: Charter 231 补记 (user ruling 2026-10-10 「也是人工定的，按照proper线本来的设计
+#: 来」): the Proper lane bets P0 at every hour before the settlement clock, so b is
+#: fitted and gated on that whole scope (it was > 36 h).  The locked acceptance
+#: (docs/research/realisation_acceptance_20261006) keeps its own 36 h constant.
+MIN_HOURS_TO_SETTLEMENT = 0.0
 MIN_PREFIX_DAYS = 8
 BAND_DRAWS = 60
 BAND_SEED = 20261005

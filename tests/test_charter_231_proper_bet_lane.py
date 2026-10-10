@@ -364,6 +364,23 @@ def test_a_first_decision_inside_36_hours_is_not_planned(store) -> None:
     assert receipt["refusals"][0].startswith("inside_36h") and not sent
 
 
+def test_without_the_window_a_p0_decision_inside_36_hours_is_planned(store) -> None:
+    # Charter 231 补记 (2026-10-10 「也是人工定的，按照proper线本来的设计来」): the
+    # shipped default is no hour window -- the same decision is planned.
+    _seed(store, decided="2026-09-19T05:00:00.000Z", observed="2026-09-19T05:00:00.000Z")
+    sent: list = []
+    receipt = _run(store, sent, now="2026-09-19T05:00:10.000Z",
+                   min_hours_to_settlement=strategy_lanes.PROPER_BET_DEFAULT_SETTINGS["min_hours_to_settlement"])
+    assert not any(str(r).startswith("inside_") for r in receipt["refusals"])
+    assert receipt["planned"] == 1 and sent
+
+
+def test_the_realisation_population_covers_every_p0_hour() -> None:
+    from bayes_basket_target import realisation_store  # noqa: PLC0415
+
+    assert realisation_store.MIN_HOURS_TO_SETTLEMENT == 0.0
+
+
 def test_only_the_p0_first_decision_is_judged(store) -> None:
     _seed(store, stage="P1")
     receipt = _run(store, [])
@@ -541,7 +558,8 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     # v2 stays a rule the lane knows; which rule ships is charter 249's suite.
     assert lane.RULE_VERSIONS[lane.RULE_MAKER_V2] == "proper_bet_lane_v2"
     assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0"]
-    assert defaults["min_hours_to_settlement"] == 36.0
+    # Charter 231 补记 (2026-10-10 「按照proper线本来的设计来」): no hour window.
+    assert defaults["min_hours_to_settlement"] == 0.0
     # The budget is charter 252's dial; its suite pins the rule and the default.
     assert defaults["budget_rule"] == "stake_full_position"
     shipped = strategy_lanes.load_strategy_lanes(ROOT / "config" / "trading" / "strategy_lanes_v1.json")
@@ -550,7 +568,7 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     # The on/off switch is the operator's; the window is pinned here, the rule
     # it runs in charter 249's suite.
     assert proper["rule"] in lane.RULE_VERSIONS
-    assert proper["min_hours_to_settlement"] == 36.0 and proper["opening_stages"] == ["P0"]
+    assert proper["min_hours_to_settlement"] == 0.0 and proper["opening_stages"] == ["P0"]
     assert shipped["lanes"]["basket"]["enabled"] is False
 
 

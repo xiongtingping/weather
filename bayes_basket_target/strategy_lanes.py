@@ -284,9 +284,12 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     # (``decision_age``, charter 231) -- P0 decisions two days out come in
     # bursts with the model runs, hours apart.
     "freshness": "envelope_validity",
-    # 「按照>36h」: posted only while the settlement clock is more than this
-    # many hours away -- the band the L4 verdict found P0 beat the market on.
-    "min_hours_to_settlement": 36.0,
+    # Posted only while the settlement clock is more than this many hours
+    # away.  Charter 231 补记 (user ruling 2026-10-10 「也是人工定的，按照proper线
+    # 本来的设计来」): the >36 h window of 2026-09-26 (「按照>36h」) is gone --
+    # 0 is the paper's rule, every hour before the settlement clock; the stage
+    # gate (``opening_stages``) still decides which decisions are bet on.
+    "min_hours_to_settlement": 0.0,
     # A decision older than this is not planned on (under ``first_decision``
     # it is recorded stale; under ``latest_decision`` the station-day waits
     # for its next one).
