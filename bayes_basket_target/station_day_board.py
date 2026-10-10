@@ -166,11 +166,17 @@ def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]])
     near_mode = sum(p for r, p in rows if abs(r["ordinal"] - mode_ord) <= 1)
     third = sum(p * (c - mean) ** 3 for c, p in known)
     sd = math.sqrt(var)
+    mean_bucket = bucket_of(axis, mean)
+    rank = {r["bucket"]: r["ordinal"] for r, _p in rows}
     return {
         "mean_c": round(mean, 3), "var_c2": round(var, 4), "sd_c": round(sd, 3),
         "skew": None if sd <= 1e-9 else round(third / sd ** 3, 3),
         "mode": rows[mode_index][0]["bucket"], "mode_p": round(rows[mode_index][1], 4),
-        "mean_bucket": bucket_of(axis, mean),
+        "mean_bucket": mean_bucket,
+        # Rungs from the mode to the mean's rung (user 2026-10-10): 0 the same
+        # rung (symmetric), < 0 the mean left of the mode (left-skewed), > 0
+        # right of it (right-skewed).
+        "mean_minus_mode_rungs": None if mean_bucket is None else int(rank[mean_bucket]) - int(mode_ord),
         "entropy_bits": round(entropy, 3),
         "effective_rungs": round(2.0 ** entropy, 2),
         "interval80": [lo80, hi80],
@@ -1371,6 +1377,101 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         "fleet": stations,
         "days": days,
     }
+
+
+FLEET_SHAPE_SCHEMA = "station_day_fleet_shape_v1"
+
+
+def shape_word(rungs: Any) -> str:
+    """The side of the mean's rung against the mode's: symmetric / left / right."""
+
+    if rungs is None:
+        return "none"
+    return "symmetric" if rungs == 0 else "left" if rungs < 0 else "right"
+
+
+def _committed_market_stats(conn, station: str, day: str, axis) -> dict[str, Any] | None:
+    """The newest committed book (the resident's once-a-cycle copy) as a
+    ladder vector's statistics; None without a complete one."""
+
+    from bayes_basket_target.basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+
+    row = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' ORDER BY observed_at DESC LIMIT 1",
+        (station, day),
+    ).fetchone()
+    if row is None:
+        return None
+    ref = market_reference_v1(_json(row[0], []))
+    if ref.get("state") != "complete":
+        return None
+    return vector_stats({str(k): float(v) for k, v in ref["vector"].items()}, axis)
+
+
+def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[str, Any]:
+    """Every listed station's local today and tomorrow, counted by where the
+    mean's rung sits against the modal rung (user 2026-10-10 「48站点每日的均值
+    桶和众数桶的位置的统计：对称、左偏、右偏分别有多少」).
+
+    Per event date: the day's word (the head stage, as the panel's card reads
+    it), each stage, and the market's newest committed book.  Read-only; the
+    newest committed envelope of each stage, one index seek apiece.
+    """
+
+    started = datetime.now(timezone.utc)
+    now = now or started
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
+    by_day: dict[str, dict[str, Any]] = {}
+    try:
+        conn.execute("PRAGMA query_only=1")
+        stations = fleet(conn, now)
+        for entry in stations:
+            station = entry["station_id"]
+            tz_name = station_timezone(conn, station)
+            if not tz_name:
+                continue
+            today = now.astimezone(ZoneInfo(tz_name)).date()
+            for offset in (0, 1):
+                day = (today + timedelta(days=offset)).isoformat()
+                heads = {stage: _envelope_head(conn, station, day, stage) for stage in STAGES}
+                seen = {s: h for s, h in heads.items() if h}
+                if not seen:
+                    continue
+                newest = max(seen.values(), key=lambda h: str(h["decided_at_utc"]))
+                axis = ladder_axis(newest["ordinals"],
+                                   _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
+                rungs = {}
+                for stage, head in seen.items():
+                    stats = vector_stats(head["vector"], axis) or {}
+                    rungs[stage] = stats.get("mean_minus_mode_rungs")
+                market = _committed_market_stats(conn, station, day, axis)
+                if market is not None:
+                    rungs["MKT"] = market.get("mean_minus_mode_rungs")
+                # The day's word, as the panel picks it: the newest stage decided.
+                head_stage = max(seen, key=lambda s: (str(seen[s]["decided_at_utc"])[:19], STAGES.index(s)))
+                book = by_day.setdefault(day, {"event_date": day, "rows": []})
+                book["rows"].append({"station_id": station, "name": entry.get("name"),
+                                     "head_stage": head_stage, "rungs": rungs})
+    finally:
+        conn.close()
+    days = []
+    for day in sorted(by_day):
+        rows = by_day[day]["rows"]
+        counts: dict[str, dict[str, int]] = {}
+        for key in ("HEAD", *STAGES, "MKT"):
+            tally = {"symmetric": 0, "left": 0, "right": 0, "none": 0}
+            for r in rows:
+                if key == "HEAD":
+                    tally[shape_word(r["rungs"].get(r["head_stage"]))] += 1
+                elif key in r["rungs"]:
+                    tally[shape_word(r["rungs"][key])] += 1
+            counts[key] = tally
+        days.append({"event_date": day, "station_days": len(rows), "counts": counts, "rows": rows})
+    finished = datetime.now(timezone.utc)
+    return {"schema": FLEET_SHAPE_SCHEMA, "built_at_utc": _iso(finished),
+            "build_sec": round((finished - started).total_seconds(), 2),
+            "stations": len(stations), "days": days}
 
 
 if __name__ == "__main__":  # pragma: no cover - manual probe

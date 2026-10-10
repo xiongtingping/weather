@@ -15664,7 +15664,18 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-evidence-card .sd-sub{line-height:1.7}.sd-evidence-card details{margin-top:6px}
 .sd-evidence-card.sd-evidence-wide{grid-column:1/-1}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
-@media (max-width:700px){.sd-evidence-cards{grid-template-columns:minmax(0,1fr)}}
+.sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sd-shape-rows{display:grid;grid-template-columns:auto auto auto 1fr;gap:4px 14px;align-items:baseline;font-size:13px}
+.sd-shape-rows b{font-size:14px}
+.sd-fs-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:8px}
+.sd-fs-day{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.sd-fs-date{font-weight:700;font-size:15px;margin-bottom:6px}
+.sd-fs-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.sd-fs-tile{border-top:3px solid var(--c);border-radius:6px;padding:6px 8px;background:color-mix(in srgb,var(--c) 7%,var(--card));color:var(--c)}
+.sd-fs-tile b{display:block;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.sd-fs-tile span{font-size:12.5px}
+@media (max-width:1100px){.sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.sd-evidence-cards,.sd-evidence-cards.sd-evidence-three{grid-template-columns:minmax(0,1fr)}}
 .sd-kpis{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0;font-size:12.5px}
 .sd-kpis div{display:flex;flex-direction:column}.sd-kpis b{font-size:15px}
 .box{border:1px solid var(--line);border-left:4px solid var(--box);border-radius:12px;
@@ -21670,7 +21681,7 @@ function sdRender(){
       x.role === "today" ? "今日" : "明日（第二日）"} ${sdEsc(x.event_date.slice(5))}${
       x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}</button>`).join("")}${
     pk ? `<span class="sd-daytab off" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">今日 ${sdEsc(pk.event_date.slice(5))} 已过峰</span>` : ""}</div>`;
-  body.innerHTML = tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
+  body.innerHTML = sdFleetShape(d.fleet_shape) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
     `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`)).join("");
   if(anchorPath){
     const again = sdFromPath(anchorPath, body);
@@ -22179,6 +22190,57 @@ function sdDirection(D, R){
     <div class="sd-sub">算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>`;
   return {color: sdDirColor(D.side), main, body};
 }
+// Where the mean's rung sits against the modal rung, per series (user 2026-10-10
+// 「均值桶和众数桶为同一个桶：对称。均值桶在众数桶左边：左偏。均值桶在众数桶右边：
+// 右偏」, its own card beside the radiation card).  station_day_board.vector_stats
+// gives mean_minus_mode_rungs; the board only names it.
+function sdShape(st){
+  const d = st ? st.mean_minus_mode_rungs : null;
+  if(d == null) return {word: "—", color: "var(--muted)", gap: ""};
+  if(d === 0) return {word: "对称", color: "var(--green)", gap: ""};
+  return {word: d < 0 ? "左偏" : "右偏", color: d < 0 ? SD_COL.P0 : "var(--amber)", gap: `${Math.abs(d)} 档`};
+}
+// The fleet's tally (user 2026-10-10 「加一个总的统计：48站点每日的均值桶和众数桶的
+// 位置的统计：对称、左偏、右偏分别有多少」): station_day_board.fleet_shape, carried on
+// every panel read; counted per event date, big numbers on the day's word.
+function sdFleetShape(F){
+  const SD_SHAPE_KEYS = [["symmetric","对称","var(--green)"], ["left","左偏",SD_COL.P0], ["right","右偏","var(--amber)"]];
+  if(!F || F.error) return F && F.error ? `<div class="card muted sd-sub" style="margin:8px 0">全队均值桶·众数桶统计读取失败：${sdEsc(F.error)}</div>` : "";
+  const days = (F.days || []).filter(d => d.station_days > 0);
+  if(!days.length) return "";
+  const series = [["P0","P0"], ["P0-M","P0-M"], ["P1","P1"], ["MKT","市场"]];
+  const blocks = days.map(d => {
+    const C = d.counts || {}, H = C.HEAD || {};
+    const tiles = SD_SHAPE_KEYS.map(([k, w, c]) => `<div class="sd-fs-tile" style="--c:${c}"><b>${H[k] || 0}</b><span>${w}</span></div>`).join("");
+    const rows = series.filter(([k]) => C[k] && (C[k].symmetric + C[k].left + C[k].right) > 0).map(([k, label]) =>
+      `<b style="color:${SD_COL[k]}">${label}</b>${SD_SHAPE_KEYS.map(([x, w]) => `<span>${w} ${C[k][x] || 0}</span>`).join("")}`).join("");
+    const skewed = SD_SHAPE_KEYS.slice(1).map(([k, w, c]) => {
+      const list = (d.rows || []).filter(r => {
+        const v = (r.rungs || {})[r.head_stage];
+        return v != null && (k === "left" ? v < 0 : v > 0);
+      });
+      return list.length ? `<div><b style="color:${c}">${w}</b> ${list.map(r => `${sdEsc(r.name || r.station_id)} <span class="muted">${sdEsc(r.station_id)}·${sdEsc(r.head_stage)} ${Math.abs(r.rungs[r.head_stage])}档</span>`).join("、")}</div>` : "";
+    }).join("");
+    return `<div class="sd-fs-day"><div class="sd-fs-date">${sdEsc(d.event_date.slice(5))} <span class="muted sd-sub">${d.station_days} 站</span></div>
+      <div class="sd-fs-tiles">${tiles}</div>
+      <div class="sd-shape-rows">${rows}</div>
+      ${skewed ? `<details class="sd-sub"><summary class="muted">偏的站</summary>${skewed}</details>` : ""}</div>`;
+  }).join("");
+  return `<div class="card" style="margin:8px 0"><div class="sd-t" title="每站当地今日与明日；大数字＝当日口径（最新决策的阶段）；均值桶＝众数桶：对称，在左（更冷）：左偏，在右（更暖）：右偏；市场＝常驻每轮提交的盘口快照；${sdEsc(sdLocal(F.built_at_utc, true))} 读">全队 ${F.stations || "—"} 站 · 均值桶对众数桶</div><div class="sd-fs-days">${blocks}</div></div>`;
+}
+function sdMeanModeCard(day){
+  const S = sdSeries(day);
+  const head = S.find(s => s.key === day.head_stage);
+  const H = sdShape(head && head.stats);
+  const hs = (head && head.stats) || {};
+  const main = head ? `<b class="sd-evidence-primary">${H.word}</b>${H.gap ? `<b>${H.gap}</b>` : ""}<b style="color:var(--text)">${sdEsc(day.head_stage)} · 均 ${sdEsc(hs.mean_bucket || "—")} · 众 ${sdEsc(hs.mode || "—")}</b>` : `<b>无读数</b>`;
+  const rows = S.map(s => {
+    const st = s.stats || {}, X = sdShape(st);
+    return `<b style="color:${SD_COL[s.key]}">${s.key === "MKT" ? "市场" : sdEsc(s.key)}</b><span>均 ${sdEsc(st.mean_bucket || "—")}</span><span>众 ${sdEsc(st.mode || "—")}</span><b style="color:${X.color}">${X.word}${X.gap ? " " + X.gap : ""}</b>`;
+  }).join("");
+  return sdEvidenceCard(`<span title="均值桶＝众数桶：对称；均值桶在众数桶左边（更冷）：左偏；在右边（更暖）：右偏。众数并列取低档。大字＝当日口径 ${sdEsc(day.head_stage || "")}">均值桶 · 众数桶</span>`,
+    H.color, main, rows ? `<div class="sd-shape-rows">${rows}</div>` : "还没有概率向量");
+}
 function sdEvidence(day){
   const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
@@ -22224,7 +22286,7 @@ function sdEvidence(day){
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
       `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
-  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${dirCard}${taf}${p1Line}${rain}</div>${sdSky(day)}
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards sd-evidence-three">${rad}${dirCard}${sdMeanModeCard(day)}</div><div class="sd-evidence-cards">${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${sdTafRaw(SD.data || {})}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="sd-metar">${met}</div></details>` : ""}`;
 }

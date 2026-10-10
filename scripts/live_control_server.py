@@ -1357,10 +1357,30 @@ def station_day(query: str) -> dict:
         cached = _STATION_DAY_CACHE.get(station)
         if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
                 and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
-            return {**cached[1], "cache": "hit"}
+            return {**cached[1], "fleet_shape": _fleet_shape(force), "cache": "hit"}
         payload = station_day_board.build(station)
         _STATION_DAY_CACHE[station] = (time.monotonic(), payload)
-        return {**payload, "cache": "miss"}
+        return {**payload, "fleet_shape": _fleet_shape(force), "cache": "miss"}
+
+
+# The fleet's mean-rung-against-mode tally rides on every panel read (user
+# 2026-10-10 「加一个总的统计：48站点每日的均值桶和众数桶的位置的统计」): ~0.5 s
+# of read-only seeks over the 48 stations, shared for FLEET_SHAPE_CACHE_SEC.
+FLEET_SHAPE_CACHE_SEC = 60.0
+_FLEET_SHAPE_CACHE: list = []
+
+
+def _fleet_shape(force: bool) -> dict:
+    from bayes_basket_target import station_day_board  # noqa: PLC0415
+
+    if _FLEET_SHAPE_CACHE and not force and time.monotonic() - _FLEET_SHAPE_CACHE[0] < FLEET_SHAPE_CACHE_SEC:
+        return _FLEET_SHAPE_CACHE[1]
+    try:
+        doc = station_day_board.fleet_shape()
+    except Exception as exc:  # noqa: BLE001 -- the panel still draws without the tally
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    _FLEET_SHAPE_CACHE[:] = [time.monotonic(), doc]
+    return doc
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -46,8 +46,18 @@ def test_mean_variance_mode_and_spread() -> None:
     assert math.isclose(s["var_c2"], 1.0, abs_tol=1e-9)
     # A tie goes to the lower rung, as the market mode does (charter 249).
     assert s["mode"] == "21°C" and s["mean_bucket"] == "22°C"
+    assert s["mean_minus_mode_rungs"] == 1
     assert s["interval80"] == ["20°C or below", "22°C"]
     assert math.isclose(s["effective_rungs"], 2 ** s["entropy_bits"], rel_tol=1e-2)
+
+
+def test_mean_rung_against_the_mode_rung() -> None:
+    # User 2026-10-10: same rung = symmetric, mean left of the mode = left-skewed.
+    axis = _axis()
+    same = vector_stats({"20°C or below": 0.1, "21°C": 0.2, "22°C": 0.6, "23°C or higher": 0.1}, axis)
+    assert same["mode"] == same["mean_bucket"] == "22°C" and same["mean_minus_mode_rungs"] == 0
+    left = vector_stats({"20°C or below": 0.4, "21°C": 0.05, "22°C": 0.1, "23°C or higher": 0.45}, axis)
+    assert left["mode"] == "23°C or higher" and left["mean_minus_mode_rungs"] < 0
 
 
 def test_unnormalised_vectors_are_normalised() -> None:
@@ -182,3 +192,100 @@ def test_every_contract_city_has_a_display_name() -> None:
     cities = json.loads(B.CITY_CONTRACT_PATH.read_text(encoding="utf-8"))["settlement_source_contract"]["cities"]
     names = json.loads(B.CITY_NAMES_PATH.read_text(encoding="utf-8"))["names"]
     assert set(cities) == set(names)
+
+
+def test_mean_mode_card_names_the_side() -> None:
+    """The card beside the radiation card (user 2026-10-10): 对称 / 左偏 / 右偏
+    from mean_minus_mode_rungs, the head stage in the large type."""
+
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+
+    def function(name: str) -> str:
+        start = source.index(f"function {name}(")
+        depth = 0
+        for index in range(source.index("{", start), len(source)):
+            depth += {"{": 1, "}": -1}.get(source[index], 0)
+            if depth == 0:
+                return source[start:index + 1]
+        raise AssertionError(name)
+
+    day = {"head_stage": "P0-M", "stages": {
+        "P0": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "mean_minus_mode_rungs": 0}},
+        "P0-M": {"stats": {"mean_bucket": "23°C", "mode": "24°C", "mean_minus_mode_rungs": -1}}},
+        "market": {"available": True, "stats": {"mean_bucket": "25°C", "mode": "23°C", "mean_minus_mode_rungs": 2}}}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\n"
+              + "\n".join(function(n) for n in ("sdSeries", "sdEvidenceCard", "sdShape", "sdMeanModeCard"))
+              + f"\nconsole.log(sdMeanModeCard({json.dumps(day, ensure_ascii=False)}));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert '<b class="sd-evidence-primary">左偏</b><b>1 档</b>' in out
+    assert "P0-M · 均 23°C · 众 24°C" in out
+    assert ">对称</b>" in out and ">右偏 2 档</b>" in out
+
+
+def test_fleet_tally_card_counts_each_side() -> None:
+    """The fleet's tally (user 2026-10-10 「加一个总的统计」): big numbers on the
+    day's word, a row per series, the skewed stations folded underneath."""
+
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    from bayes_basket_target.station_day_board import shape_word
+
+    assert [shape_word(x) for x in (0, -2, 1, None)] == ["symmetric", "left", "right", "none"]
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+    start = source.index("function sdFleetShape(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    tally = lambda a, b, c: {"symmetric": a, "left": b, "right": c, "none": 0}  # noqa: E731
+    doc = {"stations": 48, "built_at_utc": "2026-10-10T14:40:00Z", "days": [{
+        "event_date": "2026-10-11", "station_days": 48,
+        "counts": {"HEAD": tally(43, 4, 1), "P0": tally(44, 3, 1), "P0-M": tally(40, 4, 1),
+                   "P1": tally(0, 0, 0), "MKT": tally(41, 3, 4)},
+        "rows": [{"station_id": "ZUUU", "name": "成都", "head_stage": "P0-M", "rungs": {"P0-M": -1}}]}]}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
+              + source[start:end] + f"\nconsole.log(sdFleetShape({json.dumps(doc, ensure_ascii=False)}));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "全队 48 站" in out and "10-11" in out
+    assert "<b>43</b><span>对称</span>" in out and "<b>4</b><span>左偏</span>" in out and "<b>1</b><span>右偏</span>" in out
+    assert '<b style="color:p">市场</b><span>对称 41</span><span>左偏 3</span><span>右偏 4</span>' in out
+    assert ">P1</b>" not in out  # no P1 yet on that day: no row
+    assert "成都 <span" in out and "P0-M 1档" in out
