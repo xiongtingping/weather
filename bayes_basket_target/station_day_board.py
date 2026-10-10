@@ -166,17 +166,22 @@ def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]])
     near_mode = sum(p for r, p in rows if abs(r["ordinal"] - mode_ord) <= 1)
     third = sum(p * (c - mean) ** 3 for c, p in known)
     sd = math.sqrt(var)
-    mean_bucket = bucket_of(axis, mean)
-    rank = {r["bucket"]: r["ordinal"] for r, _p in rows}
+    from .basket_kernel.support import mean_mode_skew_reading_v1  # noqa: PLC0415
+
+    # The skew is production's own reading (charters 55/75/131), by
+    # probability rather than by rung identity (user 2026-10-11 「不要按照均值
+    # 桶和众数桶为一个桶统计，而是按照概率来区分」): the probability-weighted
+    # mean position minus the modal rung, read as a lean only past 0.35 sigma.
+    skew = mean_mode_skew_reading_v1({r["bucket"]: p for r, p in rows},
+                                     {r["bucket"]: r["ordinal"] for r, _p in rows})
     return {
         "mean_c": round(mean, 3), "var_c2": round(var, 4), "sd_c": round(sd, 3),
         "skew": None if sd <= 1e-9 else round(third / sd ** 3, 3),
         "mode": rows[mode_index][0]["bucket"], "mode_p": round(rows[mode_index][1], 4),
-        "mean_bucket": mean_bucket,
-        # Rungs from the mode to the mean's rung (user 2026-10-10): 0 the same
-        # rung (symmetric), < 0 the mean left of the mode (left-skewed), > 0
-        # right of it (right-skewed).
-        "mean_minus_mode_rungs": None if mean_bucket is None else int(rank[mean_bucket]) - int(mode_ord),
+        "mean_bucket": bucket_of(axis, mean),
+        "skew_sign": int(skew["sign"]) if skew["readable"] else None,
+        "skew_gap_buckets": skew["gap_buckets"],
+        "skew_threshold_buckets": skew["threshold_buckets"],
         "entropy_bits": round(entropy, 3),
         "effective_rungs": round(2.0 ** entropy, 2),
         "interval80": [lo80, hi80],
@@ -1398,12 +1403,12 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
 FLEET_SHAPE_SCHEMA = "station_day_fleet_shape_v1"
 
 
-def shape_word(rungs: Any) -> str:
-    """The side of the mean's rung against the mode's: symmetric / left / right."""
+def shape_word(sign: Any) -> str:
+    """Production's skew sign as a word: symmetric / left / right."""
 
-    if rungs is None:
+    if sign is None:
         return "none"
-    return "symmetric" if rungs == 0 else "left" if rungs < 0 else "right"
+    return "symmetric" if sign == 0 else "left" if sign < 0 else "right"
 
 
 def _committed_market_stats(conn, station: str, day: str, axis) -> dict[str, Any] | None:
@@ -1426,9 +1431,9 @@ def _committed_market_stats(conn, station: str, day: str, axis) -> dict[str, Any
 
 
 def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[str, Any]:
-    """Every listed station's local today and tomorrow, counted by where the
-    mean's rung sits against the modal rung (user 2026-10-10 「48站点每日的均值
-    桶和众数桶的位置的统计：对称、左偏、右偏分别有多少」).
+    """Every listed station's local today and tomorrow, counted by
+    production's skew reading (user 2026-10-10 「48站点每日的均值桶和众数桶的
+    位置的统计：对称、左偏、右偏分别有多少」; by probability since 2026-10-11).
 
     Per event date: the day's word (the head stage, as the panel's card reads
     it), each stage, and the market's newest committed book.  Read-only; the
@@ -1457,17 +1462,17 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
                 newest = max(seen.values(), key=lambda h: str(h["decided_at_utc"]))
                 axis = ladder_axis(newest["ordinals"],
                                    _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
-                rungs = {}
+                signs, gaps = {}, {}
                 for stage, head in seen.items():
                     stats = vector_stats(head["vector"], axis) or {}
-                    rungs[stage] = stats.get("mean_minus_mode_rungs")
+                    signs[stage], gaps[stage] = stats.get("skew_sign"), stats.get("skew_gap_buckets")
                 market = _committed_market_stats(conn, station, day, axis)
                 if market is not None:
-                    rungs["MKT"] = market.get("mean_minus_mode_rungs")
+                    signs["MKT"], gaps["MKT"] = market.get("skew_sign"), market.get("skew_gap_buckets")
                 head_stage = day_word(seen)
                 book = by_day.setdefault(day, {"event_date": day, "rows": []})
                 book["rows"].append({"station_id": station, "name": entry.get("name"),
-                                     "head_stage": head_stage, "rungs": rungs})
+                                     "head_stage": head_stage, "signs": signs, "gaps": gaps})
     finally:
         conn.close()
     days = []
@@ -1478,9 +1483,9 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
             tally = {"symmetric": 0, "left": 0, "right": 0, "none": 0}
             for r in rows:
                 if key == "HEAD":
-                    tally[shape_word(r["rungs"].get(r["head_stage"]))] += 1
-                elif key in r["rungs"]:
-                    tally[shape_word(r["rungs"][key])] += 1
+                    tally[shape_word(r["signs"].get(r["head_stage"]))] += 1
+                elif key in r["signs"]:
+                    tally[shape_word(r["signs"][key])] += 1
             counts[key] = tally
         days.append({"event_date": day, "station_days": len(rows), "counts": counts, "rows": rows})
     finished = datetime.now(timezone.utc)

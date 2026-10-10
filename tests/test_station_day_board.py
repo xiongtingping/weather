@@ -46,18 +46,25 @@ def test_mean_variance_mode_and_spread() -> None:
     assert math.isclose(s["var_c2"], 1.0, abs_tol=1e-9)
     # A tie goes to the lower rung, as the market mode does (charter 249).
     assert s["mode"] == "21°C" and s["mean_bucket"] == "22°C"
-    assert s["mean_minus_mode_rungs"] == 1
+    assert s["skew_sign"] == 1 and math.isclose(s["skew_gap_buckets"], 0.5)
     assert s["interval80"] == ["20°C or below", "22°C"]
     assert math.isclose(s["effective_rungs"], 2 ** s["entropy_bits"], rel_tol=1e-2)
 
 
-def test_mean_rung_against_the_mode_rung() -> None:
-    # User 2026-10-10: same rung = symmetric, mean left of the mode = left-skewed.
+def test_skew_is_read_by_probability_as_production_reads_it() -> None:
+    """User 2026-10-11 「不要按照均值桶和众数桶为一个桶统计，而是按照概率来区分」:
+    the mean on the mode's rung can still lean past 0.35 sigma."""
+
+    from bayes_basket_target.basket_kernel.support import mean_mode_skew_reading_v1
+
     axis = _axis()
-    same = vector_stats({"20°C or below": 0.1, "21°C": 0.2, "22°C": 0.6, "23°C or higher": 0.1}, axis)
-    assert same["mode"] == same["mean_bucket"] == "22°C" and same["mean_minus_mode_rungs"] == 0
-    left = vector_stats({"20°C or below": 0.4, "21°C": 0.05, "22°C": 0.1, "23°C or higher": 0.45}, axis)
-    assert left["mode"] == "23°C or higher" and left["mean_minus_mode_rungs"] < 0
+    leaning = {"20°C or below": 0.2, "21°C": 0.1, "22°C": 0.6, "23°C or higher": 0.1}
+    s = vector_stats(leaning, axis)
+    assert s["mode"] == s["mean_bucket"] == "22°C" and s["skew_sign"] == -1
+    reading = mean_mode_skew_reading_v1(leaning, {r["bucket"]: r["ordinal"] for r in axis})
+    assert (s["skew_gap_buckets"], s["skew_threshold_buckets"]) == (reading["gap_buckets"], reading["threshold_buckets"])
+    level = vector_stats({"20°C or below": 0.05, "21°C": 0.25, "22°C": 0.45, "23°C or higher": 0.25}, axis)
+    assert level["skew_sign"] == 0
 
 
 def test_unnormalised_vectors_are_normalised() -> None:
@@ -194,9 +201,13 @@ def test_every_contract_city_has_a_display_name() -> None:
     assert set(cities) == set(names)
 
 
+def _formatters(source: str) -> str:
+    return "\n".join(line for line in source.splitlines() if line.startswith(("const sdN = ", "const sdSg = "))) + "\n"
+
+
 def test_mean_mode_card_names_the_side() -> None:
     """The card beside the radiation card (user 2026-10-10): 对称 / 左偏 / 右偏
-    from mean_minus_mode_rungs, the head stage in the large type."""
+    from production's skew reading, the head stage in the large type."""
 
     import json
     import shutil
@@ -215,6 +226,7 @@ def test_mean_mode_card_names_the_side() -> None:
     import calibration_dashboard as C  # noqa: PLC0415
 
     source = C.HTML_TEMPLATE
+    formatters = _formatters(source)
 
     def function(name: str) -> str:
         start = source.index(f"function {name}(")
@@ -226,19 +238,23 @@ def test_mean_mode_card_names_the_side() -> None:
         raise AssertionError(name)
 
     day = {"head_stage": "P0-M", "stages": {
-        "P0": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "mean_minus_mode_rungs": 0}},
-        "P0-M": {"stats": {"mean_bucket": "23°C", "mode": "24°C", "mean_minus_mode_rungs": -1}}},
-        "market": {"available": True, "stats": {"mean_bucket": "25°C", "mode": "23°C", "mean_minus_mode_rungs": 2}}}
+        "P0": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "skew_sign": 0,
+                         "skew_gap_buckets": 0.1, "skew_threshold_buckets": 0.38}},
+        "P0-M": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "skew_sign": -1,
+                           "skew_gap_buckets": -0.42, "skew_threshold_buckets": 0.4}}},
+        "market": {"available": True, "stats": {"mean_bucket": "24°C", "mode": "23°C", "skew_sign": 1,
+                                                 "skew_gap_buckets": 0.6, "skew_threshold_buckets": 0.45}}}
     script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
-              "const sdEsc = s => String(s == null ? '' : s);\n"
-              + "\n".join(function(n) for n in ("sdSeries", "sdEvidenceCard", "sdShape", "sdMeanModeCard"))
+              "const sdEsc = s => String(s == null ? '' : s);\n" + formatters
+              + "\n".join(function(n) for n in ("sdSeries", "sdEvidenceCard", "sdShape", "sdShapeRule", "sdMeanModeCard"))
               + f"\nconsole.log(sdMeanModeCard({json.dumps(day, ensure_ascii=False)}));\n")
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     out = result.stdout
-    assert '<b class="sd-evidence-primary">左偏</b><b>1 档</b>' in out
-    assert "P0-M · 均 23°C · 众 24°C" in out
-    assert ">对称</b>" in out and ">右偏 2 档</b>" in out
+    # The P0-M mean sits on the mode's rung and still reads left (by probability).
+    assert '<b class="sd-evidence-primary">左偏</b><b style="color:var(--text)">P0-M · 均值离众数 −0.42 档</b>' in out
+    assert "门槛 ±0.40" in out and "均 24°C · 众 24°C" in out
+    assert ">对称</b>" in out and ">右偏</b>" in out and "+0.60 档 / ±0.45" in out
 
 
 def test_fleet_tally_card_counts_each_side() -> None:
@@ -265,6 +281,7 @@ def test_fleet_tally_card_counts_each_side() -> None:
     import calibration_dashboard as C  # noqa: PLC0415
 
     source = C.HTML_TEMPLATE
+    formatters = _formatters(source)
     start = source.index("function sdFleetShape(")
     depth, end = 0, None
     for index in range(source.index("{", start), len(source)):
@@ -277,10 +294,11 @@ def test_fleet_tally_card_counts_each_side() -> None:
         "event_date": "2026-10-11", "station_days": 48,
         "counts": {"HEAD": tally(43, 4, 1), "P0": tally(44, 3, 1), "P0-M": tally(40, 4, 1),
                    "P1": tally(0, 0, 0), "MKT": tally(41, 3, 4)},
-        "rows": [{"station_id": "ZUUU", "name": "成都", "head_stage": "P0-M", "rungs": {"P0-M": -1}}]}]}
+        "rows": [{"station_id": "ZUUU", "name": "成都", "head_stage": "P0-M",
+                  "signs": {"P0-M": -1}, "gaps": {"P0-M": -0.42}}]}]}
     script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
-              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
-              + source[start:end] + f"\nconsole.log(sdFleetShape({json.dumps(doc, ensure_ascii=False)}));\n")
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n" + formatters
+              + "function sdShapeRule(){ return 'rule'; }\n" + source[start:end] + f"\nconsole.log(sdFleetShape({json.dumps(doc, ensure_ascii=False)}));\n")
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     out = result.stdout
@@ -288,7 +306,7 @@ def test_fleet_tally_card_counts_each_side() -> None:
     assert "<b>43</b><span>对称</span>" in out and "<b>4</b><span>左偏</span>" in out and "<b>1</b><span>右偏</span>" in out
     assert '<b style="color:p">市场</b><span>对称 41</span><span>左偏 3</span><span>右偏 4</span>' in out
     assert ">P1</b>" not in out  # no P1 yet on that day: no row
-    assert "成都 <span" in out and "P0-M 1档" in out
+    assert "成都 <span" in out and "P0-M −0.42档" in out
 
 
 def test_day_word_follows_charter_260_precedence() -> None:

@@ -22190,22 +22190,25 @@ function sdDirection(D, R){
     <div class="sd-sub">算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>`;
   return {color: sdDirColor(D.side), main, body};
 }
-// Where the mean's rung sits against the modal rung, per series (user 2026-10-10
-// 「均值桶和众数桶为同一个桶：对称。均值桶在众数桶左边：左偏。均值桶在众数桶右边：
-// 右偏」, its own card beside the radiation card).  station_day_board.vector_stats
-// gives mean_minus_mode_rungs; the board only names it.
+// Each series' skew, by probability (user 2026-10-10 the card beside the
+// radiation card; 2026-10-11 「不要按照均值桶和众数桶为一个桶统计，而是按照概率来
+// 区分」): production's mean_mode_skew_reading_v1 as station_day_board.vector_stats
+// carries it -- the probability-weighted mean position minus the modal rung, a
+// lean only past 0.35 sigma.  The board only names it.
 function sdShape(st){
-  const d = st ? st.mean_minus_mode_rungs : null;
-  if(d == null) return {word: "—", color: "var(--muted)", gap: ""};
-  if(d === 0) return {word: "对称", color: "var(--green)", gap: ""};
-  return {word: d < 0 ? "左偏" : "右偏", color: d < 0 ? SD_COL.P0 : "var(--amber)", gap: `${Math.abs(d)} 档`};
+  const s = st ? st.skew_sign : null;
+  if(s == null) return {word: "—", color: "var(--muted)", gap: "", gate: ""};
+  const gap = `均值离众数 ${sdSg(st.skew_gap_buckets, 2)} 档`, gate = `门槛 ±${sdN(st.skew_threshold_buckets, 2)}`;
+  if(s === 0) return {word: "对称", color: "var(--green)", gap, gate};
+  return {word: s < 0 ? "左偏" : "右偏", color: s < 0 ? SD_COL.P0 : "var(--amber)", gap, gate};
 }
+function sdShapeRule(){ return "按概率判：均值位置（按桶概率加权）减众数桶位置，超过当日 0.35σ 才算偏——负＝左偏（冷尾长），正＝右偏（暖尾长），否则对称（生产 mean_mode_skew_reading_v1，宪章 55/75/131 同一读数）"; }
 // The fleet's tally (user 2026-10-10 「加一个总的统计：48站点每日的均值桶和众数桶的
 // 位置的统计：对称、左偏、右偏分别有多少」): station_day_board.fleet_shape, carried on
 // every panel read; counted per event date, big numbers on the day's word.
 function sdFleetShape(F){
   const SD_SHAPE_KEYS = [["symmetric","对称","var(--green)"], ["left","左偏",SD_COL.P0], ["right","右偏","var(--amber)"]];
-  if(!F || F.error) return F && F.error ? `<div class="card muted sd-sub" style="margin:8px 0">全队均值桶·众数桶统计读取失败：${sdEsc(F.error)}</div>` : "";
+  if(!F || F.error) return F && F.error ? `<div class="card muted sd-sub" style="margin:8px 0">全队偏态统计读取失败：${sdEsc(F.error)}</div>` : "";
   const days = (F.days || []).filter(d => d.station_days > 0);
   if(!days.length) return "";
   const series = [["P0","P0"], ["P0-M","P0-M"], ["P1","P1"], ["MKT","市场"]];
@@ -22216,29 +22219,29 @@ function sdFleetShape(F){
       `<b style="color:${SD_COL[k]}">${label}</b>${SD_SHAPE_KEYS.map(([x, w]) => `<span>${w} ${C[k][x] || 0}</span>`).join("")}`).join("");
     const skewed = SD_SHAPE_KEYS.slice(1).map(([k, w, c]) => {
       const list = (d.rows || []).filter(r => {
-        const v = (r.rungs || {})[r.head_stage];
+        const v = (r.signs || {})[r.head_stage];
         return v != null && (k === "left" ? v < 0 : v > 0);
       });
-      return list.length ? `<div><b style="color:${c}">${w}</b> ${list.map(r => `${sdEsc(r.name || r.station_id)} <span class="muted">${sdEsc(r.station_id)}·${sdEsc(r.head_stage)} ${Math.abs(r.rungs[r.head_stage])}档</span>`).join("、")}</div>` : "";
+      return list.length ? `<div><b style="color:${c}">${w}</b> ${list.map(r => `${sdEsc(r.name || r.station_id)} <span class="muted">${sdEsc(r.station_id)}·${sdEsc(r.head_stage)} ${sdSg((r.gaps || {})[r.head_stage], 2)}档</span>`).join("、")}</div>` : "";
     }).join("");
     return `<div class="sd-fs-day"><div class="sd-fs-date">${sdEsc(d.event_date.slice(5))} <span class="muted sd-sub">${d.station_days} 站</span></div>
       <div class="sd-fs-tiles">${tiles}</div>
       <div class="sd-shape-rows">${rows}</div>
       ${skewed ? `<details class="sd-sub"><summary class="muted">偏的站</summary>${skewed}</details>` : ""}</div>`;
   }).join("");
-  return `<div class="card" style="margin:8px 0"><div class="sd-t" title="每站当地今日与明日；大数字＝当日口径（最新决策的阶段）；均值桶＝众数桶：对称，在左（更冷）：左偏，在右（更暖）：右偏；市场＝常驻每轮提交的盘口快照；${sdEsc(sdLocal(F.built_at_utc, true))} 读">全队 ${F.stations || "—"} 站 · 均值桶对众数桶</div><div class="sd-fs-days">${blocks}</div></div>`;
+  return `<div class="card" style="margin:8px 0"><div class="sd-t" title="每站当地今日与明日；大数字＝当日口径（宪章 260：P1＞P0-M＞P0）；${sdShapeRule()}；市场＝常驻每轮提交的盘口快照；${sdEsc(sdLocal(F.built_at_utc, true))} 读">全队 ${F.stations || "—"} 站 · 偏态（均值对众数）</div><div class="sd-fs-days">${blocks}</div></div>`;
 }
 function sdMeanModeCard(day){
   const S = sdSeries(day);
   const head = S.find(s => s.key === day.head_stage);
   const H = sdShape(head && head.stats);
   const hs = (head && head.stats) || {};
-  const main = head ? `<b class="sd-evidence-primary">${H.word}</b>${H.gap ? `<b>${H.gap}</b>` : ""}<b style="color:var(--text)">${sdEsc(day.head_stage)} · 均 ${sdEsc(hs.mean_bucket || "—")} · 众 ${sdEsc(hs.mode || "—")}</b>` : `<b>无读数</b>`;
+  const main = head ? `<b class="sd-evidence-primary">${H.word}</b><b style="color:var(--text)">${sdEsc(day.head_stage)} · ${H.gap}</b><b class="muted">${H.gate}</b>` : `<b>无读数</b>`;
   const rows = S.map(s => {
     const st = s.stats || {}, X = sdShape(st);
-    return `<b style="color:${SD_COL[s.key]}">${s.key === "MKT" ? "市场" : sdEsc(s.key)}</b><span>均 ${sdEsc(st.mean_bucket || "—")}</span><span>众 ${sdEsc(st.mode || "—")}</span><b style="color:${X.color}">${X.word}${X.gap ? " " + X.gap : ""}</b>`;
+    return `<b style="color:${SD_COL[s.key]}">${s.key === "MKT" ? "市场" : sdEsc(s.key)}</b><span>均 ${sdEsc(st.mean_bucket || "—")} · 众 ${sdEsc(st.mode || "—")}</span><span>${sdSg(st.skew_gap_buckets, 2)} 档 / ±${sdN(st.skew_threshold_buckets, 2)}</span><b style="color:${X.color}">${X.word}</b>`;
   }).join("");
-  return sdEvidenceCard(`<span title="均值桶＝众数桶：对称；均值桶在众数桶左边（更冷）：左偏；在右边（更暖）：右偏。众数并列取低档。大字＝当日口径 ${sdEsc(day.head_stage || "")}">均值桶 · 众数桶</span>`,
+  return sdEvidenceCard(`<span title="${sdShapeRule()}；大字＝当日口径 ${sdEsc(day.head_stage || "")}">偏态 · 均值对众数</span>`,
     H.color, main, rows ? `<div class="sd-shape-rows">${rows}</div>` : "还没有概率向量");
 }
 function sdEvidence(day){
