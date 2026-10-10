@@ -114,7 +114,7 @@ def check_intent_flag() -> dict[str, Any]:
             f"live_enabled={intent.get('live_enabled')}"
             f" armed_by={intent.get('armed_by')} {batch}"
         ),
-        "看板「站点实盘上线闸门」输入 LIVE 解锁；这是操作者的动作，脚本不代劳。",
+        "看板顶部「实盘控制」条输入 LIVE 解锁；这是操作者的动作，脚本不代劳。",
     )
 
 

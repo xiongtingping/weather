@@ -15469,7 +15469,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
 HTML_TEMPLATE = r"""<!doctype html><!--render-start:__RENDER_STARTED__--><!--payload-start:__PAYLOAD_STARTED__-->
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>气温篮子全链看板</title>
+<title>系统健康看板</title>
 <style>
 :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--soft:rgba(38,43,54,.6);
 --text:#e6e9ef;--muted:#9aa4b8;--green:#3fb950;--amber:#d29922;--red:#f85149;
@@ -16494,10 +16494,8 @@ function head(){
   const more = named.length > 6
     ? `<span class="muted">…等 ${named.length} 处，其余见下面卡片里标${
         D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
-  return `<h1>气温篮子全链看板</h1>
-  <p class="sub">从模型到下单的一整条链。页首是<b>盈亏日历</b>；这里是总灯，下面四类健康卡片——
-  <b>运行</b>、<b>数据链</b>、<b>全球模型</b>、<b>区域模型与观测</b>——只看颜色，悬停看读数与原因。
-  再往下是资金看板、站点实盘上线闸门，然后按层级分区，标签栏与区标题同色。</p>
+  // User 2026-10-10「气温篮子全链看板：改为系统健康看板，并增加导航栏」.
+  return `<h1>系统健康看板</h1>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
     flex-wrap:wrap">
     <span class="dot ${D.overall_health}" style="width:13px;height:13px"></span>
@@ -17581,7 +17579,7 @@ function pnlCalendar(){
   const rows = D.daily || [];
   if(!rows.length) return "";
   return `<h2>盈亏日历：每个事件日的已结算实盘盈亏（全部策略合计）</h2>
-  <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、跟单线、P1 尾段与同心线历史），读实盘成交与结算（与资金看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
+  <p class="sub">实盘、全部车道合计（Proper、远尾做空、秤砣线、篮子、跟单线、P1 尾段与同心线历史），读实盘成交与结算（与策略看板同一本账，含卖出回款）；格子按事件日，绿赚红亏、颜色越深金额越大；
   悬停看当天投入、成交站数与腿数；未结算的日子标「待结算」。「周」列是该周合计，上方四格是最近 1/7/30/90 个已结算日。</p>
   <style>
   .pcal-wrap{display:grid;grid-template-columns:minmax(0,640px) minmax(180px,1fr);gap:8px;align-items:start;margin:6px 0}
@@ -18938,7 +18936,7 @@ function moneyBoard(){
         <div class="mb-pane">${safe(fn, label)}</div></details>`).join("");
     return `<div class="card mb-cat" style="--tone:${c.tone}">${lead}${folds}</div>`;
   }).join("");
-  return `<h2>资金看板：实盘的盈亏和风险（按策略）</h2>
+  return `<h2>策略看板：实盘的盈亏和风险（按策略）</h2>
   <p class="sub">实盘成交，每个策略单独一列、最左一列是合计；同一本金基数（预算旋钮），各列相加等于合计。
   各策略自己的开关、规则与逐笔订单在下面的折叠块里。</p>
   ${cats}`;
@@ -19249,7 +19247,7 @@ function liveReadiness(){
       cols.map((c, ci) => cell("td", c.td(r), gi>0 && ci===0))).join("")}</tr>`).join("");
   const CT = L.contracts || {};
   const authorised = CT.live_submit_authorized === true;
-  return `<h2>站点实盘上线闸门</h2>
+  return `<h2>站点闸门</h2>
   <p class="sub">下面的开关是<b>上线意向旗</b>。能不能真发单由<b>两个闸一起决定</b>：
   代码编译的执行模式 <span class="mono">${h(L.execution_mode||"—")}</span>，
   和 runtime 合同 <span class="mono">${h(CT.execution_mode||"—")}</span>
@@ -19269,7 +19267,7 @@ function liveReadiness(){
   ${L.submission_paused
     ? `<b style="color:var(--red)">暂停旗在位</b>——它是被手动放上去的（或某次举旗撤旗失败），网关不发单`
     : "暂停旗不在位"}。
-  实盘订单在上面的<a href="#sec-money">资金看板</a>「实盘」一类里。
+  实盘订单在上面的<a href="#sec-money">策略看板</a>「实盘」一类里。
   下面的首批站点闸门表同时是<b>逐站汇总（跨日）</b>：每站<b>按车道分开</b>的已结算现金盈亏（含卖出回款）
   与站点属性在同一行，全部读实盘记录，没有纸面账本的列。</p>
   <div class="card" style="margin-top:12px">
@@ -21536,7 +21534,7 @@ function stationDayPanel(){
   if(!SD.ageTimer) SD.ageTimer = setInterval(() => { if(!document.hidden) sdTickAges(); }, 30000);
   const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
     .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
-  return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
+  return `<h2>站点看板：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
   <div id="sd-st-pick" class="sd-st-pick">${sdStationPicker()}</div>
   <div class="sd-ctl">
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
@@ -21568,7 +21566,7 @@ function sdSwitchStation(v){
   if(input) input.value = v;
   document.querySelectorAll("[data-sd-st]").forEach(b => b.classList.toggle("on", b.dataset.sdSt === v));
   const h2 = input && input.closest(".sec") && input.closest(".sec").querySelector("h2");
-  if(h2) h2.textContent = `单站日：${v} 今日（过峰即隐藏）与明日（第二日）的概率分布`;
+  if(h2) h2.textContent = `站点看板：${v} 今日（过峰即隐藏）与明日（第二日）的概率分布`;
   sdRender();
   sdFetch(true);
   return true;
@@ -23150,7 +23148,7 @@ const GROUPS = [
   // select and sizing areas and the edge map left with the basket lane
   // (2026-09-26, user rulings 「还有β 车道」「检查统一估值车道」「整区删除」).
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
-   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；兑现层自成一个板块",
+   note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见策略看板「Proper 下注线」页签）；兑现层自成一个板块",
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", nav:"验收", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
@@ -23274,9 +23272,9 @@ const LANES = {
   "融合权重候选": {layer:"概率层 · 融合", status:"live",
     role:"宪章 199：09-24 起服务融合权重；前向记账比融合与席位权重，并列切换后的研究候选"},
   // --- the book's own account ---
-  "资金看板": {layer:"实盘 · 读数", status:"audit",
+  "策略看板": {layer:"实盘 · 读数", status:"audit",
     role:"实盘赚没赚：总账、对比、风险、曲线"},
-  "站点实盘上线闸门": {layer:"执行层 · 运维", status:"audit",
+  "站点闸门": {layer:"执行层 · 运维", status:"audit",
     role:"开关能不能翻、翻了之后哪几道门还拦着"},
   "每日统计": {layer:"实盘 · 读数", status:"audit",
     role:"实盘每天下了几站、成交多少、结算赚没赚"},
@@ -23480,12 +23478,13 @@ document.getElementById("app").innerHTML =
   `<section class="toparea" style="--tone:${TOP_AREA.tone}">` +
   TOP.map(([fn, name], i) => sec(fn, name, `sec-top-${i}`)).join("") +
   `</section>` +
-  safe(head, "页头") +
+  `<div id="sec-health" data-name="系统健康">${safe(head, "页头")}</div>` +
   `<section class="toparea" style="--tone:${TOP_AREA.tone}">
     <div class="grouptitle">${TOP_AREA.label}<span class="muted">${TOP_AREA.note}</span></div>` +
-  sec(moneyBoard, "资金看板", "sec-money") +
-  sec(liveReadiness, "站点实盘上线闸门", "sec-live") +
-  sec(stationDayPanel, "单站日", "sec-station-day") +
+  // Renamed 2026-10-10 (user「资金看板：改为策略看板」「站点实盘上线闸门：改为站点闸门」).
+  sec(moneyBoard, "策略看板", "sec-money") +
+  sec(liveReadiness, "站点闸门", "sec-live") +
+  sec(stationDayPanel, "站点看板", "sec-station-day") +  // 单站日 until 2026-10-10 (user「单站日改为站点看板」)
   `</section>` +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
@@ -23552,7 +23551,7 @@ document.getElementById("app").innerHTML =
     // "实盘", not "账本": every section above the tabs reads the live book
     // since 2026-09-16, and "账本" read as the paper ledger.
     const runs = [run(TOP_AREA.label, TOP_AREA.tone,
-        [...document.querySelectorAll(".toparea > .sec")])]
+        [...document.querySelectorAll(".toparea > .sec, #sec-health")])]
       .concat([...document.querySelectorAll(".group:not([hidden])")].map(g => {
         const G = GROUPS.find(x => x.id === g.dataset.group) || {};
         // By container where an area has them (user 2026-10-10「菜单栏的顺序和分类
@@ -24159,7 +24158,7 @@ def serve(db: Path, port: int) -> None:
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"气温篮子全链看板: http://127.0.0.1:{port}/  (Ctrl-C 停止)")
+    print(f"系统健康看板: http://127.0.0.1:{port}/  (Ctrl-C 停止)")
     server.serve_forever()
 
 

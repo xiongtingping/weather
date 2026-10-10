@@ -363,7 +363,7 @@ def test_section_is_rendered_and_reachable():
     # board, off the live book; tests/test_dashboard_money_board.py renders
     # the board.
     assert 'safe(() => moneyDataBoard(), "实盘数据看板")' in source
-    assert 'sec(moneyBoard, "资金看板", "sec-money")' in source
+    assert 'sec(moneyBoard, "策略看板", "sec-money")' in source
     # What the payload does, not how the line is spelled: ``live_money`` is
     # built by collect_live_money through the section cache and shipped
     # under that key.  (Pinned as the literal ``"live_money": _cached_section(``
