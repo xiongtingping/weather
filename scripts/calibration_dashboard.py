@@ -21470,7 +21470,25 @@ function regionalBoard(){
   const feats = Object.entries(U.p1_feature_systems || {}).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${h(k === "POOLED_FALLBACK" ? "队列均值兜底" : k)} ${v}`).join(" · ");
   const C = R.calibration || {};
+  // Only what is wrong on show, everything else folded (user 2026-10-10「区域模型：
+  // 采集、够不够格、用没用上、权重多少：只显示异常，其他默认折叠」): a lane whose
+  // capture is late/stale, short of its roster, or whose newest run is past
+  // the age P1 reads; and a lane with fresh runs that some stations miss.
+  const issues = [];
+  (R.lanes || []).forEach(l => {
+    const list = (R.stations || {})[l.system_id] || [];
+    const unusable = list.filter(e => !e.usable_now).map(e => e.station_id);
+    if(l.health && l.health !== "green") issues.push([l.label, `采集 ${hours(l.last_capture_age_hours)}`, l.note || (l.health === "red" ? "陈旧" : "偏晚"), "down"]);
+    if((l.station_count || 0) < (l.roster_count || 0)) issues.push([l.label, `${l.station_count || 0}/${l.roster_count} 站`, `名册缺 ${(l.roster_count || 0) - (l.station_count || 0)} 站`, "down"]);
+    if(l.run_age_hours != null && l.run_age_hours > maxAge) issues.push([l.label, `run ${hours(l.run_age_hours)}`, `超过 ${maxAge}h · ${unusable.length || list.length} 站本轮不可用`, "down"]);
+    else if(unusable.length) issues.push([l.label, `${unusable.length} 站不可用`, unusable.join("、"), "down"]);
+  });
+  const issueCard = ([label, value, sub, tone]) => `<div class="sd-pnl-c ${tone}"><span>${h(label)}</span><b>${h(value)}</b><i title="${h(sub)}">${h(sub)}</i></div>`;
+  const issueGrid = `<div class="sd-pnl-g" style="margin-top:8px">${issues.length ? issues.map(issueCard).join("")
+    : issueCard(["全部正常", `${(R.lanes || []).length} 个模型`, "采集按时、run 都在可用期内", "up"])}</div>`;
   return `<h2>区域模型：采集、够不够格、用没用上、权重多少</h2>
+  ${issueGrid}
+  <details class="sd-older" style="margin-top:8px"><summary class="muted">全部明细（开关、${(R.lanes || []).length} 个区域模型、逐站 run、样本外）</summary>
   <p class="sub">区域模型（JMA MSM、HRRR、NBM、ICON-EU、CMA GRAPES）是单点、高分辨率的<b>确定性</b>预报（单条曲线，不是成员分布）。
     <b>它们不进 P0 的融合</b>（第 99 条起归 P1）。第 150 条（2026-09-19）起在 P1 里<b>只作那一次观测更新的协变量</b>（第 161 条换成 e<sup>f</sup> 之后照旧）：
     「剩余时段预报最高 − 已报最高」和「此刻实测 − 模型此刻」，所有采到的区域模型都能进，只读起报不超过 ${maxAge} 小时的 run；
@@ -21489,7 +21507,8 @@ function regionalBoard(){
       <th>距今（≤${maxAge}h 可用）</th><th>最近采集</th><th>run 数</th><th>偏差校准（正＝模型偏冷）</th></tr></thead>
       <tbody>${stationRows}</tbody></table></div></details>
   <div style="margin-top:6px"><span class="muted">样本外逐站三道门（${withEv("regional_scan",(V)=>`${h(String(V.scanned_on||"?").slice(5))} 扫描，${(V.gates||[]).map(h).join("/")} 都赢现任${(V.absent||[]).length?"；"+(V.absent||[]).map(h).join("、")+" 未参加":""}`)}）：</span>${verdicts || "—"}</div>
-  <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>`;
+  <div style="margin-top:6px"><span class="muted">样本外准备度：</span>${ready || "—"}</div>
+  </details>`;
 }
 
 // Sections of one kind stand together, and only one kind is on screen at a
