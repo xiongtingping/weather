@@ -88,7 +88,9 @@
       "enabled_at_utc": "2026-09-26T11:40:00Z",
       "rule": "log_proper_maker_realisation_belief_v4",
       "opening_stages": [
-        "P0"
+        "P0",
+        "P0-M",
+        "P1"
       ],
       "first_decision_fresh_seconds": 3600.0,
       "send_book_fresh_seconds": 60.0,
@@ -114,7 +116,8 @@
       "belief": "realisation_b",
       "rule_changed_at_utc": "2026-10-10T03:00:00Z",
       "charter_265_note": "Charter 265 (user rulings 2026-10-10 「加，并把这个研究结果写进宪章」「作为执行层的选桶、作为模型的分辨率和条件性」「并不一定是ECMWF家族，去研究一下其他家族」「改」): rule v4 -- charter 231's standard rule again, every bucket, both sides, x_k = lambda*|s_k|, resting at bid+1t of each leg's own side, with s = log(b_k/q_k) read off the realisation layer's belief b (charter 254) whose v2 fit carries the latest-run change of AIFS ENS, AIFS single and GEFS, freshness exp(-h/6); b is read at the plan and again at every re-post, and only under an admitted, current v2 fit (else the station-day waits belief:<state>). v3's YES-on-the-mode was a restriction fitted to a belief whose level had no resolution. Measured on the standard rule (docs/research/run_change_families_20261010 addendum 1): market-only b at the ask -6.2% [-11.3,-2.0]; b with the three changes +1.0% [-0.8,+2.7] at the ask, +2.2% [+1.0,+3.3] in the resting scenario (fills assumed). Under v4 a NO the lane bought is sold when the cluster seals it and nothing is bought back (charter 258's YES mirror stays the 01:54Z flip's).",
-      "window_note": "Charter 231 addendum (user ruling 2026-10-10 「也是人工定的，按照proper线本来的设计来」): the >36 h window of 2026-09-26 is gone -- min_hours_to_settlement 0, every hour before the settlement clock, as the paper's rule has it; the P0-only stage gate (opening_stages) stays. With it P0 is the station-day's newest stage only until P0-M takes over (median 44.6 h out)."
+      "window_note": "Charter 231 addendum (user ruling 2026-10-10 「也是人工定的，按照proper线本来的设计来」): the >36 h window of 2026-09-26 is gone -- min_hours_to_settlement 0, every hour before the settlement clock, as the paper's rule has it; the P0-only stage gate (opening_stages) stays. With it P0 is the station-day's newest stage only until P0-M takes over (median 44.6 h out).",
+      "stages_note": "Charter 231 addendum 2 (user ruling 2026-10-10 「把 P0-M、P1 阶段也放开」): every belief stage opens; the station-day's stage is charter 260's (P1 > P0-M > P0); one plan per stage on stake_usdc, closed when the stage moves on; b is fitted and gated per stage (realisation_store.STAGES) and read only under its own stage's admitted, current fit."
     },
     "tail_short": {
       "enabled": false,
