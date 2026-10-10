@@ -16259,7 +16259,15 @@ color-scheme:dark}
 .sd-prob-summary dt{color:var(--muted)}.sd-prob-summary dd{margin:0;font-size:16px;font-weight:750;color:var(--c)}
 .sd-prob-summary dd small{font-size:13px;font-weight:600}
 .sd-taf-in-card{margin-top:10px!important;padding-top:8px;border-top:1px solid var(--line)}
-.sd-taf-in-card .rep-raw{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+/* METAR / TAF tables: a few words over the raw group, the change since the report before. */
+table.sd-rep td{vertical-align:top;white-space:nowrap}
+table.sd-rep td>div+div{margin-top:3px}
+.sd-code{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--muted);margin-top:1px}
+.sd-d{font-style:normal;font-size:11px;font-weight:700;margin-left:4px}.sd-d.flat{color:var(--muted)}
+i.sd-d.sd-warm,.sd-warm-t{color:var(--pill-red-fg)}i.sd-d.sd-cold,.sd-cold-t{color:var(--accent)}
+table.sd-rep td.sd-chg{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 55%,transparent);border-radius:4px}
+table.sd-rep tr.sd-taf-first td{border-top:2px solid var(--line)}
+.sd-trend-g{margin:4px 0 8px}
 @media (max-width:600px){.sd-prob-cards{grid-template-columns:minmax(0,1fr)}}
 table.sd-tab .sd-prob-col{color:var(--c);background:color-mix(in srgb,var(--c) 7%,transparent);font-size:13px;font-weight:600}
 table.sd-tab td.sd-prob-main{font-size:14px;font-weight:650;color:var(--c);background:color-mix(in srgb,var(--c) 9%,transparent);font-variant-numeric:tabular-nums}
@@ -23343,11 +23351,7 @@ function sdEvidence(day){
       (p1.excluded || []).length ? ` · 排除 ${sdEsc(p1.excluded.join("、"))}` : ""}` : "等待 P1 概率信封");
   const caps = ((day.taf || {}).captures || []).slice(-6).reverse().map(c => `<tr><td class="mono">${sdLocal(c.issued_at_utc, true)}</td><td>${sdEsc(c.kind || "")} #${sdEsc(c.sequence)}</td>
       <td class="mono">${c.tx_c == null ? "—" : sdN(c.tx_c,2) + "°C"}</td><td class="mono">${sdPc(c.cloud_cover_fraction, 0)}</td><td class="mono">${sdPc(c.precipitation_probability, 0)}</td><td class="mono">${sdN(c.wind_speed_mps, 1)}</td></tr>`).join("");
-  const metRows = (day.metar || []).slice().reverse().map(m => `<tr><td class="mono">${sdEsc(m.local)}</td><td><span class="pill${/SPECI|COR/.test(m.kind) ? " red" : ""}">${sdEsc(m.kind)}</span></td>
-      <td class="mono"><b>${m.temp_c == null ? "—" : sdN(m.temp_c,2) + "°C"}</b></td><td class="mono">${m.dew_c == null ? "—" : sdN(m.dew_c,2) + "°C"}</td>
-      <td class="mono">${sdPc(m.cloud_cover, 0)}</td><td class="mono">${sdN(m.wind_mps, 1)}</td><td>${m.precip ? '<b class="down">降水</b> ' : ""}${sdEsc((m.weathers || []).join(" "))}</td>
-      <td class="mono">${m.running_high_c == null ? "—" : sdN(m.running_high_c,2) + "°C"}</td><td class="mono sd-raw">${sdEsc(m.raw)}</td></tr>`);
-  const met = metRows.length ? sdNewestFive(metRows, `<thead><tr><th>当地</th><th>类</th><th>气温</th><th>露点</th><th>云量</th><th>风 m/s</th><th>天气</th><th>已报最高</th><th>原文</th></tr></thead>`, "sd-tab", n => `更早的 ${n} 份`) : "";
+  const met = sdMetarTable(day);
   const P = day.precip;
   const O = sdRainObs(day);
   const fiveMin = O.madis ? `<b class="${O.madis.latest.wet ? "down" : "up"}" title="NOAA MADIS 5 分钟；本小时累计＝上一份整点报文之后的降水">5 分钟 ${sdEsc(O.madis.latest.local)} ${O.madis.latest.wet ? sdEsc(O.madis.latest.wx) : "无降水"}${O.madis.latest.accum_mm != null ? ` · 本小时累计 ${sdN(O.madis.latest.accum_mm, 2)} mm` : ""}</b>`
@@ -23436,11 +23440,73 @@ function sdSky(day){
     <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
 }
+// METAR and TAF as tables of their groups (user 2026-10-10「metar改为表格形式，
+// 拆分报文及对应简要说明和趋势」「TAF 同理」): every group a few words over its
+// raw code (report_explain.metar_groups / taf_groups), the full report on
+// hover, and the change against the report before -- red warm, blue cold
+// where the change has a temperature direction, grey where it has none.
+const sdCode = raw => raw ? `<span class="sd-code">${sdEsc(raw)}</span>` : "";
+function sdDelta(now, before, digits, warmWhenUp){
+  if(now == null || before == null || !isFinite(now) || !isFinite(before)) return "";
+  const d = now - before;
+  if(Math.abs(d) < Math.pow(10, -digits) / 2) return "";
+  const cls = warmWhenUp == null ? "flat" : (d > 0) === warmWhenUp ? "sd-warm" : "sd-cold";
+  return `<i class="sd-d ${cls}">${d > 0 ? "↑" : "↓"}${Math.abs(d).toFixed(digits)}</i>`;
+}
+function sdGroupCell(groups, cls){
+  const list = (Array.isArray(groups) ? groups : [groups]).filter(Boolean);
+  if(!list.length) return `<td class="muted">—</td>`;
+  return `<td${cls ? ` class="${cls}"` : ""}>${list.map(g => `<div class="${g.precip ? "sd-cold-t" : ""}">${sdEsc(g.text)}${sdCode(g.raw)}</div>`).join("")}</td>`;
+}
+function sdMetarTable(day){
+  const list = (day.metar || []).slice().reverse();
+  if(!list.length) return "";
+  const G = m => m.groups || {};
+  const wind = m => (G(m).wind || {}).mps, qnh = m => (G(m).qnh || {}).hpa;
+  // The trend cards: the newest report against the one about three hours before.
+  const head = list[0], t0 = Date.parse(head.valid_at_utc);
+  const back = list.find(m => t0 - Date.parse(m.valid_at_utc) >= 3 * 3600e3 - 600e3) || list[list.length - 1];
+  const hrs = Math.round((t0 - Date.parse(back.valid_at_utc)) / 3600e3);
+  const card = (label, value, d) => `<div class="sd-pnl-c"><span>${label}</span><b>${value}</b><i>${d || "持平"}</i></div>`;
+  const trend = back !== head ? `<div class="sd-pnl-g sd-trend-g">
+    ${card(`气温 · ${hrs}h`, head.temp_c == null ? "—" : sdN(head.temp_c, 1) + "°C", sdDelta(head.temp_c, back.temp_c, 1, true))}
+    ${card(`露点 · ${hrs}h`, head.dew_c == null ? "—" : sdN(head.dew_c, 0) + "°C", sdDelta(head.dew_c, back.dew_c, 0, null))}
+    ${card(`云量 · ${hrs}h`, sdPc(head.cloud_cover, 0), sdDelta(head.cloud_cover == null ? null : 100 * head.cloud_cover, back.cloud_cover == null ? null : 100 * back.cloud_cover, 0, false))}
+    ${card(`风 · ${hrs}h`, wind(head) == null ? "—" : sdN(wind(head), 0) + " m/s", sdDelta(wind(head), wind(back), 0, null))}
+    ${card(`气压 · ${hrs}h`, qnh(head) == null ? "—" : sdN(qnh(head), 0) + " hPa", sdDelta(qnh(head), qnh(back), 0, null))}
+  </div>` : "";
+  const rows = list.map((m, i) => {
+    const g = G(m), prev = list[i + 1] || null, tg = g.temp || {};
+    const kind = /SPECI|COR/.test(m.kind) ? ` <span class="pill red">${sdEsc(m.kind)}</span>` : "";
+    return `<tr><td class="mono" title="${sdEsc(m.raw)}"><b>${sdEsc(m.local)}</b>${kind}</td>
+      <td class="mono"><b>${m.temp_c == null ? "—" : sdN(m.temp_c, 1) + "°"}</b>${prev ? sdDelta(m.temp_c, prev.temp_c, 1, true) : ""}${sdCode(tg.raw)}</td>
+      <td class="mono">${m.dew_c == null ? "—" : sdN(m.dew_c, 0) + "°"}${prev ? sdDelta(m.dew_c, prev.dew_c, 0, null) : ""}</td>
+      ${sdGroupCell(g.cloud)}${sdGroupCell(g.wx)}${sdGroupCell(g.wind)}${sdGroupCell(g.vis)}
+      <td class="mono">${qnh(m) == null ? "—" : sdN(qnh(m), 0)}${prev ? sdDelta(qnh(m), qnh(prev), 0, null) : ""}${sdCode((g.qnh || {}).raw)}</td>
+      ${sdGroupCell(g.trend)}
+      <td class="mono">${m.running_high_c == null ? "—" : sdN(m.running_high_c, 1) + "°"}</td></tr>`;
+  });
+  return trend + sdNewestFive(rows, `<thead><tr><th>当地</th><th>气温</th><th>露点</th><th>云</th><th>天气</th><th>风</th><th>能见度</th><th>气压 hPa</th><th>趋势组</th><th>已报最高</th></tr></thead>`, "sd-tab sd-rep", n => `更早的 ${n} 份`);
+}
 function sdTafRaw(d){
   const list = d.taf_raw || [];
   if(!list.length) return "";
-  return `<details open class="sd-taf-in-card"><summary class="muted">${sdEsc(d.station_id)} 最新 TAF 原文（${list.length} 份）</summary>${
-    list.map(t => `<div class="rep"><span class="mono">签发 ${sdLocal(t.issued_at_utc, true)}</span><div class="mono rep-raw">${sdEsc(t.raw)}</div></div>`).join("")}</details>`;
+  const span = (a, b) => !a ? "—" : `${sdLocal(a, true)}–${b ? (String(sdLocal(b, true)).slice(0, 5) === String(sdLocal(a, true)).slice(0, 5) ? sdLocal(b) : sdLocal(b, true)) : "?"}`;
+  const ext = (x, prev, warm) => x ? `<td class="mono"><b>${x.c}°</b>${prev ? sdDelta(x.c, prev.c, 0, warm) : ""}<span class="sd-code">${sdEsc(sdLocal(x.at_utc))}</span></td>` : `<td class="muted">—</td>`;
+  // A base group that differs from the TAF before is outlined.
+  const changed = (now, before) => before && JSON.stringify((Array.isArray(now) ? now : [now]).map(g => g && g.raw)) !== JSON.stringify((Array.isArray(before) ? before : [before]).map(g => g && g.raw)) ? "sd-chg" : "";
+  const rows = list.map((t, i) => {
+    const g = t.groups || {}, b = g.base || {}, older = (list[i + 1] || {}).groups || null, ob = older ? older.base : null;
+    const ch = g.changes || [], n = 1 + ch.length;
+    const first = `<tr class="sd-taf-first"><td class="mono" rowspan="${n}" title="${sdEsc(t.raw)}"><b>${sdEsc(sdLocal(t.issued_at_utc, true))}</b>${g.amend ? ` <span class="pill red">${sdEsc(g.amend)}</span>` : ""}</td>
+      <td class="mono">${span(g.valid_from_utc, g.valid_to_utc)}</td><td>主体</td>
+      ${sdGroupCell(b.wind, ob && changed(b.wind, ob.wind))}${sdGroupCell(b.vis, ob && changed(b.vis, ob.vis))}${sdGroupCell(b.cloud, ob && changed(b.cloud, ob.cloud))}${sdGroupCell(b.wx, ob && changed(b.wx, ob.wx))}
+      ${ext(g.tx, older && older.tx, true).replace("<td", `<td rowspan="${n}"`)}${ext(g.tn, older && older.tn, true).replace("<td", `<td rowspan="${n}"`)}</tr>`;
+    const more = ch.map(c => `<tr><td class="mono">${span(c.from_utc, c.to_utc)}</td><td title="${sdEsc(c.text)}">${sdEsc(c.word || c.kind)}${sdCode(c.kind)}</td>
+      ${sdGroupCell(c.wind)}${sdGroupCell(c.vis)}${sdGroupCell(c.cloud)}${sdGroupCell(c.wx)}</tr>`).join("");
+    return first + more;
+  }).join("");
+  return `<details open class="sd-taf-in-card"><summary class="muted">${sdEsc(d.station_id)} 最新 TAF（${list.length} 份，新的在上）</summary><div class="scroll"><table class="sd-tab sd-rep"><thead><tr><th>签发</th><th>时段</th><th>类</th><th>风</th><th>能见度</th><th>云</th><th>天气</th><th>TX</th><th>TN</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
 // ---------------------------------------------------------------------------

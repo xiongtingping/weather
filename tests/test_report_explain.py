@@ -86,3 +86,64 @@ def test_repeated_change_groups_fold_into_a_count() -> None:
     )
     line = next(x for x in rex.taf_temperature_reading(parsed, None) if x.startswith("含变化组"))
     assert "逐渐转为 ×2" in line and "逐渐转为、逐渐转为" not in line
+
+
+def test_a_metar_is_cut_into_its_groups_for_the_table() -> None:
+    """User 2026-10-10「metar改为表格形式，拆分报文及对应简要说明和趋势」."""
+
+    g = rex.metar_groups(
+        "METAR ZUUU 092300Z 33002MPS 300V020 8000 -SHRA FEW040TCU SCT040 18/17 Q1022 NOSIG")
+    assert g["wind"]["raw"] == "33002MPS 300V020"
+    assert g["wind"]["text"] == "西北风 2 m/s，摆动 300°–020°" and g["wind"]["mps"] == 2.0
+    assert g["vis"] == {"raw": "8000", "text": "8 km", "m": 8000.0}
+    assert [w["text"] for w in g["wx"]] == ["小阵雨"] and g["wx"][0]["precip"] is True
+    assert [c["text"] for c in g["cloud"]] == ["少云 1220 m · 浓积云", "疏云 1220 m"]
+    assert (g["temp"]["temp_c"], g["temp"]["dew_c"]) == (18, 17)
+    assert g["qnh"]["hpa"] == 1022.0
+    assert g["trend"] == {"raw": "NOSIG", "text": "两小时内无变化"}
+    assert g["other"] == []
+
+
+def test_a_us_metar_reads_knots_miles_inches_and_stops_at_the_remarks() -> None:
+    g = rex.metar_groups(
+        "METAR KLGA 101551Z 05012G20KT 10SM -RA BKN015 OVC030 14/12 A2992 RMK AO2 SLP132 P0003")
+    assert g["wind"]["text"] == "东北风 6 m/s，阵风 10 m/s"
+    assert g["vis"]["text"] == "16 km"
+    assert g["qnh"]["hpa"] == 1013.2
+    assert [c["raw"] for c in g["cloud"]] == ["BKN015", "OVC030"]
+    assert g["trend"] is None and g["other"] == []
+
+
+def test_a_taf_is_cut_into_its_base_and_change_periods_on_the_clock() -> None:
+    """User 2026-10-10「TAF 同理」: periods as UTC instants, each with its groups."""
+
+    g = rex.taf_groups(
+        "TAF ZUUU 092103Z 1000/1024 30003MPS 6000 SCT040 TX23/1007Z TN18/1022Z TEMPO 1000/1003 -SHRA",
+        "2026-10-09T21:03:00Z")
+    assert (g["valid_from_utc"], g["valid_to_utc"]) == ("2026-10-10T00:00:00Z", "2026-10-11T00:00:00Z")
+    assert g["base"]["wind"]["text"] == "西北风 3 m/s" and g["base"]["vis"]["text"] == "6 km"
+    assert g["tx"] == {"raw": "TX23/1007Z", "c": 23, "at_utc": "2026-10-10T07:00:00Z"}
+    assert g["tn"]["c"] == 18
+    [tempo] = g["changes"]
+    assert tempo["raw"] == "TEMPO 1000/1003 -SHRA"
+    assert (tempo["from_utc"], tempo["to_utc"]) == ("2026-10-10T00:00:00Z", "2026-10-10T03:00:00Z")
+    assert (tempo["word"], tempo["text"]) == ("短时", "短时 小阵雨")
+
+
+def test_fm_periods_run_to_the_next_fm_and_prob_joins_its_tempo() -> None:
+    g = rex.taf_groups(
+        "TAF AMD KLGA 101736Z 1018/1124 05012KT P6SM BKN030 FM102200 06010KT 5SM -RA OVC015 "
+        "PROB30 TEMPO 1102/1106 2SM RA BR OVC008 FM111200 36008KT P6SM SCT040",
+        "2026-10-10T17:36:00Z")
+    assert g["amend"] == "AMD"
+    assert [c["kind"] for c in g["changes"]] == ["FM", "PROB30 TEMPO", "FM"]
+    fm1, prob, fm2 = g["changes"]
+    assert (fm1["from_utc"], fm1["to_utc"]) == ("2026-10-10T22:00:00Z", "2026-10-11T12:00:00Z")
+    assert fm2["to_utc"] == g["valid_to_utc"] == "2026-10-12T00:00:00Z"
+    assert prob["text"].startswith("30% 可能 短时")
+
+
+def test_a_taf_day_past_the_month_end_rolls_into_the_next_month() -> None:
+    g = rex.taf_groups("TAF ZUUU 301700Z 3018/0118 VRB01MPS 9999 NSC TX25/0107Z", "2026-09-30T17:00:00Z")
+    assert g["valid_to_utc"] == "2026-10-01T18:00:00Z"
+    assert g["tx"]["at_utc"] == "2026-10-01T07:00:00Z"

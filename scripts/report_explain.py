@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from typing import Any, Sequence
 
 CLOUD_WORD = {
@@ -320,3 +321,238 @@ def metar_temperature_reading(
     if parsed.get("kind", "").startswith("SPECI"):
         lines.append("特殊报：天气刚发生明显变化，优先看")
     return lines
+
+
+# ---------------------------------------------------------------------------
+# The station-day tables (user 2026-10-10「metar改为表格形式，拆分报文及对应
+# 简要说明和趋势」「TAF 同理」): a report cut into its groups -- wind,
+# visibility, weather, cloud, temperature, pressure, trend -- each group its
+# raw code beside a few words, and the numbers a table compares from one
+# report to the next.  A few words, not the sentences above.
+
+COMPASS = ("北", "东北", "东", "东南", "南", "西南", "西", "西北")
+CLOUD_SHORT = {"FEW": "少云", "SCT": "疏云", "BKN": "多云", "OVC": "阴天", "VV": "垂直能见度"}
+CLEAR_SHORT = {"SKC": "晴空", "CLR": "晴空", "NSC": "无重要云", "NCD": "无云（自动站）"}
+TAF_CHANGE_WORD = {"BECMG": "逐渐转为", "TEMPO": "短时", "FM": "起转为", "INTER": "间歇"}
+
+
+def _group_wind(token: str) -> dict[str, Any] | None:
+    match = re.fullmatch(r"(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)", token)
+    if not match:
+        return None
+    direction, speed, gust, unit = match.groups()
+    scale = 0.514444 if unit == "KT" else 1.0
+    mps, gust_mps = float(speed) * scale, float(gust) * scale if gust else None
+    if direction != "VRB" and int(direction) == 0 and mps == 0:
+        text = "静风"
+    else:
+        head = "风向不定" if direction == "VRB" else f"{COMPASS[round(int(direction) / 45) % 8]}风"
+        text = f"{head} {mps:.0f} m/s" + (f"，阵风 {gust_mps:.0f} m/s" if gust_mps else "")
+    return {"raw": token, "text": text, "dir_deg": None if direction == "VRB" else int(direction),
+            "mps": round(mps, 1), "gust_mps": None if gust_mps is None else round(gust_mps, 1)}
+
+
+def _group_visibility(token: str) -> dict[str, Any] | None:
+    if token == "CAVOK":
+        return {"raw": token, "text": "≥10 km，无云无天气", "m": 10000.0}
+    if token == "9999":
+        return {"raw": token, "text": "≥10 km", "m": 10000.0}
+    if re.fullmatch(r"\d{4}", token):
+        metres = float(token)
+        return {"raw": token, "text": f"{metres / 1000:g} km" if metres >= 1000 else f"{metres:.0f} m", "m": metres}
+    match = re.fullmatch(r"(P?)(\d{1,2}|\d/\d)SM", token)
+    if match:
+        top, value = match.groups()
+        miles = float(value.split("/")[0]) / float(value.split("/")[1]) if "/" in value else float(value)
+        km = miles * 1.609344
+        return {"raw": token, "text": f"{'>' if top else ''}{km:.0f} km" if km >= 1 else f"{km * 1000:.0f} m",
+                "m": round(km * 1000)}
+    return None
+
+
+def _group_weather(token: str) -> dict[str, Any] | None:
+    if token == "NSW":
+        return {"raw": token, "text": "天气转好", "precip": False}
+    recent = token.startswith("RE") and len(token) > 3
+    word = _weather(token[2:] if recent else token)
+    if not word:
+        return None
+    precip = any(code in token for code in PRECIP_CODES)
+    return {"raw": token, "text": ("近时" if recent else "") + word, "precip": precip and not recent}
+
+
+def _group_cloud(token: str) -> dict[str, Any] | None:
+    if token in CLEAR_SHORT:
+        return {"raw": token, "text": CLEAR_SHORT[token], "cover": 0.0, "base_m": None}
+    match = re.fullmatch(r"(FEW|SCT|BKN|OVC|VV)(\d{3}|///)(CB|TCU|///)?", token)
+    if not match:
+        return None
+    kind, height, conv = match.groups()
+    base = None if height == "///" else round(int(height) * 30.48, -1)
+    text = CLOUD_SHORT[kind] + ("" if base is None else f" {base:.0f} m")
+    text += {"CB": " · 积雨云", "TCU": " · 浓积云"}.get(conv or "", "")
+    return {"raw": token, "text": text, "cover": CLOUD_WORD[kind][1], "base_m": base}
+
+
+def _element(token: str) -> tuple[str, dict[str, Any]] | None:
+    """One weather element a METAR body, a METAR trend or a TAF period can carry."""
+
+    for kind, read in (("wind", _group_wind), ("vis", _group_visibility),
+                       ("cloud", _group_cloud), ("wx", _group_weather)):
+        group = read(token)
+        if group:
+            return kind, group
+    return None
+
+
+def _elements_text(elements: dict[str, Any]) -> str:
+    parts = [g["text"] for k in ("wx", "cloud") for g in elements.get(k) or []]
+    parts += [elements[k]["text"] for k in ("wind", "vis") if elements.get(k)]
+    return "，".join(parts)
+
+
+def metar_groups(raw: str) -> dict[str, Any]:
+    tokens = raw.split()
+    body = tokens[:tokens.index("RMK")] if "RMK" in tokens else tokens
+    out: dict[str, Any] = {"wind": None, "vis": None, "wx": [], "cloud": [], "temp": None,
+                           "qnh": None, "trend": None, "other": []}
+    trend: list[str] = []
+    for index, token in enumerate(body):
+        if trend:
+            trend.append(token)
+            continue
+        if token in ("METAR", "SPECI", "COR", "AUTO") or (index <= 2 and re.fullmatch(r"[A-Z]{4}", token)) \
+                or re.fullmatch(r"\d{6}Z", token):
+            continue
+        if token in ("NOSIG", "BECMG", "TEMPO"):
+            trend.append(token)
+            continue
+        if out["wind"] and re.fullmatch(r"\d{3}V\d{3}", token):
+            out["wind"]["raw"] += " " + token
+            out["wind"]["text"] += f"，摆动 {token[:3]}°–{token[4:]}°"
+            continue
+        temp = re.fullmatch(r"(M?)(\d{2})/(?:(M?)(\d{2}))?", token)
+        if temp:
+            t = (-1 if temp.group(1) else 1) * int(temp.group(2))
+            d = None if temp.group(4) is None else (-1 if temp.group(3) else 1) * int(temp.group(4))
+            out["temp"] = {"raw": token, "temp_c": t, "dew_c": d,
+                           "text": f"{t}°C" + ("" if d is None else f"，露点 {d}°C")}
+            continue
+        qnh = re.fullmatch(r"([QA])(\d{4})", token)
+        if qnh:
+            hpa = float(qnh.group(2)) if qnh.group(1) == "Q" else round(float(qnh.group(2)) / 100 * 33.8639, 1)
+            out["qnh"] = {"raw": token, "hpa": hpa, "text": f"{hpa:.0f} hPa"}
+            continue
+        element = _element(token)
+        if element:
+            kind, group = element
+            if kind in ("wx", "cloud"):
+                out[kind].append(group)
+            elif out[kind] is None:
+                out[kind] = group
+            continue
+        out["other"].append(token)
+    if trend:
+        if trend == ["NOSIG"]:
+            out["trend"] = {"raw": "NOSIG", "text": "两小时内无变化"}
+        else:
+            parts: dict[str, Any] = {"wx": [], "cloud": []}
+            for token in trend[1:]:
+                element = _element(token)
+                if element:
+                    kind, group = element
+                    if kind in ("wx", "cloud"):
+                        parts[kind].append(group)
+                    else:
+                        parts[kind] = group
+            words = {"BECMG": "逐渐转为", "TEMPO": "短时", "NOSIG": "无变化"}
+            out["trend"] = {"raw": " ".join(trend), "text": f"{words.get(trend[0], trend[0])} {_elements_text(parts)}".strip()}
+    return out
+
+
+def _taf_time(code: str, issued: datetime) -> str | None:
+    """``ddhh`` (or ``ddhhmm``) against the TAF's issue time, as UTC ISO."""
+
+    if not re.fullmatch(r"\d{4}(\d{2})?", code):
+        return None
+    day, hour, minute = int(code[:2]), int(code[2:4]), int(code[4:6] or 0)
+    year, month = issued.year, issued.month
+    if day < issued.day - 15:
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    elif day > issued.day + 15:
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    try:
+        at = datetime(year, month, day, tzinfo=timezone.utc) + timedelta(hours=hour, minutes=minute)
+    except ValueError:
+        return None
+    return at.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def taf_groups(raw: str, issued_at_utc: str | None) -> dict[str, Any]:
+    tokens = raw.split()
+    try:
+        issued = datetime.fromisoformat(str(issued_at_utc).replace("Z", "+00:00"))
+    except ValueError:
+        issued = None
+    when = (lambda code: _taf_time(code, issued)) if issued else (lambda code: None)
+    out: dict[str, Any] = {"amend": None, "valid_from_utc": None, "valid_to_utc": None,
+                           "base": {"wind": None, "vis": None, "wx": [], "cloud": []},
+                           "tx": None, "tn": None, "changes": []}
+    current = out["base"]
+    prob: str | None = None
+    for index, token in enumerate(tokens):
+        if token in ("TAF",) or (index <= 3 and re.fullmatch(r"[A-Z]{4}", token)) or re.fullmatch(r"\d{6}Z", token):
+            continue
+        if token in ("AMD", "COR", "RTD"):
+            out["amend"] = token
+            continue
+        span = re.fullmatch(r"(\d{4})/(\d{4})", token)
+        if span:
+            if current is out["base"] and out["valid_from_utc"] is None:
+                out["valid_from_utc"], out["valid_to_utc"] = when(span.group(1)), when(span.group(2))
+            elif current is not out["base"]:
+                current["from_utc"], current["to_utc"] = when(span.group(1)), when(span.group(2))
+                current["raw"] += " " + token
+            continue
+        extreme = re.fullmatch(r"T([XN])(M?)(\d{2})/(\d{4})Z", token)
+        if extreme:
+            value = (-1 if extreme.group(2) else 1) * int(extreme.group(3))
+            out["tx" if extreme.group(1) == "X" else "tn"] = {
+                "raw": token, "c": value, "at_utc": when(extreme.group(4))}
+            continue
+        if re.fullmatch(r"PROB\d{2}", token):
+            prob = token
+            current = {"kind": token, "raw": token, "from_utc": None, "to_utc": None,
+                       "wind": None, "vis": None, "wx": [], "cloud": []}
+            out["changes"].append(current)
+            continue
+        fm = re.fullmatch(r"FM(\d{6})", token)
+        if token in ("BECMG", "TEMPO", "INTER") or fm:
+            kind = "FM" if fm else token
+            if prob and current is not out["base"] and current["kind"] == prob and current["raw"] == prob:
+                current["kind"], current["raw"] = f"{prob} {kind}", f"{prob} {token}"
+            else:
+                current = {"kind": kind, "raw": token, "from_utc": when(fm.group(1)) if fm else None,
+                           "to_utc": None, "wind": None, "vis": None, "wx": [], "cloud": []}
+                out["changes"].append(current)
+            prob = None
+            continue
+        element = _element(token)
+        if element:
+            kind, group = element
+            if kind in ("wx", "cloud"):
+                current[kind].append(group)
+            elif current[kind] is None:
+                current[kind] = group
+            if current is not out["base"]:
+                current["raw"] += " " + token
+    # An FM period runs to the next change of its own kind, else the end.
+    fms = [c for c in out["changes"] if c["kind"] == "FM"]
+    for this, nxt in zip(fms, fms[1:] + [None]):
+        this["to_utc"] = nxt["from_utc"] if nxt else out["valid_to_utc"]
+    for change in out["changes"]:
+        word = next((TAF_CHANGE_WORD[k] for k in TAF_CHANGE_WORD if change["kind"].endswith(k)), "")
+        chance = re.match(r"PROB(\d{2})", change["kind"])
+        change["word"] = (f"{chance.group(1)}% 可能 " if chance else "") + word
+        change["text"] = f"{change['word']} {_elements_text(change)}".strip()
+    return out

@@ -643,6 +643,9 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
                              else float(amount.group(1)) if amount else None),
             "precip_1h_trace": p_group == "P0000",
             "running_high_c": running,
+            # The table's groups, each raw code with a few words (user
+            # 2026-10-10「metar改为表格形式，拆分报文及对应简要说明和趋势」).
+            "groups": rex.metar_groups(str(raw)),
         })
     return out
 
@@ -1017,6 +1020,15 @@ def _taf_cloud_evidence(conn, station: str, day: str, witness: Mapping[str, Any]
     return absent
 
 
+def _taf_groups(raw: str, issued_at_utc: str | None) -> dict[str, Any] | None:
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import report_explain as rex  # noqa: PLC0415
+    except ImportError:
+        return None
+    return rex.taf_groups(raw, issued_at_utc)
+
+
 def _taf_raw(station: str, inbox: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     inbox = _taf_inbox() if inbox is None else inbox
     out: dict[str, dict[str, Any]] = {}
@@ -1027,9 +1039,11 @@ def _taf_raw(station: str, inbox: Mapping[str, Any] | None = None) -> list[dict[
         raw = str(capture.get("raw_taf") or "").strip()
         if not raw:
             continue
+        issued = revision.get("issued_at_utc") or capture.get("issued_at_utc")
         out[str(capture.get("raw_taf_sha256") or raw)] = {
-            "issued_at_utc": revision.get("issued_at_utc") or capture.get("issued_at_utc"),
-            "raw": raw,
+            "issued_at_utc": issued, "raw": raw,
+            # Base forecast and change groups, as the METAR table (「TAF 同理」).
+            "groups": _taf_groups(raw, issued),
         }
     return sorted(out.values(), key=lambda r: str(r.get("issued_at_utc") or ""))[-3:][::-1]
 
