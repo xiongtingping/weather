@@ -1146,8 +1146,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
             entry.update(_p1_brief(head))
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
         stages[stage] = entry
-    # The day's word: the newest stage decided (P1 > P0-M > P0 on a tie).
-    head_stage = max(stages, key=lambda s: (str(stages[s]["decided_at_utc"])[:19], STAGES.index(s)))
+    head_stage = day_word(stages)
     metar = _metar(station, day, zone)
     return {
         "role": role, "event_date": day, "available": True, "axis": axis,
@@ -1163,6 +1162,23 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
         "direction": _direction(station, day),
     }
+
+
+def day_word(stages: Mapping[str, Any]) -> str | None:
+    """The day's word: the most informed stage present (charter 260's
+    precedence, ``stage_authority.BELIEF_STAGE_PRECEDENCE``: P1 > P0-M > P0).
+
+    It was the newest stage decided, but P0-M (and P0) keep committing after
+    P1 exists, so the word flipped back to a superseded stage -- over
+    2026-09-01..10-10 the day's last P0-M came after its first P1 on 1,582 of
+    1,687 station-days, and those late P0-M vectors kept a dead upside (on
+    their right-skewed days the truth sat on the mode 85 % of the time
+    against 48 % claimed).
+    """
+
+    from .stage_authority import BELIEF_STAGE_PRECEDENCE  # noqa: PLC0415
+
+    return next((stage for stage in BELIEF_STAGE_PRECEDENCE if stage in stages), None)
 
 
 def _direction_board() -> dict[str, Any] | None:
@@ -1448,8 +1464,7 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
                 market = _committed_market_stats(conn, station, day, axis)
                 if market is not None:
                     rungs["MKT"] = market.get("mean_minus_mode_rungs")
-                # The day's word, as the panel picks it: the newest stage decided.
-                head_stage = max(seen, key=lambda s: (str(seen[s]["decided_at_utc"])[:19], STAGES.index(s)))
+                head_stage = day_word(seen)
                 book = by_day.setdefault(day, {"event_date": day, "rows": []})
                 book["rows"].append({"station_id": station, "name": entry.get("name"),
                                      "head_stage": head_stage, "rungs": rungs})

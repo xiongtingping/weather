@@ -289,3 +289,15 @@ def test_fleet_tally_card_counts_each_side() -> None:
     assert '<b style="color:p">市场</b><span>对称 41</span><span>左偏 3</span><span>右偏 4</span>' in out
     assert ">P1</b>" not in out  # no P1 yet on that day: no row
     assert "成都 <span" in out and "P0-M 1档" in out
+
+
+def test_day_word_follows_charter_260_precedence() -> None:
+    # A P0-M decided after the day's P1 does not take the word back (charter 260).
+    from bayes_basket_target.station_day_board import day_word
+
+    stages = {"P0": {"decided_at_utc": "2026-10-10T12:00:00Z"},
+              "P0-M": {"decided_at_utc": "2026-10-10T12:30:00Z"},
+              "P1": {"decided_at_utc": "2026-10-10T12:10:00Z"}}
+    assert day_word(stages) == "P1"
+    assert day_word({k: stages[k] for k in ("P0", "P0-M")}) == "P0-M"
+    assert day_word({}) is None
