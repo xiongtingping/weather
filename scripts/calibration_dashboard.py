@@ -16228,7 +16228,14 @@ color-scheme:dark}
 .sd-in{width:76px}
 .sd-btn{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
 .sd-btn:hover{border-color:var(--accent)}.sd-btn:disabled{opacity:.5;cursor:wait}
-.sd-note{font-size:12px;margin:2px 0 8px}.sd-sub{font-size:11.5px;font-weight:400}
+/* The panel's refresh at the row's right end, filled (user 2026-10-10「立即刷新按钮移动到右侧并突出」). */
+.sd-btn.sd-refresh-main{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-size:14px;font-weight:700;padding:7px 18px;border-radius:8px}
+.sd-btn.sd-refresh-main:hover{filter:brightness(1.08)}
+/* The day's latest decision, its time and a ticking age (user 2026-10-10「最新决策……突出」). */
+.sd-decided{display:inline-flex;align-items:baseline;gap:8px;margin:0 6px;padding:3px 12px;border-radius:8px;background:color-mix(in srgb,var(--accent) 14%,transparent);font-size:14px;font-weight:600;color:var(--text)}
+.sd-decided>b{font-size:17px;font-variant-numeric:tabular-nums}
+.sd-decided>.sd-age{font-size:15px;font-weight:750;color:var(--accent)}
+.sd-sub{font-size:11.5px;font-weight:400}
 .sd-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;border-bottom:1px solid var(--line)}
 .sd-daytab{font:inherit;font-size:14px;font-weight:600;padding:7px 16px;border:1px solid var(--line);border-bottom:none;
   border-radius:8px 8px 0 0;background:transparent;color:var(--muted);cursor:pointer;margin-bottom:-1px}
@@ -22712,12 +22719,10 @@ function stationDayPanel(){
   return `<h2>单站日：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
   <div class="sd-ctl">
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
-    <button type="button" id="sd-refresh" class="sd-btn">⟳ 立即刷新</button>
     <label title="按这个间隔只问一次「有没有新的已提交概率」（一次索引查找）；有新的 P0/P0-M/P1 才重读并重画，盘口随之一起刷新">自动刷新：概率有更新才刷新，检查间隔 <select id="sd-every">${opts}</select></label>
     <span id="sd-status" class="muted">读取中…</span>
+    <button type="button" id="sd-refresh" class="sd-btn sd-refresh-main">⟳ 立即刷新</button>
   </div>
-  <div class="muted sd-note">本区不随整页渲染：直接读控制服务 127.0.0.1:8788 的只读接口（生产已存的信封、回执、官方 WS 盘口、报文），一次约 0.5 秒。
-    颜色：<b style="color:${SD_COL.P0}">P0 概率</b> · <b style="color:${SD_COL["P0-M"]}">P0-M 概率</b> · <b style="color:${SD_COL.P1}">P1 概率</b> · <b style="color:${SD_COL.MKT}">市场（归一中价，宪章 249 的众数口径）</b>。</div>
   <div id="sd-body"></div>`;
 }
 
@@ -22859,10 +22864,10 @@ function sdDay(day){
   const head = (day.stages || {})[day.head_stage] || {};
   return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}">
     <h3>${roleWord} ${sdEsc(day.event_date)} <span class="pill">当日口径 ${sdEsc(day.head_stage)}</span>
-      <span class="muted sd-sub">最新决策 ${sdLocal(head.decided_at_utc, true)}（${sdAgo(head.decided_at_utc)}）${
-      day.running_high_c != null ? ` · 已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : ""}${
-      head.fresh_until_utc ? ` · 信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""}</span></h3>
-    <div class="muted sd-sub" style="margin:-4px 0 6px">本卡所有概率、均值、众数都是对 <b>${sdEsc(day.event_date)}</b> 当地最高温的预测；表中带日期的时间是数据产出时刻（决策、模型起报、到货、TAF 签发、盘口），不是预测对象。</div>
+      <span class="sd-decided">最新决策 <b>${sdLocal(head.decided_at_utc, true)}</b> ${sdAgeSpan(head.decided_at_utc, "sd-age")}</span>
+      <span class="muted sd-sub">${[
+      day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
+      head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     ${sdProbabilityCards(day)}
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
