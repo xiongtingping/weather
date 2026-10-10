@@ -1,0 +1,13 @@
+stage  axis                subset                        n   vector lean right   market lean right   leans disagree: n, vector right
+P0     vector's own mode   all                           644   0.665               0.803                205, 0.283
+P0     vector's own mode   vector skewed |lean|>=0.25    187   0.775               0.845                 31, 0.290
+P0     market's mode       all                           556   0.599               0.665                183, 0.399
+P0     market's mode       vector skewed |lean|>=0.25    327   0.618               0.664                 79, 0.405
+P0-M   vector's own mode   all                           572   0.666               0.825                161, 0.217
+P0-M   vector's own mode   vector skewed |lean|>=0.25    199   0.774               0.854                 30, 0.233
+P0-M   market's mode       all                           511   0.599               0.722                135, 0.267
+P0-M   market's mode       vector skewed |lean|>=0.25    311   0.650               0.733                 58, 0.276
+P1     vector's own mode   all                           425   0.659               0.835                115, 0.174
+P1     vector's own mode   vector skewed |lean|>=0.25    160   0.819               0.863                 17, 0.294
+P1     market's mode       all                           389   0.576               0.715                108, 0.250
+P1     market's mode       vector skewed |lean|>=0.25    234   0.650               0.722                 43, 0.302
