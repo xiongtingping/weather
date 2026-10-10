@@ -22164,7 +22164,7 @@ const SD_DIR_COMPONENTS = {aifs_ens:"AIFS 集合", ifs_ens:"IFS 集合", hres:"H
 function sdDirWord(side){ return side > 0 ? "偏暖" : side < 0 ? "偏冷" : "无方向"; }
 function sdDirColor(side){ return side > 0 ? "var(--amber)" : side < 0 ? SD_COL.P0 : "var(--muted)"; }
 function sdDirection(D, R){
-  if(!D) return {main: `<b class="muted">方向 无读数</b>`, body: `<div class="sd-sub">方向信号（宪章 266）：快照里没有这个站日。</div>`};
+  if(!D) return {color: "var(--muted)", main: `<b>无读数</b>`, body: `快照里没有这个站日。`};
   const radSide = R && R.side === "WARM" ? 1 : R && R.side === "COLD" ? -1 : 0;
   const agree = D.side && radSide ? (D.side === radSide ? "与辐射偏移同向" : "与辐射偏移反向") : "";
   const mode = D.mode || {};
@@ -22173,20 +22173,22 @@ function sdDirection(D, R){
     `${sdEsc(SD_DIR_COMPONENTS[k] || k)} ${sdSg(c.delta_c,2)}°C（${sdEsc(String(c.newest_run_init_utc || "").slice(5,16).replace("T"," "))}Z 对 ${sdEsc(String(c.older_run_init_utc || "").slice(5,16).replace("T"," "))}Z）`).join("；");
   const X = D.physics || {};
   const quiet = D.momentum_quiet_below == null ? 1 : D.momentum_quiet_below;
-  const main = `<b style="color:${sdDirColor(D.side)}" title="方向信号（宪章 266）：先看 ECMWF 动量，静默时看四特征模型">方向 ${sdDirWord(D.side)}</b>`;
-  const body = `<div><b>方向（宪章 266 共享方向信号）</b> · ${modeText} · 综合 <b style="color:${sdDirColor(D.side)}">${sdDirWord(D.side)}</b>${agree ? " · " + agree : ""}</div>
-    <div>ECMWF 动量 M ${sdSg(D.momentum,2)}（${D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side)}，|M|＜${sdN(quiet,0)} 为静默）${comps ? " · " + comps : ""}</div>
+  const main = `<b class="sd-evidence-primary" style="color:${sdDirColor(D.side)}" title="先看 ECMWF 动量，静默时看四特征模型">${sdDirWord(D.side)}</b><b>${modeText}</b>${agree ? `<b>${agree}</b>` : ""}`;
+  const body = `<div>ECMWF 动量 M ${sdSg(D.momentum,2)}（${D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side)}，|M|＜${sdN(quiet,0)} 为静默）${comps ? " · " + comps : ""}</div>
     <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
     <div class="sd-sub">算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>`;
-  return {main, body};
+  return {color: sdDirColor(D.side), main, body};
 }
 function sdEvidence(day){
   const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
+  const rad = sdEvidenceCard("辐射偏移（宪章 222）", R && R.side === "WARM" ? "var(--amber)" : R && R.side === "COLD" ? SD_COL.P0 : "var(--muted)",
+    R ? `<b>${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")}</b><b class="sd-evidence-primary">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`,
+    R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录");
+  // Its own card, right of the radiation card (user 2026-10-10 「放在辐射偏移（宪章 222
+  // 卡片右边，单独一个卡片。而不是放在一起」).
   const dir = sdDirection(day.direction, R);
-  const rad = sdEvidenceCard("辐射偏移（宪章 222）· 方向", R && R.side === "WARM" ? "var(--amber)" : R && R.side === "COLD" ? SD_COL.P0 : "var(--muted)",
-    (R ? `<b>${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")}</b><b class="sd-evidence-primary">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`) + dir.main,
-    (R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录") + dir.body);
+  const dirCard = sdEvidenceCard("方向（宪章 266 · 相对市场众数）", dir.color, dir.main, dir.body);
   const tw = p0.taf_witness;
   const sameTx = tw && pm && tw.tx_c != null && pm.tx_c != null && tw.tx_c === pm.tx_c;
   const tafTx = sameTx ? `<b class="sd-evidence-primary">TX ${sdN(tw.tx_c,2)}°C</b>`
@@ -22222,7 +22224,7 @@ function sdEvidence(day){
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
       `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
-  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${taf}${p1Line}${rain}</div>${sdSky(day)}
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${dirCard}${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${sdTafRaw(SD.data || {})}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="sd-metar">${met}</div></details>` : ""}`;
 }
