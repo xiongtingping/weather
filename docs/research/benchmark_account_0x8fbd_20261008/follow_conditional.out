@@ -89,3 +89,21 @@ events with a mid 10 min after the first fill: 3648
    model disagrees                    n= 386   -2.4c [ -7.3, +2.5]  H1  -6.5 H2  +0.6  days+ 5/15  
    model agrees, within p filter      n= 147   +9.2c [ +1.3,+15.8]  H1 +14.8 H2  +5.4  days+ 11/15  BOTH+
    model agrees + C + >=12h           n= 300   +8.9c [ +2.0,+14.8]  H1  +8.3 H2  +9.1  days+ 12/15  BOTH+
+
+-- filter comparison on one base (fixed stake per followed event; entry = mid 10 min after + 0.02)
+   none (every first taker fill)                        n=3648   +1.5c/share  ROI  +2.3% [ -4.3, +8.1]  H1/H2  -3.5/ +6.3%  total@5U  +414.2U  days+ 8/15
+   current lane: our p > entry                          n=1073   +4.7c/share  ROI +11.2% [ -0.3,+21.3]  H1/H2  +4.6/+16.0%  total@5U  +600.4U  days+ 10/15
+   C + >=12h                                            n=2255   +3.8c/share  ROI  +8.5% [ +0.4,+16.3]  H1/H2  +4.8/+10.7%  total@5U  +961.2U  days+ 13/15
+   p + C + >=12h                                        n= 658   +6.5c/share  ROI +13.7% [ +2.2,+26.2]  H1/H2 +16.4/+11.9%  total@5U  +451.2U  days+ 11/15
+   off-mode only                                        n= 940   +1.4c/share  ROI  +2.0% [ -9.8,+13.1]  H1/H2  -7.1/ +7.8%  total@5U   +92.5U  days+ 8/15
+   off-mode + C + >=12h (round 17)                      n= 479   +6.7c/share  ROI +20.6% [ +2.9,+36.3]  H1/H2 +23.8/+19.1%  total@5U  +492.4U  days+ 10/15
+   momentum agrees                                      n= 346   +7.1c/share  ROI +19.2% [ +1.0,+36.3]  H1/H2  +9.7/+24.3%  total@5U  +331.9U  days+ 10/15
+   momentum agrees + p                                  n=  95  +12.7c/share  ROI +37.5% [ +0.6,+75.7]  H1/H2 +53.1/+28.8%  total@5U  +178.0U  days+ 8/15
+   momentum agrees + C + >=12h                          n= 184  +14.1c/share  ROI +38.6% [+15.6,+62.1]  H1/H2 +40.6/+37.8%  total@5U  +354.7U  days+ 10/15
+   momentum agrees + p + C + >=12h                      n=  48  +18.8c/share  ROI +41.3% [ +2.4,+81.0]  H1/H2 +93.5/+19.8%  total@5U   +99.1U  days+ 9/14
+   model agrees                                         n= 554   +4.0c/share  ROI +11.3% [ -2.7,+28.5]  H1/H2  +5.9/+14.5%  total@5U  +313.2U  days+ 11/15
+   model agrees + p                                     n= 147   +9.2c/share  ROI +27.6% [ -0.5,+60.4]  H1/H2 +46.3/+14.7%  total@5U  +202.8U  days+ 8/15
+   model agrees + C + >=12h                             n= 300   +8.9c/share  ROI +26.2% [ +5.5,+48.4]  H1/H2 +26.2/+26.2%  total@5U  +392.4U  days+ 11/15
+   model agrees + p + C + >=12h                         n=  80  +15.0c/share  ROI +33.8% [ -3.2,+72.8]  H1/H2 +79.2/ +8.1%  total@5U  +135.4U  days+ 9/15
+   model agrees and momentum not against                n= 496   +5.9c/share  ROI +16.6% [ +0.0,+33.8]  H1/H2 +10.8/+20.3%  total@5U  +412.4U  days+ 10/15
+   model agrees, momentum not against, C, >=12h         n= 274  +11.3c/share  ROI +31.9% [+10.1,+53.4]  H1/H2 +35.6/+30.2%  total@5U  +436.5U  days+ 11/15

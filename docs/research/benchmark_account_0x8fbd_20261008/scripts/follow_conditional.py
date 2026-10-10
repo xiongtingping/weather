@@ -196,3 +196,47 @@ line('model agrees', [r for r in R if r.get('m4') == 'agree'])
 line('model disagrees', [r for r in R if r.get('m4') == 'disagree'])
 line('model agrees, within p filter', [r for r in R if r.get('m4') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST])
 line('model agrees + C + >=12h', [r for r in R if r.get('m4') == 'agree' and r['unit'] == 'C' and r['lead'] >= 12])
+
+# ---- comparison on one base: every filter, cents/share, ROI per USDC at a fixed stake, total at 5 U/event
+print('\n-- filter comparison on one base (fixed stake per followed event; entry = mid 10 min after + 0.02)')
+def roi(r): return (r['hit'] - (r['own'] + COST)) / (r['own'] + COST)
+def stats_line(label, rs, stake=5.0):
+    if len(rs) < 30:
+        print(f'   {label:52s} n={len(rs)}'); return
+    c = sum(pnl(r) for r in rs) / len(rs)
+    ro = sum(roi(r) for r in rs) / len(rs)
+    tot = stake * sum(roi(r) for r in rs)
+    G = collections.defaultdict(list)
+    for r in rs: G[(r['st'], r['ed'])].append(roi(r))
+    keys = list(G); vals = []
+    for _ in range(600):
+        s = [v for k in (random.choice(keys) for _ in keys) for v in G[k]]
+        vals.append(sum(s) / len(s))
+    vals.sort()
+    h1 = [roi(r) for r in rs if r['half'] == 'H1']; h2 = [roi(r) for r in rs if r['half'] == 'H2']
+    days = collections.defaultdict(float)
+    for r in rs: days[r['ed']] += roi(r)
+    print(f'   {label:52s} n={len(rs):4d}  {100*c:+5.1f}c/share  ROI {100*ro:+5.1f}% [{100*vals[15]:+5.1f},{100*vals[584]:+5.1f}]  H1/H2 {100*sum(h1)/max(1,len(h1)):+5.1f}/{100*sum(h2)/max(1,len(h2)):+5.1f}%  total@5U {tot:+7.1f}U  days+ {sum(1 for v in days.values() if v>0)}/{len(days)}')
+pf = lambda r: r['ours'] is not None and r['ours'] > r['own'] + COST
+c12 = lambda r: r['unit'] == 'C' and r['lead'] >= 12
+off = lambda r: r.get('m4') is not None   # off-mode, joined to the ladder rows
+FILTERS = [
+    ('none (every first taker fill)', lambda r: True),
+    ('current lane: our p > entry', pf),
+    ('C + >=12h', c12),
+    ('p + C + >=12h', lambda r: pf(r) and c12(r)),
+    ('off-mode only', off),
+    ('off-mode + C + >=12h (round 17)', lambda r: off(r) and c12(r)),
+    ('momentum agrees', lambda r: r.get('mom') == 'agree'),
+    ('momentum agrees + p', lambda r: r.get('mom') == 'agree' and pf(r)),
+    ('momentum agrees + C + >=12h', lambda r: r.get('mom') == 'agree' and c12(r)),
+    ('momentum agrees + p + C + >=12h', lambda r: r.get('mom') == 'agree' and pf(r) and c12(r)),
+    ('model agrees', lambda r: r.get('m4') == 'agree'),
+    ('model agrees + p', lambda r: r.get('m4') == 'agree' and pf(r)),
+    ('model agrees + C + >=12h', lambda r: r.get('m4') == 'agree' and c12(r)),
+    ('model agrees + p + C + >=12h', lambda r: r.get('m4') == 'agree' and pf(r) and c12(r)),
+    ('model agrees and momentum not against', lambda r: r.get('m4') == 'agree' and r.get('mom') != 'disagree'),
+    ('model agrees, momentum not against, C, >=12h', lambda r: r.get('m4') == 'agree' and r.get('mom') != 'disagree' and c12(r)),
+]
+for lab, f in FILTERS:
+    stats_line(lab, [r for r in R if f(r)])
