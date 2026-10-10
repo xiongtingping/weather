@@ -15751,7 +15751,8 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 .sd-pnl-c>span{font-size:12px;color:var(--muted)}
 .sd-pnl-c>b{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
 .sd-pnl-c.up>b{color:var(--up,#2f9e44)}.sd-pnl-c.down>b{color:var(--down,#e03131)}
-.sd-pnl-c>i{font-style:normal;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The short line wraps rather than clips (user 2026-10-10「显示不全」). */
+.sd-pnl-c>i{font-style:normal;font-size:11.5px;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
 .sd-pnl-c[title]{cursor:help}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
 .sd-tk-h{font-size:15px;font-weight:700;margin:0 0 6px;min-height:22px}
