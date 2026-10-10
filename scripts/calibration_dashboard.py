@@ -23499,8 +23499,12 @@ function sdLevelsNo(day, b, st){
   }
   return asks;
 }
-function sdHeldNo(st, b){ const v = Number((st.heldNo || {})[b]); return isFinite(v) && v > 0 ? v : 0; }
-function sdHeld(st, b){ const v = Number((st.held || {})[b]); return isFinite(v) && v > 0 ? v : 0; }
+// Under a hundredth of a share is dust, not a holding (user 2026-10-10「22度的
+// yes持仓为0,但还是显示」): shares go in hundredths, so the 0.001875 YES left at
+// ZUUU 22°C can be neither sold nor shown -- it paid 0.002 U at most.
+const SD_MIN_SHARE = 0.01;
+function sdHeldNo(st, b){ const v = Number((st.heldNo || {})[b]); return isFinite(v) && v >= SD_MIN_SHARE ? v : 0; }
+function sdHeld(st, b){ const v = Number((st.held || {})[b]); return isFinite(v) && v >= SD_MIN_SHARE ? v : 0; }
 function sdHeldCost(st){ return Object.values(st.heldCost || {}).reduce((a, v) => a + (isFinite(Number(v)) ? Number(v) : 0), 0); }
 // 已持有 (user 2026-10-05「如果临时增加桶呢」): shares already on the account
 // pay out like new ones, and what they cost is part of the basket's spend.
@@ -23904,8 +23908,8 @@ function sdLoadHoldings(key){
       const flags = [];
       (j.rows || []).forEach(r => {
         let cost = 0, costKnown = true;
-        if(r.shares > 0){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null){ cost += r.cost_usdc; st.heldAvg[r.bucket] = r.cost_usdc / r.shares; } else costKnown = false; }
-        if(r.no_shares > 0){ st.heldNo[r.bucket] = String(r.no_shares); if(r.no_cost_usdc != null){ cost += r.no_cost_usdc; st.heldAvgNo[r.bucket] = r.no_cost_usdc / r.no_shares; } else costKnown = false; }
+        if(r.shares >= SD_MIN_SHARE){ st.held[r.bucket] = String(r.shares); if(r.cost_usdc != null){ cost += r.cost_usdc; st.heldAvg[r.bucket] = r.cost_usdc / r.shares; } else costKnown = false; }
+        if(r.no_shares >= SD_MIN_SHARE){ st.heldNo[r.bucket] = String(r.no_shares); if(r.no_cost_usdc != null){ cost += r.no_cost_usdc; st.heldAvgNo[r.bucket] = r.no_cost_usdc / r.no_shares; } else costKnown = false; }
         if(cost > 0) st.heldCost[r.bucket] = String(Math.round(cost * 1e4) / 1e4);
         if(!costKnown) flags.push(`${r.bucket} 无均价，盈亏未计这部分成本`);
         if(r.no_gateway_error && r.no_shares_source !== "data_api") flags.push(`${r.bucket} NO 份数读取失败（${r.no_gateway_error}）`);
