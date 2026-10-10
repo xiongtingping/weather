@@ -138,7 +138,9 @@ def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]])
     """Mean, variance, spread and the two summary rungs of a ladder vector.
 
     ``mode`` is the largest rung, the lower on a tie (the rule charter 249's
-    market mode uses); ``mean_bucket`` is the rung the mean falls in.
+    market mode uses); ``mean_bucket`` is production's centre bucket
+    (``mean_center_bucket_v1``, charter 75): the rung nearest the
+    probability-weighted mean ordinal, ties to the heavier rung.
     ``entropy_bits`` and the 80 % central interval are the dispersion beside
     the standard deviation: the first counts rungs in play regardless of
     their order, the second is the span a reader would quote.
@@ -166,7 +168,7 @@ def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]])
     near_mode = sum(p for r, p in rows if abs(r["ordinal"] - mode_ord) <= 1)
     third = sum(p * (c - mean) ** 3 for c, p in known)
     sd = math.sqrt(var)
-    from .basket_kernel.support import mean_mode_skew_reading_v1  # noqa: PLC0415
+    from .basket_kernel.support import mean_center_bucket_v1, mean_mode_skew_reading_v1  # noqa: PLC0415
 
     # The skew is production's own reading (charters 55/75/131), by
     # probability rather than by rung identity (user 2026-10-11 「不要按照均值
@@ -178,7 +180,11 @@ def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]])
         "mean_c": round(mean, 3), "var_c2": round(var, 4), "sd_c": round(sd, 3),
         "skew": None if sd <= 1e-9 else round(third / sd ** 3, 3),
         "mode": rows[mode_index][0]["bucket"], "mode_p": round(rows[mode_index][1], 4),
-        "mean_bucket": bucket_of(axis, mean),
+        # Production's centre bucket (user 2026-10-11 「均值桶也按照生产口径来计
+        # 算」), not the rung the °C mean falls in: they part on 0.7 % of
+        # vectors (a mean on a rung edge, an open edge's centre on F ladders).
+        "mean_bucket": mean_center_bucket_v1({r["bucket"]: p for r, p in rows},
+                                             {r["bucket"]: r["ordinal"] for r, _p in rows}),
         "skew_sign": int(skew["sign"]) if skew["readable"] else None,
         "skew_gap_buckets": skew["gap_buckets"],
         "skew_threshold_buckets": skew["threshold_buckets"],

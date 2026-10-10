@@ -21770,14 +21770,14 @@ function sdProbabilityCards(day){
       <div class="sd-prob-bucket">${e ? sdTemperature(e.model_center_c) + (pv ? dv(e.model_center_c, pv.center_c, 2, "") : "") : "尚未生成"}</div>
       ${e ? `<dl class="sd-prob-summary">${stage !== "P0" ? `<dt title="本阶段实际引用的前序信封中心，更新前的输入">${rootLabel}</dt><dd>${sdTemperature(e.root_center_c)}</dd>` : ""}
         <dt title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值</dt><dd>${sdTemperature(st.mean_c)}${pv ? dv(st.mean_c, ps.mean_c, 2, "") : ""}</dd>
-        <dt title="分布均值所在的桶；概率＝这一桶在最终向量里的概率，变化＝同一桶在上一次决策里的概率">均值桶</dt><dd>${sdEsc(st.mean_bucket || "—")}${meanP != null ? ` <small>· ${sdPc(meanP,2)}</small>` : ""}${meanPMove}${meanBucketMove}</dd>
+        <dt title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶，平局取概率大的；概率＝这一桶在最终向量里的概率，变化＝同一桶在上一次决策里的概率">均值桶</dt><dd>${sdEsc(st.mean_bucket || "—")}${meanP != null ? ` <small>· ${sdPc(meanP,2)}</small>` : ""}${meanPMove}${meanBucketMove}</dd>
         <dt title="最终概率向量中概率最大的桶，并列取低档；变化＝同一桶在上一次决策里的概率">众数桶</dt><dd>${sdEsc(st.mode || "—")} <small>· ${sdPc(st.mode_p,2)}</small>${modeP}${modeMove}</dd>
         <dt title="标准差变化">σ</dt><dd>${sdN(st.sd_c, 2)}°C${pv ? dv(st.sd_c, ps.sd_c, 2, "") : ""}</dd></dl>
         <div class="muted sd-sub">更新 ${sdAgeSpan(e.decided_at_utc, "sd-age")}${e.fresh_until_utc ? ` · 有效期${sdAgeSpan(e.fresh_until_utc, "sd-left")}` : ""}</div>
         <div class="muted sd-sub">${pv ? `变化对比上一次 ${sdEsc(stage)}：${sdAgeSpan(pv.at_utc, "sd-age")}` : `今天第一次 ${sdEsc(stage)}，无可对比`}</div>` : '<div class="muted sd-sub">等待该阶段的概率信封</div>'}
     </div>`;
   }).join("");
-  return `<div class="sd-prob-cards">${cards}</div><details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;
+  return `<div class="sd-prob-cards">${cards}</div><details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。均值桶＝按桶概率加权的平均档位最近的桶（生产 mean_center_bucket_v1），与分布均值所在的桶偶有一档之差。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;
 }
 
 function sdTemperature(value){ return value == null ? "—（未记录）" : `${sdN(value,2)}°C`; }
@@ -21805,7 +21805,7 @@ function sdStatsTable(day, S){
   }).join("");
   const modes = S.filter(s => s.key !== "MKT").map(s => s.stats && s.stats.mode);
   const agree = mk ? modes.map((m, i) => `${S[i].label}${m === mk.mode ? "＝" : "≠"}市场`).join(" · ") : "市场盘口不可读";
-  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>概率阶段 / 市场</th><th title="这一行概率是什么时候算出来的；预测的对象是卡片标题的日期">产出时刻（当地）</th><th class="sd-key">分布均值</th><th class="sd-key">均值桶</th><th class="sd-key">众数桶</th><th class="sd-prob-main" title="最高温落在这一行众数桶的概率；完整分布见下方逐桶表。市场行是归一中价。">众数桶概率</th>
+  return `<div class="scroll"><table class="sd-tab"><thead><tr><th>概率阶段 / 市场</th><th title="这一行概率是什么时候算出来的；预测的对象是卡片标题的日期">产出时刻（当地）</th><th class="sd-key">分布均值</th><th class="sd-key" title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶</th><th class="sd-key">众数桶</th><th class="sd-prob-main" title="最高温落在这一行众数桶的概率；完整分布见下方逐桶表。市场行是归一中价。">众数桶概率</th>
     <th title="Σp(t−均值)²，t 取桶中点（开口桶取向内半档）">方差 °C²</th><th>标准差</th><th title="三阶矩/σ³；正＝暖尾长">偏度</th>
     <th title="熵（bit）/ 有效档数 2^熵：多少档在分概率">离散度 熵/有效档</th><th>80% 区间</th><th>众数±1 档</th><th>均值−市场</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
@@ -21899,7 +21899,7 @@ function sdBucketTable(day, S){
   }).join("");
   return `<div class="sd-t">逐桶概率（${sdEsc(day.head_stage)} 与市场之差以百分点显示）</div><div class="scroll"><table class="sd-tab"><thead><tr><th>温度桶</th>${
     columns.map(s => `<th${s.key === "MKT" ? "" : ' class="sd-prob-col"'} style="--c:${SD_COL[s.key]};color:${SD_COL[s.key]}">${sdEsc(s.label)}${s.missing ? '<div class="sd-sub muted">尚未生成</div>' : ""}</th>`).join("")}<th>${sdEsc(day.head_stage)}−市场</th><th>买一</th><th>卖一</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted sd-sub"><span class="sd-tag" style="background:var(--muted)">众</span>＝该序列众数桶（底色）· <span class="sd-tag sd-tag-o" style="color:var(--muted);border-color:var(--muted)">均</span>＝均值所在桶（描边）· 盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
+    <div class="muted sd-sub"><span class="sd-tag" style="background:var(--muted)">众</span>＝该序列众数桶（底色）· <span class="sd-tag sd-tag-o" style="color:var(--muted);border-color:var(--muted)">均</span>＝均值桶（生产口径：概率加权平均档位最近的桶，描边）· 盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
       (day.market || {}).reference_state !== "complete" ? ` · <span class="down">市场向量不完整：${sdEsc((day.market || {}).reference_reason)}</span>` : ""} · 中价和 ${sdN((day.market || {}).mid_sum, 3)}</div>`;
 }
 

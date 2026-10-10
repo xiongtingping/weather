@@ -45,7 +45,9 @@ def test_mean_variance_mode_and_spread() -> None:
     assert math.isclose(s["mean_c"], 21.5)
     assert math.isclose(s["var_c2"], 1.0, abs_tol=1e-9)
     # A tie goes to the lower rung, as the market mode does (charter 249).
-    assert s["mode"] == "21°C" and s["mean_bucket"] == "22°C"
+    # The mean ordinal 1.5 sits between two equal rungs: production's centre
+    # bucket takes the heavier, then the lower (charter 75).
+    assert s["mode"] == "21°C" and s["mean_bucket"] == "21°C"
     assert s["skew_sign"] == 1 and math.isclose(s["skew_gap_buckets"], 0.5)
     assert s["interval80"] == ["20°C or below", "22°C"]
     assert math.isclose(s["effective_rungs"], 2 ** s["entropy_bits"], rel_tol=1e-2)
@@ -319,3 +321,19 @@ def test_day_word_follows_charter_260_precedence() -> None:
     assert day_word(stages) == "P1"
     assert day_word({k: stages[k] for k in ("P0", "P0-M")}) == "P0-M"
     assert day_word({}) is None
+
+
+def test_mean_bucket_is_production_centre_bucket() -> None:
+    """User 2026-10-11 「均值桶也按照生产口径来计算」: the board's 均值桶 is
+    mean_center_bucket_v1, even where the °C mean falls in the next rung."""
+
+    from bayes_basket_target.basket_kernel.support import mean_center_bucket_v1
+
+    axis = _axis()
+    vector = {"20°C or below": 0.1, "21°C": 0.4, "22°C": 0.4, "23°C or higher": 0.1}
+    ordinals = {r["bucket"]: r["ordinal"] for r in axis}
+    s = vector_stats(vector, axis)
+    # The °C mean 21.5 is the 22°C rung's lower edge; production's mean ordinal
+    # 1.5 ties two equal rungs and takes the lower.
+    assert bucket_of(axis, s["mean_c"]) == "22°C"
+    assert s["mean_bucket"] == mean_center_bucket_v1(vector, ordinals) == "21°C"
