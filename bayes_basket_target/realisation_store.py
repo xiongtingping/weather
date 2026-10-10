@@ -159,6 +159,10 @@ def code_sha256() -> str:
         inspect.getsource(fn) for fn in (population, walk_forward, calibration_gate, refit, _ladder_inputs,
                                          supported_columns, fit_supported)
     )
+    # The population's scope is a module constant, not in any function's text:
+    # without it a change of scope (charter 231 补记, 36 h -> 0) left the old
+    # artifact looking current.
+    source += f"\nMIN_HOURS_TO_SETTLEMENT={MIN_HOURS_TO_SETTLEMENT!r}"
     return hashlib.sha256(source.encode()).hexdigest()
 
 
