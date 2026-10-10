@@ -20068,50 +20068,6 @@ function scorecard(){
       return `<td class="mono">${v == null ? "—" : (v*100).toFixed(0)+"%"}</td>`;
     }).join("")}</tr>`).join("");
 
-  const fusionSummary = S.fusion_summary || {};
-  const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
-    .slice(0,8).map(p => {
-      const names = Object.keys(p.served||{}).sort();
-      const tone = p.distance <= 0.10 ? "green"
-                 : (p.distance <= 0.25 ? "amber" : "red");
-      return `<tr>
-        <td class="mono">${h(p.station_id)}</td>
-        <td class="mono muted">${h(p.lead_bucket)}</td>
-        <td class="mono muted">${h(p.run_cycle)} · ${h(p.season_bin)}</td>
-        <td class="muted" style="font-size:12px">${h(p.rule)}</td>
-        <td class="mono">${p.max_correlation == null ? "—"
-          : p.max_correlation.toFixed(2)}</td>
-        <td class="mono"><span class="dot ${tone}"></span>
-          ${(p.distance*100).toFixed(1)}%</td>
-        <td class="muted" style="font-size:12px">${names.map(n =>
-          `${h((D.system_labels || {})[n] || n)} ${(p.served[n]*100).toFixed(0)}→${
-           (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
-      </tr>`;
-    }).join("");
-  const fusionBasisWords = {capped: "族上限咬住", fallback: "逆误差兜底",
-    non_psd: "相关阵非正定", unsolved: "重解失败"};
-  const fusionApprox = Object.entries(fusionSummary.approximate_by_basis||{})
-    .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
-    .join("、");
-  const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
-  // The conclusion first, the table folded (user 2026-10-10「融合权重 vs 生产重解：
-  // 折叠明细，提炼结论」): the largest exact re-solve distance against the
-  // rows' own 10% / 25% marks decides the word.
-  const fusionExact = (S.fusion_pairs||[]).filter(p => p.distance != null && (p.basis || "exact") === "exact");
-  const fusionShown = Math.min(8, (S.fusion_pairs||[]).filter(p => p.distance != null).length);
-  const fusionWorst = fusionExact.reduce((a, p) => !a || p.distance > a.distance ? p : a, null);
-  const fusionTone = !fusionWorst ? "" : fusionWorst.distance <= 0.10 ? "green" : fusionWorst.distance <= 0.25 ? "amber" : "red";
-  const fusionApproxN = Object.values(fusionSummary.approximate_by_basis||{}).reduce((a, n) => a + n, 0);
-  const fusionCard = (label, value, sub, tone) => `<div class="sd-pnl-c ${tone === "green" ? "up" : tone === "red" ? "down" : ""}"><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
-  const fusionVerdict = `<div class="sd-pnl-g" style="margin-top:8px">
-    ${fusionCard("结论", !fusionWorst ? "—" : fusionTone === "green" ? "一致" : fusionTone === "amber" ? "有偏离" : "对不上",
-      !fusionWorst ? "" : fusionTone === "green" ? "生产权重与存档证据对得上" : "先查数据再查解法", fusionTone)}
-    ${fusionCard("在役权重", `${fusionSummary.served_count ?? "—"} 份`, `精确重解 ${fusionSummary.exact_count ?? "—"} 份`)}
-    ${fusionCard("最大偏离", fusionWorst ? fusionPct(fusionWorst.distance) : "—",
-      fusionWorst ? `${h(fusionWorst.station_id)} ${h(fusionWorst.lead_bucket)} ${h(fusionWorst.run_cycle)}` : "", fusionTone)}
-    ${fusionApproxN ? fusionCard("近似重解", `${fusionApproxN} 份`, `中位 ${fusionPct(fusionSummary.approximate_median_distance)} · 最大 ${fusionPct(fusionSummary.approximate_max_distance)}`) : ""}
-  </div>`;
-
   const W = S.window || {};
   const count = v => v == null ? "—" : v.toLocaleString();
   const windowText = W.anchor
@@ -20176,7 +20132,78 @@ function scorecard(){
       ± 是按事件日整天重采样的 95% 半宽。</div></div>
   </div>
 
-  ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
+`;
+}
+
+// Each model's served weight by event day (user 2026-10-05「增加每个模型权重
+// 的趋势图」): the fleet average of every station's newest P0, 0 where unseated.
+function servingWeightTrend(W, summary){
+  const hist = W.history || [];
+  if(!hist.length) return "";
+  const dates = hist.map(d => d.event_date);
+  const marks = ((D.model_accuracy_trend || {}).version_marks || []).filter(mk => mk.stage === "P0")
+    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
+  const series = summary.map(s => ({name: s.label,
+    values: hist.map(d => { const v = (d.mean_by_model || {})[s.label]; return v == null ? 0 : v; })}));
+  // User 2026-10-06「右边空白」: the whole row, on a canvas wide enough that
+  // the version marks and end labels fit at their own size.
+  return `<div style="margin-top:12px">${trendChart({
+    width: 1000, right: 110,
+    title: "各模型实际权重走势（全队平均占比，按事件日）",
+    sub: `每个站当天最新一期 P0 实际用的权重取平均，不在场记 0，六家合计 100%；竖线＝P0 版本切换`,
+    dates, marks, series, fmt: v => (100 * v).toFixed(0) + "%"})}</div>`;
+}
+
+// 融合权重 vs 生产重解, under the weights it checks (user 2026-10-10「融合权重 vs
+// 生产重解不是应该移动到模型权重里去吗？」): the served fusion weights against
+// production's own functions re-solved on the archived evidence.  The rows
+// are the calibration scorecard's (collect_calibration_scorecard).
+function fusionResolve(){
+  const S = D.scorecard || {};
+  const fusionSummary = S.fusion_summary || {};
+  const fusion = (S.fusion_pairs||[]).filter(p => p.distance != null)
+    .slice(0,8).map(p => {
+      const names = Object.keys(p.served||{}).sort();
+      const tone = p.distance <= 0.10 ? "green"
+                 : (p.distance <= 0.25 ? "amber" : "red");
+      return `<tr>
+        <td class="mono">${h(p.station_id)}</td>
+        <td class="mono muted">${h(p.lead_bucket)}</td>
+        <td class="mono muted">${h(p.run_cycle)} · ${h(p.season_bin)}</td>
+        <td class="muted" style="font-size:12px">${h(p.rule)}</td>
+        <td class="mono">${p.max_correlation == null ? "—"
+          : p.max_correlation.toFixed(2)}</td>
+        <td class="mono"><span class="dot ${tone}"></span>
+          ${(p.distance*100).toFixed(1)}%</td>
+        <td class="muted" style="font-size:12px">${names.map(n =>
+          `${h((D.system_labels || {})[n] || n)} ${(p.served[n]*100).toFixed(0)}→${
+           (((p.resolved||{})[n]||0)*100).toFixed(0)}%`).join(" · ")}</td>
+      </tr>`;
+    }).join("");
+  const fusionBasisWords = {capped: "族上限咬住", fallback: "逆误差兜底",
+    non_psd: "相关阵非正定", unsolved: "重解失败"};
+  const fusionApprox = Object.entries(fusionSummary.approximate_by_basis||{})
+    .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
+    .join("、");
+  const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
+  // The conclusion first, the table folded (user 2026-10-10「融合权重 vs 生产重解：
+  // 折叠明细，提炼结论」): the largest exact re-solve distance against the
+  // rows' own 10% / 25% marks decides the word.
+  const fusionExact = (S.fusion_pairs||[]).filter(p => p.distance != null && (p.basis || "exact") === "exact");
+  const fusionShown = Math.min(8, (S.fusion_pairs||[]).filter(p => p.distance != null).length);
+  const fusionWorst = fusionExact.reduce((a, p) => !a || p.distance > a.distance ? p : a, null);
+  const fusionTone = !fusionWorst ? "" : fusionWorst.distance <= 0.10 ? "green" : fusionWorst.distance <= 0.25 ? "amber" : "red";
+  const fusionApproxN = Object.values(fusionSummary.approximate_by_basis||{}).reduce((a, n) => a + n, 0);
+  const fusionCard = (label, value, sub, tone) => `<div class="sd-pnl-c ${tone === "green" ? "up" : tone === "red" ? "down" : ""}"><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
+  const fusionVerdict = `<div class="sd-pnl-g" style="margin-top:8px">
+    ${fusionCard("结论", !fusionWorst ? "—" : fusionTone === "green" ? "一致" : fusionTone === "amber" ? "有偏离" : "对不上",
+      !fusionWorst ? "" : fusionTone === "green" ? "生产权重与存档证据对得上" : "先查数据再查解法", fusionTone)}
+    ${fusionCard("在役权重", `${fusionSummary.served_count ?? "—"} 份`, `精确重解 ${fusionSummary.exact_count ?? "—"} 份`)}
+    ${fusionCard("最大偏离", fusionWorst ? fusionPct(fusionWorst.distance) : "—",
+      fusionWorst ? `${h(fusionWorst.station_id)} ${h(fusionWorst.lead_bucket)} ${h(fusionWorst.run_cycle)}` : "", fusionTone)}
+    ${fusionApproxN ? fusionCard("近似重解", `${fusionApproxN} 份`, `中位 ${fusionPct(fusionSummary.approximate_median_distance)} · 最大 ${fusionPct(fusionSummary.approximate_max_distance)}`) : ""}
+  </div>`;
+  return fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
   ${fusionVerdict}
   <details class="sd-older" style="margin-top:8px"><summary class="muted">明细：规则说明与偏离最大的 ${fusionShown} 份</summary>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
@@ -20197,26 +20224,7 @@ function scorecard(){
     最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
     兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
     相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>
-  </details>` : ""}`;
-}
-
-// Each model's served weight by event day (user 2026-10-05「增加每个模型权重
-// 的趋势图」): the fleet average of every station's newest P0, 0 where unseated.
-function servingWeightTrend(W, summary){
-  const hist = W.history || [];
-  if(!hist.length) return "";
-  const dates = hist.map(d => d.event_date);
-  const marks = ((D.model_accuracy_trend || {}).version_marks || []).filter(mk => mk.stage === "P0")
-    .map(mk => ({date: String(mk.at).slice(0, 10), label: mk.label}));
-  const series = summary.map(s => ({name: s.label,
-    values: hist.map(d => { const v = (d.mean_by_model || {})[s.label]; return v == null ? 0 : v; })}));
-  // User 2026-10-06「右边空白」: the whole row, on a canvas wide enough that
-  // the version marks and end labels fit at their own size.
-  return `<div style="margin-top:12px">${trendChart({
-    width: 1000, right: 110,
-    title: "各模型实际权重走势（全队平均占比，按事件日）",
-    sub: `每个站当天最新一期 P0 实际用的权重取平均，不在场记 0，六家合计 100%；竖线＝P0 版本切换`,
-    dates, marks, series, fmt: v => (100 * v).toFixed(0) + "%"})}</div>`;
+  </details>` : "";
 }
 
 function servingWeights(){
@@ -20300,7 +20308,8 @@ function servingWeights(){
       ${modelCols.map(label => `<th>${h(label)}</th>`).join("")}
       <th>候选→当选</th><th>窗至</th>
     </tr></thead><tbody>${detailBody}</tbody></table>
-  </details>`;
+  </details>
+  ${fusionResolve()}`;
 }
 
 
@@ -20796,7 +20805,7 @@ function modelAccuracyBoard(){
       中心/宽度四张读 P0 的前瞻预测（总检同一份样本），其余读服务出去的分布（真值离均值同一份样本）。${
       thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>：${h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
       thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></div>
-  ${scoreBody ? `<details class="note diag" open><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT、融合重解、上一版）</summary>${scoreBody}</details>` : ""}
+  ${scoreBody ? `<details class="note diag" open><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT）</summary>${scoreBody}</details>` : ""}
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
@@ -23301,11 +23310,10 @@ const GROUPS = [
       sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
         [hitRate,"模型命中率"],[h5Readiness,"H5 半衰期"]]},
      {box:`② 融合层：${famJia()}怎么合成一条`, kind:"live",
-      note:"按权重合成；权重看在用的配比和权重表是否按时换代，离散度看几家分歧多大",
-      sections:[[servingWeights,"模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
-     {box:"②′ 融合权重：宪章 199 在服务、前向记账与研究候选", kind:"live",
-      note:"09-24 起服务融合权重；前向记账在同批已结算站日上比融合与它取代的席位权重（桶 Brier、LogScore 带区间），下面列切换后试过的全部融合层候选",
-      sections:[[fusionCandidates,"融合权重候选"]]},
+      note:"按权重合成；权重看在用的配比、重解是否对得上、宪章 199 的前向记账与候选，权重表是否按时换代，离散度看几家分歧多大",
+      // 融合权重候选 joined the weights it is about (user 2026-10-10「融合权重：宪章 199
+      // 在服务、前向记账与研究候选也是应该移动到模型权重板块去吧」); box ②′ is gone.
+      sections:[[servingWeights,"模型权重"],[fusionCandidates,"融合权重候选"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
