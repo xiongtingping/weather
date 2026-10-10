@@ -17771,8 +17771,7 @@ function dispersion(){
       r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
   </tr>`).join("");
   const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
-  // Folded by default, the heading its toggle (user 2026-10-10「六大模型的离散度：默认折叠」).
-  return `<details class="sec-fold"><summary><h2>${famBig()}的离散度：衡量模型间分歧，作为服务分布宽度的依据</h2></summary>
+  return `<h2>${famBig()}的离散度：衡量模型间分歧，作为服务分布宽度的依据</h2>
   <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
   不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
   统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
@@ -17793,7 +17792,7 @@ function dispersion(){
     `<b>${bare.join("、")}</b> 在本窗口内一个可比 run 都没有：
      它现存的校正表是按旧的 d0/d1/d2 口径、且挂在聚合 cycle 上拟合的，
      和它今天每一次 native 采集所带的 run cycle 对不上，因此右侧四列为空。`
-    : ""}</div></details>`;
+    : ""}</div>`;
 }
 
 // The per-model rows are folded under the cards (user 2026-10-10「六大模型的命中率：
@@ -19973,8 +19972,7 @@ const VERDICT_WORD = {green:"良好", amber:"注意", red:"有问题", muted:"�
 function scorecard(){
   const S = D.scorecard || {};
   if(!S.available) return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
-    <p class="sub">本版还没有已结算的预测可以评分（版本切换后从零攒起，旧数据没删，见下方上一版）。</p>
-    ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
+    <p class="sub">本版还没有已结算的预测可以评分（版本切换后从零攒起）。</p>`;
   const cards = (S.layers||[]).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${L.health}"></span><b>${h(L.name)}</b>
@@ -20095,6 +20093,23 @@ function scorecard(){
     .map(([basis, count]) => `${fusionBasisWords[basis]||basis} ${count}`)
     .join("、");
   const fusionPct = v => v == null ? "—" : (v*100).toFixed(1) + "%";
+  // The conclusion first, the table folded (user 2026-10-10「融合权重 vs 生产重解：
+  // 折叠明细，提炼结论」): the largest exact re-solve distance against the
+  // rows' own 10% / 25% marks decides the word.
+  const fusionExact = (S.fusion_pairs||[]).filter(p => p.distance != null && (p.basis || "exact") === "exact");
+  const fusionShown = Math.min(8, (S.fusion_pairs||[]).filter(p => p.distance != null).length);
+  const fusionWorst = fusionExact.reduce((a, p) => !a || p.distance > a.distance ? p : a, null);
+  const fusionTone = !fusionWorst ? "" : fusionWorst.distance <= 0.10 ? "green" : fusionWorst.distance <= 0.25 ? "amber" : "red";
+  const fusionApproxN = Object.values(fusionSummary.approximate_by_basis||{}).reduce((a, n) => a + n, 0);
+  const fusionCard = (label, value, sub, tone) => `<div class="sd-pnl-c ${tone === "green" ? "up" : tone === "red" ? "down" : ""}"><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
+  const fusionVerdict = `<div class="sd-pnl-g" style="margin-top:8px">
+    ${fusionCard("结论", !fusionWorst ? "—" : fusionTone === "green" ? "一致" : fusionTone === "amber" ? "有偏离" : "对不上",
+      !fusionWorst ? "" : fusionTone === "green" ? "生产权重与存档证据对得上" : "先查数据再查解法", fusionTone)}
+    ${fusionCard("在役权重", `${fusionSummary.served_count ?? "—"} 份`, `精确重解 ${fusionSummary.exact_count ?? "—"} 份`)}
+    ${fusionCard("最大偏离", fusionWorst ? fusionPct(fusionWorst.distance) : "—",
+      fusionWorst ? `${h(fusionWorst.station_id)} ${h(fusionWorst.lead_bucket)} ${h(fusionWorst.run_cycle)}` : "", fusionTone)}
+    ${fusionApproxN ? fusionCard("近似重解", `${fusionApproxN} 份`, `中位 ${fusionPct(fusionSummary.approximate_median_distance)} · 最大 ${fusionPct(fusionSummary.approximate_max_distance)}`) : ""}
+  </div>`;
 
   const W = S.window || {};
   const count = v => v == null ? "—" : v.toLocaleString();
@@ -20161,6 +20176,8 @@ function scorecard(){
   </div>
 
   ${fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
+  ${fusionVerdict}
+  <details class="sd-older" style="margin-top:8px"><summary class="muted">明细：规则说明与偏离最大的 ${fusionShown} 份</summary>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
   先按训练残差的收缩协方差求最小方差权重，共享训练日不足 12 天时落回逆误差兜底；
   再把结果向「按族均分」收缩一半（κ=0.5）。八月的竞赛件在过期前仍按最小方差服务。
@@ -20178,8 +20195,8 @@ function scorecard(){
     （中位差 ${fusionPct(fusionSummary.approximate_median_distance)}、
     最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
     兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
-    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>` : ""}
-  ${typeof scorecardPrevious === "function" ? scorecardPrevious() : ""}`;
+    相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>
+  </details>` : ""}`;
 }
 
 // Each model's served weight by event day (user 2026-10-05「增加每个模型权重
@@ -21018,16 +21035,6 @@ function fusionCandidates(){
       门槛吃单实现 ROI ${span(rois, v => pctS(v, 0))}（自报 ${span(claimed, v => pctS(v, 0))}，便宜的尾部桶被系统性高估）${kellyAllNeg ? "，¼ Kelly 组合全部是负增长" : ""}。换权重只能「少亏」，翻不了符号。</li>` : ""}
     ${P ? `<li>要在全新日子上把 NLL 这么小的改善（${P.effect_nll.toFixed(4)} nat）确认出来（两个标准误、80% 把握），按本研究的日间波动约需 <b>${P.days_needed} 个事件日</b>的新数据。</li>` : ""}
   </ul></div></details>`;
-}
-
-// The version before the served one, layer by layer (user, 2026-09-18: 显示，做对比).
-function scorecardPrevious(){
-  const P = D.scorecard_previous || {}, W = (D.previous_version_windows || {}).P0 || null;
-  if(!P.available) return "";
-  const rows = (P.layers || []).map(L => `<tr><td><span class="dot ${L.health}"></span> ${h(L.name)}</td>
-    <td>${h(L.verdict)}</td><td class="muted">${h(L.detail)}</td></tr>`).join("");
-  return `<details class="note" open><summary>上一版 ${vShort(W && W.version)} 的六层读数（${whenZ(W && W.since)} → ${whenZ(W && W.until)} · ${P.event_day_count} 个事件日 · ${(P.station_day_count || 0).toLocaleString()} 个站日）</summary>
-    <div class="scroll"><table><thead><tr><th>层</th><th>结论</th><th>读数</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
 function landingPrevious(){
@@ -23461,6 +23468,17 @@ const laneStrip = (name) => {
       h(L.note || LANE_NOTE[L.status] || "")}</span></span></div>`;
 };
 const STARRED = new Set(["宪章 EV 恒等式"]);
+// Sections folded by default, the heading (and its staleness note) the toggle
+// (user 2026-10-10「六大模型的离散度：默认折叠」「逐站校准排序：默认折叠」
+// 「单系统宽度校准：默认折叠」).
+const FOLDED = new Set(["模型离散度", "逐站校准排序", "单系统宽度校准"]);
+const foldSection = (body, stale) => {
+  const m = /^\s*(<h2[\s\S]*?<\/h2>)/.exec(body);
+  if(!m) return body;
+  let rest = body.slice(m[0].length);
+  if(stale && rest.startsWith(stale)) rest = rest.slice(stale.length);
+  return `<details class="sec-fold"><summary>${m[1]}${stale || ""}</summary>${rest}</details>`;
+};
 // The strip rides INSIDE the section, above its <h2>, and only when the
 // section rendered something: an empty section is guarded out of the page
 // on purpose, and a lane strip would put it back as a chip pointing at
@@ -23514,6 +23532,7 @@ const sec = (fn, name, id) => {
   if(outer) reads.forEach(k => outer.add(k));
   const stale = body && body.trim() ? sectionStaleness(reads) : "";
   if(stale) body = body.replace(/(<\/h2>)/, `$1${stale}`) + (/<\/h2>/.test(body) ? "" : stale);
+  if(FOLDED.has(name) && body && body.trim()) body = foldSection(body, stale);
   const lane = body && body.trim() ? LANES[name] : null;
   return `<section class="sec" id="${id}" data-name="${name}"${
     lane ? ` data-lane="${lane.status}"` : ""}${
