@@ -240,3 +240,89 @@ FILTERS = [
 ]
 for lab, f in FILTERS:
     stats_line(lab, [r for r in R if f(r)])
+
+# ---- capital utilisation: stake schemes on the same base (in-sample 09-22..10-07)
+print('\n-- stake schemes: deployment, ROI, total, locked capital (hold = lead + 12 h)')
+for r, e in zip(R, evs_ft):
+    r['ts'] = e['ts']
+inwin = lambda r: r['unit'] == 'C' and 12 <= r['lead'] <= 48
+SCHEMES = {
+    'S0 current rule (p, C, 12-48h) 5U': lambda r: 5.0 if inwin(r) and pf(r) else 0.0,
+    'S1 current rule 10U': lambda r: 10.0 if inwin(r) and pf(r) else 0.0,
+    'S2 tiers: mom 15 / model&mom-not-against 10 / p 5': lambda r: (15.0 if r.get('mom') == 'agree' else 10.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 5.0 if pf(r) else 0.0) if inwin(r) else 0.0,
+    'S3 tiers, no p tier: mom 15 / model 10': lambda r: (15.0 if r.get('mom') == 'agree' else 10.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 0.0) if inwin(r) else 0.0,
+    'S4 tiers + rest of window 3U': lambda r: (15.0 if r.get('mom') == 'agree' else 10.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 5.0 if pf(r) else 3.0) if inwin(r) else 0.0,
+    'S5 tiers, direction disagreeing skipped': lambda r: (15.0 if r.get('mom') == 'agree' else 10.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 5.0 if (pf(r) and r.get('m4') != 'disagree' and r.get('mom') != 'disagree') else 0.0) if inwin(r) else 0.0,
+}
+days_n = len({r['ed'] for r in R})
+for lab, f in SCHEMES.items():
+    legs = [(r, f(r)) for r in R if f(r) > 0]
+    if not legs:
+        continue
+    staked = sum(s for r, s in legs)
+    prof = sum(s * roi(r) for r, s in legs)
+    h = {hh: (sum(s * roi(r) for r, s in legs if r['half'] == hh), sum(s for r, s in legs if r['half'] == hh)) for hh in ('H1', 'H2')}
+    # locked capital over time
+    evs = []
+    for r, s in legs:
+        evs.append((r['ts'], s)); evs.append((r['ts'] + (r['lead'] + 12) * 3600, -s))
+    evs.sort(); cur = 0.0; peak = 0.0; samples = []
+    for t, d in evs:
+        cur += d; peak = max(peak, cur); samples.append(cur)
+    med = sorted(samples)[len(samples) // 2]
+    daily = collections.defaultdict(float)
+    for r, s in legs: daily[r['ed']] += s * roi(r)
+    worst = min(daily.values())
+    print(f'   {lab:52s} legs {len(legs):4d} ({len(legs)/days_n:4.1f}/day)  staked {staked/days_n:6.1f}U/day  ROI {100*prof/staked:+5.1f}%  H1/H2 {100*h["H1"][0]/max(1,h["H1"][1]):+5.1f}/{100*h["H2"][0]/max(1,h["H2"][1]):+5.1f}%  total {prof:+7.1f}U ({prof/days_n:+5.1f}U/day)  locked median {med:5.0f}U peak {peak:5.0f}U  worst day {worst:+6.1f}U')
+
+# ---- cash-constrained simulation (equity 355 U, legs in time order, skipped when cash is short)
+print('\n-- cash-constrained simulation: start 355 U, fixed tier stakes = multiples of a base b, hold to local day end')
+TIERS = {
+    'current (p only)': lambda r: 1.0 if inwin(r) and pf(r) else 0.0,
+    'three tiers 3:2:1 (mom / model / p)': lambda r: (3.0 if r.get('mom') == 'agree' else 2.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 1.0 if pf(r) else 0.0) if inwin(r) else 0.0,
+    'three tiers, disagreeing skipped': lambda r: (3.0 if r.get('mom') == 'agree' else 2.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 1.0 if (pf(r) and r.get('m4') != 'disagree' and r.get('mom') != 'disagree') else 0.0) if inwin(r) else 0.0,
+    'two tiers 3:2 (mom / model)': lambda r: (3.0 if r.get('mom') == 'agree' else 2.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 0.0) if inwin(r) else 0.0,
+    'four tiers 3:2:1:0.5 (+ rest of window)': lambda r: (3.0 if r.get('mom') == 'agree' else 2.0 if (r.get('m4') == 'agree' and r.get('mom') != 'disagree') else 1.0 if pf(r) else 0.5) if inwin(r) else 0.0,
+}
+EQ0 = 355.0
+legs_all = sorted((r for r in R if inwin(r)), key=lambda r: r['ts'])
+t_start = legs_all[0]['ts']; t_end = max(r['ts'] + (r['lead'] + 12) * 3600 for r in legs_all)
+def simulate(weight, b):
+    cash = EQ0; open_pos = []; prof = 0.0; taken = skipped = 0; util_area = 0.0; last_t = t_start; locked = 0.0
+    ph = {'H1': 0.0, 'H2': 0.0}
+    for r in legs_all:
+        w = weight(r)
+        if w <= 0: continue
+        t = r['ts']
+        # settle positions ending before t
+        open_pos.sort()
+        while open_pos and open_pos[0][0] <= t:
+            te, s, pay = open_pos.pop(0)
+            util_area += locked * (te - last_t); last_t = te
+            locked -= s; cash += pay
+        util_area += locked * (t - last_t); last_t = t
+        s = w * b
+        if cash >= s:
+            cash -= s; locked += s; taken += 1
+            pay = s * (1 + roi(r)); prof += pay - s; ph[r['half']] += pay - s
+            open_pos.append((t + (r['lead'] + 12) * 3600, s, pay))
+        else:
+            skipped += 1
+    open_pos.sort()
+    for te, s, pay in open_pos:
+        util_area += locked * (te - last_t); last_t = te; locked -= s
+    util = util_area / ((last_t - t_start) * EQ0)
+    return prof, util, taken, skipped, ph
+best = []
+for lab, w in TIERS.items():
+    rows_out = []
+    for b in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
+        prof, util, taken, skipped, ph = simulate(w, b)
+        rows_out.append((prof, b, util, taken, skipped, ph))
+    top = max(rows_out)
+    print(f'   {lab:42s}')
+    for prof, b, util, taken, skipped, ph in rows_out:
+        mark = ' <- best' if (prof, b) == top[:2] else ''
+        print(f'      base {b:4.1f}U: profit {prof:+7.1f}U ({prof/days_n:+5.1f}/day)  H1/H2 {ph["H1"]:+6.1f}/{ph["H2"]:+6.1f}  utilisation {100*util:4.0f}%  legs taken {taken:4d} skipped {skipped:4d}{mark}')
+    best.append((top[0], lab, top[1], top[2]))
+print('   best per scheme:', [(lab, b, round(p, 1), f'{100*u:.0f}%') for p, lab, b, u in sorted(best, reverse=True)])

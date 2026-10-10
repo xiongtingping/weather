@@ -107,3 +107,69 @@ events with a mid 10 min after the first fill: 3648
    model agrees + p + C + >=12h                         n=  80  +15.0c/share  ROI +33.8% [ -3.2,+72.8]  H1/H2 +79.2/ +8.1%  total@5U  +135.4U  days+ 9/15
    model agrees and momentum not against                n= 496   +5.9c/share  ROI +16.6% [ +0.0,+33.8]  H1/H2 +10.8/+20.3%  total@5U  +412.4U  days+ 10/15
    model agrees, momentum not against, C, >=12h         n= 274  +11.3c/share  ROI +31.9% [+10.1,+53.4]  H1/H2 +35.6/+30.2%  total@5U  +436.5U  days+ 11/15
+
+-- stake schemes: deployment, ROI, total, locked capital (hold = lead + 12 h)
+   S0 current rule (p, C, 12-48h) 5U                    legs  577 (38.5/day)  staked  192.3U/day  ROI +12.7%  H1/H2 +13.1/+12.5%  total  +367.1U (+24.5U/day)  locked median   340U peak   575U  worst day  -64.9U
+   S1 current rule 10U                                  legs  577 (38.5/day)  staked  384.7U/day  ROI +12.7%  H1/H2 +13.1/+12.5%  total  +734.2U (+48.9U/day)  locked median   680U peak  1150U  worst day -129.8U
+   S2 tiers: mom 15 / model&mom-not-against 10 / p 5    legs  782 (52.1/day)  staked  414.3U/day  ROI +20.2%  H1/H2 +20.7/+20.0%  total +1257.1U (+83.8U/day)  locked median   745U peak  1395U  worst day -147.5U
+   S3 tiers, no p tier: mom 15 / model 10               legs  281 (18.7/day)  staked  247.3U/day  ROI +27.2%  H1/H2 +35.5/+24.1%  total +1009.4U (+67.3U/day)  locked median   515U peak   965U  worst day -109.0U
+   S4 tiers + rest of window 3U                         legs 1761 (117.4/day)  staked  610.1U/day  ROI +16.0%  H1/H2 +14.7/+16.7%  total +1464.7U (+97.6U/day)  locked median  1065U peak  1998U  worst day -170.6U
+   S5 tiers, direction disagreeing skipped              legs  729 (48.6/day)  staked  396.7U/day  ROI +21.1%  H1/H2 +20.2/+21.5%  total +1253.0U (+83.5U/day)  locked median   720U peak  1365U  worst day -145.9U
+
+-- cash-constrained simulation: start 355 U, fixed tier stakes = multiples of a base b, hold to local day end
+   current (p only)                          
+      base  1.0U: profit   +73.4U ( +4.9/day)  H1/H2  +31.0/ +42.4  utilisation   16%  legs taken  577 skipped    0
+      base  1.5U: profit  +110.1U ( +7.3/day)  H1/H2  +46.6/ +63.6  utilisation   24%  legs taken  577 skipped    0
+      base  2.0U: profit  +146.8U ( +9.8/day)  H1/H2  +62.1/ +84.7  utilisation   33%  legs taken  577 skipped    0
+      base  2.5U: profit  +183.5U (+12.2/day)  H1/H2  +77.6/+105.9  utilisation   41%  legs taken  577 skipped    0
+      base  3.0U: profit  +220.2U (+14.7/day)  H1/H2  +93.1/+127.1  utilisation   49%  legs taken  577 skipped    0
+      base  4.0U: profit  +267.9U (+17.9/day)  H1/H2  +98.4/+169.5  utilisation   62%  legs taken  550 skipped   27
+      base  5.0U: profit  +355.6U (+23.7/day)  H1/H2 +143.8/+211.9  utilisation   75%  legs taken  532 skipped   45
+      base  6.0U: profit  +411.3U (+27.4/day)  H1/H2 +135.7/+275.7  utilisation   84%  legs taken  496 skipped   81
+      base  8.0U: profit  +383.8U (+25.6/day)  H1/H2 +167.4/+216.4  utilisation   93%  legs taken  401 skipped  176
+      base 10.0U: profit  +428.4U (+28.6/day)  H1/H2 +172.0/+256.3  utilisation   99%  legs taken  337 skipped  240 <- best
+   three tiers 3:2:1 (mom / model / p)       
+      base  1.0U: profit  +251.4U (+16.8/day)  H1/H2  +86.4/+165.0  utilisation   34%  legs taken  782 skipped    0
+      base  1.5U: profit  +377.1U (+25.1/day)  H1/H2 +129.6/+247.5  utilisation   52%  legs taken  782 skipped    0
+      base  2.0U: profit  +439.8U (+29.3/day)  H1/H2 +109.8/+330.0  utilisation   66%  legs taken  753 skipped   29
+      base  2.5U: profit  +547.7U (+36.5/day)  H1/H2 +100.7/+447.0  utilisation   77%  legs taken  694 skipped   88
+      base  3.0U: profit  +727.9U (+48.5/day)  H1/H2 +161.5/+566.4  utilisation   90%  legs taken  675 skipped  107
+      base  4.0U: profit  +684.3U (+45.6/day)  H1/H2 +213.9/+470.5  utilisation  103%  legs taken  584 skipped  198
+      base  5.0U: profit  +865.8U (+57.7/day)  H1/H2 +300.9/+565.0  utilisation  118%  legs taken  531 skipped  251 <- best
+      base  6.0U: profit  +554.5U (+37.0/day)  H1/H2 +254.1/+300.4  utilisation  110%  legs taken  407 skipped  375
+      base  8.0U: profit  +790.8U (+52.7/day)  H1/H2 +193.8/+597.0  utilisation  116%  legs taken  316 skipped  466
+      base 10.0U: profit  +341.1U (+22.7/day)  H1/H2  -95.8/+436.9  utilisation   66%  legs taken  133 skipped  649
+   three tiers, disagreeing skipped          
+      base  1.0U: profit  +250.6U (+16.7/day)  H1/H2  +79.2/+171.4  utilisation   33%  legs taken  729 skipped    0
+      base  1.5U: profit  +375.9U (+25.1/day)  H1/H2 +118.7/+257.2  utilisation   49%  legs taken  729 skipped    0
+      base  2.0U: profit  +471.2U (+31.4/day)  H1/H2 +128.4/+342.9  utilisation   64%  legs taken  707 skipped   22
+      base  2.5U: profit  +544.9U (+36.3/day)  H1/H2  +78.7/+466.2  utilisation   75%  legs taken  653 skipped   76
+      base  3.0U: profit  +707.5U (+47.2/day)  H1/H2 +131.2/+576.4  utilisation   86%  legs taken  630 skipped   99
+      base  4.0U: profit  +726.7U (+48.4/day)  H1/H2 +191.6/+535.1  utilisation  100%  legs taken  548 skipped  181
+      base  5.0U: profit  +933.1U (+62.2/day)  H1/H2 +298.9/+634.2  utilisation  118%  legs taken  517 skipped  212 <- best
+      base  6.0U: profit  +790.7U (+52.7/day)  H1/H2 +299.6/+491.0  utilisation  117%  legs taken  420 skipped  309
+      base  8.0U: profit  +852.9U (+56.9/day)  H1/H2 +200.4/+652.5  utilisation  118%  legs taken  314 skipped  415
+      base 10.0U: profit  +645.3U (+43.0/day)  H1/H2  +37.2/+608.1  utilisation   88%  legs taken  186 skipped  543
+   two tiers 3:2 (mom / model)               
+      base  1.0U: profit  +201.9U (+13.5/day)  H1/H2  +72.5/+129.4  utilisation   20%  legs taken  281 skipped    0
+      base  1.5U: profit  +302.8U (+20.2/day)  H1/H2 +108.7/+194.1  utilisation   30%  legs taken  281 skipped    0
+      base  2.0U: profit  +403.8U (+26.9/day)  H1/H2 +145.0/+258.8  utilisation   40%  legs taken  281 skipped    0
+      base  2.5U: profit  +504.7U (+33.6/day)  H1/H2 +181.2/+323.5  utilisation   50%  legs taken  281 skipped    0
+      base  3.0U: profit  +605.6U (+40.4/day)  H1/H2 +217.5/+388.2  utilisation   60%  legs taken  281 skipped    0
+      base  4.0U: profit  +669.5U (+44.6/day)  H1/H2  +99.1/+570.3  utilisation   71%  legs taken  243 skipped   38
+      base  5.0U: profit  +430.1U (+28.7/day)  H1/H2   +9.0/+421.1  utilisation   65%  legs taken  174 skipped  107
+      base  6.0U: profit  +587.3U (+39.2/day)  H1/H2  +73.3/+514.0  utilisation   76%  legs taken  165 skipped  116
+      base  8.0U: profit  +903.0U (+60.2/day)  H1/H2 +217.8/+685.3  utilisation   97%  legs taken  160 skipped  121 <- best
+      base 10.0U: profit  +888.2U (+59.2/day)  H1/H2 +275.2/+612.9  utilisation  104%  legs taken  137 skipped  144
+   four tiers 3:2:1:0.5 (+ rest of window)   
+      base  1.0U: profit  +286.0U (+19.1/day)  H1/H2  +94.8/+191.2  utilisation   49%  legs taken 1761 skipped    0
+      base  1.5U: profit  +345.3U (+23.0/day)  H1/H2  +70.1/+275.2  utilisation   69%  legs taken 1637 skipped  124
+      base  2.0U: profit  +524.0U (+34.9/day)  H1/H2 +119.0/+405.0  utilisation   85%  legs taken 1511 skipped  250
+      base  2.5U: profit  +626.4U (+41.8/day)  H1/H2 +138.5/+487.9  utilisation   97%  legs taken 1377 skipped  384
+      base  3.0U: profit  +576.1U (+38.4/day)  H1/H2 +197.7/+378.4  utilisation  104%  legs taken 1224 skipped  537
+      base  4.0U: profit  +450.7U (+30.0/day)  H1/H2 +203.5/+247.2  utilisation  109%  legs taken  951 skipped  810
+      base  5.0U: profit  +591.0U (+39.4/day)  H1/H2 +194.8/+396.2  utilisation  116%  legs taken  813 skipped  948
+      base  6.0U: profit  +594.6U (+39.6/day)  H1/H2  +96.8/+497.7  utilisation  100%  legs taken  595 skipped 1166
+      base  8.0U: profit  +458.5U (+30.6/day)  H1/H2  +26.4/+432.0  utilisation   91%  legs taken  392 skipped 1369
+      base 10.0U: profit  +664.6U (+44.3/day)  H1/H2 +123.7/+540.9  utilisation  111%  legs taken  383 skipped 1378 <- best
+   best per scheme: [('three tiers, disagreeing skipped', 5, 933.1, '118%'), ('two tiers 3:2 (mom / model)', 8, 903.0, '97%'), ('three tiers 3:2:1 (mom / model / p)', 5, 865.8, '118%'), ('four tiers 3:2:1:0.5 (+ rest of window)', 10, 664.6, '111%'), ('current (p only)', 10, 428.4, '99%')]
