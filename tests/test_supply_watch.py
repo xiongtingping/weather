@@ -41,14 +41,15 @@ def conn(tmp_path: Path) -> sqlite3.Connection:
 
 
 def _bridge(conn: sqlite3.Connection, station: str, event_date: str, *,
-            stage: str, fresh_until: datetime, decision_at: datetime | None = None) -> None:
+            stage: str, fresh_until: datetime, decision_at: datetime | None = None,
+            zone: str = "UTC") -> None:
     decision_at = decision_at or fresh_until - timedelta(hours=6)
     conn.execute(
         "INSERT OR REPLACE INTO basket_probability_bridge_latest("
         "station_id,event_date,settlement_timezone,history_id,stage,checkpoint_id,"
         "decision_at_utc,fresh_until_utc,envelope_content_sha256,projection_sha256,"
         "content_sha256,updated_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (station, event_date, "UTC", f"h-{station}-{event_date}", stage, "c",
+        (station, event_date, zone, f"h-{station}-{event_date}", stage, "c",
          _iso(decision_at), _iso(fresh_until), "a" * 64, "b" * 64, "c" * 64,
          _iso(decision_at)),
     )
@@ -140,6 +141,34 @@ def test_the_event_day_belongs_to_p1_and_is_not_judged(conn) -> None:
     out = sw.evaluate(now=NOW, conn=conn, listed=_listed(today), egress=None)
 
     assert out["p0_supply"] == [] and out["overall"] == "green"
+
+
+def test_stations_already_inside_their_local_event_day_are_out_of_the_light(conn) -> None:
+    # 2026-10-09 23Z: D+1 by the UTC date, but everything east of UTC was
+    # already serving P1 for it -- the light read "16/48 fresh" every night.
+    eve = datetime(2026, 9, 22, 23, 30, tzinfo=timezone.utc)
+    east = [f"E{i:02d}" for i in range(6)]
+    west = [f"W{i:02d}" for i in range(12)]
+    for station in east:
+        _bridge(conn, station, D1, stage="P1", zone="Asia/Shanghai",
+                fresh_until=eve + timedelta(hours=1))
+    for station in west:
+        _bridge(conn, station, D1, stage="P0-M", zone="America/Chicago",
+                fresh_until=eve + timedelta(hours=4))
+
+    out = sw.evaluate(now=eve, conn=conn, listed={D1: {*east, *west}}, egress=None)
+
+    assert out["overall"] == "green"
+    [day] = out["p0_supply"]
+    assert (day["listed"], day["in_event_day"], day["fresh"]) == (12, 6, 12)
+
+    # The stations still before their day keep the outage light.
+    for station in west:
+        _bridge(conn, station, D1, stage="P0-M", zone="America/Chicago",
+                fresh_until=eve - timedelta(minutes=5))
+    out = sw.evaluate(now=eve, conn=conn, listed={D1: {*east, *west}}, egress=None)
+    assert out["overall"] == "red"
+    assert out["p0_supply"][0]["verdict"] == "fleet_expired"
 
 
 def test_a_small_early_listing_is_not_a_fleet(conn) -> None:

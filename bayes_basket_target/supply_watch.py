@@ -42,9 +42,10 @@ import json
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -203,7 +204,8 @@ def listed_scopes(
 
 
 BRIDGE_ROWS_SQL = (
-    "SELECT station_id, stage, decision_at_utc, fresh_until_utc "
+    "SELECT station_id, stage, decision_at_utc, fresh_until_utc, "
+    "settlement_timezone "
     "FROM basket_probability_bridge_latest "
     "WHERE station_id IN ({placeholders}) AND event_date=?"
 )
@@ -213,6 +215,14 @@ def bridge_rows_query(station_count: int) -> str:
     return BRIDGE_ROWS_SQL.format(
         placeholders=",".join("?" for _ in range(max(1, station_count)))
     )
+
+
+def _local_day_started(day: date, zone_name: Any, now: datetime) -> bool:
+    try:
+        zone = ZoneInfo(str(zone_name or ""))
+    except (ValueError, ZoneInfoNotFoundError):
+        return False
+    return datetime.combine(day, dt_time(0), tzinfo=zone) <= now
 
 
 def p0_supply(
@@ -238,6 +248,18 @@ def p0_supply(
         rows = conn.execute(
             bridge_rows_query(len(stations)), [*stations, event_date]
         ).fetchall()
+        # "D+1" is a UTC date, but a station's day starts at its own local
+        # midnight.  By 22Z on the eve, 31 of 48 stations are already inside
+        # their event day and serve P1 -- counted here, they read as "P0 not
+        # fresh" and turned the date amber every night (2026-10-09 23Z:
+        # "16/48 fresh", the 16 being exactly the stations west of UTC).
+        # Those stations are out of this light, not stale in it; a station
+        # with no bridge row has no zone to judge by and stays in.
+        started = {
+            str(r[0]) for r in rows if _local_day_started(day, r[4], now)
+        }
+        stations = [s for s in stations if s not in started]
+        rows = [r for r in rows if str(r[0]) not in started]
         stage_rows = [r for r in rows if str(r[1]) in P0_STAGES]
         until = [(r, parse_utc(r[3])) for r in stage_rows]
         fresh = [r for r, moment in until if moment is not None and moment > now]
@@ -271,6 +293,7 @@ def p0_supply(
             "event_date": event_date,
             "lead_days": lead_days,
             "listed": listed_count,
+            "in_event_day": len(started),
             "with_p0_row": len({str(r[0]) for r in stage_rows}),
             "fresh": fresh_count,
             "newest_fresh_until_utc": _utc_iso(newest_until) if newest_until else None,
