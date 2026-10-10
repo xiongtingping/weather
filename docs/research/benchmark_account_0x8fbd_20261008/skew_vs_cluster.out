@@ -1,0 +1,16 @@
+off-mode first takers: 1437
+   all                                            n=1437  their side = our skew's side 0.479   = market lean's side 0.504
+   our vector skewed |lean| >= 0.25               n= 857  their side = our skew's side 0.473   = market lean's side 0.480
+   our vector skewed |lean| >= 0.40               n= 506  their side = our skew's side 0.455   = market lean's side 0.453
+   our vector near symmetric |lean| < 0.10        n= 238  their side = our skew's side 0.521   = market lean's side 0.538
+   our skew and market lean point opposite ways   n= 401  their side = our skew's side 0.456   = market lean's side 0.544
+   stage P0                                       n= 303  their side = our skew's side 0.429   = market lean's side 0.479
+   stage P0-M                                     n= 772  their side = our skew's side 0.499   = market lean's side 0.516
+   stage P1                                       n= 362  their side = our skew's side 0.481   = market lean's side 0.500
+
+-- their direction skill (truth off the mode, settled): right side share
+   all                                            n= 596  they are right 0.633   our skew alone right 0.594
+   our skew agrees with them                      n= 281  they are right 0.740   our skew alone right 0.740
+   our skew disagrees with them                   n= 315  they are right 0.537   our skew alone right 0.463
+   skewed |lean|>=0.25 and agrees                 n= 179  they are right 0.760   our skew alone right 0.760
+   skewed |lean|>=0.25 and disagrees              n= 178  they are right 0.494   our skew alone right 0.506
