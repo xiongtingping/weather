@@ -19795,7 +19795,10 @@ function scorecard(){
   const S = D.scorecard || {};
   if(!S.available) return `<h2>模型校准总检：检查概率模型六层是否各自达标</h2>
     <p class="sub">本版还没有已结算的预测可以评分（版本切换后从零攒起）。</p>`;
-  const cards = (S.layers||[]).map(L => `<div class="card">
+  // 点预测 / 概率预测 / 校准 / 分布锐度 are the diagnosis tiles above (with the
+  // previous version beside them); only the two they do not carry stay here.
+  const ABOVE = new Set(["point", "probability", "calibration", "sharpness"]);
+  const cards = (S.layers||[]).filter(L => !ABOVE.has(L.key)).map(L => `<div class="card">
     <div style="display:flex;align-items:center;gap:8px">
       <span class="dot ${L.health}"></span><b>${h(L.name)}</b>
       <span style="flex:1"></span>
@@ -20475,6 +20478,9 @@ function modelAccuracyBoard(){
   const T = D.model_accuracy_trend || {}, W = (D.previous_version_windows || {}).P0 || null;
   const m = S.metrics || {}, pm = P.metrics || {};
   const health = k => ((S.layers || []).find(l => l.key === k) || {}).health || "muted";
+  // The layer's own sentence rides the tile's hover: the six-layer cards below
+  // no longer repeat these four (user 2026-10-10「这两个有重复吧」).
+  const layerWord = k => { const L = (S.layers || []).find(l => l.key === k) || {}; return [L.name, L.verdict, L.detail].filter(Boolean).join("：\n"); };
   // A version a few hours old has one or two settled cells; a percentage
   // off them reads as a verdict, so below the floor the tile says so.
   const COVER_MIN_CELLS = 30;
@@ -20483,15 +20489,15 @@ function modelAccuracyBoard(){
   const covPrev = landingCover(D.center_landing_previous, "P0");
   const tiles = [
     {label: "中心偏差", q: "真值 − 预测，越接近 0 越好", cur: m.bias_c, prev: pm.bias_c,
-     fmt: signedC, ideal: 0, health: health("point")},
+     fmt: signedC, ideal: 0, health: health("point"), why: layerWord("point")},
     {label: "平均误差", q: "越小越准", cur: m.mae_c, prev: pm.mae_c,
-     fmt: v => v == null ? "—" : v.toFixed(2) + "°C", better: "lower", health: health("point")},
+     fmt: v => v == null ? "—" : v.toFixed(2) + "°C", better: "lower", health: health("point"), why: layerWord("point")},
     {label: "CRPS 比平分布好", q: "概率整体准不准，越高越好", cur: m.crps_skill, prev: pm.crps_skill,
-     fmt: v => pctS(v), better: "higher", health: health("probability")},
+     fmt: v => pctS(v), better: "higher", health: health("probability"), why: layerWord("probability")},
     {label: "宽度 ÷ 实际误差", q: "1 最好；>1 太宽，<1 太窄", cur: m.spread_skill, prev: pm.spread_skill,
-     fmt: v => v == null ? "—" : v.toFixed(2), ideal: 1, health: health("sharpness")},
+     fmt: v => v == null ? "—" : v.toFixed(2), ideal: 1, health: health("sharpness"), why: layerWord("sharpness")},
     {label: "校准：最差分箱偏离", q: "说 70% 是不是真 70%，越小越好", cur: m.conditional_gap, prev: pm.conditional_gap,
-     fmt: v => pctS(v, 1), better: "lower", health: health("calibration")},
+     fmt: v => pctS(v, 1), better: "lower", health: health("calibration"), why: layerWord("calibration")},
     {label: "席位窗覆盖（P0）", q: "实际盖住 − 声称，接近 0 最诚实",
      cur: covNow ? covNow.cover - covNow.claim : null, prev: covPrev ? covPrev.cover - covPrev.claim : null,
      fmt: v => v == null ? "—" : (v > 0 ? "+" : "") + (100 * v).toFixed(0) + " 点", ideal: 0,
@@ -20509,7 +20515,7 @@ function modelAccuracyBoard(){
   const kpis = tiles.map(t => {
     const [cls, word] = verdictOf(t);
     const accumulating = S.accumulating && t.cur != null;
-    return `<div class="card kpi">
+    return `<div class="card kpi"${t.why ? ` title="${h(t.why)}"` : ""}>
       <div class="kpi-l"><span class="dot ${t.cur == null ? "muted" : t.health}"></span>${h(t.label)}</div>
       <div class="kpi-v">${t.cur == null ? `<span class="muted" style="font-size:15px">${h(t.empty || "本版还没有已结算样本")}</span>` : h(t.fmt(t.cur))}</div>
       <div class="muted kpi-q">${h(t.q)}${t.extra ? " · " + h(t.extra) : ""}</div>
@@ -20626,7 +20632,7 @@ function modelAccuracyBoard(){
       中心/宽度四张读 P0 的前瞻预测（总检同一份样本），其余读服务出去的分布（真值离均值同一份样本）。${
       thinF.length || thinLand.length ? `<br><b>还在结算中的日子不画</b>：${h(thinF.concat(thinLand).join("、"))}；样本到平时一半后自动画上。` : ""}${
       thinHead ? `窗口开头 ${thinHead} 个日子只截到一部分决策，同样不画。` : ""}</p></div>
-  ${scoreBody ? `<details class="note diag" open><summary>六层总检：每一层各自达标没有（诊断，含按提前量、PIT）</summary>${scoreBody}</details>` : ""}
+  ${scoreBody ? `<details class="note diag" open><summary>更多诊断：模型融合、稳定性、按提前量、PIT 与覆盖</summary>${scoreBody}</details>` : ""}
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
