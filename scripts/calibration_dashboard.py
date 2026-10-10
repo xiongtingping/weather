@@ -15839,6 +15839,11 @@ font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",s
 .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 72px}
 h1{font-size:23px;margin:0 0 4px}
 h2{font-size:16px;margin:22px 0 4px;display:flex;align-items:center;gap:8px}
+/* A section folded by default: its heading is the toggle. */
+details.sec-fold>summary{cursor:pointer;list-style:none}
+details.sec-fold>summary::-webkit-details-marker{display:none}
+details.sec-fold>summary>h2::before{content:"▸";color:var(--muted);font-size:13px}
+details.sec-fold[open]>summary>h2::before{content:"▾"}
 .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);
 border-radius:9px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
@@ -17766,7 +17771,8 @@ function dispersion(){
       r.width_ratio == null ? "—" : r.width_ratio.toFixed(2) + "×"}</td>
   </tr>`).join("");
   const bare = [...new Set(rows.filter(r => !r.paired).map(r => r.label))];
-  return `<h2>${famBig()}的离散度：衡量模型间分歧，作为服务分布宽度的依据</h2>
+  // Folded by default, the heading its toggle (user 2026-10-10「六大模型的离散度：默认折叠」).
+  return `<details class="sec-fold"><summary><h2>${famBig()}的离散度：衡量模型间分歧，作为服务分布宽度的依据</h2></summary>
   <p class="sub">离散度是一个集合预报里几十个成员之间的分歧，也是模型对自己唯一的
   不确定性表态：成员挤在一起就是"我很有把握"，散开就是"这天不好说"。
   统计窗口 ${h(S.summary.window_start)} 至 ${h(S.summary.window_end)}
@@ -17787,9 +17793,11 @@ function dispersion(){
     `<b>${bare.join("、")}</b> 在本窗口内一个可比 run 都没有：
      它现存的校正表是按旧的 d0/d1/d2 口径、且挂在聚合 cycle 上拟合的，
      和它今天每一次 native 采集所带的 run cycle 对不上，因此右侧四列为空。`
-    : ""}</div>`;
+    : ""}</div></details>`;
 }
 
+// The per-model rows are folded under the cards (user 2026-10-10「六大模型的命中率：
+// 检验偏差订正有没有让预报更准：下方各个模型的明细默认折叠」).
 function hitRate(){
   const S = D.skill || {};
   const rows = S.rows || []; const totals = S.totals || [];
@@ -17857,6 +17865,7 @@ function hitRate(){
   再和当天结算真值所在的桶比。桶按各站自己的市场刻度数——美国站 2°F 一档，
   其余 1°C 一档——所以"差一个桶"在各站是同一件事。</p>
   <div class="grid g4" style="margin-top:12px">${cards}</div>
+  <details class="sd-older" style="margin-top:12px"><summary class="muted">各模型明细（${rows.length} 行，按提前量）</summary>
   <div class="why" style="margin-top:12px"><b>为什么原始命中率这么低：</b>
   全球集合预报没有见过某一个跑道旁的温度计。它给的是格点上的温度，
   站点的地形、下垫面、仪器位置带来的系统性偏差要靠每站的偏差订正表补回来，
@@ -17877,7 +17886,8 @@ function hitRate(){
   </tr></thead><tbody>${body}</tbody></table>
   <div class="muted" style="margin-top:6px">「平均偏差」是预报减真值：
   负数表示这个模型在这一提前量上系统性报冷。「校正后」绿色＝比紧挨着的校正前高、红色＝低。
-  「可比」为 0 的格子没有事件日之前就已拟合好的校正表，不参与校正前后对比（悬停看 run 数）。</div>`;
+  「可比」为 0 的格子没有事件日之前就已拟合好的校正表，不参与校正前后对比（悬停看 run 数）。</div>
+  </details>`;
 }
 
 
