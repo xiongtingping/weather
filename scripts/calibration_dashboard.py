@@ -16328,7 +16328,16 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 /* The footnote wraps to the ladder's width instead of setting it. */
 .sd-calc-left>.sd-sub{width:0;min-width:100%}
 .sd-calc-wrap>.sd-summary{flex:1 0 300px;min-width:300px;position:sticky;top:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
-.sd-calc-wrap>.sd-summary .sd-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;margin:0 0 8px}
+.sd-pnl{margin:8px 0 14px}
+.sd-pnl:empty{display:none}
+.sd-pnl-t{font-size:14px;font-weight:700;margin:0 0 6px}
+.sd-pnl-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px}
+.sd-pnl-c{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);min-width:0}
+.sd-pnl-c>span{font-size:12px;color:var(--muted)}
+.sd-pnl-c>b{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
+.sd-pnl-c.up>b{color:var(--up,#2f9e44)}.sd-pnl-c.down>b{color:var(--down,#e03131)}
+.sd-pnl-c>i{font-style:normal;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-pnl-c[title]{cursor:help}
 .sd-calc-wrap>.sd-summary .sd-order{width:100%;padding:10px;font-size:14px}
 .sd-tk-h{font-size:15px;font-weight:700;margin:0 0 6px;min-height:22px}
 .sd-tk-h .yes{color:#2f9e44}.sd-tk-h .no{color:#e03131}
@@ -23662,8 +23671,8 @@ function sdPmLadder(day, st, res, key){
   // unpicked, the ladder is just rung | chance | Yes | No | payoff.  Yes and
   // No share them, stacked, so picking both sides does not widen the table.
   const anySel = (day.axis || []).some(r => st.sel[r.bucket] || (st.selNo || {})[r.bucket]);
-  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}"><tbody>${rows}</tbody></table></div>
-    <div class="muted sd-sub">大字＝市场归一中价${ref ? `，箭头＝对 ${refAgo} 小时前` : ""}；Buy Yes＝YES 卖一，Buy No＝1 − YES 买一（价格口径按上方选择，吃单按卖盘逐档走）；点按钮选腿、填金额，右侧是命中该桶时整个篮子（含持仓）的盈亏；点持仓标签到右侧 Sell 页卖出。</div>`;
+  // The ladder carries no caption (user 2026-10-10「去掉这些说明性文案」).
+  return `<div class="scroll"><table class="sd-tab sd-calc sd-pm${anySel ? " has-sel" : ""}"><tbody>${rows}</tbody></table></div>`;
 }
 // PM-style trade ticket (user 2026-10-09「没有卖出」「和市场盘口一样这种」): Buy | Sell
 // on the right of the ladder.  Buy edits the focused leg of the basket (the
@@ -23764,6 +23773,43 @@ function sdFocusTicket(key, b, side){
   const row = card.querySelector(`.sd-pm input[data-b="${b}"][${side === "YES" ? "data-sd-amt" : "data-sd-amt-no"}]`);
   if(row) row.focus();
 }
+// 总体盈亏 (user 2026-10-10「总盈利和亏损计算有误，应该把yes和no侧的持仓都要计算
+// 进去」「没有统计总体盈亏的看板：增加」): the whole basket, both sides, held and
+// new, on a board of its own above the ladder -- the Sell tab and an unfocused
+// ticket used to hide it.  A rung is covered when anything pays on it: its own
+// YES, or a NO held on any other rung.  The old 未覆盖命中 was −spend always,
+// which no rung reaches once a NO is held (10-10 ZUUU: NO on 22/23/24°C pays
+// on every rung, the worst is 23°C at −76.91, not −136.65).
+function sdPnlBoard(day, st, res, p, q){
+  if(!res || !res.ok) return "";
+  const pay = (day.axis || []).map(r => [r.bucket, res.payoff(r.bucket)]);
+  const covered = pay.filter(([, v]) => v > -res.total + 1e-9), bare = pay.filter(([, v]) => v <= -res.total + 1e-9);
+  const lo = covered.length ? Math.min(...covered.map(([, v]) => v)) : null;
+  const hi = covered.length ? Math.max(...covered.map(([, v]) => v)) : null;
+  const at = v => covered.filter(([, x]) => Math.abs(x - v) < 0.005).map(([b]) => sdEsc(b)).join("、");
+  const ev = vec => pay.reduce((a, [b, v]) => a + (vec[b] || 0) * v, 0);
+  const lossP = pay.reduce((a, [b, v]) => a + (v < -1e-9 ? (p[b] || 0) : 0), 0);
+  // What each side has cost: held at the account's average price, new at the
+  // calculator's walk of the book (the 净投入 card's tooltip).
+  const heldSide = (sh, avg) => (day.axis || []).reduce((a, r) => { const s = sh(r.bucket), v = avg[r.bucket];
+    return a + (s > 0 && v != null && isFinite(v) ? s * v : 0); }, 0);
+  const newSide = legs => Object.values(legs || {}).reduce((a, l) => a + l.cost, 0);
+  const yesIn = heldSide(b => sdHeld(st, b), st.heldAvg || {}) + newSide(res.legs);
+  const noIn = heldSide(b => sdHeldNo(st, b), st.heldAvgNo || {}) + newSide(res.noLegs);
+  // Small cards, a label, one figure, at most one short line (user 2026-10-10
+  // 「小卡片式，不要密集文字」).
+  const tone = v => v == null ? "" : v >= 0 ? "up" : "down";
+  const card = (label, value, cls, sub, title) => `<div class="sd-pnl-c ${cls}"${title ? ` title="${sdEsc(title)}"` : ""}><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
+  return `<div class="sd-pnl-t">总体盈亏</div><div class="sd-pnl-g">
+    ${card("净投入", `${sdN(res.total, 2)} U`, "", `${sdN(res.sunk, 2)} + ${sdN(res.newTotal, 2)}`, `持仓已花 ${sdN(res.sunk, 2)} + 新花 ${sdN(res.newTotal, 2)}；YES ${sdN(yesIn, 2)} · NO ${sdN(noIn, 2)}`)}
+    ${card("最低（地板）", lo == null ? "—" : `${sdSg(lo, 2)} U`, tone(lo), lo == null ? "" : at(lo))}
+    ${card("最高", hi == null ? "—" : `${sdSg(hi, 2)} U`, tone(hi), hi == null ? "" : at(hi))}
+    ${card("未覆盖命中", bare.length ? `${sdSg(-res.total, 2)} U` : "无", bare.length ? "down" : "", bare.length ? `${bare.length} 个桶` : "", bare.length ? bare.map(([b]) => b).join("、") : "每个桶都有 YES 或 NO 赔付")}
+    ${card("期望 · 模型", `${sdSg(ev(p), 2)} U`, tone(ev(p)))}
+    ${card("期望 · 市场", `${sdSg(ev(q), 2)} U`, tone(ev(q)))}
+    ${card("亏钱概率", sdPc(lossP), "")}
+  </div>`;
+}
 function sdCalc(day){
   const key = day.event_date, st = sdCalcState(key);
   st.selNo = st.selNo || {};
@@ -23782,25 +23828,11 @@ function sdCalc(day){
   if(res){
     if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
     else {
-      const covered = (day.axis || []).map(r => r.bucket).filter(b => res.payoff(b) > -res.total + 1e-9);
       const buying = Object.keys(res.legs).filter(b => res.legs[b].shares > 0)
         .concat(Object.keys(res.noLegs || {}).filter(b => res.noLegs[b].shares > 0).map(b => b + " NO"));
-      const cover = covered.reduce((a, b) => a + (p[b] || 0), 0), coverQ = covered.reduce((a, b) => a + (q[b] || 0), 0);
-      const profits = covered.map(b => res.payoff(b));
-      const floorIn = profits.length ? Math.min(...profits) : null, best = profits.length ? Math.max(...profits) : null;
-      const ev = vec => (day.axis || []).reduce((a, r) => a + (vec[r.bucket] || 0) * res.payoff(r.bucket), 0);
       const small = buying.filter(x => { const no = x.endsWith(" NO"), b = no ? x.slice(0, -3) : x;
         const m = (book[b] || {}).min_order_size, l = no ? res.noLegs[b] : res.legs[b]; return m && l.shares < m; });
-      const lossP = (day.axis || []).reduce((a, r) => a + (res.payoff(r.bucket) < -1e-9 ? (p[r.bucket] || 0) : 0), 0);
-      summary = `<div class="sd-kpis">
-        <div><span class="muted">净投入（持仓已花 + 新花）</span><b>${sdN(res.total, 2)} U</b><span class="muted sd-sub">${sdN(res.sunk, 2)} + ${sdN(res.newTotal, 2)}</span></div>
-        <div><span class="muted">覆盖桶内最低（地板）</span><b class="${floorIn >= 0 ? "up" : "down"}">${floorIn == null ? "—" : sdSg(floorIn, 2)} U</b></div>
-        <div><span class="muted">覆盖桶内最高</span><b class="up">${best == null ? "—" : sdSg(best, 2)} U</b></div>
-        <div><span class="muted">未覆盖命中</span><b class="down">${sdSg(-res.total, 2)} U</b></div>
-        <div><span class="muted">概率覆盖 模型/市场</span><b>${sdPc(cover)} / ${sdPc(coverQ)}</b><span class="muted sd-sub">${covered.map(sdEsc).join("、") || "—"}</span></div>
-        <div><span class="muted">期望盈亏 按模型/按市场</span><b>${sdSg(ev(p), 2)} / ${sdSg(ev(q), 2)} U</b></div>
-        <div><span class="muted">亏钱概率（模型）</span><b>${sdPc(lossP)}</b></div>
-      </div>${res.warn.length ? `<div class="down sd-sub">${res.warn.map(sdEsc).join("；")}</div>` : ""}
+      summary = `${res.warn.length ? `<div class="down sd-sub">${res.warn.map(sdEsc).join("；")}</div>` : ""}
       ${small.length ? `<div class="down sd-sub">低于交易所最小单：${small.map(sdEsc).join("、")}——加大金额或去掉这些腿才能下单</div>` : ""}
       ${buying.length ? `<div class="sd-ctl"><button type="button" class="sd-btn sd-order" data-sd-order="${sdEsc(key)}"${SD.ordering || small.length ? " disabled" : ""}>✅ 确认下单（新买 ${buying.length} 腿 · ${sdN(res.newTotal, 2)} U）</button>
         <span class="muted sd-sub">经本机网关逐腿买入（YES / NO）；${st.mode === "taker" ? "吃单＝限价 FOK（全成或零成，价格上限＝走到的最深一档）" : "挂单＝post-only GTC，不保证成交"}；一腿失败即停发后面的腿；不记入系统账本</span></div>` : `<div class="muted sd-sub">已有持仓已经满足地板，不需要新买。</div>`}`;
@@ -23825,9 +23857,9 @@ function sdCalc(day){
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
+    <div class="sd-pnl">${sdPnlBoard(day, st, res, p, q)}</div>
     <div class="sd-calc-wrap"><div class="sd-calc-left">${sdPmLadder(day, st, res, key)}</div>
-    <div class="sd-summary"><div class="sd-tk-top">${tk.top}</div>${tk.field}<div class="sd-tk-body">${tk.body}</div></div></div>
-    <div class="muted sd-sub">命中桶 k 盈亏＝（桶 k 的 YES 份数＋其它所有桶的 NO 份数）×1 − （持仓已花＋新花）；NO 价格＝1 − YES 价格的另一边（NO 卖一＝1 − YES 买一，深度＝YES 买盘）；手续费＝费率×p×(1−p) 每份（吃单默认 ${sdEsc(SD.data.taker_fee_rate)}，挂单默认 0）；份数按 0.01 向上取整。临时加桶：先「读取账户持仓」，再选要加的桶、金额空着（保本目标）→ 给出把整个篮子拉回地板所需的最少金额。</div>`;
+    <div class="sd-summary"><div class="sd-tk-top">${tk.top}</div>${tk.field}<div class="sd-tk-body">${tk.body}</div></div></div>`;
 }
 // 刷新盘口 (user 2026-10-09「篮子计算器增加刷新盘口功能」): the panel redraws on
 // new probabilities, not on every move of the book; this re-reads the live
@@ -23946,6 +23978,8 @@ function sdRefreshCalc(key, input){
   if(oldNote && newNote) oldNote.innerHTML = newNote.innerHTML;
   const oldHold = card.querySelector("[data-sd-hold]"), newHold = holder.querySelector("[data-sd-hold]");
   if(oldHold && newHold) oldHold.disabled = newHold.disabled;
+  const oldPnl = card.querySelector(".sd-pnl"), newPnl = holder.querySelector(".sd-pnl");
+  if(oldPnl && newPnl) oldPnl.innerHTML = newPnl.innerHTML;
   const oldSum = card.querySelector(".sd-summary"), newSum = holder.querySelector(".sd-summary");
   if(oldSum && newSum){
     ["sd-tk-top", "sd-tk-body"].forEach(c => {
