@@ -16264,8 +16264,11 @@ table.sd-tab td.sd-key .sd-keyp{font-size:13px;font-weight:600;color:var(--muted
 .sd-tag{display:inline-block;margin-left:4px;padding:0 4px;border-radius:4px;font-size:10px;line-height:15px;
   font-weight:700;color:#fff;vertical-align:1px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 .sd-tag-o{background:transparent;border:1px solid;line-height:13px}
-table.sd-sky td.sd-hot{background:rgba(248,81,73,.16)}
-table.sd-sky td.sd-cold{background:rgba(210,153,34,.18)}
+table.sd-sky td.sd-warm{background:rgba(248,81,73,.16)}
+table.sd-sky td.sd-cold{background:rgba(56,139,253,.16)}
+.pill.sd-warm{background:var(--pill-red-bg);color:var(--pill-red-fg);border-color:transparent}
+.pill.sd-cold{background:rgba(56,139,253,.15);color:var(--accent);border-color:transparent}
+b.sd-warm{color:var(--pill-red-fg)}b.sd-cold{color:var(--accent)}
 table.sd-sky tr.sd-future td{opacity:.55}
 table.sd-sky td{white-space:nowrap}
 table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
@@ -23379,7 +23382,12 @@ function sdSky(day){
   const pc0 = v => v == null ? "—" : Math.round(v) + "%";
   const w = v => v == null ? "—" : String(Math.round(v));
   const deg = v => v == null ? "—" : sdN(v, 1) + "°";
-  const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? (d.dir === "more" ? " sd-hot" : " sd-cold") : ""; };
+  // Colour is the direction it pushes the temperature (user 2026-10-10「实况的云
+  // 比预报的多，不应该偏暖……统一为冷暖两个方向的颜色」): red warm, blue cold.
+  // More cloud, weaker sun, haze and rain are cold; less cloud, stronger sun
+  // and a warmer reading are warm -- not "more is red" whatever the quantity.
+  const warmth = x => (x.kind === "cloud" ? x.dir !== "more" : x.kind === "sw" || x.kind === "temp" ? x.dir === "more" : false) ? "sd-warm" : "sd-cold";
+  const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? " " + warmth(d) : ""; };
   // Observed hours newest first, then the hours still to come.
   const ordered = (H.rows || []).slice().sort((a,b) => Number(Boolean(b.past || b.obs)) - Number(Boolean(a.past || a.obs)) || Number(b.hour) - Number(a.hour));
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
@@ -23391,7 +23399,7 @@ function sdSky(day){
     // only, the full sentence on hover.
     const word = x => ({cloud: x.dir === "more" ? "多云" : "偏晴", sw: x.dir === "more" ? "日照偏强" : "日照偏弱",
       temp: x.dir === "more" ? "偏暖" : "偏冷", haze: "霾/雾", rain: "降水"})[x.kind] || x.text;
-    const tags = (r.diffs || []).map(x => `<span class="pill ${x.kind === "haze" || x.kind === "rain" ? "" : x.dir === "more" ? "red" : "amber"}" title="${sdEsc(x.text)}">${sdEsc(word(x))}</span>`).join(" ");
+    const tags = (r.diffs || []).map(x => `<span class="pill ${warmth(x)}" title="${sdEsc(x.text)}">${sdEsc(word(x))}</span>`).join(" ");
     return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
       ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
@@ -23412,13 +23420,14 @@ function sdSky(day){
   const swTo = bySat ? sat.last_hour : latest;
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
   const sunLine = swObs == null ? (bySat ? `卫星日照未到（${sdEsc(sat.reason || "约晚 1 小时")}）` : "")
-    : `截至 ${String(swTo).padStart(2, "0")}:00 ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "up" : "down"}">${sdSg(swPct, 0)}%</b>）`}`;
+    : `截至 ${String(swTo).padStart(2, "0")}:00 ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "sd-warm" : "sd-cold"}">${sdSg(swPct, 0)}%</b>）`}`;
   const headline = observed.length
-    ? `${sunLine}${sunLine ? " · " : ""}<b class="${off ? "down" : ""}">${off}</b>/${observed.length} 小时云或日照偏离预报`
+    ? `${sunLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，经 Open-Meteo 转发，约晚 1 小时）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
-    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。红＝实况比预报多/强/暖，黄＝少/弱/冷；门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
+    <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
+    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
 }
 function sdTafRaw(d){
