@@ -143,7 +143,7 @@
     },
     "copy_follow": {
       "enabled": false,
-      "rule": "cluster_taker_first_filtered_fixed_stake_v2",
+      "rule": "cluster_taker_first_direction_tiered_stake_v3",
       "source_user": "0x8fbd7cf5f806f563080864694415829f7229a959",
       "source_users": [
         "0x8fbd7cf5f806f563080864694415829f7229a959",
@@ -186,9 +186,15 @@
       "max_daily_cost_usdc": null,
       "max_sends_per_pass": 8,
       "unsent_retry_seconds": 300.0,
-      "rule_changed_at_utc": "2026-10-09T12:01:12Z",
+      "rule_changed_at_utc": "2026-10-10T02:11:40Z",
       "take_only_note": "Charter 257 补记 (user ruling 2026-10-09 「3+5」): model_margin 0.05 -> 0.03 and max_slippage 0.06 -> 0.15; take_only -- a follow is a FOK at or under the cap within take_window_seconds (1800) of the episode buy, or nothing; no resting rung; an episode whose take did not happen is not chased by the next. Replay 09-21..10-08 (16.9 d, C stations): 38 legs/day, 190 U/day, locked median 390 U peak 550 U, +6.3% +/-10.6% a leg.",
-      "note": "Charter 257 (user ruling 2026-10-09 「开实盘，利用现有的跟单策略，但是我的资金量有限，如何跟单」): follow the eight-wallet cluster's FIRST taker buy of a bucket episode only, fixed stake_usdc per leg, daily budget max_daily_cost_usdc, legs ranked by our margin; admitted only at 12-48h to the event's local noon, on C stations, when our served P0/P0-M probability clears the source price by model_margin; the cap is min(source price + max_slippage, our p - model_margin); sells and merges are not mirrored (winners leave through the 0.998 recycle lane). Research: docs/research/benchmark_account_0x8fbd_20261008 rounds 7 and 10 -- +4.8c/share at a 2c cost, three weeks positive; backtest at B=40/L=5/K=8: +131.9 U over 15 days, worst day -17.9 U. Default off; the board switch is the operator's. v1 (source_positions_value_ratio_at_source_price_v1) remains selectable."
+      "note": "Charter 257 (user ruling 2026-10-09 「开实盘，利用现有的跟单策略，但是我的资金量有限，如何跟单」): follow the eight-wallet cluster's FIRST taker buy of a bucket episode only, fixed stake_usdc per leg, daily budget max_daily_cost_usdc, legs ranked by our margin; admitted only at 12-48h to the event's local noon, on C stations, when our served P0/P0-M probability clears the source price by model_margin; the cap is min(source price + max_slippage, our p - model_margin); sells and merges are not mirrored (winners leave through the 0.998 recycle lane). Research: docs/research/benchmark_account_0x8fbd_20261008 rounds 7 and 10 -- +4.8c/share at a 2c cost, three weeks positive; backtest at B=40/L=5/K=8: +131.9 U over 15 days, worst day -17.9 U. Default off; the board switch is the operator's. v1 (source_positions_value_ratio_at_source_price_v1) remains selectable.",
+      "stake_tiers": {
+        "momentum_agrees": 3.0,
+        "model_agrees": 2.0,
+        "probability": 1.0
+      },
+      "direction_tiers_note": "Charter 266 (user rulings 2026-10-10 「落地三档」「动量和四特征模型：解耦出来，其他策略比如proper线也可以使用」): rule v3 keeps v2's first-taker episodes, 12-48h window, C stations and take-only, and stakes each leg off the shared direction signal (bayes_basket_target/direction_signal.py, read at the source trade's instant): ECMWF momentum agrees with the leg's side of the market mode -> stake_tiers.momentum_agrees x stake_usdc; else the four-feature model agrees and momentum is not against -> model_agrees; else v2's probability filter passes and neither is against -> probability; a leg either signal is against is skipped (direction_disagrees:*). The two direction tiers need no probability margin (cap = source price + max_slippage). Base stake 3 U (tiers 9/6/3 U) per the ruling; the stake dial stays the operator's. Cash-constrained replay 09-22..10-07 (start 355 U): 86-100% utilisation, +707..+727 U over 15 days vs +411..+428 U for v2 at the same utilisation, in-sample. Set rule back to cluster_taker_first_filtered_fixed_stake_v2 to roll back."
     }
   }
 }
