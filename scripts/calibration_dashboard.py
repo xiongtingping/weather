@@ -20027,7 +20027,8 @@ function fusionResolve(){
       fusionWorst ? `${h(fusionWorst.station_id)} ${h(fusionWorst.lead_bucket)} ${h(fusionWorst.run_cycle)}` : "", fusionTone)}
     ${fusionApproxN ? fusionCard("近似重解", `${fusionApproxN} 份`, `中位 ${fusionPct(fusionSummary.approximate_median_distance)} · 最大 ${fusionPct(fusionSummary.approximate_max_distance)}`) : ""}
   </div>`;
-  return fusion ? `<h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
+  // Wrapped: a section's direct <h2> children are all pulled to its head row.
+  return fusion ? `<div><h2 style="margin-top:26px">融合权重 vs 生产重解</h2>
   ${fusionVerdict}
   <details class="sd-older" style="margin-top:8px"><summary class="muted">明细：规则说明与偏离最大的 ${fusionShown} 份</summary>
   <p class="sub"><b>现役权重由稳定池规则给出（宪章 134，2026-09-14 上线）。</b>
@@ -20048,7 +20049,7 @@ function fusionResolve(){
     最大 ${fusionPct(fusionSummary.approximate_max_distance)}）：
     兜底分支生产读的是闸门那次拟合的误差与天数，存档只留了服务拟合那一份。` : ""}
     相关高但距离小＝模型在重复犯错，权重照规则分，不代表算错。</div>
-  </details>` : "";
+  </details></div>` : "";
 }
 
 function servingWeights(){
@@ -20102,6 +20103,19 @@ function servingWeights(){
       <td class="mono">${r.candidate_count}→${r.selected_count}</td>
       <td class="mono ${stale ? "down" : ""}">${h(r.holdout_end)}</td></tr>`;
   }).join("");
+  // The served split against its starting seat, one row a model (user 2026-10-10
+  // 「实际结果（最近一期 96 个站日的平均）：这张表显示在前端」「放在：各模型实际权重
+  // 走势图表下方」).
+  const split = summary.filter(s => s.mean_served != null || s.median_weight != null)
+    .slice().sort((a, b) => (b.mean_served ?? 0) - (a.mean_served ?? 0)).map(s => {
+      const d = s.mean_served != null && s.median_weight != null ? 100 * (s.mean_served - s.median_weight) : null;
+      return `<tr><td><b>${h(s.label)}</b></td><td class="mono">${pct(s.median_weight)}</td>
+        <td class="mono"><b>${pct(s.mean_served)}</b></td>
+        <td class="mono ${d == null || Math.abs(d) < 1 ? "muted" : d > 0 ? "up" : "down"}">${d == null ? "—" : Math.abs(d) < 1 ? "≈" : (d > 0 ? "↑" : "↓") + Math.abs(d).toFixed(0) + " 点"}</td></tr>`;
+    }).join("");
+  const splitTable = split ? `<table class="w-split" style="margin-top:8px;width:auto"><thead><tr><th>模型</th><th>起点（中位）</th><th>实际服务（平均）</th><th>按站微调</th></tr></thead>
+    <tbody>${split}</tbody></table>
+    <div class="muted" style="font-size:12px;margin-top:2px">最近一期 ${W.scope_count ?? "—"} 个站日</div>` : "";
   return `<h2>${famBig()}的权重：决定各模型在服务概率里占多少</h2>
   <p class="sub">这里读的是服务路径本身——每个「站×提前量×cycle」格子当前激活的
   组合指针，连到它绑定的选拔证据，把里面的权重原样摊开。不是权重表的行数统计，
@@ -20117,6 +20131,7 @@ function servingWeights(){
   每个站的实际配比见下方逐格明细。${Object.entries(W.fusion_states || {}).map(([k, v]) => `${h({APPLIED:"按站重配已生效", SHADOW:"影子（服务起点）", SEAT_NO_STATION_PARAMS:"本站参数未就绪（服务起点）"}[k] || k)} ${v}`).join(" · ")}</div>` : ""}
   <div class="grid g4" style="margin-top:12px">${cards}</div>
   ${servingWeightTrend(W, summary)}
+  ${splitTable}
   <table style="margin-top:12px"><thead><tr>
     <th>模型</th>${matrixHead}
   </tr></thead><tbody>${matrixBody}</tbody></table>
