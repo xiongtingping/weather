@@ -7,10 +7,13 @@ P0 matches the artifact's ``run_cycle_by_system`` against the cycles the
 forward packet carries -- so every assignment a packet can present needs its
 own artifact, and collapsing to a single "best" one makes P0 unmatchable.
 
-The countervailing constraint is that activations are unique on
-``(kind, station, system, season, lead, run_cycle, set_hash, generation)``
-without the per-system mapping, so two assignments that both label as
-MIXED_NATIVE_CYCLES collide and abort the station's whole transaction.
+Past the enumeration bound a group narrows to each system's best-evidenced
+cycle, and since 2026-10-10 it also keeps the cycle maps the scope's recent
+packets and its served artifact carry (``required_maps``): narrowed alone, the
+packet's own map went unminted and P0 coasted on a thirty-day-old fit (ZUUU
+h12_24 served a 09-28 fit into October, missing the newer layers).  Two maps
+of one MIXED_NATIVE_CYCLES label take successive activation generations; the
+build keys its one-candidate-per-identity guard on the map too.
 """
 
 from __future__ import annotations
@@ -141,3 +144,71 @@ def test_an_oversized_product_falls_back_to_one_cycle_per_system() -> None:
     assert all(
         scopes[0][0] == "18Z" for scopes in groups[0][1].values()
     )
+
+
+def _five_by_two() -> dict:
+    return {
+        ("JJA", "h24_48"): {
+            f"SYS{index}": [
+                ("00Z", _evaluation(holdout_n=8, train_n=20)),
+                ("18Z", _evaluation(holdout_n=8, train_n=25)),
+            ]
+            for index in range(5)
+        },
+    }
+
+
+def _maps(groups) -> list[dict[str, str]]:
+    return [
+        {system_id: scopes[0][0] for system_id, scopes in variant.items()}
+        for _scope, variant in groups
+    ]
+
+
+def test_a_narrowed_group_still_mints_the_packets_cycle_map() -> None:
+    """2026-10-10: the packet's map is minted beside the narrowed one."""
+
+    packet = {f"SYS{index}": "00Z" for index in range(5)}
+    groups = _cycle_variant_groups(
+        _five_by_two(), {("JJA", "h24_48"): [packet]}
+    )
+    assert _maps(groups) == [
+        {f"SYS{index}": "18Z" for index in range(5)},
+        packet,
+    ]
+
+
+def test_a_system_the_map_does_not_reach_keeps_its_best_cycle() -> None:
+    groups = _cycle_variant_groups(
+        _five_by_two(),
+        {("JJA", "h24_48"): [{"SYS0": "00Z", "SYS9": "00Z", "SYS1": "06Z"}]},
+    )
+    assert _maps(groups)[1] == {
+        "SYS0": "00Z", "SYS1": "18Z", "SYS2": "18Z", "SYS3": "18Z", "SYS4": "18Z",
+    }
+
+
+def test_a_map_already_minted_is_not_repeated() -> None:
+    narrowed = {f"SYS{index}": "18Z" for index in range(5)}
+    packet = {f"SYS{index}": "00Z" for index in range(5)}
+    groups = _cycle_variant_groups(
+        _five_by_two(), {("JJA", "h24_48"): [narrowed, packet, packet]}
+    )
+    assert _maps(groups) == [narrowed, packet]
+
+
+def test_a_group_under_the_bound_ignores_the_maps() -> None:
+    """Fully enumerated already; nothing is added or reordered."""
+
+    scope_groups = {
+        ("JJA", "h24_48"): {
+            f"SYS{index}": [
+                ("00Z", _evaluation()), ("18Z", _evaluation()),
+            ]
+            for index in range(4)
+        },
+    }
+    plain = _cycle_variant_groups(scope_groups)
+    assert _cycle_variant_groups(
+        scope_groups, {("JJA", "h24_48"): [{"SYS0": "00Z"}]}
+    ) == plain

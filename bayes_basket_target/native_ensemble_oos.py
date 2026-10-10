@@ -3363,6 +3363,7 @@ def _cycle_variant_groups(
         tuple[str, str],
         Mapping[str, list[tuple[str, dict[str, Any]]]],
     ],
+    required_maps: Mapping[tuple[str, str], Sequence[Mapping[str, str]]] | None = None,
 ) -> list[tuple[tuple[str, str], dict[str, list[tuple[str, dict[str, Any]]]]]]:
     """Split each lead group into one entry per realizable cycle assignment.
 
@@ -3382,6 +3383,21 @@ def _cycle_variant_groups(
     Assignments are emitted in a fixed order -- systems sorted, cycles sorted
     within each system -- so the same evidence always produces the same
     artifacts.
+
+    Past the enumeration bound the group narrows to each system's
+    best-evidenced cycle, and that alone left the packet's own cycle map
+    unminted: P0 then kept serving the last artifact fitted on it for its
+    whole thirty-day window, and whatever only newer fits carry never
+    reached the scope.  Measured 2026-10-10 06:50Z: 98 of 132 served scopes
+    on evidence older than 10-06 -- ZUUU h12_24 has served a 09-28 fit since
+    ICON's 18Z made that group 2**5 = 32 assignments (the packet is ECMWF 18Z
+    with the rest 00Z; the narrowed group minted ECMWF/GEFS/AIGEFS 18Z), and
+    10 of the F stations' 15 scopes past 24 h without charter 261's tail mix.
+    ``required_maps`` names, per (season, lead), the cycle maps the scope's
+    recent packets and its served artifact carry
+    (``_recent_packet_cycle_maps``); each is minted beside the narrowed
+    assignment, a system the map does not reach keeping its best-evidenced
+    cycle.
     """
 
     expanded: list[
@@ -3413,7 +3429,26 @@ def _cycle_variant_groups(
                 ]
                 for scopes in cycles_by_system
             ]
-        for assignment in product(*cycles_by_system):
+        assignments = list(product(*cycles_by_system))
+        if assignment_count > MAX_CYCLE_ASSIGNMENTS_PER_GROUP:
+            best = assignments[0]
+            seen = {tuple(str(scope[0]) for scope in best)}
+            for wanted in (required_maps or {}).get(scope_key, ()):
+                assignment = tuple(
+                    next(
+                        (
+                            scope for scope in system_rows[system_id]
+                            if str(scope[0]) == str(wanted.get(system_id) or "")
+                        ),
+                        fallback,
+                    )
+                    for system_id, fallback in zip(ordered_systems, best)
+                )
+                key = tuple(str(scope[0]) for scope in assignment)
+                if key not in seen:
+                    seen.add(key)
+                    assignments.append(assignment)
+        for assignment in assignments:
             expanded.append((
                 scope_key,
                 {
@@ -3531,6 +3566,70 @@ def _served_cross_identities(
         if len(system_ids) >= 2 and set(cycles) == set(system_ids):
             served[scope] = (system_ids, cycles)
     return served
+
+
+# How many distinct packet cycle maps one scope asks to have minted.  A
+# scope's packets change map through the day as each family's newest run
+# lands (ZUUU h12_24 carried three maps on 2026-10-09); four covers that and
+# bounds the extra cohorts a narrowed group runs.
+MAX_PACKET_CYCLE_MAPS_PER_SCOPE = 4
+
+
+def _recent_packet_cycle_maps(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    as_of_utc: str,
+) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """The cycle maps this station's recent P0 packets carried, per scope.
+
+    The serving sort prefers an activation fitted on exactly the packet's
+    cycles, so a map the packets carry has to be minted or the scope coasts
+    on an old fit (see ``_cycle_variant_groups``).  Read off the committed
+    envelopes of the last ``SERVED_SET_LOOKBACK_DAYS``, keyed by the scope
+    the compile served under, most recent first and at most
+    ``MAX_PACKET_CYCLE_MAPS_PER_SCOPE`` each.  Fails soft to empty, as
+    ``_served_cross_identities`` does.
+    """
+
+    try:
+        as_of_instant = datetime.fromisoformat(
+            as_of_utc.replace("Z", "+00:00")
+        )
+        since = (
+            as_of_instant - timedelta(days=SERVED_SET_LOOKBACK_DAYS)
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        until = (
+            as_of_instant + timedelta(milliseconds=1)
+        ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        rows = conn.execute(
+            "SELECT json_extract(lineage_json,'$.season_bin'),"
+            " json_extract(lineage_json,'$.training_lead_bucket'),"
+            " json_extract(lineage_json,'$.run_cycle_by_system_json')"
+            " FROM basket_probability_envelope"
+            " WHERE station_id=? AND stage='P0' AND state='COMMITTED'"
+            " AND decision_at_utc>=? AND decision_at_utc<?"
+            " ORDER BY decision_at_utc DESC",
+            (str(station_id).strip().upper(), since, until),
+        ).fetchall()
+    except (sqlite3.Error, ValueError):
+        return {}
+    maps: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+    for season_bin, lead_bucket, mapping_json in rows:
+        scope = (str(season_bin or ""), str(lead_bucket or ""))
+        if not all(scope) or len(maps[scope]) >= MAX_PACKET_CYCLE_MAPS_PER_SCOPE:
+            continue
+        try:
+            mapping = {
+                str(key): str(value)
+                for key, value in json.loads(str(mapping_json or "{}")).items()
+                if value
+            }
+        except (ValueError, AttributeError):
+            continue
+        if len(mapping) >= 2 and mapping not in maps[scope]:
+            maps[scope].append(mapping)
+    return dict(maps)
 
 
 def _historical_transport_scope_allowed(
@@ -5356,7 +5455,7 @@ def build_native_ensemble_oos(
                     min_holdout_days,
             })
     cross_candidates: list[dict[str, Any]] = []
-    emitted_activation_keys: set[tuple[str, str, str, str]] = set()
+    emitted_activation_keys: set[tuple[str, str, str, str, str]] = set()
     scope_groups: dict[
         tuple[str, str],
         dict[str, list[tuple[str, dict[str, Any]]]],
@@ -5409,10 +5508,22 @@ def build_native_ensemble_oos(
     cohort_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     window_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
     served_set_tasks: list[tuple[str, str, Any, Any, Any, Any]] = []
+    # The cycle maps a narrowed group must still mint: the recent packets'
+    # and the served artifact's (2026-10-10, see ``_cycle_variant_groups``).
+    # A pinned historical replay has no "now", as above.
+    required_maps: dict[tuple[str, str], list[dict[str, str]]] = (
+        _recent_packet_cycle_maps(conn, station_id=station, as_of_utc=as_of_utc)
+        if historical_event_date_cutoff is None
+        else {}
+    )
+    for scope_key, (served_ids, served_cycles) in served_identities.items():
+        served_map = {system_id: served_cycles[system_id] for system_id in served_ids}
+        if served_map not in required_maps.setdefault(scope_key, []):
+            required_maps[scope_key].append(served_map)
     for (
         season_bin,
         lead_bucket,
-    ), system_rows in _cycle_variant_groups(scope_groups):
+    ), system_rows in _cycle_variant_groups(scope_groups, required_maps):
         ready_rows = [
             (system_id, run_cycle, evaluation)
             for system_id, scopes in sorted(system_rows.items())
@@ -6154,24 +6265,23 @@ def build_native_ensemble_oos(
             **_cross_oos_gate(cross_metrics, climate_metrics),
             "membership_mode": membership,
         }
-        # Activations are unique on
-        # (kind, station, system, season, lead, run_cycle, set_hash,
-        # generation) and the per-system cycle mapping is not part of that key.
-        # Two assignments can therefore reduce to the same key: with two
-        # systems and two cycles each, the two crossed pairs both label as
-        # MIXED_NATIVE_CYCLES.  Persisting both aborts the whole station's
-        # transaction on the unique constraint, which would turn a widened
-        # training set into no training at all.
-        #
-        # Keep the first in the fixed assignment order.  Only one mapping per
-        # label is reachable anyway: a forward packet comes from one collector
-        # pass per lead, so its systems carry the cycles their own contracts
-        # name, and the alternative crossing never appears in a packet.
+        # One candidate per (label, set, cycle map).  The map is part of the
+        # key: two maps of one set both label as MIXED_NATIVE_CYCLES, and a
+        # scope's packets do carry more than one through the day (ZUUU h12_24
+        # on 2026-10-09: ECMWF 18Z with the rest 00Z in the afternoon, GEFS
+        # and AIGEFS 18Z beside it at other hours).  Keyed on the label alone,
+        # the first map in the fixed order took the slot and the packet's own
+        # map -- the one the serving sort matches -- was skipped every build.
+        # The activation table is unique on (kind, station, system, season,
+        # lead, run_cycle, set_hash, generation), and persistence numbers each
+        # insert 1 + MAX(generation) inside the same transaction, so two maps
+        # of one label take successive generations rather than colliding.
         candidate_activation_key = (
             season_bin,
             lead_bucket,
             run_cycle,
             content_sha256(selected_system_ids),
+            cycle_mapping_sha,
         )
         if candidate_activation_key in emitted_activation_keys:
             continue

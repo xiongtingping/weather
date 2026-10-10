@@ -167,3 +167,58 @@ def test_the_twin_is_labelled_outside_the_selection_identity() -> None:
     build = inspect.getsource(oos.build_native_ensemble_oos)
     assert "::SERVED_SET_REFIT" in build
     assert "pinned_subset=pinned_subset" in build
+
+
+def _packet_store(rows) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_probability_envelope ("
+        " station_id TEXT, stage TEXT, state TEXT, decision_at_utc TEXT,"
+        " lineage_json TEXT)"
+    )
+    for decided, season, lead, mapping in rows:
+        conn.execute(
+            "INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?)",
+            ("ZUUU", "P0", "COMMITTED", decided, json.dumps({
+                "season_bin": season, "training_lead_bucket": lead,
+                "run_cycle_by_system_json": json.dumps(mapping),
+            })),
+        )
+    return conn
+
+
+def test_the_packets_cycle_maps_are_read_newest_first_per_scope() -> None:
+    """2026-10-10: the maps a narrowed cycle group must still mint."""
+
+    afternoon = {"ECMWF": "18Z", "GEFS": "00Z", "ICON": "00Z"}
+    evening = {"ECMWF": "18Z", "GEFS": "18Z", "ICON": "00Z"}
+    conn = _packet_store([
+        ("2026-09-10T11:00:00.000Z", "DESCENT", "h12_24", afternoon),
+        ("2026-09-10T09:00:00.000Z", "DESCENT", "h12_24", evening),
+        ("2026-09-10T08:00:00.000Z", "DESCENT", "h12_24", afternoon),
+        ("2026-09-10T07:00:00.000Z", "DESCENT", "h12_24", {"ECMWF": "00Z"}),
+        ("2026-09-06T07:00:00.000Z", "DESCENT", "h24_48", afternoon),
+        ("2026-09-10T13:00:00.000Z", "DESCENT", "h00_12", afternoon),
+    ])
+    maps = oos._recent_packet_cycle_maps(conn, station_id="zuuu", as_of_utc=NOW)
+    # Newest first, each once; a one-system map is no pairing; a decision
+    # past the lookback or after the build's instant is not read.
+    assert maps == {("DESCENT", "h12_24"): [afternoon, evening]}
+
+
+def test_the_maps_per_scope_are_bounded() -> None:
+    rows = [
+        (f"2026-09-10T0{hour}:00:00.000Z", "DESCENT", "h12_24",
+         {"ECMWF": f"{hour:02d}Z", "GEFS": "00Z"})
+        for hour in range(1, 8)
+    ]
+    maps = oos._recent_packet_cycle_maps(
+        _packet_store(rows), station_id="ZUUU", as_of_utc=NOW
+    )
+    assert len(maps[("DESCENT", "h12_24")]) == oos.MAX_PACKET_CYCLE_MAPS_PER_SCOPE
+
+
+def test_a_store_without_envelopes_names_no_maps() -> None:
+    assert oos._recent_packet_cycle_maps(
+        sqlite3.connect(":memory:"), station_id="ZUUU", as_of_utc=NOW
+    ) == {}
