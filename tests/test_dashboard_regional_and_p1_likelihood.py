@@ -131,37 +131,6 @@ def test_the_path_skill_reads_heads_and_leads(tmp_path) -> None:
     assert day["predicted_share"] == 1.0
 
 
-
-def test_the_rise_logit_is_read_off_the_receipt_not_recomputed() -> None:
-    """User rulings 2026-09-19 「不要黑箱」 and 2026-10-02 「只读是读后端算出
-    来的」: the rise probability's logit, term by term, is what the P1 receipt
-    stored; the board labels it and computes nothing.  A receipt from before
-    the terms were stored shows none."""
-
-    from bayes_basket_target import metar_four_layer as mfl
-    from bayes_basket_target import p1_observation_likelihood as OL
-
-    artifact = {
-        "phase": {"hours_edges": [0.0, 10.0, 1e9], "bin_intercepts": [0.5, -1.0],
-                  "coefficients": {"cloud_cover_fraction": -1.0,
-                                   "regional_headroom_c": 0.5}},
-        "feature_fallbacks": {"regional_headroom_c": -0.6},
-    }
-    features = {"remaining_hours": 12.0, "cloud_cover_fraction": 0.5,
-                "regional_headroom_c": None}
-    receipt = {
-        "state": "APPLIED", "features": features,
-        "rise_probability": mfl.phase_rise_probability(features, artifact),
-        "rise_terms": OL._rounded_rise_terms(mfl.phase_rise_terms(features, artifact)),
-    }
-    phase = C._p1_rise_terms(receipt)
-    assert phase["intercept"] == -1.0, "twelve hours left reads the 10h-and-over bin"
-    headroom = next(t for t in phase["terms"] if t["feature"] == "regional_headroom_c")
-    assert headroom["fallback"] is True and headroom["contribution"] == pytest.approx(-0.3)
-    assert headroom["label"] == C.P1_LIKELIHOOD_FEATURE_WORDS["regional_headroom_c"]
-    assert phase["eta"] == pytest.approx(-1.0 - 0.5 - 0.3)
-    assert C._p1_rise_terms({k: v for k, v in receipt.items() if k != "rise_terms"}) is None
-
 def _direct_update_block(state: str = "SERVE") -> dict:
     """A well-formed charter 161 block, laid out by production's own x_layout
     so the fixture cannot drift from the thing it stands in for."""
