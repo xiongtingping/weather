@@ -1406,6 +1406,20 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
     }
 
 
+def skew_history() -> dict[str, Any] | None:
+    """The settled skew reading the board-readings job keeps
+    (``board_readings.skew_truth_side``: which side the truth lands on skewed
+    station-days, and the mode / centre-bucket hit rates, model against the
+    market) -- read, never computed here.  None until the job has written it."""
+
+    from .board_readings import load_reading  # noqa: PLC0415
+
+    stored = load_reading("skew_truth_side")
+    if not stored or not isinstance(stored.get("value"), dict):
+        return None
+    return {**stored["value"], "computed_at_utc": stored.get("computed_at_utc")}
+
+
 FLEET_SHAPE_SCHEMA = "station_day_fleet_shape_v1"
 
 

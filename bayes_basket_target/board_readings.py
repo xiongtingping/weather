@@ -66,7 +66,7 @@ SEAT_LOOKBACK_DAYS = 45
 SEAT_REREAD_HOURS = 6
 READING_NAMES = (
     "seat_windows", "fusion_resolve", "centre_shape", "l4_lane", "basket_shadow",
-    "traded_calibration", "bucket_calibration",
+    "traded_calibration", "bucket_calibration", "skew_truth_side",
 )
 
 
@@ -2718,6 +2718,192 @@ def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
 # the run
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# skew: which side the truth lands, and the mode / centre bucket hit rates
+# ---------------------------------------------------------------------------
+
+#: Settled event days the skew reading looks back over.
+SKEW_TRUTH_DAYS = 45
+#: The market book paired with a model decision: the newest committed
+#: snapshot at or before it, no older than this.
+SKEW_TRUTH_MARKET_AGE_SEC = 3600.0
+_SKEW_NEXT_STAGE = {"P0": "P0-M", "P0-M": "P1"}
+_SKEW_WORDS = {0: "symmetric", -1: "left", 1: "right"}
+
+
+def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], truth_bucket: str) -> dict[str, Any] | None:
+    """One served vector read by production's own rules: the skew sign
+    (``mean_mode_skew_reading_v1``), the mode, the centre bucket
+    (``mean_center_bucket_v1``), where the truth landed against the mode and
+    how much mass the vector put on each side of it."""
+
+    from .basket_kernel.support import mean_center_bucket_v1, mean_mode_skew_reading_v1  # noqa: PLC0415
+
+    ordered = [(str(a["bucket"]), int(a["ordinal"])) for a in axis]
+    probs = {b: float(vector.get(b, 0.0) or 0.0) for b, _o in ordered}
+    ords = dict(ordered)
+    total = sum(probs.values())
+    if total <= 0.0 or truth_bucket not in ords:
+        return None
+    reading = mean_mode_skew_reading_v1(probs, ords)
+    if not reading["readable"]:
+        return None
+    mode_ord = int(reading["mode_ordinal"])
+    mode = next(b for b, o in ordered if o == mode_ord)
+    truth_ord = ords[truth_bucket]
+    return {
+        "sign": int(reading["sign"]), "gap": reading["gap_buckets"],
+        "mode": mode, "mean_bucket": mean_center_bucket_v1(probs, ords),
+        "truth_side": (truth_ord > mode_ord) - (truth_ord < mode_ord),
+        "claim": [sum(p for b, p in probs.items() if ords[b] < mode_ord) / total,
+                  probs[mode] / total,
+                  sum(p for b, p in probs.items() if ords[b] > mode_ord) / total],
+    }
+
+
+def skew_truth_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Every settled station-day of the window, once per stage: P0 and P0-M
+    at their last decision before the next stage's first (charter 260: after
+    that they are no longer the day's belief), P1 at its first; each with
+    the market's committed book of that instant."""
+
+    from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+    from .canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: PLC0415
+    from .station_day_board import bucket_of, ladder_axis  # noqa: PLC0415
+
+    latest = conn.execute(
+        "SELECT MAX(local_date) FROM calibration_station_daily_high_truth"
+        f" WHERE source_lane IN {FORMAL_TRUTH_LANES_SQL} AND qc_status='ACCEPTED'"
+    ).fetchone()[0]
+    if not latest:
+        return []
+    since = (date.fromisoformat(str(latest)) - timedelta(days=SKEW_TRUTH_DAYS - 1)).isoformat()
+    truth: dict[tuple[str, str], float] = {}
+    for station, day, value in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c FROM calibration_station_daily_high_truth"
+        f" WHERE source_lane IN {FORMAL_TRUTH_LANES_SQL} AND qc_status='ACCEPTED' AND local_date BETWEEN ? AND ?"
+        " ORDER BY revision_no", (since, str(latest)),
+    ):
+        truth[(str(station), str(day))] = float(value)
+    spans = {
+        (str(s), str(d), str(stage)): (str(first), str(last))
+        for s, d, stage, first, last in conn.execute(
+            "SELECT station_id, event_date, stage, MIN(decision_at_utc), MAX(decision_at_utc)"
+            " FROM basket_probability_envelope INDEXED BY basket_probability_envelope_publisher_scope_idx"
+            " WHERE state='COMMITTED' AND event_date BETWEEN ? AND ? GROUP BY station_id, event_date, stage",
+            (since, str(latest)),
+        )
+    }
+    rows: list[dict[str, Any]] = []
+    for (station, day, stage), (first, last) in sorted(spans.items()):
+        if (station, day) not in truth:
+            continue
+        if stage == "P1":
+            at = first
+        else:
+            handoff = spans.get((station, day, _SKEW_NEXT_STAGE[stage]))
+            at = last
+            if handoff:
+                at = conn.execute(
+                    "SELECT MAX(decision_at_utc) FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+                    " AND state='COMMITTED' AND decision_at_utc < ? AND stage=?",
+                    (station, day, handoff[0], stage),
+                ).fetchone()[0]
+        if not at:
+            continue
+        env = conn.execute(
+            "SELECT probabilities_json, bucket_ordinals_json, json_extract(lineage_json,'$.bucket_intervals_c_json')"
+            " FROM basket_probability_envelope WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            " AND decision_at_utc=? AND stage=? LIMIT 1", (station, day, at, stage),
+        ).fetchone()
+        if env is None or not env[2]:
+            continue
+        axis = ladder_axis(json.loads(env[1]), json.loads(env[2]))
+        truth_bucket = bucket_of(axis, truth[(station, day)])
+        if truth_bucket is None:
+            continue
+        model = _skew_point(json.loads(env[0]), axis, truth_bucket)
+        if model is None:
+            continue
+        market = None
+        book = conn.execute(
+            "SELECT observed_at, buckets_json FROM basket_official_ws_snapshot WHERE station_id=? AND event_date=?"
+            " AND state='COMMITTED' AND observed_at<=? ORDER BY observed_at DESC LIMIT 1", (station, day, at),
+        ).fetchone()
+        if book is not None:
+            try:
+                age = (datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+                       - datetime.fromisoformat(str(book[0]).replace("Z", "+00:00"))).total_seconds()
+            except ValueError:
+                age = None
+            ref = market_reference_v1(json.loads(book[1])) if age is not None and age <= SKEW_TRUTH_MARKET_AGE_SEC else {}
+            if ref.get("state") == "complete":
+                market = _skew_point({str(k): float(v) for k, v in ref["vector"].items()}, axis, truth_bucket)
+        rows.append({"station_id": station, "event_date": day, "stage": stage, "decided_at_utc": at,
+                     "truth_bucket": truth_bucket, "model": model, "market": market})
+    return rows
+
+
+def _skew_side_group(points: Sequence[Mapping[str, Any]], truth_buckets: Sequence[str]) -> dict[str, Any]:
+    n = len(points)
+    return {
+        "n": n,
+        "truth": [sum(p["truth_side"] < 0 for p in points) / n, sum(p["truth_side"] == 0 for p in points) / n,
+                  sum(p["truth_side"] > 0 for p in points) / n],
+        "claim": [sum(p["claim"][i] for p in points) / n for i in range(3)],
+        "mode_hit": sum(p["mode"] == t for p, t in zip(points, truth_buckets)) / n,
+        "mean_hit": sum(p["mean_bucket"] == t for p, t in zip(points, truth_buckets)) / n,
+    }
+
+
+def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
+    """User 2026-10-11 「前端显示增加众数和均值桶的命中率：模型对市场统计显示和偏斜
+    站日，真值落在哪一侧显示（按照生产现有口径）」.
+
+    ``sides``: per stage, for the model and the market each read on its own
+    skew, how often the truth lands left of / on / right of the mode against
+    what the vector put there, with each one's mode and centre-bucket hit
+    rate.  ``hits``: the same station-day instants paired, grouped by the
+    model's skew -- mode and centre-bucket hit rates, model minus market,
+    with an event-day interval.
+    """
+
+    rows = skew_truth_rows(conn)
+    stages = []
+    for stage in ("P0", "P0-M", "P1"):
+        mine = [r for r in rows if r["stage"] == stage]
+        if not mine:
+            continue
+        sides = []
+        for source in ("model", "market"):
+            have = [r for r in mine if r[source]]
+            for sign in (-1, 0, 1):
+                kept = [r for r in have if r[source]["sign"] == sign]
+                if kept:
+                    sides.append({"source": source, "skew": _SKEW_WORDS[sign], "share": len(kept) / len(have),
+                                  **_skew_side_group([r[source] for r in kept], [r["truth_bucket"] for r in kept])})
+        hits = []
+        paired = [r for r in mine if r["market"]]
+        for label, sign in (("all", None), ("symmetric", 0), ("left", -1), ("right", 1)):
+            kept = [r for r in paired if sign is None or r["model"]["sign"] == sign]
+            if not kept:
+                continue
+            item = {"group": label, "n": len(kept), "event_days": len({r["event_date"] for r in kept})}
+            for key, field in (("mode", "mode"), ("mean", "mean_bucket")):
+                a = [float(r["model"][field] == r["truth_bucket"]) for r in kept]
+                b = [float(r["market"][field] == r["truth_bucket"]) for r in kept]
+                diff, ci = _paired_mean(kept, a, b)
+                item[key] = {"model": sum(a) / len(a), "market": sum(b) / len(b), "diff": diff, "ci": ci}
+            hits.append(item)
+        stages.append({"stage": stage, "station_days": len(mine), "paired": len(paired),
+                       "pick": "first" if stage == "P1" else "last_before_next_stage",
+                       "sides": sides, "hits": hits})
+    days = sorted({r["event_date"] for r in rows})
+    return {"schema": "skew_truth_side_v1", "since": days[0] if days else None, "until": days[-1] if days else None,
+            "event_days": len(days), "market_age_sec": SKEW_TRUTH_MARKET_AGE_SEC,
+            "rule": "mean_mode_skew_reading_v1 (0.35 sigma) / mean_center_bucket_v1", "stages": stages}
+
+
 _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "seat_windows": (seat_windows, (seat_window,)),
     "fusion_resolve": (
@@ -2755,6 +2941,10 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
         (basket_shadow, _basket_shadow_walk, _basket_window, _basket_targets,
          _basket_shadow_labels, _basket_shadow_score, _day_bootstrap),
     ),
+    "skew_truth_side": (
+        skew_truth_side,
+        (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _paired_mean, _traded_day_bootstrap),
+    ),
 }
 
 
@@ -2771,6 +2961,8 @@ READING_MAX_AGE_SEC: dict[str, float] = {
     # are a few thousand point look-ups.
     "traded_calibration": 3 * 3600.0,
     "bucket_calibration": 3 * 3600.0,
+    # Settled days move once a day; ~14k point look-ups a run.
+    "skew_truth_side": 6 * 3600.0,
 }
 
 

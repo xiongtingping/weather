@@ -1357,10 +1357,12 @@ def station_day(query: str) -> dict:
         cached = _STATION_DAY_CACHE.get(station)
         if (cached and not force and time.monotonic() - cached[0] < STATION_DAY_CACHE_SEC
                 and cached[1].get("token") == station_day_board.probability_token(station)["token"]):
-            return {**cached[1], "fleet_shape": _fleet_shape(force), "cache": "hit"}
+            return {**cached[1], "fleet_shape": _fleet_shape(force),
+                    "skew_history": station_day_board.skew_history(), "cache": "hit"}
         payload = station_day_board.build(station)
         _STATION_DAY_CACHE[station] = (time.monotonic(), payload)
-        return {**payload, "fleet_shape": _fleet_shape(force), "cache": "miss"}
+        return {**payload, "fleet_shape": _fleet_shape(force),
+                "skew_history": station_day_board.skew_history(), "cache": "miss"}
 
 
 # The fleet's mean-rung-against-mode tally rides on every panel read (user

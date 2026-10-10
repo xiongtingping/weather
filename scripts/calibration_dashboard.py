@@ -15674,6 +15674,14 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-fs-tile{border-top:3px solid var(--c);border-radius:6px;padding:6px 8px;background:color-mix(in srgb,var(--c) 7%,var(--card));color:var(--c)}
 .sd-fs-tile b{display:block;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
 .sd-fs-tile span{font-size:12.5px}
+.sd-sk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:8px 0}
+.sd-sk-col{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.sd-sk-row{display:grid;grid-template-columns:88px 1fr;gap:2px 10px;align-items:center;margin:6px 0;font-size:12.5px}
+.sd-sk-bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--bar-bg)}
+.sd-sk-bar.claim{height:6px;margin-top:2px;opacity:.55}
+.sd-sk-bar i{display:block;height:100%;font-style:normal;font-size:11px;line-height:16px;color:#fff;text-align:center;white-space:nowrap;overflow:hidden}
+.sd-sk-hit td,.sd-sk-hit th{text-align:right}.sd-sk-hit td:first-child,.sd-sk-hit th:first-child,.sd-sk-hit td:nth-child(2){text-align:left}
+@media (max-width:1100px){.sd-sk-grid{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:1100px){.sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:700px){.sd-evidence-cards,.sd-evidence-cards.sd-evidence-three{grid-template-columns:minmax(0,1fr)}}
 .sd-kpis{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0;font-size:12.5px}
@@ -21681,7 +21689,7 @@ function sdRender(){
       x.role === "today" ? "今日" : "明日（第二日）"} ${sdEsc(x.event_date.slice(5))}${
       x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}</button>`).join("")}${
     pk ? `<span class="sd-daytab off" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">今日 ${sdEsc(pk.event_date.slice(5))} 已过峰</span>` : ""}</div>`;
-  body.innerHTML = sdFleetShape(d.fleet_shape) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
+  body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
     `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`)).join("");
   if(anchorPath){
     const again = sdFromPath(anchorPath, body);
@@ -22230,6 +22238,45 @@ function sdFleetShape(F){
       ${skewed ? `<details class="sd-sub"><summary class="muted">偏的站</summary>${skewed}</details>` : ""}</div>`;
   }).join("");
   return `<div class="card" style="margin:8px 0"><div class="sd-t" title="每站当地今日与明日；大数字＝当日口径（宪章 260：P1＞P0-M＞P0）；${sdShapeRule()}；市场＝常驻每轮提交的盘口快照；${sdEsc(sdLocal(F.built_at_utc, true))} 读">全队 ${F.stations || "—"} 站 · 偏态（均值对众数）</div><div class="sd-fs-days">${blocks}</div></div>`;
+}
+// Settled history, by production's rules (user 2026-10-11 「前端显示增加众数和均值桶的
+// 命中率：模型对市场统计显示和偏斜站日，真值落在哪一侧显示（按照生产现有口径）」):
+// board_readings.skew_truth_side as station_day_board.skew_history carries it --
+// read, never computed here.
+function sdSkewHistory(H){
+  if(!H || !(H.stages || []).length) return "";
+  const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  const pt = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(100 * v).toFixed(1);
+  const SIDE = [["左", SD_COL.P0], ["众", "var(--muted)"], ["右", "var(--amber)"]];
+  const bar = (v, cls) => `<div class="sd-sk-bar${cls ? " " + cls : ""}">${v.map((x, i) =>
+    `<i style="width:${(100 * x).toFixed(1)}%;background:${SIDE[i][1]}" title="${SIDE[i][0]} ${pc(x)}">${cls || x < 0.12 ? "" : SIDE[i][0] + " " + Math.round(100 * x) + "%"}</i>`).join("")}</div>`;
+  const pickWord = st => st.pick === "first" ? "首份" : "接手前末份";
+  const skewWord = {left: "左偏", symmetric: "对称", right: "右偏"};
+  const srcWord = {model: "模型", market: "市场"};
+  const cols = H.stages.map(st => {
+    const rows = ["model", "market"].map(src => ["left", "right", "symmetric"].map(k => {
+      const x = (st.sides || []).find(r => r.source === src && r.skew === k);
+      if(!x) return "";
+      return `<div class="sd-sk-row"><span title="占 ${pc(x.share)}；众数命中 ${pc(x.mode_hit)}，均值桶命中 ${pc(x.mean_hit)}"><b style="color:${src === "model" ? SD_COL[st.stage] : SD_COL.MKT}">${srcWord[src]}</b> ${skewWord[k]} <span class="muted">${x.n}</span></span>
+        <div title="上：真值落在众数 左 ${pc(x.truth[0])} / 众 ${pc(x.truth[1])} / 右 ${pc(x.truth[2])}；下：向量自己给的 左 ${pc(x.claim[0])} / 众 ${pc(x.claim[1])} / 右 ${pc(x.claim[2])}">${bar(x.truth)}${bar(x.claim, "claim")}</div></div>`;
+    }).join("")).join("");
+    return `<div class="sd-sk-col"><div class="sd-fs-date" style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)} <span class="muted sd-sub">${pickWord(st)} · ${st.station_days} 站日</span></div>${rows}</div>`;
+  }).join("");
+  const groupWord = {all: "全部", symmetric: "模型对称", left: "模型左偏", right: "模型右偏"};
+  const cell = (h, k) => {
+    const x = h[k] || {}, ci = x.ci || [], sure = ci.length === 2 && (ci[0] > 0 || ci[1] < 0);
+    return `<td class="mono">${pc(x.model)}</td><td class="mono">${pc(x.market)}</td><td class="mono${sure ? (x.diff < 0 ? " down" : " up") : " muted"}" title="模型 − 市场，95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}（按事件日重抽样）">${pt(x.diff)}${sure ? "" : " ·"}</td>`;
+  };
+  const hitRows = H.stages.map(st => (st.hits || []).map((h, i) =>
+    `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td><td>${groupWord[h.group] || sdEsc(h.group)}</td><td class="mono">${h.n}</td>${cell(h, "mode")}${cell(h, "mean")}</tr>`).join("")).join("");
+  const open = SD.histOpen !== false;
+  return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
+    <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
+    <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>
+    <div class="sd-sk-grid">${cols}</div>
+    <div class="muted sd-sub">众数桶 / 均值桶命中率：模型对同一时刻市场（按模型偏态分组；差＝模型−市场，带 · 的区间跨零）</div>
+    <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>分组</th><th>站日</th><th>众数 模型</th><th>市场</th><th>差</th><th>均值桶 模型</th><th>市场</th><th>差</th></tr></thead><tbody>${hitRows}</tbody></table></div>
+  </details>`;
 }
 function sdMeanModeCard(day){
   const S = sdSeries(day);

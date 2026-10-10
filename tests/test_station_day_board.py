@@ -337,3 +337,61 @@ def test_mean_bucket_is_production_centre_bucket() -> None:
     # 1.5 ties two equal rungs and takes the lower.
     assert bucket_of(axis, s["mean_c"]) == "22°C"
     assert s["mean_bucket"] == mean_center_bucket_v1(vector, ordinals) == "21°C"
+
+
+def test_skew_point_reads_production_rules() -> None:
+    """board_readings.skew_truth_side reads each vector with production's
+    skew sign and centre bucket (user 2026-10-11 「按照生产现有口径」)."""
+
+    from bayes_basket_target.board_readings import _skew_point
+
+    axis = _axis()
+    p = _skew_point({"20°C or below": 0.2, "21°C": 0.1, "22°C": 0.6, "23°C or higher": 0.1}, axis, "21°C")
+    assert p["sign"] == -1 and p["mode"] == "22°C" and p["mean_bucket"] == "22°C"
+    assert p["truth_side"] == -1
+    assert [round(x, 6) for x in p["claim"]] == [0.3, 0.6, 0.1]
+    assert _skew_point({"21°C": 1.0}, axis, "no such rung") is None
+
+
+def test_skew_history_card_draws_sides_and_hits() -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+    start = source.index("function sdSkewHistory(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    doc = {"since": "2026-08-27", "until": "2026-10-10", "event_days": 45, "computed_at_utc": "x", "stages": [{
+        "stage": "P0", "pick": "last_before_next_stage", "station_days": 2001,
+        "sides": [{"source": "model", "skew": "left", "n": 381, "share": 0.19, "truth": [0.467, 0.404, 0.129],
+                   "claim": [0.487, 0.383, 0.13], "mode_hit": 0.404, "mean_hit": 0.394}],
+        "hits": [{"group": "all", "n": 1235, "mode": {"model": 0.372, "market": 0.47, "diff": -0.098, "ci": [-0.134, -0.067]},
+                  "mean": {"model": 0.37, "market": 0.445, "diff": -0.075, "ci": [-0.108, 0.01]}}]}]}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\nconst SD = {};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
+              "function sdShapeRule(){ return 'rule'; }\n" + source[start:end]
+              + f"\nconsole.log(sdSkewHistory({json.dumps(doc, ensure_ascii=False)}));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "45 个事件日" in out and "接手前末份 · 2001 站日" in out
+    assert "左 47%" in out and "众 40%" in out and "右 13%" in out  # the truth bar
+    assert '<td class="mono down"' in out and ">−9.8</td>" in out   # mode: interval below zero
+    assert ">−7.5 ·</td>" in out                                      # centre bucket: crosses zero
