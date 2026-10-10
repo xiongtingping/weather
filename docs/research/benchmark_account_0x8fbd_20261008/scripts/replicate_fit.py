@@ -25,6 +25,66 @@ B = Path(sys.argv[1])
 ALL = json.load(gzip.open(B / "replicate_rows.json.gz", "rt"))
 E = [e for e in ALL if e.get("set", "research") == "research"]
 FWD = [e for e in ALL if e.get("set") == "forward"]
+# Round 27: minute price paths (fetch_minute_paths.py), key "station|date|bucket".
+import bisect  # noqa: E402
+_MP = B / "minute_paths.json"
+MINUTE = {k: v for k, v in (json.load(open(_MP)).items() if _MP.exists() else []) if "error" not in v}
+
+
+def minute_feats(e, label):
+    """Path features of one bucket's YES price strictly before the fill's minute."""
+    path = MINUTE.get(f"{e['st']}|{e['ed']}|{label}")
+    nan = float("nan")
+    out = {k: nan for k in ("d1", "d5", "d15", "d30", "d60", "pos60", "vol60", "since", "p_now")}
+    if not path or not path["t"]:
+        return out
+    t, pr = path["t"], path["p"]
+    cut = int(e["ts"]) - 60
+    i = bisect.bisect_right(t, cut) - 1
+    if i < 0:
+        return out
+    now = pr[i]
+    out["p_now"] = now
+    for lag in (1, 5, 15, 30, 60):
+        j = bisect.bisect_right(t, cut - 60 * lag) - 1
+        if j >= 0:
+            out[f"d{lag}"] = now - pr[j]
+    j60 = bisect.bisect_left(t, cut - 3600)
+    window = pr[j60:i + 1]
+    if len(window) >= 2:
+        hi, lo = max(window), min(window)
+        out["pos60"] = (now - lo) / (hi - lo) if hi > lo else 0.5
+        steps = [b - a for a, b in zip(window, window[1:])]
+        out["vol60"] = statistics.pstdev(steps) if len(steps) > 1 else 0.0
+    k = i
+    while k > 0 and pr[k - 1] == now:
+        k -= 1
+    out["since"] = (cut - t[k]) / 60.0
+    return out
+
+
+def ladder_shift(e):
+    """How far the ladder's mean (normalised minute prices, rungs) moved in the last 15 and 60 minutes."""
+    out = {}
+    for lag in (15, 60):
+        now, then = {}, {}
+        for o, label in e["labels"].items():
+            path = MINUTE.get(f"{e['st']}|{e['ed']}|{label}")
+            if not path or not path["t"]:
+                continue
+            t, pr = path["t"], path["p"]
+            cut = int(e["ts"]) - 60
+            i = bisect.bisect_right(t, cut) - 1
+            j = bisect.bisect_right(t, cut - 60 * lag) - 1
+            if i >= 0 and j >= 0:
+                now[o], then[o] = pr[i], pr[j]
+        if len(now) >= 3 and sum(now.values()) > 0 and sum(then.values()) > 0:
+            mn = sum(o * v for o, v in now.items()) / sum(now.values())
+            mt = sum(o * v for o, v in then.items()) / sum(then.values())
+            out[lag] = mn - mt
+        else:
+            out[lag] = float("nan")
+    return out
 FILLS = collections.defaultdict(list)
 _fills_src = B / "cluster_fills_all.json"
 for f in (json.load(open(_fills_src)) if _fills_src.exists() else json.load(open(B / "cluster_events.json"))["fills"]):
@@ -123,7 +183,7 @@ for name, n1, ex, n2, ag in sorted(rows, key=lambda x: -x[2]):
 print("   (a YES leg is a market-mode bucket 22% of the time; a random YES bucket within +-1 of the mode ~1/3)")
 
 # ---------------------------------------------------------------- B. ranker
-FAMILIES = ["market", "our", "raw", "points", "momentum", "weather_days", "own_history", "microstructure"]
+FAMILIES = ["market", "our", "raw", "points", "momentum", "weather_days", "own_history", "microstructure", "minute_path"]
 
 
 def candidate_rows(e):
@@ -139,6 +199,7 @@ def candidate_rows(e):
             pooled[o] += v / max(1, len(e["raw"]))
     prior = e["prior"]
     last_ts = prior[-1][0] if prior else None
+    shift = ladder_shift(e)
     for o in e["order"]:
         c = e["centres"][o]
         for side in ("Yes", "No"):
@@ -216,6 +277,16 @@ def candidate_rows(e):
             f["own_no_sh"] = math.log1p(no_sh)
             f["own_yes_rise"] = (e["q"][o] - yes_cost / yes_sh) if yes_sh > 0 else float("nan")
             f["edge_mid"] = (e["q"][o] - e["ask"][o]) if side == "Yes" else ((1 - e["q"][o]) - e["no_price"][o])
+            # Round 27: the bucket's minute path before the fill, read on the leg's own side.
+            mf = minute_feats(e, label)
+            for k in ("d1", "d5", "d15", "d30", "d60"):
+                f[f"min_{k}"] = mf[k] * y if mf[k] == mf[k] else float("nan")
+            f["min_pos60"] = (mf["pos60"] if y == 1 else 1 - mf["pos60"]) if mf["pos60"] == mf["pos60"] else float("nan")
+            f["min_vol60"] = mf["vol60"]
+            f["min_since"] = mf["since"]
+            direction = (1 if o > mode else -1 if o < mode else 0) * y
+            f["min_ladder15"] = shift[15] * direction if shift[15] == shift[15] else float("nan")
+            f["min_ladder60"] = shift[60] * direction if shift[60] == shift[60] else float("nan")
             fam = {
                 "market": ["is_yes", "d_mode", "abs_d_mode", "q", "q_mode", "price", "spread", "mom1h", "d_qmean", "d_qmed", "lead", "is_f", "usdc"],
                 "our": ["our_p", "our_logpq", "d_our_mode", "d_our_mean", "stage_p1", "stage_p0m"],
@@ -225,6 +296,7 @@ def candidate_rows(e):
                 "weather_days": ["d_ytruth", "d_run"],
                 "own_history": [k for k in f if k.startswith("own_")],
                 "microstructure": ["edge_mid"],
+                "minute_path": [k for k in f if k.startswith("min_")],
             }
             out.append((o, side, f, fam))
     return out
@@ -274,12 +346,11 @@ def run(families, params=None, report=True):
 
 print("\n== B. ranker over every candidate leg, 5 date folds (out of sample)")
 print(f"   candidates per event {statistics.mean(len(c) for _e, c, _l in data):.1f}; uniform top-1 {statistics.mean(1/len(c) for _e, c, _l in data):.3f}")
-steps = [["market"], ["market", "our"], ["market", "raw"], ["market", "points"], ["market", "momentum"],
-         ["market", "weather_days"], ["market", "our", "raw", "points", "momentum", "weather_days"],
-         ["market", "own_history"],
+steps = [["market"], ["market", "minute_path"], ["market", "our", "raw", "points", "momentum", "weather_days"],
          ["market", "microstructure", "own_history"],
-         ["market", "our", "raw", "points", "momentum", "weather_days", "own_history"],
-         ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"]]
+         ["market", "microstructure", "own_history", "minute_path"],
+         ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"],
+         ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history", "minute_path"]]
 results = {}
 for fams in steps:
     results[tuple(fams)] = run(fams)
@@ -401,9 +472,10 @@ def forward(families):
     return pe
 
 
-for fams in (["market"], ["market", "our", "raw", "points", "momentum", "weather_days"],
-             ["market", "microstructure", "own_history"],
-             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"]):
+for fams in (["market"], ["market", "minute_path"], ["market", "our", "raw", "points", "momentum", "weather_days"],
+             ["market", "microstructure", "own_history"], ["market", "microstructure", "own_history", "minute_path"],
+             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"],
+             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history", "minute_path"]):
     pe = forward(fams)
 by_day = collections.defaultdict(list)
 for e, r, _t in pe:
@@ -444,8 +516,9 @@ print("\n== H. date-fold CV on all events (research + forward), does more data l
 union = data + fwd_data
 dates_u = sorted({e["ed"] for e, _c, _l in union})
 folds_u = {d: i % 5 for i, d in enumerate(dates_u)}
-for fams in (["market"], ["market", "microstructure", "own_history"],
-             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"]):
+for fams in (["market"], ["market", "minute_path"], ["market", "microstructure", "own_history"],
+             ["market", "microstructure", "own_history", "minute_path"],
+             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history", "minute_path"]):
     cols = [c for fam in fams for c in fam_cols[fam]]
     hits = t3 = 0
     pe_u = []

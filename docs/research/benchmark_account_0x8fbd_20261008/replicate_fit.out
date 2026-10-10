@@ -41,29 +41,21 @@
 == B. ranker over every candidate leg, 5 date folds (out of sample)
    candidates per event 21.9; uniform top-1 0.046
    market                                                       top-1 0.292  top-3 0.717  MRR 0.532  (n=1491, 13 features)
-   market+our                                                   top-1 0.316  top-3 0.702  MRR 0.543  (n=1491, 19 features)
-   market+raw                                                   top-1 0.321  top-3 0.702  MRR 0.547  (n=1491, 33 features)
-   market+points                                                top-1 0.309  top-3 0.698  MRR 0.536  (n=1491, 17 features)
-   market+momentum                                              top-1 0.294  top-3 0.709  MRR 0.531  (n=1491, 19 features)
-   market+weather_days                                          top-1 0.290  top-3 0.691  MRR 0.524  (n=1491, 15 features)
+   market+minute_path                                           top-1 0.355  top-3 0.735  MRR 0.570  (n=1491, 23 features)
    market+our+raw+points+momentum+weather_days                  top-1 0.304  top-3 0.701  MRR 0.536  (n=1491, 51 features)
-   market+own_history                                           top-1 0.415  top-3 0.789  MRR 0.622  (n=1491, 22 features)
    market+microstructure+own_history                            top-1 0.405  top-3 0.785  MRR 0.615  (n=1491, 23 features)
-   market+our+raw+points+momentum+weather_days+own_history      top-1 0.402  top-3 0.761  MRR 0.607  (n=1491, 60 features)
+   market+microstructure+own_history+minute_path                top-1 0.440  top-3 0.795  MRR 0.636  (n=1491, 33 features)
    market+microstructure+our+raw+points+momentum+weather_days+own_history top-1 0.386  top-3 0.778  MRR 0.600  (n=1491, 61 features)
+   market+microstructure+our+raw+points+momentum+weather_days+own_history+minute_path top-1 0.425  top-3 0.787  MRR 0.625  (n=1491, 71 features)
 
 == B2. off-mode legs: does the top pick stand on their side of the mode? (out of sample)
    market                                                       0.562 (n=753)
-   market+our                                                   0.590 (n=769)
-   market+raw                                                   0.612 (n=763)
-   market+points                                                0.577 (n=770)
-   market+momentum                                              0.587 (n=728)
-   market+weather_days                                          0.566 (n=758)
+   market+minute_path                                           0.636 (n=766)
    market+our+raw+points+momentum+weather_days                  0.620 (n=734)
-   market+own_history                                           0.749 (n=782)
    market+microstructure+own_history                            0.751 (n=770)
-   market+our+raw+points+momentum+weather_days+own_history      0.754 (n=743)
+   market+microstructure+own_history+minute_path                0.769 (n=762)
    market+microstructure+our+raw+points+momentum+weather_days+own_history 0.763 (n=729)
+   market+microstructure+our+raw+points+momentum+weather_days+own_history+minute_path 0.769 (n=728)
 
 == B3. the station-day's first touch (no earlier cluster fill on it) vs later episodes
    market                                                       first touch n=  44 top-1 0.364 top-3 0.636 side-of-mode 0.533 (n=30)
@@ -77,33 +69,38 @@
 
 == C0. how many legs the cluster buys in the same burst (any fill, +-120 s, same station-day)
    legs in the burst: 1: 0.77, 2: 0.20, 3: 0.03, 4+: 0.01
-   the full ranker's top pick is one of the burst's legs 0.468
+   the full ranker's top pick is one of the burst's legs 0.499
 
 == C. where the full ranker misses (out of sample)
-   their leg NO mode       n= 279 top-1 0.376
-   their leg NO off-mode   n= 304 top-1 0.253
-   their leg YES mode      n= 196 top-1 0.250
-   their leg YES off-mode  n= 712 top-1 0.485
-   top pick has their side 0.666; their bucket (either side) 0.453
-   off-mode legs: the top pick's side of the mode matches theirs 0.763 (n=729)
+   their leg NO mode       n= 279 top-1 0.470
+   their leg NO off-mode   n= 304 top-1 0.276
+   their leg YES mode      n= 196 top-1 0.327
+   their leg YES off-mode  n= 712 top-1 0.499
+   top pick has their side 0.680; their bucket (either side) 0.482
+   off-mode legs: the top pick's side of the mode matches theirs 0.769 (n=728)
 
 == D. gain share of the full ranker (all data)
-   q 31.3%, abs_d_mode 4.7%, usdc 4.4%, price 3.5%, own_yes_rise 3.5%, own_same_n 3.0%, mom1h 2.8%, own_since_h 2.7%, edge_mid 2.3%, spread 1.9%, own_opp_n 1.7%, own_same_usdc 1.4%, our_p 1.4%, chg_aifs_ens 1.4%, own_prior_n 1.3%, raw_pool_logpq 1.3%, lead 1.3%, pt_ukmo_d 1.2%, raw_aigefs_d 1.2%, raw_gefs_d 1.1%, M_align 1.1%, raw_aigefs_draw 1.1%, chg_ifs_ens 1.1%, our_logpq 1.0%, chg_aifs_single 1.0%
+   q 35.2%, price 4.4%, usdc 3.3%, own_same_n 2.7%, own_yes_rise 2.6%, abs_d_mode 2.6%, min_d60 2.5%, own_since_h 2.1%, min_d30 2.0%, own_opp_n 1.8%, edge_mid 1.6%, mom1h 1.5%, min_pos60 1.5%, own_same_usdc 1.3%, chg_aifs_ens 1.2%, raw_gem_d 1.1%, own_prior_n 1.0%, spread 1.0%, min_since 1.0%, d_run 1.0%, lead 0.9%, raw_aigefs_draw 0.9%, min_vol60 0.9%, min_ladder15 0.9%, pt_aifs1_d 0.8%
 
 == F. forward: train on the whole research window, test on the cluster's first takers after it
    forward events 612 (2026-10-08..2026-10-12), candidates per event 17.0
    market                                                       top-1 0.337 top-3 0.719 side-of-mode 0.615 (n=612, dir n=356)
+   market+minute_path                                           top-1 0.345 top-3 0.783 side-of-mode 0.602 (n=612, dir n=332)
    market+our+raw+points+momentum+weather_days                  top-1 0.332 top-3 0.701 side-of-mode 0.623 (n=612, dir n=316)
    market+microstructure+own_history                            top-1 0.391 top-3 0.761 side-of-mode 0.669 (n=612, dir n=359)
+   market+microstructure+own_history+minute_path                top-1 0.454 top-3 0.824 side-of-mode 0.754 (n=612, dir n=354)
    market+microstructure+our+raw+points+momentum+weather_days+own_history top-1 0.384 top-3 0.768 side-of-mode 0.709 (n=612, dir n=340)
-   full model by event day: 2026-10-08 n=2 top-1 0.50, 2026-10-09 n=185 top-1 0.31, 2026-10-10 n=224 top-1 0.42, 2026-10-11 n=170 top-1 0.41, 2026-10-12 n=31 top-1 0.39
-   full model by leg type: NO mode n=83 top-1 0.17, NO off-mode n=123 top-1 0.19, YES mode n=108 top-1 0.22, YES off-mode n=298 top-1 0.58
+   market+microstructure+our+raw+points+momentum+weather_days+own_history+minute_path top-1 0.408 top-3 0.820 side-of-mode 0.736 (n=612, dir n=326)
+   full model by event day: 2026-10-08 n=2 top-1 0.50, 2026-10-09 n=185 top-1 0.34, 2026-10-10 n=224 top-1 0.41, 2026-10-11 n=170 top-1 0.45, 2026-10-12 n=31 top-1 0.55
+   full model by leg type: NO mode n=83 top-1 0.25, NO off-mode n=123 top-1 0.18, YES mode n=108 top-1 0.41, YES off-mode n=298 top-1 0.55
    leg mix research: NO mode 0.19, NO off 0.20, YES mode 0.13, YES off 0.48 | forward: NO mode 0.14, NO off 0.20, YES mode 0.18, YES off 0.49
 
 == G. forward misses of the full model: how far was the top pick from their leg
-   exact 0.384, other side, other bucket 0.237, next bucket, same side 0.190, same bucket, other side 0.103, same side, 2+ buckets away 0.087
+   exact 0.408, other side, other bucket 0.250, next bucket, same side 0.186, same side, 2+ buckets away 0.082, same bucket, other side 0.074
 
 == H. date-fold CV on all events (research + forward), does more data lift the ceiling?
    market                                                       top-1 0.318 top-3 0.716 side-of-mode 0.584 (n=2103)
+   market+minute_path                                           top-1 0.361 top-3 0.742 side-of-mode 0.636 (n=2103)
    market+microstructure+own_history                            top-1 0.412 top-3 0.796 side-of-mode 0.732 (n=2103)
-   market+microstructure+our+raw+points+momentum+weather_days+own_history top-1 0.394 top-3 0.782 side-of-mode 0.722 (n=2103)
+   market+microstructure+own_history+minute_path                top-1 0.447 top-3 0.802 side-of-mode 0.766 (n=2103)
+   market+microstructure+our+raw+points+momentum+weather_days+own_history+minute_path top-1 0.430 top-3 0.799 side-of-mode 0.764 (n=2103)
