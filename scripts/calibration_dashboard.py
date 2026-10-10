@@ -23301,28 +23301,28 @@ const GROUPS = [
   {id:"model", label:"模型", short:"模型", tone:"#d2a8ff",
    note:"概率层：先看总览，再沿链条从上游到下游——单系统 → 融合层 → 分布层（P0，校准只在这里）→ 按站的贝叶斯更新（P0-M、P1）→ 两条似然本身 → 区域模型",
    sections:[
-     {box:"总览：模型准不准", kind:"audit",
+     {box:"总览：模型准不准", nav:"总览", kind:"audit",
       note:"宪章 240：先看 LogScore（主）、CRPS（结构）、Brier（护栏）三张核心卡与本版对上一版的判词；中心/宽度/校准/六层灯都折叠在诊断里；最后按站排一次名",
       sections:[[modelAccuracyBoard,"模型准不准 · 总检"],
         [stationCalibrationRank,"逐站校准排序"]]},
-     {box:"① 单系统：每家模型各自校准", kind:"live",
+     {box:"① 单系统：每家模型各自校准", nav:"单系统", kind:"live",
       note:`${famJia()}集合预报各自订正偏差、各自调宽度；命中率看订正有没有用，H5 看订正用多长的记忆`,
       sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
         [hitRate,"模型命中率"],[h5Readiness,"H5 半衰期"]]},
-     {box:`② 融合层：${famJia()}怎么合成一条`, kind:"live",
+     {box:`② 融合层：${famJia()}怎么合成一条`, nav:"融合层", kind:"live",
       note:"按权重合成；权重看在用的配比、重解是否对得上、宪章 199 的前向记账与候选，权重表是否按时换代，离散度看几家分歧多大",
       // 融合权重候选 joined the weights it is about (user 2026-10-10「融合权重：宪章 199
       // 在服务、前向记账与研究候选也是应该移动到模型权重板块去吧」); box ②′ is gone.
       sections:[[servingWeights,"模型权重"],[fusionCandidates,"融合权重候选"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
-     {box:"③ 分布层：合成后的分布再塑形、再检验", kind:"live",
+     {box:"③ 分布层：合成后的分布再塑形、再检验", nav:"分布层", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
         [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
-     {box:"④ P0 之后的三条规则（全队层）", kind:"live",
+     {box:"④ P0 之后的三条规则（全队层）", nav:"P0-M · P1", kind:"live",
       note:"三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
       sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 观测更新"],
         [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]},
-     {box:"⑤ 物理协变量：模型说的雨，站上到底下没下", kind:"audit",
+     {box:"⑤ 物理协变量：模型说的雨，站上到底下没下", nav:"物理协变量", kind:"audit",
       note:"读辐射降温项用的同一张物理表里 Open-Meteo 的逐日降水预报，对官方 METAR/SPECI 打 2×2 列联表的六项分类评分；只是读数，不进 P0/P0-M/P1，不改任何权重",
       sections:[[precipScores,"降水分类评分"]]}]},
   // The edge area: the weather model p against the market q.  The live bets
@@ -23335,7 +23335,7 @@ const GROUPS = [
   {id:"edge", label:"边际", short:"边际", tone:"#79c0ff",
    note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见资金看板「Proper 下注线」页签）；兑现层自成一个板块",
    sections:[
-     {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", kind:"audit",
+     {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", nav:"验收", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
       sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]}]},
   // Charter 254, its own area (user 2026-10-05: 兑现层单独一个层级板块):
@@ -23579,7 +23579,7 @@ const subHtml = (item) => `<div class="subgroup" data-lane="${
 // kind, the note, then its sections under their usual guards.
 const boxHtml = (g, item, i) => {
   const kind = BOX_KIND[item.kind] || BOX_KIND.audit;
-  return `<div class="box" style="--box:${kind.tone}" data-kind="${item.kind || ""}">
+  return `<div class="box" id="box-${g.id}-${i}" style="--box:${kind.tone}" data-kind="${item.kind || ""}" data-nav="${h(item.nav || "")}" data-title="${h(item.box)}">
     <div class="box-t">${h(item.box)} <span class="box-k">${kind.word}</span></div>
     ${item.note ? `<div class="box-n muted">${h(item.note)}</div>` : ""}
     ${item.sections.map((sub, j) => sec(sub[0], sub[1], `sec-${g.id}-${i}-${j}`)).join("")}</div>`;
@@ -23695,6 +23695,7 @@ document.getElementById("app").innerHTML =
     .replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const home = document.getElementById("nav-home");
   const chip = (node) => {
+    if(node.classList.contains("box")) return boxChip(node);
     if(!node.firstElementChild) return "";
     const head2 = node.querySelector("h2");
     const full = head2
@@ -23713,6 +23714,16 @@ document.getElementById("app").innerHTML =
       lane ? ` data-lane="${esc(lane)}"` : ""}${
       node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
   };
+  // A container's chip: its short name, the whole title on hover, live when
+  // the container is, starred when a section inside is.
+  const boxChip = (node) => {
+    const full = node.dataset.title || "";
+    const name = node.dataset.nav || full.split(/[：（(]/)[0].replace(/^[①-⑨]\S*\s*/, "").trim();
+    if(!name || !node.querySelector(".sec")) return "";
+    return `<button type="button" data-goto="${node.id}" title="${esc(full)}"${
+      node.dataset.kind === "live" ? ` data-lane="live"` : ""}${
+      node.querySelector(".sec[data-star]") ? ` class="star"` : ""}>${esc(name)}</button>`;
+  };
   // One run of chips per area, behind the area's caption, wrapping as a unit.
   const run = (label, tone, nodes) => {
     const chips = nodes.map(chip).filter(Boolean);
@@ -23729,8 +23740,10 @@ document.getElementById("app").innerHTML =
         [...document.querySelectorAll(".toparea > .sec")])]
       .concat([...document.querySelectorAll(".group:not([hidden])")].map(g => {
         const G = GROUPS.find(x => x.id === g.dataset.group) || {};
+        // By container where an area has them (user 2026-10-10「菜单栏的顺序和分类
+        // 优化一下，按照大类分，细类不单独体现」); a bare section keeps its own chip.
         return run(G.short || G.label || "", G.tone || "",
-          [...g.querySelectorAll(".sec")]);
+          [...g.children].filter(n => n.classList.contains("box") || n.classList.contains("sec")));
       }));
     jump.innerHTML = runs.filter(Boolean).join("");
     spy();
