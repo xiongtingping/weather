@@ -45,6 +45,17 @@ ratio is taken on, 「按他已投入仓位算」.
   null or non-positive is no daily cap (user ruling 2026-10-09 「40 U 日预算改为
   不设置上限」); a BUY needs the account's free cash.
 
+Rule v3 (charter 266; user rulings 2026-10-10 「落地三档」 and 「动量和四特征模型：
+解耦出来，其他策略比如proper线也可以使用」) keeps v2's episodes, window, take-or-
+nothing and send-time checks and stakes each admitted leg in three tiers off the
+shared direction signal (``direction_signal.leg_reading`` at the trade's own
+instant): ECMWF momentum agrees with the leg's side of the market mode --
+``stake_tiers.momentum_agrees x stake_usdc``; else the four-feature model agrees
+and momentum is not against -- ``model_agrees``; else v2's probability filter
+passes and neither is against -- ``probability``; a leg either signal is
+against is refused ``direction_disagrees:*``.  The two direction tiers need no
+probability margin: their cap is the source's price plus ``max_slippage``.
+
 Nothing is read or written while ``data/live_paused.flag`` is up or the
 arming flag is down.  Every planned order and every changed refusal is a row
 of ``copy_follow_lane_evaluation``; every source trade seen is a row of
@@ -82,7 +93,22 @@ RULE_V1 = "source_positions_value_ratio_at_source_price_v1"
 #: Charter 257: the first taker buy of a bucket episode by any wallet of the
 #: cluster, followed at a fixed stake where our served probability agrees.
 RULE_V2 = "cluster_taker_first_filtered_fixed_stake_v2"
-RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1", RULE_V2: "copy_follow_lane_v2"}
+#: Charter 266 (user rulings 2026-10-10 「落地三档」): v2's episodes and window,
+#: staked in three tiers by the shared direction signal (``direction_signal``),
+#: a leg the signal disagrees with skipped.
+RULE_V3 = "cluster_taker_first_direction_tiered_stake_v3"
+RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1", RULE_V2: "copy_follow_lane_v2", RULE_V3: "copy_follow_lane_v3"}
+CLUSTER_RULES = frozenset({RULE_V2, RULE_V3})
+#: Charter 266's tiers, strongest first: ECMWF momentum agrees with the leg's
+#: side of the market mode; else the four-feature model agrees and momentum is
+#: not against; else v2's probability filter passes and neither is against.
+TIER_MOMENTUM = "momentum_agrees"
+TIER_MODEL = "model_agrees"
+TIER_PROBABILITY = "probability"
+TIER_ORDER = (TIER_MOMENTUM, TIER_MODEL, TIER_PROBABILITY)
+#: The tiers admitted on the direction alone: no probability margin, the cap
+#: is the source's price plus the slippage.
+DIRECTION_TIERS = frozenset({TIER_MOMENTUM, TIER_MODEL})
 RATIO_BASES = frozenset({"source_positions_value"})
 SOURCE_TABLE = "copy_follow_source_trades"
 EVALUATION_TABLE = "copy_follow_lane_evaluation"
@@ -102,6 +128,10 @@ SOURCE_V2_COLUMNS = (("taker", "INTEGER"), ("model_stage", "TEXT"), ("our_p", "R
                      ("price_cap", "REAL"), ("model_margin", "REAL"))
 EVALUATION_V2_COLUMNS = (("our_p", "REAL"), ("price_cap", "REAL"), ("model_stage", "TEXT"),
                          ("model_margin", "REAL"))
+#: Charter 266: the tier a v3 leg was staked at, its stake and the direction
+#: reading behind it (mode, leg side, momentum, model, physics lineage).
+SOURCE_V3_COLUMNS = (("stake_tier", "TEXT"), ("stake_usdc", "REAL"), ("direction_json", "TEXT"))
+EVALUATION_V3_COLUMNS = (("stake_tier", "TEXT"),)
 HTTP_TIMEOUT_SECONDS = 10.0
 #: The gateway signs a BUY at its default tick (the payload carries none), so
 #: a price off the cent grid is one nobody quoted -- see ``tail_short_lane``.
@@ -205,7 +235,8 @@ def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(EVALUATION_DDL)
     conn.execute(EVALUATION_INDEX_DDL)
     conn.execute(STATE_DDL)
-    for table, columns in ((SOURCE_TABLE, SOURCE_V2_COLUMNS), (EVALUATION_TABLE, EVALUATION_V2_COLUMNS)):
+    for table, columns in ((SOURCE_TABLE, SOURCE_V2_COLUMNS + SOURCE_V3_COLUMNS),
+                           (EVALUATION_TABLE, EVALUATION_V2_COLUMNS + EVALUATION_V3_COLUMNS)):
         present = {str(r[1]) for r in conn.execute(f"PRAGMA table_info({table})")}
         for column, decl in columns:
             if column not in present:
@@ -633,16 +664,62 @@ def ingest_source_trades(
             "admitted": admitted, "ratio": ratio}
 
 
+def direction_stake_tier(*, momentum: str, model: str, probability_passes: bool) -> tuple[str | None, str | None]:
+    """Charter 266: ``(tier, refusal)`` from the shared signal's agreement with
+    the leg (``agree`` / ``disagree`` / ``quiet`` / ``no_direction``) and v2's
+    probability filter.  Momentum agreeing is the top tier whatever the model
+    says; momentum against skips the leg; the model agreeing is the second
+    tier, against skips it; otherwise the probability filter decides the
+    third.  ``(None, None)`` is the probability filter's own refusal."""
+
+    if momentum == "agree":
+        return TIER_MOMENTUM, None
+    if momentum == "disagree":
+        return None, "direction_disagrees:momentum"
+    if model == "agree":
+        return TIER_MODEL, None
+    if model == "disagree":
+        return None, "direction_disagrees:model"
+    if probability_passes:
+        return TIER_PROBABILITY, None
+    return None, None
+
+
+def stake_tier_multipliers(cfg: Mapping[str, Any]) -> dict[str, float]:
+    """``stake_tiers``: each tier's stake as a multiple of ``stake_usdc``;
+    every tier named, every multiple positive, or the lane refuses to run."""
+
+    raw = cfg.get("stake_tiers")
+    if not isinstance(raw, Mapping):
+        raise ValueError("copy_follow_stake_tiers_missing")
+    out: dict[str, float] = {}
+    for tier in TIER_ORDER:
+        try:
+            value = float(raw[tier])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"copy_follow_stake_tier_invalid:{tier}") from exc
+        if not (value > 0.0 and math.isfinite(value)):
+            raise ValueError(f"copy_follow_stake_tier_invalid:{tier}")
+        out[tier] = value
+    return out
+
+
 def ingest_cluster_taker_trades(
     conn: sqlite3.Connection, *, cfg: Mapping[str, Any], now_utc: str, fetch: Fetch, feed: Any = None,
-    api_fallback: bool = True,
+    api_fallback: bool = True, physics: Any = None,
 ) -> dict[str, Any]:
     """Charter 257: read every cluster wallet's new TAKER fills and write each
     one, admitted (the first buy of a bucket episode, inside the lead window,
     on a station in ``station_units``, where our served probability from a
     stage in ``model_stages`` clears the source's price by ``model_margin``)
     or refused by name.  An admitted trade's ``scaled_shares`` is the fixed
-    ``stake_usdc`` worth of shares at the price cap."""
+    ``stake_usdc`` worth of shares at the price cap.
+
+    Rule v3 (charter 266) reads the shared direction signal at the trade's
+    own instant -- the market's mode on the newest committed snapshot then,
+    ECMWF momentum from the runs in hand then, the four-feature model -- and
+    stakes the leg ``stake_usdc x stake_tiers[tier]``; the direction tiers
+    need no probability margin."""
 
     users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
     cities = city_stations()
@@ -656,6 +733,8 @@ def ingest_cluster_taker_trades(
     margin = float(cfg.get("model_margin") or 0.0)
     slippage = max(0.0, float(cfg.get("max_slippage") or 0.0))
     max_age = float(cfg.get("max_source_age_seconds") or 0.0)
+    tiered = str(cfg.get("rule")) == RULE_V3
+    multipliers = stake_tier_multipliers(cfg) if tiered else {}
     now = _utc(now_utc).timestamp()
     receipt: dict[str, Any] = {"state": "ingested", "users": {}, "fetched": 0, "ingested": 0, "admitted": 0}
     if not (stake > 0.0):
@@ -702,6 +781,8 @@ def ingest_cluster_taker_trades(
             refusal = mapped.get("refusal")
             served: dict[str, Any] = {}
             cap = None
+            tier: str | None = None
+            direction: dict[str, Any] | None = None
             if refusal is None and action != "BUY":
                 refusal = f"action_not_followed:{action}"
             if refusal is None and mapped["side"] not in sides:
@@ -739,28 +820,44 @@ def ingest_cluster_taker_trades(
                     conn, station_id=str(mapped["station_id"]), event_date=str(mapped["event_date"]),
                     bucket=str(mapped["bucket"]), side=str(mapped["side"]), stages=stages, now_utc=now_utc,
                 )
-                if served.get("state") != "ok":
-                    refusal = f"model:{served.get('state')}"
-                else:
-                    cap = min(price + slippage, float(served["p"]) - margin, MAX_PRICE)
-                    if cap < price - 1e-9:
-                        refusal = f"model_margin_short:{float(served['p']):.3f}<{price + margin:.3f}"
-            scaled = round(stake / cap, 6) if refusal is None and cap else None
+                p_cap = (min(price + slippage, float(served["p"]) - margin, MAX_PRICE)
+                         if served.get("state") == "ok" else None)
+                p_passes = p_cap is not None and p_cap >= price - 1e-9
+                if tiered:
+                    from .direction_signal import leg_reading  # noqa: PLC0415
+
+                    direction = leg_reading(
+                        conn, station_id=str(mapped["station_id"]), event_date=str(mapped["event_date"]),
+                        bucket=str(mapped["bucket"]), side=str(mapped["side"]), at_utc=ts, physics=physics,
+                    )
+                    tier, refusal = direction_stake_tier(momentum=direction["momentum"], model=direction["model"],
+                                                         probability_passes=p_passes)
+                elif p_passes:
+                    tier = TIER_PROBABILITY
+                if refusal is None and tier is None:
+                    refusal = (f"model:{served.get('state')}" if served.get("state") != "ok"
+                               else f"model_margin_short:{float(served['p']):.3f}<{price + margin:.3f}")
+                if refusal is None:
+                    cap = min(price + slippage, MAX_PRICE) if tier in DIRECTION_TIERS else p_cap
+            leg_stake = (stake * multipliers[tier]) if (tiered and tier) else stake
+            scaled = round(leg_stake / cap, 6) if refusal is None and cap else None
             admitted += int(refusal is None)
             conn.execute(
                 f"INSERT OR IGNORE INTO {SOURCE_TABLE}(source_key, source_user, source_ts, source_at_utc,"
                 " transaction_hash, token_id, condition_id, order_action, outcome_side, size, price, usdc_size,"
                 " event_slug, title, station_id, event_date, bucket, settlement_timezone, ratio, our_equity_usdc,"
                 " source_value_usdc, scaled_shares, refusal, ingested_at_utc, taker, model_stage, our_p, price_cap,"
-                " model_margin)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " model_margin, stake_tier, stake_usdc, direction_json)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (key, user, ts, _z(datetime.fromtimestamp(ts, timezone.utc)), str(trade.get("transactionHash") or ""),
                  token, str(trade.get("conditionId") or ""), action, mapped.get("side"), size, price,
                  trade.get("usdcSize", round(size * price, 6)), str(trade.get("eventSlug") or ""),
                  str(trade.get("title") or ""), mapped.get("station_id"), mapped.get("event_date"),
                  mapped.get("bucket"), mapped.get("settlement_timezone"), None, None, None, scaled, refusal, now_utc,
                  1, served.get("stage"), served.get("p"), cap,
-                 (float(served["p"]) - price) if served.get("state") == "ok" else None),
+                 (float(served["p"]) - price) if served.get("state") == "ok" else None,
+                 tier if refusal is None else None, leg_stake if refusal is None and tier else None,
+                 json.dumps(direction, ensure_ascii=False, sort_keys=True) if direction is not None else None),
             )
         receipt["users"][user] = {"state": "ingested", "cursor_ts": cursor, "fetched": len(trades),
                                   "ingested": len(fresh), "admitted": admitted,
@@ -789,9 +886,11 @@ def cluster_targets(
     gap = max(0.0, float(episode_gap_seconds or 0.0))
     episode_start: dict[str, int] = {}
     marks = ",".join("?" for _ in users)
-    for (token, user, station, day, bucket, side, tz, scaled, price, ts, our_p, cap, margin, stage) in conn.execute(
+    for (token, user, station, day, bucket, side, tz, scaled, price, ts, our_p, cap, margin, stage,
+         tier) in conn.execute(
         f"SELECT token_id, source_user, station_id, event_date, bucket, outcome_side, settlement_timezone,"
-        f" scaled_shares, price, source_ts, our_p, price_cap, model_margin, model_stage FROM {SOURCE_TABLE}"
+        f" scaled_shares, price, source_ts, our_p, price_cap, model_margin, model_stage, stake_tier"
+        f" FROM {SOURCE_TABLE}"
         f" WHERE source_user IN ({marks}) AND event_date>=? AND refusal IS NULL AND order_action='BUY'"
         f" ORDER BY source_ts, source_key",
         (*users, since_event_date),
@@ -800,7 +899,7 @@ def cluster_targets(
             "token_id": str(token), "station_id": str(station), "event_date": str(day), "bucket": str(bucket),
             "side": str(side), "settlement_timezone": str(tz or ""), "target": 0.0, "buy_price": None,
             "sell_price": None, "last_ts": None, "source_user": str(user), "our_p": None, "price_cap": None,
-            "model_margin": None, "model_stage": None,
+            "model_margin": None, "model_stage": None, "stake_tier": None,
         })
         first = episode_start.get(str(token))
         if gap > 0.0 and first is not None and int(ts) - first <= gap:
@@ -808,7 +907,7 @@ def cluster_targets(
         episode_start[str(token)] = int(ts)
         entry["target"] = entry["target"] + float(scaled or 0.0)
         entry.update(buy_price=float(price), last_ts=int(ts), last_scaled=float(scaled or 0.0), source_user=str(user),
-                     our_p=our_p, price_cap=cap, model_margin=margin, model_stage=stage)
+                     our_p=our_p, price_cap=cap, model_margin=margin, model_stage=stage, stake_tier=tier)
     return out
 
 
@@ -1058,6 +1157,7 @@ def execute_copy_follow(
     ratio_cache: dict[str, Any] | None = None,
     feed: Any = None,
     api_fallback: bool = True,
+    physics: Any = None,
 ) -> dict[str, Any]:
     """Read the source's new trades, then close every token's gap it can."""
 
@@ -1071,7 +1171,9 @@ def execute_copy_follow(
     if str(cfg.get("rule")) not in RULE_VERSIONS:
         raise ValueError(f"copy_follow_rule_unknown:{cfg.get('rule')}")
     rule_version = RULE_VERSIONS[str(cfg["rule"])]
-    cluster_rule = str(cfg["rule"]) == RULE_V2
+    if str(cfg["rule"]) == RULE_V3:
+        stake_tier_multipliers(cfg)  # a malformed tier table stops the lane, loudly
+    cluster_rule = str(cfg["rule"]) in CLUSTER_RULES
     if cluster_rule:
         users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
         for candidate in users:
@@ -1093,7 +1195,7 @@ def execute_copy_follow(
     if cluster_rule:
         try:
             ingest = ingest_cluster_taker_trades(target_conn, cfg=cfg, now_utc=now_utc, fetch=fetch, feed=feed,
-                                                 api_fallback=api_fallback)
+                                                 api_fallback=api_fallback, physics=physics)
         except Exception as exc:  # noqa: BLE001 -- a failed read follows what is already in hand
             ingest = {"state": "source_read_failed", "reason": f"{type(exc).__name__}:{exc}"[:200]}
         targets = cluster_targets(target_conn, users=cfg["source_users"], since_event_date=since,
@@ -1132,7 +1234,9 @@ def execute_copy_follow(
     daily_cap = cfg.get("max_daily_cost_usdc")
     unlimited_day = daily_cap is None or not (float(daily_cap) > 0.0)
     budget_left = math.inf if unlimited_day else float(daily_cap) - lane_cost_today(target_conn, now_utc=now_utc)
-    ranking = ((lambda kv: -(kv[1].get("model_margin") or 0.0)) if cluster_rule
+    tier_rank = {tier: i for i, tier in enumerate(TIER_ORDER)}
+    ranking = ((lambda kv: (tier_rank.get(kv[1].get("stake_tier") or TIER_PROBABILITY, len(TIER_ORDER)),
+                            -(kv[1].get("model_margin") or 0.0))) if cluster_rule
                else (lambda kv: -(kv[1]["last_ts"] or 0)))
     for token, want in sorted(targets.items(), key=ranking):
         station, day, bucket, side = want["station_id"], want["event_date"], want["bucket"], want["side"]
@@ -1150,6 +1254,8 @@ def execute_copy_follow(
             "bucket": bucket, "side": side, "evaluated_at_utc": now_utc, "rule_version": rule_version,
             "target_shares": target, "held_shares": float(position["held"]), "gap_shares": gap,
         }
+        if cluster_rule:
+            row["stake_tier"] = want.get("stake_tier")
         action = "BUY" if gap >= min_shares else "SELL" if -gap >= min_shares else None
         plan: dict[str, Any] = {}
         if action is None:
@@ -1186,7 +1292,18 @@ def execute_copy_follow(
                 elif action == "BUY":
                     row["source_price"] = want["buy_price"]
                     cap = min(float(want["buy_price"]) + slippage, MAX_PRICE)
-                    if cluster_rule:
+                    if cluster_rule and want.get("stake_tier") in DIRECTION_TIERS:
+                        # Charter 266: a direction tier was admitted on the direction at the
+                        # trade's instant; our probability is recorded, never a gate.
+                        served = served_side_probability(
+                            target_conn, station_id=station, event_date=day, bucket=bucket, side=side,
+                            stages=stages, now_utc=now_utc,
+                        )
+                        row["price_cap"] = cap
+                        if served.get("state") == "ok":
+                            row.update(our_p=float(served["p"]), model_stage=served.get("stage"),
+                                       model_margin=float(served["p"]) - float(want["buy_price"]))
+                    elif cluster_rule:
                         # Charter 257: judged again at the send -- our newest served probability
                         # must still clear the cap by the margin, else the follow waits.
                         served = served_side_probability(
@@ -1233,7 +1350,7 @@ def execute_copy_follow(
         plan_body = {**{k: row.get(k) for k in ("token_id", "station_id", "event_date", "bucket", "side",
                                                  "target_shares", "held_shares", "gap_shares", "source_price",
                                                  "book_source", "book_observed_at", "bid", "ask", "our_p",
-                                                 "price_cap", "model_stage", "model_margin")},
+                                                 "price_cap", "model_stage", "model_margin", "stake_tier")},
                      **plan, "source_user": row["source_user"], "rule": rule_version}
         sends += 1
         if action == "BUY":
@@ -1316,8 +1433,16 @@ __all__ = [
     "EVALUATION_TABLE",
     "LANE",
     "LANE_TITLE",
+    "CLUSTER_RULES",
+    "DIRECTION_TIERS",
     "RULE_V1",
     "RULE_V2",
+    "RULE_V3",
+    "TIER_MODEL",
+    "TIER_MOMENTUM",
+    "TIER_PROBABILITY",
+    "direction_stake_tier",
+    "stake_tier_multipliers",
     "cluster_targets",
     "fetch_source_taker_trades",
     "ingest_cluster_taker_trades",

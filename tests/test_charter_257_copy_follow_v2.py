@@ -103,11 +103,12 @@ def test_the_defaults_name_the_cluster_and_the_stake_dial() -> None:
     assert strategy_lanes.LANE_COPY_FOLLOW in strategy_lanes.STAKE_DIALS
 
 
-def test_the_lanes_file_carries_v2() -> None:
+def test_the_lanes_file_carries_a_cluster_rule() -> None:
     # The switch itself is the operator's (turned on 2026-10-08 16:20Z); only the rule and dials are pinned.
+    # Charter 266 moved the file to v3 (v2's filter, three stake tiers); its own suite pins which.
     root = Path(__file__).resolve().parents[1]
     cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_COPY_FOLLOW, root / "config" / "trading" / "strategy_lanes_v1.json")
-    assert cfg["rule"] == lane.RULE_V2
+    assert cfg["rule"] in lane.CLUSTER_RULES
     assert cfg["mirror_sells"] is False and len(cfg["source_users"]) == 8
 
 

@@ -63,4 +63,6 @@ def test_the_board_lists_the_lane_and_not_the_retired_p1_tail() -> None:
     src = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "function copyFollowLane()" in src and '"copy_follow_lane"' in src
     assert 'copy_follow:"跟单线"' in src and '["copy_follow","跟单线"]' in src
-    assert "def collect_p1_tail_lane" not in src and 'p1_tail:"P1 尾段"' not in src
+    # The P1 tail board and its money-grid column are gone; the lane's name stays in the charter 259
+    # reliability diagrams' label map (legs it filled before it was switched off are still drawn).
+    assert "def collect_p1_tail_lane" not in src and '["p1_tail","P1 尾段"]' not in src

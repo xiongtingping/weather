@@ -30,8 +30,11 @@ from typing import Any
 RULE = "latest_run_change_aifs_aifs_single_gefs_v1"
 #: The three systems, in the order of the realisation layer's change columns.
 SYSTEMS = ("ECMWF_AIFS_ENS_GLOBAL", "ECMWF_AIFS_SINGLE_POINT", "NOAA_GEFS_05")
-NATIVE_SYSTEMS = frozenset({"ECMWF_AIFS_ENS_GLOBAL", "NOAA_GEFS_05"})
-POINT_SYSTEMS = frozenset({"ECMWF_AIFS_SINGLE_POINT"})
+#: How each system's runs are read.  Wider than ``SYSTEMS``: the direction
+#: signal (charter 266) reads the IFS ensemble and the HRES point runs through
+#: the same reader, on the same "from the instant we had it" clock.
+NATIVE_SYSTEMS = frozenset({"ECMWF_AIFS_ENS_GLOBAL", "NOAA_GEFS_05", "ECMWF_IFS_ENS_OPEN_PF50"})
+POINT_SYSTEMS = frozenset({"ECMWF_AIFS_SINGLE_POINT", "ECMWF_IFS_9KM_RELAY_POINT"})
 #: A native run is read only once this many members are in hand.
 MIN_NATIVE_MEMBERS = 10
 #: The conditionality: a change weighs exp(-hours / TAU) since we had the newer
@@ -48,25 +51,33 @@ def _instant(value: Any) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-def family_runs(conn: sqlite3.Connection, *, station_id: str, event_date: str) -> dict[str, list[tuple]]:
-    """Every run of the three systems for one station-day: ``system -> [(had_at,
-    run_init, value_c)]`` sorted by run init, one entry per run (a point run
-    re-captured keeps its first capture)."""
+def family_runs(
+    conn: sqlite3.Connection, *, station_id: str, event_date: str, systems: Sequence[str] = SYSTEMS,
+) -> dict[str, list[tuple]]:
+    """Every run of ``systems`` (the three by default) for one station-day:
+    ``system -> [(had_at, run_init, value_c)]`` sorted by run init, one entry
+    per run (a point run re-captured keeps its first capture)."""
 
+    wanted = tuple(str(system) for system in systems)
+    unknown = [system for system in wanted if system not in NATIVE_SYSTEMS | POINT_SYSTEMS]
+    if unknown:
+        raise ValueError(f"run_change_system_unknown:{','.join(unknown)}")
     out: dict[str, list[tuple]] = {}
     try:
-        _read_runs(conn, station_id, event_date, out)
+        _read_runs(conn, station_id, event_date, out, wanted)
     except sqlite3.OperationalError as exc:
         # A store without the run tables (a fixture, a research copy) has no
         # change to read: every system is simply absent.
         if "no such table" not in str(exc):
             raise
-        return {system: [] for system in SYSTEMS}
+        return {system: [] for system in wanted}
     return out
 
 
-def _read_runs(conn: sqlite3.Connection, station_id: str, event_date: str, out: dict[str, list[tuple]]) -> None:
-    for system in SYSTEMS:
+def _read_runs(
+    conn: sqlite3.Connection, station_id: str, event_date: str, out: dict[str, list[tuple]], systems: Sequence[str],
+) -> None:
+    for system in systems:
         if system in NATIVE_SYSTEMS:
             rows = conn.execute(
                 "SELECT native_run_init_utc, MIN(archive_query_at_utc), AVG(raw_tmax_c), COUNT(*)"

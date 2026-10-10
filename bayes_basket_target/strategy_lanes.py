@@ -441,6 +441,12 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     # no order at all; never a resting rung.  Off here, set in the lane file.
     "take_only": False,
     "take_window_seconds": 1800.0,
+    # Charter 266 (rule ``cluster_taker_first_direction_tiered_stake_v3``; user
+    # ruling 2026-10-10 「落地三档」): each tier's stake as a multiple of
+    # ``stake_usdc`` -- ECMWF momentum agrees 3x, the four-feature model agrees
+    # (momentum not against) 2x, the probability filter alone 1x; a leg either
+    # signal is against is skipped.  Unused by v1/v2.
+    "stake_tiers": {"momentum_agrees": 3.0, "model_agrees": 2.0, "probability": 1.0},
 }
 
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak

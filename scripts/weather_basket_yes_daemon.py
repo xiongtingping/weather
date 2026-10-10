@@ -125,7 +125,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_TIEBREAK,
     lane_enabled,
 )
-from bayes_basket_target import nwp_arrival_probe
+from bayes_basket_target import direction_signal, nwp_arrival_probe
 from bayes_basket_target.copy_follow_feed import (
     FEED as COPY_FOLLOW_FEED,
     POLL_INTERVAL_SECONDS as COPY_FOLLOW_FEED_INTERVAL_SEC,
@@ -3902,15 +3902,38 @@ def copy_follow_feed_users() -> list[str]:
     if PRODUCTION_EXECUTION_MODE != "production_live":
         return []
     try:
-        from bayes_basket_target.copy_follow_lane import RULE_V2  # noqa: PLC0415
+        from bayes_basket_target.copy_follow_lane import CLUSTER_RULES  # noqa: PLC0415
         from bayes_basket_target.strategy_lanes import lane_settings  # noqa: PLC0415
 
         cfg = lane_settings(LANE_COPY_FOLLOW)
     except Exception:  # noqa: BLE001 -- an unreadable lane file polls nothing
         return []
-    if cfg.get("enabled") is not True or str(cfg.get("rule")) != RULE_V2:
+    if cfg.get("enabled") is not True or str(cfg.get("rule")) not in CLUSTER_RULES:
         return []
     return [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
+
+
+#: Charter 266: how often the resident looks for stations whose direction-
+#: signal physics are due (each is re-read after ``REFRESH_SECONDS``).
+DIRECTION_PHYSICS_CHECK_SEC = 600.0
+
+
+def direction_physics_wanted() -> bool:
+    """Charter 266: whether any lane switched on in a live resident reads the
+    shared direction signal's physics -- today the copy-follow lane on rule
+    v3; a lane that starts reading the signal adds itself here (a paused
+    reader costs no network)."""
+
+    if PRODUCTION_EXECUTION_MODE != "production_live":
+        return False
+    try:
+        from bayes_basket_target.copy_follow_lane import RULE_V3  # noqa: PLC0415
+        from bayes_basket_target.strategy_lanes import lane_settings  # noqa: PLC0415
+
+        cfg = lane_settings(LANE_COPY_FOLLOW)
+    except Exception:  # noqa: BLE001 -- an unreadable lane file fetches nothing
+        return False
+    return cfg.get("enabled") is True and str(cfg.get("rule")) == RULE_V3
 
 
 def run_target_production_cycle(
@@ -6388,6 +6411,15 @@ def main() -> int:
         )
         copy_feed_future: Any = None
         next_copy_feed = 0.0
+        # Charter 266: the direction signal's physics (Open-Meteo previous
+        # runs, aggregator lineage) -- read-only network into memory and one
+        # runtime file, so its own single-worker executor, never a writer turn.
+        direction_physics_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="direction-physics",
+        )
+        direction_physics_future: Any = None
+        next_direction_physics = 0.0
         argmax_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
@@ -7324,6 +7356,22 @@ def main() -> int:
                 if feed_users:
                     copy_feed_future = copy_feed_executor.submit(COPY_FOLLOW_FEED.poll, feed_users)
                 next_copy_feed = time.monotonic() + COPY_FOLLOW_FEED_INTERVAL_SEC
+            if storage_ok and now_mono >= next_direction_physics and (
+                direction_physics_future is None or direction_physics_future.done()
+            ):
+                if direction_physics_future is not None:
+                    try:
+                        state["direction_physics"] = direction_physics_future.result()
+                    except Exception as exc:  # noqa: BLE001 -- published, never raised
+                        state["direction_physics"] = {
+                            "state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160],
+                        }
+                    direction_physics_future = None
+                if direction_physics_wanted():
+                    direction_physics_future = direction_physics_executor.submit(
+                        direction_signal.refresh_fleet_physics, DEFAULT_TARGET_DB,
+                    )
+                next_direction_physics = time.monotonic() + DIRECTION_PHYSICS_CHECK_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -7667,6 +7715,7 @@ def main() -> int:
             "fast_taf_executor",
             "nwp_probe_executor",
             "copy_feed_executor",
+            "direction_physics_executor",
             "registry_executor",
             "argmax_executor",
             "sweep_executor",
