@@ -157,17 +157,6 @@ def test_admission_lights_a_day_served_an_older_run_than_a_nearer_day(monkeypatc
     assert icon["focus_event_date"] == "2026-09-19"
 
 
-def test_the_radiation_shift_is_read_off_each_newest_p0(monkeypatch) -> None:
-    monkeypatch.setattr(cd, "_now", lambda: NOW)
-    out = cd.collect_synoptic_cooling(_p0_conn())
-    rows = {r["event_date"]: r for r in out["rows"]}
-    assert rows["2026-09-19"]["shift_c"] == -0.87
-    assert rows["2026-09-19"]["per_unit"] == 0.35
-    assert rows["2026-09-19"]["served_mean_c"] == 24.3
-    day = next(d for d in out["summary"] if d["event_date"] == "2026-09-19")
-    assert day["coldest"] == ["ZUUU", -0.87] and day["big_cooling"] == 1
-
-
 def test_the_previous_version_window_is_read_off_the_declarations(monkeypatch) -> None:
     """The comparison moves by itself on the next bump."""
 

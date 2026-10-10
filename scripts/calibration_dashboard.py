@@ -1810,114 +1810,6 @@ def collect_member_admission(
     }
 
 
-def collect_synoptic_cooling(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The radiation shift (辐射降温项) each station's newest P0 served.
-
-    The one centre move P0 makes before the centre/width scalars.  Since
-    charter 160 (2026-09-19) the day's forecast shortwave radiation is read
-    as a clearness index Kt (over the top-of-atmosphere radiation for the
-    station's latitude and date), standardised against the station's own Kt
-    before the event day, times the served sigma and a coefficient that is
-    the fleet's on every artifact (charter 210) and, since charter 222, one
-    per side: the warm side's when the day is clearer than the station's
-    own history, the cold side's when it is cloudier, the pair centred on
-    that history (``side_centre``, in sigmas, subtracted from every day) so
-    no station's mean moves.  ``per_unit`` is the coefficient the row was
-    shifted at and ``side`` which side paid it.
-    The retired absolute standardisation rides on the receipt as the shadow
-    arm (``legacy_v1``) and is shown beside it.  Read off the receipt each envelope carries
-    (``synoptic_cooling_json``), never recomputed.  User, 2026-09-18:
-    前端合适的地方增加辐射降温项的数据 -- ZUUU 09-19 moved from -0.87C to
-    -0.37C that afternoon with no change in the weather, only in the lead
-    the packet was served under.
-    """
-
-    today = _now().date()
-    rows: list[dict[str, Any]] = []
-    summary: list[dict[str, Any]] = []
-    for offset in range(0, 3):
-        day = (today + timedelta(days=offset)).isoformat()
-        latest = conn.execute(
-            "SELECT station_id, MAX(decision_at_utc)"
-            " FROM basket_probability_envelope"
-            " WHERE state='COMMITTED' AND event_date=? AND stage='P0'"
-            " GROUP BY station_id",
-            (day,),
-        ).fetchall()
-        day_rows: list[dict[str, Any]] = []
-        for station, decided in latest:
-            found = conn.execute(
-                "SELECT json_extract(lineage_json,'$.synoptic_cooling_json'),"
-                " json_extract(lineage_json,'$.model_center_c'),"
-                " json_extract(lineage_json,'$.training_lead_bucket'),"
-                " json_extract(lineage_json,'$.center_width_json')"
-                " FROM basket_probability_envelope"
-                " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-                " AND decision_at_utc=? AND stage='P0' LIMIT 1",
-                (station, day, decided),
-            ).fetchone()
-            if found is None:
-                continue
-            try:
-                receipt = json.loads(found[0] or "{}") or {}
-                width = json.loads(found[3] or "{}") or {}
-            except (TypeError, ValueError):
-                receipt, width = {}, {}
-            shift = receipt.get("shift_c")
-            day_rows.append({
-                "station_id": str(station),
-                "event_date": day,
-                "decided_at_utc": str(decided),
-                "lead": str(found[2] or ""),
-                "state": str(receipt.get("state") or "NONE"),
-                "method": str(receipt.get("method_tag") or ""),
-                "shift_c": None if shift is None else round(float(shift), 3),
-                "shift_sigma": receipt.get("shift_sigma"),
-                "per_unit": receipt.get("shift_sigma_per_unit"),
-                # Charter 222: WARM / COLD / NEUTRAL and the pair's centre on
-                # the station's history; absent before it.
-                "side": receipt.get("radiation_side"),
-                "side_centre": receipt.get("side_centre_sigma"),
-                "standardised": receipt.get("standardised"),
-                "radiation_sum": receipt.get("radiation_sum"),
-                "samples": receipt.get("sample_count"),
-                # Charter 160: the clearness index and the shadow arm.
-                "clearness_index": receipt.get("clearness_index"),
-                "clearness_mean": receipt.get("history_clearness_mean"),
-                "extraterrestrial_mj": receipt.get("extraterrestrial_mj"),
-                "legacy_standardised": (receipt.get("legacy_v1") or {}).get("standardised"),
-                "legacy_shift_c": (receipt.get("legacy_v1") or {}).get("shift_c"),
-                "model_center_c": (
-                    None if found[1] is None else round(float(found[1]), 2)
-                ),
-                "served_mean_c": (
-                    None if width.get("distribution_mean_c") is None
-                    else round(float(width["distribution_mean_c"]), 2)
-                ),
-            })
-        if not day_rows:
-            continue
-        shifts = [r for r in day_rows if r["shift_c"] is not None]
-        coldest = min(shifts, key=lambda r: r["shift_c"]) if shifts else None
-        warmest = max(shifts, key=lambda r: r["shift_c"]) if shifts else None
-        summary.append({
-            "event_date": day,
-            "stations": len(day_rows),
-            "resolved": len(shifts),
-            "mean_shift_c": (
-                round(sum(r["shift_c"] for r in shifts) / len(shifts), 3)
-                if shifts else None
-            ),
-            "big_cooling": sum(1 for r in shifts if r["shift_c"] <= -0.5),
-            "big_warming": sum(1 for r in shifts if r["shift_c"] >= 0.5),
-            "coldest": coldest and [coldest["station_id"], coldest["shift_c"]],
-            "warmest": warmest and [warmest["station_id"], warmest["shift_c"]],
-            "leads": dict(Counter(r["lead"] for r in day_rows)),
-        })
-        rows.extend(day_rows)
-    return {"summary": summary, "rows": rows}
-
-
 SINGLE_SYSTEM_LEADS = ("h00_12", "h12_24", "h24_48", "h48_plus")
 
 
@@ -15252,9 +15144,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # deadline and the page render was killed three runs running.
         _unavailable={"available": False},
     ) if previous_windows.get("P0") else {"available": False}
-    synoptic_cooling = _cached_section(
-        "synoptic_cooling", collect_synoptic_cooling, conn
-    )
     single_system_width = _cached_section(
         "single_system_width", collect_single_system_width, conn
     )
@@ -15505,7 +15394,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "chain_volume": chain_volume,
         "member_admission": member_admission,
         "recent_runs": recent_runs,
-        "synoptic_cooling": synoptic_cooling,
         "single_system_width": single_system_width,
         "consensus_bridge": consensus_bridge,
         # One short name per system for the page's own tables (the fusion
@@ -18073,71 +17961,6 @@ function centerWidth(){
   同一晚还做否决检验：撤掉现役若两分数都显著更好，现役退役、按原样服务。
   证据按证据锚累积，服务版本升级不清零（宪章 202）；卡片底部的「证据时钟」只作看门狗读数。</div>
   <div class="grid g3" style="margin-top:12px">${cards}</div>`;
-}
-
-// The radiation shift (辐射降温项), the one centre move P0 makes before the two
-// scalars above (user, 2026-09-18: 前端合适的地方增加辐射降温项的数据).  Read off
-// each station's newest P0 receipt; nothing is recomputed here.
-function radiationShift(){
-  const R = D.synoptic_cooling || {};
-  const S = R.summary || [];
-  if(!S.length) return "";
-  const f2 = v => v==null ? "—" : ((v>0?"+":"")+Number(v).toFixed(2));
-  const leadWord = {h00_12:"0–12h", h12_24:"12–24h", h24_48:"24–48h", h48_plus:"48h+"};
-  const sideWord = {WARM:"升温侧", COLD:"降温侧", NEUTRAL:"不动"};
-  const days = S.map(d=>`<div class="mono" style="font-size:12px;margin:2px 0">
-    <b>${h(d.event_date.slice(5))}</b>：${d.resolved}/${d.stations} 站生效 ·
-    平均 <b class="${(d.mean_shift_c||0)<0?"down":"up"}">${f2(d.mean_shift_c)}°C</b> ·
-    往冷推 ≥0.5°C ${d.big_cooling} 站 · 往暖推 ≥0.5°C ${d.big_warming} 站 ·
-    最冷 ${d.coldest?h(d.coldest[0])+" "+f2(d.coldest[1]):"—"} ·
-    最暖 ${d.warmest?h(d.warmest[0])+" "+f2(d.warmest[1]):"—"} ·
-    <span class="muted">提前量 ${Object.entries(d.leads||{}).map(([k,v])=>(leadWord[k]||k)+" "+v+" 站").join("，")}</span></div>`).join("");
-  const rows = (R.rows||[]).slice().sort((a,b)=>
-    String(a.event_date).localeCompare(String(b.event_date))
-    || Math.abs(b.shift_c||0)-Math.abs(a.shift_c||0));
-  const body = rows.map(r=>`<tr>
-    <td class="mono">${h(String(r.event_date).slice(5))}</td>
-    <td class="mono">${h(r.station_id)}</td>
-    <td class="mono">${h(leadWord[r.lead]||r.lead||"—")}</td>
-    <td class="mono">${r.radiation_sum==null?"—":Number(r.radiation_sum).toFixed(2)}</td>
-    <td class="mono">${r.extraterrestrial_mj==null?"—":Number(r.extraterrestrial_mj).toFixed(1)}</td>
-    <td class="mono"><b>${r.clearness_index==null?"—":Number(r.clearness_index).toFixed(2)}</b></td>
-    <td class="mono">${r.clearness_mean==null?"—":Number(r.clearness_mean).toFixed(2)}</td>
-    <td class="mono">${r.standardised==null?"—":f2(r.standardised)}</td>
-    <td class="mono">${r.per_unit==null?"—":Number(r.per_unit).toFixed(2)}${r.side?" "+h(sideWord[r.side]||r.side):""}</td>
-    <td class="mono ${(r.shift_c||0)<0?"down":(r.shift_c||0)>0?"up":""}"><b>${f2(r.shift_c)}</b></td>
-    <td class="mono">${r.model_center_c==null?"—":Number(r.model_center_c).toFixed(2)}</td>
-    <td class="mono">${r.served_mean_c==null?"—":Number(r.served_mean_c).toFixed(2)}</td>
-    <td class="mono muted">${r.legacy_standardised==null?"—":f2(r.legacy_standardised)} / ${r.legacy_shift_c==null?"—":f2(r.legacy_shift_c)}</td>
-    <td class="mono muted" title="${h(r.method||"")}">${h(r.state)}${r.samples?" · "+r.samples+" 天":""}</td></tr>`).join("");
-  return `<div class="card" style="margin-top:12px">
-    <b>辐射降温项（升温侧 / 降温侧；中心/宽度之前的那一次平移）</b>
-    <div class="muted" style="margin:4px 0 8px;font-size:12px">
-      融出来的分布先按当天<b>预报的短波辐射</b>平移一次：透光比这个站平常少（阴、雨），整条分布往冷推；多（晴），往暖推。
-      <b>宪章 160（09-19 起）</b>：先把辐射换成<b>晴朗度指数 Kt</b>＝预报辐射 ÷ 当天该纬度的大气顶辐射（天文上限，只随纬度和日期变），
-      再对本站事件日之前的 Kt 历史标准化——季节（太阳高度、昼长）被除掉，只剩云和天气。平移 = Kt 标准分 × 系数 × 服务宽度 σ。
-      <b>宪章 222（09-25 起）</b>：系数分两侧——比本站平常<b>晴</b>（标准分 &gt; 0）按<b>升温侧</b>系数往暖推，比平常<b>阴</b>（&lt; 0）按<b>降温侧</b>系数往冷推。
-      晴朗度有天花板（天不会比万里无云更晴），却有很长的阴天尾巴，所以同一个系数时最大的平移全在冷侧，而真值跟得紧的是暖侧。
-      两侧系数<b>按本站自身历史居中</b>：本站平常的日子平均不动——不居中的话晴天多于阴天，会把整站均值往暖推，那是偏差层的事（宪章 160）；
-      全队统一、每件 artifact 一样（宪章 210），件内钉值只记入回执${(()=>{
-        const rows=(D.synoptic_cooling||{}).rows||[];
-        const bySide=s=>[...new Set(rows.filter(r=>r.side===s).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b);
-        const w=bySide("WARM"), c=bySide("COLD");
-        return (w.length||c.length)?`（此刻在服务：升温侧 <b>${w.join(" / ")||"—"}</b>、降温侧 <b>${c.join(" / ")||"—"}</b>；下表「系数/单位」列读的是这一行实际用的那一侧）`:"（下表「系数/单位」列读的是这一行实际用的那一侧）";})()}。
-      ${withEv("radiation_legacy_bias",(V,e)=>`旧法直接拿辐射绝对量和 4 月以来的平均比，9 月天天被判「偏暗」（${evStamp(e)}：全队 9 月 z ${evSg(V.fleet_september_z,2)}，其中约${evPct(V.seasonal_share)}是季节）；旧法标准分/平移留作影子列，便于复测。`)}
-      ${(()=>{
-        const rows=((D.synoptic_cooling||{}).rows||[]).filter(r=>r.state==="RESOLVED"&&r.clearness_index!=null&&r.extraterrestrial_mj!=null);
-        if(!rows.length) return `<span class="muted">例：本轮没有带晴朗度回执的行。</span>`;
-        const last=rows.map(r=>r.event_date).sort().slice(-1)[0];
-        const r=rows.filter(x=>x.event_date===last).sort((a,b)=>Math.abs(b.standardised||0)-Math.abs(a.standardised||0))[0];
-        return `例（最新一期回执里标准分最大的站）：${h(r.station_id)} ${h(String(r.event_date).slice(5))} 预报 ${(r.radiation_sum??0).toFixed(1)} MJ/m²，大气顶 ${r.extraterrestrial_mj.toFixed(1)}，Kt ${r.clearness_index.toFixed(2)} 对本站平均 ${(r.clearness_mean??0).toFixed(2)} → 标准分 ${evSg(r.standardised,2)}、平移约 ${evSg(r.shift_c,2,"°C")}${r.legacy_standardised!=null?`（旧法 ${evSg(r.legacy_standardised,2)}、${evSg(r.legacy_shift_c,2,"°C")}）`:""}。每站读自最新一期 P0 的回执，不在这里重算。`;})()}</div>
-    ${days}
-    <details style="margin-top:8px"><summary class="muted">逐站明细（${rows.length} 行，按日期、平移绝对值排序）</summary>
-      <div class="scroll" style="max-height:420px"><table><thead><tr>
-        <th>日</th><th>站</th><th>提前量</th><th>预报辐射</th><th>大气顶</th><th>晴朗度指数 Kt</th><th>本站 Kt 均值</th><th>Kt 标准分</th><th>系数/单位</th>
-        <th>平移 °C</th><th>平移前中心</th><th>服务均值</th><th>旧法标准分/平移（影子）</th><th>状态 · 历史</th></tr></thead>
-        <tbody>${body}</tbody></table></div></details>
-  </div>`;
 }
 
 // Does the served distribution cover the day?  Scored against the truth,
@@ -21179,12 +21002,6 @@ function consensusBridgeSection(){
       <th>中心差 °C</th><th>共识桥</th><th>共识中心</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
-function radiationSection(){
-  const body = radiationShift();
-  if(!body) return "";
-  return `<h2>辐射降温项：按预报的日照多少，把整条分布往冷或往暖推</h2>${body}`;
-}
-
 // P1's one observation update.  Two rules have held this slot: charter 150's
 // g**alpha (2026-09-19) and charter 161's exp f fitted directly on the final
 // P1 (2026-09-20, user ruling 「上线b2」).  The section leads with whichever
@@ -23316,7 +23133,7 @@ const GROUPS = [
       sections:[[servingWeights,"模型权重"],[fusionCandidates,"融合权重候选"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", nav:"分布层", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
-      sections:[[consensusBridgeSection,"共识桥"],[radiationSection,"辐射降温项"],[centerWidth,"中心/宽度"],
+      sections:[[consensusBridgeSection,"共识桥"],[centerWidth,"中心/宽度"],
         [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
      {box:"④ P0 之后的三条规则（全队层）", nav:"P0-M · P1", kind:"live",
       note:"三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
@@ -23409,8 +23226,6 @@ const LANES = {
     role:"各家各占多少；过样本外检验才换代"},
   "共识桥": {layer:"概率层 · 分布", status:"live",
     role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
-  "辐射降温项": {layer:"概率层 · 分布", status:"live",
-    role:(()=>{const rows=(((D.synoptic_cooling||{}).rows)||[]); const u=s=>[...new Set(rows.filter(r=>r.side===s).map(r=>r.per_unit).filter(v=>v!=null))].sort((a,b)=>a-b).join(" / "); const w=u("WARM"), c=u("COLD"); return `按预报日照把整条分布往冷/暖推：晴朗度指数 Kt 的本站标准分 × 系数 × σ，系数分升温侧（比平常晴）与降温侧（比平常阴）、按本站历史居中（宪章 160、210、222；全队统一${w||c?"，此刻服务 升温侧 "+(w||"—")+"、降温侧 "+(c||"—"):""}，件内钉值只记入回执）`;})()},
   "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
     role:"P0 × N(TX−c₀; a+b·(桶−c₀), τ)；服务闸未开时恒等，只标记 TAF 到达的决策时刻"},
 
@@ -23521,7 +23336,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     run_cadence:"模型出报节奏",member_depth:"成员深度",member_admission:"成员准入",members:"成员",
     certificate_authority:"证书授权",
     chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
-    refusal_history:"拒单历史",station_difficulty:"站点难度",synoptic_cooling:"辐射平移",
+    refusal_history:"拒单历史",station_difficulty:"站点难度",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",precip_classification:"降水分类",regional_usage:"区域模型使用",
     p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
     center_width:"宽度层",live_days:"每日统计",live_selection:"选站",
