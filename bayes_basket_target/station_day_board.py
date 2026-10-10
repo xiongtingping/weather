@@ -45,6 +45,11 @@ REGIONS = ("中国", "亚洲", "欧洲", "美国", "美洲", "非洲·大洋洲"
 #: named by the first 16 hex of the snapshot sha the envelope's lineage keeps.
 FORWARD_PACKET_ARCHIVE = ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "forward_packet_archive"
 SCHEMA = "station_day_board_v1"
+#: Charter 266's direction signal, as the resident's executor last wrote it
+#: for the whole fleet (user 2026-10-10 「在前端"站点看板"的"辐射偏移（宪章
+#: 222）"增加各个站点的方向信息」) -- read, never computed here.
+DIRECTION_BOARD_PATH = ROOT / "data" / "runtime" / "direction_signal_board_v1.json"
+_DIRECTION_CACHE: dict[str, Any] = {}
 STAGES = ("P0", "P0-M", "P1")
 #: One market point per this many minutes on the trend chart (plus the newest).
 MARKET_TREND_STEP_MIN = 15
@@ -1150,7 +1155,38 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "precip": _precip(conn, station, day),
         "precip_5min": _precip_5min(station, day, zone),
         "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
+        "direction": _direction(station, day),
     }
+
+
+def _direction_board() -> dict[str, Any] | None:
+    """The fleet's direction snapshot, re-read only when the file changed."""
+
+    try:
+        stamp = DIRECTION_BOARD_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
+    if _DIRECTION_CACHE.get("stamp") != stamp:
+        try:
+            doc = json.loads(DIRECTION_BOARD_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        _DIRECTION_CACHE.update(stamp=stamp, doc=doc)
+    return _DIRECTION_CACHE.get("doc")
+
+
+def _direction(station: str, day: str) -> dict[str, Any] | None:
+    """One station-day's direction reading from the snapshot, with the
+    instant it was computed; None when the snapshot has none."""
+
+    doc = _direction_board()
+    if not doc:
+        return None
+    entry = ((doc.get("stations") or {}).get(station) or {}).get(day)
+    if not entry:
+        return None
+    return {**entry, "computed_at_utc": doc.get("computed_at_utc"),
+            "momentum_quiet_below": doc.get("momentum_quiet_below")}
 
 
 def _precip_5min(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:
@@ -1276,6 +1312,11 @@ def _token(conn, station: str, days: Sequence[tuple[str, str]], zone: ZoneInfo) 
         parts.append(f"taf:{TAF_INBOX_PATH.stat().st_mtime_ns}")
     except OSError:
         parts.append("taf:absent")
+    # The direction snapshot (charter 266) is rewritten every ten minutes.
+    try:
+        parts.append(f"dir:{DIRECTION_BOARD_PATH.stat().st_mtime_ns}")
+    except OSError:
+        parts.append("dir:absent")
     return "|".join(parts)
 
 

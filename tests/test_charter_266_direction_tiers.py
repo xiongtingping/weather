@@ -349,23 +349,69 @@ def test_the_lanes_file_carries_v3() -> None:
     assert cfg["stake_tiers"] == {"momentum_agrees": 3.0, "model_agrees": 2.0, "probability": 1.0}
 
 
-def test_the_resident_fetches_physics_only_for_a_live_v3_reader(monkeypatch) -> None:
+def test_the_live_resident_keeps_the_signal_fresh_and_the_feed_follows_the_lane(monkeypatch) -> None:
     import scripts.weather_basket_yes_daemon as daemon
 
+    # Since the station board reads the fleet snapshot (2026-10-10), every live resident keeps it.
     monkeypatch.setattr(daemon, "PRODUCTION_EXECUTION_MODE", "production_live")
-    for enabled, rule, wanted in ((True, lane.RULE_V3, True), (False, lane.RULE_V3, False),
-                                  (True, lane.RULE_V2, False)):
+    assert daemon.direction_physics_wanted() is True
+    for enabled, rule in ((True, lane.RULE_V3), (False, lane.RULE_V3), (True, lane.RULE_V2)):
         monkeypatch.setattr("bayes_basket_target.strategy_lanes.lane_settings",
                             lambda name, path=None, e=enabled, r=rule: {"enabled": e, "rule": r,
                                                                          "source_users": [USER, W2]})
-        assert daemon.direction_physics_wanted() is wanted
         # The fast feed polls the cluster under v2 and v3 alike.
         assert bool(daemon.copy_follow_feed_users()) is enabled
+    monkeypatch.setattr(daemon, "PRODUCTION_EXECUTION_MODE", "production_no_live")
+    assert daemon.direction_physics_wanted() is False
 
 
 def test_the_resident_refresh_job_never_raises(tmp_path) -> None:
     out = ds.refresh_fleet_physics(tmp_path / "missing.db", cache=ds.PhysicsCache(tmp_path / "p.json"))
     assert out["state"] in {"zones_unreadable", "ran"}
+    out = ds.refresh_fleet_signal(tmp_path / "missing.db", cache=ds.PhysicsCache(tmp_path / "p.json"),
+                                  board_path=tmp_path / "board.json")
+    assert out["state"] in {"zones_unreadable", "ran"}
+
+
+# ---------------------------------------------------------------------------
+# The fleet snapshot the station board reads (user 2026-10-10 「在前端"站点看板"的
+# "辐射偏移（宪章 222）"增加各个站点的方向信息」).
+
+
+def test_the_combined_side_reads_momentum_first() -> None:
+    assert ds.combined_side(1, -1) == 1 and ds.combined_side(0, -1) == -1 and ds.combined_side(0, 0) == 0
+
+
+def test_the_board_snapshot_covers_today_to_two_days_on(store, monkeypatch, tmp_path) -> None:
+    _patch_runs(monkeypatch, _runs(aifs=[20.0, 20.5]))
+    _seed_mode_snapshot(store, observed="2026-09-20T05:50:00.000Z")
+    doc = ds.board_snapshot(store, now_utc="2026-09-20T06:00:00Z", physics=_empty_physics(tmp_path),
+                            zones={ST: TZ})
+    days = doc["stations"][ST]
+    assert sorted(days) == ["2026-09-20", "2026-09-21", "2026-09-22"]
+    today = days["2026-09-20"]
+    assert today["momentum_side"] == 1 and today["side"] == 1
+    assert today["mode"]["state"] == "ok" and today["mode"]["mode"] == "28°C"
+    assert days["2026-09-21"]["mode"]["state"] == "no_snapshot"
+    path = ds.write_board_snapshot(doc, tmp_path / "board.json")
+
+    from bayes_basket_target import station_day_board as board  # noqa: PLC0415
+
+    monkeypatch.setattr(board, "DIRECTION_BOARD_PATH", path)
+    monkeypatch.setattr(board, "_DIRECTION_CACHE", {})
+    read = board._direction(ST, "2026-09-20")
+    assert read["side"] == 1 and read["computed_at_utc"] == "2026-09-20T06:00:00Z"
+    assert board._direction(ST, "2026-09-25") is None and board._direction("XXXX", "2026-09-20") is None
+
+
+def test_the_station_board_reads_the_snapshot_and_redraws_on_it() -> None:
+    source = (ROOT / "bayes_basket_target" / "station_day_board.py").read_text(encoding="utf-8")
+    # Read, never computed: the board does not call the signal's arithmetic.
+    for name in ("direction_signal(", "momentum(", "physics_features(", "leg_reading(", "board_snapshot("):
+        assert name not in source, name
+    assert '"direction": _direction(station, day)' in source and 'f"dir:{DIRECTION_BOARD_PATH' in source
+    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "function sdDirection(D, R)" in dashboard and "sdDirection(day.direction, R)" in dashboard
 
 
 # ---------------------------------------------------------------------------

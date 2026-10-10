@@ -114,6 +114,12 @@ MAX_WORKERS = 4
 REFRESH_DEADLINE_SECONDS = 240.0
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "runtime" / "direction_physics_v1.json"
 FILE_SCHEMA = "direction_physics_cache_v1"
+#: The fleet's signal, every station-day from local today to ``BOARD_DAYS_AHEAD``
+#: days on, as the resident's executor last computed it -- what a reader that
+#: must not compute (the station board) shows.  A runtime file, not the SSOT.
+BOARD_PATH = Path(__file__).resolve().parents[1] / "data" / "runtime" / "direction_signal_board_v1.json"
+BOARD_SCHEMA = "direction_signal_board_v1"
+BOARD_DAYS_AHEAD = 2
 
 Fetch = Callable[[str], Mapping[str, Any]]
 
@@ -534,7 +540,95 @@ def refresh_fleet_physics(db_path: Path | str, *, cache: PhysicsCache | None = N
     return {"state": "ran", **(PHYSICS if cache is None else cache).refresh(zones)}
 
 
+def combined_side(momentum_side: int, model_side: int) -> int:
+    """The signal's one word, in the order charter 266's tiers read it:
+    momentum when it has a side, else the model."""
+
+    return int(momentum_side) if momentum_side else int(model_side)
+
+
+def board_snapshot(
+    conn: sqlite3.Connection, *, now_utc: Any = None, physics: PhysicsCache | None = None,
+    zones: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """The signal and the market's mode for every station-day from local today
+    to ``BOARD_DAYS_AHEAD`` days on, at ``now_utc``."""
+
+    moment = _instant(now_utc) if now_utc is not None else datetime.now(UTC)
+    zones = dict(zones) if zones is not None else fleet_timezones(conn)
+    stations: dict[str, dict[str, Any]] = {}
+    for station, zone in sorted(zones.items()):
+        today = moment.astimezone(ZoneInfo(zone)).date()
+        days: dict[str, Any] = {}
+        for ahead in range(BOARD_DAYS_AHEAD + 1):
+            event_date = (today + timedelta(days=ahead)).isoformat()
+            signal = direction_signal(conn, station_id=station, event_date=event_date, at_utc=moment, physics=physics)
+            mode = market_mode_at(conn, station_id=station, event_date=event_date, at_utc=moment)
+            days[event_date] = {
+                "momentum": signal["momentum"], "momentum_side": signal["momentum_side"],
+                "momentum_components": signal["momentum_components"],
+                "model_score": signal["model_score"], "model_side": signal["model_side"],
+                "side": combined_side(signal["momentum_side"], signal["model_side"]),
+                "physics": signal["physics"],
+                "mode": {k: mode.get(k) for k in ("state", "mode", "mode_q", "observed_at")},
+            }
+        stations[station] = days
+    return {"schema": BOARD_SCHEMA, "rule": RULE, "computed_at_utc": _z(moment),
+            "momentum_quiet_below": MOMENTUM_QUIET_BELOW, "model_coefficients": dict(MODEL_COEFFICIENTS),
+            "stations": stations}
+
+
+def write_board_snapshot(doc: Mapping[str, Any], path: Path | str | None = None) -> Path:
+    target = Path(path) if path is not None else BOARD_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(json.dumps(doc, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    os.replace(temporary, target)
+    return target
+
+
+def refresh_fleet_signal(
+    db_path: Path | str, *, cache: PhysicsCache | None = None, board_path: Path | str | None = None,
+    now_utc: Any = None,
+) -> dict[str, Any]:
+    """The resident's executor job (charter 266): the fleet's zones off a
+    read-only connection, the physics refresh (network, no connection held),
+    then the fleet's signal off a second read-only connection into the board
+    file.  Never raises."""
+
+    physics = PHYSICS if cache is None else cache
+
+    def connect() -> sqlite3.Connection:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10.0)
+        conn.execute("PRAGMA query_only=1")
+        return conn
+
+    try:
+        conn = connect()
+        try:
+            zones = fleet_timezones(conn)
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 -- a receipt, never a raise
+        return {"state": "zones_unreadable", "reason": f"{type(exc).__name__}:{exc}"[:160]}
+    receipt: dict[str, Any] = {"state": "ran", "physics": physics.refresh(zones)}
+    try:
+        started = time.monotonic()
+        conn = connect()
+        try:
+            doc = board_snapshot(conn, now_utc=now_utc, physics=physics, zones=zones)
+        finally:
+            conn.close()
+        write_board_snapshot(doc, board_path)
+        receipt["board"] = {"station_days": sum(len(v) for v in doc["stations"].values()),
+                            "seconds": round(time.monotonic() - started, 2)}
+    except Exception as exc:  # noqa: BLE001 -- a receipt, never a raise
+        receipt["board"] = {"state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160]}
+    return receipt
+
+
 __all__ = [
+    "BOARD_PATH", "board_snapshot", "combined_side", "refresh_fleet_signal", "write_board_snapshot",
     "DEFAULT_PATH", "MODEL_COEFFICIENTS", "MOMENTUM_COMPONENTS", "MOMENTUM_QUIET_BELOW", "PHYSICS", "PHYSICS_LINEAGE",
     "PHYSICS_SOURCE", "RULE", "PhysicsCache", "agreement", "daily_means", "direction_signal", "fleet_timezones",
     "leg_direction", "leg_reading", "market_mode_at", "model_score", "momentum", "physics_features", "physics_lag",

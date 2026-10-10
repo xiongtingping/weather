@@ -3919,21 +3919,14 @@ DIRECTION_PHYSICS_CHECK_SEC = 600.0
 
 
 def direction_physics_wanted() -> bool:
-    """Charter 266: whether any lane switched on in a live resident reads the
-    shared direction signal's physics -- today the copy-follow lane on rule
-    v3; a lane that starts reading the signal adds itself here (a paused
-    reader costs no network)."""
+    """Charter 266: whether the live resident keeps the shared direction
+    signal -- its physics and the fleet's board snapshot -- fresh.  Every live
+    resident does since 2026-10-10 (user 「在前端"站点看板"的"辐射偏移（宪章
+    222）"增加各个站点的方向信息」): the station board reads the snapshot, the
+    copy-follow lane reads the physics; about 48 Open-Meteo calls every three
+    hours and a few seconds of read-only reads every ten minutes."""
 
-    if PRODUCTION_EXECUTION_MODE != "production_live":
-        return False
-    try:
-        from bayes_basket_target.copy_follow_lane import RULE_V3  # noqa: PLC0415
-        from bayes_basket_target.strategy_lanes import lane_settings  # noqa: PLC0415
-
-        cfg = lane_settings(LANE_COPY_FOLLOW)
-    except Exception:  # noqa: BLE001 -- an unreadable lane file fetches nothing
-        return False
-    return cfg.get("enabled") is True and str(cfg.get("rule")) == RULE_V3
+    return PRODUCTION_EXECUTION_MODE == "production_live"
 
 
 def run_target_production_cycle(
@@ -7369,7 +7362,7 @@ def main() -> int:
                     direction_physics_future = None
                 if direction_physics_wanted():
                     direction_physics_future = direction_physics_executor.submit(
-                        direction_signal.refresh_fleet_physics, DEFAULT_TARGET_DB,
+                        direction_signal.refresh_fleet_signal, DEFAULT_TARGET_DB,
                     )
                 next_direction_physics = time.monotonic() + DIRECTION_PHYSICS_CHECK_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:

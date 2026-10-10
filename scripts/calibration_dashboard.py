@@ -22155,12 +22155,38 @@ function sdTafCloudDetails(witness){
     l.convective ? ` · ${sdEsc(l.convective)}（对流云可跨越多个高度层）` : ""}</div>`).join("");
   return `<div>${note}</div>${rows || '<div>本份报文未列可分高度的云层。</div>'}<div>以上为本份 TAF 所列云层，按云底高度分组；未报告的中、高云不代表 0%。</div>`;
 }
+// Charter 266's direction signal on this station-day (user 2026-10-10 「在前端"站点
+// 看板"的"辐射偏移（宪章 222）"增加各个站点的方向信息」): which side of the
+// market's modal bucket the day lands, as the resident's executor last computed
+// it for the whole fleet (data/runtime/direction_signal_board_v1.json) -- read,
+// never computed here.
+const SD_DIR_COMPONENTS = {aifs_ens:"AIFS 集合", ifs_ens:"IFS 集合", hres:"HRES 点预报", aifs_single:"AIFS 单成员（两轮）"};
+function sdDirWord(side){ return side > 0 ? "偏暖" : side < 0 ? "偏冷" : "无方向"; }
+function sdDirColor(side){ return side > 0 ? "var(--amber)" : side < 0 ? SD_COL.P0 : "var(--muted)"; }
+function sdDirection(D, R){
+  if(!D) return {main: `<b class="muted">方向 无读数</b>`, body: `<div class="sd-sub">方向信号（宪章 266）：快照里没有这个站日。</div>`};
+  const radSide = R && R.side === "WARM" ? 1 : R && R.side === "COLD" ? -1 : 0;
+  const agree = D.side && radSide ? (D.side === radSide ? "与辐射偏移同向" : "与辐射偏移反向") : "";
+  const mode = D.mode || {};
+  const modeText = mode.state === "ok" ? `相对市场众数 ${sdEsc(mode.mode)}（${sdPc(mode.mode_q,0)}）` : `市场众数暂无（${sdEsc(mode.state || "—")}）`;
+  const comps = Object.entries(D.momentum_components || {}).map(([k, c]) =>
+    `${sdEsc(SD_DIR_COMPONENTS[k] || k)} ${sdSg(c.delta_c,2)}°C（${sdEsc(String(c.newest_run_init_utc || "").slice(5,16).replace("T"," "))}Z 对 ${sdEsc(String(c.older_run_init_utc || "").slice(5,16).replace("T"," "))}Z）`).join("；");
+  const X = D.physics || {};
+  const quiet = D.momentum_quiet_below == null ? 1 : D.momentum_quiet_below;
+  const main = `<b style="color:${sdDirColor(D.side)}" title="方向信号（宪章 266）：先看 ECMWF 动量，静默时看四特征模型">方向 ${sdDirWord(D.side)}</b>`;
+  const body = `<div><b>方向（宪章 266 共享方向信号）</b> · ${modeText} · 综合 <b style="color:${sdDirColor(D.side)}">${sdDirWord(D.side)}</b>${agree ? " · " + agree : ""}</div>
+    <div>ECMWF 动量 M ${sdSg(D.momentum,2)}（${D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side)}，|M|＜${sdN(quiet,0)} 为静默）${comps ? " · " + comps : ""}</div>
+    <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
+    <div class="sd-sub">算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>`;
+  return {main, body};
+}
 function sdEvidence(day){
   const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
-  const rad = sdEvidenceCard("辐射偏移（宪章 222）", R && R.side === "WARM" ? "var(--amber)" : R && R.side === "COLD" ? SD_COL.P0 : "var(--muted)",
-    R ? `<b>${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")}</b><b class="sd-evidence-primary">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`,
-    R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录");
+  const dir = sdDirection(day.direction, R);
+  const rad = sdEvidenceCard("辐射偏移（宪章 222）· 方向", R && R.side === "WARM" ? "var(--amber)" : R && R.side === "COLD" ? SD_COL.P0 : "var(--muted)",
+    (R ? `<b>${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")}</b><b class="sd-evidence-primary">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`) + dir.main,
+    (R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录") + dir.body);
   const tw = p0.taf_witness;
   const sameTx = tw && pm && tw.tx_c != null && pm.tx_c != null && tw.tx_c === pm.tx_c;
   const tafTx = sameTx ? `<b class="sd-evidence-primary">TX ${sdN(tw.tx_c,2)}°C</b>`
