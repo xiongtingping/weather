@@ -22,14 +22,17 @@ import lightgbm as lgb
 import numpy as np
 
 B = Path(sys.argv[1])
-E = json.load(gzip.open(B / "replicate_rows.json.gz", "rt"))
+ALL = json.load(gzip.open(B / "replicate_rows.json.gz", "rt"))
+E = [e for e in ALL if e.get("set", "research") == "research"]
+FWD = [e for e in ALL if e.get("set") == "forward"]
 FILLS = collections.defaultdict(list)
-for f in json.load(open(B / "cluster_events.json"))["fills"]:
+_fills_src = B / "cluster_fills_all.json"
+for f in (json.load(open(_fills_src)) if _fills_src.exists() else json.load(open(B / "cluster_events.json"))["fills"]):
     FILLS[(f["station"], f["event_date"])].append((int(f["ts"]), f["bucket"], f["outcome"], float(f["price"]), float(f["size"])))
 for v in FILLS.values():
     v.sort()
 random.seed(2525)
-for e in E:
+for e in ALL:
     for key in ("centres", "q", "ask", "no_price", "spread", "mom1h", "p"):
         e[key] = {int(k): v for k, v in e[key].items()}
     for s in e["raw"].values():
@@ -363,3 +366,103 @@ imp = sorted(zip(cols, model.feature_importances_), key=lambda x: -x[1])
 tot = sum(v for _c, v in imp)
 print("\n== D. gain share of the full ranker (all data)")
 print("   " + ", ".join(f"{c} {100*v/tot:.1f}%" for c, v in imp[:25]))
+
+
+# ---------------------------------------------------------------- F. forward (round 26)
+print("\n== F. forward: train on the whole research window, test on the cluster's first takers after it")
+fwd_data = []
+for e in FWD:
+    cands = candidate_rows(e)
+    label = [1 if (o == e["chosen"]["ord"] and s == e["chosen"]["side"]) else 0 for o, s, _f, _fam in cands]
+    if sum(label) == 1:
+        fwd_data.append((e, cands, label))
+print(f"   forward events {len(fwd_data)} ({min(e['ed'] for e, _c, _l in fwd_data)}..{max(e['ed'] for e, _c, _l in fwd_data)}),"
+      f" candidates per event {statistics.mean(len(c) for _e, c, _l in fwd_data):.1f}")
+
+
+def forward(families):
+    cols = [c for fam in families for c in fam_cols[fam]]
+    X = np.array([[f[c] for c in cols] for _e, cands, _l in data for _o, _s, f, _fam in cands], dtype=float)
+    y = np.array([v for _e, _c, lab in data for v in lab])
+    model = lgb.LGBMRanker(objective="lambdarank", n_estimators=300, learning_rate=0.05, num_leaves=15,
+                           min_child_samples=20, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1)
+    model.fit(X, y, group=[len(c) for _e, c, _l in data])
+    pe = []
+    for e, cands, lab in fwd_data:
+        Xt = np.array([[f[c] for c in cols] for _o, _s, f, _fam in cands], dtype=float)
+        order = np.argsort(-model.predict(Xt))
+        rank = int(np.where(np.array(lab)[order] == 1)[0][0]) + 1
+        pe.append((e, rank, cands[order[0]]))
+    n = len(pe)
+    t1 = sum(1 for _e, r, _t in pe if r == 1) / n
+    t3 = sum(1 for _e, r, _t in pe if r <= 3) / n
+    rate, nd = direction_agreement(pe)
+    print(f"   {'+'.join(families):60s} top-1 {t1:.3f} top-3 {t3:.3f} side-of-mode {rate:.3f} (n={n}, dir n={nd})")
+    return pe
+
+
+for fams in (["market"], ["market", "our", "raw", "points", "momentum", "weather_days"],
+             ["market", "microstructure", "own_history"],
+             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"]):
+    pe = forward(fams)
+by_day = collections.defaultdict(list)
+for e, r, _t in pe:
+    by_day[e["ed"]].append(r)
+print("   full model by event day: " + ", ".join(f"{d} n={len(v)} top-1 {sum(1 for x in v if x == 1)/len(v):.2f}" for d, v in sorted(by_day.items())))
+kinds = collections.defaultdict(lambda: [0, 0])
+for e, r, _t in pe:
+    kind = ("YES" if e["chosen"]["side"] == "Yes" else "NO") + (" mode" if e["chosen"]["ord"] == e["mode_ord"] else " off-mode")
+    kinds[kind][0] += 1
+    kinds[kind][1] += r == 1
+print("   full model by leg type: " + ", ".join(f"{k} n={n} top-1 {h/n:.2f}" for k, (n, h) in sorted(kinds.items())))
+mix_r = collections.Counter(("YES" if e["chosen"]["side"] == "Yes" else "NO") + (" mode" if e["chosen"]["ord"] == e["mode_ord"] else " off") for e in FWD)
+mix_o = collections.Counter(("YES" if e["chosen"]["side"] == "Yes" else "NO") + (" mode" if e["chosen"]["ord"] == e["mode_ord"] else " off") for e in E)
+print("   leg mix research: " + ", ".join(f"{k} {v/len(E):.2f}" for k, v in sorted(mix_o.items())) +
+      " | forward: " + ", ".join(f"{k} {v/len(FWD):.2f}" for k, v in sorted(mix_r.items())))
+
+# ---------------------------------------------------------------- G. near misses (forward, full model)
+print("\n== G. forward misses of the full model: how far was the top pick from their leg")
+miss = collections.Counter()
+for e, r, top in pe:
+    if r == 1:
+        miss["exact"] += 1
+        continue
+    o, s = top[0], top[1]
+    co, cs = e["chosen"]["ord"], e["chosen"]["side"]
+    if o == co and s != cs:
+        miss["same bucket, other side"] += 1
+    elif abs(o - co) == 1 and s == cs:
+        miss["next bucket, same side"] += 1
+    elif s == cs:
+        miss["same side, 2+ buckets away"] += 1
+    else:
+        miss["other side, other bucket"] += 1
+print("   " + ", ".join(f"{k} {v/len(pe):.3f}" for k, v in miss.most_common()))
+
+# ---------------------------------------------------------------- H. more data: date-fold CV on research + forward
+print("\n== H. date-fold CV on all events (research + forward), does more data lift the ceiling?")
+union = data + fwd_data
+dates_u = sorted({e["ed"] for e, _c, _l in union})
+folds_u = {d: i % 5 for i, d in enumerate(dates_u)}
+for fams in (["market"], ["market", "microstructure", "own_history"],
+             ["market", "microstructure", "our", "raw", "points", "momentum", "weather_days", "own_history"]):
+    cols = [c for fam in fams for c in fam_cols[fam]]
+    hits = t3 = 0
+    pe_u = []
+    for k in range(5):
+        tr = [x for x in union if folds_u[x[0]["ed"]] != k]
+        te = [x for x in union if folds_u[x[0]["ed"]] == k]
+        X = np.array([[f[c] for c in cols] for _e, cands, _l in tr for _o, _s, f, _fam in cands], dtype=float)
+        y = np.array([v for _e, _c, lab in tr for v in lab])
+        m = lgb.LGBMRanker(objective="lambdarank", n_estimators=300, learning_rate=0.05, num_leaves=15, min_child_samples=20,
+                           subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1)
+        m.fit(X, y, group=[len(c) for _e, c, _l in tr])
+        for e, cands, lab in te:
+            Xt = np.array([[f[c] for c in cols] for _o, _s, f, _fam in cands], dtype=float)
+            order = np.argsort(-m.predict(Xt))
+            rank = int(np.where(np.array(lab)[order] == 1)[0][0]) + 1
+            hits += rank == 1
+            t3 += rank <= 3
+            pe_u.append((e, rank, cands[order[0]]))
+    rate, nd = direction_agreement(pe_u)
+    print(f"   {'+'.join(fams):60s} top-1 {hits/len(union):.3f} top-3 {t3/len(union):.3f} side-of-mode {rate:.3f} (n={len(union)})")

@@ -31,7 +31,10 @@ from bayes_basket_target import run_change  # noqa: E402
 
 B = Path(sys.argv[1])
 HERE = Path(__file__).resolve().parents[1]
-rows = [json.loads(line) for line in gzip.open(HERE / "choice_rows.jsonl.gz", "rt")]
+# Round 26: the research window's rows and the forward rows (inc_choice_build.py), tagged.
+rows = [dict(json.loads(line), set="research") for line in gzip.open(HERE / "choice_rows.jsonl.gz", "rt")]
+if (B / "choice_rows_inc.jsonl.gz").exists():
+    rows += [dict(json.loads(line), set="forward") for line in gzip.open(B / "choice_rows_inc.jsonl.gz", "rt")]
 conn = sqlite3.connect(f"file:{ROOT / 'data' / 'bayes_basket_target_ssot.db'}?mode=ro", uri=True, timeout=30)
 conn.execute("PRAGMA query_only=1")
 NATIVE = ("ECMWF_IFS_ENS_OPEN_PF50", "ECMWF_AIFS_ENS_GLOBAL", "DWD_ICON_GLOBAL_EPS", "NOAA_GEFS_05",
@@ -70,7 +73,7 @@ def bounds_c(label):
 
 
 # the cluster's own fills, per station-day
-fills = json.load(open(B / "cluster_events.json"))["fills"]
+fills = json.load(open(B / "cluster_fills_all.json")) if (B / "cluster_fills_all.json").exists() else json.load(open(B / "cluster_events.json"))["fills"]
 own = collections.defaultdict(list)
 for f in fills:
     own[(f["station"], f["event_date"])].append((int(f["ts"]), f["bucket"], f["outcome"], float(f["price"]) * float(f["size"])))
@@ -163,7 +166,7 @@ for n, r in enumerate(rows):
         "raw": raw, "points": pts, "M": mom["M"], "M_parts": {k: v["delta_c"] for k, v in mom["components"].items()},
         "prior": [(t, b, o, u) for t, b, o, u in prior[-200:]],
         "chosen": {"ord": chosen["ord"], "side": chosen["side"]},
-        "half": "H1" if ed < "2026-09-30" else "H2",
+        "half": "H1" if ed < "2026-09-30" else "H2", "set": r.get("set", "research"),
     })
     if (n + 1) % 300 == 0:
         print(n + 1, "events", file=sys.stderr)
