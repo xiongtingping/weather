@@ -16258,7 +16258,6 @@ color-scheme:dark}
 .sd-prob-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;align-items:baseline;margin:8px 0 12px;font-size:12px}
 .sd-prob-summary dt{color:var(--muted)}.sd-prob-summary dd{margin:0;font-size:16px;font-weight:750;color:var(--c)}
 .sd-prob-summary dd small{font-size:13px;font-weight:600}
-.sd-taf-in-card{margin-top:10px!important;padding-top:8px;border-top:1px solid var(--line)}
 /* METAR / TAF tables: a few words over the raw group, the change since the report before. */
 table.sd-rep td{vertical-align:top;white-space:nowrap}
 table.sd-rep td>div+div{margin-top:3px}
@@ -23341,7 +23340,7 @@ function sdEvidence(day){
     ${tw ? sdTafCloudDetails(tw) : ""}
     <div>${pm ? `<b>P0-M 似然</b> · 根中心 ${sdN(pm.root_center_c, 2)}°C${
       pm.x_c != null ? ` · x ${sdN(pm.x_c, 2)} b ${sdN(pm.b, 2)} τ ${sdN(pm.tau, 2)}` : ""}${pm.observed_running_high_c != null ? ` · 观测下界 ${sdN(pm.observed_running_high_c,2)}°C` : ""}${
-      (pm.excluded || []).length ? ` · 排除 ${sdEsc(pm.excluded.join("、"))}` : ""}` : "等待 P0-M 概率信封"}</div>`, true, sdTafRaw(SD.data || {}));
+      (pm.excluded || []).length ? ` · 排除 ${sdEsc(pm.excluded.join("、"))}` : ""}` : "等待 P0-M 概率信封"}</div>`, true);
   const F = (p1 || {}).features || {};
   const p1Line = sdEvidenceCard("P1（正式观测）", SD_COL.P1,
     p1 ? `<b class="sd-evidence-primary">已报最高 ${sdN(p1.running_high_c,2)}°C</b><b>再升概率 ${sdPc(p1.rise_probability)}</b><b>云量 ${sdPc(F.cloud_cover_fraction,0)}</b>` : "<b>尚未生成</b>",
@@ -23349,8 +23348,6 @@ function sdEvidence(day){
       p1.alpha != null ? ` · α ${sdN(p1.alpha, 2)}` : ""}${p1.lambda != null ? ` · λ ${sdN(p1.lambda, 2)}` : ""} ·
       降水 ${F.precipitation_present == null ? "—" : F.precipitation_present ? "有" : "无"} · 风 ${sdN(F.wind_speed_mps, 1)} m/s · 露点差 ${sdN(F.dewpoint_depression_c, 2)}°C · 剩余 ${sdN(F.remaining_hours, 1)} h · 区域模型余量 ${sdSg(F.regional_headroom_c, 2)}°C${
       (p1.excluded || []).length ? ` · 排除 ${sdEsc(p1.excluded.join("、"))}` : ""}` : "等待 P1 概率信封");
-  const caps = ((day.taf || {}).captures || []).slice(-6).reverse().map(c => `<tr><td class="mono">${sdLocal(c.issued_at_utc, true)}</td><td>${sdEsc(c.kind || "")} #${sdEsc(c.sequence)}</td>
-      <td class="mono">${c.tx_c == null ? "—" : sdN(c.tx_c,2) + "°C"}</td><td class="mono">${sdPc(c.cloud_cover_fraction, 0)}</td><td class="mono">${sdPc(c.precipitation_probability, 0)}</td><td class="mono">${sdN(c.wind_speed_mps, 1)}</td></tr>`).join("");
   const met = sdMetarTable(day);
   const P = day.precip;
   const O = sdRainObs(day);
@@ -23367,7 +23364,7 @@ function sdEvidence(day){
       `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
   return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${taf}${p1Line}${rain}</div>${sdSky(day)}
-    ${caps ? `<details><summary class="muted">TAF 采集（这一天，最近 6 份）</summary><div class="scroll"><table class="sd-tab"><thead><tr><th>签发</th><th>版次</th><th>TX</th><th>云量</th><th>降水概率</th><th>风 m/s</th></tr></thead><tbody>${caps}</tbody></table></div></details>` : ""}
+    ${sdTafRaw(SD.data || {})}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="sd-metar">${met}</div></details>` : ""}`;
 }
 // Newest five rows shown, the rest folded (user 2026-10-09「只显示最近最新的5条，
@@ -23506,7 +23503,9 @@ function sdTafRaw(d){
       ${sdGroupCell(c.wind)}${sdGroupCell(c.vis)}${sdGroupCell(c.cloud)}${sdGroupCell(c.wx)}</tr>`).join("");
     return first + more;
   }).join("");
-  return `<details open class="sd-taf-in-card"><summary class="muted">${sdEsc(d.station_id)} 最新 TAF（${list.length} 份，新的在上）</summary><div class="scroll"><table class="sd-tab sd-rep"><thead><tr><th>签发</th><th>时段</th><th>类</th><th>风</th><th>能见度</th><th>云</th><th>天气</th><th>TX</th><th>TN</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+  // Below the cards, before the METARs, open (user 2026-10-10「和……重复了，把卡片
+  // 内的移动到下方meatr前，并默认展开。去掉“TAF 采集（这一天，最近 6 份）”」).
+  return `<details open><summary class="muted">${sdEsc(d.station_id)} 最新 TAF（${list.length} 份，新的在上）</summary><div class="scroll"><table class="sd-tab sd-rep"><thead><tr><th>签发</th><th>时段</th><th>类</th><th>风</th><th>能见度</th><th>云</th><th>天气</th><th>TX</th><th>TN</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
 // ---------------------------------------------------------------------------
