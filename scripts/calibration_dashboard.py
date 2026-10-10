@@ -20847,7 +20847,23 @@ function fusionCandidates(){
     <div class="scroll"><table><thead><tr><th>候选</th><th>站日 / 天</th><th>ΔLogScore（主）</th><th>Δ桶 Brier（护栏）</th><th>ΔCRPS °C（结构）</th><th>门</th></tr></thead>
     <tbody>${laterRows}</tbody></table></div>`;
   const mode = FS.mode || "—";
-  return `<h2>融合权重：宪章 199 层、宪章 242 规则在服务（P0_FUSION_BLEND_MODE=${h(mode)}）· 前向记账与研究候选</h2>
+  // The rule and the verdict, everything else folded (user 2026-10-10「太复杂了，
+  // 给我结论和规则，其他细节隐藏」).
+  const S2 = G.served || null, passed = LS.filter(r => r.passes).length;
+  const word = !S2 ? "还没有结算" : S2.both_significant ? "更好" : S2.both_lower ? "略好" : "无差别";
+  const fmtD = (x, d) => x == null ? "—" : (x.mean > 0 ? "+" : "") + x.mean.toFixed(d);
+  const fcard = (label, value, sub, tone, title) => `<div class="sd-pnl-c ${tone || ""}"${title ? ` title="${h(title)}"` : ""}><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
+  const verdictCards = `<div class="sd-pnl-g" style="margin-top:8px">
+    ${fcard("规则", "按站调权重", mode === "blend" ? "宪章 242 · 在服务" : `宪章 242 · ${h(mode)}`, "",
+      "本站已结算日子上 LogScore 最好的权重，按本站天数向全队席位权重收缩；服务效果显著差于席位权重时自动退回席位权重")}
+    ${fcard("对比全队席位权重", word, S2 ? `${S2.both_significant ? "两个分数都显著" : "两个分数都没显著"} · ${S2.station_days} 站日` : "",
+      S2 && S2.both_significant ? "up" : "",
+      S2 ? `切换后 ${S2.period.join(" → ")}：LogScore ${fmtD(S2.delta.nll, 4)}，桶 Brier ${fmtD(S2.delta.bucket_brier, 4)}（负为好）` : "")}
+    ${fcard("替代方案", `${passed}/${LS.length} 过门`, passed ? "有方案可提落地" : "现行规则保留", passed ? "up" : "")}
+  </div>`;
+  return `<h2>融合权重：按站调权重在服务</h2>
+  ${verdictCards}
+  <details class="sd-older" style="margin-top:8px"><summary class="muted">明细：规则全文、前向记账、${LS.length} 个研究候选、09-22 冻结候选</summary>
   <div class="card"><b>现状</b>：<b>宪章 242 起（P0 v21）</b>，每次 P0 编译读当日拟好的站级参数（<span class="mono">station_model_weight_params</span>）：
     本站已知真值上各家混合的桶 LogScore 最优权重，每家按自己在本站被打分的站日数向席位权重收缩（α=n/(n+τ)，τ 每日在全队近三周前推选）；
     服务权重在已服务决策上显著差于席位权重时由否决闸退回席位权重（<span class="mono">station_model_weight_veto</span>）。
@@ -20871,7 +20887,8 @@ function fusionCandidates(){
     ${E ? `<li>可兑现价值（${E.sample_n} 个有真实盘口的站日、${E.dates} 个事件日，生产费用合同 fee=0）：模型比市场差 <b>${gap == null ? "—" : Math.abs(gap).toFixed(3)} nat</b>，候选只把差距缩小 ${span(lift, v => v.toFixed(3))} nat；
       门槛吃单实现 ROI ${span(rois, v => pctS(v, 0))}（自报 ${span(claimed, v => pctS(v, 0))}，便宜的尾部桶被系统性高估）${kellyAllNeg ? "，¼ Kelly 组合全部是负增长" : ""}。换权重只能「少亏」，翻不了符号。</li>` : ""}
     ${P ? `<li>要在全新日子上把 NLL 这么小的改善（${P.effect_nll.toFixed(4)} nat）确认出来（两个标准误、80% 把握），按本研究的日间波动约需 <b>${P.days_needed} 个事件日</b>的新数据。</li>` : ""}
-  </ul></div></details>`;
+  </ul></div></details>
+  </details>`;
 }
 
 function landingPrevious(){
