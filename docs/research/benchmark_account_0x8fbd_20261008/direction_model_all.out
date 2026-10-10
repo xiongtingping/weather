@@ -1,0 +1,45 @@
+coefficients (full / H1 / H2):
+   const        -0.021  -0.020  -0.021
+   M            +0.056  +0.029  +0.074
+   icon_rad     +0.026  -0.049  +0.065
+   icon_rh      -0.022  +0.095  -0.084
+   dew_cons     -0.054  -0.016  -0.079
+   ecmwf_wind   +0.031  +0.026  +0.033
+
+=== out-of-sample on every station-day ===
+   model, top 100% |prediction|             n= 2842  score +0.048 [+0.008,+0.084] H1/H2 +0.040/+0.053 | taker +0.730 [-1.388,+2.867] H1/H2 -0.050/+1.290 | maker +2.779 [+0.627,+4.578] H1/H2 +2.191/+3.202
+   model, top 50% |prediction|              n= 1421  score +0.067 [+0.010,+0.126] H1/H2 +0.056/+0.076 | taker +1.975 [-0.803,+4.913] H1/H2 +1.401/+2.439 | maker +3.992 [+1.331,+7.297] H1/H2 +3.684/+4.240
+   model, top 25% |prediction|              n=  711  score +0.033 [-0.038,+0.106] H1/H2 +0.041/+0.027 | taker -2.804 [-6.483,+1.245] H1/H2 -2.445/-3.088 | maker -0.643 [-3.822,+2.781] H1/H2 +0.007/-1.157
+   model, top 10% |prediction|              n=  285  score +0.021 [-0.075,+0.122] H1/H2 +0.052/-0.010 | taker -3.305 [-8.394,+2.103] H1/H2 -1.779/-4.898 | maker -1.187 [-6.575,+4.166] H1/H2 +0.700/-3.157
+   M only, top 50% |M|                      n= 1421  score +0.087 [+0.054,+0.123] H1/H2 +0.057/+0.109 | taker +1.314 [-1.163,+3.718] H1/H2 +0.414/+1.955 | maker +3.392 [+1.350,+5.713] H1/H2 +2.751/+3.848
+   M only, top 25% |M|                      n=  711  score +0.105 [+0.058,+0.150] H1/H2 +0.060/+0.137 | taker +1.179 [-1.982,+4.092] H1/H2 -2.247/+3.510 | maker +3.326 [+0.159,+6.432] H1/H2 +0.292/+5.390
+
+=== the fitted model (all station-days) on the cluster events ===
+   top 100%: n=1009 agree 0.594  model skill +0.140  theirs +0.159  theirs agree/disagree +0.252/+0.023
+   top  50%: n= 505 agree 0.626  model skill +0.160  theirs +0.197  theirs agree/disagree +0.285/+0.050
+   top  25%: n= 253 agree 0.660  model skill +0.164  theirs +0.250  theirs agree/disagree +0.313/+0.128
+   quiet events: n=226 agree 0.633  model skill +0.140  theirs +0.194
+
+=== feature sets and the cluster-like selection (cross-fitted, every station-day) ===
+   M: top 50%                               n= 1421  score +0.078 [+0.042,+0.112] H1/H2 +0.047/+0.120 | taker +1.482 [-0.773,+3.983] H1/H2 +0.579/+2.706 | maker +3.617 [+1.118,+5.974] H1/H2 +2.935/+4.543
+   M: cluster-like selection                n=  627  score +0.113 [+0.053,+0.168] H1/H2 +0.128/+0.100 | taker +1.752 [-1.718,+5.387] H1/H2 +1.712/+1.787 | maker +3.890 [-0.109,+7.853] H1/H2 +3.898/+3.882
+   M: selection & top 50%                   n=  374  score +0.150 [+0.068,+0.217] H1/H2 +0.104/+0.216 | taker +3.578 [-1.293,+8.020] H1/H2 +1.336/+6.853 | maker +5.778 [+1.333,+10.436] H1/H2 +3.724/+8.777
+   M+icon_rad: top 50%                      n= 1421  score +0.107 [+0.065,+0.154] H1/H2 +0.056/+0.166 | taker +1.843 [-0.534,+4.303] H1/H2 -0.831/+4.895 | maker +3.872 [+1.219,+6.671] H1/H2 +1.425/+6.665
+   M+icon_rad: cluster-like selection       n=  628  score +0.158 [+0.089,+0.226] H1/H2 +0.112/+0.201 | taker +2.245 [-1.332,+5.882] H1/H2 -0.236/+4.485 | maker +4.361 [+0.702,+7.757] H1/H2 +1.919/+6.566
+   M+icon_rad: selection & top 50%          n=  362  score +0.219 [+0.132,+0.314] H1/H2 +0.191/+0.256 | taker +3.389 [-1.650,+8.286] H1/H2 +1.954/+5.242 | maker +5.515 [+0.412,+10.970] H1/H2 +4.254/+7.142
+   M+icon_rad+dew_cons+ecmwf_wind: top 50%  n= 1421  score +0.109 [+0.066,+0.157] H1/H2 +0.096/+0.120 | taker +2.834 [-0.071,+5.541] H1/H2 +2.347/+3.260 | maker +4.897 [+2.418,+7.849] H1/H2 +4.637/+5.125
+   M+icon_rad+dew_cons+ecmwf_wind: cluster-like selection n=  628  score +0.179 [+0.101,+0.261] H1/H2 +0.177/+0.181 | taker +3.732 [-0.366,+8.473] H1/H2 +1.809/+5.445 | maker +5.821 [+1.115,+9.986] H1/H2 +3.949/+7.489
+   M+icon_rad+dew_cons+ecmwf_wind: selection & top 50% n=  355  score +0.211 [+0.099,+0.323] H1/H2 +0.224/+0.197 | taker +5.203 [-1.114,+10.664] H1/H2 +3.884/+6.623 | maker +7.334 [+2.401,+13.726] H1/H2 +6.276/+8.473
+   M+icon_rad+icon_rh+dew_cons+ecmwf_wind: top 50% n= 1421  score +0.067 [+0.020,+0.128] H1/H2 +0.056/+0.076 | taker +1.975 [-0.568,+5.005] H1/H2 +1.401/+2.439 | maker +3.992 [+0.820,+6.659] H1/H2 +3.684/+4.240
+   M+icon_rad+icon_rh+dew_cons+ecmwf_wind: cluster-like selection n=  626  score +0.083 [-0.004,+0.158] H1/H2 +0.141/+0.030 | taker +1.061 [-2.966,+5.625] H1/H2 +1.651/+0.533 | maker +3.137 [-1.000,+7.784] H1/H2 +3.746/+2.591
+   M+icon_rad+icon_rh+dew_cons+ecmwf_wind: selection & top 50% n=  352  score +0.088 [-0.054,+0.218] H1/H2 +0.168/+0.002 | taker +2.450 [-2.570,+8.498] H1/H2 +2.536/+2.358 | maker +4.470 [-1.463,+10.253] H1/H2 +4.680/+4.246
+
+=== the four-feature model (M, icon_rad, dew_cons, ecmwf_wind) ===
+   coef full / H1 / H2:
+     const        -0.021  -0.021  -0.019
+     M            +0.056  +0.032  +0.074
+     icon_rad     +0.014  +0.006  +0.020
+     dew_cons     -0.045  -0.052  -0.038
+     ecmwf_wind   +0.032  +0.027  +0.034
+   cluster events top 100%: n=1009 agree 0.588 model skill +0.115 theirs agree/disagree +0.232/+0.053
+   cluster events top 50%: n=505 agree 0.616 model skill +0.124 theirs agree/disagree +0.259/+0.091

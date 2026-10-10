@@ -184,3 +184,15 @@ line('momentum quiet and rad agrees', [r for r in R if r.get('mom') == 'quiet' a
 line('momentum quiet and rad disagrees', [r for r in R if r.get('mom') == 'quiet' and r.get('rad_ag') is False])
 line('momentum disagrees (any rad)', [r for r in R if r.get('mom') == 'disagree'])
 line('either agrees, neither opposes', [r for r in R if (r.get('mom') == 'agree' and r.get('rad_ag') is not False) or (r.get('mom') == 'quiet' and r.get('rad_ag') is True)])
+
+# ---- round 22: the four-feature direction model (out-of-half coefficients) vs their direction
+P4 = json.load(open(f'{B}/model4_pred.json'))
+for r, e in zip(R, evs_ft):
+    d = DR.get((e['station'], e['event_date'], e['ts']))
+    p = P4.get(f'{e["station"]}|{e["event_date"]}|{e["ts"]}')
+    r['m4'] = None if d is None or p is None or p == 0 else ('agree' if (1 if p > 0 else -1) == d['s'] else 'disagree')
+print('\n-- round 22: four-feature direction model vs their direction (off-mode events joined)')
+line('model agrees', [r for r in R if r.get('m4') == 'agree'])
+line('model disagrees', [r for r in R if r.get('m4') == 'disagree'])
+line('model agrees, within p filter', [r for r in R if r.get('m4') == 'agree' and r['ours'] is not None and r['ours'] > r['own'] + COST])
+line('model agrees + C + >=12h', [r for r in R if r.get('m4') == 'agree' and r['unit'] == 'C' and r['lead'] >= 12])

@@ -238,3 +238,17 @@ for lab, f in (('lead <12h', lambda r: r['lead'] < 12), ('lead 12-48h', lambda r
     sub = [r for r in quiet if f(r)]
     if sub:
         print(f'   {lab:12s} n={len(sub):4d} {sum(dscore(r, r["s"]) for r in sub)/len(sub):+.3f}')
+
+# ---- round 22: dump the instances (ladder at t, neighbour quotes, truth) for the direction model
+dump = []
+for r in inst:
+    out, s = r['lad']
+    q = {o: (bid + ask) / 2 / s for bk, (o, bid, ask) in out.items()}
+    quotes = {o: (bid, ask) for bk, (o, bid, ask) in out.items()}
+    tord = next((o for bk, (o, bid, ask) in out.items() if bk == r['truth']), None)
+    if tord is None:
+        continue
+    dump.append(dict(st=r['st'], ed=r['ed'], t=r['t'], lead=r['lead'], M=r['M'], rad=r['rad'], unit=r['unit'],
+                     q={str(o): v for o, v in q.items()}, quotes={str(o): v for o, v in quotes.items()}, truth=tord))
+json.dump(dump, open(f'{B}/all_instances.json', 'w'))
+print('dumped instances', len(dump), file=sys.stderr)
