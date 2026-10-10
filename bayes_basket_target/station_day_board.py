@@ -1192,12 +1192,17 @@ def past_peak(conn, station: str, day: str, zone: ZoneInfo, now: datetime) -> di
     return result
 
 
-def _token(conn, station: str, days: Sequence[tuple[str, str]]) -> str:
-    """What the panel redraws on: the newest committed envelope of each day.
+def _token(conn, station: str, days: Sequence[tuple[str, str]], zone: ZoneInfo) -> str:
+    """What the panel redraws on: the newest committed envelope of each day,
+    and the newest report.
 
     User 2026-10-05 「改为概率有更新才刷新」: the board polls this (one index
     seek a day) and rebuilds only when a new P0/P0-M/P1 has been committed;
-    the book is re-read with it, not on its own.
+    the book is re-read with it, not on its own.  User 2026-10-10
+    「METAR/SPECI……没有显示最新的metar」: a report lands between envelopes (the
+    13:00 METAR sat unseen behind an unchanged token), so the day's newest
+    METAR/SPECI (one index seek a day on the archive) and the TAF inbox's
+    mtime are in it too.
     """
 
     parts = []
@@ -1208,6 +1213,26 @@ def _token(conn, station: str, days: Sequence[tuple[str, str]]) -> str:
             (station, day),
         ).fetchone()
         parts.append(f"{day}:{row[0]}:{row[1]}")
+    try:
+        archive = sqlite3.connect(f"file:{ARCHIVE_DB}?mode=ro", uri=True, timeout=5)
+        try:
+            for _role, day in days:
+                lo, hi = _local_window(day, zone)
+                row = archive.execute(
+                    "SELECT MAX(valid_at), COUNT(*) FROM reported_trajectory_observations"
+                    " WHERE station_id=? AND valid_at>=? AND valid_at<?"
+                    " AND raw_text IS NOT NULL AND raw_text<>''",
+                    (station, lo[:19], hi[:19]),
+                ).fetchone()
+                parts.append(f"obs{day}:{row[0]}:{row[1]}")
+        finally:
+            archive.close()
+    except sqlite3.Error:
+        parts.append("obs:unreadable")
+    try:
+        parts.append(f"taf:{TAF_INBOX_PATH.stat().st_mtime_ns}")
+    except OSError:
+        parts.append("taf:absent")
     return "|".join(parts)
 
 
@@ -1217,7 +1242,7 @@ def probability_token(station: str = "ZUUU", *, db: Path = DEFAULT_DB,
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
     try:
         resolved = _event_days(conn, station, now)
-        token = None if resolved is None else _token(conn, station, resolved[1])
+        token = None if resolved is None else _token(conn, station, resolved[1], ZoneInfo(resolved[0]))
     finally:
         conn.close()
     return {"schema": SCHEMA, "station_id": station, "token": token,
@@ -1236,7 +1261,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
                     "reason": "no_timezone_binding", "built_at_utc": _iso(started)}
         tz_name, event_days = resolved
         zone = ZoneInfo(tz_name)
-        token = _token(conn, station, event_days)
+        token = _token(conn, station, event_days, zone)
         taf_inbox = _taf_inbox()
         days = [_day(conn, station, day, role, zone, taf_inbox=taf_inbox) for role, day in event_days]
         today = now.astimezone(zone).date().isoformat()
