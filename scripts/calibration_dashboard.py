@@ -3648,35 +3648,14 @@ def collect_p1_path_skill(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
-    """The two per-station tables P0 serves from."""
+    """The per-station correction table P0 serves from (the weights' lag is
+    read off the served cells, ``collect_serving_weights``)."""
 
     correction = conn.execute(
         "SELECT COUNT(*), COUNT(DISTINCT station_id), MAX(valid_from_utc)"
         " FROM calibration_native_ensemble_activation"
         " WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION'"
     ).fetchone()
-    weights = conn.execute(
-        "SELECT COUNT(*), COUNT(DISTINCT station_id), MAX(valid_from_utc)"
-        " FROM calibration_native_ensemble_activation"
-        " WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
-    ).fetchone()
-    # The lagging cells and the cells that have weights at all, so the board
-    # can say what share lags (user 2026-10-05「换成百分比」).
-    lag, lag_total = conn.execute(
-        "SELECT SUM(julianday(corr_end) - julianday(weight_end) >= 3), COUNT(*) FROM ("
-        " SELECT s.station_id, s.lead_bucket, s.run_cycle,"
-        "  MAX(s.train_end_date) AS corr_end,"
-        "  (SELECT MAX(e.train_end_date)"
-        "   FROM calibration_cross_native_ensemble_selection_evidence e"
-        "   WHERE e.station_id=s.station_id"
-        "    AND e.lead_bucket=s.lead_bucket"
-        "    AND e.run_cycle=s.run_cycle) AS weight_end"
-        " FROM calibration_native_ensemble_system_artifact s"
-        " WHERE s.lead_bucket IN ('h00_12','h12_24','h24_48')"
-        " GROUP BY s.station_id, s.lead_bucket, s.run_cycle)"
-        " WHERE weight_end IS NOT NULL"
-    ).fetchone()
-    lag, lag_total = int(lag or 0), int(lag_total or 0)
     return {
         "correction": {
             "activations": correction[0],
@@ -3684,14 +3663,6 @@ def collect_correction_and_weights(conn: sqlite3.Connection) -> dict[str, Any]:
             "latest_utc": correction[2],
             "age_hours": _age_hours(correction[2]),
         },
-        "weights": {
-            "activations": weights[0],
-            "stations": weights[1],
-            "latest_utc": weights[2],
-            "age_hours": _age_hours(weights[2]),
-        },
-        "weight_lag_scopes": lag,
-        "weight_scopes": lag_total,
     }
 
 
@@ -10352,7 +10323,7 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
 def collect_gaps(
     conn: sqlite3.Connection,
     members: list[dict[str, Any]],
-    tables: dict[str, Any],
+    serving_weights: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Named holes, each with what it costs and whether it self-heals."""
 
@@ -10391,16 +10362,18 @@ def collect_gaps(
             ),
             "self_heals": True,
         })
-    if tables.get("weight_lag_scopes"):
+    # Counted on the cells P0 serves now, not every cell that ever had a
+    # weight (user 2026-10-10「保留在用格子数」: 237/422 of all cells read as
+    # 56% while 15/96 served cells lagged).
+    served = serving_weights or {}
+    if served.get("stale_count"):
         gaps.append({
             "severity": "medium",
             "what": (
-                (f"{100 * tables['weight_lag_scopes'] / tables['weight_scopes']:.0f}%"
-                 f"（{tables['weight_lag_scopes']} / {tables['weight_scopes']}）"
-                 if tables.get("weight_scopes") else f"{tables['weight_lag_scopes']} 个")
-                + "站×提前量的融合权重落后于偏差订正 3 天以上"
+                f"{served['stale_count']} / {served.get('scope_count') or '—'} 个在用格子的融合权重"
+                f"仍是 {served.get('stale_cut')} 之前的赛果（最新 {served.get('newest_holdout_end')}）"
             ),
-            "cost": "这些格子的权重仍是旧证据算的，融合比例可能不是当前最优",
+            "cost": "这些格子的起点权重仍是旧证据算的；服务权重每天按站重拟，影响小",
             "self_heals": True,
         })
     stations = conn.execute(
@@ -15184,9 +15157,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     live_guard = _live_ssot_guard()
     if live_guard:
         ssot_capacity = {**(ssot_capacity or {}), **live_guard, "available": True}
-    gaps = _cached_section(
-        "gaps", collect_gaps, conn, members, tables
-    )
     skill = _cached_section(
         "skill", collect_model_skill, conn,
         _unavailable={"rows": [], "totals": [], "summary": {}},
@@ -15194,6 +15164,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     scores = _cached_section("oos_scores", collect_oos_scores, conn)
     serving_weights = _cached_section(
         "serving_weights", collect_serving_weights, conn
+    )
+    gaps = _cached_section(
+        "gaps", collect_gaps, conn, members, serving_weights
     )
     center_width = _cached_section(
         "center_width", collect_center_width, conn
@@ -17042,27 +17015,6 @@ function healthLamps(){
   return L;
 }
 
-function tables(){
-  const t = D.tables;
-  return `<h2>每站的偏差订正与融合权重：修正各模型的系统偏差，定下融合时各占多少</h2>
-  <p class="sub">这两张表是"每个模型在每个站偏多少度"和"融合时各模型占多大比重"，
-  每天自动重算、自动换代。</p>
-  <div class="grid g3">
-    <div class="card"><div class="muted">偏差订正表</div>
-      <div class="big">${t.correction.stations} 站</div>
-      <div class="muted">${t.correction.activations.toLocaleString()} 次激活 ·
-        最近更新 ${hours(t.correction.age_hours)}</div></div>
-    <div class="card"><div class="muted">融合权重表</div>
-      <div class="big">${t.weights.stations} 站</div>
-      <div class="muted">${t.weights.activations.toLocaleString()} 次激活 ·
-        最近更新 ${hours(t.weights.age_hours)}</div></div>
-    <div class="card"><div class="muted">权重落后订正的格子</div>
-      <div class="big ${t.weight_lag_scopes ? "down" : ""}">
-        ${lagShare(t)}</div>
-      <div class="muted">${lagCount(t)}落后 3 天以上的站×提前量组合；
-        权重要过检验才换代，持续不过就会停在旧版本</div></div>
-  </div>`;
-}
 
 // Sits after the per-station summary because it is that table's follow-up
 // question: the summary ranks stations by what they lost, this asks which
@@ -20931,25 +20883,26 @@ function tablesCorrection(){
     <div class="big">${t.correction.stations} 站</div>
     <div class="muted">${t.correction.activations.toLocaleString()} 次激活 · 最近更新 ${hours(t.correction.age_hours)}</div></div></div>`;
 }
+// What lags among the cells P0 serves now, the ten furthest behind named
+// (user 2026-10-10「去掉融合权重表 48 站。保留在用格子数。把落后的格子前10个标注
+// 显示出来。」).  The table-wide count (every cell that ever had a weight) read
+// 56% while 15 of the 96 served cells lagged, and the activation count only
+// ever grows; both are gone.
 function tablesWeights(){
-  const t = D.tables; if(!t) return "";
-  return `<h2>融合权重表：${famJia()}模型合在一起时各占多少</h2>
-  <p class="sub">订正完的${famJia()}按权重合成一条分布：历史上在这个站、这个提前量更准的那家分到更多。
-    权重要过样本外检验才换代，所以可能比订正表落后几天。</p>
-  <div class="grid g3"><div class="card"><div class="muted">融合权重表</div>
-    <div class="big">${t.weights.stations} 站</div>
-    <div class="muted">${t.weights.activations.toLocaleString()} 次激活 · 最近更新 ${hours(t.weights.age_hours)}</div></div>
-    <div class="card"><div class="muted">权重落后订正的格子</div>
-      <div class="big ${t.weight_lag_scopes ? "down" : ""}">${lagShare(t)}</div>
-      <div class="muted">${lagCount(t)}落后 3 天以上的站×提前量组合；持续过不了检验就停在旧版本</div></div></div>`;
-}
-// User 2026-10-05「换成百分比」: the lagging cells as a share of the cells
-// that have weights, the count beside it.
-function lagShare(t){
-  return t.weight_scopes ? (100 * t.weight_lag_scopes / t.weight_scopes).toFixed(0) + "%" : String(t.weight_lag_scopes);
-}
-function lagCount(t){
-  return t.weight_scopes ? `${t.weight_lag_scopes} / ${t.weight_scopes} 格 · ` : "";
+  const W = D.serving_weights || {}, rows = W.rows || [];
+  if(!rows.length) return "";
+  const newest = W.newest_holdout_end, cut = W.stale_cut;
+  const days = r => newest && r.holdout_end ? Math.round((Date.parse(newest) - Date.parse(r.holdout_end)) / 864e5) : null;
+  const behind = rows.filter(r => cut && r.holdout_end < cut)
+    .sort((a, b) => String(a.holdout_end).localeCompare(String(b.holdout_end)) || a.station.localeCompare(b.station));
+  const top = behind.slice(0, 10).map(r => `<tr><td class="mono"><b>${h(r.station)}</b></td><td>${h(r.lead_label || r.lead_bucket)}</td>
+    <td class="mono">${h(r.run_cycle)}</td><td class="mono">${h(r.holdout_end)}</td><td class="mono down">${days(r) == null ? "—" : days(r) + " 天"}</td></tr>`).join("");
+  return `<h2>融合权重表：在用格子的权重有没有落后</h2>
+  <div class="sd-pnl-g" style="margin-top:8px">
+    <div class="sd-pnl-c ${behind.length ? "down" : "up"}" title="落后＝检验窗早于 ${h(cut || "—")}（最新 ${h(newest || "—")} 前两天）；权重要过样本外检验才换代，没过就停在旧版本"><span>落后的在用格子</span><b>${behind.length} / ${rows.length}</b><i>检验窗早于 ${h(cut || "—")}</i></div>
+  </div>
+  ${top ? `<table style="margin-top:8px;width:auto"><thead><tr><th>站</th><th>提前量</th><th>cycle</th><th>检验窗至</th><th>落后</th></tr></thead><tbody>${top}</tbody></table>
+  ${behind.length > 10 ? `<div class="muted" style="font-size:12px;margin-top:2px">落后最多的前 10 个，共 ${behind.length} 个</div>` : ""}` : ""}`;
 }
 
 function singleSystemWidth(){
