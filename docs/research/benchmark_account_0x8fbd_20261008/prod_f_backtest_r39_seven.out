@@ -1,0 +1,42 @@
+
+== listing +5 min: station-days 440, production F 440 (none 0); systems {3: 1, 4: 66, 5: 245, 6: 128}; fleet source {'native_history': 440}
+   production F hits the truth 0.314, within one bucket 0.777
+     arm production raw+c+0.3corr                 hit 0.314   truth-F mean -0.15 C  MAE 1.02 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.280   truth-F mean +0.12 C  MAE 1.11 C  vs production -0.034 [-0.073, +0.005]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.307   truth-F mean +0.16 C  MAE 1.03 C  vs production -0.007 [-0.048, +0.035]
+     arm raw+corr (station bias alone)            hit 0.357   truth-F mean +0.26 C  MAE 1.00 C  vs production +0.043 [-0.012, +0.098]
+     arm raw+0.8+0.3corr (research constant)      hit 0.307   truth-F mean +0.10 C  MAE 1.02 C  vs production -0.007 [-0.044, +0.030]
+     arm raw (uncorrected)                        hit 0.211   truth-F mean +1.17 C  MAE 1.48 C  vs production -0.102 [-0.169, -0.036]
+     research C vs production: +0.034 [-0.016, +0.084]
+   vs research C on 440: F 0.314  C 0.348  same bucket 0.52  F-C mean -0.10 C median -0.07 C
+   vs our served mode on 0: F 0.000  ours 0.000  same bucket 0.00
+   = market mode at 06:00 local on the event day (440): 0.416  (that market mode hits 0.495)
+
+== +1 h: station-days 440, production F 440 (none 0); systems {3: 1, 4: 66, 5: 245, 6: 128}; fleet source {'native_history': 440}
+   production F hits the truth 0.314, within one bucket 0.777
+     arm production raw+c+0.3corr                 hit 0.314   truth-F mean -0.15 C  MAE 1.03 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.277   truth-F mean +0.13 C  MAE 1.11 C  vs production -0.036 [-0.077, +0.004]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.302   truth-F mean +0.17 C  MAE 1.03 C  vs production -0.011 [-0.053, +0.030]
+     arm raw+corr (station bias alone)            hit 0.350   truth-F mean +0.26 C  MAE 1.01 C  vs production +0.036 [-0.018, +0.091]
+     arm raw+0.8+0.3corr (research constant)      hit 0.302   truth-F mean +0.10 C  MAE 1.02 C  vs production -0.011 [-0.048, +0.026]
+     arm raw (uncorrected)                        hit 0.214   truth-F mean +1.18 C  MAE 1.49 C  vs production -0.100 [-0.167, -0.033]
+     research C vs production: +0.032 [-0.016, +0.080]
+   vs research C on 440: F 0.314  C 0.345  same bucket 0.55  F-C mean -0.12 C median -0.08 C
+   vs our served mode on 281: F 0.327  ours 0.370  same bucket 0.36
+   = market mode at 06:00 local on the event day (440): 0.420  (that market mode hits 0.495)
+
+== +3 h: station-days 440, production F 440 (none 0); systems {3: 1, 4: 62, 5: 238, 6: 139}; fleet source {'native_history': 440}
+   production F hits the truth 0.314, within one bucket 0.780
+     arm production raw+c+0.3corr                 hit 0.314   truth-F mean -0.15 C  MAE 1.02 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.282   truth-F mean +0.13 C  MAE 1.10 C  vs production -0.032 [-0.071, +0.008]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.307   truth-F mean +0.16 C  MAE 1.03 C  vs production -0.007 [-0.046, +0.033]
+     arm raw+corr (station bias alone)            hit 0.341   truth-F mean +0.25 C  MAE 1.01 C  vs production +0.027 [-0.027, +0.081]
+     arm raw+0.8+0.3corr (research constant)      hit 0.302   truth-F mean +0.10 C  MAE 1.02 C  vs production -0.011 [-0.048, +0.025]
+     arm raw (uncorrected)                        hit 0.216   truth-F mean +1.17 C  MAE 1.49 C  vs production -0.098 [-0.165, -0.031]
+     research C vs production: +0.030 [-0.018, +0.077]
+   vs research C on 440: F 0.314  C 0.343  same bucket 0.56  F-C mean -0.07 C median -0.02 C
+   vs our served mode on 354: F 0.331  ours 0.362  same bucket 0.43
+   = market mode at 06:00 local on the event day (440): 0.418  (that market mode hits 0.495)
+
+== the cluster's pre-formation first YES: bucket = production F / = research C
+   n=179: = production F 0.41   = research C 0.51
