@@ -1,0 +1,50 @@
+station-days with a ladder 2569; instances 15387; station-days used 2567
+dropped: {'market_14': 10, 'market_13': 5, 'signals_9': 2, 'signals_10': 1, 'signals_11': 1, 'market_9': 2, 'market_10': 2, 'market_11': 2, 'market_12': 2}
+
+-- A protocol signals
+   10:00  y-M slope +0.154 [+0.094,+0.219]  2h drift +0.107 [+0.074,+0.141]  (n=2071, 46 days)   wf sq-err -0.0060 [-0.0130,+0.0009]   wf log score shifted-vs-market +0.0060 [-0.0020,+0.0127] (n=1579)
+   12:00  y-M slope +0.084 [+0.034,+0.134]  2h drift +0.055 [+0.022,+0.088]  (n=2072, 46 days)   wf sq-err -0.0040 [-0.0074,-0.0002]   wf log score shifted-vs-market +0.0053 [+0.0012,+0.0097] (n=1580)
+
+-- B satellite lagged 1 h
+   10:00  y-M slope +0.149 [+0.083,+0.216]  2h drift +0.095 [+0.060,+0.131]  (n=2071, 46 days)   wf sq-err -0.0054 [-0.0121,+0.0016]   wf log score shifted-vs-market +0.0059 [-0.0015,+0.0125] (n=1579)
+   12:00  y-M slope +0.086 [+0.035,+0.140]  2h drift +0.056 [+0.024,+0.092]  (n=2072, 46 days)   wf sq-err -0.0041 [-0.0075,-0.0006]   wf log score shifted-vs-market +0.0051 [+0.0011,+0.0093] (n=1580)
+
+-- C satellite lagged 2 h
+   10:00  y-M slope +0.138 [+0.076,+0.205]  2h drift +0.096 [+0.061,+0.131]  (n=2071, 46 days)   wf sq-err -0.0042 [-0.0108,+0.0026]   wf log score shifted-vs-market +0.0063 [-0.0008,+0.0126] (n=1579)
+   12:00  y-M slope +0.082 [+0.030,+0.133]  2h drift +0.055 [+0.021,+0.090]  (n=2072, 46 days)   wf sq-err -0.0037 [-0.0069,-0.0005]   wf log score shifted-vs-market +0.0050 [+0.0012,+0.0088] (n=1580)
+
+-- D no satellite (METAR + forecast only)
+   10:00  y-M slope +0.151 [+0.088,+0.215]  2h drift +0.095 [+0.059,+0.130]  (n=2071, 46 days)   wf sq-err -0.0043 [-0.0115,+0.0028]   wf log score shifted-vs-market +0.0084 [+0.0002,+0.0149] (n=1579)
+   12:00  y-M slope +0.088 [+0.033,+0.142]  2h drift +0.057 [+0.026,+0.090]  (n=2072, 46 days)   wf sq-err -0.0040 [-0.0079,-0.0001]   wf log score shifted-vs-market +0.0058 [+0.0016,+0.0101] (n=1580)
+
+-- A first half (event days < 2026-09-12)
+   10:00  y-M slope +0.175 [+0.088,+0.266]  2h drift +0.157 [+0.112,+0.201]  (n=762, 17 days)   wf sq-err -0.0134 [-0.0229,-0.0031]   wf log score shifted-vs-market +0.0133 [+0.0103,+0.0161] (n=270)
+   12:00  y-M slope +0.032 [-0.056,+0.123]  2h drift +0.029 [-0.025,+0.082]  (n=762, 17 days)   wf sq-err +0.0018 [-0.0054,+0.0104]   wf log score shifted-vs-market +0.0108 [+0.0060,+0.0166] (n=270)
+
+-- A second half (event days >= 2026-09-12)
+   10:00  y-M slope +0.137 [+0.052,+0.228]  2h drift +0.077 [+0.036,+0.119]  (n=1309, 29 days)   wf sq-err +0.0015 [-0.0078,+0.0110]   wf log score shifted-vs-market +0.0048 [-0.0053,+0.0138] (n=814)
+   12:00  y-M slope +0.114 [+0.053,+0.173]  2h drift +0.069 [+0.032,+0.113]  (n=1310, 29 days)   wf sq-err -0.0051 [-0.0141,+0.0047]   wf log score shifted-vs-market +0.0136 [+0.0019,+0.0256] (n=815)
+
+== price source: CLOB prices-history value vs our WS book mid at the same minute (10-03..10-10, buckets with a two-sided book)
+   n=3254  median |CLOB - WS mid| 0.0000  p90 0.0195  mean signed +0.0002
+   10:00 spread (ask-bid) on buckets with mid 0.05-0.95: median 0.040  p25 0.022  p75 0.050  (n=823)
+   12:00 spread (ask-bid) on buckets with mid 0.05-0.95: median 0.050  p25 0.030  p75 0.080  (n=838)
+
+== round trip: at tau buy (at mid) the bucket the walk-forward shift favours most, mark at tau+2h mid and at settlement; cents per share
+   10:00 |predicted leftover| 0.00-0.05 buckets: 2h mid change +0.62 [+0.06,+1.23]   hold to settlement +0.13 [-1.75,+2.16]  (n=694, 35 days)
+   10:00 |predicted leftover| 0.05-0.10 buckets: 2h mid change +0.83 [+0.19,+1.46]   hold to settlement +1.89 [-1.16,+5.29]  (n=498, 35 days)
+   10:00 |predicted leftover| 0.10-0.20 buckets: 2h mid change +1.61 [+0.33,+3.10]   hold to settlement -1.70 [-4.33,+1.04]  (n=335, 35 days)
+   10:00 |predicted leftover| 0.20-9.00 buckets: 2h mid change +2.57 [-0.85,+6.05]   hold to settlement +0.17 [-6.43,+8.40]  (n=52, 27 days)
+   12:00 |predicted leftover| 0.00-0.05 buckets: 2h mid change +0.70 [-0.20,+1.57]   hold to settlement -0.02 [-1.83,+1.79]  (n=1104, 35 days)
+   12:00 |predicted leftover| 0.05-0.10 buckets: 2h mid change +0.33 [-1.43,+2.06]   hold to settlement +1.41 [-2.17,+5.00]  (n=342, 35 days)
+   12:00 |predicted leftover| 0.10-0.20 buckets: 2h mid change +0.67 [-1.73,+3.49]   hold to settlement +4.78 [-0.14,+10.25]  (n=126, 30 days)
+   12:00 |predicted leftover| 0.20-9.00 buckets: 2h mid change +1.34 [-0.30,+3.14]   hold to settlement +8.19 [-2.90,+28.58]  (n=8, 4 days)
+
+== tilt (least-change update of the market to the predicted mean) -- walk-forward log score vs market, and taker economics
+   (spread from the WS book: median 4 c at 10:00, 5 c at 12:00 -> a taker pays mid + 2 c / + 2.5 c)
+   10:00  log score tilted-vs-market -0.0027 [-0.0063,+0.0012] (n=1579, 35 days)   largest per-bucket edge at mid: median 1.54 c, p90 4.10 c, share above half-spread 39.0%
+     YES on the bucket it raises most when its edge clears the half-spread: 616 trades on 35 days, -1.41 c per share [-4.76, +1.53]
+     NO on the bucket it lowers most when its edge clears the half-spread: 590 trades on 35 days, -0.65 c per share [-4.31, +2.84]
+   12:00  log score tilted-vs-market -0.0032 [-0.0067,+0.0005] (n=1580, 35 days)   largest per-bucket edge at mid: median 1.01 c, p90 3.00 c, share above half-spread 16.2%
+     YES on the bucket it raises most when its edge clears the half-spread: 256 trades on 31 days, +1.92 c per share [-3.13, +7.36]
+     NO on the bucket it lowers most when its edge clears the half-spread: 192 trades on 31 days, +1.58 c per share [-5.21, +8.48]

@@ -1,0 +1,83 @@
+station-days with a ladder 2569; instances 15387; station-days used 2567
+dropped: {'market_14': 10, 'market_13': 5, 'signals_9': 2, 'signals_10': 1, 'signals_11': 1, 'market_9': 2, 'market_10': 2, 'market_11': 2, 'market_12': 2}
+instances with a walk-forward physics shift 12420 (event days 2026-08-26..2026-10-10)
+
+== PRIMARY (98.75% day-clustered intervals; slopes in buckets per bucket of physics shift)
+   P1 tau=10:00  slope +0.154 [+0.078, +0.239] (n=2071, 46 days)   walk-forward sq-err change -0.0060 [-0.0130, +0.0008] (n=1579, 35 days)   -> fail
+   P2 tau=10:00  slope +0.107 [+0.064, +0.148] (n=2071, 46 days)   -> PASS
+   P1 tau=12:00  slope +0.084 [+0.017, +0.152] (n=2072, 46 days)   walk-forward sq-err change -0.0040 [-0.0077, -0.0003] (n=1580, 35 days)   -> PASS
+   P2 tau=12:00  slope +0.055 [+0.014, +0.098] (n=2066, 46 days)   -> PASS
+
+== secondary: how much of the physics shift the market already shows (in-sample slopes on S_ord, 95%)
+   9:00  truth-forecast +0.838 [+0.684,+1.010]   market(tau)-forecast +0.662 [+0.535,+0.793]   market(06)-forecast +0.512   share priced at tau 0.79  (n=2070)
+   10:00  truth-forecast +0.908 [+0.775,+1.034]   market(tau)-forecast +0.754 [+0.644,+0.863]   market(06)-forecast +0.542   share priced at tau 0.83  (n=2071)
+   11:00  truth-forecast +0.964 [+0.845,+1.098]   market(tau)-forecast +0.852 [+0.761,+0.959]   market(06)-forecast +0.565   share priced at tau 0.88  (n=2071)
+   12:00  truth-forecast +1.000 [+0.902,+1.110]   market(tau)-forecast +0.916 [+0.831,+1.004]   market(06)-forecast +0.584   share priced at tau 0.92  (n=2072)
+   13:00  truth-forecast +0.982 [+0.916,+1.046]   market(tau)-forecast +0.923 [+0.870,+0.980]   market(06)-forecast +0.582   share priced at tau 0.94  (n=2070)
+   14:00  truth-forecast +0.927 [+0.857,+1.006]   market(tau)-forecast +0.894 [+0.834,+0.969]   market(06)-forecast +0.544   share priced at tau 0.96  (n=2066)
+
+== secondary: P1/P2 slopes by hour (95%)
+   9:00  truth residual +0.176 [+0.088,+0.263] (n=2070)   2h drift +0.135 [+0.098,+0.177] (n=2070)
+   10:00  truth residual +0.154 [+0.097,+0.213] (n=2071)   2h drift +0.107 [+0.076,+0.137] (n=2071)
+   11:00  truth residual +0.112 [+0.060,+0.164] (n=2071)   2h drift +0.075 [+0.050,+0.103] (n=2069)
+   12:00  truth residual +0.084 [+0.032,+0.135] (n=2072)   2h drift +0.055 [+0.023,+0.090] (n=2066)
+   13:00  truth residual +0.059 [+0.020,+0.101] (n=2070)   2h drift +0.046 [+0.014,+0.079] (n=2060)
+   14:00  truth residual +0.033 [+0.010,+0.060] (n=2066)   2h drift +0.032 [+0.010,+0.054] (n=2059)
+
+== secondary: physics-shift deciles (mean truth residual y-M and 2h drift, buckets)
+   10:00
+     decile  1  S_ord -0.93  y-M -0.139  drift -0.097  n=207
+     decile  2  S_ord -0.48  y-M -0.103  drift -0.022  n=207
+     decile  3  S_ord -0.30  y-M -0.102  drift +0.032  n=207
+     decile  4  S_ord -0.15  y-M -0.033  drift +0.017  n=207
+     decile  5  S_ord -0.02  y-M -0.041  drift +0.040  n=207
+     decile  6  S_ord +0.10  y-M +0.006  drift +0.052  n=207
+     decile  7  S_ord +0.23  y-M +0.090  drift +0.044  n=207
+     decile  8  S_ord +0.38  y-M +0.028  drift +0.058  n=207
+     decile  9  S_ord +0.55  y-M +0.082  drift +0.066  n=207
+     decile 10  S_ord +0.92  y-M +0.112  drift +0.124  n=208
+     coldest 10%: y-M -0.139 [-0.267,-0.009] (n=207, 44 days)
+     warmest 10%: y-M +0.112 [-0.006,+0.237] (n=207, 46 days)
+   12:00
+     decile  1  S_ord -1.38  y-M -0.133  drift -0.052  n=207
+     decile  2  S_ord -0.66  y-M -0.125  drift -0.037  n=207
+     decile  3  S_ord -0.38  y-M -0.166  drift -0.082  n=207
+     decile  4  S_ord -0.18  y-M -0.076  drift +0.001  n=207
+     decile  5  S_ord -0.02  y-M -0.078  drift +0.040  n=208
+     decile  6  S_ord +0.14  y-M -0.018  drift -0.022  n=207
+     decile  7  S_ord +0.32  y-M +0.076  drift +0.087  n=207
+     decile  8  S_ord +0.49  y-M +0.051  drift +0.078  n=207
+     decile  9  S_ord +0.70  y-M +0.003  drift +0.057  n=207
+     decile 10  S_ord +1.22  y-M +0.054  drift +0.063  n=208
+     coldest 10%: y-M -0.133 [-0.258,-0.004] (n=207, 46 days)
+     warmest 10%: y-M +0.059 [-0.034,+0.150] (n=207, 46 days)
+
+== secondary: raw signals one at a time (slope of y-M and of 2h drift per unit of signal, 95%)
+   10:00 temp  y-M +0.049 [+0.031,+0.068] (n=2566)   drift +0.030 [+0.020,+0.040] (n=2566)
+   10:00 cloud y-M +0.194 [+0.110,+0.280] (n=2566)   drift +0.078 [+0.042,+0.119] (n=2566)
+   10:00 rain  y-M +0.021 [-0.013,+0.055] (n=2566)   drift +0.021 [+0.003,+0.037] (n=2566)
+   10:00 rad   y-M +0.181 [+0.093,+0.280] (n=1709)   drift +0.106 [+0.060,+0.157] (n=1709)
+   12:00 temp  y-M +0.040 [+0.020,+0.058] (n=2567)   drift +0.026 [+0.015,+0.038] (n=2559)
+   12:00 cloud y-M +0.133 [+0.047,+0.220] (n=2567)   drift +0.077 [+0.017,+0.135] (n=2559)
+   12:00 rain  y-M -0.001 [-0.017,+0.017] (n=2567)   drift -0.000 [-0.014,+0.013] (n=2559)
+   12:00 rad   y-M +0.105 [+0.023,+0.180] (n=1762)   drift +0.061 [+0.019,+0.118] (n=1760)
+
+== secondary: subsets (P1 slope and 2h drift slope, 95%)
+   10:00 satellite stations y-M +0.127 [+0.055,+0.200] (n=1378)   drift +0.092 [+0.059,+0.125] (n=1378)
+   10:00 no satellite       y-M +0.247 [+0.107,+0.400] (n=693)   drift +0.187 [+0.121,+0.252] (n=693)
+   10:00 C stations         y-M +0.129 [+0.067,+0.197] (n=1576)   drift +0.095 [+0.062,+0.126] (n=1576)
+   10:00 F stations         y-M +0.306 [+0.121,+0.527] (n=495)   drift +0.216 [+0.118,+0.315] (n=495)
+   12:00 satellite stations y-M +0.062 [+0.005,+0.126] (n=1422)   drift +0.042 [+0.004,+0.082] (n=1421)
+   12:00 no satellite       y-M +0.141 [+0.051,+0.236] (n=650)   drift +0.090 [+0.034,+0.147] (n=645)
+   12:00 C stations         y-M +0.065 [+0.005,+0.120] (n=1577)   drift +0.044 [+0.008,+0.083] (n=1576)
+   12:00 F stations         y-M +0.142 [+0.042,+0.252] (n=495)   drift +0.092 [+0.029,+0.156] (n=490)
+
+== secondary: controlling for where the forecast sits against the market (y-M ~ S_ord + (F_ord-M))
+   10:00  S_ord +0.123 [+0.055,+0.192]   forecast-minus-market -0.041 [-0.080,-0.005]  (n=2071)
+   12:00  S_ord +0.091 [+0.037,+0.153]   forecast-minus-market +0.007 [-0.031,+0.043]  (n=2072)
+
+== secondary: trading back-test (walk-forward predicted y-M >= 0.25 buckets; buy the YES with the largest p'-q, one share, hold)
+   10:00 cost 0.01: trades 13 on 11 days, ROI -13.5% [-100.0, +52.2]
+   10:00 cost 0.02: trades 11 on 9 days, ROI -36.5% [-100.0, +60.9]
+   12:00 cost 0.01: trades 1 on 1 days, ROI -100.0% [-100.0, -100.0]
+   12:00 cost 0.02: trades 1 on 1 days, ROI -100.0% [-100.0, -100.0]

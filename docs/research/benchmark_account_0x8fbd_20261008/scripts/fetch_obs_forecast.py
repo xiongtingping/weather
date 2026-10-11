@@ -7,7 +7,8 @@ hourly *_previous_day1 -- what the run of the day before said for each hour:
 temperature_2m, cloud_cover, cloud_cover_low, shortwave_radiation,
 precipitation.  Satellite: Open-Meteo's satellite archive (measured
 shortwave), the product by longitude as the station board picks it; none west
-of 60W.  One request per station each.  Writes <bench>/obsfc.json.
+of 60W.  One request per station each.  Writes <bench>/obsfc.json.  argv[2:4]
+override the window (round 30: 2026-08-14..10-10).
 """
 import json
 import sqlite3
@@ -22,7 +23,8 @@ from bayes_basket_target.station_day_board import _satellite_product  # noqa: E4
 from bayes_basket_target.station_registry import coordinate_registry_manifest, station_coordinates  # noqa: E402
 
 B = Path(sys.argv[1])
-START, END = "2026-09-11", "2026-10-10"
+START = sys.argv[2] if len(sys.argv) > 2 else "2026-09-11"
+END = sys.argv[3] if len(sys.argv) > 3 else "2026-10-10"
 conn = sqlite3.connect("file:/Users/xiong/weather/data/bayes_basket_target_ssot.db?mode=ro", uri=True, timeout=30)
 tz = {s: z for s, z in conn.execute("SELECT station_id, settlement_timezone FROM calibration_station_market_timezone_binding")}
 FIELDS = ["temperature_2m", "cloud_cover", "cloud_cover_low", "shortwave_radiation", "precipitation"]
