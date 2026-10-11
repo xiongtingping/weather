@@ -30,3 +30,18 @@ counts: {'T (first frame <=60 min after listing): station-days': 260, 'first fra
    C YES@cluster-implied bucket (post-hoc)  ask <= 0.30: legs   11 on  9 days  price 0.185  hit 0.000  ROI -100.0% [-100.0, -100.0]
    C YES@cluster-implied bucket (post-hoc)  ask <= 0.35: legs   17 on  9 days  price 0.238  hit 0.118  ROI -50.6% [-100.0, +4.5]
    C YES@cluster-implied bucket (post-hoc)  ask <= 0.40: legs   99 on 12 days  price 0.366  hit 0.333  ROI -8.9% [-42.9, +7.8]
+
+== post-hoc: the T legs re-priced at our lowest ask minus 3 c / minus 6 c (the observed fill-vs-frame gaps at listing)
+   L0 YES@F                                 ask - 0.00: price 0.444  hit 0.360  per share -8.4 c  ROI -18.9% [-27.1, -11.7]
+   L0 YES@F                                 ask - 0.03: price 0.414  hit 0.360  per share -5.4 c  ROI -13.1% [-22.0, -5.2]
+   L0 YES@F                                 ask - 0.06: price 0.384  hit 0.360  per share -2.4 c  ROI -6.3% [-16.2, +2.2]
+   L1 YES@F+1                               ask - 0.00: price 0.427  hit 0.246  per share -18.1 c  ROI -42.4% [-53.7, -32.0]
+   L1 YES@F+1                               ask - 0.03: price 0.397  hit 0.246  per share -15.1 c  ROI -38.0% [-50.3, -26.8]
+   L1 YES@F+1                               ask - 0.06: price 0.367  hit 0.246  per share -12.1 c  ROI -33.0% [-46.3, -20.6]
+   C YES@cluster-implied bucket (post-hoc)  ask - 0.00: price 0.447  hit 0.332  per share -11.5 c  ROI -25.7% [-41.6, -10.9]
+   C YES@cluster-implied bucket (post-hoc)  ask - 0.03: price 0.417  hit 0.332  per share -8.5 c  ROI -20.4% [-37.6, -4.2]
+   C YES@cluster-implied bucket (post-hoc)  ask - 0.06: price 0.387  hit 0.332  per share -5.5 c  ROI -14.2% [-32.9, +3.2]
+
+== same station-days: the cluster's pre-formation first YES vs our L0 at T (per share = hit - price; settled)
+   station-days 95: cluster hit 0.421 price 0.348 -> +7.3 c/share;   our L0 hit 0.389 price 0.470 -> -8.1 c/share
+   same bucket on 43 of them: cluster paid 0.398, our frame ask 0.506

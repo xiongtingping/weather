@@ -215,3 +215,67 @@ for tag in ("L0 YES@F", "C YES@cluster-implied bucket (post-hoc)"):
         if s:
             n, nd, roi, lo, hi, price, hit = s
             print(f"   {tag:40s} ask <= {cap:.2f}: legs {n:4d} on {nd:2d} days  price {price:.3f}  hit {hit:.3f}  ROI {roi:+.1f}% [{lo:+.1f}, {hi:+.1f}]")
+
+# post-hoc price correction (10-11, 熊先生「我一直觉得你对盈亏的计算有误」): the cluster's real taker fills in the
+# first 2 h after listing sat 2.7 c (median) / 5.2 c (mean) below our frame's lowest ask, even with a frame <=60 s old;
+# other wallets' taker buys median 0 / mean 3.8 c below.  Re-price the legs at our ask minus 3 c and minus 6 c.
+print("\n== post-hoc: the T legs re-priced at our lowest ask minus 3 c / minus 6 c (the observed fill-vs-frame gaps at listing)")
+for tag in ("L0 YES@F", "L1 YES@F+1", "C YES@cluster-implied bucket (post-hoc)"):
+    for adj in (0.0, 0.03, 0.06):
+        book = collections.defaultdict(list)
+        for d, lst in legs_out["T (first frame <=60 min after listing)"][tag].items():
+            for p, a, h in lst:
+                a2 = max(0.01, a - adj)
+                book[d].append(((1.0 if h else 0.0) - a2, a2, h))
+        n, nd, roi, lo, hi, price, hit = summary(book)
+        print(f"   {tag:40s} ask - {adj:.2f}: price {price:.3f}  hit {hit:.3f}  per share {100 * (hit - price):+.1f} c  ROI {roi:+.1f}% [{lo:+.1f}, {hi:+.1f}]")
+
+# same station-days, same accounting (per share = hit - price): the cluster's first YES placed before the market formed
+# vs our L0 at T.  Where the cluster made money and our copy did not: which station-days, which bucket, what price.
+print("\n== same station-days: the cluster's pre-formation first YES vs our L0 at T (per share = hit - price; settled)")
+R1 = json.load(gzip.open(B / "first_rows.json.gz", "rt"))
+early_yes = {}
+for r in R1:
+    v = list(r["now"].values())
+    formed = all(x is not None for x in v) and 0.7 <= sum(v) <= 1.4
+    if not formed and r["first"]["side"] == "Yes" and r["truth"]:
+        early_yes[(r["st"], r["ed"])] = r
+ours = {}
+for d, lst in legs_out["T (first frame <=60 min after listing)"]["L0 YES@F"].items():
+    pass
+# rebuild L0 per station-day (legs_out is keyed by day only)
+L0 = {}
+for k, g in G.items():
+    if "error" in g or not g.get("listed"):
+        continue
+    st, ed = k.split("|")
+    if (st, ed) not in early_yes or (st, ed) not in TRUTH or not "2026-09-28" <= ed <= "2026-10-10":
+        continue
+    lad = ladder(g)
+    lt = ts_(g["listed"])
+    fr = frame(st, ed, lt, lt + 3600)
+    if not lad or not fr:
+        continue
+    T, buckets = fr
+    raw = {m: fc(st, ed, m, T) for m in LAG}
+    raw = {m: v for m, v in raw.items() if v is not None}
+    if len(raw) < 3:
+        continue
+    F = bi(lad, statistics.median([v + bias(st, ed, m) for m, v in raw.items()]))
+    bk = {str(x["bucket"]): x for x in buckets}.get(lad["labels"][F])
+    a = ask_of(bk) if bk else None
+    if a is None:
+        continue
+    L0[(st, ed)] = (lad["labels"][F], a, TRUTH[(st, ed)][0] == lad["labels"][F])
+both = [k for k in L0 if k in early_yes]
+cl_hit = [1.0 if early_yes[k]["truth"] == early_yes[k]["first"]["bucket"] else 0.0 for k in both]
+cl_px = [early_yes[k]["first"]["price"] for k in both]
+our_hit = [1.0 if L0[k][2] else 0.0 for k in both]
+our_px = [L0[k][1] for k in both]
+same = sum(1 for k in both if L0[k][0] == early_yes[k]["first"]["bucket"])
+print(f"   station-days {len(both)}: cluster hit {statistics.mean(cl_hit):.3f} price {statistics.mean(cl_px):.3f} -> {100 * (statistics.mean(cl_hit) - statistics.mean(cl_px)):+.1f} c/share;"
+      f"   our L0 hit {statistics.mean(our_hit):.3f} price {statistics.mean(our_px):.3f} -> {100 * (statistics.mean(our_hit) - statistics.mean(our_px)):+.1f} c/share")
+same_k = [k for k in both if L0[k][0] == early_yes[k]["first"]["bucket"]]
+if same_k:
+    print(f"   same bucket on {len(same_k)} of them: cluster paid {statistics.mean(early_yes[k]['first']['price'] for k in same_k):.3f}, our frame ask {statistics.mean(L0[k][1] for k in same_k):.3f}")
+allL0 = [v for k, v in L0.items()]
