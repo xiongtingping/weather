@@ -14,14 +14,24 @@
   <!-- Daily, not weekly: ecmwf_pf50 alone writes roughly 7 GB/day into a
        store with no eviction, which is what filled the disk on 2026-08-11.
        05:20 sits after the overnight capture rotation and before the market
-       day. -->
+       day.  17:20 added 2026-10-11 (user ruling 「两跑」): intake reached about
+       6.3 GiB/day and one pass a day let the store swing 8.6 -> 12.5 GiB;
+       the second pass takes half a day of intake off the peak. -->
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>5</integer>
-    <key>Minute</key>
-    <integer>20</integer>
-  </dict>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>5</integer>
+      <key>Minute</key>
+      <integer>20</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>17</integer>
+      <key>Minute</key>
+      <integer>20</integer>
+    </dict>
+  </array>
   <key>EnvironmentVariables</key>
   <dict>
     <!-- The pass only ever discards bodies that no reference document names,

@@ -40,6 +40,14 @@ AUDITS_RETENTION_DAYS="${PM_OUTPUT_AUDITS_RETENTION_DAYS:-14}"
 # lane lowered to 7 GiB by hand, then undone by the next 05:20 run growing the
 # store back to 12.  7 GiB fits at every one of those passes, and what it drops
 # is re-obtainable by construction, so the hand-lowered value is the standing one.
+#
+# Twice a day since 2026-10-11 (05:20 and 17:20 local, launchd/com.weather.
+# official_nwp_raw_retention.plist; user ruling 「两跑」).  Intake had grown to
+# about 6.3 GiB/day (ecmwf_pf50 3.2, icon_eps 2.3, gefs 0.6) and this lane only
+# moves bodies at least MIN_AGE_DAYS old, so under one run a day the store
+# oscillated 8.6 -> 12.5 GiB between passes.  The second pass takes half a
+# day of intake off the peak, and the charter 237 SSOT cold move below runs
+# with it.  single_instance above keeps the two from overlapping.
 BUDGET_ROOT="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_ROOT-$ROOT/data/runtime/official_nwp_sources}"
 BUDGET_BYTES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_BYTES:-7516192768}"
 BUDGET_STORES="${PM_OFFICIAL_NWP_NATIVE_RETENTION_BUDGET_STORES:-ecmwf_pf50/raw gefs/raw}"
