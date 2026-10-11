@@ -114,11 +114,12 @@ def frame(st, ed, lo, hi):
 
 
 def ask_of(bk):
-    if not bk.get("ask_available"):
+    """The best ask = the lowest ask level (the frame's best_ask field is empty right after listing)."""
+    lv = sorted(((float(x["price"]), float(x["shares"])) for x in bk.get("ask_levels") or []), key=lambda t: t[0])
+    if not bk.get("ask_available") or not lv:
         return None
-    a = float(bk.get("best_ask") or 0)
-    lv = [x for x in bk.get("ask_levels") or [] if abs(float(x["price"]) - a) < 1e-9]
-    if not 0 < a < 0.98 or not lv or float(lv[0]["shares"]) < 5:
+    a, sh = lv[0]
+    if not 0 < a < 0.98 or sh < 5:
         return None
     return a
 
@@ -200,3 +201,17 @@ for wname in WINDOWS:
             continue
         n, nd, roi, lo, hi, price, hit = s
         print(f"   {tag:40s} legs {n:4d} on {nd:2d} days  price {price:.3f}  hit {hit:.3f}  ROI {roi:+.1f}% [{lo:+.1f}, {hi:+.1f}]")
+
+# post-hoc (not in the protocol): the cluster paid 0.35 on average -- does a price cap turn L0 / C around?
+print("\n== post-hoc: L0 and C at T only when the ask is at or below a cap")
+for tag in ("L0 YES@F", "C YES@cluster-implied bucket (post-hoc)"):
+    for cap in (0.25, 0.30, 0.35, 0.40):
+        book = collections.defaultdict(list)
+        for d, lst in legs_out["T (first frame <=60 min after listing)"][tag].items():
+            for p, a, h in lst:
+                if a <= cap:
+                    book[d].append((p, a, h))
+        s = summary(book)
+        if s:
+            n, nd, roi, lo, hi, price, hit = s
+            print(f"   {tag:40s} ask <= {cap:.2f}: legs {n:4d} on {nd:2d} days  price {price:.3f}  hit {hit:.3f}  ROI {roi:+.1f}% [{lo:+.1f}, {hi:+.1f}]")

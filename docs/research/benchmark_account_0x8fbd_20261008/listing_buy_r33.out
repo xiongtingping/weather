@@ -1,0 +1,32 @@
+counts: {'T (first frame <=60 min after listing): station-days': 260, 'first frame 2-3 h after listing: station-days': 344, 'first frame 6-8 h after listing: station-days': 279, 'T (first frame <=60 min after listing): L1 YES@F+1 no executable ask': 4, 'T (first frame <=60 min after listing): L01 YES@F and F+1 no executable ask': 14, 'T (first frame <=60 min after listing): C YES@cluster-implied bucket (post-hoc) no executable ask': 10, 'first frame 2-3 h after listing: L1 YES@F+1 no executable ask': 5, 'first frame 2-3 h after listing: L01 YES@F and F+1 no executable ask': 12, 'first frame 2-3 h after listing: C YES@cluster-implied bucket (post-hoc) no executable ask': 6, 'first frame 6-8 h after listing: L1 YES@F+1 no executable ask': 4, 'first frame 6-8 h after listing: L01 YES@F and F+1 no executable ask': 7, 'first frame 2-3 h after listing: L0 YES@F no executable ask': 7, 'T (first frame <=60 min after listing): L0 YES@F no executable ask': 10, 'T (first frame <=60 min after listing): M YES@market mode no executable ask': 1, 'T (first frame <=60 min after listing): <3 models': 58, 'first frame 2-3 h after listing: <3 models': 98, 'first frame 6-8 h after listing: <3 models': 105, 'first frame 6-8 h after listing: L0 YES@F no executable ask': 3, 'first frame 6-8 h after listing: M YES@market mode no executable ask': 2, 'first frame 6-8 h after listing: C YES@cluster-implied bucket (post-hoc) no executable ask': 3}
+
+== T (first frame <=60 min after listing)
+   L0 YES@F                                 legs  250 on 12 days  price 0.444  hit 0.360  ROI -18.9% [-27.1, -11.7]
+   L1 YES@F+1                               legs  256 on 12 days  price 0.427  hit 0.246  ROI -42.4% [-53.7, -32.0]
+   L01 YES@F and F+1                        legs  506 on 12 days  price 0.435  hit 0.302  ROI -30.6% [-34.8, -26.5]
+   M YES@market mode                        legs    3 on  3 days  price 0.480  hit 0.000  ROI -100.0% [-100.0, -100.0]
+   C YES@cluster-implied bucket (post-hoc)  legs  250 on 12 days  price 0.447  hit 0.332  ROI -25.7% [-41.6, -10.9]
+
+== first frame 2-3 h after listing
+   L0 YES@F                                 legs  337 on 13 days  price 0.400  hit 0.374  ROI -6.6% [-19.0, +5.9]
+   L1 YES@F+1                               legs  339 on 13 days  price 0.357  hit 0.242  ROI -32.2% [-45.5, -14.8]
+   L01 YES@F and F+1                        legs  676 on 13 days  price 0.378  hit 0.308  ROI -18.7% [-25.0, -11.6]
+   M YES@market mode                        legs   35 on 12 days  price 0.443  hit 0.371  ROI -16.1% [-63.1, +26.1]
+   C YES@cluster-implied bucket (post-hoc)  legs  338 on 13 days  price 0.407  hit 0.337  ROI -17.2% [-26.9, -6.6]
+
+== first frame 6-8 h after listing
+   L0 YES@F                                 legs  276 on 11 days  price 0.374  hit 0.341  ROI -9.0% [-26.3, +5.8]
+   L1 YES@F+1                               legs  275 on 11 days  price 0.315  hit 0.258  ROI -18.0% [-32.5, +0.9]
+   L01 YES@F and F+1                        legs  551 on 11 days  price 0.345  hit 0.299  ROI -13.1% [-18.9, -7.2]
+   M YES@market mode                        legs  145 on 11 days  price 0.444  hit 0.441  ROI -0.7% [-24.0, +21.6]
+   C YES@cluster-implied bucket (post-hoc)  legs  276 on 11 days  price 0.384  hit 0.348  ROI -9.5% [-18.8, +1.2]
+
+== post-hoc: L0 and C at T only when the ask is at or below a cap
+   L0 YES@F                                 ask <= 0.25: legs    8 on  7 days  price 0.149  hit 0.000  ROI -100.0% [-100.0, -100.0]
+   L0 YES@F                                 ask <= 0.30: legs   12 on  9 days  price 0.196  hit 0.000  ROI -100.0% [-100.0, -100.0]
+   L0 YES@F                                 ask <= 0.35: legs   18 on 11 days  price 0.241  hit 0.056  ROI -76.9% [-100.0, -20.6]
+   L0 YES@F                                 ask <= 0.40: legs  104 on 12 days  price 0.365  hit 0.279  ROI -23.7% [-49.6, -8.3]
+   C YES@cluster-implied bucket (post-hoc)  ask <= 0.25: legs    8 on  7 days  price 0.144  hit 0.000  ROI -100.0% [-100.0, -100.0]
+   C YES@cluster-implied bucket (post-hoc)  ask <= 0.30: legs   11 on  9 days  price 0.185  hit 0.000  ROI -100.0% [-100.0, -100.0]
+   C YES@cluster-implied bucket (post-hoc)  ask <= 0.35: legs   17 on  9 days  price 0.238  hit 0.118  ROI -50.6% [-100.0, +4.5]
+   C YES@cluster-implied bucket (post-hoc)  ask <= 0.40: legs   99 on 12 days  price 0.366  hit 0.333  ROI -8.9% [-42.9, +7.8]
