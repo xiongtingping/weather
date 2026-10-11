@@ -141,3 +141,11 @@ def test_a_no_leg_admitted_under_an_earlier_rule_is_not_sent_under_v4(store) -> 
     )
     last = store.execute(f"SELECT refusal FROM {lane.EVALUATION_TABLE} ORDER BY evaluated_at_utc DESC").fetchone()
     assert last[0] == "side_not_followed:NO" and not sent
+
+
+def test_the_lanes_file_carries_v4_on_yes_only() -> None:
+    # The switch and the stake dial are the operator's; the rule and the side are pinned.
+    cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_COPY_FOLLOW,
+                                       ROOT / "config" / "trading" / "strategy_lanes_v1.json")
+    assert cfg["rule"] == lane.RULE_V4 and cfg["sides"] == ["YES"]
+    assert cfg["take_only"] is True and cfg["station_units"] == ["C"] and cfg["mirror_sells"] is False

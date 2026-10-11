@@ -341,11 +341,12 @@ def test_the_defaults_carry_the_tier_table_and_v2_stays_selectable() -> None:
     assert {lane.RULE_V2, lane.RULE_V3} <= set(lane.CLUSTER_RULES) and lane.RULE_V2 in lane.RULE_VERSIONS
 
 
-def test_the_lanes_file_carries_v3() -> None:
-    # The switch and the stake dial are the operator's; only the rule and the tier table are pinned.
+def test_the_lanes_file_keeps_v3s_tier_table_for_a_roll_back() -> None:
+    # Charter 268 moved the file to v4 (its own suite pins the rule); v3's table stays so the
+    # rule field alone rolls the lane back.  The switch and the stake dial are the operator's.
     cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_COPY_FOLLOW,
                                        ROOT / "config" / "trading" / "strategy_lanes_v1.json")
-    assert cfg["rule"] == lane.RULE_V3
+    assert cfg["rule"] in lane.CLUSTER_RULES
     assert cfg["stake_tiers"] == {"momentum_agrees": 3.0, "model_agrees": 2.0, "probability": 1.0}
 
 
