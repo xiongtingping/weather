@@ -76,9 +76,11 @@ SYSTEM_IDS = {
     # Charter 267 补记二: DWD ICON global and Meteo-France ARPEGE, natively.
     "ICON_GLOBAL": "DWD_ICON_GLOBAL_13KM_NATIVE_POINT",
     "ARPEGE": "METEOFRANCE_ARPEGE_025_NATIVE_POINT",
+    # 补记三: GFS at every hour (research arm for F's daily maximum).
+    "GFS_HOURLY": "NOAA_GFS_025_HOURLY_NATIVE_POINT",
 }
 # Charter 267 (二): the native deterministic products and their module.
-NATIVE_DETERMINISTIC_PRODUCTS = frozenset({"IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE"})
+NATIVE_DETERMINISTIC_PRODUCTS = frozenset({"IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY"})
 # Charter 201: when a backfilled row is stamped knowable, where a product's
 # holding lag is longer than its first-ask lag.  AIFS: the GCS mirror's
 # step-96 index created T+5:25..5:43 over twelve runs 09-20..22 -> 6 h.  CMA
@@ -87,7 +89,7 @@ NATIVE_DETERMINISTIC_PRODUCTS = frozenset({"IFS_HRES", "GFS", "AIGFS", "GDPS", "
 # are not backfilled.
 BACKFILL_KNOWABLE_LAG_HOURS = {"AIFS": 6.0, "CMA": 11.0}
 # Forecast-step spacing, hours (charter 201: AIFS Single's open data is six-hourly).
-STEP_HOURS = {"AIFS": 6, "IFS_HRES": 3, "GFS": 3, "AIGFS": 6, "GDPS": 3, "ICON_GLOBAL": 3, "ARPEGE": 3}
+STEP_HOURS = {"AIFS": 6, "IFS_HRES": 3, "GFS": 3, "AIGFS": 6, "GDPS": 3, "ICON_GLOBAL": 3, "ARPEGE": 3, "GFS_HOURLY": 1}
 # Charter 201: which products reach the lane through the aggregator relay
 # (knowable = when we fetched it; quota-charged) rather than a publisher's own
 # archive.
@@ -107,6 +109,7 @@ TRANSPORTS = {
     "GDPS": "ECCC_MSC_DATAMART_GDPS",
     "ICON_GLOBAL": "DWD_OPENDATA_ICON_GLOBAL",
     "ARPEGE": "METEOFRANCE_PNT_OVH_S3",
+    "GFS_HOURLY": "NOAA_GFS_BDP_PDS_S3",
 }
 EXTRACTION_VERSIONS = {
     "MSM": "jma_msm_surface_nearest_cell_v1",
@@ -143,6 +146,7 @@ EXTRACTION_VERSIONS = {
     # 0.25 degree grid is GFS's, so GFS's LAND of the same init places it.
     "ICON_GLOBAL": "dwd_icon_global_t2m_3h_nearest_land_cell_v1",
     "ARPEGE": "meteofrance_arpege_t2m_3h_gfs_land_cell_v1",
+    "GFS_HOURLY": "ncep_gfs_tmp2m_1h_nearest_land_cell_v1",
 }
 # Charter 200: (system, station) -> extraction versions whose rows were read
 # at a water cell.  Measured on the lane's own peak-complete rows, KSFO/HRRR v1
@@ -196,6 +200,7 @@ RUN_CYCLE_HOURS = {
     "GDPS": (0, 12),
     "ICON_GLOBAL": (0, 12),
     "ARPEGE": (0, 12),
+    "GFS_HOURLY": (0, 6, 12, 18),
 }
 # How long after its nominal hour a run is normally on the archive.
 PUBLICATION_LAG_HOURS = {
@@ -210,7 +215,7 @@ PUBLICATION_LAG_HOURS = {
     "IFS_HRES": 8.0, "GFS": 4.5, "AIGFS": 6.0, "GDPS": 5.0,
     # Charter 267 补记二 (measured 10-11): ICON's 00Z first steps land at
     # 02:41Z; ARPEGE's 12Z SP1/HP1 packages 14:40-15:14Z.
-    "ICON_GLOBAL": 4.0, "ARPEGE": 3.5,
+    "ICON_GLOBAL": 4.0, "ARPEGE": 3.5, "GFS_HOURLY": 4.5,
 }
 # Charter 201: every listed target day (station-local D-1 .. D+2) and every
 # run still current (issued in the last day) that reaches its afternoon --
@@ -228,7 +233,7 @@ LOOKBACK_HOURS = {
     "HRRR": 30.0, "NBM": 30.0, "MSM": 60.0, "ICON_EU": 72.0, "CMA": 60.0,
     "AIFS": 72.0, "IFS9KM": 72.0, "UKMO10": 72.0,
     "IFS_HRES": 72.0, "GFS": 72.0, "AIGFS": 72.0, "GDPS": 72.0,
-    "ICON_GLOBAL": 72.0, "ARPEGE": 72.0,
+    "ICON_GLOBAL": 72.0, "ARPEGE": 72.0, "GFS_HOURLY": 72.0,
 }
 # The end of the local peak window, hours after local midnight.
 _PEAK_END_HOUR = 19

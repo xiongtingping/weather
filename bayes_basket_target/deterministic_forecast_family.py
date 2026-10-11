@@ -58,6 +58,8 @@ FAMILY: Mapping[str, Mapping[str, Any]] = {
     # Charter 267 补记二 (user 「接」, 10-11): closer to the cluster's ten models.
     "ICON_GLOBAL": {"publisher": "DWD", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
     "ARPEGE": {"publisher": "Meteo-France", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    # 补记三: GFS at every hour -- the daily-maximum research arm, not read by F yet.
+    "GFS_HOURLY": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 1, "p0_feature": False},
 }
 PRODUCT_BY_SYSTEM = {SYSTEM_IDS[product]: product for product in FAMILY}
 # Charter 201's P0 feature, gate and shadow read only these.
@@ -65,8 +67,11 @@ FAMILY_SYSTEM_IDS = frozenset(
     SYSTEM_IDS[product] for product, meta in FAMILY.items() if meta.get("p0_feature", True)
 )
 # Charter 267: the deterministic runs the listing-time forecast F reads.
+# ARPEGE is captured but not read (补记三, user 「ARPEGE：移出」 10-11: on the
+# same 440 station-days it cost F 3.6 hit points [-7.1, -0.2] and moved it no
+# closer to the cluster's first YES).
 F_SYSTEM_IDS = frozenset(
-    SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
+    SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL")
 )
 # The local afternoon a day's maximum lives in (charter 95's peak window).
 PEAK_START_HOUR, PEAK_END_HOUR = 11, 19

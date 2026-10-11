@@ -24,7 +24,7 @@ import bayes_basket_target.native_deterministic_point_archive as N
 import bayes_basket_target.regional_point_lane as L
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
+NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY")
 RUN = datetime(2026, 10, 11, 0, tzinfo=timezone.utc)
 
 
@@ -56,8 +56,9 @@ def test_native_runs_feed_f_and_never_the_p0_feature():
     old = {"HRRR", "NBM", "ICON_EU", "MSM", "CMA", "AIFS", "IFS9KM", "UKMO10"}
     assert FAM.FAMILY_SYSTEM_IDS == frozenset(L.SYSTEM_IDS[p] for p in old)
     for product in NATIVE:
-        assert L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS
         assert L.SYSTEM_IDS[product] not in FAM.FAMILY_SYSTEM_IDS
+        # 补记三: ARPEGE is captured, not read by F; GFS_HOURLY is a research arm.
+        assert (L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS) is (product not in ("ARPEGE", "GFS_HOURLY")), product
     assert L.SYSTEM_IDS["AIFS"] in FAM.F_SYSTEM_IDS
     relay = {L.SYSTEM_IDS[p] for p, meta in FAM.FAMILY.items() if meta["relay"]}
     assert not relay & FAM.F_SYSTEM_IDS, "F reads native runs only, never the aggregator relay"
@@ -66,13 +67,14 @@ def test_native_runs_feed_f_and_never_the_p0_feature():
 def test_the_native_products_ride_the_family_capture_and_its_doorbell():
     capture = _load("capture_deterministic_forward")
     probe = _load("probe_deterministic_runs")
-    for product in NATIVE:
+    assert "GFS_HOURLY" not in capture.PRODUCTS, "the research arm is backfilled by hand, not captured forward"
+    for product in [p for p in NATIVE if p != "GFS_HOURLY"]:
         assert product in capture.PRODUCTS
         assert product in probe.PRODUCTS
     daemon_text = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
     start = daemon_text.index("DETERMINISTIC_PROBE_SWEEPS = {")
     block = daemon_text[start: daemon_text.index("}", start)]
-    for product in NATIVE:
+    for product in [p for p in NATIVE if p != "GFS_HOURLY"]:
         assert f'"{product}": "capture_deterministic_forward"' in block
 
 
@@ -497,3 +499,9 @@ def test_capture_bounds_the_slow_native_products():
     capture = _load("capture_deterministic_forward")
     assert capture.MAX_RUNS_OVERRIDE == {"ARPEGE": 1, "ICON_GLOBAL": 1}
     assert capture.NATIVE_BUDGET_OVERRIDE_SEC["ARPEGE"] <= 240.0
+
+
+def test_gfs_hourly_reads_the_same_objects_at_every_hour():
+    assert N.step_url("GFS_HOURLY", RUN, 7) == N.step_url("GFS", RUN, 7).replace("f007", "f007")
+    assert N.SPECS["GFS_HOURLY"].steps()[:4] == [0, 1, 2, 3] and N.SPECS["GFS_HOURLY"].steps()[-1] == 96
+    assert FAM.FAMILY["GFS_HOURLY"]["step_hours"] == 1

@@ -13280,8 +13280,11 @@ REGIONAL_LANES = {
         "label": "ICON 全球 13km（F）", "region": "全球",
         "transport": "DWD opendata·三角网格整文件", "backfillable": False},
     "METEOFRANCE_ARPEGE_025_NATIVE_POINT": {
-        "label": "ARPEGE 0.25°（F）", "region": "全球",
+        "label": "ARPEGE 0.25°（只采集）", "region": "全球",
         "transport": "Météo-France PNT·报头逐条区间", "backfillable": True},
+    "NOAA_GFS_025_HOURLY_NATIVE_POINT": {
+        "label": "GFS 逐小时（研究臂）", "region": "全球",
+        "transport": "NOAA S3·idx 区间·1 小时步", "backfillable": True},
 }
 _SWEEP_MODEL_TO_SYSTEM = {
     "jma_msm": "JMA_MSM_POINT",
@@ -13335,6 +13338,7 @@ def _capture_rosters() -> dict[str, set[str]]:
         "ECCC_GDPS_15KM_NATIVE_POINT": _global_family_roster(),
         "DWD_ICON_GLOBAL_13KM_NATIVE_POINT": _global_family_roster(),
         "METEOFRANCE_ARPEGE_025_NATIVE_POINT": _global_family_roster(),
+        "NOAA_GFS_025_HOURLY_NATIVE_POINT": _global_family_roster(),
     }
     return rosters
 

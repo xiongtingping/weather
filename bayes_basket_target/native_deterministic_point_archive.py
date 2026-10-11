@@ -128,6 +128,10 @@ SPECS: Mapping[str, ProductSpec] = {
     "GDPS": ProductSpec("GDPS", (0, 12), 3, "whole_file", "gfs_land"),
     "ICON_GLOBAL": ProductSpec("ICON_GLOBAL", (0, 12), 3, "dwd_bz2", "icon_fr_land"),
     "ARPEGE": ProductSpec("ARPEGE", (0, 12), 3, "arpege_package", "gfs_land"),
+    # 补记三 (user 10-11 「用逐小时步取日最高温（先从 GFS 试）」): GFS's own
+    # hourly files to f120, the same objects read at every hour -- a research
+    # arm until the paired test rules on it.
+    "GFS_HOURLY": ProductSpec("GFS_HOURLY", (0, 6, 12, 18), 1, "noaa_idx", "gfs_land"),
 }
 
 
@@ -145,7 +149,7 @@ def step_url(product: str, run_init: datetime, step: int) -> str:
             f"{ECMWF_BASE_URL}/{stamp:%Y%m%d}/{stamp:%H}z/ifs/0p25/oper/"
             f"{stamp:%Y%m%d%H}0000-{step}h-oper-fc.grib2"
         )
-    if product == "GFS":
+    if product in ("GFS", "GFS_HOURLY"):
         return (
             f"{GFS_BASE_URL}/gfs.{stamp:%Y%m%d}/{stamp:%H}/atmos/"
             f"gfs.t{stamp:%H}z.pgrb2.0p25.f{step:03d}"
@@ -459,7 +463,8 @@ def parse_noaa_idx(text: str, *, field: str) -> tuple[int, int | None] | None:
     return None
 
 
-FIELD_2T = {"IFS_HRES": "2t", "GFS": "TMP:2 m above ground", "AIGFS": "TMP:2 m above ground"}
+FIELD_2T = {"IFS_HRES": "2t", "GFS": "TMP:2 m above ground", "GFS_HOURLY": "TMP:2 m above ground",
+            "AIGFS": "TMP:2 m above ground"}
 
 
 def read_message(product: str, run_init: datetime, step: int, *, field: str | None = None) -> bytes | None:
@@ -879,7 +884,9 @@ def fetch_run_for_targets(
         ])
         if decode is nearest_point_kelvin else None
     )
-    with ThreadPoolExecutor(max_workers=FETCH_WORKERS) as pool:
+    # Hourly products read three times the steps; their requests are latency-bound.
+    workers = FETCH_WORKERS * 2 if SPECS[product].step_hours == 1 else FETCH_WORKERS
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         for step, message in pool.map(lambda s: (s, read(product, run_init, s)), union):
             if message is None:
                 continue
