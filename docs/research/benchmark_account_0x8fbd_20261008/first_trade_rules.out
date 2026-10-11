@@ -1,0 +1,141 @@
+first legs with a full ladder before the fill: research 281 (event days to 2026-10-03), forward 131
+
+== (1) the first leg sits in the bucket of ... (research | forward; n = legs where the centre exists)
+   first YES:
+     market mean            0.240 (204) | 0.219 (96)
+     market mode            0.216 (204) | 0.240 (96)
+     our served mode        0.247 (162) | 0.269 (93)
+     aifs mean+bias         0.225 (111) | 0.231 (91)
+     aifs raw mean          0.153 (111) | 0.165 (91)
+     aigefs mean+bias       0.186 (86) | 0.132 (91)
+     aigefs raw mean        0.198 (86) | 0.121 (91)
+     consensus+bias         0.297 (195) | 0.229 (96)
+     gefs mean+bias         0.284 (190) | 0.284 (95)
+     gefs raw mean          0.126 (190) | 0.158 (95)
+     gem mean+bias          0.236 (165) | 0.281 (96)
+     gem raw mean           0.158 (165) | 0.177 (96)
+     icon mean+bias         0.261 (161) | 0.253 (91)
+     icon raw mean          0.180 (161) | 0.220 (91)
+     ifs mean+bias          0.222 (171) | 0.226 (93)
+     ifs raw mean           0.135 (171) | 0.215 (93)
+     raw consensus          0.123 (195) | 0.188 (96)
+   first NO:
+     market mean            0.455 (77) | 0.571 (35)
+     market mode            0.455 (77) | 0.486 (35)
+     our served mode        0.356 (59) | 0.455 (33)
+     aifs mean+bias         0.311 (45) | 0.303 (33)
+     aifs raw mean          0.267 (45) | 0.242 (33)
+     aigefs mean+bias       0.118 (34) | 0.281 (32)
+     aigefs raw mean        0.059 (34) | 0.094 (32)
+     consensus+bias         0.356 (73) | 0.400 (35)
+     gefs mean+bias         0.192 (73) | 0.286 (35)
+     gefs raw mean          0.151 (73) | 0.200 (35)
+     gem mean+bias          0.109 (55) | 0.235 (34)
+     gem raw mean           0.182 (55) | 0.294 (34)
+     icon mean+bias         0.322 (59) | 0.294 (34)
+     icon raw mean          0.169 (59) | 0.324 (34)
+     ifs mean+bias          0.333 (60) | 0.294 (34)
+     ifs raw mean           0.267 (60) | 0.294 (34)
+     raw consensus          0.164 (73) | 0.286 (35)
+
+== (2) the chosen leg's rank among all legs by (source probability - price): top-1 / top-3 (research | forward)
+   market       0.125 / 0.246 (n=281) | 0.107 / 0.244 (n=131)
+   our served   0.154 / 0.321 (n=221) | 0.103 / 0.294 (n=126)
+   raw pool     0.112 / 0.243 (n=268) | 0.092 / 0.252 (n=131)
+   ifs          0.126 / 0.247 (n=231) | 0.118 / 0.315 (n=127)
+   aifs         0.109 / 0.269 (n=156) | 0.065 / 0.194 (n=124)
+   icon         0.141 / 0.314 (n=220) | 0.104 / 0.264 (n=125)
+   gefs         0.114 / 0.266 (n=263) | 0.077 / 0.269 (n=130)
+   gem          0.114 / 0.268 (n=220) | 0.100 / 0.308 (n=130)
+   aigefs       0.092 / 0.242 (n=120) | 0.081 / 0.220 (n=123)
+
+== (3) off-mode first legs: its side of the market mode vs each centre's side of the market mean (agreement, research | forward)
+   our served   0.465 (n=101) | 0.509 (n=53)
+   M            0.484 (n=186) | 0.560 (n=91)
+   ifs          0.489 (n=133) | 0.521 (n=71)
+   aifs         0.516 (n=93) | 0.453 (n=75)
+   icon         0.457 (n=129) | 0.612 (n=67)
+   gefs         0.474 (n=152) | 0.577 (n=78)
+   gem          0.465 (n=129) | 0.603 (n=78)
+   aigefs       0.488 (n=86) | 0.397 (n=78)
+
+== (4) the deterministic rule for the first leg
+   gate (mode +-2, YES 0.03-0.65, NO 0.25-0.90): covers 0.964 of research first legs, 8.6 legs left (of 22.0)
+   gate (mode +-2, YES 0.03-0.65, NO 0.25-0.90): covers 0.977 of forward first legs, 8.2 legs left (of 22.0)
+   +4  YES priced 0.10-0.50               (logit +1.29)
+   +3  NO priced 0.30-0.75                (logit +1.04)
+   +2  leg got >1c cheaper in the hour    (logit +0.77)
+   +2  leg on the momentum side           (logit +0.68)
+   +2  leg against the momentum side      (logit +0.72)
+   +1  YES on the mode                    (logit +0.30)
+   +1  YES one below                      (logit +0.19)
+   +1  YES one above                      (logit +0.38)
+   +1  NO on the mode                     (logit +0.43)
+   +1  leg got >1c dearer in the hour     (logit +0.43)
+   +1  our belief says >5c cheap          (logit +0.29)
+   +1  consensus+bias bucket (YES)        (logit +0.26)
+   +0  the market's second bucket (YES)   (logit -0.02)
+   +0  raw pool says >5c cheap            (logit -0.15)
+   -1  NO one below                       (logit -0.36)
+   -1  NO one above                       (logit -0.18)
+   -1  NO two away                        (logit -0.26)
+   -2  YES two away                       (logit -0.51)
+
+   uniform inside the gate top-1 0.118 | 0.131
+   logit weights   top-1 0.270 | 0.244   top-3 0.655 | 0.595
+   integer points  top-1 0.267 | 0.260   top-3 0.669 | 0.588
+
+== first-leg result per share at its own price (settled), research | forward
+   mode YES  n=44 +4.4 c | n=11 -6.7 c
+   off YES   n=160 +7.5 c | n=49 +8.5 c
+   mode NO   n=33 +1.6 c | n=14 +29.8 c
+   off NO    n=42 +6.7 c | n=12 +4.0 c
+
+== (5) first legs placed before the market formed (no prior price, or ladder mids summing outside 0.7-1.4)
+   n=405; minutes after listing median 33.2, p75 62.3; YES share 0.61; taker share 0.80
+   YES by position on the ladder (0 = middle of 11): -5: 0.2%  -4: 0.2%  -3: 1.0%  -2: 1.0%  -1: 5.4%  +0: 18.0%  +1: 21.5%  +2: 9.9%  +3: 2.5%  +4: 1.2%  +5: 0.5%
+   NO by position on the ladder (0 = middle of 11): -5: 0.7%  -4: 0.2%  -3: 1.5%  -2: 2.7%  -1: 5.7%  +0: 8.4%  +1: 8.4%  +2: 4.7%  +3: 3.5%  +4: 1.0%  +5: 1.7%
+   first YES sits in the bucket of ... (research | forward):
+     our served mode        0.444 (27) | 0.406 (69)
+     consensus+bias         0.508 (61) | 0.304 (115)
+     ifs mean+bias          0.460 (50) | 0.300 (100)
+     aifs mean+bias         0.286 (7) | 0.233 (43)
+     icon mean+bias         0.381 (42) | 0.312 (96)
+     gefs mean+bias         0.345 (55) | 0.349 (106)
+     gem mean+bias          0.367 (30) | 0.267 (90)
+     aigefs mean+bias       0.200 (5) | 0.065 (46)
+   vs the market's mode on the event day at 06:00 local (formed by then):
+     before the market formed   YES (n=213): -2 4% -1 15% +0 55% +1 23% +2 3%   NO (n=139): -2 30% -1 22% +0 12% +1 16% +2 20%
+     after it formed            YES (n=264): -2 9% -1 22% +0 35% +1 28% +2 6%   NO (n=101): -2 9% -1 27% +0 28% +1 21% +2 16%
+   result per share at its own price (settled):
+     YES n=213 +10.2 c   (price mean 0.354)
+     NO n=139 +16.1 c   (price mean 0.751)
+
+== (6) first YES in the bucket of each deterministic model's forecast in hand at the fill (Open-Meteo single runs; research days only so far)
+   before the market formed:
+     run latest exact/within-1: GFS 0.30/0.72 (249)  ICON 0.33/0.75 (249)  IFS 0.24/0.58 (249)  GEM 0.24/0.68 (235)  UKMO 0.20/0.62 (160)  AIFS 0.20/0.57 (112)  ARPEGE 0.18/0.54 (249)  JMA 0.14/0.45 (249)  CMA 0.21/0.57 (94)  AIGFS 0.20/0.60 (247)  median 0.27/0.76 (249)
+     run 00Z    exact/within-1: GFS 0.29/0.71 (249)  ICON 0.31/0.74 (249)  IFS 0.22/0.57 (249)  GEM 0.24/0.68 (235)  UKMO 0.22/0.65 (249)  AIFS 0.21/0.62 (249)  ARPEGE 0.18/0.54 (249)  JMA 0.14/0.45 (249)  CMA 0.15/0.51 (234)  AIGFS 0.20/0.60 (249)  median 0.22/0.76 (249)
+     run 18Z    exact/within-1: GFS 0.28/0.65 (249)  ICON 0.28/0.75 (249)  IFS 0.22/0.60 (249)  median 0.31/0.78 (249)
+   after it formed:
+     run latest exact/within-1: GFS 0.24/0.60 (160)  ICON 0.24/0.62 (160)  IFS 0.16/0.53 (159)  GEM 0.21/0.55 (145)  UKMO 0.26/0.53 (154)  AIFS 0.16/0.59 (137)  ARPEGE 0.15/0.49 (158)  JMA 0.13/0.41 (158)  CMA 0.23/0.51 (125)  AIGFS 0.16/0.47 (158)  median 0.28/0.65 (159)
+     run 00Z    exact/within-1: GFS 0.22/0.55 (157)  ICON 0.26/0.63 (157)  IFS 0.19/0.50 (157)  GEM 0.19/0.57 (138)  UKMO 0.26/0.55 (157)  AIFS 0.17/0.59 (157)  ARPEGE 0.17/0.49 (157)  JMA 0.12/0.41 (157)  CMA 0.20/0.49 (157)  AIGFS 0.17/0.49 (157)  median 0.26/0.64 (157)
+     run 18Z    exact/within-1: GFS 0.22/0.57 (152)  ICON 0.23/0.56 (152)  IFS 0.17/0.57 (152)  median 0.23/0.62 (152)
+   where the first YES sits relative to the GFS forecast in hand (bucket offset, before the market formed):
+     -3: 2%  -2: 4%  -1: 17%  +0: 30%  +1: 25%  +2: 14%  +3: 9%  (n=249)
+
+   with each station x model's standing bias removed (mean truth - forecast over the station's other days, >=3):
+     before the market formed   GFS 0.43/0.82 (249)  ICON 0.35/0.84 (249)  IFS 0.37/0.76 (249)  GEM 0.31/0.76 (235)  UKMO 0.26/0.72 (160)  AIFS 0.35/0.76 (112)  ARPEGE 0.33/0.74 (249)  JMA 0.30/0.74 (249)  CMA 0.19/0.61 (94)  AIGFS 0.34/0.83 (247)  median 0.41/0.89 (249)
+     after it formed            GFS 0.28/0.68 (160)  ICON 0.25/0.70 (160)  IFS 0.21/0.74 (159)  GEM 0.28/0.65 (145)  UKMO 0.24/0.64 (154)  AIFS 0.22/0.72 (137)  ARPEGE 0.29/0.68 (158)  JMA 0.28/0.65 (158)  CMA 0.24/0.62 (125)  AIGFS 0.32/0.70 (158)  median 0.30/0.77 (159)
+
+   early first YES vs corrected-median forecast bucket: hit the truth / hit the event-day 06:00 market mode
+     n=213: truth  cluster 0.451  forecast 0.413   |   later market mode (n=213): cluster 0.549  forecast 0.545
+
+   early first legs by bucket offset from the corrected-median forecast bucket:
+     YES (n=249) -3: 1% [-14c]  -2: 3% [+8c]  -1: 14% [+15c]  +0: 41% [+13c]  +1: 34% [+5c]  +2: 6% [+7c]  +3: 1% [+34c]
+     NO  (n=156) -3: 7% [+26c]  -2: 19% [+10c]  -1: 26% [+14c]  +0: 15% [+19c]  +1: 13% [+18c]  +2: 14% [+17c]  +3: 6% [+23c]
+
+== (7) early first YES (before the market formed) vs the corrected-median forecast bucket (bias from days <= d-2), research | forward
+   research n=108: offset -2 3%  -1 7%  +0 38%  +1 36%  +2 16%   rule 'forecast bucket' exact 0.380, 'one above' exact 0.361, either 0.741
+            truth hit: cluster 0.481  forecast bucket 0.471  one above 0.250 (n=104)   later market mode hit: cluster 0.538  forecast 0.471 (n=104)
+   forward  n=141: offset -2 2%  -1 18%  +0 36%  +1 33%  +2 11%   rule 'forecast bucket' exact 0.362, 'one above' exact 0.326, either 0.688
+            truth hit: cluster 0.422  forecast bucket 0.367  one above 0.266 (n=109)   later market mode hit: cluster 0.560  forecast 0.468 (n=109)
