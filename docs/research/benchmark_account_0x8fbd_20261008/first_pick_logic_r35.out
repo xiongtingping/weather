@@ -1,0 +1,59 @@
+pre-formation first legs with >=3 models: 405 (YES 249: research 108, forward 141)
+
+== A structure: bucket(statistic(raw + lam x station bias) + c); (c, lam) chosen on research, exact hit research | forward
+   trimmed mean           c=+0.8 lam=0.1   research 0.509   forward 0.426   forward within 1 bucket 0.851
+   p75                    c=+0.0 lam=0.5   research 0.491   forward 0.426   forward within 1 bucket 0.915
+   vote mode (warm tie)   c=+0.4 lam=0.2   research 0.426   forward 0.418   forward within 1 bucket 0.830
+   midrange               c=+1.2 lam=0.0   research 0.491   forward 0.418   forward within 1 bucket 0.844
+   median                 c=+0.8 lam=0.1   research 0.519   forward 0.404   forward within 1 bucket 0.865
+   mean                   c=+0.8 lam=0.0   research 0.528   forward 0.397   forward within 1 bucket 0.872
+   vote mode (cold tie)   c=+1.1 lam=0.7   research 0.426   forward 0.376   forward within 1 bucket 0.816
+   p25                    c=+1.6 lam=0.1   research 0.509   forward 0.369   forward within 1 bucket 0.837
+   max                    c=-0.9 lam=0.5   research 0.491   forward 0.333   forward within 1 bucket 0.858
+   min                    c=+2.0 lam=0.6   research 0.343   forward 0.255   forward within 1 bucket 0.801
+   reference (round 33: median, c=+0.8, lam=0.3): forward 0.454
+
+== B value: pre-formation first legs with a frame <=10 min before and the chosen leg priced: 124 (first half <=10-07 64, second half 60)
+   sigma=0.75 v1: first half top-1 0.141 top-3 0.266 side 0.500   |   second half top-1 0.117 top-3 0.267 side 0.633
+   sigma=0.75 v2: first half top-1 0.031 top-3 0.047 side 0.438   |   second half top-1 0.000 top-3 0.050 side 0.600
+   sigma=0.75 v3: first half top-1 0.047 top-3 0.297 side 0.422   |   second half top-1 0.200 top-3 0.400 side 0.517
+   sigma=1.00 v1: first half top-1 0.109 top-3 0.219 side 0.547   |   second half top-1 0.083 top-3 0.200 side 0.617
+   sigma=1.00 v2: first half top-1 0.000 top-3 0.031 side 0.438   |   second half top-1 0.000 top-3 0.033 side 0.600
+   sigma=1.00 v3: first half top-1 0.047 top-3 0.359 side 0.438   |   second half top-1 0.133 top-3 0.367 side 0.500
+   sigma=1.50 v1: first half top-1 0.094 top-3 0.203 side 0.578   |   second half top-1 0.050 top-3 0.133 side 0.617
+   sigma=1.50 v2: first half top-1 0.000 top-3 0.016 side 0.438   |   second half top-1 0.000 top-3 0.033 side 0.600
+   sigma=1.50 v3: first half top-1 0.047 top-3 0.297 side 0.531   |   second half top-1 0.083 top-3 0.300 side 0.517
+   chosen on the first half: sigma=0.75, v1 -> second half top-1 0.117, top-3 0.267, side 0.633
+   structure rule on the same first half YES legs (median+0.8+0.3x): exact 0.286 (n=28); share of these first legs that are YES 0.44
+   structure rule on the same second half YES legs (median+0.8+0.3x): exact 0.417 (n=36); share of these first legs that are YES 0.60
+
+   YES first legs: chosen vs the three buckets around F (F = bucket of median+0.8+0.3x)
+   n: 54  chosen is cheapest of the trio: 8  chosen is best p-ask of the trio: 17  chosen is highest p of the trio: 23  chosen outside F-1..F+1 or unpriced: 10
+
+== C first NO legs: position vs F (median+0.8+0.3x) and rank under v1 (sigma 1.0)
+   n=156: -3: 8%  -2: 24%  -1: 21%  +0: 19%  +1: 13%  +2: 12%  +3: 3%
+   v1 rank of the chosen NO (n=60): 1st 0.20, top-3 0.38, median rank 5.0
+
+== post-hoc: weighted blend fitted on research (target: chosen bucket centre)
+   weights: AIGFS 0.18  AIFS 0.16  GFS 0.15  CMA 0.10  IFS 0.10  GEM 0.09  ICON 0.07  UKMO 0.06  ARPEGE 0.05  JMA 0.04   constant +0.77 C
+   exact: research 0.444  forward 0.447   (reference median+0.8+0.3x forward 0.454)
+   highest-probability bucket of the calibrated distribution (sigma 1.0): research 0.398  forward 0.475
+
+== post-hoc: share of pre-formation first legs that are YES, by condition (research | forward)
+   wallet 0x8fbd (main)             0.69 (101) | 0.54 (147)
+   other wallets                    0.70 (54) | 0.60 (103)
+   model spread < 0.8 C             0.74 (50) | 0.62 (96)
+   model spread >= 1.2 C            0.74 (50) | 0.48 (67)
+   top bucket p >= 0.45 (sigma 1)   - | -
+   top bucket p < 0.35 (sigma 1)    0.69 (150) | 0.56 (235)
+   <= 30 min after listing          0.80 (84) | 0.61 (100)
+   30-120 min after listing         0.62 (47) | 0.57 (115)
+   F unit                           0.80 (44) | 0.63 (63)
+   C unit                           0.66 (111) | 0.54 (187)
+   first NO legs by wallet: 0x8fbd7cf5 99  0x0e0e8174 24  0x6fdd2bda 8  0x5bae7577 7  0xf4d89f7e 7  0x30200b89 5  0x7076cb96 4  0x7d640ebd 2
+   first YES legs by wallet: 0x8fbd7cf5 149  0x0e0e8174 30  0x5bae7577 19  0x30200b89 19  0x6fdd2bda 14  0x7076cb96 8  0x7d640ebd 6  0xf4d89f7e 4
+   wallet 0x0e0e8174: first legs 52, YES share 0.56, per share +6.1 c
+   wallet 0x30200b89: first legs 20, YES share 0.75, per share -0.2 c
+   wallet 0x5bae7577: first legs 19, YES share 0.68, per share -1.9 c
+   wallet 0x6fdd2bda: first legs 22, YES share 0.64, per share +1.3 c
+   wallet 0x8fbd7cf5: first legs 228, YES share 0.59, per share +17.3 c
