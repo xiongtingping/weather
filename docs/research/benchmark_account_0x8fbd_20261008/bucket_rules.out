@@ -1,0 +1,64 @@
+events with the chosen leg among the priced candidates: research 1491, forward 612; candidates per event 18.1
+
+== layer 1, the gate: share of chosen legs inside, research | forward
+   within two buckets of the mode                       covers 0.988 | 1.000   legs left per event 9.7 | 9.7
+   + YES priced 0.05-0.60 or NO priced 0.25-0.85        covers 0.942 | 0.936   legs left per event 6.3 | 6.2
+   + not a YES the observed high has already passed     covers 0.940 | 0.936   legs left per event 6.3 | 6.2
+
+== layer 2, the points table (pick the leg with most points; weights fitted on research, rounded)
+   +4  D0: observed high already above this bucket  (logit +1.60)
+   +2  YES priced 0.10-0.50                         (logit +0.84)
+   +2  NO priced 0.30-0.75                          (logit +0.83)
+   +2  same leg already held                        (logit +0.77)
+   +2  D0: observed high already in this bucket     (logit +0.69)
+   +1  YES one below the mode                       (logit +0.23)
+   +1  NO one below the mode                        (logit +0.31)
+   +1  NO two from the mode                         (logit +0.46)
+   +1  leg got >1c cheaper in the last hour         (logit +0.53)
+   +0  YES one above the mode                       (logit +0.11)
+   +0  NO one above the mode                        (logit -0.03)
+   +0  price under 0.05 or over 0.90                (logit +0.00)
+   +0  this leg was its last trade here             (logit +0.12)
+   +0  leg got >1c dearer in the last hour          (logit -0.12)
+   +0  our p says the leg is >5c cheap              (logit -0.08)
+   -1  YES on the mode                              (logit -0.57)
+   -1  YES two from the mode                        (logit -0.28)
+   -1  NO on the mode                               (logit -0.23)
+   -1  other side of this bucket held               (logit -0.32)
+   -1  leg agrees with its lean off the mode        (logit -0.30)
+   -2  leg against its lean off the mode            (logit -0.93)
+
+   uniform inside the gate: top-1 0.172 | 0.169
+   logit weights:   top-1 0.353 | 0.369   top-3 0.724 | 0.709   same side of the mode as the pick 0.508 | 0.477
+   integer points:  top-1 0.331 | 0.330   top-3 0.722 | 0.727   same side of the mode as the pick 0.481 | 0.436
+   (round 26 LightGBM with every feature: forward top-1 0.384, top-3 0.768)
+
+== how sure: forward top-1 by the points margin between the first and second leg
+   research margin 0: 0.250 (n=432)   margin 1: 0.329 (n=639)   margin 2: 0.420 (n=245)   margin 3+: 0.435 (n=168)
+   forward  margin 0: 0.253 (n=166)   margin 1: 0.320 (n=225)   margin 2: 0.347 (n=124)   margin 3+: 0.464 (n=97)
+
+== forward: chosen leg type vs the rule's first pick
+   chosen off YES   n=298  rule picks: off YES 215  mode YES 57  mode NO 2  off NO 24
+   chosen mode YES  n=108  rule picks: off YES 63  mode YES 28  mode NO 1  off NO 16
+   chosen mode NO   n= 83  rule picks: off YES 65  mode YES 10  mode NO 3  off NO 5
+   chosen off NO    n=123  rule picks: off YES 80  mode YES 26  mode NO 3  off NO 14
+
+== the ordered list (variant chosen on research only)
+   variant last       research top-1 0.313
+   variant yes_first  research top-1 0.272
+   variant dearest    research top-1 0.272
+   research (variant last): top-1 0.313
+     R1 D0 dead-bucket NO                       fires   0.7%  right 0.273 (n=11)
+     R2 held leg that just got cheaper          fires  41.5%  right 0.323 (n=619)
+     R3 held YES (dearest)                      fires   3.0%  right 0.311 (n=45)
+     R3 held leg (dearest)                      fires   0.2%  right 0.333 (n=3)
+     R3 its last-traded leg again               fires  50.6%  right 0.314 (n=754)
+     R4 fresh shoulder YES (cheapened most)     fires   3.6%  right 0.204 (n=54)
+     R5 points table                            fires   0.1%  right 0.000 (n=1)
+     none                                       fires   0.3%  right 0.000 (n=4)
+   forward (variant last): top-1 0.335
+     R2 held leg that just got cheaper          fires  52.5%  right 0.386 (n=321)
+     R3 held YES (dearest)                      fires   2.0%  right 0.083 (n=12)
+     R3 held leg (dearest)                      fires   0.5%  right 0.333 (n=3)
+     R3 its last-traded leg again               fires  35.9%  right 0.295 (n=220)
+     R4 fresh shoulder YES (cheapened most)     fires   9.2%  right 0.250 (n=56)

@@ -1,0 +1,48 @@
+== leg type of the first take
+   research n=1491  mode NO 18.7%  mode YES 13.1%  off NO 20.4%  off YES 47.8%
+   forward  n=612  mode NO 13.6%  mode YES 17.6%  off NO 20.1%  off YES 48.7%
+
+== (1) on the mode bucket: share NO (research | forward), n in brackets.  overall research 0.59 forward 0.43
+   own position on it       holds YES: 0.42 (256) | 0.36 (122)   holds NO: 0.85 (155) | 0.79 (29)   none: 0.62 (64) | 0.40 (40)
+   mode price q             <0.35: 0.42 (59) | 0.45 (20)   0.35-0.55: 0.58 (320) | 0.43 (141)   >=0.55: 0.71 (96) | 0.43 (30)
+   lead over 2nd            <0.10: 0.56 (192) | 0.42 (81)   0.10-0.30: 0.56 (202) | 0.46 (83)   >=0.30: 0.72 (81) | 0.41 (27)
+   1h move of mode YES      fell >1c: 0.38 (65) | 0.21 (48)   flat: 0.54 (259) | 0.39 (72)   rose >1c: 0.75 (151) | 0.63 (71)
+   D0 observed high         below mode: 0.68 (231) | 0.62 (50)   in mode: 0.39 (28) | 0.25 (4)   above mode: 0.50 (2) | -   not D0: 0.51 (214) | 0.37 (137)
+   hours to settlement      <12: 0.60 (204) | 0.61 (36)   12-24: 0.63 (158) | 0.49 (71)   24-48: 0.50 (106) | 0.33 (78)   >=48: 0.43 (7) | 0.00 (6)
+   our p - q                p<q-0.1: 0.55 (204) | 0.43 (87)   |p-q|<=0.1: 0.62 (250) | 0.44 (97)   p>q+0.1: 0.52 (21) | 0.43 (7)
+   size                     <20U: 0.47 (116) | 0.39 (119)   20-100U: 0.57 (195) | 0.54 (52)   >=100U: 0.68 (164) | 0.45 (20)
+   lean off the mode before none: 0.26 (23) | 0.28 (32)   some: 0.60 (452) | 0.47 (159)
+
+   base rate (always No): research 0.587  forward 0.435
+   single rules 'NO if <feature> else YES' (and the reverse), research -> forward accuracy:
+     NO if not holds YES        research 0.676  forward 0.613
+     NO if holds NO             research 0.642  forward 0.654
+     NO if not mom<-0.01        research 0.619  forward 0.581
+     NO if q>=0.35              research 0.606  forward 0.445
+     NO if mom>0                research 0.604  forward 0.644
+     NO if not obs in mode      research 0.600  forward 0.445
+     NO if lead<24h             research 0.589  forward 0.602
+     NO if not obs above mode   research 0.587  forward 0.435
+
+   depth-2 tree fitted on research: first split 'holds YES'
+     holds YES=True: then 'mom>0' -> No / else Yes
+     holds YES=False: then 'holds NO' -> No / else No
+   tree accuracy: research 0.728  forward 0.628
+
+== (2) NO first takes
+   research NO first takes 583: on a bucket it already holds YES on 293 (50%); fresh 290 -> position vs mode -2: 8%  -1: 32%  +0: 40%  +1: 18%  +2: 3%
+   forward  NO first takes 206: on a bucket it already holds YES on 109 (53%); fresh 97 -> position vs mode -2: 7%  -1: 34%  +0: 27%  +1: 26%  +2: 6%
+
+== (3) per-share result at its own price (settled events), research | forward
+   mode YES  n=196 price 0.481 hit 0.454 -> -2.7 c   |   n=16 price 0.503 hit 0.625 -> +12.2 c
+   mode NO   n=279 price 0.519 hit 0.573 -> +5.4 c   |   n=20 price 0.520 hit 0.400 -> -11.9 c
+   off YES   n=712 price 0.242 hit 0.282 -> +4.0 c   |   n=42 price 0.259 hit 0.190 -> -6.9 c
+   off NO    n=304 price 0.746 hit 0.793 -> +4.7 c   |   n=27 price 0.750 hit 0.852 -> +10.2 c
+
+== (4) the two strongest conditions together: share NO on the mode bucket, research | forward
+   holds YES  fell >1c: 0.26 (42) | 0.16 (37)   flat: 0.34 (139) | 0.31 (45)   rose >1c: 0.65 (75) | 0.60 (40)
+   holds NO   fell >1c: 0.67 (15) | 0.50 (2)   flat: 0.84 (80) | 0.78 (9)   rose >1c: 0.92 (60) | 0.83 (18)
+   none       fell >1c: 0.50 (8) | 0.33 (9)   flat: 0.65 (40) | 0.39 (18)   rose >1c: 0.62 (16) | 0.46 (13)
+   D0 only, observed high vs mode x 1h move:
+   obs below mode  fell/flat: 0.57 (127) | 0.48 (23)   rose >1c: 0.81 (104) | 0.74 (27)
+   obs in mode     fell/flat: 0.18 (11) | 0.00 (2)   rose >1c: 0.53 (17) | 0.50 (2)
