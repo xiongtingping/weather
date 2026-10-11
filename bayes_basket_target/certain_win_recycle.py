@@ -176,10 +176,20 @@ def _floor_cents(shares: float) -> float:
 
 def _latest_book(
     conn: sqlite3.Connection, *, station_id: str, event_date: str, now_utc: str,
+    ws_root: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The station-day's newest committed book at or before now_utc: its
-    settlement timezone (any age), and per bucket the best bid and the tick
-    when the book is young enough to order the sends by."""
+    """The station-day's book: its settlement timezone off the newest
+    committed snapshot (any age), and per bucket the best bid and the tick
+    when the book is young enough to order the sends by.
+
+    The ladder is the WS publisher's own when ``ws_root`` carries the scope
+    (``p1_tail_lane.live_ws_snapshot``, the read the Proper and copy-follow
+    lanes price on), else the newest committed snapshot.  The cycle commits
+    books for one event day per ingress, so at the end of a cycle the other
+    days' snapshots are minutes old and their tick was withheld here: on
+    2026-10-11 the day's own books stopped at 12:52Z while the cycle served
+    10-12/10-13, and 48 of 48 held legs still trading -- EDDM 14°C bid 0.931,
+    FACT 25°C 0.963, EFHK 7°C 0.95 -- read no tick and were not offered."""
 
     out: dict[str, Any] = {"settlement_timezone": "", "legs": {}}
     if not _has_table(conn, "basket_official_ws_snapshot"):
@@ -193,9 +203,21 @@ def _latest_book(
     if row is None:
         return out
     out["settlement_timezone"] = str(row[2] or "")
+    live = None
+    if ws_root is not None:
+        from .p1_tail_lane import live_ws_snapshot  # noqa: PLC0415 -- p1_tail_lane imports this module
+
+        live = live_ws_snapshot(conn, ws_root, station_id=station_id, event_date=event_date,
+                                now_utc=now_utc, include_listing_days=True)
     try:
-        age = (_utc(now_utc) - _utc(str(row[0]))).total_seconds()
-        buckets = json.loads(row[1] or "[]") or []
+        if live is not None:
+            age = (_utc(now_utc) - _utc(str(live["observed_at"]))).total_seconds()
+            buckets = list(live["buckets"] or [])
+            out["book_source"] = "ws_publisher_manifest"
+        else:
+            age = (_utc(now_utc) - _utc(str(row[0]))).total_seconds()
+            buckets = json.loads(row[1] or "[]") or []
+            out["book_source"] = "committed_snapshot"
     except (TypeError, ValueError):
         return out
     if age < 0.0 or age > MAX_BOOK_AGE_SECONDS:
@@ -300,11 +322,24 @@ def _intent_id(*, station_id: str, event_date: str, bucket: str, token_id: str, 
     })[:40]
 
 
+# The NO legs the ledger read refused on the last plan, named on the receipt.
+_NO_LEDGER_CONFLICTS: list[dict[str, Any]] = []
+
+
 def _held_no_legs(conn: sqlite3.Connection, oldest_date: str) -> list[tuple[str, str, str, str, str, float]]:
     """Settled NO token inventory, including sells, from the order ledger.
 
     The canonical inventory snapshot is deliberately YES-only.  A NO share
     cannot be read from its ``filled_by_bucket`` or mapped to a YES token.
+
+    A sell planned from the account's own position list (charter 262,
+    ``plan.source = account_positions``) sold shares no ledger BUY recorded,
+    so it is not this ledger's sale: counting it drove ZUUU 2026-10-10 24°C NO
+    to -25.95 (5.2 + 20.75 sold of a leg the ledger never bought), and the
+    conflict, raised for the whole read, stopped every 0.999 offer of every
+    leg from 2026-10-10 03:51Z until the day would have aged out (10-14).  A
+    leg whose ledger still conflicts is refused on its own -- not planned,
+    named in ``_NO_LEDGER_CONFLICTS`` -- and the other legs go on.
     """
 
     rows = conn.execute(
@@ -317,17 +352,25 @@ def _held_no_legs(conn: sqlite3.Connection, oldest_date: str) -> list[tuple[str,
         " JOIN basket_target_order_reconciliations r ON r.order_intent_id=i.order_intent_id"
         " WHERE c.event_date>=? AND i.side='NO' AND i.live_submit_authorized=1"
         " AND i.order_action IN ('BUY','SELL')"
+        " AND NOT (i.order_action='SELL'"
+        "          AND COALESCE(json_extract(i.intent_json,'$.plan.source'),'')='account_positions')"
         " AND r.state IN ('resolved_filled','resolved_partial') AND r.filled_size>0"
         " GROUP BY c.station_id,c.event_date,i.bucket,i.token_id",
         (oldest_date,),
     ).fetchall()
     result = []
+    conflicts = []
     for station, day, bucket, token, first_tz, last_tz, shares in rows:
         if not first_tz or first_tz != last_tz or float(shares or 0.0) < -1e-6:
-            raise ValueError("recycle_no_inventory_lineage_conflict")
+            conflicts.append({"reason": "recycle_no_inventory_lineage_conflict", "station_id": str(station),
+                              "event_date": str(day), "bucket": str(bucket), "token_id": str(token),
+                              "net_shares": None if shares is None else round(float(shares), 6),
+                              "settlement_timezones": [first_tz, last_tz]})
+            continue
         if float(shares or 0.0) > 1e-6:
             result.append((str(station), str(day), str(bucket), str(token),
                            str(first_tz), float(shares)))
+    _NO_LEDGER_CONFLICTS[:] = conflicts
     return result
 
 
@@ -476,6 +519,7 @@ def _account_plans(
     oldest_date: str,
     planned_tokens: set[str],
     positions: Mapping[str, float],
+    ws_root: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Charter 262: every held leg of the account no ledger plan covers --
     whatever lane, or no lane, bought it -- under the same venue rules."""
@@ -521,7 +565,8 @@ def _account_plans(
             continue
         key = (station_id, event_date)
         if key not in books:
-            books[key] = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
+            books[key] = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc,
+                                      ws_root=ws_root)
         book = books[key]
         leg = book["legs"].get(bucket) or {}
         try:
@@ -561,6 +606,7 @@ def plan_certain_win_recycles(
     *,
     now_utc: str,
     account_reader: Callable[[], Mapping[str, Any]] | None = None,
+    ws_root: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """The 0.999 sells to place: for every held leg of a market still taking
     orders, the shares no open sell of this lane already offers and the
@@ -618,7 +664,8 @@ def plan_certain_win_recycles(
             for item in inventory.get("lineage") or ()
             if isinstance(item, Mapping)
         }
-        book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc,
+                            ws_root=ws_root)
         timezone_name = ""
         for bucket in sorted(held):
             own = _own_sells(
@@ -722,7 +769,8 @@ def plan_certain_win_recycles(
             continue
         if uncovered + 1e-9 < max(min_size, 1e-6):
             continue
-        book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc)
+        book = _latest_book(target_conn, station_id=station_id, event_date=event_date, now_utc=now_utc,
+                            ws_root=ws_root)
         leg = book["legs"].get(bucket) or {}
         try:
             tick_size = float(leg.get("tick_size"))
@@ -750,6 +798,7 @@ def plan_certain_win_recycles(
         plans.extend(_account_plans(
             target_conn, canonical_conn, now_utc=now_utc, oldest_date=oldest_date,
             planned_tokens={str(plan["token_id"]) for plan in plans}, positions=positions,
+            ws_root=ws_root,
         ))
     plans.sort(key=lambda plan: (-plan["best_bid"], plan["station_id"], plan["event_date"], plan["bucket"]))
     return plans
@@ -766,9 +815,20 @@ def execute_certain_win_recycles(
     position_reader: Callable[[str], Mapping[str, Any]] | None = None,
     cancellation_client: Any | None = None,
     account_reader: Callable[[], Mapping[str, Any]] | None = None,
+    ws_root: Mapping[str, Any] | None | bool = True,
 ) -> dict[str, Any]:
     """Mint the intents, place the resting sells, record what came back --
-    through the same sender and ledger path every other order uses."""
+    through the same sender and ledger path every other order uses.
+
+    ``ws_root`` True reads the WS publisher's manifest once for the pass
+    (None when unreadable: every leg then prices on its committed book)."""
+
+    if ws_root is True:
+        from .p1_tail_lane import _ws_manifest_root  # noqa: PLC0415 -- p1_tail_lane imports this module
+
+        ws_root = _ws_manifest_root(None)
+    elif ws_root is False:
+        ws_root = None
 
     if (not live_submit_authorized or not exit_orders.live_intent_armed()
             or (Path(__file__).resolve().parents[1] / "data/live_paused.flag").exists()):
@@ -785,7 +845,7 @@ def execute_certain_win_recycles(
     egress_gate = egress_send_gate()
     if egress_gate.get("hold"):
         plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc,
-                                          account_reader=account_reader)
+                                          account_reader=account_reader, ws_root=ws_root)
         return {
             "schema": "certain_win_recycle_receipt_v1",
             "rule": RULE_VERSION,
@@ -810,7 +870,7 @@ def execute_certain_win_recycles(
         target_conn, now_utc=now_utc, client=cancellation_client,
     )
     plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc,
-                                      account_reader=account_reader)
+                                      account_reader=account_reader, ws_root=ws_root)
     read_position = position_reader or default_position_reader
     receipts: list[dict[str, Any]] = []
     submitted = 0
@@ -868,6 +928,8 @@ def execute_certain_win_recycles(
         "deferred_to_next_cycle": max(0, len(plans) - sent),
         "submitted": submitted,
         "egress_gate": dict(egress_gate),
+        "no_ledger_conflicts": list(_NO_LEDGER_CONFLICTS),
+        "ws_publisher_books": ws_root is not None,
         "account_positions": {
             "read": _ACCOUNT_POSITIONS["positions"] is not None,
             "held_tokens": len(_ACCOUNT_POSITIONS["positions"] or {}),

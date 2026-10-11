@@ -143,8 +143,13 @@ def _plans(conn, canonical, now=NOW):
 
 
 def _armed(monkeypatch, at="2026-09-16T09:30:10.000Z"):
+    import bayes_basket_target.p1_tail_lane as tail
+
     monkeypatch.setattr(exit_orders, "live_intent_armed", lambda: True)
     monkeypatch.setattr(exit_orders, "wall_clock_utc", lambda: at)
+    # Hermetic: the pass reads no live WS publisher manifest, only the books
+    # the fixture commits.
+    monkeypatch.setattr(tail, "_ws_manifest_root", lambda _path: None)
 
 
 def _resting(path, payload):
@@ -636,3 +641,67 @@ def test_an_account_leg_is_sold_through_the_same_sender_and_sized_on_the_balance
     assert lane.plan_certain_win_recycles(
         conn, canonical, now_utc="2026-09-16T09:31:00.000Z", account_reader=lambda: {"t26": {"size": 9.0}},
     ) == []
+
+
+# 2026-10-11 「0.999回收车道没有生效」: the lane sent nothing from 10-10 03:51Z.
+
+def _sold_no(conn, *, intent_id, bucket, token, shares, source=None):
+    _insert(conn, "basket_target_execution_cycles", {
+        "cycle_id": f"cycle_{intent_id}", "plan_id": f"plan_{intent_id}", "station_id": ST,
+        "event_date": ED, "settlement_timezone": TZ, "strategy_lane": "basket",
+        "requested_reserve_usdc": 0.0, "state": "settled", "created_at": NOW, "updated_at": NOW,
+    })
+    plan = {"plan": {"source": source}} if source else {"plan": {}}
+    _insert(conn, "basket_target_order_intents", {
+        "order_intent_id": intent_id, "decision_id": f"recycle998_decision_{ST}_{ED}",
+        "cycle_id": f"cycle_{intent_id}", "bucket": bucket, "token_id": token,
+        "side": "NO", "order_action": "SELL", "limit_price": 0.999,
+        "requested_size": shares, "requested_notional_usdc": 0.999 * shares,
+        "state": "submitted", "live_submit_authorized": 1,
+        "idempotency_key": intent_id, "intent_json": json.dumps(plan), "created_at": NOW,
+    })
+    record_order_event(conn, order_intent_id=intent_id, event={
+        "event_type": "FILL", "exchange_order_id": f"0x{intent_id}", "observed_at": NOW,
+        "matched_size": shares, "matched_notional_usdc": 0.999 * shares, "event_payload": {},
+    })
+
+
+def test_an_account_sale_of_a_no_the_ledger_never_bought_does_not_stop_the_lane() -> None:
+    # ZUUU 2026-10-10 24°C NO: 25.95 sold from the account list, no ledger BUY;
+    # counted as the ledger's sale it read -25.95 and the raise stopped every leg.
+    conn, canonical = _store(holdings={"25°C": 6.0})
+    _sold_no(conn, intent_id="recycle998_account_no", bucket="26°C", token="n26", shares=20.75,
+             source="account_positions")
+    plans = _plans(conn, canonical)
+    assert [(p["bucket"], p["side"]) for p in plans] == [("25°C", "YES")]
+    assert lane._NO_LEDGER_CONFLICTS == []
+
+
+def test_a_conflicted_no_leg_is_refused_alone_and_named() -> None:
+    conn, canonical = _store(holdings={"25°C": 6.0})
+    _sold_no(conn, intent_id="recycle998_ledger_no", bucket="26°C", token="n26", shares=5.0)
+    plans = _plans(conn, canonical)
+    assert [(p["bucket"], p["side"]) for p in plans] == [("25°C", "YES")]  # the other legs go on
+    assert [(c["bucket"], c["net_shares"], c["reason"]) for c in lane._NO_LEDGER_CONFLICTS] == [
+        ("26°C", -5.0, "recycle_no_inventory_lineage_conflict")]
+
+
+def test_a_leg_prices_on_the_publishers_book_when_the_committed_one_is_stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The cycle commits one event day's books per ingress: the other days' are
+    # minutes old at the end of the cycle and their tick is withheld.
+    import bayes_basket_target.p1_tail_lane as tail
+
+    conn, canonical = _store(holdings={"25°C": 6.0})
+    conn.execute("DELETE FROM basket_official_ws_snapshot")
+    _book(conn, observed_at="2026-09-16T09:20:00.000Z")  # ten minutes old
+    assert _plans(conn, canonical) == []
+    live = [{"bucket": "25°C", "token_id": "t25", "price_tick_size": 0.001, "min_order_size": 5.0,
+             "bid_levels": [{"price": 0.999, "shares": 100.0}]}]
+    monkeypatch.setattr(tail, "live_ws_snapshot", lambda *_a, **_k: {
+        "buckets": live, "observed_at": "2026-09-16T09:29:50.000Z"})
+    plans = lane.plan_certain_win_recycles(conn, canonical, now_utc=NOW, ws_root={})
+    assert [(p["token_id"], p["limit_price"], p["shares"], p["best_bid"]) for p in plans] == [
+        ("t25", 0.999, 6.0, 0.999)]
+    # No publisher book for the scope: the committed one decides, as before.
+    monkeypatch.setattr(tail, "live_ws_snapshot", lambda *_a, **_k: None)
+    assert lane.plan_certain_win_recycles(conn, canonical, now_utc=NOW, ws_root={}) == []
