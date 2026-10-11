@@ -22,6 +22,9 @@ sys.path.insert(0, "/Users/xiong/weather")
 from bayes_basket_target.station_day_board import _satellite_product  # noqa: E402
 from bayes_basket_target.station_registry import coordinate_registry_manifest, station_coordinates  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).parent))
+import om_research_quota as omq  # noqa: E402
+
 B = Path(sys.argv[1])
 START = sys.argv[2] if len(sys.argv) > 2 else "2026-09-11"
 END = sys.argv[3] if len(sys.argv) > 3 else "2026-10-10"
@@ -31,11 +34,13 @@ FIELDS = ["temperature_2m", "cloud_cover", "cloud_cover_low", "shortwave_radiati
 
 
 def get(url):
+    omq.charge(1)
     for i in range(5):
         r = subprocess.run(["curl", "-s", "-m", "60", url], capture_output=True, text=True)
         try:
             j = json.loads(r.stdout)
             if isinstance(j, dict) and j.get("error"):
+                omq.on_reply(j)
                 return {"error": str(j.get("reason"))[:200]}
             return j
         except Exception:

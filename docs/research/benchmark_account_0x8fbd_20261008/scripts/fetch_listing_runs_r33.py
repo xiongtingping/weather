@@ -15,6 +15,9 @@ from pathlib import Path
 
 import httpx
 
+sys.path.insert(0, str(Path(__file__).parent))
+import om_research_quota as omq  # noqa: E402
+
 sys.path.insert(0, "/Users/xiong/weather")
 from bayes_basket_target.station_registry import station_coordinates  # noqa: E402
 
@@ -51,6 +54,10 @@ def fetch(key):
     models = list(MODELS)
     for attempt in range(12):
         try:
+            omq.charge(len(models))
+        except omq.QuotaRefused as exc:
+            return key, {"error": f"rate_limited:{exc}"}
+        try:
             j = CLIENT.get("https://single-runs-api.open-meteo.com/v1/forecast", params={
                 "latitude": c["latitude"], "longitude": c["longitude"], "hourly": "temperature_2m", "models": ",".join(models),
                 "run": run, "forecast_days": 4, "timezone": tz[st]}).json()
@@ -58,6 +65,8 @@ def fetch(key):
             time.sleep(2 + 2 * attempt)
             continue
         if isinstance(j, dict) and j.get("error"):
+            if omq.on_reply(j) == "day":
+                return key, {"error": "rate_limited"}
             reason = str(j.get("reason"))
             if "limit" in reason.lower() or "concurrent" in reason.lower():
                 return key, {"error": "rate_limited"}
@@ -92,7 +101,7 @@ t0 = time.time()
 stopped = None
 with ThreadPoolExecutor(max_workers=3) as pool:
     for n, (k, v) in enumerate(pool.map(fetch, todo)):
-        if v.get("error") == "rate_limited":
+        if str(v.get("error", "")).startswith("rate_limited"):
             stopped = "rate limited"
         elif time.time() - t0 > BUDGET:
             stopped = "time budget"
