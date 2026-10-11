@@ -8,8 +8,10 @@ built from the native runs only, before listing, into one runtime file.
 """
 from __future__ import annotations
 
+import bz2
 import importlib.util
 import sqlite3
+import struct
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -22,7 +24,7 @@ import bayes_basket_target.native_deterministic_point_archive as N
 import bayes_basket_target.regional_point_lane as L
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS")
+NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
 RUN = datetime(2026, 10, 11, 0, tzinfo=timezone.utc)
 
 
@@ -317,3 +319,181 @@ def test_refresh_writes_the_runtime_file_and_never_the_ssot(tmp_path, monkeypatc
     monkeypatch.setattr(F, "write", lambda payload, path=None: target.write_text("{}"))
     receipt = F.refresh(db)
     assert receipt["ready"] == 1 and target.exists()
+
+
+# --------------------------------------------------------------------------
+# 补记二: ICON global and ARPEGE
+# --------------------------------------------------------------------------
+
+def test_icon_and_arpege_object_addresses():
+    assert N.step_url("ICON_GLOBAL", RUN, 36).endswith(
+        "/icon/grib/00/t_2m/icon_global_icosahedral_single-level_2026101100_036_T_2M.grib2.bz2"
+    )
+    assert N.icon_invariant_url(RUN, "fr_land").endswith(
+        "/icon/grib/00/fr_land/icon_global_icosahedral_time-invariant_2026101100_FR_LAND.grib2.bz2"
+    )
+    assert N.step_url("ARPEGE", RUN, 51).endswith(
+        "/pnt/2026-10-11T00:00:00Z/arpege/025/SP1/arpege__025__SP1__049H072H__2026-10-11T00:00:00Z.grib2"
+    )
+    assert [N.arpege_group(h) for h in (0, 24, 25, 48, 49, 72, 73, 96)] == [
+        "000H024H", "000H024H", "025H048H", "025H048H", "049H072H", "049H072H", "073H102H", "073H102H"]
+    assert N.index_url("ICON_GLOBAL", RUN, 3) is None and N.index_url("ARPEGE", RUN, 3) is None
+
+
+def _message(identity, length, *, unit=1):
+    """A synthetic GRIB2 message: sections 0, 1, 3 and 4, padded to ``length``."""
+
+    discipline, category, number, template, surface, value, hours = identity
+    s1 = struct.pack(">IB", 21, 1) + bytes(16)
+    s3 = struct.pack(">IB", 72, 3) + bytes(67)
+    s4 = bytearray(34)
+    s4[0:5] = struct.pack(">IB", 34, 4)
+    s4[7:9] = struct.pack(">H", template)
+    s4[9], s4[10] = category, number
+    s4[17] = unit
+    s4[18:22] = struct.pack(">I", hours)
+    s4[22] = surface
+    s4[24:28] = struct.pack(">I", value)
+    head = b"GRIB" + bytes(2) + bytes([discipline, 2]) + struct.pack(">Q", length)
+    body = head + s1 + s3 + bytes(s4)
+    return body + bytes(length - len(body) - 4) + b"7777"
+
+
+T2M = lambda h: (0, 0, 0, 0, 103, 2, h)  # noqa: E731
+WIND = lambda h: (0, 2, 2, 0, 103, 10, h)  # noqa: E731
+
+
+def test_grib2_header_reads_identity_and_length():
+    msg = _message(T2M(36), 600)
+    assert N.parse_grib2_header(msg[:256]) == (600, T2M(36))
+    assert N.parse_grib2_header(_message(T2M(90), 600, unit=0)[:256])[1][6] == 1.5, "minutes are hours / 60"
+    assert N.parse_grib2_header(b"GRIB" + bytes(12)) is None, "length 0 is not a message"
+    assert N.parse_grib2_header(b"XXXX" + bytes(252)) is None
+
+
+def _package(identities, sizes):
+    return b"".join(_message(i, n) for i, n in zip(identities, sizes))
+
+
+def _fake_get(blob, reads=None):
+    def get(url, headers=None, *, cap):
+        lo, hi = headers["Range"].split("=")[1].split("-")
+        chunk = blob[int(lo):min(len(blob), int(hi) + 1)]
+        assert len(chunk) <= cap
+        if reads is not None:
+            reads.append(len(chunk))
+        return chunk
+    return get
+
+
+def test_arpege_table_walks_segments_in_parallel_and_proves_contiguity(monkeypatch):
+    monkeypatch.setattr(N, "ARPEGE_SEGMENT_BYTES", 2000)
+    monkeypatch.setattr(N, "ARPEGE_RESYNC_BYTES", 700)
+    ids = [WIND(h) for h in range(6)] + [T2M(h) for h in range(6)]
+    sizes = [500 + 37 * k for k in range(12)]
+    blob = _package(ids, sizes)
+    reads = []
+    table = N.arpege_message_table("u", size=len(blob), get=_fake_get(blob, reads), workers=4)
+    assert [t[2] for t in table] == ids
+    assert [t[1] for t in table] == sizes
+    assert sum(reads) < len(blob), "headers and resync windows, never the whole package"
+
+
+def test_a_false_header_inside_a_message_fails_the_package_closed(monkeypatch):
+    monkeypatch.setattr(N, "ARPEGE_SEGMENT_BYTES", 1000)
+    monkeypatch.setattr(N, "ARPEGE_RESYNC_BYTES", 400)
+    good = _package([WIND(0), T2M(0), T2M(1)], [1500, 900, 900])
+    # Plant a plausible header in the first message's payload, inside the
+    # second segment's resync window.
+    fake = b"GRIB" + bytes(2) + bytes([0, 2]) + struct.pack(">Q", 333)
+    blob = good[:1100] + fake + good[1100 + len(fake):]
+    with pytest.raises(Exception, match="arpege"):
+        N.arpege_message_table("u", size=len(blob), get=_fake_get(blob), workers=3)
+
+
+def test_arpege_reads_only_the_2m_message_of_the_step(monkeypatch):
+    url = N.step_url("ARPEGE", RUN, 12)
+    monkeypatch.setitem(N._ARPEGE_TABLES, url, [(0, 100, WIND(12)), (100, 50, T2M(11)), (150, 70, T2M(12))])
+    calls = []
+    monkeypatch.setattr(N, "_get", lambda u, headers=None, *, cap: calls.append((u, headers)) or b"m")
+    assert N.read_message("ARPEGE", RUN, 12) == b"m"
+    assert calls == [(url, {"Range": "bytes=150-219"})]
+    assert N.read_message("ARPEGE", RUN, 13) is None, "a step the table lacks is not read"
+
+
+def test_icon_bz2_message_is_decompressed_within_its_cap(monkeypatch):
+    monkeypatch.setattr(N, "_get", lambda u, headers=None, *, cap: bz2.compress(b"G" * 1000))
+    assert N.read_message("ICON_GLOBAL", RUN, 3) == b"G" * 1000
+    monkeypatch.setattr(N, "ICON_MAX_MESSAGE_BYTES", 100)
+    with pytest.raises(Exception, match="over_cap"):
+        N.read_message("ICON_GLOBAL", RUN, 3)
+
+
+def test_icon_cells_follow_the_land_rule_on_an_unstructured_grid():
+    # Cells on the equator: 0-2 about 11 km apart (water, land, land); 3-4
+    # about 5.6 km apart far east, both water.
+    lats = [0.0, 0.0, 0.0, 0.0, 0.0]
+    lons = [0.0, 0.1, 0.2, 5.0, 5.05]
+    land = [0.0, 0.9, 0.9, 0.0, 0.2]
+    placed = N.place_on_cells({"A": (0.0, 0.2), "B": (0.0, 0.0), "C": (0.0, 5.0)},
+                              latitudes=lats, longitudes=lons, land=land)
+    assert placed["A"]["index"] == 2 and placed["A"]["moved"] is False
+    assert placed["B"]["index"] == 1 and placed["B"]["moved"] is True, "nearest is water: the nearest land cell in reach"
+    assert placed["B"]["distance_km"] == pytest.approx(11.1, abs=0.1)
+    assert placed["C"] is None, "no land cell within reach: left out, never guessed"
+
+
+def test_icon_cells_are_cached_by_the_runs_own_grid_size(tmp_path):
+    import numpy as np
+
+    grid = {"CLAT": [0.0, 0.0, 0.0], "CLON": [0.0, 0.1, 0.2], "FR_LAND": [1.0, 1.0, 1.0]}
+    asked = []
+
+    def reader(url):
+        asked.append(url)
+        return url.rsplit("/", 1)[1].split("_", 5)[5].split(".")[0].encode()
+
+    decode = lambda m: np.asarray(grid[m.decode()])  # noqa: E731
+    from unittest import mock
+
+    with mock.patch.object(N, "ICON_GRID_POINT_COUNTS", frozenset({3})):
+        cells = N.icon_station_cells(RUN, {"A": (0.0, 0.11)}, point_count=3, cache_dir=tmp_path,
+                                     reader=reader, decode=decode)
+        assert cells["A"]["index"] == 1 and len(asked) == 3
+        again = N.icon_station_cells(RUN, {"A": (0.0, 0.11)}, point_count=3, cache_dir=tmp_path,
+                                     reader=reader, decode=decode)
+        assert again == cells and len(asked) == 3, "grid and placement come from the cache"
+        assert (tmp_path / "3" / "CLAT.npy").exists()
+        with pytest.raises(Exception, match="icon_grid_invalid"):
+            N.icon_station_cells(RUN, {"A": (0.0, 0.11)}, point_count=4, cache_dir=tmp_path,
+                                 reader=reader, decode=decode)
+
+
+def test_icon_run_picks_each_station_cell_from_one_field_a_step():
+    import numpy as np
+
+    def reader(product, run_init, step):
+        return str(step).encode()
+
+    decode = lambda m: np.full(5, 273.15 + int(m.decode()) / 10.0)  # noqa: E731
+    seen = {}
+
+    def cells(run_init, points, *, point_count):
+        seen["count"] = point_count
+        return {"RJTT": {"index": 3}, "XSEA": None}
+
+    out = N.fetch_icon_run_for_targets(run_init=RUN, targets=_targets(), reader=reader, cells=cells, decode=decode)
+    assert seen["count"] == 5, "the grid is the one the run's own message declares"
+    assert set(out) == {("RJTT", "2026-10-12"), ("RJTT", "2026-10-13")}
+    assert out[("RJTT", "2026-10-12")]["hourly_c"][15] == pytest.approx(1.5)
+    assert out[("RJTT", "2026-10-12")]["source_url"].endswith("#icon_cell=3")
+
+    bad = lambda m: np.full(5 if m == b"15" else 6, 280.0)  # noqa: E731
+    with pytest.raises(Exception, match="icon_grid_mismatch"):
+        N.fetch_icon_run_for_targets(run_init=RUN, targets=_targets()[:1], reader=reader, cells=cells, decode=bad)
+
+
+def test_capture_bounds_the_slow_native_products():
+    capture = _load("capture_deterministic_forward")
+    assert capture.MAX_RUNS_OVERRIDE == {"ARPEGE": 1, "ICON_GLOBAL": 1}
+    assert capture.NATIVE_BUDGET_OVERRIDE_SEC["ARPEGE"] <= 240.0

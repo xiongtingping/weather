@@ -938,6 +938,8 @@ DETERMINISTIC_PROBE_SWEEPS = {
     "GFS": "capture_deterministic_forward",
     "AIGFS": "capture_deterministic_forward",
     "GDPS": "capture_deterministic_forward",
+    "ICON_GLOBAL": "capture_deterministic_forward",
+    "ARPEGE": "capture_deterministic_forward",
 }
 
 

@@ -40,7 +40,7 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # Charter 267 (二): plus the native deterministic runs for the listing-time F.
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS")
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
 # Runs a pass may take per product: the newest, and one it missed.
 MAX_RUNS_PER_PRODUCT = 2
 # Writer-free seconds per product; the pass as a whole stays inside the
@@ -53,6 +53,11 @@ BUDGET_SEC_PER_PRODUCT = 240.0
 # under the sweep's 1800 s timeout.  The lane commits before each next fetch
 # (WRITER_TURN_EXEMPT_SWEEPS), so a fetch never holds the writer.
 NATIVE_BUDGET_SEC_PER_PRODUCT = 120.0
+# Charter 267 补记二: ARPEGE walks four unindexed packages' headers (~60 s a
+# run) and ICON reads ~33 whole bz2 steps (~45 s); one run a pass each, the
+# newest, so a pass does not hold the capture claim the P1 lanes wait on.
+NATIVE_BUDGET_OVERRIDE_SEC = {"ARPEGE": 180.0}
+MAX_RUNS_OVERRIDE = {"ARPEGE": 1, "ICON_GLOBAL": 1}
 
 
 def main() -> int:
@@ -114,14 +119,15 @@ def main() -> int:
             return 0
         conn.execute("PRAGMA busy_timeout=60000")
         for product, stations in plans.items():
-            budget = (
+            budget = NATIVE_BUDGET_OVERRIDE_SEC.get(product, (
                 NATIVE_BUDGET_SEC_PER_PRODUCT
                 if product in NATIVE_DETERMINISTIC_PRODUCTS else BUDGET_SEC_PER_PRODUCT
-            )
+            ))
             set_pass_deadline(budget + 60.0)
             receipt = capture_p1(
                 conn, product=product, now=now, stations=stations,
-                max_runs=int(args.max_runs), budget_sec=budget,
+                max_runs=min(int(args.max_runs), MAX_RUNS_OVERRIDE.get(product, int(args.max_runs))),
+                budget_sec=budget,
                 dry_run=args.dry_run,
             )
             set_pass_deadline(None)

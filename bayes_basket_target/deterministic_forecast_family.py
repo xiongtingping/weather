@@ -55,6 +55,9 @@ FAMILY: Mapping[str, Mapping[str, Any]] = {
     "GFS": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
     "AIGFS": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 6, "p0_feature": False},
     "GDPS": {"publisher": "ECCC", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    # Charter 267 补记二 (user 「接」, 10-11): closer to the cluster's ten models.
+    "ICON_GLOBAL": {"publisher": "DWD", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    "ARPEGE": {"publisher": "Meteo-France", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
 }
 PRODUCT_BY_SYSTEM = {SYSTEM_IDS[product]: product for product in FAMILY}
 # Charter 201's P0 feature, gate and shadow read only these.
@@ -63,7 +66,7 @@ FAMILY_SYSTEM_IDS = frozenset(
 )
 # Charter 267: the deterministic runs the listing-time forecast F reads.
 F_SYSTEM_IDS = frozenset(
-    SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS")
+    SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
 )
 # The local afternoon a day's maximum lives in (charter 95's peak window).
 PEAK_START_HOUR, PEAK_END_HOUR = 11, 19
