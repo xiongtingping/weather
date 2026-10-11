@@ -1,0 +1,95 @@
+stations 12, station-days 444, representative decisions 2067
+
+=== window: market mode bucket +-1 (binary log loss per rung, YES+NO) ===
+  [served P0]
+     market 0.4624   cur 0.6078  full2 0.6038  full4 0.6058  mode4 0.6060
+     full2 - cur   -0.0040 [-0.0076, -0.0005]  halves +0.0000/-0.0083
+     full4 - cur   -0.0021 [-0.0061, +0.0021]  halves +0.0020/-0.0064
+     mode4 - cur   -0.0019 [-0.0078, +0.0040]  halves +0.0039/-0.0080
+     full4 - full2 +0.0019 [+0.0002, +0.0036]  halves +0.0020/+0.0019
+     mode4 - full2 +0.0021 [-0.0025, +0.0067]  halves +0.0039/+0.0003
+     cur   - market +0.1454 [+0.1296, +0.1605]
+     full2 - market +0.1414 [+0.1262, +0.1563]
+     full4 - market +0.1433 [+0.1280, +0.1586]
+     mode4 - market +0.1435 [+0.1278, +0.1586]
+  [single-system (systems equal)]
+     market 0.4624   cur 0.6680  full2 0.6661  full4 0.6727  mode4 0.6744
+     full2 - cur   -0.0019 [-0.0057, +0.0017]  halves +0.0015/-0.0055
+     full4 - cur   +0.0047 [+0.0005, +0.0091]  halves +0.0082/+0.0010
+     mode4 - cur   +0.0064 [+0.0002, +0.0127]  halves +0.0093/+0.0033
+     full4 - full2 +0.0066 [+0.0041, +0.0090]  halves +0.0067/+0.0065
+     mode4 - full2 +0.0083 [+0.0030, +0.0135]  halves +0.0078/+0.0089
+     cur   - market +0.2056 [+0.1894, +0.2218]
+     full2 - market +0.2036 [+0.1884, +0.2189]
+     full4 - market +0.2102 [+0.1950, +0.2258]
+     mode4 - market +0.2120 [+0.1956, +0.2277]
+  [served P0, YES side (the hit rung if in window) / NO side (the other rungs), per decision sums]
+     market YES 0.8231  NO 0.5671   (truth inside window 91%)
+     cur    YES 1.2054  NO 0.6089   (truth inside window 91%)
+     full2  YES 1.1950  NO 0.6061   (truth inside window 91%)
+     full4  YES 1.1931  NO 0.6134   (truth inside window 91%)
+     mode4  YES 1.2109  NO 0.5965   (truth inside window 91%)
+  [served P0 by hours to settlement: arm - cur]
+     >=48h   n= 307  full2 -0.0078 [-0.0138,-0.0023]  full4 -0.0054 [-0.0116,+0.0007]  mode4 -0.0083 [-0.0217,+0.0043]
+     36-48h  n= 428  full2 -0.0054 [-0.0097,-0.0011]  full4 -0.0039 [-0.0089,+0.0010]  mode4 -0.0023 [-0.0094,+0.0044]
+     24-36h  n= 444  full2 -0.0045 [-0.0087,-0.0005]  full4 -0.0034 [-0.0083,+0.0016]  mode4 -0.0012 [-0.0087,+0.0062]
+     12-24h  n= 444  full2 -0.0025 [-0.0068,+0.0015]  full4 +0.0004 [-0.0046,+0.0052]  mode4 -0.0003 [-0.0067,+0.0058]
+     <12h    n= 444  full2 -0.0024 [-0.0065,+0.0018]  full4 -0.0007 [-0.0054,+0.0039]  mode4 -0.0012 [-0.0074,+0.0049]
+
+=== window: market mean bucket +-1 (binary log loss per rung, YES+NO) ===
+  [served P0]
+     market 0.4615   cur 0.6071  full2 0.6031  full4 0.6048  mode4 0.6047
+     full2 - cur   -0.0040 [-0.0076, -0.0005]  halves +0.0002/-0.0085
+     full4 - cur   -0.0022 [-0.0063, +0.0019]  halves +0.0022/-0.0068
+     mode4 - cur   -0.0023 [-0.0081, +0.0034]  halves +0.0036/-0.0086
+     full4 - full2 +0.0018 [+0.0000, +0.0035]  halves +0.0019/+0.0016
+     mode4 - full2 +0.0017 [-0.0029, +0.0063]  halves +0.0034/-0.0001
+     cur   - market +0.1456 [+0.1298, +0.1606]
+     full2 - market +0.1416 [+0.1264, +0.1562]
+     full4 - market +0.1434 [+0.1279, +0.1587]
+     mode4 - market +0.1433 [+0.1276, +0.1585]
+  [single-system (systems equal)]
+     market 0.4615   cur 0.6667  full2 0.6645  full4 0.6709  mode4 0.6725
+     full2 - cur   -0.0021 [-0.0058, +0.0014]  halves +0.0015/-0.0060
+     full4 - cur   +0.0043 [-0.0000, +0.0087]  halves +0.0083/+0.0000
+     mode4 - cur   +0.0058 [-0.0003, +0.0120]  halves +0.0090/+0.0024
+     full4 - full2 +0.0064 [+0.0039, +0.0088]  halves +0.0068/+0.0060
+     mode4 - full2 +0.0079 [+0.0027, +0.0131]  halves +0.0075/+0.0084
+     cur   - market +0.2052 [+0.1889, +0.2216]
+     full2 - market +0.2031 [+0.1875, +0.2184]
+     full4 - market +0.2095 [+0.1937, +0.2252]
+     mode4 - market +0.2110 [+0.1948, +0.2270]
+  [served P0, YES side (the hit rung if in window) / NO side (the other rungs), per decision sums]
+     market YES 0.8197  NO 0.5718   (truth inside window 91%)
+     cur    YES 1.1999  NO 0.6153   (truth inside window 91%)
+     full2  YES 1.1896  NO 0.6124   (truth inside window 91%)
+     full4  YES 1.1874  NO 0.6196   (truth inside window 91%)
+     mode4  YES 1.2051  NO 0.6019   (truth inside window 91%)
+  [served P0 by hours to settlement: arm - cur]
+     >=48h   n= 307  full2 -0.0078 [-0.0138,-0.0022]  full4 -0.0054 [-0.0120,+0.0007]  mode4 -0.0088 [-0.0220,+0.0039]
+     36-48h  n= 428  full2 -0.0060 [-0.0102,-0.0017]  full4 -0.0053 [-0.0102,-0.0004]  mode4 -0.0042 [-0.0114,+0.0026]
+     24-36h  n= 444  full2 -0.0043 [-0.0085,-0.0002]  full4 -0.0033 [-0.0084,+0.0017]  mode4 -0.0016 [-0.0089,+0.0054]
+     12-24h  n= 444  full2 -0.0023 [-0.0065,+0.0019]  full4 +0.0008 [-0.0043,+0.0057]  mode4 -0.0002 [-0.0065,+0.0059]
+     <12h    n= 444  full2 -0.0021 [-0.0063,+0.0020]  full4 -0.0003 [-0.0051,+0.0044]  mode4 -0.0008 [-0.0072,+0.0054]
+
+=== all rungs (secondary), served P0 ===
+  full2 - cur  -0.00107 [-0.00229, +0.00011]
+  full4 - cur  -0.00093 [-0.00229, +0.00040]
+  mode4 - cur  +0.00054 [-0.00139, +0.00248]
+
+=== fitted parameters (median over seated systems at representative decisions) ===
+  full2_shift    median +0.027  p10 -0.352  p90 +0.585
+  full4_shift    median +0.027  p10 -0.365  p90 +0.578
+  mode4_shift    median +0.073  p10 -0.351  p90 +0.783
+  full2_s        median +1.419  p10 +0.832  p90 +2.540
+  full4_s        median +1.364  p10 +0.824  p90 +2.483
+  mode4_s        median +1.449  p10 +0.784  p90 +2.778
+  full4_eps      median -0.011  p10 -1.500  p90 +1.500
+  mode4_eps      median +0.013  p10 -1.500  p90 +1.500
+  full4_tau      median +0.754  p10 +0.500  p90 +2.000
+  mode4_tau      median +0.863  p10 +0.500  p90 +2.000
+  mode4_fallback share 0.3%
+  full4: eps at a bound 46.2%, tau at a bound 46.8%
+  mode4: eps at a bound 50.8%, tau at a bound 46.8%
+
+=== verdict: keep charter 216 (no arm passes) ===
