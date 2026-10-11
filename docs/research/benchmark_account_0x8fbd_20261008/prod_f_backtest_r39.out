@@ -1,0 +1,42 @@
+
+== listing +5 min: station-days 440, production F 440 (none 0); systems {3: 24, 4: 288, 5: 128}; fleet source {'native_history': 440}
+   production F hits the truth 0.348, within one bucket 0.768
+     arm production raw+c+0.3corr                 hit 0.348   truth-F mean -0.19 C  MAE 1.02 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.305   truth-F mean +0.11 C  MAE 1.11 C  vs production -0.043 [-0.082, -0.004]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.314   truth-F mean +0.13 C  MAE 1.03 C  vs production -0.034 [-0.077, +0.008]
+     arm raw+corr (station bias alone)            hit 0.348   truth-F mean +0.17 C  MAE 0.98 C  vs production +0.000 [-0.054, +0.054]
+     arm raw+0.8+0.3corr (research constant)      hit 0.314   truth-F mean +0.06 C  MAE 1.02 C  vs production -0.034 [-0.071, +0.003]
+     arm raw (uncorrected)                        hit 0.180   truth-F mean +1.16 C  MAE 1.52 C  vs production -0.168 [-0.235, -0.101]
+     research C vs production: +0.000 [-0.052, +0.052]
+   vs research C on 440: F 0.348  C 0.348  same bucket 0.50  F-C mean -0.07 C median -0.04 C
+   vs our served mode on 0: F 0.000  ours 0.000  same bucket 0.00
+   = market mode at 06:00 local on the event day (440): 0.409  (that market mode hits 0.495)
+
+== +1 h: station-days 440, production F 440 (none 0); systems {3: 24, 4: 288, 5: 128}; fleet source {'native_history': 440}
+   production F hits the truth 0.350, within one bucket 0.770
+     arm production raw+c+0.3corr                 hit 0.350   truth-F mean -0.18 C  MAE 1.02 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.302   truth-F mean +0.12 C  MAE 1.12 C  vs production -0.048 [-0.087, -0.009]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.314   truth-F mean +0.13 C  MAE 1.03 C  vs production -0.036 [-0.079, +0.006]
+     arm raw+corr (station bias alone)            hit 0.345   truth-F mean +0.17 C  MAE 0.98 C  vs production -0.005 [-0.058, +0.049]
+     arm raw+0.8+0.3corr (research constant)      hit 0.307   truth-F mean +0.07 C  MAE 1.02 C  vs production -0.043 [-0.081, -0.006]
+     arm raw (uncorrected)                        hit 0.184   truth-F mean +1.16 C  MAE 1.52 C  vs production -0.166 [-0.234, -0.098]
+     research C vs production: -0.005 [-0.056, +0.047]
+   vs research C on 440: F 0.350  C 0.345  same bucket 0.53  F-C mean -0.09 C median -0.05 C
+   vs our served mode on 281: F 0.363  ours 0.370  same bucket 0.36
+   = market mode at 06:00 local on the event day (440): 0.409  (that market mode hits 0.495)
+
+== +3 h: station-days 440, production F 440 (none 0); systems {3: 20, 4: 281, 5: 139}; fleet source {'native_history': 440}
+   production F hits the truth 0.350, within one bucket 0.773
+     arm production raw+c+0.3corr                 hit 0.350   truth-F mean -0.19 C  MAE 1.02 C  vs production +0.000 [+0.000, +0.000]
+     arm raw+c (no station)                       hit 0.298   truth-F mean +0.11 C  MAE 1.12 C  vs production -0.052 [-0.091, -0.013]
+     arm raw+c+0.3(corr-c) (station part only)    hit 0.314   truth-F mean +0.13 C  MAE 1.03 C  vs production -0.036 [-0.077, +0.004]
+     arm raw+corr (station bias alone)            hit 0.343   truth-F mean +0.16 C  MAE 0.98 C  vs production -0.007 [-0.061, +0.048]
+     arm raw+0.8+0.3corr (research constant)      hit 0.311   truth-F mean +0.06 C  MAE 1.02 C  vs production -0.039 [-0.075, -0.002]
+     arm raw (uncorrected)                        hit 0.186   truth-F mean +1.16 C  MAE 1.51 C  vs production -0.164 [-0.231, -0.096]
+     research C vs production: -0.007 [-0.056, +0.043]
+   vs research C on 440: F 0.350  C 0.343  same bucket 0.54  F-C mean -0.03 C median -0.01 C
+   vs our served mode on 354: F 0.370  ours 0.362  same bucket 0.43
+   = market mode at 06:00 local on the event day (440): 0.407  (that market mode hits 0.495)
+
+== the cluster's pre-formation first YES: bucket = production F / = research C
+   n=179: = production F 0.40   = research C 0.51
