@@ -1,0 +1,34 @@
+minutes from listing (median / p75 / p90 / max), by event day
+   event day  n   ->registry            ->first capture        ->first P0              ->first frame
+   2026-10-05  48    6.7/ 10.6/ 47.8/ 307.9     9.1/ 10.3/ 14.2/  36.4    19.5/ 61.2/181.3/1683.1    28.7/ 70.4/190.6/2172.8
+   2026-10-06  48    6.1/ 13.5/ 47.4/ 128.2    12.7/ 13.8/ 17.4/  36.3    62.1/ 63.3/166.7/ 246.9    63.7/ 64.8/170.3/ 711.0
+   2026-10-07  48    5.9/  8.1/  9.3/  91.4    11.3/ 12.6/ 13.1/  19.7    18.3/ 41.3/160.8/ 964.6    19.0/ 42.0/161.5/ 965.0
+   2026-10-08  48    3.7/  5.5/  8.4/  88.5     1.3/  4.8/ 14.1/  14.8    11.4/ 38.0/157.2/ 191.3    13.8/ 39.8/158.8/ 191.2
+   2026-10-09  48    2.9/  3.9/  4.7/   5.1     5.1/  6.3/ 19.6/  28.3    12.9/ 45.8/166.0/ 190.4    13.3/ 50.9/170.9/ 191.6
+   2026-10-10  48    3.0/  4.0/  4.4/   4.9     6.6/  7.8/  8.7/  38.9    26.8/ 36.8/156.2/ 193.3    68.3/ 69.6/156.7/ 195.0
+   2026-10-11  48    2.4/  3.6/  4.3/   4.9    13.4/ 14.7/ 15.8/  16.6    19.0/ 40.7/160.8/ 198.9    20.0/ 41.8/161.9/ 199.3
+   2026-10-12  48   23.1/ 24.4/ 25.0/  25.5    23.7/ 25.0/ 25.6/  26.1    45.3/ 46.7/ 47.6/ 105.7    45.5/ 47.0/ 47.9/ 127.1
+   2026-10-13  43    0.9/  5.1/  5.6/   6.1     0.7/  1.3/  1.9/   6.0    10.4/ 20.2/ 20.7/ 129.2    12.5/ 21.4/ 21.9/ 131.5
+
+after charter 263 (event days >= 10-11), by listing batch (UTC hour): minutes listing -> first P0 (median / max), slowest stations
+   04Z batch n=96: median 19.8  max 198.9   slowest: LLBG/10-13 129m, LTFM/10-11 197m, UUWW/10-11 197m, LLBG/10-11 199m
+   06Z batch n=9: median 12.4  max 79.8   slowest: KLGA/10-12 12m, KHOU/10-11 79m, KATL/10-11 80m, KDAL/10-11 80m
+   07Z batch n=15: median 14.8  max 19.8   slowest: KAUS/10-11 19m, KORD/10-11 20m, KMIA/10-11 20m, KLGA/10-11 20m
+   10Z batch n=9: median 6.5  max 161.4   slowest: KLAX/10-12 7m, KSFO/10-11 161m, KLAX/10-11 161m, KSEA/10-11 161m
+   12Z batch n=10: median 3.8  max 41.5   slowest: MMMX/10-11 41m, CYYZ/10-11 41m, SAEZ/10-11 41m, SBGR/10-11 41m
+
+slowest 12 station-days since 10-11 with the segment that took the time
+   LTFM 2026-10-12  listed 10-10 04:58  registry +23.3m  capture +23.9m (listing:EDDM FAILED)  P0 +104.2m
+   UUWW 2026-10-12  listed 10-10 04:58  registry +23.4m  capture +24.0m (listing:EDDM FAILED)  P0 +104.2m
+   LLBG 2026-10-12  listed 10-10 04:56  registry +24.9m  capture +25.5m (listing:EDDM FAILED)  P0 +105.7m
+   LTFM 2026-10-13  listed 10-11 04:58  registry +5.9m  capture +-0.2m (listing:EDDM FAILED)  P0 +127.7m
+   UUWW 2026-10-13  listed 10-11 04:58  registry +6.1m  capture +-0.1m (listing:EDDM FAILED)  P0 +127.8m
+   LLBG 2026-10-13  listed 10-11 04:56  registry +0.9m  capture +1.3m (listing:EDDM FAILED)  P0 +129.2m
+   KSFO 2026-10-11  listed 10-09 10:56  registry +0.1m  capture +0.6m (listing:KLAX CAPTURED)  P0 +160.8m
+   KLAX 2026-10-11  listed 10-09 10:56  registry +0.1m  capture +0.7m (listing:KLAX CAPTURED)  P0 +160.9m
+   KSEA 2026-10-11  listed 10-09 10:56  registry +0.7m  capture +1.2m (listing:KLAX CAPTURED)  P0 +161.4m
+   LTFM 2026-10-11  listed 10-09 04:59  registry +1.9m  capture +13.6m (listing:NZWN FAILED)  P0 +196.9m
+   UUWW 2026-10-11  listed 10-09 04:58  registry +2.0m  capture +13.7m (listing:NZWN FAILED)  P0 +197.0m
+   LLBG 2026-10-11  listed 10-09 04:57  registry +3.9m  capture +15.6m (listing:NZWN FAILED)  P0 +198.9m
+
+station-days since 10-11 without any P0 yet: 0 

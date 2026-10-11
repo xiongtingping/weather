@@ -1,0 +1,27 @@
+station-days with a first P0: 440; P0 after listing (min): median 26.8
+tapes fetched for our mode buckets: 75
+
+== YES bid on OUR first P0 mode bucket, at max(listing+5 min, first P0), 2 h, trade strictly below X
+   X=0.25: legs 440  fill 0.18  hit all 0.370  hit filled 0.269  ROI +7.7% [-46.3, +69.2] (12 days)
+   X=0.25 (>=5 shares below X): legs 440  fill 0.13  hit all 0.370  hit filled 0.254  ROI +1.7% [-56.4, +62.7] (12 days)
+   X=0.30: legs 440  fill 0.25  hit all 0.370  hit filled 0.300  ROI -0.0% [-30.3, +39.6] (13 days)
+   X=0.30 (>=5 shares below X): legs 440  fill 0.20  hit all 0.370  hit filled 0.295  ROI -1.5% [-36.3, +41.0] (13 days)
+   X=0.35: legs 440  fill 0.33  hit all 0.370  hit filled 0.336  ROI -4.1% [-28.1, +26.5] (13 days)
+   X=0.35 (>=5 shares below X): legs 440  fill 0.29  hit all 0.370  hit filled 0.323  ROI -7.8% [-35.7, +27.0] (13 days)
+   X=0.40: legs 440  fill 0.47  hit all 0.370  hit filled 0.390  ROI -2.4% [-17.1, +12.8] (13 days)
+   X=0.40 (>=5 shares below X): legs 440  fill 0.43  hit all 0.370  hit filled 0.395  ROI -1.3% [-18.1, +15.7] (13 days)
+   by our P0's own probability on that bucket (X=0.30):
+     p_mode 0.00-0.30: legs 73  fill 0.34  hit filled 0.160  ROI -46.7% [-84.1, -9.1]
+     p_mode 0.30-0.40: legs 126  fill 0.36  hit filled 0.267  ROI -11.1% [-55.6, +34.8]
+     p_mode 0.40-1.01: legs 241  fill 0.17  hit filled 0.425  ROI +41.7% [-14.3, +103.3]
+
+== timing vs bucket (X=0.30 / 0.35, 2 h, strict)
+   F bucket, posted at our start time             X=0.30: fill 0.23  hit all 0.366  hit filled 0.323  ROI +7.7% [-17.5, +29.4]
+   F bucket, posted at our start time             X=0.35: fill 0.30  hit all 0.366  hit filled 0.389  ROI +11.2% [-9.6, +30.0]
+   our mode, posted at listing + 5 min            X=0.30: fill 0.29  hit all 0.370  hit filled 0.320  ROI +6.8% [-13.4, +27.8]
+   our mode, posted at listing + 5 min            X=0.35: fill 0.37  hit all 0.370  hit filled 0.364  ROI +4.1% [-14.3, +24.1]
+   our mode, posted at our start time (as above)  X=0.30: fill 0.25  hit all 0.370  hit filled 0.300  ROI -0.0% [-30.3, +39.6]
+   our mode, posted at our start time (as above)  X=0.35: fill 0.33  hit all 0.370  hit filled 0.336  ROI -4.1% [-28.1, +26.5]
+   F bucket, posted at listing + 5 min (round 34) X=0.30: fill 0.29  hit all 0.366  hit filled 0.383  ROI +27.6% [+4.3, +51.5]
+   F bucket, posted at listing + 5 min (round 34) X=0.35: fill 0.35  hit all 0.366  hit filled 0.426  ROI +21.7% [+0.0, +42.9]
+   our first-P0 mode = F on 214 of 440 station-days
