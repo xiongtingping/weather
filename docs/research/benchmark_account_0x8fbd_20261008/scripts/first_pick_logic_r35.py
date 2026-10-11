@@ -300,3 +300,42 @@ for w in sorted({c["r"]["first"]["w"] for c in cases}):
         continue
     pnl = [((1.0 if (c["r"]["truth"] == c["r"]["first"]["bucket"]) == (c["side"] == "Yes") else 0.0) - c["r"]["first"]["price"]) for c in sel]
     print(f"   wallet {w}: first legs {len(sel)}, YES share {sum(c['side'] == 'Yes' for c in sel) / len(sel):.2f}, per share {100 * statistics.mean(pnl):+.1f} c")
+
+# ---------------------------------------------------------------- post-hoc (熊先生 10-11 插问): the trio belief rule
+# 「先通过校准后的预报桶建立三个原始的桶信念，再挑一个最可能和最不可能，最可能买yes，最不可能买no」
+print("\n== post-hoc: trio rule -- beliefs on F-1, F, F+1 (calibrated ten-model distribution, sigma 1.0); YES on the most likely, NO on the least likely")
+for S, nm in ((res, "research"), (fwd, "forward")):
+    n = intrio = hit = 0
+    for c in S:
+        F = pick(c, "median", 0.8, 0.3)
+        p = probs(c, 1.0)
+        trio = [i for i in (F - 1, F, F + 1) if 0 <= i < len(p)]
+        n += 1
+        intrio += c["ch"] in trio
+        hit += c["ch"] == max(trio, key=lambda i: p[i])
+    print(f"   YES {nm:8s} n={n}: chosen inside the trio {intrio / n:.2f}; chosen = most likely of the trio {hit / n:.2f}")
+nos = [c for c in cases if c["side"] == "No"]
+for nm, sel in (("research", [c for c in nos if c["set"] == "research"]), ("forward", [c for c in nos if c["set"] == "forward"])):
+    cnt = collections.Counter()
+    for c in sel:
+        F = pick(c, "median", 0.8, 0.3)
+        p = probs(c, 1.0)
+        trio = [i for i in (F - 1, F, F + 1) if 0 <= i < len(p)]
+        cnt["n"] += 1
+        if c["ch"] in trio:
+            cnt["inside the trio"] += 1
+            cnt["= least likely of the trio"] += c["ch"] == min(trio, key=lambda i: p[i])
+            cnt["= most likely of the trio"] += c["ch"] == max(trio, key=lambda i: p[i])
+        else:
+            cnt["outside, colder"] += c["ch"] < F - 1
+            cnt["outside, warmer"] += c["ch"] > F + 1
+        # where the NO sits in the whole ladder's belief ranking (1 = most likely bucket)
+        order = sorted(range(len(p)), key=lambda i: -p[i])
+        cnt["rank_sum"] += order.index(c["ch"]) + 1
+    n = cnt["n"]
+    print(f"   NO  {nm:8s} n={n}: inside the trio {cnt['inside the trio'] / n:.2f} (of all NO: least likely {cnt['= least likely of the trio'] / n:.2f},"
+          f" most likely {cnt['= most likely of the trio'] / n:.2f}); outside colder {cnt['outside, colder'] / n:.2f}, outside warmer {cnt['outside, warmer'] / n:.2f};"
+          f" mean belief rank of the shorted bucket {cnt['rank_sum'] / n:.1f} of 11")
+# the NO's price: what the cluster paid relative to the belief
+pn = [(c["r"]["first"]["price"], 1 - probs(c, 1.0)[c["ch"]], c["r"]["truth"] != c["r"]["first"]["bucket"]) for c in nos if c["r"]["truth"]]
+print(f"   NO paid {statistics.mean(x[0] for x in pn):.3f} on average; calibrated belief that the bucket loses {statistics.mean(x[1] for x in pn):.3f}; it actually lost {statistics.mean(1.0 if x[2] else 0.0 for x in pn):.3f} (n={len(pn)})")

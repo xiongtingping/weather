@@ -57,3 +57,10 @@ pre-formation first legs with >=3 models: 405 (YES 249: research 108, forward 14
    wallet 0x5bae7577: first legs 19, YES share 0.68, per share -1.9 c
    wallet 0x6fdd2bda: first legs 22, YES share 0.64, per share +1.3 c
    wallet 0x8fbd7cf5: first legs 228, YES share 0.59, per share +17.3 c
+
+== post-hoc: trio rule -- beliefs on F-1, F, F+1 (calibrated ten-model distribution, sigma 1.0); YES on the most likely, NO on the least likely
+   YES research n=108: chosen inside the trio 0.93; chosen = most likely of the trio 0.40
+   YES forward  n=141: chosen inside the trio 0.88; chosen = most likely of the trio 0.48
+   NO  research n=47: inside the trio 0.51 (of all NO: least likely 0.19, most likely 0.23); outside colder 0.38, outside warmer 0.11; mean belief rank of the shorted bucket 3.5 of 11
+   NO  forward  n=109: inside the trio 0.54 (of all NO: least likely 0.18, most likely 0.16); outside colder 0.29, outside warmer 0.17; mean belief rank of the shorted bucket 3.4 of 11
+   NO paid 0.738 on average; calibrated belief that the bucket loses 0.827; it actually lost 0.899 (n=139)

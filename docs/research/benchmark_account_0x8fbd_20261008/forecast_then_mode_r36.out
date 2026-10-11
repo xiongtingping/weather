@@ -1,0 +1,26 @@
+station-days 440; ever formed before event-day 06:00 440
+
+== (1) hours from listing to the first formed ladder: p10 1.25  p25 2.00  median 3.50  p75 5.75  p90 8.25
+
+== (2) among formed ladders: mode = F / F-1 / F+1 / our served mode / ladder middle (share)
+   listing +1h      formed  31 (unformed 409)  mode=F 0.52  F-1 0.06  F+1 0.23  ladder middle 0.23  our served mode 0.55 (n=20)
+   +2h              formed  97 (unformed 343)  mode=F 0.45  F-1 0.11  F+1 0.27  ladder middle 0.31  our served mode 0.58 (n=74)
+   +4h              formed 231 (unformed 209)  mode=F 0.46  F-1 0.13  F+1 0.30  ladder middle 0.27  our served mode 0.53 (n=221)
+   +8h              formed 374 (unformed  66)  mode=F 0.47  F-1 0.13  F+1 0.29  ladder middle 0.30  our served mode 0.56 (n=358)
+   +24h             formed 437 (unformed   3)  mode=F 0.44  F-1 0.16  F+1 0.29  ladder middle 0.29  our served mode 0.60 (n=435)
+   event-day 06:00  formed 440 (unformed   0)  mode=F 0.40  F-1 0.16  F+1 0.30  ladder middle 0.27  our served mode 0.64 (n=439)
+
+== (3) when the first formed mode is not F
+   station-days 233; at event-day 06:00 (formed 233): mode moved to F 0.23, stayed 0.58, elsewhere 0.20
+   mode changes (not equidistant from F): 1529; toward F 0.491 [0.481, 0.502]
+
+== (4) station-days with a pre-formation cluster first YES on bucket X: first formed mode = X / = F
+   X = F                  n= 73  first formed mode = X 0.90, = F 0.90   |   event-day 06:00 mode = X 0.74, = F 0.74
+   X != F                 n=106  first formed mode = X 0.61, = F 0.25   |   event-day 06:00 mode = X 0.42, = F 0.35
+   no early cluster YES   n=261  first formed mode = X 0.00, = F 0.44   |   event-day 06:00 mode = X 0.00, = F 0.33
+
+== (5) hit the truth: F (fixed at listing) vs the market mode at each checkpoint (formed ladders)
+   +2h              n= 97  F 0.423   market mode 0.474
+   +8h              n=374  F 0.380   market mode 0.439
+   +24h             n=437  F 0.368   market mode 0.481
+   event-day 06:00  n=440  F 0.366   market mode 0.495
