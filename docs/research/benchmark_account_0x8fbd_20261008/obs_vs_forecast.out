@@ -1,0 +1,24 @@
+instances 2441 (1110 station-days)
+
+== (1a) truth off the market mode: how often each signal calls the side (|signal| >= threshold)
+   local 10:00  market lean 0.733 (n=303) | temp 0.522 (n=245) | temp_last 0.504 (n=248) | cloud 0.492 (n=191) | rain 0.451 (n=71) | rad 0.473 (n=131) | M 0.575 (n=179) | taf 0.609 (n=69)
+   local 12:00  market lean 0.782 (n=399) | temp 0.492 (n=301) | temp_last 0.584 (n=322) | cloud 0.535 (n=254) | rain 0.432 (n=125) | rad 0.519 (n=181) | M 0.532 (n=203) | taf 0.632 (n=106)
+   local 14:00  market lean 0.850 (n=246) | temp 0.497 (n=179) | temp_last 0.565 (n=193) | cloud 0.530 (n=149) | rain 0.405 (n=84) | rad 0.613 (n=93) | M 0.508 (n=130) | taf 0.561 (n=57)
+
+== (1b) walk-forward binary log loss increment over the market's own lean (truth off the mode; negative = better)
+   temp                               -0.0029 [-0.0077, +0.0015]  (n=742, 19 test days)
+   cloud                              +0.0005 [-0.0007, +0.0019]  (n=742, 19 test days)
+   rain                               -0.0024 [-0.0089, +0.0050]  (n=742, 19 test days)
+   rad                                -0.0034 [-0.0080, +0.0004]  (n=742, 19 test days)
+   M                                  +0.0056 [-0.0097, +0.0229]  (n=742, 19 test days)
+   taf                                +0.0026 [-0.0069, +0.0126]  (n=742, 19 test days)
+   temp+cloud+rain+rad                -0.0081 [-0.0192, +0.0031]  (n=742, 19 test days)
+   temp+cloud+rain+rad+M+taf          -0.0002 [-0.0191, +0.0217]  (n=742, 19 test days)
+
+== (2) the claim: when observed matches forecast, does the truth sit on the market mode more than the market says?
+   local 10:00  observed ~ forecast: truth on mode 0.519 vs market 0.504 (n=216) | middle: truth on mode 0.519 vs market 0.512 (n=216) | observed far from forecast: truth on mode 0.560 vs market 0.523 (n=216)
+   local 12:00  observed ~ forecast: truth on mode 0.574 vs market 0.558 (n=305) | middle: truth on mode 0.531 vs market 0.550 (n=305) | observed far from forecast: truth on mode 0.590 vs market 0.571 (n=307)
+   local 14:00  observed ~ forecast: truth on mode 0.722 vs market 0.696 (n=291) | middle: truth on mode 0.691 vs market 0.678 (n=291) | observed far from forecast: truth on mode 0.744 vs market 0.689 (n=293)
+
+== (3) the cluster's same-day first takers off the mode (local hour >= 9): does their side follow the signals?
+   temp: agrees 0.525 (n=59) | cloud: agrees 0.471 (n=51) | M: agrees 0.565 (n=46) | rain: agrees 0.579 (n=19) | rad: agrees 0.481 (n=27)
