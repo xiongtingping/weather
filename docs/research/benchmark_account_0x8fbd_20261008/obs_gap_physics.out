@@ -1,0 +1,63 @@
+instances 2396  station-days 1095
+
+== local 10:00   (each gap + = warmer; terciles; means in C [95%])
+   cloud cloudier than forecast             n= 211  truth-forecast -0.12 [-0.28,+0.03]  market move since 06 -0.00 (n=140)  truth-market -0.05 [-0.15,+0.04]
+   cloud middle                             n= 211  truth-forecast +0.08 [-0.09,+0.24]  market move since 06 -0.00 (n=139)  truth-market -0.02 [-0.10,+0.07]
+   cloud clearer than forecast              n= 211  truth-forecast -0.02 [-0.29,+0.25]  market move since 06 +0.01 (n=130)  truth-market -0.01 [-0.11,+0.10]
+   rain  wetter than forecast               n=  45  truth-forecast -0.41 [-0.87,+0.06]  market move since 06 -0.10 (n=28)  truth-market +0.04 [-0.26,+0.31]
+   rain  as forecast                        n= 483  truth-forecast +0.02 [-0.09,+0.14]  market move since 06 +0.01 (n=322)  truth-market -0.01 [-0.08,+0.07]
+   rain  drier than forecast                n= 106  truth-forecast -0.04 [-0.38,+0.32]  market move since 06 -0.01 (n=59)  truth-market -0.09 [-0.25,+0.08]
+   rad   duller than forecast (satellite)   n= 139  truth-forecast -0.58 [-0.81,-0.36]  market move since 06 -0.06 (n=84)  truth-market -0.13 [-0.26,+0.01]
+   rad   middle                             n= 139  truth-forecast +0.17 [-0.07,+0.40]  market move since 06 +0.03 (n=88)  truth-market +0.06 [-0.05,+0.18]
+   rad   sunnier than forecast              n= 139  truth-forecast +0.29 [-0.03,+0.61]  market move since 06 +0.03 (n=90)  truth-market +0.03 [-0.11,+0.17]
+   temp  colder than forecast so far        n= 211  truth-forecast -0.29 [-0.47,-0.11]  market move since 06 -0.06 (n=130)  truth-market -0.02 [-0.11,+0.05]
+   temp  middle                             n= 211  truth-forecast -0.08 [-0.27,+0.07]  market move since 06 -0.00 (n=135)  truth-market -0.11 [-0.22,-0.01]
+   temp  warmer than forecast so far        n= 211  truth-forecast +0.30 [+0.16,+0.46]  market move since 06 +0.06 (n=144)  truth-market +0.06 [-0.03,+0.17]
+
+== local 12:00   (each gap + = warmer; terciles; means in C [95%])
+   cloud cloudier than forecast             n= 300  truth-forecast -0.13 [-0.29,+0.03]  market move since 06 +0.04 (n=163)  truth-market -0.09 [-0.16,-0.00]
+   cloud middle                             n= 300  truth-forecast +0.08 [-0.10,+0.23]  market move since 06 +0.01 (n=147)  truth-market -0.08 [-0.14,-0.01]
+   cloud clearer than forecast              n= 302  truth-forecast +0.14 [-0.08,+0.40]  market move since 06 +0.09 (n=157)  truth-market -0.02 [-0.10,+0.07]
+   rain  wetter than forecast               n=  71  truth-forecast -0.47 [-0.88,-0.05]  market move since 06 -0.21 (n=38)  truth-market +0.07 [-0.09,+0.23]
+   rain  as forecast                        n= 628  truth-forecast +0.04 [-0.06,+0.14]  market move since 06 +0.06 (n=337)  truth-market -0.06 [-0.11,-0.01]
+   rain  drier than forecast                n= 203  truth-forecast +0.17 [-0.04,+0.41]  market move since 06 +0.07 (n=92)  truth-market -0.11 [-0.20,-0.00]
+   rad   duller than forecast (satellite)   n= 220  truth-forecast -0.51 [-0.72,-0.34]  market move since 06 -0.15 (n=96)  truth-market -0.12 [-0.23,-0.03]
+   rad   middle                             n= 220  truth-forecast +0.11 [-0.04,+0.25]  market move since 06 +0.15 (n=119)  truth-market -0.02 [-0.10,+0.05]
+   rad   sunnier than forecast              n= 221  truth-forecast +0.46 [+0.27,+0.63]  market move since 06 +0.10 (n=120)  truth-market +0.03 [-0.07,+0.12]
+   temp  colder than forecast so far        n= 300  truth-forecast -0.43 [-0.56,-0.29]  market move since 06 -0.06 (n=162)  truth-market -0.06 [-0.15,+0.01]
+   temp  middle                             n= 300  truth-forecast +0.07 [-0.06,+0.18]  market move since 06 +0.04 (n=156)  truth-market -0.07 [-0.13,-0.01]
+   temp  warmer than forecast so far        n= 302  truth-forecast +0.45 [+0.30,+0.62]  market move since 06 +0.15 (n=149)  truth-market -0.05 [-0.14,+0.05]
+
+== local 14:00   (each gap + = warmer; terciles; means in C [95%])
+   cloud cloudier than forecast             n= 286  truth-forecast -0.16 [-0.30,-0.03]  market move since 06 +0.01 (n=146)  truth-market -0.08 [-0.13,-0.03]
+   cloud middle                             n= 286  truth-forecast +0.05 [-0.10,+0.22]  market move since 06 +0.06 (n=145)  truth-market -0.07 [-0.13,+0.00]
+   cloud clearer than forecast              n= 288  truth-forecast +0.12 [-0.09,+0.32]  market move since 06 +0.07 (n=142)  truth-market -0.06 [-0.12,-0.01]
+   rain  wetter than forecast               n=  85  truth-forecast -0.48 [-0.82,-0.08]  market move since 06 -0.24 (n=43)  truth-market -0.04 [-0.14,+0.07]
+   rain  as forecast                        n= 565  truth-forecast +0.04 [-0.06,+0.15]  market move since 06 +0.08 (n=299)  truth-market -0.05 [-0.09,-0.01]
+   rain  drier than forecast                n= 210  truth-forecast +0.10 [-0.12,+0.33]  market move since 06 +0.06 (n=91)  truth-market -0.13 [-0.20,-0.06]
+   rad   duller than forecast (satellite)   n= 198  truth-forecast -0.52 [-0.70,-0.34]  market move since 06 -0.19 (n=85)  truth-market -0.09 [-0.16,-0.02]
+   rad   middle                             n= 198  truth-forecast +0.06 [-0.07,+0.19]  market move since 06 +0.13 (n=104)  truth-market -0.06 [-0.13,+0.01]
+   rad   sunnier than forecast              n= 200  truth-forecast +0.50 [+0.32,+0.74]  market move since 06 +0.14 (n=110)  truth-market +0.03 [-0.04,+0.10]
+   temp  colder than forecast so far        n= 286  truth-forecast -0.67 [-0.80,-0.52]  market move since 06 -0.18 (n=144)  truth-market -0.07 [-0.13,-0.01]
+   temp  middle                             n= 286  truth-forecast +0.11 [-0.02,+0.24]  market move since 06 +0.08 (n=148)  truth-market -0.10 [-0.15,-0.04]
+   temp  warmer than forecast so far        n= 288  truth-forecast +0.56 [+0.37,+0.79]  market move since 06 +0.24 (n=141)  truth-market -0.05 [-0.10,+0.02]
+
+== decomposition: truth - forecast  =  market at 06 already off the forecast  +  move since 06  +  left over (truth - market)
+   local 12:00
+     cloud cloudier than forecast             n= 155  -0.02 = -0.05 (at 06) +0.04 (move) -0.01 (left)
+     cloud clearer than forecast              n= 157  +0.22 = +0.16 (at 06) +0.09 (move) -0.03 (left)
+     rain  wetter than forecast               n=  38  -0.63 = -0.45 (at 06) -0.21 (move) +0.03 (left)
+     rain  drier than forecast                n=  92  +0.29 = +0.22 (at 06) +0.07 (move) -0.00 (left)
+     rad   duller than forecast (satellite)   n= 111  -0.37 = -0.17 (at 06) -0.12 (move) -0.08 (left)
+     rad   sunnier than forecast              n= 113  +0.58 = +0.36 (at 06) +0.10 (move) +0.12 (left)
+     temp  colder than forecast so far        n= 155  -0.27 = -0.17 (at 06) -0.07 (move) -0.04 (left)
+     temp  warmer than forecast so far        n= 157  +0.48 = +0.38 (at 06) +0.14 (move) -0.05 (left)
+   local 14:00
+     cloud cloudier than forecast             n= 144  -0.10 = -0.03 (at 06) +0.01 (move) -0.08 (left)
+     cloud clearer than forecast              n= 145  +0.06 = +0.08 (at 06) +0.07 (move) -0.09 (left)
+     rain  wetter than forecast               n=  43  -0.57 = -0.32 (at 06) -0.24 (move) -0.00 (left)
+     rain  drier than forecast                n=  91  +0.21 = +0.20 (at 06) +0.06 (move) -0.05 (left)
+     rad   duller than forecast (satellite)   n=  99  -0.40 = -0.14 (at 06) -0.16 (move) -0.10 (left)
+     rad   sunnier than forecast              n= 101  +0.50 = +0.28 (at 06) +0.13 (move) +0.08 (left)
+     temp  colder than forecast so far        n= 144  -0.61 = -0.36 (at 06) -0.18 (move) -0.07 (left)
+     temp  warmer than forecast so far        n= 145  +0.59 = +0.39 (at 06) +0.25 (move) -0.05 (left)
