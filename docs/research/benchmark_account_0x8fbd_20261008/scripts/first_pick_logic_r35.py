@@ -339,3 +339,55 @@ for nm, sel in (("research", [c for c in nos if c["set"] == "research"]), ("forw
 # the NO's price: what the cluster paid relative to the belief
 pn = [(c["r"]["first"]["price"], 1 - probs(c, 1.0)[c["ch"]], c["r"]["truth"] != c["r"]["first"]["bucket"]) for c in nos if c["r"]["truth"]]
 print(f"   NO paid {statistics.mean(x[0] for x in pn):.3f} on average; calibrated belief that the bucket loses {statistics.mean(x[1] for x in pn):.3f}; it actually lost {statistics.mean(1.0 if x[2] else 0.0 for x in pn):.3f} (n={len(pn)})")
+
+# ---------------------------------------------------------------- post-hoc (熊先生 10-11「买yes或者no是用信念减市场价格的edge来决定的？」)
+print("\n== post-hoc: edge = belief - price.  (a) the edge of the leg it took, at the price it paid, under our calibrated belief (sigma 1.0)")
+for side in ("Yes", "No"):
+    sel = [c for c in cases if c["side"] == side]
+    e = []
+    for c in sel:
+        p = probs(c, 1.0)[c["ch"]]
+        pv = p if side == "Yes" else 1 - p
+        e.append(pv - c["r"]["first"]["price"])
+    real = [((1.0 if (c["r"]["truth"] == c["r"]["first"]["bucket"]) == (side == "Yes") else 0.0) - c["r"]["first"]["price"]) for c in sel if c["r"]["truth"]]
+    print(f"   {side.upper():3s} n={len(sel)}: belief edge at paid price mean {100 * statistics.mean(e):+.1f} c, positive {sum(1 for x in e if x > 0) / len(e):.2f};"
+          f"  realized per share {100 * statistics.mean(real):+.1f} c (n={len(real)})")
+print("   (b) does the YES-or-NO decision follow the edges on offer?  frames <=10 min before the fill:")
+print("       e_yes = (belief of the most likely bucket) - its YES ask;  e_no = best (1 - belief) - NO price over all buckets")
+grp = collections.defaultdict(list)
+for c, lg in vcases:
+    p = probs(c, 1.0)
+    top = max(range(len(p)), key=lambda i: p[i])
+    ya = {i: price for i, s, price in lg if s == "Yes"}
+    na = {i: price for i, s, price in lg if s == "No"}
+    if top not in ya or not na:
+        continue
+    e_yes = p[top] - ya[top]
+    e_no = max((1 - p[i]) - price for i, price in na.items())
+    grp[c["side"]].append((e_yes, e_no))
+for side, v in grp.items():
+    print(f"       first leg {side.upper():3s} n={len(v)}: mean e_yes {100 * statistics.mean(a for a, b in v):+.1f} c, mean e_no {100 * statistics.mean(b for a, b in v):+.1f} c,"
+          f" share where e_no > e_yes {sum(1 for a, b in v if b > a) / len(v):.2f}")
+allv = [(s, a, b) for s, v in grp.items() for a, b in v]
+if allv:
+    acc = sum(1 for s, a, b in allv if (("No" if b > a else "Yes") == s)) / len(allv)
+    base = max(sum(1 for s, _, _ in allv if s == "Yes"), sum(1 for s, _, _ in allv if s == "No")) / len(allv)
+    print(f"       rule 'NO if e_no > e_yes else YES': accuracy {acc:.2f} (always the commoner side {base:.2f}), n={len(allv)}")
+print("\n   (c) exploratory: a sharper belief (smaller sigma) -- edge of the legs taken, and the side rule")
+for sigma in (0.5, 0.6, 0.75):
+    ey = [probs(c, sigma)[c["ch"]] - c["r"]["first"]["price"] for c in cases if c["side"] == "Yes"]
+    en = [(1 - probs(c, sigma)[c["ch"]]) - c["r"]["first"]["price"] for c in cases if c["side"] == "No"]
+    ok = n = 0
+    for c, lg in vcases:
+        p = probs(c, sigma)
+        top = max(range(len(p)), key=lambda i: p[i])
+        ya = {i: price for i, s, price in lg if s == "Yes"}
+        na = {i: price for i, s, price in lg if s == "No"}
+        if top not in ya or not na:
+            continue
+        e_yes = p[top] - ya[top]
+        e_no = max((1 - p[i]) - price for i, price in na.items())
+        n += 1
+        ok += ("No" if e_no > e_yes else "Yes") == c["side"]
+    print(f"       sigma={sigma}: YES legs belief edge {100 * statistics.mean(ey):+.1f} c (positive {sum(1 for x in ey if x > 0) / len(ey):.2f});"
+          f" NO legs {100 * statistics.mean(en):+.1f} c (positive {sum(1 for x in en if x > 0) / len(en):.2f}); side rule accuracy {ok / max(1, n):.2f} (n={n})")

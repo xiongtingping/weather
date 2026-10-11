@@ -64,3 +64,17 @@ pre-formation first legs with >=3 models: 405 (YES 249: research 108, forward 14
    NO  research n=47: inside the trio 0.51 (of all NO: least likely 0.19, most likely 0.23); outside colder 0.38, outside warmer 0.11; mean belief rank of the shorted bucket 3.5 of 11
    NO  forward  n=109: inside the trio 0.54 (of all NO: least likely 0.18, most likely 0.16); outside colder 0.29, outside warmer 0.17; mean belief rank of the shorted bucket 3.4 of 11
    NO paid 0.738 on average; calibrated belief that the bucket loses 0.827; it actually lost 0.899 (n=139)
+
+== post-hoc: edge = belief - price.  (a) the edge of the leg it took, at the price it paid, under our calibrated belief (sigma 1.0)
+   YES n=249: belief edge at paid price mean -11.1 c, positive 0.16;  realized per share +10.2 c (n=213)
+   NO  n=156: belief edge at paid price mean +7.9 c, positive 0.72;  realized per share +16.1 c (n=139)
+   (b) does the YES-or-NO decision follow the edges on offer?  frames <=10 min before the fill:
+       e_yes = (belief of the most likely bucket) - its YES ask;  e_no = best (1 - belief) - NO price over all buckets
+       first leg YES n=60: mean e_yes -18.1 c, mean e_no +2.2 c, share where e_no > e_yes 0.93
+       first leg NO  n=60: mean e_yes -16.9 c, mean e_no +3.5 c, share where e_no > e_yes 0.93
+       rule 'NO if e_no > e_yes else YES': accuracy 0.50 (always the commoner side 0.50), n=120
+
+   (c) exploratory: a sharper belief (smaller sigma) -- edge of the legs taken, and the side rule
+       sigma=0.5: YES legs belief edge -6.5 c (positive 0.30); NO legs +6.8 c (positive 0.66); side rule accuracy 0.55 (n=120)
+       sigma=0.6: YES legs belief edge -7.4 c (positive 0.26); NO legs +7.1 c (positive 0.69); side rule accuracy 0.54 (n=120)
+       sigma=0.75: YES legs belief edge -8.8 c (positive 0.20); NO legs +7.4 c (positive 0.71); side rule accuracy 0.52 (n=120)
