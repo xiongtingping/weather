@@ -338,7 +338,7 @@ def test_a_leg_on_the_mode_has_no_direction(store, monkeypatch, tmp_path) -> Non
 def test_the_defaults_carry_the_tier_table_and_v2_stays_selectable() -> None:
     cfg = strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS
     assert cfg["stake_tiers"] == {"momentum_agrees": 3.0, "model_agrees": 2.0, "probability": 1.0}
-    assert {lane.RULE_V2, lane.RULE_V3} == set(lane.CLUSTER_RULES) and lane.RULE_V2 in lane.RULE_VERSIONS
+    assert {lane.RULE_V2, lane.RULE_V3} <= set(lane.CLUSTER_RULES) and lane.RULE_V2 in lane.RULE_VERSIONS
 
 
 def test_the_lanes_file_carries_v3() -> None:

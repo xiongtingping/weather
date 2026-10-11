@@ -60,6 +60,15 @@ cluster taker buys within ``big_episode_window_seconds`` of its first fill add
 up to ``big_episode_usdc`` is staked ``big_episode_multiplier`` times, the
 fills the tape delivers late topping the leg up inside the take window.
 
+Rule v4 (charter 268; user ruling 2026-10-12 「改」) keeps v2's episodes,
+window and take-or-nothing and follows YES legs only, every one at one flat
+``stake_usdc`` (never under the venue's ``min_order_shares``) with the cap at
+the source's price plus ``max_slippage``: our probability is recorded at the
+trade and at the send, never a gate, and no direction tier or big-episode
+multiple applies.  Live 10-09..10-11 the cluster's first-taker YES legs our
+probability refused earned +15.6c a share against +1.9c on those it admitted.
+Legs are taken in the order their episodes appeared.
+
 Nothing is read or written while ``data/live_paused.flag`` is up or the
 arming flag is down.  Every planned order and every changed refusal is a row
 of ``copy_follow_lane_evaluation``; every source trade seen is a row of
@@ -101,8 +110,16 @@ RULE_V2 = "cluster_taker_first_filtered_fixed_stake_v2"
 #: staked in three tiers by the shared direction signal (``direction_signal``),
 #: a leg the signal disagrees with skipped.
 RULE_V3 = "cluster_taker_first_direction_tiered_stake_v3"
-RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1", RULE_V2: "copy_follow_lane_v2", RULE_V3: "copy_follow_lane_v3"}
-CLUSTER_RULES = frozenset({RULE_V2, RULE_V3})
+#: Charter 268 (user ruling 2026-10-12 「改」): v2's episodes and window, YES
+#: legs only, one flat stake each; our probability recorded, never a gate.
+RULE_V4 = "cluster_taker_first_yes_flat_stake_v4"
+RULE_VERSIONS = {RULE_V1: "copy_follow_lane_v1", RULE_V2: "copy_follow_lane_v2", RULE_V3: "copy_follow_lane_v3",
+                 RULE_V4: "copy_follow_lane_v4"}
+CLUSTER_RULES = frozenset({RULE_V2, RULE_V3, RULE_V4})
+#: The only side rule v4 follows; a NO leg is refused by name whatever ``sides`` says.
+V4_SIDES = frozenset({"YES"})
+#: The stake label every v4 leg carries.
+TIER_FLAT = "flat"
 #: Charter 266's tiers, strongest first: ECMWF momentum agrees with the leg's
 #: side of the market mode; else the four-feature model agrees and momentum is
 #: not against; else v2's probability filter passes and neither is against.
@@ -770,11 +787,19 @@ def ingest_cluster_taker_trades(
     own instant -- the market's mode on the newest committed snapshot then,
     ECMWF momentum from the runs in hand then, the four-feature model -- and
     stakes the leg ``stake_usdc x stake_tiers[tier]``; the direction tiers
-    need no probability margin."""
+    need no probability margin.
+
+    Rule v4 (charter 268) admits every YES first taker buy that passes the
+    episode, window and station checks at one flat stake, the cap the
+    source's price plus the slippage; our probability is stamped, not read."""
 
     users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
     cities = city_stations()
+    ungated = str(cfg.get("rule")) == RULE_V4
     sides = {str(x).strip().upper() for x in (cfg.get("sides") or ())}
+    if ungated:
+        sides &= V4_SIDES
+    min_shares = float(cfg.get("min_order_shares") or 5.0)
     units = {str(x).strip().upper() for x in (cfg.get("station_units") or ())}
     stages = [str(x) for x in (cfg.get("model_stages") or ())]
     window = list(cfg.get("lead_hours") or (0.0, 0.0))
@@ -874,7 +899,10 @@ def ingest_cluster_taker_trades(
                 p_cap = (min(price + slippage, float(served["p"]) - margin, MAX_PRICE)
                          if served.get("state") == "ok" else None)
                 p_passes = p_cap is not None and p_cap >= price - 1e-9
-                if tiered:
+                if ungated:
+                    # Charter 268: no probability margin, no direction tier.
+                    tier = TIER_FLAT
+                elif tiered:
                     from .direction_signal import leg_reading  # noqa: PLC0415
 
                     direction = leg_reading(
@@ -889,9 +917,13 @@ def ingest_cluster_taker_trades(
                     refusal = (f"model:{served.get('state')}" if served.get("state") != "ok"
                                else f"model_margin_short:{float(served['p']):.3f}<{price + margin:.3f}")
                 if refusal is None:
-                    cap = min(price + slippage, MAX_PRICE) if tier in DIRECTION_TIERS else p_cap
+                    cap = (min(price + slippage, MAX_PRICE) if (ungated or tier in DIRECTION_TIERS)
+                           else p_cap)
             leg_stake = (stake * multipliers[tier]) if (tiered and tier) else stake
             scaled = round(leg_stake / cap, 6) if refusal is None and cap else None
+            if ungated and scaled is not None:
+                # Charter 268: the flat stake is never under the venue's minimum order.
+                scaled = max(scaled, min_shares)
             admitted += int(refusal is None)
             conn.execute(
                 f"INSERT OR IGNORE INTO {SOURCE_TABLE}(source_key, source_user, source_ts, source_at_utc,"
@@ -1242,6 +1274,7 @@ def execute_copy_follow(
         stake_tier_multipliers(cfg)  # a malformed tier table stops the lane, loudly
         big_episode = big_episode_rule(cfg)
     cluster_rule = str(cfg["rule"]) in CLUSTER_RULES
+    ungated = str(cfg["rule"]) == RULE_V4
     if cluster_rule:
         users = [str(u).strip().lower() for u in (cfg.get("source_users") or ()) if str(u).strip()]
         for candidate in users:
@@ -1304,9 +1337,10 @@ def execute_copy_follow(
     unlimited_day = daily_cap is None or not (float(daily_cap) > 0.0)
     budget_left = math.inf if unlimited_day else float(daily_cap) - lane_cost_today(target_conn, now_utc=now_utc)
     tier_rank = {tier: i for i, tier in enumerate(TIER_ORDER)}
-    ranking = ((lambda kv: (tier_rank.get(kv[1].get("stake_tier") or TIER_PROBABILITY, len(TIER_ORDER)),
-                            -float(kv[1].get("size_multiplier") or 1.0),
-                            -(kv[1].get("model_margin") or 0.0))) if cluster_rule
+    ranking = ((lambda kv: (kv[1]["last_ts"] or 0, kv[0])) if ungated  # charter 268: as the episodes appeared
+               else (lambda kv: (tier_rank.get(kv[1].get("stake_tier") or TIER_PROBABILITY, len(TIER_ORDER)),
+                                 -float(kv[1].get("size_multiplier") or 1.0),
+                                 -(kv[1].get("model_margin") or 0.0))) if cluster_rule
                else (lambda kv: -(kv[1]["last_ts"] or 0)))
     for token, want in sorted(targets.items(), key=ranking):
         station, day, bucket, side = want["station_id"], want["event_date"], want["bucket"], want["side"]
@@ -1341,6 +1375,9 @@ def execute_copy_follow(
             plan = {"refusal": "no_source_sell_price"}
         elif take_only and action == "BUY" and take_window > 0.0 and now_ts - float(want["last_ts"]) > take_window:
             plan = {"refusal": "take_window_passed"}
+        elif ungated and side not in V4_SIDES:
+            # Charter 268: a NO episode admitted under an earlier rule is not sent under v4.
+            plan = {"refusal": f"side_not_followed:{side}"}
         elif sends >= int(cfg.get("max_sends_per_pass") or 0):
             plan = {"refusal": "pass_send_limit"}
         elif _unsent_recently(target_conn, token, now_utc=now_utc,
@@ -1364,9 +1401,10 @@ def execute_copy_follow(
                 elif action == "BUY":
                     row["source_price"] = want["buy_price"]
                     cap = min(float(want["buy_price"]) + slippage, MAX_PRICE)
-                    if cluster_rule and want.get("stake_tier") in DIRECTION_TIERS:
+                    if cluster_rule and (ungated or want.get("stake_tier") in DIRECTION_TIERS):
                         # Charter 266: a direction tier was admitted on the direction at the
-                        # trade's instant; our probability is recorded, never a gate.
+                        # trade's instant; charter 268's v4 on nothing of ours at all.  Our
+                        # probability is recorded, never a gate.
                         served = served_side_probability(
                             target_conn, station_id=station, event_date=day, bucket=bucket, side=side,
                             stages=stages, now_utc=now_utc,
@@ -1511,9 +1549,12 @@ __all__ = [
     "RULE_V1",
     "RULE_V2",
     "RULE_V3",
+    "RULE_V4",
     "TIER_MODEL",
     "TIER_MOMENTUM",
+    "TIER_FLAT",
     "TIER_PROBABILITY",
+    "V4_SIDES",
     "big_episode_rule",
     "cluster_buy_flow",
     "direction_stake_tier",
