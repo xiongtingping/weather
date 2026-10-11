@@ -737,7 +737,7 @@ OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast
 # board's spend is counted and bounded, and a spent day is answered from the
 # ledger without a request.  The board never marks the day spent for the
 # production lanes; a daily refusal it meets itself is held here, in process,
-# until the next UTC midnight.
+# until the next UTC midnight or one cache period, whichever is sooner.
 QUOTA_LANE = "station_day_board"
 _DAY_REFUSED_UNTIL: list[str] = []
 # Measured sunshine (user 2026-10-09「实况日照数据源是什么？感觉有点高了」): the
@@ -834,9 +834,12 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
         except Exception:  # noqa: BLE001 -- the status line still says something
             body = ""
         if quota.classify(body, exc.code) == "day":
-            midnight = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0)
-            _DAY_REFUSED_UNTIL[:] = [midnight.isoformat()]
+            now = datetime.now(timezone.utc)
+            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            # Asked again after one cache period at most: if the aggregator's
+            # day does not turn at 00:00Z the panel is dark for half an hour,
+            # not a day.
+            _DAY_REFUSED_UNTIL[:] = [min(midnight, now + timedelta(seconds=FORECAST_CACHE_SECONDS)).isoformat()]
             out = {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
         else:
             out = {"available": False, "reason": f"HTTPError {exc.code}: {(body or str(exc))[:120]}"}

@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
 
 import pytest
@@ -69,6 +70,8 @@ def test_a_daily_refusal_is_held_in_process_and_not_marked_for_production(ledger
     assert first["reason"] == second["reason"] == "Open-Meteo 当日额度已满，00:00Z 恢复"
     assert len(calls) == 1
     assert Q.exhausted(path=ledger) is False
+    held = datetime.fromisoformat(B._DAY_REFUSED_UNTIL[0])
+    assert held - datetime.now(timezone.utc) <= timedelta(seconds=B.FORECAST_CACHE_SECONDS)
 
 
 def test_a_minute_refusal_says_what_the_aggregator_said(ledger, monkeypatch) -> None:
