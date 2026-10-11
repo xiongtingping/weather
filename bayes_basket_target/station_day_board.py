@@ -730,6 +730,16 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
 FORECAST_CACHE_SECONDS = 1800.0
 _FORECAST_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
+# The forecast call shares the egress address's daily allowance with the
+# relay lanes (2026-10-11: a research pull spent the day at 09:41Z and this
+# panel read 「HTTP Error 429: Too Many Requests」 until midnight).  It is
+# charged to its own lane of the shared ledger (open_meteo_quota), so the
+# board's spend is counted and bounded, and a spent day is answered from the
+# ledger without a request.  The board never marks the day spent for the
+# production lanes; a daily refusal it meets itself is held here, in process,
+# until the next UTC midnight.
+QUOTA_LANE = "station_day_board"
+_DAY_REFUSED_UNTIL: list[str] = []
 # Measured sunshine (user 2026-10-09「实况日照数据源是什么？感觉有点高了」): the
 # METAR-inferred figure read 483-807 W/m2 at ZUUU 10-09 10-13h against a
 # satellite 83-254 -- the report sees only low cloud, and haze and the
@@ -783,10 +793,23 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     from urllib.parse import urlencode  # noqa: PLC0415
     from urllib.request import Request, urlopen  # noqa: PLC0415
 
+    from urllib.error import HTTPError  # noqa: PLC0415
+
+    from . import open_meteo_quota as quota  # noqa: PLC0415
+
     key = (f"{lat:.3f},{lon:.3f}", day)
     hit = _FORECAST_CACHE.get(key)
     if hit and time.monotonic() - hit[0] < FORECAST_CACHE_SECONDS:
         return hit[1]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if _DAY_REFUSED_UNTIL and now_iso < _DAY_REFUSED_UNTIL[0]:
+        return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
+    try:
+        quota.charge(QUOTA_LANE, 1)
+    except quota.QuotaRefused as exc:
+        spent_day = str(exc) == "open_meteo_day_exhausted"
+        return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复" if spent_day
+                else f"看板当日 Open-Meteo 份额已用完（{str(exc).rsplit(':', 1)[-1]}）"}
     fields = ["cloud_cover", "cloud_cover_low", "shortwave_radiation", "temperature_2m"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
@@ -805,6 +828,18 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
             data = json.loads(resp.read().decode("utf-8"))
         out = {"available": "hourly" in data, "hourly": data.get("hourly") or {},
                "fetched_at_utc": _iso(datetime.now(timezone.utc))}
+    except HTTPError as exc:
+        try:
+            body = exc.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001 -- the status line still says something
+            body = ""
+        if quota.classify(body, exc.code) == "day":
+            midnight = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0)
+            _DAY_REFUSED_UNTIL[:] = [midnight.isoformat()]
+            out = {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
+        else:
+            out = {"available": False, "reason": f"HTTPError {exc.code}: {(body or str(exc))[:120]}"}
     except Exception as exc:  # noqa: BLE001 -- the timeline says why it is empty
         out = {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
     if out.get("available"):
