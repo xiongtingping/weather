@@ -2,7 +2,9 @@
 """Capture the deterministic-forecast family's global members (charter 201).
 
 AIFS Single from ECMWF's own open data (GCS mirror), and the relayed IFS 9 km
-and UKMO 10 km runs from the Open-Meteo single-runs endpoint, at every roster
+and UKMO 10 km runs from the Open-Meteo single-runs endpoint, and (charter 267
+(二)) the native IFS HRES / GFS / AIGFS / GDPS runs for the listing-time
+forecast F -- read by F only, never by P0, P0-M or P1 -- at every roster
 station with coordinates, every run while it is current, for every listed
 target day it reaches (D-1 .. D+2).  Rows land in the regional point lane's
 table beside HRRR, NBM, ICON-EU, MSM and CMA; none of them reaches P1 (its
@@ -37,12 +39,20 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 )
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10")
+# Charter 267 (二): plus the native deterministic runs for the listing-time F.
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS")
 # Runs a pass may take per product: the newest, and one it missed.
 MAX_RUNS_PER_PRODUCT = 2
 # Writer-free seconds per product; the pass as a whole stays inside the
 # sweep's timeout with room for the relay's pauses.
 BUDGET_SEC_PER_PRODUCT = 240.0
+# Charter 267 (二): a native deterministic run of the whole roster for D-1..D+2
+# measured 6-31 s (AIGFS 6, GFS 12, HRES 17, GDPS 31; 2026-10-11) once each
+# field is decoded once for every station; two runs fit well inside this, and
+# the pass's worst case (3 x 240 + 4 x 120 plus the per-product margin) stays
+# under the sweep's 1800 s timeout.  The lane commits before each next fetch
+# (WRITER_TURN_EXEMPT_SWEEPS), so a fetch never holds the writer.
+NATIVE_BUDGET_SEC_PER_PRODUCT = 120.0
 
 
 def main() -> int:
@@ -59,11 +69,14 @@ def main() -> int:
     from bayes_basket_target.deterministic_forecast_family import (  # noqa: PLC0415
         product_roster,
     )
+    from bayes_basket_target.native_deterministic_point_archive import (  # noqa: PLC0415
+        close_client as close_native,
+    )
     from bayes_basket_target.open_meteo_relay_archive import (  # noqa: PLC0415
         close_client as close_relay,
     )
     from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
-        RELAY_PRODUCTS, capture_p1, ensure_schema, plan_p1,
+        NATIVE_DETERMINISTIC_PRODUCTS, RELAY_PRODUCTS, capture_p1, ensure_schema, plan_p1,
     )
 
     now = datetime.now(timezone.utc)
@@ -101,10 +114,14 @@ def main() -> int:
             return 0
         conn.execute("PRAGMA busy_timeout=60000")
         for product, stations in plans.items():
-            set_pass_deadline(BUDGET_SEC_PER_PRODUCT + 60.0)
+            budget = (
+                NATIVE_BUDGET_SEC_PER_PRODUCT
+                if product in NATIVE_DETERMINISTIC_PRODUCTS else BUDGET_SEC_PER_PRODUCT
+            )
+            set_pass_deadline(budget + 60.0)
             receipt = capture_p1(
                 conn, product=product, now=now, stations=stations,
-                max_runs=int(args.max_runs), budget_sec=BUDGET_SEC_PER_PRODUCT,
+                max_runs=int(args.max_runs), budget_sec=budget,
                 dry_run=args.dry_run,
             )
             set_pass_deadline(None)
@@ -125,6 +142,7 @@ def main() -> int:
         return 0
     finally:
         close_aifs()
+        close_native()
         close_relay()
         conn.close()
 

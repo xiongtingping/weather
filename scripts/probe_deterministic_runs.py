@@ -26,18 +26,20 @@ if str(ROOT) not in sys.path:
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATE = ROOT / "data" / "runtime" / "deterministic_run_probe.json"
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10")
+# Charter 267 (二): the native deterministic products ring the same bell.
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS")
 
 
 def main() -> int:
     from bayes_basket_target import aifs_single_point_archive as aifs  # noqa: PLC0415
+    from bayes_basket_target import native_deterministic_point_archive as native  # noqa: PLC0415
     from bayes_basket_target import open_meteo_quota  # noqa: PLC0415
     from bayes_basket_target import open_meteo_relay_archive as relay  # noqa: PLC0415
     from bayes_basket_target.deterministic_forecast_family import (  # noqa: PLC0415
         product_roster,
     )
     from bayes_basket_target.regional_point_lane import (  # noqa: PLC0415
-        RELAY_PRODUCTS, plan_p1,
+        NATIVE_DETERMINISTIC_PRODUCTS, RELAY_PRODUCTS, plan_p1,
     )
 
     now = datetime.now(timezone.utc)
@@ -57,6 +59,8 @@ def main() -> int:
                     entry["newest_wanted_run_utc"] = newest.strftime("%Y-%m-%dT%H:%M:%SZ")
                     if product == "AIFS":
                         entry["published"] = bool(aifs.run_published(newest))
+                    elif product in NATIVE_DETERMINISTIC_PRODUCTS:
+                        entry["published"] = bool(native.run_published(product, newest))
                     elif product in RELAY_PRODUCTS:
                         if open_meteo_quota.exhausted(now):
                             entry["error"] = "open_meteo_day_exhausted"
@@ -71,6 +75,7 @@ def main() -> int:
         state["error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     finally:
         aifs.close_client()
+        native.close_client()
         relay.close_client()
     STATE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE.with_suffix(".tmp")

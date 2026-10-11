@@ -1411,6 +1411,18 @@ LISTING_TRIGGER_ENABLED = (
     os.environ.get("PM_NWP_LISTING_TRIGGER", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
 )
+# Charter 267 (一): the ~05:00Z batch lists two days ahead while ECMWF's run
+# of that morning is hours from publication and the day's D-3 18Z bank is
+# still being topped up by the follow job queued beside the pass, so the
+# first listing pass of every batch failed whole on the required family
+# (2026-10-09/10/11: ``official_native_forward_required_family_unavailable:
+# ECMWF``) and the stations waited for an unrelated later listing, the
+# reseat or the rotation.  Such a failure re-arms the day's listing trigger:
+# its stations leave the attempted record and the pass is asked again every
+# refresh once the floor has passed, a bounded number of times.
+LISTING_RETRY_FAILURE_MARK = "official_native_forward_required_family_unavailable"
+LISTING_RETRY_AFTER_SEC = 45.0
+LISTING_RETRY_MAX = 20
 # Which of an ICON/ECCC run's leads the main pass reads as the lead's own
 # cycle (``RUN_CYCLE_HOUR_BY_LEAD`` in both archive modules); any other cycle
 # is a followed run and belongs to the follow lane (charter 192).
@@ -4191,6 +4203,24 @@ def _probe_keeps_rung(
     return False
 
 
+def _listing_pass_needs_retry(outcome: Mapping[str, Any]) -> bool:
+    """Charter 267 (一): a listing pass that failed only because a required
+    family's newest run is not on the server yet and nothing is banked for the
+    day.  Read off the rung trace: the outcome's own reason keeps only the
+    tail of the capture's message, which cuts the family mark off."""
+
+    if str(outcome.get("state") or "") != "FAILED":
+        return False
+    if not str(outcome.get("trigger") or "").startswith("listing:"):
+        return False
+    rungs = outcome.get("rung_trace") or ()
+    return any(
+        LISTING_RETRY_FAILURE_MARK in str((rung or {}).get("stdout_reason") or "")
+        for rung in rungs
+        if isinstance(rung, Mapping)
+    )
+
+
 def _official_native_run_ladder(
     *,
     event_date: str,
@@ -6553,8 +6583,19 @@ class TargetProductionWorker:
                 continue
             candidates.setdefault(day, []).append(station)
         outcomes: list[dict[str, Any]] = []
+        retry_map = self._listing_retry_map()
         for day in sorted(candidates):
             stations = candidates[day]
+            retry = retry_map.get(day)
+            if retry and time.monotonic() < float(retry.get("after_mono") or 0.0):
+                outcomes.append({
+                    "event_date": day,
+                    "station_id": stations[0],
+                    "stations_without_packet": len(stations),
+                    "state": "LISTING_RETRY_WAIT",
+                    "retry": int(retry.get("count") or 0),
+                })
+                continue
             try:
                 lead_days = max(0, min(2, (date.fromisoformat(day) - today).days))
             except ValueError:
@@ -6598,6 +6639,33 @@ class TargetProductionWorker:
             "follow_retries": follow_retries,
             **boundary,
         }
+
+    def _listing_retry_map(self) -> dict[str, dict[str, Any]]:
+        """Charter 267 (一): re-armed listing days, by event date."""
+
+        retry_map = getattr(self, "_official_native_listing_retry", None)
+        if retry_map is None:
+            retry_map = {}
+            self._official_native_listing_retry = retry_map
+        return retry_map
+
+    def _arm_listing_retry(self, event_date: str) -> None:
+        """Let the day's listing pass run again after the floor, a bounded number of times."""
+
+        retry_map = self._listing_retry_map()
+        previous = retry_map.get(event_date) or {}
+        count = int(previous.get("count") or 0) + 1
+        if count > LISTING_RETRY_MAX:
+            return
+        retry_map[event_date] = {
+            "count": count,
+            "after_mono": time.monotonic() + LISTING_RETRY_AFTER_SEC,
+            "since_utc": utc_now(),
+        }
+        attempted = getattr(self, "_official_native_listing_attempts", None)
+        if attempted:
+            for item in [item for item in attempted if item[0] == event_date]:
+                attempted.discard(item)
 
     def _enqueue_listing_follow(self, *, event_date: str) -> str:
         """Charter 263 (四): queue the day's follow job for a listing's gaps."""
@@ -6809,6 +6877,10 @@ class TargetProductionWorker:
                 "completed_at_utc": as_of_utc,
                 **outcome,
             }
+            if _listing_pass_needs_retry(outcome):
+                self._arm_listing_retry(key[0])
+            elif str(outcome.get("state") or "") == "CAPTURED":
+                self._listing_retry_map().pop(key[0], None)
             # Charter 195 (四): the network, not the run -- the day keeps
             # neither the floor nor the walk; it backs off and is re-queued
             # when the egress answers.
@@ -7464,6 +7536,7 @@ class TargetProductionWorker:
                 **outcome,
                 "run_init_utc_by_family": dict(family_runs),
                 "rung_trace": list(rung_trace),
+                "trigger": trigger,
             }
             self._log_capture_attempt({
                 "event_date": event_date,

@@ -428,12 +428,25 @@ def test_feature_at_reads_the_newest_complete_run_knowable_at_the_clock():
 
 def test_the_global_roster_leaves_out_a_station_it_cannot_place():
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE calibration_station_registry(station_id TEXT, timezone_name TEXT)")
-    conn.executemany("INSERT INTO calibration_station_registry VALUES(?,?)",
+    conn.execute("CREATE TABLE calibration_station_market_timezone_binding(station_id TEXT, settlement_timezone TEXT)")
+    conn.executemany("INSERT INTO calibration_station_market_timezone_binding VALUES(?,?)",
                      [("SBGR", "America/Sao_Paulo"), ("ZZZZ", "Asia/Jerusalem")])
     roster = FAM.global_roster(conn)
-    assert [s[0] for s in roster] == ["SBGR"], "ZZZZ has a registry row but no coordinates"
+    assert [s[0] for s in roster] == ["SBGR"], "ZZZZ has a binding but no coordinates"
     assert roster[0][3] == "America/Sao_Paulo"
+
+
+def test_the_global_roster_takes_the_bound_zone_not_the_registry_seed_text():
+    """Charter 267 (四): the registry's ``timezone_name`` mislabels most
+    stations America/New_York; the roster reads the market binding only."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE calibration_station_registry(station_id TEXT, timezone_name TEXT)")
+    conn.execute("INSERT INTO calibration_station_registry VALUES('EGLC','America/New_York')")
+    conn.execute("CREATE TABLE calibration_station_market_timezone_binding(station_id TEXT, settlement_timezone TEXT)")
+    conn.execute("INSERT INTO calibration_station_market_timezone_binding VALUES('EGLC','Europe/London')")
+    roster = {s[0]: s[3] for s in FAM.global_roster(conn)}
+    assert roster["EGLC"] == "Europe/London"
 
 
 def test_the_family_is_not_an_ensemble():
@@ -444,7 +457,12 @@ def test_the_family_is_not_an_ensemble():
     for product in ("AIFS", "IFS9KM", "UKMO10"):
         assert L.SYSTEM_IDS[product] not in REGIONAL_DETERMINISTIC_SYSTEM_IDS
     assert {"CMA", "IFS9KM", "UKMO10"} == L.RELAY_PRODUCTS
-    assert FAM.FAMILY_SYSTEM_IDS == set(L.SYSTEM_IDS.values())
+    # Charter 267 (二): the native deterministic runs share the lane and stay
+    # out of the P0 feature; every other system is the feature's.
+    native = {L.SYSTEM_IDS[p] for p in L.NATIVE_DETERMINISTIC_PRODUCTS}
+    assert FAM.FAMILY_SYSTEM_IDS == set(L.SYSTEM_IDS.values()) - native
+    for system_id in native:
+        assert system_id not in REGIONAL_DETERMINISTIC_SYSTEM_IDS
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +505,9 @@ def test_a_capture_pass_skips_the_relays_on_an_exhausted_day(monkeypatch, capsys
     monkeypatch.setattr(FAM, "product_roster", lambda conn, product: [("SBGR", -23.4, -46.5, "America/Sao_Paulo")])
     monkeypatch.setattr(sys, "argv", ["capture_deterministic_forward.py", "--db", ":memory:"])
     assert script.main() == 0
-    assert planned == ["AIFS"], "the relays are not even planned once the day is gone"
+    assert planned == ["AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS"], (
+        "the relays are not even planned once the day is gone; the publishers' own objects are"
+    )
 
 
 def test_a_six_hourly_run_that_holds_the_afternoon_step_is_peak_complete():

@@ -32,6 +32,22 @@ def _main() -> ast.FunctionDef:
     )
 
 
+def _gates_of(submit_text: str) -> list[ast.If]:
+    """Every innermost ``if`` whose body submits the named future."""
+
+    return [
+        node for node in ast.walk(_main())
+        if isinstance(node, ast.If) and any(
+            submit_text in ast.unparse(stmt) for stmt in node.body
+        ) and not any(
+            isinstance(inner, ast.If)
+            and inner is not node
+            and any(submit_text in ast.unparse(s) for s in inner.body)
+            for inner in ast.walk(node)
+        )
+    ]
+
+
 def _gate_of(submit_text: str) -> ast.If:
     """The ``if`` whose body submits the named future."""
 
@@ -70,10 +86,14 @@ def test_the_production_gate_does_not_wait_for_the_forecast() -> None:
 
 
 def test_the_sweep_gate_does_not_wait_for_the_forecast() -> None:
-    gate = _gate_of("sweep_executor.submit(")
-    condition = ast.unparse(gate.test)
-    assert 'writer_turn == \'sweeps\'' in condition
-    assert "forecast_future" not in condition, condition
+    # Two gates submit sweeps since 2026-10-05 (308ab7de): the writer-turn
+    # gate and the writer-independent one (due is enough).  Neither waits for
+    # the forecast; the writer-turn one is the sweeps lane's turn.
+    conditions = [ast.unparse(gate.test) for gate in _gates_of("sweep_executor.submit(")]
+    assert len(conditions) == 2, conditions
+    assert any("writer_turn == 'sweeps'" in condition for condition in conditions), conditions
+    for condition in conditions:
+        assert "forecast_future" not in condition, condition
 
 
 def test_the_forecast_is_never_a_writer_candidate() -> None:

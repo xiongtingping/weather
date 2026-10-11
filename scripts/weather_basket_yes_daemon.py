@@ -125,7 +125,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_TIEBREAK,
     lane_enabled,
 )
-from bayes_basket_target import direction_signal, nwp_arrival_probe
+from bayes_basket_target import direction_signal, listing_forecast_f, nwp_arrival_probe
 from bayes_basket_target.copy_follow_feed import (
     FEED as COPY_FOLLOW_FEED,
     POLL_INTERVAL_SECONDS as COPY_FOLLOW_FEED_INTERVAL_SEC,
@@ -933,6 +933,11 @@ DETERMINISTIC_PROBE_SWEEPS = {
     "AIFS": "capture_deterministic_forward",
     "IFS9KM": "capture_deterministic_forward",
     "UKMO10": "capture_deterministic_forward",
+    # Charter 267 (二): native deterministic runs for the listing-time F.
+    "IFS_HRES": "capture_deterministic_forward",
+    "GFS": "capture_deterministic_forward",
+    "AIGFS": "capture_deterministic_forward",
+    "GDPS": "capture_deterministic_forward",
 }
 
 
@@ -2686,7 +2691,14 @@ def _audit_calibration_health(
             _live_activations,
         )
 
-        conn = sqlite3.connect(f"file:{DEFAULT_TARGET_DB}?mode=ro", uri=True)
+        # The worker's own database, as the physics refresh reads (09-14): a
+        # stand-in worker in a test never opens the production SSOT -- four
+        # forecast-cycle test files sat minutes in this audit's GROUP BY over
+        # the live selection evidence (found 2026-10-11).
+        database = getattr(worker, "db_path", None)
+        if not database:
+            raise FileNotFoundError("worker_has_no_database")
+        conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
         try:
             live = _live_activations(conn, started)
             findings = (
@@ -3916,6 +3928,11 @@ def copy_follow_feed_users() -> list[str]:
 #: Charter 266: how often the resident looks for stations whose direction-
 #: signal physics are due (each is re-read after ``REFRESH_SECONDS``).
 DIRECTION_PHYSICS_CHECK_SEC = 600.0
+
+
+#: Charter 267 (三): how often the resident recomputes the listing-time
+#: forecast F (read-only SSOT reads, one runtime file; ~1 s once warm).
+LISTING_FORECAST_F_CHECK_SEC = 600.0
 
 
 def direction_physics_wanted() -> bool:
@@ -6413,6 +6430,14 @@ def main() -> int:
         )
         direction_physics_future: Any = None
         next_direction_physics = 0.0
+        # Charter 267 (三): the listing-time forecast F -- read-only SSOT
+        # reads and one runtime file, so its own single-worker executor.
+        listing_f_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="listing-forecast-f",
+        )
+        listing_f_future: Any = None
+        next_listing_f = 0.0
         argmax_executor = ThreadPoolExecutor(
             max_workers=1,
             thread_name_prefix="reported-trajectory-asos-argmax",
@@ -7365,6 +7390,19 @@ def main() -> int:
                         direction_signal.refresh_fleet_signal, DEFAULT_TARGET_DB,
                     )
                 next_direction_physics = time.monotonic() + DIRECTION_PHYSICS_CHECK_SEC
+            if storage_ok and now_mono >= next_listing_f and (
+                listing_f_future is None or listing_f_future.done()
+            ):
+                if listing_f_future is not None:
+                    try:
+                        state["listing_forecast_f"] = listing_f_future.result()
+                    except Exception as exc:  # noqa: BLE001 -- published, never raised
+                        state["listing_forecast_f"] = {
+                            "state": "failed", "reason": f"{type(exc).__name__}:{exc}"[:160],
+                        }
+                    listing_f_future = None
+                listing_f_future = listing_f_executor.submit(listing_forecast_f.refresh, DEFAULT_TARGET_DB)
+                next_listing_f = time.monotonic() + LISTING_FORECAST_F_CHECK_SEC
             if storage_ok and "awc" in lane_workers and now_mono >= next_source.get("awc", now_mono) and "awc" not in lane_futures:
                 lane_futures["awc"] = executor.submit(lane_workers["awc"].poll)
                 next_source["awc"] = time.monotonic() + awc_poll_interval(config, datetime.now(timezone.utc))
@@ -7709,6 +7747,7 @@ def main() -> int:
             "nwp_probe_executor",
             "copy_feed_executor",
             "direction_physics_executor",
+            "listing_f_executor",
             "registry_executor",
             "argmax_executor",
             "sweep_executor",

@@ -13262,6 +13262,20 @@ REGIONAL_LANES = {
     "UKMO_GLOBAL_10KM_RELAY_POINT": {
         "label": "UKMO 10km（转发）", "region": "全球",
         "transport": "Open-Meteo 转发·按名取轮", "backfillable": False},
+    # Charter 267 (二): native deterministic runs for the listing-time F only
+    # -- neither the P0 feature nor P1 reads them.
+    "ECMWF_IFS_HRES_NATIVE_POINT": {
+        "label": "IFS HRES 0.25°（F）", "region": "全球",
+        "transport": "ECMWF 开放数据 GCS·索引区间", "backfillable": True},
+    "NOAA_GFS_025_NATIVE_POINT": {
+        "label": "GFS 0.25°（F）", "region": "全球",
+        "transport": "NOAA S3·idx 区间", "backfillable": True},
+    "NOAA_AIGFS_025_NATIVE_POINT": {
+        "label": "AIGFS 0.25°（F）", "region": "全球",
+        "transport": "NOAA S3·idx 区间·6 小时步", "backfillable": True},
+    "ECCC_GDPS_15KM_NATIVE_POINT": {
+        "label": "GDPS 15km（F）", "region": "全球",
+        "transport": "ECCC Datamart·整文件", "backfillable": False},
 }
 _SWEEP_MODEL_TO_SYSTEM = {
     "jma_msm": "JMA_MSM_POINT",
@@ -13309,6 +13323,10 @@ def _capture_rosters() -> dict[str, set[str]]:
         "ECMWF_AIFS_SINGLE_POINT": _global_family_roster(),
         "ECMWF_IFS_9KM_RELAY_POINT": _global_family_roster(),
         "UKMO_GLOBAL_10KM_RELAY_POINT": _global_family_roster(),
+        "ECMWF_IFS_HRES_NATIVE_POINT": _global_family_roster(),
+        "NOAA_GFS_025_NATIVE_POINT": _global_family_roster(),
+        "NOAA_AIGFS_025_NATIVE_POINT": _global_family_roster(),
+        "ECCC_GDPS_15KM_NATIVE_POINT": _global_family_roster(),
     }
     return rosters
 

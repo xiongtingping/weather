@@ -47,19 +47,38 @@ FAMILY: Mapping[str, Mapping[str, Any]] = {
     "AIFS": {"publisher": "ECMWF", "relay": False, "coverage": "global", "step_hours": 6},
     "IFS9KM": {"publisher": "ECMWF", "relay": True, "coverage": "global", "step_hours": 1},
     "UKMO10": {"publisher": "Met Office", "relay": True, "coverage": "global", "step_hours": 1},
+    # Charter 267 (二): native deterministic global runs captured for the
+    # listing-time forecast F (``listing_forecast_f``).  ``p0_feature`` False:
+    # captured by this family's lane, never read by the P0 feature, its gate or
+    # its shadow (charter 201's readers take ``FAMILY_SYSTEM_IDS``).
+    "IFS_HRES": {"publisher": "ECMWF", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    "GFS": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    "AIGFS": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 6, "p0_feature": False},
+    "GDPS": {"publisher": "ECCC", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
 }
 PRODUCT_BY_SYSTEM = {SYSTEM_IDS[product]: product for product in FAMILY}
-FAMILY_SYSTEM_IDS = frozenset(PRODUCT_BY_SYSTEM)
+# Charter 201's P0 feature, gate and shadow read only these.
+FAMILY_SYSTEM_IDS = frozenset(
+    SYSTEM_IDS[product] for product, meta in FAMILY.items() if meta.get("p0_feature", True)
+)
+# Charter 267: the deterministic runs the listing-time forecast F reads.
+F_SYSTEM_IDS = frozenset(
+    SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS")
+)
 # The local afternoon a day's maximum lives in (charter 95's peak window).
 PEAK_START_HOUR, PEAK_END_HOUR = 11, 19
 
 
 def global_roster(conn: sqlite3.Connection) -> list[tuple[str, float, float, str]]:
-    """Every roster station with coordinates and a registry timezone.
+    """Every roster station with coordinates and a bound settlement timezone.
 
-    Fail-soft per station: a listed station without coordinates (or without a
-    registry row) is left out, never guessed -- the same rule as every
-    capture lane that reads the roster.
+    The zone is the station's market timezone binding (AGENTS: timezones only
+    from ``calibration_station_market_timezone_binding``): the registry's
+    ``timezone_name`` is the seed pack's text and mislabels most stations
+    ``America/New_York`` -- read until charter 267 (四), it cut every non-US
+    station's local day five to thirteen hours off.  Fail-soft per station: a
+    listed station without coordinates or without a binding is left out,
+    never guessed -- the same rule as every capture lane that reads the roster.
     """
 
     from .station_registry import _COORDINATES  # noqa: PLC0415
@@ -67,7 +86,7 @@ def global_roster(conn: sqlite3.Connection) -> list[tuple[str, float, float, str
     zones = {
         str(station).upper(): str(zone)
         for station, zone in conn.execute(
-            "SELECT station_id, timezone_name FROM calibration_station_registry"
+            "SELECT station_id, settlement_timezone FROM calibration_station_market_timezone_binding"
         )
     }
     return [

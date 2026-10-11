@@ -84,7 +84,10 @@ def test_the_constants_are_the_global_ones() -> None:
 
 
 def test_every_regional_lane_is_calibrated() -> None:
-    assert D.CALIBRATED_SYSTEMS == frozenset(LANE.SYSTEM_IDS.values())
+    # Charter 267 (二): the native deterministic runs feed only the listing-
+    # time F, which carries its own correction; no feature reads a debias of them.
+    native = {LANE.SYSTEM_IDS[p] for p in LANE.NATIVE_DETERMINISTIC_PRODUCTS}
+    assert D.CALIBRATED_SYSTEMS == frozenset(LANE.SYSTEM_IDS.values()) - native
     assert "CMA_GRAPES_GLOBAL_POINT" in D.CALIBRATED_SYSTEMS
     assert "NCEP_HRRR_POINT" in D.CALIBRATED_SYSTEMS, (
         "the first fit held HRRR out because shrinking its opposite-signed "
