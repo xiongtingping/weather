@@ -391,3 +391,69 @@ for sigma in (0.5, 0.6, 0.75):
         ok += ("No" if e_no > e_yes else "Yes") == c["side"]
     print(f"       sigma={sigma}: YES legs belief edge {100 * statistics.mean(ey):+.1f} c (positive {sum(1 for x in ey if x > 0) / len(ey):.2f});"
           f" NO legs {100 * statistics.mean(en):+.1f} c (positive {sum(1 for x in en if x > 0) / len(en):.2f}); side rule accuracy {ok / max(1, n):.2f} (n={n})")
+
+# ---------------------------------------------------------------- post-hoc 35.4 (熊先生 10-11「不要用我目前系统的信念……他是十大确定性模型」)
+# The belief of a ten-deterministic-model user: the share of the models whose (calibrated) forecast lands in each bucket.
+def votes(case, cal):
+    r = case["r"]
+    if cal == "raw+0.8+0.3x":
+        xs = [case["raw"][m] + 0.8 + 0.3 * case["b"][m] for m in case["raw"]]
+    elif cal == "raw+station bias":
+        xs = [case["raw"][m] + case["b"][m] for m in case["raw"]]
+    else:
+        xs = [case["raw"][m] + 0.8 for m in case["raw"]]
+    cnt = collections.Counter(bucket_i(r, x) for x in xs)
+    n = len(xs)
+    return [cnt.get(i, 0) / n for i in range(len(r["labels"]))]
+
+
+print("\n== post-hoc 35.4: belief = vote share of the ten deterministic models (no kernel), three calibrations")
+for cal in ("raw+0.8+0.3x", "raw+0.8", "raw+station bias"):
+    ey, en, top_hit, trio_most = [], [], 0, 0
+    for c in cases:
+        v = votes(c, cal)
+        if c["side"] == "Yes":
+            ey.append(v[c["ch"]] - c["r"]["first"]["price"])
+            top = max(range(len(v)), key=lambda i: (v[i], -abs(i - c["ch"]) * 0))
+            top_hit += c["ch"] == max(range(len(v)), key=lambda i: v[i])
+        else:
+            en.append((1 - v[c["ch"]]) - c["r"]["first"]["price"])
+    nY = len(ey)
+    ok = n = 0
+    for c, lg in vcases:
+        v = votes(c, cal)
+        top = max(range(len(v)), key=lambda i: v[i])
+        ya = {i: price for i, s, price in lg if s == "Yes"}
+        na = {i: price for i, s, price in lg if s == "No"}
+        if top not in ya or not na:
+            continue
+        e_yes = v[top] - ya[top]
+        e_no = max((1 - v[i]) - price for i, price in na.items())
+        n += 1
+        ok += ("No" if e_no > e_yes else "Yes") == c["side"]
+    print(f"   {cal:18s} YES legs: vote edge at paid price {100 * statistics.mean(ey):+.1f} c (positive {sum(1 for x in ey if x > 0) / nY:.2f}),"
+          f" chosen = top-vote bucket {top_hit / nY:.2f} | NO legs: vote edge {100 * statistics.mean(en):+.1f} c (positive {sum(1 for x in en if x > 0) / len(en):.2f})"
+          f" | side rule 'NO if e_no > e_yes' {ok / max(1, n):.2f} (n={n})")
+# the vote share it bought at: does the YES price paid track the vote share of the bucket?
+print("   YES legs by the vote share of the bucket bought (raw+0.8+0.3x): n, mean price paid, realized hit")
+by = collections.defaultdict(list)
+for c in cases:
+    if c["side"] != "Yes" or not c["r"]["truth"]:
+        continue
+    v = votes(c, "raw+0.8+0.3x")[c["ch"]]
+    k = "0" if v == 0 else "0.1-0.2" if v <= 0.2 else "0.3-0.4" if v <= 0.4 else "0.5-0.6" if v <= 0.6 else "0.7+"
+    by[k].append((c["r"]["first"]["price"], 1.0 if c["r"]["truth"] == c["r"]["first"]["bucket"] else 0.0))
+for k in ("0", "0.1-0.2", "0.3-0.4", "0.5-0.6", "0.7+"):
+    if by[k]:
+        print(f"     vote share {k:7s} n={len(by[k]):3d}  price {statistics.mean(p for p, h in by[k]):.3f}  hit {statistics.mean(h for p, h in by[k]):.3f}")
+print("   NO legs by the vote share of the bucket shorted (raw+0.8+0.3x): n, mean NO price, bucket actually lost")
+by = collections.defaultdict(list)
+for c in cases:
+    if c["side"] != "No" or not c["r"]["truth"]:
+        continue
+    v = votes(c, "raw+0.8+0.3x")[c["ch"]]
+    k = "0" if v == 0 else "0.1-0.2" if v <= 0.2 else "0.3-0.4" if v <= 0.4 else "0.5+"
+    by[k].append((c["r"]["first"]["price"], 1.0 if c["r"]["truth"] != c["r"]["first"]["bucket"] else 0.0))
+for k in ("0", "0.1-0.2", "0.3-0.4", "0.5+"):
+    if by[k]:
+        print(f"     vote share {k:7s} n={len(by[k]):3d}  NO price {statistics.mean(p for p, h in by[k]):.3f}  lost {statistics.mean(h for p, h in by[k]):.3f}")
