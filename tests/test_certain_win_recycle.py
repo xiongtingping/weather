@@ -180,6 +180,10 @@ def test_every_eligible_held_leg_is_offered_at_0998_while_its_day_is_open() -> N
 
 def test_no_holding_recycles_its_own_token_once_and_never_the_yes_token(monkeypatch: pytest.MonkeyPatch) -> None:
     conn, canonical = _store(holdings={})
+    # A live NO: its YES is bid 0.40, not all but won (a YES bid of 0.99 or
+    # more makes the NO a dead leg, which is not offered).
+    _book(conn, observed_at="2026-09-16T09:29:40.000Z", bids={"25°C": [(0.40, 50.0)], "26°C": [(0.001, 30.0)]},
+          sequence=5)
     conn.execute(
         "UPDATE basket_target_market_registry SET registry_json=? WHERE outcome='25°C'",
         (json.dumps({"no_token": "no_t25", "order_min_size": 5,
@@ -460,7 +464,8 @@ def test_a_cycle_sends_at_most_its_cap_highest_bid_first(monkeypatch: pytest.Mon
         transport=lambda path, payload: (sent.append(payload["token_id"]), _resting(path, payload))[1],
     )
     assert sent == ["t25"] and receipt["deferred_to_next_cycle"] == 1
-    assert lane.MAX_SENDS_PER_CYCLE == 8
+    # User ruling 2026-10-11 「单轮不设置上限」: the lane's own pass is unbounded.
+    assert lane.MAX_SENDS_PER_CYCLE is None
 
 
 def test_disarmed_never_reaches_the_exchange(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -565,7 +570,7 @@ def test_a_leg_no_ledger_records_is_offered_from_the_account_itself() -> None:
     conn, canonical = _store(holdings={})
     conn.execute("DELETE FROM basket_target_market_registry")
     _canonical_with_tokens(canonical, [("25°C", "t25", "n25", 1), ("26°C", "t26", "n26", 1)])
-    _book(conn)
+    _book(conn, bids={"25°C": [(0.40, 50.0)], "26°C": [(0.001, 30.0)]})  # 25°C NO alive
     plans = lane.plan_certain_win_recycles(
         conn, canonical, now_utc=NOW,
         account_reader=lambda: {"t26": {"size": 12.345}, "n25": {"size": 7.0}, "elsewhere": {"size": 99.0}},
@@ -705,3 +710,78 @@ def test_a_leg_prices_on_the_publishers_book_when_the_committed_one_is_stale(mon
     # No publisher book for the scope: the committed one decides, as before.
     monkeypatch.setattr(tail, "live_ws_snapshot", lambda *_a, **_k: None)
     assert lane.plan_certain_win_recycles(conn, canonical, now_utc=NOW, ws_root={}) == []
+
+
+
+# User ruling 2026-10-11 「死腿就没必要卖了吧」: a leg the market prices at a cent
+# or less is not offered, and a 0.999 offer resting on it is cancelled.
+
+def _book_with_asks(conn, *, asks, bids=None, observed_at="2026-09-16T09:29:45.000Z", sequence=9):
+    bids = bids or {}
+    buckets = [
+        {"bucket": bucket, "token_id": TOKENS[bucket], "price_tick_size": 0.001, "min_order_size": 5.0,
+         "ask_levels": [{"price": p, "shares": 100.0} for p in asks.get(bucket, [])],
+         "bid_levels": [{"price": p, "shares": 100.0} for p in bids.get(bucket, [])]}
+        for bucket in TOKENS
+    ]
+    conn.execute(
+        "INSERT INTO basket_official_ws_snapshot VALUES(?,?,?,?,?,?,?,?)",
+        (f"snap_dead_{sequence}", ST, ED, TZ, sequence, observed_at, json.dumps(buckets), "COMMITTED"),
+    )
+
+
+def test_a_dead_leg_is_not_offered() -> None:
+    assert lane._dead_leg({"best_ask": 0.001, "best_bid": 0.0}, "YES")
+    assert lane._dead_leg({"best_ask": 0.01, "best_bid": 0.0}, "YES")
+    assert not lane._dead_leg({"best_ask": 0.03, "best_bid": 0.02}, "YES")
+    assert not lane._dead_leg({"best_ask": 1.0, "best_bid": 0.0}, "YES")      # nobody offers it
+    assert lane._dead_leg({"best_ask": 1.0, "best_bid": 0.995}, "NO")         # YES all but won
+    assert not lane._dead_leg({"best_ask": 0.001, "best_bid": 0.0}, "NO")     # its YES is dead: the NO wins
+    conn, canonical = _store(holdings={"25°C": 6.0, "26°C": 5.0})
+    _book_with_asks(conn, asks={"25°C": [0.95], "26°C": [0.001, 0.002]}, bids={"25°C": [0.94]})
+    plans = _plans(conn, canonical)
+    assert [p["token_id"] for p in plans] == ["t25"]
+    assert lane._DEAD_LEGS == [{"station_id": ST, "event_date": ED, "bucket": "26°C", "side": "YES"}]
+
+
+def test_a_resting_offer_on_a_leg_that_died_is_cancelled_on_the_exchanges_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn, canonical = _store(holdings={"26°C": 5.0})
+    _armed(monkeypatch)
+    exit_orders.send_exit_sell(
+        conn, lane="recycle998", intent_id="recycle998_dead_rest",
+        station_id=ST, event_date=ED, settlement_timezone=TZ,
+        bucket="26°C", token_id="t26", price=0.999, shares=5.0,
+        order_type="GTC", post_only=False, tick_size=0.001,
+        intent_body={"rule": lane.RULE_VERSION},
+        transport=lambda _path, _payload: {"ok": True, "orderID": "0xdead", "status": "live"},
+        live_submit_authorized=True,
+    )
+    conn.execute(
+        "UPDATE basket_target_order_intents SET decision_id=? WHERE order_intent_id='recycle998_dead_rest'",
+        (f"recycle998_decision_{ST}_{ED}",),
+    )
+
+    class Client:
+        def __init__(self):
+            self.cancelled = []
+
+        def cancel_order(self, payload):
+            self.cancelled.append(payload["idempotency_key"])
+            return {"ok": True}
+
+        def lookup_exchange_order(self, _payload):
+            return {"ok": True, "status": "canceled", "response": {"id": "0xdead", "status": "canceled",
+                                                                   "size_matched": 0}}
+
+    client = Client()
+    # Alive (ask 0.30): the offer stands.
+    _book_with_asks(conn, asks={"26°C": [0.30]}, bids={"26°C": [0.28]}, sequence=10)
+    assert lane.retire_dead_leg_offers(conn, now_utc=NOW, client=client)["attempted"] == 0
+    # Dead (ask 0.001): cancelled, and closed only on the terminal view.
+    _book_with_asks(conn, asks={"26°C": [0.001]}, observed_at="2026-09-16T09:29:50.000Z", sequence=11)
+    receipt = lane.retire_dead_leg_offers(conn, now_utc=NOW, client=client)
+    assert receipt["closed"] == 1 and client.cancelled == ["recycle998_dead_rest:cancel:dead_leg"]
+    assert conn.execute(
+        "SELECT state FROM basket_target_order_intents WHERE order_intent_id='recycle998_dead_rest'"
+    ).fetchone()[0] == "cancelled"
+    assert _plans(conn, canonical) == []  # and it is not offered again while dead

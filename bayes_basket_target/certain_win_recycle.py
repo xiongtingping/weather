@@ -44,11 +44,18 @@ MAX_EVENT_AGE_DAYS = 3.0
 # every cycle for the life of the market.
 MAX_FAILED_SENDS_PER_LEG = 6
 MAX_SENDS_PER_LEG = 12
-# Sends per cycle.  Each goes through the gateway on the writer's turn (the
-# charter 144 batch took ~15 s an order); the first pass after this rule
-# offers every held leg at once, so it is spread over cycles, the legs the
-# market bids highest first.
-MAX_SENDS_PER_CYCLE = 8
+# Sends per cycle: no cap (user ruling 2026-10-11 「单轮不设置上限」; it was 8,
+# and the first pass after the 10-11 fix left 19 legs for later cycles of
+# 8-15 minutes).  Each send goes through the gateway on the writer's turn
+# (2-7 s an order on 10-11), the legs the market bids highest first;
+# ``max_sends`` stays for a caller that wants a bound.
+MAX_SENDS_PER_CYCLE: int | None = None
+# A dead leg: the market offers its own side at a cent or less (the venue
+# shows it "<1%") -- a YES leg's lowest YES ask, a NO leg's 1 - the highest
+# YES bid.  It is not offered at 0.999, and a 0.999 offer still resting on it
+# is cancelled (user ruling 2026-10-11 「死腿就没必要卖了吧」, on Cape Town
+# 10-11 23°C and 24°C YES resting at 0.999 while the market priced both <1%).
+DEAD_LEG_MAX_ASK = 0.01
 # A book older than this gives no bid to order the sends by.
 MAX_BOOK_AGE_SECONDS = 3600.0
 MAX_TICK_AGE_SECONDS = 120.0
@@ -247,6 +254,32 @@ def _latest_book(
     return out
 
 
+def _dead_leg(leg: Mapping[str, Any], side: str) -> bool:
+    """True when the book offers the leg's own side at DEAD_LEG_MAX_ASK or
+    less.  A side nobody offers (no YES ask; for NO, no YES bid) is not dead."""
+
+    try:
+        if str(side) == "NO":
+            bid = float(leg.get("best_bid") or 0.0)
+            own_ask = 1.0 - bid if bid > 0.0 else None
+        else:
+            ask = leg.get("best_ask")
+            own_ask = float(ask) if ask is not None and float(ask) < 1.0 else None
+    except (TypeError, ValueError):
+        return False
+    return own_ask is not None and own_ask <= DEAD_LEG_MAX_ASK + 1e-9
+
+
+# The legs the last plan left unoffered as dead, named on the receipt.
+_DEAD_LEGS: list[dict[str, Any]] = []
+
+
+def _note_dead(station_id: str, event_date: str, bucket: str, side: str) -> None:
+    entry = {"station_id": station_id, "event_date": event_date, "bucket": bucket, "side": side}
+    if entry not in _DEAD_LEGS:  # a ledger leg and its account row are one leg
+        _DEAD_LEGS.append(entry)
+
+
 def _settlement_timezone(
     canonical_conn: sqlite3.Connection | None, *, station_id: str, event_date: str, book_timezone: str,
 ) -> str:
@@ -376,7 +409,7 @@ def _held_no_legs(conn: sqlite3.Connection, oldest_date: str) -> list[tuple[str,
 
 def retire_old_price_orders(
     conn: sqlite3.Connection, *, now_utc: str, client: Any,
-    max_attempts: int = MAX_SENDS_PER_CYCLE,
+    max_attempts: int | None = MAX_SENDS_PER_CYCLE,
 ) -> dict[str, Any]:
     """Cancel the offers under the current price (0.99, then 0.998) before their
     shares can be reoffered.
@@ -400,12 +433,62 @@ def retire_old_price_orders(
         " ORDER BY i.created_at,i.order_intent_id",
         (RECYCLE_PRICE - 1e-7,),
     ).fetchall()
-    result: dict[str, Any] = {"attempted": 0, "closed": 0, "pending": []}
     if not rows:
-        return result
+        return {"attempted": 0, "closed": 0, "pending": []}
     start = _MIGRATION_CURSOR % len(rows)
-    rows = (rows[start:] + rows[:start])[:max(0, int(max_attempts))]
+    rows = rows[start:] + rows[:start]
+    if max_attempts is not None:
+        rows = rows[:max(0, int(max_attempts))]
     _MIGRATION_CURSOR = start + len(rows)
+    return _cancel_offers(conn, rows, now_utc=now_utc, client=client, cancel_key="recycle_0999_v6")
+
+
+def retire_dead_leg_offers(
+    conn: sqlite3.Connection, *, now_utc: str, client: Any,
+    ws_root: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Cancel the resting offers on legs that have died (``_dead_leg`` on a
+    book young enough to carry a tick), through the same terminal-view
+    release as the old-price retirement: a cancel alone frees nothing."""
+
+    rows = conn.execute(
+        "SELECT i.order_intent_id,i.requested_size,i.limit_price,"
+        " r.exchange_order_id,COALESCE(r.filled_size,0),"
+        " COALESCE(r.filled_notional_usdc,0),i.decision_id,i.bucket,i.side"
+        " FROM basket_target_order_intents i"
+        " LEFT JOIN basket_target_order_reconciliations r"
+        " ON r.order_intent_id=i.order_intent_id"
+        " WHERE i.order_action='SELL' AND i.order_intent_id LIKE 'recycle998_%'"
+        " AND i.state IN ('submitted','reconcile_required','submitting')"
+        " AND (r.state IS NULL OR r.state NOT LIKE 'resolved_%')"
+        " ORDER BY i.created_at,i.order_intent_id",
+    ).fetchall()
+    prefix = f"{INTENT_PREFIX}_decision_"
+    books: dict[tuple[str, str], dict[str, Any]] = {}
+    dead = []
+    for row in rows:
+        decision = str(row[6] or "")
+        if not decision.startswith(prefix):
+            continue
+        station_id, _sep, event_date = decision[len(prefix):].partition("_")
+        key = (station_id, event_date)
+        if key not in books:
+            books[key] = _latest_book(conn, station_id=station_id, event_date=event_date,
+                                      now_utc=now_utc, ws_root=ws_root)
+        leg = books[key]["legs"].get(str(row[7])) or {}
+        if leg.get("tick_size") is not None and _dead_leg(leg, str(row[8] or "YES")):
+            dead.append(tuple(row[:6]))
+    if not dead:
+        return {"attempted": 0, "closed": 0, "pending": []}
+    return _cancel_offers(conn, dead, now_utc=now_utc, client=client, cancel_key="dead_leg")
+
+
+def _cancel_offers(
+    conn: sqlite3.Connection, rows: Any, *, now_utc: str, client: Any, cancel_key: str,
+) -> dict[str, Any]:
+    """Cancel each offer and close it only on the exchange's terminal view."""
+
+    result: dict[str, Any] = {"attempted": 0, "closed": 0, "pending": []}
     from .resting_ladder_lifecycle import _exchange_view, sync_resting_intent
 
     for intent_id, requested, price, order_id, filled, filled_notional in rows:
@@ -418,7 +501,7 @@ def retire_old_price_orders(
         try:
             cancel = client.cancel_order({
                 "order_id": str(order_id),
-                "idempotency_key": f"{intent_id}:cancel:recycle_0999_v6",
+                "idempotency_key": f"{intent_id}:cancel:{cancel_key}",
             })
             if cancel.get("ok") is not True:
                 entry["reason"] = "cancel_unconfirmed"
@@ -574,6 +657,9 @@ def _account_plans(
             limit_price = recycle_price(tick_size)
         except (TypeError, ValueError):
             continue
+        if _dead_leg(leg, side):
+            _note_dead(station_id, event_date, bucket, side)
+            continue
         timezone_name = _settlement_timezone(
             canonical_conn, station_id=station_id, event_date=event_date,
             book_timezone=book["settlement_timezone"],
@@ -619,6 +705,7 @@ def plan_certain_win_recycles(
     """
 
     plans: list[dict[str, Any]] = []
+    _DEAD_LEGS.clear()
     # The newest complete inventory of each station-day, off the covering
     # index (see the 2026-09-09/14 measurements in git history: a bare
     # column beside MAX() re-read every row), only for the days whose
@@ -716,6 +803,9 @@ def plan_certain_win_recycles(
                 limit_price = recycle_price(tick_size)
             except (TypeError, ValueError):
                 continue
+            if _dead_leg(leg, "YES"):
+                _note_dead(station_id, event_date, bucket, "YES")
+                continue
             plans.append({
                 "schema": SCHEMA,
                 "rule": RULE_VERSION,
@@ -777,6 +867,9 @@ def plan_certain_win_recycles(
             limit_price = recycle_price(tick_size)
         except (TypeError, ValueError):
             continue
+        if _dead_leg(leg, "NO"):
+            _note_dead(station_id, event_date, bucket, "NO")
+            continue
         yes_ask = float(leg.get("best_ask") or 1.0)
         plans.append({
             "schema": SCHEMA, "rule": RULE_VERSION,
@@ -811,7 +904,7 @@ def execute_certain_win_recycles(
     transport: Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
     now_utc: str,
     live_submit_authorized: bool,
-    max_sends: int = MAX_SENDS_PER_CYCLE,
+    max_sends: int | None = MAX_SENDS_PER_CYCLE,
     position_reader: Callable[[str], Mapping[str, Any]] | None = None,
     cancellation_client: Any | None = None,
     account_reader: Callable[[], Mapping[str, Any]] | None = None,
@@ -869,6 +962,9 @@ def execute_certain_win_recycles(
     migration = retire_old_price_orders(
         target_conn, now_utc=now_utc, client=cancellation_client,
     )
+    dead_retire = retire_dead_leg_offers(
+        target_conn, now_utc=now_utc, client=cancellation_client, ws_root=ws_root,
+    )
     plans = plan_certain_win_recycles(target_conn, canonical_conn, now_utc=now_utc,
                                       account_reader=account_reader, ws_root=ws_root)
     read_position = position_reader or default_position_reader
@@ -876,7 +972,7 @@ def execute_certain_win_recycles(
     submitted = 0
     sent = 0
     for plan in plans:
-        if sent >= int(max_sends):
+        if max_sends is not None and sent >= int(max_sends):
             break
         intent_id = plan["order_intent_id"]
         if target_conn.execute(
@@ -923,6 +1019,8 @@ def execute_certain_win_recycles(
         "schema": "certain_win_recycle_receipt_v1",
         "rule": RULE_VERSION,
         "old_price_migration": migration,
+        "dead_leg_retire": dead_retire,
+        "dead_legs_not_offered": len(_DEAD_LEGS),
         "planned": len(plans),
         "sent": sent,
         "deferred_to_next_cycle": max(0, len(plans) - sent),
