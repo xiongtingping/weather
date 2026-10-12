@@ -1,0 +1,2318 @@
+{
+ "authority": "EXECUTION_LAYER_ONLY",
+ "built_at_utc": "2026-10-12T02:26:15Z",
+ "lapse_rate_c_per_m": 0.0065,
+ "schema": "listing_forecast_f_elevation_v1",
+ "station_elevation_source": "https://aviationweather.gov/api/data/stationinfo",
+ "systems": {
+  "DWD_ICON_GLOBAL_13KM_NATIVE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.61424255371094,
+    "cell_lon": -79.59375,
+    "height_m": 131.0,
+    "offset_c": -0.26,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.32908630371094,
+    "cell_lon": 11.859375,
+    "height_m": 457.8,
+    "offset_c": 0.083,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.27830505371094,
+    "cell_lon": 25.03125,
+    "height_m": 30.5,
+    "offset_c": -0.166,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.46580505371094,
+    "cell_lon": 0.0,
+    "height_m": 30.6,
+    "offset_c": 0.134,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.33689880371094,
+    "cell_lon": 4.796875,
+    "height_m": 0.2,
+    "offset_c": 0.014,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.18064880371094,
+    "cell_lon": 20.96875,
+    "height_m": 105.6,
+    "offset_c": -0.009,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -33.92481994628906,
+    "cell_lon": 18.625,
+    "height_m": 71.3,
+    "offset_c": 0.151,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.67283630371094,
+    "cell_lon": -84.4375,
+    "height_m": 294.5,
+    "offset_c": -0.094,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.188461303710938,
+    "cell_lon": -97.65625,
+    "height_m": 152.7,
+    "offset_c": 0.031,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.68455505371094,
+    "cell_lon": -104.6953125,
+    "height_m": 1731.1,
+    "offset_c": 0.183,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.82908630371094,
+    "cell_lon": -96.8359375,
+    "height_m": 146.5,
+    "offset_c": -0.01,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.700180053710938,
+    "cell_lon": -95.2734375,
+    "height_m": 11.6,
+    "offset_c": -0.009,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.96580505371094,
+    "cell_lon": -118.2890625,
+    "height_m": 45.2,
+    "offset_c": 0.099,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.75877380371094,
+    "cell_lon": -73.8515625,
+    "height_m": 13.1,
+    "offset_c": 0.027,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.747055053710938,
+    "cell_lon": -80.3828125,
+    "height_m": 5.7,
+    "offset_c": 0.031,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.93064880371094,
+    "cell_lon": -87.859375,
+    "height_m": 196.5,
+    "offset_c": -0.036,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.41893005371094,
+    "cell_lon": -122.328125,
+    "height_m": 36.2,
+    "offset_c": -0.512,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.57127380371094,
+    "cell_lon": -122.4453125,
+    "height_m": 153.2,
+    "offset_c": 0.983,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.51268005371094,
+    "cell_lon": -3.453125,
+    "height_m": 641.1,
+    "offset_c": 0.339,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.98924255371094,
+    "cell_lon": 2.4765625,
+    "height_m": 77.6,
+    "offset_c": 0.179,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.65330505371094,
+    "cell_lon": 8.828125,
+    "height_m": 252.1,
+    "offset_c": 0.202,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 31.942367553710938,
+    "cell_lon": 34.8203125,
+    "height_m": 54.2,
+    "offset_c": 0.125,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.11424255371094,
+    "cell_lon": 32.8828125,
+    "height_m": 1109.7,
+    "offset_c": 1.025,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.26268005371094,
+    "cell_lon": 28.765625,
+    "height_m": 79.6,
+    "offset_c": -0.126,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.422836303710938,
+    "cell_lon": -99.03125,
+    "height_m": 2230.8,
+    "offset_c": 0.044,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 9.000961303710938,
+    "cell_lon": -79.546875,
+    "height_m": 38.0,
+    "offset_c": 0.208,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.27638244628906,
+    "cell_lon": 174.7421875,
+    "height_m": 129.3,
+    "offset_c": 0.762,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.680648803710938,
+    "cell_lon": 39.09375,
+    "height_m": 4.0,
+    "offset_c": -0.026,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.934555053710938,
+    "cell_lon": 67.1015625,
+    "height_m": 42.6,
+    "offset_c": 0.147,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.032211303710938,
+    "cell_lon": 121.546875,
+    "height_m": 57.3,
+    "offset_c": 0.32,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.53221130371094,
+    "cell_lon": 139.75,
+    "height_m": 4.5,
+    "offset_c": -0.003,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.20799255371094,
+    "cell_lon": 128.8515625,
+    "height_m": 74.7,
+    "offset_c": 0.466,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 3.0
+   },
+   "RPLL": {
+    "cell_lat": 14.575180053710938,
+    "cell_lon": 121.0390625,
+    "height_m": 16.2,
+    "offset_c": 0.008,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.76856994628906,
+    "cell_lon": -58.484375,
+    "height_m": 12.5,
+    "offset_c": -0.023,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.456069946289062,
+    "cell_lon": -46.4609375,
+    "height_m": 765.0,
+    "offset_c": 0.13,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.61424255371094,
+    "cell_lon": 37.28125,
+    "height_m": 186.8,
+    "offset_c": -0.053,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.711898803710938,
+    "cell_lon": 80.8203125,
+    "height_m": 122.5,
+    "offset_c": 0.01,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.7353363037109375,
+    "cell_lon": 101.7578125,
+    "height_m": 31.3,
+    "offset_c": 0.067,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.3915863037109375,
+    "cell_lon": 103.9375,
+    "height_m": 11.7,
+    "offset_c": -0.034,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.12596130371094,
+    "cell_lon": 116.5703125,
+    "height_m": 36.2,
+    "offset_c": 0.034,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.375961303710938,
+    "cell_lon": 113.2734375,
+    "height_m": 12.1,
+    "offset_c": 0.007,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.676742553710938,
+    "cell_lon": 113.8515625,
+    "height_m": 45.0,
+    "offset_c": 0.175,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.758773803710938,
+    "cell_lon": 114.15625,
+    "height_m": 23.8,
+    "offset_c": -0.06,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.063461303710938,
+    "cell_lon": 121.8515625,
+    "height_m": 3.2,
+    "offset_c": -0.005,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.32127380371094,
+    "cell_lon": 120.140625,
+    "height_m": 8.7,
+    "offset_c": 0.044,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.704086303710938,
+    "cell_lon": 106.65625,
+    "height_m": 350.1,
+    "offset_c": -0.428,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.520492553710938,
+    "cell_lon": 103.9765625,
+    "height_m": 499.2,
+    "offset_c": 0.034,
+    "source": "https://opendata.dwd.de/weather/nwp/icon/grib/12/hsurf/icon_global_icosahedral_time-invariant_2026101112_HSURF.grib2.bz2",
+    "station_elevation_m": 494.0
+   }
+  },
+  "ECCC_GDPS_15KM_NATIVE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.679,
+    "cell_lon": -79.629,
+    "height_m": 139.4,
+    "offset_c": -0.205,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.348,
+    "cell_lon": 11.813,
+    "height_m": 465.4,
+    "offset_c": 0.133,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.327,
+    "cell_lon": 24.957,
+    "height_m": 37.4,
+    "offset_c": -0.121,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.505,
+    "cell_lon": 0.055,
+    "height_m": 59.4,
+    "offset_c": 0.321,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.315,
+    "cell_lon": 4.79,
+    "height_m": -2.6,
+    "offset_c": -0.004,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.163,
+    "cell_lon": 20.961,
+    "height_m": 87.4,
+    "offset_c": -0.127,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -33.965,
+    "cell_lon": 18.602,
+    "height_m": 83.4,
+    "offset_c": 0.23,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.62972,
+    "cell_lon": -84.44223,
+    "height_m": 275.4,
+    "offset_c": -0.218,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.1831,
+    "cell_lon": -97.68063,
+    "height_m": 159.4,
+    "offset_c": 0.074,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.713,
+    "cell_lon": -104.758,
+    "height_m": 1673.4,
+    "offset_c": -0.192,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.83836,
+    "cell_lon": -96.83584,
+    "height_m": 153.4,
+    "offset_c": 0.035,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.64582,
+    "cell_lon": -95.28214,
+    "height_m": 9.4,
+    "offset_c": -0.023,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.93817,
+    "cell_lon": -118.3866,
+    "height_m": 27.4,
+    "offset_c": -0.017,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.77945,
+    "cell_lon": -73.88027,
+    "height_m": 15.4,
+    "offset_c": 0.042,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.78806,
+    "cell_lon": -80.31692,
+    "height_m": 1.4,
+    "offset_c": 0.003,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.96017,
+    "cell_lon": -87.93161,
+    "height_m": 203.4,
+    "offset_c": 0.009,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.44467,
+    "cell_lon": -122.31442,
+    "height_m": 89.4,
+    "offset_c": -0.166,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.61961,
+    "cell_lon": -122.36561,
+    "height_m": 59.4,
+    "offset_c": 0.373,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.466,
+    "cell_lon": -3.555,
+    "height_m": 633.4,
+    "offset_c": 0.289,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.967,
+    "cell_lon": 2.428,
+    "height_m": 59.4,
+    "offset_c": 0.061,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.631,
+    "cell_lon": 8.728,
+    "height_m": 209.4,
+    "offset_c": -0.075,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 32.011,
+    "cell_lon": 34.887,
+    "height_m": 129.4,
+    "offset_c": 0.614,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.128,
+    "cell_lon": 32.995,
+    "height_m": 1149.4,
+    "offset_c": 1.283,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.262,
+    "cell_lon": 28.74,
+    "height_m": 39.4,
+    "offset_c": -0.387,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.436,
+    "cell_lon": -99.072,
+    "height_m": 2243.4,
+    "offset_c": 0.126,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 8.967,
+    "cell_lon": -79.555,
+    "height_m": 67.4,
+    "offset_c": 0.399,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.331,
+    "cell_lon": 174.806,
+    "height_m": 41.4,
+    "offset_c": 0.191,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.685,
+    "cell_lon": 39.166,
+    "height_m": 41.4,
+    "offset_c": 0.217,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.902,
+    "cell_lon": 67.139,
+    "height_m": 41.4,
+    "offset_c": 0.139,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.069,
+    "cell_lon": 121.552,
+    "height_m": 113.4,
+    "offset_c": 0.685,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.75,
+    "cell_lon": 139.75,
+    "height_m": 5.4,
+    "offset_c": 0.003,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.179,
+    "cell_lon": 128.938,
+    "height_m": 183.4,
+    "offset_c": 1.173,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 3.0
+   },
+   "RKSI": {
+    "cell_lat": 37.5,
+    "cell_lon": 126.75,
+    "height_m": 23.4,
+    "offset_c": 0.107,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 7.0
+   },
+   "RPLL": {
+    "cell_lat": 14.507,
+    "cell_lon": 121.004,
+    "height_m": 33.4,
+    "offset_c": 0.12,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.822,
+    "cell_lon": -58.536,
+    "height_m": 15.4,
+    "offset_c": -0.004,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.432,
+    "cell_lon": -46.469,
+    "height_m": 845.4,
+    "offset_c": 0.653,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.592,
+    "cell_lon": 37.261,
+    "height_m": 177.4,
+    "offset_c": -0.114,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.761,
+    "cell_lon": 80.889,
+    "height_m": 121.4,
+    "offset_c": 0.003,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.747,
+    "cell_lon": 101.714,
+    "height_m": 27.4,
+    "offset_c": 0.042,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.5,
+    "cell_lon": 104.0,
+    "height_m": 15.4,
+    "offset_c": -0.01,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.082,
+    "cell_lon": 116.603,
+    "height_m": 29.4,
+    "offset_c": -0.01,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.392,
+    "cell_lon": 113.307,
+    "height_m": 61.4,
+    "offset_c": 0.328,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.75,
+    "cell_lon": 114.0,
+    "height_m": 59.4,
+    "offset_c": 0.269,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.783,
+    "cell_lon": 114.205,
+    "height_m": 21.4,
+    "offset_c": -0.075,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.0,
+    "cell_lon": 121.75,
+    "height_m": 1.4,
+    "offset_c": -0.017,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.362,
+    "cell_lon": 120.087,
+    "height_m": 7.4,
+    "offset_c": 0.035,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.718,
+    "cell_lon": 106.639,
+    "height_m": 331.4,
+    "offset_c": -0.55,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.576,
+    "cell_lon": 103.95,
+    "height_m": 495.4,
+    "offset_c": 0.009,
+    "source": "https://dd.weather.gc.ca/20261011/WXO-DD/model_gdps/15km/12/000/20261011T12Z_MSC_GDPS_GeopotentialHeight_Sfc_LatLon0.15_PT000H.grib2",
+    "station_elevation_m": 494.0
+   }
+  },
+  "ECMWF_AIFS_SINGLE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.679,
+    "cell_lon": -79.629,
+    "height_m": 250.3,
+    "offset_c": 0.515,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.348,
+    "cell_lon": 11.813,
+    "height_m": 483.2,
+    "offset_c": 0.248,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.327,
+    "cell_lon": 24.957,
+    "height_m": 30.5,
+    "offset_c": -0.166,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.505,
+    "cell_lon": 0.055,
+    "height_m": 47.6,
+    "offset_c": 0.244,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.315,
+    "cell_lon": 4.79,
+    "height_m": -1.5,
+    "offset_c": 0.003,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.163,
+    "cell_lon": 20.961,
+    "height_m": 97.9,
+    "offset_c": -0.059,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -34.0,
+    "cell_lon": 18.75,
+    "height_m": 145.1,
+    "offset_c": 0.631,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.62972,
+    "cell_lon": -84.44223,
+    "height_m": 292.7,
+    "offset_c": -0.106,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.1831,
+    "cell_lon": -97.68063,
+    "height_m": 207.9,
+    "offset_c": 0.389,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.713,
+    "cell_lon": -104.758,
+    "height_m": 1683.4,
+    "offset_c": -0.127,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.83836,
+    "cell_lon": -96.83584,
+    "height_m": 150.4,
+    "offset_c": 0.016,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.64582,
+    "cell_lon": -95.28214,
+    "height_m": 18.2,
+    "offset_c": 0.034,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.93817,
+    "cell_lon": -118.3866,
+    "height_m": 79.5,
+    "offset_c": 0.322,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.77945,
+    "cell_lon": -73.88027,
+    "height_m": 16.2,
+    "offset_c": 0.047,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.78806,
+    "cell_lon": -80.31692,
+    "height_m": 4.6,
+    "offset_c": 0.023,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.96017,
+    "cell_lon": -87.93161,
+    "height_m": 218.1,
+    "offset_c": 0.105,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.44467,
+    "cell_lon": -122.31442,
+    "height_m": 76.6,
+    "offset_c": -0.25,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.61961,
+    "cell_lon": -122.36561,
+    "height_m": 120.1,
+    "offset_c": 0.768,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.466,
+    "cell_lon": -3.555,
+    "height_m": 705.5,
+    "offset_c": 0.757,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.967,
+    "cell_lon": 2.428,
+    "height_m": 92.3,
+    "offset_c": 0.275,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.631,
+    "cell_lon": 8.728,
+    "height_m": 338.5,
+    "offset_c": 0.764,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 32.011,
+    "cell_lon": 34.887,
+    "height_m": 244.6,
+    "offset_c": 1.362,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.128,
+    "cell_lon": 32.995,
+    "height_m": 1205.1,
+    "offset_c": 1.645,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.262,
+    "cell_lon": 28.74,
+    "height_m": 83.0,
+    "offset_c": -0.104,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.436,
+    "cell_lon": -99.072,
+    "height_m": 2282.6,
+    "offset_c": 0.381,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 8.967,
+    "cell_lon": -79.555,
+    "height_m": 82.9,
+    "offset_c": 0.5,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.25,
+    "cell_lon": 175.0,
+    "height_m": 162.3,
+    "offset_c": 0.977,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.685,
+    "cell_lon": 39.166,
+    "height_m": 75.6,
+    "offset_c": 0.439,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.902,
+    "cell_lon": 67.139,
+    "height_m": 98.7,
+    "offset_c": 0.512,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.069,
+    "cell_lon": 121.552,
+    "height_m": 404.1,
+    "offset_c": 2.575,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.553,
+    "cell_lon": 139.781,
+    "height_m": 13.7,
+    "offset_c": 0.057,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.179,
+    "cell_lon": 128.938,
+    "height_m": 140.8,
+    "offset_c": 0.896,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 3.0
+   },
+   "RKSI": {
+    "cell_lat": 37.469,
+    "cell_lon": 126.451,
+    "height_m": 8.1,
+    "offset_c": 0.007,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 7.0
+   },
+   "RPLL": {
+    "cell_lat": 14.507,
+    "cell_lon": 121.004,
+    "height_m": 17.7,
+    "offset_c": 0.018,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.822,
+    "cell_lon": -58.536,
+    "height_m": 17.4,
+    "offset_c": 0.009,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.432,
+    "cell_lon": -46.469,
+    "height_m": 790.4,
+    "offset_c": 0.295,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.592,
+    "cell_lon": 37.261,
+    "height_m": 184.3,
+    "offset_c": -0.07,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.761,
+    "cell_lon": 80.889,
+    "height_m": 116.2,
+    "offset_c": -0.031,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.747,
+    "cell_lon": 101.714,
+    "height_m": 47.0,
+    "offset_c": 0.169,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.5,
+    "cell_lon": 104.0,
+    "height_m": 25.7,
+    "offset_c": 0.057,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.082,
+    "cell_lon": 116.603,
+    "height_m": 26.5,
+    "offset_c": -0.029,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.392,
+    "cell_lon": 113.307,
+    "height_m": 66.9,
+    "offset_c": 0.363,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.639,
+    "cell_lon": 113.803,
+    "height_m": 25.4,
+    "offset_c": 0.048,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.783,
+    "cell_lon": 114.205,
+    "height_m": 32.1,
+    "offset_c": -0.006,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.146,
+    "cell_lon": 121.8,
+    "height_m": 3.0,
+    "offset_c": -0.006,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.362,
+    "cell_lon": 120.087,
+    "height_m": 28.7,
+    "offset_c": 0.174,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.718,
+    "cell_lon": 106.639,
+    "height_m": 329.3,
+    "offset_c": -0.564,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.576,
+    "cell_lon": 103.95,
+    "height_m": 476.9,
+    "offset_c": -0.111,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/aifs-single/0p25/oper/20261011120000-0h-oper-fc#z",
+    "station_elevation_m": 494.0
+   }
+  },
+  "ECMWF_IFS_HRES_NATIVE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.679,
+    "cell_lon": -79.629,
+    "height_m": 217.2,
+    "offset_c": 0.3,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.348,
+    "cell_lon": 11.813,
+    "height_m": 482.6,
+    "offset_c": 0.244,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.327,
+    "cell_lon": 24.957,
+    "height_m": 24.2,
+    "offset_c": -0.207,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.505,
+    "cell_lon": 0.055,
+    "height_m": 17.5,
+    "offset_c": 0.049,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.315,
+    "cell_lon": 4.79,
+    "height_m": -2.5,
+    "offset_c": -0.003,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.163,
+    "cell_lon": 20.961,
+    "height_m": 93.9,
+    "offset_c": -0.085,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -34.0,
+    "cell_lon": 18.75,
+    "height_m": 77.7,
+    "offset_c": 0.193,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.62972,
+    "cell_lon": -84.44223,
+    "height_m": 278.8,
+    "offset_c": -0.196,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.1831,
+    "cell_lon": -97.68063,
+    "height_m": 187.9,
+    "offset_c": 0.259,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.713,
+    "cell_lon": -104.758,
+    "height_m": 1682.4,
+    "offset_c": -0.134,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.83836,
+    "cell_lon": -96.83584,
+    "height_m": 155.7,
+    "offset_c": 0.05,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.64582,
+    "cell_lon": -95.28214,
+    "height_m": 12.4,
+    "offset_c": -0.004,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.93817,
+    "cell_lon": -118.3866,
+    "height_m": 93.4,
+    "offset_c": 0.412,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.77945,
+    "cell_lon": -73.88027,
+    "height_m": 15.5,
+    "offset_c": 0.042,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.78806,
+    "cell_lon": -80.31692,
+    "height_m": 6.9,
+    "offset_c": 0.038,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.96017,
+    "cell_lon": -87.93161,
+    "height_m": 219.5,
+    "offset_c": 0.114,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.44467,
+    "cell_lon": -122.31442,
+    "height_m": 90.0,
+    "offset_c": -0.163,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.61961,
+    "cell_lon": -122.36561,
+    "height_m": 95.3,
+    "offset_c": 0.606,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.466,
+    "cell_lon": -3.555,
+    "height_m": 616.5,
+    "offset_c": 0.179,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.967,
+    "cell_lon": 2.428,
+    "height_m": 84.5,
+    "offset_c": 0.224,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.631,
+    "cell_lon": 8.728,
+    "height_m": 287.2,
+    "offset_c": 0.43,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 32.011,
+    "cell_lon": 34.887,
+    "height_m": 189.9,
+    "offset_c": 1.007,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.128,
+    "cell_lon": 32.995,
+    "height_m": 1114.1,
+    "offset_c": 1.054,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.262,
+    "cell_lon": 28.74,
+    "height_m": 85.7,
+    "offset_c": -0.086,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.436,
+    "cell_lon": -99.072,
+    "height_m": 2282.6,
+    "offset_c": 0.381,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 8.967,
+    "cell_lon": -79.555,
+    "height_m": 40.4,
+    "offset_c": 0.224,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.25,
+    "cell_lon": 175.0,
+    "height_m": 273.3,
+    "offset_c": 1.698,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.685,
+    "cell_lon": 39.166,
+    "height_m": 101.6,
+    "offset_c": 0.608,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.902,
+    "cell_lon": 67.139,
+    "height_m": 78.9,
+    "offset_c": 0.383,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.069,
+    "cell_lon": 121.552,
+    "height_m": 36.4,
+    "offset_c": 0.185,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.553,
+    "cell_lon": 139.781,
+    "height_m": 13.1,
+    "offset_c": 0.053,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.179,
+    "cell_lon": 128.938,
+    "height_m": 132.1,
+    "offset_c": 0.839,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 3.0
+   },
+   "RKSI": {
+    "cell_lat": 37.469,
+    "cell_lon": 126.451,
+    "height_m": 10.6,
+    "offset_c": 0.023,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 7.0
+   },
+   "RPLL": {
+    "cell_lat": 14.507,
+    "cell_lon": 121.004,
+    "height_m": 2.8,
+    "offset_c": -0.079,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.822,
+    "cell_lon": -58.536,
+    "height_m": 17.7,
+    "offset_c": 0.011,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.432,
+    "cell_lon": -46.469,
+    "height_m": 771.5,
+    "offset_c": 0.172,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.592,
+    "cell_lon": 37.261,
+    "height_m": 182.3,
+    "offset_c": -0.083,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.761,
+    "cell_lon": 80.889,
+    "height_m": 118.5,
+    "offset_c": -0.016,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.747,
+    "cell_lon": 101.714,
+    "height_m": 32.7,
+    "offset_c": 0.076,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.5,
+    "cell_lon": 104.0,
+    "height_m": 17.5,
+    "offset_c": 0.003,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.082,
+    "cell_lon": 116.603,
+    "height_m": 27.4,
+    "offset_c": -0.023,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.392,
+    "cell_lon": 113.307,
+    "height_m": 120.7,
+    "offset_c": 0.713,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.639,
+    "cell_lon": 113.803,
+    "height_m": 11.7,
+    "offset_c": -0.041,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.783,
+    "cell_lon": 114.205,
+    "height_m": 31.0,
+    "offset_c": -0.013,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.146,
+    "cell_lon": 121.8,
+    "height_m": 1.6,
+    "offset_c": -0.016,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.362,
+    "cell_lon": 120.087,
+    "height_m": 26.3,
+    "offset_c": 0.158,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.718,
+    "cell_lon": 106.639,
+    "height_m": 351.7,
+    "offset_c": -0.418,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.576,
+    "cell_lon": 103.95,
+    "height_m": 477.9,
+    "offset_c": -0.105,
+    "source": "https://storage.googleapis.com/ecmwf-open-data/20261011/12z/ifs/0p25/oper/20261011120000-0h-oper-fc.grib2#z",
+    "station_elevation_m": 494.0
+   }
+  },
+  "NOAA_AIGFS_025_NATIVE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.679,
+    "cell_lon": -79.629,
+    "height_m": 229.8,
+    "offset_c": 0.382,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.348,
+    "cell_lon": 11.813,
+    "height_m": 489.8,
+    "offset_c": 0.291,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.327,
+    "cell_lon": 24.957,
+    "height_m": 27.6,
+    "offset_c": -0.185,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.505,
+    "cell_lon": 0.055,
+    "height_m": 33.2,
+    "offset_c": 0.151,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.315,
+    "cell_lon": 4.79,
+    "height_m": -0.7,
+    "offset_c": 0.008,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.163,
+    "cell_lon": 20.961,
+    "height_m": 92.7,
+    "offset_c": -0.093,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -33.965,
+    "cell_lon": 18.602,
+    "height_m": 72.2,
+    "offset_c": 0.157,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.62972,
+    "cell_lon": -84.44223,
+    "height_m": 288.7,
+    "offset_c": -0.132,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.1831,
+    "cell_lon": -97.68063,
+    "height_m": 200.4,
+    "offset_c": 0.341,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.713,
+    "cell_lon": -104.758,
+    "height_m": 1674.9,
+    "offset_c": -0.183,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.83836,
+    "cell_lon": -96.83584,
+    "height_m": 155.1,
+    "offset_c": 0.046,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.64582,
+    "cell_lon": -95.28214,
+    "height_m": 15.9,
+    "offset_c": 0.019,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.93817,
+    "cell_lon": -118.3866,
+    "height_m": 103.4,
+    "offset_c": 0.477,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.77945,
+    "cell_lon": -73.88027,
+    "height_m": 16.7,
+    "offset_c": 0.05,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.78806,
+    "cell_lon": -80.31692,
+    "height_m": 5.8,
+    "offset_c": 0.031,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.96017,
+    "cell_lon": -87.93161,
+    "height_m": 221.8,
+    "offset_c": 0.129,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.44467,
+    "cell_lon": -122.31442,
+    "height_m": 90.6,
+    "offset_c": -0.159,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.61961,
+    "cell_lon": -122.36561,
+    "height_m": 118.5,
+    "offset_c": 0.757,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.466,
+    "cell_lon": -3.555,
+    "height_m": 643.4,
+    "offset_c": 0.354,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.967,
+    "cell_lon": 2.428,
+    "height_m": 82.5,
+    "offset_c": 0.211,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.631,
+    "cell_lon": 8.728,
+    "height_m": 323.9,
+    "offset_c": 0.669,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 32.011,
+    "cell_lon": 34.887,
+    "height_m": 210.9,
+    "offset_c": 1.143,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.128,
+    "cell_lon": 32.995,
+    "height_m": 1150.0,
+    "offset_c": 1.287,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.262,
+    "cell_lon": 28.74,
+    "height_m": 74.0,
+    "offset_c": -0.163,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.436,
+    "cell_lon": -99.072,
+    "height_m": 2275.7,
+    "offset_c": 0.336,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 8.967,
+    "cell_lon": -79.555,
+    "height_m": 60.9,
+    "offset_c": 0.357,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.331,
+    "cell_lon": 174.806,
+    "height_m": 77.0,
+    "offset_c": 0.422,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.685,
+    "cell_lon": 39.166,
+    "height_m": 82.0,
+    "offset_c": 0.481,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.902,
+    "cell_lon": 67.139,
+    "height_m": 84.2,
+    "offset_c": 0.417,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.069,
+    "cell_lon": 121.552,
+    "height_m": 189.3,
+    "offset_c": 1.178,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.75,
+    "cell_lon": 139.75,
+    "height_m": 17.3,
+    "offset_c": 0.08,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.179,
+    "cell_lon": 128.938,
+    "height_m": 144.4,
+    "offset_c": 0.919,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 3.0
+   },
+   "RKSI": {
+    "cell_lat": 37.5,
+    "cell_lon": 126.75,
+    "height_m": 32.2,
+    "offset_c": 0.164,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 7.0
+   },
+   "RPLL": {
+    "cell_lat": 14.507,
+    "cell_lon": 121.004,
+    "height_m": 11.6,
+    "offset_c": -0.022,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.822,
+    "cell_lon": -58.536,
+    "height_m": 18.0,
+    "offset_c": 0.013,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.432,
+    "cell_lon": -46.469,
+    "height_m": 792.5,
+    "offset_c": 0.309,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.592,
+    "cell_lon": 37.261,
+    "height_m": 186.5,
+    "offset_c": -0.055,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.761,
+    "cell_lon": 80.889,
+    "height_m": 119.9,
+    "offset_c": -0.007,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.747,
+    "cell_lon": 101.714,
+    "height_m": 43.9,
+    "offset_c": 0.149,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.5,
+    "cell_lon": 104.0,
+    "height_m": 21.5,
+    "offset_c": 0.029,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.082,
+    "cell_lon": 116.603,
+    "height_m": 36.5,
+    "offset_c": 0.036,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.392,
+    "cell_lon": 113.307,
+    "height_m": 79.1,
+    "offset_c": 0.443,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.75,
+    "cell_lon": 114.0,
+    "height_m": 63.9,
+    "offset_c": 0.298,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.783,
+    "cell_lon": 114.205,
+    "height_m": 26.9,
+    "offset_c": -0.04,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.0,
+    "cell_lon": 121.75,
+    "height_m": 4.5,
+    "offset_c": 0.003,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.362,
+    "cell_lon": 120.087,
+    "height_m": 26.9,
+    "offset_c": 0.162,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.718,
+    "cell_lon": 106.639,
+    "height_m": 367.6,
+    "offset_c": -0.315,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.576,
+    "cell_lon": 103.95,
+    "height_m": 495.3,
+    "offset_c": 0.008,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 494.0
+   }
+  },
+  "NOAA_GFS_025_NATIVE_POINT": {
+   "CYYZ": {
+    "cell_lat": 43.679,
+    "cell_lon": -79.629,
+    "height_m": 229.8,
+    "offset_c": 0.382,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 171.0
+   },
+   "EDDM": {
+    "cell_lat": 48.348,
+    "cell_lon": 11.813,
+    "height_m": 489.8,
+    "offset_c": 0.291,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 445.0
+   },
+   "EFHK": {
+    "cell_lat": 60.327,
+    "cell_lon": 24.957,
+    "height_m": 27.6,
+    "offset_c": -0.185,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 56.0
+   },
+   "EGLC": {
+    "cell_lat": 51.505,
+    "cell_lon": 0.055,
+    "height_m": 33.2,
+    "offset_c": 0.151,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 10.0
+   },
+   "EHAM": {
+    "cell_lat": 52.315,
+    "cell_lon": 4.79,
+    "height_m": -0.7,
+    "offset_c": 0.008,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": -2.0
+   },
+   "EPWA": {
+    "cell_lat": 52.163,
+    "cell_lon": 20.961,
+    "height_m": 92.7,
+    "offset_c": -0.093,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 107.0
+   },
+   "FACT": {
+    "cell_lat": -33.965,
+    "cell_lon": 18.602,
+    "height_m": 72.2,
+    "offset_c": 0.157,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 48.0
+   },
+   "KATL": {
+    "cell_lat": 33.62972,
+    "cell_lon": -84.44223,
+    "height_m": 288.7,
+    "offset_c": -0.132,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 309.0
+   },
+   "KAUS": {
+    "cell_lat": 30.1831,
+    "cell_lon": -97.68063,
+    "height_m": 200.4,
+    "offset_c": 0.341,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 148.0
+   },
+   "KBKF": {
+    "cell_lat": 39.713,
+    "cell_lon": -104.758,
+    "height_m": 1674.9,
+    "offset_c": -0.183,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 1703.0
+   },
+   "KDAL": {
+    "cell_lat": 32.83836,
+    "cell_lon": -96.83584,
+    "height_m": 155.1,
+    "offset_c": 0.046,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 148.0
+   },
+   "KHOU": {
+    "cell_lat": 29.64582,
+    "cell_lon": -95.28214,
+    "height_m": 15.9,
+    "offset_c": 0.019,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 13.0
+   },
+   "KLAX": {
+    "cell_lat": 33.93817,
+    "cell_lon": -118.3866,
+    "height_m": 103.4,
+    "offset_c": 0.477,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 30.0
+   },
+   "KLGA": {
+    "cell_lat": 40.77945,
+    "cell_lon": -73.88027,
+    "height_m": 16.7,
+    "offset_c": 0.05,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 9.0
+   },
+   "KMIA": {
+    "cell_lat": 25.78806,
+    "cell_lon": -80.31692,
+    "height_m": 5.8,
+    "offset_c": 0.031,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 1.0
+   },
+   "KORD": {
+    "cell_lat": 41.96017,
+    "cell_lon": -87.93161,
+    "height_m": 221.8,
+    "offset_c": 0.129,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 202.0
+   },
+   "KSEA": {
+    "cell_lat": 47.44467,
+    "cell_lon": -122.31442,
+    "height_m": 90.6,
+    "offset_c": -0.159,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 115.0
+   },
+   "KSFO": {
+    "cell_lat": 37.61961,
+    "cell_lon": -122.36561,
+    "height_m": 118.5,
+    "offset_c": 0.757,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2.0
+   },
+   "LEMD": {
+    "cell_lat": 40.466,
+    "cell_lon": -3.555,
+    "height_m": 643.4,
+    "offset_c": 0.354,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 589.0
+   },
+   "LFPB": {
+    "cell_lat": 48.967,
+    "cell_lon": 2.428,
+    "height_m": 82.5,
+    "offset_c": 0.211,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 50.0
+   },
+   "LIMC": {
+    "cell_lat": 45.631,
+    "cell_lon": 8.728,
+    "height_m": 323.9,
+    "offset_c": 0.669,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 221.0
+   },
+   "LLBG": {
+    "cell_lat": 32.011,
+    "cell_lon": 34.887,
+    "height_m": 210.9,
+    "offset_c": 1.143,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 35.0
+   },
+   "LTAC": {
+    "cell_lat": 40.128,
+    "cell_lon": 32.995,
+    "height_m": 1150.0,
+    "offset_c": 1.287,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 952.0
+   },
+   "LTFM": {
+    "cell_lat": 41.262,
+    "cell_lon": 28.74,
+    "height_m": 74.0,
+    "offset_c": -0.163,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 99.0
+   },
+   "MMMX": {
+    "cell_lat": 19.436,
+    "cell_lon": -99.072,
+    "height_m": 2275.7,
+    "offset_c": 0.336,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2224.0
+   },
+   "MPMG": {
+    "cell_lat": 8.967,
+    "cell_lon": -79.555,
+    "height_m": 60.9,
+    "offset_c": 0.357,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 6.0
+   },
+   "NZWN": {
+    "cell_lat": -41.331,
+    "cell_lon": 174.806,
+    "height_m": 77.0,
+    "offset_c": 0.422,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 12.0
+   },
+   "OEJN": {
+    "cell_lat": 21.685,
+    "cell_lon": 39.166,
+    "height_m": 82.0,
+    "offset_c": 0.481,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 8.0
+   },
+   "OPKC": {
+    "cell_lat": 24.902,
+    "cell_lon": 67.139,
+    "height_m": 84.2,
+    "offset_c": 0.417,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 20.0
+   },
+   "RCSS": {
+    "cell_lat": 25.069,
+    "cell_lon": 121.552,
+    "height_m": 189.3,
+    "offset_c": 1.178,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 8.0
+   },
+   "RJTT": {
+    "cell_lat": 35.75,
+    "cell_lon": 139.75,
+    "height_m": 17.3,
+    "offset_c": 0.08,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 5.0
+   },
+   "RKPK": {
+    "cell_lat": 35.179,
+    "cell_lon": 128.938,
+    "height_m": 144.4,
+    "offset_c": 0.919,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 3.0
+   },
+   "RKSI": {
+    "cell_lat": 37.5,
+    "cell_lon": 126.75,
+    "height_m": 32.2,
+    "offset_c": 0.164,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 7.0
+   },
+   "RPLL": {
+    "cell_lat": 14.507,
+    "cell_lon": 121.004,
+    "height_m": 11.6,
+    "offset_c": -0.022,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 15.0
+   },
+   "SAEZ": {
+    "cell_lat": -34.822,
+    "cell_lon": -58.536,
+    "height_m": 18.0,
+    "offset_c": 0.013,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 16.0
+   },
+   "SBGR": {
+    "cell_lat": -23.432,
+    "cell_lon": -46.469,
+    "height_m": 792.5,
+    "offset_c": 0.309,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 745.0
+   },
+   "UUWW": {
+    "cell_lat": 55.592,
+    "cell_lon": 37.261,
+    "height_m": 186.5,
+    "offset_c": -0.055,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 195.0
+   },
+   "VILK": {
+    "cell_lat": 26.761,
+    "cell_lon": 80.889,
+    "height_m": 119.9,
+    "offset_c": -0.007,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 121.0
+   },
+   "WMKK": {
+    "cell_lat": 2.747,
+    "cell_lon": 101.714,
+    "height_m": 43.9,
+    "offset_c": 0.149,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 21.0
+   },
+   "WSSS": {
+    "cell_lat": 1.5,
+    "cell_lon": 104.0,
+    "height_m": 21.5,
+    "offset_c": 0.029,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 17.0
+   },
+   "ZBAA": {
+    "cell_lat": 40.082,
+    "cell_lon": 116.603,
+    "height_m": 36.5,
+    "offset_c": 0.036,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 31.0
+   },
+   "ZGGG": {
+    "cell_lat": 23.392,
+    "cell_lon": 113.307,
+    "height_m": 79.1,
+    "offset_c": 0.443,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 11.0
+   },
+   "ZGSZ": {
+    "cell_lat": 22.75,
+    "cell_lon": 114.0,
+    "height_m": 63.9,
+    "offset_c": 0.298,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 18.0
+   },
+   "ZHHH": {
+    "cell_lat": 30.783,
+    "cell_lon": 114.205,
+    "height_m": 26.9,
+    "offset_c": -0.04,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 33.0
+   },
+   "ZSPD": {
+    "cell_lat": 31.0,
+    "cell_lon": 121.75,
+    "height_m": 4.5,
+    "offset_c": 0.003,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 4.0
+   },
+   "ZSQD": {
+    "cell_lat": 36.362,
+    "cell_lon": 120.087,
+    "height_m": 26.9,
+    "offset_c": 0.162,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 2.0
+   },
+   "ZUCK": {
+    "cell_lat": 29.718,
+    "cell_lon": 106.639,
+    "height_m": 367.6,
+    "offset_c": -0.315,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 416.0
+   },
+   "ZUUU": {
+    "cell_lat": 30.576,
+    "cell_lon": 103.95,
+    "height_m": 495.3,
+    "offset_c": 0.008,
+    "source": "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.20261011/12/atmos/gfs.t12z.pgrb2.0p25.f000#HGT:surface",
+    "station_elevation_m": 494.0
+   }
+  }
+ },
+ "terrain_run_init_utc": "2026-10-11T12:00:00Z"
+}

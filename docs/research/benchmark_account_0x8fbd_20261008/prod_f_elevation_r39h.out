@@ -1,0 +1,4 @@
+unadjusted lambda 0.3        vs production (unadjusted 0.5): hit 0.350 (+0.000 [-0.036, +0.036], n 440)   = cluster 0.408 (-0.073 [-0.137, -0.008], n 179)
+terrain-adjusted lambda 0.3  vs production (unadjusted 0.5): hit 0.330 (-0.020 [-0.063, +0.023], n 440)   = cluster 0.374 (-0.106 [-0.181, -0.031], n 179)
+terrain-adjusted lambda 0.5  vs production (unadjusted 0.5): hit 0.345 (-0.005 [-0.037, +0.028], n 440)   = cluster 0.419 (-0.061 [-0.120, -0.002], n 179)
+terrain-adjusted lambda 0.7  vs production (unadjusted 0.5): hit 0.355 (+0.005 [-0.027, +0.036], n 440)   = cluster 0.480 (+0.000 [-0.056, +0.056], n 179)
