@@ -318,6 +318,12 @@ class TablePolicy:
     #: deleted) into the same cold file so an offline reader can expand a
     #: cold row without the SSOT.
     mirror_tables: tuple[str, ...] = ()
+    #: At most this many batches leave per run (None = until the budget).
+    #: For a table whose rows are tiny (hundreds of bytes) every batch costs
+    #: a write lock and a round trip to the volume for almost no space back,
+    #: and left uncapped it eats the run's whole budget on a quiet morning
+    #: while the tables that free gigabytes never get their turn (2026-10-12).
+    max_batches_per_run: int | None = None
 
     def cutoff_date(self, as_of: datetime) -> str:
         return (as_of.astimezone(timezone.utc).date() - timedelta(days=int(self.hot_days))).isoformat()
@@ -354,6 +360,7 @@ class TablePolicy:
             "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
             "mirror_tables": list(self.mirror_tables),
+            "max_batches_per_run": self.max_batches_per_run,
         }
 
 
@@ -406,6 +413,10 @@ RECONCILIATION_MAX_DAYS = 45
 #: was dead 09-03..09-21, eighteen days), so the window carries a margin.
 MEMBER_RUN_LAG_MARGIN_DAYS = 22
 MEMBER_RUN_HOT_DAYS = ROLLING_TRAIN_WINDOW_DAYS + DEFAULT_MIN_HOLDOUT_DAYS + MEMBER_RUN_LAG_MARGIN_DAYS
+#: Member rows are ~600 bytes each: 100 batches (100k rows) is about one
+#: day's intake per run and roughly 0.06 GiB back, which keeps up over two
+#: runs a day without spending the hour the big-payload tables need.
+MEMBER_RUN_MAX_BATCHES_PER_RUN = 100
 #: Writers that re-project any day they find missing from a fixed start
 #: (metar_physical_forward from 2026-08-01) would write a moved row back;
 #: their rows stay.  The TAF TX rows are few and stay with them.
@@ -790,6 +801,7 @@ POLICIES += (
         table="calibration_native_ensemble_historical_member_run",
         time_column="target_local_date",
         hot_days=MEMBER_RUN_HOT_DAYS,
+        max_batches_per_run=MEMBER_RUN_MAX_BATCHES_PER_RUN,
         candidate_where=(
             "ensemble_system_id NOT IN ("
             + ",".join(f"'{system}'" for system in MEMBER_RUN_STAYING_SYSTEMS)
@@ -2134,6 +2146,9 @@ def move_table(
         result["moved_bytes"] += size
         result["batches"] += 1
         since_check += size
+        cap = policy.max_batches_per_run
+        if cap is not None and result["batches"] >= int(cap):
+            return "batch_cap"
         if since_check >= COLD_RECHECK_BYTES:
             since_check = 0
             status = cold_ok()
@@ -2169,6 +2184,8 @@ def move_table(
             stopped = reason or stopped
         if stopped == "budget":
             result["state"] = "partial_budget"
+        elif stopped == "batch_cap":
+            result["state"] = "partial_batch_cap"
         elif stopped:
             result["state"] = "stopped"
             result["reason"] = stopped
@@ -2361,8 +2378,15 @@ def run(
             delete = _delete_connection(ssot_path)
         moves: list[dict[str, Any]] = []
         stopped = False
-        # One table at a time, planned and then moved, so only one table's
-        # candidate rowids are ever held.
+        # Every table is planned first (the receipt lists them in registry
+        # order), then the moves go biggest estimated payload first.  In
+        # registry order a quiet morning spent its whole hour on a table of
+        # 600-byte rows while the tables that free gigabytes, and the two at
+        # the end of the registry, were "not started" run after run
+        # (2026-10-12).  A plan only names rows older than the cutoff, and a
+        # batch re-reads and re-verifies its rows before deleting, so a plan
+        # made an hour before its move is as safe as one made just before.
+        plans: list[TablePlan] = []
         for policy in selected:
             try:
                 plan = plan_table(read, policy, as_of=moment, holds=holds,
@@ -2372,8 +2396,13 @@ def run(
                 plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
                                  refused=[f"plan_error:{type(exc).__name__}:{str(exc)[:200]}"])
             receipt["tables"].append(plan.summary())
-            if not apply or plan.state != "planned":
-                continue
+            if apply and plan.state == "planned":
+                plans.append(plan)
+        order = {policy.table: index for index, policy in enumerate(selected)}
+        plans.sort(key=lambda p: (-int(p.estimated_bytes or 0), order[p.policy.table]))
+        receipt["move_order"] = [p.policy.table for p in plans]
+        for plan in plans:
+            policy = plan.policy
             if stopped or budget.expired():
                 moves.append({"table": policy.table, "state": "not_started_budget" if not stopped
                               else "not_started_after_stop"})
@@ -2432,6 +2461,7 @@ def _single_instance(path: Path):
 _STATE_WORDS = {
     "planned": "可搬", "nothing_to_move": "旧行全受保护", "nothing_old": "没有旧行",
     "refused": "拒绝", "moved": "已搬", "nothing_moved": "未搬", "partial_budget": "预算到点、下次续搬",
+    "partial_batch_cap": "本轮封顶、下次续搬",
     "stopped": "中途停下", "not_started_budget": "预算用完未开始", "not_started_after_stop": "前表停下未开始",
 }
 _KEPT_WORDS = {"newest_rowid": "最大 rowid", "hold": "hold",

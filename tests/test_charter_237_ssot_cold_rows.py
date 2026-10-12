@@ -1059,3 +1059,96 @@ def test_the_member_window_is_tied_to_the_fit_and_the_backfills_respect_it() -> 
             and isinstance(node.args[0], ast.Constant) and node.args[0].value == MEMBERS
         ]
         assert calls, name
+
+
+# --------------------------------------------------------------------------
+# 2026-10-12 amendment (user ruling 「改」): biggest payload first, tiny-row
+# tables capped per run, so one hour's budget is never spent where it frees
+# the least and the tables at the end of the registry get their turn.
+# --------------------------------------------------------------------------
+
+
+def _regimes_and_plans(store: Path) -> None:
+    conn = sqlite3.connect(store)
+    for day in ("2026-09-10", "2026-09-11", "2026-09-12", "2026-09-13"):
+        _regime(conn, f"reg_{day}", day)
+    conn.commit()
+    conn.close()
+    _plans_fixture(store)
+
+
+def test_tables_move_biggest_estimated_payload_first(store: Path, cold: Path, tmp_path: Path) -> None:
+    _regimes_and_plans(store)
+    # Selected regime first; its rows are a few hundred bytes, the plans ~3 KB.
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[REGIME, PLAN])
+    assert receipt["state"] == "applied"
+    by_table = {row["table"]: row for row in receipt["tables"]}
+    assert by_table[PLAN]["estimated_bytes"] > by_table[REGIME]["estimated_bytes"]
+    # The receipt still lists the tables as selected; the moves went biggest first.
+    assert [row["table"] for row in receipt["tables"]] == [REGIME, PLAN]
+    assert receipt["move_order"] == [PLAN, REGIME]
+    assert [m["table"] for m in receipt["moves"]] == [PLAN, REGIME]
+    assert all(m["state"] == "moved" for m in receipt["moves"])
+
+
+def test_a_budget_that_runs_out_now_starves_the_smallest_table_not_the_last_one(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _regimes_and_plans(store)
+    # The budget expires after the first table has moved, whatever the clock says.
+    expired = {"after_moves": 1}
+    real = off.MoveBudget.expired
+
+    def expired_after_first(self) -> bool:
+        return expired["moved"] >= expired["after_moves"] or real(self)
+
+    expired["moved"] = 0
+    real_move = off.move_table
+
+    def counting_move(**kwargs):
+        outcome = real_move(**kwargs)
+        expired["moved"] += 1
+        return outcome
+
+    monkeypatch.setattr(off.MoveBudget, "expired", expired_after_first)
+    monkeypatch.setattr(off, "move_table", counting_move)
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[REGIME, PLAN])
+    assert receipt["state"] == "partial"
+    states = {m["table"]: m["state"] for m in receipt["moves"]}
+    assert states == {PLAN: "moved", REGIME: "not_started_budget"}
+
+
+def test_a_capped_table_stops_at_its_cap_and_the_rest_of_the_run_goes_on(
+    store: Path, cold: Path, tmp_path: Path
+) -> None:
+    import dataclasses
+
+    _regimes_and_plans(store)
+    capped = dataclasses.replace(off.POLICY_BY_TABLE[REGIME], max_batches_per_run=2)
+    policies = [capped, off.POLICY_BY_TABLE[PLAN]]
+    before = _table_rows(store, REGIME)
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[REGIME, PLAN],
+                   policies=policies, batch_rows=1)
+    assert receipt["state"] == "partial"
+    states = {m["table"]: m for m in receipt["moves"]}
+    assert states[REGIME]["state"] == "partial_batch_cap"
+    assert states[REGIME]["batches"] == 2 and states[REGIME]["moved_rows"] == 2
+    assert states[PLAN]["state"] == "moved"
+    assert len(_table_rows(store, REGIME)) == len(before) - 2
+    # The cap is per run: the next run carries on from where it stopped.
+    again = _run(store, cold, tmp_path, apply=True, tables=[REGIME], policies=[capped], batch_rows=1)
+    moved_twice = {m["table"]: m for m in again["moves"]}[REGIME]
+    assert moved_twice["moved_rows"] >= 1
+    # The cap travels with the policy into the cold ledger beside each batch.
+    ledger = sqlite3.connect(_cold_file(cold, REGIME)).execute(
+        f"SELECT policy_json FROM {off.COLD_BATCH_TABLE} LIMIT 1").fetchone()[0]
+    assert json.loads(ledger)["max_batches_per_run"] == 2
+
+
+def test_the_member_run_table_is_the_only_capped_one() -> None:
+    member = off.POLICY_BY_TABLE["calibration_native_ensemble_historical_member_run"]
+    assert member.max_batches_per_run == off.MEMBER_RUN_MAX_BATCHES_PER_RUN == 100
+    assert all(
+        policy.max_batches_per_run is None
+        for policy in off.POLICIES if policy.table != member.table
+    )
