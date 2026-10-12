@@ -490,6 +490,11 @@ PAIR_MAKER_DEFAULT_SETTINGS: dict[str, Any] = {
     "max_new_plans_per_pass": 10,
     "send_book_fresh_seconds": 120.0,
     "live_ws_book": True,
+    # Amendment three (user 10-13 「做 merge」): matched pairs back to pUSD.  "simulate"
+    # gas-estimates and records only; "live" also needs the gateway's PM_PAIR_MERGE_LIVE.
+    # A merge costs ~0.15 POL (400k gas at ~280 gwei), so it waits for this many pairs.
+    "merge": "simulate",
+    "min_merge_shares": 10.0,
 }
 
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak

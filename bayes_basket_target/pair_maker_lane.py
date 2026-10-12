@@ -26,6 +26,17 @@ User rulings 2026-10-12/13: a YES+NO pair lane, post-only only, pair cost under
 * Budget: filled plus resting cost a station-day at most
   ``max_station_day_usdc``; the lane's resting rungs at most
   ``max_cash_fraction`` of the free cash.
+* Merge (amendment three, user 10-13 「做 merge」): once the matched pairs not
+  yet merged reach ``min_merge_shares`` the lane asks the gateway to merge
+  them back into pUSD (``/merge-positions``: proxy wallet -> v2
+  NegRiskCtfCollateralAdapter); ``merge`` = ``simulate`` (default: the exact
+  transaction is gas-estimated and recorded, nothing is sent) or ``live``
+  (also needs the gateway's ``PM_PAIR_MERGE_LIVE``).  The transaction hash is
+  recorded at broadcast and its receipt read on a later pass; a merge whose
+  broadcast is unknown holds every further merge of that plan.  Merged pairs
+  leave the station-day cap (capital rolls) and are taken off the ledger's
+  booked position per token, so the departed-order reconciliation compares
+  the account with what it should still hold.
 * Books: per station-day x bucket ledger of YES/NO shares and cost, matched
   pairs, pair cost and the unmatched side, refreshed every pass from the
   order reconciliations; the plan closes when its window has passed and
@@ -88,8 +99,68 @@ PLAN_DDL = (
 )
 
 
+MERGE_TABLE = "pair_maker_merges"
+MERGE_DDL = (
+    f"CREATE TABLE IF NOT EXISTS {MERGE_TABLE} ("
+    " merge_id TEXT PRIMARY KEY,"
+    " plan_id TEXT NOT NULL,"
+    " station_id TEXT NOT NULL,"
+    " event_date TEXT NOT NULL,"
+    " bucket TEXT NOT NULL,"
+    " condition_id TEXT NOT NULL,"
+    " yes_token TEXT NOT NULL,"
+    " no_token TEXT NOT NULL,"
+    " shares REAL NOT NULL,"
+    " mode TEXT NOT NULL,"
+    " state TEXT NOT NULL,"
+    " tx_hash TEXT,"
+    " response_json TEXT,"
+    " created_at_utc TEXT NOT NULL,"
+    " updated_at_utc TEXT NOT NULL)"
+)
+# SIMULATED: estimated only; SENT: broadcast, receipt not read yet; MERGED: receipt
+# success; FAILED: refused, simulation reverted or receipt reverted; UNKNOWN:
+# broadcast-or-not unknown (holds the plan's merges until resolved by hand).
+MERGE_COUNTED_STATES = ("MERGED",)
+MERGE_HOLDING_STATES = ("SENT", "UNKNOWN")
+
+
 def ensure_lane_schema(conn: sqlite3.Connection) -> None:
     conn.execute(PLAN_DDL)
+    conn.execute(MERGE_DDL)
+
+
+def merged_shares_for_token(conn: sqlite3.Connection, token_id: str) -> float:
+    """Shares of one token this lane has merged away (receipt success)."""
+
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (MERGE_TABLE,)).fetchone() is None:
+        return 0.0
+    row = conn.execute(
+        f"SELECT COALESCE(SUM(shares),0) FROM {MERGE_TABLE} WHERE (yes_token=? OR no_token=?)"
+        f" AND state IN ({','.join('?' for _ in MERGE_COUNTED_STATES)})",
+        (str(token_id), str(token_id), *MERGE_COUNTED_STATES),
+    ).fetchone()
+    return float((row[0] if row else 0.0) or 0.0)
+
+
+def _plan_merges(conn: sqlite3.Connection, plan_id: str) -> list[dict[str, Any]]:
+    cur = conn.execute(f"SELECT * FROM {MERGE_TABLE} WHERE plan_id=? ORDER BY created_at_utc", (plan_id,))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def default_merge_transport(path: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    import sys  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    root = str(_Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from clob_order_service_client import ClobOrderServiceClient  # noqa: PLC0415
+
+    if path not in ("/merge-positions", "/merge-receipt"):
+        raise ValueError("pair_maker_merge_unknown_path")
+    return ClobOrderServiceClient(timeout_seconds=30)._post(path, dict(payload))
 
 
 def _utc(value: str) -> datetime:
@@ -356,8 +427,9 @@ def execute_pair_maker(
     settings: Mapping[str, Any] | None = None,
     admission: Callable[[str, sqlite3.Connection], Mapping[str, Any]] | None = None,
     ws_manifest_path: Any = None,
+    merge_transport: Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Re-quote every active plan, then plan the station-days whose book just formed."""
+    """Re-quote every active plan, merge its matched pairs, then plan the station-days whose book just formed."""
 
     ensure_lane_schema(target_conn)
     cfg = {**PAIR_MAKER_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
@@ -365,6 +437,11 @@ def execute_pair_maker(
         raise ValueError(f"pair_maker_rule_unknown:{cfg.get('rule')}")
     if not 0.0 < float(cfg["pair_cost_cap"]) <= 1.0:
         raise ValueError(f"pair_maker_pair_cost_cap_out_of_range:{cfg['pair_cost_cap']}")
+    merge_mode = str(cfg.get("merge") or "off")
+    if merge_mode not in ("off", "simulate", "live"):
+        raise ValueError(f"pair_maker_merge_mode_unknown:{merge_mode}")
+    merge_call = merge_transport or default_merge_transport
+    merges: list[dict[str, Any]] = []
     gate = admission or (lambda station, conn: live_station_admission(station, conn=conn))
     live = cfg.get("live_ws_book", True) is True
     root = _ws_manifest_root(ws_manifest_path) if live else None
@@ -419,6 +496,8 @@ def execute_pair_maker(
         rungs, status = lead_follow_plan(plan, states, quote, cfg, min_size=float(plan.get("min_size") or 5.0))
         plan["last_status"] = status
         spent = sum(states.get(r["intent_id"], {}).get("notional", 0.0) for r in plan["rungs"] if r.get("intent_id"))
+        # Merged pairs left the book as pUSD: their cost no longer counts (capital rolls).
+        spent -= float(plan.get("merged_cost_usdc") or 0.0)
         spent += sum(float(r["price"]) * float(r["shares"]) for r in plan["rungs"]
                      if states.get(r.get("intent_id") or "", {}).get("open"))
         for rung in rungs:
@@ -435,6 +514,64 @@ def execute_pair_maker(
             if budget is not None:
                 budget -= cost
 
+    def merge_step(plan: dict[str, Any], book_now: Mapping[str, Any]) -> None:
+        rows = _plan_merges(target_conn, plan["plan_id"])
+        for row in rows:
+            if row["state"] != "SENT":
+                continue
+            receipt = dict(merge_call("/merge-receipt", {"tx_hash": row["tx_hash"]}) or {})
+            status = str(receipt.get("status") or "")
+            new = {"success": "MERGED", "reverted": "FAILED"}.get(status) if receipt.get("ok") else None
+            if new:
+                target_conn.execute(f"UPDATE {MERGE_TABLE} SET state=?, response_json=?, updated_at_utc=? WHERE merge_id=?",
+                                    (new, json.dumps({**json.loads(row["response_json"] or "{}"), "receipt": receipt},
+                                                     sort_keys=True), now_utc, row["merge_id"]))
+                row["state"] = new
+        done = sum(float(r["shares"]) for r in rows if r["state"] in MERGE_COUNTED_STATES)
+        avg_pair = book_now.get("pair_cost")
+        plan["merged_shares"] = round(done, 4)
+        plan["merged_cost_usdc"] = round(done * float(avg_pair), 6) if avg_pair is not None else 0.0
+        if merge_mode == "off":
+            return
+        if any(r["state"] in MERGE_HOLDING_STATES for r in rows):
+            waiting["merge_pending"] += 1
+            return
+        mergeable = math.floor((float(book_now["matched_shares"]) - done) * 10 ** SHARE_PRECISION + 1e-9) / 10 ** SHARE_PRECISION
+        if mergeable < float(cfg["min_merge_shares"]) - 1e-9:
+            return
+        if not plan.get("condition_id"):
+            plan["condition_id"] = market_ids(target_conn, plan["station_id"], plan["event_date"], plan["bucket"]).get("condition_id")
+        if not plan.get("condition_id"):
+            waiting["merge_condition_missing"] += 1
+            return
+        n_done = sum(1 for r in rows if r["state"] in MERGE_COUNTED_STATES)
+        merge_id = f"{INTENT_PREFIX}_merge_" + content_sha256(
+            {"plan": plan["plan_id"], "shares": mergeable, "mode": merge_mode, "n": n_done})[:24]
+        if merge_mode == "simulate" and any(r["merge_id"] == merge_id for r in rows):
+            return
+        response = dict(merge_call("/merge-positions", {
+            "condition_id": plan["condition_id"], "yes_token": plan["tokens"][SIDE_YES], "no_token": plan["tokens"][SIDE_NO],
+            "neg_risk": True, "shares": mergeable, "execute": merge_mode == "live"}) or {})
+        if response.get("sent") is True and response.get("tx_hash"):
+            state = "SENT"
+        elif response.get("sent", False) is None:
+            state = "UNKNOWN"
+        elif response.get("ok") and response.get("simulated"):
+            state = "SIMULATED"
+        else:
+            state = "FAILED"
+        target_conn.execute(
+            f"INSERT OR REPLACE INTO {MERGE_TABLE} (merge_id, plan_id, station_id, event_date, bucket, condition_id, yes_token,"
+            " no_token, shares, mode, state, tx_hash, response_json, created_at_utc, updated_at_utc)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (merge_id, plan["plan_id"], plan["station_id"], plan["event_date"], plan["bucket"], plan["condition_id"],
+             plan["tokens"][SIDE_YES], plan["tokens"][SIDE_NO], mergeable, merge_mode, state, response.get("tx_hash"),
+             json.dumps(response, sort_keys=True), now_utc, now_utc),
+        )
+        merges.append({"station_id": plan["station_id"], "event_date": plan["event_date"], "bucket": plan["bucket"],
+                       "shares": mergeable, "state": state, "reason": response.get("reason") or response.get("error"),
+                       "gas_cost_pol": response.get("gas_cost_pol")})
+
     # 1. Active plans: refresh the books, re-quote inside the window, close after it.
     refreshed = closed = 0
     for station, day, plan_json, ends in target_conn.execute(
@@ -442,6 +579,8 @@ def execute_pair_maker(
     ).fetchall():
         plan = json.loads(plan_json)
         plan.setdefault("tokens", {})
+        if plan["tokens"].get(SIDE_YES) and plan["tokens"].get(SIDE_NO):
+            merge_step(plan, ledger(target_conn, plan))
         if now < _utc(ends):
             refusal, hours = _window_refusal(target_conn, station_id=str(station), event_date=str(day),
                                              settlement_timezone=plan["settlement_timezone"], now_utc=now_utc,
@@ -455,7 +594,9 @@ def execute_pair_maker(
                 else:
                     waiting[f"requote:{book_refusal or 'bucket_one_sided'}"] += 1
         book_now = ledger(target_conn, plan)
-        still_open = book_now[SIDE_YES]["resting"] or book_now[SIDE_NO]["resting"]
+        book_now["merged_shares"] = plan.get("merged_shares", 0.0)
+        still_open = (book_now[SIDE_YES]["resting"] or book_now[SIDE_NO]["resting"]
+                      or any(r["state"] in MERGE_HOLDING_STATES for r in _plan_merges(target_conn, plan["plan_id"])))
         final = PLAN_DONE if (now >= _utc(ends) and not still_open) else PLAN_ACTIVE
         target_conn.execute(
             f"UPDATE {PLAN_TABLE} SET plan_json=?, ledger_json=?, plan_state=?, last_pass_at_utc=?"
@@ -499,6 +640,7 @@ def execute_pair_maker(
                 "settlement_timezone": zone, "bucket": form["bucket"], "formation": form,
                 "window_ends_utc": _iso(window_end), "hours_to_settlement": hours,
                 "tokens": {SIDE_YES: ids["yes_token"], SIDE_NO: ids["no_token"]},
+                "condition_id": ids.get("condition_id"),
                 "min_size": float(ids.get("min_size") or 5.0),
                 "settings": {k: cfg[k] for k in ("pair_cost_cap", "lead_side", "rung_shares", "rung_minutes",
                                                  "quote_window_hours", "max_unmatched_usdc", "max_station_day_usdc",
@@ -514,9 +656,10 @@ def execute_pair_maker(
         planned += 1
     return {"schema": "pair_maker_lane_receipt_v2", "lane": LANE, "title": LANE_TITLE, "rule": RULE,
             "planned": planned, "rungs": len(receipts), "refreshed": refreshed, "closed": closed,
+            "merge_mode": merge_mode, "merges": merges,
             "cash": cash, "cash_refusal": cash_refusal, "budget_left": budget,
             "waiting": dict(sorted(waiting.items())), "receipts": receipts}
 
 
-__all__ = ["LANE", "LANE_TITLE", "PLAN_TABLE", "RULE", "bucket_quote", "execute_pair_maker", "formation",
+__all__ = ["LANE", "LANE_TITLE", "MERGE_TABLE", "PLAN_TABLE", "merged_shares_for_token", "RULE", "bucket_quote", "execute_pair_maker", "formation",
            "lead_follow_plan", "ledger", "side_quotes"]

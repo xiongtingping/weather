@@ -1,0 +1,13 @@
+58 formed mode buckets with a tape and a book (of 60 sampled)
+trades per hour (12 h after formation): median 2.3, p25 1.3, p75 4.5; flow hitting a YES bid 0.9/h, a NO bid 1.5/h (medians)
+trade size (shares): p25 4.2, median 7.7, p75 17.5, p90 40.0
+inter-trade gap (s): p10 0, median 29, p90 2991; share of gaps under 10 s 45% (bursts)
+best-bid lifetime (s, at ~85 s snapshot resolution): p25 209, median 932, p75 3630
+queue at the best bid (shares): median 158, p25 45
+
+clip at bid + 1, re-posted every T s: shares filled per hour per bucket (YES side / NO side)
+   T s         clip 5        clip 10        clip 20        clip 50
+    60    3.0 /   3.2    5.0 /   5.3    7.6 /   8.2   12.3 /  13.1
+   300    2.6 /   2.8    4.4 /   4.7    6.8 /   7.4   11.1 /  12.1
+   900    2.3 /   2.5    3.9 /   4.2    6.2 /   6.7   10.5 /  11.3
+  1800    2.0 /   2.2    3.4 /   3.8    5.5 /   6.2    9.7 /  10.6

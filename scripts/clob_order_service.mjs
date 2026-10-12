@@ -9,7 +9,7 @@ import { Agent as HttpsAgent } from "https";
 import axios from "axios";
 import { bootstrap } from "global-agent";
 import { AssetType, ClobClient, Side, OrderType, createL2Headers, getContractConfig } from "@polymarket/clob-client-v2";
-import { Wallet } from "ethers";
+import { Wallet, Contract, providers as ethersProviders, constants as ethersConstants, utils as ethersUtils } from "ethers";
 import { DatabaseSync } from "node:sqlite";
 import { hashTypedData } from "viem";
 
@@ -3736,6 +3736,123 @@ export class ClobOrderService {
   }
 }
 
+
+// Charter 269 amendment three (熊先生 10-13「做 merge」): a matched YES + NO
+// pair is turned back into pUSD on chain instead of being held to
+// settlement, so the lane's capital rolls.  Weather markets are neg-risk;
+// their positions are backed by the legacy adapter's wrapped collateral
+// (checked 10-13: the YES position id derives from wcol, not pUSD), and the
+// v2 NegRiskCtfCollateralAdapter merges them through the legacy adapter and
+// wraps the USDC.e it gets back into pUSD for the caller.  The account is a
+// signature-type-1 proxy wallet, so the call goes through the Polymarket
+// Proxy Factory's ``proxy(calls)`` from the signer EOA, which pays the gas.
+//
+// Simulation (estimateGas of the exact transaction) is the default.  A merge
+// is sent only when the caller asks for it AND ``PM_PAIR_MERGE_LIVE`` is set
+// AND the operator's live-pause flag is absent; one merge per condition is in
+// flight at a time.
+const MERGE_CONTRACTS = {
+  ctf: "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+  negRiskCollateralAdapter: "0xadA2005600Dec949baf300f4C6120000bDB6eAab",
+  legacyNegRiskAdapter: "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296",
+  proxyFactory: "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052",
+};
+const MERGE_INFLIGHT = new Set();
+
+export async function mergePairPositions(rawPayload = {}, deps = {}) {
+  const conditionId = String(rawPayload?.condition_id || "").trim().toLowerCase();
+  const yesToken = String(rawPayload?.yes_token || "").trim();
+  const noToken = String(rawPayload?.no_token || "").trim();
+  const shares = Number(rawPayload?.shares);
+  const wantSend = rawPayload?.execute === true;
+  const base = { condition_id: conditionId, shares, execute_requested: wantSend, source: SERVICE_NAME };
+  if (!/^0x[0-9a-f]{64}$/.test(conditionId) || !yesToken || !noToken) return { ...base, ok: false, error: "merge_identity_missing" };
+  if (rawPayload?.neg_risk !== true) return { ...base, ok: false, error: "merge_only_neg_risk_supported" };
+  if (!Number.isFinite(shares) || shares <= 0) return { ...base, ok: false, error: "merge_shares_invalid" };
+  const amount = ethersUtils.parseUnits(shares.toFixed(6), 6);
+  const rpcUrl = deps.rpcUrl || env("POLY_RPC_URL", env("RPC_URL", ""));
+  if (!rpcUrl) return { ...base, ok: false, error: "missing_env:POLY_RPC_URL" };
+  const funder = env("PM_FUNDER_ADDRESS", "");
+  if (!funder) return { ...base, ok: false, error: "missing_env:PM_FUNDER_ADDRESS" };
+  const provider = deps.provider || new ethersProviders.JsonRpcProvider(rpcUrl);
+  const signer = (deps.signer || new Wallet(requireEnv("PRIVATE_KEY"))).connect(provider);
+  const ctf = new Contract(MERGE_CONTRACTS.ctf, [
+    "function balanceOf(address,uint256) view returns (uint256)",
+    "function isApprovedForAll(address,address) view returns (bool)",
+    "function getCollectionId(bytes32,bytes32,uint256) view returns (bytes32)",
+    "function getPositionId(address,bytes32) pure returns (uint256)",
+  ], provider);
+  const legacy = new Contract(MERGE_CONTRACTS.legacyNegRiskAdapter, ["function wcol() view returns (address)"], provider);
+  const wcol = await legacy.wcol();
+  // The tokens the caller names must be exactly this condition's two
+  // positions on the wrapped collateral; anything else fails closed.
+  const ids = [];
+  for (const indexSet of [1, 2]) {
+    const coll = await ctf.getCollectionId(ethersConstants.HashZero, conditionId, indexSet);
+    ids.push((await ctf.getPositionId(wcol, coll)).toString());
+  }
+  if (ids[0] !== yesToken || ids[1] !== noToken) return { ...base, ok: false, error: "merge_token_identity_mismatch", derived: ids };
+  const [yesBal, noBal, approved, pol] = await Promise.all([
+    ctf.balanceOf(funder, yesToken), ctf.balanceOf(funder, noToken),
+    ctf.isApprovedForAll(funder, MERGE_CONTRACTS.negRiskCollateralAdapter), provider.getBalance(signer.address),
+  ]);
+  const balances = { yes_shares: Number(ethersUtils.formatUnits(yesBal, 6)), no_shares: Number(ethersUtils.formatUnits(noBal, 6)) };
+  if (!approved) return { ...base, ok: false, error: "merge_adapter_not_approved", ...balances };
+  if (amount.gt(yesBal) || amount.gt(noBal)) return { ...base, ok: false, error: "merge_exceeds_paired_balance", ...balances };
+  const adapter = new ethersUtils.Interface([
+    "function mergePositions(address,bytes32,bytes32,uint256[],uint256)",
+  ]);
+  const data = adapter.encodeFunctionData("mergePositions", [ethersConstants.AddressZero, ethersConstants.HashZero, conditionId, [], amount]);
+  const factory = new Contract(MERGE_CONTRACTS.proxyFactory, [
+    "function proxy((uint8 typeCode, address to, uint256 value, bytes data)[] calls) payable returns (bytes[])",
+  ], signer);
+  const calls = [{ typeCode: 1, to: MERGE_CONTRACTS.negRiskCollateralAdapter, value: 0, data }];
+  let gas;
+  try {
+    gas = await factory.estimateGas.proxy(calls);
+  } catch (err) {
+    return { ...base, ok: false, error: "merge_simulation_reverted", detail: redactErrorText(err?.reason || err?.message || String(err)).slice(0, 300), ...balances };
+  }
+  const gasPrice = await provider.getGasPrice();
+  const gasLimit = gas.mul(13).div(10);
+  const cost = gasLimit.mul(gasPrice);
+  const sim = { ...base, ok: true, simulated: true, gas_estimate: gas.toNumber(), gas_price_gwei: Number(ethersUtils.formatUnits(gasPrice, "gwei")),
+                gas_cost_pol: Number(ethersUtils.formatEther(cost)), signer_pol: Number(ethersUtils.formatEther(pol)), ...balances };
+  if (cost.gt(pol)) return { ...sim, ok: false, error: "merge_signer_gas_insufficient" };
+  if (!wantSend) return { ...sim, sent: false, reason: "simulate_only" };
+  if (!truthy(env("PM_PAIR_MERGE_LIVE", ""), false)) return { ...sim, sent: false, reason: "merge_live_switch_off" };
+  if (livePausePresent()) return { ...sim, sent: false, reason: "live_paused" };
+  if (MERGE_INFLIGHT.has(conditionId)) return { ...sim, sent: false, reason: "merge_in_flight" };
+  MERGE_INFLIGHT.add(conditionId);
+  try {
+    // The production cycle is the single SSOT writer: it gets the hash back
+    // as soon as the transaction is broadcast and reads the receipt on a
+    // later pass (``/merge-receipt``) instead of waiting on a block here.
+    const tx = await factory.proxy(calls, { gasLimit });
+    return { ...sim, sent: true, tx_hash: tx.hash, nonce: tx.nonce };
+  } catch (err) {
+    // Broadcast-or-not is unknown here; the caller reconciles from balances.
+    return { ...sim, ok: false, sent: null, error: "merge_send_unknown", detail: redactErrorText(err?.message || String(err)).slice(0, 300) };
+  } finally {
+    MERGE_INFLIGHT.delete(conditionId);
+  }
+}
+
+export async function mergeReceipt(rawPayload = {}, deps = {}) {
+  const txHash = String(rawPayload?.tx_hash || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(txHash)) return { ok: false, error: "merge_tx_hash_invalid", source: SERVICE_NAME };
+  const rpcUrl = deps.rpcUrl || env("POLY_RPC_URL", env("RPC_URL", ""));
+  if (!rpcUrl) return { ok: false, error: "missing_env:POLY_RPC_URL", source: SERVICE_NAME };
+  const provider = deps.provider || new ethersProviders.JsonRpcProvider(rpcUrl);
+  const receipt = await provider.getTransactionReceipt(txHash);
+  if (!receipt) {
+    const tx = await provider.getTransaction(txHash);
+    return { ok: true, tx_hash: txHash, status: tx ? "pending" : "not_found", source: SERVICE_NAME };
+  }
+  return { ok: true, tx_hash: txHash, status: Number(receipt.status) === 1 ? "success" : "reverted",
+           block_number: Number(receipt.blockNumber || 0), gas_used: Number(receipt.gasUsed || 0), source: SERVICE_NAME };
+}
+
 const service = new ClobOrderService();
 
 async function handle(req, res) {
@@ -3786,6 +3903,16 @@ async function handle(req, res) {
     if (req.method === "POST" && parsedUrl.pathname === "/lookup-open-orders") {
       const payload = await readJsonBody(req);
       sendJson(res, 200, await service.lookupOpenOrders(payload));
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/merge-positions") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await mergePairPositions(payload));
+      return;
+    }
+    if (req.method === "POST" && parsedUrl.pathname === "/merge-receipt") {
+      const payload = await readJsonBody(req);
+      sendJson(res, 200, await mergeReceipt(payload));
       return;
     }
     if (req.method === "POST" && parsedUrl.pathname === "/lookup-position") {

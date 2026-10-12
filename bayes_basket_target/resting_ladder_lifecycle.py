@@ -740,7 +740,11 @@ def recorded_fills_for_token(conn: sqlite3.Connection, token_id: str) -> float:
         " WHERE i.token_id = ?",
         (str(token_id),),
     ).fetchone()
-    return float((row[0] if row else 0.0) or 0.0)
+    # Charter 269 amendment three: shares the pair maker merged back into pUSD
+    # left the account without a sell; the booked position drops with them.
+    from .pair_maker_lane import merged_shares_for_token  # noqa: PLC0415
+
+    return float((row[0] if row else 0.0) or 0.0) - merged_shares_for_token(conn, token_id)
 
 
 def reconcile_departed_intent(

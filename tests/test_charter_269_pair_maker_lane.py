@@ -225,3 +225,103 @@ def test_the_mvp_runs_on_its_one_station(monkeypatch):
     for st in ("LEMD", "EGLC"):
         conn.execute("INSERT INTO basket_target_market_registry VALUES (?, '2026-10-15', 'C', 'Europe/Madrid')", (st,))
     assert [c["station_id"] for c in P._candidates(conn, now_utc=NOW, cfg=CFG)] == ["LEMD"]
+
+
+# Amendment three (user 10-13 「做 merge」): matched pairs back to pUSD.
+
+def _merge_db(yes_filled=10.0, no_filled=10.0):
+    conn = _ledger_db()
+    P.ensure_lane_schema(conn)
+    for iid, size, notional in (("y0", yes_filled, 0.40 * yes_filled), ("n0", no_filled, 0.54 * no_filled)):
+        conn.execute("INSERT INTO basket_target_order_reconciliations VALUES (?,?,?)", (iid, size, notional))
+        conn.execute("INSERT INTO basket_target_order_intents VALUES (?,?,?,?)", (iid, "filled", 0.5, size))
+    plan = {"plan_id": "pairmk_plan_t", "station_id": "LEMD", "event_date": "2026-10-15", "bucket": "28°C",
+            "settlement_timezone": "Europe/Madrid", "window_ends_utc": "2026-10-13T05:00:00Z",
+            "tokens": {"YES": "Y", "NO": "N"}, "condition_id": "0x" + "ab" * 32,
+            "rungs": [{"side": "YES", "k": 0, "intent_id": "y0"}, {"side": "NO", "k": 0, "intent_id": "n0"}]}
+    conn.execute(f"INSERT INTO {P.PLAN_TABLE} VALUES (?,?,?,?,?,?,?,?,?)",
+                 ("LEMD", "2026-10-15", "28°C", "active", "2026-10-12T17:00:00Z", plan["window_ends_utc"],
+                  json.dumps(plan), None, None))
+    return conn
+
+
+def _merge_env(monkeypatch):
+    monkeypatch.setattr(P, "_free_cash", lambda *a, **k: (100.0, None))
+    monkeypatch.setattr(P, "_ws_manifest_root", lambda path: None)
+    monkeypatch.setattr(P, "_candidates", lambda *a, **k: [])
+
+
+def test_simulate_records_the_merge_once_and_counts_nothing(monkeypatch):
+    _merge_env(monkeypatch)
+    conn = _merge_db()
+    calls = []
+
+    def gw(path, payload):
+        calls.append((path, payload))
+        return {"ok": True, "simulated": True, "sent": False, "reason": "simulate_only", "gas_cost_pol": 0.15}
+
+    cfg = {**CFG, "enabled": True, "stations": [], "merge": "simulate"}
+    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert [c[0] for c in calls] == ["/merge-positions"]
+    assert calls[0][1]["shares"] == 10.0 and calls[0][1]["execute"] is False and calls[0][1]["neg_risk"] is True
+    assert out["merges"][0]["state"] == "SIMULATED"
+    P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert len(calls) == 1, "the same simulation is not repeated every pass"
+    assert P.merged_shares_for_token(conn, "Y") == 0.0
+
+
+def test_live_merge_is_sent_then_booked_from_its_receipt(monkeypatch):
+    _merge_env(monkeypatch)
+    conn = _merge_db(yes_filled=12.0, no_filled=10.0)
+    replies = {"/merge-positions": {"ok": True, "simulated": True, "sent": True, "tx_hash": "0x" + "cd" * 32},
+               "/merge-receipt": {"ok": True, "status": "pending"}}
+    gw = lambda path, payload: replies[path]  # noqa: E731
+    cfg = {**CFG, "enabled": True, "stations": [], "merge": "live"}
+    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert out["merges"][0]["state"] == "SENT" and out["merges"][0]["shares"] == 10.0, "only the matched pairs"
+    # Pending receipt: the plan stays open and no second merge goes out.
+    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert out["merges"] == [] and out["waiting"].get("merge_pending") == 1
+    assert conn.execute(f"SELECT plan_state FROM {P.PLAN_TABLE}").fetchone()[0] == "active"
+    replies["/merge-receipt"] = {"ok": True, "status": "success"}
+    P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert P.merged_shares_for_token(conn, "Y") == 10.0 and P.merged_shares_for_token(conn, "N") == 10.0
+    plan = json.loads(conn.execute(f"SELECT plan_json FROM {P.PLAN_TABLE}").fetchone()[0])
+    assert plan["merged_shares"] == 10.0 and plan["merged_cost_usdc"] == pytest.approx(10 * (0.40 + 0.54))
+    assert conn.execute(f"SELECT plan_state FROM {P.PLAN_TABLE}").fetchone()[0] == "done"
+
+
+def test_an_unknown_broadcast_holds_every_further_merge(monkeypatch):
+    _merge_env(monkeypatch)
+    conn = _merge_db()
+    calls = []
+
+    def gw(path, payload):
+        calls.append(path)
+        return {"ok": False, "sent": None, "error": "merge_send_unknown"}
+
+    cfg = {**CFG, "enabled": True, "stations": [], "merge": "live"}
+    P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg, merge_transport=gw)
+    assert calls == ["/merge-positions"] and out["waiting"].get("merge_pending") == 1
+
+
+def test_fewer_pairs_than_the_merge_minimum_wait(monkeypatch):
+    _merge_env(monkeypatch)
+    conn = _merge_db(yes_filled=5.0, no_filled=5.0)
+    gw = lambda path, payload: pytest.fail("no merge under min_merge_shares")  # noqa: E731
+    P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True,
+                         settings={**CFG, "enabled": True, "stations": [], "merge": "live"}, merge_transport=gw)
+
+
+def test_the_departed_order_reconciliation_books_merged_shares_off_the_token():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_target_order_intents (order_intent_id TEXT, token_id TEXT, order_action TEXT)")
+    conn.execute("CREATE TABLE basket_target_order_reconciliations (order_intent_id TEXT, filled_size REAL)")
+    conn.execute("INSERT INTO basket_target_order_intents VALUES ('y0','Y','BUY')")
+    conn.execute("INSERT INTO basket_target_order_reconciliations VALUES ('y0', 12.0)")
+    assert R.recorded_fills_for_token(conn, "Y") == 12.0
+    P.ensure_lane_schema(conn)
+    conn.execute(f"INSERT INTO {P.MERGE_TABLE} VALUES ('m','p','LEMD','2026-10-15','28°C','0x','Y','N',10,'live','MERGED',"
+                 "'0x',NULL,'t','t')")
+    assert R.recorded_fills_for_token(conn, "Y") == 2.0

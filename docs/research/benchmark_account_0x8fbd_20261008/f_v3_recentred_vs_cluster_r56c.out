@@ -1,0 +1,4 @@
+runs cached 18/18 event days
+as scored (warm)           n 227: = cluster 56.4% vs F 45.8% +0.106 [+0.033, +0.178] halves +0.140/+0.082; hits 37.1% vs F 39.0%; mean shift +0.00 C
+re-centred (LODO shift)    n 227: = cluster 41.4% vs F 45.8% -0.044 [-0.101, +0.013] halves -0.043/-0.045; hits 36.6% vs F 39.0%; mean shift -0.46 C
+half re-centred            n 227: = cluster 49.8% vs F 45.8% +0.040 [-0.021, +0.100] halves +0.054/+0.030; hits 37.1% vs F 39.0%; mean shift -0.23 C
