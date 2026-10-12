@@ -1,0 +1,28 @@
+(1) the seeded ask ladder: first WS book after listing, markets of the 227 picks
+  157 markets with a book within 2 h of listing (68 before the cluster's first YES); buckets with asks 11.0 of 11.0; sum of asks 3.02 (median); bids anywhere 99%
+  ask-weighted centre - F -0.10 C (sd 0.80); - L +0.49 (sd 0.92); dearest bucket = F's 34%, = L's 26%, = cluster's pick 50%
+  books before the first YES (68): F's bucket quoted 100%, F+1 quoted 100%; ask on F 0.48, on F+1 0.46, on F-1 0.45
+
+(2) edge at the trade: book within 15 min (before preferred)
+  picks with a book: 92 (54 before, 38 within 15 min after)
+  their classes: F-1 17, F 42, F+1 28, further 5
+  belief ENS@F              n  90: argmax(p - ask) = pick 27.8%, argmax(p / ask) 28.9%, argmax p 36.7%; one-bucket departures 44: chosen bucket had the better edge 5, worse 39, F unquoted 0; left F when F had no edge 40/79, when F had edge 9/11
+  belief P0first            n  92: argmax(p - ask) = pick 37.0%, argmax(p / ask) 37.0%, argmax p 41.3%; one-bucket departures 45: chosen bucket had the better edge 13, worse 32, F unquoted 0; left F when F had no edge 31/68, when F had edge 19/24
+  belief normal 1.1 bucket  n  92: argmax(p - ask) = pick 29.3%, argmax(p / ask) 28.3%, argmax p 45.7%; one-bucket departures 45: chosen bucket had the better edge 2, worse 43, F unquoted 0; left F when F had no edge 42/83, when F had edge 8/9
+  F+1 departures with F quoted (n 28): paid 0.32, F's ask 0.41; paid < F's ask on 57%
+  F-1 departures with F quoted (n 17): paid 0.37, F's ask 0.44; paid < F's ask on 53%
+
+(3) by class, all 227 picks: taker share, fill price, belief on the bought bucket, realised edge p - price
+  F-1  n  33: taker 70%, price 0.358, ENS@F p(bought) 0.261, p - price -0.089, hit 46.9% (realised value per share at truth: +0.110)
+  F    n 104: taker 91%, price 0.391, ENS@F p(bought) 0.349, p - price -0.022, hit 54.2% (realised value per share at truth: +0.151)
+  F+1  n  63: taker 83%, price 0.349, ENS@F p(bought) 0.240, p - price -0.093, hit 38.3% (realised value per share at truth: +0.034)
+
+(4) out of sample, leave one event day out, picks with a book and both neighbours quoted
+  belief ENS@F              n 90: argmax(p - w ask), w by LODO = cluster 36.7% vs F 45.6% -0.089 [-0.191, +0.013]
+  belief normal 1.1 bucket  n 90: argmax(p - w ask), w by LODO = cluster 45.6% vs F 45.6% +0.000 [+0.000, +0.000]
+
+(5) books before the cluster's first YES: whose bucket does the dearest ask sit on?
+  before the trade                                 n  68: dearest ask = cluster's pick 26%, = F 29%; where pick != F: dearest = pick 15% (n 39); dearest hits truth 19% vs F 31% vs cluster 40%
+      dearest ask 0.577, second 0.491, third 0.472; minutes after listing 18 (median)
+  after the trade (the cluster may have lifted it) n  89: dearest ask = cluster's pick 67%, = F 37%; where pick != F: dearest = pick 61% (n 49); dearest hits truth 42% vs F 48% vs cluster 44%
+      dearest ask 0.551, second 0.438, third 0.377; minutes after listing 40 (median)
