@@ -1,0 +1,32 @@
+(1) bucket(F + predicted cluster offset) all            n=227  45.4%  (F 47.6%; +28/-33)
+(1) bucket(F + predicted cluster offset) 1st half       n= 93  46.2%  (F 50.5%; +12/-16)
+(1) bucket(F + predicted cluster offset) 2nd half       n=134  44.8%  (F 45.5%; +16/-17)
+(1) bucket(F + predicted cluster offset) early <15 min  n= 96  55.2%  (F 55.2%; +14/-14)
+    cluster offset model: mean offset -0.10 C, residual sd 0.90 C; per +1 sd of each condition (C):
+      dev AIFS         +0.113  [-0.076, +0.299]
+      dev HRES         +0.182  [+0.031, +0.416] *
+      dev GFS          -0.009  [-0.188, +0.275]
+      dev AIGFS        +0.263  [+0.090, +0.400] *
+      spread           -0.063  [-0.245, +0.093]
+      skew             +0.187  [-0.000, +0.367]
+      station corr     +0.367  [+0.211, +0.535] *
+      fleet c          -0.039  [-0.190, +0.142]
+      recent F error   +0.055  [-0.225, +0.238]
+      obs->F change    +0.255  [+0.068, +0.393] *
+      F station        +0.161  [+0.014, +0.291] *
+      |lat|/30         +0.004  [-0.106, +0.105]
+      log minutes      +0.063  [-0.138, +0.230]
+      position         -0.106  [-0.195, -0.000] *
+
+(2) truth - F on 2188 station-days: mean -0.38 C; per +1 sd of each condition (C), next to the cluster's lean:
+      dev AIFS         truth -0.020 [-0.163, +0.085]     cluster +0.113   (opposite)
+      dev HRES         truth -0.048 [-0.211, +0.079]     cluster +0.182   (opposite)
+      dev GFS          truth -0.035 [-0.176, +0.071]     cluster -0.009   (same way)
+      dev AIGFS        truth +0.073 [-0.043, +0.151]     cluster +0.263   (same way)
+      spread           truth +0.055 [+0.004, +0.107] *   cluster -0.063   (opposite)
+      skew             truth +0.206 [+0.095, +0.348] *   cluster +0.187   (same way)
+      station corr     truth +0.207 [+0.159, +0.270] *   cluster +0.367   (same way)
+      fleet c          truth -0.050 [-0.063, -0.035] *   cluster -0.039   (same way)
+      recent F error   truth +0.037 [-0.053, +0.108]     cluster +0.055   (same way)
+      obs->F change    truth -0.137 [-0.208, -0.077] *   cluster +0.255   (opposite)
+      |lat|/30         truth -0.059 [-0.095, -0.016] *   cluster +0.004   (opposite)
