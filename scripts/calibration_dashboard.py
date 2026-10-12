@@ -961,7 +961,27 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
         or "BLOCK" in state_word
         or "FAIL" in state_word
     )
-    if fail_closed:
+    # A cycle that committed nothing because every scope it judged was a
+    # rule saying "not now" -- the P1 entry window, no decision moment, a
+    # basket the economics held -- is the cycle doing its job.  The worker
+    # still writes it ``blocked_fail_closed`` (it committed nothing), and
+    # this branch used to return red before the expected-reason set below
+    # was ever read: 2026-10-12 16:01Z the page's banner carried
+    # 「生产回执 fail-closed：…all_scopes_refused:p1_entry_window_not_openx4」
+    # over four tomorrow scopes waiting for their window (user 「有问题吧」),
+    # the shape the 09-25 fix had already cleared for a partial cycle.  Only
+    # that shape is let through, to the staleness and lane checks below; a
+    # refusal outside the set, a fleet-wide defect or a worker-level failure
+    # still reads red here.
+    refusals = production.get("blocked_scope_reasons")
+    waiting_only = bool(
+        fail_closed
+        and str(production.get("reason") or "").startswith("all_scopes_refused:")
+        and isinstance(refusals, Mapping)
+        and refusals
+        and all(name in BLOCKED_SCOPE_EXPECTED_REASONS for name in refusals)
+    )
+    if fail_closed and not waiting_only:
         reason = str(production.get("reason") or "").strip()
         recovery = production.get("connection_recovery")
         if not reason and isinstance(recovery, Mapping):
@@ -1086,6 +1106,15 @@ def _production_health(status: Mapping[str, Any]) -> dict[str, Any]:
     # than an outage banner over nine committed live decisions.
     blocked_scope_count = int(production.get("blocked_scope_count") or 0)
     committed_scope_count = int(production.get("committed_scope_count") or 0)
+    if waiting_only:
+        notes.append(
+            f"本轮无落账：{blocked_scope_count} 个 scope 都在等（"
+            + "、".join(
+                f"{BLOCKED_SCOPE_REASON_LABELS.get(name, name)}×{count}"
+                for name, count in sorted(refusals.items(), key=lambda kv: -kv[1])[:3]
+            )
+            + "）"
+        )
     if blocked_scope_count and committed_scope_count:
         reasons = production.get("blocked_scope_reasons") or {}
         top = "、".join(
