@@ -510,7 +510,9 @@ def load_resting_maker_intents(
             # Only a post-only BUY is a rung of charter 94's ladder; the
             # reprice and cancel rules below are for rungs.  Everything else
             # admitted here is synced and left to its own horizon.
-            "ladder_rung": post_only and order_action == "BUY",
+            # Charter 269: a pair-maker rung lives its own window (``own_horizon``),
+            # not this ladder; it is synced here and left to its GTD.
+            "ladder_rung": post_only and order_action == "BUY" and intent.get("own_horizon") is not True,
             "exchange_order_id": str(row[12]),
             "filled_size": float(row[13] or 0.0),
             "filled_notional_usdc": float(row[14] or 0.0),

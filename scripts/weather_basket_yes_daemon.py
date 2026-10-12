@@ -119,6 +119,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_COPY_FOLLOW,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
+    LANE_PAIR_MAKER,
     LANE_PROPER_BET,
     LANE_P1_TAIL,
     LANE_TAIL_SHORT,
@@ -4419,6 +4420,22 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             proper_bet_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 269: the pair maker, on the books that formed this cycle.
+    pair_maker_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live" and lane_enabled(LANE_PAIR_MAKER):
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _pair_transport,
+            )
+            from bayes_basket_target.pair_maker_lane import execute_pair_maker
+            pair_maker_receipt = execute_pair_maker(
+                connection,
+                transport=_pair_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            pair_maker_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     return {
         **result,
         "post_cycle_resource_guard": {
@@ -4438,6 +4455,7 @@ def run_target_production_cycle(
             if p1_consensus_head_receipt else {}
         ),
         **({"p1_consensus_lane": p1_consensus_receipt} if p1_consensus_receipt else {}),
+        **({"pair_maker_lane": pair_maker_receipt} if pair_maker_receipt else {}),
         **({"proper_bet_lane_head": proper_bet_head_receipt} if proper_bet_head_receipt else {}),
         **({"proper_bet_lane": proper_bet_receipt} if proper_bet_receipt else {}),
         **({"tail_short_lane": tail_short_receipt} if tail_short_receipt else {}),

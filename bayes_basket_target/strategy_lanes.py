@@ -60,6 +60,7 @@ LANE_P1_CONSENSUS = "p1_consensus"
 LANE_PROPER_BET = "proper_bet"
 LANE_TAIL_SHORT = "tail_short"
 LANE_COPY_FOLLOW = "copy_follow"
+LANE_PAIR_MAKER = "pair_maker"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -70,6 +71,7 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_PROPER_BET,
     LANE_TAIL_SHORT,
     LANE_COPY_FOLLOW,
+    LANE_PAIR_MAKER,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -460,6 +462,31 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     "big_episode_multiplier": 1.0,
 }
 
+#: Charter 269 (user rulings 2026-10-12/13 「成形即挂、众数桶、允许 NO 单边、0.95
+#: 作挂价上限」): the pair maker's settings (``pair_maker_lane``).  Off until the
+#: operator switches it on.
+PAIR_MAKER_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": False,
+    "rule": "post_only_pair_mode_at_formation_v1",
+    # Any YES fill plus any NO fill costs at most this (a quote ceiling).
+    "pair_cost_cap": 0.95,
+    # YES rungs at mid - quote_offset - o, NO rungs at cap - (mid - quote_offset) - o.
+    "quote_offset": 0.05,
+    "rung_offsets": [0.0, 0.02, 0.05],
+    "rung_shares": 5.0,
+    # Rungs live this long (GTD), never past the settlement line below.
+    "window_hours": 6.0,
+    "min_hours_to_settlement": 36.0,
+    "units": ["C"],
+    "formation_mid_sum": [0.7, 1.4],
+    "ask_min_shares": 5.0,
+    "max_station_day_usdc": 15.0,
+    "max_cash_fraction": 0.2,
+    "max_new_plans_per_pass": 10,
+    "send_book_fresh_seconds": 120.0,
+    "live_ws_book": True,
+}
+
 #: The lanes whose per-trade ``stake_usdc`` is a board dial -- the tiebreak
 #: lane's since charter 146, the far-tail and Proper lanes' since charter 252
 #: (user rulings 2026-10-04 「顶部增加：远尾做空 H1 的单笔预算调整」「还有Proper 下注线
@@ -482,6 +509,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_PROPER_BET: dict(PROPER_BET_DEFAULT_SETTINGS),
     LANE_TAIL_SHORT: dict(TAIL_SHORT_DEFAULT_SETTINGS),
     LANE_COPY_FOLLOW: dict(COPY_FOLLOW_DEFAULT_SETTINGS),
+    LANE_PAIR_MAKER: dict(PAIR_MAKER_DEFAULT_SETTINGS),
 }
 
 
@@ -609,6 +637,8 @@ __all__ = [
     "COPY_FOLLOW_DEFAULT_SETTINGS",
     "LANE_BASKET",
     "LANE_COPY_FOLLOW",
+    "LANE_PAIR_MAKER",
+    "PAIR_MAKER_DEFAULT_SETTINGS",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",
     "LANE_P1_CONSENSUS",

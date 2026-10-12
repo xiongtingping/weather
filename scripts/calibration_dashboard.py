@@ -18419,7 +18419,7 @@ function reliabilityChart(cfg){
 
 // The lanes' names on the two charter-259 sections, in a fixed order; a lane
 // the board has no name for prints its key and sorts last.
-const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",
+const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",pair_maker:"配对挂单",
   p1_consensus:"同心线",p1_tail:"P1 尾段"};
 const TC_LANE_ORDER=["proper_bet","tail_short","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
 const tcLaneSort=(a,b)=>{const i=TC_LANE_ORDER.indexOf(a),j=TC_LANE_ORDER.indexOf(b);
@@ -19108,6 +19108,9 @@ const LC_LANES = {
   tail_short: {name:"远尾做空 H1",
     on:"实盘举旗时，P0 首决策、距结算 >36h 的远尾桶照常按 NO 卖价吃单（宪章 234/251）",
     off:"整条车道跳过：不评估、不发新单；已买到的 NO 照常持有到结算"},
+  pair_maker: {name:"配对挂单线",
+    on:"实盘举旗时，盘口成形即在市场众数桶挂 YES/NO 两条 post-only 阶梯（任一 YES＋任一 NO ≤0.95），6 小时窗、允许众数单边持有到结算（宪章 269）",
+    off:"整条车道跳过：不挂新单；已挂单到窗口自然过期，持仓照常持有到结算"},
   copy_follow: {name:"跟单线",
     on:"实盘举旗时，跟随对标账户的天气成交，按 我方净值÷对方持仓市值 等比例缩小；买不高于对方价、卖不低于对方价（宪章 256）",
     off:"整条车道跳过：不读对方成交、不发新单；已跟到的仓位照常持有"},
