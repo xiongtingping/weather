@@ -1,0 +1,29 @@
+{
+ "model": "listing_f_station_values_v3_candidate",
+ "members": [
+  "DWD_ICON_GLOBAL_13KM_NATIVE_POINT",
+  "ECCC_GDPS_15KM_NATIVE_POINT",
+  "ECMWF_AIFS_SINGLE_POINT",
+  "ECMWF_IFS_HRES_NATIVE_POINT",
+  "NOAA_AIGFS_025_NATIVE_POINT",
+  "NOAA_GFS_025_NATIVE_POINT"
+ ],
+ "lambda": 0.9,
+ "lambda_plateau": [
+  0.7,
+  0.9
+ ],
+ "station_value": {
+  "GFS": "native ~13 km Gaussian flux grid (sflux), hourly TMAX, nearest land cell, + 0.0065 C/m x (cell height - station elevation)",
+  "others": "archived nearest-land value + 0.0065 C/m x (cell height - station elevation) (terrain_offsets_r39h.json)"
+ },
+ "fleet_shift": "re-estimated on station values (about +0.7 C vs +1.0 on grid values)",
+ "fitted_on": {
+  "picks": 227,
+  "event_days": [
+   "2026-09-24",
+   "2026-10-11"
+  ]
+ },
+ "forward_protocol": "pre-formation first YES on event days after 2026-10-11: bucket(F_v3) vs the first pick, paired against bucket(f_c); read with the other frozen candidates at >= 80 picks"
+}

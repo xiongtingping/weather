@@ -1,0 +1,14 @@
+runs cached 18/18 event days
+(1) ablations on the 227 picks, lambda 0.9
+   grid values                                n 227: = cluster 41.4% vs F 45.8% -0.044 [-0.140, +0.052] halves -0.097/-0.007; hits 28.6% vs F 39.0%
+   lapse on all, GFS 0.25                     n 227: = cluster 48.0% vs F 45.8% +0.022 [-0.059, +0.103] halves +0.054/+0.000; hits 32.9% vs F 39.0%
+   GFS 13 km only, no lapse on others         n 227: = cluster 52.9% vs F 45.8% +0.070 [-0.011, +0.151] halves +0.097/+0.052; hits 32.9% vs F 39.0%
+   station values (GFS 13 km + lapse on all)  n 227: = cluster 56.4% vs F 45.8% +0.106 [+0.033, +0.178] halves +0.140/+0.082; hits 37.1% vs F 39.0%
+
+(2) every first-rows station-day with a truth, F at listing + 5 min
+   n 717, 17 event days; production F: MAE 1.0109, hits 32.9%, bias -0.126
+   station-value F lambda 0.50: n 717, MAE 1.0319 (+0.0210 [-0.0007, +0.0401]); hits 32.1% vs F 32.9% -0.008 [-0.040, +0.024]; bias -0.286
+   station-value F lambda 0.75: n 717, MAE 1.0528 (+0.0419 [+0.0201, +0.0657]); hits 31.4% vs F 32.9% -0.015 [-0.050, +0.019]; bias -0.472
+   station-value F lambda 0.90: n 717, MAE 1.0868 (+0.0759 [+0.0498, +0.1070]); hits 32.9% vs F 32.9% +0.000 [-0.039, +0.039]; bias -0.584
+
+frozen -> f_station_values_r55_frozen.json
