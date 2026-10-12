@@ -1,0 +1,44 @@
+universe A: 717 station-days, 17 event days; feature coverage: DP (6 models sw/dew/wind, ~48 h) 630, DP1 ceiling (~24 h, after the trade) 630, C208 (cloud/sw/wind/rain, as-of capture) 714, R49 (ECMWF+GFS cloud/sw/rain day3) 717, CURV (native curve shape) 228
+
+(1) physics-corrected F on the truth, leave one event day out (universe A)
+  DP (6 models sw/dew/wind, ~48 h)           (10 features): MAE 1.0000 vs F 1.0109 (-0.0109 [-0.0271, +0.0078]); hits 32.5% vs F 32.9% -0.004 [-0.033, +0.025]; |correction| mean 0.28 C
+  DP1 ceiling (~24 h, after the trade)       (10 features): MAE 0.9873 vs F 1.0109 (-0.0236 [-0.0457, +0.0024]); hits 33.3% vs F 32.9% +0.004 [-0.027, +0.036]; |correction| mean 0.34 C
+  C208 (cloud/sw/wind/rain, as-of capture)   ( 6 features): MAE 1.0100 vs F 1.0109 (-0.0009 [-0.0174, +0.0159]); hits 32.1% vs F 32.9% -0.008 [-0.035, +0.018]; |correction| mean 0.21 C
+  R49 (ECMWF+GFS cloud/sw/rain day3)         ( 8 features): MAE 1.0088 vs F 1.0109 (-0.0021 [-0.0166, +0.0128]); hits 32.8% vs F 32.9% -0.001 [-0.028, +0.026]; |correction| mean 0.25 C
+  CURV (native curve shape)                  ( 5 features): MAE 0.9969 vs F 1.0109 (-0.0140 [-0.0310, +0.0019]); hits 33.9% vs F 32.9% +0.010 [-0.018, +0.037]; |correction| mean 0.22 C
+  ALL as-of (DP + C208 + R49 + CURV)         (29 features): MAE 0.9890 vs F 1.0109 (-0.0220 [-0.0539, +0.0066]); hits 32.2% vs F 32.9% -0.007 [-0.041, +0.027]; |correction| mean 0.38 C
+  ALL + ceiling                              (39 features): MAE 0.9634 vs F 1.0109 (-0.0476 [-0.0783, -0.0162]); hits 33.1% vs F 32.9% +0.001 [-0.035, +0.038]; |correction| mean 0.46 C
+
+(2) the same corrected F on the cluster's 227 picks (fit on universe A without the pick's event day)
+  picks where the cluster left F: 123; there the truth = cluster's bucket 37.6%, = F's bucket 26.5%
+  DP (6 models sw/dew/wind, ~48 h)          : = cluster 35.7% vs F 45.8% -0.101 [-0.161, -0.042]; on the 123 departures: correction toward the cluster 64, away 50, reached its bucket 12
+  DP1 ceiling (~24 h, after the trade)      : = cluster 38.3% vs F 45.8% -0.075 [-0.140, -0.010]; on the 123 departures: correction toward the cluster 69, away 46, reached its bucket 20
+  C208 (cloud/sw/wind/rain, as-of capture)  : = cluster 39.6% vs F 45.8% -0.062 [-0.113, -0.010]; on the 123 departures: correction toward the cluster 49, away 55, reached its bucket 11
+  R49 (ECMWF+GFS cloud/sw/rain day3)        : = cluster 43.2% vs F 45.8% -0.026 [-0.078, +0.025]; on the 123 departures: correction toward the cluster 60, away 49, reached its bucket 15
+  CURV (native curve shape)                 : = cluster 36.1% vs F 45.8% -0.097 [-0.160, -0.033]; on the 123 departures: correction toward the cluster 59, away 61, reached its bucket 16
+  ALL as-of (DP + C208 + R49 + CURV)        : = cluster 40.5% vs F 45.8% -0.053 [-0.123, +0.017]; on the 123 departures: correction toward the cluster 60, away 51, reached its bucket 27
+  ALL + ceiling                             : = cluster 39.6% vs F 45.8% -0.062 [-0.135, +0.012]; on the 123 departures: correction toward the cluster 66, away 44, reached its bucket 29
+
+(3) F+1 vs F and F-1 vs F, per physics feature (within-day permutation p, BH q over all tests)
+  78 tests; the 15 smallest p (* q < 0.10, + p < 0.05):
+   + F+1 vs F  DP1 wind anom            n  62/ 99: -0.46 sd, AUC 0.35, p 0.0020, q 0.156
+   + F-1 vs F  DP dew                   n  30/ 99: -0.55 sd, AUC 0.35, p 0.0085, q 0.203
+   + F-1 vs F  DP1 dew                  n  30/ 99: -0.55 sd, AUC 0.35, p 0.0100, q 0.203
+   + F+1 vs F  DP wind anom             n  62/ 99: -0.42 sd, AUC 0.38, p 0.0115, q 0.203
+   + F+1 vs F  R49 cloud_chg            n  63/104: +0.41 sd, AUC 0.61, p 0.0130, q 0.203
+   + F+1 vs F  R49 sw_chg               n  63/104: -0.34 sd, AUC 0.40, p 0.0320, q 0.416
+     F-1 vs F  DP1 wind anom            n  30/ 99: -0.38 sd, AUC 0.41, p 0.0515, q 0.542
+     F-1 vs F  R49 precip_anom          n  33/104: +0.34 sd, AUC 0.56, p 0.0755, q 0.542
+     F-1 vs F  R49 cloud_anom           n  33/104: +0.34 sd, AUC 0.58, p 0.0870, q 0.542
+     F-1 vs F  DP wind anom             n  30/ 99: -0.33 sd, AUC 0.45, p 0.0900, q 0.542
+     F-1 vs F  CURV peak hour spread    n  13/ 37: -0.53 sd, AUC 0.36, p 0.1039, q 0.542
+     F+1 vs F  R49 cloud_anom           n  63/104: +0.25 sd, AUC 0.55, p 0.1059, q 0.542
+     F-1 vs F  C208 sw sum              n  33/101: -0.30 sd, AUC 0.37, p 0.1094, q 0.542
+     F+1 vs F  DP1 wind                 n  62/ 99: -0.24 sd, AUC 0.44, p 0.1129, q 0.542
+     F-1 vs F  DP sw spread             n  30/ 99: -0.32 sd, AUC 0.39, p 0.1184, q 0.542
+  physics tests with q < 0.10: 0 of 78; with p < 0.05: 6 (expected by chance ~3.9)
+
+(4) comparison arms on the same picks
+  oracle bucket(truth) = cluster 45.1% vs F 45.1% +0.000 [-0.086, +0.086] (n 213): a perfect forecast matches the cluster less than F does
+  S3 construction leans        (fitted on the cluster's own centre, LODO): = cluster 51.5% vs F 45.8% +0.057 [-0.011, +0.126]; on 123 departures toward 73, away 38
+  ENS@F tilt p(F+1)-p(F-1)     (fitted on the cluster's own centre, LODO): = cluster 46.0% vs F 42.5% +0.034 [-0.031, +0.100]; on 100 departures toward 65, away 35
