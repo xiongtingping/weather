@@ -1,0 +1,16 @@
+227 picks: = F 108, one off 95 (up 42, down 53), further 24
+   position       points the right way on 65/95 = 68.4% of the one-off picks it has a sign for
+   member mass    points the right way on 43/64 = 67.2% of the one-off picks it has a sign for
+   ensemble mass  points the right way on 38/73 = 52.1% of the one-off picks it has a sign for
+   P0 mass        points the right way on 23/36 = 63.9% of the one-off picks it has a sign for
+   momentum       points the right way on 45/74 = 60.8% of the one-off picks it has a sign for
+   history        points the right way on 41/60 = 68.3% of the one-off picks it has a sign for
+   combined (leave-one-day-out)  points the right way on 71/95 = 74.7%
+   combined weights: {'position': 1.78, 'member mass': 0.57, 'ensemble mass': -0.28, 'P0 mass': 0.87, 'momentum': 0.13, 'history': 0.77, 'bias': -0.18}
+   all              n=227  F 47.6%  F+lower neighbour 70.9%  F+neighbour by position 76.2%
+   days < 2026-10-03 n= 93  F 50.5%  F+lower neighbour 76.3%  F+neighbour by position 76.3%
+   days >= 2026-10-03 n=134  F 45.5%  F+lower neighbour 67.2%  F+neighbour by position 76.1%
+   F within 0.05-0.15 of its upper edge (n 27): = F 30%, = that neighbour 37%
+   F within 0.05-0.15 of its lower edge (n 28): = F 54%, = that neighbour 32%
+   F within 0.00-0.05 of its upper edge (n 19): = F 68%, = that neighbour 21%
+   F within 0.00-0.05 of its lower edge (n  7): = F 29%, = that neighbour 43%

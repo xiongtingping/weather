@@ -1,0 +1,14 @@
+all              n=227  always F 47.6%   three-way model 43.6%   edge+direction rule 45.8%
+days < 2026-10-03 n= 93  always F 50.5%   three-way model 46.2%   edge+direction rule 50.5%
+days >= 2026-10-03 n=134  always F 45.5%   three-way model 41.8%   edge+direction rule 42.5%
+three-way model moves off F on 28 picks; right on 6, F would have been right on 15
+edge+direction rule moves off F on 6 picks; right on 0, F would have been right on 4
+three-way weights (columns F-1, F, F+1):
+   position       -0.79  -0.61  +1.40
+   member mass    -0.61  +0.69  -0.08
+   P0 mass        -0.40  -0.15  +0.56
+   momentum       -0.12  +0.12  +0.00
+   history        -0.43  +0.13  +0.30
+   ensemble mass  +0.21  -0.24  +0.04
+   |position|     -0.23  +0.31  -0.08
+   bias           -0.13  +0.43  -0.30
