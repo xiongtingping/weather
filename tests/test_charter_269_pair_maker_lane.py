@@ -32,7 +32,8 @@ def _formed_book():
 def test_the_lane_is_registered_and_off_by_default():
     assert S.LANE_PAIR_MAKER in S.KNOWN_LANES
     assert S.DEFAULT_LANES[S.LANE_PAIR_MAKER]["enabled"] is False
-    assert CFG["pair_cost_cap"] == 0.95 and CFG["window_hours"] == 6.0 and CFG["units"] == ["C"]
+    assert CFG["pair_cost_cap"] == 0.95 and CFG["rung_hours"] == 6.0 and CFG["units"] == ["C", "F"]
+    assert CFG["quote_window_hours"] == 12.0 and CFG["max_unmatched_ratio"] == 0.5
     board = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert 'pair_maker: {name:"配对挂单线"' in board
 
@@ -123,19 +124,21 @@ def test_a_pass_posts_the_formed_mode_once_inside_the_budget(monkeypatch):
     monkeypatch.setattr(P, "_ws_manifest_root", lambda path: None)
     cfg = {**CFG, "enabled": True}
     out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg)
-    assert out["planned"] == 1, "the F station is outside the lane's units"
+    assert out["planned"] == 2, "C and F stations both (user 10-13 「全可以做」)"
     assert {k["side"] for k in sent} == {"YES", "NO"}
     assert all(k["intent_body"]["own_horizon"] is True and k["intent_body"]["post_only"] is True for k in sent)
     assert all(k["bucket"] == "20°C" for k in sent)
+    sent_eglc = [k for k in sent if k["station_id"] == "EGLC"]
+    assert sum(k["price"] * k["shares"] for k in sent_eglc) <= 15.0 + 1e-9
     assert {k["token_id"] for k in sent if k["side"] == "NO"} == {"N"}
-    # Budget: max_cash_fraction 0.2 x 100 = 20 U, station-day cap 15 U.
-    assert sum(k["price"] * k["shares"] for k in sent) <= 15.0 + 1e-9
-    row = conn.execute("SELECT plan_state, bucket FROM pair_maker_plans").fetchone()
-    assert row == ("active", "20°C")
+    # Budget: max_cash_fraction 0.2 x 100 = 20 U across the lane.
+    assert sum(k["price"] * k["shares"] for k in sent) <= 20.0 + 1e-9
+    rows = conn.execute("SELECT plan_state, bucket FROM pair_maker_plans").fetchall()
+    assert set(rows) == {("active", "20°C")}
     # A second pass plans nothing new for the same station-day.
     sent.clear()
     again = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg)
-    assert again["planned"] == 0 and sent == [] and again["refreshed"] == 1
+    assert again["planned"] == 0 and sent == [] and again["refreshed"] == 2, "every rung still rests: nothing to re-post"
 
 
 def test_an_unformed_book_waits(monkeypatch):
@@ -179,3 +182,42 @@ def test_a_rung_one_tick_inside_the_book_is_kept():
     form = {"mid": 0.535, "bid": 0.53, "ask": 0.54, "tick": 0.01}
     no = [r["price"] for r in P.ladder(form, CFG) if r["side"] == "NO"]
     assert no[0] == 0.46
+
+
+def _plan_with(rungs):
+    return {"rungs": [{"side": s, "k": k, "price": p, "intent_id": i} for s, k, p, i in rungs]}
+
+
+QUOTE = {"bid": 0.40, "ask": 0.44, "mid": 0.42, "tick": 0.001}
+
+
+def test_an_unfilled_expired_slot_is_reposted_on_the_standing_mid():
+    plan = _plan_with([("YES", 0, 0.37, "a")])
+    states = {"a": {"filled": 0.0, "notional": 0.0, "open": False}}
+    moved = {"bid": 0.44, "ask": 0.48, "mid": 0.46, "tick": 0.001}
+    rungs, _status = P.slot_plan(plan, states, moved, CFG, min_size=5.0)
+    yes0 = next(r for r in rungs if r["side"] == "YES" and r["k"] == 0)
+    assert yes0["price"] == 0.41 and yes0["shares"] == 5.0
+    # A slot that has filled its target, or still rests, is left alone.
+    states = {"a": {"filled": 5.0, "notional": 1.85, "open": False}}
+    assert not any(r["side"] == "YES" and r["k"] == 0 for r in P.slot_plan(plan, states, moved, CFG, min_size=5.0)[0])
+
+
+def test_the_pair_cap_holds_against_what_the_other_side_holds():
+    # 5 YES held at 0.45 average: no NO rung may be priced over 0.95 - 0.45 = 0.50.
+    plan = _plan_with([("YES", 0, 0.45, "a")])
+    states = {"a": {"filled": 5.0, "notional": 2.25, "open": False}}
+    rungs, _ = P.slot_plan(plan, states, {"bid": 0.30, "ask": 0.34, "mid": 0.32, "tick": 0.001}, CFG, min_size=5.0)
+    no = [r["price"] for r in rungs if r["side"] == "NO"]
+    assert no and max(no) <= 0.50 + 1e-9
+
+
+def test_the_heavier_side_stops_at_the_unmatched_cap_and_the_lighter_keeps_pairing():
+    plan = _plan_with([("YES", 0, 0.37, "a"), ("YES", 1, 0.35, "b")])
+    states = {"a": {"filled": 5.0, "notional": 1.85, "open": False},
+              "b": {"filled": 5.0, "notional": 1.75, "open": False}}
+    rungs, status = P.slot_plan(plan, states, QUOTE, CFG, min_size=5.0)
+    assert status["blocked_side"] == "YES"
+    assert {r["side"] for r in rungs} == {"NO"}
+    # NO is capped by the YES average 0.36: 0.95 - 0.36 = 0.59, and the ladder's own 0.58 is under it.
+    assert max(r["price"] for r in rungs) <= 0.59 + 1e-9

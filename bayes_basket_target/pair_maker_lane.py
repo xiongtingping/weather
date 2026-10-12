@@ -9,25 +9,31 @@ User rulings 2026-10-12/13: a YES+NO pair lane, post-only only, pair cost under
   view (listing books sum to ~3.0; quoting F's or F_v3's bucket at listing lost
   in all 36 backtest cells, research round 60b).
 * Where: the market's mode bucket at formation (the largest mid; the lower
-  bucket on a tie), one bucket a station-day.  C stations only by default.
-* What: two static post-only ladders against the formation mid ``m``, each
-  rung ``rung_shares`` shares, live ``window_hours`` (GTD) and never past the
-  ``min_hours_to_settlement`` line:
-      YES rungs  x_k = m - d - o_k
-      NO rungs   y_k = PC - (m - d) - o_k
-  with ``d = quote_offset`` and ``o = rung_offsets``.  Every YES price is under
-  ``m - d`` and every NO price under ``PC - (m - d)``, so ANY YES fill with ANY
-  NO fill costs at most ``PC`` (``pair_cost_cap``, 0.95): the cap is a quote
-  ceiling, not a profit assumption (the ruling).  A rung must be post-only
-  legal on the standing book (YES under the YES ask, NO under 1 - the YES bid)
-  or it is not posted.
-* Exposure: a single filled side is held to settlement -- YES or NO on the
-  mode (the ruling allows the mode's NO).  The station-day's rungs cost at most
-  ``max_station_day_usdc``; the lane's open rungs at most
-  ``max_cash_fraction`` of the free cash.  Deeper rungs are dropped first.
+  bucket on a tie), one bucket a station-day, C and F stations (user 10-13
+  「全可以做」).
+* What: slots (side, k) -- YES at ``m - d - o_k`` and NO at
+  ``PC - (m - d) - o_k`` on the STANDING mid ``m`` of the plan's bucket, with
+  ``d = quote_offset`` and ``o = rung_offsets`` -- each refilled until it has
+  filled ``rung_shares``: a rung lives ``rung_hours`` (GTD) and, unfilled, is
+  re-posted on the book that stands (user 10-13 「可以重挂」) inside
+  ``quote_window_hours`` from formation and never past the
+  ``min_hours_to_settlement`` line.  ``PC`` (``pair_cost_cap``, 0.95) is a
+  quote ceiling: a YES rung is priced at most ``PC - max(avg NO held, dearest
+  NO resting)`` and the mirror for NO, so a pair costs at most ``PC`` against
+  what the other side holds or rests.  A rung must be post-only legal on the
+  standing book or it is not posted.
+* Unmatched (user 10-13 「尽量控制未配平比例」): the heavier side posts nothing
+  while ``|YES - NO| / (YES + NO)`` is at ``max_unmatched_ratio`` or its
+  unmatched cost at ``max_unmatched_usdc``; the lighter side keeps quoting to
+  complete pairs.  A single side still held at the end is held to
+  settlement (the mode's NO allowed by the ruling).
+* Budget: filled plus resting cost a station-day at most
+  ``max_station_day_usdc``; the lane's resting rungs at most
+  ``max_cash_fraction`` of the free cash.
 * Books: per station-day x bucket ledger of YES/NO shares and cost, matched
   pairs, pair cost and the unmatched side, refreshed every pass from the
-  order reconciliations; the plan closes when its window has passed.
+  order reconciliations; the plan closes when its window has passed and
+  nothing rests.
 
 Research (docs/research/benchmark_account_0x8fbd_20261008, rounds 58-60;
 docs/design/pair_maker_lane_design_20261012.md): over every booked
@@ -218,6 +224,27 @@ def ledger(conn: sqlite3.Connection, plan: Mapping[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _intent_states(conn: sqlite3.Connection, ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Per intent: filled shares, filled notional, and whether it is still at the venue."""
+
+    if not ids:
+        return {}
+    marks = ",".join("?" for _ in ids)
+    out = {i: {"filled": 0.0, "notional": 0.0, "open": False} for i in ids}
+    for iid, size, notional in conn.execute(
+        f"SELECT order_intent_id, COALESCE(SUM(filled_size),0), COALESCE(SUM(filled_notional_usdc),0)"
+        f" FROM basket_target_order_reconciliations WHERE order_intent_id IN ({marks}) GROUP BY order_intent_id",
+        tuple(ids),
+    ):
+        out[str(iid)].update(filled=float(size or 0.0), notional=float(notional or 0.0))
+    for (iid,) in conn.execute(
+        f"SELECT order_intent_id FROM basket_target_order_intents WHERE order_intent_id IN ({marks})"
+        f" AND state IN ({','.join('?' for _ in OPEN_STATES)})", (*ids, *OPEN_STATES),
+    ):
+        out[str(iid)]["open"] = True
+    return out
+
+
 def _candidates(conn: sqlite3.Connection, *, now_utc: str, cfg: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Listed station-days still ahead (today .. today + 3 UTC) with no plan yet."""
 
@@ -229,7 +256,7 @@ def _candidates(conn: sqlite3.Connection, *, now_utc: str, cfg: Mapping[str, Any
         (today.isoformat(), (today + timedelta(days=3)).isoformat()),
     ).fetchall()
     planned = {(str(s), str(d)) for s, d in conn.execute(f"SELECT station_id, event_date FROM {PLAN_TABLE}")}
-    units = {str(u).upper() for u in cfg["units"]}
+    units = {str(u).upper()[:1] for u in cfg["units"]}
     out = []
     for station, day, unit, zone in rows:
         if (str(station), str(day)) in planned or not zone:
@@ -251,6 +278,86 @@ def _open_lane_cost(conn: sqlite3.Connection) -> float:
     return float(row[0] or 0.0)
 
 
+def bucket_quote(book_rows: list[Mapping[str, Any]], bucket: str, cfg: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The plan bucket's standing quotes (bid, ask, mid, tick), or None when it is not two-sided."""
+
+    row = next((r for r in book_rows if str(r.get("bucket")) == str(bucket)), None)
+    if row is None:
+        return None
+    bid, ask = _best_bid(row), _best_ask(row, float(cfg["ask_min_shares"]))
+    if bid is None or ask is None:
+        return None
+    return {"bid": bid, "ask": ask, "mid": (bid + ask) / 2.0, "tick": float(row.get("price_tick_size") or 0.001)}
+
+
+def slot_plan(
+    plan: Mapping[str, Any], states: Mapping[str, Mapping[str, Any]], quote: Mapping[str, Any], cfg: Mapping[str, Any],
+    *, min_size: float,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """The rungs to (re)post now on one plan, and why the others are not.
+
+    Each slot (side, k) is refilled until it has filled ``rung_shares``.  The
+    price is the slot's ladder price on the standing mid, capped so the pair
+    cost holds against what the other side already HOLDS (its average) and
+    what it has RESTING (its dearest rung): YES <= cap - max(avg NO held,
+    dearest NO resting), and the mirror for NO.  The heavier side posts
+    nothing while the unmatched ratio is at ``max_unmatched_ratio`` or its
+    unmatched cost at ``max_unmatched_usdc``; the lighter side keeps quoting
+    to complete pairs.  A price that would cross the book is not posted.
+    """
+
+    pc, d = float(cfg["pair_cost_cap"]), float(cfg["quote_offset"])
+    tick, m = float(quote["tick"]), float(quote["mid"])
+    eps = tick / 10.0
+    held = {SIDE_YES: [0.0, 0.0], SIDE_NO: [0.0, 0.0]}
+    resting_max = {SIDE_YES: 0.0, SIDE_NO: 0.0}
+    by_slot: dict[tuple[str, int], dict[str, Any]] = {}
+    for rung in plan.get("rungs") or []:
+        st = states.get(rung.get("intent_id") or "", {})
+        side, k = str(rung["side"]), int(rung["k"])
+        held[side][0] += float(st.get("filled", 0.0))
+        held[side][1] += float(st.get("notional", 0.0))
+        slot = by_slot.setdefault((side, k), {"filled": 0.0, "open": False})
+        slot["filled"] += float(st.get("filled", 0.0))
+        if st.get("open"):
+            slot["open"] = True
+            resting_max[side] = max(resting_max[side], float(rung["price"]))
+    avg = {side: (held[side][1] / held[side][0] if held[side][0] > 0 else 0.0) for side in held}
+    y_sh, n_sh = held[SIDE_YES][0], held[SIDE_NO][0]
+    heavy = SIDE_YES if y_sh > n_sh else SIDE_NO if n_sh > y_sh else None
+    blocked: str | None = None
+    if heavy is not None:
+        gap = abs(y_sh - n_sh)
+        ratio = gap / (y_sh + n_sh)
+        if ratio >= float(cfg["max_unmatched_ratio"]) - 1e-9 or gap * avg[heavy] >= float(cfg["max_unmatched_usdc"]) - 1e-9:
+            blocked = heavy
+    status: dict[str, Any] = {"held": {k: round(v[0], 4) for k, v in held.items()},
+                              "avg": {k: round(v, 4) for k, v in avg.items()}, "blocked_side": blocked}
+    out: list[dict[str, Any]] = []
+    caps = {SIDE_YES: pc - max(avg[SIDE_NO], resting_max[SIDE_NO]),
+            SIDE_NO: pc - max(avg[SIDE_YES], resting_max[SIDE_YES])}
+    target = float(cfg["rung_shares"])
+    for k, off in enumerate(float(o) for o in cfg["rung_offsets"]):
+        for side in (SIDE_YES, SIDE_NO):
+            slot = by_slot.get((side, k), {"filled": 0.0, "open": False})
+            if slot["open"]:
+                continue
+            remaining = round(target - slot["filled"], SHARE_PRECISION)
+            if remaining < float(min_size) - 1e-9:
+                continue
+            if side == blocked:
+                status.setdefault("skipped", []).append(f"{side}{k}:unmatched_cap")
+                continue
+            ladder_price = (m - d - off) if side == SIDE_YES else (pc - (m - d) - off)
+            price = _floor_tick(min(ladder_price, caps[side] - off), tick)
+            limit = (float(quote["ask"]) - tick) if side == SIDE_YES else (1.0 - float(quote["bid"]) - tick)
+            if not (tick - eps <= price <= limit + eps):
+                status.setdefault("skipped", []).append(f"{side}{k}:crosses_or_floor")
+                continue
+            out.append({"side": side, "k": k, "price": price, "shares": remaining})
+    return out, status
+
+
 def execute_pair_maker(
     target_conn: sqlite3.Connection,
     *,
@@ -261,7 +368,7 @@ def execute_pair_maker(
     admission: Callable[[str, sqlite3.Connection], Mapping[str, Any]] | None = None,
     ws_manifest_path: Any = None,
 ) -> dict[str, Any]:
-    """Refresh every plan's books, then plan and post the station-days whose book just formed."""
+    """Re-quote every active plan, then plan the station-days whose book just formed."""
 
     ensure_lane_schema(target_conn)
     cfg = {**PAIR_MAKER_DEFAULT_SETTINGS, **dict(settings or lane_settings(LANE))}
@@ -273,31 +380,104 @@ def execute_pair_maker(
     live = cfg.get("live_ws_book", True) is True
     root = _ws_manifest_root(ws_manifest_path) if live else None
     now = _utc(now_utc)
+    cash, cash_refusal = _free_cash(target_conn, now_utc=now_utc)
+    budget = None
+    if cash is not None:
+        budget = max(0.0, float(cfg["max_cash_fraction"]) * float(cash) - _open_lane_cost(target_conn))
+    receipts: list[dict[str, Any]] = []
+    waiting: Counter[str] = Counter()
 
-    # 1. Books of the plans already made; a plan whose window has passed closes.
+    def post(plan: dict[str, Any], rung: Mapping[str, Any], *, until: str, tick: float) -> None:
+        n = sum(1 for r in plan["rungs"] if r["side"] == rung["side"] and int(r["k"]) == int(rung["k"]))
+        intent_id = f"{INTENT_PREFIX}_" + content_sha256(
+            {"plan": plan["plan_id"], "side": rung["side"], "k": rung["k"], "n": n})[:32]
+        venue = {**resting_order_fields(now_utc=now_utc, limit_price=float(rung["price"]), belief_fresh_until_utc=until),
+                 "expiration_basis": "pair_maker_rung"}
+        token = plan["tokens"][rung["side"]]
+        entry = send_lane_buy(
+            target_conn, lane=LANE, intent_id=intent_id, station_id=plan["station_id"], event_date=plan["event_date"],
+            settlement_timezone=plan["settlement_timezone"], bucket=plan["bucket"], token_id=token,
+            price=float(rung["price"]), shares=float(rung["shares"]), side=rung["side"],
+            execution_candidate=EXECUTION_CANDIDATE, expiration=int(venue["expiration"]), tick_size=float(tick),
+            intent_body={"schema": SCHEMA, "rule": RULE, "strategy_id": STRATEGY_ID, "plan_id": plan["plan_id"],
+                         "order_type": venue["order_type"], "post_only": venue["post_only"],
+                         "expiration_basis": venue["expiration_basis"],
+                         # Charter 269: the rung lives its own horizon, not charter 94's
+                         # bid-anchored ladder; the resting pass syncs it and leaves it.
+                         "own_horizon": True,
+                         "rung": {k: rung[k] for k in ("side", "k", "price", "shares")}},
+            transport=transport, live_submit_authorized=live_submit_authorized,
+            decision_details={"schema": "pair_maker_lane_decision_v1", "lane": LANE, "title": LANE_TITLE,
+                              "rule": RULE, "decision_signature": {"stage": "MARKET", "lane": LANE, "rule": RULE},
+                              "plan_id": plan["plan_id"]},
+        )
+        plan["rungs"].append({"side": rung["side"], "k": int(rung["k"]), "price": float(rung["price"]),
+                              "shares": float(rung["shares"]), "intent_id": intent_id, "posted_at_utc": now_utc,
+                              "state": entry.get("state"), "reason": entry.get("reason")})
+        receipts.append({"station_id": plan["station_id"], "event_date": plan["event_date"], "bucket": plan["bucket"],
+                         "side": rung["side"], "k": rung["k"], "price": rung["price"], "shares": rung["shares"],
+                         "state": entry.get("state"), "reason": entry.get("reason")})
+
+    def requote(plan: dict[str, Any], quote: Mapping[str, Any], hours: float | None) -> None:
+        nonlocal budget
+        rest_end = min(_utc(plan["window_ends_utc"]), now + timedelta(hours=float(cfg["rung_hours"])))
+        if hours is not None:
+            rest_end = min(rest_end, now + timedelta(hours=float(hours) - float(cfg["min_hours_to_settlement"])))
+        if (rest_end - now).total_seconds() < VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS:
+            waiting["window_closing"] += 1
+            return
+        states = _intent_states(target_conn, [r["intent_id"] for r in plan["rungs"] if r.get("intent_id")])
+        rungs, status = slot_plan(plan, states, quote, cfg, min_size=float(plan.get("min_size") or 5.0))
+        plan["last_status"] = status
+        spent = sum(states.get(r["intent_id"], {}).get("notional", 0.0) for r in plan["rungs"] if r.get("intent_id"))
+        spent += sum(float(r["price"]) * float(r["shares"]) for r in plan["rungs"]
+                     if states.get(r.get("intent_id") or "", {}).get("open"))
+        for rung in rungs:
+            shares = _shares(float(rung["price"]), {**cfg, "rung_shares": rung["shares"]}, float(plan.get("min_size") or 5.0))
+            cost = shares * float(rung["price"])
+            if spent + cost > float(cfg["max_station_day_usdc"]) + 1e-9:
+                waiting["station_day_cap"] += 1
+                continue
+            if budget is not None and cost > budget + 1e-9:
+                waiting["cash_cap"] += 1
+                continue
+            post(plan, {**rung, "shares": shares}, until=_iso(rest_end), tick=float(quote["tick"]))
+            spent += cost
+            if budget is not None:
+                budget -= cost
+
+    # 1. Active plans: refresh the books, re-quote inside the window, close after it.
     refreshed = closed = 0
-    for station, day, plan_json, state, ends in target_conn.execute(
-        f"SELECT station_id, event_date, plan_json, plan_state, window_ends_utc FROM {PLAN_TABLE} WHERE plan_state=?",
-        (PLAN_ACTIVE,),
+    for station, day, plan_json, ends in target_conn.execute(
+        f"SELECT station_id, event_date, plan_json, window_ends_utc FROM {PLAN_TABLE} WHERE plan_state=?", (PLAN_ACTIVE,),
     ).fetchall():
         plan = json.loads(plan_json)
-        book = ledger(target_conn, plan)
-        still_open = book[SIDE_YES]["resting"] or book[SIDE_NO]["resting"]
+        plan.setdefault("tokens", {})
+        if now < _utc(ends):
+            refusal, hours = _window_refusal(target_conn, station_id=str(station), event_date=str(day),
+                                             settlement_timezone=plan["settlement_timezone"], now_utc=now_utc,
+                                             min_hours=float(cfg["min_hours_to_settlement"]), gate=gate)
+            if not refusal and plan["tokens"].get(SIDE_YES) and plan["tokens"].get(SIDE_NO):
+                book, book_refusal = _book(target_conn, root, station_id=str(station), event_date=str(day),
+                                           now_utc=now_utc, fresh_seconds=float(cfg["send_book_fresh_seconds"]), live=live)
+                quote = bucket_quote(list((book or {}).get("buckets") or []), plan["bucket"], cfg) if book else None
+                if quote is not None:
+                    requote(plan, quote, hours)
+                else:
+                    waiting[f"requote:{book_refusal or 'bucket_one_sided'}"] += 1
+        book_now = ledger(target_conn, plan)
+        still_open = book_now[SIDE_YES]["resting"] or book_now[SIDE_NO]["resting"]
         final = PLAN_DONE if (now >= _utc(ends) and not still_open) else PLAN_ACTIVE
         target_conn.execute(
-            f"UPDATE {PLAN_TABLE} SET ledger_json=?, plan_state=?, last_pass_at_utc=? WHERE station_id=? AND event_date=?",
-            (json.dumps(book, sort_keys=True), final, now_utc, station, day),
+            f"UPDATE {PLAN_TABLE} SET plan_json=?, ledger_json=?, plan_state=?, last_pass_at_utc=?"
+            " WHERE station_id=? AND event_date=?",
+            (json.dumps(plan, ensure_ascii=False, sort_keys=True), json.dumps(book_now, sort_keys=True), final,
+             now_utc, station, day),
         )
         refreshed += 1
         closed += final == PLAN_DONE
 
     # 2. New plans on the books that formed.
-    cash, cash_refusal = _free_cash(target_conn, now_utc=now_utc)
-    budget = None
-    if cash is not None:
-        budget = max(0.0, float(cfg["max_cash_fraction"]) * float(cash) - _open_lane_cost(target_conn))
-    waiting: Counter[str] = Counter()
-    receipts: list[dict[str, Any]] = []
     planned = 0
     for cand in _candidates(target_conn, now_utc=now_utc, cfg=cfg):
         if planned >= int(cfg["max_new_plans_per_pass"]):
@@ -318,79 +498,36 @@ def execute_pair_maker(
         if not form["formed"]:
             waiting[f"not_formed:{form['reason'].split(':')[0]}"] += 1
             continue
-        room = (float(hours) - float(cfg["min_hours_to_settlement"])) * 3600.0
-        rest = min(float(cfg["window_hours"]) * 3600.0, room)
-        if rest < VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS:
-            waiting["window_closing"] += 1
-            continue
-        until = _iso(now + timedelta(seconds=rest))
         ids = market_ids(target_conn, station, day, form["bucket"])
-        tokens = {SIDE_YES: ids["yes_token"], SIDE_NO: ids["no_token"]}
-        if not tokens[SIDE_YES] or not tokens[SIDE_NO]:
+        if not ids["yes_token"] or not ids["no_token"]:
             waiting["token_missing"] += 1
             continue
-        min_size = float(ids.get("min_size") or 5.0)
-        rungs = []
-        spend = 0.0
-        cap = float(cfg["max_station_day_usdc"])
-        if budget is not None:
-            cap = min(cap, budget)
-        for rung in ladder(form, cfg):
-            shares = _shares(float(rung["price"]), cfg, min_size)
-            cost = round(shares * float(rung["price"]), 6)
-            if spend + cost > cap + 1e-9:
-                continue
-            spend += cost
-            rungs.append({**rung, "shares": shares, "cost_usdc": cost, "token_id": tokens[rung["side"]]})
-        if not rungs:
-            waiting["budget" if cash is not None else f"cash:{cash_refusal}"] += 1
-            continue
+        window_end = now + timedelta(hours=float(cfg["quote_window_hours"]))
+        if hours is not None:
+            window_end = min(window_end, now + timedelta(hours=float(hours) - float(cfg["min_hours_to_settlement"])))
         plan_id = f"{INTENT_PREFIX}_plan_" + content_sha256({"station": station, "day": day, "formed": now_utc})[:24]
         plan = {"schema": SCHEMA, "rule": RULE, "plan_id": plan_id, "station_id": station, "event_date": day,
-                "settlement_timezone": zone, "bucket": form["bucket"], "formation": form, "window_ends_utc": until,
-                "hours_to_settlement": hours, "settings": {k: cfg[k] for k in (
-                    "pair_cost_cap", "quote_offset", "rung_offsets", "rung_shares", "window_hours",
-                    "max_station_day_usdc", "max_cash_fraction")},
+                "settlement_timezone": zone, "bucket": form["bucket"], "formation": form,
+                "window_ends_utc": _iso(window_end), "hours_to_settlement": hours,
+                "tokens": {SIDE_YES: ids["yes_token"], SIDE_NO: ids["no_token"]},
+                "min_size": float(ids.get("min_size") or 5.0),
+                "settings": {k: cfg[k] for k in ("pair_cost_cap", "quote_offset", "rung_offsets", "rung_shares",
+                                                 "rung_hours", "quote_window_hours", "max_unmatched_ratio",
+                                                 "max_unmatched_usdc", "max_station_day_usdc", "max_cash_fraction")},
                 "book_id": book.get("snapshot_id"), "book_source": book.get("book_source"), "rungs": []}
-        for rung in rungs:
-            intent_id = f"{INTENT_PREFIX}_" + content_sha256({"plan": plan_id, "side": rung["side"], "k": rung["k"]})[:32]
-            venue = {**resting_order_fields(now_utc=now_utc, limit_price=float(rung["price"]), belief_fresh_until_utc=until),
-                     "expiration_basis": "pair_maker_window"}
-            entry = send_lane_buy(
-                target_conn, lane=LANE, intent_id=intent_id, station_id=station, event_date=day,
-                settlement_timezone=zone, bucket=form["bucket"], token_id=rung["token_id"], price=float(rung["price"]),
-                shares=float(rung["shares"]), side=rung["side"], execution_candidate=EXECUTION_CANDIDATE,
-                expiration=int(venue["expiration"]), tick_size=float(form["tick"]),
-                intent_body={"schema": SCHEMA, "rule": RULE, "strategy_id": STRATEGY_ID, "plan_id": plan_id,
-                             "order_type": venue["order_type"], "post_only": venue["post_only"],
-                             "expiration_basis": venue["expiration_basis"],
-                             # Charter 269: the rung lives its window, not charter 94's
-                             # bid-anchored ladder; the resting pass syncs it and leaves it.
-                             "own_horizon": True,
-                             "rung": {k: rung[k] for k in ("side", "k", "price", "shares")},
-                             "formation": form},
-                transport=transport, live_submit_authorized=live_submit_authorized,
-                decision_details={"schema": "pair_maker_lane_decision_v1", "lane": LANE, "title": LANE_TITLE,
-                                  "rule": RULE, "decision_signature": {"stage": "MARKET", "lane": LANE, "rule": RULE},
-                                  "plan_id": plan_id, "formation": form},
-            )
-            plan["rungs"].append({**rung, "intent_id": intent_id, "state": entry.get("state"),
-                                  "reason": entry.get("reason")})
-            receipts.append({"station_id": station, "event_date": day, "bucket": form["bucket"], "side": rung["side"],
-                             "price": rung["price"], "shares": rung["shares"], "state": entry.get("state"),
-                             "reason": entry.get("reason")})
+        requote(plan, {"bid": form["bid"], "ask": form["ask"], "mid": form["mid"], "tick": form["tick"]}, hours)
         target_conn.execute(
             f"INSERT OR REPLACE INTO {PLAN_TABLE} (station_id, event_date, bucket, plan_state, formed_at_utc,"
             " window_ends_utc, plan_json, ledger_json, last_pass_at_utc) VALUES (?,?,?,?,?,?,?,?,?)",
-            (station, day, form["bucket"], PLAN_ACTIVE, now_utc, until, json.dumps(plan, ensure_ascii=False, sort_keys=True),
-             None, now_utc),
+            (station, day, form["bucket"], PLAN_ACTIVE, now_utc, plan["window_ends_utc"],
+             json.dumps(plan, ensure_ascii=False, sort_keys=True), None, now_utc),
         )
-        if budget is not None:
-            budget = max(0.0, budget - spend)
         planned += 1
-    return {"schema": "pair_maker_lane_receipt_v1", "lane": LANE, "title": LANE_TITLE, "rule": RULE,
+    return {"schema": "pair_maker_lane_receipt_v2", "lane": LANE, "title": LANE_TITLE, "rule": RULE,
             "planned": planned, "rungs": len(receipts), "refreshed": refreshed, "closed": closed,
-            "cash": cash, "budget_left": budget, "waiting": dict(sorted(waiting.items())), "receipts": receipts}
+            "cash": cash, "cash_refusal": cash_refusal, "budget_left": budget,
+            "waiting": dict(sorted(waiting.items())), "receipts": receipts}
 
 
-__all__ = ["LANE", "LANE_TITLE", "PLAN_TABLE", "RULE", "execute_pair_maker", "formation", "ladder", "ledger"]
+__all__ = ["LANE", "LANE_TITLE", "PLAN_TABLE", "RULE", "bucket_quote", "execute_pair_maker", "formation", "ladder",
+           "ledger", "slot_plan"]

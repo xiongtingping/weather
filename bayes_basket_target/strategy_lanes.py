@@ -474,10 +474,19 @@ PAIR_MAKER_DEFAULT_SETTINGS: dict[str, Any] = {
     "quote_offset": 0.05,
     "rung_offsets": [0.0, 0.02, 0.05],
     "rung_shares": 5.0,
-    # Rungs live this long (GTD), never past the settlement line below.
-    "window_hours": 6.0,
+    # A rung lives ``rung_hours`` (GTD) and is re-posted on the standing mid
+    # while unfilled, inside ``quote_window_hours`` from formation and never
+    # past the settlement line (user 10-13 「可以重挂」; the backtest's 3-12 h
+    # windows were positive, 24 h fell to +8%).
+    "rung_hours": 6.0,
+    "quote_window_hours": 12.0,
     "min_hours_to_settlement": 36.0,
-    "units": ["C"],
+    # User 10-13 「全可以做」: C and F stations.
+    "units": ["C", "F"],
+    # User 10-13 「尽量控制未配平比例」: the heavier side posts nothing while
+    # |YES - NO| / (YES + NO) is at this, or its unmatched cost at the next.
+    "max_unmatched_ratio": 0.5,
+    "max_unmatched_usdc": 6.0,
     "formation_mid_sum": [0.7, 1.4],
     "ask_min_shares": 5.0,
     "max_station_day_usdc": 15.0,
