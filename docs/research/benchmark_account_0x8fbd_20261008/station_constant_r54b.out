@@ -1,0 +1,12 @@
+(a) round 39h terrain offset (lapse x (cell - station), C) against the per-station mean Delta_OM
+    ECCC_GDPS_15KM_NATIVE_POINT          stations 18: corr +0.94; Delta_OM = +0.97 x terrain offset +0.19; mean Delta_OM +0.43, mean terrain offset +0.25; sd Delta_OM 0.40, sd of residual 0.13
+    ECMWF_AIFS_SINGLE_POINT              stations 11: corr +0.40; Delta_OM = +2.79 x terrain offset +0.51; mean Delta_OM +0.83, mean terrain offset +0.11; sd Delta_OM 1.36, sd of residual 1.24
+    NOAA_GFS_025_NATIVE_POINT            stations 37: corr +0.36; Delta_OM = +1.12 x terrain offset +0.26; mean Delta_OM +0.52, mean terrain offset +0.23; sd Delta_OM 1.07, sd of residual 1.00
+
+(b) F with each native member shifted by a station constant
+    terrain offset (round 39h), every member                   n 227: = cluster 44.1% vs F 45.8% -0.018 [-0.079, +0.043] halves -0.022/-0.015; hits 36.6% vs F 39.0% (-0.023)
+    terrain offset x 0.5                                       n 227: = cluster 45.4% vs F 45.8% -0.004 [-0.046, +0.037] halves +0.000/-0.007; hits 40.4% vs F 39.0% (+0.014)
+    learned Delta_OM station constant (other days), members with one n 191: = cluster 47.1% vs F 47.1% +0.000 [-0.056, +0.056] halves +0.013/-0.009; hits 41.9% vs F 41.3% (+0.006)
+    Open-Meteo values themselves (same-run pairs, >= 3 members) n  25: = cluster 36.0% vs F 32.0% +0.040 [-0.167, +0.247] halves +nan/+0.040; hits 18.2% vs F 31.8% (-0.136)
+
+    Delta_OM variance split: total sd 1.13 C, within-station (day-to-day) sd 0.40 C -> station-constant share 88%
