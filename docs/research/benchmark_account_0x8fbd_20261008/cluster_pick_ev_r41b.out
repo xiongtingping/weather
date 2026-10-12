@@ -1,0 +1,9 @@
+picks with a WS book at the trade: 70/227
+EV: argmax p - ask over F-1..F+1, sigma per fold           n=227  all 46.7% (F 47.6%)   first half 50.5% (F 50.5%)   second half 44.0% (F 45.5%)
+EV: argmax p / ask over F-1..F+1, sigma per fold           n=227  all 46.7% (F 47.6%)   first half 50.5% (F 50.5%)   second half 44.0% (F 45.5%)
+dearer-quoted neighbour on F's leaning side, margin m      n=227  all 45.8% (F 47.6%)   first half 50.5% (F 50.5%)   second half 42.5% (F 45.5%)
+D+1-market shift only toward F's leaning side, share a     n=227  all 50.7% (F 47.6%)   first half 58.1% (F 50.5%)   second half 45.5% (F 45.5%)
+EV: argmax p - ask over F-1..F+1, sigma per fold [early <15 min] n= 96  all 55.2% (F 55.2%)   first half 63.6% (F 63.6%)   second half 48.1% (F 48.1%)
+EV: argmax p / ask over F-1..F+1, sigma per fold [early <15 min] n= 96  all 55.2% (F 55.2%)   first half 63.6% (F 63.6%)   second half 48.1% (F 48.1%)
+dearer-quoted neighbour on F's leaning side, margin m [early <15 min] n= 96  all 55.2% (F 55.2%)   first half 63.6% (F 63.6%)   second half 48.1% (F 48.1%)
+D+1-market shift only toward F's leaning side, share a [early <15 min] n= 96  all 49.0% (F 55.2%)   first half 61.4% (F 63.6%)   second half 38.5% (F 48.1%)

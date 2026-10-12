@@ -1,0 +1,23 @@
+227 picks over 18 event days; always F = 47.6%
+1 F from runs knowable -18 h from the trade          all 45.8% (F 47.6%, +3/-7)   first half 50.5% (F 50.5%, +0/-0)   second half 42.5% (F 45.5%, +3/-7)   moved 14
+1 F from runs knowable -12 h from the trade          all 45.8% (F 47.6%, +7/-11)   first half 46.2% (F 50.5%, +0/-4)   second half 45.5% (F 45.5%, +7/-7)   moved 22
+1 F from runs knowable -6 h from the trade           all 44.5% (F 47.6%, +8/-15)   first half 49.5% (F 50.5%, +2/-3)   second half 41.0% (F 45.5%, +6/-12)   moved 36
+1 F from runs knowable -3 h from the trade           all 44.5% (F 47.6%, +9/-16)   first half 47.3% (F 50.5%, +4/-7)   second half 42.5% (F 45.5%, +5/-9)   moved 37
+1 F from runs knowable +3 h from the trade           all 48.9% (F 47.6%, +5/-2)   first half 52.7% (F 50.5%, +3/-1)   second half 46.3% (F 45.5%, +2/-1)   moved 10
+2 batch spillover, share a of earlier offsets        all 47.6% (F 47.6%, +0/-0)   first half 50.5% (F 50.5%, +0/-0)   second half 45.5% (F 45.5%, +0/-0)   moved 0
+3 D+1 market mean - F(D+1), share a (have 156)       all 50.7% (F 47.6%, +12/-5)   first half 58.1% (F 50.5%, +10/-3)   second half 45.5% (F 45.5%, +2/-2)   moved 17
+4 blend with latest settled maximum, weight w        all 47.6% (F 47.6%, +0/-0)   first half 50.5% (F 50.5%, +0/-0)   second half 45.5% (F 45.5%, +0/-0)   moved 0
+5 constant shift delta (bucket widths)               all 48.0% (F 47.6%, +3/-2)   first half 51.6% (F 50.5%, +2/-1)   second half 45.5% (F 45.5%, +1/-1)   moved 7
+5 truncation (floor F to the unit, then bucket)      all 40.1% (F 47.6%, +33/-50)   first half 40.9% (F 50.5%, +16/-25)   second half 39.6% (F 45.5%, +17/-25)   moved 106
+6 per-station offset from its earlier picks, shrink k all 45.8% (F 47.6%, +8/-12)   first half 47.3% (F 50.5%, +3/-6)   second half 44.8% (F 45.5%, +5/-6)   moved 22
+7 segment F in an inner bucket         n=227  = F 47.6%
+7 segment main wallet                  n=142  = F 48.6%
+7 segment minutes after listing 15-60  n= 89  = F 48.3%
+7 segment minutes after listing <15    n= 96  = F 55.2%
+7 segment minutes after listing >60    n= 42  = F 28.6%
+7 segment other wallets                n= 85  = F 45.9%
+7 segment unit C                       n=162  = F 45.7%
+7 segment unit F                       n= 65  = F 52.3%
+8 among F-1..F+1: has quote                          all 48.0% (F 47.6%, +1/-0)   first half 51.6% (F 50.5%, +1/-0)   second half 45.5% (F 45.5%, +0/-0)   moved 2
+8 among F-1..F+1: cheapest                           all 27.8% (F 47.6%, +13/-58)   first half 35.5% (F 50.5%, +8/-22)   second half 22.4% (F 45.5%, +5/-36)   moved 118
+8 among F-1..F+1: dearest                            all 48.0% (F 47.6%, +25/-24)   first half 53.8% (F 50.5%, +13/-10)   second half 44.0% (F 45.5%, +12/-14)   moved 75
