@@ -62,6 +62,9 @@ FAMILY: Mapping[str, Mapping[str, Any]] = {
     "GFS_HOURLY": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 1, "p0_feature": False},
     # 补记三: UKMO natively (period maxima); not read by F until its paired test.
     "UKMO_GLOBAL": {"publisher": "Met Office", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
+    # 补记六 (user 「加」 10-12): GFS on its ~13 km flux grid, period maxima every
+    # 3 h -- the GFS member of the station-value F_v3 (``listing_forecast_f``).
+    "GFS_SFLUX": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
 }
 PRODUCT_BY_SYSTEM = {SYSTEM_IDS[product]: product for product in FAMILY}
 # Charter 201's P0 feature, gate and shadow read only these.
@@ -75,6 +78,9 @@ FAMILY_SYSTEM_IDS = frozenset(
 F_SYSTEM_IDS = frozenset(
     SYSTEM_IDS[product] for product in ("AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL")
 )
+# Charter 267 补记六: the station-value F_v3 reads F's six, with the GFS member
+# taken from the flux grid when that run is in hand (``GFS_SFLUX``).
+F_V3_SYSTEM_IDS = F_SYSTEM_IDS | {SYSTEM_IDS["GFS_SFLUX"]}
 # The local afternoon a day's maximum lives in (charter 95's peak window).
 PEAK_START_HOUR, PEAK_END_HOUR = 11, 19
 
@@ -225,6 +231,6 @@ def feature_at(
 
 
 __all__ = [
-    "FAMILY", "FAMILY_SYSTEM_IDS", "PRODUCT_BY_SYSTEM", "day_maximum",
+    "FAMILY", "FAMILY_SYSTEM_IDS", "F_SYSTEM_IDS", "F_V3_SYSTEM_IDS", "PRODUCT_BY_SYSTEM", "day_maximum",
     "feature_at", "global_roster", "product_roster",
 ]

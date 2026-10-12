@@ -948,6 +948,8 @@ DETERMINISTIC_PROBE_SWEEPS = {
     "ICON_GLOBAL": "capture_deterministic_forward",
     "ARPEGE": "capture_deterministic_forward",
     "UKMO_GLOBAL": "capture_deterministic_forward",
+    # 补记六: the flux-grid GFS for the station-value F_v3.
+    "GFS_SFLUX": "capture_deterministic_forward",
 }
 
 

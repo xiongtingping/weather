@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import bz2
 import importlib.util
+import json
 import sqlite3
 import struct
 import sys
@@ -25,7 +26,7 @@ import bayes_basket_target.native_deterministic_point_archive as N
 import bayes_basket_target.regional_point_lane as L
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL")
+NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL", "GFS_SFLUX")
 RUN = datetime(2026, 10, 11, 0, tzinfo=timezone.utc)
 
 
@@ -59,7 +60,8 @@ def test_native_runs_feed_f_and_never_the_p0_feature():
     for product in NATIVE:
         assert L.SYSTEM_IDS[product] not in FAM.FAMILY_SYSTEM_IDS
         # 补记三: ARPEGE is captured, not read by F; GFS_HOURLY is a research arm.
-        assert (L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS) is (product not in ("ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL")), product
+        # 补记六: GFS_SFLUX is F_v3's GFS member, not F's.
+        assert (L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS) is (product not in ("ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL", "GFS_SFLUX")), product
     assert L.SYSTEM_IDS["AIFS"] in FAM.F_SYSTEM_IDS
     relay = {L.SYSTEM_IDS[p] for p, meta in FAM.FAMILY.items() if meta["relay"]}
     assert not relay & FAM.F_SYSTEM_IDS, "F reads native runs only, never the aggregator relay"
@@ -226,14 +228,19 @@ def _conn():
     return conn
 
 
-def _patch(monkeypatch, *, today, history, truths):
-    def maxima(conn, *, station_id, event_date, as_of_utc, settlement_timezone):
+def _patch(monkeypatch, *, today, history, truths, terrain_table=None):
+    def maxima(conn, *, station_id, event_date, as_of_utc, settlement_timezone, systems=None):
         table = today if as_of_utc == NOW.strftime("%Y-%m-%dT%H:%M:%SZ") else history.get(event_date, {})
-        return {s: {"tmax_c": v, "run_init_utc": "r", "knowable_at_utc": "k"} for s, v in table.items()}
+        wanted = set(systems) if systems is not None else set(F.F_SYSTEM_IDS) | {A, B, C}
+        return {s: {"tmax_c": v, "run_init_utc": "r", "knowable_at_utc": "k"} for s, v in table.items()
+                if s in wanted or s in (A, B, C)}
 
     monkeypatch.setattr(F, "system_maxima", maxima)
     monkeypatch.setattr(F, "formal_truths", lambda conn, since, until: dict(truths))
+    # 补记六: the terrain table is the runtime file; tests hand one in or get none (F_v3 fails closed).
+    monkeypatch.setattr(F.terrain, "read", lambda path=None: terrain_table)
     F._HISTORY_CACHE.clear()
+    F._HISTORY_CACHE_V3.clear()
     F._HISTORY_GENERATION[0] = None
 
 
@@ -255,6 +262,8 @@ def test_f_is_the_median_plus_fleet_shift_plus_a_share_of_the_station_correction
     # 补记五 fails closed: four settled days are far short of a recalibration.
     assert out["recalibration"]["state"] == "INSUFFICIENT_HISTORY"
     assert entry["recal_c"] is None and entry["f_c"] == entry["f_base_c"]
+    # 补记六 fails closed without the terrain table: no F_v3 anywhere.
+    assert out["v3"]["state"] == "TERRAIN_TABLE_MISSING" and "v3" not in entry
 
 
 def test_a_station_day_with_too_few_systems_has_no_f(monkeypatch):
@@ -365,6 +374,88 @@ def test_f_is_recalibrated_once_the_training_window_is_deep_enough(monkeypatch):
     # F_base sat 0.5 C warm of every settled day; the correction pulls F toward the truth.
     assert abs(22.0 - entry["f_c"]) < abs(22.0 - entry["f_base_c"])
     assert out["rule"] == F.RULE == "deterministic_median_fleet_shift_station_share_truth_recal_v3"
+
+
+# --------------------------------------------------------------------------
+# 补记六: F_v3 on station values (user 「加」 10-12)
+# --------------------------------------------------------------------------
+
+def _terrain(offsets):
+    return {"schema": F.terrain.SCHEMA, "built_at_utc": "2026-10-12T13:00:00Z",
+            "systems": {system: {"EGLC": {"offset_c": off}} for system, off in offsets.items()}}
+
+
+def _f_systems():
+    ids = sorted(F.F_SYSTEM_IDS)
+    return ids[0], ids[1], F.GFS_SYSTEM_ID
+
+
+def test_station_values_add_each_members_lapse_offset_and_prefer_the_flux_grid_gfs():
+    s1, s2, gfs = _f_systems()
+    maxima = {s1: {"tmax_c": 20.0}, s2: {"tmax_c": 21.0}, gfs: {"tmax_c": 19.0}, F.GFS_SFLUX_SYSTEM_ID: {"tmax_c": 19.6}}
+    table = _terrain({s1: 0.5, s2: -0.2, gfs: 0.3, F.GFS_SFLUX_SYSTEM_ID: 0.1})
+    values = F.station_values(maxima, station_id="EGLC", table=table)
+    # The GFS member is the flux-grid run plus the flux grid's own offset, keyed by the F member id.
+    assert values == {s1: 20.5, s2: 20.8, gfs: pytest.approx(19.7)}
+    # Without the flux run, the 0.25 degree run plus its own offset.
+    del maxima[F.GFS_SFLUX_SYSTEM_ID]
+    assert F.station_values(maxima, station_id="EGLC", table=table)[gfs] == pytest.approx(19.3)
+    # A member the table has no cell for is left out, never used unadjusted (fail closed).
+    assert s2 not in F.station_values(maxima, station_id="EGLC", table=_terrain({s1: 0.5, gfs: 0.3}))
+    assert F.station_values(maxima, station_id="KLGA", table=table) == {}
+
+
+def test_f_v3_is_written_beside_f_with_its_own_shift_share_and_recentring(monkeypatch):
+    s1, s2, gfs = _f_systems()
+    history = {date(2026, 10, d): {s1: 20.0, s2: 21.0, gfs: 22.0} for d in (1, 2, 3, 4)}
+    truths = {("EGLC", f"2026-10-0{d}"): 22.5 for d in (1, 2, 3, 4)}
+    table = _terrain({s1: 1.0, s2: 1.0, gfs: 1.0})
+    _patch(monkeypatch, today={s1: 18.0, s2: 19.0, gfs: 21.0}, history=history, truths=truths, terrain_table=table)
+    out = F.compute(_conn(), now=NOW, roster=[("EGLC", 51.5, 0.05, "Europe/London")])
+    entry = out["station_days"]["EGLC|2026-10-13"]
+    assert out["v3"]["rule"] == F.V3_RULE and out["v3"]["lambda"] == 0.9 and out["v3"]["state"] == "READY"
+    v3 = entry["v3"]
+    assert v3["state"] == "READY" and v3["gfs_source"] == gfs
+    # Station values: every member + 1.0 -> raw median 20.0 (F's is 19.0).
+    assert v3["raw_median_c"] == pytest.approx(20.0) and entry["raw_median_c"] == pytest.approx(19.0)
+    # Biases on station values: history 21/22/23 vs truth 22.5 -> +1.5/+0.5/-0.5; today's 19/20/22
+    # corrected 20.5/20.5/21.5 -> median 20.5 -> corr 0.5 (F's own, on grid values, is 1.5).
+    assert v3["station_corr_c"] == pytest.approx(0.5)
+    assert v3["f_c"] == pytest.approx(20.0 + F.RESEARCH_FLEET_C + 0.9 * 0.5)
+    # Four days: no recalibration -> no re-centred number, and the cluster-like f_c stands.
+    assert v3["recal_c"] is None and v3["f_recal_c"] is None
+    assert out["v3"]["recalibration"]["state"] == "INSUFFICIENT_HISTORY"
+    # F itself is untouched by the table.
+    assert entry["f_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
+
+
+def test_f_v3_needs_three_station_values(monkeypatch):
+    s1, s2, gfs = _f_systems()
+    _patch(monkeypatch, today={s1: 18.0, s2: 19.0, gfs: 21.0}, history={}, truths={}, terrain_table=_terrain({s1: 0.0, gfs: 0.0}))
+    out = F.compute(_conn(), now=NOW, roster=[("EGLC", 51.5, 0.05, "Europe/London")])
+    assert out["station_days"]["EGLC|2026-10-13"]["v3"]["state"] == "TOO_FEW_SYSTEMS"
+
+
+def test_the_flux_grid_gfs_is_registered_and_read_as_tmax():
+    assert "GFS_SFLUX" in N.SPECS and N.SPECS["GFS_SFLUX"].mask == "gfs_sflux_land"
+    assert N.step_url("GFS_SFLUX", RUN, 45).endswith("/gfs.20261011/00/atmos/gfs.t00z.sfluxgrbf045.grib2")
+    assert N.index_url("GFS_SFLUX", RUN, 45).endswith("sfluxgrbf045.grib2.idx")
+    assert N.FIELD_2T["GFS_SFLUX"] == "TMAX:2 m above ground"
+    assert L.SYSTEM_IDS["GFS_SFLUX"] == "NOAA_GFS_SFLUX_13KM_NATIVE_POINT"
+    assert L.SYSTEM_IDS["GFS_SFLUX"] in FAM.F_V3_SYSTEM_IDS and L.SYSTEM_IDS["GFS_SFLUX"] not in FAM.F_SYSTEM_IDS
+    assert "GFS_SFLUX" in F.terrain.PRODUCTS
+
+
+def test_terrain_table_read_fails_closed_on_a_foreign_file(tmp_path):
+    path = tmp_path / "t.json"
+    path.write_text(json.dumps({"schema": "something_else", "systems": {}}))
+    assert F.terrain.read(path) is None
+    path.write_text("not json")
+    assert F.terrain.read(path) is None
+    path.write_text(json.dumps({"schema": F.terrain.SCHEMA, "systems": {"X": {"EGLC": {"offset_c": 0.25}}}}))
+    table = F.terrain.read(path)
+    assert F.terrain.offset_c(table, system_id="X", station_id="EGLC") == 0.25
+    assert F.terrain.offset_c(table, system_id="X", station_id="KLGA") is None
 
 
 def test_bucket_for_reads_the_ladder_bounds():

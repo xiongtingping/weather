@@ -26,6 +26,12 @@ station and every event day from today to D+2, and kept ready:
            absolute error of truth - F_base on the station correction, the
            members' skew and the change from the newest settled observation,
            every training day read as of its own listing instant)
+  F_v3   (补记六, beside F, read by no lane yet) the same chain on STATION values:
+           each member's grid value + lapse rate x (cell height - station
+           height) from ``listing_forecast_f_terrain``, the GFS member from its
+           13 km flux grid when in hand; c and the biases re-estimated on those
+           values; station share ``V3_LAMBDA`` 0.9.  ``v3.f_c`` keeps the
+           cluster-like warm lean; ``v3.f_recal_c`` is re-centred on the truth.
 
 Read-only on the SSOT; writes one runtime file (``F_PATH``), never the SSOT.
 F is an execution-layer number: it is not a probability, never enters P0,
@@ -45,8 +51,10 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
+from . import listing_forecast_f_terrain as terrain
 from .canonical_contract import FORMAL_TRUTH_LANES_SQL
-from .deterministic_forecast_family import F_SYSTEM_IDS, feature_at, global_roster
+from .deterministic_forecast_family import F_SYSTEM_IDS, F_V3_SYSTEM_IDS, feature_at, global_roster
+from .regional_point_lane import SYSTEM_IDS as _LANE_SYSTEM_IDS
 
 ROOT = Path(__file__).resolve().parents[1]
 F_PATH = Path(os.environ.get("PM_LISTING_FORECAST_F_PATH") or ROOT / "data" / "runtime" / "listing_forecast_f_v1.json")
@@ -85,6 +93,21 @@ RECAL_IRLS_FLOOR = 1e-4
 OBS_BACK_DAYS = (3, 4, 5)
 # A station-day's truth counts as knowable this long after its local day ends.
 SETTLE_HOURS = 3
+# 补记六 (user 「加」 10-12): F_v3, the station-value F, written beside F and read
+# by no lane until its forward check.  Each member's grid value is brought to
+# the station's elevation at the standard lapse rate (``listing_forecast_f_
+# terrain``), the GFS member from GFS's own ~13 km flux grid (hourly maxima)
+# when that run is in hand; the fleet shift, the station biases and the
+# recalibration are re-estimated on the station values; the station share is
+# 0.9.  Benchmark research rounds 54-56: the cluster's centre follows station
+# values one-for-one; this F reproduces its bucket 54.6% vs F's 45.8% (lambda
+# chosen leave-one-day-out, both halves) and, re-centred, is as accurate as F
+# (MAE -0.011 [-0.027, +0.005], hits +0.1 point over 717 station-days).
+V3_RULE = "deterministic_station_values_lapse_sflux_v3"
+V3_LAMBDA = 0.9
+GFS_SYSTEM_ID = _LANE_SYSTEM_IDS["GFS"]
+GFS_SFLUX_SYSTEM_ID = _LANE_SYSTEM_IDS["GFS_SFLUX"]
+_HISTORY_CACHE_V3: dict[tuple[str, str], dict[str, float] | None] = {}
 # Past days' listing-time maxima change only when the run table grows (a
 # backfill can add a run that was knowable then); the cache is dropped
 # whenever the table's newest rowid moves.
@@ -101,12 +124,13 @@ def listing_instant(event_date: date) -> str:
 
 def system_maxima(
     conn: sqlite3.Connection, *, station_id: str, event_date: date, as_of_utc: str, settlement_timezone: str,
+    systems: Sequence[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Each F system's newest knowable, afternoon-covering run at ``as_of_utc``."""
 
     features = feature_at(
         conn, station_id=station_id, event_date=event_date.isoformat(), as_of_utc=as_of_utc,
-        settlement_timezone=settlement_timezone, systems=sorted(F_SYSTEM_IDS),
+        settlement_timezone=settlement_timezone, systems=sorted(systems if systems is not None else F_SYSTEM_IDS),
     )
     return {
         system: {
@@ -149,6 +173,43 @@ def _history_point(
     return _HISTORY_CACHE[key]
 
 
+def station_values(
+    maxima: Mapping[str, Mapping[str, Any]], *, station_id: str, table: Mapping[str, Any],
+) -> dict[str, float]:
+    """补记六: F's members as station values -- each grid value plus its lapse-rate offset.
+
+    The GFS member is the flux-grid run (``GFS_SFLUX``) when in hand, else the
+    0.25 degree run; a member the terrain table has no cell for is left out
+    (fail closed), never used unadjusted.
+    """
+
+    out: dict[str, float] = {}
+    for system in sorted(F_SYSTEM_IDS):
+        source = system
+        if system == GFS_SYSTEM_ID and GFS_SFLUX_SYSTEM_ID in maxima:
+            source = GFS_SFLUX_SYSTEM_ID
+        if source not in maxima:
+            continue
+        offset = terrain.offset_c(table, system_id=source, station_id=station_id)
+        if offset is None:
+            continue
+        out[system] = float(maxima[source]["tmax_c"]) + offset
+    return out
+
+
+def _history_point_v3(
+    conn: sqlite3.Connection, *, station_id: str, event_date: date, zone: str, table: Mapping[str, Any],
+) -> dict[str, float] | None:
+    key = (station_id, event_date.isoformat())
+    if key not in _HISTORY_CACHE_V3:
+        maxima = system_maxima(
+            conn, station_id=station_id, event_date=event_date,
+            as_of_utc=listing_instant(event_date), settlement_timezone=zone, systems=sorted(F_V3_SYSTEM_IDS),
+        )
+        _HISTORY_CACHE_V3[key] = station_values(maxima, station_id=station_id, table=table) or None
+    return _HISTORY_CACHE_V3[key]
+
+
 def _settled_at(day: date, zone: str) -> datetime:
     """When a station-day's truth is knowable: the end of its local day + ``SETTLE_HOURS``."""
 
@@ -162,7 +223,7 @@ def _listing_dt(event_date: date) -> datetime:
 
 def _base_f(
     maxima: Mapping[str, float], rows: Sequence[tuple[date, dict[str, float], float, datetime]], *,
-    event_date: date, fleet_c: float, knowable_by: datetime | None,
+    event_date: date, fleet_c: float, knowable_by: datetime | None, lam: float = LAMBDA,
 ) -> dict[str, Any]:
     """F before recalibration: raw median + c + LAMBDA x the station correction.
 
@@ -184,7 +245,7 @@ def _base_f(
     corrected = [maxima[system] + biases[system] for system in maxima]
     corr = statistics.median(corrected) - raw
     return {
-        "raw": raw, "corr": corr, "biases": biases, "f": raw + fleet_c + LAMBDA * corr,
+        "raw": raw, "corr": corr, "biases": biases, "f": raw + fleet_c + lam * corr,
         "skew": statistics.mean(corrected) - statistics.median(corrected),
     }
 
@@ -287,7 +348,9 @@ def compute(
     generation = conn.execute("SELECT max(rowid) FROM calibration_regional_point_run").fetchone()[0]
     if generation != _HISTORY_GENERATION[0]:
         _HISTORY_CACHE.clear()
+        _HISTORY_CACHE_V3.clear()
         _HISTORY_GENERATION[0] = generation
+    table = terrain.read()
     # The oldest training day needs its own STATION_DAYS of bias history.
     history_from = today - timedelta(days=RECAL_TRAIN_DAYS + max(FLEET_DAYS, STATION_DAYS) + 4)
     truths = formal_truths(conn, since=history_from, until=today)
@@ -326,14 +389,50 @@ def compute(
             obs = _obs_before_listing(station_truths[station], past)
             train.append((past, _recal_features(base, obs), truth - base["f"]))
     model = fit_recalibration(train)
+    # 补记六: the same chain on station values, when the terrain table is in hand.
+    history3: dict[str, list[tuple[date, dict[str, float], float, datetime]]] = {}
+    fleet3 = model3 = None
+    train3: list[tuple[date, tuple[float, float, float], float]] = []
+    if table is not None:
+        for station, zone in zones.items():
+            rows3 = []
+            for past, (truth, settled) in sorted(station_truths[station].items()):
+                point = _history_point_v3(conn, station_id=station, event_date=past, zone=zone, table=table)
+                if point:
+                    rows3.append((past, point, truth, settled))
+            history3[station] = rows3
+        fleet3 = _fleet_shift(history3, since=today - timedelta(days=FLEET_DAYS), knowable_by=None)
+        past_fleet3: dict[date, float] = {}
+        for station, rows3 in history3.items():
+            for past, point, truth, _settled in rows3:
+                if past < today - timedelta(days=RECAL_TRAIN_DAYS) or len(point) < MIN_SYSTEMS:
+                    continue
+                listing = _listing_dt(past)
+                if past not in past_fleet3:
+                    past_fleet3[past] = _fleet_shift(
+                        history3, since=past - timedelta(days=2 + FLEET_DAYS), knowable_by=listing,
+                    )[0]
+                base3 = _base_f(point, rows3, event_date=past, fleet_c=past_fleet3[past], knowable_by=listing, lam=V3_LAMBDA)
+                obs = _obs_before_listing(station_truths[station], past)
+                train3.append((past, _recal_features(base3, obs), truth - base3["f"]))
+        model3 = fit_recalibration(train3)
     out: dict[str, Any] = {}
     for station, zone in zones.items():
         for offset in (0, 1, 2):
             event_date = today + timedelta(days=offset)
-            maxima = system_maxima(
+            maxima_all = system_maxima(
                 conn, station_id=station, event_date=event_date, as_of_utc=as_of, settlement_timezone=zone,
+                systems=sorted(F_V3_SYSTEM_IDS),
             )
+            # F's own members: everything but the flux-grid GFS, which only F_v3 reads.
+            maxima = {system: value for system, value in maxima_all.items() if system != GFS_SFLUX_SYSTEM_ID}
             entry: dict[str, Any] = {"systems": maxima, "n_systems": len(maxima)}
+            if table is not None:
+                entry["v3"] = _v3_entry(
+                    maxima_all, station=station, event_date=event_date, table=table,
+                    rows=history3.get(station, []), fleet_c=fleet3[0], model=model3,
+                    obs=_obs_before_listing(station_truths.get(station, {}), event_date),
+                )
             if len(maxima) < MIN_SYSTEMS:
                 entry["state"] = "TOO_FEW_SYSTEMS"
                 out[f"{station}|{event_date.isoformat()}"] = entry
@@ -360,6 +459,18 @@ def compute(
                 "listing_instant_utc": listing_instant(event_date),
             })
             out[f"{station}|{event_date.isoformat()}"] = entry
+    v3: dict[str, Any] = {"rule": V3_RULE, "lambda": V3_LAMBDA, "systems": sorted(F_V3_SYSTEM_IDS)}
+    if table is None:
+        v3["state"] = "TERRAIN_TABLE_MISSING"
+    else:
+        v3.update({
+            "state": "READY",
+            "terrain_built_at_utc": table.get("built_at_utc"),
+            "fleet": {"c": round(fleet3[0], 3), "source": fleet3[1], "samples": fleet3[2], "days": fleet3[3]},
+            "recalibration": model3 or {
+                "state": "INSUFFICIENT_HISTORY", "rows": len(train3), "days": len({day for day, _x, _y in train3}),
+            },
+        })
     return {
         "schema": SCHEMA, "rule": RULE, "computed_at_utc": as_of,
         "systems": sorted(F_SYSTEM_IDS),
@@ -367,10 +478,44 @@ def compute(
         "recalibration": model or {
             "state": "INSUFFICIENT_HISTORY", "rows": len(train), "days": len({day for day, _x, _y in train}),
         },
+        "v3": v3,
         "station_days": out,
         "authority": "EXECUTION_LAYER_ONLY",
         "calls_order_gateway": False,
     }
+
+
+def _v3_entry(
+    maxima_all: Mapping[str, Mapping[str, Any]], *, station: str, event_date: date, table: Mapping[str, Any],
+    rows: Sequence[tuple[date, dict[str, float], float, datetime]], fleet_c: float,
+    model: Mapping[str, Any] | None, obs: float | None,
+) -> dict[str, Any]:
+    """补记六: one station-day's F_v3 -- station values, lambda 0.9, its own recalibration."""
+
+    values = station_values(maxima_all, station_id=station, table=table)
+    entry: dict[str, Any] = {
+        "members": {system: round(value, 3) for system, value in values.items()},
+        "gfs_source": GFS_SFLUX_SYSTEM_ID if GFS_SFLUX_SYSTEM_ID in maxima_all else (GFS_SYSTEM_ID if GFS_SYSTEM_ID in maxima_all else None),
+    }
+    if len(values) < MIN_SYSTEMS:
+        entry["state"] = "TOO_FEW_SYSTEMS"
+        return entry
+    base = _base_f(values, rows, event_date=event_date, fleet_c=fleet_c, knowable_by=None, lam=V3_LAMBDA)
+    features = _recal_features(base, obs)
+    correction = recal_correction(model, features) if model else 0.0
+    # ``f_c`` is the cluster-like number the research scored (station values,
+    # fleet shift and station share, no recalibration: the cluster's own warm
+    # lean is in it); ``f_recal_c`` is the same brought back to the truth's
+    # centre (as accurate as F).  The forward read compares both.
+    entry.update({
+        "state": "READY",
+        "raw_median_c": round(base["raw"], 3),
+        "station_corr_c": round(base["corr"], 3),
+        "f_c": round(base["f"], 3),
+        "recal_c": round(correction, 3) if model else None,
+        "f_recal_c": round(base["f"] + correction, 3) if model else None,
+    })
+    return entry
 
 
 def write(payload: Mapping[str, Any], path: Path = F_PATH) -> None:
@@ -391,9 +536,11 @@ def refresh(db_path: str | Path) -> dict[str, Any]:
         conn.close()
     write(payload)
     ready = sum(1 for v in payload["station_days"].values() if v.get("state") == "READY")
+    ready_v3 = sum(1 for v in payload["station_days"].values() if (v.get("v3") or {}).get("state") == "READY")
     return {"state": "ok", "ready": ready, "station_days": len(payload["station_days"]),
             "fleet_c": payload["fleet"]["c"], "fleet_source": payload["fleet"]["source"],
-            "recalibration": payload["recalibration"]["state"]}
+            "recalibration": payload["recalibration"]["state"],
+            "v3": payload.get("v3", {}).get("state"), "ready_v3": ready_v3}
 
 
 def read(path: Path = F_PATH) -> dict[str, Any] | None:
@@ -416,7 +563,8 @@ def bucket_for(f_c: float, ladder: Sequence[Mapping[str, Any]]) -> str | None:
 
 
 __all__ = [
-    "F_PATH", "LAMBDA", "RECAL_FEATURES", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "bucket_for", "compute",
+    "F_PATH", "LAMBDA", "RECAL_FEATURES", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "V3_LAMBDA", "V3_RULE", "bucket_for", "compute",
+    "station_values",
     "fit_recalibration", "formal_truths", "listing_instant", "read", "recal_correction", "refresh",
     "system_maxima", "write",
 ]

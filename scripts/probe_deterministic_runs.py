@@ -27,7 +27,7 @@ if str(ROOT) not in sys.path:
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 STATE = ROOT / "data" / "runtime" / "deterministic_run_probe.json"
 # Charter 267 (二): the native deterministic products ring the same bell.
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL")
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX")
 
 
 def main() -> int:

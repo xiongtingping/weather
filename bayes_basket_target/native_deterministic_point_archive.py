@@ -157,6 +157,12 @@ SPECS: Mapping[str, ProductSpec] = {
     # hourly files to f120, the same objects read at every hour -- a research
     # arm until the paired test rules on it.
     "GFS_HOURLY": ProductSpec("GFS_HOURLY", (0, 6, 12, 18), 1, "noaa_idx", "gfs_land"),
+    # 补记六 (user 「加」 10-12): GFS on its own ~13 km Gaussian flux grid, the
+    # period maximum ``TMAX:2 m`` (hourly temperature's maximum since the last
+    # six-hour boundary) read every 3 h -- the station value the listing-time
+    # F_v3 builds on.  Same S3 bucket, ``sfluxgrb`` files; the grid's own LAND
+    # places the stations.  ~1.9 MB a message.
+    "GFS_SFLUX": ProductSpec("GFS_SFLUX", (0, 6, 12, 18), 3, "noaa_idx", "gfs_sflux_land"),
     # Hourly maxima to 54 h, 3-hourly maxima after (the files the run publishes).
     "UKMO_GLOBAL": ProductSpec(
         "UKMO_GLOBAL", (0, 12), 3, "hdf5_chunks", "gfs_land",
@@ -205,6 +211,11 @@ def step_url(product: str, run_init: datetime, step: int) -> str:
         return (
             f"{GFS_BASE_URL}/gfs.{stamp:%Y%m%d}/{stamp:%H}/atmos/"
             f"gfs.t{stamp:%H}z.pgrb2.0p25.f{step:03d}"
+        )
+    if product == "GFS_SFLUX":
+        return (
+            f"{GFS_BASE_URL}/gfs.{stamp:%Y%m%d}/{stamp:%H}/atmos/"
+            f"gfs.t{stamp:%H}z.sfluxgrbf{step:03d}.grib2"
         )
     if product == "AIGFS":
         return (
@@ -523,7 +534,7 @@ def parse_noaa_idx(text: str, *, field: str) -> tuple[int, int | None] | None:
 
 
 FIELD_2T = {"IFS_HRES": "2t", "GFS": "TMP:2 m above ground", "GFS_HOURLY": "TMP:2 m above ground",
-            "AIGFS": "TMP:2 m above ground"}
+            "AIGFS": "TMP:2 m above ground", "GFS_SFLUX": "TMAX:2 m above ground"}
 
 
 def read_message(product: str, run_init: datetime, step: int, *, field: str | None = None) -> bytes | None:
@@ -565,6 +576,9 @@ def mask_message(product: str, run_init: datetime) -> bytes | None:
     spec = SPECS[product]
     if spec.mask == "ecmwf_lsm":
         return read_message(product, run_init, 0, field="lsm")
+    if spec.mask == "gfs_sflux_land":
+        # The flux grid's own LAND at f000: a different grid from pgrb2 0.25.
+        return read_message("GFS_SFLUX", run_init, 0, field="LAND:surface")
     # GFS's own analysis LAND at the same init; AIGFS and GDPS share the GFS
     # cycle of their init (every init they issue is a GFS cycle too).
     return read_message("GFS", run_init, 0, field="LAND:surface")
@@ -645,7 +659,8 @@ class RegularLatLonReader:
 
     def _derive(self, library: Any, handle: Any, message: bytes, values: Any) -> list[int | None]:
         long_ = GridPointReader._long
-        if self._string(library, handle, b"gridType") != "regular_ll":
+        grid = self._string(library, handle, b"gridType")
+        if grid not in ("regular_ll", "regular_gg"):
             return [None] * len(self._points)
         ni, nj = long_(library, handle, b"Ni"), long_(library, handle, b"Nj")
         lat0 = self._double(library, handle, b"latitudeOfFirstGridPointInDegrees")
@@ -655,14 +670,27 @@ class RegularLatLonReader:
         i_neg = long_(library, handle, b"iScansNegatively")
         j_pos = long_(library, handle, b"jScansPositively")
         j_cons = long_(library, handle, b"jPointsAreConsecutive")
-        if None in (ni, nj, lat0, lon0, di, dj, i_neg, j_pos, j_cons) or i_neg or j_cons or not di or not dj:
+        if None in (ni, nj, lat0, lon0, di, i_neg, j_pos, j_cons) or i_neg or j_cons or not di:
             return [None] * len(self._points)
         if int(ni) * int(nj) != len(values):
+            return [None] * len(self._points)
+        row_lats = None
+        if grid == "regular_gg":
+            # 补记六: a Gaussian grid's rows are not evenly spaced; the row is the
+            # nearest of the grid's own latitudes (one per row, read once).
+            lats = GridPointReader._array(library, handle, b"latitudes")
+            if len(lats) != len(values):
+                return [None] * len(self._points)
+            row_lats = [float(lats[j * int(ni)]) for j in range(int(nj))]
+        elif dj is None or not dj:
             return [None] * len(self._points)
         out: list[int | None] = []
         for lat, lon in self._points:
             i = int(round(((lon - lon0) % 360.0) / di)) % int(ni)
-            j = int(round(((lat - lat0) if j_pos else (lat0 - lat)) / dj))
+            if row_lats is not None:
+                j = min(range(int(nj)), key=lambda k: abs(row_lats[k] - lat))
+            else:
+                j = int(round(((lat - lat0) if j_pos else (lat0 - lat)) / dj))
             if not 0 <= j < int(nj):
                 out.append(None)
                 continue
