@@ -1,0 +1,23 @@
+cluster pre-formation first YES with F ready: 227 station-days over 18 event days; F bucket = choice 47.6%, within one 89.4%, beyond F+-2 12
+   rule: bucket of lam0     = choice 36.1%
+   rule: bucket of lam03    = choice 41.0%
+   rule: bucket of lam1     = choice 41.0%
+   rule: bucket of mean     = choice 47.1%
+   rule: votemode  = choice 46.3% (n 227)
+   rule: ensmode   = choice 13.2% (n 174)
+   rule: p0mode    = choice 42.0% (n 81)
+   rule: nowmode   = choice 22.4% (n 201)
++ base           leave-one-day-out = choice 50.2% (n 215)
++ position       leave-one-day-out = choice 50.2% (n 215)
++ adjacent mass  leave-one-day-out = choice 47.9% (n 215)
++ statistics     leave-one-day-out = choice 45.6% (n 215)
++ direction      leave-one-day-out = choice 44.7% (n 215)
++ history        leave-one-day-out = choice 44.2% (n 215)
++ market         leave-one-day-out = choice 45.1% (n 215)
+weights (all groups): {'d0': -0.04, 'd1': 0.29, 'd2': -0.25, 'pos': 0.86, 'vote': 0.19, 'ens': 0.86, 'p0': 0.27, 'is_lam0': 0.17, 'is_lam03': -0.31, 'is_lam1': 0.3, 'is_mean': 0.21, 'is_votemode': 0.12, 'is_ensmode': -0.3, 'is_p0mode': 0.36, 'mom': 0.15, 'hist': 0.52, 'price': 0.56, 'price_missing': -0.32, 'is_nowmode': 0.39}
+   without position       47.0%
+   without adjacent mass  45.6%
+   without statistics     47.9%
+   without direction      43.3%
+   without history        45.6%
+   without market         44.2%

@@ -1,0 +1,10 @@
+fitted e ~ Normal(mu -0.12, sigma 1.10) bucket widths over 227 picks; best single bucket under it matches 46.3% (in sample)
+   a 60% single-bucket match needs sigma <= 0.52 bucket widths (~0.52 C on C stations)
+   a 70% single-bucket match needs sigma <= 0.38 bucket widths (~0.38 C on C stations)
+   a 80% single-bucket match needs sigma <= 0.26 bucket widths (~0.26 C on C stations)
+   a 90% single-bucket match needs sigma <= 0.13 bucket widths (~0.13 C on C stations)
+   F at 0.0-0.2 of its bucket (n  49): cluster = F 57%, one up 10%, one down 29%
+   F at 0.2-0.4 of its bucket (n  46): cluster = F 54%, one up 7%, one down 26%
+   F at 0.4-0.6 of its bucket (n  37): cluster = F 35%, one up 22%, one down 30%
+   F at 0.6-0.8 of its bucket (n  40): cluster = F 45%, one up 20%, one down 25%
+   F at 0.8-1.0 of its bucket (n  55): cluster = F 44%, one up 33%, one down 11%

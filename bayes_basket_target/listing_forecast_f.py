@@ -186,6 +186,8 @@ def compute(
                 ]
                 bias = statistics.mean(errors) if len(errors) >= MIN_STATION_SYSTEM_DAYS else 0.0
                 corrected.append(value["tmax_c"] + bias)
+                # Each member's own correction, for readers that look past the median.
+                value["bias_c"] = round(bias, 3)
             corr = statistics.median(corrected) - raw
             entry.update({
                 "state": "READY",
