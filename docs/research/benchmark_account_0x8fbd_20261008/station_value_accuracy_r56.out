@@ -1,0 +1,9 @@
+runs cached 18/18 event days
+universe A: 717 station-days
+(a) F_v3(0.5) - F_base: mean -0.165 = raw median shift +0.334 + fleet shift change -0.360 + 0.5 x station-correction change -0.139; F - F_base (recalibration) -0.325
+(b) lambda 0.50 as is          : MAE diff vs F +0.0210 [+0.0001, +0.0387]; hits 32.1% vs F 32.9% -0.008 [-0.040, +0.024]; bias -0.286 (F -0.126)
+(b) lambda 0.50 re-centred (LODO): MAE diff vs F +0.0106 [-0.0083, +0.0272]; hits 32.6% vs F 32.9% -0.003 [-0.033, +0.028]; bias -0.126 (F -0.126)
+(c) lambda 0.75 as is          : MAE diff vs F +0.0419 [+0.0168, +0.0630]; hits 31.4% vs F 32.9% -0.015 [-0.050, +0.019]; bias -0.472 (F -0.126)
+(c) lambda 0.75 re-centred (LODO): MAE diff vs F -0.0105 [-0.0247, +0.0065]; hits 33.2% vs F 32.9% +0.003 [-0.027, +0.033]; bias -0.126 (F -0.126)
+(c) lambda 0.90 as is          : MAE diff vs F +0.0759 [+0.0463, +0.1025]; hits 32.9% vs F 32.9% +0.000 [-0.039, +0.039]; bias -0.584 (F -0.126)
+(c) lambda 0.90 re-centred (LODO): MAE diff vs F -0.0113 [-0.0274, +0.0050]; hits 33.1% vs F 32.9% +0.001 [-0.029, +0.032]; bias -0.126 (F -0.126)
