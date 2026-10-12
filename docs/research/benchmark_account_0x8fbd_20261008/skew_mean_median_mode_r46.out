@@ -1,0 +1,112 @@
+227 picks; distributions available: ENS 174, ENS@F 174, P0 81, P0first 223
+
+== ENS (n 174)
+  mean vs mode at 0.35 sigma: left 30, symmetric 91, right 53;  mean gap +0.16 buckets, sigma 1.16 buckets;  mode = F's bucket 16.7%
+    left      n  30: pick = mode 30%, one toward the mean 10%, one the other way 33%, further 27%;  pick = F 43%
+    symmetric n  91: pick = mode 13%, one up 45%, one the other way 3%, further 38%;  pick = F 41%
+    right     n  53: pick = mode 4%, one toward the mean 13%, one the other way 2%, further 81%;  pick = F 45%
+    direction by mean - mode       on  80 one-off picks: 48.8% (base 65.0%)
+    direction by median - mode     on  17 one-off picks: 70.6% (base 70.6%)
+    direction by mean - median     on  80 one-off picks: 43.8% (base 65.0%)
+    direction by mean - F bucket   on  80 one-off picks: 42.5% (base 65.0%)
+    direction by median - F bucket on  62 one-off picks: 46.8% (base 54.8%)
+    mode                                     = cluster 13.2% vs F 42.5% -0.293 [-0.392, -0.194] (halves 18.8%/9.5%); hits 13.8%
+    mean bucket                              = cluster 13.2% vs F 42.5% -0.293 [-0.397, -0.189] (halves 15.9%/11.4%); hits 16.2%
+    median bucket                            = cluster 14.4% vs F 42.5% -0.282 [-0.383, -0.180] (halves 18.8%/11.4%); hits 16.2%
+    mode, one toward the mean if skewed      = cluster 12.6% vs F 42.5% -0.299 [-0.403, -0.194] (halves 18.8%/8.6%); hits 13.2%
+    median, one toward the mean if skewed    = cluster 13.8% vs F 42.5% -0.287 [-0.391, -0.184] (halves 20.3%/9.5%); hits 13.8%
+    F, one toward the skew side (0.35 sigma) = cluster 32.8% vs F 42.5% -0.098 [-0.183, -0.013] (halves 24.6%/38.1%); hits 22.2%
+    F, one toward mean-mode side, t by LODO  = cluster 42.5% vs F 42.5% +0.000 [-0.023, +0.023] (halves 43.5%/41.9%); hits 37.1%
+      (t chosen: {1.0: 160, 1.5: 14})
+    F, one toward mean-median side, t by LODO = cluster 42.0% vs F 42.5% -0.006 [-0.017, +0.006] (halves 42.0%/41.9%); hits 40.1%
+      (t chosen: {1.5: 169, 0.75: 5})
+    F, one toward median-mode side, t by LODO = cluster 41.4% vs F 42.5% -0.011 [-0.059, +0.036] (halves 40.6%/41.9%); hits 35.3%
+      (t chosen: {0.75: 159, 1.5: 15})
+
+== ENS@F (n 174)
+  mean vs mode at 0.35 sigma: left 33, symmetric 95, right 46;  mean gap +0.04 buckets, sigma 1.23 buckets;  mode = F's bucket 73.0%
+    left      n  33: pick = mode 42%, one toward the mean 27%, one the other way 9%, further 21%;  pick = F 55%
+    symmetric n  95: pick = mode 41%, one up 32%, one the other way 16%, further 12%;  pick = F 42%
+    right     n  46: pick = mode 24%, one toward the mean 43%, one the other way 4%, further 28%;  pick = F 35%
+    direction by mean - mode       on  80 one-off picks: 60.0% (base 65.0%)
+    direction by median - mode     on  21 one-off picks: 47.6% (base 57.1%)
+    direction by mean - median     on  80 one-off picks: 67.5% (base 65.0%)
+    direction by mean - F bucket   on  80 one-off picks: 67.5% (base 65.0%)
+    mode                                     = cluster 36.8% vs F 42.5% -0.057 [-0.119, +0.004] (halves 39.1%/35.2%); hits 35.3%
+    mean bucket                              = cluster 43.7% vs F 42.5% +0.011 [-0.034, +0.057] (halves 44.9%/42.9%); hits 37.1%
+    median bucket                            = cluster 42.5% vs F 42.5% +0.000 [+0.000, +0.000] (halves 43.5%/41.9%); hits 39.5%
+    mode, one toward the mean if skewed      = cluster 39.1% vs F 42.5% -0.034 [-0.098, +0.029] (halves 46.4%/34.3%); hits 40.1%
+    median, one toward the mean if skewed    = cluster 38.5% vs F 42.5% -0.040 [-0.107, +0.026] (halves 44.9%/34.3%); hits 40.1%
+    F, one toward the skew side (0.35 sigma) = cluster 35.6% vs F 42.5% -0.069 [-0.153, +0.015] (halves 39.1%/33.3%); hits 31.1%
+    F, one toward mean-mode side, t by LODO  = cluster 40.2% vs F 42.5% -0.023 [-0.055, +0.009] (halves 40.6%/40.0%); hits 36.5%
+      (t chosen: {0.75: 125, 1.5: 49})
+    F, one toward mean-median side, t by LODO = cluster 42.5% vs F 42.5% +0.000 [-0.023, +0.023] (halves 40.6%/43.8%); hits 39.5%
+      (t chosen: {0.75: 163, 0.5: 11})
+    F, one toward median-mode side, t by LODO = cluster 42.0% vs F 42.5% -0.006 [-0.017, +0.006] (halves 43.5%/41.0%); hits 38.9%
+      (t chosen: {1.5: 174})
+
+== P0 (n 81)
+  mean vs mode at 0.35 sigma: left 10, symmetric 60, right 11;  mean gap +0.04 buckets, sigma 1.03 buckets;  mode = F's bucket 50.6%
+    left      n  10: pick = mode 50%, one toward the mean 10%, one the other way 30%, further 10%;  pick = F 40%
+    symmetric n  60: pick = mode 42%, one up 37%, one the other way 10%, further 12%;  pick = F 43%
+    right     n  11: pick = mode 36%, one toward the mean 45%, one the other way 18%, further 0%;  pick = F 36%
+    direction by mean - mode       on  40 one-off picks: 42.5% (base 70.0%)
+    direction by mean - median     on  40 one-off picks: 42.5% (base 70.0%)
+    direction by mean - F bucket   on  40 one-off picks: 67.5% (base 70.0%)
+    direction by median - F bucket on  18 one-off picks: 88.9% (base 55.6%)
+    mode                                     = cluster 42.0% vs F 42.0% +0.000 [-0.141, +0.141] (halves 44.0%/41.1%); hits 34.7%
+    mean bucket                              = cluster 40.7% vs F 42.0% -0.012 [-0.151, +0.127] (halves 40.0%/41.1%); hits 33.3%
+    median bucket                            = cluster 40.7% vs F 42.0% -0.012 [-0.156, +0.131] (halves 40.0%/41.1%); hits 33.3%
+    mode, one toward the mean if skewed      = cluster 38.3% vs F 42.0% -0.037 [-0.172, +0.098] (halves 32.0%/41.1%); hits 32.0%
+    median, one toward the mean if skewed    = cluster 38.3% vs F 42.0% -0.037 [-0.172, +0.098] (halves 32.0%/41.1%); hits 32.0%
+    F, one toward the skew side (0.35 sigma) = cluster 37.0% vs F 42.0% -0.049 [-0.133, +0.034] (halves 32.0%/39.3%); hits 29.3%
+    F, one toward mean-mode side, t by LODO  = cluster 42.0% vs F 42.0% +0.000 [+0.000, +0.000] (halves 36.0%/44.6%); hits 36.0%
+      (t chosen: {1.5: 81})
+    F, one toward mean-median side, t by LODO = cluster 42.0% vs F 42.0% +0.000 [+0.000, +0.000] (halves 36.0%/44.6%); hits 36.0%
+      (t chosen: {1.5: 81})
+    F, one toward median-mode side, t by LODO = cluster 42.0% vs F 42.0% +0.000 [+0.000, +0.000] (halves 36.0%/44.6%); hits 36.0%
+      (t chosen: {1.5: 81})
+
+== P0first (n 223)
+  mean vs mode at 0.35 sigma: left 25, symmetric 164, right 34;  mean gap +0.02 buckets, sigma 1.04 buckets;  mode = F's bucket 52.0%
+    left      n  25: pick = mode 44%, one toward the mean 12%, one the other way 28%, further 16%;  pick = F 48%
+    symmetric n 164: pick = mode 46%, one up 30%, one the other way 10%, further 14%;  pick = F 45%
+    right     n  34: pick = mode 29%, one toward the mean 47%, one the other way 12%, further 12%;  pick = F 50%
+    direction by mean - mode       on  94 one-off picks: 47.9% (base 64.9%)
+    direction by median - mode     on   4 one-off picks: 75.0% (base 50.0%)
+    direction by mean - median     on  94 one-off picks: 45.7% (base 64.9%)
+    direction by mean - F bucket   on  94 one-off picks: 71.3% (base 64.9%)
+    direction by median - F bucket on  48 one-off picks: 83.3% (base 52.1%)
+    mode                                     = cluster 43.5% vs F 45.7% -0.022 [-0.102, +0.058] (halves 47.8%/40.6%); hits 38.0%
+    mean bucket                              = cluster 43.5% vs F 45.7% -0.022 [-0.102, +0.058] (halves 46.7%/41.4%); hits 38.5%
+    median bucket                            = cluster 44.4% vs F 45.7% -0.013 [-0.094, +0.068] (halves 48.9%/41.4%); hits 38.5%
+    mode, one toward the mean if skewed      = cluster 42.6% vs F 45.7% -0.031 [-0.108, +0.045] (halves 44.4%/41.4%); hits 37.1%
+    median, one toward the mean if skewed    = cluster 42.2% vs F 45.7% -0.036 [-0.112, +0.041] (halves 43.3%/41.4%); hits 36.6%
+    F, one toward the skew side (0.35 sigma) = cluster 37.7% vs F 45.7% -0.081 [-0.136, -0.025] (halves 35.6%/39.1%); hits 31.9%
+    F, one toward mean-mode side, t by LODO  = cluster 45.7% vs F 45.7% +0.000 [+0.000, +0.000] (halves 51.1%/42.1%); hits 39.0%
+      (t chosen: {1.5: 223})
+    F, one toward mean-median side, t by LODO = cluster 45.7% vs F 45.7% +0.000 [+0.000, +0.000] (halves 51.1%/42.1%); hits 39.0%
+      (t chosen: {1.5: 223})
+    F, one toward median-mode side, t by LODO = cluster 44.4% vs F 45.7% -0.013 [-0.029, +0.002] (halves 48.9%/41.4%); hits 37.6%
+      (t chosen: {1.5: 184, 1.0: 10, 0.5: 29})
+
+(d) money centre (1 h) - F on the shape gaps in C, leave one event day out
+  ENS      n 174: coefficients (mean-mode, median-mode, mean-median, mean-F, mode-F per C) [0.029, 0.279, -0.249, 0.034, 0.005]; centre MAE 0.772 vs F 0.809; = first pick 44.3% vs F 42.5% +0.017 [-0.047, +0.082]
+  ENS@F    n 174: coefficients (mean-mode, median-mode, mean-median, mean-F, mode-F per C) [0.066, 0.041, 0.026, 0.026, -0.041]; centre MAE 0.764 vs F 0.809; = first pick 46.0% vs F 42.5% +0.034 [-0.029, +0.098]
+  P0first  n 223: coefficients (mean-mode, median-mode, mean-median, mean-F, mode-F per C) [-0.073, -0.118, 0.045, 0.129, 0.202]; centre MAE 0.759 vs F 0.809; = first pick 47.5% vs F 45.7% +0.018 [-0.051, +0.087]
+
+(e) when a distribution's median / mean bucket differs from F's bucket: where the pick goes
+  ENS@F    mean bucket != F on  17: pick = F 41%, = the mean bucket 53%, elsewhere 6%; truth in F 53%, in the mean bucket 29%
+  P0       median      != F on  41: pick = F 44%, = the median 41%, elsewhere 15%; truth in F 35%, in the median 30%
+  P0       mean bucket != F on  39: pick = F 44%, = the mean bucket 41%, elsewhere 15%; truth in F 34%, in the mean bucket 29%
+  P0first  median      != F on 110: pick = F 40%, = the median 37%, elsewhere 23%; truth in F 34%, in the median 33%
+  P0first  mean bucket != F on 110: pick = F 40%, = the mean bucket 35%, elsewhere 25%; truth in F 34%, in the mean bucket 33%
+
+(e2) F + 1 only when the distribution reads right-skewed (0.35 sigma), else F
+  ENS      n 174: = cluster 37.4% vs F 42.5% -0.052 [-0.122, +0.019] (halves 30.4%/41.9%); hits 27.5% vs F 39.5%
+  ENS@F    n 174: = cluster 43.1% vs F 42.5% +0.006 [-0.059, +0.070] (halves 43.5%/42.9%); hits 36.5% vs F 39.5%
+  P0first  n 223: = cluster 42.2% vs F 45.7% -0.036 [-0.081, +0.009] (halves 42.2%/42.1%); hits 32.9% vs F 39.0%
+
+(e3) bucket(w F + (1 - w) x the distribution's mean in C), w by leave one event day out
+  ENS@F    n 174: LODO = cluster 40.8% vs F 42.5% -0.017 [-0.051, +0.017] (halves 40.6%/41.0%), w chosen {0.7: 134, 0.0: 31, 0.9: 9};  fixed w: 0.00 43.7%, 0.25 43.1%, 0.50 42.5%, 0.75 43.7%, 1.00 42.5%
+  P0first  n 223: LODO = cluster 43.9% vs F 45.7% -0.018 [-0.036, -0.000] (halves 50.0%/39.8%), w chosen {0.9: 164, 1.0: 59};  fixed w: 0.00 43.5%, 0.25 43.5%, 0.50 42.2%, 0.75 44.4%, 1.00 45.7%
