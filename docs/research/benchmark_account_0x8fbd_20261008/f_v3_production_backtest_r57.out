@@ -1,0 +1,13 @@
+193 instants, 0 to compute
+all instants computed
+
+(1) the cluster's 227 pre-formation first YES (2026-09-24..2026-10-11); GFS member from the flux grid on 218 picks
+  F (production f_c)               n 227: = cluster 45.8% vs F 45.8% +0.000 [+0.000, +0.000] halves +0.000/+0.000; early (<15 min) 55.2% vs 55.2% (n 96); hits 39.4% vs F 39.4%; mean (x - F) +0.00 C
+  F_v3 cluster-like (v3.f_c)       n 227: = cluster 54.6% vs F 45.8% +0.088 [+0.018, +0.158] halves +0.129/+0.060; early (<15 min) 58.3% vs 55.2% (n 96); hits 36.2% vs F 39.4%; mean (x - F) +0.38 C
+  F_v3 re-centred (v3.f_recal_c)   n 227: = cluster 40.1% vs F 45.8% -0.057 [-0.113, -0.002] halves -0.086/-0.037; early (<15 min) 44.8% vs 55.2% (n 96); hits 40.4% vs F 39.4%; mean (x - F) -0.10 C
+  cluster itself hits the truth 45.1%
+
+(2) every first-rows station-day with a truth, F at listing + 5 min: n 717, 17 event days
+  F (production f_c)               MAE 1.0111; hits 32.9%; bias -0.126
+  F_v3 cluster-like (v3.f_c)       MAE 1.0570 (+0.0459 [+0.0167, +0.0788]); hits 31.5% vs F 32.9% -0.014 [-0.051, +0.023]; bias -0.505
+  F_v3 re-centred (v3.f_recal_c)   MAE 0.9978 (-0.0133 [-0.0328, +0.0064]); hits 33.2% vs F 32.9% +0.003 [-0.025, +0.030]; bias -0.024
