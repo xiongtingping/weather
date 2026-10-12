@@ -357,3 +357,16 @@ def test_under_ten_percent_the_lead_accumulates_with_a_warning_from_eight():
         rungs, status = P.lead_follow_plan(plan, states, QUOTE, cfg, min_size=5.0)
         assert any(r["side"] == "YES" for r in rungs)
         assert status.get("ratio_warn", False) is warn
+
+
+def test_a_partial_lead_fill_under_the_minimum_is_still_followed():
+    # LEMD 10-14 live: YES filled 4.3478 for 2.347827 (avg 0.540003) -> NO for the gap under
+    # 0.95 - 0.540003 = 0.409997, floored to 0.40 (lifted to 5 shares on send).
+    plan = _plan_with([("YES", 0, 0.54, "a")])
+    states = {"a": {"filled": 4.3478, "notional": 2.347827, "open": False}}
+    book = {"bid": 0.51, "ask": 0.54, "mid": 0.525, "tick": 0.01}
+    rungs, status = P.lead_follow_plan(plan, states, book, {**CFG, "max_unmatched_usdc": 2.0}, min_size=5.0)
+    no = next(r for r in rungs if r["side"] == "NO")
+    assert no["price"] == 0.40 and no["shares"] == 4.35
+    assert P._shares(no["price"], {**CFG, "rung_shares": no["shares"]}, 5.0) == 5.0
+    assert status["lead"].startswith("YES:unmatched_cap")

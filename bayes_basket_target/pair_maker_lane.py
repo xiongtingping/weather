@@ -422,8 +422,11 @@ def lead_follow_plan(
         else:
             out.append({"side": lead, "k": 0, "price": price, "shares": float(cfg["rung_shares"])})
     # Follow: complete the pairs under the lead's cost.
+    # A partial lead fill under the exchange minimum (LEMD 10-14: 4.35 shares) is
+    # still completed: the rung is lifted to the minimum by ``_shares``, and the
+    # overshoot (under one minimum) is the smallest pair the venue allows.
     need = round(unmatched_lead, SHARE_PRECISION)
-    if need >= float(min_size) - 1e-9 and not resting[follow]:
+    if need >= 10 ** -SHARE_PRECISION - 1e-9 and not resting[follow]:
         ceiling = pc - max(avg[lead] or 0.0, other_rest[follow])
         price = price_for(follow, ceiling)
         if price is None:
