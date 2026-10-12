@@ -40,7 +40,7 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # Charter 267 (二): plus the native deterministic runs for the listing-time F.
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE")
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL")
 # Runs a pass may take per product: the newest, and one it missed.
 MAX_RUNS_PER_PRODUCT = 2
 # Writer-free seconds per product; the pass as a whole stays inside the
@@ -56,8 +56,8 @@ NATIVE_BUDGET_SEC_PER_PRODUCT = 120.0
 # Charter 267 补记二: ARPEGE walks four unindexed packages' headers (~60 s a
 # run) and ICON reads ~33 whole bz2 steps (~45 s); one run a pass each, the
 # newest, so a pass does not hold the capture claim the P1 lanes wait on.
-NATIVE_BUDGET_OVERRIDE_SEC = {"ARPEGE": 180.0}
-MAX_RUNS_OVERRIDE = {"ARPEGE": 1, "ICON_GLOBAL": 1}
+NATIVE_BUDGET_OVERRIDE_SEC = {"ARPEGE": 180.0, "UKMO_GLOBAL": 240.0}
+MAX_RUNS_OVERRIDE = {"ARPEGE": 1, "ICON_GLOBAL": 1, "UKMO_GLOBAL": 1}
 
 
 def main() -> int:
@@ -75,6 +75,7 @@ def main() -> int:
         product_roster,
     )
     from bayes_basket_target.native_deterministic_point_archive import (  # noqa: PLC0415
+        HEAVY_PRODUCTS, production_network_strained,
         close_client as close_native,
     )
     from bayes_basket_target.open_meteo_relay_archive import (  # noqa: PLC0415
@@ -94,6 +95,10 @@ def main() -> int:
                 continue
             if product in RELAY_PRODUCTS and open_meteo_quota.exhausted(now):
                 print(f"{product}: Open-Meteo 今日额度已耗尽，跳过")
+                continue
+            if product in HEAVY_PRODUCTS and (strained := production_network_strained()):
+                # Charter 267 补记三: tens of MB a run over slow links; production first.
+                print(f"{product}: 生产出口 {strained}，本遍让路")
                 continue
             try:
                 stations = product_roster(conn, product)

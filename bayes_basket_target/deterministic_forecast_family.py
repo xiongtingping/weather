@@ -60,6 +60,8 @@ FAMILY: Mapping[str, Mapping[str, Any]] = {
     "ARPEGE": {"publisher": "Meteo-France", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
     # 补记三: GFS at every hour -- the daily-maximum research arm, not read by F yet.
     "GFS_HOURLY": {"publisher": "NOAA/NCEP", "relay": False, "coverage": "global", "step_hours": 1, "p0_feature": False},
+    # 补记三: UKMO natively (period maxima); not read by F until its paired test.
+    "UKMO_GLOBAL": {"publisher": "Met Office", "relay": False, "coverage": "global", "step_hours": 3, "p0_feature": False},
 }
 PRODUCT_BY_SYSTEM = {SYSTEM_IDS[product]: product for product in FAMILY}
 # Charter 201's P0 feature, gate and shadow read only these.

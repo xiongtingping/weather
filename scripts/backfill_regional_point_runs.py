@@ -51,6 +51,10 @@ def main() -> int:
     parser.add_argument("--max-seconds", type=float, default=0.0,
                         help="stop starting new product-days after this many seconds (0 = no bound)")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--respect-production-network", action="store_true",
+        help="before each product-day batch, wait while the supply watch reads production's egress red/amber",
+    )
     args = parser.parse_args()
     products = [p.strip().upper() for p in args.products.split(",") if p.strip()]
     cycles = {int(c) for c in args.cycles.split(",") if c.strip()} if args.cycles else None
@@ -84,6 +88,22 @@ def main() -> int:
                 if args.max_seconds and _time.monotonic() - started > args.max_seconds:
                     print("时间预算用完，停在", f"day-{back}", product, flush=True)
                     raise SystemExit(0)
+                if args.respect_production_network:
+                    # Charter 267 补记三: a backfill is never worth production's fetches.
+                    from bayes_basket_target.native_deterministic_point_archive import (  # noqa: PLC0415
+                        production_network_strained,
+                    )
+                    waited = 0
+                    while (strained := production_network_strained()):
+                        if args.max_seconds and _time.monotonic() - started > args.max_seconds:
+                            print("时间预算用完（等出口），停在", f"day-{back}", product, flush=True)
+                            raise SystemExit(0)
+                        if waited == 0:
+                            print(f"   生产出口 {strained}，让路等待…", flush=True)
+                        _time.sleep(60)
+                        waited += 60
+                    if waited:
+                        print(f"   出口恢复，等了 {waited}s", flush=True)
                 receipt = capture_p1(
                     conn, product=product, now=now, stations=stations[product],
                     day_offsets=offsets, max_runs=args.max_runs_per_day, dry_run=args.dry_run,

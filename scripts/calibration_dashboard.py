@@ -13285,6 +13285,9 @@ REGIONAL_LANES = {
     "NOAA_GFS_025_HOURLY_NATIVE_POINT": {
         "label": "GFS 逐小时（研究臂）", "region": "全球",
         "transport": "NOAA S3·idx 区间·1 小时步", "backfillable": True},
+    "UKMO_GLOBAL_10KM_NATIVE_POINT": {
+        "label": "UKMO 全球 10km（只采集）", "region": "全球",
+        "transport": "Met Office AWS·HDF5 分块区间", "backfillable": True},
 }
 _SWEEP_MODEL_TO_SYSTEM = {
     "jma_msm": "JMA_MSM_POINT",
@@ -13339,6 +13342,7 @@ def _capture_rosters() -> dict[str, set[str]]:
         "DWD_ICON_GLOBAL_13KM_NATIVE_POINT": _global_family_roster(),
         "METEOFRANCE_ARPEGE_025_NATIVE_POINT": _global_family_roster(),
         "NOAA_GFS_025_HOURLY_NATIVE_POINT": _global_family_roster(),
+        "UKMO_GLOBAL_10KM_NATIVE_POINT": _global_family_roster(),
     }
     return rosters
 

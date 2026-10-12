@@ -24,7 +24,7 @@ import bayes_basket_target.native_deterministic_point_archive as N
 import bayes_basket_target.regional_point_lane as L
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY")
+NATIVE = ("IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL")
 RUN = datetime(2026, 10, 11, 0, tzinfo=timezone.utc)
 
 
@@ -58,7 +58,7 @@ def test_native_runs_feed_f_and_never_the_p0_feature():
     for product in NATIVE:
         assert L.SYSTEM_IDS[product] not in FAM.FAMILY_SYSTEM_IDS
         # 补记三: ARPEGE is captured, not read by F; GFS_HOURLY is a research arm.
-        assert (L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS) is (product not in ("ARPEGE", "GFS_HOURLY")), product
+        assert (L.SYSTEM_IDS[product] in FAM.F_SYSTEM_IDS) is (product not in ("ARPEGE", "GFS_HOURLY", "UKMO_GLOBAL")), product
     assert L.SYSTEM_IDS["AIFS"] in FAM.F_SYSTEM_IDS
     relay = {L.SYSTEM_IDS[p] for p, meta in FAM.FAMILY.items() if meta["relay"]}
     assert not relay & FAM.F_SYSTEM_IDS, "F reads native runs only, never the aggregator relay"
@@ -497,11 +497,114 @@ def test_icon_run_picks_each_station_cell_from_one_field_a_step():
 
 def test_capture_bounds_the_slow_native_products():
     capture = _load("capture_deterministic_forward")
-    assert capture.MAX_RUNS_OVERRIDE == {"ARPEGE": 1, "ICON_GLOBAL": 1}
-    assert capture.NATIVE_BUDGET_OVERRIDE_SEC["ARPEGE"] <= 240.0
+    assert capture.MAX_RUNS_OVERRIDE == {"ARPEGE": 1, "ICON_GLOBAL": 1, "UKMO_GLOBAL": 1}
+    assert max(capture.NATIVE_BUDGET_OVERRIDE_SEC.values()) <= 240.0
 
 
 def test_gfs_hourly_reads_the_same_objects_at_every_hour():
     assert N.step_url("GFS_HOURLY", RUN, 7) == N.step_url("GFS", RUN, 7).replace("f007", "f007")
     assert N.SPECS["GFS_HOURLY"].steps()[:4] == [0, 1, 2, 3] and N.SPECS["GFS_HOURLY"].steps()[-1] == 96
     assert FAM.FAMILY["GFS_HOURLY"]["step_hours"] == 1
+
+
+# --------------------------------------------------------------------------
+# 补记三: UKMO global (HDF5 chunks) and the production-network yield
+# --------------------------------------------------------------------------
+
+def test_ukmo_objects_are_period_maxima_hourly_then_three_hourly():
+    assert N.step_url("UKMO_GLOBAL", RUN, 36).endswith(
+        "/global-deterministic-10km/20261011T0000Z/20261012T1200Z-PT0036H00M-temperature_at_screen_level_max-PT01H.nc"
+    )
+    assert N.step_url("UKMO_GLOBAL", RUN, 60).endswith("-PT0060H00M-temperature_at_screen_level_max-PT03H.nc")
+    steps = N.SPECS["UKMO_GLOBAL"].steps()
+    assert steps[:3] == [1, 2, 3] and 54 in steps and 55 not in steps and steps[-2:] == [93, 96]
+    assert N.run_directory_url("UKMO_GLOBAL", RUN).endswith("/global-deterministic-10km/20261011T0000Z/")
+    with pytest.raises(Exception, match="values_not_messages"):
+        N.read_message("UKMO_GLOBAL", RUN, 36)
+
+
+def test_cached_range_file_prefetches_in_parallel_and_records_what_it_read():
+    blob = bytes(range(256)) * 40  # 10240 bytes
+    asked = []
+
+    def get(url, headers=None, *, cap):
+        lo, hi = (int(x) for x in headers["Range"].split("=")[1].split("-"))
+        asked.append(lo)
+        return blob[lo:hi + 1]
+
+    handle = N.CachedRangeFile("u", get=get, size=len(blob), first=blob[:1024], block=1024)
+    handle.prefetch([0, 3, -1])
+    assert sorted(asked) == [3072, 9216], "block 0 came with the first read; -1 is the last block"
+    handle.seek(3000)
+    assert handle.read(200) == blob[3000:3200]
+    assert handle.touched == [2, 3] and sorted(asked) == [2048, 3072, 9216]
+    handle.seek(-10, 2)
+    assert handle.read() == blob[-10:]
+
+
+def test_cached_range_file_caps_the_metadata_a_file_may_pull(monkeypatch):
+    monkeypatch.setattr(N, "UKMO_MAX_FILE_BLOCKS", 2)
+    handle = N.CachedRangeFile("u", get=lambda u, headers=None, *, cap: bytes(10), size=100, first=bytes(10), block=10)
+    handle.seek(10); handle.read(20)
+    with pytest.raises(Exception, match="metadata_over_cap"):
+        handle.seek(50); handle.read(5)
+
+
+def test_ukmo_run_curves_from_period_maxima_on_gfs_land(monkeypatch):
+    seen = []
+
+    def step_values(step, cells):
+        seen.append(step)
+        return {s: 273.15 + step / 10.0 for s in cells}
+
+    def land(mask, points):
+        return [{"latitude": lat, "longitude": lon, "moved": False} if lon > 0 else None for lat, lon in points]
+
+    out = N.fetch_ukmo_run_for_targets(run_init=RUN, targets=_targets(), step_values=step_values,
+                                       mask_reader=lambda p, r: b"mask", land=land)
+    assert set(out) == {("RJTT", "2026-10-12"), ("RJTT", "2026-10-13")}
+    day = out[("RJTT", "2026-10-12")]
+    # UTC+9: local 10-12 = 10-11 15Z .. 10-12 15Z -> hourly maxima ending 15..38.
+    assert sorted(day["hourly_c"]) == list(range(15, 39))
+    assert day["hourly_c"][15] == pytest.approx(1.5)
+    assert seen[0] == min(seen) and len(seen) == len(set(seen)), "each file once, the first alone (it teaches the prefetch)"
+
+
+def test_heavy_products_yield_to_a_strained_production_network(monkeypatch):
+    import bayes_basket_target.supply_watch as watch
+
+    monkeypatch.setattr(watch, "egress_send_gate", lambda: {"watch": "fresh", "egress_health": "amber"})
+    assert N.production_network_strained() == "amber"
+    monkeypatch.setattr(watch, "egress_send_gate", lambda: {"watch": "stale", "egress_health": "red"})
+    assert N.production_network_strained() == "", "a stale watch holds nothing back"
+    monkeypatch.setattr(watch, "egress_send_gate", lambda: {"watch": "fresh", "egress_health": "green"})
+    assert N.production_network_strained() == ""
+    assert N.HEAVY_PRODUCTS == {"ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL"}
+
+
+def test_ukmo_reads_real_hdf5_chunks_when_h5py_is_present(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    import numpy as np
+
+    path = tmp_path / "f.nc"
+    lat = np.linspace(-89.5, 89.5, 180).astype("f4")
+    lon = np.linspace(-179.5, 179.5, 360).astype("f4")
+    field = (np.arange(180 * 360, dtype="f4").reshape(180, 360) % 50) + 250.0
+    with h5py.File(path, "w") as h:
+        h["latitude"] = lat
+        h["longitude"] = lon
+        h.create_dataset("air_temperature", data=field, chunks=(32, 32), compression="gzip")
+    blob = path.read_bytes()
+
+    def get(url, headers=None, *, cap):
+        lo, hi = (int(x) for x in headers["Range"].split("=")[1].split("-"))
+        return blob[lo:hi + 1]
+
+    from unittest import mock
+
+    with mock.patch.object(N, "_ukmo_size", lambda url, fetch: len(blob)):
+        got = N.ukmo_step_values("u", {"A": (10.2, 20.4), "B": (-45.0, 170.0)}, get=get)
+    j, i = int(np.argmin(np.abs(lat - 10.2))), int(np.argmin(np.abs(lon - 20.4)))
+    assert got["A"] == pytest.approx(float(field[j, i]))
+    j, i = int(np.argmin(np.abs(lat + 45.0))), int(np.argmin(np.abs(lon - 170.0)))
+    assert got["B"] == pytest.approx(float(field[j, i]))

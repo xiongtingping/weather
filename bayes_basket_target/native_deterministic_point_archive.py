@@ -41,6 +41,19 @@ Charter 267 补记二 (user 「接」 to ICON, UKMO and ARPEGE natively, 2026-10
   bytes a message) in parallel, the segments proven contiguous end to end, and
   only the 2 m temperature messages are then read -- ~35 MB a run.  Cell by
   GFS's ``LAND`` of the same init (same 0.25 degree grid).
+* ``UKMO_GLOBAL`` -- Met Office global 10 km, the Met Office's AWS open data
+  (``met-office-atmospheric-model-data/global-deterministic-10km/<run>/<valid>-
+  PT<lead>H00M-temperature_at_screen_level_max-PT01H.nc`` to 54 h, ``-PT03H``
+  after; four cycles, read 00Z/12Z).  Period maxima, not instants: a day's
+  maximum from them misses no peak.  NetCDF4/HDF5, 128 x 128 gzip chunks, and
+  the bucket serves ~50 KB/s a connection from here (measured 10-11), so a
+  file is never downloaded: h5py (installed in the project venv for this,
+  补记三) opens it over cached range reads only to resolve the byte address of
+  the chunks holding the stations (``get_chunk_info_by_coord``); the metadata
+  blocks h5py needs sit at the same offsets file after file, so they are
+  prefetched in parallel from the previous file's pattern (h5py's global lock
+  would serialise them otherwise); the chunks are then fetched in parallel and
+  inflated here.  Cell by GFS's ``LAND`` of the same init.
 
 Each run is read one step at a time (one ranged read or one small file), the
 field decoded once for every station that wants the step and dropped -- a pass
@@ -55,6 +68,7 @@ keeps them out of ``deterministic_forecast_family.FAMILY_SYSTEM_IDS``).
 from __future__ import annotations
 
 import bz2
+import io
 import json
 import struct
 import threading
@@ -91,6 +105,14 @@ ICON_MAX_BZ2_BYTES = 12 * 1024 * 1024
 ICON_MAX_MESSAGE_BYTES = 24 * 1024 * 1024
 ICON_GRID_POINT_COUNTS = frozenset({2949120})
 ICON_GRID_CACHE = Path(__file__).resolve().parents[1] / "data" / "runtime" / "official_nwp_sources" / "icon_global" / "grid"
+UKMO_BASE_URL = "https://met-office-atmospheric-model-data.s3.eu-west-2.amazonaws.com/global-deterministic-10km"
+UKMO_HOURLY_LAST_STEP = 54
+UKMO_BLOCK_BYTES = 64 * 1024
+UKMO_MAX_FILE_BLOCKS = 64  # metadata blocks a file may pull before failing closed
+UKMO_MAX_CHUNK_BYTES = 1024 * 1024
+UKMO_FIELD = "air_temperature"
+UKMO_STEP_WORKERS = 8
+UKMO_CHUNK_WORKERS = 6
 # D+2's afternoon at every roster station from a run issued the day before D+1.
 MAX_CAPTURE_STEP = 96
 FETCH_WORKERS = 4
@@ -114,10 +136,13 @@ class ProductSpec:
     product: str
     cycles: tuple[int, ...]
     step_hours: int
-    index_kind: str  # "ecmwf_json" | "noaa_idx" | "whole_file"
-    mask: str  # "ecmwf_lsm" | "gfs_land"
+    index_kind: str  # "ecmwf_json" | "noaa_idx" | "whole_file" | "dwd_bz2" | "arpege_package" | "hdf5_chunks"
+    mask: str  # "ecmwf_lsm" | "gfs_land" | "icon_fr_land"
+    explicit_steps: tuple[int, ...] | None = None
 
     def steps(self) -> list[int]:
+        if self.explicit_steps is not None:
+            return list(self.explicit_steps)
         return list(range(0, MAX_CAPTURE_STEP + 1, self.step_hours))
 
 
@@ -132,7 +157,34 @@ SPECS: Mapping[str, ProductSpec] = {
     # hourly files to f120, the same objects read at every hour -- a research
     # arm until the paired test rules on it.
     "GFS_HOURLY": ProductSpec("GFS_HOURLY", (0, 6, 12, 18), 1, "noaa_idx", "gfs_land"),
+    # Hourly maxima to 54 h, 3-hourly maxima after (the files the run publishes).
+    "UKMO_GLOBAL": ProductSpec(
+        "UKMO_GLOBAL", (0, 12), 3, "hdf5_chunks", "gfs_land",
+        explicit_steps=tuple(range(1, UKMO_HOURLY_LAST_STEP + 1)) + tuple(range(57, MAX_CAPTURE_STEP + 1, 3)),
+    ),
 }
+
+
+# Products whose run is tens of MB or more over slow links: they yield to
+# production when the supply watch says production's own fetches are failing.
+HEAVY_PRODUCTS = frozenset({"ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL"})
+
+
+def production_network_strained() -> str:
+    """The supply watch's egress reading when it is fresh and red or amber
+    (production's captures losing fetches to the network), else "".  A stale
+    or unreadable watch says nothing and does not hold anything back."""
+
+    try:
+        from . import supply_watch  # noqa: PLC0415
+
+        gate = supply_watch.egress_send_gate()
+        if gate.get("watch") != "fresh":
+            return ""
+        health = str(gate.get("egress_health") or "")
+    except Exception:  # noqa: BLE001 - an unreadable watch does not hold
+        return ""
+    return health if health in {"red", "amber"} else ""
 
 
 def _utc(run_init: datetime) -> datetime:
@@ -168,6 +220,13 @@ def step_url(product: str, run_init: datetime, step: int) -> str:
         return (
             f"{DWD_ICON_BASE_URL}/{stamp:%H}/t_2m/"
             f"icon_global_icosahedral_single-level_{stamp:%Y%m%d%H}_{step:03d}_T_2M.grib2.bz2"
+        )
+    if product == "UKMO_GLOBAL":
+        valid = stamp + timedelta(hours=step)
+        period = "PT01H" if step <= UKMO_HOURLY_LAST_STEP else "PT03H"
+        return (
+            f"{UKMO_BASE_URL}/{stamp:%Y%m%dT%H%M}Z/"
+            f"{valid:%Y%m%dT%H%M}Z-PT{step:04d}H00M-temperature_at_screen_level_max-{period}.nc"
         )
     if product == "ARPEGE":
         run = f"{stamp:%Y-%m-%dT%H}:00:00Z"
@@ -472,6 +531,8 @@ def read_message(product: str, run_init: datetime, step: int, *, field: str | No
 
     spec = SPECS[product]
     url = step_url(product, run_init, step)
+    if spec.index_kind == "hdf5_chunks":
+        raise ContractError("native_deterministic_ukmo_reads_values_not_messages")
     if spec.index_kind == "dwd_bz2":
         return _read_bz2_message(url)
     if spec.index_kind == "arpege_package":
@@ -825,6 +886,230 @@ def fetch_icon_run_for_targets(
     return results
 
 
+# ---------------------------------------------------------------------------
+# UKMO global: HDF5 chunks at the stations, never the file
+# ---------------------------------------------------------------------------
+
+class CachedRangeFile(io.RawIOBase):
+    """A read-only file object over one remote object, read in fixed blocks.
+
+    ``prefetch`` blocks (indices from the start; negative from the end) are
+    fetched in parallel before h5py opens the file, so the reads h5py makes
+    under its global lock are cache hits; a miss is fetched on demand.  The
+    blocks actually touched are recorded in ``touched`` for the next file.
+    """
+
+    def __init__(self, url: str, *, get: Callable[..., bytes | None], size: int, first: bytes,
+                 block: int = UKMO_BLOCK_BYTES) -> None:
+        super().__init__()
+        self.url, self.get, self.size, self.block = url, get, int(size), int(block)
+        self.pos = 0
+        self.cache: dict[int, bytes] = {0: first}
+        self.touched: list[int] = []
+        self.fetched = 0
+        self._lock = threading.Lock()
+
+    @property
+    def blocks(self) -> int:
+        return (self.size + self.block - 1) // self.block
+
+    def _fetch(self, index: int) -> bytes:
+        with self._lock:
+            cached = self.cache.get(index)
+        if cached is not None:
+            return cached
+        if self.fetched >= UKMO_MAX_FILE_BLOCKS:
+            raise ContractError("native_deterministic_ukmo_metadata_over_cap")
+        lo = index * self.block
+        hi = min(self.size, lo + self.block) - 1
+        data = self.get(self.url, {"Range": f"bytes={lo}-{hi}"}, cap=self.block)
+        if data is None or len(data) != hi - lo + 1:
+            raise ContractError("native_deterministic_ukmo_block_unreadable")
+        with self._lock:
+            self.cache[index] = data
+            self.fetched += 1
+        return data
+
+    def prefetch(self, indices: Sequence[int], workers: int = UKMO_CHUNK_WORKERS) -> None:
+        wanted = sorted({(i if i >= 0 else self.blocks + i) for i in indices} - set(self.cache))
+        wanted = [i for i in wanted if 0 <= i < self.blocks]
+        if wanted:
+            with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
+                list(pool.map(self._fetch, wanted))
+
+    # -- the file-object protocol h5py's ``fileobj`` driver uses -----------
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        self.pos = int(offset) if whence == 0 else (self.pos + int(offset) if whence == 1 else self.size + int(offset))
+        return self.pos
+
+    def tell(self) -> int:
+        return self.pos
+
+    def readinto(self, buffer: Any) -> int:
+        end = min(self.size, self.pos + len(buffer))
+        out = bytearray()
+        position = self.pos
+        while position < end:
+            index = position // self.block
+            if index not in self.touched:
+                self.touched.append(index)
+            data = self._fetch(index)
+            start = position - index * self.block
+            take = min(len(data) - start, end - position)
+            out += data[start:start + take]
+            position += take
+        buffer[:len(out)] = out
+        self.pos = end
+        return len(out)
+
+
+# Block indices (from the start, and negative from the end) the previous file
+# needed -- the next file's prefetch.
+_UKMO_LEARNED_BLOCKS: list[int] = [0, -2, -1]
+_UKMO_GRID: dict[tuple[int, int], tuple[Any, Any]] = {}
+
+
+def ukmo_step_values(
+    url: str, cells: "Mapping[str, tuple[float, float]]", *,
+    get: Callable[..., bytes | None] | None = None,
+) -> dict[str, float]:
+    """Kelvin at each cell (``station -> (lat, lon)``) from one UKMO file."""
+
+    import zlib  # noqa: PLC0415
+
+    import h5py  # noqa: PLC0415  (project venv; charter 267 补记三)
+    import numpy as np  # noqa: PLC0415
+
+    fetch = get or _get
+    first = fetch(url, {"Range": f"bytes=0-{UKMO_BLOCK_BYTES - 1}"}, cap=UKMO_BLOCK_BYTES)
+    if first is None:
+        return {}
+    size = _ukmo_size(url, fetch)
+    handle = CachedRangeFile(url, get=fetch, size=size, first=first)
+    blocks = handle.blocks
+    handle.prefetch([b if b < 0 else b for b in _UKMO_LEARNED_BLOCKS])
+    with h5py.File(handle, "r") as h5:
+        field = h5[UKMO_FIELD]
+        shape = tuple(int(x) for x in field.shape)
+        chunk = tuple(int(x) for x in (field.chunks or ()))
+        if len(shape) != 2 or len(chunk) != 2 or field.compression not in ("gzip", None) or field.shuffle:
+            raise ContractError("native_deterministic_ukmo_layout_unsupported")
+        if shape not in _UKMO_GRID:
+            _UKMO_GRID[shape] = (np.asarray(h5["latitude"][:], dtype=float), np.asarray(h5["longitude"][:], dtype=float))
+        latitudes, longitudes = _UKMO_GRID[shape]
+        index = {
+            station: (int(np.argmin(np.abs(latitudes - lat))),
+                      int(np.argmin(np.abs((longitudes - lon + 180.0) % 360.0 - 180.0))))
+            for station, (lat, lon) in cells.items()
+        }
+        corners = sorted({(j // chunk[0] * chunk[0], i // chunk[1] * chunk[1]) for j, i in index.values()})
+        infos = {corner: field.id.get_chunk_info_by_coord(corner) for corner in corners}
+        dtype = field.dtype
+        fill = field.fillvalue
+        compressed = field.compression == "gzip"
+    learned = [b if b < blocks - 4 else b - blocks for b in handle.touched]
+    _UKMO_LEARNED_BLOCKS[:] = sorted(set(learned) | {0, -2, -1})
+
+    def chunk_values(corner: tuple[int, int]) -> tuple[tuple[int, int], Any]:
+        info = infos[corner]
+        if info.byte_offset is None or not info.size:
+            return corner, None
+        raw = fetch(url, {"Range": f"bytes={info.byte_offset}-{info.byte_offset + info.size - 1}"},
+                    cap=UKMO_MAX_CHUNK_BYTES)
+        if raw is None:
+            return corner, None
+        payload = zlib.decompress(raw) if compressed and not (info.filter_mask & 1) else raw
+        return corner, np.frombuffer(payload, dtype=dtype).reshape(chunk)
+
+    with ThreadPoolExecutor(max_workers=UKMO_CHUNK_WORKERS) as pool:
+        tiles = dict(pool.map(chunk_values, corners))
+    out: dict[str, float] = {}
+    for station, (j, i) in index.items():
+        tile = tiles.get((j // chunk[0] * chunk[0], i // chunk[1] * chunk[1]))
+        if tile is None:
+            continue
+        value = float(tile[j % chunk[0], i % chunk[1]])
+        if value != value or (fill is not None and value == float(fill)):
+            continue
+        out[station] = value
+    return out
+
+
+def _ukmo_size(url: str, fetch: Callable[..., bytes | None]) -> int:
+    for _attempt in range(_ATTEMPTS):
+        try:
+            response = _client().head(url)
+        except httpx.HTTPError:
+            continue
+        if response.status_code == 200:
+            return int(response.headers["content-length"])
+        if response.status_code in (403, 404):
+            break
+    raise ContractError("native_deterministic_ukmo_size_unreadable")
+
+
+def fetch_ukmo_run_for_targets(
+    *,
+    run_init: datetime,
+    targets: Sequence[Mapping[str, Any]],
+    step_values: Callable[[int, "Mapping[str, tuple[float, float]]"], dict[str, float]] | None = None,
+    mask_reader: Callable[[str, datetime], bytes | None] | None = None,
+    land: Callable[[bytes, list[tuple[float, float]]], list[Any]] = nearest_land_points,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """UKMO's local-day curves of period maxima, one chunk read per station
+    group per step, the stations placed on GFS's land of the same init."""
+
+    product = "UKMO_GLOBAL"
+    wanted: dict[tuple[str, str], list[int]] = {}
+    stations: dict[str, tuple[float, float]] = {}
+    for target in targets:
+        key = (str(target["station_id"]), target["event_date"].isoformat())
+        wanted[key] = local_day_steps(
+            product=product, run_init=run_init, event_date=target["event_date"],
+            utc_offset_hours=int(target["utc_offset_hours"]),
+        )
+        stations.setdefault(key[0], (float(target["latitude"]), float(target["longitude"])))
+    union = sorted({step for steps in wanted.values() for step in steps})
+    if not union:
+        return {}
+    mask = (mask_reader or mask_message)(product, run_init)
+    if mask is None:
+        return {}
+    order = sorted(stations)
+    sampled = dict(zip(order, land(mask, [stations[s] for s in order])))
+    cells = {s: (float(p["latitude"]), float(p["longitude"])) for s, p in sampled.items() if p is not None}
+    read = step_values or (lambda step, where: ukmo_step_values(step_url(product, run_init, step), where))
+    # The first file teaches the rest which metadata blocks to prefetch.
+    values: dict[int, dict[str, float]] = {union[0]: read(union[0], cells)}
+    with ThreadPoolExecutor(max_workers=UKMO_STEP_WORKERS) as pool:
+        for step, got in pool.map(lambda st: (st, read(st, cells)), union[1:]):
+            values[step] = got
+    results: dict[tuple[str, str], dict[str, Any]] = {}
+    for key, steps in wanted.items():
+        point = sampled.get(key[0])
+        if point is None:
+            continue
+        curve: dict[int, float] = {}
+        for step in steps:
+            kelvin = values.get(step, {}).get(key[0])
+            if kelvin is None:
+                continue
+            if not 180.0 <= kelvin <= 340.0:
+                raise ContractError("native_deterministic_value_out_of_range")
+            curve[step] = kelvin - 273.15
+        url = run_directory_url(product, run_init)
+        if point.get("moved"):
+            url += f"#land_cell={float(point['latitude']):.5f},{float(point['longitude']):.5f}"
+        results[key] = {"hourly_c": curve, "hours_wanted": len(steps), "source_url": url}
+    return results
+
+
 def fetch_run_for_targets(
     *,
     product: str,
@@ -847,6 +1132,8 @@ def fetch_run_for_targets(
         raise ContractError("native_deterministic_product_unknown")
     if product == "ICON_GLOBAL":
         return fetch_icon_run_for_targets(run_init=run_init, targets=targets, reader=reader)
+    if product == "UKMO_GLOBAL":
+        return fetch_ukmo_run_for_targets(run_init=run_init, targets=targets, mask_reader=mask_reader, land=land)
     read = reader or (lambda p, r, s: read_message(p, r, s))
     read_mask = mask_reader or mask_message
     wanted: dict[tuple[str, str], list[int]] = {}
@@ -925,6 +1212,7 @@ __all__ = [
     "MAX_CAPTURE_STEP", "SPECS", "arpege_group", "arpege_message_table", "close_client",
     "fetch_icon_run_for_targets", "fetch_run_for_targets", "icon_invariant_url",
     "icon_station_cells", "index_url", "local_day_steps", "mask_message",
-    "parse_ecmwf_index", "parse_grib2_header", "parse_noaa_idx", "place_on_cells",
+    "HEAVY_PRODUCTS", "fetch_ukmo_run_for_targets", "parse_ecmwf_index", "production_network_strained", "parse_grib2_header", "parse_noaa_idx", "place_on_cells",
+    "ukmo_step_values",
     "prepare_arpege", "read_message", "run_directory_url", "run_published", "step_url",
 ]

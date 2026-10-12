@@ -243,6 +243,11 @@ def fit_calibration(
         if not bool(run.get("remaining_peak_complete")):
             continue
         system = str(run["ensemble_system_id"])
+        # Charter 267 补记三: the lane table also holds runs no feature reads
+        # (the listing-time F's native deterministic runs); only the admitted
+        # systems are fitted -- the readers admit no others anyway.
+        if system not in CALIBRATED_SYSTEMS:
+            continue
         by_station[(system, station)][day].append(float(run["forecast_tmax_c"]))
         if str(run.get("extraction_version") or "") in UNRELIABLE_CYCLE_EXTRACTIONS:
             continue

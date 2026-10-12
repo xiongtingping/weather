@@ -940,6 +940,7 @@ DETERMINISTIC_PROBE_SWEEPS = {
     "GDPS": "capture_deterministic_forward",
     "ICON_GLOBAL": "capture_deterministic_forward",
     "ARPEGE": "capture_deterministic_forward",
+    "UKMO_GLOBAL": "capture_deterministic_forward",
 }
 
 
