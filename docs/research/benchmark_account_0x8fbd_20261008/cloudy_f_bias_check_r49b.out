@@ -1,0 +1,24 @@
+717 station-days, 295 cloudy, 17 event days
+
+(a) cloudy days' truth - F (C)
+    mean -0.394, median -0.334, quantiles 10/25/75/90%: -2.45, -1.20, +0.57, +1.25; share < -2 C 14.2%, > +2 C 2.4%
+    other days: mean +0.061, median +0.079
+    naive 95% interval of the cloudy mean: +-0.155
+    day-block bootstrap 95%: cloudy mean [-0.504, -0.281], cloudy median [-0.411, -0.115], cloudy - other mean [-0.598, -0.312]
+
+(b) in sample: shift F by s on cloudy days only
+    s +0.00: MAE 1.0109 (F 1.0109); hits all 32.9% (F 32.9%); cloudy days hits 30.8% (F 30.8%) +0.000 [+0.000, +0.000]
+    s -0.10: MAE 1.0054 (F 1.0109); hits all 33.3% (F 32.9%); cloudy days hits 31.9% (F 30.8%) +0.010 [-0.020, +0.041]
+    s -0.20: MAE 1.0027 (F 1.0109); hits all 33.5% (F 32.9%); cloudy days hits 32.2% (F 30.8%) +0.014 [-0.025, +0.052]
+    s -0.30: MAE 1.0020 (F 1.0109); hits all 33.2% (F 32.9%); cloudy days hits 31.5% (F 30.8%) +0.007 [-0.040, +0.054]
+    s -0.39: MAE 1.0027 (F 1.0109); hits all 33.1% (F 32.9%); cloudy days hits 31.2% (F 30.8%) +0.003 [-0.048, +0.054]
+    s -0.50: MAE 1.0082 (F 1.0109); hits all 31.8% (F 32.9%); cloudy days hits 28.1% (F 30.8%) -0.027 [-0.087, +0.033]
+    s -0.60: MAE 1.0165 (F 1.0109); hits all 31.5% (F 32.9%); cloudy days hits 27.5% (F 30.8%) -0.034 [-0.099, +0.031]
+
+(c) leave one event day out
+    cloudy mean shift   : MAE 1.0035 vs F 1.0109 (diff -0.0074 [-0.0213, +0.0059]); hits 32.8% vs F 32.9% -0.001 [-0.023, +0.020]; mean shift applied on cloudy days -0.394
+    cloudy median shift : MAE 1.0044 vs F 1.0109 (diff -0.0065 [-0.0164, +0.0035]); hits 33.2% vs F 32.9% +0.003 [-0.017, +0.023]; mean shift applied on cloudy days -0.316
+    line a + b cloud    : MAE 1.0073 vs F 1.0109 (diff -0.0036 [-0.0176, +0.0095]); hits 32.2% vs F 32.9% -0.007 [-0.034, +0.020]; mean shift applied on cloudy days -0.354
+
+(d) round 49's nine-feature fit on all rows, per +1 sd (C): cloud -0.081, sw +0.087, precip +0.051, cloud_anom -0.072, sw_anom +0.109, precip_anom -0.080, cloud_chg -0.050, sw_chg -0.111, precip_chg +0.061; intercept -0.126
+    corr(cloud, cloud_anom) +0.78, corr(cloud, sw) -0.62
