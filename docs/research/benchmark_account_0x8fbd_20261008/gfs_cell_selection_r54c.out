@@ -1,0 +1,20 @@
+GFS grid 1440x721, land/terrain from 2026-09-23T00:00:00+00:00
+48 stations with an elevation; nearest != nearest-land on 5, similar-elev != nearest-land on 45
+  2026-09-23T00:00:00+00:00: 15 steps decoded
+  2026-09-27T00:00:00+00:00: 15 steps decoded
+  2026-09-30T00:00:00+00:00: 15 steps decoded
+  2026-10-03T00:00:00+00:00: 15 steps decoded
+  2026-10-06T00:00:00+00:00: 15 steps decoded
+  2026-10-08T00:00:00+00:00: 15 steps decoded
+
+204 station x run x day with an archive native value and an Open-Meteo value; my nearest-land replica matches the archive within 0.05 C on 204/204
+Delta_OM = OM - native: mean +0.58, sd 1.05
+rule                   mean Delta_rule     sd   corr(Delta_rule, Delta_OM)  per-station corr  slope  sd(OM - rule)
+nearest                          -0.14   0.64                         0.40              0.38   0.66           0.99
+nearest + lapse                  +0.08   0.78                         0.48              0.52   0.65           0.96
+nearest-land                     +0.00   0.00                          nan               nan    nan           1.05
+nearest-land + lapse             +0.24   0.36                         0.31              0.41   0.90           1.00
+bilinear                         -0.36   0.98                         0.46              0.24   0.50           1.06
+bilinear + lapse                 -0.16   1.00                         0.57              0.41   0.60           0.96
+similar-elev                     -0.26   1.45                         0.36              0.38   0.26           1.46
+similar-elev + lapse             -0.21   1.46                         0.37              0.42   0.27           1.44
