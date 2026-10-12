@@ -485,6 +485,11 @@ PAIR_MAKER_DEFAULT_SETTINGS: dict[str, Any] = {
     "ask_min_shares": 5.0,
     # The lead's unmatched cost stops accumulating at this.
     "max_unmatched_usdc": 6.0,
+    # Amendment four (user 10-13 「未配平控制：两个都用」): and the unmatched ratio,
+    # warned at 8% and stopping new lead rungs at 10%, judged above 20 shares held.
+    "max_unmatched_ratio": 0.10,
+    "warn_unmatched_ratio": 0.08,
+    "ratio_min_total_shares": 20.0,
     "max_station_day_usdc": 15.0,
     "max_cash_fraction": 0.2,
     "max_new_plans_per_pass": 10,

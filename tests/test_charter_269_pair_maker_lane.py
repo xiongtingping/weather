@@ -325,3 +325,35 @@ def test_the_departed_order_reconciliation_books_merged_shares_off_the_token():
     conn.execute(f"INSERT INTO {P.MERGE_TABLE} VALUES ('m','p','LEMD','2026-10-15','28°C','0x','Y','N',10,'live','MERGED',"
                  "'0x',NULL,'t','t')")
     assert R.recorded_fills_for_token(conn, "Y") == 2.0
+
+
+# Amendment four (user 10-13 「0.95 封顶。未配平控制：两个都用」).
+
+def test_the_ratio_is_not_judged_on_a_small_book():
+    # 10 YES vs 5 NO: ratio 33% but only 15 shares held -> the 6 U cost cap alone applies.
+    plan = _plan_with([("YES", 0, 0.30, "a"), ("NO", 1, 0.60, "b")])
+    states = {"a": {"filled": 10.0, "notional": 3.0, "open": False}, "b": {"filled": 5.0, "notional": 3.0, "open": False}}
+    rungs, status = P.lead_follow_plan(plan, states, QUOTE, CFG, min_size=5.0)
+    assert any(r["side"] == "YES" for r in rungs) and "ratio_warn" not in status
+
+
+def test_the_lead_stops_at_a_ten_percent_unmatched_ratio_and_the_follow_keeps_pairing():
+    # 30 YES vs 24 NO: ratio 6/54 = 11.1% above 20 shares -> no new lead, NO completes the 6.
+    plan = _plan_with([("YES", 0, 0.30, "a"), ("NO", 1, 0.60, "b")])
+    states = {"a": {"filled": 30.0, "notional": 9.0, "open": False}, "b": {"filled": 24.0, "notional": 14.4, "open": False}}
+    cfg = {**CFG, "max_unmatched_usdc": 100.0}
+    rungs, status = P.lead_follow_plan(plan, states, QUOTE, cfg, min_size=5.0)
+    assert not any(r["side"] == "YES" for r in rungs) and status["lead"].startswith("YES:unmatched_ratio")
+    assert next(r for r in rungs if r["side"] == "NO")["shares"] == 6.0
+    assert status["ratio_warn"] is True
+
+
+def test_under_ten_percent_the_lead_accumulates_with_a_warning_from_eight():
+    # 52 YES vs 48 NO: 4%; 53.5 vs 46.5: 7% -> no warn; 54.5 vs 45.5: 9% -> warn, lead still posts.
+    plan = _plan_with([("YES", 0, 0.30, "a"), ("NO", 1, 0.60, "b")])
+    cfg = {**CFG, "max_unmatched_usdc": 100.0}
+    for y, n, warn in ((52.0, 48.0, False), (53.5, 46.5, False), (54.5, 45.5, True)):
+        states = {"a": {"filled": y, "notional": 0.3 * y, "open": False}, "b": {"filled": n, "notional": 0.6 * n, "open": False}}
+        rungs, status = P.lead_follow_plan(plan, states, QUOTE, cfg, min_size=5.0)
+        assert any(r["side"] == "YES" for r in rungs)
+        assert status.get("ratio_warn", False) is warn

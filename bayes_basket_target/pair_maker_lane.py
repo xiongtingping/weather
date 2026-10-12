@@ -26,6 +26,11 @@ User rulings 2026-10-12/13: a YES+NO pair lane, post-only only, pair cost under
 * Budget: filled plus resting cost a station-day at most
   ``max_station_day_usdc``; the lane's resting rungs at most
   ``max_cash_fraction`` of the free cash.
+* Unmatched (amendment four, user 10-13 「0.95 封顶。未配平控制：两个都用」): the
+  lead stops new rungs at ``max_unmatched_usdc`` of unmatched cost OR, once
+  both sides hold more than ``ratio_min_total_shares`` together, at an
+  unmatched ratio of ``max_unmatched_ratio`` (10%); ``warn_unmatched_ratio``
+  (8%) is flagged in the pass status; the follow keeps pairing either way.
 * Merge (amendment three, user 10-13 「做 merge」): once the matched pairs not
   yet merged reach ``min_merge_shares`` the lane asks the gateway to merge
   them back into pUSD (``/merge-positions``: proxy wallet -> v2
@@ -393,10 +398,22 @@ def lead_follow_plan(
     unmatched_lead = held[lead][0] - held[follow][0]
     # Lead: accumulate while its unmatched cost stays under the cap.
     lead_cost = max(0.0, unmatched_lead) * (avg[lead] or 0.0)
+    # Amendment four (user 10-13 「未配平控制：两个都用」): the 6 U cost cap AND the
+    # unmatched ratio |lead - follow| / (lead + follow) -- warn at 8%, no new
+    # lead at 10% -- the ratio judged only once the book holds more than
+    # ``ratio_min_total_shares`` (a first 5-share fill is 100% by construction).
+    total = held[lead][0] + held[follow][0]
+    ratio = abs(unmatched_lead) / total if total > 0 else 0.0
+    ratio_live = total > float(cfg["ratio_min_total_shares"]) + 1e-9
+    status["unmatched_ratio"] = round(ratio, 4)
+    if ratio_live and ratio >= float(cfg["warn_unmatched_ratio"]) - 1e-9:
+        status["ratio_warn"] = True
     if resting[lead]:
         status["lead"] = f"{lead}:resting"
     elif lead_cost >= float(cfg["max_unmatched_usdc"]) - 1e-9:
         status["lead"] = f"{lead}:unmatched_cap:{lead_cost:.2f}"
+    elif ratio_live and unmatched_lead > 0 and ratio >= float(cfg["max_unmatched_ratio"]) - 1e-9:
+        status["lead"] = f"{lead}:unmatched_ratio:{ratio:.3f}"
     else:
         ceiling = pc - max(avg[follow] or 0.0, other_rest[lead])
         price = price_for(lead, ceiling)
@@ -643,8 +660,9 @@ def execute_pair_maker(
                 "condition_id": ids.get("condition_id"),
                 "min_size": float(ids.get("min_size") or 5.0),
                 "settings": {k: cfg[k] for k in ("pair_cost_cap", "lead_side", "rung_shares", "rung_minutes",
-                                                 "quote_window_hours", "max_unmatched_usdc", "max_station_day_usdc",
-                                                 "max_cash_fraction", "stations")},
+                                                 "quote_window_hours", "max_unmatched_usdc", "max_unmatched_ratio",
+                                                 "warn_unmatched_ratio", "ratio_min_total_shares",
+                                                 "max_station_day_usdc", "max_cash_fraction", "stations")},
                 "book_id": book.get("snapshot_id"), "book_source": book.get("book_source"), "rungs": []}
         requote(plan, {"bid": form["bid"], "ask": form["ask"], "mid": form["mid"], "tick": form["tick"]}, hours)
         target_conn.execute(
