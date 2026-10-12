@@ -9,10 +9,15 @@
 #      root under the hard bound, and must not lose to the incumbent, on a
 #      held-out day split -- a vetoed refit leaves the served file alone),
 #      and, in the same file, charter 161's directly fitted update behind its
-#      own forward gate (it serves in g**alpha's place while that gate holds);
-#   3. refit P0-M's TAF likelihood and its walk-forward serve gate.
+#      own forward gate (it serves in g**alpha's place while that gate holds).
 #
-# Reads the SSOT and the archive read-only and writes three files, so it
+# P0-M's TAF likelihood was step 3 until 2026-10-12, when steps 1-2 took the
+# whole 900 s (samples ~4 min, the fit 7.6 min idle and ~10.5 min at 00Z,
+# four fifths of it charter 161's walk-forward) and the TAF refit was killed
+# 50 s in, leaving the 10-11 file serving.  It shares nothing with these two
+# steps and is its own lane now (scripts/taf_likelihood_refit_sweep.sh).
+#
+# Reads the SSOT and the archive read-only and writes two files, so it
 # holds no database lock ("none" in HOSTED_SWEEP_WRITE_DOMAIN).  The served
 # files are replaced atomically and the serving loaders follow them by
 # modification time, so a refit takes effect on the next compile without a
@@ -54,9 +59,6 @@ fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] P1 joint observation likelihood refit"
 "$PY" scripts/fit_p1_observation_likelihood.py \
   --since "$SINCE" --through "$THROUGH" || RC=$?
-
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] P0-M TAF likelihood refit"
-"$PY" scripts/fit_taf_likelihood.py --through "$THROUGH" || RC=$?
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done rc=$RC"
 exit "$RC"

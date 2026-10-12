@@ -375,9 +375,14 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # observation likelihood (with its per-hours-bin tempering and incumbent
     # veto) and P0-M's TAF likelihood (with its walk-forward serve gate) --
     # refitted daily on a rolling 45-day sample window.  Reads both
-    # databases read-only and writes three files; the serving loaders follow
-    # the files by modification time.  ~4 minutes measured.
-    ("p1_likelihood_refit", "scripts/p1_likelihood_refit_sweep.sh", 86_400.0, 900.0),
+    # databases read-only and writes its files; the serving loaders follow
+    # the files by modification time.  ~4 minutes when added; 2026-10-12 the
+    # samples took ~4 min and the P1 fit 7.6 min idle / ~10.5 min at 00Z
+    # (charter 161's walk-forward, rows x days), the lane was killed at
+    # 900 s and the TAF refit after it never ran.  The TAF refit is its own
+    # lane now, and this one is timed for the P1 pair it still runs.
+    ("p1_likelihood_refit", "scripts/p1_likelihood_refit_sweep.sh", 86_400.0, 1800.0),
+    ("taf_likelihood_refit", "scripts/taf_likelihood_refit_sweep.sh", 86_400.0, 900.0),
     # Capital that only ever leaves the pool.  A prepared cycle holds its
     # reservation until a newer decision on the same station-day supersedes
     # it, and a day whose settlement window has closed can never compile one
@@ -658,6 +663,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # Reads the SSOT and the archive ``mode=ro``; writes the samples DB and
     # two JSON artifacts under data/runtime, none of them a shared database.
     "p1_likelihood_refit": "none",
+    # SSOT ``mode=ro``; writes its own case cache and one JSON artifact.
+    "taf_likelihood_refit": "none",
     # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
     # holds no database lock and can overlap anything.
     "auto_station_exclusions": "none",

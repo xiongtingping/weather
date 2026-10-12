@@ -112,8 +112,11 @@ def test_a_root_the_ssot_did_not_have_stays_absent(tmp_path: Path) -> None:
 
 def test_the_nightly_sweep_runs_the_fit_with_its_cache() -> None:
     root = Path(__file__).resolve().parents[1]
-    sweep = (root / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
+    # Its own lane since 2026-10-12 (the P1 steps spent the shared timeout).
+    sweep = (root / "scripts" / "taf_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
     assert '"$PY" scripts/fit_taf_likelihood.py --through "$THROUGH"' in sweep
+    p1_sweep = (root / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
+    assert "scripts/fit_taf_likelihood.py" not in p1_sweep.split("\nset -uo pipefail", 1)[1]
     assert "--case-cache" not in sweep    # the default path: the cache is on
     fitter = _fitter()
     assert fitter.CASE_CACHE_PATH.parent.name == "bayes_basket_target_nwp"
