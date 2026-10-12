@@ -1,0 +1,26 @@
+(0) IEM daily max against our settlement truth (overlap 2026-06-28..)
+    4659 station-days, 47 stations: truth - IEM mean -0.10 C, |diff| <= 0.5 C 84.6%, per-station mean range -0.52..+0.21
+    stations with thin IEM history (<1000 days): ['NZWN']
+
+219 of 227 picks with a climatology (>= 60 days in the window); clim - F mean -0.80 C, sd 2.93; F's anomaly z mean +0.24
+  direction by clim mean - F        on  91 one-off picks: 54.9% (base 65.9%)
+  direction by clim median - F      on  91 one-off picks: 53.8% (base 65.9%)
+  direction by last year - F        on  91 one-off picks: 52.7% (base 65.9%)
+  direction by -z (toward normal)   on  91 one-off picks: 54.9% (base 65.9%)
+  single-bucket rules:
+    bucket(climatology mean)                     = cluster 11.4% vs F 46.1% -0.347 [-0.436, -0.258] (halves 10.1%/12.3%); hits 13.2% vs F 39.5%
+    bucket(F + k (clim - F)), k by LODO {0.0: 214, -0.1: 5} = cluster 45.2% vs F 46.1% -0.009 [-0.022, +0.004] (halves 47.2%/43.8%); hits 40.5% vs F 39.5%
+    bucket(F + 0.1 (clim - F)) fixed             = cluster 39.3% vs F 46.1% -0.068 [-0.120, -0.017] (halves 39.3%/39.2%); hits 40.0% vs F 39.5%
+    bucket(F + 0.2 (clim - F)) fixed             = cluster 37.0% vs F 46.1% -0.091 [-0.159, -0.023] (halves 34.8%/38.5%); hits 38.5% vs F 39.5%
+    bucket(F + 0.3 (clim - F)) fixed             = cluster 37.0% vs F 46.1% -0.091 [-0.174, -0.008] (halves 32.6%/40.0%); hits 31.7% vs F 39.5%
+    F, one toward normal when |z| >= t, t by LODO {99.0: 210, 2.0: 9} = cluster 45.7% vs F 46.1% -0.005 [-0.014, +0.004] (halves 48.3%/43.8%); hits 39.0% vs F 39.5%
+  money centre - F on climatology: clim - F -0.311 [-0.524, -0.183], z -0.502 [-0.963, -0.180], last year - F +0.024 [-0.021, +0.090]; centre MAE 0.773 vs F 0.816; = first pick 45.2% vs F 46.1% -0.009 [-0.070, +0.052]
+
+(4) 700 station-days on the truth: truth - F = -0.028 x (clim - F) -0.163; leave one day out MAE 1.020 vs F 1.017; hits 33.9% vs F 32.6% +0.013 [-0.009, +0.035]
+
+(5) the cluster's offset from F, by F's anomaly z = (F - clim)/sd
+    z -9.0..-0.5 n  47: centre - F -0.03 C; pick above F 19, = F 16, below 12; truth - F +0.06 C
+    z -0.5..+0.0 n  48: centre - F +0.16 C; pick above F 16, = F 26, below 6; truth - F +0.17 C
+    z +0.0..+0.5 n  35: centre - F +0.24 C; pick above F 10, = F 19, below 6; truth - F +0.18 C
+    z +0.5..+1.0 n  50: centre - F +0.22 C; pick above F 18, = F 24, below 8; truth - F +0.07 C
+    z +1.0..+9.0 n  39: centre - F +0.72 C; pick above F 15, = F 16, below 8; truth - F +0.39 C
