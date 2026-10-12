@@ -45,8 +45,13 @@ from .deterministic_forecast_family import F_SYSTEM_IDS, feature_at, global_rost
 ROOT = Path(__file__).resolve().parents[1]
 F_PATH = Path(os.environ.get("PM_LISTING_FORECAST_F_PATH") or ROOT / "data" / "runtime" / "listing_forecast_f_v1.json")
 SCHEMA = "listing_forecast_f_v1"
-RULE = "deterministic_median_fleet_shift_station_share_v1"
-LAMBDA = 0.3
+RULE = "deterministic_median_fleet_shift_station_share_v2"
+# 补记四 (user 「改」 10-12): 0.3 -> 0.5.  Our values are nearest-land-cell
+# grid values, not point values adjusted to the station's elevation, so a
+# larger share of each station's own bias is needed: on the 440 research
+# station-days, agreement with the cluster's first YES +7.3 points
+# [+0.8, +13.7] (+7.1 / +7.3 in each half of the dates), hits unchanged.
+LAMBDA = 0.5
 RESEARCH_FLEET_C = 0.8
 FLEET_DAYS = 30
 STATION_DAYS = 60
