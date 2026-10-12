@@ -1,0 +1,25 @@
+(1) Open-Meteo station value - native nearest-land-cell value, same model, same run
+    ECCC_GDPS_15KM_NATIVE_POINT          n  91: mean +0.40 C, sd 0.70, |delta| > 1 C 16%
+    ECMWF_AIFS_SINGLE_POINT              n  71: mean +0.54 C, sd 1.30, |delta| > 1 C 14%
+    NOAA_GFS_025_NATIVE_POINT            n 223: mean +0.46 C, sd 1.16, |delta| > 1 C 37%
+    per station x model, first-half vs second-half mean delta: corr +0.91 over 20 pairs -> a stable station adjustment
+
+(2) F with the native raw median swapped for the Open-Meteo raw median over the common members
+    swap raw median (F + med_OM - med_native)          n 25: = cluster 36.0% vs F 32.0% +0.040 [-0.167, +0.247] halves +0.062/+0.000; hits 18.2% vs F 31.8%
+    half swap                                          n 25: = cluster 48.0% vs F 32.0% +0.160 [-0.032, +0.352] halves +0.188/+0.111; hits 22.7% vs F 31.8%
+    Open-Meteo raw median + c only (no station bias)   n 25: = cluster 44.0% vs F 32.0% +0.120 [-0.163, +0.403] halves +0.125/+0.111; hits 31.8% vs F 31.8%
+    med_OM - med_native over the picks: mean +0.42 C, sd 0.74
+
+(3) the cluster's money centre - F on (med_OM - med_native)
+    n 25: centre - F = +1.09 [+0.70, +1.53] x (med_OM - med_native) +0.47; R^2 0.540; residual sd 0.74 C (was 1.09)
+    truth - F = +0.46 x (med_OM - med_native) +0.60 (n 25)
+
+(4) per member (larger n): the money centre - F and the truth - F on that member's (OM - native)
+    ECCC_GDPS_15KM_NATIVE_POINT          n  91: centre - F = +0.01 [-0.20, +0.26] x delta +0.29, R^2 0.000;  truth - F = +0.32 x delta +0.08
+    ECMWF_AIFS_SINGLE_POINT              n  71: centre - F = +0.47 [+0.06, +0.72] x delta +0.45, R^2 0.176;  truth - F = +0.47 x delta +0.20
+    NOAA_GFS_025_NATIVE_POINT            n 223: centre - F = +0.38 [+0.28, +0.49] x delta +0.07, R^2 0.144;  truth - F = +0.22 x delta +0.08
+    native run hour at the trade x Open-Meteo availability (first 80 picks): {('AIFS', '00:00', 'matched'): 27, ('AIFS', '06:00', 'no OM run'): 9, ('AIFS', '18:00', 'no OM run'): 27, ('AIGFS', '18:00', 'no OM run'): 80, ('GFS', '00:00', 'matched'): 80, ('IFS', '12:00', 'matched'): 35, ('IFS', '12:00', 'no OM run'): 45}
+
+(5) the research F (Open-Meteo ten models, raw median + 0.8 + 0.3 x station bias) on 227 picks
+    = cluster 51.5% vs F 45.8% +0.057 [-0.019, +0.134] halves +0.054/+0.060; hits 39.9% vs F 39.0%
+    centre - F = +0.94 [+0.64, +1.21] x (research F - F) -0.02, R^2 0.292, n 227; research F - F mean +0.28 sd 0.67;  truth - F = +0.76 x (research F - F) -0.03
