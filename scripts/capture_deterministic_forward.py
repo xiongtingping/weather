@@ -133,6 +133,8 @@ def main() -> int:
                 conn, product=product, now=now, stations=stations,
                 max_runs=min(int(args.max_runs), MAX_RUNS_OVERRIDE.get(product, int(args.max_runs))),
                 budget_sec=budget,
+                # 补记三: a heavy family stops between runs when production's egress strains.
+                should_yield=production_network_strained if product in HEAVY_PRODUCTS else None,
                 dry_run=args.dry_run,
             )
             set_pass_deadline(None)

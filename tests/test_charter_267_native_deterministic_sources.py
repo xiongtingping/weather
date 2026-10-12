@@ -608,3 +608,17 @@ def test_ukmo_reads_real_hdf5_chunks_when_h5py_is_present(tmp_path):
     assert got["A"] == pytest.approx(float(field[j, i]))
     j, i = int(np.argmin(np.abs(lat + 45.0))), int(np.argmin(np.abs(lon - 170.0)))
     assert got["B"] == pytest.approx(float(field[j, i]))
+
+
+def test_a_capture_pass_yields_before_a_runs_fetch_when_asked(monkeypatch):
+    conn = sqlite3.connect(":memory:")
+    L.ensure_schema(conn)
+    item = {"run_init": RUN, "tier": 0, "targets": [dict(t, settlement_timezone="Asia/Tokyo") for t in _targets()[:1]]}
+    monkeypatch.setattr(L, "plan_p1", lambda conn, **k: [item, dict(item, run_init=RUN.replace(hour=12))])
+    fetched = []
+    monkeypatch.setattr(N, "fetch_run_for_targets", lambda **k: fetched.append(k["run_init"]) or {})
+    answers = iter(["", "amber"])
+    receipt = L.capture_p1(conn, product="GFS", now=RUN, stations=[], max_runs=4,
+                           should_yield=lambda: next(answers))
+    assert fetched == [RUN], "the first run was fetched; the second was not started"
+    assert receipt["yielded"] == "amber" and receipt["runs_attempted"] == 1

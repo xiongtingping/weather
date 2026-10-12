@@ -16,7 +16,7 @@ import sqlite3
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from . import sqlite_busy
@@ -885,8 +885,13 @@ def capture_p1(
     budget_sec: float | None = None,
     dry_run: bool = False,
     backfill: bool = False,
+    should_yield: Callable[[], str] | None = None,
 ) -> dict[str, Any]:
     """Plan, fetch and persist this pass's runs for one product.
+
+    ``should_yield`` (charter 267 补记三) is asked before each run's fetch,
+    like the budget; a non-empty answer stops the pass there (``yielded`` in
+    the receipt) and what is left is planned again on the next pass.
 
     ``backfill`` stamps each row knowable at its run's publication time
     rather than at this pass's clock, which is what a pass reaching weeks
@@ -935,6 +940,7 @@ def capture_p1(
     # A run found unpublished this pass is not asked for again by the wider
     # reach's item for the same run (charter 201).
     unpublished_runs: set[datetime] = set()
+    yielded = ""
     for item in plan:
         # Each reach has its own productive cap (charter 201): the P1 lane's
         # own runs are taken exactly as before, and the wider reach only
@@ -950,6 +956,8 @@ def capture_p1(
         # ``plan_p1`` plans it again on the next pass.
         if deadline is not None and time.monotonic() >= deadline:
             budget_exhausted = True
+            break
+        if should_yield is not None and (yielded := should_yield()):
             break
         attempted += 1
         run_init = item["run_init"]
@@ -1095,7 +1103,7 @@ def capture_p1(
         "runs_attempted": attempted, "budget_exhausted": budget_exhausted,
         "written": written, "existed": existed, "empty": empty,
         "unpublished": unpublished, "failed": failed,
-        "write_blocked": write_blocked,
+        "write_blocked": write_blocked, "yielded": yielded,
     }
 
 

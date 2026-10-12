@@ -104,13 +104,31 @@ def main() -> int:
                         waited += 60
                     if waited:
                         print(f"   出口恢复，等了 {waited}s", flush=True)
-                receipt = capture_p1(
-                    conn, product=product, now=now, stations=stations[product],
-                    day_offsets=offsets, max_runs=args.max_runs_per_day, dry_run=args.dry_run,
-                    # Charter 99: a pass reaching weeks back asserts the run was
-                    # on the archive then, not that it became readable today.
-                    backfill=True,
-                )
+                strained_check = None
+                if args.respect_production_network:
+                    from bayes_basket_target.native_deterministic_point_archive import (  # noqa: PLC0415
+                        production_network_strained as strained_check,
+                    )
+                while True:
+                    receipt = capture_p1(
+                        conn, product=product, now=now, stations=stations[product],
+                        day_offsets=offsets, max_runs=args.max_runs_per_day, dry_run=args.dry_run,
+                        # Charter 99: a pass reaching weeks back asserts the run was
+                        # on the archive then, not that it became readable today.
+                        backfill=True,
+                        # Charter 267 补记三: asked before every run, not just every batch.
+                        should_yield=strained_check,
+                    )
+                    if not receipt.get("yielded"):
+                        break
+                    print(f"   生产出口 {receipt['yielded']}，本批中途让路（已写 {receipt['written']}）", flush=True)
+                    for key in ("written", "existed", "empty"):
+                        totals[key] += int(receipt[key])
+                    while strained_check():
+                        if args.max_seconds and _time.monotonic() - started > args.max_seconds:
+                            print("时间预算用完（等出口），停在", f"day-{back}", product, flush=True)
+                            raise SystemExit(0)
+                        _time.sleep(60)
                 for key in ("written", "existed", "empty"):
                     totals[key] += int(receipt[key])
                 totals["failed"] += len(receipt["failed"])
