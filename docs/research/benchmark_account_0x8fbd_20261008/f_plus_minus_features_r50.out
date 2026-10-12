@@ -1,0 +1,48 @@
+227 picks: F-1 33, F 104, F+1 63, further 27; 48 features
+96 tests (feature x contrast); sorted by permutation p.  q = Benjamini-Hochberg; * q < 0.10, + p < 0.05
+  * F+1 vs F  ENS@F p(F+1) - p(F-1)          n  52/ 74: diff +0.133 [+0.074, +0.204] (+0.91 sd), AUC 0.75, p 0.0005, q 0.016
+  * F+1 vs F  P0first p(F+1) - p(F-1)        n  61/102: diff +0.224 [+0.124, +0.334] (+0.82 sd), AUC 0.74, p 0.0005, q 0.016
+  * F+1 vs F  position                       n  63/104: diff +0.225 [+0.139, +0.332] (+0.76 sd), AUC 0.72, p 0.0005, q 0.016
+  * F+1 vs F  ENS@F warm top2 at F           n  52/ 74: diff +0.284 [+0.127, +0.459] (+0.60 sd), AUC 0.64, p 0.0010, q 0.016
+  * F+1 vs F  members mass up - down         n  63/104: diff +0.160 [+0.079, +0.234] (+0.59 sd), AUC 0.67, p 0.0010, q 0.016
+  * F-1 vs F  momentum M                     n  33/104: diff -0.711 [-1.061, -0.382] (-0.70 sd), AUC 0.31, p 0.0010, q 0.016
+  * F+1 vs F  ENS@F cold top2 at F           n  52/ 74: diff -0.269 [-0.477, -0.057] (-0.55 sd), AUC 0.37, p 0.0025, q 0.034
+  * F+1 vs F  P0first mean - F (C)           n  61/102: diff +0.240 [+0.041, +0.472] (+0.40 sd), AUC 0.60, p 0.0060, q 0.072
+  + F+1 vs F  P0first warm top2 at F         n  61/102: diff +0.175 [+0.040, +0.307] (+0.38 sd), AUC 0.59, p 0.0110, q 0.116
+  + F-1 vs F  obs->F change                  n  33/104: diff -1.500 [-3.000, -0.210] (-0.50 sd), AUC 0.35, p 0.0135, q 0.116
+  + F-1 vs F  listing hour UTC               n  33/104: diff -0.782 [-1.279, -0.245] (-0.43 sd), AUC 0.30, p 0.0145, q 0.116
+  + F+1 vs F  phys cloud_chg                 n  63/104: diff +12.946 [+3.845, +22.398] (+0.41 sd), AUC 0.61, p 0.0145, q 0.116
+  + F+1 vs F  ENS@F mean - mode              n  52/ 74: diff +0.257 [+0.054, +0.435] (+0.37 sd), AUC 0.64, p 0.0210, q 0.155
+  + F-1 vs F  |lat|/30                       n  33/104: diff +0.193 [+0.076, +0.317] (+0.42 sd), AUC 0.66, p 0.0245, q 0.165
+  + F-1 vs F  P0first top1 = F               n  33/102: diff -0.235 [-0.366, -0.064] (-0.47 sd), AUC 0.38, p 0.0270, q 0.165
+  + F+1 vs F  phys sw_chg                    n  63/104: diff -34.561 [-65.873, -5.249] (-0.34 sd), AUC 0.40, p 0.0275, q 0.165
+  + F-1 vs F  recent truth - F               n  33/104: diff +1.124 [-0.139, +2.655] (+0.44 sd), AUC 0.63, p 0.0335, q 0.189
+  + F-1 vs F  L - F                          n  33/104: diff -0.385 [-0.703, -0.091] (-0.38 sd), AUC 0.39, p 0.0420, q 0.224
+    F+1 vs F  anomaly z                      n  60/101: diff -0.271 [-0.542, -0.005] (-0.35 sd), AUC 0.41, p 0.0595, q 0.300
+    F+1 vs F  log minutes                    n  63/104: diff +0.359 [-0.029, +0.707] (+0.32 sd), AUC 0.59, p 0.0635, q 0.305
+    F-1 vs F  F unit                         n  33/104: diff -0.159 [-0.288, -0.030] (-0.39 sd), AUC 0.42, p 0.0685, q 0.313
+    F-1 vs F  members mass up - down         n  33/104: diff -0.095 [-0.209, -0.003] (-0.34 sd), AUC 0.39, p 0.0815, q 0.342
+    F-1 vs F  phys cloud_anom                n  33/104: diff +10.329 [+0.247, +20.072] (+0.34 sd), AUC 0.58, p 0.0820, q 0.342
+    F-1 vs F  phys precip_anom               n  33/104: diff +0.236 [-0.071, +0.510] (+0.34 sd), AUC 0.56, p 0.0855, q 0.342
+    F+1 vs F  P0first cold top2 at F         n  61/102: diff -0.120 [-0.271, +0.061] (-0.27 sd), AUC 0.44, p 0.0940, q 0.351
+    F+1 vs F  ENS raw mean - F               n  52/ 74: diff +0.345 [-0.010, +0.807] (+0.36 sd), AUC 0.62, p 0.0950, q 0.351
+    F+1 vs F  phys cloud_anom                n  63/104: diff +8.513 [-2.441, +21.008] (+0.25 sd), AUC 0.55, p 0.0995, q 0.354
+    F+1 vs F  obs->F change                  n  63/104: diff +0.772 [-0.185, +1.876] (+0.24 sd), AUC 0.54, p 0.1214, q 0.416
+    F+1 vs F  phys cloud                     n  63/104: diff +7.791 [-3.879, +17.941] (+0.24 sd), AUC 0.57, p 0.1269, q 0.420
+    F-1 vs F  P0first cold top2 at F         n  33/102: diff -0.152 [-0.271, +0.006] (-0.33 sd), AUC 0.42, p 0.1344, q 0.427
+
+three-class model, features selected inside each fold (median 20.5 kept), leave one event day out, n 200: = cluster 51.0% vs always F 52.0% (-0.010 [-0.094, +0.074]); won 36, lost 38 against F
+
+three-class model, top-k features chosen inside each fold, leave one event day out -- all features
+  k 1: = cluster 54.0% vs F 52.0% (+0.020 [-0.042, +0.082], won 22 lost 18, moved off F 44); halves 62.2% vs 57.3% / 48.3% vs 48.3%; truth hits 41.0% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 12, 'P0first p(F+1) - p(F-1)': 5, 'position': 1}
+  k 2: = cluster 56.5% vs F 52.0% (+0.045 [-0.022, +0.112], won 28 lost 19, moved off F 50); halves 67.1% vs 57.3% / 49.2% vs 48.3%; truth hits 43.1% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'P0first p(F+1) - p(F-1)': 12, 'position': 6}
+  k 3: = cluster 59.0% vs F 52.0% (+0.070 [+0.002, +0.138], won 31 lost 17, moved off F 52); halves 72.0% vs 57.3% / 50.0% vs 48.3%; truth hits 42.6% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'P0first p(F+1) - p(F-1)': 18, 'position': 18}
+  k 5: = cluster 57.0% vs F 52.0% (+0.050 [-0.023, +0.123], won 33 lost 23, moved off F 59); halves 69.5% vs 57.3% / 48.3% vs 48.3%; truth hits 43.6% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'P0first p(F+1) - p(F-1)': 18, 'position': 18, 'members mass up - down': 17, 'momentum M': 14, 'ENS@F warm top2 at F': 2}
+
+three-class model, top-k features chosen inside each fold, leave one event day out -- as-of only (no P0first: our first P0 mostly lands after the trade)
+  k 1: = cluster 57.5% vs F 52.0% (+0.055 [-0.009, +0.119], won 27 lost 16, moved off F 46); halves 64.6% vs 57.3% / 52.5% vs 48.3%; truth hits 43.6% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 17, 'position': 1}
+  k 2: = cluster 57.0% vs F 52.0% (+0.050 [-0.016, +0.116], won 28 lost 18, moved off F 49); halves 63.4% vs 57.3% / 52.5% vs 48.3%; truth hits 42.0% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'position': 18}
+  k 3: = cluster 56.0% vs F 52.0% (+0.040 [-0.026, +0.106], won 27 lost 19, moved off F 49); halves 63.4% vs 57.3% / 50.8% vs 48.3%; truth hits 42.6% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'position': 18, 'members mass up - down': 13, 'momentum M': 3, 'ENS@F warm top2 at F': 2}
+  k 5: = cluster 56.0% vs F 52.0% (+0.040 [-0.033, +0.113], won 32 lost 24, moved off F 58); halves 59.8% vs 57.3% / 53.4% vs 48.3%; truth hits 44.7% vs F 42.0%; features kept {'ENS@F p(F+1) - p(F-1)': 18, 'position': 18, 'momentum M': 18, 'members mass up - down': 17, 'ENS@F cold top2 at F': 8, 'ENS@F warm top2 at F': 6}
+
+frozen one-feature model: F+1 when ENS@F p(F+1) - p(F-1) >= 0.050000000000000044, F-1 when <= None, else F
