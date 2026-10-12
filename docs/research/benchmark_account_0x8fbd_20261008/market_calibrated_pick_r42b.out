@@ -1,0 +1,7 @@
+(1) on 213 picks: the cluster hits 45.1%, F 39.0%; paired +0.061 [-0.015, +0.137]
+    where they differ (112): cluster right 41, F right 28
+(2) station-days with a later market mode (06:00 local on the day): 795
+   F                          n=193 = cluster 47.2% (+0.000 [+0.000, +0.000])   early 51.3%
+   market-shift F             n=193 = cluster 35.8% (-0.114 [-0.199, -0.029])   early 43.6%
+   market-weighted members    n=193 = cluster 39.4% (-0.078 [-0.170, +0.015])   early 47.4%
+   latest market fit: shift -0.41 weights [1.0, 0.97, 0.81, 1.17, 1.56, 0.7] ['ICON', 'GDPS', 'AIFS', 'IFS', 'AIGFS', 'GFS']

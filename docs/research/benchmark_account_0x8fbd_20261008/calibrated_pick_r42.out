@@ -1,0 +1,10 @@
+history rows with >=3 members: 2282; with truth: 2248
+
+cluster pre-formation first YES (227; early 96):
+   F     = cluster 47.1% (vs F +0.000 [+0.000, +0.000])   early 54.2%   hits the truth on these days 37.4%
+   N-F   = cluster 40.1% (vs F -0.070 [-0.144, +0.003])   early 47.9%   hits the truth on these days 37.0%
+   N-W   = cluster 41.4% (vs F -0.057 [-0.142, +0.028])   early 53.1%   hits the truth on these days 37.9%
+   L1-W  = cluster 40.5% (vs F -0.066 [-0.151, +0.019])   early 52.1%   hits the truth on these days 36.6%
+   E-W   = cluster 39.2% (vs F -0.079 [-0.166, +0.008])   early 49.0%   hits the truth on these days 38.3%
+
+latest fit: {'F': [-0.38, 0.43, 0.22], 'W': [1.0, 0.98, 1.23, 0.9, 1.14, 0.81], 'L1': [1.0, 0.91, 1.03, 1.07, 1.31, 0.84]} systems ['ICON', 'GDPS', 'AIFS', 'IFS', 'AIGFS', 'GFS']

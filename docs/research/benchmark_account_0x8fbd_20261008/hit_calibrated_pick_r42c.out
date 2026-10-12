@@ -1,0 +1,4 @@
+station-days with ladder and truth: 834
+truth - F: mean -0.45 C, median -0.37 C, most common half-degree bin +0.0 C, skew -0.20
+hit-calibrated F (shift, lambda chosen forward to maximise truth hits): = cluster 37.4% vs F 47.6% (-0.101 [-0.185, -0.018]); hits the truth 33.9% vs F 36.6%
+   grids chosen (shift C, lambda): {(-0.6, 0.7): 89, (-0.7, 0.5): 79, (-0.5, 0.7): 16, (-0.4, 0.7): 15, (-0.8, 0.3): 14}
