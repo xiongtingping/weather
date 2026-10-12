@@ -16,6 +16,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import bayes_basket_target.deterministic_forecast_family as FAM
@@ -251,6 +252,9 @@ def test_f_is_the_median_plus_fleet_shift_plus_a_share_of_the_station_correction
     assert entry["f_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
     assert entry["listing_instant_utc"] == "2026-10-11T05:00:00Z"
     assert out["authority"] == "EXECUTION_LAYER_ONLY"
+    # 补记五 fails closed: four settled days are far short of a recalibration.
+    assert out["recalibration"]["state"] == "INSUFFICIENT_HISTORY"
+    assert entry["recal_c"] is None and entry["f_c"] == entry["f_base_c"]
 
 
 def test_a_station_day_with_too_few_systems_has_no_f(monkeypatch):
@@ -297,6 +301,72 @@ def test_the_history_cache_drops_when_the_run_table_grows(monkeypatch):
     assert grown["station_corr_c"] == pytest.approx(3.0)
 
 
+# --------------------------------------------------------------------------
+# 补记五: the truth recalibration (user 「更准」 10-12)
+# --------------------------------------------------------------------------
+
+def test_the_recalibration_fit_recovers_a_planted_conditional_bias():
+    rng = np.random.default_rng(3)
+    days = [date(2026, 9, 1) + timedelta(days=i) for i in range(30)]
+    rows = []
+    for i in range(900):
+        x = (rng.normal(0.5, 0.8), rng.normal(0.0, 0.3), rng.normal(0.0, 2.0))
+        y = -0.3 + 0.4 * x[0] + 0.6 * x[1] - 0.1 * x[2] + rng.laplace(0.0, 0.2)
+        rows.append((days[i % 30], x, y))
+    model = F.fit_recalibration(rows)
+    assert model["state"] == "FITTED" and model["rows"] == 900 and model["days"] == 30
+    per_unit = np.array(model["beta_per_sd"]) / np.array(model["sd"])
+    assert per_unit == pytest.approx([0.4, 0.6, -0.1], abs=0.04)
+    assert F.recal_correction(model, (0.0, 0.0, 0.0)) == pytest.approx(-0.3, abs=0.04)
+    assert model["in_sample_mae_after_c"] < model["in_sample_mae_before_c"]
+
+
+def test_the_recalibration_needs_enough_rows_and_days():
+    day = date(2026, 9, 1)
+    assert F.fit_recalibration([(day, (0.0, 0.0, float(i)), 0.1) for i in range(F.RECAL_MIN_ROWS)]) is None, "one day"
+    few = [(day + timedelta(days=i % 20), (0.0, 0.0, float(i)), 0.1) for i in range(F.RECAL_MIN_ROWS - 1)]
+    assert F.fit_recalibration(few) is None
+
+
+def test_the_newest_observation_is_the_one_settled_at_listing():
+    # Event 10-13 lists 10-11 05:00Z.  Tokyo's 10-10 ended 10-10 15:00Z: settled.
+    # New York's 10-10 ends 10-11 04:00Z, +3 h is after the listing: 10-09 is used.
+    for zone, expected in (("Asia/Tokyo", 10.0), ("America/New_York", 9.0)):
+        truths = {date(2026, 10, d): (float(d), F._settled_at(date(2026, 10, d), zone)) for d in (8, 9, 10)}
+        assert F._obs_before_listing(truths, date(2026, 10, 13)) == expected, zone
+
+
+def test_a_training_day_reads_only_truths_settled_at_its_own_listing():
+    # Training day 10-08 listed 10-06 05:00Z: the 10-05 truth (settled 10-06 03:00Z
+    # in UTC) counts, 10-06 (settled 10-07) does not, however far off it is.
+    rows = [(date(2026, 10, d), {A: 20.0}, 21.0 if d < 6 else 40.0, F._settled_at(date(2026, 10, d), "UTC"))
+            for d in (2, 3, 4, 5, 6)]
+    base = F._base_f({A: 20.0}, rows, event_date=date(2026, 10, 8), fleet_c=0.0,
+                     knowable_by=F._listing_dt(date(2026, 10, 8)))
+    assert base["biases"][A] == pytest.approx(1.0)
+    live = F._base_f({A: 20.0}, rows, event_date=date(2026, 10, 8), fleet_c=0.0, knowable_by=None)
+    assert live["biases"][A] > 1.0, "live, every settled truth up to event-2 counts (unchanged rule)"
+
+
+def test_f_is_recalibrated_once_the_training_window_is_deep_enough(monkeypatch):
+    days = [date(2026, 9, 16) + timedelta(days=i) for i in range(25)]
+    history = {d: {A: 20.0, B: 21.0, C: 22.0} for d in days}
+    stations = [f"S{i:03d}" for i in range(30)]
+    truths = {(s, d.isoformat()): 22.0 for s in stations for d in days}
+    _patch(monkeypatch, today={A: 20.0, B: 21.0, C: 22.0}, history=history, truths=truths)
+    out = F.compute(_conn(), now=NOW, roster=[(s, 0.0, 0.0, "UTC") for s in stations])
+    model = out["recalibration"]
+    assert model["state"] == "FITTED" and model["rows"] == 750 and model["days"] == 25
+    assert model["features"] == list(F.RECAL_FEATURES)
+    entry = out["station_days"]["S000|2026-10-13"]
+    assert entry["f_base_c"] == pytest.approx(21.0 + 1.0 + F.LAMBDA * 1.0)
+    assert entry["recal_features"] == {"station_corr_c": 1.0, "members_skew_c": 0.0, "obs_to_f_change_c": 0.5}
+    assert entry["f_c"] == pytest.approx(entry["f_base_c"] + entry["recal_c"], abs=1e-3)
+    # F_base sat 0.5 C warm of every settled day; the correction pulls F toward the truth.
+    assert abs(22.0 - entry["f_c"]) < abs(22.0 - entry["f_base_c"])
+    assert out["rule"] == F.RULE == "deterministic_median_fleet_shift_station_share_truth_recal_v3"
+
+
 def test_bucket_for_reads_the_ladder_bounds():
     ladder = [
         {"label": "<=17", "lower_c": None, "upper_c": 17.5},
@@ -317,10 +387,12 @@ def test_refresh_writes_the_runtime_file_and_never_the_ssot(tmp_path, monkeypatc
     target = tmp_path / "f.json"
     monkeypatch.setattr(F, "F_PATH", target)
     monkeypatch.setattr(F, "compute", lambda c: {"station_days": {"X|d": {"state": "READY"}},
-                                                  "fleet": {"c": 0.8, "source": "research_fallback"}})
+                                                  "fleet": {"c": 0.8, "source": "research_fallback"},
+                                                  "recalibration": {"state": "INSUFFICIENT_HISTORY"}})
     monkeypatch.setattr(F, "write", lambda payload, path=None: target.write_text("{}"))
     receipt = F.refresh(db)
     assert receipt["ready"] == 1 and target.exists()
+    assert receipt["recalibration"] == "INSUFFICIENT_HISTORY"
 
 
 # --------------------------------------------------------------------------

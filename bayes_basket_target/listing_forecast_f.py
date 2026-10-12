@@ -21,7 +21,11 @@ station and every event day from today to D+2, and kept ready:
            station-days over ``MIN_FLEET_DAYS`` days exist
   corr_s = median(raw_m + b_sm) - raw, b_sm the station x system mean of
            (truth - raw_m) over the station's trailing days (as of d-2, >= 3)
-  F      = raw + c + LAMBDA x corr_s
+  F_base = raw + c + LAMBDA x corr_s
+  F      = F_base + the truth recalibration (补记五: ``fit_recalibration``, least
+           absolute error of truth - F_base on the station correction, the
+           members' skew and the change from the newest settled observation,
+           every training day read as of its own listing instant)
 
 Read-only on the SSOT; writes one runtime file (``F_PATH``), never the SSOT.
 F is an execution-layer number: it is not a probability, never enters P0,
@@ -39,13 +43,15 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+import numpy as np
+
 from .canonical_contract import FORMAL_TRUTH_LANES_SQL
 from .deterministic_forecast_family import F_SYSTEM_IDS, feature_at, global_roster
 
 ROOT = Path(__file__).resolve().parents[1]
 F_PATH = Path(os.environ.get("PM_LISTING_FORECAST_F_PATH") or ROOT / "data" / "runtime" / "listing_forecast_f_v1.json")
 SCHEMA = "listing_forecast_f_v1"
-RULE = "deterministic_median_fleet_shift_station_share_v2"
+RULE = "deterministic_median_fleet_shift_station_share_truth_recal_v3"
 # 补记四 (user 「改」 10-12): 0.3 -> 0.5.  Our values are nearest-land-cell
 # grid values, not point values adjusted to the station's elevation, so a
 # larger share of each station's own bias is needed: on the 440 research
@@ -60,6 +66,25 @@ MIN_FLEET_DAYS = 14
 MIN_STATION_SYSTEM_DAYS = 3
 MIN_SYSTEMS = 3
 LISTING_HOUR_UTC = 5
+# 补记五 (user 「更准」 10-12): F's conditional recalibration against the truth,
+# F = F_base + a + sum_j beta_j z_j over three conditions F was found biased on
+# (benchmark research round 43): the station correction (under-applied), the
+# corrected members' skew, mean - median (ignored), and the change from the
+# newest settled observation to F (overshot).  Fitted by least absolute error
+# on every roster station-day of the trailing ``RECAL_TRAIN_DAYS``, each read as
+# of its own listing instant.  Round 43b, strictly forward over 834 station-days
+# (09-20..10-10): MAE -0.063 C [-0.091, -0.034], hits on the market ladder
+# +2.0 points [-1.1, +5.2], bias -0.45 -> -0.14 C.
+RECAL_FEATURES = ("station_corr_c", "members_skew_c", "obs_to_f_change_c")
+RECAL_TRAIN_DAYS = 60
+RECAL_MIN_ROWS = 500
+RECAL_MIN_DAYS = 14
+RECAL_RIDGE = 1e-3
+RECAL_MAX_ITER = 200
+RECAL_IRLS_FLOOR = 1e-4
+OBS_BACK_DAYS = (3, 4, 5)
+# A station-day's truth counts as knowable this long after its local day ends.
+SETTLE_HOURS = 3
 # Past days' listing-time maxima change only when the run table grows (a
 # backfill can add a run that was knowable then); the cache is dropped
 # whenever the table's newest rowid moves.
@@ -124,6 +149,131 @@ def _history_point(
     return _HISTORY_CACHE[key]
 
 
+def _settled_at(day: date, zone: str) -> datetime:
+    """When a station-day's truth is knowable: the end of its local day + ``SETTLE_HOURS``."""
+
+    end = datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=ZoneInfo(zone))
+    return end.astimezone(timezone.utc) + timedelta(hours=SETTLE_HOURS)
+
+
+def _listing_dt(event_date: date) -> datetime:
+    return datetime.fromisoformat(listing_instant(event_date).replace("Z", "+00:00"))
+
+
+def _base_f(
+    maxima: Mapping[str, float], rows: Sequence[tuple[date, dict[str, float], float, datetime]], *,
+    event_date: date, fleet_c: float, knowable_by: datetime | None,
+) -> dict[str, Any]:
+    """F before recalibration: raw median + c + LAMBDA x the station correction.
+
+    Each member's bias is the mean of (truth - member) over the station's days in
+    [event - STATION_DAYS, event - 2].  ``knowable_by`` keeps only truths settled by
+    that instant (a past day read as of its own listing); live it is None and every
+    settled truth counts, as before the recalibration.
+    """
+
+    raw = statistics.median(maxima.values())
+    cut, since = event_date - timedelta(days=2), event_date - timedelta(days=STATION_DAYS)
+    biases: dict[str, float] = {}
+    for system, value in maxima.items():
+        errors = [
+            truth - point[system] for past, point, truth, settled in rows
+            if system in point and since <= past <= cut and (knowable_by is None or settled <= knowable_by)
+        ]
+        biases[system] = statistics.mean(errors) if len(errors) >= MIN_STATION_SYSTEM_DAYS else 0.0
+    corrected = [maxima[system] + biases[system] for system in maxima]
+    corr = statistics.median(corrected) - raw
+    return {
+        "raw": raw, "corr": corr, "biases": biases, "f": raw + fleet_c + LAMBDA * corr,
+        "skew": statistics.mean(corrected) - statistics.median(corrected),
+    }
+
+
+def _fleet_shift(
+    history: Mapping[str, Sequence[tuple[date, dict[str, float], float, datetime]]], *,
+    since: date, knowable_by: datetime | None,
+) -> tuple[float, str, int, int]:
+    """c, its source, samples and days: the fleet mean of (truth - raw median) since ``since``."""
+
+    errors = [
+        (past, truth - statistics.median(point.values()))
+        for rows in history.values() for past, point, truth, settled in rows
+        if past >= since and len(point) >= MIN_SYSTEMS and (knowable_by is None or settled <= knowable_by)
+    ]
+    days = len({past for past, _err in errors})
+    if len(errors) >= MIN_FLEET_SAMPLES and days >= MIN_FLEET_DAYS:
+        return statistics.mean(err for _past, err in errors), "native_history", len(errors), days
+    return RESEARCH_FLEET_C, "research_fallback", len(errors), days
+
+
+def _obs_before_listing(station_truths: Mapping[date, tuple[float, datetime]], event_date: date) -> float | None:
+    """The newest of the truths at event-3..-5 already settled at the event's listing instant."""
+
+    listing = _listing_dt(event_date)
+    for back in OBS_BACK_DAYS:
+        hit = station_truths.get(event_date - timedelta(days=back))
+        if hit is not None and hit[1] <= listing:
+            return hit[0]
+    return None
+
+
+def _recal_features(base: Mapping[str, Any], obs: float | None) -> tuple[float, float, float]:
+    """``RECAL_FEATURES``, in order (no settled observation: a zero change, as in the research)."""
+
+    return (base["corr"], base["skew"], 0.0 if obs is None else base["f"] - obs)
+
+
+def fit_recalibration(rows: Sequence[tuple[date, Sequence[float], float]]) -> dict[str, Any] | None:
+    """Least absolute error fit of (truth - F) on the standardised ``RECAL_FEATURES``.
+
+    Iteratively reweighted least squares (numpy only), the research objective
+    mean |residual| + RECAL_RIDGE x |beta|^2 on standardised features (round 43b's
+    L1 robust arm).  None below ``RECAL_MIN_ROWS`` rows or ``RECAL_MIN_DAYS`` days.
+    """
+
+    days = sorted({day for day, _x, _y in rows})
+    if len(rows) < RECAL_MIN_ROWS or len(days) < RECAL_MIN_DAYS:
+        return None
+    X = np.array([x for _day, x, _y in rows], dtype=float)
+    y = np.array([value for _day, _x, value in rows], dtype=float)
+    mu, sd = X.mean(axis=0), X.std(axis=0)
+    # A constant feature standardises to zero in training; the ridge holds its beta at 0.
+    sd = np.where(sd > 1e-9, sd, 1.0)
+    A = np.c_[(X - mu) / sd, np.ones(len(X))]
+    n, k = A.shape
+    penalty = np.diag([2.0 * RECAL_RIDGE] * (k - 1) + [0.0])
+    beta = np.linalg.lstsq(A, y, rcond=None)[0]
+    for _ in range(RECAL_MAX_ITER):
+        weights = 1.0 / np.maximum(np.abs(y - A @ beta), RECAL_IRLS_FLOOR)
+        weighted = A * weights[:, None]
+        step = np.linalg.solve(A.T @ weighted / n + penalty, weighted.T @ y / n)
+        done = float(np.max(np.abs(step - beta))) < 1e-9
+        beta = step
+        if done:
+            break
+    if not np.all(np.isfinite(beta)):
+        return None
+    fitted = A @ beta
+    return {
+        "state": "FITTED",
+        "features": list(RECAL_FEATURES),
+        "mean": [round(float(v), 6) for v in mu],
+        "sd": [round(float(v), 6) for v in sd],
+        "beta_per_sd": [round(float(v), 6) for v in beta[:-1]],
+        "intercept_c": round(float(beta[-1]), 6),
+        "rows": n, "days": len(days), "train_from": days[0].isoformat(), "train_to": days[-1].isoformat(),
+        "in_sample_mae_before_c": round(float(np.mean(np.abs(y))), 4),
+        "in_sample_mae_after_c": round(float(np.mean(np.abs(y - fitted))), 4),
+    }
+
+
+def recal_correction(model: Mapping[str, Any], features: Sequence[float]) -> float:
+    """The correction the fitted model adds to F for one station-day's features."""
+
+    z = (np.array(features, dtype=float) - np.array(model["mean"])) / np.array(model["sd"])
+    return float(z @ np.array(model["beta_per_sd"]) + model["intercept_c"])
+
+
 def compute(
     conn: sqlite3.Connection, *, now: datetime | None = None,
     roster: Sequence[tuple[str, float, float, str]] | None = None,
@@ -138,34 +288,46 @@ def compute(
     if generation != _HISTORY_GENERATION[0]:
         _HISTORY_CACHE.clear()
         _HISTORY_GENERATION[0] = generation
-    history_from = today - timedelta(days=max(FLEET_DAYS, STATION_DAYS) + 2)
+    # The oldest training day needs its own STATION_DAYS of bias history.
+    history_from = today - timedelta(days=RECAL_TRAIN_DAYS + max(FLEET_DAYS, STATION_DAYS) + 4)
     truths = formal_truths(conn, since=history_from, until=today)
-    # History: each past settled day's listing-time maxima, per station.
-    history: dict[str, list[tuple[date, dict[str, float], float]]] = {}
-    for station, _lat, _lon, zone in stations:
-        rows = []
-        for (st, day), truth in truths.items():
-            if st != station:
-                continue
+    zones = {station: zone for station, _lat, _lon, zone in stations}
+    station_truths: dict[str, dict[date, tuple[float, datetime]]] = {station: {} for station in zones}
+    for (st, day), truth in truths.items():
+        if st in zones:
             past = date.fromisoformat(day)
+            station_truths[st][past] = (truth, _settled_at(past, zones[st]))
+    # History: each past settled day's listing-time maxima, per station.
+    history: dict[str, list[tuple[date, dict[str, float], float, datetime]]] = {}
+    for station, zone in zones.items():
+        rows = []
+        for past, (truth, settled) in sorted(station_truths[station].items()):
             point = _history_point(conn, station_id=station, event_date=past, zone=zone)
             if point:
-                rows.append((past, point, truth))
+                rows.append((past, point, truth, settled))
         history[station] = rows
-    fleet_errors: list[tuple[date, float]] = []
-    for rows in history.values():
-        for past, point, truth in rows:
-            if past >= today - timedelta(days=FLEET_DAYS) and len(point) >= MIN_SYSTEMS:
-                fleet_errors.append((past, truth - statistics.median(point.values())))
-    fleet_days = len({past for past, _err in fleet_errors})
-    if len(fleet_errors) >= MIN_FLEET_SAMPLES and fleet_days >= MIN_FLEET_DAYS:
-        fleet_c = statistics.mean(err for _past, err in fleet_errors)
-        fleet_source = "native_history"
-    else:
-        fleet_c = RESEARCH_FLEET_C
-        fleet_source = "research_fallback"
+    fleet_c, fleet_source, fleet_samples, fleet_days = _fleet_shift(
+        history, since=today - timedelta(days=FLEET_DAYS), knowable_by=None,
+    )
+    # 补记五: each settled day in the training window, F as it stood at that day's
+    # own listing instant (members, truths and c knowable then), against its truth.
+    train: list[tuple[date, tuple[float, float, float], float]] = []
+    past_fleet: dict[date, float] = {}
+    for station, rows in history.items():
+        for past, point, truth, _settled in rows:
+            if past < today - timedelta(days=RECAL_TRAIN_DAYS) or len(point) < MIN_SYSTEMS:
+                continue
+            listing = _listing_dt(past)
+            if past not in past_fleet:
+                past_fleet[past] = _fleet_shift(
+                    history, since=past - timedelta(days=2 + FLEET_DAYS), knowable_by=listing,
+                )[0]
+            base = _base_f(point, rows, event_date=past, fleet_c=past_fleet[past], knowable_by=listing)
+            obs = _obs_before_listing(station_truths[station], past)
+            train.append((past, _recal_features(base, obs), truth - base["f"]))
+    model = fit_recalibration(train)
     out: dict[str, Any] = {}
-    for station, _lat, _lon, zone in stations:
+    for station, zone in zones.items():
         for offset in (0, 1, 2):
             event_date = today + timedelta(days=offset)
             maxima = system_maxima(
@@ -176,33 +338,35 @@ def compute(
                 entry["state"] = "TOO_FEW_SYSTEMS"
                 out[f"{station}|{event_date.isoformat()}"] = entry
                 continue
-            raw = statistics.median(v["tmax_c"] for v in maxima.values())
-            cut = event_date - timedelta(days=2)
-            corrected = []
+            base = _base_f(
+                {system: value["tmax_c"] for system, value in maxima.items()}, history.get(station, []),
+                event_date=event_date, fleet_c=fleet_c, knowable_by=None,
+            )
+            # Each member's own correction, for readers that look past the median.
             for system, value in maxima.items():
-                errors = [
-                    truth - point[system] for past, point, truth in history.get(station, [])
-                    if system in point and past <= cut and past >= event_date - timedelta(days=STATION_DAYS)
-                ]
-                bias = statistics.mean(errors) if len(errors) >= MIN_STATION_SYSTEM_DAYS else 0.0
-                corrected.append(value["tmax_c"] + bias)
-                # Each member's own correction, for readers that look past the median.
-                value["bias_c"] = round(bias, 3)
-            corr = statistics.median(corrected) - raw
+                value["bias_c"] = round(base["biases"][system], 3)
+            features = _recal_features(base, _obs_before_listing(station_truths.get(station, {}), event_date))
+            correction = recal_correction(model, features) if model else 0.0
             entry.update({
                 "state": "READY",
-                "raw_median_c": round(raw, 3),
+                "raw_median_c": round(base["raw"], 3),
                 "fleet_c": round(fleet_c, 3),
-                "station_corr_c": round(corr, 3),
+                "station_corr_c": round(base["corr"], 3),
                 "lambda": LAMBDA,
-                "f_c": round(raw + fleet_c + LAMBDA * corr, 3),
+                "f_base_c": round(base["f"], 3),
+                "recal_features": {name: round(value, 3) for name, value in zip(RECAL_FEATURES, features)},
+                "recal_c": round(correction, 3) if model else None,
+                "f_c": round(base["f"] + correction, 3),
                 "listing_instant_utc": listing_instant(event_date),
             })
             out[f"{station}|{event_date.isoformat()}"] = entry
     return {
         "schema": SCHEMA, "rule": RULE, "computed_at_utc": as_of,
         "systems": sorted(F_SYSTEM_IDS),
-        "fleet": {"c": round(fleet_c, 3), "source": fleet_source, "samples": len(fleet_errors), "days": fleet_days},
+        "fleet": {"c": round(fleet_c, 3), "source": fleet_source, "samples": fleet_samples, "days": fleet_days},
+        "recalibration": model or {
+            "state": "INSUFFICIENT_HISTORY", "rows": len(train), "days": len({day for day, _x, _y in train}),
+        },
         "station_days": out,
         "authority": "EXECUTION_LAYER_ONLY",
         "calls_order_gateway": False,
@@ -228,7 +392,8 @@ def refresh(db_path: str | Path) -> dict[str, Any]:
     write(payload)
     ready = sum(1 for v in payload["station_days"].values() if v.get("state") == "READY")
     return {"state": "ok", "ready": ready, "station_days": len(payload["station_days"]),
-            "fleet_c": payload["fleet"]["c"], "fleet_source": payload["fleet"]["source"]}
+            "fleet_c": payload["fleet"]["c"], "fleet_source": payload["fleet"]["source"],
+            "recalibration": payload["recalibration"]["state"]}
 
 
 def read(path: Path = F_PATH) -> dict[str, Any] | None:
@@ -251,6 +416,7 @@ def bucket_for(f_c: float, ladder: Sequence[Mapping[str, Any]]) -> str | None:
 
 
 __all__ = [
-    "F_PATH", "LAMBDA", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "bucket_for", "compute",
-    "formal_truths", "listing_instant", "read", "refresh", "system_maxima", "write",
+    "F_PATH", "LAMBDA", "RECAL_FEATURES", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "bucket_for", "compute",
+    "fit_recalibration", "formal_truths", "listing_instant", "read", "recal_correction", "refresh",
+    "system_maxima", "write",
 ]
