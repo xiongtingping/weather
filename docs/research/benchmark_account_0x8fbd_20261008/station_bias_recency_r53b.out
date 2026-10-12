@@ -1,0 +1,35 @@
+history rows with >=3 members: 2282; with truth: 2248
+(a) 227 picks; production F = cluster 45.8%, hits 39.0%
+    recipe                        lam 0.4                lam 0.5                lam 0.6               lam 0.75
+    window 7                43.6%/37.6%            46.7%/36.6%            48.0%/36.6%            43.2%/31.0%  
+    window 10               48.5%/43.2%**          49.3%/41.3%**          49.3%/37.1%**          44.5%/34.7%  
+    window 14               47.1%/44.1%            50.7%/42.3%**          49.8%/39.9%**          48.0%/36.6%**
+    window 21               47.6%/44.6%**          51.5%/42.3%**          52.4%/40.4%**          49.3%/37.6%**
+    window 30               46.3%/41.3%            48.9%/40.8%            48.5%/38.5%**          46.7%/36.2%  
+    window 60               46.3%/41.3%            48.0%/39.4%            47.1%/38.5%            48.5%/34.3%**
+    half-life 5             48.9%/44.1%**          50.2%/41.3%**          51.1%/38.5%**          52.0%/35.2%**
+    half-life 7             48.0%/45.1%**          49.3%/41.3%**          51.1%/37.1%**          52.4%/36.6%**
+    half-life 10            47.1%/43.7%**          50.7%/41.8%**          50.7%/38.0%**          50.2%/36.2%**
+    half-life 14            46.3%/43.7%            51.1%/41.8%**          49.3%/38.0%**          50.7%/35.7%**
+    half-life 20            46.7%/43.2%**          50.7%/41.3%**          48.9%/38.5%**          49.8%/34.7%**
+    half-life 30            46.7%/43.2%**          48.9%/40.8%            47.6%/38.0%**          49.3%/34.3%**
+    LODO-chosen recipe: = cluster 47.1% vs F 45.8% +0.013 [-0.059, +0.085]; hits 37.6% vs F 39.0%; chosen {('window 21', 0.6): 132, ('half-life 7', 0.75): 65, ('window 21', 0.5): 30}
+
+(b) the cluster's money centre against the recent-minus-60-day station correction
+    window 14   : centre - F_base = -0.05 [-0.35, +0.26] x (corr_recent - corr_60) +0.30 x corr_60 -0.42; sd of (corr_recent - corr_60) 0.45 C, n 227
+    half-life 10: centre - F_base = +0.45 [-0.02, +0.89] x (corr_recent - corr_60) +0.29 x corr_60 -0.41; sd of (corr_recent - corr_60) 0.22 C, n 227
+    half-life 20: centre - F_base = +1.07 [+0.24, +1.94] x (corr_recent - corr_60) +0.28 x corr_60 -0.40; sd of (corr_recent - corr_60) 0.12 C, n 227
+
+(c) every station-day 09-24..10-13 with >= 3 members and a truth: recipes at lambda 0.5 against the 60-day mean
+    n 717, 17 event days; 60-day mean: MAE 1.0917, hits 31.5%
+    window 7    : MAE +0.0246 [+0.0041, +0.0450]; hits 29.8% vs 31.5% -0.017 [-0.045, +0.012] halves -0.003/-0.029
+    window 10   : MAE +0.0037 [-0.0186, +0.0246]; hits 30.5% vs 31.5% -0.010 [-0.037, +0.018] halves +0.009/-0.027
+    window 14   : MAE -0.0111 [-0.0329, +0.0085]; hits 31.7% vs 31.5% +0.001 [-0.023, +0.026] halves +0.017/-0.013
+    window 21   : MAE -0.0078 [-0.0201, +0.0043]; hits 30.1% vs 31.5% -0.014 [-0.034, +0.006] halves -0.003/-0.024
+    window 30   : MAE +0.0006 [-0.0074, +0.0092]; hits 31.2% vs 31.5% -0.003 [-0.017, +0.012] halves +0.006/-0.011
+    half-life 5 : MAE -0.0072 [-0.0229, +0.0065]; hits 30.1% vs 31.5% -0.014 [-0.036, +0.008] halves -0.012/-0.016
+    half-life 7 : MAE -0.0078 [-0.0201, +0.0031]; hits 30.4% vs 31.5% -0.011 [-0.030, +0.008] halves -0.012/-0.011
+    half-life 10: MAE -0.0065 [-0.0156, +0.0020]; hits 31.2% vs 31.5% -0.003 [-0.019, +0.013] halves +0.000/-0.005
+    half-life 14: MAE -0.0050 [-0.0113, +0.0015]; hits 31.2% vs 31.5% -0.003 [-0.016, +0.011] halves +0.000/-0.005
+    half-life 20: MAE -0.0036 [-0.0081, +0.0006]; hits 31.8% vs 31.5% +0.003 [-0.008, +0.014] halves +0.009/-0.003
+    half-life 30: MAE -0.0026 [-0.0057, -0.0000]; hits 31.7% vs 31.5% +0.001 [-0.008, +0.010] halves +0.009/-0.005
