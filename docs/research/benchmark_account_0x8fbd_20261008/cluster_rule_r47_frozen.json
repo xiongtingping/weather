@@ -1,0 +1,15 @@
+{
+ "model": "cluster_rule_ens_at_f_warm_top2_v1",
+ "rule": "pick F+1 when, on the raw native ensembles' shape moved onto F, F's bucket is the highest-probability bucket, the second-highest is F's warmer neighbour and p2/p1 >= 0.7; otherwise F",
+ "distribution": "the six raw native global ensembles knowable at the instant, each system's member share per ladder bucket, equal weight per system; slid so its median (uniform within a bucket) sits at f_c, re-binned by overlap (round 46 recentre)",
+ "ratio_threshold": 0.7,
+ "fitted_on": {
+  "picks_with_ensembles": 174,
+  "event_days": [
+   "2026-09-24",
+   "2026-10-11"
+  ]
+ },
+ "in_sample_reading": "= cluster 49.4% vs F 42.5% (+6.9 [+0.9, +12.9]); r 0.5-0.9 all +2.9..+6.9; both halves above F; truth hits 43.1% vs 39.5% (+3.6, crosses zero)",
+ "forward_protocol": "pre-formation first YES on event days after 2026-10-11 with ensembles at the trade: rule bucket vs the first pick, paired against bucket(f_c); read with the S3 forward check (cluster_centre_s3_frozen_r45f.json) at >= 80 picks"
+}

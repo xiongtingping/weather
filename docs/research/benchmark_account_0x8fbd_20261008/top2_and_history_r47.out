@@ -1,0 +1,85 @@
+(47A) highest and second-highest bucket
+
+  == P0first (n 223): pick = top1 43.5%, = top2 27.4%, either 70.9%; top1 = F's bucket 52.0%; top2 next to top1 100%
+    p2/p1 0.00-0.50 n  43: pick top1 58%, top2 16%, F 63%; truth top1 51% top2 15%
+    p2/p1 0.50-0.75 n  97: pick top1 48%, top2 32%, F 43%; truth top1 41% top2 33%
+    p2/p1 0.75-0.90 n  55: pick top1 35%, top2 25%, F 44%; truth top1 28% top2 36%
+    p2/p1 0.90-1.01 n  28: pick top1 21%, top2 32%, F 32%; truth top1 26% top2 41%
+    top2 warmer than top1 n 114: pick top1 38%, top2 40%
+    top2 colder than top1 n 109: pick top1 50%, top2 14%
+    top1                                             = cluster 43.5% vs F 45.7% -0.022 [-0.102, +0.058] (halves 47.8%/40.6%); hits 38.0% vs F 39.0%
+    top2                                             = cluster 27.4% vs F 45.7% -0.184 [-0.275, -0.093] (halves 26.7%/27.8%); hits 31.0% vs F 39.0%
+    top2 if p2/p1 >= r else top1 (r {0.9: 163, 0.95: 36, 0.8: 14, 1.01: 10}) = cluster 40.8% vs F 45.7% -0.049 [-0.127, +0.029] (halves 43.3%/39.1%); hits 39.0% vs F 39.0%
+    top2 if warmer and p2/p1 >= r (r {0.5: 223})     = cluster 48.0% vs F 45.7% +0.022 [-0.060, +0.105] (halves 48.9%/47.4%); hits 37.1% vs F 39.0%
+    F, to top2's side if top1 = F and p2/p1 >= r (r {0.8: 160, 0.9: 63}) = cluster 44.8% vs F 45.7% -0.009 [-0.039, +0.021] (halves 47.8%/42.9%); hits 38.0% vs F 39.0%
+    F+1 if top1 = F, top2 warmer, p2/p1 >= r (r {0.5: 223}) = cluster 48.9% vs F 45.7% +0.031 [-0.023, +0.086] (halves 50.0%/48.1%); hits 34.7% vs F 39.0%
+
+  == P0 (n 81): pick = top1 42.0%, = top2 29.6%, either 71.6%; top1 = F's bucket 50.6%; top2 next to top1 100%
+    p2/p1 0.00-0.50 n  18: pick top1 33%, top2 44%, F 33%; truth top1 44% top2 12%
+    p2/p1 0.50-0.75 n  37: pick top1 54%, top2 19%, F 51%; truth top1 37% top2 20%
+    p2/p1 0.75-0.90 n  14: pick top1 43%, top2 21%, F 36%; truth top1 23% top2 31%
+    p2/p1 0.90-1.01 n  12: pick top1 17%, top2 50%, F 33%; truth top1 27% top2 64%
+    top2 warmer than top1 n  47: pick top1 45%, top2 38%
+    top2 colder than top1 n  34: pick top1 38%, top2 18%
+    top1                                             = cluster 42.0% vs F 42.0% +0.000 [-0.141, +0.141] (halves 44.0%/41.1%); hits 34.7% vs F 36.0%
+    top2                                             = cluster 29.6% vs F 42.0% -0.123 [-0.273, +0.026] (halves 28.0%/30.4%); hits 26.7% vs F 36.0%
+    top2 if p2/p1 >= r else top1 (r {0.95: 70, 0.9: 11}) = cluster 44.4% vs F 42.0% +0.025 [-0.120, +0.170] (halves 44.0%/44.6%); hits 36.0% vs F 36.0%
+    top2 if warmer and p2/p1 >= r (r {0.95: 70, 0.9: 11}) = cluster 43.2% vs F 42.0% +0.012 [-0.135, +0.160] (halves 44.0%/42.9%); hits 34.7% vs F 36.0%
+    F, to top2's side if top1 = F and p2/p1 >= r (r {0.95: 70, 0.9: 11}) = cluster 42.0% vs F 42.0% +0.000 [-0.048, +0.048] (halves 32.0%/46.4%); hits 34.7% vs F 36.0%
+    F+1 if top1 = F, top2 warmer, p2/p1 >= r (r {0.95: 70, 0.9: 11}) = cluster 42.0% vs F 42.0% +0.000 [-0.048, +0.048] (halves 32.0%/46.4%); hits 34.7% vs F 36.0%
+
+  == ENS@F (n 174): pick = top1 36.8%, = top2 31.6%, either 68.4%; top1 = F's bucket 73.0%; top2 next to top1 88%
+    p2/p1 0.00-0.50 n  10: pick top1 40%, top2 30%, F 40%; truth top1 33% top2 44%
+    p2/p1 0.50-0.75 n  56: pick top1 52%, top2 23%, F 61%; truth top1 40% top2 23%
+    p2/p1 0.75-0.90 n  58: pick top1 21%, top2 43%, F 26%; truth top1 28% top2 35%
+    p2/p1 0.90-1.01 n  50: pick top1 38%, top2 28%, F 42%; truth top1 40% top2 31%
+    top2 warmer than top1 n  86: pick top1 28%, top2 47%
+    top2 colder than top1 n  88: pick top1 45%, top2 17%
+    top1                                             = cluster 36.8% vs F 42.5% -0.057 [-0.119, +0.004] (halves 39.1%/35.2%); hits 35.3% vs F 39.5%
+    top2                                             = cluster 31.6% vs F 42.5% -0.109 [-0.224, +0.005] (halves 33.3%/30.5%); hits 30.5% vs F 39.5%
+    top2 if p2/p1 >= r else top1 (r {0.7: 174})      = cluster 40.2% vs F 42.5% -0.023 [-0.116, +0.070] (halves 46.4%/36.2%); hits 35.3% vs F 39.5%
+    top2 if warmer and p2/p1 >= r (r {0.7: 174})     = cluster 47.1% vs F 42.5% +0.046 [-0.029, +0.121] (halves 53.6%/42.9%); hits 38.3% vs F 39.5%
+    F, to top2's side if top1 = F and p2/p1 >= r (r {0.7: 151, 1.01: 9, 0.95: 14}) = cluster 40.8% vs F 42.5% -0.017 [-0.098, +0.063] (halves 46.4%/37.1%); hits 37.7% vs F 39.5%
+    F+1 if top1 = F, top2 warmer, p2/p1 >= r (r {0.7: 174}) = cluster 50.0% vs F 42.5% +0.075 [+0.014, +0.135] (halves 55.1%/46.7%); hits 43.7% vs F 39.5%
+
+  == ENS (n 174): pick = top1 13.2%, = top2 20.1%, either 33.3%; top1 = F's bucket 16.7%; top2 next to top1 86%
+    p2/p1 0.00-0.50 n  29: pick top1 14%, top2 24%, F 52%; truth top1 7% top2 22%
+    p2/p1 0.50-0.75 n  64: pick top1 17%, top2 27%, F 38%; truth top1 17% top2 19%
+    p2/p1 0.75-0.90 n  47: pick top1 13%, top2 15%, F 40%; truth top1 20% top2 16%
+    p2/p1 0.90-1.01 n  34: pick top1 6%, top2 12%, F 47%; truth top1 3% top2 28%
+    top2 warmer than top1 n 105: pick top1 9%, top2 30%
+    top2 colder than top1 n  69: pick top1 20%, top2 4%
+    top1                                             = cluster 13.2% vs F 42.5% -0.293 [-0.392, -0.194] (halves 18.8%/9.5%); hits 13.8% vs F 39.5%
+    top2                                             = cluster 20.1% vs F 42.5% -0.224 [-0.326, -0.123] (halves 20.3%/20.0%); hits 20.4% vs F 39.5%
+    top2 if p2/p1 >= r else top1 (r {0.6: 39, 0.5: 135}) = cluster 16.1% vs F 42.5% -0.264 [-0.369, -0.160] (halves 15.9%/16.2%); hits 18.0% vs F 39.5%
+    top2 if warmer and p2/p1 >= r (r {0.5: 174})     = cluster 24.1% vs F 42.5% -0.184 [-0.288, -0.079] (halves 24.6%/23.8%); hits 22.2% vs F 39.5%
+    F, to top2's side if top1 = F and p2/p1 >= r (r {0.8: 147, 1.01: 13, 0.6: 14}) = cluster 41.4% vs F 42.5% -0.011 [-0.039, +0.016] (halves 43.5%/40.0%); hits 40.7% vs F 39.5%
+    F+1 if top1 = F, top2 warmer, p2/p1 >= r (r {0.6: 139, 0.8: 35}) = cluster 43.1% vs F 42.5% +0.006 [-0.019, +0.031] (halves 44.9%/41.9%); hits 40.7% vs F 39.5%
+
+(47B) history known at the listing
+  ladder centre + station history - F    available 174; direction on  73 one-off picks 64.4% (base 69.9%)
+  recent 3-day truth - F                 available 227; direction on  96 one-off picks 41.7% (base 65.6%)
+  recent 7-day truth - F                 available 227; direction on  96 one-off picks 41.7% (base 65.6%)
+  trend (last 3 - 4 before)              available 227; direction on  94 one-off picks 44.7% (base 67.0%)
+  cluster's own past error               available 114; direction on  41 one-off picks 34.1% (base 73.2%)
+    bucket(ladder centre + station history)          = cluster 32.8% vs F 47.7% -0.149 [-0.249, -0.050] (halves 36.4%/29.9%); hits 32.4% vs F 40.6%
+    bucket(recent 7-day truth)                       = cluster 17.2% vs F 45.8% -0.286 [-0.369, -0.204] (halves 12.9%/20.1%); hits 16.9% vs F 39.0%
+    bucket(F + cluster's own past error)             = cluster 33.3% vs F 46.5% -0.132 [-0.230, -0.033] (halves 35.3%/33.0%); hits 37.1% vs F 43.8%
+  money centre - F on the history features: coefficients per C ladder centre + station history - F +0.17, recent 3-day truth - F -0.07, recent 7-day truth - F -0.08, trend (last 3 - 4 before) +0.01, cluster's own past error +0.13; centre MAE 0.755 vs F 0.809; = first pick 46.7% vs F 45.8% +0.009 [-0.065, +0.083]
+
+(47C) F+1 if top1 = F's bucket, top2 warmer, p2/p1 >= r -- fixed r
+  ENS@F    r 0.5: fires  50/174 (there pick F+1 50%, F 32%); = cluster 47.7% vs F 42.5% +0.052 [-0.020, +0.124]; halves 52.2% vs 43.5% / 44.8% vs 41.9%; early 53.7% vs 48.1%; truth hits 43.1% vs 39.5% +0.036 [-0.034, +0.106]
+  ENS@F    r 0.6: fires  46/174 (there pick F+1 50%, F 35%); = cluster 46.6% vs F 42.5% +0.040 [-0.030, +0.111]; halves 50.7% vs 43.5% / 43.8% vs 41.9%; early 50.0% vs 48.1%; truth hits 42.5% vs 39.5% +0.030 [-0.037, +0.097]
+  ENS@F    r 0.7: fires  34/174 (there pick F+1 59%, F 24%); = cluster 49.4% vs F 42.5% +0.069 [+0.009, +0.129]; halves 53.6% vs 43.5% / 46.7% vs 41.9%; early 53.7% vs 48.1%; truth hits 43.1% vs 39.5% +0.036 [-0.024, +0.096]
+  ENS@F    r 0.8: fires  23/174 (there pick F+1 52%, F 22%); = cluster 46.6% vs F 42.5% +0.040 [-0.006, +0.087]; halves 49.3% vs 43.5% / 44.8% vs 41.9%; early 48.1% vs 48.1%; truth hits 44.3% vs 39.5% +0.048 [-0.002, +0.098]
+  ENS@F    r 0.9: fires  14/174 (there pick F+1 57%, F 21%); = cluster 45.4% vs F 42.5% +0.029 [-0.009, +0.066]; halves 47.8% vs 43.5% / 43.8% vs 41.9%; early 46.3% vs 48.1%; truth hits 41.3% vs 39.5% +0.018 [-0.021, +0.057]
+  P0first  r 0.5: fires  47/223 (there pick F+1 49%, F 34%); = cluster 48.9% vs F 45.7% +0.031 [-0.023, +0.086]; halves 50.0% vs 51.1% / 48.1% vs 42.1%; early 54.8% vs 54.8%; truth hits 34.7% vs 39.0% -0.042 [-0.097, +0.012]
+  P0first  r 0.6: fires  34/223 (there pick F+1 44%, F 35%); = cluster 47.1% vs F 45.7% +0.013 [-0.032, +0.059]; halves 51.1% vs 51.1% / 44.4% vs 42.1%; early 53.8% vs 54.8%; truth hits 35.2% vs 39.0% -0.038 [-0.084, +0.009]
+  P0first  r 0.7: fires  24/223 (there pick F+1 38%, F 33%); = cluster 46.2% vs F 45.7% +0.004 [-0.032, +0.041]; halves 48.9% vs 51.1% / 44.4% vs 42.1%; early 51.6% vs 54.8%; truth hits 37.1% vs 39.0% -0.019 [-0.058, +0.020]
+  P0first  r 0.8: fires  16/223 (there pick F+1 50%, F 31%); = cluster 47.1% vs F 45.7% +0.013 [-0.018, +0.045]; halves 50.0% vs 51.1% / 45.1% vs 42.1%; early 52.7% vs 54.8%; truth hits 38.0% vs 39.0% -0.009 [-0.041, +0.022]
+  P0first  r 0.9: fires   7/223 (there pick F+1 43%, F 29%); = cluster 46.2% vs F 45.7% +0.004 [-0.015, +0.024]; halves 51.1% vs 51.1% / 42.9% vs 42.1%; early 54.8% vs 54.8%; truth hits 39.4% vs 39.0% +0.005 [-0.016, +0.025]
+  P0       r 0.5: fires  20/81 (there pick F+1 30%, F 55%); = cluster 35.8% vs F 42.0% -0.062 [-0.161, +0.038]; halves 36.0% vs 36.0% / 35.7% vs 44.6%; early 66.7% vs 66.7%; truth hits 37.3% vs 36.0% +0.013 [-0.081, +0.108]
+  P0       r 0.6: fires  14/81 (there pick F+1 36%, F 43%); = cluster 40.7% vs F 42.0% -0.012 [-0.093, +0.068]; halves 36.0% vs 36.0% / 42.9% vs 44.6%; early 66.7% vs 66.7%; truth hits 34.7% vs 36.0% -0.013 [-0.092, +0.065]
+  P0       r 0.7: fires  10/81 (there pick F+1 40%, F 30%); = cluster 43.2% vs F 42.0% +0.012 [-0.052, +0.076]; halves 32.0% vs 36.0% / 48.2% vs 44.6%; early 66.7% vs 66.7%; truth hits 34.7% vs 36.0% -0.013 [-0.082, +0.056]
+  P0       r 0.8: fires   9/81 (there pick F+1 44%, F 33%); = cluster 43.2% vs F 42.0% +0.012 [-0.052, +0.076]; halves 32.0% vs 36.0% / 48.2% vs 44.6%; early 66.7% vs 66.7%; truth hits 36.0% vs 36.0% +0.000 [-0.064, +0.064]
+  P0       r 0.9: fires   8/81 (there pick F+1 50%, F 25%); = cluster 44.4% vs F 42.0% +0.025 [-0.035, +0.084]; halves 36.0% vs 36.0% / 48.2% vs 44.6%; early 66.7% vs 66.7%; truth hits 36.0% vs 36.0% +0.000 [-0.064, +0.064]
