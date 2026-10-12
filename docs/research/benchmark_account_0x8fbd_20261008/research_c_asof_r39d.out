@@ -1,0 +1,3 @@
+research C, station bias through event-2 (look-ahead) vs event-4 (strict), 440 station-days at +1 h:
+   hit: lag2 0.345  lag4 0.325  paired -0.020 [-0.044, +0.003]
+   = cluster first YES at its fill (179): lag2 0.508  lag4 0.492  paired -0.017 [-0.053, +0.020]

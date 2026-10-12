@@ -1,0 +1,5 @@
+== +1 h, B GFS hourly vs A production: 439 station-days, F bucket differs on 57
+   hit: A production 0.349  B GFS hourly 0.328  paired -0.021 [-0.048, +0.007]
+   = cluster first YES (178): A production 0.404  B GFS hourly 0.388  paired -0.017 [-0.062, +0.029]
+
+== GFS alone, same run (428 station-days): hourly max - 3-hourly max mean +0.23 C (median +0.14, >=1 C on 2%); truth - max: 3-hourly mean +0.88 MAE 1.68, hourly mean +0.66 MAE 1.61

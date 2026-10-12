@@ -1,0 +1,12 @@
+all ten                                    n=179  = cluster 0.492  hit 0.380
+native families (7)                        n=179  = cluster 0.503  hit 0.374   vs all ten +0.011 [-0.042, +0.065]
+without gfs_global                         n=179  = cluster 0.480  hit 0.352   vs all ten -0.011 [-0.060, +0.038]
+without icon_global                        n=179  = cluster 0.475  hit 0.330   vs all ten -0.017 [-0.076, +0.042]
+without ecmwf_ifs025                       n=179  = cluster 0.503  hit 0.341   vs all ten +0.011 [-0.040, +0.063]
+without gem_global                         n=179  = cluster 0.547  hit 0.369   vs all ten +0.056 [+0.002, +0.110]
+without ukmo_global_deterministic_10km     n=179  = cluster 0.492  hit 0.391   vs all ten +0.000 [-0.038, +0.038]
+without ecmwf_aifs025_single               n=179  = cluster 0.497  hit 0.374   vs all ten +0.006 [-0.023, +0.035]
+without meteofrance_arpege_world           n=179  = cluster 0.514  hit 0.352   vs all ten +0.022 [-0.038, +0.082]
+without jma_gsm                            n=179  = cluster 0.497  hit 0.346   vs all ten +0.006 [-0.045, +0.056]
+without cma_grapes_global                  n=179  = cluster 0.497  hit 0.380   vs all ten +0.006 [-0.013, +0.025]
+without ncep_aigfs025                      n=179  = cluster 0.469  hit 0.341   vs all ten -0.022 [-0.069, +0.024]
