@@ -467,28 +467,24 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
 #: operator switches it on.
 PAIR_MAKER_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": False,
-    "rule": "post_only_pair_mode_at_formation_v1",
-    # Any YES fill plus any NO fill costs at most this (a quote ceiling).
+    "rule": "post_only_pair_bid_plus_one_lead_follow_v2",
+    # Any completed pair costs at most this (a quote ceiling).
     "pair_cost_cap": 0.95,
-    # YES rungs at mid - quote_offset - o, NO rungs at cap - (mid - quote_offset) - o.
-    "quote_offset": 0.05,
-    "rung_offsets": [0.0, 0.02, 0.05],
+    # User 10-13 「允许先用买一+1积累单边」: the side that rests at its best bid + 1
+    # tick first; the other completes pairs under the lead's average cost.
+    "lead_side": "YES",
     "rung_shares": 5.0,
-    # A rung lives ``rung_hours`` (GTD) and is re-posted on the standing mid
-    # while unfilled, inside ``quote_window_hours`` from formation and never
-    # past the settlement line (user 10-13 「可以重挂」; the backtest's 3-12 h
-    # windows were positive, 24 h fell to +8%).
-    "rung_hours": 6.0,
+    # Rungs re-priced by re-posting: each lives this long (user 「尽可能的提高吞吐」).
+    "rung_minutes": 15.0,
     "quote_window_hours": 12.0,
     "min_hours_to_settlement": 36.0,
-    # User 10-13 「全可以做」: C and F stations.
     "units": ["C", "F"],
-    # User 10-13 「尽量控制未配平比例」: the heavier side posts nothing while
-    # |YES - NO| / (YES + NO) is at this, or its unmatched cost at the next.
-    "max_unmatched_ratio": 0.5,
-    "max_unmatched_usdc": 6.0,
+    # The single-station MVP (user 10-13 「先用单站点进行mvp最小单元测试」); [] is every station.
+    "stations": ["LEMD"],
     "formation_mid_sum": [0.7, 1.4],
     "ask_min_shares": 5.0,
+    # The lead's unmatched cost stops accumulating at this.
+    "max_unmatched_usdc": 6.0,
     "max_station_day_usdc": 15.0,
     "max_cash_fraction": 0.2,
     "max_new_plans_per_pass": 10,

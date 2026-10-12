@@ -11,22 +11,18 @@ User rulings 2026-10-12/13: a YES+NO pair lane, post-only only, pair cost under
 * Where: the market's mode bucket at formation (the largest mid; the lower
   bucket on a tie), one bucket a station-day, C and F stations (user 10-13
   「全可以做」).
-* What: slots (side, k) -- YES at ``m - d - o_k`` and NO at
-  ``PC - (m - d) - o_k`` on the STANDING mid ``m`` of the plan's bucket, with
-  ``d = quote_offset`` and ``o = rung_offsets`` -- each refilled until it has
-  filled ``rung_shares``: a rung lives ``rung_hours`` (GTD) and, unfilled, is
-  re-posted on the book that stands (user 10-13 「可以重挂」) inside
-  ``quote_window_hours`` from formation and never past the
-  ``min_hours_to_settlement`` line.  ``PC`` (``pair_cost_cap``, 0.95) is a
-  quote ceiling: a YES rung is priced at most ``PC - max(avg NO held, dearest
-  NO resting)`` and the mirror for NO, so a pair costs at most ``PC`` against
-  what the other side holds or rests.  A rung must be post-only legal on the
-  standing book or it is not posted.
-* Unmatched (user 10-13 「尽量控制未配平比例」): the heavier side posts nothing
-  while ``|YES - NO| / (YES + NO)`` is at ``max_unmatched_ratio`` or its
-  unmatched cost at ``max_unmatched_usdc``; the lighter side keeps quoting to
-  complete pairs.  A single side still held at the end is held to
-  settlement (the mode's NO allowed by the ruling).
+* What (rule v2, user 10-13 「允许先用买一+1积累单边，成交后动态计算成本，另一个必须在
+  这个成本下」「尽可能的提高吞吐」): the lead side (``lead_side``, YES) rests one
+  post-only rung at its own best bid + 1 tick and accumulates while its
+  unmatched cost is under ``max_unmatched_usdc``; once it holds more than the
+  follow side, the follow side rests one rung for the unmatched shares at
+  min(its best bid + 1 tick, ``pair_cost_cap`` - the lead's average cost), so
+  every completed pair costs at most the cap (0.95, a quote ceiling).  Each
+  side is also capped against the other side's dearest resting rung.  Rungs
+  live ``rung_minutes`` (GTD) and are re-priced by re-posting on the next
+  pass -- throughput -- inside ``quote_window_hours`` from formation and
+  never past the ``min_hours_to_settlement`` line.  ``stations`` limits the
+  lane to an allowlist (the single-station MVP).
 * Budget: filled plus resting cost a station-day at most
   ``max_station_day_usdc``; the lane's resting rungs at most
   ``max_cash_fraction`` of the free cash.
@@ -66,7 +62,7 @@ from .tiebreak_lane import resting_order_fields
 
 LANE = LANE_PAIR_MAKER
 LANE_TITLE = "配对挂单线"
-RULE = "post_only_pair_mode_at_formation_v1"
+RULE = "post_only_pair_bid_plus_one_lead_follow_v2"
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "pair_maker_lane_plan_v1"
 EXECUTION_CANDIDATE = "MAKER"
@@ -157,32 +153,6 @@ def _floor_tick(price: float, tick: float) -> float:
     return round(steps * tick, decimals)
 
 
-def ladder(form: Mapping[str, Any], cfg: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """The two static post-only ladders against the formation mid.
-
-    Rung k: YES at ``m - d - o_k``, NO at ``PC - (m - d) - o_k``, each floored
-    to the tick (flooring only lowers a price, so the pair cap still holds),
-    dropped when not post-only legal on the book or not a positive price.
-    Ordered shallow first, alternating sides, so a budget cut drops the deepest.
-    """
-
-    pc, d = float(cfg["pair_cost_cap"]), float(cfg["quote_offset"])
-    tick = float(form["tick"])
-    m, bid, ask = float(form["mid"]), float(form["bid"]), float(form["ask"])
-    rungs: list[dict[str, Any]] = []
-    for k, off in enumerate(float(o) for o in cfg["rung_offsets"]):
-        yes = _floor_tick(m - d - off, tick)
-        no = _floor_tick(pc - (m - d) - off, tick)
-        # A rung exactly one tick inside the book is legal: compare with a
-        # tolerance below the tick, never with raw floats.
-        eps = tick / 10.0
-        if tick - eps <= yes <= ask - tick + eps:
-            rungs.append({"side": SIDE_YES, "k": k, "price": yes})
-        if tick - eps <= no <= (1.0 - bid) - tick + eps:
-            rungs.append({"side": SIDE_NO, "k": k, "price": no})
-    return rungs
-
-
 def _shares(price: float, cfg: Mapping[str, Any], min_size: float) -> float:
     shares = max(float(cfg["rung_shares"]), float(min_size))
     floor_usdc = EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC if CHARTER_83_MIN_NOTIONAL == "on" else 0.0
@@ -257,11 +227,15 @@ def _candidates(conn: sqlite3.Connection, *, now_utc: str, cfg: Mapping[str, Any
     ).fetchall()
     planned = {(str(s), str(d)) for s, d in conn.execute(f"SELECT station_id, event_date FROM {PLAN_TABLE}")}
     units = {str(u).upper()[:1] for u in cfg["units"]}
+    # The MVP (user 10-13 「先用单站点进行mvp最小单元测试」): an empty list is every station.
+    allow = {str(x).upper() for x in (cfg.get("stations") or [])}
     out = []
     for station, day, unit, zone in rows:
         if (str(station), str(day)) in planned or not zone:
             continue
         if str(unit or "").upper()[:1] not in units:
+            continue
+        if allow and str(station) not in allow:
             continue
         out.append({"station_id": str(station), "event_date": str(day), "settlement_timezone": str(zone)})
     return out
@@ -290,71 +264,86 @@ def bucket_quote(book_rows: list[Mapping[str, Any]], bucket: str, cfg: Mapping[s
     return {"bid": bid, "ask": ask, "mid": (bid + ask) / 2.0, "tick": float(row.get("price_tick_size") or 0.001)}
 
 
-def slot_plan(
+def side_quotes(quote: Mapping[str, Any]) -> dict[str, tuple[float, float]]:
+    """(bid, ask) of each side: NO is the YES book mirrored (NO bid 1 - YES ask, NO ask 1 - YES bid)."""
+
+    return {SIDE_YES: (float(quote["bid"]), float(quote["ask"])),
+            SIDE_NO: (1.0 - float(quote["ask"]), 1.0 - float(quote["bid"]))}
+
+
+def lead_follow_plan(
     plan: Mapping[str, Any], states: Mapping[str, Mapping[str, Any]], quote: Mapping[str, Any], cfg: Mapping[str, Any],
     *, min_size: float,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """The rungs to (re)post now on one plan, and why the others are not.
+    """The rungs to post now (user 10-13 「允许先用买一+1积累单边，成交后动态计算成本，另一个必须在这个成本下」).
 
-    Each slot (side, k) is refilled until it has filled ``rung_shares``.  The
-    price is the slot's ladder price on the standing mid, capped so the pair
-    cost holds against what the other side already HOLDS (its average) and
-    what it has RESTING (its dearest rung): YES <= cap - max(avg NO held,
-    dearest NO resting), and the mirror for NO.  The heavier side posts
-    nothing while the unmatched ratio is at ``max_unmatched_ratio`` or its
-    unmatched cost at ``max_unmatched_usdc``; the lighter side keeps quoting
-    to complete pairs.  A price that would cross the book is not posted.
+    Lead side (``lead_side``): one rung at its own best bid + 1 tick while no
+    lead rung rests and the lead's unmatched cost is under
+    ``max_unmatched_usdc``.  Follow side: once the lead holds more shares
+    than the follow, one rung for the unmatched shares at
+    min(follow's best bid + 1 tick, cap - lead's average cost), so every pair
+    it completes costs at most the cap.  Both are capped against the other
+    side's DEAREST RESTING rung as well (cap - that price), so a fill on
+    either side next to a resting rung on the other never prices a pair over
+    the cap.  Post-only legal (under the side's own ask) and floored to the
+    tick, or not posted.
     """
 
-    pc, d = float(cfg["pair_cost_cap"]), float(cfg["quote_offset"])
-    tick, m = float(quote["tick"]), float(quote["mid"])
+    pc, tick = float(cfg["pair_cost_cap"]), float(quote["tick"])
     eps = tick / 10.0
+    lead = str(cfg["lead_side"]).upper()
+    if lead not in (SIDE_YES, SIDE_NO):
+        raise ValueError(f"pair_maker_lead_side_unknown:{lead}")
+    follow = SIDE_NO if lead == SIDE_YES else SIDE_YES
     held = {SIDE_YES: [0.0, 0.0], SIDE_NO: [0.0, 0.0]}
-    resting_max = {SIDE_YES: 0.0, SIDE_NO: 0.0}
-    by_slot: dict[tuple[str, int], dict[str, Any]] = {}
+    resting = {SIDE_YES: [], SIDE_NO: []}
     for rung in plan.get("rungs") or []:
         st = states.get(rung.get("intent_id") or "", {})
-        side, k = str(rung["side"]), int(rung["k"])
+        side = str(rung["side"])
         held[side][0] += float(st.get("filled", 0.0))
         held[side][1] += float(st.get("notional", 0.0))
-        slot = by_slot.setdefault((side, k), {"filled": 0.0, "open": False})
-        slot["filled"] += float(st.get("filled", 0.0))
         if st.get("open"):
-            slot["open"] = True
-            resting_max[side] = max(resting_max[side], float(rung["price"]))
-    avg = {side: (held[side][1] / held[side][0] if held[side][0] > 0 else 0.0) for side in held}
-    y_sh, n_sh = held[SIDE_YES][0], held[SIDE_NO][0]
-    heavy = SIDE_YES if y_sh > n_sh else SIDE_NO if n_sh > y_sh else None
-    blocked: str | None = None
-    if heavy is not None:
-        gap = abs(y_sh - n_sh)
-        ratio = gap / (y_sh + n_sh)
-        if ratio >= float(cfg["max_unmatched_ratio"]) - 1e-9 or gap * avg[heavy] >= float(cfg["max_unmatched_usdc"]) - 1e-9:
-            blocked = heavy
+            resting[side].append(float(rung["price"]))
+    avg = {side: (held[side][1] / held[side][0] if held[side][0] > 0 else None) for side in held}
+    books = side_quotes(quote)
     status: dict[str, Any] = {"held": {k: round(v[0], 4) for k, v in held.items()},
-                              "avg": {k: round(v, 4) for k, v in avg.items()}, "blocked_side": blocked}
+                              "avg": {k: (round(v, 4) if v is not None else None) for k, v in avg.items()},
+                              "resting": {k: sorted(v) for k, v in resting.items()}, "lead": lead}
     out: list[dict[str, Any]] = []
-    caps = {SIDE_YES: pc - max(avg[SIDE_NO], resting_max[SIDE_NO]),
-            SIDE_NO: pc - max(avg[SIDE_YES], resting_max[SIDE_YES])}
-    target = float(cfg["rung_shares"])
-    for k, off in enumerate(float(o) for o in cfg["rung_offsets"]):
-        for side in (SIDE_YES, SIDE_NO):
-            slot = by_slot.get((side, k), {"filled": 0.0, "open": False})
-            if slot["open"]:
-                continue
-            remaining = round(target - slot["filled"], SHARE_PRECISION)
-            if remaining < float(min_size) - 1e-9:
-                continue
-            if side == blocked:
-                status.setdefault("skipped", []).append(f"{side}{k}:unmatched_cap")
-                continue
-            ladder_price = (m - d - off) if side == SIDE_YES else (pc - (m - d) - off)
-            price = _floor_tick(min(ladder_price, caps[side] - off), tick)
-            limit = (float(quote["ask"]) - tick) if side == SIDE_YES else (1.0 - float(quote["bid"]) - tick)
-            if not (tick - eps <= price <= limit + eps):
-                status.setdefault("skipped", []).append(f"{side}{k}:crosses_or_floor")
-                continue
-            out.append({"side": side, "k": k, "price": price, "shares": remaining})
+
+    def price_for(side: str, ceiling: float) -> float | None:
+        bid, ask = books[side]
+        price = _floor_tick(min(bid + tick, ceiling), tick)
+        if not (tick - eps <= price <= ask - tick + eps):
+            return None
+        return price
+
+    other_rest = {side: max(resting[other], default=0.0) for side, other in ((lead, follow), (follow, lead))}
+    unmatched_lead = held[lead][0] - held[follow][0]
+    # Lead: accumulate while its unmatched cost stays under the cap.
+    lead_cost = max(0.0, unmatched_lead) * (avg[lead] or 0.0)
+    if resting[lead]:
+        status["lead"] = f"{lead}:resting"
+    elif lead_cost >= float(cfg["max_unmatched_usdc"]) - 1e-9:
+        status["lead"] = f"{lead}:unmatched_cap:{lead_cost:.2f}"
+    else:
+        ceiling = pc - max(avg[follow] or 0.0, other_rest[lead])
+        price = price_for(lead, ceiling)
+        if price is None:
+            status["lead"] = f"{lead}:crosses_or_floor"
+        else:
+            out.append({"side": lead, "k": 0, "price": price, "shares": float(cfg["rung_shares"])})
+    # Follow: complete the pairs under the lead's cost.
+    need = round(unmatched_lead, SHARE_PRECISION)
+    if need >= float(min_size) - 1e-9 and not resting[follow]:
+        ceiling = pc - max(avg[lead] or 0.0, other_rest[follow])
+        price = price_for(follow, ceiling)
+        if price is None:
+            status["follow"] = f"{follow}:crosses_or_floor:{ceiling:.3f}"
+        else:
+            out.append({"side": follow, "k": 1, "price": price, "shares": need})
+    elif resting[follow]:
+        status["follow"] = f"{follow}:resting"
     return out, status
 
 
@@ -420,14 +409,14 @@ def execute_pair_maker(
 
     def requote(plan: dict[str, Any], quote: Mapping[str, Any], hours: float | None) -> None:
         nonlocal budget
-        rest_end = min(_utc(plan["window_ends_utc"]), now + timedelta(hours=float(cfg["rung_hours"])))
+        rest_end = min(_utc(plan["window_ends_utc"]), now + timedelta(minutes=float(cfg["rung_minutes"])))
         if hours is not None:
             rest_end = min(rest_end, now + timedelta(hours=float(hours) - float(cfg["min_hours_to_settlement"])))
         if (rest_end - now).total_seconds() < VENUE_GTD_MINIMUM_HORIZON_SECONDS + GTD_SIGNING_MARGIN_SECONDS:
             waiting["window_closing"] += 1
             return
         states = _intent_states(target_conn, [r["intent_id"] for r in plan["rungs"] if r.get("intent_id")])
-        rungs, status = slot_plan(plan, states, quote, cfg, min_size=float(plan.get("min_size") or 5.0))
+        rungs, status = lead_follow_plan(plan, states, quote, cfg, min_size=float(plan.get("min_size") or 5.0))
         plan["last_status"] = status
         spent = sum(states.get(r["intent_id"], {}).get("notional", 0.0) for r in plan["rungs"] if r.get("intent_id"))
         spent += sum(float(r["price"]) * float(r["shares"]) for r in plan["rungs"]
@@ -511,9 +500,9 @@ def execute_pair_maker(
                 "window_ends_utc": _iso(window_end), "hours_to_settlement": hours,
                 "tokens": {SIDE_YES: ids["yes_token"], SIDE_NO: ids["no_token"]},
                 "min_size": float(ids.get("min_size") or 5.0),
-                "settings": {k: cfg[k] for k in ("pair_cost_cap", "quote_offset", "rung_offsets", "rung_shares",
-                                                 "rung_hours", "quote_window_hours", "max_unmatched_ratio",
-                                                 "max_unmatched_usdc", "max_station_day_usdc", "max_cash_fraction")},
+                "settings": {k: cfg[k] for k in ("pair_cost_cap", "lead_side", "rung_shares", "rung_minutes",
+                                                 "quote_window_hours", "max_unmatched_usdc", "max_station_day_usdc",
+                                                 "max_cash_fraction", "stations")},
                 "book_id": book.get("snapshot_id"), "book_source": book.get("book_source"), "rungs": []}
         requote(plan, {"bid": form["bid"], "ask": form["ask"], "mid": form["mid"], "tick": form["tick"]}, hours)
         target_conn.execute(
@@ -529,5 +518,5 @@ def execute_pair_maker(
             "waiting": dict(sorted(waiting.items())), "receipts": receipts}
 
 
-__all__ = ["LANE", "LANE_TITLE", "PLAN_TABLE", "RULE", "bucket_quote", "execute_pair_maker", "formation", "ladder",
-           "ledger", "slot_plan"]
+__all__ = ["LANE", "LANE_TITLE", "PLAN_TABLE", "RULE", "bucket_quote", "execute_pair_maker", "formation",
+           "lead_follow_plan", "ledger", "side_quotes"]

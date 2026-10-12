@@ -32,8 +32,8 @@ def _formed_book():
 def test_the_lane_is_registered_and_off_by_default():
     assert S.LANE_PAIR_MAKER in S.KNOWN_LANES
     assert S.DEFAULT_LANES[S.LANE_PAIR_MAKER]["enabled"] is False
-    assert CFG["pair_cost_cap"] == 0.95 and CFG["rung_hours"] == 6.0 and CFG["units"] == ["C", "F"]
-    assert CFG["quote_window_hours"] == 12.0 and CFG["max_unmatched_ratio"] == 0.5
+    assert CFG["pair_cost_cap"] == 0.95 and CFG["rung_minutes"] == 15.0 and CFG["units"] == ["C", "F"]
+    assert CFG["lead_side"] == "YES" and CFG["stations"] == ["LEMD"]
     board = (ROOT / "scripts" / "calibration_dashboard.py").read_text()
     assert 'pair_maker: {name:"配对挂单线"' in board
 
@@ -55,25 +55,6 @@ def test_formation_needs_every_bucket_two_sided_and_the_mids_in_range():
 def test_a_tie_on_the_mode_takes_the_lower_bucket():
     book = [_row("18°C", 0, 0.30, 0.34), _row("19°C", 1, 0.30, 0.34), _row("20°C", 2, 0.20, 0.24)]
     assert P.formation(book, CFG)["bucket"] == "18°C"
-
-
-def test_any_yes_fill_with_any_no_fill_costs_at_most_the_cap():
-    form = P.formation(_formed_book(), CFG)
-    rungs = P.ladder(form, CFG)
-    yes = [r["price"] for r in rungs if r["side"] == "YES"]
-    no = [r["price"] for r in rungs if r["side"] == "NO"]
-    assert yes and no
-    assert max(y + n for y, n in itertools.product(yes, no)) <= 0.95 + 1e-9
-    # mid 0.42, d 0.05: YES 0.37 / 0.35 / 0.32, NO 0.58 / 0.56 / 0.53.
-    assert yes == [0.37, 0.35, 0.32] and no == [0.58, 0.56, 0.53]
-
-
-def test_a_rung_that_would_cross_the_book_is_not_posted():
-    form = {"mid": 0.42, "bid": 0.45, "ask": 0.36, "tick": 0.001}
-    rungs = P.ladder(form, CFG)
-    # YES must sit under the ask (0.36): 0.37 is dropped; NO must sit under 1 - bid = 0.55: 0.58/0.56 dropped.
-    assert [r["price"] for r in rungs if r["side"] == "YES"] == [0.35, 0.32]
-    assert [r["price"] for r in rungs if r["side"] == "NO"] == [0.53]
 
 
 def _ledger_db():
@@ -122,15 +103,16 @@ def test_a_pass_posts_the_formed_mode_once_inside_the_budget(monkeypatch):
     monkeypatch.setattr(P, "_free_cash", lambda *a, **k: (100.0, None))
     monkeypatch.setattr(P, "send_lane_buy", fake_send)
     monkeypatch.setattr(P, "_ws_manifest_root", lambda path: None)
-    cfg = {**CFG, "enabled": True}
+    cfg = {**CFG, "enabled": True, "stations": []}
     out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings=cfg)
     assert out["planned"] == 2, "C and F stations both (user 10-13 「全可以做」)"
-    assert {k["side"] for k in sent} == {"YES", "NO"}
+    # Rule v2: the first pass rests the lead (YES) at its bid + 1 only; nothing to follow yet.
+    assert {k["side"] for k in sent} == {"YES"} and {k["price"] for k in sent} == {0.401}
     assert all(k["intent_body"]["own_horizon"] is True and k["intent_body"]["post_only"] is True for k in sent)
     assert all(k["bucket"] == "20°C" for k in sent)
     sent_eglc = [k for k in sent if k["station_id"] == "EGLC"]
     assert sum(k["price"] * k["shares"] for k in sent_eglc) <= 15.0 + 1e-9
-    assert {k["token_id"] for k in sent if k["side"] == "NO"} == {"N"}
+    assert {k["token_id"] for k in sent} == {"Y"}
     # Budget: max_cash_fraction 0.2 x 100 = 20 U across the lane.
     assert sum(k["price"] * k["shares"] for k in sent) <= 20.0 + 1e-9
     rows = conn.execute("SELECT plan_state, bucket FROM pair_maker_plans").fetchall()
@@ -152,7 +134,7 @@ def test_an_unformed_book_waits(monkeypatch):
     monkeypatch.setattr(P, "_free_cash", lambda *a, **k: (100.0, None))
     monkeypatch.setattr(P, "_ws_manifest_root", lambda path: None)
     monkeypatch.setattr(P, "send_lane_buy", lambda *a, **k: pytest.fail("nothing is posted on an unformed book"))
-    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings={**CFG})
+    out = P.execute_pair_maker(conn, transport=None, now_utc=NOW, live_submit_authorized=True, settings={**CFG, "stations": []})
     assert out["planned"] == 0 and any(k.startswith("not_formed") for k in out["waiting"])
 
 
@@ -177,13 +159,6 @@ def test_the_resting_pass_leaves_an_own_horizon_rung_to_its_window():
     assert rungs == {"pairmk_a": False, "proper_b": True}
 
 
-def test_a_rung_one_tick_inside_the_book_is_kept():
-    # EFHK 2026-10-14 10°C (live, 10-12): bid 0.53, ask 0.54, tick 0.01 -> NO limit 0.46 exactly.
-    form = {"mid": 0.535, "bid": 0.53, "ask": 0.54, "tick": 0.01}
-    no = [r["price"] for r in P.ladder(form, CFG) if r["side"] == "NO"]
-    assert no[0] == 0.46
-
-
 def _plan_with(rungs):
     return {"rungs": [{"side": s, "k": k, "price": p, "intent_id": i} for s, k, p, i in rungs]}
 
@@ -191,33 +166,62 @@ def _plan_with(rungs):
 QUOTE = {"bid": 0.40, "ask": 0.44, "mid": 0.42, "tick": 0.001}
 
 
-def test_an_unfilled_expired_slot_is_reposted_on_the_standing_mid():
-    plan = _plan_with([("YES", 0, 0.37, "a")])
-    states = {"a": {"filled": 0.0, "notional": 0.0, "open": False}}
-    moved = {"bid": 0.44, "ask": 0.48, "mid": 0.46, "tick": 0.001}
-    rungs, _status = P.slot_plan(plan, states, moved, CFG, min_size=5.0)
-    yes0 = next(r for r in rungs if r["side"] == "YES" and r["k"] == 0)
-    assert yes0["price"] == 0.41 and yes0["shares"] == 5.0
-    # A slot that has filled its target, or still rests, is left alone.
-    states = {"a": {"filled": 5.0, "notional": 1.85, "open": False}}
-    assert not any(r["side"] == "YES" and r["k"] == 0 for r in P.slot_plan(plan, states, moved, CFG, min_size=5.0)[0])
 
 
-def test_the_pair_cap_holds_against_what_the_other_side_holds():
-    # 5 YES held at 0.45 average: no NO rung may be priced over 0.95 - 0.45 = 0.50.
-    plan = _plan_with([("YES", 0, 0.45, "a")])
-    states = {"a": {"filled": 5.0, "notional": 2.25, "open": False}}
-    rungs, _ = P.slot_plan(plan, states, {"bid": 0.30, "ask": 0.34, "mid": 0.32, "tick": 0.001}, CFG, min_size=5.0)
-    no = [r["price"] for r in rungs if r["side"] == "NO"]
-    assert no and max(no) <= 0.50 + 1e-9
+def _plan_with(rungs):
+    return {"rungs": [{"side": s, "k": k, "price": p, "intent_id": i} for s, k, p, i in rungs]}
 
 
-def test_the_heavier_side_stops_at_the_unmatched_cap_and_the_lighter_keeps_pairing():
-    plan = _plan_with([("YES", 0, 0.37, "a"), ("YES", 1, 0.35, "b")])
-    states = {"a": {"filled": 5.0, "notional": 1.85, "open": False},
-              "b": {"filled": 5.0, "notional": 1.75, "open": False}}
-    rungs, status = P.slot_plan(plan, states, QUOTE, CFG, min_size=5.0)
-    assert status["blocked_side"] == "YES"
-    assert {r["side"] for r in rungs} == {"NO"}
-    # NO is capped by the YES average 0.36: 0.95 - 0.36 = 0.59, and the ladder's own 0.58 is under it.
-    assert max(r["price"] for r in rungs) <= 0.59 + 1e-9
+QUOTE = {"bid": 0.44, "ask": 0.49, "mid": 0.465, "tick": 0.001}
+
+
+def test_the_lead_rests_at_its_bid_plus_one_and_nothing_follows_before_a_fill():
+    rungs, status = P.lead_follow_plan(_plan_with([]), {}, QUOTE, CFG, min_size=5.0)
+    assert rungs == [{"side": "YES", "k": 0, "price": 0.441, "shares": 5.0}]
+    assert "follow" not in status
+
+
+def test_after_a_lead_fill_the_follow_is_priced_under_the_leads_cost():
+    # 5 YES filled at 0.441 -> NO at min(NO bid + 1 = 0.511, 0.95 - 0.441 = 0.509) = 0.509.
+    plan = _plan_with([("YES", 0, 0.441, "a")])
+    states = {"a": {"filled": 5.0, "notional": 2.205, "open": False}}
+    rungs, _ = P.lead_follow_plan(plan, states, QUOTE, CFG, min_size=5.0)
+    follow = next(r for r in rungs if r["side"] == "NO")
+    assert follow["price"] == 0.509 and follow["shares"] == 5.0
+    lead = next(r for r in rungs if r["side"] == "YES")
+    assert lead["price"] == 0.441, "the lead keeps accumulating under its unmatched cap"
+
+
+def test_on_a_wide_book_the_follow_takes_its_own_bid_plus_one():
+    plan = _plan_with([("YES", 0, 0.30, "a")])
+    states = {"a": {"filled": 5.0, "notional": 1.50, "open": False}}
+    wide = {"bid": 0.30, "ask": 0.42, "mid": 0.36, "tick": 0.001}
+    rungs, _ = P.lead_follow_plan(plan, states, wide, CFG, min_size=5.0)
+    # NO bid = 1 - 0.42 = 0.58 -> 0.581, under the cap 0.95 - 0.30 = 0.65.
+    assert next(r for r in rungs if r["side"] == "NO")["price"] == 0.581
+
+
+def test_the_lead_stops_at_its_unmatched_cost_cap():
+    plan = _plan_with([("YES", 0, 0.44, "a"), ("YES", 0, 0.44, "b"), ("YES", 0, 0.44, "c")])
+    states = {i: {"filled": 5.0, "notional": 2.2, "open": False} for i in "abc"}
+    rungs, status = P.lead_follow_plan(plan, states, QUOTE, CFG, min_size=5.0)
+    assert not any(r["side"] == "YES" for r in rungs) and status["lead"].startswith("YES:unmatched_cap")
+    assert next(r for r in rungs if r["side"] == "NO")["shares"] == 15.0
+
+
+def test_a_lead_fill_beside_a_resting_follow_never_prices_a_pair_over_the_cap():
+    # NO rests at 0.52: the lead may not bid over 0.95 - 0.52 = 0.43, even though its bid + 1 is 0.441.
+    plan = _plan_with([("NO", 1, 0.52, "n")])
+    states = {"n": {"filled": 0.0, "notional": 0.0, "open": True}}
+    rungs, _ = P.lead_follow_plan(plan, states, QUOTE, CFG, min_size=5.0)
+    assert next(r for r in rungs if r["side"] == "YES")["price"] == 0.43
+
+
+def test_the_mvp_runs_on_its_one_station(monkeypatch):
+    conn = _ledger_db()
+    conn.execute("CREATE TABLE basket_target_market_registry (station_id TEXT, event_date TEXT,"
+                 " settlement_unit TEXT, settlement_timezone TEXT)")
+    P.ensure_lane_schema(conn)
+    for st in ("LEMD", "EGLC"):
+        conn.execute("INSERT INTO basket_target_market_registry VALUES (?, '2026-10-15', 'C', 'Europe/Madrid')", (st,))
+    assert [c["station_id"] for c in P._candidates(conn, now_utc=NOW, cfg=CFG)] == ["LEMD"]
