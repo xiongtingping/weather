@@ -1,0 +1,26 @@
+227 picks, event days 2026-09-24..2026-10-11
+F: = cluster 45.8%; money centre - F sd 1.16, MAE 0.81 C
+station day3 raw         n 227: = cluster 28.6% vs F 45.8% -0.172 [-0.259, -0.084]; halves 32.3%/26.1%; early 36.5% vs F 55.2% (n 96); hits 26.8% vs F 39.0%; centre gap mean +0.48 sd 1.50 MAE 1.20
+station day3 +c          n 227: = cluster 27.8% vs F 45.8% -0.181 [-0.267, -0.095]; halves 33.3%/23.9%; early 35.4% vs F 55.2% (n 96); hits 25.8% vs F 39.0%; centre gap mean +0.49 sd 1.51 MAE 1.21
+station day3 +c+0.5bias  n 227: = cluster 29.1% vs F 45.8% -0.167 [-0.252, -0.083]; halves 37.6%/23.1%; early 37.5% vs F 55.2% (n 96); hits 31.5% vs F 39.0%; centre gap mean +0.50 sd 1.36 MAE 1.08
+station day3 +c+bias     n 227: = cluster 32.2% vs F 45.8% -0.137 [-0.219, -0.054]; halves 39.8%/26.9%; early 38.5% vs F 55.2% (n 96); hits 31.9% vs F 39.0%; centre gap mean +0.51 sd 1.36 MAE 1.07
+station day2 raw         n 227: = cluster 30.4% vs F 45.8% -0.154 [-0.241, -0.067]; halves 33.3%/28.4%; early 32.3% vs F 55.2% (n 96); hits 23.5% vs F 39.0%; centre gap mean +0.54 sd 1.47 MAE 1.18
+station day2 +c          n 227: = cluster 31.3% vs F 45.8% -0.145 [-0.233, -0.058]; halves 33.3%/29.9%; early 33.3% vs F 55.2% (n 96); hits 24.9% vs F 39.0%; centre gap mean +0.46 sd 1.47 MAE 1.14
+station day2 +c+0.5bias  n 227: = cluster 33.0% vs F 45.8% -0.128 [-0.211, -0.044]; halves 37.6%/29.9%; early 37.5% vs F 55.2% (n 96); hits 34.3% vs F 39.0%; centre gap mean +0.46 sd 1.33 MAE 1.00
+station day2 +c+bias     n 227: = cluster 34.8% vs F 45.8% -0.110 [-0.193, -0.027]; halves 35.5%/34.3%; early 36.5% vs F 55.2% (n 96); hits 35.7% vs F 39.0%; centre gap mean +0.46 sd 1.36 MAE 1.04
+station day1 raw         n 227: = cluster 26.4% vs F 45.8% -0.194 [-0.280, -0.107]; halves 30.1%/23.9%; early 27.1% vs F 55.2% (n 96); hits 26.3% vs F 39.0%; centre gap mean +0.55 sd 1.55 MAE 1.26
+station day1 +c          n 227: = cluster 31.3% vs F 45.8% -0.145 [-0.234, -0.057]; halves 33.3%/29.9%; early 30.2% vs F 55.2% (n 96); hits 31.9% vs F 39.0%; centre gap mean +0.33 sd 1.54 MAE 1.18
+station day1 +c+0.5bias  n 227: = cluster 37.4% vs F 45.8% -0.084 [-0.167, -0.000]; halves 38.7%/36.6%; early 41.7% vs F 55.2% (n 96); hits 36.6% vs F 39.0%; centre gap mean +0.28 sd 1.40 MAE 1.04
+station day1 +c+bias     n 227: = cluster 37.9% vs F 45.8% -0.079 [-0.163, +0.004]; halves 31.2%/42.5%; early 43.8% vs F 55.2% (n 96); hits 36.2% vs F 39.0%; centre gap mean +0.24 sd 1.41 MAE 1.02
+city    day3 raw         n 227: = cluster 23.3% vs F 45.8% -0.225 [-0.318, -0.131]; halves 19.4%/26.1%; early 16.7% vs F 55.2% (n 96); hits 25.4% vs F 39.0%; centre gap mean +0.62 sd 1.63 MAE 1.39
+city    day3 +c          n 227: = cluster 22.0% vs F 45.8% -0.238 [-0.329, -0.147]; halves 18.3%/24.6%; early 15.6% vs F 55.2% (n 96); hits 25.4% vs F 39.0%; centre gap mean +0.55 sd 1.63 MAE 1.37
+city    day3 +c+0.5bias  n 227: = cluster 24.7% vs F 45.8% -0.211 [-0.297, -0.126]; halves 23.7%/25.4%; early 22.9% vs F 55.2% (n 96); hits 30.0% vs F 39.0%; centre gap mean +0.52 sd 1.47 MAE 1.23
+city    day3 +c+bias     n 227: = cluster 30.0% vs F 45.8% -0.159 [-0.243, -0.074]; halves 32.3%/28.4%; early 34.4% vs F 55.2% (n 96); hits 32.4% vs F 39.0%; centre gap mean +0.50 sd 1.54 MAE 1.23
+city    day2 raw         n 227: = cluster 21.1% vs F 45.8% -0.247 [-0.335, -0.159]; halves 18.3%/23.1%; early 18.8% vs F 55.2% (n 96); hits 25.4% vs F 39.0%; centre gap mean +0.68 sd 1.54 MAE 1.35
+city    day2 +c          n 227: = cluster 23.8% vs F 45.8% -0.220 [-0.308, -0.132]; halves 19.4%/26.9%; early 20.8% vs F 55.2% (n 96); hits 27.2% vs F 39.0%; centre gap mean +0.50 sd 1.53 MAE 1.26
+city    day2 +c+0.5bias  n 227: = cluster 25.6% vs F 45.8% -0.203 [-0.288, -0.117]; halves 21.5%/28.4%; early 27.1% vs F 55.2% (n 96); hits 31.0% vs F 39.0%; centre gap mean +0.46 sd 1.38 MAE 1.13
+city    day2 +c+bias     n 227: = cluster 30.0% vs F 45.8% -0.159 [-0.245, -0.072]; halves 25.8%/32.8%; early 29.2% vs F 55.2% (n 96); hits 33.3% vs F 39.0%; centre gap mean +0.43 sd 1.48 MAE 1.14
+city    day1 raw         n 227: = cluster 20.7% vs F 45.8% -0.251 [-0.339, -0.163]; halves 20.4%/20.9%; early 18.8% vs F 55.2% (n 96); hits 23.5% vs F 39.0%; centre gap mean +0.67 sd 1.70 MAE 1.43
+city    day1 +c          n 227: = cluster 25.6% vs F 45.8% -0.203 [-0.292, -0.114]; halves 24.7%/26.1%; early 19.8% vs F 55.2% (n 96); hits 28.2% vs F 39.0%; centre gap mean +0.42 sd 1.69 MAE 1.33
+city    day1 +c+0.5bias  n 227: = cluster 24.7% vs F 45.8% -0.211 [-0.297, -0.126]; halves 24.7%/24.6%; early 25.0% vs F 55.2% (n 96); hits 30.5% vs F 39.0%; centre gap mean +0.37 sd 1.47 MAE 1.16
+city    day1 +c+bias     n 227: = cluster 31.7% vs F 45.8% -0.141 [-0.227, -0.055]; halves 26.9%/35.1%; early 37.5% vs F 55.2% (n 96); hits 40.8% vs F 39.0%; centre gap mean +0.32 sd 1.46 MAE 1.12

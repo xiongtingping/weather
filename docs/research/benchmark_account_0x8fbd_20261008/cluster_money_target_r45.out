@@ -1,0 +1,48 @@
+227 of 227 picks with a ladder; fills to 1791786383; unmapped bucket labels 0
+
+(45a) the cluster's money after its first YES
+  15 min    n 227: main bucket = first pick 97.4%; F = main 44.9% (F = first pick 45.8%); F_base = main 47.1%
+            money on F's bucket 45.4%, on the first pick's 97.1%;  centre - F +0.24 C (sd 1.19, MAE 0.83); centre - F_base -0.14 (sd 1.21, MAE 0.82)
+            truth hits (n 213): main 45.1%, first pick 45.1%, F 39.0%
+            main - F: <=-2 10, -1 34, 0 102, +1 63, >=+2 18
+  1 h       n 227: main bucket = first pick 93.0%; F = main 44.1% (F = first pick 45.8%); F_base = main 47.6%
+            money on F's bucket 44.6%, on the first pick's 92.7%;  centre - F +0.24 C (sd 1.16, MAE 0.81); centre - F_base -0.14 (sd 1.19, MAE 0.79)
+            truth hits (n 213): main 46.0%, first pick 45.1%, F 39.0%
+            main - F: <=-2 9, -1 34, 0 100, +1 66, >=+2 18
+  3 h       n 227: main bucket = first pick 81.9%; F = main 39.6% (F = first pick 45.8%); F_base = main 44.9%
+            money on F's bucket 39.9%, on the first pick's 81.7%;  centre - F +0.28 C (sd 1.12, MAE 0.84); centre - F_base -0.10 (sd 1.14, MAE 0.80)
+            truth hits (n 213): main 44.1%, first pick 45.1%, F 39.0%
+            main - F: <=-2 10, -1 36, 0 90, +1 71, >=+2 20
+  pre-event n 227: main bucket = first pick 54.6%; F = main 31.3% (F = first pick 45.8%); F_base = main 35.2%
+            money on F's bucket 32.2%, on the first pick's 50.8%;  centre - F +0.32 C (sd 1.09, MAE 0.88); centre - F_base -0.06 (sd 1.12, MAE 0.84)
+            truth hits (n 213): main 39.9%, first pick 45.1%, F 39.0%
+            main - F: <=-2 8, -1 46, 0 71, +1 69, >=+2 33
+
+(45b) per wallet: its own first YES within 2 h of listing, and its own main bucket in that window, against F
+  0x8fbd7cf5: station-days 187, USDC     3083; its first YES = F 48.7%, its main bucket = F 46.5%
+  0xf4d89f7e: station-days  91, USDC      156; its first YES = F 49.5%, its main bucket = F 47.3%
+  0x7d640ebd: station-days  86, USDC      460; its first YES = F 41.9%, its main bucket = F 40.7%
+  0x0e0e8174: station-days  77, USDC      477; its first YES = F 42.9%, its main bucket = F 42.9%
+  0x7076cb96: station-days  75, USDC      483; its first YES = F 40.0%, its main bucket = F 38.7%
+  0x5bae7577: station-days  54, USDC      276; its first YES = F 38.9%, its main bucket = F 37.0%
+  0x6fdd2bda: station-days  38, USDC      741; its first YES = F 50.0%, its main bucket = F 50.0%
+  0x30200b89: station-days  37, USDC      257; its first YES = F 45.9%, its main bucket = F 45.9%
+
+(45c) the money centre (1 h window) as the target: centre - F on conditions known at the trade
+  n 227, mean offset +0.24 C, sd 1.16; in-sample R^2 0.211; per +1 sd (C):
+    dev AIFS       -0.176 [-0.623, +0.298]
+    dev IFS        +0.006 [-0.467, +0.479]
+    dev GFS        -0.173 [-0.600, +0.276]
+    dev AIGFS      +0.080 [-0.198, +0.330]
+    dev GDPS       -0.165 [-0.427, +0.207]
+    dev ICON       +0.000 [+0.000, +0.000]
+    spread         -0.123 [-0.297, +0.069]
+    skew           +0.773 [+0.075, +1.324] *
+    station corr   +0.846 [+0.637, +1.044] *
+    recal          -0.828 [-1.113, -0.540] *
+    |lat|/30       -0.017 [-0.092, +0.053]
+    F unit         +0.134 [+0.003, +0.254] *
+    position       +0.056 [-0.121, +0.218]
+  leave-one-day-out: centre MAE 0.752 vs F 0.809 vs F + mean offset 0.761 C
+  bucket(F + predicted offset) = main  50.2% (halves 52.7% / 48.5%) vs F 44.1%   +0.062 [-0.015, +0.138]
+  bucket(F + predicted offset) = first 50.2% (halves 55.9% / 46.3%) vs F 45.8%   +0.044 [-0.032, +0.120]

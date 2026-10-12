@@ -1,0 +1,48 @@
+{
+ "model": "cluster_money_centre_offset_from_F_s3_v1",
+ "features": [
+  "skew",
+  "station corr",
+  "recal",
+  "L - F",
+  "F unit"
+ ],
+ "feature_definitions": {
+  "skew": "mean - median of the corrected members (tmax_c + bias_c) in F's entry",
+  "station corr": "entry station_corr_c",
+  "recal": "entry recal_c",
+  "L - F": "centre of the ladder's interior buckets (C) - f_c",
+  "F unit": "1 for F-unit markets"
+ },
+ "mean": [
+  -0.0468667400881056,
+  0.89431718061674,
+  -0.3797929515418503,
+  -0.45177777777777794,
+  0.28634361233480177
+ ],
+ "sd": [
+  0.2898497388558024,
+  0.8568789570140867,
+  0.2987071353778641,
+  1.0267903785228492,
+  0.4520519306560458
+ ],
+ "beta_per_sd": [
+  0.37890063903920485,
+  0.46678914006260064,
+  -0.4498549297420555,
+  0.18371454358576364,
+  0.12266674710193345
+ ],
+ "intercept_c": 0.2433965424273035,
+ "fitted_on": {
+  "picks": 227,
+  "event_days": [
+   "2026-09-24",
+   "2026-10-11"
+  ],
+  "fills_to_unix": 1791786383
+ },
+ "forward_protocol": "pre-formation first YES on event days after fitted_on.event_days[1]: bucket(f_c + offset) vs the first pick and the 1 h main bucket, paired against bucket(f_c); read when >= 80 picks"
+}
