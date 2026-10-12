@@ -1,0 +1,15 @@
+runs cached 18/18 event days
+GFS station constants (sflux + lapse - archived): 47 stations, mean +0.82, sd 0.90
+
+227 picks; production F = cluster 45.8%, hits 39.0%
+  F_v3 (station values, lambda 0.5)            n 227: = cluster 46.3% vs F 45.8% +0.004 [-0.062, +0.071] halves +0.054/-0.030; hits 39.0% vs F 39.0%; mean (arm - F) +0.21 C
+  F_v3 lambda 0.3                              n 227: = cluster 41.9% vs F 45.8% -0.040 [-0.108, +0.029] halves -0.032/-0.045; hits 37.1% vs F 39.0%; mean (arm - F) +0.09 C
+  F_v3 lambda 0.75                             n 227: = cluster 55.5% vs F 45.8% +0.097 [+0.031, +0.163] halves +0.140/+0.067; hits 38.0% vs F 39.0%; mean (arm - F) +0.37 C
+  F_v3 GFS constant only (no exact sflux)      n 227: = cluster 46.3% vs F 45.8% +0.004 [-0.058, +0.067] halves +0.032/-0.015; hits 39.9% vs F 39.0%; mean (arm - F) +0.22 C
+  F_v3 with the grid-value c (over-warm)       n 227: = cluster 51.1% vs F 45.8% +0.053 [-0.027, +0.133] halves +0.075/+0.037; hits 37.1% vs F 39.0%; mean (arm - F) +0.57 C
+  F_v3 research recipe (0.8 + 0.3 bias)        n 227: = cluster 45.8% vs F 45.8% +0.000 [-0.069, +0.069] halves +0.032/-0.022; hits 40.4% vs F 39.0%; mean (arm - F) +0.20 C
+  research F (Open-Meteo ten models)           n 227: = cluster 51.5% vs F 45.8% +0.057 [-0.019, +0.134] halves +0.054/+0.060; hits 39.9% vs F 39.0%; mean (arm - F) +0.28 C
+  money centre - F = +0.88 [+0.35, +1.44] x (F_v3 (station values, lambda 0.5) - F) +0.05; R^2 0.069; n 227
+  money centre - F = +0.94 [+0.63, +1.19] x (research F (Open-Meteo ten models) - F) -0.02; R^2 0.292; n 227
+  (F_v3 - F) vs (research F - F) on 227 picks: corr 0.46, mean diff -0.06 C, sd of diff 0.60
+  fleet c re-estimated on station values: [('2026-09-24', 0.69), ('2026-09-25', 0.68), ('2026-09-26', 0.68)] ... (production c on grid values +1.04)
