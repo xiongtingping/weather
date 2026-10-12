@@ -1,0 +1,45 @@
+
+======== lead previous_day3
+  227 picks with physics
+    sunny (cloud < 30%)                      n 106: centre - F +0.41 C, truth - F +0.41 C; pick above F 38, = F 52, below 16
+    mixed                                    n  64: centre - F +0.20 C, truth - F -0.00 C; pick above F 21, = F 32, below 11
+    cloudy (> 70%)                           n  57: centre - F -0.02 C, truth - F -0.02 C; pick above F 22, = F 20, below 15
+    dry (< 0.5 mm)                           n 157: centre - F +0.34 C, truth - F +0.31 C; pick above F 57, = F 71, below 29
+    wet (>= 2 mm)                            n  38: centre - F +0.16 C, truth - F +0.08 C; pick above F 16, = F 15, below 7
+    sunnier than the week (sw anom > +40)    n 111: centre - F +0.24 C, truth - F +0.18 C; pick above F 36, = F 55, below 20
+    duller than the week (sw anom < -40)     n  49: centre - F -0.08 C, truth - F -0.14 C; pick above F 21, = F 13, below 15
+    direction by shortwave anomaly  on  96 one-off picks: 54.2% (base 65.6%)
+    direction by - cloud anomaly    on  96 one-off picks: 54.2% (base 65.6%)
+    direction by - precip anomaly   on  90 one-off picks: 57.8% (base 63.3%)
+    direction by shortwave change   on  96 one-off picks: 47.9% (base 65.6%)
+    direction by - cloud change     on  95 one-off picks: 46.3% (base 66.3%)
+    centre model [physics]: centre MAE 0.818 vs F 0.809; = first pick 45.8% vs F 45.8% +0.000 [-0.068, +0.068] (halves 50.5%/42.5%)
+      per +1 sd (C): cloud -0.16 [-0.42, +0.10], sw +0.14 [-0.03, +0.33], precip -0.06 [-0.24, +0.11], cloud_anom -0.00 [-0.25, +0.21], sw_anom +0.19 [-0.23, +0.59], precip_anom +0.28 [-0.19, +0.75], cloud_chg +0.23 [+0.08, +0.39]*, sw_chg +0.09 [-0.11, +0.27], precip_chg +0.09 [-0.15, +0.31]
+    centre model [S3 leans (no L)]: centre MAE 0.721 vs F 0.809; = first pick 52.0% vs F 45.8% +0.062 [-0.007, +0.131] (halves 62.4%/44.8%)
+    centre model [S3 leans + physics]: centre MAE 0.776 vs F 0.809; = first pick 46.7% vs F 45.8% +0.009 [-0.070, +0.088] (halves 52.7%/42.5%)
+
+======== lead previous_day2
+  227 picks with physics
+    sunny (cloud < 30%)                      n 113: centre - F +0.38 C, truth - F +0.32 C; pick above F 39, = F 55, below 19
+    mixed                                    n  59: centre - F +0.27 C, truth - F +0.16 C; pick above F 19, = F 32, below 8
+    cloudy (> 70%)                           n  55: centre - F -0.05 C, truth - F -0.07 C; pick above F 23, = F 17, below 15
+    dry (< 0.5 mm)                           n 159: centre - F +0.33 C, truth - F +0.32 C; pick above F 54, = F 78, below 27
+    wet (>= 2 mm)                            n  37: centre - F +0.18 C, truth - F +0.03 C; pick above F 16, = F 15, below 6
+    sunnier than the week (sw anom > +40)    n 110: centre - F +0.23 C, truth - F +0.19 C; pick above F 35, = F 56, below 19
+    duller than the week (sw anom < -40)     n  42: centre - F +0.03 C, truth - F -0.14 C; pick above F 18, = F 13, below 11
+    direction by shortwave anomaly  on  96 one-off picks: 54.2% (base 65.6%)
+    direction by - cloud anomaly    on  96 one-off picks: 55.2% (base 65.6%)
+    direction by - precip anomaly   on  88 one-off picks: 56.8% (base 63.6%)
+    direction by shortwave change   on  96 one-off picks: 46.9% (base 65.6%)
+    direction by - cloud change     on  95 one-off picks: 46.3% (base 66.3%)
+    centre model [physics]: centre MAE 0.808 vs F 0.809; = first pick 43.2% vs F 45.8% -0.026 [-0.092, +0.039] (halves 50.5%/38.1%)
+      per +1 sd (C): cloud -0.21 [-0.46, +0.06], sw +0.09 [-0.08, +0.27], precip -0.01 [-0.22, +0.17], cloud_anom +0.18 [-0.20, +0.49], sw_anom +0.32 [-0.06, +0.71], precip_anom +0.26 [-0.12, +0.70], cloud_chg +0.10 [-0.06, +0.25], sw_chg -0.02 [-0.27, +0.24], precip_chg +0.06 [-0.17, +0.24]
+    centre model [S3 leans (no L)]: centre MAE 0.721 vs F 0.809; = first pick 52.0% vs F 45.8% +0.062 [-0.007, +0.131] (halves 62.4%/44.8%)
+    centre model [S3 leans + physics]: centre MAE 0.766 vs F 0.809; = first pick 46.3% vs F 45.8% +0.004 [-0.073, +0.082] (halves 54.8%/40.3%)
+
+(4) physics (day3) on the truth, 717 station-days: leave one day out MAE 1.012 vs F 1.011; hits 32.9% vs F 32.9% +0.000 [-0.027, +0.027]
+
+(5) truth - F by forecast cloud (day3), every first-rows station-day vs the cluster's picks
+    sunny < 30%   all station-days n 217: truth - F +0.14 C (95% +-0.17), F hits 33.2%, F+0.4 hits 31.3%
+    mixed 30-70%  all station-days n 205: truth - F -0.02 C (95% +-0.16), F hits 35.6%, F+0.4 hits 32.2%
+    cloudy > 70%  all station-days n 295: truth - F -0.39 C (95% +-0.16), F hits 30.8%, F+0.4 hits 30.8%
