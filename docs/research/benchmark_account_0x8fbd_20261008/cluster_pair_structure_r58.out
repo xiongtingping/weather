@@ -1,0 +1,30 @@
+2662 station-day x bucket groups over 817 station-days
+groups with both sides 987 (37%), holding 57% of the cluster's buy USDC
+pair cost (share-weighted over matched shares): mean 0.890, median 0.891; share of matched shares at pair cost <= 0.95: 66%, <= 1.00: 82%
+unmatched ratio |YES - NO| / (YES + NO) in two-sided groups: median 0.64, mean 0.59; excess side YES 617 / NO 370
+maker share of shares: YES 23%, NO 24%
+
+by bucket offset from F's bucket at listing (proxy for the mode before the market forms):
+  offset groups    USDC   YES sh    NO sh two-sided pair cost excess YES locked P&L  dir. P&L P&L/USDC
+      -3    145   13025    68994     4267       19%     0.752       100%        616      -423    +1.5%
+      -2    246   36081    82432    25888       29%     0.877        76%       1527      1509    +8.4%
+      -1    512  102038   138921    96607       35%     0.912        57%       2557     16693   +18.9%
+      +0    623  146914   189126   150432       46%     0.876        50%       5604     20809   +18.0%
+      +1    511  101715   174305    87343       40%     0.895        60%       3494      2037    +5.4%
+      +2    220   32677    84322    20890       28%     0.836        82%       1558      3289   +14.8%
+      +3     75    7353    21335     5374       19%     0.857        79%        259      -111    +2.0%
+
+by bucket offset from the truth (where the money ends up):
+  truth-2: groups 343, YES sh 90838, NO sh 46397, YES share of USDC 32%
+  truth-1: groups 504, YES sh 172566, NO sh 99303, YES share of USDC 44%
+  truth+0: groups 649, YES sh 242833, NO sh 134414, YES share of USDC 54%
+  truth+1: groups 506, YES sh 179327, NO sh 76897, YES share of USDC 52%
+  truth+2: groups 330, YES sh 73871, NO sh 33790, YES share of USDC 42%
+
+trajectory (two-sided groups at the horizon): unmatched ratio and pair cost of the pairs formed so far
+    1h: groups started 481, two-sided 16 (3%); pair cost 0.795; unmatched median 0.43
+    3h: groups started 851, two-sided 40 (5%); pair cost 0.813; unmatched median 0.60
+   12h: groups started 1503, two-sided 92 (6%); pair cost 0.871; unmatched median 0.69
+  final: two-sided 987 of 2662; pair cost 0.890; unmatched median 0.64
+
+first fill minutes after listing (median by group): 504
