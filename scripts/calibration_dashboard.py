@@ -15699,6 +15699,11 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-evidence-card.sd-evidence-wide{grid-column:1/-1}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
 .sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sd-dir-change{color:var(--text);font-size:13.5px;line-height:1.6;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--c) 10%,transparent)}
+.sd-dir-change.sd-dir-fresh{background:color-mix(in srgb,var(--c) 22%,transparent)}
+.sd-dir-new{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;margin-right:6px;border-radius:8px;background:var(--c);color:var(--card)}
+.sd-dir-same{font-size:12.5px}
+.sd-dir-log{margin:6px 0;font-size:12px}
 .sd-shape-rows{display:grid;grid-template-columns:auto auto auto 1fr;gap:4px 14px;align-items:baseline;font-size:13px}
 .sd-shape-rows b{font-size:14px}
 .sd-fs-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:8px}
@@ -22216,20 +22221,47 @@ function sdTafCloudDetails(witness){
 const SD_DIR_COMPONENTS = {aifs_ens:"AIFS 集合", ifs_ens:"IFS 集合", hres:"HRES 点预报", aifs_single:"AIFS 单成员（两轮）"};
 function sdDirWord(side){ return side > 0 ? "偏暖" : side < 0 ? "偏冷" : "无方向"; }
 function sdDirColor(side){ return side > 0 ? "var(--amber)" : side < 0 ? SD_COL.P0 : "var(--muted)"; }
+// Conclusion and the latest change up front, the workings folded (user
+// 2026-10-12 「隐藏细节，突出变化」, on a card whose numbers looked fixed): the
+// snapshot carries each station-day's distinct readings (``history``, one
+// entry per change of side, M, the model's side, the modal bucket or the
+// newest run behind M); the card names what moved in the last one and when.
+function sdDirRun(t){ return t ? String(t).slice(11, 13) + "Z" : "—"; }
+function sdDirChange(last, prev){
+  if(!last) return "";
+  if(!prev) return `<div class="sd-dir-same">未变 · 记录始于 ${sdAgeSpan(last.at_utc, "sd-age")}</div>`;
+  const moved = [];
+  if(last.side !== prev.side) moved.push(`<b style="color:${sdDirColor(last.side)}">${sdDirWord(prev.side)} → ${sdDirWord(last.side)}</b>`);
+  if(last.momentum !== prev.momentum) moved.push(`M ${sdSg(prev.momentum,2)} → <b>${sdSg(last.momentum,2)}</b>`);
+  if(last.mode !== prev.mode) moved.push(`众数 ${sdEsc(prev.mode || "—")} → <b>${sdEsc(last.mode || "—")}</b>`);
+  if(last.newest_run_utc !== prev.newest_run_utc) moved.push(`新一轮 <b>${sdDirRun(last.newest_run_utc)}</b>`);
+  if(last.model_side !== prev.model_side) moved.push(`模型 ${sdDirWord(prev.model_side)} → <b>${sdDirWord(last.model_side)}</b>`);
+  const fresh = (Date.now() - new Date(last.at_utc).getTime()) < 3600e3;
+  return `<div class="sd-dir-change${fresh ? " sd-dir-fresh" : ""}">${fresh ? '<span class="sd-dir-new">新</span>' : ""}${moved.join(" · ")} · ${sdAgeSpan(last.at_utc, "sd-age")}</div>`;
+}
 function sdDirection(D, R){
   if(!D) return {color: "var(--muted)", main: `<b>无读数</b>`, body: `快照里没有这个站日。`};
   const radSide = R && R.side === "WARM" ? 1 : R && R.side === "COLD" ? -1 : 0;
   const agree = D.side && radSide ? (D.side === radSide ? "与辐射偏移同向" : "与辐射偏移反向") : "";
   const mode = D.mode || {};
-  const modeText = mode.state === "ok" ? `相对市场众数 ${sdEsc(mode.mode)}（${sdPc(mode.mode_q,0)}）` : `市场众数暂无（${sdEsc(mode.state || "—")}）`;
+  const quiet = D.momentum_quiet_below == null ? 1 : D.momentum_quiet_below;
+  const mWord = D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side);
+  const main = `<b class="sd-evidence-primary" style="color:${sdDirColor(D.side)}" title="先看 ECMWF 动量，静默时看四特征模型">${sdDirWord(D.side)}</b>`
+    + `<b title="ECMWF 动量（最新一轮减上一轮）：${sdEsc(mWord)}，|M|＜${sdN(quiet,0)} 为静默">M ${sdSg(D.momentum,2)}</b>`
+    + `<b title="市场众数桶与其概率">${mode.state === "ok" ? `众数 ${sdEsc(mode.mode)} <span class="sd-sub">${sdPc(mode.mode_q,0)}</span>` : "众数暂无"}</b>`;
+  const hist = D.history || [];
   const comps = Object.entries(D.momentum_components || {}).map(([k, c]) =>
     `${sdEsc(SD_DIR_COMPONENTS[k] || k)} ${sdSg(c.delta_c,2)}°C（${sdEsc(String(c.newest_run_init_utc || "").slice(5,16).replace("T"," "))}Z 对 ${sdEsc(String(c.older_run_init_utc || "").slice(5,16).replace("T"," "))}Z）`).join("；");
   const X = D.physics || {};
-  const quiet = D.momentum_quiet_below == null ? 1 : D.momentum_quiet_below;
-  const main = `<b class="sd-evidence-primary" style="color:${sdDirColor(D.side)}" title="先看 ECMWF 动量，静默时看四特征模型">${sdDirWord(D.side)}</b><b>${modeText}</b>${agree ? `<b>${agree}</b>` : ""}`;
-  const body = `<div>ECMWF 动量 M ${sdSg(D.momentum,2)}（${D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side)}，|M|＜${sdN(quiet,0)} 为静默）${comps ? " · " + comps : ""}</div>
+  const log = hist.slice().reverse().map(h =>
+    `<tr><td>${sdLocal(h.at_utc,true)}</td><td style="color:${sdDirColor(h.side)}">${sdDirWord(h.side)}</td><td>${sdSg(h.momentum,2)}</td><td>${sdEsc(h.mode || "—")}</td><td>${sdDirRun(h.newest_run_utc)}</td></tr>`).join("");
+  const body = `${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}
+    <details><summary>细节</summary>
+    <div>${agree ? agree + " · " : ""}ECMWF 动量 M ${sdSg(D.momentum,2)}（${mWord}）${comps ? " · " + comps : ""}</div>
     <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
-    <div class="sd-sub">算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>`;
+    ${log ? `<table class="sd-tab sd-dir-log"><thead><tr><th>变化于</th><th>方向</th><th>M</th><th>众数</th><th>最新一轮</th></tr></thead><tbody>${log}</tbody></table>` : ""}
+    <div>算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>
+    </details>`;
   return {color: sdDirColor(D.side), main, body};
 }
 // Each series' skew, by probability (user 2026-10-10 the card beside the

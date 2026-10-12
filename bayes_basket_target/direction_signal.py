@@ -587,6 +587,57 @@ def write_board_snapshot(doc: Mapping[str, Any], path: Path | str | None = None)
     return target
 
 
+#: Distinct readings each station-day keeps, so the board can show what
+#: changed and when (user 2026-10-12 「隐藏细节，突出变化」, on a card whose
+#: numbers looked fixed).  A reading changes when the side, the momentum (to
+#: 0.01), the model's side, the market's modal bucket or the newest run behind
+#: the momentum does; the modal bucket's probability moves every snapshot and
+#: is carried, not compared.  The first reading a station-day ever gets is
+#: marked ``baseline``: nothing before it was recorded.
+BOARD_HISTORY_MAX = 8
+_HISTORY_COMPARED = ("side", "momentum", "model_side", "mode", "newest_run_utc")
+
+
+def _reading(day: Mapping[str, Any], at_utc: str) -> dict[str, Any]:
+    mode = day.get("mode") or {}
+    runs = [str(c.get("newest_run_init_utc") or "") for c in (day.get("momentum_components") or {}).values()
+            if isinstance(c, Mapping)]
+    m, score, q = day.get("momentum"), day.get("model_score"), mode.get("mode_q")
+    return {"at_utc": at_utc, "side": day.get("side"),
+            "momentum": None if m is None else round(float(m), 2), "momentum_side": day.get("momentum_side"),
+            "model_score": None if score is None else round(float(score), 3), "model_side": day.get("model_side"),
+            "mode": mode.get("mode"), "mode_q": None if q is None else round(float(q), 3),
+            "newest_run_utc": max(runs) if any(runs) else None}
+
+
+def with_history(doc: dict[str, Any], previous: Mapping[str, Any] | None) -> dict[str, Any]:
+    """``doc`` with each station-day's ``history``: the previous snapshot's,
+    plus this reading when it differs from the last one kept."""
+
+    prior = (previous or {}).get("stations") if (previous or {}).get("schema") == BOARD_SCHEMA else None
+    prior = prior if isinstance(prior, Mapping) else {}
+    at = str(doc["computed_at_utc"])
+    for station, days in doc["stations"].items():
+        for event_date, day in days.items():
+            held = (((prior.get(station) or {}).get(event_date) or {}).get("history")) or []
+            history = [dict(h) for h in held if isinstance(h, Mapping)]
+            now = _reading(day, at)
+            if not history:
+                history.append({**now, "baseline": True})
+            elif any(history[-1].get(k) != now[k] for k in _HISTORY_COMPARED):
+                history.append(now)
+            day["history"] = history[-BOARD_HISTORY_MAX:]
+    return doc
+
+
+def _read_board(path: Path | str | None) -> dict[str, Any]:
+    try:
+        doc = json.loads(Path(path if path is not None else BOARD_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
 def refresh_fleet_signal(
     db_path: Path | str, *, cache: PhysicsCache | None = None, board_path: Path | str | None = None,
     now_utc: Any = None,
@@ -619,7 +670,7 @@ def refresh_fleet_signal(
             doc = board_snapshot(conn, now_utc=now_utc, physics=physics, zones=zones)
         finally:
             conn.close()
-        write_board_snapshot(doc, board_path)
+        write_board_snapshot(with_history(doc, _read_board(board_path)), board_path)
         receipt["board"] = {"station_days": sum(len(v) for v in doc["stations"].values()),
                             "seconds": round(time.monotonic() - started, 2)}
     except Exception as exc:  # noqa: BLE001 -- a receipt, never a raise
@@ -628,9 +679,9 @@ def refresh_fleet_signal(
 
 
 __all__ = [
-    "BOARD_PATH", "board_snapshot", "combined_side", "refresh_fleet_signal", "write_board_snapshot",
+    "BOARD_HISTORY_MAX", "BOARD_PATH", "board_snapshot", "combined_side", "refresh_fleet_signal", "write_board_snapshot",
     "DEFAULT_PATH", "MODEL_COEFFICIENTS", "MOMENTUM_COMPONENTS", "MOMENTUM_QUIET_BELOW", "PHYSICS", "PHYSICS_LINEAGE",
     "PHYSICS_SOURCE", "RULE", "PhysicsCache", "agreement", "daily_means", "direction_signal", "fleet_timezones",
     "leg_direction", "leg_reading", "market_mode_at", "model_score", "momentum", "physics_features", "physics_lag",
-    "refresh_fleet_physics",
+    "refresh_fleet_physics", "with_history",
 ]
