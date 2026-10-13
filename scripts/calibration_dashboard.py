@@ -15744,6 +15744,13 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-mom-3{color:var(--card);background:color-mix(in srgb,var(--text) 65%,transparent)}
 .sd-mom-4{color:var(--card);background:var(--text)}
 .sd-dir-log{margin:6px 0;font-size:12px}
+.sd-det-card{margin:10px 0}
+.sd-det-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.sd-det{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);cursor:help}
+.sd-det.sd-det-off{opacity:.62}
+.sd-det b{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin:2px 0}
+.sd-det-h,.sd-det-f{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--muted)}
+.sd-det-f .up{color:var(--amber)}.sd-det-f .down{color:#58a6ff}
 .sd-fresh{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:10px;font-size:12px;font-weight:700;vertical-align:middle;cursor:help}
 .sd-fresh-green{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green)}
 .sd-fresh-amber{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
@@ -21817,6 +21824,7 @@ function sdDay(day){
       day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     ${sdProbabilityCards(day)}
+    ${sdDeterministic(day)}
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
       <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
@@ -21877,6 +21885,36 @@ function sdProbabilityCards(day){
 }
 
 function sdTemperature(value){ return value == null ? "—（未记录）" : `${sdN(value,2)}°C`; }
+
+// Every connected deterministic model's newest run for the day, beside the P0
+// card (user 2026-10-13 「增加目前已接入的"确定性预报模型"的数据」): the stored
+// point runs (station_day_board._deterministic) and charter 267's listing-time
+// F built from six of them.  Big number per model, the move from its run
+// before, and whether F reads it; the rest in tooltips.
+const SD_DET_LABEL = {AIFS:"AIFS 单成员", IFS_HRES:"IFS HRES", GFS:"GFS", AIGFS:"AIGFS", GDPS:"GDPS",
+  ICON_GLOBAL:"ICON 全球", ARPEGE:"ARPEGE", UKMO_GLOBAL:"UKMO", GFS_SFLUX:"GFS 通量格", GFS_HOURLY:"GFS 逐小时",
+  IFS9KM:"IFS 9km", UKMO10:"UKMO 10km", CMA:"CMA GRAPES", HRRR:"HRRR", NBM:"NBM", ICON_EU:"ICON-EU", MSM:"JMA MSM"};
+function sdDeterministic(day){
+  const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
+  if(!rows.length && !F) return "";
+  const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
+  const run = t => t ? String(t).slice(11, 13) + "Z" : "—";
+  const chips = rows.map(r => {
+    const d = r.prev_tmax_c == null ? null : r.tmax_c - r.prev_tmax_c;
+    const tag = r.in_f ? "进 F" : r.relay ? "转发" : "只采集";
+    const tip = `${r.system_id}\n起报 ${String(r.run_init_utc).slice(5, 16).replace("T", " ")}Z，到货 ${sdLocal(r.knowable_at_utc, true)}（当地）`
+      + (r.prev_run_init_utc ? `\n上一轮 ${run(r.prev_run_init_utc)}：${sdN(r.prev_tmax_c, 2)}°C` : "")
+      + (r.in_f ? "\n挂牌前 F 读这一家" : r.relay ? "\n经 Open-Meteo 转发，不进 F" : "\n采集了，不进 F");
+    return `<div class="sd-det${r.in_f ? "" : " sd-det-off"}" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${sdEsc(SD_DET_LABEL[r.product] || r.product)}</span><span>${run(r.run_init_utc)}</span></div>`
+      + `<b>${sdN(r.tmax_c, 1)}</b><div class="sd-det-f"><span class="${d == null ? "flat" : d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}">${d == null ? "首轮" : (d > 0 ? "↑" : d < 0 ? "↓" : "") + sdSg(d, 1)}</span><span>${tag}</span></div></div>`;
+  }).join("");
+  const main = F && F.f_c != null
+    ? `<b class="sd-evidence-primary" title="挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdEsc(sdLocal(F.computed_at_utc, true))}">F ${sdN(F.f_c, 2)}°C</b>`
+      + (p0 != null ? `<b title="F 减 P0 模型加权温度中心">比 P0 ${sdSg(F.f_c - p0, 2)}°C</b>` : "")
+      + `<b title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</b>`
+    : `<b>F 暂无</b>`;
+  return `<div class="sd-evidence-card sd-det-card" style="--c:${SD_COL.P0}"><div class="sd-evidence-title">确定性预报（宪章 267 · 各家最新一轮的当日最高温）</div><div class="sd-evidence-main">${main}</div><div class="sd-det-grid">${chips}</div></div>`;
+}
 
 function sdStatsTable(day, S){
   const mk = (day.market || {}).stats;

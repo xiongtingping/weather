@@ -60,6 +60,11 @@ _DIRECTION_CACHE: dict[str, Any] = {}
 #: Display only: nothing downstream reads either number.
 DIRECTION_RUN_DUE_HOURS = {"aifs_ens": 7.5, "ifs_ens": 8.5, "hres": 7.0, "aifs_single": 6.5}
 DIRECTION_SNAPSHOT_STALE_SEC = 1500.0
+#: Charter 267's listing-time forecast F, as the resident last wrote it every
+#: ten minutes (user 2026-10-13 「增加目前已接入的"确定性预报模型"的数据」, on
+#: the P0 card) -- read, never computed here.
+LISTING_F_PATH = ROOT / "data" / "runtime" / "listing_forecast_f_v1.json"
+_LISTING_F_CACHE: dict[str, Any] = {}
 STAGES = ("P0", "P0-M", "P1")
 #: One market point per this many minutes on the trend chart (plus the newest).
 MARKET_TREND_STEP_MIN = 15
@@ -1220,6 +1225,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "precip_5min": _precip_5min(station, day, zone),
         "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
         "direction": _direction(station, day),
+        "deterministic": _deterministic(conn, station, day),
     }
 
 
@@ -1270,6 +1276,67 @@ def _direction(station: str, day: str) -> dict[str, Any] | None:
             "momentum_quiet_below": doc.get("momentum_quiet_below"),
             "run_due_hours": dict(DIRECTION_RUN_DUE_HOURS),
             "snapshot_stale_sec": DIRECTION_SNAPSHOT_STALE_SEC}
+
+
+def _listing_f() -> dict[str, Any] | None:
+    """The listing-time F file, re-read only when it changed."""
+
+    try:
+        stamp = LISTING_F_PATH.stat().st_mtime_ns
+    except OSError:
+        return None
+    if _LISTING_F_CACHE.get("stamp") != stamp:
+        try:
+            doc = json.loads(LISTING_F_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        _LISTING_F_CACHE.update(stamp=stamp, doc=doc)
+    return _LISTING_F_CACHE.get("doc")
+
+
+def _deterministic(conn, station: str, day: str) -> dict[str, Any]:
+    """Every connected deterministic model's newest run for the station-day
+    and the run before it (first capture of each run, as charter 201's
+    readers take it), plus the listing-time F built from six of them.  The
+    runs are the stored ``calibration_regional_point_run`` rows; F is the
+    resident's file.  Display only."""
+
+    from .deterministic_forecast_family import F_SYSTEM_IDS, FAMILY, SYSTEM_IDS  # noqa: PLC0415
+
+    product_of = {SYSTEM_IDS[product]: product for product in FAMILY}
+    runs: dict[str, list[tuple[str, str, float]]] = {}
+    marks = ",".join("?" * len(product_of))
+    for system, init, knowable, value in conn.execute(
+        "SELECT ensemble_system_id, run_init_utc, MIN(knowable_at_utc), forecast_tmax_c"
+        " FROM calibration_regional_point_run"
+        f" WHERE station_id=? AND target_local_date=? AND ensemble_system_id IN ({marks})"
+        " AND knowable_at_utc IS NOT NULL AND forecast_tmax_c IS NOT NULL"
+        " GROUP BY ensemble_system_id, run_init_utc",
+        (station, day, *product_of),
+    ):
+        runs.setdefault(str(system), []).append((str(init), str(knowable), float(value)))
+    order = {product: index for index, product in enumerate(FAMILY)}
+    systems = []
+    for system, held in runs.items():
+        held.sort()
+        newest, before = held[-1], (held[-2] if len(held) > 1 else None)
+        product = product_of[system]
+        systems.append({
+            "product": product, "system_id": system, "in_f": system in F_SYSTEM_IDS,
+            "relay": bool(FAMILY[product].get("relay")),
+            "run_init_utc": newest[0], "knowable_at_utc": newest[1], "tmax_c": round(newest[2], 2),
+            "prev_run_init_utc": before[0] if before else None,
+            "prev_tmax_c": round(before[2], 2) if before else None,
+        })
+    systems.sort(key=lambda row: (not row["in_f"], order[row["product"]]))
+    doc = _listing_f() or {}
+    entry = ((doc.get("station_days") or {}).get(f"{station}|{day}")) or {}
+    f = None
+    if entry:
+        f = {"f_c": entry.get("f_c"), "raw_median_c": entry.get("raw_median_c"), "n_systems": entry.get("n_systems"),
+             "state": entry.get("state"), "computed_at_utc": doc.get("computed_at_utc"),
+             "f_v3_c": (entry.get("v3") or {}).get("f_c")}
+    return {"systems": systems, "f": f}
 
 
 def _precip_5min(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:
