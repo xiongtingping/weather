@@ -395,3 +395,28 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     assert "左 47%" in out and "众 40%" in out and "右 13%" in out  # the truth bar
     assert '<td class="mono down"' in out and ">−9.8</td>" in out   # mode: interval below zero
     assert ">−7.5 ·</td>" in out                                      # centre bucket: crosses zero
+
+
+def test_a_local_day_ahead_of_utc_reads_the_utc_day_folded_onto_local_hours(monkeypatch):
+    """2026-10-13: the satellite archive ends at UTC today, so an East Asian
+    local day past midnight answered 400 until 08/09 local; it now reads the
+    UTC day and folds it back.  A half-hour zone says when it opens."""
+
+    from zoneinfo import ZoneInfo
+
+    from bayes_basket_target import station_day_board as board
+
+    asked = []
+
+    def fake(lat, lon, tz, day, model):
+        asked.append((tz, day))
+        return {"available": True, "values": [float(i) for i in range(24)]}
+
+    monkeypatch.setattr(board, "_open_meteo_satellite", fake)
+    out = board._satellite_ahead_of_utc(37.5, 126.5, "2026-10-14", ZoneInfo("Asia/Seoul"), "jma_jaxa_himawari")
+    assert asked == [("GMT", "2026-10-13")]
+    # Local 00:00 is UTC 15:00 the day before; local 09:00 is UTC 00:00 the day itself.
+    assert out["values"][:9] == [15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0]
+    assert out["values"][9:] == [None] * 15
+    half = board._satellite_ahead_of_utc(26.8, 80.9, "2026-10-14", ZoneInfo("Asia/Kolkata"), "eumetsat_lsa_saf_iodc")
+    assert half["available"] is False and "05:30" in half["reason"]

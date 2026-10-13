@@ -936,6 +936,37 @@ def _open_meteo_satellite(lat: float, lon: float, tz: str, day: str, model: str)
     return out
 
 
+def _satellite_ahead_of_utc(lat: float, lon: float, day: str, zone: ZoneInfo, model: str) -> dict[str, Any]:
+    """A local day that has begun while UTC is still on the day before.
+
+    The archive's range ends at UTC today, so asking for the local date
+    answers 400 (2026-10-13: every East Asian station from local midnight
+    to 08/09 local, the morning sun included).  Every hour of that local
+    day so far lies on UTC today: read that UTC day and fold it back onto
+    local hours.  A zone off by a fraction of an hour has no whole UTC hour
+    to fold onto; it says when the local date opens instead.
+    """
+
+    start = datetime.combine(datetime.fromisoformat(day).date(), dtime(0), zone)
+    offset = start.utcoffset() or timedelta(0)
+    opens = int(offset.total_seconds() // 3600)
+    if offset.total_seconds() % 3600:
+        return {"available": False, "values": [None] * 24,
+                "reason": f"卫星档案按 UTC 日期开放，当地 {opens:02d}:{int(offset.total_seconds() % 3600 // 60):02d} 后可取"}
+    utc_day = start.astimezone(timezone.utc).date().isoformat()
+    raw = _open_meteo_satellite(lat, lon, "GMT", utc_day, model)
+    got = raw.get("values") or []
+    values: list[float | None] = [None] * 24
+    for h in range(24):
+        index = 24 - opens + h  # local hour h ends at UTC (h - offset) on utc_day
+        if 0 <= index < len(got):
+            values[h] = got[index]
+    out = dict(raw, values=values, available=any(v is not None for v in values))
+    if not out["available"] and not out.get("reason"):
+        out["reason"] = f"卫星档案按 UTC 日期开放，当地 {opens:02d}:00 后按当地日期取"
+    return out
+
+
 def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
     """The local day's hourly GOES DSR, as far as the background reader has
     it: hour h is the scan nearest h-1:30 (the middle of the hour the forecast
@@ -994,7 +1025,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
     product = _satellite_product(lon)
     started = datetime.fromisoformat(day).date() <= datetime.now(timezone.utc).astimezone(zone).date()
     # A day not begun has nothing measured yet (the archive answers 400).
-    if product and started:
+    if product and started and day > datetime.now(timezone.utc).date().isoformat():
+        sat = _satellite_ahead_of_utc(lat, lon, day, zone, product)
+    elif product and started:
         sat = _open_meteo_satellite(lat, lon, str(zone.key), day, product)
     elif started:
         product, sat = "noaa_goes_dsr", _goes_hours(station, lat, lon, day, zone)
