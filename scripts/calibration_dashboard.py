@@ -13627,7 +13627,14 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
         calibration = {}
     from bayes_basket_target.regional_features import (  # noqa: PLC0415
         MAX_RUN_AGE_HOURS as max_age,
+        P1_FEATURE_SYSTEMS,
     )
+    # Only the lanes P1 reads have a run-age limit; charter 267's F sources and
+    # the collect-only lanes run 12-hourly, so their newest run is past 12 h
+    # most of the day by schedule (2026-10-13: seven cards 「超过 12h · 本轮
+    # 不可用」 over lanes all on time).  Their lateness is ``health``'s.
+    for lane in lanes:
+        lane["p1_reads"] = str(lane.get("system_id") or "") in P1_FEATURE_SYSTEMS
     for system_id, entries in per_station.items():
         fits = (calibration.get("stations") or {}).get(system_id) or {}
         for entry in entries:
@@ -21437,10 +21444,10 @@ function regionalBoard(){
   const issues = [];
   (R.lanes || []).forEach(l => {
     const list = (R.stations || {})[l.system_id] || [];
-    const unusable = list.filter(e => !e.usable_now).map(e => e.station_id);
+    const unusable = l.p1_reads ? list.filter(e => !e.usable_now).map(e => e.station_id) : [];
     if(l.health && l.health !== "green") issues.push([l.label, `采集 ${hours(l.last_capture_age_hours)}`, l.note || (l.health === "red" ? "陈旧" : "偏晚"), "down"]);
     if((l.station_count || 0) < (l.roster_count || 0)) issues.push([l.label, `${l.station_count || 0}/${l.roster_count} 站`, `名册缺 ${(l.roster_count || 0) - (l.station_count || 0)} 站`, "down"]);
-    if(l.run_age_hours != null && l.run_age_hours > maxAge) issues.push([l.label, `run ${hours(l.run_age_hours)}`, `超过 ${maxAge}h · ${unusable.length || list.length} 站本轮不可用`, "down"]);
+    if(l.p1_reads && l.run_age_hours != null && l.run_age_hours > maxAge) issues.push([l.label, `run ${hours(l.run_age_hours)}`, `超过 ${maxAge}h · ${unusable.length || list.length} 站本轮不可用`, "down"]);
     else if(unusable.length) issues.push([l.label, `${unusable.length} 站不可用`, unusable.join("、"), "down"]);
   });
   const issueCard = ([label, value, sub, tone]) => `<div class="sd-pnl-c ${tone}"><span>${h(label)}</span><b>${h(value)}</b><i title="${h(sub)}">${h(sub)}</i></div>`;
