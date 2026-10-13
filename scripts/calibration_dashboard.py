@@ -15757,7 +15757,8 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-mom-4{color:var(--card);background:var(--text)}
 .sd-dir-log{margin:6px 0;font-size:12px}
 .sd-dps{margin:8px 0 2px;color:var(--text);font-size:12.5px}
-.sd-dp{display:grid;grid-template-columns:7.5em 3.6em 1fr 4.2em;gap:8px;align-items:center;padding:2px 0;cursor:help}
+.sd-dp{display:grid;grid-template-columns:auto 3.6em minmax(60px,1fr) 4.2em;gap:8px;align-items:center;padding:2px 0;cursor:help}
+.sd-dp>span:first-child{white-space:nowrap}
 .sd-dp>b{text-align:right;font-size:13px}
 .sd-dp-h{color:var(--muted);font-size:11.5px;cursor:default}.sd-dp-h>span:last-child{text-align:right}
 .sd-dp-t{border-top:1px solid var(--line);margin-top:2px;padding-top:4px;cursor:default}
