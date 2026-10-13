@@ -375,7 +375,11 @@ MAX_JSON_NODES = 500_000
 # The same ruling takes the finer OOS-evaluation retention named above:
 # ~72% of the evaluation rows score only days a newer row of the same key
 # re-scored, ~5 GiB.  Once that lands this constant returns to 70 GiB.
-MAX_TARGET_DB_BYTES = 73728 * MIB
+#
+# Returned to 70 GiB the same day on the user's instruction (「上限回 70 GiB，
+# 重启」): the superseded move took 436k rows / 2.84 GiB off, in-use pages
+# 66.97 GiB with 3.11 GiB free; the ~0.6 GiB left goes on the nightly run.
+MAX_TARGET_DB_BYTES = 71680 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
