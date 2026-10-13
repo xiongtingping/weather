@@ -50,6 +50,16 @@ SCHEMA = "station_day_board_v1"
 #: 222）"增加各个站点的方向信息」) -- read, never computed here.
 DIRECTION_BOARD_PATH = ROOT / "data" / "runtime" / "direction_signal_board_v1.json"
 _DIRECTION_CACHE: dict[str, Any] = {}
+#: The direction card's 「最新」 badge (user 2026-10-13 「增加一个数据是否最新的
+#: 徽标」, after 「为什么更新是3h以前」 over a card that was simply between
+#: runs).  Hours after its init by which each momentum component's run is
+#: normally in hand -- measured at ZUUU over the 10-07..10-12 runs: AIFS ENS
+#: 6.0-7.1, IFS ENS 7.2-8.0, the HRES relay 6.0-6.5 (relay outages to 19),
+#: AIFS single 5.5-5.9 -- a run not in hand past its hour reads late.  The
+#: snapshot is rewritten every ten minutes; past 25 it reads stalled.
+#: Display only: nothing downstream reads either number.
+DIRECTION_RUN_DUE_HOURS = {"aifs_ens": 7.5, "ifs_ens": 8.5, "hres": 7.0, "aifs_single": 6.5}
+DIRECTION_SNAPSHOT_STALE_SEC = 1500.0
 STAGES = ("P0", "P0-M", "P1")
 #: One market point per this many minutes on the trend chart (plus the newest).
 MARKET_TREND_STEP_MIN = 15
@@ -1257,7 +1267,9 @@ def _direction(station: str, day: str) -> dict[str, Any] | None:
     if not entry:
         return None
     return {**entry, "computed_at_utc": doc.get("computed_at_utc"),
-            "momentum_quiet_below": doc.get("momentum_quiet_below")}
+            "momentum_quiet_below": doc.get("momentum_quiet_below"),
+            "run_due_hours": dict(DIRECTION_RUN_DUE_HOURS),
+            "snapshot_stale_sec": DIRECTION_SNAPSHOT_STALE_SEC}
 
 
 def _precip_5min(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:

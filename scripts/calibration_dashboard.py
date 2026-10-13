@@ -15744,6 +15744,11 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-mom-3{color:var(--card);background:color-mix(in srgb,var(--text) 65%,transparent)}
 .sd-mom-4{color:var(--card);background:var(--text)}
 .sd-dir-log{margin:6px 0;font-size:12px}
+.sd-fresh{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:10px;font-size:12px;font-weight:700;vertical-align:middle;cursor:help}
+.sd-fresh-green{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green)}
+.sd-fresh-amber{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
+.sd-fresh-red{background:color-mix(in srgb,var(--red) 22%,transparent);color:var(--red)}
+.sd-fresh-muted{background:color-mix(in srgb,var(--muted) 18%,transparent);color:var(--muted)}
 .sd-shape-rows{display:grid;grid-template-columns:auto auto auto 1fr;gap:4px 14px;align-items:baseline;font-size:13px}
 .sd-shape-rows b{font-size:14px}
 .sd-fs-days{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:8px}
@@ -22280,6 +22285,29 @@ function sdMomTier(m){
   return `<span class="sd-mom-tier sd-mom-${a < 1 ? 0 : a < 2 ? 1 : a < 3 ? 2 : a < 5 ? 3 : 4}" title="|M|：＜1 很弱（静默）· 1–2 弱 · 2–3 中 · 3–5 强 · ≥5 很强">${t}</span>`;
 }
 function sdDirRun(t){ return t ? String(t).slice(11, 13) + "Z" : "—"; }
+// Is the card's data the newest there is (user 2026-10-13 「增加一个数据是否最新的
+// 徽标」): 停更 when the snapshot has not been rewritten for 25 minutes (it is
+// every ten); 迟到 when a component's run is past the hour by which it
+// normally lands (``run_due_hours``) and not in hand; else 最新, with the
+// next run's latest normal landing in the tooltip.
+function sdDirFresh(D){
+  const now = Date.now(), cycle = 6 * 3600e3;
+  const age = (now - new Date(D.computed_at_utc).getTime()) / 1000;
+  const pill = (cls, text, tip) => `<span class="sd-fresh sd-fresh-${cls}" title="${sdEsc(tip)}">${text}</span>`;
+  if(!isFinite(age)) return "";
+  if(age > (D.snapshot_stale_sec || 1500)) return pill("red", `停更 ${sdSpan(age)}`, "方向快照每 10 分钟重写一次；超过 25 分钟没写＝常驻的方向任务没在跑");
+  const due = D.run_due_hours || {}, late = [], next = [];
+  for(const [k, c] of Object.entries(D.momentum_components || {})){
+    const h = due[k], newest = new Date(c.newest_run_init_utc || "").getTime();
+    if(!h || !isFinite(newest)) continue;
+    const expect = Math.floor((now - h * 3600e3) / cycle) * cycle;
+    if(newest < expect) late.push(`${SD_DIR_COMPONENTS[k] || k} ${sdDirRun(new Date(expect).toISOString())}（起报后 ${h} 小时内应到）`);
+    next.push(newest + cycle + h * 3600e3);
+  }
+  if(late.length) return pill("amber", "迟到", "应到未到：" + late.join("、"));
+  if(!next.length) return pill("muted", "无可比轮次", "没有两轮可比的成员");
+  return pill("green", "最新", `各家都已是最新一轮；下一轮最晚约 ${sdLocal(new Date(Math.max(...next)).toISOString(), true)}（当地）到齐`);
+}
 function sdDirChange(last, prev){
   if(!last) return "";
   if(!prev) return `<div class="sd-dir-same">未变 · 记录始于 ${sdAgeSpan(last.at_utc, "sd-age")}</div>`;
@@ -22419,7 +22447,7 @@ function sdEvidence(day){
   // Its own card, right of the radiation card (user 2026-10-10 「放在辐射偏移（宪章 222
   // 卡片右边，单独一个卡片。而不是放在一起」).
   const dir = sdDirection(day.direction, R);
-  const dirCard = sdEvidenceCard("方向（宪章 266 · 相对市场众数）", dir.color, dir.main, dir.body);
+  const dirCard = sdEvidenceCard("方向（宪章 266 · 相对市场众数）" + (day.direction ? sdDirFresh(day.direction) : ""), dir.color, dir.main, dir.body);
   const tw = p0.taf_witness;
   const sameTx = tw && pm && tw.tx_c != null && pm.tx_c != null && tw.tx_c === pm.tx_c;
   const tafTx = sameTx ? `<b class="sd-evidence-primary">TX ${sdN(tw.tx_c,2)}°C</b>`
