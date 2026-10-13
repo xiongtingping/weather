@@ -285,15 +285,28 @@ def physics_features(station_doc: Mapping[str, Any] | None, *, event_date: str, 
     return out
 
 
-def model_score(momentum_value: float | None, features: Mapping[str, Any]) -> float:
-    """The four-feature score; a missing input counts zero."""
+def model_inputs(momentum_value: float | None, features: Mapping[str, Any]) -> dict[str, float]:
+    """What each of the four coefficients multiplies; a missing input counts zero."""
 
-    parts = {
+    return {
         "momentum_half": (float(momentum_value) / 2.0) if momentum_value is not None else 0.0,
         "icon_shortwave": float(features.get("icon_shortwave") or 0.0),
         "dew_point_consensus": float(features.get("dew_point_consensus") or 0.0),
         "ecmwf_wind_inverse": float(features.get("ecmwf_wind_inverse") or 0.0),
     }
+
+
+def model_parts(momentum_value: float | None, features: Mapping[str, Any]) -> dict[str, float]:
+    """Each input's share of the score (coefficient x input) -- what the
+    board draws (user 2026-10-13 「把模型分拆解显式」); they sum to the score."""
+
+    return {k: round(MODEL_COEFFICIENTS[k] * v, 6) for k, v in model_inputs(momentum_value, features).items()}
+
+
+def model_score(momentum_value: float | None, features: Mapping[str, Any]) -> float:
+    """The four-feature score; a missing input counts zero."""
+
+    parts = model_inputs(momentum_value, features)
     return round(sum(MODEL_COEFFICIENTS[k] * v for k, v in parts.items()), 6)
 
 
@@ -432,6 +445,8 @@ def direction_signal(
         "rule": RULE, "at_utc": _z(_instant(at_utc)),
         "momentum": moved["M"], "momentum_side": moved["side"], "momentum_components": moved["components"],
         "model_score": score, "model_side": _sign(score),
+        "model_inputs": {k: round(v, 6) for k, v in model_inputs(moved["M"], features).items()},
+        "model_parts": model_parts(moved["M"], features),
         "physics": {**features, "source": PHYSICS_SOURCE, "lineage": PHYSICS_LINEAGE},
     }
 
@@ -568,6 +583,7 @@ def board_snapshot(
                 "momentum": signal["momentum"], "momentum_side": signal["momentum_side"],
                 "momentum_components": signal["momentum_components"],
                 "model_score": signal["model_score"], "model_side": signal["model_side"],
+                "model_inputs": signal["model_inputs"], "model_parts": signal["model_parts"],
                 "side": combined_side(signal["momentum_side"], signal["model_side"]),
                 "physics": signal["physics"],
                 "mode": {k: mode.get(k) for k in ("state", "mode", "mode_q", "observed_at")},
@@ -682,6 +698,6 @@ __all__ = [
     "BOARD_HISTORY_MAX", "BOARD_PATH", "board_snapshot", "combined_side", "refresh_fleet_signal", "write_board_snapshot",
     "DEFAULT_PATH", "MODEL_COEFFICIENTS", "MOMENTUM_COMPONENTS", "MOMENTUM_QUIET_BELOW", "PHYSICS", "PHYSICS_LINEAGE",
     "PHYSICS_SOURCE", "RULE", "PhysicsCache", "agreement", "daily_means", "direction_signal", "fleet_timezones",
-    "leg_direction", "leg_reading", "market_mode_at", "model_score", "momentum", "physics_features", "physics_lag",
+    "leg_direction", "leg_reading", "market_mode_at", "model_inputs", "model_parts", "model_score", "momentum", "physics_features", "physics_lag",
     "refresh_fleet_physics", "with_history",
 ]

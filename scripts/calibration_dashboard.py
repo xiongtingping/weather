@@ -15756,6 +15756,14 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-mom-3{color:var(--card);background:color-mix(in srgb,var(--text) 65%,transparent)}
 .sd-mom-4{color:var(--card);background:var(--text)}
 .sd-dir-log{margin:6px 0;font-size:12px}
+.sd-dps{margin:8px 0 2px;color:var(--text);font-size:12.5px}
+.sd-dp{display:grid;grid-template-columns:7.5em 3.6em 1fr 4.2em;gap:8px;align-items:center;padding:2px 0;cursor:help}
+.sd-dp>b{text-align:right;font-size:13px}
+.sd-dp-h{color:var(--muted);font-size:11.5px;cursor:default}.sd-dp-h>span:last-child{text-align:right}
+.sd-dp-t{border-top:1px solid var(--line);margin-top:2px;padding-top:4px;cursor:default}
+.sd-dpb{position:relative;height:9px;background:var(--bar-bg);border-radius:4px}
+.sd-dpb::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.sd-dpb i{position:absolute;top:0;bottom:0;border-radius:3px}
 .sd-dir-by{font-size:13px;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--c) 16%,transparent);vertical-align:middle}
 .sd-evidence-main b.sd-dir-quiet{color:var(--muted)}
 .sd-det-card{margin:10px 0}
@@ -22372,6 +22380,27 @@ function sdDirChange(last, prev){
   const fresh = (Date.now() - new Date(last.at_utc).getTime()) < 3600e3;
   return `<div class="sd-dir-change${fresh ? " sd-dir-fresh" : ""}">${fresh ? '<span class="sd-dir-new">新</span>' : ""}${moved.join(" · ")} · ${sdAgeSpan(last.at_utc, "sd-age")}</div>`;
 }
+// The four-feature score taken apart, always shown (user 2026-10-13
+// 「把模型分拆解显式」): coefficient x input for each feature, as the resident
+// wrote them (``model_parts`` / ``model_inputs`` in the direction snapshot),
+// one diverging bar each, summing to the score.  Nothing is recomputed here.
+const SD_DIR_PARTS = [
+  ["ecmwf_wind_inverse", "ECMWF 风（取反）", "10 米风比本站平时小＝正（白天升温少被带走）"],
+  ["icon_shortwave", "ICON 日照", "日照比本站平时多＝正"],
+  ["dew_point_consensus", "六家露点", "露点比平时高（湿）＝负，系数为负"],
+  ["momentum_half", "动量 M/2", "ECMWF 最新一轮减上一轮的一半"],
+];
+function sdDirParts(D){
+  const parts = D.model_parts, inputs = D.model_inputs || {};
+  if(!parts) return "";
+  const scale = Math.max(0.04, ...SD_DIR_PARTS.map(([k]) => Math.abs(parts[k] || 0)));
+  const rows = SD_DIR_PARTS.map(([k, label, tip]) => {
+    const v = parts[k] || 0, w = Math.min(50, 50 * Math.abs(v) / scale);
+    const bar = `<span class="sd-dpb"><i style="${v >= 0 ? "left:50%" : `left:${50 - w}%`};width:${w}%;background:${v > 0 ? "var(--amber)" : v < 0 ? SD_COL.P0 : "var(--muted)"}"></i></span>`;
+    return `<div class="sd-dp" title="${sdEsc(tip)}"><span>${label}</span><span class="mono">${sdSg(inputs[k], 2)}</span>${bar}<b class="mono" style="color:${v > 0 ? "var(--amber)" : v < 0 ? SD_COL.P0 : "var(--muted)"}">${sdSg(v, 3)}</b></div>`;
+  }).join("");
+  return `<div class="sd-dps"><div class="sd-dp sd-dp-h"><span>模型分拆解</span><span>输入 z</span><span></span><span>贡献</span></div>${rows}<div class="sd-dp sd-dp-t"><span>合计＝模型分</span><span></span><span></span><b class="mono" style="color:${sdDirColor(D.model_side)}">${sdSg(D.model_score, 3)}</b></div></div>`;
+}
 function sdDirection(D, R){
   if(!D) return {color: "var(--muted)", main: `<b>无读数</b>`, body: `快照里没有这个站日。`};
   // Agreement is with the radiation shift's own sign, not the side of
@@ -22398,7 +22427,7 @@ function sdDirection(D, R){
   const X = D.physics || {};
   const log = hist.slice().reverse().map(h =>
     `<tr><td>${sdLocal(h.at_utc,true)}</td><td style="color:${sdDirColor(h.side)}">${sdDirWord(h.side)}</td><td>${sdSg(h.momentum,2)}${sdMomTier(h.momentum)}</td><td>${sdEsc(h.mode || "—")}</td><td>${sdDirRun(h.newest_run_utc)}</td></tr>`).join("");
-  const body = `${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}
+  const body = `${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}${sdDirParts(D)}
     <details><summary>细节</summary>
     <div>${agree ? agree + " · " : ""}ECMWF 动量 M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}（${mWord}）${comps ? " · " + comps : ""}</div>
     <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
