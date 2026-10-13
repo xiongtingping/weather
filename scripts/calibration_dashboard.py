@@ -6213,7 +6213,7 @@ def _live_market_slugs(
         if kept.get(key):
             out[key] = kept[key]
 
-    def lookup(db: sqlite3.Connection, table: str) -> None:
+    def lookup(db: sqlite3.Connection, table: str, newest: str) -> None:
         for station, day in scopes:
             key = f"{station}|{day}"
             if key in out or key in kept:
@@ -6221,14 +6221,21 @@ def _live_market_slugs(
             found = db.execute(
                 f"SELECT slug FROM {table}"
                 " WHERE station_id=? AND event_date=? AND slug IS NOT NULL"
-                " AND slug<>'' ORDER BY refreshed_at DESC LIMIT 1",
+                f" AND slug<>'' ORDER BY {newest} DESC LIMIT 1",
                 (station, day),
             ).fetchone()
             if found:
                 out[key] = str(found[0])
 
+    # The SSOT registry is newest by rowid: every refresh appends a whole
+    # snapshot, so the newest rowid is the newest refresh, and the scope
+    # index walks it backwards and stops at the first row.  Ordering by
+    # ``refreshed_at`` (not monotone inside a snapshot) sorted all ~3,900
+    # copies an open station-day carries -- 26 s warm, most of
+    # live_readiness's 638 s on a swapping host (2026-10-13; no station-day
+    # in the registry has ever carried two slugs).
     try:
-        lookup(conn, "basket_target_market_registry")
+        lookup(conn, "basket_target_market_registry", "rowid")
     except sqlite3.Error:
         pass
     path = ARCHIVE_DB if archive is None else archive
@@ -6243,7 +6250,7 @@ def _live_market_slugs(
                 f"file:{path}?mode=ro", uri=True, timeout=30.0
             )
             try:
-                lookup(archived, "reported_trajectory_market_registry")
+                lookup(archived, "reported_trajectory_market_registry", "refreshed_at")
             finally:
                 archived.close()
         except sqlite3.Error:
