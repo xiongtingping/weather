@@ -367,7 +367,15 @@ MAX_JSON_NODES = 500_000
 # spent only if the offload does not run.  If the daily moves fall behind the
 # writes, the levers are the open rulings -- the finer OOS-evaluation
 # retention and five ask levels -- not another raise.
-MAX_TARGET_DB_BYTES = 71680 * MIB
+#
+# Raised 70 -> 72 GiB on 2026-10-13, on the user's ruling (「桥接+精细保留」),
+# as a bridge only.  In-use pages reached 70 GiB at 06:26Z with no free page
+# and every writer stopped; the cold move had nothing left to move (every
+# policy table sat inside its hot window) against ~2.2 GiB/day of payload.
+# The same ruling takes the finer OOS-evaluation retention named above:
+# ~72% of the evaluation rows score only days a newer row of the same key
+# re-scored, ~5 GiB.  Once that lands this constant returns to 70 GiB.
+MAX_TARGET_DB_BYTES = 73728 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
