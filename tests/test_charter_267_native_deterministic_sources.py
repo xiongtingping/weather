@@ -608,6 +608,39 @@ def test_icon_cells_follow_the_land_rule_on_an_unstructured_grid():
     assert placed["C"] is None, "no land cell within reach: left out, never guessed"
 
 
+def test_a_coastal_station_two_spacings_from_land_is_placed():
+    """2026-10-13: RKSI sat 19 km from land on ICON's ~10 km grid, past the
+    old 1.5-spacing reach (47/48).  The reach is 2.5 spacings now; a station
+    with land nearer is unchanged (still the nearest land cell)."""
+
+    # 10 km spacing on the equator: water at 0.0/0.09, land at 0.18 (~20 km).
+    lats = [0.0, 0.0, 0.0]
+    lons = [0.0, 0.09, 0.18]
+    land = [0.0, 0.0, 0.9]
+    placed = N.place_on_cells({"RKSI": (0.0, 0.0)}, latitudes=lats, longitudes=lons, land=land)
+    assert placed["RKSI"]["index"] == 2 and placed["RKSI"]["moved"] is True
+    assert placed["RKSI"]["distance_km"] == pytest.approx(20.0, abs=0.1)
+
+
+def test_a_cached_none_is_placed_again(tmp_path):
+    import json
+
+    import numpy as np
+
+    grid = {"CLAT": [0.0, 0.0], "CLON": [0.0, 0.1], "FR_LAND": [0.0, 1.0]}
+    decode = lambda m: np.asarray(grid[m.decode()])  # noqa: E731
+    reader = lambda url: url.rsplit("/", 1)[1].split("_", 5)[5].split(".")[0].encode()  # noqa: E731
+    folder = tmp_path / "2"
+    folder.mkdir()
+    (folder / "station_cells.json").write_text(json.dumps({"A|0.00000|0.00000": None}))
+    from unittest import mock
+
+    with mock.patch.object(N, "ICON_GRID_POINT_COUNTS", frozenset({2})):
+        cells = N.icon_station_cells(RUN, {"A": (0.0, 0.0)}, point_count=2, cache_dir=tmp_path,
+                                     reader=reader, decode=decode)
+    assert cells["A"]["index"] == 1
+
+
 def test_icon_cells_are_cached_by_the_runs_own_grid_size(tmp_path):
     import numpy as np
 

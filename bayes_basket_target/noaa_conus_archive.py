@@ -551,7 +551,13 @@ MAX_LAND_SEARCH_KM = 10.0
 # away (0.25 degrees: FACT, NZWN, WSSS at 14-19 km), so the search reaches
 # 1.5 local grid spacings when that is further than the fixed 10 km.  On
 # HRRR's 3 km grid it is not, and the reach is exactly charter 200's.
-LAND_SEARCH_SPACINGS = 1.5
+# 2026-10-13 (user 「修」): 1.5 -> 2.5.  On the ~10 km grids of charter 267
+# (ICON global, GFS's 13 km flux grid) RKSI's nearest land cells sit 19.0
+# and 20.7 km away against a 15 km reach, so both lanes never sampled it
+# (47/48).  A wider reach only ever places a station that had no land cell
+# inside the old one: the answer is still the NEAREST land cell, so every
+# station already placed reads the same cell.  HRRR's reach stays 10 km.
+LAND_SEARCH_SPACINGS = 2.5
 SAMPLING_RULE = "nearest_land_cell_v1"
 _EARTH_RADIUS_KM = 6371.0
 # (grid identity, latitude, longitude) -> resolved point; the mask is static

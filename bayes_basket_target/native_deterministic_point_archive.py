@@ -840,7 +840,9 @@ def icon_station_cells(
     except (OSError, ValueError):
         known = {}
     keyed = {f"{s}|{lat:.5f}|{lon:.5f}": s for s, (lat, lon) in points.items()}
-    missing = {keyed[k]: points[keyed[k]] for k in keyed if k not in known}
+    # A cached None is placed again: it was "no land cell within the reach",
+    # and the reach can widen (LAND_SEARCH_SPACINGS, 2026-10-13).
+    missing = {keyed[k]: points[keyed[k]] for k in keyed if known.get(k) is None}
     if missing:
         placed = place_on_cells(missing, latitudes=fields["CLAT"], longitudes=fields["CLON"], land=fields["FR_LAND"])
         for station, cell in placed.items():
