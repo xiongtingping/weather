@@ -15756,6 +15756,8 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-mom-3{color:var(--card);background:color-mix(in srgb,var(--text) 65%,transparent)}
 .sd-mom-4{color:var(--card);background:var(--text)}
 .sd-dir-log{margin:6px 0;font-size:12px}
+.sd-dir-by{font-size:13px;font-weight:700;margin-left:6px;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--c) 16%,transparent);vertical-align:middle}
+.sd-evidence-main b.sd-dir-quiet{color:var(--muted)}
 .sd-det-card{margin:10px 0}
 .sd-det-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
 .sd-det{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);cursor:help}
@@ -22372,13 +22374,23 @@ function sdDirChange(last, prev){
 }
 function sdDirection(D, R){
   if(!D) return {color: "var(--muted)", main: `<b>无读数</b>`, body: `快照里没有这个站日。`};
-  const radSide = R && R.side === "WARM" ? 1 : R && R.side === "COLD" ? -1 : 0;
-  const agree = D.side && radSide ? (D.side === radSide ? "与辐射偏移同向" : "与辐射偏移反向") : "";
+  // Agreement is with the radiation shift's own sign, not the side of
+  // history the day's sunshine sits on (a sunnier-than-usual day can shift
+  // cooler once centred -- user 2026-10-13 「都是负数，为什么都是偏暖？」).
+  const radSide = R && R.shift_c > 0 ? 1 : R && R.shift_c < 0 ? -1 : 0;
+  const agree = D.side && radSide ? (D.side === radSide ? "与辐射平移同向" : "与辐射平移反向") : "";
   const mode = D.mode || {};
   const quiet = D.momentum_quiet_below == null ? 1 : D.momentum_quiet_below;
   const mWord = D.momentum == null ? "无两轮可比" : Math.abs(D.momentum) < quiet ? "静默" : sdDirWord(D.momentum_side);
-  const main = `<b class="sd-evidence-primary" style="color:${sdDirColor(D.side)}" title="先看 ECMWF 动量，静默时看四特征模型">${sdDirWord(D.side)}</b>`
-    + `<b title="ECMWF 动量（最新一轮减上一轮）：${sdEsc(mWord)}，|M|＜${sdN(quiet,0)} 为静默">M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}</b>`
+  // The side is momentum's when M speaks and the four-feature model's when M
+  // is quiet (charter 266, combined_side): name which, and show the model's
+  // score when it was the one that decided -- a quiet negative M beside 偏暖
+  // read as a contradiction.
+  const byModel = !D.momentum_side && D.model_side;
+  const by = D.momentum_side ? "按动量" : byModel ? "按模型" : "";
+  const main = `<b class="sd-evidence-primary" style="color:${sdDirColor(D.side)}" title="先看 ECMWF 动量，静默（|M|＜${sdN(quiet,0)}）时看四特征模型">${sdDirWord(D.side)}${by ? `<span class="sd-dir-by">${by}</span>` : ""}</b>`
+    + (byModel ? `<b style="color:${sdDirColor(D.model_side)}" title="四特征模型分（动量静默时由它定方向）：正＝偏暖，负＝偏冷">模型 ${sdSg(D.model_score,3)}</b>` : "")
+    + `<b class="${D.momentum_side ? "" : "sd-dir-quiet"}" title="ECMWF 动量（最新一轮减上一轮）：${sdEsc(mWord)}，|M|＜${sdN(quiet,0)} 为静默、不定方向">M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}</b>`
     + `<b title="市场众数桶与其概率">${mode.state === "ok" ? `众数 ${sdEsc(mode.mode)} <span class="sd-sub">${sdPc(mode.mode_q,0)}</span>` : "众数暂无"}</b>`;
   const hist = D.history || [];
   const comps = Object.entries(D.momentum_components || {}).map(([k, c]) =>
@@ -22491,8 +22503,14 @@ function sdMeanModeCard(day){
 function sdEvidence(day){
   const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
-  const rad = sdEvidenceCard("辐射偏移（宪章 222）", R && R.side === "WARM" ? "var(--amber)" : R && R.side === "COLD" ? SD_COL.P0 : "var(--muted)",
-    R ? `<b>${sdEsc(R.side === "WARM" ? "偏暖侧" : R.side === "COLD" ? "偏冷侧" : R.side || "—")}</b><b class="sd-evidence-primary">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`,
+  // The label is the day's sunshine against the station's usual (the
+  // receipt's side), the colour and the number are the shift: the two
+  // sides' coefficients differ (0.18 / 0.06) and the shift is centred on the
+  // station's average push, so a day only a little sunnier than usual still
+  // shifts cooler (user 2026-10-13 「都是负数，为什么都是偏暖？」).
+  const radColor = R && R.shift_c > 0 ? "var(--amber)" : R && R.shift_c < 0 ? SD_COL.P0 : "var(--muted)";
+  const rad = sdEvidenceCard("辐射偏移（宪章 222）", radColor,
+    R ? `<b title="今天预报日照（晴空指数）对本站常年：标准化 ${sdSg(R.standardised,2)}σ">${sdEsc(R.side === "WARM" ? "日照多于常年" : R.side === "COLD" ? "日照少于常年" : R.side === "NEUTRAL" ? "日照同常年" : R.side || "—")}</b><b class="sd-evidence-primary" title="平移＝侧系数×标准化 − 本站常年平均推力（暖侧 ${sdN(R.sigma_warm,2)}、冷侧 ${sdN(R.sigma_cold,2)}）。常年平均推力为正，所以日照只比常年略多时，净平移仍可为负（略偏冷）">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`,
     R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录");
   // Its own card, right of the radiation card (user 2026-10-10 「放在辐射偏移（宪章 222
   // 卡片右边，单独一个卡片。而不是放在一起」).
