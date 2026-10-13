@@ -96,8 +96,12 @@ if str(ROOT) not in sys.path:
 from bayes_basket_target.native_ensemble_oos import (  # noqa: E402
     DEFAULT_MIN_HOLDOUT_DAYS,
     ROLLING_TRAIN_WINDOW_DAYS,
+    STABLE_POOL_GATE_HISTORY_KEY,
     STABLE_POOL_GATE_LOOKBACK_DAYS,
+    STABLE_POOL_GATE_MEMBERSHIP_SQL,
+    STABLE_POOL_GATE_SCORES_SQL,
     _EVALUATION_READER_KEY as OOS_EVALUATION_READER_KEY,
+    stable_pool_gate_row_days,
 )
 from bayes_basket_target.offloaded_paths import (  # noqa: E402
     DEFAULT_COLD_TIER_MIN_FREE_BYTES,
@@ -283,6 +287,31 @@ class KeepNamed:
 
 
 @dataclass(frozen=True)
+class MoveSuperseded:
+    """Rows inside the window whose every answer a newer row of the key gives.
+
+    For a table whose window reader takes, per ``key`` and per day, the newest
+    row that gives that day (``row_days``), ordered by ``order`` (newest
+    first).  Walking a key newest first, a row whose days the newer rows
+    already all give can never be that reader's answer for any instant from
+    now on -- every newer row stays in the window at least as long -- so it
+    leaves though it is inside the window.  ``keep_latest`` of the policy
+    still keeps its newest rows per its own key, inside the window too.
+
+    Read one ``partition`` value at a time, each in its own short read, so
+    the walk never holds a snapshot open across the whole table.
+    """
+
+    key: tuple[str, ...]
+    order: tuple[str, ...]
+    partition: str
+    #: SQL expressions read per row and handed to ``row_days`` in order.
+    day_sql: tuple[str, ...]
+    row_days: Callable[..., Mapping[str, Any]]
+    why: str
+
+
+@dataclass(frozen=True)
 class DynamicFloor:
     """Rows dated on or after a day computed at run time stay hot.
 
@@ -314,6 +343,7 @@ class TablePolicy:
     keep_foreign_key_refs: bool = False
     keep_named: tuple[KeepNamed, ...] = ()
     floors: tuple[DynamicFloor, ...] = ()
+    move_superseded: MoveSuperseded | None = None
     #: Content-addressed side tables the moved rows name, COPIED (never
     #: deleted) into the same cold file so an offline reader can expand a
     #: cold row without the SSOT.
@@ -359,6 +389,11 @@ class TablePolicy:
             "keep_foreign_key_refs": self.keep_foreign_key_refs,
             "keep_named": [{"name": k.name, "column": k.column, "why": k.why} for k in self.keep_named],
             "floors": [{"name": f.name, "why": f.why} for f in self.floors],
+            "move_superseded": None if self.move_superseded is None else {
+                "key": list(self.move_superseded.key),
+                "order": list(self.move_superseded.order),
+                "why": self.move_superseded.why,
+            },
             "mirror_tables": list(self.mirror_tables),
             "max_batches_per_run": self.max_batches_per_run,
         }
@@ -588,6 +623,22 @@ POLICIES: tuple[TablePolicy, ...] = (
         # The stable-pool gate reads [as_of - LOOKBACK, as_of]; two days of
         # margin keep the date-precision cutoff clear of its window.
         hot_days=STABLE_POOL_GATE_LOOKBACK_DAYS + 2,
+        # 2026-10-13 (user 「桥接+精细保留」): the window held ~1M rows (~7 GiB)
+        # while ~72% of them score only days a newer row of the same gate key
+        # re-scored -- rows the gate never reads again.  They leave now; P0's
+        # latest two per reader key and the 221 writer's latest one stay.
+        move_superseded=MoveSuperseded(
+            key=tuple(STABLE_POOL_GATE_HISTORY_KEY),
+            order=("evaluated_at_utc", "evaluation_id"),
+            partition="station_id",
+            day_sql=(STABLE_POOL_GATE_SCORES_SQL, STABLE_POOL_GATE_MEMBERSHIP_SQL),
+            row_days=stable_pool_gate_row_days,
+            why=(
+                "native_ensemble_oos._stable_pool_gate_history takes each day from the "
+                "newest row of its key that gives it; a row whose days newer rows of the "
+                "key all give is never read again"
+            ),
+        ),
         readers=(
             "native_ensemble_p0 (two places), republisher_fallback_activation, "
             "plan_native_ensemble_activation_repair and the charter 221 writer: the "
@@ -1237,6 +1288,8 @@ class TablePlan:
     table_estimated_bytes: int | None = None
     #: Hashes an execution vector names that its station-day does not hold.
     absent_vector_refs: int = 0
+    #: Rows inside the window that leave under ``move_superseded``.
+    superseded_rows: int = 0
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -1257,6 +1310,7 @@ class TablePlan:
             "table_rows": self.table_rows,
             "table_estimated_bytes": self.table_estimated_bytes,
             "absent_vector_refs": self.absent_vector_refs,
+            "superseded_rows": self.superseded_rows,
         }
 
 
@@ -1472,7 +1526,7 @@ def plan_table(
     plan.older_than_cutoff = int(conn.execute(
         f"SELECT COUNT(*) FROM {_q(table)} WHERE {_q(time_column)} < ?{extra}", (plan.cutoff,)
     ).fetchone()[0])
-    if not plan.older_than_cutoff:
+    if not plan.older_than_cutoff and policy.move_superseded is None:
         plan.state = "nothing_old"
         return plan
     kept: dict[str, int] = {}
@@ -1603,14 +1657,102 @@ def plan_table(
         if int(newest) in older:
             kept["newest_rowid"] = 1
     plan.kept = dict(sorted(kept.items()))
-    plan.candidates = array("q", sorted(rowid for rowid in older if rowid not in protected))
+    leaving = {rowid for rowid in older if rowid not in protected}
     del older
+    if policy.move_superseded is not None:
+        superseded = _superseded_rowids(
+            conn, policy, since=effective, until=min(floor_days)[0] if floor_days else None,
+            named=named, protected_latest=protected,
+        )
+        superseded.difference_update(leaving)
+        plan.superseded_rows = len(superseded)
+        leaving |= superseded
+    plan.candidates = array("q", sorted(leaving))
+    del leaving
     if plan.candidates:
         plan.oldest = _time_of(conn, table, time_column, plan.candidates[0])
         plan.newest = _time_of(conn, table, time_column, plan.candidates[-1])
         plan.estimated_bytes = _estimate_bytes(conn, table, plan.candidates, estimate_sample)
     plan.state = "planned" if plan.candidates else "nothing_to_move"
     return plan
+
+
+def _superseded_rowids(
+    conn: sqlite3.Connection,
+    policy: TablePolicy,
+    *,
+    since: str,
+    until: str | None,
+    named: Sequence[tuple[KeepNamed, set[str]]],
+    protected_latest: Mapping[int, str],
+) -> set[int]:
+    """The rows dated on or after ``since`` (and before ``until``) that
+    ``policy.move_superseded`` lets leave.
+
+    ``policy.keep_latest`` is applied here over the whole key, not only the
+    rows below the cutoff, and a row a ``named`` rule names never leaves.
+    ``protected_latest`` (the plan's protections below the cutoff) is only
+    consulted so a row the plan already kept is not counted twice.
+    """
+
+    rule = policy.move_superseded
+    assert rule is not None
+    table, time_column = policy.table, policy.time_column
+    latest_columns = [c for r in policy.keep_latest for c in (*r.key, *r.order)]
+    named_columns = [r.column for r, _ids in named]
+    columns = list(dict.fromkeys([*rule.key, *rule.order, *latest_columns, *named_columns]))
+    columns = [c for c in columns if c != "rowid"]
+    at = {column: 1 + index for index, column in enumerate(columns)}
+    days_at = 1 + len(columns)
+    listed = ",".join(_q(c) for c in columns)
+    reads = ",".join(rule.day_sql)
+    window = f"{_q(time_column)} >= ?" + (f" AND {_q(time_column)} < ?" if until else "")
+    extra = f" AND ({policy.candidate_where})" if policy.candidate_where else ""
+    parts = [
+        r[0] for r in conn.execute(f"SELECT DISTINCT {_q(rule.partition)} FROM {_q(table)}")
+    ]
+    leaving: set[int] = set()
+    for part in parts:
+        args: tuple = (part, since) + ((until,) if until else ())
+        rows = conn.execute(
+            f"SELECT rowid,{listed},{reads} FROM {_q(table)}"
+            f" WHERE {_q(rule.partition)}=? AND {window}{extra}",
+            args,
+        ).fetchall()
+
+        def value(row: Sequence[Any], column: str) -> Any:
+            return int(row[0]) if column == "rowid" else row[at[column]]
+
+        keep: set[int] = set()
+        for latest in policy.keep_latest:
+            groups: dict[tuple, list[tuple[tuple, int]]] = {}
+            for row in rows:
+                entries = groups.setdefault(tuple(value(row, c) for c in latest.key), [])
+                heapq.heappush(entries, (tuple(_sql_order_key(value(row, c)) for c in latest.order), int(row[0])))
+                if len(entries) > latest.count:
+                    heapq.heappop(entries)
+            keep.update(rowid for entries in groups.values() for _order, rowid in entries)
+        for named_rule, ids in named:
+            keep.update(int(row[0]) for row in rows if str(value(row, named_rule.column)) in ids)
+        by_key: dict[tuple, list[Sequence[Any]]] = {}
+        for row in rows:
+            by_key.setdefault(tuple(value(row, c) for c in rule.key), []).append(row)
+        for members in by_key.values():
+            members.sort(
+                key=lambda row: tuple(_sql_order_key(value(row, c)) for c in rule.order),
+                reverse=True,
+            )
+            given: set[str] = set()
+            for row in members:
+                days = set(rule.row_days(*row[days_at:]))
+                rowid = int(row[0])
+                if not days <= given and days:
+                    given |= days
+                    continue
+                if rowid not in keep and rowid not in protected_latest:
+                    leaving.add(rowid)
+        del rows
+    return leaving
 
 
 def _time_of(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> str | None:

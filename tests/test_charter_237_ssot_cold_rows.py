@@ -26,6 +26,7 @@ from __future__ import annotations
 import ast
 from datetime import datetime, timezone
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
@@ -602,13 +603,16 @@ def _oos_key(station: str, systems: list[str]) -> dict:
     }
 
 
-def _evaluation(conn, eid: str, key: dict, at: str, *, days: list[str] = (), profile: str = "P") -> None:
+def _evaluation(
+    conn, eid: str, key: dict, at: str, *, days: list[str] = (), profile: str = "P",
+    membership: str | None = None,
+) -> None:
     scores = [
         {"event_date": d, "learned": {"brier": 0.5, "crps": 0.4, "nll": 1.0 + i / 10},
          "climate": {"brier": 0.6, "crps": 0.5, "nll": 1.5}}
         for i, d in enumerate(days)
     ]
-    metrics = {"equal_weight_diagnostic": {"scheme_daily_scores": scores}, "gate": {"membership_mode": None}}
+    metrics = {"equal_weight_diagnostic": {"scheme_daily_scores": scores}, "gate": {"membership_mode": membership}}
     row = {
         "evaluation_id": eid, **key, "selection_evidence_sha256": _sha("sel" + eid),
         "oos_state": "PRODUCTION_NO_LIVE_OOS_PASS", "threshold_profile": profile,
@@ -677,6 +681,65 @@ def test_the_oos_readers_answer_the_same_at_every_instant_after_the_cutoff(
     assert after == before
     assert native_ensemble_oos._stable_pool_gate_history(conn, **gate_args) == gate_before
     conn.close()
+
+
+def test_rows_whose_days_a_newer_row_gives_leave_from_inside_the_window(
+    store: Path, cold: Path, tmp_path: Path
+) -> None:
+    """2026-10-13 (「桥接+精细保留」): inside the window, a row whose scored
+    days newer rows of its gate key all give is never read again and leaves;
+    the P0 readers' latest two and the gate's answer from now on are what
+    they were."""
+
+    key = _oos_key("KLGA", ["DWD_ICON", "ECMWF_IFS"])
+    conn = sqlite3.connect(store)
+    # Newest first: h5/h4 are the latest two; h3 gives 09-10 nobody newer
+    # gives; h2 and h1 give only days h3..h5 give; h0 is a rollback row the
+    # gate skips (no days for it) -- it leaves too.
+    rows = (
+        ("h0", "2026-09-12T01:00:00Z", ["2026-09-09"]),
+        ("h1", "2026-09-14T01:00:00Z", ["2026-09-11", "2026-09-12"]),
+        ("h2", "2026-09-16T01:00:00Z", ["2026-09-12", "2026-09-13"]),
+        ("h3", "2026-09-18T01:00:00Z", ["2026-09-10", "2026-09-11", "2026-09-12"]),
+        ("h4", "2026-09-22T01:00:00Z", ["2026-09-13"]),
+        ("h5", "2026-09-26T01:00:00Z", ["2026-09-13"]),
+    )
+    for eid, at, days in rows:
+        _evaluation(conn, eid, key, at, days=days, membership="contest" if eid == "h0" else None)
+    conn.commit()
+    gate_args = dict(
+        station_id="KLGA", season_bin="PEAK", lead_bucket="h24_48", run_cycle="00Z",
+        run_cycle_by_system_json=key["run_cycle_by_system_json"],
+        run_cycle_by_system_sha256=key["run_cycle_by_system_sha256"],
+        settlement_definition="WU_DAILY_HIGH", system_ids=["DWD_ICON", "ECMWF_IFS"],
+        threshold_profile="P", as_of_utc="2026-09-27T06:00:00Z",
+    )
+    gate_before = native_ensemble_oos._stable_pool_gate_history(conn, **gate_args)
+    p0_before = _p0_reader(conn, key, "2026-09-27T06:00:00Z")
+    conn.close()
+
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[OOS])
+    table = receipt["tables"][0]
+    moved = {row[1] for row in _table_rows(_cold_file(cold, OOS), OOS).values()}
+    assert moved == {"h0", "h1", "h2"}
+    assert table["superseded_rows"] == 3
+
+    conn = sqlite3.connect(store)
+    assert _p0_reader(conn, key, "2026-09-27T06:00:00Z") == p0_before
+    assert native_ensemble_oos._stable_pool_gate_history(conn, **gate_args) == gate_before
+    conn.close()
+
+
+def test_the_superseded_rule_groups_by_the_gates_own_key_and_reads() -> None:
+    rule = off.POLICY_BY_TABLE[OOS].move_superseded
+    assert rule is not None
+    assert rule.key == tuple(native_ensemble_oos.STABLE_POOL_GATE_HISTORY_KEY)
+    assert rule.row_days is native_ensemble_oos.stable_pool_gate_row_days
+    source = inspect.getsource(native_ensemble_oos._stable_pool_gate_history)
+    assert "STABLE_POOL_GATE_SCORES_SQL" in source and "STABLE_POOL_GATE_MEMBERSHIP_SQL" in source
+    assert "stable_pool_gate_row_days" in source
+    for column in rule.key:
+        assert f"{column}=?" in source
 
 
 # --------------------------------------------------------------------------

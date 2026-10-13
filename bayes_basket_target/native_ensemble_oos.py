@@ -1193,6 +1193,18 @@ STABLE_POOL_GATE_HISTORY_EPOCH_UTC = "2026-09-14T04:00:00Z"
 # How far back an evaluation, and a scored day, may be read at all.  A key
 # whose cohort stopped forming keeps no old days alive past this.
 STABLE_POOL_GATE_LOOKBACK_DAYS = 21
+#: The evaluation reader key (``_EVALUATION_READER_KEY`` below names it too).
+_EVALUATION_READER_KEY_COLUMNS = (
+    "station_id",
+    "season_bin",
+    "lead_bucket",
+    "run_cycle",
+    "run_cycle_by_system_json",
+    "run_cycle_by_system_sha256",
+    "settlement_definition",
+    "ensemble_system_ids_json",
+    "available_system_set_hash",
+)
 
 
 def _stable_pool_gate_history(
@@ -1223,9 +1235,7 @@ def _stable_pool_gate_history(
     since = max(lookback, STABLE_POOL_GATE_HISTORY_EPOCH_UTC)
     ids = sorted(str(value) for value in system_ids)
     rows = conn.execute(
-        "SELECT json_extract(oos_metrics_json,"
-        "'$.equal_weight_diagnostic.scheme_daily_scores'),"
-        "json_extract(oos_metrics_json,'$.gate.membership_mode') "
+        f"SELECT {STABLE_POOL_GATE_SCORES_SQL},{STABLE_POOL_GATE_MEMBERSHIP_SQL} "
         "FROM calibration_cross_native_ensemble_oos_evaluation "
         "WHERE station_id=? AND season_bin=? AND lead_bucket=? "
         "AND run_cycle=? AND available_system_set_hash=? "
@@ -1251,21 +1261,47 @@ def _stable_pool_gate_history(
     ).fetchall()
     days: dict[str, tuple[dict[str, float], dict[str, float]]] = {}
     for raw_scores, membership in rows:
-        if membership not in (None, P0_MEMBERSHIP_MODE_STABLE_POOL):
-            continue
+        days.update(stable_pool_gate_row_days(raw_scores, membership))
+    return days
+
+
+#: The columns ``_stable_pool_gate_history`` matches a key's rows on: the
+#: reader key plus the threshold profile.  The cold offload's superseded rule
+#: groups by exactly these (pinned by the test).
+STABLE_POOL_GATE_HISTORY_KEY = (*_EVALUATION_READER_KEY_COLUMNS, "threshold_profile")
+#: The two JSON reads ``_stable_pool_gate_history`` takes per row.
+STABLE_POOL_GATE_SCORES_SQL = (
+    "json_extract(oos_metrics_json,'$.equal_weight_diagnostic.scheme_daily_scores')"
+)
+STABLE_POOL_GATE_MEMBERSHIP_SQL = "json_extract(oos_metrics_json,'$.gate.membership_mode')"
+
+
+def stable_pool_gate_row_days(
+    raw_scores: Any, membership: Any
+) -> dict[str, tuple[dict[str, float], dict[str, float]]]:
+    """The scored days one evaluation row gives the stable-pool gate.
+
+    Empty when the row is not a stable-pool evaluation or its scores do not
+    parse; a day whose scores are not all finite is not given.  A newer row
+    of the same key that gives a day overrides this row's score for it.
+    """
+
+    if membership not in (None, P0_MEMBERSHIP_MODE_STABLE_POOL):
+        return {}
+    try:
+        scores = json.loads(raw_scores) if raw_scores else []
+    except (TypeError, ValueError):
+        return {}
+    days: dict[str, tuple[dict[str, float], dict[str, float]]] = {}
+    for row in scores if isinstance(scores, list) else []:
         try:
-            scores = json.loads(raw_scores) if raw_scores else []
-        except (TypeError, ValueError):
+            day = str(row["event_date"])
+            learned = {m: float(row["learned"][m]) for m in ("brier", "crps", "nll")}
+            climate = {m: float(row["climate"][m]) for m in ("brier", "crps", "nll")}
+        except (KeyError, TypeError, ValueError):
             continue
-        for row in scores if isinstance(scores, list) else []:
-            try:
-                day = str(row["event_date"])
-                learned = {m: float(row["learned"][m]) for m in ("brier", "crps", "nll")}
-                climate = {m: float(row["climate"][m]) for m in ("brier", "crps", "nll")}
-            except (KeyError, TypeError, ValueError):
-                continue
-            if all(math.isfinite(v) for v in (*learned.values(), *climate.values())):
-                days[day] = (learned, climate)
+        if all(math.isfinite(v) for v in (*learned.values(), *climate.values())):
+            days[day] = (learned, climate)
     return days
 
 
@@ -6652,17 +6688,7 @@ def _selection_identity(
 # Charter 221: the key every reader of this table selects a scope's latest
 # evaluation by (native_ensemble_p0, republisher_fallback_activation) -- the
 # stable-pool gate adds threshold_profile, which is compared below as well.
-_EVALUATION_READER_KEY = (
-    "station_id",
-    "season_bin",
-    "lead_bucket",
-    "run_cycle",
-    "run_cycle_by_system_json",
-    "run_cycle_by_system_sha256",
-    "settlement_definition",
-    "ensemble_system_ids_json",
-    "available_system_set_hash",
-)
+_EVALUATION_READER_KEY = _EVALUATION_READER_KEY_COLUMNS
 
 
 def _restates_latest_evaluation(
