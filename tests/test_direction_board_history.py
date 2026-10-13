@@ -58,3 +58,20 @@ def test_the_resident_job_writes_the_history_and_the_card_shows_the_change() -> 
     assert "write_board_snapshot(with_history(doc, _read_board(board_path)), board_path)" in source
     dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "sdDirChange(hist[hist.length-1]" in dashboard and "<summary>细节</summary>" in dashboard
+
+
+def test_the_card_grades_momentum_in_five_tiers() -> None:
+    """User 2026-10-13: M shown as 很弱/弱/中/强/很强 (|M| cuts 1/2/3/5)."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node not installed")
+    dashboard = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    fn = dashboard[dashboard.index("function sdMomTier"):dashboard.index("function sdDirRun")]
+    probe = fn + 'console.log([null,-0.12,1,-2.5,3,4.99,5].map(m=>sdMomTier(m).replace(/<[^>]+>/g,"")).join(","))'
+    out = subprocess.run([node, "-e", probe], capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+    assert out == ",很弱,弱,中,强,强,很强"
