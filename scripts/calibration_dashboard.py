@@ -15628,6 +15628,13 @@ table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
 table.sd-sky td.sd-sky-tags{white-space:normal}
 table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-skybox{margin:6px 0}
+.sd-sunstats{display:flex;flex-wrap:wrap;gap:6px 22px;margin:6px 0 8px}
+.sd-sunstat{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;cursor:help;margin:2px 0 6px}
+.sd-sunstat>span:first-child{font-size:12.5px;color:var(--muted)}
+.sd-sunstat>b{font-size:22px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+.sd-sunstat>b small{font-size:12px;font-weight:600;color:var(--muted)}
+.sd-sunage{font-size:12px;color:var(--muted)}
+.sd-sunnew{font-size:12px;font-weight:700;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
 .sd-skybox>summary .sd-sub b{font-size:13px}
 table.sd-tab th.sd-raw-c,table.sd-tab td.sd-raw-c{background:color-mix(in srgb,var(--muted) 7%,transparent)}
 table.sd-tab th.sd-grp{text-align:center;color:var(--text);font-weight:700}
@@ -22530,6 +22537,24 @@ function sdMeanModeCard(day){
   return sdEvidenceCard(`<span title="${sdShapeRule()}；大字＝当日口径 ${sdEsc(day.head_stage || "")}">偏态 · 均值对众数</span>`,
     H.color, main, rows ? `<div class="sd-shape-rows">${rows}</div>` : "还没有概率向量");
 }
+// The day's forecast radiation total, prominent, with how old it is (user
+// 2026-10-13 「把两处的辐射总量…突出，并显示数据的陈旧度」; 「晴空指数与系数：默认
+// 展开」).  Radiation card: the capture P0 read (station_day_board.
+// _radiation_capture); a newer capture with another value is named, since
+// the next P0 will read it.  Hourly panel: the board's own fetch.
+function sdSunStat(label, mj, at, tip, extra){
+  return `<div class="sd-sunstat" title="${sdEsc(tip)}"><span>${label}</span><b>${sdN(mj, 2)}<small> MJ/m²</small></b>${at ? `<span class="sd-sunage">取于 ${sdAgeSpan(at, "sd-age")}</span>` : ""}${extra || ""}</div>`;
+}
+function sdRadTotal(R){
+  const at = R.capture_state === "matched" ? R.captured_at_utc : null;
+  const first = R.first_seen_utc && R.first_seen_utc !== R.captured_at_utc ? `；这个值 ${sdLocal(R.first_seen_utc, true)} 起没变` : "";
+  const tip = `P0 用的辐射总量：Open-Meteo 日总量（生产约每 6 小时采一次）`
+    + (at ? `，采于 ${sdLocal(at, true)}（当地）${first}` : R.capture_state === "value_not_in_record" ? "，与采集记录对不上" : "，没有采集记录")
+    + `；状态 ${R.state || "—"}`;
+  const newer = R.latest_mj != null && Math.abs(R.latest_mj - (R.radiation_sum_mj ?? NaN)) >= 0.005
+    ? `<span class="sd-sunnew" title="${sdEsc(`采于 ${sdLocal(R.latest_captured_at_utc, true)}（当地），下一次 P0 读它`)}">已更新 ${sdN(R.latest_mj, 2)}</span>` : "";
+  return sdSunStat("辐射总量（P0 用）", R.radiation_sum_mj, at, tip, newer);
+}
 function sdEvidence(day){
   const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
@@ -22541,7 +22566,7 @@ function sdEvidence(day){
   const radColor = R && R.shift_c > 0 ? "var(--amber)" : R && R.shift_c < 0 ? SD_COL.P0 : "var(--muted)";
   const rad = sdEvidenceCard("辐射偏移（宪章 222）", radColor,
     R ? `<b title="今天预报日照（晴空指数）对本站常年：标准化 ${sdSg(R.standardised,2)}σ">${sdEsc(R.side === "WARM" ? "日照多于常年" : R.side === "COLD" ? "日照少于常年" : R.side === "NEUTRAL" ? "日照同常年" : R.side || "—")}</b><b class="sd-evidence-primary" title="平移＝侧系数×标准化 − 本站常年平均推力（暖侧 ${sdN(R.sigma_warm,2)}、冷侧 ${sdN(R.sigma_cold,2)}）。常年平均推力为正，所以日照只比常年略多时，净平移仍可为负（略偏冷）">平移 ${sdSg(R.shift_c,2)}°C</b>` : `<b>无记录</b>`,
-    R ? `辐射总量 ${sdN(R.radiation_sum_mj,2)} MJ/m² · ${sdEsc(R.state || "—")}<details><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录");
+    R ? `${sdRadTotal(R)}<details open><summary>晴空指数与系数</summary>晴空指数 ${sdN(R.clearness_index,3)}（历史 ${sdN(R.clearness_mean,3)} ± ${sdN(R.clearness_sd,3)}，标准化 ${sdSg(R.standardised,2)}）<br>系数 暖 ${sdN(R.sigma_warm,2)} / 冷 ${sdN(R.sigma_cold,2)}</details>` : "P0 回执没有辐射偏移记录");
   // Its own card, right of the radiation card (user 2026-10-10 「放在辐射偏移（宪章 222
   // 卡片右边，单独一个卡片。而不是放在一起」).
   const dir = sdDirection(day.direction, R);
@@ -22656,9 +22681,10 @@ function sdSky(day){
     ? `${sunLine}${shiftLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
+    <div class="sd-sunstats">${sdSunStat("全天预报日照", H.forecast_sw_mj, H.fetched_at_utc, "Open-Meteo 逐小时短波加总（看板现取，缓存 30 分钟）；与辐射偏移卡同一来源，取数时刻不同")}${sdSunStat("提前 1 天的预报", H.forecast_sw_d1_mj, null, "同一接口提前 1 天发出的那一版（previous_day1）")}</div>
     ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，经 Open-Meteo 转发，约晚 1 小时）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
-    <div class="muted sd-sub">全天预报日照 ${sdN(H.forecast_sw_mj, 1)} MJ/m²（提前 1 天 ${sdN(H.forecast_sw_d1_mj, 1)}）。机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
+    <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
 }
 // METAR and TAF as tables of their groups (user 2026-10-10「metar改为表格形式，

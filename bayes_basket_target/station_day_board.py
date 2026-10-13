@@ -1241,6 +1241,9 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
             if entry.get("taf_witness"):
                 entry["taf_witness"]["cloud_evidence"] = _taf_cloud_evidence(
                     conn, station, day, entry["taf_witness"], taf_inbox or {})
+            if entry.get("radiation"):
+                entry["radiation"].update(_radiation_capture(
+                    conn, station, day, str(head["decided_at_utc"]), entry["radiation"].get("radiation_sum_mj")))
         elif stage == "P0-M":
             entry.update(_p0m_brief(head))
         else:
@@ -1313,6 +1316,42 @@ def _direction(station: str, day: str) -> dict[str, Any] | None:
             "momentum_quiet_below": doc.get("momentum_quiet_below"),
             "run_due_hours": dict(DIRECTION_RUN_DUE_HOURS),
             "snapshot_stale_sec": DIRECTION_SNAPSHOT_STALE_SEC}
+
+
+#: The source charter 222's radiation sum is read from
+#: (scripts/capture_station_forecast_physics.py).
+RADIATION_SOURCE_ID = "OPEN_METEO_MODEL_FORECAST"
+
+
+def _radiation_capture(conn, station: str, day: str, decided_at: str, used_mj: float | None) -> dict[str, Any]:
+    """When the radiation sum P0 read was captured, and the newest capture
+    since (user 2026-10-13 「把两处的辐射总量…突出，并显示数据的陈旧度」).
+
+    P0 reads the station-day's current physics row at compile time, so the
+    capture it used is the newest version at or before its decision;
+    ``first_seen_utc`` is when that value first arrived (a re-capture that
+    returns the same number does not make the forecast newer).  A value that
+    matches no version is reported, never guessed."""
+
+    rows = [(str(at), float(v)) for at, v in conn.execute(
+        "SELECT captured_at_utc, shortwave_radiation_sum FROM calibration_station_forecast_physics_version"
+        " WHERE station_id=? AND local_date=? AND source_id=? AND shortwave_radiation_sum IS NOT NULL"
+        " ORDER BY captured_at_utc",
+        (station, day, RADIATION_SOURCE_ID),
+    )]
+    decided = _utc(decided_at)
+    before = [r for r in rows if decided is not None and (_utc(r[0]) or decided) <= decided]
+    out: dict[str, Any] = {"capture_state": "no_capture_record"}
+    if before and used_mj is not None and abs(before[-1][1] - float(used_mj)) < 0.005:
+        first = len(before) - 1
+        while first > 0 and abs(before[first - 1][1] - before[-1][1]) < 0.005:
+            first -= 1
+        out = {"capture_state": "matched", "captured_at_utc": before[-1][0], "first_seen_utc": before[first][0]}
+    elif before:
+        out = {"capture_state": "value_not_in_record"}
+    if rows and (not before or rows[-1][0] != before[-1][0]):
+        out.update(latest_mj=round(rows[-1][1], 2), latest_captured_at_utc=rows[-1][0])
+    return out
 
 
 def _listing_f() -> dict[str, Any] | None:
