@@ -11449,9 +11449,14 @@ def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     # points at its latest one, so it cannot label earlier fills.  The
     # decision signature is the immutable rule that minted every intent.
     version_by_decision: dict[str, str] = {}
+    # A range on the primary key, not LIKE: LIKE is not index-backed here,
+    # so it walked every decision's details_json for 199 rows -- 18.6 s of
+    # this section, 364 s on a swapping host (2026-10-13).  '`' is the
+    # character after '_'.
     for decision_id, details_json in conn.execute(
         "SELECT decision_id, details_json FROM auto_trade_decisions"
-        " WHERE decision_id LIKE 'tiebreak_decision_%'"
+        " WHERE decision_id >= 'tiebreak_decision_'"
+        " AND decision_id < 'tiebreak_decision`'"
     ):
         signature = (json.loads(details_json).get("decision_signature") or {})
         version = str(signature.get("rule") or "")
