@@ -791,6 +791,42 @@ RADIATION_DIFF_FRAC = 0.25
 RADIATION_DIFF_MIN_WM2 = 100.0
 TEMP_DIFF_C = 1.0
 HAZE_VISIBILITY_M = 8000.0
+# Morning sunshine -> the day's maximum (user 2026-10-13 「前端显式：上午日照偏差 →
+# 最高温相对预报的偏差，显示度数」): the two-slope line fitted per last measured
+# hour by docs/research/sun_tmax_shift_20261013/fit.py, read here and applied
+# to the satellite against the day-ahead forecast -- the fit's own basis, not
+# the latest forecast the headline compares.  Display only.
+SUN_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "sun_tmax_shift_v1.json"
+
+
+def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    if not measured:
+        return None
+    try:
+        fit = json.loads(SUN_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unfitted"}
+    table = fit.get("by_last_hour") or {}
+    last = max(int(r["hour"]) for r in measured)
+    hours = sorted(int(h) for h in table)
+    if not hours or last < hours[0]:
+        return {"state": "too_early", "from_hour": hours[0] if hours else None}
+    line = table[str(min(last, hours[-1]))]
+    sat = sum(float(r["sat_sw_wm2"]) for r in measured)
+    fc = sum(float(r["forecast"].get("sw_d1") or 0.0) for r in measured)
+    if fc < 60.0 * len(measured):
+        return {"state": "little_sun"}
+    pct = 100.0 * (sat - fc) / fc
+    clip = float(fit.get("x_clip_pct") or 80.0)
+    x = max(-clip, min(clip, pct))
+    side, ci = ("dark", "dark_ci95") if x < 0 else ("bright", "bright_ci95")
+    shift = lambda b: float(line["intercept_c"]) + b / 10.0 * x
+    lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
+    tmax_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
+    return {"state": "ok", "last_hour": last, "pct_d1": round(pct, 1), "shift_c": round(shift(line[side + "_c_per_10pct"]), 2),
+            "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": round(max(tmax_d1), 1) if tmax_d1 else None,
+            "resid_sd_c": line.get("resid_sd_c"), "r2": line.get("r2"), "n": line.get("n"),
+            "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
 
 
 def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
@@ -1054,6 +1090,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "sat_forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in measured) * 0.0036, 2) if measured and times else None,
         "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,
         "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
+        "sun_tmax_shift": _sun_tmax_shift(rows, measured) if times else None,
     }
 
 

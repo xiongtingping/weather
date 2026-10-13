@@ -22586,8 +22586,14 @@ function sdSky(day){
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
   const sunLine = swObs == null ? (bySat ? `卫星日照未到（${sdEsc(sat.reason || "约晚 1 小时")}）` : "")
     : `截至 ${String(swTo).padStart(2, "0")}:00 ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "sd-warm" : "sd-cold"}">${sdSg(swPct, 0)}%</b>）`}`;
+  // Morning sunshine -> the maximum (user 2026-10-13): the backend's
+  // sun_tmax_shift, read only; satellite stations only (the fit is on satellite).
+  const T = bySat && swObs != null ? H.sun_tmax_shift : null;
+  const shiftLine = T && T.state === "ok"
+    ? ` · 对日前预报 ${sdSg(T.pct_d1,0)}% → 最高温 <b class="${T.shift_c >= 0 ? "sd-warm" : "sd-cold"}" title="${sdEsc(`按日前预报口径：截至 ${T.last_hour}:00 卫星日照比日前预报 ${sdSg(T.pct_d1,0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c),1)}°C（斜率区间 ${sdSg(T.range_c[0],1)}～${sdSg(T.range_c[1],1)}°C）${T.forecast_tmax_d1_c != null ? `，日前预报最高 ${sdN(T.forecast_tmax_d1_c,1)}°C` : ""}。只解释约 ${sdN(100*T.r2,0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c,1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合，变暗的影响约为变亮的两倍；仅作参考，不进任何层。`)}">${sdSg(T.shift_c,1)}°C</b>`
+    : "";
   const headline = observed.length
-    ? `${sunLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
+    ? `${sunLine}${shiftLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，经 Open-Meteo 转发，约晚 1 小时）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
