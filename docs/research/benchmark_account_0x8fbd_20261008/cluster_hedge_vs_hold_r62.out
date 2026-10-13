@@ -1,0 +1,11 @@
+838 two-sided groups over 17 event days (2026-09-24..2026-10-10)
+
+pair cost    groups matched sh first wins paired P&L   hold P&L  hedge leg             95% CI           halves  hedge after (min, median)
+<= 0.95         628      92370        54%     +16726     +15124      +1601 [  -4222,   +7712]    -378/  +1980                       1516
+0.95-1.00       108      20459        40%       +544       -640      +1184 [   -524,   +2822]    +294/   +889                       1244
+> 1.00          102      20986        41%      -1655      -1706        +51 [  -4084,   +3673]    +535/   -485                       1009
+all             838     133814        50%     +15615     +12779      +2836 [  -3001,   +7955]    +451/  +2385                       1466
+
+pair cost > 1.00, by the first leg's fate (USDC on the matched shares):
+  first side won : groups 41, paired -680, hold +3906, avg first price 0.541, avg hedge price 0.539
+  first side lost: groups 61, paired -976, hold -5611, avg first price 0.450, avg hedge price 0.628
