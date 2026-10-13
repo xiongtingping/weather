@@ -40,7 +40,7 @@ from bayes_basket_target.pass_deadline import (  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 # Charter 267 (二): plus the native deterministic runs for the listing-time F.
-PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX")
+PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX", "GFS_HOURLY")
 # Runs a pass may take per product: the newest, and one it missed.
 MAX_RUNS_PER_PRODUCT = 2
 # Writer-free seconds per product; the pass as a whole stays inside the

@@ -70,14 +70,15 @@ def test_native_runs_feed_f_and_never_the_p0_feature():
 def test_the_native_products_ride_the_family_capture_and_its_doorbell():
     capture = _load("capture_deterministic_forward")
     probe = _load("probe_deterministic_runs")
-    assert "GFS_HOURLY" not in capture.PRODUCTS, "the research arm is backfilled by hand, not captured forward"
-    for product in [p for p in NATIVE if p != "GFS_HOURLY"]:
+    # 2026-10-13 (user 「接入采集」): the hourly research arm is captured
+    # forward like the rest; it stays out of F (F_SYSTEM_IDS, above).
+    for product in NATIVE:
         assert product in capture.PRODUCTS
         assert product in probe.PRODUCTS
     daemon_text = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text()
     start = daemon_text.index("DETERMINISTIC_PROBE_SWEEPS = {")
     block = daemon_text[start: daemon_text.index("}", start)]
-    for product in [p for p in NATIVE if p != "GFS_HOURLY"]:
+    for product in NATIVE:
         assert f'"{product}": "capture_deterministic_forward"' in block
 
 

@@ -951,6 +951,9 @@ DETERMINISTIC_PROBE_SWEEPS = {
     "UKMO_GLOBAL": "capture_deterministic_forward",
     # 补记六: the flux-grid GFS for the station-value F_v3.
     "GFS_SFLUX": "capture_deterministic_forward",
+    # 2026-10-13 (user 「接入采集」): the hourly-step GFS research arm (补记三)
+    # captured forward too; lane table only, never F (F_SYSTEM_IDS).
+    "GFS_HOURLY": "capture_deterministic_forward",
 }
 
 

@@ -505,7 +505,7 @@ def test_a_capture_pass_skips_the_relays_on_an_exhausted_day(monkeypatch, capsys
     monkeypatch.setattr(FAM, "product_roster", lambda conn, product: [("SBGR", -23.4, -46.5, "America/Sao_Paulo")])
     monkeypatch.setattr(sys, "argv", ["capture_deterministic_forward.py", "--db", ":memory:"])
     assert script.main() == 0
-    assert planned == ["AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX"], (
+    assert planned == ["AIFS", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX", "GFS_HOURLY"], (
         "the relays are not even planned once the day is gone; the publishers' own objects are"
     )
 
