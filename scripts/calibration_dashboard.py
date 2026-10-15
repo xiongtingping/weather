@@ -22749,20 +22749,29 @@ function sdSky(day){
   const swFc = bySat ? H.sat_forecast_sw_mj_so_far : H.forecast_sw_mj_so_far;
   const swTo = bySat ? sat.last_hour : latest;
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
+  // The hours summed, as a span (user 2026-10-15 asked why 「截至 13:00」 at
+  // 13:37): hour h is the mean of the hour ending at h:00 and the satellite
+  // hour lands ~75 minutes after it begins, so 13:37 reads 00–13 点.
+  const swSpan = swTo == null ? "" : `<span title="${sdEsc(`今天 00:00 至 ${String(swTo).padStart(2, "0")}:00 的逐小时加总；${bySat ? "卫星每小时数据约在该小时开始后 75 分钟公开，" : ""}更近的小时还没到`)}">00–${String(swTo).padStart(2, "0")} 点</span>`;
   const sunLine = swObs == null ? (bySat ? `卫星日照未到（${sdEsc(sat.reason || "约晚 1 小时")}）` : "")
-    : `截至 ${String(swTo).padStart(2, "0")}:00 ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "sd-warm" : "sd-cold"}">${sdSg(swPct, 0)}%</b>）`}`;
+    : `${swSpan} ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "sd-warm" : "sd-cold"}">${sdSg(swPct, 0)}%</b>）`}`;
   // Morning sunshine -> the maximum (user 2026-10-13): the backend's
   // sun_tmax_shift, read only; satellite stations only (the fit is on satellite).
   const T = bySat && swObs != null ? H.sun_tmax_shift : null;
+  // The shift is against the day-ahead forecast (the fit's basis), not the
+  // latest one the −x% above compares (user 2026-10-15 「−1%为什么最高温还要加
+  // +0.6°C」): written as the maximum it points to, beside both forecasts.
+  const fcMax = (H.rows || []).reduce((m, r) => { const t = (r.forecast || {}).temp_c; return t != null && (m == null || t > m) ? t : m; }, null);
+  const tmaxTo = T && T.state === "ok" && T.forecast_tmax_d1_c != null ? T.forecast_tmax_d1_c + T.shift_c : null;
   const shiftLine = T && T.state === "ok"
-    ? ` · 对日前预报 ${sdSg(T.pct_d1,0)}% → 最高温 <b class="${T.shift_c >= 0 ? "sd-warm" : "sd-cold"}" title="${sdEsc(`按日前预报口径：截至 ${T.last_hour}:00 卫星日照比日前预报 ${sdSg(T.pct_d1,0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c),1)}°C（斜率区间 ${sdSg(T.range_c[0],1)}～${sdSg(T.range_c[1],1)}°C）${T.forecast_tmax_d1_c != null ? `，日前预报最高 ${sdN(T.forecast_tmax_d1_c,1)}°C` : ""}。只解释约 ${sdN(100*T.r2,0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c,1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合，变暗的影响约为变亮的两倍；仅作参考，不进任何层。`)}">${sdSg(T.shift_c,1)}°C</b>`
+    ? ` · 比日前预报 ${sdSg(T.pct_d1,0)}% → 最高温${tmaxTo == null ? "" : ` 约 <b>${sdN(tmaxTo, 1)}°C</b>`}（日前预报 ${T.forecast_tmax_d1_c == null ? "—" : sdN(T.forecast_tmax_d1_c, 1)} <b class="${T.shift_c >= 0 ? "sd-warm" : "sd-cold"}" title="${sdEsc(`按日前预报口径：截至 ${T.last_hour}:00 卫星日照比日前预报 ${sdSg(T.pct_d1,0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c),1)}°C（斜率区间 ${sdSg(T.range_c[0],1)}～${sdSg(T.range_c[1],1)}°C）${T.forecast_tmax_d1_c != null ? `，日前预报最高 ${sdN(T.forecast_tmax_d1_c,1)}°C` : ""}。只解释约 ${sdN(100*T.r2,0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c,1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合，变暗的影响约为变亮的两倍；仅作参考，不进任何层。`)}">${sdSg(T.shift_c,1)}</b>${fcMax == null ? "" : ` · 最新预报 ${sdN(fcMax, 1)}`}）`
     : "";
   const headline = observed.length
     ? `${sunLine}${shiftLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     <div class="sd-sunstats">${sdSunForecast(H)}${swObs == null ? "" : sdSunVs(
-      `${bySat ? "卫星实测" : "推算"}日照（截至 ${String(swTo).padStart(2, "0")}:00）`, swObs,
+      `${bySat ? "卫星实测" : "推算"}日照（00–${String(swTo).padStart(2, "0")} 点）`, swObs,
       bySat ? `卫星实测（${sat.label}）逐小时加总，${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算（≈），霾与中高云下偏高",
       "同时段的预报", swFc, "最新全天预报在同一段小时里的加总")}${sdSunNow(sat.latest)}</div>
     ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
