@@ -22751,11 +22751,15 @@ function sdSky(day){
   // ~75 minutes after it begins, so 13:37 sums 00–13 点 (user 2026-10-15).
   const span = swTo == null ? "" : `00–${hh(swTo)} 点`;
   const fcPct = sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj);
+  const fcPrev = H.fetched_at_utc ? new Date(Date.parse(H.fetched_at_utc) - 86400e3).toISOString() : null;
   const L = sat.latest;
   const cards = [
     sdSunCard("预报日照改了", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
-      `${sdN(H.forecast_sw_d1_mj, 1)} → ${sdN(H.forecast_sw_mj, 1)} MJ/m²`,
-      `全天日照：提前 1 天的预报 ${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
+      // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
+      // latest as fetched, the earlier one ~24 h before it (per hour, the run a
+      // day earlier -- hence ≈).
+      `<span class="muted">≈${sdLocal(fcPrev, true)}</span> ${sdN(H.forecast_sw_d1_mj, 1)} → <span class="muted">${sdLocal(H.fetched_at_utc, true)}</span> ${sdN(H.forecast_sw_mj, 1)} MJ/m²`,
+      `全天 00–24 点日照：提前 1 天的预报（每小时取约 24 小时前那一轮）${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
     swObs == null
       ? sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报`, "未到", "", bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", "")
       : sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报 · ${span}`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
