@@ -1,2 +1,4 @@
 per_system_rows.json.gz
 pipeline_rows.json.gz
+localize_rows*.json.gz
+post_pool_rows*.json.gz
