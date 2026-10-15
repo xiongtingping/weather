@@ -181,3 +181,40 @@ def test_an_unreadable_inbox_says_nothing_rather_than_zero(
     empty.write_text('{"packets": []}', encoding="utf-8")
     monkeypatch.setattr(C, "NATIVE_FORWARD_INBOX", empty)
     assert C._official_native_family_coverage({}) == {}
+
+
+def _activation_db(certified: list[str]):
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE calibration_native_ensemble_activation (artifact_kind TEXT,"
+        " ensemble_system_id_or_star TEXT, authority_scope TEXT,"
+        " valid_from_utc TEXT, valid_until_utc TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO calibration_native_ensemble_activation VALUES"
+        " ('NATIVE_ENSEMBLE_SYSTEM_CALIBRATION', ?, 'PRODUCTION_NO_LIVE_ONLY',"
+        " '2026-10-01T00:00:00Z', '9999-12-31T23:59:59Z')",
+        [(s,) for s in certified],
+    )
+    return conn
+
+
+def test_a_family_with_no_certificate_yet_is_warming_up_not_missing(monkeypatch, tmp_path):
+    # Charter 270: the operational AIGEFS rides no packet until it earns its
+    # own certificates; a near date short of it alone stays green.
+    _at(monkeypatch, "2026-10-15T08:00:00+00:00")
+    aigefs = "NOAA_AIGEFS_OPS_025"
+    others = [s for s in ALL if s != aigefs]
+    _inbox(monkeypatch, tmp_path, [_packet("2026-10-15", others, "2026-10-15T07:00:00Z")])
+
+    out = C._official_native_family_coverage({}, _activation_db(others))
+    row = out["native_inbox_coverage"][0]
+    assert row["absent"] == [] and row["certifying"] == ["AIGEFS"]
+    assert out["native_inbox_health"] == "green"
+
+    # ... and once it holds a certificate, being absent is short again.
+    out = C._official_native_family_coverage({}, _activation_db(ALL))
+    assert out["native_inbox_coverage"][0]["absent"] == ["AIGEFS"]
+    assert out["native_inbox_health"] == "amber"

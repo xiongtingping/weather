@@ -508,8 +508,42 @@ NATIVE_CAPTURE_IDLE_STALLED_HOURS = 3.0
 NATIVE_CAPTURE_IDLE_STOPPED_HOURS = 6.0
 
 
+def _systems_without_certificate(
+    conn: sqlite3.Connection | None, system_ids: Sequence[str]
+) -> set[str]:
+    """Systems with no valid single-system certificate anywhere.
+
+    Charter 270: a newly registered system (the operational AIGEFS) rides no
+    packet until it earns its own certificates -- about ten closed days -- so
+    its absence is the warm-up, not a short packet.  One indexed probe per
+    absent system, only when some family is absent; a read failure leaves the
+    system counted as absent, which is the louder answer.
+    """
+
+    if conn is None or not system_ids:
+        return set()
+    now = _now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    out: set[str] = set()
+    for system_id in system_ids:
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM calibration_native_ensemble_activation "
+                "WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+                "AND ensemble_system_id_or_star=? "
+                "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+                "AND valid_from_utc<=? AND valid_until_utc>? LIMIT 1",
+                (system_id, now, now),
+            ).fetchone()
+        except sqlite3.Error:
+            continue
+        if row is None:
+            out.add(system_id)
+    return out
+
+
 def _official_native_family_coverage(
     status: Mapping[str, Any],
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     """How many of the four families each serving packet actually carries.
 
@@ -576,6 +610,17 @@ def _official_native_family_coverage(
         if received > row["newest_received_utc"]:
             row["newest_received_utc"] = received
     expected = [label for _s, label, _t, _b in MEMBER_FAMILIES]
+    ever_absent = {
+        label for row in per_date.values() for label in expected
+        if label not in row["families"]
+    }
+    certifying = {
+        by_system[system_id]
+        for system_id in _systems_without_certificate(
+            conn,
+            [s for s, label in by_system.items() if label in ever_absent],
+        )
+    }
     rows = []
     for event_date in sorted(per_date):
         row = per_date[event_date]
@@ -586,7 +631,15 @@ def _official_native_family_coverage(
             "family_count": len(present),
             "expected_family_count": len(expected),
             "families": [label for label in expected if label in present],
-            "absent": [label for label in expected if label not in present],
+            "absent": [
+                label for label in expected
+                if label not in present and label not in certifying
+            ],
+            # Charter 270: absent because it holds no certificate yet.
+            "certifying": [
+                label for label in expected
+                if label not in present and label in certifying
+            ],
             "newest_received_utc": row["newest_received_utc"],
             "received_age_hours": _age_hours(row["newest_received_utc"]),
         })
@@ -625,8 +678,7 @@ def _official_native_family_coverage(
     near_floor = (_now() + timedelta(days=1)).strftime("%Y-%m-%d")
     near_short = [
         row for row in rows
-        if row["event_date"] <= near_floor
-        and row["family_count"] < row["expected_family_count"]
+        if row["event_date"] <= near_floor and row["absent"]
     ]
     return {
         "native_inbox_coverage": rows,
@@ -1735,6 +1787,9 @@ def collect_member_admission(
         worst = "green"
         worst_note = ""
         nearer_newest: str | None = None
+        # Charter 270: a system with no certificate yet seats nowhere by
+        # design (the operational AIGEFS, about ten closed days).
+        certifying = None
         for day, info in sorted(days.items()):
             counts: Counter = info["seated"][system_id]
             served, served_n = (counts.most_common(1)[0] if counts else (None, 0))
@@ -1768,7 +1823,15 @@ def collect_member_admission(
                     behind_h = None
             captured_age = _age_hours(captured_at)
             near = day <= near_floor
-            if info["stations"] and seated_n * 2 < info["stations"]:
+            if info["stations"] and seated_n * 2 < info["stations"] and (
+                certifying := (
+                    certifying if certifying is not None
+                    else system_id in _systems_without_certificate(conn, [system_id])
+                )
+            ):
+                flag = "certifying"
+                note = "攒证书中：还没有在役证书，约 10 个闭日后入座"
+            elif info["stations"] and seated_n * 2 < info["stations"]:
                 flag = "absent"
                 # The far day's own contract run (ICON/ECCC D-2 12Z) lands in
                 # the evening, and only certified earlier runs seat before it
@@ -1828,7 +1891,9 @@ def collect_member_admission(
             "label": label,
             "system_id": system_id,
             "health": worst,
-            "note": worst_note,
+            "note": worst_note or next(
+                (r["note"] for r in rows if r["flag"] == "certifying"), ""
+            ),
             "focus_event_date": focus["event_date"] if focus else None,
             "days": rows,
         })
@@ -15293,7 +15358,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 **_production_health(status),
                 **_taf_capture_health(status),
                 **_nwp_rotation_health(status),
-                **_official_native_family_coverage(status),
+                **_official_native_family_coverage(status, conn),
                 **_settlement_source_health(status),
                 **_settlement_reconciliation_health(),
             }
@@ -15401,6 +15466,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                   f"/{row['expected_family_count']} 家"
                   + (f"（缺 {'、'.join(row['absent'])}）"
                      if row["absent"] else "")
+                  + (f"（{'、'.join(row.get('certifying') or [])} 攒证书中）"
+                     if row.get("certifying") else "")
                   for row in (worker.get("native_inbox_coverage") or [])
                   if row["event_date"]
                   in (worker.get("native_inbox_short_near_dates") or [])
@@ -16927,7 +16994,9 @@ function overviewLamps(){
     COV.length
       ? COV.map(c=>`${h(c.event_date.slice(5))} ${c.family_count}/${
           c.expected_family_count}`+(c.absent.length
-            ? `（缺 ${c.absent.map(h).join("、")}）` : "")).join(" · ")
+            ? `（缺 ${c.absent.map(h).join("、")}）` : "")
+          +((c.certifying||[]).length
+            ? `（${c.certifying.map(h).join("、")} 攒证书中）` : "")).join(" · ")
       : "服务清单读不到",
     "「服务清单」里每个事件日的包实际带了几家模型 —— 决策真正读到的那份。"
     +"上面那张按各家自己的节奏算到货，一份只有两家的包在那里看不出来。"
