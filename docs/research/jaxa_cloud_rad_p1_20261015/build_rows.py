@@ -46,7 +46,12 @@ FIRST, LAST = "2026-09-01", "2026-10-14"
 #: The re-test's stations: the Himawari disk JAXA covers (east of 70E).
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from bayes_basket_target import jaxa_ptree_radiation as _J  # noqa: E402
-STATIONS = sorted(_J._fleet())
+import os as _os
+from bayes_basket_target import jaxa_gsmap as _G  # noqa: E402
+#: ROWS_SET=gsmap: every station GSMaP covers (the rain arm), else the
+#: Himawari-disk stations (cloud and sunshine).
+STATIONS = sorted(_G._fleet() if _os.environ.get("ROWS_SET") == "gsmap" else _J._fleet())
+ROWS_FILE = "rows_gsmap.jsonl.gz" if _os.environ.get("ROWS_SET") == "gsmap" else "rows.jsonl.gz"
 HOURS = range(7, 20)
 
 
@@ -101,7 +106,7 @@ def main() -> None:
             "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date AND x.source_lane IN ('AWC','SETTLEMENT_SOURCE'))",
             (FIRST, LAST)):
         truth[(st, day)] = float(v)
-    out = gzip.open(HERE / "rows.jsonl.gz", "wt")
+    out = gzip.open(HERE / ROWS_FILE, "wt")
     n_rows = 0
     for st in stations:
         tzrow = con.execute("SELECT settlement_timezone FROM calibration_station_market_timezone_binding WHERE station_id=? LIMIT 1", (st,)).fetchone()

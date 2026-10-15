@@ -229,10 +229,10 @@ def main() -> None:
         print(line)
 
 
-def summarise(per):
+def summarise(per, arms=("A", "B", "C", "Bc", "A1", "A2", "B1", "B2")):
     lines, out = [], {}
     rng = random.Random(20261015)
-    for arm in ("A", "B", "C", "Bc", "A1", "A2", "B1", "B2"):
+    for arm in arms:
         for label, keep in (("all", lambda h: True), ("12-18", lambda h: 12 <= h < 18)):
             sel = [p for p in per if p[3] == arm and keep(p[2])]
             if not sel:
