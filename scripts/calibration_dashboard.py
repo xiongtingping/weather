@@ -22655,6 +22655,15 @@ function sdNewestFive(rows, head, cls, label){
   return `<div class="scroll"><table class="${cls}">${head}<tbody>${first.join("")}</tbody></table></div>${rest.length
     ? `<details class="sd-older"><summary class="muted">${label(rest.length)}</summary><div class="scroll"><table class="${cls}">${head}<tbody>${rest.join("")}</tbody></table></div></details>` : ""}`;
 }
+// The sky table: the next three hours to come, then the newest five observed;
+// the later future and the older observed hours folded.  ``rows`` are the
+// future hours in clock order followed by the observed newest first.
+function sdSkyTable(rows, nFuture, head){
+  const fut = rows.slice(0, nFuture), obs = rows.slice(nFuture);
+  const first = fut.slice(0, 3).concat(obs.slice(0, 5)), rest = fut.slice(3).concat(obs.slice(5));
+  const t = r => `<div class="scroll"><table class="sd-tab sd-sky">${head}<tbody>${r.join("")}</tbody></table></div>`;
+  return t(first) + (rest.length ? `<details class="sd-older"><summary class="muted">其余 ${rest.length} 小时（更晚的预报与更早的实况）</summary>${t(rest)}</details>` : "");
+}
 // 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
 // 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
 // only draws it: each past hour's report beside the forecast hour, the
@@ -22677,8 +22686,12 @@ function sdSky(day){
   // and a warmer reading are warm -- not "more is red" whatever the quantity.
   const warmth = x => (x.kind === "cloud" ? x.dir !== "more" : x.kind === "sw" || x.kind === "temp" ? x.dir === "more" : false) ? "sd-warm" : "sd-cold";
   const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? " " + warmth(d) : ""; };
-  // Observed hours newest first, then the hours still to come.
-  const ordered = (H.rows || []).slice().sort((a,b) => Number(Boolean(b.past || b.obs)) - Number(Boolean(a.past || a.obs)) || Number(b.hour) - Number(a.hour));
+  // The next hours still to come on top in clock order (user 2026-10-15「显示
+  // 未来小时，在上！比如14:00、15:00」), then the observed hours newest first.
+  const isPast = r => Boolean(r.past || r.obs);
+  const future = (H.rows || []).filter(r => !isPast(r)).sort((a,b) => Number(a.hour) - Number(b.hour));
+  const seen = (H.rows || []).filter(isPast).sort((a,b) => Number(b.hour) - Number(a.hour));
+  const ordered = future.concat(seen);
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
   const rows = ordered.map(r => {
     const f = r.forecast || {}, o = r.obs;
@@ -22722,7 +22735,7 @@ function sdSky(day){
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     <div class="sd-sunstats">${sdSunStat("全天预报日照", H.forecast_sw_mj, H.fetched_at_utc, "Open-Meteo 逐小时短波加总（看板现取，缓存 30 分钟）；与辐射偏移卡同一来源，取数时刻不同")}${sdSunStat("提前 1 天的预报", H.forecast_sw_d1_mj, null, "同一接口提前 1 天发出的那一版（previous_day1）")}${sdSunNow(sat.latest)}</div>
-    ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
+    ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
     <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
