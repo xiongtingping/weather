@@ -16351,6 +16351,9 @@ color:var(--muted);border:0;border-radius:6px;padding:2px 7px;
 font-family:inherit;font-size:12.5px;line-height:1.45}
 .jump button:hover{color:var(--text);background:var(--bar-bg)}
 .jump-sub{display:inline-flex;flex-wrap:wrap;gap:0 1px;margin:0 6px 0 0;padding-left:6px;border-left:1px solid var(--line)}
+.jump-row{display:inline-flex;align-items:center;gap:2px}
+.jump button.jump-act{color:var(--accent);border:1px solid var(--line);border-radius:6px;font-size:11.5px;padding:1px 7px}
+.jump button.jump-act:disabled{opacity:.6;cursor:default}
 .jump-sub button{font-size:11.5px;color:var(--muted)}
 .jump button[aria-current="true"]{color:var(--accent);background:var(--why-bg)}
 /* The live knobs, top right of the bar (user ruling, 2026-09-11).  One
@@ -16521,6 +16524,8 @@ footer{margin-top:20px}
 .jump button{display:block;width:100%;text-align:left;white-space:normal;
   padding:2px 6px 2px 10px;font-size:12.5px;line-height:1.35}
 .jump-sub{display:flex;flex-direction:column;margin:0 0 2px 12px;padding-left:0}
+.jump-row{display:flex}.jump-row>button[data-goto]{flex:1;min-width:0}
+.jump .jump-row>button.jump-act{display:inline-block;width:auto;flex:none;padding:1px 7px;margin-right:2px}
 .jump-sub button{font-size:11.5px;padding:1px 6px 1px 10px}
 }
 </style>
@@ -24117,11 +24122,15 @@ document.getElementById("app").innerHTML =
     // to be answerable before the click, not after it.
     const lane = node.dataset.lane;
     const laneWord = {live:"已上线", shadow:"影子", off:"已关闭"}[lane];
-    return `<button type="button" data-goto="${node.id}" title="${
+    const button = `<button type="button" data-goto="${node.id}" title="${
       esc(full + (laneWord ? " · " + laneWord : ""))}"${
       lane ? ` data-lane="${esc(lane)}"` : ""}${
-      node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>${
-      node.id === "sec-station-day" ? SD_PARTS_HTML : ""}`;
+      node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
+    // 一键刷新 at the station board's right (user 2026-10-15「导航栏“站点看板”右边
+    // 增加一个“一键刷新”」): the panel's own forced re-read, from anywhere.
+    return node.id === "sec-station-day"
+      ? `<span class="jump-row">${button}<button type="button" class="jump-act" data-sd-refresh="1" title="重新读取当前站点的看板数据（不等自动检查）">一键刷新</button></span>${SD_PARTS_HTML}`
+      : button;
   };
   // The station board's parts, listed under its entry (user 2026-10-15「把导航
   // 栏的"站点看板"下展开」).  The panel is drawn after the page by its own
@@ -24219,6 +24228,17 @@ document.getElementById("app").innerHTML =
     paintJump();
   };
   if(jump) jump.addEventListener("click", (ev) => {
+    const again = ev.target.closest("button[data-sd-refresh]");
+    if(again){
+      if(typeof sdFetch !== "function" || again.disabled) return;
+      sdFetch(true);
+      again.disabled = true; again.textContent = "刷新中…";
+      const wait = setInterval(() => {
+        if(SD.busy) return;
+        clearInterval(wait); again.disabled = false; again.textContent = SD.err ? "刷新失败" : "一键刷新";
+      }, 300);
+      return;
+    }
     const part = ev.target.closest("button[data-sd-part]");
     if(part){
       const [sel, text] = part.dataset.sdPart.split("|");
