@@ -35,7 +35,7 @@ def _model(tmp_path):
 
 
 def test_the_card_applies_the_stored_fit_to_the_boards_own_readings(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(board, "D0_MODEL_PATH", _model(tmp_path))
+    monkeypatch.setattr(board, "D0_MODEL_PATHS", (tmp_path / "absent.json", _model(tmp_path)))
     zone = ZoneInfo("Asia/Shanghai")
     now = datetime.now(timezone.utc)
     day = now.astimezone(zone).date().isoformat()
@@ -59,7 +59,7 @@ def test_the_card_applies_the_stored_fit_to_the_boards_own_readings(tmp_path, mo
 
 
 def test_states_without_a_model_or_reports(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(board, "D0_MODEL_PATH", tmp_path / "absent.json")
+    monkeypatch.setattr(board, "D0_MODEL_PATHS", (tmp_path / "absent.json",))
     assert board._d0_reading(None, "ZUUU", "2026-10-15", ZoneInfo("Asia/Shanghai"), [], [], {}, None, None) == {"state": "no_model"}
 
 

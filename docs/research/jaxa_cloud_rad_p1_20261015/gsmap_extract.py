@@ -24,8 +24,15 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[2]))
 from bayes_basket_target import jaxa_gsmap as G  # noqa: E402
 
-OUT = HERE / "gsmap"
-FIRST, LAST = date(2026, 9, 1), date(2026, 10, 14)
+
+# Automation (user 2026-10-15 「自动化」, scripts/d0_refit_daily.sh): D0_DATA_DIR
+# moves every product into one runtime folder; D0_FIRST / D0_LAST set the
+# window (default here: the research snapshot's own).
+import os as _os
+DATA = Path(_os.environ.get("D0_DATA_DIR") or HERE)
+OUT = DATA / "gsmap"
+FIRST = date.fromisoformat(_os.environ.get("D0_FIRST") or "2026-09-01")
+LAST = date.fromisoformat(_os.environ.get("D0_LAST") or "2026-10-14")
 _LIST_RE = re.compile(r"^\S+\s+\d+\s+\S+\s+\S+\s+(\d+)\s+(\w{3})\s+(\d+)\s+(\d{1,2}:\d{2})\s+(\S+)$")
 _MONTHS = {m: i for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 

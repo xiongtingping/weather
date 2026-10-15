@@ -28,6 +28,8 @@ import numpy as np
 from scipy.stats import norm
 
 HERE = Path(__file__).resolve().parent
+import os as _os
+DATA = Path(_os.environ.get("D0_DATA_DIR") or HERE)   # scripts/d0_refit_daily.sh
 FLOOR = 1e-3
 MIN_TRAIN_DAYS = 12
 RIDGE = 3.0
@@ -39,7 +41,7 @@ SAT = {"sun_pct", "cloud_gap", "rain_gap"}
 
 
 def load():
-    rows = [json.loads(l) for l in gzip.open(HERE / "rows_d0.jsonl.gz", "rt")]
+    rows = [json.loads(l) for l in gzip.open(DATA / "rows_d0.jsonl.gz", "rt")]
     out = []
     for r in rows:
         iv = r["intervals"]
@@ -247,7 +249,7 @@ def main() -> None:
         n = sum(len(v) for v in by_day.values())
         report[f"{arm}|{band}|{metric}"] = dict(point=point, lo=lo, hi=hi, station_days=n, days=len(by_day))
         lines.append(f"{arm:10s} {band:6s} {metric:11s} sd={n:4d} {point:+.4f} [{lo:+.4f},{hi:+.4f}]")
-    (HERE / "walk_forward_d0.json").write_text(json.dumps(report, indent=1))
+    (DATA / "walk_forward_d0.json").write_text(json.dumps(report, indent=1))
     print("\n".join(lines))
 
 

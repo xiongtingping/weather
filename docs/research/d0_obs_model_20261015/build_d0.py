@@ -31,7 +31,11 @@ from zoneinfo import ZoneInfo
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-JX = HERE.parent / "jaxa_cloud_rad_p1_20261015"
+import os as _os
+# Automation (scripts/d0_refit_daily.sh): one runtime folder holds the inputs
+# (jaxa/, gsmap/, rows_gsmap.jsonl.gz) and the output.
+JX = Path(_os.environ.get("D0_DATA_DIR") or HERE.parent / "jaxa_cloud_rad_p1_20261015")
+OUT_DIR = Path(_os.environ.get("D0_DATA_DIR") or HERE)
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE.parent / "sat_cloud_obs_20261008"))
 from bayes_basket_target.basket_kernel.valuation_v1 import market_reference_v1  # noqa: E402
@@ -138,7 +142,7 @@ def main() -> None:
     rad = Radiation()
     conn = sqlite3.connect(f"file:{SSOT}?mode=ro", uri=True, timeout=30)
     arc = sqlite3.connect(f"file:{ARCHIVE}?mode=ro", uri=True, timeout=30)
-    out = gzip.open(HERE / "rows_d0.jsonl.gz", "wt")
+    out = gzip.open(OUT_DIR / "rows_d0.jsonl.gz", "wt")
     n = 0
     for (st, day), fr in sorted(frames.items()):
         zone = ZoneInfo(fr["tz"])

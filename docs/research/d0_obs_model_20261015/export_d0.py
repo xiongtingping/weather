@@ -22,13 +22,16 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 import fit_d0 as F  # noqa: E402
 
-OUT = ROOT / "config" / "ui" / "d0_obs_model_v1.json"
+import os as _os
+# Automation writes the live model to the runtime path the board reads first
+# (station_day_board.D0_MODEL_PATHS); the tracked config file is the seed.
+OUT = Path(_os.environ.get("D0_MODEL_OUT") or ROOT / "config" / "ui" / "d0_obs_model_v1.json")
 
 
 def main() -> None:
     data = F.load()
     stations = sorted({r["station"] for r in data})
-    wf = json.loads((HERE / "walk_forward_d0.json").read_text())
+    wf = json.loads((F.DATA / "walk_forward_d0.json").read_text())
     bands = {}
     for band, (h0, h1) in F.BANDS.items():
         rows = [r for r in data if h0 <= r["hour"] < h1]
@@ -52,7 +55,10 @@ def main() -> None:
         "lineage": "docs/research/d0_obs_model_20261015 (research; display only, enters no layer)",
         "bands": bands,
     }
-    OUT.write_text(json.dumps(doc, indent=1, ensure_ascii=False))
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    temporary = OUT.with_suffix(".tmp")
+    temporary.write_text(json.dumps(doc, indent=1, ensure_ascii=False))
+    _os.replace(temporary, OUT)
     print("wrote", OUT, {b: v["n"] for b, v in bands.items()})
 
 

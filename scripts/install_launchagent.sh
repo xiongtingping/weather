@@ -66,6 +66,10 @@ OPTIONAL_PLISTS=(
   # production's own functions.  A reader outside the writer turn; it writes
   # only data/board_readings/.
   com.weather.board_readings.plist
+  # The board's read-only D0 card refitted daily at 10:40 local (2026-10-15,
+  # 「自动化」).  A reader outside the writer turn; it writes only
+  # data/runtime/d0_refit/.
+  com.weather.d0_refit.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")

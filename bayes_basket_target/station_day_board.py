@@ -1437,7 +1437,10 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
 # them to the readings it already holds, with the research's own feature
 # definitions.  Walk-forward it is behind both the market (~0.2 C) and the
 # served P1 (~0.1 C) -- the card says so; it enters no layer.
-D0_MODEL_PATH = ROOT / "config" / "ui" / "d0_obs_model_v1.json"
+#: The daily refit (scripts/d0_refit_daily.sh, 2026-10-15 「自动化」) writes the
+#: runtime file; the tracked config file is the seed it falls back to.
+D0_MODEL_PATHS = (ROOT / "data" / "runtime" / "d0_refit" / "d0_obs_model_v1.json",
+                  ROOT / "config" / "ui" / "d0_obs_model_v1.json")
 D0_OFFICIAL = ("ECMWF_IFS_HRES_NATIVE_POINT", "NOAA_GFS_025_NATIVE_POINT", "ECMWF_AIFS_SINGLE_POINT")
 
 
@@ -1459,9 +1462,14 @@ def _d0_baseline(conn, station: str, day: str, zone: ZoneInfo) -> tuple[float | 
 
 
 def _d0_reading(conn, station: str, day: str, zone: ZoneInfo, axis, metar, sky, precip, precip_sat) -> dict[str, Any] | None:
-    try:
-        model = json.loads(D0_MODEL_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    model = None
+    for path in D0_MODEL_PATHS:
+        try:
+            model = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError):
+            continue
+    if model is None:
         return {"state": "no_model"}
     now = datetime.now(timezone.utc)
     h = now.astimezone(zone).hour

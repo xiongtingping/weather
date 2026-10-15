@@ -39,10 +39,17 @@ sys.path.insert(0, str(ROOT))
 from bayes_basket_target.metar_path_state import parse_metar_physical_state  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-CACHE = HERE / "cache"
+import os as _os0
+DATA = Path(_os0.environ.get("D0_DATA_DIR") or HERE)
+CACHE = DATA / "cache"
 SSOT = ROOT / "data" / "bayes_basket_target_ssot.db"
 ARCHIVE = ROOT / "data" / "archive.db"
-FIRST, LAST = "2026-09-01", "2026-10-14"
+
+# Automation (user 2026-10-15 「自动化」, scripts/d0_refit_daily.sh): D0_DATA_DIR
+# moves every product into one runtime folder; D0_FIRST / D0_LAST set the
+# window (default here: the research snapshot's own).
+FIRST = _os0.environ.get("D0_FIRST") or "2026-09-01"
+LAST = _os0.environ.get("D0_LAST") or "2026-10-14"
 #: The re-test's stations: the Himawari disk JAXA covers (east of 70E).
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from bayes_basket_target import jaxa_ptree_radiation as _J  # noqa: E402
@@ -61,35 +68,52 @@ def utc(s: str) -> datetime:
 
 
 def open_meteo(station: str, lat: float, lon: float, tz: str) -> dict:
-    CACHE.mkdir(exist_ok=True)
+    """The station's day-ahead hourly series over FIRST..LAST, cached per
+    station and extended incrementally: only the dates the cache lacks are
+    asked for (the daily automation asks for one day), charged to the
+    research lane of the production quota ledger (10-11 incident)."""
+
+    import math as _math
+    CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / f"{station}.json.gz"
-    if path.exists():
-        return json.load(gzip.open(path, "rt"))
+    fields = ["temperature_2m_previous_day1", "cloud_cover_previous_day1",
+              "shortwave_radiation_previous_day1", "precipitation_previous_day1"]
+    data = json.load(gzip.open(path, "rt")) if path.exists() else {"hourly": {"time": [], **{f: [] for f in fields}}}
+    have = {t[:10] for t in data["hourly"]["time"]}
+    first, last = datetime.fromisoformat(FIRST).date(), datetime.fromisoformat(LAST).date()
+    missing = [first + timedelta(days=i) for i in range((last - first).days + 1)
+               if (first + timedelta(days=i)).isoformat() not in have]
+    if not missing:
+        return data
     import ssl
     from urllib.parse import urlencode
     from urllib.request import Request, urlopen
     import certifi
-    q = urlencode({"latitude": lat, "longitude": lon, "timezone": tz,
-                   "start_date": FIRST, "end_date": LAST,
-                   "hourly": "temperature_2m_previous_day1,cloud_cover_previous_day1,"
-                             "shortwave_radiation_previous_day1,precipitation_previous_day1"})
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    # Research calls are charged to the production ledger (10-11 incident):
-    # 44 days of four variables count about four calls.
     from bayes_basket_target import open_meteo_quota as quota  # noqa: PLC0415
-    quota.charge("research", 4)
+    lo, hi = min(missing), max(missing)
+    q = urlencode({"latitude": lat, "longitude": lon, "timezone": tz,
+                   "start_date": lo.isoformat(), "end_date": hi.isoformat(), "hourly": ",".join(fields)})
+    quota.charge("research", max(1, _math.ceil(((hi - lo).days + 1) / 14)))
+    ctx = ssl.create_default_context(cafile=certifi.where())
     for attempt in range(4):
         try:
             with urlopen(Request("https://previous-runs-api.open-meteo.com/v1/forecast?" + q,
                                  headers={"User-Agent": "weather-research"}), timeout=60, context=ctx) as r:
-                data = json.loads(r.read().decode())
+                got = json.loads(r.read().decode())
             break
         except Exception as exc:  # noqa: BLE001
             print("  retry", station, exc, flush=True)
             time.sleep(5 * (attempt + 1))
     else:
         raise RuntimeError(f"open-meteo failed for {station}")
-    json.dump(data, gzip.open(path, "wt"))
+    merged = {t: {f: data["hourly"][f][i] for f in fields} for i, t in enumerate(data["hourly"]["time"])}
+    for i, t in enumerate(got["hourly"]["time"]):
+        merged[t] = {f: got["hourly"][f][i] for f in fields}
+    times = sorted(merged)
+    data = {**got, "hourly": {"time": times, **{f: [merged[t][f] for t in times] for f in fields}}}
+    temporary = path.with_suffix(".tmp")
+    json.dump(data, gzip.open(temporary, "wt"))
+    temporary.replace(path)
     time.sleep(1.0)
     return data
 
@@ -106,7 +130,7 @@ def main() -> None:
             "   WHERE x.station_id=t.station_id AND x.local_date=t.local_date AND x.source_lane IN ('AWC','SETTLEMENT_SOURCE'))",
             (FIRST, LAST)):
         truth[(st, day)] = float(v)
-    out = gzip.open(HERE / ROWS_FILE, "wt")
+    out = gzip.open(DATA / ROWS_FILE, "wt")
     n_rows = 0
     for st in stations:
         tzrow = con.execute("SELECT settlement_timezone FROM calibration_station_market_timezone_binding WHERE station_id=? LIMIT 1", (st,)).fetchone()
