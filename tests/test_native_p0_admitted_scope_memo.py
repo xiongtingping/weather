@@ -583,3 +583,33 @@ def test_the_appended_rows_are_read_by_rowid_not_by_scope_or_kind(tmp_path) -> N
         assert plan.split(" | ")[0].endswith(
             "USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)"
         ), plan
+
+
+def test_a_walk_the_rotation_wrote_into_still_keeps_its_base(
+    tmp_path, monkeypatch
+) -> None:
+    """2026-10-15 16:08Z: the rotation wrote ~800 activations while the first
+    cycle's walks ran, every such walk kept nothing, and the next cycle walked
+    the same 14 scopes again.  The base read before the walk is still sound:
+    the next increment reads whatever arrived past it."""
+
+    conn, _ = _store(tmp_path)
+    digest = P0._admitted_scope_digest
+
+    def digest_then_re_mint(*args, **kwargs):
+        answer = digest(*args, **kwargs)
+        if not getattr(digest_then_re_mint, "done", False):
+            digest_then_re_mint.done = True
+            _re_mint(conn, suffix="during", valid_from="2026-07-01T12:59:00Z")
+        return answer
+
+    monkeypatch.setattr(P0, "_admitted_scope_digest", digest_then_re_mint)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert kept[0] == b"" and kept[4] is None and kept[5] is not None
+    stepped, flat = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert "native-activation-re-mint-during" in kept[1]
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert stepped == _compile(conn, "2026-07-01T13:07:00Z")

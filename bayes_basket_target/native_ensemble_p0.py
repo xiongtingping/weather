@@ -2202,12 +2202,16 @@ def _admitted_scope_digest(
     *,
     activation_parameters: tuple[Any, ...],
     decision_at_utc: str,
-) -> tuple[bytes, int, str, str]:
+    rowid_marks: tuple[int, int] | None = None,
+) -> tuple[bytes, int, str, str, int]:
     """Digest of the two id lists the evidence test reads, how many
     activations are valid, the earliest later instant at which either
     list would read differently with no row added, and the earliest of those
     that is a row coming into view (a minted-ahead activation opening, an
-    evaluation stamped ahead) rather than a valid activation closing.
+    evaluation stamped ahead) rather than a valid activation closing, and
+    how many of the valid activations lie at or below the activation mark.
+    With ``rowid_marks`` the rows-ahead instant counts only rows at or below
+    the marks: the increment reads the rows past them for itself.
 
     The lists are the evidence test's own: activations with
     ``valid_from <= instant < valid_until``, evaluations with
@@ -2219,10 +2223,12 @@ def _admitted_scope_digest(
 
     hasher = hashlib.sha256()
     valid = 0
+    valid_at_mark = 0
     horizon = _NO_HORIZON
     ahead = _NO_HORIZON
+    mark_a, mark_e = rowid_marks or (None, None)
     for row in conn.execute(
-        "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc "
+        "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc,a.rowid "
         "FROM calibration_native_ensemble_activation a "
         "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
         "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
@@ -2235,12 +2241,16 @@ def _admitted_scope_digest(
             hasher.update(str(row[0]).encode("utf-8"))
             hasher.update(b"\n")
             valid += 1
+            if mark_a is not None and int(row[3]) <= mark_a:
+                valid_at_mark += 1
             horizon = min(horizon, str(row[2]))
-        else:
+        elif mark_a is None or int(row[3]) <= mark_a:
             ahead = min(ahead, valid_from)
+        else:
+            horizon = min(horizon, valid_from)
     hasher.update(b"|")
     for row in conn.execute(
-        "SELECT evaluation_id,evaluated_at_utc "
+        "SELECT evaluation_id,evaluated_at_utc,rowid "
         "FROM calibration_cross_native_ensemble_oos_evaluation "
         "WHERE station_id=? AND season_bin=? AND lead_bucket=?",
         tuple(activation_parameters[:3]),
@@ -2249,9 +2259,11 @@ def _admitted_scope_digest(
         if evaluated_at <= decision_at_utc:
             hasher.update(str(row[0]).encode("utf-8"))
             hasher.update(b"\n")
-        else:
+        elif mark_e is None or int(row[2]) <= mark_e:
             ahead = min(ahead, evaluated_at)
-    return hasher.digest(), valid, min(horizon, ahead), ahead
+        else:
+            horizon = min(horizon, evaluated_at)
+    return hasher.digest(), valid, min(horizon, ahead), ahead, valid_at_mark
 
 
 def compile_native_ensemble_p0(
@@ -2739,7 +2751,7 @@ def compile_native_ensemble_p0(
             "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
             "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
             "a.available_system_set_hash_or_star,r.ensemble_system_ids_json,"
-            "a.valid_until_utc "
+            "a.valid_until_utc,a.rowid "
             "FROM calibration_native_ensemble_activation a JOIN "
             + _artifact_join()
             + "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
@@ -2968,6 +2980,7 @@ def compile_native_ensemble_p0(
         memo_key: tuple[str, ...] | None = None
         digest = b""
         valid_activations = -1
+        valid_at_base = -1
         horizon = _NO_HORIZON
         ahead = _NO_HORIZON
         marks: tuple[int, int, int] | None = None
@@ -3018,10 +3031,13 @@ def compile_native_ensemble_p0(
                 )
                 if stepped is not None:
                     return stepped
-            digest, valid_activations, horizon, ahead = _admitted_scope_digest(
+            (
+                digest, valid_activations, horizon, ahead, valid_at_base,
+            ) = _admitted_scope_digest(
                 conn,
                 activation_parameters=activation_parameters,
                 decision_at_utc=decision_at_utc,
+                rowid_marks=(marks[0], marks[1]) if marks is not None else None,
             )
             if kept is not None and kept[0] == digest:
                 # The same two lists, read now.  With no row added while
@@ -3034,6 +3050,7 @@ def compile_native_ensemble_p0(
                 ),) + kept[5:]
                 return _kept_answer(kept)
         tested = 0
+        tested_at_base = 0
         admitted_evaluations: dict[
             tuple[str, ...], tuple[tuple[Any, ...], ...]
         ] = {}
@@ -3042,6 +3059,8 @@ def compile_native_ensemble_p0(
             _evidence_test_sql(), activation_parameters
         ):
             tested += 1
+            if marks is not None and int(pre[8]) <= marks[0]:
+                tested_at_base += 1
             key_part = _pairing_key_part(pre[2], pre[3], pre[4], pre[6], pre[5])
             if key_part is None:
                 admitted_ids.append(str(pre[0]))  # the loop decides
@@ -3058,26 +3077,40 @@ def compile_native_ensemble_p0(
                     pre_rows
                 )
         rows = _admitted_rows_whole(admitted_ids)
-        # Kept only when the answer provably belongs to the digest: every
-        # valid activation had its artifact (one arriving later would change
-        # the answer under the same two lists), and the lists read the same
-        # after the test as before it -- the store only grows, so whatever
-        # the test read in between lay between two equal sets.  With both
-        # rowid marks unmoved across the test nothing was added at all, the
-        # second walk is not needed, and the horizon holds from this instant.
-        if memo_key is not None and tested == valid_activations:
-            unmoved = marks is not None and _append_marks(conn) == marks
-            if unmoved or _admitted_scope_digest(
-                conn,
-                activation_parameters=activation_parameters,
-                decision_at_utc=decision_at_utc,
-            )[:2] == (digest, valid_activations):
+        # The digest and the no-walk horizon are kept only when the answer
+        # provably belongs to the digest: every valid activation had its
+        # artifact (one arriving later would change the answer under the
+        # same two lists), and the lists read the same after the test as
+        # before it -- the store only grows, so whatever the test read in
+        # between lay between two equal sets.  With both rowid marks unmoved
+        # across the test nothing was added at all, the second walk is not
+        # needed, and the horizon holds from this instant.
+        #
+        # The increment's base is kept whenever every activation at or below
+        # the marks read before the walk had its artifact, rows added during
+        # the walk or not (2026-10-15: the rotation writes while the walks
+        # run, and a walk that kept nothing was walked again the next cycle).
+        # Whatever the walk read past the marks is read again by the next
+        # increment -- each activation past them, and every activation of a
+        # pairing with an evaluation past them -- and tested afresh.
+        if memo_key is not None:
+            consistent = False
+            unmoved = False
+            if tested == valid_activations:
+                unmoved = marks is not None and _append_marks(conn) == marks
+                consistent = unmoved or _admitted_scope_digest(
+                    conn,
+                    activation_parameters=activation_parameters,
+                    decision_at_utc=decision_at_utc,
+                )[:2] == (digest, valid_activations)
+            based = marks is not None and tested_at_base == valid_at_base
+            if consistent or based:
                 if len(_ADMITTED_SCOPE_MEMO) >= ADMITTED_SCOPE_MEMO_MAX_SCOPES:
                     _ADMITTED_SCOPE_MEMO.clear()
                     _MEMO_TEXT.clear()
                 shared = (4, 5, 6, 8, 9, 10, 11, 12, 15)
                 _ADMITTED_SCOPE_MEMO[memo_key] = (
-                    digest,
+                    digest if consistent else b"",
                     tuple(admitted_ids),
                     admitted_evaluations,
                     tuple(
@@ -3089,14 +3122,12 @@ def compile_native_ensemble_p0(
                         )
                         for row in rows
                     ),
-                    (decision_at_utc, horizon, marks) if unmoved else None,
-                    # The walk's own base for the next compile's increment:
-                    # the marks read before it (a row it saw past them is
-                    # read again then, and tested again to the same answer).
+                    (decision_at_utc, horizon, marks)
+                    if consistent and unmoved else None,
                     (
                         decision_at_utc, ahead, (marks[0], marks[1]),
                         valid_until_by_id,
-                    ) if marks is not None else None,
+                    ) if based and marks is not None else None,
                 )
         return rows
 

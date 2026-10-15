@@ -154,7 +154,7 @@ EVIDENCE_PREFILTER = (
     "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
     "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
     "a.available_system_set_hash_or_star,r.ensemble_system_ids_json,"
-    "a.valid_until_utc "
+    "a.valid_until_utc,a.rowid "
     "FROM calibration_native_ensemble_activation a "
     "JOIN calibration_cross_native_ensemble_artifact r"
     " INDEXED BY calibration_cross_native_artifact_evidence_idx "
@@ -178,7 +178,7 @@ def test_the_compile_asks_its_evidence_test_off_two_covering_indexes(tmp_path) -
     assert all(part in source for part in (
         '"SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"',
         '" INDEXED BY calibration_cross_native_artifact_evidence_idx "',
-        '"a.valid_until_utc "',
+        '"a.valid_until_utc,a.rowid "',
         '"AND a.valid_from_utc<=? AND a.valid_until_utc>?"',
     ))
     plan = _plan(_store(tmp_path), EVIDENCE_PREFILTER)
