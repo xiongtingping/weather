@@ -15868,6 +15868,7 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-d0-parts{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12.5px;margin:2px 0 6px}
 .sd-d0-part{padding:1px 8px;border-radius:9px;background:color-mix(in srgb,var(--c) 12%,transparent);cursor:help}
 .sd-d0-part.up{color:var(--amber)}.sd-d0-part.down{color:#58a6ff}
+.sd-d0-trend{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 4px;cursor:help}.sd-d0-trend svg{max-width:100%;height:auto}
 .sd-det-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
 .sd-det{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--card);cursor:help}
 .sd-det.sd-det-off{opacity:.62}
@@ -22032,20 +22033,46 @@ const SD_DET_LABEL = {AIFS:"AIFS 单成员", IFS_HRES:"IFS HRES", GFS:"GFS", AIG
   IFS9KM:"IFS 9km", UKMO10:"UKMO 10km", CMA:"CMA GRAPES", HRRR:"HRRR", NBM:"NBM", ICON_EU:"ICON-EU", MSM:"JMA MSM"};
 // The D0 observation model, read-only (user 2026-10-15 「不要结案，作为只读，在前端
 // "站点看板"增加只读卡片」): today's maximum from the reports and satellites so
-// far against an official baseline (station_day_board._d0_reading applies
-// the stored research fit).  Walk-forward it trails the market and P1 -- the
-// card says so beside the number; it enters no layer.
+// far against an official baseline, computed in the background every ten
+// minutes (bayes_basket_target/d0_readings.py; 「后台计算，前端只读，保留历史数据」)
+// -- the card shows the stored reading, its age and the day's history.
+// Walk-forward it trails the market and P1; it enters no layer.
 const SD_D0_FEATURE = {t_minus_fc:"此刻温比预报", warmed_gap:"已升温比预报", momentum:"近 2 小时动量",
   high_minus_base:"已报最高−基线", fc_rise:"预报剩余升温", dew_dep:"露点差", wind:"风速", cloud_low:"报文低云",
   precip_now:"正在降水", precip_any:"今天降过水", sun_pct:"日照比预报", cloud_gap:"卫星有效云−预报云",
   rain_gap:"卫星雨比预报", hours_to_peak:"距预报峰时"};
 const SD_D0_STATE = {no_model:"模型文件缺失", outside_hours:"只在当地 7–19 点计算", no_baseline:"没有官方确定性基线",
-  no_reports:"今天还没有报文", stale_report:"最新报文超过 2 小时", no_forecast_curve:"缺逐小时预报曲线"};
+  no_reports:"今天还没有报文", stale_report:"最新报文超过 2 小时", no_forecast_curve:"缺逐小时预报曲线",
+  not_computed:"后台还没算这一天", no_ladder:"还没有梯子", no_coordinates:"缺站点坐标", error:"后台计算出错"};
+function sdD0Fresh(D){
+  const age = (Date.now() - new Date(D.computed_at_utc).getTime()) / 1000;
+  if(!isFinite(age)) return "";
+  const cls = age > 1800 ? "red" : age > 900 ? "amber" : "green";
+  return `<span class="sd-fresh sd-fresh-${cls}" title="${sdEsc(`后台每 10 分钟算一次；本条算于 ${sdLocal(D.as_of_utc, true)}，依据报文 ${sdLocal(D.latest_report_utc, true)}`)}">${age > 1800 ? "停更 " : ""}${sdSpan(age)}前</span>`;
+}
+function sdD0Trend(D){
+  const H = (D.history || []).filter(x => x.centre_c != null);
+  if(H.length < 2) return "";
+  const W = 260, Hh = 46, t0 = new Date(H[0].at).getTime(), t1 = new Date(H[H.length - 1].at).getTime();
+  const vals = H.flatMap(x => [x.centre_c - x.sigma_c, x.centre_c + x.sigma_c, x.high_c].filter(v => v != null));
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(hi - lo, 0.5);
+  const X = t => 4 + (W - 8) * (t1 > t0 ? (new Date(t).getTime() - t0) / (t1 - t0) : 0.5);
+  const Y = v => 4 + (Hh - 8) * (1 - (v - lo) / span);
+  const line = H.map(x => `${X(x.at).toFixed(1)},${Y(x.centre_c).toFixed(1)}`).join(" ");
+  const band = H.map(x => `${X(x.at).toFixed(1)},${Y(x.centre_c + x.sigma_c).toFixed(1)}`).concat(
+    H.slice().reverse().map(x => `${X(x.at).toFixed(1)},${Y(x.centre_c - x.sigma_c).toFixed(1)}`)).join(" ");
+  const high = H.filter(x => x.high_c != null).map(x => `${X(x.at).toFixed(1)},${Y(x.high_c).toFixed(1)}`).join(" ");
+  const tip = H.map(x => `${sdLocal(x.at, true)}  ${sdN(x.centre_c, 2)}°C ±${sdN(x.sigma_c, 2)}  众数 ${x.mode} ${sdPc(x.mode_p, 0)}`).join("\n");
+  return `<div class="sd-d0-trend" title="${sdEsc("今天每次变化的读数（实线＝中心，阴影＝±σ，虚线＝已报最高）\n" + tip)}"><svg viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}">`
+    + `<polygon points="${band}" fill="#7048e8" opacity=".15"/>${high ? `<polyline points="${high}" fill="none" stroke="var(--muted)" stroke-dasharray="3 3"/>` : ""}`
+    + `<polyline points="${line}" fill="none" stroke="#7048e8" stroke-width="2"/></svg>`
+    + `<span class="muted sd-sub">${sdLocal(H[0].at, true)} → ${sdLocal(H[H.length - 1].at, true)} · ${H.length} 次</span></div>`;
+}
 function sdD0(day){
   const D = day.d0;
   if(!D) return "";
   const title = `D0 实况模型 <span class="sd-dir-by">只读 · 研究</span>`;
-  if(D.state !== "ok") return `<div class="sd-evidence-card sd-det-card" style="--c:var(--muted)"><div class="sd-evidence-title">${title}</div><div class="muted sd-sub">${sdEsc(SD_D0_STATE[D.state] || D.state)}</div></div>`;
+  if(D.state !== "ok") return `<div class="sd-evidence-card sd-det-card" style="--c:var(--muted)"><div class="sd-evidence-title">${title}</div><div class="muted sd-sub" title="${sdEsc(D.reason || "")}">${sdEsc(SD_D0_STATE[D.state] || D.state)}</div>${sdD0Trend(D)}</div>`;
   const p1 = (((day.stages || {})["P1"] || {}).stats || {}).mean_c;
   const mk = ((day.market || {}).stats || {}).mean_c;
   const W = D.walk_forward_mae || {};
@@ -22053,10 +22080,11 @@ function sdD0(day){
   const parts = (D.parts || []).map(x => `<span class="sd-d0-part ${x.c > 0 ? "up" : "down"}" title="${sdEsc(`输入 ${x.value == null ? "缺" : sdN(x.value, 2)}；对中心的贡献（相对训练平均）`)}">${sdEsc(SD_D0_FEATURE[x.feature.replace("_missing", "")] || x.feature)}${x.feature.endsWith("_missing") ? "（缺）" : ""} ${sdSg(x.c, 2)}</span>`).join("");
   const tip = `基线＝三家官方确定性（IFS HRES / GFS / AIFS 单成员）当地零点前已知的日最高中位 ${sdN(D.base_c, 2)}°C（${D.base_systems} 家）；`
     + `D0 用报文、露点、风、卫星日照/云、GSMaP 雨对预报的差回归残差，按 ${sdEsc((D.window || []).join("..")) } 拟合，算于 ${sdLocal(D.as_of_utc, true)}；只读，不进任何层`;
-  return `<div class="sd-evidence-card sd-det-card" style="--c:#7048e8"><div class="sd-evidence-title">${title} <span class="pill">${sdEsc(D.band)} 时段</span></div>`
+  return `<div class="sd-evidence-card sd-det-card" style="--c:#7048e8"><div class="sd-evidence-title">${title} <span class="pill">${sdEsc(D.band)} 时段</span> ${sdD0Fresh(D)}</div>`
     + `<div class="sd-evidence-main" title="${sdEsc(tip)}"><b class="sd-evidence-primary">${sdN(D.centre_c, 2)}°C</b><b>σ ${sdN(D.sigma_c, 2)}</b><b>众数 ${sdEsc(D.mode)} <span class="sd-sub">${sdPc(D.mode_p, 0)}</span></b>${cmp("P1", p1)}${cmp("市场", mk)}</div>`
     + `<div class="sd-d0-parts"><span class="muted">基线 ${sdN(D.base_c, 1)}°C</span>${parts}${Math.abs(D.station_effect_c || 0) >= 0.05 ? `<span class="sd-d0-part">本站修正 ${sdSg(D.station_effect_c, 2)}</span>` : ""}</div>`
-    + `<div class="muted sd-sub" title="32 个检验日逐日前推，同一批有盘口的站日的中心平均误差">前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C</div></div>`;
+    + sdD0Trend(D)
+    + `<div class="muted sd-sub" title="逐日前推，同一批有盘口的站日的中心平均误差">前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C</div></div>`;
 }
 function sdDeterministic(day){
   const T = day.deterministic || {}, rows = T.systems || [], F = T.f;

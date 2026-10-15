@@ -24,7 +24,7 @@ import fit_d0 as F  # noqa: E402
 
 import os as _os
 # Automation writes the live model to the runtime path the board reads first
-# (station_day_board.D0_MODEL_PATHS); the tracked config file is the seed.
+# (d0_readings.MODEL_PATHS); the tracked config file is the seed.
 OUT = Path(_os.environ.get("D0_MODEL_OUT") or ROOT / "config" / "ui" / "d0_obs_model_v1.json")
 
 

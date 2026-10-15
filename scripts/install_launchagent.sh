@@ -70,6 +70,10 @@ OPTIONAL_PLISTS=(
   # 「自动化」).  A reader outside the writer turn; it writes only
   # data/runtime/d0_refit/.
   com.weather.d0_refit.plist
+  # The D0 card's background reading every ten minutes (2026-10-15,
+  # 「后台计算，前端只读，保留历史数据」).  A reader outside the writer turn; it
+  # writes only data/board_readings/d0_* and data/runtime/d0_readings/.
+  com.weather.d0_readings.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
