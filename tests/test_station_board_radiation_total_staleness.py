@@ -74,4 +74,4 @@ def test_the_card_draws_the_total_its_age_and_the_newer_value() -> None:
     text = "|".join(part for part in out.stdout.strip().split("|") if part)
     assert "辐射总量（P0 用）|12.74| MJ/m²|取于 AGE(2026-10-13T09:45:26Z)|已更新 13.17" in text, text
     assert "<details open><summary>晴空指数与系数</summary>" in DASHBOARD
-    assert 'sdSunCard("预报日照"' in DASHBOARD and "sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj)" in DASHBOARD
+    assert 'sdSunCard("sun", "预报日照"' in DASHBOARD and "sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj)" in DASHBOARD
