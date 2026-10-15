@@ -2962,6 +2962,26 @@ def _ladder_mode(vector: Mapping[str, float], order: Mapping[str, int]) -> str:
     return max(sorted(vector, key=lambda b: order[b]), key=lambda b: vector[b])
 
 
+def _ladder_best_asks(conn: sqlite3.Connection, station: str, day: str, at_utc: str) -> dict[str, float]:
+    """Each bucket's best YES ask in the same book ``_ladder_market_reference``
+    reads at ``at_utc`` -- what a buy would have paid; buckets without an ask
+    are absent."""
+
+    floor = (_utc_instant(at_utc) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
+    snap = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND observed_at<=? AND observed_at>=?"
+        " ORDER BY observed_at DESC, sequence DESC LIMIT 1",
+        (station, day, at_utc, floor.isoformat().replace("+00:00", "Z")),
+    ).fetchone()
+    try:
+        buckets = json.loads(snap[0] or "[]") if snap is not None else []
+    except (TypeError, ValueError):
+        buckets = []
+    return {str(b.get("bucket")): float(b["best_ask"]) for b in buckets if isinstance(b, dict)
+            and b.get("ask_available") and isinstance(b.get("best_ask"), (int, float)) and 0.0 < b["best_ask"] < 1.0}
+
+
 def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
     """Each settled station-day since ``TRADED_CALIBRATION_SINCE`` walked along
     its committed decision instants.  At each instant our belief standing then
@@ -3043,19 +3063,27 @@ def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
             # ours, both at once, or agreed from the first paired instant.
             mover = ("start" if before is None else "model" if before[1] == ours != before[0]
                      else "market" if before[0] == ours != before[1] else "both")
+            # The mode and its neighbours, three buckets (two at a ladder edge).
+            window = [b for b in p if abs(order[b] - order[ours]) <= 1]
+            asks = _ladder_best_asks(conn, str(station), str(day), at)
             current = {"bucket": ours, "start": at, "end": at, "instants": 1, "stage": stage, "hours": hours,
-                       "p": p[ours], "q": q[ours], "hit": ours == settled, "mover": mover}
+                       "p": p[ours], "q": q[ours], "hit": ours == settled, "mover": mover,
+                       "p3": sum(p[b] for b in window), "q3": sum(q[b] for b in window), "hit3": settled in window,
+                       "ask": asks.get(ours),
+                       "ask3": sum(asks[b] for b in window) if all(b in asks for b in window) else None}
             episodes.append(current)
         counts["paired_instants"] += paired
         if not paired:
             continue
         counts["paired_days"] += 1
         # Only what the reading reads is kept: the picked episodes, and every
-        # episode's start as [mover, hours, stage, hit, p, q].
+        # episode's start as [mover, hours, stage, hit, p, q, hit3, p3, q3, ask, ask3].
         picked = {name: episodes[index] for name, index in MODE_AGREEMENT_PICKS
                   if len(episodes) > (index if index >= 0 else -index - 1)}
         starts = [[e["mover"], None if e["hours"] is None else round(e["hours"], 2), e["stage"], int(e["hit"]),
-                   round(e["p"], 4), round(e["q"], 4)] for e in episodes]
+                   round(e["p"], 4), round(e["q"], 4), int(e["hit3"]), round(e["p3"], 4), round(e["q3"], 4),
+                   e["ask"], None if e["ask3"] is None else round(e["ask3"], 4)]
+                  for e in episodes]
         days.append({"station_id": str(station), "event_date": str(day), "settled": settled,
                      "unit": "F" if "°F" in settled else "C", "paired": paired,
                      "first_paired": first_paired, "episodes": len(episodes), "picked": picked, "starts": starts})
@@ -3074,7 +3102,23 @@ def _mode_agreement_group(picked: Sequence[Mapping[str, Any]]) -> dict[str, Any]
             "said_market": sum(e["q"] for e in picked) / n,
             # Landed minus what the market said on the bucket, event days resampled.
             "over_market_ci": _traded_day_bootstrap(picked, [float(e["hit"]) - e["q"] for e in picked]),
+            # The same on the mode and its two neighbours.
+            "hit3": sum(1 for e in picked if e["hit3"]) / n, "said_ours3": sum(e["p3"] for e in picked) / n,
+            "said_market3": sum(e["q3"] for e in picked) / n,
+            "over_market3_ci": _traded_day_bootstrap(picked, [float(e["hit3"]) - e["q3"] for e in picked]),
+            # Against what a buy would have paid: the best ask (one bucket, and
+            # the three summed), on the episodes the book quoted.
+            **_mode_agreement_ask(picked, "ask", "hit", ""), **_mode_agreement_ask(picked, "ask3", "hit3", "3"),
             "median_hours": median(hours) if hours else None}
+
+
+def _mode_agreement_ask(picked: Sequence[Mapping[str, Any]], ask: str, hit: str, suffix: str) -> dict[str, Any]:
+    quoted = [e for e in picked if e.get(ask) is not None]
+    if not quoted:
+        return {f"n_ask{suffix}": 0}
+    return {f"n_ask{suffix}": len(quoted), f"hit_ask{suffix}": sum(1 for e in quoted if e[hit]) / len(quoted),
+            f"ask{suffix}": sum(e[ask] for e in quoted) / len(quoted),
+            f"over_ask{suffix}_ci": _traded_day_bootstrap(quoted, [float(e[hit]) - e[ask] for e in quoted])}
 
 
 def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -3123,9 +3167,10 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
     # Who moved onto the common bucket: every episode, and the first one alone.
     converge = []
     for mover in MODE_AGREEMENT_MOVERS:
-        every = [{"station_id": d["station_id"], "event_date": d["event_date"], "unit": d["unit"], "mover": m, "hours": h, "stage": st,
-                  "hit": bool(hit), "p": pp, "q": qq}
-                 for d in days for m, h, st, hit, pp, qq in d["starts"] if m == mover]
+        every = [{"station_id": d["station_id"], "event_date": d["event_date"], "unit": d["unit"], "mover": m, "hours": h,
+                  "stage": st, "hit": bool(hit), "p": pp, "q": qq, "hit3": bool(hit3), "p3": p3, "q3": q3,
+                  "ask": ask, "ask3": ask3}
+                 for d in days for m, h, st, hit, pp, qq, hit3, p3, q3, ask, ask3 in d["starts"] if m == mover]
         first = [{**d["picked"]["first"], "station_id": d["station_id"], "event_date": d["event_date"]}
                  for d in days if "first" in d["picked"] and d["picked"]["first"]["mover"] == mover]
         slices = []
@@ -3206,7 +3251,7 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "mode_agreement": (
         mode_agreement,
         (mode_agreement, mode_agreement_days, _mode_agreement_group, _ladder_mode, _served_belief_vector,
-         _ladder_market_reference, _wilson, _traded_day_bootstrap),
+         _ladder_market_reference, _wilson, _traded_day_bootstrap, _ladder_best_asks, _mode_agreement_ask),
     ),
 }
 
