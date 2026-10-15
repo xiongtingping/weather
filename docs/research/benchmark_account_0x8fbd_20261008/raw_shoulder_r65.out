@@ -1,0 +1,44 @@
+station-days 1198, event days 2026-09-12..2026-10-14 (28); truth on F 32.5%, shoulder 45.4%, far 22.1%
+feature coverage (non-zero share): G1 change median 83%, G1 change2 median 48%, G1 warming minus cooling 66%, G2 skew mean-median 100%, G2 spread 100%, G2 max - F 100%, G2 min - F 100%, G2 skill-weighted - F 100%, G3 peak hour 57%, G3 missed peak 98%, G3 diurnal range 100%, G3 post-peak drop 99%, G4 trend vs day before 99%, G5 last-day anomaly 100%, G5 3-day anomaly 100%, G6 outside-F median - F 100%, G6 outside-F count 100%
+
+== (1) raw feature alone: sign(feature) calls the side (shoulder rows; rows where the feature is exactly 0 left out)
+   G1 change median             n  456: 46.9% [42.0%, 51.7%]   all off-F 46.2%
+   G1 change2 median            n  271: 47.2% [43.0%, 51.1%]   all off-F 48.0%
+   G1 warming minus cooling     n  355: 47.0% [42.2%, 51.5%]   all off-F 45.5%
+   G2 skew mean-median          n  544: 47.1% [42.3%, 51.8%]   all off-F 48.0%
+   G2 max - F                   n  543: 49.0% [44.9%, 53.4%]   all off-F 47.2%
+   G2 min - F                   n  544: 54.2% [49.7%, 58.5%]   all off-F 57.2%
+   G2 skill-weighted - F        n  544: 57.4% [53.3%, 61.2%]   all off-F 58.6%
+   G3 peak hour                 n  325: 44.9% [39.7%, 50.0%]   all off-F 44.8%
+   G3 missed peak               n  530: 45.3% [41.0%, 49.6%]   all off-F 42.4%
+   G3 post-peak drop            n  534: 45.5% [41.3%, 49.8%]   all off-F 42.5%
+   G4 trend vs day before       n  538: 49.6% [46.0%, 53.5%]   all off-F 51.8%
+   G5 last-day anomaly          n  544: 45.0% [39.7%, 50.4%]   all off-F 48.2%
+   G5 3-day anomaly             n  544: 44.7% [39.5%, 49.4%]   all off-F 48.0%
+   G6 outside-F median - F      n  544: 57.7% [54.1%, 61.8%]   all off-F 59.6%
+   F position (baseline)        n  544: 61.8%
+
+== (2) increment over F's position, walk-forward (train on earlier days' off-F rows), scored on shoulder rows
+   scored shoulder rows 414 on 21 event days
+   baseline F position: logloss 0.6777, accuracy 58.2% (coin logloss 0.6931)
+   + G1 run changes           dLogLoss -0.0078 [-0.0255, +0.0084] p 0.179  halves -0.0230/+0.0001  accuracy 61.1%
+   + G2 member structure      dLogLoss -0.0183 [-0.0347, -0.0027] p 0.011  halves -0.0170/-0.0190  accuracy 60.9%
+   + G3 curve shape           dLogLoss +0.0132 [+0.0017, +0.0249] p 0.988  halves +0.0297/+0.0047  accuracy 58.0%
+   + G4 day-to-day trend      dLogLoss +0.0049 [+0.0005, +0.0097] p 0.987  halves +0.0080/+0.0033  accuracy 58.0%
+   + G5 recent errors         dLogLoss +0.0035 [-0.0036, +0.0103] p 0.839  halves -0.0076/+0.0093  accuracy 57.0%
+   + G6 outside-F families    dLogLoss +0.0068 [-0.0149, +0.0324] p 0.725  halves -0.0124/+0.0168  accuracy 60.9%
+   + all groups               dLogLoss +0.0106 [-0.0300, +0.0552] p 0.681  halves -0.0158/+0.0244  accuracy 61.8%
+   BH q=0.10 over six groups: passed ['G2 member structure']; with both halves negative: ['G2 member structure']
+
+== (3) post-hoc (after reading (2), not part of the verdict): which piece of G2 carries it, and the reversed-sign singles
+   pos + G2 skew mean-median        dLogLoss +0.0000 [-0.0040, +0.0042] halves +0.0059/-0.0030 accuracy 58.7%
+   pos + G2 spread                  dLogLoss -0.0091 [-0.0177, +0.0001] halves -0.0008/-0.0134 accuracy 58.5%
+   pos + G2 max - F                 dLogLoss -0.0109 [-0.0200, -0.0021] halves -0.0082/-0.0123 accuracy 60.4%
+   pos + G2 min - F                 dLogLoss -0.0057 [-0.0139, +0.0019] halves +0.0028/-0.0102 accuracy 59.2%
+   pos + G2 skill-weighted - F      dLogLoss -0.0145 [-0.0300, +0.0004] halves -0.0292/-0.0068 accuracy 59.7%
+   pos + G3 missed peak             dLogLoss -0.0015 [-0.0069, +0.0035] halves +0.0033/-0.0041 accuracy 59.4%
+   pos + G1 change median           dLogLoss -0.0110 [-0.0239, -0.0000] halves -0.0255/-0.0035 accuracy 60.9%
+   skill-weighted members disagree with F's position on 272 shoulder rows: skill-weighted side right 45.6%
+   full-sample standardized coefficients (P(warm)): pos +0.54, G2 skew mean-median -0.32, G2 spread -0.06, G2 max - F +0.40, G2 min - F +0.12, G2 skill-weighted - F +0.14
+   full-sample standardized coefficients (P(warm)): pos +0.54, G1 change median -0.27
+   full-sample standardized coefficients (P(warm)): pos +0.55, G3 missed peak +0.18
