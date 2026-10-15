@@ -16355,6 +16355,7 @@ font-family:inherit;font-size:12.5px;line-height:1.45}
 .jump button.jump-act{color:var(--accent);border:1px solid var(--line);border-radius:6px;font-size:11.5px;padding:1px 7px}
 .jump button.jump-act:disabled{opacity:.6;cursor:default}
 .jump-sub button{font-size:11.5px;color:var(--muted)}
+.jump .jump-sub button.jump-hot{color:var(--accent);font-weight:700;background:var(--why-bg);border-radius:6px}
 .jump button[aria-current="true"]{color:var(--accent);background:var(--why-bg)}
 /* The live knobs, top right of the bar (user ruling, 2026-09-11).  One
    card, one stepper per knob: the value sits between its own two buttons,
@@ -22718,7 +22719,7 @@ function sdSky(day){
   // differences written once (the table's last column), and a two-line note.
   const H = day.hourly_sky;
   if(!H) return "";
-  if(!H.available) return `<div class="sd-ev muted">逐小时云与辐射：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
+  if(!H.available) return `<div class="sd-ev muted">逐小时实况对预报：预报读不到（${sdEsc(H.reason || "—")}）</div>`;
   const sat = H.satellite || {};
   const satCloud = sat.product === "jaxa_ptree_himawari";
   const pc0 = v => v == null ? "—" : Math.round(v) + "%";
@@ -22869,7 +22870,7 @@ function sdSky(day){
     rainCard,
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
-  return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
+  return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     <div class="sd-pnl-g sd-sun-g">${cards}</div>
     ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
@@ -24139,10 +24140,12 @@ document.getElementById("app").innerHTML =
   // 今日/明日 are the panel's day tabs: the entry switches the tab and lands on
   // it; the rest are searched in the day showing.
   const SD_PARTS = [["全队偏态", ".sd-t", "全队"], ["今日", "tab", "今日"], ["明日", "tab", "明日"],
-    ["证据", ".sd-t", "证据："], ["云与辐射", "summary", "逐小时云与辐射"], ["TAF", "summary", "最新 TAF"],
+    ["证据", ".sd-t", "证据："], ["逐小时实况对预报", "summary", "逐小时实况对预报", "hot"], ["TAF", "summary", "最新 TAF"],
     ["METAR", "summary", "METAR/SPECI"], ["篮子计算器", ".sd-t", "篮子计算器"]];
-  const SD_PARTS_HTML = `<span class="jump-sub">${SD_PARTS.map(([label, sel, text]) =>
-    `<button type="button" data-sd-part="${esc(sel)}|${esc(text)}">${esc(label)}</button>`).join("")}</span>`;
+  // "hot" entries stand out (user 2026-10-15「逐小时云与辐射：实况对预报：改为
+  // 逐小时实况对预报，导航栏也突出！」).
+  const SD_PARTS_HTML = `<span class="jump-sub">${SD_PARTS.map(([label, sel, text, hot]) =>
+    `<button type="button" data-sd-part="${esc(sel)}|${esc(text)}"${hot ? ' class="jump-hot"' : ""}>${esc(label)}</button>`).join("")}</span>`;
   // A container's chip: its short name, the whole title on hover, live when
   // the container is, starred when a section inside is.
   const boxChip = (node) => {
