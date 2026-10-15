@@ -15737,6 +15737,9 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 .sd-tk-field{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px}
 .sd-tk-field:empty{display:none}
 .sd-tk-lab b{display:block;font-size:15px}
+.sd-tk-lab>span{display:block}
+.sd-tk-lab .sd-win{margin:3px 0 2px;font-size:13px;color:var(--muted)}
+.sd-tk-lab .sd-win b{display:inline;font-size:24px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
 .sd-tk-num{display:flex;align-items:baseline;gap:4px}
 .sd-tk-in{width:120px;text-align:right;font:inherit;font-size:30px;font-weight:750;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:0 2px;-moz-appearance:textfield}
 .sd-tk-in::-webkit-inner-spin-button,.sd-tk-in::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
@@ -23253,7 +23256,9 @@ function sdTicket(day, st, res, key, buyBody, orderOut){
     const amt = yes ? st.amt[b] : (st.amtNo || {})[b], held = yes ? sdHeld(st, b) : sdHeldNo(st, b);
     const top = `<div class="sd-tk-h">${head(b, f.side)}</div>${tabs}
       <div class="sd-tk-sides"><button type="button" class="sd-tk-side yes${yes ? " on" : ""}" data-sd-tside="${K}" data-b="${B}" data-side="YES"${yesAsk == null ? " disabled" : ""} title="YES 卖一">Yes ${sdCents(yesAsk)}</button><button type="button" class="sd-tk-side no${yes ? "" : " on"}" data-sd-tside="${K}" data-b="${B}" data-side="NO"${noAsk == null ? " disabled" : ""} title="NO 卖一＝1 − YES 买一">No ${sdCents(noAsk)}</button></div>`;
-    const lab = `<b>Amount</b><span class="muted sd-sub">${leg && leg.shares > 0 ? `≈ ${sdN(leg.shares, 2)} 份 · 均价 ${sdCents(leg.avg)}<br>命中可得 ${sdN(leg.shares, 2)} U` : "USDC"}${held > 0 ? `<br>已持有 ${sdN(held, 2)} 份` : ""}</span>`;
+    // The payout stands out (user 2026-10-15「命中可得 102.19 U，突出这个数字」).
+    const lab = `<b>Amount</b><span class="muted sd-sub">${leg && leg.shares > 0 ? `≈ ${sdN(leg.shares, 2)} 份 · 均价 ${sdCents(leg.avg)}` : "USDC"}</span>${
+      leg && leg.shares > 0 ? `<span class="sd-win">命中可得 <b>${sdN(leg.shares, 2)}</b> U</span>` : ""}${held > 0 ? `<span class="muted sd-sub">已持有 ${sdN(held, 2)} 份</span>` : ""}`;
     const field = `<div class="sd-tk-field" data-tk="buy|${B}|${f.side}"><div class="sd-tk-lab">${lab}</div><span class="sd-tk-num"><input autocomplete="off" class="sd-tk-in" type="number" step="0.5" min="0" placeholder="0" ${yes ? "data-sd-amt" : "data-sd-amt-no"}="${K}" data-b="${B}" value="${sdEsc(amt == null ? "" : amt)}"><span class="muted">U</span></span></div>`;
     const quick = `<div class="sd-tk-quick">${[1, 5, 10, 100].map(v => `<button type="button" data-sd-qadd="${K}" data-b="${B}" data-side="${f.side}" data-v="${v}">+${v}</button>`).join("")}</div>`;
     return {top, field, body: quick + buyBody + orderOut};
