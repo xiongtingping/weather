@@ -768,7 +768,11 @@ OPEN_METEO_SATELLITE = "https://satellite-api.open-meteo.com/v1/archive"
 SATELLITE_CACHE_SECONDS = 900.0
 _SATELLITE_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
 SATELLITE_PRODUCTS = {
-    "jma_jaxa_himawari": "JAXA Himawari",
+    # East of 90E the column reads JAXA's own copy of the product it used to
+    # read here republished (user 2026-10-15 「接入：http://hokusai.eorc.jaxa.jp/」,
+    # jaxa_ptree_radiation): same quantity, official source, about 45 minutes
+    # sooner.
+    "jaxa_ptree_himawari": "JAXA Himawari（P-Tree 官方）",
     "eumetsat_lsa_saf_iodc": "EUMETSAT 印度洋（IODC）",
     "dwd_sis_europe_africa_v4": "DWD SIS 欧洲/非洲",
     "eumetsat_lsa_saf_msg": "EUMETSAT MSG",
@@ -776,9 +780,17 @@ SATELLITE_PRODUCTS = {
 }
 
 
+#: How each source reaches the board and how late an hour lands.
+SATELLITE_VIA = {
+    "jaxa_ptree_himawari": "JAXA P-Tree 官方，整点后约 15 分钟",
+    "noaa_goes_dsr": "NOAA 官方，扫描后约 25 分钟",
+}
+SATELLITE_VIA_DEFAULT = "经 Open-Meteo 转发，约晚 1 小时"
+
+
 def _satellite_product(lon: float) -> str | None:
     if lon >= 90.0 or lon <= -150.0:
-        return "jma_jaxa_himawari"
+        return "jaxa_ptree_himawari"
     if lon >= 45.0:
         return "eumetsat_lsa_saf_iodc"
     if lon >= -20.0:
@@ -967,6 +979,39 @@ def _satellite_ahead_of_utc(lat: float, lon: float, day: str, zone: ZoneInfo, mo
     return out
 
 
+def _jaxa_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
+    """The local day's hourly JAXA Himawari SWR, as far as the background
+    reader has it: hour h (the mean of the hour ending at h:00, the forecast
+    column's stamp) reads the UTC hour file whose hour holds h-0:30 -- the
+    same hour in a whole-hour zone; night hours are zero; a published hour not
+    read yet is absent and arrives on a later refresh."""
+
+    from . import jaxa_ptree_radiation as jaxa  # noqa: PLC0415
+
+    d = datetime.fromisoformat(day).date()
+    now_utc = datetime.now(timezone.utc)
+    values: list[float | None] = [None] * 24
+    wanted: dict[int, datetime] = {}
+    for h in range(24):
+        middle = (datetime.combine(d, dtime(h), zone) - timedelta(minutes=30)).astimezone(timezone.utc)
+        start = jaxa.hour_start(middle)
+        if start + jaxa.PUBLISH_AFTER > now_utc:
+            continue  # the hour's file is not public yet
+        if _clear_sky_ghi(lat, lon, middle) <= 0.0:
+            values[h] = 0.0
+            continue
+        wanted[h] = start
+    try:
+        got = jaxa.measured(station, list(wanted.values()))
+    except Exception as exc:  # noqa: BLE001 -- the column says why
+        return {"available": False, "values": values, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    for h, start in wanted.items():
+        values[h] = got.get(start.strftime("%Y-%m-%dT%H:00Z"))
+    reader = jaxa.status()
+    return {"available": any(v for v in values), "values": values, "fetched_at_utc": reader.get("last_read_at_utc"),
+            "pending_hours": sum(1 for h in wanted if values[h] is None), "reason": reader.get("last_error")}
+
+
 def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
     """The local day's hourly GOES DSR, as far as the background reader has
     it: hour h is the scan nearest h-1:30 (the middle of the hour the forecast
@@ -1025,7 +1070,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
     product = _satellite_product(lon)
     started = datetime.fromisoformat(day).date() <= datetime.now(timezone.utc).astimezone(zone).date()
     # A day not begun has nothing measured yet (the archive answers 400).
-    if product and started and day > datetime.now(timezone.utc).date().isoformat():
+    if product == "jaxa_ptree_himawari" and started:
+        sat = _jaxa_hours(station, lat, lon, day, zone)
+    elif product and started and day > datetime.now(timezone.utc).date().isoformat():
         sat = _satellite_ahead_of_utc(lat, lon, day, zone, product)
     elif product and started:
         sat = _open_meteo_satellite(lat, lon, str(zone.key), day, product)
@@ -1116,6 +1163,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "fetched_at_utc": fc.get("fetched_at_utc"), "rows": rows,
         "forecast_sw_mj": sums["sw"], "forecast_sw_d1_mj": sums["sw_d1"],
         "satellite": {"product": product, "label": SATELLITE_PRODUCTS.get(product or "", ""),
+                      "via": SATELLITE_VIA.get(product or "", SATELLITE_VIA_DEFAULT),
                       "available": bool(sat.get("available")), "reason": sat.get("reason"),
                       "fetched_at_utc": sat.get("fetched_at_utc"),
                       "last_hour": max((r["hour"] for r in measured), default=None)},
