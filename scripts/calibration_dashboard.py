@@ -22833,11 +22833,24 @@ function sdSkewHistory(H){
   };
   const hitRows = H.stages.map(st => (st.hits || []).map((h, i) =>
     `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td><td>${groupWord[h.group] || sdEsc(h.group)}</td><td class="mono">${h.n}</td>${cell(h, "mode")}${cell(h, "mean")}</tr>`).join("")).join("");
+  // Each source by its own production skew (user 2026-10-15 「按照目前生产的偏斜：
+  // 均值桶和众数桶，分别统计并显示左偏、对称和右偏的真值命中率」).
+  const skewRows = H.stages.map(st => ["left", "symmetric", "right"].map((k, i) => {
+    const cell = src => {
+      const x = (st.sides || []).find(r => r.source === src && r.skew === k);
+      return x ? `<td class="mono muted" title="占该来源站日 ${pc(x.share)}">${x.n}</td><td class="mono"><b>${pc(x.mode_hit)}</b></td><td class="mono"><b>${pc(x.mean_hit)}</b></td>`
+        : `<td class="mono muted">—</td><td></td><td></td>`;
+    };
+    return `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td><td>${skewWord[k]}</td>${cell("model")}${cell("market")}</tr>`;
+  }).join("")).join("");
   const open = SD.histOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
     <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
     <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>
     <div class="sd-sk-grid">${cols}</div>
+    <div class="muted sd-sub">按生产偏斜分组的真值命中率：模型按模型自己的偏斜、市场按市场自己的偏斜分组</div>
+    <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th rowspan="2">阶段</th><th rowspan="2">偏斜</th><th colspan="3" style="color:var(--text)">模型</th><th colspan="3" style="color:${SD_COL.MKT}">市场</th></tr>
+      <tr><th>站日</th><th>众数桶</th><th>均值桶</th><th>站日</th><th>众数桶</th><th>均值桶</th></tr></thead><tbody>${skewRows}</tbody></table></div>
     <div class="muted sd-sub">众数桶 / 均值桶命中率：模型对同一时刻市场（按模型偏态分组；差＝模型−市场，带 · 的区间跨零）</div>
     <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>分组</th><th>站日</th><th>众数 模型</th><th>市场</th><th>差</th><th>均值桶 模型</th><th>市场</th><th>差</th></tr></thead><tbody>${hitRows}</tbody></table></div>
   </details>`;

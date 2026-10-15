@@ -395,6 +395,8 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     assert "左 47%" in out and "众 40%" in out and "右 13%" in out  # the truth bar
     assert '<td class="mono down"' in out and ">−9.8</td>" in out   # mode: interval below zero
     assert ">−7.5 ·</td>" in out                                      # centre bucket: crosses zero
+    assert "按生产偏斜分组的真值命中率" in out                          # each source by its own skew
+    assert "<td>左偏</td>" in out and "<b>40.4%</b>" in out and "<b>39.4%</b>" in out
 
 
 def test_mode_agreement_reads_the_picked_episodes() -> None:
