@@ -22287,7 +22287,7 @@ function sdRainObs(day){
   return {hours, reported: list.length > 0, lastAt, lastWet, madis: M,
     wetHours: list.filter(h => h.wet).length, mm: mms.length ? mms.reduce((a, h) => a + h.mm, 0) : null};
 }
-function sdRainSvg(P, O){
+function sdRainSvg(P, O, S){
   // The canonical series is {"HH": mm}; JS enumerates integer-like keys
   // 10..23 before 00..09, so Object.values would silently move the hours.
   const series = P.hourly_mm;
@@ -22299,8 +22299,11 @@ function sdRainSvg(P, O){
   const hours = Array.from({length:24}, (_, i) => ({hour:String(i).padStart(2,"0"), value:series[String(i).padStart(2,"0")]}));
   if(!Object.keys(series).length) return `<div class="muted sd-sub">逐小时降水图：无小时数据。</div>`;
   const obs = (O || {}).hours || {};
-  const W = 640, H = 176, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
-  const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value), ...Object.values(obs).map(o => o.mm || 0));
+  // JAXA GSMaP_NOW (user 2026-10-15): the hour's satellite rain, its own row.
+  const sat = (S && S.hours) || {};
+  const W = 640, H = 196, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
+  const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value), ...Object.values(obs).map(o => o.mm || 0),
+    ...Object.values(sat).map(v => (v && v.mm) || 0));
   const y = v => bottom - (bottom-top)*v/max;
   let g = `<text x="${left}" y="12" font-size="11" fill="var(--muted)">降水 mm</text>`;
   [0,max/2,max].forEach(v => {
@@ -22319,10 +22322,19 @@ function sdRainSvg(P, O){
         ? `<circle cx="${x+step/2}" cy="${bottom+34}" r="5" fill="#1c7ed6"><title>${h.hour}:00 实况降水：${sdEsc(o.desc.join("；"))}${o.mm != null ? `（报文雨量 ${sdN(o.mm,2)} mm）` : ""}</title></circle>`
         : `<circle cx="${x+step/2}" cy="${bottom+34}" r="2.5" fill="var(--muted)" opacity=".6"><title>${h.hour}:00 实况无降水（${o.reports} 份报文）</title></circle>`;
     }
+    const sv = sat[h.hour];
+    if(sv && sv.mm != null){
+      const tip = `${h.hour}:00 卫星雨量（GSMaP_NOW）${sdN(sv.mm,2)} mm；周围约 30 km 平均 ${sdN(sv.mm_area,2)}；雨量站校正后 ${sdN(sv.mm_gc,2)}`;
+      if(sv.mm >= 0.1) g += `<path d="M${x+step/2} ${y(sv.mm)-5} l5 5 l-5 5 l-5 -5 z" fill="#2f9e44"><title>${sdEsc(tip)}</title></path>`;
+      g += sv.mm >= 0.1
+        ? `<circle cx="${x+step/2}" cy="${bottom+52}" r="5" fill="#2f9e44"><title>${sdEsc(tip)}</title></circle>`
+        : `<circle cx="${x+step/2}" cy="${bottom+52}" r="2.5" fill="var(--muted)" opacity=".6"><title>${sdEsc(tip)}</title></circle>`;
+    }
     if(i%3===0 || i===23) g += `<line x1="${x+step/2}" x2="${x+step/2}" y1="${bottom}" y2="${bottom+4}" stroke="var(--muted)"/><text x="${x+step/2}" y="${bottom+18}" text-anchor="middle" font-size="11" fill="var(--muted)">${h.hour}:00</text>`;
   });
   g += `<text x="${left-5}" y="${bottom+38}" text-anchor="end" font-size="10" fill="var(--muted)">实况</text>`;
-  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 实况行：蓝点＝本站降水，灰点＝报了无降水</text>`;
+  if(Object.keys(sat).length) g += `<text x="${left-5}" y="${bottom+56}" text-anchor="end" font-size="10" fill="var(--muted)">卫星</text>`;
+  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 绿菱＝卫星雨量 · 实况行：蓝点＝本站降水 · 卫星行：绿点＝≥0.1 mm</text>`;
   return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报与实况，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
 }
 function sdTafCloudDetails(witness){
@@ -22623,13 +22635,14 @@ function sdEvidence(day){
     : day.precip_5min && day.precip_5min.reason === "reading" ? '<b class="muted">5 分钟数据读取中</b>' : "";
   const obsLine = (!O.reported ? "<b>实况 尚无报文</b>"
     : O.wetHours ? `<b class="down">实况 已降水 ${O.wetHours} 小时</b>${O.mm != null ? `<b>报文雨量 ${sdN(O.mm, 1)} mm</b>` : ""}<b>最近 ${sdEsc(O.lastWet)}</b>`
-    : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`) + fiveMin;
+    : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`) + fiveMin
+    + (day.precip_sat && day.precip_sat.sum_mm != null ? `<b title="JAXA GSMaP_NOW 卫星雨量（官方），每小时结束后约 1 分钟上架；读于 ${sdEsc(sdLocal(day.precip_sat.fetched_at_utc, true))}" style="color:#2f9e44">卫星 今日已降 ${sdN(day.precip_sat.sum_mm, 1)} mm</b>` : "");
   let rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0, `<b>预报 无记录</b>${obsLine}`, "暂无逐小时降水预报", true);
   if(P){
     const hourLabel = v => v == null ? "—" : String(v).padStart(2,"0")+":00";
     rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0,
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
-      `${sdRainSvg(P, O)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
+      `${sdRainSvg(P, O, day.precip_sat)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
   return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards sd-evidence-three">${rad}${dirCard}${sdMeanModeCard(day)}</div><div class="sd-evidence-cards">${taf}${p1Line}${rain}</div>${sdSky(day)}
     ${sdTafRaw(SD.data || {})}

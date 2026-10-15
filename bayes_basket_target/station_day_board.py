@@ -1323,6 +1323,49 @@ def _precip(conn, station: str, day: str) -> dict[str, Any] | None:
             "lineage": "aggregator_republisher（参考，不进任何层）"}
 
 
+def _precip_sat(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | None:
+    """The day's measured rain from space, JAXA GSMaP_NOW (user 2026-10-15
+    「云雨数据呢」 → 「可以」): local hour h (the forecast column's stamp, the
+    hour ending at h:00) reads the half-hour file that starts at h-1:00 local
+    -- exact in whole- and half-hour zones; hours whose file is not public yet
+    are absent.  None off the 60N..60S band."""
+
+    from . import jaxa_gsmap as gsmap  # noqa: PLC0415
+
+    where = _COORDINATES_FOR_BOARD(station)
+    if where is None or gsmap.cell(*where) is None:
+        return None
+    d = datetime.fromisoformat(day).date()
+    now_utc = datetime.now(timezone.utc)
+    starts: dict[int, datetime] = {}
+    # Keyed like the forecast's hourly series: stamp HH is the hour ending HH:00.
+    for h in range(24):
+        start = (datetime.combine(d, dtime(0), zone) + timedelta(hours=h - 1)).astimezone(timezone.utc)
+        if start + gsmap.PUBLISH_AFTER <= now_utc:
+            starts[h] = start
+    try:
+        got = gsmap.rain(station, list(starts.values()))
+    except Exception as exc:  # noqa: BLE001 -- the card says why
+        return {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    hours = {}
+    for h, start in starts.items():
+        reading = got.get(gsmap.slot_key(start))
+        if reading:
+            hours[f"{h:02d}"] = reading
+    reader = gsmap.status()
+    return {"available": bool(hours), "source": gsmap.LABEL, "hours": hours,
+            "pending_hours": len(starts) - len(hours), "fetched_at_utc": reader.get("last_read_at_utc"),
+            "reason": reader.get("last_error"),
+            "sum_mm": round(sum((v.get("mm") or 0.0) for v in hours.values()), 1) if hours else None}
+
+
+def _COORDINATES_FOR_BOARD(station: str) -> tuple[float, float] | None:
+    from .station_registry import _COORDINATES  # noqa: PLC0415
+
+    got = _COORDINATES.get(station.upper())
+    return None if got is None else (float(got[0]), float(got[1]))
+
+
 def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: Mapping[str, Any] | None = None) -> dict[str, Any]:
     heads = {stage: _envelope_head(conn, station, day, stage) for stage in STAGES}
     newest = max((h for h in heads.values() if h), key=lambda h: str(h["decided_at_utc"]), default=None)
@@ -1367,6 +1410,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
         "taf": _taf(conn, station, day),
         "precip": _precip(conn, station, day),
+        "precip_sat": _precip_sat(station, day, zone),
         "precip_5min": _precip_5min(station, day, zone),
         "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
         "direction": _direction(station, day),
