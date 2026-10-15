@@ -14136,6 +14136,8 @@ class TargetProductionWorker:
                     ),
                 )
                 self._assert_post_fill_candidate_projection(
+                    station_id=station,
+                    event_date=day,
                     candidate=candidate,
                     request=request,
                     transition_content_sha256=str(transition[4] or ""),
@@ -14256,6 +14258,8 @@ class TargetProductionWorker:
     def _assert_post_fill_candidate_projection(
         self,
         *,
+        station_id: str,
+        event_date: str,
         candidate: Mapping[str, Any],
         request: Mapping[str, Any],
         transition_content_sha256: str,
@@ -14288,15 +14292,18 @@ class TargetProductionWorker:
             raise ContractError(
                 "post_fill_recompute_state_content_address_missing"
             )
+        # Inside the request's station-day, so the (station_id, event_date,
+        # ...) indexes seek; content_sha256 alone scanned 2.2M rows each
+        # (query-plan guard, 2026-10-15).
         inventory_row = self.commit_conn.execute(
-            "SELECT inventory_json FROM "
-            "basket_confirmed_inventory_snapshot WHERE content_sha256=?",
-            (inventory_sha,),
+            "SELECT inventory_json FROM basket_confirmed_inventory_snapshot"
+            " WHERE station_id=? AND event_date=? AND content_sha256=?",
+            (str(station_id), str(event_date), inventory_sha),
         ).fetchone()
         order_state_row = self.commit_conn.execute(
-            "SELECT order_state_json FROM basket_order_state_snapshot "
-            "WHERE content_sha256=?",
-            (order_state_sha,),
+            "SELECT order_state_json FROM basket_order_state_snapshot"
+            " WHERE station_id=? AND event_date=? AND content_sha256=?",
+            (str(station_id), str(event_date), order_state_sha),
         ).fetchone()
         if inventory_row is None or order_state_row is None:
             raise ContractError(

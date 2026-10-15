@@ -366,7 +366,10 @@ def test_the_windows_are_tied_to_their_readers() -> None:
     for table, column in ((WS, "official_ws_quote_sha256"), (INVENTORY, "inventory_sha256"),
                           (ORDER_STATE, "order_state_sha256")):
         assert off.POLICY_BY_TABLE[table].keep_vector_refs.vector_column == column
-        assert f'"SELECT * FROM {table} WHERE content_sha256=?"' in runtime
+        # Looked up by content address inside the cycle's station-day (the
+        # query-plan guard, 2026-10-15): the vector ref is still the key.
+        assert f'"SELECT * FROM {table}"' in runtime
+        assert '" WHERE station_id=? AND event_date=? AND content_sha256=?"' in runtime
         assert f'vector["{column}"]' in runtime
     from bayes_basket_target import certain_win_recycle
 

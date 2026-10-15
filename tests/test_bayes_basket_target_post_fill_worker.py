@@ -95,14 +95,15 @@ def _worker() -> TargetProductionWorker:
     )
     conn.execute(
         "CREATE TABLE basket_confirmed_inventory_snapshot("
-        "content_sha256 TEXT,inventory_json TEXT)"
+        "station_id TEXT,event_date TEXT,content_sha256 TEXT,inventory_json TEXT)"
     )
     conn.execute(
         "CREATE TABLE basket_order_state_snapshot("
-        "content_sha256 TEXT,order_state_json TEXT)"
+        "station_id TEXT,event_date TEXT,content_sha256 TEXT,order_state_json TEXT)"
     )
     conn.execute(
-        "INSERT INTO basket_confirmed_inventory_snapshot VALUES(?,?)",
+        # Looked up inside the request's station-day (query-plan guard).
+        "INSERT INTO basket_confirmed_inventory_snapshot VALUES('RKPK','2026-07-27',?,?)",
         (
             "8" * 64,
             json.dumps({
@@ -113,7 +114,7 @@ def _worker() -> TargetProductionWorker:
         ),
     )
     conn.execute(
-        "INSERT INTO basket_order_state_snapshot VALUES(?,?)",
+        "INSERT INTO basket_order_state_snapshot VALUES('RKPK','2026-07-27',?,?)",
         (
             "9" * 64,
             json.dumps({

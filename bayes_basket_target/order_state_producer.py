@@ -313,11 +313,22 @@ def _assert_target_activation_and_quiescence(
     # malformed or cross-wired row must never be converted into a known-zero
     # pending state, even though the target schema normally constrains this
     # column to zero in production_no_live.
+    # The scope is spelled only when given: ``(?='' OR station_id=?)`` keeps
+    # the planner off every index, so a scoped check read the whole table
+    # (query-plan guard, 2026-10-15).
+    where = ["will_order<>0"]
+    params: list[str] = []
+    if scope_station:
+        where.append("station_id=?")
+        params.append(scope_station)
+    if scope_day:
+        where.append("event_date=?")
+        params.append(scope_day)
     try:
         live_authority = conn.execute(
-            "SELECT 1 FROM auto_trade_decisions WHERE will_order<>0"
-            " AND (?='' OR station_id=?) AND (?='' OR event_date=?) LIMIT 1",
-            (scope_station, scope_station, scope_day, scope_day),
+            "SELECT 1 FROM auto_trade_decisions WHERE "
+            + " AND ".join(where) + " LIMIT 1",
+            params,
         ).fetchone()
     except sqlite3.Error as exc:
         raise ContractError("auto_trade_decisions_authority_unavailable") from exc

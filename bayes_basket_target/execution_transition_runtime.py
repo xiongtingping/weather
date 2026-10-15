@@ -748,9 +748,14 @@ def _load_binding(conn: sqlite3.Connection, receipt: Mapping[str, Any]) -> dict[
         )
     if receipt["quote_sequence"] < 0:
         raise ExecutionTransitionError("execution_receipt_sequence_invalid")
+    # Each evidence row is looked up inside the cycle's own station-day: the
+    # (station_id, event_date, ...) indexes seek, where content_sha256 alone
+    # scanned 2.2M rows -- 214 s, 48 s, 35 s (query-plan guard, 2026-10-15).
+    # A row from another station-day was never the cycle's evidence.
     quote = conn.execute(
-        "SELECT * FROM basket_official_ws_snapshot WHERE content_sha256=?",
-        (vector["official_ws_quote_sha256"],),
+        "SELECT * FROM basket_official_ws_snapshot"
+        " WHERE station_id=? AND event_date=? AND content_sha256=?",
+        (cycle[0], cycle[1], vector["official_ws_quote_sha256"]),
     ).fetchone()
     if quote is None:
         raise ExecutionTransitionError("execution_receipt_quote_evidence_missing")
@@ -781,12 +786,14 @@ def _load_binding(conn: sqlite3.Connection, receipt: Mapping[str, Any]) -> dict[
     ):
         raise ExecutionTransitionError("execution_receipt_quote_freshness_binding_mismatch")
     inventory = conn.execute(
-        "SELECT * FROM basket_confirmed_inventory_snapshot WHERE content_sha256=?",
-        (vector["inventory_sha256"],),
+        "SELECT * FROM basket_confirmed_inventory_snapshot"
+        " WHERE station_id=? AND event_date=? AND content_sha256=?",
+        (cycle[0], cycle[1], vector["inventory_sha256"]),
     ).fetchone()
     order_state = conn.execute(
-        "SELECT * FROM basket_order_state_snapshot WHERE content_sha256=?",
-        (vector["order_state_sha256"],),
+        "SELECT * FROM basket_order_state_snapshot"
+        " WHERE station_id=? AND event_date=? AND content_sha256=?",
+        (cycle[0], cycle[1], vector["order_state_sha256"]),
     ).fetchone()
     if inventory is None or order_state is None:
         raise ExecutionTransitionError("execution_receipt_inventory_order_evidence_missing")

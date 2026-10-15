@@ -20,32 +20,17 @@ from __future__ import annotations
 from tests import sql_plan_guard as guard
 
 KNOWN_DEBT = {
-    # Operator tools, not the resident: release materialisation, the expected
-    # scope manifest and the cold-offload audit.
+    # Whole-history reads by design, in operator tools only (release
+    # materialisation, the expected-scope manifest, the cold-offload audit):
+    # every canonical fact, and the latest WS snapshot of every station-day-
+    # market.  No index answers "all of it"; making them incremental is a
+    # redesign of those tools, not a query fix.
     "bayes_basket_target/canonical_activation_release.py:8e0316a05a83":
-        "canonical_ssot_fact 209k; load_db_audit_snapshot, release tool only",
+        "canonical_ssot_fact 209k; load_db_audit_snapshot dumps every fact, release tool only",
     "bayes_basket_target/canonical_typed_scope_builder.py:534dd71d6dc4":
-        "basket_official_ws_snapshot 2.2M; _market_records, manifest/offload tools only",
-    # Latent: the receipt ingress (production_io.apply_no_live_execution_
-    # receipt) has no caller, and nothing writes post-fill recompute requests
-    # (table empty 2026-10-15).  If either path wakes, each lookup by
-    # content_sha256 is 35-214 s: index content_sha256 or delete the chain.
-    "bayes_basket_target/execution_transition_runtime.py:2478edeee359":
-        "basket_official_ws_snapshot 2.2M by content_sha256 (214 s); latent, no caller",
-    "bayes_basket_target/execution_transition_runtime.py:c11bdf78d1eb":
-        "basket_confirmed_inventory_snapshot 2.2M by content_sha256 (48 s); latent, no caller",
-    "bayes_basket_target/execution_transition_runtime.py:44fa649cc1e1":
-        "basket_order_state_snapshot 2.2M by content_sha256 (35 s); latent, no caller",
-    "bayes_basket_target/production_worker.py:0f6649a8d11e":
-        "basket_confirmed_inventory_snapshot 2.2M by content_sha256; post-fill requests table empty",
-    "bayes_basket_target/production_worker.py:3ec06cd33c73":
-        "basket_order_state_snapshot 2.2M by content_sha256; post-fill requests table empty",
-    # Cheap in fact: narrow rows, 0.24 s for the whole table (will_order is
-    # always 0 in production_no_live).
-    "bayes_basket_target/order_state_producer.py:f1c23011cc5b":
-        "auto_trade_decisions 191k; OR-scoped quiescence check, 0.24 s measured",
+        "basket_official_ws_snapshot 2.2M; latest snapshot of every scope, manifest/offload tools only",
     # Called only through apply_native_ensemble_foundation_schema, which no
-    # production path calls (tests do).
+    # production path or script calls (two tests build fixtures with it).
     "bayes_basket_target/ssot.py:18d1b916c863":
         "calibration_native_ensemble_activation 903k; run-cycle mapping migration, tests only",
 }
