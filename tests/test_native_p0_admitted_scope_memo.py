@@ -241,20 +241,147 @@ def test_inside_the_horizon_with_no_row_added_nothing_is_walked_or_read_again(
     assert later == _compile(conn, "2026-07-01T13:07:00Z")
 
 
-def test_a_row_added_anywhere_sends_the_next_compile_back_to_the_lists(tmp_path) -> None:
+APPENDED_EVALUATIONS = "SELECT rowid,run_cycle,run_cycle_by_system_json"
+APPENDED_ACTIVATIONS = "SELECT a.rowid,a.activation_id"
+
+
+def _full_tests(flat: list[str]) -> int:
+    """Evidence tests over the whole scope (the increment's own scan names
+    the pairings it re-tests)."""
+
+    return sum(
+        statement.startswith(EVIDENCE_TEST) and " IN (" not in statement
+        for statement in flat
+    )
+
+
+def test_a_row_stamped_ahead_is_stepped_not_walked_and_seen_at_its_stamp(
+    tmp_path, monkeypatch
+) -> None:
     conn, report = _store(tmp_path)
     _compile(conn, "2026-07-01T13:00:00Z")
-    # Stamped after both instants: the lists the scope was kept under are
-    # unchanged, but a table grew, so they are walked -- and found equal.
+    # Stamped after both instants: the scope's rows grew, but nothing new is
+    # in view.  The appended rows are read by rowid; nothing is walked.
     _reject(conn, report, "2026-07-01T13:20:00Z")
     _, flat = _statements(conn, "2026-07-01T13:07:00Z")
-    assert _count(flat, *WALKS) == 2
-    assert _count(flat, EVIDENCE_TEST) == 0
-    # The walk noted the stamp ahead of it: no walk until then, a walk at it.
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    assert _count(flat, APPENDED_EVALUATIONS) == 1
+    # The row ahead holds the base back: read again, still not walked.
     _, flat = _statements(conn, "2026-07-01T13:08:00Z")
-    assert _count(flat, *WALKS) == 0
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    assert _count(flat, APPENDED_EVALUATIONS) == 1
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
     with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
         _compile(conn, "2026-07-01T13:20:00Z")
+    conn.set_trace_callback(None)
+    flat_at = [" ".join(statement.split()) for statement in statements]
+    assert _count(flat_at, WALKS[1]) == 0 and _full_tests(flat_at) == 0
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
+        _compile(conn, "2026-07-01T13:20:00Z")
+
+
+def _re_mint(
+    conn: sqlite3.Connection, *, suffix: str, valid_from: str,
+    valid_until: str | None = None,
+) -> None:
+    """A re-mint of the kept scope's pairing: the same artifact, a new
+    activation one generation up (what the OOS rotation writes)."""
+
+    columns = [c[1] for c in conn.execute(
+        "PRAGMA table_info(calibration_native_ensemble_activation)"
+    )]
+    row = dict(zip(columns, conn.execute(
+        "SELECT * FROM calibration_native_ensemble_activation "
+        "WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+        "ORDER BY generation DESC LIMIT 1"
+    ).fetchone()))
+    row.update(
+        activation_id=f"native-activation-re-mint-{suffix}",
+        content_sha256=content_sha256({"re_mint": suffix}),
+        valid_from_utc=valid_from,
+        activated_at_utc=valid_from,
+        generation=int(row["generation"]) + 1,
+    )
+    if valid_until is not None:
+        row["valid_until_utc"] = valid_until
+    conn.execute(
+        f"INSERT INTO calibration_native_ensemble_activation({','.join(columns)}) "
+        f"VALUES({','.join('?' * len(columns))})",
+        tuple(row[c] for c in columns),
+    )
+    conn.commit()
+
+
+def _answers(conn: sqlite3.Connection, at: str):
+    try:
+        return ("ok", _compile(conn, at))
+    except ContractError as exc:
+        return ("refused", str(exc))
+
+
+def test_a_re_mint_of_this_scope_is_stepped_to_the_walk_s_answer(
+    tmp_path, monkeypatch
+) -> None:
+    """2026-10-15: every re-mint walked the scope whole again -- ~6,000
+    activations an h00_12 scope, 10-25 s each, 100-620 s in the cycles the
+    rotation bunched in."""
+
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    _re_mint(conn, suffix="a", valid_from="2026-07-01T13:01:00Z")
+    stepped, flat = _statements(conn, "2026-07-01T13:07:00Z")
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    assert _count(flat, APPENDED_ACTIVATIONS) == 1
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert "native-activation-re-mint-a" in kept[1]
+    # Minted ahead of the instant: held back, then admitted at its opening.
+    _re_mint(conn, suffix="b", valid_from="2026-07-01T13:30:00Z")
+    held, flat = _statements(conn, "2026-07-01T13:08:00Z")
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    opened, flat = _statements(conn, "2026-07-01T13:30:00Z")
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert "native-activation-re-mint-b" in kept[1]
+    # A rejection in view now: every activation of the pairing is tested
+    # again, by the scan that names it.
+    _reject(conn, report, "2026-07-01T13:31:00Z")
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    rejected = _answers(conn, "2026-07-01T13:32:00Z")
+    conn.set_trace_callback(None)
+    flat = [" ".join(statement.split()) for statement in statements]
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    assert sum(
+        s.startswith(EVIDENCE_TEST) and " IN (" in s for s in flat
+    ) == 1
+    assert rejected[0] == "refused"
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert stepped == _compile(conn, "2026-07-01T13:07:00Z")
+    assert held == _compile(conn, "2026-07-01T13:08:00Z")
+    assert opened == _compile(conn, "2026-07-01T13:30:00Z")
+    assert rejected == _answers(conn, "2026-07-01T13:32:00Z")
+
+
+def test_an_admitted_row_closing_leaves_without_a_walk(tmp_path, monkeypatch) -> None:
+    conn, _ = _store(tmp_path)
+    _re_mint(
+        conn, suffix="late", valid_from="2026-07-01T12:00:00Z",
+        valid_until="2026-07-01T14:00:00Z",
+    )
+    _compile(conn, "2026-07-01T13:00:00Z")
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert len(kept[1]) >= 2
+    closes = min(kept[5][3].values())
+    later = max(kept[5][3].values())
+    assert closes < later
+    closed, flat = _statements(conn, closes)
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert all(until > closes for until in kept[5][3].values())
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert closed == _compile(conn, closes)
 
 
 def test_an_instant_before_the_one_kept_walks_the_lists(tmp_path, monkeypatch) -> None:
@@ -429,3 +556,30 @@ def test_a_re_mint_of_this_scope_is_looked_at_again(tmp_path, monkeypatch) -> No
     assert _count(flat, "SELECT activation_id,valid_from_utc,valid_until_utc") >= 1
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
     assert later == _compile(conn, "2026-07-01T13:07:00Z")
+
+
+def test_the_appended_rows_are_read_by_rowid_not_by_scope_or_kind(tmp_path) -> None:
+    """The scope and kind indexes would walk every row of the scope (~6,000)
+    or of the kind (~900,000) to find the few appended; the unary + leaves the
+    planner only the rowid range."""
+
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")
+    _re_mint(conn, suffix="p", valid_from="2026-07-01T13:01:00Z")
+    _reject(conn, report, "2026-07-01T13:02:00Z")
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    _answers(conn, "2026-07-01T13:07:00Z")
+    conn.set_trace_callback(None)
+    appended = [
+        s for s in statements
+        if s.startswith((APPENDED_EVALUATIONS, APPENDED_ACTIVATIONS))
+    ]
+    assert len(appended) == 2
+    for sql in appended:
+        plan = " | ".join(
+            str(row[3]) for row in conn.execute("EXPLAIN QUERY PLAN " + sql)
+        )
+        assert plan.split(" | ")[0].endswith(
+            "USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)"
+        ), plan

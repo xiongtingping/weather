@@ -1889,9 +1889,13 @@ ADMITTED_SCOPE_MEMO_ENABLED = (
     not in {"0", "off", "false", "no"}
 )
 ADMITTED_SCOPE_MEMO_MAX_SCOPES = 512
+# Appended rows past which a kept scope is walked whole instead of stepped.
+ADMITTED_INCREMENT_ROWS_MAX = 20_000
 SELECTION_WEIGHTS_MEMO_MAX = 100_000
 # key -> (digest, admitted ids, admitted pairings' evaluation rows,
-#         admitted rows whole, (kept at, horizon, rowid marks) or None)
+#         admitted rows whole, (kept at, horizon, rowid marks) or None,
+#         (kept at, first row ahead, (activation, evaluation) base marks,
+#          {admitted id: valid_until}) or None)
 _ADMITTED_SCOPE_MEMO: dict[tuple[str, ...], tuple[Any, ...]] = {}
 _MEMO_TEXT: dict[str, str] = {}
 # (database file, selection evidence sha) -> its certified seat weights.  The
@@ -2198,10 +2202,12 @@ def _admitted_scope_digest(
     *,
     activation_parameters: tuple[Any, ...],
     decision_at_utc: str,
-) -> tuple[bytes, int, str]:
+) -> tuple[bytes, int, str, str]:
     """Digest of the two id lists the evidence test reads, how many
-    activations are valid, and the earliest later instant at which either
-    list would read differently with no row added.
+    activations are valid, the earliest later instant at which either
+    list would read differently with no row added, and the earliest of those
+    that is a row coming into view (a minted-ahead activation opening, an
+    evaluation stamped ahead) rather than a valid activation closing.
 
     The lists are the evidence test's own: activations with
     ``valid_from <= instant < valid_until``, evaluations with
@@ -2214,6 +2220,7 @@ def _admitted_scope_digest(
     hasher = hashlib.sha256()
     valid = 0
     horizon = _NO_HORIZON
+    ahead = _NO_HORIZON
     for row in conn.execute(
         "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc "
         "FROM calibration_native_ensemble_activation a "
@@ -2230,7 +2237,7 @@ def _admitted_scope_digest(
             valid += 1
             horizon = min(horizon, str(row[2]))
         else:
-            horizon = min(horizon, valid_from)
+            ahead = min(ahead, valid_from)
     hasher.update(b"|")
     for row in conn.execute(
         "SELECT evaluation_id,evaluated_at_utc "
@@ -2243,8 +2250,8 @@ def _admitted_scope_digest(
             hasher.update(str(row[0]).encode("utf-8"))
             hasher.update(b"\n")
         else:
-            horizon = min(horizon, evaluated_at)
-    return hasher.digest(), valid, horizon
+            ahead = min(ahead, evaluated_at)
+    return hasher.digest(), valid, min(horizon, ahead), ahead
 
 
 def compile_native_ensemble_p0(
@@ -2706,6 +2713,253 @@ def compile_native_ensemble_p0(
         rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
         return rows
 
+    # Named, because the artifact's primary key is a unique equality the
+    # planner otherwise prefers, and that reads the table row.  Named only
+    # once it exists: until the index migration has run, the same read goes
+    # through the primary key, slower and identical.
+    evidence_index_present: list[bool] = []
+
+    def _artifact_join() -> str:
+        if not evidence_index_present:
+            evidence_index_present.append(conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='index' "
+                "AND name='calibration_cross_native_artifact_evidence_idx'"
+            ).fetchone() is not None)
+        return (
+            "calibration_cross_native_ensemble_artifact r"
+            + (
+                " INDEXED BY calibration_cross_native_artifact_evidence_idx "
+                if evidence_index_present[0] else " "
+            )
+            + "ON r.cross_ensemble_artifact_id=a.artifact_id "
+        )
+
+    def _evidence_test_sql() -> str:
+        return (
+            "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
+            "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
+            "a.available_system_set_hash_or_star,r.ensemble_system_ids_json,"
+            "a.valid_until_utc "
+            "FROM calibration_native_ensemble_activation a JOIN "
+            + _artifact_join()
+            + "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+            "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+            "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+            "AND a.valid_from_utc<=? AND a.valid_until_utc>?"
+        )
+
+    def _pairing_key_part(
+        run_cycle: Any, cycle_json: Any, cycle_sha: Any, ids_text: Any,
+        set_hash: Any,
+    ) -> tuple[str, ...] | None:
+        """The evaluation key of an activation past the scope: the part the
+        evaluation lookup matches, None where its system list does not
+        parse (the loop decides those)."""
+
+        try:
+            ids = _json(sorted(str(v) for v in json.loads(str(ids_text))))
+        except (TypeError, ValueError):
+            return None
+        return (
+            str(run_cycle or ""), str(cycle_json or ""), str(cycle_sha or ""),
+            settlement_definition, ids, str(set_hash),
+        )
+
+    def _kept_key(key_part: tuple[str, ...]) -> tuple[str, ...]:
+        # The same few cycle maps, system sets and states recur across every
+        # scope; one copy of each is kept.
+        return tuple(_MEMO_TEXT.setdefault(v, v) for v in key_part)
+
+    def _kept_evaluations(rows: list[Any]) -> tuple[tuple[Any, ...], ...]:
+        return tuple(
+            (_MEMO_TEXT.setdefault(str(row[0]), str(row[0])),)
+            + tuple(row)[1:]
+            for row in rows
+        )
+
+    # The increment (2026-10-15).  The OOS rotation re-mints 10-18 scopes
+    # every ten minutes, and an h00_12 scope now holds ~6,000 valid
+    # activations (30-day windows, ~800 re-mints a day), each of which
+    # closes on its own; every re-mint and every close changed the scope's
+    # id lists, and the evidence test was walked whole again -- 10-25 s a
+    # scope on the live store, 100-620 s in the cycles it bunched in.  The
+    # test is per row: an activation is admitted on its own artifact and the
+    # latest evaluations of its own pairing as of the instant.  So from a
+    # kept answer, with the instant no earlier than the one kept and short of
+    # every minted-ahead row the walk saw:
+    #   - an admitted row whose window has closed leaves; a closed row that
+    #     was not admitted changes nothing;
+    #   - the rows appended since (read by rowid, past the base marks) are
+    #     tested -- new activations valid now, and every valid activation of
+    #     a pairing that has a new evaluation visible now, whether it was
+    #     admitted or not;
+    #   - an appended row not yet in view (a window not open, an evaluation
+    #     stamped ahead) holds the base back below it, so the next compile
+    #     reads it again.
+    # Anything else -- too many rows appended, an activation whose artifact
+    # has not arrived, an earlier instant -- is the walk.
+    def _admitted_increment(
+        kept: tuple[Any, ...],
+        marks: tuple[int, int, int],
+        *,
+        memo_key: tuple[str, ...],
+        database_file: str,
+        kept_answer: Callable[[tuple[Any, ...]], list[Any]],
+    ) -> list[Any] | None:
+        scope_part = (station_id, season_bin, training_lead_bucket)
+        state = kept[5] if len(kept) > 5 else None
+        if state is None:
+            return None
+        kept_at, ahead_at, base, valid_until_by_id = state
+        if not (kept_at <= decision_at_utc < ahead_at):
+            return None
+        if (
+            base[0] > marks[0]
+            or base[1] > marks[1]
+            or marks[0] - base[0] > ADMITTED_INCREMENT_ROWS_MAX
+            or marks[1] - base[1] > ADMITTED_INCREMENT_ROWS_MAX
+        ):
+            return None
+        touched = (marks[0], marks[1]) != tuple(base) and _appended_since(
+            conn, database_file, marks,
+            kept_marks=(base[0], base[1]),
+            activation_keys=[_activation_key(
+                "CROSS_NATIVE_ENSEMBLE", station_id, "*",
+                season_bin, training_lead_bucket,
+            )],
+            evaluation_keys=[(station_id, season_bin, training_lead_bucket)],
+        ) is not False
+        hold_a, hold_e = marks[0], marks[1]
+        affected: set[tuple[str, ...]] = set()
+        fresh: dict[str, tuple[Any, ...]] = {}
+        if touched:
+            # By rowid: the unary + keeps the planner off the scope indexes
+            # (and, for the activations, the kind's own), which would walk
+            # every row of the scope or of the kind.
+            for row in conn.execute(
+                "SELECT rowid,run_cycle,run_cycle_by_system_json,"
+                "run_cycle_by_system_sha256,settlement_definition,"
+                "ensemble_system_ids_json,available_system_set_hash,"
+                "evaluated_at_utc "
+                "FROM calibration_cross_native_ensemble_oos_evaluation "
+                "WHERE rowid>? AND rowid<=? AND +station_id=? "
+                "AND season_bin=? AND lead_bucket=?",
+                (base[1], marks[1]) + scope_part,
+            ):
+                if str(row[4]) != settlement_definition:
+                    continue  # no activation's lookup can match it
+                if str(row[7]) > decision_at_utc:
+                    hold_e = min(hold_e, int(row[0]) - 1)
+                    continue
+                affected.add((
+                    str(row[1] or ""), str(row[2] or ""), str(row[3] or ""),
+                    str(row[4]), str(row[5]), str(row[6]),
+                ))
+            for row in conn.execute(
+                "SELECT a.rowid,a.activation_id,a.valid_from_utc,"
+                "a.valid_until_utc,r.cross_ensemble_artifact_id,"
+                "r.selection_evidence_sha256,r.run_cycle,"
+                "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
+                "a.available_system_set_hash_or_star,"
+                "r.ensemble_system_ids_json "
+                "FROM calibration_native_ensemble_activation a LEFT JOIN "
+                + _artifact_join()
+                + "WHERE a.rowid>? AND a.rowid<=? "
+                "AND +a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
+                "AND +a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
+                "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY'",
+                (base[0], marks[0]) + scope_part,
+            ):
+                if str(row[2]) > decision_at_utc:
+                    hold_a = min(hold_a, int(row[0]) - 1)
+                    continue
+                if str(row[3]) <= decision_at_utc:
+                    continue
+                if row[4] is None:
+                    return None  # its artifact has not arrived: the walk
+                fresh[str(row[1])] = (
+                    row[1], row[5], row[6], row[7], row[8], row[9], row[10],
+                    row[3],
+                )
+            if affected:
+                cycle_shas = sorted({part[2] for part in affected})
+                set_hashes = sorted({part[5] for part in affected})
+                for pre in conn.execute(
+                    _evidence_test_sql()
+                    + " AND a.run_cycle_by_system_sha256 IN ("
+                    + ",".join("?" * len(cycle_shas))
+                    + ") AND a.available_system_set_hash_or_star IN ("
+                    + ",".join("?" * len(set_hashes)) + ")",
+                    activation_parameters + tuple(cycle_shas)
+                    + tuple(set_hashes),
+                ):
+                    if _pairing_key_part(
+                        pre[2], pre[3], pre[4], pre[6], pre[5]
+                    ) in affected:
+                        fresh[str(pre[0])] = tuple(pre)
+        kept_rows = {str(row[0]): row for row in kept[3]}
+        admitted: dict[str, tuple[str, tuple[str, ...] | None]] = {}
+        for activation_id, row in kept_rows.items():
+            valid_until = valid_until_by_id.get(activation_id)
+            if valid_until is None:
+                return None
+            if valid_until <= decision_at_utc or activation_id in fresh:
+                continue
+            key_part = _pairing_key_part(row[8], row[9], row[10], row[6], row[5])
+            if key_part is not None and key_part in affected:
+                continue  # not valid now: the scan found every valid one
+            admitted[activation_id] = (valid_until, key_part)
+        evaluations: dict[tuple[str, ...], tuple[tuple[Any, ...], ...]] = {}
+        for activation_id, pre in fresh.items():
+            key_part = _pairing_key_part(pre[2], pre[3], pre[4], pre[6], pre[5])
+            if key_part is None:
+                admitted[activation_id] = (str(pre[7]), None)
+                continue
+            pre_key = scope_part + key_part + (decision_at_utc,)
+            if key_part not in affected and key_part in kept[2]:
+                # No evaluation of this pairing has come into view.
+                evaluation_rows_by_key.setdefault(
+                    pre_key, list(kept[2][key_part])
+                )
+            pre_rows = _evaluation_rows(pre_key)
+            if _evaluation_admits(pre_rows, str(pre[1])):
+                admitted[activation_id] = (str(pre[7]), key_part)
+                evaluations[_kept_key(key_part)] = _kept_evaluations(pre_rows)
+        missing = [i for i in admitted if i not in kept_rows]
+        whole = {str(row[0]): row for row in _admitted_rows_whole(missing)}
+        if len(whole) != len(missing):
+            return None
+        rows = [kept_rows.get(i) or whole[i] for i in admitted]
+        rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
+        for _valid_until, key_part in admitted.values():
+            if key_part is not None and key_part not in evaluations:
+                kept_evaluations = kept[2].get(key_part)
+                if kept_evaluations is None:
+                    return None
+                evaluations[_kept_key(key_part)] = kept_evaluations
+        shared = (4, 5, 6, 8, 9, 10, 11, 12, 15)
+        stepped = (
+            b"",  # the lists are no longer the ones a digest was taken of
+            tuple(str(row[0]) for row in rows),
+            evaluations,
+            tuple(
+                tuple(
+                    _MEMO_TEXT.setdefault(value, value)
+                    if index in shared and isinstance(value, str)
+                    else value
+                    for index, value in enumerate(tuple(row))
+                )
+                for row in rows
+            ),
+            None,
+            (
+                decision_at_utc, ahead_at, (hold_a, hold_e),
+                {i: admitted[i][0] for i in admitted},
+            ),
+        )
+        _ADMITTED_SCOPE_MEMO[memo_key] = stepped
+        return kept_answer(stepped)
+
     def _evidence_admitted_rows() -> list[Any]:
         admitted_ids: list[str] = []
         # ``_ADMITTED_SCOPE_MEMO``: the scope's answer, while both id lists
@@ -2715,7 +2969,8 @@ def compile_native_ensemble_p0(
         digest = b""
         valid_activations = -1
         horizon = _NO_HORIZON
-        marks: tuple[int, int] | None = None
+        ahead = _NO_HORIZON
+        marks: tuple[int, int, int] | None = None
         database_file = (
             _main_database_file(conn) if ADMITTED_SCOPE_MEMO_ENABLED else ""
         )
@@ -2756,7 +3011,14 @@ def compile_native_ensemble_p0(
                 # Neither table has a new row for this scope and the clock
                 # has reached no row's edge: the two lists are the ones kept.
                 return _kept_answer(kept)
-            digest, valid_activations, horizon = _admitted_scope_digest(
+            if kept is not None and marks is not None:
+                stepped = _admitted_increment(
+                    kept, marks, memo_key=memo_key,
+                    database_file=database_file, kept_answer=_kept_answer,
+                )
+                if stepped is not None:
+                    return stepped
+            digest, valid_activations, horizon, ahead = _admitted_scope_digest(
                 conn,
                 activation_parameters=activation_parameters,
                 decision_at_utc=decision_at_utc,
@@ -2769,66 +3031,31 @@ def compile_native_ensemble_p0(
                     (decision_at_utc, horizon, marks)
                     if marks is not None and _append_marks(conn) == marks
                     else None
-                ),)
+                ),) + kept[5:]
                 return _kept_answer(kept)
         tested = 0
         admitted_evaluations: dict[
             tuple[str, ...], tuple[tuple[Any, ...], ...]
         ] = {}
-        # Named, because the artifact's primary key is a unique equality the
-        # planner otherwise prefers, and that reads the table row.  Named
-        # only once it exists: until the index migration has run, the same
-        # read goes through the primary key, slower and identical.
-        evidence_index = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='index' "
-            "AND name='calibration_cross_native_artifact_evidence_idx'"
-        ).fetchone() is not None
+        valid_until_by_id: dict[str, str] = {}
         for pre in conn.execute(
-            "SELECT a.activation_id,r.selection_evidence_sha256,r.run_cycle,"
-            "a.run_cycle_by_system_json,a.run_cycle_by_system_sha256,"
-            "a.available_system_set_hash_or_star,r.ensemble_system_ids_json "
-            "FROM calibration_native_ensemble_activation a "
-            "JOIN calibration_cross_native_ensemble_artifact r"
-            + (
-                " INDEXED BY calibration_cross_native_artifact_evidence_idx "
-                if evidence_index else " "
-            )
-            + "ON r.cross_ensemble_artifact_id=a.artifact_id "
-            "WHERE a.artifact_kind='CROSS_NATIVE_ENSEMBLE' "
-            "AND a.station_id=? AND a.season_bin=? AND a.lead_bucket=? "
-            "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-            "AND a.valid_from_utc<=? AND a.valid_until_utc>?",
-            activation_parameters,
+            _evidence_test_sql(), activation_parameters
         ):
             tested += 1
-            try:
-                pre_ids = _json(sorted(str(v) for v in json.loads(str(pre[6]))))
-            except (TypeError, ValueError):
+            key_part = _pairing_key_part(pre[2], pre[3], pre[4], pre[6], pre[5])
+            if key_part is None:
                 admitted_ids.append(str(pre[0]))  # the loop decides
+                valid_until_by_id[str(pre[0])] = str(pre[7])
                 continue
-            pre_key = (
-                station_id,
-                season_bin,
-                training_lead_bucket,
-                str(pre[2] or ""),
-                str(pre[3] or ""),
-                str(pre[4] or ""),
-                settlement_definition,
-                pre_ids,
-                str(pre[5]),
-                decision_at_utc,
-            )
+            pre_key = scope_part + key_part + (decision_at_utc,)
             pre_rows = _evaluation_rows(pre_key)
             if _evaluation_admits(pre_rows, str(pre[1])):
                 admitted_ids.append(str(pre[0]))
+                valid_until_by_id[str(pre[0])] = str(pre[7])
                 # The same few cycle maps, system sets and states recur
                 # across every scope; one copy of each is kept.
-                admitted_evaluations[
-                    tuple(_MEMO_TEXT.setdefault(v, v) for v in pre_key[3:9])
-                ] = tuple(
-                    (_MEMO_TEXT.setdefault(str(row[0]), str(row[0])),)
-                    + tuple(row)[1:]
-                    for row in pre_rows
+                admitted_evaluations[_kept_key(key_part)] = _kept_evaluations(
+                    pre_rows
                 )
         rows = _admitted_rows_whole(admitted_ids)
         # Kept only when the answer provably belongs to the digest: every
@@ -2863,6 +3090,13 @@ def compile_native_ensemble_p0(
                         for row in rows
                     ),
                     (decision_at_utc, horizon, marks) if unmoved else None,
+                    # The walk's own base for the next compile's increment:
+                    # the marks read before it (a row it saw past them is
+                    # read again then, and tested again to the same answer).
+                    (
+                        decision_at_utc, ahead, (marks[0], marks[1]),
+                        valid_until_by_id,
+                    ) if marks is not None else None,
                 )
         return rows
 
