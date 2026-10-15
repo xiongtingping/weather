@@ -22762,6 +22762,26 @@ function sdSky(day){
   const span = swTo == null ? "" : `00–${hh(swTo)} 点`;
   const fcPct = sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj);
   const fcPrev = H.fetched_at_utc ? new Date(Date.parse(H.fetched_at_utc) - 86400e3).toISOString() : null;
+  // Cloud, observed against forecast over the hours seen so far (user 2026-10-15
+  // 「卡片增加云的实况对比预报」): the satellite's cover against the forecast's
+  // total cloud where Himawari sees the station (it sees mid/high cloud too),
+  // else the report's low cloud against the forecast's low cloud.  Mean over
+  // the hours that have both, in tenths (成), the unit the table's threshold
+  // uses; more cloud is cold (blue).
+  const cloudPairs = (H.rows || []).map(r => {
+    const f = r.forecast || {}, C = r.sat_cloud;
+    if(satCloud) return C && C.state === "ok" && f.cloud != null ? [100 * C.cover, f.cloud, r.hour] : null;
+    return r.obs && r.obs.cloud_cover != null && f.cloud_low != null ? [100 * r.obs.cloud_cover, f.cloud_low, r.hour] : null;
+  }).filter(Boolean);
+  const avg = k => cloudPairs.reduce((a, x) => a + x[k], 0) / cloudPairs.length;
+  const cloudCard = !cloudPairs.length ? "" : (() => {
+    const ob = avg(0), fc = avg(1), d = (ob - fc) / 10;
+    const hrs = cloudPairs.map(x => Number(x[2]));
+    return sdSunCard(`云 · 实况对比预报 · ${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
+      `${d > 0 ? "+" : d < 0 ? "−" : ""}${sdN(Math.abs(d), 1)} 成`, Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
+      `实况 ${sdN(ob, 0)}% · 预报 ${sdN(fc, 0)}%`,
+      `${satCloud ? "卫星云量（JAXA Himawari 云产品，站点周围约 25 km 判为有云的格点占比，白天才有）对预报总云" : "报文低云（1500 m 以下）对预报低云"}，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
+  })();
   const cards = [
     sdSunCard("预报日照", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
@@ -22774,6 +22794,7 @@ function sdSky(day){
       : sdSunCard(`实况对比预报 · ${span}`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           `实况 ${sdN(swObs, 1)} · 预报 ${sdN(swFc, 1)} MJ/m²`,
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
+    cloudCard,
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
       ? sdSunCard("日照推算最高温", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
           `日前预报 ${sdN(T.forecast_tmax_d1_c, 1)}${fcMax == null ? "" : ` · 最新 ${sdN(fcMax, 1)}`}`,
