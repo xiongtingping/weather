@@ -337,3 +337,28 @@ def test_the_funnel_on_kept_closed_days_is_the_funnel_on_every_fact() -> None:
         " WHERE event_date=?", (closed_day,),
     )
     assert LS.refusal_funnel(conn, book, kept) == whole
+
+
+def test_plan_facts_query_seeks_the_scope_index() -> None:
+    # 2026-10-15: without a station_id predicate the funnel scanned every
+    # training fact and its feature_json (215-1,098 s), and the board render
+    # was killed at its timeout.  The station list makes the scope index seek.
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE basket_policy_training_fact (station_id TEXT NOT NULL,"
+        " event_date TEXT, stage TEXT, decision_at_utc TEXT, partition_key TEXT,"
+        " feature_json TEXT)"
+    )
+    conn.execute(
+        "CREATE INDEX basket_policy_training_fact_scope_idx ON"
+        " basket_policy_training_fact(station_id,event_date,stage,decision_at_utc,partition_key)"
+    )
+    plan = " ".join(
+        str(row[-1]) for row in conn.execute(
+            "EXPLAIN QUERY PLAN " + LS._PLAN_FACTS_SQL, ("P0", "2026-10-01")
+        )
+    )
+    assert "SEARCH basket_policy_training_fact USING INDEX basket_policy_training_fact_scope_idx" in plan
+    assert "SCAN basket_policy_training_fact\n" not in plan + "\n"

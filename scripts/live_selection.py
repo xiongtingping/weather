@@ -372,12 +372,20 @@ def _gate_refusals(
     return out
 
 
+# The station list is what lets the scope index (station_id, event_date,
+# stage, ...) seek: without a station_id predicate the planner scanned all
+# 126k rows and their feature_json overflow pages -- 215 s on a quiet host,
+# 1,098 s under memory pressure, and the 2026-10-15 07:57Z render was killed
+# at its 1500 s timeout for it (user 「渲染又坏了」).  The DISTINCT is a covering
+# index scan; stage is an index column, so only opening-stage rows are read.
 _PLAN_FACTS_SQL = (
     "SELECT station_id, event_date, decision_at_utc,"
     " json_extract(feature_json, '$.plan.state'),"
     " json_extract(feature_json, '$.plan.reason_codes')"
     " FROM basket_policy_training_fact"
-    " WHERE stage=? AND event_date>=?"
+    " WHERE station_id IN"
+    " (SELECT DISTINCT station_id FROM basket_policy_training_fact)"
+    " AND stage=? AND event_date>=?"
 )
 
 
