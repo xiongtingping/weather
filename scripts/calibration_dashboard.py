@@ -16343,6 +16343,8 @@ border-left:3px solid var(--tone,var(--line))}
 color:var(--muted);border:0;border-radius:6px;padding:2px 7px;
 font-family:inherit;font-size:12.5px;line-height:1.45}
 .jump button:hover{color:var(--text);background:var(--bar-bg)}
+.jump-sub{display:inline-flex;flex-wrap:wrap;gap:0 1px;margin:0 6px 0 0;padding-left:6px;border-left:1px solid var(--line)}
+.jump-sub button{font-size:11.5px;color:var(--muted)}
 .jump button[aria-current="true"]{color:var(--accent);background:var(--why-bg)}
 /* The live knobs, top right of the bar (user ruling, 2026-09-11).  One
    card, one stepper per knob: the value sits between its own two buttons,
@@ -16511,6 +16513,8 @@ footer{margin-top:20px}
 .jump-run{display:flex;flex-direction:column;align-items:stretch;gap:0}
 .jump button{display:block;width:100%;text-align:left;white-space:normal;
   padding:2px 6px 2px 10px;font-size:12.5px;line-height:1.35}
+.jump-sub{display:flex;flex-direction:column;margin:0 0 2px 12px;padding-left:0}
+.jump-sub button{font-size:11.5px;padding:1px 6px 1px 10px}
 }
 </style>
 <script>
@@ -24062,8 +24066,20 @@ document.getElementById("app").innerHTML =
     return `<button type="button" data-goto="${node.id}" title="${
       esc(full + (laneWord ? " · " + laneWord : ""))}"${
       lane ? ` data-lane="${esc(lane)}"` : ""}${
-      node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>`;
+      node.dataset.star ? ` class="star"` : ""}>${esc(short2)}</button>${
+      node.id === "sec-station-day" ? SD_PARTS_HTML : ""}`;
   };
+  // The station board's parts, listed under its entry (user 2026-10-15「把导航
+  // 栏的"站点看板"下展开」).  The panel is drawn after the page by its own
+  // fetch and redrawn per station, so each entry finds its heading by text
+  // when clicked -- the first one, i.e. today's while today is on the board.
+  // 今日/明日 are the panel's day tabs: the entry switches the tab and lands on
+  // it; the rest are searched in the day showing.
+  const SD_PARTS = [["全队偏态", ".sd-t", "全队"], ["今日", "tab", "今日"], ["明日", "tab", "明日"],
+    ["证据", ".sd-t", "证据："], ["云与辐射", "summary", "逐小时云与辐射"], ["TAF", "summary", "最新 TAF"],
+    ["METAR", "summary", "METAR/SPECI"], ["篮子计算器", ".sd-t", "篮子计算器"]];
+  const SD_PARTS_HTML = `<span class="jump-sub">${SD_PARTS.map(([label, sel, text]) =>
+    `<button type="button" data-sd-part="${esc(sel)}|${esc(text)}">${esc(label)}</button>`).join("")}</span>`;
   // A container's chip: its short name, the whole title on hover, live when
   // the container is, starred when a section inside is.
   const boxChip = (node) => {
@@ -24149,6 +24165,21 @@ document.getElementById("app").innerHTML =
     paintJump();
   };
   if(jump) jump.addEventListener("click", (ev) => {
+    const part = ev.target.closest("button[data-sd-part]");
+    if(part){
+      const [sel, text] = part.dataset.sdPart.split("|");
+      if(sel === "tab"){
+        const tab = [...document.querySelectorAll("#sd-body .sd-daytab[data-sd-tab]")].find(b => b.textContent.includes(text));
+        if(tab) tab.click();
+        goTo(document.querySelector("#sd-body .sd-tabs"));
+        return;
+      }
+      const node = [...document.querySelectorAll(`#sec-station-day ${sel}`)]
+        .find(e => e.textContent.includes(text) && !e.closest("[hidden]"));
+      for(let d = node && node.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+      goTo(node);
+      return;
+    }
     const button = ev.target.closest("button[data-goto]");
     if(!button) return;
     goTo(document.getElementById(button.dataset.goto));
