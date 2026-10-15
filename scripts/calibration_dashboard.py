@@ -22861,8 +22861,8 @@ function sdModeConverge(A){
       <div class="muted sd-sub">首次同桶即此：${pc(f.hit)}（市场说 ${pc(f.said_market)} · 差 ${edge(f)} · ${f.n || 0} 站日）</div></div>`;
   }).join("");
   const bands = [];
+  // The backend lists the bands nearest first; keep that order.
   C.forEach(c => (c.slices || []).forEach(x => { if(x.group === "提前量" && !bands.includes(x.slice)) bands.push(x.slice); }));
-  bands.sort();
   const table = scope => `<div class="scroll"><table class="sd-tab"><thead><tr><th>距结算（靠拢时）</th>${C.map(c =>
       `<th title="${tip[c.mover]}">${word[c.mover]}</th><th>差</th><th>次</th>`).join("")}</tr></thead><tbody>${bands.map(b =>
       `<tr><td>${sdEsc(b)}</td>${C.map(c => {
