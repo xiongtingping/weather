@@ -22689,7 +22689,16 @@ function sdSky(day){
   // 未来小时，在上！」「倒数，最远的在最上」), then the observed hours newest
   // first: one timeline read downwards from the end of the day.
   const isPast = r => Boolean(r.past || r.obs);
-  const future = (H.rows || []).filter(r => !isPast(r)).sort((a,b) => Number(b.hour) - Number(a.hour));
+  // Hours after the forecast's warmest hour are left out (user 2026-10-15「不显示
+  // 过峰后的」): the peak is the warmest hour of this table's own hourly
+  // forecast.  Only future hours are cut -- an observed hour past it means the
+  // reading is still climbing (the day leaves the board once it turns down).
+  const peakHour = (H.rows || []).reduce((best, r) => {
+    const t = (r.forecast || {}).temp_c;
+    return t != null && (best == null || t > best.t) ? {t, hour: Number(r.hour)} : best;
+  }, null);
+  const future = (H.rows || []).filter(r => !isPast(r) && (peakHour == null || Number(r.hour) <= peakHour.hour))
+    .sort((a,b) => Number(b.hour) - Number(a.hour));
   const seen = (H.rows || []).filter(isPast).sort((a,b) => Number(b.hour) - Number(a.hour));
   const ordered = future.concat(seen);
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
