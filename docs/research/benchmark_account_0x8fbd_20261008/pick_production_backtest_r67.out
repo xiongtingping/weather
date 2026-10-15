@@ -1,0 +1,18 @@
+== production (training = every settled station-day of the trailing 60 days, as of each listing instant)
+event days 2026-09-22..2026-10-14; pick states {'READY': 966}; scored (settled, READY) 924
+pick model: FITTED on 37..56 training days
+pick hits 33.5% vs F bucket 33.3%: +0.002 [-0.017, +0.023]
+moved off F 248/924 (26.8%; F+1 128, F-1 120): pick hits 31.9% vs F 31.0%
+  first half: all 32.4% vs F 31.6%; moved 147: 34.7% vs F 32.0%
+  second half: all 34.6% vs F 35.0%; moved 101: 27.7% vs F 29.7%
+
+== diagnostic train_from_0912 (training rows only from event day 09-12, the research sample's start)
+event days 2026-09-22..2026-10-14; pick states {'INSUFFICIENT_HISTORY': 144, 'READY': 822}; scored (settled, READY) 789
+pick model: INSUFFICIENT_HISTORY 09-22..09-24, then FITTED on 7..26 days
+pick hits 34.3% vs F bucket 33.5%: +0.009 [-0.011, +0.030]
+moved off F 194/789 (24.6%; F+1 131, F-1 63): pick hits 32.5% vs F 28.9%
+  first half: all 35.3% vs F 32.3%; moved 127: 37.8% vs F 28.3%
+  second half: all 33.3% vs F 34.6%; moved 67: 22.4% vs F 29.9%
+
+== live features, production vs round 65 research on the same 924 station-days
+F identical (max |diff| 0); pos/skew/spread/max/min/run change identical to 0.001; skill-weighted differs > 0.01 on 4.7% (max 0.21)
