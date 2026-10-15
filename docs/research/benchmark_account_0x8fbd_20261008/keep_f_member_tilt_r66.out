@@ -18,3 +18,16 @@ walk-forward kappa by day: {'2026-09-22': 0.0, '2026-09-23': 0.0, '2026-09-24': 
      on F +0.0001 (n 308)  off, tilt right -0.1075 (n 336)  off, tilt wrong +0.1142 (n 280)
 
 increment direction right on off-F rows: 54.5% (n 616); mean |increment logit| 0.319
+
+== post-hoc (熊先生「做」, after the verdict): does the tilt change the single most likely bucket, and does the change hit more?
+  kappa 1 (main)         base top = F bucket 98.5%; tilted top moves off F on 223/924 (24.1%); hit tilted top 35.1% vs F 33.3% (+0.017 [+0.000, +0.034])
+     on the moved rows: new top hits 35.0%, F would hit 27.8%; to F+1 148, to F-1 75; median p(new top) 0.308 vs p(F) 0.280
+  kappa 0.5              base top = F bucket 98.5%; tilted top moves off F on 118/924 (12.8%); hit tilted top 33.7% vs F 33.3% (+0.003 [-0.008, +0.014])
+     on the moved rows: new top hits 33.9%, F would hit 31.4%; to F+1 78, to F-1 40; median p(new top) 0.296 vs p(F) 0.276
+  replace with P_full    base top = F bucket 98.5%; tilted top moves off F on 402/924 (43.5%); hit tilted top 33.1% vs F 33.3% (-0.002 [-0.030, +0.023])
+     on the moved rows: new top hits 31.1%, F would hit 31.6%; to F+1 60, to F-1 342; median p(new top) 0.314 vs p(F) 0.281
+  base: p(F) minus the larger shoulder, median 0.036 (p(F) median 0.285)
+  kappa 1 (main)   first half: moved 140/450; on moved rows new top 36.4% vs F 30.0%; all rows 33.6% vs F 31.6%
+  kappa 1 (main)   second half: moved 83/474; on moved rows new top 32.5% vs F 24.1%; all rows 36.5% vs F 35.0%
+  kappa 0.5        first half: moved 69/450; on moved rows new top 33.3% vs F 34.8%; all rows 31.3% vs F 31.6%
+  kappa 0.5        second half: moved 49/474; on moved rows new top 34.7% vs F 26.5%; all rows 35.9% vs F 35.0%

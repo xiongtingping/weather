@@ -180,3 +180,33 @@ for name, dd in DD.items():
 off = [r for r in scored if r["side"] != 0]
 print(f"\nincrement direction right on off-F rows: {statistics.mean(float(np.sign(Z_FULL[r['k']] - Z_POS[r['k']]) == r['side']) for r in off):.1%} (n {len(off)});"
       f" mean |increment logit| {statistics.mean(abs(Z_FULL[r['k']] - Z_POS[r['k']]) for r in scored):.3f}")
+
+print("\n== post-hoc (熊先生「做」, after the verdict): does the tilt change the single most likely bucket, and does the change hit more?")
+for name, fn in list(ARMS.items())[:3]:
+    sw = []
+    for r in scored:
+        p = fn(r, base_vec(r))
+        top = int(np.argmax(p))
+        sw.append((r, top, float(top == r["y"]), float(r["fb"] == r["y"]), float(p[top]), float(p[r["fb"]])))
+    base_top_is_f = statistics.mean(float(int(np.argmax(base_vec(r))) == r["fb"]) for r in scored)
+    moved = [s for s in sw if s[1] != s[0]["fb"]]
+    d = [s[2] - s[3] for s in sw]
+    m, lo, hi = boot(d, [s[0]["ed"] for s in sw])
+    line = (f"  {name:22s} base top = F bucket {base_top_is_f:.1%}; tilted top moves off F on {len(moved)}/{len(sw)} ({len(moved) / len(sw):.1%})"
+            f"; hit tilted top {statistics.mean(s[2] for s in sw):.1%} vs F {statistics.mean(s[3] for s in sw):.1%} ({m:+.3f} [{lo:+.3f}, {hi:+.3f}])")
+    if moved:
+        line += (f"\n     on the moved rows: new top hits {statistics.mean(s[2] for s in moved):.1%}, F would hit {statistics.mean(s[3] for s in moved):.1%};"
+                 f" to F+1 {sum(s[1] > s[0]['fb'] for s in moved)}, to F-1 {sum(s[1] < s[0]['fb'] for s in moved)};"
+                 f" median p(new top) {statistics.median(s[4] for s in moved):.3f} vs p(F) {statistics.median(s[5] for s in moved):.3f}")
+    print(line)
+# how far the shoulders sit below F under the base, and what tilt would be needed to flip
+gap = [base_vec(r)[r["fb"]] - max(base_vec(r)[r["fb"] - 1] if r["fb"] > 0 else 0, base_vec(r)[r["fb"] + 1] if r["fb"] + 1 < len(r["edges"]) else 0) for r in scored]
+print(f"  base: p(F) minus the larger shoulder, median {statistics.median(gap):.3f} (p(F) median {statistics.median(base_vec(r)[r['fb']] for r in scored):.3f})")
+for name in ("kappa 1 (main)", "kappa 0.5"):
+    fn = ARMS[name]
+    for first in (True, False):
+        sw = [(r, int(np.argmax(fn(r, base_vec(r))))) for r in scored if (r["ed"] < mid) == first]
+        mv = [(r, t) for r, t in sw if t != r["fb"]]
+        print(f"  {name:16s} {'first' if first else 'second'} half: moved {len(mv)}/{len(sw)}; on moved rows new top {statistics.mean(float(t == r['y']) for r, t in mv):.1%}"
+              f" vs F {statistics.mean(float(r['fb'] == r['y']) for r, t in mv):.1%}; all rows {statistics.mean(float(t == r['y']) for r, t in sw):.1%}"
+              f" vs F {statistics.mean(float(r['fb'] == r['y']) for r, t in sw):.1%}")
