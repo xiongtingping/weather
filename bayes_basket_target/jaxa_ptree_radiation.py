@@ -66,10 +66,24 @@ _L2_RE = re.compile(r"^H\d\d_(\d{8})_(\d{4})_RFL\d{3}_FLDK\.02801_02401\.nc$")
 #: The server is asked for a newer scan at most this often.
 L2_CHECK_SECONDS = 300.0
 _L2_TASK = "L2"
+#: JAXA Himawari Cloud Property (user 2026-10-15 「接云」): Level 2, one
+#: 10-minute scan, day-time only, 0.05 deg on its own grid (60N..60S,
+#: 80E..160W, 2401 x 2401), ~50 minutes after the scan (the 23:50 scan at
+#: 00:38).  Read as a 5 x 5 cell box (~25 km, about what an observer's sky
+#: covers): the share of cells the cloud mask calls cloudy, the commonest
+#: ISCCP type among them, and their median top height and optical thickness.
+CLP_DIR = "/pub/himawari/L2/CLP"
+_CLP_RE = re.compile(r"^NC_H\d\d_(\d{8})_(\d{4})_L2CLP\d{3}_FLDK\.02401_02401\.nc$")
+CLP_UPPER_LAT, CLP_LEFT_LON, CLP_SIZE = 60.0, 80.0, 2401
+CLP_PUBLISH_AFTER = timedelta(minutes=55)
+CLP_HALF_BOX = 2
+CLP_TYPES = {0: "晴", 1: "卷云", 2: "卷层云", 3: "深对流", 4: "高积云", 5: "高层云", 6: "雨层云",
+             7: "积云", 8: "层积云", 9: "层云", 10: "未知"}
 _L2_STATE: dict[str, Any] = {"pending": False, "checked": -1e9}
+_CLP: dict[str, dict[str, dict[str, Any]]] = {}   # scan ISO -> station -> reading
 
 _LOCK = threading.Lock()
-_QUEUE: "queue.Queue[datetime | str]" = queue.Queue()
+_QUEUE: "queue.Queue[Any]" = queue.Queue()
 _PENDING: set[str] = set()
 _MISSES: dict[str, float] = {}
 _LISTINGS: dict[str, tuple[float, list[str]]] = {}
@@ -156,6 +170,106 @@ def _latest_l2(now: datetime) -> tuple[datetime, str] | None:
     return None
 
 
+def clp_cell(lat: float, lon: float) -> tuple[int, int] | None:
+    east = lon if lon >= 0.0 else lon + 360.0
+    r = round((CLP_UPPER_LAT - lat) / STEP)
+    c = round((east - CLP_LEFT_LON) / STEP)
+    if not (CLP_HALF_BOX <= r < CLP_SIZE - CLP_HALF_BOX and CLP_HALF_BOX <= c < CLP_SIZE - CLP_HALF_BOX):
+        return None
+    return r, c
+
+
+def _clp_remote(scan: datetime) -> str | None:
+    scan = scan.astimezone(timezone.utc)
+    directory = f"{CLP_DIR}/{_version(CLP_DIR)}/{scan:%Y%m}/{scan:%d}/{scan:%H}"
+    try:
+        names = _listing(directory)
+    except RuntimeError:
+        return None
+    stamp = (scan.strftime("%Y%m%d"), scan.strftime("%H%M"))
+    for name in names:
+        m = _CLP_RE.match(name)
+        if m and (m.group(1), m.group(2)) == stamp:
+            return f"{directory}/{name}"
+    return None
+
+
+def _download(remote: str) -> str:
+    workdir = CACHE_PATH.parent / "jaxa_ptree_tmp"
+    workdir.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(workdir).free < MIN_FREE_BYTES:
+        raise RuntimeError("free disk below the floor")
+    handle, path = tempfile.mkstemp(suffix=".nc", dir=workdir)
+    os.close(handle)
+    # A transfer the server closes early (curl 18, seen 2026-10-15) is
+    # tried once more; anything else fails at once.
+    for _attempt in range(2):
+        got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
+                    timeout=CURL_TIMEOUT_SECONDS)
+        if got.returncode != 18:
+            break
+    if got.returncode != 0:
+        os.unlink(path)
+        raise RuntimeError(f"download: curl {got.returncode} {got.stderr.decode(errors='replace')[:120]}")
+    return path
+
+
+def read_clp_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str, dict[str, Any]]:
+    """One cloud-property scan at every station's 5 x 5 box (file deleted after)."""
+
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    path = _download(remote)
+    try:
+        with h5py.File(path, "r") as f:
+            if f["QA"].shape != (CLP_SIZE, CLP_SIZE):
+                raise RuntimeError(f"grid {f['QA'].shape}")
+            lat_axis, lon_axis = f["latitude"], f["longitude"]
+
+            def scaled(name: str, block):
+                attrs = f[name].attrs
+                missing = int(np.ravel(attrs.get("missing_value", [-32768]))[0])
+                data = block.astype(float)
+                data[block == missing] = np.nan
+                return data * float(np.ravel(attrs.get("scale_factor", [1.0]))[0]) + float(
+                    np.ravel(attrs.get("add_offset", [0.0]))[0])
+
+            out: dict[str, dict[str, Any]] = {}
+            for station, (lat, lon) in stations.items():
+                cell = clp_cell(lat, lon)
+                if cell is None:
+                    continue
+                r, c = cell
+                if abs(float(lat_axis[r]) - lat) > STEP or abs(((float(lon_axis[c]) - lon) + 180.0) % 360.0 - 180.0) > STEP:
+                    raise RuntimeError(f"grid axis disagrees at {station}")
+                box = np.s_[r - CLP_HALF_BOX:r + CLP_HALF_BOX + 1, c - CLP_HALF_BOX:c + CLP_HALF_BOX + 1]
+                qa = f["QA"][box].astype(int)
+                retrieval = qa & 0b111
+                judged = (retrieval >= 2) & (retrieval != 3)        # clear or a successful retrieval
+                if not judged.any():
+                    out[station] = {"state": "no_retrieval"}
+                    continue
+                cloudy = judged & (((qa >> 3) & 0b11) >= 2)          # probably cloudy / cloudy
+                types = f["CLTYPE"][box][cloudy]
+                types = types[(types >= 1) & (types <= 10)]
+                top = scaled("CLTH", f["CLTH"][box])[cloudy]
+                cot = scaled("CLOT", f["CLOT"][box])[cloudy]
+                out[station] = {
+                    "state": "ok", "cover": round(float(cloudy.sum()) / float(judged.sum()), 2),
+                    "cells": int(judged.sum()),
+                    "type": int(np.bincount(types).argmax()) if types.size else (0 if not cloudy.any() else None),
+                    "top_km": round(float(np.nanmedian(top)), 1) if top.size and np.isfinite(top).any() else None,
+                    "optical_thickness": round(float(np.nanmedian(cot)), 1) if cot.size and np.isfinite(cot).any() else None,
+                }
+        return out
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def _fleet() -> dict[str, tuple[float, float]]:
     from .station_registry import _COORDINATES  # noqa: PLC0415
 
@@ -182,22 +296,8 @@ def read_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str
     import h5py  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
-    workdir = CACHE_PATH.parent / "jaxa_ptree_tmp"
-    workdir.mkdir(parents=True, exist_ok=True)
-    if shutil.disk_usage(workdir).free < MIN_FREE_BYTES:
-        raise RuntimeError("free disk below the floor")
-    handle, path = tempfile.mkstemp(suffix=".nc", dir=workdir)
-    os.close(handle)
+    path = _download(remote)
     try:
-        # A transfer the server closes early (curl 18, seen 2026-10-15) is
-        # tried once more; anything else fails at once.
-        for _attempt in range(2):
-            got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
-                        timeout=CURL_TIMEOUT_SECONDS)
-            if got.returncode != 18:
-                break
-        if got.returncode != 0:
-            raise RuntimeError(f"download: curl {got.returncode} {got.stderr.decode(errors='replace')[:120]}")
         with h5py.File(path, "r") as f:
             swr = f["SWR"]
             if swr.shape != (ROWS, COLS):
@@ -233,6 +333,9 @@ def _load() -> dict[str, dict[str, float | None]]:
             latest = doc.get("l2_latest") if ok else None
             if isinstance(latest, dict):
                 _L2_STATE["latest"] = latest
+            clp = doc.get("clp") if ok else None
+            if isinstance(clp, dict):
+                _CLP.update(clp)
         except (OSError, ValueError):
             _CACHE = {}
     return _CACHE
@@ -242,11 +345,14 @@ def _persist(cache: dict[str, dict[str, float | None]]) -> None:
     keep = sorted(cache)[-KEEP_HOURS:]
     for stale in set(cache) - set(keep):
         cache.pop(stale, None)
+    keep_scans = sorted(_CLP)[-KEEP_HOURS:]
+    for stale in set(_CLP) - set(keep_scans):
+        _CLP.pop(stale, None)
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     temporary = CACHE_PATH.with_suffix(".tmp")
     temporary.write_text(json.dumps({"schema": CACHE_SCHEMA, "written_at_utc": datetime.now(timezone.utc)
                                      .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache,
-                                     "l2_latest": _L2_STATE.get("latest")}, sort_keys=True),
+                                     "l2_latest": _L2_STATE.get("latest"), "clp": _CLP}, sort_keys=True),
                          encoding="utf-8")
     os.replace(temporary, CACHE_PATH)
 
@@ -272,11 +378,38 @@ def _read_latest_l2() -> None:
             _persist(_load())
 
 
+def _clp_key(scan: datetime) -> str:
+    return scan.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+
+
+def _read_clp(scan: datetime) -> None:
+    key = "CLP:" + _clp_key(scan)
+    try:
+        remote = _clp_remote(scan)
+        values = read_clp_file(remote, _fleet_clp()) if remote else None
+        error = None
+    except Exception as exc:  # noqa: BLE001 -- asked again after MISS_RETRY_SECONDS
+        values, error = None, f"{type(exc).__name__}: {str(exc)[:120]}"
+    with _LOCK:
+        _PENDING.discard(key)
+        if values is None:
+            _MISSES[key] = time.monotonic()
+            if error:
+                _STATUS.update(clp_error=error)
+            return
+        _load()
+        _CLP[_clp_key(scan)] = values
+        _persist(_load())
+
+
 def _work() -> None:
     while True:
         hour = _QUEUE.get()
         if hour == _L2_TASK:
             _read_latest_l2()
+            continue
+        if isinstance(hour, tuple) and hour[0] == "CLP":
+            _read_clp(hour[1])
             continue
         key = _key(hour)
         try:
@@ -328,6 +461,35 @@ def _ensure_worker() -> None:
         _WORKER.start()
 
 
+def _fleet_clp() -> dict[str, tuple[float, float]]:
+    from .station_registry import _COORDINATES  # noqa: PLC0415
+
+    return {str(s).upper(): (float(lat), float(lon)) for s, (lat, lon) in _COORDINATES.items()
+            if clp_cell(float(lat), float(lon)) is not None}
+
+
+def clouds(station: str, scans: list[datetime]) -> dict[str, dict[str, Any] | None]:
+    """scan (``YYYY-MM-DDTHH:MMZ``) -> the station's cloud reading for the
+    scans already read; the others are queued, newest first.  Never waits."""
+
+    out: dict[str, dict[str, Any] | None] = {}
+    now = time.monotonic()
+    with _LOCK:
+        _ensure_worker()
+        _load()
+        for scan in sorted(scans, reverse=True):
+            key = _clp_key(scan)
+            if key in _CLP:
+                out[key] = _CLP[key].get(station.upper())
+                continue
+            task = "CLP:" + key
+            if task in _PENDING or now - _MISSES.get(task, -1e9) < MISS_RETRY_SECONDS:
+                continue
+            _PENDING.add(task)
+            _QUEUE.put(("CLP", scan.astimezone(timezone.utc)))
+    return out
+
+
 def latest(station: str) -> dict[str, Any] | None:
     """The newest 10-minute scan read so far at the station: ``{"scan_utc",
     "sw_wm2", "read_at_utc"}``, or None; asks the background reader for a newer
@@ -352,5 +514,5 @@ def status() -> dict[str, Any]:
         return dict(_STATUS, pending=len(_PENDING))
 
 
-__all__ = ["LABEL", "PUBLISH_AFTER", "covers", "hour_start", "latest", "measured", "pixel", "read_file",
-           "read_hour", "status"]
+__all__ = ["CLP_PUBLISH_AFTER", "CLP_TYPES", "LABEL", "PUBLISH_AFTER", "clouds", "clp_cell", "covers",
+           "hour_start", "latest", "measured", "pixel", "read_clp_file", "read_file", "read_hour", "status"]

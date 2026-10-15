@@ -85,11 +85,18 @@ def test_a_local_hour_reads_the_utc_hour_that_holds_its_middle(monkeypatch) -> N
 
     monkeypatch.setattr(jaxa, "measured", fake_measured)
     monkeypatch.setattr(jaxa, "status", lambda: {"last_read_at_utc": "2026-10-14T20:00:00Z"})
+    # Never the live reader from a test (it would download real scans).
+    monkeypatch.setattr(jaxa, "clouds", lambda station, scans: {
+        s.strftime("%Y-%m-%dT%H:%MZ"): {"state": "ok", "cover": 0.5, "cells": 25, "type": 8} for s in scans})
+    monkeypatch.setattr(jaxa, "latest", lambda station: None)
     out = board._jaxa_hours("ZUUU", 30.576, 103.95, "2026-10-14", ZoneInfo("Asia/Shanghai"))
     # Local 14:00 (the hour 13:00-14:00) is 05:00-06:00 UTC.
     assert out["values"][14] == 105.0
     assert out["values"][2] == 0.0                     # night
     assert out["pending_hours"] == 0 and out["fetched_at_utc"] == "2026-10-14T20:00:00Z"
+    # The cloud for local 14:00 is the 05:30 UTC scan, named for the panel.
+    assert out["clouds"][14]["scan_utc"] == "2026-10-14T05:30Z" and out["clouds"][14]["type_name"] == "层积云"
+    assert out["clouds"][2] is None
     assert board._satellite_product(103.95) == "jaxa_ptree_himawari"
     assert board.SATELLITE_VIA["jaxa_ptree_himawari"].startswith("JAXA P-Tree 官方")
 
@@ -142,3 +149,59 @@ def test_latest_serves_the_read_scan_and_asks_for_a_newer_one(tmp_path, monkeypa
 def test_the_panel_shows_the_scan() -> None:
     source = (jaxa.ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "${sdSunNow(sat.latest)}" in source and "function sdSunNow(L)" in source
+
+
+def test_a_cloud_scan_is_read_as_cover_type_and_top(tmp_path, monkeypatch) -> None:
+    import h5py
+
+    monkeypatch.setattr(jaxa, "CACHE_PATH", tmp_path / "cache.json")
+    r, c = jaxa.clp_cell(30.576, 103.95)
+
+    def fake_download(remote):
+        path = str(tmp_path / "c.nc")
+        n = jaxa.CLP_SIZE
+        with h5py.File(path, "w") as f:
+            qa = np.zeros((n, n), dtype=np.uint16)
+            # retrieval 101 (success, high), mask 11 (cloudy) on 20 cells; 010 clear, mask 00 on 5
+            box = qa[r - 2:r + 3, c - 2:c + 3]
+            box[:] = 0b11_101
+            box[0, :] = 0b00_010
+            f.create_dataset("QA", data=qa)
+            t = np.full((n, n), 255, dtype=np.int16)
+            t[r - 2:r + 3, c - 2:c + 3] = 8
+            f.create_dataset("CLTYPE", data=t)
+            for name, raw, scale in (("CLTH", 2100, 0.001), ("CLOT", 750, 0.01)):
+                d = f.create_dataset(name, data=np.full((n, n), raw, dtype=np.int16))
+                d.attrs["scale_factor"] = np.array([scale], dtype=np.float32)
+                d.attrs["missing_value"] = np.array([-32768], dtype=np.int16)
+            f.create_dataset("latitude", data=(60.0 - 0.05 * np.arange(n)).astype(np.float32))
+            f.create_dataset("longitude", data=(80.0 + 0.05 * np.arange(n)).astype(np.float32))
+        return path
+
+    monkeypatch.setattr(jaxa, "_download", fake_download)
+    got = jaxa.read_clp_file("/x.nc", {"ZUUU": (30.576, 103.95), "EGLC": (51.5, 0.05)})
+    assert got == {"ZUUU": {"state": "ok", "cover": 0.8, "cells": 25, "type": 8, "top_km": 2.1,
+                            "optical_thickness": 7.5}}
+    assert not (tmp_path / "c.nc").exists()
+
+
+def test_the_cloud_cell_and_its_column() -> None:
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required")
+    source = (jaxa.ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    sky = source[source.index("function sdSky(day){"):]
+    assert sky.index("const satCloud") < sky.index("const rows = ")   # declared before the rows use it
+    start = source.index("function sdSatCloudCell(r){")
+    end = source.index("function sdSunNow(L){")
+    script = ('const sdEsc = s => String(s == null ? "" : s);\n'
+              'const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);\n'
+              'function sdLocal(t){ return String(t).slice(5, 16); }\n' + source[start:end]
+              + 'console.log(sdSatCloudCell({sat_cloud: {state: "ok", cover: 0.8, cells: 25, type_name: "层积云", '
+                'top_km: 2.1, optical_thickness: 7.5, scan_utc: "2026-10-14T05:30Z"}}).replace(/<[^>]+>/g, "|"));')
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    assert out.returncode == 0, out.stderr
+    assert "80%| |层积云" in out.stdout

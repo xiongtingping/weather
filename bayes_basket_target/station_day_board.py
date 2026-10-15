@@ -1007,12 +1007,30 @@ def _jaxa_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) 
         return {"available": False, "values": values, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
     for h, start in wanted.items():
         values[h] = got.get(start.strftime("%Y-%m-%dT%H:00Z"))
+    # Cloud seen from above (user 2026-10-15 「接云」): the scan at the hour's
+    # middle, h-0:30, day-time hours that are public only.
+    clouds: list[dict[str, Any] | None] = [None] * 24
+    scans: dict[int, datetime] = {}
+    for h in wanted:
+        middle = (datetime.combine(d, dtime(h), zone) - timedelta(minutes=30)).astimezone(timezone.utc)
+        scan = middle.replace(minute=middle.minute - middle.minute % 10, second=0, microsecond=0)
+        if scan + jaxa.CLP_PUBLISH_AFTER <= now_utc:
+            scans[h] = scan
+    try:
+        seen = jaxa.clouds(station, list(scans.values()))
+    except Exception:  # noqa: BLE001 -- the column stays empty, the sunshine stands
+        seen = {}
+    for h, scan in scans.items():
+        reading = seen.get(scan.strftime("%Y-%m-%dT%H:%MZ"))
+        if reading:
+            clouds[h] = {**reading, "scan_utc": scan.strftime("%Y-%m-%dT%H:%MZ"),
+                         "type_name": jaxa.CLP_TYPES.get(reading.get("type"))}
     reader = jaxa.status()
     # The newest 10-minute scan, today only (user 2026-10-15 「加L2」): 「此刻」.
     today = d == now_utc.astimezone(zone).date()
     return {"available": any(v for v in values), "values": values, "fetched_at_utc": reader.get("last_read_at_utc"),
             "pending_hours": sum(1 for h in wanted if values[h] is None), "reason": reader.get("last_error"),
-            "latest": jaxa.latest(station) if today else None}
+            "latest": jaxa.latest(station) if today else None, "clouds": clouds}
 
 
 def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
@@ -1111,8 +1129,10 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         } if times else {}
         obs = by_hour.get(h)
         sat_sw = sat_values[h] if h < len(sat_values) else None
+        sat_cloud = (sat.get("clouds") or [None] * 24)[h]
         row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None,
-                               "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0), "diffs": []}
+                               "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0),
+                               "sat_cloud": sat_cloud, "diffs": []}
         if obs is not None:
             prev = by_hour.get(h - 1)
             covers = [x["cloud_cover"] for x in (prev, obs) if x and x.get("cloud_cover") is not None]
