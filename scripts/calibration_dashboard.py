@@ -15566,6 +15566,8 @@ color-scheme:dark}
 .sd-ctl input,.sd-ctl select,.sd-in{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font:inherit}
 .sd-in{width:76px}
 .sd-btn{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer;font:inherit}
+.sd-btn.sd-btn-main{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700;padding:5px 14px}
+.sd-btn.sd-btn-main:disabled{opacity:.6;cursor:default}
 .sd-btn:hover{border-color:var(--accent)}.sd-btn:disabled{opacity:.5;cursor:wait}
 .sd-st-pick{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;margin:8px 0 6px}
 .sd-st-pick:empty{display:none}
@@ -23350,7 +23352,7 @@ function sdCalc(day){
   const res = Object.keys(st.sel).some(b => st.sel[b]) || anyHeld ? sdSolve(day, st) : null;
   let summary = `<div class="muted">${st.goal === "breakeven"
     ? "点 Buy Yes 选要买的桶；在其中一些桶填金额（USDC），空着的选中桶由计算器给出命中时不低于地板所需的最少金额。"
-    : "点 Buy Yes / Buy No 选腿、填金额（USDC），计算器按卖盘深度换成份数，列出每个桶命中时的盈亏、概率覆盖与期望；不自动补任何桶。"}已有持仓点「读取账户持仓」。</div>`;
+    : "点 Buy Yes / Buy No 选腿、填金额（USDC），计算器按卖盘深度换成份数，列出每个桶命中时的盈亏、概率覆盖与期望；不自动补任何桶。"}已有持仓点「刷新盘口与持仓」。</div>`;
   if(res){
     if(!res.ok) summary = `<div class="down">${res.warn.map(sdEsc).join("；")}</div>`;
     else {
@@ -23377,9 +23379,8 @@ function sdCalc(day){
         <option value="direct"${st.goal === "direct" ? " selected" : ""}>方向敞口：只按填写金额买</option>
         <option value="breakeven"${st.goal === "breakeven" ? " selected" : ""}>保本：空着的桶自动补到地板</option></select></label>
       ${st.goal === "breakeven" ? `<label>命中地板 F <input autocomplete="off" class="sd-in" type="number" step="0.5" data-sd-floor="${sdEsc(key)}" value="${sdEsc(st.floor)}"> U</label>` : ""}
-      <button type="button" class="sd-btn" data-sd-book="${sdEsc(key)}"${SD.bookBusy ? " disabled" : ""} title="立即重读交易所盘口（不等概率更新）；输入与选中的腿保持不变">🔄 刷新盘口</button>
+      <button type="button" class="sd-btn sd-btn-main" data-sd-sync="${sdEsc(key)}"${SD.bookBusy || SD.holding ? " disabled" : ""} title="一次做两件事：立即重读交易所盘口（不等概率更新），并读取账户在这一天的 YES/NO 持仓（约 30 秒）；输入与选中的腿保持不变">🔄 刷新盘口与持仓</button>
       <span class="muted sd-sub sd-bookage">${sdBookAge(day, st)}</span>
-      <button type="button" class="sd-btn" data-sd-hold="${sdEsc(key)}"${SD.holding ? " disabled" : ""}>👛 读取账户持仓</button>
       <button type="button" class="sd-btn" data-sd-clear="${sdEsc(key)}">清空</button>
       <span class="sd-holdnote">${holdNote}</span>
     </div>
@@ -23498,8 +23499,8 @@ function sdRefreshCalc(key, input){
   if(fee && nfee && fee !== document.activeElement) fee.value = nfee.value;
   const oldAge = card.querySelector(".sd-bookage"), newAge = holder.querySelector(".sd-bookage");
   if(oldAge && newAge) oldAge.innerHTML = newAge.innerHTML;
-  const oldBook = card.querySelector("[data-sd-book]"), newBook = holder.querySelector("[data-sd-book]");
-  if(oldBook && newBook) oldBook.disabled = newBook.disabled;
+  const oldSync = card.querySelector("[data-sd-sync]"), newSync = holder.querySelector("[data-sd-sync]");
+  if(oldSync && newSync) oldSync.disabled = newSync.disabled;
   const oldNote = card.querySelector(".sd-holdnote"), newNote = holder.querySelector(".sd-holdnote");
   if(oldNote && newNote) oldNote.innerHTML = newNote.innerHTML;
   const oldHold = card.querySelector("[data-sd-hold]"), newHold = holder.querySelector("[data-sd-hold]");
@@ -23696,8 +23697,9 @@ function sdOnClick(e){
     sdSave(); sdRefreshCalc(key, null);
   } else if(ds.sdSell){
     sdPlaceSell(ds.sdSell);
-  } else if(ds.sdBook){
-    sdRefreshBook(ds.sdBook);
+  } else if(ds.sdSync){
+    // One button for both (user 2026-10-15「刷新盘口和读取账户持仓改为一个并突出」).
+    sdRefreshBook(ds.sdSync); sdLoadHoldings(ds.sdSync);
   } else if(ds.sdHold){
     sdLoadHoldings(ds.sdHold);
   } else if(ds.sdOrder){
