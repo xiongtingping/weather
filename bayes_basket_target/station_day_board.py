@@ -325,6 +325,33 @@ def _previous_p0(conn, station: str, day: str, before_utc: str) -> dict[str, Any
     return {"decided_at_utc": row[0], "lineage": _json(row[1], {})}
 
 
+def _model_history(conn, station: str, day: str, axis, n: int = 5) -> list[dict[str, Any]]:
+    """Each model's calibrated distribution over the day's last ``n`` P0
+    decisions, newest first (user 2026-10-16「模型 run 与权重……保留模型校准后5次的
+    变化」): per system the calibrated mean, mode bucket and its probability,
+    and the weight it sat at."""
+
+    rows = conn.execute(
+        "SELECT decision_at_utc, json_extract(lineage_json,'$.system_weights_json'),"
+        " json_extract(lineage_json,'$.native_system_probabilities_json')"
+        " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+        " AND +stage='P0' AND state='COMMITTED' ORDER BY decision_at_utc DESC LIMIT ?",
+        (station, day, n),
+    ).fetchall()
+    out = []
+    for at, weights, vectors in rows:
+        weights, vectors = _json(weights, {}), _json(vectors, {})
+        systems = {}
+        for system, raw in vectors.items():
+            stats = vector_stats(_norm(raw or {}), axis) if raw else None
+            if stats is None:
+                continue
+            systems[system] = {"mean_c": stats["mean_c"], "mode": stats["mode"], "mode_p": stats["mode_p"],
+                               "weight": _float(weights.get(system))}
+        out.append({"at_utc": str(at), "systems": systems})
+    return out
+
+
 def _with_previous(models: list[dict[str, Any]], previous: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Each model beside what the previous P0 had for it (user 2026-10-05
     「run的更新变化、权重的变化、校准中心、均值等变化在表里标注」); a model the
@@ -400,7 +427,7 @@ def _raw_by_system(station: str, day: str, snapshot_sha: Any, axis) -> dict[str,
 
 
 def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None = None,
-              *, station: str = "", day: str = "") -> dict[str, Any]:
+              *, station: str = "", day: str = "", conn=None) -> dict[str, Any]:
     L = head["lineage"]
     rad = _json(L.get("synoptic_cooling_json"), {})
     width = _json(L.get("center_width_json"), {})
@@ -416,6 +443,7 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
     return {
         "models": models,
         "previous_decided_at_utc": None if previous is None else previous["decided_at_utc"],
+        "model_history": _model_history(conn, station, day, axis) if conn is not None else [],
         "run_cycle": L.get("run_cycle"), "lead_bucket": L.get("lead_bucket"),
         "season_bin": L.get("season_bin"),
         "model_center_c": _float(L.get("model_center_c")),
@@ -543,18 +571,6 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
                     "vector": {k: round(v, 5) for k, v in vec.items()}, "stats": stats})
     out.sort(key=lambda e: (e["at_utc"], STAGES.index(e["stage"]) if e["stage"] in STAGES else 9))
     return out
-
-
-def _weight_history(conn, station: str, day: str) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        "SELECT decision_at_utc, json_extract(lineage_json,'$.system_weights_json'),"
-        " json_extract(lineage_json,'$.run_init_utc_by_system_json')"
-        " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
-        " AND +stage='P0' AND state='COMMITTED' ORDER BY decision_at_utc",
-        (station, day),
-    ).fetchall()
-    return [{"at_utc": str(at), "weights": _json(w, {}), "run_init_utc": _json(r, {})}
-            for at, w, r in rows]
 
 
 def _market(conn, station: str, day: str, axis) -> dict[str, Any]:
@@ -1395,7 +1411,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         }
         if stage == "P0":
             entry.update(_p0_brief(head, axis, _previous_p0(
-                conn, station, day, str(head["decided_at_utc"])), station=station, day=day))
+                conn, station, day, str(head["decided_at_utc"])), station=station, day=day, conn=conn))
             if entry.get("taf_witness"):
                 entry["taf_witness"]["cloud_evidence"] = _taf_cloud_evidence(
                     conn, station, day, entry["taf_witness"], taf_inbox or {})
@@ -1417,7 +1433,6 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "role": role, "event_date": day, "available": True, "axis": axis,
         "head_stage": head_stage, "stages": stages,
         "timeline": _timeline(conn, station, day, axis),
-        "weight_history": _weight_history(conn, station, day),
         "market": _market(conn, station, day, axis),
         "metar": metar,
         "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
