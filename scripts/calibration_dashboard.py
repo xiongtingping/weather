@@ -15635,15 +15635,14 @@ table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
 table.sd-sky td.sd-sky-tags{white-space:normal}
 table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-skybox{margin:6px 0}
-.sd-sunstats{display:flex;flex-wrap:wrap;gap:6px 22px;margin:6px 0 8px}
 .sd-sunstat{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;cursor:help;margin:2px 0 6px}
 .sd-sunstat>span:first-child{font-size:12.5px;color:var(--muted)}
 .sd-sunstat>b{font-size:22px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
 .sd-sunstat>b small{font-size:12px;font-weight:600;color:var(--muted)}
-.sd-sunpair{display:flex;flex-direction:column}
-.sd-sunpair .sd-sunold{margin-top:-4px}
-.sd-sunpair .sd-sunold>b{font-size:15px;font-weight:700;color:var(--muted)}
-.sd-sunstat>b.sd-sunpct.sd-warm{color:var(--pill-red-fg)}.sd-sunstat>b.sd-sunpct.sd-cold{color:var(--accent)}
+.sd-sun-g{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin:6px 0 10px}
+.sd-sun-g .sd-pnl-c>b{font-size:24px}
+.sd-sun-g .sd-pnl-c>b small{font-size:12px;font-weight:600;color:var(--muted)}
+.sd-pnl-c>b.sd-warm{color:var(--pill-red-fg)}.sd-pnl-c>b.sd-cold{color:var(--accent)}
 .sd-sunage{font-size:12px;color:var(--muted)}
 .sd-sunnew{font-size:12px;font-weight:700;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
 .sd-skybox>summary .sd-sub b{font-size:13px}
@@ -22568,20 +22567,15 @@ function sdMeanModeCard(day){
 function sdSunStat(label, mj, at, tip, extra){
   return `<div class="sd-sunstat" title="${sdEsc(tip)}"><span>${label}</span><b>${sdN(mj, 2)}<small> MJ/m²</small></b>${at ? `<span class="sd-sunage">取于 ${sdAgeSpan(at, "sd-age")}</span>` : ""}${extra || ""}</div>`;
 }
-// The day's forecast sunshine, newest over the one issued a day before, with
-// the change between them in large type (user 2026-10-15「重新排版，旧的在下方。
-// 增加突出增量的百分比」): red more sun (warm), blue less (cold).
-// Observed sunshine so far over the forecast for the same hours, same layout
-// (user 2026-10-15「增加实况日照的对比」).
-function sdSunVs(label, mj, tip, baseLabel, baseMj, baseTip, at){
-  const pct = mj != null && baseMj ? 100 * (mj - baseMj) / baseMj : null;
-  const badge = pct == null ? "" : `<b class="sd-sunpct ${pct >= 0 ? "sd-warm" : "sd-cold"}" title="${sdEsc(`${label}对${baseLabel}：${sdSg(mj - baseMj, 2)} MJ/m²`)}">${sdSg(pct, 0)}%</b>`;
-  return `<div class="sd-sunpair">${sdSunStat(label, mj, at, tip, badge)}${sdSunStat(baseLabel, baseMj, null, baseTip).replace('class="sd-sunstat"', 'class="sd-sunstat sd-sunold"')}</div>`;
-}
-function sdSunForecast(H){
-  return sdSunVs("全天预报日照", H.forecast_sw_mj, "Open-Meteo 逐小时短波加总（看板现取，缓存 30 分钟）；与辐射偏移卡同一来源，取数时刻不同",
-    "提前 1 天的预报", H.forecast_sw_d1_mj, "同一接口提前 1 天发出的那一版（previous_day1）", H.fetched_at_utc);
-}
+// Sunshine as four comparison cards (user 2026-10-15「太复杂了，我看不懂，做成
+// 对比卡片，突出重点数据」): one big number each -- how far the forecast moved,
+// observed against forecast, the maximum that points to, the sun this moment
+// -- the pair it compares underneath, everything else on hover.  Red pushes
+// the temperature warm, blue cold.
+const sdSunCard = (label, big, cls, sub, tip) =>
+  `<div class="sd-pnl-c" title="${sdEsc(tip)}"><span>${label}</span><b class="${cls || ""}">${big}</b><i>${sub}</i></div>`;
+const sdPct = (a, b) => a != null && b ? 100 * (a - b) / b : null;
+const sdWarmCls = v => v == null ? "" : v >= 0 ? "sd-warm" : "sd-cold";
 // The newest 10-minute scan at the station (JAXA Himawari Level 2, user
 // 2026-10-15 「加L2」): one scan, so it jumps as cloud passes; the hourly
 // column stays the hour's mean.
@@ -22595,10 +22589,6 @@ function sdSatCloudCell(r){
   const tip = `扫描 ${sdLocal(C.scan_utc, true)}（当地）· 有效格点 ${C.cells}`
     + (C.top_km != null ? ` · 云顶 ${sdN(C.top_km, 1)} km` : "") + (C.optical_thickness != null ? ` · 光学厚度 ${sdN(C.optical_thickness, 1)}` : "");
   return `<td class="mono" title="${sdEsc(tip)}"><b>${sdN(100 * C.cover, 0)}%</b>${C.cover > 0 && C.type_name ? ` <span class="muted">${sdEsc(C.type_name)}</span>` : ""}</td>`;
-}
-function sdSunNow(L){
-  if(!L || L.sw_wm2 == null) return "";
-  return `<div class="sd-sunstat" title="${sdEsc(`JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${sdLocal(L.scan_utc, true)}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，逐小时列仍是小时平均`)}"><span>此刻日照（10 分钟）</span><b>${sdN(L.sw_wm2, 0)}<small> W/m²</small></b><span class="sd-sunage">扫描于 ${sdAgeSpan(L.scan_utc, "sd-age")}</span></div>`;
 }
 function sdRadTotal(R){
   const at = R.capture_state === "matched" ? R.captured_at_utc : null;
@@ -22749,31 +22739,41 @@ function sdSky(day){
   const swFc = bySat ? H.sat_forecast_sw_mj_so_far : H.forecast_sw_mj_so_far;
   const swTo = bySat ? sat.last_hour : latest;
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
-  // The hours summed, as a span (user 2026-10-15 asked why 「截至 13:00」 at
-  // 13:37): hour h is the mean of the hour ending at h:00 and the satellite
-  // hour lands ~75 minutes after it begins, so 13:37 reads 00–13 点.
-  const swSpan = swTo == null ? "" : `<span title="${sdEsc(`今天 00:00 至 ${String(swTo).padStart(2, "0")}:00 的逐小时加总；${bySat ? "卫星每小时数据约在该小时开始后 75 分钟公开，" : ""}更近的小时还没到`)}">00–${String(swTo).padStart(2, "0")} 点</span>`;
-  const sunLine = swObs == null ? (bySat ? `卫星日照未到（${sdEsc(sat.reason || "约晚 1 小时")}）` : "")
-    : `${swSpan} ${bySat ? "卫星" : "推算"}日照 <b>${sdN(swObs, 1)}</b> / 预报 ${sdN(swFc, 1)} MJ/m²${swPct == null ? "" : `（<b class="${swPct >= 0 ? "sd-warm" : "sd-cold"}">${sdSg(swPct, 0)}%</b>）`}`;
   // Morning sunshine -> the maximum (user 2026-10-13): the backend's
   // sun_tmax_shift, read only; satellite stations only (the fit is on satellite).
+  // The shift is against the day-ahead forecast (the fit's basis), so the card
+  // writes the maximum it points to, the day-ahead and latest forecasts under
+  // it (user 2026-10-15 「−1%为什么最高温还要加 +0.6°C」).
   const T = bySat && swObs != null ? H.sun_tmax_shift : null;
-  // The shift is against the day-ahead forecast (the fit's basis), not the
-  // latest one the −x% above compares (user 2026-10-15 「−1%为什么最高温还要加
-  // +0.6°C」): written as the maximum it points to, beside both forecasts.
   const fcMax = (H.rows || []).reduce((m, r) => { const t = (r.forecast || {}).temp_c; return t != null && (m == null || t > m) ? t : m; }, null);
-  const tmaxTo = T && T.state === "ok" && T.forecast_tmax_d1_c != null ? T.forecast_tmax_d1_c + T.shift_c : null;
-  const shiftLine = T && T.state === "ok"
-    ? ` · 比日前预报 ${sdSg(T.pct_d1,0)}% → 最高温${tmaxTo == null ? "" : ` 约 <b>${sdN(tmaxTo, 1)}°C</b>`}（日前预报 ${T.forecast_tmax_d1_c == null ? "—" : sdN(T.forecast_tmax_d1_c, 1)} <b class="${T.shift_c >= 0 ? "sd-warm" : "sd-cold"}" title="${sdEsc(`按日前预报口径：截至 ${T.last_hour}:00 卫星日照比日前预报 ${sdSg(T.pct_d1,0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c),1)}°C（斜率区间 ${sdSg(T.range_c[0],1)}～${sdSg(T.range_c[1],1)}°C）${T.forecast_tmax_d1_c != null ? `，日前预报最高 ${sdN(T.forecast_tmax_d1_c,1)}°C` : ""}。只解释约 ${sdN(100*T.r2,0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c,1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合，变暗的影响约为变亮的两倍；仅作参考，不进任何层。`)}">${sdSg(T.shift_c,1)}</b>${fcMax == null ? "" : ` · 最新预报 ${sdN(fcMax, 1)}`}）`
-    : "";
-  const headline = observed.length
-    ? `${sunLine}${shiftLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
-    : "尚无实况可对照";
+  const hh = v => String(v).padStart(2, "0");
+  // Hour h is the mean of the hour ending at h:00 and a satellite hour lands
+  // ~75 minutes after it begins, so 13:37 sums 00–13 点 (user 2026-10-15).
+  const span = swTo == null ? "" : `00–${hh(swTo)} 点`;
+  const fcPct = sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj);
+  const L = sat.latest;
+  const cards = [
+    sdSunCard("预报日照改了", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
+      `${sdN(H.forecast_sw_d1_mj, 1)} → ${sdN(H.forecast_sw_mj, 1)} MJ/m²`,
+      `全天日照：提前 1 天的预报 ${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
+    swObs == null
+      ? sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报`, "未到", "", bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", "")
+      : sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报 · ${span}`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
+          `实况 ${sdN(swObs, 1)} · 预报 ${sdN(swFc, 1)} MJ/m²`,
+          `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
+    T && T.state === "ok" && T.forecast_tmax_d1_c != null
+      ? sdSunCard("日照推算最高温", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
+          `日前预报 ${sdN(T.forecast_tmax_d1_c, 1)}${fcMax == null ? "" : ` · 最新 ${sdN(fcMax, 1)}`}`,
+          `截至 ${T.last_hour}:00 卫星日照比提前 1 天的预报 ${sdSg(T.pct_d1, 0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
+      : "",
+    L && L.sw_wm2 != null
+      ? sdSunCard("此刻日照", `${sdN(L.sw_wm2, 0)} <small>W/m²</small>`, "", `扫描于 ${sdAgeSpan(L.scan_utc, "sd-age")}`,
+          `JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${sdLocal(L.scan_utc, true)}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，逐小时列仍是小时平均`)
+      : "",
+  ].join("");
+  const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
-    <div class="sd-sunstats">${sdSunForecast(H)}${swObs == null ? "" : sdSunVs(
-      `${bySat ? "卫星实测" : "推算"}日照（00–${String(swTo).padStart(2, "0")} 点）`, swObs,
-      bySat ? `卫星实测（${sat.label}）逐小时加总，${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算（≈），霾与中高云下偏高",
-      "同时段的预报", swFc, "最新全天预报在同一段小时里的加总")}${sdSunNow(sat.latest)}</div>
+    <div class="sd-pnl-g sd-sun-g">${cards}</div>
     ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
     <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
