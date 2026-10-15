@@ -1,2 +1,5 @@
 rows.jsonl.gz
 __pycache__/
+forward_rows.jsonl.gz
+forward_cache/
+_forward_view/
