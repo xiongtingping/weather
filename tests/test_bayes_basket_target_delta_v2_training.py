@@ -1151,3 +1151,63 @@ def test_a_scope_defining_field_that_differs_under_one_key_still_conflicts(
     assert conn.execute(
         "SELECT COUNT(*) FROM basket_policy_training_fact"
     ).fetchone()[0] == 1
+
+
+def test_an_empty_retry_sweep_is_not_repeated_until_a_truth_lands() -> None:
+    """2026-10-15: with every fact labelled, each page re-joined the whole
+    retry range to truths and labels -- 16 passes a turn, 700-1,800 s.  An
+    empty whole-range pass marks the lane idle against the truth table; a new
+    truth row (a revision is one) re-arms it."""
+
+    conn, envelope = _seed()
+    _commit(conn, envelope)
+    _settled_truth(conn)
+    first = materialize_delta_v2_settled_training_labels(conn, as_of_utc="2026-07-24T04:02:00Z")
+    assert first["appended_count"] == 1
+    cursor = int(conn.execute("SELECT MAX(rowid) FROM basket_policy_training_fact").fetchone()[0])
+    state = {"schema": "delta_v2_label_cursor_v2", "scan_after_rowid": cursor,
+             "retry_after_rowid": 0, "next_lane": "retry"}
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+
+    def pages() -> int:
+        return sum("WITH candidate AS MATERIALIZED" in s for s in statements)
+
+    swept = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:03:00Z", after_fact_rowid=cursor, cursor_state=state)
+    mark = swept["cursor_state_after"]["retry_idle_truth_mark"]
+    assert mark[0] == int(conn.execute("SELECT MAX(rowid) FROM calibration_station_daily_high_truth").fetchone()[0])
+    assert pages() == 2, "the retry range and the new lane"
+    statements.clear()
+    idle = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:04:00Z", after_fact_rowid=cursor,
+        cursor_state=swept["cursor_state_after"])
+    assert pages() == 1, "only the new lane: the truth table has not moved"
+    assert idle["cursor_state_after"]["retry_idle_truth_mark"] == mark
+    conn.execute(
+        """
+        INSERT INTO calibration_station_daily_high_truth(
+          truth_id, station_id, local_date, settlement_timezone,
+          official_tmax_c, source_lane, settlement_definition, revision_no,
+          published_at_utc, received_at_utc, canonical_committed_at_utc,
+          timestamps_complete, qc_status, source_role,
+          source_payload_sha256, observation_ids_json, authority_scope,
+          content_sha256
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        ("truth-2", STATION, EVENT_DATE, TZ, 39.1, "AWC", "daily_high_c",
+         1, "2026-07-24T04:04:10Z", "2026-07-24T04:04:11Z",
+         "2026-07-24T04:04:12Z", 1, "ACCEPTED",
+         CANONICAL_AWC_SETTLEMENT_TRUTH_INGRESS_V1,
+         SHA_B, "[]", "FORMAL_NATIVE_ELIGIBLE", SHA_D),
+    )
+    statements.clear()
+    rearmed = materialize_delta_v2_settled_training_labels(
+        conn, as_of_utc="2026-07-24T04:05:00Z", after_fact_rowid=cursor,
+        cursor_state=idle["cursor_state_after"])
+    assert pages() == 2, "a new truth row re-arms the retry sweep"
+    conn.set_trace_callback(None)
+    # The revision is owed a label, so the retry lane found it and the mark
+    # is cleared until a later sweep comes back empty.
+    assert rearmed["appended_count"] == 1
+    assert "retry_idle_truth_mark" not in rearmed["cursor_state_after"]

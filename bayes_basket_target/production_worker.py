@@ -20620,11 +20620,20 @@ class TargetProductionWorker:
         if newest is None or newest[0] is None or scan > int(newest[0]):
             return
         self._delta_v2_label_fact_cursor = scan
+        idle = raw.get("retry_idle_truth_mark")
         self._delta_v2_label_cursor_state = {
             "schema": "delta_v2_label_cursor_v2",
             "scan_after_rowid": scan,
             "retry_after_rowid": retry,
             "next_lane": lane,
+            # The empty retry pass's truth mark (delta_v2_settlement_label):
+            # kept across restarts so the first turn does not re-sweep.
+            **(
+                {"retry_idle_truth_mark": [int(idle[0]), str(idle[1])]}
+                if isinstance(idle, list) and len(idle) == 2
+                and isinstance(idle[0], int) and isinstance(idle[1], str)
+                else {}
+            ),
         }
         self._delta_v2_label_cursor_initialized = True
 
@@ -20645,6 +20654,10 @@ class TargetProductionWorker:
                     "scan_after_rowid": int(state.get("scan_after_rowid", 0)),
                     "retry_after_rowid": int(state.get("retry_after_rowid", 0)),
                     "next_lane": str(state.get("next_lane") or "retry"),
+                    **(
+                        {"retry_idle_truth_mark": list(state["retry_idle_truth_mark"])}
+                        if state.get("retry_idle_truth_mark") else {}
+                    ),
                     "persisted_at_utc": as_of_utc,
                 },
             )

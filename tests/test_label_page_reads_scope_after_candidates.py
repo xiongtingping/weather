@@ -47,7 +47,9 @@ def conn():
     db.execute(
         "CREATE TABLE basket_policy_training_fact(fact_id TEXT UNIQUE, station_id TEXT, event_date TEXT,"
         " settlement_timezone TEXT, probability_envelope_id TEXT, policy_version_vector_json TEXT,"
-        " feature_json TEXT, authority_scope TEXT)"
+        # The live table CHECKs authority_scope to the one forward scope;
+        # the candidate page's LIMIT rests on it (2026-10-15).
+        " feature_json TEXT, authority_scope TEXT CHECK(authority_scope='%s'))" % SCOPE
     )
     db.execute(
         "CREATE TABLE calibration_station_daily_high_truth(truth_id TEXT UNIQUE, station_id TEXT, local_date TEXT,"
@@ -73,7 +75,7 @@ def conn():
         fact_id = ("d2fact_" if index % 7 else "legacy_") + f"{index:04d}"
         facts.append((
             fact_id, station, day, "UTC", f"env-{index}", json.dumps({"v": "x" * (index % 5000)}),
-            json.dumps({"f": "y" * 4000}), SCOPE if index % 5 else "OTHER_SCOPE",
+            json.dumps({"f": "y" * 4000}), SCOPE,
         ))
     db.executemany("INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?,?,?,?)", facts)
     labelled = [

@@ -302,6 +302,13 @@ def _label_candidate_page(
               SELECT 1 FROM basket_policy_training_label l
               WHERE l.fact_id=f.fact_id AND l.truth_id=t.truth_id
             )
+          -- The page's own size, here: without it the materialised set was
+          -- every candidate in the rowid range and LIMIT cut it afterwards,
+          -- so each page re-joined the whole range (45-75 s a page, 16 a
+          -- turn, 2026-10-15).  The outer authority test cannot drop a row
+          -- this kept: the fact table CHECKs authority_scope to that value.
+          ORDER BY f.rowid
+          LIMIT ?
         )
         SELECT f.rowid,f.fact_id,f.station_id,f.event_date,
                f.settlement_timezone,
@@ -326,6 +333,7 @@ def _label_candidate_page(
             as_of,
             *FORMAL_TRUTH_ROLES,
             as_of,
+            int(limit),
             FACT_AUTHORITY_SCOPE,
             int(limit),
         ),
@@ -413,8 +421,31 @@ def materialize_delta_v2_settled_training_labels(
         retry_capacity = max(1, fact_limit // 2)
         new_capacity = fact_limit - retry_capacity
 
+    # The retry lane exists for facts whose truth landed (or was revised)
+    # after the new lane passed them, and for facts a page deferred.  Once a
+    # whole-range retry pass (0, cursor] found nothing, a second one finds
+    # nothing either until a truth row is added -- truths are append-only,
+    # a revision is a new row -- so the pass is skipped while the truth
+    # table's newest rowid and commit time stand where the empty pass saw
+    # them.  Without this every page re-joined every fact to its truth and
+    # label: 16 passes a turn, 700-1,800 s of the cycle (2026-10-15).
+    truth_mark = conn.execute(
+        "SELECT MAX(rowid), MAX(canonical_committed_at_utc)"
+        " FROM calibration_station_daily_high_truth"
+    ).fetchone()
+    truth_mark = [
+        int(truth_mark[0] or 0) if truth_mark else 0,
+        str(truth_mark[1] or "") if truth_mark else "",
+    ]
+    idle_mark = (cursor_state or {}).get("retry_idle_truth_mark")
+    retry_idle = (
+        isinstance(idle_mark, (list, tuple))
+        and list(idle_mark) == truth_mark
+        and truth_mark[1] <= as_of
+    )
+
     def _retry_page(limit: int) -> tuple[list[tuple[Any, ...]], bool]:
-        if limit <= 0 or cursor <= 0:
+        if limit <= 0 or cursor <= 0 or retry_idle:
             return [], False
         rows = _metadata_page(
             rowid_where="f.rowid>? AND f.rowid<=?",
@@ -473,9 +504,22 @@ def materialize_delta_v2_settled_training_labels(
         if retry_candidates
         else (0 if retry_wrapped else retry_after)
     )
+    # An empty pass over the whole retry range marks the lane idle against
+    # the truth table as it stands; any retry candidate clears the mark.
+    retry_swept_empty = (
+        not retry_idle and retry_capacity > 0 and cursor > 0
+        and not retry_candidates and (retry_after == 0 or retry_wrapped)
+        and truth_mark[1] <= as_of
+    )
+    idle_after = (
+        truth_mark if retry_idle or retry_swept_empty
+        else None if retry_candidates
+        else idle_mark if isinstance(idle_mark, (list, tuple)) else None
+    )
     cursor_state_after = {
         "schema": "delta_v2_label_cursor_v2",
         "scan_after_rowid": source_cursor_after,
+        **({"retry_idle_truth_mark": list(idle_after)} if idle_after else {}),
         "retry_after_rowid": min(
             retry_cursor_after,
             source_cursor_after,
