@@ -1,0 +1,64 @@
+station-days 654 (event days 2026-09-28..2026-10-14, 15 days); systems per F {3: 51, 4: 342, 5: 230, 6: 31}
+truth vs pre-listing F bucket: on F 229 (35.0%), shoulder 284 (43.4%), far 141 (21.6%);  shoulder warm 138 / cold 146
+
+== (1) common reference: does the layer put the truth on the right side of F's bucket?  (shoulder rows; then all off-F rows)
+   ties (x exactly at the bucket centre) count as wrong; 50% = coin
+   D0 AIFS                      shoulder n 254: 54.7% [47.9%, 62.1%]   all off-F n 381: 54.9% [49.9%, 60.6%]
+   D0 AIGFS                     shoulder n 284: 51.4% [44.7%, 57.7%]   all off-F n 425: 52.0% [47.0%, 57.0%]
+   D0 GDPS                      shoulder n 130: 50.8% [43.4%, 58.3%]   all off-F n 193: 46.1% [40.7%, 52.9%]
+   D0 GFS                       shoulder n 277: 46.9% [41.0%, 52.4%]   all off-F n 416: 50.7% [46.1%, 55.5%]
+   D0 HRES                      shoulder n 277: 57.8% [52.2%, 63.2%]   all off-F n 416: 54.1% [49.0%, 59.9%]
+   D0 ICON                      shoulder n  12: 75.0% [75.0%, 75.0%]   all off-F n  16: 75.0% [75.0%, 75.0%]
+   D0c AIFS                     shoulder n 254: 58.3% [52.8%, 63.7%]   all off-F n 381: 58.0% [52.8%, 63.2%]
+   D0c AIGFS                    shoulder n 284: 60.2% [54.8%, 66.0%]   all off-F n 425: 59.5% [55.9%, 63.6%]
+   D0c GDPS                     shoulder n 130: 51.5% [43.7%, 59.5%]   all off-F n 193: 47.7% [41.0%, 55.9%]
+   D0c GFS                      shoulder n 277: 52.0% [46.5%, 57.7%]   all off-F n 416: 56.5% [51.6%, 61.7%]
+   D0c HRES                     shoulder n 277: 56.3% [51.2%, 60.5%]   all off-F n 416: 54.1% [51.1%, 57.4%]
+   D0c ICON                     shoulder n  12: 75.0% [75.0%, 75.0%]   all off-F n  16: 75.0% [75.0%, 75.0%]
+   D1 raw median                shoulder n 284: 51.8% [44.9%, 58.2%]   all off-F n 425: 52.7% [47.7%, 57.6%]
+   D2 +fleet c                  shoulder n 284: 50.4% [44.1%, 56.4%]   all off-F n 425: 51.5% [46.4%, 56.8%]
+   D3 +lam*station (f_base)     shoulder n 284: 57.4% [52.1%, 62.7%]   all off-F n 425: 58.1% [54.0%, 61.8%]
+   D4 +recal (F)                shoulder n 284: 62.0% [57.5%, 66.5%]   all off-F n 425: 64.0% [59.9%, 67.9%]
+   D5 v3 station values         shoulder n 284: 57.4% [51.5%, 63.5%]   all off-F n 425: 59.3% [55.3%, 63.5%]
+   D5r v3 recal                 shoulder n 284: 60.2% [54.6%, 66.0%]   all off-F n 425: 62.6% [58.5%, 67.6%]
+   DV member votes              shoulder n 284: 38.4% [33.2%, 43.9%]  (ties up=down 96); shoulder split -ln s 0.719 vs coin 0.693
+
+== (2) paired steps along the chain (shoulder rows, common reference): accuracy change, event-day block bootstrap
+   D1 raw median              -> D2 +fleet c                n 284: -0.014 [-0.085, +0.052]
+   D2 +fleet c                -> D3 +lam*station (f_base)   n 284: +0.070 [+0.000, +0.140]
+   D3 +lam*station (f_base)   -> D4 +recal (F)              n 284: +0.046 [-0.018, +0.114]
+   D4 +recal (F)              -> D5 v3 station values       n 284: -0.046 [-0.108, +0.025]
+   D5 v3 station values       -> D5r v3 recal               n 284: +0.028 [-0.042, +0.096]
+   D0 AIFS                    -> its station correction  n 254: +0.035 [-0.034, +0.115]
+   D0 AIGFS                   -> its station correction  n 284: +0.088 [+0.010, +0.170]
+   D0 GDPS                    -> its station correction  n 130: +0.008 [+0.000, +0.026]
+   D0 GFS                     -> its station correction  n 277: +0.051 [-0.014, +0.127]
+   D0 HRES                    -> its station correction  n 277: -0.014 [-0.081, +0.049]
+   D0 ICON                    -> its station correction  n 12: +0.000 [+0.000, +0.000]
+
+== (3) F (D4) side accuracy on shoulder rows by distance from F's bucket centre (|F - centre| / width)
+   [0.0, 0.1) n  61: 59.0%   (share of shoulder rows 21%; truth on F among all rows in this band 34.9%)
+   [0.1, 0.2) n  51: 56.9%   (share of shoulder rows 18%; truth on F among all rows in this band 35.0%)
+   [0.2, 0.3) n  54: 59.3%   (share of shoulder rows 19%; truth on F among all rows in this band 34.3%)
+   [0.3, 0.4) n  51: 64.7%   (share of shoulder rows 18%; truth on F among all rows in this band 37.9%)
+   [0.4, 0.5) n  67: 68.7%   (share of shoulder rows 24%; truth on F among all rows in this band 33.3%)
+
+== (4) own bucket per layer: hit, within one, and side accuracy when truth is on the layer's own shoulder
+   D0 AIFS                      n 585: hit 19.3% [16.7%, 22.6%]  within one 56.1%  own-shoulder rows 37%, side right 58.6%
+   D0 AIGFS                     n 654: hit 14.2% [11.8%, 16.6%]  within one 45.4%  own-shoulder rows 31%, side right 46.1%
+   D0 GDPS                      n 303: hit 23.1% [19.3%, 27.4%]  within one 61.4%  own-shoulder rows 38%, side right 58.6%
+   D0 GFS                       n 642: hit 20.4% [17.4%, 23.4%]  within one 53.7%  own-shoulder rows 33%, side right 49.5%
+   D0 HRES                      n 642: hit 19.6% [17.4%, 21.9%]  within one 53.9%  own-shoulder rows 34%, side right 49.1%
+   D0 ICON                      n  31: hit 29.0% [29.0%, 29.0%]  within one 71.0%  own-shoulder rows 42%, side right 46.2%
+   D0c AIFS                     n 585: hit 27.9% [23.6%, 31.7%]  within one 68.5%  own-shoulder rows 41%, side right 65.1%
+   D0c AIGFS                    n 654: hit 30.7% [26.8%, 34.9%]  within one 74.6%  own-shoulder rows 44%, side right 58.5%
+   D0c GDPS                     n 303: hit 23.4% [19.5%, 27.7%]  within one 61.4%  own-shoulder rows 38%, side right 61.7%
+   D0c GFS                      n 642: hit 28.7% [26.4%, 30.9%]  within one 69.3%  own-shoulder rows 41%, side right 57.5%
+   D0c HRES                     n 642: hit 27.3% [24.9%, 29.5%]  within one 69.5%  own-shoulder rows 42%, side right 59.8%
+   D0c ICON                     n  31: hit 29.0% [29.0%, 29.0%]  within one 71.0%  own-shoulder rows 42%, side right 46.2%
+   D1 raw median                n 654: hit 20.5% [16.5%, 24.7%]  within one 56.9%  own-shoulder rows 36%, side right 46.6%
+   D2 +fleet c                  n 654: hit 28.1% [24.9%, 31.5%]  within one 71.1%  own-shoulder rows 43%, side right 57.7%
+   D3 +lam*station (f_base)     n 654: hit 33.2% [29.3%, 37.2%]  within one 75.1%  own-shoulder rows 42%, side right 61.7%
+   D4 +recal (F)                n 654: hit 35.0% [32.2%, 37.9%]  within one 78.4%  own-shoulder rows 43%, side right 62.0%
+   D5 v3 station values         n 654: hit 33.0% [30.8%, 35.9%]  within one 76.3%  own-shoulder rows 43%, side right 59.4%
+   D5r v3 recal                 n 654: hit 34.9% [32.7%, 37.2%]  within one 79.8%  own-shoulder rows 45%, side right 58.5%
