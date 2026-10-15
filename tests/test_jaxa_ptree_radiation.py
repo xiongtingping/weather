@@ -148,7 +148,7 @@ def test_latest_serves_the_read_scan_and_asks_for_a_newer_one(tmp_path, monkeypa
 
 def test_the_panel_shows_the_scan() -> None:
     source = (jaxa.ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "${sdSunNow(sat.latest)}" in source and "function sdSunNow(L)" in source
+    assert 'sdSunCard("此刻日照", `${sdN(L.sw_wm2, 0)}' in source and "const L = sat.latest;" in source
 
 
 def test_a_cloud_scan_is_read_as_cover_type_and_top(tmp_path, monkeypatch) -> None:
@@ -196,7 +196,7 @@ def test_the_cloud_cell_and_its_column() -> None:
     sky = source[source.index("function sdSky(day){"):]
     assert sky.index("const satCloud") < sky.index("const rows = ")   # declared before the rows use it
     start = source.index("function sdSatCloudCell(r){")
-    end = source.index("function sdSunNow(L){")
+    end = source.index("function sdRadTotal(R){")
     script = ('const sdEsc = s => String(s == null ? "" : s);\n'
               'const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);\n'
               'function sdLocal(t){ return String(t).slice(5, 16); }\n' + source[start:end]
