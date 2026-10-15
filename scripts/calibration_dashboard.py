@@ -546,6 +546,18 @@ def _systems_without_certificate(
     return out
 
 
+def _read_live_intent() -> dict[str, Any]:
+    """The arming flag as the intent file holds it (no SSOT read)."""
+
+    try:
+        raw = json.loads(
+            (ROOT / "config" / "trading" / "live_intent_v1.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return {}
+    return {"live_enabled": bool(raw.get("live_enabled"))} if isinstance(raw, dict) else {}
+
+
 def _uncertified_member_systems(conn: sqlite3.Connection) -> list[str]:
     """The seatable families holding no valid certificate (charter 270)."""
 
@@ -15685,6 +15697,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "model_accuracy_trend": model_accuracy_trend,
         "station_calibration_windows": station_calibration_windows,
         # 48 index seeks; the link on every station name.
+        # The LIVE switch's first state, off the intent file itself: a file
+        # read, so the read-only page draws it whatever the sections hold.
+        "live_intent": _read_live_intent(),
         "station_markets": _cached_section(
             "station_markets", collect_station_markets, conn, _unavailable={},
         ),
@@ -18439,9 +18454,13 @@ function lcArmEffect(L){
 // The LIVE flag sits in the head bar beside the dials (user 2026-10-06
 // 「气温篮子全链看板里的live开关移动到上方head区」), not in the page banner.
 function liveSwitch(){
+  // Drawn always (2026-10-15, user 「顶部交易开关不见了」): it hid whenever the
+  // live_readiness section had no kept value -- after a code change, before
+  // the backend recomputed it -- and the one control that stops orders went
+  // with it.  Its first state is the intent file the page reads directly;
+  // the control service repaints it from its own answer once connected.
   const L = D.live_readiness || {};
-  if(!L.available) return "";
-  const on = !!L.live_enabled;
+  const on = !!(L.available ? L.live_enabled : (D.live_intent || {}).live_enabled);
   return `<span class="pill lc-livesw ${on?"red":""}" id="lc-head"
     style="display:inline-flex;gap:6px;align-items:center">
     <b>LIVE</b>
@@ -19340,8 +19359,10 @@ function lcNext(K, cur, delta){
   return Math.round((base + units) * g * 100) / 100;
 }
 function liveControlStrip(){
+  // Drawn always, like liveSwitch (2026-10-15): the strip carries the LIVE
+  // flag and every lane switch, and the control service paints their states
+  // once connected; a dial with no kept value shows "—" until then.
   const L = D.live_readiness || {};
-  if(!L.available) return "";
   const b=(knob,delta,text,coarse)=>`<button type="button" disabled
     class="lc-w${coarse?" coarse":""}" data-knob="${knob}" data-delta="${delta}"
     aria-label="${LC_KNOBS[knob].name} ${delta>0?"+":"−"}${Math.abs(delta)}"

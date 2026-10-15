@@ -86,3 +86,14 @@ def test_the_sweep_draws_the_page_read_only_after_the_compute_run() -> None:
     for name in ("board_readings_sweep.sh", "dashboard_research_sweep.sh"):
         assert "calibration_dashboard.py --compute-pages" in (ROOT / "scripts" / name).read_text()
     assert C.PAGE_RENDER_PATTERN == "calibration_dashboard.py --compute-pages"
+
+
+def test_the_live_switch_has_its_state_without_any_section(read_only) -> None:
+    # 2026-10-15 「顶部交易开关不见了」: the strip hid while live_readiness had
+    # no kept value.  Its first state is the intent file, read directly.
+    payload = C.build_payload(read_only / "no_such.db")
+    assert set(payload["live_intent"]) == {"live_enabled"}
+    source = Path(C.__file__).read_text(encoding="utf-8")
+    for name in ("function liveSwitch(){", "function liveControlStrip(){"):
+        body = source.split(name, 1)[1].split("\n}\n", 1)[0]
+        assert "if(!L.available) return" not in body, name
