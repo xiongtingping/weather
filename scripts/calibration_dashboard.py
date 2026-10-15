@@ -15738,7 +15738,7 @@ table.sd-pm tr.sd-pm-y td,table.sd-pm tr.sd-pm-n td{background:color-mix(in srgb
 .sd-tk-field:empty{display:none}
 .sd-tk-lab b{display:block;font-size:15px}
 .sd-tk-lab>span{display:block}
-.sd-tk-lab .sd-win{margin:3px 0 2px;font-size:13px;color:var(--muted)}
+.sd-tk-lab .sd-win{margin:3px 0 2px;font-size:13px;color:var(--muted);white-space:nowrap}
 .sd-tk-lab .sd-win b{display:inline;font-size:24px;font-weight:800;color:var(--green);font-variant-numeric:tabular-nums}
 .sd-tk-num{display:flex;align-items:baseline;gap:4px}
 .sd-tk-in{width:120px;text-align:right;font:inherit;font-size:30px;font-weight:750;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--text);padding:0 2px;-moz-appearance:textfield}
