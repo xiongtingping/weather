@@ -66,7 +66,7 @@ SEAT_LOOKBACK_DAYS = 45
 SEAT_REREAD_HOURS = 6
 READING_NAMES = (
     "seat_windows", "fusion_resolve", "centre_shape", "l4_lane", "basket_shadow",
-    "traded_calibration", "bucket_calibration", "skew_truth_side",
+    "traded_calibration", "bucket_calibration", "skew_truth_side", "mode_agreement",
 )
 
 
@@ -1528,6 +1528,10 @@ def _served_belief_vector(
     if row is None:
         cache[key] = (None, None, None, None)
         return cache[key]
+    # Consecutive instants usually stand on the same decision; read it once.
+    if ("history", row[0]) in cache:
+        cache[key] = cache[("history", row[0])]
+        return cache[key]
     raw: dict[str, float] = {}
     order: dict[str, int] = {}
     widths: list[float] = []
@@ -1547,6 +1551,7 @@ def _served_belief_vector(
     norm = sum(floored.values()) or 1.0
     cache[key] = (str(row[1]), {b: v / norm for b, v in floored.items()}, order,
                   median(widths) if widths else None)
+    cache[("history", row[0])] = cache[key]
     return cache[key]
 
 
@@ -2937,6 +2942,186 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
             "rule": "mean_mode_skew_reading_v1 (0.35 sigma) / mean_center_bucket_v1", "stages": stages}
 
 
+# ---------------------------------------------------------------------------
+# mode_agreement -- when our mode and the market's fall on the same bucket
+# (user 2026-10-15 「首次：模型的众数桶和市场的众数桶为同一桶的时候的真值的命中率
+# 有多少」「还有时间轴维度、首次、第二次、最后一次」)
+# ---------------------------------------------------------------------------
+
+#: The agreement episodes the board reads: the first, the second, the last.
+MODE_AGREEMENT_PICKS = (("first", 0), ("second", 1), ("last", -1))
+#: Station-days this recent are walked again every run (a truth revision or
+#: a late book still moves them); older ones reuse the stored record.
+MODE_AGREEMENT_REWALK_DAYS = 4
+
+
+def _ladder_mode(vector: Mapping[str, float], order: Mapping[str, int]) -> str:
+    # A tie goes to the lower rung, as _ladder_rows (charter 249) picks it.
+    return max(sorted(vector, key=lambda b: order[b]), key=lambda b: vector[b])
+
+
+def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Each settled station-day since ``TRADED_CALIBRATION_SINCE`` walked along
+    its committed decision instants.  At each instant our belief standing then
+    (charter 260, floored as served) is paired with the market's whole-ladder
+    reference at most ``TRADED_CALIBRATION_BOOK_WINDOW_SEC`` old; an instant
+    without one is skipped and breaks nothing.  An episode is a run of paired
+    instants on which both modes are the same bucket; it ends at the first
+    paired instant where they part or move to another bucket."""
+
+    from .label_knowability import knowable_labels  # noqa: PLC0415
+    from .settlement_time import hours_to_settlement_if_known  # noqa: PLC0415
+
+    counts = {"station_days": 0, "paired_days": 0, "reused_days": 0, "instants": 0, "paired_instants": 0,
+              "agree_instants": 0}
+    served_cache: dict[Any, Any] = {}
+    market_cache: dict[tuple[str, str, str], Any] = {}
+    days: list[dict[str, Any]] = []
+    # A settled station-day's walk does not change once its books and beliefs
+    # are in; the previous run's record is reused while the code and the
+    # settled bucket are the same (a full walk is ~0.27 s a station-day).
+    code = _code_sha(*_READINGS["mode_agreement"][1])
+    stored = load_reading("mode_agreement") or {}
+    reuse: dict[str, dict[str, Any]] = {}
+    if stored.get("code_sha256") == code:
+        reuse = {f"{d['station_id']}|{d['event_date']}": d for d in (stored.get("value") or {}).get("days") or []}
+    reuse_before = (_now() - timedelta(days=MODE_AGREEMENT_REWALK_DAYS)).date().isoformat()
+    labels = {k: v for k, v in knowable_labels(conn).items() if str(k[1]) >= TRADED_CALIBRATION_SINCE}
+    for (station, day), label in sorted(labels.items()):
+        old = reuse.get(f"{station}|{day}")
+        if old is not None and old["settled"] == str(label["bucket"]) and str(day) < reuse_before:
+            counts["station_days"] += 1
+            counts["paired_days"] += 1
+            counts["reused_days"] += 1
+            days.append(old)
+            continue
+        instants = [str(r[0]) for r in conn.execute(
+            "SELECT DISTINCT decision_at_utc FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED' ORDER BY decision_at_utc",
+            (str(station), str(day)),
+        )]
+        if not instants:
+            continue
+        tz = conn.execute(
+            "SELECT settlement_timezone FROM basket_probability_bridge_history"
+            " WHERE station_id=? AND event_date=? AND state='COMMITTED' LIMIT 1",
+            (str(station), str(day)),
+        ).fetchone()[0]
+        counts["station_days"] += 1
+        settled = str(label["bucket"])
+        first_paired: dict[str, Any] | None = None
+        episodes: list[dict[str, Any]] = []
+        current: dict[str, Any] | None = None
+        paired = 0
+        for at in instants:
+            counts["instants"] += 1
+            q = _ladder_market_reference(conn, str(station), str(day), at, market_cache)
+            if q is None:
+                continue
+            stage, p, order, _rung = _served_belief_vector(conn, str(station), str(day), at, served_cache)
+            if p is None or order is None or set(p) != set(q) or set(p) != set(order) or settled not in p:
+                continue
+            paired += 1
+            ours, theirs = _ladder_mode(p, order), _ladder_mode(q, order)
+            hours = hours_to_settlement_if_known(str(day), as_of_utc=at, settlement_timezone=tz)
+            if first_paired is None:
+                first_paired = {"at": at, "stage": stage, "hours": hours,
+                                "ours_hit": ours == settled, "market_hit": theirs == settled}
+            if ours != theirs:
+                current = None
+                continue
+            counts["agree_instants"] += 1
+            if current is not None and current["bucket"] == ours:
+                current["end"], current["instants"] = at, current["instants"] + 1
+                continue
+            current = {"bucket": ours, "start": at, "end": at, "instants": 1, "stage": stage, "hours": hours,
+                       "p": p[ours], "q": q[ours], "hit": ours == settled}
+            episodes.append(current)
+        counts["paired_instants"] += paired
+        if not paired:
+            continue
+        counts["paired_days"] += 1
+        # Only what the reading reads is kept: the picked episodes and the count.
+        picked = {name: episodes[index] for name, index in MODE_AGREEMENT_PICKS
+                  if len(episodes) > (index if index >= 0 else -index - 1)}
+        days.append({"station_id": str(station), "event_date": str(day), "settled": settled,
+                     "unit": "F" if "°F" in settled else "C", "paired": paired,
+                     "first_paired": first_paired, "episodes": len(episodes), "picked": picked})
+    return {"days": days, "counts": counts}
+
+
+def _mode_agreement_group(picked: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    n = len(picked)
+    if not n:
+        return None
+    hits = sum(1 for e in picked if e["hit"])
+    hours = [e["hours"] for e in picked if e["hours"] is not None]
+    return {"n": n, "event_days": len({e["event_date"] for e in picked}), "hits": hits, "hit": hits / n,
+            "hit_ci": _wilson(hits, n), "said_ours": sum(e["p"] for e in picked) / n,
+            "said_market": sum(e["q"] for e in picked) / n,
+            "median_hours": median(hours) if hours else None}
+
+
+def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
+    """How often the truth lands in the bucket where our mode and the
+    market's first agree, agree a second time, and agree for the last time:
+    the whole, by stage and hours to settlement at the episode's start, by
+    settlement unit, and day by day.  Beside it, the first paired instant
+    whatever the two modes say, as the baseline each mode hits on its own."""
+
+    built = mode_agreement_days(conn)
+    days, counts = built["days"], built["counts"]
+    picks: dict[str, list[dict[str, Any]]] = {}
+    for name, _index in MODE_AGREEMENT_PICKS:
+        picks[name] = [
+            {**d["picked"][name], "event_date": d["event_date"], "unit": d["unit"], "episodes": d["episodes"]}
+            for d in days if name in d["picked"]
+        ]
+    out_picks = []
+    for name, _index in MODE_AGREEMENT_PICKS:
+        rows = picks[name]
+        slices = []
+        for stage in ("P0", "P0-M", "P1"):
+            got = _mode_agreement_group([e for e in rows if e["stage"] == stage])
+            if got:
+                slices.append({"group": "阶段", "slice": stage, **got})
+        for band, lo, hi in BUCKET_CALIBRATION_BANDS:
+            got = _mode_agreement_group([e for e in rows if e["hours"] is not None and lo <= e["hours"] < hi])
+            if got:
+                slices.append({"group": "提前量", "slice": band, **got})
+        for unit in ("C", "F"):
+            got = _mode_agreement_group([e for e in rows if e["unit"] == unit])
+            if got:
+                slices.append({"group": "结算单位", "slice": unit, **got})
+        if name == "last":
+            for label, keep in (("只同桶过一次", lambda e: e["episodes"] == 1), ("同桶过 ≥ 2 次", lambda e: e["episodes"] >= 2)):
+                got = _mode_agreement_group([e for e in rows if keep(e)])
+                if got:
+                    slices.append({"group": "同桶次数", "slice": label, **got})
+        daily = []
+        for day in sorted({e["event_date"] for e in rows}):
+            got = _mode_agreement_group([e for e in rows if e["event_date"] == day])
+            daily.append({"event_date": day, "n": got["n"], "hit": got["hit"]})
+        out_picks.append({"pick": name, "station_days": len(rows),
+                          "share_of_days": len(rows) / len(days) if days else None,
+                          "all": _mode_agreement_group(rows), "slices": slices, "daily": daily})
+    base = [d["first_paired"] for d in days if d["first_paired"]]
+    baseline = {
+        "n": len(base),
+        "ours_hit": (sum(1 for b in base if b["ours_hit"]) / len(base)) if base else None,
+        "market_hit": (sum(1 for b in base if b["market_hit"]) / len(base)) if base else None,
+    }
+    spread = Counter(min(d["episodes"], 5) for d in days)
+    event_days = sorted({d["event_date"] for d in days})
+    return {
+        "rule": "mode_agreement_episodes_v1", "since": TRADED_CALIBRATION_SINCE,
+        "through": event_days[-1] if event_days else None, "event_days": len(event_days),
+        "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC, "counts": counts,
+        "episodes_per_day": [{"episodes": k, "station_days": spread.get(k, 0)} for k in range(6)],
+        "first_paired": baseline, "picks": out_picks, "days": days,
+    }
+
+
 _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "seat_windows": (seat_windows, (seat_window,)),
     "fusion_resolve": (
@@ -2978,6 +3163,11 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
         skew_truth_side,
         (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _paired_mean, _traded_day_bootstrap),
     ),
+    "mode_agreement": (
+        mode_agreement,
+        (mode_agreement, mode_agreement_days, _mode_agreement_group, _ladder_mode, _served_belief_vector,
+         _ladder_market_reference, _wilson),
+    ),
 }
 
 
@@ -2996,6 +3186,7 @@ READING_MAX_AGE_SEC: dict[str, float] = {
     "bucket_calibration": 3 * 3600.0,
     # Settled days move once a day; ~14k point look-ups a run.
     "skew_truth_side": 6 * 3600.0,
+    "mode_agreement": 6 * 3600.0,
 }
 
 

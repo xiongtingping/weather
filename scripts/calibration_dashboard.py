@@ -21945,7 +21945,7 @@ function sdRender(){
       x.role === "today" ? "今日" : "明日（第二日）"} ${sdEsc(x.event_date.slice(5))}${
       x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}</button>`).join("")}${
     pk ? `<span class="sd-daytab off" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">今日 ${sdEsc(pk.event_date.slice(5))} 已过峰</span>` : ""}</div>`;
-  body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
+  body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + sdModeAgreement(d.mode_agreement) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
     `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`)).join("");
   if(anchorPath){
     const again = sdFromPath(anchorPath, body);
@@ -22721,6 +22721,52 @@ function sdSkewHistory(H){
     <div class="sd-sk-grid">${cols}</div>
     <div class="muted sd-sub">众数桶 / 均值桶命中率：模型对同一时刻市场（按模型偏态分组；差＝模型−市场，带 · 的区间跨零）</div>
     <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>分组</th><th>站日</th><th>众数 模型</th><th>市场</th><th>差</th><th>均值桶 模型</th><th>市场</th><th>差</th></tr></thead><tbody>${hitRows}</tbody></table></div>
+  </details>`;
+}
+// Where our mode and the market's agree (user 2026-10-15 「首次：模型的众数桶和
+// 市场的众数桶为同一桶的时候的真值的命中率有多少」「还有时间轴维度、首次、第二次、
+// 最后一次」): board_readings.mode_agreement as station_day_board carries it --
+// read, never computed here.
+function sdModeAgreement(A){
+  if(!A || !(A.picks || []).length) return "";
+  const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  const p0 = v => v == null ? "—" : Math.round(100 * v) + "%";
+  const word = {first: "首次同桶", second: "第二次同桶", last: "最后一次同桶"};
+  const col = {first: SD_COL.P0, second: SD_COL["P0-M"], last: SD_COL.P1};
+  const F = A.first_paired || {};
+  const cards = A.picks.map(k => {
+    const a = k.all || {}, ci = a.hit_ci || [];
+    return `<div class="card" title="95% 区间 ${ci.length ? pc(ci[0]) + " ～ " + pc(ci[1]) : "—"}；${a.event_days || 0} 个事件日；站日占比 ${pc(k.share_of_days)}">
+      <div class="muted">${word[k.pick] || sdEsc(k.pick)}</div>
+      <div class="big" style="color:${col[k.pick]}">${pc(a.hit)}</div>
+      <div class="muted sd-sub">${k.station_days} 站日 · 距结算中位 ${a.median_hours == null ? "—" : Number(a.median_hours).toFixed(0) + "h"}</div>
+      <div class="muted sd-sub">我方说 ${p0(a.said_ours)} · 市场说 ${p0(a.said_market)}</div></div>`;
+  }).join("");
+  const groups = [];
+  A.picks.forEach(k => (k.slices || []).forEach(x => {
+    if(!groups.some(g => g[0] === x.group && g[1] === x.slice)) groups.push([x.group, x.slice]);
+  }));
+  const order = ["提前量", "阶段", "结算单位", "同桶次数"];
+  groups.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+  const rows = groups.map(([g, sl], i) => `<tr><td>${i === 0 || groups[i - 1][0] !== g ? sdEsc(g) : ""}</td><td>${sdEsc(sl)}</td>${A.picks.map(k => {
+    const x = (k.slices || []).find(r => r.group === g && r.slice === sl);
+    return x ? `<td class="mono" title="我方说 ${p0(x.said_ours)} · 市场说 ${p0(x.said_market)}">${pc(x.hit)}</td><td class="mono muted">${x.n}</td>`
+      : `<td class="mono muted">—</td><td class="mono muted">—</td>`;
+  }).join("")}</tr>`).join("");
+  const dates = [...new Set(A.picks.flatMap(k => (k.daily || []).map(d => d.event_date)))].sort();
+  const trend = typeof trendChart === "function" ? trendChart({title: "同桶真值命中率（按事件日）", sub: "首次 / 第二次 / 最后一次",
+    dates, fmt: v => Math.round(100 * v) + "%", width: 640,
+    series: A.picks.map(k => {
+      const m = Object.fromEntries((k.daily || []).map(d => [d.event_date, d.hit]));
+      return {name: (word[k.pick] || k.pick).replace("同桶", ""), values: dates.map(d => m[d] ?? null)};
+    })}) : "";
+  const open = SD.agreeOpen !== false;
+  return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.agreeOpen=this.open">
+    <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0-M＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
+    <div class="grid g3">${cards}</div>
+    <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${trend}
   </details>`;
 }
 function sdMeanModeCard(day){

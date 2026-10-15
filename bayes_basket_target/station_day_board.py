@@ -1784,6 +1784,21 @@ def skew_history() -> dict[str, Any] | None:
     return {**stored["value"], "computed_at_utc": stored.get("computed_at_utc")}
 
 
+def mode_agreement_history() -> dict[str, Any] | None:
+    """The settled reading of where our mode and the market's agree
+    (``board_readings.mode_agreement``: the truth's hit rate in the bucket of
+    the first, second and last agreement, by stage, lead and day) -- read,
+    never computed here; the per-station-day records stay in the file."""
+
+    from .board_readings import load_reading  # noqa: PLC0415
+
+    stored = load_reading("mode_agreement")
+    if not stored or not isinstance(stored.get("value"), dict):
+        return None
+    value = {k: v for k, v in stored["value"].items() if k != "days"}
+    return {**value, "computed_at_utc": stored.get("computed_at_utc")}
+
+
 FLEET_SHAPE_SCHEMA = "station_day_fleet_shape_v1"
 
 

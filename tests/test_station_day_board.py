@@ -397,6 +397,86 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     assert ">−7.5 ·</td>" in out                                      # centre bucket: crosses zero
 
 
+def test_mode_agreement_reads_the_picked_episodes() -> None:
+    """board_readings.mode_agreement: the first, second and last agreement of
+    our mode with the market's, each scored on its own bucket (user
+    2026-10-15 「首次…第二次、最后一次」)."""
+
+    from unittest import mock
+
+    from bayes_basket_target import board_readings as br
+
+    order = {"20°C": 0, "21°C": 1, "22°C": 2}
+    assert br._ladder_mode({"20°C": 0.4, "21°C": 0.4, "22°C": 0.2}, order) == "20°C"  # a tie: the lower rung
+    ep = lambda bucket, hours, stage, hit: {"bucket": bucket, "start": "t", "end": "t", "instants": 1, "stage": stage,
+                                            "hours": hours, "p": 0.4, "q": 0.5, "hit": hit}
+    days = [
+        {"station_id": "AAAA", "event_date": "2026-10-01", "settled": "21°C", "unit": "C", "paired": 9,
+         "first_paired": {"ours_hit": False, "market_hit": True}, "episodes": 3,
+         "picked": {"first": ep("20°C", 50.0, "P0", False), "second": ep("21°C", 20.0, "P0-M", True),
+                    "last": ep("21°C", 5.0, "P1", True)}},
+        {"station_id": "BBBB", "event_date": "2026-10-02", "settled": "22°C", "unit": "C", "paired": 4,
+         "first_paired": {"ours_hit": True, "market_hit": True}, "episodes": 1,
+         "picked": {"first": ep("22°C", 40.0, "P0", True), "last": ep("22°C", 40.0, "P0", True)}},
+    ]
+    with mock.patch.object(br, "mode_agreement_days", return_value={"days": days, "counts": {}}):
+        out = br.mode_agreement(None)
+    picks = {k["pick"]: k for k in out["picks"]}
+    assert picks["first"]["all"]["hit"] == 0.5 and picks["first"]["station_days"] == 2
+    assert picks["second"]["station_days"] == 1 and picks["second"]["all"]["hit"] == 1.0
+    assert picks["last"]["all"]["hit"] == 1.0
+    lead = {x["slice"]: x["n"] for x in picks["first"]["slices"] if x["group"] == "提前量"}
+    assert lead == {"距结算 36–60h": 2}
+    assert {x["slice"] for x in picks["last"]["slices"] if x["group"] == "同桶次数"} == {"只同桶过一次", "同桶过 ≥ 2 次"}
+    assert out["first_paired"] == {"n": 2, "ours_hit": 0.5, "market_hit": 1.0}
+
+
+def test_mode_agreement_card_draws_three_picks() -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+    start = source.index("function sdModeAgreement(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    pick = lambda name, hit: {"pick": name, "station_days": 10, "share_of_days": 0.9,
+                              "all": {"n": 10, "hit": hit, "hit_ci": [0.2, 0.7], "said_ours": 0.43, "said_market": 0.42,
+                                      "median_hours": 49.5, "event_days": 3},
+                              "slices": [{"group": "提前量", "slice": "距结算 36–60h", "n": 7, "hit": hit,
+                                          "said_ours": 0.4, "said_market": 0.4}],
+                              "daily": [{"event_date": "2026-10-01", "n": 4, "hit": hit}]}
+    doc = {"since": "2026-09-06", "through": "2026-10-14", "event_days": 39, "book_window_sec": 1800,
+           "computed_at_utc": "x", "first_paired": {"n": 10, "ours_hit": 0.358, "market_hit": 0.44},
+           "picks": [pick("first", 0.45), pick("second", 0.5), pick("last", 0.983)]}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\nconst SD = {};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n" + source[start:end]
+              + f"\nconsole.log(sdModeAgreement({json.dumps(doc, ensure_ascii=False)}));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "首次同桶" in out and "第二次同桶" in out and "最后一次同桶" in out
+    assert "45.0%" in out and "50.0%" in out and "98.3%" in out
+    assert "我方众数命中 35.8%" in out and "市场众数命中 44.0%" in out
+    assert "距结算 36–60h" in out and "39 个事件日" in out
+
+
 def test_a_local_day_ahead_of_utc_reads_the_utc_day_folded_onto_local_hours(monkeypatch):
     """2026-10-13: the satellite archive ends at UTC today, so an East Asian
     local day past midnight answered 400 until 08/09 local; it now reads the
