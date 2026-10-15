@@ -15882,6 +15882,9 @@ color-scheme:dark}
 .sd-prob-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;align-items:baseline;margin:8px 0 12px;font-size:12px}
 .sd-prob-summary dt{color:var(--muted)}.sd-prob-summary dd{margin:0;font-size:16px;font-weight:750;color:var(--c)}
 .sd-prob-summary dd small{font-size:13px;font-weight:600}
+.sd-prob-age{text-align:right;font-size:12px;margin-top:6px}
+.sd-recent{width:100%;margin-top:8px;border-collapse:collapse;font-size:12px}.sd-recent th{color:var(--muted);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--line)}
+.sd-recent td{padding:2px 4px;white-space:nowrap}.sd-recent td b{color:var(--c)}.sd-recent tbody tr:first-child td{font-weight:700}
 /* METAR / TAF tables: a few words over the raw group, the change since the report before. */
 table.sd-rep td{vertical-align:top;white-space:nowrap}
 table.sd-rep td>div+div{margin-top:3px}
@@ -21975,11 +21978,12 @@ function sdAgeText(el){
   if(!isFinite(t)) return "—";
   const s = (Date.now() - t) / 1000;
   if(el.classList.contains("sd-left")) return s < 0 ? "还剩 " + sdSpan(s) : "已过期 " + sdSpan(s);
+  if(el.classList.contains("sd-bare")) return sdSpan(s);  // the card's corner: the span alone
   return sdSpan(s) + " 前";
 }
 function sdAgeSpan(at, cls){
   if(!at) return "—";
-  const el = {dataset:{at}, classList:{contains: c => c === cls}};
+  const el = {dataset:{at}, classList:{contains: c => cls.split(" ").includes(c)}};
   return `<span class="${cls}" data-at="${sdEsc(at)}" title="${sdEsc(sdLocal(at, true))}">${sdAgeText(el)}</span>`;
 }
 function sdTickAges(){
@@ -22233,13 +22237,32 @@ function sdProbabilityCards(day){
       ${e ? `<dl class="sd-prob-summary">${stage !== "P0" ? `<dt title="本阶段实际引用的前序信封中心，更新前的输入">${rootLabel}</dt><dd>${sdTemperature(e.root_center_c)}</dd>` : ""}
         <dt title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值</dt><dd>${sdTemperature(st.mean_c)}${pv ? dv(st.mean_c, ps.mean_c, 2, "") : ""}</dd>
         <dt title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶，平局取概率大的；概率＝这一桶在最终向量里的概率，变化＝同一桶在上一次决策里的概率">均值桶</dt><dd>${sdEsc(st.mean_bucket || "—")}${meanP != null ? ` <small>· ${sdPc(meanP,2)}</small>` : ""}${meanPMove}${meanBucketMove}</dd>
-        <dt title="最终概率向量中概率最大的桶，并列取低档；变化＝同一桶在上一次决策里的概率">众数桶</dt><dd>${sdEsc(st.mode || "—")} <small>· ${sdPc(st.mode_p,2)}</small>${modeP}${modeMove}</dd>
-        <dt title="标准差变化">σ</dt><dd>${sdN(st.sd_c, 2)}°C${pv ? dv(st.sd_c, ps.sd_c, 2, "") : ""}</dd></dl>
-        <div class="muted sd-sub">更新 ${sdAgeSpan(e.decided_at_utc, "sd-age")}${e.fresh_until_utc ? ` · 有效期${sdAgeSpan(e.fresh_until_utc, "sd-left")}` : ""}</div>
-        <div class="muted sd-sub">${pv ? `变化对比上一次 ${sdEsc(stage)}：${sdAgeSpan(pv.at_utc, "sd-age")}` : `今天第一次 ${sdEsc(stage)}，无可对比`}</div>` : '<div class="muted sd-sub">等待该阶段的概率信封</div>'}
+        <dt title="最终概率向量中概率最大的桶，并列取低档；变化＝同一桶在上一次决策里的概率">众数桶</dt><dd>${sdEsc(st.mode || "—")} <small>· ${sdPc(st.mode_p,2)}</small>${modeP}${modeMove}</dd></dl>
+        ${sdRecentRuns(day, stage)}
+        <div class="sd-prob-age muted">${sdAgeSpan(e.decided_at_utc, "sd-age sd-bare")}</div>` : '<div class="muted sd-sub">等待该阶段的概率信封</div>'}
     </div>`;
   }).join("");
   return `<div class="sd-prob-cards">${cards}</div><details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。均值桶＝按桶概率加权的平均档位最近的桶（生产 mean_center_bucket_v1），与分布均值所在的桶偶有一档之差。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;
+}
+
+// The stage's last five committed versions inside its card (user 2026-10-16
+// 「三阶段卡片内部增加最近5次概率的变化」), newest first: mean and its move from
+// the version before, the mode bucket and its probability; the whole vector
+// in the row's tooltip.
+function sdRecentRuns(day, stage){
+  const T = (day.timeline || []).filter(t => t.stage === stage);
+  if(!T.length) return "";
+  const rows = T.slice(-5).reverse().map(t => {
+    const i = T.indexOf(t), pv = i > 0 ? T[i - 1] : null, s = t.stats || {}, ps = (pv || {}).stats || {};
+    const dm = pv && s.mean_c != null && ps.mean_c != null ? s.mean_c - ps.mean_c : null;
+    const dp = pv && s.mode && (pv.vector || {})[s.mode] != null ? 100 * (s.mode_p - pv.vector[s.mode]) : null;
+    const mv = (x, unit) => x == null ? "" : Math.abs(x) < 0.005 ? `<span class="flat">＝</span>` :
+      `<span class="${x > 0 ? "up" : "down"}">${x > 0 ? "↑" : "↓"}${Math.abs(x).toFixed(2)}${unit}</span>`;
+    const tip = Object.entries(t.vector || {}).filter(([, v]) => v >= 0.005).map(([k, v]) => `${k} ${sdPc(v, 1)}`).join("\n");
+    return `<tr title="${sdEsc(sdLocal(t.at_utc, true) + " 概率向量\n" + tip)}"><td>${sdLocal(t.at_utc, true)}</td>`
+      + `<td>${sdN(s.mean_c, 2)}°C ${mv(dm, "")}</td><td>${sdEsc(s.mode || "—")} <b>${sdPc(s.mode_p, 1)}</b> ${mv(dp, "点")}</td></tr>`;
+  }).join("");
+  return `<table class="sd-recent"><thead><tr><th>最近 ${Math.min(5, T.length)} 次</th><th>均值</th><th>众数 · 概率</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function sdTemperature(value){ return value == null ? "—（未记录）" : `${sdN(value,2)}°C`; }
