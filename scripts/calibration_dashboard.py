@@ -22761,8 +22761,8 @@ function sdSky(day){
       `<span class="muted">≈${sdLocal(fcPrev, true)}</span> ${sdN(H.forecast_sw_d1_mj, 1)} → <span class="muted">${sdLocal(H.fetched_at_utc, true)}</span> ${sdN(H.forecast_sw_mj, 1)} MJ/m²`,
       `全天 00–24 点日照：提前 1 天的预报（每小时取约 24 小时前那一轮）${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
     swObs == null
-      ? sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报`, "未到", "", bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", "")
-      : sdSunCard(`${bySat ? "卫星" : "推算"}日照对预报 · ${span}`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
+      ? sdSunCard("实况对比预报", "未到", "", bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", "")
+      : sdSunCard(`实况对比预报 · ${span}`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           `实况 ${sdN(swObs, 1)} · 预报 ${sdN(swFc, 1)} MJ/m²`,
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
