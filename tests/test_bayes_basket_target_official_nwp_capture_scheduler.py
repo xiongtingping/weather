@@ -1083,7 +1083,7 @@ def test_every_contracted_lead_resolves_a_run_for_all_four_systems() -> None:
     }
     # ... and charter 212's NOAA AIGEFS the same way.
     assert readiness_systems == set(OFFICIAL_ARCHIVE_SCOPE_CONTRACTS) - {
-        "ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"
+        "ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_OPS_025"
     }
     for lead_days in SUPPORTED_LEAD_DAYS:
         runs = contracted_run_inits("2026-08-12", lead_days=lead_days)

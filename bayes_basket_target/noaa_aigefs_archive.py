@@ -1,4 +1,21 @@
-"""Official NOAA AIGEFS (the EAGLE AI ensemble) on NODD S3: station daily highs for P0.
+"""Official NOAA AIGEFS, the operational NCEP run on NOMADS: station daily highs for P0.
+
+Charter 270 (user ruling 2026-10-15 「换」): the lane reads NCEP's operational
+AIGEFS from NOMADS (``com/aigefs/prod``) as a new system, ``NOAA_AIGEFS_OPS_025``,
+in the same independence family.  The EAGLE experimental feed this lane read
+until then (``EAGLE_ensemble/`` on the NODD bucket, below) stopped after the
+2026-10-13 06Z run, and the operational run is a different model: the same
+run, member and step read from both differ by up to 6C (control at SBGR
++12h: 17.95C on EAGLE, 24.25C operational), and the files differ (an APCP
+message, no surface PRES, ``P-ENS=n`` in the index).  ``NOAA_AIGEFS_025``
+therefore keeps its rows and certificates as history and is not followed any
+more; the new system trains from its own captures only.  NOMADS keeps about
+two days, so there is no operational history to backfill beyond that window,
+and it bans clients past ~120 requests a minute: every request here goes
+through one in-process limiter.  Measured 2026-10-13..14 on NOMADS: every
+step of a run lands by init + 3h50m..4h05m (00Z 10-14: f072 at +11h53m).
+
+The rest of this docstring is the EAGLE-era record (charter 212).
 
 Charter 212 (user ruling 2026-09-24 「接入」): ``NOAA_AIGEFS_025`` is the sixth
 formal P0 product and the fifth independent family (``NOAA_AIGEFS``; it shares
@@ -45,10 +62,12 @@ import os
 import shutil
 import sqlite3
 import tempfile
+import threading
 from collections.abc import Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Any
 
 import httpx
@@ -74,13 +93,13 @@ from .ssot import native_ensemble_foundation_schema_status
 from official_nwp_https_transport import official_nwp_proxy_url
 
 
-SCHEMA = "noaa_aigefs_official_historical_station_members_v1"
-MULTISTATION_SCHEMA = "noaa_aigefs_official_historical_multistation_members_v1"
-SYSTEM_ID = "NOAA_AIGEFS_025"
+SCHEMA = "noaa_aigefs_ops_station_members_v1"
+MULTISTATION_SCHEMA = "noaa_aigefs_ops_multistation_members_v1"
+SYSTEM_ID = "NOAA_AIGEFS_OPS_025"
 INDEPENDENCE_FAMILY_ID = "NOAA_AIGEFS"
 PROVIDER_ID = "NOAA"
 TRANSPORT_PROVIDER_ID = "NOAA_GEFS_PDS_S3"
-MEMBER_AVAILABILITY_CONTRACT = "OFFICIAL_NODD_CONTROL_PLUS_PERTURBED_1_TO_30"
+MEMBER_AVAILABILITY_CONTRACT = "OFFICIAL_NCEP_PROD_CONTROL_PLUS_PERTURBED_1_TO_30"
 EXPECTED_MEMBER_COUNT = 31
 PERTURBED_MEMBER_COUNT = 30
 STEP_HOURS = 6
@@ -88,7 +107,7 @@ SUPPORTED_LEAD_DAYS = (0, 1, 2)
 DEFAULT_LEAD_DAYS = 2
 SUPPORTED_RUN_CYCLE_HOURS = (0, 6, 12, 18)
 RUN_CYCLE_HOUR_BY_LEAD = {2: 18, 1: 0, 0: 0}
-BASE_URL = "https://noaa-nws-graphcastgfs-pds.s3.amazonaws.com"
+BASE_URL = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/aigefs/prod"
 MAX_INDEX_BYTES = 256 * 1024
 # Measured 2026-09-23: 0.46-0.59 MB; the decoder refuses anything over 1 MiB.
 MAX_MESSAGE_BYTES = 1024 * 1024
@@ -96,10 +115,12 @@ MAX_TOTAL_RESPONSE_BYTES = 512 * 1024 * 1024
 MAX_UNION_STEPS = 12
 MIN_FREE_BYTES = 512 * 1024 * 1024
 MAX_STATION_COUNT = 64
-# Latency-bound like the GEFS lane (two small requests per field); measured
-# 2026-09-23 at 16 workers 2.9 MB/s, 32 workers worse.
-MAX_DOWNLOAD_WORKERS = 16
-USER_AGENT = "weather-aigefs-history/1"
+# NOMADS blocks a client past ~120 requests a minute; two requests a field
+# (index + range) at 90 a minute reads one event day's ~5 steps x 31 members
+# in about 3.5 minutes.
+MAX_DOWNLOAD_WORKERS = 4
+MAX_REQUESTS_PER_MINUTE = 90
+USER_AGENT = "weather-aigefs-ops/1"
 
 
 def resolve_run_cycle_hour(lead_days: int, run_cycle_hour: int | None = None) -> int:
@@ -115,7 +136,7 @@ def resolve_run_cycle_hour(lead_days: int, run_cycle_hour: int | None = None) ->
 
 def extraction_version_for_lead(lead_days: int, run_cycle_hour: int | None = None) -> str:
     cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
-    return f"noaa_nodd_aigefs_0p25_2t6_{cycle_hour:02d}z_d{int(lead_days)}_v1"
+    return f"ncep_nomads_aigefs_ops_0p25_2t6_{cycle_hour:02d}z_d{int(lead_days)}_v1"
 
 
 def _utc(value: datetime) -> datetime:
@@ -135,7 +156,7 @@ def member_id_for(number: int) -> str:
 def object_key(run_init: datetime, member_number: int, forecast_step: int) -> str:
     run_init = _utc(run_init)
     return (
-        f"EAGLE_ensemble/aigefs.{run_init:%Y%m%d}/{run_init:%H}/mem{int(member_number):03d}/"
+        f"aigefs.{run_init:%Y%m%d}/{run_init:%H}/mem{int(member_number):03d}/"
         f"model/atmos/grib2/aigefs.t{run_init:%H}z.sfc.f{int(forecast_step):03d}.grib2"
     )
 
@@ -145,8 +166,8 @@ def _parse_index(
 ) -> tuple[int, int | None, str]:
     """(start, end or None, index line) of the 2 m temperature message.
 
-    NCEP index lines read ``n:offset:d=YYYYMMDDHH:TMP:2 m above ground:24 hour
-    fcst:ENS=+7``; the run, step and member the line names must be the ones
+    NOMADS index lines read ``n:offset:d=YYYYMMDDHH:TMP:2 m above ground:24
+    hour fcst:P-ENS=7`` (the control is ``P-ENS=0``); the run, step and member the line names must be the ones
     asked for, or the index describes some other object.
     """
 
@@ -160,7 +181,7 @@ def _parse_index(
     wanted = (
         f"d={run_init:%Y%m%d%H}",
         "anl" if int(forecast_step) == 0 else f"{int(forecast_step)} hour fcst",
-        f"ENS=+{int(member_number)}",
+        f"P-ENS={int(member_number)}",
     )
     for i, line in enumerate(lines):
         parts = line.split(":")
@@ -177,6 +198,32 @@ def _parse_index(
             raise ContractError("aigefs_archive_message_range_invalid")
         return start, end, line
     raise ContractError("aigefs_archive_index_2t_missing")
+
+
+class _RateLimiter:
+    """Request starts spaced so no minute holds more than ``per_minute``."""
+
+    def __init__(self, per_minute: int) -> None:
+        self._interval = 60.0 / float(per_minute)
+        self._lock = threading.Lock()
+        self._next = 0.0
+
+    def wait(self) -> None:
+        with self._lock:
+            now = monotonic()
+            start = max(now, self._next)
+            self._next = start + self._interval
+        if start > now:
+            sleep(start - now)
+
+
+# One per process: the follow job reads several runs in a row.
+_LIMITER = _RateLimiter(MAX_REQUESTS_PER_MINUTE)
+
+
+def _get(url: str, **kwargs: Any) -> tuple[bytes, Any]:
+    _LIMITER.wait()
+    return gefs._get_bytes(url, **kwargs)
 
 
 def _client(workers: int) -> httpx.Client:
@@ -338,7 +385,7 @@ def capture_aigefs_station_days(
     def fetch(item: tuple[int, int], client: httpx.Client) -> tuple[bytes, dict[str, Any]]:
         number, step = item
         key = object_key(run_init, number, step)
-        index_raw, _ = gefs._get_bytes(
+        index_raw, _ = _get(
             f"{BASE_URL}/{key}.idx", client=client, timeout_seconds=timeout_seconds,
             max_bytes=MAX_INDEX_BYTES,
         )
@@ -346,7 +393,7 @@ def capture_aigefs_station_days(
             index_raw, run_init=run_init, member_number=number, forecast_step=step,
         )
         span = f"bytes={start}-{end}" if end is not None else f"bytes={start}-"
-        message, headers = gefs._get_bytes(
+        message, headers = _get(
             f"{BASE_URL}/{key}", client=client, timeout_seconds=timeout_seconds,
             max_bytes=MAX_MESSAGE_BYTES, headers={"Range": span},
         )
@@ -405,7 +452,7 @@ def capture_aigefs_station_days(
                 assert_process_memory_budget(projected_bytes=workers * MAX_MESSAGE_BYTES)
                 submit_next()
     receipts.sort(key=lambda r: (int(r["member_number"]), int(r["forecast_step"])))
-    source_prefix = f"{BASE_URL}/EAGLE_ensemble/aigefs.{run_init:%Y%m%d}/{run_init:%H}/"
+    source_prefix = f"{BASE_URL}/aigefs.{run_init:%Y%m%d}/{run_init:%H}/"
     captures = [
         build_station_capture(
             station=station, event_date=event_date, scope=scope, run_init=run_init,
@@ -445,20 +492,20 @@ def capture_aigefs_station_days(
     return {**identity, "content_sha256": content_sha256(identity)}
 
 
-# The SSOT row exactly as registered on 2026-07-31 (content sha e00412bc...):
-# it names the republisher's member contract, but it describes the same 31
-# members of the same system, and a content-addressed row cannot be reworded.
+# Charter 270: the operational system's own row.  ``NOAA_AIGEFS_025`` (the
+# EAGLE feed, canonical name "NOAA AIGEFS 0.25") keeps the row registered on
+# 2026-07-31; the two share the family, so the pool never counts both.
 SYSTEM_IDENTITY = {
     "ensemble_system_id": SYSTEM_ID,
-    "canonical_name": "NOAA AIGEFS 0.25",
+    "canonical_name": "NOAA AIGEFS 0.25 operational",
     "independence_family_id": INDEPENDENCE_FAMILY_ID,
     "provider_id": PROVIDER_ID,
     "source_class": "NATIVE_ENSEMBLE_PROVIDER",
     "aggregator_or_republisher": 0,
     "expected_member_count": EXPECTED_MEMBER_COUNT,
-    "member_identity_contract_version": "open_meteo_control_plus_perturbed_v1",
+    "member_identity_contract_version": "ncep_nomads_aigefs_prod_p_ens_0_to_30_v1",
     "publication_contract_version": "native_timestamps_required_for_formal_v1",
-    "valid_from_utc": "2026-07-31T00:00:00Z",
+    "valid_from_utc": "2026-10-15T00:00:00Z",
     "valid_until_utc": "9999-12-31T23:59:59Z",
 }
 

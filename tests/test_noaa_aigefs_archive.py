@@ -38,9 +38,9 @@ def _index(run_init: datetime, number: int, step: int) -> bytes:
     stamp = f"d={run_init:%Y%m%d%H}"
     fcst = "anl" if step == 0 else f"{step} hour fcst"
     lines = [
-        f"1:0:{stamp}:PRES:surface:{fcst}:ENS=+{number}",
-        f"2:1000:{stamp}:TMP:2 m above ground:{fcst}:ENS=+{number}",
-        f"3:{1000 + LENGTH}:{stamp}:DPT:2 m above ground:{fcst}:ENS=+{number}",
+        f"1:0:{stamp}:PRES:surface:{fcst}:P-ENS={number}",
+        f"2:1000:{stamp}:TMP:2 m above ground:{fcst}:P-ENS={number}",
+        f"3:{1000 + LENGTH}:{stamp}:DPT:2 m above ground:{fcst}:P-ENS={number}",
     ]
     return "\n".join(lines).encode()
 
@@ -56,7 +56,7 @@ def fake_transport(monkeypatch):
 
     def get_bytes(url, *, client, timeout_seconds, max_bytes, headers=None):
         calls.append(url + "#" + str((headers or {}).get("Range", "")))
-        key = url.split("/EAGLE_ensemble/", 1)[1]
+        key = url.split("/com/aigefs/prod/", 1)[1]
         number = int(key.split("/mem", 1)[1][:3])
         step = int(key.rsplit(".f", 1)[1][:3])
         if url.endswith(".idx"):
@@ -70,6 +70,7 @@ def fake_transport(monkeypatch):
         return {p[0]: _value(payload["n"], payload["s"]) for p in points}
 
     monkeypatch.setattr(ag.gefs, "_get_bytes", get_bytes)
+    monkeypatch.setattr(ag, "_LIMITER", ag._RateLimiter(10**9))
     monkeypatch.setattr(ag, "decode_nearest_temperatures_c", decode)
     return calls
 
@@ -82,7 +83,7 @@ def _scope(station: str, zone: str, event_date: str) -> dict:
 def test_index_line_is_checked_against_run_step_and_member() -> None:
     run = _t("2026-09-20", 0)
     assert ag._parse_index(_index(run, 7, 24), run_init=run, member_number=7, forecast_step=24) == (
-        1000, 1000 + LENGTH - 1, f"2:1000:d=2026092000:TMP:2 m above ground:24 hour fcst:ENS=+7",
+        1000, 1000 + LENGTH - 1, f"2:1000:d=2026092000:TMP:2 m above ground:24 hour fcst:P-ENS=7",
     )
     with pytest.raises(ContractError, match="index_line_unexpected"):
         ag._parse_index(_index(run, 7, 24), run_init=run, member_number=8, forecast_step=24)
@@ -95,9 +96,9 @@ def test_index_line_is_checked_against_run_step_and_member() -> None:
 
 def test_object_key_and_extraction_version() -> None:
     assert ag.object_key(_t("2026-09-20", 6), 0, 24) == (
-        "EAGLE_ensemble/aigefs.20260920/06/mem000/model/atmos/grib2/aigefs.t06z.sfc.f024.grib2"
+        "aigefs.20260920/06/mem000/model/atmos/grib2/aigefs.t06z.sfc.f024.grib2"
     )
-    assert ag.extraction_version_for_lead(1, 6) == "noaa_nodd_aigefs_0p25_2t6_06z_d1_v1"
+    assert ag.extraction_version_for_lead(1, 6) == "ncep_nomads_aigefs_ops_0p25_2t6_06z_d1_v1"
     assert ag.member_id_for(0) == "control" and ag.member_id_for(30) == "perturbed_30"
 
 
@@ -119,7 +120,7 @@ def test_capture_reads_each_field_once_and_takes_the_in_day_maximum(fake_transpo
     assert members["perturbed_30"]["raw_tmax_c"] == pytest.approx(_value(30, 48))
     assert klga["field_receipt_count"] == 31 * 4
     assert "family_temperature_curve" not in klga
-    assert archive["ensemble_system_id"] == "NOAA_AIGEFS_025"
+    assert archive["ensemble_system_id"] == "NOAA_AIGEFS_OPS_025"
     assert archive["independence_family_id"] == "NOAA_AIGEFS"
     body = {k: v for k, v in archive.items() if k != "content_sha256"}
     assert archive["content_sha256"] == content_sha256(body)
@@ -127,7 +128,7 @@ def test_capture_reads_each_field_once_and_takes_the_in_day_maximum(fake_transpo
 
 def test_system_identity_is_the_registered_ssot_row() -> None:
     assert content_sha256(ag.SYSTEM_IDENTITY) == (
-        "e00412bc92e11d0c5e0bd4a6ce0b85d60b4f7c010c6ed297798d13e3d364fc29"
+        "bbef336b65a38c1e359d0e66c9f169140c9fbbb9cce9fe96ca7b0527ef1f0bf3"
     )
 
 
@@ -146,8 +147,8 @@ def test_ingest_writes_31_rows_replays_and_refuses_a_changed_value(fake_transpor
     assert first["state"] == "COMMITTED" and first["member_run_wrote_count"] == 31
     assert conn.execute(
         "SELECT DISTINCT extraction_version, transport_provider_id, run_cycle FROM "
-        "calibration_native_ensemble_historical_member_run WHERE ensemble_system_id='NOAA_AIGEFS_025'"
-    ).fetchall() == [("noaa_nodd_aigefs_0p25_2t6_00z_d1_v1", "NOAA_GEFS_PDS_S3", "00Z")]
+        "calibration_native_ensemble_historical_member_run WHERE ensemble_system_id='NOAA_AIGEFS_OPS_025'"
+    ).fetchall() == [("ncep_nomads_aigefs_ops_0p25_2t6_00z_d1_v1", "NOAA_GEFS_PDS_S3", "00Z")]
     assert ag.ingest_aigefs_station_days(conn, archive)["state"] == "REPLAY"
     capture = dict(archive["captures"][0])
     capture["members"] = [dict(m) for m in capture["members"]]
@@ -155,3 +156,23 @@ def test_ingest_writes_31_rows_replays_and_refuses_a_changed_value(fake_transpor
     capture["content_sha256"] = content_sha256({k: v for k, v in capture.items() if k != "content_sha256"})
     with pytest.raises(ContractError, match="frozen_fact_conflict"):
         ag.ingest_aigefs_station_day(conn, capture)
+
+
+def test_nomads_requests_go_through_one_limiter(monkeypatch) -> None:
+    # Charter 270: NOMADS bans past ~120 requests a minute.
+    assert ag.MAX_REQUESTS_PER_MINUTE <= 100
+    clock = [0.0]
+    slept: list[float] = []
+    monkeypatch.setattr(ag, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(ag, "sleep", lambda s: slept.append(s))
+    limiter = ag._RateLimiter(60)
+    for _ in range(3):
+        limiter.wait()
+    assert slept == [1.0, 2.0]
+
+
+def test_operational_system_is_its_own_row_in_the_aigefs_family() -> None:
+    assert ag.SYSTEM_ID == "NOAA_AIGEFS_OPS_025"
+    assert ag.SYSTEM_IDENTITY["independence_family_id"] == "NOAA_AIGEFS"
+    assert ag.SYSTEM_IDENTITY["canonical_name"] != "NOAA AIGEFS 0.25"
+    assert ag.BASE_URL.startswith("https://nomads.ncep.noaa.gov/")

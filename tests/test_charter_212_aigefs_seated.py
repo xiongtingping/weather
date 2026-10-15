@@ -33,7 +33,7 @@ def _t(day: str, hour: int) -> datetime:
 
 
 def test_contract_admits_every_aigefs_cycle_and_lead_under_its_own_identity() -> None:
-    contract = oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS["NOAA_AIGEFS_025"]
+    contract = oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS["NOAA_AIGEFS_OPS_025"]
     assert contract["transport_provider_id"] == ag.TRANSPORT_PROVIDER_ID == "NOAA_GEFS_PDS_S3"
     for lead in (0, 1, 2):
         entries = contract["leads"][f"d{lead}"]
@@ -41,18 +41,18 @@ def test_contract_admits_every_aigefs_cycle_and_lead_under_its_own_identity() ->
         assert all(e["serving_follow"] is True for e in entries)
         for hour in (0, 6, 12, 18):
             assert oos._historical_transport_scope_allowed(
-                system_id="NOAA_AIGEFS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+                system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
                 lead_bucket="h12_24", run_cycle=f"{hour:02d}Z",
                 extraction_version=ag.extraction_version_for_lead(lead, hour),
             )
     # a research-era identity, and GEFS's own identity, never read as AIGEFS
     assert not oos._historical_transport_scope_allowed(
-        system_id="NOAA_AIGEFS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
         lead_bucket="h12_24", run_cycle="06Z",
         extraction_version="research_" + ag.extraction_version_for_lead(1, 6),
     )
     assert not oos._historical_transport_scope_allowed(
-        system_id="NOAA_AIGEFS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
         lead_bucket="h12_24", run_cycle="00Z",
         extraction_version="noaa_gefs_pds_0p50_00z_d1_station_tmax_v2",
     )
@@ -61,7 +61,7 @@ def test_contract_admits_every_aigefs_cycle_and_lead_under_its_own_identity() ->
 def test_scheduler_readiness_names_no_aigefs_run() -> None:
     for lead in (0, 1, 2):
         runs = contracted_run_inits("2026-09-25", lead_days=lead)
-        assert "NOAA_AIGEFS_025" not in runs and "ECMWF_AIFS_ENS_GLOBAL" not in runs
+        assert "NOAA_AIGEFS_OPS_025" not in runs and "ECMWF_AIFS_ENS_GLOBAL" not in runs
         assert {"ECMWF_IFS_ENS_OPEN_PF50", "NOAA_GEFS_05"} <= set(runs)
 
 
@@ -74,7 +74,7 @@ def test_string_constants_agree_with_the_collector() -> None:
     assert probe.AIGEFS_FAMILY == follow_run.AIGEFS_FAMILY
     assert probe.SPECS[probe.AIGEFS_FAMILY].system_id == ag.SYSTEM_ID
     assert content_sha256(ag.SYSTEM_IDENTITY) == (
-        "e00412bc92e11d0c5e0bd4a6ce0b85d60b4f7c010c6ed297798d13e3d364fc29"
+        "bbef336b65a38c1e359d0e66c9f169140c9fbbb9cce9fe96ca7b0527ef1f0bf3"
     )
 
 
@@ -83,15 +83,16 @@ def test_every_aigefs_run_is_followed_per_event_date_at_its_own_publication(monk
         (lead, hour) for lead in (0, 1, 2) for hour in (0, 6, 12, 18)
     )
     paths = follow_run.follow_archive_paths(Path("/x"), follow_run.AIGEFS_FAMILY, "2026-09-25")
-    assert len(paths) == 12 and paths[-1][1].name == "aigefs_2026-09-25_d2_00z.json"
+    assert len(paths) == 12 and paths[-1][1].name == "aigefsops_2026-09-25_d2_00z.json"
     for lead in (0, 1, 2):
         assert follow_run.follow_cycle_for_rung(follow_run.AIGEFS_FAMILY, lead, 12) is None
     run = _t("2026-09-24", 6)
     assert not follow_run.follow_publication_due(
-        follow_run.AIGEFS_FAMILY, run, as_of=run + timedelta(hours=6, minutes=50)
+        follow_run.AIGEFS_FAMILY, run, as_of=run + timedelta(hours=4, minutes=5)
     )
+    # Charter 270: NOMADS runs are complete by ~init + 4h05m.
     assert follow_run.follow_publication_due(
-        follow_run.AIGEFS_FAMILY, run, as_of=run + timedelta(hours=7, minutes=5)
+        follow_run.AIGEFS_FAMILY, run, as_of=run + timedelta(hours=4, minutes=20)
     )
     assert follow_run._run_covers(
         follow_run.AIGEFS_FAMILY, event_date="2026-09-25",
@@ -110,7 +111,7 @@ def test_probe_knows_the_family_and_its_objects() -> None:
         station_timezones={"KLGA": "America/New_York", "NZWN": "Pacific/Auckland"},
     ) == 42
     grib, index = probe.aigefs_object_urls(_t("2026-09-24", 6), 30, 42)
-    assert grib.endswith("/EAGLE_ensemble/aigefs.20260924/06/mem030/model/atmos/grib2/aigefs.t06z.sfc.f042.grib2")
+    assert grib.endswith("/com/aigefs/prod/aigefs.20260924/06/mem030/model/atmos/grib2/aigefs.t06z.sfc.f042.grib2")
     assert index == grib + ".idx"
     runs = probe.candidate_runs(probe.AIGEFS_FAMILY, _t("2026-09-24", 13))
     assert _t("2026-09-24", 6) in runs and _t("2026-09-24", 12) not in runs
@@ -156,7 +157,7 @@ def test_follow_capture_banks_aigefs_runs_through_the_collector(monkeypatch, tmp
     captured = {(o["lead_days"], o["run_init_utc"]) for o in result["outcomes"]
                 if o["family"] == follow_run.AIGEFS_FAMILY and o["state"] == "CAPTURED"}
     assert (1, "2026-09-24T06:00:00Z") in captured and (2, "2026-09-23T18:00:00Z") in captured
-    assert "aigefs_2026-09-25_d1_06z.json" in [Path(p).name for p in result["archive_paths"]]
+    assert "aigefsops_2026-09-25_d1_06z.json" in [Path(p).name for p in result["archive_paths"]]
 
 
 def test_root_curve_rule_lists_aigefs_as_curveless() -> None:
@@ -164,4 +165,4 @@ def test_root_curve_rule_lists_aigefs_as_curveless() -> None:
 
     src = inspect.getsource(p0.compile_native_ensemble_p0)
     assert "system_id in CURVELESS_SYSTEM_IDS" in src
-    assert "NOAA_AIGEFS_025" in p0.CURVELESS_SYSTEM_IDS
+    assert "NOAA_AIGEFS_OPS_025" in p0.CURVELESS_SYSTEM_IDS

@@ -66,8 +66,9 @@ ECCC_FAMILY = "ECCC_DD_WEATHER"
 # Charter 204: AIFS ENS, a follow-only family (``follow_run.AIFS_FAMILY``);
 # a lane key, not a transport id -- its objects sit in PF50's bucket.
 AIFS_FAMILY = "ECMWF_AIFS_ENS"
-# Charter 212: NOAA AIGEFS (``follow_run.AIGEFS_FAMILY``), follow-only too.
-AIGEFS_FAMILY = "NOAA_AIGEFS_NODD"
+# Charter 212: NOAA AIGEFS (``follow_run.AIGEFS_FAMILY``), follow-only too;
+# charter 270: the operational run on NOMADS.
+AIGEFS_FAMILY = "NOAA_AIGEFS_NOMADS"
 FAMILIES = (ECMWF_FAMILY, GEFS_FAMILY, ICON_FAMILY, ECCC_FAMILY, AIFS_FAMILY, AIGEFS_FAMILY)
 
 ECMWF_GCS_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
@@ -85,7 +86,7 @@ DOWNLOAD_SOURCE = {
     ICON_FAMILY: "dwd",
     ECCC_FAMILY: "dd",
     AIFS_FAMILY: "gcs",
-    AIGEFS_FAMILY: "s3",
+    AIGEFS_FAMILY: "nomads",
 }
 SHADOW_SOURCES = {ECMWF_FAMILY: ("aws",)}
 
@@ -132,11 +133,11 @@ SPECS: dict[str, FamilySpec] = {
         AIFS_FAMILY, "ECMWF_AIFS_ENS_GLOBAL", (0, 6, 12, 18),
         {0: 5.8, 6: 5.8, 12: 5.8, 18: 5.8}, 14.0,
     ),
-    # Every step of a run lands in one minute, init + 6h21m..8h11m over the
-    # 36 runs 2026-09-14..09-22 (35 of them within 6h58m).
+    # Charter 270, NOMADS 2026-10-13..14: f000 at init + 3h45m..3h53m, f072
+    # by +4h05m (one outlier, 00Z 10-14: f072 at +11h53m).
     AIGEFS_FAMILY: FamilySpec(
-        AIGEFS_FAMILY, "NOAA_AIGEFS_025", (0, 6, 12, 18),
-        {0: 6.3, 6: 6.3, 12: 6.3, 18: 6.3}, 14.0,
+        AIGEFS_FAMILY, "NOAA_AIGEFS_OPS_025", (0, 6, 12, 18),
+        {0: 3.7, 6: 3.7, 12: 3.7, 18: 3.7}, 14.0,
     ),
 }
 

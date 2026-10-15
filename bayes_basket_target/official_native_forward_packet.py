@@ -44,7 +44,7 @@ ECMWF_AIFS_ENS_MULTISTATION_SCHEMA = (
 )
 # Charter 212: NOAA AIGEFS, a follow-only family like AIFS ENS.
 NOAA_AIGEFS_MULTISTATION_SCHEMA = (
-    "noaa_aigefs_official_historical_multistation_members_v1"
+    "noaa_aigefs_ops_multistation_members_v1"
 )
 # Charter 95 (2026-09-06): the regional deterministic models' forward runs
 # reach the packet through a single-member point-archive shape, one

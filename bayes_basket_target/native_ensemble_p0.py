@@ -272,7 +272,8 @@ STEP_CLASS_BORROW_RULE = "no_cross_sampling_grid_borrow_v1"
 # system seats in the probability and stays out of the curve, which is formed
 # from the systems that carry one (``ecmwf_aifs_ens_archive`` asserts the id).
 # Charter 212: NOAA AIGEFS publishes six-hourly instants the same way.
-CURVELESS_SYSTEM_IDS = frozenset({"ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_025"})
+# Charter 270: the operational AIGEFS replaced the EAGLE feed's id.
+CURVELESS_SYSTEM_IDS = frozenset({"ECMWF_AIFS_ENS_GLOBAL", "NOAA_AIGEFS_OPS_025"})
 
 
 @lru_cache(maxsize=None)

@@ -101,9 +101,9 @@ FOLLOW_FAMILIES = (ICON_FAMILY, ECCC_FAMILY)
 # Charter 204: AIFS ENS.  A lane key, not a transport id -- it shares PF50's
 # transport (``ECMWF_OPEN_DATA_S3``) and must not be confused with it.
 AIFS_FAMILY = "ECMWF_AIFS_ENS"
-# Charter 212: NOAA AIGEFS, a lane key too (its rows carry the NOAA NODD
-# transport id the GEFS lane uses).
-AIGEFS_FAMILY = "NOAA_AIGEFS_NODD"
+# Charter 212: NOAA AIGEFS, a lane key too (its rows carry the transport id
+# the GEFS lane uses); charter 270: the operational run on NOMADS.
+AIGEFS_FAMILY = "NOAA_AIGEFS_NOMADS"
 # Charter 193 amendment (2026-09-21, user ruling "A 维持现状 / C 先用 ECMWF 前一天
 # 18Z"): runs a family follows per event date rather than per ladder rung.
 # ECMWF walks the ladder itself; the one run it does not reach is D-3 18Z for
@@ -181,9 +181,9 @@ FOLLOW_PUBLICATION_LAG_HOURS = {
     # AIFS ENS cycles was up by init + 6h10m (00Z 05:59-06:09, 06Z
     # 11:55-12:04, 12Z 17:58-18:07, 18Z 23:51-00:00).
     AIFS_FAMILY: 6.25,
-    # 35 of 36 measured runs were complete by init + 6h58m; the probe sees
-    # the rest land (charter 195), this is only the fallback.
-    AIGEFS_FAMILY: 7.0,
+    # Charter 270: NOMADS runs complete by init + ~4h05m; the probe sees
+    # late ones land (charter 195), this is only the fallback.
+    AIGEFS_FAMILY: 4.25,
 }
 # Charter 212 kill switch, the AIFS one's twin.
 AIGEFS_SERVING_ENV = "PM_SEAT_AIGEFS"
@@ -193,7 +193,7 @@ AIFS_SERVING_ENV = "PM_SEAT_AIFS_ENS"
 
 _PREFIX = {
     ICON_FAMILY: "icon", ECCC_FAMILY: "eccc", ECMWF_FAMILY: "ecmwf",
-    AIFS_FAMILY: "aifs", AIGEFS_FAMILY: "aigefs",
+    AIFS_FAMILY: "aifs", AIGEFS_FAMILY: "aigefsops",
 }
 _SYSTEM = {
     ICON_FAMILY: ICON_SYSTEM_ID,

@@ -34,7 +34,7 @@ CONTEST = "minimum_variance_shrunk_covariance_v1::x"
 IFS = "ECMWF_IFS_ENS_OPEN_PF50"
 AIFS = "ECMWF_AIFS_ENS_GLOBAL"
 GEFS = "NOAA_GEFS_05"
-AIGEFS = "NOAA_AIGEFS_025"
+AIGEFS = "NOAA_AIGEFS_OPS_025"
 GEM = "ECCC_GEM_GLOBAL_ENS"
 ICON = "DWD_ICON_GLOBAL_EPS"
 # The packet carries all six; one of them (here ICON) holds no certificate

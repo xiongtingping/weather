@@ -542,7 +542,10 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     # scheduler's readiness is told nothing.  Transport id is the NOAA NODD
     # S3 programme's (see ``noaa_aigefs_archive``).  Measured before
     # registration: served P0 CRPS -3.0% alone, -1.1% on top of AIFS.
-    "NOAA_AIGEFS_025": {
+    # Charter 270: the operational NOMADS system replaced the EAGLE feed
+    # (``NOAA_AIGEFS_025``, stopped 2026-10-13 06Z); EAGLE rows stay as
+    # history, outside this contract, and are never read for OOS.
+    "NOAA_AIGEFS_OPS_025": {
         "transport_provider_id": "NOAA_GEFS_PDS_S3",
         "leads": _lead_contracts(
             supported_lead_days=_AIGEFS_LEADS,

@@ -117,7 +117,7 @@ def test_the_stable_pool_gives_ifs_and_aifs_a_family_share_each() -> None:
         IFS: "ECMWF",
         AIFS: aifs.INDEPENDENCE_FAMILY_ID,
         "NOAA_GEFS_05": "NOAA_GEFS",
-        "NOAA_AIGEFS_025": "NOAA_AIGEFS",
+        "NOAA_AIGEFS_OPS_025": "NOAA_AIGEFS",
         "DWD_ICON_GLOBAL_EPS": "DWD_ICON_EPS",
         "ECCC_GEM_GLOBAL_ENS": "ECCC_GEM",
     }

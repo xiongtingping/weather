@@ -55,7 +55,7 @@ def test_the_ai_ensembles_are_walked_by_the_same_driver() -> None:
     station can be walked back over its truth like GEFS and IFS; the driver
     reaches both through one script that takes the system as an argument."""
 
-    for provider, system_id in (("aifs", "ECMWF_AIFS_ENS_GLOBAL"), ("aigefs", "NOAA_AIGEFS_025")):
+    for provider, system_id in (("aifs", "ECMWF_AIFS_ENS_GLOBAL"), ("aigefs", "NOAA_AIGEFS_OPS_025")):
         spec = driver.PROVIDERS[provider]
         assert spec["system_id"] == system_id
         assert spec["script"].name == "backfill_ai_ensemble_multistation_archive.py"
