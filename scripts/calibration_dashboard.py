@@ -15882,6 +15882,7 @@ color-scheme:dark}
 .sd-prob-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;align-items:baseline;margin:8px 0 12px;font-size:12px}
 .sd-prob-summary dt{color:var(--muted)}.sd-prob-summary dd{margin:0;font-size:16px;font-weight:750;color:var(--c)}
 .sd-prob-summary dd small{font-size:13px;font-weight:600}
+.sd-last5{font-size:11px;font-weight:400;margin-top:2px;white-space:nowrap}
 .sd-prob-age{text-align:right;font-size:12px;margin-top:6px}
 .sd-recent{width:100%;margin-top:8px;border-collapse:collapse;font-size:12px}.sd-recent th{color:var(--muted);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--line)}
 .sd-recent td{padding:2px 4px;white-space:nowrap}.sd-recent td b{color:var(--c)}.sd-recent tbody tr:first-child td{font-weight:700}
@@ -22606,6 +22607,20 @@ function sdModels(day){
     if(Math.abs(x) < Math.pow(10, -d) / 2) return "";
     return ` <span class="${x > 0 ? "up" : "down"} sd-sub">${x > 0 ? "↑+" : "↓−"}${Math.abs(x).toFixed(d)}${unit}</span>`;
   };
+  // Each model's calibrated distribution over the last five P0 decisions,
+  // newest first, inside its own calibrated cells (user 2026-10-16「模型 run 与
+  // 权重也去掉σ。保留模型校准后5次的变化」「在模型 run 与权重即可，不用新建表」).
+  const MH = p0.model_history || [];
+  const last5 = sid => {
+    const H = MH.map(e => (e.systems || {})[sid]);
+    if(!H.some(c => c && c.mode_move_pt != null)) return "";
+    return `<div class="sd-last5" title="校准后众数桶概率对上一次 P0 的变化，最近 ${H.length} 次（新的在左）">${H.map(c => {
+      const x = c ? c.mode_move_pt : null;
+      if(x == null) return `<span class="muted">—</span>`;
+      return Math.abs(x) < 0.05 ? `<span class="flat">＝</span>`
+        : `<span class="${x > 0 ? "up" : "down"}" title="${sdEsc(c.mode)}">${x > 0 ? "↑+" : "↓−"}${Math.abs(x).toFixed(1)}点</span>`;
+    }).join(" ")}</div>`;
+  };
   const rows = models.map(m => {
     const st = m.stats || {}, pv = m.prev, raw = m.raw;
     const newRun = pv && pv.run_init_utc && m.run_init_utc && pv.run_init_utc !== m.run_init_utc;
@@ -22621,22 +22636,10 @@ function sdModels(day){
       <td class="mono">${sdN(st.mean_c, 2)}°C${pv ? dv(st.mean_c, pv.mean_c, 2, "") : ""}</td>
       <td class="mono">${raw && st.mean_c != null ? `<b class="${st.mean_c - raw.mean_c >= 0 ? "up" : "down"}">${sdSg(st.mean_c - raw.mean_c, 2)}</b>` : "—"}</td>
       <td class="sd-raw-c sd-gl">${raw ? `${sdEsc(raw.mode || "—")} <span class="muted">${sdPc(raw.mode_p)}</span>` : "—"}</td>
-      <td>${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<b title="校准把众数桶从 ${sdEsc(raw.mode)} 挪到了这里">${sdEsc(st.mode)}</b>` : sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}</td>
+      <td>${raw && raw.mode && st.mode && raw.mode !== st.mode ? `<b title="校准把众数桶从 ${sdEsc(raw.mode)} 挪到了这里">${sdEsc(st.mode)}</b>` : sdEsc(st.mode || "—")} <span class="muted">${sdPc(st.mode_p)}</span>${pv && pv.mode && st.mode && pv.mode !== st.mode ? ` <span class="sd-sub" style="color:var(--amber)">原 ${sdEsc(pv.mode)}</span>` : ""}${last5(m.system_id)}</td>
 </tr>`;
   }).join("");
   const W = p0.width || {}, Bg = p0.bridge || {};
-  // Each model's calibrated distribution over the last five P0 decisions
-  // (user 2026-10-16「模型 run 与权重也去掉σ。保留模型校准后5次的变化」), newest
-  // first: mean with its move, mode bucket and probability; weight in the tooltip.
-  const MH = p0.model_history || [];
-  const sys = models.filter(m => !m.dropped).map(m => m.system_id);
-  const hist = MH.map((e, i) => `<tr${i === 0 ? ' style="font-weight:700"' : ""}><td class="mono">${sdLocal(e.at_utc, true)}</td>${sys.map(s => {
-    const c = (e.systems || {})[s], b = ((MH[i + 1] || {}).systems || {})[s];
-    if(!c) return `<td class="mono muted">—</td>`;
-    const d = b && c.mean_c != null && b.mean_c != null ? c.mean_c - b.mean_c : null;
-    const mv = d == null ? "" : Math.abs(d) < 0.005 ? ` <span class="flat">＝</span>` : ` <span class="${d > 0 ? "up" : "down"}">${d > 0 ? "↑" : "↓"}${Math.abs(d).toFixed(2)}</span>`;
-    return `<td class="mono" title="${sdEsc(s)} 权重 ${sdPc(c.weight, 1)}">${sdN(c.mean_c, 2)}°C${mv}<div class="muted sd-sub">${sdEsc(c.mode || "—")} ${sdPc(c.mode_p, 0)}</div></td>`;
-  }).join("")}</tr>`).join("");
   const changed = models.filter(m => m.dropped || !m.prev || (m.prev.run_init_utc !== m.run_init_utc)
     || Math.abs((m.weight || 0) - (m.prev.weight || 0)) >= 0.0005).length;
   const vsPrev = p0.previous_decided_at_utc
@@ -22646,9 +22649,7 @@ function sdModels(day){
     <div class="scroll"><table class="sd-tab"><thead><tr><th rowspan="2">系统</th><th rowspan="2">run（起报，当地）</th><th rowspan="2">校准提前量</th><th rowspan="2">权重</th><th rowspan="2" title="校准层给出的分布中心（加宽核前）；P0 模型加权温度中心＝各家权重 × 校准中心之和">校准中心</th><th colspan="3" class="sd-grp sd-gl">均值</th><th colspan="2" class="sd-grp sd-gl">众数桶 · 概率</th></tr>
       <tr><th class="sd-raw-c sd-gl" title="这一期 P0 读到的原始成员最高温的平均">校准前</th><th title="订正偏差、调宽度之后这家模型自己分布的均值；箭头＝对上一期 P0">校准后</th><th title="校准后均值 − 校准前均值：订正把这家往暖（+）或往冷（−）挪了多少">移动</th><th class="sd-raw-c sd-gl" title="按当天的桶统计，原始成员占比最大的桶">校准前</th><th title="这家模型校准后分布概率最大的桶；加粗＝校准挪动了众数桶，「原」＝对上一期 P0">校准后</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub">P0 模型加权温度中心 ${sdN(p0.model_center_c, 2)}°C（各模型校准中心的加权值） · 模型包络 ${sdEsc((p0.model_envelope || []).join(" ~ "))} · 宽度 λ ${sdN(W.lambda, 2)}、入座 ${sdEsc(W.seated == null ? "—" : W.seated)} 家、距结算 ${sdN(W.hours_to_settlement, 1)} h${
-      Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>
-    ${hist ? `<div class="sd-t">校准后最近 ${MH.length} 次（均值 · 众数桶）</div>
-      <div class="scroll"><table class="sd-tab"><thead><tr><th>P0 决策</th>${sys.map(s => `<th>${sdEsc(s.replace(/_GLOBAL|_ENS|_EPS|_OPEN_PF50|_025|_05/g, ""))}</th>`).join("")}</tr></thead><tbody>${hist}</tbody></table></div>` : ""}`;
+      Bg.lambda != null ? ` · 共识桥 λ ${sdN(Bg.lambda, 2)}、共识中心 ${sdN(Bg.consensus_center_c, 2)}°C、中心差 ${sdN(Bg.center_gap_c, 2)}°C` : ""}</div>`;
 }
 
 // ---------------------------------------------------------------------------

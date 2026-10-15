@@ -329,26 +329,34 @@ def _model_history(conn, station: str, day: str, axis, n: int = 5) -> list[dict[
     """Each model's calibrated distribution over the day's last ``n`` P0
     decisions, newest first (user 2026-10-16「模型 run 与权重……保留模型校准后5次的
     变化」): per system the calibrated mean, mode bucket and its probability,
-    and the weight it sat at."""
+    and the weight it sat at; ``mode_move_pt`` is that bucket's probability
+    change, in points, against the decision before (user 「概率的变化，比如↓−0.1点
+    或者 ↑+0.1点」) -- one extra decision is read so the oldest has one too."""
 
     rows = conn.execute(
         "SELECT decision_at_utc, json_extract(lineage_json,'$.system_weights_json'),"
         " json_extract(lineage_json,'$.native_system_probabilities_json')"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND +stage='P0' AND state='COMMITTED' ORDER BY decision_at_utc DESC LIMIT ?",
-        (station, day, n),
+        (station, day, n + 1),
     ).fetchall()
+    decoded = [(str(at), _json(w, {}), {k: _norm(v or {}) for k, v in _json(v, {}).items()})
+               for at, w, v in rows]
     out = []
-    for at, weights, vectors in rows:
-        weights, vectors = _json(weights, {}), _json(vectors, {})
+    for i, (at, weights, vectors) in enumerate(decoded[:n]):
+        before = decoded[i + 1][2] if i + 1 < len(decoded) else {}
         systems = {}
-        for system, raw in vectors.items():
-            stats = vector_stats(_norm(raw or {}), axis) if raw else None
+        for system, vec in vectors.items():
+            stats = vector_stats(vec, axis) if vec else None
             if stats is None:
                 continue
-            systems[system] = {"mean_c": stats["mean_c"], "mode": stats["mode"], "mode_p": stats["mode_p"],
-                               "weight": _float(weights.get(system))}
-        out.append({"at_utc": str(at), "systems": systems})
+            prior = before.get(system)
+            systems[system] = {
+                "mean_c": stats["mean_c"], "mode": stats["mode"], "mode_p": stats["mode_p"],
+                "weight": _float(weights.get(system)),
+                "mode_move_pt": None if not prior else round(100 * (stats["mode_p"] - prior.get(stats["mode"], 0.0)), 2),
+            }
+        out.append({"at_utc": at, "systems": systems})
     return out
 
 
