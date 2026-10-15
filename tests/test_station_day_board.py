@@ -446,6 +446,10 @@ def test_mode_agreement_reads_the_picked_episodes() -> None:
     assert picks["first"]["all"]["ask"] == 0.45 and picks["first"]["all"]["n_ask3"] == 0
     assert picks["first"]["all"]["mid"] == 0.42 and picks["first"]["all"]["mid3"] == 0.8
     assert moved["market"]["every"]["hit_mid"] == 1.0 and moved["market"]["every"]["mid3"] == 0.85
+    led = picks["first"]["ledger"]["mid"]          # one share each at its own mid: 0.42 lost, 0.42 won
+    assert led["trades"] == 2 and led["hits"] == 1 and led["paid"] == 0.84 and led["profit"] == 0.16
+    assert led["bands"] == [{"lo": 0.4, "hi": 0.5, "trades": 2, "hits": 1, "paid": 0.84, "profit": 0.16}]
+    assert moved["model"]["ledger_first"]["ask"]["trades"] == 1
     assert moved["market"]["first"] is None and moved["both"]["every"] is None
     lead = {(x["slice"], x["scope"]): x["n"] for x in moved["market"]["slices"] if x["group"] == "提前量"}
     assert lead == {("距结算 < 12h", "every"): 1, ("距结算 12–24h", "every"): 1}
@@ -491,7 +495,11 @@ def test_mode_agreement_card_draws_three_picks() -> None:
                               "daily": [{"event_date": "2026-10-01", "n": 4, "hit": hit}]}
     doc = {"since": "2026-09-06", "through": "2026-10-14", "event_days": 39, "book_window_sec": 1800,
            "computed_at_utc": "x", "first_paired": {"n": 10, "ours_hit": 0.358, "market_hit": 0.44},
-           "picks": [pick("first", 0.45), pick("second", 0.5), pick("last", 0.983)],
+           "picks": [{**pick("first", 0.45), "ledger": {
+                         "mid": {"trades": 634, "hits": 284, "paid": 282.8565, "profit": 1.1435,
+                                 "bands": [{"lo": 0.4, "hi": 0.5, "trades": 240, "hits": 102, "paid": 106.55, "profit": -4.55}]},
+                         "ask": {"trades": 634, "hits": 284, "paid": 295.871, "profit": -11.871, "bands": []}}},
+                     pick("second", 0.5), pick("last", 0.983)],
            "converge": [{"mover": "model", "every": {"n": 7089, "station_days": 1288, "hit": 0.656, "said_market": 0.634,
                                                      "n_ask": 5607, "hit_ask": 0.625, "ask": 0.641,
                                                      "over_ask_ci": [-0.037, 0.008], "n_mid3": 3673, "hit_mid3": 0.947,
@@ -506,6 +514,7 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\nconst SD = {};\n"
               "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
               + function("sdAgreeEdge") + "\n" + function("sdModeAgreement") + "\n" + function("sdModeConverge")
+              + "\n" + function("sdAgreeLedger")
               + f"\nconsole.log(sdModeAgreement({json.dumps(doc, ensure_ascii=False)}));\n")
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
@@ -521,6 +530,8 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     assert ">+0.2 ·</span>" in out and ">−0.4 ·</span>" in out         # ... and against the mid: even
     assert ">+1.4</span>" in out                                       # model onto the market, mode ±1 at the mid
     assert "−中价" in out
+    assert "逐笔记账" in out and "0.40–0.50" in out and ">−4.55</span>" in out  # one band at the mid
+    assert ">+1.14</span>" in out and ">−11.87</span>" in out                  # the totals, mid and ask
     assert "不能据此下单" in out
 
 

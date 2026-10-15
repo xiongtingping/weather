@@ -2953,6 +2953,9 @@ MODE_AGREEMENT_PICKS = (("first", 0), ("second", 1), ("last", -1))
 #: Station-days this recent are walked again every run (a truth revision or
 #: a late book still moves them); older ones reuse the stored record.
 MODE_AGREEMENT_REWALK_DAYS = 4
+#: Entry-price bands of the per-trade ledger (one share bought at each
+#: episode's own price, user 2026-10-15 「你不要用平均数」「加」).
+MODE_AGREEMENT_PRICE_BANDS = ((0.0, 0.3), (0.3, 0.4), (0.4, 0.5), (0.5, 0.6), (0.6, 0.8), (0.8, 1.01))
 #: Who moved onto the common bucket (see mode_agreement_days).
 MODE_AGREEMENT_MOVERS = ("model", "market", "both", "start")
 
@@ -3148,6 +3151,29 @@ def _mode_agreement_ask(picked: Sequence[Mapping[str, Any]], price: str, hit: st
             f"over_{base}{suffix}_ci": _traded_day_bootstrap(quoted, [float(e[hit]) - e[price] for e in quoted])}
 
 
+def _mode_agreement_ledger(episodes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """One share of the agreed bucket bought at each episode's own price --
+    the mid and the best ask, each on the episodes that had it -- summed by
+    entry-price band: trades, hits, paid, returned, profit.  No averages."""
+
+    out: dict[str, Any] = {}
+    for price in ("mid", "ask"):
+        quoted = [e for e in episodes if e.get(price) is not None]
+        rows = []
+        for lo, hi in MODE_AGREEMENT_PRICE_BANDS:
+            xs = [e for e in quoted if lo <= e[price] < hi]
+            if xs:
+                hits = sum(1 for e in xs if e["hit"])
+                paid = sum(e[price] for e in xs)
+                rows.append({"lo": lo, "hi": min(hi, 1.0), "trades": len(xs), "hits": hits,
+                             "paid": round(paid, 4), "profit": round(hits - paid, 4)})
+        hits = sum(1 for e in quoted if e["hit"])
+        paid = sum(e[price] for e in quoted)
+        out[price] = {"bands": rows, "trades": len(quoted), "hits": hits, "paid": round(paid, 4),
+                      "profit": round(hits - paid, 4)}
+    return out
+
+
 def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
     """How often the truth lands in the bucket where our mode and the
     market's first agree, agree a second time, and agree for the last time:
@@ -3188,7 +3214,7 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
         for day in sorted({e["event_date"] for e in rows}):
             got = _mode_agreement_group([e for e in rows if e["event_date"] == day])
             daily.append({"event_date": day, "n": got["n"], "hit": got["hit"]})
-        out_picks.append({"pick": name, "station_days": len(rows),
+        out_picks.append({"pick": name, "station_days": len(rows), "ledger": _mode_agreement_ledger(rows),
                           "share_of_days": len(rows) / len(days) if days else None,
                           "all": _mode_agreement_group(rows), "slices": slices, "daily": daily})
     # Who moved onto the common bucket: every episode, and the first one alone.
@@ -3215,7 +3241,7 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
         for day in sorted({e["event_date"] for e in every}):
             got = _mode_agreement_group([e for e in every if e["event_date"] == day])
             daily.append({"event_date": day, "n": got["n"], "hit": got["hit"]})
-        converge.append({"mover": mover, "every": _mode_agreement_group(every),
+        converge.append({"mover": mover, "every": _mode_agreement_group(every), "ledger_first": _mode_agreement_ledger(first),
                          "first": _mode_agreement_group(first), "slices": slices, "daily": daily})
     base = [d["first_paired"] for d in days if d["first_paired"]]
     baseline = {
@@ -3278,7 +3304,7 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "mode_agreement": (
         mode_agreement,
         (mode_agreement, mode_agreement_days, _mode_agreement_group, _ladder_mode, _served_belief_vector,
-         _ladder_market_reference, _wilson, _traded_day_bootstrap, _ladder_quotes, _mode_agreement_ask),
+         _ladder_market_reference, _wilson, _traded_day_bootstrap, _ladder_quotes, _mode_agreement_ask, _mode_agreement_ledger),
     ),
 }
 

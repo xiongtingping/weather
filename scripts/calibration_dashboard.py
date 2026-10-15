@@ -22880,9 +22880,39 @@ function sdModeAgreement(A){
     <div class="grid g3">${cards}</div>
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
     <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th title="命中 − 中价">−中价</th><th>±1 桶</th><th title="±1 桶命中 − 三桶中价合计">−中价</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${sdAgreeLedger(A)}
     ${trend}
     ${sdModeConverge(A)}
   </details>`;
+}
+// The per-trade ledger (user 2026-10-15 「你不要用平均数」「加」): one share of
+// the agreed bucket at each episode's own mid / best ask, summed by entry price.
+function sdAgreeLedger(A){
+  const groups = [];
+  (A.picks || []).filter(k => k.pick !== "last" && k.ledger).forEach(k =>
+    groups.push([{first: "首次同桶", second: "第二次同桶"}[k.pick] || k.pick, k.ledger]));
+  (A.converge || []).filter(c => (c.mover === "model" || c.mover === "market") && c.ledger_first).forEach(c =>
+    groups.push([c.mover === "model" ? "首次 · 模型 → 市场" : "首次 · 市场 → 模型", c.ledger_first]));
+  if(!groups.length) return "";
+  const usd = v => v == null ? "—" : Number(v).toFixed(2);
+  const pnl = v => v == null ? "—" : `<span class="mono ${v > 0 ? "up" : v < 0 ? "down" : "muted"}">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}</span>`;
+  const band = b => `${b.lo.toFixed(2)}–${b.hi.toFixed(2)}`;
+  const cells = (L, lo) => {
+    const b = (L.bands || []).find(r => r.lo === lo);
+    return b ? `<td class="mono">${b.trades}</td><td class="mono">${b.hits}</td><td class="mono">${usd(b.paid)}</td><td>${pnl(b.profit)}</td>`
+      : `<td class="mono muted">—</td><td></td><td></td><td></td>`;
+  };
+  const tables = groups.map(([name, L]) => {
+    const los = [...new Set(["mid", "ask"].flatMap(k => ((L[k] || {}).bands || []).map(b => b.lo)))].sort((a, b) => a - b);
+    const spans = Object.fromEntries(["mid", "ask"].flatMap(k => ((L[k] || {}).bands || []).map(b => [b.lo, band(b)])));
+    const total = k => { const T = L[k] || {}; return `<td class="mono"><b>${T.trades || 0}</b></td><td class="mono"><b>${T.hits || 0}</b></td><td class="mono"><b>${usd(T.paid)}</b></td><td><b>${pnl(T.profit)}</b></td>`; };
+    return `<div class="sd-t" style="margin-top:6px">${sdEsc(name)}</div><div class="scroll"><table class="sd-tab"><thead>
+      <tr><th rowspan="2">买入价</th><th colspan="4">按中价买</th><th colspan="4">按卖一买（吃单实付）</th></tr>
+      <tr><th>笔</th><th>中</th><th>付出</th><th>盈亏</th><th>笔</th><th>中</th><th>付出</th><th>盈亏</th></tr></thead><tbody>
+      ${los.map(lo => `<tr><td class="mono">${spans[lo]}</td>${cells(L.mid || {}, lo)}${cells(L.ask || {}, lo)}</tr>`).join("")}
+      <tr><td><b>合计</b></td>${total("mid")}${total("ask")}</tr></tbody></table></div>`;
+  }).join("");
+  return `<details class="sd-sub" open><summary class="sd-t" title="每次同桶按当时自己的价格买 1 股、结算收回 1 或 0，按买入价分档逐笔加总，不取平均；只计当时盘口有该价的那几次；「最后一次」是事后才知道的，不列">逐笔记账：每次买 1 股，按买入价分档（美元）</summary>${tables}</details>`;
 }
 // Who moved onto the common bucket (user 2026-10-15 「统计模型的众数桶向市场的众数桶
 // 靠拢，和市场的众数桶向模型的众数桶靠拢的真值的命中率，也是时间轴维度」).
