@@ -187,14 +187,17 @@ def _activation_db(certified: list[str]):
     import sqlite3
 
     conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE calibration_station_registry (station_id TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO calibration_station_registry VALUES ('KLGA')")
     conn.execute(
-        "CREATE TABLE calibration_native_ensemble_activation (artifact_kind TEXT,"
-        " ensemble_system_id_or_star TEXT, authority_scope TEXT,"
-        " valid_from_utc TEXT, valid_until_utc TEXT)"
+        "CREATE TABLE calibration_native_ensemble_activation (station_id TEXT,"
+        " artifact_kind TEXT, ensemble_system_id_or_star TEXT, authority_scope TEXT,"
+        " valid_from_utc TEXT, valid_until_utc TEXT,"
+        " UNIQUE(artifact_kind, station_id, ensemble_system_id_or_star))"
     )
     conn.executemany(
         "INSERT INTO calibration_native_ensemble_activation VALUES"
-        " ('NATIVE_ENSEMBLE_SYSTEM_CALIBRATION', ?, 'PRODUCTION_NO_LIVE_ONLY',"
+        " ('KLGA', 'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION', ?, 'PRODUCTION_NO_LIVE_ONLY',"
         " '2026-10-01T00:00:00Z', '9999-12-31T23:59:59Z')",
         [(s,) for s in certified],
     )
