@@ -1215,3 +1215,37 @@ def test_the_member_run_table_is_the_only_capped_one() -> None:
         policy.max_batches_per_run is None
         for policy in off.POLICIES if policy.table != member.table
     )
+
+
+def test_the_row_days_cache_plans_the_same_rows_and_reads_the_scores_once(
+    store: Path, tmp_path: Path
+) -> None:
+    """2026-10-15: the superseded rule's per-row days are cached by rowid
+    (146 s of a 185 s plan was re-parsing every evaluation's scores); a plan
+    with the cache names the rows a plan without it names, and the second
+    cached plan reads no score JSON at all."""
+
+    key = _oos_key("KLGA", ["DWD_ICON", "ECMWF_IFS"])
+    conn = sqlite3.connect(store)
+    for eid, at, days in (
+        ("h1", "2026-09-14T01:00:00Z", ["2026-09-11", "2026-09-12"]),
+        ("h2", "2026-09-16T01:00:00Z", ["2026-09-12", "2026-09-13"]),
+        ("h3", "2026-09-18T01:00:00Z", ["2026-09-10", "2026-09-11", "2026-09-12"]),
+        ("h4", "2026-09-22T01:00:00Z", ["2026-09-13"]),
+        ("h5", "2026-09-26T01:00:00Z", ["2026-09-13"]),
+    ):
+        _evaluation(conn, eid, key, at, days=days)
+    conn.commit()
+    policy = off.POLICY_BY_TABLE[OOS]
+    plain = off.plan_table(conn, policy, as_of=AS_OF, holds={})
+    cache = tmp_path / "row_days.sqlite"
+    first = off.plan_table(conn, policy, as_of=AS_OF, holds={}, row_days_cache=cache)
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    second = off.plan_table(conn, policy, as_of=AS_OF, holds={}, row_days_cache=cache)
+    conn.set_trace_callback(None)
+    assert list(first.candidates) == list(plain.candidates) == list(second.candidates)
+    assert first.superseded_rows == plain.superseded_rows == second.superseded_rows > 0
+    rule = policy.move_superseded
+    assert not [s for s in statements if rule.day_sql[0].split("(")[0] in s and "json" in s.lower()]
+    conn.close()

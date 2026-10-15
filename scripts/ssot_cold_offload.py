@@ -126,6 +126,11 @@ COLD_SCHEMA_TABLE = "__ssot_cold_schema"
 RUNTIME = ROOT / "data" / "runtime"
 MANIFEST = RUNTIME / "ssot_cold_offload.jsonl"
 HOLDS = RUNTIME / "ssot_cold_offload_holds.json"
+#: The days each superseded-rule row gives (MoveSuperseded.row_days), kept by
+#: rowid beside the manifest.  Those rows are append-only and never updated,
+#: so a row's days never change; reading them again was a JSON parse of every
+#: evaluation in the window each run (146 s of a 185 s plan, 2026-10-15).
+ROW_DAYS_CACHE = RUNTIME / "ssot_cold_offload_row_days.sqlite"
 RECEIPT = RUNTIME / "ssot_cold_offload_latest.json"
 LOCK = RUNTIME / "ssot_cold_offload.lock"
 
@@ -1328,6 +1333,7 @@ def _instant(value: Any) -> datetime | None:
 
 def _vector_ref_rowids(
     conn: sqlite3.Connection, table: str, rule: KeepVectorRefs,
+    before_day: str | None = None,
 ) -> tuple[dict[int, str], int]:
     """The rowids of ``table`` an execution vector names, and how many named
     hashes their station-day does not hold (see :class:`KeepVectorRefs`)."""
@@ -1339,6 +1345,11 @@ def _vector_ref_rowids(
         f"SELECT c.station_id, c.event_date, v.{_q(rule.vector_column)}, v.quote_observed_at"
         f" FROM {VECTOR_TABLE} v JOIN {CYCLE_TABLE} c ON c.cycle_id = v.cycle_id"
         f" WHERE v.{_q(rule.vector_column)} IS NOT NULL"
+        # Only station-days with rows old enough to leave: a protection of a
+        # row that is not leaving changes nothing, and reading the recent
+        # days' books for their hashes was most of this pass (2026-10-15).
+        + (" AND c.event_date < ?" if before_day else ""),
+        (before_day,) if before_day else (),
     ):
         wanted.setdefault((str(station), str(day)), {}).setdefault(str(sha), set()).add(_instant(instant))
     kept: dict[int, str] = {}
@@ -1485,6 +1496,7 @@ def plan_table(
     as_of: datetime,
     holds: Mapping[str, Mapping[str, Any]],
     estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
+    row_days_cache: Path | None = None,
 ) -> TablePlan:
     """Every rowid of ``policy.table`` that may leave, and what was kept and why.
 
@@ -1523,13 +1535,16 @@ def plan_table(
         floor_days.append((str(hold["since"]), "hold"))
     table, time_column = policy.table, policy.time_column
     extra = f" AND ({policy.candidate_where})" if policy.candidate_where else ""
-    plan.older_than_cutoff = int(conn.execute(
-        f"SELECT COUNT(*) FROM {_q(table)} WHERE {_q(time_column)} < ?{extra}", (plan.cutoff,)
-    ).fetchone()[0])
-    if not plan.older_than_cutoff and policy.move_superseded is None:
+    # The old rows are counted off their own listing below (plus what a floor
+    # holds), not by a COUNT of their own: on the 7.5M member rows that was a
+    # second 21 s pass over the same range (2026-10-15).
+    kept: dict[str, int] = {}
+    held = 0
+    if policy.move_superseded is None and conn.execute(
+        f"SELECT 1 FROM {_q(table)} WHERE {_q(time_column)} < ?{extra} LIMIT 1", (plan.cutoff,)
+    ).fetchone() is None:
         plan.state = "nothing_old"
         return plan
-    kept: dict[str, int] = {}
     # A floor or a hold keeps everything dated on or after it: below the
     # lowest of them and the cutoff is all that can leave.
     effective = plan.cutoff
@@ -1623,9 +1638,16 @@ def plan_table(
             for rule, ids in named:
                 if str(value(rule.column)) in ids:
                     protected.setdefault(rowid, f"named:{rule.name}")
+    plan.older_than_cutoff = len(older) + held
+    if not plan.older_than_cutoff and policy.move_superseded is None:
+        plan.state = "nothing_old"
+        return plan
     if policy.keep_vector_refs is not None and len(older):
         old_set = set(older)
-        refs, plan.absent_vector_refs = _vector_ref_rowids(conn, table, policy.keep_vector_refs)
+        refs, plan.absent_vector_refs = _vector_ref_rowids(
+            conn, table, policy.keep_vector_refs,
+            before_day=effective if time_column == "event_date" else None,
+        )
         for rowid, label in refs.items():
             if rowid in old_set:
                 protected.setdefault(rowid, label)
@@ -1662,7 +1684,7 @@ def plan_table(
     if policy.move_superseded is not None:
         superseded = _superseded_rowids(
             conn, policy, since=effective, until=min(floor_days)[0] if floor_days else None,
-            named=named, protected_latest=protected,
+            named=named, protected_latest=protected, row_days_cache=row_days_cache,
         )
         superseded.difference_update(leaving)
         plan.superseded_rows = len(superseded)
@@ -1685,6 +1707,7 @@ def _superseded_rowids(
     until: str | None,
     named: Sequence[tuple[KeepNamed, set[str]]],
     protected_latest: Mapping[int, str],
+    row_days_cache: Path | None = None,
 ) -> set[int]:
     """The rows dated on or after ``since`` (and before ``until``) that
     ``policy.move_superseded`` lets leave.
@@ -1702,10 +1725,15 @@ def _superseded_rowids(
     named_columns = [r.column for r, _ids in named]
     columns = list(dict.fromkeys([*rule.key, *rule.order, *latest_columns, *named_columns]))
     columns = [c for c in columns if c != "rowid"]
+    # The row's identity column rides along so a cached rowid is checked
+    # against the row it was read from.
+    identity = rule.order[-1]
+    if identity not in columns:
+        columns.append(identity)
     at = {column: 1 + index for index, column in enumerate(columns)}
-    days_at = 1 + len(columns)
     listed = ",".join(_q(c) for c in columns)
     reads = ",".join(rule.day_sql)
+    cache = _RowDaysCache(row_days_cache, table) if row_days_cache is not None else None
     window = f"{_q(time_column)} >= ?" + (f" AND {_q(time_column)} < ?" if until else "")
     extra = f" AND ({policy.candidate_where})" if policy.candidate_where else ""
     parts = [
@@ -1714,11 +1742,22 @@ def _superseded_rowids(
     leaving: set[int] = set()
     for part in parts:
         args: tuple = (part, since) + ((until,) if until else ())
-        rows = conn.execute(
-            f"SELECT rowid,{listed},{reads} FROM {_q(table)}"
-            f" WHERE {_q(rule.partition)}=? AND {window}{extra}",
-            args,
-        ).fetchall()
+        if cache is None:
+            rows = conn.execute(
+                f"SELECT rowid,{listed},{reads} FROM {_q(table)}"
+                f" WHERE {_q(rule.partition)}=? AND {window}{extra}",
+                args,
+            ).fetchall()
+            days_of = {int(row[0]): set(rule.row_days(*row[1 + len(columns):])) for row in rows}
+        else:
+            rows = conn.execute(
+                f"SELECT rowid,{listed} FROM {_q(table)}"
+                f" WHERE {_q(rule.partition)}=? AND {window}{extra}",
+                args,
+            ).fetchall()
+            days_of = cache.days(
+                conn, {int(row[0]): str(row[at[identity]]) for row in rows}, reads, rule.row_days,
+            )
 
         def value(row: Sequence[Any], column: str) -> Any:
             return int(row[0]) if column == "rowid" else row[at[column]]
@@ -1744,15 +1783,67 @@ def _superseded_rowids(
             )
             given: set[str] = set()
             for row in members:
-                days = set(rule.row_days(*row[days_at:]))
                 rowid = int(row[0])
+                days = days_of[rowid]
                 if not days <= given and days:
                     given |= days
                     continue
                 if rowid not in keep and rowid not in protected_latest:
                     leaving.add(rowid)
         del rows
+    if cache is not None:
+        cache.close()
     return leaving
+
+
+class _RowDaysCache:
+    """``MoveSuperseded.row_days`` per rowid, persisted (see ROW_DAYS_CACHE).
+
+    Keyed on (table, rowid) and checked against the row's identity value, so
+    a rowid that ever named another row is read again.  Not the SSOT: a lost
+    or stale file costs one full read, never a wrong plan.
+    """
+
+    def __init__(self, path: Path, table: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.table = table
+        self.db = sqlite3.connect(str(path), timeout=30.0)
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS row_days(tbl TEXT NOT NULL, row_id INTEGER NOT NULL,"
+            " identity TEXT NOT NULL, days_json TEXT NOT NULL, PRIMARY KEY(tbl, row_id))"
+        )
+
+    def days(
+        self, conn: sqlite3.Connection, identities: Mapping[int, str], reads: str,
+        row_days: Callable[..., Any],
+    ) -> dict[int, set[str]]:
+        out: dict[int, set[str]] = {}
+        missing: list[int] = []
+        for chunk in _chunks(sorted(identities), READ_CHUNK):
+            marks = ",".join("?" * len(chunk))
+            for row_id, identity, days_json in self.db.execute(
+                f"SELECT row_id, identity, days_json FROM row_days WHERE tbl=? AND row_id IN ({marks})",
+                (self.table, *chunk),
+            ):
+                if identities.get(int(row_id)) == identity:
+                    out[int(row_id)] = set(json.loads(days_json))
+        missing = [rowid for rowid in identities if rowid not in out]
+        fresh: list[tuple[str, int, str, str]] = []
+        for chunk in _chunks(missing, READ_CHUNK):
+            marks = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                f"SELECT rowid,{reads} FROM {_q(self.table)} WHERE rowid IN ({marks})", tuple(chunk),
+            ):
+                days = set(row_days(*row[1:]))
+                out[int(row[0])] = days
+                fresh.append((self.table, int(row[0]), identities[int(row[0])], json.dumps(sorted(days))))
+        if fresh:
+            self.db.executemany("INSERT OR REPLACE INTO row_days VALUES(?,?,?,?)", fresh)
+            self.db.commit()
+        return out
+
+    def close(self) -> None:
+        self.db.close()
 
 
 def _time_of(conn: sqlite3.Connection, table: str, column: str, rowid: int) -> str | None:
@@ -1794,7 +1885,11 @@ def _table_size(conn: sqlite3.Connection, table: str, sample: int) -> tuple[int,
     rows = int(conn.execute(f"SELECT COUNT(*) FROM {_q(table)}").fetchone()[0])
     if not rows:
         return 0, 0
-    low, high = conn.execute(f"SELECT MIN(rowid), MAX(rowid) FROM {_q(table)}").fetchone()
+    # Two statements: SQLite answers MIN(rowid) or MAX(rowid) from one end
+    # of the b-tree, but both in one SELECT walks the whole table (35 s on
+    # the 7.5M member rows, 2026-10-15).
+    low = conn.execute(f"SELECT MIN(rowid) FROM {_q(table)}").fetchone()[0]
+    high = conn.execute(f"SELECT MAX(rowid) FROM {_q(table)}").fetchone()[0]
     points = max(1, min(int(sample), rows))
     step = max(1, (int(high) - int(low) + 1) // points)
     picked: list[int] = []
@@ -2475,6 +2570,7 @@ def run(
     estimate_sample: int = DEFAULT_ESTIMATE_SAMPLE,
     policies: Sequence[TablePolicy] = POLICIES,
     sleep: Callable[[float], None] = time.sleep,
+    row_days_cache: Path | None = None,
 ) -> dict[str, Any]:
     """Plan every selected table; with ``apply``, move what the plan names."""
 
@@ -2532,7 +2628,8 @@ def run(
         for policy in selected:
             try:
                 plan = plan_table(read, policy, as_of=moment, holds=holds,
-                                  estimate_sample=estimate_sample)
+                                  estimate_sample=estimate_sample,
+                                  row_days_cache=row_days_cache)
             except sqlite3.Error as exc:
                 # A table that cannot be planned is left alone; the others go on.
                 plan = TablePlan(policy=policy, cutoff=policy.cutoff_date(moment), state="refused",
@@ -2727,6 +2824,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             batch_bytes=int(args.batch_mib * MIB),
             min_cold_free_bytes=int(args.cold_tier_min_free_gib * GIB),
             estimate_sample=args.estimate_sample, manifest=manifest, holds_path=holds,
+            row_days_cache=manifest.parent / ROW_DAYS_CACHE.name,
         )
         if receipt_path:
             receipt_path.parent.mkdir(parents=True, exist_ok=True)
