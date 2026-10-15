@@ -1,0 +1,20 @@
+scored station-days 924 on 21 event days (first 7 days train only); sigma(truth-F) walk-forward 1.332..1.412 C
+base N(F, sigma): LogScore 1.6603, CRPS 0.7054 C, Brier 0.7751; truth on F 33.3%
+walk-forward kappa by day: {'2026-09-22': 0.0, '2026-09-23': 0.0, '2026-09-24': 0.0, '2026-09-25': 0.5, '2026-09-26': 1.0, '2026-09-27': 0.5, '2026-09-28': 1.0, '2026-09-29': 1.0, '2026-09-30': 1.0, '2026-10-01': 0.5, '2026-10-02': 0.5, '2026-10-03': 1.0, '2026-10-04': 1.0, '2026-10-05': 1.0, '2026-10-06': 1.0, '2026-10-07': 0.5, '2026-10-08': 1.0, '2026-10-09': 1.0, '2026-10-10': 0.5, '2026-10-11': 0.5, '2026-10-14': 0.5}
+
+  kappa 1 (main)                 dLogScore -0.0068 [-0.0141, +0.0006]   CRPS -0.0045 [-0.0100, +0.0012]   Brier -0.0037 [-0.0070, -0.0008]*  halves -0.0092/-0.0045
+     on F +0.0001 (n 308)  off, tilt right -0.1472 (n 336)  off, tilt wrong +0.1541 (n 280)
+
+  kappa 0.5                      dLogScore -0.0073 [-0.0111, -0.0036]*  CRPS -0.0052 [-0.0080, -0.0023]*  Brier -0.0032 [-0.0049, -0.0016]*  halves -0.0096/-0.0050
+     on F +0.0001 (n 308)  off, tilt right -0.0805 (n 336)  off, tilt wrong +0.0726 (n 280)
+
+  replace with P_full            dLogScore -0.0083 [-0.0191, +0.0025]   CRPS -0.0046 [-0.0147, +0.0050]   Brier -0.0026 [-0.0069, +0.0014]   halves -0.0138/-0.0030
+     on F +0.0002 (n 308)  off, tilt right -0.1237 (n 336)  off, tilt wrong +0.1210 (n 280)
+
+  replace with P_pos (control)   dLogScore +0.0053 [-0.0058, +0.0164]   CRPS +0.0041 [-0.0045, +0.0125]   Brier +0.0029 [-0.0009, +0.0072]   halves +0.0078/+0.0030
+     on F +0.0001 (n 308)  off, tilt right +0.0295 (n 336)  off, tilt wrong -0.0180 (n 280)
+
+  walk-forward kappa             dLogScore -0.0044 [-0.0104, +0.0016]   CRPS -0.0034 [-0.0076, +0.0014]   Brier -0.0025 [-0.0048, -0.0004]*  halves -0.0055/-0.0034
+     on F +0.0001 (n 308)  off, tilt right -0.1075 (n 336)  off, tilt wrong +0.1142 (n 280)
+
+increment direction right on off-F rows: 54.5% (n 616); mean |increment logit| 0.319

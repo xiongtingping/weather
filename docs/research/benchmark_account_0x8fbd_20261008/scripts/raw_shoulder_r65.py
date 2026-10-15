@@ -307,7 +307,7 @@ for d in days(D_FROM, D_TO):
                 ex.append(h["cur"][s][0][1] + statistics.mean(eh[-30:]) - f)
         x["G6 outside-F median - F"] = statistics.median(ex) / w if ex else 0.0
         x["G6 outside-F count"] = float(len(ex))
-        rows.append({"k": k, "ed": d.isoformat(), "y": y, "fb": fb, "x": x,
+        rows.append({"k": k, "ed": d.isoformat(), "y": y, "fb": fb, "x": x, "edges": edges, "f": f, "w": w,
                      "cls": "on" if y == fb else ("shoulder" if abs(y - fb) == 1 else "far"), "side": int(np.sign(y - fb))})
 
 GROUPS = {
