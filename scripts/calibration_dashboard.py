@@ -15643,7 +15643,8 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-g{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin:6px 0 10px}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
-.sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap}
+.sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:nowrap}
 .sd-sun-c>b{margin:2px 0 4px}
 .sd-sun-c>i{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:1.5}
@@ -22587,8 +22588,16 @@ function sdSunStat(label, mj, at, tip, extra){
 // One shape for every card (user 2026-10-15「视觉设计不统一」): the title, its
 // scope and unit in small type under it, the big number, then the two numbers
 // it compares as two aligned rows.
-const sdSunCard = (label, tag, big, cls, rows, tip) =>
-  `<div class="sd-pnl-c sd-sun-c" title="${sdEsc(tip)}"><span><em>${label}</em><small>${tag}</small></span><b class="${cls || ""}">${big}</b>${
+// A mark before each title (user 2026-10-15「日照卡片增加太阳/辐射标志，云同理」):
+// a sun for sunshine, a cloud for cloud, a thermometer for the maximum.
+const SD_ICON = {
+  sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/>',
+  cloud: '<path d="M4.6 12.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/>',
+  temp: '<path d="M6.5 9.6V3a1.5 1.5 0 0 1 3 0v6.6a2.8 2.8 0 1 1-3 0z"/><path d="M8 6.5v4.6"/>',
+};
+const sdIcon = k => `<svg class="sd-ico sd-ico-${k}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SD_ICON[k]}</svg>`;
+const sdSunCard = (icon, label, tag, big, cls, rows, tip) =>
+  `<div class="sd-pnl-c sd-sun-c" title="${sdEsc(tip)}"><span><em>${icon ? sdIcon(icon) : ""}${label}</em><small>${tag}</small></span><b class="${cls || ""}">${big}</b>${
     rows.map(([k, v]) => `<i><span>${k}</span><span>${v}</span></i>`).join("")}</div>`;
 const sdPct = (a, b) => a != null && b ? 100 * (a - b) / b : null;
 const sdWarmCls = v => v == null ? "" : v >= 0 ? "sd-warm" : "sd-cold";
@@ -22797,26 +22806,26 @@ function sdSky(day){
   const cloudCard = !cloudPairs.length ? "" : (() => {
     const ob = avg(0), fc = avg(1), d = (ob - fc) / 10;
     const hrs = cloudPairs.map(x => Number(x[2]));
-    return sdSunCard("云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
+    return sdSunCard("cloud", "云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
       `${d > 0 ? "+" : d < 0 ? "−" : ""}${sdN(Math.abs(d), 1)} 成`, Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
       [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]],
       `${satCloud ? "卫星云量（JAXA Himawari 云产品，站点周围约 25 km 判为有云的格点占比，白天才有）对预报总云" : "报文低云（1500 m 以下）对预报低云"}，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
   })();
   const cards = [
-    sdSunCard("预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
+    sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
       // latest as fetched, the earlier one ~24 h before it (per hour, the run a
       // day earlier -- hence ≈).
       [[`≈${sdLocal(fcPrev, true)}`, sdN(H.forecast_sw_d1_mj, 1)], [sdLocal(H.fetched_at_utc, true), sdN(H.forecast_sw_mj, 1)]],
       `全天 00–24 点日照：提前 1 天的预报（每小时取约 24 小时前那一轮）${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
     swObs == null
-      ? sdSunCard("实况对比预报", "日照", "未到", "", [[bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", ""]], "")
-      : sdSunCard("实况对比预报", `${span} · MJ/m²`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
+      ? sdSunCard("sun", "实况对比预报", "日照", "未到", "", [[bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", ""]], "")
+      : sdSunCard("sun", "实况对比预报", `${span} · MJ/m²`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           [["实况", sdN(swObs, 1)], ["预报", sdN(swFc, 1)]],
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
     cloudCard,
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
-      ? sdSunCard("日照推算最高温", "日前预报 + 日照", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
+      ? sdSunCard("temp", "日照推算最高温", "日前预报 + 日照", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
           [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
           `截至 ${T.last_hour}:00 卫星日照比提前 1 天的预报 ${sdSg(T.pct_d1, 0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
       : "",
