@@ -3889,6 +3889,55 @@ CHAIN_LATEST_SQL = {
 }
 
 
+#: Station-days owed labels before the truth link turns amber / red; only
+#: truths committed TRUTH_LABEL_BACKLOG_GRACE_H or more ago count, so a day
+#: that settled this morning is not yet a backlog.
+TRUTH_LABEL_BACKLOG_AMBER = 5
+TRUTH_LABEL_BACKLOG_RED = 48
+TRUTH_LABEL_BACKLOG_GRACE_H = 6
+TRUTH_LABEL_BACKLOG_DAYS = 10
+
+
+def _truth_label_backlog(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Recent station-days whose newest formal truth some training fact still
+    lacks a label for.  The truth table is small; each fact is checked by the
+    label table's (fact_id, truth_id) key, so this is seconds, not a scan."""
+
+    from bayes_basket_target.canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: PLC0415
+
+    floor = (_now() - timedelta(days=TRUTH_LABEL_BACKLOG_DAYS)).strftime("%Y-%m-%d")
+    grace = (_now() - timedelta(hours=TRUTH_LABEL_BACKLOG_GRACE_H)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        rows = conn.execute(
+            "SELECT l.local_date, l.committed FROM ("
+            " SELECT t.station_id, t.local_date, t.truth_id,"
+            " t.canonical_committed_at_utc AS committed"
+            " FROM calibration_station_daily_high_truth t"
+            f" WHERE t.local_date>=? AND t.source_lane IN {FORMAL_TRUTH_LANES_SQL}"
+            " AND t.qc_status='ACCEPTED' AND t.canonical_committed_at_utc<=?"
+            " AND t.revision_no=(SELECT MAX(t2.revision_no)"
+            " FROM calibration_station_daily_high_truth t2"
+            " WHERE t2.station_id=t.station_id AND t2.local_date=t.local_date"
+            f" AND t2.source_lane IN {FORMAL_TRUTH_LANES_SQL})"
+            ") l WHERE EXISTS (SELECT 1 FROM basket_policy_training_fact f"
+            " WHERE f.station_id=l.station_id AND f.event_date=l.local_date"
+            " AND f.fact_id LIKE 'd2fact_%'"
+            " AND NOT EXISTS (SELECT 1 FROM basket_policy_training_label b"
+            " WHERE b.fact_id=f.fact_id AND b.truth_id=l.truth_id))",
+            (floor, grace),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    oldest = min((str(r[0]) for r in rows), default="")
+    oldest_commit = min((str(r[1]) for r in rows), default=None)
+    return {
+        "station_days": len(rows),
+        "oldest_date": oldest,
+        "oldest_age_hours": _age_hours(oldest_commit) if oldest_commit else None,
+        "window_days": TRUTH_LABEL_BACKLOG_DAYS,
+    }
+
+
 def collect_chain(
     conn: sqlite3.Connection, counts: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -3954,6 +4003,29 @@ def collect_chain(
         48,
         96,
     )
+    # A truth that landed is only half the link: it scores the forecasts
+    # once the label lane has stamped the day's training facts with it.
+    # Judged on arrival alone this lamp read green on 2026-10-15 while 360
+    # station-days since 10-05 waited for labels -- the settlement lane spent
+    # its whole budget re-scanning (758 s a turn) and labelled almost none.
+    backlog = _truth_label_backlog(conn)
+    if backlog is not None:
+        link = links[-1]
+        link["label_backlog"] = backlog
+        count, oldest = backlog["station_days"], backlog["oldest_date"]
+        if count:
+            worse = (
+                "red" if count >= TRUTH_LABEL_BACKLOG_RED
+                or (backlog["oldest_age_hours"] or 0) > 48 else
+                "amber" if count >= TRUTH_LABEL_BACKLOG_AMBER else None
+            )
+            rank = {"green": 0, "amber": 1, "red": 2}
+            if worse and rank[worse] > rank[link["health"]]:
+                link["health"] = worse
+            link["note"] += (
+                f"；{count} 个站日真值已到、还没给训练事实打标签"
+                f"（最早 {oldest[5:]}）"
+            )
     art = conn.execute(CHAIN_LATEST_SQL["activation"]).fetchone()
     add(
         "③ 校正与权重",
