@@ -491,6 +491,11 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
   -- DWD_OPENDATA_ICON_EU the same day and sweep: whole-domain fields,
   -- one bz2 file per hour shared by every station, on the same
   -- no-history footing the ICON EPS transport already holds.
+  -- NCEP_NOMADS ruled in 2026-10-15 (charter 270 (五), 「加」): NOAA's
+  -- operational AIGEFS, idx-sidecar byte-range reads of NCEP NOMADS.  It
+  -- was widened in place (scripts/migrate_member_run_transport_nomads.py):
+  -- loosening a CHECK leaves every stored row valid, so the 8.8M-row copy
+  -- the earlier widening made was not needed.
   -- A CHECK cannot be altered in place; the live table takes the widening
   -- via scripts/migrate_member_run_transport_allowlist.py.  Keep comments
   -- OUT of the IN(...) list itself: the capture pre-flight parses the live
@@ -501,7 +506,8 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
       'OPEN_METEO','NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
       'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
       'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE',
-      'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3','DWD_OPENDATA_ICON_EU'
+      'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3','DWD_OPENDATA_ICON_EU',
+      'NCEP_NOMADS'
     )
   ),
   native_run_init_utc TEXT,
@@ -531,7 +537,8 @@ CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run (
         'NOAA_GEFS_PDS_S3','ECMWF_OPEN_DATA_S3',
         'ECCC_DD_WEATHER','DWD_OPENDATA_ICON_EPS','AWC_TAF_DATA_API',
         'AWC_METAR_PHYSICAL_PATH','RISH_KYOTO_JMA_ARCHIVE',
-        'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3','DWD_OPENDATA_ICON_EU'
+        'NOAA_HRRR_PDS_S3','NOAA_NBM_PDS_S3','DWD_OPENDATA_ICON_EU',
+        'NCEP_NOMADS'
       )
       AND native_run_init_utc IS NOT NULL
       AND run_cycle!='AGGREGATOR_UNKNOWN_NATIVE_CYCLE'

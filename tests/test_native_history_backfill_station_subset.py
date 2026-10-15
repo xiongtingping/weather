@@ -61,4 +61,7 @@ def test_the_ai_ensembles_are_walked_by_the_same_driver() -> None:
         assert spec["script"].name == "backfill_ai_ensemble_multistation_archive.py"
         assert spec["script"].exists()
         assert spec["script_args"] == ["--system", provider]
-        assert spec["extraction_version"](2, 12).endswith("_12z_d2_v1")
+        # Charter 270 (五): the operational AIGEFS is on its _v2 extraction.
+        assert spec["extraction_version"](2, 12).endswith(
+            "_12z_d2_v2" if provider == "aigefs" else "_12z_d2_v1"
+        )

@@ -108,7 +108,7 @@ PROVIDERS = {
         "script": ROOT / "scripts" / "backfill_ai_ensemble_multistation_archive.py",
         "script_args": ["--system", "aigefs"],
         "system_id": noaa_aigefs_archive.SYSTEM_ID,
-        "transport": "NOAA_GEFS_PDS_S3",
+        "transport": noaa_aigefs_archive.TRANSPORT_PROVIDER_ID,
         "extraction_version": noaa_aigefs_archive.extraction_version_for_lead,
         "raw_env": "AIGEFS_BACKFILL_RAW_DIR_UNUSED",
         "packet_env": "AIGEFS_BACKFILL_PACKET_DIR_UNUSED",

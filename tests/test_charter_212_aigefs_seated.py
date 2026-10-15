@@ -34,25 +34,25 @@ def _t(day: str, hour: int) -> datetime:
 
 def test_contract_admits_every_aigefs_cycle_and_lead_under_its_own_identity() -> None:
     contract = oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS["NOAA_AIGEFS_OPS_025"]
-    assert contract["transport_provider_id"] == ag.TRANSPORT_PROVIDER_ID == "NOAA_GEFS_PDS_S3"
+    assert contract["transport_provider_id"] == ag.TRANSPORT_PROVIDER_ID == "NCEP_NOMADS"
     for lead in (0, 1, 2):
         entries = contract["leads"][f"d{lead}"]
         assert [e["run_cycle"] for e in entries] == ["00Z", "06Z", "12Z", "18Z"]
         assert all(e["serving_follow"] is True for e in entries)
         for hour in (0, 6, 12, 18):
             assert oos._historical_transport_scope_allowed(
-                system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+                system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NCEP_NOMADS",
                 lead_bucket="h12_24", run_cycle=f"{hour:02d}Z",
                 extraction_version=ag.extraction_version_for_lead(lead, hour),
             )
     # a research-era identity, and GEFS's own identity, never read as AIGEFS
     assert not oos._historical_transport_scope_allowed(
-        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NCEP_NOMADS",
         lead_bucket="h12_24", run_cycle="06Z",
         extraction_version="research_" + ag.extraction_version_for_lead(1, 6),
     )
     assert not oos._historical_transport_scope_allowed(
-        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NOAA_GEFS_PDS_S3",
+        system_id="NOAA_AIGEFS_OPS_025", transport_provider_id="NCEP_NOMADS",
         lead_bucket="h12_24", run_cycle="00Z",
         extraction_version="noaa_gefs_pds_0p50_00z_d1_station_tmax_v2",
     )

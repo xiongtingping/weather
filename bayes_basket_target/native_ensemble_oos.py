@@ -546,7 +546,7 @@ OFFICIAL_ARCHIVE_SCOPE_CONTRACTS = {
     # (``NOAA_AIGEFS_025``, stopped 2026-10-13 06Z); EAGLE rows stay as
     # history, outside this contract, and are never read for OOS.
     "NOAA_AIGEFS_OPS_025": {
-        "transport_provider_id": "NOAA_GEFS_PDS_S3",
+        "transport_provider_id": "NCEP_NOMADS",
         "leads": _lead_contracts(
             supported_lead_days=_AIGEFS_LEADS,
             cycle_hour_by_lead={

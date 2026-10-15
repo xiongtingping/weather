@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 from datetime import datetime, timezone
 
 import pytest
@@ -98,7 +99,7 @@ def test_object_key_and_extraction_version() -> None:
     assert ag.object_key(_t("2026-09-20", 6), 0, 24) == (
         "aigefs.20260920/06/mem000/model/atmos/grib2/aigefs.t06z.sfc.f024.grib2"
     )
-    assert ag.extraction_version_for_lead(1, 6) == "ncep_nomads_aigefs_ops_0p25_2t6_06z_d1_v1"
+    assert ag.extraction_version_for_lead(1, 6) == "ncep_nomads_aigefs_ops_0p25_2t6_06z_d1_v2"
     assert ag.member_id_for(0) == "control" and ag.member_id_for(30) == "perturbed_30"
 
 
@@ -148,7 +149,7 @@ def test_ingest_writes_31_rows_replays_and_refuses_a_changed_value(fake_transpor
     assert conn.execute(
         "SELECT DISTINCT extraction_version, transport_provider_id, run_cycle FROM "
         "calibration_native_ensemble_historical_member_run WHERE ensemble_system_id='NOAA_AIGEFS_OPS_025'"
-    ).fetchall() == [("ncep_nomads_aigefs_ops_0p25_2t6_00z_d1_v1", "NOAA_GEFS_PDS_S3", "00Z")]
+    ).fetchall() == [("ncep_nomads_aigefs_ops_0p25_2t6_00z_d1_v2", "NCEP_NOMADS", "00Z")]
     assert ag.ingest_aigefs_station_days(conn, archive)["state"] == "REPLAY"
     capture = dict(archive["captures"][0])
     capture["members"] = [dict(m) for m in capture["members"]]
@@ -176,3 +177,39 @@ def test_operational_system_is_its_own_row_in_the_aigefs_family() -> None:
     assert ag.SYSTEM_IDENTITY["independence_family_id"] == "NOAA_AIGEFS"
     assert ag.SYSTEM_IDENTITY["canonical_name"] != "NOAA AIGEFS 0.25"
     assert ag.BASE_URL.startswith("https://nomads.ncep.noaa.gov/")
+
+
+def test_nomads_transport_is_admitted_by_the_schema_and_the_contract_maps() -> None:
+    # Charter 270 (五): the rows carry NCEP_NOMADS, and every map that pins a
+    # system's transport agrees -- a divergence is a silent compile outage.
+    import re
+
+    from bayes_basket_target import native_ensemble_contract as contract
+    from bayes_basket_target import native_ensemble_oos as oos
+    from bayes_basket_target import official_native_forward_packet as packet
+    from bayes_basket_target import ssot
+
+    assert ag.TRANSPORT_PROVIDER_ID == "NCEP_NOMADS"
+    assert contract.OFFICIAL_NATIVE_TRANSPORT_BY_SYSTEM[ag.SYSTEM_ID] == ag.TRANSPORT_PROVIDER_ID
+    assert oos.OFFICIAL_ARCHIVE_SCOPE_CONTRACTS[ag.SYSTEM_ID]["transport_provider_id"] == ag.TRANSPORT_PROVIDER_ID
+    assert packet.SUPPORTED_ARCHIVE_SCHEMAS[ag.MULTISTATION_SCHEMA] == ag.TRANSPORT_PROVIDER_ID
+    source = Path(ssot.__file__).read_text(encoding="utf-8")
+    start = source.index("CREATE TABLE IF NOT EXISTS calibration_native_ensemble_historical_member_run")
+    ddl = re.sub(r"--[^\n]*", "", source[start:start + 6000])
+    assert ddl.count("'NCEP_NOMADS'") == 2
+
+
+def test_in_place_widening_adds_the_transport_to_both_lists_only() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "migrate_nomads", Path(__file__).resolve().parents[1] / "scripts" / "migrate_member_run_transport_nomads.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    live = "a IN ('X','DWD_OPENDATA_ICON_EU') b IN ('DWD_OPENDATA_ICON_EU')"
+    assert module.widened(live) == (
+        "a IN ('X','DWD_OPENDATA_ICON_EU','NCEP_NOMADS') b IN ('DWD_OPENDATA_ICON_EU','NCEP_NOMADS')"
+    )
+    with pytest.raises(SystemExit):
+        module.widened("a IN ('DWD_OPENDATA_ICON_EU')")

@@ -14,6 +14,11 @@ two days, so there is no operational history to backfill beyond that window,
 and it bans clients past ~120 requests a minute: every request here goes
 through one in-process limiter.  Measured 2026-10-13..14 on NOMADS: every
 step of a run lands by init + 3h50m..4h05m (00Z 10-14: f072 at +11h53m).
+Rows carry their own transport id, ``NCEP_NOMADS`` (user ruling 2026-10-15
+「加」, charter 270 (五)): the member table's CHECK was widened in place.  The
+first hours of captures were written as ``NOAA_GEFS_PDS_S3`` under extraction
+``_v1``; ``_v2`` re-ingests the retained follow files under the right label,
+and the ``_v1`` rows are read by no contract.
 
 The rest of this docstring is the EAGLE-era record (charter 212).
 
@@ -98,7 +103,7 @@ MULTISTATION_SCHEMA = "noaa_aigefs_ops_multistation_members_v1"
 SYSTEM_ID = "NOAA_AIGEFS_OPS_025"
 INDEPENDENCE_FAMILY_ID = "NOAA_AIGEFS"
 PROVIDER_ID = "NOAA"
-TRANSPORT_PROVIDER_ID = "NOAA_GEFS_PDS_S3"
+TRANSPORT_PROVIDER_ID = "NCEP_NOMADS"
 MEMBER_AVAILABILITY_CONTRACT = "OFFICIAL_NCEP_PROD_CONTROL_PLUS_PERTURBED_1_TO_30"
 EXPECTED_MEMBER_COUNT = 31
 PERTURBED_MEMBER_COUNT = 30
@@ -136,7 +141,7 @@ def resolve_run_cycle_hour(lead_days: int, run_cycle_hour: int | None = None) ->
 
 def extraction_version_for_lead(lead_days: int, run_cycle_hour: int | None = None) -> str:
     cycle_hour = resolve_run_cycle_hour(lead_days, run_cycle_hour)
-    return f"ncep_nomads_aigefs_ops_0p25_2t6_{cycle_hour:02d}z_d{int(lead_days)}_v1"
+    return f"ncep_nomads_aigefs_ops_0p25_2t6_{cycle_hour:02d}z_d{int(lead_days)}_v2"
 
 
 def _utc(value: datetime) -> datetime:
