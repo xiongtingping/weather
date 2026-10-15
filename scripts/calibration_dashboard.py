@@ -22655,14 +22655,13 @@ function sdNewestFive(rows, head, cls, label){
   return `<div class="scroll"><table class="${cls}">${head}<tbody>${first.join("")}</tbody></table></div>${rest.length
     ? `<details class="sd-older"><summary class="muted">${label(rest.length)}</summary><div class="scroll"><table class="${cls}">${head}<tbody>${rest.join("")}</tbody></table></div></details>` : ""}`;
 }
-// The sky table: the next three hours to come, then the newest five observed;
-// the later future and the older observed hours folded.  ``rows`` are the
-// future hours in clock order followed by the observed newest first.
+// The sky table: every hour still to come (farthest first), then the newest
+// five observed; the older observed hours folded.  ``rows`` are the future
+// hours followed by the observed, both newest first.
 function sdSkyTable(rows, nFuture, head){
-  const fut = rows.slice(0, nFuture), obs = rows.slice(nFuture);
-  const first = fut.slice(0, 3).concat(obs.slice(0, 5)), rest = fut.slice(3).concat(obs.slice(5));
+  const first = rows.slice(0, nFuture + 5), rest = rows.slice(nFuture + 5);
   const t = r => `<div class="scroll"><table class="sd-tab sd-sky">${head}<tbody>${r.join("")}</tbody></table></div>`;
-  return t(first) + (rest.length ? `<details class="sd-older"><summary class="muted">其余 ${rest.length} 小时（更晚的预报与更早的实况）</summary>${t(rest)}</details>` : "");
+  return t(first) + (rest.length ? `<details class="sd-older"><summary class="muted">其余 ${rest.length} 小时（更早的实况）</summary>${t(rest)}</details>` : "");
 }
 // 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
 // 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
@@ -22686,10 +22685,11 @@ function sdSky(day){
   // and a warmer reading are warm -- not "more is red" whatever the quantity.
   const warmth = x => (x.kind === "cloud" ? x.dir !== "more" : x.kind === "sw" || x.kind === "temp" ? x.dir === "more" : false) ? "sd-warm" : "sd-cold";
   const tone = (r, kind) => { const d = (r.diffs || []).find(x => x.kind === kind); return d ? " " + warmth(d) : ""; };
-  // The next hours still to come on top in clock order (user 2026-10-15「显示
-  // 未来小时，在上！比如14:00、15:00」), then the observed hours newest first.
+  // The hours still to come on top, the farthest first (user 2026-10-15「显示
+  // 未来小时，在上！」「倒数，最远的在最上」), then the observed hours newest
+  // first: one timeline read downwards from the end of the day.
   const isPast = r => Boolean(r.past || r.obs);
-  const future = (H.rows || []).filter(r => !isPast(r)).sort((a,b) => Number(a.hour) - Number(b.hour));
+  const future = (H.rows || []).filter(r => !isPast(r)).sort((a,b) => Number(b.hour) - Number(a.hour));
   const seen = (H.rows || []).filter(isPast).sort((a,b) => Number(b.hour) - Number(a.hour));
   const ordered = future.concat(seen);
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
