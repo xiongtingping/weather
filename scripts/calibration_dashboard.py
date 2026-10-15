@@ -22822,16 +22822,18 @@ function sdSkewHistory(H){
   </details>`;
 }
 // Landed minus a price, with its event-day interval: k = "" (the market's
-// reference), "ask" (the best ask, what a buy paid); "3" for the mode ±1.
+// reference), "ask" (the best ask, what a buy paid), "mid" (the raw two-sided
+// mid of the same book); "3" for the mode ±1.
 function sdAgreeEdge(x, k, three){
   const pt = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(100 * v).toFixed(1);
   const t = three ? "3" : "";
   if(!x) return `<span class="muted">—</span>`;
-  const hit = k === "ask" ? x["hit_ask" + t] : x["hit" + t], price = k === "ask" ? x["ask" + t] : x["said_market" + t];
+  const quoted = k === "ask" || k === "mid", name = {ask: "卖一", mid: "中价"}[k] || "市场参考价";
+  const hit = quoted ? x["hit_" + k + t] : x["hit" + t], price = quoted ? x[k + t] : x["said_market" + t];
   if(hit == null || price == null) return `<span class="muted">—</span>`;
-  const ci = (k === "ask" ? x["over_ask" + t + "_ci"] : x["over_market" + t + "_ci"]) || [], d = hit - price;
+  const ci = (quoted ? x["over_" + k + t + "_ci"] : x["over_market" + t + "_ci"]) || [], d = hit - price;
   const sure = ci.length === 2 && (ci[0] > 0 || ci[1] < 0);
-  return `<span class="mono${sure ? (d > 0 ? " up" : " down") : " muted"}" title="命中 ${(100 * hit).toFixed(1)}% − ${k === "ask" ? "卖一" : "市场参考价"} ${(100 * price).toFixed(1)}%${k === "ask" ? `（有卖一的 ${x["n_ask" + t] || 0} 次）` : ""}，按事件日自助 95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}">${pt(d)}${sure ? "" : " ·"}</span>`;
+  return `<span class="mono${sure ? (d > 0 ? " up" : " down") : " muted"}" title="命中 ${(100 * hit).toFixed(1)}% − ${name} ${(100 * price).toFixed(1)}%${quoted ? `（有${name}的 ${x["n_" + k + t] || 0} 次）` : ""}，按事件日自助 95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}">${pt(d)}${sure ? "" : " ·"}</span>`;
 }
 // Where our mode and the market's agree (user 2026-10-15 「首次：模型的众数桶和
 // 市场的众数桶为同一桶的时候的真值的命中率有多少」「还有时间轴维度、首次、第二次、
@@ -22850,8 +22852,8 @@ function sdModeAgreement(A){
       <div class="muted">${word[k.pick] || sdEsc(k.pick)}</div>
       <div class="big" style="color:${col[k.pick]}">${pc(a.hit)}</div>
       <div class="muted sd-sub">${k.station_days} 站日 · 距结算中位 ${a.median_hours == null ? "—" : Number(a.median_hours).toFixed(0) + "h"}</div>
-      <div class="muted sd-sub">我方说 ${p0(a.said_ours)} · 市场说 ${p0(a.said_market)} · 卖一 ${p0(a.ask)}，命中−卖一 ${sdAgreeEdge(a, "ask")}</div>
-      <div class="muted sd-sub" title="众数及左右各一桶（边缘桶时两桶）">±1 桶 ${pc(a.hit3)} · 市场说 ${p0(a.said_market3)} · 卖一合计 ${p0(a.ask3)}，命中−卖一 ${sdAgreeEdge(a, "ask", true)}</div>
+      <div class="muted sd-sub">中价 ${p0(a.mid)}，命中−中价 ${sdAgreeEdge(a, "mid")} · 卖一 ${p0(a.ask)}，命中−卖一 ${sdAgreeEdge(a, "ask")}</div>
+      <div class="muted sd-sub" title="众数及左右各一桶（边缘桶时两桶）">±1 桶 ${pc(a.hit3)} · 中价合计 ${p0(a.mid3)}，${sdAgreeEdge(a, "mid", true)} · 卖一合计 ${p0(a.ask3)}，${sdAgreeEdge(a, "ask", true)}</div>
       ${k.pick === "last" ? `<div class="muted sd-sub">「最后一次」要到结算后才知道是最后一次，不能据此下单</div>` : ""}</div>`;
   }).join("");
   const groups = [];
@@ -22862,7 +22864,7 @@ function sdModeAgreement(A){
   groups.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
   const rows = groups.map(([g, sl], i) => `<tr><td>${i === 0 || groups[i - 1][0] !== g ? sdEsc(g) : ""}</td><td>${sdEsc(sl)}</td>${A.picks.map(k => {
     const x = (k.slices || []).find(r => r.group === g && r.slice === sl);
-    return x ? `<td class="mono" title="我方说 ${p0(x.said_ours)} · 市场说 ${p0(x.said_market)} · 卖一 ${p0(x.ask)}">${pc(x.hit)}</td><td>${sdAgreeEdge(x, "ask")}</td><td class="mono">${pc(x.hit3)}</td><td>${sdAgreeEdge(x, "ask", true)}</td><td class="mono muted">${x.n}</td>`
+    return x ? `<td class="mono" title="我方说 ${p0(x.said_ours)} · 中价 ${p0(x.mid)} · 卖一 ${p0(x.ask)}">${pc(x.hit)}</td><td>${sdAgreeEdge(x, "mid")}</td><td class="mono">${pc(x.hit3)}</td><td>${sdAgreeEdge(x, "mid", true)}</td><td class="mono muted">${x.n}</td>`
       : `<td class="mono muted">—</td><td></td><td class="mono muted">—</td><td></td><td class="mono muted">—</td>`;
   }).join("")}</tr>`).join("");
   const dates = [...new Set(A.picks.flatMap(k => (k.daily || []).map(d => d.event_date)))].sort();
@@ -22877,7 +22879,7 @@ function sdModeAgreement(A){
     <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0-M＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
     <div class="grid g3">${cards}</div>
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
-    <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th title="命中 − 卖一">−卖一</th><th>±1 桶</th><th title="±1 桶命中 − 三桶卖一合计">−卖一</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th title="命中 − 中价">−中价</th><th>±1 桶</th><th title="±1 桶命中 − 三桶中价合计">−中价</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
     ${trend}
     ${sdModeConverge(A)}
   </details>`;
@@ -22892,21 +22894,21 @@ function sdModeConverge(A){
   const tip = {model: "市场众数不动，我方众数移到市场众数上", market: "我方众数不动，市场众数移到我方众数上",
                both: "两边众数同时换到同一新桶", start: "站日第一个有盘口的时刻两边就同桶"};
   const col = {model: SD_COL.P1, market: SD_COL.MKT, both: "var(--muted)", start: "var(--muted)"};
-  const edge = (x, three) => sdAgreeEdge(x, "ask", three);
+  const edge = (x, three, k) => sdAgreeEdge(x, k || "mid", three);
   const cards = C.filter(c => c.mover === "model" || c.mover === "market").map(c => {
     const e = c.every || {}, f = c.first || {};
     return `<div class="card" title="${tip[c.mover]}">
       <div class="muted">${word[c.mover]}</div>
       <div class="big" style="color:${col[c.mover]}">${pc(e.hit)}</div>
-      <div class="muted sd-sub">市场说 ${pc(e.said_market)} · 卖一 ${pc(e.ask)} · 命中−卖一 ${edge(e)} · ${e.n || 0} 次 / ${e.station_days || 0} 站日</div>
-      <div class="muted sd-sub">±1 桶 ${pc(e.hit3)} · 卖一合计 ${pc(e.ask3)} · 命中−卖一 ${edge(e, true)}</div>
-      <div class="muted sd-sub">首次同桶即此：${pc(f.hit)}（卖一 ${pc(f.ask)} · ${edge(f)}；±1 桶 ${pc(f.hit3)} · ${edge(f, true)} · ${f.n || 0} 站日）</div></div>`;
+      <div class="muted sd-sub">中价 ${pc(e.mid)} · 命中−中价 ${edge(e)} · 卖一 ${pc(e.ask)} · ${edge(e, false, "ask")} · ${e.n || 0} 次 / ${e.station_days || 0} 站日</div>
+      <div class="muted sd-sub">±1 桶 ${pc(e.hit3)} · 中价合计 ${pc(e.mid3)} · ${edge(e, true)} · 卖一合计 ${pc(e.ask3)} · ${edge(e, true, "ask")}</div>
+      <div class="muted sd-sub">首次同桶即此：${pc(f.hit)}（中价 ${pc(f.mid)} · ${edge(f)}；±1 桶 ${pc(f.hit3)} · ${edge(f, true)} · ${f.n || 0} 站日）</div></div>`;
   }).join("");
   const bands = [];
   // The backend lists the bands nearest first; keep that order.
   C.forEach(c => (c.slices || []).forEach(x => { if(x.group === "提前量" && !bands.includes(x.slice)) bands.push(x.slice); }));
   const table = scope => `<div class="scroll"><table class="sd-tab"><thead><tr><th>距结算（靠拢时）</th>${C.map(c =>
-      `<th title="${tip[c.mover]}">${word[c.mover]}</th><th title="命中 − 卖一">−卖一</th><th>±1 桶</th><th title="±1 桶命中 − 三桶卖一合计">−卖一</th><th>次</th>`).join("")}</tr></thead><tbody>${bands.map(b =>
+      `<th title="${tip[c.mover]}">${word[c.mover]}</th><th title="命中 − 中价">−中价</th><th>±1 桶</th><th title="±1 桶命中 − 三桶中价合计">−中价</th><th>次</th>`).join("")}</tr></thead><tbody>${bands.map(b =>
       `<tr><td>${sdEsc(b)}</td>${C.map(c => {
         const x = (c.slices || []).find(r => r.group === "提前量" && r.slice === b && r.scope === scope);
         return x ? `<td class="mono">${pc(x.hit)}</td><td>${edge(x)}</td><td class="mono">${pc(x.hit3)}</td><td>${edge(x, true)}</td><td class="mono muted">${x.n}</td>`
@@ -22919,7 +22921,7 @@ function sdModeConverge(A){
       const m = Object.fromEntries((c.daily || []).map(d => [d.event_date, d.hit]));
       return {name: word[c.mover], values: dates.map(d => m[d] ?? null)};
     })}) : "";
-  return `<div class="sd-t" style="margin-top:10px" title="每次同桶开始时，与上一个有盘口的时刻比：谁的众数移动了；−卖一＝真值命中 − 当时卖一（买入实付价，±1 桶为三桶卖一合计），带 · 的区间跨零">谁向谁靠拢</div>
+  return `<div class="sd-t" style="margin-top:10px" title="每次同桶开始时，与上一个有盘口的时刻比：谁的众数移动了；−中价＝真值命中 − 同一盘口的买卖中价（±1 桶为三桶中价合计；卡片另列卖一＝吃单实付价），带 · 的区间跨零">谁向谁靠拢</div>
     <div class="grid g3">${cards}</div>
     <div class="muted sd-sub">每一次靠拢（一个站日可有多次）</div>${table("every")}
     <details class="sd-sub"><summary class="muted">只看各站日的首次同桶</summary>${table("first")}</details>

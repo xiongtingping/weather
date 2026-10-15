@@ -411,19 +411,20 @@ def test_mode_agreement_reads_the_picked_episodes() -> None:
     ep = lambda bucket, hours, stage, hit, mover="model": {"bucket": bucket, "start": "t", "end": "t", "instants": 1,
                                                            "stage": stage, "hours": hours, "p": 0.4, "q": 0.5,
                                                            "hit": hit, "mover": mover, "hit3": True, "p3": 0.8,
-                                                           "q3": 0.85, "ask": 0.45, "ask3": None}
+                                                           "q3": 0.85, "ask": 0.45, "ask3": None,
+                                                           "mid": 0.42, "mid3": 0.8}
     days = [
         {"station_id": "AAAA", "event_date": "2026-10-01", "settled": "21°C", "unit": "C", "paired": 9,
          "first_paired": {"ours_hit": False, "market_hit": True}, "episodes": 3,
          "picked": {"first": ep("20°C", 50.0, "P0", False), "second": ep("21°C", 20.0, "P0-M", True),
                     "last": ep("21°C", 5.0, "P1", True)},
-         "starts": [["model", 50.0, "P0", 0, 0.4, 0.5, 1, 0.8, 0.85, 0.45, 0.9],
-                    ["market", 20.0, "P0-M", 1, 0.4, 0.5, 1, 0.8, 0.85, 0.6, 0.9],
-                    ["market", 5.0, "P1", 1, 0.4, 0.5, 0, 0.8, 0.85, None, None]]},
+         "starts": [["model", 50.0, "P0", 0, 0.4, 0.5, 1, 0.8, 0.85, 0.45, 0.9, 0.42, 0.8],
+                    ["market", 20.0, "P0-M", 1, 0.4, 0.5, 1, 0.8, 0.85, 0.6, 0.9, 0.55, 0.85],
+                    ["market", 5.0, "P1", 1, 0.4, 0.5, 0, 0.8, 0.85, None, None, None, None]]},
         {"station_id": "BBBB", "event_date": "2026-10-02", "settled": "22°C", "unit": "C", "paired": 4,
          "first_paired": {"ours_hit": True, "market_hit": True}, "episodes": 1,
          "picked": {"first": ep("22°C", 40.0, "P0", True, "start"), "last": ep("22°C", 40.0, "P0", True, "start")},
-         "starts": [["start", 40.0, "P0", 1, 0.4, 0.5, 1, 0.8, 0.85, 0.45, 0.9]]},
+         "starts": [["start", 40.0, "P0", 1, 0.4, 0.5, 1, 0.8, 0.85, 0.45, 0.9, 0.42, 0.8]]},
     ]
     with mock.patch.object(br, "mode_agreement_days", return_value={"days": days, "counts": {}}):
         out = br.mode_agreement(None)
@@ -443,6 +444,8 @@ def test_mode_agreement_reads_the_picked_episodes() -> None:
     assert moved["market"]["every"]["hit3"] == 0.5 and moved["model"]["every"]["hit3"] == 1.0
     assert moved["market"]["every"]["n_ask"] == 1 and moved["market"]["every"]["ask"] == 0.6
     assert picks["first"]["all"]["ask"] == 0.45 and picks["first"]["all"]["n_ask3"] == 0
+    assert picks["first"]["all"]["mid"] == 0.42 and picks["first"]["all"]["mid3"] == 0.8
+    assert moved["market"]["every"]["hit_mid"] == 1.0 and moved["market"]["every"]["mid3"] == 0.85
     assert moved["market"]["first"] is None and moved["both"]["every"] is None
     lead = {(x["slice"], x["scope"]): x["n"] for x in moved["market"]["slices"] if x["group"] == "提前量"}
     assert lead == {("距结算 < 12h", "every"): 1, ("距结算 12–24h", "every"): 1}
@@ -480,7 +483,9 @@ def test_mode_agreement_card_draws_three_picks() -> None:
                               "all": {"n": 10, "hit": hit, "hit_ci": [0.2, 0.7], "said_ours": 0.43, "said_market": 0.42,
                                       "median_hours": 49.5, "event_days": 3, "n_ask": 6, "hit_ask": 0.449, "ask": 0.466,
                                       "over_ask_ci": [-0.047, 0.014], "hit3": 0.888, "said_market3": 0.82, "n_ask3": 6,
-                                      "hit_ask3": 0.881, "ask3": 0.949, "over_ask3_ci": [-0.093, -0.043]},
+                                      "hit_ask3": 0.881, "ask3": 0.949, "over_ask3_ci": [-0.093, -0.043],
+                                      "n_mid": 6, "hit_mid": 0.448, "mid": 0.446, "over_mid_ci": [-0.03, 0.035],
+                                      "n_mid3": 6, "hit_mid3": 0.878, "mid3": 0.882, "over_mid3_ci": [-0.027, 0.02]},
                               "slices": [{"group": "提前量", "slice": "距结算 36–60h", "n": 7, "hit": hit,
                                           "said_ours": 0.4, "said_market": 0.4}],
                               "daily": [{"event_date": "2026-10-01", "n": 4, "hit": hit}]}
@@ -489,7 +494,8 @@ def test_mode_agreement_card_draws_three_picks() -> None:
            "picks": [pick("first", 0.45), pick("second", 0.5), pick("last", 0.983)],
            "converge": [{"mover": "model", "every": {"n": 7089, "station_days": 1288, "hit": 0.656, "said_market": 0.634,
                                                      "n_ask": 5607, "hit_ask": 0.625, "ask": 0.641,
-                                                     "over_ask_ci": [-0.037, 0.008]},
+                                                     "over_ask_ci": [-0.037, 0.008], "n_mid3": 3673, "hit_mid3": 0.947,
+                                                     "mid3": 0.933, "over_mid3_ci": [0.003, 0.025]},
                          "first": {"n": 420, "hit": 0.502, "said_market": 0.446, "over_market_ci": [0.006, 0.106]},
                          "slices": [{"group": "提前量", "slice": "距结算 36–60h", "scope": "every", "n": 631, "hit": 0.45,
                                      "said_market": 0.407, "over_market_ci": [-0.001, 0.086]}], "daily": []},
@@ -512,6 +518,9 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     assert ">−1.6 ·</span>" in out                                    # model onto the market, against the ask: crosses zero
     assert '<span class="mono down"' in out and ">−3.2</span>" in out  # market onto the model: below the ask
     assert ">−1.7 ·</span>" in out and ">−6.8</span>" in out           # first agreement: one bucket / mode ±1 against the asks
+    assert ">+0.2 ·</span>" in out and ">−0.4 ·</span>" in out         # ... and against the mid: even
+    assert ">+1.4</span>" in out                                       # model onto the market, mode ±1 at the mid
+    assert "−中价" in out
     assert "不能据此下单" in out
 
 

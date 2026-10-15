@@ -2962,10 +2962,13 @@ def _ladder_mode(vector: Mapping[str, float], order: Mapping[str, int]) -> str:
     return max(sorted(vector, key=lambda b: order[b]), key=lambda b: vector[b])
 
 
-def _ladder_best_asks(conn: sqlite3.Connection, station: str, day: str, at_utc: str) -> dict[str, float]:
-    """Each bucket's best YES ask in the same book ``_ladder_market_reference``
-    reads at ``at_utc`` -- what a buy would have paid; buckets without an ask
-    are absent."""
+def _ladder_quotes(
+    conn: sqlite3.Connection, station: str, day: str, at_utc: str,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Each bucket's best YES ask -- what a buy would have paid -- and its raw
+    two-sided mid (not rescaled to the ladder, as the market reference is), in
+    the same book ``_ladder_market_reference`` reads at ``at_utc``; a bucket
+    without the side(s) is absent."""
 
     floor = (_utc_instant(at_utc) - timedelta(seconds=TRADED_CALIBRATION_BOOK_WINDOW_SEC))
     snap = conn.execute(
@@ -2978,8 +2981,22 @@ def _ladder_best_asks(conn: sqlite3.Connection, station: str, day: str, at_utc: 
         buckets = json.loads(snap[0] or "[]") if snap is not None else []
     except (TypeError, ValueError):
         buckets = []
-    return {str(b.get("bucket")): float(b["best_ask"]) for b in buckets if isinstance(b, dict)
-            and b.get("ask_available") and isinstance(b.get("best_ask"), (int, float)) and 0.0 < b["best_ask"] < 1.0}
+    asks: dict[str, float] = {}
+    mids: dict[str, float] = {}
+    for b in buckets if isinstance(buckets, list) else []:
+        if not isinstance(b, dict):
+            continue
+        ask = b.get("best_ask") if b.get("ask_available") else None
+        if not isinstance(ask, (int, float)) or not 0.0 < ask < 1.0:
+            continue
+        asks[str(b.get("bucket"))] = float(ask)
+        bids = [float(x["price"]) for x in b.get("bid_levels") or []
+                if isinstance(x, dict) and isinstance(x.get("price"), (int, float)) and float(x.get("shares") or 0) > 0]
+        bid = max(bids) if bids else (float(b["bid_price"]) if b.get("bid_available")
+                                       and isinstance(b.get("bid_price"), (int, float)) and b["bid_price"] > 0 else None)
+        if bid is not None and 0.0 < bid <= ask:
+            mids[str(b.get("bucket"))] = 0.5 * (bid + float(ask))
+    return asks, mids
 
 
 def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -3065,24 +3082,27 @@ def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
                      else "market" if before[0] == ours != before[1] else "both")
             # The mode and its neighbours, three buckets (two at a ladder edge).
             window = [b for b in p if abs(order[b] - order[ours]) <= 1]
-            asks = _ladder_best_asks(conn, str(station), str(day), at)
+            asks, mids = _ladder_quotes(conn, str(station), str(day), at)
             current = {"bucket": ours, "start": at, "end": at, "instants": 1, "stage": stage, "hours": hours,
                        "p": p[ours], "q": q[ours], "hit": ours == settled, "mover": mover,
                        "p3": sum(p[b] for b in window), "q3": sum(q[b] for b in window), "hit3": settled in window,
                        "ask": asks.get(ours),
-                       "ask3": sum(asks[b] for b in window) if all(b in asks for b in window) else None}
+                       "ask3": sum(asks[b] for b in window) if all(b in asks for b in window) else None,
+                       "mid": mids.get(ours),
+                       "mid3": sum(mids[b] for b in window) if all(b in mids for b in window) else None}
             episodes.append(current)
         counts["paired_instants"] += paired
         if not paired:
             continue
         counts["paired_days"] += 1
         # Only what the reading reads is kept: the picked episodes, and every
-        # episode's start as [mover, hours, stage, hit, p, q, hit3, p3, q3, ask, ask3].
+        # episode's start as [mover, hours, stage, hit, p, q, hit3, p3, q3, ask, ask3, mid, mid3].
         picked = {name: episodes[index] for name, index in MODE_AGREEMENT_PICKS
                   if len(episodes) > (index if index >= 0 else -index - 1)}
         starts = [[e["mover"], None if e["hours"] is None else round(e["hours"], 2), e["stage"], int(e["hit"]),
                    round(e["p"], 4), round(e["q"], 4), int(e["hit3"]), round(e["p3"], 4), round(e["q3"], 4),
-                   e["ask"], None if e["ask3"] is None else round(e["ask3"], 4)]
+                   e["ask"], None if e["ask3"] is None else round(e["ask3"], 4),
+                   e["mid"], None if e["mid3"] is None else round(e["mid3"], 4)]
                   for e in episodes]
         days.append({"station_id": str(station), "event_date": str(day), "settled": settled,
                      "unit": "F" if "°F" in settled else "C", "paired": paired,
@@ -3109,16 +3129,23 @@ def _mode_agreement_group(picked: Sequence[Mapping[str, Any]]) -> dict[str, Any]
             # Against what a buy would have paid: the best ask (one bucket, and
             # the three summed), on the episodes the book quoted.
             **_mode_agreement_ask(picked, "ask", "hit", ""), **_mode_agreement_ask(picked, "ask3", "hit3", "3"),
+            # And against the raw two-sided mid of the same book.
+            **_mode_agreement_ask(picked, "mid", "hit", ""), **_mode_agreement_ask(picked, "mid3", "hit3", "3"),
             "median_hours": median(hours) if hours else None}
 
 
-def _mode_agreement_ask(picked: Sequence[Mapping[str, Any]], ask: str, hit: str, suffix: str) -> dict[str, Any]:
-    quoted = [e for e in picked if e.get(ask) is not None]
+def _mode_agreement_ask(picked: Sequence[Mapping[str, Any]], price: str, hit: str, suffix: str) -> dict[str, Any]:
+    """Landed against a quoted price (``ask``/``mid``, ``suffix`` "3" for the
+    mode ±1) on the episodes that had it: n_<price>, hit_<price>, <price>,
+    over_<price>_ci -- keys named by the price, the suffix after it."""
+
+    quoted = [e for e in picked if e.get(price) is not None]
+    base = price[:-1] if suffix else price
     if not quoted:
-        return {f"n_ask{suffix}": 0}
-    return {f"n_ask{suffix}": len(quoted), f"hit_ask{suffix}": sum(1 for e in quoted if e[hit]) / len(quoted),
-            f"ask{suffix}": sum(e[ask] for e in quoted) / len(quoted),
-            f"over_ask{suffix}_ci": _traded_day_bootstrap(quoted, [float(e[hit]) - e[ask] for e in quoted])}
+        return {f"n_{base}{suffix}": 0}
+    return {f"n_{base}{suffix}": len(quoted), f"hit_{base}{suffix}": sum(1 for e in quoted if e[hit]) / len(quoted),
+            f"{base}{suffix}": sum(e[price] for e in quoted) / len(quoted),
+            f"over_{base}{suffix}_ci": _traded_day_bootstrap(quoted, [float(e[hit]) - e[price] for e in quoted])}
 
 
 def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -3169,8 +3196,8 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
     for mover in MODE_AGREEMENT_MOVERS:
         every = [{"station_id": d["station_id"], "event_date": d["event_date"], "unit": d["unit"], "mover": m, "hours": h,
                   "stage": st, "hit": bool(hit), "p": pp, "q": qq, "hit3": bool(hit3), "p3": p3, "q3": q3,
-                  "ask": ask, "ask3": ask3}
-                 for d in days for m, h, st, hit, pp, qq, hit3, p3, q3, ask, ask3 in d["starts"] if m == mover]
+                  "ask": ask, "ask3": ask3, "mid": mid, "mid3": mid3}
+                 for d in days for m, h, st, hit, pp, qq, hit3, p3, q3, ask, ask3, mid, mid3 in d["starts"] if m == mover]
         first = [{**d["picked"]["first"], "station_id": d["station_id"], "event_date": d["event_date"]}
                  for d in days if "first" in d["picked"] and d["picked"]["first"]["mover"] == mover]
         slices = []
@@ -3251,7 +3278,7 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     "mode_agreement": (
         mode_agreement,
         (mode_agreement, mode_agreement_days, _mode_agreement_group, _ladder_mode, _served_belief_vector,
-         _ladder_market_reference, _wilson, _traded_day_bootstrap, _ladder_best_asks, _mode_agreement_ask),
+         _ladder_market_reference, _wilson, _traded_day_bootstrap, _ladder_quotes, _mode_agreement_ask),
     ),
 }
 
