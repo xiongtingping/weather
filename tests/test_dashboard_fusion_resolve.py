@@ -272,3 +272,30 @@ def test_the_board_grades_what_the_backend_resolved(tmp_path, monkeypatch) -> No
     assert out["summary"]["exact_count"] == 1
     assert out["pairs"][0]["distance"] == 0.02
     assert out["health"] == "green"
+
+
+def test_correlated_models_are_a_reading_not_the_lamp(tmp_path, monkeypatch) -> None:
+    """User ruling 2026-10-15 「改」: the lamp grades only the weight re-solve;
+    how alike the models' errors are is shown as effective independent models."""
+
+    import sqlite3
+
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path)
+    correlation = {a: {b: (1.0 if a == b else 0.64) for b in "ABCDE"} for a in "ABCDE"}
+    mean_r, effective = BR.effective_independent_models(correlation, list("ABCDE"))
+    assert abs(mean_r - 0.64) < 1e-12
+    assert abs(effective - 5 / (1 + 4 * 0.64)) < 1e-12
+    row = {"station_id": "KAAA", "season_bin": "PEAK", "lead_bucket": "h24_48",
+           "run_cycle": "00Z", "rule": "稳定池", "basis": "exact",
+           "max_correlation": 0.95, "distance": 0.04, "system_count": 5,
+           "mean_correlation": mean_r, "effective_models": effective,
+           "served": {"A": 0.2}, "resolved": {"A": 0.2}}
+    BR.write_reading("fusion_resolve", {"rows": [row], "unread": 0}, code="x", build_sec=1.0)
+    out = C._collect_fusion_layer(sqlite3.connect(":memory:"))
+    assert out["health"] == "green"
+    assert out["independent_models"]["text"] == "有效独立模型 1.4/5 家"
+    assert "有效独立模型 1.4/5 家" in out["detail"]
+    assert "residual_correlation" not in C.SCORECARD_THRESHOLDS
+    # Negative correlation never counts more models than are seated.
+    anti = {a: {b: (1.0 if a == b else -0.2) for b in "AB"} for a in "AB"}
+    assert BR.effective_independent_models(anti, ["A", "B"])[1] == 2.0

@@ -7731,7 +7731,6 @@ SCORECARD_THRESHOLDS = {
     "ece": (0.05, 0.10),             # expected calibration error
     "conditional_gap": (0.05, 0.10),  # worst well-populated reliability bin
     "weight_distance": (0.10, 0.25),       # half-L1 gap, served vs production re-solve
-    "residual_correlation": (0.5, 0.75),   # max off-diagonal
     "spread_skill": (0.20, 0.45),    # |ratio - 1|, ensemble spread vs realised error
     "ci_relative": (0.15, 0.30),     # bootstrap half-width / value
 }
@@ -10242,11 +10241,7 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
         return _fusion_stored_seats(conn)
     rows = list((reading.get("value") or {}).get("rows") or [])
     unread = int((reading.get("value") or {}).get("unread") or 0)
-    correlations = [
-        row["max_correlation"] for row in rows
-        if row["max_correlation"] is not None
-    ]
-    if not correlations:
+    if not any(row["max_correlation"] is not None for row in rows):
         return {
             "health": "muted",
             "verdict": "还没有两家以上模型同时在座的在役组合",
@@ -10262,42 +10257,36 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
     approximate_distances = sorted(
         row["distance"] for row in approximate if row["distance"] is not None
     )
-    mean_correlation = sum(correlations) / len(correlations)
     mean_distance = (
         sum(row["distance"] for row in exact) / len(exact) if exact else None
     )
-    correlation_health = _grade(mean_correlation, "residual_correlation")
-    distance_health = _grade(mean_distance, "weight_distance")
-    health = _worst([correlation_health, distance_health])
+    # User ruling 2026-10-15 (「改」): the lamp grades only what the fusion
+    # layer owns -- whether the served weights are the ones production's rule
+    # gives.  How alike the seated models' errors are is a ceiling no
+    # weighting removes (2026-10-15: five models worth 1.4 independent ones,
+    # 72% of the error shared), so it is a reading, not a colour.
+    independent = _independent_models_reading(rows)
     if mean_distance is None:
+        health = "muted"
+        verdict = "没有一份在役权重能从存档精确重解，自检做不了"
+    else:
+        health = _grade(mean_distance, "weight_distance")
         verdict = (
-            f"模型之间残差相关 {mean_correlation:.2f}，"
-            "但没有一份在役权重能从存档精确重解，自检做不了"
-        )
-    elif distance_health != "green":
-        verdict = (
+            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}）"
+            if health == "green" else
             f"在役权重和存档证据重解对不上（平均差 {mean_distance:.1%}）"
             "——先查数据再查解法"
-        )
-    elif correlation_health == "green":
-        verdict = (
-            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}），"
-            f"几家模型残差也互相独立（相关 {mean_correlation:.2f}）"
-        )
-    else:
-        verdict = (
-            f"在役权重与生产算术重解一致（平均差 {mean_distance:.1%}）；"
-            f"灯色来自模型残差相关 {mean_correlation:.2f}，几家模型在犯相近的错"
         )
     return {
         "health": health,
         "verdict": verdict,
         "detail": (
             f"{len(rows)} 份在役权重 · 精确重解 {len(exact)} 份"
-            f" · 平均最大相关 {mean_correlation:.2f}"
             + (f" · 离重解 {mean_distance:.1%}"
                if mean_distance is not None else "")
+            + f" · {independent['text']}"
         ),
+        "independent_models": independent,
         "pairs": sorted(
             exact, key=lambda row: row["distance"], reverse=True
         )[:12],
@@ -10320,6 +10309,37 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 
+def _independent_models_reading(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Median effective independent models over the served seats, read off
+    the stored correlation (``board_readings.effective_independent_models``)."""
+
+    effective = sorted(
+        float(row["effective_models"]) for row in rows
+        if row.get("effective_models") is not None
+    )
+    counts = sorted(
+        int(row["system_count"]) for row in rows if row.get("system_count")
+    )
+    shared = sorted(
+        float(row["mean_correlation"]) for row in rows
+        if row.get("mean_correlation") is not None
+    )
+    if not effective:
+        return {"median": None, "seated_median": None,
+                "mean_correlation_median": None, "text": "有效独立模型 —"}
+    value = median(effective)
+    seated = median(counts) if counts else None
+    return {
+        "median": value,
+        "seated_median": seated,
+        "mean_correlation_median": median(shared) if shared else None,
+        "text": (
+            f"有效独立模型 {value:.1f}"
+            + (f"/{seated:.0f} 家" if seated is not None else " 家")
+        ),
+    }
+
+
 def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     """The served blends as stored: each seat's weights and the residual
     correlation its selection evidence kept.
@@ -10332,7 +10352,10 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     stored: how alike the seated systems' errors were.
     """
 
-    from bayes_basket_target.board_readings import served_p0_seats  # noqa: PLC0415
+    from bayes_basket_target.board_readings import (  # noqa: PLC0415
+        effective_independent_models,
+        served_p0_seats,
+    )
 
     served_rows = [
         (
@@ -10377,6 +10400,7 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
              if part.startswith("stable_pool_kappa=")),
             None,
         )
+        mean_r, effective = effective_independent_models(correlation, systems)
         rows.append({
             "station_id": str(station),
             "season_bin": str(season),
@@ -10384,6 +10408,9 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
             "run_cycle": str(cycle),
             "rule": f"稳定池 κ={kappa}" if kappa is not None else parts[0],
             "max_correlation": max(off_diagonal) if off_diagonal else None,
+            "system_count": len(systems),
+            "mean_correlation": mean_r,
+            "effective_models": effective,
             "served": served,
         })
 
@@ -10399,21 +10426,14 @@ def _fusion_stored_seats(conn: sqlite3.Connection) -> dict[str, Any]:
             "pairs": [],
             "summary": {"served_count": len(rows), "unread_count": unread},
         }
-    mean_correlation = sum(correlations) / len(correlations)
-    health = _grade(mean_correlation, "residual_correlation")
-    verdict = (
-        f"几家在座模型的残差互相独立（平均最大相关 {mean_correlation:.2f}），"
-        "融合能互相抵消误差"
-        if health == "green" else
-        f"几家在座模型的残差相关 {mean_correlation:.2f}，在犯相近的错，"
-        "融合能抵消的误差有限"
-    )
+    independent = _independent_models_reading(rows)
+    # The weight re-solve is the lamp (user ruling 2026-10-15); until the
+    # backend job has written it there is nothing to grade.
     return {
-        "health": health,
-        "verdict": verdict,
-        "detail": (
-            f"{len(rows)} 份在役权重 · 平均最大相关 {mean_correlation:.2f}"
-        ),
+        "health": "muted",
+        "verdict": "权重重解读数还没生成，灯色待定",
+        "detail": f"{len(rows)} 份在役权重 · {independent['text']}",
+        "independent_models": independent,
         "pairs": sorted(
             (row for row in rows if row["max_correlation"] is not None),
             key=lambda row: row["max_correlation"], reverse=True,

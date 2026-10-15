@@ -537,6 +537,33 @@ def _fusion_rule_label(kappa: float | None, skill_rule: str | None) -> str:
     return "最小方差" if covariance else "逆误差兜底"
 
 
+def effective_independent_models(
+    correlation: Mapping[str, Any], systems: Sequence[str]
+) -> tuple[float | None, float | None]:
+    """(mean pairwise residual correlation, effective independent models).
+
+    ``k / (1 + (k - 1) * r)`` for ``k`` seated systems whose errors correlate
+    ``r`` on average -- how many independent opinions the blend holds.  User
+    ruling 2026-10-15 (「改」): this is the fusion layer's reading, not its
+    lamp; errors every model shares (station microclimate, a common seasonal
+    drift) are a ceiling no weighting removes.  ``r`` is floored at 0, so the
+    count never exceeds ``k``.
+    """
+
+    pairs = []
+    for i, left in enumerate(systems):
+        for right in systems[i + 1:]:
+            try:
+                pairs.append(float(correlation[left][right]))
+            except (KeyError, TypeError, ValueError):
+                pass
+    if not pairs:
+        return None, None
+    mean = sum(pairs) / len(pairs)
+    k = len(systems)
+    return mean, k / (1.0 + (k - 1) * max(0.0, mean))
+
+
 def fusion_resolved_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     """Whether each served blend carries the weights production's rule gives.
 
@@ -555,7 +582,8 @@ def fusion_resolved_seats(conn: sqlite3.Connection) -> dict[str, Any]:
     own functions from what the SSOT kept (``_fusion_reconstruction``).  The
     distance grades the lamp only where the diagonal is recovered exactly;
     measured at the rewrite, 686 of 826 served seats, 99th percentile 0.8%.
-    The residual correlation grades it as before.
+    The residual correlation is reported as the effective number of
+    independent models (user ruling 2026-10-15), never as the lamp.
     """
 
     family_by_system = {
@@ -692,6 +720,11 @@ def fusion_resolved_seats(conn: sqlite3.Connection) -> dict[str, Any]:
             "rule": _fusion_rule_label(kappa, rebuilt["skill_rule"]),
             "basis": basis,
             "max_correlation": max(off_diagonal) if off_diagonal else None,
+            "system_count": len(systems),
+            **dict(zip(
+                ("mean_correlation", "effective_models"),
+                effective_independent_models(correlation, systems),
+            )),
             "distance": (
                 0.5 * sum(
                     abs(served[system] - float(resolved.get(system, 0.0)))
