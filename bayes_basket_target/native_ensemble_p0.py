@@ -39,6 +39,7 @@ from .center_width_store import (
     load_center_width,
     load_center_width_floor,
     load_center_width_slices,
+    load_center_width_mode_shoulder,
     load_center_width_tiers,
     load_station_width,
     pinned_center_width_sha,
@@ -72,6 +73,7 @@ from .served_shape import (
     apply_served_table_layers,
     model_center_c as served_model_center_c,
     with_f_far_tail,
+    with_mode_shoulder,
     with_peak_ceiling,
     with_width_slice,
 )
@@ -212,7 +214,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # replacing it.
 # Charter 253 (2026-10-04 ruling 「先查峰，修概率」): past 36 hours no bucket
 # is served above 0.45 -- the top bucket's excess goes to its neighbours.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v28"
+# Charter 271 (2026-10-16 ruling 「做」): the width layer carries a
+# mode-to-shoulder share per horizon bin, fitted nightly; identity until the
+# lane admits one.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v29"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4547,6 +4552,7 @@ def compile_native_ensemble_p0(
     sigma_floor_rungs = 0.0
     width_tiers = None
     width_slices = None
+    mode_shoulder_table = None
     pinned_center_width = None
     if CENTER_WIDTH_METHOD_TAG in artifact_combination_method:
         pinned_center_width = pinned_center_width_sha(
@@ -4569,6 +4575,12 @@ def compile_native_ensemble_p0(
             # row; resolved onto the layer below from this decision's own
             # seated count and hours to settlement.
             width_slices = load_center_width_slices(
+                conn, stage="P0", table_sha256=pinned_center_width
+            )
+            # Charter 271: the mode-to-shoulder shares, on the same pinned
+            # row; resolved onto the layer below from this decision's own
+            # hours to settlement.
+            mode_shoulder_table = load_center_width_mode_shoulder(
                 conn, stage="P0", table_sha256=pinned_center_width
             )
     # The per-station width scale, exactly the version the artifact's
@@ -4609,6 +4621,7 @@ def compile_native_ensemble_p0(
             or sigma_floor_rungs
             or width_tiers
             or width_slices
+            or mode_shoulder_table
         )
         else None
     )
@@ -4643,6 +4656,12 @@ def compile_native_ensemble_p0(
     # holdout was scored with it (the combination method carries the tag) --
     # the bridge's contract.  It rides on the table layer and is the last of
     # that layer's steps; the model-zero floor still follows.
+    # Charter 271: the mode-to-shoulder share for this decision's horizon,
+    # off the pinned row; applied after the mix and before the ceiling.
+    center_width_layer = with_mode_shoulder(
+        center_width_layer, mode_shoulder_table,
+        hours_to_settlement=hours_to_settlement,
+    )
     center_width_layer = with_peak_ceiling(
         center_width_layer,
         hours_to_settlement=hours_to_settlement,

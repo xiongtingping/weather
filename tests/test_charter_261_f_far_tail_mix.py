@@ -151,8 +151,9 @@ def test_serving_the_gate_the_certificate_and_the_charter_say_the_same_thing() -
     assert "+ f_far_tail_method_tag_suffix()" in gate and gate.count("f_ladder=is_f_ladder(ordered_keys)") == 2
     from bayes_basket_target import native_ensemble_p0 as P0
     from bayes_basket_target import serving_arithmetic as sa
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v28"
-    declared = sa.version_effective_from("P0", P0.POSTERIOR_VERSION)
+    # Charter 271 moved all three on (P0 v29); v28 keeps this charter's moment.
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v29"
+    declared = sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v28")
     assert declared and declared == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v31") \
         == sa.version_effective_from("P1", "p1_joint_likelihood_v39")
     charter = read("docs/constitution/SYSTEM_CHARTER.md")

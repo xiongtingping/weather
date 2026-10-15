@@ -41,10 +41,12 @@ from .center_width_calibration import (
     apply_center_width_calibration,
     F_FAR_TAIL_SLICE_NAME,
     TAIL_MIX_SCALE,
+    apply_mode_shoulder,
     apply_peak_ceiling,
     apply_tail_mix,
     f_far_tail_weight_for,
     far_peak_ceiling_for,
+    mode_shoulder_share_for,
     width_slice_for,
 )
 
@@ -76,6 +78,53 @@ class CenterWidthLayer:
     # tag (``with_peak_ceiling``).  When set, no bucket of the layer's output
     # is above it (``apply_peak_ceiling``), after the pair and the tail mix.
     peak_ceiling: float | None = None
+    # Charter 271: the mode-to-shoulder share this one decision is served,
+    # resolved by the caller from the decision's hours to settlement and the
+    # row's bin table (``with_mode_shoulder``).  Applied after the pair and
+    # the tail mix and before the ceiling; None is identity.
+    mode_shoulder_bin: str | None = None
+    mode_shoulder_share: float | None = None
+    # The row's whole share table, carried so a face that resolves the layer
+    # per decision (the gate's holdout days) reads it off the layer it was
+    # handed rather than a second argument threaded beside it.  Excluded from
+    # comparison and hashing: it is the source of the resolved share above,
+    # not part of the arithmetic.
+    mode_shoulder_table: Mapping[str, Any] | None = dataclasses.field(
+        default=None, compare=False, hash=False,
+    )
+
+
+def with_mode_shoulder(
+    layer: CenterWidthLayer | None,
+    table: Mapping[str, Any] | None,
+    *,
+    hours_to_settlement: float | None,
+) -> CenterWidthLayer | None:
+    """The layer with charter 271's mode-to-shoulder share resolved onto it.
+
+    One resolver for serving, the gate and the fit's reserve, so the three
+    read the same share for the same decision.  A layer of ``None`` stays
+    ``None``: the share rides on a table row, and a face that applies no
+    row applies no share.
+    """
+
+    if layer is None:
+        return None
+    if table is None:
+        table = layer.mode_shoulder_table
+    resolved = mode_shoulder_share_for(
+        table, hours_to_settlement=hours_to_settlement,
+    )
+    if resolved is None:
+        if layer.mode_shoulder_share is None:
+            return layer
+        return dataclasses.replace(
+            layer, mode_shoulder_bin=None, mode_shoulder_share=None,
+        )
+    return dataclasses.replace(
+        layer, mode_shoulder_bin=resolved[0],
+        mode_shoulder_share=float(resolved[1]),
+    )
 
 
 def with_peak_ceiling(
@@ -278,6 +327,26 @@ def apply_served_table_layers(
         center_width_receipt["stage_width_lambda"] = float(
             center_width.width_lambda
         )
+        # Charter 271: the mode-to-shoulder share, after the pair and the
+        # mix and before the ceiling.  Always written, so a receipt answers
+        # "which share?" the same way whether or not one applied.
+        shouldered = (
+            center_width.mode_shoulder_share is not None
+            and float(center_width.mode_shoulder_share) > 0.0
+        )
+        shoulder_receipt = None
+        if shouldered:
+            shaped, shoulder_receipt = apply_mode_shoulder(
+                shaped,
+                share=float(center_width.mode_shoulder_share),
+                ordered_keys=ordered_keys,
+                excluded_buckets=excluded_buckets,
+            )
+        center_width_receipt["mode_shoulder_bin"] = center_width.mode_shoulder_bin
+        center_width_receipt["mode_shoulder_share"] = (
+            float(center_width.mode_shoulder_share) if shouldered else None
+        )
+        center_width_receipt["mode_shoulder"] = shoulder_receipt
         # Charter 253: last of the layer's steps, on what the pair and the
         # mix produced.  Written only where a ceiling was resolved, so a
         # receipt of a decision the rule does not reach is what it always

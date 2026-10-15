@@ -1396,3 +1396,143 @@ def bucket_centers_from_intervals(
         else:
             centers.append((float(lower) + float(upper)) / 2.0)
     return centers
+
+
+# Charter 271 (user ruling 2026-10-16 「做」): the mode-to-shoulder share.
+# The width layer's single lambda can only widen or narrow about the mean;
+# when it reclaims a pool's heavy far tail the mass lands on the mode, not
+# on the two shoulders.  Measured on the served record (docs/research/
+# shoulder_new_member_info_20261016, p0_mode_to_shoulder_layer_20261016):
+# the day-before P0 gives its mode 0.406 against a realised 0.352 and the
+# two shoulders 0.438 against 0.486; moving a tenth of the mode's mass to
+# the shoulders (split by their own ratio) read -0.006 nat on the day-before
+# cells and nothing on the same-day cells.  So the share is one number per
+# horizon bin, fitted on the stage's own cells and admitted under the ranked
+# verdict like the slice's tail weight, and it rides on the width row's sha.
+MODE_SHOULDER_SCHEMA = "center_width_mode_shoulder_v1"
+MODE_SHOULDER_WARM_SHARE_RULE = "served_shoulder_ratio"
+MODE_SHOULDER_SHARE_GRID = (0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30)
+MAX_MODE_SHOULDER_SHARE = 0.30
+# Hours to settlement, lower inclusive, upper exclusive; None is open.
+MODE_SHOULDER_BINS: tuple[tuple[str, float, float | None], ...] = (
+    ("h0_24", 0.0, 24.0),
+    ("h24_48", 24.0, 48.0),
+    ("h48_plus", 48.0, None),
+)
+
+
+def mode_shoulder_bin_for(hours_to_settlement: float | None) -> str | None:
+    """The horizon bin a decision falls in; None when the horizon is unknown."""
+
+    if hours_to_settlement is None:
+        return None
+    try:
+        hours = float(hours_to_settlement)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(hours):
+        return None
+    for name, lower, upper in MODE_SHOULDER_BINS:
+        if hours >= lower and (upper is None or hours < upper):
+            return name
+    return None
+
+
+def mode_shoulder_share_for(
+    table: Mapping[str, Any] | None,
+    *,
+    hours_to_settlement: float | None,
+) -> tuple[str, float] | None:
+    """``(bin, share)`` the decision is served, or None.
+
+    One resolver for serving, the gate and the fit, so the three read the
+    same share for the same decision.  A bin absent from the table is
+    identity; a share out of range is refused rather than clipped.
+    """
+
+    if not table:
+        return None
+    bins = table.get("bins") if isinstance(table, Mapping) else None
+    if not isinstance(bins, Mapping):
+        return None
+    name = mode_shoulder_bin_for(hours_to_settlement)
+    if name is None or name not in bins:
+        return None
+    entry = bins[name]
+    if not isinstance(entry, Mapping):
+        return None
+    share = float(entry.get("share", 0.0))
+    if not math.isfinite(share) or not (0.0 <= share <= MAX_MODE_SHOULDER_SHARE):
+        raise ValueError("center_width_mode_shoulder_share_out_of_range")
+    if share <= 0.0:
+        return None
+    return name, share
+
+
+def apply_mode_shoulder(
+    probability: Mapping[str, float],
+    *,
+    share: float,
+    ordered_keys: Sequence[str],
+    excluded_buckets: Sequence[str] = (),
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """Charter 271: move ``share`` of the mode's mass onto its two shoulders.
+
+    The mode is the first maximum in axis order (the ceiling's rule).  The
+    moved mass is split between the two neighbours in proportion to their
+    own mass -- a shoulder the vector already leans to receives more.  An
+    edge mode has one shoulder and gives it everything; a ruled-out
+    neighbour receives nothing; with no receiving neighbour nothing moves.
+    A share of zero is the identity.
+    """
+
+    s = float(share)
+    if not math.isfinite(s) or not (0.0 <= s <= MAX_MODE_SHOULDER_SHARE):
+        raise ValueError("center_width_mode_shoulder_share_out_of_range")
+    keys = [str(key) for key in ordered_keys]
+    if len(keys) < 2 or set(keys) != {str(key) for key in probability}:
+        raise ValueError("center_width_bucket_mismatch")
+    total_in = sum(float(probability[key]) for key in keys)
+    if total_in <= 0.0 or not math.isfinite(total_in):
+        raise ValueError("center_width_probability_empty")
+    values = [float(probability[key]) / total_in for key in keys]
+    excluded = {str(bucket) for bucket in excluded_buckets}
+    mode = max(range(len(keys)), key=lambda index: (values[index], -index))
+    receipt: dict[str, Any] = {
+        "schema": "mode_shoulder_receipt_v1",
+        "state": "IDENTITY",
+        "mode_shoulder_share": s,
+        "warm_share_rule": MODE_SHOULDER_WARM_SHARE_RULE,
+        "mode_bucket": keys[mode],
+        "mode_probability_before": values[mode],
+        "moved_mass": 0.0,
+    }
+    if s <= 0.0:
+        return dict(zip(keys, values)), receipt
+    sides = [
+        index for index in (mode - 1, mode + 1)
+        if 0 <= index < len(keys) and keys[index] not in excluded
+    ]
+    if not sides:
+        return dict(zip(keys, values)), receipt
+    moved = s * values[mode]
+    mass = [values[index] for index in sides]
+    mass_total = sum(mass)
+    weights = (
+        [value / mass_total for value in mass]
+        if mass_total > 0.0 else [1.0 / len(sides)] * len(sides)
+    )
+    values[mode] -= moved
+    for index, weight in zip(sides, weights):
+        values[index] += moved * weight
+    warm = next(
+        (weight for index, weight in zip(sides, weights) if index == mode + 1),
+        0.0,
+    )
+    receipt.update({
+        "state": "APPLIED",
+        "moved_mass": moved,
+        "warm_share": warm,
+        "shoulder_buckets": [keys[index] for index in sides],
+    })
+    return dict(zip(keys, values)), receipt

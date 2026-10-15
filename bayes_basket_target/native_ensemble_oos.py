@@ -26,6 +26,7 @@ from .center_width_store import (
     load_center_width,
     load_center_width_floor,
     load_center_width_slices,
+    load_center_width_mode_shoulder,
     load_center_width_tiers,
     load_station_width,
 )
@@ -74,6 +75,7 @@ from .served_shape import (
     apply_served_table_layers,
     model_center_c as served_model_center_c,
     with_f_far_tail,
+    with_mode_shoulder,
     with_peak_ceiling,
     with_width_slice,
 )
@@ -2685,7 +2687,10 @@ def _day_center_width_layer(
 
     ceiling_serves = far_peak_ceiling_serves()
     f_far_serves = f_far_tail_mix_serves()
-    if layer is None or not (slices or ceiling_serves or f_far_serves):
+    shoulder_table = None if layer is None else layer.mode_shoulder_table
+    if layer is None or not (
+        slices or ceiling_serves or f_far_serves or shoulder_table
+    ):
         return layer
     seated = [system for system, weight in weights.items() if float(weight) > 0.0]
     decided = max(
@@ -2711,6 +2716,9 @@ def _day_center_width_layer(
     layer = with_f_far_tail(
         layer, hours_to_settlement=hours, f_ladder=f_ladder, enabled=f_far_serves,
     )
+    # Charter 271: the mode-to-shoulder share off the row's table, by the
+    # resolver serving calls, after the mix and before the ceiling.
+    layer = with_mode_shoulder(layer, None, hours_to_settlement=hours)
     return with_peak_ceiling(
         layer, hours_to_settlement=hours, enabled=ceiling_serves,
     )
@@ -5172,6 +5180,18 @@ def p0_gate_tables(
         if active_center_width is not None
         else None
     )
+    # Charter 271: the mode-to-shoulder shares, on the same sha; each holdout
+    # day resolves its own share from the day's decision instant, exactly as
+    # serving resolves a decision's.
+    center_width_mode_shoulder = (
+        (
+            load_center_width_mode_shoulder(conn, stage="P0")
+            if replay_width is None
+            else replay_width.get("mode_shoulder")
+        )
+        if active_center_width is not None
+        else None
+    )
     # The per-station width scale, under the same contract as the stage
     # scalars: whatever is active now is what this build's holdout scores,
     # and its sha rides into every candidate.  This build is one station's,
@@ -5202,12 +5222,14 @@ def p0_gate_tables(
             width_tier_boundaries=(
                 (center_width_tiers or {}).get("boundaries_rungs") or None
             ),
+            mode_shoulder_table=center_width_mode_shoulder,
         )
         if (
             center_width is not None
             or station_width_scale != 1.0
             or center_width_floor
             or center_width_tiers
+            or center_width_mode_shoulder
         )
         else None
     )

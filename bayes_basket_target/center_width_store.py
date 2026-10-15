@@ -57,6 +57,13 @@ from .center_width_calibration import (
     apply_peak_ceiling,
     apply_tail_mix,
     thin_far_slice_applies,
+    MAX_MODE_SHOULDER_SHARE,
+    MODE_SHOULDER_BINS,
+    MODE_SHOULDER_SCHEMA,
+    MODE_SHOULDER_SHARE_GRID,
+    MODE_SHOULDER_WARM_SHARE_RULE,
+    apply_mode_shoulder,
+    mode_shoulder_bin_for,
 )
 from . import serving_arithmetic
 from .contracts import ContractError, content_sha256
@@ -404,6 +411,16 @@ def ensure_center_width_schema(conn: sqlite3.Connection) -> None:
         )
     except sqlite3.OperationalError:
         pass
+    # Charter 271: the mode-to-shoulder share table rides on the same row;
+    # nullable, and read as "no share", so every row written before it keeps
+    # describing exactly the arithmetic it described.
+    try:
+        conn.execute(
+            "ALTER TABLE calibration_center_width_table"
+            " ADD COLUMN mode_shoulder_json TEXT"
+        )
+    except sqlite3.OperationalError:
+        pass
     # ``CREATE TABLE IF NOT EXISTS`` will not widen the CHECK constraint on a
     # journal that already exists, so a new outcome value fails at insert with
     # a constraint error rather than being recorded.  Rebuild in place when
@@ -487,6 +504,7 @@ def center_width_sha256(
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
     width_slices: Mapping[str, Mapping[str, Any]] | None = None,
+    mode_shoulder: Mapping[str, Any] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "schema": "center_width_table_v1",
@@ -525,7 +543,45 @@ def center_width_sha256(
             }
             for name, entry in sorted(width_slices.items())
         }
+    # Charter 271: a row carrying a share is a different arithmetic from the
+    # same pair without one; conditional so every older row keeps its digest.
+    canonical_shoulder = _canonical_mode_shoulder(mode_shoulder)
+    if canonical_shoulder:
+        payload["mode_shoulder"] = canonical_shoulder
     return content_sha256(payload)
+
+
+def _canonical_mode_shoulder(
+    table: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Charter 271: the share table as stored and hashed, or None.
+
+    Only bins with a positive share are kept -- a zero share is identity and
+    must not make an otherwise identical row a different sha.
+    """
+
+    if not table or not isinstance(table, Mapping):
+        return None
+    bins = table.get("bins")
+    if not isinstance(bins, Mapping):
+        return None
+    known = {name for name, _lower, _upper in MODE_SHOULDER_BINS}
+    kept: dict[str, Any] = {}
+    for name, entry in sorted(bins.items()):
+        if name not in known or not isinstance(entry, Mapping):
+            raise ContractError("center_width_mode_shoulder_bin_invalid")
+        share = round(float(entry.get("share", 0.0)), 6)
+        if not math.isfinite(share) or not (0.0 <= share <= MAX_MODE_SHOULDER_SHARE):
+            raise ContractError("center_width_mode_shoulder_share_out_of_range")
+        if share > 0.0:
+            kept[str(name)] = {"share": share}
+    if not kept:
+        return None
+    return {
+        "schema": MODE_SHOULDER_SCHEMA,
+        "warm_share_rule": MODE_SHOULDER_WARM_SHARE_RULE,
+        "bins": kept,
+    }
 
 
 def pinned_center_width_sha(combination_method: str) -> str | None:
@@ -797,6 +853,51 @@ def load_center_width_slices(
     return out or None
 
 
+def load_center_width_mode_shoulder(
+    conn: sqlite3.Connection,
+    *,
+    stage: str,
+    table_sha256: str | None = None,
+    as_of_utc: str | None = None,
+) -> dict[str, Any] | None:
+    """The active (or pinned) table's mode-to-shoulder shares (charter 271),
+    if any -- None means the row serves no share, which is every row written
+    before the lane existed and every fit whose share was not admitted."""
+
+    stage_id = _check_stage(stage)
+    if table_sha256 is not None and _pinned_center_width_retired(
+        conn, table_sha256=table_sha256, as_of_utc=as_of_utc
+    ):
+        return None
+    try:
+        if table_sha256 is None:
+            row = conn.execute(
+                "SELECT mode_shoulder_json"
+                " FROM calibration_center_width_table"
+                " WHERE activated=1 AND stage=?",
+                (stage_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT mode_shoulder_json"
+                " FROM calibration_center_width_table"
+                " WHERE center_width_sha256=?",
+                (str(table_sha256),),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None or not row[0]:
+        return None
+    try:
+        table = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        return None
+    try:
+        return _canonical_mode_shoulder(table)
+    except ContractError:
+        return None
+
+
 STATION_WIDTH_METHOD_TAG = "station_width_scale_v2"
 # Three rules decide what this layer is allowed to say, and all three were
 # wrong in v1 (measured 2026-09-11, walk-forward on the store's own cells
@@ -1020,7 +1121,11 @@ def _reserved_under_current_width(
     # Charter 253: likewise a row the far-peak ceiling then capped -- the
     # recorded input under the identity pair is exactly the ceiling's input.
     capped = receipt.get("peak_ceiling") is not None
-    if state != "APPLIED" and not (state == "IDENTITY" and (tail_mixed or capped)):
+    # Charter 271: likewise a row the mode-to-shoulder share then moved.
+    shouldered = receipt.get("mode_shoulder_share") is not None
+    if state != "APPLIED" and not (
+        state == "IDENTITY" and (tail_mixed or capped or shouldered)
+    ):
         return None
     if receipt.get("width_tier_lambda") is not None:
         return None
@@ -2986,6 +3091,268 @@ def _thin_far_slice_veto(
     }
 
 
+# ---------------------------------------------------------------------------
+# Charter 271: the mode-to-shoulder share, one number per horizon bin.
+
+MODE_SHOULDER_MIN_QUALIFYING_DAYS = 8
+MODE_SHOULDER_MIN_QUALIFYING_CELLS = 60
+MODE_SHOULDER_MIN_FOLD_TRAIN_CELLS = 30
+
+
+def _cell_shoulder_eligible(cell: Mapping[str, Any]) -> bool:
+    """A cell the lane can score a share on.
+
+    A re-served cell (charter 202) came back before the share, so any share
+    can be laid on it.  A cell served with a share and NOT re-served still
+    carries that share inside its vector; laying another on it would score
+    two shares, so it is left out.
+    """
+
+    receipt = cell.get("center_width_receipt") or {}
+    served_share = receipt.get("mode_shoulder_share")
+    if served_share is not None and float(served_share) > 0.0:
+        return bool(cell.get("reserved_under_current_width"))
+    return True
+
+
+def _cell_pre_shoulder(
+    cell: Mapping[str, Any],
+    *,
+    delta_c: float,
+    width_lambda: float,
+    sigma_floor_rungs: float,
+) -> dict[str, float]:
+    """The vector serving hands the share: the residual pair, then the
+    slice's tail mix where the row was mixed.  A cell that was not re-served
+    already carries its mix in the vector."""
+
+    adjusted = dict(_adjusted_cell(
+        cell, delta_c=delta_c, width_lambda=width_lambda,
+        sigma_floor_rungs=sigma_floor_rungs,
+    ))
+    receipt = cell.get("center_width_receipt") or {}
+    weight = receipt.get("width_slice_tail_weight")
+    if cell.get("reserved_under_current_width") and weight is not None and float(weight) > 0.0:
+        adjusted, _ = apply_tail_mix(
+            adjusted,
+            weight=float(weight),
+            scale=float(receipt.get("width_slice_tail_scale") or TAIL_MIX_SCALE),
+            ordered_keys=cell["ordered_keys"],
+            key_centers_c=cell["key_centers_c"],
+            excluded_buckets=cell["excluded_buckets"],
+            open_edge_bounds_c=cell.get("open_edge_bounds_c"),
+        )
+    return adjusted
+
+
+def _cell_shoulder_scores(
+    cell: Mapping[str, Any],
+    pre: Mapping[str, float],
+    share: float,
+) -> tuple[float, float, float]:
+    """(LogScore, Brier, CRPS) of ``pre`` under ``share`` and then the
+    far-peak ceiling the row was served under -- serving's order."""
+
+    shaped = dict(pre)
+    if float(share) > 0.0:
+        shaped, _ = apply_mode_shoulder(
+            shaped, share=float(share),
+            ordered_keys=cell["ordered_keys"],
+            excluded_buckets=cell["excluded_buckets"],
+        )
+    receipt = cell.get("center_width_receipt") or {}
+    ceiling = receipt.get("peak_ceiling")
+    if ceiling is not None:
+        shaped, _ = apply_peak_ceiling(
+            shaped, ceiling=float(ceiling),
+            ordered_keys=cell["ordered_keys"],
+            excluded_buckets=cell["excluded_buckets"],
+        )
+    return _served_scores(
+        shaped,
+        ordered_keys=cell["ordered_keys"],
+        settled_bucket=cell["settled_bucket"],
+        excluded_buckets=cell["excluded_buckets"],
+        key_centers_c=cell["key_centers_c"],
+    )
+
+
+def _search_mode_shoulder(
+    cells: Sequence[tuple[Mapping[str, Any], Mapping[str, float]]],
+) -> tuple[float, float]:
+    """Best share on ``MODE_SHOULDER_SHARE_GRID`` by mean LogScore (the
+    training rule of 211/228).  Returns (share, mean LogScore)."""
+
+    if not cells:
+        return 0.0, 0.0
+    best: tuple[float, float] | None = None
+    for share in MODE_SHOULDER_SHARE_GRID:
+        value = sum(
+            _cell_shoulder_scores(cell, pre, share)[0] for cell, pre in cells
+        ) / len(cells)
+        if best is None or value < best[1]:
+            best = (float(share), value)
+    return best if best is not None else (0.0, 0.0)
+
+
+@_in_memo_scope
+def _mode_shoulder_lane(
+    *,
+    by_day: Mapping[str, Sequence[Mapping[str, Any]]],
+    days: Sequence[str],
+    served_residual: tuple[float, float],
+    sigma_floor_rungs: float,
+    incumbent: Mapping[str, Any] | None,
+    activated_at_utc: str | None,
+) -> dict[str, Any]:
+    """Charter 271: fit, admit and veto one share per horizon bin.
+
+    Residual space like every lane here: each cell carries what it was
+    served before the share (charter 202 re-serve), the pooled residual that
+    would serve this round is applied to it, the row's tail mix and ceiling
+    are applied around the share the way serving applies them.  Per bin the
+    origin walks forward: each fold fits the share on the bin's earlier
+    cells and scores the held-out day with and without it; admitted when
+    the held-out cells pass the stage's ranked gate (charter 240) and a
+    majority of folds gain.  The stored share is fitted on every bin cell --
+    the walk validated the procedure, as the pooled lane's walk does.  An
+    incumbent share is vetoed when its undo is significantly better on the
+    cells served under it since activation (charter 138).
+    """
+
+    ordered = list(days)
+    incumbent_bins = dict((incumbent or {}).get("bins") or {})
+    out: dict[str, Any] = {
+        "schema": MODE_SHOULDER_SCHEMA + "_lane",
+        "warm_share_rule": MODE_SHOULDER_WARM_SHARE_RULE,
+        "share_grid": list(MODE_SHOULDER_SHARE_GRID),
+        "gate_rule": GATE_RULE,
+        "served_residual": list(served_residual),
+        "incumbent": dict(incumbent) if incumbent else None,
+        "bins": {},
+    }
+    served_bins: dict[str, Any] = {}
+    candidate_bins: dict[str, Any] = {}
+    for name, _lower, _upper in MODE_SHOULDER_BINS:
+        cells_by_day: dict[str, list[tuple[Mapping[str, Any], dict[str, float]]]] = {}
+        for day in ordered:
+            for cell in by_day.get(day, []):
+                if mode_shoulder_bin_for(cell.get("hours_to_settlement")) != name:
+                    continue
+                if not _cell_shoulder_eligible(cell):
+                    continue
+                try:
+                    pre = _cell_pre_shoulder(
+                        cell, delta_c=served_residual[0],
+                        width_lambda=served_residual[1],
+                        sigma_floor_rungs=sigma_floor_rungs,
+                    )
+                except (ContractError, ValueError):
+                    continue
+                cells_by_day.setdefault(day, []).append((cell, pre))
+        bin_days = [day for day in ordered if cells_by_day.get(day)]
+        bin_cells = [item for day in bin_days for item in cells_by_day[day]]
+        entry: dict[str, Any] = {
+            "day_count": len(bin_days),
+            "cell_count": len(bin_cells),
+            "incumbent_share": (incumbent_bins.get(name) or {}).get("share"),
+        }
+        incumbent_share = float((incumbent_bins.get(name) or {}).get("share") or 0.0)
+        # The veto first: an active share is only safe while it still earns.
+        vetoed = False
+        if incumbent_share > 0.0:
+            kept, undone, clusters = [], [], []
+            for cell, pre in bin_cells:
+                receipt = cell.get("center_width_receipt") or {}
+                if str(cell.get("decision_at_utc") or "") < str(activated_at_utc or ""):
+                    continue
+                if receipt.get("mode_shoulder_share") is None:
+                    continue
+                kept.append(_cell_shoulder_scores(cell, pre, float(receipt["mode_shoulder_share"])))
+                undone.append(_cell_shoulder_scores(cell, pre, 0.0))
+                clusters.append((cell.get("station_id"), cell.get("event_date")))
+            veto_gate = _proper_score_gate(kept, undone, clusters) if kept else None
+            enough = (
+                len({c[1] for c in clusters}) >= CENTER_WIDTH_VETO_MIN_DAYS
+                and len(kept) >= CENTER_WIDTH_VETO_MIN_CELLS
+            )
+            vetoed = bool(enough and veto_gate and veto_gate["lower"])
+            entry["veto"] = {
+                "cell_count": len(kept), "enough_evidence": enough,
+                "gate": veto_gate, "vetoed": vetoed,
+            }
+        if (
+            len(bin_days) < MODE_SHOULDER_MIN_QUALIFYING_DAYS
+            or len(bin_cells) < MODE_SHOULDER_MIN_QUALIFYING_CELLS
+        ):
+            entry.update({"state": "ACCUMULATING", "admitted": False})
+            if incumbent_share > 0.0 and not vetoed:
+                served_bins[name] = {"share": incumbent_share}
+            out["bins"][name] = entry
+            continue
+        first = max(
+            ROLLING_ORIGIN_MIN_FOLD_TRAIN_DAYS,
+            len(bin_days) - ROLLING_ORIGIN_MAX_FOLDS * 2,
+        )
+        folds: list[dict[str, Any]] = []
+        held_base: list[tuple[float, float, float]] = []
+        held_cand: list[tuple[float, float, float]] = []
+        held_clusters: list[tuple[Any, str]] = []
+        for index in range(first, len(bin_days)):
+            train = [item for day in bin_days[:index] for item in cells_by_day[day]]
+            test = cells_by_day[bin_days[index]]
+            if len(train) < MODE_SHOULDER_MIN_FOLD_TRAIN_CELLS or not test:
+                continue
+            share, _train_nll = _search_mode_shoulder(train)
+            base_scores = [_cell_shoulder_scores(c, pre, 0.0) for c, pre in test]
+            cand_scores = [_cell_shoulder_scores(c, pre, share) for c, pre in test]
+            gain = (
+                sum(x[0] for x in base_scores) - sum(x[0] for x in cand_scores)
+            ) / len(test)
+            folds.append({
+                "scored_day": bin_days[index], "train_cell_count": len(train),
+                "cell_count": len(test), "share": share, "gain": gain,
+            })
+            held_base.extend(base_scores)
+            held_cand.extend(cand_scores)
+            held_clusters.extend(
+                (c.get("station_id"), bin_days[index]) for c, _pre in test
+            )
+        gate = _proper_score_gate(held_base, held_cand, held_clusters) if held_base else None
+        positive = sum(1 for fold in folds if fold["gain"] > 0.0)
+        majority = positive * 2 > len(folds) if folds else False
+        candidate_share, candidate_nll = _search_mode_shoulder(bin_cells)
+        measured = bool(gate and gate["lower"]) and majority and bool(folds)
+        admitted = measured and candidate_share > 0.0
+        entry.update({
+            "fold_count": len(folds), "folds_positive": positive,
+            "majority_positive": majority, "gate": gate,
+            "candidate_share": candidate_share,
+            "candidate_train_nll": candidate_nll,
+            "admitted": admitted,
+            "state": (
+                "ADMITTED" if admitted
+                else "UNCHANGED" if measured
+                else "REFUSED_FORWARD"
+            ),
+            "folds": folds,
+        })
+        if candidate_share > 0.0:
+            candidate_bins[name] = {"share": candidate_share}
+        if admitted:
+            served_bins[name] = {"share": candidate_share}
+        elif incumbent_share > 0.0 and not vetoed:
+            served_bins[name] = {"share": incumbent_share}
+        out["bins"][name] = entry
+    out["served_table"] = (
+        _canonical_mode_shoulder({"bins": served_bins}) if served_bins else None
+    )
+    out["candidate_table"] = (
+        _canonical_mode_shoulder({"bins": candidate_bins}) if candidate_bins else None
+    )
+    return out
+
+
 def _f_far_tail_reading(
     by_day: Mapping[str, Sequence[Mapping[str, Any]]],
 ) -> dict[str, Any]:
@@ -3886,6 +4253,11 @@ def fit_center_width(
     base_slices = (
         None if active is None else load_center_width_slices(conn, stage=stage_id)
     )
+    # Charter 271: the active row's mode-to-shoulder shares.
+    base_shoulder = (
+        None if active is None
+        else load_center_width_mode_shoulder(conn, stage=stage_id)
+    )
     pooled_by_day, slice_by_day = _split_slice_cells(by_day)
     lane_by_day: Mapping[str, Sequence[Mapping[str, Any]]] = (
         pooled_by_day if base_slices else by_day
@@ -3936,6 +4308,7 @@ def fit_center_width(
                 "sigma_floor_rungs": 0.0,
                 "width_tiers": None,
                 "width_slices": None,
+                "mode_shoulder": None,
                 "forward_nll_gain": -float(veto["undo_gain"]),
                 "accumulating": accumulating,
                 "vetoed": True,
@@ -3966,6 +4339,7 @@ def fit_center_width(
             "sigma_floor_rungs": base_floor,
             "width_tiers": base_tiers,
             "width_slices": base_slices,
+            "mode_shoulder": base_shoulder,
             "forward_nll_gain": 0.0,
             "accumulating": True,
             "vetoed": False,
@@ -3988,6 +4362,7 @@ def fit_center_width(
             "sigma_floor_rungs": base_floor,
             "width_tiers": base_tiers,
             "width_slices": base_slices,
+            "mode_shoulder": base_shoulder,
             "forward_nll_gain": 0.0,
             "accumulating": False,
             "vetoed": False,
@@ -4173,6 +4548,17 @@ def fit_center_width(
                     slice_lane["candidate_tail_mix_weight"]
                 )
             }
+    # Charter 271: the mode-to-shoulder share per horizon bin, on top of
+    # whatever pair this round serves, judged under the stage's ranked verdict.
+    shoulder_lane = _mode_shoulder_lane(
+        by_day=by_day,
+        days=days,
+        served_residual=(delta, lam) if admitted else RESIDUAL_IDENTITY,
+        sigma_floor_rungs=candidate_floor if admitted else base_floor,
+        incumbent=base_shoulder,
+        activated_at_utc=_active_center_width_activated_at(conn, stage=stage_id),
+    )
+    evidence["mode_shoulder"] = shoulder_lane
     # Charter 253: the far-peak ceiling's nightly reading, on every cell a
     # ceiling was served to.  A record; nothing below reads it.
     if stage_id == "P0":
@@ -4223,6 +4609,9 @@ def fit_center_width(
         # Charter 239: the slice that will serve -- admitted this round, kept
         # from the incumbent, or dropped by its veto -- beside the pair.
         "width_slices": dict(served_slices) if served_slices else None,
+        # Charter 271: the share table that will serve beside the pair.
+        "mode_shoulder": shoulder_lane["served_table"],
+        "candidate_mode_shoulder": shoulder_lane["candidate_table"],
         "candidate_width_slices": (
             {THIN_FAR_SLICE_NAME: _slice_entry(
                 evidence["width_slices"]["candidate_tail_mix_weight"]
@@ -4263,6 +4652,7 @@ def persist_and_activate_center_width(
     sigma_floor_rungs: float = 0.0,
     width_tiers: Mapping[str, Any] | None = None,
     width_slices: Mapping[str, Mapping[str, Any]] | None = None,
+    mode_shoulder: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     stage_id = _check_stage(stage)
     ensure_center_width_schema(conn)
@@ -4271,6 +4661,12 @@ def persist_and_activate_center_width(
         sigma_floor_rungs=sigma_floor_rungs,
         width_tiers=width_tiers,
         width_slices=width_slices,
+        mode_shoulder=mode_shoulder,
+    )
+    canonical_shoulder = _canonical_mode_shoulder(mode_shoulder)
+    shoulder_json = (
+        json.dumps(canonical_shoulder, sort_keys=True)
+        if canonical_shoulder else None
     )
     slices_json = (
         json.dumps(
@@ -4318,8 +4714,8 @@ def persist_and_activate_center_width(
             " evidence_json,"
             " fitted_at_utc, serving_day_count, activated, activated_at_utc,"
             " taf_cells_json, sigma_floor_rungs, width_tiers_json,"
-            " width_slices_json"
-            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?,?,?)"
+            " width_slices_json, mode_shoulder_json"
+            ") VALUES (?,?,?,?,?,?,?,0,NULL,?,?,?,?,?)"
             " ON CONFLICT(center_width_sha256) DO UPDATE SET"
             "  evidence_json=excluded.evidence_json,"
             "  fitted_at_utc=excluded.fitted_at_utc,"
@@ -4327,7 +4723,8 @@ def persist_and_activate_center_width(
             "  taf_cells_json=excluded.taf_cells_json,"
             "  sigma_floor_rungs=excluded.sigma_floor_rungs,"
             "  width_tiers_json=excluded.width_tiers_json,"
-            "  width_slices_json=excluded.width_slices_json",
+            "  width_slices_json=excluded.width_slices_json,"
+            "  mode_shoulder_json=excluded.mode_shoulder_json",
             (
                 digest, stage_id, float(delta_c), float(width_lambda),
                 json.dumps(
@@ -4335,6 +4732,7 @@ def persist_and_activate_center_width(
                 ),
                 now, int(serving_day_count), cells_json,
                 float(sigma_floor_rungs) or None, tiers_json, slices_json,
+                shoulder_json,
             ),
         )
         conn.execute(
@@ -4425,6 +4823,7 @@ def journal_center_width_fit(
         sigma_floor_rungs=float(fitted.get("sigma_floor_rungs") or 0.0),
         width_tiers=fitted.get("width_tiers") or None,
         width_slices=fitted.get("width_slices") or None,
+        mode_shoulder=fitted.get("mode_shoulder") or None,
     )
     fit_id = "cwfit-" + content_sha256({
         "stage": stage_id,
@@ -4661,6 +5060,21 @@ def _refit_stages(
                 conn, stage=stage
             ):
                 slices_changed = True
+            # Charter 271: a share admitted or vetoed is a row change too.
+            active_shoulder = (
+                load_center_width_mode_shoulder(conn, stage=stage)
+                if active is not None else None
+            )
+            if (fitted.get("mode_shoulder") or None) != (active_shoulder or None):
+                slices_changed = True
+            entry["mode_shoulder"] = fitted.get("mode_shoulder")
+            entry["candidate_mode_shoulder"] = fitted.get("candidate_mode_shoulder")
+            entry["mode_shoulder_lane"] = {
+                name: {k: v for k, v in lane.items() if k != "folds"}
+                for name, lane in (
+                    (fitted["evidence"].get("mode_shoulder") or {}).get("bins") or {}
+                ).items()
+            }
             if commit:
                 if stage not in CENTER_WIDTH_SERVED_STAGES:
                     outcome = "NOT_WIRED"
@@ -4686,6 +5100,7 @@ def _refit_stages(
                         ),
                         width_tiers=fitted.get("width_tiers") or None,
                         width_slices=fitted.get("width_slices") or None,
+                        mode_shoulder=fitted.get("mode_shoulder") or None,
                     )
                     entry["commit"] = committed
                     outcome = str(committed["state"])
