@@ -21991,7 +21991,7 @@ function stationDayPanel(){
   if(!SD.ageTimer) SD.ageTimer = setInterval(() => { if(!document.hidden) sdTickAges(); }, 30000);
   const opts = [[15,"15 秒"],[30,"30 秒"],[60,"1 分钟"],[0,"关"]]
     .map(([v, l]) => `<option value="${v}"${v === SD.every ? " selected" : ""}>${l}</option>`).join("");
-  return `<h2>站点看板：${sdEsc(SD.station)} 今日（过峰即隐藏）与明日（第二日）的概率分布</h2>
+  return `<h2>站点看板：${sdEsc(SD.station)} 昨日 / 今日 / D+1 / D+2 的概率分布</h2>
   <div id="sd-st-pick" class="sd-st-pick">${sdStationPicker()}</div>
   <div class="sd-ctl">
     <label>站点 <input id="sd-station" value="${sdEsc(SD.station)}" maxlength="4" size="5"></label>
@@ -22023,7 +22023,7 @@ function sdSwitchStation(v){
   if(input) input.value = v;
   document.querySelectorAll("[data-sd-st]").forEach(b => b.classList.toggle("on", b.dataset.sdSt === v));
   const h2 = input && input.closest(".sec") && input.closest(".sec").querySelector("h2");
-  if(h2) h2.textContent = `站点看板：${v} 今日（过峰即隐藏）与明日（第二日）的概率分布`;
+  if(h2) h2.textContent = `站点看板：${v} 昨日 / 今日 / D+1 / D+2 的概率分布`;
   sdRender();
   sdFetch(true);
   return true;
@@ -22114,10 +22114,11 @@ function sdRender(){
   const d = SD.data;
   if(!d){ body.innerHTML = ""; return; }
   if(!d.available){ body.innerHTML = `<div class="card muted">${sdEsc(d.station_id)}：${sdEsc(d.reason || "无数据")}</div>`; return; }
-  const pk = d.today_past_peak;
-  // User 2026-10-05「过了当日最高峰就不显示当日了」: the backend drops today once
-  // past the models' warmest hour with the newest report below the day's high.
-  const pastNote = pk ? `<div class="card muted sd-sub" style="margin:8px 0">今日 ${sdEsc(pk.event_date)} 已过峰，不再显示：模型温度曲线最高点在当地 ${
+  // Today stays after its peak (user 2026-10-16 four days side by side); the
+  // peak reading becomes a mark on its tab and a line on its card.
+  const tdy = (d.days || []).find(x => x.role === "today");
+  const pk = tdy && tdy.peak && tdy.peak.past ? {event_date: tdy.event_date, ...tdy.peak} : null;
+  const pastNote = pk ? `<div class="card muted sd-sub" style="margin:8px 0">今日 ${sdEsc(pk.event_date)} 已过峰：模型温度曲线最高点在当地 ${
     sdEsc((pk.peak || {}).peak_local || "—")}（${sdN((pk.peak || {}).curve_peak_c, 2)}°C，逐 3 小时曲线），已报最高 <b>${sdN(pk.running_high_c, 2)}°C</b>，最新 METAR ${
     sdEsc(pk.latest_local || "—")} ${sdN(pk.latest_temp_c, 2)}°C 已回落。</div>` : "";
   // A redraw on new data keeps the reader where they were: the first panel
@@ -22130,14 +22131,16 @@ function sdRender(){
   // every card is drawn and the others hidden, so a switch keeps each day's
   // calculator as it was.
   const days = d.days || [];
-  if(!days.some(x => x.event_date === SD.dayTab)) SD.dayTab = (days[0] || {}).event_date || null;
+  if(!days.some(x => x.event_date === SD.dayTab)) SD.dayTab = (days.find(x => x.role === "today") || days[0] || {}).event_date || null;
   const tabs = `<div class="sd-tabs" role="tablist">${days.map(x => `<button type="button" role="tab" class="sd-daytab${
       x.event_date === SD.dayTab ? " on" : ""}" data-sd-tab="${sdEsc(x.event_date)}" aria-selected="${x.event_date === SD.dayTab}">${
-      x.role === "today" ? "今日" : "明日（第二日）"} ${sdEsc(x.event_date.slice(5))}${
-      x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}</button>`).join("")}${
-    pk ? `<span class="sd-daytab off" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">今日 ${sdEsc(pk.event_date.slice(5))} 已过峰</span>` : ""}</div>`;
-  body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + sdModeAgreement(d.mode_agreement) + tabs + pastNote + days.map(x => sdDay(x).replace('<div class="sd-day card"',
-    `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`)).join("");
+      SD_ROLE_WORD[x.role] || x.role} ${sdEsc(x.event_date.slice(5))}${
+      x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}${
+      pk && x.role === "today" ? ` <span class="muted" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">已过峰</span>` : ""}</button>`).join("")}</div>`;
+  body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + sdModeAgreement(d.mode_agreement) + tabs + days.map(x => {
+    const html = sdDay(x).replace('<div class="sd-day card"', `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`);
+    return pk && x.role === "today" ? html.replace("</h3>", "</h3>" + pastNote) : html;
+  }).join("");
   if(anchorPath){
     const again = sdFromPath(anchorPath, body);
     if(again) window.scrollBy(0, again.getBoundingClientRect().top - anchorTop);
@@ -22164,8 +22167,10 @@ function sdSeries(day){
   if(m.available && m.stats) out.push({key:"MKT", label:"市场", vector:m.vector, stats:m.stats, at:m.observed_at_utc});
   return out;
 }
+// Four local days (user 2026-10-16「同时展示过去一天、今天、d+1、d+2的日期」).
+const SD_ROLE_WORD = {yesterday:"昨日", today:"今日", ahead:"D+1", ahead2:"D+2"};
 function sdDay(day){
-  const roleWord = day.role === "today" ? "今日" : "明日（第二日）";
+  const roleWord = SD_ROLE_WORD[day.role] || day.role;
   if(!day.available) return `<div class="sd-day card"><h3>${roleWord} ${sdEsc(day.event_date)}</h3><div class="muted">这一天还没有任何已提交的概率信封。</div></div>`;
   const S = sdSeries(day);
   const head = (day.stages || {})[day.head_stage] || {};

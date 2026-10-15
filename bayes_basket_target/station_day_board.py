@@ -743,6 +743,7 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
 # is an upper bound under high cloud.
 
 FORECAST_CACHE_SECONDS = 1800.0
+CLOSED_DAY_CACHE_SECONDS = 6 * 3600.0
 _FORECAST_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast"
 # The forecast call shares the egress address's daily allowance with the
@@ -862,7 +863,9 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
 
     key = (f"{lat:.3f},{lon:.3f}", day)
     hit = _FORECAST_CACHE.get(key)
-    if hit and time.monotonic() - hit[0] < FORECAST_CACHE_SECONDS:
+    # A closed local day (yesterday's column) no longer changes: kept six hours.
+    ttl = CLOSED_DAY_CACHE_SECONDS if day < datetime.now(ZoneInfo(tz)).date().isoformat() else FORECAST_CACHE_SECONDS
+    if hit and time.monotonic() - hit[0] < ttl:
         return hit[1]
     now_iso = datetime.now(timezone.utc).isoformat()
     if _DAY_REFUSED_UNTIL and now_iso < _DAY_REFUSED_UNTIL[0]:
@@ -1599,16 +1602,18 @@ def _precip_5min(station: str, day: str, zone: ZoneInfo) -> dict[str, Any] | Non
         return {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
+DAY_ROLES = (("yesterday", -1), ("today", 0), ("ahead", 1), ("ahead2", 2))
+
+
 def _event_days(conn, station: str, now: datetime) -> tuple[str, list[tuple[str, str]]] | None:
     tz_name = station_timezone(conn, station)
     if not tz_name:
         return None
     zone = ZoneInfo(tz_name)
     today = now.astimezone(zone).date()
-    days = [(role, (today + timedelta(days=offset)).isoformat())
-            for role, offset in (("today", 0), ("ahead", 1))]
-    if past_peak(conn, station, days[0][1], zone, now)["past"]:
-        days = days[1:]
+    # User 2026-10-16「同时展示过去一天、今天、d+1、d+2的日期」: four local days
+    # side by side; today stays after its peak (the peak reading rides on it).
+    days = [(role, (today + timedelta(days=offset)).isoformat()) for role, offset in DAY_ROLES]
     return tz_name, days
 
 
@@ -1757,9 +1762,6 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
     return {
         "schema": SCHEMA, "station_id": station, "available": True, "timezone": tz_name,
         "token": token,
-        # Today, once dropped for being past its peak: why, in one line.
-        "today_past_peak": None if any(d["role"] == "today" for d in days) else {
-            "event_date": today, **peak_today},
         "local_now": now.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
         "built_at_utc": _iso(finished),
         "build_sec": round((finished - started).total_seconds(), 2),
