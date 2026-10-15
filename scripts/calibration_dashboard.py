@@ -15630,6 +15630,7 @@ table.sd-sky td.sd-cold{background:rgba(56,139,253,.16)}
 .pill.sd-cold{background:rgba(56,139,253,.15);color:var(--accent);border-color:transparent}
 b.sd-warm{color:var(--pill-red-fg)}b.sd-cold{color:var(--accent)}
 table.sd-sky tr.sd-future td{opacity:.55}
+.sd-live-dot{display:inline-block;width:6px;height:6px;margin:0 0 2px 4px;border-radius:50%;background:var(--green);vertical-align:middle}
 table.sd-sky td{white-space:nowrap}
 table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
 table.sd-sky td.sd-sky-tags{white-space:normal}
@@ -22720,12 +22721,14 @@ function sdSky(day){
   const ordered = future.concat(seen);
   // The newest 10-minute scan sits in the hour it falls in (user 2026-10-15「此刻
   // 日照移动到下方小时轴里对应的小时显示」): a scan at 13:20 is in the hour
-  // ending 14:00, shown there with its time until that hour's mean arrives.
+  // ending 14:00, shown there until that hour's mean arrives -- a dot marks it
+  // as one scan, its time on hover (user 2026-10-15「14:00里的13:40这个时间放
+  // 这里很奇怪」).
   const L = sat.latest;
   const scanAt = L && L.sw_wm2 != null ? sdLocal(L.scan_utc, true) : null;   // "MM-DD HH:MM"
   const scanHour = scanAt && scanAt.slice(0, 5) === String(day.event_date || "").slice(5)
     ? Number(scanAt.slice(6, 8)) + (scanAt.slice(9, 11) === "00" ? 0 : 1) : null;
-  const scanCell = scanHour == null ? "" : `<span title="${sdEsc(`JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${scanAt}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，这一小时的平均约在小时开始后 75 分钟到`)}">${w(L.sw_wm2)}<small class="muted"> ${scanAt.slice(6)}</small></span>`;
+  const scanCell = scanHour == null ? "" : `<span title="${sdEsc(`JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${scanAt}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，这一小时的平均约在小时开始后 75 分钟到`)}">${w(L.sw_wm2)}<i class="sd-live-dot" aria-label="单次扫描"></i></span>`;
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
   const rows = ordered.map(r => {
     const f = r.forecast || {}, o = r.obs;
