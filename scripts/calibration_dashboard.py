@@ -15754,6 +15754,7 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-ev{font-size:12.5px;margin:3px 0;line-height:1.55}
 .sd-evidence-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:8px 0}
 .sd-evidence-card{border:1px solid var(--line);border-top:3px solid var(--c);border-radius:8px;padding:12px;background:color-mix(in srgb,var(--c) 5%,var(--card));min-width:0;overflow-wrap:anywhere}
+details>.sd-evidence-card{margin:8px 0}
 .sd-evidence-title{font-size:14px;font-weight:700;margin-bottom:8px}
 .sd-evidence-main{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;color:var(--c);margin:4px 0 8px}
 .sd-evidence-main b{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
@@ -22653,9 +22654,11 @@ function sdEvidence(day){
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
       `${sdRainSvg(P, O, day.precip_sat)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
-  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards sd-evidence-three">${rad}${dirCard}${sdMeanModeCard(day)}</div><div class="sd-evidence-cards">${taf}${p1Line}${rain}</div>${sdSky(day)}
+  // P1 is the reports read as a probability, so it sits with them (user
+  // 2026-10-15「这个卡片移动到下方：METAR/SPECI」).
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards sd-evidence-three">${rad}${dirCard}${sdMeanModeCard(day)}</div><div class="sd-evidence-cards">${taf}${rain}</div>${sdSky(day)}
     ${sdTafRaw(SD.data || {})}
-    ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary><div class="sd-metar">${met}</div></details>` : ""}`;
+    ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary>${p1Line}<div class="sd-metar">${met}</div></details>` : p1Line}`;
 }
 // Newest five rows shown, the rest folded (user 2026-10-09「只显示最近最新的5条，
 // 其他默认折叠」): ``rows`` are already newest first.
