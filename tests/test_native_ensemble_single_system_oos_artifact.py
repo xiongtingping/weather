@@ -216,7 +216,7 @@ def _ingest_bound_candidate(path: Path) -> None:
     assert receipt["inserted_count"] == 5
 
 
-def test_builder_reads_v6_member_and_truth_but_keeps_all_55_lineage_blocked(
+def test_builder_reads_v6_member_and_truth_but_keeps_every_registry_scope_lineage_blocked(
     tmp_path: Path,
 ) -> None:
     database = _database(tmp_path / "ssot.db")
@@ -229,7 +229,7 @@ def test_builder_reads_v6_member_and_truth_but_keeps_all_55_lineage_blocked(
         )
     assert database.read_bytes() == before
     assert manifest["artifact_count"] == 0
-    assert manifest["blocked_scope_count"] == 55
+    assert manifest["blocked_scope_count"] == sum(EXPECTED_ELIGIBILITY_COUNT.values())
     assert manifest["blocked_scope_count_by_system"] == EXPECTED_ELIGIBILITY_COUNT
     assert manifest["legacy_audit_read"] is False
     assert manifest["legacy_metrics_reused"] is False
@@ -264,7 +264,7 @@ def test_empty_v6_still_returns_exact_registry_and_mutable_connection_rejected(
         first = build_single_system_oos_artifacts(conn, compiled_at_utc=AS_OF)
         second = build_single_system_oos_artifacts(conn, compiled_at_utc=AS_OF)
     assert first == second
-    assert first["blocked_scope_count"] == 55
+    assert first["blocked_scope_count"] == sum(EXPECTED_ELIGIBILITY_COUNT.values())
     assert first["visible_canonical_fact_counts"] == {}
     assert all(row["artifact_count"] == 0 for row in first["blocked_scopes"])
 

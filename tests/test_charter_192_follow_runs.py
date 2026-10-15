@@ -590,10 +590,10 @@ def test_the_follow_lane_banks_each_due_run_once_and_only_where_it_covers(monkey
     assert states[(follow_run.ECCC_FAMILY, 1, "2026-07-31T12:00:00Z")] == "FAILED"
     # ECCC's 18Z rung and 12Z rung are the same 12Z run: asked once
     assert [c for c in calls if c[0] == "eccc"] == [("eccc", 1, 12, len(rows))]
-    # charter 193 amendment: ECMWF's D-3 18Z is banked whatever the rungs,
-    # for the stations +72h reaches (Chengdu's day, not New York's)
+    # charter 193 amendment: ECMWF's D-3 18Z is banked whatever the rungs;
+    # charter 263 (四): for New York's day too (read on past +72h)
     assert states[(follow_run.ECMWF_FAMILY, 3, "2026-07-29T18:00:00Z")] == "CAPTURED"
-    assert [c for c in calls if c[0] == "ecmwf"] == [("ecmwf", 3, 18, (len(rows) + 1) // 2)]
+    assert [c for c in calls if c[0] == "ecmwf"] == [("ecmwf", 3, 18, len(rows))]
     assert sorted(written) == [
         f"ecmwf_{DAY}_d3_18z.json", f"icon_{DAY}_d1_12z.json", f"icon_{DAY}_d1_18z.json",
     ]
@@ -742,7 +742,8 @@ def test_the_worker_queues_one_follow_capture_per_date_off_the_pass(monkeypatch,
         return subprocess.CompletedProcess(command, 0, stdout='{"state":"COMMITTED_NO_LIVE"}', stderr="")
 
     monkeypatch.setattr(worker.subprocess, "run", fake_run)
-    host = types.SimpleNamespace()
+    # Charter 263 (四)'s gap check reads the registry; no held file, no gap.
+    host = types.SimpleNamespace(_unfollowed_event_run_gaps=lambda **_kw: set())
     ladder = [
         (1, 18, _t("2026-09-22", 18)),
         (1, 12, _t("2026-09-22", 12)),
@@ -935,7 +936,11 @@ def test_ecmwf_d3_18z_covers_what_plus_72h_reaches() -> None:
     )
     assert len(seal("Asia/Shanghai")) == 8
     assert len(seal("Europe/Berlin")) == 7
-    assert seal("America/New_York") is None
+    # Charter 263 (四): +72h cannot seal New York's day, so the read goes on
+    # to FOLLOW_ONLY_MAX_FORECAST_STEP instead of skipping the station.
+    new_york = seal("America/New_York")
+    assert new_york and max(new_york) > 72
+    assert max(new_york) <= ecmwf.FOLLOW_ONLY_MAX_FORECAST_STEP
     # Chengdu: 46h to its local midnight -- its own (h24_48, 18Z) scope,
     # which D-2 18Z (22h, h12_24) never reaches
     assert capture_lead_bucket(
