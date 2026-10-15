@@ -82,6 +82,12 @@ def store(tmp_path, monkeypatch) -> sqlite3.Connection:
     conn = sqlite3.connect(tmp_path / "target.db", isolation_level=None)
     apply_production_ssot_schema(conn)
     apply_target_market_registry_schema(conn)
+    # The store's station is registered, as every traded one is: reads seek
+    # on the registry's station list (query-plan guard, 2026-10-15).
+    conn.execute(
+        "INSERT INTO calibration_station_registry VALUES (?,?,?,?,?,?,?,?,?)",
+        (ST, ST, "test", TZ, "AWC", "official_daily_tmax_c", "test", "test", "0" * 64),
+    )
     armed = tmp_path / "intent.json"
     armed.write_text(json.dumps({"live_enabled": True}), encoding="utf-8")
     monkeypatch.setattr(sub, "LIVE_INTENT_PATH", armed)

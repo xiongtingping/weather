@@ -295,12 +295,29 @@ def _candidates(conn: sqlite3.Connection, *, now_utc: str, cfg: Mapping[str, Any
     """Listed station-days still ahead (today .. today + 3 UTC) with no plan yet."""
 
     today = _utc(now_utc).date()
-    rows = conn.execute(
-        "SELECT station_id, event_date, MAX(settlement_unit), MAX(settlement_timezone)"
-        " FROM basket_target_market_registry WHERE event_date BETWEEN ? AND ? AND station_id<>''"
-        " GROUP BY station_id, event_date",
-        (today.isoformat(), (today + timedelta(days=3)).isoformat()),
-    ).fetchall()
+    # Two covering-index reads (query-plan guard, 2026-10-15).  On the date
+    # alone this scanned all 8.5M registry rows, 25 s every cycle; with the
+    # station list it still read ~270k rows back from the table (every
+    # registry refresh rewrites the window) for the unit and the zone.  The
+    # zone comes off the (station, day, zone, ...) index; the unit is a
+    # station's own (charter 53) and comes off the (station, unit) index.
+    # Every listed station is registered.
+    units_by_station = dict(conn.execute(
+        "SELECT station_id, MAX(settlement_unit) FROM basket_target_market_registry"
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " GROUP BY station_id"
+    ).fetchall())
+    rows = [
+        (station, day, units_by_station.get(station), zone)
+        for station, day, zone in conn.execute(
+            "SELECT station_id, event_date, MAX(settlement_timezone)"
+            " FROM basket_target_market_registry"
+            " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+            " AND event_date BETWEEN ? AND ? AND station_id<>''"
+            " GROUP BY station_id, event_date",
+            (today.isoformat(), (today + timedelta(days=3)).isoformat()),
+        ).fetchall()
+    ]
     planned = {(str(s), str(d)) for s, d in conn.execute(f"SELECT station_id, event_date FROM {PLAN_TABLE}")}
     units = {str(u).upper()[:1] for u in cfg["units"]}
     # The MVP (user 10-13 「先用单站点进行mvp最小单元测试」): an empty list is every station.

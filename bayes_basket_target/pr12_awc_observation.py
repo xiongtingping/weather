@@ -146,74 +146,8 @@ def build_pr12_expected_scope_bases(
     }
 
 
-def stage_observation_timezone_schema(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Add the required identity carrier without backfilling legacy rows.
-
-    The caller owns the outer transaction.  Existing rows remain explicitly
-    unbound and therefore cannot enter P1; only the canonical AWC ingress may
-    append new rows with a proved settlement timezone.
-    """
-
-    if not conn.in_transaction:
-        raise ContractError("pr12_observation_schema_outer_transaction_required")
-    table = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' "
-        "AND name='basket_target_observation_facts'"
-    ).fetchone()
-    if table is None:
-        raise ContractError("pr12_observation_fact_table_missing")
-    columns = {
-        str(row[1])
-        for row in conn.execute("PRAGMA table_info(basket_target_observation_facts)")
-    }
-    before = int(
-        conn.execute("SELECT COUNT(*) FROM basket_target_observation_facts").fetchone()[0]
-    )
-    added_columns: list[str] = []
-    if "settlement_timezone" not in columns:
-        conn.execute(
-            "ALTER TABLE basket_target_observation_facts "
-            "ADD COLUMN settlement_timezone TEXT"
-        )
-        added_columns.append("settlement_timezone")
-    if "observed_at_utc" not in columns:
-        conn.execute(
-            "ALTER TABLE basket_target_observation_facts "
-            "ADD COLUMN observed_at_utc TEXT"
-        )
-        added_columns.append("observed_at_utc")
-    if "awc_source_receipt_sha256" not in columns:
-        conn.execute(
-            "ALTER TABLE basket_target_observation_facts "
-            "ADD COLUMN awc_source_receipt_sha256 TEXT"
-        )
-        added_columns.append("awc_source_receipt_sha256")
-    state = "STAGED_NULLABLE_WITHOUT_BACKFILL" if added_columns else "ALREADY_PRESENT"
-    unbound = int(
-        conn.execute(
-            "SELECT COUNT(*) FROM basket_target_observation_facts "
-            "WHERE settlement_timezone IS NULL OR trim(settlement_timezone)=''"
-        ).fetchone()[0]
-    )
-    identity = {
-        "schema": SCHEMA,
-        "state": state,
-        "rows_preserved": before,
-        "legacy_rows_left_unbound": unbound,
-        "added_nullable_columns": added_columns,
-        "default_value_used": False,
-        "registry_backfill_used": False,
-        "cross_table_compatibility_used": False,
-        "release_state": "MATERIALIZED_UNPUBLISHED",
-        "calls_order_gateway": False,
-        "orders_submitted": 0,
-    }
-    return {**identity, "receipt_sha256": content_sha256(identity)}
-
-
 __all__ = [
     "EXPECTED_SCOPE_BUNDLE_SCHEMA",
     "SCHEMA",
     "build_pr12_expected_scope_bases",
-    "stage_observation_timezone_schema",
 ]

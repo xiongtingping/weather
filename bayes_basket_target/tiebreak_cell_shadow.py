@@ -412,7 +412,9 @@ def replay_cell(
     labels = settled_buckets(conn, floor_event_date=floor_event_date)
     firsts = conn.execute(
         "SELECT station_id,event_date,stage,MIN(decision_at_utc),probability_envelope_id,ws_snapshot_id"
-        " FROM basket_policy_training_fact WHERE event_date>=?"
+        " FROM basket_policy_training_fact"
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND event_date>=?"
         " GROUP BY station_id,event_date,stage",
         (floor_event_date,),
     ).fetchall()

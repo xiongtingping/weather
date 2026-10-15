@@ -20,26 +20,34 @@ from __future__ import annotations
 from tests import sql_plan_guard as guard
 
 KNOWN_DEBT = {
-    "bayes_basket_target/canonical_activation_release.py:8e0316a05a83": "canonical_ssot_fact (208k rows), canonical_activation_release.py:939",
-    "bayes_basket_target/canonical_typed_scope_builder.py:534dd71d6dc4": "basket_official_ws_snapshot (2208k rows), canonical_typed_scope_builder.py:909",
-    "bayes_basket_target/execution_transition_runtime.py:2478edeee359": "basket_official_ws_snapshot (2208k rows), execution_transition_runtime.py:752",
-    "bayes_basket_target/execution_transition_runtime.py:630aeb1f925a": "basket_official_ws_snapshot (2208k rows), execution_transition_runtime.py:757",
-    "bayes_basket_target/execution_transition_runtime.py:c11bdf78d1eb": "basket_confirmed_inventory_snapshot (2154k rows), execution_transition_runtime.py:784",
-    "bayes_basket_target/execution_transition_runtime.py:44fa649cc1e1": "basket_order_state_snapshot (2154k rows), execution_transition_runtime.py:788",
-    "bayes_basket_target/execution_transition_runtime.py:cdd10a2ed977": "basket_confirmed_inventory_snapshot (2154k rows), execution_transition_runtime.py:793",
-    "bayes_basket_target/execution_transition_runtime.py:429aab8a313d": "basket_order_state_snapshot (2154k rows), execution_transition_runtime.py:794",
-    "bayes_basket_target/order_state_producer.py:f1c23011cc5b": "auto_trade_decisions (190k rows), order_state_producer.py:318",
-    "bayes_basket_target/pair_maker_lane.py:a5512f297f95": "basket_target_market_registry (8474k rows), pair_maker_lane.py:299",
-    "bayes_basket_target/pr11_taf_p0m_basis.py:dc041eb5827e": "canonical_ssot_fact (208k rows), pr11_taf_p0m_basis.py:377",
-    "bayes_basket_target/pr12_awc_observation.py:6cd2e66f15fe": "basket_target_observation_facts (50k rows), pr12_awc_observation.py:194",
-    "bayes_basket_target/pr14_strategy_basis.py:4c8fad5b02d7": "auto_trade_decisions (190k rows), pr14_strategy_basis.py:54",
-    "bayes_basket_target/pr14_strategy_basis.py:dc041eb5827e": "canonical_ssot_fact (208k rows), pr14_strategy_basis.py:108",
-    "bayes_basket_target/production_worker.py:f125cae4a4f4": "calibration_native_ensemble_system_artifact (161k rows), production_worker.py:2467",
-    "bayes_basket_target/production_worker.py:0f6649a8d11e": "basket_confirmed_inventory_snapshot (2154k rows), production_worker.py:14283",
-    "bayes_basket_target/production_worker.py:3ec06cd33c73": "basket_order_state_snapshot (2154k rows), production_worker.py:14288",
-    "bayes_basket_target/realisation_store.py:e9d280f8aaef": "basket_policy_training_fact (126k rows), realisation_store.py:255",
-    "bayes_basket_target/ssot.py:18d1b916c863": "calibration_native_ensemble_activation (902k rows), ssot.py:4395",
-    "bayes_basket_target/tiebreak_cell_shadow.py:8c9a6b1ed268": "basket_policy_training_fact (126k rows), tiebreak_cell_shadow.py:414",
+    # Operator tools, not the resident: release materialisation, the expected
+    # scope manifest and the cold-offload audit.
+    "bayes_basket_target/canonical_activation_release.py:8e0316a05a83":
+        "canonical_ssot_fact 209k; load_db_audit_snapshot, release tool only",
+    "bayes_basket_target/canonical_typed_scope_builder.py:534dd71d6dc4":
+        "basket_official_ws_snapshot 2.2M; _market_records, manifest/offload tools only",
+    # Latent: the receipt ingress (production_io.apply_no_live_execution_
+    # receipt) has no caller, and nothing writes post-fill recompute requests
+    # (table empty 2026-10-15).  If either path wakes, each lookup by
+    # content_sha256 is 35-214 s: index content_sha256 or delete the chain.
+    "bayes_basket_target/execution_transition_runtime.py:2478edeee359":
+        "basket_official_ws_snapshot 2.2M by content_sha256 (214 s); latent, no caller",
+    "bayes_basket_target/execution_transition_runtime.py:c11bdf78d1eb":
+        "basket_confirmed_inventory_snapshot 2.2M by content_sha256 (48 s); latent, no caller",
+    "bayes_basket_target/execution_transition_runtime.py:44fa649cc1e1":
+        "basket_order_state_snapshot 2.2M by content_sha256 (35 s); latent, no caller",
+    "bayes_basket_target/production_worker.py:0f6649a8d11e":
+        "basket_confirmed_inventory_snapshot 2.2M by content_sha256; post-fill requests table empty",
+    "bayes_basket_target/production_worker.py:3ec06cd33c73":
+        "basket_order_state_snapshot 2.2M by content_sha256; post-fill requests table empty",
+    # Cheap in fact: narrow rows, 0.24 s for the whole table (will_order is
+    # always 0 in production_no_live).
+    "bayes_basket_target/order_state_producer.py:f1c23011cc5b":
+        "auto_trade_decisions 191k; OR-scoped quiescence check, 0.24 s measured",
+    # Called only through apply_native_ensemble_foundation_schema, which no
+    # production path calls (tests do).
+    "bayes_basket_target/ssot.py:18d1b916c863":
+        "calibration_native_ensemble_activation 903k; run-cycle mapping migration, tests only",
 }
 
 

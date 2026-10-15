@@ -86,6 +86,9 @@ def test_a_pass_posts_the_formed_mode_once_inside_the_budget(monkeypatch):
     conn = _ledger_db()
     conn.execute("CREATE TABLE basket_target_market_registry (station_id TEXT, event_date TEXT,"
                  " settlement_unit TEXT, settlement_timezone TEXT)")
+    # The candidate read seeks on the station list (query-plan guard).
+    conn.execute("CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+                 " FROM basket_target_market_registry")
     conn.execute("INSERT INTO basket_target_market_registry VALUES ('EGLC','2026-10-15','C','Europe/London')")
     conn.execute("INSERT INTO basket_target_market_registry VALUES ('KLGA','2026-10-15','F','America/New_York')")
     sent = []
@@ -127,6 +130,9 @@ def test_an_unformed_book_waits(monkeypatch):
     conn = _ledger_db()
     conn.execute("CREATE TABLE basket_target_market_registry (station_id TEXT, event_date TEXT,"
                  " settlement_unit TEXT, settlement_timezone TEXT)")
+    # The candidate read seeks on the station list (query-plan guard).
+    conn.execute("CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+                 " FROM basket_target_market_registry")
     conn.execute("INSERT INTO basket_target_market_registry VALUES ('EGLC','2026-10-15','C','Europe/London')")
     listing = [_row(f"{t}°C", i, 0.16, 0.46) for i, t in enumerate(range(18, 25))]
     monkeypatch.setattr(P, "_book", lambda *a, **k: ({"buckets": listing}, None))
@@ -221,6 +227,9 @@ def test_the_mvp_runs_on_its_one_station(monkeypatch):
     conn = _ledger_db()
     conn.execute("CREATE TABLE basket_target_market_registry (station_id TEXT, event_date TEXT,"
                  " settlement_unit TEXT, settlement_timezone TEXT)")
+    # The candidate read seeks on the station list (query-plan guard).
+    conn.execute("CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+                 " FROM basket_target_market_registry")
     P.ensure_lane_schema(conn)
     for st in ("LEMD", "EGLC"):
         conn.execute("INSERT INTO basket_target_market_registry VALUES (?, '2026-10-15', 'C', 'Europe/Madrid')", (st,))

@@ -115,11 +115,24 @@ def test_another_store_does_not_borrow_the_mark(tmp_path) -> None:
 def test_the_vintage_is_remembered_until_an_artifact_is_added(tmp_path) -> None:
     pw._ARTIFACT_VINTAGE_MEMO.clear()
     conn = sqlite3.connect(tmp_path / "ssot.db")
+    # The read answers off the (system, station, ..., valid_from) index
+    # (query-plan guard, 2026-10-15), so the fixture carries it.
     conn.execute(
-        "CREATE TABLE calibration_native_ensemble_system_artifact(station_id TEXT, valid_from_utc TEXT)"
+        "CREATE TABLE calibration_native_ensemble_system_artifact(ensemble_system_id TEXT"
+        " DEFAULT 'ECMWF', station_id TEXT, season_bin TEXT, lead_bucket TEXT, run_cycle TEXT,"
+        " valid_from_utc TEXT, valid_until_utc TEXT)"
     )
+    conn.execute(
+        "CREATE INDEX calibration_native_system_artifact_scope_idx ON"
+        " calibration_native_ensemble_system_artifact(ensemble_system_id,station_id,season_bin,"
+        "lead_bucket,run_cycle,valid_from_utc,valid_until_utc)"
+    )
+    conn.execute("CREATE TABLE calibration_native_ensemble_system(ensemble_system_id TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO calibration_native_ensemble_system VALUES ('ECMWF')")
+    conn.execute("CREATE TABLE calibration_station_registry(station_id TEXT PRIMARY KEY)")
+    conn.executemany("INSERT INTO calibration_station_registry VALUES (?)", [("ZUUU",), ("KORD",)])
     conn.executemany(
-        "INSERT INTO calibration_native_ensemble_system_artifact VALUES(?,?)",
+        "INSERT INTO calibration_native_ensemble_system_artifact(station_id, valid_from_utc) VALUES(?,?)",
         [("ZUUU", "2026-09-19T00:00:00Z"), ("ZUUU", "2026-09-20T00:00:00Z"), ("KORD", "2026-09-18T00:00:00Z")],
     )
     conn.commit()
@@ -131,7 +144,8 @@ def test_the_vintage_is_remembered_until_an_artifact_is_added(tmp_path) -> None:
     assert not [s for s in statements if "GROUP BY" in s]
     conn.set_trace_callback(None)
     conn.execute(
-        "INSERT INTO calibration_native_ensemble_system_artifact VALUES('KORD','2026-09-21T00:00:00Z')"
+        "INSERT INTO calibration_native_ensemble_system_artifact(station_id, valid_from_utc)"
+        " VALUES('KORD','2026-09-21T00:00:00Z')"
     )
     conn.commit()
     assert pw._native_ensemble_artifact_vintage_by_station(conn)["KORD"] == "2026-09-21T00:00:00Z"

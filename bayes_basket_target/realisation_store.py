@@ -254,7 +254,10 @@ def population(
     facts = conn.execute(
         "SELECT station_id, event_date, decision_at_utc, probability_envelope_id, ws_snapshot_id,"
         " settlement_timezone FROM basket_policy_training_fact"
-        " WHERE stage=? AND event_date > ? AND event_date <= ?",
+        # The station list lets the (station_id, event_date, stage, ...) index
+        # seek; without it all 126k facts were read (17 s, 2026-10-15).
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND stage=? AND event_date > ? AND event_date <= ?",
         (str(stage), floor_day, latest),
     ).fetchall()
     first_p1: dict[tuple[str, str], str] = {}

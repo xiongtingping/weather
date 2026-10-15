@@ -2466,6 +2466,15 @@ def _native_ensemble_artifact_vintage_by_station(
             for row in conn.execute(
                 "SELECT station_id, MAX(valid_from_utc)"
                 " FROM calibration_native_ensemble_system_artifact"
+                # System and station lists let the (system, station, ...,
+                # valid_from_utc) index answer it alone, instead of reading
+                # all 161k artifacts (query-plan guard, 2026-10-15): 4.8 s ->
+                # 0.06 s, identical.  Named, because the planner otherwise
+                # takes the station index, which does not carry valid_from.
+                " INDEXED BY calibration_native_system_artifact_scope_idx"
+                " WHERE ensemble_system_id IN"
+                " (SELECT ensemble_system_id FROM calibration_native_ensemble_system)"
+                " AND station_id IN (SELECT station_id FROM calibration_station_registry)"
                 " GROUP BY station_id"
             )
         }

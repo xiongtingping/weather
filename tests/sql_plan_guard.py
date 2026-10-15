@@ -119,6 +119,9 @@ def statement_key(path: str, sql: str) -> str:
 def full_scans(conn: sqlite3.Connection, sizes: dict[str, int]) -> list[dict]:
     out = []
     for path, line, sql in statements():
+        # ``LIMIT 0`` reads no row: it asks for the column names.
+        if re.search(r"\bLIMIT\s+0\s*$", sql.strip(), re.I):
+            continue
         query = re.sub(r"%s", "?", re.sub(r"\{[^}]*\}", "?", sql))
         try:
             plan = conn.execute("EXPLAIN QUERY PLAN " + query, [None] * query.count("?")).fetchall()
