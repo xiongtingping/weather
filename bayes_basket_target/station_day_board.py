@@ -1407,6 +1407,9 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         stages[stage] = entry
     head_stage = day_word(stages)
     metar = _metar(station, day, zone)
+    precip = _precip(conn, station, day)
+    precip_sat = _precip_sat(station, day, zone)
+    sky = _hourly_vs_forecast(conn, station, day, zone, metar)
     return {
         "role": role, "event_date": day, "available": True, "axis": axis,
         "head_stage": head_stage, "stages": stages,
@@ -1416,13 +1419,157 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "metar": metar,
         "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
         "taf": _taf(conn, station, day),
-        "precip": _precip(conn, station, day),
-        "precip_sat": _precip_sat(station, day, zone),
+        "precip": precip,
+        "precip_sat": precip_sat,
         "precip_5min": _precip_5min(station, day, zone),
-        "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
+        "hourly_sky": sky,
         "direction": _direction(station, day),
         "deterministic": _deterministic(conn, station, day),
+        "d0": _d0_reading(conn, station, day, zone, axis, metar, sky, precip, precip_sat) if role == "today" else None,
     }
+
+
+# The D0 observation model, read-only (user 2026-10-15 「不要结案，作为只读，在前端
+# "站点看板"增加只读卡片」): the day's maximum computed from what the airport and
+# the satellites show so far against an official deterministic baseline,
+# with coefficients fitted in docs/research/d0_obs_model_20261015 and stored
+# in config/ui/d0_obs_model_v1.json (export_d0.py).  The board only applies
+# them to the readings it already holds, with the research's own feature
+# definitions.  Walk-forward it is behind both the market (~0.2 C) and the
+# served P1 (~0.1 C) -- the card says so; it enters no layer.
+D0_MODEL_PATH = ROOT / "config" / "ui" / "d0_obs_model_v1.json"
+D0_OFFICIAL = ("ECMWF_IFS_HRES_NATIVE_POINT", "NOAA_GFS_025_NATIVE_POINT", "ECMWF_AIFS_SINGLE_POINT")
+
+
+def _d0_baseline(conn, station: str, day: str, zone: ZoneInfo) -> tuple[float | None, int]:
+    midnight = _iso(datetime.combine(datetime.fromisoformat(day).date(), dtime(0), zone))
+    vals = []
+    for system in D0_OFFICIAL:
+        row = conn.execute(
+            "SELECT forecast_tmax_c FROM calibration_regional_point_run WHERE ensemble_system_id=? AND station_id=?"
+            " AND target_local_date=? AND knowable_at_utc<=? AND forecast_tmax_c IS NOT NULL"
+            " ORDER BY run_init_utc DESC LIMIT 1", (system, station, day, midnight)).fetchone()
+        if row:
+            vals.append(float(row[0]))
+    if not vals:
+        return None, 0
+    vals.sort()
+    mid = len(vals) // 2
+    return (vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2), len(vals)
+
+
+def _d0_reading(conn, station: str, day: str, zone: ZoneInfo, axis, metar, sky, precip, precip_sat) -> dict[str, Any] | None:
+    try:
+        model = json.loads(D0_MODEL_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "no_model"}
+    now = datetime.now(timezone.utc)
+    h = now.astimezone(zone).hour
+    band_name, band = next(((n, b) for n, b in model["bands"].items() if b["hours"][0] <= h < b["hours"][1]),
+                           (None, None))
+    if band is None:
+        return {"state": "outside_hours", "hours": [min(b["hours"][0] for b in model["bands"].values()),
+                                                     max(b["hours"][1] for b in model["bands"].values())]}
+    base, n_base = _d0_baseline(conn, station, day, zone)
+    obs = [m for m in metar if m.get("temp_c") is not None and (_utc(m["valid_at_utc"]) or now) <= now]
+    if base is None or not obs:
+        return {"state": "no_baseline" if base is None else "no_reports"}
+    cur = obs[-1]
+    cur_at = _utc(cur["valid_at_utc"])
+    if now - cur_at > timedelta(hours=2):
+        return {"state": "stale_report"}
+    high = max(m["temp_c"] for m in obs)
+    two_h = [m for m in obs if _utc(m["valid_at_utc"]) >= now - timedelta(hours=2, minutes=10)]
+    momentum = 0.0
+    if len(two_h) > 1:
+        span = (_utc(two_h[-1]["valid_at_utc"]) - _utc(two_h[0]["valid_at_utc"])).total_seconds() / 3600
+        momentum = (two_h[-1]["temp_c"] - two_h[0]["temp_c"]) / max(0.5, span)
+    rows = {r["hour"]: r for r in (sky or {}).get("rows") or []}
+    fc_t = [((rows.get(k) or {}).get("forecast") or {}).get("temp_c_d1") for k in range(24)]
+    if any(v is None for v in fc_t):
+        return {"state": "no_forecast_curve"}
+    fh = min(23, max(1, h))
+    fc_now = fc_t[fh - 1] + (fc_t[fh] - fc_t[fh - 1]) * 0.5
+    fc_peak_h = max(range(24), key=lambda k: fc_t[k])
+    sun_obs = sun_fc = 0.0
+    sun_n = 0
+    for k in range(6, h + 1):
+        r = rows.get(k) or {}
+        sat, fsw = r.get("sat_sw_wm2"), (r.get("forecast") or {}).get("sw_d1")
+        if sat is not None and fsw is not None and r.get("past"):
+            sun_obs += float(sat); sun_fc += float(fsw); sun_n += 1
+    sun_pct = None if sun_n < 2 or sun_fc < 100 else max(-0.8, min(0.8, (sun_obs - sun_fc) / sun_fc))
+    cloud_gap = None
+    for k in range(h, max(-1, h - 4), -1):
+        c = (rows.get(k) or {}).get("sat_cloud")
+        fcl = ((rows.get(k) or {}).get("forecast") or {}).get("cloud_d1")
+        if c and c.get("state") == "ok" and c.get("cover") is not None and fcl is not None:
+            eff = c["cover"] * (1 - math.exp(-(c.get("optical_thickness") or 0.0) / 10.0))
+            cloud_gap = eff - fcl / 100.0
+            break
+    rain_gap = None
+    hours_sat = (precip_sat or {}).get("hours") or {}
+    fc_pr = (precip or {}).get("hourly_mm") or {}
+    got = [(k, hours_sat.get(f"{k:02d}")) for k in range(max(0, h - 2), h + 1)]
+    got = [(k, v) for k, v in got if v and v.get("mm") is not None]
+    if got:
+        rain_gap = math.log1p(sum(v["mm"] for _k, v in got)) - math.log1p(
+            sum(float(fc_pr.get(f"{k:02d}") or 0.0) for k, _v in got))
+    feats = {
+        "t_minus_fc": cur["temp_c"] - fc_now, "warmed_gap": (cur["temp_c"] - obs[0]["temp_c"]) - (fc_now - fc_t[max(0, h - 7)]),
+        "momentum": momentum, "high_minus_base": high - base, "fc_rise": max(0.0, max(fc_t[fh:]) - fc_now),
+        "dew_dep": None if cur.get("dew_c") is None else cur["temp_c"] - cur["dew_c"], "dew_minus_fc_dew": None,
+        "wind": cur.get("wind_mps"), "cloud_low": cur.get("cloud_cover"),
+        "precip_now": float(bool(cur.get("precip"))), "precip_any": float(any(m.get("precip") for m in obs)),
+        "sun_pct": sun_pct, "cloud_gap": cloud_gap, "rain_gap": rain_gap, "hours_to_peak": fc_peak_h - h,
+    }
+    x, names = [], []
+    flagged = set(model["missing_indicator_after"])
+    for c in model["numeric"]:
+        v = feats.get(c)
+        x.append(0.0 if v is None else float(v)); names.append(c)
+        if c in flagged:
+            x.append(1.0 if v is None else 0.0); names.append(c + "_missing")
+    nf = band["nf"]
+    xs = [(xi - band["mu"][i]) / band["sd"][i] for i, xi in enumerate(x[:nf])]
+    beta = band["beta"]
+    parts = {names[i]: beta[i] * xs[i] for i in range(nf)}
+    station_effect = beta[nf + model["stations"].index(station)] if station in model["stations"] else 0.0
+    yhat = sum(parts.values()) + station_effect + beta[-1]
+    spread = [feats["hours_to_peak"], max(0.0, feats["hours_to_peak"]), feats["fc_rise"], feats["high_minus_base"],
+              abs(feats["t_minus_fc"])]
+    ss = [(v - band["smu"][i]) / band["ssd"][i] for i, v in enumerate(spread)] + [1.0]
+    sigma = max(0.35, min(3.0, math.exp(sum(g * v for g, v in zip(band["gamma"], ss))) * band["scale"]))
+    centre = base + yhat
+    vector = {}
+    for rung in axis:
+        lo = -1e9 if rung["lo_c"] is None else rung["lo_c"]
+        hi = 1e9 if rung["hi_c"] is None else rung["hi_c"]
+        if hi <= high + 1e-9:
+            p = 0.0
+        elif lo <= high + 1e-9:
+            p = _norm_cdf((hi - centre) / sigma)
+        else:
+            p = _norm_cdf((hi - centre) / sigma) - _norm_cdf((lo - centre) / sigma)
+        vector[rung["bucket"]] = max(p, 0.0)
+    total = sum(vector.values()) or 1.0
+    vector = {b: max(p / total, 1e-3) for b, p in vector.items()}
+    total = sum(vector.values())
+    vector = {b: round(p / total, 4) for b, p in vector.items()}
+    mode = max(vector, key=vector.get)
+    top = sorted(((k, v) for k, v in parts.items() if abs(v) >= 0.05), key=lambda kv: -abs(kv[1]))[:4]
+    return {"state": "ok", "band": band_name, "base_c": round(base, 2), "base_systems": n_base,
+            "centre_c": round(centre, 2), "sigma_c": round(sigma, 2), "running_high_c": high,
+            "mode": mode, "mode_p": vector[mode], "vector": vector,
+            "station_effect_c": round(station_effect, 2),
+            "parts": [{"feature": k, "c": round(v, 2), "value": feats.get(k.replace("_missing", ""))} for k, v in top],
+            "inputs": {k: (None if v is None else round(float(v), 3)) for k, v in feats.items() if k != "dew_minus_fc_dew"},
+            "walk_forward_mae": band["walk_forward_mae"], "fitted_at_utc": model.get("fitted_at_utc"),
+            "window": model.get("window"), "as_of_utc": _iso(now)}
+
+
+def _norm_cdf(z: float) -> float:
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
 def day_word(stages: Mapping[str, Any]) -> str | None:
