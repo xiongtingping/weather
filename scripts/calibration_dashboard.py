@@ -22833,7 +22833,55 @@ function sdModeAgreement(A){
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
     <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
     ${trend}
+    ${sdModeConverge(A)}
   </details>`;
+}
+// Who moved onto the common bucket (user 2026-10-15 「统计模型的众数桶向市场的众数桶
+// 靠拢，和市场的众数桶向模型的众数桶靠拢的真值的命中率，也是时间轴维度」).
+function sdModeConverge(A){
+  const C = A.converge || [];
+  if(!C.length) return "";
+  const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  const pt = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(100 * v).toFixed(1);
+  const word = {model: "模型 → 市场", market: "市场 → 模型", both: "两边一起换", start: "开盘即同桶"};
+  const tip = {model: "市场众数不动，我方众数移到市场众数上", market: "我方众数不动，市场众数移到我方众数上",
+               both: "两边众数同时换到同一新桶", start: "站日第一个有盘口的时刻两边就同桶"};
+  const col = {model: SD_COL.P1, market: SD_COL.MKT, both: "var(--muted)", start: "var(--muted)"};
+  const edge = x => {
+    if(!x) return `<span class="muted">—</span>`;
+    const ci = x.over_market_ci || [], d = x.hit - x.said_market, sure = ci.length === 2 && (ci[0] > 0 || ci[1] < 0);
+    return `<span class="mono${sure ? (d > 0 ? " up" : " down") : " muted"}" title="命中 − 市场说，按事件日自助 95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}">${pt(d)}${sure ? "" : " ·"}</span>`;
+  };
+  const cards = C.filter(c => c.mover === "model" || c.mover === "market").map(c => {
+    const e = c.every || {}, f = c.first || {};
+    return `<div class="card" title="${tip[c.mover]}">
+      <div class="muted">${word[c.mover]}</div>
+      <div class="big" style="color:${col[c.mover]}">${pc(e.hit)}</div>
+      <div class="muted sd-sub">市场说 ${pc(e.said_market)} · 差 ${edge(e)} · ${e.n || 0} 次 / ${e.station_days || 0} 站日</div>
+      <div class="muted sd-sub">首次同桶即此：${pc(f.hit)}（市场说 ${pc(f.said_market)} · 差 ${edge(f)} · ${f.n || 0} 站日）</div></div>`;
+  }).join("");
+  const bands = [];
+  C.forEach(c => (c.slices || []).forEach(x => { if(x.group === "提前量" && !bands.includes(x.slice)) bands.push(x.slice); }));
+  bands.sort();
+  const table = scope => `<div class="scroll"><table class="sd-tab"><thead><tr><th>距结算（靠拢时）</th>${C.map(c =>
+      `<th title="${tip[c.mover]}">${word[c.mover]}</th><th>差</th><th>次</th>`).join("")}</tr></thead><tbody>${bands.map(b =>
+      `<tr><td>${sdEsc(b)}</td>${C.map(c => {
+        const x = (c.slices || []).find(r => r.group === "提前量" && r.slice === b && r.scope === scope);
+        return x ? `<td class="mono">${pc(x.hit)}</td><td>${edge(x)}</td><td class="mono muted">${x.n}</td>`
+          : `<td class="mono muted">—</td><td></td><td></td>`;
+      }).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const dates = [...new Set(C.flatMap(c => (c.daily || []).map(d => d.event_date)))].sort();
+  const trend = typeof trendChart === "function" ? trendChart({title: "靠拢后真值命中率（按事件日）", sub: "模型 → 市场 / 市场 → 模型",
+    dates, fmt: v => Math.round(100 * v) + "%", width: 640,
+    series: C.filter(c => c.mover === "model" || c.mover === "market").map(c => {
+      const m = Object.fromEntries((c.daily || []).map(d => [d.event_date, d.hit]));
+      return {name: word[c.mover], values: dates.map(d => m[d] ?? null)};
+    })}) : "";
+  return `<div class="sd-t" style="margin-top:10px" title="每次同桶开始时，与上一个有盘口的时刻比：谁的众数移动了；差＝真值命中 − 市场在这一桶上的参考价（不含买卖价差），带 · 的区间跨零">谁向谁靠拢</div>
+    <div class="grid g3">${cards}</div>
+    <div class="muted sd-sub">每一次靠拢（一个站日可有多次）</div>${table("every")}
+    <details class="sd-sub"><summary class="muted">只看各站日的首次同桶</summary>${table("first")}</details>
+    ${trend}`;
 }
 function sdMeanModeCard(day){
   const S = sdSeries(day);
