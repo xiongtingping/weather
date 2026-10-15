@@ -1,0 +1,74 @@
+rows 202 pre-formation first YES with F READY and >=2 ensembles; event days 2026-09-24..2026-10-17 (22); forward (>= 2026-10-12) 46 rows / 4 days
+cluster pick vs F: <=-2 8, -1 35, 0 85, +1 57, >=+2 17; truth on F bucket 0.377 (162 settled)
+
+==================== T1: cluster first-pick class (5 classes)
+
+  -- ENS tilt (main): active 148/202; side right (rows off F, active) 0.655 (n 87)
+     ln1.5              FORWARD n 46/4d dLog +0.0030 [-0.0084,+0.0189]  CRPS +0.0017 [-0.0037,+0.0103]  Brier +0.0010 [-0.0062,+0.0074]  | research dLog -0.0282 [-0.0493,-0.0063]* | all dLog -0.0211 [-0.0394,-0.0024]* halves -0.0322/-0.0147 | fwd parts on F +0.000(n19) off right -0.178(n9) off wrong +0.193(n9)
+     ln2                FORWARD n 46/4d dLog +0.0141 [-0.0048,+0.0445]  CRPS +0.0082 [-0.0010,+0.0236]  Brier +0.0050 [-0.0079,+0.0162]  | research dLog -0.0380 [-0.0724,+0.0014]  | all dLog -0.0261 [-0.0568,+0.0044]  halves -0.0440/-0.0158 | fwd parts on F +0.000(n19) off right -0.282(n9) off wrong +0.354(n9)
+     ln3                FORWARD n 46/4d dLog +0.0418 [+0.0085,+0.0950]* CRPS +0.0236 [+0.0092,+0.0484]* Brier +0.0143 [-0.0065,+0.0321]  | research dLog -0.0384 [-0.0948,+0.0280]  | all dLog -0.0201 [-0.0693,+0.0307]  halves -0.0463/-0.0050 | fwd parts on F +0.000(n19) off right -0.399(n9) off wrong +0.613(n9)
+     walk-forward kappa FORWARD n 46/4d dLog +0.0176 [-0.0048,+0.0448]  CRPS +0.0116 [-0.0010,+0.0245]  Brier +0.0075 [-0.0056,+0.0167]  | research dLog -0.0331 [-0.0668,+0.0015]  | all dLog -0.0216 [-0.0513,+0.0076]  halves -0.0402/-0.0108 | fwd parts on F +0.000(n19) off right -0.290(n9) off wrong +0.380(n9)
+
+  -- momentum: active 144/202; side right (rows off F, active) 0.582 (n 79)
+     ln1.5              FORWARD n 46/4d dLog -0.0011 [-0.0198,+0.0376]  CRPS -0.0002 [-0.0135,+0.0228]  Brier +0.0040 [-0.0038,+0.0141]  | research dLog -0.0094 [-0.0245,+0.0058]  | all dLog -0.0075 [-0.0208,+0.0057]  halves -0.0164/-0.0023 | fwd parts on F +0.000(n19) off right -0.180(n13) off wrong +0.208(n11)
+     ln2                FORWARD n 46/4d dLog +0.0100 [-0.0223,+0.0632]  CRPS +0.0053 [-0.0182,+0.0444]  Brier +0.0101 [-0.0027,+0.0268]  | research dLog -0.0078 [-0.0341,+0.0182]  | all dLog -0.0038 [-0.0255,+0.0196]  halves -0.0199/+0.0056 | fwd parts on F +0.000(n19) off right -0.285(n13) off wrong +0.379(n11)
+     ln3                FORWARD n 46/4d dLog +0.0412 [-0.0106,+0.1236]  CRPS +0.0189 [-0.0190,+0.0790]  Brier +0.0221 [+0.0031,+0.0468]* | research dLog +0.0050 [-0.0331,+0.0434]  | all dLog +0.0133 [-0.0206,+0.0491]  halves -0.0143/+0.0292 | fwd parts on F +0.000(n19) off right -0.404(n13) off wrong +0.650(n11)
+     walk-forward kappa FORWARD n 46/4d dLog -0.0011 [-0.0211,+0.0306]  CRPS -0.0002 [-0.0135,+0.0228]  Brier +0.0040 [-0.0038,+0.0141]  | research dLog +0.0062 [-0.0145,+0.0334]  | all dLog +0.0045 [-0.0127,+0.0277]  halves +0.0105/+0.0010 | fwd parts on F +0.000(n19) off right -0.180(n13) off wrong +0.208(n11)
+
+  -- combined walk-forward: active 153/202; side right (rows off F, active) 0.705 (n 88)
+     ln1.5              FORWARD n 46/4d dLog +0.0068 [-0.0243,+0.0339]  CRPS +0.0002 [-0.0172,+0.0191]  Brier +0.0050 [-0.0047,+0.0139]  | research dLog -0.0284 [-0.0432,-0.0132]* | all dLog -0.0195 [-0.0351,-0.0036]* halves -0.0370/-0.0121 | fwd parts on F +0.000(n19) off right -0.147(n14) off wrong +0.263(n9)
+     ln2                FORWARD n 46/4d dLog +0.0221 [-0.0322,+0.0664]  CRPS +0.0046 [-0.0245,+0.0364]  Brier +0.0110 [-0.0048,+0.0236]  | research dLog -0.0379 [-0.0620,-0.0125]* | all dLog -0.0227 [-0.0487,+0.0031]  halves -0.0518/-0.0104 | fwd parts on F +0.000(n19) off right -0.230(n14) off wrong +0.470(n9)
+     ln3                FORWARD n 46/4d dLog +0.0564 [-0.0318,+0.1226]  CRPS +0.0145 [-0.0297,+0.0626]  Brier +0.0213 [-0.0022,+0.0400]  | research dLog -0.0379 [-0.0784,+0.0018]  | all dLog -0.0141 [-0.0554,+0.0291]  halves -0.0580/+0.0045 | fwd parts on F +0.000(n19) off right -0.321(n14) off wrong +0.787(n9)
+     walk-forward kappa FORWARD n 46/4d dLog +0.0350 [-0.0420,+0.1023]  CRPS +0.0074 [-0.0303,+0.0485]  Brier +0.0159 [-0.0049,+0.0372]  | research dLog -0.0240 [-0.0554,+0.0067]  | all dLog -0.0091 [-0.0403,+0.0248]  halves -0.0231/-0.0032 | fwd parts on F +0.000(n19) off right -0.281(n14) off wrong +0.615(n9)
+
+  -- always warm: active 202/202; side right (rows off F, active) 0.632 (n 117)
+     ln1.5              FORWARD n 46/4d dLog +0.0107 [-0.0112,+0.0309]  CRPS +0.0046 [-0.0029,+0.0120]  Brier +0.0049 [-0.0028,+0.0120]  | research dLog +0.0014 [-0.0290,+0.0335]  | all dLog +0.0036 [-0.0199,+0.0264]  halves +0.0113/-0.0009 | fwd parts on F +0.000(n19) off right -0.132(n17) off wrong +0.274(n10)
+     ln2                FORWARD n 46/4d dLog +0.0304 [-0.0089,+0.0664]  CRPS +0.0129 [+0.0010,+0.0239]* Brier +0.0115 [-0.0008,+0.0228]  | research dLog +0.0148 [-0.0341,+0.0683]  | all dLog +0.0184 [-0.0241,+0.0585]  halves +0.0323/+0.0103 | fwd parts on F +0.000(n19) off right -0.205(n17) off wrong +0.489(n10)
+     ln3                FORWARD n 46/4d dLog +0.0722 [+0.0065,+0.1324]* CRPS +0.0279 [+0.0110,+0.0434]* Brier +0.0226 [+0.0050,+0.0388]* | research dLog +0.0487 [-0.0311,+0.1322]  | all dLog +0.0540 [-0.0045,+0.1192]  halves +0.0780/+0.0402 | fwd parts on F +0.000(n19) off right -0.284(n17) off wrong +0.815(n10)
+     walk-forward kappa FORWARD n 46/4d dLog +0.0033 [-0.0084,+0.0140]  CRPS +0.0012 [-0.0033,+0.0052]  Brier +0.0019 [-0.0025,+0.0059]  | research dLog +0.0045 [-0.0074,+0.0155]  | all dLog +0.0042 [-0.0054,+0.0132]  halves +0.0023/+0.0053 | fwd parts on F +0.000(n19) off right -0.077(n17) off wrong +0.146(n10)
+
+  -- oracle (diagnostic): active 117/202; side right (rows off F, active) 1.000 (n 117)
+     ln1.5              FORWARD n 46/4d dLog -0.1000 [-0.1295,-0.0784]* CRPS -0.0617 [-0.0789,-0.0477]* Brier -0.0342 [-0.0442,-0.0283]* | research dLog -0.1023 [-0.1178,-0.0879]* | all dLog -0.1018 [-0.1156,-0.0890]* halves -0.1093/-0.0974 | fwd parts on F +0.000(n19) off right -0.170(n27)
+     ln2                FORWARD n 46/4d dLog -0.1581 [-0.2049,-0.1237]* CRPS -0.0990 [-0.1271,-0.0785]* Brier -0.0547 [-0.0708,-0.0453]* | research dLog -0.1617 [-0.1871,-0.1388]* | all dLog -0.1609 [-0.1828,-0.1405]* halves -0.1731/-0.1539 | fwd parts on F +0.000(n19) off right -0.269(n27)
+     ln3                FORWARD n 46/4d dLog -0.2234 [-0.2902,-0.1744]* CRPS -0.1417 [-0.1826,-0.1117]* Brier -0.0777 [-0.1012,-0.0633]* | research dLog -0.2288 [-0.2659,-0.1939]* | all dLog -0.2276 [-0.2569,-0.1995]* halves -0.2453/-0.2173 | fwd parts on F +0.000(n19) off right -0.381(n27)
+     walk-forward kappa FORWARD n 46/4d dLog -0.2234 [-0.2902,-0.1744]* CRPS -0.1417 [-0.1826,-0.1117]* Brier -0.0777 [-0.1025,-0.0645]* | research dLog -0.2006 [-0.2401,-0.1564]* | all dLog -0.2058 [-0.2389,-0.1686]* halves -0.1859/-0.2173 | fwd parts on F +0.000(n19) off right -0.381(n27)
+
+==================== T2: truth on the ladder (base ENS@F)
+
+  -- ENS tilt (main): active 119/162; side right (rows off F, active) 0.747 (n 75)
+     ln1.5              FORWARD n  6/1d dLog -0.0588 [+nan,+nan]  CRPS -0.0384 [+nan,+nan]  Brier -0.0293 [+nan,+nan]  | research dLog -0.0085 [-0.0275,+0.0093]  | all dLog -0.0104 [-0.0297,+0.0075]  halves -0.0187/-0.0034 | fwd parts on F +0.000(n1) off right -0.177(n2)
+     ln2                FORWARD n  6/1d dLog -0.0927 [+nan,+nan]  CRPS -0.0599 [+nan,+nan]  Brier -0.0464 [+nan,+nan]  | research dLog -0.0058 [-0.0399,+0.0253]  | all dLog -0.0090 [-0.0405,+0.0189]  halves -0.0232/+0.0030 | fwd parts on F +0.001(n1) off right -0.279(n2)
+     ln3                FORWARD n  6/1d dLog -0.1306 [+nan,+nan]  CRPS -0.0825 [+nan,+nan]  Brier -0.0653 [+nan,+nan]  | research dLog +0.0085 [-0.0388,+0.0574]  | all dLog +0.0034 [-0.0446,+0.0493]  halves -0.0192/+0.0224 | fwd parts on F +0.001(n1) off right -0.392(n2)
+     walk-forward kappa FORWARD n  6/1d dLog -0.0588 [+nan,+nan]  CRPS -0.0384 [+nan,+nan]  Brier -0.0293 [+nan,+nan]  | research dLog -0.0028 [-0.0217,+0.0143]  | all dLog -0.0048 [-0.0227,+0.0122]  halves -0.0185/+0.0066 | fwd parts on F +0.000(n1) off right -0.177(n2)
+
+  -- momentum: active 111/162; side right (rows off F, active) 0.600 (n 65)
+     ln1.5              FORWARD n  6/1d dLog -0.0507 [+nan,+nan]  CRPS -0.0606 [+nan,+nan]  Brier -0.0154 [+nan,+nan]  | research dLog -0.0036 [-0.0219,+0.0155]  | all dLog -0.0053 [-0.0243,+0.0135]  halves -0.0081/-0.0029 | fwd parts on F +0.000(n1) off right -0.168(n3) off wrong +0.199(n1)
+     ln2                FORWARD n  6/1d dLog -0.0711 [+nan,+nan]  CRPS -0.0875 [+nan,+nan]  Brier -0.0204 [+nan,+nan]  | research dLog +0.0021 [-0.0280,+0.0329]  | all dLog -0.0006 [-0.0302,+0.0287]  halves -0.0071/+0.0049 | fwd parts on F +0.001(n1) off right -0.264(n3) off wrong +0.365(n1)
+     ln3                FORWARD n  6/1d dLog -0.0799 [+nan,+nan]  CRPS -0.1057 [+nan,+nan]  Brier -0.0202 [+nan,+nan]  | research dLog +0.0207 [-0.0289,+0.0681]  | all dLog +0.0169 [-0.0292,+0.0636]  halves +0.0031/+0.0286 | fwd parts on F +0.001(n1) off right -0.371(n3) off wrong +0.632(n1)
+     walk-forward kappa FORWARD n  6/1d dLog -0.0312 [+nan,+nan]  CRPS -0.0366 [+nan,+nan]  Brier -0.0097 [+nan,+nan]  | research dLog +0.0023 [-0.0150,+0.0196]  | all dLog +0.0010 [-0.0158,+0.0189]  halves +0.0002/+0.0017 | fwd parts on F +0.000(n1) off right -0.097(n3) off wrong +0.104(n1)
+
+  -- combined walk-forward: active 110/162; side right (rows off F, active) 0.800 (n 70)
+     ln1.5              FORWARD n  6/1d dLog -0.1095 [+nan,+nan]  CRPS -0.0964 [+nan,+nan]  Brier -0.0432 [+nan,+nan]  | research dLog -0.0256 [-0.0420,-0.0046]* | all dLog -0.0293 [-0.0471,-0.0087]* halves -0.0399/-0.0240 | fwd parts on F +0.000(n1) off right -0.164(n4)
+     ln2                FORWARD n  6/1d dLog -0.1720 [+nan,+nan]  CRPS -0.1505 [+nan,+nan]  Brier -0.0679 [+nan,+nan]  | research dLog -0.0336 [-0.0624,+0.0025]  | all dLog -0.0398 [-0.0721,-0.0057]* halves -0.0599/-0.0296 | fwd parts on F +0.000(n1) off right -0.258(n4)
+     ln3                FORWARD n  6/1d dLog -0.2412 [+nan,+nan]  CRPS -0.2075 [+nan,+nan]  Brier -0.0945 [+nan,+nan]  | research dLog -0.0326 [-0.0793,+0.0213]  | all dLog -0.0420 [-0.0924,+0.0070]  halves -0.0780/-0.0237 | fwd parts on F +0.000(n1) off right -0.362(n4)
+     walk-forward kappa FORWARD n  6/1d dLog -0.1720 [+nan,+nan]  CRPS -0.1505 [+nan,+nan]  Brier -0.0679 [+nan,+nan]  | research dLog -0.0047 [-0.0419,+0.0345]  | all dLog -0.0122 [-0.0513,+0.0255]  halves +0.0000/-0.0185 | fwd parts on F +0.000(n1) off right -0.258(n4)
+
+  -- always warm: active 162/162; side right (rows off F, active) 0.564 (n 101)
+     ln1.5              FORWARD n  6/1d dLog -0.0031 [+nan,+nan]  CRPS +0.0226 [+nan,+nan]  Brier -0.0144 [+nan,+nan]  | research dLog -0.0070 [-0.0264,+0.0124]  | all dLog -0.0069 [-0.0246,+0.0114]  halves +0.0026/-0.0148 | fwd parts on F +0.000(n1) off right -0.153(n3) off wrong +0.220(n2)
+     ln2                FORWARD n  6/1d dLog +0.0137 [+nan,+nan]  CRPS +0.0523 [+nan,+nan]  Brier -0.0176 [+nan,+nan]  | research dLog +0.0012 [-0.0299,+0.0337]  | all dLog +0.0017 [-0.0288,+0.0334]  halves +0.0173/-0.0114 | fwd parts on F +0.001(n1) off right -0.239(n3) off wrong +0.399(n2)
+     ln3                FORWARD n  6/1d dLog +0.0614 [+nan,+nan]  CRPS +0.1061 [+nan,+nan]  Brier -0.0145 [+nan,+nan]  | research dLog +0.0302 [-0.0218,+0.0818]  | all dLog +0.0314 [-0.0197,+0.0785]  halves +0.0548/+0.0116 | fwd parts on F +0.001(n1) off right -0.333(n3) off wrong +0.683(n2)
+     walk-forward kappa FORWARD n  6/1d dLog -0.0031 [+nan,+nan]  CRPS +0.0226 [+nan,+nan]  Brier -0.0144 [+nan,+nan]  | research dLog -0.0038 [-0.0179,+0.0112]  | all dLog -0.0037 [-0.0177,+0.0093]  halves +0.0053/-0.0113 | fwd parts on F +0.000(n1) off right -0.153(n3) off wrong +0.220(n2)
+
+  -- follow the cluster: active 93/162; side right (rows off F, active) 0.866 (n 67)
+     ln1.5              FORWARD n  6/1d dLog -0.0771 [+nan,+nan]  CRPS -0.0716 [+nan,+nan]  Brier -0.0240 [+nan,+nan]  | research dLog -0.0385 [-0.0557,-0.0231]* | all dLog -0.0399 [-0.0564,-0.0251]* halves -0.0358/-0.0433 | fwd parts on F +0.000(n1) off right -0.154(n3)
+     ln2                FORWARD n  6/1d dLog -0.1205 [+nan,+nan]  CRPS -0.1100 [+nan,+nan]  Brier -0.0369 [+nan,+nan]  | research dLog -0.0575 [-0.0864,-0.0335]* | all dLog -0.0598 [-0.0862,-0.0359]* halves -0.0531/-0.0654 | fwd parts on F +0.000(n1) off right -0.241(n3)
+     ln3                FORWARD n  6/1d dLog -0.1682 [+nan,+nan]  CRPS -0.1486 [+nan,+nan]  Brier -0.0497 [+nan,+nan]  | research dLog -0.0739 [-0.1152,-0.0381]* | all dLog -0.0774 [-0.1167,-0.0392]* halves -0.0675/-0.0857 | fwd parts on F +0.000(n1) off right -0.336(n3)
+     walk-forward kappa FORWARD n  6/1d dLog -0.1682 [+nan,+nan]  CRPS -0.1486 [+nan,+nan]  Brier -0.0497 [+nan,+nan]  | research dLog -0.0645 [-0.1050,-0.0258]* | all dLog -0.0684 [-0.1082,-0.0301]* halves -0.0477/-0.0857 | fwd parts on F +0.000(n1) off right -0.336(n3)
+
+  -- oracle (diagnostic): active 101/162; side right (rows off F, active) 1.000 (n 101)
+     ln1.5              FORWARD n  6/1d dLog -0.1359 [+nan,+nan]  CRPS -0.1154 [+nan,+nan]  Brier -0.0552 [+nan,+nan]  | research dLog -0.0939 [-0.1053,-0.0824]* | all dLog -0.0955 [-0.1065,-0.0845]* halves -0.0881/-0.1017 | fwd parts on F +0.000(n1) off right -0.163(n5)
+     ln2                FORWARD n  6/1d dLog -0.2134 [+nan,+nan]  CRPS -0.1794 [+nan,+nan]  Brier -0.0868 [+nan,+nan]  | research dLog -0.1480 [-0.1662,-0.1294]* | all dLog -0.1504 [-0.1692,-0.1319]* halves -0.1387/-0.1603 | fwd parts on F +0.000(n1) off right -0.256(n5)
+     ln3                FORWARD n  6/1d dLog -0.2990 [+nan,+nan]  CRPS -0.2461 [+nan,+nan]  Brier -0.1208 [+nan,+nan]  | research dLog -0.2084 [-0.2328,-0.1830]* | all dLog -0.2118 [-0.2389,-0.1859]* halves -0.1950/-0.2259 | fwd parts on F +0.000(n1) off right -0.359(n5)
+     walk-forward kappa FORWARD n  6/1d dLog -0.2990 [+nan,+nan]  CRPS -0.2461 [+nan,+nan]  Brier -0.1208 [+nan,+nan]  | research dLog -0.1782 [-0.2091,-0.1351]* | all dLog -0.1827 [-0.2150,-0.1461]* halves -0.1313/-0.2259 | fwd parts on F +0.000(n1) off right -0.359(n5)
+
+T1 base cold-start days (research-segment frequencies): ['2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28']
