@@ -148,7 +148,7 @@ def test_latest_serves_the_read_scan_and_asks_for_a_newer_one(tmp_path, monkeypa
 
 def test_the_panel_shows_the_scan() -> None:
     source = (jaxa.ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert 'sdSunCard("此刻日照", `${sdN(L.sw_wm2, 0)}' in source and "const L = sat.latest;" in source
+    assert "scanHour === Number(r.hour) ? scanCell" in source and "const L = sat.latest;" in source
 
 
 def test_a_cloud_scan_is_read_as_cover_type_and_top(tmp_path, monkeypatch) -> None:

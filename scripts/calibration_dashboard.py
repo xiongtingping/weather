@@ -22567,10 +22567,11 @@ function sdMeanModeCard(day){
 function sdSunStat(label, mj, at, tip, extra){
   return `<div class="sd-sunstat" title="${sdEsc(tip)}"><span>${label}</span><b>${sdN(mj, 2)}<small> MJ/m²</small></b>${at ? `<span class="sd-sunage">取于 ${sdAgeSpan(at, "sd-age")}</span>` : ""}${extra || ""}</div>`;
 }
-// Sunshine as four comparison cards (user 2026-10-15「太复杂了，我看不懂，做成
-// 对比卡片，突出重点数据」): one big number each -- how far the forecast moved,
-// observed against forecast, the maximum that points to, the sun this moment
-// -- the pair it compares underneath, everything else on hover.  Red pushes
+// Sunshine as comparison cards (user 2026-10-15「太复杂了，我看不懂，做成对比卡
+// 片，突出重点数据」): one big number each -- how far the forecast moved,
+// observed against forecast, the maximum that points to -- the pair it
+// compares underneath, everything else on hover.  The sun this moment sits in
+// its hour's row of the table.  Red pushes
 // the temperature warm, blue cold.
 const sdSunCard = (label, big, cls, sub, tip) =>
   `<div class="sd-pnl-c" title="${sdEsc(tip)}"><span>${label}</span><b class="${cls || ""}">${big}</b><i>${sub}</i></div>`;
@@ -22709,6 +22710,14 @@ function sdSky(day){
     .sort((a,b) => Number(b.hour) - Number(a.hour));
   const seen = (H.rows || []).filter(isPast).sort((a,b) => Number(b.hour) - Number(a.hour));
   const ordered = future.concat(seen);
+  // The newest 10-minute scan sits in the hour it falls in (user 2026-10-15「此刻
+  // 日照移动到下方小时轴里对应的小时显示」): a scan at 13:20 is in the hour
+  // ending 14:00, shown there with its time until that hour's mean arrives.
+  const L = sat.latest;
+  const scanAt = L && L.sw_wm2 != null ? sdLocal(L.scan_utc, true) : null;   // "MM-DD HH:MM"
+  const scanHour = scanAt && scanAt.slice(0, 5) === String(day.event_date || "").slice(5)
+    ? Number(scanAt.slice(6, 8)) + (scanAt.slice(9, 11) === "00" ? 0 : 1) : null;
+  const scanCell = scanHour == null ? "" : `<span title="${sdEsc(`JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${scanAt}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，这一小时的平均约在小时开始后 75 分钟到`)}">${w(L.sw_wm2)}<small class="muted"> ${scanAt.slice(6)}</small></span>`;
   const pair = (obs, fc, d1, cls) => `<td class="mono${cls}" title="${d1 == null ? "" : "提前 1 天的预报：" + d1}"><b>${obs}</b><span class="muted"> · ${fc}</span></td>`;
   const rows = ordered.map(r => {
     const f = r.forecast || {}, o = r.obs;
@@ -22724,7 +22733,8 @@ function sdSky(day){
       ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
       ${satCloud ? sdSatCloudCell(r) : ""}
       ${sat.product
-        ? pair(r.sat_sw_wm2 != null ? w(r.sat_sw_wm2) : r.past || o ? `<span class="muted" title="${sdEsc(sat.via || "卫星约晚 1 小时")}">未到</span>` : "—", w(f.sw),
+        ? pair(r.sat_sw_wm2 != null ? w(r.sat_sw_wm2) : scanHour === Number(r.hour) ? scanCell
+            : r.past || o ? `<span class="muted" title="${sdEsc(sat.via || "卫星约晚 1 小时")}">未到</span>` : "—", w(f.sw),
             `${f.sw_d1 == null ? "" : w(f.sw_d1) + " W/m²"}${o && o.inferred_sw_wm2 != null ? `；报文推算 ${w(o.inferred_sw_wm2)}（霾与中高云下偏高，不作判断）` : ""}`, tone(r, "sw"))
         : pair(o ? `<span title="无卫星覆盖，按报文云量推算">≈${w(o.inferred_sw_wm2)}</span>` : "—", w(f.sw), f.sw_d1 == null ? null : `${w(f.sw_d1)} W/m²`, tone(r, "sw"))}
       ${pair(o && o.temp_c != null ? deg(o.temp_c) : "—", deg(f.temp_c), f.temp_c_d1 == null ? null : deg(f.temp_c_d1), tone(r, "temp"))}
@@ -22752,7 +22762,6 @@ function sdSky(day){
   const span = swTo == null ? "" : `00–${hh(swTo)} 点`;
   const fcPct = sdPct(H.forecast_sw_mj, H.forecast_sw_d1_mj);
   const fcPrev = H.fetched_at_utc ? new Date(Date.parse(H.fetched_at_utc) - 86400e3).toISOString() : null;
-  const L = sat.latest;
   const cards = [
     sdSunCard("预报日照", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
@@ -22769,10 +22778,6 @@ function sdSky(day){
       ? sdSunCard("日照推算最高温", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
           `日前预报 ${sdN(T.forecast_tmax_d1_c, 1)}${fcMax == null ? "" : ` · 最新 ${sdN(fcMax, 1)}`}`,
           `截至 ${T.last_hour}:00 卫星日照比提前 1 天的预报 ${sdSg(T.pct_d1, 0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
-      : "",
-    L && L.sw_wm2 != null
-      ? sdSunCard("此刻日照", `${sdN(L.sw_wm2, 0)} <small>W/m²</small>`, "", `扫描于 ${sdAgeSpan(L.scan_utc, "sd-age")}`,
-          `JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${sdLocal(L.scan_utc, true)}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，逐小时列仍是小时平均`)
       : "",
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
