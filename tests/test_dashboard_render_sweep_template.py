@@ -21,7 +21,7 @@ def test_the_render_redraws_when_the_template_moved_under_it() -> None:
         "the signature has to be taken before the render, not after"
     )
     before = text.index('BEFORE=')
-    render = text.index("--html-out tmp/cal_dashboard.html")
+    render = text.index("--compute-pages;")
     check = text.index('if [ "$(stat -f \'%m:%z\' "$SOURCE")" != "$BEFORE" ]')
     redraw = text.index("--reinflate tmp/cal_dashboard.html")
     assert before < render < check < redraw, (

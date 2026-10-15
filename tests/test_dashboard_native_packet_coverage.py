@@ -212,12 +212,12 @@ def test_a_family_with_no_certificate_yet_is_warming_up_not_missing(monkeypatch,
     others = [s for s in ALL if s != aigefs]
     _inbox(monkeypatch, tmp_path, [_packet("2026-10-15", others, "2026-10-15T07:00:00Z")])
 
-    out = C._official_native_family_coverage({}, _activation_db(others))
+    out = C._official_native_family_coverage({}, C._uncertified_member_systems(_activation_db(others)))
     row = out["native_inbox_coverage"][0]
     assert row["absent"] == [] and row["certifying"] == ["AIGEFS"]
     assert out["native_inbox_health"] == "green"
 
     # ... and once it holds a certificate, being absent is short again.
-    out = C._official_native_family_coverage({}, _activation_db(ALL))
+    out = C._official_native_family_coverage({}, C._uncertified_member_systems(_activation_db(ALL)))
     assert out["native_inbox_coverage"][0]["absent"] == ["AIGEFS"]
     assert out["native_inbox_health"] == "amber"

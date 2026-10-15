@@ -101,6 +101,8 @@ def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_
     conn.execute("INSERT INTO calibration_station_market_timezone_binding VALUES ('KLGA','America/New_York')")
     conn.execute("CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT, stage TEXT,"
                  " decision_at_utc TEXT, probabilities_json TEXT, posterior_version TEXT)")
+    conn.execute("CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+                 " FROM basket_probability_envelope")
     conn.execute("CREATE TABLE basket_official_ws_snapshot (station_id TEXT, event_date TEXT, observed_at TEXT,"
                  " quote_expires_at TEXT, buckets_json TEXT)")
     conn.execute("CREATE TABLE basket_station_day_settlement_label (station_id TEXT, event_date TEXT,"

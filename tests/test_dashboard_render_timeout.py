@@ -45,9 +45,13 @@ def _project(tmp_path: Path, *, render_seconds: float) -> Path:
         "if '--reinflate' in sys.argv:\n"
         "    (here / 'tmp' / 'reinflated').write_text('yes')\n"
         "    raise SystemExit(0)\n"
+        # 2026-10-15: the page is drawn read-only from what the compute kept.
+        "if '--html-out' in sys.argv:\n"
+        "    (here / 'tmp' / 'cal_dashboard.html').write_text('<html>rendered</html>')\n"
+        "    raise SystemExit(0)\n"
         "(here / 'tmp' / 'render.pid').write_text(str(os.getpid()))\n"
         f"time.sleep({render_seconds!r})\n"
-        "(here / 'tmp' / 'cal_dashboard.html').write_text('<html>rendered</html>')\n",
+        "(here / 'tmp' / 'computed').write_text('yes')\n",
         encoding="utf-8",
     )
     return project
@@ -80,13 +84,15 @@ def test_a_render_past_its_deadline_is_killed_and_the_lane_is_released(tmp_path:
     started = time.monotonic()
     result = _run(project, timeout_sec="2")
     elapsed = time.monotonic() - started
-    assert result.returncode == 124, result.stderr
-    assert elapsed < 30.0, f"the sweep must return at the deadline, not at the render's own pace ({elapsed:.1f}s)"
-    assert "render killed after 2s (timeout)" in result.stdout, result.stdout
+    assert result.returncode == 0, result.stderr
+    assert elapsed < 30.0, f"the sweep must return at the deadline, not at the compute's own pace ({elapsed:.1f}s)"
+    assert "compute killed after 2s (timeout)" in result.stdout, result.stdout
     pid = int((project / "tmp" / "render.pid").read_text())
-    assert _gone(pid), "the stub render outlived the sweep: the snapshot it holds is exactly the harm"
-    assert not (project / "tmp" / "cal_dashboard.html").exists(), "a killed render must not have written the page"
-    assert not (project / "tmp" / "reinflated").exists(), "no redraw after a kill: there is no fresh payload to redraw around"
+    assert _gone(pid), "the stub compute outlived the sweep: the snapshot it holds is exactly the harm"
+    assert not (project / "tmp" / "computed").exists()
+    # 2026-10-15: a killed compute costs freshness, never the page.
+    assert (project / "tmp" / "cal_dashboard.html").read_text() == "<html>rendered</html>"
+    assert "page drawn (read-only)" in result.stdout
     assert not list((project / "locks" / "weather-sweep-locks").glob("dashboard_render.lock")), (
         "the lock must go with the sweep, or the next interval is refused as 'already running'"
     )
@@ -141,8 +147,9 @@ def test_a_render_does_not_start_onto_an_oversized_wal(tmp_path: Path) -> None:
         cwd=str(project), env=env, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    assert "render skipped: SSOT WAL 4096 bytes > 1024" in result.stdout, result.stdout
-    assert not (project / "tmp" / "render.pid").exists(), "the render must not have started"
+    assert "compute skipped: SSOT WAL 4096 bytes > 1024" in result.stdout, result.stdout
+    assert not (project / "tmp" / "render.pid").exists(), "the compute must not have started"
+    assert (project / "tmp" / "cal_dashboard.html").exists(), "the page is still drawn, read-only"
     assert not list((project / "locks" / "weather-sweep-locks").glob("dashboard_render.lock"))
 
     env["PM_DASHBOARD_RENDER_MAX_WAL_BYTES"] = "8192"

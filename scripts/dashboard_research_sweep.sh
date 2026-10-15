@@ -34,7 +34,7 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 }
 
 cd "$PROJECT_DIR"
-PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --html-out}"
+PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --compute-pages}"
 # Wait the page render out rather than skip the hour.  The page render runs
 # 17-25 minutes and restarts 30 minutes after it ends, so an hourly start
 # lands inside one about half the time: on 2026-10-01 seven of fourteen

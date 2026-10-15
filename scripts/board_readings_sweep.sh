@@ -25,7 +25,7 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 }
 
 cd "$PROJECT_DIR"
-PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --html-out}"
+PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --compute-pages}"
 WAIT_SEC="${PM_BOARD_READINGS_WAIT_SEC:-1500}"
 POLL_SEC="${PM_BOARD_READINGS_WAIT_POLL_SEC:-15}"
 waited=0

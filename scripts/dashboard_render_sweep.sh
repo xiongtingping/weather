@@ -37,17 +37,33 @@ SOURCE="scripts/calibration_dashboard.py"
 # render was reading; launchd would have started the next one straight
 # into the same wall.  A skipped render keeps the previous page, and the
 # next interval is the retry -- the same bargain as the deadline below.
+#
+# 2026-10-15 (user ruling 「页面渲染零查库，各节全搬到后端」): two steps.  The
+# backend compute run (``--compute-pages``) is the only one that reads the
+# store, under every rule below; the page (``--html-out``) is then drawn
+# from what it and the research run kept, reads no SSOT, and takes seconds.
+# The page is drawn whether or not the compute finished, skipped or was
+# killed: a slow read costs that section its freshness, never the page.
+draw_page() {
+  if run_with_timeout "${PM_DASHBOARD_PAGE_TIMEOUT_SEC:-300}" "" \
+      "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] page drawn (read-only)"
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] page draw failed (exit $?)"
+  fi
+}
 WAL="data/bayes_basket_target_ssot.db-wal"
 MAX_WAL_BYTES="${PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-268435456}"
 if [ -f "$WAL" ]; then
   WAL_BYTES="$(stat -f '%z' "$WAL")"
   if [ "$WAL_BYTES" -gt "$MAX_WAL_BYTES" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}; the writer needs it truncated first"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}; the writer needs it truncated first"
+    draw_page
     exit 0
   fi
 fi
 BEFORE="$(stat -f '%m:%z' "$SOURCE")"
-echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard compute (standalone reader)"
 # Behind the resident, never beside it: the render runs on the machine the
 # resident runs on, for a quarter of every hour, and the resident's decision
 # cycles are what the page exists to show.  A niced render yields the cores
@@ -89,17 +105,17 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard render (standalone reader)"
 # utility I/O tier still gives way to the resident's default-tier I/O.
 RENDER_TIMEOUT_SEC="${PM_DASHBOARD_RENDER_TIMEOUT_SEC:-1500}"
 if run_with_timeout "$RENDER_TIMEOUT_SEC" "" \
-    taskpolicy -d utility nice -n 10 "$PY" scripts/calibration_dashboard.py --html-out tmp/cal_dashboard.html; then
+    taskpolicy -d utility nice -n 10 "$PY" scripts/calibration_dashboard.py --compute-pages; then
   :
 else
   rc=$?
   if [ "$rc" = "124" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render killed after ${RENDER_TIMEOUT_SEC}s (timeout); the page keeps the previous render"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute killed after ${RENDER_TIMEOUT_SEC}s (timeout); the page is drawn from what it kept"
   else
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] render failed (exit $rc)"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute failed (exit $rc)"
   fi
-  exit "$rc"
 fi
+draw_page
 # A render draws with the template it imported at start, and one of these
 # takes twenty minutes to an hour and a half.  A template edit that lands
 # while it runs is therefore overwritten when it writes the page -- and the

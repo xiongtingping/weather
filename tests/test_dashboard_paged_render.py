@@ -311,6 +311,7 @@ def test_a_yielded_run_keeps_the_page_and_exits_clean(tmp_path, monkeypatch) -> 
     monkeypatch.setattr(C, "build_payload", yielding)
     # main() sets these globals; registered first so teardown restores them.
     monkeypatch.setattr(C, "PAGED_RENDER", C.PAGED_RENDER)
+    monkeypatch.setattr(C, "PAGE_READ_ONLY", C.PAGE_READ_ONLY)
     monkeypatch.setattr(C, "SECTION_CACHE_ENABLED", C.SECTION_CACHE_ENABLED)
     monkeypatch.setattr(sys, "argv", ["calibration_dashboard.py", "--db", str(db), "--html-out", str(out)])
     assert C.main() == 0
@@ -353,8 +354,11 @@ def test_only_the_timed_page_is_paged() -> None:
     """``--json`` and the server keep the one-pass build."""
 
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "PAGED_RENDER = bool(args.html_out) and SECTION_CACHE_ENABLED" in source
-    assert C.PAGED_RENDER is False
+    # 2026-10-15: the backend compute run is the paged build; the page
+    # render draws read-only from what it kept.
+    assert "PAGED_RENDER = bool(args.compute_pages) and SECTION_CACHE_ENABLED" in source
+    assert "PAGE_READ_ONLY = bool(args.html_out) and SECTION_CACHE_ENABLED" in source
+    assert C.PAGED_RENDER is False and C.PAGE_READ_ONLY is False
 
 
 def test_every_run_costs_are_recorded_as_each_one_finishes(paged) -> None:

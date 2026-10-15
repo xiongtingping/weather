@@ -546,9 +546,17 @@ def _systems_without_certificate(
     return out
 
 
+def _uncertified_member_systems(conn: sqlite3.Connection) -> list[str]:
+    """The seatable families holding no valid certificate (charter 270)."""
+
+    return sorted(_systems_without_certificate(
+        conn, [system_id for system_id, *_rest in MEMBER_FAMILIES]
+    ))
+
+
 def _official_native_family_coverage(
     status: Mapping[str, Any],
-    conn: sqlite3.Connection | None = None,
+    uncertified: Sequence[str] = (),
 ) -> dict[str, Any]:
     """How many of the four families each serving packet actually carries.
 
@@ -620,11 +628,8 @@ def _official_native_family_coverage(
         if label not in row["families"]
     }
     certifying = {
-        by_system[system_id]
-        for system_id in _systems_without_certificate(
-            conn,
-            [s for s, label in by_system.items() if label in ever_absent],
-        )
+        by_system[system_id] for system_id in uncertified
+        if system_id in by_system and by_system[system_id] in ever_absent
     }
     rows = []
     for event_date in sorted(per_date):
@@ -6149,96 +6154,6 @@ def _live_execution_mode() -> str:
         return "unknown"
 
 
-def _read_open_orders() -> dict[str, Any]:
-    """What the exchange says is resting, right now.
-
-    The gateway is the only thing allowed to ask, and it is a local
-    read-only call; a failure is reported rather than raised, because a
-    board that cannot reach the gateway should say so, not vanish.
-
-    A read can fail three ways and the board must not print them alike.
-    UNREACHABLE is nothing answering.  REFUSED is the gateway answering
-    with ``ok`` false and its own account of why.  INCOMPLETE is an
-    enumeration that stopped paging -- absence from a truncated list is
-    nothing, so its total is a floor and not a count of the account.
-
-    Measured 2026-09-10: two consecutive renders carried
-    ``{"available": false, "count": 0}`` and the card read "gateway did
-    not answer: unknown" for a gateway that had answered -- this function
-    kept ``bool(ok)`` and dropped the reply's ``error``, so the one thing
-    that said what went wrong never left this frame.  The account held a
-    live order the whole time.
-
-    Only a complete, ok enumeration yields ``count``.  A payload carrying
-    a zero next to a failed read is how a reader learns to believe an
-    unread account is empty.
-    """
-
-    import datetime as _dt  # noqa: PLC0415
-    import urllib.request  # noqa: PLC0415
-
-    port = os.environ.get("PM_CLOB_ORDER_SERVICE_PORT", "8765")
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/lookup-open-orders",
-        data=b"{}",
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    # The board is a static render; this row is a reading taken once, at
-    # render time.  Without the stamp a stale page asserts a live zero --
-    # and a failed read gets the stamp too, so "when did we last fail to
-    # ask" is answerable from the page.
-    asked_at = _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds")
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        return {
-            "available": False,
-            "reason": "unreachable",
-            "error": f"{type(exc).__name__}: {exc}"[:200],
-            "asked_at": asked_at,
-        }
-    if not raw.get("ok"):
-        return {
-            "available": False,
-            "reason": "refused",
-            "error": str(
-                raw.get("error") or raw.get("status") or "ok_false_without_error"
-            )[:200],
-            "asked_at": asked_at,
-        }
-    if raw.get("complete") is not True:
-        return {
-            "available": False,
-            "reason": "incomplete",
-            "error": (
-                f"enumeration stopped after {raw.get('pages_checked')} pages;"
-                f" {raw.get('total_open_orders')} seen so far is a floor"
-            )[:200],
-            "asked_at": asked_at,
-        }
-    orders = raw.get("open_orders") or []
-    return {
-        "available": True,
-        "reason": "ok",
-        "count": int(raw.get("total_open_orders") or 0),
-        "asked_at": asked_at,
-        "orders": [
-            {
-                "id": str(o.get("id") or ""),
-                "side": str(o.get("side") or ""),
-                "price": o.get("price"),
-                "original_size": o.get("original_size"),
-                "size_matched": o.get("size_matched"),
-                "outcome": str(o.get("outcome") or ""),
-                "created_at": o.get("created_at"),
-            }
-            for o in orders[:20]
-        ],
-    }
-
-
 def _read_chain_probe() -> dict[str, Any]:
     """The recorded live-order round trip, if one has been run."""
 
@@ -7479,7 +7394,6 @@ def collect_live_readiness(
         # machine placed and then lost track of -- which happened on
         # 2026-08-31, for eighteen minutes -- is invisible to every table we
         # own and visible here.
-        "open_orders": _read_open_orders(),
         "station_scope": scope_mode,
         "minimum_settlements_to_qualify": minimum,
         "station_probation_waivers": sorted(waived_set),
@@ -13340,7 +13254,7 @@ def build_payload(db: Path) -> dict[str, Any]:
     # advance past the oldest reader snapshot, and the WAL grew to 417MB --
     # at which point every writer's transaction slowed enough that ordinary
     # lock contention compounded into 45-minute P1 outages (2026-08-24).
-    conn = _connect(db)
+    conn: Any = _NoSSOT() if PAGE_READ_ONLY else _connect(db)
     started = time.perf_counter()
     if PAGED_RENDER:
         _paged_run_start(db)
@@ -13348,7 +13262,8 @@ def build_payload(db: Path) -> dict[str, Any]:
     try:
         payload = _build_payload(conn, db)
     finally:
-        conn.close()
+        if not PAGE_READ_ONLY:
+            conn.close()
     # Which payload keys each cache landed in, and what fed it, so each
     # section names its own stale inputs (user 2026-10-01).
     payload["section_cache"] = _section_cache_destinations(payload)
@@ -13385,6 +13300,11 @@ def build_payload(db: Path) -> dict[str, Any]:
         ),
         "slowest": slowest[:12],
     }
+    if PAGE_READ_ONLY:
+        # The page drew in seconds from kept values; how fresh they are is
+        # the backend compute run's, and each section's own age.
+        payload["render"]["read_only"] = True
+        payload["render"]["compute"] = _load_closed_readings(COMPUTE_RUN_FILE)
     if _PAGED_RUN:
         _save_every_run_costs()
         _save_section_specs()
@@ -13922,8 +13842,29 @@ SECTION_CACHE_TTL_SEC = {
 # Set by ``--no-section-cache`` so a reader who needs every number computed
 # against this instant can have it, at the price of the long build.
 SECTION_CACHE_ENABLED = True
-#: Set by ``main`` for ``--html-out`` only; see ``RENDER_EVERY_RUN_SECTIONS``.
+#: Set by ``main`` for ``--compute-pages`` only; see ``RENDER_EVERY_RUN_SECTIONS``.
 PAGED_RENDER = False
+#: Set by ``main`` for ``--html-out`` (user ruling 2026-10-15 「页面渲染零查库，
+#: 各节全搬到后端」): the page is drawn from the pages the backend compute run
+#: (``--compute-pages``) and the research run keep, and opens no connection to
+#: the SSOT.  A slow read can then cost a section its freshness, never the
+#: page: the 07:57Z render that day was killed at 1,500 s on one section and
+#: left the whole board 57 minutes old.
+PAGE_READ_ONLY = False
+
+
+class PageReadsNoSSOT(RuntimeError):
+    """A read-only page render reached for the database."""
+
+
+class _NoSSOT:
+    """Stands where the connection was: any use is a bug in the page render."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise PageReadsNoSSOT(
+            f"the page render reads no SSOT (asked for .{name}); compute it in"
+            " a section the backend run keeps"
+        )
 _SECTION_CACHE_LOG: dict[str, dict[str, Any]] = {}
 
 
@@ -14508,6 +14449,68 @@ def _serve_stale_page(
 _NO_UNAVAILABLE = object()
 
 
+class _EmptySection(dict):
+    """A section the backend has not kept yet, on the read-only page.
+
+    Empty, falsy, serialised as ``{}``, and any key read off it is another
+    empty section, so the readers built for a value draw "no data" rather
+    than crash -- the page has to come out on a fresh cache or the first
+    draw after a code change, before the compute run has caught up.
+    """
+
+    def __getitem__(self, key: Any) -> Any:
+        return _EmptySection()
+
+    def __missing__(self, key: Any) -> Any:
+        return _EmptySection()
+
+
+def _serve_kept_value(name: str, collector: Any, unavailable: Any) -> Any:
+    """The read-only page render's only source: what the backend kept.
+
+    The section's page, else its last kept value, whichever is newer and from
+    this code (never across a code change, as everywhere here); else what it
+    declared to show without one; else None.  The age rides on the cache log
+    so the section says how old it is.
+    """
+
+    code = _section_fingerprint(collector, "")
+    best: tuple[float, dict[str, Any]] | None = None
+    for path in (SECTION_CACHE_DIR / f"{name}.json", _every_run_last_path(name, collector)):
+        try:
+            blob = json.loads(path.read_text(encoding="utf-8"))
+            if "value" not in blob or blob.get("code_fingerprint") != code:
+                continue
+            stamp = datetime.fromisoformat(
+                str(blob["computed_at_utc"]).replace("Z", "+00:00")
+            )
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+        age = (_now() - stamp).total_seconds()
+        if best is None or age < best[0]:
+            best = (age, blob)
+    if best is None:
+        _SECTION_CACHE_LOG[name] = {
+            "reused": False, "cached": False, "unavailable": True,
+            "stale_reason": "backend has not computed it yet",
+        }
+        if unavailable is _NO_UNAVAILABLE:
+            return _EmptySection()
+        return json.loads(json.dumps(unavailable))
+    age, blob = best
+    ttl = SECTION_CACHE_TTL_SEC.get(name) or PAGED_SECTION_TTL_SEC
+    _SECTION_CACHE_LOG[name] = {
+        "computed_at_utc": str(blob["computed_at_utc"]),
+        "age_sec": round(age),
+        "ttl_sec": ttl,
+        "reused": True,
+        "cached": True,
+        **({"stale": True, "stale_reason": "backend page past its lifetime"}
+           if age > ttl else {}),
+    }
+    return blob["value"]
+
+
 def _record_section_spec(
     name: str, collector: Any, args: tuple[Any, ...],
     kwargs: dict[str, Any], salt: str, unavailable: Any,
@@ -14621,7 +14624,11 @@ RESEARCH_KILLED_FILE = "_research_killed.json"
 #: every hour after it.
 RESEARCH_KILLED_BACKOFF_SEC = 6 * 3600
 #: The page render, as the research sweep finds it (``pgrep -f``).
-PAGE_RENDER_PATTERN = "calibration_dashboard.py --html-out"
+#: The heavy reader the research run steps aside for: since the page render
+#: reads no SSOT (2026-10-15) that is the backend compute run.
+PAGE_RENDER_PATTERN = "calibration_dashboard.py --compute-pages"
+#: What the backend compute run last did, for the read-only page to show.
+COMPUTE_RUN_FILE = "_compute_run.json"
 
 
 def _page_render_running() -> bool:
@@ -14941,6 +14948,8 @@ def _cached_section_value(
     not keep the lamps off the page.
     """
 
+    if PAGE_READ_ONLY:
+        return _serve_kept_value(name, collector, _unavailable)
     paged = bool(_PAGED_RUN) and SECTION_CACHE_ENABLED
     ttl = SECTION_CACHE_TTL_SEC.get(name)
     if paged and not ttl and name not in RENDER_EVERY_RUN_SECTIONS:
@@ -15006,6 +15015,10 @@ def _cached_section_value(
         _trace_slow_section(name, _SECTION_CACHE_LOG[name]["build_sec"])
         if paged and name in RENDER_EVERY_RUN_SECTIONS:
             _save_every_run_costs()
+        # Every value the compute run reads without a page of its own is
+        # kept, not only the every-run sections': the read-only page render
+        # has nothing else to draw it from.
+        if paged:
             _save_every_run_last(name, collector, value)
         return value
     fingerprint = _section_fingerprint(collector, _salt)
@@ -15306,7 +15319,12 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     # their facts no longer change, so they are read once a day, not every
     # render; a page for an earlier ``through`` is still exact for its own
     # days, and the funnel reads everything after it.
-    refusal_first_day, refusal_through = _refusal_history_window(conn)
+    # Sections, not direct reads (user ruling 2026-10-15): the page render
+    # has no connection, so even these small inputs come from the backend.
+    refusal_first_day, refusal_through = _cached_section(
+        "refusal_window", _refusal_history_window, conn,
+        _unavailable=[None, ""],
+    )
     refusal_history = _cached_section(
         "refusal_history", _collect_refusal_history, conn,
         refusal_first_day, refusal_through,
@@ -15316,7 +15334,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     live_selection_payload = _cached_section(
         "live_selection", _build_live_selection, conn, refusal_history
     )
-    previous_windows = _previous_version_windows(conn)
+    previous_windows = _cached_section(
+        "previous_windows", _previous_version_windows, conn, _unavailable={},
+    )
     previous_salt = json.dumps(previous_windows, sort_keys=True)
     center_landing_previous = _cached_section(
         "center_landing_previous", collect_center_landing, conn,
@@ -15421,7 +15441,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     )
     scorecard = _cached_section(
         "scorecard", collect_calibration_scorecard, conn,
-        _salt=_scorecard_salt(conn),
+        _salt=_cached_section(
+            "scorecard_salt", _scorecard_salt, conn, _unavailable="",
+        ),
         _unavailable={"available": False},
     )
     truth_landing = _cached_section(
@@ -15449,7 +15471,12 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                 **_production_health(status),
                 **_taf_capture_health(status),
                 **_nwp_rotation_health(status),
-                **_official_native_family_coverage(status, conn),
+                **_official_native_family_coverage(
+                    status, _cached_section(
+                        "uncertified_systems", _uncertified_member_systems,
+                        conn, _unavailable=[],
+                    ),
+                ),
                 **_settlement_source_health(status),
                 **_settlement_reconciliation_health(),
             }
@@ -15658,8 +15685,13 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "model_accuracy_trend": model_accuracy_trend,
         "station_calibration_windows": station_calibration_windows,
         # 48 index seeks; the link on every station name.
-        "station_markets": collect_station_markets(conn),
-        "fusion_candidates": collect_fusion_candidates(),
+        "station_markets": _cached_section(
+            "station_markets", collect_station_markets, conn, _unavailable={},
+        ),
+        # It opens the fusion training store: a section, so the backend reads it.
+        "fusion_candidates": _cached_section(
+            "fusion_candidates", collect_fusion_candidates, _unavailable={},
+        ),
         "h5_readiness": _cached_section(
             "h5_readiness", collect_h5_readiness, conn,
             # The card reads ``days || []`` and hides when there are none.
@@ -25142,6 +25174,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--compute-pages",
+        action="store_true",
+        help=(
+            "the backend compute run: read the SSOT, keep every section's"
+            " value, draw nothing (the page render reads only what it kept)"
+        ),
+    )
+    parser.add_argument(
         "--refresh-research",
         action="store_true",
         help=(
@@ -25158,17 +25198,35 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
-    global SECTION_CACHE_ENABLED, PAGED_RENDER
+    global SECTION_CACHE_ENABLED, PAGED_RENDER, PAGE_READ_ONLY
     SECTION_CACHE_ENABLED = not args.no_section_cache
-    # The page on its timer is the paged build; a hand-run --json or the
-    # server keeps the one-pass build.
-    PAGED_RENDER = bool(args.html_out) and SECTION_CACHE_ENABLED
+    # The backend compute run on its timer is the paged build; the page
+    # render draws from what it kept and reads no SSOT (user ruling
+    # 2026-10-15); a hand-run --json or the server keeps the one-pass build.
+    PAGED_RENDER = bool(args.compute_pages) and SECTION_CACHE_ENABLED
+    PAGE_READ_ONLY = bool(args.html_out) and SECTION_CACHE_ENABLED
     if args.reinflate:
         print(reinflate(args.reinflate, renderer=render_html))
         return 0
     database = args.db.expanduser().resolve(strict=True)
     if args.refresh_research:
         print(refresh_research_section(database))
+        return 0
+    if args.compute_pages:
+        started_at = time.time()
+        try:
+            payload = build_payload(database)
+        except RenderYielded as yielded:
+            print(f"compute yielded to the writer ({yielded}); kept what it read")
+            return 0
+        summary = {
+            "started_at_utc": datetime.fromtimestamp(started_at, timezone.utc)
+            .isoformat().replace("+00:00", "Z"),
+            "finished_at_utc": _now().isoformat().replace("+00:00", "Z"),
+            **dict(payload.get("render") or {}),
+        }
+        _save_closed_readings(COMPUTE_RUN_FILE, summary)
+        print(f"computed in {summary.get('build_sec')}s")
         return 0
     if args.json:
         print(json.dumps(
