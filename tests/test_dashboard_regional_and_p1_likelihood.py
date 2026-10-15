@@ -46,6 +46,10 @@ def _lane_db(tmp_path: Path) -> sqlite3.Connection:
              int(run[11:13]), -8.0, 30.0, 1, 8, 8, "{}", "T", "E",
              run, run, "u", LANE.SCHEMA_VERSION, f"{index:064d}"),
         )
+    conn.execute(
+        f"CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+        f" FROM {LANE.TABLE}"
+    )
     conn.commit()
     return conn
 

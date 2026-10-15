@@ -60,6 +60,12 @@ def conn(monkeypatch):
     db = sqlite3.connect(":memory:")
     db.execute(_table_ddl("calibration_station_daily_high_truth"))
     db.execute(_table_ddl("calibration_cross_native_ensemble_oos_prediction"))
+    # The board's reads seek on the station list (query-plan guard); the
+    # registry holds every station these rows name.
+    db.execute(
+        "CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+        " FROM calibration_cross_native_ensemble_oos_prediction"
+    )
     monkeypatch.setattr(C, "_collect_fusion_layer", lambda _conn: {
         "health": "green", "verdict": "fusion", "detail": "fusion",
         "pairs": [], "summary": {},

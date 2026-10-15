@@ -1508,6 +1508,42 @@ def _merge_recent_runs(
     return merged
 
 
+MEMBER_SEAT_COUNTS_FILE = "_member_seat_counts.json"
+
+
+def _seat_set_counts(conn: sqlite3.Connection) -> list[tuple[str, int]]:
+    """Evidence rows per selected member set, counted incrementally.
+
+    The selection evidence is append-only and has no index on the member set,
+    so the GROUP BY read all 739k rows every time (query-plan guard,
+    2026-10-15).  The counts up to the last rowid read are kept beside the
+    section pages and only rows past it are read, by rowid.  Rows moved out
+    by the retention lane stay counted: the figure is how often a family was
+    selected, not how many of those rows are still on disk.
+    """
+
+    kept = _load_closed_readings(MEMBER_SEAT_COUNTS_FILE)
+    counts: dict[str, int] = {
+        str(k): int(v) for k, v in (kept.get("counts") or {}).items()
+    }
+    last = int(kept.get("last_rowid") or 0)
+    newest = last
+    for rowid, members in conn.execute(
+        "SELECT rowid, selected_system_ids_json"
+        " FROM calibration_cross_native_ensemble_selection_evidence"
+        " WHERE rowid>?",
+        (last,),
+    ):
+        key = str(members or "")
+        counts[key] = counts.get(key, 0) + 1
+        newest = max(newest, int(rowid))
+    if newest != last:
+        _save_closed_readings(
+            MEMBER_SEAT_COUNTS_FILE, {"last_rowid": newest, "counts": counts}
+        )
+    return sorted(counts.items())
+
+
 def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     """Per family: how deep its training history is, and how many seats it won.
 
@@ -1527,11 +1563,7 @@ def collect_member_depth(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
     index walk plus ~20 s for the one evidence pass.
     """
 
-    seat_sets = conn.execute(
-        "SELECT selected_system_ids_json, COUNT(*)"
-        " FROM calibration_cross_native_ensemble_selection_evidence"
-        " GROUP BY selected_system_ids_json"
-    ).fetchall()
+    seat_sets = _seat_set_counts(conn)
     depth: dict[str, dict[str, Any]] = {}
     for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
         rows, stations, days, last_rowid = conn.execute(
@@ -4929,7 +4961,13 @@ def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
         str(row[0]) for row in conn.execute(
             "SELECT content_sha256"
             " FROM calibration_native_ensemble_system_artifact"
-            " WHERE valid_from_utc>=?",
+            # System and station lists let the (system, station, ...,
+            # valid_from_utc, ...) index seek and filter on valid_from inside
+            # the index; on its own the predicate scanned 161k artifacts.
+            " WHERE ensemble_system_id IN"
+            " (SELECT ensemble_system_id FROM calibration_native_ensemble_system)"
+            " AND station_id IN (SELECT station_id FROM calibration_station_registry)"
+            " AND valid_from_utc>=?",
             (H5_FROM_UTC,),
         )
     }
@@ -5151,7 +5189,10 @@ def _truth_landing_records(
         "SELECT station_id, event_date, probabilities_json, posterior_version,"
         " MIN(decision_at_utc)"
         " FROM basket_probability_envelope"
-        " WHERE event_date >= ? AND stage='P0' AND event_date <= ?"
+        # The station list lets the (station_id, event_date, stage, ...)
+        # unique index seek instead of scanning 774k envelopes.
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND event_date >= ? AND stage='P0' AND event_date <= ?"
         " GROUP BY station_id, event_date",
         (since, last_day),
     ):
@@ -5463,7 +5504,7 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
 
     if not _table_exists(conn, "basket_official_ws_snapshot"):
         return {}
-    now = datetime.now(timezone.utc)
+    now = _now()
     # 48 rows, not 148,000.  This map is station -> timezone and nothing
     # else, and it was being built by DISTINCT over every envelope ever
     # written: the predicate is on a NOT NULL column so it never excludes a
@@ -9692,7 +9733,11 @@ def collect_calibration_scorecard(
         "SELECT station_id, event_date, lead_bucket, probabilities_json,"
         " bucket_centers_c_json, decision_at_utc"
         " FROM calibration_cross_native_ensemble_oos_prediction"
-        " WHERE event_date>=date('now',?) AND decision_at_utc>=?",
+        # The station list lets the scope index (station_id, event_date, ...)
+        # seek; on its own the window scanned 2.27M rows (query-plan guard,
+        # 2026-10-15).  Every station in this table is in the registry.
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND event_date>=date('now',?) AND decision_at_utc>=?",
         (f"-{SCORECARD_MAX_WINDOW_DAYS} days", anchor_prefix),
     ):
         actual = truth.get((str(station), str(day)))
@@ -13544,12 +13589,27 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     # CMA, which only ever wrote here, could not appear at all, and the
     # others showed the corpus of a role they no longer have.
     per_station: dict[str, list[dict[str, Any]]] = {}
-    for system_id, station, last_run, last_query, runs in conn.execute(
+    # The corpus figures come off the (system, station, day, run) unique
+    # index alone; the newest capture is one seek per pair over the local
+    # days from two before its newest run (captures are for coming days:
+    # identical to the whole-table maximum on all 662 pairs, 2026-10-15).
+    # Read together they scanned all 184k rows (query-plan guard).
+    corpus = conn.execute(
         "SELECT ensemble_system_id, station_id, MAX(run_init_utc),"
-        " MAX(archive_query_at_utc), COUNT(DISTINCT run_init_utc)"
+        " COUNT(DISTINCT run_init_utc)"
         " FROM calibration_regional_point_run"
         " GROUP BY ensemble_system_id, station_id"
-    ).fetchall():
+    ).fetchall()
+    regional_rows = []
+    for system_id, station, last_run, runs in corpus:
+        last_query = conn.execute(
+            "SELECT MAX(archive_query_at_utc) FROM calibration_regional_point_run"
+            " WHERE ensemble_system_id=? AND station_id=?"
+            " AND target_local_date>=date(?, '-2 days')",
+            (system_id, station, last_run),
+        ).fetchone()[0]
+        regional_rows.append((system_id, station, last_run, last_query, runs))
+    for system_id, station, last_run, last_query, runs in regional_rows:
         per_station.setdefault(str(system_id), []).append({
             "station_id": str(station), "last_run_init": last_run,
             "run_age_hours": _age_hours(last_run),
@@ -13566,10 +13626,16 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     for system_id, run_init, stations_n, first_query in conn.execute(
         "SELECT ensemble_system_id, run_init_utc, COUNT(DISTINCT station_id),"
         " MIN(archive_query_at_utc) FROM calibration_regional_point_run"
-        " WHERE run_init_utc >= ?"
+        # System and station lists and the day floor let the unique index
+        # (system, station, day, run) seek: a run is never for a local day
+        # before its own UTC day minus one, so the floor drops nothing.
+        " WHERE ensemble_system_id IN"
+        " (SELECT DISTINCT ensemble_system_id FROM calibration_regional_point_run)"
+        " AND station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND target_local_date >= ? AND run_init_utc >= ?"
         " GROUP BY ensemble_system_id, run_init_utc"
         " ORDER BY ensemble_system_id, run_init_utc DESC",
-        (since,),
+        ((_now() - timedelta(days=3)).strftime("%Y-%m-%d"), since),
     ).fetchall():
         recent_runs[str(system_id)].append({
             "run_utc": run_init, "capture_utc": first_query,

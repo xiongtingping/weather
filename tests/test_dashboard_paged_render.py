@@ -785,6 +785,10 @@ def _truth_landing_fixture() -> sqlite3.Connection:
         " posterior_version TEXT)"
     )
     conn.execute(
+        "CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+        " FROM basket_probability_envelope"
+    )
+    conn.execute(
         "CREATE TABLE basket_station_day_settlement_label (station_id TEXT,"
         " event_date TEXT, truth_revision_no INTEGER, settled_bucket TEXT)"
     )
@@ -822,6 +826,9 @@ def test_the_truth_landing_caught_up_in_chunks_is_the_one_read(paged, monkeypatc
 
     monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-08-20")
     monkeypatch.setattr(C, "TRUTH_LANDING_CATCHUP_SNAPSHOTS", 1)
+    # Pinned to the fixture's days: on the wall clock the catch-up walked
+    # every day since and ran past ten chunks (red from 2026-10-15).
+    monkeypatch.setattr(C, "_now", lambda: C.datetime(2026, 8, 26, 12, tzinfo=C.timezone.utc))
     conn = _truth_landing_fixture()
     saved = dict(C._PAGED_RUN)
     C._PAGED_RUN.clear()
@@ -859,11 +866,21 @@ def test_h5_readiness_caught_up_in_chunks_is_the_one_read(paged, monkeypatch) ->
     )
     conn.execute(
         "CREATE TABLE calibration_native_ensemble_system_artifact"
-        " (content_sha256 TEXT, valid_from_utc TEXT)"
+        " (ensemble_system_id TEXT, station_id TEXT, content_sha256 TEXT,"
+        " valid_from_utc TEXT)"
     )
     conn.executemany(
-        "INSERT INTO calibration_native_ensemble_system_artifact VALUES (?,?)",
+        "INSERT INTO calibration_native_ensemble_system_artifact VALUES"
+        " ('ECMWF','KLGA',?,?)",
         [("old", "2026-08-20T00:00:00Z"), ("new", "2026-08-28T00:00:00Z")],
+    )
+    conn.execute(
+        "CREATE VIEW calibration_native_ensemble_system AS SELECT DISTINCT"
+        " ensemble_system_id FROM calibration_native_ensemble_system_artifact"
+    )
+    conn.execute(
+        "CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
+        " FROM calibration_native_ensemble_system_artifact"
     )
     conn.execute(
         "CREATE TABLE basket_probability_envelope"
