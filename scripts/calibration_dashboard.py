@@ -15644,7 +15644,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
 .sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:5px}
-.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}
+.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:nowrap}
 .sd-sun-c>b{margin:2px 0 4px}
 .sd-sun-c>i{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:1.5}
@@ -22589,11 +22589,15 @@ function sdSunStat(label, mj, at, tip, extra){
 // scope and unit in small type under it, the big number, then the two numbers
 // it compares as two aligned rows.
 // A mark before each title (user 2026-10-15「日照卡片增加太阳/辐射标志，云同理」):
-// a sun for sunshine, a cloud for cloud, a thermometer for the maximum.
+// a sun for sunshine, a cloud for cloud, a thermometer for the maximum, a
+// drop, a gust and rain for dew point, wind and rain.
 const SD_ICON = {
   sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3"/>',
   cloud: '<path d="M4.6 12.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/>',
   temp: '<path d="M6.5 9.6V3a1.5 1.5 0 0 1 3 0v6.6a2.8 2.8 0 1 1-3 0z"/><path d="M8 6.5v4.6"/>',
+  dew: '<path d="M8 2.2c2.4 3 3.9 5.2 3.9 7.1a3.9 3.9 0 0 1-7.8 0c0-1.9 1.5-4.1 3.9-7.1z"/>',
+  wind: '<path d="M1.8 6h8.4a2 2 0 1 0-2-2M1.8 9.5h11a2 2 0 1 1-2 2M1.8 13h5"/>',
+  rain: '<path d="M4.6 9.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/><path d="M5.5 11.6l-.7 1.8M8.3 11.6l-.7 1.8M11.1 11.6l-.7 1.8"/>',
 };
 const sdIcon = k => `<svg class="sd-ico sd-ico-${k}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SD_ICON[k]}</svg>`;
 const sdSunCard = (icon, label, tag, big, cls, rows, tip) =>
@@ -22811,6 +22815,32 @@ function sdSky(day){
       [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]],
       `${satCloud ? "卫星云量（JAXA Himawari 云产品，站点周围约 25 km 判为有云的格点占比，白天才有）对预报总云" : "报文低云（1500 m 以下）对预报低云"}，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
   })();
+  // Dew point, wind and rain beside the sun and cloud (user 2026-10-15「右边还有
+  // 很多位置，增加露点、风、雨等信息卡片」): dew point and wind at the newest
+  // hour with both a report and a forecast; rain as wet hours so far, a report
+  // with precipitation against a forecast hour of ≥0.1 mm.  Dew point and wind
+  // carry no warm/cold colour -- their pull on the maximum is not one-way.
+  const newest = key => (H.rows || []).filter(r => r.obs && r.obs[key] != null && (r.forecast || {})[key] != null)
+    .reduce((a, r) => !a || Number(r.hour) > Number(a.hour) ? r : a, null);
+  const diffCard = (icon, label, key, unit, digits, why) => {
+    const r = newest(key);
+    if(!r) return "";
+    const ob = r.obs[key], fc = r.forecast[key], d = ob - fc;
+    return sdSunCard(icon, label, `${hh(r.hour)} 点 · ${unit}`, `${sdSg(d, digits)} ${unit}`, "",
+      [["实况", sdN(ob, digits)], ["预报", sdN(fc, digits)]], `${why}：${hh(r.hour)}:00 报文对同一小时的预报（Open-Meteo 逐小时）`);
+  };
+  const dewCard = diffCard("dew", "露点 · 实况对比预报", "dew_c", "°C", 1, "报文露点");
+  const windCard = diffCard("wind", "风 · 实况对比预报", "wind_mps", "m/s", 1, "报文风速（10 分钟平均）");
+  const wetRows = (H.rows || []).filter(r => r.obs && (r.forecast || {}).precip_mm != null);
+  const rainCard = !wetRows.length ? "" : (() => {
+    const ob = wetRows.filter(r => r.obs.precip).length, fc = wetRows.filter(r => r.forecast.precip_mm >= 0.1).length;
+    const mm = wetRows.reduce((a, r) => a + r.forecast.precip_mm, 0), d = ob - fc;
+    const hrs = wetRows.map(r => Number(r.hour));
+    return sdSunCard("rain", "雨 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点 · 小时`,
+      !ob && !fc ? "无雨" : `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d)} 小时`, d > 0 ? "sd-cold" : d < 0 ? "sd-warm" : "",
+      [["实况", `${ob} 小时`], ["预报", `${fc} 小时 · ${sdN(mm, 1)} mm`]],
+      `整点报文报了降水的小时数，对同一段小时里预报降水 ≥0.1 mm 的小时数（Open-Meteo 逐小时）；正数＝比预报多雨（偏冷）`);
+  })();
   const cards = [
     sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
@@ -22829,6 +22859,9 @@ function sdSky(day){
           [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
           `截至 ${T.last_hour}:00 卫星日照比提前 1 天的预报 ${sdSg(T.pct_d1, 0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
       : "",
+    dewCard,
+    windCard,
+    rainCard,
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>

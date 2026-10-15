@@ -873,10 +873,15 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
         spent_day = str(exc) == "open_meteo_day_exhausted"
         return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复" if spent_day
                 else f"看板当日 Open-Meteo 份额已用完（{str(exc).rsplit(':', 1)[-1]}）"}
+    # Ten variables, one call's weight: dew point, wind and rain for the cards
+    # beside the sun (user 2026-10-15「增加露点、风、雨等信息卡片」) take the place
+    # of the day-before total cloud nothing read.
     fields = ["cloud_cover", "cloud_cover_low", "shortwave_radiation", "temperature_2m"]
+    extra = ["dew_point_2m", "wind_speed_10m", "precipitation"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
-        "hourly": ",".join(fields + [f + "_previous_day1" for f in fields]),
+        "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover"]),
+        "wind_speed_unit": "ms",
     })
     try:
         import certifi  # noqa: PLC0415
@@ -1124,7 +1129,8 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         fc_row = {
             "cloud": val("cloud_cover"), "cloud_low": val("cloud_cover_low"),
             "sw": val("shortwave_radiation"), "temp_c": val("temperature_2m"),
-            "cloud_d1": val("cloud_cover", True), "cloud_low_d1": val("cloud_cover_low", True),
+            "cloud_low_d1": val("cloud_cover_low", True),
+            "dew_c": val("dew_point_2m"), "wind_mps": val("wind_speed_10m"), "precip_mm": val("precipitation"),
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
         } if times else {}
         obs = by_hour.get(h)
@@ -1144,6 +1150,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                 "temp_c": obs.get("temp_c"), "cloud_cover": obs.get("cloud_cover"),
                 "clouds": obs.get("clouds") or [], "weathers": obs.get("weathers") or [],
                 "visibility_m": obs.get("visibility_m"), "precip": obs.get("precip"),
+                "dew_c": obs.get("dew_c"), "wind_mps": obs.get("wind_mps"),
                 "clear_sky_wm2": round(clear, 0), "inferred_sw_wm2": None if inferred is None else round(inferred, 0),
             }
             diffs = row["diffs"]
