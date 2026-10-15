@@ -22754,7 +22754,7 @@ function sdSky(day){
   const fcPrev = H.fetched_at_utc ? new Date(Date.parse(H.fetched_at_utc) - 86400e3).toISOString() : null;
   const L = sat.latest;
   const cards = [
-    sdSunCard("预报日照改了", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
+    sdSunCard("预报日照", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
       // latest as fetched, the earlier one ~24 h before it (per hour, the run a
       // day earlier -- hence ≈).
