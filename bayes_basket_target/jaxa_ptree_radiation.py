@@ -58,9 +58,18 @@ KEEP_HOURS = 96
 CACHE_PATH = ROOT / "data" / "runtime" / "jaxa_ptree_swr_v1.json"
 CACHE_SCHEMA = "jaxa_ptree_swr_v1"
 _FILE_RE = re.compile(r"^H\d\d_(\d{8})_(\d{2})00_1H_RFL\d{3}_FLDK\.02801_02401\.nc$")
+#: The 10-minute Level 2 product (user 2026-10-15 「加L2」): one scan, same
+#: grid and algorithm, lands ~21 minutes after the scan begins (measured
+#: 2026-10-15: the 00:40 scan at 01:01) -- the latest scan only, for 「此刻」.
+L2_DIR = "/pub/himawari/L2/PAR"
+_L2_RE = re.compile(r"^H\d\d_(\d{8})_(\d{4})_RFL\d{3}_FLDK\.02801_02401\.nc$")
+#: The server is asked for a newer scan at most this often.
+L2_CHECK_SECONDS = 300.0
+_L2_TASK = "L2"
+_L2_STATE: dict[str, Any] = {"pending": False, "checked": -1e9}
 
 _LOCK = threading.Lock()
-_QUEUE: "queue.Queue[datetime]" = queue.Queue()
+_QUEUE: "queue.Queue[datetime | str]" = queue.Queue()
 _PENDING: set[str] = set()
 _MISSES: dict[str, float] = {}
 _LISTINGS: dict[str, tuple[float, list[str]]] = {}
@@ -110,8 +119,8 @@ def _listing(directory: str) -> list[str]:
     return names
 
 
-def _version() -> str:
-    versions = sorted(name for name in _listing(PRODUCT_DIR) if name.isdigit())
+def _version(product_dir: str = PRODUCT_DIR) -> str:
+    versions = sorted(name for name in _listing(product_dir) if name.isdigit())
     if not versions:
         raise RuntimeError("no product version directory")
     return versions[-1]
@@ -125,6 +134,25 @@ def _remote_file(hour: datetime) -> str | None:
         m = _FILE_RE.match(name)
         if m and (m.group(1), m.group(2)) == stamp:
             return f"{directory}/{name}"
+    return None
+
+
+def _latest_l2(now: datetime) -> tuple[datetime, str] | None:
+    """The newest 5 km scan on the server: this UTC hour's folder, else the
+    hour before (a folder not made yet is simply empty)."""
+
+    version = _version(L2_DIR)
+    for back in (0, 1):
+        hour = hour_start(now) - timedelta(hours=back)
+        directory = f"{L2_DIR}/{version}/{hour:%Y%m}/{hour:%d}/{hour:%H}"
+        try:
+            names = _listing(directory)
+        except RuntimeError:
+            continue
+        scans = sorted((m.group(1) + m.group(2), name) for name in names if (m := _L2_RE.match(name)))
+        if scans:
+            stamp, name = scans[-1]
+            return datetime.strptime(stamp, "%Y%m%d%H%M").replace(tzinfo=timezone.utc), f"{directory}/{name}"
     return None
 
 
@@ -144,6 +172,16 @@ def read_hour(hour: datetime, stations: dict[str, tuple[float, float]]) -> dict[
     remote = _remote_file(hour)
     if remote is None:
         return None
+    return read_file(remote, stations)
+
+
+def read_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str, float | None]:
+    """One full-disk SWR file's value at every station's grid cell (bounded
+    download, file deleted after).  Raises on a transport or format failure."""
+
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
     workdir = CACHE_PATH.parent / "jaxa_ptree_tmp"
     workdir.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(workdir).free < MIN_FREE_BYTES:
@@ -151,8 +189,13 @@ def read_hour(hour: datetime, stations: dict[str, tuple[float, float]]) -> dict[
     handle, path = tempfile.mkstemp(suffix=".nc", dir=workdir)
     os.close(handle)
     try:
-        got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
-                    timeout=CURL_TIMEOUT_SECONDS)
+        # A transfer the server closes early (curl 18, seen 2026-10-15) is
+        # tried once more; anything else fails at once.
+        for _attempt in range(2):
+            got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
+                        timeout=CURL_TIMEOUT_SECONDS)
+            if got.returncode != 18:
+                break
         if got.returncode != 0:
             raise RuntimeError(f"download: curl {got.returncode} {got.stderr.decode(errors='replace')[:120]}")
         with h5py.File(path, "r") as f:
@@ -185,7 +228,11 @@ def _load() -> dict[str, dict[str, float | None]]:
     if _CACHE is None:
         try:
             doc = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-            _CACHE = dict(doc.get("hours") or {}) if doc.get("schema") == CACHE_SCHEMA else {}
+            ok = doc.get("schema") == CACHE_SCHEMA
+            _CACHE = dict(doc.get("hours") or {}) if ok else {}
+            latest = doc.get("l2_latest") if ok else None
+            if isinstance(latest, dict):
+                _L2_STATE["latest"] = latest
         except (OSError, ValueError):
             _CACHE = {}
     return _CACHE
@@ -198,14 +245,39 @@ def _persist(cache: dict[str, dict[str, float | None]]) -> None:
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     temporary = CACHE_PATH.with_suffix(".tmp")
     temporary.write_text(json.dumps({"schema": CACHE_SCHEMA, "written_at_utc": datetime.now(timezone.utc)
-                                     .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache}, sort_keys=True),
+                                     .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache,
+                                     "l2_latest": _L2_STATE.get("latest")}, sort_keys=True),
                          encoding="utf-8")
     os.replace(temporary, CACHE_PATH)
+
+
+def _read_latest_l2() -> None:
+    try:
+        found = _latest_l2(datetime.now(timezone.utc))
+        latest = _L2_STATE.get("latest") or {}
+        values = None
+        if found is not None and found[1] != latest.get("file"):
+            values = read_file(found[1], _fleet())
+        error = None
+    except Exception as exc:  # noqa: BLE001 -- checked again after L2_CHECK_SECONDS
+        found, values, error = None, None, f"{type(exc).__name__}: {str(exc)[:120]}"
+    with _LOCK:
+        _L2_STATE.update(pending=False, checked=time.monotonic())
+        if error:
+            _STATUS.update(l2_error=error)
+        if values is not None and found is not None:
+            _L2_STATE["latest"] = {"scan_utc": found[0].strftime("%Y-%m-%dT%H:%MZ"), "file": found[1],
+                                   "read_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                   "values": values}
+            _persist(_load())
 
 
 def _work() -> None:
     while True:
         hour = _QUEUE.get()
+        if hour == _L2_TASK:
+            _read_latest_l2()
+            continue
         key = _key(hour)
         try:
             values = read_hour(hour, _fleet())
@@ -231,13 +303,10 @@ def measured(station: str, hours: list[datetime]) -> dict[str, float | None]:
     (None where the file has no value at the station); the others are queued
     for the background reader, newest first.  Never waits on the network."""
 
-    global _WORKER
     out: dict[str, float | None] = {}
     now = time.monotonic()
     with _LOCK:
-        if _WORKER is None or not _WORKER.is_alive():
-            _WORKER = threading.Thread(target=_work, name="jaxa-ptree-swr", daemon=True)
-            _WORKER.start()
+        _ensure_worker()
         cache = _load()
         for hour in sorted(hours, reverse=True):
             key = _key(hour)
@@ -252,9 +321,36 @@ def measured(station: str, hours: list[datetime]) -> dict[str, float | None]:
     return out
 
 
+def _ensure_worker() -> None:
+    global _WORKER
+    if _WORKER is None or not _WORKER.is_alive():
+        _WORKER = threading.Thread(target=_work, name="jaxa-ptree-swr", daemon=True)
+        _WORKER.start()
+
+
+def latest(station: str) -> dict[str, Any] | None:
+    """The newest 10-minute scan read so far at the station: ``{"scan_utc",
+    "sw_wm2", "read_at_utc"}``, or None; asks the background reader for a newer
+    scan at most every L2_CHECK_SECONDS.  Never waits on the network."""
+
+    with _LOCK:
+        _ensure_worker()
+        _load()
+        if not _L2_STATE["pending"] and time.monotonic() - _L2_STATE["checked"] >= L2_CHECK_SECONDS:
+            _L2_STATE["pending"] = True
+            _QUEUE.put(_L2_TASK)
+        got = _L2_STATE.get("latest") or {}
+        values = got.get("values") or {}
+        if station.upper() not in values:
+            return None
+        return {"scan_utc": got.get("scan_utc"), "sw_wm2": values[station.upper()],
+                "read_at_utc": got.get("read_at_utc")}
+
+
 def status() -> dict[str, Any]:
     with _LOCK:
         return dict(_STATUS, pending=len(_PENDING))
 
 
-__all__ = ["LABEL", "PUBLISH_AFTER", "covers", "hour_start", "measured", "pixel", "read_hour", "status"]
+__all__ = ["LABEL", "PUBLISH_AFTER", "covers", "hour_start", "latest", "measured", "pixel", "read_file",
+           "read_hour", "status"]

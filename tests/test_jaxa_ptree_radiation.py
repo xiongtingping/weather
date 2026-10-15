@@ -98,3 +98,47 @@ def test_the_account_stays_out_of_the_tree() -> None:
     source = (jaxa.ROOT / "bayes_basket_target" / "jaxa_ptree_radiation.py").read_text(encoding="utf-8")
     assert '"--netrc"' in source and "password" not in source.lower().replace("~/.netrc", "")
     assert jaxa.CA_FILE.exists()
+
+
+def test_the_newest_l2_scan_is_found_in_this_or_the_last_hour_folder(monkeypatch) -> None:
+    folders = {
+        "/pub/himawari/L2/PAR": ["001", "021"],
+        "/pub/himawari/L2/PAR/021/202610/15/00": ["H09_20261015_0030_RFL021_FLDK.02801_02401.nc",
+                                                  "H09_20261015_0040_RFL021_FLDK.02801_02401.nc",
+                                                  "H09_20261015_0040_rFL021_FLDK.02701_02601.nc"],
+    }
+
+    def fake_listing(directory):
+        if directory not in folders:
+            raise RuntimeError("no folder")
+        return folders[directory]
+
+    monkeypatch.setattr(jaxa, "_listing", fake_listing)
+    scan, remote = jaxa._latest_l2(datetime(2026, 10, 15, 1, 5, tzinfo=timezone.utc))
+    assert scan == datetime(2026, 10, 15, 0, 40, tzinfo=timezone.utc)
+    assert remote.endswith("/00/H09_20261015_0040_RFL021_FLDK.02801_02401.nc")   # the 5 km file
+
+
+def test_latest_serves_the_read_scan_and_asks_for_a_newer_one(tmp_path, monkeypatch) -> None:
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps({"schema": jaxa.CACHE_SCHEMA, "hours": {}, "l2_latest": {
+        "scan_utc": "2026-10-15T00:40Z", "file": "/a.nc", "read_at_utc": "2026-10-15T01:05:00Z",
+        "values": {"ZUUU": 269.7}}}))
+    monkeypatch.setattr(jaxa, "CACHE_PATH", path)
+    monkeypatch.setattr(jaxa, "_CACHE", None)
+    monkeypatch.setattr(jaxa, "_L2_STATE", {"pending": False, "checked": -1e9})
+    monkeypatch.setattr(jaxa, "_latest_l2", lambda now: (datetime(2026, 10, 15, 0, 50, tzinfo=timezone.utc), "/b.nc"))
+    monkeypatch.setattr(jaxa, "read_file", lambda remote, stations: {"ZUUU": 301.0})
+    monkeypatch.setattr(jaxa, "_fleet", lambda: {"ZUUU": (30.576, 103.95)})
+    assert jaxa.latest("ZUUU") == {"scan_utc": "2026-10-15T00:40Z", "sw_wm2": 269.7, "read_at_utc": "2026-10-15T01:05:00Z"}
+    for _ in range(50):
+        if (jaxa._L2_STATE.get("latest") or {}).get("file") == "/b.nc":
+            break
+        time.sleep(0.05)
+    assert jaxa.latest("ZUUU")["sw_wm2"] == 301.0 and jaxa.latest("RJTT") is None
+    assert json.loads(path.read_text())["l2_latest"]["scan_utc"] == "2026-10-15T00:50Z"
+
+
+def test_the_panel_shows_the_scan() -> None:
+    source = (jaxa.ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "${sdSunNow(sat.latest)}" in source and "function sdSunNow(L)" in source

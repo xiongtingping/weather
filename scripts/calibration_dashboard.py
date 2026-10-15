@@ -22552,6 +22552,13 @@ function sdMeanModeCard(day){
 function sdSunStat(label, mj, at, tip, extra){
   return `<div class="sd-sunstat" title="${sdEsc(tip)}"><span>${label}</span><b>${sdN(mj, 2)}<small> MJ/m²</small></b>${at ? `<span class="sd-sunage">取于 ${sdAgeSpan(at, "sd-age")}</span>` : ""}${extra || ""}</div>`;
 }
+// The newest 10-minute scan at the station (JAXA Himawari Level 2, user
+// 2026-10-15 「加L2」): one scan, so it jumps as cloud passes; the hourly
+// column stays the hour's mean.
+function sdSunNow(L){
+  if(!L || L.sw_wm2 == null) return "";
+  return `<div class="sd-sunstat" title="${sdEsc(`JAXA Himawari 10 分钟单次扫描（L2），扫描于 ${sdLocal(L.scan_utc, true)}（当地），读于 ${sdLocal(L.read_at_utc, true)}；单张快照随云起伏，逐小时列仍是小时平均`)}"><span>此刻日照（10 分钟）</span><b>${sdN(L.sw_wm2, 0)}<small> W/m²</small></b><span class="sd-sunage">扫描于 ${sdAgeSpan(L.scan_utc, "sd-age")}</span></div>`;
+}
 function sdRadTotal(R){
   const at = R.capture_state === "matched" ? R.captured_at_utc : null;
   const first = R.first_seen_utc && R.first_seen_utc !== R.captured_at_utc ? `；这个值 ${sdLocal(R.first_seen_utc, true)} 起没变` : "";
@@ -22688,7 +22695,7 @@ function sdSky(day){
     ? `${sunLine}${shiftLine}${sunLine ? " · " : ""}<b>${off}</b>/${observed.length} 小时云或日照偏离预报`
     : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时云与辐射：实况对预报</b> <span class="sd-sub">${headline}</span></summary>
-    <div class="sd-sunstats">${sdSunStat("全天预报日照", H.forecast_sw_mj, H.fetched_at_utc, "Open-Meteo 逐小时短波加总（看板现取，缓存 30 分钟）；与辐射偏移卡同一来源，取数时刻不同")}${sdSunStat("提前 1 天的预报", H.forecast_sw_d1_mj, null, "同一接口提前 1 天发出的那一版（previous_day1）")}</div>
+    <div class="sd-sunstats">${sdSunStat("全天预报日照", H.forecast_sw_mj, H.fetched_at_utc, "Open-Meteo 逐小时短波加总（看板现取，缓存 30 分钟）；与辐射偏移卡同一来源，取数时刻不同")}${sdSunStat("提前 1 天的预报", H.forecast_sw_d1_mj, null, "同一接口提前 1 天发出的那一版（previous_day1）")}${sdSunNow(sat.latest)}</div>
     ${sdNewestFive(rows, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报与总云">云 <span class="muted">实况 · 预报</span></th><th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`, "sd-tab sd-sky", n => `其余 ${n} 小时（更早的实况与未来预报）`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
     <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>

@@ -1008,8 +1008,11 @@ def _jaxa_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) 
     for h, start in wanted.items():
         values[h] = got.get(start.strftime("%Y-%m-%dT%H:00Z"))
     reader = jaxa.status()
+    # The newest 10-minute scan, today only (user 2026-10-15 「加L2」): 「此刻」.
+    today = d == now_utc.astimezone(zone).date()
     return {"available": any(v for v in values), "values": values, "fetched_at_utc": reader.get("last_read_at_utc"),
-            "pending_hours": sum(1 for h in wanted if values[h] is None), "reason": reader.get("last_error")}
+            "pending_hours": sum(1 for h in wanted if values[h] is None), "reason": reader.get("last_error"),
+            "latest": jaxa.latest(station) if today else None}
 
 
 def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
@@ -1164,6 +1167,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "forecast_sw_mj": sums["sw"], "forecast_sw_d1_mj": sums["sw_d1"],
         "satellite": {"product": product, "label": SATELLITE_PRODUCTS.get(product or "", ""),
                       "via": SATELLITE_VIA.get(product or "", SATELLITE_VIA_DEFAULT),
+                      "latest": sat.get("latest"),
                       "available": bool(sat.get("available")), "reason": sat.get("reason"),
                       "fetched_at_utc": sat.get("fetched_at_utc"),
                       "last_hour": max((r["hour"] for r in measured), default=None)},
