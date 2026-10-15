@@ -44,7 +44,7 @@
 - 训练只用 d−2 以前已闭日、真值已提交的站日（`strict_as_of_truth_commit_v1`）。
 
 ### 3.4 样本
-47 站 × 09-01..10-14 × 12 小时 ≈ 2.5 万行（数据已在手：`jaxa_cloud_rad_p1_20261015/` 的 JAXA 云/日照/GSMaP、`sat_cloud_obs_20261008/` 的 GOES、服务 P1 行里的报文与预报曲线）。缺的只有**官方确定性 3 小时曲线**是否入库（现 `calibration_regional_point_run` 只存日最高）；若未存，第一期用 Open-Meteo 日前曲线作研究基线，上线前换官方。
+47 站 × 09-01..10-14 × 12 小时 ≈ 2.5 万行（数据已在手：`jaxa_cloud_rad_p1_20261015/` 的 JAXA 云/日照/GSMaP、`sat_cloud_obs_20261008/` 的 GOES、服务 P1 行里的报文与预报曲线）。官方确定性曲线已在库（`calibration_regional_point_run.hourly_c_json`，含 IFS HRES / GFS / ICON / GDPS 原生 3 小时值，带 `knowable_at_utc`），基线臂无需 Open-Meteo。
 
 ## 四、检验（事前登记，不得事后加格）
 1. 前 12 日只训练；之后逐日前推，每日重拟。
