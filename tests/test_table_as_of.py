@@ -81,6 +81,10 @@ def _width(conn, width_lambda, at):
 
 
 def test_a_replay_build_pins_the_table_that_was_active_then(monkeypatch) -> None:
+    # The table-layer path, which pre-273 artifacts are still served on;
+    # charter 273's spread-adjusted pool takes the tables out of the gate.
+    from bayes_basket_target import spread_adjusted_pool
+    monkeypatch.setattr(spread_adjusted_pool, "SLP_MODE", "off")
     from tests.test_native_ensemble_p0 import (
         _insert_official_native_mixed_cycle_archive,
     )

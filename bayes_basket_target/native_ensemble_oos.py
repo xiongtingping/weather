@@ -80,6 +80,12 @@ from .served_shape import (
     with_width_slice,
 )
 from .settlement_time import hours_to_settlement_if_known
+from .spread_adjusted_pool import (
+    slp_method_tag_suffix,
+    slp_serves,
+    slp_shrink_for,
+    slp_spread_factor,
+)
 from .dwd_icon_eps_archive import (
     ARCHIVE_RUN_CYCLE_HOURS_BY_LEAD as _ICON_ARCHIVE_CYCLES_BY_LEAD,
     RUN_CYCLE_HOUR_BY_LEAD as _ICON_CYCLE_BY_LEAD,
@@ -2684,6 +2690,23 @@ def _ladder_shape_stack(
     return shaped
 
 
+def _slp_view(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Charter 273: a system's holdout day as the cross gate pools it.
+
+    While the spread-adjusted pool serves, the cohort blends each system's
+    narrowed vector -- the one serving will pool -- in place of the vector
+    its own certificate scored.  A row built without it cannot be scored on
+    the served arithmetic and fails closed."""
+
+    if not slp_serves():
+        return row
+    if "slp_probability" not in row:
+        raise ContractError("native_ensemble_oos_slp_probability_missing")
+    view = dict(row)
+    view["probability"] = row["slp_probability"]
+    return view
+
+
 def _day_grid(
     predictions_by_system: Mapping[str, Mapping[str, Mapping[str, Any]]],
     systems: Sequence[str],
@@ -4705,8 +4728,41 @@ def _evaluate_system(
             {"holdout_grid": HOLDOUT_GRID_MARKET_LADDER}
             if ladder is not None else {}
         )
+        # Charter 273: the same day dressed the way the spread-adjusted pool
+        # serves it -- spread factor times this decision's horizon c -- for
+        # the cross gate only.  This system's own certificate keeps scoring
+        # ``probability``.
+        slp_fields: dict[str, Any] = {}
+        if slp_serves():
+            slp_hours = hours_to_settlement_if_known(
+                str(case["event_date"]),
+                as_of_utc=str(case["aggregator_snapshot_at_utc"]),
+                settlement_timezone=(
+                    str(case.get("timezone_name") or "") or None
+                ),
+            )
+            slp_shrink = slp_shrink_for(slp_hours)
+            narrowed = dict(fitted)
+            narrowed["spread_factor"] = slp_spread_factor(
+                float(fitted["spread_factor"]), slp_shrink
+            )
+            slp_fields = {
+                "slp_shrink": slp_shrink,
+                "slp_probability": (
+                    probability if slp_shrink == 1.0
+                    else _apply_parameters(
+                        case["values"],
+                        narrowed,
+                        intervals=(
+                            ladder["intervals"] if ladder is not None
+                            else None
+                        ),
+                    )
+                ),
+            }
         return {
             **grid_fields,
+            **slp_fields,
             "event_date": case["event_date"],
             "decision_at_utc": case["aggregator_snapshot_at_utc"],
             "member_set_sha256": case["member_set_sha256"],
@@ -5353,6 +5409,13 @@ def build_native_ensemble_oos(
     station_width_sha = gate_tables["station_width_sha256"]
     gate_center_width_layer = gate_tables["center_width_layer"]
     gate_center_width_slices = gate_tables.get("center_width_slices")
+    if slp_serves():
+        # Charter 273: the spread-adjusted pool replaces the table layer, so
+        # the holdout scores no table and the certificate pins none.
+        center_width_sha = None
+        station_width_sha = None
+        gate_center_width_layer = None
+        gate_center_width_slices = None
     if min_train_days < 2 or min_holdout_days < 1:
         raise ContractError("native_ensemble_oos_window_invalid")
     as_of = datetime.fromisoformat(as_of_utc.replace("Z", "+00:00"))
@@ -5868,7 +5931,7 @@ def build_native_ensemble_oos(
         )
         predictions_by_system = {
             system_id: {
-                row["event_date"]: row
+                row["event_date"]: _slp_view(row)
                 for row in evaluation["predictions"]
             }
             for system_id, evaluation in rows
@@ -6456,6 +6519,8 @@ def build_native_ensemble_oos(
             "run_cycle_by_system_sha256": cycle_mapping_sha,
             "center_width_sha256": center_width_sha,
             "station_width_sha256": station_width_sha,
+            # Charter 273: whether this holdout pooled the narrowed systems.
+            "spread_adjusted_pool": slp_serves(),
             "radiation_shift_sigmas": list(scope_radiation_sigmas),
             "p0_exact_match_ready": True,
             "p0_exact_match_blocker": None,
@@ -7955,6 +8020,13 @@ def persist_native_ensemble_oos(
                         + "::station_width_sha256="
                         + str(candidate["station_width_sha256"])
                         if candidate.get("station_width_sha256")
+                        else ""
+                    )
+                    # Charter 273: the holdout pooled each system narrowed
+                    # by its horizon's c and scored no table layer.
+                    + (
+                        slp_method_tag_suffix()
+                        if candidate.get("spread_adjusted_pool")
                         else ""
                     )
                 ),

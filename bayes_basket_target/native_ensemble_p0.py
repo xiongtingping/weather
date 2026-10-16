@@ -70,6 +70,12 @@ from .stable_pool import (
     STABLE_POOL_WEIGHT_RULE,
 )
 from .settlement_time import hours_to_settlement_if_known
+from .spread_adjusted_pool import (
+    SLP_METHOD_TAG,
+    slp_bin_for,
+    slp_shrink_for,
+    slp_spread_factor,
+)
 from .served_shape import (
     CenterWidthLayer,
     apply_served_table_layers,
@@ -219,7 +225,7 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 271 (2026-10-16 ruling 「做」): the width layer carries a
 # mode-to-shoulder share per horizon bin, fitted nightly; identity until the
 # lane admits one.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v29"
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v30"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -3759,6 +3765,36 @@ def compile_native_ensemble_p0(
             "FAIL_CLOSED_NO_P0:native_cross_ensemble_artifact_missing"
         )
     selected_system_ids = json.loads(str(artifact[0]))
+    # Charter 273: under an artifact whose holdout scored the spread-adjusted
+    # pool, every system below is dressed with its spread factor times this
+    # horizon's ``c`` and no table layer follows the pool.  Resolved here,
+    # before any system is dressed; one horizon for the whole compile.
+    slp_active = SLP_METHOD_TAG in str(artifact[8] or "")
+    if slp_active and (
+        CENTER_WIDTH_METHOD_TAG in str(artifact[8] or "")
+        or STATION_WIDTH_METHOD_TAG in str(artifact[8] or "")
+    ):
+        # The spread-adjusted pool replaces the table layer; an artifact
+        # naming both was not scored on either arithmetic alone.
+        raise ContractError(
+            "FAIL_CLOSED_NO_P0:spread_adjusted_pool_with_width_table"
+        )
+    slp_hours_to_settlement = hours_to_settlement_if_known(
+        event_date, as_of_utc=decision_at_utc, settlement_timezone=timezone_name,
+    )
+    slp_shrink = (
+        slp_shrink_for(slp_hours_to_settlement) if slp_active else 1.0
+    )
+
+    def _slp_spread(spread_parameters: Mapping[str, Any]) -> dict[str, Any]:
+        if not slp_active:
+            return dict(spread_parameters)
+        narrowed = dict(spread_parameters)
+        narrowed["spread_factor"] = slp_spread_factor(
+            float(spread_parameters["spread_factor"]), slp_shrink
+        )
+        return narrowed
+
     # The identity to hold the artifact, evaluation and selection evidence to
     # is the pairing the activation was fitted under -- its own recorded
     # cycle map -- not the runs today's capture carries.  Rebuilding the
@@ -4231,7 +4267,9 @@ def compile_native_ensemble_p0(
                 ],
                 intervals=intervals_raw,
                 bias_parameters=bias_parameters,
-                spread_parameters=json.loads(str(system_artifact[1])),
+                spread_parameters=_slp_spread(
+                    json.loads(str(system_artifact[1]))
+                ),
                 reliability_parameters=reliability_parameters,
             )
         )
@@ -4364,10 +4402,10 @@ def compile_native_ensemble_p0(
             values=raw_values,
             intervals=intervals_raw,
             bias_parameters={"bias_c": provisional_bias_c},
-            spread_parameters={
+            spread_parameters=_slp_spread({
                 "spread_factor": provisional_spread_factor,
                 "kernel_rule": SINGLE_SYSTEM_KERNEL_RULE,
-            },
+            }),
             reliability_parameters={
                 "reliability_weight": 1.0,
                 "climate_samples_c": raw_values,
@@ -5427,6 +5465,19 @@ def compile_native_ensemble_p0(
         **({"center_width_json": json.dumps(
             center_width_receipt, sort_keys=True
         )} if center_width_receipt is not None else {}),
+        # Charter 273: the spread-adjusted pool, when this artifact's holdout
+        # scored it -- the horizon, its bin and the c every system's spread
+        # factor was multiplied by.  Absent otherwise, so an envelope served
+        # under the table layer keeps its content hash.
+        **({"spread_adjusted_pool_json": json.dumps({
+            "schema": SLP_METHOD_TAG,
+            "hours_to_settlement": (
+                None if slp_hours_to_settlement is None
+                else float(slp_hours_to_settlement)
+            ),
+            "bin": slp_bin_for(slp_hours_to_settlement),
+            "shrink": slp_shrink,
+        }, sort_keys=True)} if slp_active else {}),
         "native_calibrated_system_centers_c_json": _json(
             calibrated_system_centers_c
         ),

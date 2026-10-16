@@ -148,6 +148,10 @@ def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
     Before 2026-09-13 the contest skipped centre/width and the gate put it
     after band, so the two numbers differed on every such scope.
     """
+    # The table-layer path, which pre-273 artifacts are still served on;
+    # charter 273's spread-adjusted pool takes the tables out of the gate.
+    from bayes_basket_target import spread_adjusted_pool
+    monkeypatch.setattr(spread_adjusted_pool, "SLP_MODE", "off")
 
     from tests.test_native_ensemble_p0 import (
         _insert_official_native_mixed_cycle_archive,
@@ -212,6 +216,10 @@ def test_the_contest_scores_the_blend_the_gate_certifies(monkeypatch) -> None:
 def test_the_compiler_applies_the_pinned_table_through_the_one_function(
     monkeypatch,
 ) -> None:
+    # The table-layer path, which pre-273 artifacts are still served on;
+    # charter 273's spread-adjusted pool takes the tables out of the gate.
+    from bayes_basket_target import spread_adjusted_pool
+    monkeypatch.setattr(spread_adjusted_pool, "SLP_MODE", "off")
     from tests.test_native_ensemble_p0 import (
         _install_mixed_cycle_calibrations,
         _mixed_packet,
