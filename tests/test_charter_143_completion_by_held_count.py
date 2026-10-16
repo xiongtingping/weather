@@ -312,6 +312,10 @@ def test_zgsz_holds_inside_the_cutoff() -> None:
 
 
 def test_ltac_single_leg_buys_the_cheap_rung_alone(monkeypatch) -> None:
+    # Fixture built under the 0.35 sigma gate; the gate moved to 0.20 (user
+    # 2026-10-16), the completion rule under test did not.
+    from bayes_basket_target import delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "SKEW_GAP_THRESHOLD_SIGMA", 0.35)
     fixture._tilted_seat(monkeypatch)
     fixture._production_arms(monkeypatch)
     result = fixture._compile(fixture._ltac(ask_31=0.34, ask_33=0.09))

@@ -1197,6 +1197,10 @@ def test_ltac_the_held_rung_priced_above_its_claim_no_longer_refuses_the_window(
     0.57 sunk plus 0.34 plus 0.09 is a chain at par, a dollar for a dollar
     of payout, and no completion is allowed to build that.  A cent or two
     cheaper on the two rungs and the same completion trades."""
+    # Fixture built as a symmetric day under the 0.35 sigma gate it was written for;
+    # the gate moved to 0.20 (user 2026-10-16), the rule under test did not.
+    from bayes_basket_target import delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "SKEW_GAP_THRESHOLD_SIGMA", 0.35)
     # Charter 84 (八) is what this test is about, not which lamp triggers the
     # tilt.  The trigger moved to ``stable`` alone on 2026-09-08 and these
     # fixtures are ``sharp`` shapes, so pin the signal set here: a test of the

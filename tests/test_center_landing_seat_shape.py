@@ -38,7 +38,7 @@ def _dist(*masses: float) -> dict[str, float]:
 
 def test_right_skewed_day_seats_the_tail_and_leaves_the_mode_out():
     # Mode at 27C, mean ordinal 2.09 (28C): gap 1.09 buckets against a
-    # 0.35 sigma gate of 0.43 -- read RIGHT_SKEWED.
+    # 0.20 sigma gate of about 0.25 -- read RIGHT_SKEWED.
     probabilities = _dist(0.02, 0.40, 0.25, 0.18, 0.10, 0.05)
     seat = BR.seat_window(
         stage="P0", keys=KEYS, probabilities=probabilities

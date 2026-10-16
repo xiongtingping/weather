@@ -77,9 +77,15 @@ def _validated_probability_vector(
 # read the truth lands on the lean side 83-85% of the time against a 46/54
 # base rate, under every definition tried; the absolute gate simply read a
 # lean on 11 of 162 narrow days where 0.35 sigma reads 80 at 80% accuracy.
-# 0.35 is a charter default, not a fitted value: accuracy is flat across
-# 0.25-0.35 sigma, so only the ledger's extension arm can price it.
-MEAN_MODE_SKEW_THRESHOLD_SIGMA = 0.35
+# 0.35 was a charter default, not a fitted value.  User ruling 2026-10-16
+# 「换成0.2σ」: re-selected on the spread-adjusted pool (charter 273) by the
+# mutual information between the three-state reading and the side the truth
+# lands off the mode (docs/research/p0_skew_threshold_20261016) -- every lead
+# preferred less than 0.35 (D0 0.25, D1 0.05, D2 0.10, pooled 0.20): pooled,
+# 0.20 reads a lean on 60% of off-mode days at 71.5% right against 33% at
+# 75.6% (0.081 bit against 0.065).  The walk-forward gain crossed zero on
+# 12-14 evaluated days; the ruling took the pooled optimum.
+MEAN_MODE_SKEW_THRESHOLD_SIGMA = 0.20
 
 
 def mean_center_bucket_v1(

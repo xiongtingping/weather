@@ -1321,13 +1321,20 @@ def test_b06_direction_gate_uses_probability_only_and_fails_closed() -> None:
     assert expected_direction_from_probability_vector(
         {"37": 0.33, "38": 0.34, "39": 0.33}, ordinals, policy
     ) is Direction.NEUTRAL
+    # Mean 37.3 against a mode of 37 on a 1.23-sigma day: 0.24 sigma -- a lean
+    # UP under the 0.20 gate (user 2026-10-16), symmetric under the old 0.35.
     assert expected_direction_from_probability_vector(
         {"35": 0.125, "36": 0.125, "37": 0.30, "38": 0.225, "39": 0.225},
         {"35": 35, "36": 36, "37": 37, "38": 38, "39": 39},
         policy,
-    ) is Direction.NEUTRAL
+    ) is Direction.UP
+    # Mean 38.08 against a mode of 38 on a 0.33-sigma day: 0.24 sigma, a lean
+    # UP under the 0.20 gate; a balanced spike stays symmetric.
     assert expected_direction_from_probability_vector(
         {"37": 0.01, "38": 0.90, "39": 0.09}, ordinals, policy
+    ) is Direction.UP
+    assert expected_direction_from_probability_vector(
+        {"37": 0.05, "38": 0.90, "39": 0.05}, ordinals, policy
     ) is Direction.NEUTRAL
     assert expected_direction_from_probability_vector(
         {"37": 0.10, "38": 0.50, "39": 0.40}, ordinals, policy, evidence_fresh=False

@@ -2959,9 +2959,13 @@ def test_shape_reading_carries_the_served_width_in_bucket_steps() -> None:
     assert kernel_support.served_sigma_buckets_v1({}, ordinals) is None
 
 
-def test_clause_81_centre_holding_windows_claim_is_lifted() -> None:
+def test_clause_81_centre_holding_windows_claim_is_lifted(monkeypatch) -> None:
     """Charter 81, retired 2026-09-12: the lift is identity by default; the
     clause keeps its numbers as history and records the retirement."""
+    # Fixture built as a symmetric day under the 0.35 sigma gate it was written for;
+    # the gate moved to 0.20 (user 2026-10-16), the rule under test did not.
+    from bayes_basket_target import delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "SKEW_GAP_THRESHOLD_SIGMA", 0.35)
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
     from bayes_basket_target.delta_v2_runtime import _support_windows
 

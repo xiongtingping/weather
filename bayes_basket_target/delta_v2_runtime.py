@@ -116,6 +116,7 @@ from .basket_kernel.delta_v2 import (
     solve_target_inventory_v2,
 )
 from .basket_kernel.support import (
+    MEAN_MODE_SKEW_THRESHOLD_SIGMA,
     mean_center_bucket_v1,
     mean_mode_skew_reading_v1,
     mean_mode_skew_sign_v1,
@@ -1225,7 +1226,8 @@ if os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD", "").strip():
         " set DELTA_V2_SKEW_GAP_THRESHOLD_SIGMA (units of the served sigma)"
     )
 SKEW_GAP_THRESHOLD_SIGMA = float(
-    os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD_SIGMA", "") or 0.35
+    os.environ.get("DELTA_V2_SKEW_GAP_THRESHOLD_SIGMA", "")
+    or MEAN_MODE_SKEW_THRESHOLD_SIGMA
 )
 # The market-lean gate (user ruling, 2026-08-28): the book is information,
 # and a window may not lean AGAINST it.  Measured before wiring, on 481

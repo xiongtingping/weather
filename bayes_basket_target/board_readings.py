@@ -2896,6 +2896,38 @@ def _skew_side_group(points: Sequence[Mapping[str, Any]], truth_buckets: Sequenc
     }
 
 
+def _skew_call_stats(rows: Sequence[Mapping[str, Any]], source: str) -> dict[str, Any] | None:
+    """User 2026-10-16 「前端统计显式判对率、判出偏斜的天数、「判对」带来的信息量」.
+
+    Over the station-days whose truth left the mode (the only ones a lean
+    can be right or wrong on): how many the reading called left or right,
+    how often the call named the side the truth landed on (with an
+    event-day interval), and the mutual information in bits between the
+    three-state reading and that side -- the score the threshold was chosen
+    on (docs/research/p0_skew_threshold_20261016)."""
+
+    off = [r for r in rows if r[source] and r[source]["truth_side"] != 0]
+    if not off:
+        return None
+    called = [r for r in off if r[source]["sign"] != 0]
+    right = [float(r[source]["sign"] == r[source]["truth_side"]) for r in called]
+    n = len(off)
+    mi = 0.0
+    for sign in (-1, 0, 1):
+        p_sign = sum(r[source]["sign"] == sign for r in off) / n
+        for side in (-1, 1):
+            p_side = sum(r[source]["truth_side"] == side for r in off) / n
+            joint = sum(r[source]["sign"] == sign and r[source]["truth_side"] == side for r in off) / n
+            if joint > 0:
+                mi += joint * math.log2(joint / (p_sign * p_side))
+    return {
+        "source": source, "off_mode": n, "called": len(called), "called_share": len(called) / n,
+        "hit_rate": (sum(right) / len(right)) if right else None,
+        "hit_ci": _traded_day_bootstrap(called, right) if called else None,
+        "mi_bits": mi, "event_days": len({r["event_date"] for r in off}),
+    }
+
+
 def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
     """User 2026-10-11 「前端显示增加众数和均值桶的命中率：模型对市场统计显示和偏斜
     站日，真值落在哪一侧显示（按照生产现有口径）」.
@@ -2907,6 +2939,8 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
     model's skew -- mode and centre-bucket hit rates, model minus market,
     with an event-day interval.
     """
+
+    from .basket_kernel.support import MEAN_MODE_SKEW_THRESHOLD_SIGMA  # noqa: PLC0415
 
     rows = skew_truth_rows(conn)
     stages = []
@@ -2935,13 +2969,15 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
                 diff, ci = _paired_mean(kept, a, b)
                 item[key] = {"model": sum(a) / len(a), "market": sum(b) / len(b), "diff": diff, "ci": ci}
             hits.append(item)
+        calls = [c for c in (_skew_call_stats(mine, "model"), _skew_call_stats(paired, "market")) if c]
         stages.append({"stage": stage, "station_days": len(mine), "paired": len(paired),
                        "pick": "first" if stage == "P1" else "last_before_next_stage",
-                       "sides": sides, "hits": hits})
+                       "sides": sides, "hits": hits, "calls": calls})
     days = sorted({r["event_date"] for r in rows})
     return {"schema": "skew_truth_side_v1", "since": days[0] if days else None, "until": days[-1] if days else None,
             "event_days": len(days), "market_age_sec": SKEW_TRUTH_MARKET_AGE_SEC,
-            "rule": "mean_mode_skew_reading_v1 (0.35 sigma) / mean_center_bucket_v1", "stages": stages}
+            "rule": f"mean_mode_skew_reading_v1 ({MEAN_MODE_SKEW_THRESHOLD_SIGMA:g} sigma) / mean_center_bucket_v1",
+            "threshold_sigma": MEAN_MODE_SKEW_THRESHOLD_SIGMA, "stages": stages}
 
 
 # ---------------------------------------------------------------------------
@@ -3301,7 +3337,8 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     ),
     "skew_truth_side": (
         skew_truth_side,
-        (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _paired_mean, _traded_day_bootstrap),
+        (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _skew_call_stats, _paired_mean,
+         _traded_day_bootstrap),
     ),
     "mode_agreement": (
         mode_agreement,

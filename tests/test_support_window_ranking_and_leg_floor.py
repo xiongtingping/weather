@@ -89,7 +89,7 @@ def _windows(rows, *, desired, center, minimum=3, maximum=4, **extra):
     )
 
 
-def test_the_seat_is_the_ruled_shape_not_the_cheap_flank() -> None:
+def test_the_seat_is_the_ruled_shape_not_the_cheap_flank(monkeypatch) -> None:
     """Charter 131 (2026-09-12): the shape is the ruling's, not the flank the
     price -- or the mass -- would pick.  This day reads symmetric (mean 32.59
     against mode 33C, 0.41 buckets under a 0.48 gate), so the seat is
@@ -109,6 +109,10 @@ def test_the_seat_is_the_ruled_shape_not_the_cheap_flank() -> None:
     fairly; above it sits thin mass the market has nearly ruled out.  Edge
     and KL both prefer the cheap upper flank; belief prefers the lower one.
     """
+    # Fixture built as a symmetric day under the 0.35 sigma gate it was written for;
+    # the gate moved to 0.20 (user 2026-10-16), the rule under test did not.
+    from bayes_basket_target import delta_v2_runtime as _rt
+    monkeypatch.setattr(_rt, "SKEW_GAP_THRESHOLD_SIGMA", 0.35)
 
     rows = (
         ("30C", 0.06, 0.070),

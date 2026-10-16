@@ -22205,6 +22205,7 @@ function sdRender(){
       SD_ROLE_WORD[x.role] || x.role} ${sdEsc(x.event_date.slice(5))}${
       x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}${
       pk && x.role === "today" ? ` <span class="muted" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">已过峰</span>` : ""}</button>`).join("")}</div>`;
+  SD.skewSigma = (d.skew_history || {}).threshold_sigma ?? null;
   body.innerHTML = sdFleetShape(d.fleet_shape) + sdSkewHistory(d.skew_history) + sdModeAgreement(d.mode_agreement) + tabs + days.map(x => {
     const html = sdDay(x).replace('<div class="sd-day card"', `<div class="sd-day card"${x.event_date === SD.dayTab ? "" : " hidden"}`);
     return pk && x.role === "today" ? html.replace("</h3>", "</h3>" + pastNote) : html;
@@ -22975,7 +22976,8 @@ function sdDirection(D, R){
 // radiation card; 2026-10-11 「不要按照均值桶和众数桶为一个桶统计，而是按照概率来
 // 区分」): production's mean_mode_skew_reading_v1 as station_day_board.vector_stats
 // carries it -- the probability-weighted mean position minus the modal rung, a
-// lean only past 0.35 sigma.  The board only names it.
+// lean only past the production threshold (charter 131 note, 0.20 sigma since
+// 2026-10-16), read off the skew reading's payload.  The board only names it.
 function sdShape(st){
   const s = st ? st.skew_sign : null;
   if(s == null) return {word: "—", color: "var(--muted)", gap: "", gate: ""};
@@ -22983,7 +22985,11 @@ function sdShape(st){
   if(s === 0) return {word: "对称", color: "var(--green)", gap, gate};
   return {word: s < 0 ? "左偏" : "右偏", color: s < 0 ? SD_COL.P0 : "var(--amber)", gap, gate};
 }
-function sdShapeRule(){ return "按概率判：均值位置（按桶概率加权）减众数桶位置，超过当日 0.35σ 才算偏——负＝左偏（冷尾长），正＝右偏（暖尾长），否则对称（生产 mean_mode_skew_reading_v1，宪章 55/75/131 同一读数）"; }
+function sdShapeRule(){
+  const sig = typeof SD === "undefined" ? null : SD.skewSigma;
+  const t = sig == null ? "生产门槛" : `${sig}σ`;
+  return `按概率判：均值位置（按桶概率加权）减众数桶位置，超过当日 ${t} 才算偏——负＝左偏（冷尾长），正＝右偏（暖尾长），否则对称（生产 mean_mode_skew_reading_v1，宪章 55/75/131 同一读数）`;
+}
 // The fleet's tally (user 2026-10-10 「加一个总的统计：48站点每日的均值桶和众数桶的
 // 位置的统计：对称、左偏、右偏分别有多少」): station_day_board.fleet_shape, carried on
 // every panel read; counted per event date, big numbers on the day's word.
@@ -23052,9 +23058,22 @@ function sdSkewHistory(H){
     };
     return `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td><td>${skewWord[k]}</td>${cell("model")}${cell("market")}</tr>`;
   }).join("")).join("");
+  // The lean's own record (user 2026-10-16 「前端统计显式判对率、判出偏斜的天数、
+  // 「判对」带来的信息量」): board_readings._skew_call_stats, over the station-days
+  // whose truth left the mode.
+  const callRows = H.stages.map(st => (st.calls || []).map((c, i) => {
+    const ci = c.hit_ci || [];
+    return `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td>
+      <td><b style="color:${c.source === "model" ? SD_COL[st.stage] : SD_COL.MKT}">${srcWord[c.source] || sdEsc(c.source)}</b></td>
+      <td class="mono" title="离开众数的站日 ${c.off_mode}，其中判出左偏或右偏 ${c.called}"><b>${pc(c.called_share)}</b> <span class="muted">${c.called}/${c.off_mode}</span></td>
+      <td class="mono" title="判右偏且真值在众数上方、或判左偏且在下方；95% 区间 ${ci.length ? pc(ci[0]) + " ～ " + pc(ci[1]) : "—"}（按事件日重抽样）"><b>${pc(c.hit_rate)}</b></td>
+      <td class="mono" title="三态读数与真值落在哪一侧的互信息（bit）；选门槛用的就是它">${c.mi_bits == null ? "—" : c.mi_bits.toFixed(3)}</td></tr>`;
+  }).join("")).join("");
   const open = SD.histOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
     <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
+    ${callRows ? `<div class="muted sd-sub">判左偏/右偏的本事（只算真值离开众数的站日；门槛 ${H.threshold_sigma == null ? "—" : H.threshold_sigma + "σ"}）</div>
+    <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>来源</th><th>判出偏斜</th><th>判对率</th><th>信息量 bit</th></tr></thead><tbody>${callRows}</tbody></table></div>` : ""}
     <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>
     <div class="sd-sk-grid">${cols}</div>
     <div class="muted sd-sub">按生产偏斜分组的真值命中率：模型按模型自己的偏斜、市场按市场自己的偏斜分组</div>

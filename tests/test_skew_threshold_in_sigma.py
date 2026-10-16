@@ -49,20 +49,20 @@ def test_the_same_offset_leans_on_a_narrow_day_and_not_on_a_wide_one() -> None:
     assert wide["sign"] == 0 and wide["state"] == "SYMMETRIC"
     # Under the old absolute gate both read SYMMETRIC (0.3 < 0.5).
     assert narrow["threshold_basis"] == "sigma"
-    assert narrow["threshold_sigma"] == MEAN_MODE_SKEW_THRESHOLD_SIGMA == 0.35
+    assert narrow["threshold_sigma"] == MEAN_MODE_SKEW_THRESHOLD_SIGMA == 0.20
 
 
 def test_the_reading_carries_the_gate_it_was_judged_by_in_both_units() -> None:
     reading = _reading(26.3, 0.65)
     assert reading["threshold_buckets"] == pytest.approx(
-        0.35 * reading["sigma_buckets"], abs=1e-6
+        0.20 * reading["sigma_buckets"], abs=1e-6
     )
     # ... and the sign is exactly that comparison.
     assert (abs(reading["gap_buckets"]) >= reading["threshold_buckets"]) == (
         reading["sign"] != 0
     )
     empty = mean_mode_skew_reading_v1({}, ORDINALS)
-    assert empty["threshold_sigma"] == 0.35
+    assert empty["threshold_sigma"] == 0.20
     assert empty["threshold_buckets"] is None
     assert empty["threshold_basis"] == "sigma"
     assert not empty["readable"]
@@ -111,13 +111,13 @@ def test_the_runtime_refuses_the_retired_bucket_unit_variable() -> None:
     )
     assert probe.returncode != 0
     assert "SIGMA" in probe.stderr
-    assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
+    assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.20
 
 
 def test_production_reads_the_sigma_gate() -> None:
     from bayes_basket_target import delta_v2_runtime
 
-    assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.35
+    assert delta_v2_runtime.SKEW_GAP_THRESHOLD_SIGMA == 0.20
     assert delta_v2_runtime._skew_extension_sign(
         _gaussian(26.3, 0.65), ORDINALS
     ) == 1

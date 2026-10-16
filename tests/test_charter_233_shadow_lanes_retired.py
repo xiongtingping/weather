@@ -21,6 +21,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
+@pytest.fixture(autouse=True)
+def _skew_gate_the_fixtures_were_built_for(monkeypatch):
+    # The windows here were built under the 0.35 sigma skew gate; the gate
+    # moved to 0.20 (user 2026-10-16), the shadow-lane rules under test did not.
+    from bayes_basket_target import delta_v2_runtime as rt
+    monkeypatch.setattr(rt, "SKEW_GAP_THRESHOLD_SIGMA", 0.35)
+
+
 def _snapshot():
     from bayes_basket_target.basket_kernel.contracts import TargetBasketSnapshot
 

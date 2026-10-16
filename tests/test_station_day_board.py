@@ -378,8 +378,11 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
         if depth == 0:
             end = index + 1
             break
-    doc = {"since": "2026-08-27", "until": "2026-10-10", "event_days": 45, "computed_at_utc": "x", "stages": [{
+    doc = {"since": "2026-08-27", "until": "2026-10-10", "event_days": 45, "computed_at_utc": "x",
+           "threshold_sigma": 0.2, "stages": [{
         "stage": "P0", "pick": "last_before_next_stage", "station_days": 2001,
+        "calls": [{"source": "model", "off_mode": 1200, "called": 720, "called_share": 0.6, "hit_rate": 0.715,
+                   "hit_ci": [0.68, 0.75], "mi_bits": 0.0814, "event_days": 45}],
         "sides": [{"source": "model", "skew": "left", "n": 381, "share": 0.19, "truth": [0.467, 0.404, 0.129],
                    "claim": [0.487, 0.383, 0.13], "mode_hit": 0.404, "mean_hit": 0.394}],
         "hits": [{"group": "all", "n": 1235, "mode": {"model": 0.372, "market": 0.47, "diff": -0.098, "ci": [-0.134, -0.067]},
@@ -397,6 +400,28 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     assert ">−7.5 ·</td>" in out                                      # centre bucket: crosses zero
     assert "按生产偏斜分组的真值命中率" in out                          # each source by its own skew
     assert "<td>左偏</td>" in out and "<b>40.4%</b>" in out and "<b>39.4%</b>" in out
+    # the lean's own record (user 2026-10-16): called share, hit rate, bits
+    assert "门槛 0.2σ" in out and "<b>60.0%</b> <span class=\"muted\">720/1200</span>" in out
+    assert "<b>71.5%</b>" in out and ">0.081</td>" in out
+
+
+def test_skew_call_stats_scores_the_lean_off_the_mode() -> None:
+    """board_readings._skew_call_stats (user 2026-10-16): only off-mode days;
+    a call is right when it names the truth's side; mutual information in bits."""
+
+    from bayes_basket_target.board_readings import _skew_call_stats
+
+    def row(day, sign, side):
+        return {"event_date": day, "model": {"sign": sign, "truth_side": side}}
+    rows = [row("2026-10-01", 1, 1), row("2026-10-01", 1, -1), row("2026-10-02", -1, -1),
+            row("2026-10-02", 0, 1), row("2026-10-03", 0, -1), row("2026-10-03", 1, 0)]
+    s = _skew_call_stats(rows, "model")
+    assert s["off_mode"] == 5 and s["called"] == 3
+    assert abs(s["called_share"] - 0.6) < 1e-12 and abs(s["hit_rate"] - 2 / 3) < 1e-12
+    assert s["mi_bits"] > 0 and s["event_days"] == 3
+    perfect = _skew_call_stats([row("d", 1, 1), row("d", -1, -1)], "model")
+    assert abs(perfect["mi_bits"] - 1.0) < 1e-12 and perfect["hit_rate"] == 1.0
+    assert _skew_call_stats([row("d", 1, 0)], "model") is None
 
 
 def test_mode_agreement_reads_the_picked_episodes() -> None:
