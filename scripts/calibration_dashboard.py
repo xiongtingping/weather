@@ -35,6 +35,7 @@ import random
 import sqlite3
 import time
 import sys
+import traceback
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14666,6 +14667,12 @@ def _record_section_spec(
     end of its run (``_save_section_specs``).
     """
 
+    # Whether the call opened on the connection: the research render passes
+    # its own in that seat, and only there.  fusion_candidates reads files
+    # and takes none; replayed with one it raised TypeError and took the
+    # whole research run down with it from 2026-10-16 12:02Z.
+    # (Tests stand None in that seat.)
+    takes_conn = bool(args) and (args[0] is None or isinstance(args[0], sqlite3.Connection))
     try:
         module = str(collector.__module__)
         spec = {
@@ -14676,7 +14683,8 @@ def _record_section_spec(
                 else module
             ),
             "collector": str(collector.__qualname__),
-            "args": json.loads(json.dumps(list(args[1:]))),
+            "conn": takes_conn,
+            "args": json.loads(json.dumps(list(args[1:] if takes_conn else args))),
             "kwargs": json.loads(json.dumps(kwargs)),
             "salt": salt,
             "unavailable": (
@@ -14943,8 +14951,9 @@ def _refresh_one_section_inner(db: Path, name: str, spec: Mapping[str, Any]) -> 
         unavailable = spec.get("unavailable")
         if unavailable is not None:
             kwargs["_unavailable"] = unavailable.get("value")
+        recorded = list(spec.get("args") or [])
         _cached_section(
-            name, collector, conn, *(spec.get("args") or []),
+            name, collector, *(([conn] if _spec_takes_conn(spec, collector) else []) + recorded),
             _salt=str(spec.get("salt") or ""), **kwargs,
         )
     except RenderYielded as yielded:
@@ -14959,6 +14968,26 @@ def _refresh_one_section_inner(db: Path, name: str, spec: Mapping[str, Any]) -> 
     if entry.get("stale") or entry.get("unavailable"):
         return f"{name} not computed ({entry.get('stale_reason')})"
     return f"{name} computed in {elapsed:.0f}s"
+
+
+def _spec_takes_conn(spec: Mapping[str, Any], collector: Any) -> bool:
+    """Whether a recorded call opened on the connection.
+
+    Specs written before the page render noted it (``conn``) are read off
+    the collector's signature: a connection is passed only if there is a
+    positional seat left for it ahead of the recorded arguments.
+    """
+
+    if "conn" in spec:
+        return bool(spec["conn"])
+    try:
+        seats = [
+            p for p in inspect.signature(collector).parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+    except (TypeError, ValueError):
+        return True
+    return len(seats) > len(spec.get("args") or [])
 
 
 def refresh_research_section(db: Path) -> str:
@@ -14992,7 +15021,15 @@ def refresh_research_section(db: Path) -> str:
             if done and _page_render_running():
                 done.append("stopped: the page render started")
                 break
-            done.append(_refresh_one_section(db, name, specs[name]))
+            try:
+                done.append(_refresh_one_section(db, name, specs[name]))
+            except Exception as exc:  # noqa: BLE001 - one section's bug must not starve the rest
+                # One section's error is that section's, not the run's: on
+                # 2026-10-16 fusion_candidates' TypeError ended every run
+                # from 12:02Z, and truth_landing, a week behind and catching
+                # up one chunk a run, stayed off the board.
+                traceback.print_exc(file=sys.stderr)
+                done.append(f"{name} failed ({type(exc).__name__}: {exc})")
     finally:
         _RESEARCH_GAP_WAIT_LEFT.clear()
     return "research render: " + "; ".join(done)
@@ -17602,7 +17639,10 @@ function charterEv(){
 function truthLanding(){
   const T=D.truth_landing||{};
   const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
-  if(!segs.length) return "";
+  const head=`<h2 title="真值＝官方结算桶；市场＝首个 P0 决策后 4 小时的归一中间价；模型＝同一首个 P0 的服务概率；两边读同一批桶">真值落位</h2>`;
+  // Empty while the backend rebuilds it after a code change (one week of
+  // records a research run): say so rather than drop the section.
+  if(!segs.length) return head+`<div class="card muted">后端重算中，下一轮研究渲染后出现</div>`;
   const S=segs[0], G=S.disagreement||{};
   const groups=(G.groups||[]).filter(g=>g.buckets>0);
   const p=v=>v==null?"—":Math.round(v*100)+"%";
@@ -17612,7 +17652,6 @@ function truthLanding(){
   const n=w=>dis.filter(g=>judge(g)===w).length;
   const over=["model_much","model_bit"].map(k=>groups.find(g=>g.key===k)).filter(g=>g&&g.hit_rate!=null&&g.buckets>=30);
   const cents=over.length?100*over.reduce((a,g)=>a+(g.hit_rate-g.cost_mean)*g.buckets,0)/over.reduce((a,g)=>a+g.buckets,0):null;
-  const head=`<h2 title="真值＝官方结算桶；市场＝首个 P0 决策后 4 小时的归一中间价；模型＝同一首个 P0 的服务概率；两边读同一批桶">真值落位</h2>`;
   const cards=`<div class="grid g3">
     ${edgeBig("分歧时市场更准",`${n("market")} / ${dis.length}`,n("market")>n("model")?"down":(n("model")>n("market")?"up":"flat"),`模型更准 ${n("model")} · 分不出 ${n("unclear")}`,"按模型与市场的分歧分组，实际开出率离谁更近；95% 区间按事件日重抽，跨零记分不出")}
     ${edgeBig("按卖一买「模型高于市场」",cents==null?"—":`${cents>=0?"+":""}${cents.toFixed(1)}¢`,cents==null?"flat":(cents>=0?"up":"down"),"每股，未计手续费","实际开出率 − 卖一均价，按桶数加权")}

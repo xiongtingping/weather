@@ -1101,3 +1101,67 @@ def test_a_new_last_value_replaces_the_one_from_older_code(paged) -> None:
     C._cached_section("members", members, None)
     kept = list((paged / "sections" / C.EVERY_RUN_LAST_DIR_NAME).glob("members.*.json"))
     assert len(kept) == 1 and json.loads(kept[0].read_text())["value"] == {"value": "edited"}
+
+
+_FILE_PROBE_CALLS: list[str] = []
+
+
+def _file_probe():
+    """A collector that reads files and takes no connection (fusion_candidates)."""
+
+    _FILE_PROBE_CALLS.append("read")
+    return {"value": "files"}
+
+
+_BROKEN = {"on": False}
+
+
+def _broken_probe(conn):
+    if _BROKEN["on"]:
+        raise TypeError("a bug in one section")
+    return {"value": "ok"}
+
+
+def _old_page(paged, name, collector, *args):
+    """``_heavy_page`` for a call with its own arguments (none, for a file reader)."""
+
+    C._cached_section(name, collector, *args)
+    blob = json.loads((paged / "sections" / f"{name}.json").read_text())
+    blob["computed_at_utc"] = "2026-08-01T00:00:00Z"
+    blob["build_sec"] = 900.0
+    (paged / "sections" / f"{name}.json").write_text(json.dumps(blob))
+    C._SECTION_CACHE_LOG.clear()
+
+
+def test_the_research_render_passes_the_connection_only_where_the_call_took_one(paged, monkeypatch) -> None:
+    """2026-10-16 12:02Z: fusion_candidates takes no connection, the research
+    render passed one anyway, and its TypeError ended every run from then --
+    truth_landing, catching up a week a run, stayed off the board."""
+
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"files": 3600, "slow_moving": 3600})
+    _old_page(paged, "files", _file_probe)
+    C._save_section_specs()
+    specs = json.loads((paged / "sections" / C.RENDER_SECTION_SPECS).read_text())
+    assert specs["files"]["conn"] is False and specs["files"]["args"] == []
+    C._PAGED_RUN.clear()
+    out = C.refresh_research_section(paged / "ssot.db")
+    assert "files computed" in out and _FILE_PROBE_CALLS, out
+    C._paged_run_start(paged / "ssot.db")
+    # A spec written before ``conn`` was recorded is read off the signature.
+    assert C._spec_takes_conn({"args": []}, _file_probe) is False
+    assert C._spec_takes_conn({"args": []}, _heavy_probe) is True
+
+
+def test_one_broken_section_does_not_end_the_research_run(paged, monkeypatch) -> None:
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"broken": 3600, "slow_moving": 3600})
+    _BROKEN["on"] = False
+    _old_page(paged, "broken", _broken_probe, None)
+    _heavy_page(paged, "slow_moving", _heavy_probe, 900.0, "2026-09-01T00:00:00Z")
+    C._save_section_specs()
+    _BROKEN["on"] = True
+    C._PAGED_RUN.clear()
+    out = C.refresh_research_section(paged / "ssot.db")
+    assert "broken failed (TypeError: a bug in one section)" in out, out
+    assert "slow_moving computed" in out, out
+    _BROKEN["on"] = False
+    C._paged_run_start(paged / "ssot.db")
