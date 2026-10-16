@@ -18,6 +18,9 @@ import unittest
 
 from bayes_basket_target.contracts import content_sha256
 from bayes_basket_target.native_ensemble_oos import (
+    EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS,
+    expanded_equal_weight_diagnostic,
+    stored_equal_weight_diagnostic,
     _equal_weight_diagnostic,
     _evaluation_identity,
     _selection_identity,
@@ -210,8 +213,18 @@ class DiagnosticStaysOutOfTheSelectionShaTest(unittest.TestCase):
             evaluated_at_utc="2026-08-18T00:00:00Z",
         )
         metrics = json.loads(identity["oos_metrics_json"])
-        comparisons = metrics["equal_weight_diagnostic"]["comparisons"]
+        stored = metrics["equal_weight_diagnostic"]
+        # Charter 272: stored without what it derives, recomputed on read.
+        self.assertNotIn("comparisons", stored)
+        self.assertEqual(
+            stored["derived_stored_as"], EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS
+        )
+        comparisons = expanded_equal_weight_diagnostic(stored)["comparisons"]
         self.assertEqual(len(comparisons), 3)
+        self.assertEqual(
+            json.dumps(expanded_equal_weight_diagnostic(stored), sort_keys=True),
+            json.dumps(candidate["equal_weight_diagnostic"], sort_keys=True),
+        )
         # The scores themselves stay where a reader expects them: the
         # diagnostic is carried beside them, never in place of one.
         self.assertEqual(metrics["crps"], LEARNED["crps"])
@@ -231,6 +244,28 @@ class DiagnosticStaysOutOfTheSelectionShaTest(unittest.TestCase):
         metrics = json.loads(identity["oos_metrics_json"])
         self.assertNotIn("equal_weight_diagnostic", metrics)
         self.assertEqual(metrics["crps"], LEARNED["crps"])
+
+
+class StoredFormRoundTripTest(unittest.TestCase):
+    def test_storing_drops_only_what_expanding_recomputes(self) -> None:
+        matrix = _diagnostic(
+            equal_cohort_metrics={"crps": 0.9, "nll": 1.9, "brier": 0.81},
+            shadow_weight_schemes={"inverse_variance": {"A": 0.6, "B": 0.4}},
+            shadow_metrics={"inverse_variance": {"crps": 0.85, "nll": 1.86, "brier": 0.80}},
+        )
+        stored = stored_equal_weight_diagnostic(matrix)
+        self.assertNotIn("comparisons", stored)
+        self.assertEqual(
+            set(stored["shadow_schemes"]["inverse_variance"]), {"metrics", "weights"}
+        )
+        again = expanded_equal_weight_diagnostic(json.loads(json.dumps(stored)))
+        self.assertEqual(
+            json.dumps(again, sort_keys=True), json.dumps(matrix, sort_keys=True)
+        )
+
+    def test_a_row_stored_whole_before_272_reads_as_it_was(self) -> None:
+        matrix = _diagnostic()
+        self.assertEqual(expanded_equal_weight_diagnostic(matrix), matrix)
 
 
 if __name__ == "__main__":

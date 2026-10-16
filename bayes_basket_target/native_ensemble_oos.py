@@ -1559,6 +1559,66 @@ def _equal_weight_diagnostic(
     return matrix
 
 
+#: Charter 272: the equal-weight diagnostic is stored without what it
+#: derives.  ``comparisons`` and each shadow scheme's ``vs_*`` blocks are
+#: ``_pairwise_skill`` of metrics the same object already carries -- 2.4 KB of
+#: a 7.4 KB evaluation row, 56k rows a day, read by nothing (the stable-pool
+#: gate reads ``scheme_daily_scores``, the board a shadow scheme's
+#: ``weights``).  ``expanded_equal_weight_diagnostic`` recomputes them exactly.
+EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS = "derived_comparisons_recomputable_v1"
+
+
+def stored_equal_weight_diagnostic(matrix: Mapping[str, Any]) -> dict[str, Any]:
+    """The diagnostic as an evaluation row stores it: its derived
+    comparisons dropped, everything they are computed from kept."""
+
+    stored = {k: v for k, v in matrix.items() if k != "comparisons"}
+    if "shadow_schemes" in stored:
+        stored["shadow_schemes"] = {
+            label: {k: v for k, v in dict(scheme).items() if not str(k).startswith("vs_")}
+            for label, scheme in dict(stored["shadow_schemes"]).items()
+        }
+    if "comparisons" in matrix or any(
+        str(k).startswith("vs_")
+        for scheme in dict(matrix.get("shadow_schemes") or {}).values()
+        for k in dict(scheme)
+    ):
+        stored["derived_stored_as"] = EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS
+    return stored
+
+
+def expanded_equal_weight_diagnostic(stored: Mapping[str, Any]) -> dict[str, Any]:
+    """The stored diagnostic with its derived comparisons recomputed: equal,
+    value for value, to the one ``_equal_weight_diagnostic`` returned."""
+
+    matrix = dict(stored)
+    if matrix.pop("derived_stored_as", None) != EQUAL_WEIGHT_DIAGNOSTIC_STORED_AS:
+        return matrix
+    climate = matrix["climatology_metrics"]
+    learned = matrix["learned_metrics"]
+    equal = matrix.get("equal_weight_metrics")
+    if equal is not None:
+        matrix["comparisons"] = {
+            "a_climate_vs_equal_weight": _pairwise_skill(climate, equal),
+            "b_equal_weight_vs_learned": _pairwise_skill(equal, learned),
+            "c_climate_vs_learned": _pairwise_skill(climate, learned),
+        }
+        if matrix.get("equal_cohort_metrics") is not None:
+            matrix["comparisons"]["d_equal_cohort_vs_learned"] = _pairwise_skill(
+                matrix["equal_cohort_metrics"], learned
+            )
+    if "shadow_schemes" in matrix:
+        matrix["shadow_schemes"] = {
+            label: {
+                **dict(scheme),
+                "vs_learned": _pairwise_skill(scheme["metrics"], learned),
+                "vs_equal_weight": _pairwise_skill(scheme["metrics"], equal),
+            }
+            for label, scheme in dict(matrix["shadow_schemes"]).items()
+        }
+    return matrix
+
+
 # The bias correction is a single constant per scope.  A level-dependent
 # (affine) alternative was fitted here and chosen per scope on a six-day
 # validation tail; it was removed on 2026-08-18 after it was measured, not
@@ -6829,9 +6889,9 @@ def _evaluation_identity(
             ),
             **(
                 {
-                    "equal_weight_diagnostic": candidate[
-                        "equal_weight_diagnostic"
-                    ]
+                    "equal_weight_diagnostic": stored_equal_weight_diagnostic(
+                        candidate["equal_weight_diagnostic"]
+                    )
                 }
                 if isinstance(
                     candidate.get("equal_weight_diagnostic"), Mapping
