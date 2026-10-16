@@ -28,6 +28,29 @@ from bayes_basket_target.resource_bounds import install_wal_yield  # noqa: E402
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
 
+def due_stages() -> list[str]:
+    """The stages whose artifact is not current, the stalest first (a stage
+    with none at all before any that has one).
+
+    2026-10-16: the three stages ran in one process under one timeout, in
+    registry order, and from 10-14 P0 alone outlasted it whenever the machine
+    was busy (207 s idle, 1,589 s under swap): P0-M's artifact stopped at
+    10-12, P1's at 10-10.  The board readings job now runs each due stage as
+    its own call with its own timeout, in this order, so a slow stage costs
+    only itself and the oldest artifact is renewed first.
+    """
+
+    def fitted_at(stage: str) -> str:
+        artifact = store.load_active(stage=stage)
+        return str((artifact or {}).get("fitted_at_utc") or "")
+
+    due = [
+        stage for stage in store.STAGES
+        if not store.artifact_is_current(store.load_active(stage=stage))
+    ]
+    return sorted(due, key=lambda stage: (fitted_at(stage), store.STAGES.index(stage)))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
@@ -35,7 +58,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cutoff", default=None, help="as-of instant (UTC ISO); default now")
     parser.add_argument("--stage", action="append", choices=store.STAGES,
                         help="refit only these belief stages (default: every stage)")
+    parser.add_argument("--list-due", action="store_true",
+                        help="print the stages due a refit, stalest first, and stop")
     args = parser.parse_args(argv)
+    if args.list_due:
+        for stage in due_stages():
+            print(stage)
+        return 0
     # Charter 231 补记二: one fit per belief stage, each refitted when its own
     # artifact is due.
     for stage in (args.stage or store.STAGES):

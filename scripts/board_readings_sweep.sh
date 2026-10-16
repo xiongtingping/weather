@@ -53,17 +53,23 @@ fi
 # hours old or was fitted by other code, so most hourly runs pass at once.
 # Never fatal: a failed fit leaves the previous artifact standing.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer"
-# 2,400 s since 2026-10-16: from 10-14 every hourly run hit the 900 s it had
-# and was killed, so the artifact (fitted only when 20 h old) never renewed
-# and the job read the SSOT for fifteen minutes every hour for nothing.  It
-# yields to the writer past the WAL reader line (resource_bounds).
-if run_with_timeout "${PM_REALISATION_REFIT_TIMEOUT_SEC:-2400}" "" \
-    taskpolicy -d utility nice -n 10 "$PY" scripts/refit_realisation_layer.py; then
-  :
-else
-  rc=$?
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer refit ended rc=${rc}; the previous artifact stands"
-fi
+# Each due stage is its own call with its own timeout, stalest first
+# (2026-10-16): the three ran in one process under one 900 s timeout, and
+# from 10-14 every hourly run was killed -- P0 alone took 207-1,589 s with the
+# machine's load -- so the artifacts (fitted only when 20 h old) stopped
+# renewing (P0-M at 10-12, P1 at 10-10) and the job read the SSOT fifteen
+# minutes an hour for nothing.  Each call yields to the writer past the WAL
+# reader line (resource_bounds).
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer"
+for stage in $("$PY" scripts/refit_realisation_layer.py --list-due); do
+  if run_with_timeout "${PM_REALISATION_REFIT_TIMEOUT_SEC:-1800}" "" \
+      taskpolicy -d utility nice -n 10 "$PY" scripts/refit_realisation_layer.py --stage "$stage"; then
+    :
+  else
+    rc=$?
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer ${stage} refit ended rc=${rc}; its previous artifact stands"
+  fi
+done
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings"
 TIMEOUT_SEC="${PM_BOARD_READINGS_TIMEOUT_SEC:-2400}"
 if run_with_timeout "$TIMEOUT_SEC" "" \
