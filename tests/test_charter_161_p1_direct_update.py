@@ -87,7 +87,7 @@ def test_the_served_p1_is_root_times_mask_times_exp_f() -> None:
     root, packets = _compile(_with_block(_block()))
     envelope = packets[-1]["expected_envelope"]
     receipt = json.loads(envelope["lineage"][OL.LINEAGE_KEY])
-    assert envelope["posterior_version"] == "p1_joint_likelihood_v41"
+    assert envelope["posterior_version"] == "p1_joint_likelihood_v42"
     assert receipt["state"] == "APPLIED" and receipt["update"] == DU.UPDATE
     assert receipt["schema"] == OL.RECEIPT_SCHEMA and receipt["rule"] == DU.RULE
     excluded = set(packets[-1]["hard_excluded_buckets"])

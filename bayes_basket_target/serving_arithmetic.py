@@ -573,6 +573,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p1_joint_likelihood_v40": "2026-10-15T17:10:00Z",
         # Charter 273: root bump at the instant P0 v30 declares.
         "p1_joint_likelihood_v41": "2026-10-16T04:00:00Z",
+        # Charter 274: the direct update reads the evening columns where its
+        # block carries them.  Declared past the push and past the restart.
+        "p1_joint_likelihood_v42": "2026-10-16T15:00:00Z",
     },
 }
 

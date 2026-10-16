@@ -81,6 +81,15 @@ MID_BELOW_HOURS = 10.0
 # Ramps wider than this would overlap between the two edges.
 MAX_GATE_HALF_WIDTH_HOURS = (MID_BELOW_HOURS - LATE_BELOW_HOURS) / 2.0
 MAX_RUNG = 12
+# Charter 274 (user ruling 2026-10-16 「按校准改善上线傍晚臂」): three evening
+# columns at the end of x, present when the block carries ``evening``.  The
+# current form over-claimed the rise in the evening the further the root sat
+# above the running high (root 1-2 C above: said 6.7 % against 2.9 % realised,
+# >= 2 C: 8.0 % against 3.6 %); the columns let f fade the root's headroom with
+# the clock and with the hours past the peak (docs/research/p1_evening_arm_20261016).
+EVENING_SCHEMA = "p1_direct_update_evening_v1"
+EVENING_COLUMNS: tuple[str, ...] = ("evening_clock_x_root_above_high", "evening_hours_past_peak",
+                                    "evening_hours_past_peak_x_root_above_high")
 
 
 def gate_half_width(block: Mapping[str, Any]) -> float:
@@ -119,8 +128,9 @@ def clock_gates(clock_hours: float, half_width_hours: float = 0.0) -> tuple[floa
     return below_late, below(MID_BELOW_HOURS) - below_late
 
 
-def x_layout() -> list[str]:
-    """The names of x's columns, in order -- written into the block."""
+def x_layout(block: Mapping[str, Any] | None = None) -> list[str]:
+    """The names of x's columns, in order -- written into the block.  A block
+    carrying ``evening`` (charter 274) adds the three evening columns."""
 
     return (
         ["intercept"]
@@ -128,7 +138,18 @@ def x_layout() -> list[str]:
         + list(STATE_COLUMNS)
         + [f"late_x_{name}" for name in STATE_COLUMNS]
         + [f"mid_x_{name}" for name in STATE_COLUMNS]
+        + (list(EVENING_COLUMNS) if block is not None and "evening" in block else [])
     )
+
+
+def evening_raw(clock_hours: float, root_mean_minus_high_c: float, fleet_peak_local_h: float) -> list[float]:
+    """The three evening columns before standardising: the station clock times
+    the root's headroom over the running high, the hours past the fleet's peak
+    on the station clock, and their product with the headroom."""
+
+    past = max(0.0, 24.0 - float(fleet_peak_local_h) - float(clock_hours))
+    headroom = float(root_mean_minus_high_c)
+    return [float(clock_hours) * headroom, past, past * headroom]
 
 
 def bucket_bases(
@@ -220,10 +241,16 @@ def state_vector(
         for k in range(len(KNOTS_HOURS))
     ]
     late, mid = clock_gates(clock_hours, gate_half_width(block))
+    evening = []
+    if "evening" in block:
+        spec = block["evening"]
+        raw_evening = evening_raw(clock_hours, float(root["root_mean_minus_high_c"]), float(spec["fleet_peak_local_h"]))
+        evening = [(value - float(m)) / float(s) for value, m, s in zip(raw_evening, spec["mean"], spec["scale"])]
     return (
         [1.0] + hats + standard
         + [late * value for value in standard]
         + [mid * value for value in standard]
+        + evening
     )
 
 
@@ -281,9 +308,19 @@ def validate_block(block: Mapping[str, Any]) -> None:
     else:
         raise ContractError("p1_direct_update_schema_invalid")
     gate_half_width(block)
-    width = len(x_layout())
+    if "evening" in block:
+        spec = block["evening"]
+        if (
+            not isinstance(spec, Mapping) or spec.get("schema") != EVENING_SCHEMA
+            or len(spec.get("mean") or []) != len(EVENING_COLUMNS)
+            or len(spec.get("scale") or []) != len(EVENING_COLUMNS)
+            or any(not float(s) > 0.0 for s in spec["scale"])
+            or not all(math.isfinite(float(v)) for v in list(spec["mean"]) + list(spec["scale"]) + [spec.get("fleet_peak_local_h")])
+        ):
+            raise ContractError("p1_direct_update_evening_invalid")
+    width = len(x_layout(block))
     if (
-        list(block.get("x_layout") or []) != x_layout()
+        list(block.get("x_layout") or []) != x_layout(block)
         or len(block.get("theta_rise") or []) != width
         or len(block.get("theta_slope") or []) != width
         or len(block.get("mean") or []) != len(STATE_COLUMNS)
@@ -357,6 +394,12 @@ def compile_direct_update(
         "trained_through": str(block.get("trained_through") or ""),
         "lambda": block.get("lambda"),
         **({"clock_gate": dict(block["clock_gate"])} if "clock_gate" in block else {}),
+        # Charter 274: the evening columns' raw values, when the block has them.
+        **({"evening": {
+            "schema": EVENING_SCHEMA,
+            "values": dict(zip(EVENING_COLUMNS, (round(v, 4) for v in evening_raw(
+                hours, root["root_mean_minus_high_c"], block["evening"]["fleet_peak_local_h"])))),
+        }} if "evening" in block else {}),
         "station_clock_offset_h": OL.station_clock_offset(artifact, station_id),
         "clock_hours": round(hours, 4),
         "running_high_c": float(running_high_c),
@@ -393,6 +436,8 @@ __all__ = [
     "BLOCK_KEY",
     "CANDIDATE_BLOCK_KEY",
     "CLOCK_GATE_SHAPE",
+    "EVENING_COLUMNS",
+    "EVENING_SCHEMA",
     "FEATURES",
     "GATE_SERVE",
     "ROOT_FEATURES",
@@ -402,6 +447,7 @@ __all__ = [
     "UPDATE",
     "bucket_bases",
     "compile_direct_update",
+    "evening_raw",
     "log_update",
     "root_features",
     "serving_block",

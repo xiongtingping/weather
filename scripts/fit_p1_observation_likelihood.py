@@ -1064,6 +1064,11 @@ def score_alpha_curve(arrays: Mapping[str, np.ndarray]) -> dict[str, Any]:
 # chosen on the last ``DIRECT_INNER_DAYS`` training days.  Its gate is its
 # own forward walk over the held-out days, strictly as-of, beside alpha's.
 DIRECT_LAMBDAS = (0.3, 1.0, 3.0)
+# Charter 274: fit the three evening columns into the direct update (user
+# ruling 2026-10-16 「按校准改善上线傍晚臂」); the block it writes serves only
+# behind the same forward gate as before.  ``PM_P1_EVENING_COLUMNS=off`` fits
+# the form without them.
+EVENING_COLUMNS_ON = os.environ.get("PM_P1_EVENING_COLUMNS", "").strip().lower() != "off"
 DIRECT_INNER_DAYS = 3
 DIRECT_MAX_ITER = 400
 
@@ -1126,7 +1131,27 @@ def direct_design(
         "truth": truth, "raw": raw, "hours": hours, "weight": weight, "day": day,
         "as_of": as_of, "known_at": known, "centres": centres,
         "usable": (prior * live).sum(1) > 1e-12,
+        # Charter 274: the fleet peak of the clock these rows were read on.
+        "fleet_peak_local_h": _fleet_peak(clock_artifact),
     }
+
+
+def _fleet_peak(clock_artifact: Mapping[str, Any]) -> float | None:
+    value = (clock_artifact.get("station_clock") or {}).get("fleet_peak_local_h")
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _evening_raw(design: Mapping[str, np.ndarray], idx: np.ndarray, peak: float) -> np.ndarray:
+    """``DU.evening_raw`` over rows ``idx`` (a test holds them equal)."""
+
+    headroom = design["raw"][idx, DU.STATE_COLUMNS.index("root_mean_minus_high_c")]
+    clock = design["hours"][idx]
+    past = np.maximum(0.0, 24.0 - peak - clock)
+    return np.stack([clock * headroom, past, past * headroom], 1)
 
 
 def direct_scaling(
@@ -1144,11 +1169,20 @@ def direct_scaling(
         for k, name in enumerate(DU.FEATURES)
     }
     filled = _direct_filled(raw, fallbacks)
+    evening = {}
+    peak = design.get("fleet_peak_local_h")
+    if EVENING_COLUMNS_ON and peak is not None:
+        ev = _evening_raw(design, idx, float(peak))
+        evening = {"evening": {
+            "schema": DU.EVENING_SCHEMA, "fleet_peak_local_h": float(peak),
+            "mean": [float(v) for v in ev.mean(0)], "scale": [float(v) for v in ev.std(0) + 1e-9],
+        }}
     return {
         "fallbacks": fallbacks,
         "mean": [float(v) for v in filled.mean(0)],
         "scale": [float(v) for v in filled.std(0) + 1e-9],
         **({"clock_gate": dict(gate)} if gate else {}),
+        **evening,
     }
 
 
@@ -1171,10 +1205,12 @@ def direct_x(design: Mapping[str, np.ndarray], idx: np.ndarray, scaling: Mapping
         [np.interp(hours, knots, np.eye(len(knots))[k]) for k in range(len(knots))], 1
     )
     late, mid = clock_gates_np(hours, DU.gate_half_width(scaling))
-    return np.hstack([
-        np.ones((len(idx), 1)), hats, standard,
-        late[:, None] * standard, mid[:, None] * standard,
-    ])
+    parts = [np.ones((len(idx), 1)), hats, standard, late[:, None] * standard, mid[:, None] * standard]
+    if "evening" in scaling:
+        spec = scaling["evening"]
+        parts.append((_evening_raw(design, idx, float(spec["fleet_peak_local_h"])) - np.array(spec["mean"]))
+                     / np.array(spec["scale"]))
+    return np.hstack(parts)
 
 
 def clock_gates_np(hours: np.ndarray, width: float) -> tuple[np.ndarray, np.ndarray]:
@@ -1529,16 +1565,17 @@ def _bootstrap_mean(values: Sequence[float]) -> list[float]:
 def _direct_block_record(
     samples, final_rows, lam, scaling, theta, *, state, veto, walk_forward,
 ) -> dict[str, Any]:
-    width = len(DU.x_layout())
+    width = len(DU.x_layout(scaling))
     gate = scaling.get("clock_gate")
     return {
         "schema": DU.SCHEMA_V2 if gate else DU.SCHEMA,
         "rule": DU.RULE_V2 if gate else DU.RULE,
         **({"clock_gate": dict(gate)} if gate else {}),
+        **({"evening": dict(scaling["evening"])} if "evening" in scaling else {}),
         "state": state,
         "veto": veto,
         "lambda": lam,
-        "x_layout": DU.x_layout(),
+        "x_layout": DU.x_layout(scaling),
         "theta_rise": [float(v) for v in theta[:width]],
         "theta_slope": [float(v) for v in theta[width:2 * width]],
         "theta_slope_sq": float(theta[-2]),
