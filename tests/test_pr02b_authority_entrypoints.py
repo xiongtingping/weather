@@ -185,6 +185,19 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # A read-only connection and a writer of files under
         # data/board_readings/ only -- no writer turn to take.
         "com.weather.board_readings.plist",
+        # 2026-10-15 (user 「后台计算，前端只读，保留历史数据」 / 「自动化」): the
+        # station board's D0 card -- its reading every ten minutes and its
+        # daily refit.  The SSOT and archive read-only, files under data/
+        # only: readers with no writer turn to take.
+        "com.weather.d0_readings.plist",
+        "com.weather.d0_refit.plist",
+        # Charter 272 (2026-10-16, user 「一次性长期解决这个问题」): the SSOT
+        # cold offload on its own three-hourly clock.  The same lane the daily
+        # NWP retention job already runs, which twice a day could not keep up:
+        # one verified batch at a time, each delete one short BEGIN IMMEDIATE
+        # followed by a pause three times as long, and a single-instance lock
+        # shared with the daily run -- it takes no writer turn of its own.
+        "com.weather.ssot_cold_offload.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is
