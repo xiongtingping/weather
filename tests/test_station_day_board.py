@@ -403,6 +403,10 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     # the lean's own record (user 2026-10-16): called share, hit rate, bits
     assert "门槛 0.2σ" in out and "<b>60.0%</b> <span class=\"muted\">720/1200</span>" in out
     assert "<b>71.5%</b>" in out and ">0.081</td>" in out
+    # 2026-10-17 「极简」: the stage cards lead, the tables sit under 明细
+    top = out[:out.index("<summary class=\"muted\">明细</summary>")]
+    assert "P0 众数命中" in top and ">37%</span>" in top and ">47%</span>" in top and "−9.8" in top
+    assert "按生产偏斜分组的真值命中率" not in top
 
 
 def test_skew_call_stats_scores_the_lean_off_the_mode() -> None:
@@ -560,6 +564,9 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     assert "逐笔记账" in out and "0.40–0.50" in out and ">−4.55</span>" in out  # one band at the mid
     assert ">+1.14</span>" in out and ">−11.87</span>" in out                  # the totals, mid and ask
     assert "不能据此下单" in out
+    top = out[:out.index("<summary class=\"muted\">明细</summary>")]
+    assert "首次同桶" in top and "45.0%" in top and "模型 → 市场" in top and "65.6%" in top
+    assert "逐笔记账" not in top and "−中价" not in top, "the ledger and edge tables are folded"
 
 
 def test_a_local_day_ahead_of_utc_reads_the_utc_day_folded_onto_local_hours(monkeypatch):

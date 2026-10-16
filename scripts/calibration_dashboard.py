@@ -23371,11 +23371,26 @@ function sdSkewHistory(H){
       <td class="mono" title="三态读数与真值落在哪一侧的互信息（bit）；选门槛用的就是它">${c.mi_bits == null ? "—" : c.mi_bits.toFixed(3)}</td>
       <td class="mono muted" title="众数压在已测下界上的站日：众数以下已不可能，偏向必然判对，单列、不计入前面三列">${c.floor_days == null ? "—" : `${c.floor_days} <span>（${pc(c.floor_share)}）</span>`}</td></tr>`;
   }).join("")).join("");
+  // The summary (user 2026-10-17 「继续改：历史 · 偏态与命中……」, after 「极简！」):
+  // per stage, the mode bucket's hit rate ours against the market's and how
+  // often each called the side right; the trend drawn; the tables folded.
+  const p0 = v => v == null ? "—" : Math.round(100 * v) + "%";
+  const sumCards = H.stages.map(st => {
+    const a = (st.hits || []).find(x => x.group === "all") || {}, m = a.mode || {}, ci = m.ci || [];
+    const sure = ci.length === 2 && (ci[0] > 0 || ci[1] < 0);
+    const call = src => ((st.calls || []).find(c => c.source === src) || {}).hit_rate;
+    return `<div class="card" title="众数桶命中 模型 − 同一时刻市场 ${pt(m.diff)} 点，95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}；判偏对＝真值离开众数时，判出的左/右偏说中一侧的比例（模型 / 市场）">
+      <div class="muted">${sdEsc(st.stage)} 众数命中</div>
+      <div class="mono" style="font-size:26px;font-weight:700;line-height:1.3"><span style="color:${SD_COL[st.stage]}">${p0(m.model)}</span> <span class="muted" style="font-size:15px">对市场</span> <span style="color:${SD_COL.MKT}">${p0(m.market)}</span></div>
+      <div class="muted sd-sub">差 <b class="${sure ? (m.diff < 0 ? "down" : "up") : "muted"}">${pt(m.diff)}</b> 点 · 判偏对 ${p0(call("model"))} / ${p0(call("market"))}</div></div>`;
+  }).join("");
   const open = SD.histOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
     <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
+    <div class="grid g3">${sumCards}</div>
     ${H.stages.some(st => (st.trend || []).length > 1) ? `<div class="muted sd-sub" title="粗线＝自 ${sdEsc(H.trend_since || "")} 起累计判对率，细线＝最近 7 个事件日（判出 ≥10 才画）；实线＝模型，虚线＝市场；只算真值离开众数且读数判出左/右偏的站日；悬停看每日计数">判对率趋势（自 ${sdEsc(String(H.trend_since || "").slice(5))} 起向前累计）</div>
     <div class="sd-sk-grid">${H.stages.map(st => sdSkewTrend(st, H.trend_since)).join("")}</div>` : ""}
+    <details class="sd-sub"><summary class="muted">明细</summary>
     ${callRows ? `<div class="muted sd-sub">判左偏/右偏的本事（只算真值离开众数的站日，下界日单列；门槛 ${H.threshold_sigma == null ? "—" : H.threshold_sigma + "σ"}）</div>
     <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>来源</th><th>判出偏斜</th><th>判对率</th><th>信息量 bit</th><th>下界日</th></tr></thead><tbody>${callRows}</tbody></table></div>` : ""}
     <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>
@@ -23385,6 +23400,7 @@ function sdSkewHistory(H){
       <tr><th>站日</th><th>众数桶</th><th>均值桶</th><th>站日</th><th>众数桶</th><th>均值桶</th></tr></thead><tbody>${skewRows}</tbody></table></div>
     <div class="muted sd-sub">众数桶 / 均值桶命中率：模型对同一时刻市场（按模型偏态分组；差＝模型−市场，带 · 的区间跨零）</div>
     <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>分组</th><th>站日</th><th>众数 模型</th><th>市场</th><th>差</th><th>均值桶 模型</th><th>市场</th><th>差</th></tr></thead><tbody>${hitRows}</tbody></table></div>
+    </details>
   </details>`;
 }
 // Landed minus a price, with its event-day interval: k = "" (the market's
@@ -23440,15 +23456,29 @@ function sdModeAgreement(A){
       const m = Object.fromEntries((k.daily || []).map(d => [d.event_date, d.hit]));
       return {name: (word[k.pick] || k.pick).replace("同桶", ""), values: dates.map(d => m[d] ?? null)};
     })}) : "";
+  // The summary (user 2026-10-17, after 「极简！」): each pick's hit rate beside
+  // the price it was paid at, who moved onto the common bucket, one trend;
+  // every former card line, table and ledger folded under 「明细」.
+  const conv = (A.converge || []).filter(c => c.mover === "model" || c.mover === "market");
+  const mini = (label, color, x, sub, tip) => `<div class="card" title="${sdEsc(tip || "")}"><div class="muted">${label}</div>
+    <div class="big" style="color:${color}">${pc(x.hit)}</div>
+    <div class="muted sd-sub">中价 ${p0(x.mid)} · 卖一 ${p0(x.ask)} · ${sub}</div></div>`;
+  const sumCards = A.picks.map(k => mini(word[k.pick] || sdEsc(k.pick), col[k.pick], k.all || {},
+      `${k.station_days} 站日`, k.pick === "last" ? "「最后一次」要到结算后才知道是最后一次，不能据此下单" : ""))
+    .concat(conv.map(c => mini(c.mover === "model" ? "模型 → 市场" : "市场 → 模型", c.mover === "model" ? SD_COL.P1 : SD_COL.MKT,
+      c.every || {}, `${(c.every || {}).n || 0} 次`, c.mover === "model" ? "市场众数不动，我方众数移到市场众数上" : "我方众数不动，市场众数移到我方众数上"))).join("");
   const open = SD.agreeOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.agreeOpen=this.open">
     <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0-M＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
-    <div class="grid g3">${cards}</div>
+    <div class="grid g3">${sumCards}</div>
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
+    ${trend}
+    <details class="sd-sub"><summary class="muted">明细</summary>
+    <div class="grid g3">${cards}</div>
     <div class="scroll"><table class="sd-tab"><thead><tr><th>维度</th><th>切片（按同桶开始时）</th>${A.picks.map(k => `<th>${word[k.pick] || sdEsc(k.pick)}</th><th title="命中 − 中价">−中价</th><th>±1 桶</th><th title="±1 桶命中 − 三桶中价合计">−中价</th><th>站日</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
     ${sdAgreeLedger(A)}
-    ${trend}
     ${sdModeConverge(A)}
+    </details>
   </details>`;
 }
 // The per-trade ledger (user 2026-10-15 「你不要用平均数」「加」): one share of
