@@ -1608,7 +1608,9 @@ def _deterministic(conn, station: str, day: str) -> dict[str, Any]:
     if entry:
         f = {"f_c": entry.get("f_c"), "raw_median_c": entry.get("raw_median_c"), "n_systems": entry.get("n_systems"),
              "state": entry.get("state"), "computed_at_utc": doc.get("computed_at_utc"),
-             "f_v3_c": (entry.get("v3") or {}).get("f_c")}
+             "f_v3_c": (entry.get("v3") or {}).get("f_c"),
+             # Charter 267 补记七: the keep-F pick, written unverified (display only).
+             "pick": entry.get("pick")}
     return {"systems": systems, "f": f}
 
 

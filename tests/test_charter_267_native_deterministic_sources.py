@@ -819,3 +819,69 @@ def test_a_capture_pass_yields_before_a_runs_fetch_when_asked(monkeypatch):
                            should_yield=lambda: next(answers))
     assert fetched == [RUN], "the first run was fetched; the second was not started"
     assert receipt["yielded"] == "amber" and receipt["runs_attempted"] == 1
+
+
+# --- 补记七: the keep-F pick (display only, unverified) ---------------------------
+
+def _pick_rungs():
+    return [("12°C or below", None, 12.5), ("13°C", 12.5, 13.5), ("14°C", 13.5, 14.5), ("15°C", 14.5, 15.5),
+            ("16°C or higher", 15.5, None)]
+
+
+def _pick_fit(full_weights, *, sigma=1.4):
+    n = len(F.PICK_FEATURES)
+    return {"state": "FITTED", "rule": F.PICK_RULE, "kappa": F.PICK_KAPPA, "sigma_c": sigma,
+            "pos": {"mean": [0.0], "sd": [1.0], "weights": [0.0], "intercept": 0.0},
+            "full": {"mean": [0.0] * n, "sd": [1.0] * n, "weights": list(full_weights), "intercept": 0.0}}
+
+
+def _features(**over):
+    out = {name: 0.0 for name in F.PICK_FEATURES}
+    out.update(over)
+    return out
+
+
+def test_keep_f_pick_holds_f_bucket_and_follows_a_warm_increment():
+    n = len(F.PICK_FEATURES)
+    still = F.keep_f_pick(_pick_fit([0.0] * n), f_c=14.0, rungs=_pick_rungs(), features=_features())
+    assert still["state"] == "READY" and still["offset"] == 0 and still["bucket"] == "14°C"
+    assert still["authority"] == "DISPLAY_ONLY_UNVERIFIED"
+    warm_w = [0.0] * n
+    warm_w[F.PICK_FEATURES.index("max_minus_f")] = 3.0
+    warm = F.keep_f_pick(_pick_fit(warm_w), f_c=14.0, rungs=_pick_rungs(), features=_features(max_minus_f=1.0))
+    # F's bucket keeps its probability (up to the floor); the warm shoulder takes the lead
+    assert abs(warm["probabilities"]["14°C"] - still["probabilities"]["14°C"]) < 2e-3
+    assert warm["offset"] == 1 and warm["bucket"] == "15°C" and warm["p_warm"] > 0.9
+    cold = F.keep_f_pick(_pick_fit(warm_w), f_c=14.0, rungs=_pick_rungs(), features=_features(max_minus_f=-1.0))
+    assert cold["offset"] == -1 and cold["bucket"] == "13°C"
+
+
+def test_keep_f_pick_never_tilts_an_edge_bucket_and_needs_a_ladder():
+    n = len(F.PICK_FEATURES)
+    edge = F.keep_f_pick(_pick_fit([3.0] * n), f_c=17.0, rungs=_pick_rungs(), features=_features(max_minus_f=1.0))
+    assert edge["state"] == "READY" and edge["offset"] == 0
+    assert F.keep_f_pick(_pick_fit([0.0] * n), f_c=14.0, rungs=_pick_rungs()[:2], features=_features())["state"] == "NO_LADDER"
+
+
+def test_fit_pick_needs_seven_days_of_rows_off_f():
+    base = date(2026, 9, 1)
+    rows = [(base + timedelta(days=k % 6), _features(pos=0.3 if k % 2 else -0.3), 1 if k % 2 else -1, 0.5) for k in range(60)]
+    assert F.fit_pick(rows) is None
+    rows = [(base + timedelta(days=k % 8), _features(pos=0.3 if k % 2 else -0.3), 1 if k % 2 else -1, 0.5) for k in range(80)]
+    fit = F.fit_pick(rows)
+    assert fit["state"] == "FITTED" and fit["authority"] == "DISPLAY_ONLY_UNVERIFIED"
+    assert fit["pos"]["weights"][0] > 0 and abs(fit["sigma_c"] - 0.5) < 1e-9
+
+
+def test_pick_features_are_in_rungs_and_use_corrected_members():
+    edges = [(12.5, 13.5), (13.5, 14.5), (14.5, 15.5)]
+    feats = F.pick_features(
+        f_c=14.25, edges=edges, width=1.0, maxima={"a": 13.0, "b": 14.0, "c": 16.0},
+        biases={"a": 1.0, "b": 0.0, "c": 0.0}, previous={"a": 12.0, "b": 14.5}, errors={},
+    )
+    assert feats["pos"] == pytest.approx(0.25)
+    assert feats["max_minus_f"] == pytest.approx(16.0 - 14.25)
+    assert feats["min_minus_f"] == pytest.approx(14.0 - 14.25)
+    assert feats["skew"] == pytest.approx((44.0 / 3 - 14.0))
+    assert feats["run_change_median"] == pytest.approx(0.25)
+    assert feats["skill_weighted_minus_f"] == 0.0

@@ -16089,6 +16089,7 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-det b{display:block;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin:2px 0}
 .sd-det-h,.sd-det-f{display:flex;justify-content:space-between;gap:6px;font-size:11.5px;color:var(--muted)}
 .sd-det-f .up{color:var(--amber)}.sd-det-f .down{color:#58a6ff}
+.sd-det-pick{border:1px dashed var(--muted);border-radius:6px;padding:0 6px}.sd-det-pick.moved{border-color:var(--amber);color:var(--amber)}
 .sd-fresh{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:10px;font-size:12px;font-weight:700;vertical-align:middle;cursor:help}
 .sd-fresh-green{background:color-mix(in srgb,var(--green) 20%,transparent);color:var(--green)}
 .sd-fresh-amber{background:color-mix(in srgb,var(--amber) 22%,transparent);color:var(--amber)}
@@ -22331,6 +22332,22 @@ function sdD0(day){
     + sdD0Trend(D)
     + `<div class="muted sd-sub" title="逐日前推，同一批有盘口的站日的中心平均误差">前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C</div></div>`;
 }
+// Charter 267 补记七 (user 2026-10-16 「照样上线：生产F文件写pick、看板确定性预报显示选桶，
+// 标注未验证、不接车道」): F's bucket, the one below or the one above, from the
+// members' structure and run change tilting the two sides of N(F, sigma) with
+// F's bucket held.  The production replay found no gain, so the chip says
+// 「未验证」 and no lane reads it.
+const SD_PICK_STATE = {INSUFFICIENT_HISTORY:"训练历史不足", NO_LADDER:"还没有梯子", PICK_BEYOND_SHOULDER:"超出肩部"};
+function sdDetPick(P){
+  if(!P) return "";
+  if(P.state !== "READY") return `<b class="muted" title="保 F 倾斜选桶（未验证）">选桶 ${sdEsc(SD_PICK_STATE[P.state] || P.state)}</b>`;
+  const name = P.offset > 0 ? "F+1" : P.offset < 0 ? "F−1" : "F";
+  const probs = Object.entries(P.probabilities || {}).map(([k, v]) => `${k} ${sdPc(v, 0)}`).join(" · ");
+  const tip = `保 F 倾斜选桶（宪章 267 补记七）：N(F, σ ${sdN(P.sigma_c, 2)}°C) 上 F 桶概率不动，按成员结构与轮次改动在两侧之间搬质量，取最可能一档。`
+    + `\n三档：${probs}\nP(暖) ${sdPc(P.p_warm, 0)}（只看 F 位置 ${sdPc(P.p_warm_position, 0)}）`
+    + `\n未验证：生产代码按挂牌时刻严格重放 09-22..10-14 命中 33.5% 对 F 33.3%，无增益；只显示，不接任何车道。`;
+  return `<b class="sd-det-pick${P.offset ? " moved" : ""}" title="${sdEsc(tip)}">选桶 ${name} · ${sdEsc(P.bucket)} <span class="sd-sub">未验证</span></b>`;
+}
 function sdDeterministic(day){
   const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
   if(!rows.length && !F) return "";
@@ -22349,6 +22366,7 @@ function sdDeterministic(day){
     ? `<b class="sd-evidence-primary" title="挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdEsc(sdLocal(F.computed_at_utc, true))}">F ${sdN(F.f_c, 2)}°C</b>`
       + (p0 != null ? `<b title="F 减 P0 模型加权温度中心">比 P0 ${sdSg(F.f_c - p0, 2)}°C</b>` : "")
       + `<b title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</b>`
+      + sdDetPick(F.pick)
     : `<b>F 暂无</b>`;
   return `<div class="sd-evidence-card sd-det-card" style="--c:${SD_COL.P0}"><div class="sd-evidence-title">确定性预报（宪章 267 · 各家最新一轮的当日最高温）</div><div class="sd-evidence-main">${main}</div><div class="sd-det-grid">${chips}</div></div>`;
 }

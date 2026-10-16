@@ -41,6 +41,7 @@ P0-M, P1, a certificate or any formal authority.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import statistics
@@ -113,6 +114,40 @@ _HISTORY_CACHE_V3: dict[tuple[str, str], dict[str, float] | None] = {}
 # whenever the table's newest rowid moves.
 _HISTORY_CACHE: dict[tuple[str, str], dict[str, float] | None] = {}
 _HISTORY_GENERATION: list[int | None] = [None]
+# 补记七 (user 「上线」 10-16): the keep-F pick -- F's bucket, the one below or
+# the one above.  The deterministic members' structure (skew, spread, warmest
+# and coldest minus F, skill-weighted members minus F) and the median run
+# change carry side information beyond F's position in its bucket (benchmark
+# research round 65: walk-forward side logloss -0.018 [-0.035, -0.003] on the
+# shoulder rows, BH-pass, both halves).  Over N(F, sigma) on the station-day's
+# ladder, F's bucket keeps its probability and the two sides are reweighted by
+# exp(kappa x (logit P_full - logit P_pos)); the pick is the most likely bucket
+# (round 66 post-hoc: off F on 24% of station-days, there 35.0% vs F 27.8%;
+# fleet single-bucket hit 33.3% -> 35.1%).  Both logits are refitted every
+# refresh on the trailing ``RECAL_TRAIN_DAYS`` of settled station-days that
+# left F's bucket, each read as of its own listing instant.
+# User 10-16 「照样上线：生产F文件写pick、看板确定性预报显示选桶，标注未验证、不接车道」:
+# the production replay of this very code (round 67, strictly as of each listing
+# instant, 09-22..10-14) found no gain -- pick 33.5% vs F 33.3% (+0.2 [-1.7,
+# +2.3]), the second half worse -- so it is written and shown, unverified, and
+# no lane reads it.  The clean re-read is round 66's protocol on event days
+# >= 10-15 (~10-30).
+PICK_AUTHORITY = "DISPLAY_ONLY_UNVERIFIED"
+PICK_RULE = "keep_f_member_tilt_v1"
+PICK_KAPPA = 1.0
+PICK_FEATURES = (
+    "pos", "skew", "spread", "max_minus_f", "min_minus_f", "skill_weighted_minus_f", "run_change_median",
+)
+PICK_MIN_DAYS = 7
+PICK_L2 = 1.0
+PICK_ITER = 800
+PICK_LR = 0.3
+PICK_FLOOR = 1e-3
+PICK_SKILL_DAYS = 30
+PICK_SKILL_MIN = 5
+PICK_SKILL_MAE_FLOOR_C = 0.3
+_HISTORY_PREV_CACHE: dict[tuple[str, str], dict[str, float]] = {}
+_LADDER_CACHE: dict[tuple[str, str], list[tuple[str, float | None, float | None]] | None] = {}
 
 
 def listing_instant(event_date: date) -> str:
@@ -335,6 +370,252 @@ def recal_correction(model: Mapping[str, Any], features: Sequence[float]) -> flo
     return float(z @ np.array(model["beta_per_sd"]) + model["intercept_c"])
 
 
+def previous_run_maxima(
+    conn: sqlite3.Connection, *, station_id: str, event_date: date, as_of_utc: str, settlement_timezone: str,
+) -> dict[str, float]:
+    """Each F system's run before its newest knowable afternoon-covering run (the same reader, one run back)."""
+
+    from .regional_point_lane import runs_for  # noqa: PLC0415
+
+    rows = runs_for(conn, station_id=station_id, event_date=event_date.isoformat(), as_of_utc=as_of_utc)
+    newest = feature_at(
+        conn, station_id=station_id, event_date=event_date.isoformat(), as_of_utc=as_of_utc,
+        settlement_timezone=settlement_timezone, systems=sorted(F_SYSTEM_IDS), rows=rows,
+    )
+    rest = [
+        row for row in rows
+        if not (row["ensemble_system_id"] in newest and row["run_init_utc"] == newest[row["ensemble_system_id"]]["run_init_utc"])
+    ]
+    before = feature_at(
+        conn, station_id=station_id, event_date=event_date.isoformat(), as_of_utc=as_of_utc,
+        settlement_timezone=settlement_timezone, systems=sorted(F_SYSTEM_IDS), rows=rest,
+    )
+    return {system: float(value["day_max_c"]) for system, value in before.items()}
+
+
+def _history_prev(conn: sqlite3.Connection, *, station_id: str, event_date: date, zone: str) -> dict[str, float]:
+    key = (station_id, event_date.isoformat())
+    if key not in _HISTORY_PREV_CACHE:
+        _HISTORY_PREV_CACHE[key] = previous_run_maxima(
+            conn, station_id=station_id, event_date=event_date, as_of_utc=listing_instant(event_date),
+            settlement_timezone=zone,
+        )
+    return _HISTORY_PREV_CACHE[key]
+
+
+def station_day_rungs(
+    conn: sqlite3.Connection, *, station_id: str, event_date: date, prefer_registry: bool,
+) -> list[tuple[str, float | None, float | None]] | None:
+    """The station-day's ladder in C, lowest first: the registry's buckets (a listed
+    day, before any decision) or the ladder its newest committed decision was priced
+    against (``station_day_ladder``, kept back to the oldest decision)."""
+
+    from .p0_producer import bucket_intervals_from_registry_rows  # noqa: PLC0415
+    from .station_day_ladder import station_day_ladder  # noqa: PLC0415
+
+    def registry() -> list[tuple[str, float | None, float | None]] | None:
+        cursor = conn.execute(
+            "SELECT station_id, event_date, settlement_unit, outcome, registry_json FROM basket_target_market_registry"
+            " WHERE station_id=? AND event_date=?", (station_id, event_date.isoformat()),
+        )
+        names = [column[0] for column in cursor.description]
+        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+        if not rows:
+            return None
+        try:
+            intervals = bucket_intervals_from_registry_rows(rows)
+        except Exception:  # noqa: BLE001 -- an invalid contract is no ladder (fail closed)
+            return None
+        return sorted(((label, lo, hi) for label, (lo, hi) in intervals.items()),
+                      key=lambda rung: float("-inf") if rung[1] is None else rung[1])
+
+    def decided() -> list[tuple[str, float | None, float | None]] | None:
+        hit = station_day_ladder(conn, station_id=station_id, event_date=event_date.isoformat())
+        return [(bucket, lower, upper) for bucket, _ordinal, lower, upper in hit[2]] if hit and hit[2] else None
+
+    try:
+        return (registry() or decided()) if prefer_registry else (decided() or registry())
+    except sqlite3.Error:  # a database without the market tables has no ladder (fail closed; F itself unaffected)
+        return None
+
+
+def _rung_edges(rungs: Sequence[tuple[str, float | None, float | None]]) -> tuple[list[tuple[float, float]], float] | None:
+    """Closed edges (open ends one interior width out) and the interior width."""
+
+    widths = [hi - lo for _label, lo, hi in rungs if lo is not None and hi is not None]
+    if len(rungs) < 3 or not widths:
+        return None
+    width = statistics.median(widths)
+    edges = []
+    for _label, lo, hi in rungs:
+        lo2 = hi - width if lo is None else lo
+        hi2 = lo + width if hi is None else hi
+        edges.append((float(lo2), float(hi2)))
+    return edges, width
+
+
+def _rung_of(edges: Sequence[tuple[float, float]], value: float) -> int:
+    """The rung holding ``value``, lower edge inclusive, the open ends catching the rest."""
+
+    if value < edges[0][1]:
+        return 0
+    for index, (lower, upper) in enumerate(edges):
+        if lower <= value < upper:
+            return index
+    return len(edges) - 1
+
+
+def pick_features(
+    *, f_c: float, edges: Sequence[tuple[float, float]], width: float, maxima: Mapping[str, float],
+    biases: Mapping[str, float], previous: Mapping[str, float], errors: Mapping[str, Sequence[float]],
+) -> dict[str, float]:
+    """``PICK_FEATURES`` for one station-day (benchmark research round 65's definitions, in rungs)."""
+
+    fb = _rung_of(edges, f_c)
+    centre = (edges[fb][0] + edges[fb][1]) / 2.0
+    corrected = {system: value + biases.get(system, 0.0) for system, value in maxima.items()}
+    values = list(corrected.values())
+    weights = {}
+    for system in corrected:
+        recent = list(errors.get(system) or ())[-PICK_SKILL_DAYS:]
+        if len(list(errors.get(system) or ())) >= PICK_SKILL_MIN and recent:
+            weights[system] = 1.0 / max(PICK_SKILL_MAE_FLOOR_C, statistics.mean(abs(v) for v in recent))
+    skill = (
+        (sum(weights[s] * corrected[s] for s in weights) / sum(weights.values()) - f_c) / width
+        if len(weights) >= 2 else 0.0
+    )
+    changes = [maxima[s] - previous[s] for s in maxima if s in previous]
+    return {
+        "pos": (f_c - centre) / width,
+        "skew": (statistics.mean(values) - statistics.median(values)) / width,
+        "spread": statistics.pstdev(values) / width,
+        "max_minus_f": (max(values) - f_c) / width,
+        "min_minus_f": (min(values) - f_c) / width,
+        "skill_weighted_minus_f": skill,
+        "run_change_median": statistics.median(changes) / width if changes else 0.0,
+    }
+
+
+def _fit_side_logit(X: np.ndarray, warm: np.ndarray) -> dict[str, Any]:
+    mu, sd = X.mean(axis=0), X.std(axis=0)
+    sd = np.where(sd > 1e-9, sd, 1.0)
+    Z = np.c_[(X - mu) / sd, np.ones(len(X))]
+    w = np.zeros(Z.shape[1])
+    for _ in range(PICK_ITER):
+        p = 1.0 / (1.0 + np.exp(-Z @ w))
+        grad = Z.T @ (p - warm) / len(X)
+        grad[:-1] += PICK_L2 * w[:-1] / len(X)
+        w -= PICK_LR * grad
+    return {"mean": mu.tolist(), "sd": sd.tolist(), "weights": w[:-1].tolist(), "intercept": float(w[-1])}
+
+
+def _side_logit(fit: Mapping[str, Any], x: Sequence[float]) -> float:
+    z = (np.array(x, dtype=float) - np.array(fit["mean"])) / np.array(fit["sd"])
+    return float(z @ np.array(fit["weights"]) + fit["intercept"])
+
+
+def _member_errors(
+    rows: Sequence[tuple[date, dict[str, float], float, datetime]], *, cut: date, knowable_by: datetime,
+) -> dict[str, list[float]]:
+    """Each system's (truth - listing-time maximum) on the station's settled days up to ``cut``, oldest first."""
+
+    out: dict[str, list[float]] = {}
+    for past, point, truth, settled in rows:
+        if past <= cut and settled <= knowable_by:
+            for system, value in point.items():
+                out.setdefault(system, []).append(truth - value)
+    return out
+
+
+def _live_pick(
+    conn: sqlite3.Connection, fit: Mapping[str, Any] | None, *, station: str, zone: str, event_date: date,
+    as_of: str, now: datetime, f_c: float, maxima: Mapping[str, float], biases: Mapping[str, float],
+    rows: Sequence[tuple[date, dict[str, float], float, datetime]],
+) -> dict[str, Any]:
+    if fit is None:
+        return {"state": "INSUFFICIENT_HISTORY"}
+    rungs = station_day_rungs(conn, station_id=station, event_date=event_date, prefer_registry=True)
+    shaped = _rung_edges(rungs or [])
+    if shaped is None:
+        return {"state": "NO_LADDER"}
+    edges, width = shaped
+    features = pick_features(
+        f_c=f_c, edges=edges, width=width, maxima=maxima, biases=biases,
+        previous=previous_run_maxima(conn, station_id=station, event_date=event_date, as_of_utc=as_of, settlement_timezone=zone),
+        errors=_member_errors(rows, cut=now.date() - timedelta(days=2), knowable_by=now),
+    )
+    return keep_f_pick(fit, f_c=f_c, rungs=rungs or [], features=features)
+
+
+def fit_pick(rows: Sequence[tuple[date, Mapping[str, float], int, float]]) -> dict[str, Any] | None:
+    """The two side logits and sigma from training rows ``(day, features, side, truth_centre - F)``.
+
+    Side: +1 the truth's rung above F's, -1 below, 0 on it (kept for sigma, not for the logits).
+    """
+
+    off = [(feat, side) for _day, feat, side, _err in rows if side != 0]
+    days = {day for day, _f, side, _e in rows if side != 0}
+    if len(days) < PICK_MIN_DAYS or len(off) < 30:
+        return None
+    warm = np.array([side > 0 for _feat, side in off], dtype=float)
+    full = np.array([[feat[name] for name in PICK_FEATURES] for feat, _side in off], dtype=float)
+    return {
+        "state": "FITTED", "rule": PICK_RULE, "authority": PICK_AUTHORITY, "kappa": PICK_KAPPA, "features": list(PICK_FEATURES),
+        "pos": _fit_side_logit(full[:, :1], warm), "full": _fit_side_logit(full, warm),
+        "sigma_c": float(np.sqrt(np.mean([err * err for _d, _f, _s, err in rows]))),
+        "rows": len(rows), "off_rows": len(off), "days": len({day for day, *_rest in rows}),
+        "train_from": min(day for day, *_rest in rows).isoformat(), "train_to": max(day for day, *_rest in rows).isoformat(),
+    }
+
+
+def _ncdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def keep_f_pick(
+    fit: Mapping[str, Any], *, f_c: float, rungs: Sequence[tuple[str, float | None, float | None]],
+    features: Mapping[str, float],
+) -> dict[str, Any]:
+    """N(F, sigma) on the ladder, F's rung held, sides tilted by kappa x the logit increment; the top rung."""
+
+    shaped = _rung_edges(rungs)
+    if shaped is None:
+        return {"state": "NO_LADDER"}
+    edges, _width = shaped
+    fb = _rung_of(edges, f_c)
+    sigma = float(fit["sigma_c"])
+    cdf = [0.0] + [_ncdf((edges[i][1] - f_c) / sigma) for i in range(len(edges) - 1)] + [1.0]
+    p = np.maximum(np.diff(np.array(cdf)), PICK_FLOOR)
+    p = p / p.sum()
+    x = [features[name] for name in PICK_FEATURES]
+    z_full, z_pos = _side_logit(fit["full"], x), _side_logit(fit["pos"], x[:1])
+    increment = z_full - z_pos
+    above, below = float(p[fb + 1:].sum()), float(p[:fb].sum())
+    q = p.copy()
+    if above > 0.0 and below > 0.0:
+        odds = above / below * math.exp(float(fit["kappa"]) * increment)
+        total = above + below
+        new_above = total * odds / (1.0 + odds)
+        q[fb + 1:] *= new_above / above
+        q[:fb] *= (total - new_above) / below
+        q = np.maximum(q, PICK_FLOOR)
+        q = q / q.sum()
+    top = int(np.argmax(q))
+    offset = top - fb
+    if abs(offset) > 1:  # a side keeps its own shape, so its top is the shoulder; never seen
+        return {"state": "PICK_BEYOND_SHOULDER"}
+    return {
+        "state": "READY", "rule": fit["rule"], "authority": PICK_AUTHORITY, "offset": offset,
+        "bucket": rungs[top][0], "f_bucket": rungs[fb][0],
+        "p_warm": round(1.0 / (1.0 + math.exp(-z_full)), 4), "p_warm_position": round(1.0 / (1.0 + math.exp(-z_pos)), 4),
+        "tilt_logit": round(increment, 4), "sigma_c": round(sigma, 3),
+        "probabilities": {
+            rungs[i][0]: round(float(q[i]), 4) for i in (fb - 1, fb, fb + 1) if 0 <= i < len(rungs)
+        },
+        "features": {name: round(float(value), 4) for name, value in features.items()},
+    }
+
+
 def compute(
     conn: sqlite3.Connection, *, now: datetime | None = None,
     roster: Sequence[tuple[str, float, float, str]] | None = None,
@@ -349,6 +630,7 @@ def compute(
     if generation != _HISTORY_GENERATION[0]:
         _HISTORY_CACHE.clear()
         _HISTORY_CACHE_V3.clear()
+        _HISTORY_PREV_CACHE.clear()
         _HISTORY_GENERATION[0] = generation
     table = terrain.read()
     # The oldest training day needs its own STATION_DAYS of bias history.
@@ -376,6 +658,7 @@ def compute(
     # own listing instant (members, truths and c knowable then), against its truth.
     train: list[tuple[date, tuple[float, float, float], float]] = []
     past_fleet: dict[date, float] = {}
+    pick_inputs: list[tuple[str, date, dict[str, float], float, dict[str, Any], tuple[float, float, float], datetime]] = []
     for station, rows in history.items():
         for past, point, truth, _settled in rows:
             if past < today - timedelta(days=RECAL_TRAIN_DAYS) or len(point) < MIN_SYSTEMS:
@@ -388,7 +671,28 @@ def compute(
             base = _base_f(point, rows, event_date=past, fleet_c=past_fleet[past], knowable_by=listing)
             obs = _obs_before_listing(station_truths[station], past)
             train.append((past, _recal_features(base, obs), truth - base["f"]))
+            pick_inputs.append((station, past, point, truth, base, _recal_features(base, obs), listing))
     model = fit_recalibration(train)
+    # 补记七: the keep-F pick's training rows -- each settled day's F (as recalibrated
+    # now) on the ladder that day was priced against, its members as of its listing.
+    pick_rows: list[tuple[date, dict[str, float], int, float]] = []
+    for station, past, point, truth, base, features, listing in pick_inputs:
+        key = (station, past.isoformat())
+        if key not in _LADDER_CACHE:
+            _LADDER_CACHE[key] = station_day_rungs(conn, station_id=station, event_date=past, prefer_registry=False)
+        shaped = _rung_edges(_LADDER_CACHE[key] or [])
+        if shaped is None:
+            continue
+        edges, width = shaped
+        f_past = base["f"] + (recal_correction(model, features) if model else 0.0)
+        fb, ty = _rung_of(edges, f_past), _rung_of(edges, truth)
+        feats = pick_features(
+            f_c=f_past, edges=edges, width=width, maxima=point, biases=base["biases"],
+            previous=_history_prev(conn, station_id=station, event_date=past, zone=zones[station]),
+            errors=_member_errors(history[station], cut=listing.date() - timedelta(days=2), knowable_by=listing),
+        )
+        pick_rows.append((past, feats, (ty > fb) - (ty < fb), (edges[ty][0] + edges[ty][1]) / 2.0 - f_past))
+    pick_model = fit_pick(pick_rows)
     # 补记六: the same chain on station values, when the terrain table is in hand.
     history3: dict[str, list[tuple[date, dict[str, float], float, datetime]]] = {}
     fleet3 = model3 = None
@@ -458,6 +762,11 @@ def compute(
                 "f_c": round(base["f"] + correction, 3),
                 "listing_instant_utc": listing_instant(event_date),
             })
+            entry["pick"] = _live_pick(
+                conn, pick_model, station=station, zone=zone, event_date=event_date, as_of=as_of, now=now,
+                f_c=base["f"] + correction, maxima={system: value["tmax_c"] for system, value in maxima.items()},
+                biases=base["biases"], rows=history.get(station, []),
+            )
             out[f"{station}|{event_date.isoformat()}"] = entry
     v3: dict[str, Any] = {"rule": V3_RULE, "lambda": V3_LAMBDA, "systems": sorted(F_V3_SYSTEM_IDS)}
     if table is None:
@@ -479,6 +788,7 @@ def compute(
             "state": "INSUFFICIENT_HISTORY", "rows": len(train), "days": len({day for day, _x, _y in train}),
         },
         "v3": v3,
+        "pick": pick_model or {"state": "INSUFFICIENT_HISTORY", "rule": PICK_RULE, "rows": len(pick_rows)},
         "station_days": out,
         "authority": "EXECUTION_LAYER_ONLY",
         "calls_order_gateway": False,
@@ -540,7 +850,9 @@ def refresh(db_path: str | Path) -> dict[str, Any]:
     return {"state": "ok", "ready": ready, "station_days": len(payload["station_days"]),
             "fleet_c": payload["fleet"]["c"], "fleet_source": payload["fleet"]["source"],
             "recalibration": payload["recalibration"]["state"],
-            "v3": payload.get("v3", {}).get("state"), "ready_v3": ready_v3}
+            "v3": payload.get("v3", {}).get("state"), "ready_v3": ready_v3,
+            "pick": payload.get("pick", {}).get("state"),
+            "ready_pick": sum(1 for v in payload["station_days"].values() if (v.get("pick") or {}).get("state") == "READY")}
 
 
 def read(path: Path = F_PATH) -> dict[str, Any] | None:
@@ -563,8 +875,8 @@ def bucket_for(f_c: float, ladder: Sequence[Mapping[str, Any]]) -> str | None:
 
 
 __all__ = [
-    "F_PATH", "LAMBDA", "RECAL_FEATURES", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "V3_LAMBDA", "V3_RULE", "bucket_for", "compute",
+    "F_PATH", "LAMBDA", "PICK_AUTHORITY", "PICK_FEATURES", "PICK_KAPPA", "PICK_RULE", "RECAL_FEATURES", "RESEARCH_FLEET_C", "RULE", "SCHEMA", "V3_LAMBDA", "V3_RULE", "bucket_for", "compute",
     "station_values",
-    "fit_recalibration", "formal_truths", "listing_instant", "read", "recal_correction", "refresh",
+    "fit_pick", "fit_recalibration", "formal_truths", "keep_f_pick", "pick_features", "previous_run_maxima", "station_day_rungs", "listing_instant", "read", "recal_correction", "refresh",
     "system_maxima", "write",
 ]
