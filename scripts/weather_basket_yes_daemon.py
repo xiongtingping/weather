@@ -719,6 +719,50 @@ WAL_FORENSICS_PATH = ROOT / "data" / "runtime" / "ssot_wal_forensics.jsonl"
 WAL_FORENSICS_MAX_LINES = 800
 
 
+def ssot_wal_read_pins(db_path: Path) -> dict[str, Any]:
+    """Which process holds each WAL reader slot, and at which frame.
+
+    Read off SQLite's own shared-memory index (``-shm``): the header's
+    ``mxFrame`` and ``nBackfill``, the checkpoint info's five ``aReadMark``
+    frames, and for each reader slot the PID ``fcntl(F_GETLK)`` reports
+    holding its shared lock (byte 123+i).  A slot whose mark is below
+    ``mxFrame`` with a holder is a reader on an old snapshot -- the one that
+    keeps the WAL from being reset.  Locks are only probed, never taken.
+    """
+
+    import fcntl  # noqa: PLC0415
+    import struct  # noqa: PLC0415
+
+    shm = Path(str(db_path) + "-shm")
+    out: dict[str, Any] = {}
+    try:
+        fd = os.open(shm, os.O_RDWR)
+    except OSError as exc:
+        return {"error": f"{type(exc).__name__}:{exc}"}
+    try:
+        data = os.pread(fd, 136, 0)
+        out["mx_frame"] = struct.unpack_from("=I", data, 16)[0]
+        out["backfilled"] = struct.unpack_from("=I", data, 96)[0]
+        marks = struct.unpack_from("=5I", data, 100)
+        slots = []
+        for index, mark in enumerate(marks):
+            probe = struct.pack("qqihh", 123 + index, 1, 0, fcntl.F_WRLCK, os.SEEK_SET)
+            _start, _len, pid, kind, _whence = struct.unpack(
+                "qqihh", fcntl.fcntl(fd, fcntl.F_GETLK, probe)
+            )
+            slots.append({
+                "slot": index,
+                "mark": None if mark == 0xFFFFFFFF else int(mark),
+                "holder_pid": None if kind == fcntl.F_UNLCK else int(pid),
+            })
+        out["slots"] = slots
+    except (OSError, struct.error) as exc:
+        out["error"] = f"{type(exc).__name__}:{exc}"
+    finally:
+        os.close(fd)
+    return out
+
+
 def capture_ssot_wal_forensics(
     db_path: Path,
     *,
@@ -752,6 +796,7 @@ def capture_ssot_wal_forensics(
             check.close()
     except sqlite3.Error as exc:
         record["passive_checkpoint_error"] = f"{type(exc).__name__}:{exc}"
+    record["read_pins"] = ssot_wal_read_pins(Path(db_path))
     if probe is not None:
         try:
             record["own_statements"] = dict(probe())
