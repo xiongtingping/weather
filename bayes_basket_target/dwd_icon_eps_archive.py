@@ -41,6 +41,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from .member_trajectory_store import record_member_trajectories
 from .contracts import ContractError, content_sha256
 from .future_temperature_curve import (
     MIN_CURVE_POINTS,
@@ -849,6 +850,15 @@ def capture_icon_eps_station_days(
                 "member_role": "PERTURBED",
                 "raw_tmax_c": max(hours.values()),
             })
+        # User 2026-10-16: every member's step series, kept beside the capture
+        # (member_trajectory_store; a record that never fails the capture).
+        record_member_trajectories(
+            ensemble_system_id=SYSTEM_ID, station_id=station_id, event_date=event_date,
+            settlement_timezone=str(scope["settlement_timezone"]), run_init=run_init, archive_query_at=archive_query_at_utc,
+            step_values_by_member=by_member,
+            valid_time_of_step=lambda step: run_init + timedelta(hours=int(step)),
+        )
+
         intervals = bucket_intervals_from_registry_rows(
             scope["registry_rows"]
         )

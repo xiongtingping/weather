@@ -205,3 +205,54 @@ def test_ingest_writes_51_rows_replays_and_refuses_a_changed_value(fake_transpor
     )
     with pytest.raises(ContractError, match="frozen_fact_conflict"):
         aifs.ingest_aifs_station_day(conn, capture)
+
+
+def test_capture_keeps_every_member_step_series_in_its_own_store(fake_transport, tmp_path, monkeypatch) -> None:
+    """User 2026-10-16: each member's station value at every in-day step is
+    kept beside the capture (member_trajectory_store), first capture wins,
+    and the stored series' maximum is the member's raw_tmax_c."""
+
+    import json
+    import sqlite3
+
+    db = tmp_path / "members.db"
+    monkeypatch.setenv("PM_MEMBER_TRAJECTORY_DB", str(db))
+    archive = aifs.capture_aifs_station_days(
+        event_date="2026-09-19",
+        station_scopes=[_scope("KLGA", "America/New_York", "2026-09-19")],
+        archive_query_at_utc="2026-09-18T06:20:00Z",
+        lead_days=1,
+        run_cycle_hour=0,
+    )
+    capture = archive["captures"][0]
+    rows = sqlite3.connect(db).execute(
+        "SELECT ensemble_system_id, station_id, event_date, run_init_utc, value_kind, valid_times_json, members_json,"
+        " member_count FROM native_member_trajectory").fetchall()
+    assert len(rows) == 1
+    system, station, day, run, kind, times, members, count = rows[0]
+    assert (system, station, day, kind, count) == ("ECMWF_AIFS_ENS_GLOBAL", "KLGA", "2026-09-19", "t2m_instant", 51)
+    assert run == capture["run_init_utc"]
+    members = json.loads(members)
+    assert len(json.loads(times)) == len(capture["forecast_steps"])
+    for row in capture["members"]:
+        assert max(members[row["member_id"]]) == round(row["raw_tmax_c"], 2)
+    # a second capture of the same run does not overwrite the first
+    from bayes_basket_target.member_trajectory_store import record_member_trajectories
+    assert record_member_trajectories(
+        ensemble_system_id="ECMWF_AIFS_ENS_GLOBAL", station_id="KLGA", event_date="2026-09-19",
+        settlement_timezone="America/New_York", run_init=run, archive_query_at="2026-09-18T07:00:00Z",
+        step_values_by_member={"control": {6: 1.0}}, valid_time_of_step=lambda s: run) is False
+
+
+def test_member_store_off_and_failure_never_break_a_capture(tmp_path, monkeypatch) -> None:
+    from bayes_basket_target.member_trajectory_store import record_member_trajectories
+
+    kwargs = dict(ensemble_system_id="X", station_id="S", event_date="2026-10-16", settlement_timezone="UTC",
+                  run_init="2026-10-16T00:00:00Z", archive_query_at="2026-10-16T06:00:00Z",
+                  step_values_by_member={"m": {3: 20.0}}, valid_time_of_step=lambda s: "2026-10-16T03:00:00Z")
+    monkeypatch.setenv("PM_MEMBER_TRAJECTORY_DB", "off")
+    assert record_member_trajectories(**kwargs) is False
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x")
+    monkeypatch.setenv("PM_MEMBER_TRAJECTORY_DB", str(blocker / "members.db"))
+    assert record_member_trajectories(**kwargs) is False   # cannot open: logged, not raised

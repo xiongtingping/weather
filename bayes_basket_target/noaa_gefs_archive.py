@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from .member_trajectory_store import record_member_trajectories
 from .contracts import ContractError, content_sha256
 from .native_archive_lead import (
     capture_lead_and_run,
@@ -932,6 +933,14 @@ def _build_station_capture(
     ]
     if len(receipts) != 31 * len(forecast_hours):
         raise ContractError("gefs_archive_multistation_receipt_incomplete")
+    # User 2026-10-16: every member's step series, kept beside the capture
+    # (member_trajectory_store; a record that never fails the capture).
+    record_member_trajectories(
+        ensemble_system_id=SYSTEM_ID, station_id=station_id, event_date=event_date,
+        settlement_timezone=str(settlement_timezone), run_init=run_init, archive_query_at=query_at,
+        step_values_by_member=values_by_member,
+        valid_time_of_step=lambda step: run_init + timedelta(hours=int(step)),
+    )
     member_identity = [
         {
             "member_id": row["member_id"],

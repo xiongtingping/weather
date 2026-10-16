@@ -77,6 +77,7 @@ from typing import Any
 
 import httpx
 
+from .member_trajectory_store import record_member_trajectories
 from . import noaa_gefs_archive as gefs
 from .contracts import ContractError, content_sha256
 from .ecmwf_aifs_ens_archive import (
@@ -286,6 +287,14 @@ def build_station_capture(
         bucket: [None if lo is None else float(lo), None if hi is None else float(hi)]
         for bucket, (lo, hi) in intervals.items()
     }
+    # User 2026-10-16: every member's step series, kept beside the capture
+    # (member_trajectory_store; a record that never fails the capture).
+    record_member_trajectories(
+        ensemble_system_id=SYSTEM_ID, station_id=station, event_date=event_date,
+        settlement_timezone=str(scope["settlement_timezone"]), run_init=run_init, archive_query_at=query_at,
+        step_values_by_member=member_values,
+        valid_time_of_step=lambda step: run_init + timedelta(hours=int(step)),
+    )
     member_identity = [
         {"member_id": r["member_id"], "member_role": r["member_role"], "raw_tmax_c": r["raw_tmax_c"]}
         for r in members

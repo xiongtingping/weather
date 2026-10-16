@@ -124,6 +124,15 @@ def _no_nwp_object_store_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_member_trajectory_store_from_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Captures built in tests must not write the live member trajectory
+    store (``member_trajectory_store``); a test that wants it points the
+    variable at its own file."""
+
+    monkeypatch.setenv("PM_MEMBER_TRAJECTORY_DB", "off")
+
+
+@pytest.fixture(autouse=True)
 def _no_live_supply_watch_in_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """Charter 197 amendment: the send gate reads the live watch file.
 

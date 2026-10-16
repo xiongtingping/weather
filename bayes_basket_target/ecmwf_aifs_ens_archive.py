@@ -56,6 +56,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from .member_trajectory_store import record_member_trajectories
 from . import ecmwf_ifs_archive as ifs
 from .contracts import ContractError, content_sha256
 from .native_archive_lead import (
@@ -367,6 +368,14 @@ def build_station_capture(
         ]
         for bucket, (lower, upper) in intervals.items()
     }
+    # User 2026-10-16: every member's step series, kept beside the capture
+    # (member_trajectory_store; a record that never fails the capture).
+    record_member_trajectories(
+        ensemble_system_id=SYSTEM_ID, station_id=station, event_date=event_date,
+        settlement_timezone=str(scope["settlement_timezone"]), run_init=run_init, archive_query_at=query_at,
+        step_values_by_member=member_values,
+        valid_time_of_step=lambda step: run_init + timedelta(hours=int(step)),
+    )
     member_identity = [
         {
             "member_id": row["member_id"],
