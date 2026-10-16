@@ -1904,6 +1904,62 @@ SELECTION_WEIGHTS_MEMO_MAX = 100_000
 #         (kept at, first row ahead, (activation, evaluation) base marks,
 #          {admitted id: valid_until}) or None)
 _ADMITTED_SCOPE_MEMO: dict[tuple[str, ...], tuple[Any, ...]] = {}
+# The scope's previous entry, at an earlier instant (2026-10-16).  The
+# compiles of one cycle do not share an instant: the forward loop asks at the
+# moment an official capture lands, the checkpoints and the decision loop at
+# the cycle's own instant, which is earlier -- and an answer is stepped only
+# forward in time, so each capture sent the scopes it touched back to the
+# walk (66-163 s spikes).  With the two latest entries kept, a compile steps
+# from the latest one at or before its instant.
+_ADMITTED_SCOPE_PRIOR: dict[tuple[str, ...], tuple[Any, ...]] = {}
+
+
+def _scope_entry_at(entry: tuple[Any, ...]) -> str:
+    """The instant a kept scope entry answers for ("" if it cannot say)."""
+    if len(entry) > 5 and entry[5] is not None:
+        return str(entry[5][0])
+    if entry[4] is not None:
+        return str(entry[4][0])
+    return ""
+
+
+def _scope_entry_for(
+    memo_key: tuple[str, ...], decision_at_utc: str
+) -> tuple[Any, ...] | None:
+    """The latest kept entry at or before the instant; else the latest."""
+    latest = _ADMITTED_SCOPE_MEMO.get(memo_key)
+    prior = _ADMITTED_SCOPE_PRIOR.get(memo_key)
+    usable = [
+        entry for entry in (latest, prior)
+        if entry is not None and _scope_entry_at(entry) <= decision_at_utc
+    ]
+    if usable:
+        return max(usable, key=_scope_entry_at)
+    return latest
+
+
+def _keep_scope_entry(
+    memo_key: tuple[str, ...], entry: tuple[Any, ...]
+) -> None:
+    """Keep the entry with the two latest of those already kept; on a tie of
+    instants the one just made wins."""
+    held = [
+        (_scope_entry_at(kept), 0, kept)
+        for kept in (
+            _ADMITTED_SCOPE_MEMO.get(memo_key),
+            _ADMITTED_SCOPE_PRIOR.get(memo_key),
+        )
+        if kept is not None
+    ]
+    ranked = sorted(
+        held + [(_scope_entry_at(entry), 1, entry)],
+        key=lambda item: (item[0], item[1]),
+    )
+    _ADMITTED_SCOPE_MEMO[memo_key] = ranked[-1][2]
+    if len(ranked) > 1:
+        _ADMITTED_SCOPE_PRIOR[memo_key] = ranked[-2][2]
+    else:
+        _ADMITTED_SCOPE_PRIOR.pop(memo_key, None)
 _MEMO_TEXT: dict[str, str] = {}
 # (database file, selection evidence sha) -> its certified seat weights.  The
 # evidence table is append-only and addressed by content, so a sha found once
@@ -1915,6 +1971,7 @@ _NO_HORIZON = "\uffff"  # sorts after every timestamp
 def forget_admitted_scopes() -> None:
     """Drop everything kept between compiles (tests)."""
     _ADMITTED_SCOPE_MEMO.clear()
+    _ADMITTED_SCOPE_PRIOR.clear()
     _MEMO_TEXT.clear()
     _SELECTION_WEIGHTS_MEMO.clear()
     _LEAD_BUCKET_MEMO.clear()
@@ -2210,15 +2267,23 @@ def _admitted_scope_digest(
     activation_parameters: tuple[Any, ...],
     decision_at_utc: str,
     rowid_marks: tuple[int, int] | None = None,
-) -> tuple[bytes, int, str, str, int]:
+) -> tuple[bytes, int, str, str, int, tuple[int, int] | None]:
     """Digest of the two id lists the evidence test reads, how many
-    activations are valid, the earliest later instant at which either
-    list would read differently with no row added, and the earliest of those
-    that is a row coming into view (a minted-ahead activation opening, an
-    evaluation stamped ahead) rather than a valid activation closing, and
-    how many of the valid activations lie at or below the activation mark.
-    With ``rowid_marks`` the rows-ahead instant counts only rows at or below
-    the marks: the increment reads the rows past them for itself.
+    activations are valid, the earliest later instant at which either list
+    would read differently with no row added, the earliest of those that is
+    a row coming into view (a minted-ahead activation opening, an evaluation
+    stamped ahead) which the increment cannot read for itself, how many of
+    the valid activations lie at or below the increment's base, and that
+    base.
+
+    With ``rowid_marks``, a row not yet in view that lies past the marks is
+    left to the increment, which reads every row past its base; one at or
+    below them but within ``ADMITTED_INCREMENT_ROWS_MAX // 2`` rows of them
+    lowers the base below itself instead (2026-10-16: the rotation stamps
+    evaluations by its own clock and commits them mid-cycle, so the walk saw
+    evaluations stamped after the compile's instant, and the next compile
+    past that stamp walked the scope again).  Only an older one -- a window
+    minted far ahead -- is the rows-ahead instant.
 
     The lists are the evidence test's own: activations with
     ``valid_from <= instant < valid_until``, evaluations with
@@ -2230,10 +2295,27 @@ def _admitted_scope_digest(
 
     hasher = hashlib.sha256()
     valid = 0
-    valid_at_mark = 0
+    valid_rowids: list[int] = []
     horizon = _NO_HORIZON
     ahead = _NO_HORIZON
     mark_a, mark_e = rowid_marks or (None, None)
+    hold_a, hold_e = mark_a, mark_e
+    reach = ADMITTED_INCREMENT_ROWS_MAX // 2
+
+    def _not_in_view(rowid: int, mark: int | None, at: str) -> int | None:
+        """The lowered base for a row not yet in view, or None."""
+        nonlocal ahead, horizon
+        horizon = min(horizon, at)
+        if mark is None:
+            ahead = min(ahead, at)
+            return None
+        if rowid > mark:
+            return None
+        if rowid > mark - reach:
+            return rowid - 1
+        ahead = min(ahead, at)
+        return None
+
     for row in conn.execute(
         "SELECT a.activation_id,a.valid_from_utc,a.valid_until_utc,a.rowid "
         "FROM calibration_native_ensemble_activation a "
@@ -2248,13 +2330,12 @@ def _admitted_scope_digest(
             hasher.update(str(row[0]).encode("utf-8"))
             hasher.update(b"\n")
             valid += 1
-            if mark_a is not None and int(row[3]) <= mark_a:
-                valid_at_mark += 1
+            valid_rowids.append(int(row[3]))
             horizon = min(horizon, str(row[2]))
-        elif mark_a is None or int(row[3]) <= mark_a:
-            ahead = min(ahead, valid_from)
         else:
-            horizon = min(horizon, valid_from)
+            held = _not_in_view(int(row[3]), mark_a, valid_from)
+            if held is not None:
+                hold_a = min(hold_a, held)
     hasher.update(b"|")
     for row in conn.execute(
         "SELECT evaluation_id,evaluated_at_utc,rowid "
@@ -2266,11 +2347,19 @@ def _admitted_scope_digest(
         if evaluated_at <= decision_at_utc:
             hasher.update(str(row[0]).encode("utf-8"))
             hasher.update(b"\n")
-        elif mark_e is None or int(row[2]) <= mark_e:
-            ahead = min(ahead, evaluated_at)
         else:
-            horizon = min(horizon, evaluated_at)
-    return hasher.digest(), valid, min(horizon, ahead), ahead, valid_at_mark
+            held = _not_in_view(int(row[2]), mark_e, evaluated_at)
+            if held is not None:
+                hold_e = min(hold_e, held)
+    base = (
+        (int(hold_a), int(hold_e))
+        if hold_a is not None and hold_e is not None else None
+    )
+    valid_at_base = (
+        sum(rowid <= base[0] for rowid in valid_rowids)
+        if base is not None else 0
+    )
+    return hasher.digest(), valid, horizon, ahead, valid_at_base, base
 
 
 def compile_native_ensemble_p0(
@@ -2988,7 +3077,7 @@ def compile_native_ensemble_p0(
                 {i: admitted[i][0] for i in admitted},
             ),
         )
-        _ADMITTED_SCOPE_MEMO[memo_key] = stepped
+        _keep_scope_entry(memo_key, stepped)
         return kept_answer(stepped)
 
     def _evidence_admitted_rows() -> list[Any]:
@@ -3000,6 +3089,7 @@ def compile_native_ensemble_p0(
         digest = b""
         valid_activations = -1
         valid_at_base = -1
+        walk_base: tuple[int, int] | None = None
         walk_reason = ""
         walk_started = 0.0
         horizon = _NO_HORIZON
@@ -3019,7 +3109,7 @@ def compile_native_ensemble_p0(
 
         if database_file:
             memo_key = (database_file,) + scope_part + (settlement_definition,)
-            kept = _ADMITTED_SCOPE_MEMO.get(memo_key)
+            kept = _scope_entry_for(memo_key, decision_at_utc)
             marks = _append_marks(conn)
             if (
                 kept is not None
@@ -3067,6 +3157,7 @@ def compile_native_ensemble_p0(
             walk_started = time.perf_counter()
             (
                 digest, valid_activations, horizon, ahead, valid_at_base,
+                walk_base,
             ) = _admitted_scope_digest(
                 conn,
                 activation_parameters=activation_parameters,
@@ -3077,18 +3168,18 @@ def compile_native_ensemble_p0(
                 # The same two lists, read now.  With no row added while
                 # they were walked, the walk's horizon holds from this
                 # instant, and the next compile need not walk.
-                _ADMITTED_SCOPE_MEMO[memo_key] = kept[:4] + ((
+                _keep_scope_entry(memo_key, kept[:4] + ((
                     (decision_at_utc, horizon, marks)
                     if marks is not None and _append_marks(conn) == marks
                     else None
-                ),) + kept[5:]
+                ),) + kept[5:])
                 note_ledger_span(
                     "p0_evidence_same_lists",
                     (time.perf_counter() - walk_started) * 1000.0,
                 )
                 return _kept_answer(kept)
         tested = 0
-        tested_at_base = 0
+        tested_rowids: list[int] = []
         admitted_evaluations: dict[
             tuple[str, ...], tuple[tuple[Any, ...], ...]
         ] = {}
@@ -3097,8 +3188,7 @@ def compile_native_ensemble_p0(
             _evidence_test_sql(), activation_parameters
         ):
             tested += 1
-            if marks is not None and int(pre[8]) <= marks[0]:
-                tested_at_base += 1
+            tested_rowids.append(int(pre[8]))
             key_part = _pairing_key_part(pre[2], pre[3], pre[4], pre[6], pre[5])
             if key_part is None:
                 admitted_ids.append(str(pre[0]))  # the loop decides
@@ -3141,13 +3231,16 @@ def compile_native_ensemble_p0(
                     activation_parameters=activation_parameters,
                     decision_at_utc=decision_at_utc,
                 )[:2] == (digest, valid_activations)
-            based = marks is not None and tested_at_base == valid_at_base
+            based = walk_base is not None and sum(
+                rowid <= walk_base[0] for rowid in tested_rowids
+            ) == valid_at_base
             if consistent or based:
                 if len(_ADMITTED_SCOPE_MEMO) >= ADMITTED_SCOPE_MEMO_MAX_SCOPES:
                     _ADMITTED_SCOPE_MEMO.clear()
+                    _ADMITTED_SCOPE_PRIOR.clear()
                     _MEMO_TEXT.clear()
                 shared = (4, 5, 6, 8, 9, 10, 11, 12, 15)
-                _ADMITTED_SCOPE_MEMO[memo_key] = (
+                _keep_scope_entry(memo_key, (
                     digest if consistent else b"",
                     tuple(admitted_ids),
                     admitted_evaluations,
@@ -3163,10 +3256,10 @@ def compile_native_ensemble_p0(
                     (decision_at_utc, horizon, marks)
                     if consistent and unmoved else None,
                     (
-                        decision_at_utc, ahead, (marks[0], marks[1]),
+                        decision_at_utc, ahead, walk_base,
                         valid_until_by_id,
-                    ) if based and marks is not None else None,
-                )
+                    ) if based and walk_base is not None else None,
+                ))
         if walk_reason:
             # Which way the kept answer was declined, per cycle: the cycle
             # history's span report says what still sends scopes to the walk.

@@ -626,9 +626,58 @@ def test_each_walk_names_why_the_kept_answer_was_declined(tmp_path) -> None:
     _compile(conn, "2026-07-01T13:00:00Z")
     _re_mint(conn, suffix="s", valid_from="2026-07-01T13:01:00Z")
     _compile(conn, "2026-07-01T13:07:00Z")
-    _compile(conn, "2026-07-01T13:00:00Z")
+    _compile(conn, "2026-07-01T12:55:00Z")  # before every entry kept
     spans = atomic_ledger.ledger_span_profile()
     atomic_ledger.reset_ledger_spans()
     assert spans["p0_evidence_walk_cold"]["count"] == 1
     assert spans["p0_evidence_step"]["count"] >= 1
     assert spans["p0_evidence_walk_earlier_instant"]["count"] == 1
+
+
+def test_a_compile_at_the_cycle_s_instant_after_one_at_a_capture_is_stepped(
+    tmp_path, monkeypatch
+) -> None:
+    """2026-10-16: the forward loop compiles at the instant a capture lands,
+    the checkpoints at the cycle's own earlier instant; with one entry kept
+    the earlier compile always walked the scope whole."""
+
+    conn, report = _store(tmp_path)
+    _compile(conn, "2026-07-01T13:00:00Z")  # cycle instant
+    _re_mint(conn, suffix="cap", valid_from="2026-07-01T13:01:00Z")
+    _compile(conn, "2026-07-01T13:05:00Z")  # a capture landed
+    _re_mint(conn, suffix="mid", valid_from="2026-07-01T13:02:00Z")
+    _reject(conn, report, "2026-07-01T13:04:00Z")
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    at_cycle = _answers(conn, "2026-07-01T13:03:00Z")  # the cycle's checkpoint
+    conn.set_trace_callback(None)
+    flat = [" ".join(statement.split()) for statement in statements]
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    after = _answers(conn, "2026-07-01T13:06:00Z")
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    assert at_cycle == _answers(conn, "2026-07-01T13:03:00Z")
+    assert after == _answers(conn, "2026-07-01T13:06:00Z")
+    assert after[0] == "refused" and at_cycle[0] == "ok"
+
+
+def test_a_walk_that_sees_an_evaluation_stamped_ahead_steps_past_it(
+    tmp_path, monkeypatch
+) -> None:
+    """The rotation stamps by its own clock and commits mid-cycle: the walk
+    holds its base below the row instead of walking again at its stamp."""
+
+    conn, report = _store(tmp_path)
+    _reject(conn, report, "2026-07-01T13:20:00Z")
+    _compile(conn, "2026-07-01T13:00:00Z")
+    kept = next(iter(P0._ADMITTED_SCOPE_MEMO.values()))
+    assert kept[5] is not None and kept[5][1] == P0._NO_HORIZON
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
+        _compile(conn, "2026-07-01T13:20:00Z")
+    conn.set_trace_callback(None)
+    flat = [" ".join(statement.split()) for statement in statements]
+    assert _count(flat, WALKS[1]) == 0 and _full_tests(flat) == 0
+    monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
+    with pytest.raises(ContractError, match="native_cross_oos_evaluation_not_passing"):
+        _compile(conn, "2026-07-01T13:20:00Z")
