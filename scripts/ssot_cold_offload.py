@@ -110,7 +110,7 @@ from bayes_basket_target.offloaded_paths import (  # noqa: E402
     cold_tier_root,
     cold_tier_status,
 )
-from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES  # noqa: E402
+from bayes_basket_target.resource_bounds import MAX_TARGET_DB_BYTES, install_wal_yield  # noqa: E402
 from bayes_basket_target.valuation_store import WINDOW_DAYS as VALUATION_WINDOW_DAYS  # noqa: E402
 from bayes_basket_target.board_readings import SEAT_LOOKBACK_DAYS as BOARD_SEAT_LOOKBACK_DAYS  # noqa: E402
 
@@ -2617,6 +2617,11 @@ def run(
         return receipt
     read = sqlite3.connect(f"file:{ssot_path}?mode=ro", uri=True, timeout=60.0)
     read.execute("PRAGMA busy_timeout=60000")
+    # Planning reads every registered table and a move re-reads its rows: a
+    # long reader beside production, so it lets go past the reader WAL line
+    # like the board's (2026-10-16).  An interrupted plan is refused, an
+    # interrupted move stops; the next run carries on.
+    receipt["wal_yield"] = install_wal_yield(read, ssot_path)
     delete: sqlite3.Connection | None = None
     try:
         receipt["store_before"] = _store_pages(read)
