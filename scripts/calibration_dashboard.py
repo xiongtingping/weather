@@ -1366,6 +1366,11 @@ def _history_conn(conn: sqlite3.Connection, tables: Sequence[str]) -> sqlite3.Co
     if not path or Path(path).resolve() != COLD_TIER_STORE.resolve():
         return conn
     history = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60.0)
+    # It reads the SSOT as much as the section's own connection does, so it
+    # yields at the same line (2026-10-16): without the handler a
+    # whole-history recompute held its snapshot to the end whatever the WAL
+    # did -- the hole a long reader slips through.
+    history.set_progress_handler(_render_yield_check, 20_000)
     try:
         attach_cold_history(history, tables)
         history.execute("PRAGMA query_only=1")

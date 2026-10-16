@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from bayes_basket_target import realisation_store as store  # noqa: E402
+from bayes_basket_target.resource_bounds import install_wal_yield  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 
@@ -44,10 +45,21 @@ def main(argv: list[str] | None = None) -> int:
         started = time.perf_counter()
         conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True, timeout=60.0)
         conn.execute("PRAGMA query_only=ON")
+        # A long reader beside production (2026-10-16): it yields once the
+        # WAL is past the reader line, and the stage keeps its artifact.
+        yielded = install_wal_yield(conn, args.db)
         try:
             artifact = store.refit(conn, cutoff_utc=args.cutoff, stage=stage)
+        except sqlite3.OperationalError:
+            if not yielded["yielded"]:
+                raise
+            print(f"realisation layer {stage}: yielded to the writer (WAL past the line); previous kept", flush=True)
+            continue
         finally:
             conn.close()
+        if yielded["yielded"]:
+            print(f"realisation layer {stage}: yielded to the writer (WAL past the line); previous kept", flush=True)
+            continue
         artifact["build_sec"] = round(time.perf_counter() - started, 1)
         path = store.write_artifact(artifact)
         gate = artifact.get("gate") or {}

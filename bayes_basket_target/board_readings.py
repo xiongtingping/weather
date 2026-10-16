@@ -53,6 +53,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Mapping, Sequence
 
+from .resource_bounds import READER_YIELD_WAL_BYTES, install_wal_yield
+
 ROOT = Path(__file__).resolve().parents[1]
 READINGS_DIR = Path(
     os.environ.get("PM_BOARD_READINGS_DIR") or (ROOT / "data" / "board_readings")
@@ -3344,6 +3346,17 @@ def _reading_is_current(name: str, code: str) -> bool:
     return (_now() - computed).total_seconds() < limit - 600.0
 
 
+#: A reading yields the SSOT once its WAL passes this line (2026-10-16): the
+#: job's connections had no progress handler, and l4_lane's 874 s and
+#: 1,335 s readings held their snapshot while the WAL passed 512 MiB -- the
+#: production storms of 10-15 20:02-20:09Z and 10-16 03:42-03:51Z, each
+#: ending when l4_lane did.  See resource_bounds.install_wal_yield.  An
+#: interrupted reading keeps its previous file and is asked again next run.
+YIELD_WAL_BYTES = int(
+    os.environ.get("PM_BOARD_READINGS_YIELD_WAL_BYTES", str(READER_YIELD_WAL_BYTES))
+)
+
+
 def run(
     db: Path = DEFAULT_DB,
     names: Sequence[str] = READING_NAMES,
@@ -3362,14 +3375,22 @@ def run(
             continue
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=60.0)
         conn.execute("PRAGMA query_only=ON")
+        # A reading that catches sqlite3.Error itself (l4_lane does, per
+        # stage) still returns after a yield: the flag, not the exception,
+        # says it must not be written.
+        yield_state = install_wal_yield(conn, db, line_bytes=YIELD_WAL_BYTES)
         started = time.perf_counter()
         try:
             value = compute(conn)
         except Exception as exc:  # noqa: BLE001 -- one reading must not stop the rest
-            receipts.append(f"{name} failed: {type(exc).__name__}:{str(exc)[:200]}")
-            continue
+            if not yield_state["yielded"]:
+                receipts.append(f"{name} failed: {type(exc).__name__}:{str(exc)[:200]}")
+                continue
         finally:
             conn.close()
+        if yield_state["yielded"]:
+            receipts.append(f"{name} yielded to the writer (WAL past the line); previous kept")
+            continue
         elapsed = time.perf_counter() - started
         write_reading(name, value, code=_code_sha(*sources), build_sec=elapsed)
         receipts.append(f"{name} {elapsed:.0f}s")

@@ -16,6 +16,7 @@ import shutil
 import sqlite3
 import sys
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -768,6 +769,52 @@ def assert_target_db_capacity(
     return resolved
 
 
+#: Where a long SSOT reader that is not production yields (2026-10-16).
+#: Below MAX_TARGET_WAL_BYTES, so the reader lets go before a production
+#: writer (re)open needs the truncating checkpoint it would otherwise block.
+READER_YIELD_WAL_BYTES = 384 * MIB
+
+
+def install_wal_yield(
+    conn: sqlite3.Connection,
+    db_path: Path | str,
+    *,
+    line_bytes: int = READER_YIELD_WAL_BYTES,
+    every_ops: int = 20_000,
+) -> dict[str, bool]:
+    """Interrupt ``conn``'s statements once the database's WAL is past
+    ``line_bytes`` (checked at most once a second); the returned flag says
+    whether it did.
+
+    A reader that runs its statements to the end whatever the WAL does holds
+    an old snapshot while writers keep appending: 10-15 20:02-20:09Z and
+    10-16 03:42-03:51Z the board readings' l4_lane reading did, the WAL
+    passed 512 MiB behind it, and production failed closed every 15 s until
+    it finished.  An interrupted statement raises ``sqlite3.OperationalError``;
+    the caller keeps what it had and asks again on its next run.
+    """
+
+    wal = Path(str(db_path) + "-wal")
+    checked = [0.0, False]
+    state = {"yielded": False}
+
+    def handler() -> int:
+        now = time.monotonic()
+        if now - checked[0] >= 1.0:
+            checked[0] = now
+            try:
+                checked[1] = wal.stat().st_size > int(line_bytes)
+            except OSError:
+                checked[1] = False
+        if checked[1]:
+            state["yielded"] = True
+            return 1
+        return 0
+
+    conn.set_progress_handler(handler, int(every_ops))
+    return state
+
+
 def checkpoint_target_wal_once_if_oversized(
     conn: sqlite3.Connection,
     *,
@@ -1044,6 +1091,8 @@ __all__ = [
     "ResourceBoundError",
     "assert_process_memory_budget",
     "checkpoint_target_wal_once_if_oversized",
+    "install_wal_yield",
+    "READER_YIELD_WAL_BYTES",
     "assert_connection_target_capacity",
     "assert_target_db_capacity",
     "assert_target_raw_retention_budget",

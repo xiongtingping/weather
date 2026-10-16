@@ -53,11 +53,16 @@ fi
 # hours old or was fitted by other code, so most hourly runs pass at once.
 # Never fatal: a failed fit leaves the previous artifact standing.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer"
-if run_with_timeout "${PM_REALISATION_REFIT_TIMEOUT_SEC:-900}" "" \
+# 2,400 s since 2026-10-16: from 10-14 every hourly run hit the 900 s it had
+# and was killed, so the artifact (fitted only when 20 h old) never renewed
+# and the job read the SSOT for fifteen minutes every hour for nothing.  It
+# yields to the writer past the WAL reader line (resource_bounds).
+if run_with_timeout "${PM_REALISATION_REFIT_TIMEOUT_SEC:-2400}" "" \
     taskpolicy -d utility nice -n 10 "$PY" scripts/refit_realisation_layer.py; then
   :
 else
-  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer refit ended rc=$?; the previous artifact stands"
+  rc=$?
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] realisation layer refit ended rc=${rc}; the previous artifact stands"
 fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings"
 TIMEOUT_SEC="${PM_BOARD_READINGS_TIMEOUT_SEC:-2400}"

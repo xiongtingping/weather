@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from pathlib import Path
 
 from bayes_basket_target import board_readings as BR
 
@@ -225,3 +226,42 @@ def test_basket_shadow_reads_the_p0_ladder_incrementally_and_scores_settled_days
     rec = BR.load_reading("basket_shadow")["value"]["state"]["station_days"][f"KAAA|{day}"]
     assert rec["plans"] == 3 and rec["latest"]["gate"] == "shape"
     assert rec["gates"] == {"edge": 2, "shape": 1} and rec["open"]["at"] == "t3"
+
+
+def test_a_reading_yields_once_the_wal_is_past_the_line_and_keeps_its_last_file(
+    tmp_path, monkeypatch
+) -> None:
+    """2026-10-15/16: l4_lane read for 15-22 minutes with no progress
+    handler, the WAL passed 512 MiB behind its snapshot, and production's
+    writer reopen failed every 15 s until it finished."""
+
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path / "readings")
+    db = _db(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.executemany("INSERT INTO t VALUES (?)", [(i,) for i in range(5000)])
+    conn.commit()
+    conn.close()
+
+    def reads(conn):
+        return {"rows": conn.execute("SELECT COUNT(*) FROM t").fetchone()[0]}
+
+    def long_and_swallowing(conn):
+        # Like l4_lane: catches sqlite3.Error per part and carries on.
+        out = {}
+        for part in ("P0", "P0-M", "P1"):
+            try:
+                out[part] = conn.execute(
+                    "SELECT SUM(a.x*b.x) FROM t a, t b"
+                ).fetchone()[0]
+            except sqlite3.Error as exc:
+                out[part] = {"error": str(exc)}
+        return out
+
+    monkeypatch.setitem(BR._READINGS, "l4_lane", (reads, (reads,)))
+    BR.run(db, ["l4_lane"])
+    (Path(str(db) + "-wal")).write_bytes(b"x" * 64)  # a WAL "past" a line of 0
+    monkeypatch.setattr(BR, "YIELD_WAL_BYTES", 0)
+    monkeypatch.setitem(BR._READINGS, "l4_lane", (long_and_swallowing, (long_and_swallowing,)))
+    receipt = BR.run(db, ["l4_lane"])[0]
+    assert receipt == "l4_lane yielded to the writer (WAL past the line); previous kept", receipt
+    assert BR.load_reading("l4_lane")["value"] == {"rows": 5000}, "the last good file stays"
