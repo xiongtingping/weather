@@ -22738,8 +22738,8 @@ function sdEvidenceCard(title, color, main, details, wide, extra){
 // correct negative (d) -- forecast wet at ≥0.1 mm in the hour, observed wet as
 // the card reads it; the four counts only (user 「命中/漏报/空报/正确否定」).
 // Hours with an observation only.
-const SD_RAIN4 = {a:["命中", "var(--pill-green-fg)", "pc-hit"], b:["漏报", "var(--pill-amber-fg)", "pc-miss"],
-  c:["空报", "var(--pill-red-fg)", "pc-false"], d:["正确否定", "var(--muted)", ""]};
+const SD_RAIN4 = {a:["降雨命中", "var(--pill-green-fg)", "pc-hit"], b:["降雨漏报", "var(--pill-amber-fg)", "pc-miss"],
+  c:["降雨空报", "var(--pill-red-fg)", "pc-false"], d:["降雨正确否定", "var(--muted)", ""]};  // user 「改为降雨命中、降雨空报等」
 function sdRain4(pairs){
   const n = {a:0, b:0, c:0, d:0};
   pairs.forEach(x => { x.cell = x.fc ? (x.ob ? "a" : "c") : (x.ob ? "b" : "d"); n[x.cell] += 1; });
