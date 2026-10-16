@@ -36,7 +36,13 @@ from .canonical_contract import FORMAL_TRUTH_LANES_SQL, FORMAL_TRUTH_ROLES
 
 STORE_SCHEMA = "bayes_basket_target_forward_observation_store_v2"
 STORE_SCHEMA_VERSION = 2
-MAX_STORE_BYTES = 64 * 1024 * 1024
+# 512 MiB (2026-10-16; was 64 MiB).  The store hit 64 MiB on 10-15 17:07Z,
+# 98% of its label-ingest rows being permanent skips, now settled in
+# ``forward_label_skip_ledger`` instead.  What still grows -- observations and
+# materialized labels, ~8 MB a month -- may be purged only against formal
+# attribution proofs (``tombstone_forward_observations``), which no lane
+# writes yet, so the ceiling is sized for years of it, not weeks.
+MAX_STORE_BYTES = 512 * 1024 * 1024
 MAX_STORE_WAL_BYTES = 16 * 1024 * 1024
 MAX_BATCH_ROWS = 256
 MAX_BATCH_JSON_BYTES = 16 * 1024 * 1024
@@ -161,6 +167,23 @@ CREATE TABLE IF NOT EXISTS forward_label_ingest_transition (
 CREATE INDEX IF NOT EXISTS forward_label_transition_rowid_idx
 ON forward_label_ingest_transition(source_label_rowid,state);
 
+-- A permanently skipped label (its decision was never eligible for the
+-- forward lane, or its source row was rewritten under another id) is not a
+-- row: it can never become one, and one row per such label grew the store
+-- 5-7k rows a day into its byte ceiling (2026-10-15 17:07Z, 147,815 of
+-- 149,907 rows).  The ledger says every source label at or below
+-- ``settled_through_rowid`` without a row here was skipped for good, and
+-- counts them by reason; ``retry_after_rowid`` rotates the retry lane over
+-- the retryable (quarantined) skips.
+CREATE TABLE IF NOT EXISTS forward_label_skip_ledger (
+  singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+  settled_through_rowid INTEGER NOT NULL CHECK(settled_through_rowid>=0),
+  permanent_skip_count INTEGER NOT NULL CHECK(permanent_skip_count>=0),
+  permanent_skip_reasons_json TEXT NOT NULL,
+  retry_after_rowid INTEGER NOT NULL CHECK(retry_after_rowid>=0),
+  updated_at_utc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS forward_retention_tombstone (
   observation_key TEXT PRIMARY KEY,
   observation_sha256 TEXT NOT NULL CHECK(length(observation_sha256)=64),
@@ -174,8 +197,6 @@ CREATE TRIGGER IF NOT EXISTS forward_label_no_update
 BEFORE UPDATE ON forward_settlement_label BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS forward_label_ingest_no_update
 BEFORE UPDATE ON forward_label_ingest_state BEGIN SELECT RAISE(ABORT,'append_only'); END;
-CREATE TRIGGER IF NOT EXISTS forward_label_ingest_no_delete
-BEFORE DELETE ON forward_label_ingest_state BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS forward_label_transition_no_update
 BEFORE UPDATE ON forward_label_ingest_transition BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER IF NOT EXISTS forward_label_transition_no_delete
@@ -194,6 +215,11 @@ BEFORE UPDATE ON forward_ingest_state BEGIN SELECT RAISE(ABORT,'append_only'); E
 DROP TRIGGER IF EXISTS forward_observation_no_delete;
 DROP TRIGGER IF EXISTS forward_ingest_no_delete;
 DROP TRIGGER IF EXISTS forward_label_no_delete;
+DROP TRIGGER IF EXISTS forward_label_ingest_no_delete;
+CREATE TRIGGER forward_label_ingest_no_delete
+BEFORE DELETE ON forward_label_ingest_state
+WHEN forward_store_retention_delete_authorized() <> 1
+BEGIN SELECT RAISE(ABORT,'append_only'); END;
 CREATE TRIGGER forward_observation_no_delete
 BEFORE DELETE ON forward_observation
 WHEN forward_store_retention_delete_authorized() <> 1
@@ -211,6 +237,181 @@ BEGIN SELECT RAISE(ABORT,'append_only'); END;
 
 class ForwardObservationStoreError(ContractError):
     """A store identity, resource, concurrency, or retention violation."""
+
+
+_COMPACTED_STORES: set[Path] = set()
+
+
+#: Skip reasons that can never turn into a label: the forward lane ingests
+#: only decisions written ``forward_observation_status=ELIGIBLE`` (the status
+#: is fixed when the decision is committed), and a rewritten source row's
+#: decision is a different id.  Only a quarantine can be repaired.
+PERMANENT_LABEL_SKIP_PREFIXES = ("INELIGIBLE_", "FORWARD_SOURCE_ROW_REWRITTEN:")
+RETRYABLE_LABEL_SKIP_PREFIX = "FORWARD_OBSERVATION_QUARANTINED:"
+_PERMANENT_SKIP_SQL = (
+    "(skip_reason LIKE 'INELIGIBLE\\_%' ESCAPE '\\' "
+    "OR skip_reason LIKE 'FORWARD_SOURCE_ROW_REWRITTEN:%')"
+)
+
+
+def _is_permanent_label_skip(reason: str) -> bool:
+    return str(reason).startswith(PERMANENT_LABEL_SKIP_PREFIXES)
+
+
+def _permanent_skip_reason_key(reason: str) -> str:
+    text = str(reason)
+    if text.startswith("FORWARD_SOURCE_ROW_REWRITTEN:"):
+        return "FORWARD_SOURCE_ROW_REWRITTEN"
+    return text
+
+
+def _read_skip_ledger(connection: sqlite3.Connection) -> dict[str, Any]:
+    if connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='forward_label_skip_ledger'"
+    ).fetchone() is None:
+        return {"settled_through_rowid": 0, "permanent_skip_count": 0,
+                "reasons": {}, "retry_after_rowid": 0}
+    row = connection.execute(
+        "SELECT settled_through_rowid,permanent_skip_count,"
+        "permanent_skip_reasons_json,retry_after_rowid "
+        "FROM forward_label_skip_ledger WHERE singleton=1"
+    ).fetchone()
+    if row is None:
+        return {"settled_through_rowid": 0, "permanent_skip_count": 0,
+                "reasons": {}, "retry_after_rowid": 0}
+    try:
+        reasons = json.loads(str(row[2] or "{}"))
+    except (TypeError, ValueError) as exc:
+        raise ForwardObservationStoreError(
+            "forward_store_label_skip_ledger_invalid"
+        ) from exc
+    if not isinstance(reasons, dict) or sum(
+        int(v) for v in reasons.values()
+    ) != int(row[1]):
+        raise ForwardObservationStoreError("forward_store_label_skip_ledger_invalid")
+    return {"settled_through_rowid": int(row[0]),
+            "permanent_skip_count": int(row[1]),
+            "reasons": {str(k): int(v) for k, v in reasons.items()},
+            "retry_after_rowid": int(row[3])}
+
+
+def _write_skip_ledger(
+    connection: sqlite3.Connection,
+    ledger: Mapping[str, Any],
+    *,
+    updated_at_utc: str,
+) -> None:
+    reasons = {str(k): int(v) for k, v in sorted(dict(ledger["reasons"]).items())}
+    connection.execute(
+        "INSERT INTO forward_label_skip_ledger VALUES(1,?,?,?,?,?) "
+        "ON CONFLICT(singleton) DO UPDATE SET "
+        "settled_through_rowid=excluded.settled_through_rowid,"
+        "permanent_skip_count=excluded.permanent_skip_count,"
+        "permanent_skip_reasons_json=excluded.permanent_skip_reasons_json,"
+        "retry_after_rowid=excluded.retry_after_rowid,"
+        "updated_at_utc=excluded.updated_at_utc",
+        (
+            int(ledger["settled_through_rowid"]),
+            sum(reasons.values()),
+            canonical_json(reasons),
+            int(ledger["retry_after_rowid"]),
+            str(updated_at_utc),
+        ),
+    )
+
+
+def _label_cursor(connection: sqlite3.Connection) -> int:
+    """The highest source label rowid the lane has dealt with: the last row
+    it kept, or the last permanent skip the ledger settled, whichever is
+    later."""
+
+    kept = connection.execute(
+        "SELECT COALESCE(MAX(source_label_rowid),0) FROM forward_label_ingest_state"
+    ).fetchone()
+    return max(
+        int(kept[0] or 0),
+        int(_read_skip_ledger(connection)["settled_through_rowid"]),
+    )
+
+
+def compact_permanent_label_skips(
+    path: Path | str,
+    *,
+    compacted_at_utc: str,
+    allowed_root: Path | str = DEFAULT_STORE_ROOT,
+) -> dict[str, Any]:
+    """Fold the legacy permanent-skip rows into the ledger and shrink the
+    file.  Idempotent; a store with none is not touched.  Opens past the byte
+    ceiling, since this is how a store over it gets back under."""
+
+    at = _require_timestamp("forward_store_compacted_at_utc", compacted_at_utc)
+    destination = resolve_forward_store_path(path, allowed_root=allowed_root)
+    if not destination.is_file():
+        return {"state": "no_store", "deleted": 0}
+    before = int(destination.stat().st_size)
+    with _open_store(destination, create=True, check_bytes=False) as connection:
+        present = connection.execute(
+            "SELECT 1 FROM forward_label_ingest_state s "
+            "WHERE s.state='SKIPPED_INELIGIBLE' AND " + _PERMANENT_SKIP_SQL
+            + " AND NOT EXISTS(SELECT 1 FROM forward_label_ingest_transition t "
+            "WHERE t.source_label_rowid=s.source_label_rowid) LIMIT 1"
+        ).fetchone()
+        if present is None:
+            return {"state": "already_compact", "deleted": 0,
+                    "store_bytes": before}
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            ledger = _read_skip_ledger(connection)
+            highest = connection.execute(
+                "SELECT COALESCE(MAX(source_label_rowid),0) "
+                "FROM forward_label_ingest_state"
+            ).fetchone()
+            rows = connection.execute(
+                "SELECT s.source_label_rowid,s.skip_reason "
+                "FROM forward_label_ingest_state s "
+                "WHERE s.state='SKIPPED_INELIGIBLE' AND " + _PERMANENT_SKIP_SQL
+                + " AND NOT EXISTS(SELECT 1 FROM forward_label_ingest_transition t "
+                "WHERE t.source_label_rowid=s.source_label_rowid)"
+            ).fetchall()
+            reasons = dict(ledger["reasons"])
+            for _rowid, reason in rows:
+                key = _permanent_skip_reason_key(str(reason))
+                reasons[key] = reasons.get(key, 0) + 1
+            ledger = {
+                **ledger,
+                "settled_through_rowid": max(
+                    int(ledger["settled_through_rowid"]), int(highest[0] or 0)
+                ),
+                "reasons": reasons,
+            }
+            _write_skip_ledger(connection, ledger, updated_at_utc=at)
+            _set_retention_delete_authorized(connection, True)
+            try:
+                for start in range(0, len(rows), 500):
+                    chunk = [int(r[0]) for r in rows[start:start + 500]]
+                    connection.execute(
+                        "DELETE FROM forward_label_ingest_state "
+                        "WHERE source_label_rowid IN ("
+                        + ",".join("?" * len(chunk)) + ")",
+                        chunk,
+                    )
+            finally:
+                _set_retention_delete_authorized(connection, False)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        connection.execute("VACUUM")
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    return {
+        "state": "compacted",
+        "deleted": len(rows),
+        "settled_through_rowid": int(ledger["settled_through_rowid"]),
+        "permanent_skip_count": sum(reasons.values()),
+        "store_bytes_before": before,
+        "store_bytes_after": int(destination.stat().st_size),
+    }
 
 
 class _ForwardStoreConnection(sqlite3.Connection):
@@ -257,10 +458,14 @@ def _free_bytes(path: Path) -> int:
 
 def _assert_capacity(path: Path, *, projected_bytes: int = 0) -> None:
     database_bytes = int(path.stat().st_size) if path.is_file() else 0
-    wal = path.with_name(path.name + "-wal")
-    wal_bytes = int(wal.stat().st_size) if wal.is_file() else 0
     if database_bytes + max(0, int(projected_bytes)) > MAX_STORE_BYTES:
         raise ForwardObservationStoreError("forward_store_bytes_exceeded")
+    _assert_capacity_except_bytes(path, projected_bytes=projected_bytes)
+
+
+def _assert_capacity_except_bytes(path: Path, *, projected_bytes: int = 0) -> None:
+    wal = path.with_name(path.name + "-wal")
+    wal_bytes = int(wal.stat().st_size) if wal.is_file() else 0
     if wal_bytes > MAX_STORE_WAL_BYTES:
         raise ForwardObservationStoreError("forward_store_wal_bytes_exceeded")
     if _free_bytes(path.parent) < MIN_TARGET_FREE_BYTES + max(
@@ -371,8 +576,27 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         )
 
 
-def _open_store(path: Path, *, create: bool) -> sqlite3.Connection:
-    _assert_capacity(path)
+def _open_store(
+    path: Path, *, create: bool, check_bytes: bool = True
+) -> sqlite3.Connection:
+    if check_bytes:
+        try:
+            _assert_capacity(path)
+        except ForwardObservationStoreError as exc:
+            if "forward_store_bytes_exceeded" not in str(exc) or not path.is_file():
+                raise
+            # The legacy skip rows are what filled the ceiling: fold them and
+            # look again (raises again if the store is still over).
+            compact_permanent_label_skips(
+                path,
+                compacted_at_utc=datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%S.%fZ"
+                ),
+                allowed_root=path.parent,
+            )
+            _assert_capacity(path)
+    else:
+        _assert_capacity_except_bytes(path)
     if not create and not path.is_file():
         raise ForwardObservationStoreError("forward_store_missing")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -576,6 +800,7 @@ def read_forward_store_state(
             "(SELECT COALESCE(MAX(source_label_rowid),0) "
             " FROM forward_label_ingest_state)"
         ).fetchone()
+        ledger = _read_skip_ledger(connection)
         return {
             "schema": STORE_SCHEMA,
             "generation": int(meta[2]),
@@ -586,8 +811,13 @@ def read_forward_store_state(
             "repaired_quarantine_count": int(counts[3]),
             "tombstone_count": int(counts[4]),
             "label_count": int(counts[5]),
-            "skipped_ineligible_label_count": int(counts[6]),
-            "last_source_label_rowid": int(counts[7]),
+            "skipped_ineligible_label_count": (
+                int(counts[6]) + int(ledger["permanent_skip_count"])
+            ),
+            "permanent_skip_reasons": dict(ledger["reasons"]),
+            "last_source_label_rowid": max(
+                int(counts[7]), int(ledger["settled_through_rowid"])
+            ),
             "content_sha256": str(meta[4]),
             "updated_at_utc": str(meta[5]),
         }
@@ -675,6 +905,7 @@ def initialize_forward_observation_store(
                 "(SELECT COALESCE(MAX(source_label_rowid),0) "
                 " FROM forward_label_ingest_state)"
             ).fetchone()
+            ledger = _read_skip_ledger(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -693,8 +924,12 @@ def initialize_forward_observation_store(
         "repaired_quarantine_count": int(counts[3]),
         "tombstone_count": int(counts[4]),
         "label_count": int(counts[5]),
-        "skipped_ineligible_label_count": int(counts[6]),
-        "last_source_label_rowid": int(counts[7]),
+        "skipped_ineligible_label_count": (
+            int(counts[6]) + int(ledger["permanent_skip_count"])
+        ),
+        "last_source_label_rowid": max(
+            int(counts[7]), int(ledger["settled_through_rowid"])
+        ),
         "execution_mode": "production_no_live",
         "authorizes_order": False,
         "orders_submitted": 0,
@@ -1233,21 +1468,31 @@ def append_forward_settlement_labels(
     ):
         raise ForwardObservationStoreError("forward_store_training_source_tables_missing")
     destination = resolve_forward_store_path(path, allowed_root=allowed_root)
+    if destination not in _COMPACTED_STORES and destination.is_file():
+        # Legacy permanent-skip rows, folded once per process before the
+        # first append (the open below also folds them if they hold the
+        # store over its ceiling).
+        compact_permanent_label_skips(
+            destination, compacted_at_utc=materialized_at,
+            allowed_root=destination.parent,
+        )
+        _COMPACTED_STORES.add(destination)
     with _open_store(destination, create=True) as cursor_connection:
-        cursor_row = cursor_connection.execute(
-            "SELECT COALESCE(MAX(source_label_rowid),0) "
-            "FROM forward_label_ingest_state"
-        ).fetchone()
-        source_label_cursor = int(cursor_row[0] or 0)
+        source_label_cursor = _label_cursor(cursor_connection)
+        retry_after = int(_read_skip_ledger(cursor_connection)["retry_after_rowid"])
+        # Only a quarantined skip can still become a label; the lane rotates
+        # over them from where it last stopped instead of re-reading the
+        # lowest few every pass (which, being permanent skips, never moved).
         retry_rows = cursor_connection.execute(
             "SELECT s.source_label_rowid "
             "FROM forward_label_ingest_state s "
             "WHERE s.state='SKIPPED_INELIGIBLE' "
+            "AND s.skip_reason LIKE ? "
             "AND NOT EXISTS(SELECT 1 FROM forward_label_ingest_transition t "
             "WHERE t.source_label_rowid=s.source_label_rowid "
             "AND t.state='MATERIALIZED') "
-            "ORDER BY s.source_label_rowid LIMIT ?",
-            (int(max_labels) + 1,),
+            "ORDER BY s.source_label_rowid<=?,s.source_label_rowid LIMIT ?",
+            (RETRYABLE_LABEL_SKIP_PREFIX + "%", retry_after, int(max_labels) + 1),
         ).fetchall()
     retry_rowids = [int(row[0]) for row in retry_rows]
     retry_placeholders = ",".join("?" for _ in retry_rowids)
@@ -1300,6 +1545,7 @@ def append_forward_settlement_labels(
             replayed = 0
             ingested = 0
             skipped_ineligible = 0
+            permanent_reasons: dict[str, int] = {}
             for item in normalized:
                 prior_ingest = connection.execute(
                     "SELECT source_label_id,source_label_content_sha256 "
@@ -1434,21 +1680,27 @@ def append_forward_settlement_labels(
                                 "FORWARD_SOURCE_ROW_REWRITTEN:"
                                 + str(ingested_there[0])
                             )
-                    connection.execute(
-                        "INSERT INTO forward_label_ingest_state("
-                        "source_label_rowid,source_label_id,"
-                        "source_label_content_sha256,state,skip_reason,"
-                        "materialized_at_utc"
-                        ") VALUES(?,?,?,?,?,?)",
-                        (
-                            item["source_label_rowid"],
-                            item["label_id"],
-                            item["content_sha256"],
-                            "SKIPPED_INELIGIBLE",
-                            skip_reason,
-                            materialized_at,
-                        ),
-                    )
+                    if _is_permanent_label_skip(skip_reason):
+                        # Never a label: counted in the ledger, settled with
+                        # the batch, no row (see forward_label_skip_ledger).
+                        key = _permanent_skip_reason_key(skip_reason)
+                        permanent_reasons[key] = permanent_reasons.get(key, 0) + 1
+                    else:
+                        connection.execute(
+                            "INSERT INTO forward_label_ingest_state("
+                            "source_label_rowid,source_label_id,"
+                            "source_label_content_sha256,state,skip_reason,"
+                            "materialized_at_utc"
+                            ") VALUES(?,?,?,?,?,?)",
+                            (
+                                item["source_label_rowid"],
+                                item["label_id"],
+                                item["content_sha256"],
+                                "SKIPPED_INELIGIBLE",
+                                skip_reason,
+                                materialized_at,
+                            ),
+                        )
                     ingested += 1
                     skipped_ineligible += 1
                     continue
@@ -1555,6 +1807,38 @@ def append_forward_settlement_labels(
                         # event; the original SKIPPED row remains untouched.
                         pass
                 ingested += 1
+            # Every new row of the batch (above the cursor, in rowid order) is
+            # now dealt with: kept as a row, or settled here.  And the retry
+            # lane resumes after the last row it retried.
+            new_rowids = [
+                int(item["source_label_rowid"]) for item in normalized
+                if int(item["source_label_rowid"]) > source_label_cursor
+            ]
+            batch_retried = [
+                int(item["source_label_rowid"]) for item in normalized
+                if int(item["source_label_rowid"]) in set(retry_rowids)
+            ]
+            if new_rowids or batch_retried or permanent_reasons:
+                ledger = _read_skip_ledger(connection)
+                reasons = dict(ledger["reasons"])
+                for key, count in permanent_reasons.items():
+                    reasons[key] = reasons.get(key, 0) + count
+                _write_skip_ledger(
+                    connection,
+                    {
+                        "settled_through_rowid": max(
+                            [int(ledger["settled_through_rowid"])] + new_rowids
+                        ),
+                        "reasons": reasons,
+                        # The last row retried, in the rotation's order.
+                        "retry_after_rowid": (
+                            [r for r in retry_rowids if r in set(batch_retried)][-1]
+                            if batch_retried
+                            else int(ledger["retry_after_rowid"])
+                        ),
+                    },
+                    updated_at_utc=materialized_at,
+                )
             if ingested:
                 next_generation = current_generation + 1
                 meta_sha = _write_meta(

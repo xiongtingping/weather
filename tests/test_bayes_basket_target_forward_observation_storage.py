@@ -632,18 +632,22 @@ def test_settlement_label_projection_skips_explicitly_ineligible_fact(
     state = read_forward_store_state(path, allowed_root=path.parent)
     assert state["label_count"] == 1
     assert state["skipped_ineligible_label_count"] == 1
+    assert state["permanent_skip_reasons"] == {
+        "INELIGIBLE_DELTA_V2_NOT_AUTHORIZED": 1
+    }
+    # A permanent skip is settled in the ledger, not kept as a row
+    # (2026-10-15: one row per such label filled the store's ceiling).
     with sqlite3.connect(path) as stored:
         assert stored.execute(
-            "SELECT state,skip_reason FROM forward_label_ingest_state "
-            "WHERE source_label_id LIKE 'd2label_%' "
-            "ORDER BY source_label_rowid DESC LIMIT 1"
-        ).fetchone() == (
-            "SKIPPED_INELIGIBLE",
-            "INELIGIBLE_DELTA_V2_NOT_AUTHORIZED",
-        )
+            "SELECT COUNT(*) FROM forward_label_ingest_state "
+            "WHERE state='SKIPPED_INELIGIBLE'"
+        ).fetchone()[0] == 0
+    assert state["last_source_label_rowid"] == 2
 
-    # The observation is deliberately late.  The original SKIPPED event must
-    # remain immutable while a second append-only event promotes the label.
+    # The forward lane ingests only decisions written ELIGIBLE, fixed when
+    # the decision is committed, so an ineligible decision's observation
+    # never arrives in production.  Were one written anyway, the settled
+    # label is not read again: the cursor is past it.
     late_observation = deepcopy(row)
     late_observation.update(
         {
@@ -672,43 +676,16 @@ def test_settlement_label_projection_skips_explicitly_ineligible_fact(
         allowed_root=path.parent,
     )
     assert observation_commit["generation"] == 3
-    repaired = append_forward_settlement_labels(
+    replay = append_forward_settlement_labels(
         path,
         source,
         expected_generation=3,
         materialized_at_utc="2026-07-28T02:31:00Z",
         allowed_root=path.parent,
     )
-    assert repaired["inserted"] == 1
-    assert repaired["skipped_ineligible"] == 0
-    assert repaired["generation"] == 4
-    assert read_forward_store_state(
-        path, allowed_root=path.parent
-    )["skipped_ineligible_label_count"] == 0
-    with sqlite3.connect(path) as stored:
-        assert stored.execute(
-            "SELECT COUNT(*) FROM forward_settlement_label "
-            "WHERE source_label_id LIKE 'd2label_%'"
-        ).fetchone()[0] == 2
-        assert stored.execute(
-            "SELECT state FROM forward_label_ingest_state "
-            "WHERE source_label_id LIKE 'd2label_%' "
-            "ORDER BY source_label_rowid DESC LIMIT 1"
-        ).fetchone()[0] == "SKIPPED_INELIGIBLE"
-        assert stored.execute(
-            "SELECT prior_state,state FROM forward_label_ingest_transition "
-            "WHERE source_label_rowid=2"
-        ).fetchone() == ("SKIPPED_INELIGIBLE", "MATERIALIZED")
-    replay = append_forward_settlement_labels(
-        path,
-        source,
-        expected_generation=4,
-        materialized_at_utc="2026-07-28T02:32:00Z",
-        allowed_root=path.parent,
-    )
     assert replay["state"] == "already_current"
-    assert replay["generation"] == 4
     assert replay["source_rows"] == 0
+    assert replay["generation"] == 3
     source.close()
 
 
@@ -780,14 +757,13 @@ def test_a_label_whose_source_row_was_rewritten_after_ingest_is_skipped(
     )
 
     assert result["skipped_ineligible"] == 1
+    state = read_forward_store_state(path, allowed_root=path.parent)
+    assert state["permanent_skip_reasons"] == {"FORWARD_SOURCE_ROW_REWRITTEN": 1}
     with sqlite3.connect(path) as stored:
         assert stored.execute(
-            "SELECT state,skip_reason FROM forward_label_ingest_state "
-            "ORDER BY source_label_rowid DESC LIMIT 1"
-        ).fetchone() == (
-            "SKIPPED_INELIGIBLE",
-            "FORWARD_SOURCE_ROW_REWRITTEN:" + row["decision_id"],
-        )
+            "SELECT COUNT(*) FROM forward_label_ingest_state "
+            "WHERE state='SKIPPED_INELIGIBLE'"
+        ).fetchone()[0] == 0
 
 
 def test_an_eligible_decision_the_store_never_saw_still_fails_closed(
@@ -988,7 +964,7 @@ def test_settlement_label_keyset_pages_more_than_one_batch_without_stall(
     source.close()
 
 
-def test_settlement_label_projection_revisits_lower_skipped_row_after_new_high_row(
+def test_a_permanent_skip_below_a_new_high_row_is_not_revisited(
     tmp_path: Path,
 ) -> None:
     """A high-water cursor must still allow low→high→low replay."""
@@ -1166,10 +1142,13 @@ def test_settlement_label_projection_revisits_lower_skipped_row_after_new_high_r
         allowed_root=path.parent,
     )
     assert high["inserted"] == 1
-    assert high["more_pending"] is True
+    # The ineligible low row is settled, not a retry candidate: nothing waits.
+    assert high["more_pending"] is False
     assert high["generation"] == 4
 
-    # The lower observation arrives only after the high row was consumed.
+    # An observation for the ineligible decision (never written in
+    # production, where the lane ingests only ELIGIBLE decisions) does not
+    # bring the settled label back.
     low_observation = deepcopy(row)
     low_observation.update(
         {
@@ -1198,42 +1177,25 @@ def test_settlement_label_projection_revisits_lower_skipped_row_after_new_high_r
         allowed_root=path.parent,
     )
     assert low_commit["generation"] == 5
-    low = append_forward_settlement_labels(
-        path,
-        source,
-        expected_generation=5,
-        materialized_at_utc="2026-07-28T02:21:00Z",
-        max_labels=1,
-        allowed_root=path.parent,
-    )
-    assert low["inserted"] == 1
-    assert low["generation"] == 6
-    assert low["last_source_label_rowid"] == 3
-
     replay = append_forward_settlement_labels(
         path,
         source,
-        expected_generation=6,
+        expected_generation=5,
         materialized_at_utc="2026-07-28T02:22:00Z",
         max_labels=1,
         allowed_root=path.parent,
     )
     assert replay["state"] == "already_current"
     assert replay["source_rows"] == 0
-    assert replay["generation"] == 6
+    assert replay["generation"] == 5
     state = read_forward_store_state(path, allowed_root=path.parent)
-    assert state["label_count"] == 3
-    assert state["skipped_ineligible_label_count"] == 0
+    assert state["label_count"] == 2
+    assert state["skipped_ineligible_label_count"] == 1
+    assert state["last_source_label_rowid"] == 3
     with sqlite3.connect(path) as stored:
-        assert sorted(row[0] for row in stored.execute(
-            "SELECT revision FROM forward_settlement_label"
-        ).fetchall()) == [1, 1, 2]
-        with pytest.raises(sqlite3.IntegrityError, match="append_only"):
-            stored.execute(
-                "UPDATE forward_label_ingest_transition SET state='MATERIALIZED'"
-            )
-        with pytest.raises(sqlite3.IntegrityError, match="append_only"):
-            stored.execute("DELETE FROM forward_label_ingest_transition")
+        # Deleting kept rows outside the retention gate still fails closed.
+        with pytest.raises(sqlite3.DatabaseError):
+            stored.execute("DELETE FROM forward_label_ingest_state")
     source.close()
 
 
@@ -1549,3 +1511,88 @@ def test_retention_requires_explicit_proof_and_atomically_purges_with_receipt(
     with sqlite3.connect(path) as connection:
         with pytest.raises(sqlite3.IntegrityError, match="append_only"):
             connection.execute("DELETE FROM forward_retention_tombstone")
+
+
+def _legacy_skip_rows(path: Path, *, permanent: int, quarantined: int) -> None:
+    """Rows as the lane wrote them before the ledger: one per skipped label."""
+
+    with sqlite3.connect(path) as stored:
+        rowid = 100
+        for index in range(permanent):
+            rowid += 1
+            reason = (
+                "FORWARD_SOURCE_ROW_REWRITTEN:decision-x" if index % 7 == 0
+                else "INELIGIBLE_DELTA_V2_NOT_AUTHORIZED"
+            )
+            stored.execute(
+                "INSERT INTO forward_label_ingest_state VALUES(?,?,?,?,?,?)",
+                (rowid, f"d2label_p{index}", f"{index:064x}", "SKIPPED_INELIGIBLE",
+                 reason, "2026-10-01T00:00:00Z"),
+            )
+        for index in range(quarantined):
+            rowid += 1
+            stored.execute(
+                "INSERT INTO forward_label_ingest_state VALUES(?,?,?,?,?,?)",
+                (rowid, f"d2label_q{index}", f"{index + 10**6:064x}",
+                 "SKIPPED_INELIGIBLE", "FORWARD_OBSERVATION_QUARANTINED:x",
+                 "2026-10-01T00:00:00Z"),
+            )
+
+
+def test_legacy_permanent_skip_rows_fold_into_the_ledger_and_the_file_shrinks(
+    tmp_path: Path,
+) -> None:
+    """2026-10-15 17:07Z the store hit its 64 MiB ceiling: 147,815 of its
+    149,907 label-ingest rows were permanent skips, 5-7k a day, kept for
+    nothing.  Folding them keeps every count and the cursor."""
+
+    from bayes_basket_target.forward_observation_store import (
+        compact_permanent_label_skips,
+    )
+
+    path, _row = _seed_local_store(tmp_path)
+    _legacy_skip_rows(path, permanent=3000, quarantined=5)
+    before = read_forward_store_state(path, allowed_root=path.parent)
+    assert before["skipped_ineligible_label_count"] == 3005
+    assert before["last_source_label_rowid"] == 3105
+    with sqlite3.connect(path) as stored:
+        stored.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    size_before = path.stat().st_size
+
+    receipt = compact_permanent_label_skips(
+        path, compacted_at_utc="2026-10-16T02:00:00Z", allowed_root=path.parent
+    )
+    assert receipt["state"] == "compacted" and receipt["deleted"] == 3000
+    assert receipt["store_bytes_after"] < size_before
+    after = read_forward_store_state(path, allowed_root=path.parent)
+    for key in ("skipped_ineligible_label_count", "last_source_label_rowid",
+                "label_count", "generation", "content_sha256"):
+        assert after[key] == before[key], key
+    assert after["permanent_skip_reasons"] == {
+        "FORWARD_SOURCE_ROW_REWRITTEN": 429,
+        "INELIGIBLE_DELTA_V2_NOT_AUTHORIZED": 2571,
+    }
+    with sqlite3.connect(path) as stored:
+        assert stored.execute(
+            "SELECT COUNT(*) FROM forward_label_ingest_state"
+        ).fetchone()[0] == 5  # the quarantined, which may still be repaired
+    again = compact_permanent_label_skips(
+        path, compacted_at_utc="2026-10-16T02:05:00Z", allowed_root=path.parent
+    )
+    assert again["state"] == "already_compact"
+
+
+def test_a_store_over_its_ceiling_with_legacy_skips_opens_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import bayes_basket_target.forward_observation_store as store
+
+    path, _row = _seed_local_store(tmp_path)
+    _legacy_skip_rows(path, permanent=3000, quarantined=0)
+    with sqlite3.connect(path) as stored:
+        stored.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    over = path.stat().st_size
+    monkeypatch.setattr(store, "MAX_STORE_BYTES", over - 1)
+    state = read_forward_store_state(path, allowed_root=path.parent)
+    assert state["skipped_ineligible_label_count"] == 3000
+    assert path.stat().st_size < over
