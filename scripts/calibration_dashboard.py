@@ -15938,6 +15938,8 @@ color-scheme:dark}
 .sd-prob-summary dt{color:var(--muted)}.sd-prob-summary dd{margin:0;font-size:16px;font-weight:750;color:var(--c)}
 .sd-prob-summary dd small{font-size:13px;font-weight:600}
 .sd-last5{font-size:11px;font-weight:400;margin-top:2px;white-space:nowrap}
+.sd-r4-line{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px}.sd-r4{border-radius:6px;padding:1px 6px;background:var(--line)}
+.sd-r4.pc-hit{background:var(--pill-green-bg);color:var(--pill-green-fg)}.sd-r4.pc-miss{background:var(--pill-amber-bg);color:var(--pill-amber-fg)}.sd-r4.pc-false{background:var(--pill-red-bg);color:var(--pill-red-fg)}
 .sd-prob-age{text-align:right;font-size:12px;margin-top:6px}
 .sd-recent{width:100%;margin-top:8px;border-collapse:collapse;font-size:12px}.sd-recent th{color:var(--muted);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--line)}
 .sd-recent td{padding:2px 4px;white-space:nowrap}.sd-recent td b{color:var(--c)}.sd-recent tbody tr:first-child td{font-weight:700}
@@ -22730,6 +22732,24 @@ function sdModels(day){
 function sdEvidenceCard(title, color, main, details, wide, extra){
   return `<div class="sd-evidence-card${wide ? " sd-evidence-wide" : ""}" style="--c:${color}"><div class="sd-evidence-title">${title}</div><div class="sd-evidence-main">${main}</div><div class="muted sd-sub">${details}</div>${extra || ""}</div>`;
 }
+// Hourly rain on the precipitation-classification table (user 2026-10-16
+// 「逐小时实况对预报和云雨 · 逐小时降水里的降雨用物理协变量里的降水分类评分
+// 四维评价」): each paired hour is a hit (a), miss (b), false alarm (c) or
+// correct negative (d) -- forecast wet at ≥0.1 mm in the hour, observed wet as
+// the card reads it; the four counts only (user 「命中/漏报/空报/正确否定」).
+// Hours with an observation only.
+const SD_RAIN4 = {a:["命中", "var(--pill-green-fg)", "pc-hit"], b:["漏报", "var(--pill-amber-fg)", "pc-miss"],
+  c:["空报", "var(--pill-red-fg)", "pc-false"], d:["正确否定", "var(--muted)", ""]};
+function sdRain4(pairs){
+  const n = {a:0, b:0, c:0, d:0};
+  pairs.forEach(x => { x.cell = x.fc ? (x.ob ? "a" : "c") : (x.ob ? "b" : "d"); n[x.cell] += 1; });
+  return {...n, n: pairs.length};
+}
+function sdRain4Line(s){
+  const cells = ["a", "b", "c", "d"].map(k => `<span class="sd-r4 ${SD_RAIN4[k][2]}">${SD_RAIN4[k][0]} <b>${s[k]}</b></span>`).join("");
+  return `<div class="sd-r4-line" title="${s.n} 个已有实况的小时；预报 ≥0.1 mm 算有雨">${cells}</div>`;
+}
+
 // Observed rain per local hour (user 2026-10-09「云雨 · 逐小时降水预报：增加实时的数据显示」),
 // from the day's reports: the stamp h covers (h-1:00, h:00], like the
 // forecast's hourly sums.  Wet = rain at the station in a report of that
@@ -22779,7 +22799,7 @@ function sdRainSvg(P, O, S){
   const obs = (O || {}).hours || {};
   // JAXA GSMaP_NOW (user 2026-10-15): the hour's satellite rain, its own row.
   const sat = (S && S.hours) || {};
-  const W = 640, H = 196, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
+  const W = 640, H = 214, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
   const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value), ...Object.values(obs).map(o => o.mm || 0),
     ...Object.values(sat).map(v => (v && v.mm) || 0));
   const y = v => bottom - (bottom-top)*v/max;
@@ -22800,6 +22820,10 @@ function sdRainSvg(P, O, S){
         ? `<circle cx="${x+step/2}" cy="${bottom+34}" r="5" fill="#1c7ed6"><title>${h.hour}:00 实况降水：${sdEsc(o.desc.join("；"))}${o.mm != null ? `（报文雨量 ${sdN(o.mm,2)} mm）` : ""}</title></circle>`
         : `<circle cx="${x+step/2}" cy="${bottom+34}" r="2.5" fill="var(--muted)" opacity=".6"><title>${h.hour}:00 实况无降水（${o.reports} 份报文）</title></circle>`;
     }
+    if(o && !missing){
+      const cell = h.value >= 0.1 ? (o.wet ? "a" : "c") : (o.wet ? "b" : "d");
+      g += `<rect x="${x+3}" y="${bottom+62}" width="${step-6}" height="9" rx="2" fill="${SD_RAIN4[cell][1]}" opacity="${cell === "d" ? .35 : .9}"><title>${h.hour}:00 ${SD_RAIN4[cell][0]}（预报 ${sdN(h.value,2)} mm · 实况${o.wet ? "有" : "无"}降水）</title></rect>`;
+    }
     const sv = sat[h.hour];
     if(sv && sv.mm != null){
       const tip = `${h.hour}:00 卫星雨量（GSMaP_NOW）${sdN(sv.mm,2)} mm；周围约 30 km 平均 ${sdN(sv.mm_area,2)}；雨量站校正后 ${sdN(sv.mm_gc,2)}`;
@@ -22812,7 +22836,8 @@ function sdRainSvg(P, O, S){
   });
   g += `<text x="${left-5}" y="${bottom+38}" text-anchor="end" font-size="10" fill="var(--muted)">实况</text>`;
   if(Object.keys(sat).length) g += `<text x="${left-5}" y="${bottom+56}" text-anchor="end" font-size="10" fill="var(--muted)">卫星</text>`;
-  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 绿菱＝卫星雨量 · 实况行：蓝点＝本站降水 · 卫星行：绿点＝≥0.1 mm</text>`;
+  g += `<text x="${left-5}" y="${bottom+70}" text-anchor="end" font-size="10" fill="var(--muted)">四格</text>`;
+  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 绿菱＝卫星雨量 · 实况行：蓝点＝本站降水 · 卫星行：绿点＝≥0.1 mm · 四格：绿命中/黄漏报/红空报/灰正确否定</text>`;
   return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报与实况，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
 }
 function sdTafCloudDetails(witness){
@@ -23287,10 +23312,12 @@ function sdEvidence(day){
     : `<b class="up">实况 至今无降水</b><b>最近报 ${sdEsc(O.lastAt)}</b>`) + fiveMin
     + (day.precip_sat && day.precip_sat.sum_mm != null ? `<b title="JAXA GSMaP_NOW 卫星雨量（官方），每小时结束后约 1 分钟上架；读于 ${sdEsc(sdLocal(day.precip_sat.fetched_at_utc, true))}" style="color:#2f9e44">卫星 今日已降 ${sdN(day.precip_sat.sum_mm, 1)} mm</b>` : "");
   let rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0, `<b>预报 无记录</b>${obsLine}`, "暂无逐小时降水预报", true);
+  const rain4 = P && P.hourly_mm && typeof P.hourly_mm === "object" ? sdRain4(Object.entries(O.hours)
+    .filter(([k]) => typeof P.hourly_mm[k] === "number").map(([k, o]) => ({fc: P.hourly_mm[k] >= 0.1, ob: o.wet}))) : null;
   if(P){
     const hourLabel = v => v == null ? "—" : String(v).padStart(2,"0")+":00";
     rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0,
-      `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}`,
+      `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}${rain4 && rain4.n ? sdRain4Line(rain4) : ""}`,
       `${sdRainSvg(P, O, day.precip_sat)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
   }
   // P1 is the reports read as a probability, so it sits with them, and the TAF
@@ -23445,13 +23472,12 @@ function sdSky(day){
   const windCard = diffCard("wind", "风 · 实况对比预报", "wind_mps", "m/s", 1, "报文风速（10 分钟平均）");
   const wetRows = (H.rows || []).filter(r => r.obs && (r.forecast || {}).precip_mm != null);
   const rainCard = !wetRows.length ? "" : (() => {
-    const ob = wetRows.filter(r => r.obs.precip).length, fc = wetRows.filter(r => r.forecast.precip_mm >= 0.1).length;
-    const mm = wetRows.reduce((a, r) => a + r.forecast.precip_mm, 0), d = ob - fc;
+    const S4 = sdRain4(wetRows.map(r => ({fc: r.forecast.precip_mm >= 0.1, ob: Boolean(r.obs.precip)})));
     const hrs = wetRows.map(r => Number(r.hour));
-    return sdSunCard("rain", "雨 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点 · 小时`,
-      !ob && !fc ? "无雨" : !d ? "持平" : `${d > 0 ? "+" : "−"}${Math.abs(d)} 小时`, d > 0 ? "sd-cold" : d < 0 ? "sd-warm" : "",
-      [["实况", `${ob} 小时`], ["预报", `${fc} 小时 · ${sdN(mm, 1)} mm`]],
-      `整点报文报了降水的小时数，对同一段小时里预报降水 ≥0.1 mm 的小时数（Open-Meteo 逐小时）；正数＝比预报多雨（偏冷）`);
+    const tag = `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点 · ${S4.n} 小时`;
+    const tip = "降水分类评分口径（物理协变量）：每个有整点报文的小时按预报 ≥0.1 mm / 报文报了降水分成 命中 a、漏报 b、空报 c、正确否定 d（Open-Meteo 逐小时）";
+    return sdSunCard("rain", "雨 · 命中/漏报/空报/正确否定", tag, `${S4.a}<small> 命中</small>`, "",
+      ["a", "b", "c", "d"].map(k => [`<span class="${SD_RAIN4[k][2]} sd-r4">${SD_RAIN4[k][0]}</span>`, `${S4[k]} 小时`]), tip);
   })();
   const cards = [
     sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
