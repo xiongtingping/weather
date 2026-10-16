@@ -23399,7 +23399,11 @@ function sdSky(day){
     // only, the full sentence on hover.
     const word = x => ({cloud: x.dir === "more" ? "多云" : "偏晴", sw: x.dir === "more" ? "日照偏强" : "日照偏弱",
       temp: x.dir === "more" ? "偏暖" : "偏冷", haze: "霾/雾", rain: "降水"})[x.kind] || x.text;
-    const tags = (r.diffs || []).map(x => `<span class="pill ${warmth(x)}" title="${sdEsc(x.text)}">${sdEsc(word(x))}</span>`).join(" ");
+    // Rain as the precipitation-classification cell of the hour (user 2026-10-16
+    // 「逐小时实况对预报：在下方偏离表格里体现」), in place of the bare 降水 tag.
+    const rainCell = o && f.precip_mm != null ? (f.precip_mm >= 0.1 ? (o.precip ? "a" : "c") : (o.precip ? "b" : "d")) : null;
+    const tags = (r.diffs || []).filter(x => x.kind !== "rain").map(x => `<span class="pill ${warmth(x)}" title="${sdEsc(x.text)}">${sdEsc(word(x))}</span>`)
+      .concat(rainCell ? [`<span class="sd-r4 ${SD_RAIN4[rainCell][2]}" title="${sdEsc(`雨：预报 ${sdN(f.precip_mm, 1)} mm（≥0.1 mm 算有雨）· 报文${o.precip ? "报了" : "没报"}降水`)}">${SD_RAIN4[rainCell][0]}</span>`] : []).join(" ");
     return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
       ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
@@ -23456,8 +23460,8 @@ function sdSky(day){
   })();
   // Dew point, wind and rain beside the sun and cloud (user 2026-10-15「右边还有
   // 很多位置，增加露点、风、雨等信息卡片」): dew point and wind at the newest
-  // hour with both a report and a forecast; rain as wet hours so far, a report
-  // with precipitation against a forecast hour of ≥0.1 mm.  Dew point and wind
+  // hour with both a report and a forecast (rain is in the table's 偏离 column,
+  // one classification cell per hour).  Dew point and wind
   // carry no warm/cold colour -- their pull on the maximum is not one-way.
   const newest = key => (H.rows || []).filter(r => r.obs && r.obs[key] != null && (r.forecast || {})[key] != null)
     .reduce((a, r) => !a || Number(r.hour) > Number(a.hour) ? r : a, null);
@@ -23470,15 +23474,6 @@ function sdSky(day){
   };
   const dewCard = diffCard("dew", "露点 · 实况对比预报", "dew_c", "°C", 1, "报文露点");
   const windCard = diffCard("wind", "风 · 实况对比预报", "wind_mps", "m/s", 1, "报文风速（10 分钟平均）");
-  const wetRows = (H.rows || []).filter(r => r.obs && (r.forecast || {}).precip_mm != null);
-  const rainCard = !wetRows.length ? "" : (() => {
-    const S4 = sdRain4(wetRows.map(r => ({fc: r.forecast.precip_mm >= 0.1, ob: Boolean(r.obs.precip)})));
-    const hrs = wetRows.map(r => Number(r.hour));
-    const tag = `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点 · ${S4.n} 小时`;
-    const tip = "降水分类评分口径（物理协变量）：每个有整点报文的小时按预报 ≥0.1 mm / 报文报了降水分成 命中 a、漏报 b、空报 c、正确否定 d（Open-Meteo 逐小时）";
-    return sdSunCard("rain", "雨 · 命中/漏报/空报/正确否定", tag, `${S4.a}<small> 命中</small>`, "",
-      ["a", "b", "c", "d"].map(k => [`<span class="${SD_RAIN4[k][2]} sd-r4">${SD_RAIN4[k][0]}</span>`, `${S4[k]} 小时`]), tip);
-  })();
   const cards = [
     sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
@@ -23499,7 +23494,6 @@ function sdSky(day){
       : "",
     dewCard,
     windCard,
-    rainCard,
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
