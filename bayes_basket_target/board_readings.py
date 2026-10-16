@@ -2772,16 +2772,26 @@ SKEW_TREND_SINCE = "2026-09-01"
 #: snapshot at or before it, no older than this.
 SKEW_TRUTH_MARKET_AGE_SEC = 3600.0
 _SKEW_NEXT_STAGE = {"P0": "P0-M", "P0-M": "P1"}
-_SKEW_WORDS = {0: "symmetric", -1: "left", 1: "right"}
+_SKEW_WORDS = {0: "symmetric", -1: "left", 1: "right", "floor": "floor"}
 
 
-def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], truth_bucket: str) -> dict[str, Any] | None:
+def _float_or_none(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], truth_bucket: str,
+                running_high_c: float | None = None) -> dict[str, Any] | None:
     """One served vector read by production's own rules: the skew sign
     (``mean_mode_skew_reading_v1``), the mode, the centre bucket
     (``mean_center_bucket_v1``), where the truth landed against the mode and
     how much mass the vector put on each side of it."""
 
     from .basket_kernel.support import mean_center_bucket_v1, mean_mode_skew_reading_v1  # noqa: PLC0415
+    from .station_day_board import skew_floor  # noqa: PLC0415
 
     ordered = [(str(a["bucket"]), int(a["ordinal"])) for a in axis]
     probs = {b: float(vector.get(b, 0.0) or 0.0) for b, _o in ordered}
@@ -2797,6 +2807,9 @@ def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], 
     truth_ord = ords[truth_bucket]
     return {
         "sign": int(reading["sign"]), "gap": reading["gap_buckets"],
+        # A 下界日 (station_day_board.skew_floor): the mode holds the running
+        # observed high, so the lean is right by construction; counted apart.
+        "floor": bool(axis and "lo_c" in axis[0] and skew_floor(mode, axis, running_high_c)),
         "mode": mode, "mean_bucket": mean_center_bucket_v1(probs, ords),
         "truth_side": (truth_ord > mode_ord) - (truth_ord < mode_ord),
         "claim": [sum(p for b, p in probs.items() if ords[b] < mode_ord) / total,
@@ -2857,7 +2870,8 @@ def skew_truth_rows(conn: sqlite3.Connection, since: str | None = None) -> list[
         if not at:
             continue
         env = conn.execute(
-            "SELECT probabilities_json, bucket_ordinals_json, json_extract(lineage_json,'$.bucket_intervals_c_json')"
+            "SELECT probabilities_json, bucket_ordinals_json, json_extract(lineage_json,'$.bucket_intervals_c_json'),"
+            " json_extract(lineage_json,'$.observed_running_high_c'), json_extract(lineage_json,'$.reported_high_c')"
             " FROM basket_probability_envelope WHERE station_id=? AND event_date=? AND state='COMMITTED'"
             " AND decision_at_utc=? AND stage=? LIMIT 1", (station, day, at, stage),
         ).fetchone()
@@ -2867,7 +2881,8 @@ def skew_truth_rows(conn: sqlite3.Connection, since: str | None = None) -> list[
         truth_bucket = bucket_of(axis, truth[(station, day)])
         if truth_bucket is None:
             continue
-        model = _skew_point(json.loads(env[0]), axis, truth_bucket)
+        high = _float_or_none(env[3] if stage == "P0-M" else env[4] if stage == "P1" else None)
+        model = _skew_point(json.loads(env[0]), axis, truth_bucket, high)
         if model is None:
             continue
         market = None
@@ -2883,7 +2898,7 @@ def skew_truth_rows(conn: sqlite3.Connection, since: str | None = None) -> list[
                 age = None
             ref = market_reference_v1(json.loads(book[1])) if age is not None and age <= SKEW_TRUTH_MARKET_AGE_SEC else {}
             if ref.get("state") == "complete":
-                market = _skew_point({str(k): float(v) for k, v in ref["vector"].items()}, axis, truth_bucket)
+                market = _skew_point({str(k): float(v) for k, v in ref["vector"].items()}, axis, truth_bucket, high)
         rows.append({"station_id": station, "event_date": day, "stage": stage, "decided_at_utc": at,
                      "truth_bucket": truth_bucket, "model": model, "market": market})
     return rows
@@ -2911,7 +2926,9 @@ def _skew_call_stats(rows: Sequence[Mapping[str, Any]], source: str) -> dict[str
     three-state reading and that side -- the score the threshold was chosen
     on (docs/research/p0_skew_threshold_20261016)."""
 
-    off = [r for r in rows if r[source] and r[source]["truth_side"] != 0]
+    every = [r for r in rows if r[source] and r[source]["truth_side"] != 0]
+    floor = [r for r in every if r[source].get("floor")]
+    off = [r for r in every if not r[source].get("floor")]
     if not off:
         return None
     called = [r for r in off if r[source]["sign"] != 0]
@@ -2930,6 +2947,8 @@ def _skew_call_stats(rows: Sequence[Mapping[str, Any]], source: str) -> dict[str
         "hit_rate": (sum(right) / len(right)) if right else None,
         "hit_ci": _traded_day_bootstrap(called, right) if called else None,
         "mi_bits": mi, "event_days": len({r["event_date"] for r in off}),
+        # 下界日 are left out of everything above and counted here.
+        "floor_days": len(floor), "floor_share": len(floor) / len(every),
     }
 
 
@@ -2942,10 +2961,12 @@ def _skew_call_trend(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     for day in sorted({r["event_date"] for r in rows}):
         item: dict[str, Any] = {"event_date": day}
         for source in ("model", "market"):
-            off = [r[source] for r in rows if r["event_date"] == day and r[source] and r[source]["truth_side"] != 0]
+            every = [r[source] for r in rows if r["event_date"] == day and r[source] and r[source]["truth_side"] != 0]
+            off = [p for p in every if not p.get("floor")]
             called = [p for p in off if p["sign"] != 0]
             item[source] = {"off": len(off), "called": len(called),
-                            "right": sum(p["sign"] == p["truth_side"] for p in called)}
+                            "right": sum(p["sign"] == p["truth_side"] for p in called),
+                            "floor": len(every) - len(off)}
         out.append(item)
     return out
 
@@ -2978,15 +2999,17 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
         sides = []
         for source in ("model", "market"):
             have = [r for r in mine if r[source]]
-            for sign in (-1, 0, 1):
-                kept = [r for r in have if r[source]["sign"] == sign]
+            for sign in (-1, 0, 1, "floor"):
+                kept = [r for r in have if (r[source].get("floor") if sign == "floor"
+                                            else not r[source].get("floor") and r[source]["sign"] == sign)]
                 if kept:
                     sides.append({"source": source, "skew": _SKEW_WORDS[sign], "share": len(kept) / len(have),
                                   **_skew_side_group([r[source] for r in kept], [r["truth_bucket"] for r in kept])})
         hits = []
         paired = [r for r in mine if r["market"]]
-        for label, sign in (("all", None), ("symmetric", 0), ("left", -1), ("right", 1)):
-            kept = [r for r in paired if sign is None or r["model"]["sign"] == sign]
+        for label, sign in (("all", None), ("symmetric", 0), ("left", -1), ("right", 1), ("floor", "floor")):
+            kept = [r for r in paired if sign is None or (r["model"].get("floor") if sign == "floor"
+                                                         else not r["model"].get("floor") and r["model"]["sign"] == sign)]
             if not kept:
                 continue
             item = {"group": label, "n": len(kept), "event_days": len({r["event_date"] for r in kept})}

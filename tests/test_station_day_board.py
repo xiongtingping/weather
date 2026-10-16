@@ -595,9 +595,79 @@ def test_skew_call_trend_counts_per_day() -> None:
     t = _skew_call_trend([row("2026-10-01", 1, 1), row("2026-10-01", -1, 1), row("2026-10-01", 0, -1),
                           row("2026-10-02", 1, 0, {"sign": -1, "truth_side": -1})])
     assert [d["event_date"] for d in t] == ["2026-10-01", "2026-10-02"]
-    assert t[0]["model"] == {"off": 3, "called": 2, "right": 1}
-    assert t[1]["model"] == {"off": 0, "called": 0, "right": 0}
-    assert t[1]["market"] == {"off": 1, "called": 1, "right": 1}
+    assert t[0]["model"] == {"off": 3, "called": 2, "right": 1, "floor": 0}
+    assert t[1]["model"] == {"off": 0, "called": 0, "right": 0, "floor": 0}
+    assert t[1]["market"] == {"off": 1, "called": 1, "right": 1, "floor": 0}
+    floored = _skew_call_trend([{"event_date": "d", "model": {"sign": 1, "truth_side": 1, "floor": True}, "market": None}])
+    assert floored[0]["model"] == {"off": 0, "called": 0, "right": 0, "floor": 1}
+
+
+def test_floor_day_card_word_and_fleet_tally() -> None:
+    """The card names a floor day 下界·待涨, and the fleet tally counts it apart."""
+
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+
+    def function(name: str) -> str:
+        start = source.index(f"function {name}(")
+        depth = 0
+        for index in range(source.index("{", start), len(source)):
+            depth += {"{": 1, "}": -1}.get(source[index], 0)
+            if depth == 0:
+                return source[start:index + 1]
+        raise AssertionError(name)
+
+    st = {"skew_sign": 1, "skew_floor": True, "skew_gap_buckets": 0.32, "skew_threshold_buckets": 0.14}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n" + _formatters(source)
+              + "function sdShapeRule(){ return 'rule'; }\n" + function("sdShape") + "\n" + function("sdFleetShape")
+              + f"\nconsole.log(sdShape({json.dumps(st)}).word);"
+              + "\nconsole.log(sdFleetShape(" + json.dumps({"stations": 2, "built_at_utc": "x", "days": [{
+                  "event_date": "2026-10-16", "station_days": 2,
+                  "counts": {"HEAD": {"symmetric": 1, "left": 0, "right": 0, "floor": 1}},
+                  "rows": [{"station_id": "ZUUU", "name": "成都", "head_stage": "P1", "signs": {"P1": 1}, "floors": {"P1": True}, "gaps": {"P1": 0.32}}]}]},
+                  ensure_ascii=False) + "));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert out.splitlines()[0] == "下界·待涨"
+    assert "<b>1</b><span>下界·待涨</span>" in out
+    assert "右偏</b> 成都" not in out and "下界·待涨</b> 成都" in out
+
+
+def test_floor_day_is_the_mode_holding_the_running_high() -> None:
+    """User 2026-10-16: a 下界日 -- the mode is the rung holding the running
+    observed high -- is labelled 下界·待涨 and left out of the lean's hit rate."""
+
+    from bayes_basket_target.board_readings import _skew_call_stats, _skew_point
+    from bayes_basket_target.station_day_board import skew_floor
+
+    axis = _axis()
+    vector = {"20°C or below": 0.0, "21°C": 0.77, "22°C": 0.18, "23°C or higher": 0.05}
+    assert skew_floor("21°C", axis, 21.0) is True
+    assert skew_floor("21°C", axis, 20.0) is False and skew_floor("21°C", axis, None) is False
+    on = _skew_point(vector, axis, "22°C", 21.0)
+    assert on["floor"] is True and on["sign"] == 1          # still reads right, but flagged
+    assert _skew_point(vector, axis, "22°C")["floor"] is False
+    rows = [{"event_date": "d", "model": on},
+            {"event_date": "d", "model": {**on, "floor": False, "sign": 1, "truth_side": -1}}]
+    s = _skew_call_stats(rows, "model")
+    assert s["floor_days"] == 1 and s["off_mode"] == 1 and s["hit_rate"] == 0.0
 
 
 def test_skew_trend_chart_pools_running_and_seven_day_rates() -> None:

@@ -22982,6 +22982,9 @@ function sdShape(st){
   const s = st ? st.skew_sign : null;
   if(s == null) return {word: "—", color: "var(--muted)", gap: "", gate: ""};
   const gap = `均值离众数 ${sdSg(st.skew_gap_buckets, 2)} 档`, gate = `门槛 ±${sdN(st.skew_threshold_buckets, 2)}`;
+  // A floor day (user 2026-10-16): the mode holds the running observed high,
+  // so whatever mass is left sits above it -- 「下界·待涨」, not a lean.
+  if(st.skew_floor) return {word: "下界·待涨", color: "#7048e8", gap, gate};
   if(s === 0) return {word: "对称", color: "var(--green)", gap, gate};
   return {word: s < 0 ? "左偏" : "右偏", color: s < 0 ? SD_COL.P0 : "var(--amber)", gap, gate};
 }
@@ -22994,7 +22997,7 @@ function sdShapeRule(){
 // 位置的统计：对称、左偏、右偏分别有多少」): station_day_board.fleet_shape, carried on
 // every panel read; counted per event date, big numbers on the day's word.
 function sdFleetShape(F){
-  const SD_SHAPE_KEYS = [["symmetric","对称","var(--green)"], ["left","左偏",SD_COL.P0], ["right","右偏","var(--amber)"]];
+  const SD_SHAPE_KEYS = [["symmetric","对称","var(--green)"], ["left","左偏",SD_COL.P0], ["right","右偏","var(--amber)"], ["floor","下界·待涨","#7048e8"]];
   if(!F || F.error) return F && F.error ? `<div class="card muted sd-sub" style="margin:8px 0">全队偏态统计读取失败：${sdEsc(F.error)}</div>` : "";
   const days = (F.days || []).filter(d => d.station_days > 0);
   if(!days.length) return "";
@@ -23002,12 +23005,12 @@ function sdFleetShape(F){
   const blocks = days.map(d => {
     const C = d.counts || {}, H = C.HEAD || {};
     const tiles = SD_SHAPE_KEYS.map(([k, w, c]) => `<div class="sd-fs-tile" style="--c:${c}"><b>${H[k] || 0}</b><span>${w}</span></div>`).join("");
-    const rows = series.filter(([k]) => C[k] && (C[k].symmetric + C[k].left + C[k].right) > 0).map(([k, label]) =>
+    const rows = series.filter(([k]) => C[k] && (C[k].symmetric + C[k].left + C[k].right + (C[k].floor || 0)) > 0).map(([k, label]) =>
       `<b style="color:${SD_COL[k]}">${label}</b>${SD_SHAPE_KEYS.map(([x, w]) => `<span>${w} ${C[k][x] || 0}</span>`).join("")}`).join("");
     const skewed = SD_SHAPE_KEYS.slice(1).map(([k, w, c]) => {
       const list = (d.rows || []).filter(r => {
-        const v = (r.signs || {})[r.head_stage];
-        return v != null && (k === "left" ? v < 0 : v > 0);
+        const v = (r.signs || {})[r.head_stage], fl = (r.floors || {})[r.head_stage];
+        return k === "floor" ? !!fl : !fl && v != null && (k === "left" ? v < 0 : v > 0);
       });
       return list.length ? `<div><b style="color:${c}">${w}</b> ${list.map(r => `${sdEsc(r.name || r.station_id)} <span class="muted">${sdEsc(r.station_id)}·${sdEsc(r.head_stage)} ${sdSg((r.gaps || {})[r.head_stage], 2)}档</span>`).join("、")}</div>` : "";
     }).join("");
@@ -23057,7 +23060,7 @@ function sdSkewTrend(st, since){
     + line(M.cum, col, 'stroke-width="2.2"') + line(K.cum, SD_COL.MKT, 'stroke-width="2" stroke-dasharray="5 3"');
   T.forEach((d, i) => {
     const m = d.model || {}, k = d.market || {};
-    g += `<rect x="${(x(i) - 3).toFixed(1)}" y="${Tp}" width="6" height="${Hh - Tp - B}" fill="transparent"><title>${sdEsc(d.event_date)}：模型 判 ${m.called || 0}/${m.off || 0}、对 ${m.right || 0}；市场 判 ${k.called || 0}/${k.off || 0}、对 ${k.right || 0}${M.cum[i] == null ? "" : `；累计判对 模型 ${(100 * M.cum[i]).toFixed(1)}%`}${K.cum[i] == null ? "" : ` 市场 ${(100 * K.cum[i]).toFixed(1)}%`}</title></rect>`;
+    g += `<rect x="${(x(i) - 3).toFixed(1)}" y="${Tp}" width="6" height="${Hh - Tp - B}" fill="transparent"><title>${sdEsc(d.event_date)}：模型 判 ${m.called || 0}/${m.off || 0}、对 ${m.right || 0}${m.floor ? `、下界日 ${m.floor}` : ""}；市场 判 ${k.called || 0}/${k.off || 0}、对 ${k.right || 0}${k.floor ? `、下界日 ${k.floor}` : ""}${M.cum[i] == null ? "" : `；累计判对 模型 ${(100 * M.cum[i]).toFixed(1)}%`}${K.cum[i] == null ? "" : ` 市场 ${(100 * K.cum[i]).toFixed(1)}%`}</title></rect>`;
   });
   const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
   return `<div class="sd-sk-col"><div class="sd-fs-date" style="color:${col}">${sdEsc(st.stage)} <span class="muted sd-sub">累计判对 模型 <b style="color:${col}">${pc(M.last)}</b>（${M.n}） · 市场 <b style="color:${SD_COL.MKT}">${pc(K.last)}</b>（${K.n}）</span></div>
@@ -23075,10 +23078,10 @@ function sdSkewHistory(H){
   const bar = (v, cls) => `<div class="sd-sk-bar${cls ? " " + cls : ""}">${v.map((x, i) =>
     `<i style="width:${(100 * x).toFixed(1)}%;background:${SIDE[i][1]}" title="${SIDE[i][0]} ${pc(x)}">${cls || x < 0.12 ? "" : SIDE[i][0] + " " + Math.round(100 * x) + "%"}</i>`).join("")}</div>`;
   const pickWord = st => st.pick === "first" ? "首份" : "接手前末份";
-  const skewWord = {left: "左偏", symmetric: "对称", right: "右偏"};
+  const skewWord = {left: "左偏", symmetric: "对称", right: "右偏", floor: "下界·待涨"};
   const srcWord = {model: "模型", market: "市场"};
   const cols = H.stages.map(st => {
-    const rows = ["model", "market"].map(src => ["left", "right", "symmetric"].map(k => {
+    const rows = ["model", "market"].map(src => ["left", "right", "symmetric", "floor"].map(k => {
       const x = (st.sides || []).find(r => r.source === src && r.skew === k);
       if(!x) return "";
       return `<div class="sd-sk-row"><span title="占 ${pc(x.share)}；众数命中 ${pc(x.mode_hit)}，均值桶命中 ${pc(x.mean_hit)}"><b style="color:${src === "model" ? SD_COL[st.stage] : SD_COL.MKT}">${srcWord[src]}</b> ${skewWord[k]} <span class="muted">${x.n}</span></span>
@@ -23086,7 +23089,7 @@ function sdSkewHistory(H){
     }).join("")).join("");
     return `<div class="sd-sk-col"><div class="sd-fs-date" style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)} <span class="muted sd-sub">${pickWord(st)} · ${st.station_days} 站日</span></div>${rows}</div>`;
   }).join("");
-  const groupWord = {all: "全部", symmetric: "模型对称", left: "模型左偏", right: "模型右偏"};
+  const groupWord = {all: "全部", symmetric: "模型对称", left: "模型左偏", right: "模型右偏", floor: "模型下界日"};
   const cell = (h, k) => {
     const x = h[k] || {}, ci = x.ci || [], sure = ci.length === 2 && (ci[0] > 0 || ci[1] < 0);
     return `<td class="mono">${pc(x.model)}</td><td class="mono">${pc(x.market)}</td><td class="mono${sure ? (x.diff < 0 ? " down" : " up") : " muted"}" title="模型 − 市场，95% 区间 ${ci.length ? pt(ci[0]) + " ～ " + pt(ci[1]) : "—"}（按事件日重抽样）">${pt(x.diff)}${sure ? "" : " ·"}</td>`;
@@ -23095,7 +23098,7 @@ function sdSkewHistory(H){
     `<tr><td>${i === 0 ? `<b style="color:${SD_COL[st.stage]}">${sdEsc(st.stage)}</b>` : ""}</td><td>${groupWord[h.group] || sdEsc(h.group)}</td><td class="mono">${h.n}</td>${cell(h, "mode")}${cell(h, "mean")}</tr>`).join("")).join("");
   // Each source by its own production skew (user 2026-10-15 「按照目前生产的偏斜：
   // 均值桶和众数桶，分别统计并显示左偏、对称和右偏的真值命中率」).
-  const skewRows = H.stages.map(st => ["left", "symmetric", "right"].map((k, i) => {
+  const skewRows = H.stages.map(st => ["left", "symmetric", "right", "floor"].map((k, i) => {
     const cell = src => {
       const x = (st.sides || []).find(r => r.source === src && r.skew === k);
       return x ? `<td class="mono muted" title="占该来源站日 ${pc(x.share)}">${x.n}</td><td class="mono"><b>${pc(x.mode_hit)}</b></td><td class="mono"><b>${pc(x.mean_hit)}</b></td>`
@@ -23112,15 +23115,16 @@ function sdSkewHistory(H){
       <td><b style="color:${c.source === "model" ? SD_COL[st.stage] : SD_COL.MKT}">${srcWord[c.source] || sdEsc(c.source)}</b></td>
       <td class="mono" title="离开众数的站日 ${c.off_mode}，其中判出左偏或右偏 ${c.called}"><b>${pc(c.called_share)}</b> <span class="muted">${c.called}/${c.off_mode}</span></td>
       <td class="mono" title="判右偏且真值在众数上方、或判左偏且在下方；95% 区间 ${ci.length ? pc(ci[0]) + " ～ " + pc(ci[1]) : "—"}（按事件日重抽样）"><b>${pc(c.hit_rate)}</b></td>
-      <td class="mono" title="三态读数与真值落在哪一侧的互信息（bit）；选门槛用的就是它">${c.mi_bits == null ? "—" : c.mi_bits.toFixed(3)}</td></tr>`;
+      <td class="mono" title="三态读数与真值落在哪一侧的互信息（bit）；选门槛用的就是它">${c.mi_bits == null ? "—" : c.mi_bits.toFixed(3)}</td>
+      <td class="mono muted" title="众数压在已测下界上的站日：众数以下已不可能，偏向必然判对，单列、不计入前面三列">${c.floor_days == null ? "—" : `${c.floor_days} <span>（${pc(c.floor_share)}）</span>`}</td></tr>`;
   }).join("")).join("");
   const open = SD.histOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
     <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
     ${H.stages.some(st => (st.trend || []).length > 1) ? `<div class="muted sd-sub" title="粗线＝自 ${sdEsc(H.trend_since || "")} 起累计判对率，细线＝最近 7 个事件日（判出 ≥10 才画）；实线＝模型，虚线＝市场；只算真值离开众数且读数判出左/右偏的站日；悬停看每日计数">判对率趋势（自 ${sdEsc(String(H.trend_since || "").slice(5))} 起向前累计）</div>
     <div class="sd-sk-grid">${H.stages.map(st => sdSkewTrend(st, H.trend_since)).join("")}</div>` : ""}
-    ${callRows ? `<div class="muted sd-sub">判左偏/右偏的本事（只算真值离开众数的站日；门槛 ${H.threshold_sigma == null ? "—" : H.threshold_sigma + "σ"}）</div>
-    <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>来源</th><th>判出偏斜</th><th>判对率</th><th>信息量 bit</th></tr></thead><tbody>${callRows}</tbody></table></div>` : ""}
+    ${callRows ? `<div class="muted sd-sub">判左偏/右偏的本事（只算真值离开众数的站日，下界日单列；门槛 ${H.threshold_sigma == null ? "—" : H.threshold_sigma + "σ"}）</div>
+    <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>来源</th><th>判出偏斜</th><th>判对率</th><th>信息量 bit</th><th>下界日</th></tr></thead><tbody>${callRows}</tbody></table></div>` : ""}
     <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>
     <div class="sd-sk-grid">${cols}</div>
     <div class="muted sd-sub">按生产偏斜分组的真值命中率：模型按模型自己的偏斜、市场按市场自己的偏斜分组</div>

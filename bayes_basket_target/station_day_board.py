@@ -149,6 +149,26 @@ def bucket_of(axis: Sequence[Mapping[str, Any]], celsius: float | None) -> str |
     return None
 
 
+def skew_floor(mode: str | None, axis: Sequence[Mapping[str, Any]], running_high_c: float | None) -> bool:
+    """A 「下界日」 (user 2026-10-16 「把众数压在已测下界上的站日单列为「下界日」，标签写
+    「下界·待涨」，不计入左偏/右偏判对率」): the vector's mode is the rung holding the
+    running observed high, so no rung below the mode can still settle and any
+    lean the skew reading names is right by construction.  The one rule the
+    board's card, the fleet tally and the settled skew reading all call."""
+
+    if not mode or running_high_c is None:
+        return False
+    return bucket_of(axis, float(running_high_c)) == str(mode)
+
+
+def _lineage_running_high(lineage: Mapping[str, Any], stage: str) -> float | None:
+    """The running observed high a P0-M or P1 envelope was decided on, from
+    its own lineage; None for P0 (no observation stage)."""
+
+    key = {"P0-M": "observed_running_high_c", "P1": "reported_high_c"}.get(stage)
+    return _float(lineage.get(key)) if key else None
+
+
 def vector_stats(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     """Mean, variance, spread and the two summary rungs of a ladder vector.
 
@@ -1407,15 +1427,20 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         return {"role": role, "event_date": day, "available": False}
     axis = ladder_axis(newest["ordinals"],
                        _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
+    metar = _metar(station, day, zone)
+    running_high = max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None)
     stages = {}
     for stage, head in heads.items():
         if head is None:
             continue
+        stats = vector_stats(head["vector"], axis)
+        if stats is not None:
+            stats["skew_floor"] = skew_floor(stats["mode"], axis, running_high)
         entry = {
             "decided_at_utc": head["decided_at_utc"], "fresh_until_utc": head["fresh_until_utc"],
             "version": head["version"], "checkpoint_id": head["checkpoint_id"],
             "vector": {k: round(v, 5) for k, v in head["vector"].items()},
-            "stats": vector_stats(head["vector"], axis),
+            "stats": stats,
         }
         if stage == "P0":
             entry.update(_p0_brief(head, axis, _previous_p0(
@@ -1433,7 +1458,9 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
         stages[stage] = entry
     head_stage = day_word(stages)
-    metar = _metar(station, day, zone)
+    market = _market(conn, station, day, axis)
+    if isinstance(market.get("stats"), dict):
+        market["stats"]["skew_floor"] = skew_floor(market["stats"]["mode"], axis, running_high)
     precip = _precip(conn, station, day)
     precip_sat = _precip_sat(station, day, zone)
     sky = _hourly_vs_forecast(conn, station, day, zone, metar)
@@ -1441,9 +1468,9 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "role": role, "event_date": day, "available": True, "axis": axis,
         "head_stage": head_stage, "stages": stages,
         "timeline": _timeline(conn, station, day, axis),
-        "market": _market(conn, station, day, axis),
+        "market": market,
         "metar": metar,
-        "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
+        "running_high_c": running_high,
         "taf": _taf(conn, station, day),
         "precip": precip,
         "precip_sat": precip_sat,
@@ -1888,17 +1915,22 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
                 newest = max(seen.values(), key=lambda h: str(h["decided_at_utc"]))
                 axis = ladder_axis(newest["ordinals"],
                                    _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
-                signs, gaps = {}, {}
+                signs, gaps, floors = {}, {}, {}
+                # The newest observation stage's running high (P1 over P0-M).
+                high = next((h for h in (_lineage_running_high(seen[s]["lineage"], s)
+                                         for s in ("P1", "P0-M") if s in seen) if h is not None), None)
                 for stage, head in seen.items():
                     stats = vector_stats(head["vector"], axis) or {}
                     signs[stage], gaps[stage] = stats.get("skew_sign"), stats.get("skew_gap_buckets")
+                    floors[stage] = skew_floor(stats.get("mode"), axis, high)
                 market = _committed_market_stats(conn, station, day, axis)
                 if market is not None:
                     signs["MKT"], gaps["MKT"] = market.get("skew_sign"), market.get("skew_gap_buckets")
+                    floors["MKT"] = skew_floor(market.get("mode"), axis, high)
                 head_stage = day_word(seen)
                 book = by_day.setdefault(day, {"event_date": day, "rows": []})
                 book["rows"].append({"station_id": station, "name": entry.get("name"),
-                                     "head_stage": head_stage, "signs": signs, "gaps": gaps})
+                                     "head_stage": head_stage, "signs": signs, "gaps": gaps, "floors": floors})
     finally:
         conn.close()
     days = []
@@ -1906,12 +1938,13 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
         rows = by_day[day]["rows"]
         counts: dict[str, dict[str, int]] = {}
         for key in ("HEAD", *STAGES, "MKT"):
-            tally = {"symmetric": 0, "left": 0, "right": 0, "none": 0}
+            tally = {"symmetric": 0, "left": 0, "right": 0, "floor": 0, "none": 0}
             for r in rows:
-                if key == "HEAD":
-                    tally[shape_word(r["signs"].get(r["head_stage"]))] += 1
-                elif key in r["signs"]:
-                    tally[shape_word(r["signs"][key])] += 1
+                k = r["head_stage"] if key == "HEAD" else key
+                if key != "HEAD" and key not in r["signs"]:
+                    continue
+                # A floor day is counted apart, not as a lean (user 2026-10-16).
+                tally["floor" if (r.get("floors") or {}).get(k) else shape_word(r["signs"].get(k))] += 1
             counts[key] = tally
         days.append({"event_date": day, "station_days": len(rows), "counts": counts, "rows": rows})
     finished = datetime.now(timezone.utc)
