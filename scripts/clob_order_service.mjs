@@ -3209,7 +3209,11 @@ export class ClobOrderService {
     if (fokPriceCapStated && !(Number.isFinite(fokPriceCap) && fokPriceCap > 0 && fokPriceCap < 1)) {
       throw errorWithMeta(`fok_price_cap_invalid:${String(fokPriceCapRaw)}`);
     }
-    if (fokPriceCapStated && orderTypeRaw !== "FOK") {
+    // A capped BUY FAK is the same signed limit with the unfilled rest killed
+    // instead of the whole order: the operator's board take (user 2026-10-16
+    // 「不要因为这种阻断」) after a FOK sized off an 11-second-old book came back
+    // "couldn't be fully filled".  The cap binds it exactly as it binds a FOK.
+    if (fokPriceCapStated && !(orderTypeRaw === "FOK" || (orderTypeRaw === "FAK" && side === Side.BUY))) {
       throw errorWithMeta(`fok_price_cap_requires_fok:${orderTypeRaw}`);
     }
     if (fokPriceCapStated && Number.isFinite(price) && price > fokPriceCap + 1e-12) {
@@ -3217,7 +3221,7 @@ export class ClobOrderService {
     }
     const cappedCompletionBuyFok = (
       side === Side.BUY
-      && orderTypeRaw === "FOK"
+      && (orderTypeRaw === "FOK" || orderTypeRaw === "FAK")
       && explicitMarketableLimit
       && fokPriceCapStated
     );

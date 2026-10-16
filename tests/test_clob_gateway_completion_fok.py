@@ -122,10 +122,11 @@ def test_a_limit_above_its_own_cap_is_refused_before_signing() -> None:
     assert out["calls"] == []
 
 
-def test_the_cap_does_not_open_a_fak_or_a_sell() -> None:
+def test_the_cap_opens_a_buy_fak_but_not_a_sell() -> None:
     fak = _run_gateway(_completion_payload(order_type="FAK"))
-    assert fak["result"]["thrown"] == "fok_price_cap_requires_fok:FAK"
-    assert fak["calls"] == []
+    assert [row["call"] for row in fak["calls"]] == ["createOrder", "postOrder"]
+    assert fak["calls"][1]["orderType"] == "FAK"
+    assert _run_gateway(_completion_payload(order_type="FAK", price=0.17))["calls"] == []
 
     sell = _run_gateway(_completion_payload(side="SELL"))
     assert sell["result"] == {"thrown": "limit_only_order_type:FOK"}

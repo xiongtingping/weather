@@ -24252,7 +24252,7 @@ function sdOrderResult(key){
   if(r.busy) return `<div class="sd-ev">${r.action === "SELL" ? "卖出处理中" : "下单中"}…（${sdEsc(r.batch_id)}）${location.protocol === "file:" ? "<b>本地文件打开的看板：请在 Mac 弹出的系统确认框里点「下单」</b>（2 分钟内；用 http://127.0.0.1:8791/cal_dashboard.html 打开则不弹）" : ""}</div>`;
   if(r.error) return `<div class="sd-ev down">${r.action === "SELL" ? "卖出" : "下单"}未发出：${sdEsc(r.error)}</div>`;
   const selling = r.action === "SELL";
-  const word = {FILL:"成交", POST_ACK:"已挂单", EXPIRED:"FOK 未成交（已作废）", SUBMIT_REFUSED:"网关拒绝", UNKNOWN_POST:"结果未知（对账未定，勿重下）", NEVER_REACHED_EXCHANGE:"未到达交易所（已对账，可重下）", NOT_SENT:"未发送"};
+  const word = {FILL:"成交", POST_ACK:"已挂单", EXPIRED:"未成交（已作废）", SUBMIT_REFUSED:"网关拒绝", UNKNOWN_POST:"结果未知（对账未定，勿重下）", NEVER_REACHED_EXCHANGE:"未到达交易所（已对账，可重下）", NOT_SENT:"未发送"};
   const rows = (r.results || []).map(x => `<tr><td>${sdEsc(x.bucket)} <b>${sdEsc(x.side || "YES")}</b></td><td class="${x.event_type === "FILL" || x.event_type === "POST_ACK" ? "up" : "down"}">${sdEsc(word[x.event_type] || x.event_type)}</td>
     <td class="mono">${sdEsc(x.order_type || "")}</td><td class="mono">${x.price == null ? "—" : sdN(x.price, 3)}</td><td class="mono">${x.size == null ? "—" : sdN(x.size, 2)}</td>
     <td class="mono">${x.shares_matched ? sdN(x.shares_matched, 2) : "—"}</td><td class="mono">${(selling ? x.usdc_received : x.usdc_paid) == null ? "—" : sdN(selling ? x.usdc_received : x.usdc_paid, 2)}</td>
@@ -24279,7 +24279,7 @@ function sdPlaceOrderNow(key){
   if(!day) return;
   const {res, legs} = sdOrderLegs(day, st);
   if(!res.ok || !legs.length){ alert("计算器没有可下的篮子：" + ((res.warn || []).join("；") || "已有持仓已满足地板，不需要新买")); return; }
-  const modeWord = {taker:"吃卖一：限价 FOK，全成或零成", maker:"挂买一+1：post-only GTC，不保证成交"}[st.mode];
+  const modeWord = {taker:"吃卖一：限价 FAK，上限价内有多少成多少、余量作废", maker:"挂买一+1：post-only GTC，不保证成交"}[st.mode];
   const lines = legs.map(l => `  ${l.bucket} ${l.side}：${l.shares} 份 × 限价 ${l.limit_price}（约 ${l.cost.toFixed(2)} U）`).join("\n");
   const ok = confirm(`确认用实盘钱包买入 ${SD.station} ${key}（${[...new Set(legs.map(l => l.side))].join(" + ")}）？\n盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）\n\n${lines}\n\n新花合计约 ${res.newTotal.toFixed(2)} U${res.sunk > 0 ? `（已花 ${res.sunk.toFixed(2)} U，全篮 ${res.total.toFixed(2)} U）` : ""}\n方式：${modeWord}\n\n经本机网关逐腿发送；一腿失败即停发后面的腿。`);
   if(!ok) return;

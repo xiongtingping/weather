@@ -22,9 +22,9 @@ What it is and is not:
 * Re-checked here against the newest official WS snapshot: every bucket must
   be on that day's ladder (its token comes from the snapshot, never from the
   page), the book no older than ``MAX_BOOK_AGE_SECONDS``, each leg at or
-  above the market's minimum lot, and a take is sized to what the book
-  still offers within its stated cap (cut down when thinner, refused only
-  below the minimum lot; user 2026-10-16).
+  above the market's minimum lot and a take at or above the venue's 1 U
+  floor.  A take is a capped FAK: it fills what the book holds within its
+  cap and kills the rest (user 2026-10-16).
 * Legs go out in the order given and the batch stops at the first leg that
   is not a clean acceptance -- an unknown or a refusal leaves the rest unsent
   rather than building more of a basket whose shape has already broken.
@@ -53,6 +53,9 @@ CONFIRM_WORD = "BUY"
 MODES = {"taker", "maker", "manual"}
 MAX_LEGS = 24
 MAX_BOOK_AGE_SECONDS = 120.0
+#: The venue's floor on a marketable buy's notional: 19.2 @ 0.05 came back
+#: ``invalid amount for a marketable BUY order ($0.96), min size: 1``.
+MIN_TAKE_USDC = 1.0
 #: A sanity ceiling on one batch, not a budget: the gateway still checks the
 #: wallet.  Raised by the environment when the operator wants more.
 MAX_BATCH_USDC = float(os.environ.get("PM_MANUAL_BASKET_MAX_USDC", "200"))
@@ -153,12 +156,6 @@ def _no_tokens(conn: sqlite3.Connection, station: str, day: str) -> dict[str, st
     return out
 
 
-def fillable_within(asks: list[tuple[float, float]], shares: float, cap: float) -> float:
-    """Shares the book offers at or under ``cap``."""
-
-    return sum(size for price, size in asks if price <= cap + 1e-12)
-
-
 def venue_tick(price: float) -> float:
     """The exchange's price step at ``price``: a cent in the middle of the
     range, a tenth of a cent near either end.  The snapshot's registry tick
@@ -247,24 +244,21 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
             raise ManualOrderError(f"{label} 交易所最小单量缺失或无效")
         if shares < row["min_order_size"]:
             raise ManualOrderError(f"{label} {shares} 份低于最小单 {row['min_order_size']} 份")
-        reduced_from = None
         if mode == "taker":
             asked = shares
             shares = fok_shares(price, shares)
             if shares < row["min_order_size"]:
                 raise ManualOrderError(
                     f"{label} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
-            available = fillable_within(side_asks, shares, price)
-            if available + 1e-9 < shares:
-                # User 2026-10-16「不要因为这种阻断」: a book thinner than asked
-                # takes what is there within the cap; only a remnant below the
-                # minimum lot is refused, since nothing could be sent.
-                shares = fok_shares(price, available)
-                if shares < row["min_order_size"]:
-                    raise ManualOrderError(
-                        f"{label} 盘口已变：上限价 {price} 内只剩 {available:.2f} 份，低于最小单 {row['min_order_size']} 份")
-                reduced_from = asked
-            order = {"order_type": "FOK", "post_only": False, "fok_price_cap": price}
+            if shares * price < MIN_TAKE_USDC - 1e-9:
+                raise ManualOrderError(
+                    f"{label} 吃单金额 {shares * price:.2f} U 低于交易所吃单下限 {MIN_TAKE_USDC:.0f} U")
+            # A capped FAK, not a FOK (user 2026-10-16「不要因为这种阻断」): it
+            # takes whatever the book holds within the cap when it arrives and
+            # kills the rest.  The book here is seconds old, so a depth check
+            # against it refused takes the venue would partly have filled and
+            # passed ones it then killed whole (22°C 41.5 @ 0.14, 10:17Z).
+            order = {"order_type": "FAK", "post_only": False, "fok_price_cap": price}
         elif mode == "maker":
             best_ask = side_asks[0][0] if side_asks else None
             if best_ask is not None and price >= best_ask - 1e-12:
@@ -275,7 +269,7 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
         total += shares * price
         key = hashlib.sha256(f"{STRATEGY_ID}|{batch}|{station}|{day}|{bucket}|{side}".encode()).hexdigest()
         payloads.append({
-            "bucket": bucket, "side": side, "reduced_from": reduced_from,
+            "bucket": bucket, "side": side,
             "payload": {
                 "strategy_id": STRATEGY_ID,
                 "order_intent_id": f"manual-{batch}-{index}",
@@ -346,9 +340,17 @@ def _settle_unknown(leg: Mapping[str, Any], reconcile: Callable[[str], Mapping[s
         verdict = classify_submission_response(last, order_type=order_type)
         if verdict["event_type"] in {"FILL", "POST_ACK", "EXPIRED"}:
             return ({**verdict, "reason": "已对账：" + ({"FILL": "交易所已成交", "POST_ACK": "交易所已挂单",
-                                                        "EXPIRED": "FOK 到交易所后未成交、已作废"}[verdict["event_type"]])}, last)
+                                                        "EXPIRED": "吃单到交易所后未成交、已作废"}[verdict["event_type"]])}, last)
     return ({"event_type": "UNKNOWN_POST", "submitted": True,
              "reason": "对账仍未确定：" + str(last.get("error") or last.get("status") or "无答复") + "——不要重下，稍后再查"}, last)
+
+
+def _killed_fak(verdict: dict[str, Any], order_type: str) -> dict[str, Any]:
+    """A FAK the exchange took without a match was killed, not left resting."""
+
+    if order_type == "FAK" and verdict.get("event_type") == "POST_ACK":
+        return {**verdict, "event_type": "EXPIRED", "reason": "FAK 上限价内无成交，已作废"}
+    return verdict
 
 
 COLLATERAL_STALE = "clob_collateral_evidence_unavailable"
@@ -422,20 +424,21 @@ def place_manual_basket(
             # go again once the reading is fresh.
             if wait_collateral():
                 response = dict(send(leg["payload"]))
-        verdict = classify_submission_response(response, order_type=leg["payload"]["order_type"])
+        verdict = _killed_fak(classify_submission_response(response, order_type=leg["payload"]["order_type"]),
+                              leg["payload"]["order_type"])
         reconciled = None
         if verdict["event_type"] == "UNKNOWN_POST":
             # The request left and no answer settled it (2026-10-07 10:09Z:
             # "clob_proxy_submit_failed: SSL connection timeout").  Never
             # resend; ask the gateway what the exchange holds for this key.
             verdict, reconciled = _settle_unknown(leg, reconcile)
+            verdict = _killed_fak(verdict, leg["payload"]["order_type"])
         fill = verdict.get("fill") or {}
         results.append({
             "bucket": leg["bucket"], "side": leg.get("side", "YES"), "event_type": verdict["event_type"],
             "reason": verdict.get("reason") or "",
             "order_type": leg["payload"]["order_type"],
             "price": leg["payload"]["price"], "size": leg["payload"]["size"],
-            "reduced_from": leg.get("reduced_from"),
             "exchange_order_id": fill.get("exchange_order_id") or "",
             "shares_matched": fill.get("shares_matched"),
             "usdc_paid": fill.get("making_amount"),

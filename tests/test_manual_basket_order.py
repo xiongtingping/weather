@@ -36,7 +36,7 @@ def test_a_take_becomes_capped_fok_buy_yes_with_the_books_token() -> None:
     plan = M.plan_orders(_request(), BOOK, now=NOW)
     first = plan["legs"][0]["payload"]
     assert first["token_id"] == "t24" and first["side"] == "BUY" and first["outcome_side"] == "YES"
-    assert first["order_type"] == "FOK" and first["fok_price_cap"] == first["price"] == 0.08
+    assert first["order_type"] == "FAK" and first["fok_price_cap"] == first["price"] == 0.08
     assert first["strategy_id"] == M.STRATEGY_ID
     assert plan["notional_usdc"] == pytest.approx(50 * 0.08 + 12 * 0.16)
 
@@ -172,11 +172,8 @@ def test_a_no_leg_is_priced_on_the_mirrored_yes_bids_and_sent_on_the_no_token() 
     yes, no = (leg["payload"] for leg in plan["legs"])
     assert yes["token_id"] == "t24" and yes["outcome_side"] == "YES"
     assert no["token_id"] == "n24" and no["outcome_side"] == "NO" and no["side"] == "BUY"
-    assert no["order_type"] == "FOK" and no["fok_price_cap"] == 0.94
+    assert no["order_type"] == "FAK" and no["fok_price_cap"] == 0.94
     assert yes["idempotency_key"] != no["idempotency_key"]
-    thin = M.plan_orders(_request(legs=[{"bucket": "24°C", "side": "NO", "shares": 100, "limit_price": 0.94}]),
-                         book, now=NOW)["legs"][0]
-    assert thin["payload"]["size"] == 30.0 and thin["reduced_from"] == 100.0
     with pytest.raises(M.ManualOrderError, match="NO token"):
         M.plan_orders(_request(legs=[{"bucket": "25°C", "side": "NO", "shares": 10, "limit_price": 0.9}]),
                       BOOK, now=NOW)
@@ -228,16 +225,22 @@ def test_an_unknown_post_is_reconciled_never_resent(monkeypatch, tmp_path) -> No
     assert out["results"][0]["event_type"] == "UNKNOWN_POST" and len(sent) == 3
 
 
-def test_a_thin_book_takes_what_is_within_the_cap_and_refuses_only_below_the_minimum_lot() -> None:
+def test_a_take_is_a_capped_fak_sent_at_the_asked_size_whatever_the_book_shows() -> None:
     # User 2026-10-16: 「上限价 0.05 内只剩 19.20 份，需要 20.0 份，不要因为这种阻断」.
     book = {**BOOK, "buckets": {**BOOK["buckets"],
             "21°C": {"token_id": "t21", "asks": [(0.05, 19.2), (0.06, 500.0)], "best_bid": 0.04,
                      "tick": 0.001, "min_order_size": 5.0}}}
     leg = M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 20, "limit_price": 0.05}]),
-                        book, now=NOW)["legs"][0]
-    assert leg["payload"]["order_type"] == "FOK" and leg["payload"]["size"] == 19.2
-    assert leg["reduced_from"] == 20.0
-    assert M.plan_orders(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.07}]),
-                         BOOK, now=NOW)["legs"][0]["payload"]["size"] == 8.0
-    with pytest.raises(M.ManualOrderError, match="低于最小单"):
-        M.plan_orders(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.06}]), BOOK, now=NOW)
+                        book, now=NOW)["legs"][0]["payload"]
+    assert leg["order_type"] == "FAK" and leg["fok_price_cap"] == 0.05 and leg["size"] == 20.0
+    with pytest.raises(M.ManualOrderError, match="吃单下限"):
+        M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 19.2, "limit_price": 0.05}]), book, now=NOW)
+
+
+def test_an_unmatched_fak_is_killed_and_stops_the_batch(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(M, "latest_book", lambda *a: BOOK)
+    monkeypatch.setattr(M, "RECEIPT_PATH", tmp_path / "r.jsonl")
+    monkeypatch.setattr(M.sqlite3, "connect", lambda *a, **k: _Conn())
+    out = M.place_manual_basket(_request(), now=NOW,
+                                transport=lambda p: {"ok": True, "orderID": "x", "status": "unmatched"})
+    assert [r["event_type"] for r in out["results"]] == ["EXPIRED", "NOT_SENT"]
