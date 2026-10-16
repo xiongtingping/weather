@@ -704,6 +704,74 @@ _EXCLUSIVE_WRITE_DOMAINS = frozenset({"ssot", "archive"})
 HOSTED_SWEEP_MAX_CONCURRENCY = 4
 
 
+# What holds the SSOT's WAL, recorded when it climbs toward the writer's
+# bound (2026-10-16).  Past MAX_TARGET_WAL_BYTES a writer (re)open needs a
+# truncating checkpoint, and one reader pinning an old snapshot keeps it busy:
+# production then fails closed every 15 s (10-15 20:02-20:09Z, 10-16
+# 03:42-03:51Z) and by the time anyone looks the reader is gone.  The board
+# render yields at TARGET_SSOT_WARN_WAL_BYTES, so this starts above that line
+# and names what did not: every process holding the file, a PASSIVE
+# checkpoint (checkpointed < log means a reader still holds old frames), and
+# this process's own statements running or draining for 5 s or more.
+WAL_FORENSICS_BYTES = 384 * 1024 * 1024
+WAL_FORENSICS_INTERVAL_SEC = 60.0
+WAL_FORENSICS_PATH = ROOT / "data" / "runtime" / "ssot_wal_forensics.jsonl"
+WAL_FORENSICS_MAX_LINES = 800
+
+
+def capture_ssot_wal_forensics(
+    db_path: Path,
+    *,
+    wal_bytes: int,
+    probe: "Callable[[], Mapping[str, Any]] | None" = None,
+    out_path: Path = WAL_FORENSICS_PATH,
+) -> dict[str, Any]:
+    """One bounded record of who holds the SSOT while its WAL is high."""
+
+    record: dict[str, Any] = {"at": utc_now(), "wal_bytes": int(wal_bytes)}
+    try:
+        pids = subprocess.run(
+            ["lsof", "-t", str(db_path)], capture_output=True, text=True,
+            timeout=15,
+        ).stdout.split()
+        listing = subprocess.run(
+            ["ps", "-o", "pid=,etime=,command=", "-p", ",".join(pids)],
+            capture_output=True, text=True, timeout=15,
+        ).stdout if pids else ""
+        record["holders"] = [
+            line.strip()[:300] for line in listing.splitlines() if line.strip()
+        ]
+    except (OSError, subprocess.SubprocessError) as exc:
+        record["holders_error"] = f"{type(exc).__name__}:{exc}"
+    try:
+        check = sqlite3.connect(str(db_path), timeout=0, isolation_level=None)
+        try:
+            row = check.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+            record["passive_checkpoint"] = list(row or ())
+        finally:
+            check.close()
+    except sqlite3.Error as exc:
+        record["passive_checkpoint_error"] = f"{type(exc).__name__}:{exc}"
+    if probe is not None:
+        try:
+            record["own_statements"] = dict(probe())
+        except Exception as exc:  # noqa: BLE001 -- forensics only
+            record["own_statements_error"] = f"{type(exc).__name__}:{exc}"
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        lines = (
+            out_path.read_text(encoding="utf-8").splitlines()
+            if out_path.is_file() else []
+        )
+        lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        out_path.write_text(
+            "\n".join(lines[-WAL_FORENSICS_MAX_LINES:]) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        record["write_error"] = f"{type(exc).__name__}:{exc}"
+    return record
+
+
 def hosted_sweep_write_domain(name: str) -> str:
     """The database a sweep writes; unknown names are assumed to write the SSOT."""
 
@@ -6696,6 +6764,7 @@ def main() -> int:
         next_storage_probe = 0.0
         next_wal_maintenance = 0.0
         next_target_wal_maintenance = 0.0
+        next_wal_forensics = 0.0
         # Hosted sweeps: seeded from each member's persisted last completion
         # when one exists, so a restart no longer resets who is overdue; a
         # member without a record keeps the staggered first run so boot does
@@ -6850,6 +6919,16 @@ def main() -> int:
                 # stamped 34 stations at once.  Best effort at a moment the
                 # writer is idle; busy readers make it a no-op retried next
                 # interval, exactly like the archive's.
+                _target_wal = int(
+                    (state.get("target_ssot_capacity") or {}).get("wal_bytes") or 0
+                )
+                if _target_wal >= WAL_FORENSICS_BYTES and now_mono >= next_wal_forensics:
+                    state["target_wal_forensics"] = capture_ssot_wal_forensics(
+                        Path(str(DEFAULT_TARGET_DB)),
+                        wal_bytes=_target_wal,
+                        probe=lambda: statement_probe_snapshot(min_elapsed_ms=5000.0),
+                    )
+                    next_wal_forensics = now_mono + WAL_FORENSICS_INTERVAL_SEC
                 if (
                     int(
                         (state.get("target_ssot_capacity") or {})
