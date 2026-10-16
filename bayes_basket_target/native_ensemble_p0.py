@@ -8,6 +8,7 @@ import math
 import os
 import sqlite3
 import threading
+import time
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,7 @@ from .contracts import (
 
 # Weight-zero tolerance for provisional riders; matches the kernel's EPS.
 EPS = 1e-9
+from .atomic_ledger import note_ledger_span
 from .station_registry import station_coordinates
 from .station_season import station_season_bin
 from .center_width_calibration import (
@@ -2822,13 +2824,19 @@ def compile_native_ensemble_p0(
         memo_key: tuple[str, ...],
         database_file: str,
         kept_answer: Callable[[tuple[Any, ...]], list[Any]],
+        declined: list[str],
     ) -> list[Any] | None:
         scope_part = (station_id, season_bin, training_lead_bucket)
         state = kept[5] if len(kept) > 5 else None
         if state is None:
+            declined.append("no_base")
             return None
         kept_at, ahead_at, base, valid_until_by_id = state
-        if not (kept_at <= decision_at_utc < ahead_at):
+        if decision_at_utc < kept_at:
+            declined.append("earlier_instant")
+            return None
+        if decision_at_utc >= ahead_at:
+            declined.append("row_ahead_in_view")
             return None
         if (
             base[0] > marks[0]
@@ -2836,6 +2844,7 @@ def compile_native_ensemble_p0(
             or marks[0] - base[0] > ADMITTED_INCREMENT_ROWS_MAX
             or marks[1] - base[1] > ADMITTED_INCREMENT_ROWS_MAX
         ):
+            declined.append("too_many_appended")
             return None
         touched = (marks[0], marks[1]) != tuple(base) and _appended_since(
             conn, database_file, marks,
@@ -2893,7 +2902,9 @@ def compile_native_ensemble_p0(
                 if str(row[3]) <= decision_at_utc:
                     continue
                 if row[4] is None:
-                    return None  # its artifact has not arrived: the walk
+                    # Its artifact has not arrived: the walk.
+                    declined.append("artifact_missing")
+                    return None
                 fresh[str(row[1])] = (
                     row[1], row[5], row[6], row[7], row[8], row[9], row[10],
                     row[3],
@@ -2919,6 +2930,7 @@ def compile_native_ensemble_p0(
         for activation_id, row in kept_rows.items():
             valid_until = valid_until_by_id.get(activation_id)
             if valid_until is None:
+                declined.append("kept_row_unbased")
                 return None
             if valid_until <= decision_at_utc or activation_id in fresh:
                 continue
@@ -2945,6 +2957,7 @@ def compile_native_ensemble_p0(
         missing = [i for i in admitted if i not in kept_rows]
         whole = {str(row[0]): row for row in _admitted_rows_whole(missing)}
         if len(whole) != len(missing):
+            declined.append("admitted_row_unread")
             return None
         rows = [kept_rows.get(i) or whole[i] for i in admitted]
         rows.sort(key=lambda row: (-int(row[3]), str(row[0])))
@@ -2952,6 +2965,7 @@ def compile_native_ensemble_p0(
             if key_part is not None and key_part not in evaluations:
                 kept_evaluations = kept[2].get(key_part)
                 if kept_evaluations is None:
+                    declined.append("evaluation_unkept")
                     return None
                 evaluations[_kept_key(key_part)] = kept_evaluations
         shared = (4, 5, 6, 8, 9, 10, 11, 12, 15)
@@ -2986,6 +3000,8 @@ def compile_native_ensemble_p0(
         digest = b""
         valid_activations = -1
         valid_at_base = -1
+        walk_reason = ""
+        walk_started = 0.0
         horizon = _NO_HORIZON
         ahead = _NO_HORIZON
         marks: tuple[int, int, int] | None = None
@@ -3029,13 +3045,26 @@ def compile_native_ensemble_p0(
                 # Neither table has a new row for this scope and the clock
                 # has reached no row's edge: the two lists are the ones kept.
                 return _kept_answer(kept)
-            if kept is not None and marks is not None:
+            if kept is None:
+                walk_reason = "cold"
+            elif marks is None:
+                walk_reason = "no_marks"
+            else:
+                declined: list[str] = []
+                step_started = time.perf_counter()
                 stepped = _admitted_increment(
                     kept, marks, memo_key=memo_key,
                     database_file=database_file, kept_answer=_kept_answer,
+                    declined=declined,
                 )
                 if stepped is not None:
+                    note_ledger_span(
+                        "p0_evidence_step",
+                        (time.perf_counter() - step_started) * 1000.0,
+                    )
                     return stepped
+                walk_reason = declined[0] if declined else "declined"
+            walk_started = time.perf_counter()
             (
                 digest, valid_activations, horizon, ahead, valid_at_base,
             ) = _admitted_scope_digest(
@@ -3053,6 +3082,10 @@ def compile_native_ensemble_p0(
                     if marks is not None and _append_marks(conn) == marks
                     else None
                 ),) + kept[5:]
+                note_ledger_span(
+                    "p0_evidence_same_lists",
+                    (time.perf_counter() - walk_started) * 1000.0,
+                )
                 return _kept_answer(kept)
         tested = 0
         tested_at_base = 0
@@ -3134,6 +3167,13 @@ def compile_native_ensemble_p0(
                         valid_until_by_id,
                     ) if based and marks is not None else None,
                 )
+        if walk_reason:
+            # Which way the kept answer was declined, per cycle: the cycle
+            # history's span report says what still sends scopes to the walk.
+            note_ledger_span(
+                "p0_evidence_walk_" + walk_reason,
+                (time.perf_counter() - walk_started) * 1000.0,
+            )
         return rows
 
     def _all_rows() -> list[Any]:

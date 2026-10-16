@@ -613,3 +613,22 @@ def test_a_walk_the_rotation_wrote_into_still_keeps_its_base(
     assert "native-activation-re-mint-during" in kept[1]
     monkeypatch.setattr(P0, "ADMITTED_SCOPE_MEMO_ENABLED", False)
     assert stepped == _compile(conn, "2026-07-01T13:07:00Z")
+
+
+def test_each_walk_names_why_the_kept_answer_was_declined(tmp_path) -> None:
+    """The cycle history's span report says what still sends scopes to the
+    walk (2026-10-16: 66-163 s spikes with no way to tell which fallback)."""
+
+    from bayes_basket_target import atomic_ledger
+
+    conn, _ = _store(tmp_path)
+    atomic_ledger.reset_ledger_spans()
+    _compile(conn, "2026-07-01T13:00:00Z")
+    _re_mint(conn, suffix="s", valid_from="2026-07-01T13:01:00Z")
+    _compile(conn, "2026-07-01T13:07:00Z")
+    _compile(conn, "2026-07-01T13:00:00Z")
+    spans = atomic_ledger.ledger_span_profile()
+    atomic_ledger.reset_ledger_spans()
+    assert spans["p0_evidence_walk_cold"]["count"] == 1
+    assert spans["p0_evidence_step"]["count"] >= 1
+    assert spans["p0_evidence_walk_earlier_instant"]["count"] == 1
