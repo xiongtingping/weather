@@ -2347,6 +2347,57 @@ RENDER_CONSENSUS_BRIDGE_DAYS = "_consensus_bridge_days.json"
 TAF_INBOX_PATH = ROOT / "data" / "bayes_basket_target_taf_revision_inbox.json"
 TAF_FRESH_HOURS = 6.5
 TAF_STALE_HOURS = 9.0
+#: A station's own usual wait for its next TAF after one issued near the same
+#: UTC time of day, from the inbox's days (user 2026-10-16: 「发布时间」红了 --
+#: EGLC, London City, closes at night: its last TAF lands ~10:55Z and the next
+#: ~02:00Z, fifteen hours every day, which the fleet's 9 h line called stale
+#: every evening).  Only widens the fleet lines, never tightens them.
+TAF_USUAL_GAP_WINDOW_MINUTES = 90
+TAF_USUAL_GAP_MIN_SAMPLES = 3
+
+
+def _taf_usual_gap_hours(issued_at_utc: Sequence[str], latest: str) -> float | None:
+    """Median hours from an issue near ``latest``'s UTC time of day to the
+    station's next issue, over the earlier issues; None under the sample
+    floor."""
+
+    def parse(text: str) -> datetime | None:
+        try:
+            return datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    times = sorted({t for t in (parse(x) for x in issued_at_utc) if t is not None})
+    anchor = parse(latest)
+    if anchor is None:
+        return None
+    minute = anchor.hour * 60 + anchor.minute
+    gaps = []
+    for earlier, later in zip(times, times[1:]):
+        if earlier >= anchor:
+            break
+        offset = abs(earlier.hour * 60 + earlier.minute - minute)
+        if min(offset, 1440 - offset) <= TAF_USUAL_GAP_WINDOW_MINUTES:
+            gaps.append((later - earlier).total_seconds() / 3600.0)
+    if len(gaps) < TAF_USUAL_GAP_MIN_SAMPLES:
+        return None
+    gaps.sort()
+    middle = len(gaps) // 2
+    return gaps[middle] if len(gaps) % 2 else (gaps[middle - 1] + gaps[middle]) / 2.0
+
+
+def _taf_freshness(age_hours: float | None, usual_gap_hours: float | None) -> str:
+    """fresh / late / stale against the fleet lines, widened to the station's
+    own usual wait when that is longer."""
+
+    if age_hours is None:
+        return "stale"
+    fresh = TAF_FRESH_HOURS
+    stale = TAF_STALE_HOURS
+    if usual_gap_hours is not None:
+        fresh = max(fresh, usual_gap_hours + 0.5)
+        stale = max(stale, usual_gap_hours + 3.0)
+    return "fresh" if age_hours <= fresh else "late" if age_hours <= stale else "stale"
 METAR_FRESH_MINUTES = 75.0
 METAR_STALE_MINUTES = 150.0
 # How far back the report-to-probability latency reads (charters 153/154).
@@ -2781,12 +2832,16 @@ def collect_taf_board(conn: sqlite3.Connection) -> dict[str, Any]:
             ).total_seconds() / 60.0, 1)
         except ValueError:
             lag_min = None
-        freshness = ("fresh" if age is not None and age <= TAF_FRESH_HOURS
-                     else "late" if age is not None and age <= TAF_STALE_HOURS else "stale")
+        usual_gap = _taf_usual_gap_hours(
+            [r["issued_at_utc"] for r in by_station[station].values()],
+            newest["issued_at_utc"],
+        )
+        freshness = _taf_freshness(age, usual_gap)
         stations.append({
             "station_id": station, "timezone": tz_name,
             "latest_issued_at_utc": newest["issued_at_utc"],
             "age_hours": age, "freshness": freshness, "capture_lag_minutes": lag_min,
+            "usual_gap_hours": usual_gap,
             "reports": rows,
         })
     order = {"stale": 0, "late": 1, "fresh": 2}
