@@ -189,13 +189,106 @@ def registry_scope_still_eligible(
     return int(row[0] or 0) == 1
 
 
-# Charter 182: (database, station, event_date) -> (registry fingerprint,
-# newest julianday(refreshed_at) among the scope's eligible rows, answer or
-# the ContractError it raised).  The settlement lane asks this for every
-# closed station-day every cycle -- 45 calls, 7.6s at 11:28Z -- and each call
-# sorted the scope's ~880 eligible rows to keep the newest snapshot's.
-_REGISTRY_SCOPE_MEMO: dict[tuple[str, str, str], tuple[Any, float, Any]] = {}
+# Charter 182: (database, station, event_date) -> the scope's standing read
+# of the registry: (fingerprint (snapshot top, lowest row, highest row),
+# newest julianday(refreshed_at) among its eligible rows, the best row's
+# (refreshed_at, snapshot_sha256), answer or the ContractError it raised).
+#
+# The answer is the eligible rows' best snapshot -- highest (refreshed_at,
+# sha) -- and that snapshot's (timezone, lane).  The registry changes in two
+# ways only: a snapshot is ingested whole (the snapshot table's top and the
+# registry's highest rowid move), or retention drops the oldest snapshots
+# whole (the lowest rowid moves).  Re-reading the scope on every ingest was
+# every copy of it -- 3,322 rows across 302 snapshots for EGLC 10-14,
+# ~0.4 s, 31-48 scopes a pass, 10-21 s of the settlement lane's budget
+# (2026-10-16), which starved the label lane behind it.  Now an ingest reads
+# only the new snapshots' rows of the scope (by sha, off the latest index)
+# and compares them with the best kept; a retention pass, or anything else,
+# reads the scope whole as before.
+_REGISTRY_SCOPE_MEMO: dict[tuple[str, str, str], tuple[Any, ...]] = {}
 _REGISTRY_SCOPE_MEMO_MAX = 4000
+_REGISTRY_SCOPE_INCREMENT_MAX_SNAPSHOTS = 64
+
+
+def _registry_scope_rows_whole(
+    conn: sqlite3.Connection, station_id: str, event_date: str
+) -> list[Any]:
+    return conn.execute(
+        "SELECT snapshot_sha256,settlement_timezone,source_lane,"
+        "refreshed_at,julianday(refreshed_at) "
+        "FROM basket_target_market_registry "
+        "WHERE station_id=? AND event_date=? AND source_eligible=1 "
+        "AND julianday(refreshed_at) IS NOT NULL "
+        "ORDER BY refreshed_at DESC,snapshot_sha256 DESC",
+        (station_id, event_date),
+    ).fetchall()
+
+
+def _registry_scope_rows_of(
+    conn: sqlite3.Connection, station_id: str, event_date: str, sha: str
+) -> list[Any]:
+    return conn.execute(
+        "SELECT snapshot_sha256,settlement_timezone,source_lane,"
+        "refreshed_at,julianday(refreshed_at) "
+        "FROM basket_target_market_registry "
+        "WHERE snapshot_sha256=? AND station_id=? AND event_date=? "
+        "AND source_eligible=1 AND julianday(refreshed_at) IS NOT NULL "
+        "ORDER BY refreshed_at DESC,snapshot_sha256 DESC",
+        (sha, station_id, event_date),
+    ).fetchall()
+
+
+def _registry_scope_answer(rows: Sequence[Any], event_date: str) -> Any:
+    try:
+        return _registry_scope_from_rows([row[:4] for row in rows], event_date=event_date)
+    except ContractError as exc:
+        return exc
+
+
+def _registry_scope_read(
+    conn: sqlite3.Connection,
+    *,
+    station_id: str,
+    event_date: str,
+    fingerprint: tuple[Any, ...],
+    kept: tuple[Any, ...] | None,
+) -> tuple[Any, ...]:
+    """The scope's standing read at ``fingerprint``, stepped from ``kept``
+    when only whole snapshots were added since it was taken."""
+
+    from .market_registry import SNAPSHOT_TABLE  # noqa: PLC0415
+
+    if kept is not None:
+        (old_top, old_low, old_high) = kept[0]
+        (top, low, high) = fingerprint
+        new_snapshots = (
+            conn.execute(
+                f"SELECT snapshot_sha256 FROM {SNAPSHOT_TABLE} "
+                "WHERE rowid>? AND rowid<=? ORDER BY rowid",
+                (int(old_top), int(top)),
+            ).fetchall()
+            if low == old_low and top > old_top and high > old_high
+            and top - old_top <= _REGISTRY_SCOPE_INCREMENT_MAX_SNAPSHOTS
+            else None
+        )
+        if new_snapshots is not None:
+            newest, best, answer = kept[1], kept[2], kept[3]
+            for (sha,) in new_snapshots:
+                rows = _registry_scope_rows_of(conn, station_id, event_date, str(sha))
+                if not rows:
+                    continue
+                newest = max(newest, max(float(row[4]) for row in rows))
+                head = (str(rows[0][3]), str(rows[0][0]))
+                if best is None or head > best:
+                    best, answer = head, _registry_scope_answer(rows, event_date)
+            return (fingerprint, newest, best, answer)
+    rows = _registry_scope_rows_whole(conn, station_id, event_date)
+    return (
+        fingerprint,
+        max((float(row[4]) for row in rows), default=float("-inf")),
+        (str(rows[0][3]), str(rows[0][0])) if rows else None,
+        _registry_scope_answer(rows, event_date),
+    )
 
 
 def _registry_scope(
@@ -207,11 +300,11 @@ def _registry_scope(
 ) -> tuple[str, str, str]:
     """The newest eligible snapshot's (timezone, lane, sha) for the scope.
 
-    Charter 182: remembered per registry fingerprint.  With the registry
-    unchanged and ``as_of_utc`` no earlier than every eligible row's
-    ``refreshed_at``, the as-of filter keeps every row, so the answer is the
-    one the unfiltered rows give -- computed once per fingerprint, the
-    ContractError included.  Any earlier clock (a replay) reads as before.
+    Charter 182: remembered per registry fingerprint and stepped forward
+    across whole-snapshot ingests.  With ``as_of_utc`` no earlier than every
+    eligible row's ``refreshed_at``, the as-of filter keeps every row, so the
+    answer is the one the unfiltered rows give -- the ContractError included.
+    Any earlier clock (a replay) reads as before.
     """
 
     from .market_registry import registry_fingerprint  # noqa: PLC0415
@@ -222,30 +315,17 @@ def _registry_scope(
         as_of_jd = conn.execute("SELECT julianday(?)", (as_of_utc,)).fetchone()[0]
         cached = _REGISTRY_SCOPE_MEMO.get(memo_key)
         if cached is None or cached[0] != fingerprint[1]:
-            rows = conn.execute(
-                "SELECT snapshot_sha256,settlement_timezone,source_lane,"
-                "refreshed_at,julianday(refreshed_at) "
-                "FROM basket_target_market_registry "
-                "WHERE station_id=? AND event_date=? AND source_eligible=1 "
-                "AND julianday(refreshed_at) IS NOT NULL "
-                "ORDER BY refreshed_at DESC,snapshot_sha256 DESC",
-                (station_id, event_date),
-            ).fetchall()
-            newest = max((float(row[4]) for row in rows), default=float("-inf"))
-            try:
-                answer: Any = _registry_scope_from_rows(
-                    [row[:4] for row in rows], event_date=event_date,
-                )
-            except ContractError as exc:
-                answer = exc
+            cached = _registry_scope_read(
+                conn, station_id=str(station_id), event_date=str(event_date),
+                fingerprint=tuple(fingerprint[1]), kept=cached,
+            )
             if len(_REGISTRY_SCOPE_MEMO) >= _REGISTRY_SCOPE_MEMO_MAX:
                 _REGISTRY_SCOPE_MEMO.clear()
-            cached = (fingerprint[1], newest, answer)
             _REGISTRY_SCOPE_MEMO[memo_key] = cached
         if as_of_jd is not None and float(as_of_jd) >= cached[1]:
-            if isinstance(cached[2], ContractError):
-                raise ContractError(str(cached[2]))
-            return cached[2]
+            if isinstance(cached[3], ContractError):
+                raise ContractError(str(cached[3]))
+            return cached[3]
     rows = conn.execute(
         "SELECT snapshot_sha256,settlement_timezone,source_lane,refreshed_at "
         "FROM basket_target_market_registry "

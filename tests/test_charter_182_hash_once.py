@@ -204,3 +204,66 @@ def test_the_memo_key_is_one_statement(tmp_path) -> None:
     key = mr.registry_fingerprint(conn)
     assert key is not None and key[1][0] == 1
     assert len([s for s in statements if "rowid" in s]) == 1
+
+
+def test_ingests_step_the_scope_and_every_answer_agrees_with_the_whole_read(tmp_path) -> None:
+    """2026-10-16: every ingest re-read every copy of the scope (EGLC 10-14:
+    3,322 rows in 302 snapshots, ~0.4 s, 31-48 scopes a pass).  An ingest now
+    reads only the new snapshots' rows; retention reads the scope whole."""
+
+    import random
+
+    rng = random.Random(272)
+    conn = _registry(tmp_path / "ssot.db")
+    stamps = ["2026-09-20T10:00:00Z", "2026-09-20T12:00:00Z", "2026-09-20T12:00:00Z"]
+    ask = lambda: truth._registry_scope(  # noqa: E731
+        conn, station_id="ZUUU", event_date="2026-09-20", as_of_utc="2026-09-22T00:00:00Z",
+    )
+
+    def answer(fn):
+        try:
+            return ("ok", fn())
+        except ContractError as exc:
+            return ("refused", str(exc))
+
+    shas: list[str] = []
+    for step in range(40):
+        if shas and step % 9 == 8:
+            oldest = shas.pop(0)
+            conn.execute(
+                "DELETE FROM basket_target_market_registry WHERE snapshot_sha256=?", (oldest,)
+            )
+            conn.commit()
+        else:
+            sha = f"{rng.getrandbits(256):064x}"
+            stamp = rng.choice(stamps) if step % 5 else f"2026-09-20T1{step % 10}:30:00Z"
+            if step % 7 == 3:  # a snapshot without this scope's rows
+                conn.execute(
+                    "INSERT INTO basket_target_market_registry_snapshot VALUES(?,?,?,?,?,?,?,?)",
+                    (sha, "s", "shared_live_registry_export_only", stamp, "p", 0, stamp, "c" * 64),
+                )
+                conn.execute(
+                    "INSERT INTO basket_target_market_registry(snapshot_sha256,slug,event_date,"
+                    "outcome,city_slug,station_id,settlement_timezone,settlement_unit,source_lane,"
+                    "source_eligible,source_block_reason,resolution_url,rules_sha256,yes_token,"
+                    "no_token,market_active,market_accepting_orders,registry_json,refreshed_at)"
+                    " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (sha, "other", "2026-09-20", "1", "x", "RKSI", "Asia/Seoul", "C", "awc",
+                     1, None, None, "r" * 64, "y", "n", 1, 1, "{}", stamp),
+                )
+                conn.commit()
+            else:
+                _snapshot(conn, sha, stamp, lane="amsc" if step % 11 == 6 else "awc")
+            shas.append(sha)
+        statements = _trace(conn)
+        got = answer(ask)
+        conn.set_trace_callback(None)
+        assert got == answer(lambda: _reference(conn, "2026-09-22T00:00:00Z")), step
+        whole = [s for s in statements
+                 if "WHERE station_id=? AND event_date=? AND source_eligible=1" in s
+                 or ("station_id='ZUUU' AND event_date='2026-09-20' AND source_eligible=1" in s
+                     and "snapshot_sha256=" not in s)]
+        if step % 9 == 8 and step:
+            assert whole, step  # retention: the scope is read whole
+        elif step and len(shas) > 1:
+            assert not whole, (step, whole)
