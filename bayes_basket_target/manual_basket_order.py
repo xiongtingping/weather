@@ -22,8 +22,9 @@ What it is and is not:
 * Re-checked here against the newest official WS snapshot: every bucket must
   be on that day's ladder (its token comes from the snapshot, never from the
   page), the book no older than ``MAX_BOOK_AGE_SECONDS``, each leg at or
-  above the market's minimum lot, and a take must still be fillable within
-  its stated cap on the book as it stands now.
+  above the market's minimum lot, and a take is sized to what the book
+  still offers within its stated cap (cut down when thinner, refused only
+  below the minimum lot; user 2026-10-16).
 * Legs go out in the order given and the batch stops at the first leg that
   is not a clean acceptance -- an unknown or a refusal leaves the rest unsent
   rather than building more of a basket whose shape has already broken.
@@ -246,6 +247,7 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
             raise ManualOrderError(f"{label} 交易所最小单量缺失或无效")
         if shares < row["min_order_size"]:
             raise ManualOrderError(f"{label} {shares} 份低于最小单 {row['min_order_size']} 份")
+        reduced_from = None
         if mode == "taker":
             asked = shares
             shares = fok_shares(price, shares)
@@ -254,8 +256,14 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
                     f"{label} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
             available = fillable_within(side_asks, shares, price)
             if available + 1e-9 < shares:
-                raise ManualOrderError(
-                    f"{label} 盘口已变：上限价 {price} 内只剩 {available:.2f} 份，需要 {shares} 份")
+                # User 2026-10-16「不要因为这种阻断」: a book thinner than asked
+                # takes what is there within the cap; only a remnant below the
+                # minimum lot is refused, since nothing could be sent.
+                shares = fok_shares(price, available)
+                if shares < row["min_order_size"]:
+                    raise ManualOrderError(
+                        f"{label} 盘口已变：上限价 {price} 内只剩 {available:.2f} 份，低于最小单 {row['min_order_size']} 份")
+                reduced_from = asked
             order = {"order_type": "FOK", "post_only": False, "fok_price_cap": price}
         elif mode == "maker":
             best_ask = side_asks[0][0] if side_asks else None
@@ -267,7 +275,7 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
         total += shares * price
         key = hashlib.sha256(f"{STRATEGY_ID}|{batch}|{station}|{day}|{bucket}|{side}".encode()).hexdigest()
         payloads.append({
-            "bucket": bucket, "side": side,
+            "bucket": bucket, "side": side, "reduced_from": reduced_from,
             "payload": {
                 "strategy_id": STRATEGY_ID,
                 "order_intent_id": f"manual-{batch}-{index}",
@@ -427,6 +435,7 @@ def place_manual_basket(
             "reason": verdict.get("reason") or "",
             "order_type": leg["payload"]["order_type"],
             "price": leg["payload"]["price"], "size": leg["payload"]["size"],
+            "reduced_from": leg.get("reduced_from"),
             "exchange_order_id": fill.get("exchange_order_id") or "",
             "shares_matched": fill.get("shares_matched"),
             "usdc_paid": fill.get("making_amount"),

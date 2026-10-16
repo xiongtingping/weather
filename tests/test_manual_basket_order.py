@@ -45,7 +45,6 @@ def test_a_take_becomes_capped_fok_buy_yes_with_the_books_token() -> None:
     ({"confirm": ""}, "确认"),
     ({"legs": [{"bucket": "99°C", "shares": 10, "limit_price": 0.1}]}, "梯子"),
     ({"legs": [{"bucket": "24°C", "shares": 4, "limit_price": 0.08}]}, "最小单"),
-    ({"legs": [{"bucket": "24°C", "shares": 50, "limit_price": 0.07}]}, "盘口已变"),
     ({"mode": "maker", "legs": [{"bucket": "24°C", "shares": 50, "limit_price": 0.07}]}, "卖一"),
     ({"legs": [{"bucket": "25°C", "shares": 2000, "limit_price": 0.16}]}, "上限"),
 ])
@@ -175,9 +174,9 @@ def test_a_no_leg_is_priced_on_the_mirrored_yes_bids_and_sent_on_the_no_token() 
     assert no["token_id"] == "n24" and no["outcome_side"] == "NO" and no["side"] == "BUY"
     assert no["order_type"] == "FOK" and no["fok_price_cap"] == 0.94
     assert yes["idempotency_key"] != no["idempotency_key"]
-    with pytest.raises(M.ManualOrderError, match="盘口已变"):
-        M.plan_orders(_request(legs=[{"bucket": "24°C", "side": "NO", "shares": 100, "limit_price": 0.94}]),
-                      book, now=NOW)
+    thin = M.plan_orders(_request(legs=[{"bucket": "24°C", "side": "NO", "shares": 100, "limit_price": 0.94}]),
+                         book, now=NOW)["legs"][0]
+    assert thin["payload"]["size"] == 30.0 and thin["reduced_from"] == 100.0
     with pytest.raises(M.ManualOrderError, match="NO token"):
         M.plan_orders(_request(legs=[{"bucket": "25°C", "side": "NO", "shares": 10, "limit_price": 0.9}]),
                       BOOK, now=NOW)
@@ -227,3 +226,18 @@ def test_an_unknown_post_is_reconciled_never_resent(monkeypatch, tmp_path) -> No
     out = M.place_manual_basket(_request(legs=leg), transport=gateway, now=NOW,
                                 reconcile=lambda key: {"ok": False, "error": "lookup_timeout"})
     assert out["results"][0]["event_type"] == "UNKNOWN_POST" and len(sent) == 3
+
+
+def test_a_thin_book_takes_what_is_within_the_cap_and_refuses_only_below_the_minimum_lot() -> None:
+    # User 2026-10-16: 「上限价 0.05 内只剩 19.20 份，需要 20.0 份，不要因为这种阻断」.
+    book = {**BOOK, "buckets": {**BOOK["buckets"],
+            "21°C": {"token_id": "t21", "asks": [(0.05, 19.2), (0.06, 500.0)], "best_bid": 0.04,
+                     "tick": 0.001, "min_order_size": 5.0}}}
+    leg = M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 20, "limit_price": 0.05}]),
+                        book, now=NOW)["legs"][0]
+    assert leg["payload"]["order_type"] == "FOK" and leg["payload"]["size"] == 19.2
+    assert leg["reduced_from"] == 20.0
+    assert M.plan_orders(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.07}]),
+                         BOOK, now=NOW)["legs"][0]["payload"]["size"] == 8.0
+    with pytest.raises(M.ManualOrderError, match="低于最小单"):
+        M.plan_orders(_request(legs=[{"bucket": "24°C", "shares": 50, "limit_price": 0.06}]), BOOK, now=NOW)
