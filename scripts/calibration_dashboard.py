@@ -17540,12 +17540,108 @@ function healthLamps(){
 }
 
 
+// The edge area's three sections, the summary (user 2026-10-17 「继续改：边际板块
+// （模型对市场差距、宪章 EV 恒等式、真值落位）按同样版式极简化」, after
+// 「优化前端，太多数据太多内容了，提炼主要内容，极简！」): big numbers, one chart
+// each, and every former table folded under 「明细」.
+const edgeBig=(label,value,cls,sub,tip)=>`<div class="card" title="${h(tip||"")}"><div class="muted">${label}</div>
+  <div class="mono ${cls}" style="font-size:30px;font-weight:700;line-height:1.25">${value}</div><div class="muted mono">${sub}</div></div>`;
+const edgeFold=body=>body?`<details style="margin-top:10px"><summary>明细</summary>${body}</details>`:"";
+function centreShapeGap(){
+  const E=D.charter_ev||{}, S=E.centre_shape;
+  const head=`<h2 title="P0 服务分布对同一时刻盘口中价按 RPS 比；中心差＝把 P0 挪到市场均值消掉的部分，形状差＝挪完还剩的；分布层只对形状差负责">模型对市场差距</h2>`;
+  if(!S||!S.available) return head+`<div class="card muted">${!S?"下一次整库渲染后出现":"未采集"}</div>`;
+  const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
+  const pc=v=>v==null?"—":Math.round(v*100)+"%";
+  const ivl=(c,f)=>Array.isArray(c)&&c[0]!=null?`[${f(c[0])}, ${f(c[1])}]`:"";
+  const P=(S.samples||{}).stable_pool||{};
+  const tone=c=>Array.isArray(c)&&c[0]>0?"down":(Array.isArray(c)&&c[1]<0?"up":"flat");
+  const cards=`<div class="grid g3">
+    ${edgeBig("输给市场（RPS）",sg(P.gap),tone(P.gap_ci),`${P.station_days??"—"} 站日 · ${P.days??"—"} 天`,`模型 − 市场 ${ivl(P.gap_ci,sg)}；正＝市场更准`)}
+    ${edgeBig("其中中心",pc(P.centre_share),"",`中心差 ${sg(P.centre)}`,`中心占比 ${ivl(P.centre_share_ci,pc)}；分布层追不回来`)}
+    ${edgeBig("其中形状",sg(P.shape),tone(P.shape_ci),"分布层只管这部分",`形状差 ${ivl(P.shape_ci,sg)}`)}</div>`;
+  const tiers=Object.entries(S.tiers||{}).filter(([,r])=>r&&r.station_days);
+  const chart=(()=>{if(!tiers.length) return "";
+    const W=560, L=70, R=64, RH=26, H=tiers.length*RH+24, top=Math.max(1e-9,...tiers.map(([,r])=>Math.max(0,(r.centre||0))+Math.max(0,(r.shape||0))));
+    const x=v=>L+(W-L-R)*Math.max(0,v)/top;
+    const rows=tiers.map(([k,r],i)=>{const y=4+i*RH, c=Math.max(0,r.centre||0), s=Math.max(0,r.shape||0);
+      return `<g><title>${h(k)} h · 差距 ${sg(r.gap)} · 中心 ${sg(r.centre)} · 形状 ${sg(r.shape)} · ${r.station_days} 站日</title>
+        <text x="${L-8}" y="${y+15}" text-anchor="end" class="trend-ax">${h(k)} h</text>
+        <rect x="${L}" y="${y+4}" width="${(x(c)-L).toFixed(1)}" height="${RH-10}" rx="2" fill="var(--th-price)"/>
+        <rect x="${x(c).toFixed(1)}" y="${y+4}" width="${(x(c+s)-x(c)).toFixed(1)}" height="${RH-10}" rx="2" fill="var(--th-claim)"/>
+        <text x="${W-R+6}" y="${y+15}" class="trend-ax">${sg(r.gap)}</text></g>`;}).join("");
+    const legend=`<text x="${L}" y="${H-4}" class="trend-ax"><tspan fill="var(--th-price)">■</tspan> 中心　<tspan fill="var(--th-claim)">■</tspan> 形状</text>`;
+    return `<div class="card" style="margin-top:8px"><div class="trend-t">按距结算</div><div class="muted trend-s">输给市场的 RPS，拆成中心与形状</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:640px" role="img" aria-label="按提前量的差距拆分">${rows}${legend}</svg></div>`;})();
+  return head+cards+chart+edgeFold(centreShapeGapDetail());
+}
+function charterEv(){
+  const E=D.charter_ev||{};
+  const head=`<h2 title="宪章 2026-09-12：edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge；EV 90% 下界高于点差才够实盘开闸">宪章 EV 恒等式</h2>`;
+  if(!E.available) return head+`<div class="card muted">未采集</div>`;
+  const sg=(v,d=4)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const word=r=>{
+    if(!r||r.ev==null) return ["flat","无样本"];
+    const lcb=r.ev_ci?r.ev_ci[0]:null, kucb=r.k_ci?r.k_ci[1]:null, hurdle=r.spread_cost||0;
+    if(lcb!=null&&lcb>hurdle&&kucb!=null&&kucb<1) return ["up","有 edge"];
+    if(r.ev>0) return ["flat","不够付点差"];
+    return ["down","没有 edge"];
+  };
+  const cards=(E.scopes||[]).map(s=>{
+    if(s.error) return `<div class="card"><div class="muted">${h(s.scope)}</div><div class="muted">${h(s.error)}</div></div>`;
+    const r=s.research||{}, [cls,w]=word(r);
+    return edgeBig(h(s.scope),`${sg(r.ev)} <span style="font-size:16px">${w}</span>`,cls,
+      `k ${n3(r.k)} · 点差 ${n3(r.spread_cost)} · ${r.days_ev_positive??"—"}/${r.days??"—"} 天为正`,
+      `EV 每站日（中价）${sg(r.ev)} [${sg((r.ev_ci||[])[0])}, ${sg((r.ev_ci||[])[1])}]；k ${n3(r.k)} [${n3((r.k_ci||[])[0])}, ${n3((r.k_ci||[])[1])}]`);
+  }).join("");
+  const W=E.window||{};
+  return head+`<div class="grid g3">${cards}</div><div class="muted" style="margin-top:6px">EV＝每站日按分歧下注的期望利润（中价）· k＜1 才有 edge · ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}</div>`
+    +edgeFold(charterEvDetail());
+}
+function truthLanding(){
+  const T=D.truth_landing||{};
+  const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
+  if(!segs.length) return "";
+  const S=segs[0], G=S.disagreement||{};
+  const groups=(G.groups||[]).filter(g=>g.buckets>0);
+  const p=v=>v==null?"—":Math.round(v*100)+"%";
+  const judge=g=>{if(g.hit_rate==null||g.buckets<30||!g.market_nearer_interval) return "thin";
+    const [lo,hi]=g.market_nearer_interval; return lo>0?"market":(hi<0?"model":"unclear");};
+  const dis=groups.filter(g=>g.key!=="agree"&&judge(g)!=="thin");
+  const n=w=>dis.filter(g=>judge(g)===w).length;
+  const over=["model_much","model_bit"].map(k=>groups.find(g=>g.key===k)).filter(g=>g&&g.hit_rate!=null&&g.buckets>=30);
+  const cents=over.length?100*over.reduce((a,g)=>a+(g.hit_rate-g.cost_mean)*g.buckets,0)/over.reduce((a,g)=>a+g.buckets,0):null;
+  const head=`<h2 title="真值＝官方结算桶；市场＝首个 P0 决策后 4 小时的归一中间价；模型＝同一首个 P0 的服务概率；两边读同一批桶">真值落位</h2>`;
+  const cards=`<div class="grid g3">
+    ${edgeBig("分歧时市场更准",`${n("market")} / ${dis.length}`,n("market")>n("model")?"down":(n("model")>n("market")?"up":"flat"),`模型更准 ${n("model")} · 分不出 ${n("unclear")}`,"按模型与市场的分歧分组，实际开出率离谁更近；95% 区间按事件日重抽，跨零记分不出")}
+    ${edgeBig("按卖一买「模型高于市场」",cents==null?"—":`${cents>=0?"+":""}${cents.toFixed(1)}¢`,cents==null?"flat":(cents>=0?"up":"down"),"每股，未计手续费","实际开出率 − 卖一均价，按桶数加权")}
+    ${edgeBig("样本",`${S.station_days}`,"",`站日 · ${S.event_days} 个事件日`,S.label)}</div>`;
+  const chart=(()=>{if(!groups.length) return "";
+    const W=600, L=150, R=70, RH=28, H=groups.length*RH+26;
+    const top=Math.max(0.05,...groups.flatMap(g=>[g.claim_mean,g.price_mean,g.hit_rate].filter(v=>v!=null)))*1.08;
+    const x=v=>L+(W-L-R)*(v||0)/top;
+    const WHO={market:["var(--down)","市场"],model:["var(--up)","模型"],unclear:["var(--muted)","分不出"],thin:["var(--muted)","样本少"]};
+    const rows=groups.map((g,i)=>{const y=6+i*RH+RH/2, [c,w]=WHO[judge(g)];
+      const dot=(v,col,shape)=>v==null?"":(shape==="sq"?`<rect x="${(x(v)-5).toFixed(1)}" y="${y-5}" width="10" height="10" rx="1.5" fill="${col}"/>`
+        :shape==="dm"?`<path d="M${x(v).toFixed(1)} ${y-7}l7 7l-7 7l-7 -7z" fill="${col}"/>`:`<circle cx="${x(v).toFixed(1)}" cy="${y}" r="5.5" fill="${col}"/>`);
+      return `<g><title>${h(g.label)} · ${g.buckets} 桶 · 模型 ${p(g.claim_mean)} · 市场 ${p(g.price_mean)} · 开出 ${p(g.hit_rate)}</title>
+        <text x="${L-10}" y="${y+4}" text-anchor="end" class="trend-ax">${h(g.label)}</text>
+        <line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)"/>
+        ${dot(g.claim_mean,"var(--th-claim)","ci")}${dot(g.price_mean,"var(--th-price)","sq")}${dot(g.hit_rate,"var(--series-3)","dm")}
+        <text x="${W-R+8}" y="${y+4}" class="trend-ax" fill="${c}">${w}</text></g>`;}).join("");
+    const legend=`<text x="${L}" y="${H-4}" class="trend-ax"><tspan fill="var(--th-claim)">●</tspan> 模型说　<tspan fill="var(--th-price)">■</tspan> 市场　<tspan fill="var(--series-3)">◆</tspan> 实际开出</text>`;
+    return `<div class="card" style="margin-top:8px"><div class="trend-t">分歧时谁对？</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:720px" role="img" aria-label="按分歧分组的模型、市场与实际开出率">${rows}${legend}</svg></div>`;})();
+  return head+cards+chart+edgeFold(truthLandingDetail());
+}
+
 // Sits after the per-station summary because it is that table's follow-up
 // question: the summary ranks stations by what they lost, this asks which
 // of them lost for a reason.  Ranking by P&L alone cannot tell a broken
 // station from an unlucky one on five settled chains; failing several
 // dimensions that do not share a mechanism can.
-function truthLanding(){
+function truthLandingDetail(){
   const T=D.truth_landing||{};
   const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
   if(!segs.length) return "";
@@ -17665,8 +17761,7 @@ function truthLanding(){
     return `<details${open?" open":""} style="margin-top:12px"><summary><b>${h(S.label)}</b> · ${
       S.station_days} 个站日 · ${S.event_days} 个事件日</summary>${body}</details>`;
   };
-  return `<h2>真值落位：模型和市场意见不一致时谁更准，以及两把尺子各自准不准</h2>
-  <p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
+  return `<p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 已结算 ${T.settled_station_days}（未结算 ${T.unsettled_station_days}）
     · 整条梯子有报价 ${T.settled_station_days-T.unpriced_station_days-(T.truth_off_ladder_days||0)}（缺报价剔除 ${T.unpriced_station_days}）。
     真值＝官方结算桶；市场＝首个 P0 决策后 4 小时的中位买一与卖一的中间价，按梯子归一；模型＝同一首个 P0 的服务概率；两边读同一批桶。</p>
@@ -17706,9 +17801,9 @@ const evCi = (ci, f) => Array.isArray(ci) && ci.length===2 ? `[${f(ci[0])}, ${f(
 // distribution layers answers to the shape reading only.  Rides on the
 // charter EV payload (same window, same labels), so a payload drawn before
 // the field existed says so instead of reading as "no gap".
-function centreShapeGap(){
+function centreShapeGapDetail(){
   const E=D.charter_ev||{}, S=E.centre_shape;
-  const title=`<h2>模型对市场差距：输多少，差在中心还是形状</h2>`;
+  const title="";
   if(!S) return `${title}<div class="card muted">这一版数据还没有这一项，下一次整库渲染后出现。</div>`;
   if(!S.available) return `${title}<div class="card">未采集${S.error?"："+h(S.error):""}。</div>`;
   const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
@@ -17778,9 +17873,9 @@ function centreShapeGap(){
   </div>`;
 }
 
-function charterEv(){
+function charterEvDetail(){
   const E=D.charter_ev||{};
-  const title=`<h2>宪章 EV 恒等式：edge = 市场的错 − 模型的错，量出来是多少</h2>`;
+  const title="";
   if(!E.available) return `${title}<div class="card">未采集${
     (E.scopes||[]).filter(s=>s.error).map(s=>`：${h(s.scope)} ${h(s.error)}`).join("")}。</div>`;
   const n3=v=>v==null?"—":(+v).toFixed(3);

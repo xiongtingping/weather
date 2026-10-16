@@ -51,7 +51,7 @@ def _render(payload: dict) -> str:
     script = (
         "const D = " + json.dumps({"truth_landing": payload}, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s);\n"
-        + _function("truthLanding") + "\nconsole.log(truthLanding());\n"
+        + _function("truthLandingDetail") + "\nconsole.log(truthLandingDetail());\n"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
@@ -223,3 +223,25 @@ def test_an_empty_segment_draws_nothing():
     payload = _payload()
     payload["segments"][0]["station_days"] = 0
     assert _render(payload).strip() == ""
+
+
+def test_the_summary_leads_with_who_is_nearer_and_folds_the_tables():
+    """2026-10-17 「边际板块……按同样版式极简化」: the section opens on the tally of
+    disagreeing groups, the cents bought over the market, and one dot chart;
+    the former tables sit under 「明细」."""
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    helpers = SOURCE[SOURCE.index("const edgeBig="):SOURCE.index("function centreShapeGap(")]
+    script = (
+        "const D = " + json.dumps({"truth_landing": _payload()}, ensure_ascii=False) + ";\n"
+        "const h = (s) => String(s == null ? '' : s);\n" + helpers
+        + _function("truthLandingDetail") + "\n" + _function("truthLanding") + "\nconsole.log(truthLanding());\n"
+    )
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    html = result.stdout
+    summary = html[:html.index("<summary>明细</summary>")]
+    assert "真值落位" in summary and "分歧时市场更准" in summary and "2 / 4" in summary
+    assert "<svg viewBox" in summary and "实际开出" in summary
+    assert "2 组市场更准</b>" in html[html.index("<summary>明细</summary>"):], "the old verdict line is folded"

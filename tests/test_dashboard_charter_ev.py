@@ -134,3 +134,38 @@ def test_the_section_is_cached_and_registered_on_the_page():
     page = C.render_html({"generated_at_utc": "x"}, started_at=0.0)
     assert "function charterEv()" in page
     assert '[charterEv,"宪章 EV 恒等式"]' in page
+
+
+def test_the_edge_summaries_lead_with_big_numbers_and_fold_the_tables() -> None:
+    """2026-10-17 「边际板块……按同样版式极简化」: 模型对市场差距 opens on the gap,
+    the centre's share and the shape, with the lead tiers drawn; 宪章 EV 恒等式
+    on one EV per stage with its verdict; the former tables sit under 「明细」."""
+    import json
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    src = C.HTML_TEMPLATE
+    js = (src[src.index("// The edge area's three sections, the summary"):src.index("// The lambda tables, one per stage scope.")]
+          + src[src.index("const EV = id =>"):src.index("// 纸面账本, one board")])
+    row = {"station_days": 1268, "days": 28, "gap": 0.109, "gap_ci": [0.089, 0.131], "centre": 0.096,
+           "shape": 0.013, "shape_ci": [0.009, 0.019], "centre_share": 0.88, "centre_share_ci": [0.85, 0.91]}
+    ev = {"decisions": 10, "station_days": 1196, "days": 28, "ev": 0.0003, "ev_ci": [-0.0057, 0.0047],
+          "k": 0.9996, "k_ci": [0.993, 1.008], "spread_cost": 0.0074, "days_ev_positive": 14}
+    payload = {"charter_ev": {"available": True, "window": {"floor_day": "2026-09-15", "as_of_event_date": "2026-10-13"},
+                              "centre_shape": {"available": True, "samples": {"stable_pool": row},
+                                               "tiers": {"0-12": row, "12-24": dict(row, gap=0.1)}},
+                              "scopes": [{"scope": "P0", "research": ev}]}}
+    script = ("const D = " + json.dumps(payload, ensure_ascii=False) + ";\nconst h = s => String(s == null ? '' : s);\n"
+              + js + "\nconsole.log(centreShapeGap() + '|||' + charterEv());\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    gap, evs = result.stdout.split("|||")
+    top = gap[:gap.index("<summary>明细</summary>")]
+    assert "+0.109" in top and "88%" in top and "+0.013" in top and "按距结算" in top and "<svg viewBox" in top
+    assert "稳定池" not in top and "稳定池" in gap, "the sample table is folded"
+    top = evs[:evs.index("<summary>明细</summary>")]
+    assert "+0.0003" in top and "不够付点差" in top and "k 1.000" in top
+    assert "EV &gt; 0 天数" not in top and "EV &gt; 0 天数" in evs, "the identity table is folded"
