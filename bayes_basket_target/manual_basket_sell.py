@@ -195,7 +195,7 @@ def place_manual_sell(request: Mapping[str, Any], *, db: Path = M.DEFAULT_DB,
             raise M.ManualOrderError("卖出份数须为正数且最多两位小数")
         if shares > held + 1e-9 or shares < row["min_order_size"]:
             raise M.ManualOrderError("持仓已变或低于最小单，重新读取")
-        if not 0 < price < 1 or abs(price / M.venue_tick(price) - round(price / M.venue_tick(price))) > 1e-6:
+        if not 0 < price < 1 or abs(price / M.venue_tick(price, row.get("venue_tick")) - round(price / M.venue_tick(price, row.get("venue_tick")))) > 1e-6:
             raise M.ManualOrderError("最低成交价无效或不在交易所 tick 上")
         if sum(size for p, size in levels if p >= price - 1e-12) + 1e-9 < shares:
             raise M.ManualOrderError("盘口已变：最低价以内的买盘深度不足")

@@ -23699,7 +23699,9 @@ function sdLevels(day, b, st){
   if(st.mode === "maker"){
     // The venue's step, not the registry's: a cent mid-range, a tenth of a
     // cent below 0.04 / above 0.96 (bayes_basket_target.manual_basket_order).
-    const tickAt = v => v < 0.04 || v > 0.96 ? 0.001 : 0.01;
+    // A book with rungs off the cent grid is on tenths everywhere (manual_basket_order.book_tick).
+    const fine = [...(book.ask_levels || []), ...(book.bid_levels || [])].some(l => Math.abs(l[0] * 100 - Math.round(l[0] * 100)) > 1e-6);
+    const tickAt = v => fine || v < 0.04 || v > 0.96 ? 0.001 : 0.01;
     let p = book.best_bid != null ? book.best_bid + tickAt(book.best_bid) : book.best_ask != null ? book.best_ask - tickAt(book.best_ask) : null;
     if(p != null && book.best_ask != null && p >= book.best_ask) p = book.best_ask - tickAt(book.best_ask);
     return p != null && p > 0 && p < 1 ? [[Math.round(p * 1e4) / 1e4, 1e12]] : [];

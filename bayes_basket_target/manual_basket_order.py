@@ -25,9 +25,9 @@ What it is and is not:
   above the market's minimum lot, and a take under the venue's 1 U floor
   topped up to it.  A take is a capped FAK: it fills what the book holds within its
   cap and kills the rest (user 2026-10-16).
-* Legs go out in the order given and the batch stops at the first leg that
-  is not a clean acceptance -- an unknown or a refusal leaves the rest unsent
-  rather than building more of a basket whose shape has already broken.
+* Legs go out in the order given and the batch stops at a refusal or an
+  unknown -- the rest are left unsent.  A take that found nothing within its
+  cap left nothing behind and does not stop the others (user 2026-10-16).
 """
 
 from __future__ import annotations
@@ -126,6 +126,7 @@ def latest_book(conn: sqlite3.Connection, station: str, day: str,
             "best_bid": float(b.get("bid_price") or 0.0) or None,
             "tick": float(b.get("price_tick_size") or 0.001),
             "min_order_size": float(b["min_order_size"]) if b.get("min_order_size") is not None else None,
+            "venue_tick": book_tick(asks + bids),
             # The NO side, mirrored off the YES book.
             "no_token": no_tokens.get(bucket, ""),
             "no_asks": [(round(1.0 - p, 6), q) for p, q in bids],
@@ -156,13 +157,25 @@ def _no_tokens(conn: sqlite3.Connection, station: str, day: str) -> dict[str, st
     return out
 
 
-def venue_tick(price: float) -> float:
-    """The exchange's price step at ``price``: a cent in the middle of the
-    range, a tenth of a cent near either end.  The snapshot's registry tick
-    (0.001 on every rung) is not it -- the gateway answered
+def venue_tick(price: float, book_tick: float | None = None) -> float:
+    """The exchange's price step at ``price``.
+
+    A market whose book has rungs off the cent grid is on tenths of a cent
+    everywhere (ZUUU 21°C asked 0.054/0.055 on 2026-10-16; flooring a 0.054
+    cap to 0.05 sent a FAK that found nothing).  Otherwise a cent in the
+    middle of the range, a tenth near either end.  The snapshot's registry
+    tick (0.001 on every rung) is not it -- the gateway answered
     ``exchange_price_min_tick_size: 0.01`` for a 0.29 rung on 2026-10-05."""
 
+    if book_tick:
+        return book_tick
     return 0.001 if price < 0.04 or price > 0.96 else 0.01
+
+
+def book_tick(levels: list[tuple[float, float]]) -> float | None:
+    """0.001 when any rung of the book sits off the cent grid, else unknown."""
+
+    return 0.001 if any(abs(p * 100 - round(p * 100)) > 1e-6 for p, _ in levels) else None
 
 
 def fok_shares(price: float, shares: float) -> float:
@@ -194,10 +207,10 @@ def min_take_shares(price: float) -> float:
     return s / 100
 
 
-def _on_tick(price: float) -> float:
+def _on_tick(price: float, known_tick: float | None = None) -> float:
     """Down to the venue's grid: a buy never pays more than it was told to."""
 
-    tick = venue_tick(price)
+    tick = venue_tick(price, known_tick)
     return round(math.floor(price / tick + 1e-9) * tick, 6)
 
 
@@ -248,7 +261,7 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
             raise ManualOrderError(f"{label} 份数或价格不是数") from exc
         if not (0.0 < price < 1.0):
             raise ManualOrderError(f"{label} 价格必须在 0 与 1 之间")
-        price = _on_tick(price)
+        price = _on_tick(price, row.get("venue_tick"))
         if not (0.0 < price < 1.0):
             raise ManualOrderError(f"{label} 价格按 tick 取整后不在 0 与 1 之间")
         if row.get("min_order_size") is None or not math.isfinite(row["min_order_size"]) or row["min_order_size"] <= 0:
@@ -361,8 +374,12 @@ def _settle_unknown(leg: Mapping[str, Any], reconcile: Callable[[str], Mapping[s
 def _killed_fak(verdict: dict[str, Any], order_type: str) -> dict[str, Any]:
     """A FAK the exchange took without a match was killed, not left resting."""
 
-    if order_type == "FAK" and verdict.get("event_type") == "POST_ACK":
-        return {**verdict, "event_type": "EXPIRED", "reason": "FAK 上限价内无成交，已作废"}
+    if order_type != "FAK":
+        return verdict
+    if verdict.get("event_type") == "POST_ACK" or (
+            verdict.get("event_type") == "SUBMIT_REFUSED"
+            and "no orders found to match" in str(verdict.get("reason") or "")):
+        return {**verdict, "event_type": "EXPIRED", "reason": "上限价内已无卖单，未成交（已作废）"}
     return verdict
 
 
@@ -423,6 +440,7 @@ def place_manual_basket(
     reconcile = reconcile or _gateway_reconcile
     results = []
     stopped = None
+    incomplete = False
     for leg in plan["legs"]:
         if stopped is not None:
             results.append({"bucket": leg["bucket"], "side": leg.get("side", "YES"), "event_type": "NOT_SENT",
@@ -459,7 +477,13 @@ def place_manual_basket(
             "reconciled": reconciled,
         })
         if verdict["event_type"] not in {"FILL", "POST_ACK"}:
-            stopped = leg["bucket"] + ("" if leg.get("side", "YES") == "YES" else " NO")
+            incomplete = True
+            # A take that found nothing within its cap placed nothing and
+            # leaves no order behind: the next legs still go (user 2026-10-16,
+            # 21°C killed at 0.05 held back four legs).  A refusal or an
+            # unknown still stops the batch.
+            if verdict["event_type"] != "EXPIRED":
+                stopped = leg["bucket"] + ("" if leg.get("side", "YES") == "YES" else " NO")
     record = {
         "schema": "manual_basket_order_v1", "at_utc": now.isoformat().replace("+00:00", "Z"),
         "station_id": plan["station"], "event_date": plan["event_date"],
@@ -470,7 +494,7 @@ def place_manual_basket(
         "results": results,
     }
     _receipt(record)
-    return {"ok": stopped is None, **{k: record[k] for k in (
+    return {"ok": not incomplete, **{k: record[k] for k in (
         "station_id", "event_date", "batch_id", "mode", "book_observed_at", "notional_usdc", "results")}}
 
 

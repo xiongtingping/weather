@@ -243,10 +243,27 @@ def test_a_take_is_a_capped_fak_sent_at_the_asked_size_whatever_the_book_shows()
         assert (n - 0.01) * price < 1 or abs(round((n - 0.01) * price, 2) - (n - 0.01) * price) > 1e-9
 
 
-def test_an_unmatched_fak_is_killed_and_stops_the_batch(monkeypatch, tmp_path) -> None:
+def test_a_take_that_finds_nothing_is_killed_and_the_next_legs_still_go(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(M, "latest_book", lambda *a: BOOK)
     monkeypatch.setattr(M, "RECEIPT_PATH", tmp_path / "r.jsonl")
     monkeypatch.setattr(M.sqlite3, "connect", lambda *a, **k: _Conn())
-    out = M.place_manual_basket(_request(), now=NOW,
-                                transport=lambda p: {"ok": True, "orderID": "x", "status": "unmatched"})
-    assert [r["event_type"] for r in out["results"]] == ["EXPIRED", "NOT_SENT"]
+    answers = iter([
+        {"ok": False, "error": "no orders found to match with FAK order. FAK orders are partially filled or killed if no match is found."},
+        {"ok": True, "orderID": "x", "status": "unmatched"},
+    ])
+    out = M.place_manual_basket(_request(), now=NOW, transport=lambda p: next(answers))
+    assert [r["event_type"] for r in out["results"]] == ["EXPIRED", "EXPIRED"]
+    assert out["ok"] is False
+
+
+def test_a_book_off_the_cent_grid_keeps_a_tenth_of_a_cent_cap() -> None:
+    # ZUUU 21°C, 2026-10-16: asks at 0.054/0.055; a 0.054 cap floored to 0.05 found nothing.
+    asks = [(0.054, 5.0), (0.055, 50.0)]
+    book = {**BOOK, "buckets": {**BOOK["buckets"],
+            "21°C": {"token_id": "t21", "asks": asks, "best_bid": 0.034, "tick": 0.001,
+                     "min_order_size": 5.0, "venue_tick": M.book_tick(asks)}}}
+    leg = M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 20, "limit_price": 0.055}]),
+                        book, now=NOW)["legs"][0]["payload"]
+    assert leg["price"] == 0.055 and leg["fok_price_cap"] == 0.055
+    assert M.book_tick([(0.05, 1.0), (0.14, 2.0)]) is None
+    assert M._on_tick(0.055) == 0.05
