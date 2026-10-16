@@ -1479,6 +1479,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         "direction": _direction(station, day),
         "deterministic": _deterministic(conn, station, day),
         "d0": _d0(station, day) if role == "today" else None,
+        "member_bayes": _member_bayes(station, day) if role in ("today", "ahead") else None,
     }
 
 
@@ -1491,6 +1492,12 @@ def _d0(station: str, day: str) -> dict[str, Any] | None:
     from . import d0_readings  # noqa: PLC0415
 
     return d0_readings.stored(station, day)
+
+
+def _member_bayes(station: str, day: str) -> dict[str, Any] | None:
+    from . import member_bayes_readings  # noqa: PLC0415
+
+    return member_bayes_readings.stored(station, day)
 
 
 def day_word(stages: Mapping[str, Any]) -> str | None:

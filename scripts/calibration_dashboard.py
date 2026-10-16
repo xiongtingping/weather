@@ -22252,6 +22252,7 @@ function sdDay(day){
     ${sdProbabilityCards(day)}
     ${sdDeterministic(day)}
     ${sdD0(day)}
+    ${sdMemberBayes(day)}
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
       <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
@@ -22394,6 +22395,45 @@ function sdD0(day){
     + `<div class="sd-d0-parts"><span class="muted">基线 ${sdN(D.base_c, 1)}°C</span>${parts}${Math.abs(D.station_effect_c || 0) >= 0.05 ? `<span class="sd-d0-part">本站修正 ${sdSg(D.station_effect_c, 2)}</span>` : ""}</div>`
     + sdD0Trend(D)
     + `<div class="muted sd-sub" title="逐日前推，同一批有盘口的站日的中心平均误差">前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C</div></div>`;
+}
+// The member-trajectory Bayes estimate (user 2026-10-16 「在站点看板里：前端增加贝叶斯
+// 更新的温度预估显示」): member_bayes_readings, every ten minutes beside D0 --
+// read, never computed here.  Each native member weighted by how well its step
+// series matched the last six hours of reports; display only, unverified.
+const SD_MB_STATE = {not_computed: "还没算", no_trajectories: "还没有成员轨迹（10-16 起采集）", no_ladder: "还没有梯子", error: "计算出错"};
+const SD_MB_SYS = {ECMWF_IFS_ENS_OPEN_PF50: "IFS", ECMWF_AIFS_ENS_GLOBAL: "AIFS", DWD_ICON_GLOBAL_EPS: "ICON",
+                   NOAA_GEFS_05: "GEFS", ECCC_GEM_GLOBAL_ENS: "GEM", NOAA_AIGEFS_OPS_025: "AIGEFS"};
+function sdMemberBayes(day){
+  const M = day.member_bayes;
+  if(!M) return "";
+  const title = `成员轨迹贝叶斯 <span class="sd-dir-by">只读 · 未验证</span>`;
+  if(M.state !== "ok") return `<div class="sd-evidence-card sd-det-card" style="--c:var(--muted)"><div class="sd-evidence-title">${title}</div><div class="muted sd-sub" title="${sdEsc(M.reason || "")}">${sdEsc(SD_MB_STATE[M.state] || M.state)}</div></div>`;
+  const P = M.posterior || {}, Q = M.prior || {}, B = M.belief || {}, X = M.belief_x_members || {};
+  const tip = `每个原生集合成员按最近 6 小时报文与自身逐步轨迹的吻合度加权（τ ${sdN(M.tau_c, 1)}°C，已扣 P0 系统偏差），`
+    + `成员当天最高＝max(已测最高, 之后各步最高)；按 P0 系统权重合成。先验＝成员等权。`
+    + `\n${M.belief_stage || "—"}×成员＝当前服务信念乘以「加权/等权」似然比。`
+    + `\n比对报文 ${M.reports_in_window ?? 0} 条（最近 ${sdLocal(M.latest_report_utc, true) || "—"}）；算于 ${sdLocal(M.as_of_utc, true)}。`
+    + `\n只显示，不进任何层；预登记 docs/research/member_trajectory_bayes_update_20261016，满 30 个事件日后严格前推检验。`;
+  const shift = P.mean_c != null && Q.mean_c != null ? P.mean_c - Q.mean_c : null;
+  const chips = (M.systems || []).map(s => `<div class="sd-det" title="${sdEsc(`${s.system}\n起报 ${String(s.run_init_utc).slice(5, 16).replace("T", " ")}Z；成员 ${s.members}，有效成员 ${s.ess}\n偏差 ${sdSg(s.bias_c, 2)}°C${s.bias_from_p0 ? "（P0 同一轮）" : "（P0 用的不是这一轮，未扣）"}\n比对报文 ${s.reports_compared}${s.best_rmse_c == null ? "" : `，最吻合成员误差 ${sdN(s.best_rmse_c, 2)}°C`}\n池权重 ${sdPc(s.pool_weight, 0)}${s.value_kind === "t2m_period_max" ? "\n时段最高（mx2t）" : ""}`)}">`
+    + `<div class="sd-det-h"><span>${sdEsc(SD_MB_SYS[s.system] || s.system)}</span><span>${String(s.run_init_utc).slice(11, 13)}Z</span></div>`
+    + `<b>${sdN(s.post_mean_c, 1)}</b><div class="sd-det-f"><span class="${s.post_mean_c - s.prior_mean_c > 0.05 ? "up" : s.post_mean_c - s.prior_mean_c < -0.05 ? "down" : "flat"}">${sdSg(s.post_mean_c - s.prior_mean_c, 1)}</span><span>有效 ${sdN(s.ess, 0)}/${s.members}</span></div></div>`).join("");
+  const H = M.history || [];
+  let trend = "";
+  if(H.length > 1){
+    const W = 220, Hh = 44, vals = H.flatMap(h => [h.post_mean_c, h.prior_mean_c]).filter(v => v != null);
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(hi - lo, 0.5);
+    const xs = i => (4 + (W - 8) * i / (H.length - 1)).toFixed(1), ys = v => (Hh - 4 - (Hh - 8) * (v - lo) / span).toFixed(1);
+    const line = (k, attr) => `<polyline points="${H.map((h, i) => h[k] == null ? null : `${xs(i)},${ys(h[k])}`).filter(Boolean).join(" ")}" fill="none" ${attr}/>`;
+    trend = `<svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}" role="img" aria-label="加权与先验均值的走势">${line("prior_mean_c", 'stroke="var(--muted)" stroke-dasharray="3 3"')}${line("post_mean_c", 'stroke="#0b7285" stroke-width="2"')}</svg>`;
+  }
+  return `<div class="sd-evidence-card sd-det-card" style="--c:#0b7285"><div class="sd-evidence-title">${title}</div>`
+    + `<div class="sd-evidence-main" title="${sdEsc(tip)}"><b class="sd-evidence-primary">${sdN(P.mean_c, 2)}°C</b>`
+    + `<b>众数 ${sdEsc(P.mode || "—")} <span class="sd-sub">${sdPc(P.mode_p, 0)}</span></b>`
+    + (shift == null ? "" : `<b title="加权均值减成员等权均值">比先验 ${sdSg(shift, 2)}°C</b>`)
+    + (B.mean_c != null ? `<b title="加权均值减当前服务信念（${sdEsc(M.belief_stage || "")}）均值">比 ${sdEsc(M.belief_stage || "")} ${sdSg(P.mean_c - B.mean_c, 2)}°C</b>` : "")
+    + (X.mode ? `<b title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} <span class="sd-sub">${sdPc(X.mode_p, 0)}</span></b>` : "")
+    + `</div><div class="sd-det-grid">${chips}</div>${trend}</div>`;
 }
 // Charter 267 补记七 (user 2026-10-16 「照样上线：生产F文件写pick、看板确定性预报显示选桶，
 // 标注未验证、不接车道」): F's bucket, the one below or the one above, from the
