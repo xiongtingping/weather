@@ -1405,7 +1405,7 @@ def materialize_p1(
     # the thin-far slice is a tail mix on the stage pair.
     # v38 (charter 253, 2026-10-04): the root again (P0 v27, P0-M v30) --
     # past 36 h no bucket is served above 0.45.
-    posterior_version: str = "p1_joint_likelihood_v42",
+    posterior_version: str = "p1_joint_likelihood_v43",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

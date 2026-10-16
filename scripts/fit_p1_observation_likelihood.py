@@ -1069,6 +1069,10 @@ DIRECT_LAMBDAS = (0.3, 1.0, 3.0)
 # behind the same forward gate as before.  ``PM_P1_EVENING_COLUMNS=off`` fits
 # the form without them.
 EVENING_COLUMNS_ON = os.environ.get("PM_P1_EVENING_COLUMNS", "").strip().lower() != "off"
+# Charter 275: the two report-gap columns (user ruling 2026-10-17
+# 「上线报文缺失特征」), fitted when the samples carry them;
+# ``PM_P1_REPORT_GAP_COLUMNS=off`` fits the form without them.
+REPORT_GAP_COLUMNS_ON = os.environ.get("PM_P1_REPORT_GAP_COLUMNS", "").strip().lower() != "off"
 DIRECT_INNER_DAYS = 3
 DIRECT_MAX_ITER = 400
 
@@ -1084,6 +1088,8 @@ def direct_design(
     rise = np.zeros((count, width)); slope = np.zeros((count, width))
     top = np.zeros((count, width)); truth = np.zeros(count, dtype=int)
     raw = np.full((count, len(DU.STATE_COLUMNS)), np.nan)
+    # Charter 275: the two report-gap features, read off each sample.
+    report_gap = np.full((count, len(DU.REPORT_GAP_COLUMNS)), np.nan)
     hours = np.zeros(count); weight = np.zeros(count)
     day = np.empty(count, dtype=object); as_of = np.zeros(count); known = np.zeros(count)
     # Charter 240: each rung's centre, for the ladder CRPS guardrail; padded
@@ -1121,6 +1127,9 @@ def direct_design(
                 np.nan if features.get(name) is None else float(features[name])
                 for name in DU.FEATURES
             ] + [root[name] for name in DU.ROOT_FEATURES]
+        report_gap[i] = [
+            np.nan if sample.get(name) is None else float(sample[name]) for name in DU.REPORT_GAP_COLUMNS
+        ]
         hours[i] = OL.clock_hours(
             float(sample["remaining_hours"]), clock_artifact, str(sample["station_id"])
         )
@@ -1133,6 +1142,7 @@ def direct_design(
         "usable": (prior * live).sum(1) > 1e-12,
         # Charter 274: the fleet peak of the clock these rows were read on.
         "fleet_peak_local_h": _fleet_peak(clock_artifact),
+        "report_gap": report_gap,
     }
 
 
@@ -1177,12 +1187,23 @@ def direct_scaling(
             "schema": DU.EVENING_SCHEMA, "fleet_peak_local_h": float(peak),
             "mean": [float(v) for v in ev.mean(0)], "scale": [float(v) for v in ev.std(0) + 1e-9],
         }}
+    report_gap = {}
+    rg = design.get("report_gap")
+    if REPORT_GAP_COLUMNS_ON and rg is not None and np.isfinite(rg[idx]).any(axis=0).all():
+        part = rg[idx]
+        fill = [float(np.nanmean(part[:, k])) for k in range(part.shape[1])]
+        z = np.where(np.isfinite(part), part, np.array(fill))
+        report_gap = {"report_gap": {
+            "schema": DU.REPORT_GAP_SCHEMA, "fill": fill,
+            "mean": [float(v) for v in z.mean(0)], "scale": [float(v) for v in z.std(0) + 1e-9],
+        }}
     return {
         "fallbacks": fallbacks,
         "mean": [float(v) for v in filled.mean(0)],
         "scale": [float(v) for v in filled.std(0) + 1e-9],
         **({"clock_gate": dict(gate)} if gate else {}),
         **evening,
+        **report_gap,
     }
 
 
@@ -1210,6 +1231,11 @@ def direct_x(design: Mapping[str, np.ndarray], idx: np.ndarray, scaling: Mapping
         spec = scaling["evening"]
         parts.append((_evening_raw(design, idx, float(spec["fleet_peak_local_h"])) - np.array(spec["mean"]))
                      / np.array(spec["scale"]))
+    if "report_gap" in scaling:
+        spec = scaling["report_gap"]
+        part = design["report_gap"][idx]
+        part = np.where(np.isfinite(part), part, np.array(spec["fill"]))
+        parts.append((part - np.array(spec["mean"])) / np.array(spec["scale"]))
     return np.hstack(parts)
 
 
@@ -1572,6 +1598,7 @@ def _direct_block_record(
         "rule": DU.RULE_V2 if gate else DU.RULE,
         **({"clock_gate": dict(gate)} if gate else {}),
         **({"evening": dict(scaling["evening"])} if "evening" in scaling else {}),
+        **({"report_gap": dict(scaling["report_gap"])} if "report_gap" in scaling else {}),
         "state": state,
         "veto": veto,
         "lambda": lam,

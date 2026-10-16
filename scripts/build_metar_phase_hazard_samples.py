@@ -63,6 +63,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from bayes_basket_target.p1_report_gap import report_context, report_gap_features  # noqa: E402
 from bayes_basket_target.contracts import (  # noqa: E402
     ContractError,
     ProbabilityEnvelope,
@@ -142,6 +143,11 @@ CREATE TABLE IF NOT EXISTS metar_phase_hazard_sample (
   regional_calibration_source TEXT,
   root_bias_recent_c REAL,
   root_bias_report_count INTEGER NOT NULL,
+  -- Charter 275: hours since the newest arrived AWC report, and the reports
+  -- the station's usual rate says should have arrived since local midnight
+  -- but had not (p1_report_gap).
+  report_gap_h REAL,
+  report_missing_n REAL,
   root_center_c REAL,
   root_checkpoint_id TEXT NOT NULL,
   running_high_c REAL NOT NULL,
@@ -526,6 +532,12 @@ def build_station_day(
         as_of_utc="2100-01-01T00:00:00Z",
     )
     regional_calibration = regional_calibration_replay(event_date)
+    # Charter 275: the station's usual report rate and yesterday's reports,
+    # read by the same function the resident reads them with.
+    report_ctx = report_context(
+        archive, station_id=station_id, event_date=event_date,
+        timezone_name=settlement_timezone,
+    )
     observations = load_day_observations(
         archive,
         station_id=station_id,
@@ -718,6 +730,12 @@ def build_station_day(
             ),
             "root_bias_recent_c": bias_recent_c,
             "root_bias_report_count": bias_report_count,
+            # Charter 275: how far the report stream had fallen behind.
+            **report_gap_features(
+                report_ctx,
+                arrived_valid_utc=[row["valid_at"] for row in prefix],
+                as_of_utc=instant,
+            ),
             "root_center_c": view.center_c,
             "root_checkpoint_id": view.checkpoint_id,
             "running_high_c": running_high,
@@ -824,7 +842,8 @@ def main() -> int:
                 "regional_headroom_c,regional_live_gap_c,regional_system_id,"
                 "regional_calibration_bias_c,regional_calibration_source,"
                 "root_bias_recent_c,"
-                "root_bias_report_count,root_center_c,root_checkpoint_id,"
+                "root_bias_report_count,report_gap_h,report_missing_n,"
+                "root_center_c,root_checkpoint_id,"
                 "running_high_c,truth_tmax_c,delta_c,crossed_bucket,"
                 "station_day_weight)"
                 " VALUES(:sample_id,:station_id,:event_date,"
@@ -838,7 +857,8 @@ def main() -> int:
                 ":regional_system_id,:regional_calibration_bias_c,"
                 ":regional_calibration_source,"
                 ":root_bias_recent_c,"
-                ":root_bias_report_count,:root_center_c,"
+                ":root_bias_report_count,:report_gap_h,:report_missing_n,"
+                ":root_center_c,"
                 ":root_checkpoint_id,:running_high_c,:truth_tmax_c,"
                 ":delta_c,:crossed_bucket,:station_day_weight)",
                 sample,

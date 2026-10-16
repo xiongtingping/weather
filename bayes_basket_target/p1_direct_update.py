@@ -90,6 +90,12 @@ MAX_RUNG = 12
 EVENING_SCHEMA = "p1_direct_update_evening_v1"
 EVENING_COLUMNS: tuple[str, ...] = ("evening_clock_x_root_above_high", "evening_hours_past_peak",
                                     "evening_hours_past_peak_x_root_above_high")
+# Charter 275 (user ruling 2026-10-17 「上线报文缺失特征」): two report-gap
+# columns after the evening ones, present when the block carries
+# ``report_gap``; read from the step's features (p1_report_gap), a missing
+# value at the block's own fill.
+REPORT_GAP_SCHEMA = "p1_direct_update_report_gap_v1"
+REPORT_GAP_COLUMNS: tuple[str, ...] = ("report_gap_h", "report_missing_n")
 
 
 def gate_half_width(block: Mapping[str, Any]) -> float:
@@ -139,6 +145,7 @@ def x_layout(block: Mapping[str, Any] | None = None) -> list[str]:
         + [f"late_x_{name}" for name in STATE_COLUMNS]
         + [f"mid_x_{name}" for name in STATE_COLUMNS]
         + (list(EVENING_COLUMNS) if block is not None and "evening" in block else [])
+        + (list(REPORT_GAP_COLUMNS) if block is not None and "report_gap" in block else [])
     )
 
 
@@ -246,11 +253,19 @@ def state_vector(
         spec = block["evening"]
         raw_evening = evening_raw(clock_hours, float(root["root_mean_minus_high_c"]), float(spec["fleet_peak_local_h"]))
         evening = [(value - float(m)) / float(s) for value, m, s in zip(raw_evening, spec["mean"], spec["scale"])]
+    report_gap = []
+    if "report_gap" in block:
+        spec = block["report_gap"]
+        report_gap = [
+            ((float(features[name]) if features.get(name) is not None else float(fill)) - float(m)) / float(s)
+            for name, fill, m, s in zip(REPORT_GAP_COLUMNS, spec["fill"], spec["mean"], spec["scale"])
+        ]
     return (
         [1.0] + hats + standard
         + [late * value for value in standard]
         + [mid * value for value in standard]
         + evening
+        + report_gap
     )
 
 
@@ -318,6 +333,15 @@ def validate_block(block: Mapping[str, Any]) -> None:
             or not all(math.isfinite(float(v)) for v in list(spec["mean"]) + list(spec["scale"]) + [spec.get("fleet_peak_local_h")])
         ):
             raise ContractError("p1_direct_update_evening_invalid")
+    if "report_gap" in block:
+        spec = block["report_gap"]
+        if (
+            not isinstance(spec, Mapping) or spec.get("schema") != REPORT_GAP_SCHEMA
+            or any(len(spec.get(k) or []) != len(REPORT_GAP_COLUMNS) for k in ("fill", "mean", "scale"))
+            or any(not float(s) > 0.0 for s in spec["scale"])
+            or not all(math.isfinite(float(v)) for k in ("fill", "mean", "scale") for v in spec[k])
+        ):
+            raise ContractError("p1_direct_update_report_gap_invalid")
     width = len(x_layout(block))
     if (
         list(block.get("x_layout") or []) != x_layout(block)
@@ -400,6 +424,11 @@ def compile_direct_update(
             "values": dict(zip(EVENING_COLUMNS, (round(v, 4) for v in evening_raw(
                 hours, root["root_mean_minus_high_c"], block["evening"]["fleet_peak_local_h"])))),
         }} if "evening" in block else {}),
+        # Charter 275: the report-gap features as read (None = filled).
+        **({"report_gap": {
+            "schema": REPORT_GAP_SCHEMA,
+            "values": {name: features.get(name) for name in REPORT_GAP_COLUMNS},
+        }} if "report_gap" in block else {}),
         "station_clock_offset_h": OL.station_clock_offset(artifact, station_id),
         "clock_hours": round(hours, 4),
         "running_high_c": float(running_high_c),
@@ -438,6 +467,8 @@ __all__ = [
     "CLOCK_GATE_SHAPE",
     "EVENING_COLUMNS",
     "EVENING_SCHEMA",
+    "REPORT_GAP_COLUMNS",
+    "REPORT_GAP_SCHEMA",
     "FEATURES",
     "GATE_SERVE",
     "ROOT_FEATURES",

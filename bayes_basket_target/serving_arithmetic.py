@@ -576,6 +576,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 274: the direct update reads the evening columns where its
         # block carries them.  Declared past the push and past the restart.
         "p1_joint_likelihood_v42": "2026-10-16T15:00:00Z",
+        # Charter 275: the direct update reads the two report-gap columns
+        # where its block carries them.  Declared past the push and restart.
+        "p1_joint_likelihood_v43": "2026-10-16T17:00:00Z",
     },
 }
 

@@ -16715,6 +16715,14 @@ class TargetProductionWorker:
                     observation_likelihood_artifact=(
                         load_p1_observation_likelihood_artifact()
                     ),
+                    # Charter 275: the station's AWC report rate and the
+                    # previous and event days' reports, one indexed archive
+                    # read; a failed read serves the two report-gap columns
+                    # at the block's own fill.
+                    report_context=self._p1_report_context(
+                        str(predecessor.station_id), str(predecessor.event_date),
+                        str(predecessor.settlement_timezone),
+                    ),
                     maturity_bin=maturity_bin,
                 )
                 self._add_span(
@@ -21284,6 +21292,18 @@ class TargetProductionWorker:
         mark_log = getattr(self, "_stage_mark_log", None)
         if isinstance(mark_log, list):
             mark_log.append((stage, now))
+
+    def _p1_report_context(self, station: str, day: str, timezone_name: str) -> dict[str, Any] | None:
+        from .p1_report_gap import report_context  # noqa: PLC0415
+
+        try:
+            with self._span("p1_report_context", label=f"{station}:{day}"):
+                return report_context(
+                    self.canonical_source_conn, station_id=station,
+                    event_date=day, timezone_name=timezone_name,
+                )
+        except Exception:  # noqa: BLE001 -- a feature read may never stop a compile
+            return None
 
     def _add_span(
         self, name: str, elapsed_ms: float, *, label: str = ""

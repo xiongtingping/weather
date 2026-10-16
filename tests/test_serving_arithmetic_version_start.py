@@ -133,6 +133,8 @@ CHARTER_271_START = sa.version_effective_from(
 # Charter 273 (the spread-adjusted pool replaces the table layer): P0 v30, P0-M v33, P1 v41.
 # Charter 274 (P1 direct update evening columns): P1 v42 only.
 CHARTER_274_START = sa.version_effective_from("P1", "p1_joint_likelihood_v42")
+# Charter 275 (P1 direct update report-gap columns): P1 v43 only.
+CHARTER_275_START = sa.version_effective_from("P1", "p1_joint_likelihood_v43")
 CHARTER_273_START = sa.version_effective_from(
     "P0", "calibrated_native_cross_ensemble_p0_v30"
 )
@@ -461,8 +463,10 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # (charter 200) is P1's own change, declared past its push and restart.
     # v21 (charter 204) and v22 (charter 210) are the seventh and eighth
     # root bumps, at P0 v10's and P0 v11's moments.
-    assert p1 == "p1_joint_likelihood_v42"
-    assert sa.version_effective_from("P1", p1) == CHARTER_274_START
+    assert p1 == "p1_joint_likelihood_v43"
+    assert sa.version_effective_from("P1", p1) == CHARTER_275_START
+    assert CHARTER_275_START > CHARTER_274_START
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v42") == CHARTER_274_START
     assert CHARTER_274_START > CHARTER_273_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v41") == CHARTER_273_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v40") == CHARTER_271_START

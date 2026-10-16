@@ -8,6 +8,7 @@ import math
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from .p1_report_gap import report_gap_features
 from .contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
     ContractError,
@@ -372,6 +373,7 @@ def _observation_features_for_step(
     decision_at_utc: str,
     regional_runs: Sequence[Mapping[str, Any]] | None = None,
     regional_calibration: Mapping[str, Any] | None = None,
+    report_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """The joint likelihood's feature vector for one step (charter 150).
 
@@ -462,6 +464,16 @@ def _observation_features_for_step(
             regional_headroom_c=regional.get("regional_headroom_c"),
             regional_live_gap_c=regional.get("regional_live_gap_c"),
         )
+        # Charter 275: how far the AWC stream had fallen behind at this
+        # step, by the function the sample builder uses on the same rows.
+        features.update(report_gap_features(
+            report_context,
+            arrived_valid_utc=[
+                row["observed_at_utc"] for row in rows
+                if str(row["source_lane"]).lower() == "awc" and row["observed_at_utc"]
+            ],
+            as_of_utc=decision_at_utc,
+        ))
         return {
             "features": features,
             "path_state_complete": path_state is not None,
@@ -503,6 +515,10 @@ def compile_station_p1_packets(
     # Charter 150: the fitted joint observation likelihood.  Absent means
     # every step serves the root under the hard bound and says so.
     observation_likelihood_artifact: Mapping[str, Any] | None = None,
+    # Charter 275: the station's report rate and yesterday's reports
+    # (p1_report_gap.report_context), read once by the caller from the
+    # archive.  Absent, the two report-gap features read at the fleet mean.
+    report_context: Mapping[str, Any] | None = None,
     # Where a refused state refresh is named.  The refusal is swallowed so
     # the walk's own packets stand; without a channel out, a scope whose
     # refresh fails every cycle looks exactly like one with nothing to
@@ -1070,6 +1086,7 @@ def compile_station_p1_packets(
                     decision_at_utc=decision_text,
                     regional_runs=regional_runs,
                     regional_calibration=regional_debias_artifact,
+                    report_context=report_context,
                 ) or {}
                 observation_likelihood = {
                     "features": step_features.get("features"),
