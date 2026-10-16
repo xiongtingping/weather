@@ -233,8 +233,8 @@ def test_the_wiring_and_the_charter() -> None:
     assert "traded_calibration" in BR.READING_NAMES and "traded_calibration" in BR._READINGS
     assert "traded_calibration" in BR.READING_MAX_AGE_SEC
     board = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert "function tradedCalibration()" in board and '"traded_calibration": collect_traded_calibration()' in board
-    assert '[tradedCalibration,"交易概率校准（第二层）"]' in board
+    assert "function calibrationTradedDetail()" in board and '"traded_calibration": collect_traded_calibration()' in board
+    assert '[bucketCalibration,"校准：每个桶 · 买入的桶"]' in board
     charter = (ROOT / "docs" / "constitution" / "SYSTEM_CHARTER.md").read_text(encoding="utf-8")
     clause = charter[charter.index("\n259. ") + 1:]
     for phrase in ("两层", "Binary LogLoss", "LogScore", "可靠性", "不作训练目标", "traded_calibration"):
@@ -502,9 +502,9 @@ def test_the_bucket_reading_is_wired_and_the_board_reads_its_file(tmp_path, monk
     assert "function bucketCalibration()" in board and '"bucket_calibration": collect_bucket_calibration()' in board
     area = board[board.index('{id:"realisation"'):]
     area = area[:area.index("]},")]
-    assert area.index("[bucketCalibration,") < area.index("[tradedCalibration,"), "the two samples sit before the drill-down"
+    assert "[bucketCalibration," in area and "[tradedCalibration," not in area, "one summary section, the drill-down folded inside"
     for phrase in ("校准每个桶的发生概率", "评价实际买入的桶"):
-        assert phrase in board[board.index("function bucketCalibration()"):board.index("function tradedCalibration()")]
+        assert phrase in board[board.index("function calibrationLadderDetail()"):board.index("function bucketCalibration()")]
 
 
 def test_the_board_renders_both_samples_side_by_side() -> None:
@@ -568,6 +568,9 @@ def test_the_board_renders_both_samples_side_by_side() -> None:
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     html = result.stdout
+    summary = html[:html.index("<summary>明细</summary>")]
+    assert "校准：每个桶 · 买入的桶" in summary and "市场更准" in summary and "+0.030" in summary
+    assert "30 桶 · 4 日" in summary and "20 腿 · 4 日" in summary and "累计中" in summary
     assert "<b>校准每个桶的发生概率</b>" in html and "30 桶 · 10 时点 · 4 日" in html
     assert "<b>评价实际买入的桶</b>" in html and "20 腿 · 4 日" in html and "0.1900" in html
     assert "+0.0300 [+0.0100, +0.0500]*" in html and "市场众数桶" in html

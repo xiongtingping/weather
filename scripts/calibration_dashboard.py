@@ -18888,7 +18888,49 @@ const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤
 const TC_LANE_ORDER=["proper_bet","tail_short","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
 const tcLaneSort=(a,b)=>{const i=TC_LANE_ORDER.indexOf(a),j=TC_LANE_ORDER.indexOf(b);
   return (i<0?99:i)-(j<0?99:j)||String(a).localeCompare(String(b));};
-function bucketCalibration(){
+// 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
+// distribution (charters 211/240: LogScore, CRPS, Brier, PIT); this layer
+// judges only the bucket a lane actually bought -- binary log loss and
+// reliability of our served p beside the market's mid on the same legs.
+// Read from data/board_readings/traded_calibration.json; nothing here trades.
+function calibrationTradedDetail(){
+  const T=D.traded_calibration||{};
+  if(!T.available) return `<div class="muted">交易概率校准读数这一轮没有生成${T.error?"："+h(T.error):""}。</div>`;
+  const P=T.populations||{}; const F=P.filled||{}, I=P.intended||{}; const C=T.counts||{};
+  const n4=v=>v==null?"—":(+v).toFixed(4);
+  const n3=v=>v==null?"—":(+v).toFixed(3);
+  const pct=(v,d=1)=>v==null?"—":((+v)*100).toFixed(d)+"%";
+  const sgn=(v,d=4)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
+  const ci=(v,a)=>Array.isArray(a)?`${sgn(v)} [${sgn(a[0])}, ${sgn(a[1])}]${(a[0]>0||a[1]<0)?"*":""}`:sgn(v);
+  const row=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.legs}</td><td class="mono">${r.event_days}</td>
+     <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono">${n4(r.logloss_paid)}</td>
+     <td class="mono ${r.logloss_diff==null?"":((+r.logloss_diff)<0?"up":"down")}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
+     <td class="mono">${n4(r.brier_ours)} / ${n4(r.brier_market)}</td>
+     <td class="mono">${pct(r.said_ours)} / ${pct(r.said_market)} / ${pct(r.paid)} → ${pct(r.landed)}</td>
+     <td class="mono">${pct(r.ours_closer_share,0)}</td><td class="mono">${r.return==null?"—":sgn(r.return*100,1)+"%"}</td></tr>`;
+  const head=`<thead><tr><th>组</th><th>切片</th><th>腿</th><th>日</th><th>LL 我方</th><th>LL 市场</th><th>LL 实付</th><th>Δ 我方−市场 [95%]</th><th>Brier 我/市</th><th>说 我/市/付 → 中</th><th>我更近</th><th>回报</th></tr></thead>`;
+  const slices=(pop,label,open)=>{const rows=(pop.slices||[]).map(row).join("");
+    return `<details ${open?"open":""} style="margin-top:8px"><summary>${label}：按条件切片（每片 ≥ ${h(T.min_legs)} 腿，车道行不设下限；共 ${pop.legs??0} 腿）</summary>${rows?`<div class="scroll" style="max-height:560px"><table>${head}<tbody>${pop.all?row({group:"全部",slice:"—",...pop.all}):""}${rows}</tbody></table></div>`:"<div class='muted'>样本不足。</div>"}</details>`;};
+  const rel=pop=>{const mk=rows=>rows.map(b=>`<tr><td class="mono">${n3(b.bin[0])}–${n3(b.bin[1])}</td><td class="mono">${b.legs}</td><td class="mono">${pct(b.said_ours)}</td><td class="mono">${pct(b.said_market)}</td><td class="mono">${pct(b.paid)}</td><td class="mono">${pct(b.landed)}</td></tr>`).join("");
+    const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>腿</th><th>我方说</th><th>市场说</th><th>实付</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
+    // Per lane (user 2026-10-09 「可靠性图（已成交腿），按照车道区分」): the
+    // same two diagrams on each lane's own legs, in a fixed order; a lane the
+    // board has no name for prints its key.
+    const block=(title,r)=>`<div style="margin-top:10px"><b>${h(title)}</b> <span class="muted">${r.legs} 腿 / ${r.event_days??"—"} 日；说 我 ${pct(r.said_ours)} · 市 ${pct(r.said_market)} · 付 ${pct(r.paid)} → 中 ${pct(r.landed)}</span>
+      <div class="grid g2">${tbl(mk(r.reliability_ours||[]),"按我方 p 的十分档")}${tbl(mk(r.reliability_market||[]),"按市场 q 的十分档")}</div></div>`;
+    const lanes=[...(pop.reliability_by_lane||[])].sort((a,b)=>tcLaneSort(a.lane,b.lane));
+    const A=pop.all||{};
+    const whole=block("全部车道",{legs:pop.legs??0,event_days:A.event_days,said_ours:A.said_ours,said_market:A.said_market,paid:A.paid,landed:A.landed,
+      reliability_ours:pop.reliability_ours,reliability_market:pop.reliability_market});
+    const byLane=lanes.length?lanes.map(r=>block(TC_LANE_NAMES[r.lane]||r.lane,r)).join(""):`<div class="muted" style="margin-top:8px">按车道的读数要等后端读数任务下一轮重算。</div>`;
+    return `<details style="margin-top:8px"><summary>可靠性图（已成交腿）：全部车道与按车道分开，按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary>${whole}${byLane}</details>`;};
+  const recent=(T.recent||[]).map(l=>`<tr><td class="mono">${h((l.created_at||"").slice(5,16))}</td><td>${h(l.lane)}</td><td>${h(l.station_id)}</td><td class="mono">${h(l.event_date)}</td><td>${h(l.bucket)} ${h(l.side)}</td><td>${h(l.stage||"—")}</td><td class="mono">${n3(l.p)}</td><td class="mono">${n3(l.q)}</td><td class="mono">${n3(l.paid)}</td><td>${l.filled?"成交 "+(+l.shares).toFixed(2):"未成交"}</td><td class="${l.win?"up":"down"}">${l.win?"中":"未中"}</td></tr>`).join("");
+  const recentTbl=`<details style="margin-top:8px"><summary>最近 ${(T.recent||[]).length} 条已结算腿（含未成交的意图）</summary><div class="scroll" style="max-height:520px"><table><thead><tr><th>时间</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>我方 p</th><th>市场 q</th><th>实付</th><th>状态</th><th>结果</th></tr></thead><tbody>${recent}</tbody></table></div></details>`;
+  const foot=`<div class="muted" style="margin-top:6px">读数由后端读数任务每小时写出（data/board_readings/traded_calibration.json，算于 ${h(T.computed_at_utc||"—")}，${T.build_sec==null?"—":T.build_sec+" 秒"}）。</div>`;
+  return slices(F,"已成交",false)+slices(I,"全部意图（含未成交）",false)+rel(F)+recentTbl+foot;
+}
+
+function calibrationLadderDetail(){
   const B=D.bucket_calibration||{}, T=D.traded_calibration||{};
   const n4=v=>v==null?"—":(+v).toFixed(4);
   const n3=v=>v==null?"—":(+v).toFixed(3);
@@ -18896,11 +18938,6 @@ function bucketCalibration(){
   const sgn=(v,d=4)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
   const ci=(v,a)=>Array.isArray(a)?`${sgn(v)} [${sgn(a[0])}, ${sgn(a[1])}]${(a[0]>0||a[1]<0)?"*":""}`:sgn(v);
   const tone=v=>v==null?"":((+v)<0?"up":"down");
-  const intro=`<h2>每个桶与买入的桶（二元 LogLoss）：整条梯子上我给每个桶的发生概率准不准，实际买入的桶上又准不准</h2>
-    <div class="card"><span class="pill amber">只评价，不改下单，不进校准链</span>
-    <span class="muted">同一把尺子、两批样本。<b>校准每个桶的发生概率</b>：每个已结算站日、每个距结算档取一个时点，当时服务的向量（P1 &gt; P0-M &gt; P0，宪章 260；过宪章 224 下限）里梯子上的每个桶 k 都是一行，
-    记我方 P(T=k)、同一时刻市场参考向量（整条梯子，单边尾桶按 EV 页口径）的 q_k，以及 k 中没中。<b>评价实际买入的桶</b>：只取各车道实际成交的腿（宪章 259 第二层的已成交样本，NO 腿按 NO 方向记）。
-    二元 LogLoss＝−[y·log p + (1−y)·log(1−p)]，低者好；Δ＝我方−市场，负＝我方更准，区间按事件日自助 95%，带 * 为不跨零。两批样本的市场 q 口径不同：买入桶用双边归一中价（第二层口径）。</span></div>`;
   const A=B.all, F=((T.populations||{}).filled||{}).all;
   const row=(name,sample,r,paid)=>`<tr><td><b>${name}</b></td><td class="mono">${sample}</td><td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono">${paid}</td>
      <td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td><td class="mono">${n4(r.brier_ours)} / ${n4(r.brier_market)}</td>
@@ -19020,7 +19057,7 @@ function bucketCalibration(){
   const fillSel=FI.filled!=null?`<details open style="margin-top:8px"><summary>成交与未成交：同一信号集合、控制组成之后，成交与否还说不说明我方对市场更差（样本内：事件日 &lt; ${h(FS.forward_from)}）</summary>
     <div class="scroll">${estTbl(FI)}</div><div class="muted">只比到过交易所的腿；d 按腿方向记，市场 q 是下单时刻整条梯子的参考向量；区间按事件日整块自助。</div>
     <div style="margin-top:8px"><b>下单 → 成交期间的变化</b></div><div class="scroll">${otf}</div>${fwd}</details>`:"";
-  if(!B.available||!A) return intro+both+relCharts+funnel+fillSel+lanesTbl+relLanes+pairing;
+  if(!B.available||!A) return both+relCharts+funnel+fillSel+lanesTbl+relLanes+pairing;
   const C=B.counts||{};
   const srow=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.buckets}</td><td class="mono">${r.samples}</td><td class="mono">${r.event_days}</td>
      <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono ${tone(r.logloss_diff)}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
@@ -19032,67 +19069,69 @@ function bucketCalibration(){
   const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>桶</th><th>我方说</th><th>市场说</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
   const rel=`<details style="margin-top:8px"><summary>校准每个桶的发生概率：可靠性图（全部桶），按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary><div class="grid g2">${tbl(mk(B.reliability_ours||[]),"按我方 p 分档")}${tbl(mk(B.reliability_market||[]),"按市场 q 分档")}</div></details>`;
   const foot=`<div class="muted" style="margin-top:6px">自 ${h(B.since)}：已结算站日 ${C.station_days??"—"}，取到时点 ${C.samples??"—"}，档内前 ${h(B.tries_per_band)} 个决策时点都没有 ${Math.round((+B.book_window_sec||0)/60)} 分钟内完整盘口的档 ${C.band_unpaired??"—"}，梯子对不上 ${C.ladder_mismatch??"—"}。
-    评价实际买入的桶按车道、条件切片与可靠性图见下一节「交易概率校准（第二层）」。读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
-  return intro+both+relCharts+funnel+fillSel+layers+dist+lanesTbl+relLanes+pairing+slices+rel+foot;
+    读数由后端读数任务写出（data/board_readings/bucket_calibration.json，算于 ${h(B.computed_at_utc||"—")}，${B.build_sec==null?"—":(+B.build_sec).toFixed(0)+" 秒"}）。</div>`;
+  return both+relCharts+funnel+fillSel+layers+dist+lanesTbl+relLanes+pairing+slices+rel+foot;
 }
 
-// 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
-// distribution (charters 211/240: LogScore, CRPS, Brier, PIT); this layer
-// judges only the bucket a lane actually bought -- binary log loss and
-// reliability of our served p beside the market's mid on the same legs.
-// Read from data/board_readings/traded_calibration.json; nothing here trades.
-function tradedCalibration(){
-  const T=D.traded_calibration||{};
-  if(!T.available) return `<div class="muted">交易概率校准读数这一轮没有生成${T.error?"："+h(T.error):""}。</div>`;
-  const P=T.populations||{}; const F=P.filled||{}, I=P.intended||{}; const C=T.counts||{};
-  const n4=v=>v==null?"—":(+v).toFixed(4);
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const pct=(v,d=1)=>v==null?"—":((+v)*100).toFixed(d)+"%";
-  const sgn=(v,d=4)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
-  const ci=(v,a)=>Array.isArray(a)?`${sgn(v)} [${sgn(a[0])}, ${sgn(a[1])}]${(a[0]>0||a[1]<0)?"*":""}`:sgn(v);
-  const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
-  const intro=`<h2>交易概率校准（第二层，宪章 259）：在我真正下注的桶上，我给这个桶的概率是不是比市场更准</h2>
-    <div class="card"><span class="pill amber">只评价，不改下单，不进校准链</span>
-    <span class="muted">第一层（宪章 211/240）评完整分布 P(T=k)：LogScore 主裁、CRPS 结构、Brier 护栏、PIT/可靠性诊断——回答「模型整体分布对不对」。
-    本层只看被交易的那个桶 k 的 P(T=k)：二元 LogLoss 与可靠性图——回答「我实际下注的桶，概率可信不可信」。
-    每条腿同时记我方服务向量 p（下单时刻最新已提交决策，过宪章 224 下限）、同一时刻市场归一中价 q 与实付价，三者在同一批腿上成对比较；
-    低者好；Δ＝我方−市场，负＝我方更准，区间按事件日自助 95%，带 * 为不跨零。只认已结算腿，样本只前向累积，不作训练目标。</span></div>`;
-  const A=F.all||{};
-  const tiles=A.legs?`<div class="grid g3" style="margin-top:8px">
-     ${tile("已成交腿 / 事件日",`${A.legs} / ${A.event_days}`,`自 ${h(T.since)}；实付 $${(+A.usdc).toFixed(2)}；读到意图 ${C.intents??"—"}，无真值 ${C.no_label??"—"}、无 p ${C.no_served_p??"—"}、无双边盘口 ${C.no_market_mid??"—"}`)}
-     ${tile("二元 LogLoss：我方 / 市场 / 实付",`${n4(A.logloss_ours)} / ${n4(A.logloss_market)} / ${n4(A.logloss_paid)}`,"低者好；实付价当概率读，是执行层的尺")}
-     ${tile("Δ 我方−市场（nat/腿）",ci(A.logloss_diff,A.logloss_diff_ci),"负＝我下注的桶上我比市场准")}
-     ${tile("Brier：我方 / 市场",`${n4(A.brier_ours)} / ${n4(A.brier_market)}`,"护栏")}
-     ${tile("说多少 → 中多少",`我 ${pct(A.said_ours)} · 市 ${pct(A.said_market)} · 付 ${pct(A.paid)} → 中 ${pct(A.landed)}`,"整体校准：说的接近中的才可信")}
-     ${tile("我方更接近结果的腿",pct(A.ours_closer_share),`已结束回报 ${A.return==null?"—":sgn(A.return*100,1)+"%"}（按实付）`)}
-   </div>`:`<div class="card muted" style="margin-top:8px">已成交腿不足 ${h(T.min_legs)} 条，整体读数待累积（读到 ${F.legs??0} 条）。</div>`;
-  const row=r=>`<tr><td>${h(r.group)}</td><td>${h(r.slice)}</td><td class="mono">${r.legs}</td><td class="mono">${r.event_days}</td>
-     <td class="mono">${n4(r.logloss_ours)}</td><td class="mono">${n4(r.logloss_market)}</td><td class="mono">${n4(r.logloss_paid)}</td>
-     <td class="mono ${r.logloss_diff==null?"":((+r.logloss_diff)<0?"up":"down")}">${ci(r.logloss_diff,r.logloss_diff_ci)}</td>
-     <td class="mono">${n4(r.brier_ours)} / ${n4(r.brier_market)}</td>
-     <td class="mono">${pct(r.said_ours)} / ${pct(r.said_market)} / ${pct(r.paid)} → ${pct(r.landed)}</td>
-     <td class="mono">${pct(r.ours_closer_share,0)}</td><td class="mono">${r.return==null?"—":sgn(r.return*100,1)+"%"}</td></tr>`;
-  const head=`<thead><tr><th>组</th><th>切片</th><th>腿</th><th>日</th><th>LL 我方</th><th>LL 市场</th><th>LL 实付</th><th>Δ 我方−市场 [95%]</th><th>Brier 我/市</th><th>说 我/市/付 → 中</th><th>我更近</th><th>回报</th></tr></thead>`;
-  const slices=(pop,label,open)=>{const rows=(pop.slices||[]).map(row).join("");
-    return `<details ${open?"open":""} style="margin-top:8px"><summary>${label}：按条件切片（每片 ≥ ${h(T.min_legs)} 腿，车道行不设下限；共 ${pop.legs??0} 腿）</summary>${rows?`<div class="scroll" style="max-height:560px"><table>${head}<tbody>${pop.all?row({group:"全部",slice:"—",...pop.all}):""}${rows}</tbody></table></div>`:"<div class='muted'>样本不足。</div>"}</details>`;};
-  const rel=pop=>{const mk=rows=>rows.map(b=>`<tr><td class="mono">${n3(b.bin[0])}–${n3(b.bin[1])}</td><td class="mono">${b.legs}</td><td class="mono">${pct(b.said_ours)}</td><td class="mono">${pct(b.said_market)}</td><td class="mono">${pct(b.paid)}</td><td class="mono">${pct(b.landed)}</td></tr>`).join("");
-    const tbl=(rows,title)=>`<div class="card"><b>${title}</b>${rows?`<table><thead><tr><th>档</th><th>腿</th><th>我方说</th><th>市场说</th><th>实付</th><th>中</th></tr></thead><tbody>${rows}</tbody></table>`:"<div class='muted'>—</div>"}</div>`;
-    // Per lane (user 2026-10-09 「可靠性图（已成交腿），按照车道区分」): the
-    // same two diagrams on each lane's own legs, in a fixed order; a lane the
-    // board has no name for prints its key.
-    const block=(title,r)=>`<div style="margin-top:10px"><b>${h(title)}</b> <span class="muted">${r.legs} 腿 / ${r.event_days??"—"} 日；说 我 ${pct(r.said_ours)} · 市 ${pct(r.said_market)} · 付 ${pct(r.paid)} → 中 ${pct(r.landed)}</span>
-      <div class="grid g2">${tbl(mk(r.reliability_ours||[]),"按我方 p 的十分档")}${tbl(mk(r.reliability_market||[]),"按市场 q 的十分档")}</div></div>`;
-    const lanes=[...(pop.reliability_by_lane||[])].sort((a,b)=>tcLaneSort(a.lane,b.lane));
-    const A=pop.all||{};
-    const whole=block("全部车道",{legs:pop.legs??0,event_days:A.event_days,said_ours:A.said_ours,said_market:A.said_market,paid:A.paid,landed:A.landed,
-      reliability_ours:pop.reliability_ours,reliability_market:pop.reliability_market});
-    const byLane=lanes.length?lanes.map(r=>block(TC_LANE_NAMES[r.lane]||r.lane,r)).join(""):`<div class="muted" style="margin-top:8px">按车道的读数要等后端读数任务下一轮重算。</div>`;
-    return `<details style="margin-top:8px"><summary>可靠性图（已成交腿）：全部车道与按车道分开，按我方 p 分档 / 按市场 q 分档，各档说多少、中多少</summary>${whole}${byLane}</details>`;};
-  const recent=(T.recent||[]).map(l=>`<tr><td class="mono">${h((l.created_at||"").slice(5,16))}</td><td>${h(l.lane)}</td><td>${h(l.station_id)}</td><td class="mono">${h(l.event_date)}</td><td>${h(l.bucket)} ${h(l.side)}</td><td>${h(l.stage||"—")}</td><td class="mono">${n3(l.p)}</td><td class="mono">${n3(l.q)}</td><td class="mono">${n3(l.paid)}</td><td>${l.filled?"成交 "+(+l.shares).toFixed(2):"未成交"}</td><td class="${l.win?"up":"down"}">${l.win?"中":"未中"}</td></tr>`).join("");
-  const recentTbl=`<details style="margin-top:8px"><summary>最近 ${(T.recent||[]).length} 条已结算腿（含未成交的意图）</summary><div class="scroll" style="max-height:520px"><table><thead><tr><th>时间</th><th>车道</th><th>站</th><th>事件日</th><th>桶 / 边</th><th>阶段</th><th>我方 p</th><th>市场 q</th><th>实付</th><th>状态</th><th>结果</th></tr></thead><tbody>${recent}</tbody></table></div></details>`;
-  const foot=`<div class="muted" style="margin-top:6px">读数由后端读数任务每小时写出（data/board_readings/traded_calibration.json，算于 ${h(T.computed_at_utc||"—")}，${T.build_sec==null?"—":T.build_sec+" 秒"}）。</div>`;
-  return intro+tiles+slices(F,"已成交",true)+slices(I,"全部意图（含未成交）",false)+rel(F)+recentTbl+foot;
+// 「每个桶与买入的桶（二元 LogLoss）」, the summary (user 2026-10-17 「优化前端，
+// 太多数据太多内容了，提炼主要内容，极简！」): two numbers -- every bucket of the
+// ladder and the buckets bought, each ours minus the market's binary log loss
+// -- where disagreeing with the market goes wrong, the two reliability
+// diagrams, the lanes, and the forward read's state.  Every table the two
+// charter-259 sections carried before sits folded under 「明细」.
+function bucketCalibration(){
+  const B=D.bucket_calibration||{}, T=D.traded_calibration||{};
+  const A=B.available?B.all:null, FP=(T.populations||{}).filled||{}, F=FP.all||null;
+  const pct=(v,d=0)=>v==null?"—":((+v)*100).toFixed(d)+"%";
+  const sgn=(v,d=3)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
+  const sig=a=>Array.isArray(a)&&(a[0]>0||a[1]<0);
+  const tone=r=>!r||!sig(r.logloss_diff_ci)?"flat":((+r.logloss_diff)>0?"down":"up");
+  const verdict=r=>!r?"—":!sig(r.logloss_diff_ci)?"打平":((+r.logloss_diff)>0?"市场更准":"我方更准");
+  const ciTip=r=>r&&Array.isArray(r.logloss_diff_ci)?`二元 LogLoss 我方−市场 ${sgn(r.logloss_diff,4)} [${sgn(r.logloss_diff_ci[0],4)}, ${sgn(r.logloss_diff_ci[1],4)}]，按事件日自助 95%；负＝我方更准`:"";
+  const big=(label,r,sample,line)=>`<div class="card" title="${h(ciTip(r))}"><div class="muted">${label}</div>
+    <div class="mono ${tone(r)}" style="font-size:30px;font-weight:700;line-height:1.25">${r?sgn(r.logloss_diff):"—"}</div>
+    <div><b class="${tone(r)}">${verdict(r)}</b> <span class="muted">${sample}</span></div>${line?`<div class="muted mono" style="margin-top:2px">${line}</div>`:""}</div>`;
+  const RS=B.reliability_summary||{};
+  const ece=k=>(RS[k]||{}).ece==null?"—":(+RS[k].ece).toFixed(3);
+  const FS=T.fill_selection||{}, FF=FS.forward||{}, J=FF.judgement||{};
+  const fwdBig=J.verdict?h(J.verdict):(J.state==="deferred"?"顺延":"累计中");
+  const cards=`<div class="grid g3">
+    ${big("每个桶",A,A?`${A.buckets} 桶 · ${A.event_days} 日`:"读数未生成",A?`校准 ECE 我 ${ece("ours")} · 市 ${ece("market")}`:"")}
+    ${big("买入的桶",F,F?`${F.legs} 腿 · ${F.event_days} 日`:"成交腿不足",F?`说 我 ${pct(F.said_ours)} · 市 ${pct(F.said_market)} → 中 ${pct(F.landed)} · 回报 ${F.return==null?"—":sgn(F.return*100,1)+"%"}`:"")}
+    <div class="card" title="成交与挂上未成交的分层差，事先登记 ${h(FS.protocol||"")}，只判一次"><div class="muted">前推判读</div>
+      <div style="font-size:30px;font-weight:700;line-height:1.25">${fwdBig}</div>
+      <div class="muted mono">成交 ${FF.filled??0}/${FS.min_filled??"—"} 腿 · ${FF.filled_event_days??0}/${FS.min_days??"—"} 日 · ${h(FS.read_on||"—")} 读</div></div></div>`;
+  // Where the gap is: bucket position against the market's mode, and Δ by how
+  // far our p sits from the market's q.
+  const sl=g=>(B.slices||[]).filter(r=>r.group===g);
+  const pos=sl("桶位置");
+  const posCards=pos.length?`<div class="grid g4" style="margin-top:8px">${pos.map(r=>`<div class="card" title="${h(ciTip(r))}"><div class="muted">${h(r.slice)}</div>
+    <div class="mono" style="font-size:22px;font-weight:700">中 ${pct(r.landed)}</div><div class="muted mono">我 ${pct(r.said_ours)} · 市 ${pct(r.said_market)}</div></div>`).join("")}</div>`:"";
+  const gap=sl("我方对市场");
+  const bars=(()=>{if(!gap.length) return "";
+    const W=420, L=104, R=56, RH=22, H=gap.length*RH+8, mid=L+(W-L-R)/2, half=(W-L-R)/2;
+    const m=Math.max(1e-9,...gap.map(r=>Math.abs(+r.logloss_diff||0)));
+    const rows=gap.map((r,i)=>{const v=+r.logloss_diff||0, w=half*Math.abs(v)/m, y=4+i*RH;
+      const c=!sig(r.logloss_diff_ci)?"var(--muted)":(v>0?"var(--down)":"var(--up)");
+      return `<g><title>${h(r.slice)} · ${r.buckets} 桶 · ${h(ciTip(r))}</title>
+        <text x="${L-8}" y="${y+14}" text-anchor="end" class="trend-ax">${h(String(r.slice).replace("p−q ","").replace(/(\d)–/,"$1 ~ "))}</text>
+        <rect x="${(v>0?mid:mid-w).toFixed(1)}" y="${y+4}" width="${Math.max(1,w).toFixed(1)}" height="${RH-8}" rx="2" fill="${c}"/>
+        <text x="${W-R+6}" y="${y+14}" class="trend-ax">${sgn(v)}</text></g>`;}).join("");
+    return `<div class="card"><div class="trend-t">分歧越大，谁对？</div><div class="muted trend-s">我方 p − 市场 q（每桶）→ Δ LogLoss，右＝市场更准</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="按 p−q 分档的 LogLoss 差"><line x1="${mid}" x2="${mid}" y1="0" y2="${H}" stroke="var(--line)"/>${rows}</svg></div>`;})();
+  const relSet=(o,keys)=>Object.fromEntries(keys.map(k=>[k,{bins:(o||{})[`reliability_${k}`]||[],summary:((o||{}).reliability_summary||{})[k]||{}}]));
+  const rel=`<div class="grid g2" style="margin-top:8px">${reliabilityChart({title:"可靠性 · 每个桶",unit:"桶",sets:relSet(B,["ours","market"])})}
+    ${reliabilityChart({title:"可靠性 · 买入的桶",unit:"腿",sets:relSet(FP,["ours","market"])})}</div>`;
+  const lanes=(FP.slices||[]).filter(r=>r.group==="车道").sort((a,b)=>tcLaneSort(a.slice,b.slice));
+  const laneTbl=lanes.length?`<div class="card"><div class="trend-t">按车道 · 买入的桶</div><table><thead><tr><th>车道</th><th>腿</th><th>Δ</th><th>回报</th></tr></thead><tbody>
+    ${lanes.map(r=>`<tr title="${h(ciTip(r))}"><td>${h(TC_LANE_NAMES[r.slice]||r.slice)}</td><td class="mono">${r.legs}</td>
+      <td class="mono ${tone(r)}">${sgn(r.logloss_diff)}${sig(r.logloss_diff_ci)?"*":""}</td><td class="mono">${r.return==null?"—":sgn(r.return*100,1)+"%"}</td></tr>`).join("")}</tbody></table></div>`:"";
+  const head=`<h2 title="宪章 259：只评价，不改下单，不进校准链。二元 LogLoss 低者好；Δ＝我方−市场，正＝市场更准，* 为区间不跨零">校准：每个桶 · 买入的桶</h2>`;
+  const foot=`<div class="muted" style="margin-top:6px">Δ＝我方−市场二元 LogLoss，正＝市场更准 · 算于 ${h(String(B.computed_at_utc||"—").slice(0,16).replace("T"," "))}Z</div>`;
+  return head+cards+posCards+`<div class="grid g2" style="margin-top:8px">${bars}${laneTbl}</div>`+rel+foot
+    +`<details style="margin-top:10px"><summary>明细</summary>${calibrationLadderDetail()}${T.available?calibrationTradedDetail():""}</details>`;
 }
+
 
 // 「兑现层（影子）」(charter 254): b = P(Y | p, q), the belief an edge is
 // priced on -- the market sharpened, its modal bucket and the two beside it
@@ -24517,9 +24556,8 @@ const GROUPS = [
   // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
   // what settled.  Shadow: nothing here trades.
   {id:"realisation", label:"兑现层", short:"兑现", tone:"#d2a8ff",
-   note:"兑现层（影子，宪章 254）：b = P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单。第二层（宪章 259）在同一板块：先用同一把二元 LogLoss 并排看「校准每个桶的发生概率」（整条梯子每个桶）与「评价实际买入的桶」（买入样本），再只在实际下注的桶上按车道、条件与可靠性图对比我方 p 与市场 q",
-   sections:[[realisationLayer,"兑现层（影子）"],[bucketCalibration,"每个桶与买入的桶（二元 LogLoss）"],
-     [tradedCalibration,"交易概率校准（第二层）"]]},
+   note:"兑现层（影子，宪章 254）：b = P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率。每晚按已结算的 P0（>36h）重拟、逐日前推过校准门（说多少中多少）；Proper 与远尾两条线判过的每条腿都按 b 记下 edge，结算后对账。只记录，不改任何下单。第二层（宪章 259）：二元 LogLoss 看每个桶与买入的桶",
+   sections:[[realisationLayer,"兑现层（影子）"],[bucketCalibration,"校准：每个桶 · 买入的桶"]]},
 ];
 // Every section an area holds, through its containers.
 const groupSections = g => g.sections.flatMap(item =>
@@ -24618,10 +24656,8 @@ const LANES = {
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
   "兑现层（影子）": {layer:"兑现层", status:"shadow",
     role:"b = P(Y | p, q)：市场拉尖 + 众数桶与隔壁 + 模型宽度/形状；每晚重拟过校准门，两条线的每条腿按 b 记 edge 并在结算后对账；不改下单（宪章 254）"},
-  "每个桶与买入的桶（二元 LogLoss）": {layer:"兑现层 · 第二层", status:"audit",
-    role:"同一把二元 LogLoss、两批样本：整条梯子每个桶的发生概率（每站日每距结算档一个时点，我方服务向量对市场参考向量）与实际买入的桶（已成交腿）；配对诊断：全部候选桶→信号桶→成交桶漏斗、P0 融合池→分布层输入→服务三层、完整分布 LogScore/CRPS、按车道、成交腿逐笔配对；只评价，不作训练目标"},
-  "交易概率校准（第二层）": {layer:"兑现层 · 第二层", status:"audit",
-    role:"第一层评整条分布（211/240），这一层只评被交易的桶：实际成交腿上我方 p、市场 q、实付价的二元 LogLoss 与十分档可靠性成对比较；只评价，不作训练目标（宪章 259）"},
+  "校准：每个桶 · 买入的桶": {layer:"兑现层 · 第二层", status:"audit",
+    role:"二元 LogLoss 我方−市场：整条梯子每个桶 · 实际买入的桶；只评价，不作训练目标（宪章 259）"},
   // --- live: the lanes that send, and the book they send into ---
   "秤砣线 · 宪章 146": {layer:"实盘 · 车道", status:"live",
     role:"阶段首个决策，模型众数桶被市场定在价带内 → 买一上方一档挂 post-only，一站日一笔"},
