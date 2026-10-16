@@ -285,3 +285,46 @@ def test_go_live_verdict_waits_for_settled_legs_and_blocks_on_the_replay() -> No
     ready = cd.realisation_go_live(settled, better)
     assert ready["trade"] == "ready"
     assert cd.realisation_go_live(settled, None)["trade"] == "waiting"
+
+
+def test_the_board_summary_shows_three_verdicts_and_folds_the_rest() -> None:
+    """2026-10-17 「继续改：兑现层」(after 「极简！」): the section leads with the
+    calibration gate, b against the market and the go-live call, the checks
+    as lamps, the walk-forward reliability drawn and the settled shadow legs;
+    every former table sits under 「明细」."""
+    import json
+    import shutil
+    import subprocess
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import calibration_dashboard as cd
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    source = cd.HTML_TEMPLATE
+    js = source[source.index("const REL_SHAPES"):source.index("function properBetLane(")]
+    payload = {"realisation_layer": {"available": True, "shadow": {"available": False}, "fit": {
+        "available": True, "fitted_at_utc": "2026-10-16T07:17:50Z", "population": {},
+        "gate": {"state": "REFUSED", "cells_outside": 13, "cells_allowed": 3, "scored_days": 15,
+                 "scored_decisions": 10495, "calibration_line": {"slope": [0.82, 0.77, 0.89]},
+                 "logscore": {"layer_minus_market": [0.0044, -0.0215, 0.0306]}},
+        "cells": [{"group": "all", "bin": [0.3, 0.4], "buckets": 6554, "said": 0.35, "landed": 0.30,
+                   "gap": [-0.047, -0.084, -0.009], "judged": True, "outside": True}],
+        "realised": {"decided": [{"lane": "proper_bet", "side": "YES", "legs": 107, "event_days": 5,
+                                  "belief_side": 0.38, "landed_side": 0.35, "realised": [0.018, -0.011, 0.064]}]}},
+        "go_live": {"belief_ready": False, "trade": "blocked", "checks": [
+            {"key": "gate", "group": "belief", "label": "校准门（说多少中多少）", "state": "fail"},
+            {"key": "event_days", "group": "trade", "label": "Proper 影子腿已结算事件日",
+             "value": {"days": 5, "need": 10}, "state": "wait"}]}}}
+    script = ("const D = " + json.dumps(payload, ensure_ascii=False) + ";\nconst h = s => String(s == null ? '' : s);\n"
+              + js + "\nconsole.log(realisationLayer());\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    html = result.stdout
+    summary = html[:html.index("<summary>明细</summary>")]
+    assert "未过" in summary and "出区间 13/3 格" in summary and "+0.004" in summary and "打平" in summary
+    assert "不上线" in summary and "结算事件日" in summary and "5/10" in summary
+    assert "前推可靠性 · b" in summary and "<svg viewBox" in summary
+    assert "Proper YES" in summary and "38% → 35%" in summary and "+1.8¢" in summary
+    assert "上线判定" not in summary and "上线判定" in html, "the full go-live table is folded"

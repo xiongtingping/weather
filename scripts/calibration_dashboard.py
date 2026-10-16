@@ -18848,7 +18848,8 @@ const REL_SHAPES = {circle:(x,y,c,r=4.5)=>`<circle cx="${x}" cy="${y}" r="${r}" 
   diamond:(x,y,c,r=4.5)=>`<path d="M${x} ${y-r*1.2}L${x+r*1.2} ${y}L${x} ${y+r*1.2}L${x-r*1.2} ${y}Z" fill="${c}" stroke="var(--card)" stroke-width="2"/>`};
 const REL_SERIES = {ours:{name:"我方 p",color:"var(--th-claim)",shape:"circle",said:"said_ours"},
   market:{name:"市场 q",color:"var(--th-price)",shape:"square",said:"said_market"},
-  paid:{name:"实付价",color:"var(--series-3)",shape:"diamond",said:"paid"}};
+  paid:{name:"实付价",color:"var(--series-3)",shape:"diamond",said:"paid"},
+  b:{name:"兑现层 b",color:"var(--th-claim)",shape:"circle",said:"said"}};
 function reliabilityChart(cfg){
   // cfg: {title, sub, unit, sets: {ours: {bins, summary}, market: {...}, paid?: {...}}}
   const W=300, H=286, L=40, R=14, T=10, B=36, pw=W-L-R, ph=H-T-B;
@@ -18857,7 +18858,7 @@ function reliabilityChart(cfg){
   const keys=Object.keys(REL_SERIES).filter(k=>cfg.sets[k]&&(cfg.sets[k].bins||[]).length);
   const legend=keys.map(k=>{const S=REL_SERIES[k], sm=cfg.sets[k].summary||{};
     return `<span class="rel-key"><svg width="14" height="14" aria-hidden="true">${REL_SHAPES[S.shape](7,7,S.color)}</svg>${S.name}
-      <span class="mono muted">LL ${sm.logloss==null?"—":(+sm.logloss).toFixed(4)} · REL ${sm.rel==null?"—":(+sm.rel).toFixed(4)} · ECE ${sm.ece==null?"—":(+sm.ece).toFixed(3)}</span></span>`;}).join("");
+      ${sm.logloss==null&&sm.rel==null?"":`<span class="mono muted">LL ${sm.logloss==null?"—":(+sm.logloss).toFixed(4)} · REL ${sm.rel==null?"—":(+sm.rel).toFixed(4)} · ECE ${sm.ece==null?"—":(+sm.ece).toFixed(3)}</span>`}</span>`;}).join("");
   const diagKey=`<span class="rel-key"><svg width="16" height="10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="var(--muted)" stroke-width="1"/></svg><span class="muted">说＝中</span></span>`;
   const head=`<div class="trend-t">${h(cfg.title)}</div>${cfg.sub?`<div class="muted trend-s">${h(cfg.sub)}</div>`:""}<div class="rel-legend">${legend}${diagKey}</div>`;
   if(!keys.length) return `<div class="card trend">${head}<div class="muted" style="padding:18px 0">还没有可画的数据。</div></div>`;
@@ -19133,14 +19134,58 @@ function bucketCalibration(){
 }
 
 
+// 「兑现层（影子）」, the summary (user 2026-10-17 「继续改：兑现层」, after
+// 「优化前端，太多数据太多内容了，提炼主要内容，极简！」): three verdicts -- the
+// calibration gate, b against the market as it stands, and the go-live call
+// -- each check as a lamp, the walk-forward reliability drawn, and the
+// settled shadow legs.  Every former table sits folded under 「明细」.
+function realisationLayer(){
+  const T=D.realisation_layer||{};
+  if(!T.available) return `<div class="muted">兑现层读数这一轮没有生成。</div>`;
+  const F=T.fit||{}, G=F.gate||{}, L=G.logscore||{}, V=T.go_live||{}, R=F.realised||{};
+  const pct=(v,d=0)=>v==null?"—":((+v)*100).toFixed(d)+"%";
+  const sgn=(v,d=3)=>v==null?"—":((+v)>=0?"+":"")+(+v).toFixed(d);
+  const ivl=a=>Array.isArray(a)&&a.length>=3?`${sgn(a[0],4)} [${sgn(a[1],4)}, ${sgn(a[2],4)}]`:"";
+  const sig=a=>Array.isArray(a)&&a.length>=3&&(a[1]>0||a[2]<0);
+  const big=(label,value,cls,sub,tip)=>`<div class="card" title="${h(tip||"")}"><div class="muted">${label}</div>
+    <div class="${cls}" style="font-size:30px;font-weight:700;line-height:1.25">${value}</div><div class="muted mono">${sub}</div></div>`;
+  const gateWord={ADMITTED:["up","通过"],REFUSED:["down","未过"],ACCUMULATING:["flat","样本不足"]}[G.state]||["flat",F.available?h(G.state||"—"):"无拟合"];
+  const slope=(G.calibration_line||{}).slope;
+  const vm=L.layer_minus_market;
+  const vmWord=!Array.isArray(vm)?["flat","—"]:(!sig(vm)?["flat","打平"]:(vm[0]<0?["up","b 更准"]:["down","市场更准"]));
+  const tradeWord={ready:["up","可以上线"],blocked:["down","不上线"],waiting:["flat","等结算"]}[V.trade]||["flat","—"];
+  const cards=`<div class="grid g3">
+    ${big("校准门",gateWord[1],gateWord[0],`出区间 ${G.cells_outside??"—"}/${G.cells_allowed??"—"} 格 · 斜率 ${Array.isArray(slope)?(+slope[0]).toFixed(2):"—"}`,"前推可靠性：完全校准时出区间的格数在允许数以内，斜率含 1、截距含 0")}
+    ${big("b 对市场（LogScore）",`<span class="mono" style="font-size:inherit">${Array.isArray(vm)?sgn(vm[0]):"—"}</span> <span style="font-size:16px">${vmWord[1]}</span>`,vmWord[0],`前推 ${G.scored_days??"—"} 天 · ${G.scored_decisions??"—"} 决策`,`兑现层−市场 ${ivl(vm)} nat/决策；负＝b 更准`)}
+    ${big("Proper 改读 b",tradeWord[1],tradeWord[0],`b 作信念：${V.belief_ready?"合格":"未合格"}`,"上线需要信念两项全过，且改下单四项全过")}</div>`;
+  const lamp={pass:["up","✓"],fail:["down","✕"],wait:["flat","…"]};
+  const short={gate:"校准门",vs_market:"比市场准",model_increment:"模型增量",event_days:"结算事件日",
+    filled_realised:"成交兑现",belief_on_legs:"b 说≈中",replay_vs_current:"回放不差于现行"};
+  const val={event_days:v=>`${v.days}/${v.need}`};
+  const chips=(V.checks||[]).length?`<div class="card" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px 18px">${V.checks.map(c=>{const [cls,mark]=lamp[c.state]||["flat","?"];
+    return `<span title="${h(c.label)}"><b class="${cls}">${mark}</b> ${short[c.key]||h(c.label)}${val[c.key]&&c.value?` <span class="mono muted">${val[c.key](c.value)}</span>`:""}</span>`;}).join("")}</div>`:"";
+  const bins=(F.cells||[]).filter(c=>c.group==="all").map(c=>({bin:c.bin,buckets:c.buckets,said:c.said,landed:c.landed,
+    landed_ci:Array.isArray(c.gap)&&c.gap.length>=3?[c.said+c.gap[1],c.said+c.gap[2]]:null}));
+  const rel=bins.length?reliabilityChart({title:"前推可靠性 · b",sub:`${h(G.first_scored_day||"")} – ${h(G.last_scored_day||"")}`,unit:"桶",sets:{b:{bins,summary:{}}}}):"";
+  const LANE={proper_bet:"Proper",tail_short:"远尾做空"};
+  const leg=(r,which)=>`<tr title="兑现 ${ivl(r.realised)}（份额计，已扣费）"><td>${h(LANE[r.lane]||r.lane)} ${h(r.side)}</td><td class="muted">${which}</td><td class="mono">${r.legs} · ${r.event_days} 日</td>
+    <td class="mono">${pct(r.belief_side)} → ${pct(r.landed_side)}</td><td class="mono ${sig(r.realised)?(r.realised[0]>0?"up":"down"):"flat"}">${r.realised?sgn(r.realised[0]*100,1)+"¢":"—"}</td></tr>`;
+  const legRows=[...(R.decided||[]).map(r=>leg(r,"首判")),...(R.filled||[]).map(r=>leg(r,"成交"))].join("");
+  const legs=`<div class="card"><div class="trend-t">影子腿对结算</div>${legRows?`<table><thead><tr><th>车道</th><th></th><th>腿</th><th>b 说 → 中</th><th>兑现/份</th></tr></thead><tbody>${legRows}</tbody></table>`:`<div class="muted">尚无已结算的影子腿</div>`}</div>`;
+  const head=`<h2 title="宪章 254：b＝P(Y | p, q)，看到天气模型 p 又看到市场 q 之后各桶的兑现概率；每晚按已结算 P0（>36h）重拟、逐日前推过校准门；只记录，不改下单">兑现层（影子）</h2>`;
+  const foot=`<div class="muted" style="margin-top:6px">拟合于 ${h(String(F.fitted_at_utc||"—").slice(0,16).replace("T"," "))}Z · 只记录，不改下单</div>`;
+  return head+cards+chips+`<div class="grid g2" style="margin-top:8px">${rel}${legs}</div>`+foot
+    +`<details style="margin-top:10px"><summary>明细</summary>${realisationLayerDetail()}</details>`;
+}
+
 // 「兑现层（影子）」(charter 254): b = P(Y | p, q), the belief an edge is
 // priced on -- the market sharpened, its modal bucket and the two beside it
 // lifted, and the weather model's width and shape where the two centres
 // agree.  Read only: the nightly fit's file and the shadow rows the lanes
 // wrote; nothing on this page trades.
-function realisationLayer(){
+function realisationLayerDetail(){
   const T=D.realisation_layer||{};
-  if(!T.available) return `<div class="muted">兑现层读数这一轮没有生成。</div>`;
+  if(!T.available) return "";
   const F=T.fit||{}, S=T.shadow||{};
   const pct=(v,d=1)=>v==null?"—":((+v)*100).toFixed(d)+"%";
   const pt=(v,d=1)=>v==null?"—":((+v)>=0?"+":"")+((+v)*100).toFixed(d);
@@ -19148,13 +19193,8 @@ function realisationLayer(){
   const ci=(a,scale=100,d=1)=>Array.isArray(a)?`${pt(a[0]/100*scale,d)} [${pt(a[1]/100*scale,d)}, ${pt(a[2]/100*scale,d)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
   const nat=a=>Array.isArray(a)?`${(+a[0]).toFixed(4)} [${(+a[1]).toFixed(4)}, ${(+a[2]).toFixed(4)}]${(a[1]>0||a[2]<0)?"*":""}`:"—";
   const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
-  const intro=`<h2>兑现层（影子，宪章 254）：模型声称的 edge，按以市场为条件的兑现概率 b 说多少、结算后兑现多少</h2>
-    <div class="card"><span class="pill amber">只记录，不改下单</span>
-    <span class="muted">模型向量 p 只看天气；这一层看到 p 又看到市场 q 之后给出每个桶的兑现概率 b，edge 只按 b 对可成交价算。
-    形式：市场向量拉尖、市场众数桶与相邻两档各加一项、模型的宽度与形状（两个中心一致时权重大，不一致时小）；模型的中心分歧不进。
-    每晚按已结算的 P0（距结算 &gt;36h）滚动 28 天重拟，逐日前推过校准门；Proper 与远尾做空两条线每判一条腿就记一行 b、区间与 edge。</span></div>`;
   const verdict=goLive();
-  if(!F.available) return intro+verdict+`<div class="card muted">尚无拟合文件（data/realisation_layer/active.json）。后端读数任务每小时检查一次，满 20 小时或代码变更即重拟。</div>`+shadowBlock();
+  if(!F.available) return verdict+`<div class="card muted">尚无拟合文件（data/realisation_layer/active.json）。后端读数任务每小时检查一次，满 20 小时或代码变更即重拟。</div>`+shadowBlock();
   const G=F.gate||{}, L=G.logscore||{}, line=G.calibration_line||{}, top=G.top_bucket||{}, pop=F.population||{};
   const state=G.state||"—";
   const pill=state==="ADMITTED"?"green":(state==="REFUSED"?"red":"amber");
@@ -19190,7 +19230,7 @@ function realisationLayer(){
   const realised=`<details open style="margin-top:8px"><summary>影子腿对结算：b 说的、实际中的、edge 声称与兑现（¢/份，已扣费；区间按事件日自助）</summary>
     ${settledRows?`<table><thead><tr><th>口径</th><th>车道</th><th>方向</th><th>腿</th><th>事件日</th><th>b（本方向）</th><th>实际</th><th>均价</th><th>声称 edge</th><th>兑现 [95%]</th><th>有把握的腿</th><th>有把握兑现</th></tr></thead><tbody>${settledRows}</tbody></table>`
       :`<div class="muted">尚无已结算的影子腿（${R.available===false?"影子表还没建":"等第一批站日结算"}）。</div>`}</details>`;
-  return intro+verdict+head+tiles+reliability+realised+shadowBlock();
+  return verdict+head+tiles+reliability+realised+shadowBlock();
   // 上线判定 (user 2026-10-05 「兑现层：给我一个可以上线的明确看板或总结」):
   // the backend's criteria, each with its reading and a lamp; two verdicts --
   // b as the betting belief, and the Proper lane posting on b instead of p.
