@@ -233,8 +233,14 @@ def test_a_take_is_a_capped_fak_sent_at_the_asked_size_whatever_the_book_shows()
     leg = M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 20, "limit_price": 0.05}]),
                         book, now=NOW)["legs"][0]["payload"]
     assert leg["order_type"] == "FAK" and leg["fok_price_cap"] == 0.05 and leg["size"] == 20.0
-    with pytest.raises(M.ManualOrderError, match="吃单下限"):
-        M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 19.2, "limit_price": 0.05}]), book, now=NOW)
+    # 0.96 U, under the venue's 1 U floor: topped up, not refused.
+    small = M.plan_orders(_request(legs=[{"bucket": "21°C", "shares": 19.2, "limit_price": 0.05}]),
+                          book, now=NOW)["legs"][0]["payload"]
+    assert small["size"] == 20.0
+    for price in (0.07, 0.13, 0.003, 0.33):
+        n = M.min_take_shares(price)
+        assert n * price >= 1 - 1e-9 and abs(round(n * price, 2) - n * price) < 1e-9
+        assert (n - 0.01) * price < 1 or abs(round((n - 0.01) * price, 2) - (n - 0.01) * price) > 1e-9
 
 
 def test_an_unmatched_fak_is_killed_and_stops_the_batch(monkeypatch, tmp_path) -> None:

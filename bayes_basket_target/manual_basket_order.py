@@ -22,8 +22,8 @@ What it is and is not:
 * Re-checked here against the newest official WS snapshot: every bucket must
   be on that day's ladder (its token comes from the snapshot, never from the
   page), the book no older than ``MAX_BOOK_AGE_SECONDS``, each leg at or
-  above the market's minimum lot and a take at or above the venue's 1 U
-  floor.  A take is a capped FAK: it fills what the book holds within its
+  above the market's minimum lot, and a take under the venue's 1 U floor
+  topped up to it.  A take is a capped FAK: it fills what the book holds within its
   cap and kills the rest (user 2026-10-16).
 * Legs go out in the order given and the batch stops at the first leg that
   is not a clean acceptance -- an unknown or a refusal leaves the rest unsent
@@ -183,6 +183,17 @@ def fok_shares(price: float, shares: float) -> float:
     return s / 100
 
 
+def min_take_shares(price: float) -> float:
+    """The fewest shares, in hundredths, costing at least ``MIN_TAKE_USDC``
+    at ``price`` in a whole number of cents (the FAK's maker amount)."""
+
+    p = round(price * 1000)
+    s = math.ceil(MIN_TAKE_USDC * 100_000 / p - 1e-9)
+    while (p * s) % 1000:
+        s += 1
+    return s / 100
+
+
 def _on_tick(price: float) -> float:
     """Down to the venue's grid: a buy never pays more than it was told to."""
 
@@ -251,8 +262,10 @@ def plan_orders(request: Mapping[str, Any], book: Mapping[str, Any], *, now: dat
                 raise ManualOrderError(
                     f"{label} 吃单金额须是整分钱：{asked} 份按 {price} 只能下 {shares} 份，低于最小单 {row['min_order_size']} 份")
             if shares * price < MIN_TAKE_USDC - 1e-9:
-                raise ManualOrderError(
-                    f"{label} 吃单金额 {shares * price:.2f} U 低于交易所吃单下限 {MIN_TAKE_USDC:.0f} U")
+                # Topped up to the venue floor rather than refused (user
+                # 2026-10-16, after 0.91 U was refused): the charter 252 rule
+                # the lanes use, 「不足 1 U 补到 1 U」.
+                shares = min_take_shares(price)
             # A capped FAK, not a FOK (user 2026-10-16「不要因为这种阻断」): it
             # takes whatever the book holds within the cap when it arrives and
             # kills the rest.  The book here is seconds old, so a depth check

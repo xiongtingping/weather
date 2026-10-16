@@ -24241,8 +24241,13 @@ function sdOrderLegs(day, st){
     // A take is a market order at the venue: its USDC must be whole cents
     // (manual_basket_order.fok_shares), so the dialog shows the size sent.
     let n = Math.floor(leg.shares * 100 + 1e-6);
-    if(st.mode === "taker"){ const p = Math.round(cap * 1000); while(n > 0 && (p * n) % 1000) n -= 1; }
-    return {bucket, side, shares: n / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost: leg.cost};
+    let cost = leg.cost;
+    if(st.mode === "taker"){
+      const p = Math.round(cap * 1000); while(n > 0 && (p * n) % 1000) n -= 1;
+      // Under the venue's 1 U take floor: topped up (manual_basket_order.min_take_shares).
+      if(n > 0 && p * n < 100000){ n = Math.ceil(100000 / p - 1e-9); while((p * n) % 1000) n += 1; cost = p * n / 100000; }
+    }
+    return {bucket, side, shares: n / 100, limit_price: st.mode === "taker" ? cap : leg.levels[0][0], cost};
   });
   return {res, legs};
 }
