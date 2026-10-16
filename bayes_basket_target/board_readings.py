@@ -2764,6 +2764,10 @@ def bucket_calibration(conn: sqlite3.Connection) -> dict[str, Any]:
 
 #: Settled event days the skew reading looks back over.
 SKEW_TRUTH_DAYS = 45
+#: The lean's hit-rate trend runs forward from here and keeps every settled
+#: day after it (user 2026-10-16 「向前统计真值“判对率”，并用图表看趋势」); the
+#: summary tables above keep the last ``SKEW_TRUTH_DAYS``.
+SKEW_TREND_SINCE = "2026-09-01"
 #: The market book paired with a model decision: the newest committed
 #: snapshot at or before it, no older than this.
 SKEW_TRUTH_MARKET_AGE_SEC = 3600.0
@@ -2801,7 +2805,7 @@ def _skew_point(vector: Mapping[str, float], axis: Sequence[Mapping[str, Any]], 
     }
 
 
-def skew_truth_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def skew_truth_rows(conn: sqlite3.Connection, since: str | None = None) -> list[dict[str, Any]]:
     """Every settled station-day of the window, once per stage: P0 and P0-M
     at their last decision before the next stage's first (charter 260: after
     that they are no longer the day's belief), P1 at its first; each with
@@ -2817,7 +2821,8 @@ def skew_truth_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     ).fetchone()[0]
     if not latest:
         return []
-    since = (date.fromisoformat(str(latest)) - timedelta(days=SKEW_TRUTH_DAYS - 1)).isoformat()
+    if since is None:
+        since = (date.fromisoformat(str(latest)) - timedelta(days=SKEW_TRUTH_DAYS - 1)).isoformat()
     truth: dict[tuple[str, str], float] = {}
     for station, day, value in conn.execute(
         "SELECT station_id, local_date, official_tmax_c FROM calibration_station_daily_high_truth"
@@ -2928,6 +2933,23 @@ def _skew_call_stats(rows: Sequence[Mapping[str, Any]], source: str) -> dict[str
     }
 
 
+def _skew_call_trend(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Per event day, per source: the off-mode station-days, how many the
+    reading called and how many of those it called right -- counts, so the
+    board can pool any window it draws."""
+
+    out = []
+    for day in sorted({r["event_date"] for r in rows}):
+        item: dict[str, Any] = {"event_date": day}
+        for source in ("model", "market"):
+            off = [r[source] for r in rows if r["event_date"] == day and r[source] and r[source]["truth_side"] != 0]
+            called = [p for p in off if p["sign"] != 0]
+            item[source] = {"off": len(off), "called": len(called),
+                            "right": sum(p["sign"] == p["truth_side"] for p in called)}
+        out.append(item)
+    return out
+
+
 def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
     """User 2026-10-11 「前端显示增加众数和均值桶的命中率：模型对市场统计显示和偏斜
     站日，真值落在哪一侧显示（按照生产现有口径）」.
@@ -2942,7 +2964,12 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
 
     from .basket_kernel.support import MEAN_MODE_SKEW_THRESHOLD_SIGMA  # noqa: PLC0415
 
-    rows = skew_truth_rows(conn)
+    trend_rows = skew_truth_rows(conn, since=SKEW_TREND_SINCE)
+    window_from = None
+    if trend_rows:
+        latest_day = max(r["event_date"] for r in trend_rows)
+        window_from = (date.fromisoformat(latest_day) - timedelta(days=SKEW_TRUTH_DAYS - 1)).isoformat()
+    rows = [r for r in trend_rows if window_from is None or r["event_date"] >= window_from]
     stages = []
     for stage in ("P0", "P0-M", "P1"):
         mine = [r for r in rows if r["stage"] == stage]
@@ -2970,14 +2997,15 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
                 item[key] = {"model": sum(a) / len(a), "market": sum(b) / len(b), "diff": diff, "ci": ci}
             hits.append(item)
         calls = [c for c in (_skew_call_stats(mine, "model"), _skew_call_stats(paired, "market")) if c]
+        trend = _skew_call_trend([r for r in trend_rows if r["stage"] == stage])
         stages.append({"stage": stage, "station_days": len(mine), "paired": len(paired),
                        "pick": "first" if stage == "P1" else "last_before_next_stage",
-                       "sides": sides, "hits": hits, "calls": calls})
+                       "sides": sides, "hits": hits, "calls": calls, "trend": trend})
     days = sorted({r["event_date"] for r in rows})
     return {"schema": "skew_truth_side_v1", "since": days[0] if days else None, "until": days[-1] if days else None,
             "event_days": len(days), "market_age_sec": SKEW_TRUTH_MARKET_AGE_SEC,
             "rule": f"mean_mode_skew_reading_v1 ({MEAN_MODE_SKEW_THRESHOLD_SIGMA:g} sigma) / mean_center_bucket_v1",
-            "threshold_sigma": MEAN_MODE_SKEW_THRESHOLD_SIGMA, "stages": stages}
+            "threshold_sigma": MEAN_MODE_SKEW_THRESHOLD_SIGMA, "trend_since": SKEW_TREND_SINCE, "stages": stages}
 
 
 # ---------------------------------------------------------------------------
@@ -3337,7 +3365,8 @@ _READINGS: dict[str, tuple[Any, tuple[Any, ...]]] = {
     ),
     "skew_truth_side": (
         skew_truth_side,
-        (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _skew_call_stats, _paired_mean,
+        (skew_truth_side, skew_truth_rows, _skew_point, _skew_side_group, _skew_call_stats, _skew_call_trend,
+         _paired_mean,
          _traded_day_bootstrap),
     ),
     "mode_agreement": (

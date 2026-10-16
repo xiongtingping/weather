@@ -23018,6 +23018,50 @@ function sdFleetShape(F){
   }).join("");
   return `<div class="card" style="margin:8px 0"><div class="sd-t" title="每站当地今日与明日；大数字＝当日口径（宪章 260：P1＞P0-M＞P0）；${sdShapeRule()}；市场＝常驻每轮提交的盘口快照；${sdEsc(sdLocal(F.built_at_utc, true))} 读">全队 ${F.stations || "—"} 站 · 偏态（均值对众数）</div><div class="sd-fs-days">${blocks}</div></div>`;
 }
+// The lean's hit rate over time (user 2026-10-16 「向前统计真值“判对率”，并用图表看
+// 趋势」): board_readings._skew_call_trend's daily counts, pooled here into the
+// running total since trend_since (solid) and the last 7 event days (faint);
+// model in the stage's colour, the market dashed.  Counts only -- no rule is
+// computed on the board.
+function sdSkewTrend(st, since){
+  const T = st.trend || [];
+  if(T.length < 2) return "";
+  const W = 560, Hh = 170, L = 34, R = 8, Tp = 10, B = 22, lo = 0.4, hi = 1.0;
+  const x = i => L + (W - L - R) * (T.length === 1 ? 0 : i / (T.length - 1));
+  const y = v => Tp + (Hh - Tp - B) * (1 - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo));
+  const series = src => {
+    let cr = 0, cc = 0; const cum = [], roll = [];
+    T.forEach((d, i) => {
+      const s = d[src] || {}; cr += s.right || 0; cc += s.called || 0;
+      cum.push(cc ? cr / cc : null);
+      let r7 = 0, c7 = 0;
+      for(let j = Math.max(0, i - 6); j <= i; j++){ const t = T[j][src] || {}; r7 += t.right || 0; c7 += t.called || 0; }
+      roll.push(c7 >= 10 ? r7 / c7 : null);
+    });
+    return {cum, roll, n: cc, last: cum[cum.length - 1]};
+  };
+  const line = (vals, col, attrs) => {
+    const pts = vals.map((v, i) => v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean);
+    return pts.length > 1 ? `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" ${attrs}/>` : "";
+  };
+  const M = series("model"), K = series("market"), col = SD_COL[st.stage];
+  let g = "";
+  [0.5, 0.6, 0.7, 0.8, 0.9, 1.0].forEach(v => {
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border)" ${v === 0.5 ? 'stroke-dasharray="2 3"' : 'opacity=".5"'}/>`
+      + `<text x="${L - 4}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(100 * v)}%</text>`;
+  });
+  const step = Math.max(1, Math.ceil(T.length / 8));
+  T.forEach((d, i) => { if(i % step === 0 || i === T.length - 1) g += `<text x="${x(i).toFixed(1)}" y="${Hh - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">${sdEsc(String(d.event_date).slice(5))}</text>`; });
+  g += line(M.roll, col, 'stroke-width="1" opacity=".45"') + line(K.roll, SD_COL.MKT, 'stroke-width="1" opacity=".45" stroke-dasharray="4 3"')
+    + line(M.cum, col, 'stroke-width="2.2"') + line(K.cum, SD_COL.MKT, 'stroke-width="2" stroke-dasharray="5 3"');
+  T.forEach((d, i) => {
+    const m = d.model || {}, k = d.market || {};
+    g += `<rect x="${(x(i) - 3).toFixed(1)}" y="${Tp}" width="6" height="${Hh - Tp - B}" fill="transparent"><title>${sdEsc(d.event_date)}：模型 判 ${m.called || 0}/${m.off || 0}、对 ${m.right || 0}；市场 判 ${k.called || 0}/${k.off || 0}、对 ${k.right || 0}${M.cum[i] == null ? "" : `；累计判对 模型 ${(100 * M.cum[i]).toFixed(1)}%`}${K.cum[i] == null ? "" : ` 市场 ${(100 * K.cum[i]).toFixed(1)}%`}</title></rect>`;
+  });
+  const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
+  return `<div class="sd-sk-col"><div class="sd-fs-date" style="color:${col}">${sdEsc(st.stage)} <span class="muted sd-sub">累计判对 模型 <b style="color:${col}">${pc(M.last)}</b>（${M.n}） · 市场 <b style="color:${SD_COL.MKT}">${pc(K.last)}</b>（${K.n}）</span></div>
+    <svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="${sdEsc(st.stage)} 偏斜判对率趋势，自 ${sdEsc(since || "")} 起">${g}</svg></div>`;
+}
 // Settled history, by production's rules (user 2026-10-11 「前端显示增加众数和均值桶的
 // 命中率：模型对市场统计显示和偏斜站日，真值落在哪一侧显示（按照生产现有口径）」):
 // board_readings.skew_truth_side as station_day_board.skew_history carries it --
@@ -23072,6 +23116,8 @@ function sdSkewHistory(H){
   const open = SD.histOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.histOpen=this.open">
     <summary class="sd-t" title="${sdShapeRule()}；均值桶＝生产 mean_center_bucket_v1；P0、P0-M 取下一阶段接手前最后一份，P1 取首份；市场＝同一时刻（60 分钟内）常驻提交的盘口；${sdEsc(sdLocal(H.computed_at_utc, true))} 算">历史 · 偏态与命中 <span class="muted sd-sub">已结算 ${sdEsc(String(H.since || "").slice(5))}～${sdEsc(String(H.until || "").slice(5))}，${H.event_days} 个事件日 · 生产口径</span></summary>
+    ${H.stages.some(st => (st.trend || []).length > 1) ? `<div class="muted sd-sub" title="粗线＝自 ${sdEsc(H.trend_since || "")} 起累计判对率，细线＝最近 7 个事件日（判出 ≥10 才画）；实线＝模型，虚线＝市场；只算真值离开众数且读数判出左/右偏的站日；悬停看每日计数">判对率趋势（自 ${sdEsc(String(H.trend_since || "").slice(5))} 起向前累计）</div>
+    <div class="sd-sk-grid">${H.stages.map(st => sdSkewTrend(st, H.trend_since)).join("")}</div>` : ""}
     ${callRows ? `<div class="muted sd-sub">判左偏/右偏的本事（只算真值离开众数的站日；门槛 ${H.threshold_sigma == null ? "—" : H.threshold_sigma + "σ"}）</div>
     <div class="scroll"><table class="sd-tab sd-sk-hit"><thead><tr><th>阶段</th><th>来源</th><th>判出偏斜</th><th>判对率</th><th>信息量 bit</th></tr></thead><tbody>${callRows}</tbody></table></div>` : ""}
     <div class="muted sd-sub">偏斜站日，真值落在众数的哪一侧（粗条＝真值，细条＝向量自己说的）</div>

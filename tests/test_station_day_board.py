@@ -585,3 +585,58 @@ def test_a_local_day_ahead_of_utc_reads_the_utc_day_folded_onto_local_hours(monk
     assert out["values"][9:] == [None] * 15
     half = board._satellite_ahead_of_utc(26.8, 80.9, "2026-10-14", ZoneInfo("Asia/Kolkata"), "eumetsat_lsa_saf_iodc")
     assert half["available"] is False and "05:30" in half["reason"]
+
+
+def test_skew_call_trend_counts_per_day() -> None:
+    from bayes_basket_target.board_readings import _skew_call_trend
+
+    def row(day, sign, side, market=None):
+        return {"event_date": day, "model": {"sign": sign, "truth_side": side}, "market": market}
+    t = _skew_call_trend([row("2026-10-01", 1, 1), row("2026-10-01", -1, 1), row("2026-10-01", 0, -1),
+                          row("2026-10-02", 1, 0, {"sign": -1, "truth_side": -1})])
+    assert [d["event_date"] for d in t] == ["2026-10-01", "2026-10-02"]
+    assert t[0]["model"] == {"off": 3, "called": 2, "right": 1}
+    assert t[1]["model"] == {"off": 0, "called": 0, "right": 0}
+    assert t[1]["market"] == {"off": 1, "called": 1, "right": 1}
+
+
+def test_skew_trend_chart_pools_running_and_seven_day_rates() -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+    start = source.index("function sdSkewTrend(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    days = [{"event_date": f"2026-10-{d:02d}", "model": {"off": 20, "called": 12, "right": 9},
+             "market": {"off": 20, "called": 10, "right": 8}} for d in range(1, 11)]
+    st = {"stage": "P0", "trend": days}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\n" + source[start:end]
+              + f"\nconsole.log(sdSkewTrend({json.dumps(st)}, '2026-09-01'));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert out.count("<polyline") == 4                       # running + 7-day, model + market
+    assert "75.0%</b>（120）" in out and "80.0%</b>（100）" in out  # 90/120, 80/100
+    assert "10-01" in out and "10-10" in out
+    assert "累计判对 模型 75.0%" in out                       # hover text
+    assert subprocess.run([node, "-e", script.replace(json.dumps(st), json.dumps({"stage": "P0", "trend": days[:1]}))],
+                          capture_output=True, text=True, timeout=60).stdout.strip() == ""
