@@ -59,76 +59,81 @@ def build(K):
         row = c.execute("select lineage_json, probabilities_json from basket_probability_envelope where station_id=? and event_date=? and stage='P0'"
                         " and decision_at_utc=? and state='COMMITTED' limit 1", (st, d, dec)).fetchone()
         if row is None: continue
-        lin = json.loads(row[0]); served = json.loads(row[1])
-        iv = json.loads(lin.get('bucket_intervals_c_json') or 'null')
-        sysp = json.loads(lin.get('native_system_probabilities_json') or '{}'); wts = json.loads(lin.get('system_weights_json') or '{}')
-        cen = json.loads(lin.get('native_calibrated_system_centers_c_json') or '{}')
-        runs = json.loads(lin.get('run_init_utc_by_system_json') or '{}'); arts = json.loads(lin.get('system_artifact_shas_json') or '{}')
-        cw = json.loads(lin.get('center_width_json') or 'null')
-        rad = json.loads(lin.get('synoptic_cooling_json') or '{}') if lin.get('synoptic_cooling_json') else {}
-        if not iv or not sysp:
-            stats['incomplete'] += 1; continue
-        ordered = NP._ordered_buckets(iv)
-        ivs = {b: iv[b] for b in ordered}
-        systems = [s for s in sysp if float(wts.get(s, 0)) > 0 and s in runs and s in arts and s in cen]
-        comps = {}
-        for s in systems:
-            vals = [float(v) for (v,) in c.execute(
-                "select raw_tmax_c from calibration_native_ensemble_historical_member_run where ensemble_system_id=? and station_id=? and target_local_date=?"
-                " and native_run_init_utc=? and archive_query_at_utc<=? group by member_id", (s, st, d, runs[s], dec))]
-            if len(vals) < 2: continue
-            if arts[s] not in art_cache:
-                a = c.execute('select bias_parameters_json, spread_parameters_json, reliability_parameters_json from calibration_native_ensemble_system_artifact where content_sha256=?', (arts[s],)).fetchone()
-                art_cache[arts[s]] = None if a is None else tuple(json.loads(x) for x in a)
-            if art_cache[arts[s]] is None: continue
-            comps[s] = (vals, *art_cache[arts[s]])
-        if set(comps) != set(systems) or not systems:
-            stats['members_missing'] += 1; continue
-        # check: rebuilding at c=1 reproduces the stored system vectors
-        bad = False
-        for s, (vals, bp, sp, rp) in comps.items():
-            v = NP._calibrated_system_probability(values=vals, intervals=ivs, bias_parameters=bp, spread_parameters=sp, reliability_parameters=rp)
-            if 0.5 * sum(abs(v[b] - float(sysp[s][b])) for b in ordered) > 1e-6: bad = True
-        if bad:
-            stats['rebuild_mismatch'] += 1; continue
-        tw = sum(float(wts[s]) for s in systems)
-        w = {s: float(wts[s]) / tw for s in systems}
-        centers_key = NP._bucket_centers(iv, ordered)
-        shift_sigma = rad.get('shift_sigma') if rad.get('state') == 'RESOLVED' else None
-        slp = {}
-        for cfac in GRID:
-            vecs = {}
-            for s, (vals, bp, sp, rp) in comps.items():
-                sp2 = dict(sp); sp2['spread_factor'] = min(5.0, max(0.25, float(sp['spread_factor']) * cfac))
-                vecs[s] = NP._calibrated_system_probability(values=vals, intervals=ivs, bias_parameters=bp, spread_parameters=sp2, reliability_parameters=rp)
-            pooled, _ = bridged_cross_probability(system_probabilities=vecs, system_weights=w, system_centers_c={s: float(cen[s]) for s in systems},
-                                                  ordered_keys=ordered, key_centers_c=centers_key)
-            if shift_sigma is not None:
-                spread_c = NP._distribution_sigma_c(pooled, centers_key)
-                shift = float(shift_sigma) * spread_c
-                if abs(shift) > 1e-9:
-                    pooled = NP._shift_probability_c(pooled, ordered=ordered, bucket_centers_c=[v + shift for v in centers_key], intervals=iv)
-            slp[str(cfac)] = {'pool': floored(pooled, ordered)}
-            if cw:
-                centers, open_edges = served_bucket_axis(iv, ordered)
-                try:
-                    lay, _ = apply_served_table_layers(pooled, ordered_keys=ordered, key_centers_c=centers, center_width=layer_from_receipt(cw), open_edge_bounds_c=open_edges)
-                    slp[str(cfac)]['with_layer'] = floored(lay, ordered)
-                except ValueError:
-                    pass
-        hours = hours_to_settlement_if_known(d, as_of_utc=dec, settlement_timezone=tzs[st])
-        sv = {b: float(served[b]) for b in ordered}
-        res = mode_shoulder_share_for(TABLE_271, hours_to_settlement=hours)
-        sv271 = apply_mode_shoulder(sv, share=res[1], ordered_keys=ordered)[0] if res else sv
-        T = truth[(st, d)]
-        ti = next(i for i, b in enumerate(ordered) if (iv[b][0] is None or iv[b][0] <= T) and (iv[b][1] is None or T < iv[b][1]))
-        order_c, cc, wd = A.centres(iv)
-        out.write(json.dumps({'st': st, 'day': d, 'ti': ti, 'widths': list(np.diff(np.array(served_bucket_axis(iv, ordered)[0]))), 'hours': hours,
-                              'unit': 'F' if '°F' in ordered[0] else 'C', 'served': floored(sv, ordered), 'served271': floored(sv271, ordered),
-                              'slp': slp, 'n_sys': len(systems)}) + '\n')
+        rec = build_row(c, st, d, dec, json.loads(row[0]), json.loads(row[1]), truth[(st, d)], tzs[st], art_cache, stats)
+        if rec is None: continue
+        out.write(json.dumps(rec) + '\n')
         stats['rows'] += 1
     out.close()
     print(f'D-{K}', dict(stats))
+
+
+def build_row(c, st, d, dec, lin, served, T, tz_name, art_cache, stats):
+    """One row: the P0's systems rebuilt from members on the shrink grid, pooled, bridged, shifted; served and served+271."""
+    iv = json.loads(lin.get('bucket_intervals_c_json') or 'null')
+    sysp = json.loads(lin.get('native_system_probabilities_json') or '{}'); wts = json.loads(lin.get('system_weights_json') or '{}')
+    cen = json.loads(lin.get('native_calibrated_system_centers_c_json') or '{}')
+    runs = json.loads(lin.get('run_init_utc_by_system_json') or '{}'); arts = json.loads(lin.get('system_artifact_shas_json') or '{}')
+    cw = json.loads(lin.get('center_width_json') or 'null')
+    rad = json.loads(lin.get('synoptic_cooling_json') or '{}') if lin.get('synoptic_cooling_json') else {}
+    if not iv or not sysp:
+        stats['incomplete'] += 1; return None
+    ordered = NP._ordered_buckets(iv)
+    ivs = {b: iv[b] for b in ordered}
+    systems = [s for s in sysp if float(wts.get(s, 0)) > 0 and s in runs and s in arts and s in cen]
+    comps = {}
+    for s in systems:
+        vals = [float(v) for (v,) in c.execute(
+            "select raw_tmax_c from calibration_native_ensemble_historical_member_run where ensemble_system_id=? and station_id=? and target_local_date=?"
+            " and native_run_init_utc=? and archive_query_at_utc<=? group by member_id", (s, st, d, runs[s], dec))]
+        if len(vals) < 2: continue
+        if arts[s] not in art_cache:
+            a = c.execute('select bias_parameters_json, spread_parameters_json, reliability_parameters_json from calibration_native_ensemble_system_artifact where content_sha256=?', (arts[s],)).fetchone()
+            art_cache[arts[s]] = None if a is None else tuple(json.loads(x) for x in a)
+        if art_cache[arts[s]] is None: continue
+        comps[s] = (vals, *art_cache[arts[s]])
+    if set(comps) != set(systems) or not systems:
+        stats['members_missing'] += 1; return None
+    # check: rebuilding at c=1 reproduces the stored system vectors
+    bad = False
+    for s, (vals, bp, sp, rp) in comps.items():
+        v = NP._calibrated_system_probability(values=vals, intervals=ivs, bias_parameters=bp, spread_parameters=sp, reliability_parameters=rp)
+        if 0.5 * sum(abs(v[b] - float(sysp[s][b])) for b in ordered) > 1e-6: bad = True
+    if bad:
+        stats['rebuild_mismatch'] += 1; return None
+    tw = sum(float(wts[s]) for s in systems)
+    w = {s: float(wts[s]) / tw for s in systems}
+    centers_key = NP._bucket_centers(iv, ordered)
+    shift_sigma = rad.get('shift_sigma') if rad.get('state') == 'RESOLVED' else None
+    slp = {}
+    for cfac in GRID:
+        vecs = {}
+        for s, (vals, bp, sp, rp) in comps.items():
+            sp2 = dict(sp); sp2['spread_factor'] = min(5.0, max(0.25, float(sp['spread_factor']) * cfac))
+            vecs[s] = NP._calibrated_system_probability(values=vals, intervals=ivs, bias_parameters=bp, spread_parameters=sp2, reliability_parameters=rp)
+        pooled, _ = bridged_cross_probability(system_probabilities=vecs, system_weights=w, system_centers_c={s: float(cen[s]) for s in systems},
+                                              ordered_keys=ordered, key_centers_c=centers_key)
+        if shift_sigma is not None:
+            spread_c = NP._distribution_sigma_c(pooled, centers_key)
+            shift = float(shift_sigma) * spread_c
+            if abs(shift) > 1e-9:
+                pooled = NP._shift_probability_c(pooled, ordered=ordered, bucket_centers_c=[v + shift for v in centers_key], intervals=iv)
+        slp[str(cfac)] = {'pool': floored(pooled, ordered)}
+        if cw:
+            centers, open_edges = served_bucket_axis(iv, ordered)
+            try:
+                lay, _ = apply_served_table_layers(pooled, ordered_keys=ordered, key_centers_c=centers, center_width=layer_from_receipt(cw), open_edge_bounds_c=open_edges)
+                slp[str(cfac)]['with_layer'] = floored(lay, ordered)
+            except ValueError:
+                pass
+    hours = hours_to_settlement_if_known(d, as_of_utc=dec, settlement_timezone=tz_name)
+    sv = {b: float(served[b]) for b in ordered}
+    res = mode_shoulder_share_for(TABLE_271, hours_to_settlement=hours)
+    sv271 = apply_mode_shoulder(sv, share=res[1], ordered_keys=ordered)[0] if res else sv
+    ti = next(i for i, b in enumerate(ordered) if (iv[b][0] is None or iv[b][0] <= T) and (iv[b][1] is None or T < iv[b][1]))
+    order_c, cc, wd = A.centres(iv)
+    return {'st': st, 'day': d, 'ti': ti, 'widths': list(np.diff(np.array(served_bucket_axis(iv, ordered)[0]))), 'hours': hours,
+                          'unit': 'F' if '°F' in ordered[0] else 'C', 'served': floored(sv, ordered), 'served271': floored(sv271, ordered),
+                          'slp': slp, 'n_sys': len(systems)}
 
 
 def scores(p, r):

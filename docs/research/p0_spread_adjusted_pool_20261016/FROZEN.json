@@ -1,0 +1,17 @@
+{
+ "schema": "slp_served_weights_frozen_v1",
+ "frozen_at": "2026-10-16",
+ "ruling": "熊先生 2026-10-16「冻结「只拟 c、服务权重」的 SLP 形式，D1/D2 前推到 ≥40 个评估日（约 11 月上旬）再按本协议判一次」",
+ "protocol": "docs/research/p0_spread_adjusted_pool_20261016/PROTOCOL.md (b0868236)",
+ "procedure": "each seated system rebuilt from its seated run's raw members and its certificate with the spread factor x c; linear pool at the P0's own served weights; consensus bridge; radiation shift at the receipt's shift_sigma x the new pool's sigma; 1e-3 floor; no width table layer. c on {0.5,0.6,0.7,0.8,0.9,1.0}, one per lead, chosen walk-forward on earlier event days (>=10) by full-ladder LogScore.",
+ "run_py_sha256": "006ca9bccee9b36f05ccfe2b414bdc1bfc7ca9c4ad9b0c7a8b1504bc2c127e9a",
+ "judged_leads": [
+  "D1",
+  "D2"
+ ],
+ "event_dates_from": "2026-09-01",
+ "min_evaluated_days": 40,
+ "reread_on_or_after": "2026-11-05",
+ "verdict": "charter 240 (LogScore primary, CRPS not stably worse, Brier not significantly worse) against the served P0, station-day equal weight, day-block bootstrap; per station BH q=0.10 (>=10 station-days); a lead passes and has no significantly worse station -> that lead's width table layer is a retirement candidate submitted for ruling.",
+ "segments_note": "from 2026-10-16 the served P0 is v29 (charter 271 share in the width layer); per charter 255 the reread reports the v28 and v29 segments of the served baseline separately as well as pooled."
+}

@@ -1,2 +1,4 @@
 rows_d*.json.gz
 __pycache__/
+forward/
+_forward_inputs_d*.db
