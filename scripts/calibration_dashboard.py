@@ -23051,7 +23051,8 @@ function sdSkewTrend(st, since){
       + `<text x="${L - 4}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(100 * v)}%</text>`;
   });
   const step = Math.max(1, Math.ceil(T.length / 8));
-  T.forEach((d, i) => { if(i % step === 0 || i === T.length - 1) g += `<text x="${x(i).toFixed(1)}" y="${Hh - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">${sdEsc(String(d.event_date).slice(5))}</text>`; });
+  // The last day is always labelled; a step label too close to it is dropped.
+  T.forEach((d, i) => { if((i % step === 0 && T.length - 1 - i >= step / 2) || i === T.length - 1) g += `<text x="${x(i).toFixed(1)}" y="${Hh - 6}" text-anchor="middle" font-size="9" fill="var(--muted)">${sdEsc(String(d.event_date).slice(5))}</text>`; });
   g += line(M.roll, col, 'stroke-width="1" opacity=".45"') + line(K.roll, SD_COL.MKT, 'stroke-width="1" opacity=".45" stroke-dasharray="4 3"')
     + line(M.cum, col, 'stroke-width="2.2"') + line(K.cum, SD_COL.MKT, 'stroke-width="2" stroke-dasharray="5 3"');
   T.forEach((d, i) => {
