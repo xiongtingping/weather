@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weather.ssot_cold_offload</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xiong/weather/scripts/ssot_cold_offload_sweep.sh</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>10800</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>/Users/xiong/weather/data/logs/ssot_cold_offload.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/xiong/weather/data/logs/ssot_cold_offload.out.log</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/xiong/weather</string>
+</dict>
+</plist>
