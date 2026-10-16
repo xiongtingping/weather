@@ -2634,6 +2634,68 @@ def test_delta_v2_label_scan_closes_283_facts_in_bounded_pages(
     ).fetchone()[0] == 283
 
 
+@pytest.mark.parametrize("owed, throttled_after_backlog_wait", [(10_000, False), (100, True)])
+def test_delta_v2_label_pass_that_hit_its_page_cap_comes_back_early(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owed: int,
+    throttled_after_backlog_wait: bool,
+) -> None:
+    """2026-10-16: a revision batch left ~29,000 facts owed a relabel and the
+    lane closed 256 a pass, one pass per 900 s.  A pass that stopped at its
+    page cap is followed after the backlog interval; one that ran dry waits
+    the idle interval."""
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE label_marker(value INTEGER)")
+    worker = TargetProductionWorker.__new__(TargetProductionWorker)
+    worker.commit_conn = conn
+    worker.cash_phase_forward_store_path = tmp_path / "forward.sqlite3"
+    worker.cash_phase_forward_store_root = tmp_path
+    worker._last_delta_v2_label_scan_monotonic = None
+    worker._delta_v2_label_fact_cursor = 0
+    worker._delta_v2_label_cursor_initialized = True
+
+    def materialize(source_conn, *, as_of_utc, after_fact_rowid, cursor_state, max_facts):
+        remaining = owed - after_fact_rowid
+        count = min(max_facts, max(0, remaining))
+        return {
+            "state": "committed" if count else "no_new_final_labels",
+            "candidate_count": count,
+            "appended_count": count,
+            "blockers": [],
+            "source_cursor_after": after_fact_rowid + count,
+            "has_more": remaining > max_facts,
+            "skipped_open_count": 0,
+        }
+
+    monkeypatch.setattr(
+        production_worker_module, "materialize_delta_v2_settled_training_labels", materialize
+    )
+    monkeypatch.setattr(
+        production_worker_module, "read_forward_store_state",
+        lambda *args, **kwargs: {"generation": 7},
+    )
+    monkeypatch.setattr(
+        production_worker_module, "append_forward_settlement_labels",
+        lambda *args, **kwargs: {
+            "state": "already_current", "ingested": 0, "inserted": 0,
+            "skipped_ineligible": 0, "more_pending": False, "generation": 7,
+        },
+    )
+    clock = [1_000.0]
+    monkeypatch.setattr(production_worker_module.time, "monotonic", lambda: clock[0])
+    first = worker._materialize_delta_v2_labels(as_of_utc="2026-07-29T15:01:00Z")
+    assert first["has_more"] is (not throttled_after_backlog_wait)
+    clock[0] += production_worker_module.DELTA_V2_LABEL_BACKLOG_SCAN_INTERVAL_SECONDS + 1
+    second = worker._materialize_delta_v2_labels(as_of_utc="2026-07-29T15:03:00Z")
+    assert (second["state"] == "throttled") is throttled_after_backlog_wait
+    clock[0] += production_worker_module.DELTA_V2_LABEL_SCAN_INTERVAL_SECONDS
+    assert worker._materialize_delta_v2_labels(
+        as_of_utc="2026-07-29T15:20:00Z"
+    )["state"] != "throttled"
+
+
 def test_delta_v2_label_commit_failure_does_not_advance_cursor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

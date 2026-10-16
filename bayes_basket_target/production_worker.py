@@ -991,6 +991,12 @@ MAX_FORWARD_DECISIONS_PER_PASS = MAX_FORWARD_STORE_BATCH_ROWS
 MAX_FORWARD_DECISION_JSON_BYTES = 262_144
 MAX_FORWARD_SCAN_BYTES = 16 * 1024 * 1024
 DELTA_V2_LABEL_SCAN_INTERVAL_SECONDS = 900.0
+# While the last pass stopped at its page cap with labels still owed, the
+# next one does not wait the idle interval (2026-10-16: a truth revision batch
+# on 10-14 19-23Z re-stamped 10-05..10-11 -- observation lists grew, no high
+# changed -- and the ~29,000 facts of those days waited for relabels at 256 a
+# pass, one pass per 900 s: 375 station-days owed, the oldest 10-05).
+DELTA_V2_LABEL_BACKLOG_SCAN_INTERVAL_SECONDS = 120.0
 MAX_DELTA_V2_LABEL_PAGES_PER_PASS = 8
 TARGET_SCOPE_KEYS = ("season_bin", "maturity_bin", "liquidity_bin", "strategy_version")
 MULTI_SCOPE_WS_MANIFEST_SCHEMA = (
@@ -5799,6 +5805,7 @@ class TargetProductionWorker:
         self.commit_error = commit_error
         self._last_delta_v2_truth_scan_monotonic: float | None = None
         self._last_delta_v2_label_scan_monotonic: float | None = None
+        self._delta_v2_label_backlog = False
         # Where the next forward-day sweep starts.  A pass that does not
         # survive to the end of the catalog must not hand the next pass the
         # same head of the alphabet, or the stations behind the truncation
@@ -20680,11 +20687,16 @@ class TargetProductionWorker:
             }
         if enforce_interval:
             now_monotonic = time.monotonic()
+            interval = (
+                DELTA_V2_LABEL_BACKLOG_SCAN_INTERVAL_SECONDS
+                if getattr(self, "_delta_v2_label_backlog", False)
+                else DELTA_V2_LABEL_SCAN_INTERVAL_SECONDS
+            )
             if (
                 self._last_delta_v2_label_scan_monotonic is not None
                 and now_monotonic
                 - self._last_delta_v2_label_scan_monotonic
-                < DELTA_V2_LABEL_SCAN_INTERVAL_SECONDS
+                < interval
             ):
                 return {
                     "state": "throttled",
@@ -20788,6 +20800,7 @@ class TargetProductionWorker:
                 ):
                     break
         except Exception as exc:
+            self._delta_v2_label_backlog = False
             return {
                 "schema": LABEL_BATCH_SCHEMA,
                 "state": "blocked_fail_closed",
@@ -20850,6 +20863,7 @@ class TargetProductionWorker:
                 for page in page_results
             ),
         }
+        self._delta_v2_label_backlog = bool(result["has_more"])
         # The target label table is the append-only authority; the separate
         # v2 store is a replayable projection.  Commit the authority first.
         # A projection failure leaves a retryable lag, never an orphaned store
