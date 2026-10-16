@@ -371,7 +371,10 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # Due-not-scheduled fixes that class; both refits are
     # content-addressed and admission-gated, so an early or doubled run
     # commits nothing new.
-    ("calibration_refit", "scripts/calibration_refit_sweep.sh", 86_400.0, 900.0),
+    # 3,600 s since 2026-10-16: it no longer holds the writer
+    # (SELF_COMMITTING_SSOT_SWEEPS), and its evidence window grows a day a
+    # day -- the 900 s it had killed it at 01:27Z that morning.
+    ("calibration_refit", "scripts/calibration_refit_sweep.sh", 86_400.0, 3_600.0),
     # Charter 150 (2026-09-19): the two stage likelihoods -- P1's joint
     # observation likelihood (with its per-hours-bin tempering and incumbent
     # veto) and P0-M's TAF likelihood (with its walk-forward serve gate) --
@@ -760,7 +763,7 @@ def sweep_finish_serves_writer_turn(name: str) -> bool:
 
     return (
         str(name) not in WRITER_TURN_EXEMPT_SWEEPS
-        and str(name) not in WRITER_INDEPENDENT_SWEEPS
+        and str(name) not in _STARTS_WHEN_DUE
     )
 
 
@@ -777,6 +780,19 @@ def sweep_finish_serves_writer_turn(name: str) -> bool:
 # take no writer turn, and their finish serves none.
 WRITER_INDEPENDENT_SWEEPS: frozenset[str] = frozenset({"supply_watch"})
 
+# SSOT writers that never hold a write transaction across their work, so they
+# start when due like the independents above: each write is committed by the
+# store function that makes it, and the long part is reading.  Their domain
+# stays ``ssot`` -- they do write it -- but they take no writer turn, claim no
+# domain, and their finish serves none; their commits meet production's the
+# ordinary way, at SQLite.  2026-10-16: calibration_refit held production out
+# for the whole of its centre/width and per-station width fits, ~15 min a day
+# and growing with its evidence window, until its 900 s timeout killed it
+# (01:12-01:28Z) -- for writes each a few milliseconds.
+# tests/test_calibration_refit_commits_before_it_fits.py holds the shape.
+SELF_COMMITTING_SSOT_SWEEPS: frozenset[str] = frozenset({"calibration_refit"})
+_STARTS_WHEN_DUE = WRITER_INDEPENDENT_SWEEPS | SELF_COMMITTING_SSOT_SWEEPS
+
 
 def writer_turn_sweeps_due(
     *, now_mono: float, next_due: "Mapping[str, float]",
@@ -786,7 +802,7 @@ def writer_turn_sweeps_due(
     return any(
         now_mono >= next_due[name]
         for name, _, _, _ in HOSTED_SWEEPS
-        if name in next_due and name not in WRITER_INDEPENDENT_SWEEPS
+        if name in next_due and name not in _STARTS_WHEN_DUE
     )
 
 
@@ -802,7 +818,7 @@ def writer_independent_admissions(
     room = max(0, int(max_concurrency) - len(running))
     return [
         item for item in sorted(due, key=lambda entry: (-entry[0], entry[1]))
-        if item[2] in WRITER_INDEPENDENT_SWEEPS and item[2] not in running
+        if item[2] in _STARTS_WHEN_DUE and item[2] not in running
     ][:room]
 
 
@@ -823,6 +839,7 @@ def writer_excluding_sweeps(running_names: "Iterable[str]") -> list[str]:
         name for name in running_names
         if hosted_sweep_write_domain(name) in _EXCLUSIVE_WRITE_DOMAINS
         and name not in WRITER_TURN_EXEMPT_SWEEPS
+        and name not in SELF_COMMITTING_SSOT_SWEEPS
     )
 
 
@@ -1052,6 +1069,8 @@ def admissible_hosted_sweeps(
     running = list(running_names)
     claimed: set[str] = set()
     for name in running:
+        if name in SELF_COMMITTING_SSOT_SWEEPS:
+            continue  # holds no transaction across its work
         if name in WRITER_TURN_EXEMPT_SWEEPS:
             # Downloading, not holding the database: blocks the other
             # captures only (2026-09-14).
@@ -1067,6 +1086,8 @@ def admissible_hosted_sweeps(
             break
         name = item[2]
         domain = hosted_sweep_write_domain(name)
+        if name in _STARTS_WHEN_DUE:
+            continue  # started by writer_independent_admissions
         if name in WRITER_TURN_EXEMPT_SWEEPS:
             if CAPTURE_ADMISSION_CLAIM in claimed or "ssot" in claimed:
                 continue
@@ -1357,8 +1378,6 @@ HOSTED_SWEEP_LEASE_CONTRACT: dict[str, tuple[str, float]] = {
     "market_registry_retention": ("one_shot", 120.0),
     "preselection_retention_apply": ("one_shot", 120.0),
     "correction_review_auto_clear": ("one_shot", 60.0),
-    # Three fits in one wrapper; measured 7m37s on 2026-09-06, once a day.
-    "calibration_refit": ("one_shot", 600.0),
     "station_onboarding": ("one_shot", 300.0),
     # A re-pin check most days (~25s of index reads); once a week the fill
     # refit streams ~5M shadow rows (~70s) and writes ~160k in 20k-row
@@ -1432,6 +1451,7 @@ def hosted_sweep_clock_entry(
         holds_writer = (
             hosted_sweep_write_domain(name) in _EXCLUSIVE_WRITE_DOMAINS
             and name not in WRITER_TURN_EXEMPT_SWEEPS
+            and name not in SELF_COMMITTING_SSOT_SWEEPS
         )
         entry["lease_overrun_sec"] = (
             round(max(0.0, float(duration) - float(lease_sec)), 1)
@@ -7529,8 +7549,9 @@ def main() -> int:
                     writer_last_served["sweeps"] = time.monotonic()
                     _persist_writer_turn()
             state["hosted_sweeps"]["running"] = sorted(hosted_sweep_futures)
-            # WRITER_INDEPENDENT_SWEEPS: due is enough.  No writer turn is
-            # taken and ``last_writer_slot`` is left alone.
+            # WRITER_INDEPENDENT_SWEEPS and SELF_COMMITTING_SSOT_SWEEPS: due
+            # is enough.  No writer turn is taken and ``last_writer_slot`` is
+            # left alone.
             if storage_ok:
                 for _overdue, _index, name, sweep_script, sweep_timeout in (
                     writer_independent_admissions(

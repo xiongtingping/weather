@@ -105,6 +105,9 @@ def _writer_holding_sweeps() -> list[str]:
         name for name, _script, _interval, _timeout in daemon.HOSTED_SWEEPS
         if daemon.hosted_sweep_write_domain(name) in daemon._EXCLUSIVE_WRITE_DOMAINS
         and name not in daemon.WRITER_TURN_EXEMPT_SWEEPS
+        # Commits each write as it makes it and holds no turn (2026-10-16,
+        # tests/test_calibration_refit_commits_before_it_fits.py).
+        and name not in daemon.SELF_COMMITTING_SSOT_SWEEPS
     )
 
 
