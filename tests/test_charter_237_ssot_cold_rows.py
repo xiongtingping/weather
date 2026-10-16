@@ -1249,3 +1249,18 @@ def test_the_row_days_cache_plans_the_same_rows_and_reads_the_scores_once(
     rule = policy.move_superseded
     assert not [s for s in statements if rule.day_sql[0].split("(")[0] in s and "json" in s.lower()]
     conn.close()
+
+
+def test_a_batch_held_past_the_lock_target_halves_the_next(
+    store: Path, cold: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """2026-10-16, a machine swapping 3.5 GiB: 1,000-row batches held the
+    writer 33-90 s each.  The batch follows the lock, down to a floor."""
+
+    _regimes_and_plans(store)
+    monkeypatch.setattr(off, "LOCK_TARGET_SEC", -1.0)  # every hold is long
+    monkeypatch.setattr(off, "MIN_BATCH_ROWS", 1)
+    receipt = _run(store, cold, tmp_path, apply=True, tables=[REGIME], batch_rows=4)
+    move = {m["table"]: m for m in receipt["moves"]}[REGIME]
+    assert move["state"] == "moved" and move["batches"] >= 1
+    assert move["min_batch_rows"] == 2  # the next batch after a long hold: 4 -> 2

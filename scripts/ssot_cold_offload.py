@@ -150,6 +150,15 @@ READ_CHUNK = 500
 #: from 5-9 minutes to 11; factor 3 left the resident its turns.
 PAUSE_SEC = 0.5
 DEFAULT_PAUSE_FACTOR = 3.0
+#: A batch's lock is what production waits behind, so the batch follows the
+#: lock: one held past LOCK_TARGET_SEC halves the next batch (to
+#: MIN_BATCH_ROWS), one well under it lets the next grow back toward the
+#: configured size.  2026-10-16 02:23-03:08Z, on a machine swapping 3.5 GiB:
+#: 1,000-row batches held the writer 33 s (market snapshots) and 90 s
+#: (inventory snapshots) each, while the same batches take about a second on
+#: a quiet one.
+LOCK_TARGET_SEC = 5.0
+MIN_BATCH_ROWS = 50
 #: The resident truncates the WAL past 256 MiB when it is idle; this lane
 #: stops adding to it until a checkpoint has caught up.
 MAX_WAL_BYTES = 256 * MIB
@@ -2315,6 +2324,8 @@ def move_table(
     policy_json = json.dumps(policy.describe(), ensure_ascii=False, sort_keys=True)
     since_check = 0
 
+    limit = {"rows": int(budget.batch_rows), "bytes": int(budget.batch_bytes)}
+
     def move_batch(rows: list[tuple], size: int) -> str | None:
         """One batch across; None when it moved, else why the table stops."""
 
@@ -2370,6 +2381,15 @@ def move_table(
             raise
         held = time.monotonic() - started
         result["max_lock_sec"] = round(max(result["max_lock_sec"], held), 3)
+        if held > LOCK_TARGET_SEC:
+            limit["rows"] = max(MIN_BATCH_ROWS, limit["rows"] // 2)
+            limit["bytes"] = max(1, limit["bytes"] // 2)
+        elif held < LOCK_TARGET_SEC / 4:
+            limit["rows"] = min(budget.batch_rows, limit["rows"] * 2)
+            limit["bytes"] = min(budget.batch_bytes, limit["bytes"] * 2)
+        result["min_batch_rows"] = min(
+            int(result.get("min_batch_rows") or limit["rows"]), limit["rows"]
+        )
         result["max_lock_wait_sec"] = round(max(result["max_lock_wait_sec"], started - queued), 3)
         # 5. The internal record, once the delete is durable.
         _append_manifest(manifest, {
@@ -2409,7 +2429,7 @@ def move_table(
             for row in _read_rows(read, table, columns, chunk):
                 pending.append(row)
                 pending_bytes += _row_bytes(row)
-                if len(pending) >= budget.batch_rows or pending_bytes >= budget.batch_bytes:
+                if len(pending) >= limit["rows"] or pending_bytes >= limit["bytes"]:
                     stopped = move_batch(pending, pending_bytes)
                     pending, pending_bytes = [], 0
                     if stopped:
