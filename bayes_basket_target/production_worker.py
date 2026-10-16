@@ -279,7 +279,11 @@ from .settlement_truth import (
 )
 from .settlement_time import settlement_day_window
 from .station_registry import coordinate_registry_manifest, station_coordinates
-from .delta_v2_training import FACT_SCHEMA, delta_v2_decision_scope_key
+from .delta_v2_training import (
+    FACT_SCHEMA,
+    delta_v2_decision_scope_key,
+    hydrated_feature_json,
+)
 from .delta_v2_settlement_label import (
     FACT_AUTHORITY_SCOPE,
     LABEL_BATCH_SCHEMA,
@@ -13530,6 +13534,10 @@ class TargetProductionWorker:
                 str(column[0]) for column in fact_cursor.description or ()
             ]
             fact = dict(zip(fact_columns, tuple(fact_rows[0])))
+            # Charter 272: the identity is over the text as built.
+            fact["feature_json"] = hydrated_feature_json(
+                self.commit_conn, fact.get("feature_json")
+            )
             fact_identity = {
                 key: value
                 for key, value in fact.items()

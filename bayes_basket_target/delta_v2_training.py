@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any, Mapping
 
-from .contracts import ContractError, content_sha256
+from .contracts import ContractError, canonical_json, content_sha256
 from .forward_training_validation import (
     build_validated_forward_fact_delta_v2,
     delta_v2_decision_scope_key as validated_delta_v2_decision_scope_key,
@@ -13,6 +14,65 @@ from .forward_training_validation import (
 
 
 FACT_SCHEMA = "delta_basket_score_training_fact_v2"
+
+
+# Charter 272: a fact's ``feature_json`` carries its plan's lineage, and that
+# lineage holds the three bodies the probability envelope already stores once
+# in ``basket_probability_lineage_document`` (16.8 KB of a 55 KB fact, 4,000
+# facts a day).  Stored here as the envelope stores them -- ``@ref/<sha>``,
+# the same documents -- and put back by ``hydrated_feature_json`` wherever the
+# text itself is read: the fact's identity is the hydrated text, so its
+# content address is unchanged.
+def _plan_lineage(feature: Any) -> tuple[Mapping[str, Any], Mapping[str, Any]] | None:
+    plan = feature.get("plan") if isinstance(feature, Mapping) else None
+    lineage = plan.get("lineage") if isinstance(plan, Mapping) else None
+    return (plan, lineage) if isinstance(lineage, Mapping) else None
+
+
+def hydrated_feature_json(conn: sqlite3.Connection, stored: str) -> str:
+    """A fact's ``feature_json`` as built, from the text as stored."""
+
+    from .materialization import (  # noqa: PLC0415 -- import cycle
+        LINEAGE_DOCUMENT_REF_PREFIX,
+        rehydrate_lineage_documents,
+    )
+
+    if not isinstance(stored, str) or LINEAGE_DOCUMENT_REF_PREFIX not in stored:
+        return stored
+    feature = json.loads(stored)
+    found = _plan_lineage(feature)
+    if found is None:
+        return stored
+    plan, lineage = found
+    return canonical_json({
+        **feature,
+        "plan": {**plan, "lineage": rehydrate_lineage_documents(conn, lineage)},
+    })
+
+
+def stored_feature_json(
+    conn: sqlite3.Connection, feature_json: str, *, created_at_utc: str
+) -> str:
+    """The text a fact stores: its plan lineage's large bodies by reference,
+    when that reads back exactly; otherwise the text as built."""
+
+    from .materialization import dehydrate_lineage_documents  # noqa: PLC0415
+
+    try:
+        feature = json.loads(feature_json)
+    except (TypeError, ValueError):
+        return feature_json
+    found = _plan_lineage(feature)
+    if found is None:
+        return feature_json
+    plan, lineage = found
+    dehydrated = dehydrate_lineage_documents(
+        conn, lineage, created_at_utc=created_at_utc
+    )
+    if dehydrated == dict(lineage):
+        return feature_json
+    stored = canonical_json({**feature, "plan": {**plan, "lineage": dehydrated}})
+    return stored if hydrated_feature_json(conn, stored) == feature_json else feature_json
 
 FACT_COLUMNS = (
     "fact_id", "station_id", "event_date", "settlement_timezone",
@@ -231,13 +291,18 @@ def commit_delta_v2_training_fact(
             "fact_id": held_fact_id,
             "idempotent": True,
         }
+    stored = dict(supplied)
+    stored["feature_json"] = stored_feature_json(
+        conn, str(supplied["feature_json"]),
+        created_at_utc=str(supplied.get("created_at_utc") or ""),
+    )
     conn.execute(
         "INSERT INTO basket_policy_training_fact("
         + ",".join(FACT_COLUMNS)
         + ") VALUES("
         + ",".join("?" for _ in FACT_COLUMNS)
         + ")",
-        tuple(supplied[name] for name in FACT_COLUMNS),
+        tuple(stored[name] for name in FACT_COLUMNS),
     )
     return {
         "schema": FACT_SCHEMA,
@@ -250,6 +315,8 @@ def commit_delta_v2_training_fact(
 __all__ = [
     "FACT_SCHEMA",
     "committed_scope_fact_id",
+    "hydrated_feature_json",
+    "stored_feature_json",
     "build_delta_v2_training_fact",
     "build_stage_zero_delta_v2_training_fact",
     "commit_delta_v2_training_fact",
