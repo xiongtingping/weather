@@ -24272,6 +24272,15 @@ function sdPlaceOrder(key){
     .catch(() => {})
     .finally(() => { SD.ordering = false; sdRefreshCalc(key, null); sdPlaceOrderNow(key); });
 }
+// After a fill (user 2026-10-16「成交后刷新一次盘口」): the panel otherwise shows
+// the book it was priced on until new probabilities arrive, i.e. the rungs the
+// order just took.  One forced re-read, then the calculator redraws on it.
+function sdRefreshBookOnce(key){
+  fetch(`http://127.0.0.1:8788/api/station-day?station=${encodeURIComponent(SD.station)}&force=1`)
+    .then(r => r.json()).then(j => { if(j && j.available) SD.data = j; })
+    .catch(() => {})
+    .finally(() => sdRefreshCalc(key, null));
+}
 function sdPlaceOrderNow(key){
   if(SD.ordering) return;
   const day = ((SD.data || {}).days || []).find(d => d.event_date === key);
@@ -24295,7 +24304,8 @@ function sdPlaceOrderNow(key){
     .then(j => { SD.orders[key] = j; })
     .catch(e => { SD.orders[key] = {error: /Failed to fetch|NetworkError|Load failed/.test(String(e))
       ? "控制服务未连接（127.0.0.1:8788）" : String(e.message || e), batch_id: batch}; })
-    .finally(() => { SD.ordering = false; sdRefreshCalc(key, null); });
+    .finally(() => { SD.ordering = false; sdRefreshCalc(key, null);
+      if(((SD.orders[key] || {}).results || []).some(x => x.event_type === "FILL")) sdRefreshBookOnce(key); });
 }
 // 卖出 (user 2026-10-09「没有卖出」): the server quotes the exact share count on
 // the exchange's own position and its newest book; the dialog shows that
@@ -24338,7 +24348,7 @@ function sdPlaceSell(key){
         .catch(e => { SD.orders[key] = {error: why(e), action: "SELL", batch_id: batch}; });
     })
     .catch(e => { SD.orders[key] = {error: why(e), action: "SELL", batch_id: "—"}; })
-    .finally(() => { SD.ordering = false; sdSave(); sdRefreshCalc(key, null); if(filled) sdLoadHoldings(key); });
+    .finally(() => { SD.ordering = false; sdSave(); sdRefreshCalc(key, null); if(filled){ sdLoadHoldings(key); sdRefreshBookOnce(key); } });
 }
 function sdOnClick(e){
   const t = e.target.closest("button");
