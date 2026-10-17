@@ -19,8 +19,9 @@ def _script():
     return module
 
 
-def test_due_stages_are_the_stale_ones_stalest_first(monkeypatch) -> None:
+def test_due_stages_are_the_stale_ones_stalest_first(monkeypatch, tmp_path) -> None:
     script = _script()
+    monkeypatch.setattr(script, "ATTEMPT_DIR", tmp_path)   # no killed-run marks from the live machine
     store = script.store
     artifacts = {
         "P0": {"fitted_at_utc": "2026-10-16T07:17:50Z"},   # current
@@ -41,7 +42,7 @@ def test_the_sweep_calls_each_due_stage_with_its_own_timeout() -> None:
     assert "run_with_timeout" in loop and '--stage "$stage"' in loop
 
 
-def test_a_stage_killed_by_its_timeout_is_not_offered_again_for_six_hours(tmp_path, monkeypatch) -> None:
+def test_a_stage_killed_by_its_timeout_is_not_offered_again_for_six_hours(tmp_path, monkeypatch) -> None:  # noqa: D103
     """2026-10-17: P0 and P1 ran their full 1,800 s, were killed, were due again
     the next hour, and held the shared SSOT reader turn ~1.5 h an hour."""
 
