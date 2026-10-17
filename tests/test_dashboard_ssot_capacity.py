@@ -70,10 +70,12 @@ def board(tmp_path, monkeypatch):
         "CREATE TABLE basket_official_ws_snapshot ("
         " snapshot_id TEXT PRIMARY KEY, observed_at TEXT, buckets_json TEXT)"
     )
+    # Appended in time order, as production writes it (the last day is
+    # found by bisecting the rowid).
     conn.executemany(
         "INSERT INTO basket_official_ws_snapshot VALUES (?,?,?)",
-        [(f"s{i}", "2026-09-11T06:00:00Z", "x" * 2000) for i in range(50)]
-        + [(f"o{i}", "2026-09-01T06:00:00Z", "x" * 2000) for i in range(500)],
+        [(f"o{i}", "2026-09-01T06:00:00Z", "x" * 2000) for i in range(500)]
+        + [(f"s{i}", "2026-09-11T06:00:00Z", "x" * 2000) for i in range(50)],
     )
     conn.execute(
         "CREATE TABLE basket_target_market_registry ("

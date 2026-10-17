@@ -4590,9 +4590,8 @@ def _rows_since_by_rowid(conn: sqlite3.Connection, table: str, column: str, sinc
     (2.4M ws snapshots, 9.0M rowids of the market registry with no index on
     its column at all), cold off disk, and ssot_capacity took 409-636 s
     against 45 s on 10-01.  These tables are written in time order, so the
-    first row of the last day is ~23 point reads away; the tail is then
-    counted with the time test still applied, so a straggler past the found
-    row is not counted.
+    first row of the last day is ~23 point reads away, and the rowid span
+    from it to the newest row is the count.
     """
 
     lo, hi = conn.execute(f'SELECT MIN(rowid), MAX(rowid) FROM "{table}"').fetchone()
@@ -4612,9 +4611,12 @@ def _rows_since_by_rowid(conn: sqlite3.Connection, table: str, column: str, sinc
             right = mid
         else:
             left = int(row[0]) + 1
-    return int(conn.execute(
-        f'SELECT COUNT(*) FROM "{table}" WHERE rowid >= ? AND "{column}" >= ?', (left, since)
-    ).fetchone()[0])
+    # The tail is not walked: counting it read every row of the last day
+    # (88k ws snapshots at ~20 KB, 394 s cold).  Rows are appended in time
+    # order and removed from the old end, so the rowid span is the count --
+    # an upper bound where a row inside the day was deleted, which the
+    # composition this feeds (bytes a day, by table) can carry.
+    return max(0, int(hi) - left + 1)
 
 
 def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
