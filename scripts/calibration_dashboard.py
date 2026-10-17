@@ -16026,7 +16026,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sunstat>b{font-size:22px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
 .sd-sunstat>b small{font-size:12px;font-weight:600;color:var(--muted)}
 /* .sd-pnl-g (128 px cells) is written later; the doubled class keeps these cards wide. */
-.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin:6px 0 10px}
+.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(6,minmax(0,1fr));margin:6px 0 10px}
+@media (max-width:1100px){.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:600px){.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
 .sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:5px;line-height:1.25}
