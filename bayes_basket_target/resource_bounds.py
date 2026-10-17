@@ -815,6 +815,38 @@ def install_wal_yield(
     return state
 
 
+def wait_for_wal_under(
+    db_path: Path | str,
+    line_bytes: int,
+    max_wait_sec: float,
+    *,
+    poll_sec: float = 15.0,
+) -> bool:
+    """Whether the database's WAL file came under ``line_bytes`` within
+    ``max_wait_sec``.
+
+    A background reader that has just yielded to the writer waits here
+    before its next read instead of starting one into the same WAL: the
+    resident truncates it within a minute once no reader holds it.  On
+    2026-10-17 the research render and the board readings yielded section
+    after section, each finding the WAL still past the line the previous
+    one had just let go of.  Never opens the database.
+    """
+
+    wal = Path(str(db_path) + "-wal")
+    deadline = time.monotonic() + max(0.0, float(max_wait_sec))
+    while True:
+        try:
+            size = wal.stat().st_size
+        except OSError:
+            return True
+        if size <= int(line_bytes):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(max(0.5, float(poll_sec)))
+
+
 def checkpoint_target_wal_once_if_oversized(
     conn: sqlite3.Connection,
     *,

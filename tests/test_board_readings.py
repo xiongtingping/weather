@@ -265,3 +265,27 @@ def test_a_reading_yields_once_the_wal_is_past_the_line_and_keeps_its_last_file(
     receipt = BR.run(db, ["l4_lane"])[0]
     assert receipt == "l4_lane yielded to the writer (WAL past the line); previous kept", receipt
     assert BR.load_reading("l4_lane")["value"] == {"rows": 5000}, "the last good file stays"
+
+
+def test_the_hourly_run_steps_aside_for_the_page_render_and_waits_out_the_wal(tmp_path, monkeypatch) -> None:
+    """2026-10-17 「看板研究渲染长期让路，多节数据超期」: the hourly job (background)
+    stops between readings when the page render starts, and after a yield
+    waits for the WAL to be truncated before the next reading -- or stops."""
+
+    import bayes_basket_target.board_readings as BR
+
+    calls = []
+    monkeypatch.setattr(BR, "READINGS_DIR", tmp_path)
+    monkeypatch.setattr(BR, "_READINGS", {"a": (lambda conn: calls.append("a") or {"v": 1}, ()),
+                                          "b": (lambda conn: calls.append("b") or {"v": 2}, ())})
+    db = tmp_path / "s.db"
+    import sqlite3
+    sqlite3.connect(db).close()
+    monkeypatch.setattr(BR, "_page_render_running", lambda: True)
+    assert BR.run(db, ["a", "b"], force=True, background=True) == ["stopped: the page render started"]
+    assert BR.run(db, ["a", "b"], force=True)[0].startswith("a "), "outside the hourly job the render is not consulted"
+    from bayes_basket_target import resource_bounds as rb
+    (tmp_path / "s.db-wal").write_bytes(b"x" * 10)
+    assert rb.wait_for_wal_under(db, 100, 0) is True
+    (tmp_path / "s.db-wal").write_bytes(b"x" * 200)
+    assert rb.wait_for_wal_under(db, 100, 0) is False

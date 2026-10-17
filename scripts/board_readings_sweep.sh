@@ -37,14 +37,13 @@ while pgrep -f "$PAGE_RENDER_PATTERN" >/dev/null 2>&1; do
   sleep "$POLL_SEC"
   waited=$((waited + POLL_SEC))
 done
-WAL="data/bayes_basket_target_ssot.db-wal"
-MAX_WAL_BYTES="${PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-268435456}"
-if [ -f "$WAL" ]; then
-  WAL_BYTES="$(stat -f '%z' "$WAL")"
-  if [ "$WAL_BYTES" -gt "$MAX_WAL_BYTES" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}"
-    exit 0
-  fi
+# One background SSOT reader at a time (the research render shares the
+# turn), and wait for the WAL to come down instead of skipping the hour
+# (scripts/lib/ssot_reader_turn.sh, 2026-10-17).
+. "$PROJECT_DIR/scripts/lib/ssot_reader_turn.sh"
+if ! ssot_reader_turn board_readings "$WAIT_SEC"; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings skipped: $SSOT_READER_REASON"
+  exit 0
 fi
 # Charter 254: the realisation layer's nightly fit -- the same read-only
 # discipline (mode=ro, waits the page render out, WAL line, utility

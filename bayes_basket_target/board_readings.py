@@ -53,7 +53,7 @@ from pathlib import Path
 from statistics import median
 from typing import Any, Mapping, Sequence
 
-from .resource_bounds import READER_YIELD_WAL_BYTES, install_wal_yield
+from .resource_bounds import READER_YIELD_WAL_BYTES, install_wal_yield, wait_for_wal_under
 
 ROOT = Path(__file__).resolve().parents[1]
 READINGS_DIR = Path(
@@ -3446,18 +3446,43 @@ YIELD_WAL_BYTES = int(
 )
 
 
+#: The WAL size a reading may start under (the resident's maintenance line),
+#: and how long the run waits for it after a yield.
+START_WAL_BYTES = int(os.environ.get("PM_DASHBOARD_RENDER_MAX_WAL_BYTES", str(256 * 1024 * 1024)))
+WAL_WAIT_SEC = float(os.environ.get("PM_BOARD_READINGS_WAL_WAIT_SEC", "300"))
+PAGE_RENDER_PATTERN = os.environ.get("PM_DASHBOARD_PAGE_RENDER_PATTERN", "calibration_dashboard.py --compute-pages")
+
+
+def _page_render_running() -> bool:
+    import subprocess  # noqa: PLC0415
+
+    try:
+        return subprocess.run(["pgrep", "-f", PAGE_RENDER_PATTERN], capture_output=True,
+                              timeout=10, check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def run(
     db: Path = DEFAULT_DB,
     names: Sequence[str] = READING_NAMES,
     *,
     force: bool = False,
+    background: bool = False,
 ) -> list[str]:
     """Compute and write each named reading; one line of receipt per reading.
     A reading that fails keeps its previous file and says why; one still
-    inside its ``READING_MAX_AGE_SEC`` is kept unless ``force``."""
+    inside its ``READING_MAX_AGE_SEC`` is kept unless ``force``.  ``background``
+    (the hourly job, via ``main``) also steps aside when the page render
+    starts and waits out the WAL after a yield."""
 
     receipts: list[str] = []
     for name in names:
+        # The page render reads the SSOT too; it does not wait for this run,
+        # so this run steps aside between readings when it starts.
+        if background and _page_render_running():
+            receipts.append("stopped: the page render started")
+            break
         compute, sources = _READINGS[name]
         if not force and _reading_is_current(name, _code_sha(*sources)):
             receipts.append(f"{name} kept")
@@ -3479,6 +3504,13 @@ def run(
             conn.close()
         if yield_state["yielded"]:
             receipts.append(f"{name} yielded to the writer (WAL past the line); previous kept")
+            # Wait for the resident to truncate the WAL before the next
+            # reading, and stop if it stays up (2026-10-17: every reading
+            # after the first yield yielded too, the WAL never given the
+            # minute it needed with no reader on it).
+            if background and not wait_for_wal_under(db, START_WAL_BYTES, WAL_WAIT_SEC):
+                receipts.append("stopped: the WAL stayed past the line")
+                break
             continue
         elapsed = time.perf_counter() - started
         write_reading(name, value, code=_code_sha(*sources), build_sec=elapsed)
@@ -3494,7 +3526,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--only", action="append", choices=READING_NAMES)
     args = parser.parse_args(argv)
     print("board readings: " + "; ".join(
-        run(args.db, args.only or READING_NAMES, force=bool(args.only))
+        run(args.db, args.only or READING_NAMES, force=bool(args.only), background=not args.only)
     ), flush=True)
     return 0
 

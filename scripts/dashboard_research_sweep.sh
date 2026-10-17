@@ -57,14 +57,13 @@ if [ "$waited" -gt 0 ]; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render waited ${waited}s for the page render to finish"
 fi
 # The same start line as the page render (the resident's WAL maintenance line).
-WAL="data/bayes_basket_target_ssot.db-wal"
-MAX_WAL_BYTES="${PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-268435456}"
-if [ -f "$WAL" ]; then
-  WAL_BYTES="$(stat -f '%z' "$WAL")"
-  if [ "$WAL_BYTES" -gt "$MAX_WAL_BYTES" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}"
-    exit 0
-  fi
+# One background SSOT reader at a time (the board readings share the turn),
+# and wait for the WAL to come down instead of skipping the hour
+# (scripts/lib/ssot_reader_turn.sh, 2026-10-17).
+. "$PROJECT_DIR/scripts/lib/ssot_reader_turn.sh"
+if ! ssot_reader_turn research_render "$WAIT_SEC"; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render skipped: $SSOT_READER_REASON"
+  exit 0
 fi
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] research render (overdue pages: heavy and starved)"
 # Five minutes under the hourly StartInterval, so a killed run leaves a gap

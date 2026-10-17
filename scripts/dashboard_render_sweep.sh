@@ -52,15 +52,14 @@ draw_page() {
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] page draw failed (exit $?)"
   fi
 }
-WAL="data/bayes_basket_target_ssot.db-wal"
-MAX_WAL_BYTES="${PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-268435456}"
-if [ -f "$WAL" ]; then
-  WAL_BYTES="$(stat -f '%z' "$WAL")"
-  if [ "$WAL_BYTES" -gt "$MAX_WAL_BYTES" ]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute skipped: SSOT WAL ${WAL_BYTES} bytes > ${MAX_WAL_BYTES}; the writer needs it truncated first"
-    draw_page
-    exit 0
-  fi
+# Wait a while for the resident to truncate it rather than skip the half
+# hour outright (2026-10-17: three of six computes from 04:19Z were skipped on
+# a WAL the resident truncated minutes later).
+. "$PROJECT_DIR/scripts/lib/ssot_reader_turn.sh"
+if ! ssot_wal_under "${PM_DASHBOARD_RENDER_WAL_WAIT_SEC:-300}"; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute skipped: $SSOT_READER_REASON; the writer needs it truncated first"
+  draw_page
+  exit 0
 fi
 BEFORE="$(stat -f '%m:%z' "$SOURCE")"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard compute (standalone reader)"

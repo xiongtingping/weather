@@ -1139,6 +1139,7 @@ def test_the_research_render_passes_the_connection_only_where_the_call_took_one(
     truth_landing, catching up a week a run, stayed off the board."""
 
     monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"files": 3600, "slow_moving": 3600})
+    monkeypatch.setattr(C, "_page_render_running", lambda: False)   # the live machine may be rendering
     _old_page(paged, "files", _file_probe)
     C._save_section_specs()
     specs = json.loads((paged / "sections" / C.RENDER_SECTION_SPECS).read_text())
@@ -1154,6 +1155,7 @@ def test_the_research_render_passes_the_connection_only_where_the_call_took_one(
 
 def test_one_broken_section_does_not_end_the_research_run(paged, monkeypatch) -> None:
     monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"broken": 3600, "slow_moving": 3600})
+    monkeypatch.setattr(C, "_page_render_running", lambda: False)   # the live machine may be rendering
     _BROKEN["on"] = False
     _old_page(paged, "broken", _broken_probe, None)
     _heavy_page(paged, "slow_moving", _heavy_probe, 900.0, "2026-09-01T00:00:00Z")

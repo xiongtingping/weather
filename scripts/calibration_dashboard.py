@@ -14990,6 +14990,11 @@ def _spec_takes_conn(spec: Mapping[str, Any], collector: Any) -> bool:
     return len(seats) > len(spec.get("args") or [])
 
 
+#: How long the research render waits, after a section yielded to the
+#: writer, for the WAL to be truncated before it reads the next one.
+RESEARCH_WAL_WAIT_SEC = float(os.environ.get("PM_DASHBOARD_RESEARCH_WAL_WAIT_SEC", "300"))
+
+
 def refresh_research_section(db: Path) -> str:
     """Refresh the overdue pages the page render cannot, most overdue first.
 
@@ -15023,6 +15028,17 @@ def refresh_research_section(db: Path) -> str:
                 break
             try:
                 done.append(_refresh_one_section(db, name, specs[name]))
+                # A section that gave its read up to the writer: wait for
+                # the resident to truncate the WAL before the next read, and
+                # stop the run if it does not come down -- the next section
+                # would only find it past the line too (2026-10-17: whole
+                # runs of "yielded to the writer (wal 41x MB)", one per
+                # section, minutes apart).
+                if "yield" in done[-1] or "interrupted" in done[-1]:
+                    from bayes_basket_target.resource_bounds import wait_for_wal_under  # noqa: PLC0415
+                    if not wait_for_wal_under(db, RENDER_MAX_WAL_BYTES, RESEARCH_WAL_WAIT_SEC):
+                        done.append("stopped: the WAL stayed past the line")
+                        break
             except Exception as exc:  # noqa: BLE001 - one section's bug must not starve the rest
                 # One section's error is that section's, not the run's: on
                 # 2026-10-16 fusion_candidates' TypeError ended every run
