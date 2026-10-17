@@ -23829,9 +23829,11 @@ function sdSky(day){
   // else the report's low cloud against the forecast's low cloud.  Mean over
   // the hours that have both, in tenths (成), the unit the table's threshold
   // uses; more cloud is cold (blue).
+  // Low cloud at every station (user 2026-10-17 「云 · 实况对比预报：改为低云」):
+  // the report's low cloud against the forecast's low cloud; the satellite's
+  // total cover stays in the table's own column.
   const cloudPairs = (H.rows || []).map(r => {
-    const f = r.forecast || {}, C = r.sat_cloud;
-    if(satCloud) return C && C.state === "ok" && f.cloud != null ? [100 * C.cover, f.cloud, r.hour] : null;
+    const f = r.forecast || {};
     return r.obs && r.obs.cloud_cover != null && f.cloud_low != null ? [100 * r.obs.cloud_cover, f.cloud_low, r.hour] : null;
   }).filter(Boolean);
   const avg = k => cloudPairs.reduce((a, x) => a + x[k], 0) / cloudPairs.length;
@@ -23842,11 +23844,11 @@ function sdSky(day){
     // 样本外不显著」): grey unless that hour's line beat the mean out of sample.
     const CT = H.cloud_tmax_shift;
     const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT${CT.out_of_sample_significant ? "" : " <small>不显著</small>"}</span>`,
-      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点${CT.source === "sat" ? "卫星" : "报文"}云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
-    return sdSunCard("cloud", "云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
+      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点报文云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
+    return sdSunCard("cloud", "低云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
       `${d > 0 ? "+" : d < 0 ? "−" : ""}${sdN(Math.abs(d), 1)} 成`, Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
       [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]].concat(ctRow),
-      `${satCloud ? "卫星云量（JAXA Himawari 云产品，站点周围约 25 km 判为有云的格点占比，白天才有）对预报总云" : "报文低云（1500 m 以下）对预报低云"}，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
+      `报文低云（1500 m 以下）对预报低云，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
   })();
   // Dew point, wind and rain beside the sun and cloud (user 2026-10-15「右边还有
   // 很多位置，增加露点、风、雨等信息卡片」): dew point and wind at the newest

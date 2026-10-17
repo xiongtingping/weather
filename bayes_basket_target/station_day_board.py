@@ -918,7 +918,10 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
         o = r.get("obs") or {}
         if o.get("cloud_cover") is not None:
             rep_pairs.append((h, 10.0 * (float(o["cloud_cover"]) - fc / 100.0)))
-    source, pairs = ("sat", sat_pairs) if sat_pairs else ("report", rep_pairs)
+    # The card reads low cloud (user 2026-10-17 「云 · 实况对比预报：改为低云」), so
+    # its ΔT reads the report line at every station; the satellite pairs stay
+    # built for the fit's other line.
+    source, pairs = "report", rep_pairs
     if not pairs:
         return None
     last = max(h for h, _ in pairs)
