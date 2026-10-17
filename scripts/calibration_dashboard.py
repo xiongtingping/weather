@@ -23848,13 +23848,13 @@ function sdSky(day){
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
       ? sdSunCard("temp", "日照推算最高温", "日前预报 + 日照", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
           [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
-          `截至 ${T.last_hour}:00 卫星日照比提前 1 天的预报 ${sdSg(T.pct_d1, 0)}%，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
-      // Not computed today: the card stays, with why and the two forecasts'
-      // maxima (user 2026-10-17 「温度显示不见了」).
-      : T && (T.state === "little_sun" || T.state === "too_early")
-      ? sdSunCard("temp", "日照推算最高温", T.state === "too_early" ? `${hh(T.from_hour)} 点后推算` : "日前预报日照太弱", "不推算", "",
+          `05–${hh(T.last_hour)} 点卫星日照比提前 1 天的预报平均 ${sdSg(T.wm2_d1, 0)} W/m²，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
+      // Too early to read: the card stays, with the two forecasts' maxima
+      // (user 2026-10-17 「温度显示不见了」).
+      : T && T.state === "too_early"
+      ? sdSunCard("temp", "日照推算最高温", `${hh(T.from_hour)} 点后推算`, "未到", "",
           [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
-          T.state === "too_early" ? `卫星日照要到 ${hh(T.from_hour)}:00 才够推算` : `提前 1 天的预报给 05 点以来的日照平均不到 60 W/m²${T.pct_d1 == null ? "" : `（卫星比它 ${sdSg(T.pct_d1, 0)}%）`}，历史拟合没有这样的上午，不外推`)
+          `卫星日照要到 ${hh(T.from_hour)}:00 才够推算`)
       : "",
     dewCard,
     windCard,

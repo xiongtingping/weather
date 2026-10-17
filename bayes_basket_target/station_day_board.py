@@ -850,10 +850,16 @@ TEMP_DIFF_C = 1.0
 HAZE_VISIBILITY_M = 8000.0
 # Morning sunshine -> the day's maximum (user 2026-10-13 「前端显式：上午日照偏差 →
 # 最高温相对预报的偏差，显示度数」): the two-slope line fitted per last measured
-# hour by docs/research/sun_tmax_shift_20261013/fit.py, read here and applied
-# to the satellite against the day-ahead forecast -- the fit's own basis, not
-# the latest forecast the headline compares.  Display only.
-SUN_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "sun_tmax_shift_v1.json"
+# hour, read here and applied to the satellite against the day-ahead forecast
+# -- the fit's own basis, not the latest forecast the headline compares.
+# Display only.  Since 2026-10-17 (user 「改用 W/m² 的绝对差重新拟合这条线」) the
+# line reads the mean W/m² difference over the hours 05..H
+# (docs/research/sun_tmax_shift_abs_20261017/fit.py): a percentage of a dim
+# forecast blew up (ZUUU that morning, +200 W/m² over 52 read +106%) and had
+# to refuse every morning forecast under 60 W/m² an hour.  Out of sample it
+# is as good as the percentage line where that one applied, and beats no
+# reading on the mornings it refused.
+SUN_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "sun_tmax_shift_v2.json"
 
 
 def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -866,30 +872,20 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
     table = fit.get("by_last_hour") or {}
     last = max(int(r["hour"]) for r in measured)
     hours = sorted(int(h) for h in table)
-    if not hours or last < hours[0]:
-        early_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
-        return {"state": "too_early", "from_hour": hours[0] if hours else None,
-                "forecast_tmax_d1_c": round(max(early_d1), 1) if early_d1 else None}
-    line = table[str(min(last, hours[-1]))]
-    # The fit's own window and gate: hour-ending stamps 05..H, and a day-ahead
-    # forecast of at least 60 W/m² an hour over them.  Counting the night
-    # hours 00-04 as well (as this did) raised the bar by up to five hours'
-    # worth and turned sunny mornings into "little_sun".
-    window = [r for r in measured if int(r["hour"]) >= 5]
-    sat = sum(float(r["sat_sw_wm2"]) for r in window)
-    fc = sum(float(r["forecast"].get("sw_d1") or 0.0) for r in window)
     tmax_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
-    if not window or fc < 60.0 * len(window):
-        return {"state": "little_sun", "last_hour": last, "forecast_tmax_d1_c": round(max(tmax_d1), 1) if tmax_d1 else None,
-                "pct_d1": round(100.0 * (sat - fc) / fc, 1) if fc > 0 else None}
-    pct = 100.0 * (sat - fc) / fc
-    clip = float(fit.get("x_clip_pct") or 80.0)
-    x = max(-clip, min(clip, pct))
+    tmax = round(max(tmax_d1), 1) if tmax_d1 else None
+    window = [r for r in measured if int(r["hour"]) >= 5]
+    if not hours or last < hours[0] or not window:
+        return {"state": "too_early", "from_hour": hours[0] if hours else None, "forecast_tmax_d1_c": tmax}
+    line = table[str(min(last, hours[-1]))]
+    diff = sum(float(r["sat_sw_wm2"]) - float(r["forecast"].get("sw_d1") or 0.0) for r in window) / len(window)
+    clip = float(fit.get("x_clip_wm2") or 300.0)
+    x = max(-clip, min(clip, diff))
     side, ci = ("dark", "dark_ci95") if x < 0 else ("bright", "bright_ci95")
-    shift = lambda b: float(line["intercept_c"]) + b / 10.0 * x
+    shift = lambda b: float(line["intercept_c"]) + b / 100.0 * x
     lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
-    return {"state": "ok", "last_hour": last, "pct_d1": round(pct, 1), "shift_c": round(shift(line[side + "_c_per_10pct"]), 2),
-            "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": round(max(tmax_d1), 1) if tmax_d1 else None,
+    return {"state": "ok", "last_hour": last, "wm2_d1": round(diff, 1), "shift_c": round(shift(line[side + "_c_per_100wm2"]), 2),
+            "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": tmax,
             "resid_sd_c": line.get("resid_sd_c"), "r2": line.get("r2"), "n": line.get("n"),
             "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
 

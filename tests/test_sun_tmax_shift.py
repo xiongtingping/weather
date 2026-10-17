@@ -1,6 +1,8 @@
 """The board's morning-sunshine -> maximum reading (user 2026-10-13 「前端显式：
 上午日照偏差 → 最高温相对预报的偏差，显示度数」): the fitted two-slope line in
-config/ui/sun_tmax_shift_v1.json, applied on the day-ahead forecast basis."""
+config/ui/sun_tmax_shift_v2.json, applied on the day-ahead forecast basis.
+Since 2026-10-17 (「改用 W/m² 的绝对差重新拟合这条线」) the line reads the mean
+W/m² difference over the hours 05..H, with no sunshine gate."""
 from __future__ import annotations
 
 import json
@@ -16,44 +18,41 @@ def _rows(sat: float, fc_d1: float, hours=range(6, 13)) -> tuple[list[dict], lis
 
 def test_the_committed_fit_has_a_line_for_every_display_hour() -> None:
     fit = json.loads(board.SUN_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
-    assert fit["schema"] == "sun_tmax_shift_v1"
+    assert fit["schema"] == "sun_tmax_shift_v2" and fit["x_clip_wm2"] > 0
     for hour, line in fit["by_last_hour"].items():
-        assert line["dark_c_per_10pct"] > 0 and line["bright_c_per_10pct"] > 0, hour
-        assert line["dark_ci95"][0] <= line["dark_c_per_10pct"] <= line["dark_ci95"][1]
+        assert line["dark_c_per_100wm2"] > 0 and line["bright_c_per_100wm2"] > 0, hour
+        assert line["dark_ci95"][0] <= line["dark_c_per_100wm2"] <= line["dark_ci95"][1]
+        # the reading earns its place out of sample against no reading
+        cmp = fit["versus_v1"][hour]["all_sample"]
+        assert cmp["mse_v2_abs"] < cmp["mse_mean_only"], hour
 
 
-def test_brighter_than_the_day_ahead_forecast_warms_darker_cools_more() -> None:
-    rows, measured = _rows(sat=605.0, fc_d1=500.0)          # +21% to 12:00
+def test_brighter_than_the_day_ahead_forecast_warms_darker_cools() -> None:
+    rows, measured = _rows(sat=600.0, fc_d1=500.0)          # +100 W/m² to 12:00
     up = board._sun_tmax_shift(rows, measured)
-    assert up["state"] == "ok" and up["last_hour"] == 12 and up["pct_d1"] == 21.0
-    assert 0.1 < up["shift_c"] < 0.6 and up["range_c"][0] <= up["shift_c"] <= up["range_c"][1]
+    assert up["state"] == "ok" and up["last_hour"] == 12 and up["wm2_d1"] == 100.0
+    assert 0.3 < up["shift_c"] < 1.5 and up["range_c"][0] <= up["shift_c"] <= up["range_c"][1]
     assert up["forecast_tmax_d1_c"] == 22.3                   # the day-ahead basis, not "sw"
-    rows, measured = _rows(sat=395.0, fc_d1=500.0)          # -21%
+    rows, measured = _rows(sat=400.0, fc_d1=500.0)          # -100 W/m²
     down = board._sun_tmax_shift(rows, measured)
-    assert down["shift_c"] < 0 and abs(down["shift_c"]) > abs(up["shift_c"])
+    assert down["shift_c"] < 0
 
 
-def test_too_early_little_sun_and_no_satellite() -> None:
+def test_a_dim_day_ahead_forecast_is_read_not_refused() -> None:
+    """2026-10-17 ZUUU: the day-ahead forecast gave the morning ~52 W/m² and
+    the satellite ~108; as a percentage that read +106% and was refused."""
+
+    sat = {8: 36.0, 9: 216.0, 10: 394.0}
+    fc = {8: 21.0, 9: 58.0, 10: 234.0}
+    rows = [{"hour": h, "sat_sw_wm2": sat.get(h, 0.0) if h <= 10 else None,
+             "forecast": {"sw": 0.0, "sw_d1": fc.get(h, 0.0), "temp_c_d1": 22.6}} for h in range(24)]
+    out = board._sun_tmax_shift(rows, [r for r in rows if r["sat_sw_wm2"] is not None])
+    assert out["state"] == "ok" and out["wm2_d1"] == 55.5      # (646 - 313) / 6 hours, 05..10
+    assert 0.0 < out["shift_c"] < 1.5 and out["forecast_tmax_d1_c"] == 22.6
+
+
+def test_too_early_and_no_satellite() -> None:
     rows, measured = _rows(sat=300.0, fc_d1=300.0, hours=range(6, 8))
-    assert board._sun_tmax_shift(rows, measured)["state"] == "too_early"
-    rows, measured = _rows(sat=30.0, fc_d1=20.0)
-    assert board._sun_tmax_shift(rows, measured)["state"] == "little_sun"
+    early = board._sun_tmax_shift(rows, measured)
+    assert early["state"] == "too_early" and early["forecast_tmax_d1_c"] == 22.3
     assert board._sun_tmax_shift(rows, []) is None
-
-
-def test_night_hours_do_not_count_against_the_sun_gate() -> None:
-    """2026-10-17 ZUUU (「温度显示不见了」): the gate is the fit's own -- hours
-    05..H and 60 W/m² an hour over them.  Counting the dark hours 00-04 too
-    turned a fair morning into little_sun and the card vanished."""
-
-    rows = [{"hour": h, "sat_sw_wm2": (0.0 if h < 5 else 90.0) if h <= 10 else None,
-             "forecast": {"sw": 0.0, "sw_d1": 0.0 if h < 5 else 70.0, "temp_c_d1": 22.0}} for h in range(24)]
-    measured = [r for r in rows if r["sat_sw_wm2"] is not None]
-    out = board._sun_tmax_shift(rows, measured)
-    assert out["state"] == "ok" and out["last_hour"] == 10
-
-
-def test_little_sun_still_carries_the_day_ahead_maximum() -> None:
-    rows, measured = _rows(sat=30.0, fc_d1=20.0)
-    out = board._sun_tmax_shift(rows, measured)
-    assert out["state"] == "little_sun" and out["forecast_tmax_d1_c"] == 22.3 and out["pct_d1"] == 50.0
