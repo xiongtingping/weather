@@ -1174,6 +1174,20 @@ def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) 
 def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
     """Haurwitz clear-sky global horizontal irradiance, W/m^2."""
 
+    cosz = _solar_cosz(lat, lon, when_utc)
+    return 0.0 if cosz <= 0.01 else 1098.0 * cosz * math.exp(-0.057 / cosz)
+
+
+def _solar_elevation_deg(lat: float, lon: float, when_utc: datetime) -> float:
+    """The sun's elevation above the horizon, degrees (negative below it)."""
+
+    return math.degrees(math.asin(max(-1.0, min(1.0, _solar_cosz(lat, lon, when_utc)))))
+
+
+def _solar_cosz(lat: float, lon: float, when_utc: datetime) -> float:
+    """Cosine of the solar zenith angle (NOAA's Fourier-series declination and
+    equation of time)."""
+
     n = when_utc.timetuple().tm_yday
     hour = when_utc.hour + when_utc.minute / 60.0
     gamma = 2 * math.pi / 365 * (n - 1 + (hour - 12) / 24)
@@ -1185,8 +1199,7 @@ def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
     solar_minutes = hour * 60 + eot + 4 * lon
     ha = math.radians(solar_minutes / 4 - 180)
     phi = math.radians(lat)
-    cosz = math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.cos(ha)
-    return 0.0 if cosz <= 0.01 else 1098.0 * cosz * math.exp(-0.057 / cosz)
+    return math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.cos(ha)
 
 
 def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
@@ -1241,7 +1254,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         sat_cloud = (sat.get("clouds") or [None] * 24)[h]
         row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None,
                                "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0),
-                               "sat_cloud": sat_cloud, "diffs": []}
+                               "sat_cloud": sat_cloud, "diffs": [],
+                               # The sun's height at h:00 (user 2026-10-17 「增加一列太阳高度角」).
+                               "sun_elev_deg": round(_solar_elevation_deg(lat, lon, start.astimezone(timezone.utc)), 1)}
         if obs is not None:
             prev = by_hour.get(h - 1)
             covers = [x["cloud_cover"] for x in (prev, obs) if x and x.get("cloud_cover") is not None]
