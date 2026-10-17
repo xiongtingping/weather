@@ -77,3 +77,20 @@ def test_the_radiation_label_names_the_sunshine_and_the_colour_follows_the_shift
     body = _function("sdEvidence")
     assert '"日照多于常年"' in body and '"日照少于常年"' in body and "偏暖侧" not in body
     assert 'const radColor = R && R.shift_c > 0 ? "var(--amber)" : R && R.shift_c < 0 ? SD_COL.P0' in body
+
+
+def test_the_momentum_sources_sit_in_the_middle_with_m_as_their_sum() -> None:
+    """User 2026-10-18 「把四个预报移动到中间，并突出m」「这个计算表格也要显示出来」:
+    the call | the four forecasts (change, usual spread, conversion, M) | the
+    four-feature model."""
+
+    comps = {"aifs_ens": {"delta_c": 0.63, "z": 1.7073}, "aifs_single": {"delta_c": -0.46, "z": -0.9725},
+             "hres": {"delta_c": 0.40, "z": 0.5917}, "ifs_ens": {"delta_c": 0.52, "z": 1.3577}}
+    D = {**ZUUU_1014, "side": 1, "momentum": 2.68, "momentum_side": 1, "model_score": 0.145,
+         "momentum_components": comps, "model_parts": {"momentum_half": 0.075}, "model_inputs": {"momentum_half": 1.34}}
+    main = _direction_main(D, {"shift_c": -0.1}).split("##")[0]
+    assert main.index("判断") < main.index("动量 M 的来源") < main.index("合计＝模型分")
+    assert "平时幅度" in main and "折算" in main
+    assert "|+0.63°|" in main and "|0.369|" in main and "|+1.71|" in main      # change ÷ spread = conversion
+    assert "|−0.46°|" in main and "|0.473|" in main and "|−0.97|" in main
+    assert "＝折算之和" in main and "|+2.68|" in main

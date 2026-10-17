@@ -16305,8 +16305,10 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-dir-head{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
 .sd-dir-agree{font-size:12px;color:var(--muted);margin-top:6px}
 .sd-dir-grid .sd-dps{margin-top:0}
-.sd-dp.sd-dp-c{grid-template-columns:8.6em 2.6em minmax(50px,1fr) 4.6em}
-.sd-dp.sd-dp-c>b{white-space:nowrap;text-align:right}
+.sd-dp.sd-dp-c{grid-template-columns:7.6em 2.6em minmax(40px,1fr) 4.4em 4em 3.8em}
+.sd-dp.sd-dp-c>b,.sd-dp.sd-dp-c>.sd-dpz{white-space:nowrap;text-align:right}
+.sd-dp.sd-dp-m{border-top:1px solid var(--line);margin-top:4px;padding-top:6px;align-items:baseline}
+.sd-evidence-main .sd-dir-grid .sd-dp-m b.sd-dir-mbig{font-size:30px;line-height:1.1}
 @media (max-width:1100px){.sd-dir-grid{grid-template-columns:minmax(0,1fr)}.sd-dir-grid>.sd-dir-col+.sd-dir-col{border-left:none;padding-left:0;border-top:1px solid var(--line);padding-top:10px}}
 .sd-dir-change{color:var(--text);font-size:13.5px;line-height:1.6;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--c) 10%,transparent)}
 .sd-dir-change.sd-dir-fresh{background:color-mix(in srgb,var(--c) 22%,transparent)}
@@ -23427,9 +23429,10 @@ function sdDirection(D, R){
     + `<b title="市场众数桶与其概率">${mode.state === "ok" ? `众数 ${sdEsc(mode.mode)} <span class="sd-sub">${sdPc(mode.mode_q,0)}</span>` : "众数暂无"}</b>`;
   const hist = D.history || [];
   const X = D.physics || {};
-  // Three columns (user 2026-10-17 「重新设计优化排版」): the call and what moved
-  // it | the four-feature score taken apart | where M comes from (each run's
-  // change, one bar each) and M through the day; one footnote under all.
+  // Three columns (user 2026-10-17 「重新设计优化排版」; 10-18 the forecasts in
+  // the middle): the call and what moved it | where M comes from (each run's
+  // change, one bar each, M as their sum) and M through the day | the
+  // four-feature score taken apart; one footnote under all.
   const verdict = `<div class="sd-dir-col"><div class="sd-dir-colh">判断</div><div class="sd-dir-head">${main}</div>
     ${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}
     ${agree ? `<div class="sd-dir-agree">${agree}</div>` : ""}</div>`;
@@ -23438,9 +23441,15 @@ function sdDirection(D, R){
   const compRows = C.map(([k, c]) => {
     const v = c.delta_c || 0, w = Math.min(50, 50 * Math.abs(v) / cmax), col = v > 0 ? "var(--amber)" : v < 0 ? SD_COL.P0 : "var(--muted)";
     const tip = `${SD_DIR_COMPONENTS[k] || k}：最新一轮 ${String(c.newest_run_init_utc || "").slice(5, 16).replace("T", " ")}Z 对上一轮 ${String(c.older_run_init_utc || "").slice(5, 16).replace("T", " ")}Z，当日最高温 ${sdSg(v, 2)}°C`;
-    return `<div class="sd-dp sd-dp-c" title="${sdEsc(tip)}"><span>${sdEsc(String(SD_DIR_COMPONENTS[k] || k).replace(/（.*）/, ""))}</span><span class="mono muted">${sdDirRun(c.newest_run_init_utc)}</span>`
-      + `<span class="sd-dpb"><i style="${v >= 0 ? "left:50%" : `left:${50 - w}%`};width:${w}%;background:${col}"></i></span><b class="mono" style="color:${col}">${sdSg(v, 2)}°</b></div>`;
+    const z = c.z, spread = z ? Math.abs(v / z) : null;
+    return `<div class="sd-dp sd-dp-c" title="${sdEsc(tip + (spread ? `；折算 ${sdSg(v, 2)} ÷ 平时幅度 ${sdN(spread, 3)} = ${sdSg(z, 2)}` : ""))}"><span>${sdEsc(String(SD_DIR_COMPONENTS[k] || k).replace(/（.*）/, ""))}</span><span class="mono muted">${sdDirRun(c.newest_run_init_utc)}</span>`
+      + `<span class="sd-dpb"><i style="${v >= 0 ? "left:50%" : `left:${50 - w}%`};width:${w}%;background:${col}"></i></span><b class="mono" style="color:${col}">${sdSg(v, 2)}°</b><span class="mono sd-dpz muted">${spread == null ? "—" : sdN(spread, 3)}</span><b class="mono sd-dpz" style="color:${col}">${z == null ? "—" : sdSg(z, 2)}</b></div>`;
   }).join("");
+  // M itself, the sum of the conversions, as the column's headline (user
+  // 2026-10-18 「把四个预报移动到中间，并突出m」).
+  const mRow = C.length ? `<div class="sd-dp sd-dp-c sd-dp-h"><span>来源</span><span>轮</span><span></span><span>改动</span><span class="sd-dpz" title="该家每次改动的标准差（09-22..10-08，°C），固定参数">平时幅度</span><span class="sd-dpz" title="改动 ÷ 平时幅度">折算</span></div>${compRows}`
+    + `<div class="sd-dp sd-dp-c sd-dp-m" title="M＝四家折算之和；|M|＜${sdN(quiet, 0)} 为静默、不定方向"><span><b>M</b> <span class="muted">＝折算之和</span></span><span></span><span class="muted">${sdEsc(mWord)}</span><span></span><span></span>`
+    + `<b class="mono sd-dir-mbig" style="color:${sdDirColor(D.momentum_side)}">${sdSg(D.momentum, 2)}</b></div><div style="text-align:right">${sdMomTier(D.momentum)}</div>` : "";
   // M through the day: the quiet band shaded, each reading a dot in its side's colour.
   let trend = "";
   const pts = hist.filter(h => h.momentum != null);
@@ -23454,11 +23463,11 @@ function sdDirection(D, R){
       <svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="100%" style="max-width:${W}px" role="img" aria-label="动量 M 的走势">${band}<line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)"/>${line}${dots}</svg>
       <div class="muted sd-sub">${sdLocal(pts[0].at_utc, true)} → ${sdLocal(pts[pts.length - 1].at_utc, true)} · ${pts.length} 次</div>`;
   }
-  const source = `<div class="sd-dir-col"><div class="sd-dir-colh">动量来源 <span class="muted">最新一轮 − 上一轮</span></div>${compRows ? `<div class="sd-dps">${compRows}</div>` : '<div class="muted sd-sub">无两轮可比</div>'}${trend}</div>`;
+  const source = `<div class="sd-dir-col"><div class="sd-dir-colh">动量 M 的来源 <span class="muted">各家最新一轮的改动（AIFS 单成员对两轮前）</span></div>${mRow ? `<div class="sd-dps">${mRow}</div>` : '<div class="muted sd-sub">无两轮可比</div>'}${trend}</div>`;
   const parts = `<div class="sd-dir-col">${sdDirParts(D) || '<div class="muted sd-sub">无模型分</div>'}<div class="muted sd-sub" style="margin-top:6px">物理特征 ${sdEsc(X.lag || "—")}${X.fetched_at_utc ? " · 取于 " + sdLocal(X.fetched_at_utc, true) : ""}</div></div>`;
   const log = hist.slice().reverse().map(h =>
     `<tr><td>${sdLocal(h.at_utc,true)}</td><td style="color:${sdDirColor(h.side)}">${sdDirWord(h.side)}</td><td>${sdSg(h.momentum,2)}${sdMomTier(h.momentum)}</td><td>${sdEsc(h.mode || "—")}</td><td>${sdDirRun(h.newest_run_utc)}</td></tr>`).join("");
-  const grid = `<div class="sd-dir-grid">${verdict}${parts}${source}</div>`;
+  const grid = `<div class="sd-dir-grid">${verdict}${source}${parts}</div>`;
   const body = `${log ? `<details class="sd-sub"><summary class="muted">变化记录（${hist.length} 条）</summary><table class="sd-tab sd-dir-log"><thead><tr><th>变化于</th><th>方向</th><th>M</th><th>众数</th><th>最新一轮</th></tr></thead><tbody>${log}</tbody></table></details>` : ""}
     <div class="muted sd-sub">算于 ${sdLocal(D.computed_at_utc,true)} · 先看 ECMWF 动量 M（${sdEsc(mWord)}），静默时看四特征模型 · 物理特征来自 Open-Meteo（转发源，只作执行参考）· 样本内成立、前推验证中</div>`;
   return {color: sdDirColor(D.side), main: grid, body};
