@@ -16162,9 +16162,9 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-evidence-card.sd-evidence-wide{grid-column:1/-1}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
 .sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
-/* Deterministic forecasts beside the member Bayes (user 2026-10-17 「确定性预报和成员轨迹贝叶斯：左右排版」); one alone fills the row. */
+/* Deterministic forecasts, the member Bayes and D0 in one row (user 2026-10-17 「确定性预报和成员轨迹贝叶斯：左右排版」→「…D0 实况模型：左中右排版」); fewer fill the row. */
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
-.sd-pair>*{flex:1 1 420px;min-width:0;margin:0!important}
+.sd-pair>*{flex:1 1 300px;min-width:0;margin:0!important}
 .sd-pair:empty{display:none}
 .sd-dir-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
 @media (max-width:900px){.sd-dir-split{grid-template-columns:minmax(0,1fr)}}
@@ -22476,8 +22476,7 @@ function sdDay(day){
       day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     ${sdProbabilityCards(day)}
-    <div class="sd-pair">${sdDeterministic(day)}${sdMemberBayes(day)}</div>
-    ${sdD0(day)}
+    <div class="sd-pair">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}</div>
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
       <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
