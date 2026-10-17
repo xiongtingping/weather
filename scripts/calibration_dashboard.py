@@ -16167,6 +16167,10 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-rain-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .sd-rk{display:inline-block;width:10px;height:10px}.sd-rk-bar{width:7px;height:12px;border-radius:1px}
 .sd-rk-dot{border-radius:50%}.sd-rk-dia{transform:rotate(45deg);width:8px;height:8px}.sd-rk-sq{border-radius:2px}
+.pc-big{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 4px}
+.pc-bv{font-size:34px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
+.pc-key{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin:2px 0 0 30px}
+.pc-key span{display:inline-flex;align-items:center;gap:5px}.pc-key i{width:10px;height:10px;border-radius:2px;display:inline-block}
 .sd-mc-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text)}
 .sd-mc-tag{font-size:10.5px;font-weight:400;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:17px}
 .sd-mc-main{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
@@ -22204,10 +22208,47 @@ function precipPane(lead, def, Q){
     <table class="pc-st"><thead><tr><th>当地日</th><th>站</th><th>预报 mm</th><th>${def.key === "mm" ? "观测 mm" : "观测"}</th><th>格子</th><th>整点报文数</th></tr></thead>
     <tbody>${recent}</tbody></table></details>` : ""}`;
 }
+// The section's question, answered first (user 2026-10-17 「重新设计排版：物理协变量：
+// 模型说的雨，站上到底下没下。目前太多内容、太多指标、没有重点！」): per reading,
+// two numbers -- of the days the model said rain, how many it rained; of the
+// days it rained, how many the model had said -- across the lead times as
+// one chart; the 2×2 counts small; every score card, station table and
+// day-by-day check folded under 「明细」 as before.
+const PC_LEAD_ORDER = ["same_day", "d1", "d2", "d3"];
+function pcRates(s){
+  const said = (s.a || 0) + (s.c || 0), rained = (s.a || 0) + (s.b || 0);
+  return {said: said ? s.a / said : null, caught: rained ? s.a / rained : null, said_n: said, rained_n: rained};
+}
+function precipLeadChart(def, Q){
+  const leads = PC_LEAD_ORDER.map(k => [(Q.leads || []).find(l => l.key === k), (def.leads || {})[k]]).filter(([l, s]) => l && s && s.n);
+  if(!leads.length) return "";
+  const W = 380, H = 132, L = 30, B = 22, T = 10, bw = 22, gw = (W - L - 8) / leads.length;
+  const y = v => T + (H - T - B) * (1 - v);
+  let g = [0, 0.5, 1].map(v => `<line x1="${L}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(v) + 3}" text-anchor="end" font-size="9" fill="var(--muted)">${Math.round(100 * v)}%</text>`).join("");
+  leads.forEach(([l, s], i) => {
+    const r = pcRates(s), cx = L + gw * i + gw / 2;
+    [["said", "var(--th-claim)", -1], ["caught", "var(--series-3)", 1]].forEach(([k, col, side]) => {
+      const v = r[k]; if(v == null) return;
+      const x = cx + (side < 0 ? -bw - 1 : 1);
+      g += `<rect x="${x}" y="${y(v)}" width="${bw}" height="${(y(0) - y(v)).toFixed(1)}" rx="2" fill="${col}"><title>${h(l.label)} · ${k === "said" ? `模型说下的 ${r.said_n} 天里真下了` : `真下了的 ${r.rained_n} 天里模型说过`} ${Math.round(100 * v)}%</title></rect>`
+        + `<text x="${x + bw / 2}" y="${y(v) - 3}" text-anchor="middle" font-size="9.5" fill="var(--text)">${Math.round(100 * v)}</text>`;
+    });
+    g += `<text x="${cx}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${h(l.label)}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px" role="img" aria-label="各提前量的两个比例">${g}</svg>
+    <div class="pc-key"><span><i style="background:var(--th-claim)"></i>模型说下 → 真下了</span><span><i style="background:var(--series-3)"></i>真下了 → 模型说过</span></div>`;
+}
 function precipDefCard(def, Q){
   const leads = (Q.leads || []).map(l => ({...l, s: (def.leads || {})[l.key]})).filter(l => l.s);
-  const head = `<div class="kpi-l">${h(def.label)}</div><div class="muted" style="margin:2px 0 8px">${h(def.note)}</div>`;
+  const short = def.key === "mm" ? `美国 ASOS ${def.stations_eligible} 站 · 报文雨量 ≥${h(Q.threshold_mm)} mm` : `全部 ${def.stations_eligible} 站 · 报文有没有降水`;
+  const head = `<div class="kpi-l" title="${attr(def.label + "：" + def.note)}">${def.key === "mm" ? "①" : "②"} ${short}</div>`;
   if(!leads.length) return `<div class="card">${head}<div class="muted">还没有可配对的站日。</div></div>`;
+  const today = leads.find(l => l.key === "same_day") || leads[0], s = today.s, r = pcRates(s);
+  const pct = v => v == null ? "—" : Math.round(100 * v) + "%";
+  const big = `<div class="pc-big">
+      <div><div class="muted">模型说会下（≥${h(Q.threshold_mm)} mm）</div><div class="pc-bv" style="color:var(--th-claim)">${pct(r.said)}</div><div class="muted">的日子真下了 · ${r.said_n} 天</div></div>
+      <div><div class="muted">真下了雨</div><div class="pc-bv" style="color:var(--series-3)">${pct(r.caught)}</div><div class="muted">的日子模型说过 · ${r.rained_n} 天</div></div>
+    </div><div class="muted sd-sub">${h(today.label)} · ${s.n} 个站日 · 命中 ${s.a} · 空报 ${s.c} · 漏报 ${s.b} · 正确否定 ${s.d}</div>`;
   let best = leads[0];
   leads.forEach(l => { if((l.s.n || 0) > (best.s.n || 0)) best = l; });
   const nav = `<nav class="daytabs">${leads.map(l => `<button type="button" data-day="${attr(l.key)}"
@@ -22215,21 +22256,16 @@ function precipDefCard(def, Q){
     <span class="muted">${l.s.n} 站日</span></button>`).join("")}</nav>`;
   const panes = leads.map(l => `<div data-daypane="${attr(l.key)}"${l.key === best.key ? "" : " hidden"}>${
     precipPane(l, def, Q)}</div>`).join("");
-  return `<div class="card" data-daytabs="precip-${attr(def.key)}" data-remember="1">${head}${nav}${panes}</div>`;
+  return `<div class="card">${head}${big}${precipLeadChart(def, Q)}
+    <details style="margin-top:6px"><summary class="muted">明细：六项评分、逐站、逐日核对</summary>
+    <div data-daytabs="precip-${attr(def.key)}" data-remember="1">${nav}${panes}</div></details></div>`;
 }
 function precipScores(){
   const Q = D.precip_classification || {};
   const title = `<h2>降水分类评分：模型说的雨，站上到底下没下</h2>`;
   if(!Q.available) return title + `<div class="card muted">这一轮没有生成（${h(Q.reason || "缺物理表版本或报文归档")}）。</div>`;
-  const intro = `<p class="sub">六项指标都来自同一张 2×2 列联表：把每一对「预报 — 观测」按 <b>${h(Q.threshold_mm)} mm</b> 的门槛分成有雨 / 无雨，
-    表里每个格子有自己的名字，下面的公式就用这些名字。预报是辐射降温项读的同一张物理表里 Open-Meteo 的逐日降水量
-    （聚合转发、只作参考协变量，${Q.stations_with_forecast} 站），观测是站点当地日内的官方 METAR/SPECI；
-    每个提前量是版本表上的一个 as-of 切点。只读数，不进 P0/P0-M/P1，不改任何权重。${
-    Q.open_days ? "还没过完的当地日 " + Q.open_days + " 个不配对。" : ""}</p>
-    <div class="card">${precipContingency({}, true)}<div class="muted">a 命中＝报了雨也下了；b 漏报＝没报雨却下了；c 空报＝报了雨没下；d 正确否定＝没报雨也没下。N = a + b + c + d。</div></div>`;
-  // The two readings side by side: each card is a narrow table and a score
-  // row, so stacked they left the right half of the page empty.
-  return title + intro + `<div class="grid pc-defs">${(Q.definitions || []).map(def => precipDefCard(def, Q)).join("")}</div>`;
+  const sub = `<p class="sub" title="${attr(`预报＝辐射降温项读的同一张物理表里 Open-Meteo 的逐日降水量（聚合转发，只作参考协变量，${Q.stations_with_forecast} 站）；观测＝站点当地日内的官方 METAR/SPECI；每个提前量是版本表上的一个 as-of 切点${Q.open_days ? "；还没过完的当地日 " + Q.open_days + " 个不配对" : ""}。`)}">模型（Open-Meteo 当日雨量）对官方报文 · 只读数，不进 P0/P0-M/P1</p>`;
+  return title + sub + `<div class="grid pc-defs">${(Q.definitions || []).map(def => precipDefCard(def, Q)).join("")}</div>`;
 }
 const BOX_KIND = {
   audit:  {tone:"#d2a8ff", word:"读数"},
