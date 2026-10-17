@@ -90,6 +90,6 @@ def test_card_names_the_stored_reading():
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     out = result.stdout
-    assert "21.40°C" in out and "众数 21°C" in out and "比先验 −1.20°C" in out and "比 P1 −0.90°C" in out
+    assert "21.40°C" in out and "众数 <b>21°C</b>" in out and "比先验 −1.20°C" in out and "比 P1 <b>−0.90°C</b>" in out
     assert "P1×成员 21°C" in out and ">GEFS<" in out and "有效 6/31" in out and "<polyline" in out
     assert "还没有成员轨迹" in out

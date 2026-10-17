@@ -51,7 +51,8 @@ def test_newest_and_previous_run_per_model_and_the_f_entry(tmp_path, monkeypatch
     assert icon_row["in_f"] and icon_row["tmax_c"] == 26.19 and icon_row["prev_tmax_c"] == 25.05
     assert not arpege_row["in_f"] and arpege_row["prev_tmax_c"] is None
     assert out["f"] == {"f_c": 27.537, "raw_median_c": 26.273, "n_systems": 6, "state": "READY",
-                        "computed_at_utc": "2026-10-13T04:53:29Z", "f_v3_c": 27.738}
+                        "computed_at_utc": "2026-10-13T04:53:29Z", "f_v3_c": 27.738,
+                        "pick": None}   # charter 267 补记七's pick, absent in this file
 
 
 def _function(name: str) -> str:

@@ -113,7 +113,8 @@ def test_the_card_renders() -> None:
     out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
     assert out.returncode == 0, out.stderr
     text = "|".join(x for x in out.stdout.strip().split("|") if x)
-    for piece in ("25.28°C", "σ 0.46", "众数 25°C", "比P1 +0.18°C", "比市场 −0.12°C", "已报最高−基线 −0.53",
+    # The shared estimate-card layout (2026-10-17 「卡片内部的风格和设计排版保持一致」).
+    for piece in ("25.28°C", "σ 0.46", "众数 |25°C| 68%", "比 P1 |+0.18°C", "比市场 |−0.12°C", "已报最高−基线 −0.53",
                   "市场 0.59 · P1 0.70 · D0 0.80°C", "2 次"):
         assert piece in text, (piece, text)
     assert "${sdD0(day)}" in source and (ROOT / "config" / "ui" / "d0_obs_model_v1.json").exists()

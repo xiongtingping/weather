@@ -16163,6 +16163,16 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
 .sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
 /* Deterministic forecasts, the member Bayes and D0 in one row (user 2026-10-17 「确定性预报和成员轨迹贝叶斯：左右排版」→「…D0 实况模型：左中右排版」); fewer fill the row. */
+.sd-mc-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text)}
+.sd-mc-tag{font-size:10.5px;font-weight:400;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:17px}
+.sd-mc-main{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
+.sd-mc-v{font-size:30px;font-weight:700;line-height:1.1;color:var(--c);font-variant-numeric:tabular-nums}
+.sd-mc-mode{font-size:14px;color:var(--muted)}.sd-mc-mode b{color:var(--text);font-size:16px}
+.sd-mc-cmps{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px}
+.sd-mc-cmp{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.sd-mc-cmp b{color:var(--text);font-variant-numeric:tabular-nums}.sd-mc-cmp.up b{color:var(--pill-red-fg)}.sd-mc-cmp.down b{color:var(--accent)}
+.sd-mc-sub{font-size:12px;color:var(--muted);margin:0 0 8px}.sd-mc-sub b{font-weight:600}
+.sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-pair>*{flex:1 1 300px;min-width:0;margin:0!important}
 .sd-pair:empty{display:none}
@@ -22605,33 +22615,55 @@ function sdD0Trend(D){
 function sdD0(day){
   const D = day.d0;
   if(!D) return "";
-  const title = `D0 实况模型 <span class="sd-dir-by">只读 · 研究</span>`;
-  if(D.state !== "ok") return `<div class="sd-evidence-card sd-det-card" style="--c:var(--muted)"><div class="sd-evidence-title">${title}</div><div class="muted sd-sub" title="${sdEsc(D.reason || "")}">${sdEsc(SD_D0_STATE[D.state] || D.state)}</div>${sdD0Trend(D)}</div>`;
-  const p1 = (((day.stages || {})["P1"] || {}).stats || {}).mean_c;
-  const mk = ((day.market || {}).stats || {}).mean_c;
+  const title = "D0 实况模型";
+  if(D.state !== "ok") return sdModelCard({title, tag: "只读 · 研究", empty: SD_D0_STATE[D.state] || D.state, emptyTip: D.reason, trend: sdD0Trend(D)});
+  const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const W = D.walk_forward_mae || {};
-  const cmp = (label, v) => v == null ? "" : `<b title="D0 中心减${label}">比${label} ${sdSg(D.centre_c - v, 2)}°C</b>`;
   const parts = (D.parts || []).map(x => `<span class="sd-d0-part ${x.c > 0 ? "up" : "down"}" title="${sdEsc(`输入 ${x.value == null ? "缺" : sdN(x.value, 2)}；对中心的贡献（相对训练平均）`)}">${sdEsc(SD_D0_FEATURE[x.feature.replace("_missing", "")] || x.feature)}${x.feature.endsWith("_missing") ? "（缺）" : ""} ${sdSg(x.c, 2)}</span>`).join("");
   const tip = `基线＝三家官方确定性（IFS HRES / GFS / AIFS 单成员）当地零点前已知的日最高中位 ${sdN(D.base_c, 2)}°C（${D.base_systems} 家）；`
     + `D0 用报文、露点、风、卫星日照/云、GSMaP 雨对预报的差回归残差，按 ${sdEsc((D.window || []).join("..")) } 拟合，算于 ${sdLocal(D.as_of_utc, true)}；只读，不进任何层`;
-  return `<div class="sd-evidence-card sd-det-card" style="--c:#7048e8"><div class="sd-evidence-title">${title} <span class="pill">${sdEsc(D.band)} 时段</span> ${sdD0Fresh(D)}</div>`
-    + `<div class="sd-evidence-main" title="${sdEsc(tip)}"><b class="sd-evidence-primary">${sdN(D.centre_c, 2)}°C</b><b>σ ${sdN(D.sigma_c, 2)}</b><b>众数 ${sdEsc(D.mode)} <span class="sd-sub">${sdPc(D.mode_p, 0)}</span></b>${cmp("P1", p1)}${cmp("市场", mk)}</div>`
-    + `<div class="sd-d0-parts"><span class="muted">基线 ${sdN(D.base_c, 1)}°C</span>${parts}${Math.abs(D.station_effect_c || 0) >= 0.05 ? `<span class="sd-d0-part">本站修正 ${sdSg(D.station_effect_c, 2)}</span>` : ""}</div>`
-    + sdD0Trend(D)
-    + `<div class="muted sd-sub" title="逐日前推，同一批有盘口的站日的中心平均误差">前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C</div></div>`;
+  return sdModelCard({title, tag: "只读 · 研究", fresh: sdD0Fresh(D), color: "#7048e8",
+    value: `${sdN(D.centre_c, 2)}°C`, valueTip: tip, mode: D.mode, modeP: D.mode_p,
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? D.centre_c - bel.mean : null, "D0 中心减当前服务信念的均值"], ["比市场", mk == null ? null : D.centre_c - mk, "D0 中心减市场均值"]],
+    sub: `σ ${sdN(D.sigma_c, 2)} · 基线 ${sdN(D.base_c, 1)}°C · ${sdEsc(D.band)} 时段${Math.abs(D.station_effect_c || 0) >= 0.05 ? ` · 本站修正 ${sdSg(D.station_effect_c, 2)}` : ""}`,
+    body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend: sdD0Trend(D),
+    foot: `前推中心误差（本时段）：市场 ${sdN(W.market, 2)} · P1 ${sdN(W.p1, 2)} · D0 ${sdN(W.d0, 2)}°C`});
 }
 // The member-trajectory Bayes estimate (user 2026-10-16 「在站点看板里：前端增加贝叶斯
 // 更新的温度预估显示」): member_bayes_readings, every ten minutes beside D0 --
 // read, never computed here.  Each native member weighted by how well its step
 // series matched the last six hours of reports; display only, unverified.
 const SD_MB_STATE = {not_computed: "还没算", no_trajectories: "还没有成员轨迹（10-16 起采集）", no_ladder: "还没有梯子", error: "计算出错"};
+// One layout for the three estimate cards in a row -- 确定性预报, 成员轨迹贝叶斯,
+// D0 (user 2026-10-17 「卡片内部的风格和设计排版保持一致，突出重点内容」): a title
+// row (name, tag, freshness), the card's estimate of the day's maximum as the
+// big number with its mode bucket, the same two comparisons on every card
+// (against the served belief and the market), then the card's own detail, its
+// trend and one muted footnote.
+function sdBeliefOf(day){
+  const S = day.stages || {};
+  const stage = [day.head_stage, "P1", "P0-M", "P0"].find(k => k && ((S[k] || {}).stats || {}).mean_c != null);
+  return stage ? {stage, mean: S[stage].stats.mean_c} : null;
+}
+function sdModelCard(o){
+  const cmp = (o.cmp || []).filter(c => c && c[1] != null && isFinite(c[1])).map(([label, d, tip]) =>
+    `<span class="sd-mc-cmp ${d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}" title="${sdEsc(tip || "")}">${label} <b>${sdSg(d, 2)}°C</b></span>`).join("");
+  const head = `<div class="sd-mc-h"><span class="sd-mc-t">${o.title}</span>${o.tag ? `<span class="sd-mc-tag">${o.tag}</span>` : ""}${o.fresh || ""}</div>`;
+  if(o.empty != null) return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:var(--muted)">${head}<div class="muted sd-sub" title="${sdEsc(o.emptyTip || "")}">${sdEsc(o.empty)}</div>${o.trend || ""}</div>`;
+  return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:${o.color}">${head}`
+    + `<div class="sd-mc-main" title="${sdEsc(o.valueTip || "")}"><b class="sd-mc-v">${o.value}</b>${o.mode ? `<span class="sd-mc-mode">众数 <b>${sdEsc(o.mode)}</b>${o.modeP != null ? ` ${sdPc(o.modeP, 0)}` : ""}</span>` : ""}</div>`
+    + (cmp ? `<div class="sd-mc-cmps">${cmp}</div>` : "")
+    + (o.sub ? `<div class="sd-mc-sub">${o.sub}</div>` : "")
+    + (o.body || "") + (o.trend || "")
+    + (o.foot ? `<div class="muted sd-sub sd-mc-foot">${o.foot}</div>` : "") + `</div>`;
+}
 const SD_MB_SYS = {ECMWF_IFS_ENS_OPEN_PF50: "IFS", ECMWF_AIFS_ENS_GLOBAL: "AIFS", DWD_ICON_GLOBAL_EPS: "ICON",
                    NOAA_GEFS_05: "GEFS", ECCC_GEM_GLOBAL_ENS: "GEM", NOAA_AIGEFS_OPS_025: "AIGEFS"};
 function sdMemberBayes(day){
   const M = day.member_bayes;
   if(!M) return "";
-  const title = `成员轨迹贝叶斯 <span class="sd-dir-by">只读 · 未验证</span>`;
-  if(M.state !== "ok") return `<div class="sd-evidence-card sd-det-card" style="--c:var(--muted)"><div class="sd-evidence-title">${title}</div><div class="muted sd-sub" title="${sdEsc(M.reason || "")}">${sdEsc(SD_MB_STATE[M.state] || M.state)}</div></div>`;
+  const title = "成员轨迹贝叶斯";
+  if(M.state !== "ok") return sdModelCard({title, tag: "只读 · 未验证", empty: SD_MB_STATE[M.state] || M.state, emptyTip: M.reason});
   const P = M.posterior || {}, Q = M.prior || {}, B = M.belief || {}, X = M.belief_x_members || {};
   const tip = `每个原生集合成员按最近 6 小时报文与自身逐步轨迹的吻合度加权（τ ${sdN(M.tau_c, 1)}°C，已扣 P0 系统偏差），`
     + `成员当天最高＝max(已测最高, 之后各步最高)；按 P0 系统权重合成。先验＝成员等权。`
@@ -22651,13 +22683,15 @@ function sdMemberBayes(day){
     const line = (k, attr) => `<polyline points="${H.map((h, i) => h[k] == null ? null : `${xs(i)},${ys(h[k])}`).filter(Boolean).join(" ")}" fill="none" ${attr}/>`;
     trend = `<svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="${W}" height="${Hh}" role="img" aria-label="加权与先验均值的走势">${line("prior_mean_c", 'stroke="var(--muted)" stroke-dasharray="3 3"')}${line("post_mean_c", 'stroke="#0b7285" stroke-width="2"')}</svg>`;
   }
-  return `<div class="sd-evidence-card sd-det-card" style="--c:#0b7285"><div class="sd-evidence-title">${title}</div>`
-    + `<div class="sd-evidence-main" title="${sdEsc(tip)}"><b class="sd-evidence-primary">${sdN(P.mean_c, 2)}°C</b>`
-    + `<b>众数 ${sdEsc(P.mode || "—")} <span class="sd-sub">${sdPc(P.mode_p, 0)}</span></b>`
-    + (shift == null ? "" : `<b title="加权均值减成员等权均值">比先验 ${sdSg(shift, 2)}°C</b>`)
-    + (B.mean_c != null ? `<b title="加权均值减当前服务信念（${sdEsc(M.belief_stage || "")}）均值">比 ${sdEsc(M.belief_stage || "")} ${sdSg(P.mean_c - B.mean_c, 2)}°C</b>` : "")
-    + (X.mode ? `<b title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} <span class="sd-sub">${sdPc(X.mode_p, 0)}</span></b>` : "")
-    + `</div><div class="sd-det-grid">${chips}</div>${trend}</div>`;
+  const bel = B.mean_c != null ? {stage: M.belief_stage || "信念", mean: B.mean_c} : sdBeliefOf(day);
+  const mk = ((day.market || {}).stats || {}).mean_c;
+  return sdModelCard({title, tag: "只读 · 未验证", color: "#0b7285",
+    value: `${sdN(P.mean_c, 2)}°C`, valueTip: tip, mode: P.mode, modeP: P.mode_p,
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? P.mean_c - bel.mean : null, "加权均值减当前服务信念均值"], ["比市场", mk == null ? null : P.mean_c - mk, "加权均值减市场均值"]],
+    sub: [shift == null ? "" : `<span title="加权均值减成员等权均值">比先验 ${sdSg(shift, 2)}°C</span>`,
+          X.mode ? `<span title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} ${sdPc(X.mode_p, 0)}</span>` : ""].filter(Boolean).join(" · "),
+    body: `<div class="sd-det-grid">${chips}</div>`, trend,
+    foot: `比对报文 ${M.reports_in_window ?? 0} 条 · 算于 ${sdLocal(M.as_of_utc, true)}`});
 }
 // Charter 267 补记七 (user 2026-10-16 「照样上线：生产F文件写pick、看板确定性预报显示选桶，
 // 标注未验证、不接车道」): F's bucket, the one below or the one above, from the
@@ -22678,7 +22712,6 @@ function sdDetPick(P){
 function sdDeterministic(day){
   const T = day.deterministic || {}, rows = T.systems || [], F = T.f;
   if(!rows.length && !F) return "";
-  const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
   const run = t => t ? String(t).slice(11, 13) + "Z" : "—";
   const chips = rows.map(r => {
     const d = r.prev_tmax_c == null ? null : r.tmax_c - r.prev_tmax_c;
@@ -22689,13 +22722,17 @@ function sdDeterministic(day){
     return `<div class="sd-det${r.in_f ? "" : " sd-det-off"}" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${sdEsc(SD_DET_LABEL[r.product] || r.product)}</span><span>${run(r.run_init_utc)}</span></div>`
       + `<b>${sdN(r.tmax_c, 1)}</b><div class="sd-det-f"><span class="${d == null ? "flat" : d > 0.05 ? "up" : d < -0.05 ? "down" : "flat"}">${d == null ? "首轮" : (d > 0 ? "↑" : d < 0 ? "↓" : "") + sdSg(d, 1)}</span><span>${tag}</span></div></div>`;
   }).join("");
-  const main = F && F.f_c != null
-    ? `<b class="sd-evidence-primary" title="挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdEsc(sdLocal(F.computed_at_utc, true))}">F ${sdN(F.f_c, 2)}°C</b>`
-      + (p0 != null ? `<b title="F 减 P0 模型加权温度中心">比 P0 ${sdSg(F.f_c - p0, 2)}°C</b>` : "")
-      + `<b title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</b>`
-      + sdDetPick(F.pick)
-    : `<b>F 暂无</b>`;
-  return `<div class="sd-evidence-card sd-det-card" style="--c:${SD_COL.P0}"><div class="sd-evidence-title">确定性预报（宪章 267 · 各家最新一轮的当日最高温）</div><div class="sd-evidence-main">${main}</div><div class="sd-det-grid">${chips}</div></div>`;
+  const title = "确定性预报";
+  const body = `<div class="sd-det-grid">${chips}</div>`;
+  if(!F || F.f_c == null) return sdModelCard({title, tag: "宪章 267", color: SD_COL.P0, value: "F 暂无", body});
+  const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
+  const p0 = ((day.stages || {})["P0"] || {}).model_center_c;
+  return sdModelCard({title, tag: "宪章 267", color: SD_COL.P0,
+    value: `F ${sdN(F.f_c, 2)}°C`, valueTip: `挂牌前 F（宪章 267）：六家中位＋全队平移＋站修正＋按真值条件重校准；执行层数字，不进 P0/P0-M/P1。算于 ${sdLocal(F.computed_at_utc, true)}`,
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? F.f_c - bel.mean : null, "F 减当前服务信念均值"], ["比市场", mk == null ? null : F.f_c - mk, "F 减市场均值"]],
+    sub: [`<span title="进 F 的 ${sdEsc(F.n_systems ?? "—")} 家原始最高温的中位">中位 ${sdN(F.raw_median_c, 2)}°C</span>`,
+          p0 != null ? `<span title="F 减 P0 模型加权温度中心">比 P0 ${sdSg(F.f_c - p0, 2)}°C</span>` : "", sdDetPick(F.pick)].filter(Boolean).join(" · "),
+    body, foot: "各家最新一轮的当日最高温；箭头＝比上一轮"});
 }
 
 function sdStatsTable(day, S){
