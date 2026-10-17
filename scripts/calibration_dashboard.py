@@ -16014,7 +16014,10 @@ b.sd-warm{color:var(--pill-red-fg)}b.sd-cold{color:var(--accent)}
 table.sd-sky tr.sd-future td{opacity:.55}
 .sd-live-dot{display:inline-block;width:6px;height:6px;margin:0 0 2px 4px;border-radius:50%;background:var(--green);vertical-align:middle}
 table.sd-sky td{white-space:nowrap}
-table.sd-sky td.sd-sky-wx{font-size:11.5px;white-space:normal;max-width:240px}
+table.sd-sky td.sd-sky-wx{font-size:11px;white-space:normal;min-width:110px;max-width:170px;line-height:1.3}
+table.sd-sky th{white-space:nowrap;vertical-align:bottom;line-height:1.2}
+table.sd-sky th small{display:block;font-weight:400;font-size:10.5px;color:var(--muted)}
+table.sd-sky td,table.sd-sky th{padding-left:6px;padding-right:6px}
 table.sd-sky td.sd-sky-tags{white-space:normal}
 table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-skybox{margin:6px 0}
@@ -23772,13 +23775,17 @@ function sdSky(day){
     // the hour's hit / miss / false-alarm class (moved here from 偏离) after it.
     const gs = ((day.precip_sat || {}).hours || {})[String(r.hour).padStart(2, "0")];
     const wet = o ? ((o.weathers || []).filter(w => /RA|DZ|SN|SH|TS|GR|PL|SG|UP/.test(w) && !/^VC/.test(w)).join(" ") || (o.precip ? "雨" : "无")) : null;
-    const rainObs = o ? `<b>${sdEsc(wet)}</b>${gs && gs.mm != null ? `<span class="muted"> 卫星 ${sdN(gs.mm, 1)}</span>` : ""}`
-      : gs && gs.mm != null ? `<span class="muted">卫星 ${sdN(gs.mm, 1)}</span>` : r.past ? `<span class="muted">无报</span>` : "—";
-    const rainTag = rainCell ? ` <span class="sd-r4 ${SD_RAIN4[rainCell][2]}" title="${sdEsc(`预报 ${sdN(f.precip_mm, 1)} mm（≥0.1 mm 算有雨）· 报文${o.precip ? "报了" : "没报"}降水`)}">${SD_RAIN4[rainCell][0]}</span>` : "";
+    // Compact (user 2026-10-17 「重新排版优化各列的宽度」): GSMaP's millimetres
+    // only when it measured rain (always on hover), the class only when it is
+    // not a correct "no rain", in two characters.
+    const gsWet = gs && gs.mm != null && gs.mm >= 0.05;
+    const rainObs = o ? `<b>${sdEsc(wet)}</b>${gsWet ? `<span class="muted"> ${sdN(gs.mm, 1)}</span>` : ""}`
+      : gsWet ? `<span class="muted">${sdN(gs.mm, 1)}</span>` : r.past ? `<span class="muted">无报</span>` : "—";
+    const rainTag = rainCell && rainCell !== "d" ? ` <span class="sd-r4 ${SD_RAIN4[rainCell][2]}" title="${sdEsc(`${SD_RAIN4[rainCell][0]}：预报 ${sdN(f.precip_mm, 1)} mm（≥0.1 mm 算有雨）· 报文${o.precip ? "报了" : "没报"}降水`)}">${SD_RAIN4[rainCell][0].replace("降雨", "")}</span>` : "";
     const rainTd = `<td class="mono" title="${sdEsc(`报文天气现象（附近 VC 不算）${gs && gs.mm != null ? `；JAXA GSMaP 卫星雨量 ${sdN(gs.mm, 2)} mm（这一小时）` : ""}；预报雨量 ${f.precip_mm == null ? "—" : sdN(f.precip_mm, 1) + " mm"}`)}">${rainObs}<span class="muted"> · ${f.precip_mm == null ? "—" : sdN(f.precip_mm, 1)}</span>${rainTag}</td>`;
     return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
-      <td class="mono${r.sun_elev_deg == null || r.sun_elev_deg <= 0 ? " muted" : ""}">${r.sun_elev_deg == null ? "—" : r.sun_elev_deg <= 0 ? "地平线下" : sdN(r.sun_elev_deg, 0) + "°"}</td>
+      <td class="mono${r.sun_elev_deg == null || r.sun_elev_deg <= 0 ? " muted" : ""}">${r.sun_elev_deg == null ? "—" : sdN(r.sun_elev_deg, 0) + "°"}</td>
       ${pair(cloudObs, pc0(f.cloud_low), f.cloud_d1 == null ? null : `总云 ${pc0(f.cloud_d1)}（最新预报总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
       ${satCloud ? sdSatCloudCell(r) : ""}
       ${sat.product
@@ -23887,7 +23894,7 @@ function sdSky(day){
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     <div class="sd-pnl-g sd-sun-g">${cards}</div>
-    ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="该整点时刻太阳离地平线的高度角（按站点经纬度计算）；越高日照越强，0° 以下是夜里">太阳高度角</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报总云">云 <span class="muted">实况 · 预报（METAR 低云）</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云；后面是最新预报的总云（低中高云合计），悬停看提前 1 天的预报总云">云 <span class="muted">卫星 · 最新预报总云</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th title="报文天气现象（RA 雨、DZ 毛毛雨、SH 阵性、TS 雷暴…，附近 VC 不算）与 JAXA GSMaP 卫星雨量（mm）· 预报雨量（mm）；后面是这一小时的降雨命中/漏报/空报">雨 <span class="muted">实况 · 预报 mm</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
+    ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="该整点时刻太阳离地平线的高度角（按站点经纬度计算）；越高日照越强，0° 以下是夜里">太阳<small>高度角</small></th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报总云">云<small>METAR 低云 · 预报</small></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云；后面是最新预报的总云（低中高云合计），悬停看提前 1 天的预报总云">云<small>卫星 · 预报总云</small></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m²<small>${sat.product ? "卫星" : "推算"} · 预报</small></th><th>气温<small>实况 · 预报</small></th><th title="报文天气现象（RA 雨、DZ 毛毛雨、SH 阵性、TS 雷暴…，附近 VC 不算）与 JAXA GSMaP 卫星雨量（mm）· 预报雨量（mm）；后面是这一小时的降雨命中/漏报/空报">雨 mm<small>实况 · 预报</small></th><th>报文<small>云 · 能见度 · 天气</small></th><th>偏离</th></tr></thead>`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
     <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
