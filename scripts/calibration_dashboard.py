@@ -16162,6 +16162,8 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-evidence-card.sd-evidence-wide{grid-column:1/-1}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
 .sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sd-dir-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:900px){.sd-dir-split{grid-template-columns:minmax(0,1fr)}}
 .sd-dir-change{color:var(--text);font-size:13.5px;line-height:1.6;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--c) 10%,transparent)}
 .sd-dir-change.sd-dir-fresh{background:color-mix(in srgb,var(--c) 22%,transparent)}
 .sd-dir-new{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;margin-right:6px;border-radius:8px;background:var(--c);color:var(--card)}
@@ -23223,13 +23225,15 @@ function sdDirection(D, R){
   const X = D.physics || {};
   const log = hist.slice().reverse().map(h =>
     `<tr><td>${sdLocal(h.at_utc,true)}</td><td style="color:${sdDirColor(h.side)}">${sdDirWord(h.side)}</td><td>${sdSg(h.momentum,2)}${sdMomTier(h.momentum)}</td><td>${sdEsc(h.mode || "—")}</td><td>${sdDirRun(h.newest_run_utc)}</td></tr>`).join("");
-  const body = `${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}${sdDirParts(D)}
-    <details><summary>细节</summary>
+  // The contribution chart on the left, the details beside it (user
+  // 2026-10-17 「把方向卡单独排一行」「贡献图和细节左右排列」).
+  const body = `<div class="sd-dir-split"><div>${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}${sdDirParts(D)}</div>
+    <details open><summary>细节</summary>
     <div>${agree ? agree + " · " : ""}ECMWF 动量 M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}（${mWord}）${comps ? " · " + comps : ""}</div>
     <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
     ${log ? `<table class="sd-tab sd-dir-log"><thead><tr><th>变化于</th><th>方向</th><th>M</th><th>众数</th><th>最新一轮</th></tr></thead><tbody>${log}</tbody></table>` : ""}
     <div>算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>
-    </details>`;
+    </details></div>`;
   return {color: sdDirColor(D.side), main, body};
 }
 // Each series' skew, by probability (user 2026-10-10 the card beside the
@@ -23694,7 +23698,7 @@ function sdEvidence(day){
   // P1 is the reports read as a probability, so it sits with them, and the TAF
   // card with the TAFs (user 2026-10-15「这个卡片移动到下方：METAR/SPECI」「这个
   // 卡片也是移动到下方 ZUUU 最新 TAF」).
-  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards sd-evidence-three">${rad}${dirCard}${sdMeanModeCard(day)}</div><div class="sd-evidence-solo">${rain}</div>${sdSky(day)}
+  return `<div class="sd-t">证据：辐射、TAF、METAR、云雨</div><div class="sd-evidence-cards">${rad}${sdMeanModeCard(day)}</div><div class="sd-evidence-solo">${dirCard}</div><div class="sd-evidence-solo">${rain}</div>${sdSky(day)}
     ${sdTafRaw(SD.data || {}, taf)}
     ${met ? `<details${day.role === "today" ? " open" : ""}><summary class="muted">METAR/SPECI（当地这一天 ${(day.metar || []).length} 份，新的在上）</summary>${p1Line}<div class="sd-metar">${met}</div></details>` : p1Line}`;
 }
