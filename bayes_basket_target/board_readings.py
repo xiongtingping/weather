@@ -3453,6 +3453,21 @@ WAL_WAIT_SEC = float(os.environ.get("PM_BOARD_READINGS_WAL_WAIT_SEC", "300"))
 PAGE_RENDER_PATTERN = os.environ.get("PM_DASHBOARD_PAGE_RENDER_PATTERN", "calibration_dashboard.py --compute-pages")
 
 
+def _research_render_waiting() -> bool:
+    """The research render's sweep is up but its reader has not started:
+    it is queued behind this job for the shared SSOT reader turn."""
+
+    import subprocess  # noqa: PLC0415
+
+    def up(pattern: str) -> bool:
+        try:
+            return subprocess.run(["pgrep", "-f", pattern], capture_output=True,
+                                  timeout=10, check=False).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return up("dashboard_research_sweep.sh") and not up("calibration_dashboard.py --refresh-research")
+
+
 def _page_render_running() -> bool:
     import subprocess  # noqa: PLC0415
 
@@ -3482,6 +3497,13 @@ def run(
         # so this run steps aside between readings when it starts.
         if background and _page_render_running():
             receipts.append("stopped: the page render started")
+            break
+        # The research render queued for the shared reader turn: hand it
+        # over (2026-10-17: the research render waited out its whole hour
+        # behind realisation refits and readings, and the pages it alone
+        # refreshes went days stale).  This job comes back next hour.
+        if background and _research_render_waiting():
+            receipts.append("stopped: the research render is waiting for the reader turn")
             break
         compute, sources = _READINGS[name]
         if not force and _reading_is_current(name, _code_sha(*sources)):
