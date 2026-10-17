@@ -281,6 +281,7 @@ def test_the_hourly_run_steps_aside_for_the_page_render_and_waits_out_the_wal(tm
     db = tmp_path / "s.db"
     import sqlite3
     sqlite3.connect(db).close()
+    monkeypatch.setattr(BR, "_page_render_running", lambda: False)
     monkeypatch.setattr(BR, "_research_render_waiting", lambda: True)
     assert BR.run(db, ["a", "b"], force=True, background=True) == ["stopped: the research render is waiting for the reader turn"]
     monkeypatch.setattr(BR, "_research_render_waiting", lambda: False)
