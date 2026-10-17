@@ -23844,7 +23844,6 @@ function sdSky(day){
       : sdSunCard("sun", "实况对比预报", `${span} · MJ/m²`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           [["实况", sdN(swObs, 1)], ["预报", sdN(swFc, 1)]],
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
-    cloudCard,
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
       // The increment leads (user 2026-10-17 「日照推算最高温重点突出增量∆温度」):
       // the big number is ΔT on the day-ahead maximum; the maximum it points
@@ -23860,6 +23859,7 @@ function sdSky(day){
           [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
           `卫星日照要到 ${hh(T.from_hour)}:00 才够推算`)
       : "",
+    cloudCard,
     dewCard,
     windCard,
   ].join("");
