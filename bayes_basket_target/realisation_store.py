@@ -221,6 +221,62 @@ def _ladder_inputs(
 # ---------------------------------------------------------------------------
 # The population.
 
+#: Each decision's ladder inputs, kept between fits (2026-10-17, user 「兑现层
+#: 三项重拟每次超时、结果多日未更新」).  Building the population read two cold
+#: rows (envelope, book; ~13 ms each off disk on the 8 GB machine against the
+#: 75 GB store), the station-day's model runs (~0.2 s) and the features
+#: (~8 ms) for every one of ~16,000 decisions: P0, P1 and P0-M each ran their
+#: full 1,800 s and were killed from 10-17, their artifacts frozen at 10-16,
+#: 10-10 and 10-12.  The 28-day window moves a day at a time, so all but the
+#: newest day are the same decisions as last night.  Keyed by the decision
+#: and the rows it read, and stamped with the code that turns them into
+#: inputs; the label is never cached (a truth revision is read fresh), nor
+#: anything before the reads (cutoff, P1 supersession, the 36 h window).
+POPULATION_CACHE_DIR = Path(
+    os.environ.get("PM_REALISATION_POPULATION_CACHE") or (ROOT / "data" / "runtime" / "realisation_population_cache")
+)
+
+
+POPULATION_CACHE_SAVE_EVERY = 500
+
+
+def _inputs_code_sha() -> str:
+    source = inspect.getsource(layer) + inspect.getsource(run_change) + inspect.getsource(_ladder_inputs)
+    source += inspect.getsource(market_reference_v1)
+    return hashlib.sha256(source.encode()).hexdigest()
+
+
+def _load_population_cache(stage: str) -> dict[tuple, dict[str, Any]]:
+    import pickle  # noqa: PLC0415
+
+    path = POPULATION_CACHE_DIR / f"{_stage_slug(stage)}.pkl"
+    try:
+        with path.open("rb") as handle:
+            blob = pickle.load(handle)
+    except (OSError, EOFError, ValueError, pickle.UnpicklingError, AttributeError, ImportError):
+        return {}
+    if not isinstance(blob, dict) or blob.get("code") != _inputs_code_sha():
+        return {}
+    return dict(blob.get("entries") or {})
+
+
+def _save_population_cache(stage: str, entries: Mapping[tuple, Mapping[str, Any]]) -> None:
+    import pickle  # noqa: PLC0415
+
+    POPULATION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = POPULATION_CACHE_DIR / f"{_stage_slug(stage)}.pkl"
+    fd, tmp = tempfile.mkstemp(dir=POPULATION_CACHE_DIR, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            pickle.dump({"code": _inputs_code_sha(), "entries": dict(entries)}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
 
 def population(
     conn: sqlite3.Connection,
@@ -267,6 +323,10 @@ def population(
         first_p1 = first_p1_decisions(conn, min_decision_at_utc=f"{floor_day}T00:00:00Z")
     decisions: list[dict[str, Any]] = []
     runs_cache: dict[tuple[str, str], dict[str, list[tuple]]] = {}
+    cached = _load_population_cache(stage)
+    kept: dict[tuple, dict[str, Any]] = {}
+    counts["inputs_cached"] = 0
+    fresh = 0
     for station, day, decided, envelope_id, snapshot_id, tz in facts:
         counts["facts_read"] += 1
         label = labels.get((str(station), str(day)))
@@ -286,28 +346,19 @@ def population(
         if hours is None or not hours > MIN_HOURS_TO_SETTLEMENT:
             counts["inside_window"] += 1
             continue
-        envelope = conn.execute(
-            "SELECT probabilities_json FROM basket_probability_envelope WHERE envelope_id=?",
-            (envelope_id,),
-        ).fetchone()
-        snapshot = conn.execute(
-            "SELECT buckets_json FROM basket_official_ws_snapshot WHERE snapshot_id=?",
-            (snapshot_id,),
-        ).fetchone()
-        if envelope is None or snapshot is None:
-            counts["row_missing"] += 1
-            continue
-        try:
-            p_raw = json.loads(envelope[0] or "{}")
-            buckets = json.loads(snapshot[0] or "[]")
-        except (TypeError, ValueError):
-            counts["invalid"] += 1
-            continue
-        key = (str(station), str(day))
-        if key not in runs_cache:
-            runs_cache[key] = run_change.family_runs(conn, station_id=key[0], event_date=key[1])
-        parts = run_change.latest_change(runs_cache[key], as_of=str(decided))
-        inputs = _ladder_inputs(p_raw, buckets, parts)
+        cache_key = (str(station), str(day), str(decided), str(envelope_id), str(snapshot_id))
+        inputs = cached.get(cache_key)
+        if inputs is not None:
+            counts["inputs_cached"] += 1
+        else:
+            inputs = _decision_inputs(conn, runs_cache, str(station), str(day), str(decided), envelope_id, snapshot_id)
+            fresh += 1
+            # Progress survives a killed run: the first pass over a cold
+            # window is the 1,800 s one, and saved only at the end it would
+            # never be saved.
+            if fresh % POPULATION_CACHE_SAVE_EVERY == 0:
+                _save_population_cache(stage, {**cached, **kept, cache_key: inputs})
+        kept[cache_key] = inputs
         state = str(inputs["state"])
         if state != "ok":
             key = state.split(":")[0]
@@ -324,6 +375,8 @@ def population(
             "terms": f["terms"], "q": f["q"], "mode": f["mode"], "centres_agree": f["centres_agree"],
             "y": inputs["order"].index(bucket),
         })
+    # Only this window's decisions are kept: the file does not grow.
+    _save_population_cache(stage, kept)
     per_day: dict[tuple[str, str], int] = {}
     for d in decisions:
         per_day[(d["station_id"], d["event_date"])] = per_day.get((d["station_id"], d["event_date"]), 0) + 1
@@ -331,6 +384,36 @@ def population(
         d["weight"] = 1.0 / per_day[(d["station_id"], d["event_date"])]
     return decisions, {**counts, "floor_day": floor_day, "latest_day": latest,
                        "decisions": len(decisions), "station_days": len(per_day)}
+
+
+def _decision_inputs(
+    conn: sqlite3.Connection, runs_cache: dict[tuple[str, str], dict[str, list[tuple]]],
+    station: str, day: str, decided: str, envelope_id: Any, snapshot_id: Any,
+) -> dict[str, Any]:
+    """One decision's ladder inputs from its envelope, its book and the
+    station-day's model runs as of the decision -- or ``state`` naming why
+    there are none (``row_missing``, ``invalid``, or ``_ladder_inputs``')."""
+
+    envelope = conn.execute(
+        "SELECT probabilities_json FROM basket_probability_envelope WHERE envelope_id=?",
+        (envelope_id,),
+    ).fetchone()
+    snapshot = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot WHERE snapshot_id=?",
+        (snapshot_id,),
+    ).fetchone()
+    if envelope is None or snapshot is None:
+        return {"state": "row_missing"}
+    try:
+        p_raw = json.loads(envelope[0] or "{}")
+        buckets = json.loads(snapshot[0] or "[]")
+    except (TypeError, ValueError):
+        return {"state": "invalid"}
+    key = (station, day)
+    if key not in runs_cache:
+        runs_cache[key] = run_change.family_runs(conn, station_id=station, event_date=day)
+    parts = run_change.latest_change(runs_cache[key], as_of=decided)
+    return _ladder_inputs(p_raw, buckets, parts)
 
 
 # ---------------------------------------------------------------------------

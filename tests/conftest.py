@@ -51,6 +51,9 @@ def _realisation_layer_reads_no_live_artifact(monkeypatch: pytest.MonkeyPatch, t
 
     monkeypatch.setattr(realisation_store, "ARTIFACT_DIR", tmp_path_factory.mktemp("realisation_layer"))
     realisation_store._ACTIVE_CACHE.clear()
+    # The population's input cache likewise (2026-10-17): a fixture's
+    # decisions never land in, or are read from, the live cache.
+    monkeypatch.setattr(realisation_store, "POPULATION_CACHE_DIR", tmp_path_factory.mktemp("realisation_population_cache"))
 
 
 @pytest.fixture(autouse=True)

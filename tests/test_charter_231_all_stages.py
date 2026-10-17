@@ -120,3 +120,29 @@ def test_the_lanes_file_opens_every_stage() -> None:
     root = Path(__file__).resolve().parents[1]
     cfg = strategy_lanes.lane_settings(strategy_lanes.LANE_PROPER_BET, root / "config" / "trading" / "strategy_lanes_v1.json")
     assert cfg["opening_stages"] == ALL
+
+
+def test_the_population_reuses_each_decisions_inputs_and_reads_labels_fresh(store, monkeypatch) -> None:
+    """2026-10-17 (「兑现层三项重拟每次超时、结果多日未更新」): a decision's
+    ladder inputs are kept between fits, so only new decisions read the store;
+    the label is read every time, so a truth revision still lands."""
+
+    label = {"bucket": "28°C"}
+    monkeypatch.setattr("bayes_basket_target.label_knowability.knowable_labels",
+                        lambda conn: {(ST, ED): {"bucket": label["bucket"], "known_at": "2026-09-19T00:00:00Z"}})
+    _snapshot(store, "snap_c", "2026-09-16T10:00:00.000Z", _ladder(), 1)
+    _fact(store, stage="P0", fact_id="c1", decided="2026-09-16T10:00:00.000Z", snapshot_id="snap_c")
+    first, counts = rstore.population(store, cutoff_utc="2026-09-20T00:00:00Z", stage="P0")
+    assert counts["inputs_cached"] == 0
+
+    def no_read(*_a, **_k):
+        raise AssertionError("a cached decision must not read the store again")
+    monkeypatch.setattr(rstore, "_decision_inputs", no_read)
+    second, counts = rstore.population(store, cutoff_utc="2026-09-20T00:00:00Z", stage="P0")
+    assert counts["inputs_cached"] == counts["facts_read"] - counts["no_label"] - counts["inside_window"]
+    assert [d["y"] for d in second] == [d["y"] for d in first]
+    assert all((a["terms"] == b["terms"]).all() for a, b in zip(first, second))
+    assert first, "the fixture decision enters the population"
+    label["bucket"] = "27°C"
+    third, _ = rstore.population(store, cutoff_utc="2026-09-20T00:00:00Z", stage="P0")
+    assert [d["y"] for d in third] != [d["y"] for d in first], "a revised label is read fresh"
