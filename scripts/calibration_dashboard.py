@@ -16163,6 +16163,10 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-rain-svg{width:100%;min-width:640px;display:block;margin-top:8px}
 .sd-evidence-cards.sd-evidence-three{grid-template-columns:repeat(3,minmax(0,1fr))}
 /* Deterministic forecasts, the member Bayes and D0 in one row (user 2026-10-17 「确定性预报和成员轨迹贝叶斯：左右排版」→「…D0 实况模型：左中右排版」); fewer fill the row. */
+.sd-rain-key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--muted);margin:2px 0 6px 36px}
+.sd-rain-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.sd-rk{display:inline-block;width:10px;height:10px}.sd-rk-bar{width:7px;height:12px;border-radius:1px}
+.sd-rk-dot{border-radius:50%}.sd-rk-dia{transform:rotate(45deg);width:8px;height:8px}.sd-rk-sq{border-radius:2px}
 .sd-mc-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;font-weight:600;color:var(--text)}
 .sd-mc-tag{font-size:10.5px;font-weight:400;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 7px;line-height:17px}
 .sd-mc-main{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
@@ -23118,7 +23122,7 @@ function sdRainSvg(P, O, S){
   const obs = (O || {}).hours || {};
   // JAXA GSMaP_NOW (user 2026-10-15): the hour's satellite rain, its own row.
   const sat = (S && S.hours) || {};
-  const W = 640, H = 214, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
+  const W = 640, H = 196, left = 36, right = 12, top = 20, bottom = 110, step = (W-left-right)/24;
   const max = Math.max(0.5, ...hours.map(h => h.value == null ? 0 : h.value), ...Object.values(obs).map(o => o.mm || 0),
     ...Object.values(sat).map(v => (v && v.mm) || 0));
   const y = v => bottom - (bottom-top)*v/max;
@@ -23156,8 +23160,13 @@ function sdRainSvg(P, O, S){
   g += `<text x="${left-5}" y="${bottom+38}" text-anchor="end" font-size="10" fill="var(--muted)">实况</text>`;
   if(Object.keys(sat).length) g += `<text x="${left-5}" y="${bottom+56}" text-anchor="end" font-size="10" fill="var(--muted)">卫星</text>`;
   g += `<text x="${left-5}" y="${bottom+70}" text-anchor="end" font-size="10" fill="var(--muted)">四格</text>`;
-  g += `<text x="${W-right}" y="${H-4}" text-anchor="end" font-size="11" fill="var(--muted)">柱＝预报 · 深蓝柱＝报文雨量 · 绿菱＝卫星雨量 · 实况行：蓝点＝本站降水 · 卫星行：绿点＝≥0.1 mm · 四格：绿命中/黄漏报/红空报/灰正确否定</text>`;
-  return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报与实况，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div>`;
+  // The key under the chart, as wrapping HTML (user 2026-10-17 「内容显示不全，细节太多」:
+  // the one-line SVG caption ran off the chart's left edge).
+  const key = (shape, color, label) => `<span><i class="sd-rk sd-rk-${shape}" style="background:${color}"></i>${label}</span>`;
+  const keys = [key("bar", "var(--accent)", "预报"), key("bar", "#1c7ed6", "报文雨量"), key("dia", "#2f9e44", "卫星雨量"),
+    key("dot", "#1c7ed6", "本站降水"), key("dot", "#2f9e44", "卫星 ≥0.1 mm")]
+    .concat(["a", "b", "c", "d"].map(k => key("sq", SD_RAIN4[k][1], SD_RAIN4[k][0].replace("降雨", "")))).join("");
+  return `<div class="scroll"><svg class="sd-rain-svg" role="img" aria-label="逐小时降水预报与实况，横轴为当地00至23时" viewBox="0 0 ${W} ${H}">${g}</svg></div><div class="sd-rain-key">${keys}</div>`;
 }
 function sdTafCloudDetails(witness){
   const evidence = witness.cloud_evidence || {};
@@ -23765,7 +23774,7 @@ function sdEvidence(day){
     const hourLabel = v => v == null ? "—" : String(v).padStart(2,"0")+":00";
     rain = sdEvidenceCard("云雨 · 逐小时降水：预报与实况", SD_COL.P0,
       `<b class="sd-evidence-primary">预报 当日 ${sdN(P.sum_mm,1)} mm</b><b>湿小时 ${sdEsc(P.wet_hours == null ? "—" : P.wet_hours)}</b><b>首个湿小时 ${sdEsc(hourLabel(P.first_wet_hour))}</b>${obsLine}${rain4 && rain4.n ? sdRain4Line(rain4) : ""}`,
-      `${sdRainSvg(P, O, day.precip_sat)}预报：${sdEsc(P.source_id)} · ${sdEsc(P.lineage)}，取于 ${sdLocal(P.captured_at_utc,true)} · 午后分段参考 ${sdEsc(hourLabel(P.peak_hour))}（当地）<br>实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`, true);
+      `${sdRainSvg(P, O, day.precip_sat)}<span class="muted sd-sub" title="${sdEsc(`预报：${P.source_id} · ${P.lineage}（参考，不进任何层）\n实况：METAR/SPECI 报的天气（附近 VC 不算本站）与近时降水 RE 组；雨量只有报文写了才有（美国 ASOS 备注 P 组，台湾 RA AMT）${O.madis ? "；美国站另有 NOAA MADIS 每 5 分钟的天气与累计雨量（优先采用）" : ""}`)}">预报取于 ${sdLocal(P.captured_at_utc,true)} · 来源 ⓘ</span>`, true);
   }
   // P1 is the reports read as a probability, so it sits with them, and the TAF
   // card with the TAFs (user 2026-10-15「这个卡片移动到下方：METAR/SPECI」「这个
