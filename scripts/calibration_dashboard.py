@@ -14769,6 +14769,13 @@ RESEARCH_CHEAP_STARVE_CAP_SEC = 2 * STARVED_PAGE_AGE_SEC
 RESEARCH_ATTEMPT_FILE = "_research_attempt.json"
 #: Sections a research run died on, with when (``RESEARCH_ATTEMPT_FILE``).
 RESEARCH_KILLED_FILE = "_research_killed.json"
+#: A section whose last build cost more than a whole run's budget runs alone,
+#: at most this often (2026-10-17: scorecard, page-less and so infinitely
+#: overdue, cost 2,133 s against the 1,800 s budget, went first every run and
+#: ate it; certificate_authority, refusal_history, ssot_capacity and 34 more
+#: sections, most under two minutes, went 60-100 hours without a turn).
+RESEARCH_OVERSIZE_EVERY_SEC = float(os.environ.get("PM_DASHBOARD_RESEARCH_OVERSIZE_EVERY_SEC", str(6 * 3600)))
+RESEARCH_OVERSIZE_FILE = "_research_oversize.json"
 #: How long a section that killed a run waits behind the others.  The
 #: oldest-first rotation otherwise hands it the next run straight back: on
 #: 2026-10-02 bias_half_life (2,804 s last time) ran into the 3,300 s timeout
@@ -15015,6 +15022,25 @@ def refresh_research_section(db: Path) -> str:
     due = research_due(specs, _now())
     if not due:
         return "research render: nothing due"
+    # Sections that fit a run go first, most overdue first; a section larger
+    # than the whole budget gets a run to itself once its turn comes round.
+    oversize = [d for d in due if d[2] > RESEARCH_RUN_BUDGET_SEC]
+    if oversize:
+        tried = dict(_load_closed_readings(RESEARCH_OVERSIZE_FILE).get("tried") or {})
+        now = _now()
+        def _since(name: str) -> float:
+            at = _parse_utc_or_none(tried.get(name))
+            return float("inf") if at is None else (now - at).total_seconds()
+        ripe = [d for d in oversize if _since(d[1]) >= RESEARCH_OVERSIZE_EVERY_SEC]
+        fits = [d for d in due if d[2] <= RESEARCH_RUN_BUDGET_SEC]
+        if ripe:
+            tried[ripe[0][1]] = now.isoformat().replace("+00:00", "Z")
+            _save_closed_readings(RESEARCH_OVERSIZE_FILE, {"tried": tried})
+            due = ripe[:1]
+        elif fits:
+            due = fits
+        else:
+            return "research render: only oversize sections due, none ripe yet"
     started = time.perf_counter()
     done: list[str] = []
     _RESEARCH_GAP_WAIT_LEFT[:] = [RENDER_GAP_WAIT_BUDGET_SEC]

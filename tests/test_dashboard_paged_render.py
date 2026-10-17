@@ -1167,3 +1167,26 @@ def test_one_broken_section_does_not_end_the_research_run(paged, monkeypatch) ->
     assert "slow_moving computed" in out, out
     _BROKEN["on"] = False
     C._paged_run_start(paged / "ssot.db")
+
+
+def test_a_section_larger_than_the_run_goes_alone_and_only_when_ripe(paged, monkeypatch) -> None:
+    """2026-10-17: scorecard (2,133 s, budget 1,800 s, no page) went first every
+    research run and starved 37 cheaper sections for days."""
+
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"slow_moving": 3600, "other": 3600})
+    monkeypatch.setattr(C, "_page_render_running", lambda: False)
+    _heavy_page(paged, "slow_moving", _heavy_probe, 900.0, "2026-09-01T00:00:00Z")
+    _heavy_page(paged, "other", _heavy_probe, 5000.0, "2026-08-01T00:00:00Z")   # more overdue, oversize
+    C._save_section_specs()
+    C._PAGED_RUN.clear()
+    first = C.refresh_research_section(paged / "ssot.db")
+    assert "other computed" in first and "slow_moving" not in first, "a ripe oversize section runs alone"
+    C._paged_run_start(paged / "ssot.db")
+    # Make both due again: the oversize one is not ripe for six hours, so the
+    # section that fits takes the run.
+    _heavy_page(paged, "slow_moving", _heavy_probe, 900.0, "2026-09-01T00:00:00Z")
+    _heavy_page(paged, "other", _heavy_probe, 5000.0, "2026-08-01T00:00:00Z")
+    C._PAGED_RUN.clear()
+    second = C.refresh_research_section(paged / "ssot.db")
+    assert "slow_moving computed" in second and "other" not in second, second
+    C._paged_run_start(paged / "ssot.db")
