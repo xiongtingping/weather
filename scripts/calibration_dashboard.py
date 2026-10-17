@@ -23846,8 +23846,12 @@ function sdSky(day){
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
     cloudCard,
     T && T.state === "ok" && T.forecast_tmax_d1_c != null
-      ? sdSunCard("temp", "日照推算最高温", "日前预报 + 日照", `${sdN(T.forecast_tmax_d1_c + T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
-          [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
+      // The increment leads (user 2026-10-17 「日照推算最高温重点突出增量∆温度」):
+      // the big number is ΔT on the day-ahead maximum; the maximum it points
+      // to sits between the two forecasts below.
+      ? sdSunCard("temp", "日照推算最高温", `ΔT · 日照 ${sdSg(T.wm2_d1, 0)} W/m²`, `${sdSg(T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
+          [["日前预报", sdN(T.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(T.forecast_tmax_d1_c + T.shift_c, 1)]]
+            .concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
           `05–${hh(T.last_hour)} 点卫星日照比提前 1 天的预报平均 ${sdSg(T.wm2_d1, 0)} W/m²，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
       // Too early to read: the card stays, with the two forecasts' maxima
       // (user 2026-10-17 「温度显示不见了」).
