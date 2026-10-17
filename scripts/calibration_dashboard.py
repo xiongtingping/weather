@@ -16025,14 +16025,16 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sunstat>span:first-child{font-size:12.5px;color:var(--muted)}
 .sd-sunstat>b{font-size:22px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
 .sd-sunstat>b small{font-size:12px;font-weight:600;color:var(--muted)}
-.sd-sun-g{grid-template-columns:repeat(auto-fill,minmax(184px,1fr));margin:6px 0 10px}
+/* .sd-pnl-g (128 px cells) is written later; the doubled class keeps these cards wide. */
+.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin:6px 0 10px}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
-.sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:5px;line-height:1.25}
 .sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:nowrap}
 .sd-sun-c>b{margin:2px 0 4px}
-.sd-sun-c>i{display:flex;justify-content:space-between;gap:8px;font-size:12px;line-height:1.5;white-space:nowrap}
+.sd-sun-c>i{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-size:12px;line-height:1.5;white-space:nowrap}
+.sd-sun-c>i small{font-size:10.5px}
 .sd-sun-c>i span:last-child{font-variant-numeric:tabular-nums;color:var(--text)}
 .sd-pnl-c>b.sd-warm{color:var(--pill-red-fg)}.sd-pnl-c>b.sd-cold{color:var(--accent)}
 .sd-sunage{font-size:12px;color:var(--muted)}
@@ -23837,8 +23839,8 @@ function sdSky(day){
     // ΔT on the day-ahead maximum (user 2026-10-17 「云卡仍显示 ΔT，标灰并注明
     // 样本外不显著」): grey unless that hour's line beat the mean out of sample.
     const CT = H.cloud_tmax_shift;
-    const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT</span>`,
-      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点${CT.source === "sat" ? "卫星" : "报文"}云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C${CT.out_of_sample_significant ? "" : " · 样本外不显著"}</span>`]] : [];
+    const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT${CT.out_of_sample_significant ? "" : " <small>不显著</small>"}</span>`,
+      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点${CT.source === "sat" ? "卫星" : "报文"}云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
     return sdSunCard("cloud", "云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
       `${d > 0 ? "+" : d < 0 ? "−" : ""}${sdN(Math.abs(d), 1)} 成`, Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
       [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]].concat(ctRow),
