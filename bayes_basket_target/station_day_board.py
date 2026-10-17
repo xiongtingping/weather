@@ -867,19 +867,27 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
     last = max(int(r["hour"]) for r in measured)
     hours = sorted(int(h) for h in table)
     if not hours or last < hours[0]:
-        return {"state": "too_early", "from_hour": hours[0] if hours else None}
+        early_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
+        return {"state": "too_early", "from_hour": hours[0] if hours else None,
+                "forecast_tmax_d1_c": round(max(early_d1), 1) if early_d1 else None}
     line = table[str(min(last, hours[-1]))]
-    sat = sum(float(r["sat_sw_wm2"]) for r in measured)
-    fc = sum(float(r["forecast"].get("sw_d1") or 0.0) for r in measured)
-    if fc < 60.0 * len(measured):
-        return {"state": "little_sun"}
+    # The fit's own window and gate: hour-ending stamps 05..H, and a day-ahead
+    # forecast of at least 60 W/m² an hour over them.  Counting the night
+    # hours 00-04 as well (as this did) raised the bar by up to five hours'
+    # worth and turned sunny mornings into "little_sun".
+    window = [r for r in measured if int(r["hour"]) >= 5]
+    sat = sum(float(r["sat_sw_wm2"]) for r in window)
+    fc = sum(float(r["forecast"].get("sw_d1") or 0.0) for r in window)
+    tmax_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
+    if not window or fc < 60.0 * len(window):
+        return {"state": "little_sun", "last_hour": last, "forecast_tmax_d1_c": round(max(tmax_d1), 1) if tmax_d1 else None,
+                "pct_d1": round(100.0 * (sat - fc) / fc, 1) if fc > 0 else None}
     pct = 100.0 * (sat - fc) / fc
     clip = float(fit.get("x_clip_pct") or 80.0)
     x = max(-clip, min(clip, pct))
     side, ci = ("dark", "dark_ci95") if x < 0 else ("bright", "bright_ci95")
     shift = lambda b: float(line["intercept_c"]) + b / 10.0 * x
     lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
-    tmax_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
     return {"state": "ok", "last_hour": last, "pct_d1": round(pct, 1), "shift_c": round(shift(line[side + "_c_per_10pct"]), 2),
             "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": round(max(tmax_d1), 1) if tmax_d1 else None,
             "resid_sd_c": line.get("resid_sd_c"), "r2": line.get("r2"), "n": line.get("n"),

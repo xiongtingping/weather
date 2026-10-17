@@ -39,3 +39,21 @@ def test_too_early_little_sun_and_no_satellite() -> None:
     rows, measured = _rows(sat=30.0, fc_d1=20.0)
     assert board._sun_tmax_shift(rows, measured)["state"] == "little_sun"
     assert board._sun_tmax_shift(rows, []) is None
+
+
+def test_night_hours_do_not_count_against_the_sun_gate() -> None:
+    """2026-10-17 ZUUU (「温度显示不见了」): the gate is the fit's own -- hours
+    05..H and 60 W/m² an hour over them.  Counting the dark hours 00-04 too
+    turned a fair morning into little_sun and the card vanished."""
+
+    rows = [{"hour": h, "sat_sw_wm2": (0.0 if h < 5 else 90.0) if h <= 10 else None,
+             "forecast": {"sw": 0.0, "sw_d1": 0.0 if h < 5 else 70.0, "temp_c_d1": 22.0}} for h in range(24)]
+    measured = [r for r in rows if r["sat_sw_wm2"] is not None]
+    out = board._sun_tmax_shift(rows, measured)
+    assert out["state"] == "ok" and out["last_hour"] == 10
+
+
+def test_little_sun_still_carries_the_day_ahead_maximum() -> None:
+    rows, measured = _rows(sat=30.0, fc_d1=20.0)
+    out = board._sun_tmax_shift(rows, measured)
+    assert out["state"] == "little_sun" and out["forecast_tmax_d1_c"] == 22.3 and out["pct_d1"] == 50.0
