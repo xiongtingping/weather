@@ -23606,13 +23606,19 @@ const sdWarmCls = v => v == null ? "" : v >= 0 ? "sd-warm" : "sd-cold";
 // One hour's cloud seen from above (JAXA Himawari Cloud Property, user
 // 2026-10-15 「接云」): cover share and the commonest ISCCP type in a ~25 km
 // box from the scan at the hour's middle; top height and thickness on hover.
+// The satellite's cover beside the latest forecast's total cloud (user
+// 2026-10-17 「把右列改成「卫星 · 最新预报总云」」): total against total, unlike
+// the report column's low cloud; the day-ahead total on hover.
 function sdSatCloudCell(r){
-  const C = r.sat_cloud;
-  if(!C) return `<td class="mono"><span class="muted"${r.past ? ' title="卫星云约晚 50 分钟；夜间没有"' : ""}>—</span></td>`;
-  if(C.state !== "ok") return `<td class="mono"><span class="muted" title="这次扫描站点周围没有有效反演">无反演</span></td>`;
+  const C = r.sat_cloud, f = r.forecast || {};
+  const fcTxt = f.cloud == null ? "" : `<span class="muted"> · ${sdN(f.cloud, 0)}%</span>`;
+  const fcTip = f.cloud == null ? "" : `最新预报总云 ${sdN(f.cloud, 0)}%` + (f.cloud_d1 == null ? "" : `；提前 1 天的预报总云 ${sdN(f.cloud_d1, 0)}%`);
+  if(!C) return `<td class="mono" title="${sdEsc((r.past ? "卫星云约晚 50 分钟；夜间没有。" : "") + fcTip)}"><span class="muted">—</span>${fcTxt}</td>`;
+  if(C.state !== "ok") return `<td class="mono" title="${sdEsc("这次扫描站点周围没有有效反演。" + fcTip)}"><span class="muted">无反演</span>${fcTxt}</td>`;
   const tip = `扫描 ${sdLocal(C.scan_utc, true)}（当地）· 有效格点 ${C.cells}`
-    + (C.top_km != null ? ` · 云顶 ${sdN(C.top_km, 1)} km` : "") + (C.optical_thickness != null ? ` · 光学厚度 ${sdN(C.optical_thickness, 1)}` : "");
-  return `<td class="mono" title="${sdEsc(tip)}"><b>${sdN(100 * C.cover, 0)}%</b>${C.cover > 0 && C.type_name ? ` <span class="muted">${sdEsc(C.type_name)}</span>` : ""}</td>`;
+    + (C.top_km != null ? ` · 云顶 ${sdN(C.top_km, 1)} km` : "") + (C.optical_thickness != null ? ` · 光学厚度 ${sdN(C.optical_thickness, 1)}` : "")
+    + (fcTip ? `；${fcTip}` : "");
+  return `<td class="mono" title="${sdEsc(tip)}"><b>${sdN(100 * C.cover, 0)}%</b>${C.cover > 0 && C.type_name ? ` <span class="muted">${sdEsc(C.type_name)}</span>` : ""}${fcTxt}</td>`;
 }
 function sdRadTotal(R){
   const at = R.capture_state === "matched" ? R.captured_at_utc : null;
@@ -23871,7 +23877,7 @@ function sdSky(day){
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
     <div class="sd-pnl-g sd-sun-g">${cards}</div>
-    ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报总云">云 <span class="muted">实况 · 预报（METAR 低云）</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云">云 <span class="muted">卫星</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
+    ${sdSkyTable(rows, future.length, `<thead><tr><th>当地</th><th title="报文低云（1500 m 以下）· 预报低云；悬停看提前 1 天的预报总云">云 <span class="muted">实况 · 预报（METAR 低云）</span></th>${satCloud ? `<th title="JAXA Himawari 云产品（P-Tree 官方）：该小时中点那次 10 分钟扫描，站点周围约 25 km 内判为有云的格点占比与最常见云型；卫星看得到中高云和薄云，报文只报低云；后面是最新预报的总云（低中高云合计），悬停看提前 1 天的预报总云">云 <span class="muted">卫星 · 最新预报总云</span></th>` : ""}<th title="${sat.product ? `卫星实测（${sdEsc(sat.label)}，${sdEsc(sat.via || "经 Open-Meteo 转发，约晚 1 小时")}）· 预报` : "无卫星覆盖：按报文云量推算（≈）· 预报"}">日照 W/m² <span class="muted">${sat.product ? "卫星" : "推算"} · 预报</span></th><th>气温 <span class="muted">实况 · 预报</span></th><th>报文云 / 能见度 / 天气</th><th>偏离</th></tr></thead>`)}
     <div class="sd-sub"><span class="pill sd-warm">偏暖</span> <span class="muted">少云 · 日照强 · 气温高</span>　<span class="pill sd-cold">偏冷</span> <span class="muted">多云 · 日照弱 · 气温低 · 霾雾 · 降水</span></div>
     <div class="muted sd-sub">机场不测辐射：${sat.product ? `日照取卫星实测（${sdEsc(sat.label)}），按报文云量推算的值在霾与中高云下会偏高（10-09 成都推算 483–807 对卫星 83–254 W/m²），只放在悬停里` : "这个站没有卫星覆盖，日照按报文云量推算（≈），霾与中高云下会偏高"}；报文只报低云，所以云对比的是预报低云。门槛：云差 ≥3 成、日照差 ≥25% 且 ≥100 W/m²、气温差 ≥1°C、能见度 &lt;8 km。</div>
     <div class="muted sd-sub">${sdEsc(H.source)}，取于 ${sdLocal(H.fetched_at_utc, true)}</div></details>`;
