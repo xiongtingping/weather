@@ -227,9 +227,16 @@ def stalled_cross_scopes(
 ) -> list[dict[str, Any]]:
     """Cross scopes whose every live activation ends by ``horizon_text``."""
 
+    # Read off the evidence index alone (2026-10-17, user 「看板轻量状态节变慢
+    # 10–30 倍」): every column here is in it, so no row is fetched.  The
+    # planner's choice, the kind index, fetched each of ~850,000 cross rows
+    # from the table to test its window -- 175 s cold, the board's
+    # certificate section at 191-404 s; the covering scan is ~18 s cold and
+    # returns the same rows.
     rows = conn.execute(
         f"SELECT station_id,season_bin,lead_bucket,"
         f"MAX(valid_until_utc),COUNT(*) FROM {ACTIVATION_TABLE} "
+        f"INDEXED BY calibration_native_activation_evidence_idx "
         f"WHERE artifact_kind=? AND authority_scope=? "
         f"AND valid_from_utc<=? AND valid_until_utc>? "
         f"GROUP BY station_id,season_bin,lead_bucket "

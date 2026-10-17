@@ -4507,9 +4507,11 @@ SSOT_GROWTH_TABLES: tuple[tuple[str, str], ...] = (
     ("basket_probability_envelope", "decision_at_utc"),
     ("basket_confirmed_inventory_snapshot", "observed_at"),
     ("basket_order_state_snapshot", "observed_at"),
-    ("basket_probability_update_proof", "created_at_utc"),
+    ("basket_probability_update_proof", "decision_at_utc"),
     ("basket_probability_bridge_history", "decision_at_utc"),
-    ("basket_regime_artifact", "created_at_utc"),
+    # 10-17: both named a column the table does not have and were skipped
+    # without a word since they were listed.
+    ("basket_regime_artifact", "created_at"),
     # 2026-09-21: the full inventory of all 149 tables put this one second
     # by bytes and it was not on this list -- 8.09 GiB in 114,088 rows, 76
     # KiB each, and only three weeks deep, so roughly 368 MiB a day.  A list
@@ -4579,6 +4581,42 @@ def _live_ssot_guard() -> dict[str, Any]:
     return dict(status.get("target_ssot_capacity") or {})
 
 
+def _rows_since_by_rowid(conn: sqlite3.Connection, table: str, column: str, since: str) -> int:
+    """Rows of an append-ordered table whose ``column`` is at or after
+    ``since``, found by bisecting the rowid and counting only the tail.
+
+    2026-10-17 (user 「看板轻量状态节变慢 10–30 倍」): a ``COUNT(*) ... WHERE
+    column >= ?`` and a bare ``COUNT(*)`` per table scanned whole indexes
+    (2.4M ws snapshots, 9.0M rowids of the market registry with no index on
+    its column at all), cold off disk, and ssot_capacity took 409-636 s
+    against 45 s on 10-01.  These tables are written in time order, so the
+    first row of the last day is ~23 point reads away; the tail is then
+    counted with the time test still applied, so a straggler past the found
+    row is not counted.
+    """
+
+    lo, hi = conn.execute(f'SELECT MIN(rowid), MAX(rowid) FROM "{table}"').fetchone()
+    if hi is None:
+        return 0
+
+    def at_or_after(rowid: int) -> tuple[int, Any] | None:
+        return conn.execute(
+            f'SELECT rowid, "{column}" FROM "{table}" WHERE rowid >= ? ORDER BY rowid LIMIT 1', (rowid,)
+        ).fetchone()
+
+    left, right = int(lo), int(hi) + 1
+    while left < right:
+        mid = (left + right) // 2
+        row = at_or_after(mid)
+        if row is None or (row[1] is not None and str(row[1]) >= since):
+            right = mid
+        else:
+            left = int(row[0]) + 1
+    return int(conn.execute(
+        f'SELECT COUNT(*) FROM "{table}" WHERE rowid >= ? AND "{column}" >= ?', (left, since)
+    ).fetchone()[0])
+
+
 def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
     """The store against its own ceiling, and which tables are eating it.
 
@@ -4623,13 +4661,7 @@ def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
             columns = {str(row[1]) for row in info}
             if column not in columns:
                 continue
-            rows = conn.execute(
-                f'SELECT COUNT(*) FROM "{name}" WHERE "{column}" >= ?',
-                (since,),
-            ).fetchone()[0]
-            total = conn.execute(
-                f'SELECT COUNT(*) FROM "{name}"'
-            ).fetchone()[0]
+            rows = _rows_since_by_rowid(conn, name, column, since)
             # Row width from the newest rows, which is what the next day
             # will be written at.  Older rows are a different size on
             # several of these -- the ws snapshot's grew from 8.9 KB to
@@ -4648,7 +4680,6 @@ def collect_ssot_capacity(conn: sqlite3.Connection) -> dict[str, Any]:
         retained = name in SSOT_RETAINED_TABLES
         tables.append({
             "table": name,
-            "rows_total": int(total),
             "rows_per_day": int(rows),
             "row_bytes": float(width),
             "bytes_per_day": float(rows) * float(width),
@@ -13917,8 +13948,11 @@ SECTION_CACHE_TTL_SEC = {
     # one render.
     "scorecard_previous": 183 * 60,
     # History depth and seats per model family (collect_member_depth): walks
-    # every member row, moves by days, colours no light.
-    "member_depth": 189 * 60,
+    # every member row, moves by days, colours no light.  A day since 10-17
+    # (user 「看板轻量状态节变慢 10–30 倍」): every ~3 h it cost 515 s cold of
+    # the research render's ~43,000 s a day, ~4,100 s a day for numbers that
+    # move by days; staggered off chain_volume and ssot_capacity.
+    "member_depth": 23 * 60 * 60 + 23 * 60,
     # Charter 206's certificate clock: its red is a certificate ending inside
     # three days or evidence a month old, so an hour's page is nothing
     # against it -- and it read for 38-208 s a render (per-scope counts over
