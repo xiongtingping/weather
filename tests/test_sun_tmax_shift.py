@@ -68,3 +68,14 @@ def test_cloud_shift_reads_the_cards_own_basis_and_carries_the_out_of_sample_ver
     out = board._cloud_tmax_shift(rows)
     assert out["state"] == "ok" and out["source"] == "report" and out["tenths"] == 5.0
     assert out["shift_c"] < out["range_c"][1] + 1e-9 and isinstance(out["out_of_sample_significant"], bool)
+
+
+def test_matching_the_forecast_reads_zero() -> None:
+    """2026-10-17 「可以」: ΔT is the observation's own part, slope x
+    difference; the lines' intercepts (basis offsets, not weather) are left
+    out, so a morning exactly as forecast reads 0."""
+
+    rows, measured = _rows(sat=500.0, fc_d1=500.0)
+    assert board._sun_tmax_shift(rows, measured)["shift_c"] == 0.0
+    cloud = [{"hour": h, "past": h <= 11, "forecast": {"cloud_low": 50.0}, "obs": {"cloud_cover": 0.5}} for h in range(24)]
+    assert board._cloud_tmax_shift(cloud)["shift_c"] == 0.0

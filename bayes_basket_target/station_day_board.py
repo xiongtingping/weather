@@ -882,7 +882,11 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
     clip = float(fit.get("x_clip_wm2") or 300.0)
     x = max(-clip, min(clip, diff))
     side, ci = ("dark", "dark_ci95") if x < 0 else ("bright", "bright_ci95")
-    shift = lambda b: float(line["intercept_c"]) + b / 100.0 * x
+    # The sunshine's own part only, slope x difference (user 2026-10-17 「可以」,
+    # after the cloud card's +4% read +0.1 °C off the intercept): 0 when the
+    # satellite matches the forecast.  The intercept is a basis offset, not
+    # sunshine.
+    shift = lambda b: b / 100.0 * x
     lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
     return {"state": "ok", "last_hour": last, "wm2_d1": round(diff, 1), "shift_c": round(shift(line[side + "_c_per_100wm2"]), 2),
             "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": tmax,
@@ -931,7 +935,11 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
     clip = float(fit.get("x_clip_tenths") or 6.0)
     xc = max(-clip, min(clip, x))
     side = "clear" if xc < 0 else "cloudy"
-    shift = lambda b: float(line["intercept_c"]) + b * xc
+    # The cloud's own part only, slope x difference (user 2026-10-17 「可以」):
+    # 0 when the report matches the forecast; the line's intercept (+0.12 °C,
+    # the report-vs-forecast cloud definitions differing on average) is not
+    # weather and is left out.
+    shift = lambda b: b * xc
     lo, hi = sorted((shift(line[side + "_ci95"][0]), shift(line[side + "_ci95"][1])))
     cv = line.get("cv_vs_mean_only") or [None, None, None]
     return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths": round(x, 1),
