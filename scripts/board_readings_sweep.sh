@@ -41,7 +41,10 @@ done
 # turn), and wait for the WAL to come down instead of skipping the hour
 # (scripts/lib/ssot_reader_turn.sh, 2026-10-17).
 . "$PROJECT_DIR/scripts/lib/ssot_reader_turn.sh"
-if ! ssot_reader_turn board_readings "$WAIT_SEC"; then
+# The turn may be held a long while (the board readings' realisation refits
+# run up to 30 min a stage), so wait most of the hour for it: launchd does not
+# stack these hourly jobs, and a skipped hour is what starved the pages.
+if ! ssot_reader_turn board_readings "${PM_SSOT_READER_TURN_WAIT_SEC:-3000}"; then
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] board readings skipped: $SSOT_READER_REASON"
   exit 0
 fi
