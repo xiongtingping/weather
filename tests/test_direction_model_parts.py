@@ -62,4 +62,4 @@ def test_the_card_draws_four_rows_and_the_total() -> None:
     for piece in ("ECMWF 风（取反）|+1.16|+0.037", "ICON 日照|+0.72|+0.010", "六家露点|−0.10|+0.004",
                   "动量 M/2|−0.06|−0.003", "合计＝模型分|+0.048"):
         assert piece in text, (piece, text)
-    assert "${sdDirParts(D)}" in DASHBOARD
+    assert "sdDirParts(D)" in DASHBOARD[DASHBOARD.index("function sdDirection("):]

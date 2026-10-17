@@ -63,7 +63,8 @@ def test_a_quiet_momentum_names_the_model_and_shows_its_score() -> None:
     main, body = out.split("##")
     assert "偏暖|按模型" in main and "模型 +0.034" in main and "M −0.65" in main
     # Agreement is read against the shift's sign: −0.03 °C is the cold way.
-    assert "与辐射平移反向" in body
+    # (Since the 10-17 redesign it sits under the call, in the card's first column.)
+    assert "与辐射平移反向" in main
 
 
 def test_a_speaking_momentum_names_itself_and_no_model_score() -> None:

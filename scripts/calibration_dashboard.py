@@ -16176,8 +16176,20 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-pair>*{flex:1 1 300px;min-width:0;margin:0!important}
 .sd-pair:empty{display:none}
-.sd-dir-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.sd-dir-split{grid-template-columns:minmax(0,1fr)}}
+.sd-dir-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1.25fr);gap:22px;align-items:start;margin:4px 0 6px;flex:1 1 100%;color:var(--text)}
+/* The grid sits in the card's main row, whose bold type is headline-sized: only the call itself keeps it. */
+.sd-evidence-main .sd-dir-grid b{font-size:inherit;font-weight:700}
+.sd-evidence-main .sd-dir-head>b{font-size:20px;font-weight:800;color:var(--c)}
+.sd-evidence-main .sd-dir-head>b.sd-evidence-primary{font-size:34px;line-height:1.1}
+.sd-evidence-main .sd-dir-head>b.sd-dir-quiet{color:var(--muted)}
+.sd-dir-grid>.sd-dir-col+.sd-dir-col{border-left:1px solid var(--line);padding-left:18px}
+.sd-dir-colh{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px}
+.sd-dir-head{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.sd-dir-agree{font-size:12px;color:var(--muted);margin-top:6px}
+.sd-dir-grid .sd-dps{margin-top:0}
+.sd-dp.sd-dp-c{grid-template-columns:8.6em 2.6em minmax(50px,1fr) 4.6em}
+.sd-dp.sd-dp-c>b{white-space:nowrap;text-align:right}
+@media (max-width:1100px){.sd-dir-grid{grid-template-columns:minmax(0,1fr)}.sd-dir-grid>.sd-dir-col+.sd-dir-col{border-left:none;padding-left:0;border-top:1px solid var(--line);padding-top:10px}}
 .sd-dir-change{color:var(--text);font-size:13.5px;line-height:1.6;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--c) 10%,transparent)}
 .sd-dir-change.sd-dir-fresh{background:color-mix(in srgb,var(--c) 22%,transparent)}
 .sd-dir-new{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;margin-right:6px;border-radius:8px;background:var(--c);color:var(--card)}
@@ -23259,21 +23271,42 @@ function sdDirection(D, R){
     + `<b class="${D.momentum_side ? "" : "sd-dir-quiet"}" title="ECMWF 动量（最新一轮减上一轮）：${sdEsc(mWord)}，|M|＜${sdN(quiet,0)} 为静默、不定方向">M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}</b>`
     + `<b title="市场众数桶与其概率">${mode.state === "ok" ? `众数 ${sdEsc(mode.mode)} <span class="sd-sub">${sdPc(mode.mode_q,0)}</span>` : "众数暂无"}</b>`;
   const hist = D.history || [];
-  const comps = Object.entries(D.momentum_components || {}).map(([k, c]) =>
-    `${sdEsc(SD_DIR_COMPONENTS[k] || k)} ${sdSg(c.delta_c,2)}°C（${sdEsc(String(c.newest_run_init_utc || "").slice(5,16).replace("T"," "))}Z 对 ${sdEsc(String(c.older_run_init_utc || "").slice(5,16).replace("T"," "))}Z）`).join("；");
   const X = D.physics || {};
+  // Three columns (user 2026-10-17 「重新设计优化排版」): the call and what moved
+  // it | the four-feature score taken apart | where M comes from (each run's
+  // change, one bar each) and M through the day; one footnote under all.
+  const verdict = `<div class="sd-dir-col"><div class="sd-dir-colh">判断</div><div class="sd-dir-head">${main}</div>
+    ${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}
+    ${agree ? `<div class="sd-dir-agree">${agree}</div>` : ""}</div>`;
+  const C = Object.entries(D.momentum_components || {});
+  const cmax = Math.max(0.5, ...C.map(([, c]) => Math.abs(c.delta_c || 0)));
+  const compRows = C.map(([k, c]) => {
+    const v = c.delta_c || 0, w = Math.min(50, 50 * Math.abs(v) / cmax), col = v > 0 ? "var(--amber)" : v < 0 ? SD_COL.P0 : "var(--muted)";
+    const tip = `${SD_DIR_COMPONENTS[k] || k}：最新一轮 ${String(c.newest_run_init_utc || "").slice(5, 16).replace("T", " ")}Z 对上一轮 ${String(c.older_run_init_utc || "").slice(5, 16).replace("T", " ")}Z，当日最高温 ${sdSg(v, 2)}°C`;
+    return `<div class="sd-dp sd-dp-c" title="${sdEsc(tip)}"><span>${sdEsc(String(SD_DIR_COMPONENTS[k] || k).replace(/（.*）/, ""))}</span><span class="mono muted">${sdDirRun(c.newest_run_init_utc)}</span>`
+      + `<span class="sd-dpb"><i style="${v >= 0 ? "left:50%" : `left:${50 - w}%`};width:${w}%;background:${col}"></i></span><b class="mono" style="color:${col}">${sdSg(v, 2)}°</b></div>`;
+  }).join("");
+  // M through the day: the quiet band shaded, each reading a dot in its side's colour.
+  let trend = "";
+  const pts = hist.filter(h => h.momentum != null);
+  if(pts.length > 1){
+    const W = 300, Hh = 64, lim = Math.max(quiet * 1.5, ...pts.map(h => Math.abs(h.momentum)));
+    const x = i => 6 + (W - 12) * i / (pts.length - 1), y = v => Hh / 2 - (Hh / 2 - 6) * v / lim;
+    const band = `<rect x="0" y="${y(quiet).toFixed(1)}" width="${W}" height="${(y(-quiet) - y(quiet)).toFixed(1)}" fill="var(--muted)" opacity=".12"/>`;
+    const line = `<polyline points="${pts.map((h, i) => `${x(i).toFixed(1)},${y(h.momentum).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.2"/>`;
+    const dots = pts.map((h, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(h.momentum).toFixed(1)}" r="3.2" fill="${sdDirColor(h.side)}"><title>${sdEsc(`${sdLocal(h.at_utc, true)} · ${sdDirWord(h.side)} · M ${sdSg(h.momentum, 2)} · 众数 ${h.mode || "—"} · 最新一轮 ${sdDirRun(h.newest_run_utc)}`)}</title></circle>`).join("");
+    trend = `<div class="sd-dir-colh" style="margin-top:10px">M 走势 <span class="muted">（灰带＝静默 |M|＜${sdN(quiet, 0)}）</span></div>
+      <svg class="sd-svg" viewBox="0 0 ${W} ${Hh}" width="100%" style="max-width:${W}px" role="img" aria-label="动量 M 的走势">${band}<line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)"/>${line}${dots}</svg>
+      <div class="muted sd-sub">${sdLocal(pts[0].at_utc, true)} → ${sdLocal(pts[pts.length - 1].at_utc, true)} · ${pts.length} 次</div>`;
+  }
+  const source = `<div class="sd-dir-col"><div class="sd-dir-colh">动量来源 <span class="muted">最新一轮 − 上一轮</span></div>${compRows ? `<div class="sd-dps">${compRows}</div>` : '<div class="muted sd-sub">无两轮可比</div>'}${trend}</div>`;
+  const parts = `<div class="sd-dir-col">${sdDirParts(D) || '<div class="muted sd-sub">无模型分</div>'}<div class="muted sd-sub" style="margin-top:6px">物理特征 ${sdEsc(X.lag || "—")}${X.fetched_at_utc ? " · 取于 " + sdLocal(X.fetched_at_utc, true) : ""}</div></div>`;
   const log = hist.slice().reverse().map(h =>
     `<tr><td>${sdLocal(h.at_utc,true)}</td><td style="color:${sdDirColor(h.side)}">${sdDirWord(h.side)}</td><td>${sdSg(h.momentum,2)}${sdMomTier(h.momentum)}</td><td>${sdEsc(h.mode || "—")}</td><td>${sdDirRun(h.newest_run_utc)}</td></tr>`).join("");
-  // The contribution chart on the left, the details beside it (user
-  // 2026-10-17 「把方向卡单独排一行」「贡献图和细节左右排列」).
-  const body = `<div class="sd-dir-split"><div>${sdDirChange(hist[hist.length-1], hist.length > 1 ? hist[hist.length-2] : null)}${sdDirParts(D)}</div>
-    <details open><summary>细节</summary>
-    <div>${agree ? agree + " · " : ""}ECMWF 动量 M ${sdSg(D.momentum,2)}${sdMomTier(D.momentum)}（${mWord}）${comps ? " · " + comps : ""}</div>
-    <div>四特征模型分 ${sdSg(D.model_score,3)}（${sdDirWord(D.model_side)}）· ICON 日照 z ${sdSg(X.icon_shortwave,2)} · 六家露点 z ${sdSg(X.dew_point_consensus,2)} · ECMWF 风 z（反号）${sdSg(X.ecmwf_wind_inverse,2)} · ${sdEsc(X.lag || "—")}</div>
-    ${log ? `<table class="sd-tab sd-dir-log"><thead><tr><th>变化于</th><th>方向</th><th>M</th><th>众数</th><th>最新一轮</th></tr></thead><tbody>${log}</tbody></table>` : ""}
-    <div>算于 ${sdLocal(D.computed_at_utc,true)}；物理特征来自 Open-Meteo（转发源，只作执行参考）${X.fetched_at_utc ? "，取于 " + sdLocal(X.fetched_at_utc,true) : ""}；样本内成立、前推验证中。</div>
-    </details></div>`;
-  return {color: sdDirColor(D.side), main, body};
+  const grid = `<div class="sd-dir-grid">${verdict}${parts}${source}</div>`;
+  const body = `${log ? `<details class="sd-sub"><summary class="muted">变化记录（${hist.length} 条）</summary><table class="sd-tab sd-dir-log"><thead><tr><th>变化于</th><th>方向</th><th>M</th><th>众数</th><th>最新一轮</th></tr></thead><tbody>${log}</tbody></table></details>` : ""}
+    <div class="muted sd-sub">算于 ${sdLocal(D.computed_at_utc,true)} · 先看 ECMWF 动量 M（${sdEsc(mWord)}），静默时看四特征模型 · 物理特征来自 Open-Meteo（转发源，只作执行参考）· 样本内成立、前推验证中</div>`;
+  return {color: sdDirColor(D.side), main: grid, body};
 }
 // Each series' skew, by probability (user 2026-10-10 the card beside the
 // radiation card; 2026-10-11 「不要按照均值桶和众数桶为一个桶统计，而是按照概率来
