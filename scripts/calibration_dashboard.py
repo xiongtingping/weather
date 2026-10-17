@@ -22423,7 +22423,7 @@ function sdRender(){
   const days = d.days || [];
   if(!days.some(x => x.event_date === SD.dayTab)) SD.dayTab = (days.find(x => x.role === "today") || days[0] || {}).event_date || null;
   const tabs = `<div class="sd-tabs" role="tablist">${days.map(x => `<button type="button" role="tab" class="sd-daytab${
-      x.event_date === SD.dayTab ? " on" : ""}" data-sd-tab="${sdEsc(x.event_date)}" aria-selected="${x.event_date === SD.dayTab}">${
+      x.event_date === SD.dayTab ? " on" : ""}" data-sd-tab="${sdEsc(x.event_date)}" data-sd-role="${sdEsc(x.role)}" aria-selected="${x.event_date === SD.dayTab}">${
       SD_ROLE_WORD[x.role] || x.role} ${sdEsc(x.event_date.slice(5))}${
       x.available && x.head_stage ? ` <span class="muted">${sdEsc(x.head_stage)}</span>` : ""}${
       pk && x.role === "today" ? ` <span class="muted" title="${sdEsc(pastNote.replace(/<[^>]+>/g, ""))}">已过峰</span>` : ""}</button>`).join("")}</div>`;
@@ -25189,7 +25189,10 @@ document.getElementById("app").innerHTML =
   // when clicked -- the first one, i.e. today's while today is on the board.
   // 今日/明日 are the panel's day tabs: the entry switches the tab and lands on
   // it; the rest are searched in the day showing.
-  const SD_PARTS = [["全队偏态", ".sd-t", "全队"], ["今日", "tab", "今日"], ["明日", "tab", "明日"],
+  // The day tabs are found by their role, not their label: tomorrow's tab
+  // reads "D+1 10-18", so the text "明日" never matched and the entry did
+  // nothing (user 2026-10-17 「点击导航栏的“明日”，无法切换至“明日”视角」).
+  const SD_PARTS = [["全队偏态", ".sd-t", "全队"], ["今日", "tab", "today"], ["明日", "tab", "ahead"],
     ["证据", ".sd-t", "证据："], ["逐小时实况对预报", "summary", "逐小时实况对预报", "hot"], ["TAF", "summary", "最新 TAF"],
     ["METAR", "summary", "METAR/SPECI"], ["篮子计算器", ".sd-t", "篮子计算器"]];
   // "hot" entries stand out (user 2026-10-15「逐小时云与辐射：实况对预报：改为
@@ -25296,7 +25299,7 @@ document.getElementById("app").innerHTML =
     if(part){
       const [sel, text] = part.dataset.sdPart.split("|");
       if(sel === "tab"){
-        const tab = [...document.querySelectorAll("#sd-body .sd-daytab[data-sd-tab]")].find(b => b.textContent.includes(text));
+        const tab = [...document.querySelectorAll("#sd-body .sd-daytab[data-sd-tab]")].find(b => b.dataset.sdRole === text);
         if(tab) tab.click();
         goTo(document.querySelector("#sd-body .sd-tabs"));
         return;
