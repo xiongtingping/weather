@@ -23764,7 +23764,7 @@ function sdSky(day){
       .concat(rainCell ? [`<span class="sd-r4 ${SD_RAIN4[rainCell][2]}" title="${sdEsc(`雨：预报 ${sdN(f.precip_mm, 1)} mm（≥0.1 mm 算有雨）· 报文${o.precip ? "报了" : "没报"}降水`)}">${SD_RAIN4[rainCell][0]}</span>`] : []).join(" ");
     return `<tr class="${r.past || o ? "" : "sd-future"}">
       <td class="mono"><b>${String(r.hour).padStart(2, "0")}:00</b></td>
-      ${pair(cloudObs, pc0(f.cloud_low), f.cloud_low_d1 == null ? null : `低云 ${pc0(f.cloud_low_d1)}（总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
+      ${pair(cloudObs, pc0(f.cloud_low), f.cloud_d1 == null ? null : `总云 ${pc0(f.cloud_d1)}（最新预报总云 ${pc0(f.cloud)}）`, tone(r, "cloud"))}
       ${satCloud ? sdSatCloudCell(r) : ""}
       ${sat.product
         ? pair(r.sat_sw_wm2 != null ? w(r.sat_sw_wm2) : scanHour === Number(r.hour) ? scanCell
@@ -23811,9 +23811,14 @@ function sdSky(day){
   const cloudCard = !cloudPairs.length ? "" : (() => {
     const ob = avg(0), fc = avg(1), d = (ob - fc) / 10;
     const hrs = cloudPairs.map(x => Number(x[2]));
+    // ΔT on the day-ahead maximum (user 2026-10-17 「云卡仍显示 ΔT，标灰并注明
+    // 样本外不显著」): grey unless that hour's line beat the mean out of sample.
+    const CT = H.cloud_tmax_shift;
+    const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT</span>`,
+      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点${CT.source === "sat" ? "卫星" : "报文"}云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C${CT.out_of_sample_significant ? "" : " · 样本外不显著"}</span>`]] : [];
     return sdSunCard("cloud", "云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
       `${d > 0 ? "+" : d < 0 ? "−" : ""}${sdN(Math.abs(d), 1)} 成`, Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
-      [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]],
+      [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]].concat(ctRow),
       `${satCloud ? "卫星云量（JAXA Himawari 云产品，站点周围约 25 km 判为有云的格点占比，白天才有）对预报总云" : "报文低云（1500 m 以下）对预报低云"}，${cloudPairs.length} 个小时的平均；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`);
   })();
   // Dew point, wind and rain beside the sun and cloud (user 2026-10-15「右边还有

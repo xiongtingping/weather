@@ -42,7 +42,7 @@ HOURS = range(9, 18)
 X_CLIP = 6.0            # 成
 MIN_STATION_DAYS = 8
 FOLDS = 5
-OUT = HERE / "results.json"
+OUT = ROOT / "config" / "ui" / "cloud_tmax_shift_v1.json"
 
 
 def utc(s):

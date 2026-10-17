@@ -890,6 +890,58 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
             "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
 
 
+# Morning cloud -> the day's maximum (user 2026-10-17 「云 · 实况对比预报：计算
+# 拟合一个对于温度的∆数据」「云卡仍显示 ΔT，标灰并注明样本外不显著」): the
+# two-slope line of docs/research/cloud_tmax_shift_20261017/fit.py, per source
+# (JAXA cloud product where it sees the station, else the report's cover) and
+# last hour, on the day-ahead total cloud.  Out of sample it does not beat the
+# mean at most hours; the reading carries that verdict for the card.
+CLOUD_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "cloud_tmax_shift_v1.json"
+
+
+def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    try:
+        fit = json.loads(CLOUD_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unfitted"}
+    table = fit.get("by_last_hour") or {}
+    hours = sorted(int(h) for h in table)
+    sat_pairs, rep_pairs = [], []
+    for r in rows:
+        h, f = int(r["hour"]), r.get("forecast") or {}
+        fc = f.get("cloud_d1")
+        if not r.get("past") or h < 5 or fc is None:
+            continue
+        c = r.get("sat_cloud") or {}
+        if c.get("state") == "ok" and c.get("cover") is not None:
+            sat_pairs.append((h, 10.0 * (float(c["cover"]) - fc / 100.0)))
+        o = r.get("obs") or {}
+        if o.get("cloud_cover") is not None:
+            rep_pairs.append((h, 10.0 * (float(o["cloud_cover"]) - fc / 100.0)))
+    source, pairs = ("sat", sat_pairs) if sat_pairs else ("report", rep_pairs)
+    if not pairs:
+        return None
+    last = max(h for h, _ in pairs)
+    if not hours or last < hours[0]:
+        return {"state": "too_early", "from_hour": hours[0] if hours else None, "source": source}
+    if len(pairs) < max(2, (last - 5) // 2):
+        return {"state": "too_few", "source": source}
+    line = (table[str(min(last, hours[-1]))] or {}).get(source)
+    if not line:
+        return {"state": "unfitted", "source": source}
+    x = sum(d for _, d in pairs) / len(pairs)
+    clip = float(fit.get("x_clip_tenths") or 6.0)
+    xc = max(-clip, min(clip, x))
+    side = "clear" if xc < 0 else "cloudy"
+    shift = lambda b: float(line["intercept_c"]) + b * xc
+    lo, hi = sorted((shift(line[side + "_ci95"][0]), shift(line[side + "_ci95"][1])))
+    cv = line.get("cv_vs_mean_only") or [None, None, None]
+    return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths_d1": round(x, 1),
+            "shift_c": round(shift(line[side + "_c_per_tenth"]), 2), "range_c": [round(lo, 2), round(hi, 2)],
+            "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
+            "window": fit.get("window")}
+
+
 def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
     row = conn.execute(
         "SELECT latitude, longitude FROM calibration_station_forecast_physics_version"
@@ -931,7 +983,7 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     extra = ["dew_point_2m", "wind_speed_10m", "precipitation"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
-        "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover"]),
+        "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover_low"]),
         "wind_speed_unit": "ms",
     })
     try:
@@ -1180,7 +1232,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         fc_row = {
             "cloud": val("cloud_cover"), "cloud_low": val("cloud_cover_low"),
             "sw": val("shortwave_radiation"), "temp_c": val("temperature_2m"),
-            "cloud_low_d1": val("cloud_cover_low", True),
+            "cloud_d1": val("cloud_cover", True),
             "dew_c": val("dew_point_2m"), "wind_mps": val("wind_speed_10m"), "precip_mm": val("precipitation"),
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
         } if times else {}
@@ -1254,6 +1306,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,
         "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
         "sun_tmax_shift": _sun_tmax_shift(rows, measured) if times else None,
+        "cloud_tmax_shift": _cloud_tmax_shift(rows) if times else None,
     }
 
 

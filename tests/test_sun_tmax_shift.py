@@ -56,3 +56,20 @@ def test_too_early_and_no_satellite() -> None:
     early = board._sun_tmax_shift(rows, measured)
     assert early["state"] == "too_early" and early["forecast_tmax_d1_c"] == 22.3
     assert board._sun_tmax_shift(rows, []) is None
+
+
+def test_cloud_shift_reads_its_source_and_carries_the_out_of_sample_verdict() -> None:
+    """2026-10-17 「云卡仍显示 ΔT，标灰并注明样本外不显著」: the satellite cover
+    where it is seen, else the report's; mean (cover - day-ahead total cloud)
+    over 05..H in tenths; the line's out-of-sample verdict rides along."""
+
+    rows = [{"hour": h, "past": h <= 11, "forecast": {"cloud_d1": 80.0},
+             "sat_cloud": {"state": "ok", "cover": 0.3} if 5 <= h <= 11 else None,
+             "obs": {"cloud_cover": 0.9}} for h in range(24)]
+    out = board._cloud_tmax_shift(rows)
+    assert out["state"] == "ok" and out["source"] == "sat" and out["tenths_d1"] == -5.0
+    assert out["shift_c"] > 0 and isinstance(out["out_of_sample_significant"], bool)
+    for r in rows:
+        r["sat_cloud"] = None
+    rep = board._cloud_tmax_shift(rows)
+    assert rep["source"] == "report" and rep["tenths_d1"] == 1.0
