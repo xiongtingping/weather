@@ -39,3 +39,24 @@ def test_the_sweep_calls_each_due_stage_with_its_own_timeout() -> None:
     loop = text[text.index('for stage in $("$PY" scripts/refit_realisation_layer.py --list-due)'):]
     loop = loop[:loop.index("done")]
     assert "run_with_timeout" in loop and '--stage "$stage"' in loop
+
+
+def test_a_stage_killed_by_its_timeout_is_not_offered_again_for_six_hours(tmp_path, monkeypatch) -> None:
+    """2026-10-17: P0 and P1 ran their full 1,800 s, were killed, were due again
+    the next hour, and held the shared SSOT reader turn ~1.5 h an hour."""
+
+    import os
+    import time
+    import refit_realisation_layer as R
+
+    monkeypatch.setattr(R, "ATTEMPT_DIR", tmp_path)
+    mark = tmp_path / "P0.started"
+    mark.touch()
+    assert not R._killed_recently("P0"), "a stage still inside its timeout is running, not killed"
+    old = time.time() - 30 * 60
+    os.utime(mark, (old, old))
+    assert R._killed_recently("P0")
+    ancient = time.time() - 7 * 3600
+    os.utime(mark, (ancient, ancient))
+    assert not R._killed_recently("P0"), "after the backoff it is offered again"
+    assert not R._killed_recently("P1"), "no mark, no backoff"
