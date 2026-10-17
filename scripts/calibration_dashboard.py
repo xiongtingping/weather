@@ -14362,10 +14362,42 @@ def _refusal_history_window(conn: sqlite3.Connection) -> tuple[str | None, str]:
     return first_day, through
 
 
+#: Closed station-days of the refusal history, kept across renders.
+RENDER_REFUSAL_HISTORY_DAYS = "_refusal_history_days.json"
+
+
 def _collect_refusal_history(
     conn: sqlite3.Connection, first_day: str, through: str,
 ) -> dict[str, Any]:
-    return live_selection.closed_plan_summaries(conn, first_day, through)
+    """``closed_plan_summaries`` for the window, reading only the new days.
+
+    A closed day's opening plans do not change, but the window's end moves
+    every day, so the section was recomputed whole daily: every P0 fact
+    since 08-31 with its ~63 KB feature_json, 460 s by 10-13, and it lost
+    each read to the writer from then on (stale 108 h on 10-17, user
+    「拒单历史 6470 分钟前（超期）」).  The days already summarised are kept
+    and only the days after them are read.
+    """
+
+    code = _section_fingerprint(
+        live_selection.closed_plan_summaries,
+        _section_fingerprint(live_selection._plan_summaries, live_selection._PLAN_FACTS_SQL),
+    )
+    kept = _load_closed_readings(RENDER_REFUSAL_HISTORY_DAYS)
+    if kept.get("code") != code or str(kept.get("first_day") or "9999") > first_day:
+        kept = {}
+    kept_through = str(kept.get("through") or "")
+    days = {
+        key: value for key, value in (kept.get("days") or {}).items()
+        if first_day <= key.split("|", 1)[1] <= through
+    }
+    read_from = max(first_day, _next_iso_day(kept_through)) if kept_through else first_day
+    if read_from <= through:
+        days.update(live_selection.closed_plan_summaries(conn, read_from, through)["days"])
+        _save_closed_readings(RENDER_REFUSAL_HISTORY_DAYS, {
+            "code": code, "first_day": first_day, "through": through, "days": days,
+        })
+    return {"first_day": first_day, "through": through, "days": days}
 
 
 def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
