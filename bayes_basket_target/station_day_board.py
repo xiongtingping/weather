@@ -893,9 +893,10 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
 # Morning cloud -> the day's maximum (user 2026-10-17 「云 · 实况对比预报：计算
 # 拟合一个对于温度的∆数据」「云卡仍显示 ΔT，标灰并注明样本外不显著」): the
 # two-slope line of docs/research/cloud_tmax_shift_20261017/fit.py, per source
-# (JAXA cloud product where it sees the station, else the report's cover) and
-# last hour, on the day-ahead total cloud.  Out of sample it does not beat the
-# mean at most hours; the reading carries that verdict for the card.
+# and last hour.  Since 「保持口径一致」 the line is the card's own basis: the
+# report's cover against the latest forecast's low cloud (the day-ahead low
+# cloud is not archived).  Out of sample it does not beat the mean; the
+# reading carries that verdict for the card.
 CLOUD_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "cloud_tmax_shift_v1.json"
 
 
@@ -906,21 +907,15 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
         return {"state": "unfitted"}
     table = fit.get("by_last_hour") or {}
     hours = sorted(int(h) for h in table)
-    sat_pairs, rep_pairs = [], []
+    # The card's own basis (user 2026-10-17 「保持口径一致」): the report's cover
+    # against the latest forecast's low cloud, hour by hour.
+    rep_pairs = []
     for r in rows:
         h, f = int(r["hour"]), r.get("forecast") or {}
-        fc = f.get("cloud_d1")
-        if not r.get("past") or h < 5 or fc is None:
-            continue
-        c = r.get("sat_cloud") or {}
-        if c.get("state") == "ok" and c.get("cover") is not None:
-            sat_pairs.append((h, 10.0 * (float(c["cover"]) - fc / 100.0)))
+        fc = f.get("cloud_low")
         o = r.get("obs") or {}
-        if o.get("cloud_cover") is not None:
+        if r.get("past") and h >= 5 and fc is not None and o.get("cloud_cover") is not None:
             rep_pairs.append((h, 10.0 * (float(o["cloud_cover"]) - fc / 100.0)))
-    # The card reads low cloud (user 2026-10-17 「云 · 实况对比预报：改为低云」), so
-    # its ΔT reads the report line at every station; the satellite pairs stay
-    # built for the fit's other line.
     source, pairs = "report", rep_pairs
     if not pairs:
         return None
@@ -939,7 +934,7 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
     shift = lambda b: float(line["intercept_c"]) + b * xc
     lo, hi = sorted((shift(line[side + "_ci95"][0]), shift(line[side + "_ci95"][1])))
     cv = line.get("cv_vs_mean_only") or [None, None, None]
-    return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths_d1": round(x, 1),
+    return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths": round(x, 1),
             "shift_c": round(shift(line[side + "_c_per_tenth"]), 2), "range_c": [round(lo, 2), round(hi, 2)],
             "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
             "window": fit.get("window")}

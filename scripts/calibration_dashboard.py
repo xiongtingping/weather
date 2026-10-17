@@ -23844,7 +23844,7 @@ function sdSky(day){
     // 样本外不显著」): grey unless that hour's line beat the mean out of sample.
     const CT = H.cloud_tmax_shift;
     const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT${CT.out_of_sample_significant ? "" : " <small>不显著</small>"}</span>`,
-      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点报文云量比提前 1 天的预报总云平均 ${sdSg(CT.tenths_d1, 1)} 成，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
+      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点报文低云比最新预报低云平均 ${sdSg(10 * CT.tenths, 0)} 个百分点（与卡片大字同一口径），历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
     return sdSunCard("cloud", "低云 · 实况对比预报", `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`,
       // In percent, like the rows under it (user 2026-10-17 「+0.6 成改为百分比」):
       // the difference of the two covers, in percentage points.

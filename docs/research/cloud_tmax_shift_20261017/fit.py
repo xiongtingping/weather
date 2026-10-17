@@ -93,47 +93,42 @@ def load():
 
 
 def hourly_cover(frames, clp):
-    """(station, day) -> {source, cover[h] (0..1 or None), fc_cloud[h] (%), fc_tmax}."""
+    """(station, day) -> {source, cover[h], fc_cloud[h] (day-ahead LOW cloud, %), fc_tmax}.
+
+    Since 「保持口径一致」 (2026-10-17) the line is the card's own basis at every
+    station: the report's cover as the board computes it
+    (report_explain.explain_metar, the routine report at the hour) against the
+    latest forecast's low cloud (cache/, fetch_low_d1.py; the day-ahead low cloud
+    is not archived)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import report_explain as rex  # noqa: PLC0415
     arc = sqlite3.connect(f"file:{ARCHIVE}?mode=ro", uri=True, timeout=30)
+    low_d1 = {}
+    for path in (HERE / "cache").glob("*.json.gz"):
+        body = json.load(gzip.open(path, "rt"))
+        low_d1[path.name.split(".")[0]] = dict(zip(body["hourly"]["time"], body["hourly"]["cloud_cover_low"]))
     out = {}
     for (st, day), fr in frames.items():
         zone = ZoneInfo(fr["tz"])
         fc = fr["fc"]
-        if len(fc) < 24 or any(x.get("t") is None for x in fc):
+        if len(fc) < 24 or any(x.get("t") is None for x in fc) or st not in low_d1:
             continue
+        d0 = datetime.fromisoformat(day).replace(tzinfo=zone)
+        lo, hi = d0.astimezone(timezone.utc), (d0 + timedelta(days=1)).astimezone(timezone.utc)
         cover = [None] * 24
-        if st in clp:
-            source = "sat"
-            for at, c in clp[st]:
-                lh = at.astimezone(zone)
-                if lh.date().isoformat() == day:
-                    cover[lh.hour] = c
-        else:
-            source = "report"
-            d0 = datetime.fromisoformat(day).replace(tzinfo=zone)
-            lo, hi = d0.astimezone(timezone.utc), (d0 + timedelta(days=1)).astimezone(timezone.utc)
-            best = {}
-            for va, raw, temp in arc.execute(
-                    "SELECT valid_at, raw_text, reported_temperature_c FROM reported_trajectory_observations"
-                    " WHERE station_id=? AND valid_at>=? AND valid_at<? AND raw_text<>''",
-                    (st, lo.strftime("%Y-%m-%dT%H:%M:%S"), hi.strftime("%Y-%m-%dT%H:%M:%S"))):
-                try:
-                    ps = parse_metar_physical_state(raw, expected_temperature_c=None if temp is None else float(temp))
-                except Exception:  # noqa: BLE001
-                    continue
-                if ps.cloud_cover_fraction is None:
-                    continue
-                t = utc(va).astimezone(zone)
-                h = (t + timedelta(minutes=30)).hour if (t + timedelta(minutes=30)).date() == t.date() else None
-                if h is None:
-                    continue
-                gap = abs((t - t.replace(minute=0, second=0, microsecond=0)).total_seconds() - (3600 if t.minute >= 30 else 0))
-                if h not in best or gap < best[h][0]:
-                    best[h] = (gap, float(ps.cloud_cover_fraction))
-            for h, (_, c) in best.items():
-                cover[h] = c
-        out[(st, day)] = {"source": source, "cover": cover, "fc_cloud": [x.get("cloud") for x in fc],
-                          "fc_sw": [x.get("sw") or 0.0 for x in fc], "fc_tmax": max(x["t"] for x in fc)}
+        for va, raw in arc.execute(
+                "SELECT valid_at, raw_text FROM reported_trajectory_observations"
+                " WHERE station_id=? AND valid_at>=? AND valid_at<? AND raw_text<>''",
+                (st, lo.strftime("%Y-%m-%dT%H:%M:%S"), hi.strftime("%Y-%m-%dT%H:%M:%S"))):
+            t = utc(va).astimezone(zone)
+            if t.minute > 10:
+                continue
+            c = rex.explain_metar(str(raw)).get("cover")
+            if c is not None:
+                cover[t.hour] = float(c)
+        lows = [low_d1[st].get(f"{day}T{h:02d}:00") for h in range(24)]
+        out[(st, day)] = {"source": "report", "cover": cover, "fc_cloud": lows,  # latest forecast low cloud
+                          "fc_tmax": max(x["t"] for x in fc)}
     arc.close()
     return out
 
@@ -242,7 +237,7 @@ def main() -> None:
     for hour in HOURS:
         rows = rows_for(hour, days, truth, sun)
         entry = {}
-        for src in ("sat", "report"):
+        for src in ("report",):
             sample = [r for r in rows if r["source"] == src]
             if len(sample) < 100:
                 continue
@@ -269,7 +264,7 @@ def main() -> None:
         "window": [min(d for _, d in days), max(d for _, d in days)],
         "x_clip_tenths": X_CLIP,
         "model": "shift_c = intercept_c + clear*min(x,0) + cloudy*max(x,0), x in tenths clipped to +-x_clip_tenths",
-        "x": "mean over local hours 05..H of (observed cover - day-ahead forecast total cloud), tenths; observed = JAXA cloud product (sat) else METAR cover (report)",
+        "x": "mean over local hours 05..H of (report cover - latest forecast LOW cloud), tenths; report cover as the board computes it, routine report at the hour",
         "y": "settled Tmax - day-ahead forecast Tmax (Open-Meteo previous_day1), station-demeaned",
         "lineage": "docs/research/cloud_tmax_shift_20261017/fit.py; Open-Meteo aggregator_republisher, display only",
         "cloud_beyond_sun": checks,

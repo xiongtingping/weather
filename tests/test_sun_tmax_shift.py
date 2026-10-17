@@ -58,16 +58,13 @@ def test_too_early_and_no_satellite() -> None:
     assert board._sun_tmax_shift(rows, []) is None
 
 
-def test_cloud_shift_reads_its_source_and_carries_the_out_of_sample_verdict() -> None:
-    """2026-10-17 「云卡仍显示 ΔT，标灰并注明样本外不显著」: the report's cover;
-    mean (cover - day-ahead total cloud)
-    over 05..H in tenths; the line's out-of-sample verdict rides along."""
+def test_cloud_shift_reads_the_cards_own_basis_and_carries_the_out_of_sample_verdict() -> None:
+    """2026-10-17 「保持口径一致」: the report's cover against the latest
+    forecast's low cloud -- the card's headline basis -- mean over 05..H in
+    tenths; the line's out-of-sample verdict rides along."""
 
-    rows = [{"hour": h, "past": h <= 11, "forecast": {"cloud_d1": 80.0},
-             "sat_cloud": {"state": "ok", "cover": 0.3} if 5 <= h <= 11 else None,
-             "obs": {"cloud_cover": 0.9}} for h in range(24)]
-    # Since 「云 · 实况对比预报：改为低云」 the card reads the report at every
-    # station, satellite or not.
+    rows = [{"hour": h, "past": h <= 11, "forecast": {"cloud_low": 40.0, "cloud_d1": 90.0},
+             "sat_cloud": {"state": "ok", "cover": 0.3}, "obs": {"cloud_cover": 0.9}} for h in range(24)]
     out = board._cloud_tmax_shift(rows)
-    assert out["state"] == "ok" and out["source"] == "report" and out["tenths_d1"] == 1.0
-    assert isinstance(out["out_of_sample_significant"], bool)
+    assert out["state"] == "ok" and out["source"] == "report" and out["tenths"] == 5.0
+    assert out["shift_c"] < out["range_c"][1] + 1e-9 and isinstance(out["out_of_sample_significant"], bool)

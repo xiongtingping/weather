@@ -1,501 +1,303 @@
 {
  "schema": "cloud_tmax_shift_v1",
- "fitted_at_utc": "2026-10-17T03:56:16Z",
+ "fitted_at_utc": "2026-10-17T07:07:52Z",
  "window": [
   "2026-09-01",
   "2026-10-14"
  ],
  "x_clip_tenths": 6.0,
  "model": "shift_c = intercept_c + clear*min(x,0) + cloudy*max(x,0), x in tenths clipped to +-x_clip_tenths",
- "x": "mean over local hours 05..H of (observed cover - day-ahead forecast total cloud), tenths; observed = JAXA cloud product (sat) else METAR cover (report)",
+ "x": "mean over local hours 05..H of (report cover - latest forecast LOW cloud), tenths; report cover as the board computes it, routine report at the hour",
  "y": "settled Tmax - day-ahead forecast Tmax (Open-Meteo previous_day1), station-demeaned",
  "lineage": "docs/research/cloud_tmax_shift_20261017/fit.py; Open-Meteo aggregator_republisher, display only",
  "cloud_beyond_sun": {
   "9": {
-   "rows_with_sun": 956,
+   "rows_with_sun": 773,
    "cloud_added_to_sun_mse": [
-    0.0003,
-    -0.01,
-    0.0102
+    0.02,
+    0.004,
+    0.0362
    ]
   },
   "10": {
-   "rows_with_sun": 949,
+   "rows_with_sun": 764,
    "cloud_added_to_sun_mse": [
-    0.0005,
-    -0.0095,
-    0.0102
+    0.0236,
+    0.0105,
+    0.0351
    ]
   },
   "11": {
-   "rows_with_sun": 942,
+   "rows_with_sun": 761,
    "cloud_added_to_sun_mse": [
-    -0.0014,
-    -0.0133,
-    0.0103
+    0.023,
+    0.012,
+    0.0341
    ]
   },
   "12": {
-   "rows_with_sun": 942,
+   "rows_with_sun": 761,
    "cloud_added_to_sun_mse": [
-    -0.0038,
-    -0.0153,
-    0.0072
+    0.0213,
+    0.0102,
+    0.0336
    ]
   },
   "13": {
-   "rows_with_sun": 932,
+   "rows_with_sun": 761,
    "cloud_added_to_sun_mse": [
-    -0.0037,
-    -0.0149,
-    0.0077
+    0.0167,
+    0.0055,
+    0.0288
    ]
   },
   "14": {
-   "rows_with_sun": 932,
+   "rows_with_sun": 761,
    "cloud_added_to_sun_mse": [
-    -0.0038,
-    -0.0157,
-    0.0085
+    0.0138,
+    0.0018,
+    0.0273
    ]
   },
   "15": {
-   "rows_with_sun": 930,
+   "rows_with_sun": 760,
    "cloud_added_to_sun_mse": [
-    -0.0041,
-    -0.0169,
-    0.0092
+    0.0118,
+    -0.0013,
+    0.0273
    ]
   },
   "16": {
-   "rows_with_sun": 931,
+   "rows_with_sun": 760,
    "cloud_added_to_sun_mse": [
-    -0.0046,
-    -0.0185,
-    0.009
+    0.0095,
+    -0.0053,
+    0.027
    ]
   },
   "17": {
-   "rows_with_sun": 929,
+   "rows_with_sun": 759,
    "cloud_added_to_sun_mse": [
-    -0.0046,
-    -0.0174,
-    0.0086
+    0.0057,
+    -0.0111,
+    0.0251
    ]
   }
  },
  "by_last_hour": {
   "9": {
-   "sat": {
-    "n": 740,
-    "stations": 17,
-    "intercept_c": -0.041,
-    "clear_c_per_tenth": -0.105,
+   "report": {
+    "n": 1193,
+    "stations": 28,
+    "intercept_c": 0.118,
+    "clear_c_per_tenth": 0.04,
     "clear_ci95": [
-     -0.2,
-     -0.018
+     -0.039,
+     0.111
     ],
-    "cloudy_c_per_tenth": -0.001,
+    "cloudy_c_per_tenth": -0.067,
     "cloudy_ci95": [
-     -0.05,
-     0.043
+     -0.108,
+     -0.023
     ],
     "r2": 0.009,
-    "resid_sd_c": 1.35,
+    "resid_sd_c": 1.36,
     "cv_vs_mean_only": [
-     -0.0096,
-     -0.0323,
-     0.0117
-    ]
-   },
-   "report": {
-    "n": 1211,
-    "stations": 30,
-    "intercept_c": 0.012,
-    "clear_c_per_tenth": -0.009,
-    "clear_ci95": [
-     -0.049,
-     0.026
-    ],
-    "cloudy_c_per_tenth": -0.04,
-    "cloudy_ci95": [
-     -0.105,
-     0.023
-    ],
-    "r2": 0.002,
-    "resid_sd_c": 1.41,
-    "cv_vs_mean_only": [
-     -0.0005,
-     -0.0096,
-     0.0085
+     0.0018,
+     -0.0187,
+     0.0242
     ]
    }
   },
   "10": {
-   "sat": {
-    "n": 745,
-    "stations": 17,
-    "intercept_c": -0.019,
-    "clear_c_per_tenth": -0.118,
-    "clear_ci95": [
-     -0.201,
-     -0.027
-    ],
-    "cloudy_c_per_tenth": -0.014,
-    "cloudy_ci95": [
-     -0.064,
-     0.031
-    ],
-    "r2": 0.012,
-    "resid_sd_c": 1.35,
-    "cv_vs_mean_only": [
-     -0.0137,
-     -0.0376,
-     0.0089
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": 0.009,
-    "clear_c_per_tenth": -0.013,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.114,
+    "clear_c_per_tenth": 0.037,
     "clear_ci95": [
-     -0.051,
-     0.03
+     -0.034,
+     0.106
     ],
-    "cloudy_c_per_tenth": -0.044,
+    "cloudy_c_per_tenth": -0.066,
     "cloudy_ci95": [
-     -0.109,
-     0.011
+     -0.114,
+     -0.022
     ],
-    "r2": 0.003,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0014,
-     -0.0118,
-     0.0093
+     0.0027,
+     -0.0186,
+     0.0253
     ]
    }
   },
   "11": {
-   "sat": {
-    "n": 741,
-    "stations": 17,
-    "intercept_c": 0.008,
-    "clear_c_per_tenth": -0.135,
-    "clear_ci95": [
-     -0.231,
-     -0.041
-    ],
-    "cloudy_c_per_tenth": -0.03,
-    "cloudy_ci95": [
-     -0.078,
-     0.024
-    ],
-    "r2": 0.016,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.0199,
-     -0.0496,
-     0.008
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": -0.005,
-    "clear_c_per_tenth": -0.02,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.115,
+    "clear_c_per_tenth": 0.042,
     "clear_ci95": [
-     -0.06,
-     0.018
+     -0.028,
+     0.119
     ],
-    "cloudy_c_per_tenth": -0.042,
+    "cloudy_c_per_tenth": -0.066,
     "cloudy_ci95": [
-     -0.099,
-     0.025
+     -0.109,
+     -0.025
     ],
-    "r2": 0.003,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0027,
-     -0.0143,
-     0.0096
+     0.0002,
+     -0.02,
+     0.0217
     ]
    }
   },
   "12": {
-   "sat": {
-    "n": 742,
-    "stations": 17,
-    "intercept_c": -0.003,
-    "clear_c_per_tenth": -0.169,
-    "clear_ci95": [
-     -0.27,
-     -0.074
-    ],
-    "cloudy_c_per_tenth": -0.027,
-    "cloudy_ci95": [
-     -0.087,
-     0.022
-    ],
-    "r2": 0.02,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.0256,
-     -0.0608,
-     0.0081
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": 0.012,
-    "clear_c_per_tenth": -0.016,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.115,
+    "clear_c_per_tenth": 0.043,
     "clear_ci95": [
-     -0.054,
-     0.024
+     -0.034,
+     0.128
     ],
-    "cloudy_c_per_tenth": -0.056,
+    "cloudy_c_per_tenth": -0.066,
     "cloudy_ci95": [
-     -0.123,
-     0.013
+     -0.107,
+     -0.027
     ],
-    "r2": 0.004,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0042,
-     -0.0184,
-     0.0101
+     0.0007,
+     -0.0202,
+     0.0233
     ]
    }
   },
   "13": {
-   "sat": {
-    "n": 732,
-    "stations": 17,
-    "intercept_c": -0.008,
-    "clear_c_per_tenth": -0.189,
-    "clear_ci95": [
-     -0.287,
-     -0.091
-    ],
-    "cloudy_c_per_tenth": -0.026,
-    "cloudy_ci95": [
-     -0.077,
-     0.024
-    ],
-    "r2": 0.022,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.0298,
-     -0.0667,
-     0.0086
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": 0.021,
-    "clear_c_per_tenth": -0.017,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.121,
+    "clear_c_per_tenth": 0.05,
     "clear_ci95": [
-     -0.056,
-     0.022
+     -0.038,
+     0.139
     ],
-    "cloudy_c_per_tenth": -0.07,
+    "cloudy_c_per_tenth": -0.068,
     "cloudy_ci95": [
-     -0.131,
-     -0.005
+     -0.108,
+     -0.025
     ],
-    "r2": 0.006,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0071,
-     -0.0238,
-     0.0107
+     -0.002,
+     -0.0234,
+     0.0209
     ]
    }
   },
   "14": {
-   "sat": {
-    "n": 732,
-    "stations": 17,
-    "intercept_c": 0.009,
-    "clear_c_per_tenth": -0.188,
-    "clear_ci95": [
-     -0.299,
-     -0.097
-    ],
-    "cloudy_c_per_tenth": -0.035,
-    "cloudy_ci95": [
-     -0.085,
-     0.022
-    ],
-    "r2": 0.023,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.031,
-     -0.0667,
-     0.0065
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": 0.02,
-    "clear_c_per_tenth": -0.02,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.125,
+    "clear_c_per_tenth": 0.061,
     "clear_ci95": [
-     -0.059,
-     0.024
+     -0.033,
+     0.135
     ],
-    "cloudy_c_per_tenth": -0.075,
+    "cloudy_c_per_tenth": -0.068,
     "cloudy_ci95": [
-     -0.14,
-     -0.003
+     -0.116,
+     -0.024
     ],
-    "r2": 0.007,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0084,
-     -0.0268,
-     0.0107
+     -0.0029,
+     -0.0244,
+     0.0214
     ]
    }
   },
   "15": {
-   "sat": {
-    "n": 731,
-    "stations": 17,
-    "intercept_c": 0.021,
-    "clear_c_per_tenth": -0.185,
-    "clear_ci95": [
-     -0.284,
-     -0.085
-    ],
-    "cloudy_c_per_tenth": -0.038,
-    "cloudy_ci95": [
-     -0.097,
-     0.015
-    ],
-    "r2": 0.022,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.031,
-     -0.066,
-     0.0028
-    ]
-   },
    "report": {
-    "n": 1212,
-    "stations": 30,
-    "intercept_c": 0.006,
-    "clear_c_per_tenth": -0.025,
+    "n": 1195,
+    "stations": 28,
+    "intercept_c": 0.129,
+    "clear_c_per_tenth": 0.068,
     "clear_ci95": [
-     -0.068,
-     0.022
+     -0.022,
+     0.155
     ],
-    "cloudy_c_per_tenth": -0.067,
+    "cloudy_c_per_tenth": -0.068,
     "cloudy_ci95": [
-     -0.141,
-     0.004
+     -0.117,
+     -0.021
     ],
-    "r2": 0.006,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0067,
-     -0.0245,
-     0.0108
+     -0.0023,
+     -0.0239,
+     0.0233
     ]
    }
   },
   "16": {
-   "sat": {
-    "n": 732,
-    "stations": 17,
-    "intercept_c": 0.033,
-    "clear_c_per_tenth": -0.178,
-    "clear_ci95": [
-     -0.302,
-     -0.08
-    ],
-    "cloudy_c_per_tenth": -0.041,
-    "cloudy_ci95": [
-     -0.095,
-     0.018
-    ],
-    "r2": 0.021,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.0279,
-     -0.0612,
-     0.0043
-    ]
-   },
    "report": {
-    "n": 1213,
-    "stations": 30,
-    "intercept_c": 0.003,
-    "clear_c_per_tenth": -0.027,
+    "n": 1196,
+    "stations": 28,
+    "intercept_c": 0.128,
+    "clear_c_per_tenth": 0.075,
     "clear_ci95": [
-     -0.074,
-     0.017
+     -0.011,
+     0.159
     ],
-    "cloudy_c_per_tenth": -0.066,
+    "cloudy_c_per_tenth": -0.065,
     "cloudy_ci95": [
-     -0.146,
-     0.016
+     -0.119,
+     -0.02
     ],
-    "r2": 0.006,
-    "resid_sd_c": 1.41,
+    "r2": 0.008,
+    "resid_sd_c": 1.36,
     "cv_vs_mean_only": [
-     -0.0055,
-     -0.024,
-     0.0122
+     -0.001,
+     -0.022,
+     0.0248
     ]
    }
   },
   "17": {
-   "sat": {
-    "n": 731,
-    "stations": 17,
-    "intercept_c": 0.052,
-    "clear_c_per_tenth": -0.189,
-    "clear_ci95": [
-     -0.31,
-     -0.075
-    ],
-    "cloudy_c_per_tenth": -0.049,
-    "cloudy_ci95": [
-     -0.107,
-     0.003
-    ],
-    "r2": 0.023,
-    "resid_sd_c": 1.34,
-    "cv_vs_mean_only": [
-     -0.0344,
-     -0.068,
-     -0.0006
-    ]
-   },
    "report": {
-    "n": 1213,
-    "stations": 30,
-    "intercept_c": -0.003,
-    "clear_c_per_tenth": -0.029,
+    "n": 1196,
+    "stations": 28,
+    "intercept_c": 0.126,
+    "clear_c_per_tenth": 0.078,
     "clear_ci95": [
-     -0.072,
-     0.012
+     -0.007,
+     0.167
     ],
     "cloudy_c_per_tenth": -0.062,
     "cloudy_ci95": [
-     -0.148,
-     0.013
+     -0.118,
+     -0.013
     ],
-    "r2": 0.006,
-    "resid_sd_c": 1.41,
+    "r2": 0.007,
+    "resid_sd_c": 1.37,
     "cv_vs_mean_only": [
-     -0.0037,
-     -0.0216,
-     0.0145
+     0.0006,
+     -0.0203,
+     0.0261
     ]
    }
   }
