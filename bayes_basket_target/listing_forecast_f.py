@@ -410,16 +410,15 @@ def station_day_rungs(
     day, before any decision) or the ladder its newest committed decision was priced
     against (``station_day_ladder``, kept back to the oldest decision)."""
 
+    from .market_registry import scope_ladder_rows  # noqa: PLC0415
     from .p0_producer import bucket_intervals_from_registry_rows  # noqa: PLC0415
     from .station_day_ladder import station_day_ladder  # noqa: PLC0415
 
     def registry() -> list[tuple[str, float | None, float | None]] | None:
-        cursor = conn.execute(
-            "SELECT station_id, event_date, settlement_unit, outcome, registry_json FROM basket_target_market_registry"
-            " WHERE station_id=? AND event_date=?", (station_id, event_date.isoformat()),
-        )
-        names = [column[0] for column in cursor.description]
-        rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+        # The newest snapshot's rows, not every snapshot's: all of them at once
+        # are the ladder hundreds of times over, which the parser refused for
+        # every station-day, so the registry branch never read (2026-10-18).
+        rows = scope_ladder_rows(conn, station_id=station_id, event_date=event_date.isoformat())
         if not rows:
             return None
         try:

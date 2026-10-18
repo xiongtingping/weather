@@ -701,6 +701,31 @@ def _latest_snapshot(
     return _text("target_market_registry_snapshot_sha256", row[0])
 
 
+def scope_ladder_rows(conn: sqlite3.Connection, *, station_id: str, event_date: str) -> list[dict[str, Any]]:
+    """One station-day's buckets as the newest snapshot holding that scope
+    lists them, whatever the market's state now (a settled day's market is
+    closed, and its ladder is still the one it traded on).
+
+    The table keeps every snapshot's rows -- 4,488 for WSSS 2026-10-18, 408
+    snapshots of the same 11 buckets -- and each snapshot carries a scope's
+    whole ladder (68,066 snapshot-scopes, none partial, 2026-10-18), so the
+    newest one is the ladder; reading all rows at once hands a parser the
+    ladder 408 times over (``listing_forecast_f.station_day_rungs`` failed
+    closed on every station-day that way).  [] when the scope has no rows.
+    """
+
+    cursor = conn.execute(
+        f"SELECT r.station_id, r.event_date, r.settlement_unit, r.outcome, r.registry_json, r.snapshot_sha256"
+        f" FROM {TABLE} r JOIN {SNAPSHOT_TABLE} s ON s.snapshot_sha256=r.snapshot_sha256"
+        f" WHERE r.station_id=? AND r.event_date=?"
+        f" ORDER BY s.ingested_at_utc DESC, s.snapshot_sha256 DESC",
+        (station_id, event_date),
+    )
+    names = [column[0] for column in cursor.description]
+    rows = [dict(zip(names, row)) for row in cursor.fetchall()]
+    return [row for row in rows if row["snapshot_sha256"] == rows[0]["snapshot_sha256"]] if rows else []
+
+
 def load_active_registry_rows(
     conn: sqlite3.Connection,
     *,
