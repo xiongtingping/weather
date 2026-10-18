@@ -193,13 +193,15 @@ class Chain:
         self._tables: dict[date, Any] = {}
         self._own_l2: dict[tuple[str, date], dict[str, float]] = {}
 
-    def table(self, day: date):
-        """The bias table as of ``day``'s listing instant, cached."""
+    def table(self, day: date, cutoff: datetime | None = None):
+        """The bias table for event ``day`` from the rows settled by ``cutoff``
+        (default: the day's listing instant), cached."""
 
-        if day not in self._tables:
-            listing = L._listing_dt(day)
-            self._tables[day] = bias_table([r for r in self.rows if r["settled"] <= listing], day)
-        return self._tables[day]
+        cutoff = cutoff or L._listing_dt(day)
+        key = (day, cutoff)
+        if key not in self._tables:
+            self._tables[key] = bias_table([r for r in self.rows if r["settled"] <= cutoff], day)
+        return self._tables[key]
 
     def own_l2(self, r: Mapping[str, Any]) -> dict[str, float]:
         key = (r["station"], r["day"])
@@ -207,12 +209,17 @@ class Chain:
             self._own_l2[key] = l2_members(r["xst"], r["station"], self.table(r["day"]))
         return self._own_l2[key]
 
-    def centre(self, *, station: str, day: date, xst: Mapping[str, float]) -> dict[str, Any] | None:
+    def centre(self, *, station: str, day: date, xst: Mapping[str, float],
+               cutoff: datetime | None = None) -> dict[str, Any] | None:
+        """The chain for one station-day from ``xst``, on the history settled
+        by ``cutoff`` (default the listing instant: the shadow's and round 75's
+        reading; production F passes its own clock)."""
+
         if len(xst) < MIN_MEMBERS:
             return None
-        listing = L._listing_dt(day)
-        members = l2_members(xst, station, self.table(day))
-        own = [(q["day"], q["truth"], self.own_l2(q)) for q in self.by_station.get(station, []) if q["settled"] <= listing]
+        cutoff = cutoff or L._listing_dt(day)
+        members = l2_members(xst, station, self.table(day, cutoff))
+        own = [(q["day"], q["truth"], self.own_l2(q)) for q in self.by_station.get(station, []) if q["settled"] <= cutoff]
         return {
             "mos_c": round(l4(members, own, day), 3),
             "l1_c": round(statistics.median(xst.values()), 3),

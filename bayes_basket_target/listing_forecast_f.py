@@ -33,6 +33,12 @@ station and every event day from today to D+2, and kept ready:
            values; station share ``V3_LAMBDA`` 0.9.  ``v3.f_c`` keeps the
            cluster-like warm lean; ``v3.f_recal_c`` is re-centred on the truth.
 
+补记十 (user 2026-10-18 「比现行 F 准，那就替换 F」): ``f_c`` is now research
+round 75's chain (``listing_forecast_f_mos``: station values, shrunk station
+bias, shrunk inverse-MAE weights) on the same history, as of this pass's
+clock; the chain above is still computed and written as ``f_legacy_c``.  The
+keep-F pick is fitted and served around the chain's centre.
+
 Read-only on the SSOT; writes one runtime file (``F_PATH``), never the SSOT.
 F is an execution-layer number: it is not a probability, never enters P0,
 P0-M, P1, a certificate or any formal authority.
@@ -60,7 +66,13 @@ from .regional_point_lane import SYSTEM_IDS as _LANE_SYSTEM_IDS
 ROOT = Path(__file__).resolve().parents[1]
 F_PATH = Path(os.environ.get("PM_LISTING_FORECAST_F_PATH") or ROOT / "data" / "runtime" / "listing_forecast_f_v1.json")
 SCHEMA = "listing_forecast_f_v1"
-RULE = "deterministic_median_fleet_shift_station_share_truth_recal_v3"
+# 补记十 (user 2026-10-18 「比现行 F 准，那就替换 F」): F's centre is research round
+# 75's chain -- station values, each system's station bias shrunk to its fleet
+# bias, shrunk inverse-MAE weights (``listing_forecast_f_mos``); MAE 0.038 C
+# [-0.057, -0.021] below the v3 centre in a strict walk-forward, both halves.
+# The v3 centre is still computed and written as ``f_legacy_c``.
+RULE = "r75_station_value_shrunk_bias_shrunk_inverse_mae_v4"
+LEGACY_RULE = "deterministic_median_fleet_shift_station_share_truth_recal_v3"
 # 补记四 (user 「改」 10-12): 0.3 -> 0.5.  Our values are nearest-land-cell
 # grid values, not point values adjusted to the station's elevation, so a
 # larger share of each station's own bias is needed: on the 440 research
@@ -672,6 +684,25 @@ def compute(
             train.append((past, _recal_features(base, obs), truth - base["f"]))
             pick_inputs.append((station, past, point, truth, base, _recal_features(base, obs), listing))
     model = fit_recalibration(train)
+    # 补记十: F's centre is round 75's chain (``listing_forecast_f_mos``) on the
+    # same history -- each past station-day's members at its own listing
+    # instant, brought to station values.  No terrain table, no chain: F fails
+    # closed (the legacy centre is kept beside it, never served as F).
+    from . import listing_forecast_f_mos as mos  # noqa: PLC0415
+
+    chain = None
+    chain_xst: dict[tuple[str, date], dict[str, float]] = {}
+    if table is not None:
+        chain_rows = []
+        for station, rows in history.items():
+            for past, point, truth, settled in rows:
+                if past < today - timedelta(days=mos.HISTORY_DAYS):
+                    continue
+                xst = mos.station_values({s: {"tmax_c": v} for s, v in point.items()}, station=station, table=table)
+                chain_xst[(station, past)] = xst
+                chain_rows.append({"station": station, "day": past, "truth": truth, "settled": settled,
+                                   "listing": _listing_dt(past), "xst": xst})
+        chain = mos.Chain(chain_rows)
     # 补记七: the keep-F pick's training rows -- each settled day's F (as recalibrated
     # now) on the ladder that day was priced against, its members as of its listing.
     pick_rows: list[tuple[date, dict[str, float], int, float]] = []
@@ -683,7 +714,14 @@ def compute(
         if shaped is None:
             continue
         edges, width = shaped
-        f_past = base["f"] + (recal_correction(model, features) if model else 0.0)
+        # 补记十: the pick is fitted around the F it is served beside -- the
+        # chain's centre as of that day's listing instant.
+        past_centre = None if chain is None else chain.centre(
+            station=station, day=past, xst=chain_xst.get((station, past), {}),
+        )
+        if past_centre is None:
+            continue
+        f_past = past_centre["mos_c"]
         fb, ty = _rung_of(edges, f_past), _rung_of(edges, truth)
         feats = pick_features(
             f_c=f_past, edges=edges, width=width, maxima=point, biases=base["biases"],
@@ -749,8 +787,14 @@ def compute(
                 value["bias_c"] = round(base["biases"][system], 3)
             features = _recal_features(base, _obs_before_listing(station_truths.get(station, {}), event_date))
             correction = recal_correction(model, features) if model else 0.0
+            centre = None if chain is None else chain.centre(
+                station=station, day=event_date,
+                xst=mos.station_values(maxima, station=station, table=table), cutoff=now,
+            )
             entry.update({
-                "state": "READY",
+                "state": "READY" if centre is not None else (
+                    "TERRAIN_TABLE_MISSING" if table is None else "TOO_FEW_STATION_VALUES"
+                ),
                 "raw_median_c": round(base["raw"], 3),
                 "fleet_c": round(fleet_c, 3),
                 "station_corr_c": round(base["corr"], 3),
@@ -758,12 +802,18 @@ def compute(
                 "f_base_c": round(base["f"], 3),
                 "recal_features": {name: round(value, 3) for name, value in zip(RECAL_FEATURES, features)},
                 "recal_c": round(correction, 3) if model else None,
-                "f_c": round(base["f"] + correction, 3),
+                # 补记十: the pre-chain centre, kept for comparison; never F.
+                "f_legacy_c": round(base["f"] + correction, 3),
+                "f_c": None if centre is None else centre["mos_c"],
                 "listing_instant_utc": listing_instant(event_date),
             })
+            if centre is None:
+                out[f"{station}|{event_date.isoformat()}"] = entry
+                continue
+            entry["centre"] = {k: centre[k] for k in ("l1_c", "l2_c", "members_l1", "members_l2")}
             entry["pick"] = _live_pick(
                 conn, pick_model, station=station, zone=zone, event_date=event_date, as_of=as_of, now=now,
-                f_c=base["f"] + correction, maxima={system: value["tmax_c"] for system, value in maxima.items()},
+                f_c=centre["mos_c"], maxima={system: value["tmax_c"] for system, value in maxima.items()},
                 biases=base["biases"], rows=history.get(station, []),
             )
             out[f"{station}|{event_date.isoformat()}"] = entry
@@ -780,7 +830,7 @@ def compute(
             },
         })
     return {
-        "schema": SCHEMA, "rule": RULE, "computed_at_utc": as_of,
+        "schema": SCHEMA, "rule": RULE, "legacy_rule": LEGACY_RULE, "computed_at_utc": as_of,
         "systems": sorted(F_SYSTEM_IDS),
         "fleet": {"c": round(fleet_c, 3), "source": fleet_source, "samples": fleet_samples, "days": fleet_days},
         "recalibration": model or {

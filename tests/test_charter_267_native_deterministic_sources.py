@@ -252,17 +252,19 @@ def test_f_is_the_median_plus_fleet_shift_plus_a_share_of_the_station_correction
     _patch(monkeypatch, today={A: 18.0, B: 19.0, C: 21.0}, history=history, truths=truths)
     out = F.compute(_conn(), now=NOW, roster=[("EGLC", 51.5, 0.05, "Europe/London")])
     entry = out["station_days"]["EGLC|2026-10-13"]
-    assert entry["state"] == "READY"
+    # 补记十: no terrain table, no station values, no chain -- F fails closed;
+    # the v3 centre is still computed beside it as ``f_legacy_c``.
+    assert entry["state"] == "TERRAIN_TABLE_MISSING" and entry["f_c"] is None and "pick" not in entry
     assert entry["raw_median_c"] == pytest.approx(19.0)
     # corrected: 20.5, 20.5, 21.5 -> median 20.5 -> corr 1.5.
     assert entry["station_corr_c"] == pytest.approx(1.5)
     assert out["fleet"]["source"] == "research_fallback", "4 station-days are far short of the fleet floor"
-    assert entry["f_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
+    assert entry["f_legacy_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
     assert entry["listing_instant_utc"] == "2026-10-11T05:00:00Z"
     assert out["authority"] == "EXECUTION_LAYER_ONLY"
     # 补记五 fails closed: four settled days are far short of a recalibration.
     assert out["recalibration"]["state"] == "INSUFFICIENT_HISTORY"
-    assert entry["recal_c"] is None and entry["f_c"] == entry["f_base_c"]
+    assert entry["recal_c"] is None and entry["f_legacy_c"] == entry["f_base_c"]
     # 补记六 fails closed without the terrain table: no F_v3 anywhere.
     assert out["v3"]["state"] == "TERRAIN_TABLE_MISSING" and "v3" not in entry
 
@@ -371,10 +373,11 @@ def test_f_is_recalibrated_once_the_training_window_is_deep_enough(monkeypatch):
     entry = out["station_days"]["S000|2026-10-13"]
     assert entry["f_base_c"] == pytest.approx(21.0 + 1.0 + F.LAMBDA * 1.0)
     assert entry["recal_features"] == {"station_corr_c": 1.0, "members_skew_c": 0.0, "obs_to_f_change_c": 0.5}
-    assert entry["f_c"] == pytest.approx(entry["f_base_c"] + entry["recal_c"], abs=1e-3)
+    assert entry["f_legacy_c"] == pytest.approx(entry["f_base_c"] + entry["recal_c"], abs=1e-3)
     # F_base sat 0.5 C warm of every settled day; the correction pulls F toward the truth.
-    assert abs(22.0 - entry["f_c"]) < abs(22.0 - entry["f_base_c"])
-    assert out["rule"] == F.RULE == "deterministic_median_fleet_shift_station_share_truth_recal_v3"
+    assert abs(22.0 - entry["f_legacy_c"]) < abs(22.0 - entry["f_base_c"])
+    assert out["legacy_rule"] == F.LEGACY_RULE == "deterministic_median_fleet_shift_station_share_truth_recal_v3"
+    assert out["rule"] == F.RULE == "r75_station_value_shrunk_bias_shrunk_inverse_mae_v4"
 
 
 # --------------------------------------------------------------------------
@@ -426,8 +429,18 @@ def test_f_v3_is_written_beside_f_with_its_own_shift_share_and_recentring(monkey
     # Four days: no recalibration -> no re-centred number, and the cluster-like f_c stands.
     assert v3["recal_c"] is None and v3["f_recal_c"] is None
     assert out["v3"]["recalibration"]["state"] == "INSUFFICIENT_HISTORY"
-    # F itself is untouched by the table.
-    assert entry["f_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
+    # The v3 centre (now ``f_legacy_c``) is untouched by the table.
+    assert entry["f_legacy_c"] == pytest.approx(19.0 + F.RESEARCH_FLEET_C + F.LAMBDA * 1.5)
+    # 补记十: F is round 75's chain on the same history (station values = grid + 1.0).
+    from bayes_basket_target import listing_forecast_f_mos as M
+    rows = [{"station": "EGLC", "day": d, "truth": 22.5, "settled": F._settled_at(d, "Europe/London"),
+             "listing": F._listing_dt(d), "xst": {s1: 21.0, s2: 22.0, gfs: 23.0}} for d in history]
+    expected = M.Chain(rows).centre(station="EGLC", day=date(2026, 10, 13),
+                                    xst={s1: 19.0, s2: 20.0, gfs: 22.0}, cutoff=NOW)
+    assert entry["state"] == "READY" and entry["f_c"] == expected["mos_c"]
+    assert entry["centre"]["l2_c"] == expected["l2_c"] and entry["centre"]["l1_c"] == pytest.approx(20.0)
+    # Single station: no spread to shrink against, so the fleet bias (+0.5 median) moves all three.
+    assert expected["l2_c"] == pytest.approx(20.5)
 
 
 def test_f_v3_needs_three_station_values(monkeypatch):
