@@ -40,6 +40,7 @@ FORWARD_DAYS = (-1, 3)
 FORWARD_MAX_SECONDS = 3000.0
 # Runs a forward pass takes per product: the newest, and one it missed.
 FORWARD_MAX_RUNS = 2
+BACKFILL_WAIT_SECONDS = 120.0
 
 
 def listing_keys(conn: sqlite3.Connection, products, since: date, until: date, roster) -> set:
@@ -126,14 +127,23 @@ def main() -> int:
             return 0
         conn.execute("PRAGMA busy_timeout=60000")
 
+        deadline = time.monotonic() + float(args.max_seconds)
+
         def strained(product: str) -> str:
-            # A backfill is never urgent: every product of it yields to production's egress.
-            return production_network_strained() if args.backfill or product in HEAVY_PRODUCTS else ""
+            if not args.backfill:
+                return production_network_strained() if product in HEAVY_PRODUCTS else ""
+            # A backfill is never urgent: it waits out production's strained
+            # egress (every product of it), and resumes where it stopped --
+            # skipping would end the pass with the history unread.
+            while (reason := production_network_strained()) and time.monotonic() < deadline:
+                print(f"生产出口 {reason}，回补等待 {BACKFILL_WAIT_SECONDS:.0f}s")
+                time.sleep(BACKFILL_WAIT_SECONDS)
+            return reason
 
         sys.stdout.reconfigure(line_buffering=True)
         receipt = P.capture(
             conn, items, now=now, capture_mode="backfill" if args.backfill else "forward",
-            deadline=time.monotonic() + float(args.max_seconds), should_yield=strained,
+            deadline=deadline, should_yield=strained,
         )
         print(f"完成 {receipt['runs']} 轮，写入 {receipt['written']} 行，失败 {len(receipt['failed'])}"
               + (f"，停在 {receipt['stopped']}" if receipt["stopped"] else ""))
