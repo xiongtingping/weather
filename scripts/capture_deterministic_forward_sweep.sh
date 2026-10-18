@@ -37,3 +37,9 @@ if [ "$PHYSICS_BUDGET" -gt 120 ]; then
 else
   echo "deterministic physics: no time left in this pass (${SECONDS}s used)"
 fi
+
+# Charter 267 补记九 (round 77, user 2026-10-18 「最终链…并行写进 F 文件作影子」):
+# the round-75 centre chain as of each listing instant, appended to its own
+# ledger beside the F file (SSOT read-only).  Once per station-day.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] listing centre shadow"
+"$PY" scripts/record_listing_mos_shadow.py || echo "listing centre shadow failed (exit $?)" >&2
