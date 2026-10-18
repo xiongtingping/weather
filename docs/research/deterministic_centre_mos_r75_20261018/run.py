@@ -45,6 +45,11 @@ L3_MIN_ROWS, L3_MIN_DAYS, RIDGE = 200, 10, 1e-3
 N0 = 20.0
 BOOT, SEED = 2000, 7
 FEATURES = ("sw", "tcc", "dep", "lpr", "anom")
+# Off-protocol exploration (user 10-18 「先跑一下zuuu站点，用现有的云、雨、辐射证据（Open-Meteo）」):
+# the station-day's Open-Meteo forecast (aggregator; one value for every member,
+# captured by the listing instant) instead of each system's own native physics.
+FEATURE_SOURCE = "native"
+OM_FEATURES = ("sw", "tcc", "lpr", "anom")
 
 
 # ---------------------------------------------------------------- build
@@ -74,6 +79,13 @@ def build() -> None:
                         "phys": {k: p.get(k) for k in ("sw_mj", "tcc_day_mean", "td_day_mean", "pr_mm")}
                         if same_run else None,
                     }
+                om = conn.execute(
+                    "SELECT shortwave_radiation_sum, cloudcover_mean, precipitation_sum"
+                    " FROM calibration_station_forecast_physics_version"
+                    " WHERE station_id=? AND local_date=? AND source_id='OPEN_METEO_MODEL_FORECAST'"
+                    " AND capture_mode='forward' AND captured_at_utc<=? ORDER BY captured_at_utc DESC LIMIT 1",
+                    (station, day.isoformat(), listing),
+                ).fetchone()
                 rungs = None
                 if day >= EVAL_FROM:
                     shaped = L._rung_edges(L.station_day_rungs(
@@ -83,6 +95,7 @@ def build() -> None:
                     "station": station, "day": day.isoformat(), "truth": truth, "listing": listing,
                     "settled": L._settled_at(day, zone).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "members": members, "edges": rungs,
+                    "om": None if om is None else {"sw_mj": om[0], "tcc_day_mean": om[1], "pr_mm": om[2]},
                 })
             day += timedelta(days=1)
         print(station, len(rows), file=sys.stderr)
@@ -124,7 +137,11 @@ def lae(X: np.ndarray, y: np.ndarray):
     return mu, sd, beta
 
 
-def features(member, xst, clim, system, day_ordinal):
+def features(member, xst, clim, system, day_ordinal, om=None):
+    if FEATURE_SOURCE == "openmeteo":
+        if om is None or clim is None or any(om.get(k) is None for k in ("sw_mj", "tcc_day_mean", "pr_mm")):
+            return None
+        return [om["sw_mj"], om["tcc_day_mean"], math.log1p(max(om["pr_mm"], 0.0)), xst - clim]
     p = member.get("phys")
     if p is None or clim is None:
         return None
@@ -242,7 +259,7 @@ class Walk:
                         continue
                     resid = r["truth"] - r["xst"][system] - self.l2[key][system]
                     Xs.append([date.fromisoformat(r["day"]).toordinal()])
-                    f = features(r["members"][system], r["xst"][system], self.clim[key], system, None)
+                    f = features(r["members"][system], r["xst"][system], self.clim[key], system, None, r.get("om"))
                     if f is not None:
                         X.append(f)
                         y.append(resid)
@@ -259,7 +276,7 @@ class Walk:
                     base = xst + self.l2[key][system]
                     corr = 0.0
                     if system in models:
-                        f = features(r["members"][system], xst, self.clim[key], system, None)
+                        f = features(r["members"][system], xst, self.clim[key], system, None, r.get("om"))
                         if f is not None:
                             mu, sd, beta = models[system]
                             corr = float(((np.array(f) - mu) / sd) @ beta[:-1] + beta[-1])
@@ -334,10 +351,14 @@ def score() -> None:
             hit = {k: math.floor(v + 0.5) == math.floor(r["truth"] + 0.5) for k, v in arms.items()}
         out.append({"station": r["station"], "day": r["day"], "truth": r["truth"],
                     "arms": {k: round(v, 3) for k, v in arms.items()}, "hit": hit, "n_members": len(r["xst"])})
-    with open(HERE / "walk.jsonl", "w") as fh:
+    name = "walk.jsonl" if FEATURE_SOURCE == "native" else "walk_openmeteo.jsonl"
+    with open(HERE / name, "w") as fh:
         for q in out:
             fh.write(json.dumps(q) + "\n")
-    report(out)
+    if FOCUS_ONLY:
+        focus_report([q for q in out if q["station"] == FOCUS_ONLY])
+    else:
+        report(out)
 
 
 def paired(rows, a, b):
@@ -387,5 +408,28 @@ def report(out):
         table("ZUUU（只报不判）", z, arms + (["F"] if all("F" in q["arms"] for q in z) else []))
 
 
+FOCUS_ONLY = ""
+
+
+def focus_report(rows):
+    """One station's read: the table and each layer against the one below and F."""
+
+    arms = ["L0", "L1", "L2", "L3s", "L3", "L4_on_L3", "L4_on_L2"]
+    inter = all("F" in q["arms"] for q in rows)
+    table(f"{FOCUS_ONLY}（特征来源 {FEATURE_SOURCE}）", rows, arms + (["F"] if inter else []))
+    print("\n逐层（MAE 差，负＝更准）：")
+    pairs = [("L1", "L0"), ("L2", "L1"), ("L3", "L2"), ("L3s", "L2"), ("L3", "L3s"), ("L4_on_L3", "L3"), ("L4_on_L2", "L2")]
+    if inter:
+        pairs += [(a, "F") for a in ("L2", "L3", "L4_on_L3")]
+    for a, b in pairs:
+        p, lo, hi, h = paired(rows, a, b)
+        print(f"{a}−{b}: {p:+.3f} [{lo:+.3f}, {hi:+.3f}]  两半 {h[0]:+.3f} / {h[1]:+.3f}")
+
+
 if __name__ == "__main__":
+    for flag in sys.argv[2:]:
+        if flag == "--openmeteo":
+            FEATURE_SOURCE = "openmeteo"
+        elif flag.startswith("--focus="):
+            FOCUS_ONLY = flag.split("=", 1)[1]
     {"build": build, "score": score}[sys.argv[1]]()
