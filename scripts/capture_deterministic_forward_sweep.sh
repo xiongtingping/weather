@@ -22,3 +22,18 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 cd "$PROJECT_DIR"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] deterministic family forward capture"
 "$PY" scripts/capture_deterministic_forward.py
+
+# Charter 267 补记八 (user 2026-10-18 「接，从现在开始采」): the same runs'
+# radiation, cloud, dew point and precipitation at the same cells, for every
+# roster station.  Runs after the temperature capture it plans from, in the
+# seconds this sweep has left: the pass checks its budget between runs and a
+# full-roster run of the slowest family (GDPS / ICON) takes ~5 minutes, so the
+# last run starts at least 420 s before the hosted timeout (1800 s).
+PHYSICS_BUDGET=$((1380 - SECONDS))
+if [ "$PHYSICS_BUDGET" -gt 120 ]; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] deterministic physics forward capture (${PHYSICS_BUDGET}s)"
+  "$PY" scripts/capture_deterministic_physics.py --max-seconds "$PHYSICS_BUDGET" || \
+    echo "deterministic physics capture failed (exit $?)" >&2
+else
+  echo "deterministic physics: no time left in this pass (${SECONDS}s used)"
+fi
