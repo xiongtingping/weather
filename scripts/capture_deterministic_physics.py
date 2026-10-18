@@ -73,8 +73,36 @@ def main() -> int:
     parser.add_argument("--all-runs", action="store_true", help="backfill every held run, not only the listing run")
     parser.add_argument("--max-seconds", type=float, default=FORWARD_MAX_SECONDS)
     parser.add_argument("--max-runs-per-product", type=int)
+    parser.add_argument("--workers", type=int, help="fetch threads per run (default: the lane's own)")
+    parser.add_argument("--max-mb-per-sec", type=float,
+                        help="cap this process's download rate (MB/s), leaving production its share of the line")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    if args.max_mb_per_sec:
+        # 2026-10-18 14:54-14:59Z: four parallel backfills (32 connections)
+        # filled the ~1.4 MB/s line and production's egress read "down".  A
+        # byte budget shared by every thread keeps the backfill under a cap.
+        import threading  # noqa: PLC0415
+
+        unlimited, lock, clock = P.fetch_field, threading.Lock(), {"next": time.monotonic()}
+        rate = float(args.max_mb_per_sec) * 1e6
+
+        def limited(product, run_init, step, field):
+            message = unlimited(product, run_init, step, field)
+            if message:
+                with lock:
+                    now = time.monotonic()
+                    clock["next"] = max(clock["next"], now) + len(message) / rate
+                    wait = clock["next"] - now
+                if wait > 0:
+                    time.sleep(wait)
+            return message
+
+        P.fetch_field = limited
+    if args.workers:
+        # A backfill split by product runs one process per product; each may
+        # use more threads than the forward pass, which shares the sweep.
+        P.FETCH_WORKERS = int(args.workers)
 
     from bayes_basket_target.deterministic_forecast_family import global_roster  # noqa: PLC0415
     from bayes_basket_target.native_deterministic_point_archive import (  # noqa: PLC0415

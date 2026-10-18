@@ -45,6 +45,8 @@ import ctypes
 import hashlib
 import json
 import sqlite3
+import threading
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, Sequence
@@ -167,24 +169,55 @@ def noaa_span(text: str, *, field: str, kind: str) -> tuple[int, int | None] | N
     return None
 
 
+_INDEX_CACHE: "dict[tuple[str, str, int], str | None]" = {}
+_INDEX_LOCK = threading.Lock()
+INDEX_CACHE_MAX = 256
+
+
+def _index_text(product: str, run_init: datetime, step: int) -> str | None:
+    """One step's inventory, read once for all the fields wanted from it.
+
+    Every request through the egress costs 1.5-2.7 s whatever its size
+    (measured 2026-10-18), and each field used to fetch the same index again."""
+
+    key = (product, _stamp(run_init).isoformat(), int(step))
+    with _INDEX_LOCK:
+        if key in _INDEX_CACHE:
+            return _INDEX_CACHE[key]
+    if product == "AIFS":
+        raw = aifs._get(aifs.step_stem(run_init, step) + ".index")
+    else:
+        raw = native._get(str(native.index_url(product, run_init, step)), cap=native.MAX_INDEX_BYTES)
+    text = None if raw is None else raw.decode("utf-8", "replace")
+    with _INDEX_LOCK:
+        if len(_INDEX_CACHE) >= INDEX_CACHE_MAX:
+            _INDEX_CACHE.clear()
+        _INDEX_CACHE[key] = text
+    return text
+
+
 def fetch_field(product: str, run_init: datetime, step: int, field: Any) -> bytes | None:
     """One field's GRIB message at one step, from the publisher's own object."""
 
-    if product == "IFS_HRES":
-        return native.read_message(product, run_init, step, field=str(field))
-    if product == "AIFS":
-        return aifs._message(run_init, step, str(field))
-    if product in ("GFS", "AIGFS"):
-        name, kind = field
-        raw = native._get(str(native.index_url(product, run_init, step)), cap=native.MAX_INDEX_BYTES)
-        if raw is None:
-            return None
-        span = noaa_span(raw.decode("utf-8", "replace"), field=name, kind=kind)
+    if product in ("IFS_HRES", "AIFS"):
+        text = _index_text(product, run_init, step)
+        span = None if text is None else native.parse_ecmwf_index(text, param=str(field))
         if span is None:
             return None
         start, length = span
-        rng = f"bytes={start}-" if length is None else f"bytes={start}-{start + length - 1}"
-        return native._get(native.step_url(product, run_init, step), {"Range": rng}, cap=native.MAX_MESSAGE_BYTES)
+        rng = {"Range": f"bytes={start}-{start + length - 1}"}
+        if product == "AIFS":
+            return aifs._get(aifs.step_stem(run_init, step) + ".grib2", rng)
+        return native._get(native.step_url(product, run_init, step), rng, cap=native.MAX_MESSAGE_BYTES)
+    if product in ("GFS", "AIGFS"):
+        name, kind = field
+        text = _index_text(product, run_init, step)
+        span2 = None if text is None else noaa_span(text, field=name, kind=kind)
+        if span2 is None:
+            return None
+        start, length2 = span2
+        rng2 = f"bytes={start}-" if length2 is None else f"bytes={start}-{start + length2 - 1}"
+        return native._get(native.step_url(product, run_init, step), {"Range": rng2}, cap=native.MAX_MESSAGE_BYTES)
     if product == "GDPS":
         return native._get(gdps_url(run_init, step, str(field)), cap=native.MAX_MESSAGE_BYTES)
     if product == "ICON_GLOBAL":
@@ -415,9 +448,14 @@ def _cells(product: str, run_init: datetime, stations: Mapping[str, tuple[float,
 
 def fetch_run(
     *, product: str, run_init: datetime, targets: Sequence[Mapping[str, Any]],
-    fetch: Callable[[str, datetime, int, Any], bytes | None] = fetch_field,
+    fetch: Callable[[str, datetime, int, Any], bytes | None] | None = None,
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    """Every target's field records from one read per (step, field)."""
+    """Every target's field records from one read per (step, field).
+
+    ``fetch`` defaults to the module's ``fetch_field`` looked up at call time,
+    so a caller can wrap it (the backfill's rate limit)."""
+
+    fetch = fetch or fetch_field
 
     wanted: dict[tuple[str, str], list[int]] = {}
     stations: dict[str, tuple[float, float]] = {}
@@ -459,21 +497,33 @@ def fetch_run(
             out.append(float(value))
         return out
 
-    # In batches of one per worker: ``map`` holds every result it has fetched,
-    # and an ICON message is ~12 MB decompressed, so at most one batch of
-    # fields is in memory at a time.
+    # A rolling window of requests in flight (each costs seconds of latency
+    # whatever its size), decoded in job order; at most two per worker are
+    # held, so an ICON run (~12 MB a message) stays bounded in memory.
     workers = FETCH_WORKERS_BY_PRODUCT.get(product, FETCH_WORKERS)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for begin in range(0, len(jobs), workers):
-            batch = jobs[begin:begin + workers]
-            for (step, var, _field), message in zip(batch, pool.map(lambda j: fetch(product, run_init, j[0], j[2]), batch)):
-                if message is None:
-                    continue
-                meta = message_meta(message)
-                for station, value in zip(placed, decoded(message)):
-                    record = normalise(var, meta, value)
-                    if record is not None:
-                        per_station[station].setdefault(var, {})[step] = record
+        pending: deque = deque()
+        queue_jobs = iter(jobs)
+
+        def top_up() -> None:
+            while len(pending) < 2 * workers:
+                job = next(queue_jobs, None)
+                if job is None:
+                    return
+                pending.append((job, pool.submit(fetch, product, run_init, job[0], job[2])))
+
+        top_up()
+        while pending:
+            (step, var, _field), future = pending.popleft()
+            message = future.result()
+            top_up()
+            if message is None:
+                continue
+            meta = message_meta(message)
+            for station, value in zip(placed, decoded(message)):
+                record = normalise(var, meta, value)
+                if record is not None:
+                    per_station[station].setdefault(var, {})[step] = record
     results: dict[tuple[str, str], dict[str, Any]] = {}
     for key, steps in wanted.items():
         station = key[0]
