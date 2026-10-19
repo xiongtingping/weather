@@ -31,7 +31,9 @@ midpoint falls inside the local day are summed and kept only when they cover
 the whole day.  Cloud and dew point are means over the local 09-17 h steps
 (one step for a 6-hourly product; ``*_day_n`` says how many).
 
-Rows are ``reference_only`` research evidence: no P0, P0-M, P1 or lane reads
+Rows live in their own file (``data/deterministic_point_physics.db``, written
+only by ``scripts/capture_deterministic_physics.py``), never in the SSOT, whose
+70 GiB ceiling is production's.  Rows are ``reference_only`` research evidence: no P0, P0-M, P1 or lane reads
 them.  A row's ``knowable_at_utc`` is its temperature row's (same run, same
 publication; the fields sit in the same objects or beside them), and
 ``captured_at_utc`` says when this lane read it.  Only IFS HRES, AIFS, GFS and

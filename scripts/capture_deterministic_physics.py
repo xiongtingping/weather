@@ -36,6 +36,11 @@ from bayes_basket_target import sqlite_busy  # noqa: E402
 from bayes_basket_target.pass_deadline import announce_write_blocked  # noqa: E402
 
 DB = ROOT / "data" / "bayes_basket_target_ssot.db"
+# 2026-10-18: the physics rows live in their own file, never in the SSOT -- the
+# SSOT's 70 GiB ceiling is production's budget; at 23:2xZ this table's ~35 MB
+# was the last straw that put it over and failed the production cycle closed.
+# This process is the file's only writer; the SSOT is attached read-only.
+PHYSICS_DB = ROOT / "data" / "deterministic_point_physics.db"
 FORWARD_DAYS = (-1, 3)
 FORWARD_MAX_SECONDS = 3000.0
 # Runs a forward pass takes per product: the newest, and one it missed.
@@ -65,7 +70,8 @@ def listing_keys(conn: sqlite3.Connection, products, since: date, until: date, r
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", type=Path, default=DB)
+    parser.add_argument("--db", type=Path, default=DB, help="the SSOT, attached read-only")
+    parser.add_argument("--physics-db", type=Path, default=PHYSICS_DB)
     parser.add_argument("--backfill", action="store_true")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat)
@@ -122,7 +128,10 @@ def main() -> int:
     else:
         products = [p for p in (args.products or ",".join(P.PRODUCTS)).split(",") if p]
         since, until = today + timedelta(days=FORWARD_DAYS[0]), today + timedelta(days=FORWARD_DAYS[1])
-    conn = sqlite3.connect(str(args.db), timeout=120.0)
+    conn = sqlite3.connect(f"file:{args.physics_db}", uri=True, timeout=120.0)
+    # Unqualified SSOT tables resolve through the attachment (main holds only
+    # the physics table), so every SSOT read is the same SQL as before.
+    conn.execute("ATTACH DATABASE ? AS ssot", (f"file:{args.db}?mode=ro",))
     try:
         roster = global_roster(conn)
         stations = {station: (lat, lon) for station, lat, lon, _zone in roster}
