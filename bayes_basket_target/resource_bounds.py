@@ -380,7 +380,14 @@ MAX_JSON_NODES = 500_000
 # Returned to 70 GiB the same day on the user's instruction (「上限回 70 GiB，
 # 重启」): the superseded move took 436k rows / 2.84 GiB off, in-use pages
 # 66.97 GiB with 3.11 GiB free; the ~0.6 GiB left goes on the nightly run.
-MAX_TARGET_DB_BYTES = 71680 * MIB
+#
+# Raised 70 -> 72 GiB again on 2026-10-19, a bridge on the user's ruling
+# (「像 10-13 那样临时桥接：SSOT 上限 70→72 GiB，走重启脚本生效；然后查清理口径，
+# 腾出空间后再回 70 GiB」).  In-use pages reached 70 GiB at ~23:2xZ 10-18 and every
+# writer stopped; moving the deterministic-physics table (~44 MB, charter 267
+# 补记八) out of the SSOT did not hold past one cycle at ~425 MB/day of growth.
+# Returns to 70 GiB once the cleanup frees the room.
+MAX_TARGET_DB_BYTES = 73728 * MIB
 # The native/P1 target SSOT is append-heavy (45 stations × member lineage).
 # Permit a bounded 512 MiB WAL so normal no-live cycles do not self-block;
 # SQLite checkpointing, database bytes, RSS and free-space guards remain hard.
