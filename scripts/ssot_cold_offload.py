@@ -323,6 +323,16 @@ class MoveSuperseded:
     day_sql: tuple[str, ...]
     row_days: Callable[..., Mapping[str, Any]]
     why: str
+    #: Names ``key``/``order`` may use that are not the table's own columns,
+    #: for a reader whose newest-first order lives in another table (the OOS
+    #: predictions' generation is the activation's): name -> (the row's own
+    #: columns, a loader run once per plan that returns {those values: value}).
+    #: Looked up in memory, never a per-row subquery: a correlated read over
+    #: the 2.8M predictions held its snapshot past the WAL yield and was
+    #: interrupted after 58 minutes (2026-10-19).
+    computed: Mapping[str, tuple[tuple[str, ...], Callable[[sqlite3.Connection], Mapping[tuple, Any]]]] = (
+        field(default_factory=dict)
+    )
 
 
 @dataclass(frozen=True)
@@ -406,6 +416,7 @@ class TablePolicy:
             "move_superseded": None if self.move_superseded is None else {
                 "key": list(self.move_superseded.key),
                 "order": list(self.move_superseded.order),
+                "computed": {k: list(v[0]) for k, v in self.move_superseded.computed.items()},
                 "why": self.move_superseded.why,
             },
             "mirror_tables": list(self.mirror_tables),
@@ -593,6 +604,20 @@ def taf_case_cache_floor(conn: sqlite3.Connection) -> str | None:
     return None
 
 
+def _cross_activation_generations(conn: sqlite3.Connection) -> dict[tuple, int]:
+    """(artifact, station, season, lead, cycle) -> its highest activation
+    generation: the ``a.generation`` the training-fact reader orders by."""
+
+    return {
+        (artifact, station, season, lead, cycle): int(generation)
+        for artifact, station, season, lead, cycle, generation in conn.execute(
+            "SELECT artifact_id, station_id, season_bin, lead_bucket, run_cycle, MAX(generation)"
+            " FROM calibration_native_ensemble_activation WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+            " GROUP BY artifact_id, station_id, season_bin, lead_bucket, run_cycle"
+        )
+    }
+
+
 POLICIES: tuple[TablePolicy, ...] = (
     TablePolicy(
         table="basket_p0_preselection_plan",
@@ -630,6 +655,63 @@ POLICIES: tuple[TablePolicy, ...] = (
             ),
         ),
         mirror_tables=("basket_p0_preselection_blob",),
+    ),
+    # 2026-10-19 (user 「按宪章 237 冷层机制，把 OOS 预测里被更新代次取代、且不是当前
+    # 在役组合的行迁到外置盘冷层；迁完并验证后上限回 70 GiB」): 2.32M of the table's
+    # 2.79M rows (~83%) predict a (key, event day) a newer activation generation
+    # predicts again.  The training-fact reader takes, per key and day, only the
+    # newest generation and skips the rest, so those rows are never read again;
+    # the window covers the whole table, so only superseded rows leave.  The
+    # artifact each activation scope serves now stays whole, whatever its rows.
+    TablePolicy(
+        table="calibration_cross_native_ensemble_oos_prediction",
+        time_column="event_date",
+        hot_days=36500,
+        move_superseded=MoveSuperseded(
+            key=("station_id", "season_bin", "lead_bucket", "run_cycle", "settlement_definition",
+                 "settlement_timezone", "ensemble_system_ids_json"),
+            order=("generation", "decision_at_utc", "prediction_id"),
+            partition="station_id",
+            day_sql=("event_date",),
+            row_days=lambda day: {str(day)},
+            computed={"generation": (
+                ("cross_ensemble_artifact_id", "station_id", "season_bin", "lead_bucket", "run_cycle"),
+                _cross_activation_generations,
+            )},
+            why=(
+                "native_ensemble_training_facts reads, per key and event day, the newest "
+                "activation generation's prediction and skips older generations; a row whose "
+                "day a newer generation of the key gives is never read again"
+            ),
+        ),
+        keep_named=(
+            KeepNamed(
+                name="serving_artifact",
+                column="cross_ensemble_artifact_id",
+                sql=(
+                    "SELECT artifact_id FROM (SELECT artifact_id, generation, MAX(generation) OVER ("
+                    "PARTITION BY station_id, ensemble_system_id_or_star, season_bin, lead_bucket, run_cycle,"
+                    " available_system_set_hash_or_star) AS newest"
+                    " FROM calibration_native_ensemble_activation"
+                    " WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE'"
+                    " AND valid_from_utc<=strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+                    " AND valid_until_utc>strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+                    " WHERE generation=newest"
+                ),
+                why=(
+                    "P0's certified family map, its forward-prediction check and the "
+                    "post-migration audit read by the artifact each scope serves now"
+                ),
+            ),
+        ),
+        readers=(
+            "native_ensemble_training_facts: per key and event day the newest activation "
+            "generation, older generations skipped; native_ensemble_p0 (certified family map, "
+            "forward-prediction check) and run_bayes_basket_target_post_migration_no_live: by "
+            "the serving artifact; calibration_dashboard scorecard: every row of the last 45 "
+            "days (after this move it scores each day's surviving generations only); "
+            "build_persisted_native_taf_exact_join (offline repair): by scope."
+        ),
     ),
     TablePolicy(
         table="calibration_cross_native_ensemble_oos_evaluation",
@@ -1733,7 +1815,9 @@ def _superseded_rowids(
     latest_columns = [c for r in policy.keep_latest for c in (*r.key, *r.order)]
     named_columns = [r.column for r, _ids in named]
     columns = list(dict.fromkeys([*rule.key, *rule.order, *latest_columns, *named_columns]))
-    columns = [c for c in columns if c != "rowid"]
+    sources = [c for name in rule.computed for c in rule.computed[name][0]]
+    columns = [c for c in dict.fromkeys([*columns, *sources]) if c != "rowid" and c not in rule.computed]
+    lookups = {name: (srcs, loader(conn)) for name, (srcs, loader) in rule.computed.items()}
     # The row's identity column rides along so a cached rowid is checked
     # against the row it was read from.
     identity = rule.order[-1]
@@ -1769,6 +1853,9 @@ def _superseded_rowids(
             )
 
         def value(row: Sequence[Any], column: str) -> Any:
+            if column in lookups:
+                srcs, mapping = lookups[column]
+                return mapping.get(tuple(row[at[c]] for c in srcs))
             return int(row[0]) if column == "rowid" else row[at[column]]
 
         keep: set[int] = set()
