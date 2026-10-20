@@ -53,6 +53,12 @@ def main() -> int:
             state["published"] = bool(run_published(newest))
     except Exception as exc:  # noqa: BLE001 -- a failed probe only means "ask again"
         state["error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+        from bayes_basket_target.network_retry import (  # noqa: PLC0415
+            is_network_error, note_network_failure,
+        )
+
+        if is_network_error(exc):
+            note_network_failure(f"CMA {state['error']}")
     finally:
         close_client()
     STATE.parent.mkdir(parents=True, exist_ok=True)

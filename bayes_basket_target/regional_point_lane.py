@@ -941,6 +941,9 @@ def capture_p1(
     )
     unpublished: list[str] = []
     failed: list[str] = []
+    # The subset of ``failed`` that lost the network (``network_retry``): the
+    # lane asks the resident to come back in minutes, not its interval.
+    network_failed: list[str] = []
     # Why the pass stopped early, when a writer other than this one is the
     # reason.  Reported rather than raised: the runs already committed are
     # real and the lane needs to come back in minutes, not in its whole
@@ -1055,7 +1058,13 @@ def capture_p1(
             if isinstance(exc, PassDeadlineExceeded):
                 budget_exhausted = True
                 break
-            failed.append(f"{product} {run_init:%Y-%m-%dT%HZ} {type(exc).__name__}: {str(exc)[:80]}")
+            from .network_retry import is_network_error, note_network_failure  # noqa: PLC0415
+
+            line = f"{product} {run_init:%Y-%m-%dT%HZ} {type(exc).__name__}: {str(exc)[:80]}"
+            failed.append(line)
+            if is_network_error(exc):
+                network_failed.append(line)
+                note_network_failure(line)
             continue
         if not any((results.get((str(t["station_id"]), t["event_date"].isoformat())) or {}).get("hourly_c") for t in item["targets"]):
             # Nothing for any station: the run is not on the archive yet.
@@ -1112,7 +1121,7 @@ def capture_p1(
         "product": product, "runs_planned": len(plan), "runs_with_data": productive,
         "runs_attempted": attempted, "budget_exhausted": budget_exhausted,
         "written": written, "existed": existed, "empty": empty,
-        "unpublished": unpublished, "failed": failed,
+        "unpublished": unpublished, "failed": failed, "network_failed": network_failed,
         "write_blocked": write_blocked, "yielded": yielded,
     }
 

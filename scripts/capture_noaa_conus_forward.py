@@ -41,6 +41,9 @@ from bayes_basket_target.noaa_conus_archive import (
     NoaaConusPassDeadlineExceeded,
     close_client, fetch_day_maximum, run_covers_peak, run_directory_url,
 )
+from bayes_basket_target.network_retry import (
+    is_network_error, note_network_failure,
+)
 from bayes_basket_target.pass_deadline import (
     announce_write_blocked, set_pass_deadline,
 )
@@ -376,6 +379,8 @@ def main() -> int:
                     f"{product} {station} {target} {cycle}"
                     f" {type(exc).__name__}: {str(exc)[:60]}"
                 )
+                if is_network_error(exc):
+                    note_network_failure(failed[-1])
                 continue
             if not captured["complete"]:
                 failed.append(

@@ -692,6 +692,10 @@ def capture(
                 stopped = "budget"
                 break
             failed.append(f"{product} {run_init:%Y-%m-%dT%HZ} {type(exc).__name__}: {str(exc)[:100]}")
+            from .network_retry import is_network_error, note_network_failure  # noqa: PLC0415
+
+            if is_network_error(exc):
+                note_network_failure(failed[-1])
             continue
         if not results:
             failed.append(f"{product} {run_init:%Y-%m-%dT%HZ} 无数据")

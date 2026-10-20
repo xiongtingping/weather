@@ -43,6 +43,9 @@ if str(ROOT) not in sys.path:
 
 from bayes_basket_target import sqlite_busy
 from bayes_basket_target.contracts import ContractError, content_sha256
+from bayes_basket_target.network_retry import (
+    is_network_error, note_network_failure,
+)
 from bayes_basket_target.pass_deadline import (
     announce_write_blocked,
 )
@@ -343,6 +346,8 @@ def main() -> int:
                                 f"{station} {target} {cycle}"
                                 f" {type(exc).__name__}: {str(exc)[:60]}"
                             )
+                            if is_network_error(exc):
+                                note_network_failure(failed[-1])
                             continue
                         if not captured["complete"]:
                             failed.append(

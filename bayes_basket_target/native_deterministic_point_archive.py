@@ -81,6 +81,7 @@ from typing import Any, Callable, Mapping, Sequence
 import httpx
 
 from .contracts import ContractError
+from .network_retry import NetworkUnavailable
 from .noaa_conus_archive import GridPointReader, nearest_land_points, nearest_point_kelvin  # noqa: F401
 from .pass_deadline import PassDeadlineExceeded, deadline_spent
 
@@ -407,10 +408,16 @@ def prepare_arpege(run_init: datetime, steps: Sequence[int]) -> dict[str, int]:
         if cached is None:
             try:
                 response = _client().head(url)
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
+                raise NetworkUnavailable(
+                    f"native_deterministic_unreachable:{type(exc).__name__}"
+                ) from exc
+            if response.status_code in (403, 404):
                 return group, None
             if response.status_code != 200:
-                return group, None
+                raise NetworkUnavailable(
+                    f"native_deterministic_unreachable:http_{response.status_code}"
+                )
             # The packages share the connection budget.
             cached = arpege_message_table(
                 url, size=int(response.headers["content-length"]),
@@ -475,6 +482,7 @@ def close_client() -> None:
 
 
 def _get(url: str, headers: Mapping[str, str] | None = None, *, cap: int) -> bytes | None:
+    last = "no_attempt"
     for _attempt in range(_ATTEMPTS):
         if deadline_spent():
             raise NativeDeterministicPassDeadlineExceeded(
@@ -482,7 +490,8 @@ def _get(url: str, headers: Mapping[str, str] | None = None, *, cap: int) -> byt
             )
         try:
             response = _client().get(url, headers=dict(headers or {}))
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: {str(exc)[:80]}"
             continue
         if response.status_code in (403, 404):
             return None
@@ -491,7 +500,9 @@ def _get(url: str, headers: Mapping[str, str] | None = None, *, cap: int) -> byt
             if len(body) > cap:
                 raise ContractError("native_deterministic_object_over_cap")
             return body
-    return None
+        last = f"http_{response.status_code}"
+    # The publisher never said whether the object exists (``network_retry``).
+    raise NetworkUnavailable(f"native_deterministic_unreachable:{last}")
 
 
 def parse_ecmwf_index(text: str, *, param: str) -> tuple[int, int] | None:
@@ -591,11 +602,19 @@ def run_published(product: str, run_init: datetime, step: int | None = None) -> 
     wanted = int(step if step is not None else spec.steps()[-1])
     url = index_url(product, run_init, wanted)
     if url is None:
-        try:
-            response = _client().head(step_url(product, run_init, wanted))
-        except httpx.HTTPError:
-            return False
-        return response.status_code == 200
+        last = "no_attempt"
+        for _attempt in range(_ATTEMPTS):
+            try:
+                response = _client().head(step_url(product, run_init, wanted))
+            except httpx.HTTPError as exc:
+                last = f"{type(exc).__name__}: {str(exc)[:80]}"
+                continue
+            if response.status_code == 200:
+                return True
+            if response.status_code in (403, 404):
+                return False
+            last = f"http_{response.status_code}"
+        raise NetworkUnavailable(f"native_deterministic_unreachable:{last}")
     return _get(url, cap=MAX_INDEX_BYTES) is not None
 
 
@@ -1080,8 +1099,8 @@ def _ukmo_size(url: str, fetch: Callable[..., bytes | None]) -> int:
         if response.status_code == 200:
             return int(response.headers["content-length"])
         if response.status_code in (403, 404):
-            break
-    raise ContractError("native_deterministic_ukmo_size_unreadable")
+            raise ContractError("native_deterministic_ukmo_size_unreadable")
+    raise NetworkUnavailable("native_deterministic_ukmo_size_unreachable")
 
 
 def fetch_ukmo_run_for_targets(

@@ -34,6 +34,9 @@ def main() -> int:
     from bayes_basket_target import aifs_single_point_archive as aifs  # noqa: PLC0415
     from bayes_basket_target import native_deterministic_point_archive as native  # noqa: PLC0415
     from bayes_basket_target import open_meteo_quota  # noqa: PLC0415
+    from bayes_basket_target.network_retry import (  # noqa: PLC0415
+        is_network_error, note_network_failure,
+    )
     from bayes_basket_target import open_meteo_relay_archive as relay  # noqa: PLC0415
     from bayes_basket_target.deterministic_forecast_family import (  # noqa: PLC0415
         product_roster,
@@ -69,6 +72,8 @@ def main() -> int:
                         entry["published"] = bool(relay.run_published(product, newest, (lat, lon)))
                 except Exception as exc:  # noqa: BLE001 -- a failed probe only means "ask again"
                     entry["error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+                    if is_network_error(exc):
+                        note_network_failure(f"{product} {entry['error']}")
         finally:
             conn.close()
     except Exception as exc:  # noqa: BLE001

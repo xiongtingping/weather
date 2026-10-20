@@ -36,6 +36,9 @@ from bayes_basket_target.dwd_icon_eu_point_archive import (
     close_client, fetch_run_day_maxima, run_directory_url,
 )
 from bayes_basket_target.native_archive_lead import capture_lead_bucket
+from bayes_basket_target.network_retry import (
+    is_network_error, note_network_failure,
+)
 from bayes_basket_target.pass_deadline import (
     announce_write_blocked,
 )
@@ -250,6 +253,8 @@ def main() -> int:
                 failed.append(
                     f"{cycle} {type(exc).__name__}: {str(exc)[:80]}"
                 )
+                if is_network_error(exc):
+                    note_network_failure(failed[-1])
                 continue
             for key, captured in results.items():
                 station, event_iso = key

@@ -109,6 +109,12 @@ from bayes_basket_target.pass_deadline import (
     HOSTED_SWEEP_WRITE_BLOCKED_MARKER,
     WRITER_LEASE_ENV,
 )
+from bayes_basket_target.network_retry import (
+    HOSTED_SWEEP_NETWORK_RETRY_MARKER,
+    HOSTED_SWEEP_NETWORK_RETRY_STATE,
+    network_retry_delay,
+    output_names_network_failure,
+)
 from bayes_basket_target.market_registry import (
     export_shared_live_registry,
     load_active_registry_rows,
@@ -1552,6 +1558,12 @@ def hosted_sweep_clock_entry(
     entry["continue_requested"] = bool(
         state == "ok" and result.get("continue")
     )
+    # Consecutive passes that lost the network: the retry delay doubles on
+    # each (``network_retry_delay``) and any other outcome resets it.
+    if state == HOSTED_SWEEP_NETWORK_RETRY_STATE:
+        entry["network_retry_streak"] = int(entry.get("network_retry_streak") or 0) + 1
+    else:
+        entry.pop("network_retry_streak", None)
     # Why it failed, kept where a restart cannot take it.  The run's output
     # tail otherwise lives only in the status file, which a restart empties:
     # on 2026-09-25 delta_v2_authority and paper_ledger_aligned both read
@@ -1596,6 +1608,7 @@ def hosted_sweep_boot_outcome(entry: Any) -> dict[str, Any]:
     return {
         "state": str(entry.get("last_state") or "ok"),
         "continue": entry.get("continue_requested"),
+        "network_retry_streak": entry.get("network_retry_streak"),
     }
 
 
@@ -1608,6 +1621,10 @@ def hosted_sweep_interval_after(
         return min(float(interval_sec), HOSTED_SWEEP_CONTINUATION_DELAY_SEC)
     if result.get("state") == HOSTED_SWEEP_WRITE_BLOCKED_STATE:
         return min(float(interval_sec), HOSTED_SWEEP_CONTINUATION_DELAY_SEC)
+    if result.get("state") == HOSTED_SWEEP_NETWORK_RETRY_STATE:
+        return network_retry_delay(
+            interval_sec, int(result.get("network_retry_streak") or 1)
+        )
     return float(interval_sec)
 
 
@@ -1668,6 +1685,19 @@ def run_hosted_sweep(script_path: str, timeout_sec: float) -> dict[str, Any]:
                 and HOSTED_SWEEP_WRITE_BLOCKED_MARKER in markers
             ):
                 state_text = HOSTED_SWEEP_WRITE_BLOCKED_STATE
+                continues = False
+            # The network went away (user 2026-10-20 「所有采集车道都应该增加
+            # "网络断了"重试」): said by the lane, or -- for a lane that died
+            # of it uncaught -- read off the tail of what it printed.  Not
+            # ``ok`` (nothing it wanted was stored) and not ``failed`` (whose
+            # whole interval is what lost the 00Z AIFS/HRES runs on 10-20).
+            elif (
+                returncode == 0
+                and HOSTED_SWEEP_NETWORK_RETRY_MARKER in markers
+            ) or (
+                returncode != 0 and output_names_network_failure(tail)
+            ):
+                state_text = HOSTED_SWEEP_NETWORK_RETRY_STATE
                 continues = False
         except subprocess.TimeoutExpired:
             # Signal the group, not the shell.  Every wrapper execs python,
@@ -3006,6 +3036,19 @@ def _refresh_forecast_physics(
             "calls_order_gateway": False,
             "places_orders": False,
         }
+    # A round that lost the network on any station comes back in minutes,
+    # doubling per consecutive such round, not at the next interval (user
+    # 2026-10-20 「所有采集车道都应该增加"网络断了"重试」).
+    lost = output_names_network_failure(
+        " ".join([str(state.get("reason") or ""), *(state.get("failed_reasons") or {})])
+    )
+    streak = int(getattr(worker, "_forecast_physics_network_streak", 0) or 0)
+    streak = streak + 1 if lost else 0
+    setattr(worker, "_forecast_physics_network_streak", streak)
+    if lost:
+        delay = network_retry_delay(FORECAST_PHYSICS_REFRESH_SECONDS, streak)
+        setattr(worker, "_next_forecast_physics_mono", time.monotonic() + delay)
+        state["network_retry_in_seconds"] = round(delay, 1)
     setattr(worker, "_last_forecast_physics_state", dict(state))
     return state
 
@@ -7623,28 +7666,8 @@ def main() -> int:
                         "reason": f"{type(exc).__name__}:{exc}",
                     }
                 state["hosted_sweeps"]["results"][done_name] = sweep_result
-                for name, _, interval_sec, _ in HOSTED_SWEEPS:
-                    if name == done_name:
-                        next_hosted_sweep[name] = (
-                            time.monotonic()
-                            + hosted_sweep_interval_after(
-                                sweep_result, interval_sec
-                            )
-                        )
-                if done_name == "preselection_retention_apply":
-                    if sweep_result.get("state") == "ok" and sweep_result.get("continue"):
-                        hosted_priority_intervals[done_name] = 600.0
-                    else:
-                        hosted_priority_intervals.pop(done_name, None)
-                # Only a completed attempt advances the COMPLETION stamp: a
-                # member whose run was killed or failed has not succeeded,
-                # and the record must keep saying so.  But every attempt --
-                # including a killed one -- advances the ATTEMPT stamp, and
-                # the boot seed reads the later of the two.  Without that a
-                # repeatedly-failing member is maximally overdue at every
-                # restart, ranks first, and takes the exclusive write domain
-                # again; see ``seed_hosted_sweep_clock`` for the 72-hour
-                # instance of exactly that.
+                # The clocks are read first: a network retry's delay doubles
+                # with the streak they keep.
                 try:
                     _clocks = json.loads(
                         HOSTED_SWEEP_CLOCKS_PATH.read_text()
@@ -7662,6 +7685,34 @@ def main() -> int:
                     name=done_name,
                     now_utc=utc_now(),
                 )
+                for name, _, interval_sec, _ in HOSTED_SWEEPS:
+                    if name == done_name:
+                        next_hosted_sweep[name] = (
+                            time.monotonic()
+                            + hosted_sweep_interval_after(
+                                {
+                                    **sweep_result,
+                                    "network_retry_streak": _clocks[done_name].get(
+                                        "network_retry_streak"
+                                    ),
+                                },
+                                interval_sec,
+                            )
+                        )
+                if done_name == "preselection_retention_apply":
+                    if sweep_result.get("state") == "ok" and sweep_result.get("continue"):
+                        hosted_priority_intervals[done_name] = 600.0
+                    else:
+                        hosted_priority_intervals.pop(done_name, None)
+                # Only a completed attempt advances the COMPLETION stamp: a
+                # member whose run was killed or failed has not succeeded,
+                # and the record must keep saying so.  But every attempt --
+                # including a killed one -- advances the ATTEMPT stamp, and
+                # the boot seed reads the later of the two.  Without that a
+                # repeatedly-failing member is maximally overdue at every
+                # restart, ranks first, and takes the exclusive write domain
+                # again; see ``seed_hosted_sweep_clock`` for the 72-hour
+                # instance of exactly that.  (The entry was built above.)
                 try:
                     _atomic_json(HOSTED_SWEEP_CLOCKS_PATH, _clocks)
                 except OSError:

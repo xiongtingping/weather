@@ -33,6 +33,7 @@ from typing import Any, Mapping, Sequence
 import httpx
 
 from .contracts import ContractError
+from .network_retry import NetworkUnavailable
 from .noaa_conus_archive import nearest_land_points, nearest_point_kelvin
 from .pass_deadline import PassDeadlineExceeded, deadline_spent
 
@@ -80,18 +81,29 @@ def run_directory_url(run_init: datetime) -> str:
 
 
 def _get(url: str, headers: Mapping[str, str] | None = None) -> bytes | None:
+    """The object, or ``None`` when the mirror says it is not there (404).
+
+    Retries that all end on the wire or on another status raise
+    ``NetworkUnavailable``: the mirror never said, and reading that as
+    "not published" ended a 2026-10-20 pass clean with nothing stored
+    (``network_retry``).
+    """
+
+    last = "no_attempt"
     for _attempt in range(_ATTEMPTS):
         if deadline_spent():
             raise AifsPassDeadlineExceeded("aifs_single_pass_deadline_exceeded")
         try:
             response = _client().get(url, headers=dict(headers or {}))
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: {str(exc)[:80]}"
             continue
         if response.status_code == 404:
             return None
         if response.status_code in (200, 206):
             return response.content
-    return None
+        last = f"http_{response.status_code}"
+    raise NetworkUnavailable(f"aifs_single_unreachable:{last}")
 
 
 def _message(run_init: datetime, step: int, param: str) -> bytes | None:

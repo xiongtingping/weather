@@ -33,6 +33,7 @@ from typing import Any
 import httpx
 
 from .contracts import ContractError
+from .network_retry import NetworkUnavailable
 from .jma_msm_archive import local_day_hours
 from .noaa_conus_archive import nearest_land_points, nearest_point_kelvin
 
@@ -114,16 +115,22 @@ def product_hours(run_init: datetime) -> list[int]:
 
 
 def _get(url: str) -> bytes | None:
+    """The object, or ``None`` on 404; retries that all end on the wire or
+    another status raise ``NetworkUnavailable`` (``network_retry``)."""
+
+    last = "no_attempt"
     for attempt in range(_ATTEMPTS):
         try:
             response = _client().get(url)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: {str(exc)[:80]}"
             continue
         if response.status_code == 404:
             return None
         if response.status_code == 200:
             return response.content
-    return None
+        last = f"http_{response.status_code}"
+    raise NetworkUnavailable(f"dwd_icon_eu_unreachable:{last}")
 
 
 # Charter 201: charter 200's land rule, read off ICON-EU's own land fraction.

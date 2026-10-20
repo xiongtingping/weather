@@ -4281,8 +4281,10 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         # says the opposite of what happened.  On 2026-09-18 one NBM commit
         # blocked behind the paper ledger read "卡住：轮到就失败" for the hour
         # to the next render, while the 15:48Z retry had already completed.
+        # Nor a ``network_retry`` pass (2026-10-20): the wire, not the lane,
+        # and it comes back in minutes on a doubling delay.
         stuck = (
-            state != "write_blocked"
+            state not in ("write_blocked", "network_retry")
             and since_attempted is not None
             and since_completed is not None
             and since_completed - since_attempted > interval * 1.5
@@ -17711,6 +17713,7 @@ function healthLamps(){
         ? bad.map(l => `${l.name} 落后 ${(l.overdue_intervals || 0).toFixed(1)}`
             + ` 个回合（${l.stuck ? "卡住，占着写域"
               : l.last_state === "write_blocked" ? "写锁被别人占着，5 分钟后重试"
+              : l.last_state === "network_retry" ? "网络断了，5 分钟起倍增重试"
               : "没轮到"}）`).join("；")
         : "每条车道都在自己的间隔内跑过"));
   } else {

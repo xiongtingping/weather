@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from .contracts import ContractError
+from .network_retry import NetworkUnavailable
 from .pass_deadline import PassDeadlineExceeded, deadline_spent
 from .dwd_icon_eps_archive import _eccodes
 from .jma_msm_archive import local_day_hours
@@ -183,30 +184,41 @@ def _refuse_if_spent() -> None:
 
 
 def _get(url: str) -> bytes | None:
+    """The object, or ``None`` on 404; retries that all end on the wire or
+    another status raise ``NetworkUnavailable`` (``network_retry``)."""
+
+    last = "no_attempt"
     for attempt in range(_ATTEMPTS):
         _refuse_if_spent()
         try:
             response = _client().get(url)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: {str(exc)[:80]}"
             continue
         if response.status_code == 404:
             return None
         if response.status_code == 200:
             return response.content
-    return None
+        last = f"http_{response.status_code}"
+    raise NetworkUnavailable(f"noaa_conus_unreachable:{last}")
 
 
 def _range_get(url: str, start: int, end: int | None) -> bytes | None:
     header = f"bytes={start}-" if end is None else f"bytes={start}-{end - 1}"
+    last = "no_attempt"
     for attempt in range(_ATTEMPTS):
         _refuse_if_spent()
         try:
             response = _client().get(url, headers={"Range": header})
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: {str(exc)[:80]}"
             continue
         if response.status_code in (200, 206):
             return response.content
-    return None
+        if response.status_code in (403, 404, 416):
+            return None
+        last = f"http_{response.status_code}"
+    raise NetworkUnavailable(f"noaa_conus_unreachable:{last}")
 
 
 def _field_range(url: str) -> tuple[int, int | None] | None:
