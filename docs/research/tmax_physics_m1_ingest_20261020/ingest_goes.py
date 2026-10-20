@@ -1,0 +1,236 @@
+"""GOES ABI L2 DSR history for the 16 Americas stations, on the board's own
+basis (``bayes_basket_target.goes_surface_radiation``): local hour h reads
+the scan nearest h-0:30, a 5x5-pixel mean, HDF5 chunks range-read from the
+public NOAA buckets.  User 2026-10-20 「抽 GOES」, then 「GOES 在后台分批抽齐后
+再替换，判定只用 GOES 版」 -- run in budgeted foreground batches (standing
+rule: no background processes), resumable via ``fetch_log``.
+
+Satellites by date: GOES-East = GOES-16 up to 2025-04-07 (its DSRF archive
+ends on day 097), GOES-19 after; GOES-West = GOES-18 (the board's split:
+west of 110W).  One unit = one bucket x one UTC scan instant; the file is
+opened once for every station that hour belongs to.  Rows land in
+``sw_measured_hourly`` keyed by the board's stamp (local h:00 in UTC),
+``source='GOES_DSRF'``, ``proxy=0``.
+
+    .venv/bin/python docs/research/tmax_physics_m1_ingest_20261020/ingest_goes.py --budget 540
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import store  # noqa: E402
+
+from bayes_basket_target import goes_surface_radiation as goes  # noqa: E402
+from bayes_basket_target.station_day_board import _clear_sky_ghi  # noqa: E402
+from bayes_basket_target.station_registry import _COORDINATES  # noqa: E402
+
+TASK = "goes_dsrf"
+EAST_SWITCH = datetime(2025, 4, 7, tzinfo=timezone.utc)
+FIRST_LOCAL_HOUR, LAST_LOCAL_HOUR = 5, 20
+goes.MAX_FETCH_BYTES = 96 * 1024 * 1024   # one file serves up to 13 stations here
+goes.BLOCK = 64 * 1024                    # one DSR chunk row-band is ~tens of KB compressed; 512 KB blocks inflated the transfer ~10x
+
+
+def americas() -> list[str]:
+    """The stations the board reads from GOES: no Open-Meteo satellite product
+    west of 60W (station_day_board._satellite_product); SBGR and SAEZ, east of
+    it, read EUMETSAT MSG there and are not GOES stations."""
+
+    return sorted(s for s, (lat, lon) in _COORDINATES.items() if -150.0 < lon < -60.0)
+
+
+def buckets_for(lon: float, instant: datetime) -> list[str]:
+    if lon < -110.0:
+        return ["noaa-goes18"]
+    if instant < EAST_SWITCH:
+        return ["noaa-goes16"]
+    if instant < EAST_SWITCH + timedelta(days=1):
+        return ["noaa-goes19", "noaa-goes16"]
+    return ["noaa-goes19"]
+
+
+def units(tz: dict[str, str], start: date, end: date) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """(bucket key, scan instant ISO) -> [(station, stamp ISO)]."""
+
+    out: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for st in americas():
+        lat, lon = _COORDINATES[st]
+        zone = ZoneInfo(tz[st])
+        d = start
+        while d <= end:
+            for h in range(FIRST_LOCAL_HOUR, LAST_LOCAL_HOUR + 1):
+                stamp = datetime(d.year, d.month, d.day, h, tzinfo=zone).astimezone(timezone.utc)
+                middle = stamp - timedelta(minutes=30)
+                if _clear_sky_ghi(lat, lon, middle) <= 0.0:
+                    continue
+                key = ("west" if lon < -110.0 else "east", middle.strftime("%Y-%m-%dT%H:%M:%SZ"))
+                out.setdefault(key, []).append((st, stamp.strftime("%Y-%m-%dT%H:%M:%SZ")))
+            d += timedelta(days=1)
+    return out
+
+
+def _box_from_chunks(url: str, chunks: dict[int, tuple[int, int]], chunk_rows: int, n_x: int,
+                     line: int, col: int, hb: int, fill, scale: float, offset: float):
+    """The station's 5x5 box decoded outside h5py: each needed chunk is a
+    row band (``chunk_rows`` x the full width) stored shuffle + deflate."""
+
+    import zlib  # noqa: PLC0415
+
+    import numpy as np  # noqa: PLC0415
+
+    rows = []
+    for r in range(line - hb, line + hb + 1):
+        start = r - r % chunk_rows
+        off, size = chunks[start]
+        if (url, start) not in _CHUNK_CACHE:
+            body = goes._get(url, {"Range": f"bytes={off}-{off + size - 1}"}).content
+            if len(body) != size:
+                raise IOError("goes_chunk_short_read")
+            raw = np.frombuffer(zlib.decompress(body), dtype=np.uint8)
+            n = raw.size // 2
+            plain = np.empty(raw.size, dtype=np.uint8)
+            plain[0::2], plain[1::2] = raw[:n], raw[n:]
+            _CHUNK_CACHE[(url, start)] = plain.view("<u2").reshape(chunk_rows, n_x)
+        rows.append(_CHUNK_CACHE[(url, start)][r - start, col - hb:col + hb + 1])
+    box = np.vstack(rows).astype(float)
+    if fill.size:
+        box[box == fill[0]] = np.nan
+    good = (box * scale + offset)[np.isfinite(box)]
+    return None if not good.size else round(float(good.mean()), 1)
+
+
+_CHUNK_CACHE: dict = {}
+
+
+def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tuple]:
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    instant = datetime.fromisoformat(key[1].replace("Z", "+00:00"))
+    lon0 = _COORDINATES[members[0][0]][1]
+    scan = bucket = None
+    for bucket in buckets_for(lon0, instant):
+        scan = goes._scan_near(bucket, instant)
+        if scan is not None:
+            break
+    if scan is None:
+        return [(st, stamp, None, "GOES_DSRF", 0, None) for st, stamp in members]
+    name, size = scan
+    found = __import__("re").search(r"_s(\d{4})(\d{3})(\d{2})(\d{2})", name)
+    y, doy, hh, mm = (int(x) for x in found.groups())
+    scan_at = (datetime(y, 1, 1, tzinfo=timezone.utc) + timedelta(days=doy - 1, hours=hh, minutes=mm)).strftime("%Y-%m-%dT%H:%MZ")
+    url = f"https://{bucket}.s3.amazonaws.com/{name}"
+    rf = goes._RangeFile(url, size)
+    # The superblock and root group sit in the first two blocks: fetched here,
+    # outside h5py's global lock, so threads do not queue on the network.
+    head = goes._get(url, {"Range": f"bytes=0-{2 * goes.BLOCK - 1}"}).content
+    for i in range(2):
+        rf.blocks[i] = head[i * goes.BLOCK:(i + 1) * goes.BLOCK]
+    hb = goes.HALF_BOX
+    plan = []
+    with h5py.File(rf, "r") as handle:
+        proj, xs, ys, ds = handle["goes_imager_projection"], handle["x"], handle["y"], handle["DSR"]
+        sx, ox = float(xs.attrs["scale_factor"][0]), float(xs.attrs["add_offset"][0])
+        sy, oy = float(ys.attrs["scale_factor"][0]), float(ys.attrs["add_offset"][0])
+        fill = np.asarray(ds.attrs.get("_FillValue")).ravel()
+        scale = float(np.asarray(ds.attrs["scale_factor"]).ravel()[0])
+        offset = float(np.asarray(ds.attrs.get("add_offset", [0.0])).ravel()[0])
+        n_y, n_x = ds.shape
+        chunk_rows, chunk_cols = ds.chunks
+        pl = ds.id.get_create_plist()
+        filters = [pl.get_filter(i)[0] for i in range(pl.get_nfilters())]
+        if chunk_cols != n_x or filters != [2, 1] or ds.dtype.str != "<u2":
+            raise IOError(f"goes_layout_unexpected:{ds.chunks}:{filters}:{ds.dtype.str}")
+        for st, stamp in members:
+            lat, lon = _COORDINATES[st]
+            grid = goes._fixed_grid(lat, lon, proj)
+            if grid is None:
+                plan.append((st, stamp, None))
+                continue
+            col, line = round((grid[0] - ox) / sx), round((grid[1] - oy) / sy)
+            if not (hb <= col < n_x - hb and hb <= line < n_y - hb):
+                plan.append((st, stamp, None))
+                continue
+            chunks = {}
+            for r in range(line - hb, line + hb + 1):
+                start = r - r % chunk_rows
+                if start not in chunks:
+                    info = ds.id.get_chunk_info_by_coord((start, 0))
+                    if info.filter_mask != 0:
+                        raise IOError("goes_filter_mask_set")
+                    chunks[start] = (info.byte_offset, info.size)
+            plan.append((st, stamp, (chunks, line, col)))
+    rows = []
+    try:
+        for st, stamp, where in plan:
+            value = None
+            if where is not None:
+                chunks, line, col = where
+                value = _box_from_chunks(url, chunks, chunk_rows, n_x, line, col, hb, fill, scale, offset)
+            rows.append((st, stamp, value, "GOES_DSRF", 0, scan_at))
+    finally:
+        for k in [k for k in _CHUNK_CACHE if k[0] == url]:
+            _CHUNK_CACHE.pop(k, None)
+    return rows
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--budget", type=float, default=540.0)
+    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--newest-first", action="store_true", default=True)
+    args = ap.parse_args()
+    t0 = time.time()
+    tz = store.timezones()
+    conn = store.connect()
+    have = store.done(conn, TASK)
+    end = datetime.now(timezone.utc).date() - timedelta(days=1)
+    plan = units(tz, date.fromisoformat(store.START), end)
+    todo = sorted((k for k in plan if f"{k[0]}|{k[1]}" not in have), key=lambda k: k[1], reverse=args.newest_first)
+    n_ok = n_err = 0
+
+    def run(key):
+        try:
+            return key, read_unit(key, plan[key]), None
+        except Exception as exc:  # noqa: BLE001 -- retried next batch
+            return key, None, f"{type(exc).__name__}: {str(exc)[:200]}"
+
+    with ThreadPoolExecutor(args.workers) as pool:
+        it = iter(todo)
+        running = set()
+        for _ in range(args.workers * 2):
+            k = next(it, None)
+            if k is not None:
+                running.add(pool.submit(run, k))
+        while running:
+            finished = next(iter(__import__("concurrent.futures").futures.as_completed(running)))
+            running.discard(finished)
+            key, rows, err = finished.result()
+            if rows is not None:
+                conn.executemany("INSERT OR REPLACE INTO sw_measured_hourly VALUES (?,?,?,?,?,?)", rows)
+                store.mark(conn, TASK, f"{key[0]}|{key[1]}", "ok", f"{sum(r[2] is not None for r in rows)}/{len(rows)}")
+                n_ok += 1
+            else:
+                store.mark(conn, TASK, f"{key[0]}|{key[1]}", "error", err or "")
+                n_err += 1
+            conn.commit()
+            if time.time() - t0 < args.budget and store.disk_ok():
+                k = next(it, None)
+                if k is not None:
+                    running.add(pool.submit(run, k))
+    left = len(todo) - n_ok
+    print(f"goes: {n_ok} units ok, {n_err} errors, {left} of {len(plan)} left, {time.time() - t0:.0f}s")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
