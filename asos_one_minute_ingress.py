@@ -15,6 +15,7 @@ import json
 import math
 import sqlite3
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -55,13 +56,19 @@ def _sha(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _read_bounded(response: Any) -> bytes:
+def _read_bounded(response: Any, *, deadline: float | None = None) -> bytes:
+    """The body under the size bound and, when given, a wall-clock deadline:
+    the socket timeout bounds one read, and a body trickling in under it
+    never ends (2026-10-20, the AWC/MADIS lanes held 05:31-07:28Z)."""
+
     declared = int(str(response.headers.get("Content-Length") or "0"))
     if declared > MAX_RESPONSE_BYTES:
         raise RuntimeError("asos_response_too_large")
     chunks: list[bytes] = []
     total = 0
     while True:
+        if deadline is not None and time.monotonic() > deadline:
+            raise TimeoutError("asos_fetch_deadline_exceeded")
         chunk = response.read(min(64 * 1024, MAX_RESPONSE_BYTES - total + 1))
         if not chunk:
             break
@@ -163,7 +170,9 @@ def fetch_asos_one_minute_temperature(
     started = datetime.now(timezone.utc)
     try:
         with urllib.request.urlopen(request, timeout=max(1.0, float(timeout))) as response:
-            payload = _read_bounded(response)
+            payload = _read_bounded(
+                response, deadline=time.monotonic() + max(1.0, float(timeout)),
+            )
             status = int(response.status)
     except Exception:
         seconds = max(1, int(math.ceil(float(timeout))))

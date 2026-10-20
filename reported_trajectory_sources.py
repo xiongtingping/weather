@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import contextvars
 import csv
 import gzip
 import hashlib
@@ -13,9 +14,11 @@ import os
 import pwd
 import re
 import subprocess
+import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
@@ -25,6 +28,37 @@ ROOT = Path(__file__).resolve().parent
 AMSC_ENDPOINT = "https://www.amsc.net.cn/gateway/api/saas/rest/amc/ReportController/messageRetrievalSort"
 AWC_ENDPOINT = "https://aviationweather.gov/api/data/metar"
 AWC_CACHE_ENDPOINT = "https://aviationweather.gov/data/cache/metars.cache.csv.gz"
+# One AWC fetch, every fallback included, ends within this many seconds of
+# wall clock (2026-10-20).  Each transport's ``timeout`` bounds one socket
+# operation, not the fetch: on a degraded link a body that trickles in under
+# the per-read timeout, then the curl retry, the cache, the per-station
+# batches and TGFTP in turn, held the AWC and MADIS lanes from 05:31Z to
+# 07:28Z -- three committed polls fleet-wide in two hours, ZUUU's first 27 C
+# report reaching P1 an hour and a half late.  A fetch that runs out raises
+# ``SourceFetchDeadlineExceeded``; the lane records one failed round and polls
+# again on its own pace.
+AWC_FETCH_TOTAL_SEC = 60.0
+
+
+class SourceFetchDeadlineExceeded(TimeoutError):
+    """The whole fetch, across its fallbacks, ran past its wall-clock budget."""
+
+
+_FETCH_DEADLINE: "contextvars.ContextVar[float | None]" = contextvars.ContextVar(
+    "reported_trajectory_fetch_deadline", default=None
+)
+
+
+def _within_deadline(timeout: float) -> float:
+    """``timeout`` cut to what the current fetch has left; raises when none."""
+
+    deadline = _FETCH_DEADLINE.get()
+    if deadline is None:
+        return float(timeout)
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise SourceFetchDeadlineExceeded("source_fetch_deadline_exceeded")
+    return min(float(timeout), left)
 # Charter 162 (2026-09-20): the same NOAA reports off a second host, for the
 # hours AWC itself is unreachable -- its TLS certificate expired at
 # 2026-09-19T23:59:59Z and every AWC transport above failed on it at once,
@@ -112,6 +146,7 @@ def _read_bounded_bytes(
     chunks: list[bytes] = []
     total = 0
     while True:
+        _within_deadline(1.0)
         chunk = response.read(min(AMSC_RESPONSE_CHUNK_BYTES, limit - total + 1))
         if not chunk:
             break
@@ -188,7 +223,7 @@ def _curl_official_get(
     both wall-clock and response-size limits.  ``-k`` is deliberately absent.
     """
 
-    seconds = max(1, int(math.ceil(float(timeout))))
+    seconds = max(1, int(math.ceil(_within_deadline(float(timeout)))))
     command = [
             "/usr/bin/curl",
             "-fsSL",
@@ -452,7 +487,12 @@ def fetch_amsc_temperature_reports(
     )
 
 
-def _awc_one(stations: Sequence[str], *, hours: float, timeout: float) -> dict[str, Any]:
+def _awc_one(
+    stations: Sequence[str], *, hours: float, timeout: float, deadline: float | None = None,
+) -> dict[str, Any]:
+    if deadline is not None:
+        # A pool thread starts with an empty context; carry the fetch's budget in.
+        _FETCH_DEADLINE.set(deadline)
     station_list = list(stations)
     params = {"ids": ",".join(station_list), "format": "json", "taf": "false", "hours": f"{hours:g}"}
     url = AWC_ENDPOINT + "?" + urllib.parse.urlencode(params)
@@ -465,13 +505,15 @@ def _awc_one(stations: Sequence[str], *, hours: float, timeout: float) -> dict[s
     # fallback into a multi-minute partial batch.
     direct_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with direct_opener.open(request, timeout=timeout) as response:
+        with direct_opener.open(request, timeout=_within_deadline(timeout)) as response:
             response_started_at = utc_now()
             raw = _read_bounded_response(
                 response,
                 limit=AWC_MAX_RESPONSE_BYTES,
             )
             status = int(response.status)
+    except SourceFetchDeadlineExceeded:
+        raise
     except Exception:
         raw = _curl_official_get(
             url,
@@ -527,10 +569,12 @@ def _tgftp_cycle_reports(
     )
     direct_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with direct_opener.open(request, timeout=max(2.0, float(timeout))) as response:
+        with direct_opener.open(request, timeout=_within_deadline(max(2.0, float(timeout)))) as response:
             text = _read_bounded_response(
                 response, limit=NOAA_TGFTP_MAX_RESPONSE_BYTES
             )
+    except SourceFetchDeadlineExceeded:
+        raise
     except Exception:
         text = _curl_official_get(
             url,
@@ -610,6 +654,8 @@ def fetch_noaa_tgftp_temperature_reports(
                 station_set, cycle_hour=moment.hour, timeout=timeout
             ):
                 latest[(report["station_id"], report["raw_text"])] = report
+        except SourceFetchDeadlineExceeded:
+            raise
         except Exception as exc:  # one missing cycle is not a failed poll
             errors.append(f"tgftp_cycle_{moment.hour:02d}:{type(exc).__name__}")
     if not latest:
@@ -628,7 +674,24 @@ def fetch_noaa_tgftp_temperature_reports(
 
 def fetch_awc_temperature_reports(
     station_ids: Sequence[str], *, hours: float, timeout: float = 6.0, batch_size: int = 10, max_workers: int = 6,
-    date_anchor: str | None = None,
+    date_anchor: str | None = None, total_timeout: float = AWC_FETCH_TOTAL_SEC,
+) -> dict[str, Any]:
+    """The fetch below, ended within ``total_timeout`` seconds of wall clock
+    whichever transports it falls back through (``AWC_FETCH_TOTAL_SEC``)."""
+
+    token = _FETCH_DEADLINE.set(time.monotonic() + float(total_timeout))
+    try:
+        return _fetch_awc_temperature_reports(
+            station_ids, hours=hours, timeout=timeout, batch_size=batch_size,
+            max_workers=max_workers, date_anchor=date_anchor,
+        )
+    finally:
+        _FETCH_DEADLINE.reset(token)
+
+
+def _fetch_awc_temperature_reports(
+    station_ids: Sequence[str], *, hours: float, timeout: float, batch_size: int, max_workers: int,
+    date_anchor: str | None,
 ) -> dict[str, Any]:
     """``date_anchor`` reads the window ending at that instant, not at now.
 
@@ -662,7 +725,7 @@ def fetch_awc_temperature_reports(
         try:
             with direct_opener.open(
                 request,
-                timeout=max(1.0, float(timeout)),
+                timeout=_within_deadline(max(1.0, float(timeout))),
             ) as response:
                 response_started_at = utc_now()
                 text = _read_bounded_response(
@@ -671,6 +734,8 @@ def fetch_awc_temperature_reports(
                 )
                 status = int(response.status)
             transport = "official_awc_raw_metar_batch_direct"
+        except SourceFetchDeadlineExceeded:
+            raise
         except Exception:
             text = _curl_official_get(
                 url,
@@ -702,6 +767,8 @@ def fetch_awc_temperature_reports(
             "taf_requested": False,
             "transport": transport,
         }
+    except SourceFetchDeadlineExceeded:
+        raise
     except Exception as exc:
         raw_api_error = f"awc_raw_api:{type(exc).__name__}"
     # The official global cache is one bounded request for all stations and is
@@ -720,7 +787,7 @@ def fetch_awc_temperature_reports(
         try:
             with direct_opener.open(
                 request,
-                timeout=max(timeout, 8.0),
+                timeout=_within_deadline(max(timeout, 8.0)),
             ) as response:
                 response_started_at = utc_now()
                 compressed = _read_bounded_bytes(
@@ -729,6 +796,8 @@ def fetch_awc_temperature_reports(
                 )
                 status = int(response.status)
             transport = "official_awc_global_metar_cache"
+        except SourceFetchDeadlineExceeded:
+            raise
         except Exception:
             compressed = _curl_official_get(
                 AWC_CACHE_ENDPOINT,
@@ -776,19 +845,35 @@ def fetch_awc_temperature_reports(
         }:
             raise
         cache_error = f"awc_cache:{type(exc).__name__}"
+    except SourceFetchDeadlineExceeded:
+        raise
     except Exception as exc:
         cache_error = f"awc_cache:{type(exc).__name__}"
     batches = [stations[index : index + max(1, int(batch_size))] for index in range(0, len(stations), max(1, int(batch_size)))]
     rows: list[dict[str, Any]] = []
     errors: list[str] = []
-    with ThreadPoolExecutor(max_workers=max(1, min(int(max_workers), len(batches) or 1))) as executor:
-        futures = {executor.submit(_awc_one, batch, hours=hours, timeout=timeout): batch for batch in batches}
-        for future in as_completed(futures):
-            batch = futures[future]
-            try:
-                rows.append(future.result())
-            except Exception as exc:
-                errors.append(f"{','.join(batch)}:{type(exc).__name__}")
+    deadline = _FETCH_DEADLINE.get()
+    executor = ThreadPoolExecutor(max_workers=max(1, min(int(max_workers), len(batches) or 1)))
+    try:
+        futures = {
+            executor.submit(_awc_one, batch, hours=hours, timeout=timeout, deadline=deadline): batch
+            for batch in batches
+        }
+        try:
+            for future in as_completed(futures, timeout=_within_deadline(3600.0)):
+                batch = futures[future]
+                try:
+                    rows.append(future.result())
+                except SourceFetchDeadlineExceeded:
+                    raise
+                except Exception as exc:
+                    errors.append(f"{','.join(batch)}:{type(exc).__name__}")
+        except FuturesTimeoutError as exc:
+            raise SourceFetchDeadlineExceeded("source_fetch_deadline_exceeded") from exc
+    finally:
+        # Never wait on a batch still trickling in: it carries the same
+        # deadline and ends on its own.
+        executor.shutdown(wait=False, cancel_futures=True)
     if not rows:
         # Charter 162: every AWC door is shut at once only when AWC itself is
         # down (its certificate expired on 2026-09-19).  The same NOAA reports
@@ -799,6 +884,8 @@ def fetch_awc_temperature_reports(
             raise RuntimeError(reason)
         try:
             fallback = fetch_noaa_tgftp_temperature_reports(stations, timeout=timeout)
+        except SourceFetchDeadlineExceeded:
+            raise
         except Exception as tgftp_exc:
             raise RuntimeError(reason + ",tgftp:" + type(tgftp_exc).__name__) from tgftp_exc
         for report in fallback["reports"]:
