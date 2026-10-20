@@ -78,30 +78,33 @@ def units(tz: dict[str, str], start: date, end: date) -> dict[tuple[str, str], l
     return out
 
 
-def _box_from_chunks(url: str, chunks: dict[int, tuple[int, int]], chunk_rows: int, n_x: int,
+def _box_from_chunks(url: str, chunks: dict[tuple[int, int], tuple[int, int]], shape: tuple[int, int],
                      line: int, col: int, hb: int, fill, scale: float, offset: float):
-    """The station's 5x5 box decoded outside h5py: each needed chunk is a
-    row band (``chunk_rows`` x the full width) stored shuffle + deflate."""
+    """The station's 5x5 box decoded outside h5py.  DSR is stored shuffle +
+    deflate in chunks of ``shape``: a 24-row band of the full width in the
+    current files, 226 x 226 tiles in older ones (seen 2026-10-20); a box may
+    straddle up to 2 x 2 chunks."""
 
     import zlib  # noqa: PLC0415
 
     import numpy as np  # noqa: PLC0415
 
-    rows = []
-    for r in range(line - hb, line + hb + 1):
-        start = r - r % chunk_rows
-        off, size = chunks[start]
-        if (url, start) not in _CHUNK_CACHE:
-            body = goes._get(url, {"Range": f"bytes={off}-{off + size - 1}"}).content
-            if len(body) != size:
-                raise IOError("goes_chunk_short_read")
-            raw = np.frombuffer(zlib.decompress(body), dtype=np.uint8)
-            n = raw.size // 2
-            plain = np.empty(raw.size, dtype=np.uint8)
-            plain[0::2], plain[1::2] = raw[:n], raw[n:]
-            _CHUNK_CACHE[(url, start)] = plain.view("<u2").reshape(chunk_rows, n_x)
-        rows.append(_CHUNK_CACHE[(url, start)][r - start, col - hb:col + hb + 1])
-    box = np.vstack(rows).astype(float)
+    cr, cc = shape
+    box = np.empty((2 * hb + 1, 2 * hb + 1), dtype=float)
+    for i, r in enumerate(range(line - hb, line + hb + 1)):
+        for j, c in enumerate(range(col - hb, col + hb + 1)):
+            r0, c0 = r - r % cr, c - c % cc
+            if (url, r0, c0) not in _CHUNK_CACHE:
+                off, size = chunks[(r0, c0)]
+                body = goes._get(url, {"Range": f"bytes={off}-{off + size - 1}"}).content
+                if len(body) != size:
+                    raise IOError("goes_chunk_short_read")
+                raw = np.frombuffer(zlib.decompress(body), dtype=np.uint8)
+                n = raw.size // 2
+                plain = np.empty(raw.size, dtype=np.uint8)
+                plain[0::2], plain[1::2] = raw[:n], raw[n:]
+                _CHUNK_CACHE[(url, r0, c0)] = plain.view("<u2").reshape(cr, cc)
+            box[i, j] = _CHUNK_CACHE[(url, r0, c0)][r - r0, c - c0]
     if fill.size:
         box[box == fill[0]] = np.nan
     good = (box * scale + offset)[np.isfinite(box)]
@@ -145,10 +148,10 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
         scale = float(np.asarray(ds.attrs["scale_factor"]).ravel()[0])
         offset = float(np.asarray(ds.attrs.get("add_offset", [0.0])).ravel()[0])
         n_y, n_x = ds.shape
-        chunk_rows, chunk_cols = ds.chunks
+        chunk_shape = ds.chunks
         pl = ds.id.get_create_plist()
         filters = [pl.get_filter(i)[0] for i in range(pl.get_nfilters())]
-        if chunk_cols != n_x or filters != [2, 1] or ds.dtype.str != "<u2":
+        if chunk_shape is None or filters != [2, 1] or ds.dtype.str != "<u2":
             raise IOError(f"goes_layout_unexpected:{ds.chunks}:{filters}:{ds.dtype.str}")
         for st, stamp in members:
             lat, lon = _COORDINATES[st]
@@ -162,12 +165,13 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
                 continue
             chunks = {}
             for r in range(line - hb, line + hb + 1):
-                start = r - r % chunk_rows
-                if start not in chunks:
-                    info = ds.id.get_chunk_info_by_coord((start, 0))
-                    if info.filter_mask != 0:
-                        raise IOError("goes_filter_mask_set")
-                    chunks[start] = (info.byte_offset, info.size)
+                for c in range(col - hb, col + hb + 1):
+                    origin = (r - r % chunk_shape[0], c - c % chunk_shape[1])
+                    if origin not in chunks:
+                        info = ds.id.get_chunk_info_by_coord(origin)
+                        if info.filter_mask != 0:
+                            raise IOError("goes_filter_mask_set")
+                        chunks[origin] = (info.byte_offset, info.size)
             plan.append((st, stamp, (chunks, line, col)))
     rows = []
     try:
@@ -175,10 +179,10 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
             value = None
             if where is not None:
                 chunks, line, col = where
-                value = _box_from_chunks(url, chunks, chunk_rows, n_x, line, col, hb, fill, scale, offset)
+                value = _box_from_chunks(url, chunks, chunk_shape, line, col, hb, fill, scale, offset)
             rows.append((st, stamp, value, "GOES_DSRF", 0, scan_at))
     finally:
-        for k in [k for k in _CHUNK_CACHE if k[0] == url]:
+        for k in [k for k in list(_CHUNK_CACHE) if k[0] == url]:
             _CHUNK_CACHE.pop(k, None)
     return rows
 
