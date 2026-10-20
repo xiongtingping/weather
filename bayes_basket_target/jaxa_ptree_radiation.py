@@ -25,6 +25,7 @@ Board only -- nothing here feeds a probability or an order.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import queue
@@ -88,6 +89,7 @@ _PENDING: set[str] = set()
 _MISSES: dict[str, float] = {}
 _LISTINGS: dict[str, tuple[float, list[str]]] = {}
 _CACHE: dict[str, dict[str, float | None]] | None = None   # hour ISO -> station -> W/m2
+_CACHE_STAMP: int | None = None   # the file's mtime when last folded in
 _WORKER: threading.Thread | None = None
 _STATUS: dict[str, Any] = {}
 
@@ -323,38 +325,73 @@ def read_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str
             pass
 
 
-def _load() -> dict[str, dict[str, float | None]]:
+def _absorb(doc: dict[str, Any]) -> None:
+    """Fold the file's reads into this process's: an hour or scan this
+    process has not read is taken from the file, the newer L2 scan wins."""
+
     global _CACHE
     if _CACHE is None:
-        try:
-            doc = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-            ok = doc.get("schema") == CACHE_SCHEMA
-            _CACHE = dict(doc.get("hours") or {}) if ok else {}
-            latest = doc.get("l2_latest") if ok else None
-            if isinstance(latest, dict):
-                _L2_STATE["latest"] = latest
-            clp = doc.get("clp") if ok else None
-            if isinstance(clp, dict):
-                _CLP.update(clp)
-        except (OSError, ValueError):
-            _CACHE = {}
+        _CACHE = {}
+    if doc.get("schema") != CACHE_SCHEMA:
+        return
+    for key, values in (doc.get("hours") or {}).items():
+        _CACHE.setdefault(key, values)
+    for key, values in (doc.get("clp") or {}).items():
+        _CLP.setdefault(key, values)
+    latest = doc.get("l2_latest")
+    mine = _L2_STATE.get("latest") or {}
+    if isinstance(latest, dict) and str(latest.get("scan_utc") or "") > str(mine.get("scan_utc") or ""):
+        _L2_STATE["latest"] = latest
+
+
+def _absorb_file() -> None:
+    global _CACHE_STAMP
+    try:
+        stamp = CACHE_PATH.stat().st_mtime_ns
+        if stamp == _CACHE_STAMP and _CACHE is not None:
+            return
+        doc = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc, stamp = {}, None
+    _absorb(doc if isinstance(doc, dict) else {})
+    _CACHE_STAMP = stamp
+
+
+def _load() -> dict[str, dict[str, float | None]]:
+    # Several processes (the board's research refresh and its page compute)
+    # each run a reader on the one file: what another process read since is
+    # folded in whenever the file changes, so no hour is fetched twice and
+    # none is shown as missing here after another process read it.
+    _absorb_file()
+    assert _CACHE is not None
     return _CACHE
 
 
 def _persist(cache: dict[str, dict[str, float | None]]) -> None:
-    keep = sorted(cache)[-KEEP_HOURS:]
-    for stale in set(cache) - set(keep):
-        cache.pop(stale, None)
-    keep_scans = sorted(_CLP)[-KEEP_HOURS:]
-    for stale in set(_CLP) - set(keep_scans):
-        _CLP.pop(stale, None)
+    # Merge-then-replace under a file lock: writing this process's dict over
+    # the file dropped every hour another process had read since this one
+    # loaded (2026-10-20: the 01Z hour read, then overwritten, shown 未到).
+    global _CACHE_STAMP
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary = CACHE_PATH.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"schema": CACHE_SCHEMA, "written_at_utc": datetime.now(timezone.utc)
-                                     .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache,
-                                     "l2_latest": _L2_STATE.get("latest"), "clp": _CLP}, sort_keys=True),
-                         encoding="utf-8")
-    os.replace(temporary, CACHE_PATH)
+    with open(CACHE_PATH.with_suffix(".lock"), "a", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            _absorb_file()
+            keep = sorted(cache)[-KEEP_HOURS:]
+            for stale in set(cache) - set(keep):
+                cache.pop(stale, None)
+            keep_scans = sorted(_CLP)[-KEEP_HOURS:]
+            for stale in set(_CLP) - set(keep_scans):
+                _CLP.pop(stale, None)
+            fd, temporary = tempfile.mkstemp(dir=CACHE_PATH.parent, prefix=CACHE_PATH.name, suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as out:
+                json.dump({"schema": CACHE_SCHEMA, "written_at_utc": datetime.now(timezone.utc)
+                           .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache,
+                           "l2_latest": _L2_STATE.get("latest"), "clp": _CLP}, out, sort_keys=True)
+            os.replace(temporary, CACHE_PATH)
+            _CACHE_STAMP = CACHE_PATH.stat().st_mtime_ns
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def _read_latest_l2() -> None:
