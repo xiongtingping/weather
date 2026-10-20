@@ -2047,8 +2047,14 @@ def serving_cells_by_day(
     stage: str,
     min_decision_at_utc: str | None = None,
     pre_band: bool = True,
+    max_decision_at_utc: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """One scoreable cell per station-day-stage-hourblock.
+
+    ``max_decision_at_utc`` bounds the read above, for a caller that wants
+    only station-days whose decisions all lie inside it (the board's kept
+    landing cells, 2026-10-20): a day it cuts samples short, and such a pass
+    is not recorded as a complete one.
 
     Sampling one decision per three-hour block rather than every decision:
     a station-day emits dozens of re-decisions off the same evidence, and
@@ -2083,6 +2089,9 @@ def serving_cells_by_day(
     if min_decision_at_utc:
         query += " AND decision_at_utc>=?"
         parameters.append(str(min_decision_at_utc))
+    if max_decision_at_utc:
+        query += " AND decision_at_utc<=?"
+        parameters.append(str(max_decision_at_utc))
     # Two passes, because the sampling rule reads the row and the cell reads
     # the body, and only the row decides which cell survives.
     #
@@ -2161,10 +2170,11 @@ def serving_cells_by_day(
                 break
     from .serving_payload_cache import record_pass  # noqa: PLC0415
 
-    record_pass(
-        "center_width.serving_cells_by_day", stage=stage_id, pre_band=pre_band,
-        min_decision_at_utc=min_decision_at_utc, conn=conn,
-    )
+    if not max_decision_at_utc:
+        record_pass(
+            "center_width.serving_cells_by_day", stage=stage_id, pre_band=pre_band,
+            min_decision_at_utc=min_decision_at_utc, conn=conn,
+        )
     return by_day
 
 

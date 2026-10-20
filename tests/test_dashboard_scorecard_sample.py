@@ -321,3 +321,94 @@ def test_the_reliability_bins_summed_as_read_equal_the_per_pair_decomposition() 
     for key in ("ece", "reliability", "resolution", "uncertainty"):
         assert by_bins[key] == pytest.approx(by_pairs[key], rel=1e-12)
     assert [row["bin"] for row in by_bins["bins"]] == [row["bin"] for row in by_pairs["bins"]]
+
+
+def _memo_store(rows_per_scope: int = 3):
+    import math
+    import random
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE calibration_station_registry(station_id TEXT PRIMARY KEY);"
+        "CREATE TABLE calibration_station_daily_high_truth(station_id TEXT, local_date TEXT,"
+        " official_tmax_c REAL, qc_status TEXT, revision_no INTEGER);"
+        "CREATE TABLE calibration_cross_native_ensemble_oos_prediction(station_id TEXT,"
+        " event_date TEXT, lead_bucket TEXT, probabilities_json TEXT,"
+        " bucket_centers_c_json TEXT, decision_at_utc TEXT);"
+    )
+    rnd = random.Random(5)
+    for station in ("ZUUU", "KLGA"):
+        conn.execute("INSERT INTO calibration_station_registry VALUES(?)", (station,))
+        for back in range(1, 20):
+            day = (TODAY - timedelta(days=back)).isoformat()
+            truth = 20 + rnd.uniform(-4, 4)
+            conn.execute("INSERT INTO calibration_station_daily_high_truth VALUES(?,?,?,'ACCEPTED',1)",
+                         (station, day, truth))
+            for lead in ("h00_12", "h24_48"):
+                for _ in range(rows_per_scope):
+                    mu, sd = truth + rnd.gauss(0, 1.2), rnd.uniform(0.7, 2.0)
+                    weights = {key: math.exp(-0.5 * ((CENTERS[key] - mu) / sd) ** 2) for key in KEYS}
+                    total = sum(weights.values())
+                    decided = (TODAY - timedelta(days=back, hours=rnd.randint(0, 60))).isoformat()
+                    conn.execute(
+                        "INSERT INTO calibration_cross_native_ensemble_oos_prediction VALUES(?,?,?,?,?,?)",
+                        (station, day, lead, json.dumps({k: v / total for k, v in weights.items()}),
+                         json.dumps(CENTERS), f"{decided}T06:00:00Z"),
+                    )
+    return conn
+
+
+def _without_ages(value):
+    if isinstance(value, dict):
+        return {k: _without_ages(v) for k, v in value.items() if "age_hours" not in k}
+    if isinstance(value, list):
+        return [_without_ages(v) for v in value]
+    return value
+
+
+def test_a_settled_day_is_scored_once_and_read_back_identically(tmp_path, monkeypatch) -> None:
+    # 2026-10-20 (user 「为什么要全量读历史」 / 「改」): the 45-day window was
+    # re-read and re-scored every three hours, three times over.
+    conn = _memo_store()
+    window = {"since": f"{(TODAY - timedelta(days=15)).isoformat()}T13:00:00Z",
+              "until": "9999-12-31T00:00:00Z", "version": "t"}
+    unpaged = C.collect_calibration_scorecard(conn, window_override=window)
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(C._PAGED_RUN, "probe", True)
+    first = C.collect_calibration_scorecard(conn, window_override=window)
+    kept = json.loads((tmp_path / C.RENDER_CLOSED_SCORECARD_DAYS).read_text())["days"]
+    assert kept, "the closed days are kept"
+    reads: list[str] = []
+    conn.set_trace_callback(reads.append)
+    second = C.collect_calibration_scorecard(conn, window_override=window)
+    conn.set_trace_callback(None)
+    assert _without_ages(first) == _without_ages(unpaged)
+    assert _without_ages(second) == _without_ages(unpaged)
+    whole_reads = [sql for sql in reads if "probabilities_json" in sql]
+    closed_through = (TODAY - timedelta(days=C.STATION_DAY_CLOSED_DAYS)).isoformat()
+    # Read again: the days not yet closed, and the closed days the anchor cuts.
+    expected = conn.execute(
+        "SELECT COUNT(*) FROM (SELECT event_date, MIN(decision_at_utc) AS first,"
+        " MAX(decision_at_utc) AS last FROM calibration_cross_native_ensemble_oos_prediction"
+        " GROUP BY station_id, event_date)"
+        " WHERE last >= ? AND (event_date > ? OR first < ?)",
+        (window["since"], closed_through, window["since"]),
+    ).fetchone()[0]
+    assert 0 < len(whole_reads) == expected, (len(whole_reads), expected)
+
+
+def test_a_late_row_on_a_kept_day_is_read_again(tmp_path, monkeypatch) -> None:
+    conn = _memo_store()
+    window = {"since": f"{(TODAY - timedelta(days=30)).isoformat()}T00:00:00Z",
+              "until": "9999-12-31T00:00:00Z", "version": "t"}
+    monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    monkeypatch.setitem(C._PAGED_RUN, "probe", True)
+    C.collect_calibration_scorecard(conn, window_override=window)
+    day = (TODAY - timedelta(days=12)).isoformat()
+    conn.execute(
+        "INSERT INTO calibration_cross_native_ensemble_oos_prediction"
+        " SELECT * FROM calibration_cross_native_ensemble_oos_prediction"
+        " WHERE station_id='ZUUU' AND event_date=? AND lead_bucket='h00_12' LIMIT 1", (day,))
+    kept_again = C.collect_calibration_scorecard(conn, window_override=window)
+    monkeypatch.delitem(C._PAGED_RUN, "probe")
+    fresh = C.collect_calibration_scorecard(conn, window_override=window)
+    assert _without_ages(kept_again) == _without_ages(fresh)

@@ -3028,6 +3028,14 @@ def _precip_forecast_at(
     return max(known, key=lambda v: (v[0], v[1]))[1]
 
 
+#: Each closed station-day's AWC observation summary, kept by paged runs
+#: (``collect_precip_classification``), and the day it is complete through.
+RENDER_CLOSED_PRECIP_DAYS = "_closed_precip_days.json"
+#: How far back a local day is closed for the precipitation summaries: past
+#: every timezone's midnight and the reports' arrival.
+PRECIP_CLOSED_DAYS = 3
+
+
 def collect_precip_classification(conn: sqlite3.Connection) -> dict[str, Any]:
     """Every closed station-day with an official report record and an
     Open-Meteo daily precipitation forecast, paired at each lead and classed
@@ -3080,12 +3088,44 @@ def collect_precip_classification(conn: sqlite3.Connection) -> dict[str, Any]:
     days: dict[tuple[str, str], dict[str, Any]] = {}
     metar_counts: Counter[str] = Counter()
     asos_counts: Counter[str] = Counter()
+    # A closed local day's observation summary is read once (user 2026-10-20
+    # 「为什么要全量读历史」 / 「改」): every build re-read and re-parsed every
+    # AWC report since the first forecast day, a window that only grows.  A
+    # paged run keeps each station-day through ``through`` -- three days back,
+    # past every timezone's close and the reports' arrival -- and reads from
+    # the day before ``through`` on (a day of margin covers the local day
+    # after it in any timezone); a summary is the floor's, so a new floor
+    # rebuilds them all.
+    memo_salt = hashlib.sha256(json.dumps([
+        "precip_day_memo_v1", floor, _loaded_source(metar_precipitation_reading),
+    ]).encode("utf-8")).hexdigest()
+    memo = _load_closed_readings(RENDER_CLOSED_PRECIP_DAYS) if _PAGED_RUN else {}
+    through = (
+        str(memo["through"])
+        if memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
+        and memo.get("through") else None
+    )
+    if through:
+        for memo_key, held in memo["days"].items():
+            station, day = memo_key.split("|", 1)
+            days[(station, day)] = {
+                "hours": set(held["hours"]),
+                "hourly_mm": {int(hour): mm for hour, mm in held["hourly_mm"].items()},
+                "present": bool(held["present"]), "reports": int(held["reports"]),
+            }
+            metar_counts[station] += int(held["metar"])
+            asos_counts[station] += int(held["asos"])
+    read_from = (
+        (date.fromisoformat(through) - timedelta(days=1)).isoformat() if through else floor
+    )
+    fresh_metar: Counter[tuple[str, str]] = Counter()
+    fresh_asos: Counter[tuple[str, str]] = Counter()
     try:
         cursor = archive.execute(
             "SELECT station_id, report_type, valid_at, raw_text"
             " FROM reported_trajectory_observations"
             " WHERE source_lane='awc' AND valid_at>=?",
-            (floor + "T00:00:00Z",),
+            (read_from + "T00:00:00Z",),
         )
         for station, report_type, valid_at, raw in cursor:
             zone = zones.get(str(station))
@@ -3096,6 +3136,8 @@ def collect_precip_classification(conn: sqlite3.Connection) -> dict[str, Any]:
                 continue
             local = instant.astimezone(zone)
             key = (str(station), local.strftime("%Y-%m-%d"))
+            if through and key[1] <= through:
+                continue
             entry = days.get(key)
             if entry is None:
                 entry = days[key] = {
@@ -3114,12 +3156,30 @@ def collect_precip_classification(conn: sqlite3.Connection) -> dict[str, Any]:
                 entry["hourly_mm"].get(local.hour, 0.0), reading["hourly_mm"] or 0.0
             )
             metar_counts[str(station)] += 1
+            fresh_metar[key] += 1
             if reading["asos"]:
                 asos_counts[str(station)] += 1
+                fresh_asos[key] += 1
     except sqlite3.Error:
         return {"available": False, "reason": "no_observation_archive"}
     finally:
         archive.close()
+    if _PAGED_RUN:
+        new_through = (_now().date() - timedelta(days=PRECIP_CLOSED_DAYS)).isoformat()
+        if new_through != through:
+            kept_days = dict(memo["days"]) if through else {}
+            for (station, day), entry in days.items():
+                if (through and day <= through) or day > new_through:
+                    continue
+                kept_days[f"{station}|{day}"] = {
+                    "hours": sorted(entry["hours"]),
+                    "hourly_mm": {str(hour): mm for hour, mm in entry["hourly_mm"].items()},
+                    "present": entry["present"], "reports": entry["reports"],
+                    "metar": fresh_metar[(station, day)], "asos": fresh_asos[(station, day)],
+                }
+            _save_closed_readings(RENDER_CLOSED_PRECIP_DAYS, {
+                "salt": memo_salt, "through": new_through, "days": kept_days,
+            })
     asos = {
         station for station, count in metar_counts.items()
         if count and asos_counts[station] >= PRECIP_ASOS_REMARK_SHARE * count
@@ -4776,6 +4836,20 @@ def _correction_in_force(
     return best
 
 
+#: Each closed target day's member-run aggregates, kept by paged runs
+#: (``collect_model_skill``), with the member table's highest rowid then.
+RENDER_CLOSED_SKILL_DAYS = "_closed_skill_days.json"
+
+
+def _skill_day_memo_salt() -> str:
+    """What a kept day's rows were selected by: the families and the
+    aggregate the GROUP BY computes."""
+
+    return hashlib.sha256(json.dumps(
+        ["skill_day_memo_v1", [list(row) for row in MEMBER_FAMILIES]], default=str,
+    ).encode("utf-8")).hexdigest()
+
+
 def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
     """Per model and lead: member spread, and how often the centre lands.
 
@@ -4860,20 +4934,82 @@ def collect_model_skill(conn: sqlite3.Connection) -> dict[str, Any]:
         "(ensemble_system_id=? AND transport_provider_id=?)"
         for _s, _l, _t, _b in MEMBER_FAMILIES
     )
-    parameters: list[Any] = [window_start]
+    family_parameters: list[Any] = []
     for system_id, _label, transport, _backfillable in MEMBER_FAMILIES:
-        parameters.extend((system_id, transport))
-    runs = conn.execute(
+        family_parameters.extend((system_id, transport))
+    # A settled target day is aggregated once (user 2026-10-20 「为什么要全量
+    # 读历史」 / 「改」): the 60-day GROUP BY walked millions of member index
+    # entries every three and a half hours (43 s of a 59 s build on a quiet
+    # machine, 446 s swapping).  A paged run keeps each closed day's run
+    # rows (``RENDER_CLOSED_SKILL_DAYS``) with the table's highest rowid at
+    # the time; the member table only grows (cold offload takes days past
+    # its 90-day hot window, outside this 60), so the days any later row
+    # landed on are found by a rowid range and read again with the rest.
+    top_rowid = int(conn.execute(
+        "SELECT COALESCE(MAX(rowid), 0) FROM calibration_native_ensemble_historical_member_run"
+    ).fetchone()[0])
+    memo_salt = _skill_day_memo_salt()
+    memo = _load_closed_readings(RENDER_CLOSED_SKILL_DAYS) if _PAGED_RUN else {}
+    kept: dict[str, Any] = (
+        dict(memo["days"])
+        if memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
+        and isinstance(memo.get("top_rowid"), int) and memo["top_rowid"] <= top_rowid
+        else {}
+    )
+    if kept:
+        touched = {
+            str(day) for (day,) in conn.execute(
+                "SELECT DISTINCT target_local_date"
+                " FROM calibration_native_ensemble_historical_member_run"
+                " WHERE rowid > ? AND rowid <= ?",
+                (int(memo["top_rowid"]), top_rowid),
+            )
+        }
+        kept = {day: rows for day, rows in kept.items() if day not in touched and day >= window_start}
+    runs: list[Any] = [tuple(row) for day in sorted(kept) for row in kept[day]]
+    closed_through = (_now().date() - timedelta(days=STATION_DAY_CLOSED_DAYS)).isoformat()
+    select = (
         "SELECT ensemble_system_id, station_id, target_local_date,"
         " native_run_init_utc, run_cycle, archive_lead_bucket,"
         " AVG(raw_tmax_c), AVG(raw_tmax_c*raw_tmax_c), COUNT(*)"
         " FROM calibration_native_ensemble_historical_member_run"
         " WHERE qc_status='ACCEPTED' AND native_run_init_utc IS NOT NULL"
-        " AND target_local_date >= ?"
-        f" AND ({conditions})"
-        " GROUP BY 1,2,3,4,5,6",
-        parameters,
-    ).fetchall()
+    )
+    # Seeks, both: the closed days not kept by name, and everything past the
+    # closed line by range -- a NOT IN beside the range would walk it all.
+    window_floor = date.fromisoformat(window_start)
+    closed_line = date.fromisoformat(closed_through)
+    closed_unkept = [
+        day for day in (
+            (window_floor + timedelta(days=offset)).isoformat()
+            for offset in range(max(0, (closed_line - window_floor).days + 1))
+        )
+        if day not in kept
+    ]
+    fresh: list[Any] = []
+    if closed_unkept:
+        fresh.extend(conn.execute(
+            select
+            + f" AND target_local_date IN ({','.join('?' for _ in closed_unkept)})"
+            + f" AND ({conditions}) GROUP BY 1,2,3,4,5,6",
+            [*closed_unkept, *family_parameters],
+        ).fetchall())
+    fresh.extend(conn.execute(
+        select + " AND target_local_date > ? AND target_local_date >= ?"
+        + f" AND ({conditions}) GROUP BY 1,2,3,4,5,6",
+        [closed_through, window_start, *family_parameters],
+    ).fetchall())
+    runs.extend(fresh)
+    if _PAGED_RUN:
+        newly: dict[str, list[list[Any]]] = defaultdict(list)
+        for row in fresh:
+            if str(row[2]) <= closed_through:
+                newly[str(row[2])].append(list(row))
+        if newly or set(memo.get("days") or {}) != set(kept):
+            _save_closed_readings(RENDER_CLOSED_SKILL_DAYS, {
+                "salt": memo_salt, "top_rowid": top_rowid,
+                "days": {**{day: [list(row) for row in rows] for day, rows in kept.items()}, **newly},
+            })
 
     def blank() -> dict[str, Any]:
         return {
@@ -8265,6 +8401,125 @@ def _core_daily(entries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+#: Each closed (stage, station, day)'s landing cells, kept by paged runs
+#: (``_landing_entries``).
+RENDER_CLOSED_LANDING_CELLS = "_closed_landing_cells.json"
+
+
+def _landing_memo_salt() -> str:
+    """What a kept day's cells were built by: the cell sampling, the entry,
+    and the centre rule the entry reads."""
+
+    from bayes_basket_target import center_width_store  # noqa: PLC0415
+
+    parts = [
+        "landing_cell_memo_v1", _center_landing_salt(),
+        _loaded_source(_center_landing_entry), _loaded_source(_core_cell),
+        _loaded_source(center_width_store.serving_cells_by_day),
+        _loaded_source(center_width_store._serving_cell),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _landing_entries(
+    conn: sqlite3.Connection,
+    truth: Mapping[tuple[str, str], float],
+    stored_seats: Mapping[Any, Any] | None,
+    *,
+    stage: str,
+    floor: str | None,
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Each event day's landing entries for one stage, decisions from
+    ``floor`` on, as ``(decision_at_utc, entry)`` in serving order.
+
+    The same cells ``serving_cells_by_day(min_decision_at_utc=floor)``
+    yields, each through ``_center_landing_entry``.  A closed station-day
+    whose every decision is at or after the floor samples exactly as it
+    would with no floor, so a paged run keeps those
+    (``RENDER_CLOSED_LANDING_CELLS``, checked against the day's truth) and
+    reads only the rest -- from the earliest of their first decisions, the
+    floor itself for a day it cuts (user 2026-10-20 「为什么要全量读历史」 /
+    「改」: the centre landing re-read every serving cell since the version
+    floor three times an hour-to-four, for days long settled).
+    """
+
+    from bayes_basket_target.center_width_store import serving_cells_by_day  # noqa: PLC0415
+
+    memo_salt = _landing_memo_salt()
+    memo = _load_closed_readings(RENDER_CLOSED_LANDING_CELLS) if _PAGED_RUN else {}
+    kept: dict[str, Any] = (
+        dict(memo["days"])
+        if memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
+        else {}
+    )
+    closed_through = (_now().date() - timedelta(days=STATION_DAY_CLOSED_DAYS)).isoformat()
+    by_day: dict[str, list[tuple[str, dict[str, Any]]]] = defaultdict(list)
+    todo: dict[tuple[str, str], bool] = {}
+    # Two reads: the days the floor cuts, from the floor to their last
+    # decision; the whole days, from their earliest first decision on.  One
+    # read from the floor would sample every day after it again.
+    whole_from: str | None = None
+    cut_through: str | None = None
+    # One walk of the (stage, station, event_date, decision_at_utc) index.
+    for station, day, first, last in conn.execute(
+        "SELECT station_id, event_date, MIN(decision_at_utc), MAX(decision_at_utc)"
+        " FROM basket_probability_bridge_history WHERE stage=?"
+        " GROUP BY station_id, event_date",
+        (stage,),
+    ):
+        key = (str(station), str(day))
+        actual = truth.get(key)
+        if actual is None or (floor and str(last) < floor):
+            continue
+        whole_day = not floor or str(first) >= floor
+        held = kept.get(f"{stage}|{key[0]}|{key[1]}")
+        if whole_day and isinstance(held, dict) and held.get("truth") == actual:
+            by_day[key[1]].extend(
+                (str(decided), entry) for decided, entry in held.get("cells") or []
+            )
+            continue
+        todo[key] = whole_day
+        if whole_day:
+            if whole_from is None or str(first) < whole_from:
+                whole_from = str(first)
+        elif cut_through is None or str(last) > cut_through:
+            cut_through = str(last)
+    if not todo:
+        return by_day
+    fresh: dict[tuple[str, str], list[tuple[str, dict[str, Any]]]] = defaultdict(list)
+    reads = []
+    if cut_through is not None:
+        reads.append((str(floor), cut_through, False))
+    if whole_from is not None:
+        reads.append((whole_from, None, True))
+    for low, high, wants_whole in reads:
+        for cells in serving_cells_by_day(
+            conn, truth, stage=stage, min_decision_at_utc=low, max_decision_at_utc=high,
+        ).values():
+            for cell in cells:
+                key = (str(cell["station_id"]), str(cell["event_date"]))
+                if todo.get(key) is not wants_whole:
+                    continue
+                entry = _center_landing_entry(stage, cell, truth, stored_seats)
+                if entry is not None:
+                    fresh[key].append((str(cell.get("decision_at_utc") or ""), entry))
+    for key in todo:
+        by_day[key[1]].extend(fresh.get(key) or [])
+    closed = {
+        f"{stage}|{key[0]}|{key[1]}": {
+            "truth": truth[key], "cells": [list(item) for item in fresh.get(key) or []],
+        }
+        for key, whole_day in todo.items()
+        if whole_day and key[1] <= closed_through
+    }
+    if _PAGED_RUN and closed:
+        kept.update(closed)
+        _save_closed_readings(
+            RENDER_CLOSED_LANDING_CELLS, {"salt": memo_salt, "days": kept},
+        )
+    return by_day
+
+
 def collect_center_landing(
     conn: sqlite3.Connection,
     *,
@@ -8297,7 +8552,6 @@ def collect_center_landing(
         from bayes_basket_target.center_width_store import (
             _evidence_floor,
             _truth,
-            serving_cells_by_day,
         )
     except ImportError:
         return {}
@@ -8323,19 +8577,17 @@ def collect_center_landing(
                 str(window["since"]) if window
                 else _evidence_floor(conn, stage=stage, caller_bound=None)
             )
-            by_day = serving_cells_by_day(
-                conn, truth, stage=stage, min_decision_at_utc=floor,
+            by_day = _landing_entries(
+                conn, truth, stored_seats, stage=stage, floor=floor,
             )
         except Exception:  # noqa: BLE001 -- a panel must not blank the page
             continue
-        landings: list[dict[str, Any]] = []
-        for day in sorted(by_day):
-            for cell in by_day[day]:
-                if until and str(cell.get("decision_at_utc") or "") >= until:
-                    continue
-                entry = _center_landing_entry(stage, cell, truth, stored_seats)
-                if entry is not None:
-                    landings.append(entry)
+        landings: list[dict[str, Any]] = [
+            entry
+            for day in sorted(by_day)
+            for decided, entry in by_day[day]
+            if not (until and decided >= until)
+        ]
         if not landings:
             continue
         rows = []
@@ -8863,6 +9115,24 @@ COVERAGE_LEVELS = (0.5, 0.8, 0.9)
 
 #: The per-row scores the scorecard averages (``_prediction_scores``, plus
 #: the flat reference's two), every one entering only as a weighted mean.
+#: Each closed station-day's scorecard group sums, kept by paged runs
+#: (``collect_calibration_scorecard``).
+RENDER_CLOSED_SCORECARD_DAYS = "_closed_scorecard_days.json"
+
+
+def _scorecard_day_memo_salt() -> str:
+    """What a kept station-day's sums were computed by: the row scoring and
+    its grids.  The collector's own fingerprint does not see these."""
+
+    parts = [
+        "scorecard_day_memo_v1",
+        _loaded_source(_prediction_scores), _loaded_source(_bucket_order),
+        _loaded_source(_reliability_bin),
+        repr((PIT_BIN_COUNT, tuple(COVERAGE_LEVELS), _SCORECARD_LINEAR_KEYS)),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
 _SCORECARD_LINEAR_KEYS = (
     "error", "abs_error", "square_error", "error_c", "abs_error_c",
     "square_error_c", "rung_c", "crps", "brier", "variance_rungs",
@@ -9831,6 +10101,16 @@ def collect_calibration_scorecard(
     # groups.  Every lamp below reads a group's mean at weight one, and the
     # reliability decomposition its bin sums, so a group needs its row count
     # and sums only.
+    #
+    # And a settled day is read once (user 2026-10-20 「为什么要全量读历史」
+    # / 「改」): the whole 45-day window was re-read and re-scored every
+    # three hours, three times over (this window, the previous version's,
+    # the 21-day trend), although a closed day's rows never change.  A paged
+    # run keeps each closed station-day's group sums
+    # (``RENDER_CLOSED_SCORECARD_DAYS``), checked against the day's row count
+    # and highest rowid off the scope index (no JSON read), and reads only
+    # the days it does not hold -- or whose decisions straddle this window's
+    # edges, which are read and filtered row by row as before.
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     row_count = 0
     stations: set[str] = set()
@@ -9839,36 +10119,16 @@ def collect_calibration_scorecard(
     # scored once per (ladder, truth), not once per row: half of the
     # 1.34M scorings of 2026-10-02 were this one number recomputed.
     flat_by_ladder: dict[tuple[str, float], dict[str, Any] | None] = {}
-    # No ORDER BY: nothing below depends on row order, and sorting the
-    # window (668k rows, 318 MB of JSON on 2026-10-02) was a temp B-tree
-    # the size of the window, spilled to disk on every build.
-    for (
-        station, day, lead, probabilities_json, centers_json, decided
-    ) in conn.execute(
-        "SELECT station_id, event_date, lead_bucket, probabilities_json,"
-        " bucket_centers_c_json, decision_at_utc"
-        " FROM calibration_cross_native_ensemble_oos_prediction"
-        # The station list lets the scope index (station_id, event_date, ...)
-        # seek; on its own the window scanned 2.27M rows (query-plan guard,
-        # 2026-10-15).  Every station in this table is in the registry.
-        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
-        " AND event_date>=date('now',?) AND decision_at_utc>=?",
-        (f"-{SCORECARD_MAX_WINDOW_DAYS} days", anchor_prefix),
-    ):
-        actual = truth.get((str(station), str(day)))
-        if actual is None:
-            continue
-        # Calendar leads (d0/d1/d2) were retired for hour buckets; rows under
-        # the old vocabulary stop in mid-August and would drag stale scopes
-        # into a board that is meant to read as current.
-        if not str(lead).startswith("h"):
-            continue
-        if anchor_at is not None:
-            decided_at = _parse_utc(str(decided))
-            if decided_at is None or decided_at < anchor_at:
-                continue
-            if until_at is not None and decided_at >= until_at:
-                continue
+
+    def _in_window(decided: Any) -> bool:
+        if anchor_at is None:
+            return True
+        decided_at = _parse_utc(str(decided))
+        if decided_at is None or decided_at < anchor_at:
+            return False
+        return until_at is None or decided_at < until_at
+
+    def _score(probabilities_json: Any, centers_json: Any, actual: float) -> dict[str, Any] | None:
         try:
             probability = json.loads(probabilities_json)
             centers = {
@@ -9876,10 +10136,10 @@ def collect_calibration_scorecard(
                 for key, value in json.loads(centers_json).items()
             }
         except (ValueError, TypeError, AttributeError):
-            continue
+            return None
         scores = _prediction_scores(probability, centers, actual)
         if scores is None:
-            continue
+            return None
         # The no-skill reference, a flat forecast over the same ladder.  It
         # is not the gate's climatology, but measured on the 2026-09-17
         # sample it scores alike (mean CRPS 2.05 against 2.06 for a 60-day
@@ -9895,18 +10155,19 @@ def collect_calibration_scorecard(
             )
             flat_by_ladder[flat_key] = flat_scores
         if flat_scores is None:
-            continue
+            return None
         scores["flat_crps"] = flat_scores["crps"]
         scores["flat_brier"] = flat_scores["brier"]
-        key = (str(station), str(day), str(lead))
-        slot = groups.get(key)
-        if slot is None:
-            slot = groups[key] = {
-                "station": key[0], "event_date": key[1], "lead": key[2],
-                "rows": 0, "pit_bins": [0.0] * PIT_BIN_COUNT,
-                "reliability": defaultdict(lambda: [0.0, 0.0, 0.0]),
-                **{name: 0.0 for name in _SCORECARD_LINEAR_KEYS},
-            }
+        return scores
+
+    def _new_slot() -> dict[str, Any]:
+        return {
+            "rows": 0, "pit_bins": [0.0] * PIT_BIN_COUNT,
+            "reliability": defaultdict(lambda: [0.0, 0.0, 0.0]),
+            **{name: 0.0 for name in _SCORECARD_LINEAR_KEYS},
+        }
+
+    def _add(slot: dict[str, Any], scores: Mapping[str, Any]) -> None:
         slot["rows"] += 1
         for name in _SCORECARD_LINEAR_KEYS:
             slot[name] += scores[name]
@@ -9919,9 +10180,124 @@ def collect_calibration_scorecard(
             cell[0] += promised
             cell[1] += happened
             cell[2] += 1.0
-        row_count += 1
-        stations.add(str(station))
-        latest = max(latest, str(decided))
+
+    def _take(station: str, day: str, lead: str, slot: Mapping[str, Any]) -> None:
+        groups[(station, day, lead)] = {
+            "station": station, "event_date": day, "lead": lead,
+            **{name: slot[name] for name in _SCORECARD_LINEAR_KEYS},
+            "rows": slot["rows"], "pit_bins": list(slot["pit_bins"]),
+            "reliability": {int(index): list(cell) for index, cell in slot["reliability"].items()},
+        }
+
+    memo_salt = _scorecard_day_memo_salt()
+    memo = _load_closed_readings(RENDER_CLOSED_SCORECARD_DAYS) if _PAGED_RUN else {}
+    kept: dict[str, Any] = (
+        dict(memo["days"])
+        if memo.get("salt") == memo_salt and isinstance(memo.get("days"), dict)
+        else {}
+    )
+    closed_through = (_now().date() - timedelta(days=STATION_DAY_CLOSED_DAYS)).isoformat()
+    newly_closed: dict[str, Any] = {}
+    in_horizon: set[str] = set()
+    # Each station-day of the horizon, off the covering scope index: the
+    # station list lets it seek; on its own the window scanned 2.27M rows
+    # (query-plan guard, 2026-10-15).  Every station in this table is in
+    # the registry.
+    for station, day, row_total, first, last, top_rowid in conn.execute(
+        "SELECT station_id, event_date, COUNT(*), MIN(decision_at_utc),"
+        " MAX(decision_at_utc), MAX(rowid)"
+        " FROM calibration_cross_native_ensemble_oos_prediction"
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND event_date>=date('now',?)"
+        " GROUP BY station_id, event_date",
+        (f"-{SCORECARD_MAX_WINDOW_DAYS} days",),
+    ):
+        station, day = str(station), str(day)
+        actual = truth.get((station, day))
+        if actual is None:
+            continue
+        memo_key = f"{station}|{day}"
+        in_horizon.add(memo_key)
+        if anchor_at is not None and str(last) < anchor_prefix:
+            continue
+        first_at, last_at = _parse_utc(str(first)), _parse_utc(str(last))
+        if until_at is not None and first_at is not None and first_at >= until_at:
+            continue
+        whole_day = anchor_at is None or (
+            first_at is not None and last_at is not None
+            and first_at >= anchor_at
+            and (until_at is None or last_at < until_at)
+        )
+        held = kept.get(memo_key)
+        if (
+            whole_day and isinstance(held, dict)
+            and held.get("truth") == actual
+            and held.get("rows") == int(row_total)
+            and held.get("top_rowid") == int(top_rowid)
+            and (anchor_at is None or held.get("all_parse"))
+        ):
+            for lead, slot in (held.get("leads") or {}).items():
+                _take(station, day, str(lead), slot)
+            row_count += int(held.get("scored") or 0)
+            if held.get("scored"):
+                stations.add(station)
+                latest = max(latest, str(held.get("latest") or ""))
+            continue
+        # Read whole: every row of the day, so a closed day's sums are the
+        # day's, whatever window asked; this window's own share is filtered.
+        day_leads: dict[str, dict[str, Any]] = {}
+        window_leads: dict[str, dict[str, Any]] = {}
+        day_scored = window_scored = 0
+        day_latest = window_latest = ""
+        all_parse = True
+        for lead, probabilities_json, centers_json, decided in conn.execute(
+            "SELECT lead_bucket, probabilities_json, bucket_centers_c_json, decision_at_utc"
+            " FROM calibration_cross_native_ensemble_oos_prediction"
+            " WHERE station_id=? AND event_date=?",
+            (station, day),
+        ):
+            if _parse_utc(str(decided)) is None:
+                all_parse = False
+            # Calendar leads (d0/d1/d2) were retired for hour buckets; rows
+            # under the old vocabulary stop in mid-August and would drag stale
+            # scopes into a board that is meant to read as current.
+            if not str(lead).startswith("h"):
+                continue
+            scores = _score(probabilities_json, centers_json, actual)
+            if scores is None:
+                continue
+            _add(day_leads.setdefault(str(lead), _new_slot()), scores)
+            day_scored += 1
+            day_latest = max(day_latest, str(decided))
+            if _in_window(decided):
+                _add(window_leads.setdefault(str(lead), _new_slot()), scores)
+                window_scored += 1
+                window_latest = max(window_latest, str(decided))
+        for lead, slot in window_leads.items():
+            _take(station, day, lead, slot)
+        row_count += window_scored
+        if window_scored:
+            stations.add(station)
+            latest = max(latest, window_latest)
+        if day <= closed_through:
+            newly_closed[memo_key] = {
+                "truth": actual, "rows": int(row_total), "top_rowid": int(top_rowid),
+                "all_parse": all_parse, "scored": day_scored, "latest": day_latest,
+                "leads": {
+                    lead: {
+                        **{name: slot[name] for name in _SCORECARD_LINEAR_KEYS},
+                        "rows": slot["rows"], "pit_bins": slot["pit_bins"],
+                        "reliability": {str(index): cell for index, cell in slot["reliability"].items()},
+                    }
+                    for lead, slot in day_leads.items()
+                },
+            }
+    if _PAGED_RUN and (newly_closed or set(kept) - in_horizon):
+        kept = {key: value for key, value in kept.items() if key in in_horizon}
+        kept.update(newly_closed)
+        _save_closed_readings(
+            RENDER_CLOSED_SCORECARD_DAYS, {"salt": memo_salt, "days": kept},
+        )
 
     if not groups:
         return {"available": False, "window": window}
