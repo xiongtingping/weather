@@ -31,3 +31,17 @@ def test_history_row_keeps_the_order_the_stages_ran_and_the_span_detail() -> Non
     assert row["stage_sequence"] == ["activation", "registry_ingress", "early_p1", "decision_loop"]
     assert row["top_span_detail"]["decision_loop_quote_refresh"] == {"count": 40, "max_ms": 16000.0, "slowest": "2026-09-18"}
     assert row["top_span_detail"]["p1_load_observations"]["slowest"] == "ZUUU|2026-09-18"
+
+
+def test_history_row_records_the_process_footprint_and_host_swap() -> None:
+    # 2026-10-20: the mean cycle rose 97 s -> 585 s over one process's 31 hours
+    # and a restart reset it; nothing recorded how the footprint grew.
+    daemon = _daemon()
+    result = {"state": "cycle_committed", "stage_timings_ms": {"decision_loop": 10.0, "cycle_total": 10.0}}
+    row = daemon.production_cycle_history_row(result, cycle_index=1, process_started_at_utc="2026-10-20T09:10:17Z", completed_at_utc="2026-10-20T09:20:00Z")
+    memory = row["memory"]
+    if sys.platform == "darwin":
+        assert memory["footprint_mb"] > 0 and memory["resident_mb"] > 0
+        assert memory["host_swap_used_mb"] is None or memory["host_swap_used_mb"] >= 0
+    else:
+        assert memory is None

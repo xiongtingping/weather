@@ -3958,6 +3958,93 @@ PRODUCTION_CYCLE_HISTORY_PATH = (
 PRODUCTION_CYCLE_HISTORY_LINES = 200
 
 
+def _host_top_resident(limit: int = 5) -> "list[dict[str, Any]]":
+    """The host's largest resident processes, by ``ps`` (one bounded call)."""
+
+    try:
+        out = subprocess.run(
+            ["/bin/ps", "-axo", "pid=,rss=,etime=,command="],
+            capture_output=True, text=True, timeout=5.0, check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rows = []
+    for line in out.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) == 4 and parts[1].isdigit():
+            tokens = parts[3].split()
+            script = next((Path(t).name for t in tokens[1:] if t.endswith(".py")), "")
+            rows.append({
+                "pid": int(parts[0]), "rss_mb": round(int(parts[1]) / 1024, 1),
+                "etime": parts[2],
+                "command": (Path(tokens[0]).name + (" " + script if script else ""))[:80],
+            })
+    rows.sort(key=lambda row: -row["rss_mb"])
+    return rows[:limit]
+
+
+def process_memory_reading() -> "dict[str, Any] | None":
+    """This process's footprint and the host's swap, at the cycle's end.
+
+    2026-10-20: the mean cycle rose from 97 s (21Z) to 585 s (07Z) over the
+    process's 31 hours, every stage alike, and a restart took it straight back
+    to ~200 s.  On this 8 GB host the resident at 50 minutes had a 700 MB
+    footprint with 48-99 MB of it resident -- the rest compressed or swapped --
+    and nothing recorded how the footprint grew with the process's age.  This
+    is that record.  macOS only (``proc_pid_rusage``); None elsewhere.
+    """
+
+    try:
+        import ctypes  # noqa: PLC0415
+        import ctypes.util  # noqa: PLC0415
+
+        class _RusageInfoV2(ctypes.Structure):
+            _fields_ = [
+                ("ri_uuid", ctypes.c_uint8 * 16),
+                *[(name, ctypes.c_uint64) for name in (
+                    "ri_user_time", "ri_system_time", "ri_pkg_idle_wkups",
+                    "ri_interrupt_wkups", "ri_pageins", "ri_wired_size",
+                    "ri_resident_size", "ri_phys_footprint", "ri_proc_start_abstime",
+                    "ri_proc_exit_abstime", "ri_child_user_time", "ri_child_system_time",
+                    "ri_child_pkg_idle_wkups", "ri_child_interrupt_wkups",
+                    "ri_child_pageins", "ri_child_elapsed_abstime",
+                    "ri_diskio_bytesread", "ri_diskio_byteswritten",
+                )],
+            ]
+
+        class _XswUsage(ctypes.Structure):
+            _fields_ = [
+                ("xsu_total", ctypes.c_uint64), ("xsu_avail", ctypes.c_uint64),
+                ("xsu_used", ctypes.c_uint64), ("xsu_pagesize", ctypes.c_uint32),
+                ("xsu_encrypted", ctypes.c_bool),
+            ]
+
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        info = _RusageInfoV2()
+        if libc.proc_pid_rusage(os.getpid(), 2, ctypes.byref(info)) != 0:
+            return None
+        swap = _XswUsage()
+        size = ctypes.c_size_t(ctypes.sizeof(swap))
+        swap_used = (
+            int(swap.xsu_used)
+            if libc.sysctlbyname(b"vm.swapusage", ctypes.byref(swap), ctypes.byref(size), None, 0) == 0
+            else None
+        )
+        mib = 1024 * 1024
+        return {
+            "footprint_mb": round(info.ri_phys_footprint / mib, 1),
+            "resident_mb": round(info.ri_resident_size / mib, 1),
+            "pageins": int(info.ri_pageins),
+            "host_swap_used_mb": None if swap_used is None else round(swap_used / mib, 1),
+            # Who else held the memory: the same 10-20 window had a fresh
+            # process's first cycle run 38+ minutes while swap sat at 5.4 GB,
+            # and swap fell to 2.0 GB just before cycles recovered.
+            "host_top_resident": _host_top_resident(),
+        }
+    except Exception:  # noqa: BLE001 -- a reading, never a fault
+        return None
+
+
 def production_cycle_history_row(
     result: "Mapping[str, Any]",
     *,
@@ -3994,6 +4081,7 @@ def production_cycle_history_row(
         "cycle_index_since_start": int(cycle_index),
         "state": str(result.get("state") or ""),
         "cycle_total_ms": round(float(total), 1),
+        "memory": process_memory_reading(),
         "stages_ms": {
             str(name): round(float(value), 1)
             for name, value in timings.items()
