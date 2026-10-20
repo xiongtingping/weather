@@ -50,6 +50,14 @@ DAILY_BUDGET = {
     "deterministic_relay": int(os.environ.get("PM_OPEN_METEO_RELAY_DAILY_BUDGET", "1500")),
 }
 DEFAULT_LANE_BUDGET = 500
+# Time-boxed lanes: (daily budget, first UTC day it no longer applies).  User
+# 2026-10-20 「M1 期间为 tmax 入库单开一个研究通道，每天 2,000 次，约 3 天抓完后
+# 恢复」: the same-day Tmax model's history ingest
+# (docs/research/tmax_physics_m1_ingest_20261020); from 2026-10-24 the lane
+# falls back to DEFAULT_LANE_BUDGET by itself.
+TEMPORARY_BUDGET = {
+    "research_tmax_m1": (2000, "2026-10-24"),
+}
 THROTTLE_PAUSE_SEC = (2.0, 5.0, 15.0)
 
 
@@ -109,6 +117,9 @@ def charge(
 
     now = now or datetime.now(timezone.utc)
     budget = DAILY_BUDGET.get(lane, DEFAULT_LANE_BUDGET)
+    temporary = TEMPORARY_BUDGET.get(lane)
+    if temporary is not None and _day(now) < temporary[1]:
+        budget = temporary[0]
     with _locked(path or LEDGER_PATH) as state:
         until = str(state.get("exhausted_until_utc") or "")
         if until and now.astimezone(timezone.utc).isoformat() < until:
@@ -156,6 +167,6 @@ def classify(reason: str, status_code: int | None = None) -> str:
 
 
 __all__ = [
-    "DAILY_BUDGET", "LEDGER_PATH", "QuotaRefused", "charge", "classify",
+    "DAILY_BUDGET", "LEDGER_PATH", "QuotaRefused", "TEMPORARY_BUDGET", "charge", "classify",
     "exhausted", "mark_exhausted", "spent", "throttle_pause",
 ]
