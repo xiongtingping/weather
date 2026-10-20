@@ -1,0 +1,453 @@
+{
+ "counts": {
+  "facts": 18525,
+  "before_freeze": 0,
+  "no_label": 128,
+  "inside_36h": 13,
+  "not_first": 10616,
+  "missing": 0,
+  "unusable": 7219,
+  "label_off_ladder": 0
+ },
+ "segments": {
+  "calibrated_native_cross_ensemble_p0_v27": {
+   "event_days": [
+    "2026-10-06",
+    "2026-10-07",
+    "2026-10-08",
+    "2026-10-09",
+    "2026-10-10"
+   ],
+   "station_days": 189,
+   "ready": false,
+   "all": {
+    "station_days": 189,
+    "dNLL_b_minus_p": -0.2193000385237366,
+    "dNLL_b_minus_q": -0.0335994688881364,
+    "dNLL_p_minus_q": 0.1857005696356002,
+    "four_cell_p_own_legs": {
+     "claim": 0.2624044743246465,
+     "realised": -0.13802138565767524,
+     "overclaim": 0.4004258599823217
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0023508336361649693,
+     "realised": -0.007993608318101284,
+     "overclaim": 0.010344441954266254
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.4004258599823217,
+     "b": 0.10184302277209141
+    }
+   },
+   "C": {
+    "station_days": 146,
+    "dNLL_b_minus_p": -0.26024741315267297,
+    "dNLL_b_minus_q": -0.038985638269540726,
+    "dNLL_p_minus_q": 0.22126177488313223,
+    "four_cell_p_own_legs": {
+     "claim": 0.2565989017198063,
+     "realised": -0.18536478986633395,
+     "overclaim": 0.44196369158614024
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0023548613972846975,
+     "realised": -0.00960091246791162,
+     "overclaim": 0.011955773865196319
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.4419636915861403,
+     "b": 0.14922657630745687
+    }
+   },
+   "F": {
+    "station_days": 43,
+    "dNLL_b_minus_p": -0.08026941769060382,
+    "dNLL_b_minus_q": -0.015311544941972913,
+    "dNLL_p_minus_q": 0.06495787274863091,
+    "four_cell_p_own_legs": {
+     "claim": 0.28211641851782476,
+     "realised": 0.022725986771724115,
+     "overclaim": 0.25939043174610066
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0023371579821305426,
+     "realised": -0.002536250042001068,
+     "overclaim": 0.004873408024131611
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.25939043174610066,
+     "b": -0.05904067062705638
+    }
+   },
+   "modes_agree": {
+    "station_days": 100,
+    "dNLL_b_minus_p": -0.15637937836235719,
+    "dNLL_b_minus_q": -0.04706787235212828,
+    "dNLL_p_minus_q": 0.10931150601022889,
+    "four_cell_p_own_legs": {
+     "claim": 0.157713859145487,
+     "realised": -0.11082096244942341,
+     "overclaim": 0.2685348215949104
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0013645840666013864,
+     "realised": -0.009690435212606546,
+     "overclaim": 0.011055019279207932
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.26853482159491043,
+     "b": 0.08744403181885736
+    }
+   },
+   "modes_disagree": {
+    "station_days": 89,
+    "dNLL_b_minus_p": -0.2899974094915786,
+    "dNLL_b_minus_q": -0.018466431288145544,
+    "dNLL_p_minus_q": 0.271530978203433,
+    "four_cell_p_own_legs": {
+     "claim": 0.3800343790203313,
+     "realised": -0.1685836589253739,
+     "overclaim": 0.5486180379457053
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0034589792199442755,
+     "realised": -0.0060870612456234595,
+     "overclaim": 0.009546040465567736
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.5486180379457052,
+     "b": 0.1180216642925791
+    }
+   }
+  },
+  "calibrated_native_cross_ensemble_p0_v28": {
+   "event_days": [
+    "2026-10-11",
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17"
+   ],
+   "station_days": 306,
+   "ready": false,
+   "all": {
+    "station_days": 306,
+    "dNLL_b_minus_p": -0.21552467836732297,
+    "dNLL_b_minus_q": -0.05831431633497183,
+    "dNLL_p_minus_q": 0.15721036203235117,
+    "four_cell_p_own_legs": {
+     "claim": 0.27168755790607213,
+     "realised": -0.09739177306039805,
+     "overclaim": 0.36907933096647016
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0022053077753162514,
+     "realised": -0.00185596835932916,
+     "overclaim": 0.004061276134645411
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.36907933096647016,
+     "b": 0.05628934311811862
+    }
+   },
+   "C": {
+    "station_days": 239,
+    "dNLL_b_minus_p": -0.19175919658003365,
+    "dNLL_b_minus_q": -0.04906882767259826,
+    "dNLL_p_minus_q": 0.14269036890743533,
+    "four_cell_p_own_legs": {
+     "claim": 0.2389405059788623,
+     "realised": -0.09840619559115553,
+     "overclaim": 0.33734670157001784
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.002485435748991856,
+     "realised": -0.0037162249153238425,
+     "overclaim": 0.006201660664315699
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.3373467015700179,
+     "b": 0.0631927175559885
+    }
+   },
+   "F": {
+    "station_days": 67,
+    "dNLL_b_minus_p": -0.30030005369810164,
+    "dNLL_b_minus_q": -0.09129449230970739,
+    "dNLL_p_minus_q": 0.2090055613883942,
+    "four_cell_p_own_legs": {
+     "claim": 0.3885016685120893,
+     "realised": -0.09377316134620343,
+     "overclaim": 0.48227482985829273
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0012060453020555128,
+     "realised": 0.004779872191159337,
+     "overclaim": -0.003573826889103824
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.48227482985829273,
+     "b": 0.0316638731084036
+    }
+   },
+   "modes_agree": {
+    "station_days": 169,
+    "dNLL_b_minus_p": -0.09757925441273328,
+    "dNLL_b_minus_q": -0.08365726290642642,
+    "dNLL_p_minus_q": 0.01392199150630686,
+    "four_cell_p_own_legs": {
+     "claim": 0.11543093678549338,
+     "realised": -0.05165577974398945,
+     "overclaim": 0.16708671652948281
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0009666866626372029,
+     "realised": -0.0021076839105223675,
+     "overclaim": 0.0030743705731595705
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.16708671652948284,
+     "b": 0.029573270756854866
+    }
+   },
+   "modes_disagree": {
+    "station_days": 137,
+    "dNLL_b_minus_p": -0.3610193984280943,
+    "dNLL_b_minus_q": -0.02705184939646215,
+    "dNLL_p_minus_q": 0.33396754903163206,
+    "four_cell_p_own_legs": {
+     "claim": 0.46444207593072767,
+     "realised": -0.1538106261295444,
+     "overclaim": 0.618252702060272
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0037332418486210636,
+     "realised": -0.001545457934864546,
+     "overclaim": 0.005278699783485609
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.618252702060272,
+     "b": 0.08924566595792573
+    }
+   }
+  },
+  "calibrated_native_cross_ensemble_p0_v29": {
+   "event_days": [
+    "2026-10-17"
+   ],
+   "station_days": 12,
+   "ready": false,
+   "all": {
+    "station_days": 12,
+    "dNLL_b_minus_p": -0.12664709762944418,
+    "dNLL_b_minus_q": 0.0697571251817785,
+    "dNLL_p_minus_q": 0.1964042228112227,
+    "four_cell_p_own_legs": {
+     "claim": 0.5300602187376233,
+     "realised": 0.07134540133711552,
+     "overclaim": 0.4587148174005078
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.010435963331997013,
+     "realised": -0.027822242611414926,
+     "overclaim": 0.038258205943411935
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.45871481740050774,
+     "b": -0.15645153319535257
+    }
+   },
+   "C": {
+    "station_days": 5,
+    "dNLL_b_minus_p": -0.1148759356959379,
+    "dNLL_b_minus_q": 0.14347209044340498,
+    "dNLL_p_minus_q": 0.2583480261393429,
+    "four_cell_p_own_legs": {
+     "claim": 0.44886087110422423,
+     "realised": 0.14906957850569602,
+     "overclaim": 0.2997912925985282
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.001506305161800953,
+     "realised": -0.030926549616744282,
+     "overclaim": 0.03243285477854523
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.2997912925985282,
+     "b": -0.20528475710129976
+    }
+   },
+   "F": {
+    "station_days": 7,
+    "dNLL_b_minus_p": -0.13505507043909154,
+    "dNLL_b_minus_q": 0.017103578566330997,
+    "dNLL_p_minus_q": 0.15215864900542253,
+    "four_cell_p_own_legs": {
+     "claim": 0.5880597527614797,
+     "realised": 0.015828131930986603,
+     "overclaim": 0.5722316208304931
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.016814290596422768,
+     "realised": -0.025604880464751092,
+     "overclaim": 0.04241917106117386
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.5722316208304931,
+     "b": -0.12157065897681887
+    }
+   },
+   "modes_agree": {
+    "station_days": 7,
+    "dNLL_b_minus_p": -0.18507589296508817,
+    "dNLL_b_minus_q": 0.06647701819997275,
+    "dNLL_p_minus_q": 0.2515529111650609,
+    "four_cell_p_own_legs": {
+     "claim": 0.20689696288160195,
+     "realised": -0.05476988004500158,
+     "overclaim": 0.2616668429266035
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0031637288993028216,
+     "realised": -0.0145309842253439,
+     "overclaim": 0.01769471312464672
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.2616668429266035,
+     "b": 0.03459052676660695
+    }
+   },
+   "modes_disagree": {
+    "station_days": 5,
+    "dNLL_b_minus_p": -0.044846784159542574,
+    "dNLL_b_minus_q": 0.07434927495630654,
+    "dNLL_p_minus_q": 0.11919605911584918,
+    "four_cell_p_own_legs": {
+     "claim": 0.9824887769360532,
+     "realised": 0.24790679527207948,
+     "overclaim": 0.7345819816639737
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.020617091537768882,
+     "realised": -0.04643000435191434,
+     "overclaim": 0.06704709588968322
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.7345819816639737,
+     "b": -0.42391041714209593
+    }
+   }
+  },
+  "calibrated_native_cross_ensemble_p0_v30": {
+   "event_days": [
+    "2026-10-17",
+    "2026-10-18"
+   ],
+   "station_days": 42,
+   "ready": false,
+   "all": {
+    "station_days": 42,
+    "dNLL_b_minus_p": -0.2584572529585582,
+    "dNLL_b_minus_q": -0.01796589092864212,
+    "dNLL_p_minus_q": 0.24049136202991606,
+    "four_cell_p_own_legs": {
+     "claim": 0.24835308182633836,
+     "realised": -0.1457584436986192,
+     "overclaim": 0.39411152552495754
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0010875178931615437,
+     "realised": 0.001932870609303166,
+     "overclaim": -0.0008453527161416223
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.3941115255249576,
+     "b": 0.1007967948388061
+    }
+   },
+   "C": {
+    "station_days": 32,
+    "dNLL_b_minus_p": -0.2482740893423147,
+    "dNLL_b_minus_q": 0.004715422825837548,
+    "dNLL_p_minus_q": 0.25298951216815224,
+    "four_cell_p_own_legs": {
+     "claim": 0.23410018506727737,
+     "realised": -0.1403187580358978,
+     "overclaim": 0.37441894310317514
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0011353831569542283,
+     "realised": -0.0010176302719349698,
+     "overclaim": 0.002153013428889198
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.37441894310317514,
+     "b": 0.09377940095166963
+    }
+   },
+   "F": {
+    "station_days": 10,
+    "dNLL_b_minus_p": -0.2910433765305374,
+    "dNLL_b_minus_q": -0.09054609494297707,
+    "dNLL_p_minus_q": 0.2004972815875603,
+    "four_cell_p_own_legs": {
+     "claim": 0.2939623514553336,
+     "realised": -0.16316543781932774,
+     "overclaim": 0.45712778927466136
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0009343490490249537,
+     "realised": 0.0113744734292652,
+     "overclaim": -0.010440124380240246
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.45712778927466136,
+     "b": 0.12325245527764286
+    }
+   },
+   "modes_agree": {
+    "station_days": 22,
+    "dNLL_b_minus_p": -0.19540598710746995,
+    "dNLL_b_minus_q": -0.010119858649871345,
+    "dNLL_p_minus_q": 0.1852861284575986,
+    "four_cell_p_own_legs": {
+     "claim": 0.16897330853430292,
+     "realised": -0.05401022911034696,
+     "overclaim": 0.2229835376446499
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0012605901594483974,
+     "realised": 0.011134370853540163,
+     "overclaim": -0.009873780694091765
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.22298353764464993,
+     "b": 0.02311003578824108
+    }
+   },
+   "modes_disagree": {
+    "station_days": 20,
+    "dNLL_b_minus_p": -0.3278136453947552,
+    "dNLL_b_minus_q": -0.026596526435289973,
+    "dNLL_p_minus_q": 0.30121711895946524,
+    "four_cell_p_own_legs": {
+     "claim": 0.3356708324475774,
+     "realised": -0.24668147974571863,
+     "overclaim": 0.5823523121932961
+    },
+    "four_cell_b_own_legs": {
+     "claim": 0.0008971384002460049,
+     "realised": -0.00818877965935753,
+     "overclaim": 0.009085918059603536
+    },
+    "fixed_p_legs_gap": {
+     "p": 0.5823523121932961,
+     "b": 0.18625222979442765
+    }
+   }
+  }
+ }
+}
