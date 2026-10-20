@@ -9036,23 +9036,36 @@ def _reliability_decomposition(
     if not pairs:
         return {"ece": None, "reliability": None, "resolution": None,
                 "uncertainty": None, "bins": []}
-    # Five-percent steps capped at 50% (user ruling, 2026-08-25): the band
-    # cards in section six now render on the same grid, so the knob table
-    # and this audit finally line up row for row.  Everything promised at
-    # half or more pools into one open top bin -- claims that high are rare
-    # enough that finer rows would be noise wearing labels.
     buckets: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
-    total = happened_total = 0.0
     for pair in pairs:
         promised, happened = float(pair[0]), float(pair[1])
         weight = float(pair[2]) if len(pair) > 2 else 1.0
-        index = min(10, max(0, int(promised / 0.05)))
-        slot = buckets[index]
+        slot = buckets[_reliability_bin(promised)]
         slot[0] += weight * promised
         slot[1] += weight * happened
         slot[2] += weight
-        total += weight
-        happened_total += weight * happened
+    return _reliability_from_buckets(buckets)
+
+
+def _reliability_bin(promised: float) -> int:
+    """Five-percent steps capped at 50% (user ruling, 2026-08-25): the band
+    cards in section six now render on the same grid, so the knob table and
+    this audit finally line up row for row.  Everything promised at half or
+    more pools into one open top bin -- claims that high are rare enough
+    that finer rows would be noise wearing labels."""
+
+    return min(10, max(0, int(float(promised) / 0.05)))
+
+
+def _reliability_from_buckets(
+    buckets: "Mapping[int, list[float]]",
+) -> dict[str, float | list[dict[str, Any]]]:
+    """``_reliability_decomposition`` from its bins' (weighted promised,
+    weighted happened, weight) sums -- all it ever read of the pairs, so a
+    caller can sum them as it goes instead of keeping every pair."""
+
+    total = sum(slot[2] for slot in buckets.values())
+    happened_total = sum(slot[1] for slot in buckets.values())
     if total <= 0:
         return {"ece": None, "reliability": None, "resolution": None,
                 "uncertainty": None, "bins": []}
@@ -9811,7 +9824,15 @@ def collect_calibration_scorecard(
         if anchor_at is not None else ""
     )
 
-    scored: list[dict[str, Any]] = []
+    # Summed per (station, event day, lead) as the rows are read, never kept
+    # (user 2026-10-20 「看板研究渲染为什么这么大」): the window held 1.37M rows,
+    # 680 MB of JSON, and every row stayed in memory as a dict with its
+    # reliability pairs until the read ended -- 1.2 GB for a few thousand
+    # groups.  Every lamp below reads a group's mean at weight one, and the
+    # reliability decomposition its bin sums, so a group needs its row count
+    # and sums only.
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    row_count = 0
     stations: set[str] = set()
     latest = ""
     # The flat reference depends only on the ladder and the truth, so it is
@@ -9877,51 +9898,55 @@ def collect_calibration_scorecard(
             continue
         scores["flat_crps"] = flat_scores["crps"]
         scores["flat_brier"] = flat_scores["brier"]
-        scores["station"] = str(station)
-        scores["event_date"] = str(day)
-        scores["lead"] = str(lead)
-        scored.append(scores)
+        key = (str(station), str(day), str(lead))
+        slot = groups.get(key)
+        if slot is None:
+            slot = groups[key] = {
+                "station": key[0], "event_date": key[1], "lead": key[2],
+                "rows": 0, "pit_bins": [0.0] * PIT_BIN_COUNT,
+                "reliability": defaultdict(lambda: [0.0, 0.0, 0.0]),
+                **{name: 0.0 for name in _SCORECARD_LINEAR_KEYS},
+            }
+        slot["rows"] += 1
+        for name in _SCORECARD_LINEAR_KEYS:
+            slot[name] += scores[name]
+        bins = slot["pit_bins"]
+        for index, value in enumerate(scores["pit_bins"]):
+            bins[index] += value
+        reliability = slot["reliability"]
+        for promised, happened in scores["reliability_pairs"]:
+            cell = reliability[_reliability_bin(promised)]
+            cell[0] += promised
+            cell[1] += happened
+            cell[2] += 1.0
+        row_count += 1
         stations.add(str(station))
         latest = max(latest, str(decided))
 
-    if not scored:
+    if not groups:
         return {"available": False, "window": window}
-    copies = Counter(
-        (row["station"], row["event_date"], row["lead"]) for row in scored
-    )
-    for row in scored:
-        row["weight"] = 1.0 / copies[
-            (row["station"], row["event_date"], row["lead"])
-        ]
-    row_count = len(scored)
-    reliability_input = [
-        (promised, happened, row["weight"])
-        for row in scored for promised, happened in row["reliability_pairs"]
-    ]
     # Every lamp below is a weighted mean, sum(w*x)/sum(w), with w one over
     # the copies of its (station, day, lead) -- so each of those groups
-    # contributes exactly its own mean at weight one.  Collapsed here, the
-    # ~210 passes below walk a few thousand groups instead of every row
-    # (668k on 2026-10-02, 63 s of _mean alone); the numbers are the same up
-    # to the order of a float sum.  Reliability keeps its per-row pairs.
-    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for row in scored:
-        key = (row["station"], row["event_date"], row["lead"])
-        slot = grouped.get(key)
-        if slot is None:
-            slot = grouped[key] = {
-                "station": row["station"], "event_date": row["event_date"],
-                "lead": row["lead"], "weight": 1.0,
-                "pit_bins": [0.0] * PIT_BIN_COUNT,
-                **{name: 0.0 for name in _SCORECARD_LINEAR_KEYS},
-            }
-        share = row["weight"]
+    # contributes exactly its own mean at weight one; the numbers are the
+    # same up to the order of a float sum.  Reliability: each group's bin
+    # sums at the same one-over-copies weight.
+    copies = {key: slot["rows"] for key, slot in groups.items()}
+    reliability_buckets: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+    scored = []
+    for slot in groups.values():
+        share = 1.0 / slot["rows"]
+        for index, cell in slot.pop("reliability").items():
+            total_cell = reliability_buckets[index]
+            total_cell[0] += share * cell[0]
+            total_cell[1] += share * cell[1]
+            total_cell[2] += share * cell[2]
         for name in _SCORECARD_LINEAR_KEYS:
-            slot[name] += share * row[name]
-        bins = slot["pit_bins"]
-        for index, value in enumerate(row["pit_bins"]):
-            bins[index] += share * value
-    scored = list(grouped.values())
+            slot[name] *= share
+        slot["pit_bins"] = [value * share for value in slot["pit_bins"]]
+        del slot["rows"]
+        slot["weight"] = 1.0
+        scored.append(slot)
+    groups.clear()
     station_days = {(row["station"], row["event_date"]) for row in scored}
     event_days = {row["event_date"] for row in scored}
     accumulating = len(event_days) < SCORECARD_MIN_EVENT_DAYS
@@ -9984,7 +10009,7 @@ def collect_calibration_scorecard(
     ])
 
     # ---- layer 3: calibration -----------------------------------------
-    decomposition = _reliability_decomposition(reliability_input)
+    decomposition = _reliability_from_buckets(reliability_buckets)
     ece = decomposition["ece"]
     # ECE alone hides the shape.  Four fifths of all (rung, day) pairs sit in
     # the 0-10% bin, where the gap is tiny, so a weighted average stays small
@@ -14188,6 +14213,47 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # one file, read on every run like the lanes they shadow.
     "realisation_layer",
 })
+#: How long a page stays good once its window is final (``_final_after``):
+#: a closed window's readings change only when a truth row is revised
+#: (charter 225's settlement repair), so a week, not never.
+FINAL_PAGE_TTL_SEC = 7 * 24 * 60 * 60
+#: Days after a window's end before every event day it decided on has
+#: settled: a decision is at most ~72 h ahead of its day, truth lands within
+#: a day of it.
+WINDOW_SETTLE_DAYS = 4
+
+
+def _window_final_after(*untils: Any) -> str | None:
+    """When a closed window's readings are final: its latest end plus
+    ``WINDOW_SETTLE_DAYS``.  None for an open window (no end, or the
+    open-ended ``9999`` end)."""
+
+    ends = [
+        stamp for value in untils
+        if (stamp := _parse_utc_or_none(value)) is not None and stamp.year < 9000
+    ]
+    if not ends or len(ends) != len(untils):
+        return None
+    return (max(ends) + timedelta(days=WINDOW_SETTLE_DAYS)).isoformat().replace("+00:00", "Z")
+
+
+def _page_is_final(blob: Mapping[str, Any], final_after: Any, now: datetime) -> bool:
+    """Whether a kept page is a closed window's final reading: it declares
+    the same moment of finality the caller does, that moment has passed, and
+    the page was read after it (2026-10-20, user 「为什么要全量读历史」: the
+    previous version's scorecard and centre landing were re-read whole every
+    three to four hours over a window that had ended days before)."""
+
+    if not final_after or blob.get("final_after_utc") != final_after:
+        return False
+    final_at = _parse_utc_or_none(final_after)
+    computed_at = _parse_utc_or_none(blob.get("computed_at_utc"))
+    return (
+        final_at is not None and computed_at is not None
+        and final_at <= now and computed_at >= final_at
+    )
+
+
 #: A section that cost at least this much last time is the research render's
 #: to compute (``--refresh-research``, its own launchd clock, user ruling
 #: 2026-09-24 「单开研究节渲染」): the page render serves its page and moves
@@ -14729,6 +14795,7 @@ def _serve_kept_value(name: str, collector: Any, unavailable: Any) -> Any:
 def _record_section_spec(
     name: str, collector: Any, args: tuple[Any, ...],
     kwargs: dict[str, Any], salt: str, unavailable: Any,
+    final_after: str | None = None,
 ) -> None:
     """Note how a paged section was called, for the research render.
 
@@ -14761,6 +14828,7 @@ def _record_section_spec(
                 None if unavailable is _NO_UNAVAILABLE
                 else {"value": json.loads(json.dumps(unavailable))}
             ),
+            "final_after": final_after,
         }
     except (TypeError, ValueError, AttributeError):
         return
@@ -14901,6 +14969,8 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
             blob = {}
         cost = float(blob.get("build_sec") or 0.0)
         ttl = SECTION_CACHE_TTL_SEC.get(name) or PAGED_SECTION_TTL_SEC
+        if _page_is_final(blob, specs[name].get("final_after"), now):
+            ttl = max(ttl, FINAL_PAGE_TTL_SEC)
         stamp = _parse_utc_or_none(blob.get("computed_at_utc"))
         age = (now - stamp).total_seconds() if stamp else float("inf")
         # A page the page render cannot serve is no page, whatever its date:
@@ -15000,18 +15070,104 @@ def _note_research_death() -> None:
         pass
 
 
-def _refresh_one_section(db: Path, name: str, spec: Mapping[str, Any]) -> str:
+#: Each research section in a process of its own (``_refresh_one_section_isolated``);
+#: False computes it in this process, for tests that stand a collector up in
+#: their own module.
+RESEARCH_SECTION_ISOLATED = True
+#: How a research section's own process reports back to the run that started
+#: it (``_refresh_one_section_isolated``): one line each on stdout.
+RESEARCH_SECTION_RESULT_PREFIX = "research-section-result: "
+RESEARCH_SECTION_GAP_PREFIX = "research-section-gap-wait-left: "
+
+
+def _refresh_one_section_isolated(db: Path, name: str, spec: Mapping[str, Any]) -> str:
+    """One section in a process of its own, gone when the section is.
+
+    2026-10-20 (user 「看板研究渲染为什么这么大」 / 「都改」): one research
+    process computed every due section in turn, and since CPython hands
+    little of what it allocated back to the system, it sat at the heaviest
+    section's peak -- 1.2 GB with the scorecard mid-read -- for the whole
+    20-40 minute run, on an 8 GB host whose production cycles were already
+    swapping.  A section's own process returns everything when it exits.
+    The run keeps what it decides (which section, the shared gap-wait
+    budget, the page-render check); the child reports its result and the
+    budget it left on stdout.
+    """
+
+    if not RESEARCH_SECTION_ISOLATED:
+        _save_closed_readings(RESEARCH_ATTEMPT_FILE, {
+            "name": name,
+            "started_at_utc": _now().isoformat().replace("+00:00", "Z"),
+        })
+        try:
+            return _refresh_one_section_inner(db, name, spec)
+        finally:
+            try:
+                (SECTION_CACHE_DIR / RESEARCH_ATTEMPT_FILE).unlink()
+            except OSError:
+                pass
+    command = [
+        sys.executable, str(Path(__file__).resolve()),
+        "--db", str(db), "--research-section", name,
+    ]
+    if _RESEARCH_GAP_WAIT_LEFT:
+        command += ["--research-gap-wait-left", f"{_RESEARCH_GAP_WAIT_LEFT[0]:.1f}"]
     _save_closed_readings(RESEARCH_ATTEMPT_FILE, {
         "name": name,
         "started_at_utc": _now().isoformat().replace("+00:00", "Z"),
     })
     try:
-        return _refresh_one_section_inner(db, name, spec)
+        completed = subprocess.run(
+            command, cwd=str(ROOT), stdout=subprocess.PIPE, text=True, check=False,
+        )
     finally:
         try:
             (SECTION_CACHE_DIR / RESEARCH_ATTEMPT_FILE).unlink()
         except OSError:
             pass
+    result: str | None = None
+    for line in (completed.stdout or "").splitlines():
+        if line.startswith(RESEARCH_SECTION_RESULT_PREFIX):
+            result = line[len(RESEARCH_SECTION_RESULT_PREFIX):]
+        elif line.startswith(RESEARCH_SECTION_GAP_PREFIX):
+            try:
+                left = float(line[len(RESEARCH_SECTION_GAP_PREFIX):])
+            except ValueError:
+                continue
+            if _RESEARCH_GAP_WAIT_LEFT:
+                _RESEARCH_GAP_WAIT_LEFT[0] = left
+        else:
+            print(line)
+    if result is None:
+        # Died without a word -- signal, memory, interpreter: the section
+        # ended its run, as ``_note_research_death`` records a killed one.
+        ledger = _load_closed_readings(RESEARCH_KILLED_FILE)
+        killed = dict(ledger.get("killed") or {})
+        killed[name] = _now().isoformat().replace("+00:00", "Z")
+        _save_closed_readings(RESEARCH_KILLED_FILE, {"killed": killed})
+        return f"{name} failed (its process exited {completed.returncode})"
+    return result
+
+
+def research_section_child(db: Path, name: str, gap_wait_left: float | None) -> int:
+    """``--research-section``: compute one section, report, exit."""
+
+    if gap_wait_left is not None:
+        _RESEARCH_GAP_WAIT_LEFT[:] = [float(gap_wait_left)]
+    specs = _live_specs(_load_closed_readings(RENDER_SECTION_SPECS))
+    spec = specs.get(name)
+    try:
+        if spec is None:
+            result = f"{name} not computed (no live spec)"
+        else:
+            result = _refresh_one_section_inner(db, name, spec)
+    except Exception as exc:  # noqa: BLE001 -- reported to the run, as before
+        traceback.print_exc(file=sys.stderr)
+        result = f"{name} failed ({type(exc).__name__}: {exc})"
+    if _RESEARCH_GAP_WAIT_LEFT:
+        print(f"{RESEARCH_SECTION_GAP_PREFIX}{_RESEARCH_GAP_WAIT_LEFT[0]:.1f}")
+    print(f"{RESEARCH_SECTION_RESULT_PREFIX}{result}", flush=True)
+    return 0
 
 
 def _refresh_one_section_inner(db: Path, name: str, spec: Mapping[str, Any]) -> str:
@@ -15028,6 +15184,8 @@ def _refresh_one_section_inner(db: Path, name: str, spec: Mapping[str, Any]) -> 
         unavailable = spec.get("unavailable")
         if unavailable is not None:
             kwargs["_unavailable"] = unavailable.get("value")
+        if spec.get("final_after"):
+            kwargs["_final_after"] = spec["final_after"]
         recorded = list(spec.get("args") or [])
         _cached_section(
             name, collector, *(([conn] if _spec_takes_conn(spec, collector) else []) + recorded),
@@ -15123,7 +15281,7 @@ def refresh_research_section(db: Path) -> str:
                 done.append("stopped: the page render started")
                 break
             try:
-                done.append(_refresh_one_section(db, name, specs[name]))
+                done.append(_refresh_one_section_isolated(db, name, specs[name]))
                 # A section that gave its read up to the writer: wait for
                 # the resident to truncate the WAL before the next read, and
                 # stop the run if it does not come down -- the next section
@@ -15221,9 +15379,14 @@ def _cached_section_value(
     *args: Any,
     _salt: str = "",
     _unavailable: Any = _NO_UNAVAILABLE,
+    _final_after: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """The collector's value, reused from disk while it is still young.
+
+    ``_final_after``: when the section's window is closed and settled
+    (``_window_final_after``); a page read after it keeps for
+    ``FINAL_PAGE_TTL_SEC`` instead of the section's lifetime.
 
     A miss round-trips the fresh value through JSON before returning it, so
     a hit and a miss hand the rest of the build byte-identical structures --
@@ -15347,6 +15510,8 @@ def _cached_section_value(
             # 354 s, and was what the 04:25Z run was killed on.)
             page, page_age = blob, age
             page_inputs_moved = blob.get("fingerprint") != fingerprint
+        if _page_is_final(blob, _final_after, now):
+            ttl = max(float(ttl or 0.0), FINAL_PAGE_TTL_SEC)
         if blob.get("fingerprint") == fingerprint and 0.0 <= age < ttl:
             _SECTION_CACHE_LOG[name] = {
                 "computed_at_utc": stamp,
@@ -15360,7 +15525,7 @@ def _cached_section_value(
         pass
     forced = paged and _PAGED_RUN.get("force") == name
     if paged:
-        _record_section_spec(name, collector, args, kwargs, _salt, _unavailable)
+        _record_section_spec(name, collector, args, kwargs, _salt, _unavailable, _final_after)
     if paged and not forced:
         # A heavy section with a page is the research render's to refresh.
         if last_cost >= RESEARCH_SECTION_MIN_COST_SEC:
@@ -15514,6 +15679,7 @@ def _cached_section_value(
                     "code_fingerprint": code_fingerprint,
                     "computed_at_utc": stamp,
                     "build_sec": round(elapsed, 1),
+                    "final_after_utc": _final_after,
                     "value": value,
                 },
                 ensure_ascii=False,
@@ -15634,6 +15800,9 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     center_landing_previous = _cached_section(
         "center_landing_previous", collect_center_landing, conn,
         windows=previous_windows, _salt=previous_salt + _center_landing_salt(),
+        _final_after=_window_final_after(
+            *(window.get("until") for window in previous_windows.values())
+        ),
     ) if previous_windows else {}
     # Charter 202: the served landing now reads the lanes' evidence window,
     # which spans every bump since the stage's epoch; the board's version
@@ -15666,6 +15835,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     scorecard_previous = _cached_section(
         "scorecard_previous", collect_calibration_scorecard, conn,
         window_override=previous_windows.get("P0"), _salt=previous_salt,
+        _final_after=_window_final_after((previous_windows.get("P0") or {}).get("until")),
         # Heavy: built by the research render.  Without a page (first build,
         # or after a code change) the page render shows "not available"
         # instead of reading it whole past its deadline -- on 2026-10-02
@@ -23452,7 +23622,7 @@ function sdDirection(D, R){
   // M itself, the sum of the conversions, as the column's headline (user
   // 2026-10-18 「把四个预报移动到中间，并突出m」).
   const mRow = C.length ? `<div class="sd-dp sd-dp-c sd-dp-h"><span>来源</span><span>轮</span><span></span><span>改动</span><span class="sd-dpz" title="该家每次改动的标准差（09-22..10-08，°C），固定参数">平时幅度</span><span class="sd-dpz" title="改动 ÷ 平时幅度">折算</span></div>${compRows}`
-    + `<div class="sd-dp sd-dp-c sd-dp-m" title="M＝四家折算之和；|M|＜${sdN(quiet, 0)} 为静默、不定方向"><span><b>M</b> <span class="muted">＝折算之和</span></span><span></span><span class="muted">${sdEsc(mWord)}</span><span></span><span></span>`
+    + `<div class="sd-dp sd-dp-c sd-dp-m" title="M＝上表各家折算之和；|M|＜${sdN(quiet, 0)} 为静默、不定方向"><span><b>M</b> <span class="muted">＝折算之和</span></span><span></span><span class="muted">${sdEsc(mWord)}</span><span></span><span></span>`
     + `<b class="mono sd-dir-mbig" style="color:${sdDirColor(D.momentum_side)}">${sdSg(D.momentum, 2)}</b></div><div style="text-align:right">${sdMomTier(D.momentum)}</div>` : "";
   // M through the day: the quiet band shaded, each reading a dot in its side's colour.
   let trend = "";
@@ -26129,6 +26299,11 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--research-section",
+        help="(internal) compute this one research section in its own process",
+    )
+    parser.add_argument("--research-gap-wait-left", type=float)
+    parser.add_argument(
         "--no-section-cache",
         action="store_true",
         help=(
@@ -26148,6 +26323,10 @@ def main() -> int:
         print(reinflate(args.reinflate, renderer=render_html))
         return 0
     database = args.db.expanduser().resolve(strict=True)
+    if args.research_section:
+        return research_section_child(
+            database, args.research_section, args.research_gap_wait_left,
+        )
     if args.refresh_research:
         print(refresh_research_section(database))
         return 0

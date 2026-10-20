@@ -54,6 +54,8 @@ def paged(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path / "sections")
     monkeypatch.setattr(C, "SECTION_CACHE_ENABLED", True)
     monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {"slow_moving": 3600})
+    # A section's own process would not see this directory.
+    monkeypatch.setattr(C, "RESEARCH_SECTION_ISOLATED", False)
     monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "status.json")
     monkeypatch.setattr(C, "RENDER_GAP_POLL_SEC", 0.01)
     C._SECTION_CACHE_LOG.clear()

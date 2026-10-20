@@ -273,6 +273,8 @@ def test_the_card_no_longer_says_it_may_refit_on_a_day_count() -> None:
 @pytest.fixture()
 def pages(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "SECTION_CACHE_DIR", tmp_path)
+    # A section's own process would not see this directory.
+    monkeypatch.setattr(C, "RESEARCH_SECTION_ISOLATED", False)
     monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC", {})
     monkeypatch.setattr(C, "PAGED_SECTION_TTL_SEC", 1800)
     return tmp_path
@@ -310,7 +312,7 @@ def test_the_research_render_stops_when_the_page_render_starts(pages, monkeypatc
     monkeypatch.setattr(C, "_load_closed_readings",
                         lambda _name: {"first": spec, "second": spec})
     ran: list[str] = []
-    monkeypatch.setattr(C, "_refresh_one_section",
+    monkeypatch.setattr(C, "_refresh_one_section_isolated",
                         lambda _db, name, _spec: ran.append(name) or f"{name} computed in 1s")
     monkeypatch.setattr(C, "_page_render_running", lambda: True)
 
@@ -379,7 +381,7 @@ def test_a_retired_sections_recorded_call_is_skipped_not_fatal(pages, monkeypatc
     monkeypatch.setattr(C, "_load_closed_readings", lambda _name: dict(recorded))
     monkeypatch.setattr(C, "_page_render_running", lambda: False)
     ran: list[str] = []
-    monkeypatch.setattr(C, "_refresh_one_section",
+    monkeypatch.setattr(C, "_refresh_one_section_isolated",
                         lambda _db, name, _spec: ran.append(name) or f"{name} computed in 1s")
 
     out = C.refresh_research_section(pages / "ssot.db")
@@ -549,3 +551,109 @@ def test_every_heavy_section_declares_what_to_show_without_a_page() -> None:
         if "_unavailable=" not in call.group(0):
             missing.append(name)
     assert missing == []
+
+
+# ---------------------------------------------------------------------------
+# Each research section in a process of its own (user 2026-10-20 「都改」):
+# the run sat at the heaviest section's peak, 1.2 GB, for 20-40 minutes.
+
+
+class _Completed:
+    def __init__(self, stdout: str, returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def test_an_isolated_section_reports_its_result_and_the_budget_it_left(pages, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RESEARCH_SECTION_ISOLATED", True)
+    seen: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        seen.append(list(command))
+        return _Completed(
+            "a line the section printed\n"
+            f"{C.RESEARCH_SECTION_GAP_PREFIX}12.5\n"
+            f"{C.RESEARCH_SECTION_RESULT_PREFIX}scorecard computed in 40s\n"
+        )
+
+    monkeypatch.setattr(C.subprocess, "run", run)
+    C._RESEARCH_GAP_WAIT_LEFT[:] = [60.0]
+    try:
+        out = C._refresh_one_section_isolated(pages / "ssot.db", "scorecard", {})
+        left = C._RESEARCH_GAP_WAIT_LEFT[0]
+    finally:
+        C._RESEARCH_GAP_WAIT_LEFT.clear()
+    assert out == "scorecard computed in 40s"
+    assert left == 12.5
+    command = seen[0]
+    assert command[command.index("--research-section") + 1] == "scorecard"
+    assert command[command.index("--research-gap-wait-left") + 1] == "60.0"
+    assert not (pages / C.RESEARCH_ATTEMPT_FILE).exists()
+
+
+def test_an_isolated_section_that_dies_is_recorded_as_killing_its_run(pages, monkeypatch) -> None:
+    monkeypatch.setattr(C, "RESEARCH_SECTION_ISOLATED", True)
+    monkeypatch.setattr(C.subprocess, "run", lambda *_a, **_k: _Completed("", -9))
+    out = C._refresh_one_section_isolated(pages / "ssot.db", "scorecard", {})
+    assert out == "scorecard failed (its process exited -9)"
+    killed = C._load_closed_readings(C.RESEARCH_KILLED_FILE)["killed"]
+    assert "scorecard" in killed
+
+
+def test_the_child_entry_computes_one_section_and_reports(pages, monkeypatch, capsys) -> None:
+    spec = {"module": "calibration_dashboard", "collector": "collect_chain"}
+    monkeypatch.setattr(C, "_load_closed_readings", lambda _name: {"scorecard": spec})
+    monkeypatch.setattr(C, "_refresh_one_section_inner",
+                        lambda _db, name, _spec: f"{name} computed in 3s")
+    assert C.research_section_child(pages / "ssot.db", "scorecard", 30.0) == 0
+    lines = capsys.readouterr().out.splitlines()
+    C._RESEARCH_GAP_WAIT_LEFT.clear()
+    assert f"{C.RESEARCH_SECTION_GAP_PREFIX}30.0" in lines
+    assert lines[-1] == f"{C.RESEARCH_SECTION_RESULT_PREFIX}scorecard computed in 3s"
+
+
+# ---------------------------------------------------------------------------
+# A closed window's page is final (user 2026-10-20 「为什么要全量读历史」):
+# the previous version's scorecard and centre landing were re-read whole
+# every three to four hours over a window that had ended days before.
+
+
+def test_a_closed_window_is_final_four_days_after_its_latest_end() -> None:
+    assert C._window_final_after("2026-10-10T06:00:00Z") == "2026-10-14T06:00:00Z"
+    assert C._window_final_after("2026-10-10T06:00:00Z", "2026-10-11T00:00:00Z") == "2026-10-15T00:00:00Z"
+    assert C._window_final_after("9999-12-31T00:00:00Z") is None, "an open window"
+    assert C._window_final_after(None) is None
+    assert C._window_final_after("2026-10-10T06:00:00Z", None) is None, "one stage open"
+
+
+def test_a_page_is_final_only_if_read_after_its_window_settled() -> None:
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    final = "2026-10-14T06:00:00Z"
+    read_after = {"final_after_utc": final, "computed_at_utc": "2026-10-15T00:00:00Z"}
+    read_before = {"final_after_utc": final, "computed_at_utc": "2026-10-13T00:00:00Z"}
+    assert C._page_is_final(read_after, final, now)
+    assert not C._page_is_final(read_before, final, now), "read while days were unsettled"
+    assert not C._page_is_final(read_after, "2026-10-21T00:00:00Z", now), "another window"
+    assert not C._page_is_final(read_after, None, now)
+    early = datetime(2026, 10, 14, 0, 0, tzinfo=timezone.utc)
+    assert not C._page_is_final(read_after, final, early)
+
+
+def test_the_research_render_leaves_a_final_page_alone(pages, monkeypatch) -> None:
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    final = "2026-10-14T06:00:00Z"
+    stamp = "2026-10-15T00:00:00Z"   # 5.5 days old, far past 183 minutes
+    for name, declared in (("scorecard_previous", final), ("center_landing_previous", None)):
+        (pages / f"{name}.json").write_text(json.dumps({
+            "computed_at_utc": stamp, "build_sec": 400.0, "value": {},
+            "final_after_utc": final,
+        }), encoding="utf-8")
+    monkeypatch.setattr(C, "SECTION_CACHE_TTL_SEC",
+                        {"scorecard_previous": 183 * 60, "center_landing_previous": 258 * 60})
+    specs = {
+        "scorecard_previous": {"module": "calibration_dashboard", "collector": "collect_chain", "final_after": final},
+        "center_landing_previous": {"module": "calibration_dashboard", "collector": "collect_chain", "final_after": None},
+    }
+    names = [name for _ratio, name, _cost in C.research_due(specs, now)]
+    assert "scorecard_previous" not in names
+    assert "center_landing_previous" in names, "no finality declared: its lifetime as before"

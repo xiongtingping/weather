@@ -298,3 +298,26 @@ def test_the_reliability_bins_count_weight_not_rows():
     top = decomposition["bins"][0]
     assert top["n"] == pytest.approx(2.0)
     assert top["happened"] == pytest.approx(0.5)
+
+
+def test_the_reliability_bins_summed_as_read_equal_the_per_pair_decomposition() -> None:
+    # 2026-10-20 (user 「看板研究渲染为什么这么大」): the scorecard sums each
+    # group's bins as it reads instead of keeping 1.37M rows' pairs; the
+    # decomposition must read the same off the sums.
+    import random
+    from collections import defaultdict
+
+    rnd = random.Random(3)
+    pairs = [(rnd.random() ** 3, float(rnd.random() < 0.3), rnd.choice([1.0, 0.5, 0.25]))
+             for _ in range(2000)]
+    buckets: dict[int, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+    for promised, happened, weight in pairs:
+        cell = buckets[C._reliability_bin(promised)]
+        cell[0] += weight * promised
+        cell[1] += weight * happened
+        cell[2] += weight
+    by_pairs = C._reliability_decomposition(pairs)
+    by_bins = C._reliability_from_buckets(buckets)
+    for key in ("ece", "reliability", "resolution", "uncertainty"):
+        assert by_bins[key] == pytest.approx(by_pairs[key], rel=1e-12)
+    assert [row["bin"] for row in by_bins["bins"]] == [row["bin"] for row in by_pairs["bins"]]
