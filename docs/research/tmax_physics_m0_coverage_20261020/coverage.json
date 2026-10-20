@@ -1,0 +1,2175 @@
+{
+ "stations": [
+  "CYYZ",
+  "EDDM",
+  "EFHK",
+  "EGLC",
+  "EHAM",
+  "EPWA",
+  "FACT",
+  "KATL",
+  "KAUS",
+  "KBKF",
+  "KDAL",
+  "KHOU",
+  "KLAX",
+  "KLGA",
+  "KMIA",
+  "KORD",
+  "KSEA",
+  "KSFO",
+  "LEMD",
+  "LFPB",
+  "LIMC",
+  "LLBG",
+  "LTAC",
+  "LTFM",
+  "MMMX",
+  "MPMG",
+  "NZWN",
+  "OEJN",
+  "OPKC",
+  "RCSS",
+  "RJTT",
+  "RKPK",
+  "RKSI",
+  "RPLL",
+  "SAEZ",
+  "SBGR",
+  "UUWW",
+  "VILK",
+  "WMKK",
+  "WSSS",
+  "ZBAA",
+  "ZGGG",
+  "ZGSZ",
+  "ZHHH",
+  "ZSPD",
+  "ZSQD",
+  "ZUCK",
+  "ZUUU"
+ ],
+ "ssot": {
+  "CYYZ": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    947
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    73
+   ],
+   "terrain": true
+  },
+  "EDDM": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-31",
+    1472
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "EFHK": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-26",
+    1546
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "EGLC": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    1520
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "EHAM": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    1512
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "EPWA": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    1730
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "FACT": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1031
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-22",
+    90
+   ],
+   "terrain": true
+  },
+  "KATL": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    874
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    73
+   ],
+   "terrain": true
+  },
+  "KAUS": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    903
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KBKF": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-28",
+    871
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KDAL": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    809
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KHOU": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-26",
+    800
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KLAX": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    852
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KLGA": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    816
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    73
+   ],
+   "terrain": true
+  },
+  "KMIA": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    769
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    73
+   ],
+   "terrain": true
+  },
+  "KORD": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    931
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "KSEA": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    836
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-21",
+    86
+   ],
+   "terrain": true
+  },
+  "KSFO": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    874
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-21",
+    86
+   ],
+   "terrain": true
+  },
+  "LEMD": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1756
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "LFPB": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1717
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "LIMC": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    1545
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "LLBG": {
+   "truth": [
+    "2026-09-02",
+    "2026-10-19",
+    48
+   ],
+   "obs": [
+    "2026-10-04",
+    401
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "LTAC": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-26",
+    1475
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-22",
+    90
+   ],
+   "terrain": true
+  },
+  "LTFM": {
+   "truth": [
+    "2026-09-02",
+    "2026-10-19",
+    48
+   ],
+   "obs": [
+    "2026-10-04",
+    482
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "MMMX": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1097
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "MPMG": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    110
+   ],
+   "obs": [
+    "2026-08-21",
+    1002
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-21",
+    70
+   ],
+   "terrain": true
+  },
+  "NZWN": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    110
+   ],
+   "obs": [
+    "2026-08-21",
+    1749
+   ],
+   "native_physics": [
+    "2026-08-11",
+    "2026-10-22",
+    71
+   ],
+   "terrain": true
+  },
+  "OEJN": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    972
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "OPKC": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1614
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "RCSS": {
+   "truth": [
+    "2026-06-28",
+    "2026-10-19",
+    112
+   ],
+   "obs": [
+    "2026-08-21",
+    1308
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "RJTT": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1738
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "RKPK": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1052
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "RKSI": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1732
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "RPLL": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    869
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "SAEZ": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    880
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "SBGR": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    986
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-22",
+    90
+   ],
+   "terrain": true
+  },
+  "UUWW": {
+   "truth": [
+    "2026-09-02",
+    "2026-10-19",
+    48
+   ],
+   "obs": [
+    "2026-10-04",
+    435
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "VILK": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-27",
+    1458
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "WMKK": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1505
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "WSSS": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    1643
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZBAA": {
+   "truth": [
+    "2026-06-28",
+    "2026-10-19",
+    113
+   ],
+   "obs": [
+    "2026-08-21",
+    1310
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZGGG": {
+   "truth": [
+    "2026-06-29",
+    "2026-10-19",
+    112
+   ],
+   "obs": [
+    "2026-08-21",
+    1419
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZGSZ": {
+   "truth": [
+    "2026-06-29",
+    "2026-10-19",
+    112
+   ],
+   "obs": [
+    "2026-08-21",
+    1031
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZHHH": {
+   "truth": [
+    "2026-06-28",
+    "2026-10-19",
+    112
+   ],
+   "obs": [
+    "2026-08-21",
+    875
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZSPD": {
+   "truth": [
+    "2026-06-28",
+    "2026-10-19",
+    113
+   ],
+   "obs": [
+    "2026-08-21",
+    1387
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZSQD": {
+   "truth": [
+    "2026-07-01",
+    "2026-10-19",
+    110
+   ],
+   "obs": [
+    "2026-08-21",
+    874
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZUCK": {
+   "truth": [
+    "2026-06-29",
+    "2026-10-19",
+    111
+   ],
+   "obs": [
+    "2026-08-21",
+    874
+   ],
+   "native_physics": [
+    "2026-08-10",
+    "2026-10-22",
+    74
+   ],
+   "terrain": true
+  },
+  "ZUUU": {
+   "truth": [
+    "2026-06-29",
+    "2026-10-19",
+    112
+   ],
+   "obs": [
+    "2026-08-21",
+    954
+   ],
+   "native_physics": [
+    "2026-07-25",
+    "2026-10-22",
+    90
+   ],
+   "terrain": true
+  }
+ },
+ "previous_runs_2024_01": {
+  "CYYZ": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "EDDM": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "EFHK": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "EGLC": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "EHAM": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "EPWA": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "FACT": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KATL": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KAUS": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KBKF": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KDAL": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KHOU": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KLAX": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KLGA": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KMIA": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KORD": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KSEA": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "KSFO": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LEMD": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LFPB": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LIMC": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LLBG": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LTAC": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "LTFM": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "MMMX": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "MPMG": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "NZWN": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "OEJN": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "OPKC": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "RCSS": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "RJTT": {
+   "temperature_2m": 1.0,
+   "shortwave_radiation": 1.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 1.0,
+   "relative_humidity_2m": 1.0,
+   "wind_speed_10m": 1.0,
+   "precipitation": 1.0
+  },
+  "RKPK": {
+   "temperature_2m": 1.0,
+   "shortwave_radiation": 1.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 1.0,
+   "relative_humidity_2m": 1.0,
+   "wind_speed_10m": 1.0,
+   "precipitation": 1.0
+  },
+  "RKSI": {
+   "temperature_2m": 1.0,
+   "shortwave_radiation": 1.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 1.0,
+   "relative_humidity_2m": 1.0,
+   "wind_speed_10m": 1.0,
+   "precipitation": 1.0
+  },
+  "RPLL": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "SAEZ": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "SBGR": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "UUWW": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "VILK": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "WMKK": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "WSSS": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZBAA": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZGGG": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZGSZ": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZHHH": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZSPD": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZSQD": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZUCK": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  },
+  "ZUUU": {
+   "temperature_2m": 0.0,
+   "shortwave_radiation": 0.0,
+   "cloud_cover_low": 0.0,
+   "dew_point_2m": 0.0,
+   "relative_humidity_2m": 0.0,
+   "wind_speed_10m": 0.0,
+   "precipitation": 0.0
+  }
+ },
+ "satellite_2016_07": {
+  "CYYZ": 1.0,
+  "EDDM": 1.0,
+  "EFHK": 1.0,
+  "EGLC": 1.0,
+  "EHAM": 1.0,
+  "EPWA": 1.0,
+  "FACT": 1.0,
+  "KATL": 1.0,
+  "KAUS": 1.0,
+  "KBKF": 1.0,
+  "KDAL": 1.0,
+  "KHOU": 1.0,
+  "KLAX": 1.0,
+  "KLGA": 1.0,
+  "KMIA": 1.0,
+  "KORD": 1.0,
+  "KSEA": 1.0,
+  "KSFO": 1.0,
+  "LEMD": 1.0,
+  "LFPB": 1.0,
+  "LIMC": 1.0,
+  "LLBG": 1.0,
+  "LTAC": 1.0,
+  "LTFM": 1.0,
+  "MMMX": 1.0,
+  "MPMG": 1.0,
+  "NZWN": 1.0,
+  "OEJN": 1.0,
+  "OPKC": 1.0,
+  "RCSS": 1.0,
+  "RJTT": 1.0,
+  "RKPK": 1.0,
+  "RKSI": 1.0,
+  "RPLL": 1.0,
+  "SAEZ": 1.0,
+  "SBGR": 1.0,
+  "UUWW": 1.0,
+  "VILK": 1.0,
+  "WMKK": 1.0,
+  "WSSS": 1.0,
+  "ZBAA": 1.0,
+  "ZGGG": 1.0,
+  "ZGSZ": 1.0,
+  "ZHHH": 1.0,
+  "ZSPD": 1.0,
+  "ZSQD": 1.0,
+  "ZUCK": 1.0,
+  "ZUUU": 1.0
+ },
+ "iem_days_by_year": {
+  "CYYZ": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 364,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "EDDM": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "EFHK": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "EGLC": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "EHAM": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "EPWA": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "FACT": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 342,
+   "2026": 293
+  },
+  "KATL": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KAUS": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KBKF": {
+   "2016": 365,
+   "2017": 365,
+   "2018": 364,
+   "2019": 365,
+   "2020": 366,
+   "2021": 361,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 362,
+   "2026": 293
+  },
+  "KDAL": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KHOU": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KLAX": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KLGA": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KMIA": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KORD": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KSEA": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "KSFO": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "LEMD": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": null
+  },
+  "LFPB": {
+   "2016": 365,
+   "2017": 365,
+   "2018": 348,
+   "2019": 363,
+   "2020": 362,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "LIMC": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "LLBG": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "LTAC": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "LTFM": {
+   "2016": 0,
+   "2017": 0,
+   "2018": 59,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "MMMX": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "MPMG": {
+   "2016": 345,
+   "2017": 364,
+   "2018": 364,
+   "2019": 365,
+   "2020": 366,
+   "2021": 362,
+   "2022": 362,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 288
+  },
+  "NZWN": {
+   "2016": 0,
+   "2017": 0,
+   "2018": 0,
+   "2019": 0,
+   "2020": 0,
+   "2021": 0,
+   "2022": 0,
+   "2023": 0,
+   "2024": 0,
+   "2025": 0,
+   "2026": 0
+  },
+  "OEJN": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "OPKC": {
+   "2016": 364,
+   "2017": 363,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "RCSS": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "RJTT": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "RKPK": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "RKSI": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "RPLL": {
+   "2016": 365,
+   "2017": 361,
+   "2018": 365,
+   "2019": 365,
+   "2020": 364,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "SAEZ": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "SBGR": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "UUWW": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "VILK": {
+   "2016": 362,
+   "2017": 362,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 353,
+   "2025": 360,
+   "2026": 293
+  },
+  "WMKK": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "WSSS": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZBAA": {
+   "2016": 366,
+   "2017": 364,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": null,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZGGG": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZGSZ": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZHHH": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZSPD": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZSQD": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZUCK": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  },
+  "ZUUU": {
+   "2016": 366,
+   "2017": 365,
+   "2018": 365,
+   "2019": 365,
+   "2020": 366,
+   "2021": 365,
+   "2022": 365,
+   "2023": 365,
+   "2024": 366,
+   "2025": 365,
+   "2026": 293
+  }
+ },
+ "native_satellite": {
+  "CYYZ": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "EDDM": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "EFHK": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "EGLC": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "EHAM": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "EPWA": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "FACT": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "KATL": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KAUS": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KBKF": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KDAL": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KHOU": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KLAX": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KLGA": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KMIA": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KORD": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KSEA": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "KSFO": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "LEMD": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "LFPB": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "LIMC": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "LLBG": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "LTAC": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "LTFM": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "MMMX": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "MPMG": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "NZWN": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "OEJN": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "OPKC": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "RCSS": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "RJTT": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "RKPK": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "RKSI": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "RPLL": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "SAEZ": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "SBGR": [
+   "GOES ABI DSRF",
+   "2019"
+  ],
+  "UUWW": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "VILK": [
+   "SARAH3 (Open-Meteo)",
+   "1983"
+  ],
+  "WMKK": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "WSSS": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZBAA": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZGGG": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZGSZ": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZHHH": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZSPD": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZSQD": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZUCK": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ],
+  "ZUUU": [
+   "JAXA L3 PAR",
+   "2015-07"
+  ]
+ },
+ "elapsed_s": 538.0
+}
