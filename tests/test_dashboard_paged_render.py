@@ -692,6 +692,7 @@ def test_a_pageless_section_that_will_not_fit_shows_its_stand_in(paged, monkeypa
     blob = json.loads((paged / "sections" / "slow_moving.json").read_text())
     blob["fingerprint"] = blob["code_fingerprint"] = "older code"
     blob["build_sec"] = 250.0   # under the research lane's line
+    blob.pop("cost_history", None)   # only the stated cost
     (paged / "sections" / "slow_moving.json").write_text(json.dumps(blob))
     monkeypatch.setattr(C, "RENDER_SOFT_BUDGET_SEC", 200.0)
     monkeypatch.setattr(C, "RENDER_EVERY_RUN_DEFAULT_COST_SEC", 0.0)
@@ -923,6 +924,8 @@ def _heavy_page(paged, name, collector, cost, computed_at="2026-09-01T00:00:00Z"
     blob = json.loads((paged / "sections" / f"{name}.json").read_text())
     blob["computed_at_utc"] = computed_at
     blob["build_sec"] = cost
+    # Only the stated cost: the build above timed itself at ~0 s.
+    blob.pop("cost_history", None)
     (paged / "sections" / f"{name}.json").write_text(json.dumps(blob))
     C._SECTION_CACHE_LOG.clear()
     return calls

@@ -657,3 +657,34 @@ def test_the_research_render_leaves_a_final_page_alone(pages, monkeypatch) -> No
     names = [name for _ratio, name, _cost in C.research_due(specs, now)]
     assert "scorecard_previous" not in names
     assert "center_landing_previous" in names, "no finality declared: its lifetime as before"
+
+
+# ---------------------------------------------------------------------------
+# A section's cost is its least build of the week (user 2026-10-20
+# 「还有很多超期的板块」): one build timed in swap put run_cadence (5 s on a
+# quiet host) in the research lane at 454 s, where it sat 54 hours stale.
+
+
+def test_one_build_in_swap_does_not_make_a_section_heavy() -> None:
+    now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+    blob = {"build_sec": 454.0, "cost_history": [
+        ["2026-10-18T05:12:00Z", 454.0], ["2026-10-20T11:50:00Z", 5.2],
+    ]}
+    assert C._page_cost(blob, now) == 5.2
+    old = {"build_sec": 454.0, "cost_history": [["2026-10-01T00:00:00Z", 5.2]]}
+    assert C._page_cost(old, now) == 454.0, "a cost older than a week no longer counts"
+    assert C._page_cost({"build_sec": 33.0}, now) == 33.0, "pages from before the history"
+
+
+def test_the_cost_history_keeps_the_last_builds_of_the_week(tmp_path) -> None:
+    path = tmp_path / "x.json"
+    path.write_text(json.dumps({"cost_history": [
+        ["2026-10-01T00:00:00Z", 1.0],
+        *[[f"2026-10-20T0{i}:00:00Z", float(i)] for i in range(7)],
+    ]}), encoding="utf-8")
+    history = C._cost_history_after(path, "2026-10-20T09:00:00Z", 9.04)
+    assert history[-1] == ["2026-10-20T09:00:00Z", 9.0]
+    assert len(history) == C.PAGE_COST_HISTORY_KEEP
+    assert all(entry[0] >= "2026-10-13" for entry in history)
+    assert C._cost_history_after(tmp_path / "missing.json", "2026-10-20T09:00:00Z", 2.0) == [
+        ["2026-10-20T09:00:00Z", 2.0]]

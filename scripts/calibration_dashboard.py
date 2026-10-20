@@ -14589,6 +14589,58 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # one file, read on every run like the lanes they shadow.
     "realisation_layer",
 })
+#: How far back a section's build costs count, and how many are kept
+#: (``_page_cost``).
+PAGE_COST_HISTORY_SEC = 7 * 24 * 60 * 60
+PAGE_COST_HISTORY_KEEP = 6
+
+
+def _page_cost(blob: Mapping[str, Any], now: datetime | None = None) -> float:
+    """What a section costs to build: the least of its builds in the last
+    week, else its last build.
+
+    2026-10-20 (user 「还有很多超期的板块」): a build timed while the host
+    was deep in swap -- run_cadence 454 s, certificate_authority 535 s,
+    chain_volume 604 s, station_calibration_windows 1,637 s -- put the section
+    in the research lane (``RESEARCH_SECTION_MIN_COST_SEC``), where a queue
+    asking ~13,000 s of an hourly 1,800 s never reached it again, so no
+    ordinary build ever replaced the number: they sat 54-72 hours stale.
+    Rebuilt by hand on a quiet host they took 5, 25, 41 and 33 s.  One fair
+    measurement in a week keeps a section where it belongs.
+    """
+
+    moment = now or _now()
+    recent = []
+    for entry in blob.get("cost_history") or []:
+        try:
+            at = _parse_utc_or_none(entry[0])
+            cost = float(entry[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if at is not None and 0.0 <= (moment - at).total_seconds() <= PAGE_COST_HISTORY_SEC:
+            recent.append(cost)
+    if recent:
+        return min(recent)
+    return float(blob.get("build_sec") or 0.0)
+
+
+def _cost_history_after(path: Path, stamp: str, elapsed: float) -> list[list[Any]]:
+    """The page's cost history with this build added, last week's only."""
+
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8")).get("cost_history") or []
+    except (OSError, ValueError, AttributeError):
+        previous = []
+    moment = _parse_utc_or_none(stamp) or _now()
+    kept = [
+        list(entry) for entry in previous
+        if isinstance(entry, (list, tuple)) and len(entry) == 2
+        and (at := _parse_utc_or_none(entry[0])) is not None
+        and 0.0 <= (moment - at).total_seconds() <= PAGE_COST_HISTORY_SEC
+    ]
+    return (kept + [[stamp, round(elapsed, 1)]])[-PAGE_COST_HISTORY_KEEP:]
+
+
 #: How long a page stays good once its window is final (``_final_after``):
 #: a closed window's readings change only when a truth row is revised
 #: (charter 225's settlement repair), so a week, not never.
@@ -15343,7 +15395,7 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
             blob = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             blob = {}
-        cost = float(blob.get("build_sec") or 0.0)
+        cost = _page_cost(blob, now)
         ttl = SECTION_CACHE_TTL_SEC.get(name) or PAGED_SECTION_TTL_SEC
         if _page_is_final(blob, specs[name].get("final_after"), now):
             ttl = max(ttl, FINAL_PAGE_TTL_SEC)
@@ -15868,7 +15920,7 @@ def _cached_section_value(
     last_cost = 0.0
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
-        last_cost = float(blob.get("build_sec") or 0.0)
+        last_cost = _page_cost(blob, now)
         stamp = str(blob["computed_at_utc"])
         age = (
             now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))
@@ -15919,7 +15971,7 @@ def _cached_section_value(
         remaining = (
             RENDER_SOFT_BUDGET_SEC - _paged_elapsed() - _every_run_reserve_sec()
         )
-        expected = float((page or {}).get("build_sec") or 0.0)
+        expected = _page_cost(page or {}, now)
         if page is not None and expected > remaining:
             return _serve_stale_page(name, page, ttl, page_age, "budget", page_inputs_moved)
         # No page at all and no room for what it cost last time: a section
@@ -16055,6 +16107,7 @@ def _cached_section_value(
                     "code_fingerprint": code_fingerprint,
                     "computed_at_utc": stamp,
                     "build_sec": round(elapsed, 1),
+                    "cost_history": _cost_history_after(path, stamp, elapsed),
                     "final_after_utc": _final_after,
                     "value": value,
                 },
