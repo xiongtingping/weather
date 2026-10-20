@@ -16129,6 +16129,7 @@ table.sd-sky th{white-space:nowrap;vertical-align:bottom;line-height:1.2}
 table.sd-sky th small{display:block;font-weight:400;font-size:10.5px;color:var(--muted)}
 table.sd-sky td,table.sd-sky th{padding-left:6px;padding-right:6px}
 table.sd-sky td.sd-sky-tags{white-space:normal}
+table.sd-sky tr.sd-sky-fold td span{cursor:pointer;font-size:12px}
 table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-skybox{margin:6px 0}
 .sd-sunstat{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;cursor:help;margin:2px 0 6px}
@@ -23950,8 +23951,13 @@ function sdNewestFive(rows, head, cls, label){
 // hours followed by the observed, both newest first.
 function sdSkyTable(rows, nFuture, head){
   const first = rows.slice(0, nFuture + 5), rest = rows.slice(nFuture + 5);
-  const t = r => `<div class="scroll"><table class="sd-tab sd-sky">${head}<tbody>${r.join("")}</tbody></table></div>`;
-  return t(first) + (rest.length ? `<details class="sd-older"><summary class="muted">其余 ${rest.length} 小时（更早的实况）</summary>${t(rest)}</details>` : "");
+  // One table, the earlier hours in a folded body (user 2026-10-20「对齐」):
+  // a second table under <details> sized its columns on its own rows.
+  const label = open => `${open ? "▾" : "▸"} 其余 ${rest.length} 小时（更早的实况）`;
+  const fold = rest.length
+    ? `<tbody><tr class="sd-sky-fold"><td colspan="99"><span class="muted" role="button" tabindex="0" onclick="const b=this.closest('table').querySelector('tbody.sd-sky-older');b.hidden=!b.hidden;this.textContent=b.hidden?${sdEsc(JSON.stringify(label(false)))}:${sdEsc(JSON.stringify(label(true)))}">${label(false)}</span></td></tr></tbody><tbody class="sd-sky-older" hidden>${rest.join("")}</tbody>`
+    : "";
+  return `<div class="scroll"><table class="sd-tab sd-sky">${head}<tbody>${first.join("")}</tbody>${fold}</table></div>`;
 }
 // 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
 // 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
