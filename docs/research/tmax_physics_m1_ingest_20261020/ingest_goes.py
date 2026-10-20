@@ -122,6 +122,35 @@ def _box_from_chunks(url: str, chunks: dict[tuple[int, int], tuple[int, int]], s
 
 
 _CHUNK_CACHE: dict = {}
+LATLON_SOURCE = "GOES_DSRF_V01_0P5DEG"
+
+
+def _read_latlon(url: str, members: list[tuple[str, str]], scan_at: str) -> list[tuple]:
+    import io  # noqa: PLC0415
+
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    body = goes._get(url).content
+    rows = []
+    with h5py.File(io.BytesIO(body), "r") as handle:
+        if "goes_lat_lon_projection" not in handle:
+            raise IOError("goes_small_file_not_latlon")
+        unpack = lambda v: v[:].astype(float) * float(np.ravel(v.attrs["scale_factor"])[0]) + float(np.ravel(v.attrs["add_offset"])[0])  # noqa: E731
+        lats, lons, ds = unpack(handle["lat"]), unpack(handle["lon"]), handle["DSR"]
+        fill = np.asarray(ds.attrs.get("_FillValue")).ravel()
+        scale = float(np.asarray(ds.attrs["scale_factor"]).ravel()[0])
+        offset = float(np.asarray(ds.attrs.get("add_offset", [0.0])).ravel()[0])
+        grid = ds[:]
+        for st, stamp in members:
+            lat, lon = _COORDINATES[st]
+            i, j = int(np.abs(lats - lat).argmin()), int(np.abs(lons - lon).argmin())
+            raw = grid[i, j]
+            value = None if (fill.size and raw == fill[0]) else round(float(raw) * scale + offset, 1)
+            if abs(float(lats[i]) - lat) > 0.5 or abs(float(lons[j]) - lon) > 0.5:
+                value = None
+            rows.append((st, stamp, value, LATLON_SOURCE, 0, scan_at))
+    return rows
 
 
 def _box_by_h5py(url: str, size: int, line: int, col: int, hb: int):
@@ -157,6 +186,12 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
     y, doy, hh, mm = (int(x) for x in found.groups())
     scan_at = (datetime(y, 1, 1, tzinfo=timezone.utc) + timedelta(days=doy - 1, hours=hh, minutes=mm)).strftime("%Y-%m-%dT%H:%MZ")
     url = f"https://{bucket}.s3.amazonaws.com/{name}"
+    if size < 2 * 1024 * 1024:
+        # GOES-16 DSRF v01r00 (to mid-April 2024): a 0.5-degree lat/lon grid,
+        # ~230 KB a file, no fixed-grid projection.  Its nearest cell is
+        # read and kept under its own source name: a different resolution
+        # from the 2 km product the board reads.
+        return _read_latlon(url, members, scan_at)
     rf = goes._RangeFile(url, size)
     # The superblock and root group sit in the first two blocks: fetched here,
     # outside h5py's global lock, so threads do not queue on the network.
