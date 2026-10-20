@@ -95,14 +95,24 @@ def _box_from_chunks(url: str, chunks: dict[tuple[int, int], tuple[int, int]], s
         for j, c in enumerate(range(col - hb, col + hb + 1)):
             r0, c0 = r - r % cr, c - c % cc
             if (url, r0, c0) not in _CHUNK_CACHE:
-                off, size = chunks[(r0, c0)]
+                off, size, mask = chunks[(r0, c0)]
+                if off is None:   # never written: the whole chunk is fill
+                    _CHUNK_CACHE[(url, r0, c0)] = np.full((cr, cc), fill[0] if fill.size else 0, dtype="<u2")
+                    box[i, j] = _CHUNK_CACHE[(url, r0, c0)][r - r0, c - c0]
+                    continue
                 body = goes._get(url, {"Range": f"bytes={off}-{off + size - 1}"}).content
                 if len(body) != size:
                     raise IOError("goes_chunk_short_read")
-                raw = np.frombuffer(zlib.decompress(body), dtype=np.uint8)
-                n = raw.size // 2
-                plain = np.empty(raw.size, dtype=np.uint8)
-                plain[0::2], plain[1::2] = raw[:n], raw[n:]
+                # Filter pipeline [shuffle, deflate]; a set mask bit means
+                # that filter was skipped for this chunk.
+                data = body if mask & 2 else zlib.decompress(body)
+                raw = np.frombuffer(data, dtype=np.uint8)
+                if mask & 1:
+                    plain = raw
+                else:
+                    n = raw.size // 2
+                    plain = np.empty(raw.size, dtype=np.uint8)
+                    plain[0::2], plain[1::2] = raw[:n], raw[n:]
                 _CHUNK_CACHE[(url, r0, c0)] = plain.view("<u2").reshape(cr, cc)
             box[i, j] = _CHUNK_CACHE[(url, r0, c0)][r - r0, c - c0]
     if fill.size:
@@ -112,6 +122,21 @@ def _box_from_chunks(url: str, chunks: dict[tuple[int, int], tuple[int, int]], s
 
 
 _CHUNK_CACHE: dict = {}
+
+
+def _box_by_h5py(url: str, size: int, line: int, col: int, hb: int):
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    with h5py.File(goes._RangeFile(url, size), "r") as handle:
+        ds = handle["DSR"]
+        raw = ds[line - hb:line + hb + 1, col - hb:col + hb + 1].astype(float)
+        fill = np.asarray(ds.attrs.get("_FillValue")).ravel()
+        if fill.size:
+            raw[raw == fill[0]] = np.nan
+        values = raw * float(np.asarray(ds.attrs["scale_factor"]).ravel()[0]) + float(np.asarray(ds.attrs.get("add_offset", [0.0])).ravel()[0])
+        good = values[np.isfinite(values)]
+        return None if not good.size else round(float(good.mean()), 1)
 
 
 def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tuple]:
@@ -169,9 +194,7 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
                     origin = (r - r % chunk_shape[0], c - c % chunk_shape[1])
                     if origin not in chunks:
                         info = ds.id.get_chunk_info_by_coord(origin)
-                        if info.filter_mask != 0:
-                            raise IOError("goes_filter_mask_set")
-                        chunks[origin] = (info.byte_offset, info.size)
+                        chunks[origin] = (info.byte_offset, info.size, info.filter_mask)
             plan.append((st, stamp, (chunks, line, col)))
     rows = []
     try:
@@ -179,7 +202,13 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
             value = None
             if where is not None:
                 chunks, line, col = where
-                value = _box_from_chunks(url, chunks, chunk_shape, line, col, hb, fill, scale, offset)
+                try:
+                    value = _box_from_chunks(url, chunks, chunk_shape, line, col, hb, fill, scale, offset)
+                except (OSError, ValueError, __import__("zlib").error):
+                    try:   # rare odd chunk: the board's own path
+                        value = _box_by_h5py(url, size, line, col, hb)
+                    except OSError:   # the file's chunk is corrupt for h5py too: missing, as on the board
+                        value = None
             rows.append((st, stamp, value, "GOES_DSRF", 0, scan_at))
     finally:
         for k in [k for k in list(_CHUNK_CACHE) if k[0] == url]:
@@ -187,52 +216,68 @@ def read_unit(key: tuple[str, str], members: list[tuple[str, str]]) -> list[tupl
     return rows
 
 
+MAX_PROCESSES = 4   # user 2026-10-20: four foreground worker processes, this script only, gone when it ends
+
+
+def run_batch(batch: list[tuple[tuple[str, str], list[tuple[str, str]]]], threads: int) -> list[tuple]:
+    """One worker process: its own h5py (and so its own global lock), a few
+    threads inside it.  Returns (key, rows | None, error | None) per unit."""
+
+    def one(item):
+        key, members = item
+        try:
+            return key, read_unit(key, members), None
+        except Exception as exc:  # noqa: BLE001 -- retried next batch
+            return key, None, f"{type(exc).__name__}: {str(exc)[:200]}"
+
+    with ThreadPoolExecutor(threads) as pool:
+        return list(pool.map(one, batch))
+
+
 def main() -> int:
+    from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait  # noqa: PLC0415
+
     ap = argparse.ArgumentParser()
-    ap.add_argument("--budget", type=float, default=540.0)
-    ap.add_argument("--workers", type=int, default=12)
-    ap.add_argument("--newest-first", action="store_true", default=True)
+    ap.add_argument("--budget", type=float, default=480.0)
+    ap.add_argument("--processes", type=int, default=MAX_PROCESSES)
+    ap.add_argument("--threads", type=int, default=4, help="threads inside each process")
+    ap.add_argument("--batch", type=int, default=12, help="units handed to a process at a time")
     args = ap.parse_args()
+    processes = max(1, min(MAX_PROCESSES, args.processes))
     t0 = time.time()
     tz = store.timezones()
     conn = store.connect()
     have = store.done(conn, TASK)
     end = datetime.now(timezone.utc).date() - timedelta(days=1)
     plan = units(tz, date.fromisoformat(store.START), end)
-    todo = sorted((k for k in plan if f"{k[0]}|{k[1]}" not in have), key=lambda k: k[1], reverse=args.newest_first)
+    todo = sorted((k for k in plan if f"{k[0]}|{k[1]}" not in have), key=lambda k: k[1], reverse=True)
+    batches = [[(k, plan[k]) for k in todo[i:i + args.batch]] for i in range(0, len(todo), args.batch)]
     n_ok = n_err = 0
-
-    def run(key):
-        try:
-            return key, read_unit(key, plan[key]), None
-        except Exception as exc:  # noqa: BLE001 -- retried next batch
-            return key, None, f"{type(exc).__name__}: {str(exc)[:200]}"
-
-    with ThreadPoolExecutor(args.workers) as pool:
-        it = iter(todo)
+    with ProcessPoolExecutor(processes) as pool:
+        it = iter(batches)
         running = set()
-        for _ in range(args.workers * 2):
-            k = next(it, None)
-            if k is not None:
-                running.add(pool.submit(run, k))
+        for _ in range(processes * 2):
+            nxt = next(it, None)
+            if nxt is not None:
+                running.add(pool.submit(run_batch, nxt, args.threads))
         while running:
-            finished = next(iter(__import__("concurrent.futures").futures.as_completed(running)))
-            running.discard(finished)
-            key, rows, err = finished.result()
-            if rows is not None:
-                conn.executemany("INSERT OR REPLACE INTO sw_measured_hourly VALUES (?,?,?,?,?,?)", rows)
-                store.mark(conn, TASK, f"{key[0]}|{key[1]}", "ok", f"{sum(r[2] is not None for r in rows)}/{len(rows)}")
-                n_ok += 1
-            else:
-                store.mark(conn, TASK, f"{key[0]}|{key[1]}", "error", err or "")
-                n_err += 1
-            conn.commit()
-            if time.time() - t0 < args.budget and store.disk_ok():
-                k = next(it, None)
-                if k is not None:
-                    running.add(pool.submit(run, k))
+            finished, running = wait(running, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                for key, rows, err in fut.result():
+                    if rows is not None:
+                        conn.executemany("INSERT OR REPLACE INTO sw_measured_hourly VALUES (?,?,?,?,?,?)", rows)
+                        store.mark(conn, TASK, f"{key[0]}|{key[1]}", "ok", f"{sum(r[2] is not None for r in rows)}/{len(rows)}")
+                        n_ok += 1
+                    else:
+                        store.mark(conn, TASK, f"{key[0]}|{key[1]}", "error", err or "")
+                        n_err += 1
+                conn.commit()
+                if time.time() - t0 < args.budget and store.disk_ok():
+                    nxt = next(it, None)
+                    if nxt is not None:
+                        running.add(pool.submit(run_batch, nxt, args.threads))
     left = len(todo) - n_ok
-    print(f"goes: {n_ok} units ok, {n_err} errors, {left} of {len(plan)} left, {time.time() - t0:.0f}s")
+    print(f"goes: {n_ok} units ok, {n_err} errors, {left} of {len(plan)} left, {time.time() - t0:.0f}s, {processes} processes")
     return 0
 
 
