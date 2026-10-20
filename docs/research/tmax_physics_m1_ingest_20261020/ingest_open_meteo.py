@@ -11,7 +11,8 @@ Tasks (all ``aggregator_republisher`` rows, research only):
     COVERAGE.md), 48 stations -> ``forecast_d1_hourly``.
   * ``sat`` -- measured shortwave on the board's own product per station
     (``station_day_board._satellite_product``: DWD SIS, EUMETSAT IODC,
-    EUMETSAT MSG) for the stations neither JAXA nor GOES serves ->
+    EUMETSAT MSG; JAXA stations via ``jma_jaxa_himawari``, checked equal to
+    the native L3) for every station GOES does not serve ->
     ``sw_measured_hourly`` ``source=<product>``, ``proxy=0``.
   * ``era5`` -- ERA5 shortwave as the stand-in for the GOES stations until
     the GOES backfill lands (user 2026-10-20 「美洲站标『代理』，不出读数」) ->
@@ -60,8 +61,12 @@ def stations_for(task: str) -> dict[str, str | None]:
     if task == "prev1":
         return {s: None for s in sorted(_COORDINATES)}
     if task == "sat":
-        return {s: p for s in sorted(_COORDINATES)
-                if (p := _satellite_product(_COORDINATES[s][1])) and p != "jaxa_ptree_himawari"}
+        # JAXA stations: the board reads native JAXA L3; Open-Meteo's
+        # jma_jaxa_himawari matched it on 2026-10-17..19 (532 hours, r 0.9998,
+        # mean +0.6 W/m2, MAE 3.7), so its archive stands in for the
+        # 18,000-file native backfill.
+        return {s: ("jma_jaxa_himawari" if p == "jaxa_ptree_himawari" else p) for s in sorted(_COORDINATES)
+                if (p := _satellite_product(_COORDINATES[s][1]))}
     if task == "era5":
         return {s: "era5" for s in sorted(_COORDINATES) if _satellite_product(_COORDINATES[s][1]) is None}
     raise SystemExit(f"unknown task {task}")
