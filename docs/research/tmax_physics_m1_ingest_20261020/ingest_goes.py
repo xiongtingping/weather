@@ -35,7 +35,7 @@ from bayes_basket_target.station_registry import _COORDINATES  # noqa: E402
 
 TASK = "goes_dsrf"
 EAST_SWITCH = datetime(2025, 4, 7, tzinfo=timezone.utc)
-FIRST_LOCAL_HOUR, LAST_LOCAL_HOUR = 5, 20
+FIRST_LOCAL_HOUR, LAST_LOCAL_HOUR = 6, 17   # the hours the model reads (05..H, H<=17; 05 is ~dark); 18-20 cut 10-20 for the tiled files' slow metadata
 goes.MAX_FETCH_BYTES = 96 * 1024 * 1024   # one file serves up to 13 stations here
 goes.BLOCK = 64 * 1024                    # one DSR chunk row-band is ~tens of KB compressed; 512 KB blocks inflated the transfer ~10x
 
