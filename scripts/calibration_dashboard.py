@@ -16837,6 +16837,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .sd-sun-c>b{margin:2px 0 4px}
+.sd-pnl-c.sd-tone-warm{background:color-mix(in srgb,var(--pill-red-fg) 10%,var(--card));border-color:color-mix(in srgb,var(--pill-red-fg) 28%,var(--line))}
+.sd-pnl-c.sd-tone-cold{background:color-mix(in srgb,var(--accent) 10%,var(--card));border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
+.sd-pnl-c.sd-tone-neutral{background:color-mix(in srgb,var(--muted) 9%,var(--card))}
 .sd-pnl-c.sd-cx-total{grid-column:1/-1;display:grid;grid-template-columns:minmax(170px,1fr) minmax(260px,1.6fr) minmax(200px,1.2fr);gap:14px;align-items:start;border-width:2px}
 .sd-cx-head{display:flex;flex-direction:column;gap:4px}
 .sd-cx-head>span{display:flex;flex-direction:column;gap:1px}
@@ -16851,7 +16854,13 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-buckets span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
 .sd-cx-buckets span.sd-cx-top{border-color:var(--text);font-weight:600}
 .sd-cx-fwd{font-size:11px;color:var(--muted)}
-.sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:9px}
+.sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:12px}
+.sd-cx-plot .sd-cx-chart .sd-cx-last{font-size:14px}
+.sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
+.sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}
+.sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
+.sd-cx-dparts{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px}
+.sd-cx-dparts .sd-warm{color:var(--pill-red-fg)}.sd-cx-dparts .sd-cold{color:var(--accent)}
 .sd-cx-parts{display:flex;flex-direction:column;gap:3px}
 .sd-cx-bar{display:grid;grid-template-columns:5.5em 1fr 3em;align-items:center;gap:6px;font-size:12px}
 .sd-cx-bar b{text-align:right;font-variant-numeric:tabular-nums}.sd-cx-bar b.sd-warm{color:var(--pill-red-fg)}.sd-cx-bar b.sd-cold{color:var(--accent)}
@@ -24032,6 +24041,21 @@ function sdTTHover(e){
   tip.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 14) + "px";
   tip.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, e.clientY - h / 2)) + "px";
 }
+// The MOS chart's points open their hour's detail under the chart; a second
+// click on the same point closes it.
+if(typeof window !== "undefined" && !window.__sdCxClick){
+  window.__sdCxClick = true;
+  document.addEventListener("click", e => {
+    const g = e.target.closest && e.target.closest(".sd-cx-pt");
+    if(!g) return;
+    const plot = g.closest(".sd-cx-plot"), box = plot && plot.querySelector(".sd-cx-detail");
+    if(!box) return;
+    const was = g.classList.contains("on");
+    plot.querySelectorAll(".sd-cx-pt.on").forEach(x => x.classList.remove("on"));
+    if(was){ box.classList.add("muted"); box.textContent = "点曲线上的点，看那一小时的明细"; return; }
+    g.classList.add("on"); box.classList.remove("muted"); box.innerHTML = g.getAttribute("data-cx-detail");
+  });
+}
 if(typeof window !== "undefined" && !window.__sdTTHover){ window.__sdTTHover = true; document.addEventListener("mousemove", sdTTHover, {passive: true}); }
 function sdD0Trend(D, dayStr){
   const H = (D.history || []).filter(x => x.centre_c != null);
@@ -25568,7 +25592,8 @@ function sdSky(day){
   const sdCompositeChart = series => {
     if(!series || !series.length) return "";
     // From the day's first point: 0..17 once the night hours (M6) are in.
-    const W = 240, Hh = 104, x0 = 26, x1 = 232, y0 = 10, y1 = 84;
+    // Wide enough for a tick every hour (user 2026-10-21 「时间小时轴按照1h为单位」).
+    const W = 480, Hh = 120, x0 = 30, x1 = 470, y0 = 12, y1 = 98;
     const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
     const lim = Math.max(1.5, ...series.map(p => Math.abs(p.total_c) + 0.3));
     const top = Math.ceil(lim * 2) / 2;
@@ -25579,11 +25604,22 @@ function sdSky(day){
     // A missing hour (6 h did not pass M6) breaks the line.
     const segs = series.reduce((a, p, i) => { if(i && p.hour - series[i - 1].hour > 1) a.push([]); a[a.length - 1].push(p); return a; }, [[]]);
     const line = segs.map(sg => `<polyline points="${sg.map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.4"/>`).join("");
-    const ticksX = (h0 < 9 || h1 > 17 ? [0, 3, 6, 9, 12, 15, 18, 21, 23].filter(h => h >= h0 && h <= h1) : [9, 11, 13, 15, 17]).map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
+    const ticksX = Array.from({length: h1 - h0 + 1}, (_, i) => h0 + i).map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
     const ticksY = [top, 0, -top].map(v => `<text x="${x0 - 4}" y="${Y(v) + 3}" text-anchor="end">${v === 0 ? "0" : sdSg(v, 1)}</text>`).join("");
     const parts = p => Object.entries(p.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([k, v]) => `${CX_NAMES[k] || k} ${sdSg(v, 1)}`).join("、");
-    const dots = series.map((p, i) => `<circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 3.6 : 2.6}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}`)}</title></circle>`).join("");
+    // A click on a point opens that hour's detail under the chart (user 2026-10-21
+    // 「点击可以查看明细」): the estimate as it stood then and its parts.
+    const detail = p => {
+      const fc = CX && CX.forecast_tmax_d1_c;
+      const rows = Object.entries(p.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.01).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .map(([k, v]) => `<span class="${sdWarmCls(v)}">${sdEsc(CX_NAMES[k] || k)} ${sdSg(v, 2)}</span>`).join("");
+      const bias = p.total_c - Object.values(p.parts_c || {}).reduce((a, v) => a + v, 0);
+      return `<b>${hh(p.hour)}:00</b> 推算 <b class="${sdWarmCls(p.total_c)}">${fc == null ? "—" : sdN(fc + p.total_c, 1) + "°C"}</b>`
+        + ` · ΔT ${sdSg(p.total_c, 2)}°C · 个日上下约 ±${sdN(p.resid_sd_c, 1)}°C`
+        + `<div class="sd-cx-dparts">${rows}${Math.abs(bias) >= 0.01 ? `<span class="${sdWarmCls(bias)}">站点偏差 ${sdSg(bias, 2)}</span>` : ""}</div>`;
+    };
+    const dots = series.map((p, i) => `<g class="sd-cx-pt" data-cx-detail="${sdEsc(detail(p))}"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="9" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 4.6 : 3.4}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"/><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}；点击看明细`)}</title></g>`).join("");
     const last = series[series.length - 1];
     return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
       <polygon points="${band}" fill="var(--muted)" opacity=".13"/>
@@ -25630,32 +25666,52 @@ function sdSky(day){
             (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div>
           ${cxForward}
         </div>
-        <div class="sd-cx-plot">${sdCompositeChart(CX.series)}</div>
+        <div class="sd-cx-plot">${sdCompositeChart(CX.series)}<div class="sd-cx-detail muted">点曲线上的点，看那一小时的明细</div></div>
         <div class="sd-cx-parts"><small class="muted">各项贡献（°C）</small>${cxBars(CX)}</div>
       </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
     ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}观测更新型 MOS</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`
     : "";
+  // Each part card's ground is its pull on the maximum (user 2026-10-21 「对于温度
+  // 的影响，如果利于降温的用蓝色背景、如果利于升温的用红色背景，如果是中性的就用灰色
+  // 背景」): the MOS's own contribution where the card is one of its parts, red
+  // above +0.05 °C, blue below −0.05, grey between; with no MOS reading yet, or
+  // for low cloud and the forecast's revision (not MOS parts), the physical
+  // direction of the observed-minus-forecast difference against a threshold.
+  const cxParts = CX && CX.state === "ok" ? (CX.parts_c || {}) : null;
+  const toneOf = (keys, diff, warmIfUp, thr) => {
+    if(cxParts && keys.length){
+      const c = keys.reduce((a, k) => a + (cxParts[k] || 0), 0);
+      return c > 0.05 ? "warm" : c < -0.05 ? "cold" : "neutral";
+    }
+    if(diff == null || !isFinite(diff) || Math.abs(diff) < thr) return "neutral";
+    return (diff > 0) === warmIfUp ? "warm" : "cold";
+  };
+  const toned = (html, t) => html ? html.replace('class="sd-pnl-c sd-sun-c"', `class="sd-pnl-c sd-sun-c sd-tone-${t}"`) : html;
+  const dOf = key => { const r = newest(key); return r ? r.obs[key] - r.forecast[key] : null; };
+  const cloudD = cloudPairs.length ? avg(0) - avg(1) : null;
+  const rainD = rainSeen.length ? rainSeen.filter(r => r.obs.precip).length - rainSeen.filter(r => r.forecast.precip_mm >= 0.1).length : null;
   const cards = [
     compositeCard,
-    tempCard,
-    sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
+    toned(tempCard, toneOf(["tdev"], dOf("temp_c"), true, 0.5)),
+    toned(sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
       // latest as fetched, the earlier one ~24 h before it (per hour, the run a
       // day earlier -- hence ≈).
       [[`≈${sdLocal(fcPrev, true)}`, sdN(H.forecast_sw_d1_mj, 1)], [sdLocal(H.fetched_at_utc, true), sdN(H.forecast_sw_mj, 1)]],
-      `全天 00–24 点日照：提前 1 天的预报（每小时取约 24 小时前那一轮）${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`),
-    swObs == null
+      `全天 00–24 点日照：提前 1 天的预报（每小时取约 24 小时前那一轮）${sdN(H.forecast_sw_d1_mj, 2)} → 最新预报 ${sdN(H.forecast_sw_mj, 2)} MJ/m²（Open-Meteo 逐小时短波加总，看板现取，缓存 30 分钟，取于 ${sdLocal(H.fetched_at_utc, true)}）`), toneOf([], fcPct, true, 5)),
+    toned(swObs == null
       ? sdSunCard("sun", "实况对比预报", "日照", "未到", "", [[bySat ? sdEsc(sat.reason || "卫星约晚 1 小时") : "尚无报文", ""]], "")
       : sdSunCard("sun", "实况对比预报", `${span} · MJ/m²`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           [["实况", sdN(swObs, 1)], ["预报", sdN(swFc, 1)]],
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
-    cloudCard,
+      toneOf(["sw", "phys"], swPct, true, 10)),
+    toned(cloudCard, toneOf([], cloudD, false, 10)),
     ...fcOnly,
-    dewCard,
-    rhCard,
-    windCard,
-    rainCard,
+    toned(dewCard, toneOf(["dew"], dOf("dew_c"), false, 1)),
+    toned(rhCard, toneOf(["rh"], dOf("rh_pct"), false, 5)),
+    toned(windCard, toneOf(["wind"], dOf("wind_mps"), true, 1)),
+    toned(rainCard, toneOf(["rain"], rainD, false, 1)),
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
