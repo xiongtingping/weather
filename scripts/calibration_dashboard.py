@@ -4442,7 +4442,23 @@ def collect_hosted_sweeps(conn: sqlite3.Connection) -> dict[str, Any]:
         # green beside its own amber threshold, which reads as a bug in the
         # section rather than as a rounding boundary.
         shown = None if overdue is None else round(overdue, 2)
-        if state and state != "ok":
+        if state == "network_retry" and (shown is None or shown < 3.0):
+            # The wire, not the lane (2026-10-20): it is due again on a
+            # doubling delay from five minutes, so it reads amber until the
+            # retries have cost it three rounds (user 2026-10-21, the red
+            # pasted four times while the retry waited its turn behind the
+            # other captures).
+            tail_lines = [
+                line.strip()
+                for line in str(clock.get("last_failure_tail") or "").splitlines()
+                if line.strip()
+            ]
+            streak = clock.get("network_retry_streak")
+            health, note = "amber", (
+                f"网络断了，等待重试{f'（已连续 {streak} 次）' if streak else ''}"
+                + (f"：{tail_lines[-1][-120:]}" if tail_lines else "")
+            )
+        elif state and state != "ok":
             # The failure's own last line, which the resident keeps in the
             # clocks file (``last_failure_tail``) so a restart cannot lose it.
             tail_lines = [

@@ -436,3 +436,36 @@ def test_one_failed_turn_is_red_but_not_stuck(tmp_path, monkeypatch):
     assert told["note"] == "上次尝试 failed：KeyError: 'summary'"
     # A second failed turn a day later is the pattern the word names.
     assert read(57.8, 9.1)["stuck"] is True
+
+
+def test_a_network_retry_reads_amber_until_it_has_cost_three_rounds(tmp_path, monkeypatch):
+    """User 2026-10-21: capture_deterministic_forward's network_retry was
+    pasted red four times while its retry waited behind the other captures;
+    the wire, not the lane, so amber -- red once three rounds are gone."""
+
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 10, 21, 6, 45, tzinfo=timezone.utc)
+    monkeypatch.setattr(C, "_now", lambda: now)
+    monkeypatch.setattr(
+        C, "_hosted_sweep_contracts",
+        lambda: ([{"name": "capture_deterministic_forward",
+                   "script": "capture_deterministic_forward_sweep.sh",
+                   "interval_sec": 3 * HOUR, "timeout_sec": 1800.0,
+                   "domain": "ssot"}], ""),
+    )
+    path = tmp_path / "hosted_sweep_clocks.json"
+    monkeypatch.setattr(C, "HOSTED_SWEEP_CLOCKS", path)
+    monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "absent.json")
+
+    def lane(completed_h: float) -> dict:
+        clock = _clock(now, completed_h=completed_h, attempted_h=1.6, state="network_retry")
+        clock["network_retry_streak"] = 2
+        clock["last_failure_tail"] = "  网络断了，稍后重试：1 处，首处 GFS 00Z"
+        path.write_text(json.dumps({"capture_deterministic_forward": clock}), encoding="utf-8")
+        return _lane(C.collect_hosted_sweeps(sqlite3.connect(":memory:")), "capture_deterministic_forward")
+
+    early = lane(5.9)
+    assert early["health"] == "amber"
+    assert "已连续 2 次" in early["note"] and "GFS 00Z" in early["note"]
+    assert lane(9.5)["health"] == "red"
