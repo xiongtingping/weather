@@ -74,12 +74,46 @@ def test_the_baseline_date_decides_which_report_set_is_expected() -> None:
     assert blocking(NOAA_RULES, "2026-10-23") == ["official_resolution_family_changed"]
 
 
-def test_the_shipped_baseline_validates_and_names_32_cities() -> None:
+def test_the_shipped_baseline_validates_and_names_43_cities() -> None:
     cities = load_config()["settlement_source_contract"]["cities"]
-    assert sum(1 for entry in cities.values() if entry.get("routine_metar_only_from") == "2026-10-23") == 32
+    # 32 non-US, and (补记一) the 11 US Fahrenheit cities
+    assert sum(1 for entry in cities.values() if entry.get("routine_metar_only_from") == "2026-10-23") == 43
     assert settlement_basis.routine_metar_only("ZUUU", "2026-10-23")
     assert not settlement_basis.routine_metar_only("ZUUU", "2026-10-22")
-    assert not settlement_basis.routine_metar_only("KLGA", "2026-10-23")
+    assert settlement_basis.routine_metar_only("KLGA", "2026-10-23")
+    assert not settlement_basis.routine_metar_only("KLGA", "2026-10-22")
+    assert not settlement_basis.routine_metar_only("SAEZ", "2026-10-23")
+
+
+# The clauses of the nyc 2026-10-23 rules (Gamma, read 2026-10-21) that decide
+# the settled number, verbatim (补记一).
+US_AWC_RULES = (
+    "This market will resolve to the temperature range that contains the highest temperature reported "
+    "at LaGuardia Airport (KLGA) on 23 Oct '26.\n\n"
+    "The qualifying value is the highest temperature reported in the hourly temperature remark of any "
+    "routine (METAR) observation for LaGuardia Airport (KLGA) on that date, in tenths of a degree Celsius "
+    "as reported. A report whose line begins with SPECI is a special observation and does not count.\n\n"
+    "Each market in this event states its range in whole degrees Fahrenheit. The qualifying value is "
+    "converted using \u00b0F = \u00b0C \u00d7 9/5 + 32 and rounded to the nearest whole degree, with a value "
+    "ending in exactly half rounded up to the next higher whole degree, and that whole Fahrenheit value "
+    "determines which range contains it.\n\n"
+    "Changes to observations within this market's timeframe will be considered until the first datapoint "
+    "for the following date has been published.\n\n"
+    "https://aviationweather.gov/api/data/metar?ids=KLGA"
+)
+
+
+def test_a_us_fahrenheit_market_reads_the_routine_metar_reading_from_its_date() -> None:
+    entry = load_config()["settlement_source_contract"]["cities"]["nyc"]
+    contract = settlement_contract(US_AWC_RULES)
+    assert (contract["family"], contract["station_id"], contract["unit"], contract["reading"]) == (
+        AWC_FAMILY, "KLGA", "F", "ROUTINE_METAR_MAX")
+    found = settlement_contract_deviations(
+        contract, expected=expected_settlement_contract(entry, "2026-10-23"), bucket_unit="F")
+    assert [item["reason"] for item in found if item["blocking"]] == []
+    found = settlement_contract_deviations(
+        contract, expected=expected_settlement_contract(entry, "2026-10-22"), bucket_unit="F")
+    assert [item["reason"] for item in found if item["blocking"]] == ["official_resolution_family_changed"]
 
 
 @pytest.fixture

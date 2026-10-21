@@ -148,7 +148,8 @@
       "polymarket.com event pages london/taipei/nyc 2026-09-24: Rules and Resolution Source match Gamma",
       "weather.gov/wrh/timeseries?site=klga with Show Hourly Data: routine :51 METAR plus SPECI, no 5-minute rows",
       "gamma-api.polymarket.com/events 1122743/1122742/1122720 (istanbul/moscow/tel-aviv, event date 2026-10-05) read 2026-10-04: NOAA weather.gov/wrh/timeseries?site=LTFM/UUWW/LLBG, degrees Celsius, highest Temp for all times, Weather Underground fallback",
-      "gamma-api.polymarket.com/events read 2026-10-21 for all 48 cities, event dates 2026-10-22 and 2026-10-23 (charter 276): 10-22 all NOAA; 10-23 the 32 cities marked routine_metar_only_from settle on aviationweather.gov/api/data/metar raw routine METARs, a report beginning SPECI does not count, remark-group tenths else body whole degrees, rounded half up, WU fallback; the 16 Americas cities had no 10-23 event yet"
+      "gamma-api.polymarket.com/events read 2026-10-21 for all 48 cities, event dates 2026-10-22 and 2026-10-23 (charter 276): 10-22 all NOAA; 10-23 the 32 cities marked routine_metar_only_from settle on aviationweather.gov/api/data/metar raw routine METARs, a report beginning SPECI does not count, remark-group tenths else body whole degrees, rounded half up, WU fallback; the 16 Americas cities had no 10-23 event yet",
+      "gamma-api.polymarket.com/events read 2026-10-21 12:30Z, event date 2026-10-23 (charter 276 补记一): the 11 US Fahrenheit cities (atlanta austin chicago dallas denver houston los-angeles miami nyc san-francisco seattle) settle on aviationweather.gov/api/data/metar routine METARs, a report beginning SPECI does not count, remark-group tenths else body whole degrees C, converted F = C x 9/5 + 32 rounded half up to the market's whole degree F, WU fallback; denver names KDEN, not KBKF (station move not adopted, stays blocked); buenos-aires mexico-city panama-city sao-paulo toronto had no 10-23 event yet"
     ],
     "truth_basis": "bayes_basket_target/settlement_truth.py: max over the station-day's AWC METAR and SPECI; from routine_metar_only_from, routine METAR only (bayes_basket_target/settlement_basis.py, charter 276)",
     "update_rule": "a reported deviation is resolved by re-verifying the page and editing this entry in the same commit as any truth-lane change it needs",
@@ -171,6 +172,7 @@
       },
       "atlanta": {
         "station_id": "KATL",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -178,6 +180,7 @@
       },
       "austin": {
         "station_id": "KAUS",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -224,6 +227,7 @@
       },
       "chicago": {
         "station_id": "KORD",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -239,6 +243,7 @@
       },
       "dallas": {
         "station_id": "KDAL",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -246,6 +251,7 @@
       },
       "denver": {
         "station_id": "KBKF",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -269,6 +275,7 @@
       },
       "houston": {
         "station_id": "KHOU",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -316,6 +323,7 @@
       },
       "los-angeles": {
         "station_id": "KLAX",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -354,6 +362,7 @@
       },
       "miami": {
         "station_id": "KMIA",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -385,6 +394,7 @@
       },
       "nyc": {
         "station_id": "KLGA",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -415,6 +425,7 @@
       },
       "san-francisco": {
         "station_id": "KSFO",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
@@ -429,6 +440,7 @@
       },
       "seattle": {
         "station_id": "KSEA",
+        "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",
         "hourly_data_only": true,
