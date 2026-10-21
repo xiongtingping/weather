@@ -3136,13 +3136,22 @@ def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
     # A settled station-day's walk does not change once its books and beliefs
     # are in; the previous run's record is reused while the code and the
     # settled bucket are the same (a full walk is ~0.27 s a station-day).
-    code = _code_sha(*_READINGS["mode_agreement"][1])
+    # Keyed on the walk's own code (2026-10-21): a change to how the days are
+    # summed must not throw away the days -- the books behind the older ones
+    # leave the SSOT for the cold tier, and on 10-21 a summary change
+    # re-walked every day and lost 171 station-days (09-06..09-2x) whose
+    # books were gone.  The walk itself now reads the whole history.
+    walk_sha = _code_sha(mode_agreement_days, _ladder_mode, _served_belief_vector,
+                         _ladder_market_reference, _ladder_quotes, _mode_agreement_history_conn)
     stored = load_reading("mode_agreement") or {}
     reuse: dict[str, dict[str, Any]] = {}
-    if stored.get("code_sha256") == code:
+    if (stored.get("value") or {}).get("walk_sha256") == walk_sha:
         reuse = {f"{d['station_id']}|{d['event_date']}": d for d in (stored.get("value") or {}).get("days") or []}
     reuse_before = (_now() - timedelta(days=MODE_AGREEMENT_REWALK_DAYS)).date().isoformat()
     labels = {k: v for k, v in knowable_labels(conn).items() if str(k[1]) >= TRADED_CALIBRATION_SINCE}
+    main_conn = conn
+    conn = _mode_agreement_history_conn(main_conn) if any(
+        reuse.get(f"{station}|{day}") is None for station, day in labels) else main_conn
     for (station, day), label in sorted(labels.items()):
         old = reuse.get(f"{station}|{day}")
         if old is not None and old["settled"] == str(label["bucket"]) and str(day) < reuse_before:
@@ -3224,7 +3233,32 @@ def mode_agreement_days(conn: sqlite3.Connection) -> dict[str, Any]:
         days.append({"station_id": str(station), "event_date": str(day), "settled": settled,
                      "unit": "F" if "°F" in settled else "C", "paired": paired,
                      "first_paired": first_paired, "episodes": len(episodes), "picked": picked, "starts": starts})
-    return {"days": days, "counts": counts}
+    if conn is not main_conn:
+        conn.close()
+    return {"days": days, "counts": counts, "walk_sha256": walk_sha}
+
+
+def _mode_agreement_history_conn(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """The production SSOT read with the walk's tables as their whole history
+    (hot rows and the cold tier's, charter 238), as the board's truth-landing
+    recompute reads them; any other store is read as it is.  A cold tier that
+    cannot be read raises, so the stored reading is kept rather than
+    rewritten shorter."""
+
+    path = next((str(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main"), "")
+    if not path or Path(path).resolve() != (ROOT / "data" / "bayes_basket_target_ssot.db").resolve():
+        return conn
+    from scripts.ssot_cold_offload import attach_cold_history  # noqa: PLC0415
+
+    history = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60.0)
+    try:
+        attach_cold_history(history, ("basket_official_ws_snapshot", "basket_probability_bridge_history",
+                                      "basket_probability_envelope", "basket_probability_lineage_document"))
+        history.execute("PRAGMA query_only=1")
+    except Exception:
+        history.close()
+        raise
+    return history
 
 
 def _mode_agreement_group(picked: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
@@ -3377,6 +3411,7 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
         "book_window_sec": TRADED_CALIBRATION_BOOK_WINDOW_SEC, "counts": counts,
         "episodes_per_day": [{"episodes": k, "station_days": spread.get(k, 0)} for k in range(6)],
         "first_paired": baseline, "picks": out_picks, "converge": converge, "days": days,
+        "walk_sha256": built.get("walk_sha256"),
     }
 
 
