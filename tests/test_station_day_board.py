@@ -805,3 +805,23 @@ def test_skew_trend_chart_pools_running_and_seven_day_rates() -> None:
     assert "累计判对 模型 75.0%" in out                       # hover text
     assert subprocess.run([node, "-e", script.replace(json.dumps(st), json.dumps({"stage": "P0", "trend": days[:1]}))],
                           capture_output=True, text=True, timeout=60).stdout.strip() == ""
+
+
+def test_mode_agreement_keeps_a_day_whose_books_left_the_hot_store(monkeypatch) -> None:
+    """2026-10-21: a re-walk lost 171 station-days whose books had moved to the
+    cold tier.  A day the hot store can no longer walk keeps its stored record."""
+
+    import sqlite3
+
+    from bayes_basket_target import board_readings as br
+
+    old = {"station_id": "AAAA", "event_date": "2026-09-08", "settled": "21°C", "unit": "C", "paired": 9,
+           "first_paired": {}, "episodes": 1, "picked": {}, "starts": []}
+    monkeypatch.setattr(br, "load_reading", lambda name: {"value": {"days": [old], "walk_sha256": "older-code"}})
+    monkeypatch.setattr("bayes_basket_target.label_knowability.knowable_labels",
+                        lambda conn: {("AAAA", "2026-09-08"): {"bucket": "21°C"}})
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_probability_bridge_history(station_id TEXT, event_date TEXT, state TEXT,"
+                 " decision_at_utc TEXT, settlement_timezone TEXT)")
+    out = br.mode_agreement_days(conn)
+    assert out["days"] == [old] and out["counts"]["kept_days"] == 1
