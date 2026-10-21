@@ -16840,7 +16840,10 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-pnl-c.sd-tone-warm{background:color-mix(in srgb,var(--pill-red-fg) 10%,var(--card));border-color:color-mix(in srgb,var(--pill-red-fg) 28%,var(--line))}
 .sd-pnl-c.sd-tone-cold{background:color-mix(in srgb,var(--accent) 10%,var(--card));border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
 .sd-pnl-c.sd-tone-neutral{background:color-mix(in srgb,var(--muted) 9%,var(--card))}
-.sd-pnl-c.sd-cx-total{grid-column:1/-1;display:grid;grid-template-columns:minmax(170px,1fr) minmax(260px,1.6fr) minmax(200px,1.2fr);gap:14px;align-items:start;border-width:2px}
+.sd-pnl-c.sd-cx-total{grid-column:1/-1;display:grid;grid-template-columns:minmax(200px,260px) minmax(320px,1fr);gap:18px;align-items:start;border-width:2px}
+.sd-pnl-c.sd-cx-partcard{grid-column:span 2;gap:4px}
+.sd-cx-parthead{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;margin-bottom:2px}
+.sd-cx-parthead small{margin-left:auto;font-size:11px;font-weight:400;color:var(--muted)}
 .sd-cx-head{display:flex;flex-direction:column;gap:4px}
 .sd-cx-head>span{display:flex;flex-direction:column;gap:1px}
 .sd-cx-head em{font-style:normal;font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:5px}
@@ -16870,7 +16873,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-plot .sd-cx-chart .sd-cx-projlab{font-size:11px;fill:var(--muted);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-chart .sd-cx-proj{cursor:help}
 .sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
-.sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}
+.sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}.sd-cx-detail:empty{display:none}
 .sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
 .sd-cx-dparts{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:2px}
 .sd-cx-dparts .sd-warm{color:var(--pill-red-fg)}.sd-cx-dparts .sd-cold{color:var(--accent)}
@@ -16881,7 +16884,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-track::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
 .sd-cx-track i{position:absolute;top:0;bottom:0;border-radius:4px}
 .sd-cx-track i.sd-cx-pos{left:50%;background:var(--pill-red-fg)}.sd-cx-track i.sd-cx-neg{right:50%;background:var(--accent)}
-@media (max-width:760px){.sd-pnl-c.sd-cx-total{grid-template-columns:1fr}}
+@media (max-width:760px){.sd-pnl-c.sd-cx-total{grid-template-columns:1fr}.sd-pnl-c.sd-cx-partcard{grid-column:1/-1}}
 .sd-sun-c>b .sd-cx-chart{display:block;width:100%;height:auto;margin:4px 0 2px;font-size:9px;font-weight:400}
 .sd-cx-chart .sd-cx-ax text{fill:var(--muted)}
 .sd-cx-chart .sd-cx-last{font-size:10px;font-weight:600;fill:var(--text)}
@@ -25610,7 +25613,8 @@ function sdSky(day){
     const proj = ((projection || {}).points || []).filter(p => p.total_c != null && isFinite(p.total_c));
     // From the day's first point: 0..17 once the night hours (M6) are in.
     // Wide enough for a tick every hour (user 2026-10-21 「时间小时轴按照1h为单位」).
-    const W = 480, Hh = 120, x0 = 30, x1 = 470, y0 = 12, y1 = 98;
+    // Taller since the parts left the card (user 2026-10-21 「把曲线图放大」).
+    const W = 560, Hh = 190, x0 = 32, x1 = 550, y0 = 14, y1 = 166;
     const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = proj.length || Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
     const lim = Math.max(1.5, ...series.concat(proj).map(p => Math.abs(p.total_c) + 0.3));
     const top = Math.ceil(lim * 2) / 2;
@@ -25656,7 +25660,7 @@ function sdSky(day){
         const anchor = x > x1 - 90 ? "end" : "start";
         return `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="2 2"/>`
           // Under the dashed line: the solid line's labels sit above it.
-          + `<text class="sd-cx-projlab" x="${anchor === "start" ? x - 6 : x + 6}" y="${Math.min(y + 17, y1 - 4)}" text-anchor="${anchor}">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
+          + `<text class="sd-cx-projlab" x="${anchor === "start" ? x - 6 : x + 6}" y="${Math.min(y + 26, y1 - 4)}" text-anchor="${anchor}">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
       })() : "";
     // The day's highest and lowest ΔT so far, marked (user 2026-10-21 「图表上标记最高
     // 和最低的ΔT」): a ring and a label above the highest, below the lowest; the
@@ -25722,8 +25726,7 @@ function sdSky(day){
           })()}
           ${cxForward}
         </div>
-        <div class="sd-cx-plot">${sdCompositeChart(CX.series, CX.projection)}<div class="sd-cx-detail muted">点曲线上的点，看那一小时的明细${((CX.projection || {}).points || []).length ? "；虚线：今天实况对预报的偏差延续并按历史速度回落的外推（未验证）" : ""}</div></div>
-        <div class="sd-cx-parts"><small class="muted">各项贡献（°C）</small>${cxBars(CX)}</div>
+        <div class="sd-cx-plot">${sdCompositeChart(CX.series, CX.projection)}<div class="sd-cx-detail muted"></div></div>
       </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
     ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}观测更新型 MOS</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`
@@ -25747,8 +25750,13 @@ function sdSky(day){
   const dOf = key => { const r = newest(key); return r ? r.obs[key] - r.forecast[key] : null; };
   const cloudD = cloudPairs.length ? avg(0) - avg(1) : null;
   const rainD = rainSeen.length ? rainSeen.filter(r => r.obs.precip).length - rainSeen.filter(r => r.forecast.precip_mm >= 0.1).length : null;
+  // The parts sit with the evidence cards (user 2026-10-21 「把各项贡献（°C）和下方的
+  // 证据卡片放在一起排版」), so the total card keeps its width for the chart.
+  const partsCard = CX && CX.state === "ok"
+    ? `<div class="sd-pnl-c sd-cx-partcard" title="${sdEsc(cxTip)}"><span class="sd-cx-parthead">${sdIcon("temp")}各项贡献 · °C<small>${hh(CX.hour)}:00 · 对推算最高温</small></span>${cxBars(CX)}</div>` : "";
   const cards = [
     compositeCard,
+    partsCard,
     toned(tempCard, toneOf(["tdev"], dOf("temp_c"), true, 0.5)),
     toned(sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
