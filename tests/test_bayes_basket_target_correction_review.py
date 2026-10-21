@@ -616,3 +616,47 @@ def test_the_halt_write_back_is_in_the_appender() -> None:
     assert "SELECT observed_max_c" not in recycler, (
         "the money path reads the settled truth, not the running bound"
     )
+
+
+def test_a_prelisting_day_is_reviewed_in_its_station_binding_window(tmp_path, monkeypatch) -> None:
+    # KDEN, ruling 2026-10-21: a day before the station's first market has no
+    # registry row; inside the prelisting allowance its timezone comes from
+    # the station's market timezone binding in the SSOT.
+    import json
+
+    from bayes_basket_target import correction_review, settlement_basis
+
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({
+        "prelisting_truth_backfill": {"stations": [
+            {"station_id": "RKPK", "from": "2026-07-20", "through": "2026-07-28"}]},
+        "settlement_source_contract": {"cities": {"busan": {"station_id": "RKPK"}}},
+    }))
+    monkeypatch.setattr(settlement_basis, "CONFIG_PATH", baseline)
+    ssot = tmp_path / "ssot.db"
+    with sqlite3.connect(ssot) as target:
+        target.execute(
+            "CREATE TABLE calibration_station_market_timezone_binding(station_id TEXT, settlement_timezone TEXT)"
+        )
+        target.execute("INSERT INTO calibration_station_market_timezone_binding VALUES('RKPK','Asia/Seoul')")
+    monkeypatch.setattr(correction_review, "PRELISTING_BINDING_DB", ssot)
+    conn = _db()
+    conn.execute("DELETE FROM reported_trajectory_market_registry")
+    _observation(conn, observation_id="cor-0315", valid_at="2026-07-28T03:15:00Z", correction=1)
+    result = auto_clear_station_day_corrections(
+        conn, source_lane="awc", station_id="RKPK", event_date="2026-07-28",
+        window_start_utc=START, window_end_utc=END, as_of_utc=AS_OF,
+    )
+    assert result["cleared_count"] == 1
+    # outside the allowance the registry is still required
+    baseline.write_text(json.dumps({
+        "prelisting_truth_backfill": {"stations": [
+            {"station_id": "RKPK", "from": "2026-07-20", "through": "2026-07-27"}]},
+        "settlement_source_contract": {"cities": {"busan": {"station_id": "RKPK"}}},
+    }))
+    _observation(conn, observation_id="cor-0415", valid_at="2026-07-28T04:15:00Z", correction=1)
+    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+        auto_clear_station_day_corrections(
+            conn, source_lane="awc", station_id="RKPK", event_date="2026-07-28",
+            window_start_utc=START, window_end_utc=END, as_of_utc=AS_OF,
+        )

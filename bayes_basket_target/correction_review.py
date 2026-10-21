@@ -8,7 +8,9 @@ import sqlite3
 from typing import Any, Mapping
 
 from .contracts import ContractError, canonical_json, content_sha256
+from .database import DEFAULT_TARGET_DB
 from .resource_bounds import assert_process_memory_budget
+from .settlement_basis import prelisting_truth_allowed
 from .settlement_time import settlement_day_window
 
 
@@ -154,6 +156,29 @@ def _validate_review_row(row: Mapping[str, Any]) -> dict[str, Any]:
     return {**identity, "review_id": expected_id, "content_sha256": expected_sha}
 
 
+# The SSOT holding the station market timezone bindings; this module's own
+# connection is the observation archive.
+PRELISTING_BINDING_DB = DEFAULT_TARGET_DB
+
+
+def _prelisting_binding_timezone(station_id: str) -> str:
+    conn = sqlite3.connect(f"file:{PRELISTING_BINDING_DB}?mode=ro", uri=True, timeout=30.0)
+    try:
+        zones = {
+            str(row[0] or "").strip()
+            for row in conn.execute(
+                "SELECT settlement_timezone FROM calibration_station_market_timezone_binding "
+                "WHERE station_id=?",
+                (station_id,),
+            )
+        }
+    finally:
+        conn.close()
+    if len(zones) != 1 or not next(iter(zones)):
+        raise ContractError("correction_review_prelisting_timezone_binding_not_unique")
+    return next(iter(zones))
+
+
 def append_correction_review(
     conn: sqlite3.Connection,
     *,
@@ -230,6 +255,11 @@ def append_correction_review(
         )
         for row in registry_rows
     }
+    if not registry_scopes and prelisting_truth_allowed(station, day):
+        # A day before the station's first market (KDEN, ruling 2026-10-21)
+        # settles through its market timezone binding, so it is reviewed in
+        # the same window.
+        registry_scopes = {(_prelisting_binding_timezone(station), "awc")}
     if len(registry_scopes) != 1:
         raise ContractError("correction_review_registry_scope_not_unique")
     timezone_name, registry_lane = next(iter(registry_scopes))
