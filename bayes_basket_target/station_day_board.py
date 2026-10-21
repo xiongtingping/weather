@@ -1296,8 +1296,9 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
 
     import math  # noqa: PLC0415
 
-    # Sunshine 06..H, held at 06..17 after 17 h (PROTOCOL_M7).
-    span = range(COMPOSITE_FIRST_HOUR, min(H, 17) + 1)
+    # Sunshine 06..H, held at 06..17 after 17 h (PROTOCOL_M7); none through 6 h,
+    # the sunrise hour counting as night (PROTOCOL_M10).
+    span = range(COMPOSITE_FIRST_HOUR, min(H, 17) + 1) if H > 6 else range(0)
     sw_obs = [by_hour.get(h, {}).get("sat_sw_wm2") for h in span]
     sw_fc = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in span]
     if any(v is None for v in sw_obs + sw_fc):
@@ -1327,10 +1328,10 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
     fc_all = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
     if any(v is None for v in fc_all):
         return None
-    mixed = [(sw_obs[h - COMPOSITE_FIRST_HOUR] if h <= min(H, 17) else fc_all[h - COMPOSITE_FIRST_HOUR])
+    mixed = [(sw_obs[h - COMPOSITE_FIRST_HOUR] if 6 < H and h <= min(H, 17) else fc_all[h - COMPOSITE_FIRST_HOUR])
              for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
     c = float((phys.get("c") or {}).get(station, phys.get("fleet_c", 0.0)))
-    x["phys"] = c * (math.sqrt(max(0.0036 * sum(mixed), 0.0)) - math.sqrt(max(0.0036 * sum(fc_all), 0.0)))
+    x["phys"] = 0.0 if H <= 6 else c * (math.sqrt(max(0.0036 * sum(mixed), 0.0)) - math.sqrt(max(0.0036 * sum(fc_all), 0.0)))
     line = fit["by_hour"][str(H)]
     own = (line.get("stations") or {}).get(station)
     coef = own["coef"] if own else line["fleet_coef"]

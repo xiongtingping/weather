@@ -83,7 +83,9 @@ def night_feats(r: dict, H: int) -> dict:
     n = r.get("night") or {}
     full = lambda k: list(n.get(k) or [None] * 6) + list(r[k])  # noqa: E731 -- index = local hour
     rh = _newest(full("rh_obs"), full("rh_fc"), H)
-    sw = 0.0 if H < 6 else float(np.mean([o - f for o, f in zip(r["sw_obs"][:H - 5], r["sw_fc"][:H - 5])]))
+    # 6 h counts as night too (PROTOCOL_M10): the sunrise hour's sunshine is
+    # ~0 everywhere and made the per-station fits ill-conditioned (M6).
+    sw = 0.0 if H <= 6 else float(np.mean([o - f for o, f in zip(r["sw_obs"][:H - 5], r["sw_fc"][:H - 5])]))
     return {
         "sw": max(-300.0, min(300.0, sw)),
         "rh": None if rh is None else max(-20.0, min(20.0, rh)),
@@ -162,7 +164,8 @@ class Data:
         for H in CHECK_HOURS:
             fs = [feats(r, H) for r in rows]
             self.F[H] = np.array([[0.0 if f[k] is None else f[k] for k in B_FEATS] for f in fs], dtype=float)
-            self.G[H] = np.array([core.delta_t(1.0, r["sw_obs"], r["sw_fc"], H) for r in rows])
+            self.G[H] = (np.zeros(len(rows)) if H <= 6 else   # PROTOCOL_M10: no physics term through 6 h
+                         np.array([core.delta_t(1.0, r["sw_obs"], r["sw_fc"], H) for r in rows]))
             self.SUN[H] = np.array([sun_line(f, H) for f in fs])
             self.RH[H] = np.array([rh_line(f, H) for f in fs])
 

@@ -107,3 +107,13 @@ def test_an_evening_hour_reads_the_running_maximum() -> None:
     got = b._composite_at({r["hour"]: r for r in rows}, "ZUUU", fit, 20)
     assert got["x"]["rmax"] == 2.0          # 26.0 seen at 15 h against a day-ahead maximum of 24.0
     assert got["parts_c"]["rmax"] == 2.0
+
+
+def test_six_oclock_counts_as_night() -> None:
+    import json
+
+    fit = json.loads(b.COMPOSITE_TMAX_SHIFT_PATH.read_text())
+    fit["by_hour"]["6"] = fit["by_hour"]["9"]
+    rows = _rows(6, 6)
+    got = b._composite_at({r["hour"]: r for r in rows}, "ZUUU", fit, 6)
+    assert got["x"]["sw"] == 0.0 and got["x"]["phys"] == 0.0 and got["x"]["tdev"] == 2.0
