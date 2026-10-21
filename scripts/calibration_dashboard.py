@@ -25540,7 +25540,7 @@ function sdSky(day){
   const compositeCard = !CX ? "" : CX.state === "ok"
     ? `<div class="sd-pnl-c sd-cx-total" title="${sdEsc(cxTip)}">
         <div class="sd-cx-head">
-          <span><em>${sdIcon("temp")}合成推算最高温</em><small>ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}</small></span>
+          <span><em>${sdIcon("temp")}观测更新型 MOS</em><small>ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}</small></span>
           <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b>
           ${CX.forecast_tmax_d1_c == null ? "" : `<div class="sd-cx-land"><span>日前预报 <b>${sdN(CX.forecast_tmax_d1_c, 1)}</b></span><span>→ 推算 <b class="${sdWarmCls(CX.total_c)}">${sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)}°C</b></span></div>`}
           <div class="sd-cx-buckets" title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布区间覆盖率与名义值相差不到 3 个百分点`)}">${
@@ -25551,7 +25551,7 @@ function sdSky(day){
         <div class="sd-cx-parts"><small class="muted">各项贡献（°C）</small>${cxBars(CX)}</div>
       </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
-    ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}合成推算最高温</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`
+    ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}观测更新型 MOS</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`
     : "";
   const cards = [
     compositeCard,
