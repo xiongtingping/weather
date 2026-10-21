@@ -39,7 +39,7 @@ from .metar_precision import (
     official_temperature_c,
 )
 from .resource_bounds import assert_process_memory_budget
-from .settlement_basis import ROUTINE_METAR_ONLY, routine_metar_only
+from .settlement_basis import ROUTINE_METAR_ONLY, prelisting_truth_allowed, routine_metar_only
 from .settlement_time import settlement_day_window
 from .source_policy import (
     source_policy_reason,
@@ -469,6 +469,30 @@ def _standing_truth_lineage(
     return timezone_name, source_lane, registry_snapshot_sha
 
 
+PRELISTING_SCOPE_AUTHORITY = "STATION_MARKET_TIMEZONE_BINDING_PRELISTING"
+
+
+def _prelisting_scope(conn: sqlite3.Connection, *, station_id: str) -> tuple[str, str, str]:
+    """A station-day from before the station's first market (KDEN, ruling
+    2026-10-21): the station's market timezone binding is the timezone
+    authority, the lane is AWC as for every truth row, and the third element
+    is the binding's content hash prefixed so no reader can take it for a
+    registry snapshot."""
+
+    rows = conn.execute(
+        "SELECT settlement_timezone,content_sha256 "
+        "FROM calibration_station_market_timezone_binding WHERE station_id=?",
+        (station_id,),
+    ).fetchall()
+    zones = {(str(row[0] or "").strip(), str(row[1] or "").strip().lower()) for row in rows}
+    if len(zones) != 1:
+        raise ContractError("settlement_truth_prelisting_timezone_binding_not_unique")
+    timezone_name, binding_sha = next(iter(zones))
+    if not timezone_name or len(binding_sha) != 64:
+        raise ContractError("settlement_truth_prelisting_timezone_binding_invalid")
+    return timezone_name, "AWC", "binding:" + binding_sha
+
+
 def _settlement_scope(
     conn: sqlite3.Connection,
     *,
@@ -496,6 +520,8 @@ def _settlement_scope(
             (station_id, event_date),
         ).fetchone() is not None:
             raise
+        if prelisting_truth_allowed(station_id, event_date):
+            return _prelisting_scope(conn, station_id=station_id)
         lineage = _standing_truth_lineage(
             conn, station_id=station_id, event_date=event_date,
         )
@@ -800,6 +826,7 @@ def materialize_settled_station_truth(
             f"warm_window_reports={warm_count}"
         )
 
+    prelisting = registry_snapshot_sha.startswith("binding:")
     evidence = {
         "schema": "settlement_truth_source_evidence_v1",
         "station_id": station,
@@ -820,6 +847,12 @@ def materialize_settled_station_truth(
     # hash its truth revision is keyed on -- stays byte for byte as it was.
     if routine_only:
         evidence["settled_reports"] = ROUTINE_METAR_ONLY
+    # A day before the station's first market names no registry snapshot: it
+    # names the timezone binding it was settled through, and says so.
+    if prelisting:
+        del evidence["registry_snapshot_sha256"]
+        evidence["scope_authority"] = PRELISTING_SCOPE_AUTHORITY
+        evidence["timezone_binding_sha256"] = registry_snapshot_sha.removeprefix("binding:")
     source_payload_sha = content_sha256(evidence)
     official_tmax_c = max(
         float(item["reported_temperature_c"]) for item in hourly

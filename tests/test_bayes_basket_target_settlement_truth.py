@@ -2254,3 +2254,88 @@ def test_label_late_revision_updates_superceded_label_and_quarantine_blocks() ->
     assert len(labels) == 3
     assert labels[1][0] == 1 and labels[2][0] == 3
     assert labels[2][1] is not None
+
+
+def _prelisting_baseline(tmp_path, monkeypatch, *, through: str) -> None:
+    from bayes_basket_target import settlement_basis
+
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps({
+        "prelisting_truth_backfill": {"stations": [
+            {"station_id": "RKPK", "from": "2026-07-20", "through": through},
+        ]},
+        "settlement_source_contract": {"cities": {"busan": {"station_id": "RKPK"}}},
+    }))
+    monkeypatch.setattr(settlement_basis, "CONFIG_PATH", path)
+
+
+def _binding(target: sqlite3.Connection, zone: str = "Asia/Seoul") -> None:
+    target.execute(
+        "CREATE TABLE IF NOT EXISTS calibration_station_market_timezone_binding("
+        "binding_id TEXT,station_id TEXT,settlement_timezone TEXT,content_sha256 TEXT)"
+    )
+    target.execute(
+        "INSERT INTO calibration_station_market_timezone_binding VALUES(?,?,?,?)",
+        ("b1", "RKPK", zone, "c" * 64),
+    )
+
+
+def test_a_prelisting_day_settles_through_the_station_timezone_binding(tmp_path, monkeypatch) -> None:
+    # KDEN, ruling 2026-10-21: the station's days before its first market
+    # settle from the same AWC lane, through its market timezone binding, and
+    # the evidence names that binding instead of a registry snapshot.
+    _prelisting_baseline(tmp_path, monkeypatch, through="2026-07-28")
+    target = _target()
+    target.execute("DELETE FROM basket_target_market_registry")
+    _binding(target)
+    source = _canonical()
+    _observation(source, observation_id="a", valid_at="2026-07-28T03:00:00Z", temperature_c=30)
+    _warm_afternoon(source)
+    result = materialize_settled_station_truth(
+        target, source, station_id="RKPK", event_date="2026-07-28",
+        as_of_utc="2026-07-29T10:00:00Z",
+    )
+    assert result["wrote"] is True
+    row = target.execute(
+        "SELECT official_tmax_c, settlement_timezone, source_lane, observation_ids_json "
+        "FROM calibration_station_daily_high_truth WHERE station_id='RKPK'"
+    ).fetchone()
+    assert row[:3] == (31.0, "Asia/Seoul", "AWC")
+    evidence = json.loads(row[3])
+    assert evidence["scope_authority"] == "STATION_MARKET_TIMEZONE_BINDING_PRELISTING"
+    assert evidence["timezone_binding_sha256"] == "c" * 64
+    assert "registry_snapshot_sha256" not in evidence
+
+
+def test_a_prelisting_allowance_ends_where_it_says(tmp_path, monkeypatch) -> None:
+    _prelisting_baseline(tmp_path, monkeypatch, through="2026-07-27")
+    target = _target()
+    target.execute("DELETE FROM basket_target_market_registry")
+    _binding(target)
+    source = _canonical()
+    _observation(source, observation_id="a", valid_at="2026-07-28T03:00:00Z", temperature_c=30)
+    _warm_afternoon(source)
+    with pytest.raises(ContractError, match="registry_scope_not_unique"):
+        materialize_settled_station_truth(
+            target, source, station_id="RKPK", event_date="2026-07-28",
+            as_of_utc="2026-07-29T10:00:00Z",
+        )
+
+
+def test_a_registry_row_outranks_the_prelisting_allowance(tmp_path, monkeypatch) -> None:
+    # A day that has a market settles on its registry, as before.
+    _prelisting_baseline(tmp_path, monkeypatch, through="2026-07-28")
+    target = _target()
+    _binding(target, zone="Europe/London")
+    source = _canonical()
+    _observation(source, observation_id="a", valid_at="2026-07-28T03:00:00Z", temperature_c=30)
+    _warm_afternoon(source)
+    materialize_settled_station_truth(
+        target, source, station_id="RKPK", event_date="2026-07-28",
+        as_of_utc="2026-07-29T10:00:00Z",
+    )
+    row = target.execute(
+        "SELECT settlement_timezone, observation_ids_json FROM calibration_station_daily_high_truth"
+    ).fetchone()
+    assert row[0] == "Asia/Seoul"
+    assert json.loads(row[1])["registry_snapshot_sha256"] == "f" * 64

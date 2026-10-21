@@ -116,6 +116,52 @@ def settled_station(station_id: str, event_date: str) -> str:
     return station
 
 
+def prelisting_truth_allowed(station_id: str, event_date: str, path: Path | None = None) -> bool:
+    """Whether a station-day with no market may settle through its station's
+    market timezone binding (``prelisting_truth_backfill``; KDEN 2026-09-21
+    through 2026-10-22, ruling 2026-10-21)."""
+
+    path = path or CONFIG_PATH
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ContractError("settlement_basis_config_unreadable") from exc
+    section = document.get("prelisting_truth_backfill") if isinstance(document, dict) else None
+    if section is None:
+        return False
+    stations = section.get("stations") if isinstance(section, dict) else None
+    if not isinstance(stations, list):
+        raise ContractError("settlement_basis_config_invalid")
+    station = str(station_id or "").strip().upper()
+    day = str(event_date)
+    for entry in stations:
+        if not isinstance(entry, dict):
+            raise ContractError("settlement_basis_config_invalid")
+        start, through = str(entry.get("from") or ""), str(entry.get("through") or "")
+        if not (_STATION_RE.match(str(entry.get("station_id") or "")) and _DATE_RE.match(start) and _DATE_RE.match(through)):
+            raise ContractError("settlement_basis_config_invalid")
+        if entry["station_id"] == station and start <= day <= through:
+            return True
+    return False
+
+
+def prelisting_truth_days(path: Path | None = None) -> list[tuple[str, str, str]]:
+    """``(station, from, through)`` for every prelisting truth allowance."""
+
+    path = path or CONFIG_PATH
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ContractError("settlement_basis_config_unreadable") from exc
+    section = document.get("prelisting_truth_backfill") if isinstance(document, dict) else None
+    if section is None:
+        return []
+    out = []
+    for entry in (section or {}).get("stations") or []:
+        out.append((str(entry["station_id"]), str(entry["from"]), str(entry["through"])))
+    return out
+
+
 def routine_metar_only(station_id: str, event_date: str) -> bool:
     """Whether only routine METARs settle this station-day."""
 
@@ -130,4 +176,4 @@ def report_settles(station_id: str, event_date: str, report_type: Any) -> bool:
     return kind != "SPECI" or not routine_metar_only(station_id, event_date)
 
 
-__all__ = ["CONFIG_PATH", "ROUTINE_METAR_ONLY", "report_settles", "routine_metar_only", "settled_station"]
+__all__ = ["CONFIG_PATH", "ROUTINE_METAR_ONLY", "report_settles", "prelisting_truth_allowed", "prelisting_truth_days", "routine_metar_only", "settled_station"]

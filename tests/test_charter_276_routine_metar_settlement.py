@@ -74,15 +74,15 @@ def test_the_baseline_date_decides_which_report_set_is_expected() -> None:
     assert blocking(NOAA_RULES, "2026-10-23") == ["official_resolution_family_changed"]
 
 
-def test_the_shipped_baseline_validates_and_names_43_cities() -> None:
+def test_the_shipped_baseline_validates_and_names_48_cities() -> None:
     cities = load_config()["settlement_source_contract"]["cities"]
-    # 32 non-US, and (补记一) the 11 US Fahrenheit cities
-    assert sum(1 for entry in cities.values() if entry.get("routine_metar_only_from") == "2026-10-23") == 43
+    # 32 non-US, (补记一) the 11 US Fahrenheit cities, (补记二) the 5 Americas Celsius cities
+    assert sum(1 for entry in cities.values() if entry.get("routine_metar_only_from") == "2026-10-23") == 48
     assert settlement_basis.routine_metar_only("ZUUU", "2026-10-23")
     assert not settlement_basis.routine_metar_only("ZUUU", "2026-10-22")
     assert settlement_basis.routine_metar_only("KLGA", "2026-10-23")
     assert not settlement_basis.routine_metar_only("KLGA", "2026-10-22")
-    assert not settlement_basis.routine_metar_only("SAEZ", "2026-10-23")
+    assert settlement_basis.routine_metar_only("SAEZ", "2026-10-23")
 
 
 # The clauses of the nyc 2026-10-23 rules (Gamma, read 2026-10-21) that decide

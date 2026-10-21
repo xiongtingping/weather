@@ -139,6 +139,12 @@
     "amsc_fallback_for_awc_forbidden": true,
     "legacy_probability_fallback_forbidden": true
   },
+  "prelisting_truth_backfill": {
+    "rationale": "A station that joins the fleet before it has a market history has no settled days, so no OOS fold can be formed and it serves no P0 until about ten forward days have closed. These station-days settle from the same AWC lane as every other truth row, read through the station's market timezone binding because no market registry row exists for them; the evidence says so (scope_authority), and no registry snapshot is named. Ruling 2026-10-21: 「回填 KDEN 近 30 天的 AWC 报文作真值」.",
+    "stations": [
+      {"station_id": "KDEN", "from": "2026-09-21", "through": "2026-10-22"}
+    ]
+  },
   "settlement_source_contract": {
     "schema": "polymarket_settlement_source_contract_v1",
     "charter": 205,

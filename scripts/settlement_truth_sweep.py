@@ -153,12 +153,37 @@ def _backlog(
     # eligible rows stay in the registry, and nothing later contradicts them
     # because nothing later mentions the scope at all.  The second read costs
     # about 2.5s over a 112-scope backlog and is indexed on (station,event).
-    return [
+    owed = [
         scope for scope in candidates
         if registry_scope_still_eligible(
             conn, station_id=scope[0], event_date=scope[1]
         )
     ]
+    # A station's days before its first market (KDEN, ruling 2026-10-21) have
+    # no registry row to be found by; the allowance names them instead.
+    return sorted(set(owed) | set(_prelisting_backlog(conn, window_start)), key=lambda s: (s[1], s[0]))
+
+
+def _prelisting_backlog(conn: sqlite3.Connection, window_start: str) -> list[tuple[str, str]]:
+    from datetime import date, timedelta  # noqa: PLC0415
+
+    from bayes_basket_target.settlement_basis import prelisting_truth_days  # noqa: PLC0415
+
+    out: list[tuple[str, str]] = []
+    today = datetime.now(timezone.utc).date()
+    for station, start, through in prelisting_truth_days():
+        day = max(date.fromisoformat(start), date.fromisoformat(window_start))
+        last = min(date.fromisoformat(through), today - timedelta(days=1))
+        while day <= last:
+            if conn.execute(
+                "SELECT 1 FROM calibration_station_daily_high_truth"
+                " WHERE station_id=? AND local_date=? AND source_lane IN " + FORMAL_TRUTH_LANES_SQL +
+                " AND qc_status='ACCEPTED' LIMIT 1",
+                (station, day.isoformat()),
+            ).fetchone() is None:
+                out.append((station, day.isoformat()))
+            day += timedelta(days=1)
+    return out
 
 
 # Charter 207: a settled day whose evidence has since grown.  The resident
