@@ -30,3 +30,4 @@ def test_default_priority_is_zuuu():
     assert "ZUUU" in pw.PRIORITY_STATIONS or pw.os.environ.get(
         "PM_PRIORITY_STATIONS"
     ) is not None
+

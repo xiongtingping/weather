@@ -9358,7 +9358,14 @@ class TargetProductionWorker:
             )
             return receipt
         compiled_packets: list[dict[str, Any]] = []
-        for candidate in packets:
+        # PRIORITY_STATIONS compile first (user 2026-10-22).
+        for candidate in sorted(
+            packets,
+            key=lambda packet: not (
+                isinstance(packet, Mapping)
+                and _priority_station(packet.get("station_id"))
+            ),
+        ):
             if (
                 str(candidate.get("schema") or "")
                 != OFFICIAL_NATIVE_FORWARD_PACKET_SCHEMA
@@ -21936,6 +21943,13 @@ class TargetProductionWorker:
                 # above the station count without anything being wrong.
                 if len(active_replay_packets) > MAX_FORWARD_P0_STATION_DAYS:
                     raise ContractError("official_native_forward_scope_bound_exceeded")
+                # PRIORITY_STATIONS compile first (user 2026-10-22 「把原生 P0
+                # 编译也改成 ZUUU 先编」); stable, every packet still compiled.
+                active_replay_packets.sort(
+                    key=lambda packet: not _priority_station(
+                        packet.get("station_id")
+                    )
+                )
                 active_replay_compiled = []
                 active_replay_failures = []
                 active_replay_fallback_attempts = []
