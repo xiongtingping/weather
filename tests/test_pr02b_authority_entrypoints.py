@@ -198,6 +198,14 @@ def test_only_three_user_domain_services_and_targetctl_remain() -> None:
         # followed by a pause three times as long, and a single-instance lock
         # shared with the daily run -- it takes no writer turn of its own.
         "com.weather.ssot_cold_offload.plist",
+        # 2026-10-20 (「继续3、2、6、4、5」): the station board's composite
+        # ΔT card's daily refresh and weekly refit.  A research store and
+        # files under data/runtime/ -- no writer turn to take.
+        "com.weather.tmax_composite_daily.plist",
+        # 2026-10-21 (「系统健康的渲染提高优先级」): the board's health page
+        # every five minutes -- a reader of the store, a writer of
+        # section-cache files and the page.
+        "com.weather.dashboard_health.plist",
     ]
     # The board's write path.  Not a production owner -- it places nothing
     # and holds no state -- but the LIVE switch is drawn disabled while it is

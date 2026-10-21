@@ -27,6 +27,22 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 SOURCE="scripts/calibration_dashboard.py"
+# Start-aligned cadence (user 2026-10-21 「继续优化渲染周期」): launchd counts
+# StartInterval from the previous run's EXIT, so a 1,800 s interval behind a
+# 20-25 minute compute made the real cycle 50-55 minutes (00:58:23 done ->
+# 01:28:23 start, 05:29:19 -> 05:59:19 ...).  launchd now wakes this every
+# minute and the compute starts once 1,800 s have passed since the previous
+# compute STARTED; a wake before that exits here, reading nothing.  The stamp
+# is written when a compute starts, so a start skipped for the WAL below is
+# retried the next minute instead of a half hour later.
+RENDER_EVERY_SEC="${PM_DASHBOARD_RENDER_EVERY_SEC:-1800}"
+START_STAMP="data/dashboard_render.compute_started"
+if [ -f "$START_STAMP" ]; then
+  since=$(( $(date +%s) - $(stat -f '%m' "$START_STAMP") ))
+  if [ "$since" -lt "$RENDER_EVERY_SEC" ]; then
+    exit 0
+  fi
+fi
 # Never start while the store's WAL is already past the resident's
 # maintenance line (its TARGET_SSOT_WARN_WAL_BYTES, 256 MiB).  A truncating
 # checkpoint needs every reader off the WAL, and the writer's (re)open takes
@@ -62,6 +78,7 @@ if ! ssot_wal_under "${PM_DASHBOARD_RENDER_WAL_WAIT_SEC:-300}"; then
   exit 0
 fi
 BEFORE="$(stat -f '%m:%z' "$SOURCE")"
+mkdir -p "$(dirname "$START_STAMP")" && touch "$START_STAMP"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dashboard compute (standalone reader)"
 # Behind the resident, never beside it: the render runs on the machine the
 # resident runs on, for a quarter of every hour, and the resident's decision

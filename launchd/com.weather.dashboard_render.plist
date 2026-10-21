@@ -44,8 +44,13 @@
        render keeps the previous page, and a stale page is cheaper than a
        wedged store.  tests/test_dashboard_render_timeout.py runs the real
        script against a stub render. -->
+  <!-- 2026-10-21 (user 「继续优化渲染周期」): wake every minute; the script
+       starts a compute once 1,800 s have passed since the previous compute
+       STARTED (data/dashboard_render.compute_started).  launchd counts its
+       interval from the previous exit, which behind a 20-25 minute compute
+       had made the real cycle 50-55 minutes. -->
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>60</integer>
   <key>RunAtLoad</key>
   <true/>
   <!-- The kill left no trace anywhere on 2026-09-09: the resident recorded

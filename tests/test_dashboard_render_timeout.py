@@ -33,7 +33,7 @@ def _project(tmp_path: Path, *, render_seconds: float) -> Path:
     (project / "scripts" / "lib").mkdir(parents=True)
     (project / "tmp").mkdir()
     shutil.copy(SWEEP, project / "scripts" / SWEEP.name)
-    for helper in ("single_instance.sh", "run_with_timeout.sh"):
+    for helper in ("single_instance.sh", "run_with_timeout.sh", "ssot_reader_turn.sh"):
         shutil.copy(ROOT / "scripts" / "lib" / helper, project / "scripts" / "lib" / helper)
     (project / "scripts" / "lib" / "resolve_project_python.sh").write_text(
         "resolve_project_python() { printf '%s\\n' " + repr(sys.executable) + "; }\n",
@@ -140,6 +140,8 @@ def test_a_render_does_not_start_onto_an_oversized_wal(tmp_path: Path) -> None:
     (project / "data" / "bayes_basket_target_ssot.db-wal").write_bytes(b"\0" * 4096)
     env = dict(os.environ)
     env["PM_DASHBOARD_RENDER_MAX_WAL_BYTES"] = "1024"
+    # No wait for the resident to truncate it (2026-10-17 added up to 300 s).
+    env["PM_DASHBOARD_RENDER_WAL_WAIT_SEC"] = "0"
     env["TMPDIR"] = str(project / "locks")
     (project / "locks").mkdir(exist_ok=True)
     result = subprocess.run(
@@ -162,8 +164,9 @@ def test_a_render_does_not_start_onto_an_oversized_wal(tmp_path: Path) -> None:
 
 
 def test_the_wal_line_is_the_residents_own_maintenance_line() -> None:
-    text = SWEEP.read_text(encoding="utf-8")
-    match = re.search(r'MAX_WAL_BYTES="\$\{PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-(\d+)\}"', text)
+    # The line lives in the shared reader-turn library since 2026-10-17.
+    text = (ROOT / "scripts" / "lib" / "ssot_reader_turn.sh").read_text(encoding="utf-8")
+    match = re.search(r'="\$\{PM_DASHBOARD_RENDER_MAX_WAL_BYTES:-(\d+)\}"', text)
     assert match, "the WAL line reads PM_DASHBOARD_RENDER_MAX_WAL_BYTES with a numeric default"
     daemon = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
     found = re.search(r"^TARGET_SSOT_WARN_WAL_BYTES = (\d+) \* 1024 \* 1024$", daemon, re.M)
@@ -173,3 +176,25 @@ def test_the_wal_line_is_the_residents_own_maintenance_line() -> None:
 
 if sys.platform != "darwin":  # pragma: no cover - the sweep is a launchd job on this Mac
     pytest.skip("taskpolicy/nice are the Mac's", allow_module_level=True)
+
+
+def test_a_wake_inside_the_cadence_reads_nothing(tmp_path: Path) -> None:
+    """2026-10-21 (「继续优化渲染周期」): launchd wakes the sweep every minute;
+    a wake less than PM_DASHBOARD_RENDER_EVERY_SEC after the previous compute
+    STARTED exits at once, and the compute that does start stamps its start."""
+
+    project = _project(tmp_path, render_seconds=0.2)
+    (project / "data").mkdir()
+    env = dict(os.environ)
+    env["TMPDIR"] = str(project / "locks")
+    (project / "locks").mkdir(exist_ok=True)
+    run = lambda: subprocess.run(  # noqa: E731
+        ["bash", str(project / "scripts" / SWEEP.name)],
+        cwd=str(project), env=env, capture_output=True, text=True, timeout=60,
+    )
+    first = run()
+    assert first.returncode == 0, first.stderr
+    assert "dashboard compute" in first.stdout
+    assert (project / "data" / "dashboard_render.compute_started").exists()
+    second = run()
+    assert second.returncode == 0 and second.stdout == ""
