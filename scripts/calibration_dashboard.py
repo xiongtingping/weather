@@ -16829,6 +16829,10 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sunstat>b small{font-size:12px;font-weight:600;color:var(--muted)}
 /* .sd-pnl-g (128 px cells) is written later; the doubled class keeps these cards wide. */
 .sd-pnl-g.sd-sun-g{grid-template-columns:repeat(6,minmax(0,1fr));margin:6px 0 10px}
+/* The hourly table runs with the page, not in its own 520px box: scrolling inside
+   the box slid its header under the cards (user 2026-10-21 「滚动的时候，卡片对下方
+   表格有折叠」). Wide tables still scroll sideways. */
+.scroll.sd-sky-wrap{max-height:none;overflow-y:visible;overflow-x:auto}
 @media (max-width:1100px){.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:600px){.sd-pnl-g.sd-sun-g{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
@@ -25386,7 +25390,7 @@ function sdSkyTable(rows, nFuture, head){
   const fold = rest.length
     ? `<tbody><tr class="sd-sky-fold"><td colspan="99"><span class="muted" role="button" tabindex="0" onclick="const b=this.closest('table').querySelector('tbody.sd-sky-older');b.hidden=!b.hidden;this.textContent=b.hidden?${sdEsc(JSON.stringify(label(false)))}:${sdEsc(JSON.stringify(label(true)))}">${label(false)}</span></td></tr></tbody><tbody class="sd-sky-older" hidden>${rest.join("")}</tbody>`
     : "";
-  return `<div class="scroll"><table class="sd-tab sd-sky">${head}<tbody>${first.join("")}</tbody>${fold}</table></div>`;
+  return `<div class="scroll sd-sky-wrap"><table class="sd-tab sd-sky">${head}<tbody>${first.join("")}</tbody>${fold}</table></div>`;
 }
 // 逐小时云与辐射：实况对预报 (user 2026-10-07「实况观测的云和辐射对比预测的差
 // 异在哪里，标注出来」).  Built by station_day_board._hourly_vs_forecast; this
