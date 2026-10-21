@@ -75,3 +75,14 @@ def test_a_station_that_already_has_activations_is_refused() -> None:
         onboard.build_onboarding_packet(
             _rows("EGLC"), stations=["EGLC"], valid_from_utc="2026-10-04T16:00:00Z",
         )
+
+
+def test_stations_onboarded_on_different_days_still_share_one_template() -> None:
+    # LLBG/LTFM/UUWW joined 2026-10-04 and the founding 45 on 2026-08-23; the
+    # window start says when, not what, so the second onboarding (KDEN,
+    # 2026-10-21) still finds one template.
+    rows = _rows("EGLC") + _rows("LLBG", valid_from_utc="2026-10-04T16:00:00Z")
+    packet = onboard.build_onboarding_packet(rows, stations=["KDEN"], valid_from_utc="2026-10-21T13:46:16Z")
+    issued = packet["policy_activations"]
+    assert len(issued) == 4
+    assert {row["valid_from_utc"] for row in issued} == {"2026-10-21T13:46:16Z"}

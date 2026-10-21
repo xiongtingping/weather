@@ -65,9 +65,12 @@ def _shape(row: dict[str, Any]) -> tuple:
     activation_id = str(row["activation_id"])
     if activation_id.count(marker) != 1:
         raise SystemExit(f"activation id does not name its station once: {activation_id}")
+    # Not its window start either: every onboarding issues the template from
+    # its own ``valid_from`` (LLBG/LTFM/UUWW carry 2026-10-04, the founding 45
+    # 2026-08-23), so the start says when a station joined, not what it holds.
     return (
         tuple(activation_id.split(marker)),
-        *(row[key] for key in COLUMNS[2:]),
+        *(None if key == "valid_from_utc" else row[key] for key in COLUMNS[2:]),
     )
 
 
