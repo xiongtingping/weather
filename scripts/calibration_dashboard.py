@@ -24127,7 +24127,7 @@ function sdModelCard(o){
   const head = `<div class="sd-mc-h"><span class="sd-mc-t">${o.title}</span>${o.tag ? `<span class="sd-mc-tag">${o.tag}</span>` : ""}${o.fresh || ""}</div>${o.corner || ""}`;
   if(o.empty != null) return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:${o.color || "var(--muted)"}">${head}<div class="muted sd-sub" title="${sdEsc(o.emptyTip || "")}">${sdEsc(o.empty)}</div>${o.trend || ""}</div>`;
   return `<div class="sd-evidence-card sd-det-card sd-mc" style="--c:${o.color}">${head}`
-    + `<div class="sd-mc-main" title="${sdEsc(o.valueTip || "")}"><b class="sd-mc-v">${o.value}</b>${o.mode ? `<span class="sd-mc-mode">众数 <b>${sdEsc(o.mode)}</b>${o.modeP != null ? ` ${sdPc(o.modeP, 0)}` : ""}</span>` : ""}</div>`
+    + `<div class="sd-mc-main" title="${sdEsc(o.valueTip || "")}"><b class="sd-mc-v">${o.value}</b>${o.mode ? `<span class="sd-mc-mode">${o.modeLabel || "众数"} <b>${sdEsc(o.mode)}</b>${o.modeP != null ? ` ${sdPc(o.modeP, 0)}` : ""}</span>` : ""}</div>`
     + (cmp ? `<div class="sd-mc-cmps">${cmp}</div>` : "")
     + (o.sub ? `<div class="sd-mc-sub">${o.sub}</div>` : "")
     + (o.trend || "") + (o.body || "")
@@ -24188,7 +24188,13 @@ function sdMos(day){
   const tag = "只读 · 看板";
   if(X.state !== "ok" || X.forecast_tmax_d1_c == null)
     return sdModelCard({title, tag, empty: X.state === "waiting_satellite" ? "卫星日照还没到齐" : X.state === "unfitted" ? "还没有拟合" : "还没有报文"});
-  const est = X.forecast_tmax_d1_c + X.total_c;
+  // The day's highest ΔT so far leads, as on the station board's MOS card (user
+  // 2026-10-21 「这里为什么不加+0.8°C」「推算最高温 21.2°C，应该改为21.2°C吧」); the
+  // rung chip stays the current reading's, labelled so.
+  const S = (X.series || []).filter(p => p.total_c != null && isFinite(p.total_c));
+  const hi = S.length ? S.reduce((a, p) => p.total_c > a.total_c ? p : a, S[0]) : {hour: X.hour, total_c: X.total_c};
+  const est = X.forecast_tmax_d1_c + hi.total_c;
+  const hh2 = h => String(h).padStart(2, "0");
   const top = (X.buckets || []).slice().sort((a, b) => b.p - a.p)[0];
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const P = sdMosPoints(day);
@@ -24198,13 +24204,14 @@ function sdMos(day){
   const parts = Object.entries(X.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
     .map(([k, v]) => `<span class="sd-d0-part ${v > 0 ? "up" : "down"}" title="${sdEsc(`对 ΔT 的贡献 ${sdSg(v, 2)}°C`)}">${sdEsc(SD_MOS_NAMES[k] || k)} ${sdSg(v, 2)}</span>`).join("");
   const fwd = ((((X.forward || {}).versions || {})[X.version] || {}).by_hour || {})[String(X.hour)];
-  const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ ΔT ${sdSg(X.total_c, 2)}°C。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
+  const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ 今天最高 ΔT ${sdSg(hi.total_c, 2)}°C（${hh2(hi.hour)}:00）；当前 ${hh2(X.hour)}:00 的 ΔT ${sdSg(X.total_c, 2)}°C，众数按当前算。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
     + `按站分层收缩拟合，0–23 点每小时一套系数；各档概率用 t 分布（自由度 ${X.t_df || "—"}）。`
     + `\n样本外：全天每个小时都显著好于只用站点偏差，9–17 点显著好于看板原日照线与湿度线；尚未与市场、P1 比较。只读，不进任何层。`;
   return sdModelCard({title, tag, color: SD_COL.MOS,
     value: `${sdN(est, 2)}°C`, valueTip: tip, mode: top ? top.bucket : null, modeP: top ? top.p : null,
+    modeLabel: `按当前 ${hh2(X.hour)}:00 众数`,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? est - bel.mean : null, "MOS 推算减当前服务信念均值"], ["比市场", mk == null ? null : est - mk, "MOS 推算减市场均值"]],
-    sub: `σ ${sdN(X.resid_sd_c, 2)} · 日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C · ${String(X.hour).padStart(2, "0")} 点 · ${X.station_fit ? "本站系数" : "全队系数"}`,
+    sub: `日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C ${sdSg(hi.total_c, 1)}（最高 ΔT · ${hh2(hi.hour)}:00）${hi.hour === X.hour ? "" : ` · 当前 ${hh2(X.hour)}:00 ΔT ${sdSg(X.total_c, 1)}`} · σ ${sdN(X.resid_sd_c, 2)} · ${X.station_fit ? "本站系数" : "全队系数"}`,
     body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend,
     foot: fwd && fwd.n ? `前向误差（${fwd.days} 天）：MOS ${sdN(fwd.mae_composite_c, 2)} · 日前 ${sdN(fwd.mae_raw_c, 2)}°C`
       : `历史样本外误差：9 点 1.12 · 13 点 0.63 · 17 点 0.18°C`});
