@@ -25564,7 +25564,18 @@ function sdSky(day){
   // 低云、露点等，其他卡片只对比实况vs预报的数值」): the per-variable ΔT lines
   // are retired; how each pulls the maximum is the composite card's breakdown.
   const tempCard = diffCard("temp", "气温 · 实况对比预报", "temp_c", "°C", 1, "报文气温");
-  let dewCard = diffCard("dew", "露点 · 实况对比预报", "dew_c", "°C", 1, "报文露点");
+  // Dew point read against the air temperature (user 2026-10-21 「露点要和温度对比才
+  // 有比较的意义吧」): the spread T − Td at the newest hour with both in the report
+  // and the forecast; wider than forecast = drier air than expected.
+  const spreadRow = (H.rows || []).filter(r => r.obs && r.obs.temp_c != null && r.obs.dew_c != null
+      && (r.forecast || {}).temp_c != null && r.forecast.dew_c != null)
+    .reduce((a, r) => !a || Number(r.hour) > Number(a.hour) ? r : a, null);
+  const spreadD = spreadRow ? (spreadRow.obs.temp_c - spreadRow.obs.dew_c) - (spreadRow.forecast.temp_c - spreadRow.forecast.dew_c) : null;
+  let dewCard = !spreadRow ? "" : sdSunCard("dew", "温度露点差 · 实况对比预报", `${hh(spreadRow.hour)} 点 · °C`,
+    `${Math.abs(spreadD) < 0.05 ? "0" : sdSg(spreadD, 1)} °C`, "",
+    [["实况", `${sdN(spreadRow.obs.temp_c, 1)} − ${sdN(spreadRow.obs.dew_c, 1)} = ${sdN(spreadRow.obs.temp_c - spreadRow.obs.dew_c, 1)}`],
+     ["预报", `${sdN(spreadRow.forecast.temp_c, 1)} − ${sdN(spreadRow.forecast.dew_c, 1)} = ${sdN(spreadRow.forecast.temp_c - spreadRow.forecast.dew_c, 1)}`]],
+    `气温减露点：${hh(spreadRow.hour)}:00 报文对同一小时的预报（Open-Meteo 逐小时）。差越大空气越干，比预报大＝比预报干，利于升温；比预报小＝比预报湿，接近饱和，易云雾`);
   const rhCard = diffCard("dew", "湿度 · 实况对比预报", "rh_pct", "%", 0, "报文湿度（由气温与露点算）");
   let windCard = diffCard("wind", "风 · 实况对比预报", "wind_mps", "m/s", 1, "报文风速（10 分钟平均）");
   // Rain so far: hours whose report carries precipitation against hours the
@@ -25783,7 +25794,7 @@ function sdSky(day){
       toneOf(["sw", "phys"], swPct, true, 10)),
     toned(cloudCard, toneOf([], cloudD, false, 10)),
     ...fcOnly,
-    toned(dewCard, toneOf(["dew"], dOf("dew_c"), false, 1)),
+    toned(dewCard, toneOf([], spreadD, true, 1)),
     toned(rhCard, toneOf(["rh"], dOf("rh_pct"), false, 5)),
     toned(windCard, toneOf(["wind"], dOf("wind_mps"), true, 1)),
     toned(rainCard, toneOf(["rain"], rainD, false, 1)),
