@@ -17010,6 +17010,9 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
+.sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
+@media (max-width:900px){.sd-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.sd-four{grid-template-columns:minmax(0,1fr)}}
 .sd-six>.sd-mc{margin:0;position:relative;display:flex;flex-direction:column}.sd-six>.sd-mc .sd-mc-foot{margin-top:auto;padding-top:6px}
 .sd-six .sd-prob-tx{top:12px}
 @media (max-width:1100px){.sd-six{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -23161,7 +23164,7 @@ try{ const h = JSON.parse(sessionStorage.getItem("sd-cmp-hidden") || "null"); if
 function sdSave(){
   try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
 }
-const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8"};
+const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c"};
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
 const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
@@ -23551,7 +23554,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-six">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}</div>${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}</div>${sdCompareChart(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -23562,7 +23565,8 @@ function sdDay(day){
       <span class="muted sd-sub">${[
       day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
-    <div class="sd-six">${sdProbabilityCards(day)}${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}</div>
+    <div class="sd-six">${sdProbabilityCards(day)}</div>
+    <div class="sd-four">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}</div>
     ${sdCompareChart(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
@@ -23665,6 +23669,7 @@ function sdCompareChart(day){
     S("DET", "确定性 F 中位", SD_COL.DET, sdDetMedian(day).map(p => [p[0], p[1]]), false, sdDetMedian(day)),
     S("MB", "成员轨迹贝叶斯", SD_COL.MB, ((day.member_bayes || {}).history || []).map(h => [h.as_of_utc, h.post_mean_c])),
     S("D0", "D0 实况模型", SD_COL.D0, ((day.d0 || {}).history || []).map(h => [h.at, h.centre_c])),
+    S("MOS", "观测更新型 MOS", SD_COL.MOS, sdMosPoints(day).map(p => [p[0], p[1]])),
   ].filter(x => x.pts.length > 1);
   if(series.length < 2) return "";
   const events = sdCurveEvents(day, from);
@@ -24089,6 +24094,47 @@ function sdMemberBayes(day){
           X.mode ? `<span title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} ${sdPc(X.mode_p, 0)}</span>` : ""].filter(Boolean).join(" · "),
     body: `<div class="sd-det-grid">${chips}</div>`, trend,
     foot: `比对报文 ${M.reports_in_window ?? 0} 条 · 算于 ${sdLocal(M.as_of_utc, true)}`});
+}
+// 观测更新型 MOS beside the other three estimates (user 2026-10-21 「把"观测更新型
+// MOS"上到这个看板，一排4个卡片。对比」): the station board's composite ΔT
+// (hourly_sky.composite_tmax_shift) on the same card layout -- the day-ahead
+// maximum plus ΔT as the estimate, its likeliest rung, the same two
+// comparisons, its hour-by-hour estimate on the clock and the parts.  Read
+// only; computed by station_day_board, never here.
+const SD_MOS_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水", rmax: "已观测最高温"};
+function sdMosPoints(day){
+  const X = (day.hourly_sky || {}).composite_tmax_shift;
+  if(!X || X.state !== "ok" || X.forecast_tmax_d1_c == null) return [];
+  const t0 = sdDayStartMs(day.event_date);
+  return (X.series || []).map(p => [new Date(t0 + p.hour * 3600e3).toISOString(), X.forecast_tmax_d1_c + p.total_c, p.resid_sd_c]);
+}
+function sdMos(day){
+  const X = (day.hourly_sky || {}).composite_tmax_shift;
+  if(!X) return "";
+  const title = "观测更新型 MOS";
+  const tag = "只读 · 看板";
+  if(X.state !== "ok" || X.forecast_tmax_d1_c == null)
+    return sdModelCard({title, tag, empty: X.state === "waiting_satellite" ? "卫星日照还没到齐" : X.state === "unfitted" ? "还没有拟合" : "还没有报文"});
+  const est = X.forecast_tmax_d1_c + X.total_c;
+  const top = (X.buckets || []).slice().sort((a, b) => b.p - a.p)[0];
+  const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
+  const P = sdMosPoints(day);
+  const trend = P.length > 1 ? `<div class="sd-d0-trend">${sdTimeTempChart(
+    [{pts: P.map(x => [x[0], x[1]]), stroke: SD_COL.MOS, width: 2, label: "MOS 推算"}],
+    P.map(x => [x[0], x[1] - x[2], x[1] + x[2]]), SD_COL.MOS, {day: day.event_date, ...sdAxisOpts(day)})}</div>` : "";
+  const parts = Object.entries(X.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([k, v]) => `<span class="sd-d0-part ${v > 0 ? "up" : "down"}" title="${sdEsc(`对 ΔT 的贡献 ${sdSg(v, 2)}°C`)}">${sdEsc(SD_MOS_NAMES[k] || k)} ${sdSg(v, 2)}</span>`).join("");
+  const fwd = ((((X.forward || {}).versions || {})[X.version] || {}).by_hour || {})[String(X.hour)];
+  const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ ΔT ${sdSg(X.total_c, 2)}°C。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
+    + `按站分层收缩拟合，0–23 点每小时一套系数；各档概率用 t 分布（自由度 ${X.t_df || "—"}）。`
+    + `\n样本外：全天每个小时都显著好于只用站点偏差，9–17 点显著好于看板原日照线与湿度线；尚未与市场、P1 比较。只读，不进任何层。`;
+  return sdModelCard({title, tag, color: SD_COL.MOS,
+    value: `${sdN(est, 2)}°C`, valueTip: tip, mode: top ? top.bucket : null, modeP: top ? top.p : null,
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? est - bel.mean : null, "MOS 推算减当前服务信念均值"], ["比市场", mk == null ? null : est - mk, "MOS 推算减市场均值"]],
+    sub: `σ ${sdN(X.resid_sd_c, 2)} · 日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C · ${String(X.hour).padStart(2, "0")} 点 · ${X.station_fit ? "本站系数" : "全队系数"}`,
+    body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend,
+    foot: fwd && fwd.n ? `前向误差（${fwd.days} 天）：MOS ${sdN(fwd.mae_composite_c, 2)} · 日前 ${sdN(fwd.mae_raw_c, 2)}°C`
+      : `历史样本外误差：9 点 1.12 · 13 点 0.63 · 17 点 0.18°C`});
 }
 // Charter 267 补记七 (user 2026-10-16 「照样上线：生产F文件写pick、看板确定性预报显示选桶，
 // 标注未验证、不接车道」): F's bucket, the one below or the one above, from the
