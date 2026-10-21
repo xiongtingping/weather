@@ -15034,28 +15034,111 @@ def _paged_elapsed() -> float:
     return time.monotonic() - float(_PAGED_RUN["started"])
 
 
-def _render_deadline_alerts() -> list[dict[str, Any]]:
-    """An every-run section this run served from its last value: the lamps
-    it feeds are that value's age, not now, and the banner says so."""
+#: The render's own health review (user 2026-10-21 「系统健康增加渲染的健康审查」).
+RENDER_COMPUTE_STAMP = ROOT / "data" / "dashboard_render.compute_started"
+RENDER_COMPUTE_EVERY_SEC = 1800.0
+HEALTH_SWEEP_LOG = ROOT / "data" / "logs" / "dashboard_health.out.log"
+RESEARCH_PAGE_OVERDUE_SEC = 24 * 3600.0
 
-    if not _PAGED_RUN.get("deadline_hit"):
-        return []
-    late = [
-        name for name, reason in (_PAGED_RUN.get("stale") or {}).items()
-        if reason == "deadline" and name in RENDER_EVERY_RUN_SECTIONS
-    ]
-    if not late:
-        return []
-    ages = {
-        name: round(float((_SECTION_CACHE_LOG.get(name) or {}).get("age_sec") or 0) / 60)
-        for name in late
+
+def _render_health(now: datetime | None = None) -> dict[str, Any]:
+    """Whether the board itself is being rendered on time, read at page draw.
+
+    Files only -- the compute run's summary (``COMPUTE_RUN_FILE``), its start
+    stamp, the section pages and the health refresh's log -- so the page,
+    which reads no SSOT, can judge its own freshness.  It replaces an alert
+    the compute run raised in memory, which the read-only page draw (since
+    2026-10-15) could never see.
+    """
+
+    moment = now or _now()
+    checks: list[tuple[str, str]] = []
+    compute = _load_closed_readings(COMPUTE_RUN_FILE)
+    try:
+        stamp = datetime.fromtimestamp(RENDER_COMPUTE_STAMP.stat().st_mtime, timezone.utc)
+    except OSError:
+        stamp = _parse_utc_opt(compute.get("started_at_utc"))
+    started = _parse_utc_opt(compute.get("started_at_utc"))
+    # 1. Cadence: a compute starts every RENDER_COMPUTE_EVERY_SEC.
+    if stamp is not None:
+        idle = (moment - stamp).total_seconds()
+        if idle >= 3 * RENDER_COMPUTE_EVERY_SEC:
+            checks.append(("red", f"整页计算 {idle / 60:.0f} 分钟没开始"))
+        elif idle >= 1.5 * RENDER_COMPUTE_EVERY_SEC:
+            checks.append(("amber", f"整页计算 {idle / 60:.0f} 分钟没开始"))
+    # 2. The last compute: killed before it wrote its summary, or at its deadline.
+    if stamp is not None and started is not None and (stamp - started).total_seconds() > 60:
+        running = (moment - stamp).total_seconds()
+        if running > RENDER_HARD_DEADLINE_SEC + 180:
+            checks.append(("red", f"上一轮整页计算 {running / 60:.0f} 分钟没写下结果（被杀或卡住）"))
+    elif float(compute.get("build_sec") or 0.0) >= RENDER_HARD_DEADLINE_SEC:
+        checks.append(("amber", f"上一轮整页计算撞到 {RENDER_HARD_DEADLINE_SEC:.0f} 秒截止"))
+    stale = dict(((compute.get("paged") or {}).get("stale_sections")) or {})
+    # 3. Every-run sections the last compute served from their last value.
+    late = sorted(
+        name for name, reason in stale.items()
+        if str(reason).startswith("deadline") and name in RENDER_EVERY_RUN_SECTIONS
+    )
+    if late:
+        checks.append(("amber", f"每轮必算的 {len(late)} 个区块沿用上一轮：" + "、".join(late[:6])
+                       + ("…" if len(late) > 6 else "")))
+    # 4. The research lane: a page never built, or a day old.
+    overdue: list[tuple[str, float | None]] = []
+    for name, reason in stale.items():
+        if "research lane" not in str(reason):
+            continue
+        try:
+            age = (moment.timestamp() - (SECTION_CACHE_DIR / f"{name}.json").stat().st_mtime)
+        except OSError:
+            age = None
+        if age is None or age >= RESEARCH_PAGE_OVERDUE_SEC:
+            overdue.append((name, age))
+    if overdue:
+        ages = [a for _n, a in overdue if a is not None]
+        never = sum(1 for _n, a in overdue if a is None)
+        checks.append(("amber", f"研究区块 {len(overdue)} 个超期"
+                       + (f"，最旧 {max(ages) / 3600:.0f} 小时" if ages else "")
+                       + (f"，{never} 个从未算出" if never else "")))
+    # 5. The five-minute health refresh.
+    try:
+        lines = HEALTH_SWEEP_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-6:]
+    except OSError:
+        lines = []
+    drawn = [_parse_utc_opt(line[1:21]) for line in lines if "page drawn" in line]
+    drawn = [d for d in drawn if d is not None]
+    if lines and drawn and (moment - drawn[-1]).total_seconds() >= 15 * 60:
+        checks.append(("amber", f"系统健康快刷 {(moment - drawn[-1]).total_seconds() / 60:.0f} 分钟没重画"))
+    if lines and any("health refresh failed" in line for line in lines[-2:]):
+        checks.append(("amber", "系统健康快刷上一轮失败或超时，三个区块沿用旧值"))
+    level = "red" if any(h == "red" for h, _ in checks) else "amber" if checks else "green"
+    reading = (
+        "—" if stamp is None else f"计算 {(moment - stamp).total_seconds() / 60:.0f} 分钟前"
+    ) + (f" · 沿用 {len(late)}" if late else "") + (f" · 研究超期 {len(overdue)}" if overdue else "")
+    return {
+        "health": level,
+        "reading": reading,
+        "note": "；".join(text for _h, text in checks),
+        "checks": [{"health": h, "text": t} for h, t in checks],
+        "compute_started_at_utc": None if stamp is None else stamp.isoformat().replace("+00:00", "Z"),
+        "compute_build_sec": compute.get("build_sec"),
     }
-    return [{
-        "health": "amber",
-        "label": "看板本轮超时",
-        "note": f"渲染到 {RENDER_HARD_DEADLINE_SEC:.0f} 秒截止，这些区块沿用上一轮："
-        + "、".join(f"{name} {ages[name]} 分钟前" for name in sorted(late)),
-    }]
+
+
+def _render_health_alerts(health: Mapping[str, Any]) -> list[dict[str, Any]]:
+    if health.get("health") in (None, "green"):
+        return []
+    return [{"health": health["health"], "label": "看板渲染", "note": health.get("note") or ""}]
+
+
+def _parse_utc_opt(value: Any) -> datetime | None:
+    try:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _paged_past_deadline() -> bool:
@@ -16495,6 +16578,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
             }
         except (ValueError, OSError):
             worker = {}
+    render_health = _render_health()
     # The banner used to say "something below is red" and leave the reader
     # to scroll sixteen sections for the one red word.  Collect the
     # non-green rows from exactly the four sources the light is computed
@@ -16629,7 +16713,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         # decision reads is fresh -- the two things that failed on
         # 2026-09-21/22 while every row above stayed green.
         + _supply_watch_alerts(db=db)
-        + _render_deadline_alerts()
+        + _render_health_alerts(render_health)
     )
     overall = (
         "red" if any(a["health"] == "red" for a in alerts)
@@ -16640,6 +16724,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "generated_at_utc": _now().isoformat().replace("+00:00", "Z"),
         "overall_health": overall,
         "alerts": alerts,
+        "render_health": render_health,
         "live_selection": live_selection_payload,
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
@@ -18549,6 +18634,11 @@ function healthLamps(){
   } else {
     L.push(lamp("amber", "SSOT 容量", "读不出", S.reason || ""));
   }
+  // The board's own rendering (user 2026-10-21 「系统健康增加渲染的健康审查」).
+  const RH = D.render_health;
+  if(RH) L.push(lamp(RH.health, "看板渲染", RH.reading,
+    (RH.note || "整页计算按时、无区块沿用、研究线无超期、系统健康快刷按时")
+    + (RH.compute_build_sec != null ? ` · 上一轮整页计算 ${Math.round(RH.compute_build_sec)} 秒` : "")));
   const A = D.delta_v2_authority || {};
   if(A.available){
     const days = v => v == null ? "—" : (v >= 60 ? Math.round(v) : v.toFixed(1)) + " 天";
