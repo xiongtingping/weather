@@ -25534,7 +25534,14 @@ function sdSky(day){
         Object.entries(CX.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
           .map(([k, v]) => [CX_NAMES[k] || k, `<span class="${sdWarmCls(v)}">${sdSg(v, 1)}</span>`])
           .concat(Math.abs(CX.station_bias_c) >= 0.05 ? [["站点偏差", sdSg(CX.station_bias_c, 1)]] : [])
-          .concat(CX.forecast_tmax_d1_c == null ? [] : [["日前预报", sdN(CX.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)]]),
+          .concat(CX.forecast_tmax_d1_c == null ? [] : [["日前预报", sdN(CX.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)]])
+          // Forward record of this version (scripts/tmax_composite_daily.sh): the
+          // days after its fit, at the card's own hour.
+          .concat((() => {
+            const fv = (((CX.forward || {}).versions || {})[CX.version] || {}).by_hour || {};
+            const f = fv[String(CX.hour)];
+            return f && f.n ? [[`<span title="${sdEsc(`本版系数拟合之后的 ${f.days} 天、${f.n} 个站日，${hh(CX.hour)} 点时的推算对真值：合成卡误差 ${sdN(f.mae_composite_c, 2)}°C、日照线 ${sdN(f.mae_sun_line_c, 2)}°C、日前预报原样 ${sdN(f.mae_raw_c, 2)}°C；真值落在 ±1 个标准差内 ${sdN(100 * f.within_1sd, 0)}%（理论 68%）`)}">前向误差</span>`, `${sdN(f.mae_composite_c, 2)} · 日前 ${sdN(f.mae_raw_c, 2)}`]] : [];
+          })()),
         `${hh(CX.hour)}:00 前的报文与卫星对提前 1 天的预报：气温差 ${sdSg(CX.x.tdev, 1)}°C、湿度 ${sdSg(CX.x.rh, 0)} 个百分点、露点 ${sdSg(CX.x.dew, 1)}°C、风 ${sdSg(CX.x.wind, 1)} m/s、06–${hh(CX.hour)} 点日照平均 ${sdSg(CX.x.sw, 0)} W/m²、降水 ${sdN(CX.x.rain, 0)} 小时。各项乘本站系数相加，再加站点偏差＝ΔT（相对日前预报最高温）。按站分层收缩拟合（${(CX.window || []).join("～")}），样本外 13 点 MAE 0.79°C，对日照线、湿度线都显著更好；增益主要来自气温差，个日上下约 ±${sdN(CX.resid_sd_c, 1)}°C；只上看板，不进任何层`)
     : CX.state === "too_early"
     ? sdSunCard("temp", "合成推算最高温", `${hh(CX.from_hour)} 点后推算`, "未到", "", [], `报文到 ${hh(CX.from_hour)}:00 才推算`)

@@ -91,14 +91,20 @@ def daily(conn, station: str, tz: str) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--budget", type=float, default=500.0)
+    ap.add_argument("--recent-days", type=int, default=0,
+                    help="daily refresh: only the last N days, one request a station")
     args = ap.parse_args()
     t0 = time.time()
     tz = store.timezones()
     conn = store.connect()
     have = store.done(conn, TASK)
     end = datetime.now(timezone.utc).date() - timedelta(days=1)
-    todo = [(s, a, b) for s in sorted(tz) for a, b in halves(date.fromisoformat(store.START), end)
-            if f"{s}|{a}" not in have or b >= end - timedelta(days=3)]
+    if args.recent_days:
+        todo = [(s, end - timedelta(days=args.recent_days), end) for s in sorted(tz)]
+        have = set()
+    else:
+        todo = [(s, a, b) for s in sorted(tz) for a, b in halves(date.fromisoformat(store.START), end)
+                if f"{s}|{a}" not in have or b >= end - timedelta(days=3)]
     touched = set()
     for s, a, b in todo:
         if time.time() - t0 > args.budget or not store.disk_ok():

@@ -140,6 +140,8 @@ def main() -> int:
     ap.add_argument("--lane", default="research")
     ap.add_argument("--max-weight", type=int, default=400, help="calls this run may charge")
     ap.add_argument("--budget", type=float, default=540.0)
+    ap.add_argument("--refresh-days", type=int, default=0,
+                    help="daily refresh: re-fetch every window reaching into the last N days (the newest window grows)")
     args = ap.parse_args()
     t0 = time.time()
     conn = store.connect()
@@ -153,7 +155,8 @@ def main() -> int:
     for model, group in groups.items():
         for a, b in windows(end):
             unit = f"{model}|{a}"
-            if unit in have or b.isoformat() < PRODUCT_START.get(str(model), "0000"):
+            fresh = args.refresh_days and b >= end - timedelta(days=args.refresh_days)
+            if (unit in have and not fresh) or b.isoformat() < PRODUCT_START.get(str(model), "0000"):
                 continue
             if spent + len(group) > args.max_weight or time.time() - t0 > args.budget or not store.disk_ok():
                 break

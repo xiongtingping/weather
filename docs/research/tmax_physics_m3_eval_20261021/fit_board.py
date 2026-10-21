@@ -20,10 +20,17 @@ sys.path.insert(0, str(HERE))
 import evaluate as e  # noqa: E402
 
 OUT = e.ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
+RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
 HOURS = tuple(range(9, 18))
 
 
 def main() -> int:
+    import argparse  # noqa: PLC0415
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--runtime", action="store_true",
+                    help="daily refit: write data/runtime/tmax_composite/ (the board reads it first) and keep a copy per version")
+    args = ap.parse_args()
     e.CHECK_HOURS = HOURS
     rows = json.loads(e.DAYS.read_text())
     D = e.Data(rows)
@@ -64,8 +71,18 @@ def main() -> int:
                     "note": "judged at 9/11/13/15/17 h; physics core adds ~0 before 15 h; the gain is tdev"},
         "by_hour": by_hour,
     }
-    OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1))
-    print("written", OUT, len(D.stations), "stations")
+    out["version"] = out["fitted_at_utc"].replace(":", "").replace("-", "")
+    text = json.dumps(out, ensure_ascii=False, indent=1)
+    if args.runtime:
+        (RUNTIME_DIR / "versions").mkdir(parents=True, exist_ok=True)
+        (RUNTIME_DIR / "versions" / f"tmax_composite_shift_{out['version']}.json").write_text(text)
+        tmp = RUNTIME_DIR / "tmax_composite_shift_v1.json.tmp"
+        tmp.write_text(text)
+        tmp.replace(RUNTIME_DIR / "tmax_composite_shift_v1.json")
+        print("written", RUNTIME_DIR, out["version"], len(D.stations), "stations")
+    else:
+        OUT.write_text(text)
+        print("written", OUT, len(D.stations), "stations")
     return 0
 
 

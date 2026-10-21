@@ -1281,6 +1281,10 @@ def _rh_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
 # against the day-ahead forecast (``*_d1``), measured shortwave against the
 # day-ahead one.  The parts add up to the total with the station's bias.
 COMPOSITE_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
+# The daily refresh's newest refit (scripts/tmax_composite_daily.sh) first;
+# the committed fit when there is none yet.
+COMPOSITE_TMAX_SHIFT_RUNTIME = ROOT / "data" / "runtime" / "tmax_composite" / "tmax_composite_shift_v1.json"
+COMPOSITE_FORWARD_PATH = ROOT / "data" / "runtime" / "tmax_composite" / "forward_summary.json"
 COMPOSITE_FIRST_HOUR = 6
 
 
@@ -1337,9 +1341,14 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
 
 
 def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> dict[str, Any] | None:
-    try:
-        fit = json.loads(COMPOSITE_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    fit = None
+    for path in (COMPOSITE_TMAX_SHIFT_RUNTIME, COMPOSITE_TMAX_SHIFT_PATH):
+        try:
+            fit = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError):
+            continue
+    if fit is None:
         return {"state": "unfitted"}
     table = fit.get("by_hour") or {}
     hours = sorted(int(h) for h in table)
@@ -1363,7 +1372,19 @@ def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> di
             "series": [{"hour": p["hour"], "total_c": p["total_c"], "resid_sd_c": p["resid_sd_c"],
                         "parts_c": p["parts_c"]} for p in series],
             "forecast_tmax_d1_c": round(max(tmax_d1), 1) if len(tmax_d1) == len(rows) and tmax_d1 else None,
-            "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
+            "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc"),
+            "version": fit.get("version") or str(fit.get("fitted_at_utc") or "").replace(":", "").replace("-", ""),
+            "forward": _composite_forward()}
+
+
+def _composite_forward() -> dict[str, Any] | None:
+    """The daily refresh's forward record (each version scored on the days after
+    its fit), read only."""
+
+    try:
+        return json.loads(COMPOSITE_FORWARD_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _dew_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
