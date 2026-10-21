@@ -1337,7 +1337,7 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
     return {"hour": H, "station_fit": own is not None, "total_c": round(total, 2), "station_bias_c": round(bias, 2),
             "parts_c": {n: round(float(k) * float(x[n] or 0.0), 2) for n, k in zip(names, coef)},
             "x": {k: (None if v is None else round(float(v), 2)) for k, v in x.items()},
-            "resid_sd_c": own["resid_sd_c"] if own else line.get("fleet_resid_sd_c")}
+            "resid_sd_c": own["resid_sd_c"] if own else line.get("fleet_resid_sd_c"), "t_df": line.get("t_df")}
 
 
 def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> dict[str, Any] | None:
@@ -1974,9 +1974,9 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         # (「新加坡没有下单器」).
         axis = _registry_axis(conn, station, day)
         market = _market(conn, station, day, axis) if axis else {"available": False, "reason": "no_ladder"}
-        return {"role": role, "event_date": day, "available": False, "stages": {}, "timeline": [],
-                **({"axis": axis} if axis else {}), "market": market,
-                **_day_observed(conn, station, day, role, zone)}
+        return _with_composite_buckets({"role": role, "event_date": day, "available": False, "stages": {}, "timeline": [],
+                                        **({"axis": axis} if axis else {}), "market": market,
+                                        **_day_observed(conn, station, day, role, zone)})
     axis = ladder_axis(newest["ordinals"],
                        _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
     metar = _metar(station, day, zone)
@@ -2013,13 +2013,56 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
     market = _market(conn, station, day, axis)
     if isinstance(market.get("stats"), dict):
         market["stats"]["skew_floor"] = skew_floor(market["stats"]["mode"], axis, running_high)
-    return {
+    return _with_composite_buckets({
         "role": role, "event_date": day, "available": True, "axis": axis,
         "head_stage": head_stage, "stages": stages,
         "timeline": _timeline(conn, station, day, axis),
         "market": market,
         **_day_observed(conn, station, day, role, zone, metar),
-    }
+    })
+
+
+def composite_bucket_probabilities(axis: Sequence[Mapping[str, Any]], mean_c: float, sd_c: float,
+                                   t_df: float | None) -> list[dict[str, Any]]:
+    """The composite card's maximum on the day's own ladder (M4,
+    docs/research/tmax_physics_m3_eval_20261021/PROTOCOL_M4.md and
+    reading_m4_20261021T020156Z: Student-t beat the normal at every hour):
+    a t with the fit's degrees of freedom scaled to the card's variance (a
+    normal without them), each rung floored at 1e-3 and renormalised."""
+
+    import math  # noqa: PLC0415
+
+    def cdf(x: float | None) -> float:
+        if x is None:
+            return 0.0
+        if t_df and t_df > 2:
+            try:
+                from scipy import stats  # noqa: PLC0415
+
+                return float(stats.t.cdf((x - mean_c) / (sd_c * math.sqrt((t_df - 2) / t_df)), t_df))
+            except ImportError:
+                pass
+        return 0.5 * (1.0 + math.erf((x - mean_c) / (sd_c * math.sqrt(2.0))))
+
+    raw = []
+    for row in axis:
+        lo = 0.0 if row.get("lo_c") is None else cdf(row["lo_c"])
+        hi = 1.0 if row.get("hi_c") is None else cdf(row["hi_c"])
+        raw.append(max(hi - lo, 1e-3))
+    total = sum(raw) or 1.0
+    return [{"bucket": row["bucket"], "p": round(v / total, 4)} for row, v in zip(axis, raw)]
+
+
+def _with_composite_buckets(day: dict[str, Any]) -> dict[str, Any]:
+    """Attach the composite card's rung probabilities when the day has a ladder."""
+
+    cx = (day.get("hourly_sky") or {}).get("composite_tmax_shift")
+    axis = day.get("axis")
+    if (isinstance(cx, dict) and cx.get("state") == "ok" and axis and cx.get("forecast_tmax_d1_c") is not None
+            and cx.get("resid_sd_c")):
+        cx["buckets"] = composite_bucket_probabilities(
+            axis, float(cx["forecast_tmax_d1_c"]) + float(cx["total_c"]), float(cx["resid_sd_c"]), cx.get("t_df"))
+    return day
 
 
 def _registry_axis(conn, station: str, day: str) -> list[dict[str, Any]] | None:

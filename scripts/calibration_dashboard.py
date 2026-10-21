@@ -25535,6 +25535,10 @@ function sdSky(day){
           .map(([k, v]) => [CX_NAMES[k] || k, `<span class="${sdWarmCls(v)}">${sdSg(v, 1)}</span>`])
           .concat(Math.abs(CX.station_bias_c) >= 0.05 ? [["站点偏差", sdSg(CX.station_bias_c, 1)]] : [])
           .concat(CX.forecast_tmax_d1_c == null ? [] : [["日前预报", sdN(CX.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)]])
+          // The day's ladder (M4, reading_m4_20261021T020156Z): the three likeliest
+          // rungs under a Student-t at the card's centre and spread.
+          .concat((CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) =>
+            [`<span title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布的 50/80/95% 区间覆盖率与名义值相差不到 3 个百分点；只上看板，不进任何层`)}">${i === 0 ? "最可能 " : ""}${sdEsc(x.bucket)}</span>`, `${sdN(100 * x.p, 0)}%`]))
           // Forward record of this version (scripts/tmax_composite_daily.sh): the
           // days after its fit, at the card's own hour.
           .concat((() => {

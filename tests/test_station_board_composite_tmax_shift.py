@@ -1,7 +1,16 @@
 """The station board's composite ΔT card (user 2026-10-21): the M3 arm-⑥ line
 read on the board's own hourly rows, parts summing to the total."""
 
+import pytest
+
 from bayes_basket_target import station_day_board as b
+
+
+@pytest.fixture(autouse=True)
+def _committed_fit_only(tmp_path, monkeypatch):
+    # The daily refresh's refit under data/runtime must not leak into tests.
+    monkeypatch.setattr(b, "COMPOSITE_TMAX_SHIFT_RUNTIME", tmp_path / "absent.json")
+    monkeypatch.setattr(b, "COMPOSITE_FORWARD_PATH", tmp_path / "absent_forward.json")
 
 
 def _rows(sat_until: int, report_until: int, warm: float = 2.0) -> list[dict]:
@@ -53,3 +62,16 @@ def test_the_series_reads_each_hour_as_of_itself() -> None:
     again = b._composite_tmax_shift(colder, "ZUUU")
     assert again["series"][1] == got["series"][1]
     assert again["series"][-1]["total_c"] < got["series"][-1]["total_c"]
+
+
+def test_bucket_probabilities_on_the_days_ladder() -> None:
+    axis = [{"bucket": "<=24", "lo_c": None, "hi_c": 24.5}] + [
+        {"bucket": str(k), "lo_c": k - 0.5, "hi_c": k + 0.5} for k in range(25, 30)] + [
+        {"bucket": ">=30", "lo_c": 29.5, "hi_c": None}]
+    t = b.composite_bucket_probabilities(axis, 27.1, 1.0, 5)
+    n = b.composite_bucket_probabilities(axis, 27.1, 1.0, None)
+    assert abs(sum(x["p"] for x in t) - 1.0) < 1e-3
+    assert max(t, key=lambda x: x["p"])["bucket"] == "27"
+    # the t's heavier tails put more on the edges than the normal at the same variance
+    assert t[-1]["p"] > n[-1]["p"] and t[0]["p"] >= n[0]["p"]
+    assert min(x["p"] for x in t) >= 0.0009

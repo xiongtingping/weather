@@ -18,6 +18,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import evaluate as e  # noqa: E402
+import m4_eval  # noqa: E402
 
 OUT = e.ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
 RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
@@ -39,6 +40,11 @@ def main() -> int:
     by_hour = {}
     for H in HOURS:
         fm = e.fit_linear(D, m, H, cphys, True)
+        # M4 (reading_m4_20261021T020156Z): Student-t beat the normal at every
+        # checkpoint; its degrees of freedom on this fit's standardised residuals.
+        X = np.column_stack([D.F[H], cphys[D.st] * D.G[H]])
+        mu = fm["icpt"][D.st] + np.einsum("ij,ij->i", X, fm["coef"][D.st])
+        t_df = m4_eval.fit_df((D.y - mu) / fm["sd"][D.st])
         fleet_coef = e.fit_linear(D, m, H, cphys, False)["coef"][0]
         stations = {}
         for i, s in enumerate(D.stations):
@@ -46,7 +52,7 @@ def main() -> int:
                            "coef": [round(float(c), 6) for c in fm["coef"][i]],
                            "resid_sd_c": round(float(fm["sd"][i]), 3)}
         by_hour[str(H)] = {"stations": stations, "fleet_coef": [round(float(c), 6) for c in fleet_coef],
-                           "fleet_resid_sd_c": round(float(fm["sd"][-1]), 3)}
+                           "fleet_resid_sd_c": round(float(fm["sd"][-1]), 3), "t_df": t_df}
     out = {
         "schema": "tmax_composite_shift_v1",
         "fitted_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -69,6 +75,10 @@ def main() -> int:
         "verdict": {"versus_sun_line_logscore_13h": -0.337, "versus_rh_line_logscore_13h": -0.255,
                     "mae_13h": {"mean_only": 1.207, "sun_line": 1.149, "composite": 0.788},
                     "note": "judged at 9/11/13/15/17 h; physics core adds ~0 before 15 h; the gain is tdev"},
+        "distribution": {"shape": "student_t", "scale": "sd*sqrt((df-2)/df) so the variance is resid_sd^2",
+                         "verdict": "M4 reading_m4_20261021T020156Z: t beat normal at 9-17 h (bucket LogScore -0.008..-0.025); "
+                                    "t intervals cover 47.5-49.2/77.7-79.1/93.9-94.6% of 50/80/95%",
+                         "buckets": "C stations 1 C rounded; F stations 2 F from an even lower bound"},
         "by_hour": by_hour,
     }
     out["version"] = out["fitted_at_utc"].replace(":", "").replace("-", "")
