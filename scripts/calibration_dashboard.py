@@ -20843,12 +20843,13 @@ function tiebreakLane(){
 
 function moneyBoard(){
   // No tabs (user 2026-10-05: 不要tab，独立对比统计展示各个策略！内容紧凑一点):
-  // the strategy comparison first, each lane's own page folded under it.
+  // the strategy comparison first, each lane's own page folded under it
+  // (all folded by default, Proper too -- user 2026-10-21: 「Proper 下注线 · 宪章 231：默认折叠」).
   const cats = MONEY_BOARD.map(c => {
     const [first, ...rest] = c.panes;
     const lead = first ? `<div class="mb-pane" id="${first[3]}">${safe(first[2], first[1])}</div>` : "";
-    const folds = rest.map(([key, label, fn, id]) =>
-      `<details class="mb-fold" id="${id}"${key === "proper" ? " open" : ""}><summary>${h(label)}</summary>
+    const folds = rest.map(([, label, fn, id]) =>
+      `<details class="mb-fold" id="${id}"><summary>${h(label)}</summary>
         <div class="mb-pane">${safe(fn, label)}</div></details>`).join("");
     return `<div class="card mb-cat" style="--tone:${c.tone}">${lead}${folds}</div>`;
   }).join("");
