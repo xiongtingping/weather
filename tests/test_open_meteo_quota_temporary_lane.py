@@ -11,7 +11,7 @@ from bayes_basket_target import open_meteo_quota as quota
 def test_temporary_lane_budget_applies_until_its_end_day(tmp_path) -> None:
     path = tmp_path / "ledger.json"
     budget, until = quota.TEMPORARY_BUDGET["research_tmax_m1"]
-    during = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
+    during = datetime(2026, 10, 22, 12, tzinfo=timezone.utc)   # a day without a DAY_BUDGET override
     quota.charge("research_tmax_m1", budget, during, path=path)
     with pytest.raises(quota.QuotaRefused):
         quota.charge("research_tmax_m1", 1, during, path=path)
