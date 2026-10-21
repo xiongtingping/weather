@@ -97,12 +97,27 @@ def windows(end: date) -> list[tuple[date, date]]:
     return out
 
 
-def call(task: str, lane: str, group: list[str], model: str | None, a: date, b: date) -> list[dict]:
+def half_hour_zone(station: str) -> str | None:
+    """The station's zone when its offset is not whole hours (VILK, Asia/Kolkata):
+    the board asks Open-Meteo in local time and gets local whole hours, which
+    fall on :30 UTC -- asked the same way here (item 6 of 2026-10-21)."""
+
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    tz = store.timezones().get(station)
+    if not tz:
+        return None
+    off = datetime(2026, 1, 15, tzinfo=ZoneInfo(tz)).utcoffset()
+    return tz if off is not None and off.total_seconds() % 3600 else None
+
+
+def call(task: str, lane: str, group: list[str], model: str | None, a: date, b: date,
+         zone: str | None = None) -> list[dict]:
     quota.charge(lane, len(group))
     hourly = [v + "_previous_day1" for v in PREV_VARS] if task == "prev1" else ["shortwave_radiation"]
     q = {"latitude": ",".join(str(_COORDINATES[s][0]) for s in group),
          "longitude": ",".join(str(_COORDINATES[s][1]) for s in group),
-         "hourly": ",".join(hourly), "start_date": a.isoformat(), "end_date": b.isoformat(), "timezone": "UTC"}
+         "hourly": ",".join(hourly), "start_date": a.isoformat(), "end_date": b.isoformat(), "timezone": zone or "UTC"}
     if model:
         q["models"] = model
     req = urllib.request.Request(ENDPOINT[task] + "?" + urllib.parse.urlencode(q),
@@ -121,7 +136,10 @@ def store_rows(conn, task: str, group: list[str], model: str | None, got: list[d
     n = 0
     for st, r in zip(group, got):
         h = r.get("hourly") or {}
-        times = [t + ":00Z" if len(t) == 16 else t for t in h.get("time") or []]
+        # Times come in the asked zone; stored in UTC (local whole hours of a
+        # half-hour zone land on :30).
+        off = timedelta(seconds=int(r.get("utc_offset_seconds") or 0))
+        times = [(datetime.fromisoformat(t) - off).strftime("%Y-%m-%dT%H:%M:00Z") for t in h.get("time") or []]
         if task == "prev1":
             rows = [(st, t, v, val, "OPEN_METEO_PREV1_aggregator")
                     for v in PREV_VARS for t, val in zip(times, h.get(v + "_previous_day1") or [])]
@@ -147,21 +165,26 @@ def main() -> int:
     conn = store.connect()
     by_station = stations_for(args.task)
     groups: dict[str | None, list[str]] = {}
+    zones: dict[str | None, str | None] = {}
     for s, m in by_station.items():
-        groups.setdefault(m, []).append(s)
+        z = half_hour_zone(s)
+        key = m if z is None else f"{m}@{z}"
+        groups.setdefault(key, []).append(s)
+        zones[key] = z
     end = datetime.now(timezone.utc).date() - timedelta(days=3)   # the satellite archive lags ~2 days
     have = store.done(conn, args.task)
     spent = 0
-    for model, group in groups.items():
+    for key, group in groups.items():
+        model = None if key is None else (key.split("@")[0] if key.split("@")[0] != "None" else None)
         for a, b in windows(end):
-            unit = f"{model}|{a}"
+            unit = f"{key}|{a}"
             fresh = args.refresh_days and b >= end - timedelta(days=args.refresh_days)
             if (unit in have and not fresh) or b.isoformat() < PRODUCT_START.get(str(model), "0000"):
                 continue
             if spent + len(group) > args.max_weight or time.time() - t0 > args.budget or not store.disk_ok():
                 break
             try:
-                got = call(args.task, args.lane, group, model, a, b)
+                got = call(args.task, args.lane, group, model, a, b, zones[key])
                 n = store_rows(conn, args.task, group, model, got)
                 store.mark(conn, args.task, unit, "ok", f"{n} values")
             except quota.QuotaRefused as exc:
