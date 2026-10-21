@@ -17027,7 +17027,7 @@ table.sd-tab .sd-gl{border-left:1px solid var(--line)}
 .sd-t{font-weight:600;font-size:13px;margin:14px 0 4px}
 .sd-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:900px){.sd-grid{grid-template-columns:minmax(0,1fr)}}
-.sd-svg{width:100%;max-width:820px;height:auto;display:block}.sd-svg.sd-wide{max-width:none}
+.sd-svg{width:100%;max-width:820px;height:auto;display:block}
 table.sd-tab{border-collapse:collapse;font-size:12px;width:100%}
 table.sd-tab th,table.sd-tab td{padding:3px 6px;border-top:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:top}
 table.sd-tab th{color:var(--muted);font-weight:600}
@@ -17122,10 +17122,6 @@ button.sd-pm-chip:hover{outline:1px solid currentColor}
 .sd-raw{white-space:normal!important;min-width:260px;font-size:11px;color:var(--muted)}
 .sd-metar{max-height:420px;overflow:auto}
 .sd-older{margin-top:4px}.sd-older>summary{cursor:pointer;font-size:12px}
-.sd-chips{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px}.sd-div{width:10px}
-.sd-chip{font:inherit;font-size:11.5px;padding:1px 8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
-.sd-chip[style]{border-color:color-mix(in srgb,var(--c) 55%,var(--line))}
-.sd-chip.on{color:var(--text);background:color-mix(in srgb,var(--c,var(--accent)) 22%,transparent)}
 .sd-wbar{display:inline-block;width:70px;height:7px;background:var(--bar-bg);border-radius:4px;margin-right:6px;vertical-align:middle;overflow:hidden}
 .sd-wbar i{display:block;height:100%;background:var(--accent)}
 .sd-ev{font-size:12.5px;margin:3px 0;line-height:1.55}
@@ -23358,22 +23354,22 @@ const BOX_KIND = {
 // server's read-only GET /api/station-day (bayes_basket_target.station_day_board),
 // so it moves every minute while the rest of the page waits for its render.
 const SD = {station:"ZUUU", data:null, err:null, timer:null, busy:false,
-  every:30, fetchedAt:null, checkedAt:null, calc:{}, trendMode:{}, pendingRender:false};
+  every:30, fetchedAt:null, checkedAt:null, calc:{}, pendingRender:false};
 try{ const raw = localStorage.getItem("sd-every"); const v = Number(raw); if(raw != null && raw !== "" && [0, 15, 30, 60].includes(v)) SD.every = v; }catch(e){}
 try{ const s = localStorage.getItem("sd-station"); if(s && /^[A-Z]{4}$/.test(s)) SD.station = s; }catch(e){}
 // The calculator's inputs, the trend choices: kept for this tab, so a reload
 // (the board's hot update) puts them back (user 2026-10-05「不要整页刷新渲染，丢失视角和输入」).
 try{ const kept = JSON.parse(sessionStorage.getItem("sd-state") || "null");
-  if(kept && kept.station === SD.station){ SD.dayTab = kept.dayTab || null; SD.calc = kept.calc || {}; SD.trendMode = kept.trendMode || {};
+  if(kept && kept.station === SD.station){ SD.dayTab = kept.dayTab || null; SD.calc = kept.calc || {};
     // A read's note describes that read: after a reload it is history and
     // read as current (a 01:48Z timeout kept reappearing at 03:53Z).  The
     // figures it filled stay.
     Object.values(SD.calc).forEach(c => { if(c) delete c.holdNote; }); } }catch(e){}
 try{ const h = JSON.parse(sessionStorage.getItem("sd-cmp-hidden") || "null"); if(h && typeof h === "object") SD.cmpHidden = h; }catch(e){}
 function sdSave(){
-  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc, trendMode:SD.trendMode})); }catch(e){}
+  try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc})); }catch(e){}
 }
-const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c"};
+const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c", "METAR":"#6e7781", "TX":"#9775fa"};
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
 const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
@@ -23783,7 +23779,6 @@ function sdDay(day){
       <div class="sd-cell"><div class="sd-t">概率分布（温度竖排，高温在上）</div>${sdDistSvg(day, S)}</div>
       <div class="sd-cell">${sdBucketTable(day, S)}</div>
     </div>
-    ${sdTrend(day)}
     ${sdModels(day)}
     ${sdEvidence(day)}
     ${sdCalc(day)}
@@ -23863,6 +23858,24 @@ function sdTrendOf(series){
   });
   return {mid: sm.map(r => [r[0], r[1]]), band: sm.map(r => [r[0], r[2], r[3]])};
 }
+// TX as it stood: each TAF's maximum holds until the next TAF; a TAF without
+// a TX ends it there, and the newest TX runs on to now.  ``marks`` gives one
+// hoverable dot per TAF that carried a TX.
+function sdTxSteps(day, marks){
+  const caps = ((day.taf || {}).captures || []).filter(c => c.available_at_utc)
+    .sort((a, b) => String(a.available_at_utc).localeCompare(String(b.available_at_utc)));
+  const has = c => c.tx_available && c.tx_c != null;
+  if(marks) return caps.filter(has).map(c => [c.available_at_utc, c.tx_c, `TAF ${sdLocal(c.issued_at_utc, true)} 发布 · TX ${sdN(c.tx_c, 0)}°C`]);
+  const pts = [];
+  let held = null;
+  caps.forEach(c => {
+    if(held != null) pts.push([c.available_at_utc, held]);
+    held = has(c) ? c.tx_c : null;
+    if(held != null) pts.push([c.available_at_utc, held]);
+  });
+  if(held != null) pts.push([new Date().toISOString(), held]);
+  return pts;
+}
 function sdCompareChart(day){
   // Back three days: the chart scrolls into the past (「可左右滑动看到过去的曲线走势」).
   const from = sdDayStartMs(day.event_date) - 3 * 24 * 3600e3;
@@ -23879,6 +23892,11 @@ function sdCompareChart(day){
     S("MB", "成员轨迹贝叶斯", SD_COL.MB, ((day.member_bayes || {}).history || []).map(h => [h.as_of_utc, h.post_mean_c])),
     S("D0", "D0 实况模型", SD_COL.D0, ((day.d0 || {}).history || []).map(h => [h.at, h.centre_c])),
     S("MOS", "观测更新型 MOS", SD_COL.MOS, sdMosPoints(day).map(p => [p[0], p[1]])),
+    // The reports and the TAF's forecast maximum on the same clock (user
+    // 2026-10-21「增加metar、TAF TX」, replacing the mean ± 1σ chart).  They
+    // are evidence, not estimates: drawn and hoverable, kept out of the trend.
+    {...S("METAR", "METAR 实测", SD_COL.METAR, (day.metar || []).map(m => [m.valid_at_utc, m.temp_c]), true), obs: true},
+    {...S("TX", "TAF TX", SD_COL.TX, sdTxSteps(day), true, sdTxSteps(day, true)), obs: true},
   ].filter(x => x.pts.length > 1);
   if(series.length < 2) return "";
   const events = sdCurveEvents(day, from);
@@ -23886,7 +23904,7 @@ function sdCompareChart(day){
   // 显示/隐藏对应曲线」); the scale fits what is shown.  Kept for the tab.
   const hid = SD.cmpHidden || {};
   const shown = series.filter(x => !hid[x.k]);
-  const trend = hid.TREND ? null : sdTrendOf(shown);
+  const trend = hid.TREND ? null : sdTrendOf(shown.filter(x => !x.obs));
   const chart = !shown.length ? `<div class="muted sd-sub" style="padding:24px 0">曲线都已隐藏，点上面的名字重新显示</div>` : sdTimeTempChart(
     (trend ? [{pts: trend.mid, stroke: "var(--muted)", width: 9, opacity: .28, label: "趋势（中位）"}] : [])
       .concat(shown.map(x => ({pts: x.pts, stroke: x.color, width: 2, dash: x.dash, marks: x.marks, label: x.label}))),
@@ -24551,124 +24569,6 @@ function sdBucketTable(day, S){
     columns.map(s => `<th${s.key === "MKT" ? "" : ' class="sd-prob-col"'} style="--c:${SD_COL[s.key]};color:${SD_COL[s.key]}">${sdEsc(s.label)}${s.missing ? '<div class="sd-sub muted">尚未生成</div>' : ""}</th>`).join("")}<th>${sdEsc(day.head_stage)}−市场</th><th>买一</th><th>卖一</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted sd-sub"><span class="sd-tag" style="background:var(--muted)">众</span>＝该序列众数桶（底色）· <span class="sd-tag sd-tag-o" style="color:var(--muted);border-color:var(--muted)">均</span>＝均值桶（生产口径：概率加权平均档位最近的桶，描边）· 盘口 ${sdLocal((day.market || {}).observed_at_utc, true)}（${sdAgo((day.market || {}).observed_at_utc)}）${
       (day.market || {}).reference_state !== "complete" ? ` · <span class="down">市场向量不完整：${sdEsc((day.market || {}).reference_reason)}</span>` : ""} · 中价和 ${sdN((day.market || {}).mid_sum, 3)}</div>`;
-}
-
-// ---------------------------------------------------------------------------
-// Trend: bucket probabilities through the day, model (solid) against market
-// (dashed); and the mean ± σ against the market mean, the running high and TX.
-function sdHeadSeries(day, mode){
-  const tl = day.timeline || [];
-  if(mode && mode !== "head") return tl.filter(e => e.stage === mode);
-  // The day's word at each instant: the newest envelope of the furthest stage reached so far.
-  const rank = {"P0":0, "P0-M":1, "P1":2};
-  let best = -1; const out = [];
-  tl.forEach(e => { const r = rank[e.stage]; if(r == null) return; if(r >= best){ best = r; out.push(e); } });
-  return out;
-}
-// User 2026-10-05「不要显示温度趋势图」: the bucket-probability chart is gone;
-// the stage chips stay -- they choose the series the mean ± σ chart reads.
-function sdTrend(day){
-  const key = day.event_date;
-  const mode = SD.trendMode[key] || "head";
-  const model = sdHeadSeries(day, mode);
-  const market = ((day.market || {}).trend) || [];
-  const times = model.map(e => +new Date(e.at_utc)).concat(market.map(e => +new Date(e.at_utc)));
-  if(!times.length) return "";
-  const t0 = Math.min(...times), t1 = Math.max(Math.max(...times), Date.now());
-  const modes = [["head","当日口径"],["P0","仅 P0"],["P0-M","仅 P0-M"],["P1","仅 P1"]]
-    .map(([v, l]) => `<button type="button" class="sd-chip${mode === v ? " on" : ""}" data-sd-mode="${sdEsc(key)}" data-v="${v}">${l}</button>`).join("");
-  return `<div class="sd-chips">${modes}</div>
-    ${sdMeanTrend(day, model, market, t0, t1)}`;
-}
-function sdTimeTicks(t0, t1, x, yb, yt, fixedStep){
-  let g = "";
-  const span = t1 - t0, step = fixedStep || (span > 36 * 3600e3 ? 6 * 3600e3 : span > 12 * 3600e3 ? 3 * 3600e3 : 3600e3);
-  for(let t = Math.ceil(t0 / step) * step; t <= t1; t += step){
-    g += `<line x1="${x(t)}" x2="${x(t)}" y1="${yt}" y2="${yb}" stroke="var(--line)" opacity=".6"/><text x="${x(t)}" y="${yb + 14}" text-anchor="middle" class="trend-ax">${sdLocal(new Date(t).toISOString(), (t % (24 * 3600e3)) < step)}</text>`;
-  }
-  return g;
-}
-// User 2026-10-06「右边有空白，最近的时间太挤了」: the chart takes the day
-// panel's own width (the fixed 760 viewBox stopped at 820 px), and when the
-// window is longer than 12 hours its last 6 hours get 45% of the plot width,
-// hourly ticks, behind a faint divider -- the older stretch is compressed.
-const SD_RECENT_MS = 6 * 3600e3, SD_RECENT_SHARE = 0.45;
-function sdTrendWidth(){
-  const panel = [...document.querySelectorAll(".sd-day")].find(el => el.clientWidth > 0);
-  const avail = panel ? panel.clientWidth - 24 : (window.innerWidth || 800) - 80;
-  return Math.max(560, Math.min(1800, Math.round(avail)));
-}
-// A panel rendered while hidden measures nothing, so the chart's host is
-// watched and redrawn at its real width once it has one (and on resize).
-const SD_TREND_CALLS = new Map();
-let SD_TREND_SEQ = 0;
-const SD_TREND_RO = typeof ResizeObserver === "function" ? new ResizeObserver(entries => entries.forEach(en => {
-  const host = en.target, args = SD_TREND_CALLS.get(host.dataset.sdTrend);
-  const w = Math.max(560, Math.min(1800, Math.round(host.clientWidth)));
-  if(!args || host.clientWidth <= 0 || Math.abs(w - (+host.dataset.w || 0)) < 24) return;
-  host.dataset.w = String(w);
-  host.innerHTML = sdMeanTrendSvg(...args, w);
-})) : null;
-function sdMeanTrend(day, model, market, t0, t1){
-  const W = sdTrendWidth(), id = "t" + (++SD_TREND_SEQ);
-  const svg = sdMeanTrendSvg(day, model, market, t0, t1, W);
-  if(!svg) return "";
-  if(SD_TREND_RO){
-    for(const k of [...SD_TREND_CALLS.keys()]){
-      if(!document.querySelector(`[data-sd-trend="${k}"]`) && SD_TREND_CALLS.size > 40) SD_TREND_CALLS.delete(k);
-    }
-    SD_TREND_CALLS.set(id, [day, model, market, t0, t1]);
-    setTimeout(() => { const host = document.querySelector(`[data-sd-trend="${id}"]`); if(host) SD_TREND_RO.observe(host); }, 0);
-  }
-  return `<div class="sd-t">均值 ± 1σ 走势（蓝带＝模型当日口径，点色＝阶段；粉虚线＝市场均值；灰＝METAR 实测；红阶梯＝已报最高；紫虚线＝TAF TX）</div>
-    <div data-sd-trend="${id}" data-w="${W}">${svg}</div>`;
-}
-function sdMeanTrendSvg(day, model, market, t0, t1, W){
-  const H = 190, L = 40, R = 12, T = 10, B = 24;
-  const vals = [];
-  model.forEach(e => { vals.push(e.stats.mean_c - e.stats.sd_c, e.stats.mean_c + e.stats.sd_c); });
-  market.forEach(e => vals.push(e.stats.mean_c));
-  (day.metar || []).forEach(m => { if(m.temp_c != null) vals.push(m.temp_c); });
-  const tx = ((day.stages || {})["P0-M"] || {}).tx_c;
-  if(tx != null) vals.push(tx);
-  if(!vals.length) return "";
-  const lo = Math.floor(Math.min(...vals)) - 0.5, hi = Math.ceil(Math.max(...vals)) + 0.5;
-  const plotW = W - L - R;
-  const split = t1 - t0 > 2 * SD_RECENT_MS ? t1 - SD_RECENT_MS : null;
-  const x = split == null
-    ? t => L + plotW * (t - t0) / Math.max(1, t1 - t0)
-    : t => t <= split
-      ? L + plotW * (1 - SD_RECENT_SHARE) * (t - t0) / Math.max(1, split - t0)
-      : L + plotW * (1 - SD_RECENT_SHARE) + plotW * SD_RECENT_SHARE * (t - split) / SD_RECENT_MS;
-  const y = c => T + (H - T - B) * (hi - c) / (hi - lo);
-  let g = "";
-  for(let c = Math.ceil(lo); c <= hi; c += (hi - lo > 8 ? 2 : 1)) g += `<line x1="${L}" x2="${W - R}" y1="${y(c)}" y2="${y(c)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(c) + 3}" text-anchor="end" class="trend-ax">${c}°</text>`;
-  if(split == null) g += sdTimeTicks(t0, t1, x, H - B, T);
-  else {
-    // Older stretch: the usual step, stopping an hour short of the divider so
-    // labels never collide; recent stretch: every hour.
-    g += sdTimeTicks(t0, split - 3600e3, x, H - B, T);
-    g += sdTimeTicks(split, t1, x, H - B, T, 3600e3);
-    g += `<line x1="${x(split).toFixed(1)}" x2="${x(split).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="2 3" opacity=".7"/><text x="${(x(split) + 3).toFixed(1)}" y="${T + 9}" font-size="9" fill="var(--muted)">最近 6 小时（放大）</text>`;
-  }
-  if(model.length){
-    const up = model.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c + e.stats.sd_c).toFixed(1)}`);
-    const dn = model.slice().reverse().map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c - e.stats.sd_c).toFixed(1)}`);
-    g += `<polygon points="${up.concat(dn).join(" ")}" fill="var(--accent)" opacity=".12"/>`;
-    g += `<polyline points="${model.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.8"/>`;
-    model.forEach(e => g += `<circle cx="${x(+new Date(e.at_utc)).toFixed(1)}" cy="${y(e.stats.mean_c).toFixed(1)}" r="2.4" fill="${SD_COL[e.stage]}"><title>${e.stage} ${sdLocal(e.at_utc, true)} 均值 ${sdN(e.stats.mean_c, 2)}°C σ ${sdN(e.stats.sd_c, 2)}</title></circle>`);
-  }
-  if(market.length) g += `<polyline points="${market.map(e => `${x(+new Date(e.at_utc)).toFixed(1)},${y(e.stats.mean_c).toFixed(1)}`).join(" ")}" fill="none" stroke="${SD_COL.MKT}" stroke-width="1.3" stroke-dasharray="4 3"/>`;
-  const met = (day.metar || []).filter(m => m.temp_c != null);
-  if(met.length){
-    g += `<polyline points="${met.map(m => `${x(+new Date(m.valid_at_utc)).toFixed(1)},${y(m.temp_c).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1"/>`;
-    met.forEach(m => g += `<circle cx="${x(+new Date(m.valid_at_utc)).toFixed(1)}" cy="${y(m.temp_c).toFixed(1)}" r="2" fill="var(--muted)"><title>METAR ${sdEsc(m.local)} ${m.temp_c}°C</title></circle>`);
-    let d = "", prev = null;
-    met.forEach(m => { const xx = x(+new Date(m.valid_at_utc)).toFixed(1), yy = y(m.running_high_c).toFixed(1); d += prev == null ? `M${xx},${yy}` : `H${xx}V${yy}`; prev = yy; });
-    g += `<path d="${d}H${x(t1).toFixed(1)}" fill="none" stroke="var(--red)" stroke-width="1.5"/>`;
-  }
-  if(tx != null) g += `<line x1="${L}" x2="${W - R}" y1="${y(tx)}" y2="${y(tx)}" stroke="var(--violet)" stroke-dasharray="6 3"/><text x="${W - R - 2}" y="${y(tx) - 3}" text-anchor="end" font-size="9" fill="var(--violet)">TAF TX ${tx}°C</text>`;
-  return `<svg class="sd-svg sd-wide" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMinYMin meet">${g}</svg>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -26767,9 +26667,7 @@ function sdOnClick(e){
   const t = e.target.closest("button");
   if(!t) return;
   const ds = t.dataset;
-  if(ds.sdMode && !ds.calc){
-    SD.trendMode[ds.sdMode] = ds.v; sdSave(); sdRender();
-  } else if(ds.sdCmpk){
+  if(ds.sdCmpk){
     // Redraw only the summary chart, keeping where it was scrolled.
     SD.cmpHidden = SD.cmpHidden || {};
     SD.cmpHidden[ds.sdCmpk] = !SD.cmpHidden[ds.sdCmpk];
