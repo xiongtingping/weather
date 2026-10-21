@@ -4505,6 +4505,38 @@ EARLY_P0M_ENABLED = (
 # stretched the cycle from ~200s to 230-265s, slowing every other stage.
 # Nothing new costs one file hash and one indexed read.  ``PM_FAST_LANE_
 # CHECKPOINTS=0`` keeps only the head pass.
+# User ruling 2026-10-22 「zuuu最高优先级」「提高zuuu生产的优先级」: the
+# stations named here lead every per-scope ordering of the production cycle
+# -- the decision loop, the forward P0 pass and the resident evidence
+# rotation -- ahead of everything else, held positions included.  The
+# decision loop walked station-days in ICAO order, so ZUUU was always the
+# last scope compiled: the first to lose its quote lease and the first cut
+# when a long cycle ends partial (2026-10-21, ZUUU's last decision 09:5xZ
+# while partial cycles kept deciding the head of the alphabet).  Ordering
+# only: every scope is still visited exactly once.  ``PM_PRIORITY_STATIONS=``
+# (empty) restores the previous order.
+PRIORITY_STATIONS: frozenset[str] = frozenset(
+    token.strip().upper()
+    for token in os.environ.get("PM_PRIORITY_STATIONS", "ZUUU").split(",")
+    if token.strip()
+)
+
+
+def _priority_station(station_id: Any) -> bool:
+    return str(station_id or "").strip().upper() in PRIORITY_STATIONS
+
+
+def _priority_scopes_first(
+    rows: Sequence[tuple[Any, Any]],
+) -> list[tuple[Any, Any]]:
+    """``(station, day)`` rows with the priority stations' rows leading, stable."""
+
+    return (
+        [row for row in rows if _priority_station(row[0])]
+        + [row for row in rows if not _priority_station(row[0])]
+    )
+
+
 FAST_LANE_CHECKPOINTS_ENABLED = (
     os.environ.get("PM_FAST_LANE_CHECKPOINTS", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
@@ -16146,7 +16178,10 @@ class TargetProductionWorker:
                     if isinstance(quotas, Mapping)
                     else None
                 ),
-                held=str(item.get("scope_key") or "") in held_scopes,
+                held=(
+                    str(item.get("scope_key") or "") in held_scopes
+                    or _priority_station(item.get("station_id"))
+                ),
             ),
         ):
             key = str(scope.get("scope_key") or "")
@@ -16300,7 +16335,10 @@ class TargetProductionWorker:
                     if isinstance(quotas, Mapping)
                     else None
                 ),
-                held=str(item.get("scope_key") or "") in held_scopes,
+                held=(
+                    str(item.get("scope_key") or "") in held_scopes
+                    or _priority_station(item.get("station_id"))
+                ),
             ),
         )
         envelope_id, observed_at = self._scope_input_fingerprint(selected)
@@ -22409,7 +22447,11 @@ class TargetProductionWorker:
                 [item["scope_key"] for item in ws_scope_catalog],
                 resume_at=self._forward_p0_rotation_cursor,
                 # The station-days holding live positions lead the pass.
-                priority=self._ledger_held_scope_keys(),
+                priority=set(self._ledger_held_scope_keys()) | {
+                    str(item["scope_key"])
+                    for item in ws_scope_catalog
+                    if _priority_station(item.get("station_id"))
+                },
             )
             for position, scope_key in enumerate(preselection_order):
                 # Advance before the work, not after: whatever ends this pass
@@ -22791,6 +22833,7 @@ class TargetProductionWorker:
                 serve_listing=serve_listing,
                 lead_listing_scopes=lead_listing_scopes,
             )
+            rows = _priority_scopes_first(rows)
             self._mark("committed_scope_sweep")
             # Decisions price the freshest update there is.
             self._copy_follow_if_due("before_decisions")
