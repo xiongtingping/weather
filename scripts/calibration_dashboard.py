@@ -27777,6 +27777,7 @@ def _renderer_on_disk() -> Any:
 #: The page is then drawn read-only, which re-reads the resident's status
 #: file for the banner's own lamps (heartbeat, cycle, settlement source).
 HEALTH_REFRESH_SECTIONS = ("hosted_sweeps", "observation_intake", "taf_board")
+HEALTH_REFRESH_GAP_WAIT_SEC = 30.0
 
 
 def refresh_health_sections(db: Path) -> str:
@@ -27792,6 +27793,9 @@ def refresh_health_sections(db: Path) -> str:
     _SECTION_CACHE_LOG.clear()
     _SECTION_CACHE_VALUES.clear()
     _paged_run_start(db)
+    # Its own, smaller wait for production gaps: two sections at the
+    # compute run's 60 s each put the first pass past its five-minute slot.
+    _PAGED_RUN["gap_wait_left"] = HEALTH_REFRESH_GAP_WAIT_SEC
     conn.set_progress_handler(_render_yield_check, 20_000)
     done: list[str] = []
     try:

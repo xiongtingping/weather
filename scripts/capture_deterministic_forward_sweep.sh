@@ -21,7 +21,12 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 
 cd "$PROJECT_DIR"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] deterministic family forward capture"
-"$PY" scripts/capture_deterministic_forward.py
+# The capture's network-lost lines are said again at the very end (user
+# 2026-10-21, the red 「上次尝试 network_retry」 whose kept tail began after them
+# and so never named the source that dropped).
+CAPTURE_OUT="$(mktemp -t deterministic_capture.XXXXXX)"
+trap 'rm -f "$CAPTURE_OUT"' EXIT
+"$PY" scripts/capture_deterministic_forward.py | tee "$CAPTURE_OUT"
 
 # Charter 267 补记八 (user 2026-10-18 「接，从现在开始采」): the same runs'
 # radiation, cloud, dew point and precipitation at the same cells, for every
@@ -43,3 +48,8 @@ fi
 # ledger beside the F file (SSOT read-only).  Once per station-day.
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] listing centre shadow"
 "$PY" scripts/record_listing_mos_shadow.py || echo "listing centre shadow failed (exit $?)" >&2
+
+if grep -q '网络断了' "$CAPTURE_OUT"; then
+  echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] 本遍断网明细（温度采集）："
+  grep '网络断了' "$CAPTURE_OUT" | tail -3
+fi

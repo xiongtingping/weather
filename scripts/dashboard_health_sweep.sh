@@ -24,11 +24,11 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 cd "$PROJECT_DIR"
 . "$PROJECT_DIR/scripts/lib/ssot_reader_turn.sh"
 if ssot_wal_under 0; then
-  if run_with_timeout "${PM_DASHBOARD_HEALTH_TIMEOUT_SEC:-240}" "" \
-      taskpolicy -d utility nice -n 10 "$PY" scripts/calibration_dashboard.py --refresh-health; then
-    :
-  else
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] health refresh failed or timed out (exit $?)"
+  rc=0
+  run_with_timeout "${PM_DASHBOARD_HEALTH_TIMEOUT_SEC:-280}" "" \
+      taskpolicy -d utility nice -n 10 "$PY" scripts/calibration_dashboard.py --refresh-health || rc=$?
+  if [ "$rc" != "0" ]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] health refresh failed or timed out (exit $rc)"
   fi
 else
   echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] health refresh skipped: $SSOT_READER_REASON"
