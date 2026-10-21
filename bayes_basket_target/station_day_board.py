@@ -27,7 +27,7 @@ import math
 import re
 import sqlite3
 import sys
-from datetime import datetime, time as dtime, timedelta, timezone
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -574,7 +574,13 @@ def _p1_root_center(conn, head: Mapping[str, Any], station: str, day: str) -> fl
 def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT stage, decision_at_utc, probabilities_json, posterior_version,"
-        " json_extract(lineage_json,'$.model_center_c')"
+        " json_extract(lineage_json,'$.model_center_c'),"
+        " json_extract(lineage_json,'$.run_init_utc_by_system_json'),"
+        " json_extract(lineage_json,'$.forecast_revision_id'),"
+        " json_extract(lineage_json,'$.taf_observed_tx_c'),"
+        " json_extract(lineage_json,'$.reported_high_c'),"
+        " coalesce(json_extract(lineage_json,'$.prediction_root_checkpoint_id'),"
+        "          json_extract(lineage_json,'$.p0_root_checkpoint_id'))"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND state='COMMITTED' ORDER BY decision_at_utc",
         (station, day),
@@ -587,7 +593,10 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
     p1 = [k for k in keep if k[0] == "P1"]
     drop = set(sorted(p1, key=lambda k: k[1])[:-P1_TREND_MAX]) if len(p1) > P1_TREND_MAX else set()
     out = []
-    for key, (stage, at, probs, version, center) in keep.items():
+    before: dict[str, tuple] = {}
+    for key, (stage, at, probs, version, center, *why) in sorted(keep.items(), key=lambda kv: str(kv[1][1])):
+        cause = _timeline_cause(stage, why, before.get(stage))
+        before[stage] = tuple(why)
         if key in drop:
             continue
         vec = _norm(_json(probs, {}))
@@ -595,9 +604,49 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         if stats is None:
             continue
         out.append({"stage": stage, "at_utc": str(at), "version": version,
-                    "center_c": _float(center),
+                    "center_c": _float(center), "cause": cause,
                     "vector": {k: round(v, 5) for k, v in vec.items()}, "stats": stats})
     out.sort(key=lambda e: (e["at_utc"], STAGES.index(e["stage"]) if e["stage"] in STAGES else 9))
+    return out
+
+
+#: Short names for the ensemble systems a P0 seats.
+_SYSTEM_SHORT = {"ECMWF_IFS_ENS_OPEN_PF50": "IFS", "ECMWF_AIFS_ENS_GLOBAL": "AIFS", "DWD_ICON_GLOBAL_EPS": "ICON",
+                 "NOAA_GEFS_05": "GEFS", "ECCC_GEM_GLOBAL_ENS": "GEM", "NOAA_AIGEFS_OPS_025": "AIGEFS"}
+
+
+def _timeline_cause(stage: str, why: Sequence[Any], prev: tuple | None) -> list[str]:
+    """What changed into this decision against the stage's one before (user
+    2026-10-18 「曲线上增加曲线变化原因，比如模型run更新等」), read off the two
+    lineages: the runs each system was read at, the TAF revision, the reported
+    high, the root it was built on.  [] when nothing it records moved."""
+
+    runs_now = _json(why[0], {}) or {}
+    if prev is None:
+        return ["当日首次决策"]
+    runs_before = _json(prev[0], {}) or {}
+    out = []
+    for system in sorted(set(runs_now) | set(runs_before)):
+        name = _SYSTEM_SHORT.get(system, system)
+        a, b = runs_before.get(system), runs_now.get(system)
+        if a == b:
+            continue
+        if b is None:
+            out.append(f"{name} 退出")
+        elif a is None:
+            out.append(f"{name} {str(b)[11:13]}Z 入座")
+        else:
+            out.append(f"{name} {str(a)[11:13]}Z→{str(b)[11:13]}Z")
+    if stage == "P0-M" and why[1] != prev[1]:
+        out.append(f"新 TAF（TX {why[2]}°C）" if why[2] not in (None, "") else "新 TAF")
+    if stage == "P1" and why[3] != prev[3] and why[3] is not None:
+        out.append(f"已报最高 {prev[3] if prev[3] is not None else '—'}→{why[3]}°C")
+    if stage != "P0" and why[4] != prev[4] and not out:
+        out.append("前序阶段更新")
+    if stage == "P1" and not out:
+        out.append("新报文")
+    if stage == "P0" and not out:
+        out.append("同一批 run 重算")
     return out
 
 
@@ -703,6 +752,185 @@ def _local_window(day: str, zone: ZoneInfo) -> tuple[str, str]:
     return _iso(start), _iso(start + timedelta(days=1))
 
 
+# ---------------------------------------------------------------------------
+# Tropical rules (user 2026-10-18 「把热带站的规律在热带站显示评判出来」):
+# docs/research/tropical_tmax_regimes_20261018.  At these stations the day's
+# maximum barely moves; what moves it is when rain or thunder starts, how warm
+# the morning is against the days before, and yesterday against the ten-day
+# median.  The rates are that study's (IEM reports 2022-01..2026-10, held out
+# by year); the market had all three by 10:00 local (its section 五), so the
+# card explains the day and is never a probability.
+
+TROPICAL_STATIONS = ("WSSS", "WMKK", "RPLL", "ZGGG")
+#: The study's market check (its 五) covered these two only; RPLL and ZGGG
+#: came in by its 扩站 section (user 2026-10-18 「把热带规律研究扩展到 RPLL、
+#: ZGGG、ZGSZ、OEJN、MPMG、MMMX……规律成立的站才显示卡片」): extend.py, all
+#: four pre-registered conditions held.  ZGSZ, MPMG and MMMX failed the
+#: late-rain breakout condition, OEJN has almost no rain: no card.
+TROPICAL_MARKET_CHECKED = ("WSSS", "WMKK")
+#: Rain counts from this local hour on (user 2026-10-18 「只统计白天开始的降雨，
+#: 夜里的残雨不算"10 点前下雨"，先用研究数据重算比例再改」): a shower before it
+#: is the night's leftover; rain still falling at it counts from it.  Set
+#: before sunrise (~07:00 at both) from the clock, not picked off the table:
+#: daytime_rain.py shows 05/06/07 -- the night-only days read like any day at
+#: WSSS (降 33% 破 24% against 31/28), mildly cool at WMKK (41/15).
+TROPICAL_DAY_FROM = "06:00"
+#: (cooling %, breakout %) for each reading, per station; the rain rows are
+#: daytime_rain.py's 06:00 table.
+TROPICAL_RATES: dict[str, dict[str, tuple[int, int]]] = {
+    "WSSS": {"base": (31, 28), "rain_lt10": (62, 9), "rain_10_13": (55, 8), "rain_13_16": (23, 31),
+             "rain_ge16": (12, 43), "morning_cold": (70, 4), "morning_usual": (22, 31), "morning_warm": (12, 58),
+             "prev_low": (43, 18), "prev_usual": (29, 24), "prev_high": (19, 48)},
+    "WMKK": {"base": (33, 28), "rain_lt10": (59, 10), "rain_10_13": (75, 3), "rain_13_16": (33, 22),
+             "rain_ge16": (23, 40), "morning_cold": (61, 9), "morning_usual": (30, 29), "morning_warm": (10, 50),
+             "prev_low": (46, 18), "prev_usual": (32, 24), "prev_high": (19, 49)},
+    # extend.py → extend_rates.json, each station's own table.
+    "RPLL": {"base": (33, 32), "rain_lt10": (59, 15), "rain_10_13": (68, 11), "rain_13_16": (37, 30),
+             "rain_ge16": (24, 41), "morning_cold": (67, 7), "morning_usual": (28, 29), "morning_warm": (6, 67),
+             "prev_low": (57, 15), "prev_usual": (30, 26), "prev_high": (12, 59)},
+    "ZGGG": {"base": (41, 42), "rain_lt10": (65, 21), "rain_10_13": (67, 20), "rain_13_16": (43, 36),
+             "rain_ge16": (28, 54), "morning_cold": (80, 9), "morning_usual": (34, 36), "morning_warm": (10, 77),
+             "prev_low": (72, 12), "prev_usual": (35, 41), "prev_high": (15, 71)},
+}
+#: Each month's (cooling %, breakout %).
+TROPICAL_MONTH_RATES: dict[str, tuple[tuple[int, int], ...]] = {
+    "WSSS": ((25, 33), (22, 33), (23, 36), (32, 29), (34, 28), (36, 23), (28, 27), (31, 18), (33, 28), (31, 31),
+             (38, 20), (38, 29)),
+    "WMKK": ((31, 33), (31, 32), (30, 35), (31, 31), (32, 30), (43, 13), (35, 26), (29, 28), (34, 28), (30, 30),
+             (38, 22), (33, 31)),
+    "RPLL": ((34, 22), (25, 39), (23, 39), (18, 35), (41, 21), (42, 27), (34, 31), (32, 34), (31, 40), (40, 33),
+             (29, 35), (43, 23)),
+    "ZGGG": ((43, 42), (41, 48), (33, 54), (37, 50), (37, 49), (39, 45), (41, 43), (45, 34), (33, 36), (48, 30),
+             (49, 35), (43, 44)),
+}
+_WET = re.compile(r"^[-+]?(?:VC)?(?:TS|SH)?(?:RA|DZ)|^[-+]?(?:VC)?TS")
+
+
+def _wet_report(raw: str) -> bool:
+    tokens = str(raw).split()
+    body = tokens[:tokens.index("RMK")] if "RMK" in tokens else tokens
+    return any(_WET.match(t) and not t.startswith("RE") for t in body[2:])
+
+
+def _tropical_rules(conn, station: str, day: str, zone: ZoneInfo,
+                    metar: Sequence[Mapping[str, Any]], now: datetime | None = None) -> dict[str, Any] | None:
+    """The day read against the tropical study's rules; None elsewhere."""
+
+    if station not in TROPICAL_STATIONS:
+        return None
+    # A day not begun has none of the readings: no card (D+1, D+2).
+    if day > (now or datetime.now(timezone.utc)).astimezone(zone).date().isoformat():
+        return None
+    from .canonical_contract import FORMAL_TRUTH_LANES_SQL  # noqa: PLC0415
+    from statistics import mean, median  # noqa: PLC0415
+
+    rates = TROPICAL_RATES[station]
+    d = datetime.fromisoformat(day).date()
+    truth: dict[str, float] = {}
+    for local_date, value in conn.execute(
+        "SELECT local_date, official_tmax_c FROM calibration_station_daily_high_truth"
+        f" WHERE station_id=? AND local_date>=? AND local_date<? AND source_lane IN {FORMAL_TRUTH_LANES_SQL}"
+        " AND qc_status='ACCEPTED' ORDER BY revision_no",
+        (station, (d - timedelta(days=15)).isoformat(), day),
+    ):
+        truth[str(local_date)] = round(float(value))
+    # The base is the ten days before (the OOS gate's climatology); the
+    # curve shows fifteen (user 2026-10-18「热带站增加一个过去15天的最高温曲线」).
+    ten = [v for k, v in truth.items() if k >= (d - timedelta(days=10)).isoformat()]
+    base = median(ten) if len(ten) >= 8 else None
+    prev = truth.get((d - timedelta(days=1)).isoformat())
+    prev_anom = None if prev is None or base is None else prev - base
+    # The morning: 08–09 local today against the same hours of the ten days before.
+    lo, _ = _local_window((d - timedelta(days=10)).isoformat(), zone)
+    hours: dict[str, list[float]] = {}
+    try:
+        archive = sqlite3.connect(f"file:{ARCHIVE_DB}?mode=ro", uri=True, timeout=5)
+        try:
+            for at, temp in archive.execute(
+                "SELECT valid_at, reported_temperature_c FROM reported_trajectory_observations"
+                " WHERE station_id=? AND valid_at>=? AND valid_at<? AND reported_temperature_c IS NOT NULL",
+                (station, lo[:19], _local_window(day, zone)[1][:19]),
+            ):
+                when = _utc(at)
+                if when is None:
+                    continue
+                local = when.astimezone(zone)
+                if local.hour in (8, 9):
+                    hours.setdefault(local.date().isoformat(), []).append(float(temp))
+        finally:
+            archive.close()
+    except sqlite3.Error:
+        hours = {}
+    past = [mean(v) for k, v in hours.items() if k < day]
+    morning_anom = (round(mean(hours[day]) - median(past), 1)
+                    if hours.get(day) and len(past) >= 6 else None)
+    wet = [m for m in metar if _wet_report(m.get("raw") or "")]
+    night = [m for m in wet if str(m["local"]) < TROPICAL_DAY_FROM]
+    wet = [m for m in wet if str(m["local"]) >= TROPICAL_DAY_FROM]
+    first_wet = wet[0]["local"] if wet else None
+    first_h = None if first_wet is None else int(first_wet[:2]) + int(first_wet[3:5]) / 60
+    now_local = (now or datetime.now(timezone.utc)).astimezone(zone)
+    rain_before_10 = first_h is not None and first_h < 10
+
+    def word(c: int, w: int) -> str:
+        return "偏降温" if c >= w + 15 else "偏突破" if w >= c + 15 else "平常"
+
+    if first_h is not None and first_h < 13:
+        key, why = ("rain_lt10" if first_h < 10 else "rain_10_13"), f"{first_wet} 已开始下雨/雷暴"
+    elif morning_anom is not None:
+        key = "morning_cold" if morning_anom <= -1 else "morning_warm" if morning_anom >= 1 else "morning_usual"
+        why = f"早上 8–9 点比往常 {morning_anom:+.1f}°C"
+    elif prev_anom is not None:
+        key = "prev_low" if prev_anom <= -1 else "prev_high" if prev_anom >= 1 else "prev_usual"
+        why = f"昨天比基准 {prev_anom:+.0f}°C（早上 8–9 点报文未到）"
+    else:
+        key, why = "base", "没有可用信号"
+    cool, warm = rates[key]
+    return {
+        "station_id": station, "verdict": word(cool, warm), "basis": why, "cool_pct": cool, "warm_pct": warm,
+        "base_c": base, "cool_at_or_below_c": None if base is None else base - 1,
+        "warm_at_or_above_c": None if base is None else base + 1,
+        "prev_c": prev, "prev_anom_c": prev_anom, "morning_anom_c": morning_anom,
+        "morning_due": now_local.date().isoformat() == day and now_local.hour < 10 and morning_anom is None,
+        "rain_before_10": rain_before_10, "first_wet_local": first_wet,
+        "night_wet_local": night[0]["local"] if night else None, "day_from_local": TROPICAL_DAY_FROM,
+        "month": TROPICAL_MONTH_RATES[station][d.month - 1], "rates": rates,
+        "history": [{"date": k, "tmax_c": truth[k]} for k in sorted(truth)],
+        "running_high_c": max((m["temp_c"] for m in metar if m.get("temp_c") is not None), default=None),
+        "research": "docs/research/tropical_tmax_regimes_20261018",
+        "market_checked": station in TROPICAL_MARKET_CHECKED,
+    }
+
+
+#: The report's low cloud on Open-Meteo's footing (user 2026-10-19 「报文云只算
+#: 云底 ≤ 3 km（约 10000 ft）的云层，与 Open-Meteo 低云口径一致」): Open-Meteo's
+#: ``cloud_cover_low`` is cloud and fog up to 3 km.  Layer covers are the
+#: board's own (report_explain: FEW 19%, SCT 44%, BKN 75%, OVC 100%).
+LOW_CLOUD_TOP_FT = 10000
+_LAYER_COVER = {"FEW": 0.19, "SCT": 0.44, "BKN": 0.75, "OVC": 1.0}
+_LAYER = re.compile(r"(FEW|SCT|BKN|OVC)(\d{3}|///)(?:CB|TCU|///)?")
+_VV = re.compile(r"VV(\d{3}|///)")
+
+
+def _low_cloud_cover(body: Sequence[str]) -> float | None:
+    """The thickest layer with its base at or below 10000 ft; vertical
+    visibility (fog hiding the sky) as overcast; a clear-sky group as 0.  A
+    layer whose base is not reported (///) is not counted -- its height is
+    unknown.  None when the report says nothing of the sky."""
+
+    cover, said = 0.0, False
+    for t in body:
+        if t in ("CAVOK", "NSC", "NCD", "SKC", "CLR"):
+            said = True
+        elif (m := _LAYER.fullmatch(t)):
+            said = True
+            if m.group(2) != "///" and int(m.group(2)) * 100 <= LOW_CLOUD_TOP_FT:
+                cover = max(cover, _LAYER_COVER[m.group(1)])
+        elif _VV.fullmatch(t):
+            said, cover = True, 1.0
+    return cover if said else None
+
+
 def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -759,6 +987,7 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
             "correction_suspected": bool(cor),
             "temp_c": t, "dew_c": _float(parsed.get("dew_c")),
             "cloud_cover": _float(parsed.get("cover")),
+            "cloud_cover_low": _low_cloud_cover(body),
             "wind_mps": _float(parsed.get("wind_mps")),
             "precip": bool(parsed.get("precip")),
             "weathers": parsed.get("weathers") or [],
@@ -862,6 +1091,14 @@ HAZE_VISIBILITY_M = 8000.0
 SUN_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "sun_tmax_shift_v2.json"
 
 
+def _side_shift(slope: float, ci: Sequence[float], x: float) -> float:
+    """Slope x difference, 0 when that side's slope does not separate from 0
+    (熊先生 2026-10-20 「1」: less low cloud than forecast had read -0.01 °C
+    off a clear-side slope of the wrong sign whose 95% interval spans zero)."""
+
+    return 0.0 if float(ci[0]) <= 0.0 <= float(ci[1]) else slope * x
+
+
 def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     if not measured:
         return None
@@ -888,7 +1125,7 @@ def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mappin
     # sunshine.
     shift = lambda b: b / 100.0 * x
     lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
-    return {"state": "ok", "last_hour": last, "wm2_d1": round(diff, 1), "shift_c": round(shift(line[side + "_c_per_100wm2"]), 2),
+    return {"state": "ok", "last_hour": last, "wm2_d1": round(diff, 1), "shift_c": round(_side_shift(line[side + "_c_per_100wm2"] / 100.0, line[ci], x), 2),
             "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": tmax,
             "resid_sd_c": line.get("resid_sd_c"), "r2": line.get("r2"), "n": line.get("n"),
             "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
@@ -911,15 +1148,16 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
         return {"state": "unfitted"}
     table = fit.get("by_last_hour") or {}
     hours = sorted(int(h) for h in table)
-    # The card's own basis (user 2026-10-17 「保持口径一致」): the report's cover
-    # against the latest forecast's low cloud, hour by hour.
+    # The card's own basis, refitted on it (熊先生 2026-10-19「重新拟合」): the
+    # report's LOW cloud (layers based at or below 10000 ft) against the latest
+    # forecast's low cloud, hour by hour.
     rep_pairs = []
     for r in rows:
         h, f = int(r["hour"]), r.get("forecast") or {}
         fc = f.get("cloud_low")
         o = r.get("obs") or {}
-        if r.get("past") and h >= 5 and fc is not None and o.get("cloud_cover") is not None:
-            rep_pairs.append((h, 10.0 * (float(o["cloud_cover"]) - fc / 100.0)))
+        if r.get("past") and h >= 5 and fc is not None and o.get("cloud_cover_low") is not None:
+            rep_pairs.append((h, 10.0 * (float(o["cloud_cover_low"]) - fc / 100.0)))
     source, pairs = "report", rep_pairs
     if not pairs:
         return None
@@ -943,9 +1181,108 @@ def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | Non
     lo, hi = sorted((shift(line[side + "_ci95"][0]), shift(line[side + "_ci95"][1])))
     cv = line.get("cv_vs_mean_only") or [None, None, None]
     return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths": round(x, 1),
-            "shift_c": round(shift(line[side + "_c_per_tenth"]), 2), "range_c": [round(lo, 2), round(hi, 2)],
+            "shift_c": round(_side_shift(line[side + "_c_per_tenth"], line[side + "_ci95"], xc), 2), "range_c": [round(lo, 2), round(hi, 2)],
             "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
             "window": fit.get("window")}
+
+
+# 露点 · 实况对比预报 -> ΔT (熊先生 2026-10-19 「露点 · 实况对比预报：这个也拟合」):
+# docs/research/dew_tmax_shift_20261019.  The card's own basis -- the newest
+# hour's report dew point against the latest forecast's for that hour -- on
+# the line fitted for that hour (9..17 h).  A drier morning than forecast
+# reads warmer; from 12 h on the line beats the mean out of sample.
+DEW_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "dew_tmax_shift_v1.json"
+
+
+WIND_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "wind_tmax_shift_v1.json"
+
+
+def _obs_tmax_shift(rows: Sequence[Mapping[str, Any]], key: str, path: Path,
+                    sides: tuple[str, str], unit: str) -> dict[str, Any] | None:
+    """One card's ΔT from its own fitted line: the newest hour with both a
+    report and a forecast of ``key``, x = report - forecast, read on the
+    line fitted for that hour (9..17 h, later hours on 17 h's)."""
+
+    newest = None
+    for r in rows:
+        o, f = r.get("obs") or {}, r.get("forecast") or {}
+        if o.get(key) is not None and f.get(key) is not None and (newest is None or int(r["hour"]) > int(newest["hour"])):
+            newest = r
+    if newest is None:
+        return None
+    try:
+        fit = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unfitted"}
+    table = fit.get("by_hour") or {}
+    hours = sorted(int(h) for h in table)
+    h = int(newest["hour"])
+    if not hours or h < hours[0]:
+        return {"state": "too_early", "from_hour": hours[0] if hours else None}
+    line = table.get(str(min(h, hours[-1]))) or {}
+    below, above = sides
+    if f"{below}_c_per_{unit}" not in line:
+        return {"state": "unfitted"}
+    x = float(newest["obs"][key]) - float(newest["forecast"][key])
+    clip = float(fit.get(f"x_clip_{'c' if unit == 'c' else unit}") or 4.0)
+    xc = max(-clip, min(clip, x))
+    side = below if xc < 0 else above
+    # The reading's own part, slope x difference: 0 when the report matches.
+    lo, hi = sorted((line[side + "_ci95"][0] * xc, line[side + "_ci95"][1] * xc))
+    cv = line.get("cv_vs_mean_only") or [None, None, None]
+    return {"state": "ok", "hour": h, "line_hour": min(h, hours[-1]), "diff": round(x, 1), "diff_c": round(x, 1),
+            "shift_c": round(_side_shift(line[f"{side}_c_per_{unit}"], line[side + "_ci95"], xc), 2), "range_c": [round(lo, 2), round(hi, 2)],
+            "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
+            "window": fit.get("window")}
+
+
+def polar_wind_component(direction_deg: float | None, speed_mps: float | None, lat: float) -> float | None:
+    """The wind's component from the pole, m/s: northerly in the north and
+    southerly in the south positive, equatorward negative, east-west 0
+    (熊先生 2026-10-19 「北风好像才降温？」).  Calm is 0; a variable (or
+    unknown) direction with wind is None."""
+
+    import math  # noqa: PLC0415
+
+    if speed_mps is None:
+        return None
+    if speed_mps == 0:
+        return 0.0
+    if direction_deg is None:
+        return None
+    return round(float(speed_mps) * math.cos(math.radians(float(direction_deg))) * (1.0 if lat >= 0 else -1.0), 3)
+
+
+def relative_humidity(temp_c: float | None, dew_c: float | None) -> float | None:
+    """Relative humidity (%) from temperature and dew point, Magnus over water
+    (6.112 hPa, 17.62, 243.12 °C); None without both."""
+
+    import math  # noqa: PLC0415
+
+    if temp_c is None or dew_c is None:
+        return None
+    es = lambda t: 6.112 * math.exp(17.62 * t / (243.12 + t))  # noqa: E731
+    return round(min(100.0, 100.0 * es(float(dew_c)) / es(float(temp_c))), 1)
+
+
+RH_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "rh_tmax_shift_v1.json"
+
+
+def _rh_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """湿度 · 实况对比预报 -> ΔT (docs/research/rh_tmax_shift_20261019); until the
+    line is fitted the card reads the plain difference."""
+    return _obs_tmax_shift(rows, "rh_pct", RH_TMAX_SHIFT_PATH, ("drier", "moister"), "pp")
+
+
+def _dew_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    return _obs_tmax_shift(rows, "dew_c", DEW_TMAX_SHIFT_PATH, ("dry", "moist"), "c")
+
+
+# 风 · 实况对比预报 -> ΔT (熊先生 2026-10-19 「风 · 实况对比预报：这个也拟合一下」):
+# docs/research/wind_tmax_shift_20261019.  More wind than forecast reads
+# warmer, less reads cooler; out of sample only from 14 h.
+def _wind_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    return _obs_tmax_shift(rows, "wind_mps", WIND_TMAX_SHIFT_PATH, ("calmer", "windier"), "mps")
 
 
 def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
@@ -986,7 +1323,7 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     # beside the sun (user 2026-10-15「增加露点、风、雨等信息卡片」) take the place
     # of the day-before total cloud nothing read.
     fields = ["cloud_cover", "cloud_cover_low", "shortwave_radiation", "temperature_2m"]
-    extra = ["dew_point_2m", "wind_speed_10m", "precipitation"]
+    extra = ["dew_point_2m", "wind_speed_10m", "precipitation", "relative_humidity_2m"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
         "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover_low"]),
@@ -1253,6 +1590,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             "sw": val("shortwave_radiation"), "temp_c": val("temperature_2m"),
             "cloud_d1": val("cloud_cover", True),
             "dew_c": val("dew_point_2m"), "wind_mps": val("wind_speed_10m"), "precip_mm": val("precipitation"),
+            "rh_pct": val("relative_humidity_2m"),
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
         } if times else {}
         obs = by_hour.get(h)
@@ -1272,19 +1610,23 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             inferred = None if cover is None else clear * (1 - 0.75 * cover ** 3.4)
             row["obs"] = {
                 "temp_c": obs.get("temp_c"), "cloud_cover": obs.get("cloud_cover"),
+                "cloud_cover_low": obs.get("cloud_cover_low"),
                 "clouds": obs.get("clouds") or [], "weathers": obs.get("weathers") or [],
                 "visibility_m": obs.get("visibility_m"), "precip": obs.get("precip"),
                 "dew_c": obs.get("dew_c"), "wind_mps": obs.get("wind_mps"),
+                # 熊先生 2026-10-19 「卡片增加湿度并拟合」: from the report's own pair.
+                "rh_pct": relative_humidity(obs.get("temp_c"), obs.get("dew_c")),
                 "clear_sky_wm2": round(clear, 0), "inferred_sw_wm2": None if inferred is None else round(inferred, 0),
             }
             diffs = row["diffs"]
             low = fc_row.get("cloud_low")
-            if low is not None and obs.get("cloud_cover") is not None:
-                gap = obs["cloud_cover"] - low / 100.0
+            # Low against low: the report's layers based at or below 3 km.
+            if low is not None and obs.get("cloud_cover_low") is not None:
+                gap = obs["cloud_cover_low"] - low / 100.0
                 if gap >= CLOUD_DIFF:
-                    diffs.append({"kind": "cloud", "dir": "more", "text": f"比预报多云（低云实况 {obs['cloud_cover']:.0%} 对预报 {low:.0f}%）"})
+                    diffs.append({"kind": "cloud", "dir": "more", "text": f"比预报多云（低云实况 {obs['cloud_cover_low']:.0%} 对预报 {low:.0f}%）"})
                 elif gap <= -CLOUD_DIFF:
-                    diffs.append({"kind": "cloud", "dir": "less", "text": f"比预报晴（低云实况 {obs['cloud_cover']:.0%} 对预报 {low:.0f}%）"})
+                    diffs.append({"kind": "cloud", "dir": "less", "text": f"比预报晴（低云实况 {obs['cloud_cover_low']:.0%} 对预报 {low:.0f}%）"})
             sw = fc_row.get("sw")
             # Measured where a satellite covers the station; the inferred
             # figure judges only where none does (it reads high under haze
@@ -1328,6 +1670,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
         "sun_tmax_shift": _sun_tmax_shift(rows, measured) if times else None,
         "cloud_tmax_shift": _cloud_tmax_shift(rows) if times else None,
+        "dew_tmax_shift": _dew_tmax_shift(rows) if times else None,
+        "wind_tmax_shift": _wind_tmax_shift(rows) if times else None,
+        "rh_tmax_shift": _rh_tmax_shift(rows) if times else None,
     }
 
 
@@ -1502,7 +1847,17 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
     heads = {stage: _envelope_head(conn, station, day, stage) for stage in STAGES}
     newest = max((h for h in heads.values() if h), key=lambda h: str(h["decided_at_utc"]), default=None)
     if newest is None:
-        return {"role": role, "event_date": day, "available": False}
+        # No envelope (WSSS behind its OOS gate): no probabilities, but the
+        # reports, TAF, rain, sky and the read-only models stand on their own
+        # (user 2026-10-18 「不要影响其他内容显示，比如taf、metar、实况等」), and
+        # the market's book with the order ticket on the day's own ladder --
+        # the registry's, else the one its last decision was priced on
+        # (「新加坡没有下单器」).
+        axis = _registry_axis(conn, station, day)
+        market = _market(conn, station, day, axis) if axis else {"available": False, "reason": "no_ladder"}
+        return {"role": role, "event_date": day, "available": False, "stages": {}, "timeline": [],
+                **({"axis": axis} if axis else {}), "market": market,
+                **_day_observed(conn, station, day, role, zone)}
     axis = ladder_axis(newest["ordinals"],
                        _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
     metar = _metar(station, day, zone)
@@ -1539,21 +1894,51 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
     market = _market(conn, station, day, axis)
     if isinstance(market.get("stats"), dict):
         market["stats"]["skew_floor"] = skew_floor(market["stats"]["mode"], axis, running_high)
-    precip = _precip(conn, station, day)
-    precip_sat = _precip_sat(station, day, zone)
-    sky = _hourly_vs_forecast(conn, station, day, zone, metar)
     return {
         "role": role, "event_date": day, "available": True, "axis": axis,
         "head_stage": head_stage, "stages": stages,
         "timeline": _timeline(conn, station, day, axis),
         "market": market,
+        **_day_observed(conn, station, day, role, zone, metar),
+    }
+
+
+def _registry_axis(conn, station: str, day: str) -> list[dict[str, Any]] | None:
+    """The day's ladder without an envelope: the market registry's newest
+    snapshot of the scope (``market_registry.scope_ladder_rows``, the reader
+    listing F shares), parsed by production's
+    ``bucket_intervals_from_registry_rows``.  None when there is none or it
+    does not parse (fail closed)."""
+
+    from .market_registry import scope_ladder_rows  # noqa: PLC0415
+    from .p0_producer import bucket_intervals_from_registry_rows  # noqa: PLC0415
+
+    try:
+        rows = scope_ladder_rows(conn, station_id=station, event_date=day)
+        intervals = bucket_intervals_from_registry_rows(rows) if rows else None
+    except Exception:  # noqa: BLE001 -- no table, no rows or an invalid contract: no ladder
+        return None
+    if not intervals:
+        return None
+    order = sorted(intervals, key=lambda b: float("-inf") if intervals[b][0] is None else intervals[b][0])
+    return ladder_axis({b: i for i, b in enumerate(order)}, {b: list(intervals[b]) for b in order})
+
+
+def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
+                  metar: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The parts of a day that need no envelope: reports, TAF, rain, sky,
+    the read-only models and the tropical card."""
+
+    metar = _metar(station, day, zone) if metar is None else metar
+    return {
         "metar": metar,
-        "running_high_c": running_high,
+        "tropical": _tropical_rules(conn, station, day, zone, metar),
+        "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
         "taf": _taf(conn, station, day),
-        "precip": precip,
-        "precip_sat": precip_sat,
+        "precip": _precip(conn, station, day),
+        "precip_sat": _precip_sat(station, day, zone),
         "precip_5min": _precip_5min(station, day, zone),
-        "hourly_sky": sky,
+        "hourly_sky": _hourly_vs_forecast(conn, station, day, zone, metar),
         "direction": _direction(station, day),
         "deterministic": _deterministic(conn, station, day),
         "d0": _d0(station, day) if role == "today" else None,
@@ -1712,6 +2097,9 @@ def _deterministic(conn, station: str, day: str) -> dict[str, Any]:
             "run_init_utc": newest[0], "knowable_at_utc": newest[1], "tmax_c": round(newest[2], 2),
             "prev_run_init_utc": before[0] if before else None,
             "prev_tmax_c": round(before[2], 2) if before else None,
+            # Every run, on the clock it became known (user 2026-10-18
+            # 「确定性预报：增加曲线，也是加横纵坐标」).
+            "runs": [[knowable, round(value, 2)] for _, knowable, value in held],
         })
     systems.sort(key=lambda row: (not row["in_f"], order[row["product"]]))
     doc = _listing_f() or {}

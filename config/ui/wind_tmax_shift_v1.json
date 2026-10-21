@@ -1,0 +1,487 @@
+{
+ "schema": "wind_tmax_shift_v1",
+ "fitted_at_utc": "2026-10-19T03:55:56Z",
+ "window": [
+  "2026-09-01",
+  "2026-10-14"
+ ],
+ "x_clip_mps": 4.0,
+ "model": "shift_c = intercept_c + calmer*min(x,0) + windier*max(x,0), x in m/s clipped to +-x_clip_mps",
+ "x": "at local hour H, routine report 10-min mean wind - latest forecast wind_speed_10m for that hour, m/s",
+ "y": "settled Tmax - day-ahead forecast Tmax (Open-Meteo previous_day1), station-demeaned",
+ "lineage": "docs/research/wind_tmax_shift_20261019/fit.py; Open-Meteo aggregator_republisher, display only",
+ "secondary_mean_05_to_H": {
+  "9": {
+   "n": 1193,
+   "stations": 28,
+   "intercept_c": -0.01,
+   "calmer_c_per_mps": 0.048,
+   "calmer_ci95": [
+    -0.099,
+    0.186
+   ],
+   "windier_c_per_mps": 0.037,
+   "windier_ci95": [
+    -0.079,
+    0.141
+   ],
+   "r2": 0.001,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    0.0032,
+    -0.0046,
+    0.0116
+   ]
+  },
+  "10": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.03,
+   "calmer_c_per_mps": 0.055,
+   "calmer_ci95": [
+    -0.086,
+    0.204
+   ],
+   "windier_c_per_mps": 0.064,
+   "windier_ci95": [
+    -0.049,
+    0.172
+   ],
+   "r2": 0.003,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    0.0035,
+    -0.0081,
+    0.016
+   ]
+  },
+  "11": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.04,
+   "calmer_c_per_mps": 0.065,
+   "calmer_ci95": [
+    -0.093,
+    0.23
+   ],
+   "windier_c_per_mps": 0.077,
+   "windier_ci95": [
+    -0.032,
+    0.18
+   ],
+   "r2": 0.003,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    0.0027,
+    -0.0111,
+    0.0172
+   ]
+  },
+  "12": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.044,
+   "calmer_c_per_mps": 0.086,
+   "calmer_ci95": [
+    -0.105,
+    0.281
+   ],
+   "windier_c_per_mps": 0.082,
+   "windier_ci95": [
+    -0.027,
+    0.186
+   ],
+   "r2": 0.004,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    0.0006,
+    -0.0145,
+    0.0168
+   ]
+  },
+  "13": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.043,
+   "calmer_c_per_mps": 0.125,
+   "calmer_ci95": [
+    -0.073,
+    0.319
+   ],
+   "windier_c_per_mps": 0.083,
+   "windier_ci95": [
+    -0.021,
+    0.197
+   ],
+   "r2": 0.006,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    -0.001,
+    -0.0185,
+    0.0173
+   ]
+  },
+  "14": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.049,
+   "calmer_c_per_mps": 0.163,
+   "calmer_ci95": [
+    -0.042,
+    0.33
+   ],
+   "windier_c_per_mps": 0.093,
+   "windier_ci95": [
+    -0.013,
+    0.202
+   ],
+   "r2": 0.008,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    -0.0054,
+    -0.0241,
+    0.0147
+   ]
+  },
+  "15": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.061,
+   "calmer_c_per_mps": 0.2,
+   "calmer_ci95": [
+    -0.011,
+    0.41
+   ],
+   "windier_c_per_mps": 0.106,
+   "windier_ci95": [
+    0.003,
+    0.198
+   ],
+   "r2": 0.011,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0129,
+    -0.0337,
+    0.009
+   ]
+  },
+  "16": {
+   "n": 1196,
+   "stations": 28,
+   "intercept_c": -0.069,
+   "calmer_c_per_mps": 0.228,
+   "calmer_ci95": [
+    0.011,
+    0.401
+   ],
+   "windier_c_per_mps": 0.115,
+   "windier_ci95": [
+    0.03,
+    0.203
+   ],
+   "r2": 0.013,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0182,
+    -0.0395,
+    0.004
+   ]
+  },
+  "17": {
+   "n": 1196,
+   "stations": 28,
+   "intercept_c": -0.079,
+   "calmer_c_per_mps": 0.247,
+   "calmer_ci95": [
+    0.03,
+    0.46
+   ],
+   "windier_c_per_mps": 0.123,
+   "windier_ci95": [
+    0.023,
+    0.209
+   ],
+   "r2": 0.015,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0219,
+    -0.0439,
+    0.0013
+   ]
+  }
+ },
+ "wind_beyond_sun": {
+  "9": {
+   "rows_with_sun": 774,
+   "wind_added_to_sun_mse": [
+    0.0085,
+    -0.005,
+    0.0245
+   ]
+  },
+  "10": {
+   "rows_with_sun": 764,
+   "wind_added_to_sun_mse": [
+    -0.0021,
+    -0.029,
+    0.0273
+   ]
+  },
+  "11": {
+   "rows_with_sun": 761,
+   "wind_added_to_sun_mse": [
+    -0.0142,
+    -0.0418,
+    0.0123
+   ]
+  },
+  "12": {
+   "rows_with_sun": 762,
+   "wind_added_to_sun_mse": [
+    -0.0017,
+    -0.0233,
+    0.0184
+   ]
+  },
+  "13": {
+   "rows_with_sun": 761,
+   "wind_added_to_sun_mse": [
+    0.0,
+    -0.0225,
+    0.0238
+   ]
+  },
+  "14": {
+   "rows_with_sun": 758,
+   "wind_added_to_sun_mse": [
+    -0.0172,
+    -0.043,
+    0.011
+   ]
+  },
+  "15": {
+   "rows_with_sun": 757,
+   "wind_added_to_sun_mse": [
+    -0.0237,
+    -0.0471,
+    0.001
+   ]
+  },
+  "16": {
+   "rows_with_sun": 756,
+   "wind_added_to_sun_mse": [
+    -0.0121,
+    -0.0305,
+    0.0082
+   ]
+  },
+  "17": {
+   "rows_with_sun": 757,
+   "wind_added_to_sun_mse": [
+    -0.0129,
+    -0.0299,
+    0.0053
+   ]
+  }
+ },
+ "by_hour": {
+  "9": {
+   "n": 1194,
+   "stations": 28,
+   "intercept_c": -0.074,
+   "calmer_c_per_mps": 0.043,
+   "calmer_ci95": [
+    -0.127,
+    0.218
+   ],
+   "windier_c_per_mps": 0.094,
+   "windier_ci95": [
+    0.011,
+    0.185
+   ],
+   "r2": 0.006,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    -0.0056,
+    -0.0219,
+    0.0117
+   ]
+  },
+  "10": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.072,
+   "calmer_c_per_mps": 0.121,
+   "calmer_ci95": [
+    -0.04,
+    0.275
+   ],
+   "windier_c_per_mps": 0.101,
+   "windier_ci95": [
+    0.027,
+    0.185
+   ],
+   "r2": 0.01,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0095,
+    -0.0314,
+    0.0121
+   ]
+  },
+  "11": {
+   "n": 1195,
+   "stations": 28,
+   "intercept_c": -0.013,
+   "calmer_c_per_mps": 0.198,
+   "calmer_ci95": [
+    0.012,
+    0.367
+   ],
+   "windier_c_per_mps": 0.049,
+   "windier_ci95": [
+    -0.026,
+    0.138
+   ],
+   "r2": 0.008,
+   "resid_sd_c": 1.37,
+   "cv_vs_mean_only": [
+    -0.0096,
+    -0.0302,
+    0.0099
+   ]
+  },
+  "12": {
+   "n": 1194,
+   "stations": 28,
+   "intercept_c": -0.03,
+   "calmer_c_per_mps": 0.122,
+   "calmer_ci95": [
+    -0.057,
+    0.306
+   ],
+   "windier_c_per_mps": 0.048,
+   "windier_ci95": [
+    -0.022,
+    0.129
+   ],
+   "r2": 0.005,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0033,
+    -0.0196,
+    0.0143
+   ]
+  },
+  "13": {
+   "n": 1194,
+   "stations": 28,
+   "intercept_c": -0.037,
+   "calmer_c_per_mps": 0.195,
+   "calmer_ci95": [
+    -0.009,
+    0.421
+   ],
+   "windier_c_per_mps": 0.062,
+   "windier_ci95": [
+    -0.009,
+    0.141
+   ],
+   "r2": 0.01,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.008,
+    -0.0293,
+    0.015
+   ]
+  },
+  "14": {
+   "n": 1192,
+   "stations": 28,
+   "intercept_c": -0.053,
+   "calmer_c_per_mps": 0.272,
+   "calmer_ci95": [
+    0.08,
+    0.49
+   ],
+   "windier_c_per_mps": 0.081,
+   "windier_ci95": [
+    0.012,
+    0.153
+   ],
+   "r2": 0.019,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0287,
+    -0.0516,
+    -0.0021
+   ]
+  },
+  "15": {
+   "n": 1191,
+   "stations": 28,
+   "intercept_c": -0.158,
+   "calmer_c_per_mps": 0.132,
+   "calmer_ci95": [
+    -0.063,
+    0.295
+   ],
+   "windier_c_per_mps": 0.139,
+   "windier_ci95": [
+    0.071,
+    0.213
+   ],
+   "r2": 0.023,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0416,
+    -0.0673,
+    -0.0132
+   ]
+  },
+  "16": {
+   "n": 1197,
+   "stations": 29,
+   "intercept_c": -0.15,
+   "calmer_c_per_mps": 0.109,
+   "calmer_ci95": [
+    -0.075,
+    0.269
+   ],
+   "windier_c_per_mps": 0.131,
+   "windier_ci95": [
+    0.067,
+    0.196
+   ],
+   "r2": 0.02,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0314,
+    -0.0548,
+    -0.0082
+   ]
+  },
+  "17": {
+   "n": 1202,
+   "stations": 29,
+   "intercept_c": -0.087,
+   "calmer_c_per_mps": 0.193,
+   "calmer_ci95": [
+    -0.0,
+    0.37
+   ],
+   "windier_c_per_mps": 0.096,
+   "windier_ci95": [
+    0.03,
+    0.16
+   ],
+   "r2": 0.018,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0258,
+    -0.0536,
+    -0.0011
+   ]
+  }
+ }
+}

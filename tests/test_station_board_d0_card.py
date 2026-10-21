@@ -105,6 +105,7 @@ def test_the_card_renders() -> None:
                   "walk_forward_mae": {"market": 0.59, "p1": 0.70, "d0": 0.80}},
            "stages": {"P1": {"stats": {"mean_c": 25.1}}}, "market": {"stats": {"mean_c": 25.4}}}
     script = ('const sdEsc = s => String(s == null ? "" : s);\n'
+              'const SD_COL = {P0: "a", "P0-M": "b", P1: "c", MKT: "d", DET: "e", MB: "f", D0: "g"};\n'
               'const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);\n'
               'const sdSg = (v, d) => v == null || !isFinite(v) ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d == null ? 2 : d);\n'
               'const sdPc = (v, d) => (100 * v).toFixed(d) + "%"; function sdLocal(t){ return String(t); }\n'

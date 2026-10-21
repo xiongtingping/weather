@@ -1,0 +1,296 @@
+{
+ "schema": "wind_polar_tmax_shift_v1",
+ "fitted_at_utc": "2026-10-20T05:31:26Z",
+ "window": [
+  "2026-09-01",
+  "2026-10-14"
+ ],
+ "stations_with_direction": 47,
+ "x_clip_mps": 4.0,
+ "model": "shift_c = intercept_c + equatorward*min(x,0) + poleward*max(x,0), x in m/s clipped",
+ "x": "at local hour H, report wind component from the pole (north in NH, south in SH) - latest forecast's, m/s",
+ "versus_speed": {
+  "9": {
+   "rows": 1004,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.012,
+    -0.0054,
+    0.0273
+   ]
+  },
+  "10": {
+   "rows": 1018,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.0102,
+    -0.0143,
+    0.0342
+   ]
+  },
+  "11": {
+   "rows": 1022,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.0164,
+    -0.003,
+    0.0403
+   ]
+  },
+  "12": {
+   "rows": 1040,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.0093,
+    -0.0092,
+    0.0296
+   ]
+  },
+  "13": {
+   "rows": 1039,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.01,
+    -0.0158,
+    0.0326
+   ]
+  },
+  "14": {
+   "rows": 1062,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.0342,
+    0.0099,
+    0.0566
+   ]
+  },
+  "15": {
+   "rows": 1057,
+   "stations": 27,
+   "polar_minus_speed_mse": [
+    0.0388,
+    0.0054,
+    0.0728
+   ]
+  },
+  "16": {
+   "rows": 1084,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.015,
+    -0.0098,
+    0.0393
+   ]
+  },
+  "17": {
+   "rows": 1097,
+   "stations": 28,
+   "polar_minus_speed_mse": [
+    0.023,
+    -0.003,
+    0.048
+   ]
+  }
+ },
+ "card_uses": "speed",
+ "by_hour": {
+  "9": {
+   "n": 1004,
+   "stations": 28,
+   "intercept_c": -0.064,
+   "equatorward_c_per_mps": -0.065,
+   "equatorward_ci95": [
+    -0.203,
+    0.077
+   ],
+   "poleward_c_per_mps": 0.048,
+   "poleward_ci95": [
+    -0.062,
+    0.175
+   ],
+   "r2": 0.002,
+   "resid_sd_c": 1.33,
+   "cv_vs_mean_only": [
+    0.0055,
+    -0.005,
+    0.0179
+   ]
+  },
+  "10": {
+   "n": 1018,
+   "stations": 28,
+   "intercept_c": -0.011,
+   "equatorward_c_per_mps": -0.055,
+   "equatorward_ci95": [
+    -0.19,
+    0.073
+   ],
+   "poleward_c_per_mps": -0.027,
+   "poleward_ci95": [
+    -0.126,
+    0.072
+   ],
+   "r2": 0.002,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    0.006,
+    -0.0069,
+    0.0196
+   ]
+  },
+  "11": {
+   "n": 1022,
+   "stations": 28,
+   "intercept_c": 0.011,
+   "equatorward_c_per_mps": -0.021,
+   "equatorward_ci95": [
+    -0.123,
+    0.104
+   ],
+   "poleward_c_per_mps": -0.034,
+   "poleward_ci95": [
+    -0.135,
+    0.053
+   ],
+   "r2": 0.001,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    0.0152,
+    0.0067,
+    0.0261
+   ]
+  },
+  "12": {
+   "n": 1040,
+   "stations": 28,
+   "intercept_c": -0.036,
+   "equatorward_c_per_mps": -0.057,
+   "equatorward_ci95": [
+    -0.163,
+    0.061
+   ],
+   "poleward_c_per_mps": -0.001,
+   "poleward_ci95": [
+    -0.098,
+    0.098
+   ],
+   "r2": 0.001,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    0.0085,
+    -0.0023,
+    0.0196
+   ]
+  },
+  "13": {
+   "n": 1039,
+   "stations": 28,
+   "intercept_c": -0.025,
+   "equatorward_c_per_mps": -0.033,
+   "equatorward_ci95": [
+    -0.142,
+    0.07
+   ],
+   "poleward_c_per_mps": 0.002,
+   "poleward_ci95": [
+    -0.093,
+    0.102
+   ],
+   "r2": 0.001,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    0.0074,
+    -0.001,
+    0.0161
+   ]
+  },
+  "14": {
+   "n": 1062,
+   "stations": 28,
+   "intercept_c": -0.108,
+   "equatorward_c_per_mps": -0.098,
+   "equatorward_ci95": [
+    -0.186,
+    -0.004
+   ],
+   "poleward_c_per_mps": 0.047,
+   "poleward_ci95": [
+    -0.054,
+    0.154
+   ],
+   "r2": 0.005,
+   "resid_sd_c": 1.35,
+   "cv_vs_mean_only": [
+    -0.0005,
+    -0.0161,
+    0.0177
+   ]
+  },
+  "15": {
+   "n": 1057,
+   "stations": 27,
+   "intercept_c": -0.189,
+   "equatorward_c_per_mps": -0.134,
+   "equatorward_ci95": [
+    -0.202,
+    -0.058
+   ],
+   "poleward_c_per_mps": 0.113,
+   "poleward_ci95": [
+    0.025,
+    0.212
+   ],
+   "r2": 0.011,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0159,
+    -0.0428,
+    0.0088
+   ]
+  },
+  "16": {
+   "n": 1084,
+   "stations": 28,
+   "intercept_c": -0.172,
+   "equatorward_c_per_mps": -0.135,
+   "equatorward_ci95": [
+    -0.214,
+    -0.055
+   ],
+   "poleward_c_per_mps": 0.081,
+   "poleward_ci95": [
+    -0.001,
+    0.168
+   ],
+   "r2": 0.009,
+   "resid_sd_c": 1.35,
+   "cv_vs_mean_only": [
+    -0.0155,
+    -0.0384,
+    0.0052
+   ]
+  },
+  "17": {
+   "n": 1097,
+   "stations": 28,
+   "intercept_c": -0.092,
+   "equatorward_c_per_mps": -0.099,
+   "equatorward_ci95": [
+    -0.174,
+    -0.01
+   ],
+   "poleward_c_per_mps": 0.02,
+   "poleward_ci95": [
+    -0.072,
+    0.106
+   ],
+   "r2": 0.005,
+   "resid_sd_c": 1.36,
+   "cv_vs_mean_only": [
+    -0.0034,
+    -0.023,
+    0.0137
+   ]
+  }
+ }
+}

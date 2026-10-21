@@ -348,7 +348,9 @@ def test_skew_point_reads_production_rules() -> None:
     axis = _axis()
     p = _skew_point({"20°C or below": 0.2, "21°C": 0.1, "22°C": 0.6, "23°C or higher": 0.1}, axis, "21°C")
     assert p["sign"] == -1 and p["mode"] == "22°C" and p["mean_bucket"] == "22°C"
-    assert p["truth_side"] == -1
+    assert p["truth_side"] == -1 and p["truth_step"] == -1
+    assert _skew_point({"20°C or below": 0.2, "21°C": 0.1, "22°C": 0.6, "23°C or higher": 0.1}, axis,
+                       "20°C or below")["truth_step"] == -2
     assert [round(x, 6) for x in p["claim"]] == [0.3, 0.6, 0.1]
     assert _skew_point({"21°C": 1.0}, axis, "no such rung") is None
 
@@ -407,6 +409,81 @@ def test_skew_history_card_draws_sides_and_hits() -> None:
     top = out[:out.index("<summary class=\"muted\">明细</summary>")]
     assert "P0 众数命中" in top and ">37%</span>" in top and ">47%</span>" in top and "−9.8" in top
     assert "按生产偏斜分组的真值命中率" not in top
+
+
+def test_skew_side_group_counts_the_buckets_beside_the_mode() -> None:
+    """User 2026-10-17 「分别统计左偏（众数-1桶）、对称（众数）、右偏（众数+1桶）的
+    真值命中率」: the truth one rung below, on, one rung above the mode; two
+    rungs away counts in none of the three."""
+
+    from bayes_basket_target.board_readings import _skew_side_group
+
+    def pt(step):
+        return {"truth_side": (step > 0) - (step < 0), "truth_step": step, "claim": [0, 1, 0],
+                "mode": "m", "mean_bucket": "m"}
+    g = _skew_side_group([pt(-1), pt(-1), pt(0), pt(1), pt(-2)], ["x"] * 5)
+    assert g["adjacent_hit"] == [0.4, 0.2, 0.2]
+
+
+def test_skew_history_draws_one_card_per_skew_with_the_aimed_bucket() -> None:
+    import json
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:  # pragma: no cover
+        pytest.skip("node is required to run the board's renderer")
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "scripts") not in sys.path:
+        sys.path.insert(0, str(root / "scripts"))
+    import calibration_dashboard as C  # noqa: PLC0415
+
+    source = C.HTML_TEMPLATE
+    start = source.index("function sdSkewHistory(")
+    depth, end = 0, None
+    for index in range(source.index("{", start), len(source)):
+        depth += {"{": 1, "}": -1}.get(source[index], 0)
+        if depth == 0:
+            end = index + 1
+            break
+    side = lambda src, skew, adj: {"source": src, "skew": skew, "n": 100, "share": 0.3, "truth": [0.3, 0.4, 0.3],
+                                   "claim": [0.3, 0.4, 0.3], "mode_hit": adj[1], "mean_hit": 0.4, "adjacent_hit": adj}
+    doc = {"since": "2026-09-03", "until": "2026-10-17", "event_days": 45, "computed_at_utc": "x", "stages": [{
+        "stage": "P0", "pick": "last_before_next_stage", "station_days": 300, "calls": [], "hits": [],
+        "sides": [side("model", "left", [0.311, 0.402, 0.153]), side("model", "symmetric", [0.2, 0.444, 0.2]),
+                  side("model", "right", [0.12, 0.38, 0.333]), side("market", "left", [0.29, 0.41, 0.14])]}]}
+    script = ("const SD_COL = {\"P0\":\"b\",\"P0-M\":\"o\",\"P1\":\"g\",\"MKT\":\"p\"};\nconst SD = {};\n"
+              "const sdEsc = s => String(s == null ? '' : s);\nconst sdLocal = s => s;\n"
+              "function sdShapeRule(){ return 'rule'; }\n" + source[start:end]
+              + f"\nconsole.log(sdSkewHistory({json.dumps(doc, ensure_ascii=False)}));\n")
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    top = out[:out.index("<summary class=\"muted\">明细</summary>")]   # shown, not folded
+    # 「不要图表，要简明的卡片」: no table, one card per skew, the aimed bucket's rate
+    assert "众数−1 / 众数 / 众数+1 桶的比例" not in out
+    cards = top[top.index("左偏 · 真值在众数−1"):top.index("真值落点对所给概率")]
+    assert "<table" not in cards
+    # 「把这个表放在前端显示」: truth beside the mode against the vector's own mass
+    claim = top[top.index("真值落点对所给概率"):]
+    assert "P0 模型</th><th>真值在左</th><th>真值在众数</th><th>真值在右</th>" in claim
+    assert "<td>左偏 <span class=\"muted\">100</span></td>" in claim
+    assert "<b>30.0%</b> <span class=\"muted\">（30.0%）</span>" in claim and "<b>40.0%</b>" in claim
+    # 「同时增加一组」: the market's own table under the model's, by its own skew
+    assert claim.index("P0 模型</th>") < claim.index("P0 市场</th>")
+    market = claim[claim.index("P0 市场</th>"):]
+    assert "<td>左偏 <span class=\"muted\">100</span></td>" in market and "<td>对称" not in market
+    assert "左偏 · 真值在众数−1" in top and "对称 · 真值在众数" in top and "右偏 · 真值在众数+1" in top
+    left = top[top.index("左偏 · 真值在众数−1"):top.index("对称 · 真值在众数")]
+    assert ">31%</b>" in left and ">29%</b>" in left                  # model 31.1%, market 29.0%
+    assert "众数−1 31.1% / 众数 40.2% / 众数+1 15.3%" in left          # all three on hover
+    assert ">44%</b>" in top[top.index("对称 · 真值在众数"):top.index("右偏 · 真值在众数+1")]
+    right = top[top.index("右偏 · 真值在众数+1"):]
+    assert ">33%</b>" in right and "市场 无" in right
 
 
 def test_skew_call_stats_scores_the_lean_off_the_mode() -> None:

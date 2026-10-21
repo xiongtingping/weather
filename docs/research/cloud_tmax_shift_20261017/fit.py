@@ -100,8 +100,10 @@ def hourly_cover(frames, clp):
     (report_explain.explain_metar, the routine report at the hour) against the
     latest forecast's low cloud (cache/, fetch_low_d1.py; the day-ahead low cloud
     is not archived)."""
-    sys.path.insert(0, str(ROOT / "scripts"))
-    import report_explain as rex  # noqa: PLC0415
+    # The report's LOW cloud since 2026-10-19 (熊先生「报文云只算云底 ≤ 3 km……与
+    # Open-Meteo 低云口径一致」→「重新拟合」): the board's own function, layers
+    # based at or below 10000 ft, the same footing as the forecast's low cloud.
+    from bayes_basket_target.station_day_board import _low_cloud_cover  # noqa: PLC0415
     arc = sqlite3.connect(f"file:{ARCHIVE}?mode=ro", uri=True, timeout=30)
     low_d1 = {}
     for path in (HERE / "cache").glob("*.json.gz"):
@@ -123,7 +125,8 @@ def hourly_cover(frames, clp):
             t = utc(va).astimezone(zone)
             if t.minute > 10:
                 continue
-            c = rex.explain_metar(str(raw)).get("cover")
+            tokens = str(raw).split()
+            c = _low_cloud_cover(tokens[:tokens.index("RMK")] if "RMK" in tokens else tokens)
             if c is not None:
                 cover[t.hour] = float(c)
         lows = [low_d1[st].get(f"{day}T{h:02d}:00") for h in range(24)]
@@ -264,7 +267,8 @@ def main() -> None:
         "window": [min(d for _, d in days), max(d for _, d in days)],
         "x_clip_tenths": X_CLIP,
         "model": "shift_c = intercept_c + clear*min(x,0) + cloudy*max(x,0), x in tenths clipped to +-x_clip_tenths",
-        "x": "mean over local hours 05..H of (report cover - latest forecast LOW cloud), tenths; report cover as the board computes it, routine report at the hour",
+        "x": "mean over local hours 05..H of (report LOW cloud - latest forecast LOW cloud), tenths; report low cloud = thickest layer based at or below 10000 ft (station_day_board._low_cloud_cover), routine report at the hour",
+        "report_cloud_basis": "low_layers_base_le_10000ft",
         "y": "settled Tmax - day-ahead forecast Tmax (Open-Meteo previous_day1), station-demeaned",
         "lineage": "docs/research/cloud_tmax_shift_20261017/fit.py; Open-Meteo aggregator_republisher, display only",
         "cloud_beyond_sun": checks,
