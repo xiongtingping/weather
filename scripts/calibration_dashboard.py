@@ -16876,6 +16876,8 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-buckets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .sd-cx-buckets span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
 .sd-cx-buckets span.sd-cx-top{border-color:var(--text);font-weight:600}
+.copy-red{font-size:12px;padding:2px 10px;border:1px solid var(--pill-red-fg,#c62828);color:var(--pill-red-fg,#c62828);background:transparent;border-radius:999px;cursor:pointer}
+.copy-red:hover{background:color-mix(in srgb,var(--pill-red-fg,#c62828) 10%,transparent)}
 .sd-cx-fwd{font-size:11px;color:var(--muted)}
 .sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:12px}
 .sd-cx-plot .sd-cx-chart .sd-cx-last{font-size:14px}
@@ -18000,6 +18002,14 @@ function head(){
   const more = named.length > 6
     ? `<span class="muted">…等 ${named.length} 处，其余见下面卡片里标${
         D.overall_health === "red" ? "红" : "黄"}的那几盏</span>` : "";
+  // Every red row, one click to the clipboard (user 2026-10-21 「报红可以一键复制」):
+  // all of them, not only the six chips, one "label｜note" a line.
+  const reds = (D.alerts || []).filter(a => a.health === "red");
+  const copyRed = reds.length
+    ? `<button type="button" class="copy-red" data-copy="${attr(
+        [`系统健康报红 ${reds.length} 处（页面 ${(D.render || {}).generated_at_utc || D.generated_at_utc || ""}）`]
+          .concat(reds.map(a => `${a.label}｜${a.note || ""}`)).join("\n"))}"
+        title="把全部 ${reds.length} 处报红复制到剪贴板">复制报红</button>` : "";
   // User 2026-10-10「气温篮子全链看板：改为系统健康看板，并增加导航栏」.
   return `<h1>系统健康看板</h1>
   <div class="card"><div style="display:flex;gap:14px;align-items:center;
@@ -18040,9 +18050,26 @@ function head(){
     return O.banner + `<div class="hgrid">${
       cats.map(([cap, list]) => lampRowSafe(() => lampRow(cap, list), cap)).join("")}</div>`;
   })()}
-  ${renderStamp()}${chips ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
-    align-items:center;margin-top:9px">${chips}${more}</div>` : ""}</div>`;
+  ${renderStamp()}${chips || copyRed ? `<div style="display:flex;gap:8px;flex-wrap:wrap;
+    align-items:center;margin-top:9px">${chips}${more}${copyRed}</div>` : ""}</div>`;
 }
+// One delegated handler for the copy button: the clipboard API where the
+// page is a secure context (127.0.0.1 is), a hidden textarea otherwise.
+document.addEventListener("click", ev => {
+  const btn = ev.target.closest && ev.target.closest(".copy-red");
+  if(!btn) return;
+  const text = btn.dataset.copy || "";
+  const done = ok => { btn.textContent = ok ? "已复制" : "复制失败"; setTimeout(() => { btn.textContent = "复制报红"; }, 1500); };
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    ta.remove(); done(ok);
+  };
+  if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback);
+  else fallback();
+});
 
 // When this page was built, and how old that makes it.
 //
@@ -18106,7 +18133,7 @@ function renderStamp(){
       · ${ageMin} 分钟前</span>${hot}
     <span class="muted">${stale
       ? `已超过一轮重建周期＋本轮构建耗时（${staleAfter} 分钟），页面上的数字可能落后于库里的`
-      : `页面每 ${cycleMin} 分钟起一轮、本轮构建 ${buildMin} 分钟，刷新浏览器不会重算`}</span>
+      : `系统健康每 5 分钟重算重画，其余区块每 ${cycleMin} 分钟一轮；刷新浏览器不会重算`}</span>
     <span style="flex:1"></span>
     <span class="muted">${build ? "构建耗时 " + h(build) : ""}${
       R.computed_sections ? ` · 现算 ${R.computed_sections} 区块` : ""
@@ -27742,6 +27769,45 @@ def _renderer_on_disk() -> Any:
     return module.render_html
 
 
+#: 系统健康快刷 (user 2026-10-21 「系统健康的渲染提高优先级」): the health page's
+#: cheap every-run sections -- the sweeps' clocks, the observation doors and
+#: the TAF rows, 0.7 s, 7 s and 26 s -- recomputed on their own five-minute
+#: clock (``scripts/dashboard_health_sweep.sh``) instead of the half-hourly
+#: compute run, whose twenty-odd minutes left the lamps up to an hour old.
+#: The page is then drawn read-only, which re-reads the resident's status
+#: file for the banner's own lamps (heartbeat, cycle, settlement source).
+HEALTH_REFRESH_SECTIONS = ("hosted_sweeps", "observation_intake", "taf_board")
+
+
+def refresh_health_sections(db: Path) -> str:
+    """Recompute ``HEALTH_REFRESH_SECTIONS`` under the paged run's rules
+    (WAL yield, production-gap wait) and keep them for the next page draw."""
+
+    collectors = {
+        "hosted_sweeps": collect_hosted_sweeps,
+        "observation_intake": collect_observation_intake,
+        "taf_board": collect_taf_board,
+    }
+    conn = _connect(db)
+    _SECTION_CACHE_LOG.clear()
+    _SECTION_CACHE_VALUES.clear()
+    _paged_run_start(db)
+    conn.set_progress_handler(_render_yield_check, 20_000)
+    done: list[str] = []
+    try:
+        for name in HEALTH_REFRESH_SECTIONS:
+            try:
+                _cached_section(name, collectors[name], conn)
+            except RenderYielded as yielded:
+                return f"health refresh yielded at {name} ({yielded}); kept {done}"
+            entry = _SECTION_CACHE_LOG.get(name) or {}
+            done.append(f"{name} {entry.get('build_sec', '—')}s")
+    finally:
+        _PAGED_RUN.clear()
+        conn.close()
+    return "health sections refreshed: " + ", ".join(done)
+
+
 def reinflate(target: Path, renderer: Any | None = None) -> str:
     """Hot update: the template on disk around the last full build's payload.
 
@@ -27840,6 +27906,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--refresh-health",
+        action="store_true",
+        help=(
+            "recompute the system-health page's cheap every-run sections and"
+            " keep them (the health refresh, on its own five-minute clock)"
+        ),
+    )
+    parser.add_argument(
         "--research-section",
         help="(internal) compute this one research section in its own process",
     )
@@ -27870,6 +27944,9 @@ def main() -> int:
         )
     if args.refresh_research:
         print(refresh_research_section(database))
+        return 0
+    if args.refresh_health:
+        print(refresh_health_sections(database))
         return 0
     if args.compute_pages:
         started_at = time.time()

@@ -74,6 +74,10 @@ OPTIONAL_PLISTS=(
   # 「后台计算，前端只读，保留历史数据」).  A reader outside the writer turn; it
   # writes only data/board_readings/d0_* and data/runtime/d0_readings/.
   com.weather.d0_readings.plist
+  # 系统健康快刷 every five minutes (2026-10-21, 「系统健康的渲染提高优先级」):
+  # the health page's cheap sections, then the page drawn read-only.  A
+  # reader of the store; it writes only section-cache files and the page.
+  com.weather.dashboard_health.plist
 )
 SUPPORTED_PLISTS=("${DEFAULT_PLISTS[@]}" "${OPTIONAL_PLISTS[@]}")
 PLISTS=("${DEFAULT_PLISTS[@]}")
