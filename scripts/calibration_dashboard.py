@@ -17008,13 +17008,34 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-mc-cmp b{color:var(--text);font-variant-numeric:tabular-nums}.sd-mc-cmp.up b{color:var(--pill-red-fg)}.sd-mc-cmp.down b{color:var(--accent)}
 .sd-mc-sub{font-size:12px;color:var(--muted);margin:0 0 8px}.sd-mc-sub b{font-weight:600}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
-/* The per-model tiles under an estimate card recede (user 2026-10-21 「弱化下方的模型」):
-   the card's own estimate leads; the tiles are its inputs, smaller and lighter. */
-.sd-mc .sd-det-grid{grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:4px;margin-top:6px;opacity:.78}
-.sd-mc .sd-det{padding:3px 6px;border-radius:6px;background:transparent;border-color:color-mix(in srgb,var(--line) 70%,transparent)}
-.sd-mc .sd-det b{font-size:14px;font-weight:600;margin:0;color:var(--muted)}
-.sd-mc .sd-det-h,.sd-mc .sd-det-f{font-size:10px;gap:4px}
-.sd-mc .sd-det-f span:last-child{white-space:nowrap}
+/* The four estimate cards in one row, aligned (user 2026-10-21 「设计排版美化对齐」):
+   every section takes the same height on every card, so the big number, the two
+   comparisons, the line under them, the chart and the model list start level;
+   the per-model tiles recede into a compact two-column list (「弱化下方的模型」),
+   name · value · change, the run and its role on hover. */
+.sd-four .sd-mc{display:flex;flex-direction:column}
+.sd-four .sd-mc-h{flex-wrap:nowrap;min-height:22px;overflow:hidden;white-space:nowrap}
+.sd-four .sd-mc-h .sd-mc-t{overflow:hidden;text-overflow:ellipsis}
+.sd-four .sd-mc-h .sd-mc-tag,.sd-four .sd-mc-h .sd-age,.sd-four .sd-mc-h>span:not(.sd-mc-t){flex:0 0 auto;font-size:10.5px}
+.sd-four .sd-mc-main{flex-direction:column;align-items:flex-start;gap:2px;min-height:62px;margin:6px 0 2px}
+.sd-four .sd-mc-v{font-size:28px}
+.sd-four .sd-mc-mode{font-size:12.5px;min-height:18px}.sd-four .sd-mc-mode b{font-size:14px}
+.sd-four .sd-mc-cmps{min-height:52px;align-content:flex-start;margin:2px 0 4px}
+.sd-four .sd-mc-cmp{font-size:11.5px;padding:1px 7px}
+.sd-four .sd-mc-sub{height:34px;line-height:17px;margin:0 0 6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sd-four .sd-mc .sd-d0-trend{margin:0 0 6px}
+.sd-four .sd-mc .sd-d0-trend svg{width:100%;height:auto;display:block}
+.sd-four .sd-mc .sd-d0-trend>span{display:none}
+.sd-four .sd-mc-foot{margin-top:auto;padding-top:6px;font-size:11px;line-height:1.45}
+.sd-four .sd-d0-parts{font-size:11.5px;gap:4px 6px;margin:0 0 4px}
+.sd-four .sd-det-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 8px;margin-top:2px;opacity:.85}
+.sd-four .sd-det{display:flex;align-items:baseline;gap:4px;padding:2px 0;border:0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:0;background:transparent}
+.sd-four .sd-det-h,.sd-four .sd-det-f{display:contents}
+.sd-four .sd-det-h span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--muted)}
+.sd-four .sd-det-h span:last-child,.sd-four .sd-det-f span:last-child{display:none}
+.sd-four .sd-det b{flex:0 0 auto;white-space:nowrap;font-size:12.5px;font-weight:600;margin:0;color:var(--text)}
+.sd-four .sd-det-f span:first-child{flex:0 0 2.6em;text-align:right;font-size:10px;white-space:nowrap}
+.sd-four .sd-det-pick{font-size:11px}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
