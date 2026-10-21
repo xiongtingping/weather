@@ -34,6 +34,8 @@ from bayes_basket_target.station_registry import _COORDINATES  # noqa: E402
 HOURS = list(range(6, 18))
 OUT = ROOT / "data" / "tmax_physics" / "m3_station_days.json"
 FC_VARS = ("temperature_2m", "shortwave_radiation", "dew_point_2m", "relative_humidity_2m", "wind_speed_10m")
+SOURCE_RANK = {"GOES_DSRF": 0, "jma_jaxa_himawari": 0, "dwd_sis_europe_africa_v4": 0, "eumetsat_lsa_saf_msg": 0,
+               "eumetsat_lsa_saf_iodc": 0, "eumetsat_sarah3": 1, "GOES_DSRF_V01_0P5DEG": 1}
 WET = ("RA", "DZ", "SN", "SH", "TS", "GR", "PL", "SG", "UP")
 
 
@@ -60,8 +62,17 @@ def main() -> int:
                 "SELECT valid_utc, variable, value FROM forecast_d1_hourly WHERE station=? AND value IS NOT NULL", (st,)):
             if var in fc:
                 fc[var][_ts(t)] = val
-        obs_sw = {_ts(t): v for t, v in conn.execute(
-            "SELECT hour_utc, sw_wm2 FROM sw_measured_hourly WHERE station=? AND proxy=0 AND sw_wm2 IS NOT NULL", (st,))}
+        # Protocol addendum (2026-10-21, before any reading): the board's own
+        # product first, then SARAH3 (DWD SIS / MSG history), then GOES v01
+        # 0.5-degree; the day records which carried its hours.
+        obs_sw: dict = {}
+        src_of: dict = {}
+        for t, v, src in conn.execute(
+                "SELECT hour_utc, sw_wm2, source FROM sw_measured_hourly WHERE station=? AND proxy=0 AND sw_wm2 IS NOT NULL",
+                (st,)):
+            k = _ts(t)
+            if k not in obs_sw or SOURCE_RANK.get(src, 9) < SOURCE_RANK.get(src_of[k], 9):
+                obs_sw[k], src_of[k] = v, src
         if not fc["shortwave_radiation"] or not obs_sw:
             continue
         metar = sorted((_ts(t), tc, dc, kt, wx) for t, tc, dc, kt, wx in conn.execute(
@@ -93,6 +104,7 @@ def main() -> int:
             wind_fc = [None if v is None else v / 3.6 for v in g("wind_speed_10m")]
             out.append({
                 "station": st, "date": d.isoformat(), "month": d.month,
+                "sw_sources": sorted({src_of[s] for s in stamps if s in src_of}),
                 "tmax": tmax[d.isoformat()], "tmax_fc": max(day_t),
                 "sw_fc": sw_fc, "sw_obs": sw_obs,
                 "t_fc": g("temperature_2m"), "dew_fc": g("dew_point_2m"), "rh_fc": g("relative_humidity_2m"),
