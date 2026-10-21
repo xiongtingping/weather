@@ -25493,7 +25493,26 @@ function sdSky(day){
     fcOnly.push(sdSunCard("rain", "雨 · 预报", "全天", `${sdN(fcRows.reduce((a, r) => a + (r.forecast.precip_mm || 0), 0), 1)} mm`, "",
       [["湿小时", String(wet.length)], ["首个湿小时", wet.length ? `${hh(wet[0].hour)}:00` : "—"]], "最新逐小时预报的当天雨量；湿小时＝预报雨量 ≥ 0.1 mm 的整点"));
   }
+  // Composite ΔT (user 2026-10-21 「用分站的合成 ΔT 卡……分项显示气温差、湿度、
+  // 日照等贡献，只上看板」, then 「别替换，增加」): one station's line over every
+  // report so far, its parts summing to the total with the station's bias;
+  // the five cards beside it stay as they are.
+  const CX = H.composite_tmax_shift;
+  const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水"};
+  const compositeCard = !CX ? "" : CX.state === "ok"
+    ? sdSunCard("temp", "合成推算最高温", `ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}`, sdDeltaT(CX.total_c), sdWarmCls(CX.total_c),
+        Object.entries(CX.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+          .map(([k, v]) => [CX_NAMES[k] || k, `<span class="${sdWarmCls(v)}">${sdSg(v, 1)}</span>`])
+          .concat(Math.abs(CX.station_bias_c) >= 0.05 ? [["站点偏差", sdSg(CX.station_bias_c, 1)]] : [])
+          .concat(CX.forecast_tmax_d1_c == null ? [] : [["日前预报", sdN(CX.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)]]),
+        `${hh(CX.hour)}:00 前的报文与卫星对提前 1 天的预报：气温差 ${sdSg(CX.x.tdev, 1)}°C、湿度 ${sdSg(CX.x.rh, 0)} 个百分点、露点 ${sdSg(CX.x.dew, 1)}°C、风 ${sdSg(CX.x.wind, 1)} m/s、06–${hh(CX.hour)} 点日照平均 ${sdSg(CX.x.sw, 0)} W/m²、降水 ${sdN(CX.x.rain, 0)} 小时。各项乘本站系数相加，再加站点偏差＝ΔT（相对日前预报最高温）。按站分层收缩拟合（${(CX.window || []).join("～")}），样本外 13 点 MAE 0.79°C，对日照线、湿度线都显著更好；增益主要来自气温差，个日上下约 ±${sdN(CX.resid_sd_c, 1)}°C；只上看板，不进任何层`)
+    : CX.state === "too_early"
+    ? sdSunCard("temp", "合成推算最高温", `${hh(CX.from_hour)} 点后推算`, "未到", "", [], `报文到 ${hh(CX.from_hour)}:00 才推算`)
+    : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
+    ? sdSunCard("temp", "合成推算最高温", `${hh(CX.hour)} 点`, "未到", "", [], CX.state === "waiting_satellite" ? "06 点以来的卫星日照还没到齐" : "日前预报日照不全")
+    : "";
   const cards = [
+    compositeCard,
     sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
       // latest as fetched, the earlier one ~24 h before it (per hour, the run a

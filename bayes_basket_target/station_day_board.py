@@ -1274,6 +1274,89 @@ def _rh_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     return _obs_tmax_shift(rows, "rh_pct", RH_TMAX_SHIFT_PATH, ("drier", "moister"), "pp")
 
 
+# Composite ΔT (user 2026-10-21 「用分站的合成 ΔT 卡……分项显示气温差、湿度、日照等
+# 贡献，只上看板」, then 「别替换，增加」): arm ⑥ of the M3 protocol
+# (docs/research/tmax_physics_m3_eval_20261021, judgement d344a979), one line per
+# last measured hour 9..17 and station.  Each feature is the fit's own: report
+# against the day-ahead forecast (``*_d1``), measured shortwave against the
+# day-ahead one.  The parts add up to the total with the station's bias.
+COMPOSITE_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
+COMPOSITE_FIRST_HOUR = 6
+
+
+def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> dict[str, Any] | None:
+    import math  # noqa: PLC0415
+
+    try:
+        fit = json.loads(COMPOSITE_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unfitted"}
+    table = fit.get("by_hour") or {}
+    hours = sorted(int(h) for h in table)
+    by_hour = {int(r["hour"]): r for r in rows}
+    reported = [h for h, r in by_hour.items() if r.get("obs") and r["obs"].get("temp_c") is not None]
+    if not hours or not reported:
+        return None
+    last = max(reported)
+    if last < hours[0]:
+        return {"state": "too_early", "from_hour": hours[0]}
+    # The newest fitted hour whose shortwave (measured and day-ahead) is whole
+    # from 06: the satellite lags the reports by about an hour, and the card
+    # reads the hour before rather than nothing.
+    H = None
+    for cand in range(min(last, hours[-1]), hours[0] - 1, -1):
+        span = range(COMPOSITE_FIRST_HOUR, cand + 1)
+        sw_obs = [by_hour.get(h, {}).get("sat_sw_wm2") for h in span]
+        sw_fc = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in span]
+        if all(v is not None for v in sw_obs + sw_fc):
+            H = cand
+            break
+    if H is None:
+        return {"state": "waiting_satellite", "hour": min(last, hours[-1])}
+
+    def newest(obs_key: str, fc_key: str) -> float | None:
+        for h in range(H, COMPOSITE_FIRST_HOUR - 1, -1):
+            r = by_hour.get(h) or {}
+            o, f = (r.get("obs") or {}).get(obs_key), (r.get("forecast") or {}).get(fc_key)
+            if o is not None and f is not None:
+                return float(o) - float(f)
+        return None
+
+    rh = newest("rh_pct", "rh_pct_d1")
+    x = {
+        "sw": max(-300.0, min(300.0, sum(o - f for o, f in zip(sw_obs, sw_fc)) / len(sw_obs))),
+        "rh": None if rh is None else max(-20.0, min(20.0, rh)),
+        "dew": newest("dew_c", "dew_c_d1"),
+        "wind": newest("wind_mps", "wind_mps_d1"),
+        "tdev": newest("temp_c", "temp_c_d1"),
+        "rain": float(sum(1 for h in span if ((by_hour.get(h) or {}).get("obs") or {}).get("precip"))),
+    }
+    phys = fit.get("phys") or {}
+    peak = int(phys.get("peak_hour", 15))
+    fc_all = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
+    if any(v is None for v in fc_all):
+        return {"state": "waiting_forecast", "hour": H}
+    mixed = [(sw_obs[h - COMPOSITE_FIRST_HOUR] if h <= H else fc_all[h - COMPOSITE_FIRST_HOUR])
+             for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
+    c = float((phys.get("c") or {}).get(station, phys.get("fleet_c", 0.0)))
+    x["phys"] = c * (math.sqrt(max(0.0036 * sum(mixed), 0.0)) - math.sqrt(max(0.0036 * sum(fc_all), 0.0)))
+    line = table[str(H)]
+    own = (line.get("stations") or {}).get(station)
+    coef = own["coef"] if own else line["fleet_coef"]
+    bias = own["icpt_c"] if own else 0.0
+    names = fit.get("features") or []
+    parts = {n: round(float(k) * float(x[n] or 0.0), 2) for n, k in zip(names, coef)}
+    tmax_d1 = [(r.get("forecast") or {}).get("temp_c_d1") for r in rows]
+    tmax_d1 = [v for v in tmax_d1 if v is not None]
+    total = bias + sum(float(k) * float(x[n] or 0.0) for n, k in zip(names, coef))
+    return {"state": "ok", "hour": H, "line_hour": H, "station_fit": own is not None,
+            "total_c": round(total, 2), "station_bias_c": round(float(bias), 2), "parts_c": parts,
+            "x": {k: (None if v is None else round(float(v), 2)) for k, v in x.items()},
+            "resid_sd_c": own["resid_sd_c"] if own else line.get("fleet_resid_sd_c"),
+            "forecast_tmax_d1_c": round(max(tmax_d1), 1) if len(tmax_d1) == len(rows) and tmax_d1 else None,
+            "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
+
+
 def _dew_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
     return _obs_tmax_shift(rows, "dew_c", DEW_TMAX_SHIFT_PATH, ("dry", "moist"), "c")
 
@@ -1326,7 +1409,10 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     extra = ["dew_point_2m", "wind_speed_10m", "precipitation", "relative_humidity_2m"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
-        "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover_low"]),
+        # The composite ΔT reads the day-ahead dew point, humidity and wind
+        # (user 2026-10-21, docs/research/tmax_physics_m3_eval_20261021).
+        "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover_low"]
+                           + [f + "_previous_day1" for f in ("dew_point_2m", "relative_humidity_2m", "wind_speed_10m")]),
         "wind_speed_unit": "ms",
     })
     try:
@@ -1592,6 +1678,8 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             "dew_c": val("dew_point_2m"), "wind_mps": val("wind_speed_10m"), "precip_mm": val("precipitation"),
             "rh_pct": val("relative_humidity_2m"),
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
+            "dew_c_d1": val("dew_point_2m", True), "rh_pct_d1": val("relative_humidity_2m", True),
+            "wind_mps_d1": val("wind_speed_10m", True),
         } if times else {}
         obs = by_hour.get(h)
         sat_sw = sat_values[h] if h < len(sat_values) else None
@@ -1673,6 +1761,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "dew_tmax_shift": _dew_tmax_shift(rows) if times else None,
         "wind_tmax_shift": _wind_tmax_shift(rows) if times else None,
         "rh_tmax_shift": _rh_tmax_shift(rows) if times else None,
+        "composite_tmax_shift": _composite_tmax_shift(rows, station) if times else None,
     }
 
 
