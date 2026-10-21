@@ -58,6 +58,12 @@ DEFAULT_LANE_BUDGET = 500
 TEMPORARY_BUDGET = {
     "research_tmax_m1": (2000, "2026-10-24"),
 }
+# One UTC day's own budget for a lane, over everything above.  User
+# 2026-10-21 「可以，改」: the tmax ingest's remaining satellite history in one
+# day (2,000 + ~2,750), the address's day then ~5,000 of 10,000.
+DAY_BUDGET = {
+    ("research_tmax_m1", "2026-10-21"): 4800,
+}
 THROTTLE_PAUSE_SEC = (2.0, 5.0, 15.0)
 
 
@@ -120,6 +126,7 @@ def charge(
     temporary = TEMPORARY_BUDGET.get(lane)
     if temporary is not None and _day(now) < temporary[1]:
         budget = temporary[0]
+    budget = DAY_BUDGET.get((lane, _day(now)), budget)
     with _locked(path or LEDGER_PATH) as state:
         until = str(state.get("exhausted_until_utc") or "")
         if until and now.astimezone(timezone.utc).isoformat() < until:
@@ -167,6 +174,6 @@ def classify(reason: str, status_code: int | None = None) -> str:
 
 
 __all__ = [
-    "DAILY_BUDGET", "LEDGER_PATH", "QuotaRefused", "TEMPORARY_BUDGET", "charge", "classify",
+    "DAILY_BUDGET", "LEDGER_PATH", "DAY_BUDGET", "QuotaRefused", "TEMPORARY_BUDGET", "charge", "classify",
     "exhausted", "mark_exhausted", "spent", "throttle_pause",
 ]
