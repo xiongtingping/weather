@@ -17008,6 +17008,13 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-mc-cmp b{color:var(--text);font-variant-numeric:tabular-nums}.sd-mc-cmp.up b{color:var(--pill-red-fg)}.sd-mc-cmp.down b{color:var(--accent)}
 .sd-mc-sub{font-size:12px;color:var(--muted);margin:0 0 8px}.sd-mc-sub b{font-weight:600}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
+/* The per-model tiles under an estimate card recede (user 2026-10-21 「弱化下方的模型」):
+   the card's own estimate leads; the tiles are its inputs, smaller and lighter. */
+.sd-mc .sd-det-grid{grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:4px;margin-top:6px;opacity:.78}
+.sd-mc .sd-det{padding:3px 6px;border-radius:6px;background:transparent;border-color:color-mix(in srgb,var(--line) 70%,transparent)}
+.sd-mc .sd-det b{font-size:14px;font-weight:600;margin:0;color:var(--muted)}
+.sd-mc .sd-det-h,.sd-mc .sd-det-f{font-size:10px;gap:4px}
+.sd-mc .sd-det-f span:last-child{white-space:nowrap}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
