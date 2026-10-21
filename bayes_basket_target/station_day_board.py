@@ -1077,165 +1077,11 @@ RADIATION_DIFF_FRAC = 0.25
 RADIATION_DIFF_MIN_WM2 = 100.0
 TEMP_DIFF_C = 1.0
 HAZE_VISIBILITY_M = 8000.0
-# Morning sunshine -> the day's maximum (user 2026-10-13 「前端显式：上午日照偏差 →
-# 最高温相对预报的偏差，显示度数」): the two-slope line fitted per last measured
-# hour, read here and applied to the satellite against the day-ahead forecast
-# -- the fit's own basis, not the latest forecast the headline compares.
-# Display only.  Since 2026-10-17 (user 「改用 W/m² 的绝对差重新拟合这条线」) the
-# line reads the mean W/m² difference over the hours 05..H
-# (docs/research/sun_tmax_shift_abs_20261017/fit.py): a percentage of a dim
-# forecast blew up (ZUUU that morning, +200 W/m² over 52 read +106%) and had
-# to refuse every morning forecast under 60 W/m² an hour.  Out of sample it
-# is as good as the percentage line where that one applied, and beats no
-# reading on the mornings it refused.
-SUN_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "sun_tmax_shift_v2.json"
-
-
-def _side_shift(slope: float, ci: Sequence[float], x: float) -> float:
-    """Slope x difference, 0 when that side's slope does not separate from 0
-    (熊先生 2026-10-20 「1」: less low cloud than forecast had read -0.01 °C
-    off a clear-side slope of the wrong sign whose 95% interval spans zero)."""
-
-    return 0.0 if float(ci[0]) <= 0.0 <= float(ci[1]) else slope * x
-
-
-def _sun_tmax_shift(rows: Sequence[Mapping[str, Any]], measured: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    if not measured:
-        return None
-    try:
-        fit = json.loads(SUN_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"state": "unfitted"}
-    table = fit.get("by_last_hour") or {}
-    last = max(int(r["hour"]) for r in measured)
-    hours = sorted(int(h) for h in table)
-    tmax_d1 = [r["forecast"].get("temp_c_d1") for r in rows if r["forecast"].get("temp_c_d1") is not None]
-    tmax = round(max(tmax_d1), 1) if tmax_d1 else None
-    window = [r for r in measured if int(r["hour"]) >= 5]
-    if not hours or last < hours[0] or not window:
-        return {"state": "too_early", "from_hour": hours[0] if hours else None, "forecast_tmax_d1_c": tmax}
-    line = table[str(min(last, hours[-1]))]
-    diff = sum(float(r["sat_sw_wm2"]) - float(r["forecast"].get("sw_d1") or 0.0) for r in window) / len(window)
-    clip = float(fit.get("x_clip_wm2") or 300.0)
-    x = max(-clip, min(clip, diff))
-    side, ci = ("dark", "dark_ci95") if x < 0 else ("bright", "bright_ci95")
-    # The sunshine's own part only, slope x difference (user 2026-10-17 「可以」,
-    # after the cloud card's +4% read +0.1 °C off the intercept): 0 when the
-    # satellite matches the forecast.  The intercept is a basis offset, not
-    # sunshine.
-    shift = lambda b: b / 100.0 * x
-    lo, hi = sorted((shift(line[ci][0]), shift(line[ci][1])))
-    return {"state": "ok", "last_hour": last, "wm2_d1": round(diff, 1), "shift_c": round(_side_shift(line[side + "_c_per_100wm2"] / 100.0, line[ci], x), 2),
-            "range_c": [round(lo, 2), round(hi, 2)], "forecast_tmax_d1_c": tmax,
-            "resid_sd_c": line.get("resid_sd_c"), "r2": line.get("r2"), "n": line.get("n"),
-            "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
-
-
-# Morning cloud -> the day's maximum (user 2026-10-17 「云 · 实况对比预报：计算
-# 拟合一个对于温度的∆数据」「云卡仍显示 ΔT，标灰并注明样本外不显著」): the
-# two-slope line of docs/research/cloud_tmax_shift_20261017/fit.py, per source
-# and last hour.  Since 「保持口径一致」 the line is the card's own basis: the
-# report's cover against the latest forecast's low cloud (the day-ahead low
-# cloud is not archived).  Out of sample it does not beat the mean; the
-# reading carries that verdict for the card.
-CLOUD_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "cloud_tmax_shift_v1.json"
-
-
-def _cloud_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    try:
-        fit = json.loads(CLOUD_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"state": "unfitted"}
-    table = fit.get("by_last_hour") or {}
-    hours = sorted(int(h) for h in table)
-    # The card's own basis, refitted on it (熊先生 2026-10-19「重新拟合」): the
-    # report's LOW cloud (layers based at or below 10000 ft) against the latest
-    # forecast's low cloud, hour by hour.
-    rep_pairs = []
-    for r in rows:
-        h, f = int(r["hour"]), r.get("forecast") or {}
-        fc = f.get("cloud_low")
-        o = r.get("obs") or {}
-        if r.get("past") and h >= 5 and fc is not None and o.get("cloud_cover_low") is not None:
-            rep_pairs.append((h, 10.0 * (float(o["cloud_cover_low"]) - fc / 100.0)))
-    source, pairs = "report", rep_pairs
-    if not pairs:
-        return None
-    last = max(h for h, _ in pairs)
-    if not hours or last < hours[0]:
-        return {"state": "too_early", "from_hour": hours[0] if hours else None, "source": source}
-    if len(pairs) < max(2, (last - 5) // 2):
-        return {"state": "too_few", "source": source}
-    line = (table[str(min(last, hours[-1]))] or {}).get(source)
-    if not line:
-        return {"state": "unfitted", "source": source}
-    x = sum(d for _, d in pairs) / len(pairs)
-    clip = float(fit.get("x_clip_tenths") or 6.0)
-    xc = max(-clip, min(clip, x))
-    side = "clear" if xc < 0 else "cloudy"
-    # The cloud's own part only, slope x difference (user 2026-10-17 「可以」):
-    # 0 when the report matches the forecast; the line's intercept (+0.12 °C,
-    # the report-vs-forecast cloud definitions differing on average) is not
-    # weather and is left out.
-    shift = lambda b: b * xc
-    lo, hi = sorted((shift(line[side + "_ci95"][0]), shift(line[side + "_ci95"][1])))
-    cv = line.get("cv_vs_mean_only") or [None, None, None]
-    return {"state": "ok", "source": source, "last_hour": last, "hours": len(pairs), "tenths": round(x, 1),
-            "shift_c": round(_side_shift(line[side + "_c_per_tenth"], line[side + "_ci95"], xc), 2), "range_c": [round(lo, 2), round(hi, 2)],
-            "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
-            "window": fit.get("window")}
-
-
-# 露点 · 实况对比预报 -> ΔT (熊先生 2026-10-19 「露点 · 实况对比预报：这个也拟合」):
-# docs/research/dew_tmax_shift_20261019.  The card's own basis -- the newest
-# hour's report dew point against the latest forecast's for that hour -- on
-# the line fitted for that hour (9..17 h).  A drier morning than forecast
-# reads warmer; from 12 h on the line beats the mean out of sample.
-DEW_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "dew_tmax_shift_v1.json"
-
-
-WIND_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "wind_tmax_shift_v1.json"
-
-
-def _obs_tmax_shift(rows: Sequence[Mapping[str, Any]], key: str, path: Path,
-                    sides: tuple[str, str], unit: str) -> dict[str, Any] | None:
-    """One card's ΔT from its own fitted line: the newest hour with both a
-    report and a forecast of ``key``, x = report - forecast, read on the
-    line fitted for that hour (9..17 h, later hours on 17 h's)."""
-
-    newest = None
-    for r in rows:
-        o, f = r.get("obs") or {}, r.get("forecast") or {}
-        if o.get(key) is not None and f.get(key) is not None and (newest is None or int(r["hour"]) > int(newest["hour"])):
-            newest = r
-    if newest is None:
-        return None
-    try:
-        fit = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"state": "unfitted"}
-    table = fit.get("by_hour") or {}
-    hours = sorted(int(h) for h in table)
-    h = int(newest["hour"])
-    if not hours or h < hours[0]:
-        return {"state": "too_early", "from_hour": hours[0] if hours else None}
-    line = table.get(str(min(h, hours[-1]))) or {}
-    below, above = sides
-    if f"{below}_c_per_{unit}" not in line:
-        return {"state": "unfitted"}
-    x = float(newest["obs"][key]) - float(newest["forecast"][key])
-    clip = float(fit.get(f"x_clip_{'c' if unit == 'c' else unit}") or 4.0)
-    xc = max(-clip, min(clip, x))
-    side = below if xc < 0 else above
-    # The reading's own part, slope x difference: 0 when the report matches.
-    lo, hi = sorted((line[side + "_ci95"][0] * xc, line[side + "_ci95"][1] * xc))
-    cv = line.get("cv_vs_mean_only") or [None, None, None]
-    return {"state": "ok", "hour": h, "line_hour": min(h, hours[-1]), "diff": round(x, 1), "diff_c": round(x, 1),
-            "shift_c": round(_side_shift(line[f"{side}_c_per_{unit}"], line[side + "_ci95"], xc), 2), "range_c": [round(lo, 2), round(hi, 2)],
-            "out_of_sample_significant": cv[2] is not None and cv[2] < 0, "r2": line.get("r2"), "n": line.get("n"),
-            "window": fit.get("window")}
-
-
+# The per-variable ΔT lines (sun, low cloud, dew point, humidity, wind) are
+# retired (user 2026-10-21 「其他卡片不再拟合温度……只对比实况vs预报的数值」): the
+# composite card carries how each pulls the maximum.  Their research dirs and
+# fits stay as records; the M3 evaluator still reads the sun and humidity
+# fits as its baseline arms.
 def polar_wind_component(direction_deg: float | None, speed_mps: float | None, lat: float) -> float | None:
     """The wind's component from the pole, m/s: northerly in the north and
     southerly in the south positive, equatorward negative, east-west 0
@@ -1263,15 +1109,6 @@ def relative_humidity(temp_c: float | None, dew_c: float | None) -> float | None
         return None
     es = lambda t: 6.112 * math.exp(17.62 * t / (243.12 + t))  # noqa: E731
     return round(min(100.0, 100.0 * es(float(dew_c)) / es(float(temp_c))), 1)
-
-
-RH_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "rh_tmax_shift_v1.json"
-
-
-def _rh_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    """湿度 · 实况对比预报 -> ΔT (docs/research/rh_tmax_shift_20261019); until the
-    line is fitted the card reads the plain difference."""
-    return _obs_tmax_shift(rows, "rh_pct", RH_TMAX_SHIFT_PATH, ("drier", "moister"), "pp")
 
 
 # Composite ΔT (user 2026-10-21 「用分站的合成 ΔT 卡……分项显示气温差、湿度、日照等
@@ -1398,17 +1235,6 @@ def _composite_forward() -> dict[str, Any] | None:
         return json.loads(COMPOSITE_FORWARD_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-
-
-def _dew_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    return _obs_tmax_shift(rows, "dew_c", DEW_TMAX_SHIFT_PATH, ("dry", "moist"), "c")
-
-
-# 风 · 实况对比预报 -> ΔT (熊先生 2026-10-19 「风 · 实况对比预报：这个也拟合一下」):
-# docs/research/wind_tmax_shift_20261019.  More wind than forecast reads
-# warmer, less reads cooler; out of sample only from 14 h.
-def _wind_tmax_shift(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    return _obs_tmax_shift(rows, "wind_mps", WIND_TMAX_SHIFT_PATH, ("calmer", "windier"), "mps")
 
 
 def _station_lat_lon(conn, station: str) -> tuple[float, float] | None:
@@ -1799,11 +1625,6 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         "sat_forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in measured) * 0.0036, 2) if measured and times else None,
         "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,
         "forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in past) * 0.0036, 2) if past and times else None,
-        "sun_tmax_shift": _sun_tmax_shift(rows, measured) if times else None,
-        "cloud_tmax_shift": _cloud_tmax_shift(rows) if times else None,
-        "dew_tmax_shift": _dew_tmax_shift(rows) if times else None,
-        "wind_tmax_shift": _wind_tmax_shift(rows) if times else None,
-        "rh_tmax_shift": _rh_tmax_shift(rows) if times else None,
         "composite_tmax_shift": _composite_tmax_shift(rows, station) if times else None,
     }
 

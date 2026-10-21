@@ -16837,6 +16837,28 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .sd-sun-c>b{margin:2px 0 4px}
+.sd-pnl-c.sd-cx-total{grid-column:1/-1;display:grid;grid-template-columns:minmax(170px,1fr) minmax(260px,1.6fr) minmax(200px,1.2fr);gap:14px;align-items:start;border-width:2px}
+.sd-cx-head{display:flex;flex-direction:column;gap:4px}
+.sd-cx-head>span{display:flex;flex-direction:column;gap:1px}
+.sd-cx-head em{font-style:normal;font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:5px}
+.sd-cx-head small{font-size:11px;color:var(--muted)}
+.sd-cx-head>b{font-size:34px;line-height:1.1;margin:2px 0}
+.sd-cx-head>b.sd-warm{color:var(--pill-red-fg)}.sd-cx-head>b.sd-cold{color:var(--accent)}
+.sd-cx-land{display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px;color:var(--muted)}
+.sd-cx-land b{color:var(--text)}.sd-cx-land b.sd-warm{color:var(--pill-red-fg)}.sd-cx-land b.sd-cold{color:var(--accent)}
+.sd-cx-buckets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.sd-cx-buckets span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.sd-cx-buckets span.sd-cx-top{border-color:var(--text);font-weight:600}
+.sd-cx-fwd{font-size:11px;color:var(--muted)}
+.sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:9px}
+.sd-cx-parts{display:flex;flex-direction:column;gap:3px}
+.sd-cx-bar{display:grid;grid-template-columns:5.5em 1fr 3em;align-items:center;gap:6px;font-size:12px}
+.sd-cx-bar b{text-align:right;font-variant-numeric:tabular-nums}.sd-cx-bar b.sd-warm{color:var(--pill-red-fg)}.sd-cx-bar b.sd-cold{color:var(--accent)}
+.sd-cx-track{position:relative;height:8px;background:var(--line);border-radius:4px;opacity:.9}
+.sd-cx-track::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.sd-cx-track i{position:absolute;top:0;bottom:0;border-radius:4px}
+.sd-cx-track i.sd-cx-pos{left:50%;background:var(--pill-red-fg)}.sd-cx-track i.sd-cx-neg{right:50%;background:var(--accent)}
+@media (max-width:760px){.sd-pnl-c.sd-cx-total{grid-template-columns:1fr}}
 .sd-sun-c>b .sd-cx-chart{display:block;width:100%;height:auto;margin:4px 0 2px;font-size:9px;font-weight:400}
 .sd-cx-chart .sd-cx-ax text{fill:var(--muted)}
 .sd-cx-chart .sd-cx-last{font-size:10px;font-weight:600;fill:var(--text)}
@@ -25143,19 +25165,6 @@ const SD_THIN_TAU = 3.6;
 // A temperature shift in the cards' big type: two decimals under 0.1 °C so a
 // small shift does not read as zero.
 const sdDeltaT = v => `${sdSg(v, Math.abs(v) < 0.1 ? 2 : 1)}°C`;
-// The dew card's ΔT (user 2026-10-19「露点 · 实况对比预报：这个也拟合」): grey
-// unless that hour's line beat the mean out of sample, like the cloud card's.
-function sdDewShiftRow(S){
-  if(!S) return [];
-  if(S.state === "too_early") return [[`<span class="muted">ΔT</span>`, `<span class="muted">${String(S.from_hour).padStart(2, "0")} 点后</span>`]];
-  if(S.state !== "ok") return [];
-  const sig = S.out_of_sample_significant;
-  const tip = `${String(S.hour).padStart(2, "0")} 点报文露点比最新预报${S.diff_c < 0 ? "低（偏干）" : "高（偏湿）"} ${sdN(Math.abs(S.diff_c), 1)}°C，`
-    + `历史上（${(S.window || []).join("～")}，${S.n} 站日）最高温${S.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(S.shift_c), 2)}°C（区间 ${sdSg(S.range_c[0], 2)}～${sdSg(S.range_c[1], 2)}°C）；`
-    + `只解释约 ${sdN(100 * S.r2, 1)}% 的偏差，${sig ? "样本外显著（比只用均值准）" : "样本外不显著（不比只用均值准）"}；与日照、云推算不可相加；仅作参考，不进任何层`;
-  return [[`<span class="${sig ? "" : "muted"}">ΔT${sig ? "" : " <small>不显著</small>"}</span>`,
-    `<span class="${sig ? sdWarmCls(S.shift_c) : "muted"}" title="${sdEsc(tip)}">${sdSg(S.shift_c, 2)}°C</span>`]];
-}
 function sdSunRatio(obs, fc){
   if(obs == null || fc == null || fc < 20) return "";
   const r = 100 * obs / fc;
@@ -25366,12 +25375,6 @@ function sdSky(day){
   const swFc = bySat ? H.sat_forecast_sw_mj_so_far : H.forecast_sw_mj_so_far;
   const swTo = bySat ? sat.last_hour : latest;
   const swPct = swObs != null && swFc ? 100 * (swObs - swFc) / swFc : null;
-  // Morning sunshine -> the maximum (user 2026-10-13): the backend's
-  // sun_tmax_shift, read only; satellite stations only (the fit is on satellite).
-  // The shift is against the day-ahead forecast (the fit's basis), so the card
-  // writes the maximum it points to, the day-ahead and latest forecasts under
-  // it (user 2026-10-15 「−1%为什么最高温还要加 +0.6°C」).
-  const T = bySat && swObs != null ? H.sun_tmax_shift : null;
   const fcMax = (H.rows || []).reduce((m, r) => { const t = (r.forecast || {}).temp_c; return t != null && (m == null || t > m) ? t : m; }, null);
   const hh = v => String(v).padStart(2, "0");
   // Hour h is the mean of the hour ending at h:00 and a satellite hour lands
@@ -25396,11 +25399,6 @@ function sdSky(day){
   const cloudCard = !cloudPairs.length ? "" : (() => {
     const ob = avg(0), fc = avg(1), d = (ob - fc) / 10;
     const hrs = cloudPairs.map(x => Number(x[2]));
-    // ΔT on the day-ahead maximum (user 2026-10-17 「云卡仍显示 ΔT，标灰并注明
-    // 样本外不显著」): grey unless that hour's line beat the mean out of sample.
-    const CT = H.cloud_tmax_shift;
-    const ctRow = CT && CT.state === "ok" ? [[`<span class="${CT.out_of_sample_significant ? "" : "muted"}">ΔT${CT.out_of_sample_significant ? "" : " <small>不显著</small>"}</span>`,
-      `<span class="${CT.out_of_sample_significant ? sdWarmCls(CT.shift_c) : "muted"}" title="${sdEsc(`05–${hh(CT.last_hour)} 点报文低云（云底 ≤ 3 km，与卡片大字同一口径，按此口径拟合）比最新预报低云平均 ${sdSg(10 * CT.tenths, 0)} 个百分点，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 1)}°C（区间 ${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C）；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准）"}；与日照推算不可相加；仅作参考，不进任何层`)}">${sdSg(CT.shift_c, 1)}°C</span>`]] : [];
     // The sun over the same hours (user 2026-10-18「低云卡在日照接近晴空时注明
     // 报文云可能偏多」): satellite against forecast sunshine where the sun is up;
     // at ≥90% with the report cloudier than forecast, the report's cloud
@@ -25412,21 +25410,11 @@ function sdSky(day){
     const span = `${hh(Math.min(...hrs))}–${hh(Math.max(...hrs))} 点`;
     const why = `报文低云（云底 ≤ 3 km，约 10000 ft 的云层，取最多的一层）对预报低云（Open-Meteo：3 km 以下的云和雾），${cloudPairs.length} 个小时的平均，两者相差的百分点；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`
       + (sunRatio == null ? "" : `；同几个小时卫星日照为预报的 ${sdN(sunRatio, 0)}%${overstated ? "，接近晴空：报文的云（常伴轻雾、薄云或碎云）多半没怎么挡住太阳" : ""}`);
-    // ΔT leads, like the sun card (user 2026-10-19「低云和露点和日照一样，突出ΔT，
-    // 而不是+12%、+3.3 °C」): the difference moves into the scope line and a row.
-    if(CT && CT.state === "ok"){
-      const sig = CT.out_of_sample_significant && !overstated;
-      return sdSunCard("cloud", "低云推算最高温", `${CT.out_of_sample_significant ? "" : "不显著 · "}低云 ${sdSg(10 * d, 0)}% · ${span}`,
-        sdDeltaT(CT.shift_c), sig ? sdWarmCls(CT.shift_c) : "muted",
-        [["实况低云", `${sdN(ob, 0)}%`], ["预报低云", `${sdN(fc, 0)}%`],
-         ["ΔT 区间", `${sdSg(CT.range_c[0], 1)}～${sdSg(CT.range_c[1], 1)}°C`]].concat(sunRow),
-        why + `。ΔT：05–${hh(CT.last_hour)} 点的这个差，历史上最高温${CT.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(CT.shift_c), 2)}°C；只解释约 ${sdN(100 * CT.r2, 1)}% 的偏差，${CT.out_of_sample_significant ? "样本外显著" : "样本外不显著（不比只用均值准），大字标灰"}；与日照推算不可相加；仅作参考，不进任何层`);
-    }
     return sdSunCard("cloud", "低云 · 实况对比预报", span,
       // In percent, like the rows under it (user 2026-10-17 「+0.6 成改为百分比」):
       // the difference of the two covers, in percentage points.
       `${sdSg(10 * d, 0)}%`, overstated ? "muted" : Math.abs(d) < 0.05 ? "" : d > 0 ? "sd-cold" : "sd-warm",
-      [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]].concat(ctRow)
+      [["实况", `${sdN(ob, 0)}%`], ["预报", `${sdN(fc, 0)}%`]]
         .concat(sunRatio == null ? [] : [[overstated ? `<span class="sd-warm">日照 ${sdN(sunRatio, 0)}%</span>` : "日照", overstated ? "报文云可能偏多" : `${sdN(sunRatio, 0)}%`]]),
       `报文低云（云底 ≤ 3 km，约 10000 ft 的云层，取最多的一层）对预报低云（Open-Meteo：3 km 以下的云和雾），${cloudPairs.length} 个小时的平均，两者相差的百分点；正数＝比预报多云（偏冷），负数＝比预报晴（偏暖）`
         + (sunRatio == null ? "" : `；同几个小时卫星日照为预报的 ${sdN(sunRatio, 0)}%${overstated ? "，接近晴空：报文的云（常伴轻雾、薄云或碎云）多半没怎么挡住太阳，大字已淡化" : ""}`));
@@ -25446,24 +25434,22 @@ function sdSky(day){
     return sdSunCard(icon, label, `${hh(r.hour)} 点 · ${unit}`, `${Math.abs(d) < 0.5 * Math.pow(10, -digits) ? "0" : sdSg(d, digits)} ${unit}`, "",
       [["实况", sdN(ob, digits)], ["预报", sdN(fc, digits)]].concat(extra || []), `${why}：${hh(r.hour)}:00 报文对同一小时的预报（Open-Meteo 逐小时）`);
   };
-  // ΔT leads where the line reads (user 2026-10-19「突出ΔT」), dew point and
-  // wind alike (「风 · 实况对比预报：这个也拟合一下」); before 09 h the difference
-  // itself, with when ΔT starts.
-  const shiftCard = (icon, title, name, key, unit, digits, S, sideWords, fallback, why) => {
-    const row = newest(key);
-    if(!(S && S.state === "ok" && row)) return diffCard(icon, fallback, key, unit, digits, why, sdDewShiftRow(S));
-    const sig = S.out_of_sample_significant;
-    return sdSunCard(icon, title, `${sig ? "" : "不显著 · "}${name} ${sdSg(S.diff, digits)} ${unit} · ${hh(S.hour)} 点`,
-      sdDeltaT(S.shift_c), sig ? sdWarmCls(S.shift_c) : "muted",
-      [[`实况${name}`, sdN(row.obs[key], digits)], [`预报${name}`, sdN(row.forecast[key], digits)],
-       ["ΔT 区间", `${sdSg(S.range_c[0], 2)}～${sdSg(S.range_c[1], 2)}°C`]],
-      `${why}：${hh(S.hour)}:00 报文比最新预报${S.diff < 0 ? sideWords[0] : sideWords[1]} ${sdN(Math.abs(S.diff), digits)} ${unit}；历史上（${(S.window || []).join("～")}，${S.n} 站日）最高温${S.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(S.shift_c), 2)}°C；只解释约 ${sdN(100 * S.r2, 1)}% 的偏差，${sig ? "这一小时样本外显著" : "这一小时样本外不显著（不比只用均值准），大字标灰"}；与日照、云、其他推算不可相加；仅作参考，不进任何层`);
-  };
-  let dewCard = shiftCard("dew", "露点推算最高温", "露点", "dew_c", "°C", 1, H.dew_tmax_shift, ["低（偏干）", "高（偏湿）"], "露点 · 实况对比预报", "报文露点");
-  // Humidity (user 2026-10-19「卡片增加湿度并拟合」): the report's own
-  // temperature and dew point against the forecast's relative humidity.
-  const rhCard = shiftCard("dew", "湿度推算最高温", "湿度", "rh_pct", "%", 0, H.rh_tmax_shift, ["低（偏干）", "高（偏湿）"], "湿度 · 实况对比预报", "报文湿度（由气温与露点算）");
-  let windCard = shiftCard("wind", "风推算最高温", "风速", "wind_mps", "m/s", 1, H.wind_tmax_shift, ["弱", "强"], "风 · 实况对比预报", "报文风速（10 分钟平均）");
+  // Observed against forecast only (user 2026-10-21 「其他卡片不再拟合温度，比如
+  // 低云、露点等，其他卡片只对比实况vs预报的数值」): the per-variable ΔT lines
+  // are retired; how each pulls the maximum is the composite card's breakdown.
+  const tempCard = diffCard("temp", "气温 · 实况对比预报", "temp_c", "°C", 1, "报文气温");
+  let dewCard = diffCard("dew", "露点 · 实况对比预报", "dew_c", "°C", 1, "报文露点");
+  const rhCard = diffCard("dew", "湿度 · 实况对比预报", "rh_pct", "%", 0, "报文湿度（由气温与露点算）");
+  let windCard = diffCard("wind", "风 · 实况对比预报", "wind_mps", "m/s", 1, "报文风速（10 分钟平均）");
+  // Rain so far: hours whose report carries precipitation against hours the
+  // forecast put at 0.1 mm or more, over the hours already reported.
+  const rainSeen = (H.rows || []).filter(r => r.obs && (r.forecast || {}).precip_mm != null);
+  const rainCard = !rainSeen.length ? "" : (() => {
+    const ob = rainSeen.filter(r => r.obs.precip).length, fc = rainSeen.filter(r => r.forecast.precip_mm >= 0.1).length;
+    return sdSunCard("rain", "降水 · 实况对比预报", `${hh(Math.min(...rainSeen.map(r => Number(r.hour))))}–${hh(Math.max(...rainSeen.map(r => Number(r.hour))))} 点 · 小时`,
+      `${ob - fc === 0 ? "0" : sdSg(ob - fc, 0)} 小时`, "", [["实况有雨", String(ob)], ["预报有雨", String(fc)]],
+      "报文报了降水的小时数，对同几个小时预报雨量 ≥ 0.1 mm 的小时数（Open-Meteo 逐小时）");
+  })();
   // With no reports to set against (a day not begun), the forecast alone
   // (user 2026-10-18「为什么没有云等预报的卡片？」): daytime 09–17 点 from the
   // latest hourly forecast, the day-ahead run beside it where it differs.
@@ -25477,7 +25463,7 @@ function sdSky(day){
       "最新逐小时预报（Open-Meteo）09–17 点的低云与总云平均；还没有报文可对照"));
   }
   const peak = fcRows.reduce((a, r) => r.forecast.temp_c != null && (!a || r.forecast.temp_c > a.forecast.temp_c) ? r : a, null);
-  if(T == null && peak){
+  if(!(H.composite_tmax_shift && H.composite_tmax_shift.state === "ok") && peak){
     const d1 = fcRows.reduce((m, r) => r.forecast.temp_c_d1 != null && (m == null || r.forecast.temp_c_d1 > m) ? r.forecast.temp_c_d1 : m, null);
     fcOnly.push(sdSunCard("temp", "预报最高温", `逐小时 · ${hh(peak.hour)} 点`, `${sdN(peak.forecast.temp_c, 1)}°C`, "",
       d1 == null ? [] : [["提前 1 天", `${sdN(d1, 1)}°C`], ["变化", `${sdSg(peak.forecast.temp_c - d1, 1)}°C`]],
@@ -25533,31 +25519,43 @@ function sdSky(day){
       <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
     </svg>`;
   };
+  // Total, then parts (user 2026-10-21 「重新设计排版，突出"合成推算最高温"卡片，
+  // 采取总分形式」): the composite spans the row -- its ΔT, where it lands, the
+  // likeliest rungs, the day's trend and each part's pull as a bar -- and the
+  // cards under it compare observed with forecast only.
+  const cxBars = cx => {
+    const items = Object.entries(cx.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).map(([k, v]) => [CX_NAMES[k] || k, v])
+      .concat(Math.abs(cx.station_bias_c) >= 0.05 ? [["站点偏差", cx.station_bias_c]] : [])
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    const top = Math.max(0.5, ...items.map(([, v]) => Math.abs(v)));
+    return items.map(([k, v]) => `<div class="sd-cx-bar" title="${sdEsc(`${k}：对 ΔT 的贡献 ${sdSg(v, 2)}°C`)}"><span>${sdEsc(k)}</span>
+      <span class="sd-cx-track"><i class="${v >= 0 ? "sd-cx-pos" : "sd-cx-neg"}" style="width:${(50 * Math.abs(v) / top).toFixed(1)}%"></i></span>
+      <b class="${sdWarmCls(v)}">${sdSg(v, 1)}</b></div>`).join("");
+  };
+  const cxTip = CX && CX.state === "ok" ? `${hh(CX.hour)}:00 前的报文与卫星对提前 1 天的预报：气温差 ${sdSg(CX.x.tdev, 1)}°C、湿度 ${sdSg(CX.x.rh, 0)} 个百分点、露点 ${sdSg(CX.x.dew, 1)}°C、风 ${sdSg(CX.x.wind, 1)} m/s、日照平均 ${sdSg(CX.x.sw, 0)} W/m²、降水 ${sdN(CX.x.rain, 0)} 小时${CX.x.rmax != null ? `、已观测最高温比日前预报 ${sdSg(CX.x.rmax, 1)}°C` : ""}。各项乘本站系数相加，再加站点偏差＝ΔT（相对日前预报最高温）。按站分层收缩拟合（${(CX.window || []).join("～")}），全天 24 小时样本外都显著好于只用站点偏差，12 点起含已观测最高温；个日上下约 ±${sdN(CX.resid_sd_c, 1)}°C；只上看板，不进任何层` : "";
+  const cxForward = CX && CX.state === "ok" ? (() => {
+    const f = ((((CX.forward || {}).versions || {})[CX.version] || {}).by_hour || {})[String(CX.hour)];
+    return f && f.n ? `<span class="sd-cx-fwd" title="${sdEsc(`本版系数拟合之后的 ${f.days} 天、${f.n} 个站日，${hh(CX.hour)} 点时的推算对真值：合成卡误差 ${sdN(f.mae_composite_c, 2)}°C、日照线 ${sdN(f.mae_sun_line_c, 2)}°C、日前预报原样 ${sdN(f.mae_raw_c, 2)}°C；真值落在 ±1 个标准差内 ${sdN(100 * f.within_1sd, 0)}%（理论 68%）`)}">前向误差 ${sdN(f.mae_composite_c, 2)}°C · 日前 ${sdN(f.mae_raw_c, 2)}</span>` : "";
+  })() : "";
   const compositeCard = !CX ? "" : CX.state === "ok"
-    ? sdSunCard("temp", "合成推算最高温", `ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}`, sdDeltaT(CX.total_c) + sdCompositeChart(CX.series), sdWarmCls(CX.total_c),
-        Object.entries(CX.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-          .map(([k, v]) => [CX_NAMES[k] || k, `<span class="${sdWarmCls(v)}">${sdSg(v, 1)}</span>`])
-          .concat(Math.abs(CX.station_bias_c) >= 0.05 ? [["站点偏差", sdSg(CX.station_bias_c, 1)]] : [])
-          .concat(CX.forecast_tmax_d1_c == null ? [] : [["日前预报", sdN(CX.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)]])
-          // The day's ladder (M4, reading_m4_20261021T020156Z): the three likeliest
-          // rungs under a Student-t at the card's centre and spread.
-          .concat((CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) =>
-            [`<span title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布的 50/80/95% 区间覆盖率与名义值相差不到 3 个百分点；只上看板，不进任何层`)}">${i === 0 ? "最可能 " : ""}${sdEsc(x.bucket)}</span>`, `${sdN(100 * x.p, 0)}%`]))
-          // Forward record of this version (scripts/tmax_composite_daily.sh): the
-          // days after its fit, at the card's own hour.
-          .concat((() => {
-            const fv = (((CX.forward || {}).versions || {})[CX.version] || {}).by_hour || {};
-            const f = fv[String(CX.hour)];
-            return f && f.n ? [[`<span title="${sdEsc(`本版系数拟合之后的 ${f.days} 天、${f.n} 个站日，${hh(CX.hour)} 点时的推算对真值：合成卡误差 ${sdN(f.mae_composite_c, 2)}°C、日照线 ${sdN(f.mae_sun_line_c, 2)}°C、日前预报原样 ${sdN(f.mae_raw_c, 2)}°C；真值落在 ±1 个标准差内 ${sdN(100 * f.within_1sd, 0)}%（理论 68%）`)}">前向误差</span>`, `${sdN(f.mae_composite_c, 2)} · 日前 ${sdN(f.mae_raw_c, 2)}`]] : [];
-          })()),
-        `${hh(CX.hour)}:00 前的报文与卫星对提前 1 天的预报：气温差 ${sdSg(CX.x.tdev, 1)}°C、湿度 ${sdSg(CX.x.rh, 0)} 个百分点、露点 ${sdSg(CX.x.dew, 1)}°C、风 ${sdSg(CX.x.wind, 1)} m/s、06–${hh(CX.hour)} 点日照平均 ${sdSg(CX.x.sw, 0)} W/m²、降水 ${sdN(CX.x.rain, 0)} 小时。各项乘本站系数相加，再加站点偏差＝ΔT（相对日前预报最高温）。按站分层收缩拟合（${(CX.window || []).join("～")}），样本外 13 点 MAE 0.79°C，对日照线、湿度线都显著更好；增益主要来自气温差，个日上下约 ±${sdN(CX.resid_sd_c, 1)}°C；只上看板，不进任何层`)
-    : CX.state === "too_early"
-    ? sdSunCard("temp", "合成推算最高温", `${hh(CX.from_hour)} 点后推算`, "未到", "", [], `报文到 ${hh(CX.from_hour)}:00 才推算`)
+    ? `<div class="sd-pnl-c sd-cx-total" title="${sdEsc(cxTip)}">
+        <div class="sd-cx-head">
+          <span><em>${sdIcon("temp")}合成推算最高温</em><small>ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}</small></span>
+          <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b>
+          ${CX.forecast_tmax_d1_c == null ? "" : `<div class="sd-cx-land"><span>日前预报 <b>${sdN(CX.forecast_tmax_d1_c, 1)}</b></span><span>→ 推算 <b class="${sdWarmCls(CX.total_c)}">${sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)}°C</b></span></div>`}
+          <div class="sd-cx-buckets" title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布区间覆盖率与名义值相差不到 3 个百分点`)}">${
+            (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div>
+          ${cxForward}
+        </div>
+        <div class="sd-cx-plot">${sdCompositeChart(CX.series)}</div>
+        <div class="sd-cx-parts"><small class="muted">各项贡献（°C）</small>${cxBars(CX)}</div>
+      </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"
-    ? sdSunCard("temp", "合成推算最高温", `${hh(CX.hour)} 点`, "未到", "", [], CX.state === "waiting_satellite" ? "06 点以来的卫星日照还没到齐" : "日前预报日照不全")
+    ? `<div class="sd-pnl-c sd-cx-total"><div class="sd-cx-head"><span><em>${sdIcon("temp")}合成推算最高温</em><small>${hh(CX.hour)} 点</small></span><b class="muted">未到</b><small class="muted">${CX.state === "waiting_satellite" ? "卫星日照还没到齐" : "日前预报日照不全"}</small></div></div>`
     : "";
   const cards = [
     compositeCard,
+    tempCard,
     sdSunCard("sun", "预报日照", "全天 · MJ/m²", fcPct == null ? "—" : sdSg(fcPct, 0) + "%", sdWarmCls(fcPct),
       // When each was issued (user 2026-10-15「10.5 → 12.4，前增加时间轴」): the
       // latest as fetched, the earlier one ~24 h before it (per hour, the run a
@@ -25569,26 +25567,12 @@ function sdSky(day){
       : sdSunCard("sun", "实况对比预报", `${span} · MJ/m²`, swPct == null ? "—" : sdSg(swPct, 0) + "%", sdWarmCls(swPct),
           [["实况", sdN(swObs, 1)], ["预报", sdN(swFc, 1)]],
           `${bySat ? `卫星实测（${sat.label}），${sat.via || "约晚 1 小时"}` : "无卫星覆盖：按报文云量推算，霾与中高云下偏高"}；对最新预报同一段小时（今天 00:00 至 ${hh(swTo)}:00）的加总${bySat ? "；卫星每小时数据约在该小时开始后 75 分钟公开" : ""}`),
-    T && T.state === "ok" && T.forecast_tmax_d1_c != null
-      // The increment leads (user 2026-10-17 「日照推算最高温重点突出增量∆温度」):
-      // the big number is ΔT on the day-ahead maximum; the maximum it points
-      // to sits between the two forecasts below.
-      ? sdSunCard("temp", "日照推算最高温", `ΔT · 日照 ${sdSg(T.wm2_d1, 0)} W/m²`, `${sdSg(T.shift_c, 1)}°C`, sdWarmCls(T.shift_c),
-          [["日前预报", sdN(T.forecast_tmax_d1_c, 1)], ["＋ΔT", sdN(T.forecast_tmax_d1_c + T.shift_c, 1)]]
-            .concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
-          `05–${hh(T.last_hour)} 点卫星日照比提前 1 天的预报平均 ${sdSg(T.wm2_d1, 0)} W/m²，历史上最高温平均${T.shift_c >= 0 ? "高于" : "低于"}日前预报 ${sdN(Math.abs(T.shift_c), 1)}°C（区间 ${sdSg(T.range_c[0], 1)}～${sdSg(T.range_c[1], 1)}°C）。最新预报已吸收一部分。只解释约 ${sdN(100 * T.r2, 0)}% 的偏差，个日上下约 ±${sdN(T.resid_sd_c, 1)}°C；${T.window ? T.window.join("～") : ""} ${T.n} 站日拟合；仅作参考，不进任何层。`)
-      // Too early to read: the card stays, with the two forecasts' maxima
-      // (user 2026-10-17 「温度显示不见了」).
-      : T && T.state === "too_early"
-      ? sdSunCard("temp", "日照推算最高温", `${hh(T.from_hour)} 点后推算`, "未到", "",
-          [["日前预报", sdN(T.forecast_tmax_d1_c, 1)]].concat(fcMax == null ? [] : [["最新预报", sdN(fcMax, 1)]]),
-          `卫星日照要到 ${hh(T.from_hour)}:00 才够推算`)
-      : "",
     cloudCard,
     ...fcOnly,
     dewCard,
     rhCard,
     windCard,
+    rainCard,
   ].join("");
   const headline = observed.length ? `<b>${off}</b>/${observed.length} 小时云或日照偏离预报` : "尚无实况可对照";
   return `<details open class="sd-skybox"><summary><b>逐小时实况对预报</b> <span class="sd-sub">${headline}</span></summary>
