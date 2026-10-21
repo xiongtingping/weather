@@ -16856,6 +16856,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-fwd{font-size:11px;color:var(--muted)}
 .sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:12px}
 .sd-cx-plot .sd-cx-chart .sd-cx-last{font-size:14px}
+.sd-cx-plot .sd-cx-chart .sd-cx-ext{font-size:11.5px;font-weight:600;fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px}
 .sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
 .sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}
 .sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
@@ -25626,12 +25627,24 @@ function sdSky(day){
     };
     const dots = series.map((p, i) => `<g class="sd-cx-pt" data-cx-detail="${sdEsc(detail(p))}"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="9" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 4.6 : 3.4}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"/><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}；点击看明细`)}</title></g>`).join("");
     const last = series[series.length - 1];
+    // The day's highest and lowest ΔT so far, marked (user 2026-10-21 「图表上标记最高
+    // 和最低的ΔT」): a ring and a label above the highest, below the lowest; the
+    // newest point keeps its own label, so an extreme that is the newest is only ringed.
+    const hiP = series.reduce((a, p) => p.total_c > a.total_c ? p : a, series[0]);
+    const loP = series.reduce((a, p) => p.total_c < a.total_c ? p : a, series[0]);
+    const mark = (p, word, up) => {
+      const x = X(p.hour), y = Y(p.total_c);
+      const anchor = x < x0 + 30 ? "start" : x > x1 - 30 ? "end" : "middle";
+      return `<circle cx="${x}" cy="${y}" r="7" fill="none" stroke="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}" stroke-width="1.4"/>`
+        + (p === last ? "" : `<text class="sd-cx-ext" x="${x}" y="${up ? Math.max(y - 11, y0 + 10) : Math.min(y + 20, y1 - 4)}" text-anchor="${anchor}">${word} ${sdSg(p.total_c, 1)}</text>`);
+    };
+    const extremes = series.length > 1 && hiP.total_c !== loP.total_c ? mark(hiP, "最高", true) + mark(loP, "最低", false) : "";
     return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
       <polygon points="${band}" fill="var(--muted)" opacity=".13"/>
       <line x1="${x0}" x2="${x1}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width=".8"/>
       <line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--line)"/>
       <g class="sd-cx-ax">${ticksX}${ticksY}</g>
-      ${line}${dots}
+      ${line}${extremes}${dots}
       <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
     </svg>`;
   };
