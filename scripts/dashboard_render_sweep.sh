@@ -35,12 +35,29 @@ SOURCE="scripts/calibration_dashboard.py"
 # compute STARTED; a wake before that exits here, reading nothing.  The stamp
 # is written when a compute starts, so a start skipped for the WAL below is
 # retried the next minute instead of a half hour later.
+#
+# ... and never sooner than PM_DASHBOARD_RENDER_GAP_SEC after the previous
+# compute ENDED (user 2026-10-21 「整页计算每轮之后强制留出空档：比如结束后至少
+# 隔 10 分钟再开下一轮，整页刷新会稍慢一点」).  A 20-25 minute compute every
+# 1,800 s from its start left the research render a 5-10 minute gap, which it
+# leaves the moment the next compute starts: member_depth and skill went 25-30
+# hours unrefreshed.  The end stamp is written however the compute ended
+# (finished, failed or killed at its deadline); one older than the start stamp
+# is a compute that never got to write it, and does not hold the next back.
 RENDER_EVERY_SEC="${PM_DASHBOARD_RENDER_EVERY_SEC:-1800}"
+RENDER_GAP_SEC="${PM_DASHBOARD_RENDER_GAP_SEC:-600}"
 START_STAMP="data/dashboard_render.compute_started"
+END_STAMP="data/dashboard_render.compute_ended"
 if [ -f "$START_STAMP" ]; then
   since=$(( $(date +%s) - $(stat -f '%m' "$START_STAMP") ))
   if [ "$since" -lt "$RENDER_EVERY_SEC" ]; then
     exit 0
+  fi
+  if [ -f "$END_STAMP" ] && [ "$(stat -f '%m' "$END_STAMP")" -ge "$(stat -f '%m' "$START_STAMP")" ]; then
+    since_end=$(( $(date +%s) - $(stat -f '%m' "$END_STAMP") ))
+    if [ "$since_end" -lt "$RENDER_GAP_SEC" ]; then
+      exit 0
+    fi
   fi
 fi
 # Never start while the store's WAL is already past the resident's
@@ -131,6 +148,7 @@ else
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] compute failed (exit $rc)"
   fi
 fi
+touch "$END_STAMP"
 draw_page
 # A render draws with the template it imported at start, and one of these
 # takes twenty minutes to an hour and a half.  A template edit that lands

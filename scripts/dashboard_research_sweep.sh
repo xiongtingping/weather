@@ -36,12 +36,13 @@ PY="$(resolve_project_python "$PROJECT_DIR")" || {
 cd "$PROJECT_DIR"
 PAGE_RENDER_PATTERN="${PM_DASHBOARD_PAGE_RENDER_PATTERN:-calibration_dashboard.py --compute-pages}"
 # Wait the page render out rather than skip the hour.  The page render runs
-# 17-25 minutes and restarts 30 minutes after it ends, so an hourly start
-# lands inside one about half the time: on 2026-10-01 seven of fourteen
+# 20-25 minutes, starts every 30 minutes from its previous start and never
+# sooner than 10 minutes after its previous end (dashboard_render_sweep.sh,
+# 2026-10-21), so an hourly start lands inside one most of the time: on 2026-10-01 seven of fourteen
 # research starts were skipped, and the pages only this render refreshes
 # (member_depth, run_cadence, certificate_authority, ssot_capacity) sat 10-25
-# hours old on the board.  Its end opens a 30-minute gap with no page
-# render; that gap is this render's.
+# hours old on the board.  Its end opens a gap of at least 10 minutes with no
+# page render; that gap is this render's.
 WAIT_SEC="${PM_DASHBOARD_RESEARCH_WAIT_SEC:-1500}"
 POLL_SEC="${PM_DASHBOARD_RESEARCH_WAIT_POLL_SEC:-15}"
 waited=0

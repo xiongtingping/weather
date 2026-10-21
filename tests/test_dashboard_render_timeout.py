@@ -23,7 +23,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SWEEP = ROOT / "scripts" / "dashboard_render_sweep.sh"
-PLIST = Path.home() / "Library" / "LaunchAgents" / "com.weather.dashboard_render.plist"
 
 
 def _project(tmp_path: Path, *, render_seconds: float) -> Path:
@@ -112,16 +111,14 @@ def test_the_default_deadline_sits_inside_the_interval_with_a_gap_for_the_wal() 
     match = re.search(r'RENDER_TIMEOUT_SEC="\$\{PM_DASHBOARD_RENDER_TIMEOUT_SEC:-(\d+)\}"', text)
     assert match, "the deadline reads PM_DASHBOARD_RENDER_TIMEOUT_SEC with a numeric default"
     default = int(match.group(1))
-    interval = 1800
-    if PLIST.exists():
-        # A regex, not plistlib: the installed plist carries a raw ``&`` in a
-        # comment that launchd tolerates and expat does not.
-        found = re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", PLIST.read_text(encoding="utf-8"))
-        if found:
-            interval = int(found.group(1))
+    # The cadence is the sweep's own since 2026-10-21 (launchd wakes it every
+    # minute; a compute starts RENDER_EVERY_SEC after the previous start).
+    cadence = re.search(r'RENDER_EVERY_SEC="\$\{PM_DASHBOARD_RENDER_EVERY_SEC:-(\d+)\}"', text)
+    assert cadence, "the cadence reads PM_DASHBOARD_RENDER_EVERY_SEC with a numeric default"
+    interval = int(cadence.group(1))
     assert 600 <= default <= interval - 300, (
         f"default {default}s: above a healthy render (median 10.8 min, max 21.5 min on a healthy day) "
-        f"and at least five minutes under the {interval}s StartInterval, so a killed run leaves a gap "
+        f"and at least five minutes under the {interval}s cadence, so a killed run leaves a gap "
         "with no render holding a snapshot"
     )
 
@@ -198,3 +195,39 @@ def test_a_wake_inside_the_cadence_reads_nothing(tmp_path: Path) -> None:
     assert (project / "data" / "dashboard_render.compute_started").exists()
     second = run()
     assert second.returncode == 0 and second.stdout == ""
+
+
+def test_a_wake_inside_the_gap_after_a_compute_ended_reads_nothing(tmp_path: Path) -> None:
+    """2026-10-21 (「结束后至少隔 10 分钟再开下一轮」): past the start cadence,
+    a compute still waits PM_DASHBOARD_RENDER_GAP_SEC after the previous one
+    ended -- the research render's gap; an end stamp older than the start
+    (a compute that never wrote it) does not hold the next back."""
+
+    project = _project(tmp_path, render_seconds=0.2)
+    (project / "data").mkdir()
+    env = dict(os.environ)
+    env["TMPDIR"] = str(project / "locks")
+    env["PM_DASHBOARD_RENDER_EVERY_SEC"] = "0"
+    (project / "locks").mkdir(exist_ok=True)
+    run = lambda: subprocess.run(  # noqa: E731
+        ["bash", str(project / "scripts" / SWEEP.name)],
+        cwd=str(project), env=env, capture_output=True, text=True, timeout=60,
+    )
+    first = run()
+    assert first.returncode == 0, first.stderr
+    ended = project / "data" / "dashboard_render.compute_ended"
+    assert ended.exists()
+    second = run()
+    assert second.returncode == 0 and second.stdout == "", second.stdout
+    # The gap elapsed: the next compute starts.
+    past = time.time() - 601
+    os.utime(ended, (past, past))
+    started = project / "data" / "dashboard_render.compute_started"
+    os.utime(started, (past - 60, past - 60))
+    third = run()
+    assert "dashboard compute" in third.stdout
+    # A compute killed before it wrote its end: the stale end stamp is ignored.
+    os.utime(ended, (past - 120, past - 120))
+    os.utime(started, (time.time() - 5, time.time() - 5))
+    fourth = run()
+    assert "dashboard compute" in fourth.stdout
