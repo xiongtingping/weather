@@ -395,7 +395,9 @@ def test_the_cheap_starved_pages_go_before_a_heavier_more_overdue_one(pages) -> 
 
     now = datetime(2026, 10, 1, 16, 0, tzinfo=timezone.utc)
     heavy = C.RESEARCH_SECTION_MIN_COST_SEC
-    _page(pages, "run_cadence", age_sec=C.STARVED_PAGE_AGE_SEC * 9, cost=heavy * 6, now=now)
+    # Short of the board's overdue line (past it, a heavy page goes first:
+    # test_a_heavy_page_past_the_overdue_line_goes_first).
+    _page(pages, "run_cadence", age_sec=C.RESEARCH_PAGE_OVERDUE_SEC - 3600, cost=heavy * 6, now=now)
     _page(pages, "certificate_authority", age_sec=C.STARVED_PAGE_AGE_SEC * 2, cost=14.0, now=now)
     _page(pages, "ssot_capacity", age_sec=C.STARVED_PAGE_AGE_SEC * 3, cost=45.0, now=now)
     specs = {name: {} for name in ("run_cadence", "certificate_authority", "ssot_capacity")}
@@ -421,6 +423,39 @@ def test_a_heavy_page_that_never_fits_after_the_cheap_ones_goes_first(pages) -> 
     names = [name for _overdue, name, _cost in C.research_due(specs, now)]
 
     assert names == ["giant_old", "cheap", "fits", "giant"]
+
+
+def test_a_heavy_page_past_the_overdue_line_goes_first(pages) -> None:
+    """2026-10-21: with the page compute every 1,800 s from its start and
+    20-25 minutes long, the cheap pages sat 6 h old (past the cap) and took
+    every research run; member_depth and skill went 25-30 hours untried."""
+
+    now = datetime(2026, 10, 21, 12, 54, tzinfo=timezone.utc)
+    hour = 3600.0
+    for name, age, cost in (("scorecard", 6.3, 171.0), ("h5_readiness", 6.2, 26.0),
+                            ("ssot_capacity", 4.7, 14.0),
+                            ("member_depth", 29.9, 403.0), ("skill", 25.2, 1095.0),
+                            ("truth_landing", 15.5, 306.0)):
+        _page(pages, name, age_sec=age * hour, cost=cost, now=now)
+    specs = {name: {} for name in ("scorecard", "h5_readiness", "ssot_capacity",
+                                   "member_depth", "skill", "truth_landing")}
+
+    names = [name for _o, name, _c in C.research_due(specs, now)]
+    assert names[0] == "member_depth", names
+    # Once refreshed, the next overdue one leads the following run.
+    _page(pages, "member_depth", age_sec=60, cost=403.0, now=now)
+    names = [name for _o, name, _c in C.research_due(specs, now)]
+    assert names[0] == "skill", names
+    # A cheap page past the line too, but younger, does not hold it back
+    # (10-21: ssot_capacity, 14 s, was 24.7 h old) ...
+    _page(pages, "member_depth", age_sec=29.9 * hour, cost=403.0, now=now)
+    _page(pages, "ssot_capacity", age_sec=24.7 * hour, cost=14.0, now=now)
+    names = [name for _o, name, _c in C.research_due(specs, now)]
+    assert names[0] == "member_depth", names
+    # ... and an older one keeps the run for the cheap pages.
+    _page(pages, "h5_readiness", age_sec=31 * hour, cost=26.0, now=now)
+    names = [name for _o, name, _c in C.research_due(specs, now)]
+    assert names[0] == "h5_readiness", names
 
 
 def test_the_cheap_pages_take_back_the_run_once_starved_past_the_cap(pages) -> None:

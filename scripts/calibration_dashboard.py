@@ -15717,7 +15717,26 @@ def research_due(specs: Mapping[str, Any], now: datetime) -> list[tuple[float, s
          if cost < RESEARCH_SECTION_MIN_COST_SEC),
         default=0.0,
     )
-    if oldest_cheap < RESEARCH_CHEAP_STARVE_CAP_SEC:
+    # And a heavy page past the board's overdue line goes first whatever the
+    # cap says, unless a cheap page is older still.  The page compute
+    # starts every 1,800 s since ecee4a3d (2026-10-21) and runs 20-25 minutes,
+    # so a research run has a 5-10 minute gap and stops at the next compute:
+    # the cheap pages alone outran it (6 h old, past the cap above), the cap
+    # handed them every run, and member_depth (403 s) and skill (1,095 s) sat
+    # 25-30 hours old, flagged 「研究超期」, never once tried (user 「前端超期
+    # 板块为什么还是没有渲染？」).  A run's first section runs to its end, so
+    # one heavy page a run always lands; a cheap page waits one section more.
+    overdue_heavy = [
+        item for item in due
+        if item[2] >= RESEARCH_SECTION_MIN_COST_SEC
+        and item[1] not in killed_at
+        and _page_ages[item[1]] >= RESEARCH_PAGE_OVERDUE_SEC
+    ]
+    first = max(overdue_heavy, key=lambda item: (_page_ages[item[1]], item[1]), default=None)
+    if first is not None and _page_ages[first[1]] > oldest_cheap:
+        due.remove(first)
+        due.insert(0, first)
+    elif oldest_cheap < RESEARCH_CHEAP_STARVE_CAP_SEC:
         spent, skipped = 0.0, []
         for item in due:
             if spent and spent + item[2] > RESEARCH_RUN_BUDGET_SEC:
