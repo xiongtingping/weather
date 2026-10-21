@@ -24,7 +24,8 @@ OUT = e.ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
 RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
 # 9..17 from M3; 0..8 from M6 (reading_m6_20261021T022437Z): every hour but 6
 # beat the station-bias mean out of sample, so 6 h is left off.
-HOURS = (0, 1, 2, 3, 4, 5, 7, 8) + tuple(range(9, 18))
+# 18..23 from M7 (reading_m7_20261021T023523Z): every hour passed.
+HOURS = (0, 1, 2, 3, 4, 5, 7, 8) + tuple(range(9, 18)) + tuple(range(18, 24))
 
 
 def main() -> int:

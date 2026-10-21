@@ -60,6 +60,8 @@ def _newest(obs, fc, i):
 def feats(r: dict, H: int) -> dict:
     if H < 9:
         return night_feats(r, H)
+    if H > 17:
+        return evening_feats(r, H)
     i = H - 6
     sw = float(np.mean([o - f for o, f in zip(r["sw_obs"][:i + 1], r["sw_fc"][:i + 1])]))
     rh = _newest(r["rh_obs"], r["rh_fc"], i)
@@ -89,6 +91,26 @@ def night_feats(r: dict, H: int) -> dict:
         "wind": _newest(full("wind_obs"), full("wind_fc"), H),
         "tdev": _newest(full("t_obs"), full("t_fc"), H),
         "rain": float(sum(1 for w in full("wet_obs")[:H + 1] if w)),
+    }
+
+
+def evening_feats(r: dict, H: int) -> dict:
+    """PROTOCOL_M7: at 18..23 h the report features look back to 06 h over the
+    day's and the evening's arrays, rain counts from 06 h, sunshine stays at
+    its 06..17 mean."""
+
+    ev = r.get("evening") or {}
+    full = lambda k: list(r[k]) + list(ev.get(k) or [None] * 6)  # noqa: E731 -- index = local hour - 6
+    i = H - 6
+    rh = _newest(full("rh_obs"), full("rh_fc"), i)
+    sw = float(np.mean([o - f for o, f in zip(r["sw_obs"], r["sw_fc"])]))
+    return {
+        "sw": max(-300.0, min(300.0, sw)),
+        "rh": None if rh is None else max(-20.0, min(20.0, rh)),
+        "dew": _newest(full("dew_obs"), full("dew_fc"), i),
+        "wind": _newest(full("wind_obs"), full("wind_fc"), i),
+        "tdev": _newest(full("t_obs"), full("t_fc"), i),
+        "rain": float(sum(1 for w in full("wet_obs")[:i + 1] if w)),
     }
 
 

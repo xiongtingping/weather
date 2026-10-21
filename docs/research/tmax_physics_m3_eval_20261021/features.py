@@ -111,6 +111,10 @@ def main() -> int:
             night = [datetime(d.year, d.month, d.day, h, tzinfo=zone).astimezone(timezone.utc) for h in range(6)]
             nrep = nearest(night)
             gn = lambda var: [fc[var].get(s) for s in night]  # noqa: E731
+            # Local 18..23 (PROTOCOL_M7), the evening the same way.
+            eve = [datetime(d.year, d.month, d.day, h, tzinfo=zone).astimezone(timezone.utc) for h in range(18, 24)]
+            erep = nearest(eve)
+            ge = lambda var: [fc[var].get(s) for s in eve]  # noqa: E731
             out.append({
                 "station": st, "date": d.isoformat(), "month": d.month,
                 "sw_sources": sorted({src_of[s] for s in stamps if s in src_of}),
@@ -131,6 +135,15 @@ def main() -> int:
                     "rh_obs": [None if r is None else relative_humidity(r[1], r[2]) for r in nrep],
                     "wind_obs": [None if r is None or r[3] is None else r[3] * 0.514444 for r in nrep],
                     "wet_obs": [None if r is None else _wet(r[4]) for r in nrep],
+                },
+                "evening": {
+                    "t_fc": ge("temperature_2m"), "dew_fc": ge("dew_point_2m"), "rh_fc": ge("relative_humidity_2m"),
+                    "wind_fc": [None if v is None else v / 3.6 for v in ge("wind_speed_10m")],
+                    "t_obs": [None if r is None else r[1] for r in erep],
+                    "dew_obs": [None if r is None else r[2] for r in erep],
+                    "rh_obs": [None if r is None else relative_humidity(r[1], r[2]) for r in erep],
+                    "wind_obs": [None if r is None or r[3] is None else r[3] * 0.514444 for r in erep],
+                    "wet_obs": [None if r is None else _wet(r[4]) for r in erep],
                 },
             })
     conn.close()

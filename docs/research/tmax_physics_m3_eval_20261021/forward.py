@@ -32,7 +32,7 @@ from bayes_basket_target import station_day_board as board  # noqa: E402
 
 RUNTIME = ROOT / "data" / "runtime" / "tmax_composite"
 COMMITTED = ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
-HOURS = range(0, 18)   # every hour a version fits (0..8 from M6, 6 h left off)
+HOURS = range(0, 24)   # every hour a version fits (0..8 from M6, 6 h left off; 18..23 from M7)
 
 
 def versions() -> list[dict]:
@@ -61,8 +61,7 @@ def board_rows(r: dict) -> list[dict]:
             src, i = r, h - 6
             sw = (r["sw_fc"][i], r["sw_obs"][i])
         else:
-            rows.append({"hour": h, "forecast": {"sw_d1": 0.0}, "obs": None, "sat_sw_wm2": 0.0})
-            continue
+            src, i, sw = r.get("evening") or {}, h - 18, (0.0, 0.0)
         get = lambda k: (src.get(k) or [None] * 12)[i]  # noqa: E731
         fc = {"sw_d1": sw[0], "temp_c_d1": get("t_fc"), "dew_c_d1": get("dew_fc"), "rh_pct_d1": get("rh_fc"),
               "wind_mps_d1": get("wind_fc")}

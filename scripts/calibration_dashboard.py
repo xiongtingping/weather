@@ -25507,8 +25507,8 @@ function sdSky(day){
   const sdCompositeChart = series => {
     if(!series || !series.length) return "";
     // From the day's first point: 0..17 once the night hours (M6) are in.
-    const W = 240, Hh = 104, x0 = 26, x1 = 232, y0 = 10, y1 = 84, h1 = 17;
-    const h0 = Math.min(9, ...series.map(p => p.hour));
+    const W = 240, Hh = 104, x0 = 26, x1 = 232, y0 = 10, y1 = 84;
+    const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
     const lim = Math.max(1.5, ...series.map(p => Math.abs(p.total_c) + 0.3));
     const top = Math.ceil(lim * 2) / 2;
     const X = h => x0 + (h - h0) / (h1 - h0) * (x1 - x0);
@@ -25518,7 +25518,7 @@ function sdSky(day){
     // A missing hour (6 h did not pass M6) breaks the line.
     const segs = series.reduce((a, p, i) => { if(i && p.hour - series[i - 1].hour > 1) a.push([]); a[a.length - 1].push(p); return a; }, [[]]);
     const line = segs.map(sg => `<polyline points="${sg.map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.4"/>`).join("");
-    const ticksX = (h0 < 9 ? [0, 3, 6, 9, 12, 15, 17].filter(h => h >= h0) : [9, 11, 13, 15, 17]).map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
+    const ticksX = (h0 < 9 || h1 > 17 ? [0, 3, 6, 9, 12, 15, 18, 21, 23].filter(h => h >= h0 && h <= h1) : [9, 11, 13, 15, 17]).map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
     const ticksY = [top, 0, -top].map(v => `<text x="${x0 - 4}" y="${Y(v) + 3}" text-anchor="end">${v === 0 ? "0" : sdSg(v, 1)}</text>`).join("");
     const parts = p => Object.entries(p.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([k, v]) => `${CX_NAMES[k] || k} ${sdSg(v, 1)}`).join("、");
