@@ -14230,16 +14230,28 @@ def collect_regional_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
             "run_age_hours": _age_hours(run_init),
             "capture_age_hours": _age_hours(first_query),
         })
+    # The lane's newest capture is the newest of its pairs' (read above by
+    # seek): asking MAX(archive_query_at_utc) over the lane's rows read every
+    # row's hourly-curve JSON overflow pages to reach the column behind it --
+    # 1.6 s when this section was written, 216 s by 10-21 with the
+    # deterministic family's 235k rows, and 950 s on a loaded host that cut
+    # off the 40 sections after it (user 2026-10-21 「继续打前端渲染」).  The
+    # rest reads off the (system, station, day, run) unique index alone.
+    last_query_by_system: dict[str, str] = {}
+    for system_id, _station, _last_run, last_query, _runs in regional_rows:
+        if last_query and str(last_query) > last_query_by_system.get(str(system_id), ""):
+            last_query_by_system[str(system_id)] = str(last_query)
     for system_id, meta in REGIONAL_LANES.items():
         row = conn.execute(
             "SELECT COUNT(*), COUNT(DISTINCT station_id),"
             " COUNT(DISTINCT station_id || '|' || target_local_date),"
-            " MAX(archive_query_at_utc), MAX(run_init_utc)"
+            " MAX(run_init_utc)"
             " FROM calibration_regional_point_run"
             " WHERE ensemble_system_id=?",
             (system_id,),
         ).fetchone()
-        rows, stations, station_days, last_query, last_run = row
+        rows, stations, station_days, last_run = row
+        last_query = last_query_by_system.get(str(system_id))
         captured_stations[system_id] = {
             entry["station_id"] for entry in per_station.get(system_id, [])
         }
