@@ -96,9 +96,24 @@ def test_the_order_state_snapshot_is_found_by_its_version(tmp_path) -> None:
 
 def test_the_exposure_probe_stays_in_the_index(tmp_path) -> None:
     conn = _store(tmp_path / "ssot.db")
+    # The probe only runs for a filled or resting order, so seed one.
+    conn.execute(
+        "INSERT INTO basket_target_order_intents(order_intent_id,decision_id,cycle_id,"
+        "bucket,token_id,side,order_action,limit_price,requested_size,"
+        "requested_notional_usdc,state,live_submit_authorized,idempotency_key,"
+        "intent_json,intent_sha256,created_at) VALUES"
+        "('i1','d1','c1','b','t','YES','BUY',0.5,2,1,'filled',0,'k1','{}',?,"
+        "'2026-10-03T00:00:00Z')",
+        ("0" * 64,),
+    )
+    conn.execute(
+        "INSERT INTO basket_target_order_reconciliations(order_intent_id,state,"
+        "filled_size,filled_notional_usdc,updated_at) VALUES"
+        "('i1','resolved_filled',2,1,'2026-10-03T00:00:00Z')"
+    )
     statements = _traced(conn, lambda: open_exposure_by_station_day(conn, as_of_utc="2026-10-03T12:00:00Z"))
     sql = next(s for s in statements if "FROM basket_target_order_reconciliations r" in s)
-    plan = _plan(conn, sql)
+    plan = _plan(conn, sql.replace("'i1'", "?"))
     assert f"SEARCH d USING COVERING INDEX {EXPOSURE}" in plan, plan
 
 

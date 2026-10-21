@@ -478,6 +478,21 @@ def table_present(conn: sqlite3.Connection) -> bool:
     return _table_present(conn)
 
 
+# ``open_exposure_by_station_day``: intent id -> its decision's event date,
+# for intents already seen on a day before the window then asked about.
+_PAST_INTENT_EVENT_DATES: dict[str, dict[str, str]] = {}
+_EXPOSURE_PROBE_CHUNK = 500
+
+
+def _main_database_file(conn: sqlite3.Connection) -> str:
+    """The main database's file, or "" for an in-memory store (no memo)."""
+
+    for row in conn.execute("PRAGMA database_list"):
+        if str(row[1]) == "main":
+            return str(row[2] or "")
+    return ""
+
+
 def open_exposure_by_station_day(
     conn: sqlite3.Connection, *, as_of_utc: str,
 ) -> list[tuple[str, str, str, float]]:
@@ -499,24 +514,76 @@ def open_exposure_by_station_day(
 
     as_of = _iso(as_of_utc)
     earliest = (as_of - timedelta(days=3)).date().isoformat()
-    rows = conn.execute(
-        "SELECT d.station_id, d.event_date, d.settlement_timezone,"
-        " SUM(CASE WHEN r.state IN ('pending','unknown')"
-        "     THEN MAX(r.filled_notional_usdc, i.requested_notional_usdc)"
-        "     ELSE r.filled_notional_usdc END)"
-        # CROSS JOIN fixes the order: the scan is over the reconciliations
-        # (small rows), each probing its intent and decision by key.  The
-        # planner otherwise scanned the intents; the call runs once per
-        # compile since charter 223.
-        " FROM basket_target_order_reconciliations r"
-        " CROSS JOIN basket_target_order_intents i ON i.order_intent_id = r.order_intent_id"
-        " CROSS JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
-        " WHERE i.order_action = 'BUY' AND d.event_date >= ?"
-        "   AND " + basket_plan_sql("d.plan_id") +
-        "   AND (r.filled_size > 0 OR r.state IN ('pending','unknown'))"
-        " GROUP BY d.station_id, d.event_date, d.settlement_timezone",
-        (earliest,),
-    ).fetchall()
+    candidates = [
+        str(row[0]) for row in conn.execute(
+            "SELECT order_intent_id FROM basket_target_order_reconciliations"
+            " WHERE filled_size > 0 OR state IN ('pending','unknown')"
+        )
+    ]
+    # Every filled order the book ever had is a candidate, and almost all of
+    # them are on station-days long past: 1,011 candidates against 2 inside
+    # the window on 2026-10-21, each probing a ~1 KB intent row and its
+    # decision, 127 calls a cycle -- 16 s of a healthy 141 s cycle and 33 s
+    # under memory pressure, the largest statement in the decision loop.  An
+    # intent's decision and that decision's event date never change, so an
+    # intent once seen on a day before some window is out of every window
+    # that starts after that day: ``_PAST_INTENT_EVENT_DATES`` remembers it
+    # (per database file, old rows only -- nothing the open transaction
+    # could still roll back), as it does a sell, and only the rest are
+    # probed.
+    database_file = _main_database_file(conn)
+    past = _PAST_INTENT_EVENT_DATES.setdefault(database_file, {}) if database_file else {}
+    probe = [
+        intent_id for intent_id in candidates
+        if not (intent_id in past and past[intent_id] < earliest)
+    ]
+    sums: dict[tuple[str, str, str], list[tuple[str, float]]] = {}
+    for start in range(0, len(probe), _EXPOSURE_PROBE_CHUNK):
+        chunk = probe[start:start + _EXPOSURE_PROBE_CHUNK]
+        marks = ",".join("?" * len(chunk))
+        for intent_id, station, event_date, tz, is_basket, is_buy, usdc in conn.execute(
+            "SELECT r.order_intent_id, d.station_id, d.event_date,"
+            " d.settlement_timezone, " + basket_plan_sql("d.plan_id") + ","
+            " i.order_action = 'BUY',"
+            " CASE WHEN r.state IN ('pending','unknown')"
+            "     THEN MAX(r.filled_notional_usdc, i.requested_notional_usdc)"
+            "     ELSE r.filled_notional_usdc END"
+            # CROSS JOIN fixes the order: each reconciliation probes its
+            # intent and decision by key (the decision through the covering
+            # exposure index).  The planner otherwise scanned the intents.
+            # LEFT: the lanes' sells carry decision ids of their own.  The
+            # event-date term (true of every decision) is what keeps the
+            # probe on that index; on the key alone it reads the whole row.
+            " FROM basket_target_order_reconciliations r"
+            " CROSS JOIN basket_target_order_intents i ON i.order_intent_id = r.order_intent_id"
+            " LEFT JOIN auto_trade_decisions d ON d.decision_id = i.decision_id"
+            "   AND d.event_date > ''"
+            f" WHERE r.order_intent_id IN ({marks})"
+            "   AND (r.filled_size > 0 OR r.state IN ('pending','unknown'))",
+            chunk,
+        ):
+            if not is_buy:
+                # A sell (the 0.999 recycle, the misbuy exit) is never
+                # exposure, and an intent's action never changes: out of
+                # every window ("" sorts before any date).
+                if database_file:
+                    past[str(intent_id)] = ""
+                continue
+            if event_date is None:
+                continue
+            day = str(event_date)
+            if day < earliest:
+                if database_file:
+                    past[str(intent_id)] = day
+                continue
+            if not is_basket:
+                continue
+            key = (str(station), day, str(tz))
+            sums.setdefault(key, []).append((str(intent_id), float(usdc or 0.0)))
+    rows = [
+        (*key, sum(usdc for _intent, usdc in sorted(parts)))
+        for key, parts in sorted(sums.items())
+    ]
     out: list[tuple[str, str, str, float]] = []
     for station, event_date, tz, usdc in rows:
         value = float(usdc or 0.0)
