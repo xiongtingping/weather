@@ -896,7 +896,7 @@ def _tropical_rules(conn, station: str, day: str, zone: ZoneInfo,
         "night_wet_local": night[0]["local"] if night else None, "day_from_local": TROPICAL_DAY_FROM,
         "month": TROPICAL_MONTH_RATES[station][d.month - 1], "rates": rates,
         "history": [{"date": k, "tmax_c": truth[k]} for k in sorted(truth)],
-        "running_high_c": max((m["temp_c"] for m in metar if m.get("temp_c") is not None), default=None),
+        "running_high_c": _settled_high(metar),
         "research": "docs/research/tropical_tmax_regimes_20261018",
         "market_checked": station in TROPICAL_MARKET_CHECKED,
     }
@@ -931,6 +931,14 @@ def _low_cloud_cover(body: Sequence[str]) -> float | None:
     return cover if said else None
 
 
+def _settled_high(metar: Sequence[Mapping[str, Any]]) -> float | None:
+    """The day's reported high over the reports that settle it (charter 276:
+    a SPECI does not from its city's switch date)."""
+
+    return max((m["temp_c"] for m in metar if m.get("temp_c") is not None and m.get("settles", True)),
+               default=None)
+
+
 def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -954,6 +962,7 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
     out = []
     seen = set()
     running = None
+    from .settlement_basis import report_settles  # noqa: PLC0415
     for at, raw, temp, kind, cor in rows:
         key = (str(at), str(raw))
         if key in seen:
@@ -961,7 +970,10 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
         seen.add(key)
         parsed = rex.explain_metar(str(raw))
         t = _float(temp) if temp is not None else _float(parsed.get("temp_c"))
-        if t is not None:
+        # Charter 276: from a city's switch date a SPECI does not settle, so it
+        # neither raises the reported high nor counts toward it here.
+        settles = report_settles(station, day, parsed.get("kind") or kind)
+        if t is not None and settles:
             running = t if running is None else max(running, t)
         when = _utc(at)
         tokens = str(raw).split()
@@ -980,7 +992,7 @@ def _metar(station: str, day: str, zone: ZoneInfo) -> list[dict[str, Any]]:
         out.append({
             "valid_at_utc": str(at),
             "local": when.astimezone(zone).strftime("%H:%M") if when else "",
-            "raw": str(raw), "kind": parsed.get("kind") or kind,
+            "raw": str(raw), "kind": parsed.get("kind") or kind, "settles": settles,
             "clouds": [t for t in body if t[:3] in ("FEW", "SCT", "BKN", "OVC", "VV/")
                        or t in ("CAVOK", "NSC", "NCD", "SKC", "CLR")],
             "visibility_m": vis,
@@ -1907,7 +1919,7 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
     axis = ladder_axis(newest["ordinals"],
                        _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
     metar = _metar(station, day, zone)
-    running_high = max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None)
+    running_high = _settled_high(metar)
     stages = {}
     for stage, head in heads.items():
         if head is None:
@@ -2022,7 +2034,7 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
     return {
         "metar": metar,
         "tropical": _tropical_rules(conn, station, day, zone, metar),
-        "running_high_c": max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None),
+        "running_high_c": _settled_high(metar),
         "taf": _taf(conn, station, day),
         "precip": _precip(conn, station, day),
         "precip_sat": _precip_sat(station, day, zone),
@@ -2271,7 +2283,7 @@ def past_peak(conn, station: str, day: str, zone: ZoneInfo, now: datetime) -> di
 
     peak = _model_peak(conn, station, day, zone)
     metar = _metar(station, day, zone)
-    high = max((m["temp_c"] for m in metar if m["temp_c"] is not None), default=None)
+    high = _settled_high(metar)
     latest = next((m for m in reversed(metar) if m["temp_c"] is not None), None)
     result = {"past": False, "peak": peak, "running_high_c": high,
               "latest_temp_c": None if latest is None else latest["temp_c"],

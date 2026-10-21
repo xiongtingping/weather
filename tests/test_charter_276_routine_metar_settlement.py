@@ -216,3 +216,25 @@ def test_a_moved_city_settles_its_earlier_days_on_the_station_it_replaced(tmp_pa
     # routine-only follows the station the day settles on: KDEN from 10-23, KBKF never
     assert settlement_basis.routine_metar_only("KDEN", "2026-10-23")
     assert not settlement_basis.routine_metar_only("KBKF", "2026-10-22")
+
+
+def test_the_repair_lane_reads_the_awc_page_as_the_rules_state_it() -> None:
+    """Charter 225 on charter 276's markets: the AWC raw page the rules name is
+    the evidence -- SPECI out, remark tenths first, the local day only."""
+
+    from bayes_basket_target.settlement_source_truth import ContractError, decide, parse_awc_routine_metars
+
+    url = "https://aviationweather.gov/api/data/metar?ids=KLGA&format=raw&date=2026-10-21T04:00:00Z&hours=27"
+    page = "\n".join([
+        "METAR KLGA 210351Z 30008KT 10SM CLR 14/02 A3010 RMK AO2 T01390022",   # 10-20 23:51 local
+        "SPECI KLGA 201912Z 30008KT 10SM CLR 22/02 A3010 RMK AO2 T02220022",   # hottest, but a SPECI
+        "METAR KLGA 201851Z 30008KT 10SM CLR 21/02 A3010 RMK AO2 T02060022",   # 20.6 C
+        "METAR KLGA 200351Z 30008KT 10SM CLR 25/02 A3010 RMK AO2 T02500022",   # 10-19 local: outside
+    ])
+    got = parse_awc_routine_metars(page, station_id="KLGA", event_date="2026-10-20",
+                                   settlement_timezone="America/New_York", unit="F", request_url=url)
+    assert got["identity"]["speci_excluded"] == 1 and got["value"] == pytest.approx(69.08)
+    assert decide(paid_bucket="68-69°F", unit="F", source_value=got["value"])[1] == pytest.approx(69.08)
+    with pytest.raises(ContractError):
+        parse_awc_routine_metars(page, station_id="KJFK", event_date="2026-10-20",
+                                 settlement_timezone="America/New_York", unit="F", request_url=url)

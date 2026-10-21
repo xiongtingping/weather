@@ -27,6 +27,7 @@ from typing import Any, Mapping
 
 from .contracts import ContractError
 from .settlement_source_truth import (
+    AWC_FAMILY,
     NOAA_FAMILY,
     PAGE_KIND,
     RESOLUTION_KIND,
@@ -35,6 +36,9 @@ from .settlement_source_truth import (
 
 WU_OBJECT = "wu_daily_history.html.gz"
 NOAA_OBJECT = "noaa_summary.json"
+# Charter 276: the market's own AWC raw-METAR URL, kept as fetched.
+AWC_OBJECT = "awc_metar_raw.txt.gz"
+AWC_MAX_BYTES = 512 * 1024
 RESOLUTION_OBJECT = "market_resolution.json"
 WU_MAX_BYTES = 2 * 1024 * 1024
 GAMMA_EVENT_URL = "https://gamma-api.polymarket.com/events?slug="
@@ -93,6 +97,15 @@ def capture(
 
     if market["family"] == NOAA_FAMILY:
         raise ContractError("settlement_source_noaa_page_data_origin_locked")
+    if market["family"] == AWC_FAMILY:
+        # The rules name the exact query (station, end of window, hours); it is
+        # fetched as written so the evidence is the page the market settles on.
+        url = str(market["resolution_source"])
+        if not url.startswith("https://aviationweather.gov/api/data/metar?"):
+            raise ContractError("settlement_source_awc_url_invalid")
+        body = _bounded_get(client, url, headers={"User-Agent": USER_AGENT}, limit=AWC_MAX_BYTES)
+        return _keep(captures / station_id / event_date, AWC_OBJECT, body,
+                     {"capture_url": url, "kind": PAGE_KIND})
     if market["family"] != WU_FAMILY:
         raise ContractError("settlement_source_family_unsupported")
     url = wu_capture_url(str(market["resolution_source"]), event_date)
@@ -151,7 +164,8 @@ def load_case(
     """
 
     folder = captures / station_id / event_date
-    page = WU_OBJECT if market["family"] == WU_FAMILY else NOAA_OBJECT
+    page = (WU_OBJECT if market["family"] == WU_FAMILY
+            else AWC_OBJECT if market["family"] == AWC_FAMILY else NOAA_OBJECT)
     name, kind = (page, PAGE_KIND) if (folder / page).exists() else (RESOLUTION_OBJECT, RESOLUTION_KIND)
     path = folder / name
     meta = json.loads((folder / (name + ".meta")).read_text())
@@ -184,6 +198,7 @@ def load_case(
 
 
 __all__ = [
+    "AWC_OBJECT",
     "NOAA_OBJECT",
     "RESOLUTION_OBJECT",
     "WU_OBJECT",

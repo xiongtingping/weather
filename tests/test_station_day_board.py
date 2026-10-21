@@ -825,3 +825,14 @@ def test_mode_agreement_keeps_a_day_whose_books_left_the_hot_store(monkeypatch) 
                  " decision_at_utc TEXT, settlement_timezone TEXT)")
     out = br.mode_agreement_days(conn)
     assert out["days"] == [old] and out["counts"]["kept_days"] == 1
+
+
+def test_the_reported_high_leaves_out_a_speci_that_does_not_settle() -> None:
+    """Charter 276: from a city's switch date a SPECI does not settle, and the
+    board's reported high follows the reports that do."""
+
+    from bayes_basket_target import station_day_board as b
+
+    rows = [{"temp_c": 24.0, "settles": True}, {"temp_c": 26.0, "settles": False}, {"temp_c": None}]
+    assert b._settled_high(rows) == 24.0
+    assert b._settled_high([{"temp_c": 26.0}]) == 26.0  # rows without the flag (older payloads) count

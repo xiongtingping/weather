@@ -65,6 +65,7 @@ from bayes_basket_target.settlement_source_capture import (  # noqa: E402
     load_case,
 )
 from bayes_basket_target.settlement_source_truth import (  # noqa: E402
+    AWC_FAMILY,
     WU_FAMILY,
     materialize_settlement_source_truth,
 )
@@ -149,7 +150,7 @@ def repair(
                 # Wunderground's page is read directly; NOAA's series is
                 # origin-locked to weather.gov, so a NOAA day is evidenced by
                 # the market's own resolution.
-                if market["family"] == WU_FAMILY:
+                if market["family"] in (WU_FAMILY, AWC_FAMILY):
                     capture(client, market=market, station_id=row["station_id"],
                             event_date=row["event_date"], captures=captures)
                 else:

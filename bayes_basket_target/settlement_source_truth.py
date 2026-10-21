@@ -42,6 +42,7 @@ and never over a settlement-source revision that already stands.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import gzip
 import hashlib
 import math
 import re
@@ -69,6 +70,9 @@ AUTHORITY_SCOPE = "FORMAL_NATIVE_ELIGIBLE"
 SETTLEMENT_DEFINITION = "official_daily_tmax_c"
 WU_FAMILY = "WU_DAILY_OBSERVATIONS"
 NOAA_FAMILY = "NOAA_WRH_TIMESERIES"
+# Charter 276: from event date 2026-10-23 every market settles on AWC's routine
+# METARs, published at the raw-METAR API URL the market names.
+AWC_FAMILY = "AWC_ROUTINE_METAR"
 BASIS_SOURCE_IN_BUCKET = "SOURCE_PAGE_IN_PAID_BUCKET"
 BASIS_PAID_DEGREE = "PAID_WHOLE_DEGREE_SOURCE_REVISED_AFTER_FINALITY"
 BASIS_RESOLUTION_DEGREE = "PAID_WHOLE_DEGREE_FROM_RESOLUTION"
@@ -214,6 +218,69 @@ def read_noaa_summary(
         "row_count": int(summary.get("n_rows_day") or 0),
         "readings": [list(row) for row in block.get("rows") or []],
         "value": float(block["value"]),
+    }
+
+
+def parse_awc_routine_metars(
+    text: str,
+    *,
+    station_id: str,
+    event_date: str,
+    settlement_timezone: str,
+    unit: str,
+    request_url: str,
+) -> dict[str, Any]:
+    """The qualifying value of one AWC raw-METAR response, read the way the
+    charter-276 rules state it: every report not beginning SPECI is routine;
+    each gives the remark group's tenths, else the body's whole degree
+    (``weather_basket_yes_runtime.parse_metar_temperature``, the truth lane's
+    own reading); the reports whose time falls on the event date in the
+    station's local time; the highest of them, in the market's unit (Fahrenheit
+    by F = C x 9/5 + 32, rounded half up by ``decide``)."""
+
+    from urllib.parse import parse_qs, urlparse  # noqa: PLC0415
+    from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+    from reported_trajectory_sources import infer_ddhhmm_time  # noqa: PLC0415
+    from weather_basket_yes_runtime import parse_metar_temperature  # noqa: PLC0415
+
+    query = parse_qs(urlparse(str(request_url)).query)
+    if (query.get("ids") or [""])[0].upper() != station_id:
+        raise ContractError("settlement_source_awc_station_mismatch")
+    try:
+        window_end = datetime.fromisoformat(str((query.get("date") or [""])[0]).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ContractError("settlement_source_awc_window_missing") from exc
+    zone = ZoneInfo(settlement_timezone)
+    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+    if not lines or len(lines) > MAX_SOURCE_ROWS:
+        raise ContractError("settlement_source_awc_rows_invalid")
+    readings: list[list[Any]] = []
+    speci = 0
+    for line in lines:
+        if line.upper().startswith("SPECI"):
+            speci += 1
+            continue
+        labelled = line if line.upper().startswith("METAR") else "METAR " + line
+        try:
+            parsed = parse_metar_temperature(labelled, expected_station=station_id)
+        except ValueError:
+            continue
+        at = infer_ddhhmm_time(day=parsed.day, hour=parsed.hour, minute=parsed.minute, reference=window_end)
+        local = at.astimezone(zone)
+        if local.date().isoformat() != str(event_date):
+            continue
+        celsius = float(parsed.reported_temperature_c)
+        value = celsius if unit == "C" else celsius * 9.0 / 5.0 + 32.0
+        readings.append([local.strftime("%H:%M"), round(value, 2)])
+    if not readings:
+        raise ContractError("settlement_source_awc_temperature_missing")
+    return {
+        "identity": {"station_id": station_id, "request_url": str(request_url),
+                     "time_zone": settlement_timezone, "speci_excluded": speci},
+        "row_count": len(lines),
+        "readings": readings,
+        "value": float(max(value for _time, value in readings)),
     }
 
 
@@ -381,6 +448,13 @@ def build_evidence(case: Mapping[str, Any]) -> dict[str, Any]:
             source["raw_bytes"].decode("utf-8", "replace"),
             station_id=station_id, event_date=event_date,
             settlement_timezone=zone, unit=unit,
+        )
+    elif market["family"] == AWC_FAMILY:
+        parsed = parse_awc_routine_metars(
+            gzip.decompress(source["raw_bytes"]).decode("utf-8", "replace")
+            if source["raw_bytes"][:2] == b"\x1f\x8b" else source["raw_bytes"].decode("utf-8", "replace"),
+            station_id=station_id, event_date=event_date,
+            settlement_timezone=zone, unit=unit, request_url=str(source["capture_url"]),
         )
     elif market["family"] == NOAA_FAMILY:
         import json  # noqa: PLC0415 - a NOAA capture is a JSON summary
@@ -602,6 +676,8 @@ __all__ = [
     "PAGE_KIND",
     "RESOLUTION_KIND",
     "NOAA_FAMILY",
+    "AWC_FAMILY",
+    "parse_awc_routine_metars",
     "WU_FAMILY",
     "build_evidence",
     "decide",

@@ -26034,7 +26034,9 @@ function sdMetarTable(day){
   </div>` : "";
   const rows = list.map((m, i) => {
     const g = G(m), prev = list[i + 1] || null, tg = g.temp || {};
-    const kind = /SPECI|COR/.test(m.kind) ? ` <span class="pill red">${sdEsc(m.kind)}</span>` : "";
+    // Charter 276: from the city's switch date a SPECI does not settle.
+    const kind = (/SPECI|COR/.test(m.kind) ? ` <span class="pill red">${sdEsc(m.kind)}</span>` : "")
+      + (m.settles === false ? ` <span class="pill muted" title="宪章 276：自 10-23 起按 AWC 例行 METAR 结算，以 SPECI 开头的报文不计入当天最高温">不计结算</span>` : "");
     return `<tr><td class="mono" title="${sdEsc(m.raw)}"><b>${sdEsc(m.local)}</b>${kind}</td>
       <td class="mono"><b>${m.temp_c == null ? "—" : sdN(m.temp_c, 1) + "°"}</b>${prev ? sdDelta(m.temp_c, prev.temp_c, 1, true) : ""}${sdCode(tg.raw)}</td>
       <td class="mono">${m.dew_c == null ? "—" : sdN(m.dew_c, 0) + "°"}${prev ? sdDelta(m.dew_c, prev.dew_c, 0, null) : ""}</td>
