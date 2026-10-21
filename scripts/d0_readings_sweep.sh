@@ -26,4 +26,8 @@ run_with_timeout 540 "$PROJECT_DIR/data/logs/d0_readings.step.log" nice -n 10 "$
 # The member-trajectory Bayes estimate beside it (user 2026-10-16 「站点看板增加贝叶斯更新的
 # 温度预估显示」): read-only, files under data/board_readings only.
 run_with_timeout 240 "$PROJECT_DIR/data/logs/member_bayes_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.member_bayes_readings || true
+# The WRF project's daily-maximum output (user 2026-10-22 「前端增加"wrf"板块内容」):
+# read-only against the external volume, cached per file; a missing volume
+# writes volume_missing and never fails the sweep.
+run_with_timeout 180 "$PROJECT_DIR/data/logs/wrf_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.wrf_readings || true
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"
