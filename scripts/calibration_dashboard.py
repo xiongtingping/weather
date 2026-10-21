@@ -16867,6 +16867,8 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-plot .sd-cx-chart{display:block;width:100%;height:auto;font-size:12px}
 .sd-cx-plot .sd-cx-chart .sd-cx-last{font-size:14px}
 .sd-cx-plot .sd-cx-chart .sd-cx-ext{font-size:11.5px;font-weight:600;fill:var(--text);paint-order:stroke;stroke:var(--card);stroke-width:3px}
+.sd-cx-plot .sd-cx-chart .sd-cx-projlab{font-size:11px;fill:var(--muted);paint-order:stroke;stroke:var(--card);stroke-width:3px}
+.sd-cx-chart .sd-cx-proj{cursor:help}
 .sd-cx-pt{cursor:pointer}.sd-cx-pt.on circle:last-of-type{stroke:var(--text);stroke-width:2}
 .sd-cx-detail{font-size:12px;margin-top:4px;min-height:2.6em}
 .sd-cx-detail b.sd-warm{color:var(--pill-red-fg)}.sd-cx-detail b.sd-cold{color:var(--accent)}
@@ -25600,13 +25602,17 @@ function sdSky(day){
   const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水", rmax: "已观测最高温"};
   // ΔT through the day on a time axis (user 2026-10-21 「做成带时间轴的趋势图」):
   // each point as the card read it at that hour, the band ±1 residual SD.
-  const sdCompositeChart = series => {
+  const sdCompositeChart = (series, projection) => {
     if(!series || !series.length) return "";
+    // The dashed line (user 2026-10-21 「按照目前的实况趋势」「你用最佳的」): the hours
+    // after the newest reading if today's report-vs-forecast difference carries on
+    // and fades back as it did historically (RESULTS_M11) -- a what-if, unverified.
+    const proj = ((projection || {}).points || []).filter(p => p.total_c != null && isFinite(p.total_c));
     // From the day's first point: 0..17 once the night hours (M6) are in.
     // Wide enough for a tick every hour (user 2026-10-21 「时间小时轴按照1h为单位」).
     const W = 480, Hh = 120, x0 = 30, x1 = 470, y0 = 12, y1 = 98;
-    const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
-    const lim = Math.max(1.5, ...series.map(p => Math.abs(p.total_c) + 0.3));
+    const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = proj.length || Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
+    const lim = Math.max(1.5, ...series.concat(proj).map(p => Math.abs(p.total_c) + 0.3));
     const top = Math.ceil(lim * 2) / 2;
     const X = h => x0 + (h - h0) / (h1 - h0) * (x1 - x0);
     const Y = v => y0 + (top - Math.max(-top, Math.min(top, v))) / (2 * top) * (y1 - y0);
@@ -25637,6 +25643,21 @@ function sdSky(day){
     };
     const dots = series.map((p, i) => `<g class="sd-cx-pt" data-cx-detail="${sdEsc(detail(p))}"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="9" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 4.6 : 3.4}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"/><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}；点击看明细`)}</title></g>`).join("");
     const last = series[series.length - 1];
+    const projTip = p => `${hh(p.hour)}:00 外推：ΔT ${sdSg(p.total_c, 1)}°C${fcTmax == null ? "" : `（→ ${sdN(fcTmax + p.total_c, 1)}°C）`}${parts(p) ? "；" + parts(p) : ""}。假设今天实况相对日前预报的偏差延续并按历史速度回落（日照约 3 小时、气温湿度约 6 小时），未验证`;
+    const fcTmax = CX && CX.forecast_tmax_d1_c;
+    const dashed = proj.length ? `<polyline points="${[last].concat(proj).map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="4 3" opacity=".8"/>`
+      + proj.map(p => `<g class="sd-cx-proj"><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="8" fill="transparent"/><circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="2.2" fill="var(--card)" stroke="var(--muted)" stroke-width="1"/><title>${sdEsc(projTip(p))}</title></g>`).join("")
+      // Its highest point carries the maximum it points to (user 2026-10-21
+      // 「虚线上标注可能的最高温」).
+      + (() => {
+        const pk = proj.reduce((a, p) => p.total_c > a.total_c ? p : a, proj[0]);
+        const x = X(pk.hour), y = Y(pk.total_c);
+        // Written rightwards from the peak, clear of the newest point's ring on its left.
+        const anchor = x > x1 - 90 ? "end" : "start";
+        return `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="2 2"/>`
+          // Under the dashed line: the solid line's labels sit above it.
+          + `<text class="sd-cx-projlab" x="${anchor === "start" ? x - 6 : x + 6}" y="${Math.min(y + 17, y1 - 4)}" text-anchor="${anchor}">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
+      })() : "";
     // The day's highest and lowest ΔT so far, marked (user 2026-10-21 「图表上标记最高
     // 和最低的ΔT」): a ring and a label above the highest, below the lowest; the
     // newest point keeps its own label, so an extreme that is the newest is only ringed.
@@ -25654,7 +25675,7 @@ function sdSky(day){
       <line x1="${x0}" x2="${x1}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width=".8"/>
       <line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--line)"/>
       <g class="sd-cx-ax">${ticksX}${ticksY}</g>
-      ${line}${extremes}${dots}
+      ${line}${dashed}${extremes}${dots}
       <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
     </svg>`;
   };
@@ -25701,7 +25722,7 @@ function sdSky(day){
           })()}
           ${cxForward}
         </div>
-        <div class="sd-cx-plot">${sdCompositeChart(CX.series)}<div class="sd-cx-detail muted">点曲线上的点，看那一小时的明细</div></div>
+        <div class="sd-cx-plot">${sdCompositeChart(CX.series, CX.projection)}<div class="sd-cx-detail muted">点曲线上的点，看那一小时的明细${((CX.projection || {}).points || []).length ? "；虚线：今天实况对预报的偏差延续并按历史速度回落的外推（未验证）" : ""}</div></div>
         <div class="sd-cx-parts"><small class="muted">各项贡献（°C）</small>${cxBars(CX)}</div>
       </div>`
     : CX.state === "waiting_satellite" || CX.state === "waiting_forecast"

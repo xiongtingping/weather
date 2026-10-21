@@ -119,3 +119,16 @@ def test_six_oclock_counts_as_night() -> None:
     rows = _rows(6, 6)
     got = b._composite_at({r["hour"]: r for r in rows}, "ZUUU", fit, 6)
     assert got["x"]["sw"] == 0.0 and got["x"]["phys"] == 0.0 and got["x"]["tdev"] == 2.0
+
+
+def test_the_projection_carries_todays_trend_and_fades_it() -> None:
+    rows = _rows(10, 10)
+    by_hour = {r["hour"]: r for r in rows}
+    trend = b._composite_trend(by_hour, 10)
+    assert abs(trend["temp_c"] - 2.0) < 1e-9 and abs(trend["sw"] - 100.0) < 1e-9 and trend["rain"] == 0.0
+    got = b._composite_tmax_shift(rows, "ZUUU")
+    proj = got["projection"]["points"]
+    assert proj and proj[0]["hour"] == 11 and proj[-1]["hour"] == 23
+    assert got["series"][-1]["hour"] == 10
+    # a warm, sunny morning keeps the dashed line on the warm side
+    assert proj[0]["total_c"] > 0

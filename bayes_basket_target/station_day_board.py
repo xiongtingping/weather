@@ -1221,10 +1221,103 @@ def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> di
     return {"state": "ok", **now, "line_hour": now["hour"],
             "series": [{"hour": p["hour"], "total_c": p["total_c"], "resid_sd_c": p["resid_sd_c"],
                         "parts_c": p["parts_c"]} for p in series],
+            "projection": _composite_projection(by_hour, station, fit, hours, now["hour"]),
             "forecast_tmax_d1_c": round(max(tmax_d1), 1) if len(tmax_d1) == len(rows) and tmax_d1 else None,
             "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc"),
             "version": fit.get("version") or str(fit.get("fitted_at_utc") or "").replace(":", "").replace("-", ""),
             "forward": _composite_forward()}
+
+
+# How the dashed projection carries today's report-vs-forecast difference
+# (docs/research/tmax_physics_m3_eval_20261021/RESULTS_M11.md): over which
+# reported hours it is averaged ("last3" or "since" the morning) and the
+# e-folding hours it fades back to the forecast with (None: it does not fade).
+_TREND_RULES: dict[str, tuple[str, float | None]] = {
+    "sw": ("last3", 3.0), "temp_c": ("last3", 6.0), "dew_c": ("last3", 6.0), "rh_pct": ("last3", 6.0),
+    "wind_mps": ("since", None), "rain": ("last3", 6.0),
+}
+
+
+def _composite_trend(by_hour: Mapping[int, Mapping[str, Any]], from_hour: int) -> dict[str, Any]:
+    """Today's reports against the hourly day-ahead forecast up to ``from_hour``, the way
+    ``_TREND_RULES`` averages them: shortwave (satellite minus forecast),
+    temperature, dew point, humidity and wind as mean differences, rain as the
+    share of reported hours with rain."""
+
+    lo = 6 if from_hour >= 9 else 0
+
+    def pairs(key: str) -> list[float]:
+        got = []
+        for h in range(from_hour, lo - 1, -1):
+            r = by_hour.get(h) or {}
+            f = r.get("forecast") or {}
+            if key == "sw":
+                o, v = r.get("sat_sw_wm2"), f.get("sw_d1")
+            elif key == "rain":
+                ob = r.get("obs") or {}
+                o, v = (None if ob.get("temp_c") is None else float(bool(ob.get("precip")))), 0.0
+            else:
+                o, v = (r.get("obs") or {}).get(key), f.get(key.replace("_c", "_c_d1") if key.endswith("_c") else key + "_d1")
+            if o is not None and v is not None:
+                got.append(o - v)
+        return got
+
+    out: dict[str, Any] = {}
+    for key, (window, _tau) in _TREND_RULES.items():
+        d = pairs(key)
+        if window == "last3":
+            d = d[:3]
+        out[key] = (sum(d) / len(d)) if d else None
+    return out
+
+
+def _composite_projection(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: Mapping[str, Any],
+                          hours: Sequence[int], from_hour: int) -> dict[str, Any]:
+    """The dashed line on the board: the hours after the latest reading, if the
+    way today runs against the forecast carries on and fades back to it as it
+    did historically (``_TREND_RULES``).  A later hour without its report takes
+    the hourly day-ahead forecast (the one the fit compares against) plus the trend times exp(-hours ahead / fade); rain is
+    on while the faded share is at least one half; hours already reported keep
+    their reports.  Then the same fit, hour by hour.  Unverified: a what-if,
+    never scored."""
+
+    trend = _composite_trend(by_hour, from_hour)
+
+    def carry(key: str, base: float | None, ahead: int) -> float | None:
+        if base is None:
+            return None
+        d = trend[key]
+        if d is None:
+            return base
+        tau = _TREND_RULES[key][1]
+        return base + d * (1.0 if tau is None else math.exp(-ahead / tau))
+
+    filled: dict[int, dict[str, Any]] = {}
+    for h in range(24):
+        r = dict(by_hour.get(h) or {"hour": h})
+        f = r.get("forecast") or {}
+        ahead = h - from_hour
+        if ahead > 0:
+            if r.get("sat_sw_wm2") is None and f.get("sw_d1") is not None:
+                r["sat_sw_wm2"] = max(carry("sw", f["sw_d1"], ahead), 0.0)
+            if (r.get("obs") or {}).get("temp_c") is None and f.get("temp_c_d1") is not None:
+                rh = carry("rh_pct", f.get("rh_pct_d1"), ahead)
+                wind = carry("wind_mps", f.get("wind_mps_d1"), ahead)
+                rain = carry("rain", 0.0, ahead)
+                r["obs"] = {"temp_c": carry("temp_c", f["temp_c_d1"], ahead),
+                            "dew_c": carry("dew_c", f.get("dew_c_d1"), ahead),
+                            "rh_pct": None if rh is None else min(max(rh, 0.0), 100.0),
+                            "wind_mps": None if wind is None else max(wind, 0.0),
+                            "precip": rain is not None and rain >= 0.5}
+        filled[h] = r
+    points = []
+    for h in hours:
+        if h <= from_hour:
+            continue
+        p = _composite_at(filled, station, fit, h)
+        if p is not None:
+            points.append({"hour": h, "total_c": p["total_c"], "resid_sd_c": p["resid_sd_c"], "parts_c": p["parts_c"]})
+    return {"trend": trend, "points": points}
 
 
 def _composite_forward() -> dict[str, Any] | None:
