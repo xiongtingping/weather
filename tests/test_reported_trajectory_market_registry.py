@@ -317,8 +317,15 @@ class SettlementSourceContractTests(unittest.TestCase):
 
     def test_baseline_is_the_whole_fleet_and_hourly_only_is_the_us_ladder(self) -> None:
         cities = load_config()["settlement_source_contract"]["cities"]
-        self.assertEqual({entry["station_id"] for entry in cities.values()}, AWC_GLOBAL_STATIONS)
-        self.assertEqual(len(cities), expected_station_count())
+        # A city moved onto another station keeps the one it replaced in the
+        # fleet while that one still settles its earlier days (denver: KBKF
+        # through 2026-10-22, KDEN after).
+        stations = {entry["station_id"] for entry in cities.values()} | {
+            entry["previous_station"]["station_id"]
+            for entry in cities.values() if entry.get("previous_station")
+        }
+        self.assertEqual(stations, AWC_GLOBAL_STATIONS)
+        self.assertEqual(len(stations), expected_station_count())
         for city, entry in cities.items():
             with self.subTest(city=city):
                 # NOAA lists 5-minute rows only at US ASOS, and every F market

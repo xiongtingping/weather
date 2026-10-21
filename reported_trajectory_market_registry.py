@@ -427,8 +427,20 @@ def _validate_settlement_source_contract(value: Any) -> None:
             or not isinstance(entry.get("hourly_data_only"), bool)
             or entry.get("finality") != NEXT_DAY_FINALITY
             or not _routine_from_valid(entry.get("routine_metar_only_from"))
+            or not _previous_station_valid(entry.get("previous_station"))
         ):
             raise ValueError(f"reported_trajectory_settlement_source_contract_invalid:{city}")
+
+
+def _previous_station_valid(value: Any) -> bool:
+    if value is None:
+        return True
+    return (
+        isinstance(value, Mapping)
+        and set(value) == {"station_id", "through"}
+        and bool(STATION_ID_RE.match(str(value.get("station_id") or "")))
+        and _routine_from_valid(value.get("through"))
+    )
 
 
 def _routine_from_valid(value: Any) -> bool:
@@ -451,10 +463,18 @@ def expected_settlement_contract(
 
     if entry is None:
         return None
+    expected = dict(entry)
+    expected.pop("previous_station", None)
+    # A city moved onto another station: the one it replaced settled every
+    # event date up to and including ``through`` (denver: KBKF through
+    # 2026-10-22, KDEN after).
+    previous = entry.get("previous_station")
+    if isinstance(previous, Mapping) and str(event_date) <= str(previous.get("through") or ""):
+        expected["station_id"] = str(previous.get("station_id") or "")
     start = str(entry.get("routine_metar_only_from") or "")
     if start and str(event_date) >= start:
-        return {**entry, "family": AWC_FAMILY}
-    return dict(entry)
+        expected["family"] = AWC_FAMILY
+    return expected
 
 
 def city_from_slug(slug: str) -> str:

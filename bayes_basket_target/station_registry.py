@@ -21,7 +21,7 @@ SCHEMA = "bayes_basket_target_station_coordinate_registry_v1"
 SOURCE_SCHEMA = "awc_stationinfo_v1"
 SOURCE_ID = "awc_stationinfo"
 SOURCE_URL = "https://aviationweather.gov/api/data/stationinfo"
-SOURCE_SNAPSHOT_SHA256 = "baddc3d44bdd441536be23b6d5dc88477bc3e1da1aecf564f6ca1fb068e4e343"
+SOURCE_SNAPSHOT_SHA256 = "b131857df51ac6ac72efd6268546c6c19d419d5d295abde12f1257690762e960"
 
 # Official AWC stationinfo lat/lon values.  Keep this projection intentionally
 # small: elevation, city labels, and provider fields do not belong in the
@@ -38,6 +38,7 @@ _COORDINATES: dict[str, tuple[float, float]] = {
     "KAUS": (30.1831, -97.68063),
     "KBKF": (39.713, -104.758),
     "KDAL": (32.83836, -96.83584),
+    "KDEN": (39.847, -104.656),
     "KHOU": (29.64582, -95.28214),
     "KLAX": (33.93817, -118.3866),
     "KLGA": (40.77945, -73.88027),

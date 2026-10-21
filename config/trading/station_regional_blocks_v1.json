@@ -3,7 +3,7 @@
   "rationale": "Stations under one air mass move together, so spreading capital across them is not diversification. Blocks group stations that share a synoptic regime; the allocator treats a block as fully correlated inside and independent across, which is the conservative reading and needs no estimated correlation matrix. Derived from ICAO region and climate, not from the station registry's timezone column, which is wrong for every non-US station.",
   "default_block": "UNBLOCKED_SINGLETON",
   "blocks": {
-    "NORTH_AMERICA_WEST": ["KLAX", "KSFO", "KSEA", "KBKF"],
+    "NORTH_AMERICA_WEST": ["KLAX", "KSFO", "KSEA", "KBKF", "KDEN"],
     "NORTH_AMERICA_SOUTH_CENTRAL": ["KAUS", "KDAL", "KHOU"],
     "NORTH_AMERICA_NORTHEAST": ["KLGA", "KORD", "CYYZ"],
     "NORTH_AMERICA_SOUTHEAST": ["KATL", "KMIA"],

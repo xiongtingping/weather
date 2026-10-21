@@ -52,6 +52,22 @@ Done in one commit and one restart, in the order the earlier two attempts
 The patch file below is history; the evidence the three stations still have
 to earn (arrival corpus, OOS activation) accrues from here.
 
+## Moved 2026-10-21 (fleet 48 -> 49): KDEN, a city changing station
+
+Denver's markets settle on KBKF through event date 2026-10-22 and on KDEN
+(Denver International) from 2026-10-23, so KDEN joins beside KBKF rather than
+replacing it.  The charter-205 baseline keeps one entry per city and names the
+station it settles on now, with `previous_station: {station_id, through}` for
+the one before; `settlement_basis.settled_station(station, event_date)` is the
+one reading (the registry's expected contract, the truth reconciliation and
+the copy-follow lane's token map all ask it).  Same order as 10-04: SSOT rows
+and ERA5 climatology with the coordinate patched in process (anchor July,
+amplitude 26.1C, the 48 existing anchors unchanged), `prepare_fleet_move.py
+--add KDEN --authority-version global_awc_ssot_v3 --commit-authority --mint`
+(49 rows; prove: 1,291 revision facts, 153 closed days quarantined, KDEN 0 --
+no route yet), then the one commit.  KDEN is not added to the HRRR/NBM
+capture roster: charter 201 freezes that roster to `P1_FEATURE_PAIRS`.
+
 ## What is already done (idempotent, safe to re-verify)
 
 * `calibration_station_registry` and

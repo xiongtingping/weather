@@ -27,6 +27,7 @@ ROUTINE_METAR_ONLY = "ROUTINE_METAR_ONLY"
 _STATION_RE = re.compile(r"^[A-Z0-9]{4}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _cache: tuple[str, float, dict[str, str]] | None = None
+_predecessor_cache: tuple[str, float, dict[str, tuple[str, str]]] | None = None
 
 
 def _routine_from_by_station(path: Path | None = None) -> dict[str, str]:
@@ -62,6 +63,59 @@ def _routine_from_by_station(path: Path | None = None) -> dict[str, str]:
     return found
 
 
+def _predecessor_by_station(path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """Station -> (station it replaced, last event date that one settled).
+
+    A city whose rules move to another station (denver: KBKF through
+    2026-10-22, KDEN from 2026-10-23) keeps one baseline entry naming the
+    station it settles on now, and ``previous_station`` naming the one before
+    and the last event date it settled.
+    """
+
+    global _predecessor_cache
+    path = path or CONFIG_PATH
+    try:
+        mtime = path.stat().st_mtime
+    except OSError as exc:
+        raise ContractError("settlement_basis_config_unreadable") from exc
+    if _predecessor_cache is not None and _predecessor_cache[:2] == (str(path), mtime):
+        return _predecessor_cache[2]
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ContractError("settlement_basis_config_unreadable") from exc
+    cities = ((document.get("settlement_source_contract") or {}).get("cities")) if isinstance(document, dict) else None
+    if not isinstance(cities, dict) or not cities:
+        raise ContractError("settlement_basis_config_invalid")
+    found: dict[str, tuple[str, str]] = {}
+    for entry in cities.values():
+        previous = entry.get("previous_station") if isinstance(entry, dict) else None
+        if previous is None:
+            continue
+        station = str(entry.get("station_id") or "")
+        old = str((previous or {}).get("station_id") or "") if isinstance(previous, dict) else ""
+        through = str((previous or {}).get("through") or "") if isinstance(previous, dict) else ""
+        if not (_STATION_RE.match(station) and _STATION_RE.match(old) and _DATE_RE.match(through)):
+            raise ContractError("settlement_basis_config_invalid")
+        found[station] = (old, through)
+    _predecessor_cache = (str(path), mtime, found)
+    return found
+
+
+def settled_station(station_id: str, event_date: str) -> str:
+    """The station a city's market settles on for one event date.
+
+    ``station_id`` is the station the baseline names for the city now; for an
+    event date on or before its predecessor's last date, the predecessor.
+    """
+
+    station = str(station_id or "").strip().upper()
+    previous = _predecessor_by_station().get(station)
+    if previous is not None and str(event_date) <= previous[1]:
+        return previous[0]
+    return station
+
+
 def routine_metar_only(station_id: str, event_date: str) -> bool:
     """Whether only routine METARs settle this station-day."""
 
@@ -76,4 +130,4 @@ def report_settles(station_id: str, event_date: str, report_type: Any) -> bool:
     return kind != "SPECI" or not routine_metar_only(station_id, event_date)
 
 
-__all__ = ["CONFIG_PATH", "ROUTINE_METAR_ONLY", "report_settles", "routine_metar_only"]
+__all__ = ["CONFIG_PATH", "ROUTINE_METAR_ONLY", "report_settles", "routine_metar_only", "settled_station"]

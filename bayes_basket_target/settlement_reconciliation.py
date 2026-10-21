@@ -38,6 +38,8 @@ from zoneinfo import ZoneInfo
 
 from weather_basket_yes_runtime import normalize_market_buckets
 
+from .settlement_basis import settled_station
+
 
 SCHEMA = "settlement_truth_reconciliation_v1"
 AGREE = "AGREE"
@@ -187,6 +189,9 @@ def reconcile(
         if station is None:
             continue
         day = event_date_of(slug)
+        # A city moved onto another station settles its earlier days on the
+        # one it replaced (denver: KBKF through 2026-10-22).
+        station = settled_station(station, day)
         market = market_resolution(event)
         label = ours.get((station, day))
         gap = None

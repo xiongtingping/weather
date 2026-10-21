@@ -252,7 +252,8 @@
         "finality": "NEXT_DAY_FIRST_DATAPOINT"
       },
       "denver": {
-        "station_id": "KBKF",
+        "station_id": "KDEN",
+        "previous_station": {"station_id": "KBKF", "through": "2026-10-22"},
         "routine_metar_only_from": "2026-10-23",
         "family": "NOAA_WRH_TIMESERIES",
         "unit": "F",

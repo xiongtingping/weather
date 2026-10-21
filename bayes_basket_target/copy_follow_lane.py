@@ -92,6 +92,7 @@ from .contracts import content_sha256
 from .delta_v2_runtime import EXCHANGE_MINIMUM_ORDER_NOTIONAL_USDC
 from .exit_orders import Transport, default_position_reader, send_exit_sell
 from .lane_orders import send_lane_buy
+from .settlement_basis import settled_station
 from .p1_tail_lane import (
     DEPTH_HEADROOM_FRACTION, _latest_snapshot, _sendable_shares, _ws_manifest_root, live_ws_snapshot,
 )
@@ -517,6 +518,9 @@ def map_source_token(
         return {"refusal": "not_a_daily_high_event"}
     city, event_date = parsed
     station = cities.get(city)
+    if station:
+        # denver settles on KBKF through 2026-10-22 and on KDEN after.
+        station = settled_station(station, event_date)
     if not station:
         return {"refusal": f"city_not_in_fleet:{city}"}
     row = conn.execute(

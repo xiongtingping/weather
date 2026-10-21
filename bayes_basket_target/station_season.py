@@ -63,6 +63,7 @@ _SEASON_ANCHOR_MONTH: dict[str, int | None] = {
     "KAUS": 7,  # amplitude 19.3C
     "KBKF": 7,  # amplitude 26.0C
     "KDAL": 7,  # amplitude 21.8C
+    "KDEN": 7,  # amplitude 26.1C
     "KHOU": 7,  # amplitude 15.9C
     "KLAX": 9,  # amplitude 8.0C
     "KLGA": 7,  # amplitude 25.5C

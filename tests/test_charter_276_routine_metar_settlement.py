@@ -190,3 +190,29 @@ def test_p1_and_its_floors_do_not_read_speci_on_a_routine_day(routine_from) -> N
     assert ids() == ["hourly", "speci"]
     routine_from("RKPK", "2026-07-27")
     assert ids() == ["hourly"]
+
+
+def test_a_moved_city_settles_its_earlier_days_on_the_station_it_replaced(tmp_path, monkeypatch) -> None:
+    entry = {"station_id": "KDEN", "family": NOAA_FAMILY, "unit": "F", "hourly_data_only": True,
+             "finality": "NEXT_DAY_FIRST_DATAPOINT", "routine_metar_only_from": "2026-10-23",
+             "previous_station": {"station_id": "KBKF", "through": "2026-10-22"}}
+    assert expected_settlement_contract(entry, "2026-10-22")["station_id"] == "KBKF"
+    assert expected_settlement_contract(entry, "2026-10-22")["family"] == NOAA_FAMILY
+    assert expected_settlement_contract(entry, "2026-10-23")["station_id"] == "KDEN"
+    assert expected_settlement_contract(entry, "2026-10-23")["family"] == AWC_FAMILY
+    assert "previous_station" not in expected_settlement_contract(entry, "2026-10-23")
+    # the 10-23 denver rules name KDEN: no deviation at all on either side of the move
+    rules = US_AWC_RULES.replace("LaGuardia Airport (KLGA)", "Denver International Airport (KDEN)").replace(
+        "ids=KLGA", "ids=KDEN")
+    found = settlement_contract_deviations(
+        settlement_contract(rules), expected=expected_settlement_contract(entry, "2026-10-23"), bucket_unit="F")
+    assert found == []
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps({"settlement_source_contract": {"cities": {"denver": entry}}}))
+    monkeypatch.setattr(settlement_basis, "CONFIG_PATH", path)
+    assert settlement_basis.settled_station("KDEN", "2026-10-22") == "KBKF"
+    assert settlement_basis.settled_station("KDEN", "2026-10-23") == "KDEN"
+    assert settlement_basis.settled_station("KLGA", "2026-10-22") == "KLGA"
+    # routine-only follows the station the day settles on: KDEN from 10-23, KBKF never
+    assert settlement_basis.routine_metar_only("KDEN", "2026-10-23")
+    assert not settlement_basis.routine_metar_only("KBKF", "2026-10-22")

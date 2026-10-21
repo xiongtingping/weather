@@ -42,7 +42,7 @@ STATION_LABELS = {
     "CYYZ": "多伦多", "EDDM": "慕尼黑", "EFHK": "赫尔辛基",
     "EGLC": "伦敦", "EHAM": "阿姆斯特丹", "EPWA": "华沙",
     "FACT": "开普敦", "KATL": "亚特兰大", "KAUS": "奥斯汀",
-    "KBKF": "丹佛", "KDAL": "达拉斯", "KHOU": "休斯敦",
+    "KBKF": "丹佛", "KDEN": "丹佛", "KDAL": "达拉斯", "KHOU": "休斯敦",
     "KLAX": "洛杉矶", "KLGA": "纽约", "KMIA": "迈阿密",
     "KORD": "芝加哥", "KSEA": "西雅图", "KSFO": "旧金山",
     "LEMD": "马德里", "LFPB": "巴黎", "LIMC": "米兰",
