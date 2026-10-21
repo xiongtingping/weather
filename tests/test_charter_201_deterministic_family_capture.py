@@ -552,3 +552,21 @@ def test_a_backfill_reaches_past_days_and_never_a_run_p1_could_read():
     assert min(leads) <= 12.0 < max(leads)
     # Live passes never reach a day three weeks back.
     assert L.plan_p1(conn, product="AIFS", now=now, stations=[sbgr], day_offsets=(-20,), max_runs=50) == []
+
+
+def test_the_utc_dated_d_plus_2_reaches_the_americas_before_the_listing_instant() -> None:
+    """User 2026-10-21: at D-2 05:00Z Chicago and Los Angeles are still on the
+    day before locally; the UTC-dated D+2 is planned for them anyway."""
+
+    from datetime import date, datetime, timezone
+
+    from bayes_basket_target.regional_point_lane import DAY_OFFSETS, _target_offsets_and_days
+
+    at = datetime(2026, 10, 21, 4, 30, tzinfo=timezone.utc)
+    la = _target_offsets_and_days(at, "America/Los_Angeles", DAY_OFFSETS, (2,))
+    assert (2, date(2026, 10, 23)) in la and len(la) == 5
+    # a station already there locally gains nothing twice
+    seoul = _target_offsets_and_days(at, "Asia/Seoul", DAY_OFFSETS, (2,))
+    assert [day for _o, day in seoul] == [date(2026, 10, 20), date(2026, 10, 21), date(2026, 10, 22), date(2026, 10, 23)]
+    # without the UTC offsets the local window stands as it was
+    assert date(2026, 10, 23) not in [day for _o, day in _target_offsets_and_days(at, "America/Los_Angeles", DAY_OFFSETS)]

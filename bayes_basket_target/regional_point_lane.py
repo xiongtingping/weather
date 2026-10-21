@@ -640,6 +640,31 @@ def _target_days(now: datetime, zone_name: str, offsets: Sequence[int]) -> list[
     return [today + timedelta(days=offset) for offset in offsets]
 
 
+def _target_offsets_and_days(
+    now: datetime, zone_name: str, offsets: Sequence[int], utc_offsets: Sequence[int] = (),
+) -> list[tuple[int, date]]:
+    """The station-local target days, plus any UTC-dated day not among them.
+
+    ``utc_offsets`` (user 2026-10-21 「确定性采集的目标日在站点当地 D-1..D+2 之外，
+    再并上按 UTC 日期算的 D+2」): the listing instant is D-2 05:00Z for every
+    station, when the stations west of about UTC-5 are still on the day
+    before locally, so their local D+2 had not entered the window and F and
+    its shadow read no member for them (KORD, KLAX ... MPMG, every day since
+    10-18).  An added day keeps its UTC offset, so it takes charter 201's
+    reach, never the P1 lane's own.
+    """
+
+    pairs = list(zip(offsets, _target_days(now, zone_name, offsets)))
+    seen = {day for _offset, day in pairs}
+    utc_today = now.astimezone(timezone.utc).date()
+    for offset in utc_offsets:
+        day = utc_today + timedelta(days=offset)
+        if day not in seen:
+            pairs.append((offset, day))
+            seen.add(day)
+    return pairs
+
+
 def _candidate_runs(
     product: str, now: datetime, event_date: date, zone_name: str,
     *, legacy: bool = True, backfill: bool = False,
@@ -736,6 +761,7 @@ def plan_p1(
     day_offsets: Sequence[int] = DAY_OFFSETS,
     max_runs: int = 4,
     backfill: bool = False,
+    utc_day_offsets: Sequence[int] = (),
 ) -> list[dict[str, Any]]:
     """Runs not yet stored, grouped by run, newest runs first, capped.
 
@@ -752,7 +778,7 @@ def plan_p1(
     system_id = SYSTEM_IDS[product]
     by_run: dict[tuple[int, datetime], list[dict[str, Any]]] = {}
     for station, latitude, longitude, zone_name in stations:
-        for offset, event_date in zip(day_offsets, _target_days(now, zone_name, day_offsets)):
+        for offset, event_date in _target_offsets_and_days(now, zone_name, day_offsets, utc_day_offsets):
             held = stored_run_inits(conn, system_id=system_id, station_id=station, event_date=event_date.isoformat())
             tiers = _candidate_run_tiers(
                 product, now, event_date, zone_name,
@@ -896,6 +922,7 @@ def capture_p1(
     dry_run: bool = False,
     backfill: bool = False,
     should_yield: Callable[[], str] | None = None,
+    utc_day_offsets: Sequence[int] = (),
 ) -> dict[str, Any]:
     """Plan, fetch and persist this pass's runs for one product.
 
@@ -928,7 +955,7 @@ def capture_p1(
         raise ContractError("regional_point_backfill_unsupported_for_product")
     plan = plan_p1(
         conn, product=product, now=now, stations=stations, day_offsets=day_offsets,
-        max_runs=max_runs, backfill=backfill,
+        max_runs=max_runs, backfill=backfill, utc_day_offsets=utc_day_offsets,
     )
     written = 0
     existed = 0

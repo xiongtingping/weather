@@ -43,6 +43,10 @@ DB = ROOT / "data" / "bayes_basket_target_ssot.db"
 PRODUCTS = ("AIFS", "IFS9KM", "UKMO10", "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "ARPEGE", "UKMO_GLOBAL", "GFS_SFLUX", "GFS_HOURLY")
 # Runs a pass may take per product: the newest, and one it missed.
 MAX_RUNS_PER_PRODUCT = 2
+# The UTC-dated D+2 beside the station-local D-1..D+2 (user 2026-10-21): the
+# Americas west of about UTC-5 reach the listing instant (D-2 05:00Z) with
+# members for F and its shadow (``regional_point_lane._target_offsets_and_days``).
+UTC_DAY_OFFSETS = (2,)
 # Writer-free seconds per product; the pass as a whole stays inside the
 # sweep's timeout with room for the relay's pauses.
 BUDGET_SEC_PER_PRODUCT = 240.0
@@ -103,7 +107,7 @@ def main() -> int:
             try:
                 stations = product_roster(conn, product)
                 plan = plan_p1(conn, product=product, now=now, stations=stations,
-                               max_runs=int(args.max_runs))
+                               max_runs=int(args.max_runs), utc_day_offsets=UTC_DAY_OFFSETS)
             except sqlite3.Error as exc:
                 print(f"{product}: 计划读库失败 {exc}")
                 continue
@@ -136,6 +140,7 @@ def main() -> int:
                 # 补记三: a heavy family stops between runs when production's egress strains.
                 should_yield=production_network_strained if product in HEAVY_PRODUCTS else None,
                 dry_run=args.dry_run,
+                utc_day_offsets=UTC_DAY_OFFSETS,
             )
             set_pass_deadline(None)
             print(
