@@ -12,6 +12,7 @@ from .contracts import (
     ContractError,
 )
 from .correction_review import assert_station_day_corrections_resolved
+from .settlement_basis import routine_metar_only
 from .source_policy import source_policy_reason
 from .settlement_time import (
     registry_settlement_timezone,
@@ -170,6 +171,11 @@ def load_resident_formal_observations(
         [*formal_rows, *soft_rows],
         key=lambda row: (str(row[4]), str(row[8]), str(row[0])),
     )
+    # Charter 276: on a routine-only station-day a SPECI does not settle, so
+    # P1 -- and every floor that reads through here -- does not read it,
+    # for the same reason the formal set below matches settlement's.  The
+    # correction gate above has already covered it.
+    routine_only = routine_metar_only(station, event_date)
     result: list[dict[str, Any]] = []
     for row in rows:
         valid_at = _utc(
@@ -257,6 +263,8 @@ def load_resident_formal_observations(
             or any(char not in "0123456789abcdef" for char in raw_sha)
         ):
             raise ContractError("resident_p1_raw_sha256_invalid")
+        if routine_only and row_lane == source_lane and report_type == "SPECI":
+            continue
         result.append({
             "observation_id": str(row[0] or ""),
             "station_id": station,

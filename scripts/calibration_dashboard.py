@@ -324,6 +324,7 @@ _SETTLEMENT_VALUE_WORDS = {
     "NOAA_WRH_TIMESERIES": "NOAA", "WU_DAILY_OBSERVATIONS": "WU",
     "TEMP_COLUMN_MAX": "Temp 列最高", "DAILY_OBSERVATIONS_TABLE": "逐报表",
     "NEXT_DAY_FIRST_DATAPOINT": "次日首条", True: "是", False: "否", "": "（没写）",
+    "AWC_ROUTINE_METAR": "AWC 例行报", "ROUTINE_METAR_MAX": "例行报最高（不含 SPECI）",
 }
 
 

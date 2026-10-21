@@ -32,9 +32,12 @@ MAX_GAMMA_PAGES = 4
 SLUG_RE = re.compile(r"^highest-temperature-in-(?P<city>.+)-on-[a-z]+-\d{1,2}-\d{4}$")
 WU_STATION_RE = re.compile(r"https?://(?:www\.)?wunderground\.com/history/daily/[^\s.]+/(?P<station>[A-Z0-9]{4})(?:[.\s]|$)", re.I)
 NOAA_STATION_RE = re.compile(r"https?://(?:www\.)?weather\.gov/wrh/timeseries\?site=(?P<station>[A-Za-z0-9]{4})(?=[&.\s]|$)", re.I)
+# Charter 276: from event date 2026-10-23 the non-US markets settle on AWC's
+# routine METARs, named by the raw-METAR API URL.
+AWC_STATION_RE = re.compile(r"https?://(?:www\.)?aviationweather\.gov/api/data/metar\?ids=(?P<station>[A-Za-z0-9]{4})(?=[&.\s]|$)", re.I)
 # Polymarket moved these markets off Weather Underground onto NOAA one event date at a
 # time; both wordings are live at once, so both have to resolve to the same ICAO.
-STATION_RES = (WU_STATION_RE, NOAA_STATION_RE)
+STATION_RES = (WU_STATION_RE, NOAA_STATION_RE, AWC_STATION_RE)
 URL_RE = re.compile(r"https?://[^\s]+")
 STATION_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
 
@@ -49,6 +52,7 @@ STATION_ID_RE = re.compile(r"^[A-Z0-9]{4}$")
 SETTLEMENT_CONTRACT_SCHEMA = "polymarket_settlement_source_contract_v1"
 NOAA_FAMILY = "NOAA_WRH_TIMESERIES"
 WU_FAMILY = "WU_DAILY_OBSERVATIONS"
+AWC_FAMILY = "AWC_ROUTINE_METAR"
 UNRECOGNIZED_FAMILY = "UNRECOGNIZED"
 # Each recognised page and the one reading on it our truth lane reproduces
 # (``bayes_basket_target/settlement_truth.py``: max over the day's METAR and
@@ -58,18 +62,31 @@ UNRECOGNIZED_FAMILY = "UNRECOGNIZED"
 SETTLEMENT_READINGS = {
     NOAA_FAMILY: "TEMP_COLUMN_MAX",
     WU_FAMILY: "DAILY_OBSERVATIONS_TABLE",
+    # Charter 276: the highest routine METAR -- a report beginning SPECI does
+    # not count -- in tenths from the remark group, else the body's whole
+    # degree, rounded half up.  Our lane reproduces it by dropping SPECI on
+    # those station-days (``bayes_basket_target/settlement_basis.py``).
+    AWC_FAMILY: "ROUTINE_METAR_MAX",
 }
 NEXT_DAY_FINALITY = "NEXT_DAY_FIRST_DATAPOINT"
 _QUOTE = "[\"'‘’“”]?"
 _READING_RES = {
     NOAA_FAMILY: re.compile(r"highest reading under the " + _QUOTE + r"Temp" + _QUOTE + r" column", re.I),
     WU_FAMILY: re.compile(_QUOTE + r"Daily Observations" + _QUOTE + r" table", re.I),
+    AWC_FAMILY: re.compile(r"begins with SPECI is a special observation and does not count", re.I),
 }
+# The rest of what charter 276's reading states; each has to be present or the
+# reading is not the one we reproduce.
+_AWC_READING_CLAUSES = (
+    re.compile(r"hourly temperature remark", re.I),
+    re.compile(r"exactly half rounded up to the next higher whole degree", re.I),
+)
 # NOAA's timeseries page lists every 5-minute ASOS reading at US stations
 # unless "Show Hourly Data" is pressed; hourly view is the routine METAR plus
 # SPECI (checked on the live KLGA page 2026-09-23), which is what we settle.
 HOURLY_DATA_RE = re.compile(r"Show Hourly Data", re.I)
 UNIT_RE = re.compile(r"in degrees (Celsius|Fahrenheit)", re.I)
+AWC_UNIT_RE = re.compile(r"states its range in whole degrees (Celsius|Fahrenheit)", re.I)
 FINALITY_RE = re.compile(r"first data ?point for the following date has been published", re.I)
 
 
@@ -409,8 +426,35 @@ def _validate_settlement_source_contract(value: Any) -> None:
             or entry.get("unit") not in ("C", "F")
             or not isinstance(entry.get("hourly_data_only"), bool)
             or entry.get("finality") != NEXT_DAY_FINALITY
+            or not _routine_from_valid(entry.get("routine_metar_only_from"))
         ):
             raise ValueError(f"reported_trajectory_settlement_source_contract_invalid:{city}")
+
+
+def _routine_from_valid(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        return date.fromisoformat(str(value)).isoformat() == value
+    except ValueError:
+        return False
+
+
+def expected_settlement_contract(
+    entry: Mapping[str, Any] | None, event_date: str,
+) -> dict[str, Any] | None:
+    """A city's baseline as it stands for one event date (charter 276).
+
+    ``routine_metar_only_from`` is the first event date the city settles on
+    AWC's routine METARs; before it the entry's own family stands.
+    """
+
+    if entry is None:
+        return None
+    start = str(entry.get("routine_metar_only_from") or "")
+    if start and str(event_date) >= start:
+        return {**entry, "family": AWC_FAMILY}
+    return dict(entry)
 
 
 def city_from_slug(slug: str) -> str:
@@ -441,15 +485,20 @@ def settlement_contract(description: str) -> dict[str, Any]:
         family = UNRECOGNIZED_FAMILY
     elif match.re is NOAA_STATION_RE:
         family = NOAA_FAMILY
+    elif match.re is AWC_STATION_RE:
+        family = AWC_FAMILY
     else:
         family = WU_FAMILY
     reading_re = _READING_RES.get(family)
-    unit = UNIT_RE.search(text)
+    reading_found = reading_re is not None and reading_re.search(text) is not None
+    if family == AWC_FAMILY:
+        reading_found = reading_found and all(clause.search(text) for clause in _AWC_READING_CLAUSES)
+    unit = UNIT_RE.search(text) or AWC_UNIT_RE.search(text)
     return {
         "family": family,
         "station_id": match.group("station").upper() if match else "",
         "unit": unit.group(1)[0].upper() if unit else "",
-        "reading": SETTLEMENT_READINGS[family] if reading_re is not None and reading_re.search(text) else "",
+        "reading": SETTLEMENT_READINGS[family] if reading_found else "",
         "hourly_data_only": bool(HOURLY_DATA_RE.search(text)),
         "whole_degree": "whole degrees" in text.lower(),
         "finality": NEXT_DAY_FINALITY if FINALITY_RE.search(text) else "",
@@ -495,12 +544,19 @@ def settlement_contract_deviations(
         add("station_id", expected.get("station_id"), contract.get("station_id"),
             "official_resolution_station_changed", False)
     if family in SETTLEMENT_READINGS and family != expected.get("family"):
+        # NOAA and WU list the same METAR and SPECI, so a move between them
+        # is reported and traded through.  Onto or off the routine-METAR
+        # reading the settled set itself changes (charter 276), and what our
+        # lane drops on a date is fixed by the baseline, so it blocks.
         add("family", expected.get("family"), family,
-            "official_resolution_family_changed", False)
+            "official_resolution_family_changed",
+            (family == AWC_FAMILY) != (expected.get("family") == AWC_FAMILY))
     if unit and unit != expected.get("unit"):
         add("unit", expected.get("unit"), unit, "official_resolution_unit_changed", False)
     hourly = bool(contract.get("hourly_data_only"))
-    if hourly != bool(expected.get("hourly_data_only")):
+    # "Show Hourly Data" is a clause of the NOAA page; the routine-METAR
+    # reading already states which reports count.
+    if family != AWC_FAMILY and hourly != bool(expected.get("hourly_data_only")):
         add("hourly_data_only", bool(expected.get("hourly_data_only")), hourly,
             "official_resolution_admits_subhourly_data" if not hourly
             else "official_resolution_hourly_clause_added",
@@ -549,7 +605,7 @@ def settlement_source_check(
         except ValueError:
             continue
         contract = settlement_contract(str(event.get("description") or ""))
-        expected = cities.get(city)
+        expected = expected_settlement_contract(cities.get(city), event_date)
         if expected is None:
             unbaselined.add(city)
             continue
@@ -739,7 +795,7 @@ def materialize_event_registry(
         item["reason"]
         for item in settlement_contract_deviations(
             settlement_contract(description),
-            expected=contract_cities.get(city),
+            expected=expected_settlement_contract(contract_cities.get(city), event_date),
             bucket_unit=str(buckets[0]["unit"]) if buckets else None,
         )
         if item["blocking"]

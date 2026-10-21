@@ -39,6 +39,7 @@ from .metar_precision import (
     official_temperature_c,
 )
 from .resource_bounds import assert_process_memory_budget
+from .settlement_basis import ROUTINE_METAR_ONLY, routine_metar_only
 from .settlement_time import settlement_day_window
 from .source_policy import (
     source_policy_reason,
@@ -607,6 +608,9 @@ def materialize_settled_station_truth(
     ).fetchall()
     if len(rows) > MAX_OBSERVATIONS_PER_SCOPE:
         raise ContractError("settlement_truth_observation_scope_cap_exceeded")
+    # Charter 276: from its city's switch date a station-day settles on the
+    # routine METARs only -- a SPECI is checked like any report, then left out.
+    routine_only = routine_metar_only(station, day)
     hourly: list[dict[str, Any]] = []
     # Position in ``hourly`` rather than the item, so a later report can
     # replace an earlier one in place and keep the day in publication order.
@@ -713,6 +717,8 @@ def materialize_settled_station_truth(
             # after, so one field name would mean two different things.  The
             # report's bytes are pinned by ``raw_sha256`` and state both.
             item["temperature_resolution_c"] = resolution_c
+        if routine_only and report_type == "SPECI":
+            continue
         previous_index = hourly_by_valid_at.get(item["valid_at_utc"])
         if previous_index is not None:
             previous = hourly[previous_index]
@@ -810,6 +816,10 @@ def materialize_settled_station_truth(
         },
         "observations": hourly,
     }
+    # Stated only where it applies, so every earlier day's evidence -- and the
+    # hash its truth revision is keyed on -- stays byte for byte as it was.
+    if routine_only:
+        evidence["settled_reports"] = ROUTINE_METAR_ONLY
     source_payload_sha = content_sha256(evidence)
     official_tmax_c = max(
         float(item["reported_temperature_c"]) for item in hourly

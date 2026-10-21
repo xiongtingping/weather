@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from bayes_basket_target.contracts import (
     MAX_REPORT_TRANSMISSION_LEAD_SECONDS,
 )
+from bayes_basket_target.settlement_basis import report_settles
 from bayes_basket_target.source_policy import source_policy_reason
 from weather_basket_yes_runtime import identity, parse_metar_temperature
 from reported_trajectory_sources import infer_ddhhmm_time, utc_now
@@ -389,6 +390,15 @@ class ReportedTrajectoryAwcIngress:
                     "event_date": event_date,
                     "state": "halted_pending_correction_review",
                     "reason": str(halted[0]),
+                })
+                continue
+            # Charter 276: a SPECI does not settle a routine-only station-day,
+            # so it may not raise the running high the hard-fact floors read.
+            if not report_settles(station_id, event_date, observation.get("report_type")):
+                results.append({
+                    "event_date": event_date,
+                    "state": "report_does_not_settle",
+                    "reason": "speci_on_routine_metar_only_day",
                 })
                 continue
             existing = self.conn.execute(

@@ -34,6 +34,7 @@ from .canonical_observation_export import _source_poll_receipt
 from .contracts import ContractError, content_sha256
 from .metar_precision import official_temperature_c
 from .resource_bounds import assert_process_memory_budget
+from .settlement_basis import report_settles
 from .source_policy import (
     report_seen_within_early_transmission_tolerance,
     source_policy_reason,
@@ -494,7 +495,11 @@ def export_awc_ingress_evidence_v4(
                 report_type=report_type,
                 valid_at=valid_at,
                 expected_lane="awc",
-            ))
+            )) or not report_settles(
+                # Charter 276: a SPECI does not settle a routine-only day, so
+                # the closed day's bounds leave it out as the truth lane does.
+                station, valid_at.astimezone(zone).date().isoformat(), report_type,
+            )
             correction = _CORRECTION_TOKEN.search(raw_text)
             evidence_rows.append(
                 {
