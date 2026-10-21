@@ -58,6 +58,8 @@ def _newest(obs, fc, i):
 
 
 def feats(r: dict, H: int) -> dict:
+    if H < 9:
+        return night_feats(r, H)
     i = H - 6
     sw = float(np.mean([o - f for o, f in zip(r["sw_obs"][:i + 1], r["sw_fc"][:i + 1])]))
     rh = _newest(r["rh_obs"], r["rh_fc"], i)
@@ -71,13 +73,34 @@ def feats(r: dict, H: int) -> dict:
     }
 
 
+def night_feats(r: dict, H: int) -> dict:
+    """PROTOCOL_M6: at 0..8 h the report features look back to 00 h (the
+    night's arrays before the day's 06..), rain counts from 00 h, sunshine
+    only from 06 h (0 before)."""
+
+    n = r.get("night") or {}
+    full = lambda k: list(n.get(k) or [None] * 6) + list(r[k])  # noqa: E731 -- index = local hour
+    rh = _newest(full("rh_obs"), full("rh_fc"), H)
+    sw = 0.0 if H < 6 else float(np.mean([o - f for o, f in zip(r["sw_obs"][:H - 5], r["sw_fc"][:H - 5])]))
+    return {
+        "sw": max(-300.0, min(300.0, sw)),
+        "rh": None if rh is None else max(-20.0, min(20.0, rh)),
+        "dew": _newest(full("dew_obs"), full("dew_fc"), H),
+        "wind": _newest(full("wind_obs"), full("wind_fc"), H),
+        "tdev": _newest(full("t_obs"), full("t_fc"), H),
+        "rain": float(sum(1 for w in full("wet_obs")[:H + 1] if w)),
+    }
+
+
 # --- the board's current lines, applied as the board does -----------------
 SUN = json.loads((ROOT / "config" / "ui" / "sun_tmax_shift_v2.json").read_text())
 RH = json.loads((ROOT / "config" / "ui" / "rh_tmax_shift_v1.json").read_text())
 
 
 def sun_line(f: dict, H: int) -> float:
-    line = SUN["by_last_hour"][str(min(H, max(int(h) for h in SUN["by_last_hour"])))]
+    line = SUN["by_last_hour"].get(str(min(H, max(int(h) for h in SUN["by_last_hour"]))))
+    if line is None:   # the board's line starts at 9 h
+        return 0.0
     x = max(-float(SUN["x_clip_wm2"]), min(float(SUN["x_clip_wm2"]), f["sw"]))
     side = "dark" if x < 0 else "bright"
     return line[side + "_c_per_100wm2"] / 100.0 * x
@@ -86,7 +109,9 @@ def sun_line(f: dict, H: int) -> float:
 def rh_line(f: dict, H: int) -> float:
     if f["rh"] is None:
         return 0.0
-    line = RH["by_hour"][str(min(H, max(int(h) for h in RH["by_hour"])))]
+    line = RH["by_hour"].get(str(min(H, max(int(h) for h in RH["by_hour"]))))
+    if line is None:
+        return 0.0
     x = max(-float(RH["x_clip_pp"]), min(float(RH["x_clip_pp"]), f["rh"]))
     side = "drier" if x < 0 else "moister"
     ci = line[side + "_ci95"]

@@ -92,16 +92,25 @@ def main() -> int:
                      for h in range(24)]
             if any(v is None for v in day_t):
                 continue
-            rep = []
-            for s in stamps:
-                i = bisect_left(mt, s)
-                best = min((metar[j] for j in (i - 1, i) if 0 <= j < len(metar)),
-                           key=lambda m: abs((m[0] - s).total_seconds()), default=None)
-                rep.append(best if best and abs((best[0] - s).total_seconds()) <= 1800 else None)
+            def nearest(stamp_list):
+                got = []
+                for s in stamp_list:
+                    i = bisect_left(mt, s)
+                    best = min((metar[j] for j in (i - 1, i) if 0 <= j < len(metar)),
+                               key=lambda m: abs((m[0] - s).total_seconds()), default=None)
+                    got.append(best if best and abs((best[0] - s).total_seconds()) <= 1800 else None)
+                return got
+
+            rep = nearest(stamps)
             if rep[0] is None:
                 continue
             g = lambda var: [fc[var].get(s) for s in stamps]  # noqa: E731
             wind_fc = [None if v is None else v / 3.6 for v in g("wind_speed_10m")]
+            # Local 00..05 (PROTOCOL_M6): the night's reports and day-ahead
+            # forecast, for the composite at 0..8 h.
+            night = [datetime(d.year, d.month, d.day, h, tzinfo=zone).astimezone(timezone.utc) for h in range(6)]
+            nrep = nearest(night)
+            gn = lambda var: [fc[var].get(s) for s in night]  # noqa: E731
             out.append({
                 "station": st, "date": d.isoformat(), "month": d.month,
                 "sw_sources": sorted({src_of[s] for s in stamps if s in src_of}),
@@ -114,6 +123,15 @@ def main() -> int:
                 "rh_obs": [None if r is None else relative_humidity(r[1], r[2]) for r in rep],
                 "wind_obs": [None if r is None or r[3] is None else r[3] * 0.514444 for r in rep],
                 "wet_obs": [None if r is None else _wet(r[4]) for r in rep],
+                "night": {
+                    "t_fc": gn("temperature_2m"), "dew_fc": gn("dew_point_2m"), "rh_fc": gn("relative_humidity_2m"),
+                    "wind_fc": [None if v is None else v / 3.6 for v in gn("wind_speed_10m")],
+                    "t_obs": [None if r is None else r[1] for r in nrep],
+                    "dew_obs": [None if r is None else r[2] for r in nrep],
+                    "rh_obs": [None if r is None else relative_humidity(r[1], r[2]) for r in nrep],
+                    "wind_obs": [None if r is None or r[3] is None else r[3] * 0.514444 for r in nrep],
+                    "wet_obs": [None if r is None else _wet(r[4]) for r in nrep],
+                },
             })
     conn.close()
     OUT.write_text(json.dumps(out))

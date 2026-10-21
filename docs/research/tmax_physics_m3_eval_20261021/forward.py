@@ -32,7 +32,7 @@ from bayes_basket_target import station_day_board as board  # noqa: E402
 
 RUNTIME = ROOT / "data" / "runtime" / "tmax_composite"
 COMMITTED = ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
-HOURS = range(9, 18)
+HOURS = range(0, 18)   # every hour a version fits (0..8 from M6, 6 h left off)
 
 
 def versions() -> list[dict]:
@@ -49,18 +49,28 @@ def versions() -> list[dict]:
 
 
 def board_rows(r: dict) -> list[dict]:
+    """The station-day as the board's hourly rows: 00..05 from the night
+    arrays (PROTOCOL_M6), 06..17 from the day's."""
+
+    n = r.get("night") or {}
     rows = []
     for h in range(24):
-        i = h - 6
-        inside = 0 <= i < 12
-        fc = {"sw_d1": r["sw_fc"][i] if inside else 0.0, "temp_c_d1": r["t_fc"][i] if inside else None,
-              "dew_c_d1": r["dew_fc"][i] if inside else None, "rh_pct_d1": r["rh_fc"][i] if inside else None,
-              "wind_mps_d1": r["wind_fc"][i] if inside else None}
+        if h < 6:
+            src, i, sw = n, h, (0.0, 0.0)
+        elif h < 18:
+            src, i = r, h - 6
+            sw = (r["sw_fc"][i], r["sw_obs"][i])
+        else:
+            rows.append({"hour": h, "forecast": {"sw_d1": 0.0}, "obs": None, "sat_sw_wm2": 0.0})
+            continue
+        get = lambda k: (src.get(k) or [None] * 12)[i]  # noqa: E731
+        fc = {"sw_d1": sw[0], "temp_c_d1": get("t_fc"), "dew_c_d1": get("dew_fc"), "rh_pct_d1": get("rh_fc"),
+              "wind_mps_d1": get("wind_fc")}
         obs = None
-        if inside and r["t_obs"][i] is not None:
-            obs = {"temp_c": r["t_obs"][i], "dew_c": r["dew_obs"][i], "rh_pct": r["rh_obs"][i],
-                   "wind_mps": r["wind_obs"][i], "precip": bool(r["wet_obs"][i])}
-        rows.append({"hour": h, "forecast": fc, "obs": obs, "sat_sw_wm2": r["sw_obs"][i] if inside else 0.0})
+        if get("t_obs") is not None:
+            obs = {"temp_c": get("t_obs"), "dew_c": get("dew_obs"), "rh_pct": get("rh_obs"),
+                   "wind_mps": get("wind_obs"), "precip": bool(get("wet_obs"))}
+        rows.append({"hour": h, "forecast": fc, "obs": obs, "sat_sw_wm2": sw[1]})
     return rows
 
 

@@ -75,3 +75,18 @@ def test_bucket_probabilities_on_the_days_ladder() -> None:
     # the t's heavier tails put more on the edges than the normal at the same variance
     assert t[-1]["p"] > n[-1]["p"] and t[0]["p"] >= n[0]["p"]
     assert min(x["p"] for x in t) >= 0.0009
+
+
+def test_a_night_hour_reads_reports_from_midnight_and_no_sunshine() -> None:
+    import json
+
+    fit = json.loads(b.COMPOSITE_TMAX_SHIFT_PATH.read_text())
+    fit["by_hour"]["3"] = fit["by_hour"]["9"]
+    rows = _rows(2, 3)
+    for r in rows:
+        if r["hour"] <= 3:
+            r["obs"] = {"temp_c": 15.0, "dew_c": 9.0, "rh_pct": 45.0, "wind_mps": 3.5, "precip": r["hour"] == 1}
+    by_hour = {r["hour"]: r for r in rows}
+    got = b._composite_at(by_hour, "ZUUU", fit, 3)
+    assert got["x"]["sw"] == 0.0 and got["x"]["phys"] == 0.0
+    assert got["x"]["tdev"] == -5.0 and got["x"]["rain"] == 1.0

@@ -1301,9 +1301,11 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
     sw_fc = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in span]
     if any(v is None for v in sw_obs + sw_fc):
         return None
+    # 9..17 h read reports from 06 h (M3); 0..8 h from 00 h (PROTOCOL_M6).
+    first_report = COMPOSITE_FIRST_HOUR if H >= 9 else 0
 
     def newest(obs_key: str, fc_key: str) -> float | None:
-        for h in range(H, COMPOSITE_FIRST_HOUR - 1, -1):
+        for h in range(H, first_report - 1, -1):
             r = by_hour.get(h) or {}
             o, f = (r.get("obs") or {}).get(obs_key), (r.get("forecast") or {}).get(fc_key)
             if o is not None and f is not None:
@@ -1312,12 +1314,12 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
 
     rh = newest("rh_pct", "rh_pct_d1")
     x = {
-        "sw": max(-300.0, min(300.0, sum(o - f for o, f in zip(sw_obs, sw_fc)) / len(sw_obs))),
+        "sw": max(-300.0, min(300.0, sum(o - f for o, f in zip(sw_obs, sw_fc)) / len(sw_obs))) if sw_obs else 0.0,
         "rh": None if rh is None else max(-20.0, min(20.0, rh)),
         "dew": newest("dew_c", "dew_c_d1"),
         "wind": newest("wind_mps", "wind_mps_d1"),
         "tdev": newest("temp_c", "temp_c_d1"),
-        "rain": float(sum(1 for h in span if ((by_hour.get(h) or {}).get("obs") or {}).get("precip"))),
+        "rain": float(sum(1 for h in range(first_report, H + 1) if ((by_hour.get(h) or {}).get("obs") or {}).get("precip"))),
     }
     phys = fit.get("phys") or {}
     peak = int(phys.get("peak_hour", 15))
