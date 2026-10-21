@@ -1,10 +1,16 @@
-"""M3 evaluator (PROTOCOL.md, committed c30cb32a before any reading).
+"""M3 evaluator (PROTOCOL.md, committed c30cb32a before any reading; addendum
+1 at 40f14290).
 
-    --smoke   pipeline check on whatever the store holds: row counts, finite
-              predictions, no scores printed (the store is not whole yet)
+    --smoke   pipeline check: row counts, finite predictions, no scores
     (no flag) the protocol's single judgement run: writes reading_<UTC>.json
 
 Run from the repo root after ``features.py``.
+
+Vectorised 2026-10-21 for the whole store (43,845 station-days, ~130 refits):
+the per-row Python of 1097a03a would take about an hour.  Same fits, same
+predictions, same bootstrap draws in the same order (checked against
+1097a03a on a station subset); the addendum's Europe/Africa-by-source entries
+come after every original entry so they draw from the generator last.
 """
 
 from __future__ import annotations
@@ -13,7 +19,7 @@ import argparse
 import json
 import math
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +39,10 @@ WARMUP_DAYS, REFIT_EVERY, K = 120, 7, 100.0
 BLOCK, DRAWS, SEED = 3, 4000, 20261021
 ARMS = ("mean", "sun_line", "rh_line", "B", "AB", "AB_station")
 B_FEATS = ("sw", "rh", "dew", "wind", "tdev", "rain")
+REGIONS = ("all", "asia_pacific", "europe_africa", "americas_goes")
+SPLITS = ("europe_africa|board_product", "europe_africa|with_sarah3")   # addendum 1, report only
+PAIRS = {"AB-sun_line": ("AB", "sun_line"), "AB-rh_line": ("AB", "rh_line"), "AB-B": ("AB", "B"),
+         "AB_station-AB": ("AB_station", "AB")}
 
 
 def region(st: str) -> str:
@@ -83,182 +93,216 @@ def rh_line(f: dict, H: int) -> float:
     return 0.0 if ci[0] <= 0.0 <= ci[1] else line[side + "_c_per_pp"] * x
 
 
-# --- fitting on a training set ---------------------------------------------
-def shrink(n: float, station, fleet):
-    w = n / (n + K)
-    return fleet + w * (station - fleet)
+# --- precomputed arrays ------------------------------------------------------
+class Data:
+    def __init__(self, rows: list[dict]) -> None:
+        self.stations = sorted({r["station"] for r in rows})
+        sidx = {s: i for i, s in enumerate(self.stations)}
+        self.dates = sorted({r["date"] for r in rows})
+        didx = {d: i for i, d in enumerate(self.dates)}
+        self.n = len(rows)
+        self.st = np.array([sidx[r["station"]] for r in rows])
+        self.day = np.array([didx[r["date"]] for r in rows])
+        self.month = np.array([r["month"] for r in rows])
+        self.y = np.array([r["tmax"] - r["tmax_fc"] for r in rows], dtype=float)
+        self.rise = np.array([r["tmax"] - r["t_obs"][0] for r in rows], dtype=float)
+        self.sqrtq = np.array([math.sqrt(core.heat_mj(r["sw_obs"])) for r in rows])
+        self.region = np.array([region(r["station"]) for r in rows])
+        self.split = np.array([("europe_africa|with_sarah3" if "eumetsat_sarah3" in r.get("sw_sources", [])
+                                else "europe_africa|board_product") if region(r["station"]) == "europe_africa" else ""
+                               for r in rows])
+        self.F, self.G, self.SUN, self.RH = {}, {}, {}, {}
+        for H in CHECK_HOURS:
+            fs = [feats(r, H) for r in rows]
+            self.F[H] = np.array([[0.0 if f[k] is None else f[k] for k in B_FEATS] for f in fs], dtype=float)
+            self.G[H] = np.array([core.delta_t(1.0, r["sw_obs"], r["sw_fc"], H) for r in rows])
+            self.SUN[H] = np.array([sun_line(f, H) for f in fs])
+            self.RH[H] = np.array([rh_line(f, H) for f in fs])
 
 
-def fit_phys(train: list[dict]) -> dict[str, float]:
-    """c per station from rise = tmax - t(06) on sqrt(Q_obs 06..15), within
-    station x month (season out), shrunk to the fleet's within-c."""
+def _sd_by_station(resid: np.ndarray, st: np.ndarray, n_st: int) -> np.ndarray:
+    """sqrt of (n*mean r^2 + K*fleet mean r^2)/(n+K) per station; last = fleet."""
 
-    groups: dict[tuple[str, int], list[tuple[float, float]]] = {}
-    for r in train:
-        groups.setdefault((r["station"], r["month"]), []).append(
-            (math.sqrt(core.heat_mj(r["sw_obs"])), r["tmax"] - r["t_obs"][0]))
-    dx: dict[str, list[float]] = {}
-    dy: dict[str, list[float]] = {}
-    for (st, _m), pts in groups.items():
-        if len(pts) < 3:
-            continue
-        x = np.array([p[0] for p in pts]); y = np.array([p[1] for p in pts])
-        dx.setdefault(st, []).extend(x - x.mean()); dy.setdefault(st, []).extend(y - y.mean())
-    allx = np.concatenate([np.array(v) for v in dx.values()]) if dx else np.array([0.0])
-    ally = np.concatenate([np.array(v) for v in dy.values()]) if dy else np.array([0.0])
-    fleet = float((allx * ally).sum() / max((allx ** 2).sum(), 1e-9))
-    out = {"_fleet": fleet}
-    for st in dx:
-        x, y = np.array(dx[st]), np.array(dy[st])
-        c_st = float((x * y).sum() / max((x ** 2).sum(), 1e-9))
-        out[st] = float(shrink(len(x), c_st, fleet))
+    s2f = float(np.mean(resid ** 2))
+    cnt = np.bincount(st, minlength=n_st).astype(float)
+    ss = np.bincount(st, weights=resid ** 2, minlength=n_st)
+    out = np.full(n_st + 1, math.sqrt(s2f))
+    have = cnt > 0
+    out[:n_st][have] = np.sqrt((ss[have] + K * s2f) / (cnt[have] + K))
     return out
 
 
-def design(rows: list[dict], H: int, with_phys: bool, cphys: dict[str, float]) -> np.ndarray:
-    cols = []
-    for r in rows:
-        f = r["_f"][H]
-        v = [0.0 if f[k] is None else f[k] for k in B_FEATS]
-        if with_phys:
-            v.append(core.delta_t(cphys.get(r["station"], cphys["_fleet"]), r["sw_obs"], r["sw_fc"], H))
-        cols.append(v)
-    return np.array(cols, dtype=float)
+def fit_phys(D: Data, m: np.ndarray) -> np.ndarray:
+    """c per station (index n_st = fleet): within station x month, groups of
+    3+ only, shrunk with n = the station's rows in those groups."""
+
+    n_st = len(D.stations)
+    key = D.st[m] * 13 + D.month[m]
+    x, y, st = D.sqrtq[m], D.rise[m], D.st[m]
+    cnt = np.bincount(key, minlength=n_st * 13)
+    keep = cnt[key] >= 3
+    mx = np.bincount(key, weights=x, minlength=n_st * 13) / np.maximum(cnt, 1)
+    my = np.bincount(key, weights=y, minlength=n_st * 13) / np.maximum(cnt, 1)
+    dx, dy, s = (x - mx[key])[keep], (y - my[key])[keep], st[keep]
+    fleet = float((dx * dy).sum() / max((dx ** 2).sum(), 1e-9)) if dx.size else 0.0
+    sxy = np.bincount(s, weights=dx * dy, minlength=n_st)
+    sxx = np.bincount(s, weights=dx * dx, minlength=n_st)
+    n = np.bincount(s, minlength=n_st).astype(float)
+    c = np.full(n_st + 1, fleet)
+    have = n > 0
+    c_st = sxy[have] / np.maximum(sxx[have], 1e-9)
+    c[:n_st][have] = fleet + n[have] / (n[have] + K) * (c_st - fleet)
+    return c
 
 
-def fit_linear(train: list[dict], H: int, with_phys: bool, cphys, per_station: bool) -> dict:
-    stations = sorted({r["station"] for r in train})
-    y = np.array([r["tmax"] - r["tmax_fc"] for r in train])
-    X = design(train, H, with_phys, cphys)
-    S = np.array([[1.0 if r["station"] == s else 0.0 for s in stations] for r in train])
+def fit_linear(D: Data, m: np.ndarray, H: int, cphys: np.ndarray | None, per_station: bool) -> dict:
+    n_st = len(D.stations)
+    idx = np.flatnonzero(m)
+    present = np.unique(D.st[idx])
+    y = D.y[idx]
+    X = D.F[H][idx]
+    if cphys is not None:
+        X = np.column_stack([X, cphys[D.st[idx]] * D.G[H][idx]])
+    pos = {s: j for j, s in enumerate(present)}
+    S = np.zeros((idx.size, present.size))
+    S[np.arange(idx.size), [pos[s] for s in D.st[idx]]] = 1.0
     beta, *_ = np.linalg.lstsq(np.hstack([S, X]), y, rcond=None)
-    icpt = dict(zip(stations, beta[:len(stations)]))
-    fleet = beta[len(stations):]
-    coef = {s: fleet for s in stations}
+    icpt = np.full(n_st, np.nan)
+    icpt[present] = beta[:present.size]
+    fleet = beta[present.size:]
+    coef = np.tile(fleet, (n_st, 1))
     if per_station:
-        for s in stations:
-            idx = [i for i, r in enumerate(train) if r["station"] == s]
-            if len(idx) < 30:
+        for s in present:
+            rows = np.flatnonzero(D.st[idx] == s)
+            if rows.size < 30:
                 continue
-            Xs = np.hstack([np.ones((len(idx), 1)), X[idx]])
-            bs, *_ = np.linalg.lstsq(Xs, y[idx], rcond=None)
-            coef[s] = shrink(len(idx), bs[1:], fleet)
-            icpt[s] = float(np.mean(y[idx] - X[idx] @ coef[s]))
-    resid: dict[str, list[float]] = {}
-    for i, r in enumerate(train):
-        s = r["station"]
-        resid.setdefault(s, []).append(float(y[i] - icpt[s] - X[i] @ coef[s]))
-    return {"icpt": icpt, "coef": coef, "fleet": fleet, "sd": _sd(resid)}
+            Xs = np.hstack([np.ones((rows.size, 1)), X[rows]])
+            bs, *_ = np.linalg.lstsq(Xs, y[rows], rcond=None)
+            coef[s] = fleet + rows.size / (rows.size + K) * (bs[1:] - fleet)
+            icpt[s] = float(np.mean(y[rows] - X[rows] @ coef[s]))
+    resid = y - icpt[D.st[idx]] - np.einsum("ij,ij->i", X, coef[D.st[idx]])
+    return {"icpt": icpt, "icpt_fallback": float(np.mean(icpt[present])), "coef": coef,
+            "sd": _sd_by_station(resid, D.st[idx], n_st)}
 
 
-def _sd(resid: dict[str, list[float]]) -> dict[str, float]:
-    allr = np.concatenate([np.array(v) for v in resid.values()])
-    s2f = float(np.mean(allr ** 2))
-    out = {"_fleet": math.sqrt(s2f)}
-    for s, v in resid.items():
-        v = np.array(v)
-        out[s] = math.sqrt((len(v) * float(np.mean(v ** 2)) + K * s2f) / (len(v) + K))
-    return out
-
-
-def fit_all(train: list[dict]) -> dict:
-    cphys = fit_phys(train)
-    y_by: dict[str, list[float]] = {}
-    for r in train:
-        y_by.setdefault(r["station"], []).append(r["tmax"] - r["tmax_fc"])
-    mean = {s: float(np.mean(v)) for s, v in y_by.items()}
-    allm = float(np.mean([r["tmax"] - r["tmax_fc"] for r in train]))
-    out = {"cphys": cphys, "mean": mean, "mean_fleet": allm, "H": {}}
+def fit_all(D: Data, m: np.ndarray) -> dict:
+    n_st = len(D.stations)
+    cphys = fit_phys(D, m)
+    cnt = np.bincount(D.st[m], minlength=n_st)
+    mean = np.where(cnt > 0, np.bincount(D.st[m], weights=D.y[m], minlength=n_st) / np.maximum(cnt, 1), np.nan)
+    mean_fleet = float(np.mean(D.y[m]))
+    mean_full = np.where(np.isnan(mean), mean_fleet, mean)
+    out = {"cphys": cphys, "mean": mean_full, "H": {}}
+    yv = D.y[m] - mean_full[D.st[m]]
     for H in CHECK_HOURS:
-        res: dict[str, list[float]] = {}
-        res_sun: dict[str, list[float]] = {}
-        res_rh: dict[str, list[float]] = {}
-        for r in train:
-            yv = r["tmax"] - r["tmax_fc"] - mean[r["station"]]
-            res.setdefault(r["station"], []).append(yv)
-            res_sun.setdefault(r["station"], []).append(yv - sun_line(r["_f"][H], H))
-            res_rh.setdefault(r["station"], []).append(yv - rh_line(r["_f"][H], H))
-        out["H"][H] = {"sd_mean": _sd(res), "sd_sun": _sd(res_sun), "sd_rh": _sd(res_rh),
-                       "B": fit_linear(train, H, False, cphys, False),
-                       "AB": fit_linear(train, H, True, cphys, False),
-                       "AB_station": fit_linear(train, H, True, cphys, True)}
+        out["H"][H] = {"sd_mean": _sd_by_station(yv, D.st[m], n_st),
+                       "sd_sun": _sd_by_station(yv - D.SUN[H][m], D.st[m], n_st),
+                       "sd_rh": _sd_by_station(yv - D.RH[H][m], D.st[m], n_st),
+                       "B": fit_linear(D, m, H, None, False),
+                       "AB": fit_linear(D, m, H, cphys, False),
+                       "AB_station": fit_linear(D, m, H, cphys, True)}
     return out
 
 
-def predict(model: dict, r: dict, H: int) -> dict[str, tuple[float, float]]:
-    s = r["station"]
-    m = model["mean"].get(s, model["mean_fleet"])
+def _sd_pick(sd: np.ndarray, st: np.ndarray, seen: np.ndarray) -> np.ndarray:
+    return np.where(seen[st], sd[st], sd[-1])
+
+
+def predict(D: Data, model: dict, rows: np.ndarray, H: int, seen: np.ndarray) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    st = D.st[rows]
+    m = model["mean"][st]
     h = model["H"][H]
-    pick = lambda d: d.get(s, d["_fleet"])  # noqa: E731
-    out = {"mean": (m, pick(h["sd_mean"])),
-           "sun_line": (m + sun_line(r["_f"][H], H), pick(h["sd_sun"])),
-           "rh_line": (m + rh_line(r["_f"][H], H), pick(h["sd_rh"]))}
+    out = {"mean": (m, _sd_pick(h["sd_mean"], st, seen)),
+           "sun_line": (m + D.SUN[H][rows], _sd_pick(h["sd_sun"], st, seen)),
+           "rh_line": (m + D.RH[H][rows], _sd_pick(h["sd_rh"], st, seen))}
     for arm, phys in (("B", False), ("AB", True), ("AB_station", True)):
         fm = h[arm]
-        x = design([r], H, phys, model["cphys"])[0]
-        icpt = fm["icpt"].get(s, float(np.mean(list(fm["icpt"].values()))))
-        out[arm] = (float(icpt + x @ fm["coef"].get(s, fm["fleet"])), pick(fm["sd"]))
+        X = D.F[H][rows]
+        if phys:
+            c = np.where(seen[st], model["cphys"][st], model["cphys"][-1])
+            X = np.column_stack([X, c * D.G[H][rows]])
+        icpt = np.where(np.isnan(fm["icpt"][st]), fm["icpt_fallback"], fm["icpt"][st])
+        coef = fm["coef"][st]
+        out[arm] = (icpt + np.einsum("ij,ij->i", X, coef), _sd_pick(fm["sd"], st, seen))
     return out
 
 
-def scores(y: float, mu: float, sd: float) -> tuple[float, float, float]:
+def scores(y: np.ndarray, mu: np.ndarray, sd: np.ndarray) -> np.ndarray:
     z = (y - mu) / sd
-    ls = 0.5 * math.log(2 * math.pi * sd * sd) + 0.5 * z * z
-    pdf, cdf = math.exp(-0.5 * z * z) / math.sqrt(2 * math.pi), 0.5 * (1 + math.erf(z / math.sqrt(2)))
+    ls = 0.5 * np.log(2 * np.pi * sd * sd) + 0.5 * z * z
+    pdf = np.exp(-0.5 * z * z) / math.sqrt(2 * math.pi)
+    cdf = 0.5 * (1 + np.vectorize(math.erf)(z / math.sqrt(2)))
     crps = sd * (z * (2 * cdf - 1) + 2 * pdf - 1 / math.sqrt(math.pi))
-    return ls, crps, abs(y - mu)
+    return np.column_stack([ls, crps, np.abs(y - mu)])
 
 
-def walk_forward(rows: list[dict]) -> list[dict]:
-    dates = sorted({r["date"] for r in rows})
-    if len(dates) <= WARMUP_DAYS:
-        return []
-    by_date: dict[str, list[dict]] = {}
-    for r in rows:
-        by_date.setdefault(r["date"], []).append(r)
-    out, model, fitted_at = [], None, -REFIT_EVERY
-    for k, d in enumerate(dates[WARMUP_DAYS:], start=WARMUP_DAYS):
+def walk_forward(D: Data) -> dict:
+    """Per H: test row indices and each arm's (mu, sd)."""
+
+    n_days = len(D.dates)
+    res = {H: {"rows": [], **{a: ([], []) for a in ARMS}} for H in CHECK_HOURS}
+    if n_days <= WARMUP_DAYS:
+        return res
+    model, fitted_at, seen = None, -REFIT_EVERY, None
+    for k in range(WARMUP_DAYS, n_days):
         if model is None or k - fitted_at >= REFIT_EVERY:
-            model = fit_all([r for dd in dates[:k] for r in by_date[dd]])
-            fitted_at = k
-        for r in by_date[d]:
-            y = r["tmax"] - r["tmax_fc"]
-            for H in CHECK_HOURS:
-                pr = predict(model, r, H)
-                out.append({"date": d, "station": r["station"], "region": region(r["station"]), "H": H,
-                            "y": y, "pred": pr})
-    return out
+            m = D.day < k
+            model, fitted_at = fit_all(D, m), k
+            seen = np.bincount(D.st[m], minlength=len(D.stations)) > 0
+        rows = np.flatnonzero(D.day == k)
+        if not rows.size:
+            continue
+        for H in CHECK_HOURS:
+            pr = predict(D, model, rows, H, seen)
+            res[H]["rows"].append(rows)
+            for a in ARMS:
+                res[H][a][0].append(pr[a][0]); res[H][a][1].append(pr[a][1])
+    for H in CHECK_HOURS:
+        res[H]["rows"] = np.concatenate(res[H]["rows"])
+        for a in ARMS:
+            res[H][a] = (np.concatenate(res[H][a][0]), np.concatenate(res[H][a][1]))
+    return res
 
 
-def summarise(res: list[dict]) -> dict:
+def _entry(D: Data, res: dict, H: int, sel: np.ndarray, rng) -> dict:
+    rows = res[H]["rows"][sel]
+    y = D.y[rows]
+    sc = {a: scores(y, res[H][a][0][sel], res[H][a][1][sel]) for a in ARMS}
+    day_of = D.day[rows]
+    days, inv = np.unique(day_of, return_inverse=True)
+    nd = days.size
+    cnt = np.bincount(inv, minlength=nd).astype(float)
+    entry = {"n": int(rows.size), "days": int(nd),
+             "mean": {a: [round(float(v), 4) for v in sc[a].mean(axis=0)] for a in ARMS}, "pairs": {}}
+    for name, (a, b) in PAIRS.items():
+        d = sc[a] - sc[b]
+        sums = np.column_stack([np.bincount(inv, weights=d[:, j], minlength=nd) for j in range(3)])
+        draws = np.empty((DRAWS, 3))
+        for t in range(DRAWS):
+            starts = rng.integers(0, nd, size=math.ceil(nd / BLOCK))
+            pick = ((starts[:, None] + np.arange(BLOCK)[None, :]) % nd).ravel()
+            draws[t] = sums[pick].sum(axis=0) / cnt[pick].sum()
+        entry["pairs"][name] = {"mean": [round(float(v), 4) for v in d.mean(axis=0)],
+                                "ci95": [[round(float(np.quantile(draws[:, j], q)), 4) for q in (0.025, 0.975)]
+                                         for j in range(3)]}
+    return entry
+
+
+def summarise(D: Data, res: dict) -> dict:
     rng = np.random.default_rng(SEED)
     out: dict = {}
     for H in CHECK_HOURS:
-        for reg in ("all", "asia_pacific", "europe_africa", "americas_goes"):
-            rr = [x for x in res if x["H"] == H and (reg == "all" or x["region"] == reg)]
-            if not rr:
-                continue
-            sc = {a: np.array([scores(x["y"], *x["pred"][a]) for x in rr]) for a in ARMS}
-            days = sorted({x["date"] for x in rr})
-            idx_by_day: dict[str, list[int]] = {}
-            for i, x in enumerate(rr):
-                idx_by_day.setdefault(x["date"], []).append(i)
-            pairs = {"AB-sun_line": ("AB", "sun_line"), "AB-rh_line": ("AB", "rh_line"), "AB-B": ("AB", "B"),
-                     "AB_station-AB": ("AB_station", "AB")}
-            entry = {"n": len(rr), "days": len(days),
-                     "mean": {a: [round(float(v), 4) for v in sc[a].mean(axis=0)] for a in ARMS}, "pairs": {}}
-            for name, (a, b) in pairs.items():
-                d = sc[a] - sc[b]
-                draws = []
-                for _ in range(DRAWS):
-                    starts = rng.integers(0, len(days), size=math.ceil(len(days) / BLOCK))
-                    pick = [i for s0 in starts for j in range(BLOCK) for i in idx_by_day[days[(s0 + j) % len(days)]]]
-                    draws.append(d[pick].mean(axis=0))
-                draws = np.array(draws)
-                entry["pairs"][name] = {"mean": [round(float(v), 4) for v in d.mean(axis=0)],
-                                        "ci95": [[round(float(np.quantile(draws[:, m], q)), 4) for q in (0.025, 0.975)]
-                                                 for m in range(3)]}
-            out[f"{H}|{reg}"] = entry
+        reg = D.region[res[H]["rows"]]
+        for g in REGIONS:
+            sel = np.ones(reg.size, bool) if g == "all" else reg == g
+            if sel.any():
+                out[f"{H}|{g}"] = _entry(D, res, H, sel, rng)
+    for H in CHECK_HOURS:   # addendum 1: report only, drawn after every original entry
+        sp = D.split[res[H]["rows"]]
+        for g in SPLITS:
+            sel = sp == g
+            if sel.any():
+                out[f"{H}|{g}"] = _entry(D, res, H, sel, rng)
     return out
 
 
@@ -267,20 +311,20 @@ def main() -> int:
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
     rows = json.loads(DAYS.read_text())
-    for r in rows:
-        r["_f"] = {H: feats(r, H) for H in CHECK_HOURS}
-    res = walk_forward(rows)
+    D = Data(rows)
+    res = walk_forward(D)
     if args.smoke:
-        finite = all(math.isfinite(v) for x in res for a in ARMS for v in x["pred"][a]) if res else None
-        print(json.dumps({"station_days": len(rows), "stations": len({r["station"] for r in rows}),
-                          "dates": len({r["date"] for r in rows}), "test_predictions": len(res),
-                          "test_days": len({x["date"] for x in res}), "all_finite": finite,
-                          "missing_rh_at_13": sum(1 for r in rows if r["_f"][13]["rh"] is None),
-                          "note": "smoke only -- no scores printed"}, indent=1))
+        finite = all(np.isfinite(res[H][a][i]).all() for H in CHECK_HOURS for a in ARMS for i in (0, 1))
+        print(json.dumps({"station_days": D.n, "stations": len(D.stations), "dates": len(D.dates),
+                          "test_predictions": int(sum(res[H]["rows"].size for H in CHECK_HOURS)),
+                          "test_days": int(np.unique(D.day[res[CHECK_HOURS[0]]["rows"]]).size),
+                          "all_finite": bool(finite), "note": "smoke only -- no scores printed"}, indent=1))
         return 0
-    reading = {"schema": "tmax_physics_m3_reading_v1", "protocol": "c30cb32a",
+    reading = {"schema": "tmax_physics_m3_reading_v1", "protocol": "c30cb32a+40f14290",
                "read_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-               "metrics": ["LogScore", "CRPS", "MAE"], "summary": summarise(res)}
+               "metrics": ["LogScore", "CRPS", "MAE"],
+               "data": {"station_days": D.n, "stations": D.stations, "dates": [D.dates[0], D.dates[-1]]},
+               "summary": summarise(D, res)}
     stamp = reading["read_at_utc"].replace(":", "").replace("-", "")
     (HERE / f"reading_{stamp}.json").write_text(json.dumps(reading, indent=1))
     print("written", f"reading_{stamp}.json")
