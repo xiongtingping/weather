@@ -51,7 +51,16 @@ PREV_VARS = ["temperature_2m", "shortwave_radiation", "dew_point_2m", "relative_
 ENDPOINT = {
     "prev1": "https://previous-runs-api.open-meteo.com/v1/forecast",
     "sat": "https://satellite-api.open-meteo.com/v1/archive",
+    "sarah3": "https://satellite-api.open-meteo.com/v1/archive",
     "era5": "https://archive-api.open-meteo.com/v1/archive",
+}
+# First archived day per satellite product, probed 2026-10-21 (single-station
+# bisection, 3-day resolution): windows before it come back all null.
+PRODUCT_START = {
+    "jma_jaxa_himawari": "2024-01-01",
+    "eumetsat_lsa_saf_msg": "2025-01-02",
+    "eumetsat_lsa_saf_iodc": "2025-04-12",
+    "dwd_sis_europe_africa_v4": "2026-03-12",
 }
 
 
@@ -67,6 +76,14 @@ def stations_for(task: str) -> dict[str, str | None]:
         # 18,000-file native backfill.
         return {s: ("jma_jaxa_himawari" if p == "jaxa_ptree_himawari" else p) for s in sorted(_COORDINATES)
                 if (p := _satellite_product(_COORDINATES[s][1]))}
+    if task == "sarah3":
+        # The board's European product (DWD SIS) is archived only from
+        # 2026-03-12; EUMETSAT SARAH3 carries the history there (2026-10-15..17
+        # against DWD SIS: r 0.986, MAE 25.8 W/m2, mean -5.7) and for the MSG
+        # pair (r ~0.95, MAE ~55).  Kept under its own source; IODC stations
+        # lie outside it.
+        return {s: "eumetsat_sarah3" for s in sorted(_COORDINATES)
+                if _satellite_product(_COORDINATES[s][1]) in ("dwd_sis_europe_africa_v4", "eumetsat_lsa_saf_msg")}
     if task == "era5":
         return {s: "era5" for s in sorted(_COORDINATES) if _satellite_product(_COORDINATES[s][1]) is None}
     raise SystemExit(f"unknown task {task}")
@@ -136,7 +153,7 @@ def main() -> int:
     for model, group in groups.items():
         for a, b in windows(end):
             unit = f"{model}|{a}"
-            if unit in have:
+            if unit in have or b.isoformat() < PRODUCT_START.get(str(model), "0000"):
                 continue
             if spent + len(group) > args.max_weight or time.time() - t0 > args.budget or not store.disk_ok():
                 break
