@@ -61,6 +61,11 @@ LANE_PROPER_BET = "proper_bet"
 LANE_TAIL_SHORT = "tail_short"
 LANE_COPY_FOLLOW = "copy_follow"
 LANE_PAIR_MAKER = "pair_maker"
+#: Charter 277's 反向线 (user ruling 2026-10-22 「把格 A 和格 B 做成车道并开启实盘，
+#: 单笔5u」): A fades the P0-M mode warm of the market, B fades the P0 mode
+#: far from the market.  See ``fade_lane``.
+LANE_FADE_P0M = "fade_p0m"
+LANE_FADE_P0 = "fade_p0"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -72,6 +77,8 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_TAIL_SHORT,
     LANE_COPY_FOLLOW,
     LANE_PAIR_MAKER,
+    LANE_FADE_P0M,
+    LANE_FADE_P0,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -380,6 +387,66 @@ TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "lookback_days": 1,
 }
 
+#: Charter 277's 反向线 A (user ruling 2026-10-22 「把格 A 和格 B 做成车道并开启实盘，
+#: 单笔5u，前端统计数据」): the station-day's newest stage is P0-M and the served
+#: P0-M mode is warm of the market's mode -> YES on the bucket one rung cold
+#: of the market's mode, FOK at the best ask.  Measured 09-12..10-20 on 670
+#: first decisions: +5.3 cents a share [+1.4, +9.2] on a 0.17 cost, positive
+#: on both halves, odd and even days, both months
+#: (docs/research/p0_mode_hit_20261021, 补记五).  On by default: the ruling
+#: put it live.
+FADE_P0M_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": True,
+    "rule": "p0m_warm_fade_cold_neighbour_yes_taker_v1",
+    "stage": "P0-M",
+    "side": "YES",
+    # The bands measured positive: 36-48h +6.0, 24-36h +5.0; 12-24h had 22
+    # decisions (-1.1).  The window opens where P0-M takes the day over and
+    # closes 12 hours before the clock.
+    "min_hours_to_settlement": 12.0,
+    "max_hours_to_settlement": None,
+    # Per take, in USDC at the ask; the depth at the ask caps it.
+    "stake_usdc": 5.0,
+    "walk_ticks": 0,
+    "max_legs_per_station_day": 1,
+    "max_attempts_per_bucket": 3,
+    "max_orders_per_bucket": 8,
+    "unsent_retry_seconds": 300.0,
+    "max_daily_cost_usdc": 150.0,
+    "taker_fee_rate": 0.05,
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+    "lookback_days": 1,
+}
+
+#: Charter 277's 反向线 B: the newest stage is P0, more than 36 h out, the
+#: served mode is not the market's and the two means sit more than
+#: ``min_mean_gap_rungs`` apart -> NO on the MODEL's mode, FOK at 1 - YES
+#: best bid.  Measured on 504 first decisions: +3.1 cents a share [+0.6, +5.3]
+#: on a 0.84 cost; the threshold is the tercile cut the reading was taken
+#: at (0.5 / 1.0 / 1.3 gave +1.1 / +0.8 / -0.3).
+FADE_P0_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": True,
+    "rule": "p0_far_disagreement_fade_model_mode_no_taker_v1",
+    "stage": "P0",
+    "side": "NO",
+    "min_hours_to_settlement": 36.0,
+    "max_hours_to_settlement": None,
+    "min_mean_gap_rungs": 0.76,
+    # The NO ask is 1 - YES bid; a bid under this is not taken.
+    "min_yes_bid": 0.02,
+    "stake_usdc": 5.0,
+    "max_legs_per_station_day": 1,
+    "max_attempts_per_bucket": 3,
+    "max_orders_per_bucket": 8,
+    "unsent_retry_seconds": 300.0,
+    "max_daily_cost_usdc": 150.0,
+    "taker_fee_rate": 0.05,
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+    "lookback_days": 1,
+}
+
 #: The benchmark account (charter 256's badatmath., ``0x8fbd7cf5``) is one
 #: wallet of an eight-wallet bot cluster that trades on one clock
 #: (docs/research/benchmark_account_0x8fbd_20261008, round 6).  The one list:
@@ -512,6 +579,9 @@ STAKE_DIALS: dict[str, dict[str, Any]] = {
     LANE_TAIL_SHORT: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_PROPER_BET: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_COPY_FOLLOW: {"bounds": (1.0, 50.0), "step": 1.0},
+    # Charter 277: the two 反向线 takes, 5 USDC by the ruling.
+    LANE_FADE_P0M: {"bounds": (1.0, 100.0), "step": 1.0},
+    LANE_FADE_P0: {"bounds": (1.0, 100.0), "step": 1.0},
 }
 
 DEFAULT_LANES: dict[str, dict[str, Any]] = {
@@ -525,6 +595,8 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_TAIL_SHORT: dict(TAIL_SHORT_DEFAULT_SETTINGS),
     LANE_COPY_FOLLOW: dict(COPY_FOLLOW_DEFAULT_SETTINGS),
     LANE_PAIR_MAKER: dict(PAIR_MAKER_DEFAULT_SETTINGS),
+    LANE_FADE_P0M: dict(FADE_P0M_DEFAULT_SETTINGS),
+    LANE_FADE_P0: dict(FADE_P0_DEFAULT_SETTINGS),
 }
 
 
@@ -653,6 +725,10 @@ __all__ = [
     "LANE_BASKET",
     "LANE_COPY_FOLLOW",
     "LANE_PAIR_MAKER",
+    "LANE_FADE_P0M",
+    "LANE_FADE_P0",
+    "FADE_P0M_DEFAULT_SETTINGS",
+    "FADE_P0_DEFAULT_SETTINGS",
     "PAIR_MAKER_DEFAULT_SETTINGS",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",

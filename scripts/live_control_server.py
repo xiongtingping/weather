@@ -443,6 +443,13 @@ def _lane_opening_stages(doc: dict) -> dict:
             out[name] = [s for s in order if s in stages]
         except Exception:  # noqa: BLE001
             pass
+    # Charter 277: each 反向线 opens on one stage (``stage``).
+    for name in (lanes.LANE_FADE_P0M, lanes.LANE_FADE_P0):
+        try:
+            stage = str(doc["lanes"][name].get("stage") or "").strip().upper()
+            out[name] = [s for s in order if s == stage]
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

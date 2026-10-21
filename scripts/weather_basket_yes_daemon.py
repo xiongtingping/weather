@@ -123,6 +123,8 @@ from bayes_basket_target.settlement_time import settlement_day_window
 from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_COPY_FOLLOW,
+    LANE_FADE_P0,
+    LANE_FADE_P0M,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
     LANE_PAIR_MAKER,
@@ -4270,6 +4272,32 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 277: the two 反向线 at the head too, right after H1 -- each reads
+    # the newest served vector and the live ladder, so a signal visible at the
+    # cycle boundary does not wait behind the long work.  A failure is a
+    # receipt, never a stop.
+    fade_head_receipts: dict[str, Any] = {}
+    for _fade_lane in (LANE_FADE_P0M, LANE_FADE_P0):
+        if (
+            PRODUCTION_EXECUTION_MODE == "production_live"
+            and head_connection is not None
+            and lane_enabled(_fade_lane)
+        ):
+            try:
+                from bayes_basket_target.exit_orders import (
+                    default_transport as _fade_head_transport,
+                )
+                from bayes_basket_target.fade_lane import execute_fade
+                fade_head_receipts[_fade_lane] = execute_fade(
+                    head_connection,
+                    getattr(worker, "canonical_source_conn", None),
+                    lane=_fade_lane,
+                    transport=_fade_head_transport,
+                    now_utc=utc_now(),
+                    live_submit_authorized=True,
+                )
+            except Exception as exc:
+                fade_head_receipts[_fade_lane] = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # Charter 256: the 跟单线 at the head too -- the source's trades since the
     # previous cycle's tail are followed before this cycle's long work, not
     # after it.  Charter 257 补记三 (「提高跟单线的权重」): right after H1, ahead of
@@ -4484,6 +4512,29 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 277: the two 反向线 again on the vectors this cycle committed.
+    fade_receipts: dict[str, Any] = {}
+    for _fade_lane in (LANE_FADE_P0M, LANE_FADE_P0):
+        if PRODUCTION_EXECUTION_MODE != "production_live":
+            continue
+        if not lane_enabled(_fade_lane):
+            fade_receipts[_fade_lane] = {"state": "lane_paused", "lane": _fade_lane}
+            continue
+        try:
+            from bayes_basket_target.exit_orders import (
+                default_transport as _fade_transport,
+            )
+            from bayes_basket_target.fade_lane import execute_fade
+            fade_receipts[_fade_lane] = execute_fade(
+                connection,
+                canonical,
+                lane=_fade_lane,
+                transport=_fade_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            fade_receipts[_fade_lane] = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # Charter 256: the 跟单线, on the source's trades since the head -- right
     # after H1 and ahead of the other tail lanes (charter 257 补记三).
     copy_follow_receipt: dict[str, Any] | None = None
@@ -4730,6 +4781,8 @@ def run_target_production_cycle(
         **({"proper_bet_lane_head": proper_bet_head_receipt} if proper_bet_head_receipt else {}),
         **({"proper_bet_lane": proper_bet_receipt} if proper_bet_receipt else {}),
         **({"tail_short_lane": tail_short_receipt} if tail_short_receipt else {}),
+        **({"fade_lanes_head": fade_head_receipts} if fade_head_receipts else {}),
+        **({"fade_lanes": fade_receipts} if fade_receipts else {}),
         **({"copy_follow_lane_head": copy_follow_head_receipt} if copy_follow_head_receipt else {}),
         **({"copy_follow_lane": copy_follow_receipt} if copy_follow_receipt else {}),
     }
