@@ -16853,6 +16853,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-peak b{font-size:34px;line-height:1.1}.sd-cx-peak b.sd-warm{color:var(--pill-red-fg)}.sd-cx-peak b.sd-cold{color:var(--accent)}
 .sd-cx-peaktmax{font-size:14px;color:var(--muted)}.sd-cx-peaktmax b{font-size:20px;color:var(--text)}
 .sd-cx-peaktmax b.sd-warm{color:var(--pill-red-fg)}.sd-cx-peaktmax b.sd-cold{color:var(--accent)}.sd-cx-peaktmax small{font-size:11.5px}
+.sd-cx-nowbox{margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+.sd-cx-nowbox .sd-cx-now{margin-top:0}
+.sd-cx-nowbox .sd-cx-buckets{align-items:center;margin-top:4px}.sd-cx-nowbox .sd-cx-buckets small{font-size:11px;color:var(--muted)}
 .sd-cx-now{font-size:12.5px;color:var(--muted);margin-top:4px}.sd-cx-now b{color:var(--text)}
 .sd-cx-now b.sd-warm{color:var(--pill-red-fg)}.sd-cx-now b.sd-cold{color:var(--accent)}
 .sd-cx-range{font-size:12.5px;color:var(--muted)}.sd-cx-range b{color:var(--text)}
@@ -25688,11 +25691,14 @@ function sdSky(day){
             const T = v => fc == null ? "—" : sdN(fc + v, 1) + "°C";
             return `<div class="sd-cx-peak"><small>今天最高 ΔT · ${hh(hiP.hour)}:00</small><b class="${sdWarmCls(hiP.total_c)}">${sdDeltaT(hiP.total_c)}</b></div>`
               + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(hiP.total_c)}">${T(hiP.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
-              + `<div class="sd-cx-now">当前 ${hh(CX.hour)}:00 · ΔT <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b> → <b>${T(CX.total_c)}</b></div>`
+              // The rungs belong to the current reading, so they sit with it,
+              // labelled (user 2026-10-21 「推算最高温 21.2°C 和20°C 29%冲突」 →
+              // 「保持突出最高，概率改标注」).
+              + `<div class="sd-cx-nowbox"><div class="sd-cx-now">当前 ${hh(CX.hour)}:00 · ΔT <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b> → <b>${T(CX.total_c)}</b></div>`
+              + `<div class="sd-cx-buckets" title="${sdEsc(`按当前 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）；不是按今天最高 ΔT 算的。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>按当前推算</small>${
+                (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div></div>`
               + (loP && loP !== hiP ? `<div class="sd-cx-range">最低 ${hh(loP.hour)}:00 · ΔT ${sdSg(loP.total_c, 2)}°C → ${T(loP.total_c)}</div>` : "");
           })()}
-          <div class="sd-cx-buckets" title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布区间覆盖率与名义值相差不到 3 个百分点`)}">${
-            (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div>
           ${cxForward}
         </div>
         <div class="sd-cx-plot">${sdCompositeChart(CX.series)}<div class="sd-cx-detail muted">点曲线上的点，看那一小时的明细</div></div>
