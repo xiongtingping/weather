@@ -39,20 +39,25 @@ def test_reads_the_newest_hour_the_satellite_covers() -> None:
     assert got["state"] == "ok" and got["hour"] == 11
 
 
-def test_too_early_and_waiting() -> None:
-    assert b._composite_tmax_shift(_rows(8, 8), "ZUUU")["state"] == "too_early"
-    assert b._composite_tmax_shift(_rows(7, 10), "ZUUU")["state"] == "waiting_satellite"
+def test_no_report_no_reading_and_a_lagging_satellite_stops_at_six() -> None:
+    quiet = _rows(13, 5)
+    for r in quiet:
+        r["obs"] = None
+    assert b._composite_tmax_shift(quiet, "ZUUU") is None
+    # Reports to 10 h, no satellite hour yet: the night hours (to 6 h, M10) need none.
+    got = b._composite_tmax_shift(_rows(5, 10), "ZUUU")
+    assert got["state"] == "ok" and got["hour"] == 6
 
 
 def test_a_station_without_its_own_line_uses_the_fleet() -> None:
-    got = b._composite_tmax_shift(_rows(13, 13), "VILK")
+    got = b._composite_tmax_shift(_rows(13, 13), "XXXX")
     assert got["state"] == "ok" and not got["station_fit"] and got["station_bias_c"] == 0.0
 
 
 def test_the_series_reads_each_hour_as_of_itself() -> None:
     rows = _rows(13, 13)
     got = b._composite_tmax_shift(rows, "ZUUU")
-    assert [p["hour"] for p in got["series"]] == [9, 10, 11, 12, 13]
+    assert [p["hour"] for p in got["series"]] == list(range(0, 14))
     assert got["series"][-1]["total_c"] == got["total_c"]
     # Hour 10 must not see the 11..13 reports: making them colder leaves it as it was.
     colder = _rows(13, 13)
@@ -60,7 +65,7 @@ def test_the_series_reads_each_hour_as_of_itself() -> None:
         if r["hour"] > 10 and r["obs"]:
             r["obs"]["temp_c"] -= 5.0
     again = b._composite_tmax_shift(colder, "ZUUU")
-    assert again["series"][1] == got["series"][1]
+    assert again["series"][10] == got["series"][10]
     assert again["series"][-1]["total_c"] < got["series"][-1]["total_c"]
 
 
@@ -96,17 +101,14 @@ def test_an_evening_hour_reads_the_running_maximum() -> None:
     import json
 
     fit = json.loads(b.COMPOSITE_TMAX_SHIFT_PATH.read_text())
-    line = dict(fit["by_hour"]["17"])
-    line["features"] = list(fit["features"][:-1]) + ["rmax", "phys"]
-    line["stations"] = {s: {**v, "coef": v["coef"][:-1] + [1.0, v["coef"][-1]]} for s, v in line["stations"].items()}
-    fit["by_hour"]["20"] = line
+    assert "rmax" in fit["by_hour"]["20"]["features"]
     rows = _rows(17, 17)
     for r in rows:
         if r["hour"] <= 20:
             r["obs"] = {"temp_c": 20.0 + (r["hour"] == 15) * 6.0, "dew_c": 9.0, "rh_pct": 45.0, "wind_mps": 3.5, "precip": False}
     got = b._composite_at({r["hour"]: r for r in rows}, "ZUUU", fit, 20)
     assert got["x"]["rmax"] == 2.0          # 26.0 seen at 15 h against a day-ahead maximum of 24.0
-    assert got["parts_c"]["rmax"] == 2.0
+    assert 1.8 < got["parts_c"]["rmax"] < 2.2
 
 
 def test_six_oclock_counts_as_night() -> None:
