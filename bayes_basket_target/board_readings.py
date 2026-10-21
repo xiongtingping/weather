@@ -969,7 +969,7 @@ def collect_centre_shape(
 
     env_sql = (
         "SELECT decision_at_utc, settlement_timezone, probabilities_json,"
-        " bucket_ordinals_json FROM basket_probability_envelope{hint}"
+        " bucket_ordinals_json, posterior_version FROM basket_probability_envelope{hint}"
         " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
         " AND stage='P0' ORDER BY decision_at_utc"
     )
@@ -1018,7 +1018,7 @@ def collect_centre_shape(
             counts["no_ladder"] += 1
             continue
         bands: dict[str, list[Any]] = {}
-        for decided_at, tz, probs, ordinals in envelopes:
+        for decided_at, tz, probs, ordinals, version in envelopes:
             try:
                 hours = hours_to_settlement(
                     str(day), as_of_utc=str(decided_at), settlement_timezone=str(tz))
@@ -1026,10 +1026,10 @@ def collect_centre_shape(
                 continue
             tier = _tier(float(hours))
             if tier is not None:
-                bands.setdefault(tier, []).append((decided_at, probs, ordinals))
+                bands.setdefault(tier, []).append((decided_at, probs, ordinals, version))
         for tier, candidates in bands.items():
             picked = None
-            for decided_at, probs, ordinals in candidates[:8]:
+            for decided_at, probs, ordinals, version in candidates[:8]:
                 snap = _seek(snap_sql, (station, day, str(decided_at)),
                              "basket_official_ws_snapshot_asof_idx")
                 if not snap or (
@@ -1041,12 +1041,12 @@ def collect_centre_shape(
                 except (TypeError, ValueError):
                     continue
                 if market.get("state") == "complete":
-                    picked = (decided_at, probs, ordinals, market["vector"])
+                    picked = (decided_at, probs, ordinals, market["vector"], version)
                     break
             if picked is None:
                 counts["band_unpaired"] += 1
                 continue
-            decided_at, probs, ordinals, m = picked
+            decided_at, probs, ordinals, m, version = picked
             try:
                 p = {str(k): float(v) for k, v in json.loads(probs).items()}
                 order = json.loads(ordinals)
@@ -1066,7 +1066,7 @@ def collect_centre_shape(
                 counts["failed"] += 1
                 continue
             scored.append({"station": str(station), "date": str(day),
-                           "tier": tier, "at": str(decided_at), **split})
+                           "tier": tier, "at": str(decided_at), "version": str(version or ""), **split})
     pool_from = STAGE_VERSION_EFFECTIVE_FROM.get("P0", {}).get(
         "calibrated_native_cross_ensemble_p0_v5")
 
@@ -1078,7 +1078,26 @@ def collect_centre_shape(
 
     long = [r for r in scored if r["tier"] != "0-12"]
     pool_all = _since(scored, pool_from)
+    # Charter 255 (user 2026-10-21 「EV 与中心/形状按宪章 255 分版本段报」): the
+    # 12h+ sample read version by version, oldest first; the last is the P0
+    # version served most recently, the only one about today's vector.
+    by_version: dict[str, list[dict[str, Any]]] = {}
+    for row in long:
+        by_version.setdefault(row["version"], []).append(row)
+    versions = []
+    for version, rows in sorted(by_version.items(), key=lambda kv: min(r["at"] for r in kv[1])):
+        reading = centre_shape_reading(rows, draws=draws if version == max(
+            by_version, key=lambda v: max(r["at"] for r in by_version[v])) else 0, seed=seed)
+        versions.append({"version": version, "short": version.rsplit("_", 1)[-1] if version else "未标版本",
+                         "first_at_utc": min(r["at"] for r in rows), "last_at_utc": max(r["at"] for r in rows),
+                         **{k: reading.get(k) for k in ("decisions", "station_days", "days", "gap", "centre",
+                                                        "shape", "centre_share", "gap_ci", "mean_signed_distance_c")}})
+    if versions:
+        current = max(versions, key=lambda v: v["last_at_utc"])
+        current["current"] = True
     return {
+        "stage": "P0",
+        "versions": versions,
         "available": bool(scored),
         "stable_pool_from_utc": pool_from,
         "served_anchor_utc": served_anchor_utc,
@@ -3038,7 +3057,13 @@ def skew_truth_side(conn: sqlite3.Connection) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 #: The agreement episodes the board reads: the first, the second, the last.
-MODE_AGREEMENT_PICKS = (("first", 0), ("second", 1), ("last", -1))
+# 「最后一次」 left on 2026-10-21 (user 「全部改：众数同桶去掉「最后一次」改为按当时可知的
+# 全部同桶段」): which episode is the last is known only after settlement, and an
+# agreement on a wrong bucket is usually followed by another one, so the pick
+# selected the right buckets by hindsight -- 98.5% landed against an 80% ask,
+# while every episode taken as it began landed below its ask in every stage
+# and hours band.  ``every`` (all episodes, as they started) replaces it.
+MODE_AGREEMENT_PICKS = (("first", 0), ("second", 1))
 #: Station-days this recent are walked again every run (a truth revision or
 #: a late book still moves them); older ones reuse the stored record.
 MODE_AGREEMENT_REWALK_DAYS = 4
@@ -3265,7 +3290,8 @@ def _mode_agreement_ledger(episodes: Sequence[Mapping[str, Any]]) -> dict[str, A
 
 def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
     """How often the truth lands in the bucket where our mode and the
-    market's first agree, agree a second time, and agree for the last time:
+    market's first agree, agree a second time, and agree at all (every
+    episode, as it began -- knowable then):
     the whole, by stage and hours to settlement at the episode's start, by
     settlement unit, and day by day.  Beside it, the first paired instant
     whatever the two modes say, as the baseline each mode hits on its own."""
@@ -3275,11 +3301,18 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
     picks: dict[str, list[dict[str, Any]]] = {}
     for name, _index in MODE_AGREEMENT_PICKS:
         picks[name] = [
-            {**d["picked"][name], "event_date": d["event_date"], "unit": d["unit"], "episodes": d["episodes"]}
+            {**d["picked"][name], "station_id": d["station_id"], "event_date": d["event_date"], "unit": d["unit"],
+             "episodes": d["episodes"]}
             for d in days if name in d["picked"]
         ]
+    picks["every"] = [
+        {"mover": m, "hours": h, "stage": st, "hit": bool(hit), "p": pp, "q": qq, "hit3": bool(hit3),
+         "p3": p3, "q3": q3, "ask": ask, "ask3": ask3, "mid": mid, "mid3": mid3,
+         "station_id": d["station_id"], "event_date": d["event_date"], "unit": d["unit"], "episodes": d["episodes"]}
+        for d in days for m, h, st, hit, pp, qq, hit3, p3, q3, ask, ask3, mid, mid3 in d["starts"]
+    ]
     out_picks = []
-    for name, _index in MODE_AGREEMENT_PICKS:
+    for name in [name for name, _index in MODE_AGREEMENT_PICKS] + ["every"]:
         rows = picks[name]
         slices = []
         for stage in ("P0", "P0-M", "P1"):
@@ -3294,17 +3327,15 @@ def mode_agreement(conn: sqlite3.Connection) -> dict[str, Any]:
             got = _mode_agreement_group([e for e in rows if e["unit"] == unit])
             if got:
                 slices.append({"group": "结算单位", "slice": unit, **got})
-        if name == "last":
-            for label, keep in (("只同桶过一次", lambda e: e["episodes"] == 1), ("同桶过 ≥ 2 次", lambda e: e["episodes"] >= 2)):
-                got = _mode_agreement_group([e for e in rows if keep(e)])
-                if got:
-                    slices.append({"group": "同桶次数", "slice": label, **got})
         daily = []
         for day in sorted({e["event_date"] for e in rows}):
             got = _mode_agreement_group([e for e in rows if e["event_date"] == day])
             daily.append({"event_date": day, "n": got["n"], "hit": got["hit"]})
-        out_picks.append({"pick": name, "station_days": len(rows), "ledger": _mode_agreement_ledger(rows),
-                          "share_of_days": len(rows) / len(days) if days else None,
+        out_picks.append({"pick": name,
+                          "station_days": len({(e.get("station_id"), e["event_date"]) for e in rows}),
+                          "episodes": len(rows), "ledger": _mode_agreement_ledger(rows),
+                          "share_of_days": len({(e.get("station_id"), e["event_date"]) for e in rows}) / len(days)
+                          if days else None,
                           "all": _mode_agreement_group(rows), "slices": slices, "daily": daily})
     # Who moved onto the common bucket: every episode, and the first one alone.
     converge = []

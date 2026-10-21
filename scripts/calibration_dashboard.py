@@ -13867,6 +13867,17 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
         if scope == "P0":
             p0_anchor = anchor
             p0_window = (meta.get("floor_day"), meta.get("as_of_event_date"))
+        # Charter 255 (user 2026-10-21 「EV 与中心/形状按宪章 255 分版本段报」): the
+        # 28 days run through some twenty serving versions of each stage, so
+        # the pooled reading is not the rule served today.  Each decision is
+        # tagged with the version it served (the training fact's own copy:
+        # it sits before the fact's JSON, so no overflow page is read) and
+        # read version by version; only the current one says anything about
+        # today's vector.
+        segments = _charter_ev_version_segments(
+            conn, rows, stages=STAGE_SCOPES[scope], floor_day=meta.get("floor_day"),
+            through=meta.get("as_of_event_date"),
+        )
         scopes.append({
             "scope": scope,
             "research": _charter_ev_reading(
@@ -13887,8 +13898,11 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
                 key: meta.get(key) for key in (
                     "decisions_read", "no_label", "market_incomplete",
                     "label_outside_contract", "weather_vector_invalid",
+                    "decided_after_cutoff", "excluded_before_anchor",
                 )
             },
+            "market_incomplete_reasons": dict(meta.get("market_incomplete_reasons") or {}),
+            "versions": segments,
         })
     # The P0 gap split into centre and shape (2026-09-22 audit, finding 1),
     # as the backend board-readings job computed it -- the board reads it.
@@ -13908,6 +13922,59 @@ def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
         "bootstrap_draws": int(BOOTSTRAP_DRAWS),
         "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
     })
+    return out
+
+
+def _charter_ev_version_segments(
+    conn: sqlite3.Connection,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    stages: Sequence[str],
+    floor_day: Any,
+    through: Any,
+) -> list[dict[str, Any]]:
+    """The identity read version by version (charter 255), oldest first; the
+    last segment is the version served most recently."""
+
+    if not rows or not floor_day or not through:
+        return []
+    marks = ",".join("?" for _ in stages)
+    tag: dict[tuple[str, str, str, str], str] = {}
+    for station, day, stage, at, version in conn.execute(
+        "SELECT station_id, event_date, stage, decision_at_utc, posterior_version"
+        f" FROM basket_policy_training_fact WHERE stage IN ({marks})"
+        " AND event_date > ? AND event_date <= ?",
+        (*stages, str(floor_day), str(through)),
+    ):
+        tag[(str(station), str(day), str(stage), str(at))] = str(version or "")
+    by_version: dict[str, list[Mapping[str, Any]]] = {}
+    untagged = 0
+    for row in rows:
+        version = tag.get((str(row["station"]), str(row["date"]), str(row["stage"]), str(row["at"])))
+        if not version:
+            untagged += 1
+            continue
+        by_version.setdefault(version, []).append(row)
+    out = []
+    for version, picked in sorted(by_version.items(), key=lambda kv: min(str(r["at"]) for r in kv[1])):
+        reading = charter_ev_identity(picked)
+        reading.pop("by_day", None)
+        out.append({
+            "version": version,
+            "short": version.rsplit("_", 1)[-1],
+            "first_at_utc": min(str(r["at"]) for r in picked),
+            "last_at_utc": max(str(r["at"]) for r in picked),
+            "decisions": len(picked),
+            "station_days": len({(r["station"], r["date"]) for r in picked}),
+            "event_days": len({r["date"] for r in picked}),
+            **{k: reading.get(k) for k in ("ev", "k", "spread_cost", "days_ev_positive", "days")},
+        })
+    if out:
+        out[-1]["current"] = True
+        current = by_version[out[-1]["version"]]
+        out[-1].update(_charter_ev_reading(current, draws=200, seed=7))
+    if untagged:
+        out.append({"version": "", "short": "未标版本", "decisions": untagged, "untagged": True})
     return out
 
 
@@ -18702,15 +18769,24 @@ const edgeBig=(label,value,cls,sub,tip)=>`<div class="card" title="${h(tip||"")}
 const edgeFold=body=>body?`<details style="margin-top:10px"><summary>明细</summary>${body}</details>`:"";
 function centreShapeGap(){
   const E=D.charter_ev||{}, S=E.centre_shape;
-  const head=`<h2 title="P0 服务分布对同一时刻盘口中价按 RPS 比；中心差＝把 P0 挪到市场均值消掉的部分，形状差＝挪完还剩的；分布层只对形状差负责">模型对市场差距</h2>`;
+  // Named P0 on its face (user 2026-10-21 「中心/形状标明是 P0」): it is P0's
+  // vector at every lead, not the belief served (P1 > P0-M > P0, charter 260).
+  const head=`<h2 title="P0 服务分布对同一时刻盘口中价按 RPS 比；中心差＝把 P0 挪到市场均值消掉的部分，形状差＝挪完还剩的；分布层只对形状差负责。比的是 P0，不是当时服务的信念（P1＞P0-M＞P0）">模型对市场差距 · P0</h2>`;
   if(!S||!S.available) return head+`<div class="card muted">${!S?"下一次整库渲染后出现":"未采集"}</div>`;
   const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
   const pc=v=>v==null?"—":Math.round(v*100)+"%";
   const ivl=(c,f)=>Array.isArray(c)&&c[0]!=null?`[${f(c[0])}, ${f(c[1])}]`:"";
   const P=(S.samples||{}).stable_pool||{};
   const tone=c=>Array.isArray(c)&&c[0]>0?"down":(Array.isArray(c)&&c[1]<0?"up":"flat");
+  // Charter 255: the pooled reading spans every P0 version since the stable
+  // pool; the current version's segment, and what was not counted, beside it.
+  const V=(S.versions||[]), cur=V.find(v=>v.current), N0=S.population||{};
+  const skipped=(N0.no_envelope||0)+(N0.no_ladder||0)+(N0.ladder_mismatch||0)+(N0.failed||0);
   const cards=`<div class="grid g3">
-    ${edgeBig("输给市场（RPS）",sg(P.gap),tone(P.gap_ci),`${P.station_days??"—"} 站日 · ${P.days??"—"} 天`,`模型 − 市场 ${ivl(P.gap_ci,sg)}；正＝市场更准`)}
+    ${edgeBig("P0 输给市场（RPS）",sg(P.gap),tone(P.gap_ci),`${P.station_days??"—"} 站日 · ${P.days??"—"} 天 · 跨 ${V.length} 个版本`
+      +`<br>现行 ${h(cur?cur.short:"—")}：${cur?`${sg(cur.gap)} · ${cur.station_days} 站日 / ${cur.days} 天`:"无样本"}`
+      +`<br>不计：无 P0 包 ${N0.no_envelope??0} 站日 · 档内没配上盘口 ${N0.band_unpaired??0} 档 · 梯子不符 ${(N0.no_ladder||0)+(N0.ladder_mismatch||0)}${N0.failed?` · 失败 ${N0.failed}`:""}`,
+      `模型 − 市场 ${ivl(P.gap_ci,sg)}；正＝市场更准；宪章 255：只有现行版本这一段说明今天的 P0`)}
     ${edgeBig("其中中心",pc(P.centre_share),"",`中心差 ${sg(P.centre)}`,`中心占比 ${ivl(P.centre_share_ci,pc)}；分布层追不回来`)}
     ${edgeBig("其中形状",sg(P.shape),tone(P.shape_ci),"分布层只管这部分",`形状差 ${ivl(P.shape_ci,sg)}`)}</div>`;
   const tiers=Object.entries(S.tiers||{}).filter(([,r])=>r&&r.station_days);
@@ -18744,9 +18820,16 @@ function charterEv(){
   const cards=(E.scopes||[]).map(s=>{
     if(s.error) return `<div class="card"><div class="muted">${h(s.scope)}</div><div class="muted">${h(s.error)}</div></div>`;
     const r=s.research||{}, [cls,w]=word(r);
-    return edgeBig(h(s.scope),`${sg(r.ev)} <span style="font-size:16px">${w}</span>`,cls,
-      `k ${n3(r.k)} · 点差 ${n3(r.spread_cost)} · ${r.days_ev_positive??"—"}/${r.days??"—"} 天为正`,
-      `EV 每站日（中价）${sg(r.ev)} [${sg((r.ev_ci||[])[0])}, ${sg((r.ev_ci||[])[1])}]；k ${n3(r.k)} [${n3((r.k_ci||[])[0])}, ${n3((r.k_ci||[])[1])}]`);
+    // Charter 255 (user 2026-10-21): the 28 days pool every serving version;
+    // the current version's own segment, and what was excluded, beside it.
+    const V=(s.versions||[]).filter(v=>!v.untagged), cur=V.find(v=>v.current);
+    const P=s.population||{}, read=P.decisions_read||0;
+    const drop=(P.no_label||0)+(P.market_incomplete||0)+(P.label_outside_contract||0)+(P.weather_vector_invalid||0)+(P.decided_after_cutoff||0);
+    return edgeBig(h(s.scope)+" · 28 天 "+V.length+" 个版本合计",`${sg(r.ev)} <span style="font-size:16px">${w}</span>`,cls,
+      `k ${n3(r.k)} · 点差 ${n3(r.spread_cost)} · ${r.days_ev_positive??"—"}/${r.days??"—"} 天为正`
+      +`<br>现行 ${h(cur?cur.short:"—")}：${cur?`EV ${sg(cur.ev)} · k ${n3(cur.k)} · ${cur.station_days} 站日 / ${cur.event_days} 天`:"无样本"}`
+      +`<br>剔除 ${drop} / ${read} 决策（${read?Math.round(100*drop/read):0}%）：无真值 ${P.no_label??0} · 盘口不完整 ${P.market_incomplete??0}`,
+      `EV 每站日（中价）${sg(r.ev)} [${sg((r.ev_ci||[])[0])}, ${sg((r.ev_ci||[])[1])}]；k ${n3(r.k)} [${n3((r.k_ci||[])[0])}, ${n3((r.k_ci||[])[1])}]；宪章 255：合计跨 ${V.length} 个服务版本，只有现行版本这一段说明今天服务的向量`);
   }).join("");
   const W=E.window||{};
   return head+`<div class="grid g3">${cards}</div><div class="muted" style="margin-top:6px">EV＝每站日按分歧下注的期望利润（中价）· k＜1 才有 edge · ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}</div>`
@@ -19025,9 +19108,32 @@ function centreShapeGapDetail(){
     <div><b>按提前量拆开</b> <span class="muted">稳定池起的样本；0–12h 灰显：这一段服务的是 P1，市场已经读到当天的观测</span></div>
     <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>距结算</th>${head}</tr></thead>
     <tbody>${tierRows}</tbody></table></div>
-  </div>`;
+  </div>
+  ${(()=>{const V=S.versions||[]; if(!V.length) return "";
+    const sg3=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(3)), pc=v=>v==null?"—":Math.round(100*v)+"%";
+    return `<div class="card"><div><b>按 P0 服务版本（宪章 255）</b> <span class="muted">提前 12h 以上、窗内样本；加粗＝现行版本，只有它说明今天的 P0</span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>版本</th><th>决策时段</th><th>站日 / 天</th><th>输给市场</th><th>中心</th><th>形状</th><th>中心占比</th></tr></thead><tbody>${
+      V.map(v=>`<tr${v.current?' style="font-weight:600"':""}><td>${h(v.short)}${v.current?" · 现行":""}</td><td class="mono">${String(v.first_at_utc||"").slice(5,10)} – ${String(v.last_at_utc||"").slice(5,10)}</td><td class="mono">${v.station_days??"—"} / ${v.days??"—"}</td><td class="mono">${sg3(v.gap)}${v.current&&v.gap_ci?` <span class="muted">[${sg3(v.gap_ci[0])}, ${sg3(v.gap_ci[1])}]</span>`:""}</td><td class="mono">${sg3(v.centre)}</td><td class="mono">${sg3(v.shape)}</td><td class="mono">${pc(v.centre_share)}</td></tr>`).join("")
+    }</tbody></table></div>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">不计：无 P0 包 ${N.no_envelope??0} 站日 · 无梯子 ${N.no_ladder??0} · 档内没配上 30 分钟内完整盘口 ${N.band_unpaired??0} 档 · 梯子与向量不符 ${N.ladder_mismatch??0} · 失败 ${N.failed??0}</div></div>`;})()}`;
 }
 
+// Charter 255 (user 2026-10-21 「EV 与中心/形状按宪章 255 分版本段报并写明剔除数」):
+// one row per serving version, oldest first, and every exclusion counted.
+function evVersionTable(s){
+  const V=s.versions||[], P=s.population||{}, R=s.market_incomplete_reasons||{};
+  if(!V.length) return "";
+  const n3=v=>v==null?"—":(+v).toFixed(3), sg=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(4));
+  const day=t=>t?String(t).slice(5,10):"—";
+  const rows=V.map(v=>v.untagged
+    ? `<tr class="muted"><td>未标版本</td><td colspan="6">${v.decisions} 个决策找不到服务版本</td></tr>`
+    : `<tr${v.current?' style="font-weight:600"':""}><td>${h(v.short)}${v.current?" · 现行":""}</td><td class="mono">${day(v.first_at_utc)} – ${day(v.last_at_utc)}</td>
+      <td class="mono">${v.station_days} / ${v.event_days}</td><td class="mono">${sg(v.ev)}${v.current&&v.ev_ci?` <span class="muted">[${sg(v.ev_ci[0])}, ${sg(v.ev_ci[1])}]</span>`:""}</td>
+      <td class="mono">${n3(v.k)}</td><td class="mono">${n3(v.spread_cost)}</td><td class="mono">${v.days_ev_positive??"—"} / ${v.days??"—"}</td></tr>`).join("");
+  const reasons=Object.entries(R).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${h(k)} ${n}`).join(" · ");
+  return `<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>服务版本</th><th>决策时段</th><th>站日 / 天</th><th>EV</th><th>k</th><th>点差</th><th>EV &gt; 0 天数</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">剔除（共读 ${P.decisions_read??"—"} 个决策）：无真值 ${P.no_label??0} · 盘口不完整 ${P.market_incomplete??0}${reasons?`（${reasons}）`:""} · 真值不在梯子上 ${P.label_outside_contract??0} · 概率向量无效 ${P.weather_vector_invalid??0} · 决策晚于截止 ${P.decided_after_cutoff??0}</div>`;
+}
 function charterEvDetail(){
   const E=D.charter_ev||{};
   const title="";
@@ -19083,6 +19189,7 @@ function charterEvDetail(){
         锚后那行才说的是今天服务的向量，${s.served&&s.served.decisions?"两边都在时以锚后为准":"会随结算自动填满，够 8 个事件日前先读上两行"}。
         读到 ${s.population&&s.population.decisions_read!=null?s.population.decisions_read:"—"} 个决策，
         盘口不完整弃 ${s.population&&s.population.market_incomplete!=null?s.population.market_incomplete:"—"}。</div>
+      ${evVersionTable(s)}
     </div>`;
   }).join("");
   const W=E.window||{};
@@ -25138,8 +25245,11 @@ function sdModeAgreement(A){
   if(!A || !(A.picks || []).length) return "";
   const pc = v => v == null ? "—" : (100 * v).toFixed(1) + "%";
   const p0 = v => v == null ? "—" : Math.round(100 * v) + "%";
-  const word = {first: "首次同桶", second: "第二次同桶", last: "最后一次同桶"};
-  const col = {first: SD_COL.P0, second: SD_COL["P0-M"], last: SD_COL.P1};
+  // 「最后一次」 left (user 2026-10-21): only settlement says which episode was
+  // the last, so it picked the right buckets by hindsight; every episode,
+  // counted as it began, is what could have been traded.
+  const word = {first: "首次同桶", second: "第二次同桶", every: "全部同桶段"};
+  const col = {first: SD_COL.P0, second: SD_COL["P0-M"], every: SD_COL.P1};
   const F = A.first_paired || {};
   const cards = A.picks.map(k => {
     const a = k.all || {}, ci = a.hit_ci || [];
@@ -25149,7 +25259,7 @@ function sdModeAgreement(A){
       <div class="muted sd-sub">${k.station_days} 站日 · 距结算中位 ${a.median_hours == null ? "—" : Number(a.median_hours).toFixed(0) + "h"}</div>
       <div class="muted sd-sub">中价 ${p0(a.mid)}，命中−中价 ${sdAgreeEdge(a, "mid")} · 卖一 ${p0(a.ask)}，命中−卖一 ${sdAgreeEdge(a, "ask")}</div>
       <div class="muted sd-sub" title="众数及左右各一桶（边缘桶时两桶）">±1 桶 ${pc(a.hit3)} · 中价合计 ${p0(a.mid3)}，${sdAgreeEdge(a, "mid", true)} · 卖一合计 ${p0(a.ask3)}，${sdAgreeEdge(a, "ask", true)}</div>
-      ${k.pick === "last" ? `<div class="muted sd-sub">「最后一次」要到结算后才知道是最后一次，不能据此下单</div>` : ""}</div>`;
+      ${k.pick === "every" ? `<div class="muted sd-sub">每个同桶段按开始时刻记一次，当时就能知道</div>` : ""}</div>`;
   }).join("");
   const groups = [];
   A.picks.forEach(k => (k.slices || []).forEach(x => {
@@ -25163,7 +25273,14 @@ function sdModeAgreement(A){
       : `<td class="mono muted">—</td><td></td><td class="mono muted">—</td><td></td><td class="mono muted">—</td>`;
   }).join("")}</tr>`).join("");
   const dates = [...new Set(A.picks.flatMap(k => (k.daily || []).map(d => d.event_date)))].sort();
-  const trend = typeof trendChart === "function" ? trendChart({title: "同桶真值命中率（按事件日）", sub: "首次 / 第二次 / 最后一次",
+  // Every episode by stage and by hours to settlement, landed against the ask
+  // it could have been bought at (user 2026-10-21 「按阶段/距结算分档，命中对卖一」).
+  const E = A.picks.find(k => k.pick === "every");
+  const sg = v => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(100 * v).toFixed(1) + " 点";
+  const everyTable = E ? `<table class="sd-tab" style="margin-top:6px"><thead><tr><th>全部同桶段</th><th>按开始时</th><th>段数</th><th>命中</th><th>卖一</th><th title="真值命中率 − 买入时的平均卖一；负数＝按卖一买入是亏的">命中 − 卖一</th></tr></thead><tbody>${
+    ["阶段", "提前量"].flatMap(g => (E.slices || []).filter(x => x.group === g).map((x, i) => `<tr><td>${i === 0 ? (g === "提前量" ? "距结算" : g) : ""}</td><td>${sdEsc(x.slice)}</td><td class="mono">${x.n_ask || 0}</td><td class="mono">${pc(x.hit_ask)}</td><td class="mono">${pc(x.ask)}</td><td class="mono"${x.hit_ask != null && x.ask != null && x.hit_ask - x.ask < 0 ? ' style="color:var(--pill-red-fg)"' : ""}>${x.hit_ask == null || x.ask == null ? "—" : sg(x.hit_ask - x.ask)}</td></tr>`)).join("")
+  }</tbody></table>` : "";
+  const trend = typeof trendChart === "function" ? trendChart({title: "同桶真值命中率（按事件日）", sub: "首次 / 第二次 / 全部同桶段",
     dates, fmt: v => Math.round(100 * v) + "%", width: 640,
     series: A.picks.map(k => {
       const m = Object.fromEntries((k.daily || []).map(d => [d.event_date, d.hit]));
@@ -25177,13 +25294,15 @@ function sdModeAgreement(A){
     <div class="big" style="color:${color}">${pc(x.hit)}</div>
     <div class="muted sd-sub">中价 ${p0(x.mid)} · 卖一 ${p0(x.ask)} · ${sub}</div></div>`;
   const sumCards = A.picks.map(k => mini(word[k.pick] || sdEsc(k.pick), col[k.pick], k.all || {},
-      `${k.station_days} 站日`, k.pick === "last" ? "「最后一次」要到结算后才知道是最后一次，不能据此下单" : ""))
+      k.pick === "every" ? `${k.episodes || 0} 段 · ${k.station_days} 站日` : `${k.station_days} 站日`,
+      k.pick === "every" ? "每个同桶段按开始时刻记一次（当时就能知道），不挑哪一段" : ""))
     .concat(conv.map(c => mini(c.mover === "model" ? "模型 → 市场" : "市场 → 模型", c.mover === "model" ? SD_COL.P1 : SD_COL.MKT,
       c.every || {}, `${(c.every || {}).n || 0} 次`, c.mover === "model" ? "市场众数不动，我方众数移到市场众数上" : "我方众数不动，市场众数移到我方众数上"))).join("");
   const open = SD.agreeOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.agreeOpen=this.open">
     <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0-M＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
     <div class="grid g3">${sumCards}</div>
+    ${everyTable}
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
     ${trend}
     <details class="sd-sub"><summary class="muted">明细</summary>
@@ -25198,8 +25317,8 @@ function sdModeAgreement(A){
 // the agreed bucket at each episode's own mid / best ask, summed by entry price.
 function sdAgreeLedger(A){
   const groups = [];
-  (A.picks || []).filter(k => k.pick !== "last" && k.ledger).forEach(k =>
-    groups.push([{first: "首次同桶", second: "第二次同桶"}[k.pick] || k.pick, k.ledger]));
+  (A.picks || []).filter(k => k.ledger).forEach(k =>
+    groups.push([{first: "首次同桶", second: "第二次同桶", every: "全部同桶段"}[k.pick] || k.pick, k.ledger]));
   (A.converge || []).filter(c => (c.mover === "model" || c.mover === "market") && c.ledger_first).forEach(c =>
     groups.push([c.mover === "model" ? "首次 · 模型 → 市场" : "首次 · 市场 → 模型", c.ledger_first]));
   if(!groups.length) return "";
@@ -25221,7 +25340,7 @@ function sdAgreeLedger(A){
       ${los.map(lo => `<tr><td class="mono">${spans[lo]}</td>${cells(L.mid || {}, lo)}${cells(L.ask || {}, lo)}</tr>`).join("")}
       <tr><td><b>合计</b></td>${total("mid")}${total("ask")}</tr></tbody></table></div>`;
   }).join("");
-  return `<details class="sd-sub" open><summary class="sd-t" title="每次同桶按当时自己的价格买 1 股、结算收回 1 或 0，按买入价分档逐笔加总，不取平均；只计当时盘口有该价的那几次；「最后一次」是事后才知道的，不列">逐笔记账：每次买 1 股，按买入价分档（美元）</summary>${tables}</details>`;
+  return `<details class="sd-sub" open><summary class="sd-t" title="每次同桶按当时自己的价格买 1 股、结算收回 1 或 0，按买入价分档逐笔加总，不取平均；只计当时盘口有该价的那几次">逐笔记账：每次买 1 股，按买入价分档（美元）</summary>${tables}</details>`;
 }
 // Who moved onto the common bucket (user 2026-10-15 「统计模型的众数桶向市场的众数桶
 // 靠拢，和市场的众数桶向模型的众数桶靠拢的真值的命中率，也是时间轴维度」).

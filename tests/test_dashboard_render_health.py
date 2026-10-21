@@ -64,3 +64,28 @@ def test_research_pages_overdue_and_the_health_refresh(files) -> None:
     note = C._render_health(NOW)["note"]
     assert "研究区块 1 个超期" in note and "1 个从未算出" in note
     assert "快刷 30 分钟没重画" in note and "快刷上一轮失败" in note
+
+
+def test_charter_ev_reads_each_serving_version_on_its_own() -> None:
+    """Charter 255 (user 2026-10-21): the EV identity version by version, the
+    newest marked current, untagged decisions counted rather than dropped."""
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_policy_training_fact(station_id TEXT, event_date TEXT, stage TEXT,"
+                 " decision_at_utc TEXT, posterior_version TEXT)")
+    rows = []
+    for i, (version, day) in enumerate([("p0_v29", "2026-10-15"), ("p0_v29", "2026-10-16"),
+                                        ("p0_v30", "2026-10-17"), ("p0_v30", "2026-10-18")]):
+        at = f"{day}T06:00:00Z"
+        conn.execute("INSERT INTO basket_policy_training_fact VALUES(?,?,?,?,?)", ("AAAA", day, "P0", at, version))
+        rows.append({"station": "AAAA", "date": day, "stage": "P0", "at": at, "label": "b",
+                     "m": {"a": 0.5, "b": 0.5}, "p": {"a": 0.3 + 0.1 * i, "b": 0.7 - 0.1 * i},
+                     "m_label": 0.5, "p_label": 0.7 - 0.1 * i, "weight": 1.0})
+    rows.append({**rows[-1], "at": "2026-10-18T07:00:00Z"})  # no training fact: untagged
+    segments = C._charter_ev_version_segments(conn, rows, stages=("P0",), floor_day="2026-10-14",
+                                              through="2026-10-20")
+    assert [s["short"] for s in segments] == ["v29", "v30", "未标版本"]
+    assert segments[1].get("current") is True and segments[0].get("current") is None
+    assert segments[0]["station_days"] == 2 and segments[2]["decisions"] == 1

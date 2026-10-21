@@ -539,10 +539,15 @@ def test_mode_agreement_reads_the_picked_episodes() -> None:
     picks = {k["pick"]: k for k in out["picks"]}
     assert picks["first"]["all"]["hit"] == 0.5 and picks["first"]["station_days"] == 2
     assert picks["second"]["station_days"] == 1 and picks["second"]["all"]["hit"] == 1.0
-    assert picks["last"]["all"]["hit"] == 1.0
+    # 「最后一次」 is gone (2026-10-21): only settlement says which episode was
+    # last.  ``every`` is each episode as it began, knowable at the time.
+    assert "last" not in picks
+    assert picks["every"]["episodes"] == 4 and picks["every"]["station_days"] == 2
+    assert picks["every"]["all"]["hit"] == 0.75
+    by_stage = {x["slice"]: (x["n"], x.get("n_ask")) for x in picks["every"]["slices"] if x["group"] == "阶段"}
+    assert by_stage == {"P0": (2, 2), "P0-M": (1, 1), "P1": (1, 0)}
     lead = {x["slice"]: x["n"] for x in picks["first"]["slices"] if x["group"] == "提前量"}
     assert lead == {"距结算 36–60h": 2}
-    assert {x["slice"] for x in picks["last"]["slices"] if x["group"] == "同桶次数"} == {"只同桶过一次", "同桶过 ≥ 2 次"}
     assert out["first_paired"] == {"n": 2, "ours_hit": 0.5, "market_hit": 1.0}
     assert picks["first"]["all"]["hit3"] == 1.0 and picks["first"]["all"]["said_market3"] == 0.85
     moved = {c["mover"]: c for c in out["converge"]}
@@ -607,7 +612,11 @@ def test_mode_agreement_card_draws_three_picks() -> None:
                          "mid": {"trades": 634, "hits": 284, "paid": 282.8565, "profit": 1.1435,
                                  "bands": [{"lo": 0.4, "hi": 0.5, "trades": 240, "hits": 102, "paid": 106.55, "profit": -4.55}]},
                          "ask": {"trades": 634, "hits": 284, "paid": 295.871, "profit": -11.871, "bands": []}}},
-                     pick("second", 0.5), pick("last", 0.983)],
+                     pick("second", 0.5),
+                     {**pick("every", 0.598), "episodes": 9566,
+                      "slices": [{"group": "阶段", "slice": "P1", "n": 8171, "n_ask": 8171, "hit_ask": 0.631, "ask": 0.65},
+                                 {"group": "提前量", "slice": "距结算 6–12h", "n": 4176, "n_ask": 4176,
+                                  "hit_ask": 0.745, "ask": 0.755}]}],
            "converge": [{"mover": "model", "every": {"n": 7089, "station_days": 1288, "hit": 0.656, "said_market": 0.634,
                                                      "n_ask": 5607, "hit_ask": 0.625, "ask": 0.641,
                                                      "over_ask_ci": [-0.037, 0.008], "n_mid3": 3673, "hit_mid3": 0.947,
@@ -627,8 +636,10 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     out = result.stdout
-    assert "首次同桶" in out and "第二次同桶" in out and "最后一次同桶" in out
-    assert "45.0%" in out and "50.0%" in out and "98.3%" in out
+    assert "首次同桶" in out and "第二次同桶" in out and "全部同桶段" in out and "最后一次" not in out
+    assert "45.0%" in out and "50.0%" in out and "59.8%" in out and "9566 段" in out
+    # every episode by stage and hours, landed against the ask (user 2026-10-21)
+    assert "63.1%" in out and "65.0%" in out and "−1.9 点" in out and "−1.0 点" in out
     assert "我方众数命中 35.8%" in out and "市场众数命中 44.0%" in out
     assert "距结算 36–60h" in out and "39 个事件日" in out
     assert "模型 → 市场" in out and "市场 → 模型" in out and "65.6%" in out
@@ -640,7 +651,7 @@ def test_mode_agreement_card_draws_three_picks() -> None:
     assert "−中价" in out
     assert "逐笔记账" in out and "0.40–0.50" in out and ">−4.55</span>" in out  # one band at the mid
     assert ">+1.14</span>" in out and ">−11.87</span>" in out                  # the totals, mid and ask
-    assert "不能据此下单" in out
+    assert "当时就能知道" in out
     top = out[:out.index("<summary class=\"muted\">明细</summary>")]
     assert "首次同桶" in top and "45.0%" in top and "模型 → 市场" in top and "65.6%" in top
     assert "逐笔记账" not in top and "−中价" not in top, "the ledger and edge tables are folded"
