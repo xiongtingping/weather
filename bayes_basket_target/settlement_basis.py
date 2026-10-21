@@ -118,7 +118,7 @@ def settled_station(station_id: str, event_date: str) -> str:
 
 def prelisting_truth_allowed(station_id: str, event_date: str, path: Path | None = None) -> bool:
     """Whether a station-day with no market may settle through its station's
-    market timezone binding (``prelisting_truth_backfill``; KDEN 2026-09-21
+    market timezone binding (``prelisting_truth_backfill``; KDEN 2026-09-22
     through 2026-10-22, ruling 2026-10-21)."""
 
     path = path or CONFIG_PATH
