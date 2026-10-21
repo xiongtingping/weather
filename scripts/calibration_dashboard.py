@@ -16845,6 +16845,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-head>b{font-size:34px;line-height:1.1;margin:2px 0}
 .sd-cx-head>b.sd-warm{color:var(--pill-red-fg)}.sd-cx-head>b.sd-cold{color:var(--accent)}
 .sd-cx-land{display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px;color:var(--muted)}
+.sd-cx-range{font-size:12.5px;color:var(--muted)}.sd-cx-range b{color:var(--text)}
 .sd-cx-land b{color:var(--text)}.sd-cx-land b.sd-warm{color:var(--pill-red-fg)}.sd-cx-land b.sd-cold{color:var(--accent)}
 .sd-cx-buckets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .sd-cx-buckets span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
@@ -25617,6 +25618,14 @@ function sdSky(day){
           <span><em>${sdIcon("temp")}观测更新型 MOS</em><small>ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}</small></span>
           <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b>
           ${CX.forecast_tmax_d1_c == null ? "" : `<div class="sd-cx-land"><span>日前预报 <b>${sdN(CX.forecast_tmax_d1_c, 1)}</b></span><span>→ 推算 <b class="${sdWarmCls(CX.total_c)}">${sdN(CX.forecast_tmax_d1_c + CX.total_c, 1)}°C</b></span></div>`}
+          ${(() => {
+            // The day's estimates so far, lowest to highest (user 2026-10-21
+            // 「推算的全天区间」): each hour's reading as it stood at that hour.
+            const v = (CX.series || []).map(p => p.total_c).filter(x => x != null && isFinite(x));
+            if(CX.forecast_tmax_d1_c == null || v.length < 2) return "";
+            const lo = Math.min(...v), hi = Math.max(...v), at = k => (CX.series.find(p => p.total_c === k) || {}).hour;
+            return `<div class="sd-cx-range" title="${sdEsc(`今天 ${String(CX.series[0].hour).padStart(2, "0")}–${hh(CX.hour)} 点每个整点当时的推算：最低 ${sdN(CX.forecast_tmax_d1_c + lo, 1)}°C（${at(lo)} 点），最高 ${sdN(CX.forecast_tmax_d1_c + hi, 1)}°C（${at(hi)} 点）`)}">今天推算 <b>${sdN(CX.forecast_tmax_d1_c + lo, 1)}～${sdN(CX.forecast_tmax_d1_c + hi, 1)}°C</b> <span class="muted">（${at(lo)} 点低、${at(hi)} 点高）</span></div>`;
+          })()}
           <div class="sd-cx-buckets" title="${sdEsc(`当天市场梯子上，按合成 ΔT 的中心与误差（t 分布，自由度 ${CX.t_df || "—"}）算出的各档概率；样本外分档 LogScore 每个时刻都显著好于日前预报，t 分布区间覆盖率与名义值相差不到 3 个百分点`)}">${
             (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div>
           ${cxForward}
