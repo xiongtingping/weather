@@ -25605,7 +25605,12 @@ function sdSky(day){
     const segs = series.reduce((a, p, i) => { if(i && p.hour - series[i - 1].hour > 1) a.push([]); a[a.length - 1].push(p); return a; }, [[]]);
     const line = segs.map(sg => `<polyline points="${sg.map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ")}" fill="none" stroke="var(--muted)" stroke-width="1.4"/>`).join("");
     const ticksX = Array.from({length: h1 - h0 + 1}, (_, i) => h0 + i).map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
-    const ticksY = [top, 0, -top].map(v => `<text x="${x0 - 4}" y="${Y(v) + 3}" text-anchor="end">${v === 0 ? "0" : sdSg(v, 1)}</text>`).join("");
+    // A tick and a light grid line every 0.5 °C (user 2026-10-21 「纵坐标：0.5为一个
+    // 单位」); labels thin to every 1 °C only when 0.5 would crowd them.
+    const stepY = 0.5, pxPerStep = (y1 - y0) / (2 * top / stepY), labelEvery = pxPerStep >= 13 ? 1 : 2;
+    const ticksY = Array.from({length: Math.round(2 * top / stepY) + 1}, (_, i) => top - i * stepY).map((v, i) =>
+      `<line x1="${x0}" x2="${x1}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width=".6" opacity="${v === 0 ? 0 : .7}"/>`
+      + (i % labelEvery === 0 ? `<text x="${x0 - 4}" y="${Y(v) + 4}" text-anchor="end">${Math.abs(v) < 1e-9 ? "0" : sdSg(v, 1)}</text>` : "")).join("");
     const parts = p => Object.entries(p.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
       .map(([k, v]) => `${CX_NAMES[k] || k} ${sdSg(v, 1)}`).join("、");
     // A click on a point opens that hour's detail under the chart (user 2026-10-21
