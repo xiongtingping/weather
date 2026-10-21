@@ -362,6 +362,11 @@ def _settlement_source_health(status: Mapping[str, Any]) -> dict[str, Any]:
         return {}
 
     def word(value: Any) -> str:
+        # A field can hold a list (several values on the page): each word in turn.
+        if isinstance(value, (list, tuple)):
+            return "、".join(word(v) for v in value) or "—"
+        if isinstance(value, dict):
+            return str(value)
         return _SETTLEMENT_VALUE_WORDS.get(value, str(value))
 
     parts = [
@@ -26715,7 +26720,10 @@ const GROUPS = [
      {box:"③ 分布层：合成后的分布再塑形、再检验", nav:"分布层", kind:"live",
       note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
       sections:[[consensusBridgeSection,"共识桥"],[centerWidth,"中心/宽度"],
-        [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"]]},
+        [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
+        // Out of the station-board area altogether (user 2026-10-21 「移出站点看板区」);
+        // filled by the station board's read wherever it sits.
+        [fleetShapePanel,"全队偏态"]]},
      {box:"④ P0 之后的三条规则（全队层）", nav:"P0-M · P1", kind:"live",
       note:"三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
       sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 观测更新"],
@@ -26735,7 +26743,8 @@ const GROUPS = [
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", nav:"验收", kind:"audit",
       note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
-      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"]]}]},
+      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"],
+        [modeAgreementPanel,"众数同桶命中"]]}]},
   // Charter 254, its own area (user 2026-10-05: 兑现层单独一个层级板块):
   // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
   // what settled.  Shadow: nothing here trades.
@@ -27069,8 +27078,6 @@ document.getElementById("app").innerHTML =
   sec(moneyBoard, "策略看板", "sec-money") +
   sec(liveReadiness, "站点闸门", "sec-live") +
   sec(stationDayPanel, "站点看板", "sec-station-day") +  // 单站日 until 2026-10-10 (user「单站日改为站点看板」)
-  sec(fleetShapePanel, "全队偏态", "sec-fleet-shape") +  // out of the station board (user 2026-10-18)
-  sec(modeAgreementPanel, "众数同桶命中", "sec-mode-agreement") +  // likewise (user 2026-10-18「我方众数 = 市场众数时，真值命中率 也移出」)
   `</section>` +
   groupHtml +
   `<footer>数据生成于 ${h(D.generated_at_utc)} · 只读页面，不写任何数据 ·
