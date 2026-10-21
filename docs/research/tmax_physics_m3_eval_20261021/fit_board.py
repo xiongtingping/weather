@@ -22,8 +22,10 @@ import m4_eval  # noqa: E402
 from m8_eval import rmax_column  # noqa: E402
 
 # M8 (reading_m8_20261021T024257Z): after 17 h the day's running maximum
-# beat arm 6 at every hour (MAE 0.90-1.03 -> 0.12-0.15 C).
-RMAX_HOURS = tuple(range(18, 24))
+# beat arm 6 at every hour (MAE 0.90-1.03 -> 0.12-0.15 C); M9
+# (reading_m9_20261021T025156Z) at 12..17 h as well (MAE 0.84 -> 0.75 at 12 h,
+# 0.82 -> 0.18 at 17 h).
+RMAX_HOURS = tuple(range(12, 24))
 
 OUT = e.ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
 RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
@@ -80,7 +82,7 @@ def main() -> int:
             "dew": "report - day-ahead dew point, newest hour <= H with both, C",
             "wind": "report - day-ahead 10 m wind, newest hour <= H with both, m/s",
             "tdev": "report - day-ahead temperature, newest hour <= H with both, C",
-            "rmax": "18..23 h only (M8): the max of the hourly reports at local 00..H minus the day-ahead maximum, C",
+            "rmax": "12..23 h only (M8, M9): the max of the hourly reports at local 00..H minus the day-ahead maximum, C",
             "rain": "hours 06..H whose report carries precipitation",
             "phys": "c_station * (sqrt(Q measured 06..H + day-ahead H+1..15) - sqrt(Q day-ahead 06..15)), Q in MJ/m2",
         },
