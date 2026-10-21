@@ -1284,35 +1284,19 @@ COMPOSITE_TMAX_SHIFT_PATH = ROOT / "config" / "ui" / "tmax_composite_shift_v1.js
 COMPOSITE_FIRST_HOUR = 6
 
 
-def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> dict[str, Any] | None:
+def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: Mapping[str, Any],
+                  H: int) -> dict[str, Any] | None:
+    """The composite as of hour H: reports, satellite and day-ahead forecast
+    up to H only (what the card read at H); None when 06..H shortwave is not
+    whole."""
+
     import math  # noqa: PLC0415
 
-    try:
-        fit = json.loads(COMPOSITE_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"state": "unfitted"}
-    table = fit.get("by_hour") or {}
-    hours = sorted(int(h) for h in table)
-    by_hour = {int(r["hour"]): r for r in rows}
-    reported = [h for h, r in by_hour.items() if r.get("obs") and r["obs"].get("temp_c") is not None]
-    if not hours or not reported:
+    span = range(COMPOSITE_FIRST_HOUR, H + 1)
+    sw_obs = [by_hour.get(h, {}).get("sat_sw_wm2") for h in span]
+    sw_fc = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in span]
+    if any(v is None for v in sw_obs + sw_fc):
         return None
-    last = max(reported)
-    if last < hours[0]:
-        return {"state": "too_early", "from_hour": hours[0]}
-    # The newest fitted hour whose shortwave (measured and day-ahead) is whole
-    # from 06: the satellite lags the reports by about an hour, and the card
-    # reads the hour before rather than nothing.
-    H = None
-    for cand in range(min(last, hours[-1]), hours[0] - 1, -1):
-        span = range(COMPOSITE_FIRST_HOUR, cand + 1)
-        sw_obs = [by_hour.get(h, {}).get("sat_sw_wm2") for h in span]
-        sw_fc = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in span]
-        if all(v is not None for v in sw_obs + sw_fc):
-            H = cand
-            break
-    if H is None:
-        return {"state": "waiting_satellite", "hour": min(last, hours[-1])}
 
     def newest(obs_key: str, fc_key: str) -> float | None:
         for h in range(H, COMPOSITE_FIRST_HOUR - 1, -1):
@@ -1335,24 +1319,49 @@ def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> di
     peak = int(phys.get("peak_hour", 15))
     fc_all = [(by_hour.get(h, {}).get("forecast") or {}).get("sw_d1") for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
     if any(v is None for v in fc_all):
-        return {"state": "waiting_forecast", "hour": H}
+        return None
     mixed = [(sw_obs[h - COMPOSITE_FIRST_HOUR] if h <= H else fc_all[h - COMPOSITE_FIRST_HOUR])
              for h in range(COMPOSITE_FIRST_HOUR, peak + 1)]
     c = float((phys.get("c") or {}).get(station, phys.get("fleet_c", 0.0)))
     x["phys"] = c * (math.sqrt(max(0.0036 * sum(mixed), 0.0)) - math.sqrt(max(0.0036 * sum(fc_all), 0.0)))
-    line = table[str(H)]
+    line = fit["by_hour"][str(H)]
     own = (line.get("stations") or {}).get(station)
     coef = own["coef"] if own else line["fleet_coef"]
-    bias = own["icpt_c"] if own else 0.0
+    bias = float(own["icpt_c"]) if own else 0.0
     names = fit.get("features") or []
-    parts = {n: round(float(k) * float(x[n] or 0.0), 2) for n, k in zip(names, coef)}
+    total = bias + sum(float(k) * float(x[n] or 0.0) for n, k in zip(names, coef))
+    return {"hour": H, "station_fit": own is not None, "total_c": round(total, 2), "station_bias_c": round(bias, 2),
+            "parts_c": {n: round(float(k) * float(x[n] or 0.0), 2) for n, k in zip(names, coef)},
+            "x": {k: (None if v is None else round(float(v), 2)) for k, v in x.items()},
+            "resid_sd_c": own["resid_sd_c"] if own else line.get("fleet_resid_sd_c")}
+
+
+def _composite_tmax_shift(rows: Sequence[Mapping[str, Any]], station: str) -> dict[str, Any] | None:
+    try:
+        fit = json.loads(COMPOSITE_TMAX_SHIFT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"state": "unfitted"}
+    table = fit.get("by_hour") or {}
+    hours = sorted(int(h) for h in table)
+    by_hour = {int(r["hour"]): r for r in rows}
+    reported = [h for h, r in by_hour.items() if r.get("obs") and r["obs"].get("temp_c") is not None]
+    if not hours or not reported:
+        return None
+    last = max(reported)
+    if last < hours[0]:
+        return {"state": "too_early", "from_hour": hours[0]}
+    # Every fitted hour up to the newest report, each as of its own hour
+    # (user 2026-10-21 「做成带时间轴的趋势图」): the satellite lags the reports
+    # by about an hour, so the newest point is the newest hour it covers.
+    series = [p for h in hours if h <= min(last, hours[-1]) for p in [_composite_at(by_hour, station, fit, h)] if p]
+    if not series:
+        return {"state": "waiting_satellite", "hour": min(last, hours[-1])}
+    now = series[-1]
     tmax_d1 = [(r.get("forecast") or {}).get("temp_c_d1") for r in rows]
     tmax_d1 = [v for v in tmax_d1 if v is not None]
-    total = bias + sum(float(k) * float(x[n] or 0.0) for n, k in zip(names, coef))
-    return {"state": "ok", "hour": H, "line_hour": H, "station_fit": own is not None,
-            "total_c": round(total, 2), "station_bias_c": round(float(bias), 2), "parts_c": parts,
-            "x": {k: (None if v is None else round(float(v), 2)) for k, v in x.items()},
-            "resid_sd_c": own["resid_sd_c"] if own else line.get("fleet_resid_sd_c"),
+    return {"state": "ok", **now, "line_hour": now["hour"],
+            "series": [{"hour": p["hour"], "total_c": p["total_c"], "resid_sd_c": p["resid_sd_c"],
+                        "parts_c": p["parts_c"]} for p in series],
             "forecast_tmax_d1_c": round(max(tmax_d1), 1) if len(tmax_d1) == len(rows) and tmax_d1 else None,
             "verdict": fit.get("verdict"), "window": fit.get("window"), "fitted_at_utc": fit.get("fitted_at_utc")}
 

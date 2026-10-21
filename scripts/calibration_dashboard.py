@@ -16837,6 +16837,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .sd-sun-c>b{margin:2px 0 4px}
+.sd-sun-c>b .sd-cx-chart{display:block;width:100%;height:auto;margin:4px 0 2px;font-size:9px;font-weight:400}
+.sd-cx-chart .sd-cx-ax text{fill:var(--muted)}
+.sd-cx-chart .sd-cx-last{font-size:10px;font-weight:600;fill:var(--text)}
 .sd-sun-c>i{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-size:12px;line-height:1.5;white-space:nowrap}
 .sd-sun-c>i small{font-size:10.5px}
 .sd-sun-c>i span:last-child{font-variant-numeric:tabular-nums;color:var(--text)}
@@ -25499,8 +25502,35 @@ function sdSky(day){
   // the five cards beside it stay as they are.
   const CX = H.composite_tmax_shift;
   const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水"};
+  // ΔT through the day on a time axis (user 2026-10-21 「做成带时间轴的趋势图」):
+  // each point as the card read it at that hour, the band ±1 residual SD.
+  const sdCompositeChart = series => {
+    if(!series || !series.length) return "";
+    const W = 240, Hh = 104, x0 = 26, x1 = 232, y0 = 10, y1 = 84, h0 = 9, h1 = 17;
+    const lim = Math.max(1.5, ...series.map(p => Math.abs(p.total_c) + 0.3));
+    const top = Math.ceil(lim * 2) / 2;
+    const X = h => x0 + (h - h0) / (h1 - h0) * (x1 - x0);
+    const Y = v => y0 + (top - Math.max(-top, Math.min(top, v))) / (2 * top) * (y1 - y0);
+    const band = series.map(p => `${X(p.hour)},${Y(p.total_c + p.resid_sd_c)}`).join(" ") + " " +
+      series.slice().reverse().map(p => `${X(p.hour)},${Y(p.total_c - p.resid_sd_c)}`).join(" ");
+    const line = series.map(p => `${X(p.hour)},${Y(p.total_c)}`).join(" ");
+    const ticksX = [9, 11, 13, 15, 17].map(h => `<line x1="${X(h)}" x2="${X(h)}" y1="${y1}" y2="${y1 + 3}" stroke="var(--muted)"/><text x="${X(h)}" y="${y1 + 13}" text-anchor="middle">${h}</text>`).join("");
+    const ticksY = [top, 0, -top].map(v => `<text x="${x0 - 4}" y="${Y(v) + 3}" text-anchor="end">${v === 0 ? "0" : sdSg(v, 1)}</text>`).join("");
+    const parts = p => Object.entries(p.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .map(([k, v]) => `${CX_NAMES[k] || k} ${sdSg(v, 1)}`).join("、");
+    const dots = series.map((p, i) => `<circle cx="${X(p.hour)}" cy="${Y(p.total_c)}" r="${i === series.length - 1 ? 3.6 : 2.6}" fill="${p.total_c >= 0 ? "var(--pill-red-fg)" : "var(--accent)"}"><title>${sdEsc(`${hh(p.hour)}:00 时的推算：ΔT ${sdSg(p.total_c, 1)}°C（个日上下约 ±${sdN(p.resid_sd_c, 1)}°C）${parts(p) ? "；" + parts(p) : ""}`)}</title></circle>`).join("");
+    const last = series[series.length - 1];
+    return `<svg class="sd-cx-chart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="合成 ΔT 逐小时">
+      <polygon points="${band}" fill="var(--muted)" opacity=".13"/>
+      <line x1="${x0}" x2="${x1}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-dasharray="3 3" stroke-width=".8"/>
+      <line x1="${x0}" x2="${x1}" y1="${y1}" y2="${y1}" stroke="var(--line)"/>
+      <g class="sd-cx-ax">${ticksX}${ticksY}</g>
+      <polyline points="${line}" fill="none" stroke="var(--muted)" stroke-width="1.4"/>${dots}
+      <text class="sd-cx-last" x="${Math.min(X(last.hour) + 5, x1 - 2)}" y="${Y(last.total_c) - 6}" text-anchor="${last.hour >= 16 ? "end" : "start"}">${sdSg(last.total_c, 1)}</text>
+    </svg>`;
+  };
   const compositeCard = !CX ? "" : CX.state === "ok"
-    ? sdSunCard("temp", "合成推算最高温", `ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}`, sdDeltaT(CX.total_c), sdWarmCls(CX.total_c),
+    ? sdSunCard("temp", "合成推算最高温", `ΔT · ${hh(CX.hour)} 点 · ${CX.station_fit ? "本站系数" : "全队系数"}`, sdDeltaT(CX.total_c) + sdCompositeChart(CX.series), sdWarmCls(CX.total_c),
         Object.entries(CX.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
           .map(([k, v]) => [CX_NAMES[k] || k, `<span class="${sdWarmCls(v)}">${sdSg(v, 1)}</span>`])
           .concat(Math.abs(CX.station_bias_c) >= 0.05 ? [["站点偏差", sdSg(CX.station_bias_c, 1)]] : [])
