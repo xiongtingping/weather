@@ -25501,7 +25501,7 @@ function sdSky(day){
   // report so far, its parts summing to the total with the station's bias;
   // the five cards beside it stay as they are.
   const CX = H.composite_tmax_shift;
-  const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水"};
+  const CX_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水", rmax: "已观测最高温"};
   // ΔT through the day on a time axis (user 2026-10-21 「做成带时间轴的趋势图」):
   // each point as the card read it at that hour, the band ±1 residual SD.
   const sdCompositeChart = series => {

@@ -19,6 +19,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import evaluate as e  # noqa: E402
 import m4_eval  # noqa: E402
+from m8_eval import rmax_column  # noqa: E402
+
+# M8 (reading_m8_20261021T024257Z): after 17 h the day's running maximum
+# beat arm 6 at every hour (MAE 0.90-1.03 -> 0.12-0.15 C).
+RMAX_HOURS = tuple(range(18, 24))
 
 OUT = e.ROOT / "config" / "ui" / "tmax_composite_shift_v1.json"
 RUNTIME_DIR = e.ROOT / "data" / "runtime" / "tmax_composite"
@@ -42,6 +47,9 @@ def main() -> int:
     cphys = e.fit_phys(D, m)
     by_hour = {}
     for H in HOURS:
+        base = D.F[H]
+        if H in RMAX_HOURS:
+            D.F[H] = np.column_stack([base, rmax_column(rows, H)])
         fm = e.fit_linear(D, m, H, cphys, True)
         # M4 (reading_m4_20261021T020156Z): Student-t beat the normal at every
         # checkpoint; its degrees of freedom on this fit's standardised residuals.
@@ -49,13 +57,15 @@ def main() -> int:
         mu = fm["icpt"][D.st] + np.einsum("ij,ij->i", X, fm["coef"][D.st])
         t_df = m4_eval.fit_df((D.y - mu) / fm["sd"][D.st])
         fleet_coef = e.fit_linear(D, m, H, cphys, False)["coef"][0]
+        D.F[H] = base
         stations = {}
         for i, s in enumerate(D.stations):
             stations[s] = {"icpt_c": round(float(fm["icpt"][i]), 4),
                            "coef": [round(float(c), 6) for c in fm["coef"][i]],
                            "resid_sd_c": round(float(fm["sd"][i]), 3)}
         by_hour[str(H)] = {"stations": stations, "fleet_coef": [round(float(c), 6) for c in fleet_coef],
-                           "fleet_resid_sd_c": round(float(fm["sd"][-1]), 3), "t_df": t_df}
+                           "fleet_resid_sd_c": round(float(fm["sd"][-1]), 3), "t_df": t_df,
+                           **({"features": list(e.B_FEATS) + ["rmax", "phys"]} if H in RMAX_HOURS else {})}
     out = {
         "schema": "tmax_composite_shift_v1",
         "fitted_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -70,6 +80,7 @@ def main() -> int:
             "dew": "report - day-ahead dew point, newest hour <= H with both, C",
             "wind": "report - day-ahead 10 m wind, newest hour <= H with both, m/s",
             "tdev": "report - day-ahead temperature, newest hour <= H with both, C",
+            "rmax": "18..23 h only (M8): the max of the hourly reports at local 00..H minus the day-ahead maximum, C",
             "rain": "hours 06..H whose report carries precipitation",
             "phys": "c_station * (sqrt(Q measured 06..H + day-ahead H+1..15) - sqrt(Q day-ahead 06..15)), Q in MJ/m2",
         },

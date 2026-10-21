@@ -1335,7 +1335,16 @@ def _composite_at(by_hour: Mapping[int, Mapping[str, Any]], station: str, fit: M
     own = (line.get("stations") or {}).get(station)
     coef = own["coef"] if own else line["fleet_coef"]
     bias = float(own["icpt_c"]) if own else 0.0
-    names = fit.get("features") or []
+    # An hour may carry its own list (18..23 h add rmax, M8): the day's
+    # running hourly-report maximum against the day-ahead maximum.
+    names = line.get("features") or fit.get("features") or []
+    if "rmax" in names:
+        seen = [float(((by_hour.get(h) or {}).get("obs") or {}).get("temp_c"))
+                for h in range(0, H + 1) if ((by_hour.get(h) or {}).get("obs") or {}).get("temp_c") is not None]
+        day_d1 = [((by_hour.get(h) or {}).get("forecast") or {}).get("temp_c_d1") for h in range(24)]
+        if not seen or any(v is None for v in day_d1):
+            return None
+        x["rmax"] = max(seen) - max(float(v) for v in day_d1)
     total = bias + sum(float(k) * float(x[n] or 0.0) for n, k in zip(names, coef))
     return {"hour": H, "station_fit": own is not None, "total_c": round(total, 2), "station_bias_c": round(bias, 2),
             "parts_c": {n: round(float(k) * float(x[n] or 0.0), 2) for n, k in zip(names, coef)},

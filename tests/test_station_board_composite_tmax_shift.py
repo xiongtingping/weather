@@ -90,3 +90,20 @@ def test_a_night_hour_reads_reports_from_midnight_and_no_sunshine() -> None:
     got = b._composite_at(by_hour, "ZUUU", fit, 3)
     assert got["x"]["sw"] == 0.0 and got["x"]["phys"] == 0.0
     assert got["x"]["tdev"] == -5.0 and got["x"]["rain"] == 1.0
+
+
+def test_an_evening_hour_reads_the_running_maximum() -> None:
+    import json
+
+    fit = json.loads(b.COMPOSITE_TMAX_SHIFT_PATH.read_text())
+    line = dict(fit["by_hour"]["17"])
+    line["features"] = list(fit["features"][:-1]) + ["rmax", "phys"]
+    line["stations"] = {s: {**v, "coef": v["coef"][:-1] + [1.0, v["coef"][-1]]} for s, v in line["stations"].items()}
+    fit["by_hour"]["20"] = line
+    rows = _rows(17, 17)
+    for r in rows:
+        if r["hour"] <= 20:
+            r["obs"] = {"temp_c": 20.0 + (r["hour"] == 15) * 6.0, "dew_c": 9.0, "rh_pct": 45.0, "wind_mps": 3.5, "precip": False}
+    got = b._composite_at({r["hour"]: r for r in rows}, "ZUUU", fit, 20)
+    assert got["x"]["rmax"] == 2.0          # 26.0 seen at 15 h against a day-ahead maximum of 24.0
+    assert got["parts_c"]["rmax"] == 2.0
