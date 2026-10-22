@@ -24379,9 +24379,9 @@ function sdConsensusBlock(c, stage){
   const sysTip = names.length
     ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
     : "决策时刻没有可读的确定性预报";
-  const fc = (c.f_c || {}).core, fw = (c.f_c || {}).wide, nc = (c.n || {}).core;
-  const head = `<div class="sd-mc-sub" title="${sdEsc("宪章 279 影子：决策时刻可知的全球确定性点预报日最高温中位数（≥3 家）。四家＝AIFS 单成员/IFS 9km/UKMO/CMA（研究补记十一所读）；十家另加 HRES/GFS/AIGFS/GDPS/ICON/UKMO 原生。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? ` <span class="muted">${nc} 家</span>` : ""}${fw != null && fc != null && Math.abs(fw - fc) >= 0.05 ? ` <span class="muted">· 十家 ${sdN(fw, 1)}°C</span>` : ""}${c.state && c.state !== "SHADOW" ? ` <span class="muted">${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
-  const rows = ["fleet_core", "station_core"].map(name => {
+  const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
+  const head = `<div class="sd-mc-sub" title="${sdEsc("宪章 279 影子：决策时刻可知的全球确定性点预报日最高温中位数（≥3 家）。十家＝AIFS 单成员、IFS 9km、UKMO、CMA 中继，加 HRES、GFS、AIGFS、GDPS、ICON 全球、UKMO 原生（10-22 裁「统一用十家」）。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? ` <span class="muted">${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? ` <span class="muted">${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
+  const rows = ["fleet_wide", "station_wide"].map(name => {
     const v = ((c.variants || {})[name]) || null, form = SD_CONS_FORM[name.split("_")[0]];
     if(!v || v.state !== "READ") return `<tr><td>${form}</td><td colspan="4" class="muted">${sdEsc(SD_CONS_STATE[(v || {}).state] || (v || {}).state || "—")}</td></tr>`;
     const cls = v.delta_c > 0.05 ? "up" : v.delta_c < -0.05 ? "down" : "flat";
@@ -24401,8 +24401,8 @@ function sdConsensusFoot(c, stage){
     const tip = `前推 ${w.n_days} 个事件日 ${w.n} 个决策；LogScore ${sdN(ls.before, 4)}→${sdN(ls.after, 4)}；CRPS Δ ${sdSg((w.crps || {}).delta, 4)}；Brier Δ ${sdSg((w.brier || {}).delta, 4)}；${w.days_better}/${w.n_days} 天改善；判决 ${w.verdict}（宪章 240：LogScore 上界<0 且 CRPS/Brier 不显著更差，≥20 天）`;
     return `${form} <span class="mono" title="${sdEsc(tip)}">ΔLS ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}] ${mark}</span>`;
   };
-  const wf = ((fit.variants || {}).fleet_core || {}).walk_forward || {};
-  return `影子前推 ${wf.n_days || 0} 天：${part("fleet_core")} · ${part("station_core")}`;
+  const wf = ((fit.variants || {}).fleet_wide || {}).walk_forward || {};
+  return `影子前推 ${wf.n_days || 0} 天：${part("fleet_wide")} · ${part("station_wide")}`;
 }
 function sdProbExplain(){
   return `<details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。均值桶＝按桶概率加权的平均档位最近的桶（生产 mean_center_bucket_v1），与分布均值所在的桶偶有一档之差。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;

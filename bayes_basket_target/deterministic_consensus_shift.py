@@ -20,10 +20,13 @@ computes the same feature per station x single source and admits one station in
            190) on the served vector, charter 224's floor last; what the nightly
            fit scores and what this receipt records
 
-Two rosters: ``core`` is the four systems 补记十一 read (charter 201's default
-readers; the evidence), ``wide`` adds the six native global runs charter 267
-captures for F.  Four variants = bias form x roster; the fit scores each one
-walk-forward and the receipt carries all four, so the P0 card compares them.
+One roster (user ruling 2026-10-22 「统一用十家」, charter 279 补记二): the four
+systems 补记十一 read (charter 201's default readers) and the six native global
+runs charter 267 captures for F.  补记一 read the four alone against the ten:
+equal at P0, the ten better at P0-M (a steadier median, not coverage).  Two
+variants = bias form; the fit scores each one walk-forward and the receipt
+carries both, so the P0 card compares them.  The roster key stays ``wide`` so
+the artifact and the receipts written before the ruling read unchanged.
 
 This step records, it does not serve: every P0 and P0-M compile carries
 ``deterministic_consensus_json`` and the served vector is untouched
@@ -65,21 +68,21 @@ FIT_SCHEMA = "bayes_basket_target_deterministic_consensus_fit_v1"
 # Shadow: every compile records, none serves.
 MODE = os.environ.get("PM_DETERMINISTIC_CONSENSUS_MODE", "shadow").strip().lower()
 
-# 补记十一's four (charter 201's default readers: the relay/AIFS systems), and
-# the six native global deterministic runs charter 267 captures for F.
-CORE_PRODUCTS: tuple[str, ...] = ("AIFS", "IFS9KM", "UKMO10", "CMA")
-WIDE_PRODUCTS: tuple[str, ...] = CORE_PRODUCTS + (
+# The ten (user ruling 2026-10-22 「统一用十家」): 补记十一's four -- charter 201's
+# default readers, the AIFS single member and the IFS 9 km / UKMO relays and CMA
+# -- and the six native global deterministic runs charter 267 captures for F.
+PRODUCTS: tuple[str, ...] = (
+    "AIFS", "IFS9KM", "UKMO10", "CMA",
     "IFS_HRES", "GFS", "AIGFS", "GDPS", "ICON_GLOBAL", "UKMO_GLOBAL",
 )
 ROSTERS: Mapping[str, frozenset[str]] = {
-    "core": frozenset(SYSTEM_IDS[p] for p in CORE_PRODUCTS),
-    "wide": frozenset(SYSTEM_IDS[p] for p in WIDE_PRODUCTS),
+    "wide": frozenset(SYSTEM_IDS[p] for p in PRODUCTS),
 }
 CONSENSUS_SYSTEM_IDS: frozenset[str] = ROSTERS["wide"]
-PRODUCT_OF_SYSTEM = {SYSTEM_IDS[p]: p for p in WIDE_PRODUCTS}
+PRODUCT_OF_SYSTEM = {SYSTEM_IDS[p]: p for p in PRODUCTS}
 BIAS_FORMS: tuple[str, ...] = ("fleet", "station")
-VARIANTS: tuple[str, ...] = tuple(f"{form}_{roster}" for roster in ("core", "wide") for form in BIAS_FORMS)
-PRIMARY_VARIANT = "fleet_core"
+VARIANTS: tuple[str, ...] = tuple(f"{form}_wide" for form in BIAS_FORMS)
+PRIMARY_VARIANT = "fleet_wide"
 STAGE_FAMILIES: tuple[str, ...] = ("P0_far", "P0_near", "P0M")
 FAR_HOURS = 36.0
 NEAR_FLOOR_HOURS = 12.0
@@ -357,7 +360,7 @@ def shadow_receipt_from_conn(
 # The fit: bias and kappa per family and variant, walk-forward scored.
 #
 # A record is one first decision of a settled station-day:
-#   {"station", "day", "family", "centre_c", "f_c": {"core", "wide"}, "y_c",
+#   {"station", "day", "family", "centre_c", "f_c": {"wide"}, "y_c",
 #    "p": {bucket: prob}, "ordered": [...], "intervals": {bucket: [lo, hi]}, "winner": bucket}
 
 
@@ -545,10 +548,10 @@ def finite_or_none(value: Any) -> float | None:
 
 
 __all__ = [
-    "BIAS_FORMS", "CAP_C", "CONSENSUS_SYSTEM_IDS", "CORE_PRODUCTS", "FIT_ARTIFACT_PATH", "FIT_SCHEMA",
-    "LINEAGE_KEY", "MIN_FIT_EVENT_DAYS", "MIN_SYSTEMS", "MODE", "PRIMARY_VARIANT", "PRODUCT_OF_SYSTEM",
-    "ROSTERS", "RULE_VERSION", "STAGE_FAMILIES", "STATION_BIAS_PRIOR_DAYS", "VARIANTS",
-    "VERDICT_MIN_EVENT_DAYS", "WIDE_PRODUCTS", "bias_for", "consensus_from_features", "consensus_read",
+    "BIAS_FORMS", "CAP_C", "CONSENSUS_SYSTEM_IDS", "FIT_ARTIFACT_PATH", "FIT_SCHEMA",
+    "LINEAGE_KEY", "MIN_FIT_EVENT_DAYS", "MIN_SYSTEMS", "MODE", "PRIMARY_VARIANT", "PRODUCTS",
+    "PRODUCT_OF_SYSTEM", "ROSTERS", "RULE_VERSION", "STAGE_FAMILIES", "STATION_BIAS_PRIOR_DAYS", "VARIANTS",
+    "VERDICT_MIN_EVENT_DAYS", "bias_for", "consensus_from_features", "consensus_read",
     "family_parameters", "fit_parameters", "load_fit_artifact", "mode_bucket", "score_record",
     "served_mean_c", "shadow_receipt", "shadow_receipt_from_conn", "shift_served", "stage_family",
     "variant_parts", "verdict_of", "walk_forward",

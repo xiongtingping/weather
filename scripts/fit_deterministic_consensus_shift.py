@@ -2,7 +2,7 @@
 """Charter 279: fit the deterministic consensus shift on settled station-days.
 
 Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0-M) and per variant
-(fleet or station bias x core or wide roster): F's bias against the settled
+(fleet or station bias; the ten-system roster): F's bias against the settled
 truth, kappa through the origin, and the walk-forward scores of the shift
 each event day would have had under the parameters fitted on the days before
 it (``deterministic_consensus_shift.walk_forward``; charter 240's verdict).
@@ -181,7 +181,7 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None, days: int, budge
         "window": [start, end], "cap_c": DCS.CAP_C, "min_systems": DCS.MIN_SYSTEMS,
         "min_fit_event_days": DCS.MIN_FIT_EVENT_DAYS, "verdict_min_event_days": DCS.VERDICT_MIN_EVENT_DAYS,
         "station_bias_prior_days": DCS.STATION_BIAS_PRIOR_DAYS,
-        "rosters": {"core": list(DCS.CORE_PRODUCTS), "wide": list(DCS.WIDE_PRODUCTS)},
+        "rosters": {"wide": list(DCS.PRODUCTS)},
         "primary": DCS.PRIMARY_VARIANT, "counts": counts, "families": families,
         "elapsed_seconds": round(time.time() - started, 1),
     }
