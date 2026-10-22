@@ -94,38 +94,50 @@ def test_a_group_whose_interval_crosses_zero_is_not_called():
     assert lo <= much["market_nearer"] <= hi
 
 
-def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_path, monkeypatch):
-    monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-09-01")
+def _landing_store():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE calibration_station_market_timezone_binding (station_id TEXT, settlement_timezone TEXT)")
     conn.execute("INSERT INTO calibration_station_market_timezone_binding VALUES ('KLGA','America/New_York')")
     conn.execute("CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT, stage TEXT,"
-                 " decision_at_utc TEXT, probabilities_json TEXT, posterior_version TEXT)")
+                 " decision_at_utc TEXT, probabilities_json TEXT, posterior_version TEXT, state TEXT)")
     conn.execute("CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
                  " FROM basket_probability_envelope")
     conn.execute("CREATE TABLE basket_official_ws_snapshot (station_id TEXT, event_date TEXT, observed_at TEXT,"
-                 " quote_expires_at TEXT, buckets_json TEXT)")
+                 " quote_expires_at TEXT, buckets_json TEXT, state TEXT)")
     conn.execute("CREATE TABLE basket_station_day_settlement_label (station_id TEXT, event_date TEXT,"
                  " truth_revision_no INTEGER, settled_bucket TEXT)")
-    for day, priced in (("2026-09-02", True), ("2026-09-03", False), ("2026-09-04", True)):
-        conn.execute("INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v')",
-                     (day, f"{day}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})))
-        for hour in (2, 3):
+    return conn
+
+
+def _collect(conn):
+    saved = dict(C._PAGED_RUN)
+    C._PAGED_RUN.clear()
+    try:
+        return C.collect_truth_landing(conn)
+    finally:
+        C._PAGED_RUN.update(saved)
+
+
+def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-09-01")
+    conn = _landing_store()
+    # Both rulers are read at local midnight the day before the event:
+    # 04:00Z for New York in September.
+    for day, eve, priced in (("2026-09-02", "2026-09-01", True), ("2026-09-03", "2026-09-02", False),
+                             ("2026-09-04", "2026-09-03", True)):
+        conn.execute("INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v','COMMITTED')",
+                     (day, f"{eve}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})))
+        for hour in (5, 6):
             books = [{"bucket": "70", "ask_levels": [{"price": 0.66}], "bid_price": 0.54}]
             if priced:
                 books.append({"bucket": "71", "ask_levels": [{"price": 0.46}], "bid_price": 0.34})
-            conn.execute("INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?)",
-                         (day, f"{day}T{hour:02d}:00:00Z", "x", json.dumps(books)))
+            conn.execute("INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?,'COMMITTED')",
+                         (day, f"{eve}T{hour:02d}:00:00.000Z", "x", json.dumps(books)))
     # Revision 1 corrects revision 0; the last day is never settled.
     conn.execute("INSERT INTO basket_station_day_settlement_label VALUES ('KLGA','2026-09-02',0,'71')")
     conn.execute("INSERT INTO basket_station_day_settlement_label VALUES ('KLGA','2026-09-02',1,'70')")
     conn.execute("INSERT INTO basket_station_day_settlement_label VALUES ('KLGA','2026-09-03',0,'70')")
-    saved = dict(C._PAGED_RUN)
-    C._PAGED_RUN.clear()
-    try:
-        out = C.collect_truth_landing(conn)
-    finally:
-        C._PAGED_RUN.update(saved)
+    out = _collect(conn)
 
     assert out["closed_station_days"] == 3
     assert out["settled_station_days"] == 2 and out["unsettled_station_days"] == 1
@@ -139,6 +151,36 @@ def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_
     top = by_price[(0.5, 1.01)]
     assert top["value_mean"] == pytest.approx(0.60) and top["cost_mean"] == pytest.approx(0.66)
     assert top["truth_count"] == 1                     # the corrected settled bucket, 70
+
+
+def test_both_rulers_are_read_at_local_midnight_the_day_before(tmp_path, monkeypatch):
+    """2026-10-22: the first P0 is now the listing and its book is empty, so the
+    claim is the newest P0 at the anchor and the market the four hours after it."""
+
+    monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-09-01")
+    conn = _landing_store()
+    day, eve = "2026-09-02", "2026-09-01"
+    # the listing claim, an anchor-time claim, and one decided after the anchor
+    for at, claim in ((f"2026-08-31T05:00:00Z", {"70": 0.9, "71": 0.1}),
+                      (f"{eve}T03:30:00Z", {"70": 0.6, "71": 0.4}),
+                      (f"{eve}T05:00:00Z", {"70": 0.2, "71": 0.8})):
+        conn.execute("INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v','COMMITTED')",
+                     (day, at, json.dumps(claim)))
+    # an empty listing-time book, then the formed one inside the window
+    for at, books in ((f"2026-08-31T06:00:00.000Z", [{"bucket": "70", "ask_levels": [{"price": 0.55}], "bid_price": 0},
+                                                     {"bucket": "71", "ask_levels": [{"price": 0.55}], "bid_price": 0}]),
+                      (f"{eve}T05:00:00.000Z", [{"bucket": "70", "ask_levels": [{"price": 0.31}], "bid_price": 0.29},
+                                                {"bucket": "71", "ask_levels": [{"price": 0.71}], "bid_price": 0.69}]),
+                      (f"{eve}T06:00:00.000Z", [{"bucket": "70", "ask_levels": [{"price": 0.31}], "bid_price": 0.29},
+                                                {"bucket": "71", "ask_levels": [{"price": 0.71}], "bid_price": 0.69}])):
+        conn.execute("INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?,'COMMITTED')",
+                     (day, at, "x", json.dumps(books)))
+    records = C._truth_landing_records(conn, lambda *_k: True, "2026-09-01")
+    record = records["KLGA|2026-09-02"]
+    assert record["anchor"] == "2026-09-01T04:00:00.000Z"
+    assert record["claims"] == {"70": 0.6, "71": 0.4}
+    assert record["asks"] == {"70": [2, 0.31], "71": [2, 0.71]}
+    assert record["bids"] == {"70": [2, 0.29], "71": [2, 0.69]}
 
 
 # --------------------------------------------------------------- rendering
@@ -170,7 +212,7 @@ BANDS_CLAIM = [_band(0.0, 0.05, 160, 11000, 0.015, 0.011, [0.002, 0.006]),
 
 
 def _payload(groups=GROUPS, by_price=BANDS_PRICE, by_claim=BANDS_CLAIM, history=None):
-    current = {"key": "current", "label": "现役：P0 证据纪元 2026-09-14 起的首个决策（宪章 202）",
+    current = {"key": "current", "label": "现役：P0 证据纪元 2026-09-14 起服务的 P0（宪章 202）",
                "station_days": 700, "event_days": 17, "by_price": by_price, "by_claim": by_claim,
                "disagreement": {"unlikely_below": 0.05, "unlikely_buckets": 50, "unlikely_hits": 1, "groups": groups,
                                 "acceptance_baseline": {"claim_floor": 0.45, "market_ceiling": 0.3, "buckets": 51, "hits": 3,

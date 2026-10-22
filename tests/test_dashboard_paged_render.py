@@ -780,7 +780,7 @@ def _truth_landing_fixture() -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE basket_probability_envelope (station_id TEXT, event_date TEXT,"
         " stage TEXT, decision_at_utc TEXT, probabilities_json TEXT,"
-        " posterior_version TEXT)"
+        " posterior_version TEXT, state TEXT)"
     )
     conn.execute(
         "CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
@@ -792,26 +792,29 @@ def _truth_landing_fixture() -> sqlite3.Connection:
     )
     conn.execute(
         "CREATE TABLE basket_official_ws_snapshot (station_id TEXT, event_date TEXT,"
-        " observed_at TEXT, quote_expires_at TEXT, buckets_json TEXT)"
+        " observed_at TEXT, quote_expires_at TEXT, buckets_json TEXT, state TEXT)"
     )
     conn.execute(
         "CREATE INDEX basket_official_ws_snapshot_day_expiry_idx"
         " ON basket_official_ws_snapshot(event_date, quote_expires_at)"
     )
-    for i, day in enumerate(("2026-08-20", "2026-08-21", "2026-08-22")):
+    # Both rulers read at local midnight the day before (04:00Z in August).
+    for i, (day, eve) in enumerate((("2026-08-20", "2026-08-19"), ("2026-08-21", "2026-08-20"),
+                                    ("2026-08-22", "2026-08-21"))):
         conn.execute(
-            "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v')",
-            (day, f"{day}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})),
+            "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v','COMMITTED')",
+            (day, f"{eve}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})),
         )
         if i < 2:   # the third day is not settled yet
             conn.execute(
                 "INSERT INTO basket_station_day_settlement_label VALUES ('KLGA',?,0,'70')",
                 (day,),
             )
-        for hour, bids in ((2, (0.5, 0.4)), (3, (0.55, 0.35)), (23, (0.9 - 0.1 * i, 0.05))):
+        for stamp, bids in ((f"{eve}T05:00:00.000Z", (0.5, 0.4)), (f"{eve}T06:00:00.000Z", (0.55, 0.35)),
+                            (f"{day}T23:00:00.000Z", (0.9 - 0.1 * i, 0.05))):
             conn.execute(
-                "INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?)",
-                (day, f"{day}T{hour:02d}:00:00Z", "x", json.dumps([
+                "INSERT INTO basket_official_ws_snapshot VALUES ('KLGA',?,?,?,?,'COMMITTED')",
+                (day, stamp, "x", json.dumps([
                     {"bucket": "70", "ask_levels": [{"price": 0.62}], "bid_price": bids[0]},
                     {"bucket": "71", "ask_levels": [{"price": 0.41}], "bid_price": bids[1]},
                 ])),
