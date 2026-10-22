@@ -370,10 +370,12 @@ def sweep(
         committed_days: dict[str, int] = defaultdict(int)
         open_days: dict[str, int] = defaultdict(int)
         as_of = _now()
+        tried = 0
         for station, day in pending[:max_scopes]:
             if deadline is not None and time.monotonic() >= deadline:
                 stopped_for_time = True
                 break
+            tried += 1
             try:
                 result = materialize_settled_station_truth(
                     target,
@@ -496,7 +498,12 @@ def sweep(
             "window_start": window_start,
             "window_days": window_days,
             "backlog_scopes": len(pending),
-            "attempted": min(len(pending), max_scopes),
+            # The scopes actually asked, and the ones the budget or the cap
+            # left for the next pass: those are unknown, not missing (a pass
+            # stopped after 10 of 143 used to read as 133 settled days with
+            # no truth on the board).
+            "attempted": tried,
+            "not_reached": len(pending) - tried,
             "committed": int(outcomes.get("committed", 0)),
             "idempotent": int(outcomes.get("idempotent", 0)),
             "open_day_skipped": int(

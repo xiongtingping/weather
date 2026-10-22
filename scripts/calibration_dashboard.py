@@ -6050,10 +6050,14 @@ def collect_truth_materialization(
     still_open = int(sweep.get("open_day_skipped") or 0)
     refused = int(sweep.get("refused") or 0)
     deferred = int(sweep.get("deferred_locked") or 0)
+    # Scopes the pass never reached (its time budget or cap) are unknown, not
+    # missing: a pass stopped after 10 of 143 open-day scopes read as "133
+    # settled station-days with no truth row" (2026-10-22).
+    not_reached = int(sweep.get("not_reached") or 0)
     outstanding = max(
         0,
         int(sweep.get("backlog_after") or 0)
-        - still_open - refused - deferred,
+        - still_open - refused - deferred - not_reached,
     )
     age = _age_hours(sweep.get("swept_at_utc"))
     # The cycle materializes the live edge itself now (2026-08-30), so the
