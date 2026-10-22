@@ -383,13 +383,11 @@ def test_the_dashboard_reads_the_fit_artifact(tmp_path, monkeypatch):
     block = source[source.index("function sdConsensusBlock"):source.index("function sdProbExplain(){")]
     # 补记三: the fleet is the card's line, the station a small grey one; P1 is not skipped.
     assert 'if(stage === "P1") return ""' not in block and 'stage === "P1" ||' not in block
-    assert "舰队偏差 挪" in block and 'class="sd-cons-d' in block and 'class="sd-cons-st"' in block
-    # 补记四: the walk-forward line reads only the same-period fit and sits inside the box.
-    assert "score_from_decision_utc" in block and 'class="sd-cons-wf"' in block
-    assert "foot: sdConsensusFoot" not in source
-    assert ".sd-cons-d{font-size:24px" in source
-    # 补记五: the headline F is the bias-corrected one.
-    assert "fleet.f_cal_c" in block and "原始" in block
+    # 补记六: the result leads (shifted centre and bucket); F, the shift and the
+    # station value are one small line; the walk-forward is a verdict in words.
+    assert 'class="sd-cons-v"' in block and "fleet.shadow_centre_c" in block and 'class="sd-cons-p"' in block
+    assert "挪了更准" in block and "score_from_decision_utc" in block and "fleet.f_cal_c" in block
+    assert "foot: sdConsensusFoot" not in source and ".sd-cons-v{font-size:26px" in source
 
 
 def test_the_daily_fit_is_a_managed_sweep_that_writes_no_database():
