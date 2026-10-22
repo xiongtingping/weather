@@ -42,8 +42,10 @@ READING_NAME = "wrf_tmax"
 #: The station point the WRF project's own tools read (run/tools/zuuu_t2.py).
 STATIONS = {"ZUUU": (30.578, 103.947)}
 BASELINE = "baseline"
-#: The live forecasts, ``run/fcst/<target YYYYMMDD>_from_<init YYYYMMDDHH>``
-#: (run/forecast_prep.sh): the newest init per target day is the one shown.
+#: The live forecasts, ``run/fcst/<last day YYYYMMDD>_from_<init YYYYMMDDHH>``
+#: (run/forecast3d.sh, user 2026-10-22 「把未来3日都计算」: one run from the day's
+#: GFS 00Z to three days ahead 12Z): every local day from the init's date to the last
+#: day is read from the run, and for each day the newest init that reached it is shown.
 FORECAST = "fcst"
 #: The same-day nowcast forward test (run/nowcast.sh, user 2026-10-22 「做当天临近预报的前向测试」):
 #: two arms per day under ``run/nowcast/<YYYYMMDD>/{sat,ctl}`` -- Himawari cloud in the
@@ -78,12 +80,18 @@ def run_dirs(root: Path = WRF_ROOT) -> list[tuple[str, str, Path]]:
         out.append((BASELINE, Path(d).parent.name, Path(d)))
     for d in sorted(glob.glob(str(root / "run" / "exp" / "*" / "2*"))):
         out.append((Path(d).parent.name, Path(d).name, Path(d)))
-    newest: dict[str, Path] = {}
-    for d in sorted(glob.glob(str(root / "run" / "fcst" / "2*_from_*"))):
-        target, _, init = Path(d).name.partition("_from_")
-        if len(init) == 10 and init.isdigit() and glob.glob(str(Path(d) / "wrfout_d0*")):
-            newest[target] = Path(d)  # sorted: the later init wins
-    out.extend((FORECAST, day, d) for day, d in newest.items())
+    fcst = []
+    for d in glob.glob(str(root / "run" / "fcst" / "2*_from_*")):
+        last, _, init = Path(d).name.partition("_from_")
+        if len(init) == 10 and init.isdigit() and len(last) == 8 and last.isdigit():
+            fcst.append((init, last, Path(d)))
+    # Oldest init first: compute() lets a later init replace an earlier one only
+    # for the days it has reached.
+    for init, last, d in sorted(fcst):
+        day, end = datetime.strptime(init[:8], "%Y%m%d"), datetime.strptime(last, "%Y%m%d")
+        while day <= end:
+            out.append((FORECAST, f"{day:%Y%m%d}", d))
+            day += timedelta(days=1)
     for d in sorted(glob.glob(str(root / "run" / "nowcast" / "2*"))):
         for arm, config in NOWCAST_ARMS.items():
             out.append((config, Path(d).name, Path(d) / arm))
@@ -291,19 +299,27 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             rec = {"status": status, "domain": dom, "init_utc": _iso(_utc(init)) if init else None,
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
-            if config in (BASELINE, FORECAST) and "gfs" not in entry:
+            # The driving GFS: a newer forecast init replaces an older one's for the day.
+            if (config == BASELINE and "gfs" not in entry) or config == FORECAST:
                 gfs: dict[str, float] = {}
                 for fn in sorted(glob.glob(str(d / "met_em.d01.*"))):
                     gfs.update(cache.frames(fn, "TT", point))
                 g = _day_max(gfs, day, zone)
                 if g:
                     entry["gfs"] = {"tmax_c": g["tmax_c"], "at_local": g["at_local"]}
-                    if entry["truth_c"] is not None:
-                        gfs_errs.append(g["tmax_c"] - entry["truth_c"])
             entry["configs"][config] = rec
+            if config == FORECAST:
+                continue  # scored below, once per day on the init that stands
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
+        for entry in days.values():
+            if entry.get("gfs") and entry["truth_c"] is not None:
+                gfs_errs.append(entry["gfs"]["tmax_c"] - entry["truth_c"])
+            rec = entry["configs"].get(FORECAST)
+            if rec and entry["truth_c"] is not None and rec["status"] == "complete" and rec["peak_covered"]:
+                rec["error_c"] = round(rec["tmax_c"] - entry["truth_c"], 2)
+                errs.setdefault(FORECAST, []).append(rec["error_c"])
         try:
             frozen = json.loads((root / "run" / FROZEN_HINDCAST).read_text(encoding="utf-8"))
         except (OSError, ValueError):

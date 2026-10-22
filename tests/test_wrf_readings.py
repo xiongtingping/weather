@@ -27,14 +27,22 @@ def test_missing_volume_is_reported_not_raised(tmp_path: Path) -> None:
     assert out == {"state": "volume_missing", "root": str(tmp_path / "absent")}
 
 
-def test_live_forecast_dirs_keep_the_newest_init_per_target(tmp_path: Path) -> None:
-    for name in ("20261022_from_2026102112", "20261022_from_2026102118", "20261023_from_2026102200"):
+def test_a_forecast_run_covers_every_day_from_its_init_to_its_last_day(tmp_path: Path) -> None:
+    """One run/forecast3d.sh run covers today and the next three days (user 2026-10-22
+    「把未来3日都计算」); oldest init first, so a newer init replaces an older one only
+    for the days it has reached."""
+
+    for name in ("20261022_from_2026102118", "20261025_from_2026102200"):
         d = tmp_path / "run" / "fcst" / name
         d.mkdir(parents=True)
         (d / "wrfout_d01_x").write_bytes(b"")
-    runs = {(c, day): d.name for c, day, d in W.run_dirs(tmp_path)}
-    assert runs == {(W.FORECAST, "20261022"): "20261022_from_2026102118",
-                    (W.FORECAST, "20261023"): "20261023_from_2026102200"}
+    runs = [(c, day, d.name) for c, day, d in W.run_dirs(tmp_path) if c == W.FORECAST]
+    assert runs == [(W.FORECAST, "20261021", "20261022_from_2026102118"),
+                    (W.FORECAST, "20261022", "20261022_from_2026102118"),
+                    (W.FORECAST, "20261022", "20261025_from_2026102200"),
+                    (W.FORECAST, "20261023", "20261025_from_2026102200"),
+                    (W.FORECAST, "20261024", "20261025_from_2026102200"),
+                    (W.FORECAST, "20261025", "20261025_from_2026102200")]
 
 
 def test_nowcast_arms_and_same_moment_record(tmp_path: Path) -> None:

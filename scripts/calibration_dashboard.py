@@ -2189,7 +2189,7 @@ def collect_wrf_tmax() -> dict[str, Any]:
     """The WRF runs' daily-maximum forecast (user 2026-10-22 「前端增加"wrf"板块
     内容」「增加显式：最高温的预报（输出）」), as ``wrf_readings`` wrote it from the
     WRF project on the external volume.  A file read; the hourly curves travel
-    only for the newest three days.
+    only for the newest five days (yesterday, today and the three-day forecast).
     """
 
     from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
@@ -2200,7 +2200,7 @@ def collect_wrf_tmax() -> dict[str, Any]:
     value = dict(reading.get("value") or {})
     for st in (value.get("stations") or {}).values():
         days = st.get("days") or {}
-        keep = set(sorted(days)[-3:])
+        keep = set(sorted(days)[-5:])
         for day, entry in days.items():
             if day not in keep:
                 for rec in (entry.get("configs") or {}).values():
@@ -20304,7 +20304,7 @@ const WRF_STATUS = {complete: "完成", running: "运行中", stopped: "中断",
 // The same-day nowcast arms (run/nowcast, forward test) lead, then the live forecast
 // (run/fcst); the rest are hindcast configurations.
 // Plain names (user 「把看板卡片名字改为直白的说法」); 回算 = re-run of past days.
-const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WRF·模型自估云", fcst: "WRF·前一晚预报",
+const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WRF·模型自估云", fcst: "WRF·3 日预报",
   baseline: "回算·最初配置", cu_gf: "回算·换积云方案", cu_off: "回算·关掉积云", dom_big: "回算·区域放大",
   ifs_rhc85: "回算·改用欧洲模式驱动", indep_icl1: "回算·模型自估云(旧)", indep_rhc85: "回算·模型自估云",
   lsm_noahmp: "回算·换地表方案", mp_wsm6: "回算·换云微物理", nest3km: "回算·加 3 km 细网格",
@@ -20322,7 +20322,10 @@ function wrfTmaxPanel(){
   return head + Object.entries(W.stations || {}).map(([station, S]) => {
     if(S.state !== "ok") return `<div class="muted">${h(station)}：${h(S.state)}</div>`;
     const cfgs = S.configs || [], col = c => WRF_COL[cfgs.indexOf(c) % WRF_COL.length];
-    const days = Object.keys(S.days || {}).sort(), last = S.latest_day, L = S.days[last] || {};
+    // Today on the station's clock leads (user 2026-10-22 「把未来3日都计算」): the
+    // three-day forecast reaches past it, and the cards below are about today.
+    const today = new Intl.DateTimeFormat("en-CA", {timeZone: S.timezone}).format(new Date());
+    const days = Object.keys(S.days || {}).sort(), last = days.filter(d => d <= today).pop() || S.latest_day, L = S.days[last] || {};
     const leadKey = WRF_LEAD.find(c => (L.configs || {})[c]) || Object.keys(L.configs || {})[0];
     const base = (L.configs || {})[leadKey] || {}, NC = L.nowcast || null;
     const loc = t => t ? new Intl.DateTimeFormat("en-GB", {timeZone: S.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)) : "—";
@@ -20336,6 +20339,16 @@ function wrfTmaxPanel(){
       ${big("实测最高温", L.truth_c == null ? "今天还没结束" : `${n(L.truth_c, 0)}°C`, "", "机场报文，结算口径")}
       ${big("WRF 误差", L.truth_c == null ? "—" : `${sg(base.tmax_c - L.truth_c)}°C`, errCls(L.truth_c == null ? null : base.tmax_c - L.truth_c), "WRF 减实测")}
       ${big("GFS 原始预报", `${n((L.gfs || {}).tmax_c)}°C`, "", "3 小时一个点", "WRF 的输入：美国 GFS 自己预报的 2 m 气温")}</div>`;
+    // The three-day forecast, one card per day from today (run/forecast3d.sh: the day's
+    // GFS 00Z to three days ahead 12Z, frozen nowcast physics without satellite).
+    const ahead = days.filter(d => d >= today && (S.days[d].configs || {}).fcst);
+    const wk = d => "日一二三四五六"[new Date(`${d}T12:00:00Z`).getUTCDay()];
+    const aheadRow = !ahead.length ? "" : `<div class="trend-t" style="margin-top:8px" title="WRF 每天用当日 GFS 00Z 起报，跑到三天后的当地 20 点；物理与冻结的临近预报相同、不用卫星">WRF 未来几天最高温</div>
+      <div class="grid g4">${ahead.map(d => { const r = S.days[d].configs.fcst, E = S.days[d];
+        const lead = d === today ? "今天" : `${Math.round((new Date(`${d}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 864e5)} 天后`;
+        return big(`${h(d.slice(5))} 周${wk(d)} · ${lead}`, `${n(r.tmax_c)}°C`, "",
+          `${String(r.init_utc || "").slice(5, 10)} ${String(r.init_utc || "").slice(11, 13)}Z 起报 · ${WRF_STATUS[r.status] || h(r.status || "")}${r.peak_covered ? ` · ${h(r.at_local)} 最高` : ` · 输出到 ${h(r.last_local || "")}`}${(E.gfs || {}).tmax_c == null ? "" : ` · GFS ${n(E.gfs.tmax_c)}`}${E.truth_c == null ? "" : ` · 实测 ${n(E.truth_c, 0)}`}`,
+          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}`); }).join("")}</div>`;
     // Same-moment comparison (forward test): what each source said when the nowcast came out.
     const NS = S.nowcast_scores || {};
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
@@ -20391,19 +20404,25 @@ function wrfTmaxPanel(){
     const truth = shown.map((d, i) => S.days[d].truth_c == null ? "" : `<rect x="${X(i) - 4}" y="${Y(S.days[d].truth_c) - 4}" width="8" height="8" fill="var(--text)"><title>实测 ${d} ${n(S.days[d].truth_c, 0)}°C</title></rect>`).join("");
     const chart1 = `<div class="card"><div class="trend-t">逐日最高温（°C）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${xl}${gfsLine}${KEYC.map(line).join("")}${truth}</svg>${legend(KEYC)}</div>`;
     // The newest day's hourly T2 on the local clock: today's arms and the previous night.
-    const series = ["nowcast_sat", "nowcast_ctl", "fcst"].filter(c => cfgs.includes(c)).map(c => [c, ((L.configs || {})[c] || {}).series || []]).filter(x => x[1].length);
+    // From today through the forecast's last day, one continuous clock.
+    const span = [last, ...ahead.filter(d => d > last)];
+    const series = ["nowcast_sat", "nowcast_ctl", "fcst"].filter(c => cfgs.includes(c))
+      .map(c => [c, span.flatMap(d => ((S.days[d].configs || {})[c] || {}).series || [])]).filter(x => x[1].length);
     let chart2 = "";
     if(series.length){
-      const zone = S.timezone, hr = t => { const p = new Intl.DateTimeFormat("en-GB", {timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)).split(":"); return +p[0] + p[1] / 60; };
+      const zone = S.timezone, nd = span.length, d0 = new Date(`${span[0]}T00:00:00Z`);
+      const hr = t => { const p = new Intl.DateTimeFormat("en-GB", {timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)).split(":");
+        const dd = Math.round((new Date(`${new Intl.DateTimeFormat("en-CA", {timeZone: zone}).format(new Date(t))}T00:00:00Z`) - d0) / 864e5); return dd * 24 + (+p[0]) + p[1] / 60; };
       const all = series.flatMap(x => x[1].map(p => p[1])).concat(L.truth_c == null ? [] : [L.truth_c]);
       const lo2 = Math.floor(Math.min(...all) - 1), hi2 = Math.ceil(Math.max(...all) + 1);
-      const X2 = v => pl + v * (w - pl - pr) / 24, Y2 = v => pt + (hi2 - v) * (ht - pt - pb) / (hi2 - lo2);
+      const X2 = v => pl + v * (w - pl - pr) / (24 * nd), Y2 = v => pt + (hi2 - v) * (ht - pt - pb) / (hi2 - lo2);
       const g2 = Array.from({length: hi2 - lo2 + 1}, (_, k) => lo2 + k).filter(v => (hi2 - lo2) <= 12 || v % 2 === 0)
         .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y2(v)}" y2="${Y2(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y2(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
-      const x2 = [0, 3, 6, 9, 12, 15, 18, 21, 24].map(v => `<text x="${X2(v)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(v).padStart(2, "0")}:00</text>`).join("");
-      const tl = L.truth_c == null ? "" : `<line x1="${pl}" x2="${w - pr}" y1="${Y2(L.truth_c)}" y2="${Y2(L.truth_c)}" stroke="var(--text)" stroke-dasharray="4 3"/>`;
+      const x2 = nd === 1 ? [0, 3, 6, 9, 12, 15, 18, 21, 24].map(v => `<text x="${X2(v)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(v).padStart(2, "0")}:00</text>`).join("")
+        : span.map((d, i) => `<line x1="${X2(24 * i)}" x2="${X2(24 * i)}" y1="${pt}" y2="${ht - pb}" stroke="var(--line)"/><text x="${X2(24 * i + 12)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)} 12:00</text>`).join("");
+      const tl = L.truth_c == null ? "" : `<line x1="${pl}" x2="${X2(24)}" y1="${Y2(L.truth_c)}" y2="${Y2(L.truth_c)}" stroke="var(--text)" stroke-dasharray="4 3"/>`;
       const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${wide(c) ? 2.5 : 1.6}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${h(sname(c))}</title></polyline>`).join("");
-      chart2 = `<div class="card"><div class="trend-t">${h(last)} 逐小时气温（当地时${L.truth_c == null ? "" : "，虚线＝实测最高"}）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>
+      chart2 = `<div class="card"><div class="trend-t">${h(span[0].slice(5))}${nd > 1 ? `–${h(span[nd - 1].slice(5))}` : ""} 逐小时气温（当地时${L.truth_c == null ? "" : "，虚线＝实测最高"}）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${series.map(([c]) => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}</div></div>`;
     }
     // Table: one row per day, value with its error underneath.
@@ -20417,7 +20436,7 @@ function wrfTmaxPanel(){
     const others = rest.filter(c => !KEYC.includes(c));
     const restDays = days.filter(d => others.some(c => S.days[d].configs[c]));
     const restTable = others.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置逐日表（${others.length}）</summary><div class="card" style="margin-top:6px;overflow-x:auto">${tbl(others, restDays)}</div></details>` : "";
-    return top + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
+    return top + aheadRow + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
