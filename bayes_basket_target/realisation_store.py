@@ -103,6 +103,9 @@ MARKET_ONLY_COLUMNS = (0, 5, 6)
 #: Charter 265: the pool without the three change columns -- v1's seven.  What
 #: the latest-run change adds is read against it.
 WITHOUT_CHANGE_COLUMNS = tuple(range(len(layer.PARAM_NAMES_V1)))
+#: Charter 278: the pool without the signed centre column -- v2's ten.  What
+#: the centre adds is read against it.
+WITHOUT_CENTRE_COLUMNS = tuple(range(len(layer.PARAM_NAMES_V2)))
 #: Charter 265: a change column is fitted only when this many station-days of
 #: the training rows carry it (the acceptance's own readiness bar); until then
 #: its weight is held at zero.  Measured 2026-10-10: the walk-forward day whose
@@ -193,12 +196,17 @@ def code_sha256() -> str:
 def _ladder_inputs(
     p_raw: Mapping[str, float], book_buckets: Sequence[Mapping[str, Any]],
     change_parts: Mapping[str, Mapping[str, float]] | None = None,
+    *, centre: bool | None = None,
 ) -> dict[str, Any]:
     """The ladder in order, its weather and market vectors, and the layer's
-    terms -- or ``state`` naming why there are none.  With ``change_parts``
-    (``run_change.latest_change``, charter 265) the terms are v2's ten
-    columns; without, v1's seven."""
+    terms -- or ``state`` naming why there are none.  Without ``change_parts``
+    the terms are v1's seven (the locked 10-16 acceptance's read); with them
+    (``run_change.latest_change``, charter 265) the change columns follow and,
+    unless ``centre`` is False, the signed centre column last (charter 278):
+    v3's eleven.  A v2 artifact reads with ``centre=False``."""
 
+    if centre is None:
+        centre = change_parts is not None
     market = market_reference_v1(list(book_buckets))
     if market.get("state") != "complete":
         return {"state": f"market_incomplete:{market.get('reason')}"}
@@ -212,7 +220,7 @@ def _ladder_inputs(
     if change_parts is not None:
         change = run_change.change_columns(change_parts, rung_c=run_change.ladder_rung_c(order))
     try:
-        f = layer.features([p[b] for b in order], [q[b] for b in order], change)
+        f = layer.features([p[b] for b in order], [q[b] for b in order], change, centre=centre)
     except ValueError as exc:
         return {"state": f"invalid:{exc}"}
     return {"state": "ok", "order": order, "features": f, "change": change}
@@ -241,8 +249,15 @@ POPULATION_CACHE_SAVE_EVERY = 500
 
 
 def _inputs_code_sha() -> str:
-    source = inspect.getsource(layer) + inspect.getsource(run_change) + inspect.getsource(_ladder_inputs)
-    source += inspect.getsource(market_reference_v1)
+    """The code that turns a decision's rows into cached inputs.  The layer's
+    own arithmetic is NOT part of it (charter 278): the cache keeps the floored
+    ladders and the change columns, and ``population`` recomputes the terms
+    from them under whatever columns the layer has today, so a new column
+    costs a feature pass (~8 ms a decision), not a cold rebuild (~1,800 s a
+    stage, 2026-10-17)."""
+
+    source = inspect.getsource(run_change) + inspect.getsource(_ladder_inputs)
+    source += inspect.getsource(market_reference_v1) + inspect.getsource(layer.floored)
     return hashlib.sha256(source.encode()).hexdigest()
 
 
@@ -350,6 +365,12 @@ def population(
         inputs = cached.get(cache_key)
         if inputs is not None:
             counts["inputs_cached"] += 1
+            if str(inputs.get("state")) == "ok":
+                # Charter 278: the terms are rebuilt from the cached floored
+                # ladders under today's columns (the cache key leaves the
+                # layer's arithmetic out).
+                f0 = inputs["features"]
+                inputs = {**inputs, "features": layer.features(f0["p"], f0["q"], inputs.get("change"), centre=True)}
         else:
             inputs = _decision_inputs(conn, runs_cache, str(station), str(day), str(decided), envelope_id, snapshot_id)
             fresh += 1
@@ -430,10 +451,14 @@ def supported_columns(arrays: Mapping[str, np.ndarray]) -> list[int]:
 
     columns = list(WITHOUT_CHANGE_COLUMNS)
     X, w = arrays["X"], arrays["w"]
-    for column in range(len(WITHOUT_CHANGE_COLUMNS), X.shape[2]):
+    for column in range(len(WITHOUT_CHANGE_COLUMNS), min(X.shape[2], len(layer.PARAM_NAMES_V2))):
         carried = np.abs(X[:, :, column]).max(axis=1) > 1e-12
         if float(w[carried].sum()) >= MIN_CHANGE_SUPPORT_STATION_DAYS:
             columns.append(column)
+    if X.shape[2] > layer.CENTRE_COLUMN:
+        # Charter 278: the signed centre column is carried by every decision
+        # whose means differ; fitted whenever the terms have it.
+        columns.append(layer.CENTRE_COLUMN)
     return columns
 
 
@@ -463,6 +488,7 @@ def walk_forward(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     layer_b: dict[int, np.ndarray] = {}
     market_b: dict[int, np.ndarray] = {}
     without_b: dict[int, np.ndarray] = {}
+    without_centre_b: dict[int, np.ndarray] = {}
     scored: list[str] = []
     for day in days:
         cut = (date.fromisoformat(day) - timedelta(days=2)).isoformat()
@@ -478,13 +504,18 @@ def walk_forward(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                             start=[layer.START[c] for c in MARKET_ONLY_COLUMNS])
         theta_w = layer.fit(_columns(arrays, WITHOUT_CHANGE_COLUMNS),
                             start=[layer.START[c] for c in WITHOUT_CHANGE_COLUMNS])
+        # Charter 278: the same fit without the signed centre column.
+        no_centre = [c for c in _cols if c != layer.CENTRE_COLUMN]
+        theta_c, _ = fit_supported(arrays, columns=no_centre)
         for i in test:
             terms = decisions[i]["terms"]
             layer_b[i] = layer.belief(terms, theta)
             market_b[i] = layer.belief(terms[:, list(MARKET_ONLY_COLUMNS)], theta_m)
             without_b[i] = layer.belief(terms[:, list(WITHOUT_CHANGE_COLUMNS)], theta_w)
+            without_centre_b[i] = layer.belief(terms, theta_c)
         scored.append(day)
-    return {"days": scored, "layer": layer_b, "market_only": market_b, "without_change": without_b}
+    return {"days": scored, "layer": layer_b, "market_only": market_b, "without_change": without_b,
+            "without_centre": without_centre_b}
 
 
 def _binomial_allowance(count: int, rate: float, confidence: float) -> int:
@@ -524,9 +555,12 @@ def calibration_gate(decisions: Sequence[Mapping[str, Any]], forward: Mapping[st
     b_all, y_all, w_all, pos_all, day_all = [], [], [], [], []
     ls_layer, ls_market, ls_market_only, top_layer, top_market, weights, codes = [], [], [], [], [], [], []
     ls_without: list[float] = []
+    ls_without_centre: list[float] = []
     for i in scored:
         d = decisions[i]
         b = forward["layer"][i]
+        if "without_centre" in forward:
+            ls_without_centre.append(-math.log(forward["without_centre"][i][d["y"]]))
         k = len(b)
         position = np.abs(np.arange(k) - d["mode"])
         b_all.append(b)
@@ -610,6 +644,11 @@ def calibration_gate(decisions: Sequence[Mapping[str, Any]], forward: Mapping[st
             **({"layer_without_change": interval(np.asarray(ls_without), weights, codes),
                 "layer_minus_layer_without_change": interval(ls_layer - np.asarray(ls_without), weights, codes)}
                if len(ls_without) == len(ls_layer) and ls_without else {}),
+            # Charter 278, negative: the signed centre column carries
+            # something the v2 pool does not.
+            **({"layer_without_centre": interval(np.asarray(ls_without_centre), weights, codes),
+                "layer_minus_layer_without_centre": interval(ls_layer - np.asarray(ls_without_centre), weights, codes)}
+               if len(ls_without_centre) == len(ls_layer) and ls_without_centre else {}),
         },
         "top_bucket": {"layer": float(np.average(top_layer, weights=weights)),
                        "market": float(np.average(top_market, weights=weights))},
@@ -754,10 +793,13 @@ def _belief_of(p_raw: Mapping[str, float] | None, book_buckets: Sequence[Mapping
     if p_raw is None:
         return {"state": "no_p0"}
     theta = (artifact or {}).get("theta") or []
-    v2 = len(theta) == len(layer.PARAM_NAMES)
-    if v2 and change_parts is None:
+    # Three generations read their own columns: v1 seven (no change, no
+    # centre), v2 ten (change), v3 eleven (change and the signed centre).
+    with_change = len(theta) in (len(layer.PARAM_NAMES_V2), len(layer.PARAM_NAMES))
+    with_centre = len(theta) == len(layer.PARAM_NAMES)
+    if with_change and change_parts is None:
         return {"state": "no_change_read"}
-    inputs = _ladder_inputs(p_raw, book_buckets, change_parts if v2 else None)
+    inputs = _ladder_inputs(p_raw, book_buckets, change_parts if with_change else None, centre=with_centre)
     if inputs["state"] != "ok":
         return inputs
     f = inputs["features"]
@@ -895,7 +937,9 @@ def belief_vector(
     if str(active.get("stage") or "P0") != str(stage):
         return {"state": "fit_stage_mismatch"}
     if active.get("rule") != layer.RULE or len(active["theta"]) != len(layer.PARAM_NAMES):
-        return {"state": "fit_without_change_terms"}
+        # A v1 or v2 artifact under v3 code (charter 278): not the belief
+        # this code certifies.  Reads again once the refit writes a v3 fit.
+        return {"state": "fit_rule_mismatch"}
     gate_state = str((active.get("gate") or {}).get("state") or "")
     if gate_state != STATE_ADMITTED:
         return {"state": f"fit_{gate_state.lower() or 'ungated'}"}

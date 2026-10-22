@@ -66,10 +66,27 @@ START_V1 = (1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 # the mode's two sides, not the mode itself).  The first seven columns are
 # v1's unchanged, so a v1 artifact still reads them (the locked 10-16
 # acceptance reads v1 with its frozen theta).
-RULE = "market_conditioned_realisation_v2_run_change"
+RULE_V2 = "market_conditioned_realisation_v2_run_change"
 CHANGE_PARAM_NAMES = ("change_aifs_ens", "change_aifs_single", "change_gefs")
-PARAM_NAMES = PARAM_NAMES_V1 + CHANGE_PARAM_NAMES
-START = START_V1 + (0.0, 0.0, 0.0)
+PARAM_NAMES_V2 = PARAM_NAMES_V1 + CHANGE_PARAM_NAMES
+# Charter 278 (user ruling 2026-10-22 「加」): the centre part v1 left out,
+# ``log(v1/q)`` with ``v1`` the market moved to the weather vector's mean,
+# back in as the LAST column with a free sign, fitted per belief stage.
+# Measured on the served record 09-12..10-20 (docs/research/p0_mode_hit_20261021
+# 补记六/七): the truth lands on the far side of the market from the weather
+# vector's lean -- regressing truth-minus-market on model-minus-market gives
+# -0.10 (P0 >36 h) and -0.15 (P0-M) but +0.08 at P1 -- so the one weight v1
+# fitted across stages read zero while each stage's is not.  A negative
+# weight moves the belief's centre AWAY from the weather vector, past the
+# market (b ~ q^(a-c) v1^c, c<0); a positive one toward it.  v1 and v2
+# artifacts still read their own prefixes.
+RULE = "market_conditioned_realisation_v3_signed_centre"
+CENTRE_PARAM_NAMES = ("centre_signed",)
+PARAM_NAMES = PARAM_NAMES_V2 + CENTRE_PARAM_NAMES
+START_V2 = START_V1 + (0.0, 0.0, 0.0)
+START = START_V2 + (0.0,)
+#: The centre column's index in a v3 term matrix (the last).
+CENTRE_COLUMN = len(PARAM_NAMES) - 1
 CHANGE_REACH_RUNGS = 2.0
 CENTRE_AGREE_RUNGS = 0.25
 #: The variance of a uniform density inside one rung.
@@ -204,6 +221,7 @@ def matched_to(vector: np.ndarray, mean: float, spread: float) -> np.ndarray:
 
 def features(
     p_raw: Sequence[float], q_raw: Sequence[float], change: Sequence[float] | None = None,
+    *, centre: bool = False,
 ) -> dict[str, Any]:
     """The pool's terms for one ladder, buckets in ladder order.
 
@@ -213,7 +231,9 @@ def features(
     mid, the lower rung on a tie -- the mode the betting lanes read.
 
     ``change`` (charter 265) is ``run_change.change_columns``' three numbers;
-    without it the terms are v1's seven columns, with it v2's ten.
+    without it the terms are v1's seven columns, with it v2's ten.  ``centre``
+    (charter 278) appends the signed centre column ``log(v1/q)`` last: v3's
+    eleven with ``change``, eight without.
     """
 
     if len(p_raw) != len(q_raw) or len(q_raw) < 2:
@@ -241,6 +261,9 @@ def features(
             raise ValueError("realisation_change_columns_invalid")
         reach = np.clip(np.arange(len(q)) - mode, -CHANGE_REACH_RUNGS, CHANGE_REACH_RUNGS)
         terms = np.concatenate([terms, np.stack([float(x) * reach for x in change], axis=1)], axis=1)
+    if centre:
+        # Charter 278: the centre part, log(v1/q), its sign free to the fit.
+        terms = np.concatenate([terms, (np.log(v1) - np.log(q))[:, None]], axis=1)
     return {
         "terms": terms, "p": p, "q": q, "mode": int(mode),
         "centre_gap_rungs": abs(mean_p - mean_q), "centres_agree": bool(agree),

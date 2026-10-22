@@ -89,11 +89,12 @@ def test_v1_terms_are_untouched_and_v2_adds_a_tilt_about_the_mode() -> None:
     reach = np.clip(np.arange(7) - v2["mode"], -2, 2)
     assert np.allclose(v2["terms"][:, 7], 0.5 * reach) and np.allclose(v2["terms"][:, 9], -0.25 * reach)
     # a positive weight moves mass to the side the change points to, the mode kept in place
-    theta = list(layer.START)
+    theta = list(layer.START_V2)
     theta[7] = 1.0
     b = layer.belief(v2["terms"], theta)
     assert b[4:].sum() > np.asarray(v2["q"])[4:].sum() and b[:3].sum() < np.asarray(v2["q"])[:3].sum()
-    assert len(layer.PARAM_NAMES) == 10 and layer.PARAM_NAMES[:7] == layer.PARAM_NAMES_V1
+    assert len(layer.PARAM_NAMES) == 11 and layer.PARAM_NAMES[:7] == layer.PARAM_NAMES_V1
+    assert layer.PARAM_NAMES[:10] == layer.PARAM_NAMES_V2 and layer.PARAM_NAMES[-1] == "centre_signed"
 
 
 def test_the_locked_acceptance_still_reads_v1() -> None:
@@ -129,7 +130,8 @@ def _artifact(**over):
 
 
 @pytest.mark.parametrize("over,state", [
-    ({"theta": list(layer.START_V1), "rule": layer.RULE_V1}, "fit_without_change_terms"),
+    ({"theta": list(layer.START_V1), "rule": layer.RULE_V1}, "fit_rule_mismatch"),
+    ({"theta": list(layer.START_V1) + [0.0, 0.0, 0.0], "rule": layer.RULE_V2}, "fit_rule_mismatch"),
     ({"gate": {"state": rstore.STATE_REFUSED}}, "fit_refused"),
     ({"code_sha256": "other"}, "fit_not_current"),
     ({"fitted_at_utc": "2026-09-16T00:00:00Z"}, "fit_not_current"),
