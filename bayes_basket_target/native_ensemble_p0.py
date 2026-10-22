@@ -64,6 +64,9 @@ from .fusion_blend import overlay_system_weights
 from .deterministic_feature_correction import (
     shadow_receipt as deterministic_feature_shadow_receipt,
 )
+from .deterministic_consensus_shift import (
+    shadow_receipt_from_conn as deterministic_consensus_shadow_receipt,
+)
 from .stable_pool import (
     P0_MEMBERSHIP_MODE,
     P0_MEMBERSHIP_MODE_STABLE_POOL,
@@ -4888,6 +4891,21 @@ def compile_native_ensemble_p0(
         intervals=intervals_raw,
         served_layers=_served_layers_again,
     )
+    # Charter 279: the deterministic global consensus F -- the fleet-level form
+    # of the same feature -- recorded under each bias form and roster.  A
+    # record, not a change: the served vector above is still what is served.
+    deterministic_consensus_receipt = deterministic_consensus_shadow_receipt(
+        conn,
+        station_id=station_id,
+        event_date=event_date,
+        decision_at_utc=decision_at_utc,
+        settlement_timezone=timezone_name,
+        stage="P0",
+        hours_to_settlement=hours_to_settlement,
+        served_probability=probability,
+        ordered=ordered,
+        intervals=intervals_raw,
+    )
     if center_width_receipt is not None:
         center_width_receipt["seated_system_count"] = int(seated_system_count)
         center_width_receipt["hours_to_settlement"] = (
@@ -5337,6 +5355,7 @@ def compile_native_ensemble_p0(
         "system_weights_json": _json(system_weights),
         "fusion_blend_json": _json(fusion_blend_receipt),
         "deterministic_feature_json": _json(deterministic_feature_receipt),
+        "deterministic_consensus_json": _json(deterministic_consensus_receipt),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "p0_membership_demotions_json": _json(p0_membership_demotions),

@@ -13008,6 +13008,52 @@ def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
+def collect_deterministic_consensus() -> dict[str, Any]:
+    """Charter 279: the daily consensus-shift fit, summarised for the P0 / P0-M cards.
+
+    Reads the artifact the compiles read (no SSOT); per stage family and
+    variant the serving parameters and the walk-forward scores with their
+    charter 240 verdict.
+    """
+
+    from bayes_basket_target import deterministic_consensus_shift as DCS  # noqa: PLC0415
+
+    path = DCS.FIT_ARTIFACT_PATH
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    except Exception:  # noqa: BLE001
+        return {"available": False, "path": str(path)}
+    if not isinstance(raw, dict) or raw.get("schema") != DCS.FIT_SCHEMA:
+        return {"available": False, "path": str(path), "reason": "schema"}
+    families: dict[str, Any] = {}
+    for family, entry in (raw.get("families") or {}).items():
+        variants: dict[str, Any] = {}
+        for variant, params in (entry.get("variants") or {}).items():
+            forward = params.get("walk_forward") or {}
+            variants[str(variant)] = {
+                "bias_c": params.get("bias_c"), "kappa": params.get("kappa"),
+                "n_days": params.get("n_days"), "n_decisions": params.get("n_decisions"),
+                "station_bias_n": len(params.get("station_bias_c") or {}),
+                "walk_forward": {
+                    key: forward.get(key)
+                    for key in ("n", "n_days", "logscore", "crps", "brier", "days_better",
+                                "stations_better", "verdict")
+                },
+            }
+        families[str(family)] = {
+            "n_records": entry.get("n_records"), "n_days": entry.get("n_days"),
+            "n_stations": entry.get("n_stations"), "f_bias_c": entry.get("f_bias_c"),
+            "variants": variants,
+        }
+    return {
+        "available": True, "fitted_at_utc": raw.get("fitted_at_utc"),
+        "age_days": round((_now() - mtime).total_seconds() / 86400.0, 2),
+        "window": raw.get("window"), "rosters": raw.get("rosters"), "primary": raw.get("primary"),
+        "counts": raw.get("counts"), "families": families, "mode": DCS.MODE,
+    }
+
+
 def collect_fade_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
     """Charter 277: the two 反向线 (A: ``fade_p0m``, B: ``fade_p0``) -- each
     lane's switch and stake, every station-day it judged and why, its sends,
@@ -17028,6 +17074,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "proper_bet_lane": proper_bet_lane,
         "tail_short_lane": tail_short_lane,
         "fade_lanes": fade_lanes,
+        # Charter 279: one file read, for the P0 / P0-M cards' shadow comparison.
+        "deterministic_consensus": collect_deterministic_consensus(),
         "copy_follow_lane": copy_follow_lane,
         "basket_shadow": collect_basket_shadow(),
         "wrf_tmax": collect_wrf_tmax(),
@@ -24313,8 +24361,48 @@ function sdProbabilityCards(day){
       sub: [`<span title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值 <b>${sdN(st.mean_c, 2)}°C</b></span>`,
             `<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
             stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心，更新前的输入">${rootLabel} <b>${sdN(e.root_center_c, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: sdRecentRuns(day, stage)});
+      trend: sdStageTrend(day, stage), body: sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage),
+      foot: sdConsensusFoot(e.consensus, stage)});
   }).join("");
+}
+// Charter 279 (user 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」): the
+// deterministic consensus F's shadow shift under the fleet bias and the station
+// bias, side by side inside the P0 / P0-M card (station_day_board._consensus_brief),
+// and the window's walk-forward verdict per variant from the daily fit
+// (D.deterministic_consensus).  A record: nothing here is served.
+const SD_CONS_FORM = {fleet: "舰队偏差", station: "逐站偏差"};
+const SD_CONS_STATE = {NO_FIT: "等待首次拟合", TOO_FEW_SYSTEMS: "不足 3 家", NO_READ: "读不到确定性预报",
+                       NOT_READ_AT_STAGE: "本阶段不读", NO_AXIS: "无桶轴", ERROR: "出错"};
+function sdConsensusBlock(c, stage){
+  if(stage === "P1" || !c) return "";
+  const sys = c.systems || {}, names = Object.keys(sys);
+  const sysTip = names.length
+    ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
+    : "决策时刻没有可读的确定性预报";
+  const fc = (c.f_c || {}).core, fw = (c.f_c || {}).wide, nc = (c.n || {}).core;
+  const head = `<div class="sd-mc-sub" title="${sdEsc("宪章 279 影子：决策时刻可知的全球确定性点预报日最高温中位数（≥3 家）。四家＝AIFS 单成员/IFS 9km/UKMO/CMA（研究补记十一所读）；十家另加 HRES/GFS/AIGFS/GDPS/ICON/UKMO 原生。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? ` <span class="muted">${nc} 家</span>` : ""}${fw != null && fc != null && Math.abs(fw - fc) >= 0.05 ? ` <span class="muted">· 十家 ${sdN(fw, 1)}°C</span>` : ""}${c.state && c.state !== "SHADOW" ? ` <span class="muted">${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
+  const rows = ["fleet_core", "station_core"].map(name => {
+    const v = ((c.variants || {})[name]) || null, form = SD_CONS_FORM[name.split("_")[0]];
+    if(!v || v.state !== "READ") return `<tr><td>${form}</td><td colspan="4" class="muted">${sdEsc(SD_CONS_STATE[(v || {}).state] || (v || {}).state || "—")}</td></tr>`;
+    const cls = v.delta_c > 0.05 ? "up" : v.delta_c < -0.05 ? "down" : "flat";
+    const tip = `F_cal = F ${sdSg(v.bias_c, 2)} = ${sdN(v.f_cal_c, 2)}°C；F_cal − 中心 ${sdSg(v.gap_c, 2)}°C；κ ${sdN(v.kappa, 3)}${v.clipped ? "；触 1.5°C 上限" : ""}${v.bias_source === "fleet_fallback" ? "；该站无逐站偏差，用舰队值" : ""}`;
+    return `<tr title="${sdEsc(tip)}"><td>${form}</td><td class="mono">${sdSg(v.bias_c, 2)}</td><td class="mono">${sdN(v.kappa, 2)}</td><td class="mono ${cls}"><b>${sdSg(v.delta_c, 2)}</b></td><td class="mono">${sdN(v.shadow_centre_c, 2)}°C${v.shadow_mode ? ` <span class="muted">${sdEsc(v.shadow_mode)}</span>` : ""}</td></tr>`;
+  }).join("");
+  return `${head}<div style="overflow-x:auto"><table style="font-size:11.5px"><thead><tr><th></th><th>偏差</th><th>κ</th><th>挪</th><th>挪后中心 · 众数</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function sdConsensusFoot(c, stage){
+  if(stage === "P1" || !c || !c.family) return "";
+  const fit = ((D.deterministic_consensus || {}).families || {})[c.family];
+  if(!fit) return "影子前推：等待每日拟合";
+  const part = name => {
+    const w = ((fit.variants || {})[name] || {}).walk_forward, form = SD_CONS_FORM[name.split("_")[0]];
+    if(!w || !w.n) return `${form} —`;
+    const ls = w.logscore || {}, ci = ls.ci || [], mark = w.verdict === "PASS" ? "✓" : w.verdict === "REFUSED" ? "✗" : "…";
+    const tip = `前推 ${w.n_days} 个事件日 ${w.n} 个决策；LogScore ${sdN(ls.before, 4)}→${sdN(ls.after, 4)}；CRPS Δ ${sdSg((w.crps || {}).delta, 4)}；Brier Δ ${sdSg((w.brier || {}).delta, 4)}；${w.days_better}/${w.n_days} 天改善；判决 ${w.verdict}（宪章 240：LogScore 上界<0 且 CRPS/Brier 不显著更差，≥20 天）`;
+    return `${form} <span class="mono" title="${sdEsc(tip)}">ΔLS ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}] ${mark}</span>`;
+  };
+  const wf = ((fit.variants || {}).fleet_core || {}).walk_forward || {};
+  return `影子前推 ${wf.n_days || 0} 天：${part("fleet_core")} · ${part("station_core")}`;
 }
 function sdProbExplain(){
   return `<details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。均值桶＝按桶概率加权的平均档位最近的桶（生产 mean_center_bucket_v1），与分布均值所在的桶偶有一档之差。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;

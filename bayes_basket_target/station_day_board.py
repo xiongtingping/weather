@@ -454,6 +454,33 @@ def _raw_by_system(station: str, day: str, snapshot_sha: Any, axis) -> dict[str,
     return out
 
 
+def _consensus_brief(L: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Charter 279: the deterministic consensus shift's shadow receipt, without its vectors."""
+
+    receipt = _json(L.get("deterministic_consensus_json"), {})
+    if not receipt:
+        return None
+    variants = {}
+    for name, v in (receipt.get("variants") or {}).items():
+        variants[str(name)] = {
+            "state": v.get("state"), "form": v.get("form"), "roster": v.get("roster"),
+            "f_c": _float(v.get("f_c")), "bias_c": _float(v.get("bias_c")), "bias_source": v.get("bias_source"),
+            "kappa": _float(v.get("kappa")), "f_cal_c": _float(v.get("f_cal_c")), "gap_c": _float(v.get("gap_c")),
+            "delta_c": _float(v.get("delta_c")), "clipped": bool(v.get("clipped")),
+            "shadow_centre_c": _float(v.get("shadow_centre_c")), "shadow_mode": v.get("shadow_mode"),
+        }
+    return {
+        "state": receipt.get("state"), "family": receipt.get("family"), "primary": receipt.get("primary"),
+        "centre_c": _float(receipt.get("centre_c")), "f_c": receipt.get("f_c") or {}, "n": receipt.get("n") or {},
+        "systems": {
+            str(k): {"day_max_c": _float(v.get("day_max_c")), "run_init_utc": v.get("run_init_utc")}
+            for k, v in (receipt.get("systems") or {}).items() if isinstance(v, Mapping)
+        },
+        "fit_fitted_at_utc": receipt.get("fit_fitted_at_utc"), "variants": variants,
+        "error": receipt.get("error"),
+    }
+
+
 def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None = None,
               *, station: str = "", day: str = "", conn=None) -> dict[str, Any]:
     L = head["lineage"]
@@ -508,6 +535,7 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
             "wind_speed_mps": _float(taf_w.get("wind_speed_mps")),
         } if taf_w else None,
         "far_peak_ceiling": ceiling or None,
+        "consensus": _consensus_brief(L),
     }
 
 
@@ -528,6 +556,7 @@ def _p0m_brief(head: Mapping[str, Any]) -> dict[str, Any]:
         "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
         "observed_running_high_c": _float(L.get("observed_running_high_c")),
         "excluded": _excluded(L.get("observed_hard_excluded_buckets")),
+        "consensus": _consensus_brief(L),
     }
 
 

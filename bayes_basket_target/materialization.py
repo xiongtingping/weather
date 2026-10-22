@@ -26,6 +26,12 @@ from .contracts import (
 )
 from .center_width_calibration import bucket_centers_from_intervals
 from .center_width_store import EDGE_WIDTH_C
+from .deterministic_consensus_shift import (
+    LINEAGE_KEY as DETERMINISTIC_CONSENSUS_LINEAGE_KEY,
+    RULE_VERSION as DETERMINISTIC_CONSENSUS_RULE,
+    load_fit_artifact as load_deterministic_consensus_fit,
+    shadow_receipt as deterministic_consensus_shadow_receipt,
+)
 from .et_history import assert_event_day_started
 from .p1_direct_update import (
     compile_direct_update,
@@ -1013,6 +1019,10 @@ def materialize_p0m_observed(
     # groups the disagreement on.  None groups as SMALL (lambda of that group).
     taf_cloud_cover: float | None = None,
     taf_precip_prob: float | None = None,
+    # Charter 279: the deterministic consensus knowable at this decision
+    # (``deterministic_consensus_shift.consensus_read``), read by the caller;
+    # the stage records what it would move this vector by, and serves as before.
+    deterministic_consensus_read: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     """Seat P0-M: P0 times the TAF's likelihood, and the TAF's arrival as a moment.
 
@@ -1124,12 +1134,10 @@ def materialize_p0m_observed(
                 str(bucket): bounds[1] for bucket, bounds in intervals.items()
             },
         }
-    return _posterior(
-        root,
+    posterior_kwargs: dict[str, Any] = dict(
         stage="P0-M",
         likelihoods=likelihoods,
         hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
-        lineage=values,
         checkpoint_id=checkpoint_id,
         posterior_version=posterior_version,
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
@@ -1138,6 +1146,28 @@ def materialize_p0m_observed(
         anchor_geometry=anchor_geometry,
         floor_censoring=True,
     )
+    if deterministic_consensus_read is not None:
+        # Charter 279: the shadow reads the vector this stage serves, so the
+        # posterior is taken once without the receipt and once with it; the
+        # lineage never enters the arithmetic, so both carry the same vector.
+        served = _posterior(root, lineage=values, **posterior_kwargs)
+        if axis is None:
+            receipt: dict[str, Any] = {
+                "rule": DETERMINISTIC_CONSENSUS_RULE, "state": "NO_AXIS", "served_delta_c": 0.0,
+            }
+        else:
+            ordered_axis, _centres = axis
+            receipt = deterministic_consensus_shadow_receipt(
+                read=deterministic_consensus_read,
+                fit=load_deterministic_consensus_fit(),
+                family="P0M",
+                station_id=root.station_id,
+                served_probability=served.probabilities,
+                ordered=ordered_axis,
+                intervals=json.loads(str(root.lineage.get("bucket_intervals_c_json"))),
+            )
+        values[DETERMINISTIC_CONSENSUS_LINEAGE_KEY] = json.dumps(receipt, sort_keys=True)
+    return _posterior(root, lineage=values, **posterior_kwargs)
 
 
 def materialize_p0m(

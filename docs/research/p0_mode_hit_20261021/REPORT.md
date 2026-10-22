@@ -229,3 +229,5 @@ v5（`build_v5.py`→`recs_v5.jsonl` 11,715 首决策；`analyze_v5.py`→`analy
 
 **与现有机制的关系**：宪章 201/227 的 `deterministic_centre_correction_v1` 已在链里以**影子**跑（lineage `deterministic_feature_json`，09-23 起全覆盖，`served_delta_c=0`），但它按**站×单一源**选、门要 ≥20 事件日六个上界——48 站只有 CYYZ 选到 HRRR，其余 47 站 INSUFFICIENT。本读数是同一特征的**舰队级共识版**：中位数 F＋全队偏差修正＋全局 κ，按 240（LogScore 主、CRPS、Brier）在 695/752 决策前推过门。宪章 267 写明"原生四家只进 F、不进 P0 特征"——改 P0 须熊先生裁。
 **判定**：这是本研究迄今唯一在模型层过 240 门的候选；按规矩登记为读数（18 天）。建议：把 201 机制从"站×单源、影子"改为"舰队共识 F_cal、全局 κ（按阶段，P1 不用）、cap 1.5°C、240 舰队门"，先影子记 served_delta 与两分数，满 30 事件日再裁服务。
+
+**补记十一更正（10-22）**：「HRES/GFS/AIGFS/GDPS/ICON 在首决策时刻极少可知」是误判——`feature_at` 缺省只读 `p0_feature=True` 的四家，原生六家在 `calibration_regional_point_run` 里都在（ZUUU 10-22：HRES/GFS/AIGFS/GDPS/ICON 全球/UKMO 原生各 6–14 个 run），只是没被读。宪章 279 的影子把两份名单并记（`core` 四家、`wide` 十家）；首拟（60 天窗）十家 P0>36h 前推 −0.144 [−0.224,−0.074]，但窗口含 9 月旧 P0 版本，须按宪章 255 分版本段复核。落地：`bayes_basket_target/deterministic_consensus_shift.py`、`scripts/fit_deterministic_consensus_shift.py`、站日板 P0/P0-M 卡。

@@ -604,6 +604,16 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         86400.0,
         1800.0,
     ),
+    # Charter 279: the deterministic consensus shift's bias/kappa per stage
+    # family and variant, walk-forward scored on settled days.  SSOT
+    # ``mode=ro``, one JSON artifact the P0/P0-M compiles read for their
+    # shadow receipt; daily because a station-day settles once a day.
+    (
+        "fit_deterministic_consensus_shift",
+        "scripts/fit_deterministic_consensus_shift_sweep.sh",
+        86400.0,
+        1800.0,
+    ),
     # Charter 197 (2026-09-22): the supply watch.  2026-09-21 16:04Z the proxy
     # tunnel stopped carrying traffic, every upstream failed together, and by
     # 19:42Z no D+1 P0 was fresh anywhere -- until 08:55Z the next morning,
@@ -691,6 +701,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "probe_deterministic_runs": "none",
     # Charter 201 step 2: SSOT ``mode=ro``, one JSON artifact.
     "fit_deterministic_feature_gate": "none",
+    # Charter 279: SSOT ``mode=ro``, one JSON artifact.
+    "fit_deterministic_consensus_shift": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
     # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db
