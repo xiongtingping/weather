@@ -24389,7 +24389,10 @@ const SD_CONS_FORM = {fleet: "舰队偏差", station: "逐站偏差"};
 const SD_CONS_STATE = {NO_FIT: "等待首次拟合", TOO_FEW_SYSTEMS: "不足 3 家", NO_READ: "读不到确定性预报",
                        NOT_READ_AT_STAGE: "本阶段不读", NO_AXIS: "无桶轴", ERROR: "出错"};
 function sdConsensusBlock(c, stage){
-  if(stage === "P1" || !c) return "";
+  if(stage === "P1") return "";
+  // An envelope compiled before charter 279 went live (2026-10-22 06:23Z)
+  // carries no receipt; say so rather than leave the card silent.
+  if(!c) return `<div class="sd-mc-sub muted" title="宪章 279 影子回执随每次 P0 / P0-M 编译写入；这一次编译早于 10-22 06:23Z 上线，没有回执。P0 每 1–2 小时重编，下一次编译后这里显示十家共识 F 与舰队 / 逐站两种偏差的挪动对比。">共识 F 影子：本次编译早于上线，等下一次编译</div>`;
   const sys = c.systems || {}, names = Object.keys(sys);
   const sysTip = names.length
     ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
