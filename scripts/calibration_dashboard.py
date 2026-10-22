@@ -26421,7 +26421,9 @@ function sdSky(day){
     // Taller since the parts left the card (user 2026-10-21 「把曲线图放大」).
     const W = 560, Hh = 190, x0 = 32, x1 = 550, y0 = 14, y1 = 166;
     const h0 = Math.min(9, ...series.map(p => p.hour)), h1 = proj.length || Math.max(17, ...series.map(p => p.hour)) > 17 ? 23 : 17;
-    const lim = Math.max(1.5, ...series.concat(proj).map(p => Math.abs(p.total_c) + 0.3));
+    // Headroom of 1 °C past the farthest point, so the 最高/最低 labels above/below it stay
+    // inside the plot instead of being pressed onto the axis (user 2026-10-22 「显示有问题」).
+    const lim = Math.max(1.5, ...series.concat(proj).map(p => Math.abs(p.total_c) + 1.0));
     const top = Math.ceil(lim * 2) / 2;
     const X = h => x0 + (h - h0) / (h1 - h0) * (x1 - x0);
     const Y = v => y0 + (top - Math.max(-top, Math.min(top, v))) / (2 * top) * (y1 - y0);
@@ -26461,11 +26463,11 @@ function sdSky(day){
       + (() => {
         const pk = proj.reduce((a, p) => p.total_c > a.total_c ? p : a, proj[0]);
         const x = X(pk.hour), y = Y(pk.total_c);
-        // Written rightwards from the peak, clear of the newest point's ring on its left.
-        const anchor = x > x1 - 90 ? "end" : "start";
+        // In the plot's right corner on the empty half (top when the peak sits below zero,
+        // bottom when above): beside the line it crowded the newest point's and the
+        // lowest's labels and ran off the right edge (user 2026-10-22 「显示有问题」).
         return `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="2 2"/>`
-          // Under the dashed line: the solid line's labels sit above it.
-          + `<text class="sd-cx-projlab" x="${anchor === "start" ? x - 6 : x + 6}" y="${Math.min(y + 26, y1 - 4)}" text-anchor="${anchor}">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
+          + `<text class="sd-cx-projlab" x="${x1 - 2}" y="${pk.total_c < 0 ? y0 + 10 : y1 - 6}" text-anchor="end">可能最高 ${fcTmax == null ? sdSg(pk.total_c, 1) : sdN(fcTmax + pk.total_c, 1) + "°C"} · ${hh(pk.hour)}:00</text>`;
       })() : "";
     // The day's highest and lowest ΔT so far, marked (user 2026-10-21 「图表上标记最高
     // 和最低的ΔT」): a ring and a label above the highest, below the lowest; the
