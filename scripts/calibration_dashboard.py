@@ -22327,7 +22327,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdHitStrip(day)}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdHitStrip(day)}${sdFirstChart()}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -22340,7 +22340,7 @@ function sdDay(day){
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     <div class="sd-six">${sdProbabilityCards(day)}</div>
     <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
-    ${sdHitStrip(day)}
+    ${sdHitStrip(day)}${sdFirstChart()}
     ${sdCompareChart(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
@@ -22989,6 +22989,46 @@ function sdHitStrip(day){
       <div class="sd-hit-s">本站 ${pc(own)}${vs ? ` · ${vs}` : ""}</div></div>`;
   }).join("");
   return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 <small>当地 13 点时指向的档 = 结算实测档 · 全部站 ${H.days} 个事件日（${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
+}
+// Each estimate's first forecast of the day against the truth, the last 30 days (user
+// 2026-10-22 「增加首次预报和真值的曲线对比（近30天）」): first_forecast_readings keeps,
+// per station-day, the first number every method gave (however early) as °C; the truth
+// as squares, one line per method, the legend toggles a line and carries its error.
+const SD_FF_ON = new Set(["P0", "P1", "market", "WRF"]);
+function sdFirstChart(){
+  const F = (SD.data || {}).first_forecast;
+  if(!F || !F.days) return "";
+  const days = Object.keys(F.days).sort();
+  if(days.length < 2) return "";
+  const methods = (F.methods || []).filter(m => days.some(d => ((F.days[d].methods || {})[m])));
+  const vals = days.flatMap(d => [F.days[d].truth_c, ...methods.map(m => ((F.days[d].methods || {})[m] || [])[1])]).filter(v => v != null && isFinite(v));
+  if(!vals.length) return "";
+  const w = 1000, ht = 260, pl = 34, pr = 10, pt = 10, pb = 24;
+  const lo = Math.floor(Math.min(...vals) - 0.5), hi = Math.ceil(Math.max(...vals) + 0.5);
+  const X = i => pl + i * (w - pl - pr) / (days.length - 1), Y = v => pt + (hi - v) * (ht - pt - pb) / (hi - lo);
+  const step = Math.max(1, Math.ceil((hi - lo) / 8));
+  const grid = Array.from({length: Math.floor((hi - lo) / step) + 1}, (_, k) => lo + k * step)
+    .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
+  const today = new Date().toISOString().slice(0, 10);
+  const xl = days.map((d, i) => i % 3 && i !== days.length - 1 ? "" : `<text x="${X(i)}" y="${ht - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)}</text>`).join("");
+  const futureX = days.findIndex(d => F.days[d].truth_c == null && d >= today);
+  const shade = futureX > 0 ? `<rect x="${X(futureX) - (w - pl - pr) / (days.length - 1) / 2}" y="${pt}" width="${w - pr - X(futureX) + (w - pl - pr) / (days.length - 1) / 2}" height="${ht - pt - pb}" fill="var(--soft)" opacity=".35"/>` : "";
+  const line = m => {
+    const pts = days.map((d, i) => [i, ((F.days[d].methods || {})[m] || [])[1], ((F.days[d].methods || {})[m] || [])[0], d]).filter(p => p[1] != null);
+    const c = SD_HIT_COL[m] || "var(--muted)";
+    return `<g class="ff-${m.replace(/[^A-Za-z0-9]/g, "_")}"><polyline fill="none" stroke="${c}" stroke-width="1.8" points="${pts.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>`
+      + pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.6" fill="${c}"><title>${sdEsc(SD_HIT_NAMES[m] || m)} ${p[3]}：${sdN(p[1], 1)}°C（首次 ${sdEsc(String(p[2] || "").slice(5, 16).replace("T", " "))}Z）${F.days[p[3]].truth_c == null ? "" : ` · 实测 ${sdN(F.days[p[3]].truth_c, 0)} · 差 ${sdSg(p[1] - F.days[p[3]].truth_c, 1)}`}</title></circle>`).join("") + `</g>`;
+  };
+  const truth = days.map((d, i) => F.days[d].truth_c == null ? "" : `<rect x="${X(i) - 4}" y="${Y(F.days[d].truth_c) - 4}" width="8" height="8" fill="var(--text)"><title>实测 ${d} ${sdN(F.days[d].truth_c, 0)}°C</title></rect>`).join("");
+  const sc = F.scores || {}, fl = F.fleet || {};
+  const hideCls = methods.filter(m => !SD_FF_ON.has(m)).map(m => `ffh-${m.replace(/[^A-Za-z0-9]/g, "_")}`).join(" ");
+  const css = methods.map(m => { const k = m.replace(/[^A-Za-z0-9]/g, "_"); return `.sd-ff.ffh-${k} .ff-${k}{display:none}.sd-ff.ffh-${k} [data-ff="${k}"]{opacity:.4}`; }).join("");
+  const chips = methods.map(m => { const k = m.replace(/[^A-Za-z0-9]/g, "_"), x = sc[m] || {}, f = fl[m] || {};
+    return `<span data-ff="${k}" onclick="this.closest('.sd-ff').classList.toggle('ffh-${k}')" style="cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:5px" title="${sdEsc(`${SD_HIT_NAMES[m] || m}：首次预报减实测\n本站 ${x.n || 0} 天：平均误差 ${x.n ? sdN(x.mae_c, 2) : "—"}°C · 偏差 ${x.n ? sdSg(x.bias_c, 2) : "—"} · 同档 ${x.n ? Math.round(100 * x.hit) + "%" : "—"}\n全部站 ${f.n || 0} 站日：平均误差 ${f.n ? sdN(f.mae_c, 2) : "—"}°C · 偏差 ${f.n ? sdSg(f.bias_c, 2) : "—"}\n点击显示/隐藏`)}"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${SD_HIT_COL[m] || "var(--muted)"}"></i>${sdEsc(SD_HIT_NAMES[m] || m)} <b class="mono">${x.n ? sdN(x.mae_c, 2) + "°" : "—"}</b></span>`; }).join("");
+  return `<div class="card sd-ff ${hideCls}" style="margin:4px 0 12px"><style>${css}</style>
+    <div class="sd-hit-h">首次预报 vs 实测 <small>近 ${F.window_days || 30} 天 · 每个方法对这一天给出的第一个数 · 方块＝实测 · 灰底＝未结算 · 图例数字＝本站平均误差，点击开关</small></div>
+    <svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${shade}${grid}${xl}${methods.map(line).join("")}${truth}</svg>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin-top:4px">${chips}<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;display:inline-block;background:var(--text)"></i>实测</span></div></div>`;
 }
 // WRF beside the other estimates (user 2026-10-22 「在上方看板增加一个卡片」), ZUUU only:
 // the same-day nowcast with measured satellite cloud leads (else the previous

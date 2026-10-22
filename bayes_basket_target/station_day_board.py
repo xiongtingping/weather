@@ -2434,6 +2434,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         "fleet": stations,
         "days": days,
         "estimate_hit": estimate_hit_view(station),
+        "first_forecast": first_forecast_view(station),
     }
 
 
@@ -2451,6 +2452,16 @@ def estimate_hit_view(station: str) -> dict[str, Any] | None:
     return {"as_of_utc": v.get("as_of_utc"), "since": v.get("since"), "days": len(v.get("days") or []),
             "hours": v.get("snapshot_hours_local"), "methods": v.get("methods"), "mos_from": v.get("mos_from"),
             "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station)}
+
+
+def first_forecast_view(station: str) -> dict[str, Any] | None:
+    """Each estimate's first forecast of this station's days against the truth, the
+    last 30 days (user 2026-10-22 「增加首次预报和真值的曲线对比（近30天）」) -- the
+    stored reading of ``first_forecast_readings``, read, never computed here."""
+
+    from .first_forecast_readings import view  # noqa: PLC0415
+
+    return view(station)
 
 
 def skew_history() -> dict[str, Any] | None:

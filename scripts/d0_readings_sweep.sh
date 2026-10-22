@@ -33,4 +33,7 @@ run_with_timeout 180 "$PROJECT_DIR/data/logs/wrf_readings.step.log" nice -n 10 "
 # Every estimate's truth hit rate (user 2026-10-22 「统计以上各个方式的真值命中率，前端显式出来！」):
 # read-only; settled station-days cached; MOS recomputed for at most a few closed days per pass.
 run_with_timeout 240 "$PROJECT_DIR/data/logs/estimate_hit_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.estimate_hit_readings || true
+# Each estimate's first forecast against the truth, 30 days (user 2026-10-22
+# 「增加首次预报和真值的曲线对比（近30天）」): read-only, settled days cached.
+run_with_timeout 240 "$PROJECT_DIR/data/logs/first_forecast_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.first_forecast_readings || true
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"
