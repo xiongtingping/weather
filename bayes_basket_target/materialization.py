@@ -1165,6 +1165,7 @@ def materialize_p0m_observed(
                 served_probability=served.probabilities,
                 ordered=ordered_axis,
                 intervals=json.loads(str(root.lineage.get("bucket_intervals_c_json"))),
+                excluded=tuple(observed_hard_excluded_buckets),
             )
         values[DETERMINISTIC_CONSENSUS_LINEAGE_KEY] = json.dumps(receipt, sort_keys=True)
     return _posterior(root, lineage=values, **posterior_kwargs)
@@ -1449,6 +1450,10 @@ def materialize_p1(
     # that the closing observation may be the same report the head already
     # closed on, which is the declared exception to consume-once.
     state_refresh_of_checkpoint_id: str | None = None,
+    # Charter 279 补记三: the deterministic consensus knowable at this step
+    # and the P1 family's fitted parameters (``packet_bundle``), carried on
+    # the packet like the observation likelihood.  None writes no receipt.
+    deterministic_consensus: Mapping[str, Any] | None = None,
 ) -> ProbabilityEnvelope:
     """Recompute P1 from one immutable P0/P0-M root and full METAR prefix.
 
@@ -1836,13 +1841,11 @@ def materialize_p1(
         or "NONE"
     )
     values["event_consumed_once"] = "full_prefix_content_addressed"
-    return _posterior(
-        root,
+    posterior_kwargs: dict[str, Any] = dict(
         stage="P1",
         likelihoods=likelihoods,
         prior_probabilities=root_probabilities,
         hard_excluded_buckets=proof.hard_excluded_buckets,
-        lineage=values,
         checkpoint_id=checkpoint_id,
         posterior_version=posterior_version,
         decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
@@ -1853,6 +1856,31 @@ def materialize_p1(
             "upper_bounds_c": bucket_upper_bounds_c,
         },
     )
+    if deterministic_consensus is not None:
+        # Charter 279 补记三 (user 「影子也要进p1」): the same two passes as
+        # P0-M -- the served vector first, the shadow on it, then the same
+        # posterior with the receipt in its lineage.  Everything the receipt
+        # reads rides on the packet (``packet_bundle``), so the strict rebuild
+        # from the packet reproduces it without reading the artifact again.
+        served = _posterior(root, lineage=values, **posterior_kwargs)
+        axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
+        if axis is None:
+            receipt: dict[str, Any] = {
+                "rule": DETERMINISTIC_CONSENSUS_RULE, "state": "NO_AXIS", "served_delta_c": 0.0,
+            }
+        else:
+            receipt = deterministic_consensus_shadow_receipt(
+                read=dict(deterministic_consensus.get("read") or {}),
+                fit=deterministic_consensus.get("fit"),
+                family="P1",
+                station_id=root.station_id,
+                served_probability=served.probabilities,
+                ordered=axis[0],
+                intervals=json.loads(str(root.lineage.get("bucket_intervals_c_json"))),
+                excluded=tuple(proof.hard_excluded_buckets),
+            )
+        values[DETERMINISTIC_CONSENSUS_LINEAGE_KEY] = json.dumps(receipt, sort_keys=True)
+    return _posterior(root, lineage=values, **posterior_kwargs)
 
 
 #: Lineage values stored once and referenced, instead of copied into every

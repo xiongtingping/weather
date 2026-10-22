@@ -477,7 +477,7 @@ def _consensus_brief(L: Mapping[str, Any]) -> dict[str, Any] | None:
             for k, v in (receipt.get("systems") or {}).items() if isinstance(v, Mapping)
         },
         "fit_fitted_at_utc": receipt.get("fit_fitted_at_utc"), "variants": variants,
-        "error": receipt.get("error"),
+        "error": receipt.get("error"), "excluded": receipt.get("excluded") or [],
     }
 
 
@@ -573,6 +573,7 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
         "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
         "excluded": _excluded(L.get("hard_excluded_buckets")),
         "root_stage": L.get("prediction_root_stage"),
+        "consensus": _consensus_brief(L),
     }
 
 

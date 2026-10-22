@@ -28,11 +28,13 @@ variants = bias form; the fit scores each one walk-forward and the receipt
 carries both, so the P0 card compares them.  The roster key stays ``wide`` so
 the artifact and the receipts written before the ruling read unchanged.
 
-This step records, it does not serve: every P0 and P0-M compile carries
+This step records, it does not serve: every P0, P0-M and P1 compile carries
 ``deterministic_consensus_json`` and the served vector is untouched
 (``served_delta_c`` 0).  Nothing in the shadow can stop a compile.  The daily
 fit (``scripts/fit_deterministic_consensus_shift.py``) writes one JSON artifact
-the compiles read; serving is a later ruling, after >= 30 forward event days.
+the P0 and P0-M compiles read; P1, whose envelope is rebuilt from its packet,
+carries the read and its family's parameters on the packet (``packet_bundle``).
+Serving is a later ruling, after >= 30 forward event days.
 """
 
 from __future__ import annotations
@@ -83,9 +85,13 @@ PRODUCT_OF_SYSTEM = {SYSTEM_IDS[p]: p for p in PRODUCTS}
 BIAS_FORMS: tuple[str, ...] = ("fleet", "station")
 VARIANTS: tuple[str, ...] = tuple(f"{form}_wide" for form in BIAS_FORMS)
 PRIMARY_VARIANT = "fleet_wide"
-STAGE_FAMILIES: tuple[str, ...] = ("P0_far", "P0_near", "P0M")
+STAGE_FAMILIES: tuple[str, ...] = ("P0_far", "P0_near", "P0M", "P1")
 FAR_HOURS = 36.0
 NEAR_FLOOR_HOURS = 12.0
+#: How each family's shadow treats the buckets the day's observed high has
+#: already ruled out: P0-M censors them onto the lowest live bucket (charter
+#: 241), P1 renormalises proportionally over the live ones (its own rule).
+CENSOR_BY_FAMILY: Mapping[str, bool] = {"P0_far": False, "P0_near": False, "P0M": True, "P1": False}
 
 _FIT_CACHE: dict[str, Any] = {}
 
@@ -98,10 +104,14 @@ def variant_parts(variant: str) -> tuple[str, str]:
 
 
 def stage_family(stage: str, hours_to_settlement: float | None) -> str | None:
-    """Which fitted family a decision belongs to; None where the feature is not read (P1)."""
+    """Which fitted family a decision belongs to; None where the feature is not read
+    (P0 within 12 h of settlement, where P1 serves).  P1 joined on the user's ruling
+    2026-10-22 「影子也要进p1」 (charter 279 补记三)."""
 
     if stage == "P0-M":
         return "P0M"
+    if stage == "P1":
+        return "P1"
     if stage != "P0" or hours_to_settlement is None:
         return None
     try:
@@ -238,14 +248,33 @@ def served_mean_c(
 def shift_served(
     probability: Mapping[str, float], ordered: Sequence[str],
     intervals: Mapping[str, Sequence[float | None]], delta_c: float,
+    *, excluded: Sequence[str] = (), censor: bool = False,
 ) -> dict[str, float]:
-    """The shadow vector: the width layer's pure shift (capped) then charter 224's floor."""
+    """The shadow vector: the width layer's pure shift (capped), the day's observed
+    bound re-applied, then charter 224's floor on the live buckets.
+
+    A cold shift moves mass onto buckets the observed high has already ruled
+    out; ``censor`` puts it on the lowest live bucket (P0-M, charter 241),
+    otherwise it is dropped and the live buckets renormalised (P1).
+    """
 
     from .deterministic_feature_correction import shift_distribution  # noqa: PLC0415
     from .materialization import floor_probabilities  # noqa: PLC0415
 
     shifted = shift_distribution(probability, ordered, intervals, delta_c)
-    floored, _buckets = floor_probabilities(shifted)
+    dead = {str(b) for b in excluded} & set(ordered)
+    live = [key for key in ordered if key not in dead]
+    if dead and live:
+        lost = sum(float(shifted[key]) for key in dead)
+        out = {key: (0.0 if key in dead else float(shifted[key])) for key in ordered}
+        if censor:
+            out[live[0]] += lost
+        else:
+            mass = sum(out[key] for key in live)
+            if mass > 0.0:
+                out = {key: (out[key] / mass if key in live else 0.0) for key in ordered}
+        shifted = out
+    floored, _buckets = floor_probabilities(shifted, dead)
     return {key: float(floored[key]) for key in ordered}
 
 
@@ -268,10 +297,12 @@ def shadow_receipt(
     ordered: Sequence[str],
     intervals: Mapping[str, Sequence[float | None]],
     with_vectors: bool = True,
+    excluded: Sequence[str] = (),
 ) -> dict[str, Any]:
     """What the consensus would move this vector by under each variant, and the vector it would serve.
 
-    Pure: the read and the fit come in.  Never raises.
+    Pure: the read and the fit come in.  ``excluded`` is the stage's observed
+    hard bound, re-applied to each shadow by the family's rule.  Never raises.
     """
 
     receipt: dict[str, Any] = {
@@ -309,7 +340,8 @@ def shadow_receipt(
                 gap = f_cal - centre
                 raw = kappa * gap
                 delta = max(-CAP_C, min(CAP_C, raw))
-                shadow = shift_served(served_probability, ordered, intervals, delta)
+                shadow = shift_served(served_probability, ordered, intervals, delta, excluded=excluded,
+                                      censor=CENSOR_BY_FAMILY.get(family, False))
                 entry.update(
                     state="READ", f_c=float(f_value), bias_c=round(bias, 4), bias_source=bias_source,
                     kappa=round(kappa, 4), f_cal_c=round(f_cal, 4), gap_c=round(gap, 4),
@@ -320,6 +352,8 @@ def shadow_receipt(
                 if with_vectors:
                     entry["shadow_probabilities"] = {key: round(float(shadow[key]), 8) for key in ordered}
             receipt["variants"][variant] = entry
+        if excluded:
+            receipt["excluded"] = sorted({str(b) for b in excluded} & set(ordered), key=list(ordered).index)
         if not params_by_variant:
             receipt["state"] = "NO_FIT"
     except Exception as exc:  # noqa: BLE001 -- a shadow never stops a compile
@@ -356,12 +390,35 @@ def shadow_receipt_from_conn(
     )
 
 
+def packet_bundle(
+    read: Mapping[str, Any], *, fit: Mapping[str, Any] | None, family: str, station_id: str,
+) -> dict[str, Any]:
+    """What a stage whose envelope is rebuilt from its packet (P1) carries: the read
+    and only the fitted parameters this station-day's family reads -- the station's
+    own bias, not the fleet's 48 -- so the rebuild never reads the artifact again."""
+
+    variants: dict[str, Any] = {}
+    for variant, params in family_parameters(fit, family).items():
+        entry = {"bias_c": params["bias_c"], "kappa": params["kappa"]}
+        own = (params.get("station_bias_c") or {}).get(str(station_id).upper())
+        if own is not None:
+            entry["station_bias_c"] = {str(station_id).upper(): own}
+        variants[variant] = entry
+    return {
+        "read": dict(read),
+        "fit": {"schema": FIT_SCHEMA, "fitted_at_utc": (fit or {}).get("fitted_at_utc"),
+                "families": {family: {"variants": variants}}},
+        "family": family,
+    }
+
+
 # ---------------------------------------------------------------------------
 # The fit: bias and kappa per family and variant, walk-forward scored.
 #
 # A record is one first decision of a settled station-day:
 #   {"station", "day", "family", "centre_c", "f_c": {"wide"}, "y_c",
-#    "p": {bucket: prob}, "ordered": [...], "intervals": {bucket: [lo, hi]}, "winner": bucket}
+#    "p": {bucket: prob}, "ordered": [...], "intervals": {bucket: [lo, hi]}, "winner": bucket,
+#    "excluded": [buckets the observed high had ruled out at the decision]}
 
 
 def _fit_bias(records: Sequence[Mapping[str, Any]], *, roster: str, form: str) -> tuple[float, dict[str, float]]:
@@ -503,7 +560,9 @@ def walk_forward(
                     continue
                 bias, _src = bias_for(p, form=form, station_id=str(record["station"]))
                 delta = max(-CAP_C, min(CAP_C, float(p["kappa"]) * (float(f_value) + bias - centre)))
-                shadow = shift_fn(record["p"], record["ordered"], record["intervals"], delta)
+                shadow = shift_fn(record["p"], record["ordered"], record["intervals"], delta,
+                                  excluded=record.get("excluded") or (),
+                                  censor=CENSOR_BY_FAMILY.get(family, False))
                 s = score_record(record, shadow)
                 slot = per_variant[variant]
                 for k, v in s.items():
@@ -548,11 +607,11 @@ def finite_or_none(value: Any) -> float | None:
 
 
 __all__ = [
-    "BIAS_FORMS", "CAP_C", "CONSENSUS_SYSTEM_IDS", "FIT_ARTIFACT_PATH", "FIT_SCHEMA",
+    "BIAS_FORMS", "CAP_C", "CENSOR_BY_FAMILY", "CONSENSUS_SYSTEM_IDS", "FIT_ARTIFACT_PATH", "FIT_SCHEMA",
     "LINEAGE_KEY", "MIN_FIT_EVENT_DAYS", "MIN_SYSTEMS", "MODE", "PRIMARY_VARIANT", "PRODUCTS",
     "PRODUCT_OF_SYSTEM", "ROSTERS", "RULE_VERSION", "STAGE_FAMILIES", "STATION_BIAS_PRIOR_DAYS", "VARIANTS",
     "VERDICT_MIN_EVENT_DAYS", "bias_for", "consensus_from_features", "consensus_read",
-    "family_parameters", "fit_parameters", "load_fit_artifact", "mode_bucket", "score_record",
+    "family_parameters", "fit_parameters", "load_fit_artifact", "mode_bucket", "packet_bundle", "score_record",
     "served_mean_c", "shadow_receipt", "shadow_receipt_from_conn", "shift_served", "stage_family",
     "variant_parts", "verdict_of", "walk_forward",
 ]

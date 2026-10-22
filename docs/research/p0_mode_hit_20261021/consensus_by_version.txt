@@ -1,6 +1,6 @@
-collected 7848 records in 164s window 2026-08-23..2026-10-21
+collected 10233 records in 141s window 2026-08-23..2026-10-21
 
-==================== P0_far：2588 条记录，服务版本 21 段（现行 calibrated_native_cross_ensemble_p0_v30）====================
+==================== P0_far：2631 条记录，服务版本 21 段（现行 calibrated_native_cross_ensemble_p0_v30）====================
    calibrated_native_cross_ensemble_p0_v1 决策 2026-08-21…2026-08-27  n= 225 事件日 6
    calibrated_native_cross_ensemble_p0_v2 决策 2026-08-27…2026-09-10  n= 621 事件日 15
    calibrated_native_cross_ensemble_p0_v3 决策 2026-09-10…2026-09-10  n=   9 事件日 1
@@ -21,127 +21,71 @@ collected 7848 records in 164s window 2026-08-23..2026-10-21
    calibrated_native_cross_ensemble_p0_v26 决策 2026-10-03…2026-10-04  n=  95 事件日 2
    calibrated_native_cross_ensemble_p0_v27 决策 2026-10-04…2026-10-09  n= 221 事件日 6
    calibrated_native_cross_ensemble_p0_v28 决策 2026-10-09…2026-10-15  n= 287 事件日 7
-   calibrated_native_cross_ensemble_p0_v30 决策 2026-10-16…2026-10-19  n= 140 事件日 4
+   calibrated_native_cross_ensemble_p0_v30 决策 2026-10-16…2026-10-19  n= 183 事件日 4
 A. 全窗（与每日拟合同口径）
-   全窗                                 fleet_core    n=  718 天= 19 LS0 1.675 ΔLS -0.0390 [-0.0590,-0.0228] ΔCRPS -0.0221 ΔBrier -0.0084 改善天 16/19
-   全窗                                 station_core  n=  718 天= 19 LS0 1.675 ΔLS -0.0496 [-0.0743,-0.0260] ΔCRPS -0.0292 ΔBrier -0.0117 改善天 14/19
-   全窗                                 fleet_wide    n= 2277 天= 52 LS0 1.758 ΔLS -0.1444 [-0.2236,-0.0738] ΔCRPS -0.0342 ΔBrier -0.0124 改善天 42/52
-   全窗                                 station_wide  n= 2277 天= 52 LS0 1.758 ΔLS -0.1558 [-0.2336,-0.0856] ΔCRPS -0.0461 ΔBrier -0.0190 改善天 42/52
+   全窗                                 fleet_wide    n= 2320 天= 52 LS0 1.757 ΔLS -0.1427 [-0.2212,-0.0738] ΔCRPS -0.0343 ΔBrier -0.0123 改善天 43/52
+   全窗                                 station_wide  n= 2320 天= 52 LS0 1.757 ΔLS -0.1546 [-0.2314,-0.0856] ΔCRPS -0.0461 ΔBrier -0.0188 改善天 43/52
 B. 只评现行版本段（参数仍用之前全部事件日）
-   现行 calibrated_native_cross_ensemble_p0_v30 fleet_core    n=  132 天=  4 LS0 1.713 ΔLS -0.0599 [-0.1300,-0.0170] ΔCRPS -0.0453 ΔBrier -0.0120 改善天 3/4
-   现行 calibrated_native_cross_ensemble_p0_v30 station_core  n=  132 天=  4 LS0 1.713 ΔLS -0.0723 [-0.1524,-0.0113] ΔCRPS -0.0556 ΔBrier -0.0148 改善天 3/4
-   现行 calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  140 天=  4 LS0 1.694 ΔLS -0.0599 [-0.0960,-0.0265] ΔCRPS -0.0650 ΔBrier -0.0168 改善天 3/4
-   现行 calibrated_native_cross_ensemble_p0_v30 station_wide  n=  140 天=  4 LS0 1.694 ΔLS -0.0601 [-0.1105,-0.0204] ΔCRPS -0.0638 ΔBrier -0.0146 改善天 3/4
+   现行 calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  183 天=  4 LS0 1.696 ΔLS -0.0588 [-0.0883,-0.0353] ΔCRPS -0.0603 ΔBrier -0.0147 改善天 4/4
+   现行 calibrated_native_cross_ensemble_p0_v30 station_wide  n=  183 天=  4 LS0 1.696 ΔLS -0.0666 [-0.0996,-0.0285] ΔCRPS -0.0601 ΔBrier -0.0129 改善天 4/4
 C. 只评旧版本段
-   旧版本                                fleet_core    n=  586 天= 15 LS0 1.667 ΔLS -0.0342 [-0.0492,-0.0164] ΔCRPS -0.0168 ΔBrier -0.0076 改善天 13/15
-   旧版本                                station_core  n=  586 天= 15 LS0 1.667 ΔLS -0.0445 [-0.0670,-0.0212] ΔCRPS -0.0233 ΔBrier -0.0110 改善天 11/15
    旧版本                                fleet_wide    n= 2137 天= 48 LS0 1.762 ΔLS -0.1499 [-0.2306,-0.0828] ΔCRPS -0.0321 ΔBrier -0.0121 改善天 39/48
    旧版本                                station_wide  n= 2137 天= 48 LS0 1.762 ΔLS -0.1621 [-0.2440,-0.0968] ΔCRPS -0.0449 ΔBrier -0.0193 改善天 39/48
 D. 逐段（≥30 条才报）
-     calibrated_native_cross_ensemble_p0_v1 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v1 station_core  n<30
      calibrated_native_cross_ensemble_p0_v1 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v1 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v2 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v2 station_core  n<30
      calibrated_native_cross_ensemble_p0_v2 fleet_wide    n=  535 天= 13 LS0 2.037 ΔLS -0.3525 [-0.5951,-0.1659] ΔCRPS -0.0654 ΔBrier -0.0280 改善天 10/13
      calibrated_native_cross_ensemble_p0_v2 station_wide  n=  535 天= 13 LS0 2.037 ΔLS -0.3546 [-0.5983,-0.1650] ΔCRPS -0.0768 ΔBrier -0.0362 改善天 10/13
-     calibrated_native_cross_ensemble_p0_v3 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v3 station_core  n<30
      calibrated_native_cross_ensemble_p0_v3 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v3 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v4 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v4 station_core  n<30
      calibrated_native_cross_ensemble_p0_v4 fleet_wide    n=  135 天=  4 LS0 1.570 ΔLS -0.0402 [-0.0587,-0.0174] ΔCRPS -0.0359 ΔBrier -0.0178 改善天 3/4
      calibrated_native_cross_ensemble_p0_v4 station_wide  n=  135 天=  4 LS0 1.570 ΔLS -0.0265 [-0.0504,+0.0211] ΔCRPS -0.0426 ΔBrier -0.0218 改善天 2/4
-     calibrated_native_cross_ensemble_p0_v5 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v5 station_core  n<30
      calibrated_native_cross_ensemble_p0_v5 fleet_wide    n=  217 天=  5 LS0 1.755 ΔLS -0.0894 [-0.2574,+0.0113] ΔCRPS +0.0088 ΔBrier +0.0085 改善天 4/5
      calibrated_native_cross_ensemble_p0_v5 station_wide  n=  217 天=  5 LS0 1.755 ΔLS -0.1158 [-0.2959,-0.0113] ΔCRPS -0.0108 ΔBrier -0.0005 改善天 4/5
-     calibrated_native_cross_ensemble_p0_v6 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v6 station_core  n<30
      calibrated_native_cross_ensemble_p0_v6 fleet_wide    n=   51 天=  2 LS0 2.154 ΔLS -0.4772 [-2.8129,-0.0427] ΔCRPS -0.0353 ΔBrier -0.0343 改善天 2/2
      calibrated_native_cross_ensemble_p0_v6 station_wide  n=   51 天=  2 LS0 2.154 ΔLS -0.5550 [-3.0488,-0.0911] ΔCRPS -0.0855 ΔBrier -0.0415 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v7 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v7 station_core  n<30
      calibrated_native_cross_ensemble_p0_v7 fleet_wide    n=   89 天=  3 LS0 1.679 ΔLS -0.1355 [-0.1686,+0.0402] ΔCRPS -0.0523 ΔBrier -0.0257 改善天 2/3
      calibrated_native_cross_ensemble_p0_v7 station_wide  n=   89 天=  3 LS0 1.679 ΔLS -0.1205 [-0.1882,+0.0035] ΔCRPS -0.0572 ΔBrier -0.0231 改善天 2/3
-     calibrated_native_cross_ensemble_p0_v8 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v8 station_core  n<30
      calibrated_native_cross_ensemble_p0_v8 fleet_wide    n=   34 天=  2 LS0 1.482 ΔLS -0.0875 [-0.7354,-0.0248] ΔCRPS -0.0556 ΔBrier -0.0351 改善天 2/2
      calibrated_native_cross_ensemble_p0_v8 station_wide  n=   34 天=  2 LS0 1.482 ΔLS -0.1085 [-0.8652,-0.0353] ΔCRPS -0.0684 ΔBrier -0.0500 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v9 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v9 station_core  n<30
      calibrated_native_cross_ensemble_p0_v9 fleet_wide    n=   59 天=  2 LS0 1.629 ΔLS -0.0536 [-0.0585,-0.0520] ΔCRPS -0.0452 ΔBrier -0.0009 改善天 2/2
      calibrated_native_cross_ensemble_p0_v9 station_wide  n=   59 天=  2 LS0 1.629 ΔLS -0.0984 [-0.1143,-0.0935] ΔCRPS -0.0769 ΔBrier -0.0155 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v12 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v12 station_core  n<30
      calibrated_native_cross_ensemble_p0_v12 fleet_wide    n=   37 天=  1 LS0 1.430 ΔLS +0.0632 [+0.0632,+0.0632] ΔCRPS +0.0359 ΔBrier +0.0399 改善天 0/1
      calibrated_native_cross_ensemble_p0_v12 station_wide  n=   37 天=  1 LS0 1.430 ΔLS +0.0842 [+0.0842,+0.0842] ΔCRPS +0.0470 ΔBrier +0.0435 改善天 0/1
-     calibrated_native_cross_ensemble_p0_v13 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v13 station_core  n<30
      calibrated_native_cross_ensemble_p0_v13 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v13 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v15 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v15 station_core  n<30
      calibrated_native_cross_ensemble_p0_v15 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v15 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v19 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v19 station_core  n<30
      calibrated_native_cross_ensemble_p0_v19 fleet_wide    n=  106 天=  3 LS0 1.563 ΔLS -0.0054 [-0.0269,+0.0244] ΔCRPS -0.0011 ΔBrier +0.0101 改善天 2/3
      calibrated_native_cross_ensemble_p0_v19 station_wide  n=  106 天=  3 LS0 1.563 ΔLS -0.0259 [-0.0803,+0.0076] ΔCRPS -0.0134 ΔBrier -0.0073 改善天 2/3
-     calibrated_native_cross_ensemble_p0_v20 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v20 station_core  n<30
      calibrated_native_cross_ensemble_p0_v20 fleet_wide    n=  196 天=  5 LS0 1.596 ΔLS -0.0596 [-0.1138,-0.0149] ΔCRPS -0.0326 ΔBrier -0.0172 改善天 4/5
      calibrated_native_cross_ensemble_p0_v20 station_wide  n=  196 天=  5 LS0 1.596 ΔLS -0.0776 [-0.1249,-0.0313] ΔCRPS -0.0411 ΔBrier -0.0199 改善天 4/5
-     calibrated_native_cross_ensemble_p0_v23 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v23 station_core  n<30
      calibrated_native_cross_ensemble_p0_v23 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v23 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v24 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v24 station_core  n<30
      calibrated_native_cross_ensemble_p0_v24 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v24 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v25 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v25 station_core  n<30
      calibrated_native_cross_ensemble_p0_v25 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v25 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v26 fleet_core    n=   79 天=  2 LS0 1.783 ΔLS -0.0216 [-0.0322,-0.0107] ΔCRPS +0.0165 ΔBrier +0.0009 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v26 station_core  n=   79 天=  2 LS0 1.783 ΔLS -0.0079 [-0.0432,+0.0284] ΔCRPS +0.0454 ΔBrier +0.0121 改善天 1/2
      calibrated_native_cross_ensemble_p0_v26 fleet_wide    n=   95 天=  2 LS0 1.720 ΔLS -0.0403 [-0.0451,-0.0356] ΔCRPS -0.0023 ΔBrier -0.0038 改善天 2/2
      calibrated_native_cross_ensemble_p0_v26 station_wide  n=   95 天=  2 LS0 1.720 ΔLS -0.0318 [-0.0815,+0.0190] ΔCRPS +0.0064 ΔBrier +0.0080 改善天 1/2
-     calibrated_native_cross_ensemble_p0_v27 fleet_core    n=  170 天=  6 LS0 1.662 ΔLS -0.0247 [-0.0609,+0.0177] ΔCRPS -0.0093 ΔBrier -0.0057 改善天 5/6
-     calibrated_native_cross_ensemble_p0_v27 station_core  n=  170 天=  6 LS0 1.662 ΔLS -0.0430 [-0.0856,+0.0083] ΔCRPS -0.0203 ΔBrier -0.0107 改善天 5/6
      calibrated_native_cross_ensemble_p0_v27 fleet_wide    n=  221 天=  6 LS0 1.619 ΔLS -0.0351 [-0.1000,+0.0304] ΔCRPS -0.0166 ΔBrier -0.0051 改善天 4/6
      calibrated_native_cross_ensemble_p0_v27 station_wide  n=  221 天=  6 LS0 1.619 ΔLS -0.0552 [-0.1032,-0.0076] ΔCRPS -0.0311 ΔBrier -0.0143 改善天 5/6
-     calibrated_native_cross_ensemble_p0_v28 fleet_core    n=  283 天=  7 LS0 1.593 ΔLS -0.0369 [-0.0574,-0.0137] ΔCRPS -0.0290 ΔBrier -0.0110 改善天 5/7
-     calibrated_native_cross_ensemble_p0_v28 station_core  n=  283 天=  7 LS0 1.593 ΔLS -0.0471 [-0.0798,-0.0099] ΔCRPS -0.0435 ΔBrier -0.0179 改善天 4/7
      calibrated_native_cross_ensemble_p0_v28 fleet_wide    n=  287 天=  7 LS0 1.589 ΔLS -0.0426 [-0.0650,-0.0155] ΔCRPS -0.0375 ΔBrier -0.0119 改善天 5/7
      calibrated_native_cross_ensemble_p0_v28 station_wide  n=  287 天=  7 LS0 1.589 ΔLS -0.0453 [-0.0752,-0.0127] ΔCRPS -0.0465 ΔBrier -0.0180 改善天 6/7
-     calibrated_native_cross_ensemble_p0_v30 fleet_core    n=  132 天=  4 LS0 1.713 ΔLS -0.0599 [-0.1300,-0.0170] ΔCRPS -0.0453 ΔBrier -0.0120 改善天 3/4
-     calibrated_native_cross_ensemble_p0_v30 station_core  n=  132 天=  4 LS0 1.713 ΔLS -0.0723 [-0.1524,-0.0113] ΔCRPS -0.0556 ΔBrier -0.0148 改善天 3/4
-     calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  140 天=  4 LS0 1.694 ΔLS -0.0599 [-0.0960,-0.0265] ΔCRPS -0.0650 ΔBrier -0.0168 改善天 3/4
-     calibrated_native_cross_ensemble_p0_v30 station_wide  n=  140 天=  4 LS0 1.694 ΔLS -0.0601 [-0.1105,-0.0204] ΔCRPS -0.0638 ΔBrier -0.0146 改善天 3/4
+     calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  183 天=  4 LS0 1.696 ΔLS -0.0588 [-0.0883,-0.0353] ΔCRPS -0.0603 ΔBrier -0.0147 改善天 4/4
+     calibrated_native_cross_ensemble_p0_v30 station_wide  n=  183 天=  4 LS0 1.696 ΔLS -0.0666 [-0.0996,-0.0285] ΔCRPS -0.0601 ΔBrier -0.0129 改善天 4/4
 E. 按决策日历段（10-01 起 / 10-11 起）
-   决策 ≥10-01                          fleet_core    n=  718 天= 19 LS0 1.675 ΔLS -0.0390 [-0.0590,-0.0228] ΔCRPS -0.0221 ΔBrier -0.0084 改善天 16/19
-   决策 ≥10-01                          station_core  n=  718 天= 19 LS0 1.675 ΔLS -0.0496 [-0.0743,-0.0260] ΔCRPS -0.0292 ΔBrier -0.0117 改善天 14/19
-   决策 ≥10-01                          fleet_wide    n=  833 天= 19 LS0 1.644 ΔLS -0.0426 [-0.0611,-0.0229] ΔCRPS -0.0302 ΔBrier -0.0100 改善天 15/19
-   决策 ≥10-01                          station_wide  n=  833 天= 19 LS0 1.644 ΔLS -0.0541 [-0.0746,-0.0340] ΔCRPS -0.0395 ΔBrier -0.0147 改善天 15/19
-   决策 ≥10-11                          fleet_core    n=  356 天=  9 LS0 1.630 ΔLS -0.0467 [-0.0784,-0.0227] ΔCRPS -0.0364 ΔBrier -0.0120 改善天 7/9
-   决策 ≥10-11                          station_core  n=  356 天=  9 LS0 1.630 ΔLS -0.0552 [-0.0984,-0.0206] ΔCRPS -0.0491 ΔBrier -0.0169 改善天 6/9
-   决策 ≥10-11                          fleet_wide    n=  368 天=  9 LS0 1.621 ΔLS -0.0515 [-0.0732,-0.0303] ΔCRPS -0.0507 ΔBrier -0.0150 改善天 7/9
-   决策 ≥10-11                          station_wide  n=  368 天=  9 LS0 1.621 ΔLS -0.0470 [-0.0769,-0.0215] ΔCRPS -0.0528 ΔBrier -0.0153 改善天 7/9
+   决策 ≥10-01                          fleet_wide    n=  876 天= 19 LS0 1.647 ΔLS -0.0432 [-0.0608,-0.0245] ΔCRPS -0.0309 ΔBrier -0.0099 改善天 16/19
+   决策 ≥10-01                          station_wide  n=  876 天= 19 LS0 1.647 ΔLS -0.0557 [-0.0760,-0.0351] ΔCRPS -0.0400 ΔBrier -0.0143 改善天 16/19
+   决策 ≥10-11                          fleet_wide    n=  411 天=  9 LS0 1.629 ΔLS -0.0519 [-0.0723,-0.0341] ΔCRPS -0.0501 ΔBrier -0.0143 改善天 8/9
+   决策 ≥10-11                          station_wide  n=  411 天=  9 LS0 1.629 ΔLS -0.0513 [-0.0792,-0.0281] ΔCRPS -0.0524 ΔBrier -0.0145 改善天 8/9
 F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益来自哪里）
-   现行·四家可得                            fleet_core    n=  132 天=  4 LS0 1.713 ΔLS -0.0599 [-0.1300,-0.0170] ΔCRPS -0.0453 ΔBrier -0.0120 改善天 3/4
-   现行·四家可得                            station_core  n=  132 天=  4 LS0 1.713 ΔLS -0.0723 [-0.1524,-0.0113] ΔCRPS -0.0556 ΔBrier -0.0148 改善天 3/4
-   现行·四家可得                            fleet_wide    n=  132 天=  4 LS0 1.713 ΔLS -0.0620 [-0.1039,-0.0278] ΔCRPS -0.0663 ΔBrier -0.0172 改善天 3/4
-   现行·四家可得                            station_wide  n=  132 天=  4 LS0 1.713 ΔLS -0.0601 [-0.1092,-0.0233] ΔCRPS -0.0612 ΔBrier -0.0143 改善天 3/4
-   现行·四家不可得                           fleet_core    n<30
-   现行·四家不可得                           station_core  n<30
-   现行·四家不可得                           fleet_wide    n<30
-   现行·四家不可得                           station_wide  n<30
+   现行·四家可得                            fleet_wide    n<30
+   现行·四家可得                            station_wide  n<30
+   现行·四家不可得                           fleet_wide    n=  183 天=  4 LS0 1.696 ΔLS -0.0588 [-0.0883,-0.0353] ΔCRPS -0.0603 ΔBrier -0.0147 改善天 4/4
+   现行·四家不可得                           station_wide  n=  183 天=  4 LS0 1.696 ΔLS -0.0666 [-0.0996,-0.0285] ΔCRPS -0.0601 ΔBrier -0.0129 改善天 4/4
 
-==================== P0_near：2685 条记录，服务版本 27 段（现行 calibrated_native_cross_ensemble_p0_v30）====================
+==================== P0_near：2729 条记录，服务版本 27 段（现行 calibrated_native_cross_ensemble_p0_v30）====================
    calibrated_native_cross_ensemble_p0_v1 决策 2026-08-22…2026-08-27  n= 252 事件日 6
    calibrated_native_cross_ensemble_p0_v2 决策 2026-08-27…2026-09-10  n= 614 事件日 15
    calibrated_native_cross_ensemble_p0_v3 决策 2026-09-10…2026-09-10  n=  11 事件日 1
@@ -168,151 +112,83 @@ F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益�
    calibrated_native_cross_ensemble_p0_v27 决策 2026-10-04…2026-10-09  n= 223 事件日 6
    calibrated_native_cross_ensemble_p0_v28 决策 2026-10-09…2026-10-15  n= 300 事件日 7
    calibrated_native_cross_ensemble_p0_v29 决策 2026-10-15…2026-10-15  n=  11 事件日 2
-   calibrated_native_cross_ensemble_p0_v30 决策 2026-10-16…2026-10-20  n= 188 事件日 5
+   calibrated_native_cross_ensemble_p0_v30 决策 2026-10-16…2026-10-20  n= 232 事件日 5
 A. 全窗（与每日拟合同口径）
-   全窗                                 fleet_core    n=  804 天= 20 LS0 1.468 ΔLS -0.0183 [-0.0356,-0.0050] ΔCRPS -0.0097 ΔBrier -0.0054 改善天 14/20
-   全窗                                 station_core  n=  804 天= 20 LS0 1.468 ΔLS -0.0120 [-0.0409,+0.0117] ΔCRPS -0.0077 ΔBrier -0.0056 改善天 10/20
-   全窗                                 fleet_wide    n= 2327 天= 52 LS0 1.609 ΔLS -0.1140 [-0.1883,-0.0472] ΔCRPS -0.0234 ΔBrier -0.0098 改善天 34/52
-   全窗                                 station_wide  n= 2327 天= 52 LS0 1.609 ΔLS -0.1220 [-0.2059,-0.0513] ΔCRPS -0.0316 ΔBrier -0.0155 改善天 36/52
+   全窗                                 fleet_wide    n= 2371 天= 52 LS0 1.604 ΔLS -0.1115 [-0.1845,-0.0459] ΔCRPS -0.0230 ΔBrier -0.0096 改善天 34/52
+   全窗                                 station_wide  n= 2371 天= 52 LS0 1.604 ΔLS -0.1191 [-0.2014,-0.0474] ΔCRPS -0.0309 ΔBrier -0.0150 改善天 36/52
 B. 只评现行版本段（参数仍用之前全部事件日）
-   现行 calibrated_native_cross_ensemble_p0_v30 fleet_core    n=  184 天=  5 LS0 1.426 ΔLS -0.0069 [-0.0239,+0.0097] ΔCRPS -0.0040 ΔBrier +0.0010 改善天 3/5
-   现行 calibrated_native_cross_ensemble_p0_v30 station_core  n=  184 天=  5 LS0 1.426 ΔLS +0.0199 [-0.0139,+0.0514] ΔCRPS +0.0116 ΔBrier +0.0092 改善天 1/5
-   现行 calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  188 天=  5 LS0 1.411 ΔLS -0.0141 [-0.0295,-0.0001] ΔCRPS -0.0137 ΔBrier -0.0015 改善天 3/5
-   现行 calibrated_native_cross_ensemble_p0_v30 station_wide  n=  188 天=  5 LS0 1.411 ΔLS +0.0223 [-0.0090,+0.0595] ΔCRPS +0.0056 ΔBrier +0.0096 改善天 2/5
+   现行 calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  232 天=  5 LS0 1.401 ΔLS -0.0074 [-0.0280,+0.0095] ΔCRPS -0.0116 ΔBrier -0.0008 改善天 3/5
+   现行 calibrated_native_cross_ensemble_p0_v30 station_wide  n=  232 天=  5 LS0 1.401 ΔLS +0.0247 [-0.0024,+0.0528] ΔCRPS +0.0056 ΔBrier +0.0101 改善天 2/5
 C. 只评旧版本段
-   旧版本                                fleet_core    n=  620 天= 16 LS0 1.481 ΔLS -0.0216 [-0.0428,-0.0078] ΔCRPS -0.0114 ΔBrier -0.0073 改善天 11/16
-   旧版本                                station_core  n=  620 天= 16 LS0 1.481 ΔLS -0.0215 [-0.0518,+0.0016] ΔCRPS -0.0135 ΔBrier -0.0100 改善天 9/16
    旧版本                                fleet_wide    n= 2139 天= 48 LS0 1.627 ΔLS -0.1228 [-0.2082,-0.0502] ΔCRPS -0.0242 ΔBrier -0.0106 改善天 31/48
    旧版本                                station_wide  n= 2139 天= 48 LS0 1.627 ΔLS -0.1347 [-0.2263,-0.0601] ΔCRPS -0.0349 ΔBrier -0.0177 改善天 34/48
 D. 逐段（≥30 条才报）
-     calibrated_native_cross_ensemble_p0_v1 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v1 station_core  n<30
      calibrated_native_cross_ensemble_p0_v1 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v1 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v2 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v2 station_core  n<30
      calibrated_native_cross_ensemble_p0_v2 fleet_wide    n=  508 天= 12 LS0 1.980 ΔLS -0.3553 [-0.6836,-0.1005] ΔCRPS -0.0676 ΔBrier -0.0354 改善天 11/12
      calibrated_native_cross_ensemble_p0_v2 station_wide  n=  508 天= 12 LS0 1.980 ΔLS -0.3783 [-0.7249,-0.1154] ΔCRPS -0.0847 ΔBrier -0.0443 改善天 11/12
-     calibrated_native_cross_ensemble_p0_v3 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v3 station_core  n<30
      calibrated_native_cross_ensemble_p0_v3 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v3 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v4 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v4 station_core  n<30
      calibrated_native_cross_ensemble_p0_v4 fleet_wide    n=  155 天=  5 LS0 1.607 ΔLS -0.1489 [-0.3182,-0.0138] ΔCRPS -0.0493 ΔBrier -0.0188 改善天 4/5
      calibrated_native_cross_ensemble_p0_v4 station_wide  n=  155 天=  5 LS0 1.607 ΔLS -0.1610 [-0.3538,-0.0243] ΔCRPS -0.0612 ΔBrier -0.0255 改善天 4/5
-     calibrated_native_cross_ensemble_p0_v5 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v5 station_core  n<30
      calibrated_native_cross_ensemble_p0_v5 fleet_wide    n=  197 天=  5 LS0 1.557 ΔLS +0.0128 [-0.1182,+0.1439] ΔCRPS +0.0086 ΔBrier +0.0090 改善天 2/5
      calibrated_native_cross_ensemble_p0_v5 station_wide  n=  197 天=  5 LS0 1.557 ΔLS -0.0039 [-0.1409,+0.1276] ΔCRPS -0.0005 ΔBrier -0.0002 改善天 2/5
-     calibrated_native_cross_ensemble_p0_v6 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v6 station_core  n<30
      calibrated_native_cross_ensemble_p0_v6 fleet_wide    n=   52 天=  2 LS0 1.987 ΔLS -0.4634 [-0.9840,-0.0172] ΔCRPS -0.0454 ΔBrier -0.0120 改善天 2/2
      calibrated_native_cross_ensemble_p0_v6 station_wide  n=   52 天=  2 LS0 1.987 ΔLS -0.5122 [-1.0191,-0.0776] ΔCRPS -0.0879 ΔBrier -0.0271 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v7 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v7 station_core  n<30
      calibrated_native_cross_ensemble_p0_v7 fleet_wide    n=   90 天=  3 LS0 1.679 ΔLS -0.2521 [-1.2044,+0.0033] ΔCRPS -0.0129 ΔBrier -0.0138 改善天 2/3
      calibrated_native_cross_ensemble_p0_v7 station_wide  n=   90 天=  3 LS0 1.679 ΔLS -0.2655 [-1.2353,-0.0044] ΔCRPS -0.0289 ΔBrier -0.0193 改善天 3/3
-     calibrated_native_cross_ensemble_p0_v8 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v8 station_core  n<30
      calibrated_native_cross_ensemble_p0_v8 fleet_wide    n=   34 天=  2 LS0 1.373 ΔLS -0.0385 [-0.0472,-0.0307] ΔCRPS -0.0252 ΔBrier -0.0099 改善天 2/2
      calibrated_native_cross_ensemble_p0_v8 station_wide  n=   34 天=  2 LS0 1.373 ΔLS -0.0669 [-0.0748,-0.0580] ΔCRPS -0.0449 ΔBrier -0.0248 改善天 2/2
-     calibrated_native_cross_ensemble_p0_v9 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v9 station_core  n<30
      calibrated_native_cross_ensemble_p0_v9 fleet_wide    n=   63 天=  3 LS0 1.700 ΔLS -0.1266 [-1.0034,+0.0116] ΔCRPS -0.0357 ΔBrier -0.0078 改善天 2/3
      calibrated_native_cross_ensemble_p0_v9 station_wide  n=   63 天=  3 LS0 1.700 ΔLS -0.1483 [-0.8021,-0.0215] ΔCRPS -0.0519 ΔBrier -0.0198 改善天 3/3
-     calibrated_native_cross_ensemble_p0_v11 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v11 station_core  n<30
      calibrated_native_cross_ensemble_p0_v11 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v11 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v12 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v12 station_core  n<30
      calibrated_native_cross_ensemble_p0_v12 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v12 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v13 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v13 station_core  n<30
      calibrated_native_cross_ensemble_p0_v13 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v13 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v14 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v14 station_core  n<30
      calibrated_native_cross_ensemble_p0_v14 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v14 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v15 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v15 station_core  n<30
      calibrated_native_cross_ensemble_p0_v15 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v15 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v16 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v16 station_core  n<30
      calibrated_native_cross_ensemble_p0_v16 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v16 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v19 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v19 station_core  n<30
      calibrated_native_cross_ensemble_p0_v19 fleet_wide    n=   90 天=  3 LS0 1.499 ΔLS +0.0277 [+0.0168,+0.0492] ΔCRPS +0.0238 ΔBrier +0.0212 改善天 0/3
      calibrated_native_cross_ensemble_p0_v19 station_wide  n=   90 天=  3 LS0 1.499 ΔLS +0.0309 [+0.0152,+0.0475] ΔCRPS +0.0284 ΔBrier +0.0122 改善天 0/3
-     calibrated_native_cross_ensemble_p0_v20 fleet_core    n=   34 天=  1 LS0 1.395 ΔLS -0.0345 [-0.0345,-0.0345] ΔCRPS -0.0190 ΔBrier -0.0120 改善天 1/1
-     calibrated_native_cross_ensemble_p0_v20 station_core  n=   34 天=  1 LS0 1.395 ΔLS -0.0646 [-0.0646,-0.0646] ΔCRPS -0.0275 ΔBrier -0.0266 改善天 1/1
      calibrated_native_cross_ensemble_p0_v20 fleet_wide    n=  204 天=  5 LS0 1.406 ΔLS -0.0026 [-0.0559,+0.0390] ΔCRPS -0.0066 ΔBrier -0.0007 改善天 2/5
      calibrated_native_cross_ensemble_p0_v20 station_wide  n=  204 天=  5 LS0 1.406 ΔLS -0.0124 [-0.0705,+0.0359] ΔCRPS -0.0152 ΔBrier -0.0049 改善天 2/5
-     calibrated_native_cross_ensemble_p0_v21 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v21 station_core  n<30
      calibrated_native_cross_ensemble_p0_v21 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v21 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v22 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v22 station_core  n<30
      calibrated_native_cross_ensemble_p0_v22 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v22 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v23 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v23 station_core  n<30
      calibrated_native_cross_ensemble_p0_v23 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v23 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v24 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v24 station_core  n<30
      calibrated_native_cross_ensemble_p0_v24 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v24 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v25 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v25 station_core  n<30
      calibrated_native_cross_ensemble_p0_v25 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v25 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v26 fleet_core    n=   74 天=  3 LS0 1.562 ΔLS +0.0048 [-0.1172,+0.0607] ΔCRPS +0.0149 ΔBrier +0.0074 改善天 1/3
-     calibrated_native_cross_ensemble_p0_v26 station_core  n=   74 天=  3 LS0 1.562 ΔLS +0.0214 [-0.1610,+0.1078] ΔCRPS +0.0230 ΔBrier +0.0131 改善天 1/3
      calibrated_native_cross_ensemble_p0_v26 fleet_wide    n=   90 天=  3 LS0 1.494 ΔLS +0.0098 [-0.1536,+0.0772] ΔCRPS +0.0172 ΔBrier +0.0113 改善天 2/3
      calibrated_native_cross_ensemble_p0_v26 station_wide  n=   90 天=  3 LS0 1.494 ΔLS -0.0462 [-0.2305,+0.0310] ΔCRPS -0.0230 ΔBrier -0.0102 改善天 2/3
-     calibrated_native_cross_ensemble_p0_v27 fleet_core    n=  184 天=  6 LS0 1.550 ΔLS -0.0270 [-0.0582,+0.0040] ΔCRPS -0.0021 ΔBrier -0.0036 改善天 5/6
-     calibrated_native_cross_ensemble_p0_v27 station_core  n=  184 天=  6 LS0 1.550 ΔLS -0.0165 [-0.0633,+0.0236] ΔCRPS +0.0077 ΔBrier +0.0024 改善天 4/6
      calibrated_native_cross_ensemble_p0_v27 fleet_wide    n=  223 天=  6 LS0 1.512 ΔLS -0.0162 [-0.0445,+0.0141] ΔCRPS -0.0019 ΔBrier -0.0043 改善天 4/6
      calibrated_native_cross_ensemble_p0_v27 station_wide  n=  223 天=  6 LS0 1.512 ΔLS +0.0049 [-0.0337,+0.0390] ΔCRPS +0.0122 ΔBrier +0.0029 改善天 3/6
-     calibrated_native_cross_ensemble_p0_v28 fleet_core    n=  287 天=  7 LS0 1.417 ΔLS -0.0158 [-0.0340,+0.0009] ΔCRPS -0.0168 ΔBrier -0.0096 改善天 5/7
-     calibrated_native_cross_ensemble_p0_v28 station_core  n=  287 天=  7 LS0 1.417 ΔLS -0.0185 [-0.0447,+0.0111] ΔCRPS -0.0260 ΔBrier -0.0174 改善天 4/7
      calibrated_native_cross_ensemble_p0_v28 fleet_wide    n=  300 天=  7 LS0 1.416 ΔLS -0.0214 [-0.0465,+0.0027] ΔCRPS -0.0186 ΔBrier -0.0104 改善天 4/7
      calibrated_native_cross_ensemble_p0_v28 station_wide  n=  300 天=  7 LS0 1.416 ΔLS -0.0219 [-0.0482,+0.0091] ΔCRPS -0.0292 ΔBrier -0.0192 改善天 4/7
-     calibrated_native_cross_ensemble_p0_v29 fleet_core    n<30
-     calibrated_native_cross_ensemble_p0_v29 station_core  n<30
      calibrated_native_cross_ensemble_p0_v29 fleet_wide    n<30
      calibrated_native_cross_ensemble_p0_v29 station_wide  n<30
-     calibrated_native_cross_ensemble_p0_v30 fleet_core    n=  184 天=  5 LS0 1.426 ΔLS -0.0069 [-0.0239,+0.0097] ΔCRPS -0.0040 ΔBrier +0.0010 改善天 3/5
-     calibrated_native_cross_ensemble_p0_v30 station_core  n=  184 天=  5 LS0 1.426 ΔLS +0.0199 [-0.0139,+0.0514] ΔCRPS +0.0116 ΔBrier +0.0092 改善天 1/5
-     calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  188 天=  5 LS0 1.411 ΔLS -0.0141 [-0.0295,-0.0001] ΔCRPS -0.0137 ΔBrier -0.0015 改善天 3/5
-     calibrated_native_cross_ensemble_p0_v30 station_wide  n=  188 天=  5 LS0 1.411 ΔLS +0.0223 [-0.0090,+0.0595] ΔCRPS +0.0056 ΔBrier +0.0096 改善天 2/5
+     calibrated_native_cross_ensemble_p0_v30 fleet_wide    n=  232 天=  5 LS0 1.401 ΔLS -0.0074 [-0.0280,+0.0095] ΔCRPS -0.0116 ΔBrier -0.0008 改善天 3/5
+     calibrated_native_cross_ensemble_p0_v30 station_wide  n=  232 天=  5 LS0 1.401 ΔLS +0.0247 [-0.0024,+0.0528] ΔCRPS +0.0056 ΔBrier +0.0101 改善天 2/5
 E. 按决策日历段（10-01 起 / 10-11 起）
-   决策 ≥10-01                          fleet_core    n=  804 天= 20 LS0 1.468 ΔLS -0.0183 [-0.0356,-0.0050] ΔCRPS -0.0097 ΔBrier -0.0054 改善天 14/20
-   决策 ≥10-01                          station_core  n=  804 天= 20 LS0 1.468 ΔLS -0.0120 [-0.0409,+0.0117] ΔCRPS -0.0077 ΔBrier -0.0056 改善天 10/20
-   决策 ≥10-01                          fleet_wide    n=  892 天= 20 LS0 1.450 ΔLS -0.0177 [-0.0353,-0.0019] ΔCRPS -0.0111 ΔBrier -0.0062 改善天 13/20
-   决策 ≥10-01                          station_wide  n=  892 天= 20 LS0 1.450 ΔLS -0.0125 [-0.0376,+0.0130] ΔCRPS -0.0122 ΔBrier -0.0077 改善天 13/20
-   决策 ≥10-11                          fleet_core    n=  411 天= 10 LS0 1.437 ΔLS -0.0175 [-0.0300,-0.0037] ΔCRPS -0.0144 ΔBrier -0.0073 改善天 8/10
-   决策 ≥10-11                          station_core  n=  411 天= 10 LS0 1.437 ΔLS -0.0082 [-0.0354,+0.0201] ΔCRPS -0.0136 ΔBrier -0.0094 改善天 5/10
-   决策 ≥10-11                          fleet_wide    n=  420 天= 10 LS0 1.429 ΔLS -0.0268 [-0.0444,-0.0088] ΔCRPS -0.0214 ΔBrier -0.0108 改善天 7/10
-   决策 ≥10-11                          station_wide  n=  420 天= 10 LS0 1.429 ΔLS -0.0066 [-0.0332,+0.0277] ΔCRPS -0.0167 ΔBrier -0.0095 改善天 6/10
+   决策 ≥10-01                          fleet_wide    n=  936 天= 20 LS0 1.446 ΔLS -0.0159 [-0.0340,-0.0003] ΔCRPS -0.0107 ΔBrier -0.0058 改善天 13/20
+   决策 ≥10-01                          station_wide  n=  936 天= 20 LS0 1.446 ΔLS -0.0103 [-0.0344,+0.0144] ΔCRPS -0.0113 ΔBrier -0.0068 改善天 13/20
+   决策 ≥10-11                          fleet_wide    n=  464 天= 10 LS0 1.423 ΔLS -0.0222 [-0.0374,-0.0058] ΔCRPS -0.0196 ΔBrier -0.0096 改善天 7/10
+   决策 ≥10-11                          station_wide  n=  464 天= 10 LS0 1.423 ΔLS -0.0027 [-0.0287,+0.0279] ΔCRPS -0.0146 ΔBrier -0.0075 改善天 6/10
 F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益来自哪里）
-   现行·四家可得                            fleet_core    n=  184 天=  5 LS0 1.426 ΔLS -0.0069 [-0.0239,+0.0097] ΔCRPS -0.0040 ΔBrier +0.0010 改善天 3/5
-   现行·四家可得                            station_core  n=  184 天=  5 LS0 1.426 ΔLS +0.0199 [-0.0139,+0.0514] ΔCRPS +0.0116 ΔBrier +0.0092 改善天 1/5
-   现行·四家可得                            fleet_wide    n=  184 天=  5 LS0 1.426 ΔLS -0.0149 [-0.0303,-0.0007] ΔCRPS -0.0142 ΔBrier -0.0019 改善天 3/5
-   现行·四家可得                            station_wide  n=  184 天=  5 LS0 1.426 ΔLS +0.0196 [-0.0113,+0.0578] ΔCRPS +0.0048 ΔBrier +0.0079 改善天 2/5
-   现行·四家不可得                           fleet_core    n<30
-   现行·四家不可得                           station_core  n<30
-   现行·四家不可得                           fleet_wide    n<30
-   现行·四家不可得                           station_wide  n<30
+   现行·四家可得                            fleet_wide    n<30
+   现行·四家可得                            station_wide  n<30
+   现行·四家不可得                           fleet_wide    n=  232 天=  5 LS0 1.401 ΔLS -0.0074 [-0.0280,+0.0095] ΔCRPS -0.0116 ΔBrier -0.0008 改善天 3/5
+   现行·四家不可得                           station_wide  n=  232 天=  5 LS0 1.401 ΔLS +0.0247 [-0.0024,+0.0528] ΔCRPS +0.0056 ΔBrier +0.0101 改善天 2/5
 
-==================== P0M：2575 条记录，服务版本 32 段（现行 p0m_taf_likelihood_v33）====================
+==================== P0M：2619 条记录，服务版本 32 段（现行 p0m_taf_likelihood_v33）====================
    p0m_taf_observed_v1          决策 2026-08-21…2026-08-25  n= 150 事件日 4
    p0m_taf_observed_v2          决策 2026-08-25…2026-09-10  n= 592 事件日 17
    p0m_taf_physical_confirmation_v4 决策 2026-09-03…2026-09-03  n=   1 事件日 1
@@ -344,166 +220,218 @@ F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益�
    p0m_taf_likelihood_v30       决策 2026-10-04…2026-10-09  n= 228 事件日 6
    p0m_taf_likelihood_v31       决策 2026-10-09…2026-10-15  n= 290 事件日 8
    p0m_taf_likelihood_v32       决策 2026-10-15…2026-10-16  n=  22 事件日 2
-   p0m_taf_likelihood_v33       决策 2026-10-16…2026-10-20  n= 166 事件日 5
+   p0m_taf_likelihood_v33       决策 2026-10-16…2026-10-21  n= 210 事件日 5
 A. 全窗（与每日拟合同口径）
-   全窗                                 fleet_core    n=  797 天= 20 LS0 1.505 ΔLS -0.0180 [-0.0336,-0.0049] ΔCRPS -0.0103 ΔBrier -0.0055 改善天 15/20
-   全窗                                 station_core  n=  797 天= 20 LS0 1.505 ΔLS -0.0180 [-0.0420,+0.0028] ΔCRPS -0.0120 ΔBrier -0.0074 改善天 11/20
-   全窗                                 fleet_wide    n= 2244 天= 52 LS0 1.547 ΔLS -0.0387 [-0.0643,-0.0145] ΔCRPS -0.0190 ΔBrier -0.0062 改善天 31/52
-   全窗                                 station_wide  n= 2244 天= 52 LS0 1.547 ΔLS -0.0428 [-0.0708,-0.0179] ΔCRPS -0.0256 ΔBrier -0.0107 改善天 32/52
+   全窗                                 fleet_wide    n= 2288 天= 52 LS0 1.544 ΔLS -0.0397 [-0.0659,-0.0151] ΔCRPS -0.0191 ΔBrier -0.0071 改善天 33/52
+   全窗                                 station_wide  n= 2288 天= 52 LS0 1.544 ΔLS -0.0436 [-0.0716,-0.0176] ΔCRPS -0.0255 ΔBrier -0.0113 改善天 34/52
 B. 只评现行版本段（参数仍用之前全部事件日）
-   现行 p0m_taf_likelihood_v33          fleet_core    n=  163 天=  5 LS0 1.500 ΔLS -0.0161 [-0.0277,-0.0059] ΔCRPS -0.0069 ΔBrier -0.0023 改善天 4/5
-   现行 p0m_taf_likelihood_v33          station_core  n=  163 天=  5 LS0 1.500 ΔLS -0.0004 [-0.0189,+0.0202] ΔCRPS +0.0020 ΔBrier +0.0023 改善天 1/5
-   现行 p0m_taf_likelihood_v33          fleet_wide    n=  166 天=  5 LS0 1.486 ΔLS -0.0339 [-0.0386,-0.0293] ΔCRPS -0.0235 ΔBrier -0.0089 改善天 4/5
-   现行 p0m_taf_likelihood_v33          station_wide  n=  166 天=  5 LS0 1.486 ΔLS +0.0033 [-0.0101,+0.0191] ΔCRPS -0.0036 ΔBrier +0.0024 改善天 2/5
+   现行 p0m_taf_likelihood_v33          fleet_wide    n=  210 天=  5 LS0 1.463 ΔLS -0.0262 [-0.0380,-0.0100] ΔCRPS -0.0206 ΔBrier -0.0080 改善天 4/5
+   现行 p0m_taf_likelihood_v33          station_wide  n=  210 天=  5 LS0 1.463 ΔLS +0.0091 [-0.0059,+0.0247] ΔCRPS -0.0020 ΔBrier +0.0049 改善天 2/5
 C. 只评旧版本段
-   旧版本                                fleet_core    n=  634 天= 16 LS0 1.507 ΔLS -0.0185 [-0.0377,-0.0038] ΔCRPS -0.0112 ΔBrier -0.0063 改善天 12/16
-   旧版本                                station_core  n=  634 天= 16 LS0 1.507 ΔLS -0.0226 [-0.0498,-0.0006] ΔCRPS -0.0156 ΔBrier -0.0100 改善天 11/16
-   旧版本                                fleet_wide    n= 2078 天= 48 LS0 1.552 ΔLS -0.0391 [-0.0682,-0.0159] ΔCRPS -0.0187 ΔBrier -0.0060 改善天 28/48
-   旧版本                                station_wide  n= 2078 天= 48 LS0 1.552 ΔLS -0.0465 [-0.0782,-0.0203] ΔCRPS -0.0273 ΔBrier -0.0117 改善天 31/48
+   旧版本                                fleet_wide    n= 2078 天= 48 LS0 1.552 ΔLS -0.0410 [-0.0714,-0.0176] ΔCRPS -0.0190 ΔBrier -0.0070 改善天 30/48
+   旧版本                                station_wide  n= 2078 天= 48 LS0 1.552 ΔLS -0.0490 [-0.0806,-0.0230] ΔCRPS -0.0278 ΔBrier -0.0130 改善天 33/48
 D. 逐段（≥30 条才报）
-     p0m_taf_observed_v1              fleet_core    n<30
-     p0m_taf_observed_v1              station_core  n<30
      p0m_taf_observed_v1              fleet_wide    n<30
      p0m_taf_observed_v1              station_wide  n<30
-     p0m_taf_observed_v2              fleet_core    n<30
-     p0m_taf_observed_v2              station_core  n<30
-     p0m_taf_observed_v2              fleet_wide    n=  411 天= 12 LS0 1.727 ΔLS -0.0866 [-0.2033,-0.0099] ΔCRPS -0.0413 ΔBrier -0.0129 改善天 7/12
-     p0m_taf_observed_v2              station_wide  n=  411 天= 12 LS0 1.727 ΔLS -0.0972 [-0.2315,-0.0056] ΔCRPS -0.0554 ΔBrier -0.0172 改善天 7/12
-     p0m_taf_physical_confirmation_v4 fleet_core    n<30
-     p0m_taf_physical_confirmation_v4 station_core  n<30
+     p0m_taf_observed_v2              fleet_wide    n=  411 天= 12 LS0 1.727 ΔLS -0.0931 [-0.2092,-0.0177] ΔCRPS -0.0425 ΔBrier -0.0161 改善天 9/12
+     p0m_taf_observed_v2              station_wide  n=  411 天= 12 LS0 1.727 ΔLS -0.1053 [-0.2348,-0.0143] ΔCRPS -0.0573 ΔBrier -0.0211 改善天 9/12
      p0m_taf_physical_confirmation_v4 fleet_wide    n<30
      p0m_taf_physical_confirmation_v4 station_wide  n<30
-     p0m_taf_observed_v3              fleet_core    n<30
-     p0m_taf_observed_v3              station_core  n<30
-     p0m_taf_observed_v3              fleet_wide    n=   32 天=  2 LS0 1.905 ΔLS -0.4243 [-0.4446,-0.3721] ΔCRPS -0.0852 ΔBrier -0.0498 改善天 2/2
-     p0m_taf_observed_v3              station_wide  n=   32 天=  2 LS0 1.905 ΔLS -0.4015 [-0.4075,-0.3992] ΔCRPS -0.0866 ΔBrier -0.0825 改善天 2/2
-     p0m_taf_observed_v4              fleet_core    n<30
-     p0m_taf_observed_v4              station_core  n<30
-     p0m_taf_observed_v4              fleet_wide    n=  164 天=  6 LS0 1.540 ΔLS -0.0792 [-0.2195,+0.0213] ΔCRPS -0.0366 ΔBrier -0.0164 改善天 4/6
-     p0m_taf_observed_v4              station_wide  n=  164 天=  6 LS0 1.540 ΔLS -0.0615 [-0.2278,+0.0564] ΔCRPS -0.0376 ΔBrier -0.0198 改善天 4/6
-     p0m_taf_observed_v5              fleet_core    n<30
-     p0m_taf_observed_v5              station_core  n<30
-     p0m_taf_observed_v5              fleet_wide    n=  197 天=  6 LS0 1.569 ΔLS +0.0034 [-0.0638,+0.0670] ΔCRPS +0.0024 ΔBrier +0.0031 改善天 2/6
-     p0m_taf_observed_v5              station_wide  n=  197 天=  6 LS0 1.569 ΔLS -0.0129 [-0.0747,+0.0597] ΔCRPS -0.0027 ΔBrier -0.0038 改善天 3/6
-     p0m_taf_observed_v6              fleet_core    n<30
-     p0m_taf_observed_v6              station_core  n<30
+     p0m_taf_observed_v3              fleet_wide    n=   32 天=  2 LS0 1.905 ΔLS -0.4372 [-0.4446,-0.4183] ΔCRPS -0.0869 ΔBrier -0.0575 改善天 2/2
+     p0m_taf_observed_v3              station_wide  n=   32 天=  2 LS0 1.905 ΔLS -0.4199 [-0.4729,-0.3992] ΔCRPS -0.0904 ΔBrier -0.0946 改善天 2/2
+     p0m_taf_observed_v4              fleet_wide    n=  164 天=  6 LS0 1.540 ΔLS -0.0822 [-0.2241,+0.0185] ΔCRPS -0.0370 ΔBrier -0.0183 改善天 4/6
+     p0m_taf_observed_v4              station_wide  n=  164 天=  6 LS0 1.540 ΔLS -0.0646 [-0.2365,+0.0528] ΔCRPS -0.0381 ΔBrier -0.0217 改善天 4/6
+     p0m_taf_observed_v5              fleet_wide    n=  197 天=  6 LS0 1.569 ΔLS +0.0033 [-0.0639,+0.0668] ΔCRPS +0.0023 ΔBrier +0.0031 改善天 2/6
+     p0m_taf_observed_v5              station_wide  n=  197 天=  6 LS0 1.569 ΔLS -0.0130 [-0.0748,+0.0596] ΔCRPS -0.0027 ΔBrier -0.0038 改善天 3/6
      p0m_taf_observed_v6              fleet_wide    n<30
      p0m_taf_observed_v6              station_wide  n<30
-     p0m_taf_likelihood_v7            fleet_core    n<30
-     p0m_taf_likelihood_v7            station_core  n<30
-     p0m_taf_likelihood_v7            fleet_wide    n=   30 天=  2 LS0 1.679 ΔLS -0.0343 [-0.0449,+0.1143] ΔCRPS -0.0007 ΔBrier +0.0285 改善天 1/2
-     p0m_taf_likelihood_v7            station_wide  n=   30 天=  2 LS0 1.679 ΔLS -0.0852 [-0.0955,+0.0588] ΔCRPS -0.0357 ΔBrier +0.0137 改善天 1/2
-     p0m_taf_likelihood_v8            fleet_core    n<30
-     p0m_taf_likelihood_v8            station_core  n<30
+     p0m_taf_likelihood_v7            fleet_wide    n=   30 天=  2 LS0 1.679 ΔLS -0.0344 [-0.0449,+0.1133] ΔCRPS -0.0007 ΔBrier +0.0285 改善天 1/2
+     p0m_taf_likelihood_v7            station_wide  n=   30 天=  2 LS0 1.679 ΔLS -0.0853 [-0.0955,+0.0578] ΔCRPS -0.0357 ΔBrier +0.0137 改善天 1/2
      p0m_taf_likelihood_v8            fleet_wide    n<30
      p0m_taf_likelihood_v8            station_wide  n<30
-     p0m_taf_likelihood_v9            fleet_core    n<30
-     p0m_taf_likelihood_v9            station_core  n<30
-     p0m_taf_likelihood_v9            fleet_wide    n=   91 天=  3 LS0 1.404 ΔLS -0.0350 [-0.1012,+0.1389] ΔCRPS -0.0312 ΔBrier -0.0210 改善天 1/3
-     p0m_taf_likelihood_v9            station_wide  n=   91 天=  3 LS0 1.404 ΔLS -0.0375 [-0.1015,+0.0598] ΔCRPS -0.0396 ΔBrier -0.0181 改善天 1/3
-     p0m_taf_likelihood_v10           fleet_core    n<30
-     p0m_taf_likelihood_v10           station_core  n<30
-     p0m_taf_likelihood_v10           fleet_wide    n=   47 天=  2 LS0 1.708 ΔLS -0.1124 [-0.1230,+0.0433] ΔCRPS -0.0327 ΔBrier -0.0110 改善天 1/2
-     p0m_taf_likelihood_v10           station_wide  n=   47 天=  2 LS0 1.708 ΔLS -0.1481 [-0.1640,+0.0859] ΔCRPS -0.0524 ΔBrier -0.0201 改善天 1/2
-     p0m_taf_likelihood_v11           fleet_core    n<30
-     p0m_taf_likelihood_v11           station_core  n<30
-     p0m_taf_likelihood_v11           fleet_wide    n=   43 天=  2 LS0 1.386 ΔLS +0.0218 [+0.0206,+0.0713] ΔCRPS -0.0137 ΔBrier +0.0246 改善天 0/2
-     p0m_taf_likelihood_v11           station_wide  n=   43 天=  2 LS0 1.386 ΔLS +0.0009 [-0.0044,+0.2217] ΔCRPS -0.0238 ΔBrier +0.0195 改善天 1/2
-     p0m_taf_likelihood_v13           fleet_core    n<30
-     p0m_taf_likelihood_v13           station_core  n<30
+     p0m_taf_likelihood_v9            fleet_wide    n=   91 天=  3 LS0 1.404 ΔLS -0.0351 [-0.1012,+0.1387] ΔCRPS -0.0312 ΔBrier -0.0210 改善天 1/3
+     p0m_taf_likelihood_v9            station_wide  n=   91 天=  3 LS0 1.404 ΔLS -0.0376 [-0.1015,+0.0596] ΔCRPS -0.0396 ΔBrier -0.0181 改善天 1/3
+     p0m_taf_likelihood_v10           fleet_wide    n=   47 天=  2 LS0 1.708 ΔLS -0.1125 [-0.1230,+0.0417] ΔCRPS -0.0327 ΔBrier -0.0111 改善天 1/2
+     p0m_taf_likelihood_v10           station_wide  n=   47 天=  2 LS0 1.708 ΔLS -0.1482 [-0.1640,+0.0842] ΔCRPS -0.0525 ΔBrier -0.0202 改善天 1/2
+     p0m_taf_likelihood_v11           fleet_wide    n=   43 天=  2 LS0 1.386 ΔLS +0.0217 [+0.0206,+0.0703] ΔCRPS -0.0137 ΔBrier +0.0246 改善天 0/2
+     p0m_taf_likelihood_v11           station_wide  n=   43 天=  2 LS0 1.386 ΔLS +0.0008 [-0.0044,+0.2207] ΔCRPS -0.0237 ΔBrier +0.0195 改善天 1/2
      p0m_taf_likelihood_v13           fleet_wide    n<30
      p0m_taf_likelihood_v13           station_wide  n<30
-     p0m_taf_likelihood_v14           fleet_core    n<30
-     p0m_taf_likelihood_v14           station_core  n<30
      p0m_taf_likelihood_v14           fleet_wide    n<30
      p0m_taf_likelihood_v14           station_wide  n<30
-     p0m_taf_likelihood_v15           fleet_core    n<30
-     p0m_taf_likelihood_v15           station_core  n<30
      p0m_taf_likelihood_v15           fleet_wide    n<30
      p0m_taf_likelihood_v15           station_wide  n<30
-     p0m_taf_likelihood_v16           fleet_core    n<30
-     p0m_taf_likelihood_v16           station_core  n<30
      p0m_taf_likelihood_v16           fleet_wide    n<30
      p0m_taf_likelihood_v16           station_wide  n<30
-     p0m_taf_likelihood_v17           fleet_core    n<30
-     p0m_taf_likelihood_v17           station_core  n<30
      p0m_taf_likelihood_v17           fleet_wide    n<30
      p0m_taf_likelihood_v17           station_wide  n<30
-     p0m_taf_likelihood_v18           fleet_core    n<30
-     p0m_taf_likelihood_v18           station_core  n<30
      p0m_taf_likelihood_v18           fleet_wide    n<30
      p0m_taf_likelihood_v18           station_wide  n<30
-     p0m_taf_likelihood_v20           fleet_core    n<30
-     p0m_taf_likelihood_v20           station_core  n<30
      p0m_taf_likelihood_v20           fleet_wide    n<30
      p0m_taf_likelihood_v20           station_wide  n<30
-     p0m_taf_likelihood_v21           fleet_core    n<30
-     p0m_taf_likelihood_v21           station_core  n<30
-     p0m_taf_likelihood_v21           fleet_wide    n=   88 天=  3 LS0 1.480 ΔLS +0.0050 [-0.0368,+0.0572] ΔCRPS +0.0219 ΔBrier +0.0220 改善天 2/3
+     p0m_taf_likelihood_v21           fleet_wide    n=   88 天=  3 LS0 1.480 ΔLS +0.0049 [-0.0369,+0.0572] ΔCRPS +0.0219 ΔBrier +0.0219 改善天 2/3
      p0m_taf_likelihood_v21           station_wide  n=   88 天=  3 LS0 1.480 ΔLS +0.0192 [-0.0200,+0.0722] ΔCRPS +0.0320 ΔBrier +0.0176 改善天 1/3
-     p0m_taf_likelihood_v22           fleet_core    n=   34 天=  1 LS0 1.419 ΔLS -0.0113 [-0.0113,-0.0113] ΔCRPS -0.0023 ΔBrier -0.0078 改善天 1/1
-     p0m_taf_likelihood_v22           station_core  n=   34 天=  1 LS0 1.419 ΔLS -0.0153 [-0.0153,-0.0153] ΔCRPS +0.0042 ΔBrier -0.0078 改善天 1/1
-     p0m_taf_likelihood_v22           fleet_wide    n=  189 天=  6 LS0 1.461 ΔLS -0.0013 [-0.0385,+0.0279] ΔCRPS -0.0075 ΔBrier -0.0020 改善天 3/6
-     p0m_taf_likelihood_v22           station_wide  n=  189 天=  6 LS0 1.461 ΔLS -0.0229 [-0.0677,+0.0287] ΔCRPS -0.0188 ΔBrier -0.0122 改善天 3/6
-     p0m_taf_likelihood_v23           fleet_core    n<30
-     p0m_taf_likelihood_v23           station_core  n<30
+     p0m_taf_likelihood_v22           fleet_wide    n=  189 天=  6 LS0 1.461 ΔLS -0.0013 [-0.0385,+0.0279] ΔCRPS -0.0076 ΔBrier -0.0020 改善天 3/6
+     p0m_taf_likelihood_v22           station_wide  n=  189 天=  6 LS0 1.461 ΔLS -0.0229 [-0.0678,+0.0287] ΔCRPS -0.0188 ΔBrier -0.0122 改善天 3/6
      p0m_taf_likelihood_v23           fleet_wide    n<30
      p0m_taf_likelihood_v23           station_wide  n<30
-     p0m_taf_likelihood_v24           fleet_core    n<30
-     p0m_taf_likelihood_v24           station_core  n<30
      p0m_taf_likelihood_v24           fleet_wide    n<30
      p0m_taf_likelihood_v24           station_wide  n<30
-     p0m_taf_likelihood_v25           fleet_core    n<30
-     p0m_taf_likelihood_v25           station_core  n<30
      p0m_taf_likelihood_v25           fleet_wide    n<30
      p0m_taf_likelihood_v25           station_wide  n<30
-     p0m_taf_likelihood_v26           fleet_core    n<30
-     p0m_taf_likelihood_v26           station_core  n<30
      p0m_taf_likelihood_v26           fleet_wide    n<30
      p0m_taf_likelihood_v26           station_wide  n<30
-     p0m_taf_likelihood_v27           fleet_core    n<30
-     p0m_taf_likelihood_v27           station_core  n<30
      p0m_taf_likelihood_v27           fleet_wide    n<30
      p0m_taf_likelihood_v27           station_wide  n<30
-     p0m_taf_likelihood_v28           fleet_core    n<30
-     p0m_taf_likelihood_v28           station_core  n<30
      p0m_taf_likelihood_v28           fleet_wide    n<30
      p0m_taf_likelihood_v28           station_wide  n<30
-     p0m_taf_likelihood_v29           fleet_core    n=   79 天=  4 LS0 1.642 ΔLS +0.0260 [+0.0054,+0.0347] ΔCRPS +0.0154 ΔBrier +0.0059 改善天 1/4
-     p0m_taf_likelihood_v29           station_core  n=   79 天=  4 LS0 1.642 ΔLS +0.0426 [+0.0106,+0.0698] ΔCRPS +0.0305 ΔBrier +0.0114 改善天 1/4
-     p0m_taf_likelihood_v29           fleet_wide    n=   95 天=  4 LS0 1.599 ΔLS +0.0393 [+0.0280,+0.0508] ΔCRPS +0.0228 ΔBrier +0.0076 改善天 0/4
-     p0m_taf_likelihood_v29           station_wide  n=   95 天=  4 LS0 1.599 ΔLS +0.0088 [-0.0072,+0.0603] ΔCRPS +0.0015 ΔBrier -0.0055 改善天 2/4
-     p0m_taf_likelihood_v30           fleet_core    n=  189 天=  6 LS0 1.517 ΔLS -0.0150 [-0.0333,+0.0127] ΔCRPS -0.0011 ΔBrier -0.0022 改善天 4/6
-     p0m_taf_likelihood_v30           station_core  n=  189 天=  6 LS0 1.517 ΔLS -0.0026 [-0.0327,+0.0425] ΔCRPS +0.0058 ΔBrier +0.0001 改善天 3/6
-     p0m_taf_likelihood_v30           fleet_wide    n=  228 天=  6 LS0 1.487 ΔLS -0.0156 [-0.0533,+0.0251] ΔCRPS -0.0043 ΔBrier -0.0018 改善天 4/6
-     p0m_taf_likelihood_v30           station_wide  n=  228 天=  6 LS0 1.487 ΔLS +0.0047 [-0.0208,+0.0431] ΔCRPS +0.0053 ΔBrier +0.0039 改善天 3/6
-     p0m_taf_likelihood_v31           fleet_core    n=  273 天=  8 LS0 1.495 ΔLS -0.0280 [-0.0463,-0.0086] ΔCRPS -0.0222 ΔBrier -0.0110 改善天 7/8
-     p0m_taf_likelihood_v31           station_core  n=  273 天=  8 LS0 1.495 ΔLS -0.0453 [-0.0641,-0.0225] ΔCRPS -0.0386 ΔBrier -0.0214 改善天 7/8
+     p0m_taf_likelihood_v29           fleet_wide    n=   95 天=  4 LS0 1.599 ΔLS +0.0380 [+0.0280,+0.0482] ΔCRPS +0.0228 ΔBrier +0.0071 改善天 0/4
+     p0m_taf_likelihood_v29           station_wide  n=   95 天=  4 LS0 1.599 ΔLS +0.0067 [-0.0072,+0.0603] ΔCRPS +0.0015 ΔBrier -0.0065 改善天 2/4
+     p0m_taf_likelihood_v30           fleet_wide    n=  228 天=  6 LS0 1.487 ΔLS -0.0162 [-0.0549,+0.0251] ΔCRPS -0.0043 ΔBrier -0.0021 改善天 4/6
+     p0m_taf_likelihood_v30           station_wide  n=  228 天=  6 LS0 1.487 ΔLS +0.0041 [-0.0216,+0.0431] ΔCRPS +0.0053 ΔBrier +0.0036 改善天 3/6
      p0m_taf_likelihood_v31           fleet_wide    n=  290 天=  8 LS0 1.491 ΔLS -0.0356 [-0.0615,-0.0109] ΔCRPS -0.0275 ΔBrier -0.0142 改善天 7/8
-     p0m_taf_likelihood_v31           station_wide  n=  290 天=  8 LS0 1.491 ΔLS -0.0509 [-0.0662,-0.0405] ΔCRPS -0.0436 ΔBrier -0.0258 改善天 8/8
-     p0m_taf_likelihood_v32           fleet_core    n<30
-     p0m_taf_likelihood_v32           station_core  n<30
+     p0m_taf_likelihood_v31           station_wide  n=  290 天=  8 LS0 1.491 ΔLS -0.0509 [-0.0663,-0.0406] ΔCRPS -0.0436 ΔBrier -0.0258 改善天 8/8
      p0m_taf_likelihood_v32           fleet_wide    n<30
      p0m_taf_likelihood_v32           station_wide  n<30
-     p0m_taf_likelihood_v33           fleet_core    n=  163 天=  5 LS0 1.500 ΔLS -0.0161 [-0.0277,-0.0059] ΔCRPS -0.0069 ΔBrier -0.0023 改善天 4/5
-     p0m_taf_likelihood_v33           station_core  n=  163 天=  5 LS0 1.500 ΔLS -0.0004 [-0.0189,+0.0202] ΔCRPS +0.0020 ΔBrier +0.0023 改善天 1/5
-     p0m_taf_likelihood_v33           fleet_wide    n=  166 天=  5 LS0 1.486 ΔLS -0.0339 [-0.0386,-0.0293] ΔCRPS -0.0235 ΔBrier -0.0089 改善天 4/5
-     p0m_taf_likelihood_v33           station_wide  n=  166 天=  5 LS0 1.486 ΔLS +0.0033 [-0.0101,+0.0191] ΔCRPS -0.0036 ΔBrier +0.0024 改善天 2/5
+     p0m_taf_likelihood_v33           fleet_wide    n=  210 天=  5 LS0 1.463 ΔLS -0.0262 [-0.0380,-0.0100] ΔCRPS -0.0206 ΔBrier -0.0080 改善天 4/5
+     p0m_taf_likelihood_v33           station_wide  n=  210 天=  5 LS0 1.463 ΔLS +0.0091 [-0.0059,+0.0247] ΔCRPS -0.0020 ΔBrier +0.0049 改善天 2/5
 E. 按决策日历段（10-01 起 / 10-11 起）
-   决策 ≥10-01                          fleet_core    n=  784 天= 20 LS0 1.509 ΔLS -0.0189 [-0.0358,-0.0057] ΔCRPS -0.0110 ΔBrier -0.0057 改善天 15/20
-   决策 ≥10-01                          station_core  n=  784 天= 20 LS0 1.509 ΔLS -0.0198 [-0.0442,+0.0011] ΔCRPS -0.0134 ΔBrier -0.0081 改善天 11/20
-   决策 ≥10-01                          fleet_wide    n=  871 天= 21 LS0 1.492 ΔLS -0.0231 [-0.0436,-0.0066] ΔCRPS -0.0155 ΔBrier -0.0082 改善天 15/21
-   决策 ≥10-01                          station_wide  n=  871 天= 21 LS0 1.492 ΔLS -0.0214 [-0.0390,-0.0026] ΔCRPS -0.0188 ΔBrier -0.0103 改善天 13/21
-   决策 ≥10-11                          fleet_core    n=  390 天= 11 LS0 1.493 ΔLS -0.0226 [-0.0355,-0.0101] ΔCRPS -0.0162 ΔBrier -0.0072 改善天 8/11
-   决策 ≥10-11                          station_core  n=  390 天= 11 LS0 1.493 ΔLS -0.0249 [-0.0428,-0.0032] ΔCRPS -0.0214 ΔBrier -0.0107 改善天 5/11
-   决策 ≥10-11                          fleet_wide    n=  404 天= 11 LS0 1.480 ΔLS -0.0354 [-0.0509,-0.0206] ΔCRPS -0.0270 ΔBrier -0.0129 改善天 8/11
-   决策 ≥10-11                          station_wide  n=  404 天= 11 LS0 1.480 ΔLS -0.0243 [-0.0404,+0.0005] ΔCRPS -0.0257 ΔBrier -0.0125 改善天 6/11
+   决策 ≥10-01                          fleet_wide    n=  915 天= 21 LS0 1.486 ΔLS -0.0224 [-0.0420,-0.0071] ΔCRPS -0.0153 ΔBrier -0.0083 改善天 15/21
+   决策 ≥10-01                          station_wide  n=  915 天= 21 LS0 1.486 ΔLS -0.0196 [-0.0386,-0.0010] ΔCRPS -0.0178 ΔBrier -0.0095 改善天 13/21
+   决策 ≥10-11                          fleet_wide    n=  448 天= 11 LS0 1.470 ΔLS -0.0323 [-0.0495,-0.0177] ΔCRPS -0.0254 ΔBrier -0.0123 改善天 8/11
+   决策 ≥10-11                          station_wide  n=  448 天= 11 LS0 1.470 ΔLS -0.0196 [-0.0387,+0.0054] ΔCRPS -0.0230 ΔBrier -0.0102 改善天 6/11
 F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益来自哪里）
-   现行·四家可得                            fleet_core    n=  163 天=  5 LS0 1.500 ΔLS -0.0161 [-0.0277,-0.0059] ΔCRPS -0.0069 ΔBrier -0.0023 改善天 4/5
-   现行·四家可得                            station_core  n=  163 天=  5 LS0 1.500 ΔLS -0.0004 [-0.0189,+0.0202] ΔCRPS +0.0020 ΔBrier +0.0023 改善天 1/5
-   现行·四家可得                            fleet_wide    n=  163 天=  5 LS0 1.500 ΔLS -0.0347 [-0.0390,-0.0299] ΔCRPS -0.0240 ΔBrier -0.0092 改善天 4/5
-   现行·四家可得                            station_wide  n=  163 天=  5 LS0 1.500 ΔLS +0.0014 [-0.0120,+0.0172] ΔCRPS -0.0038 ΔBrier +0.0015 改善天 2/5
-   现行·四家不可得                           fleet_core    n<30
-   现行·四家不可得                           station_core  n<30
-   现行·四家不可得                           fleet_wide    n<30
-   现行·四家不可得                           station_wide  n<30
+   现行·四家可得                            fleet_wide    n<30
+   现行·四家可得                            station_wide  n<30
+   现行·四家不可得                           fleet_wide    n=  210 天=  5 LS0 1.463 ΔLS -0.0262 [-0.0380,-0.0100] ΔCRPS -0.0206 ΔBrier -0.0080 改善天 4/5
+   现行·四家不可得                           station_wide  n=  210 天=  5 LS0 1.463 ΔLS +0.0091 [-0.0059,+0.0247] ΔCRPS -0.0020 ΔBrier +0.0049 改善天 2/5
+
+==================== P1：2254 条记录，服务版本 36 段（现行 p1_joint_likelihood_v43）====================
+   p1_metar_trajectory_target_v5 决策 2026-08-31…2026-09-02  n=   8 事件日 3
+   p1_metar_trajectory_target_v6 决策 2026-09-03…2026-09-06  n= 171 事件日 4
+   p1_metar_trajectory_target_v7 决策 2026-09-06…2026-09-06  n=  10 事件日 2
+   p1_metar_trajectory_target_v8 决策 2026-09-06…2026-09-07  n=  40 事件日 1
+   p1_metar_trajectory_target_v9 决策 2026-09-07…2026-09-14  n= 314 事件日 8
+   p1_metar_trajectory_target_v10 决策 2026-09-14…2026-09-18  n= 185 事件日 5
+   p1_metar_trajectory_target_v11 决策 2026-09-18…2026-09-18  n=  18 事件日 1
+   p1_joint_likelihood_v12      决策 2026-09-18…2026-09-19  n=  23 事件日 1
+   p1_joint_likelihood_v13      决策 2026-09-19…2026-09-19  n=   3 事件日 1
+   p1_joint_likelihood_v14      决策 2026-09-19…2026-09-19  n=   1 事件日 1
+   p1_joint_likelihood_v15      决策 2026-09-19…2026-09-19  n=   1 事件日 1
+   p1_joint_likelihood_v16      决策 2026-09-19…2026-09-19  n=  15 事件日 1
+   p1_joint_likelihood_v17      决策 2026-09-19…2026-09-21  n=  75 事件日 3
+   p1_joint_likelihood_v18      决策 2026-09-21…2026-09-22  n=  43 事件日 1
+   p1_joint_likelihood_v19      决策 2026-09-22…2026-09-23  n=  32 事件日 2
+   p1_joint_likelihood_v20      决策 2026-09-23…2026-09-23  n=  30 事件日 2
+   p1_joint_likelihood_v22      决策 2026-09-23…2026-09-23  n=  13 事件日 1
+   p1_joint_likelihood_v23      决策 2026-09-24…2026-09-24  n=  20 事件日 2
+   p1_joint_likelihood_v24      决策 2026-09-24…2026-09-24  n=  24 事件日 1
+   p1_joint_likelihood_v26      决策 2026-09-25…2026-09-25  n=  12 事件日 1
+   p1_joint_likelihood_v28      决策 2026-09-25…2026-09-25  n=   2 事件日 1
+   p1_joint_likelihood_v29      决策 2026-09-25…2026-09-25  n=   2 事件日 1
+   p1_joint_likelihood_v30      决策 2026-09-25…2026-09-27  n=  91 事件日 3
+   p1_joint_likelihood_v31      决策 2026-09-27…2026-10-01  n= 197 事件日 5
+   p1_joint_likelihood_v32      决策 2026-10-01…2026-10-01  n=  12 事件日 1
+   p1_joint_likelihood_v33      决策 2026-10-02…2026-10-02  n=   2 事件日 1
+   p1_joint_likelihood_v34      决策 2026-10-02…2026-10-02  n=   6 事件日 1
+   p1_joint_likelihood_v35      决策 2026-10-02…2026-10-02  n=   9 事件日 2
+   p1_joint_likelihood_v36      决策 2026-10-02…2026-10-02  n=  15 事件日 1
+   p1_joint_likelihood_v37      决策 2026-10-02…2026-10-04  n=  78 事件日 3
+   p1_joint_likelihood_v38      决策 2026-10-04…2026-10-09  n= 234 事件日 5
+   p1_joint_likelihood_v39      决策 2026-10-09…2026-10-15  n= 303 事件日 8
+   p1_joint_likelihood_v40      决策 2026-10-15…2026-10-15  n=  15 事件日 1
+   p1_joint_likelihood_v41      决策 2026-10-16…2026-10-16  n=  18 事件日 2
+   p1_joint_likelihood_v42      决策 2026-10-16…2026-10-16  n=   3 事件日 1
+   p1_joint_likelihood_v43      决策 2026-10-16…2026-10-21  n= 229 事件日 5
+A. 全窗（与每日拟合同口径）
+   全窗                                 fleet_wide    n= 2021 天= 44 LS0 1.418 ΔLS -0.0264 [-0.0473,-0.0050] ΔCRPS -0.0086 ΔBrier -0.0025 改善天 27/44
+   全窗                                 station_wide  n= 2021 天= 44 LS0 1.418 ΔLS -0.0301 [-0.0562,-0.0045] ΔCRPS -0.0130 ΔBrier -0.0057 改善天 24/44
+B. 只评现行版本段（参数仍用之前全部事件日）
+   现行 p1_joint_likelihood_v43         fleet_wide    n=  229 天=  5 LS0 1.306 ΔLS -0.0231 [-0.0429,-0.0041] ΔCRPS -0.0178 ΔBrier -0.0079 改善天 4/5
+   现行 p1_joint_likelihood_v43         station_wide  n=  229 天=  5 LS0 1.306 ΔLS -0.0191 [-0.0494,+0.0069] ΔCRPS -0.0171 ΔBrier -0.0063 改善天 3/5
+C. 只评旧版本段
+   旧版本                                fleet_wide    n= 1792 天= 40 LS0 1.432 ΔLS -0.0269 [-0.0510,-0.0012] ΔCRPS -0.0074 ΔBrier -0.0018 改善天 23/40
+   旧版本                                station_wide  n= 1792 天= 40 LS0 1.432 ΔLS -0.0315 [-0.0586,-0.0013] ΔCRPS -0.0125 ΔBrier -0.0056 改善天 21/40
+D. 逐段（≥30 条才报）
+     p1_metar_trajectory_target_v5    fleet_wide    n<30
+     p1_metar_trajectory_target_v5    station_wide  n<30
+     p1_metar_trajectory_target_v6    fleet_wide    n<30
+     p1_metar_trajectory_target_v6    station_wide  n<30
+     p1_metar_trajectory_target_v7    fleet_wide    n<30
+     p1_metar_trajectory_target_v7    station_wide  n<30
+     p1_metar_trajectory_target_v8    fleet_wide    n<30
+     p1_metar_trajectory_target_v8    station_wide  n<30
+     p1_metar_trajectory_target_v9    fleet_wide    n=  310 天=  7 LS0 1.616 ΔLS -0.1326 [-0.2129,-0.0375] ΔCRPS -0.0338 ΔBrier -0.0072 改善天 5/7
+     p1_metar_trajectory_target_v9    station_wide  n=  310 天=  7 LS0 1.616 ΔLS -0.1435 [-0.2124,-0.0534] ΔCRPS -0.0442 ΔBrier -0.0166 改善天 5/7
+     p1_metar_trajectory_target_v10   fleet_wide    n=  185 天=  5 LS0 1.487 ΔLS +0.0382 [-0.0377,+0.0990] ΔCRPS +0.0069 ΔBrier +0.0038 改善天 2/5
+     p1_metar_trajectory_target_v10   station_wide  n=  185 天=  5 LS0 1.487 ΔLS +0.0477 [-0.0292,+0.1072] ΔCRPS +0.0097 ΔBrier +0.0053 改善天 2/5
+     p1_metar_trajectory_target_v11   fleet_wide    n<30
+     p1_metar_trajectory_target_v11   station_wide  n<30
+     p1_joint_likelihood_v12          fleet_wide    n<30
+     p1_joint_likelihood_v12          station_wide  n<30
+     p1_joint_likelihood_v13          fleet_wide    n<30
+     p1_joint_likelihood_v13          station_wide  n<30
+     p1_joint_likelihood_v14          fleet_wide    n<30
+     p1_joint_likelihood_v14          station_wide  n<30
+     p1_joint_likelihood_v15          fleet_wide    n<30
+     p1_joint_likelihood_v15          station_wide  n<30
+     p1_joint_likelihood_v16          fleet_wide    n<30
+     p1_joint_likelihood_v16          station_wide  n<30
+     p1_joint_likelihood_v17          fleet_wide    n=   75 天=  3 LS0 1.308 ΔLS +0.0181 [-0.2154,+0.0302] ΔCRPS +0.0045 ΔBrier +0.0140 改善天 1/3
+     p1_joint_likelihood_v17          station_wide  n=   75 天=  3 LS0 1.308 ΔLS -0.0040 [-0.1538,+0.0249] ΔCRPS -0.0108 ΔBrier +0.0106 改善天 2/3
+     p1_joint_likelihood_v18          fleet_wide    n=   43 天=  1 LS0 1.288 ΔLS -0.0472 [-0.0472,-0.0472] ΔCRPS -0.0356 ΔBrier -0.0254 改善天 1/1
+     p1_joint_likelihood_v18          station_wide  n=   43 天=  1 LS0 1.288 ΔLS -0.0407 [-0.0407,-0.0407] ΔCRPS -0.0354 ΔBrier -0.0216 改善天 1/1
+     p1_joint_likelihood_v19          fleet_wide    n=   32 天=  2 LS0 1.428 ΔLS +0.0071 [+0.0067,+0.0203] ΔCRPS +0.0151 ΔBrier +0.0193 改善天 0/2
+     p1_joint_likelihood_v19          station_wide  n=   32 天=  2 LS0 1.428 ΔLS -0.0341 [-0.2203,-0.0281] ΔCRPS +0.0013 ΔBrier +0.0075 改善天 2/2
+     p1_joint_likelihood_v20          fleet_wide    n=   30 天=  2 LS0 1.712 ΔLS -0.1293 [-0.3436,+0.0581] ΔCRPS -0.0548 ΔBrier -0.0138 改善天 1/2
+     p1_joint_likelihood_v20          station_wide  n=   30 天=  2 LS0 1.712 ΔLS -0.1365 [-0.3277,+0.0309] ΔCRPS -0.0667 ΔBrier -0.0185 改善天 1/2
+     p1_joint_likelihood_v22          fleet_wide    n<30
+     p1_joint_likelihood_v22          station_wide  n<30
+     p1_joint_likelihood_v23          fleet_wide    n<30
+     p1_joint_likelihood_v23          station_wide  n<30
+     p1_joint_likelihood_v24          fleet_wide    n<30
+     p1_joint_likelihood_v24          station_wide  n<30
+     p1_joint_likelihood_v26          fleet_wide    n<30
+     p1_joint_likelihood_v26          station_wide  n<30
+     p1_joint_likelihood_v28          fleet_wide    n<30
+     p1_joint_likelihood_v28          station_wide  n<30
+     p1_joint_likelihood_v29          fleet_wide    n<30
+     p1_joint_likelihood_v29          station_wide  n<30
+     p1_joint_likelihood_v30          fleet_wide    n=   91 天=  3 LS0 1.387 ΔLS +0.0250 [-0.0396,+0.3183] ΔCRPS +0.0239 ΔBrier +0.0219 改善天 1/3
+     p1_joint_likelihood_v30          station_wide  n=   91 天=  3 LS0 1.387 ΔLS +0.0484 [+0.0167,+0.2671] ΔCRPS +0.0227 ΔBrier +0.0223 改善天 0/3
+     p1_joint_likelihood_v31          fleet_wide    n=  197 天=  5 LS0 1.368 ΔLS -0.0019 [-0.0414,+0.0379] ΔCRPS +0.0059 ΔBrier -0.0003 改善天 2/5
+     p1_joint_likelihood_v31          station_wide  n=  197 天=  5 LS0 1.368 ΔLS -0.0003 [-0.0557,+0.0514] ΔCRPS +0.0077 ΔBrier -0.0008 改善天 2/5
+     p1_joint_likelihood_v32          fleet_wide    n<30
+     p1_joint_likelihood_v32          station_wide  n<30
+     p1_joint_likelihood_v33          fleet_wide    n<30
+     p1_joint_likelihood_v33          station_wide  n<30
+     p1_joint_likelihood_v34          fleet_wide    n<30
+     p1_joint_likelihood_v34          station_wide  n<30
+     p1_joint_likelihood_v35          fleet_wide    n<30
+     p1_joint_likelihood_v35          station_wide  n<30
+     p1_joint_likelihood_v36          fleet_wide    n<30
+     p1_joint_likelihood_v36          station_wide  n<30
+     p1_joint_likelihood_v37          fleet_wide    n=   78 天=  3 LS0 1.474 ΔLS -0.0582 [-0.1383,+0.6726] ΔCRPS -0.0102 ΔBrier -0.0025 改善天 2/3
+     p1_joint_likelihood_v37          station_wide  n=   78 天=  3 LS0 1.474 ΔLS -0.1043 [-0.2223,+0.7681] ΔCRPS -0.0354 ΔBrier -0.0121 改善天 2/3
+     p1_joint_likelihood_v38          fleet_wide    n=  234 天=  5 LS0 1.402 ΔLS -0.0114 [-0.0185,-0.0039] ΔCRPS -0.0038 ΔBrier -0.0055 改善天 5/5
+     p1_joint_likelihood_v38          station_wide  n=  234 天=  5 LS0 1.402 ΔLS +0.0084 [-0.0442,+0.0597] ΔCRPS +0.0090 ΔBrier -0.0002 改善天 2/5
+     p1_joint_likelihood_v39          fleet_wide    n=  303 天=  8 LS0 1.351 ΔLS -0.0149 [-0.0295,+0.0007] ΔCRPS -0.0073 ΔBrier -0.0077 改善天 6/8
+     p1_joint_likelihood_v39          station_wide  n=  303 天=  8 LS0 1.351 ΔLS -0.0195 [-0.0604,+0.0180] ΔCRPS -0.0174 ΔBrier -0.0142 改善天 5/8
+     p1_joint_likelihood_v40          fleet_wide    n<30
+     p1_joint_likelihood_v40          station_wide  n<30
+     p1_joint_likelihood_v41          fleet_wide    n<30
+     p1_joint_likelihood_v41          station_wide  n<30
+     p1_joint_likelihood_v42          fleet_wide    n<30
+     p1_joint_likelihood_v42          station_wide  n<30
+     p1_joint_likelihood_v43          fleet_wide    n=  229 天=  5 LS0 1.306 ΔLS -0.0231 [-0.0429,-0.0041] ΔCRPS -0.0178 ΔBrier -0.0079 改善天 4/5
+     p1_joint_likelihood_v43          station_wide  n=  229 天=  5 LS0 1.306 ΔLS -0.0191 [-0.0494,+0.0069] ΔCRPS -0.0171 ΔBrier -0.0063 改善天 3/5
+E. 按决策日历段（10-01 起 / 10-11 起）
+   决策 ≥10-01                          fleet_wide    n=  958 天= 21 LS0 1.357 ΔLS -0.0182 [-0.0297,-0.0082] ΔCRPS -0.0086 ΔBrier -0.0069 改善天 17/21
+   决策 ≥10-01                          station_wide  n=  958 天= 21 LS0 1.357 ΔLS -0.0185 [-0.0481,+0.0066] ΔCRPS -0.0105 ΔBrier -0.0085 改善天 11/21
+   决策 ≥10-11                          fleet_wide    n=  484 天= 11 LS0 1.314 ΔLS -0.0183 [-0.0294,-0.0048] ΔCRPS -0.0135 ΔBrier -0.0082 改善天 9/11
+   决策 ≥10-11                          station_wide  n=  484 天= 11 LS0 1.314 ΔLS -0.0139 [-0.0382,+0.0115] ΔCRPS -0.0168 ΔBrier -0.0100 改善天 5/11
+F. 现行段内：四家 F 可得 vs 不可得的决策（十家名单的增益来自哪里）
+   现行·四家可得                            fleet_wide    n<30
+   现行·四家可得                            station_wide  n<30
+   现行·四家不可得                           fleet_wide    n=  229 天=  5 LS0 1.306 ΔLS -0.0231 [-0.0429,-0.0041] ΔCRPS -0.0178 ΔBrier -0.0079 改善天 4/5
+   现行·四家不可得                           station_wide  n=  229 天=  5 LS0 1.306 ΔLS -0.0191 [-0.0494,+0.0069] ΔCRPS -0.0171 ΔBrier -0.0063 改善天 3/5

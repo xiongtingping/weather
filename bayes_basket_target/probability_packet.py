@@ -41,6 +41,10 @@ ALLOWED_KEYS = {
     # observation likelihood.  They ride on the packet so a rebuilt envelope
     # is the envelope the compiler committed.
     "observation_likelihood",
+    # P1 only (charter 279 补记三): the deterministic consensus read at the
+    # step and the P1 family's fitted parameters, so a rebuilt envelope
+    # carries the shadow receipt the compiler wrote.
+    "deterministic_consensus",
     "decision_at_utc", "fresh_until_utc",
     "bridge_sha256", "checkpoint_id", "posterior_version",
     "created_at_utc",
@@ -328,6 +332,7 @@ def build_probability_envelope(
                 or None
             ),
             observation_likelihood=packet.get("observation_likelihood"),
+            deterministic_consensus=packet.get("deterministic_consensus"),
             **common,
         )
     raise ContractError("probability_materialization_stage_invalid")

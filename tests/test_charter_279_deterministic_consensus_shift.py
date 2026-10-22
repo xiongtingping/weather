@@ -1,10 +1,11 @@
 """Charter 279: the deterministic consensus F as a P0 centre feature -- shadow.
 
 User ruling 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」, then 「统一用十家」
-(补记二): every P0 and P0-M compile records what the ten-system consensus would
-move its centre by under the fleet bias and the station bias, and the vector it
-would serve; the served vector is untouched.  The daily fit scores each variant
-walk-forward under charter 240.
+(补记二) and 「影子也要进p1.把逐站弱化。把舰队突出」 (补记三): every P0, P0-M and P1
+compile records what the ten-system consensus would move its centre by under
+the fleet bias and the station bias, and the vector it would serve; the served
+vector is untouched.  The daily fit scores each variant walk-forward under
+charter 240.
 """
 
 from __future__ import annotations
@@ -57,14 +58,16 @@ def _fit(family="P0_far", **over):
             "families": {family: {"variants": variants}}}
 
 
-def test_the_stage_families_split_p0_at_36_hours_and_p1_is_not_read():
+def test_the_stage_families_split_p0_at_36_hours_and_p1_has_its_own():
     assert DCS.stage_family("P0", 54.6) == "P0_far"
     assert DCS.stage_family("P0", 36.0) == "P0_near"
     assert DCS.stage_family("P0", 12.0) == "P0_near"
     assert DCS.stage_family("P0", 11.9) is None
     assert DCS.stage_family("P0-M", 5.0) == "P0M"
-    assert DCS.stage_family("P1", 5.0) is None
+    assert DCS.stage_family("P1", 5.0) == "P1"
     assert DCS.stage_family("P0", None) is None
+    assert DCS.STAGE_FAMILIES == ("P0_far", "P0_near", "P0M", "P1")
+    assert DCS.CENSOR_BY_FAMILY["P0M"] is True and DCS.CENSOR_BY_FAMILY["P1"] is False
 
 
 def test_f_is_the_median_of_the_ten_and_needs_three_systems():
@@ -129,6 +132,40 @@ def test_the_shift_is_capped_and_the_silent_states_are_named():
     broken = DCS.shadow_receipt(read={"state": "ERROR", "error": "x"}, fit=_fit(), family="P0_far", station_id="SBGR",
                                 served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
     assert broken["state"] == "NO_READ"
+
+
+def test_a_cold_shift_reapplies_the_observed_bound_by_the_stage_rule():
+    """The day already reached 22C: the two coldest buckets are dead.  A cold
+    shift moves mass onto them; P0-M censors it onto 22C (charter 241), P1
+    renormalises over the live buckets.  Dead buckets stay at zero either way."""
+
+    dead = ("20°C or below", "21°C")
+    served = {"20°C or below": 0.0, "21°C": 0.0, "22°C": 0.5, "23°C": 0.3, "24°C": 0.15, "25°C or higher": 0.05}
+    censored = DCS.shift_served(served, ORDER, INTERVALS, -1.0, excluded=dead, censor=True)
+    proportional = DCS.shift_served(served, ORDER, INTERVALS, -1.0, excluded=dead, censor=False)
+    for v in (censored, proportional):
+        assert v["20°C or below"] == 0.0 and v["21°C"] == 0.0
+        assert sum(v.values()) == pytest.approx(1.0, abs=1e-9)
+    assert censored["22°C"] > proportional["22°C"]            # the dead mass lands on 22C
+    assert proportional["23°C"] > censored["23°C"]            # spread over the live ones instead
+    r1 = DCS.shadow_receipt(read=_read(AIFS=19.0, IFS9KM=19.2, UKMO10=19.4, CMA=18.0), fit=_fit(family="P1"),
+                            family="P1", station_id="SBGR", served_probability=served, ordered=ORDER,
+                            intervals=INTERVALS, excluded=dead)
+    fleet = r1["variants"]["fleet_wide"]
+    assert fleet["delta_c"] < 0 and r1["excluded"] == list(dead)
+    assert fleet["shadow_probabilities"]["21°C"] == 0.0 and fleet["shadow_probabilities"]["20°C or below"] == 0.0
+
+
+def test_the_packet_bundle_carries_only_the_family_and_the_station():
+    fit = _fit(family="P1", station_wide={"bias_c": 0.9, "kappa": 0.3, "station_bias_c": {"SBGR": 0.4, "ZUUU": 1.2, "EDDM": 1.5}})
+    bundle = DCS.packet_bundle(_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=fit, family="P1", station_id="sbgr")
+    assert bundle["family"] == "P1" and bundle["read"]["f_c"]["wide"] == pytest.approx(23.2)
+    variants = bundle["fit"]["families"]["P1"]["variants"]
+    assert variants["station_wide"]["station_bias_c"] == {"SBGR": 0.4}
+    assert "station_bias_c" not in variants["fleet_wide"]
+    assert bundle["fit"]["fitted_at_utc"] == fit["fitted_at_utc"]
+    json.dumps(bundle)                                         # rides on a packet
+    assert DCS.packet_bundle(_read(AIFS=1.0), fit=None, family="P1", station_id="X")["fit"]["families"]["P1"]["variants"] == {}
 
 
 def _synthetic_records(*, kappa_true=0.5, bias_true=0.8, days=30, stations=6, seed=279):
@@ -251,6 +288,46 @@ def test_p0m_records_the_shadow_on_its_own_served_vector_and_serves_the_same(mon
     assert receipt["variants"]["station_wide"]["state"] == "READ"
 
 
+def test_a_p1_compile_carries_the_receipt_on_envelope_and_packet_and_serves_the_same(monkeypatch):
+    from bayes_basket_target import p1_compiler  # noqa: PLC0415
+    from bayes_basket_target.probability_packet import ALLOWED_KEYS, build_probability_envelope  # noqa: PLC0415
+    from tests.test_charter_150_p1_joint_likelihood import _artifact, _observation, _registry  # noqa: PLC0415
+    from tests.test_charter_241_p0m_observed_floor_censoring import _p0m  # noqa: PLC0415
+
+    monkeypatch.setattr(p1_compiler, "load_deterministic_consensus_fit", lambda: _fit(family="P1"))
+    root = _p0m(excluded=(), high=None)
+    zone_rows = []
+    for product, value in (("AIFS", 38.6), ("IFS9KM", 38.8), ("UKMO10", 38.9), ("CMA", 37.0), ("GFS", 39.0)):
+        curve = {f"2026-07-23T{h:02d}:00:00Z": value - abs(h - 12) * 0.3 for h in range(0, 24)}
+        zone_rows.append({"ensemble_system_id": SYSTEM_IDS[product], "run_init_utc": "2026-07-22T12:00:00Z",
+                          "knowable_at_utc": "2026-07-22T18:00:00Z", "lead_hours_to_local_day_start": 6.0,
+                          "hourly_c": curve})
+
+    def compile_once(runs):
+        return p1_compiler.compile_station_p1_packets(
+            predecessor=root, observations=[_observation(root, "a", "2026-07-23T15:00:00Z", 37.6)],
+            registry_rows=_registry(root), compilation_at_utc="2026-07-23T15:00:00Z",
+            observation_likelihood_artifact=_artifact(), regional_runs=runs,
+        )
+
+    plain = compile_once(None)[-1]
+    shadowed = compile_once(zone_rows)[-1]
+    assert DCS.LINEAGE_KEY not in plain["expected_envelope"]["lineage"] and plain["deterministic_consensus"] is None
+    assert shadowed["expected_envelope"]["probabilities"] == plain["expected_envelope"]["probabilities"]
+    receipt = json.loads(shadowed["expected_envelope"]["lineage"][DCS.LINEAGE_KEY])
+    assert receipt["state"] == "SHADOW" and receipt["family"] == "P1" and receipt["served_delta_c"] == 0.0
+    assert receipt["n"]["wide"] >= 3 and receipt["variants"]["fleet_wide"]["state"] == "READ"
+    assert "37" in receipt.get("excluded", []) and receipt["variants"]["fleet_wide"]["shadow_probabilities"]["37"] == 0.0
+    # The rebuild from the packet's allowed keys reproduces the envelope with its receipt.
+    assert "deterministic_consensus" in ALLOWED_KEYS
+    packet = {k: v for k, v in shadowed.items() if k in ALLOWED_KEYS}
+    packet.update(stage="P1", bridge_sha256=root.bridge_sha256,
+                  checkpoint_id=shadowed["expected_envelope"]["checkpoint_id"],
+                  posterior_version=shadowed["expected_envelope"]["posterior_version"])
+    rebuilt = build_probability_envelope(packet)
+    assert rebuilt.lineage[DCS.LINEAGE_KEY] == shadowed["expected_envelope"]["lineage"][DCS.LINEAGE_KEY]
+
+
 def test_the_board_brief_carries_the_comparison_without_the_vectors():
     from bayes_basket_target.station_day_board import _consensus_brief  # noqa: PLC0415
 
@@ -287,7 +364,11 @@ def test_the_dashboard_reads_the_fit_artifact(tmp_path, monkeypatch):
     assert dashboard.collect_deterministic_consensus()["available"] is False
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert "sdConsensusBlock(e.consensus, stage)" in source and '"deterministic_consensus": collect_deterministic_consensus()' in source
-    assert '["fleet_wide", "station_wide"]' in source and "fleet_core" not in source
+    assert "fleet_core" not in source
+    block = source[source.index("function sdConsensusBlock"):source.index("function sdProbExplain(){")]
+    # 补记三: the fleet is the card's line, the station a small grey one; P1 is not skipped.
+    assert 'if(stage === "P1") return ""' not in block and 'stage === "P1" ||' not in block
+    assert "舰队偏差 挪" in block and "font-size:10.5px;opacity:.7" in block
 
 
 def test_the_daily_fit_is_a_managed_sweep_that_writes_no_database():

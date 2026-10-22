@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Charter 279: fit the deterministic consensus shift on settled station-days.
 
-Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0-M) and per variant
+Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0-M, P1) and per variant
 (fleet or station bias; the ten-system roster): F's bias against the settled
 truth, kappa through the origin, and the walk-forward scores of the shift
 each event day would have had under the parameters fitted on the days before
@@ -41,11 +41,15 @@ WINDOW_DAYS = 60
 BUDGET_SECONDS = 1500.0
 ENVELOPES_SQL = (
     "SELECT decision_at_utc, settlement_timezone, probabilities_json, bucket_ordinals_json,"
-    " json_extract(lineage_json,'$.bucket_intervals_c_json')"
+    " json_extract(lineage_json,'$.bucket_intervals_c_json'),"
+    " json_extract(lineage_json,'$.observed_hard_excluded_buckets'),"
+    " json_extract(lineage_json,'$.hard_excluded_buckets')"
     " FROM basket_probability_envelope INDEXED BY basket_probability_envelope_asof_idx"
     " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=?"
-    " ORDER BY decision_at_utc"
+    " ORDER BY decision_at_utc LIMIT ?"
 )
+# P0 is walked until both its families are found; P0-M and P1 take their first.
+STAGE_LIMIT = {"P0": -1, "P0-M": 1, "P1": 1}
 TRUTH_SQL = (
     "SELECT event_date, truth_revision_no, settled_tmax_c FROM basket_station_day_settlement_label"
     " WHERE station_id=? AND event_date>=? AND event_date<=? ORDER BY event_date, truth_revision_no"
@@ -60,13 +64,18 @@ def _truth(conn: sqlite3.Connection, station: str, start: str, end: str) -> dict
     return out
 
 
+def _excluded(text) -> list[str]:
+    return [b for b in str(text or "").split(",") if b and b != "NONE"]
+
+
 def _first_per_family(conn: sqlite3.Connection, station: str, day: str) -> list[tuple[str, tuple]]:
-    """(family, envelope row) for the first P0 beyond 36 h, the first P0 within 12-36 h, the first P0-M."""
+    """(family, envelope row) for the first P0 beyond 36 h, the first P0 within 12-36 h,
+    the first P0-M and the first P1 (charter 279 补记三)."""
 
     picked: list[tuple[str, tuple]] = []
     seen: set[str] = set()
-    for stage in ("P0", "P0-M"):
-        for row in conn.execute(ENVELOPES_SQL, (station, day, stage)).fetchall():
+    for stage in ("P0", "P0-M", "P1"):
+        for row in conn.execute(ENVELOPES_SQL, (station, day, stage, STAGE_LIMIT[stage])).fetchall():
             dec, tz = row[0], row[1]
             try:
                 hours = hours_to_settlement(day, as_of_utc=dec, settlement_timezone=tz)
@@ -77,7 +86,7 @@ def _first_per_family(conn: sqlite3.Connection, station: str, day: str) -> list[
                 continue
             seen.add(family)
             picked.append((family, row))
-            if stage == "P0-M" or len([f for f in seen if f.startswith("P0_")]) == 2:
+            if stage != "P0" or len([f for f in seen if f.startswith("P0_")]) == 2:
                 break
     return picked
 
@@ -108,7 +117,7 @@ def collect(
                 rows = runs_for(conn, station_id=station, event_date=day, as_of_utc="9999-12-31T23:59:59Z")
             except Exception:  # noqa: BLE001
                 rows = None
-            for family, (dec, tz, pj, oj, ivj) in picked:
+            for family, (dec, tz, pj, oj, ivj, p0m_excluded, p1_excluded) in picked:
                 counts["envelopes"] += 1
                 try:
                     served = {k: float(v) for k, v in json.loads(pj).items()}
@@ -138,6 +147,7 @@ def collect(
                     "centre_c": DCS.served_mean_c(served, ordered, intervals), "f_c": dict(read["f_c"]),
                     "n": dict(read["n"]), "y_c": truth[day], "p": served, "ordered": ordered,
                     "intervals": intervals, "winner": winner,
+                    "excluded": _excluded(p0m_excluded if family == "P0M" else p1_excluded if family == "P1" else ""),
                 })
     return records, counts
 

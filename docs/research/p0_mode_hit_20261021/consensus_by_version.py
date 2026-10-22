@@ -19,9 +19,12 @@ def P(*a): print(*a, flush=True); print(*a, file=out)
 DB = f"file:{ROOT}/data/bayes_basket_target_ssot.db?mode=ro"
 PKL = os.path.join(HERE, "consensus_by_version_recs.pkl")
 SQL = ("SELECT decision_at_utc, settlement_timezone, probabilities_json, bucket_ordinals_json,"
-       " json_extract(lineage_json,'$.bucket_intervals_c_json'), posterior_version"
+       " json_extract(lineage_json,'$.bucket_intervals_c_json'), posterior_version,"
+       " json_extract(lineage_json,'$.observed_hard_excluded_buckets'), json_extract(lineage_json,'$.hard_excluded_buckets')"
        " FROM basket_probability_envelope INDEXED BY basket_probability_envelope_asof_idx"
-       " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=? ORDER BY decision_at_utc")
+       " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=? ORDER BY decision_at_utc LIMIT ?")
+LIMIT = {"P0": -1, "P0-M": 1, "P1": 1}
+def _excl(t): return [b for b in str(t or "").split(",") if b and b != "NONE"]
 DAYS = int(sys.argv[1]) if len(sys.argv) > 1 else 60
 
 def collect():
@@ -34,18 +37,18 @@ def collect():
             if tmax is not None: truth[str(day)] = float(tmax)
         for day in sorted(truth):
             picked = []; seen = set()
-            for stage in ("P0", "P0-M"):
-                for row in conn.execute(SQL, (station, day, stage)).fetchall():
+            for stage in ("P0", "P0-M", "P1"):
+                for row in conn.execute(SQL, (station, day, stage, LIMIT[stage])).fetchall():
                     try: hours = hours_to_settlement(day, as_of_utc=row[0], settlement_timezone=row[1])
                     except Exception: continue
                     fam = DCS.stage_family(stage, hours)
                     if fam is None or fam in seen: continue
                     seen.add(fam); picked.append((fam, row))
-                    if stage == "P0-M" or len([f for f in seen if f.startswith("P0_")]) == 2: break
+                    if stage != "P0" or len([f for f in seen if f.startswith("P0_")]) == 2: break
             if not picked: continue
             try: rows = runs_for(conn, station_id=station, event_date=day, as_of_utc="9999-12-31T23:59:59Z")
             except Exception: rows = None
-            for fam, (dec, tz, pj, oj, ivj, ver) in picked:
+            for fam, (dec, tz, pj, oj, ivj, ver, x0m, x1) in picked:
                 try: served = {k: float(v) for k, v in json.loads(pj).items()}; ordinals = json.loads(oj); intervals = json.loads(ivj)
                 except (TypeError, ValueError): continue
                 ordered = sorted(ordinals, key=lambda k: ordinals[k])
@@ -56,7 +59,8 @@ def collect():
                 if read.get("state") != "ok" or all(v is None for v in read["f_c"].values()): continue
                 recs.append({"station": station, "day": day, "family": fam, "decision_at_utc": dec, "version": ver,
                              "centre_c": DCS.served_mean_c(served, ordered, intervals), "f_c": dict(read["f_c"]), "n": dict(read["n"]),
-                             "y_c": truth[day], "p": served, "ordered": ordered, "intervals": intervals, "winner": winner})
+                             "y_c": truth[day], "p": served, "ordered": ordered, "intervals": intervals, "winner": winner,
+                             "excluded": _excl(x0m if fam == "P0M" else x1 if fam == "P1" else "")})
     conn.close(); P(f"collected {len(recs)} records in {time.time()-t0:.0f}s window {start}..{end}")
     return recs
 
@@ -79,7 +83,7 @@ def forward(records, family, *, keep):
                 if f is None: continue
                 bias, _ = DCS.bias_for(p, form=form, station_id=r["station"])
                 delta = max(-DCS.CAP_C, min(DCS.CAP_C, float(p["kappa"]) * (f + bias - r["centre_c"])))
-                shadow = DCS.shift_served(r["p"], r["ordered"], r["intervals"], delta)
+                shadow = DCS.shift_served(r["p"], r["ordered"], r["intervals"], delta, excluded=r.get("excluded") or (), censor=DCS.CENSOR_BY_FAMILY.get(family, False))
                 s = DCS.score_record(r, shadow)
                 acc[variant][day].append(s["logscore_after"] - s["logscore_before"]); n[variant] += 1
                 for k, v in s.items(): sums[variant][k] += v
