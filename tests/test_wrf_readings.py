@@ -103,3 +103,32 @@ def test_archived_hindcast_runs_are_filled_from_the_frozen_summary(tmp_path: Pat
     assert S["days"]["2026-10-14"]["configs"]["dom_big"]["error_c"] == 1.3   # recomputed, not the stored 9.9
     assert S["scores"]["dom_big"] == {"n": 1, "bias_c": 1.3, "mae_c": 1.3, "hit": 0.0}
     assert S["gfs_score"]["n"] == 1
+
+
+def test_forecast_history_survives_removed_runs_and_gives_the_change(tmp_path: Path, monkeypatch) -> None:
+    """Auto-updating forecasts (user 2026-10-22 「WRF应该是自动更新变化的」): every init's
+    maximum per day is kept after its run directory is gone, and the standing run
+    reports its change against the run before it."""
+
+    d = tmp_path / "run" / "fcst" / "20261025_from_2026102206"
+    d.mkdir(parents=True)
+    (d / "wrfout_d01_x").write_bytes(b"")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {})
+    monkeypatch.setattr(W, "_domain_files", lambda d: ("d01", ["f"]))
+    monkeypatch.setattr(W, "_status", lambda d, now: "complete")
+
+    class Cache:
+        read = 0
+
+        def frames(self, path, var, point):
+            # 2026-10-23 local 10:00..18:00 = 02..10Z, peak 20.0 C
+            return {f"2026-10-23_{h:02d}:00:00": 15.0 + h / 2 for h in range(2, 11)} if var == "T2" else {}
+
+    runs = {"ZUUU": {"2026-10-22T00:00:00Z": {"2026-10-23": {"tmax_c": 19.4, "at_local": "16:30", "peak_covered": True, "status": "complete"}}}}
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 22, 12, tzinfo=timezone.utc),
+                    cache=Cache(), fcst_runs=runs)
+    E = out["stations"]["ZUUU"]["days"]["2026-10-23"]
+    assert E["fcst_history"] == [["2026-10-22T00:00:00Z", 19.4], ["2026-10-22T06:00:00Z", 20.0]]
+    assert E["configs"]["fcst"]["change_c"] == 0.6 and E["configs"]["fcst"]["prev_tmax_c"] == 19.4
+    assert runs["ZUUU"]["2026-10-22T06:00:00Z"]["2026-10-23"]["tmax_c"] == 20.0

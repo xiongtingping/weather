@@ -20343,12 +20343,16 @@ function wrfTmaxPanel(){
     // GFS 00Z to three days ahead 12Z, frozen nowcast physics without satellite).
     const ahead = days.filter(d => d >= today && (S.days[d].configs || {}).fcst);
     const wk = d => "日一二三四五六"[new Date(`${d}T12:00:00Z`).getUTCDay()];
-    const aheadRow = !ahead.length ? "" : `<div class="trend-t" style="margin-top:8px" title="WRF 每天用当日 GFS 00Z 起报，跑到三天后的当地 20 点；物理与冻结的临近预报相同、不用卫星">WRF 未来几天最高温</div>
+    const aheadRow = !ahead.length ? "" : `<div class="trend-t" style="margin-top:8px" title="WRF 在每个 GFS 时次（00/06/12/18Z）出齐后重跑一次，跑到三天后的当地 20 点；物理与冻结的临近预报相同、不用卫星；箭头＝比上一轮">WRF 未来几天最高温 · 每 6 小时更新</div>
       <div class="grid g4">${ahead.map(d => { const r = S.days[d].configs.fcst, E = S.days[d];
         const lead = d === today ? "今天" : `${Math.round((new Date(`${d}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 864e5)} 天后`;
-        return big(`${h(d.slice(5))} 周${wk(d)} · ${lead}`, `${n(r.tmax_c)}°C`, "",
+        // Auto-updating (user 2026-10-22 「WRF应该是自动更新变化的」): a new run after every
+        // GFS cycle; the change against the run before and the day's run-by-run numbers.
+        const ch = r.change_c == null ? "" : ` <span class="${r.change_c > 0.05 ? "down" : r.change_c < -0.05 ? "up" : "flat"}" style="font-size:15px" title="比上一轮（${h(String(r.prev_init_utc || "").slice(5, 13).replace("T", " "))}Z）">${r.change_c > 0.05 ? "↑" : r.change_c < -0.05 ? "↓" : "→"}${n(Math.abs(r.change_c))}</span>`;
+        const runs = (E.fcst_history || []).slice(-4).map(x => `${String(x[0]).slice(11, 13)}Z ${n(x[1])}`).join(" → ");
+        return big(`${h(d.slice(5))} 周${wk(d)} · ${lead}`, `${n(r.tmax_c)}°C${ch}`, "",
           `${String(r.init_utc || "").slice(5, 10)} ${String(r.init_utc || "").slice(11, 13)}Z 起报 · ${WRF_STATUS[r.status] || h(r.status || "")}${r.peak_covered ? ` · ${h(r.at_local)} 最高` : ` · 输出到 ${h(r.last_local || "")}`}${(E.gfs || {}).tmax_c == null ? "" : ` · GFS ${n(E.gfs.tmax_c)}`}${E.truth_c == null ? "" : ` · 实测 ${n(E.truth_c, 0)}`}`,
-          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}`); }).join("")}</div>`;
+          `最高出现在当地 ${h(r.at_local || "")}；峰段＝当地 10–18 点${r.peak_covered ? "" : "（还没算到）"}${runs ? `\n各轮：${runs}` : ""}\n每个 GFS 时次（00/06/12/18Z）出齐后重跑一次`); }).join("")}</div>`;
     // Same-moment comparison (forward test): what each source said when the nowcast came out.
     const NS = S.nowcast_scores || {};
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
@@ -24981,7 +24985,7 @@ function sdMemberBayes(day){
 function sdWrf(day){
   const W = day.wrf;
   if(!W || W.state === "no_run") return "";  // only days WRF ran for get the card
-  const title = "WRF 最高温", tag = "只读 · 前向测试";
+  const title = "WRF 最高温", tag = (W.runs || {}).nowcast_sat ? "只读 · 前向测试" : "只读 · 3 日预报";
   if(W.state !== "ok") return sdModelCard({title, tag, empty: "WRF 读数还没有"});
   const R = W.runs || {}, NC = W.nowcast || null, sat = R.nowcast_sat, ctl = R.nowcast_ctl, prev = R.fcst;
   const lead = NC && NC.sat_obs_c != null ? NC.sat_obs_c : sat ? sat.tmax_c : prev ? prev.tmax_c : null;
@@ -24990,7 +24994,7 @@ function sdWrf(day){
   const satAt = NC ? loc(`${day.event_date}T${String(NC.last_sat_hour_utc).padStart(2, "0")}:00:00Z`) : null;
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
   const lines = [];
-  if(prev && (prev.series || []).length) lines.push({pts: prev.series, stroke: "var(--muted)", dash: true, label: "前一晚预报"});
+  if(prev && (prev.series || []).length) lines.push({pts: prev.series, stroke: "var(--muted)", dash: !!sat, width: sat ? 1 : 2, label: "3 日预报"});
   if(ctl && (ctl.series || []).length) lines.push({pts: ctl.series, stroke: SD_COL.WRF, dash: true, label: "模型自估云"});
   if(sat && (sat.series || []).length) lines.push({pts: sat.series, stroke: SD_COL.WRF, width: 2, label: "用卫星实测云"});
   const trend = lines.length ? `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>` : "";
@@ -24998,7 +25002,7 @@ function sdWrf(day){
   const body = `<div class="sd-det-grid">${[
     sat ? cell("卫星实测云", NC ? NC.sat_obs_c : sat.tmax_c, `WRF 算最高温时用卫星实际拍到的云（截至 ${satAt || "—"}，之后沿用）`) : "",
     ctl ? cell("模型自估云", NC ? NC.ctl_obs_c : ctl.tmax_c, "同一个 WRF、同一份数据，云由模型自己估；对比卫星云有没有用") : "",
-    prev ? cell("前一晚预报", prev.tmax_c, `前一晚 GFS 起报的 WRF（区域放大配置），${String(prev.init_utc || "").slice(5, 13).replace("T", " ")}Z`) : "",
+    prev ? cell("3 日预报", prev.tmax_c, `WRF 3 日预报，${String(prev.init_utc || "").slice(5, 13).replace("T", " ")}Z GFS 起报；每个 GFS 时次出齐后重跑${prev.change_c == null ? "" : `；比上一轮 ${sdSg(prev.change_c, 1)}°C`}${(W.fcst_history || []).length > 1 ? `\n各轮：${W.fcst_history.slice(-4).map(x => `${String(x[0]).slice(11, 13)}Z ${sdN(x[1], 1)}`).join(" → ")}` : ""}`) : "",
     W.gfs ? cell("GFS 原始", W.gfs.tmax_c, "WRF 的输入：美国 GFS 自己的 2 m 气温，3 小时一个点") : ""].join("")}</div>`;
   const NS = W.nowcast_scores || {}, fs = NS.sat_obs_c, fc = NS.ctl_obs_c, O = W.oracle_score;
   const tip = `用卫星实测云的 WRF：GFS 前一天 18Z 驱动、9 km，当地约 11 点起跑；卫星云量与云厚（葵花）放进辐射，最新一张之后沿用；已与当时机场报文最高取大。`
@@ -25006,7 +25010,8 @@ function sdWrf(day){
   return sdModelCard({title, tag, color: SD_COL.WRF,
     value: `${sdN(lead, 2)}°C`, valueTip: tip,
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? lead - bel.mean : null, "WRF 减当前服务信念均值"], ["比市场", mk == null ? null : lead - mk, "WRF 减市场均值"]],
-    sub: NC ? `用卫星实测云（${satAt}）· 当地 ${loc(NC.ready_utc)} 出数${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}` : `前一晚预报${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`,
+    sub: NC ? `用卫星实测云（${satAt}）· 当地 ${loc(NC.ready_utc)} 出数${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`
+      : `3 日预报 · ${String(prev.init_utc || "").slice(5, 10)} ${String(prev.init_utc || "").slice(11, 13)}Z 起报${prev.change_c == null ? "" : ` · 比上一轮 ${sdSg(prev.change_c, 1)}°C`}${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`,
     body, trend,
     foot: `前向平均误差：卫星云 ${fs && fs.n ? sdN(fs.mae_c, 2) : "—"} · 自估云 ${fc && fc.n ? sdN(fc.mae_c, 2) : "—"}°C（${fs ? fs.n : 0} 天）${O && O.n ? ` · 回算全天卫星云 ${sdN(O.mae_c, 2)}°C（${O.n} 天）` : ""}`});
 }

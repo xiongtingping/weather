@@ -52,6 +52,9 @@ FORECAST = "fcst"
 #: radiation up to the latest scan at issue time, and the same run without it -- and
 #: ``run/nowcast/log.jsonl``, one record per issue with the market and the served belief
 #: read at the moment the forecast became available.
+#: Every forecast init's daily maxima, kept after its run directory is removed
+#: (forecast3d.sh keeps seven days of runs): how each day's forecast moved run by run.
+FCST_RUNS_PATH = board_readings.READINGS_DIR / "wrf_fcst_runs_v1.json"
 NOWCAST_ARMS = {"sat": "nowcast_sat", "ctl": "nowcast_ctl"}
 NOWCAST_LOG = "log.jsonl"
 #: The hindcast experiments' results frozen before their files were archived (user
@@ -261,9 +264,28 @@ def nowcast_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
     return out
 
 
+def load_fcst_runs(path: Path = FCST_RUNS_PATH) -> dict[str, Any]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def save_fcst_runs(runs: dict[str, Any], path: Path = FCST_RUNS_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(runs, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+
+
 def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | None = None,
-            cache: _Cache | None = None) -> dict[str, Any]:
+            cache: _Cache | None = None, fcst_runs: dict[str, Any] | None = None) -> dict[str, Any]:
+    """``fcst_runs`` (station -> init -> day -> maximum) is updated in place with
+    every forecast run read now; the caller persists it."""
+
     now = now or _now()
+    fcst_runs = {} if fcst_runs is None else fcst_runs
     if not (root / "run").is_dir():
         return {"state": "volume_missing", "root": str(root)}
     cache = cache or _Cache()
@@ -309,10 +331,28 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     entry["gfs"] = {"tmax_c": g["tmax_c"], "at_local": g["at_local"]}
             entry["configs"][config] = rec
             if config == FORECAST:
+                fcst_runs.setdefault(station, {}).setdefault(rec["init_utc"], {})[day] = {
+                    k: rec[k] for k in ("tmax_c", "at_local", "peak_covered", "status")}
                 continue  # scored below, once per day on the init that stands
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
+        # Run by run: each day's forecast from every init that covered its peak hours,
+        # and the standing run's change against the one before it.
+        by_day: dict[str, list[list[Any]]] = {}
+        for init, per_day in sorted((fcst_runs.get(station) or {}).items()):
+            for day, r in per_day.items():
+                if r.get("peak_covered"):
+                    by_day.setdefault(day, []).append([init, r["tmax_c"]])
+        for day, hist in by_day.items():
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            entry["fcst_history"] = hist
+            rec = entry["configs"].get(FORECAST)
+            if rec and rec.get("peak_covered"):
+                before = [h for h in hist if h[0] < rec["init_utc"]]
+                if before:
+                    rec["prev_init_utc"], rec["prev_tmax_c"] = before[-1]
+                    rec["change_c"] = round(rec["tmax_c"] - before[-1][1], 2)
         for entry in days.values():
             if entry.get("gfs") and entry["truth_c"] is not None:
                 gfs_errs.append(entry["gfs"]["tmax_c"] - entry["truth_c"])
@@ -394,11 +434,13 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
     if not E:
         return {"state": "no_run"}
     configs = E.get("configs") or {}
-    keep = {c: {k: configs[c].get(k) for k in ("tmax_c", "at_local", "status", "series", "init_utc", "last_local")}
+    keep = {c: {k: configs[c].get(k) for k in ("tmax_c", "at_local", "status", "series", "init_utc", "last_local",
+                                                "peak_covered", "prev_init_utc", "prev_tmax_c", "change_c")}
             for c in ("nowcast_sat", "nowcast_ctl", FORECAST) if c in configs}
     scores = S.get("scores") or {}
     return {"state": "ok", "as_of_utc": value.get("as_of_utc"), "timezone": S.get("timezone"),
             "truth_c": E.get("truth_c"), "gfs": E.get("gfs"), "nowcast": E.get("nowcast"), "runs": keep,
+            "fcst_history": E.get("fcst_history") or [],
             "nowcast_scores": S.get("nowcast_scores") or {},
             "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85")}
 
@@ -406,13 +448,15 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
 def run(*, db: Path = board_readings.DEFAULT_DB) -> dict[str, Any]:
     t0 = time.monotonic()
     cache = _Cache()
+    fcst_runs = load_fcst_runs()
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30)
     try:
-        value = compute(conn, cache=cache)
+        value = compute(conn, cache=cache, fcst_runs=fcst_runs)
     finally:
         conn.close()
     if value.get("state") == "ok":
         cache.save()
+        save_fcst_runs(fcst_runs)
     code = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     board_readings.write_reading(READING_NAME, value, code=code, build_sec=time.monotonic() - t0)
     return value
