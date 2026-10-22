@@ -121,10 +121,10 @@ def _collect(conn):
 def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-09-01")
     conn = _landing_store()
-    # Both rulers are read at local midnight the day before the event:
-    # 04:00Z for New York in September.
-    for day, eve, priced in (("2026-09-02", "2026-09-01", True), ("2026-09-03", "2026-09-02", False),
-                             ("2026-09-04", "2026-09-03", True)):
+    # Both rulers are read at the event day's local midnight: 04:00Z for
+    # New York in September.
+    for day, eve, priced in (("2026-09-02", "2026-09-02", True), ("2026-09-03", "2026-09-03", False),
+                             ("2026-09-04", "2026-09-04", True)):
         conn.execute("INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v','COMMITTED')",
                      (day, f"{eve}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})))
         for hour in (5, 6):
@@ -153,13 +153,13 @@ def test_the_settled_bucket_is_the_truth_and_unpriced_days_leave_both_sides(tmp_
     assert top["truth_count"] == 1                     # the corrected settled bucket, 70
 
 
-def test_both_rulers_are_read_at_local_midnight_the_day_before(tmp_path, monkeypatch):
+def test_both_rulers_are_read_at_the_event_days_local_midnight(tmp_path, monkeypatch):
     """2026-10-22: the first P0 is now the listing and its book is empty, so the
     claim is the newest P0 at the anchor and the market the four hours after it."""
 
     monkeypatch.setattr(C, "TRUTH_LANDING_SINCE", "2026-09-01")
     conn = _landing_store()
-    day, eve = "2026-09-02", "2026-09-01"
+    day, eve = "2026-09-02", "2026-09-02"
     # the listing claim, an anchor-time claim, and one decided after the anchor
     for at, claim in ((f"2026-08-31T05:00:00Z", {"70": 0.9, "71": 0.1}),
                       (f"{eve}T03:30:00Z", {"70": 0.6, "71": 0.4}),
@@ -177,7 +177,7 @@ def test_both_rulers_are_read_at_local_midnight_the_day_before(tmp_path, monkeyp
                      (day, at, "x", json.dumps(books)))
     records = C._truth_landing_records(conn, lambda *_k: True, "2026-09-01")
     record = records["KLGA|2026-09-02"]
-    assert record["anchor"] == "2026-09-01T04:00:00.000Z"
+    assert record["anchor"] == "2026-09-02T04:00:00.000Z"
     assert record["claims"] == {"70": 0.6, "71": 0.4}
     assert record["asks"] == {"70": [2, 0.31], "71": [2, 0.71]}
     assert record["bids"] == {"70": [2, 0.29], "71": [2, 0.69]}

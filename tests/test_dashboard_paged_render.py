@@ -798,9 +798,9 @@ def _truth_landing_fixture() -> sqlite3.Connection:
         "CREATE INDEX basket_official_ws_snapshot_day_expiry_idx"
         " ON basket_official_ws_snapshot(event_date, quote_expires_at)"
     )
-    # Both rulers read at local midnight the day before (04:00Z in August).
-    for i, (day, eve) in enumerate((("2026-08-20", "2026-08-19"), ("2026-08-21", "2026-08-20"),
-                                    ("2026-08-22", "2026-08-21"))):
+    # Both rulers read at the event day's local midnight (04:00Z in August).
+    for i, (day, eve) in enumerate((("2026-08-20", "2026-08-20"), ("2026-08-21", "2026-08-21"),
+                                    ("2026-08-22", "2026-08-22"))):
         conn.execute(
             "INSERT INTO basket_probability_envelope VALUES ('KLGA',?,'P0',?,?,'v','COMMITTED')",
             (day, f"{eve}T01:00:00Z", json.dumps({"70": 0.6, "71": 0.4})),

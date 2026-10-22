@@ -5426,8 +5426,8 @@ def _truth_landing_records(
     until: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Per closed station-day from ``since`` on, what the truth-landing table
-    aggregates, both rulers read at one instant: local midnight the day
-    before the event (``TRUTH_LANDING_ANCHOR_DAYS_BEFORE``).  The model's
+    aggregates, both rulers read at one instant: local midnight at the start
+    of the event day (``TRUTH_LANDING_ANCHOR_DAYS_BEFORE``).  The model's
     claim is the newest committed P0 decided at or before it; the market's
     is each bucket's best asks and best bids (count and median) over the
     four hours after it.
@@ -5439,8 +5439,11 @@ def _truth_landing_records(
     39 hours before the local day on 10-10..10-18, when the book is empty:
     its best asks summed to 2.25 a ladder, the mid to 1.46, the mean spread
     was 15.6 cents and 58% of buckets had no bid, so the "market" was the
-    midpoint of two missing quotes.  Local midnight the day before reads a
-    formed book (asks 1.14, mid 1.04, spread 1.6 cents on the same days).
+    midpoint of two missing quotes.  The event day's own local midnight
+    reads a formed book (asks 1.08, mid 1.02, spread 1.3 cents on the same
+    days) and has a P0 behind it on 97-100% of station-days every month;
+    midnight the day before had none in August (P0 then decided inside the
+    last day) and 80% in September.
 
     2026-10-03 audit (docs/research/truth_landing_audit_20261003, user
     「改」): the bids are kept beside the asks so the market ruler is the
@@ -5459,60 +5462,78 @@ def _truth_landing_records(
     last_day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if until is not None:
         last_day = min(last_day, until)
-    # The station list lets the (station_id, event_date, ...) indexes seek.
-    scopes = [
-        (str(station), str(event))
-        for station, event in conn.execute(
-            "SELECT DISTINCT station_id, event_date FROM basket_probability_envelope"
-            " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
-            " AND event_date >= ? AND event_date <= ? AND stage='P0'"
-            " AND state='COMMITTED'",
-            (since, last_day),
-        )
-    ]
-    records: dict[str, dict[str, Any]] = {}
-    for key in scopes:
-        if not day_closed(*key):
-            continue
-        zone = zones.get(key[0])
+
+    def anchor_of(station: str, event: str) -> datetime | None:
+        zone = zones.get(station)
         if not zone:
-            continue
+            return None
         try:
-            anchor = (
-                datetime.fromisoformat(key[1] + "T00:00:00").replace(tzinfo=ZoneInfo(zone))
+            return (
+                datetime.fromisoformat(event + "T00:00:00").replace(tzinfo=ZoneInfo(zone))
                 - timedelta(days=TRUTH_LANDING_ANCHOR_DAYS_BEFORE)
             ).astimezone(timezone.utc)
         except Exception:  # noqa: BLE001 -- an unreadable zone keeps no day
+            return None
+
+    def stamp(value: datetime) -> str:
+        return value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    # The station list lets the (station_id, event_date, ...) indexes seek.
+    by_day: dict[str, list[str]] = defaultdict(list)
+    for station, event in conn.execute(
+        "SELECT DISTINCT station_id, event_date FROM basket_probability_envelope"
+        " WHERE station_id IN (SELECT station_id FROM calibration_station_registry)"
+        " AND event_date >= ? AND event_date <= ? AND stage='P0'"
+        " AND state='COMMITTED'",
+        (since, last_day),
+    ):
+        if day_closed(str(station), str(event)):
+            by_day[str(event)].append(str(station))
+    records: dict[str, dict[str, Any]] = {}
+    # A day at a time, not a station-day at a time: the cold tier (charter
+    # 238) indexes only event_date, so a per-station read there scanned the
+    # whole day once per station -- 48 passes over ~19k snapshots and 158 MB
+    # a day on the external volume.  One read of the day's window serves
+    # every station's own.
+    for event in sorted(by_day):
+        windows: dict[str, tuple[str, str]] = {}
+        for station in by_day[event]:
+            anchor = anchor_of(station, event)
+            if anchor is not None:
+                windows[station] = (
+                    stamp(anchor),
+                    stamp(anchor + timedelta(hours=TRUTH_LANDING_MARKET_HOURS)),
+                )
+        if not windows:
             continue
-        start = anchor.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        end = (anchor + timedelta(hours=TRUTH_LANDING_MARKET_HOURS)).isoformat(
-            timespec="milliseconds"
-        ).replace("+00:00", "Z")
-        row = conn.execute(
-            "SELECT probabilities_json, posterior_version, decision_at_utc"
+        first = min(start for start, _end in windows.values())
+        last = max(end for _start, end in windows.values())
+        chosen: dict[str, tuple[str, str, str]] = {}
+        for station, decided, probabilities_json, version in conn.execute(
+            "SELECT station_id, decision_at_utc, probabilities_json, posterior_version"
             " FROM basket_probability_envelope"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " AND decision_at_utc<=? AND stage='P0'"
-            " ORDER BY decision_at_utc DESC LIMIT 1",
-            (key[0], key[1], start),
-        ).fetchone()
-        if row is None:
-            continue
-        try:
-            claims = {
-                str(bucket): float(value)
-                for bucket, value in json.loads(row[0]).items()
-            }
-        except (ValueError, TypeError, AttributeError):
-            continue
-        asks: dict[str, list[float]] = defaultdict(list)
-        bids: dict[str, list[float]] = defaultdict(list)
-        for (buckets_json,) in conn.execute(
-            "SELECT buckets_json FROM basket_official_ws_snapshot"
-            " WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " AND observed_at>=? AND observed_at<?",
-            (key[0], key[1], start, end),
+            " WHERE event_date=? AND stage='P0' AND state='COMMITTED'"
+            " AND decision_at_utc<=?",
+            (event, last),
         ):
+            station = str(station)
+            window = windows.get(station)
+            if window is None or str(decided) > window[0]:
+                continue
+            held = chosen.get(station)
+            if held is None or str(decided) > held[0]:
+                chosen[station] = (str(decided), str(probabilities_json), str(version or ""))
+        asks: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+        bids: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+        for station, observed, buckets_json in conn.execute(
+            "SELECT station_id, observed_at, buckets_json FROM basket_official_ws_snapshot"
+            " WHERE event_date=? AND state='COMMITTED' AND observed_at>=? AND observed_at<?",
+            (event, first, last),
+        ):
+            station = str(station)
+            window = windows.get(station)
+            if station not in chosen or window is None or not (window[0] <= str(observed) < window[1]):
+                continue
             try:
                 rows = json.loads(buckets_json)
             except (ValueError, TypeError):
@@ -5533,22 +5554,31 @@ def _truth_landing_records(
                     bid = bid_levels[0].get("price") or 0
                 # A quote with no bid is a bid of zero, as a book with
                 # nobody buying is.
-                asks[bucket].append(float(ask))
-                bids[bucket].append(max(0.0, float(bid or 0.0)))
-        records[f"{key[0]}|{key[1]}"] = {
-            "anchor": start,
-            "decided": str(row[2]),
-            "version": str(row[1] or ""),
-            "claims": claims,
-            "asks": {bucket: [len(v), median(v)] for bucket, v in asks.items()},
-            "bids": {bucket: [len(v), median(v)] for bucket, v in bids.items()},
-        }
+                asks[station][bucket].append(float(ask))
+                bids[station][bucket].append(max(0.0, float(bid or 0.0)))
+        for station, (decided, probabilities_json, version) in chosen.items():
+            try:
+                claims = {
+                    str(bucket): float(value)
+                    for bucket, value in json.loads(probabilities_json).items()
+                }
+            except (ValueError, TypeError, AttributeError):
+                continue
+            records[f"{station}|{event}"] = {
+                "anchor": windows[station][0],
+                "decided": decided,
+                "version": version,
+                "claims": claims,
+                "asks": {b: [len(v), median(v)] for b, v in asks.get(station, {}).items()},
+                "bids": {b: [len(v), median(v)] for b, v in bids.get(station, {}).items()},
+            }
     return records
 
 
 #: Where both truth-landing rulers are read: local midnight this many days
-#: before the event day, and the market over the hours after it.
-TRUTH_LANDING_ANCHOR_DAYS_BEFORE = 1
+#: before the event day (0: the day's own start), and the market over the
+#: hours after it.
+TRUTH_LANDING_ANCHOR_DAYS_BEFORE = 0
 TRUTH_LANDING_MARKET_HOURS = 4
 
 
@@ -5756,7 +5786,7 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
       station-days, but the bid rule dropped 188 settled days as "capture
       truncated".
     * The market's number is the mid -- median best ask plus median best
-      bid over the four hours from local midnight the day before the event
+      bid over the four hours from the event day's local midnight
       (2026-10-22; it was the four hours after the first P0, which is now
       the listing and an empty book), halved -- normalised so one ladder
       sums to one; the model's is the newest P0 at that same instant.  The ask alone summed to a median 1.24 a
@@ -5820,7 +5850,13 @@ def collect_truth_landing(conn: sqlite3.Connection) -> dict[str, Any]:
         keep_through = (
             now - timedelta(days=TRUTH_LANDING_KEEP_AFTER_DAYS)
         ).strftime("%Y-%m-%d")
-        code = _section_fingerprint(_truth_landing_records, TRUTH_LANDING_SINCE)
+        # The anchor and the market's hours are constants the source cannot
+        # show, and a kept record read at another instant is a different
+        # reading.
+        code = _section_fingerprint(
+            _truth_landing_records,
+            f"{TRUTH_LANDING_SINCE}|{TRUTH_LANDING_ANCHOR_DAYS_BEFORE}|{TRUTH_LANDING_MARKET_HOURS}",
+        )
         kept = _load_closed_readings(RENDER_TRUTH_LANDING_RECORDS)
         if kept.get("code") != code:
             kept = {}
@@ -17504,7 +17540,7 @@ const edgeFold=body=>body?`<details style="margin-top:10px"><summary>明细</sum
 function truthLanding(){
   const T=D.truth_landing||{};
   const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
-  const head=`<h2 title="真值＝官方结算桶；市场＝事件日前一天当地 0 点起 4 小时的归一中间价；模型＝该时刻前最新一版 P0 的服务概率；两边读同一批桶">真值落位</h2>`;
+  const head=`<h2 title="真值＝官方结算桶；市场＝事件日当地 0 点起 4 小时的归一中间价；模型＝该时刻前最新一版 P0 的服务概率；两边读同一批桶">真值落位</h2>`;
   // Empty while the backend rebuilds it after a code change (one week of
   // records a research run): say so rather than drop the section.
   if(!segs.length) return head+`<div class="card muted">后端重算中，下一轮研究渲染后出现</div>`;
@@ -17668,7 +17704,7 @@ function truthLandingDetail(){
   return `<p class="sub">${T.since} 起 · 已闭合站日 ${T.closed_station_days}
     · 已结算 ${T.settled_station_days}（未结算 ${T.unsettled_station_days}）
     · 整条梯子有报价 ${T.settled_station_days-T.unpriced_station_days-(T.truth_off_ladder_days||0)}（缺报价剔除 ${T.unpriced_station_days}）。
-    真值＝官方结算桶；市场＝事件日前一天当地 0 点起 4 小时的中位买一与卖一的中间价，按梯子归一；模型＝该时刻前最新一版 P0 的服务概率；两边读同一批桶。</p>
+    真值＝官方结算桶；市场＝事件日当地 0 点起 4 小时的中位买一与卖一的中间价，按梯子归一；模型＝该时刻前最新一版 P0 的服务概率；两边读同一批桶。</p>
   ${segs.map((S,i)=>segment(S,i===0)).join("")}`;
 }
 
