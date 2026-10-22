@@ -20367,7 +20367,7 @@ function wrfTmaxPanel(){
     const wide = c => c === "nowcast_sat" || c === "fcst";
     const legend = cs => `<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${cs.map(c => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:0;border-top:2px dashed var(--muted);display:inline-block"></i>GFS 原始</span><span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;display:inline-block;background:var(--text)"></i>实测</span></div>`;
     const w = 760, ht = 240, pl = 36, pr = 10, pt = 12, pb = 26;
-    const shown = days.filter(d => S.days[d].truth_c != null || KEYC.some(c => S.days[d].configs[c]));
+    const shown = days.filter(d => KEYC.some(c => S.days[d].configs[c]));
     const vals = shown.flatMap(d => [S.days[d].truth_c, (S.days[d].gfs || {}).tmax_c, ...KEYC.map(c => (S.days[d].configs[c] || {}).tmax_c)]).filter(v => v != null);
     const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
     const X = i => pl + (shown.length < 2 ? 0 : i * (w - pl - pr) / (shown.length - 1)), Y = v => pt + (hi - v) * (ht - pt - pb) / (hi - lo);
