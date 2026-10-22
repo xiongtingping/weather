@@ -20244,7 +20244,7 @@ const WRF_COL = ["#58a6ff", "#3fb950", "#d29922", "#f778ba", "#a371f7", "#39c5cf
 const WRF_STATUS = {complete: "完成", running: "运行中", stopped: "中断", unknown: "未知"};
 // The same-day nowcast arms (run/nowcast, forward test) lead, then the live forecast
 // (run/fcst); the rest are hindcast configurations.
-const WRF_NAME = c => ({nowcast_sat: "临近·卫星云", nowcast_ctl: "临近·对照", fcst: "实时预报"})[c] || c;
+const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WRF·模型自估云", fcst: "WRF·前一晚预报"})[c] || c;
 const WRF_LEAD = ["nowcast_sat", "fcst", "baseline"];
 function wrfTmaxPanel(){
   const W = D.wrf_tmax || {};
@@ -20260,7 +20260,9 @@ function wrfTmaxPanel(){
     const days = Object.keys(S.days || {}).sort(), last = S.latest_day, L = S.days[last] || {};
     const leadKey = WRF_LEAD.find(c => (L.configs || {})[c]) || Object.keys(L.configs || {})[0];
     const base = (L.configs || {})[leadKey] || {}, NC = L.nowcast || null;
-    const initWord = leadKey === "nowcast_sat" && NC ? `临近 · 卫星至 ${String(NC.last_sat_hour_utc).padStart(2, "0")}Z · 出数 ${String(NC.ready_utc || "").slice(11, 16)}Z`
+    const loc = t => t ? new Intl.DateTimeFormat("en-GB", {timeZone: S.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)) : "—";
+    const satLocal = NC ? loc(`${last}T${String(NC.last_sat_hour_utc).padStart(2, "0")}:00:00Z`) : "—";
+    const initWord = leadKey === "nowcast_sat" && NC ? `用卫星实测云（${satLocal}）· 当地 ${loc(NC.ready_utc)} 出数`
       : base.init_utc ? `${String(base.init_utc).slice(5, 10)} ${String(base.init_utc).slice(11, 13)}Z 起报` : "";
     const big = (label, value, cls, sub, tip) => `<div class="card" title="${h(tip || "")}"><div class="muted">${label}</div>
       <div class="mono ${cls || ""}" style="font-size:30px;font-weight:700;line-height:1.2">${value}</div><div class="muted mono">${sub || ""}</div></div>`;
@@ -20274,13 +20276,13 @@ function wrfTmaxPanel(){
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
       <div class="mono" style="font-size:26px;font-weight:700;line-height:1.2">${n(v)}°C</div>
       <div class="muted mono">${sub}${L.truth_c != null && v != null ? ` · <span class="${errCls(v - L.truth_c)}">${sg(v - L.truth_c)}</span>` : ""}</div>
-      <div class="muted mono" style="font-size:11.5px">同刻 MAE ${x && x.n ? n(x.mae_c, 2) : "—"} · 偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · ${x ? x.n : 0} 天</div></div>`;
-    const ncRow = !NC ? "" : `<div class="trend-t" style="margin-top:8px" title="每天成都约 11:10 起跑，出数时刻记下四方读数；WRF 两臂已与当时报文最高取大">临近预报 · 同刻对比（${h(String(NC.ready_utc || "").slice(11, 16))}Z，已报最高 ${n(NC.metar_max_so_far_c, 0)}°C）</div>
+      <div class="muted mono" style="font-size:11.5px">累计平均误差 ${x && x.n ? n(x.mae_c, 2) + "°" : "—"} · 偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · ${x ? x.n : 0} 天</div></div>`;
+    const ncRow = !NC ? "" : `<div class="trend-t" style="margin-top:8px" title="每天成都约 11:10 起跑；四个数都是同一时刻给出的今天最高温；WRF 两个数已与当时报文最高取大">今天上午 ${h(loc(NC.ready_utc))} 四方预报的最高温（此刻机场已报最高 ${n(NC.metar_max_so_far_c, 0)}°C）</div>
       <div class="grid g4">
-      ${ncCard("WRF 卫星云", NC.sat_obs_c, `卫星至 ${String(NC.last_sat_hour_utc).padStart(2, "0")}Z`, "葵花云量/光学厚度进辐射，之后沿用最新一张", NS.sat_obs_c)}
-      ${ncCard("WRF 对照", NC.ctl_obs_c, "同配置无卫星", "icloud3 + 临界 RH 0.85，不用卫星", NS.ctl_obs_c)}
-      ${ncCard("市场", NC.market_mean_c, `众数 ${n(NC.market_mode_c, 0)}° ${NC.market_mode_p == null ? "" : Math.round(100 * NC.market_mode_p) + "%"}`, "出数时刻的盘口快照，梯子均值", NS.market_mean_c)}
-      ${ncCard(h(NC.belief_stage || "信念"), NC.belief_mean_c, `众数 ${n(NC.belief_mode_c, 0)}° ${NC.belief_mode_p == null ? "" : Math.round(100 * NC.belief_mode_p) + "%"}`, "出数时刻生产服务的信念（P1>P0-M>P0），梯子均值", NS.belief_mean_c)}</div>`;
+      ${ncCard("WRF · 用卫星实测云", NC.sat_obs_c, `云取自 ${satLocal} 卫星`, "WRF 计算的最高温；算的时候告诉它卫星实际拍到的云（云量、厚度），之后沿用最新一张", NS.sat_obs_c)}
+      ${ncCard("WRF · 模型自估云", NC.ctl_obs_c, "云由模型自己估", "同一个 WRF、同一份数据，只是不看卫星，云由模型按湿度自己估；用来对比卫星云有没有用", NS.ctl_obs_c)}
+      ${ncCard("市场", NC.market_mean_c, `最热门 ${n(NC.market_mode_c, 0)}° · ${NC.market_mode_p == null ? "" : Math.round(100 * NC.market_mode_p) + "%"}`, "同一时刻的盘口：各温度档价格加权的平均", NS.market_mean_c)}
+      ${ncCard(`生产模型（${h(NC.belief_stage || "—")}）`, NC.belief_mean_c, `最可能 ${n(NC.belief_mode_c, 0)}° · ${NC.belief_mode_p == null ? "" : Math.round(100 * NC.belief_mode_p) + "%"}`, "同一时刻我们生产链在用的概率（P1>P0-M>P0），各档加权平均", NS.belief_mean_c)}</div>`;
     const sc = S.scores || {};
     const tile = (name, x, c) => `<div class="card" style="border-top:3px solid ${c}"><div class="muted">${h(name)}</div>
       <div class="mono" style="font-size:22px;font-weight:700">MAE ${x && x.n ? n(x.mae_c, 2) : "—"}</div>
