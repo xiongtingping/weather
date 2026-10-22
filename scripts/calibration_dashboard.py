@@ -17517,6 +17517,14 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four.sd-five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.sd-hit-wrap{margin:4px 0 12px}.sd-hit-h{font-weight:600;margin:0 0 6px}.sd-hit-h small{font-weight:400;color:var(--muted);margin-left:6px}
+.sd-hit-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:8px}
+@media (max-width:1300px){.sd-hit-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media (max-width:700px){.sd-hit-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.sd-hit{border:1px solid var(--line);border-top:3px solid var(--c);border-radius:8px;padding:6px 8px;background:var(--card)}
+.sd-hit-t{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sd-hit-v{font-size:22px;font-weight:700;color:var(--c);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.sd-hit-s{font-size:11px;color:var(--muted)}
 @media (max-width:1300px){.sd-four.sd-five{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:900px){.sd-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.sd-four{grid-template-columns:minmax(0,1fr)}}
@@ -24348,7 +24356,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdHitStrip(day)}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -24361,6 +24369,7 @@ function sdDay(day){
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     <div class="sd-six">${sdProbabilityCards(day)}</div>
     <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
+    ${sdHitStrip(day)}
     ${sdCompareChart(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
@@ -24976,6 +24985,37 @@ function sdMemberBayes(day){
           X.mode ? `<span title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} ${sdPc(X.mode_p, 0)}</span>` : ""].filter(Boolean).join(" · "),
     body: `<div class="sd-det-grid">${chips}</div>`, trend,
     foot: `比对报文 ${M.reports_in_window ?? 0} 条 · 算于 ${sdLocal(M.as_of_utc, true)}`});
+}
+// Every estimate's truth hit rate (user 2026-10-22 「统计以上各个方式的真值命中率，前端显式出来！」):
+// estimate_hit_readings scores each method as of the same local times on the event day
+// (its mode, or the bucket of its point estimate, against the settled truth's bucket on
+// the market's own ladder).  One card per method: all stations at 13:00 in big, 10:00 and
+// 16:00, this station and the market on the same station-days in small.  Read only.
+const SD_HIT_NAMES = {"P0": "P0 概率", "P0-M": "P0-M 概率", "P1": "P1 概率", market: "市场", F: "确定性预报 F",
+  member_bayes: "成员轨迹贝叶斯", D0: "D0 实况模型", MOS: "观测更新型 MOS", WRF: "WRF"};
+const SD_HIT_COL = {"P0": SD_COL.P0, "P0-M": SD_COL["P0-M"], "P1": SD_COL.P1, market: SD_COL.MKT, F: SD_COL.DET,
+  member_bayes: SD_COL.MB, D0: SD_COL.D0, MOS: SD_COL.MOS, WRF: SD_COL.WRF};
+function sdHitStrip(day){
+  const H = (SD.data || {}).estimate_hit;
+  if(!H || !H.fleet) return "";
+  const pc = x => x && x.n ? Math.round(100 * x.hits / x.n) + "%" : "—";
+  const main = "13", st = SD.data.station_id;
+  const cards = (H.methods || []).map(m => {
+    const f = (H.fleet[main] || {})[m] || {}, f10 = (H.fleet["10"] || {})[m], f16 = (H.fleet["16"] || {})[m];
+    const own = ((H.station || {})[main] || {})[m];
+    const vs = m !== "market" && f.pair_n ? `同站日 ${Math.round(100 * f.pair_hits / f.pair_n)}% 对市场 ${Math.round(100 * f.pair_market_hits / f.pair_n)}%` : "";
+    const tip = `${SD_HIT_NAMES[m] || m}：事件日当地 10/13/16 点时它指向的温度档（众数，或点估计所在档）是否等于结算实测档；全部站 ${H.days} 个事件日（${H.since} 起）`
+      + `\n13 点：${f.hits || 0}/${f.n || 0}；本站 ${own ? `${own.hits}/${own.n}` : "—"}`
+      + (vs ? `\n同站日（它和市场都有读数的 ${f.pair_n} 个）：它 ${f.pair_hits}，市场 ${f.pair_market_hits}` : "")
+      + (m === "MOS" ? `\nMOS 按当前系数重算，只计拟合窗之后的日子（${H.mos_from || "—"} 起），样本外` : "")
+      + (m === "F" ? "\nF 是挂牌时刻记下的值，全天不变" : "") + (m === "WRF" ? "\nWRF 只跑成都，当地约 12 点出数" : "");
+    return `<div class="sd-hit" style="--c:${SD_HIT_COL[m] || "var(--muted)"}" title="${sdEsc(tip)}">
+      <div class="sd-hit-t">${sdEsc(SD_HIT_NAMES[m] || m)}</div>
+      <div class="sd-hit-v">${pc(f)}</div>
+      <div class="sd-hit-s">10点 ${pc(f10)} · 16点 ${pc(f16)} · ${f.n || 0} 站日</div>
+      <div class="sd-hit-s">本站 ${pc(own)}${vs ? ` · ${vs}` : ""}</div></div>`;
+  }).join("");
+  return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 <small>当地 13 点时指向的档 = 结算实测档 · 全部站 ${H.days} 个事件日（${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
 }
 // WRF beside the other estimates (user 2026-10-22 「在上方看板增加一个卡片」), ZUUU only:
 // the same-day nowcast with measured satellite cloud leads (else the previous

@@ -30,4 +30,7 @@ run_with_timeout 240 "$PROJECT_DIR/data/logs/member_bayes_readings.step.log" nic
 # read-only against the external volume, cached per file; a missing volume
 # writes volume_missing and never fails the sweep.
 run_with_timeout 180 "$PROJECT_DIR/data/logs/wrf_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.wrf_readings || true
+# Every estimate's truth hit rate (user 2026-10-22 「统计以上各个方式的真值命中率，前端显式出来！」):
+# read-only; settled station-days cached; MOS recomputed for at most a few closed days per pass.
+run_with_timeout 240 "$PROJECT_DIR/data/logs/estimate_hit_readings.step.log" nice -n 10 "$PY" -m bayes_basket_target.estimate_hit_readings || true
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done"

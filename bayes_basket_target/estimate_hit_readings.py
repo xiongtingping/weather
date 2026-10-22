@@ -1,0 +1,330 @@
+"""Truth hit rate of every estimate the station board shows (user 2026-10-22
+「统计以上各个方式的真值命中率，前端显式出来！」).
+
+A hit: the bucket the method points to (its mode, or the bucket holding its point
+estimate) is the bucket the settled formal truth (charter 225 lanes) falls in, on
+the station-day's own market ladder.  Every method is read as of the same local
+snapshot times on the event day (``SNAPSHOT_HOURS``), so the rates are comparable;
+each method is also paired with the market on the station-days both have.
+
+Methods and where their history lives (all read only):
+  P0 / P0-M / P1  -- ``basket_probability_envelope`` (newest committed per stage)
+  market          -- ``basket_official_ws_snapshot`` within 30 minutes
+  deterministic F -- charter 267's ledger (F as recorded at listing)
+  member Bayes    -- ``data/board_readings/member_bayes_history``
+  D0              -- ``data/board_readings/d0_history``
+  MOS             -- the station board's composite series, recomputed per closed
+                     day with the current coefficients; only days after their fit
+                     window count (out of sample)
+  WRF             -- the ZUUU nowcast record (``wrf_readings``)
+
+Writes ``data/board_readings/estimate_hit.json``.  A settled station-day's verdicts
+are cached under ``data/runtime/estimate_hit`` and recomputed only when its truth
+changes.  Display only; enters no layer.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sqlite3
+import time
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from . import board_readings
+from .canonical_contract import FORMAL_TRUTH_LANES_SQL
+
+ROOT = Path(__file__).resolve().parents[1]
+READING_NAME = "estimate_hit"
+CACHE_PATH = ROOT / "data" / "runtime" / "estimate_hit" / "verdicts_v1.json"
+READINGS_DIR = ROOT / "data" / "board_readings"
+F_LEDGER = ROOT / "data" / "runtime" / "listing_forecast_f_mos_ledger_v1.jsonl"
+COMPOSITE_FIT = ROOT / "data" / "runtime" / "tmax_composite" / "tmax_composite_shift_v1.json"
+#: The board's estimates started on different days; the window starts with D0.
+SINCE = date(2026, 10, 15)
+SNAPSHOT_HOURS = (10, 13, 16)
+METHODS = ("P0", "P0-M", "P1", "market", "F", "member_bayes", "D0", "MOS", "WRF")
+MARKET_WINDOW_MIN = 30
+#: MOS is recomputed (Open-Meteo, satellite) only for this many closed days per pass.
+MOS_DAYS_PER_PASS = 15
+
+
+def _iso(t: datetime) -> str:
+    return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _argmax(vec: dict[str, float] | None) -> str | None:
+    if not vec:
+        return None
+    return max(vec.items(), key=lambda kv: float(kv[1] or 0.0))[0]
+
+
+def _zones(conn: sqlite3.Connection) -> dict[str, ZoneInfo]:
+    out: dict[str, ZoneInfo] = {}
+    for st, tz in conn.execute(
+        "SELECT station_id, settlement_timezone FROM calibration_station_market_timezone_binding ORDER BY bound_at_utc"
+    ):
+        try:
+            out[str(st)] = ZoneInfo(str(tz))
+        except Exception:  # noqa: BLE001 -- an unknown zone is no station here
+            continue
+    return out
+
+
+def _truths(conn: sqlite3.Connection, since: date) -> dict[tuple[str, str], float]:
+    out: dict[tuple[str, str], float] = {}
+    for st, day, value in conn.execute(
+        "SELECT station_id, local_date, official_tmax_c FROM calibration_station_daily_high_truth"
+        f" WHERE source_lane IN {FORMAL_TRUTH_LANES_SQL} AND qc_status='ACCEPTED' AND local_date>=?"
+        " ORDER BY revision_no", (since.isoformat(),),
+    ):
+        out[(str(st), str(day))] = float(value)
+    return out
+
+
+def _rungs(conn: sqlite3.Connection, station: str, day: str):
+    from .listing_forecast_f import _rung_edges, station_day_rungs  # noqa: PLC0415
+
+    rungs = station_day_rungs(conn, station_id=station, event_date=date.fromisoformat(day), prefer_registry=False)
+    if not rungs:
+        return None
+    edges = _rung_edges(rungs)
+    return (rungs, edges[0]) if edges else None
+
+
+def _label_of(ladder, value: float | None) -> str | None:
+    from .listing_forecast_f import _rung_of  # noqa: PLC0415
+
+    if ladder is None or value is None:
+        return None
+    rungs, edges = ladder
+    return rungs[_rung_of(edges, float(value))][0]
+
+
+def _history(name: str, day: str) -> dict[str, list[dict[str, Any]]]:
+    """station -> that day's history rows (oldest first) from a board-readings history file."""
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        with (READINGS_DIR / f"{name}_history" / f"{day}.jsonl").open(encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("event_date", day) == day and r.get("station"):
+                    out.setdefault(str(r["station"]), []).append(r)
+    except OSError:
+        pass
+    for rows in out.values():
+        rows.sort(key=lambda r: str(r.get("as_of_utc") or ""))
+    return out
+
+
+def _latest(rows: list[dict[str, Any]], at: str, key: str) -> Any:
+    hit = None
+    for r in rows:
+        if str(r.get("as_of_utc") or "") <= at:
+            hit = r.get(key)
+    return hit
+
+
+def _f_ledger() -> dict[tuple[str, str], float]:
+    out: dict[tuple[str, str], float] = {}
+    try:
+        lines = F_LEDGER.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        st = r.get("station_id") or r.get("station")
+        if st and r.get("event_date") and r.get("f_c_at_record") is not None:
+            out[(str(st), str(r["event_date"]))] = float(r["f_c_at_record"])
+    return out
+
+
+def _wrf_records() -> dict[str, dict[str, Any]]:
+    from . import wrf_readings  # noqa: PLC0415
+
+    try:
+        return wrf_readings.nowcast_records()
+    except Exception:  # noqa: BLE001 -- the WRF volume is optional
+        return {}
+
+
+def _mos_series(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo) -> list[tuple[int, float]] | None:
+    """(local hour, estimated maximum °C) as the board's MOS card had it each hour."""
+
+    from . import station_day_board as B  # noqa: PLC0415
+
+    metar = B._metar(station, day, zone)
+    sky = B._hourly_vs_forecast(conn, station, day, zone, metar)
+    cx = (sky or {}).get("composite_tmax_shift") or {}
+    if cx.get("state") != "ok" or cx.get("forecast_tmax_d1_c") is None:
+        return None
+    base = float(cx["forecast_tmax_d1_c"])
+    return [(int(p["hour"]), base + float(p["total_c"])) for p in cx.get("series") or [] if p.get("total_c") is not None]
+
+
+def _mos_first_day() -> date | None:
+    """The first day after the MOS coefficients' fit window (out of sample)."""
+
+    try:
+        fit = json.loads(COMPOSITE_FIT.read_text(encoding="utf-8"))
+        return date.fromisoformat(str(fit["window"][1])) + timedelta(days=1)
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, truth_c: float,
+             *, f_ledger, wrf, d0, mb, mos_ok: bool) -> dict[str, Any] | None:
+    """One settled station-day: the truth's bucket and each method's bucket per snapshot."""
+
+    ladder = _rungs(conn, station, day)
+    if ladder is None:
+        return None
+    truth_label = _label_of(ladder, truth_c)
+    local0 = datetime.combine(date.fromisoformat(day), datetime.min.time(), zone)
+    mos = None
+    if mos_ok:
+        try:
+            mos = _mos_series(conn, station, day, zone)
+        except Exception:  # noqa: BLE001 -- MOS needs network data; a miss is no MOS that day
+            mos = None
+    snaps: dict[str, dict[str, str | None]] = {}
+    for h in SNAPSHOT_HOURS:
+        at = _iso(local0 + timedelta(hours=h))
+        picks: dict[str, str | None] = {}
+        for stage in ("P0", "P0-M", "P1"):
+            row = conn.execute(
+                "SELECT probabilities_json FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+                " AND state='COMMITTED' AND +stage=? AND decision_at_utc<=? ORDER BY decision_at_utc DESC LIMIT 1",
+                (station, day, stage, at)).fetchone()
+            picks[stage] = _argmax(json.loads(row[0])) if row and row[0] else None
+        lo = _iso(local0 + timedelta(hours=h, minutes=-MARKET_WINDOW_MIN))
+        row = conn.execute(
+            "SELECT buckets_json FROM basket_official_ws_snapshot WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+            " AND observed_at<=? AND observed_at>=? ORDER BY observed_at DESC LIMIT 1", (station, day, at, lo)).fetchone()
+        picks["market"] = None
+        if row and row[0]:
+            from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+
+            ref = market_reference_v1(json.loads(row[0]))
+            if ref.get("state") == "complete":
+                picks["market"] = _argmax({str(k): float(v) for k, v in ref["vector"].items()})
+        f = f_ledger.get((station, day))
+        picks["F"] = _label_of(ladder, f)
+        picks["member_bayes"] = _latest(mb.get(station, []), at, "post_mode")
+        picks["D0"] = _latest(d0.get(station, []), at, "mode")
+        picks["MOS"] = None
+        if mos:
+            past = [v for hour, v in mos if hour <= h]
+            picks["MOS"] = _label_of(ladder, past[-1]) if past else None
+        picks["WRF"] = None
+        rec = wrf.get(day) if station == "ZUUU" else None
+        if rec and rec.get("ready_utc") and str(rec["ready_utc"]) <= at and rec.get("wrf_sat_tmax_with_obs_c") is not None:
+            picks["WRF"] = _label_of(ladder, rec["wrf_sat_tmax_with_obs_c"])
+        snaps[str(h)] = picks
+    return {"truth_c": truth_c, "truth": truth_label, "snaps": snaps}
+
+
+def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
+    def blank():
+        return {m: {"n": 0, "hits": 0, "pair_n": 0, "pair_hits": 0, "pair_market_hits": 0} for m in METHODS}
+
+    fleet = {str(h): blank() for h in SNAPSHOT_HOURS}
+    stations: dict[str, Any] = {}
+    days: set[str] = set()
+    for key, v in cache.items():
+        if not v or not v.get("truth"):
+            continue
+        st, day = key.split("|")
+        days.add(day)
+        per = stations.setdefault(st, {str(h): blank() for h in SNAPSHOT_HOURS})
+        for h, picks in (v.get("snaps") or {}).items():
+            mk = picks.get("market")
+            for m in METHODS:
+                p = picks.get(m)
+                if p is None:
+                    continue
+                hit = p == v["truth"]
+                for agg in (fleet[h][m], per[h][m]):
+                    agg["n"] += 1
+                    agg["hits"] += int(hit)
+                    if m != "market" and mk is not None:
+                        agg["pair_n"] += 1
+                        agg["pair_hits"] += int(hit)
+                        agg["pair_market_hits"] += int(mk == v["truth"])
+    return {"fleet": fleet, "stations": stations, "days": sorted(days)}
+
+
+def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dict[str, Any] | None = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    cache = dict(cache or {})
+    zones = _zones(conn)
+    truths = _truths(conn, SINCE)
+    f_ledger, wrf = _f_ledger(), _wrf_records()
+    mos_from = _mos_first_day()
+    mos_budget = MOS_DAYS_PER_PASS
+    by_day: dict[str, list[str]] = {}
+    for (st, day) in truths:
+        if st in zones:
+            by_day.setdefault(day, []).append(st)
+    for day in sorted(by_day):
+        d0, mb = _history("d0", day), _history("member_bayes", day)
+        for st in sorted(by_day[day]):
+            zone = zones[st]
+            if datetime.combine(date.fromisoformat(day) + timedelta(days=1), datetime.min.time(), zone) > now:
+                continue  # the local day is not over yet
+            key, t = f"{st}|{day}", truths[(st, day)]
+            old = cache.get(key)
+            if old and old.get("truth_c") == t and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from):
+                continue
+            mos_ok = mos_from is not None and date.fromisoformat(day) >= mos_from and mos_budget > 0
+            if mos_ok:
+                mos_budget -= 1
+            v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok)
+            if v is not None:
+                v["mos_done"] = mos_ok
+            cache[key] = v
+    out = _summarize(cache)
+    return {"state": "ok", "as_of_utc": _iso(now), "since": SINCE.isoformat(), "snapshot_hours_local": list(SNAPSHOT_HOURS),
+            "methods": list(METHODS), "mos_from": mos_from.isoformat() if mos_from else None, **out}, cache
+
+
+def run(*, db: Path = board_readings.DEFAULT_DB) -> dict[str, Any]:
+    t0 = time.monotonic()
+    try:
+        cache = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=30)
+    try:
+        value, cache = compute(conn, cache=cache)
+    finally:
+        conn.close()
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CACHE_PATH.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(cache), encoding="utf-8")
+    tmp.replace(CACHE_PATH)
+    code = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    board_readings.write_reading(READING_NAME, value, code=code, build_sec=time.monotonic() - t0)
+    return value
+
+
+def main() -> None:
+    value = run()
+    f = value.get("fleet", {}).get("13", {})
+    print(json.dumps({"state": value.get("state"), "days": len(value.get("days") or []),
+                      "at13": {m: f"{x['hits']}/{x['n']}" for m, x in f.items()}}, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

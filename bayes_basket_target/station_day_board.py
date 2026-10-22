@@ -2433,7 +2433,24 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         "taker_fee_rate": DEFAULT_TAKER_FEE_RATE,
         "fleet": stations,
         "days": days,
+        "estimate_hit": estimate_hit_view(station),
     }
+
+
+def estimate_hit_view(station: str) -> dict[str, Any] | None:
+    """Every estimate's truth hit rate, all stations and this one (user 2026-10-22
+    「统计以上各个方式的真值命中率，前端显式出来！」) -- the stored reading of
+    ``estimate_hit_readings``, read, never computed here."""
+
+    from .board_readings import load_reading  # noqa: PLC0415
+
+    stored = load_reading("estimate_hit")
+    v = (stored or {}).get("value")
+    if not isinstance(v, dict) or v.get("state") != "ok":
+        return None
+    return {"as_of_utc": v.get("as_of_utc"), "since": v.get("since"), "days": len(v.get("days") or []),
+            "hours": v.get("snapshot_hours_local"), "methods": v.get("methods"), "mos_from": v.get("mos_from"),
+            "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station)}
 
 
 def skew_history() -> dict[str, Any] | None:
