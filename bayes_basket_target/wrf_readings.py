@@ -321,8 +321,10 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             rec = {"status": status, "domain": dom, "init_utc": _iso(_utc(init)) if init else None,
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
-            # The driving GFS: a newer forecast init replaces an older one's for the day.
-            if (config == BASELINE and "gfs" not in entry) or config == FORECAST:
+            # The driving GFS: a newer forecast init replaces an older one's for the day.  A day
+            # with no baseline run (10-21, run only for the hindcast table, user 2026-10-22
+            # 「缺10.14-10.21」) reads it from the no-satellite run's inputs, the same GFS 00Z.
+            if (config in (BASELINE, "indep_rhc85") and "gfs" not in entry) or config == FORECAST:
                 gfs: dict[str, float] = {}
                 for fn in sorted(glob.glob(str(d / "met_em.d01.*"))):
                     gfs.update(cache.frames(fn, "TT", point))
