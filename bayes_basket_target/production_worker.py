@@ -1397,6 +1397,25 @@ FOLLOW_RUN_CAPTURE_DEADLINE_SEC = 3600.0
 # created and read under one lock.
 _FOLLOW_LANE_LOCK = threading.Lock()
 ECMWF_GCS_REPLICA_BASE_URL = "https://storage.googleapis.com/ecmwf-open-data"
+# User ruling 2026-10-22 「按照建议做前三条」 (the replica fallback): 2026-10-20
+# 05:39-07:49Z every pass for the day just listed waited out the breaker's 300 s
+# on ``nwp_transport_outage:storage.googleapis.com`` -- the replica was down,
+# ECMWF's own S3 was not -- and the day's first P0 came three hours after
+# listing.  The child reports that on its stdout receipt with rc 2 and an
+# empty stderr, so the worker saw an ordinary failure and the next pass went
+# to the replica again.  Now a pass whose failure names the replica's outage
+# reruns the same rung on S3 at once, and every capture (the main pass and
+# the follow jobs) reads S3 for this long after.
+ECMWF_S3_BASE_URL = "https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com"
+ECMWF_GCS_OUTAGE_HOLD_SEC = 1800.0
+_ECMWF_GCS_HOST = "storage.googleapis.com"
+
+
+def _gcs_replica_outage(text: Any) -> bool:
+    """Whether a capture's failure text names the GCS replica's transport outage."""
+
+    value = str(text or "")
+    return "nwp_transport_outage" in value and _ECMWF_GCS_HOST in value
 # Charter 195 (二): captures start when the arrival probe sees a run on the
 # server (``run_arrival_triggered_captures``), off the rotation cursor and the
 # 10-minute NWP poll, and past the retry floor -- once per (family, run,
@@ -6722,6 +6741,17 @@ class TargetProductionWorker:
             for item in [item for item in attempted if item[0] == event_date]:
                 attempted.discard(item)
 
+    def _ecmwf_capture_env(self) -> dict[str, str]:
+        """The environment a capture child reads ECMWF through: the GCS replica,
+        or ECMWF's own S3 while the replica is held out after an outage."""
+
+        until = float(getattr(self, "_ecmwf_gcs_outage_until_mono", 0.0) or 0.0)
+        base = ECMWF_S3_BASE_URL if time.monotonic() < until else ECMWF_GCS_REPLICA_BASE_URL
+        return {**os.environ, "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": base}
+
+    def _hold_out_gcs_replica(self) -> None:
+        self._ecmwf_gcs_outage_until_mono = time.monotonic() + ECMWF_GCS_OUTAGE_HOLD_SEC
+
     def _enqueue_listing_follow(self, *, event_date: str) -> str:
         """Charter 263 (四): queue the day's follow job for a listing's gaps."""
 
@@ -6737,10 +6767,7 @@ class TargetProductionWorker:
             run_ladder=[],
             registry_path=registry_path,
             capture_root=capture_root,
-            env={
-                **os.environ,
-                "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
-            },
+            env=self._ecmwf_capture_env(),
         )
 
     def _reseat_after_listing_follow(
@@ -6808,10 +6835,7 @@ class TargetProductionWorker:
             run_ladder=[(int(lead), int(run_init.hour), run_init)],
             registry_path=registry_path,
             capture_root=capture_root,
-            env={
-                **os.environ,
-                "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
-            },
+            env=self._ecmwf_capture_env(),
         )
 
     def _capture_official_native_packet(
@@ -7266,10 +7290,8 @@ class TargetProductionWorker:
         # replica serves the same official objects without that limit and is
         # allowed sixteen.  Since ECMWF dominates a capture (51 members), the
         # replica is what keeps four archives inside one deadline.
-        capture_env = {
-            **os.environ,
-            "ECMWF_ARCHIVE_TRANSPORT_BASE_URL": ECMWF_GCS_REPLICA_BASE_URL,
-        }
+        # While the replica is held out after an outage, S3 (below).
+        capture_env = self._ecmwf_capture_env()
 
         # Charter 195 (二): every attempt, rung by rung, lands in the capture
         # attempt log (``_log_capture_attempt``); before it there was no way
@@ -7347,6 +7369,46 @@ class TargetProductionWorker:
                             if completed.returncode != 0 else ""
                         ),
                     })
+                    if (
+                        completed.returncode != 0
+                        and capture_env.get("ECMWF_ARCHIVE_TRANSPORT_BASE_URL")
+                        == ECMWF_GCS_REPLICA_BASE_URL
+                        and _gcs_replica_outage(
+                            f"{completed.stderr or ''} {rung_trace[-1].get('stdout_reason') or ''}"
+                        )
+                    ):
+                        # The replica, not the run and not our egress: the
+                        # same rung on ECMWF's own S3, now, and S3 for every
+                        # capture until the hold expires.
+                        self._hold_out_gcs_replica()
+                        capture_env.update(self._ecmwf_capture_env())
+                        rung_started = time.monotonic()
+                        completed = subprocess.run(
+                            attempt,
+                            cwd=str(ROOT),
+                            capture_output=True,
+                            text=True,
+                            timeout=OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC,
+                            env=capture_env,
+                        )
+                        rung_trace.append({
+                            "lead_days": int(rung_lead),
+                            "cycle_hour": rung_cycle,
+                            "run_init_utc": rung_run_init.isoformat().replace(
+                                "+00:00", "Z"
+                            ),
+                            "transport": "ecmwf_s3_after_gcs_outage",
+                            "returncode": completed.returncode,
+                            "seconds": round(time.monotonic() - rung_started, 1),
+                            "stderr_tail": (
+                                (completed.stderr or "").strip()[-160:]
+                                if completed.returncode != 0 else ""
+                            ),
+                            "stdout_reason": (
+                                _capture_stdout_reason(completed.stdout)
+                                if completed.returncode != 0 else ""
+                            ),
+                        })
                     if completed.returncode != 0 and _capture_text_is_network(
                         completed.stderr
                     ):
