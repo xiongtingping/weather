@@ -52,6 +52,10 @@ FORECAST = "fcst"
 #: read at the moment the forecast became available.
 NOWCAST_ARMS = {"sat": "nowcast_sat", "ctl": "nowcast_ctl"}
 NOWCAST_LOG = "log.jsonl"
+#: The hindcast experiments' results frozen before their files were archived (user
+#: 2026-10-22 「保留代码和结果，归档实验数据，冻结配置！」): a run absent on disk is filled
+#: from here, so the board keeps every hindcast number.
+FROZEN_HINDCAST = "hindcast_frozen_v1.json"
 #: A run whose log moved within this many seconds and has not said SUCCESS is running.
 RUNNING_WITHIN_SEC = 1800
 #: The local hours a day's maximum must be covered through to count as complete.
@@ -300,6 +304,25 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
+        try:
+            frozen = json.loads((root / "run" / FROZEN_HINDCAST).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            frozen = {}
+        for day, F in (((frozen.get("stations") or {}).get(station) or {}).get("days") or {}).items():
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            if F.get("gfs") and "gfs" not in entry:
+                entry["gfs"] = F["gfs"]
+                if entry["truth_c"] is not None:
+                    gfs_errs.append(F["gfs"]["tmax_c"] - entry["truth_c"])
+            for config, rec in (F.get("configs") or {}).items():
+                if config in entry["configs"]:
+                    continue  # still on disk: the live read wins
+                rec = {**rec, "frozen": True}
+                rec.pop("error_c", None)
+                if entry["truth_c"] is not None and rec.get("status") == "complete" and rec.get("peak_covered"):
+                    rec["error_c"] = round(rec["tmax_c"] - entry["truth_c"], 2)
+                    errs.setdefault(config, []).append(rec["error_c"])
+                entry["configs"][config] = rec
         # Same-moment comparison (forward test): WRF arms (raw and with the observed
         # maximum so far), market and served belief, each as of the record's ready_utc.
         nowcast_errs: dict[str, list[float]] = {}

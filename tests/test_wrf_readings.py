@@ -75,3 +75,23 @@ def test_stored_view_for_the_station_board(tmp_path: Path, monkeypatch) -> None:
     assert v["state"] == "ok" and list(v["runs"]) == ["nowcast_sat"] and v["oracle_score"]["mae_c"] == 1.02
     assert W.stored("KLAX", "2026-10-22") is None
     assert W.stored("ZUUU", "2026-10-30") == {"state": "no_run"}
+
+
+def test_archived_hindcast_runs_are_filled_from_the_frozen_summary(tmp_path: Path, monkeypatch) -> None:
+    """Hindcast files archived (user 2026-10-22 「归档实验数据，冻结配置」): the frozen
+    summary keeps their day maxima and errors on the board; a run still on disk wins."""
+
+    import json  # noqa: PLC0415
+
+    (tmp_path / "run").mkdir()
+    (tmp_path / "run" / W.FROZEN_HINDCAST).write_text(json.dumps({"stations": {"ZUUU": {"days": {
+        "2026-10-14": {"gfs": {"tmax_c": 25.5}, "configs": {
+            "dom_big": {"tmax_c": 26.3, "status": "complete", "peak_covered": True, "series": [], "error_c": 9.9}}}}}}}),
+        encoding="utf-8")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {"2026-10-14": 25.0})
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 22, tzinfo=timezone.utc))
+    S = out["stations"]["ZUUU"]
+    assert S["days"]["2026-10-14"]["configs"]["dom_big"]["error_c"] == 1.3   # recomputed, not the stored 9.9
+    assert S["scores"]["dom_big"] == {"n": 1, "bias_c": 1.3, "mae_c": 1.3, "hit": 0.0}
+    assert S["gfs_score"]["n"] == 1
