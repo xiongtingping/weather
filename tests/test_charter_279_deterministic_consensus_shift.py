@@ -210,6 +210,21 @@ def test_the_fit_recovers_the_bias_and_kappa_and_the_walk_forward_passes_where_t
     assert DCS.walk_forward(noise, family="P0_far")["fleet_wide"]["verdict"] in {"REFUSED", "INSUFFICIENT"}
 
 
+def test_the_same_period_walk_forward_scores_only_later_decisions_on_parameters_from_all_days():
+    records = _synthetic_records()
+    for r in records:
+        r["decision_at_utc"] = r["day"] + "T06:00:00Z"
+    whole = DCS.walk_forward(records, family="P0_far")["fleet_wide"]
+    later = DCS.walk_forward(records, family="P0_far", score_from_utc="2026-09-20T00:00:00Z")["fleet_wide"]
+    assert DCS.SCORE_FROM_DECISION_UTC == "2026-10-01T00:00:00Z"
+    assert later["n_days"] == 11 and whole["n_days"] > later["n_days"]     # 09-20..09-30 scored
+    assert later["n"] == 11 * 6
+    # The scored days keep the parameters fitted on every earlier day: run on the
+    # later days alone, only the last three reach the eight-day fit floor.
+    only = DCS.walk_forward([r for r in records if r["day"] >= "2026-09-20"], family="P0_far")["fleet_wide"]
+    assert only["n"] == 3 * 6 < later["n"]
+
+
 def test_the_verdict_is_charter_240s():
     base = {"n_days": 25, "logscore": {"ci": [-0.05, -0.01]}, "crps": {"ci": [-0.02, 0.01]}, "brier": {"ci": [-0.01, 0.0]}}
     assert DCS.verdict_of(base) == "PASS"
@@ -368,7 +383,11 @@ def test_the_dashboard_reads_the_fit_artifact(tmp_path, monkeypatch):
     block = source[source.index("function sdConsensusBlock"):source.index("function sdProbExplain(){")]
     # 补记三: the fleet is the card's line, the station a small grey one; P1 is not skipped.
     assert 'if(stage === "P1") return ""' not in block and 'stage === "P1" ||' not in block
-    assert "舰队偏差 挪" in block and "font-size:10.5px;opacity:.7" in block
+    assert "舰队偏差 挪" in block and 'class="sd-cons-d' in block and 'class="sd-cons-st"' in block
+    # 补记四: the walk-forward line reads only the same-period fit and sits inside the box.
+    assert "score_from_decision_utc" in block and 'class="sd-cons-wf"' in block
+    assert "foot: sdConsensusFoot" not in source
+    assert ".sd-cons-d{font-size:24px" in source
 
 
 def test_the_daily_fit_is_a_managed_sweep_that_writes_no_database():

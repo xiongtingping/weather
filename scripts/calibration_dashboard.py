@@ -13050,6 +13050,8 @@ def collect_deterministic_consensus() -> dict[str, Any]:
         "available": True, "fitted_at_utc": raw.get("fitted_at_utc"),
         "age_days": round((_now() - mtime).total_seconds() / 86400.0, 2),
         "window": raw.get("window"), "rosters": raw.get("rosters"), "primary": raw.get("primary"),
+        # Charter 279 补记四: the walk-forward below scores decisions from here on.
+        "score_from_decision_utc": raw.get("score_from_decision_utc"),
         "counts": raw.get("counts"), "families": families, "mode": DCS.MODE,
     }
 
@@ -17475,6 +17477,15 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-mc-cmp{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 .sd-mc-cmp b{color:var(--text);font-variant-numeric:tabular-nums}.sd-mc-cmp.up b{color:var(--pill-red-fg)}.sd-mc-cmp.down b{color:var(--accent)}
 .sd-mc-sub{font-size:12px;color:var(--muted);margin:0 0 8px}.sd-mc-sub b{font-weight:600}
+.sd-cons{margin:4px 0 10px;padding:8px 10px;border-left:3px solid var(--c,var(--accent));border-radius:8px;background:color-mix(in srgb,var(--c,var(--accent)) 8%,transparent)}
+.sd-cons-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.sd-cons-h b{font-size:20px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.sd-cons-fleet{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:13px;color:var(--muted)}
+.sd-cons-d{font-size:24px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}.sd-cons-d.up{color:var(--pill-red-fg)}.sd-cons-d.down{color:var(--accent)}
+.sd-cons-fleet .sd-cons-to b{font-size:17px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.sd-cons-st{font-size:12px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+.sd-cons-wf{font-size:12.5px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}.sd-cons-wf b{color:var(--text)}
+.sd-cons-wf .sd-cons-st{display:inline;margin:0 0 0 6px}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
 /* The four estimate cards in one row, aligned (user 2026-10-21 「设计排版美化对齐」):
    every section takes the same height on every card, so the big number, the two
@@ -24376,8 +24387,7 @@ function sdProbabilityCards(day){
       sub: [`<span title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值 <b>${sdN(st.mean_c, 2)}°C</b></span>`,
             `<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
             stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心，更新前的输入">${rootLabel} <b>${sdN(e.root_center_c, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage),
-      foot: sdConsensusFoot(e.consensus, stage)});
+      trend: sdStageTrend(day, stage), body: sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
   }).join("");
 }
 // Charter 279 (user 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」, then
@@ -24394,33 +24404,39 @@ function sdConsensusTip(v){
 function sdConsensusBlock(c, stage){
   // An envelope compiled before its stage's shadow went live carries no
   // receipt; say so rather than leave the card silent.
-  if(!c) return `<div class="sd-mc-sub muted" title="宪章 279 影子回执随每次编译写入（P0 / P0-M 自 10-22 06:23Z，P1 自补记三上线）；这一次编译早于上线，没有回执，下一次编译后显示。">共识 F 影子：本次编译早于上线，等下一次编译</div>`;
+  if(!c) return `<div class="sd-cons" title="宪章 279 影子回执随每次编译写入（P0 / P0-M 自 10-22 06:23Z，P1 自补记三上线）；这一次编译早于上线，没有回执，下一次编译后显示。"><div class="sd-cons-h">共识 F 影子 <span>本次编译早于上线，等下一次编译</span></div></div>`;
   const sys = c.systems || {}, names = Object.keys(sys);
   const sysTip = names.length
     ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
     : "决策时刻没有可读的确定性预报";
   const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
-  const head = `<div class="sd-mc-sub" title="${sdEsc("宪章 279 影子：决策时刻可知的十家全球确定性点预报日最高温中位数（≥3 家）。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? ` <span class="muted">${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? ` <span class="muted">${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
+  const head = `<div class="sd-cons-h" title="${sdEsc("宪章 279 影子：决策时刻可知的十家全球确定性点预报日最高温中位数（≥3 家）。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? `<span>${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? `<span>${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
   const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
   const fleetLine = !fleet ? "" : fleet.state !== "READ"
-    ? `<div class="sd-mc-sub muted">舰队偏差 ${sdEsc(SD_CONS_STATE[fleet.state] || fleet.state || "—")}</div>`
-    : `<div class="sd-mc-cmps" title="${sdEsc(sdConsensusTip(fleet))}"><span class="sd-mc-cmp ${fleet.delta_c > 0.05 ? "up" : fleet.delta_c < -0.05 ? "down" : "flat"}">舰队偏差 挪 <b>${sdSg(fleet.delta_c, 2)}°C</b></span><span class="sd-mc-cmp flat">挪后 <b>${sdN(fleet.shadow_centre_c, 2)}°C</b>${fleet.shadow_mode ? ` · ${sdEsc(fleet.shadow_mode)}` : ""}</span></div>`;
+    ? `<div class="sd-cons-fleet">舰队偏差 ${sdEsc(SD_CONS_STATE[fleet.state] || fleet.state || "—")}</div>`
+    : `<div class="sd-cons-fleet" title="${sdEsc(sdConsensusTip(fleet))}"><span>舰队偏差 挪</span><span class="sd-cons-d ${fleet.delta_c > 0.05 ? "up" : fleet.delta_c < -0.05 ? "down" : "flat"}">${sdSg(fleet.delta_c, 2)}°C</span><span class="sd-cons-to">→ <b>${sdN(fleet.shadow_centre_c, 2)}°C</b>${fleet.shadow_mode ? ` · ${sdEsc(fleet.shadow_mode)}` : ""}</span></div>`;
   const stationLine = station && station.state === "READ"
-    ? `<div class="muted mono" style="font-size:10.5px;opacity:.7" title="${sdEsc("逐站偏差（只作对照，前推不如舰队）：" + sdConsensusTip(station))}">逐站 ${sdSg(station.delta_c, 2)} → ${sdN(station.shadow_centre_c, 2)}°C</div>`
+    ? `<div class="sd-cons-st" title="${sdEsc("逐站偏差（只作对照，前推不如舰队）：" + sdConsensusTip(station))}">逐站 ${sdSg(station.delta_c, 2)} → ${sdN(station.shadow_centre_c, 2)}°C</div>`
     : "";
-  return head + fleetLine + stationLine;
+  const wf = sdConsensusFoot(c, stage);
+  return `<div class="sd-cons">${head}${fleetLine}${stationLine}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
 }
 function sdConsensusFoot(c, stage){
   if(!c || !c.family) return "";
   const fit = ((D.deterministic_consensus || {}).families || {})[c.family];
   if(!fit) return "影子前推：等待每日拟合";
+  // Charter 279 补记四 (user 「把脚注改成只报 10-01 以后的同期口径」): the fit scores
+  // decisions from score_from_decision_utc only; an artifact from before that
+  // change has no such field and is not shown as if it were.
+  const from = (D.deterministic_consensus || {}).score_from_decision_utc;
+  if(!from) return "影子前推：等待同期口径重拟";
   const wf = name => ((fit.variants || {})[name] || {}).walk_forward;
   const fw = wf("fleet_wide"), sw = wf("station_wide");
   if(!fw || !fw.n) return "影子前推：样本不足";
   const ls = fw.logscore || {}, ci = ls.ci || [], mark = fw.verdict === "PASS" ? "✓" : fw.verdict === "REFUSED" ? "✗" : "…";
-  const tip = `舰队偏差前推 ${fw.n_days} 个事件日 ${fw.n} 个决策；LogScore ${sdN(ls.before, 4)}→${sdN(ls.after, 4)}；CRPS Δ ${sdSg((fw.crps || {}).delta, 4)}；Brier Δ ${sdSg((fw.brier || {}).delta, 4)}；${fw.days_better}/${fw.n_days} 天改善；判决 ${fw.verdict}（宪章 240：LogScore 上界<0 且 CRPS/Brier 不显著更差，≥20 天）`;
-  const st = sw && sw.n ? ` <span style="font-size:10.5px;opacity:.6" title="逐站偏差前推（只作对照）">逐站 ${sdSg((sw.logscore || {}).delta, 3)}</span>` : "";
-  return `影子前推 ${fw.n_days} 天 · 舰队 <b class="mono" title="${sdEsc(tip)}">ΔLS ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}] ${mark}</b>${st}`;
+  const tip = `舰队偏差前推 ${fw.n_days} 个事件日 ${fw.n} 个决策；只评 ${String(from).slice(0, 10)} 以后的决策，参数仍用之前全部事件日拟；LogScore ${sdN(ls.before, 4)}→${sdN(ls.after, 4)}；CRPS Δ ${sdSg((fw.crps || {}).delta, 4)}；Brier Δ ${sdSg((fw.brier || {}).delta, 4)}；${fw.days_better}/${fw.n_days} 天改善；判决 ${fw.verdict}（宪章 240：LogScore 上界<0 且 CRPS/Brier 不显著更差，≥20 天）`;
+  const st = sw && sw.n ? `<span class="sd-cons-st" title="逐站偏差前推（只作对照）">逐站 ${sdSg((sw.logscore || {}).delta, 3)}</span>` : "";
+  return `<span title="${sdEsc(tip)}">前推 ${String(from).slice(5, 10)} 起 ${fw.n_days} 天 · 舰队 <b class="mono">ΔLS ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}] ${mark}</b></span>${st}`;
 }
 function sdProbExplain(){
   return `<details class="muted sd-sub"><summary>中心、均值、众数与概率向量的区别</summary>P0 模型中心＝入座模型的校准中心按模型权重加权。根中心＝本阶段实际引用的前序信封中心，是更新输入。分布均值＝最终向量的 Σ(桶概率×桶代表温度)；P0-M 似然生效及 P1 的融合后中心取最终分布加权中心，因此可与均值一致。均值桶＝按桶概率加权的平均档位最近的桶（生产 mean_center_bucket_v1），与分布均值所在的桶偶有一档之差。众数桶＝概率最大的桶。概率向量＝各温度桶的完整概率列表；温度中心本身以 °C 表示，不是概率。</details>`;

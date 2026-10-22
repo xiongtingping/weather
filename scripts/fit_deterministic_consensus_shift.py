@@ -5,7 +5,9 @@ Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0-M, P1) and per variant
 (fleet or station bias; the ten-system roster): F's bias against the settled
 truth, kappa through the origin, and the walk-forward scores of the shift
 each event day would have had under the parameters fitted on the days before
-it (``deterministic_consensus_shift.walk_forward``; charter 240's verdict).
+it (``deterministic_consensus_shift.walk_forward``; charter 240's verdict), on
+decisions from ``SCORE_FROM_DECISION_UTC`` only (补记四; the whole window is
+kept as ``walk_forward_whole_window``).
 One record per station-day x family: the first decision of that family, its
 served vector, the consensus knowable at that decision.
 
@@ -168,11 +170,16 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None, days: int, budge
     for family in DCS.STAGE_FAMILIES:
         own = [r for r in records if r["family"] == family]
         params = DCS.fit_parameters(records, family=family)
-        forward = DCS.walk_forward(records, family=family)
+        # Charter 279 补记四: the verdict and the board read the same-period
+        # walk-forward (decisions from SCORE_FROM_DECISION_UTC); the whole
+        # window is kept beside it for reference.
+        forward = DCS.walk_forward(records, family=family, score_from_utc=DCS.SCORE_FROM_DECISION_UTC)
+        forward_whole = DCS.walk_forward(records, family=family)
         variants = {}
         for variant in DCS.VARIANTS:
             entry = dict(params.get(variant) or {})
             entry["walk_forward"] = forward.get(variant)
+            entry["walk_forward_whole_window"] = forward_whole.get(variant)
             variants[variant] = entry
         families[family] = {
             "n_records": len(own), "n_days": len({r["day"] for r in own}),
@@ -190,6 +197,7 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None, days: int, budge
         "fitted_at_utc": now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "window": [start, end], "cap_c": DCS.CAP_C, "min_systems": DCS.MIN_SYSTEMS,
         "min_fit_event_days": DCS.MIN_FIT_EVENT_DAYS, "verdict_min_event_days": DCS.VERDICT_MIN_EVENT_DAYS,
+        "score_from_decision_utc": DCS.SCORE_FROM_DECISION_UTC,
         "station_bias_prior_days": DCS.STATION_BIAS_PRIOR_DAYS,
         "rosters": {"wide": list(DCS.PRODUCTS)},
         "primary": DCS.PRIMARY_VARIANT, "counts": counts, "families": families,

@@ -59,6 +59,12 @@ MIN_FIT_EVENT_DAYS = 8
 STATION_BIAS_PRIOR_DAYS = 10.0
 #: Charter 240 on the walk-forward: at least this many evaluable event days for a verdict.
 VERDICT_MIN_EVENT_DAYS = 20
+#: Charter 279 补记四 (user 2026-10-22 「把脚注改成只报 10-01 以后的同期口径」): the
+#: walk-forward the board and the verdict read scores only decisions from here
+#: on -- the serving chain the shadow would join (P0 v20+); August-September's
+#: older versions served a P0 the consensus had far more to correct (补记一).
+#: Parameters are still fitted on every earlier event day.
+SCORE_FROM_DECISION_UTC = "2026-10-01T00:00:00Z"
 BOOTSTRAP_DRAWS = 300
 BOOTSTRAP_SEED = 279
 ROOT = Path(__file__).resolve().parents[1]
@@ -535,12 +541,20 @@ def verdict_of(summary: Mapping[str, Any]) -> str:
 def walk_forward(
     records: Sequence[Mapping[str, Any]], *, family: str,
     shift: Callable[..., Mapping[str, float]] | None = None,
+    score_from_utc: str | None = None,
 ) -> dict[str, Any]:
-    """Each event day scored under the parameters fitted on the days before it, per variant."""
+    """Each event day scored under the parameters fitted on the days before it, per variant.
+
+    ``score_from_utc`` scores only decisions at or after that instant; the
+    parameters are still fitted on every earlier event day, scored or not.
+    """
 
     shift_fn = shift or shift_served
     family_records = [r for r in records if r["family"] == family]
-    days = sorted({str(r["day"]) for r in family_records})
+    days = sorted({
+        str(r["day"]) for r in family_records
+        if score_from_utc is None or str(r.get("decision_at_utc") or "") >= score_from_utc
+    })
     per_variant: dict[str, dict[str, Any]] = {
         v: {"by_day": {}, "by_station": {}, "sums": {k: 0.0 for k in (
             "logscore_before", "logscore_after", "brier_before", "brier_after", "crps_before", "crps_after")},
@@ -552,6 +566,8 @@ def walk_forward(
         if not params:
             continue
         for record in (r for r in family_records if str(r["day"]) == day):
+            if score_from_utc is not None and str(record.get("decision_at_utc") or "") < score_from_utc:
+                continue
             centre = float(record["centre_c"])
             for variant, p in params.items():
                 form, roster = variant_parts(variant)
@@ -609,7 +625,8 @@ def finite_or_none(value: Any) -> float | None:
 __all__ = [
     "BIAS_FORMS", "CAP_C", "CENSOR_BY_FAMILY", "CONSENSUS_SYSTEM_IDS", "FIT_ARTIFACT_PATH", "FIT_SCHEMA",
     "LINEAGE_KEY", "MIN_FIT_EVENT_DAYS", "MIN_SYSTEMS", "MODE", "PRIMARY_VARIANT", "PRODUCTS",
-    "PRODUCT_OF_SYSTEM", "ROSTERS", "RULE_VERSION", "STAGE_FAMILIES", "STATION_BIAS_PRIOR_DAYS", "VARIANTS",
+    "PRODUCT_OF_SYSTEM", "ROSTERS", "RULE_VERSION", "SCORE_FROM_DECISION_UTC", "STAGE_FAMILIES",
+    "STATION_BIAS_PRIOR_DAYS", "VARIANTS",
     "VERDICT_MIN_EVENT_DAYS", "bias_for", "consensus_from_features", "consensus_read",
     "family_parameters", "fit_parameters", "load_fit_artifact", "mode_bucket", "packet_bundle", "score_record",
     "served_mean_c", "shadow_receipt", "shadow_receipt_from_conn", "shift_served", "stage_family",
