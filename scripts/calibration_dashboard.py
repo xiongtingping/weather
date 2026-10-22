@@ -28160,11 +28160,26 @@ document.querySelectorAll(".why,.sub").forEach(node=>{
     if(typeof sdSave === "function") sdSave();
     location.reload();
   };
+  // User 2026-10-22「看板有新版本，点此刷新：自动」: a visible tab now reloads by itself
+  // too, but only once the reader has been idle (no scroll, click or key for
+  // IDLE_MS and no field focused), so 10-05's rule -- never reload under the
+  // reader -- still holds; position and inputs come back as before.
+  const IDLE_MS = 15000;
+  let lastActive = Date.now();
+  ["scroll", "wheel", "touchstart", "keydown", "mousedown", "input"].forEach(ev =>
+    window.addEventListener(ev, () => { lastActive = Date.now(); }, {passive: true, capture: true}));
+  const editing = () => { const a = document.activeElement;
+    return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable); };
+  const tryAuto = () => {
+    if(!waiting || document.hidden) return;
+    if(Date.now() - lastActive >= IDLE_MS && !editing()) reload();
+  };
+  setInterval(tryAuto, 3000);
   const offer = () => {
     if(document.getElementById("hot-offer")) return;
     const b = document.createElement("button");
     b.id = "hot-offer"; b.type = "button";
-    b.textContent = "看板有新版本 · 点此刷新（保留位置与输入）";
+    b.textContent = "看板有新版本 · 空闲时自动刷新（点此立即刷新）";
     b.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:60;padding:7px 12px;border-radius:8px;"
       + "border:1px solid var(--accent);background:var(--card);color:var(--text);cursor:pointer;font:inherit;box-shadow:0 2px 8px rgba(0,0,0,.25)";
     b.addEventListener("click", reload);
