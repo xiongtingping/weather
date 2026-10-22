@@ -24997,7 +24997,9 @@ const SD_HIT_COL = {"P0": SD_COL.P0, "P0-M": SD_COL["P0-M"], "P1": SD_COL.P1, ma
   member_bayes: SD_COL.MB, D0: SD_COL.D0, MOS: SD_COL.MOS, WRF: SD_COL.WRF};
 function sdHitStrip(day){
   const H = (SD.data || {}).estimate_hit;
-  if(!H || !H.fleet || day !== (SD.data.days || [])[0]) return "";  // once, under the first day: the rates are not per day
+  // Drawn under every day's card: only the selected day's card is shown (the others are
+  // hidden), so tying it to one day hid it whenever another tab was open.
+  if(!H || !H.fleet) return "";
   const pc = x => x && x.n ? Math.round(100 * x.hits / x.n) + "%" : "—";
   const main = "13";
   const cards = (H.methods || []).map(m => {
