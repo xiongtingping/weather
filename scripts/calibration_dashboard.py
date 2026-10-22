@@ -18604,7 +18604,7 @@ function wrfTmaxPanel(){
     // upper bound and the hindcast without satellite -- with GFS as a grey reference;
     // the legend wraps; every other configuration's table sits in a fold.
     const KEYC = ["nowcast_sat", "nowcast_ctl", "fcst", "satcld_rhc85", "indep_rhc85"].filter(c => cfgs.includes(c));
-    const SHORT = {nowcast_sat: "今天·卫星云", nowcast_ctl: "今天·自估云", fcst: "前一晚预报", satcld_rhc85: "回算·全天卫星云", indep_rhc85: "回算·不用卫星"};
+    const SHORT = {nowcast_sat: "今天·卫星云", nowcast_ctl: "今天·自估云", fcst: "3 日预报", satcld_rhc85: "回算·全天卫星云", indep_rhc85: "回算·不用卫星"};
     const sname = c => SHORT[c] || WRF_NAME(c);
     const wide = c => c === "nowcast_sat" || c === "fcst";
     const legend = cs => `<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${cs.map(c => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:0;border-top:2px dashed var(--muted);display:inline-block"></i>GFS 原始</span><span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;display:inline-block;background:var(--text)"></i>实测</span></div>`;
@@ -18642,7 +18642,23 @@ function wrfTmaxPanel(){
         : span.map((d, i) => `<line x1="${X2(24 * i)}" x2="${X2(24 * i)}" y1="${pt}" y2="${ht - pb}" stroke="var(--line)"/><text x="${X2(24 * i + 12)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)} 12:00</text>`).join("");
       const tl = L.truth_c == null ? "" : `<line x1="${pl}" x2="${X2(24)}" y1="${Y2(L.truth_c)}" y2="${Y2(L.truth_c)}" stroke="var(--text)" stroke-dasharray="4 3"/>`;
       const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${wide(c) ? 2.5 : 1.6}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${h(sname(c))}</title></polyline>`).join("");
-      chart2 = `<div class="card"><div class="trend-t">${h(span[0].slice(5))}${nd > 1 ? `–${h(span[nd - 1].slice(5))}` : ""} 逐小时气温（当地时${L.truth_c == null ? "" : "，虚线＝实测最高"}）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>
+      // Each day's highest point on every curve, its temperature written above it (user
+      // 2026-10-22 「每天曲线的最高点标注温度」); labels on the same day that would touch
+      // stack downward, highest first.
+      const peaks = [];
+      series.forEach(([c, pts]) => {
+        const best = {};
+        pts.forEach(p => { const x = hr(p[0]), k = Math.floor(x / 24); if(k >= 0 && k < nd && (!best[k] || p[1] > best[k][1])) best[k] = [x, p[1]]; });
+        Object.entries(best).forEach(([k, [x, v]]) => peaks.push({k: +k, c, x: X2(x), y: Y2(v), v}));
+      });
+      const placed = [];
+      const marks = peaks.sort((a, b) => a.k - b.k || b.v - a.v).map(q => {
+        let ly = Math.max(pt + 9, q.y - 6);
+        placed.filter(o => o.k === q.k && Math.abs(o.x - q.x) < 40).forEach(o => { if(Math.abs(o.ly - ly) < 11) ly = o.ly + 11; });
+        placed.push({...q, ly});
+        return `<circle cx="${q.x}" cy="${q.y}" r="3" fill="${col(q.c)}"/><text x="${q.x}" y="${ly}" text-anchor="middle" font-size="11" font-weight="700" fill="${col(q.c)}" stroke="var(--card)" stroke-width="3" paint-order="stroke">${n(q.v)}</text>`;
+      }).join("");
+      chart2 = `<div class="card"><div class="trend-t">${h(span[0].slice(5))}${nd > 1 ? `–${h(span[nd - 1].slice(5))}` : ""} 逐小时气温（当地时${L.truth_c == null ? "" : "，虚线＝实测最高"}，数字＝当天最高）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}${marks}</svg>
         <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${series.map(([c]) => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}</div></div>`;
     }
     // Table: one row per day, value with its error underneath.
