@@ -45,6 +45,13 @@ BASELINE = "baseline"
 #: The live forecasts, ``run/fcst/<target YYYYMMDD>_from_<init YYYYMMDDHH>``
 #: (run/forecast_prep.sh): the newest init per target day is the one shown.
 FORECAST = "fcst"
+#: The same-day nowcast forward test (run/nowcast.sh, user 2026-10-22 「做当天临近预报的前向测试」):
+#: two arms per day under ``run/nowcast/<YYYYMMDD>/{sat,ctl}`` -- Himawari cloud in the
+#: radiation up to the latest scan at issue time, and the same run without it -- and
+#: ``run/nowcast/log.jsonl``, one record per issue with the market and the served belief
+#: read at the moment the forecast became available.
+NOWCAST_ARMS = {"sat": "nowcast_sat", "ctl": "nowcast_ctl"}
+NOWCAST_LOG = "log.jsonl"
 #: A run whose log moved within this many seconds and has not said SUCCESS is running.
 RUNNING_WITHIN_SEC = 1800
 #: The local hours a day's maximum must be covered through to count as complete.
@@ -73,6 +80,9 @@ def run_dirs(root: Path = WRF_ROOT) -> list[tuple[str, str, Path]]:
         if len(init) == 10 and init.isdigit() and glob.glob(str(Path(d) / "wrfout_d0*")):
             newest[target] = Path(d)  # sorted: the later init wins
     out.extend((FORECAST, day, d) for day, d in newest.items())
+    for d in sorted(glob.glob(str(root / "run" / "nowcast" / "2*"))):
+        for arm, config in NOWCAST_ARMS.items():
+            out.append((config, Path(d).name, Path(d) / arm))
     return [(c, day, d) for c, day, d in out if len(day) == 8 and day.isdigit() and glob.glob(str(d / "wrfout_d0*"))]
 
 
@@ -213,6 +223,25 @@ def _stats(errs: list[float]) -> dict[str, Any]:
             "hit": sum(1 for e in errs if abs(e) < 0.5) / len(errs)}
 
 
+def nowcast_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
+    """day (YYYY-MM-DD) -> the day's latest nowcast record (market and served belief as of
+    the moment the forecast became available)."""
+
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        lines = (root / "run" / "nowcast" / NOWCAST_LOG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("day"):
+            out[str(r["day"])] = r
+    return out
+
+
 def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | None = None,
             cache: _Cache | None = None) -> dict[str, Any]:
     now = now or _now()
@@ -245,6 +274,9 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             if config == FORECAST:
                 ic = d.name.partition("_from_")[2]
                 init = f"{ic[:4]}-{ic[4:6]}-{ic[6:8]}_{ic[8:10]}:00:00"
+            if config in NOWCAST_ARMS.values():
+                # Initial state = the previous day's 18Z GFS at its 6 h step.
+                init = f"{(datetime.strptime(ymd, '%Y%m%d') - timedelta(days=1)):%Y-%m-%d}_18:00:00"
             rec = {"status": status, "domain": dom, "init_utc": _iso(_utc(init)) if init else None,
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
@@ -261,13 +293,39 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
-        configs = sorted({c for e in days.values() for c in e["configs"]}, key=lambda c: (c != FORECAST, c != BASELINE, c))
+        # Same-moment comparison (forward test): WRF arms (raw and with the observed
+        # maximum so far), market and served belief, each as of the record's ready_utc.
+        nowcast_errs: dict[str, list[float]] = {}
+        for day, rec in nowcast_records(root).items():
+            if rec.get("station", station) != station:
+                continue
+            m, b = rec.get("market") or {}, rec.get("belief") or {}
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            entry["nowcast"] = {
+                "ready_utc": rec.get("ready_utc"), "last_sat_hour_utc": rec.get("last_sat_hour_utc"),
+                "metar_max_so_far_c": rec.get("metar_max_so_far_c"),
+                "sat_c": rec.get("wrf_sat_tmax_c"), "ctl_c": rec.get("wrf_ctl_tmax_c"),
+                "sat_obs_c": rec.get("wrf_sat_tmax_with_obs_c"), "ctl_obs_c": rec.get("wrf_ctl_tmax_with_obs_c"),
+                "market_mean_c": m.get("mean_c"), "market_mode_c": m.get("mode_c"), "market_mode_p": m.get("mode_p"),
+                "belief_mean_c": b.get("mean_c"), "belief_mode_c": b.get("mode_c"), "belief_mode_p": b.get("mode_p"),
+                "belief_stage": b.get("stage"),
+            }
+            t = entry["truth_c"]
+            if t is None:
+                continue
+            for k in ("sat_obs_c", "ctl_obs_c", "market_mean_c", "belief_mean_c"):
+                v = entry["nowcast"][k]
+                if v is not None:
+                    nowcast_errs.setdefault(k, []).append(float(v) - t)
+        configs = sorted({c for e in days.values() for c in e["configs"]},
+                         key=lambda c: (c != "nowcast_sat", c != "nowcast_ctl", c != FORECAST, c != BASELINE, c))
         latest = max(days) if days else None
         stations[station] = {
             "state": "ok" if days else "no_runs", "timezone": str(zone), "point": list(point),
             "configs": configs, "days": dict(sorted(days.items())), "latest_day": latest,
             "scores": {c: _stats(errs.get(c, [])) for c in configs},
             "gfs_score": _stats(gfs_errs),
+            "nowcast_scores": {k: _stats(v) for k, v in nowcast_errs.items()},
         }
     return {"state": "ok", "root": str(root), "as_of_utc": _iso(now), "files_read": cache.read,
             "running": [f"{c}/{ymd}" for c, ymd, d in runs if _status(d, now.timestamp()) == "running"],

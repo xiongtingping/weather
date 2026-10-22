@@ -35,3 +35,24 @@ def test_live_forecast_dirs_keep_the_newest_init_per_target(tmp_path: Path) -> N
     runs = {(c, day): d.name for c, day, d in W.run_dirs(tmp_path)}
     assert runs == {(W.FORECAST, "20261022"): "20261022_from_2026102118",
                     (W.FORECAST, "20261023"): "20261023_from_2026102200"}
+
+
+def test_nowcast_arms_and_same_moment_record(tmp_path: Path) -> None:
+    """The forward test (user 2026-10-22 「做当天临近预报的前向测试」): both arms are
+    runs of their own, and the day's latest log record (market and served belief as
+    of the moment the nowcast came out) is what the day carries."""
+
+    import json  # noqa: PLC0415
+
+    base = tmp_path / "run" / "nowcast"
+    for arm in ("sat", "ctl"):
+        d = base / "20261022" / arm
+        d.mkdir(parents=True)
+        (d / "wrfout_d01_x").write_bytes(b"")
+    runs = sorted((c, day) for c, day, _ in W.run_dirs(tmp_path))
+    assert runs == [("nowcast_ctl", "20261022"), ("nowcast_sat", "20261022")]
+    lines = [{"day": "2026-10-22", "station": "ZUUU", "ready_utc": "2026-10-22T03:00:00Z", "market": {"mean_c": 18.0}},
+             {"day": "2026-10-22", "station": "ZUUU", "ready_utc": "2026-10-22T04:05:00Z", "market": {"mean_c": 18.6}}]
+    (base / "log.jsonl").write_text("\n".join(json.dumps(r) for r in lines) + "\nnot json\n", encoding="utf-8")
+    recs = W.nowcast_records(tmp_path)
+    assert list(recs) == ["2026-10-22"] and recs["2026-10-22"]["market"]["mean_c"] == 18.6

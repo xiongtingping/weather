@@ -20242,8 +20242,10 @@ const MONEY_BOARD = [
 // maximum against the truth, the newest day's hourly T2.  Display only.
 const WRF_COL = ["#58a6ff", "#3fb950", "#d29922", "#f778ba", "#a371f7", "#39c5cf", "#ff7b72", "#8b949e"];
 const WRF_STATUS = {complete: "完成", running: "运行中", stopped: "中断", unknown: "未知"};
-// The live forecast (run/fcst) leads; the rest are hindcast configurations.
-const WRF_NAME = c => c === "fcst" ? "实时预报" : c;
+// The same-day nowcast arms (run/nowcast, forward test) lead, then the live forecast
+// (run/fcst); the rest are hindcast configurations.
+const WRF_NAME = c => ({nowcast_sat: "临近·卫星云", nowcast_ctl: "临近·对照", fcst: "实时预报"})[c] || c;
+const WRF_LEAD = ["nowcast_sat", "fcst", "baseline"];
 function wrfTmaxPanel(){
   const W = D.wrf_tmax || {};
   const head = `<h2 title="外置盘 WRF 项目（GFS 驱动）：每轮取离站最近格点的 2 m 气温，按站点当地日取最高；对正式真值（宪章 225）。只显示，不进任何层">WRF 最高温预报</h2>`;
@@ -20256,8 +20258,10 @@ function wrfTmaxPanel(){
     if(S.state !== "ok") return `<div class="muted">${h(station)}：${h(S.state)}</div>`;
     const cfgs = S.configs || [], col = c => WRF_COL[cfgs.indexOf(c) % WRF_COL.length];
     const days = Object.keys(S.days || {}).sort(), last = S.latest_day, L = S.days[last] || {};
-    const base = (L.configs || {}).fcst || (L.configs || {}).baseline || Object.values(L.configs || {})[0] || {};
-    const initWord = base.init_utc ? `${String(base.init_utc).slice(5, 10)} ${String(base.init_utc).slice(11, 13)}Z 起报` : "";
+    const leadKey = WRF_LEAD.find(c => (L.configs || {})[c]) || Object.keys(L.configs || {})[0];
+    const base = (L.configs || {})[leadKey] || {}, NC = L.nowcast || null;
+    const initWord = leadKey === "nowcast_sat" && NC ? `临近 · 卫星至 ${String(NC.last_sat_hour_utc).padStart(2, "0")}Z · 出数 ${String(NC.ready_utc || "").slice(11, 16)}Z`
+      : base.init_utc ? `${String(base.init_utc).slice(5, 10)} ${String(base.init_utc).slice(11, 13)}Z 起报` : "";
     const big = (label, value, cls, sub, tip) => `<div class="card" title="${h(tip || "")}"><div class="muted">${label}</div>
       <div class="mono ${cls || ""}" style="font-size:30px;font-weight:700;line-height:1.2">${value}</div><div class="muted mono">${sub || ""}</div></div>`;
     const top = `<div class="grid g4">
@@ -20265,6 +20269,18 @@ function wrfTmaxPanel(){
       ${big("真值", L.truth_c == null ? "未结算" : `${n(L.truth_c, 0)}°C`, "", "正式真值")}
       ${big("WRF 误差", L.truth_c == null ? "—" : `${sg(base.tmax_c - L.truth_c)}°C`, errCls(L.truth_c == null ? null : base.tmax_c - L.truth_c), "WRF − 真值")}
       ${big("GFS 驱动", `${n((L.gfs || {}).tmax_c)}°C`, "", "3 小时一帧", "驱动 WRF 的 GFS 本身（met_em 2 m 气温）")}</div>`;
+    // Same-moment comparison (forward test): what each source said when the nowcast came out.
+    const NS = S.nowcast_scores || {};
+    const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
+      <div class="mono" style="font-size:26px;font-weight:700;line-height:1.2">${n(v)}°C</div>
+      <div class="muted mono">${sub}${L.truth_c != null && v != null ? ` · <span class="${errCls(v - L.truth_c)}">${sg(v - L.truth_c)}</span>` : ""}</div>
+      <div class="muted mono" style="font-size:11.5px">同刻 MAE ${x && x.n ? n(x.mae_c, 2) : "—"} · 偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · ${x ? x.n : 0} 天</div></div>`;
+    const ncRow = !NC ? "" : `<div class="trend-t" style="margin-top:8px" title="每天成都约 11:10 起跑，出数时刻记下四方读数；WRF 两臂已与当时报文最高取大">临近预报 · 同刻对比（${h(String(NC.ready_utc || "").slice(11, 16))}Z，已报最高 ${n(NC.metar_max_so_far_c, 0)}°C）</div>
+      <div class="grid g4">
+      ${ncCard("WRF 卫星云", NC.sat_obs_c, `卫星至 ${String(NC.last_sat_hour_utc).padStart(2, "0")}Z`, "葵花云量/光学厚度进辐射，之后沿用最新一张", NS.sat_obs_c)}
+      ${ncCard("WRF 对照", NC.ctl_obs_c, "同配置无卫星", "icloud3 + 临界 RH 0.85，不用卫星", NS.ctl_obs_c)}
+      ${ncCard("市场", NC.market_mean_c, `众数 ${n(NC.market_mode_c, 0)}° ${NC.market_mode_p == null ? "" : Math.round(100 * NC.market_mode_p) + "%"}`, "出数时刻的盘口快照，梯子均值", NS.market_mean_c)}
+      ${ncCard(h(NC.belief_stage || "信念"), NC.belief_mean_c, `众数 ${n(NC.belief_mode_c, 0)}° ${NC.belief_mode_p == null ? "" : Math.round(100 * NC.belief_mode_p) + "%"}`, "出数时刻生产服务的信念（P1>P0-M>P0），梯子均值", NS.belief_mean_c)}</div>`;
     const sc = S.scores || {};
     const tile = (name, x, c) => `<div class="card" style="border-top:3px solid ${c}"><div class="muted">${h(name)}</div>
       <div class="mono" style="font-size:22px;font-weight:700">MAE ${x && x.n ? n(x.mae_c, 2) : "—"}</div>
@@ -20279,8 +20295,8 @@ function wrfTmaxPanel(){
       .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
     const xl = days.map((d, i) => `<text x="${X(i)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)}</text>`).join("");
     const line = c => { const pts = days.map((d, i) => [i, (S.days[d].configs[c] || {}).tmax_c]).filter(p => p[1] != null);
-      return `<polyline fill="none" stroke="${col(c)}" stroke-width="${c === "fcst" || c === "baseline" ? 2.5 : 1.5}" points="${pts.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>`
-        + pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.5" fill="${col(c)}"><title>${c} ${days[p[0]]} ${n(p[1], 2)}°C</title></circle>`).join(""); };
+      return `<polyline fill="none" stroke="${col(c)}" stroke-width="${WRF_LEAD.includes(c) ? 2.5 : 1.5}" points="${pts.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>`
+        + pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.5" fill="${col(c)}"><title>${WRF_NAME(c)} ${days[p[0]]} ${n(p[1], 2)}°C</title></circle>`).join(""); };
     const truth = days.map((d, i) => S.days[d].truth_c == null ? "" : `<rect x="${X(i) - 4}" y="${Y(S.days[d].truth_c) - 4}" width="8" height="8" fill="var(--text)"><title>真值 ${d} ${n(S.days[d].truth_c, 0)}°C</title></rect>`).join("");
     const key = `<div class="pc-key">${cfgs.map(c => `<span><i style="background:${col(c)}"></i>${h(WRF_NAME(c))}</span>`).join("")}<span><i style="background:var(--text)"></i>真值</span></div>`;
     const chart1 = `<div class="card"><div class="trend-t">逐日最高温：WRF 各配置 · 真值</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${xl}${cfgs.map(line).join("")}${truth}</svg>${key}</div>`;
@@ -20296,7 +20312,7 @@ function wrfTmaxPanel(){
         .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y2(v)}" y2="${Y2(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y2(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
       const x2 = [0, 3, 6, 9, 12, 15, 18, 21, 24].map(v => `<text x="${X2(v)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(v).padStart(2, "0")}:00</text>`).join("");
       const tl = L.truth_c == null ? "" : `<line x1="${pl}" x2="${w - pr}" y1="${Y2(L.truth_c)}" y2="${Y2(L.truth_c)}" stroke="var(--text)" stroke-dasharray="4 3"/>`;
-      const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${c === "fcst" || c === "baseline" ? 2.5 : 1.5}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${c}</title></polyline>`).join("");
+      const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${WRF_LEAD.includes(c) ? 2.5 : 1.5}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${WRF_NAME(c)}</title></polyline>`).join("");
       chart2 = `<div class="card"><div class="trend-t">${h(last)} 逐小时 2 m 气温（当地时）· 虚线＝真值</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>${key}</div>`;
     }
     const cell = r => { if(!r) return `<td class="muted">—</td>`;
@@ -20306,7 +20322,7 @@ function wrfTmaxPanel(){
       return `<tr><td class="mono">${d.slice(5)}</td><td class="mono"><b>${E.truth_c == null ? "—" : n(E.truth_c, 0)}</b></td>${cfgs.map(c => cell(E.configs[c])).join("")}<td class="mono muted">${n((E.gfs || {}).tmax_c)}</td></tr>`; }).join("");
     const table = `<div class="card" style="margin-top:8px;overflow-x:auto"><table><thead><tr><th>日期</th><th>真值</th>${cfgs.map(c => `<th style="color:${col(c)}">${h(WRF_NAME(c))}</th>`).join("")}<th>GFS</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="muted" style="font-size:11.5px;margin-top:4px">⏳ 运行中 · … 峰段未覆盖 · ✕ 中断；误差只计完成且覆盖峰段的轮次</div></div>`;
-    return top + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table;
+    return top + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
