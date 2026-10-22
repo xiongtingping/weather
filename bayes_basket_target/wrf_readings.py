@@ -121,7 +121,14 @@ def _file_frames(path: str, var: str, point: tuple[float, float]) -> dict[str, f
         lat = f["XLAT"][0] if "XLAT" in f else f["XLAT_M"][0]
         lon = f["XLONG"][0] if "XLONG" in f else f["XLONG_M"][0]
         j, i = _nearest(lat, lon, point)
-        times = [t.tobytes().decode() for t in f["Times"][:]]
+        # Frame by frame: a file cut off mid-write (a run stopped at a chunk deadline)
+        # keeps every frame written before the cut.
+        times = []
+        for k in range(f["Times"].shape[0]):
+            try:
+                times.append(f["Times"][k].tobytes().decode())
+            except (OSError, ValueError):
+                break
         for k, t in enumerate(times):
             try:
                 v = f[var][k, 0, j, i] if var == "TT" else f[var][k, j, i]
