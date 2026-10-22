@@ -20357,22 +20357,32 @@ function wrfTmaxPanel(){
     const tiles = `<div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px">${keyTiles}</div>`
       + (rest.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置（${rest.length}）</summary>
         <div class="grid g4" style="margin-top:6px">${rest.map(c => tile(WRF_NAME(c), sc[c], col(c))).join("")}</div></details>` : "");
-    // Day by day: the truth's dots, one line per configuration.
+    // Layout (user 2026-10-22 「重新设计排版」): the charts and the main table carry only the
+    // key series -- today's two nowcast arms, the previous-night forecast, the hindcast
+    // upper bound and the hindcast without satellite -- with GFS as a grey reference;
+    // the legend wraps; every other configuration's table sits in a fold.
+    const KEYC = ["nowcast_sat", "nowcast_ctl", "fcst", "satcld_rhc85", "indep_rhc85"].filter(c => cfgs.includes(c));
+    const SHORT = {nowcast_sat: "今天·卫星云", nowcast_ctl: "今天·自估云", fcst: "前一晚预报", satcld_rhc85: "回算·全天卫星云", indep_rhc85: "回算·不用卫星"};
+    const sname = c => SHORT[c] || WRF_NAME(c);
+    const wide = c => c === "nowcast_sat" || c === "fcst";
+    const legend = cs => `<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${cs.map(c => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:0;border-top:2px dashed var(--muted);display:inline-block"></i>GFS 原始</span><span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:8px;height:8px;display:inline-block;background:var(--text)"></i>实测</span></div>`;
     const w = 760, ht = 240, pl = 36, pr = 10, pt = 12, pb = 26;
-    const vals = days.flatMap(d => [S.days[d].truth_c, ...Object.values(S.days[d].configs).map(r => r.tmax_c)]).filter(v => v != null);
+    const shown = days.filter(d => S.days[d].truth_c != null || KEYC.some(c => S.days[d].configs[c]));
+    const vals = shown.flatMap(d => [S.days[d].truth_c, (S.days[d].gfs || {}).tmax_c, ...KEYC.map(c => (S.days[d].configs[c] || {}).tmax_c)]).filter(v => v != null);
     const lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
-    const X = i => pl + (days.length < 2 ? 0 : i * (w - pl - pr) / (days.length - 1)), Y = v => pt + (hi - v) * (ht - pt - pb) / (hi - lo);
+    const X = i => pl + (shown.length < 2 ? 0 : i * (w - pl - pr) / (shown.length - 1)), Y = v => pt + (hi - v) * (ht - pt - pb) / (hi - lo);
     const grid = Array.from({length: hi - lo + 1}, (_, k) => lo + k).filter(v => (hi - lo) <= 12 || v % 2 === 0)
       .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
-    const xl = days.map((d, i) => `<text x="${X(i)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)}</text>`).join("");
-    const line = c => { const pts = days.map((d, i) => [i, (S.days[d].configs[c] || {}).tmax_c]).filter(p => p[1] != null);
-      return `<polyline fill="none" stroke="${col(c)}" stroke-width="${WRF_LEAD.includes(c) ? 2.5 : 1.5}" points="${pts.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>`
-        + pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="2.5" fill="${col(c)}"><title>${WRF_NAME(c)} ${days[p[0]]} ${n(p[1], 2)}°C</title></circle>`).join(""); };
-    const truth = days.map((d, i) => S.days[d].truth_c == null ? "" : `<rect x="${X(i) - 4}" y="${Y(S.days[d].truth_c) - 4}" width="8" height="8" fill="var(--text)"><title>真值 ${d} ${n(S.days[d].truth_c, 0)}°C</title></rect>`).join("");
-    const key = `<div class="pc-key">${cfgs.map(c => `<span><i style="background:${col(c)}"></i>${h(WRF_NAME(c))}</span>`).join("")}<span><i style="background:var(--text)"></i>真值</span></div>`;
-    const chart1 = `<div class="card"><div class="trend-t">逐日最高温：WRF 各配置 · 真值</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${xl}${cfgs.map(line).join("")}${truth}</svg>${key}</div>`;
-    // The newest day's hourly T2, local clock.
-    const series = cfgs.map(c => [c, ((L.configs || {})[c] || {}).series || []]).filter(x => x[1].length);
+    const step = shown.length > 12 ? 2 : 1;
+    const xl = shown.map((d, i) => i % step ? "" : `<text x="${X(i)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${d.slice(5)}</text>`).join("");
+    const pathOf = (pts, stroke, sw, dash) => pts.length ? `<polyline fill="none" stroke="${stroke}" stroke-width="${sw}"${dash ? ' stroke-dasharray="4 3"' : ""} points="${pts.map(p => `${X(p[0])},${Y(p[1])}`).join(" ")}"/>` : "";
+    const line = c => { const pts = shown.map((d, i) => [i, (S.days[d].configs[c] || {}).tmax_c]).filter(p => p[1] != null);
+      return pathOf(pts, col(c), wide(c) ? 2.5 : 1.6) + pts.map(p => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="${wide(c) ? 3.5 : 2.5}" fill="${col(c)}"><title>${h(sname(c))} ${shown[p[0]]} ${n(p[1], 1)}°C</title></circle>`).join(""); };
+    const gfsLine = pathOf(shown.map((d, i) => [i, (S.days[d].gfs || {}).tmax_c]).filter(p => p[1] != null), "var(--muted)", 1.2, true);
+    const truth = shown.map((d, i) => S.days[d].truth_c == null ? "" : `<rect x="${X(i) - 4}" y="${Y(S.days[d].truth_c) - 4}" width="8" height="8" fill="var(--text)"><title>实测 ${d} ${n(S.days[d].truth_c, 0)}°C</title></rect>`).join("");
+    const chart1 = `<div class="card"><div class="trend-t">逐日最高温（°C）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${xl}${gfsLine}${KEYC.map(line).join("")}${truth}</svg>${legend(KEYC)}</div>`;
+    // The newest day's hourly T2 on the local clock: today's arms and the previous night.
+    const series = ["nowcast_sat", "nowcast_ctl", "fcst"].filter(c => cfgs.includes(c)).map(c => [c, ((L.configs || {})[c] || {}).series || []]).filter(x => x[1].length);
     let chart2 = "";
     if(series.length){
       const zone = S.timezone, hr = t => { const p = new Intl.DateTimeFormat("en-GB", {timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)).split(":"); return +p[0] + p[1] / 60; };
@@ -20383,17 +20393,22 @@ function wrfTmaxPanel(){
         .map(v => `<line x1="${pl}" x2="${w - pr}" y1="${Y2(v)}" y2="${Y2(v)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y2(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`).join("");
       const x2 = [0, 3, 6, 9, 12, 15, 18, 21, 24].map(v => `<text x="${X2(v)}" y="${ht - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(v).padStart(2, "0")}:00</text>`).join("");
       const tl = L.truth_c == null ? "" : `<line x1="${pl}" x2="${w - pr}" y1="${Y2(L.truth_c)}" y2="${Y2(L.truth_c)}" stroke="var(--text)" stroke-dasharray="4 3"/>`;
-      const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${WRF_LEAD.includes(c) ? 2.5 : 1.5}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${WRF_NAME(c)}</title></polyline>`).join("");
-      chart2 = `<div class="card"><div class="trend-t">${h(last)} 逐小时 2 m 气温（当地时）· 虚线＝真值</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>${key}</div>`;
+      const curves = series.map(([c, pts]) => `<polyline fill="none" stroke="${col(c)}" stroke-width="${wide(c) ? 2.5 : 1.6}" points="${pts.map(p => `${X2(hr(p[0]))},${Y2(p[1])}`).join(" ")}"><title>${h(sname(c))}</title></polyline>`).join("");
+      chart2 = `<div class="card"><div class="trend-t">${h(last)} 逐小时气温（当地时${L.truth_c == null ? "" : "，虚线＝实测最高"}）</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${g2}${x2}${tl}${curves}</svg>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px">${series.map(([c]) => `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${col(c)}"></i>${h(sname(c))}</span>`).join("")}</div></div>`;
     }
-    const cell = r => { if(!r) return `<td class="muted">—</td>`;
+    // Table: one row per day, value with its error underneath.
+    const cell = r => { if(!r) return `<td class="muted" style="text-align:center">·</td>`;
       const mark = r.status === "running" ? " ⏳" : r.status !== "complete" ? " ✕" : r.peak_covered ? "" : " …";
-      return `<td class="mono" title="${h(`${WRF_STATUS[r.status] || r.status} · 最高 ${r.at_local} 当地 · 输出到 ${r.last_local} · ${r.domain}`)}">${n(r.tmax_c)}${r.error_c == null ? "" : ` <span class="${errCls(r.error_c)}">${sg(r.error_c)}</span>`}${mark}</td>`; };
-    const rows = days.slice().reverse().map(d => { const E = S.days[d];
-      return `<tr><td class="mono">${d.slice(5)}</td><td class="mono"><b>${E.truth_c == null ? "—" : n(E.truth_c, 0)}</b></td>${cfgs.map(c => cell(E.configs[c])).join("")}<td class="mono muted">${n((E.gfs || {}).tmax_c)}</td></tr>`; }).join("");
-    const table = `<div class="card" style="margin-top:8px;overflow-x:auto"><table><thead><tr><th>日期</th><th>真值</th>${cfgs.map(c => `<th style="color:${col(c)}">${h(WRF_NAME(c))}</th>`).join("")}<th>GFS</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="muted" style="font-size:11.5px;margin-top:4px">⏳ 运行中 · … 峰段未覆盖 · ✕ 中断；误差只计完成且覆盖峰段的轮次</div></div>`;
-    return top + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table;
+      return `<td class="mono" style="text-align:center" title="${h(`${WRF_STATUS[r.status] || r.status} · 最高出现在当地 ${r.at_local} · 输出到 ${r.last_local}`)}">${n(r.tmax_c)}${mark}${r.error_c == null ? "" : `<div class="${errCls(r.error_c)}" style="font-size:11px">${sg(r.error_c)}</div>`}</td>`; };
+    const tbl = (cs, ds) => `<table style="width:100%"><thead><tr><th>日期</th><th>实测</th>${cs.map(c => `<th style="color:${col(c)};white-space:nowrap">${h(sname(c))}</th>`).join("")}<th class="muted">GFS</th></tr></thead><tbody>${ds.slice().reverse().map(d => { const E = S.days[d];
+      return `<tr><td class="mono" style="white-space:nowrap">${d.slice(5)}</td><td class="mono"><b>${E.truth_c == null ? "—" : n(E.truth_c, 0)}</b></td>${cs.map(c => cell(E.configs[c])).join("")}<td class="mono muted" style="text-align:center">${n((E.gfs || {}).tmax_c)}</td></tr>`; }).join("")}</tbody></table>`;
+    const table = `<div class="card" style="margin-top:8px;overflow-x:auto">${tbl(KEYC, shown)}
+      <div class="muted" style="font-size:11.5px;margin-top:4px">小字＝减实测（绿 &lt;0.5°，橙 ≥1.5°）· ⏳ 运行中 · … 峰段未完 · ✕ 中断</div></div>`;
+    const others = rest.filter(c => !KEYC.includes(c));
+    const restDays = days.filter(d => others.some(c => S.days[d].configs[c]));
+    const restTable = others.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置逐日表（${others.length}）</summary><div class="card" style="margin-top:6px;overflow-x:auto">${tbl(others, restDays)}</div></details>` : "";
+    return top + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
