@@ -24409,9 +24409,6 @@ function sdConsensusBlock(c, stage){
   const sysTip = names.length
     ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
     : "决策时刻没有可读的确定性预报";
-  // 补记五 (user 「改，影子块改显示修偏后的值」): the headline is F after the
-  // fleet bias (F_cal, the number the station's charter-267 card reads on the
-  // same footing); the raw median and the bias sit beside it in small type.
   const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
   const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
   const tip = "宪章 279 影子（只记录，不服务）：十家全球确定性预报日最高温中位数，加舰队偏差，按 κ 把本阶段中心往它挪。\n"
@@ -24425,6 +24422,7 @@ function sdConsensusBlock(c, stage){
   return `<div class="sd-cons">${result}${process}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
 }
 function sdConsensusFoot(c, stage){
+  // The walk-forward as a verdict in words; the numbers in the tooltip.
   if(!c || !c.family) return "";
   const fit = ((D.deterministic_consensus || {}).families || {})[c.family];
   if(!fit) return "前推：等待每日拟合";
