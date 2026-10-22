@@ -25038,9 +25038,11 @@ function sdMos(day){
   // The day's highest ΔT so far leads, as on the station board's MOS card (user
   // 2026-10-21 「这里为什么不加+0.8°C」「推算最高温 21.2°C，应该改为21.2°C吧」); the
   // rung chip stays the current reading's, labelled so.
+  // The latest estimate (user 2026-10-22 「大字改成最新的推算」): each hour's ΔT is
+  // the day's maximum as estimated then; the newest supersedes the day's highest.
   const S = (X.series || []).filter(p => p.total_c != null && isFinite(p.total_c));
   const hi = S.length ? S.reduce((a, p) => p.total_c > a.total_c ? p : a, S[0]) : {hour: X.hour, total_c: X.total_c};
-  const est = X.forecast_tmax_d1_c + hi.total_c;
+  const est = X.forecast_tmax_d1_c + X.total_c;
   const hh2 = h => String(h).padStart(2, "0");
   const top = (X.buckets || []).slice().sort((a, b) => b.p - a.p)[0];
   const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
@@ -25051,14 +25053,14 @@ function sdMos(day){
   const parts = Object.entries(X.parts_c || {}).filter(([, v]) => Math.abs(v) >= 0.05).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
     .map(([k, v]) => `<span class="sd-d0-part ${v > 0 ? "up" : "down"}" title="${sdEsc(`对 ΔT 的贡献 ${sdSg(v, 2)}°C`)}">${sdEsc(SD_MOS_NAMES[k] || k)} ${sdSg(v, 2)}</span>`).join("");
   const fwd = ((((X.forward || {}).versions || {})[X.version] || {}).by_hour || {})[String(X.hour)];
-  const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ 今天最高 ΔT ${sdSg(hi.total_c, 2)}°C（${hh2(hi.hour)}:00）；当前 ${hh2(X.hour)}:00 的 ΔT ${sdSg(X.total_c, 2)}°C，众数按当前算。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
+  const tip = `日前预报最高温 ${sdN(X.forecast_tmax_d1_c, 1)}°C ＋ 最新 ${hh2(X.hour)}:00 的 ΔT ${sdSg(X.total_c, 2)}°C（今天推算最高曾是 ${hh2(hi.hour)}:00 的 ${sdSg(hi.total_c, 2)}°C）。ΔT＝${String(X.hour).padStart(2, "0")}:00 前报文与卫星对日前预报的偏差（气温、露点、湿度、风、降水、日照，12 点起含已观测最高温）乘本站系数，再加站点偏差；`
     + `按站分层收缩拟合，0–23 点每小时一套系数；各档概率用 t 分布（自由度 ${X.t_df || "—"}）。`
     + `\n样本外：全天每个小时都显著好于只用站点偏差，9–17 点显著好于看板原日照线与湿度线；尚未与市场、P1 比较。只读，不进任何层。`;
   return sdModelCard({title, tag, color: SD_COL.MOS,
     value: `${sdN(est, 2)}°C`, valueTip: tip, mode: top ? top.bucket : null, modeP: top ? top.p : null,
-    modeLabel: `按当前 ${hh2(X.hour)}:00 众数`,
+    modeLabel: "众数",
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? est - bel.mean : null, "MOS 推算减当前服务信念均值"], ["比市场", mk == null ? null : est - mk, "MOS 推算减市场均值"]],
-    sub: `日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C ${sdSg(hi.total_c, 1)}（最高 ΔT · ${hh2(hi.hour)}:00）${hi.hour === X.hour ? "" : ` · 当前 ${hh2(X.hour)}:00 ΔT ${sdSg(X.total_c, 1)}`} · σ ${sdN(X.resid_sd_c, 2)} · ${X.station_fit ? "本站系数" : "全队系数"}`,
+    sub: `日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C ${sdSg(X.total_c, 1)}（最新 ${hh2(X.hour)}:00）${hi.hour === X.hour ? "" : ` · 今天推算最高 ${hh2(hi.hour)}:00 → ${sdN(X.forecast_tmax_d1_c + hi.total_c, 1)}°C`} · σ ${sdN(X.resid_sd_c, 2)} · ${X.station_fit ? "本站系数" : "全队系数"}`,
     body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend,
     foot: fwd && fwd.n ? `前向误差（${fwd.days} 天）：MOS ${sdN(fwd.mae_composite_c, 2)} · 日前 ${sdN(fwd.mae_raw_c, 2)}°C`
       : `历史样本外误差：9 点 1.12 · 13 点 0.63 · 17 点 0.18°C`});
@@ -26469,23 +26471,22 @@ function sdSky(day){
         <div class="sd-cx-head">
           <span><em>${sdIcon("temp")}观测更新型 MOS</em><small>${CX.station_fit ? "本站系数" : "全队系数"} · 数据到 ${hh(CX.hour)}:00</small></span>
           ${(() => {
-            // The day's highest ΔT and the maximum it points to lead, with their hour;
-            // the current reading follows, smaller (user 2026-10-21 「突出最高ΔT以及
-            // 推算最高温，次当前。并标注时间」); the lowest stays in one muted line.
+            // The latest estimate leads (user 2026-10-22 「大字改成最新的推算」, replacing
+            // 10-21's highest-of-the-day): each hour's ΔT is the whole day's maximum as
+            // estimated with the data up to that hour, so the newest supersedes the rest;
+            // the day's highest and lowest past estimates stay in one muted line.
             const S = (CX.series || []).filter(p => p.total_c != null && isFinite(p.total_c));
             const fc = CX.forecast_tmax_d1_c;
-            const hiP = S.length ? S.reduce((a, p) => p.total_c > a.total_c ? p : a, S[0]) : {hour: CX.hour, total_c: CX.total_c};
+            const hiP = S.length ? S.reduce((a, p) => p.total_c > a.total_c ? p : a, S[0]) : null;
             const loP = S.length ? S.reduce((a, p) => p.total_c < a.total_c ? p : a, S[0]) : null;
             const T = v => fc == null ? "—" : sdN(fc + v, 1) + "°C";
-            return `<div class="sd-cx-peak"><small>今天最高 ΔT · ${hh(hiP.hour)}:00</small><b class="${sdWarmCls(hiP.total_c)}">${sdDeltaT(hiP.total_c)}</b></div>`
-              + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(hiP.total_c)}">${T(hiP.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
-              // The rungs belong to the current reading, so they sit with it,
-              // labelled (user 2026-10-21 「推算最高温 21.2°C 和20°C 29%冲突」 →
-              // 「保持突出最高，概率改标注」).
-              + `<div class="sd-cx-nowbox"><div class="sd-cx-now">当前 ${hh(CX.hour)}:00 · ΔT <b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b> → <b>${T(CX.total_c)}</b></div>`
-              + `<div class="sd-cx-buckets" title="${sdEsc(`按当前 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）；不是按今天最高 ΔT 算的。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>按当前推算</small>${
+            const past = [hiP && hiP.hour !== CX.hour ? `今天推算最高 ${hh(hiP.hour)}:00 → ${T(hiP.total_c)}` : "",
+                          loP && loP.hour !== CX.hour && loP !== hiP ? `最低 ${hh(loP.hour)}:00 → ${T(loP.total_c)}` : ""].filter(Boolean).join(" · ");
+            return `<div class="sd-cx-peak"><small>最新推算 · ${hh(CX.hour)}:00</small><b class="${sdWarmCls(CX.total_c)}">${sdDeltaT(CX.total_c)}</b></div>`
+              + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(CX.total_c)}">${T(CX.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
+              + `<div class="sd-cx-nowbox"><div class="sd-cx-buckets" title="${sdEsc(`按最新 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>各档概率</small>${
                 (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div></div>`
-              + (loP && loP !== hiP ? `<div class="sd-cx-range">最低 ${hh(loP.hour)}:00 · ΔT ${sdSg(loP.total_c, 2)}°C → ${T(loP.total_c)}</div>` : "");
+              + (past ? `<div class="sd-cx-range">${past}</div>` : "");
           })()}
           ${cxForward}
         </div>
