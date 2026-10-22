@@ -388,6 +388,8 @@ def test_the_dashboard_reads_the_fit_artifact(tmp_path, monkeypatch):
     assert "score_from_decision_utc" in block and 'class="sd-cons-wf"' in block
     assert "foot: sdConsensusFoot" not in source
     assert ".sd-cons-d{font-size:24px" in source
+    # 补记五: the headline F is the bias-corrected one.
+    assert "fleet.f_cal_c" in block and "原始" in block
 
 
 def test_the_daily_fit_is_a_managed_sweep_that_writes_no_database():

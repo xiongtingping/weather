@@ -24409,9 +24409,16 @@ function sdConsensusBlock(c, stage){
   const sysTip = names.length
     ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
     : "决策时刻没有可读的确定性预报";
+  // 补记五 (user 「改，影子块改显示修偏后的值」): the headline is F after the
+  // fleet bias (F_cal, the number the station's charter-267 card reads on the
+  // same footing); the raw median and the bias sit beside it in small type.
   const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
   const head = `<div class="sd-cons-h" title="${sdEsc("宪章 279 影子：决策时刻可知的十家全球确定性点预报日最高温中位数（≥3 家）。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? `<span>${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? `<span>${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
   const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
+  const fcal = fleet && fleet.state === "READ" ? fleet.f_cal_c : null;
+  const headValue = fcal != null ? sdN(fcal, 1) + "°C" : fc == null ? "—" : sdN(fc, 1) + "°C";
+  const headNote = fcal != null ? `<span>原始 ${sdN(fc, 1)} ${sdSg(fleet.bias_c, 2)} 偏差</span>` : fc != null ? "<span>未修偏差</span>" : "";
+  const head = `<div class="sd-cons-h" title="${sdEsc("宪章 279 影子：决策时刻可知的十家全球确定性点预报日最高温中位数（≥3 家），加舰队偏差（各家整体偏冷）后的值。只记录，不服务。\n" + sysTip)}">共识 F <b>${headValue}</b>${headNote}${nc != null ? `<span>${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? `<span>${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
   const fleetLine = !fleet ? "" : fleet.state !== "READ"
     ? `<div class="sd-cons-fleet">舰队偏差 ${sdEsc(SD_CONS_STATE[fleet.state] || fleet.state || "—")}</div>`
     : `<div class="sd-cons-fleet" title="${sdEsc(sdConsensusTip(fleet))}"><span>舰队偏差 挪</span><span class="sd-cons-d ${fleet.delta_c > 0.05 ? "up" : fleet.delta_c < -0.05 ? "down" : "flat"}">${sdSg(fleet.delta_c, 2)}°C</span><span class="sd-cons-to">→ <b>${sdN(fleet.shadow_centre_c, 2)}°C</b>${fleet.shadow_mode ? ` · ${sdEsc(fleet.shadow_mode)}` : ""}</span></div>`;
