@@ -79,7 +79,7 @@ from bayes_basket_target.strategy_lanes import (  # noqa: E402
     load_strategy_lanes as _load_strategy_lanes,
 )
 # The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
-# 没建仓是因为什么, 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
+# 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
 # and the live fills (same ruling).  The paper selection payload they read
 # until then is no longer built here.
 import live_selection  # noqa: E402
@@ -14791,10 +14791,6 @@ SECTION_CACHE_TTL_SEC = {
     # cache's safety rule pins; it was put in the every-run set on
     # 2026-09-24 and taken out the same day.
     "certificate_authority": 53 * 60,
-    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
-    # immutable once closed; keyed on (first day, through), so a new day
-    # recomputes it and an older page stays exact for its own days.
-    "refusal_history": 1375 * 60,
     # Row counts per chain link (collect_chain_volume): display only.
     # Five row counts that "move by the day and colour nothing" (the
     # collector's own words): a day.  At 191 min each ~500 s count fell due
@@ -15262,66 +15258,11 @@ def _every_run_reserve_sec() -> float:
     )
 
 
-def _build_live_selection(
-    conn: sqlite3.Connection, closed: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
+def _build_live_selection(conn: sqlite3.Connection) -> dict[str, Any]:
     """``live_selection.build`` on the run's one live book (it built its
-    own: 246 s for the section on the 2026-09-24 06:22Z run), with the
-    refusal funnel's closed days handed in (``refusal_history``)."""
+    own: 246 s for the section on the 2026-09-24 06:22Z run)."""
 
-    return live_selection.build(
-        conn, book=_render_live_book(conn), closed=closed,
-    )
-
-
-def _refusal_history_window(conn: sqlite3.Connection) -> tuple[str | None, str]:
-    """The live book's first day, and the last day that takes no more
-    opening decisions (two back: P0 decides before its event day)."""
-
-    legs = _render_live_book(conn).get("legs") or []
-    first_day = min((str(leg["event_date"]) for leg in legs), default=None)
-    through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    if first_day is None or first_day > through:
-        return None, through
-    return first_day, through
-
-
-#: Closed station-days of the refusal history, kept across renders.
-RENDER_REFUSAL_HISTORY_DAYS = "_refusal_history_days.json"
-
-
-def _collect_refusal_history(
-    conn: sqlite3.Connection, first_day: str, through: str,
-) -> dict[str, Any]:
-    """``closed_plan_summaries`` for the window, reading only the new days.
-
-    A closed day's opening plans do not change, but the window's end moves
-    every day, so the section was recomputed whole daily: every P0 fact
-    since 08-31 with its ~63 KB feature_json, 460 s by 10-13, and it lost
-    each read to the writer from then on (stale 108 h on 10-17, user
-    「拒单历史 6470 分钟前（超期）」).  The days already summarised are kept
-    and only the days after them are read.
-    """
-
-    code = _section_fingerprint(
-        live_selection.closed_plan_summaries,
-        _section_fingerprint(live_selection._plan_summaries, live_selection._PLAN_FACTS_SQL),
-    )
-    kept = _load_closed_readings(RENDER_REFUSAL_HISTORY_DAYS)
-    if kept.get("code") != code or str(kept.get("first_day") or "9999") > first_day:
-        kept = {}
-    kept_through = str(kept.get("through") or "")
-    days = {
-        key: value for key, value in (kept.get("days") or {}).items()
-        if first_day <= key.split("|", 1)[1] <= through
-    }
-    read_from = max(first_day, _next_iso_day(kept_through)) if kept_through else first_day
-    if read_from <= through:
-        days.update(live_selection.closed_plan_summaries(conn, read_from, through)["days"])
-        _save_closed_readings(RENDER_REFUSAL_HISTORY_DAYS, {
-            "code": code, "first_day": first_day, "through": through, "days": days,
-        })
-    return {"first_day": first_day, "through": through, "days": days}
+    return live_selection.build(conn, book=_render_live_book(conn))
 
 
 def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -15849,7 +15790,7 @@ RESEARCH_KILLED_FILE = "_research_killed.json"
 #: A section whose last build cost more than a whole run's budget runs alone,
 #: at most this often (2026-10-17: scorecard, page-less and so infinitely
 #: overdue, cost 2,133 s against the 1,800 s budget, went first every run and
-#: ate it; certificate_authority, refusal_history, ssot_capacity and 34 more
+#: ate it; certificate_authority, refusal_history (since retired), ssot_capacity and 34 more
 #: sections, most under two minutes, went 60-100 hours without a turn).
 RESEARCH_OVERSIZE_EVERY_SEC = float(os.environ.get("PM_DASHBOARD_RESEARCH_OVERSIZE_EVERY_SEC", str(6 * 3600)))
 RESEARCH_OVERSIZE_FILE = "_research_oversize.json"
@@ -16734,24 +16675,8 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     # them depended on.  A run that runs out now loses these two first.
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
-    # The refusal funnel's closed days (live_selection.closed_plan_summaries):
-    # their facts no longer change, so they are read once a day, not every
-    # render; a page for an earlier ``through`` is still exact for its own
-    # days, and the funnel reads everything after it.
-    # Sections, not direct reads (user ruling 2026-10-15): the page render
-    # has no connection, so even these small inputs come from the backend.
-    refusal_first_day, refusal_through = _cached_section(
-        "refusal_window", _refusal_history_window, conn,
-        _unavailable=[None, ""],
-    )
-    refusal_history = _cached_section(
-        "refusal_history", _collect_refusal_history, conn,
-        refusal_first_day, refusal_through,
-        _salt=f"{refusal_first_day}|{refusal_through}",
-        _unavailable=None,
-    ) if refusal_first_day else None
     live_selection_payload = _cached_section(
-        "live_selection", _build_live_selection, conn, refusal_history
+        "live_selection", _build_live_selection, conn
     )
     previous_windows = _cached_section(
         "previous_windows", _previous_version_windows, conn, _unavailable={},
@@ -17064,10 +16989,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_roster": live_days["roster"],
         "members": members,
         "member_depth": member_depth,
-        "refusal_history": {
-            key: value for key, value in (refusal_history or {}).items()
-            if key != "days"
-        },
         "chain_volume": chain_volume,
         "member_admission": member_admission,
         "recent_runs": recent_runs,
@@ -18650,7 +18571,7 @@ function overviewLamps(){
     h(W.production_note||"—"),
     `常驻自己的生产回执：${h(W.production_state||"未发布")}。`+
     `绿=正常产出，黄=单条车道阻断，红=多车道断/被写锁挡住/超一小时没完成一轮。`+
-    `逐候选的日常拒绝不计入——那是目标函数在正常挑站日，见「没建仓是因为什么」`);
+    `逐候选的日常拒绝不计入——那是目标函数在正常挑站日`);
   push("machine", W.live_submit_authorized?"amber":"green",
     "下单授权", W.live_submit_authorized?"已授权":"未授权（纸面）",
     W.live_submit_authorized?"真实下单已开启":"全链纸面运行，网关不发单",
@@ -27728,7 +27649,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     run_cadence:"模型出报节奏",member_depth:"成员深度",member_admission:"成员准入",members:"成员",
     certificate_authority:"证书授权",
     chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
-    refusal_history:"拒单历史",station_difficulty:"站点难度",
+    station_difficulty:"站点难度",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",precip_classification:"降水分类",regional_usage:"区域模型使用",
     p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
     center_width:"宽度层",live_days:"每日统计",live_selection:"选站",

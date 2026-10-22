@@ -563,7 +563,7 @@ HEAVY_SECTIONS_WITH_A_STAND_IN = (
     "center_landing", "chain_volume",
     "charter_ev", "h5_readiness", "member_depth", "model_accuracy_trend",
     "p1_path_skill", "precip_classification",
-    "refusal_history", "scorecard", "scorecard_previous",
+    "scorecard", "scorecard_previous",
     "skill", "ssot_capacity", "station_calibration_windows", "truth_landing",
 )
 

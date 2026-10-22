@@ -3,11 +3,11 @@
 User ruling 2026-09-16: the paper ledger is a rule comparator, and every
 reading of whether a choice paid reads what production chose and what the
 exchange filled.  The board's selection readings -- the top strip's 选桶 row,
-逐站汇总（跨日）, 没建仓是因为什么, 覆盖 · 价格 · EV and 篮子命中率 -- read the
+逐站汇总（跨日）, 覆盖 · 价格 · EV and 篮子命中率 -- read the
 paper book until this module; ``build`` hands them the same shapes from the
 live book, so the sections keep their layout and change their source.
 
-Three sources, each read where it is the record:
+Two sources, each read where it is the record:
 
 ``live_book.build``
     every live intent with its fill, bound claim and settled bucket.  A leg
@@ -19,8 +19,6 @@ Three sources, each read where it is the record:
     price and claim, the ladder centre and the market centre, and the plan's
     reason codes when it held.  Read by decision id inside the station-day's
     index range, never re-derived.
-``basket_target_order_events``
-    why a live intent never reached the exchange, in the send gate's words.
 """
 
 from __future__ import annotations
@@ -34,7 +32,6 @@ from typing import Any
 
 import live_book
 from selection_market_dashboard import (
-    STATION_LABELS,
     _odds_from_mean_cost,
     chosen_basket_hit_trend,
     chosen_miss_offsets,
@@ -44,41 +41,6 @@ from selection_market_dashboard import (
 #: one of them carries ``resolved_not_placed`` and a blocking reason, checked
 #: 2026-09-16: 1,583 of 1,583).  Every other state reached the exchange.
 NOT_PLACED_STATE = "failed"
-
-#: Production opens a chain only at P0 (charter 74); P0-M and P1 add to one.
-OPENING_STAGE = "P0"
-
-#: The send gate's refusal reasons, in the page's words.
-GATE_LABELS = {
-    "live_station_barred": "站点禁入",
-    "live_intent_disarmed": "实盘总闸关着",
-    "live_station_held": "站点人工待观察",
-    "live_station_probation": "站点待观察（证据不足）",
-    "gateway_refused_submission": "网关拒单",
-}
-
-#: Why a P0 that held did not buy, from the plan's own reason codes.  First
-#: match wins, so the gate that refused the basket outranks the generic
-#: "the solver chose to stand still" codes every hold carries.
-HOLD_REASONS: tuple[tuple[str, str, str], ...] = (
-    ("complete_basket_candidate_missing", "hold_candidate_missing",
-     "候选篮缺腿（挂单锚价不可用）"),
-    ("missing_leg_candidate", "hold_candidate_missing",
-     "候选篮缺腿（挂单锚价不可用）"),
-    ("exchange_minimum_lot_unaffordable", "hold_minimum_lot",
-     "买不起交易所最小单"),
-    ("support_floor_after_lift", "hold_support_floor",
-     "抬到一手后情景地板不过（宪章 93）"),
-    ("support_edge_after_lift", "hold_edge_after_lift",
-     "抬到一手后整篮边际不正（宪章 123）"),
-    ("basket_net_roi_below_target", "hold_roi_below_target",
-     "净回报低于经济门槛（宪章 130）"),
-    ("complete_basket_delta_not_positive", "hold_delta_not_positive",
-     "整篮增量不正"),
-    ("no_decision_moment", "hold_no_decision_moment",
-     "非决策时刻，保持不动（宪章 77）"),
-)
-HOLD_OTHER = ("hold_solver_stood_still", "求解器选择不动")
 
 
 def reached_exchange(leg: Mapping[str, Any]) -> bool:
@@ -342,235 +304,8 @@ def _money_account(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _gate_refusals(
-    conn: sqlite3.Connection, intents: Sequence[str]
-) -> dict[str, str]:
-    """The send gate's reason per refused intent id."""
-
-    out: dict[str, str] = {}
-    chunk = 400
-    for start in range(0, len(intents), chunk):
-        part = list(intents[start:start + chunk])
-        try:
-            rows = conn.execute(
-                "SELECT order_intent_id, event_type, event_json"
-                " FROM basket_target_order_events"
-                " WHERE event_type IN ('NEVER_REACHED_EXCHANGE','SUBMIT_REFUSED')"
-                " AND order_intent_id IN (%s)" % ",".join("?" * len(part)),
-                part,
-            ).fetchall()
-        except sqlite3.Error:
-            return out
-        for intent, event_type, event_json in rows:
-            try:
-                reason = str((json.loads(event_json or "{}") or {}).get("reason") or "")
-            except (TypeError, ValueError):
-                reason = ""
-            if event_type == "SUBMIT_REFUSED" and not reason:
-                reason = "gateway_refused_submission"
-            out[str(intent)] = reason or str(event_type).lower()
-    return out
-
-
-# The station list is what lets the scope index (station_id, event_date,
-# stage, ...) seek: without a station_id predicate the planner scanned all
-# 126k rows and their feature_json overflow pages -- 215 s on a quiet host,
-# 1,098 s under memory pressure, and the 2026-10-15 07:57Z render was killed
-# at its 1500 s timeout for it (user 「渲染又坏了」).  The DISTINCT is a covering
-# index scan; stage is an index column, so only opening-stage rows are read.
-_PLAN_FACTS_SQL = (
-    "SELECT station_id, event_date, decision_at_utc,"
-    " json_extract(feature_json, '$.plan.state'),"
-    " json_extract(feature_json, '$.plan.reason_codes')"
-    " FROM basket_policy_training_fact"
-    " WHERE station_id IN"
-    " (SELECT DISTINCT station_id FROM basket_policy_training_fact)"
-    " AND stage=? AND event_date>=?"
-)
-
-
-def _plan_summaries(
-    facts: Sequence[Sequence[Any]],
-) -> dict[tuple[str, str], tuple[bool, str]]:
-    """Per station-day: did any opening plan trade, and the newest plan's codes.
-
-    Exactly what the funnel reads off a day's plans: ``any(state == TRADE)``
-    and the reason codes of the greatest (decided_at, state, codes) tuple.
-    """
-
-    decided: dict[tuple[str, str], list[tuple[str, str, str]]] = defaultdict(list)
-    for station, day, at, state, codes in facts:
-        decided[(str(station), str(day))].append(
-            (str(at or ""), str(state or ""), str(codes or "[]"))
-        )
-    return {
-        key: (any(state == "TRADE" for _, state, _ in plans), max(plans)[2])
-        for key, plans in decided.items()
-    }
-
-
-def closed_plan_summaries(
-    conn: sqlite3.Connection, first_day: str, through: str,
-) -> dict[str, Any]:
-    """``_plan_summaries`` for the days from ``first_day`` through ``through``.
-
-    For days that no longer take opening decisions (the caller passes a
-    ``through`` two days back): their facts do not change, so a caller that
-    keeps this can hand it to ``refusal_funnel`` and read ``feature_json``
-    for the open days only.  Each fact carries ~63 KB of it; the full read
-    was most of the board's live_selection section (114-246 s, 2026-09-24).
-    """
-
-    facts = conn.execute(
-        _PLAN_FACTS_SQL + " AND event_date<=?",
-        (OPENING_STAGE, first_day, through),
-    ).fetchall()
-    return {
-        "first_day": first_day,
-        "through": through,
-        "days": {
-            f"{station}|{day}": [trade, codes]
-            for (station, day), (trade, codes) in _plan_summaries(facts).items()
-        },
-    }
-
-
-def refusal_funnel(
-    conn: sqlite3.Connection, book: Mapping[str, Any],
-    closed: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Why a station-day production decided on ended with no live position.
-
-    Station-day grain at the opening stage: only P0 opens a chain (charter
-    74), so a P0-M or P1 decision on an unopened day is not a second refusal.
-    The window starts at the first event day the live book has a leg for.
-    First match wins:
-
-    1. a live leg filled (any stage) -- 建仓;
-    2. an intent reached the exchange and nothing filled -- 挂单未成交;
-    3. live intents existed and the send gate refused every one -- the gate's
-       reason (禁入 / 总闸 / 待观察 / 网关);
-    4. a P0 decision traded but minted no live intent;
-    5. every P0 decision held -- the newest P0 plan's reason codes, the
-       refusing gate before the generic hold (``HOLD_REASONS``).
-
-    ``closed``: ``closed_plan_summaries`` kept by the caller; its days are
-    taken from it and only the later ones are read.  It is used only if it
-    starts no later than this book's first day.
-    """
-
-    legs = book.get("legs") or []
-    if not legs:
-        return {"stages": []}
-    first_day = min(str(leg["event_date"]) for leg in legs)
-    by_day = _legs_by_station_day(legs)
-    refused_intents = [
-        str(leg["order_intent_id"]) for leg in legs
-        if not reached_exchange(leg)
-    ]
-    gate = _gate_refusals(conn, refused_intents)
-    summaries: dict[tuple[str, str], tuple[bool, str]] = {}
-    read_from = first_day
-    if closed and str(closed.get("first_day") or "9999") <= first_day:
-        through = str(closed["through"])
-        for key, (trade, codes) in (closed.get("days") or {}).items():
-            station, day = key.split("|", 1)
-            if day >= first_day:
-                summaries[(station, day)] = (bool(trade), str(codes))
-        read_from = max(first_day, _next_day(through))
-    try:
-        facts = conn.execute(
-            _PLAN_FACTS_SQL, (OPENING_STAGE, read_from),
-        ).fetchall()
-    except sqlite3.Error:
-        return {"stages": []}
-    summaries.update(_plan_summaries(facts))
-    tally: dict[str, list[Any]] = {}
-
-    def count(reason: str, label: str) -> None:
-        slot = tally.setdefault(reason, [label, 0])
-        slot[1] += 1
-
-    seated = 0
-    station_days: list[dict[str, str]] = []
-
-    def record(key: tuple[str, str], reason: str, label: str) -> None:
-        count(reason, label)
-        station_days.append({
-            "station_id": key[0], "event_date": key[1],
-            "reason": reason, "label": label,
-        })
-
-    for key in sorted(set(summaries) | set(by_day)):
-        if key not in summaries:
-            continue
-        day_legs = by_day.get(key, [])
-        if any(float(leg["filled_size"] or 0) > 0 for leg in day_legs):
-            seated += 1
-            continue
-        if any(reached_exchange(leg) for leg in day_legs):
-            record(key, "live_unfilled", "挂到交易所未成交")
-            continue
-        if day_legs:
-            reasons = [
-                gate.get(str(leg["order_intent_id"]), "") for leg in day_legs
-            ]
-            named = next((r for r in reasons if r), "not_placed")
-            record(key, named, GATE_LABELS.get(named, "实盘门拒单（%s）" % named))
-            continue
-        any_trade, newest_codes = summaries[key]
-        if any_trade:
-            record(key, "traded_without_live_intent", "出了交易计划、没铸实盘意向")
-            continue
-        try:
-            codes = {
-                str(code).split(":")[0]
-                for code in json.loads(newest_codes) or []
-            }
-        except (TypeError, ValueError):
-            codes = set()
-        match = next(
-            ((key_, label) for code, key_, label in HOLD_REASONS
-             if code in codes),
-            HOLD_OTHER,
-        )
-        record(key, match[0], match[1])
-    refused = sum(slot[1] for slot in tally.values())
-    scopes = refused + seated
-    if not scopes:
-        return {"stages": []}
-    reasons = sorted(
-        (
-            {"reason": reason, "label": label, "count": n, "share": n / scopes}
-            for reason, (label, n) in tally.items()
-        ),
-        key=lambda row: -row["count"],
-    )
-    return {
-        "since_event_date": first_day,
-        # Every station-day that ended without a live position, with its
-        # reason, so the station-day listing can say why beside each day.
-        "station_days": station_days,
-        "stages": [{
-            "stage": OPENING_STAGE,
-            "seated_count": seated,
-            "refused_count": refused,
-            "scope_count": scopes,
-            "seat_rate": seated / scopes,
-            "reasons": reasons,
-        }],
-    }
-
-
-def _next_day(day: str) -> str:
-    from datetime import date as _date, timedelta as _timedelta  # noqa: PLC0415
-
-    return (_date.fromisoformat(day) + _timedelta(days=1)).isoformat()
-
-
 def build(
     conn: sqlite3.Connection, book: Mapping[str, Any] | None = None,
-    closed: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Every selection reading the board draws, off one live book.
 
@@ -604,5 +339,4 @@ def build(
         "basket_hit_by_size": basket_hit_by_width(book),
         "chosen_basket_hit": chosen_basket_hit_trend(chains),
         "chosen_miss_offsets": chosen_miss_offsets(chains),
-        "refusal_stats": refusal_funnel(conn, book, closed),
     }

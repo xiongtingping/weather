@@ -140,54 +140,6 @@ def test_basket_width_is_the_buckets_that_filled() -> None:
     assert abs(rows[2]["pnl_usdc"] - (5 - 2)) < 1e-9
 
 
-def test_the_refusal_funnel_attributes_in_order_at_p0_station_days() -> None:
-    conn = _conn()
-    day = "2026-09-10"
-    legs = [
-        _leg("a", "dA", "AAAA", day, "P0", "1", filled=5, notional=1,
-             state="filled"),
-        _leg("b", "dB", "BBBB", day, "P0", "1"),                  # reached
-        _leg("c", "dC", "CCCC", day, "P0", "1", state="failed"),  # refused
-    ]
-    conn.execute(
-        "INSERT INTO basket_target_order_events VALUES (?,?,?)",
-        ("c", "NEVER_REACHED_EXCHANGE", json.dumps({"reason": "live_station_barred"})),
-    )
-    for station in ("AAAA", "BBBB", "CCCC"):
-        _fact(conn, station, day, "P0", "2026-09-09T01:00Z", "d" + station[0],
-              state="TRADE")
-    _fact(conn, "DDDD", day, "P0", "2026-09-09T01:00Z", "dD", state="TRADE")
-    # EEEE held twice; the newest plan names the floor and the edge -- the
-    # floor wins -- while the older one only said "not a decision moment".
-    _fact(conn, "EEEE", day, "P0", "2026-09-09T01:00Z", "dE1",
-          codes=["no_decision_moment"])
-    _fact(conn, "EEEE", day, "P0", "2026-09-09T02:00Z", "dE2",
-          codes=["support_edge_after_lift", "support_floor_after_lift"])
-    _fact(conn, "FFFF", day, "P0", "2026-09-09T01:00Z", "dF",
-          codes=["delta_v2_complete_basket_hold_selected"])
-    # A P1 decision on an unopened day is not a second station-day.
-    _fact(conn, "GGGG", day, "P1", "2026-09-10T01:00Z", "dG",
-          codes=["chain_not_opened_by_p0"])
-    # Before the live book's first day: out of the window.
-    _fact(conn, "HHHH", "2026-09-01", "P0", "2026-08-31T01:00Z", "dH",
-          codes=["support_edge_after_lift"])
-    funnel = LS.refusal_funnel(conn, _book(legs, {}))
-    assert funnel["since_event_date"] == day
-    stage = funnel["stages"][0]
-    assert stage["stage"] == "P0"
-    assert stage["scope_count"] == 6
-    assert stage["seated_count"] == 1
-    reasons = {r["reason"]: r["count"] for r in stage["reasons"]}
-    assert reasons == {
-        "live_unfilled": 1,
-        "live_station_barred": 1,
-        "traded_without_live_intent": 1,
-        "hold_support_floor": 1,
-        "hold_solver_stood_still": 1,
-    }
-    assert stage["scope_count"] == stage["seated_count"] + sum(reasons.values())
-
-
 def test_the_seat_side_is_productions_two_centres_on_envelope_ordinals() -> None:
     conn = _conn()
     conn.execute(
@@ -229,22 +181,6 @@ def test_the_board_counts_station_day_verdicts_from_the_live_book_only() -> None
     }
     assert "live_book.station_days" in calls
     assert "live_book.stage_summary" not in calls
-
-
-def test_the_funnel_names_each_station_day_it_counted_as_not_built() -> None:
-    conn = _conn()
-    day = "2026-09-10"
-    legs = [_leg("a", "dA", "AAAA", day, "P0", "1", filled=5, notional=1,
-                 state="filled")]
-    _fact(conn, "AAAA", day, "P0", "2026-09-09T01:00Z", "dA", state="TRADE")
-    _fact(conn, "BBBB", day, "P0", "2026-09-09T01:00Z", "dB",
-          codes=["support_edge_after_lift"])
-    funnel = LS.refusal_funnel(conn, _book(legs, {}))
-    assert funnel["station_days"] == [{
-        "station_id": "BBBB", "event_date": day,
-        "reason": "hold_edge_after_lift",
-        "label": "抬到一手后整篮边际不正（宪章 123）",
-    }]
 
 
 def _template_function(template: str, name: str) -> str | None:
@@ -295,70 +231,12 @@ def test_the_board_hands_these_sections_the_live_payload_only() -> None:
     assert "paper_roi" not in template and "paper_chains" not in template
 
 
-def test_the_funnel_on_kept_closed_days_is_the_funnel_on_every_fact() -> None:
-    """Closed days from ``closed_plan_summaries``, later ones read: same funnel.
-
-    The board keeps the summaries of days that take no more opening
-    decisions, so a render reads feature_json (~63 KB a fact) for the open
-    days only.  Whatever it keeps, the attribution must not move.
-    """
-
-    conn = _conn()
-    closed_day, open_day = "2026-09-10", "2026-09-11"
-    legs = [
-        _leg("a", "dA", "AAAA", closed_day, "P0", "1", filled=5, notional=1,
-             state="filled"),
-        _leg("c", "dC", "CCCC", open_day, "P0", "1", state="failed"),
-    ]
-    conn.execute(
-        "INSERT INTO basket_target_order_events VALUES (?,?,?)",
-        ("c", "NEVER_REACHED_EXCHANGE", json.dumps({"reason": "live_station_barred"})),
-    )
-    for day in (closed_day, open_day):
-        _fact(conn, "AAAA", day, "P0", day + "T00:00Z", "dA", state="TRADE")
-        _fact(conn, "CCCC", day, "P0", day + "T00:00Z", "dC", state="TRADE")
-        _fact(conn, "DDDD", day, "P0", day + "T00:00Z", "dD", state="TRADE")
-        _fact(conn, "EEEE", day, "P0", day + "T01:00Z", "dE1",
-              codes=["no_decision_moment"])
-        _fact(conn, "EEEE", day, "P0", day + "T02:00Z", "dE2",
-              codes=["support_edge_after_lift", "support_floor_after_lift"])
-        _fact(conn, "FFFF", day, "P0", day + "T01:00Z", "dF",
-              codes=["delta_v2_complete_basket_hold_selected"])
-    book = _book(legs, {})
-    whole = LS.refusal_funnel(conn, book)
-    kept = LS.closed_plan_summaries(conn, closed_day, closed_day)
-    assert LS.refusal_funnel(conn, book, kept) == whole
-    # Kept summaries that start after the book's first day are not used.
-    late = LS.closed_plan_summaries(conn, open_day, open_day)
-    assert LS.refusal_funnel(conn, book, late) == whole
-    # And the kept days are really not read again.
-    conn.execute(
-        "UPDATE basket_policy_training_fact SET feature_json='{}'"
-        " WHERE event_date=?", (closed_day,),
-    )
-    assert LS.refusal_funnel(conn, book, kept) == whole
-
-
-def test_plan_facts_query_seeks_the_scope_index() -> None:
-    # 2026-10-15: without a station_id predicate the funnel scanned every
-    # training fact and its feature_json (215-1,098 s), and the board render
-    # was killed at its timeout.  The station list makes the scope index seek.
-    import sqlite3
-
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE basket_policy_training_fact (station_id TEXT NOT NULL,"
-        " event_date TEXT, stage TEXT, decision_at_utc TEXT, partition_key TEXT,"
-        " feature_json TEXT)"
-    )
-    conn.execute(
-        "CREATE INDEX basket_policy_training_fact_scope_idx ON"
-        " basket_policy_training_fact(station_id,event_date,stage,decision_at_utc,partition_key)"
-    )
-    plan = " ".join(
-        str(row[-1]) for row in conn.execute(
-            "EXPLAIN QUERY PLAN " + LS._PLAN_FACTS_SQL, ("P0", "2026-10-01")
-        )
-    )
-    assert "SEARCH basket_policy_training_fact USING INDEX basket_policy_training_fact_scope_idx" in plan
-    assert "SCAN basket_policy_training_fact\n" not in plan + "\n"
+def test_the_refusal_funnel_is_gone() -> None:
+    # User 2026-10-22 「不要“拒单漏斗”，删掉」: no front-end read it since the
+    # 10-05 merge into 盈亏日历, yet every render computed it and kept its
+    # closed-day cache.
+    for name in ("refusal_funnel", "closed_plan_summaries", "_plan_summaries",
+                 "_PLAN_FACTS_SQL", "_gate_refusals", "HOLD_REASONS"):
+        assert not hasattr(LS, name), name
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "refusal_history" not in source.replace("refusal_history (since retired)", "")

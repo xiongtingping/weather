@@ -58,6 +58,10 @@ def paged(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "RESEARCH_SECTION_ISOLATED", False)
     monkeypatch.setattr(C, "STATUS_JSON", tmp_path / "status.json")
     monkeypatch.setattr(C, "RENDER_GAP_POLL_SEC", 0.01)
+    # The every-run reserve with no recorded costs is the default per section;
+    # at 20 sections x 60 s it is the whole 1,200 s soft budget, which left
+    # these tests no room for any page-backed read at all.
+    monkeypatch.setattr(C, "RENDER_EVERY_RUN_DEFAULT_COST_SEC", 1.0)
     C._SECTION_CACHE_LOG.clear()
     C._paged_run_start(db)
     yield tmp_path
