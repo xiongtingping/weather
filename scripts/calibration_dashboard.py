@@ -575,6 +575,15 @@ def _read_live_intent() -> dict[str, Any]:
     return {"live_enabled": bool(raw.get("live_enabled"))} if isinstance(raw, dict) else {}
 
 
+def _uncertified_seat_gate_salt() -> str:
+    from bayes_basket_target.follow_run import (  # noqa: PLC0415
+        FOLLOW_RUN_MIN_EFFECTIVE_CASES,
+        FOLLOW_RUN_MIN_FIT_CASES,
+    )
+
+    return f"|{FOLLOW_RUN_MIN_FIT_CASES}|{FOLLOW_RUN_MIN_EFFECTIVE_CASES}"
+
+
 def _uncertified_member_systems(conn: sqlite3.Connection) -> list[str]:
     """The seatable families holding no valid certificate (charter 270)."""
 
@@ -15420,6 +15429,11 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
                     status, _cached_section(
                         "uncertified_systems", _uncertified_member_systems,
                         conn, _unavailable=[],
+                        # The rule lives one call down and in follow_run's
+                        # seat gate; without them the page kept a value
+                        # computed before the 2026-10-22 seat-gate change.
+                        _salt=_loaded_source(_systems_without_certificate)
+                        + _uncertified_seat_gate_salt(),
                     ),
                 ),
                 **_settlement_source_health(status),
