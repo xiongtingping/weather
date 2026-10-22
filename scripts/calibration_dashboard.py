@@ -518,14 +518,24 @@ NATIVE_CAPTURE_IDLE_STOPPED_HOURS = 6.0
 def _systems_without_certificate(
     conn: sqlite3.Connection | None, system_ids: Sequence[str]
 ) -> set[str]:
-    """Systems with no valid single-system certificate anywhere.
+    """Systems with no valid single-system certificate a packet could seat.
 
     Charter 270: a newly registered system (the operational AIGEFS) rides no
     packet until it earns its own certificates -- about ten closed days -- so
-    its absence is the warm-up, not a short packet.  One indexed probe per
-    absent system, only when some family is absent; a read failure leaves the
-    system counted as absent, which is the louder answer.
+    its absence is the warm-up, not a short packet.  A certificate alone is
+    not the end of it: the follow lane seats a run only on a fit of at least
+    ``FOLLOW_RUN_MIN_FIT_CASES`` cases with a recency-weighted size of at
+    least ``FOLLOW_RUN_MIN_EFFECTIVE_CASES`` (charter 270 (四)).  The
+    operational AIGEFS held 138 certificates from 2026-10-22 04:50Z, every
+    one on 8 cases, and the board called its absence a short packet.  One
+    indexed probe per absent system, only when some family is absent; a read
+    failure leaves the system counted as absent, which is the louder answer.
     """
+
+    from bayes_basket_target.follow_run import (  # noqa: PLC0415
+        FOLLOW_RUN_MIN_EFFECTIVE_CASES,
+        FOLLOW_RUN_MIN_FIT_CASES,
+    )
 
     if conn is None or not system_ids:
         return set()
@@ -537,14 +547,19 @@ def _systems_without_certificate(
                 # The station list lets the (artifact_kind, station_id,
                 # system) unique index seek: 0.07 s, against 1 s (161k rows)
                 # filtered on artifact_kind alone.
-                "SELECT 1 FROM calibration_native_ensemble_activation "
-                "WHERE station_id IN "
+                "SELECT 1 FROM calibration_native_ensemble_activation a "
+                "JOIN calibration_native_ensemble_system_artifact s "
+                "ON s.system_artifact_id=a.artifact_id "
+                "WHERE a.station_id IN "
                 "(SELECT station_id FROM calibration_station_registry) "
-                "AND artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
-                "AND ensemble_system_id_or_star=? "
-                "AND authority_scope='PRODUCTION_NO_LIVE_ONLY' "
-                "AND valid_from_utc<=? AND valid_until_utc>? LIMIT 1",
-                (system_id, now, now),
+                "AND a.artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' "
+                "AND a.ensemble_system_id_or_star=? "
+                "AND a.authority_scope='PRODUCTION_NO_LIVE_ONLY' "
+                "AND a.valid_from_utc<=? AND a.valid_until_utc>? "
+                "AND json_extract(s.reliability_parameters_json,'$.fit_case_count')>=? "
+                "AND json_extract(s.reliability_parameters_json,'$.train_n_effective')>=? "
+                "LIMIT 1",
+                (system_id, now, now, FOLLOW_RUN_MIN_FIT_CASES, FOLLOW_RUN_MIN_EFFECTIVE_CASES),
             ).fetchone()
         except sqlite3.Error:
             continue

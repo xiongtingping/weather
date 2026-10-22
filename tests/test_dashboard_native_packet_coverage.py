@@ -183,7 +183,8 @@ def test_an_unreadable_inbox_says_nothing_rather_than_zero(
     assert C._official_native_family_coverage({}) == {}
 
 
-def _activation_db(certified: list[str]):
+def _activation_db(certified: list[str], *, cases: int = 12, effective: float = 9.0):
+    import json
     import sqlite3
 
     conn = sqlite3.connect(":memory:")
@@ -192,14 +193,23 @@ def _activation_db(certified: list[str]):
     conn.execute(
         "CREATE TABLE calibration_native_ensemble_activation (station_id TEXT,"
         " artifact_kind TEXT, ensemble_system_id_or_star TEXT, authority_scope TEXT,"
-        " valid_from_utc TEXT, valid_until_utc TEXT,"
+        " valid_from_utc TEXT, valid_until_utc TEXT, artifact_id TEXT,"
         " UNIQUE(artifact_kind, station_id, ensemble_system_id_or_star))"
+    )
+    conn.execute(
+        "CREATE TABLE calibration_native_ensemble_system_artifact"
+        " (system_artifact_id TEXT PRIMARY KEY, reliability_parameters_json TEXT)"
     )
     conn.executemany(
         "INSERT INTO calibration_native_ensemble_activation VALUES"
         " ('KLGA', 'NATIVE_ENSEMBLE_SYSTEM_CALIBRATION', ?, 'PRODUCTION_NO_LIVE_ONLY',"
-        " '2026-10-01T00:00:00Z', '9999-12-31T23:59:59Z')",
-        [(s,) for s in certified],
+        " '2026-10-01T00:00:00Z', '9999-12-31T23:59:59Z', ?)",
+        [(s, "art-" + s) for s in certified],
+    )
+    conn.executemany(
+        "INSERT INTO calibration_native_ensemble_system_artifact VALUES (?, ?)",
+        [("art-" + s, json.dumps({"fit_case_count": cases, "train_n_effective": effective}))
+         for s in certified],
     )
     return conn
 
@@ -217,7 +227,15 @@ def test_a_family_with_no_certificate_yet_is_warming_up_not_missing(monkeypatch,
     assert row["absent"] == [] and row["certifying"] == ["AIGEFS"]
     assert out["native_inbox_health"] == "green"
 
-    # ... and once it holds a certificate, being absent is short again.
+    # ... a certificate the follow lane cannot seat yet (charter 270 (四):
+    # 2026-10-22 the 138 first certificates all rested on 8 cases) is still
+    # the warm-up ...
+    out = C._official_native_family_coverage(
+        {}, C._uncertified_member_systems(_activation_db(ALL, cases=8, effective=7.3)))
+    assert out["native_inbox_coverage"][0]["certifying"] == ["AIGEFS"]
+    assert out["native_inbox_health"] == "green"
+
+    # ... and once it holds a seatable certificate, being absent is short again.
     out = C._official_native_family_coverage({}, C._uncertified_member_systems(_activation_db(ALL)))
     assert out["native_inbox_coverage"][0]["absent"] == ["AIGEFS"]
     assert out["native_inbox_health"] == "amber"
