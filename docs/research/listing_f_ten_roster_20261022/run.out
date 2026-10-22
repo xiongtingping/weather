@@ -1,0 +1,10 @@
+history 5270 station-days 2026-06-24..2026-10-21 in 18s
+six_267: scored 794
+ten_relay0: scored 905
+ten_relay0_ukmo0: scored 905
+common station-days 794 over 19 days
+  six_267            MAE 0.972  bias -0.097  round-hit 34.5%  members median 5.0
+  ten_relay0         MAE 1.020  bias -0.272  round-hit 30.4%  members median 7.0
+  ten_relay0_ukmo0   MAE 1.023  bias -0.296  round-hit 31.5%  members median 8.0
+  ten_relay0 − six MAE +0.0485 [+0.0306,+0.0646]  halves +0.0551 / +0.0407  days better 3/19
+  ten_relay0_ukmo0 − six MAE +0.0514 [+0.0213,+0.0768]  halves +0.0528 / +0.0496  days better 4/19
