@@ -24825,9 +24825,9 @@ function sdMemberBayes(day){
 // computed by the WRF project, never here.  Enters no layer.
 function sdWrf(day){
   const W = day.wrf;
-  if(!W) return "";
+  if(!W || W.state === "no_run") return "";  // only days WRF ran for get the card
   const title = "WRF 最高温", tag = "只读 · 前向测试";
-  if(W.state !== "ok") return sdModelCard({title, tag, empty: W.state === "no_run" ? "这一天还没跑" : "WRF 读数还没有"});
+  if(W.state !== "ok") return sdModelCard({title, tag, empty: "WRF 读数还没有"});
   const R = W.runs || {}, NC = W.nowcast || null, sat = R.nowcast_sat, ctl = R.nowcast_ctl, prev = R.fcst;
   const lead = NC && NC.sat_obs_c != null ? NC.sat_obs_c : sat ? sat.tmax_c : prev ? prev.tmax_c : null;
   if(lead == null) return sdModelCard({title, tag, empty: "这一天还没跑"});
