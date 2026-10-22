@@ -20292,10 +20292,23 @@ function wrfTmaxPanel(){
       ${ncCard("市场", NC.market_mean_c, `最热门 ${n(NC.market_mode_c, 0)}° · ${NC.market_mode_p == null ? "" : Math.round(100 * NC.market_mode_p) + "%"}`, "同一时刻的盘口：各温度档价格加权的平均", NS.market_mean_c)}
       ${ncCard(`生产模型（${h(NC.belief_stage || "—")}）`, NC.belief_mean_c, `最可能 ${n(NC.belief_mode_c, 0)}° · ${NC.belief_mode_p == null ? "" : Math.round(100 * NC.belief_mode_p) + "%"}`, "同一时刻我们生产链在用的概率（P1>P0-M>P0），各档加权平均", NS.belief_mean_c)}</div>`;
     const sc = S.scores || {};
-    const tile = (name, x, c) => `<div class="card" style="border-top:3px solid ${c}"><div class="muted">${h(name)}</div>
-      <div class="mono" style="font-size:22px;font-weight:700" title="平均误差：每天最高温预报与实测之差取绝对值再平均">平均误差 ${x && x.n ? n(x.mae_c, 2) + "°" : "—"}</div>
-      <div class="muted mono">偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · 差不到 0.5° ${x && x.n ? Math.round(100 * x.hit) + "%" : "—"} · ${x ? x.n : 0} 天</div></div>`;
-    const tiles = `<div class="grid g4" style="margin-top:8px">${cfgs.map(c => tile(WRF_NAME(c), sc[c], col(c))).join("")}${tile("GFS 原始预报", S.gfs_score, "var(--muted)")}</div>`;
+    // Key numbers only (user 2026-10-22 「下方不要这么多细节，只要关键信息和重点信息」): the
+    // forward test's two arms, the hindcast upper bound (all-day measured cloud), the
+    // hindcast with model-estimated cloud and raw GFS; every other configuration folds away.
+    const tile = (name, x, c, note) => `<div class="card" style="border-top:3px solid ${c}" title="${h(x && x.n ? `偏差 ${sg(x.bias_c, 2)}°C · 差不到 0.5° ${Math.round(100 * x.hit)}%` : "")}"><div class="muted">${h(name)}</div>
+      <div class="mono" style="font-size:24px;font-weight:700">${x && x.n ? n(x.mae_c, 2) + "°" : "—"}</div>
+      <div class="muted">${note || (x && x.n ? `平均误差 · ${x.n} 天` : "还没有结果")}</div></div>`;
+    const fwd = sc.nowcast_sat || {}, KEY = ["nowcast_sat", "nowcast_ctl", "satcld_rhc85", "indep_rhc85"];
+    const keyTiles = [
+      tile("今天用卫星云的 WRF", sc.nowcast_sat, col("nowcast_sat"), fwd.n ? `平均误差 · ${fwd.n}/15 天` : "积累中 · 0/15 天"),
+      tile("今天模型自估云的 WRF", sc.nowcast_ctl, col("nowcast_ctl"), (sc.nowcast_ctl || {}).n ? `平均误差 · ${sc.nowcast_ctl.n}/15 天` : "积累中 · 0/15 天"),
+      tile("上限：全天卫星云（回算）", sc.satcld_rhc85, col("satcld_rhc85")),
+      tile("不用卫星（回算）", sc.indep_rhc85, col("indep_rhc85")),
+      tile("GFS 原始预报", S.gfs_score, "var(--muted)")].join("");
+    const rest = cfgs.filter(c => !KEY.includes(c));
+    const tiles = `<div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:8px">${keyTiles}</div>`
+      + (rest.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置（${rest.length}）</summary>
+        <div class="grid g4" style="margin-top:6px">${rest.map(c => tile(WRF_NAME(c), sc[c], col(c))).join("")}</div></details>` : "");
     // Day by day: the truth's dots, one line per configuration.
     const w = 760, ht = 240, pl = 36, pr = 10, pt = 12, pb = 26;
     const vals = days.flatMap(d => [S.days[d].truth_c, ...Object.values(S.days[d].configs).map(r => r.tmax_c)]).filter(v => v != null);
