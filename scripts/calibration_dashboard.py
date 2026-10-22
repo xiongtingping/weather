@@ -24413,7 +24413,6 @@ function sdConsensusBlock(c, stage){
   // fleet bias (F_cal, the number the station's charter-267 card reads on the
   // same footing); the raw median and the bias sit beside it in small type.
   const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
-  const head = `<div class="sd-cons-h" title="${sdEsc("宪章 279 影子：决策时刻可知的十家全球确定性点预报日最高温中位数（≥3 家）。只记录，不服务。\n" + sysTip)}">共识 F <b>${fc == null ? "—" : sdN(fc, 1) + "°C"}</b>${nc != null ? `<span>${nc} 家</span>` : ""}${c.state && c.state !== "SHADOW" ? `<span>${sdEsc(SD_CONS_STATE[c.state] || c.state)}</span>` : ""}</div>`;
   const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
   const fcal = fleet && fleet.state === "READ" ? fleet.f_cal_c : null;
   const headValue = fcal != null ? sdN(fcal, 1) + "°C" : fc == null ? "—" : sdN(fc, 1) + "°C";
