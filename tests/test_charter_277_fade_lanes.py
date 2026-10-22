@@ -245,3 +245,20 @@ def test_the_daemon_runs_both_lanes_at_head_and_tail() -> None:
     text = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
     assert text.count("execute_fade(") == 2
     assert "LANE_FADE_P0M" in text and "LANE_FADE_P0" in text
+
+
+def test_a_take_the_depth_cannot_carry_to_a_dollar_is_not_sent(store) -> None:
+    # LLBG 2026-10-22 29°C: the cold neighbour asked 0.062-0.08 with five to
+    # ten shares resting; eight shares at 0.07 = 0.56 USDC and the venue refuses a
+    # marketable BUY under a dollar.  Refused here, never sent.
+    from tests.test_charter_234_tail_short_lane import LADDER
+    ladder = {**LADDER, "27°C": (27, 0.05, 0.07)}
+    book = [{"bucket": b, "ordinal": o, "ask_available": True, "price_tick_size": 0.01,
+             "ask_levels": [{"price": a, "shares": (10.0 if b == "27°C" else 100.0)}],
+             "bid_levels": [{"price": bid, "shares": 100.0}]} for b, (o, bid, a) in ladder.items()]
+    _seed(store, stage="P0-M", decided=DECIDED, observed=NOW_P0M, book=book)
+    _envelope(store, stage="P0-M", model=MODEL_WARM)
+    sent: list = []
+    receipt = _run(store, sent, which="fade_p0m", now=NOW_P0M)
+    assert receipt["planned"] == 0 and sent == []
+    assert [r[2] for r in _evaluations(store, "fade_p0m")] == ["below_min_notional:0.56<1.00"]

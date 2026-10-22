@@ -78,6 +78,10 @@ RULE_A = "p0m_warm_fade_cold_neighbour_yes_taker_v1"
 RULE_B = "p0_far_disagreement_fade_model_mode_no_taker_v1"
 RULE_VERSIONS = {RULE_A: "fade_lane_a_v1", RULE_B: "fade_lane_b_v1"}
 EXECUTION_CANDIDATE = "TAKER_FOK"
+#: The venue's floor on a marketable BUY's notional (USDC), learned from its
+#: refusal on 2026-10-21/22 ("invalid amount for a marketable BUY order
+#: ($0.4), min size: 1"); the five-share minimum is a separate rule.
+MIN_MARKETABLE_NOTIONAL_USDC = 1.0
 EVALUATION_TABLE = "fade_lane_evaluation"
 INTENT_PREFIX = {LANE_FADE_P0M: "fadep0m", LANE_FADE_P0: "fadep0"}
 TITLES = {LANE_FADE_P0M: "反向线 A", LANE_FADE_P0: "反向线 B"}
@@ -457,6 +461,13 @@ def plan_fade(
             refuse(str(take["refusal"]))
             continue
         cost = round(float(price) * float(shares), 6)
+        if cost < MIN_MARKETABLE_NOTIONAL_USDC - 1e-9:
+            # The venue refuses a marketable BUY under one dollar ("invalid
+            # amount for a marketable BUY order ($0.4), min size: 1" -- LLBG
+            # 2026-10-22 29°C, five sends at 0.062-0.08 on a thin ask).  A
+            # take the depth cannot carry to a dollar is not sent.
+            refuse(f"below_min_notional:{cost:.2f}<{MIN_MARKETABLE_NOTIONAL_USDC:.2f}")
+            continue
         fee = taker_fee_usdc(float(price), float(shares), fee_rate)
         if cost + fee > budget_left + 1e-9:
             refuse(f"daily_budget:{max(budget_left, 0.0):.2f}")
