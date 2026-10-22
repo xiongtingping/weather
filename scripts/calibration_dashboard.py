@@ -24432,7 +24432,7 @@ function sdConsensusFoot(c, stage){
   if(!from) return "影子前推：等待同期口径重拟";
   const wf = name => ((fit.variants || {})[name] || {}).walk_forward;
   const fw = wf("fleet_wide"), sw = wf("station_wide");
-  if(!fw || !fw.n) return "影子前推：样本不足";
+  if(!fw || !fw.n) return `影子前推 ${String(from).slice(5, 10)} 起：样本不足`;
   const ls = fw.logscore || {}, ci = ls.ci || [], mark = fw.verdict === "PASS" ? "✓" : fw.verdict === "REFUSED" ? "✗" : "…";
   const tip = `舰队偏差前推 ${fw.n_days} 个事件日 ${fw.n} 个决策；只评 ${String(from).slice(0, 10)} 以后的决策，参数仍用之前全部事件日拟；LogScore ${sdN(ls.before, 4)}→${sdN(ls.after, 4)}；CRPS Δ ${sdSg((fw.crps || {}).delta, 4)}；Brier Δ ${sdSg((fw.brier || {}).delta, 4)}；${fw.days_better}/${fw.n_days} 天改善；判决 ${fw.verdict}（宪章 240：LogScore 上界<0 且 CRPS/Brier 不显著更差，≥20 天）`;
   const st = sw && sw.n ? `<span class="sd-cons-st" title="逐站偏差前推（只作对照）">逐站 ${sdSg((sw.logscore || {}).delta, 3)}</span>` : "";
