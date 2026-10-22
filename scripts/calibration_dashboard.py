@@ -20244,7 +20244,13 @@ const WRF_COL = ["#58a6ff", "#3fb950", "#d29922", "#f778ba", "#a371f7", "#39c5cf
 const WRF_STATUS = {complete: "完成", running: "运行中", stopped: "中断", unknown: "未知"};
 // The same-day nowcast arms (run/nowcast, forward test) lead, then the live forecast
 // (run/fcst); the rest are hindcast configurations.
-const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WRF·模型自估云", fcst: "WRF·前一晚预报"})[c] || c;
+// Plain names (user 「把看板卡片名字改为直白的说法」); 回算 = re-run of past days.
+const WRF_NAME = c => ({nowcast_sat: "WRF·用卫星实测云", nowcast_ctl: "WRF·模型自估云", fcst: "WRF·前一晚预报",
+  baseline: "回算·最初配置", cu_gf: "回算·换积云方案", cu_off: "回算·关掉积云", dom_big: "回算·区域放大",
+  ifs_rhc85: "回算·改用欧洲模式驱动", indep_icl1: "回算·模型自估云(旧)", indep_rhc85: "回算·模型自估云",
+  lsm_noahmp: "回算·换地表方案", mp_wsm6: "回算·换云微物理", nest3km: "回算·加 3 km 细网格",
+  satcld_rhc85: "回算·全天卫星实测云", spin: "回算·提前 12 小时起报", aer: "回算·加气溶胶",
+  icl3: "回算·按湿度估云", hydro: "回算·读入 GFS 云水"})[c] || c;
 const WRF_LEAD = ["nowcast_sat", "fcst", "baseline"];
 function wrfTmaxPanel(){
   const W = D.wrf_tmax || {};
@@ -20268,9 +20274,9 @@ function wrfTmaxPanel(){
       <div class="mono ${cls || ""}" style="font-size:30px;font-weight:700;line-height:1.2">${value}</div><div class="muted mono">${sub || ""}</div></div>`;
     const top = `<div class="grid g4">
       ${big(`${h(station)} · ${h(last)} WRF 最高温`, `${n(base.tmax_c)}°C`, "", `${initWord} · ${WRF_STATUS[base.status] || h(base.status || "")}${base.status === "complete" ? "" : ` · 输出到 ${h(base.last_local || "")}`}${base.peak_covered ? "" : " · 峰段未完"}`, `最高出现在当地 ${h(base.at_local || "")}；GFS 驱动，${h(base.domain || "")}；峰段＝当地 10–18 点`)}
-      ${big("真值", L.truth_c == null ? "未结算" : `${n(L.truth_c, 0)}°C`, "", "正式真值")}
-      ${big("WRF 误差", L.truth_c == null ? "—" : `${sg(base.tmax_c - L.truth_c)}°C`, errCls(L.truth_c == null ? null : base.tmax_c - L.truth_c), "WRF − 真值")}
-      ${big("GFS 驱动", `${n((L.gfs || {}).tmax_c)}°C`, "", "3 小时一帧", "驱动 WRF 的 GFS 本身（met_em 2 m 气温）")}</div>`;
+      ${big("实测最高温", L.truth_c == null ? "今天还没结束" : `${n(L.truth_c, 0)}°C`, "", "机场报文，结算口径")}
+      ${big("WRF 误差", L.truth_c == null ? "—" : `${sg(base.tmax_c - L.truth_c)}°C`, errCls(L.truth_c == null ? null : base.tmax_c - L.truth_c), "WRF 减实测")}
+      ${big("GFS 原始预报", `${n((L.gfs || {}).tmax_c)}°C`, "", "3 小时一个点", "WRF 的输入：美国 GFS 自己预报的 2 m 气温")}</div>`;
     // Same-moment comparison (forward test): what each source said when the nowcast came out.
     const NS = S.nowcast_scores || {};
     const ncCard = (label, v, sub, tip, x) => `<div class="card" title="${h(tip)}"><div class="muted">${label}</div>
@@ -20285,9 +20291,9 @@ function wrfTmaxPanel(){
       ${ncCard(`生产模型（${h(NC.belief_stage || "—")}）`, NC.belief_mean_c, `最可能 ${n(NC.belief_mode_c, 0)}° · ${NC.belief_mode_p == null ? "" : Math.round(100 * NC.belief_mode_p) + "%"}`, "同一时刻我们生产链在用的概率（P1>P0-M>P0），各档加权平均", NS.belief_mean_c)}</div>`;
     const sc = S.scores || {};
     const tile = (name, x, c) => `<div class="card" style="border-top:3px solid ${c}"><div class="muted">${h(name)}</div>
-      <div class="mono" style="font-size:22px;font-weight:700">MAE ${x && x.n ? n(x.mae_c, 2) : "—"}</div>
-      <div class="muted mono">偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · 命中 ${x && x.n ? Math.round(100 * x.hit) + "%" : "—"} · ${x ? x.n : 0} 天</div></div>`;
-    const tiles = `<div class="grid g4" style="margin-top:8px">${cfgs.map(c => tile(WRF_NAME(c), sc[c], col(c))).join("")}${tile("GFS 驱动", S.gfs_score, "var(--muted)")}</div>`;
+      <div class="mono" style="font-size:22px;font-weight:700" title="平均误差：每天最高温预报与实测之差取绝对值再平均">平均误差 ${x && x.n ? n(x.mae_c, 2) + "°" : "—"}</div>
+      <div class="muted mono">偏差 ${x && x.n ? sg(x.bias_c, 2) : "—"} · 差不到 0.5° ${x && x.n ? Math.round(100 * x.hit) + "%" : "—"} · ${x ? x.n : 0} 天</div></div>`;
+    const tiles = `<div class="grid g4" style="margin-top:8px">${cfgs.map(c => tile(WRF_NAME(c), sc[c], col(c))).join("")}${tile("GFS 原始预报", S.gfs_score, "var(--muted)")}</div>`;
     // Day by day: the truth's dots, one line per configuration.
     const w = 760, ht = 240, pl = 36, pr = 10, pt = 12, pb = 26;
     const vals = days.flatMap(d => [S.days[d].truth_c, ...Object.values(S.days[d].configs).map(r => r.tmax_c)]).filter(v => v != null);
