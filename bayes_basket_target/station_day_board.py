@@ -2044,6 +2044,7 @@ def _day_observed(conn, station: str, day: str, role: str, zone: ZoneInfo,
         "deterministic": _deterministic(conn, station, day),
         "d0": _d0(station, day) if role == "today" else None,
         "member_bayes": _member_bayes(station, day) if role in ("today", "ahead") else None,
+        "wrf": _wrf(station, day),
     }
 
 
@@ -2056,6 +2057,13 @@ def _d0(station: str, day: str) -> dict[str, Any] | None:
     from . import d0_readings  # noqa: PLC0415
 
     return d0_readings.stored(station, day)
+
+
+def _wrf(station: str, day: str) -> dict[str, Any] | None:
+    """WRF's maximum for the station-day (ZUUU only), read from the stored reading."""
+    from . import wrf_readings  # noqa: PLC0415
+
+    return wrf_readings.stored(station, day)
 
 
 def _member_bayes(station: str, day: str) -> dict[str, Any] | None:

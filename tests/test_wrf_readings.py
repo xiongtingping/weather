@@ -56,3 +56,22 @@ def test_nowcast_arms_and_same_moment_record(tmp_path: Path) -> None:
     (base / "log.jsonl").write_text("\n".join(json.dumps(r) for r in lines) + "\nnot json\n", encoding="utf-8")
     recs = W.nowcast_records(tmp_path)
     assert list(recs) == ["2026-10-22"] and recs["2026-10-22"]["market"]["mean_c"] == 18.6
+
+
+def test_stored_view_for_the_station_board(tmp_path: Path, monkeypatch) -> None:
+    """The station board's WRF card reads the stored reading only: ZUUU's day, nothing
+    for a station WRF does not run, a state for a missing day."""
+
+    from bayes_basket_target import board_readings  # noqa: PLC0415
+
+    value = {"state": "ok", "as_of_utc": "t", "stations": {"ZUUU": {
+        "timezone": "Asia/Shanghai", "scores": {"satcld_rhc85": {"n": 13, "mae_c": 1.02}},
+        "nowcast_scores": {}, "days": {"2026-10-22": {
+            "truth_c": None, "gfs": {"tmax_c": 16.5}, "nowcast": {"sat_obs_c": 19.4},
+            "configs": {"nowcast_sat": {"tmax_c": 19.4, "series": [], "status": "complete"},
+                        "cu_gf": {"tmax_c": 1.0}}}}}}}
+    monkeypatch.setattr(board_readings, "load_reading", lambda name: {"value": value})
+    v = W.stored("ZUUU", "2026-10-22")
+    assert v["state"] == "ok" and list(v["runs"]) == ["nowcast_sat"] and v["oracle_score"]["mae_c"] == 1.02
+    assert W.stored("KLAX", "2026-10-22") is None
+    assert W.stored("ZUUU", "2026-10-30") == {"state": "no_run"}

@@ -17459,6 +17459,8 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-pair{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:8px 0}
 .sd-six{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
 .sd-four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0;align-items:stretch}
+.sd-four.sd-five{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1300px){.sd-four.sd-five{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:900px){.sd-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.sd-four{grid-template-columns:minmax(0,1fr)}}
 .sd-six>.sd-mc{margin:0;position:relative;display:flex;flex-direction:column}.sd-six>.sd-mc .sd-mc-foot{margin-top:auto;padding-top:6px}
@@ -23848,7 +23850,7 @@ try{ const h = JSON.parse(sessionStorage.getItem("sd-cmp-hidden") || "null"); if
 function sdSave(){
   try{ sessionStorage.setItem("sd-state", JSON.stringify({station:SD.station, dayTab:SD.dayTab, calc:SD.calc})); }catch(e){}
 }
-const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c", "METAR":"#6e7781", "TX":"#9775fa"};
+const SD_COL = {"P0":"#58a6ff", "P0-M":"#d29922", "P1":"#3fb950", "MKT":"#f778ba", "DET":"#a0522d", "MB":"#0b7285", "D0":"#7048e8", "MOS":"#c2255c", "METAR":"#6e7781", "TX":"#9775fa", "WRF":"#0e9f6e"};
 const sdEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
 const sdPc = (v, d) => v == null || !isFinite(v) ? "—" : (100 * v).toFixed(d == null ? 1 : d) + "%";
 const sdN = (v, d) => v == null || !isFinite(v) ? "—" : Number(v).toFixed(d == null ? 2 : d);
@@ -24238,7 +24240,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-four">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}</div>${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdCompareChart(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -24250,7 +24252,7 @@ function sdDay(day){
       day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b>` : "",
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     <div class="sd-six">${sdProbabilityCards(day)}</div>
-    <div class="sd-four">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}</div>
+    <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
     ${sdCompareChart(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
@@ -24815,6 +24817,43 @@ function sdMemberBayes(day){
           X.mode ? `<span title="当前服务信念 × 成员似然比">${sdEsc(M.belief_stage || "")}×成员 ${sdEsc(X.mode)} ${sdPc(X.mode_p, 0)}</span>` : ""].filter(Boolean).join(" · "),
     body: `<div class="sd-det-grid">${chips}</div>`, trend,
     foot: `比对报文 ${M.reports_in_window ?? 0} 条 · 算于 ${sdLocal(M.as_of_utc, true)}`});
+}
+// WRF beside the other estimates (user 2026-10-22 「在上方看板增加一个卡片」), ZUUU only:
+// the same-day nowcast with measured satellite cloud leads (else the previous
+// night's forecast), against the served belief and the market; its hourly T2 and
+// the model-estimated-cloud arm on the clock.  Read from wrf_readings.stored;
+// computed by the WRF project, never here.  Enters no layer.
+function sdWrf(day){
+  const W = day.wrf;
+  if(!W) return "";
+  const title = "WRF 最高温", tag = "只读 · 前向测试";
+  if(W.state !== "ok") return sdModelCard({title, tag, empty: W.state === "no_run" ? "这一天还没跑" : "WRF 读数还没有"});
+  const R = W.runs || {}, NC = W.nowcast || null, sat = R.nowcast_sat, ctl = R.nowcast_ctl, prev = R.fcst;
+  const lead = NC && NC.sat_obs_c != null ? NC.sat_obs_c : sat ? sat.tmax_c : prev ? prev.tmax_c : null;
+  if(lead == null) return sdModelCard({title, tag, empty: "这一天还没跑"});
+  const loc = t => t ? new Intl.DateTimeFormat("en-GB", {timeZone: W.timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).format(new Date(t)) : "—";
+  const satAt = NC ? loc(`${day.event_date}T${String(NC.last_sat_hour_utc).padStart(2, "0")}:00:00Z`) : null;
+  const bel = sdBeliefOf(day), mk = ((day.market || {}).stats || {}).mean_c;
+  const lines = [];
+  if(prev && (prev.series || []).length) lines.push({pts: prev.series, stroke: "var(--muted)", dash: true, label: "前一晚预报"});
+  if(ctl && (ctl.series || []).length) lines.push({pts: ctl.series, stroke: SD_COL.WRF, dash: true, label: "模型自估云"});
+  if(sat && (sat.series || []).length) lines.push({pts: sat.series, stroke: SD_COL.WRF, width: 2, label: "用卫星实测云"});
+  const trend = lines.length ? `<div class="sd-d0-trend">${sdTimeTempChart(lines, null, null, {day: day.event_date, ...sdAxisOpts(day)})}</div>` : "";
+  const cell = (name, v, tip) => `<div class="sd-det" title="${sdEsc(tip)}"><div class="sd-det-h"><span>${name}</span></div><b>${sdN(v, 1)}</b></div>`;
+  const body = `<div class="sd-det-grid">${[
+    sat ? cell("卫星实测云", NC ? NC.sat_obs_c : sat.tmax_c, `WRF 算最高温时用卫星实际拍到的云（截至 ${satAt || "—"}，之后沿用）`) : "",
+    ctl ? cell("模型自估云", NC ? NC.ctl_obs_c : ctl.tmax_c, "同一个 WRF、同一份数据，云由模型自己估；对比卫星云有没有用") : "",
+    prev ? cell("前一晚预报", prev.tmax_c, `前一晚 GFS 起报的 WRF（区域放大配置），${String(prev.init_utc || "").slice(5, 13).replace("T", " ")}Z`) : "",
+    W.gfs ? cell("GFS 原始", W.gfs.tmax_c, "WRF 的输入：美国 GFS 自己的 2 m 气温，3 小时一个点") : ""].join("")}</div>`;
+  const NS = W.nowcast_scores || {}, fs = NS.sat_obs_c, fc = NS.ctl_obs_c, O = W.oracle_score;
+  const tip = `用卫星实测云的 WRF：GFS 前一天 18Z 驱动、9 km，当地约 11 点起跑；卫星云量与云厚（葵花）放进辐射，最新一张之后沿用；已与当时机场报文最高取大。`
+    + `\n只读，不进任何层；前向测试满 15 个闭日后判定。`;
+  return sdModelCard({title, tag, color: SD_COL.WRF,
+    value: `${sdN(lead, 2)}°C`, valueTip: tip,
+    cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? lead - bel.mean : null, "WRF 减当前服务信念均值"], ["比市场", mk == null ? null : lead - mk, "WRF 减市场均值"]],
+    sub: NC ? `用卫星实测云（${satAt}）· 当地 ${loc(NC.ready_utc)} 出数${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}` : `前一晚预报${W.truth_c == null ? "" : ` · 实测 ${sdN(W.truth_c, 0)}°C`}`,
+    body, trend,
+    foot: `前向平均误差：卫星云 ${fs && fs.n ? sdN(fs.mae_c, 2) : "—"} · 自估云 ${fc && fc.n ? sdN(fc.mae_c, 2) : "—"}°C（${fs ? fs.n : 0} 天）${O && O.n ? ` · 回算全天卫星云 ${sdN(O.mae_c, 2)}°C（${O.n} 天）` : ""}`});
 }
 // 观测更新型 MOS beside the other three estimates (user 2026-10-21 「把"观测更新型
 // MOS"上到这个看板，一排4个卡片。对比」): the station board's composite ΔT

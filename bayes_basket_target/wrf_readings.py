@@ -339,6 +339,31 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             "stations": stations}
 
 
+def stored(station: str, day: str) -> dict[str, Any] | None:
+    """The station board's WRF card (user 2026-10-22 「在上方看板增加一个卡片」): the
+    stored reading's view of one station-day, read only -- None for a station WRF
+    does not run, ``state`` for a missing reading or day."""
+
+    if station not in STATIONS:
+        return None
+    doc = board_readings.load_reading(READING_NAME)
+    value = (doc or {}).get("value") if doc and "value" in doc else doc
+    if not value or value.get("state") != "ok":
+        return {"state": (value or {}).get("state") or "not_computed"}
+    S = (value.get("stations") or {}).get(station) or {}
+    E = (S.get("days") or {}).get(day)
+    if not E:
+        return {"state": "no_run"}
+    configs = E.get("configs") or {}
+    keep = {c: {k: configs[c].get(k) for k in ("tmax_c", "at_local", "status", "series", "init_utc", "last_local")}
+            for c in ("nowcast_sat", "nowcast_ctl", FORECAST) if c in configs}
+    scores = S.get("scores") or {}
+    return {"state": "ok", "as_of_utc": value.get("as_of_utc"), "timezone": S.get("timezone"),
+            "truth_c": E.get("truth_c"), "gfs": E.get("gfs"), "nowcast": E.get("nowcast"), "runs": keep,
+            "nowcast_scores": S.get("nowcast_scores") or {},
+            "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85")}
+
+
 def run(*, db: Path = board_readings.DEFAULT_DB) -> dict[str, Any]:
     t0 = time.monotonic()
     cache = _Cache()
