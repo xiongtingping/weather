@@ -434,7 +434,7 @@ def _scheduled_scripts() -> set[str]:
         texts.append(subprocess.run(["plutil", "-p", str(plist)], capture_output=True, text=True).stdout)
     names = {m for text in texts for m in re.findall(r"([a-z_0-9]+\.py)", text)}
     # The dashboard imports these helpers into its own scheduled render.
-    names |= {"live_book.py", "live_selection.py"}
+    names |= {"live_book.py"}
     return {name for name in names if (ROOT / "scripts" / name).is_file()}
 
 

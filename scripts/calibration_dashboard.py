@@ -78,11 +78,6 @@ from bayes_basket_target.strategy_lanes import (  # noqa: E402
     STAKE_DIALS as _STAKE_DIALS,
     load_strategy_lanes as _load_strategy_lanes,
 )
-# The selection readings -- the top strip's 选桶 row, 逐站汇总（跨日）,
-# 覆盖 · 价格 · EV, 篮子命中率 -- off production's decisions
-# and the live fills (same ruling).  The paper selection payload they read
-# until then is no longer built here.
-import live_selection  # noqa: E402
 from selection_market_dashboard import (  # noqa: E402
     STATION_LABELS,
 )
@@ -5376,188 +5371,6 @@ TRUTH_LANDING_GAP_GROUPS = (
 TRUTH_LANDING_UNLIKELY = 0.05
 
 
-# The bias layer's half-life change, and the instant it began being fitted.
-# Both are facts about a past deployment, so they are stated rather than
-# derived.
-H5_FROM_UTC = "2026-08-27T06:48:00Z"
-def collect_h5_readiness(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Whether the bias half-life change can yet be scored against truth.
-
-    The question the section answers is "has the fleet finished turning
-    over onto H5", and it is asked of the DECISIONS rather than of the
-    artifact pool.  Each P0 envelope records the artifact fingerprint that
-    served each of its systems, so the answer is exact.  Two pool proxies
-    were tried first and both lied by a wide margin -- artifacts carry a
-    thirty-day validity window against a daily refit, so a scope holds
-    about twenty-one superseded generations that no decision will ever
-    read, and counting them put 2026-08-29 at 18% when the decisions say
-    100%.  Provisional members are excluded, not counted against: they
-    have no artifact of their own by design.
-
-    A day is scoreable once the fleet served it under H5 and its truth has
-    landed.  It used to ask the paper book for settled chains instead; the
-    paper ledger is a rule comparator since 2026-09-16, and whether a day
-    can be scored is a property of the truth, not of which seats a replay
-    happened to take -- a rule change empties the paper tables for an hour
-    and every day read unscoreable meanwhile.
-    """
-
-    truth_days = {
-        str(day): int(count or 0)
-        for day, count in conn.execute(
-            "SELECT local_date, COUNT(DISTINCT station_id)"
-            " FROM calibration_station_daily_high_truth"
-            " WHERE qc_status='ACCEPTED' AND local_date>=?"
-            " GROUP BY local_date",
-            (H5_FROM_UTC[:10],),
-        )
-    }
-    known = {
-        str(row[0]) for row in conn.execute(
-            "SELECT content_sha256"
-            " FROM calibration_native_ensemble_system_artifact"
-        )
-    }
-    fitted_under_h5 = {
-        str(row[0]) for row in conn.execute(
-            "SELECT content_sha256"
-            " FROM calibration_native_ensemble_system_artifact"
-            # System and station lists let the (system, station, ...,
-            # valid_from_utc, ...) index seek and filter on valid_from inside
-            # the index; on its own the predicate scanned 161k artifacts.
-            " WHERE ensemble_system_id IN"
-            " (SELECT ensemble_system_id FROM calibration_native_ensemble_system)"
-            " AND station_id IN (SELECT station_id FROM calibration_station_registry)"
-            " AND valid_from_utc>=?",
-            (H5_FROM_UTC,),
-        )
-    }
-    def _event_days(source: sqlite3.Connection) -> list[str]:
-        return [
-            str(day) for (day,) in source.execute(
-                "SELECT DISTINCT event_date FROM basket_probability_envelope"
-                " WHERE stage='P0' AND state='COMMITTED' AND event_date>=?"
-                " ORDER BY event_date",
-                (H5_FROM_UTC[:10],),
-            )
-        ]
-
-    event_days = _event_days(conn)
-    # Each day's count reads every P0 envelope's lineage JSON for that day
-    # (1,907 s whole the last time).  Under a paged render a day two or
-    # more back is kept -- its P0s are all written and their artifact
-    # fingerprints do not change -- and a far-behind cache catches up a
-    # few days a run (SectionNotReady) instead of reading them all at once.
-    if _PAGED_RUN:
-        code = _section_fingerprint(_h5_day_counts, H5_FROM_UTC)
-        kept = _load_closed_readings(RENDER_H5_DAYS)
-        kept_days = dict(kept.get("days") or {}) if kept.get("code") == code else {}
-        keep_through = (_now() - timedelta(days=2)).strftime("%Y-%m-%d")
-        source = conn
-        if not kept_days:
-            # A first run or a code change: the days the cold tier holds are
-            # gone from the SSOT, so the day list and the counts come from
-            # the whole history (charter 238; 「在外置硬盘」).
-            source = _history_conn(conn, ("basket_probability_envelope",))
-            event_days = _event_days(source)
-        # A kept day stays listed after its envelopes have left the SSOT.
-        event_days = sorted(set(event_days) | set(kept_days))
-        try:
-            pending = [day for day in event_days if day not in kept_days]
-            behind = [day for day in pending if day <= keep_through]
-            if len(behind) > H5_CATCHUP_DAYS:
-                kept_days.update(_h5_day_counts(
-                    source, behind[:H5_CATCHUP_DAYS], known, fitted_under_h5,
-                ))
-                _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": kept_days})
-                raise SectionNotReady(
-                    f"h5_readiness kept {len(kept_days)} of {len(event_days)} days"
-                )
-            counts = {**kept_days, **_h5_day_counts(source, pending, known, fitted_under_h5)}
-        finally:
-            if source is not conn:
-                source.close()
-        _save_closed_readings(RENDER_H5_DAYS, {"code": code, "days": {
-            day: value for day, value in counts.items() if day <= keep_through
-        }})
-    else:
-        history = _history_conn(conn, ("basket_probability_envelope",))
-        try:
-            event_days = _event_days(history)
-            counts = _h5_day_counts(history, event_days, known, fitted_under_h5)
-        finally:
-            if history is not conn:
-                history.close()
-    days: list[dict[str, Any]] = []
-    for day in event_days:
-        decisions, under_h5, provisional_only = counts.get(day, (0, 0, 0))
-        if not decisions:
-            continue
-        days.append({
-            "event_date": str(day),
-            "decisions": decisions,
-            "served_under_h5": under_h5,
-            "share": round(under_h5 / decisions, 3),
-            "provisional_only": provisional_only,
-            "truth_stations": truth_days.get(str(day), 0),
-        })
-    scored = [
-        item for item in days
-        if item["share"] >= 0.9 and item["truth_stations"] > 0
-    ]
-    return {
-        "from_utc": H5_FROM_UTC,
-        "days": days,
-        "scoreable_days": [item["event_date"] for item in scored],
-    }
-
-
-#: Days a far-behind h5_readiness cache reads per paged run.
-H5_CATCHUP_DAYS = 4
-RENDER_H5_DAYS = "_h5_readiness_days.json"
-
-
-def _h5_day_counts(
-    conn: sqlite3.Connection, days: Sequence[str],
-    known: set[str], fitted_under_h5: set[str],
-) -> dict[str, list[int]]:
-    """Per event day: [calibrated P0 decisions, those served wholly under H5,
-    provisional-only decisions] -- what h5_readiness reads off each day."""
-
-    out: dict[str, list[int]] = {}
-    for day in days:
-        decisions = 0
-        under_h5 = 0
-        provisional_only = 0
-        for (lineage_json,) in conn.execute(
-            "SELECT lineage_json FROM basket_probability_envelope"
-            " WHERE stage='P0' AND state='COMMITTED' AND event_date=?",
-            (str(day),),
-        ):
-            try:
-                lineage = json.loads(lineage_json)
-            except (TypeError, ValueError):
-                continue
-            raw = lineage.get("system_artifact_shas_json")
-            if not raw:
-                continue
-            try:
-                shas = json.loads(raw) if isinstance(raw, str) else raw
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(shas, dict) or not shas:
-                continue
-            calibrated = [v for v in shas.values() if v in known]
-            if not calibrated:
-                provisional_only += 1
-                continue
-            decisions += 1
-            if all(v in fitted_under_h5 for v in calibrated):
-                under_h5 += 1
-        out[str(day)] = [decisions, under_h5, provisional_only]
-    return out
-
-
 #: A station-day's truth-landing record is kept once its event day is this
 #: many days back: its first P0 claim is fixed once the day closes, and its
 #: market stops quoting within a day of settling, so the last bids -- the
@@ -9790,354 +9603,6 @@ def collect_station_calibration_windows(
     }
 
 
-FUSION_STUDY_DIR = ROOT / "docs" / "research" / "fusion_weight_comparison_20260922"
-FUSION_CANDIDATE_ARMS = (
-    ("current", "现行权重", "基线"),
-    ("blend25", "中心 25% + 分布 75%", "冻结候选"),
-    ("blend50", "中心 50% + 分布 50%", "冻结候选"),
-    ("blend75", "中心 75% + 分布 25%", "冻结候选"),
-    ("center_stack21", "中心误差 + 正则（端点）", "参照"),
-    ("crps_hier21", "分层 CRPS（端点）", "参照"),
-)
-
-
-def collect_fusion_candidates() -> dict[str, Any]:
-    """The frozen fusion-weight candidates, read from the study's own files.
-
-    Nothing is re-scored here: the three blends were frozen with hashes in
-    ``pareto_metrics/candidates.json`` and the page only lays their readings
-    side by side -- the three constraints (RMSE, CRPS, NLL), the north star
-    (bucket REL / RES), and the execution-conditioned economic replay.
-    """
-
-    def _read(*parts: str) -> Any:
-        try:
-            return json.loads(
-                FUSION_STUDY_DIR.joinpath(*parts).read_text(encoding="utf-8")
-            )
-        except (OSError, ValueError):
-            return None
-
-    joint = _read("joint_objective", "results.json")
-    pareto = _read("pareto_metrics", "results.json")
-    frozen = _read("pareto_metrics", "candidates.json")
-    economic = _read("economic_replay", "results.json")
-    if not joint or not pareto:
-        return {"available": False}
-    rows = []
-    for arm, label, role in FUSION_CANDIDATE_ARMS:
-        j = (joint.get("arms") or {}).get(arm) or {}
-        p = (pareto.get("arms") or {}).get(arm) or {}
-        e = ((economic or {}).get("arms") or {}).get(arm) or {}
-        decomposition = ((p.get("decomposition") or {}).get("primary")) or {}
-        quarter = e.get("fee0.0_kelly0.25") or {}
-        rows.append({
-            "arm": arm, "label": label, "role": role,
-            "rmse_c": j.get("rmse"), "crps_c": j.get("crps"), "nll": j.get("nll"),
-            "change_pct": j.get("change_pct") or {},
-            "delta_ci95": j.get("delta_ci95") or {},
-            "all_three_lower_share": j.get("bootstrap_all_three_lower_share"),
-            "station_all_three_lower_n": j.get("station_all_three_lower_n"),
-            "halves": {
-                half: {key: (j.get("halves") or {}).get(half, {}).get(key)
-                       for key in ("rmse", "crps", "nll")}
-                for half in ("first", "second")
-            },
-            "bucket_brier": p.get("brier"),
-            "logscore": p.get("logscore"),
-            "reliability": decomposition.get("reliability"),
-            "resolution": decomposition.get("resolution"),
-            "ece": decomposition.get("ece"),
-            "north_star_ci95": {
-                key: (p.get("delta_ci95") or {}).get(key)
-                for key in ("reliability", "resolution", "brier")
-            },
-            "economic": {
-                "logscore": e.get("logscore"),
-                "vs_market": e.get("logscore_minus_market_ask"),
-                "kelly_quarter_log_growth": (quarter.get("kelly_portfolio") or {}).get("log_growth"),
-                "kelly_quarter_delta_ci95": (quarter.get("kelly_portfolio") or {}).get("delta_ci95"),
-                "hurdle_roi": (quarter.get("hurdle_taker") or {}).get("roi"),
-                "hurdle_claimed_roi": (quarter.get("hurdle_taker") or {}).get("claimed_roi"),
-            } if e else None,
-        })
-    # Days of fresh evidence the NLL gain would need to clear two standard
-    # errors with 80% power, off the study's own day-block interval.
-    power = None
-    blend = next((row for row in rows if row["arm"] == "blend25"), None)
-    base = next((row for row in rows if row["arm"] == "current"), None)
-    interval = (blend or {}).get("delta_ci95", {}).get("nll")
-    if blend and base and interval and blend["nll"] is not None and base["nll"]:
-        effect = blend["nll"] - base["nll"]
-        se = (interval[1] - interval[0]) / 3.92
-        if effect and se > 0:
-            power = {
-                "effect_nll": effect, "se_nll": se, "days": joint.get("days"),
-                "days_needed": math.ceil(
-                    (joint.get("days") or 0) * (2.8 * se / abs(effect)) ** 2
-                ),
-            }
-    return {
-        "available": True,
-        "production_regime": _fusion_production_regime(),
-        "forward_shadow": _fusion_forward_shadow(),
-        "later_studies": _fusion_later_studies(),
-        "cohort": {
-            "status": (frozen or {}).get("cohort_status") or pareto.get("cohort_status"),
-            "sample_n": joint.get("n"), "stations": joint.get("stations"),
-            "days": joint.get("days"),
-            "period": [(pareto.get("days") or [None])[0], (pareto.get("days") or [None])[-1]],
-        },
-        "frozen_sha": {
-            arm: spec.get("weights_sha256")
-            for arm, spec in ((frozen or {}).get("candidates") or {}).items()
-        },
-        "rows": rows,
-        "economic": {
-            "status": economic.get("status"), "sample_n": economic.get("sample_n"),
-            "dates": len(economic.get("dates") or []),
-            "market_logscore": (economic.get("market") or {}).get("ask_normalised_logscore"),
-            "mean_ask_sum": (economic.get("market") or {}).get("mean_ask_sum"),
-            "hurdle": economic.get("hurdle"), "budget_usdc": economic.get("budget_usdc"),
-        } if economic else None,
-        "power": power,
-    }
-
-
-# Charter 199 serves the blend since 2026-09-24 (user: 「上线」); the ledger
-# keeps scoring it against the seat weights it replaced, on settled days the
-# switch never saw.  Charter 211/240: the two bucket proper scores decide;
-# Reliability / Resolution and RMSE / CRPS are drawn beside as diagnostics.
-FUSION_LEDGER_PANEL = ("bucket_brier", "nll")
-# Charter 224: the same 1e-3 floor the OOS gate scores LogScore with.
-FUSION_LEDGER_LOG_FLOOR = 1e-3
-FUSION_LEDGER_BOOTSTRAP_DRAWS = 2000
-
-
-def _fusion_production_regime() -> dict[str, Any] | None:
-    """The pre-go-live replay under production training density (read only)."""
-
-    try:
-        data = json.loads(
-            (FUSION_STUDY_DIR / "production_regime" / "results.json").read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return None
-    groups = data.get("groups") or {}
-    return {
-        key: {
-            "n": group.get("n"), "days": group.get("days"),
-            "change_pct": group.get("change_pct") or {},
-            "rmse_ci": (group.get("delta_ci95") or {}).get("rmse"),
-        }
-        for key, group in groups.items()
-    }
-
-
-def _fusion_forward_shadow() -> dict[str, Any]:
-    """Blend weights against seat weights, same settled day-ahead roots.
-
-    Read off the charter-199 training file: each settled station-day's
-    day-ahead root carries both the seat weights and the blend's weights,
-    and the file holds that day's systems' own distributions, centre errors
-    and CRPS terms -- so the two are scored on one sample with no second
-    read of the book.  Roots compiled before the 09-24 switch (state
-    ``SHADOW_*``) served the seat weights; later roots served the blend.  A
-    root whose blend fell back carries the seat weights on both sides and
-    scores a zero difference, as it should.  The pool is the systems'
-    linear pool before the width layer, not the served P0.
-    """
-
-    try:
-        from bayes_basket_target import fusion_blend  # noqa: PLC0415
-        conn = sqlite3.connect(
-            f"file:{fusion_blend.FUSION_BLEND_TRAINING_DB}?mode=ro", uri=True, timeout=5
-        )
-        conn.row_factory = sqlite3.Row
-        facts = [dict(row) for row in conn.execute(
-            "SELECT * FROM fusion_blend_training_fact"
-            " WHERE fusion_blend_state<>'NONE' AND probability_source NOT LIKE 'NONE%'"
-            " ORDER BY station_id, event_date, truth_revision"
-        )]
-        conn.close()
-    except (ImportError, OSError, sqlite3.Error):
-        return {"available": False}
-    latest: dict[tuple[str, str], dict[str, Any]] = {}
-    for fact in facts:
-        latest[(fact["station_id"], fact["event_date"])] = fact
-    scored: list[dict[str, Any]] = []
-    states: Counter = Counter()
-    for fact in latest.values():
-        try:
-            seat = json.loads(fact["seat_weights_json"])
-            shadow = json.loads(fact["shadow_weights_json"]) or seat
-            probabilities = json.loads(fact["probabilities_json"])
-            errors = json.loads(fact["center_error_json"])
-            a = json.loads(fact["crps_a_json"])
-            b = json.loads(fact["crps_b_json"])
-        except (TypeError, ValueError):
-            continue
-        keys = sorted(seat)
-        if set(keys) - set(probabilities) or set(keys) != set(shadow):
-            continue
-        state = str(fact["fusion_blend_state"])
-        states[state] += 1
-        hit = int(fact["truth_bucket_index"])
-        row: dict[str, Any] = {
-            "day": fact["event_date"],
-            "era": "shadow" if state.startswith("SHADOW_") else "served",
-            "moved": 0.5 * sum(abs(shadow[k] - seat[k]) for k in keys),
-        }
-        for arm, weights in (("seat", seat), ("blend", shadow)):
-            error = sum(weights[k] * errors[k] for k in keys)
-            pooled = [
-                sum(weights[k] * probabilities[k][index] for k in keys)
-                for index in range(len(probabilities[keys[0]]))
-            ]
-            floored = [max(value, FUSION_LEDGER_LOG_FLOOR) for value in pooled]
-            row[arm] = {
-                "se": error * error,
-                "crps": sum(weights[k] * a[k] for k in keys) - 0.5 * sum(
-                    weights[i] * weights[j] * b[i][j] for i in keys for j in keys
-                ),
-                "nll": -math.log(floored[hit] / sum(floored)),
-                "bucket_brier": sum(
-                    (value - (1.0 if index == hit else 0.0)) ** 2
-                    for index, value in enumerate(pooled)
-                ),
-                "cell": (1.0, {"probabilities": pooled, "hit": hit}),
-            }
-        scored.append(row)
-
-    def _group(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
-        if not rows:
-            return None
-        count = len(rows)
-        arms = {}
-        for arm in ("seat", "blend"):
-            murphy = _core_murphy([row[arm]["cell"] for row in rows])
-            arms[arm] = {
-                "rmse_c": math.sqrt(sum(row[arm]["se"] for row in rows) / count),
-                "crps_c": sum(row[arm]["crps"] for row in rows) / count,
-                "nll": sum(row[arm]["nll"] for row in rows) / count,
-                "bucket_brier": sum(row[arm]["bucket_brier"] for row in rows) / count,
-                "reliability": murphy.get("reliability"),
-                "resolution": murphy.get("resolution"),
-            }
-        # Event-day block bootstrap of the paired difference (blend - seat).
-        by_day: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for row in rows:
-            by_day[row["day"]].append(row)
-        days = sorted(by_day)
-        rng = random.Random(199)
-        draws: dict[str, list[float]] = {key: [] for key in FUSION_LEDGER_PANEL}
-        for _ in range(FUSION_LEDGER_BOOTSTRAP_DRAWS):
-            sample = [row for day in rng.choices(days, k=len(days)) for row in by_day[day]]
-            for key in FUSION_LEDGER_PANEL:
-                draws[key].append(
-                    sum(row["blend"][key] - row["seat"][key] for row in sample) / len(sample)
-                )
-        delta = {}
-        for key in FUSION_LEDGER_PANEL:
-            ordered = sorted(draws[key])
-            delta[key] = {
-                "mean": arms["blend"][key] - arms["seat"][key],
-                "ci95": [ordered[int(0.025 * len(ordered))],
-                         ordered[int(0.975 * len(ordered)) - 1]],
-            }
-        moved = sorted(row["moved"] for row in rows if row["moved"] > 1e-9)
-        return {
-            "station_days": count, "event_days": len(days),
-            "period": [days[0], days[-1]],
-            "arms": arms, "delta": delta,
-            "moved_n": len(moved),
-            "moved_half_l1_median": moved[len(moved) // 2] if moved else 0.0,
-            "both_lower": all(delta[key]["mean"] < 0 for key in FUSION_LEDGER_PANEL),
-            "both_significant": all(delta[key]["ci95"][1] < 0 for key in FUSION_LEDGER_PANEL),
-        }
-
-    groups = {
-        "served": _group([row for row in scored if row["era"] == "served"]),
-        "shadow": _group([row for row in scored if row["era"] == "shadow"]),
-        "all": _group(scored),
-    }
-    return {
-        "available": True, "station_days": len(scored),
-        "groups": {key: value for key, value in groups.items() if value},
-        "panel": list(FUSION_LEDGER_PANEL), "states": dict(states),
-        "log_floor": FUSION_LEDGER_LOG_FLOOR,
-        "mode": _fusion_blend_mode(),
-    }
-
-
-# Fusion-layer studies run after the 09-24 switch, read from their own result
-# files: (study dir, file, pair key, label).  Every pair is "arm vs A0 =
-# production as served", scored by the study's own charter-240 rule.
-FUSION_LATER_STUDIES = (
-    ("pool_operator_20261001", "results.json", "C_vs_A0", "几何池（换合并算子）"),
-    ("pool_operator_20261001", "results.json", "A1_vs_A0", "线性池只重拟 λ"),
-    ("pool_operator_20261001", "results.json", "B_vs_A0", "完全共识（各家平移到共识中心）"),
-    ("pool_operator_20261001", "results.json", "E1_vs_A0", "共识桥 v2（按 A−B 定尺度）"),
-    ("pool_operator_20261001", "results_w.json", "EM50_vs_A0", "LogScore 最优权重与服务各半"),
-    ("pool_operator_20261001", "results_w.json", "EM_vs_A0", "LogScore 最优前推权重"),
-    ("pool_operator_20261001", "results_w.json", "S_vs_A0", "座位先验（去掉 199 混合）"),
-    ("pool_operator_20261001", "results_w.json", "DROP1_vs_A0", "剔掉最差一家"),
-    ("pool_operator_20261001", "results_w.json", "EQ_vs_A0", "等权"),
-    ("pool_operator_20261001", "results_w.json", "BEST1_vs_A0", "只坐最好一家"),
-)
-
-
-def _fusion_later_studies() -> list[dict[str, Any]]:
-    out = []
-    cache: dict[tuple[str, str], Any] = {}
-    for study, name, pair, label in FUSION_LATER_STUDIES:
-        if (study, name) not in cache:
-            try:
-                cache[(study, name)] = json.loads(
-                    (ROOT / "docs" / "research" / study / name).read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError):
-                cache[(study, name)] = None
-        data = cache[(study, name)]
-        row = ((data or {}).get("pairs") or {}).get(pair)
-        if not row:
-            continue
-        out.append({
-            "label": label, "study": study, "pair": pair,
-            "station_days": row.get("station_days"),
-            "days": len((data or {}).get("days_scored") or []),
-            "d_logscore": row.get("d_logscore"), "ci_logscore": row.get("ci_logscore"),
-            "d_brier": row.get("d_brier"), "ci_brier": row.get("ci_brier"),
-            "d_crps": row.get("d_crps"), "ci_crps": row.get("ci_crps"),
-            "passes": bool(row.get("lower")),
-        })
-    try:
-        logloss = json.loads(
-            (ROOT / "docs" / "research" / "fusion199_logloss_20260925" / "results.json")
-            .read_text(encoding="utf-8")
-        ).get("pooled") or {}
-    except (OSError, ValueError):
-        logloss = {}
-    if logloss.get("delta"):
-        out.append({
-            "label": "训练目标改桶 LogLoss", "study": "fusion199_logloss_20260925",
-            "pair": "logloss_vs_current",
-            "station_days": logloss.get("station_days"), "days": logloss.get("days"),
-            "d_logscore": logloss["delta"].get("nll"), "ci_logscore": (logloss.get("ci95") or {}).get("nll"),
-            "d_brier": logloss["delta"].get("brier"), "ci_brier": (logloss.get("ci95") or {}).get("brier"),
-            "d_crps": None, "ci_crps": None, "passes": bool(logloss.get("holds")),
-        })
-    return out
-
-
-def _fusion_blend_mode() -> str | None:
-    try:
-        from bayes_basket_target import fusion_blend  # noqa: PLC0415
-    except ImportError:
-        return None
-    return str(fusion_blend.FUSION_BLEND_MODE)
-
-
 def _scorecard_window(conn: sqlite3.Connection) -> dict[str, Any]:
     """Where the scored sample starts: P0's serving-arithmetic anchor.
 
@@ -10991,7 +10456,6 @@ def _collect_fusion_layer(conn: sqlite3.Connection) -> dict[str, Any]:
             ),
         },
     }
-
 
 
 def _independent_models_reading(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -12036,509 +11500,6 @@ def collect_live_days(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
-
-def _tiebreak_registered_hypotheses(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Charter 164's shadow readings: what each registered hypothesis says
-    over the whole replay, and over the event days since it was registered.
-
-    The forward window is the one that decides.  A hypothesis measured on
-    the sample that suggested it is not evidence -- with 122 candidate cells
-    a shuffled label finds a both-halves-confirmed cell every single time,
-    and the weaker side of that random cell reaches +24.0% ROI -- so the
-    board prints the registration reading as context and the forward reading
-    as the answer.
-    """
-
-    out: dict[str, Any] = {"available": False, "rows": [], "as_of_date": None}
-    try:
-        from bayes_basket_target.tiebreak_cell_shadow import (  # noqa: PLC0415
-            HYPOTHESIS_TABLE, REPLAY_TABLE, SHADOW_SCHEMA, attach_shadow,
-        )
-    except Exception:  # noqa: BLE001
-        return out
-    if not attach_shadow(conn):
-        return out
-    try:
-        as_of = conn.execute(
-            f"SELECT MAX(as_of_date) FROM {SHADOW_SCHEMA}.{HYPOTHESIS_TABLE}"
-        ).fetchone()[0]
-        if not as_of:
-            return out
-        rows = conn.execute(
-            "SELECT hypothesis_id,title,prediction,at_registration,registered_at_utc,"
-            " reading_window,n_treatment,n_control,event_days,roi_treatment,roi_control,"
-            " contrast,ci_lo,ci_hi,p_at_or_below_zero,p_permutation"
-            f" FROM {SHADOW_SCHEMA}.{HYPOTHESIS_TABLE} WHERE as_of_date=?"
-            " ORDER BY hypothesis_id, reading_window DESC",
-            (str(as_of),),
-        ).fetchall()
-        replay = conn.execute(
-            f"SELECT COUNT(*), COUNT(DISTINCT station_id||event_date),"
-            f" COUNT(DISTINCT event_date), MAX(refreshed_at_utc)"
-            f" FROM {SHADOW_SCHEMA}.{REPLAY_TABLE}"
-        ).fetchone()
-    except sqlite3.Error:
-        return out
-    out.update({
-        "available": True, "as_of_date": str(as_of),
-        "replayed": int(replay[0] or 0), "station_days": int(replay[1] or 0),
-        "event_days": int(replay[2] or 0), "refreshed_at_utc": replay[3],
-        "rows": [
-            {"hypothesis_id": r[0], "title": r[1], "prediction": r[2],
-             "at_registration": r[3], "registered_at_utc": r[4],
-             "reading_window": r[5], "n_treatment": r[6], "n_control": r[7],
-             "event_days": r[8], "roi_treatment": r[9], "roi_control": r[10],
-             "contrast": r[11], "ci_lo": r[12], "ci_hi": r[13],
-             "p_at_or_below_zero": r[14], "p_permutation": r[15]}
-            for r in rows
-        ],
-    })
-    return out
-
-
-def collect_tiebreak_lane(conn: sqlite3.Connection) -> dict[str, Any]:
-    """「秤砣线」-- the tiebreak lane's own statistics (charter 146).
-
-    User ruling 2026-09-18: 前端增加可自行调整每笔预算和单独的统计.  Three
-    reads, each from where the lane itself writes: the lane switches and
-    the stake from the operator file; every first decision the lane scored
-    from ``tiebreak_lane_evaluation`` (fired or not, with the reason a fired
-    one did not send); and the trades from the live book, restricted to the
-    lane's own decision rows (``tiebreak_decision_*``), scored against the
-    settled bucket exactly as every other live leg is.
-
-    The acceptance the charter names is printed as three conditions, not a
-    verdict: realised minus the price actually paid, with a day-clustered
-    lower bound above zero, both halves the same sign, and at least thirty
-    event days.  ``ask_paid`` keeps its name and is what it always was --
-    the filled notional over the filled shares -- but since charter 163 the
-    lane rests at bid+1t rather than crossing, so the rows before and after
-    2026-09-20 are priced on different sides of the book and are told apart
-    by ``rule_version`` (…_spread_v2_1 against …_spread_maker_v2_2).
-    """
-
-    lanes = _load_strategy_lanes()
-    tiebreak = lanes["lanes"].get("tiebreak") or {}
-    out: dict[str, Any] = {
-        "available": True,
-        "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
-        "settings": {
-            "enabled": tiebreak.get("enabled") is True,
-            "stake_usdc": tiebreak.get("stake_usdc"),
-            "min_market_share_on_model_mode": tiebreak.get(
-                "min_market_share_on_model_mode"
-            ),
-            "first_decision_fresh_seconds": tiebreak.get(
-                "first_decision_fresh_seconds"
-            ),
-            # v2 (user ruling 2026-09-18): the rule the file selects and the
-            # band's ceiling; v1 rows stay in the table under their own
-            # rule_version.
-            "rule": tiebreak.get("rule"),
-            "max_market_share_on_model_mode": tiebreak.get(
-                "max_market_share_on_model_mode"
-            ),
-            # v2.1: the model bucket's spread ceiling.
-            "max_spread_on_model_mode": tiebreak.get("max_spread_on_model_mode"),
-            # v2.3 (charter 175): the ceiling is the rung's own price.
-            "max_paid_price": tiebreak.get("max_paid_price"),
-            # Charter 229: the stages whose first decision may open.
-            "opening_stages": tiebreak.get("opening_stages"),
-            "source": lanes.get("source"),
-            "updated_at_utc": lanes.get("updated_at_utc"),
-        },
-        "lanes": {
-            name: bool(lane.get("enabled") is True)
-            for name, lane in lanes["lanes"].items()
-        },
-        "evaluations": {"available": False},
-        "trades": {"available": False},
-    }
-    has_eval = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table'"
-        " AND name='tiebreak_lane_evaluation'"
-    ).fetchone() is not None
-    if has_eval:
-        total, fired, days, first_at, last_at = conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(fired),0), COUNT(DISTINCT event_date),"
-            " MIN(evaluated_at_utc), MAX(evaluated_at_utc)"
-            " FROM tiebreak_lane_evaluation"
-        ).fetchone()
-        refusals = [
-            {"refusal": str(r[0] or "sent"), "count": int(r[1]), "fired": int(r[2] or 0)}
-            for r in conn.execute(
-                "SELECT COALESCE(refusal,''), COUNT(*), SUM(fired)"
-                " FROM tiebreak_lane_evaluation GROUP BY COALESCE(refusal,'')"
-                " ORDER BY COUNT(*) DESC LIMIT 14"
-            )
-        ]
-        fired_rows = [
-            {
-                "station_id": r[0], "event_date": r[1], "stage": r[2],
-                "model_mode": r[3], "market_mode": r[4],
-                "market_share_on_model_mode": r[5],
-                "model_mode_share": r[6], "refusal": r[7],
-                "order_intent_id": r[8], "evaluated_at_utc": r[9],
-            }
-            for r in conn.execute(
-                "SELECT station_id, event_date, stage, model_mode, market_mode,"
-                " market_share_on_model_mode, model_mode_share, refusal,"
-                " order_intent_id, evaluated_at_utc"
-                " FROM tiebreak_lane_evaluation WHERE fired=1"
-                " ORDER BY evaluated_at_utc DESC LIMIT 40"
-            )
-        ]
-        by_rule = [
-            {"rule_version": str(r[0] or ""), "evaluated": int(r[1]), "fired": int(r[2] or 0),
-             "sent": int(r[3] or 0), "first_at_utc": r[4], "last_at_utc": r[5]}
-            for r in conn.execute(
-                "SELECT rule_version, COUNT(*), SUM(fired),"
-                " SUM(CASE WHEN fired=1 AND refusal IS NULL THEN 1 ELSE 0 END),"
-                " MIN(evaluated_at_utc), MAX(evaluated_at_utc)"
-                " FROM tiebreak_lane_evaluation GROUP BY rule_version"
-                " ORDER BY MIN(evaluated_at_utc)"
-            )
-        ]
-        by_day = [
-            {"event_date": r[0], "evaluated": int(r[1]), "fired": int(r[2] or 0),
-             "sent": int(r[3] or 0)}
-            for r in conn.execute(
-                "SELECT event_date, COUNT(*), SUM(fired),"
-                " SUM(CASE WHEN fired=1 AND refusal IS NULL THEN 1 ELSE 0 END)"
-                " FROM tiebreak_lane_evaluation GROUP BY event_date"
-                " ORDER BY event_date DESC LIMIT 21"
-            )
-        ]
-        out["evaluations"] = {
-            "available": True, "total": int(total or 0), "fired": int(fired or 0),
-            "event_days": int(days or 0), "first_at_utc": first_at,
-            "last_at_utc": last_at, "refusals": refusals,
-            "fired_rows": fired_rows, "by_day": by_day, "by_rule": by_rule,
-        }
-    # A station-day can repost several intents.  The evaluation row only
-    # points at its latest one, so it cannot label earlier fills.  The
-    # decision signature is the immutable rule that minted every intent.
-    version_by_decision: dict[str, str] = {}
-    # A range on the primary key, not LIKE: LIKE is not index-backed here,
-    # so it walked every decision's details_json for 199 rows -- 18.6 s of
-    # this section, 364 s on a swapping host (2026-10-13).  '`' is the
-    # character after '_'.
-    for decision_id, details_json in conn.execute(
-        "SELECT decision_id, details_json FROM auto_trade_decisions"
-        " WHERE decision_id >= 'tiebreak_decision_'"
-        " AND decision_id < 'tiebreak_decision`'"
-    ):
-        signature = (json.loads(details_json).get("decision_signature") or {})
-        version = str(signature.get("rule") or "")
-        if not version.startswith("tiebreak_"):
-            raise ValueError(f"tiebreak_decision_rule_missing:{decision_id}")
-        version_by_decision[str(decision_id)] = version
-    book = _render_live_book(conn)
-    settled = book.get("settled") or {}
-    if "sold_by_intent" not in book:
-        raise ValueError("tiebreak_sale_allocation_missing")
-    sold_by_intent = book["sold_by_intent"]
-    legs = [
-        leg for leg in (book.get("legs") or [])
-        if str(leg.get("decision_id") or "").startswith("tiebreak_decision_")
-    ]
-    trades: list[dict[str, Any]] = []
-    for leg in legs:
-        key = (leg["station_id"], leg["event_date"])
-        landed = settled.get(key)
-        filled = float(leg.get("filled_size") or 0.0)
-        notional = float(leg.get("filled_notional_usdc") or 0.0)
-        sold_size, sale_proceeds = sold_by_intent.get(
-            str(leg.get("order_intent_id") or ""), (0.0, 0.0)
-        )
-        hit = (landed[0] == leg["bucket"]) if (landed and filled > 0) else None
-        payout = (
-            sale_proceeds + (filled - sold_size if hit else 0.0)
-            if hit is not None else None
-        )
-        trades.append({
-            "order_intent_id": leg.get("order_intent_id"),
-            "station_id": leg["station_id"], "event_date": leg["event_date"],
-            "stage": leg.get("stage"), "bucket": leg["bucket"],
-            "limit_price": leg.get("limit_price"),
-            "requested_size": leg.get("requested_size"),
-            "requested_notional_usdc": leg.get("requested_notional_usdc"),
-            "filled_size": filled, "filled_notional_usdc": notional,
-            "sold_size": sold_size, "sale_proceeds_usdc": sale_proceeds,
-            "ask_paid": (notional / filled) if filled > 0 else None,
-            "claimed_probability": leg.get("claimed_probability"),
-            "state": leg.get("state"), "created_at": leg.get("created_at"),
-            "settled_bucket": landed[0] if landed else None,
-            "hit": hit, "payout_usdc": payout,
-            "pnl_usdc": (payout - notional) if payout is not None else None,
-            "rule_version": version_by_decision.get(str(leg.get("decision_id") or "")),
-        })
-    trades.sort(key=lambda t: (t["event_date"], t["station_id"]), reverse=True)
-    filled_rows = [t for t in trades if t["filled_size"] > 0]
-    settled_rows = [t for t in filled_rows if t["hit"] is not None]
-    stake = sum(t["filled_notional_usdc"] for t in settled_rows)
-    payout = sum(t["payout_usdc"] or 0.0 for t in settled_rows)
-    shares = sum(t["filled_size"] for t in settled_rows)
-    hits = sum(1 for t in settled_rows if t["hit"])
-    avg_ask = (stake / shares) if shares > 0 else None
-    hit_rate = (hits / len(settled_rows)) if settled_rows else None
-    def unit_edge(t: dict[str, Any]) -> float:
-        """Cash received per filled share, less its actual paid price."""
-
-        return (t["payout_usdc"] - t["filled_notional_usdc"]) / t["filled_size"]
-
-    def edge_summary(rows: list[dict[str, Any]]) -> tuple[float | None, list[float] | None, dict[str, Any] | None, int]:
-        edge_rows = [(unit_edge(t), t["event_date"]) for t in rows]
-        edge = (sum(e for e, _d in edge_rows) / len(edge_rows)) if edge_rows else None
-        event_days = sorted({d for _e, d in edge_rows})
-        ci = None
-        if len(edge_rows) >= 5 and len(event_days) >= 3:
-            rng = random.Random(146)
-            by_day_edges: dict[str, list[float]] = defaultdict(list)
-            for e, d in edge_rows:
-                by_day_edges[d].append(e)
-            draws: list[float] = []
-            for _ in range(10000):
-                pool = [e for d in (rng.choice(event_days) for _ in event_days)
-                        for e in by_day_edges[d]]
-                draws.append(sum(pool) / len(pool))
-            draws.sort()
-            ci = [draws[int(0.05 * len(draws))], draws[int(0.95 * len(draws))]]
-        halves = None
-        if len(event_days) >= 2:
-            cut = event_days[len(event_days) // 2]
-            first = [e for e, d in edge_rows if d < cut]
-            second = [e for e, d in edge_rows if d >= cut]
-            halves = {
-                "split_event_date": cut,
-                "first": (sum(first) / len(first)) if first else None,
-                "second": (sum(second) / len(second)) if second else None,
-            }
-        return edge, ci, halves, len(event_days)
-
-    edge, ci, halves, event_days = edge_summary(settled_rows)
-    # v2.1 (user ruling 2026-09-18): the recorded feature, split the way the
-    # reading was -- the market's move on the model's bucket since the
-    # station-day's previous decision -- and, per bin, what the lane's own
-    # trades realised.  Recorded, never gated on; this is where the forward
-    # sample says whether the momentum split holds.
-    #
-    # The reference point is NOT a market clock, it is the stage schedule.
-    # The lane only ever scores a stage's FIRST decision, so the decision
-    # before it necessarily belongs to the PREVIOUS stage: 2026-09-20, all
-    # 207 rows carrying the feature split 106 P1<-P0-M, 99 P0-M<-P0, 2
-    # P1<-P0, and none within a stage.  The two transitions are an order of
-    # magnitude apart -- P0-M rows sit a median 47 minutes from their
-    # reference and put 10.1% of themselves in the >=3 point bin, P1 rows
-    # sit a median 739 minutes out and put 55.6% there -- so the pooled bin
-    # "converged >= 3 points" reads, to first order, "this is a P1 row".
-    # ``feature_split_by_stage`` therefore holds the transition fixed, and
-    # every bin carries its own reference gap so the confound is on the
-    # board rather than in a note.  ``population`` scores the model's mode
-    # bucket against the market's price on it over EVERY evaluation row of
-    # a settled station-day, fired or not: the docstring's promise is that
-    # the forward sample is the whole population, and 113 rows say
-    # something nine trades cannot.
-    feature_split: list[dict[str, Any]] = []
-    feature_split_by_stage: list[dict[str, Any]] = []
-    if has_eval and any(
-        row[1] == "market_move_on_model_mode"
-        for row in conn.execute("PRAGMA table_info(tiebreak_lane_evaluation)")
-    ):
-        by_intent = {t["order_intent_id"]: t for t in trades if t.get("order_intent_id")}
-        bins = [
-            ("靠拢 ≥3 点", lambda v: v >= 0.03),
-            ("靠拢 0–3 点", lambda v: 0.0 <= v < 0.03),
-            ("没动或远离", lambda v: v < 0.0),
-        ]
-        rows_feat = [
-            {
-                "move": float(r[0]), "fired": r[1], "refusal": r[2],
-                "intent": r[3], "spread": r[4], "stage": str(r[5] or ""),
-                "gap": (float(r[6]) if r[6] is not None else None),
-                "station_id": str(r[7]), "event_date": str(r[8]),
-                "model_mode": (str(r[9]) if r[9] is not None else None),
-                "price": (float(r[10]) if r[10] is not None else None),
-            }
-            for r in conn.execute(
-                "SELECT market_move_on_model_mode, fired, refusal, order_intent_id,"
-                " spread_on_model_mode, stage, prev_gap_minutes, station_id, event_date,"
-                " model_mode, market_share_on_model_mode"
-                " FROM tiebreak_lane_evaluation WHERE market_move_on_model_mode IS NOT NULL"
-            )
-        ]
-        # The population's own verdict: did the model's mode bucket land, and
-        # what was the market charging for it.  Settled buckets come from the
-        # book's own resolver (truth lane fallback included), never restated.
-        pop_settled = _live_settled_buckets(
-            conn, {(r["station_id"], r["event_date"]) for r in rows_feat},
-        )
-        for row in rows_feat:
-            landed = pop_settled.get((row["station_id"], row["event_date"]))
-            row["pop_hit"] = (
-                int(landed[0] == row["model_mode"])
-                if landed and row["model_mode"] is not None else None
-            )
-
-        def _bin_stats(sel: list[dict[str, Any]], label: str) -> dict[str, Any]:
-            fired_n = sum(1 for r in sel if r["fired"])
-            sent_n = sum(1 for r in sel if r["fired"] and r["refusal"] is None)
-            settled_t = [
-                by_intent[r["intent"]] for r in sel
-                if r["intent"] in by_intent and by_intent[r["intent"]].get("hit") is not None
-            ]
-            hits = sum(1 for t in settled_t if t["hit"])
-            shares_t = sum(t["filled_size"] for t in settled_t)
-            stake_t = sum(t["filled_notional_usdc"] for t in settled_t)
-            gaps = sorted(r["gap"] for r in sel if r["gap"] is not None)
-            pop = [r for r in sel if r["pop_hit"] is not None and r["price"] is not None]
-            pop_rate = (sum(r["pop_hit"] for r in pop) / len(pop)) if pop else None
-            pop_price = (sum(r["price"] for r in pop) / len(pop)) if pop else None
-            return {
-                "bin": label, "evaluated": len(sel), "fired": fired_n, "sent": sent_n,
-                "settled": len(settled_t), "hits": hits,
-                "hit_rate": (hits / len(settled_t)) if settled_t else None,
-                "avg_ask": (stake_t / shares_t) if shares_t > 0 else None,
-                "realised_minus_ask": (
-                    sum(unit_edge(t) for t in settled_t) / len(settled_t)
-                    if settled_t else None
-                ),
-                "median_gap_minutes": (gaps[len(gaps) // 2] if gaps else None),
-                "stage_mix": {
-                    stage: sum(1 for r in sel if r["stage"] == stage)
-                    for stage in sorted({r["stage"] for r in sel})
-                },
-                "population": len(pop), "population_hits": (
-                    sum(r["pop_hit"] for r in pop) if pop else 0
-                ),
-                "population_hit_rate": pop_rate,
-                "population_avg_price": pop_price,
-                "population_realised_minus_price": (
-                    pop_rate - pop_price if pop_rate is not None and pop_price is not None
-                    else None
-                ),
-            }
-
-        for label, test in bins:
-            feature_split.append(
-                _bin_stats([r for r in rows_feat if test(r["move"])], label),
-            )
-        feature_split.append({
-            "bin": "无上一决策（不可比）", "evaluated": int(conn.execute(
-                "SELECT COUNT(*) FROM tiebreak_lane_evaluation"
-                " WHERE market_move_on_model_mode IS NULL AND rule_version LIKE '%v2_1'"
-            ).fetchone()[0]), "fired": None, "sent": None, "settled": None, "hits": None,
-            "hit_rate": None, "avg_ask": None, "realised_minus_ask": None,
-            "median_gap_minutes": None, "stage_mix": {}, "population": 0,
-            "population_hits": None, "population_hit_rate": None,
-            "population_avg_price": None, "population_realised_minus_price": None,
-        })
-        # The same bins with the stage transition held fixed.  A stage is
-        # named by where it arrives, because where it came from is fixed:
-        # the previous decision is always the previous stage's.
-        for stage in sorted({r["stage"] for r in rows_feat if r["stage"]}):
-            in_stage = [r for r in rows_feat if r["stage"] == stage]
-            # The stage's own drift.  The recorded move is not centred on
-            # zero: between two stages the market's quoted ladder narrows,
-            # so the normalised share on ANY bucket tends to rise.
-            # 2026-09-20, over the rows whose station-day has settled, the
-            # move averages +3.1 points on the rows where the model's mode
-            # bucket LOST (+4.0 on P1, +0.6 on P0-M) -- a fixed "+3 points"
-            # therefore reads as "above drift" on P0-M and "below drift" on
-            # P1, which is how the same bin comes out the opposite sign in
-            # the two.  The neutral point is the stage's own median, and the
-            # losers' median is where a threshold would have to sit to mean
-            # "converged more than the ladder did by itself".
-            moves = sorted(r["move"] for r in in_stage)
-            losers = sorted(
-                r["move"] for r in in_stage
-                if r["pop_hit"] is not None and r["pop_hit"] == 0
-            )
-            neutral = moves[len(moves) // 2] if moves else None
-            loser_neutral = losers[len(losers) // 2] if losers else None
-            for label, test in bins:
-                sel = [r for r in in_stage if test(r["move"])]
-                if not sel:
-                    continue
-                stats = _bin_stats(sel, label)
-                stats["stage"] = stage
-                stats["stage_median_move"] = neutral
-                stats["stage_loser_median_move"] = loser_neutral
-                stats["stage_losers"] = len(losers)
-                feature_split_by_stage.append(stats)
-    # The same three numbers per rule version, so the 09-25 review reads the
-    # resting rule on its own sample (charter 163).
-    by_version: list[dict[str, Any]] = []
-    for version in sorted({str(t.get("rule_version") or "") for t in filled_rows}):
-        rows_v = [t for t in filled_rows if str(t.get("rule_version") or "") == version]
-        settled_v = [t for t in rows_v if t["hit"] is not None]
-        shares_v = sum(t["filled_size"] for t in settled_v)
-        stake_v = sum(t["filled_notional_usdc"] for t in settled_v)
-        hits_v = sum(1 for t in settled_v if t["hit"])
-        by_version.append({
-            "rule_version": version or "(未评分)",
-            # Every maker rule rests (v2.2 charter 163, v2.3 charter 175).
-            "resting": "_maker" in version,
-            "filled": len(rows_v), "settled": len(settled_v), "hits": hits_v,
-            "event_days": len({t["event_date"] for t in settled_v}),
-            "stake_usdc": stake_v,
-            "payout_usdc": sum(t["payout_usdc"] or 0.0 for t in settled_v),
-            "hit_rate": (hits_v / len(settled_v)) if settled_v else None,
-            "avg_price": (stake_v / shares_v) if shares_v > 0 else None,
-            "realised_minus_price": (
-                sum(unit_edge(t) for t in settled_v) / len(settled_v)
-                if settled_v else None
-            ),
-        })
-    from bayes_basket_target.strategy_lanes import opening_stages  # noqa: PLC0415
-    from bayes_basket_target.tiebreak_lane import rule_version_for  # noqa: PLC0415
-
-    current_version = rule_version_for(tiebreak.get("rule"))
-    current_stages = opening_stages(tiebreak)
-    current_rows = [
-        t for t in settled_rows
-        if t["rule_version"] == current_version and t["stage"] in current_stages
-    ]
-    current_edge, current_ci, current_halves, current_days = edge_summary(current_rows)
-    out["by_rule_version"] = by_version
-    out["feature_split"] = feature_split
-    out["feature_split_by_stage"] = feature_split_by_stage
-    # Charter 164: the registered hypotheses, read off the replay's own file.
-    # Nine trades decide nothing and never will; the replay is 388
-    # station-days over 37 event days and grows daily.  Absent file, absent
-    # section -- the daily job builds it.
-    out["registered_hypotheses"] = _tiebreak_registered_hypotheses(conn)
-    out["trades"] = {
-        "available": True,
-        "sent": len(trades), "filled": len(filled_rows),
-        "settled": len(settled_rows), "hits": hits,
-        "open": len(filled_rows) - len(settled_rows),
-        "stake_usdc": stake, "payout_usdc": payout, "pnl_usdc": payout - stake,
-        "roi": ((payout - stake) / stake) if stake > 0 else None,
-        "avg_ask": avg_ask, "hit_rate": hit_rate,
-        "realised_minus_ask": edge, "realised_minus_ask_ci90": ci,
-        "halves": halves, "event_days": event_days,
-        "acceptance": {
-            "rule_version": current_version,
-            "opening_stages": sorted(current_stages),
-            "settled": len(current_rows),
-            "pnl_usdc": sum(t["pnl_usdc"] for t in current_rows),
-            "realised_minus_price": current_edge,
-            "ci90": current_ci,
-            "halves": current_halves,
-            "lower_bound_positive": bool(current_ci and current_ci[0] > 0),
-            "halves_same_sign": bool(
-                current_halves and current_halves["first"] is not None
-                and current_halves["second"] is not None
-                and (current_halves["first"] > 0) == (current_halves["second"] > 0)
-            ),
-            "event_days": current_days, "event_days_needed": 30,
-        },
-        "rows": filled_rows,
-    }
-    return out
-
-
 def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     """同心线 -- the P1 consensus lane's own statistics (charter 203).
 
@@ -12822,7 +11783,6 @@ def collect_p1_consensus_lane(conn: sqlite3.Connection) -> dict[str, Any]:
         "halves": halves,
     }
     return out
-
 
 
 def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -13826,401 +12786,8 @@ def realisation_go_live(fit: Mapping[str, Any], evidence: Mapping[str, Any] | No
     }
 
 
-def charter_ev_identity(
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    """The user's charter (2026-09-12), as arithmetic: edge = the market's
-    error minus the model's error.
-
-    Per bucket ``b`` of a ladder, with truth ``t_b`` (1 in the settled bucket,
-    0 elsewhere), market mid ``m_b`` and served claim ``p_b``:
-
-        e_q = m_b - t_b        the market's error
-        e_p = p_b - t_b        the model's error
-
-    Buying ``(p_b - m_b)`` shares of every bucket at the mid returns
-    ``(p_b - m_b)(t_b - m_b) = e_q^2 - e_p e_q`` per bucket, so the strategy's
-    expected profit per station-day is ``Var(e_q) - Cov(e_p, e_q)``: how much
-    the market is wrong, less how much of that the model is wrong in the same
-    direction.  ``k = Cov / Var(e_q)`` is the regression slope of the model's
-    error on the market's: 1 means the model's error contains the whole of the
-    market's error plus noise of its own; only below 1 is there anything to
-    collect.  The model's own variance never enters -- the charter does not
-    ask the model to be more accurate than the market, only to be wrong
-    differently.
-
-    ``rows`` carry ``p`` and ``m`` (vectors over the same ladder), ``label``,
-    ``date`` and ``weight`` (each station-day's decisions sum to one, so the
-    averages are per station-day).  The realised profit of the strategy is
-    summed beside the identity rather than derived from it, so a reader --
-    and the test -- sees the algebra hold on the data.
-
-    ``EV`` is at the mid.  A row that carries ``half_spread`` (per bucket,
-    on the vector's scale) also prices what the strategy pays to cross the
-    book, ``sum |p_b - m_b| * half_spread_b``, which is the hurdle the
-    charter sets for a live gate: the lower bound of EV above this cost.
-    """
-
-    var_market = var_model = cov = profit = spread = weight_total = 0.0
-    spread_weight = 0.0
-    by_day: dict[str, dict[str, float]] = {}
-    station_days: set[tuple[str, str]] = set()
-    for row in rows:
-        p = row["p"]
-        m = row["m"]
-        label = str(row["label"])
-        w = float(row.get("weight", 1.0) or 1.0)
-        half = row.get("half_spread")
-        vq = vp = c = pr = sc = 0.0
-        for bucket in set(p) | set(m):
-            t = 1.0 if str(bucket) == label else 0.0
-            e_q = float(m.get(bucket, 0.0)) - t
-            e_p = float(p.get(bucket, 0.0)) - t
-            vq += e_q * e_q
-            vp += e_p * e_p
-            c += e_p * e_q
-            pr += (e_p - e_q) * (-e_q)
-            if half:
-                sc += abs(e_p - e_q) * float(half.get(bucket, 0.0) or 0.0)
-        var_market += w * vq
-        var_model += w * vp
-        cov += w * c
-        profit += w * pr
-        weight_total += w
-        if half:
-            spread += w * sc
-            spread_weight += w
-        day = by_day.setdefault(
-            str(row["date"]),
-            {"w": 0.0, "var_market": 0.0, "var_model": 0.0, "cov": 0.0},
-        )
-        day["w"] += w
-        day["var_market"] += w * vq
-        day["var_model"] += w * vp
-        day["cov"] += w * c
-        station_days.add((str(row["station"]), str(row["date"])))
-    if weight_total <= 0.0:
-        return {
-            "decisions": 0, "station_days": 0, "days": 0,
-            "var_market": None, "var_model": None, "cov": None,
-            "ev": None, "k": None, "strategy_profit": None,
-            "spread_cost": None, "days_ev_positive": None, "by_day": {},
-        }
-    var_q = var_market / weight_total
-    return {
-        "decisions": len(rows),
-        "station_days": len(station_days),
-        "days": len(by_day),
-        "var_market": var_q,
-        "var_model": var_model / weight_total,
-        "cov": cov / weight_total,
-        "ev": (var_market - cov) / weight_total,
-        "k": (cov / var_market) if var_market > 0.0 else None,
-        "strategy_profit": profit / weight_total,
-        "spread_cost": (
-            spread / spread_weight if spread_weight > 0.0 else None
-        ),
-        "days_ev_positive": sum(
-            1 for day in by_day.values() if day["var_market"] > day["cov"]
-        ),
-        "by_day": by_day,
-    }
 
 
-def _charter_ev_reading(
-    rows: Sequence[Mapping[str, Any]], *, draws: int, seed: int,
-) -> dict[str, Any]:
-    """The identity plus a by-day bootstrap on EV and k.
-
-    Whole event days are resampled, as the valuation and beta lanes do: a
-    fleet shares its weather, so station-days inside a day are not
-    independent draws.  The interval is the 5th to 95th percentile.
-    """
-
-    reading = charter_ev_identity(rows)
-    by_day = reading.pop("by_day")
-    reading["ev_ci"] = None
-    reading["k_ci"] = None
-    keys = list(by_day)
-    if len(keys) >= 2 and draws > 0:
-        rng = random.Random(int(seed))
-        evs: list[float] = []
-        ks: list[float] = []
-        for _ in range(int(draws)):
-            picked = [by_day[key] for key in rng.choices(keys, k=len(keys))]
-            w = sum(day["w"] for day in picked)
-            vq = sum(day["var_market"] for day in picked)
-            c = sum(day["cov"] for day in picked)
-            if w > 0.0:
-                evs.append((vq - c) / w)
-            if vq > 0.0:
-                ks.append(c / vq)
-
-        def _band(values: list[float]) -> list[float] | None:
-            if not values:
-                return None
-            ordered = sorted(values)
-            lo = ordered[min(len(ordered) - 1, int(0.05 * len(ordered)))]
-            hi = ordered[max(0, int(0.95 * len(ordered)) - 1)]
-            return [lo, hi]
-
-        reading["ev_ci"] = _band(evs)
-        reading["k_ci"] = _band(ks)
-    return reading
-
-
-#: What ``population`` derived from each (envelope, snapshot) pair, kept
-#: across builds: both rows are immutable, so only pairs new since the last
-#: build read their JSON.  Every build re-read all ~60k pairs of the 28-day
-#: window -- a random envelope page and a snapshot's whole book each -- and
-#: that was nearly all of this page's 1,601 s on 2026-10-02.
-CHARTER_EV_DECISION_MEMO = "_charter_ev_decision_memo.json"
-
-
-class _TrackedMemo(dict):
-    """The memo, noting which entries this build asked for, so the file
-    keeps exactly the window's pairs and sheds the ones it has slid past."""
-
-    def __init__(self, prior: Mapping[str, Any]) -> None:
-        super().__init__(prior)
-        self.used: set[str] = set()
-
-    def get(self, key: str, default: Any = None) -> Any:  # noqa: D401
-        self.used.add(key)
-        return super().get(key, default)
-
-
-def _charter_ev_memo_code() -> str:
-    from bayes_basket_target import valuation_store  # noqa: PLC0415
-    from bayes_basket_target.basket_kernel.valuation_v1 import (  # noqa: PLC0415
-        market_reference_v1,
-    )
-
-    return _section_fingerprint(
-        valuation_store.population,
-        _section_fingerprint(valuation_store._decision_vectors)
-        + _section_fingerprint(market_reference_v1),
-    )
-
-
-def _charter_ev_decision_memo(
-    name: str = CHARTER_EV_DECISION_MEMO,
-) -> _TrackedMemo:
-    kept = _load_closed_readings(name)
-    if kept.get("code") != _charter_ev_memo_code():
-        kept = {}
-    return _TrackedMemo(kept.get("entries") or {})
-
-
-def _save_charter_ev_decision_memo(
-    memo: _TrackedMemo, name: str = CHARTER_EV_DECISION_MEMO,
-) -> None:
-    # Not ``_save_closed_readings``: it sorts keys, and a vector's bucket
-    # order is the order its sums run in -- a sorted memo moved P1's
-    # ic_forward in the last place (2026-10-02).  Insertion order is kept.
-    payload = {
-        "code": _charter_ev_memo_code(),
-        "entries": {key: memo[key] for key in memo.used if key in memo},
-    }
-    try:
-        SECTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = SECTION_CACHE_DIR / f"{name}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps(payload), encoding="utf-8")
-        tmp.replace(SECTION_CACHE_DIR / name)
-    except OSError:
-        pass
-
-
-def collect_charter_ev(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Charter EV identity per stage: Var(e_q), Cov(e_p,e_q), Var - Cov, k.
-
-    Reads the valuation lane's population -- one row per decision with the
-    committed envelope's vector, the market mid vector rebuilt from the WS
-    snapshot the decision priced against, and the settled bucket -- so this
-    page and charter 132's fit describe the same sample.  Two readings per
-    stage: the rolling 28-day research population, and the rows since the
-    stage's serving-arithmetic anchor, which is the only sample that says
-    anything about the vector served today.  Every row of the sample is a
-    settled decision; nothing here is a fit and nothing here serves.
-    """
-
-    out: dict[str, Any] = {"available": False}
-    try:
-        from bayes_basket_target.center_width_store import (  # noqa: PLC0415
-            evidence_anchor,
-        )
-        from bayes_basket_target.valuation_store import (  # noqa: PLC0415
-            BOOTSTRAP_DRAWS,
-            BOOTSTRAP_SEED,
-            STAGE_SCOPES,
-            WINDOW_DAYS,
-            population,
-        )
-    except ImportError:
-        return out
-    scopes: list[dict[str, Any]] = []
-    window: dict[str, Any] = {}
-    p0_anchor: str | None = None
-    p0_window: tuple[Any, Any] = (None, None)
-    memo = _charter_ev_decision_memo()
-    for scope in ("P0", "P0-M", "P1"):
-        try:
-            rows, meta = population(
-                conn, stage_scope=scope, anchored=False, decision_memo=memo,
-            )
-        except (sqlite3.Error, ValueError) as exc:
-            scopes.append({"scope": scope, "error": f"{type(exc).__name__}:{exc}"})
-            continue
-        if meta.get("error"):
-            scopes.append({"scope": scope, "error": str(meta["error"])})
-            continue
-        window = {
-            "days": int(WINDOW_DAYS),
-            "floor_day": meta.get("floor_day"),
-            "as_of_event_date": meta.get("as_of_event_date"),
-        }
-        anchor: str | None = None
-        anchor_state = "ok"
-        try:
-            anchor = evidence_anchor(
-                conn, stage=STAGE_SCOPES[scope][0],
-            )
-        except Exception:  # noqa: BLE001 -- a broken anchor store is a reading, not a crash
-            anchor_state = "error"
-        since_anchor: list[Mapping[str, Any]] = []
-        if anchor:
-            anchor_at = datetime.fromisoformat(str(anchor).replace("Z", "+00:00"))
-            since_anchor = [
-                row for row in rows
-                if datetime.fromisoformat(str(row["at"]).replace("Z", "+00:00"))
-                >= anchor_at
-            ]
-        # The first decision of each station-day, which is the reading the
-        # 2026-09-12 measurement was taken on.  For P1 the two differ by
-        # construction: later decisions carry the day's observations, so the
-        # all-decisions row reads a better vector than the first one did.
-        first_at: dict[tuple[str, str], str] = {}
-        for row in rows:
-            key = (str(row["station"]), str(row["date"]))
-            if key not in first_at or str(row["at"]) < first_at[key]:
-                first_at[key] = str(row["at"])
-        first_rows = [
-            dict(row, weight=1.0) for row in rows
-            if first_at.get((str(row["station"]), str(row["date"])))
-            == str(row["at"])
-        ]
-        if scope == "P0":
-            p0_anchor = anchor
-            p0_window = (meta.get("floor_day"), meta.get("as_of_event_date"))
-        # Charter 255 (user 2026-10-21 「EV 与中心/形状按宪章 255 分版本段报」): the
-        # 28 days run through some twenty serving versions of each stage, so
-        # the pooled reading is not the rule served today.  Each decision is
-        # tagged with the version it served (the training fact's own copy:
-        # it sits before the fact's JSON, so no overflow page is read) and
-        # read version by version; only the current one says anything about
-        # today's vector.
-        segments = _charter_ev_version_segments(
-            conn, rows, stages=STAGE_SCOPES[scope], floor_day=meta.get("floor_day"),
-            through=meta.get("as_of_event_date"),
-        )
-        scopes.append({
-            "scope": scope,
-            "research": _charter_ev_reading(
-                rows, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
-            ),
-            "first": _charter_ev_reading(
-                first_rows, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
-            ),
-            "anchor_utc": anchor,
-            "anchor_state": anchor_state,
-            "served": (
-                _charter_ev_reading(
-                    since_anchor, draws=BOOTSTRAP_DRAWS, seed=BOOTSTRAP_SEED,
-                )
-                if anchor else None
-            ),
-            "population": {
-                key: meta.get(key) for key in (
-                    "decisions_read", "no_label", "market_incomplete",
-                    "label_outside_contract", "weather_vector_invalid",
-                    "decided_after_cutoff", "excluded_before_anchor",
-                )
-            },
-            "market_incomplete_reasons": dict(meta.get("market_incomplete_reasons") or {}),
-            "versions": segments,
-        })
-    # The P0 gap split into centre and shape (2026-09-22 audit, finding 1),
-    # as the backend board-readings job computed it -- the board reads it.
-    from bayes_basket_target.board_readings import load_reading  # noqa: PLC0415
-
-    split = load_reading("centre_shape")
-    out["centre_shape"] = (
-        {**(split.get("value") or {}), "computed_at_utc": split.get("computed_at_utc")}
-        if split else {"available": False, "error": "后端读数任务还没写出这一项"}
-    )
-    # Saved even when a scope failed: every entry is a finished derivation.
-    _save_charter_ev_decision_memo(memo)
-    out.update({
-        "available": any("research" in scope for scope in scopes),
-        "scopes": scopes,
-        "window": window,
-        "bootstrap_draws": int(BOOTSTRAP_DRAWS),
-        "computed_at_utc": _now().isoformat().replace("+00:00", "Z"),
-    })
-    return out
-
-
-def _charter_ev_version_segments(
-    conn: sqlite3.Connection,
-    rows: Sequence[Mapping[str, Any]],
-    *,
-    stages: Sequence[str],
-    floor_day: Any,
-    through: Any,
-) -> list[dict[str, Any]]:
-    """The identity read version by version (charter 255), oldest first; the
-    last segment is the version served most recently."""
-
-    if not rows or not floor_day or not through:
-        return []
-    marks = ",".join("?" for _ in stages)
-    tag: dict[tuple[str, str, str, str], str] = {}
-    for station, day, stage, at, version in conn.execute(
-        "SELECT station_id, event_date, stage, decision_at_utc, posterior_version"
-        f" FROM basket_policy_training_fact WHERE stage IN ({marks})"
-        " AND event_date > ? AND event_date <= ?",
-        (*stages, str(floor_day), str(through)),
-    ):
-        tag[(str(station), str(day), str(stage), str(at))] = str(version or "")
-    by_version: dict[str, list[Mapping[str, Any]]] = {}
-    untagged = 0
-    for row in rows:
-        version = tag.get((str(row["station"]), str(row["date"]), str(row["stage"]), str(row["at"])))
-        if not version:
-            untagged += 1
-            continue
-        by_version.setdefault(version, []).append(row)
-    out = []
-    for version, picked in sorted(by_version.items(), key=lambda kv: min(str(r["at"]) for r in kv[1])):
-        reading = charter_ev_identity(picked)
-        reading.pop("by_day", None)
-        out.append({
-            "version": version,
-            "short": version.rsplit("_", 1)[-1],
-            "first_at_utc": min(str(r["at"]) for r in picked),
-            "last_at_utc": max(str(r["at"]) for r in picked),
-            "decisions": len(picked),
-            "station_days": len({(r["station"], r["date"]) for r in picked}),
-            "event_days": len({r["date"] for r in picked}),
-            **{k: reading.get(k) for k in ("ev", "k", "spread_cost", "days_ev_positive", "days")},
-        })
-    if out:
-        out[-1]["current"] = True
-        current = by_version[out[-1]["version"]]
-        out[-1].update(_charter_ev_reading(current, draws=200, seed=7))
-    if untagged:
-        out.append({"version": "", "short": "未标版本", "decisions": untagged, "untagged": True})
-    return out
 
 
 def _load_closed_readings(name: str) -> dict[str, Any]:
@@ -14807,7 +13374,6 @@ SECTION_CACHE_TTL_SEC = {
     # kept across renders (RENDER_CLOSED_STATION_DAYS), so a read is the last
     # few event days; the key carries the date.
     "station_calibration_windows": 127 * 60,
-    "h5_readiness": 195 * 60,
     "skill": 210 * 60,
     # Refits the fleet's bias under each half-life (~5 min); the verdict
     # moves with a settled day at most.
@@ -14815,7 +13381,6 @@ SECTION_CACHE_TTL_SEC = {
     # Three populations of settled decisions with their books (~60s on the
     # 45GB store); every row is a settled station-day, so the reading moves
     # once a day when the truth lands.
-    "charter_ev": 300 * 60,
     # Every settled P1 head over three weeks (~80k rows, one lineage key
     # each); the reading moves once a day when the truth lands.
     "p1_path_skill": 243 * 60,
@@ -14994,7 +13559,7 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     "member_admission", "recent_runs",
     "delta_v2_authority",
     # The live book: what the page is opened for mid-session.
-    "live_readiness", "live_selection", "live_days", "live_money",
+    "live_readiness", "live_days", "live_money",
     # The remaining strategy lanes' money pages: the same live book, cut
     # by each lane's decision rows.  As
     # page-backed sections with a four-minute lifetime they were reached at
@@ -15003,7 +13568,7 @@ RENDER_EVERY_RUN_SECTIONS = frozenset({
     # read 55 settled tiebreak legs at -27.45 USDC while the book held 71 at
     # -1.04, the day of the charter-146 review (user: 「但是前端显示的数据却不
     # 一样」).  A P&L a day old is a wrong P&L, not a slow one.
-    "tiebreak_lane", "proper_bet_lane",
+    "proper_bet_lane",
     "tail_short_lane",
     # Charter 277: the two 反向线 pages, read on every run like the lanes above.
     "fade_lanes",
@@ -15256,13 +13821,6 @@ def _every_run_reserve_sec() -> float:
         for name in RENDER_EVERY_RUN_SECTIONS
         if name not in _SECTION_CACHE_LOG
     )
-
-
-def _build_live_selection(conn: sqlite3.Connection) -> dict[str, Any]:
-    """``live_selection.build`` on the run's one live book (it built its
-    own: 246 s for the section on the 2026-09-24 06:22Z run)."""
-
-    return live_selection.build(conn, book=_render_live_book(conn))
 
 
 def _render_live_book(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -16654,7 +15212,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     live_money = _cached_section("live_money", collect_live_money, conn)
     # The strategy lanes' money pages: every-run, on the live book the
     # sections above already built this run.
-    tiebreak_lane = _cached_section("tiebreak_lane", collect_tiebreak_lane, conn)
     proper_bet_lane = _cached_section(
         "proper_bet_lane", collect_proper_bet_lane, conn
     )
@@ -16668,16 +15225,14 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     realisation_layer = _cached_section(
         "realisation_layer", collect_realisation_layer, conn
     )
-    # The two heaviest live reads come after the money and the lanes
-    # (2026-10-09): live_days and live_selection took 98-586 s a run,
-    # and at 12:29Z their 856 s left the lanes, the live book's money and its
-    # readiness to the deadline -- served an hour old -- on a run nothing in
-    # them depended on.  A run that runs out now loses these two first.
+    # The heaviest live read comes after the money and the lanes
+    # (2026-10-09): live_days and the since-retired live_selection took
+    # 98-586 s a run, and at 12:29Z their 856 s left the lanes, the live
+    # book's money and its readiness to the deadline -- served an hour old --
+    # on a run nothing in them depended on.  A run that runs out now loses
+    # this one first.
     # 每日统计 and 逐站逐日明细 read the live book (user ruling, 2026-09-16).
     live_days = _cached_section("live_days", collect_live_days, conn)
-    live_selection_payload = _cached_section(
-        "live_selection", _build_live_selection, conn
-    )
     previous_windows = _cached_section(
         "previous_windows", _previous_version_windows, conn, _unavailable={},
     )
@@ -16984,7 +15539,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "overall_health": overall,
         "alerts": alerts,
         "render_health": render_health,
-        "live_selection": live_selection_payload,
         "daily": live_days["daily"],
         "live_roster": live_days["roster"],
         "members": members,
@@ -17007,7 +15561,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "tables": tables,
         "truth_landing": truth_landing,
         "live_readiness": live_readiness,
-        "tiebreak_lane": tiebreak_lane,
         "board_evidence": collect_board_evidence(),
         "proper_bet_lane": proper_bet_lane,
         "tail_short_lane": tail_short_lane,
@@ -17047,24 +15600,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "live_intent": _read_live_intent(),
         "station_markets": _cached_section(
             "station_markets", collect_station_markets, conn, _unavailable={},
-        ),
-        # It opens the fusion training store: a section, so the backend reads it.
-        "fusion_candidates": _cached_section(
-            "fusion_candidates", collect_fusion_candidates, _unavailable={},
-        ),
-        "h5_readiness": _cached_section(
-            "h5_readiness", collect_h5_readiness, conn,
-            # The card reads ``days || []`` and hides when there are none.
-            _unavailable={}
-        ),
-        "charter_ev": _cached_section(
-            "charter_ev", collect_charter_ev, conn,
-            _unavailable={"available": False},
-            # The arithmetic lives in two helpers the fingerprint cannot
-            # see; without this a change to either keeps serving the old
-            # reading for the section's whole lifetime.
-            _salt=_loaded_source(charter_ev_identity)
-            + _loaded_source(_charter_ev_reading),
         ),
         # The account, off the live book (user ruling, 2026-09-16).  The
         # paper book's own risk metrics and nine numbers left the page with
@@ -18535,11 +17070,6 @@ function renderStamp(){
 // Restating a figure would let the strip and the section it summarises
 // disagree, which is worse than not having the strip.
 function overviewLamps(){
-  // The 选桶 row reads the live book (user ruling, 2026-09-16: the paper
-  // ledger is a rule comparator).  The banner that suppressed the strip
-  // while a paper rebuild had emptied the tables went with it: no lamp
-  // here reads a table a rebuild can empty.
-  const S=D.live_selection||{};
   const pct0=(v)=>v==null?"—":(v*100).toFixed(0)+"%";
   const band=(v,good,ok)=>v==null?"muted"
     :(v>=good?"green":v>=ok?"amber":"red");
@@ -18976,74 +17506,6 @@ function healthLamps(){
 const edgeBig=(label,value,cls,sub,tip)=>`<div class="card" title="${h(tip||"")}"><div class="muted">${label}</div>
   <div class="mono ${cls}" style="font-size:30px;font-weight:700;line-height:1.25">${value}</div><div class="muted mono">${sub}</div></div>`;
 const edgeFold=body=>body?`<details style="margin-top:10px"><summary>明细</summary>${body}</details>`:"";
-function centreShapeGap(){
-  const E=D.charter_ev||{}, S=E.centre_shape;
-  // Named P0 on its face (user 2026-10-21 「中心/形状标明是 P0」): it is P0's
-  // vector at every lead, not the belief served (P1 > P0-M > P0, charter 260).
-  const head=`<h2 title="P0 服务分布对同一时刻盘口中价按 RPS 比；中心差＝把 P0 挪到市场均值消掉的部分，形状差＝挪完还剩的；分布层只对形状差负责。比的是 P0，不是当时服务的信念（P1＞P0-M＞P0）">模型对市场差距 · P0</h2>`;
-  if(!S||!S.available) return head+`<div class="card muted">${!S?"下一次整库渲染后出现":"未采集"}</div>`;
-  const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
-  const pc=v=>v==null?"—":Math.round(v*100)+"%";
-  const ivl=(c,f)=>Array.isArray(c)&&c[0]!=null?`[${f(c[0])}, ${f(c[1])}]`:"";
-  const P=(S.samples||{}).stable_pool||{};
-  const tone=c=>Array.isArray(c)&&c[0]>0?"down":(Array.isArray(c)&&c[1]<0?"up":"flat");
-  // Charter 255: the pooled reading spans every P0 version since the stable
-  // pool; the current version's segment, and what was not counted, beside it.
-  const V=(S.versions||[]), cur=V.find(v=>v.current), N0=S.population||{};
-  const skipped=(N0.no_envelope||0)+(N0.no_ladder||0)+(N0.ladder_mismatch||0)+(N0.failed||0);
-  const cards=`<div class="grid g3">
-    ${edgeBig("P0 输给市场（RPS）",sg(P.gap),tone(P.gap_ci),`${P.station_days??"—"} 站日 · ${P.days??"—"} 天 · 跨 ${V.length} 个版本`
-      +`<br>现行 ${h(cur?cur.short:"—")}：${cur?`${sg(cur.gap)} · ${cur.station_days} 站日 / ${cur.days} 天`:"无样本"}`
-      +`<br>不计：无 P0 包 ${N0.no_envelope??0} 站日 · 档内没配上盘口 ${N0.band_unpaired??0} 档 · 梯子不符 ${(N0.no_ladder||0)+(N0.ladder_mismatch||0)}${N0.failed?` · 失败 ${N0.failed}`:""}`,
-      `模型 − 市场 ${ivl(P.gap_ci,sg)}；正＝市场更准；宪章 255：只有现行版本这一段说明今天的 P0`)}
-    ${edgeBig("其中中心",pc(P.centre_share),"",`中心差 ${sg(P.centre)}`,`中心占比 ${ivl(P.centre_share_ci,pc)}；分布层追不回来`)}
-    ${edgeBig("其中形状",sg(P.shape),tone(P.shape_ci),"分布层只管这部分",`形状差 ${ivl(P.shape_ci,sg)}`)}</div>`;
-  const tiers=Object.entries(S.tiers||{}).filter(([,r])=>r&&r.station_days);
-  const chart=(()=>{if(!tiers.length) return "";
-    const W=560, L=70, R=64, RH=26, H=tiers.length*RH+24, top=Math.max(1e-9,...tiers.map(([,r])=>Math.max(0,(r.centre||0))+Math.max(0,(r.shape||0))));
-    const x=v=>L+(W-L-R)*Math.max(0,v)/top;
-    const rows=tiers.map(([k,r],i)=>{const y=4+i*RH, c=Math.max(0,r.centre||0), s=Math.max(0,r.shape||0);
-      return `<g><title>${h(k)} h · 差距 ${sg(r.gap)} · 中心 ${sg(r.centre)} · 形状 ${sg(r.shape)} · ${r.station_days} 站日</title>
-        <text x="${L-8}" y="${y+15}" text-anchor="end" class="trend-ax">${h(k)} h</text>
-        <rect x="${L}" y="${y+4}" width="${(x(c)-L).toFixed(1)}" height="${RH-10}" rx="2" fill="var(--th-price)"/>
-        <rect x="${x(c).toFixed(1)}" y="${y+4}" width="${(x(c+s)-x(c)).toFixed(1)}" height="${RH-10}" rx="2" fill="var(--th-claim)"/>
-        <text x="${W-R+6}" y="${y+15}" class="trend-ax">${sg(r.gap)}</text></g>`;}).join("");
-    const legend=`<text x="${L}" y="${H-4}" class="trend-ax"><tspan fill="var(--th-price)">■</tspan> 中心　<tspan fill="var(--th-claim)">■</tspan> 形状</text>`;
-    return `<div class="card" style="margin-top:8px"><div class="trend-t">按距结算</div><div class="muted trend-s">输给市场的 RPS，拆成中心与形状</div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:640px" role="img" aria-label="按提前量的差距拆分">${rows}${legend}</svg></div>`;})();
-  return head+cards+chart+edgeFold(centreShapeGapDetail());
-}
-function charterEv(){
-  const E=D.charter_ev||{};
-  const head=`<h2 title="宪章 2026-09-12：edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)；k = Cov/Var 低于 1 才有 edge；EV 90% 下界高于点差才够实盘开闸">宪章 EV 恒等式</h2>`;
-  if(!E.available) return head+`<div class="card muted">未采集</div>`;
-  const sg=(v,d=4)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const word=r=>{
-    if(!r||r.ev==null) return ["flat","无样本"];
-    const lcb=r.ev_ci?r.ev_ci[0]:null, kucb=r.k_ci?r.k_ci[1]:null, hurdle=r.spread_cost||0;
-    if(lcb!=null&&lcb>hurdle&&kucb!=null&&kucb<1) return ["up","有 edge"];
-    if(r.ev>0) return ["flat","不够付点差"];
-    return ["down","没有 edge"];
-  };
-  const cards=(E.scopes||[]).map(s=>{
-    if(s.error) return `<div class="card"><div class="muted">${h(s.scope)}</div><div class="muted">${h(s.error)}</div></div>`;
-    const r=s.research||{}, [cls,w]=word(r);
-    // Charter 255 (user 2026-10-21): the 28 days pool every serving version;
-    // the current version's own segment, and what was excluded, beside it.
-    const V=(s.versions||[]).filter(v=>!v.untagged), cur=V.find(v=>v.current);
-    const P=s.population||{}, read=P.decisions_read||0;
-    const drop=(P.no_label||0)+(P.market_incomplete||0)+(P.label_outside_contract||0)+(P.weather_vector_invalid||0)+(P.decided_after_cutoff||0);
-    return edgeBig(h(s.scope)+" · 28 天 "+V.length+" 个版本合计",`${sg(r.ev)} <span style="font-size:16px">${w}</span>`,cls,
-      `k ${n3(r.k)} · 点差 ${n3(r.spread_cost)} · ${r.days_ev_positive??"—"}/${r.days??"—"} 天为正`
-      +`<br>现行 ${h(cur?cur.short:"—")}：${cur?`EV ${sg(cur.ev)} · k ${n3(cur.k)} · ${cur.station_days} 站日 / ${cur.event_days} 天`:"无样本"}`
-      +`<br>剔除 ${drop} / ${read} 决策（${read?Math.round(100*drop/read):0}%）：无真值 ${P.no_label??0} · 盘口不完整 ${P.market_incomplete??0}`,
-      `EV 每站日（中价）${sg(r.ev)} [${sg((r.ev_ci||[])[0])}, ${sg((r.ev_ci||[])[1])}]；k ${n3(r.k)} [${n3((r.k_ci||[])[0])}, ${n3((r.k_ci||[])[1])}]；宪章 255：合计跨 ${V.length} 个服务版本，只有现行版本这一段说明今天服务的向量`);
-  }).join("");
-  const W=E.window||{};
-  return head+`<div class="grid g3">${cards}</div><div class="muted" style="margin-top:6px">EV＝每站日按分歧下注的期望利润（中价）· k＜1 才有 edge · ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}</div>`
-    +edgeFold(charterEvDetail());
-}
 function truthLanding(){
   const T=D.truth_landing||{};
   const segs=(T.segments||[]).filter(s=>(s.station_days||0)>0);
@@ -19241,94 +17703,11 @@ const evSgPct = (v, d=1) => v==null ? "—" : evSg(100*v, d, "%");
 const evCi = (ci, f) => Array.isArray(ci) && ci.length===2 ? `[${f(ci[0])}, ${f(ci[1])}]` : "";
 
 
-
-
 // The P0 gap to the market in two readings, centre and shape (2026-09-22 P0
 // downstream audit, finding 1 and its "只需要做" item b): a change to the
 // distribution layers answers to the shape reading only.  Rides on the
 // charter EV payload (same window, same labels), so a payload drawn before
 // the field existed says so instead of reading as "no gap".
-function centreShapeGapDetail(){
-  const E=D.charter_ev||{}, S=E.centre_shape;
-  const title="";
-  if(!S) return `${title}<div class="card muted">这一版数据还没有这一项，下一次整库渲染后出现。</div>`;
-  if(!S.available) return `${title}<div class="card">未采集${S.error?"："+h(S.error):""}。</div>`;
-  const sg=(v,d=3)=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(d));
-  const pc=v=>v==null?"—":Math.round(v*100)+"%";
-  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
-  const f3=v=>sg(v,3);
-  const cls=v=>v==null?"":(v>0?"down":"up");
-  const cells=r=>`<td class="mono">${r.station_days} / ${r.days}</td>
-      <td class="mono ${cls(r.gap)}"><b>${f3(r.gap)}</b>${ci(r.gap_ci,f3)}</td>
-      <td class="mono">${f3(r.centre)}${ci(r.centre_ci,f3)}</td>
-      <td class="mono">${f3(r.shape)}${ci(r.shape_ci,f3)}</td>
-      <td class="mono"><b>${pc(r.centre_share)}</b>${ci(r.centre_share_ci,pc)}</td>
-      <td class="mono">${f3(r.control)}${ci(r.control_ci,f3)}</td>
-      <td class="mono">${r.mean_abs_distance_c==null?"—":(+r.mean_abs_distance_c).toFixed(2)}
-        <span class="muted">（${sg(r.mean_signed_distance_c,2)}）</span></td>
-      <td class="mono">${pc(r.clamped_share)}</td>`;
-  const row=(label,r,muted)=>(!r||!r.station_days)
-    ?`<tr class="muted"><td>${label}</td><td colspan="8">尚无已结算的站日</td></tr>`
-    :`<tr class="${muted?"muted":""}"><td style="white-space:nowrap">${label}</td>${cells(r)}</tr>`;
-  const at=v=>v?String(v).slice(0,16).replace("T"," ")+"Z":"（未记录）";
-  const X=S.samples||{}, T=S.tiers||{};
-  const head=`<th>站日 / 天</th>
-      <th>差距<br><span class="muted">RPS 模型 − 市场 · 95%</span></th>
-      <th>中心差<br><span class="muted">挪到市场均值消掉的</span></th>
-      <th>形状差<br><span class="muted">挪完还剩的</span></th>
-      <th>中心占比</th>
-      <th>对照<br><span class="muted">同幅度乱方向挪 − 不挪</span></th>
-      <th>模型均值离市场均值 °C<br><span class="muted">绝对值（带符号，正＝模型偏暖）</span></th>
-      <th>挪动触 ${S.max_abs_shift_c||1.5}°C 上限</th>`;
-  const P=X.stable_pool||{};
-  const pill=!P.station_days?{tone:"amber",word:"无样本"}
-    :(P.gap_ci&&P.gap_ci[0]>0
-      ?{tone:"red",word:`输给市场 ${f3(P.gap)}，其中中心 ${pc(P.centre_share)}`}
-      :{tone:"green",word:"差距区间含 0"});
-  const tierRows=Object.entries(T).map(([k,r])=>row(`${h(k)} h`,r,k==="0-12")).join("");
-  const N=S.population||{}, W=S.window||{};
-  return `${title}
-  <p class="sub">P0 服务分布对同一时刻盘口中价，按 RPS（整梯累积概率的平方误差，离真值越多档罚越重）比谁离真值更近，
-  再把差距拆成两半：<b>中心差</b>——用生产宽度层自己的平移函数把 P0 整条分布挪到市场的均值上，差距缩掉的部分；
-  <b>形状差</b>——挪完还剩的部分（胖瘦、尾巴、偏斜）。<b>这是读数，不是拟合，也不服务任何东西。</b></p>
-  <div class="why"><b>为什么要拆：</b>共识桥、辐射降温项、中心/宽度两标量这些分布层，只能改分布的形状，
-  <b>只对形状差负责</b>；中心差出在单系统订正、NWP 输入和融合，分布层怎么调都追不回来。<br>
-  <b>怎么挪：</b><span class="mono">apply_center_width_calibration</span>（宽度 λ = 1，只平移不缩放），挪动量 = 市场均值 − 模型均值，
-  最多 ${S.max_abs_shift_c||1.5}°C（这个函数自己的上限，超过的按上限挪，最后一列是触限的比例）。<br>
-  <b>对照：</b>同样的挪动量、方向随机（两个方向各算一次取平均）。对照为正且远离 0，说明中心差靠的是市场均值的<b>方向</b>，
-  不是「挪一挪」本身的机械效果。<br>
-  <b>取样：</b>窗内每个已结算站日、每个提前量档，取第一个配得上 30 分钟内完整盘口快照的 P0 包（09-22 模型下游审查第 1 条的取样）。
-  P0 是 P0-M、P1 的根，所以 12–24h 也读，不只看 P0 自己交易的那几档。站日等权，区间按事件日自助 ${E.bootstrap_draws||200} 次。<br>
-  ${withEv("centre_source_20260922",(V,e)=>`<b>例子（审查读数，${evStamp(e)}）：</b>提前 ${h(String(V.example_lead||"—"))}，模型中心平均离真值 ${V.model_mean_abs_c}°C、市场 ${V.market_mean_abs_c}°C；把 P0 挪到市场均值后，差距只剩约 ${evPct(V.residual_after_shift_share)}。
-  <b>中心差出在哪一步：</b>单系统偏差订正在帮中心——不订正时 P0 差距是 ${evSg(V.uncorrected_gap,2)}，订正收掉约 ${evPct(V.correction_share)}；
-  剩下的中心差是 NWP 输入本身的逐日误差，集中在 ${(V.worst_stations||[]).map(h).join("、")}，各家模型在这些站都比市场差，换权重、挑家都救不回来。`)}</div>
-  <div class="card">
-    <div style="display:flex;align-items:center;gap:8px"><b>P0 · 提前 12h 以上</b><span style="flex:1"></span>
-      <span class="pill ${pill.tone}">${pill.word}</span></div>
-    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>样本</th>${head}</tr></thead>
-    <tbody>${row("稳定池（P0 v5，"+at(S.stable_pool_from_utc)+"）起",X.stable_pool,false)}${
-      row(`滚动 ${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}`,X.window,false)}${
-      row("服务锚 "+at(S.served_anchor_utc)+" 起",X.anchor,true)}</tbody></table></div>
-    <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（审查的样本，稳定池后同一套融合）；滚动窗那行混着稳定池以前的版本；
-      锚后那行才是今天服务的 P0，会随结算自动填满。读了 ${N.station_days!=null?N.station_days:"—"} 个站日，
-      档内没配上 30 分钟内完整盘口的 ${N.band_unpaired!=null?N.band_unpaired:"—"} 档不计。</div>
-  </div>
-  <div class="card">
-    <div><b>按提前量拆开</b> <span class="muted">稳定池起的样本；0–12h 灰显：这一段服务的是 P1，市场已经读到当天的观测</span></div>
-    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>距结算</th>${head}</tr></thead>
-    <tbody>${tierRows}</tbody></table></div>
-  </div>
-  ${(()=>{const V=S.versions||[]; if(!V.length) return "";
-    const sg3=v=>v==null?"—":((v>=0?"+":"")+(+v).toFixed(3)), pc=v=>v==null?"—":Math.round(100*v)+"%";
-    return `<div class="card"><div><b>按 P0 服务版本（宪章 255）</b> <span class="muted">提前 12h 以上、窗内样本；加粗＝现行版本，只有它说明今天的 P0</span></div>
-    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>版本</th><th>决策时段</th><th>站日 / 天</th><th>输给市场</th><th>中心</th><th>形状</th><th>中心占比</th></tr></thead><tbody>${
-      V.map(v=>`<tr${v.current?' style="font-weight:600"':""}><td>${h(v.short)}${v.current?" · 现行":""}</td><td class="mono">${String(v.first_at_utc||"").slice(5,10)} – ${String(v.last_at_utc||"").slice(5,10)}</td><td class="mono">${v.station_days??"—"} / ${v.days??"—"}</td><td class="mono">${sg3(v.gap)}${v.current&&v.gap_ci?` <span class="muted">[${sg3(v.gap_ci[0])}, ${sg3(v.gap_ci[1])}]</span>`:""}</td><td class="mono">${sg3(v.centre)}</td><td class="mono">${sg3(v.shape)}</td><td class="mono">${pc(v.centre_share)}</td></tr>`).join("")
-    }</tbody></table></div>
-    <div class="muted" style="font-size:11.5px;margin-top:4px">不计：无 P0 包 ${N.no_envelope??0} 站日 · 无梯子 ${N.no_ladder??0} · 档内没配上 30 分钟内完整盘口 ${N.band_unpaired??0} 档 · 梯子与向量不符 ${N.ladder_mismatch??0} · 失败 ${N.failed??0}</div></div>`;})()}`;
-}
-
-// Charter 255 (user 2026-10-21 「EV 与中心/形状按宪章 255 分版本段报并写明剔除数」):
-// one row per serving version, oldest first, and every exclusion counted.
 function evVersionTable(s){
   const V=s.versions||[], P=s.population||{}, R=s.market_incomplete_reasons||{};
   if(!V.length) return "";
@@ -19343,113 +17722,6 @@ function evVersionTable(s){
   return `<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>服务版本</th><th>决策时段</th><th>站日 / 天</th><th>EV</th><th>k</th><th>点差</th><th>EV &gt; 0 天数</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="muted" style="font-size:11.5px;margin-top:4px">剔除（共读 ${P.decisions_read??"—"} 个决策）：无真值 ${P.no_label??0} · 盘口不完整 ${P.market_incomplete??0}${reasons?`（${reasons}）`:""} · 真值不在梯子上 ${P.label_outside_contract??0} · 概率向量无效 ${P.weather_vector_invalid??0} · 决策晚于截止 ${P.decided_after_cutoff??0}</div>`;
 }
-function charterEvDetail(){
-  const E=D.charter_ev||{};
-  const title="";
-  if(!E.available) return `${title}<div class="card">未采集${
-    (E.scopes||[]).filter(s=>s.error).map(s=>`：${h(s.scope)} ${h(s.error)}`).join("")}。</div>`;
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const n2=v=>v==null?"—":(+v).toFixed(2);
-  const ci=(c,f)=>!c||c[0]==null?"":` <span class="muted">[${f(c[0])}, ${f(c[1])}]</span>`;
-  // The verdict is read on the research population (the only one with
-  // enough days); the since-anchor reading is what will replace it.  The
-  // charter's live condition: EV's lower bound above the spread cost.
-  const verdict=r=>{
-    if(!r||r.ev==null) return {tone:"amber",word:"无样本"};
-    const lcb=r.ev_ci?r.ev_ci[0]:null, kucb=r.k_ci?r.k_ci[1]:null;
-    const hurdle=r.spread_cost==null?0:r.spread_cost;
-    if(lcb!=null&&lcb>hurdle&&kucb!=null&&kucb<1) return {tone:"green",word:"有 edge（下界 > 点差）"};
-    if(r.ev>hurdle) return {tone:"amber",word:"点估过点差，下界没过"};
-    if(r.ev>0) return {tone:"amber",word:"中价为正，不够付点差"};
-    return {tone:"red",word:"没有 edge"};
-  };
-  const row=(label,r,muted)=>{
-    if(!r||!r.decisions) return `<tr class="${muted?"muted":""}"><td>${label}</td><td colspan="9">锚后尚无已结算的决策</td></tr>`;
-    const evCls=r.ev==null?"":(r.ev<0?"down":"up");
-    const kCls=r.k==null?"":(r.k<1?"up":"down");
-    const net=(r.ev==null||r.spread_cost==null)?null:r.ev-r.spread_cost;
-    return `<tr class="${muted?"muted":""}"><td style="white-space:nowrap">${label}</td>
-      <td class="mono">${r.station_days} / ${r.days}</td>
-      <td class="mono">${n3(r.var_market)}</td>
-      <td class="mono">${n3(r.var_model)}</td>
-      <td class="mono">${n3(r.cov)}</td>
-      <td class="mono ${evCls}"><b>${r.ev==null?"—":((r.ev>=0?"+":"")+n3(r.ev))}</b>${ci(r.ev_ci,v=>(v>=0?"+":"")+n3(v))}</td>
-      <td class="mono ${kCls}"><b>${n3(r.k)}</b>${ci(r.k_ci,n3)}</td>
-      <td class="mono">${n3(r.spread_cost)}<br><span class="${net==null?"muted":(net<0?"down":"up")}">净 ${net==null?"—":((net>=0?"+":"")+n3(net))}</span></td>
-      <td class="mono">${r.days_ev_positive==null?"—":r.days_ev_positive+" / "+r.days}</td></tr>`;
-  };
-  const cards=(E.scopes||[]).map(s=>{
-    if(s.error) return `<div class="card"><b>${h(s.scope)}</b> <span class="muted">${h(s.error)}</span></div>`;
-    const v=verdict(s.research);
-    const anchor=s.anchor_utc?String(s.anchor_utc).slice(0,16).replace("T"," ")+"Z":"（未记录）";
-    return `<div class="card">
-      <div style="display:flex;align-items:center;gap:8px"><b>${h(s.scope)}</b><span style="flex:1"></span>
-        <span class="pill ${v.tone}">${v.word}</span></div>
-      <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>样本</th><th>站日 / 天</th>
-        <th>Var(e_q)<br><span class="muted">市场的错</span></th>
-        <th>Var(e_p)<br><span class="muted">模型的错</span></th>
-        <th>Cov(e_p,e_q)<br><span class="muted">同向的错</span></th>
-        <th>EV = Var − Cov<br><span class="muted">每站日 · 中价 · 90%</span></th>
-        <th>k = Cov / Var<br><span class="muted">90%</span></th>
-        <th>点差成本<br><span class="muted">每站日 · EV − 点差</span></th>
-        <th>EV &gt; 0 天数</th></tr></thead>
-      <tbody>${row("滚动 28 天 · 逐决策站日等权",s.research,false)}${row("滚动 28 天 · 每站日首次决策",s.first,false)}${row("服务锚 "+anchor+" 起",s.served,true)}</tbody></table></div>
-      <div class="muted" style="margin-top:6px;font-size:11.5px">裁决读第一行（与估值车道同一样本）；第二行是 09-12 首次测量的口径，P1 两行不同是因为后来的决策带了当天观测；
-        锚后那行才说的是今天服务的向量，${s.served&&s.served.decisions?"两边都在时以锚后为准":"会随结算自动填满，够 8 个事件日前先读上两行"}。
-        读到 ${s.population&&s.population.decisions_read!=null?s.population.decisions_read:"—"} 个决策，
-        盘口不完整弃 ${s.population&&s.population.market_incomplete!=null?s.population.market_incomplete:"—"}。</div>
-      ${evVersionTable(s)}
-    </div>`;
-  }).join("");
-  const W=E.window||{};
-  return `${title}
-  <p class="sub">用户宪章（2026-09-12）：市场会错，模型也会错，<b>edge = 市场的错 − 模型的错</b>。
-  这一节把它量出来。每个已结算的决策，取当时服务的概率向量 p、同一时刻盘口中价 m 和真值桶 t，
-  整梯所有桶一起算，站日等权，${W.days||28} 天滚动（${h(W.floor_day||"—")} … ${h(W.as_of_event_date||"—")}）。
-  <b>这是读数，不是拟合，也不服务任何东西。</b></p>
-  <div class="why"><b>三个量是从同一个动作推出来的。</b>动作：每桶买 (p − m) 股、按中价成交，模型比市场高就买、低就卖。
-  记市场的错 <span class="mono">e_q = m − t</span>、模型的错 <span class="mono">e_p = p − t</span>，
-  一桶的利润 = (p − m)(t − m) = <span class="mono">e_q² − e_p·e_q</span>，全部桶、全部站日平均，就是
-  <span class="mono">EV = Var(e_q) − Cov(e_p, e_q)</span>。<br>
-  <b>Var(e_q)</b>：市场错的平方取平均——市场错了多少，<b>桌上有多少钱</b>；市场一点不错就是 0。<br>
-  <b>Cov(e_p, e_q)</b>：模型的错 × 市场的错取平均——两个错<b>同向的程度</b>；一起错为正，模型对而市场错时小或为负。<br>
-  <b>Var − Cov</b>：市场错的那部分里<b>模型看出来了多少</b>，也就是按分歧下注每站日的期望利润（中价、未扣点差）。<br>
-  <b>k = Cov / Var</b>：拿模型的错对市场的错做回归的斜率。k = 1：模型的错 = 市场的错 + 自己的噪声，EV = 0；
-  <b>k &lt; 1 才有 edge</b>；k &gt; 1：模型把市场的错同向放大。式子里没有 Var(e_p)：
-  <b>不要求模型比市场准，只要求模型的错不完全包含市场的错。</b><br>
-  <b>例子（真值落 32°C，看 31°C 这桶，t = 0）：</b>
-  A·市场错模型对：市场 0.40、模型 0.20 → 卖 0.20 股、结算归零、赚 +0.08；公式 0.40² − 0.20×0.40 = +0.08。
-  B·市场错、模型同向错得更多：市场 0.40、模型 0.55 → 买 0.15 股、亏 −0.06；公式 0.16 − 0.22 = −0.06。
-  两种情况市场都错了 0.40，差别全在 Cov 那一项。</div>
-  ${cards}
-  <p class="note" style="margin-top:10px">怎么读：EV 的 90% 下界要高于真实点差才够实盘开闸（宪章：该数下界 &gt; 点差）；
-  k 的区间不含 1 才能说模型有市场没有的信息。区间按事件日自助 ${E.bootstrap_draws||200} 次——全队同一天共享天气，站日不是独立样本。
-  λ、5% 门槛、席位形状都不动 Cov，只能少买；能把这个数翻正的只有概率层接到市场没用足的信息。</p>`;
-}
-
-// 纸面账本, one board (user ruling, 2026-09-13: 有些指标重复了，把纸面账本的
-// 所有数据看板重新整理合并).  It was three tabs -- the 钱 lamps with the
-// 待观察/禁入 totals, 组合风险指标, 入场的九个数 -- and one reading was printed
-// in several of them: equity twice (1033 and 1032.71), the return on stake
-// three times (回报率, 全舰队, 收益率), the claimed EV and how much of it came
-// true twice (14.8%/U and 0.679x beside +5.0c and 68%), and CVaR at 95% and
-// at 90% were both the worst day again.  Every quantity now has one place:
-//
-//   总账  equity, P&L, return on stake, return on capital, stake, chains,
-//         settled days -- the whole account, read off the equity curve's
-//         own series (risk_metrics)
-//   对比  four comparisons that each end in their result, carrying the nine
-//         numbers where they are compared.  ④ and ⑧ are one number by
-//         definition, and ② and ③ are one while no hit loses money, so each
-//         pair is printed once with both labels on it
-//   风险  Sharpe, Sortino, drawdown, volatility, annualised return, the worst
-//         day, and CVaR only at a level whose tail is more than that day
-//   曲线  equity against its trend, and against what the claims added up to
-//
-// No prose (the same day's ruling on 入场的九个数: 不要给我解释).  The
-// comparisons read entry_economics, which leaves out sub-cent baskets on the
-// ledger's chain_credible rule; the foot says how many whenever there are any.
-// Each verdict rests on an identity pinned in tests/test_entry_economics_section.py.
 function moneyDataBoard(){
   // One table, one column per strategy (user 2026-10-05: 分别按照各个策略统计
   // 曲线、对比 · 按股 · 整本账、风险).  The whole book is the first column;
@@ -19676,7 +17948,6 @@ const BAND_ORDER=["北半球·高纬","北半球·温带","北半球·副热带"
 const fmtLat=lat=>Math.abs(lat).toFixed(1)+"°"+(lat>=0?"N":"S");
 
 
-
 const pct1 = (v) => v == null ? "—" : (v * 100).toFixed(1) + "%";
 const deg2 = (v) => v == null ? "—" : v.toFixed(2) + " °C";
 
@@ -19816,31 +18087,6 @@ function hitRate(){
   负数表示这个模型在这一提前量上系统性报冷。「校正后」绿色＝比紧挨着的校正前高、红色＝低。
   「可比」为 0 的格子没有事件日之前就已拟合好的校正表，不参与校正前后对比（悬停看 run 数）。</div>
   </details>`;
-}
-
-
-function h5Readiness(){
-  // The single-system bias half-life's rollout: has the fleet turned over to
-  // the 5-day tables.  Which half-life corrects closest to truth is research,
-  // not a board reading: the board only reads what production stored (user
-  // ruling 2026-10-02 「所有前端都改为只读」), and the half-life question was
-  // answered by its own protocol (836611c5: keep 5/15/60).
-  const H = D.h5_readiness || {}; const days = H.days || [];
-  if(!days.length) return "";
-  const latest = days[days.length-1];
-  const done = latest.share >= 0.9;
-  const rollPill = done
-    ? `<span class="pill green">已换代 ${(100*latest.share).toFixed(0)}%</span>`
-    : `<span class="pill amber">换代中 ${(100*latest.share).toFixed(0)}%</span>`;
-  const rollLine = done
-    ? `<b>舰队已全部换到 H5：</b>最近事件日 ${h(latest.event_date)} 的
-       ${latest.decisions.toLocaleString()} 笔已标定决策中 ${(100*latest.share).toFixed(0)}% 由 5 天半衰期订正表服务。`
-    : `<b>还在换代：</b>最近事件日 ${h(latest.event_date)} 只有 ${(100*latest.share).toFixed(0)}% 的决策由 H5 订正表服务。`;
-  return `<h2 id="h5">单系统校准 · 偏差半衰期 H5：换代进度 ${rollPill}</h2>
-  <p class="sub">单系统校准里每个模型自己的中心偏差，按最近真值加权拟合；半衰期 2026-08-27 从 15 天改为 5 天（H5）。</p>
-  <div class="card" style="font-size:14.5px;line-height:1.7">
-    <div>${rollPill} ${rollLine}</div>
-  </div>`;
 }
 
 
@@ -20203,11 +18449,6 @@ const MONEY_BOARD = [
      ["orders", "实盘 · 数据看板",
       () => safe(() => moneyDataBoard(), "实盘数据看板"),
       "sec-live-orders"],
-     // Charter 146: the tiebreak lane's own page -- its switch and stake,
-     // every first decision it scored, and its trades on their own.
-     ["tiebreak", "秤砣线 · 宪章 146",
-      () => tiebreakLane(),
-      "sec-tiebreak"],
      // Charter 231: the Proper lane's own page -- its window, every P0 first
      // decision it judged (p, q, s = log(p/q), D), the plans the rung pass
      // keeps posting, and its YES and NO legs on their own.
@@ -21144,115 +19385,6 @@ function properBetLane(){
 // 「秤砣线」(charter 146): the lane's switch and stake, the first decisions it
 // scored, and its trades -- on their own page, never mixed into the basket
 // book's numbers (user ruling 2026-09-18: 单独的统计).
-function tiebreakLane(){
-  const T=D.tiebreak_lane||{};
-  if(!T.available) return `<div class="muted">秤砣线读数这一轮没有生成。</div>`;
-  const S=T.settings||{}, E=T.evaluations||{}, R=T.trades||{}, A=R.acceptance||{};
-  const usd=v=>v==null?"—":((v<0?"−":"")+"$"+Math.abs(+v).toFixed(2));
-  const pc=v=>v==null?"—":(Math.round(+v*1000)/10)+"%";
-  const sp=v=>v==null?"—":((v>=0?"+":"−")+Math.abs(Math.round(+v*1000)/10)+"点");
-  const n3=v=>v==null?"—":(+v).toFixed(3);
-  const lanes=T.lanes||{};
-  const laneWord=(k,zh)=>`<span class="pill ${lanes[k]?"green":"amber"}">${zh}：${lanes[k]?"运行":"暂停"}</span>`;
-  const tile=(label,val,sub)=>`<div class="card"><div class="muted">${label}</div>
-    <div class="mono" style="font-size:1.35em">${val}</div>${sub?`<div class="muted">${sub}</div>`:""}</div>`;
-  const cond=(ok,text)=>`<span class="pill ${ok?"green":"amber"}">${text}</span>`;
-  const settings=`<div class="card"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-      <b>秤砣线</b>
-      <span class="muted">数据更新 ${h(T.computed_at_utc||"—")}</span>
-      <span class="pill ${S.enabled?"green":"red"}">${S.enabled?"运行中":"已关闭"}</span>
-      <span>每笔 <b class="mono">${usd(S.stake_usdc)}</b>（顶部「秤砣每笔」旋钮可调）</span>
-      <span class="muted">规则 <b class="mono">${h(S.rule||"model_mode_midband_spread_v2_1")}</b>：模型众数桶且市场给它 ${/paid_cap/.test(S.rule||"")?`≥ ${n3(S.min_market_share_on_model_mode)}（归一化中价）、挂单实付价 ≤ ${S.max_paid_price==null?"0.600":n3(S.max_paid_price)}`:`${n3(S.min_market_share_on_model_mode)}–${S.max_market_share_on_model_mode==null?"∞":n3(S.max_market_share_on_model_mode)}`}${(S.rule||"")==="adjacent_tie_v1"?"（且两众数相邻不同）":""}${/spread/.test(S.rule||"")?`，该桶点差 ≤ ${S.max_spread_on_model_mode==null?"—":Math.round(S.max_spread_on_model_mode*100)} 分`:""}，首决策 ${S.first_decision_fresh_seconds==null?"—":Math.round(S.first_decision_fresh_seconds/60)} 分钟内</span>
-      <span style="flex:1"></span>
-      ${laneWord("basket","篮子买单")} ${laneWord("certain_win_recycle","0.999 回收")} ${laneWord("mis_bought_leg_exit","144 卖回")}
-    </div>
-    <div class="muted" style="margin-top:6px">规则 <span class="mono">${h(S.rule||"—")}</span>（读自 strategy_lanes_v1.json）：${Array.isArray(S.opening_stages)?`${S.opening_stages.map(x=>h(String(x))).join("、")} 阶段的首个决策（宪章 229：P0 留给篮子，P0 首决策照常打分入表、命中也不挂单）`:"每个阶段的首个决策"}，模型众数桶被市场归一化中价定在 ≥${n3(S.min_market_share_on_model_mode)}${/paid_cap/.test(S.rule||"")?`（上限改判挂单实付价 ≤${n3(S.max_paid_price)}）`:`–${n3(S.max_market_share_on_model_mode)}`}、且该桶两边有报价点差不超过 ${S.max_spread_on_model_mode==null?"—":Math.round(100*S.max_spread_on_model_mode)} 分，就在这桶按 best 买一+1 挂一张 post-only GTD 单（点差只有一跳时贴到卖一下一跳），挂满每笔预算的股数，一个站日只挂一次。版本史：v2.1 吃卖一；v2.2（宪章 163，2026-09-20）改挂买一+1；v2.3（宪章 175，2026-09-21）把价带上限从归一化中价挪到挂单实付价——各版按 rule_version 分开记，不混算。下面的读数全部是<b>按卖一吃</b>算出来的，对挂单这版不成立——挂单要么不成交，要么在市场朝反方向走时才成交，前向样本从 09-20 重新开始。${withEv("tiebreak_backtest",(V,e)=>`读数依据（${evStamp(e)}）：${V.station_days} 站日 ${evSgPct(V.roi)} ${evCi(V.roi_ci,x=>evSgPct(x))}，前后半 ${(V.halves_roi||[]).map(x=>evSgPct(x)).join("/")}，仅首决策 ${V.first_decision_station_days} 站日 ${evSgPct(V.first_decision_roi)} ${evCi(V.first_decision_ci,x=>evSgPct(x))}；同价带不看模型 ${evSgPct(V.same_band_no_model_roi)}，模型众数在别处 ${evSgPct(V.mode_elsewhere_roi)}；点差过宽或单边的桶 ${evSgPct(V.wide_or_one_sided_spread_roi)}，窄点差 ${h(String(V.tight_spread_roi_range||"—"))}；v2.3 的由来：付 0.61–0.66 的 P0-M 笔 ${h(String(V.p0m_paid_061_066||"—"))}。v1（两众数相邻不同、市场 ≥0.40）是其 ${V.v1_subset_station_days} 站日子集——仍是假设，不是结论。`)}</div></div>`;
-  const byRule=(E.by_rule||[]).map(r=>`<span class="pill ${/v2$/.test(r.rule_version)?"green":"amber"}" title="${h(r.first_at_utc||"")} → ${h(r.last_at_utc||"")}">${h(r.rule_version.replace("tiebreak_",""))}：评估 ${r.evaluated} · 触发 ${r.fired} · 发单 ${r.sent}</span>`).join(" ");
-  const ruleLine=byRule?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="muted">按规则版本：</span>${byRule}</div>`:"";
-  const evalTiles=E.available?ruleLine+`<div class="grid g3" style="margin-top:8px">
-    ${tile("评估过的阶段首决策",E.total,`${E.event_days} 个事件日 · 最近 ${h((E.last_at_utc||"").slice(0,16).replace("T"," "))}Z`)}
-    ${tile("触发（四条件成立）",E.fired,`${E.total?pc(E.fired/E.total):"—"} 的首决策`)}
-    ${tile("发单 / 成交 / 已结算",`${R.sent==null?"—":R.sent} / ${R.filled==null?"—":R.filled} / ${R.settled==null?"—":R.settled}`,`在途 ${R.open==null?"—":R.open}`)}
-  </div>`:`<div class="muted" style="margin-top:8px">评估表尚未建立（常驻重启后第一轮才写）。</div>`;
-  const money=R.available?`<div class="grid g3" style="margin-top:8px">
-    ${tile("投入 → 回款与赔付（历版）",`${usd(R.stake_usdc)} → ${usd(R.payout_usdc)}`,`已结算 ${R.settled} 笔；已卖按实际回款`)}
-    ${tile("盈亏 / ROI（历版）",`${usd(R.pnl_usdc)} / ${pc(R.roi)}`,`命中 ${R.hits==null?"—":R.hits}${R.settled?` / ${R.settled}`:""}`)}
-    ${tile("实现 − 实付均价（历版）",`${sp(R.realised_minus_ask)}`,`命中率 ${pc(R.hit_rate)} · 实付均价 ${n3(R.avg_ask)}${R.realised_minus_ask_ci90?` · 90% [${sp(R.realised_minus_ask_ci90[0])}, ${sp(R.realised_minus_ask_ci90[1])}]`:" · 样本不足 5 笔或 3 日，无区间"}`)}
-  </div>
-  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-    ${cond(A.lower_bound_positive,"① 实现−实付均价 日聚类下界 > 0")}
-    ${cond(A.halves_same_sign,"② 前后半段同号"+(A.halves&&A.halves.first!=null?`（${sp(A.halves.first)} / ${sp(A.halves.second)}）`:""))}
-    ${cond((A.event_days||0)>=(A.event_days_needed||30),`③ 事件日 ${A.event_days||0} / ${A.event_days_needed||30}`)}
-    <span class="muted">三条只按当前版本 ${h(A.rule_version||"—")}、当前开仓阶段 ${h((A.opening_stages||[]).join(" / "))} 的 ${A.settled||0} 笔已结算成交验收；净盈亏 ${usd(A.pnl_usdc)}，单位优势 ${sp(A.realised_minus_price)}${A.ci90?`，90% [${sp(A.ci90[0])}, ${sp(A.ci90[1])}]`:""}。上方三张卡是历版现金流合计，不作为晋级依据。</span>
-  </div>`:"";
-  const vers=(T.by_rule_version||[]).map(v=>`<tr><td class="mono">${h(v.rule_version.replace("tiebreak_",""))}${v.resting?' <span class="pill green">挂单</span>':' <span class="pill amber">吃单</span>'}</td><td class="mono">${v.filled}</td><td class="mono">${v.settled}</td><td class="mono">${v.event_days}</td><td class="mono">${usd(v.stake_usdc)}</td><td class="mono">${usd((v.payout_usdc||0)-(v.stake_usdc||0))}</td><td class="mono">${v.hit_rate==null?"—":pc(v.hit_rate)}</td><td class="mono">${v.avg_price==null?"—":n3(v.avg_price)}</td><td class="mono">${v.realised_minus_price==null?"—":sp(v.realised_minus_price)}</td></tr>`).join("");
-  const versTable=vers?`<details open style="margin-top:8px"><summary>按下单方式分开算（宪章 163：吃卖一的 v2.1 与挂买一+1 的 v2.2 是两个策略，不混算）</summary>
-    <table><thead><tr><th>规则版本</th><th>成交</th><th>已结算</th><th>事件日</th><th>投入</th><th>盈亏</th><th>命中率</th><th>实付均价</th><th>实现−实付均价</th></tr></thead><tbody>${vers}</tbody></table>
-    <div class="muted">各版成交、实际卖出回款与结算赔付分开计算；上方验收灯只读当前版本。</div></details>`:"";
-  const gapTxt=g=>g==null?"—":(g>=120?`${(g/60).toFixed(1)} 小时`:`${Math.round(g)} 分钟`);
-  const mixTxt=m=>{const k=Object.keys(m||{});return k.length?k.map(x=>`${h(x)} ${m[x]}`).join(" / "):"—";};
-  // A bin's realised-minus-paid is a measurement only once it has enough
-  // settled trades to take more than a handful of values.  At n=3 it can be
-  // exactly one of four numbers (-50.8, -17.5, +15.9, +49.2 points at a 0.51
-  // price): printed as "-0.175" it reads like an effect when it is "1 中 2
-  // 空".  Under MIN_SETTLED the cell says the count instead, and the
-  // population column beside it is what the bin is actually read on.
-  const MIN_SETTLED=10;
-  const thinTxt=f=>`<span class="muted">${f.hits==null?"—":f.hits}/${f.settled} 中<br><span style="font-size:.85em">太少，读右边人口列</span></span>`;
-  const featCells=f=>`<td class="mono">${gapTxt(f.median_gap_minutes)}</td><td class="mono">${mixTxt(f.stage_mix)}</td>`
-    +`<td class="mono">${f.evaluated}</td><td class="mono">${f.sent==null?"—":f.sent}</td>`
-    +`<td class="mono">${f.settled==null?"—":f.settled}</td>`
-    +`<td class="mono">${f.realised_minus_ask==null?"—":(f.settled<MIN_SETTLED?thinTxt(f):sp(f.realised_minus_ask))}</td>`
-    +`<td class="mono">${f.population==null?"—":f.population}</td><td class="mono">${f.population_hit_rate==null?"—":pc(f.population_hit_rate)}</td>`
-    +`<td class="mono">${f.population_avg_price==null?"—":n3(f.population_avg_price)}</td>`
-    +`<td class="mono">${f.population_realised_minus_price==null?"—":sp(f.population_realised_minus_price)}</td>`;
-  const featHead=`<tr><th>靠拢量</th><th>参照间隔中位</th><th>阶段构成</th><th>评估</th><th>发单</th><th>已结算成交</th><th>成交 实现−实付</th><th>人口 n</th><th>人口命中率</th><th>市场均价</th><th>人口 实现−价</th></tr>`;
-  const feat=(T.feature_split||[]).map(f=>`<tr><td>${h(f.bin)}</td>${featCells(f)}</tr>`).join("");
-  const ptTxt=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)} 点`;
-  const featStage=(T.feature_split_by_stage||[]).map(f=>`<tr><td>${h(f.stage)}</td><td>${h(f.bin)}</td><td class="mono">${ptTxt(f.stage_median_move)}</td><td class="mono">${ptTxt(f.stage_loser_median_move)}</td>${featCells(f)}</tr>`).join("");
-  const featTable=feat?`<details open style="margin-top:8px"><summary>特征（只记不交易）：市场自上一决策向模型桶靠拢多少，分档看本线成交的实现</summary>
-    <table><thead>${featHead}</thead><tbody>${feat}</tbody></table>
-    ${featStage?`<div class="muted"><b>这张表的分档轴和阶段是缠在一起的，先看下面那张。</b>本线只评每个阶段的第一次决策，所以「上一决策」必然是上一个阶段的那次——2026-09-20 全部 207 条带特征的行里，106 条 P1←P0-M、99 条 P0-M←P0、2 条 P1←P0，没有一条是同阶段内的。两种过渡差一个数量级：P0-M 行离参照点中位 47 分钟、只有 10.1% 落进「≥3 点」；P1 行中位 739 分钟、55.6% 落进去。于是「靠拢 ≥3 点」这一档，头一层意思其实是「这是一条 P1 行」。</div>
-    <div class="muted">「人口」列是全部评估行（触发与否都算）里站日已结算的那些，问的是模型众数桶有没有落、市场当时给它什么价——只记不交易的特征本来就该在全量人口上读，成交那几笔太少。</div>
-    <div class="muted"><b>已结算不足 10 笔的格，「成交 实现−实付」不显示数字，只报「几中几」。</b>三笔的格子只能取四个值（0.51 的价位上是 −50.8 / −17.5 / +15.9 / +49.2 点），中间什么都没有——那不是一个测量值，是硬币的结果。举例：2026-09-20 看板上「没动或远离」读 −17.5 点（3 笔中 1 笔），而同一个档在 388 站日的历史重放里是 <b>+6.6 点、ROI +10.9%</b>，比其余档还略好；若真实命中率就是那 57.8%，三笔里只中 0 或 1 笔的概率有 38%。把这一档排除掉，整体 ROI 从 +7.9% 掉到 +7.5%。</div>`:`<div class="muted">参照间隔、阶段构成与人口三组列要等下一次整库渲染才有值。</div>`}</details>`:"";
-  const featStageTable=featStage?`<details open style="margin-top:8px"><summary>同一分档，把阶段过渡固定住（参照间隔可比了才是在量动量）</summary>
-    <table><thead><tr><th>到哪个阶段</th><th>本阶段动量中位</th><th>其中最终没中的中位</th>${featHead.slice(4)}</thead><tbody>${featStage}</tbody></table>
-    <div class="muted"><b>「+3 点」不是中性零点。</b>两次决策之间市场的挂牌阶梯会收窄，于是任何一个桶的归一化份额都会机械地涨——在模型众数桶<b>最终没中</b>的那些行上，动量平均也有 +3.1 点（P1 +4.0、P0-M +0.6）。所以同一条「≥3 点」，在 P0-M 是「高于漂移」、在 P1 是「低于漂移」，这也是它在两个阶段里符号相反的原因。要当规则就得把门槛钉在「本阶段最终没中的那些行的中位」上方，那才是「比阶梯自己收窄得更多」。</div>
-    <div class="muted">回测（全部快照，一站日一次）：靠拢 ≥3 点 +11.2% [+4.9, +17.4]，0–3 点 +2.8%，没动或远离 ≈0；但那次的参照点短得多，同一份回测把参照点拉到 ≥45 分钟就掉到 +5.2%，而线上 76.8% 的行参照点都 ≥45 分钟、P1 行全部 ≥666 分钟——线上记的天生就是那个弱化版。前向样本站住了再考虑当规则（v3），站不住就换轴（按小时的靠拢速率，或两种过渡各自一套阈值）。</div></details>`:"";
-  const shown=(R.rows||[]).filter(t=>+t.filled_size>0);
-  const rows=shown.map(t=>`<tr>
-    <td>${h(t.station_id)}</td><td class="mono">${h(t.event_date)}</td><td>${h(t.stage||"")}</td><td class="mono" title="${h(t.rule_version||"")}">${h((t.rule_version||"").match(/v\d+(?:_\d+)*$/)?.[0]?.replaceAll("_",".")||t.rule_version||"—")}</td><td>${h(t.bucket)}</td>
-    <td class="mono">${n3(t.limit_price)}</td><td class="mono">${t.requested_size==null?"—":(+t.requested_size).toFixed(2)}</td>
-    <td class="mono">${(+t.filled_size).toFixed(2)}</td><td class="mono">${usd(t.filled_notional_usdc)}</td>
-    <td class="mono">${(+t.sold_size).toFixed(2)}</td><td class="mono">${usd(t.sale_proceeds_usdc)}</td>
-    <td>${h(t.state||"")}</td><td>${t.settled_bucket?h(t.settled_bucket):"<span class='muted'>未结算</span>"}</td>
-    <td>${t.hit==null?"—":(t.hit?"<span class='pill green'>中</span>":"<span class='pill red'>未中</span>")}</td>
-    <td class="mono">${t.pnl_usdc==null?"—":usd(t.pnl_usdc)}</td></tr>`).join("");
-  const tradeTable=`<details style="margin-top:8px"><summary>逐笔（${shown.length} 笔）：全部已成交订单，含部分成交与未结算，新的在上</summary>
-    ${rows?`<table><thead><tr><th>站</th><th>事件日</th><th>阶段</th><th>规则版本</th><th>桶</th><th>限价</th><th>下单股</th><th>成交股</th><th>成交额</th><th>已卖股</th><th>卖出回款</th><th>状态</th><th>结算桶</th><th>命中</th><th>盈亏</th></tr></thead><tbody>${rows}</tbody></table>`:`<div class="muted">还没有一笔。</div>`}</details>`;
-  const H=T.registered_hypotheses||{};
-  const hp=v=>v==null?"—":`${(v*100>=0?"+":"")}${(v*100).toFixed(1)}%`;
-  const hrows=(H.rows||[]).map(r=>{
-    const fwd=r.reading_window==="forward";
-    const span=r.ci_lo==null?(fwd?"<span class='muted'>还没有前向事件日</span>":"事件日太少")
-      :`[${hp(r.ci_lo)}, ${hp(r.ci_hi)}]`;
-    return `<tr${fwd?' style="opacity:.95"':' class="muted"'}>
-      <td>${fwd?h(r.title):"<span style='padding-left:12px'>↳ 登记当天的全史读数（已花掉）</span>"}</td>
-      <td class="mono">${fwd?"前向":"全史"}</td>
-      <td class="mono">${r.n_treatment}${r.n_control?" / "+r.n_control:""}</td>
-      <td class="mono">${r.event_days}</td>
-      <td class="mono">${hp(r.contrast)}</td><td class="mono">${span}</td>
-      <td class="mono">${r.p_at_or_below_zero==null?"—":(+r.p_at_or_below_zero).toFixed(2)}</td>
-      <td class="mono">${r.p_permutation==null?"—":(+r.p_permutation).toFixed(2)}</td></tr>`;
-  }).join("");
-  const hypTable=H.available?`<details open style="margin-top:8px"><summary>宪章 164 · 事前登记的假设（重放 ${H.station_days} 个站日 / ${H.event_days} 个事件日，截至 ${h(H.as_of_date||"")}）</summary>
-    <table><thead><tr><th>假设</th><th>窗口</th><th>处理 n / 对照 n</th><th>事件日</th><th>差 或 ROI</th><th>90% 区间</th><th>P(≤0)</th><th>重排 p</th></tr></thead><tbody>${hrows}</tbody></table>
-    <div class="muted"><b>只看「前向」那一行。</b>「全史」是这些假设当初被写出来的那份数据——一个数不能既提出假设又确认假设。登记于 ${h((H.rows||[])[0]?.registered_at_utc||"")}，登记当天的读数写在代码里的 <span class="mono">at_registration</span>。</div>
-    <div class="muted">门槛为什么要这么严：在这份重放上搜 122 个候选格，把中/空在同一事件日内随机重排，<b>100% 能找出「前后半都确认」的格</b>，而且那个随机格较弱一侧的 95 分位是 <b>+24.0%</b> ROI——比数据里真有的还漂亮。事前登记一个假设的门槛是 +15.3%，搜五个是 +17.5%，搜二十个是 +20.6%。所以这张表只增不改，新假设只能往后加。</div>
-    <div class="muted">两个 p 不一样：<span class="mono">P(≤0)</span> 是按事件日自助，问「这一臂赚不赚钱」——profitable 格子的任何子集都会继承一部分；<span class="mono">重排 p</span> 把中/空在同一事件日内打乱，问「分到哪一臂要不要紧」，那才是关于这个切分的。两者分歧时读重排。</div></details>`:"";
-  return settings+evalTiles+money+versTable+hypTable+featTable+featStageTable+tradeTable;
-}
-
 function moneyBoard(){
   // No tabs (user 2026-10-05: 不要tab，独立对比统计展示各个策略！内容紧凑一点):
   // the strategy comparison first, each lane's own page folded under it
@@ -22499,7 +20631,6 @@ function servingWeights(){
 }
 
 
-
 // ===== Model accuracy board, single-system / fusion / distribution boxes,
 // ===== regional, TAF and METAR layers (user, 2026-09-18: 把模型准不准、中心、
 // ===== 宽度等集中到一个看板…按照不同色块容器区分不同的内容；并优化排序和显示).
@@ -23124,133 +21255,6 @@ function northStarBlock(LD, landDates, col){
     diagCards: CORE_METRICS.filter(x => !x.decide).map(card).join(""),
     verdicts, identity, coreCharts, diagCharts, minDays: MIN_DAYS,
   };
-}
-
-function fusionCandidates(){
-  const F = D.fusion_candidates || {};
-  if(!F.available) return "";
-  const rows = F.rows || [], c = F.cohort || {}, E = F.economic || null, P = F.power || null;
-  const base = rows.find(r => r.arm === "current") || {};
-  const pct = v => v == null ? "" : `<span class="${v < 0 ? "up" : v > 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
-  const rel = (v, b, lowerBetter) => v == null || b == null || v === b ? "" :
-    `<span class="${(lowerBetter ? v < b : v > b) ? "up" : "down"}">${v > b ? "+" : ""}${(100 * (v / b - 1)).toFixed(1)}%</span>`;
-  const n3 = v => v == null ? "—" : v.toFixed(4);
-  const body = rows.map(r => {
-    const ch = r.change_pct || {};
-    const panelOk = r.arm !== "current" && r.bucket_brier != null && base.bucket_brier != null && r.bucket_brier < base.bucket_brier
-      && ch.nll != null && ch.nll < 0;
-    const e = r.economic || {};
-    return `<tr${r.role === "参照" ? ' class="muted"' : ""}><td><b>${h(r.label)}</b><br><span class="muted">${h(r.role)}</span></td>
-      <td class="mono">${n3(r.rmse_c)} ${pct(ch.rmse)}</td><td class="mono">${n3(r.crps_c)} ${pct(ch.crps)}</td>
-      <td class="mono">${n3(r.nll)} ${pct(ch.nll)}</td>
-      <td>${r.arm === "current" ? "—" : panelOk ? `<b class="up">两项都好</b>` : `<span class="down">否</span>`}</td>
-      <td class="mono">${r.reliability == null ? "—" : (1000 * r.reliability).toFixed(3)} ${rel(r.reliability, base.reliability, true)}</td>
-      <td class="mono">${r.resolution == null ? "—" : (1000 * r.resolution).toFixed(3)} ${rel(r.resolution, base.resolution, false)}</td>
-      <td class="mono">${r.bucket_brier == null ? "—" : r.bucket_brier.toFixed(4)}</td>
-      <td class="mono">${e.kelly_quarter_log_growth == null ? "—" : e.kelly_quarter_log_growth.toFixed(3)}${
-        e.kelly_quarter_delta_ci95 ? `<br><span class="muted">Δ [${e.kelly_quarter_delta_ci95.map(v => (v > 0 ? "+" : "") + v.toFixed(3)).join(", ")}]</span>` : ""}</td>
-      <td class="mono">${e.hurdle_roi == null ? "—" : pctS(e.hurdle_roi, 1)} / ${e.hurdle_claimed_roi == null ? "—" : pctS(e.hurdle_claimed_roi, 0)}</td></tr>`;
-  }).join("");
-  const blends = rows.filter(r => r.role === "冻结候选");
-  const firstHalfWorse = blends.filter(r => (r.halves || {}).first && base.halves && r.halves.first.nll > base.halves.first.nll).map(r => r.label);
-  const crossZero = blends.filter(r => ["rmse", "crps", "nll"].some(k => { const ci = (r.delta_ci95 || {})[k]; return ci && ci[0] < 0 && ci[1] > 0; })).length;
-  const starsUp = blends.filter(r => r.reliability < base.reliability && r.resolution > base.resolution);
-  const panelDown = blends.filter(r => r.bucket_brier != null && base.bucket_brier != null && r.bucket_brier < base.bucket_brier
-    && ((r.change_pct || {}).nll ?? 0) < 0);
-  const span = (xs, f) => xs.length ? (Math.min(...xs) === Math.max(...xs) ? f(xs[0]) : `${f(Math.min(...xs))}～${f(Math.max(...xs))}`) : "—";
-  const relCh = blends.map(r => 100 * (r.reliability / base.reliability - 1)).filter(isFinite);
-  const resCh = blends.map(r => 100 * (r.resolution / base.resolution - 1)).filter(isFinite);
-  const signed = v => (v > 0 ? "+" : "") + v.toFixed(1) + "%";
-  const gap = E && base.economic ? base.economic.vs_market : null;
-  const lift = blends.map(r => r.economic && base.economic ? r.economic.logscore - base.economic.logscore : null).filter(v => v != null);
-  const withEcon = rows.filter(r => r.economic);
-  const rois = withEcon.map(r => r.economic.hurdle_roi).filter(v => v != null);
-  const claimed = withEcon.map(r => r.economic.hurdle_claimed_roi).filter(v => v != null);
-  const kellyAllNeg = withEcon.every(r => (r.economic.kelly_quarter_log_growth ?? 0) < 0);
-  const PR = F.production_regime || null, FS = F.forward_shadow || {};
-  const pct2 = v => v == null ? "—" : `<span class="${v < 0 ? "up" : v > 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(2)}%</span>`;
-  const prRows = PR ? [["A", "研究原样本"], ["B", "同期、研究没用过"], ["C", "冻结后才结算"], ["ALL", "全体"]]
-    .filter(([k]) => PR[k]).map(([k, label]) => { const g = PR[k], c = g.change_pct || {};
-      return `<tr><td><b>${label}</b></td><td class="mono">${g.n} / ${g.days}</td><td class="mono">${pct2(c.rmse)}</td><td class="mono">${pct2(c.crps)}</td>
-        <td class="mono">${pct2(c.nll)}</td><td class="mono">${pct2(c.reliability)}</td><td class="mono">${c.resolution == null ? "—" : `<span class="${c.resolution > 0 ? "up" : "down"}">${c.resolution > 0 ? "+" : ""}${c.resolution.toFixed(2)}%</span>`}</td></tr>`; }).join("") : "";
-  const sgn = (v, d) => v == null ? "—" : (v > 0 ? "+" : "") + v.toFixed(d);
-  const dCell = (x, d) => !x ? "—" : `<span class="${x.ci95[1] < 0 ? "up" : x.ci95[0] > 0 ? "down" : "flat"}">${sgn(x.mean, d)}</span><br><span class="muted">[${sgn(x.ci95[0], d)}, ${sgn(x.ci95[1], d)}]</span>`;
-  const verdict = g => g.both_significant ? '<b class="up">两项都显著降</b>'
-    : g.both_lower ? '<span class="flat">两项点估计都降，区间跨零</span>' : '<span class="flat">两项不同向，与零分不开</span>';
-  const ledgerRow = (label, g) => !g ? "" : `<tr><td><b>${label}</b><br><span class="muted">${h(g.period.join(" → "))}</span></td>
-    <td class="mono">${g.station_days} / ${g.event_days}</td>
-    <td class="mono">${g.arms.seat.bucket_brier.toFixed(4)} → ${g.arms.blend.bucket_brier.toFixed(4)}<br>${dCell(g.delta.bucket_brier, 5)}</td>
-    <td class="mono">${g.arms.seat.nll.toFixed(4)} → ${g.arms.blend.nll.toFixed(4)}<br>${dCell(g.delta.nll, 4)}</td>
-    <td>${verdict(g)}</td>
-    <td class="mono">${(1000 * g.arms.seat.reliability).toFixed(3)} → ${(1000 * g.arms.blend.reliability).toFixed(3)}</td>
-    <td class="mono">${(1000 * g.arms.seat.resolution).toFixed(2)} → ${(1000 * g.arms.blend.resolution).toFixed(2)}</td>
-    <td class="mono">${g.arms.seat.rmse_c.toFixed(3)} → ${g.arms.blend.rmse_c.toFixed(3)}</td>
-    <td class="mono">${g.moved_n} 个 · ${g.moved_half_l1_median.toFixed(3)}</td></tr>`;
-  const G = FS.groups || {};
-  const forward = !FS.available ? "" : `<div class="card" style="margin-top:10px"><b>前向记账：融合权重 对 它取代的席位权重（同一批已结算日前 P0）</b>
-    <p class="sub" style="margin:4px 0">每个已结算站日的日前 P0 同时记着席位权重和融合规则的权重，在同一批站日上比较（Δ＝融合 − 席位，负为好；
-      区间＝按事件日整块重抽 95%；LogScore 过第 224 条 ${FS.log_floor} 下限）。09-24 之前的根服务席位、融合只是影子；之后的根服务融合、席位是反事实。
-      判据按第 211/240 条：桶 Brier 与 LogScore 两个 proper score；Reliability、Resolution、RMSE 只作诊断。分布是各家线性池（宽度层之前），不是服务 P0。退回席位权重的根两边相同、差为 0。</p>
-    ${FS.station_days ? `<div class="scroll"><table><thead><tr><th>样本</th><th>站日 / 天</th><th>桶 Brier（Δ 与区间）</th><th>LogScore（Δ 与区间）</th><th>判读</th>
-      <th>Reliability ×10⁻³</th><th>Resolution ×10⁻³</th><th>RMSE °C（诊断）</th><th>权重动过的根 · 半 L1 中位</th></tr></thead>
-      <tbody>${ledgerRow("切换后（服务融合）", G.served)}${ledgerRow("切换前（影子）", G.shadow)}${ledgerRow("合计", G.all)}</tbody></table></div>`
-      : `<p class="muted">还没有带融合回执的日前 P0 结算。</p>`}</div>`;
-  const LS = F.later_studies || [];
-  const ciTxt = ci => ci ? `[${sgn(ci[0], 4)}, ${sgn(ci[1], 4)}]` : "";
-  const laterRows = LS.map(r => `<tr><td><b>${h(r.label)}</b><br><span class="muted mono">${h(r.study)} · ${h(r.pair)}</span></td>
-    <td class="mono">${r.station_days ?? "—"} / ${r.days ?? "—"}</td>
-    <td class="mono"><span class="${r.ci_logscore && r.ci_logscore[1] < 0 ? "up" : r.ci_logscore && r.ci_logscore[0] > 0 ? "down" : "flat"}">${sgn(r.d_logscore, 4)}</span><br><span class="muted">${ciTxt(r.ci_logscore)}</span></td>
-    <td class="mono">${sgn(r.d_brier, 5)}<br><span class="muted">${ciTxt(r.ci_brier)}</span></td>
-    <td class="mono">${r.d_crps == null ? "—" : sgn(r.d_crps, 4)}</td>
-    <td>${r.passes ? '<b class="up">过门</b>' : '<span class="down">不过</span>'}</td></tr>`).join("");
-  const later = !LS.length ? "" : `<h3 style="margin-top:14px">切换后的研究候选（对生产原样服务）</h3>
-    <p class="sub">切换后在融合层上试过的所有臂，Δ＝候选 − 生产（负为好），区间按站日或日期块重抽，判据为各研究预注册的第 211/240 条门。
-      只有「过门」的才有资格提落地；落地改的是 P0 融合入口，属扩大范围，须熊先生裁决。</p>
-    <div class="scroll"><table><thead><tr><th>候选</th><th>站日 / 天</th><th>ΔLogScore（主）</th><th>Δ桶 Brier（护栏）</th><th>ΔCRPS °C（结构）</th><th>门</th></tr></thead>
-    <tbody>${laterRows}</tbody></table></div>`;
-  const mode = FS.mode || "—";
-  // The rule and the verdict, everything else folded (user 2026-10-10「太复杂了，
-  // 给我结论和规则，其他细节隐藏」).
-  const S2 = G.served || null, passed = LS.filter(r => r.passes).length;
-  const word = !S2 ? "还没有结算" : S2.both_significant ? "更好" : S2.both_lower ? "略好" : "无差别";
-  const fmtD = (x, d) => x == null ? "—" : (x.mean > 0 ? "+" : "") + x.mean.toFixed(d);
-  const fcard = (label, value, sub, tone, title) => `<div class="sd-pnl-c ${tone || ""}"${title ? ` title="${h(title)}"` : ""}><span>${label}</span><b>${value}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
-  const verdictCards = `<div class="sd-pnl-g" style="margin-top:8px">
-    ${fcard("规则", "按站调权重", mode === "blend" ? "宪章 242 · 在服务" : `宪章 242 · ${h(mode)}`, "",
-      "本站已结算日子上 LogScore 最好的权重，按本站天数向全队席位权重收缩；服务效果显著差于席位权重时自动退回席位权重")}
-    ${fcard("对比全队席位权重", word, S2 ? `${S2.both_significant ? "两个分数都显著" : "两个分数都没显著"} · ${S2.station_days} 站日` : "",
-      S2 && S2.both_significant ? "up" : "",
-      S2 ? `切换后 ${S2.period.join(" → ")}：LogScore ${fmtD(S2.delta.nll, 4)}，桶 Brier ${fmtD(S2.delta.bucket_brier, 4)}（负为好）` : "")}
-    ${fcard("替代方案", `${passed}/${LS.length} 过门`, passed ? "有方案可提落地" : "现行规则保留", passed ? "up" : "")}
-  </div>`;
-  return `<h2>融合权重：按站调权重在服务</h2>
-  ${verdictCards}
-  <details class="sd-older" style="margin-top:8px"><summary class="muted">明细：规则全文、前向记账、${LS.length} 个研究候选、09-22 冻结候选</summary>
-  <div class="card"><b>现状</b>：<b>宪章 242 起（P0 v21）</b>，每次 P0 编译读当日拟好的站级参数（<span class="mono">station_model_weight_params</span>）：
-    本站已知真值上各家混合的桶 LogScore 最优权重，每家按自己在本站被打分的站日数向席位权重收缩（α=n/(n+τ)，τ 每日在全队近三周前推选）；
-    服务权重在已服务决策上显著差于席位权重时由否决闸退回席位权重（<span class="mono">station_model_weight_veto</span>）。
-    此前的规则（「中心误差＋正则」与「分层 CRPS」各半、本站 21 天窗；09-24 起服务）已退役；下方前向记账照读回执里的席位与服务权重。
-    参数缺失、被否决或训练文件不可读时退回席位权重，回执写明原因（<span class="mono">fusion_blend_json</span>）。
-    ${prRows ? `<details style="margin-top:6px"><summary>09-23 上线前重放（生产训练密度、当时入座的系统；已被 09-24 历史样本复判取代）</summary><div class="scroll"><table><thead><tr><th>上线前重放</th><th>站日 / 天</th><th>RMSE</th><th>CRPS</th><th>NLL</th><th>Reliability</th><th>Resolution（升为好）</th></tr></thead><tbody>${prRows}</tbody></table></div></details>` : ""}</div>
-  ${forward}
-  ${later}
-  <details style="margin-top:14px"><summary>09-22 冻结的三个研究候选（服务规则 blend50 的出处；同一批 ${c.sample_n == null ? "—" : c.sample_n} 站日）</summary>
-  <p class="sub">三个候选＝「中心误差＋正则」权重与「分层 CRPS」权重按 25/50/75% 凸组合，逐站日权重已冻结（hash 见研究目录 candidates.json）。
-    同一批 ${c.sample_n || "—"} 个站日、${c.stations || "—"} 站、${c.days || "—"} 个事件日（${h((c.period || []).join(" → "))}），
-    分布是后处理前的单系统线性池，不是服务 P0。资格：<b>${h(c.status || "")}</b>——这批历史参与过候选设计，不是独立样本外。</p>
-  <div class="scroll"><table><thead><tr><th>方案</th><th>RMSE °C（诊断）</th><th>CRPS °C（诊断）</th><th>LogScore（NLL）</th><th>两个 proper score（Brier、LogScore）</th>
-    <th>Reliability ×10⁻³ ↓</th><th>Resolution ×10⁻³ ↑</th><th>桶 Brier</th>
-    <th>¼ Kelly 组合 log 增长${E ? `（${E.sample_n} 站日 / ${E.dates} 天）` : ""}</th><th>门槛吃单 ROI 实现 / 自报</th></tr></thead>
-    <tbody>${body}</tbody></table></div>
-  <div class="card" style="margin-top:10px"><b>怎么读</b><ul>
-    <li>${panelDown.length}/${blends.length} 个候选在这 ${c.sample_n || "—"} 个站日上两个 proper score 都好（宪章 211 判据），${starsUp.length}/${blends.length} 个北极星两项同时往好的方向走；但 ${crossZero}/${blends.length} 个候选至少一项的日期块 95% 区间跨零${
-      firstHalfWorse.length ? `，前半窗 NLL 反而比现行差（${h(firstHalfWorse.join("、"))}）` : ""}——是「这批样本上成立」，不是「未来稳定成立」。</li>
-    <li>Reliability 变化 ${span(relCh, signed)}，Resolution 变化 ${span(resCh, signed)}：权重主要在修「说多说少」，几乎没带来新信息。服务链后面的宽度层本来就在修前者，真正能留到服务分布上的主要是 Resolution 那一小块。</li>
-    ${E ? `<li>可兑现价值（${E.sample_n} 个有真实盘口的站日、${E.dates} 个事件日，生产费用合同 fee=0）：模型比市场差 <b>${gap == null ? "—" : Math.abs(gap).toFixed(3)} nat</b>，候选只把差距缩小 ${span(lift, v => v.toFixed(3))} nat；
-      门槛吃单实现 ROI ${span(rois, v => pctS(v, 0))}（自报 ${span(claimed, v => pctS(v, 0))}，便宜的尾部桶被系统性高估）${kellyAllNeg ? "，¼ Kelly 组合全部是负增长" : ""}。换权重只能「少亏」，翻不了符号。</li>` : ""}
-    ${P ? `<li>要在全新日子上把 NLL 这么小的改善（${P.effect_nll.toFixed(4)} nat）确认出来（两个标准误、80% 把握），按本研究的日间波动约需 <b>${P.days_needed} 个事件日</b>的新数据。</li>` : ""}
-  </ul></div></details>
-  </details>`;
 }
 
 function landingPrevious(){
@@ -27426,16 +25430,16 @@ const GROUPS = [
       sections:[[modelAccuracyBoard,"模型准不准 · 总检"],
         [stationCalibrationRank,"逐站校准排序"]]},
      {box:"① 单系统：每家模型各自校准", nav:"单系统", kind:"live",
-      note:`${famJia()}集合预报各自订正偏差、各自调宽度；命中率看订正有没有用，H5 看订正用多长的记忆`,
+      note:`${famJia()}集合预报各自订正偏差、各自调宽度；命中率看订正有没有用`,
       sections:[[tablesCorrection,"单系统订正表"],[singleSystemWidth,"单系统宽度校准"],
-        [hitRate,"模型命中率"],[h5Readiness,"H5 半衰期"]]},
+        [hitRate,"模型命中率"]]},
      {box:`② 融合层：${famJia()}怎么合成一条`, nav:"融合层", kind:"live",
       note:"按权重合成；权重看在用的配比、重解是否对得上、宪章 199 的前向记账与候选，权重表是否按时换代，离散度看几家分歧多大",
       // 融合权重候选 joined the weights it is about (user 2026-10-10「融合权重：宪章 199
       // 在服务、前向记账与研究候选也是应该移动到模型权重板块去吧」); box ②′ is gone.
-      sections:[[servingWeights,"模型权重"],[fusionCandidates,"融合权重候选"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
+      sections:[[servingWeights,"模型权重"],[tablesWeights,"融合权重表"],[dispersion,"模型离散度"]]},
      {box:"③ 分布层：合成后的分布再塑形、再检验", nav:"分布层", kind:"live",
-      note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布；这一层只对「边际 · ① 验收 · 模型对市场差距」里的形状差负责，中心差出在 ① 单系统、② 融合和 NWP 输入",
+      note:"共识桥 → 辐射降温项 → 中心/宽度两标量（band 表 2026-09-26 起退役，第 232 条），然后用样本外和真值检验服务出去的分布",
       sections:[[consensusBridgeSection,"共识桥"],[centerWidth,"中心/宽度"],
         [oosScores,"OOS 打分"],[centreLanding,"真值离均值多远"],
         // Out of the station-board area altogether (user 2026-10-21 「移出站点看板区」);
@@ -27459,8 +25463,8 @@ const GROUPS = [
    note:"边际层：天气模型 p 对市场 q——① 验收（输多少、差在中心还是形状、有没有 edge）；实盘下注由 Proper 下注线按 s = log(p/q) 直接生成仓位（宪章 231，见策略看板「Proper 下注线」页签）；兑现层自成一个板块",
    sections:[
      {box:"① 验收：输给市场多少、差在中心还是形状，有没有 edge", nav:"验收", kind:"audit",
-      note:"读真值，不参与决策。模型对市场差距把 P0 输给市场的 RPS 拆成中心差与形状差（分布层只对形状差负责）；EV 恒等式量的是概率层服务出来的 p 有没有市场没有的信息；真值落位看真值跟价格走还是跟模型走",
-      sections:[[centreShapeGap,"模型对市场差距"],[charterEv,"宪章 EV 恒等式"],[truthLanding,"真值落位"],
+      note:"读真值，不参与决策。真值落位看真值跟价格走还是跟模型走",
+      sections:[[truthLanding,"真值落位"],
         [modeAgreementPanel,"众数同桶命中"]]}]},
   // Charter 254, its own area (user 2026-10-05: 兑现层单独一个层级板块):
   // the edge the lanes claim, priced on b = P(Y | p, q) and checked against
@@ -27560,13 +25564,7 @@ const LANES = {
     role:"真值实际落在离服务均值几档 → 中心诚不诚实"},
   "逐站校准排序": {layer:"概率层 · 读数", status:"audit",
     role:"每站的中心偏差（真值−均值，档）与宽度÷误差各排一次名，站名点开最新挂牌的盘口"},
-  "H5 半衰期": {layer:"概率层 · 读数", status:"audit",
-    role:"单系统校准的偏差半衰期：舰队换完没有、3/5/15 天哪个订正最准"},
   // --- edge: what our probability is worth against the market ---
-  "模型对市场差距": {layer:"边际层 · ① 验收", status:"audit",
-    role:"P0 输给市场的 RPS 拆两半：把分布挪到市场均值能消掉的是中心差（单系统订正、NWP 输入、融合负责），剩下的是形状差（分布层只对它负责）"},
-  "宪章 EV 恒等式": {layer:"边际层 · ① 验收", status:"audit",
-    role:"edge = 市场的错 − 模型的错 = Var(e_q) − Cov(e_p,e_q)，量的是服务 p 对 m（p 是概率层服务出来的天气模型向量；概率空间、整梯）；k 低于 1 才有 edge"},
   "真值落位": {layer:"边际层 · ① 验收", status:"audit",
     role:"真值落在市场价格 × 模型概率的哪一格 → 跟价格走说明该信 m"},
   "兑现层（影子）": {layer:"兑现层", status:"shadow",
@@ -27623,7 +25621,7 @@ const laneStrip = (name) => {
       h(LANE_WORD[L.status] || L.status)}</span><span class="muted">${
       h(L.note || LANE_NOTE[L.status] || "")}</span></span></div>`;
 };
-const STARRED = new Set(["宪章 EV 恒等式"]);
+const STARRED = new Set([]);
 // Sections folded by default, the heading (and its staleness note) the toggle
 // (user 2026-10-10「六大模型的离散度：默认折叠」「逐站校准排序：默认折叠」
 // 「单系统宽度校准：默认折叠」).
@@ -27640,11 +25638,10 @@ const foldSection = (body, stale) => {
 // on purpose, and a lane strip would put it back as a chip pointing at
 // nothing.  The jump bar still reads the heading, which sits below.
 const SECTION_CACHE_NAMES={truth_landing:"真值落点",
-    scorecard:"校准计分卡",h5_readiness:"H5 就绪",skill:"模型技巧",
+    scorecard:"校准计分卡",skill:"模型技巧",
     center_landing:"真值离均值多远",center_landing_previous:"真值离均值多远（上一版）",
     model_accuracy_trend:"模型准不准走势",station_calibration_windows:"逐站校准排序（7/30 天与累计）",p1_path_skill:"P1 温度路径",
     ssot_capacity:"SSOT 容量",
-    charter_ev:"宪章 EV 恒等式",
     center_landing_version:"真值离均值多远（本版）",scorecard_previous:"校准计分卡（上一版）",
     run_cadence:"模型出报节奏",member_depth:"成员深度",member_admission:"成员准入",members:"成员",
     certificate_authority:"证书授权",
@@ -27652,7 +25649,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     station_difficulty:"站点难度",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",precip_classification:"降水分类",regional_usage:"区域模型使用",
     p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
-    center_width:"宽度层",live_days:"每日统计",live_selection:"选站",
+    center_width:"宽度层",live_days:"每日统计",
     live_readiness:"上线闸门",live_money:"资金",observation_intake:"观测入库",hosted_sweeps:"托管 sweep"};
 // The caches this section read, and the caches that fed those, that were
 // reused from an earlier build: named in the section, oldest first, amber when

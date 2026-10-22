@@ -98,75 +98,16 @@ def test_a_zero_probability_hit_is_floored_and_counted_not_dropped():
 def test_the_page_renders_both_blocks_from_a_payload():
     source = C.HTML_TEMPLATE
     assert "function northStarBlock(" in source
-    assert "function fusionCandidates(" in source
-    assert "[fusionCandidates," in source
+    # 融合权重候选 left the board (user 2026-10-22 「删研究性诊断」).
+    assert "function fusionCandidates(" not in source
     # The version comparison waits for the scorecard's event-day bar.
     assert "min_event_days" in source[source.index("function northStarBlock("):]
     # Charter 240: LogScore primary, CRPS structure, Brier guardrail; REL,
     # RES and RMSE are diagnostics and decide nothing.
-    block = source[source.index("const GUARDRAIL_MAX_RELATIVE_LOSS"):source.index("function fusionCandidates(")]
+    start = source.index("const GUARDRAIL_MAX_RELATIVE_LOSS")
+    block = source[start:source.index("\nfunction ", source.index("function northStarBlock(") + 1)]
     assert "GUARDRAIL_MAX_RELATIVE_LOSS = 0.02" in block and "function northStarBlock(" in block
     assert '{key:"nll", label:"LogScore（NLL）", unit:"nat", role:"primary", decide:true' in block
     for key in ("reliability", "resolution", "rmse_c"):
         assert f'{{key:"{key}"' in block and 'role:"diag"' in block
     assert "三降" not in block and "四项" not in block
-
-
-def test_forward_shadow_scores_seat_and_shadow_on_the_same_days(tmp_path, monkeypatch):
-    """Charter 199's forward record: one sample, two weight vectors."""
-
-    import json as _json
-    import sqlite3 as _sqlite3
-
-    from bayes_basket_target import fusion_blend as FB
-
-    path = tmp_path / "training.db"
-    conn = _sqlite3.connect(path)
-    for statement in FB.TRAINING_DDL:
-        conn.execute(statement)
-    base = {
-        "truth_revision": 1, "settlement_timezone": "UTC",
-        "root_decision_at_utc": "2026-09-23T12:00:00Z", "root_checkpoint_id": "c",
-        "root_envelope_sha256": "e", "root_posterior_version": "v", "truth_c": 20.0,
-        "truth_known_at_utc": "2026-09-25T00:00:00Z", "truth_id": "t",
-        "systems_json": '["A","B"]', "lead_by_system_json": "{}",
-        "center_error_json": _json.dumps({"A": 0.2, "B": -2.0}),
-        "crps_systems_json": '["A","B"]',
-        "crps_a_json": _json.dumps({"A": 0.5, "B": 1.5}),
-        "crps_b_json": _json.dumps({"A": {"A": 0.4, "B": 1.2}, "B": {"A": 1.2, "B": 0.6}}),
-        "probability_source": "ENVELOPE",
-        "seat_weights_json": _json.dumps({"A": 0.5, "B": 0.5}),
-        "family_by_system_json": "{}", "family_caps_json": "{}",
-        "bucket_keys_json": '["x","y","z"]', "truth_bucket_index": 1,
-        "probabilities_json": _json.dumps({"A": [0.1, 0.8, 0.1], "B": [0.6, 0.3, 0.1]}),
-        "fusion_blend_state": "SHADOW_APPLIED",
-        "shadow_weights_json": _json.dumps({"A": 0.7, "B": 0.3}),
-        "schema": FB.FUSION_BLEND_TRAINING_SCHEMA, "created_at_utc": "2026-09-25T01:00:00Z",
-    }
-    for day in ("2026-09-24", "2026-09-25"):
-        row = {**base, "station_id": "S", "event_date": day, "content_sha256": day}
-        conn.execute(
-            "INSERT INTO fusion_blend_training_fact (" + ",".join(row) + ") VALUES ("
-            + ",".join("?" * len(row)) + ")", tuple(row.values()),
-        )
-    conn.commit()
-    conn.close()
-    monkeypatch.setattr(FB, "FUSION_BLEND_TRAINING_DB", path)
-    out = C._fusion_forward_shadow()
-    # Since the 09-24 switch (76a8d67a) the ledger groups rows by era: roots
-    # that served the seat (SHADOW_*) and roots that served the blend.
-    assert out["available"] and out["station_days"] == 2
-    assert set(out["groups"]) == {"shadow", "all"}
-    group = out["groups"]["shadow"]
-    assert group["station_days"] == 2 and group["event_days"] == 2
-    seat, blend = group["arms"]["seat"], group["arms"]["blend"]
-    assert seat["rmse_c"] == pytest.approx(abs(0.5 * 0.2 + 0.5 * -2.0))
-    assert blend["rmse_c"] == pytest.approx(abs(0.7 * 0.2 + 0.3 * -2.0))
-    assert blend["nll"] == pytest.approx(-math.log(0.7 * 0.8 + 0.3 * 0.3))
-    # Charter 211 (amended): the switch reads the two proper scores; REL/RES
-    # and RMSE/CRPS are diagnostics.
-    assert out["panel"] == ["bucket_brier", "nll"]
-    assert blend["bucket_brier"] == pytest.approx(
-        (0.7 * 0.1 + 0.3 * 0.6) ** 2 + (0.7 * 0.8 + 0.3 * 0.3 - 1.0) ** 2 + (0.1) ** 2)
-    assert group["delta"]["nll"]["mean"] == pytest.approx(blend["nll"] - seat["nll"])
-    assert group["both_lower"] is (blend["nll"] < seat["nll"] and blend["bucket_brier"] < seat["bucket_brier"])

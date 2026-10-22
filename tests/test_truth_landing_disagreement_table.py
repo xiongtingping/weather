@@ -232,7 +232,7 @@ def test_the_summary_leads_with_who_is_nearer_and_folds_the_tables():
     node = shutil.which("node")
     if node is None:  # pragma: no cover
         pytest.skip("node is required to run the board's renderer")
-    helpers = SOURCE[SOURCE.index("const edgeBig="):SOURCE.index("function centreShapeGap(")]
+    helpers = SOURCE[SOURCE.index("const edgeBig="):SOURCE.index("function truthLanding(")]
     script = (
         "const D = " + json.dumps({"truth_landing": _payload()}, ensure_ascii=False) + ";\n"
         "const h = (s) => String(s == null ? '' : s);\n" + helpers

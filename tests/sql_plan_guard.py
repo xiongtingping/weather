@@ -25,7 +25,6 @@ SOURCES = (
     "bayes_basket_target/**/*.py",
     "scripts/calibration_dashboard.py",
     "scripts/live_book.py",
-    "scripts/live_selection.py",
 )
 
 

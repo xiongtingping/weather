@@ -171,10 +171,10 @@ HEALTH_BANNER_SOURCES = {
 }
 # The live book, which is what the page is opened for during a session.
 LIVE_SECTIONS = {
-    "live_readiness", "live_selection", "live_days", "live_money",
+    "live_readiness", "live_days", "live_money",
     # The strategy lanes' money pages read the same live book; served from
     # a page they showed the 2026-09-24 09:33Z tiebreak P&L for 28 hours.
-    "tiebreak_lane", "proper_bet_lane",
+    "proper_bet_lane",
 }
 
 

@@ -333,38 +333,6 @@ def _page_function(name: str) -> str:
     return template[start: template.index("\n}\n", start)]
 
 
-def test_the_tiebreak_table_leaves_out_what_moved_no_money() -> None:
-    """User ruling 2026-09-30 「逐笔：显示全部已成交订单和对应版本」, which
-    narrowed 2026-09-26 「秤砣线failed、cancelled的订单不显示」: the table lists
-    what filled -- a cancelled rung that filled in part keeps its row, and a
-    rung still resting with nothing filled is not drawn either."""
-
-    import re
-    import shutil
-    import subprocess
-
-    node = shutil.which("node")
-    if node is None:  # pragma: no cover
-        pytest.skip("node is required to run the board's renderer")
-    body = _page_function("tiebreakLane")
-    match = re.search(r"const shown=\(R\.rows\|\|\[\]\)\.filter\(.*?\);", body, re.S)
-    assert match, "the tiebreak table no longer filters its rows"
-    rows = [
-        {"id": "filled", "state": "filled", "filled_size": 5},
-        {"id": "failed", "state": "failed", "filled_size": 0},
-        {"id": "cancelled_empty", "state": "cancelled", "filled_size": 0},
-        {"id": "cancelled_part", "state": "cancelled", "filled_size": 2},
-        {"id": "open", "state": "open", "filled_size": 0},
-    ]
-    script = (
-        "const R = " + json.dumps({"rows": rows}) + ";\n" + match.group(0)
-        + "\nconsole.log(JSON.stringify(shown.map(t => t.id)));\n"
-    )
-    done = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
-    assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout) == ["filled", "cancelled_part"]
-
-
 def test_a_retired_sections_recorded_call_is_skipped_not_fatal(pages, monkeypatch) -> None:
     """2026-09-26 16:55Z: the research render died on the beta section's
     collector, removed from the page an hour before, and refreshed nothing."""
@@ -432,12 +400,12 @@ def test_a_heavy_page_past_the_overdue_line_goes_first(pages) -> None:
 
     now = datetime(2026, 10, 21, 12, 54, tzinfo=timezone.utc)
     hour = 3600.0
-    for name, age, cost in (("scorecard", 6.3, 171.0), ("h5_readiness", 6.2, 26.0),
+    for name, age, cost in (("scorecard", 6.3, 171.0), ("truth_coverage", 6.2, 26.0),
                             ("ssot_capacity", 4.7, 14.0),
                             ("member_depth", 29.9, 403.0), ("skill", 25.2, 1095.0),
                             ("truth_landing", 15.5, 306.0)):
         _page(pages, name, age_sec=age * hour, cost=cost, now=now)
-    specs = {name: {} for name in ("scorecard", "h5_readiness", "ssot_capacity",
+    specs = {name: {} for name in ("scorecard", "truth_coverage", "ssot_capacity",
                                    "member_depth", "skill", "truth_landing")}
 
     names = [name for _o, name, _c in C.research_due(specs, now)]
@@ -453,9 +421,9 @@ def test_a_heavy_page_past_the_overdue_line_goes_first(pages) -> None:
     names = [name for _o, name, _c in C.research_due(specs, now)]
     assert names[0] == "member_depth", names
     # ... and an older one keeps the run for the cheap pages.
-    _page(pages, "h5_readiness", age_sec=31 * hour, cost=26.0, now=now)
+    _page(pages, "truth_coverage", age_sec=31 * hour, cost=26.0, now=now)
     names = [name for _o, name, _c in C.research_due(specs, now)]
-    assert names[0] == "h5_readiness", names
+    assert names[0] == "truth_coverage", names
 
 
 def test_the_cheap_pages_take_back_the_run_once_starved_past_the_cap(pages) -> None:
@@ -561,7 +529,7 @@ def test_a_section_that_killed_the_last_run_waits_behind_the_others(pages) -> No
 HEAVY_SECTIONS_WITH_A_STAND_IN = (
     # ai_models, posterior_lane and report_latency left the board.
     "center_landing", "chain_volume",
-    "charter_ev", "h5_readiness", "member_depth", "model_accuracy_trend",
+    "member_depth", "model_accuracy_trend",
     "p1_path_skill", "precip_classification",
     "scorecard", "scorecard_previous",
     "skill", "ssot_capacity", "station_calibration_windows", "truth_landing",

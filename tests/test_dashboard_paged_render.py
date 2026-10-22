@@ -588,19 +588,6 @@ def test_live_readiness_takes_the_difficulty_it_is_handed(monkeypatch) -> None:
     assert row["climate_jump_c"] == 1.23 and row["shape_gap_buckets"] is None
 
 
-def test_live_selection_reads_the_runs_one_book(paged, monkeypatch) -> None:
-    builds: list[int] = []
-    monkeypatch.setattr(C.live_book, "build", lambda conn: builds.append(1) or {"legs": []})
-    seen: list[object] = []
-    monkeypatch.setattr(
-        C.live_selection, "build",
-        lambda conn, book=None, closed=None: seen.append(book) or {},
-    )
-    C._render_live_book(None)
-    C._build_live_selection(None)
-    assert builds == [1] and seen and seen[0] is C._PAGED_RUN["live_book"]
-
-
 def test_a_closed_station_days_market_slug_is_read_once(paged) -> None:
     conn = sqlite3.connect(":memory:")
     conn.execute(
@@ -867,61 +854,6 @@ def test_a_section_not_ready_serves_its_stand_in_and_caches_nothing(paged) -> No
     assert not (paged / "sections" / "slow_moving.json").exists()
 
 
-def test_h5_readiness_caught_up_in_chunks_is_the_one_read(paged, monkeypatch) -> None:
-    monkeypatch.setattr(C, "H5_FROM_UTC", "2026-08-27T06:48:00Z")
-    monkeypatch.setattr(C, "H5_CATCHUP_DAYS", 2)
-    conn = sqlite3.connect(":memory:")
-    conn.execute(
-        "CREATE TABLE calibration_station_daily_high_truth"
-        " (station_id TEXT, local_date TEXT, qc_status TEXT)"
-    )
-    conn.execute(
-        "CREATE TABLE calibration_native_ensemble_system_artifact"
-        " (ensemble_system_id TEXT, station_id TEXT, content_sha256 TEXT,"
-        " valid_from_utc TEXT)"
-    )
-    conn.executemany(
-        "INSERT INTO calibration_native_ensemble_system_artifact VALUES"
-        " ('ECMWF','KLGA',?,?)",
-        [("old", "2026-08-20T00:00:00Z"), ("new", "2026-08-28T00:00:00Z")],
-    )
-    conn.execute(
-        "CREATE VIEW calibration_native_ensemble_system AS SELECT DISTINCT"
-        " ensemble_system_id FROM calibration_native_ensemble_system_artifact"
-    )
-    conn.execute(
-        "CREATE VIEW calibration_station_registry AS SELECT DISTINCT station_id"
-        " FROM calibration_native_ensemble_system_artifact"
-    )
-    conn.execute(
-        "CREATE TABLE basket_probability_envelope"
-        " (stage TEXT, state TEXT, event_date TEXT, lineage_json TEXT)"
-    )
-    for i in range(6):
-        day = f"2026-08-{28 + i:02d}"
-        conn.execute(
-            "INSERT INTO calibration_station_daily_high_truth VALUES ('KLGA',?,'ACCEPTED')", (day,),
-        )
-        for sha in (["old"], ["new"], ["new"], ["unknown"])[: 2 + i % 3]:
-            conn.execute(
-                "INSERT INTO basket_probability_envelope VALUES ('P0','COMMITTED',?,?)",
-                (day, json.dumps({"system_artifact_shas_json": json.dumps({"ECMWF": sha[0]})})),
-            )
-    saved = dict(C._PAGED_RUN)
-    C._PAGED_RUN.clear()
-    whole = C.collect_h5_readiness(conn)
-    C._PAGED_RUN.update(saved)
-    chunks = 0
-    while True:
-        try:
-            paged_answer = C.collect_h5_readiness(conn)
-            break
-        except C.SectionNotReady:
-            chunks += 1
-            assert chunks < 10
-    assert chunks >= 2 and paged_answer == whole and len(whole["days"]) == 6
-
-
 def _heavy_page(paged, name, collector, cost, computed_at="2026-09-01T00:00:00Z"):
     calls: list[str] = []
     C._cached_section(name, collector, None)
@@ -1118,7 +1050,7 @@ _FILE_PROBE_CALLS: list[str] = []
 
 
 def _file_probe():
-    """A collector that reads files and takes no connection (fusion_candidates)."""
+    """A collector that reads files and takes no connection (as fusion_candidates did)."""
 
     _FILE_PROBE_CALLS.append("read")
     return {"value": "files"}
