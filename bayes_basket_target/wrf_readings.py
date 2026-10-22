@@ -42,6 +42,9 @@ READING_NAME = "wrf_tmax"
 #: The station point the WRF project's own tools read (run/tools/zuuu_t2.py).
 STATIONS = {"ZUUU": (30.578, 103.947)}
 BASELINE = "baseline"
+#: The live forecasts, ``run/fcst/<target YYYYMMDD>_from_<init YYYYMMDDHH>``
+#: (run/forecast_prep.sh): the newest init per target day is the one shown.
+FORECAST = "fcst"
 #: A run whose log moved within this many seconds and has not said SUCCESS is running.
 RUNNING_WITHIN_SEC = 1800
 #: The local hours a day's maximum must be covered through to count as complete.
@@ -64,6 +67,12 @@ def run_dirs(root: Path = WRF_ROOT) -> list[tuple[str, str, Path]]:
         out.append((BASELINE, Path(d).parent.name, Path(d)))
     for d in sorted(glob.glob(str(root / "run" / "exp" / "*" / "2*"))):
         out.append((Path(d).parent.name, Path(d).name, Path(d)))
+    newest: dict[str, Path] = {}
+    for d in sorted(glob.glob(str(root / "run" / "fcst" / "2*_from_*"))):
+        target, _, init = Path(d).name.partition("_from_")
+        if len(init) == 10 and init.isdigit() and glob.glob(str(Path(d) / "wrfout_d0*")):
+            newest[target] = Path(d)  # sorted: the later init wins
+    out.extend((FORECAST, day, d) for day, d in newest.items())
     return [(c, day, d) for c, day, d in out if len(day) == 8 and day.isdigit() and glob.glob(str(d / "wrfout_d0*"))]
 
 
@@ -233,10 +242,13 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 continue
             status = _status(d, now.timestamp())
             init = min(frames) if frames else None
+            if config == FORECAST:
+                ic = d.name.partition("_from_")[2]
+                init = f"{ic[:4]}-{ic[4:6]}-{ic[6:8]}_{ic[8:10]}:00:00"
             rec = {"status": status, "domain": dom, "init_utc": _iso(_utc(init)) if init else None,
                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
-            if config == BASELINE:
+            if config in (BASELINE, FORECAST) and "gfs" not in entry:
                 gfs: dict[str, float] = {}
                 for fn in sorted(glob.glob(str(d / "met_em.d01.*"))):
                     gfs.update(cache.frames(fn, "TT", point))
@@ -249,7 +261,7 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
-        configs = sorted({c for e in days.values() for c in e["configs"]}, key=lambda c: (c != BASELINE, c))
+        configs = sorted({c for e in days.values() for c in e["configs"]}, key=lambda c: (c != FORECAST, c != BASELINE, c))
         latest = max(days) if days else None
         stations[station] = {
             "state": "ok" if days else "no_runs", "timezone": str(zone), "point": list(point),
