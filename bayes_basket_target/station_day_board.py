@@ -2420,6 +2420,7 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
         for day in days:
             if day["event_date"] == today:
                 day["peak"] = peak_today
+                day["convergence"] = convergence_now(conn, station, day, zone, now)
     finally:
         conn.close()
     finished = datetime.now(timezone.utc)
@@ -2438,6 +2439,35 @@ def build(station: str = "ZUUU", *, db: Path = DEFAULT_DB, now: datetime | None 
     }
 
 
+def convergence_now(conn: sqlite3.Connection, station: str, day: Mapping[str, Any], zone: ZoneInfo,
+                    now: datetime) -> dict[str, Any] | None:
+    """Today's confidence score (user 2026-10-23 「大概什么时候温度开始靠近并收敛，趋于真值，
+    给我一个信心指标，用100分表示，并前端显示！」): each voter's bucket now, with the
+    readers of ``estimate_hit_readings`` (MOS from this payload's own series), looked up
+    in the stored convergence table of the settled days.  Read only."""
+
+    from . import estimate_hit_readings as E  # noqa: PLC0415
+    from .board_readings import load_reading  # noqa: PLC0415
+
+    v = (load_reading("estimate_hit") or {}).get("value") or {}
+    table = (v.get("convergence") or {}).get("confidence")
+    event = str(day["event_date"])
+    ladder = E._rungs(conn, station, event)
+    if not table or ladder is None:
+        return None
+    cx = (day.get("hourly_sky") or {}).get("composite_tmax_shift") or {}
+    mos = ([(int(p["hour"]), float(cx["forecast_tmax_d1_c"]) + float(p["total_c"])) for p in cx.get("series") or []]
+           if cx.get("state") == "ok" and cx.get("forecast_tmax_d1_c") is not None else None)
+    when = now.astimezone(zone)
+    picks = E.picks_at(conn, station, event, when, ladder, f=E._f_ledger().get((station, event)), wrf={},
+                       d0=E._history("d0", event), mb=E._history("member_bayes", event), mos=mos)
+    score = E.confidence_score(table, when.hour, picks)
+    if score is None:
+        return None
+    return {**score, "picks": {m: picks.get(m) for m in E.CONVERGE_METHODS},
+            "curve": {h: c["hit"] for h, c in table.items()}, "days": len(v.get("days") or [])}
+
+
 def estimate_hit_view(station: str) -> dict[str, Any] | None:
     """Every estimate's truth hit rate, all stations and this one (user 2026-10-22
     「统计以上各个方式的真值命中率，前端显式出来！」) -- the stored reading of
@@ -2451,7 +2481,7 @@ def estimate_hit_view(station: str) -> dict[str, Any] | None:
         return None
     return {"as_of_utc": v.get("as_of_utc"), "since": v.get("since"), "days": len(v.get("days") or []),
             "hours": v.get("snapshot_hours_local"), "methods": v.get("methods"), "mos_from": v.get("mos_from"),
-            "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station)}
+            "fleet": v.get("fleet"), "station": (v.get("stations") or {}).get(station), "convergence": v.get("convergence")}
 
 
 def first_forecast_view(station: str) -> dict[str, Any] | None:

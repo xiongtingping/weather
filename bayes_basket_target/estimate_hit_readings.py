@@ -47,10 +47,15 @@ COMPOSITE_FIT = ROOT / "data" / "runtime" / "tmax_composite" / "tmax_composite_s
 #: The board's estimates started on different days; the window starts with D0.
 SINCE = date(2026, 10, 15)
 SNAPSHOT_HOURS = (10, 13, 16)
+CURVE_HOURS = tuple(range(24))
 METHODS = ("P0", "P0-M", "P1", "market", "F", "member_bayes", "D0", "MOS", "WRF")
 MARKET_WINDOW_MIN = 30
-#: MOS is recomputed (Open-Meteo, satellite) only for this many closed days per pass.
+#: MOS is recomputed (Open-Meteo, satellite) only for this many closed days per pass,
+#: and only while the pass is inside its time budget: each costs ~15-20 s of network,
+#: and 15 of them overran the sweep's 240 s kill from 2026-10-23 05:23Z on, so no
+#: pass wrote anything.
 MOS_DAYS_PER_PASS = 15
+MOS_BUDGET_SEC = 150.0
 
 
 def _iso(t: datetime) -> str:
@@ -183,6 +188,44 @@ def _mos_first_day() -> date | None:
         return None
 
 
+def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, ladder, *,
+             f: float | None, wrf, d0, mb, mos: list[tuple[int, float]] | None) -> dict[str, str | None]:
+    """Each method's bucket as of ``when`` (a local time on the event day)."""
+
+    at = _iso(when)
+    h = when.hour
+    picks: dict[str, str | None] = {}
+    for stage in ("P0", "P0-M", "P1"):
+        row = conn.execute(
+            "SELECT probabilities_json FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
+            " AND state='COMMITTED' AND +stage=? AND decision_at_utc<=? ORDER BY decision_at_utc DESC LIMIT 1",
+            (station, day, stage, at)).fetchone()
+        picks[stage] = _argmax(json.loads(row[0])) if row and row[0] else None
+    lo = _iso(when - timedelta(minutes=MARKET_WINDOW_MIN))
+    row = conn.execute(
+        "SELECT buckets_json FROM basket_official_ws_snapshot WHERE station_id=? AND event_date=? AND state='COMMITTED'"
+        " AND observed_at<=? AND observed_at>=? ORDER BY observed_at DESC LIMIT 1", (station, day, at, lo)).fetchone()
+    picks["market"] = None
+    if row and row[0]:
+        from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
+
+        ref = market_reference_v1(json.loads(row[0]))
+        if ref.get("state") == "complete":
+            picks["market"] = _argmax({str(k): float(v) for k, v in ref["vector"].items()})
+    picks["F"] = _label_of(ladder, f)
+    picks["member_bayes"] = _latest(mb.get(station, []), at, "post_mode")
+    picks["D0"] = _latest(d0.get(station, []), at, "mode")
+    picks["MOS"] = None
+    if mos:
+        past = [v for hour, v in mos if hour <= h]
+        picks["MOS"] = _label_of(ladder, past[-1]) if past else None
+    picks["WRF"] = None
+    rec = wrf.get(day) if station == "ZUUU" else None
+    if rec and rec.get("ready_utc") and str(rec["ready_utc"]) <= at and rec.get("wrf_sat_tmax_with_obs_c") is not None:
+        picks["WRF"] = _label_of(ladder, rec["wrf_sat_tmax_with_obs_c"])
+    return picks
+
+
 def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, truth_c: float,
              *, f_ledger, wrf, d0, mb, mos_ok: bool) -> dict[str, Any] | None:
     """One settled station-day: the truth's bucket and each method's bucket per snapshot."""
@@ -198,41 +241,13 @@ def verdicts(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo, t
             mos = _mos_series(conn, station, day, zone)
         except Exception:  # noqa: BLE001 -- MOS needs network data; a miss is no MOS that day
             mos = None
-    snaps: dict[str, dict[str, str | None]] = {}
-    for h in SNAPSHOT_HOURS:
-        at = _iso(local0 + timedelta(hours=h))
-        picks: dict[str, str | None] = {}
-        for stage in ("P0", "P0-M", "P1"):
-            row = conn.execute(
-                "SELECT probabilities_json FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
-                " AND state='COMMITTED' AND +stage=? AND decision_at_utc<=? ORDER BY decision_at_utc DESC LIMIT 1",
-                (station, day, stage, at)).fetchone()
-            picks[stage] = _argmax(json.loads(row[0])) if row and row[0] else None
-        lo = _iso(local0 + timedelta(hours=h, minutes=-MARKET_WINDOW_MIN))
-        row = conn.execute(
-            "SELECT buckets_json FROM basket_official_ws_snapshot WHERE station_id=? AND event_date=? AND state='COMMITTED'"
-            " AND observed_at<=? AND observed_at>=? ORDER BY observed_at DESC LIMIT 1", (station, day, at, lo)).fetchone()
-        picks["market"] = None
-        if row and row[0]:
-            from .basket_kernel.valuation_v1 import market_reference_v1  # noqa: PLC0415
-
-            ref = market_reference_v1(json.loads(row[0]))
-            if ref.get("state") == "complete":
-                picks["market"] = _argmax({str(k): float(v) for k, v in ref["vector"].items()})
-        f = f_ledger.get((station, day))
-        picks["F"] = _label_of(ladder, f)
-        picks["member_bayes"] = _latest(mb.get(station, []), at, "post_mode")
-        picks["D0"] = _latest(d0.get(station, []), at, "mode")
-        picks["MOS"] = None
-        if mos:
-            past = [v for hour, v in mos if hour <= h]
-            picks["MOS"] = _label_of(ladder, past[-1]) if past else None
-        picks["WRF"] = None
-        rec = wrf.get(day) if station == "ZUUU" else None
-        if rec and rec.get("ready_utc") and str(rec["ready_utc"]) <= at and rec.get("wrf_sat_tmax_with_obs_c") is not None:
-            picks["WRF"] = _label_of(ladder, rec["wrf_sat_tmax_with_obs_c"])
-        snaps[str(h)] = picks
-    return {"truth_c": truth_c, "truth": truth_label, "snaps": snaps}
+    # Every local hour of the event day for the convergence timeline (user 2026-10-23
+    # 「大概什么时候温度开始靠近并收敛，趋于真值，给我一个信心指标」); the hit cards'
+    # snapshots are three of them.
+    curve = {str(h): picks_at(conn, station, day, local0 + timedelta(hours=h), ladder,
+                              f=f_ledger.get((station, day)), wrf=wrf, d0=d0, mb=mb, mos=mos) for h in CURVE_HOURS}
+    return {"truth_c": truth_c, "truth": truth_label, "snaps": {str(h): curve[str(h)] for h in SNAPSHOT_HOURS},
+            "curve": curve, "rank": {r[0]: i for i, r in enumerate(ladder[0])}}
 
 
 def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
@@ -265,7 +280,94 @@ def _summarize(cache: dict[str, Any]) -> dict[str, Any]:
     return {"fleet": fleet, "stations": stations, "days": sorted(days)}
 
 
+#: The methods the convergence timeline follows and that vote in the confidence score.
+CONVERGE_METHODS = ("F", "member_bayes", "D0", "MOS", "P1", "market")
+#: Agreement among the voters present: all on one bucket, two thirds, half, less.
+AGREE_BINS = (("all", 1.0), ("two_thirds", 2 / 3), ("half", 0.5), ("split", 0.0))
+#: Pseudo-days pulling a thin (hour, agreement) cell toward the hour's own rate.
+CONF_PRIOR_DAYS = 5.0
+MIN_VOTERS = 3
+
+
+def agreement(picks: dict[str, str | None]) -> dict[str, Any] | None:
+    """The bucket most voters point to, how many agree, and the agreement bin."""
+
+    ps = [picks.get(m) for m in CONVERGE_METHODS if picks.get(m) is not None]
+    if len(ps) < MIN_VOTERS:
+        return None
+    # Ties go to the market's bucket when it is one of them, else the first voter's.
+    best = max(ps.count(p) for p in ps)
+    tied = [p for p in dict.fromkeys(ps) if ps.count(p) == best]
+    top = picks.get("market") if picks.get("market") in tied else tied[0]
+    share = best / len(ps)
+    return {"bucket": top, "agree": best, "voters": len(ps),
+            "bin": next(name for name, floor in AGREE_BINS if share >= floor - 1e-9)}
+
+
+def _convergence(cache: dict[str, Any]) -> dict[str, Any]:
+    """Per method x local hour: truth hit rate and bucket error; per method: the lock
+    hour (from which it stays on the truth's bucket); per hour x agreement bin: how
+    often the voters' bucket was the truth's -- the confidence table."""
+
+    per: dict[str, dict[int, list[float]]] = {m: {} for m in CONVERGE_METHODS}
+    locks: dict[str, list[int]] = {m: [] for m in CONVERGE_METHODS}
+    conf: dict[int, dict[str, list[int]]] = {}
+    for v in cache.values():
+        if not v or not v.get("truth") or not v.get("curve"):
+            continue
+        truth, rank = v["truth"], v.get("rank") or {}
+        for m in CONVERGE_METHODS:
+            seq = [(h, v["curve"][str(h)].get(m)) for h in CURVE_HOURS if v["curve"][str(h)].get(m) is not None]
+            for h, p in seq:
+                c = per[m].setdefault(h, [0, 0, 0.0])
+                c[0] += 1
+                c[1] += int(p == truth)
+                c[2] += abs(rank[p] - rank[truth]) if p in rank and truth in rank else 0.0
+            if seq:
+                lock = 24
+                for h, p in reversed(seq):
+                    if p != truth:
+                        break
+                    lock = h
+                locks[m].append(lock)
+        for h in CURVE_HOURS:
+            a = agreement(v["curve"][str(h)])
+            if a:
+                c = conf.setdefault(h, {}).setdefault(a["bin"], [0, 0])
+                c[0] += 1
+                c[1] += int(a["bucket"] == truth)
+    table = {}
+    for h, bins in sorted(conf.items()):
+        n_h = sum(c[0] for c in bins.values())
+        p_h = sum(c[1] for c in bins.values()) / n_h
+        table[str(h)] = {"n": n_h, "hit": round(p_h, 3), "bins": {
+            b: {"n": c[0], "hits": c[1], "score": round(100 * (c[1] + CONF_PRIOR_DAYS * p_h) / (c[0] + CONF_PRIOR_DAYS))}
+            for b, c in bins.items()}}
+    return {
+        "methods": list(CONVERGE_METHODS),
+        "by_hour": {m: {str(h): {"n": c[0], "hit": round(c[1] / c[0], 3), "bucket_err": round(c[2] / c[0], 2)}
+                        for h, c in sorted(per[m].items())} for m in CONVERGE_METHODS},
+        "lock": {m: {"n": len(x), "median_hour": sorted(x)[len(x) // 2] if x else None,
+                     "never": sum(1 for y in x if y == 24)} for m, x in locks.items()},
+        "confidence": table,
+    }
+
+
+def confidence_score(table: dict[str, Any] | None, hour: int, picks: dict[str, str | None]) -> dict[str, Any] | None:
+    """The 0..100 score for one station-day's picks at a local hour: how often, on the
+    settled days, the voters' bucket at this hour and this agreement was the truth's."""
+
+    a = agreement(picks)
+    cell = ((table or {}).get(str(hour)) or {})
+    if a is None or not cell:
+        return None
+    b = (cell.get("bins") or {}).get(a["bin"])
+    score = b["score"] if b else round(100 * cell["hit"])
+    return {**a, "hour": hour, "score": score, "n": (b or {}).get("n", 0), "hour_hit": cell["hit"]}
+
+
 def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dict[str, Any] | None = None) -> dict[str, Any]:
+    started = time.monotonic()
     now = now or datetime.now(timezone.utc)
     cache = dict(cache or {})
     zones = _zones(conn)
@@ -285,9 +387,10 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
                 continue  # the local day is not over yet
             key, t = f"{st}|{day}", truths[(st, day)]
             old = cache.get(key)
-            if old and old.get("truth_c") == t and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from):
+            if old and old.get("truth_c") == t and "curve" in old and (old.get("mos_done") or mos_from is None or date.fromisoformat(day) < mos_from):
                 continue
-            mos_ok = mos_from is not None and date.fromisoformat(day) >= mos_from and mos_budget > 0
+            mos_ok = (mos_from is not None and date.fromisoformat(day) >= mos_from and mos_budget > 0
+                      and time.monotonic() - started < MOS_BUDGET_SEC)
             if mos_ok:
                 mos_budget -= 1
             v = verdicts(conn, st, day, zone, t, f_ledger=f_ledger, wrf=wrf, d0=d0, mb=mb, mos_ok=mos_ok)
@@ -295,6 +398,7 @@ def compute(conn: sqlite3.Connection, *, now: datetime | None = None, cache: dic
                 v["mos_done"] = mos_ok
             cache[key] = v
     out = _summarize(cache)
+    out["convergence"] = _convergence(cache)
     return {"state": "ok", "as_of_utc": _iso(now), "since": SINCE.isoformat(), "snapshot_hours_local": list(SNAPSHOT_HOURS),
             "methods": list(METHODS), "mos_from": mos_from.isoformat() if mos_from else None, **out}, cache
 

@@ -16045,6 +16045,10 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-hit-t{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sd-hit-v{font-size:22px;font-weight:700;color:var(--c);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .sd-hit-s{font-size:11px;color:var(--muted)}
+.sd-conv-row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;align-items:center}
+@media (max-width:700px){.sd-conv-row{grid-template-columns:minmax(0,1fr)}}
+.sd-conv-score{display:flex;flex-direction:column;gap:3px}.sd-conv-score>small{font-size:11px;color:var(--muted)}
+.sd-conv-score>b{font-size:44px;line-height:1;font-weight:750;color:var(--text)}.sd-conv-score>b small{font-size:14px;color:var(--muted);font-weight:500}
 @media (max-width:1300px){.sd-four.sd-five{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:900px){.sd-four{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.sd-four{grid-template-columns:minmax(0,1fr)}}
@@ -22361,7 +22365,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdHitStrip(day)}${sdFirstChart()}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdConvergence(day)}${sdHitStrip(day)}${sdFirstChart()}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -22374,7 +22378,7 @@ function sdDay(day){
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     <div class="sd-six">${sdProbabilityCards(day)}</div>
     <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
-    ${sdHitStrip(day)}${sdFirstChart()}
+    ${sdConvergence(day)}${sdHitStrip(day)}${sdFirstChart()}
     ${sdCompareChart(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
@@ -23023,6 +23027,40 @@ function sdHitStrip(day){
       <div class="sd-hit-s">本站 ${pc(own)}${vs ? ` · ${vs}` : ""}</div></div>`;
   }).join("");
   return `<div class="sd-hit-wrap"><div class="sd-hit-h">真值命中率 <small>当地 13 点时指向的档 = 结算实测档 · 全部站 ${H.days} 个事件日（${sdEsc(H.since || "")} 起）</small></div><div class="sd-hit-grid">${cards}</div></div>`;
+}
+// When the estimates close in on the truth, and a 0..100 confidence now (user 2026-10-23
+// 「大概什么时候温度开始靠近并收敛，趋于真值，给我一个信心指标，用100分表示，并前端显示！」):
+// estimate_hit_readings reads every settled station-day at each local hour; a line per
+// method is how often its bucket was the truth's at that hour, the black line the bucket
+// most of the six point to.  The score: on the settled days, at this hour and with this
+// many of them agreeing, how often that bucket was the truth's.  Read only.
+const SD_CONV_BIN = {all: "全部一致", two_thirds: "三分之二一致", half: "半数一致", split: "分散"};
+function sdConvergence(day){
+  const C = ((SD.data || {}).estimate_hit || {}).convergence;
+  if(!C || !C.confidence || !C.by_hour) return "";
+  const N = (day || {}).convergence;
+  const w = 1000, ht = 220, pl = 34, pr = 10, pt = 10, pb = 22;
+  const X = h => pl + h * (w - pl - pr) / 23, Y = p => pt + (1 - p) * (ht - pt - pb);
+  const grid = [0, .25, .5, .75, 1].map(p => `<line x1="${pl}" x2="${w - pr}" y1="${Y(p)}" y2="${Y(p)}" stroke="var(--line)"/><text x="${pl - 4}" y="${Y(p) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${Math.round(100 * p)}</text>`).join("")
+    + [0, 3, 6, 9, 12, 15, 18, 21, 23].map(h => `<text x="${X(h)}" y="${ht - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${String(h).padStart(2, "0")}</text>`).join("");
+  const line = (pts, c, sw, tip) => pts.length < 2 ? "" : `<polyline fill="none" stroke="${c}" stroke-width="${sw}" points="${pts.map(([h, p]) => `${X(h)},${Y(p)}`).join(" ")}"><title>${sdEsc(tip)}</title></polyline>`;
+  const lines = C.methods.map(m => {
+    const pts = Object.entries(C.by_hour[m] || {}).map(([h, x]) => [Number(h), x.hit]).sort((a, b) => a[0] - b[0]);
+    const lk = (C.lock || {})[m] || {};
+    return line(pts, SD_HIT_COL[m] || "var(--muted)", 1.6, `${SD_HIT_NAMES[m] || m}：各整点指向真值档的比例；中位锁定 ${lk.median_hour == null || lk.median_hour >= 24 ? "未锁定" : String(lk.median_hour).padStart(2, "0") + " 点"}`);
+  }).join("");
+  const cons = Object.entries(C.confidence).map(([h, x]) => [Number(h), x.hit]).sort((a, b) => a[0] - b[0]);
+  const now = N ? `<line x1="${X(N.hour)}" x2="${X(N.hour)}" y1="${pt}" y2="${ht - pb}" stroke="var(--text)" stroke-dasharray="3 3" opacity=".5"/><circle cx="${X(N.hour)}" cy="${Y(N.score / 100)}" r="5" fill="var(--text)"><title>今天 ${String(N.hour).padStart(2, "0")} 点：${N.score} 分</title></circle>` : "";
+  const legend = C.methods.map(m => { const lk = (C.lock || {})[m] || {};
+    const lh = lk.median_hour == null || lk.median_hour >= 24 ? "—" : String(lk.median_hour).padStart(2, "0") + "点";
+    return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px" title="${sdEsc(`${SD_HIT_NAMES[m] || m}：中位锁定时刻＝从这一刻起一直指向真值档；${lk.n || 0} 站日，从未锁定 ${lk.never || 0}`)}"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${SD_HIT_COL[m] || "var(--muted)"}"></i>${sdEsc(SD_HIT_NAMES[m] || m)} <b class="mono">${lh}</b></span>`; }).join("");
+  const score = N ? `<div class="sd-conv-score" title="${sdEsc(`当地 ${N.hour} 点，${N.voters} 个估计里 ${N.agree} 个指向 ${N.bucket}（${SD_CONV_BIN[N.bin] || N.bin}）；已结算的日子里同一时刻、同样一致程度时，这个档是真值档的比例 ≈ ${N.score}%（${N.n} 站日，少的向该时刻整体 ${Math.round(100 * N.hour_hit)}% 收缩）`)}">
+      <small>收敛信心 · ${String(N.hour).padStart(2, "0")} 点</small><b class="mono">${N.score}<small>/100</small></b>
+      <small>${N.agree}/${N.voters} 指向 ${sdEsc(N.bucket)} · ${SD_CONV_BIN[N.bin] || N.bin}</small>
+      <small>${C.methods.map(m => `<span style="color:${SD_HIT_COL[m] || "var(--muted)"}">${sdEsc((SD_HIT_NAMES[m] || m).replace(/ .*/, ""))} ${sdEsc(N.picks[m] || "—")}</span>`).join(" · ")}</small></div>` : "";
+  return `<div class="card sd-conv" style="margin:4px 0 12px"><div class="sd-hit-h">收敛时间线 <small>事件日当地各整点，指向真值档的比例 · 黑线＝多数估计指向的档 · 图例＝中位锁定时刻 · ${((SD.data || {}).estimate_hit || {}).days || 0} 个事件日</small></div>
+    <div class="sd-conv-row">${score}<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${lines}${line(cons, "var(--text)", 3, "多数估计指向的档是真值档的比例")}${now}</svg></div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);margin-top:4px">${legend}<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px"><i style="width:14px;height:3px;display:inline-block;background:var(--text)"></i>多数</span></div></div>`;
 }
 // Each estimate's first forecast of the day against the truth, the last 30 days (user
 // 2026-10-22 「增加首次预报和真值的曲线对比（近30天）」): first_forecast_readings keeps,
