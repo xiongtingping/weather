@@ -22375,7 +22375,7 @@ function sdDay(day){
   if(!day.available) return `<div class="sd-day card" data-day="${sdEsc(day.event_date)}"><h3>${roleWord} ${sdEsc(day.event_date)}
       <span class="muted sd-sub">${day.running_high_c != null ? `已报最高 <b>${sdN(day.running_high_c, 0)}°C</b> · ` : ""}这一天还没有任何已提交的概率信封，下面是实况、TAF、云雨、只读模型${(day.axis || []).length && (day.market || {}).available ? "与市场盘口下单器" : ""}。</span></h3>
     ${sdTropicalRules(day)}
-    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdConvergence(day)}${sdHitStrip(day)}${sdFirstChart()}${sdCompareChart(day)}${sdEvidence(day)}` : ""}
+    ${"metar" in day ? `<div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>${sdHitStrip(day)}${sdFirstChart()}${sdCompareChart(day)}${sdConvergence(day)}${sdEvidence(day)}` : ""}
     ${(day.axis || []).length && (day.market || {}).available ? sdCalc(day) : ""}
   </div>`;
   const S = sdSeries(day);
@@ -22388,8 +22388,8 @@ function sdDay(day){
       head.fresh_until_utc ? `信封有效至 ${sdLocal(head.fresh_until_utc, true)}` : ""].filter(Boolean).join(" · ")}</span></h3>
     <div class="sd-six">${sdProbabilityCards(day)}</div>
     <div class="sd-four${sdWrf(day) ? " sd-five" : ""}">${sdDeterministic(day)}${sdMemberBayes(day)}${sdD0(day)}${sdMos(day)}${sdWrf(day)}</div>
-    ${sdConvergence(day)}${sdHitStrip(day)}${sdFirstChart()}
-    ${sdCompareChart(day)}${sdProbExplain()}
+    ${sdHitStrip(day)}${sdFirstChart()}
+    ${sdCompareChart(day)}${sdConvergence(day)}${sdProbExplain()}
     ${sdTropicalRules(day)}
     ${sdStatsTable(day, S)}
     <div class="sd-grid">
