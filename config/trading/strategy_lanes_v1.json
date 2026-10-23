@@ -289,9 +289,14 @@
     },
     "consensus_noon": {
       "enabled": true,
-      "rule": "noon_all_agree_majority_yes_taker_v1",
+      "rule": "noon_d0_p1_market_agree_yes_taker_v2",
       "entry_local_hour": 12,
       "entry_window_minutes": 60.0,
+      "voters": [
+        "D0",
+        "P1",
+        "market"
+      ],
       "min_voters": 3,
       "min_ask": 0.05,
       "max_ask": 0.97,
@@ -306,7 +311,9 @@
       "live_ws_book": true,
       "lookback_days": 1,
       "note": "共识线 (charter 280; user ruling 2026-10-23 「做成车道」): at the first cycle inside local entry_local_hour..+entry_window_minutes of the event day, the board's estimates -- the listing's deterministic F, member-trajectory Bayes, D0, P1 and the market (MOS is not read: it needs network fetches the cycle does not make) -- are read once with estimate_hit_readings.picks_at; at least min_voters present and every one on the same bucket -> FOK YES on it at the best ask (min_ask..max_ask), up to stake_usdc, depth-capped, once a station-day, held to settlement. Read 10-15..10-22 (docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit 80% at a 0.71 ask, +13% a leg [+6,+22], 7 of 8 days positive; 10 h +12%, 11 h +4%, 13 h +1%; a cell picked among about twenty on 8 event days -- the lane is the forward read, re-read at 30 event days. Off by default: the board switch is the operator's.",
-      "enabled_at_utc": "2026-10-23T07:00:51Z"
+      "enabled_at_utc": "2026-10-23T07:00:51Z",
+      "rule_changed_at_utc": "2026-10-23T08:00:00Z",
+      "rule_v2_note": "Charter 280 补记一 (user ruling 2026-10-23 「把共识线投票改成 D0+P1+市场三家全一致，当地 12 点，单笔 5 U 不变」): the voters are D0, P1 and the market, all present and on one bucket; F and member-trajectory Bayes are still read and written in votes_json, not counted. Read 10-15..10-22 at 12 h (docs/research/estimate_convergence_20261023, 补记一, subset_search.py): D0+P1+market n120, hit 75% at a 0.69 ask, +6.9% a leg [+3.7,+10.9], halves +10.8%/+3.0%, 7 of 8 days; no combination without D0 paid (P1+market -5.2%). v1 counted every estimate present, F included -- a five-way rule with under twenty legs on record."
     }
   }
 }

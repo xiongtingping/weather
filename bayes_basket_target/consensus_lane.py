@@ -1,4 +1,4 @@
-"""共识线 -- the estimates all on one bucket at local noon (charter 280).
+"""共识线 -- D0, P1 and the market on one bucket at local noon (charter 280).
 
 User ruling 2026-10-23 「做成车道」, on the convergence reading
 (``docs/research/estimate_convergence_20261023``, RESULTS.md): the board's six
@@ -10,12 +10,21 @@ to the same bucket, that bucket settled 80% of the time against a 0.71 ask
 +1%).  Eight event days, a cell picked among about twenty -- a reading the
 lane measures forward, not a conclusion.
 
-The rule, once a station-day: at the first cycle inside the entry window
-(``entry_local_hour`` to ``+entry_window_minutes`` local) the votes are read as
-of that moment with ``estimate_hit_readings.picks_at`` -- the readers the
+Rule v2 (charter 280 补记一, user ruling 2026-10-23 「把共识线投票改成 D0+P1+市场
+三家全一致，当地 12 点，单笔 5 U 不变」; ``subset_search.py`` in the same folder):
+the voters are the lane's ``voters`` setting, D0, P1 and the market.  Among
+every combination of the board's estimates only those with D0 agreeing with
+the market paid at 12 h; D0+P1+market n120 +6.9% a leg [+3.7, +10.9], both
+halves positive, 7 of 8 days; none without D0 did.  v1 counted every estimate
+present, F included -- with F on record every day since 10-20 that was a
+five-way rule the history has under twenty legs of.
+
+Once a station-day: at the first cycle inside the entry window
+(``entry_local_hour`` to ``+entry_window_minutes`` local) every estimate is read
+as of that moment with ``estimate_hit_readings.picks_at`` -- the readers the
 research and the board's confidence card use (MOS is not read here: it needs
-Open-Meteo and satellite fetches the production cycle does not make, and it
-voted on 21 of the measured station-days).  All agreeing -> FOK YES on that
+Open-Meteo and satellite fetches the production cycle does not make) -- and
+written down; the voters must all be present and agree -> FOK YES on that
 bucket at the best ask, sized up to ``stake_usdc`` and capped by the depth
 there, ``min_ask`` <= ask <= ``max_ask`` (asks under 0.05 were stale books in
 the reading), held to settlement.  Anything else is written down once and the
@@ -34,7 +43,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -63,14 +72,15 @@ from .tiebreak_lane import _cash_refusal, settle_stuck_lane_cycles
 
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "consensus_lane_plan_v1"
-RULE = "noon_all_agree_majority_yes_taker_v1"
-RULE_VERSION = "consensus_lane_v1"
+RULE = "noon_d0_p1_market_agree_yes_taker_v2"
+RULE_VERSION = "consensus_lane_v2"
 EXECUTION_CANDIDATE = "TAKER_FOK"
 EVALUATION_TABLE = "consensus_lane_evaluation"
 INTENT_PREFIX = "consensus"
 TITLE = "共识线"
-#: The voters: the board's six estimates less MOS (see the module note).
-VOTERS = ("F", "member_bayes", "D0", "P1", "market")
+#: Every estimate the lane reads and writes down (the board's six less MOS);
+#: the ones that vote are the ``voters`` setting.
+READ = ("F", "member_bayes", "D0", "P1", "market")
 #: The verdicts of the vote itself; one of these ends the station-day.
 SIGNAL_REFUSALS = frozenset({"signal:too_few_voters", "signal:not_all_agree"})
 ALL_STAGES = frozenset({"P0", "P0-M", "P1"})
@@ -129,15 +139,15 @@ def _utc(value: str) -> datetime:
 # The rule.  Pure.
 
 
-def consensus_reading(picks: Mapping[str, str | None], *, min_voters: int) -> dict[str, Any]:
+def consensus_reading(picks: Mapping[str, str | None], *, voters: Sequence[str], min_voters: int) -> dict[str, Any]:
     """The vote on one station-day: the bucket every voter present points to,
-    or why not."""
+    or why not.  ``votes`` carries every estimate read, voting or not."""
 
-    present = {m: picks.get(m) for m in VOTERS if picks.get(m) is not None}
+    present = {m: picks.get(m) for m in voters if picks.get(m) is not None}
     buckets = list(present.values())
     best = max((buckets.count(b) for b in buckets), default=0)
     top = next((b for b in buckets if buckets.count(b) == best), None)
-    out = {"votes": {m: picks.get(m) for m in VOTERS}, "voters": len(buckets), "agree": best, "bucket": top,
+    out = {"votes": {m: picks.get(m) for m in READ}, "voters": len(buckets), "agree": best, "bucket": top,
            "refusal": None}
     if len(buckets) < int(min_voters):
         out["refusal"] = "signal:too_few_voters"
@@ -277,7 +287,7 @@ def plan_consensus(
             if picks is None:
                 skip("ladder_unavailable")
                 continue
-            vote = consensus_reading(picks, min_voters=int(cfg["min_voters"]))
+            vote = consensus_reading(picks, voters=tuple(cfg["voters"]), min_voters=int(cfg["min_voters"]))
             base.update(votes_json=json.dumps(vote["votes"], ensure_ascii=False, sort_keys=True),
                         voters=vote["voters"], agree=vote["agree"])
             if vote["refusal"]:
@@ -479,6 +489,6 @@ def execute_consensus(
 
 
 __all__ = [
-    "EVALUATION_TABLE", "RULE", "RULE_VERSION", "SIGNAL_REFUSALS", "TITLE", "VOTERS", "consensus_reading",
+    "EVALUATION_TABLE", "READ", "RULE", "RULE_VERSION", "SIGNAL_REFUSALS", "TITLE", "consensus_reading",
     "ensure_lane_schema", "execute_consensus", "in_entry_window", "lane_cost_today", "plan_consensus",
 ]

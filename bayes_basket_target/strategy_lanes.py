@@ -452,18 +452,20 @@ FADE_P0_DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 #: Charter 280's 共识线 (user ruling 2026-10-23 「做成车道」): at the first
-#: cycle inside local entry_local_hour..+entry_window_minutes, the board's
-#: estimates (F, member Bayes, D0, P1, market; at least min_voters present)
-#: all on one bucket -> FOK YES on it at the best ask, up to stake_usdc, once
-#: a station-day, held to settlement.  Read 10-15..10-22 (8 event days,
-#: docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit
-#: 80% at a 0.71 ask, +13% a leg [+6, +22]; a cell picked among about twenty.
-#: Off by default: the board switch is the operator's.
+#: cycle inside local entry_local_hour..+entry_window_minutes, the voters all
+#: present and on one bucket -> FOK YES on it at the best ask, up to
+#: stake_usdc, once a station-day, held to settlement.  Rule v2 (补记一,
+#: 「把共识线投票改成 D0+P1+市场三家全一致，当地 12 点，单笔 5 U 不变」): the voters
+#: are D0, P1 and the market -- read 10-15..10-22 at 12 h, n120 +6.9% a leg
+#: [+3.7, +10.9], both halves positive, 7 of 8 days; no combination without
+#: D0 paid (docs/research/estimate_convergence_20261023, 补记一).  Off by
+#: default: the board switch is the operator's.
 CONSENSUS_NOON_DEFAULT_SETTINGS: dict[str, Any] = {
     "enabled": False,
-    "rule": "noon_all_agree_majority_yes_taker_v1",
+    "rule": "noon_d0_p1_market_agree_yes_taker_v2",
     "entry_local_hour": 12,
     "entry_window_minutes": 60.0,
+    "voters": ["D0", "P1", "market"],
     "min_voters": 3,
     # Asks under 0.05 were stale books in the reading (one 0.009 fill carried
     # the whole naive return); above max_ask the fee leaves nothing to win.

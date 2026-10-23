@@ -19593,7 +19593,7 @@ function liveControlStrip(){
     ${group("反向线 B", "fade_p0", laneSwitch("fade_p0")
       + stakeKnob("fade_p0", "反向线 B 每笔预算 stake_usdc（USDC；P0 >36h 分歧大时对模型众数吃单买 NO，每站日一腿，受买一深度封顶；宪章 277）"))}
     ${group("共识线", "consensus_noon", laneSwitch("consensus_noon")
-      + stakeKnob("consensus_noon", "共识线每笔预算 stake_usdc（USDC；当地 12 点各估计全部指向同一档时吃单买该档 YES，每站日一腿，受卖一深度封顶；宪章 280）"))}
+      + stakeKnob("consensus_noon", "共识线每笔预算 stake_usdc（USDC；当地 12 点 D0、P1、市场三家指向同一档时吃单买该档 YES，每站日一腿，受卖一深度封顶；宪章 280 补记一）"))}
     ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
     ${group("跟单线", "", laneSwitch("copy_follow"))}
@@ -19644,7 +19644,7 @@ const LC_LANES = {
     on:"实盘举旗时，站日最新阶段为 P0、距结算 >36h、模型与市场均值差 >0.76 桶，对模型众数吃单买 NO，每站日一腿（宪章 277）",
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   consensus_noon: {name:"共识线",
-    on:"实盘举旗时，事件日当地 12 点起一小时内读一次各估计（确定性 F、成员轨迹贝叶斯、D0、P1、市场），全部指向同一档就吃单买该档 YES，每站日一腿（宪章 280）",
+    on:"实盘举旗时，事件日当地 12 点起一小时内读一次 D0、P1、市场，三家指向同一档就吃单买该档 YES，每站日一腿（宪章 280 补记一）",
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   pair_maker: {name:"配对挂单线",
     on:"实盘举旗时，盘口成形即在市场众数桶挂 YES/NO 两条 post-only 阶梯（任一 YES＋任一 NO ≤0.95），6 小时窗、允许众数单边持有到结算（宪章 269）",
