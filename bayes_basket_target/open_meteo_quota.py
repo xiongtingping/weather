@@ -63,6 +63,11 @@ TEMPORARY_BUDGET = {
 # day (2,000 + ~2,750), the address's day then ~5,000 of 10,000.
 DAY_BUDGET = {
     ("research_tmax_m1", "2026-10-21"): 4800,
+    # 2026-10-23: the estimate-hit MOS recompute and a convergence study were
+    # charged to the board's lane and spent its 500 by 07:35Z, blanking the
+    # live MOS card (user 「MOS内容板块不见了」); that recompute now has its own
+    # lane, and the board gets its day back (address ~1,300 of 10,000 then).
+    ("station_day_board", "2026-10-23"): 1000,
 }
 THROTTLE_PAUSE_SEC = (2.0, 5.0, 15.0)
 

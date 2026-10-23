@@ -56,6 +56,9 @@ MARKET_WINDOW_MIN = 30
 #: pass wrote anything.
 MOS_DAYS_PER_PASS = 15
 MOS_BUDGET_SEC = 150.0
+#: The Open-Meteo quota lane the MOS recompute is charged to (open_meteo_quota's
+#: default 500 a day); the live board keeps its own.
+QUOTA_LANE = "estimate_hit_mos"
 
 
 def _iso(t: datetime) -> str:
@@ -170,7 +173,12 @@ def _mos_series(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo
     from . import station_day_board as B  # noqa: PLC0415
 
     metar = B._metar(station, day, zone)
-    sky = B._hourly_vs_forecast(conn, station, day, zone, metar)
+    # Charged to this reading's own lane, never the live board's.
+    token = B.quota_lane.set(QUOTA_LANE)
+    try:
+        sky = B._hourly_vs_forecast(conn, station, day, zone, metar)
+    finally:
+        B.quota_lane.reset(token)
     cx = (sky or {}).get("composite_tmax_shift") or {}
     if cx.get("state") != "ok" or cx.get("forecast_tmax_d1_c") is None:
         return None

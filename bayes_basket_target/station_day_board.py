@@ -27,6 +27,7 @@ import math
 import re
 import sqlite3
 import sys
+from contextvars import ContextVar
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -1070,6 +1071,10 @@ OPEN_METEO_PREVIOUS_RUNS = "https://previous-runs-api.open-meteo.com/v1/forecast
 # production lanes; a daily refusal it meets itself is held here, in process,
 # until the next UTC midnight or one cache period, whichever is sooner.
 QUOTA_LANE = "station_day_board"
+# A reader recomputing closed days through this module charges its own lane
+# (2026-10-23: the estimate-hit readings' MOS recompute and a convergence study
+# spent the board's 500 by 07:35Z and the live MOS card went blank).
+quota_lane: ContextVar[str] = ContextVar("station_day_board_quota_lane", default=QUOTA_LANE)
 _DAY_REFUSED_UNTIL: list[str] = []
 # Measured sunshine (user 2026-10-09「实况日照数据源是什么？感觉有点高了」): the
 # METAR-inferred figure read 483-807 W/m2 at ZUUU 10-09 10-13h against a
@@ -1401,7 +1406,7 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     if _DAY_REFUSED_UNTIL and now_iso < _DAY_REFUSED_UNTIL[0]:
         return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
     try:
-        quota.charge(QUOTA_LANE, 1)
+        quota.charge(quota_lane.get(), 1)
     except quota.QuotaRefused as exc:
         spent_day = str(exc) == "open_meteo_day_exhausted"
         return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复" if spent_day
