@@ -17787,11 +17787,11 @@ function moneyDataBoard(){
   if(!M.available) return `<div class="card"><span class="dot amber"></span>
     ${h(M.reason || "实盘还读不出来")}。</div>`;
   const NAMES = {proper_bet:"Proper", tail_short:"远尾做空", tiebreak:"秤砣线",
-    basket:"篮子", copy_follow:"跟单线", fade_p0m:"反向A", fade_p0:"反向B"};
+    basket:"篮子", copy_follow:"跟单线", fade_p0m:"反向A", fade_p0:"反向B", consensus_noon:"共识线"};
   // 同心线 and P1 尾段 have no column (user 2026-10-05: 去掉同心线; 2026-10-09:
   // 去掉p1尾端线数据看板); their money stays in 合计, the whole book.  Columns in
   // this fixed order, never re-sorted.
-  const ORDER = ["proper_bet","tail_short","fade_p0m","fade_p0","tiebreak","basket","copy_follow"];
+  const ORDER = ["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow"];
   const BL = M.by_lane || {};
   const lanes = ORDER.filter(k => BL[k]);
   const RW = M.risk || {}, EW = M.economics || {};
@@ -18968,8 +18968,8 @@ function reliabilityChart(cfg){
 // The lanes' names on the two charter-259 sections, in a fixed order; a lane
 // the board has no name for prints its key and sorts last.
 const TC_LANE_NAMES={proper_bet:"Proper",tail_short:"远尾做空",tiebreak:"秤砣线",basket:"篮子",copy_follow:"跟单线",pair_maker:"配对挂单",
-  fade_p0m:"反向A",fade_p0:"反向B",p1_consensus:"同心线",p1_tail:"P1 尾段"};
-const TC_LANE_ORDER=["proper_bet","tail_short","fade_p0m","fade_p0","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
+  fade_p0m:"反向A",fade_p0:"反向B",consensus_noon:"共识线",p1_consensus:"同心线",p1_tail:"P1 尾段"};
+const TC_LANE_ORDER=["proper_bet","tail_short","fade_p0m","fade_p0","consensus_noon","tiebreak","basket","copy_follow","p1_consensus","p1_tail"];
 const tcLaneSort=(a,b)=>{const i=TC_LANE_ORDER.indexOf(a),j=TC_LANE_ORDER.indexOf(b);
   return (i<0?99:i)-(j<0?99:j)||String(a).localeCompare(String(b));};
 // 「交易概率校准（第二层）」(charter 259): layer A judges the whole served
@@ -19533,6 +19533,7 @@ const LC_KNOBS = {
   proper_bet: lcStakeKnob("proper_bet", "lc-proper-bet", "Proper每笔"),
   fade_p0m: lcStakeKnob("fade_p0m", "lc-fade-p0m", "反向A每笔"),
   fade_p0: lcStakeKnob("fade_p0", "lc-fade-p0", "反向B每笔"),
+  consensus_noon: lcStakeKnob("consensus_noon", "lc-consensus-noon", "共识线每笔"),
 };
 function lcStakeKnob(lane, id, name){
   return {id, name, path:"/api/lane-stake", body:{lane}, unit:" USDC",
@@ -19591,6 +19592,8 @@ function liveControlStrip(){
       + stakeKnob("fade_p0m", "反向线 A 每笔预算 stake_usdc（USDC；P0-M 模型众数在市场暖侧时吃单买市场众数冷侧一档 YES，每站日一腿，受卖一深度封顶；宪章 277）"))}
     ${group("反向线 B", "fade_p0", laneSwitch("fade_p0")
       + stakeKnob("fade_p0", "反向线 B 每笔预算 stake_usdc（USDC；P0 >36h 分歧大时对模型众数吃单买 NO，每站日一腿，受买一深度封顶；宪章 277）"))}
+    ${group("共识线", "consensus_noon", laneSwitch("consensus_noon")
+      + stakeKnob("consensus_noon", "共识线每笔预算 stake_usdc（USDC；当地 12 点各估计全部指向同一档时吃单买该档 YES，每站日一腿，受卖一深度封顶；宪章 280）"))}
     ${group("秤砣线", "tiebreak", laneSwitch("tiebreak")
       + stakeKnob("tiebreak", "秤砣线每笔预算 stake_usdc（USDC；每个站日至多一笔挂满这么多；宪章 146）"))}
     ${group("跟单线", "", laneSwitch("copy_follow"))}
@@ -19639,6 +19642,9 @@ const LC_LANES = {
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   fade_p0: {name:"反向线 B",
     on:"实盘举旗时，站日最新阶段为 P0、距结算 >36h、模型与市场均值差 >0.76 桶，对模型众数吃单买 NO，每站日一腿（宪章 277）",
+    off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
+  consensus_noon: {name:"共识线",
+    on:"实盘举旗时，事件日当地 12 点起一小时内读一次各估计（确定性 F、成员轨迹贝叶斯、D0、P1、市场），全部指向同一档就吃单买该档 YES，每站日一腿（宪章 280）",
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   pair_maker: {name:"配对挂单线",
     on:"实盘举旗时，盘口成形即在市场众数桶挂 YES/NO 两条 post-only 阶梯（任一 YES＋任一 NO ≤0.95），6 小时窗、允许众数单边持有到结算（宪章 269）",
@@ -19697,7 +19703,7 @@ function liveReadiness(){
   const lsign = v => v==null ? "" : (v>=0?"up":"down");
   const LT = L.lane_pnl_totals || {};
   const LANE_ORDER = [["proper_bet","Proper"],["tail_short","远尾做空"],
-    ["fade_p0m","反向A"],["fade_p0","反向B"],
+    ["fade_p0m","反向A"],["fade_p0","反向B"],["consensus_noon","共识线"],
     ["tiebreak","秤砣线"],["basket","篮子"],["copy_follow","跟单线"]];
   // 同心线 and P1 尾段 have no column (user 2026-10-05: 去掉同心线; 2026-10-09:
   // 去掉p1尾端线数据看板); 合计 still sums every lane.

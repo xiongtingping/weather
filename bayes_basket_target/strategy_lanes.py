@@ -66,6 +66,9 @@ LANE_PAIR_MAKER = "pair_maker"
 #: far from the market.  See ``fade_lane``.
 LANE_FADE_P0M = "fade_p0m"
 LANE_FADE_P0 = "fade_p0"
+#: Charter 280's 共识线 (user ruling 2026-10-23 「做成车道」): at local noon every
+#: estimate on the board points to one bucket -> YES on it.  See ``consensus_lane``.
+LANE_CONSENSUS_NOON = "consensus_noon"
 KNOWN_LANES: tuple[str, ...] = (
     LANE_BASKET,
     LANE_CERTAIN_WIN_RECYCLE,
@@ -79,6 +82,7 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_PAIR_MAKER,
     LANE_FADE_P0M,
     LANE_FADE_P0,
+    LANE_CONSENSUS_NOON,
 )
 
 #: The tiebreak lane's measured settings (33 event days to 2026-09-17, 42
@@ -447,6 +451,36 @@ FADE_P0_DEFAULT_SETTINGS: dict[str, Any] = {
     "lookback_days": 1,
 }
 
+#: Charter 280's 共识线 (user ruling 2026-10-23 「做成车道」): at the first
+#: cycle inside local entry_local_hour..+entry_window_minutes, the board's
+#: estimates (F, member Bayes, D0, P1, market; at least min_voters present)
+#: all on one bucket -> FOK YES on it at the best ask, up to stake_usdc, once
+#: a station-day, held to settlement.  Read 10-15..10-22 (8 event days,
+#: docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit
+#: 80% at a 0.71 ask, +13% a leg [+6, +22]; a cell picked among about twenty.
+#: Off by default: the board switch is the operator's.
+CONSENSUS_NOON_DEFAULT_SETTINGS: dict[str, Any] = {
+    "enabled": False,
+    "rule": "noon_all_agree_majority_yes_taker_v1",
+    "entry_local_hour": 12,
+    "entry_window_minutes": 60.0,
+    "min_voters": 3,
+    # Asks under 0.05 were stale books in the reading (one 0.009 fill carried
+    # the whole naive return); above max_ask the fee leaves nothing to win.
+    "min_ask": 0.05,
+    "max_ask": 0.97,
+    "stake_usdc": 5.0,
+    "walk_ticks": 0,
+    "max_attempts_per_bucket": 3,
+    "max_orders_per_bucket": 8,
+    "unsent_retry_seconds": 300.0,
+    "max_daily_cost_usdc": 150.0,
+    "taker_fee_rate": 0.05,
+    "send_book_fresh_seconds": 60.0,
+    "live_ws_book": True,
+    "lookback_days": 1,
+}
+
 #: The benchmark account (charter 256's badatmath., ``0x8fbd7cf5``) is one
 #: wallet of an eight-wallet bot cluster that trades on one clock
 #: (docs/research/benchmark_account_0x8fbd_20261008, round 6).  The one list:
@@ -582,6 +616,8 @@ STAKE_DIALS: dict[str, dict[str, Any]] = {
     # Charter 277: the two 反向线 takes, 5 USDC by the ruling.
     LANE_FADE_P0M: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_FADE_P0: {"bounds": (1.0, 100.0), "step": 1.0},
+    # Charter 280: the 共识线 take.
+    LANE_CONSENSUS_NOON: {"bounds": (1.0, 100.0), "step": 1.0},
 }
 
 DEFAULT_LANES: dict[str, dict[str, Any]] = {
@@ -597,6 +633,7 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_PAIR_MAKER: dict(PAIR_MAKER_DEFAULT_SETTINGS),
     LANE_FADE_P0M: dict(FADE_P0M_DEFAULT_SETTINGS),
     LANE_FADE_P0: dict(FADE_P0_DEFAULT_SETTINGS),
+    LANE_CONSENSUS_NOON: dict(CONSENSUS_NOON_DEFAULT_SETTINGS),
 }
 
 
@@ -729,6 +766,8 @@ __all__ = [
     "LANE_FADE_P0",
     "FADE_P0M_DEFAULT_SETTINGS",
     "FADE_P0_DEFAULT_SETTINGS",
+    "LANE_CONSENSUS_NOON",
+    "CONSENSUS_NOON_DEFAULT_SETTINGS",
     "PAIR_MAKER_DEFAULT_SETTINGS",
     "LANE_CERTAIN_WIN_RECYCLE",
     "LANE_MIS_BOUGHT_LEG_EXIT",

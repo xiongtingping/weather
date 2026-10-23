@@ -125,6 +125,7 @@ from bayes_basket_target.strategy_lanes import (
     LANE_COPY_FOLLOW,
     LANE_FADE_P0,
     LANE_FADE_P0M,
+    LANE_CONSENSUS_NOON,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
     LANE_PAIR_MAKER,
@@ -4310,6 +4311,29 @@ def run_target_production_cycle(
                 )
             except Exception as exc:
                 fade_head_receipts[_fade_lane] = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 280: the 共识线 at the head too -- its window is one local hour
+    # a station-day, so the vote is read at the cycle boundary, not after the
+    # long work.  A failure is a receipt, never a stop.
+    consensus_head_receipt: dict[str, Any] | None = None
+    if (
+        PRODUCTION_EXECUTION_MODE == "production_live"
+        and head_connection is not None
+        and lane_enabled(LANE_CONSENSUS_NOON)
+    ):
+        try:
+            from bayes_basket_target.consensus_lane import execute_consensus
+            from bayes_basket_target.exit_orders import (
+                default_transport as _consensus_head_transport,
+            )
+            consensus_head_receipt = execute_consensus(
+                head_connection,
+                getattr(worker, "canonical_source_conn", None),
+                transport=_consensus_head_transport,
+                now_utc=utc_now(),
+                live_submit_authorized=True,
+            )
+        except Exception as exc:
+            consensus_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # Charter 256: the 跟单线 at the head too -- the source's trades since the
     # previous cycle's tail are followed before this cycle's long work, not
     # after it.  Charter 257 补记三 (「提高跟单线的权重」): right after H1, ahead of
@@ -4547,6 +4571,26 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             fade_receipts[_fade_lane] = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
+    # Charter 280: the 共识线 again at the tail.
+    consensus_receipt: dict[str, Any] | None = None
+    if PRODUCTION_EXECUTION_MODE == "production_live":
+        if not lane_enabled(LANE_CONSENSUS_NOON):
+            consensus_receipt = {"state": "lane_paused", "lane": LANE_CONSENSUS_NOON}
+        else:
+            try:
+                from bayes_basket_target.consensus_lane import execute_consensus
+                from bayes_basket_target.exit_orders import (
+                    default_transport as _consensus_transport,
+                )
+                consensus_receipt = execute_consensus(
+                    connection,
+                    canonical,
+                    transport=_consensus_transport,
+                    now_utc=utc_now(),
+                    live_submit_authorized=True,
+                )
+            except Exception as exc:
+                consensus_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
     # Charter 256: the 跟单线, on the source's trades since the head -- right
     # after H1 and ahead of the other tail lanes (charter 257 补记三).
     copy_follow_receipt: dict[str, Any] | None = None
@@ -4795,6 +4839,8 @@ def run_target_production_cycle(
         **({"tail_short_lane": tail_short_receipt} if tail_short_receipt else {}),
         **({"fade_lanes_head": fade_head_receipts} if fade_head_receipts else {}),
         **({"fade_lanes": fade_receipts} if fade_receipts else {}),
+        **({"consensus_lane_head": consensus_head_receipt} if consensus_head_receipt else {}),
+        **({"consensus_lane": consensus_receipt} if consensus_receipt else {}),
         **({"copy_follow_lane_head": copy_follow_head_receipt} if copy_follow_head_receipt else {}),
         **({"copy_follow_lane": copy_follow_receipt} if copy_follow_receipt else {}),
     }
