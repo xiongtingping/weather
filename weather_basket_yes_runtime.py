@@ -22,7 +22,12 @@ REPORT_RE = re.compile(
     r"\b(?P<kind>METAR|SPECI)(?:\s+(?:COR|AMD))?\s+"
     r"(?P<station>[A-Z0-9]{4})\s+(?P<day>\d{2})(?P<hour>\d{2})(?P<minute>\d{2})Z\b"
 )
-TEMP_RE = re.compile(r"(?<![A-Z0-9])(?P<temp>M?\d{2}|//)/(?P<dew>M?\d{2}|//)(?![A-Z0-9])")
+# The temperature group is a whole token, TT/TdTd.  Matched inside a token,
+# an automatic station's missing cloud group "//////CB" or "//////TCU" read
+# as "//" over "//" -- temperature missing -- and came before the real group:
+# EGLC 2026-10-21 lost ten METARs, its 13C high among them (09:50Z), and its
+# truth settled a bucket low.
+TEMP_RE = re.compile(r"^(?P<temp>M?\d{2}|//)/(?P<dew>M?\d{2}|//)$")
 SINGLE_BUCKET_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*°?\s*([CF])\s*$", re.I)
 LOW_BUCKET_RE = re.compile(
     r"^\s*(-?\d+(?:\.\d+)?)\s*°?\s*([CF])\s*(?:or\s+below|or\s+lower|or\s+less|and\s+below)\s*$",
@@ -88,7 +93,10 @@ def parse_metar_temperature(raw_text: str, *, expected_station: str = "") -> Par
     if expected and station != expected:
         raise ValueError("metar_station_mismatch")
     body = raw[header.end() :].split(" RMK ", 1)[0]
-    match = TEMP_RE.search(body)
+    match = next(
+        (found for found in map(TEMP_RE.match, body.split()) if found is not None),
+        None,
+    )
     if match is None:
         raise ValueError("metar_temperature_group_missing")
     temperature = _signed_integer(match.group("temp"))
