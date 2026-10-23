@@ -1,0 +1,2187 @@
+[
+ {
+  "subset": "F+member_bayes+D0",
+  "hour": 10,
+  "n": 20,
+  "hit": 0.65,
+  "ask": 0.516,
+  "roi": 0.246,
+  "ci90": [
+   0.0436,
+   0.4138
+  ],
+  "first": null,
+  "second": 0.246,
+  "n_first": 0,
+  "n_second": 20,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.8
+ },
+ {
+  "subset": "F+D0+market",
+  "hour": 12,
+  "n": 24,
+  "hit": 0.75,
+  "ask": 0.644,
+  "roi": 0.1804,
+  "ci90": [
+   0.017,
+   0.2971
+  ],
+  "first": null,
+  "second": 0.1804,
+  "n_first": 0,
+  "n_second": 24,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes",
+  "hour": 14,
+  "n": 35,
+  "hit": 0.743,
+  "ask": 0.706,
+  "roi": 0.1393,
+  "ci90": [
+   -0.2091,
+   0.4005
+  ],
+  "first": null,
+  "second": 0.1393,
+  "n_first": 0,
+  "n_second": 35,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.77
+ },
+ {
+  "subset": "F+D0+P1+market",
+  "hour": 10,
+  "n": 20,
+  "hit": 0.65,
+  "ask": 0.558,
+  "roi": 0.1245,
+  "ci90": [
+   0.0755,
+   0.1843
+  ],
+  "first": null,
+  "second": 0.1245,
+  "n_first": 0,
+  "n_second": 20,
+  "days_pos": 3,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+P1",
+  "hour": 10,
+  "n": 26,
+  "hit": 0.615,
+  "ask": 0.518,
+  "roi": 0.1159,
+  "ci90": [
+   -0.1024,
+   0.3912
+  ],
+  "first": null,
+  "second": 0.1159,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.77
+ },
+ {
+  "subset": "member_bayes+D0+market",
+  "hour": 12,
+  "n": 93,
+  "hit": 0.763,
+  "ask": 0.685,
+  "roi": 0.1021,
+  "ci90": [
+   0.0099,
+   0.1607
+  ],
+  "first": 0.0626,
+  "second": 0.1271,
+  "n_first": 36,
+  "n_second": 57,
+  "days_pos": 5,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1+market",
+  "hour": 10,
+  "n": 71,
+  "hit": 0.662,
+  "ask": 0.612,
+  "roi": 0.1004,
+  "ci90": [
+   -0.0722,
+   0.2239
+  ],
+  "first": 0.1653,
+  "second": 0.0441,
+  "n_first": 33,
+  "n_second": 38,
+  "days_pos": 5,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+market",
+  "hour": 11,
+  "n": 26,
+  "hit": 0.692,
+  "ask": 0.613,
+  "roi": 0.0892,
+  "ci90": [
+   -0.2382,
+   0.3293
+  ],
+  "first": null,
+  "second": 0.0892,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1+market",
+  "hour": 13,
+  "n": 25,
+  "hit": 0.8,
+  "ask": 0.728,
+  "roi": 0.0777,
+  "ci90": [
+   -0.0984,
+   0.3255
+  ],
+  "first": null,
+  "second": 0.0777,
+  "n_first": 0,
+  "n_second": 25,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0",
+  "hour": 10,
+  "n": 44,
+  "hit": 0.477,
+  "ask": 0.463,
+  "roi": 0.0712,
+  "ci90": [
+   -0.1925,
+   0.4025
+  ],
+  "first": null,
+  "second": 0.0712,
+  "n_first": 0,
+  "n_second": 44,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.61
+ },
+ {
+  "subset": "D0+P1+market",
+  "hour": 12,
+  "n": 120,
+  "hit": 0.75,
+  "ask": 0.695,
+  "roi": 0.069,
+  "ci90": [
+   0.0368,
+   0.1089
+  ],
+  "first": 0.1077,
+  "second": 0.0304,
+  "n_first": 60,
+  "n_second": 60,
+  "days_pos": 7,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1+market",
+  "hour": 13,
+  "n": 99,
+  "hit": 0.828,
+  "ask": 0.778,
+  "roi": 0.0666,
+  "ci90": [
+   -0.0055,
+   0.1407
+  ],
+  "first": 0.128,
+  "second": 0.0267,
+  "n_first": 39,
+  "n_second": 60,
+  "days_pos": 5,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+P1+market",
+  "hour": 11,
+  "n": 21,
+  "hit": 0.714,
+  "ask": 0.643,
+  "roi": 0.0644,
+  "ci90": [
+   -0.2526,
+   0.2799
+  ],
+  "first": null,
+  "second": 0.0644,
+  "n_first": 0,
+  "n_second": 21,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+market",
+  "hour": 13,
+  "n": 36,
+  "hit": 0.75,
+  "ask": 0.696,
+  "roi": 0.0623,
+  "ci90": [
+   -0.1044,
+   0.1956
+  ],
+  "first": null,
+  "second": 0.0623,
+  "n_first": 0,
+  "n_second": 36,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+market",
+  "hour": 12,
+  "n": 182,
+  "hit": 0.698,
+  "ask": 0.647,
+  "roi": 0.0614,
+  "ci90": [
+   0.019,
+   0.0983
+  ],
+  "first": 0.0203,
+  "second": 0.099,
+  "n_first": 87,
+  "n_second": 95,
+  "days_pos": 6,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1",
+  "hour": 12,
+  "n": 95,
+  "hit": 0.653,
+  "ask": 0.63,
+  "roi": 0.0578,
+  "ci90": [
+   -0.0779,
+   0.2652
+  ],
+  "first": 0.1306,
+  "second": 0.0114,
+  "n_first": 37,
+  "n_second": 58,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.8
+ },
+ {
+  "subset": "member_bayes+D0+P1+market",
+  "hour": 12,
+  "n": 76,
+  "hit": 0.763,
+  "ask": 0.712,
+  "roi": 0.0563,
+  "ci90": [
+   -0.0012,
+   0.0999
+  ],
+  "first": 0.0662,
+  "second": 0.0499,
+  "n_first": 30,
+  "n_second": 46,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0",
+  "hour": 11,
+  "n": 112,
+  "hit": 0.562,
+  "ask": 0.542,
+  "roi": 0.054,
+  "ci90": [
+   -0.053,
+   0.1916
+  ],
+  "first": 0.2505,
+  "second": -0.0829,
+  "n_first": 46,
+  "n_second": 66,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.7
+ },
+ {
+  "subset": "F+member_bayes+market",
+  "hour": 13,
+  "n": 22,
+  "hit": 0.773,
+  "ask": 0.722,
+  "roi": 0.0476,
+  "ci90": [
+   -0.0687,
+   0.2785
+  ],
+  "first": null,
+  "second": 0.0476,
+  "n_first": 0,
+  "n_second": 22,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+market",
+  "hour": 10,
+  "n": 86,
+  "hit": 0.628,
+  "ask": 0.6,
+  "roi": 0.0466,
+  "ci90": [
+   -0.0969,
+   0.1817
+  ],
+  "first": 0.0821,
+  "second": 0.0198,
+  "n_first": 37,
+  "n_second": 49,
+  "days_pos": 5,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+market",
+  "hour": 13,
+  "n": 107,
+  "hit": 0.804,
+  "ask": 0.766,
+  "roi": 0.0454,
+  "ci90": [
+   -0.0376,
+   0.1261
+  ],
+  "first": 0.128,
+  "second": -0.0019,
+  "n_first": 39,
+  "n_second": 68,
+  "days_pos": 6,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+market",
+  "hour": 11,
+  "n": 171,
+  "hit": 0.62,
+  "ask": 0.591,
+  "roi": 0.0393,
+  "ci90": [
+   -0.0652,
+   0.1688
+  ],
+  "first": 0.0696,
+  "second": 0.0087,
+  "n_first": 86,
+  "n_second": 85,
+  "days_pos": 5,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+D0+P1+market",
+  "hour": 14,
+  "n": 20,
+  "hit": 0.9,
+  "ask": 0.848,
+  "roi": 0.0384,
+  "ci90": [
+   -0.0015,
+   0.1214
+  ],
+  "first": null,
+  "second": 0.0384,
+  "n_first": 0,
+  "n_second": 20,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1",
+  "hour": 13,
+  "n": 115,
+  "hit": 0.748,
+  "ask": 0.722,
+  "roi": 0.0349,
+  "ci90": [
+   -0.0524,
+   0.1825
+  ],
+  "first": 0.1718,
+  "second": -0.0667,
+  "n_first": 49,
+  "n_second": 66,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 0.86
+ },
+ {
+  "subset": "F+D0+market",
+  "hour": 13,
+  "n": 26,
+  "hit": 0.731,
+  "ask": 0.712,
+  "roi": 0.0326,
+  "ci90": [
+   -0.1079,
+   0.1731
+  ],
+  "first": null,
+  "second": 0.0326,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+D0+market",
+  "hour": 14,
+  "n": 23,
+  "hit": 0.87,
+  "ask": 0.82,
+  "roi": 0.0311,
+  "ci90": [
+   -0.0032,
+   0.0953
+  ],
+  "first": null,
+  "second": 0.0311,
+  "n_first": 0,
+  "n_second": 23,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1+market",
+  "hour": 11,
+  "n": 37,
+  "hit": 0.649,
+  "ask": 0.599,
+  "roi": 0.0276,
+  "ci90": [
+   -0.289,
+   0.3118
+  ],
+  "first": null,
+  "second": 0.0276,
+  "n_first": 0,
+  "n_second": 37,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+market",
+  "hour": 11,
+  "n": 78,
+  "hit": 0.654,
+  "ask": 0.632,
+  "roi": 0.0275,
+  "ci90": [
+   -0.1218,
+   0.1654
+  ],
+  "first": 0.0308,
+  "second": 0.0248,
+  "n_first": 35,
+  "n_second": 43,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+P1+market",
+  "hour": 14,
+  "n": 24,
+  "hit": 0.875,
+  "ask": 0.827,
+  "roi": 0.0227,
+  "ci90": [
+   -0.0613,
+   0.1205
+  ],
+  "first": null,
+  "second": 0.0227,
+  "n_first": 0,
+  "n_second": 24,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1+market",
+  "hour": 13,
+  "n": 156,
+  "hit": 0.776,
+  "ask": 0.752,
+  "roi": 0.0201,
+  "ci90": [
+   -0.0413,
+   0.0925
+  ],
+  "first": 0.0381,
+  "second": 0.003,
+  "n_first": 76,
+  "n_second": 80,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+market",
+  "hour": 14,
+  "n": 27,
+  "hit": 0.852,
+  "ask": 0.806,
+  "roi": 0.0182,
+  "ci90": [
+   -0.0509,
+   0.1205
+  ],
+  "first": null,
+  "second": 0.0182,
+  "n_first": 0,
+  "n_second": 27,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1+market",
+  "hour": 14,
+  "n": 28,
+  "hit": 0.857,
+  "ask": 0.818,
+  "roi": 0.0182,
+  "ci90": [
+   -0.0994,
+   0.1529
+  ],
+  "first": null,
+  "second": 0.0182,
+  "n_first": 0,
+  "n_second": 28,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+market",
+  "hour": 11,
+  "n": 50,
+  "hit": 0.62,
+  "ask": 0.577,
+  "roi": 0.017,
+  "ci90": [
+   -0.2939,
+   0.3157
+  ],
+  "first": null,
+  "second": 0.017,
+  "n_first": 0,
+  "n_second": 50,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1+market",
+  "hour": 10,
+  "n": 114,
+  "hit": 0.605,
+  "ask": 0.588,
+  "roi": 0.0168,
+  "ci90": [
+   -0.0751,
+   0.106
+  ],
+  "first": 0.0972,
+  "second": -0.0554,
+  "n_first": 54,
+  "n_second": 60,
+  "days_pos": 5,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1",
+  "hour": 12,
+  "n": 169,
+  "hit": 0.615,
+  "ask": 0.589,
+  "roi": 0.0157,
+  "ci90": [
+   -0.0836,
+   0.1447
+  ],
+  "first": 0.0896,
+  "second": -0.0591,
+  "n_first": 85,
+  "n_second": 84,
+  "days_pos": 3,
+  "days": 8,
+  "market_agrees": 0.71
+ },
+ {
+  "subset": "P1+market",
+  "hour": 14,
+  "n": 258,
+  "hit": 0.818,
+  "ask": 0.8,
+  "roi": 0.015,
+  "ci90": [
+   -0.0379,
+   0.0779
+  ],
+  "first": 0.0541,
+  "second": -0.0222,
+  "n_first": 126,
+  "n_second": 132,
+  "days_pos": 5,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+market",
+  "hour": 13,
+  "n": 202,
+  "hit": 0.743,
+  "ask": 0.72,
+  "roi": 0.0149,
+  "ci90": [
+   -0.0566,
+   0.0885
+  ],
+  "first": -0.0071,
+  "second": 0.0333,
+  "n_first": 92,
+  "n_second": 110,
+  "days_pos": 6,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0",
+  "hour": 12,
+  "n": 125,
+  "hit": 0.616,
+  "ask": 0.593,
+  "roi": 0.0144,
+  "ci90": [
+   -0.115,
+   0.1996
+  ],
+  "first": -0.0201,
+  "second": 0.0382,
+  "n_first": 51,
+  "n_second": 74,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.74
+ },
+ {
+  "subset": "member_bayes+D0",
+  "hour": 13,
+  "n": 134,
+  "hit": 0.701,
+  "ask": 0.682,
+  "roi": 0.0114,
+  "ci90": [
+   -0.0832,
+   0.152
+  ],
+  "first": 0.1704,
+  "second": -0.1027,
+  "n_first": 56,
+  "n_second": 78,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 0.8
+ },
+ {
+  "subset": "member_bayes+P1+market",
+  "hour": 13,
+  "n": 139,
+  "hit": 0.77,
+  "ask": 0.754,
+  "roi": 0.0102,
+  "ci90": [
+   -0.0739,
+   0.0892
+  ],
+  "first": 0.0494,
+  "second": -0.0162,
+  "n_first": 56,
+  "n_second": 83,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1+market",
+  "hour": 14,
+  "n": 186,
+  "hit": 0.833,
+  "ask": 0.823,
+  "roi": 0.0087,
+  "ci90": [
+   -0.0554,
+   0.0817
+  ],
+  "first": 0.0117,
+  "second": 0.006,
+  "n_first": 88,
+  "n_second": 98,
+  "days_pos": 3,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+market",
+  "hour": 14,
+  "n": 36,
+  "hit": 0.833,
+  "ask": 0.797,
+  "roi": 0.0086,
+  "ci90": [
+   -0.1088,
+   0.1025
+  ],
+  "first": null,
+  "second": 0.0086,
+  "n_first": 0,
+  "n_second": 36,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1+market",
+  "hour": 11,
+  "n": 117,
+  "hit": 0.632,
+  "ask": 0.619,
+  "roi": 0.0072,
+  "ci90": [
+   -0.1246,
+   0.1655
+  ],
+  "first": 0.039,
+  "second": -0.0275,
+  "n_first": 61,
+  "n_second": 56,
+  "days_pos": 5,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+market",
+  "hour": 10,
+  "n": 167,
+  "hit": 0.587,
+  "ask": 0.57,
+  "roi": 0.0048,
+  "ci90": [
+   -0.0623,
+   0.0748
+  ],
+  "first": 0.0742,
+  "second": -0.059,
+  "n_first": 80,
+  "n_second": 87,
+  "days_pos": 6,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1",
+  "hour": 13,
+  "n": 196,
+  "hit": 0.689,
+  "ask": 0.677,
+  "roi": 0.0047,
+  "ci90": [
+   -0.0444,
+   0.0641
+  ],
+  "first": 0.0465,
+  "second": -0.0424,
+  "n_first": 104,
+  "n_second": 92,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 0.8
+ },
+ {
+  "subset": "member_bayes+D0+P1+market",
+  "hour": 14,
+  "n": 123,
+  "hit": 0.862,
+  "ask": 0.849,
+  "roi": 0.001,
+  "ci90": [
+   -0.0518,
+   0.0526
+  ],
+  "first": -0.0329,
+  "second": 0.0173,
+  "n_first": 40,
+  "n_second": 83,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+P1+market",
+  "hour": 14,
+  "n": 22,
+  "hit": 0.864,
+  "ask": 0.845,
+  "roi": -0.0004,
+  "ci90": [
+   -0.0546,
+   0.0945
+  ],
+  "first": null,
+  "second": -0.0004,
+  "n_first": 0,
+  "n_second": 22,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+market",
+  "hour": 12,
+  "n": 37,
+  "hit": 0.622,
+  "ask": 0.622,
+  "roi": -0.0008,
+  "ci90": [
+   -0.1482,
+   0.1466
+  ],
+  "first": null,
+  "second": -0.0008,
+  "n_first": 0,
+  "n_second": 37,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+P1",
+  "hour": 14,
+  "n": 29,
+  "hit": 0.793,
+  "ask": 0.76,
+  "roi": -0.0019,
+  "ci90": [
+   -0.2246,
+   0.1677
+  ],
+  "first": null,
+  "second": -0.0019,
+  "n_first": 0,
+  "n_second": 29,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.83
+ },
+ {
+  "subset": "member_bayes+market",
+  "hour": 14,
+  "n": 181,
+  "hit": 0.818,
+  "ask": 0.807,
+  "roi": -0.0025,
+  "ci90": [
+   -0.0661,
+   0.0597
+  ],
+  "first": 0.0242,
+  "second": -0.0164,
+  "n_first": 62,
+  "n_second": 119,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+P1+market",
+  "hour": 10,
+  "n": 26,
+  "hit": 0.577,
+  "ask": 0.543,
+  "roi": -0.0026,
+  "ci90": [
+   -0.1897,
+   0.2332
+  ],
+  "first": null,
+  "second": -0.0026,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+market",
+  "hour": 14,
+  "n": 132,
+  "hit": 0.841,
+  "ask": 0.832,
+  "roi": -0.0075,
+  "ci90": [
+   -0.0706,
+   0.0515
+  ],
+  "first": -0.0139,
+  "second": -0.0046,
+  "n_first": 41,
+  "n_second": 91,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+P1+market",
+  "hour": 14,
+  "n": 160,
+  "hit": 0.838,
+  "ask": 0.829,
+  "roi": -0.0088,
+  "ci90": [
+   -0.0659,
+   0.0513
+  ],
+  "first": 0.0079,
+  "second": -0.0171,
+  "n_first": 53,
+  "n_second": 107,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+D0+P1",
+  "hour": 14,
+  "n": 21,
+  "hit": 0.857,
+  "ask": 0.829,
+  "roi": -0.011,
+  "ci90": [
+   -0.076,
+   0.0945
+  ],
+  "first": null,
+  "second": -0.011,
+  "n_first": 0,
+  "n_second": 21,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.95
+ },
+ {
+  "subset": "F+member_bayes+D0",
+  "hour": 14,
+  "n": 24,
+  "hit": 0.833,
+  "ask": 0.805,
+  "roi": -0.0119,
+  "ci90": [
+   -0.0651,
+   0.0945
+  ],
+  "first": null,
+  "second": -0.0119,
+  "n_first": 0,
+  "n_second": 24,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.96
+ },
+ {
+  "subset": "member_bayes+D0+P1",
+  "hour": 10,
+  "n": 99,
+  "hit": 0.545,
+  "ask": 0.539,
+  "roi": -0.0141,
+  "ci90": [
+   -0.0891,
+   0.0771
+  ],
+  "first": -0.0103,
+  "second": -0.0173,
+  "n_first": 46,
+  "n_second": 53,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 0.72
+ },
+ {
+  "subset": "member_bayes+market",
+  "hour": 13,
+  "n": 161,
+  "hit": 0.733,
+  "ask": 0.732,
+  "roi": -0.0187,
+  "ci90": [
+   -0.1318,
+   0.0914
+  ],
+  "first": 0.0444,
+  "second": -0.0604,
+  "n_first": 64,
+  "n_second": 97,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+market",
+  "hour": 14,
+  "n": 222,
+  "hit": 0.784,
+  "ask": 0.788,
+  "roi": -0.0198,
+  "ci90": [
+   -0.087,
+   0.0629
+  ],
+  "first": -0.0174,
+  "second": -0.0218,
+  "n_first": 102,
+  "n_second": 120,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+D0",
+  "hour": 11,
+  "n": 21,
+  "hit": 0.571,
+  "ask": 0.559,
+  "roi": -0.0209,
+  "ci90": [
+   -0.2071,
+   0.184
+  ],
+  "first": null,
+  "second": -0.0209,
+  "n_first": 0,
+  "n_second": 21,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.76
+ },
+ {
+  "subset": "F+member_bayes+market",
+  "hour": 12,
+  "n": 28,
+  "hit": 0.643,
+  "ask": 0.649,
+  "roi": -0.0228,
+  "ci90": [
+   -0.1513,
+   0.1255
+  ],
+  "first": null,
+  "second": -0.0228,
+  "n_first": 0,
+  "n_second": 28,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+market",
+  "hour": 14,
+  "n": 27,
+  "hit": 0.815,
+  "ask": 0.805,
+  "roi": -0.0228,
+  "ci90": [
+   -0.0652,
+   0.0229
+  ],
+  "first": null,
+  "second": -0.0228,
+  "n_first": 0,
+  "n_second": 27,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0",
+  "hour": 14,
+  "n": 154,
+  "hit": 0.753,
+  "ask": 0.763,
+  "roi": -0.0276,
+  "ci90": [
+   -0.1094,
+   0.0883
+  ],
+  "first": 0.0487,
+  "second": -0.0666,
+  "n_first": 52,
+  "n_second": 102,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.86
+ },
+ {
+  "subset": "member_bayes+D0+P1",
+  "hour": 14,
+  "n": 135,
+  "hit": 0.793,
+  "ask": 0.804,
+  "roi": -0.0298,
+  "ci90": [
+   -0.107,
+   0.0797
+  ],
+  "first": 0.0116,
+  "second": -0.0512,
+  "n_first": 46,
+  "n_second": 89,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.91
+ },
+ {
+  "subset": "F+D0+market",
+  "hour": 10,
+  "n": 27,
+  "hit": 0.556,
+  "ask": 0.557,
+  "roi": -0.0315,
+  "ci90": [
+   -0.1047,
+   0.0672
+  ],
+  "first": null,
+  "second": -0.0315,
+  "n_first": 0,
+  "n_second": 27,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "D0+P1",
+  "hour": 11,
+  "n": 159,
+  "hit": 0.535,
+  "ask": 0.54,
+  "roi": -0.0317,
+  "ci90": [
+   -0.1987,
+   0.1575
+  ],
+  "first": 0.1635,
+  "second": -0.2151,
+  "n_first": 77,
+  "n_second": 82,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 0.74
+ },
+ {
+  "subset": "F+P1",
+  "hour": 14,
+  "n": 34,
+  "hit": 0.765,
+  "ask": 0.752,
+  "roi": -0.0321,
+  "ci90": [
+   -0.2281,
+   0.1448
+  ],
+  "first": null,
+  "second": -0.0321,
+  "n_first": 0,
+  "n_second": 34,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.82
+ },
+ {
+  "subset": "P1+market",
+  "hour": 13,
+  "n": 239,
+  "hit": 0.72,
+  "ask": 0.729,
+  "roi": -0.0389,
+  "ci90": [
+   -0.1033,
+   0.0409
+  ],
+  "first": -0.054,
+  "second": -0.0226,
+  "n_first": 124,
+  "n_second": 115,
+  "days_pos": 2,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+market",
+  "hour": 11,
+  "n": 145,
+  "hit": 0.6,
+  "ask": 0.608,
+  "roi": -0.0409,
+  "ci90": [
+   -0.1335,
+   0.0599
+  ],
+  "first": -0.098,
+  "second": -0.0039,
+  "n_first": 57,
+  "n_second": 88,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1",
+  "hour": 11,
+  "n": 89,
+  "hit": 0.551,
+  "ask": 0.568,
+  "roi": -0.0409,
+  "ci90": [
+   -0.214,
+   0.1528
+  ],
+  "first": 0.2652,
+  "second": -0.2489,
+  "n_first": 36,
+  "n_second": 53,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.75
+ },
+ {
+  "subset": "D0+P1",
+  "hour": 10,
+  "n": 167,
+  "hit": 0.515,
+  "ask": 0.51,
+  "roi": -0.0412,
+  "ci90": [
+   -0.1154,
+   0.0541
+  ],
+  "first": -0.0357,
+  "second": -0.0461,
+  "n_first": 78,
+  "n_second": 89,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 0.68
+ },
+ {
+  "subset": "F+D0+P1",
+  "hour": 14,
+  "n": 23,
+  "hit": 0.826,
+  "ask": 0.827,
+  "roi": -0.0439,
+  "ci90": [
+   -0.1182,
+   0.0945
+  ],
+  "first": null,
+  "second": -0.0439,
+  "n_first": 0,
+  "n_second": 23,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.96
+ },
+ {
+  "subset": "D0+P1",
+  "hour": 14,
+  "n": 212,
+  "hit": 0.75,
+  "ask": 0.768,
+  "roi": -0.0461,
+  "ci90": [
+   -0.1328,
+   0.0511
+  ],
+  "first": -0.0275,
+  "second": -0.0641,
+  "n_first": 104,
+  "n_second": 108,
+  "days_pos": 4,
+  "days": 8,
+  "market_agrees": 0.88
+ },
+ {
+  "subset": "F+member_bayes+market",
+  "hour": 11,
+  "n": 30,
+  "hit": 0.6,
+  "ask": 0.592,
+  "roi": -0.0464,
+  "ci90": [
+   -0.2345,
+   0.2169
+  ],
+  "first": null,
+  "second": -0.0464,
+  "n_first": 0,
+  "n_second": 30,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+D0+P1+market",
+  "hour": 11,
+  "n": 67,
+  "hit": 0.627,
+  "ask": 0.646,
+  "roi": -0.0493,
+  "ci90": [
+   -0.2319,
+   0.1226
+  ],
+  "first": 0.0366,
+  "second": -0.119,
+  "n_first": 30,
+  "n_second": 37,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0",
+  "hour": 13,
+  "n": 36,
+  "hit": 0.583,
+  "ask": 0.61,
+  "roi": -0.0496,
+  "ci90": [
+   -0.4053,
+   0.3707
+  ],
+  "first": null,
+  "second": -0.0496,
+  "n_first": 0,
+  "n_second": 36,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.72
+ },
+ {
+  "subset": "member_bayes+D0",
+  "hour": 10,
+  "n": 126,
+  "hit": 0.508,
+  "ask": 0.511,
+  "roi": -0.0505,
+  "ci90": [
+   -0.1479,
+   0.0685
+  ],
+  "first": -0.1588,
+  "second": 0.0361,
+  "n_first": 56,
+  "n_second": 70,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 0.68
+ },
+ {
+  "subset": "F+member_bayes+D0",
+  "hour": 12,
+  "n": 22,
+  "hit": 0.636,
+  "ask": 0.615,
+  "roi": -0.0507,
+  "ci90": [
+   -0.3199,
+   0.2441
+  ],
+  "first": null,
+  "second": -0.0507,
+  "n_first": 0,
+  "n_second": 22,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.82
+ },
+ {
+  "subset": "P1+market",
+  "hour": 12,
+  "n": 208,
+  "hit": 0.644,
+  "ask": 0.659,
+  "roi": -0.0519,
+  "ci90": [
+   -0.1188,
+   0.0155
+  ],
+  "first": -0.008,
+  "second": -0.105,
+  "n_first": 114,
+  "n_second": 94,
+  "days_pos": 2,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1",
+  "hour": 13,
+  "n": 32,
+  "hit": 0.656,
+  "ask": 0.639,
+  "roi": -0.054,
+  "ci90": [
+   -0.1657,
+   0.0808
+  ],
+  "first": null,
+  "second": -0.054,
+  "n_first": 0,
+  "n_second": 32,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.78
+ },
+ {
+  "subset": "member_bayes+market",
+  "hour": 12,
+  "n": 158,
+  "hit": 0.639,
+  "ask": 0.652,
+  "roi": -0.0554,
+  "ci90": [
+   -0.144,
+   0.0158
+  ],
+  "first": -0.0293,
+  "second": -0.0717,
+  "n_first": 61,
+  "n_second": 97,
+  "days_pos": 1,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+P1+market",
+  "hour": 10,
+  "n": 122,
+  "hit": 0.557,
+  "ask": 0.579,
+  "roi": -0.0575,
+  "ci90": [
+   -0.1767,
+   0.0501
+  ],
+  "first": -0.0064,
+  "second": -0.0942,
+  "n_first": 51,
+  "n_second": 71,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "P1+market",
+  "hour": 11,
+  "n": 213,
+  "hit": 0.582,
+  "ask": 0.603,
+  "roi": -0.0651,
+  "ci90": [
+   -0.1771,
+   0.0704
+  ],
+  "first": -0.0566,
+  "second": -0.0739,
+  "n_first": 108,
+  "n_second": 105,
+  "days_pos": 2,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+P1+market",
+  "hour": 12,
+  "n": 120,
+  "hit": 0.658,
+  "ask": 0.68,
+  "roi": -0.0666,
+  "ci90": [
+   -0.183,
+   0.0358
+  ],
+  "first": 0.0472,
+  "second": -0.1399,
+  "n_first": 47,
+  "n_second": 73,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+P1",
+  "hour": 11,
+  "n": 177,
+  "hit": 0.492,
+  "ask": 0.528,
+  "roi": -0.0689,
+  "ci90": [
+   -0.2182,
+   0.0809
+  ],
+  "first": 0.1783,
+  "second": -0.2232,
+  "n_first": 68,
+  "n_second": 109,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.68
+ },
+ {
+  "subset": "member_bayes+P1",
+  "hour": 14,
+  "n": 197,
+  "hit": 0.721,
+  "ask": 0.737,
+  "roi": -0.073,
+  "ci90": [
+   -0.1269,
+   -0.0076
+  ],
+  "first": -0.0372,
+  "second": -0.0919,
+  "n_first": 68,
+  "n_second": 129,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 0.81
+ },
+ {
+  "subset": "member_bayes+P1",
+  "hour": 12,
+  "n": 173,
+  "hit": 0.538,
+  "ask": 0.573,
+  "roi": -0.08,
+  "ci90": [
+   -0.2012,
+   0.0736
+  ],
+  "first": 0.1383,
+  "second": -0.1959,
+  "n_first": 60,
+  "n_second": 113,
+  "days_pos": 4,
+  "days": 7,
+  "market_agrees": 0.69
+ },
+ {
+  "subset": "member_bayes+P1",
+  "hour": 13,
+  "n": 185,
+  "hit": 0.632,
+  "ask": 0.651,
+  "roi": -0.081,
+  "ci90": [
+   -0.1622,
+   0.037
+  ],
+  "first": 0.0562,
+  "second": -0.1685,
+  "n_first": 72,
+  "n_second": 113,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.75
+ },
+ {
+  "subset": "member_bayes+P1",
+  "hour": 10,
+  "n": 180,
+  "hit": 0.472,
+  "ask": 0.501,
+  "roi": -0.0821,
+  "ci90": [
+   -0.1776,
+   -0.0046
+  ],
+  "first": 0.0017,
+  "second": -0.1478,
+  "n_first": 79,
+  "n_second": 101,
+  "days_pos": 3,
+  "days": 7,
+  "market_agrees": 0.68
+ },
+ {
+  "subset": "F+member_bayes+P1+market",
+  "hour": 11,
+  "n": 27,
+  "hit": 0.593,
+  "ask": 0.6,
+  "roi": -0.0894,
+  "ci90": [
+   -0.3359,
+   0.2188
+  ],
+  "first": null,
+  "second": -0.0894,
+  "n_first": 0,
+  "n_second": 27,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0",
+  "hour": 14,
+  "n": 33,
+  "hit": 0.697,
+  "ask": 0.707,
+  "roi": -0.0995,
+  "ci90": [
+   -0.1135,
+   -0.0801
+  ],
+  "first": null,
+  "second": -0.0995,
+  "n_first": 0,
+  "n_second": 33,
+  "days_pos": 0,
+  "days": 3,
+  "market_agrees": 0.82
+ },
+ {
+  "subset": "F+member_bayes+market",
+  "hour": 10,
+  "n": 31,
+  "hit": 0.516,
+  "ask": 0.543,
+  "roi": -0.1018,
+  "ci90": [
+   -0.2739,
+   0.1214
+  ],
+  "first": null,
+  "second": -0.1018,
+  "n_first": 0,
+  "n_second": 31,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0",
+  "hour": 11,
+  "n": 39,
+  "hit": 0.513,
+  "ask": 0.516,
+  "roi": -0.1051,
+  "ci90": [
+   -0.2764,
+   0.0205
+  ],
+  "first": null,
+  "second": -0.1051,
+  "n_first": 0,
+  "n_second": 39,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.67
+ },
+ {
+  "subset": "F+member_bayes+P1",
+  "hour": 10,
+  "n": 29,
+  "hit": 0.517,
+  "ask": 0.513,
+  "roi": -0.1058,
+  "ci90": [
+   -0.2693,
+   0.1823
+  ],
+  "first": null,
+  "second": -0.1058,
+  "n_first": 0,
+  "n_second": 29,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.9
+ },
+ {
+  "subset": "member_bayes+market",
+  "hour": 10,
+  "n": 153,
+  "hit": 0.523,
+  "ask": 0.571,
+  "roi": -0.107,
+  "ci90": [
+   -0.2357,
+   0.0106
+  ],
+  "first": -0.1046,
+  "second": -0.1085,
+  "n_first": 60,
+  "n_second": 93,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "member_bayes+P1+market",
+  "hour": 11,
+  "n": 120,
+  "hit": 0.575,
+  "ask": 0.619,
+  "roi": -0.1099,
+  "ci90": [
+   -0.2469,
+   0.0363
+  ],
+  "first": -0.0837,
+  "second": -0.1267,
+  "n_first": 47,
+  "n_second": 73,
+  "days_pos": 2,
+  "days": 7,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1+market",
+  "hour": 12,
+  "n": 23,
+  "hit": 0.609,
+  "ask": 0.656,
+  "roi": -0.1162,
+  "ci90": [
+   -0.3189,
+   0.1015
+  ],
+  "first": null,
+  "second": -0.1162,
+  "n_first": 0,
+  "n_second": 23,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "P1+market",
+  "hour": 10,
+  "n": 206,
+  "hit": 0.519,
+  "ask": 0.564,
+  "roi": -0.1165,
+  "ci90": [
+   -0.2074,
+   -0.0214
+  ],
+  "first": -0.0624,
+  "second": -0.1675,
+  "n_first": 100,
+  "n_second": 106,
+  "days_pos": 3,
+  "days": 8,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+P1",
+  "hour": 13,
+  "n": 24,
+  "hit": 0.667,
+  "ask": 0.657,
+  "roi": -0.118,
+  "ci90": [
+   -0.3359,
+   0.187
+  ],
+  "first": null,
+  "second": -0.118,
+  "n_first": 0,
+  "n_second": 24,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.79
+ },
+ {
+  "subset": "F+P1+market",
+  "hour": 10,
+  "n": 34,
+  "hit": 0.5,
+  "ask": 0.536,
+  "roi": -0.1379,
+  "ci90": [
+   -0.3137,
+   0.0986
+  ],
+  "first": null,
+  "second": -0.1379,
+  "n_first": 0,
+  "n_second": 34,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+D0+P1",
+  "hour": 11,
+  "n": 26,
+  "hit": 0.577,
+  "ask": 0.588,
+  "roi": -0.1403,
+  "ci90": [
+   -0.4225,
+   0.0666
+  ],
+  "first": null,
+  "second": -0.1403,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.81
+ },
+ {
+  "subset": "F+D0+P1",
+  "hour": 13,
+  "n": 21,
+  "hit": 0.667,
+  "ask": 0.723,
+  "roi": -0.1406,
+  "ci90": [
+   -0.2477,
+   0.1273
+  ],
+  "first": null,
+  "second": -0.1406,
+  "n_first": 0,
+  "n_second": 21,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.9
+ },
+ {
+  "subset": "F+D0",
+  "hour": 12,
+  "n": 35,
+  "hit": 0.543,
+  "ask": 0.543,
+  "roi": -0.1431,
+  "ci90": [
+   -0.4018,
+   0.1011
+  ],
+  "first": null,
+  "second": -0.1431,
+  "n_first": 0,
+  "n_second": 35,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.69
+ },
+ {
+  "subset": "F+P1",
+  "hour": 10,
+  "n": 45,
+  "hit": 0.467,
+  "ask": 0.484,
+  "roi": -0.1483,
+  "ci90": [
+   -0.3914,
+   0.1695
+  ],
+  "first": null,
+  "second": -0.1483,
+  "n_first": 0,
+  "n_second": 45,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.76
+ },
+ {
+  "subset": "F+D0+P1",
+  "hour": 12,
+  "n": 20,
+  "hit": 0.6,
+  "ask": 0.591,
+  "roi": -0.1631,
+  "ci90": [
+   -0.3887,
+   0.1754
+  ],
+  "first": null,
+  "second": -0.1631,
+  "n_first": 0,
+  "n_second": 20,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.75
+ },
+ {
+  "subset": "F+member_bayes+P1+market",
+  "hour": 12,
+  "n": 20,
+  "hit": 0.6,
+  "ask": 0.675,
+  "roi": -0.1631,
+  "ci90": [
+   -0.3331,
+   0.0448
+  ],
+  "first": null,
+  "second": -0.1631,
+  "n_first": 0,
+  "n_second": 20,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+member_bayes+D0",
+  "hour": 13,
+  "n": 21,
+  "hit": 0.619,
+  "ask": 0.659,
+  "roi": -0.1786,
+  "ci90": [
+   -0.3371,
+   0.1903
+  ],
+  "first": null,
+  "second": -0.1786,
+  "n_first": 0,
+  "n_second": 21,
+  "days_pos": 2,
+  "days": 3,
+  "market_agrees": 0.81
+ },
+ {
+  "subset": "F+market",
+  "hour": 10,
+  "n": 50,
+  "hit": 0.46,
+  "ask": 0.534,
+  "roi": -0.1894,
+  "ci90": [
+   -0.3591,
+   0.0549
+  ],
+  "first": null,
+  "second": -0.1894,
+  "n_first": 0,
+  "n_second": 50,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 1.0
+ },
+ {
+  "subset": "F+P1",
+  "hour": 11,
+  "n": 51,
+  "hit": 0.49,
+  "ask": 0.528,
+  "roi": -0.2017,
+  "ci90": [
+   -0.4484,
+   0.0356
+  ],
+  "first": null,
+  "second": -0.2017,
+  "n_first": 0,
+  "n_second": 51,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.73
+ },
+ {
+  "subset": "F+member_bayes",
+  "hour": 10,
+  "n": 42,
+  "hit": 0.405,
+  "ask": 0.469,
+  "roi": -0.2402,
+  "ci90": [
+   -0.3601,
+   -0.0963
+  ],
+  "first": null,
+  "second": -0.2402,
+  "n_first": 0,
+  "n_second": 42,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.74
+ },
+ {
+  "subset": "F+member_bayes+P1",
+  "hour": 11,
+  "n": 36,
+  "hit": 0.472,
+  "ask": 0.54,
+  "roi": -0.2423,
+  "ci90": [
+   -0.4202,
+   -0.0321
+  ],
+  "first": null,
+  "second": -0.2423,
+  "n_first": 0,
+  "n_second": 36,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.75
+ },
+ {
+  "subset": "F+member_bayes",
+  "hour": 11,
+  "n": 47,
+  "hit": 0.426,
+  "ask": 0.501,
+  "roi": -0.2583,
+  "ci90": [
+   -0.3886,
+   -0.0899
+  ],
+  "first": null,
+  "second": -0.2583,
+  "n_first": 0,
+  "n_second": 47,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.64
+ },
+ {
+  "subset": "F+member_bayes",
+  "hour": 12,
+  "n": 41,
+  "hit": 0.439,
+  "ask": 0.544,
+  "roi": -0.3327,
+  "ci90": [
+   -0.5124,
+   0.0335
+  ],
+  "first": null,
+  "second": -0.3327,
+  "n_first": 0,
+  "n_second": 41,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.68
+ },
+ {
+  "subset": "F+member_bayes+P1",
+  "hour": 12,
+  "n": 26,
+  "hit": 0.462,
+  "ask": 0.593,
+  "roi": -0.3562,
+  "ci90": [
+   -0.5554,
+   -0.0102
+  ],
+  "first": null,
+  "second": -0.3562,
+  "n_first": 0,
+  "n_second": 26,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.77
+ },
+ {
+  "subset": "F+member_bayes",
+  "hour": 13,
+  "n": 36,
+  "hit": 0.472,
+  "ask": 0.551,
+  "roi": -0.3598,
+  "ci90": [
+   -0.5174,
+   -0.1207
+  ],
+  "first": null,
+  "second": -0.3598,
+  "n_first": 0,
+  "n_second": 36,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.61
+ },
+ {
+  "subset": "F+P1",
+  "hour": 12,
+  "n": 37,
+  "hit": 0.405,
+  "ask": 0.531,
+  "roi": -0.3881,
+  "ci90": [
+   -0.5505,
+   -0.1969
+  ],
+  "first": null,
+  "second": -0.3881,
+  "n_first": 0,
+  "n_second": 37,
+  "days_pos": 1,
+  "days": 3,
+  "market_agrees": 0.62
+ }
+]
