@@ -1,0 +1,3770 @@
+{
+ "station_days": 116,
+ "cells": [
+  {
+   "subset": "F+member_bayes+D0+P1",
+   "hour": 10,
+   "n": 10,
+   "has_mos": false,
+   "hit": 0.8,
+   "ask": 0.533,
+   "roi": 0.4581,
+   "ci90": [
+    0.3217,
+    0.6249
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+market",
+   "hour": 10,
+   "n": 10,
+   "has_mos": false,
+   "hit": 0.8,
+   "ask": 0.557,
+   "roi": 0.4581,
+   "ci90": [
+    0.3294,
+    0.6154
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS",
+   "hour": 10,
+   "n": 15,
+   "has_mos": true,
+   "hit": 0.533,
+   "ask": 0.463,
+   "roi": 0.4497,
+   "ci90": [
+    -0.3946,
+    1.1885
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0",
+   "hour": 10,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.535,
+   "roi": 0.3256,
+   "ci90": [
+    0.2263,
+    0.3943
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS",
+   "hour": 10,
+   "n": 19,
+   "has_mos": true,
+   "hit": 0.632,
+   "ask": 0.508,
+   "roi": 0.2913,
+   "ci90": [
+    -0.0543,
+    0.7155
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS",
+   "hour": 10,
+   "n": 45,
+   "has_mos": true,
+   "hit": 0.489,
+   "ask": 0.454,
+   "roi": 0.2222,
+   "ci90": [
+    -0.3079,
+    0.8648
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+P1",
+   "hour": 10,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.632,
+   "ask": 0.5,
+   "roi": 0.1968,
+   "ci90": [
+    -0.06,
+    0.3836
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+market",
+   "hour": 11,
+   "n": 12,
+   "has_mos": false,
+   "hit": 0.75,
+   "ask": 0.618,
+   "roi": 0.1886,
+   "ci90": [
+    -0.0615,
+    0.4071
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+D0",
+   "hour": 10,
+   "n": 31,
+   "has_mos": false,
+   "hit": 0.516,
+   "ask": 0.469,
+   "roi": 0.1869,
+   "ci90": [
+    -0.2949,
+    0.6103
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+market",
+   "hour": 14,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.941,
+   "ask": 0.816,
+   "roi": 0.1587,
+   "ci90": [
+    0.0778,
+    0.2301
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1+market",
+   "hour": 10,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.643,
+   "ask": 0.541,
+   "roi": 0.1582,
+   "ci90": [
+    0.1037,
+    0.2115
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+market",
+   "hour": 12,
+   "n": 20,
+   "has_mos": false,
+   "hit": 0.7,
+   "ask": 0.62,
+   "roi": 0.1541,
+   "ci90": [
+    -0.112,
+    0.3138
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes",
+   "hour": 14,
+   "n": 24,
+   "has_mos": false,
+   "hit": 0.708,
+   "ask": 0.695,
+   "roi": 0.152,
+   "ci90": [
+    -0.2399,
+    0.4835
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+market",
+   "hour": 12,
+   "n": 15,
+   "has_mos": false,
+   "hit": 0.733,
+   "ask": 0.652,
+   "roi": 0.1376,
+   "ci90": [
+    -0.1295,
+    0.3714
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+P1+market",
+   "hour": 11,
+   "n": 20,
+   "has_mos": true,
+   "hit": 0.75,
+   "ask": 0.648,
+   "roi": 0.1369,
+   "ci90": [
+    -0.1466,
+    0.6058
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS",
+   "hour": 10,
+   "n": 23,
+   "has_mos": true,
+   "hit": 0.435,
+   "ask": 0.453,
+   "roi": 0.1353,
+   "ci90": [
+    -0.6468,
+    0.9886
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+market",
+   "hour": 11,
+   "n": 32,
+   "has_mos": false,
+   "hit": 0.719,
+   "ask": 0.627,
+   "roi": 0.1313,
+   "ci90": [
+    -0.0769,
+    0.3395
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+P1+market",
+   "hour": 14,
+   "n": 14,
+   "has_mos": true,
+   "hit": 0.929,
+   "ask": 0.826,
+   "roi": 0.1246,
+   "ci90": [
+    -0.0096,
+    0.2351
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+MOS+market",
+   "hour": 14,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.923,
+   "ask": 0.828,
+   "roi": 0.1201,
+   "ci90": [
+    0.0565,
+    0.1981
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS",
+   "hour": 11,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.615,
+   "ask": 0.543,
+   "roi": 0.117,
+   "ci90": [
+    -0.1928,
+    0.3441
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+market",
+   "hour": 11,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.684,
+   "ask": 0.591,
+   "roi": 0.1141,
+   "ci90": [
+    -0.1284,
+    0.2905
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1",
+   "hour": 10,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.588,
+   "ask": 0.518,
+   "roi": 0.111,
+   "ci90": [
+    -0.083,
+    0.3324
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+MOS",
+   "hour": 14,
+   "n": 15,
+   "has_mos": true,
+   "hit": 0.8,
+   "ask": 0.727,
+   "roi": 0.1093,
+   "ci90": [
+    0.0738,
+    0.1921
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS+market",
+   "hour": 14,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.917,
+   "ask": 0.831,
+   "roi": 0.1091,
+   "ci90": [
+    0.0565,
+    0.1921
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+MOS+market",
+   "hour": 14,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.917,
+   "ask": 0.831,
+   "roi": 0.1091,
+   "ci90": [
+    0.0565,
+    0.1921
+   ],
+   "days_pos": 3,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1+market",
+   "hour": 11,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.634,
+   "roi": 0.0956,
+   "ci90": [
+    -0.2158,
+    0.4071
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS+market",
+   "hour": 12,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.615,
+   "ask": 0.596,
+   "roi": 0.0904,
+   "ci90": [
+    -0.136,
+    0.2103
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1+market",
+   "hour": 11,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.714,
+   "ask": 0.627,
+   "roi": 0.0857,
+   "ci90": [
+    -0.1009,
+    0.2145
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+P1",
+   "hour": 13,
+   "n": 35,
+   "has_mos": true,
+   "hit": 0.771,
+   "ask": 0.723,
+   "roi": 0.0856,
+   "ci90": [
+    -0.0903,
+    0.25
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0",
+   "hour": 10,
+   "n": 42,
+   "has_mos": false,
+   "hit": 0.595,
+   "ask": 0.535,
+   "roi": 0.085,
+   "ci90": [
+    -0.0594,
+    0.2192
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1+market",
+   "hour": 14,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.917,
+   "ask": 0.844,
+   "roi": 0.0836,
+   "ci90": [
+    -0.0439,
+    0.1981
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+market",
+   "hour": 11,
+   "n": 60,
+   "has_mos": false,
+   "hit": 0.65,
+   "ask": 0.589,
+   "roi": 0.0685,
+   "ci90": [
+    -0.1513,
+    0.3035
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+MOS+P1+market",
+   "hour": 14,
+   "n": 11,
+   "has_mos": true,
+   "hit": 0.909,
+   "ask": 0.849,
+   "roi": 0.0682,
+   "ci90": [
+    -0.0439,
+    0.1921
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+MOS+P1+market",
+   "hour": 14,
+   "n": 11,
+   "has_mos": true,
+   "hit": 0.909,
+   "ask": 0.849,
+   "roi": 0.0682,
+   "ci90": [
+    -0.0439,
+    0.1921
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+market",
+   "hour": 11,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.769,
+   "ask": 0.7,
+   "roi": 0.0657,
+   "ci90": [
+    -0.1485,
+    0.4953
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1+market",
+   "hour": 11,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.769,
+   "ask": 0.7,
+   "roi": 0.0657,
+   "ci90": [
+    -0.1485,
+    0.4953
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+market",
+   "hour": 11,
+   "n": 16,
+   "has_mos": true,
+   "hit": 0.625,
+   "ask": 0.562,
+   "roi": 0.0654,
+   "ci90": [
+    -0.3055,
+    0.5422
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+P1+market",
+   "hour": 10,
+   "n": 26,
+   "has_mos": false,
+   "hit": 0.654,
+   "ask": 0.605,
+   "roi": 0.0635,
+   "ci90": [
+    -0.137,
+    0.2807
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0+market",
+   "hour": 14,
+   "n": 16,
+   "has_mos": false,
+   "hit": 0.875,
+   "ask": 0.809,
+   "roi": 0.0628,
+   "ci90": [
+    -0.0006,
+    0.1685
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+market",
+   "hour": 12,
+   "n": 69,
+   "has_mos": false,
+   "hit": 0.696,
+   "ask": 0.644,
+   "roi": 0.057,
+   "ci90": [
+    -0.0163,
+    0.1196
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+market",
+   "hour": 14,
+   "n": 43,
+   "has_mos": true,
+   "hit": 0.907,
+   "ask": 0.853,
+   "roi": 0.0557,
+   "ci90": [
+    -0.0186,
+    0.1597
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+market",
+   "hour": 14,
+   "n": 48,
+   "has_mos": true,
+   "hit": 0.896,
+   "ask": 0.847,
+   "roi": 0.0556,
+   "ci90": [
+    -0.0055,
+    0.1281
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "MOS+market",
+   "hour": 14,
+   "n": 64,
+   "has_mos": true,
+   "hit": 0.875,
+   "ask": 0.826,
+   "roi": 0.055,
+   "ci90": [
+    0.0073,
+    0.1124
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+market",
+   "hour": 14,
+   "n": 63,
+   "has_mos": false,
+   "hit": 0.889,
+   "ask": 0.838,
+   "roi": 0.0487,
+   "ci90": [
+    0.0081,
+    0.087
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+market",
+   "hour": 12,
+   "n": 45,
+   "has_mos": false,
+   "hit": 0.733,
+   "ask": 0.684,
+   "roi": 0.045,
+   "ci90": [
+    -0.1106,
+    0.1661
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+P1+market",
+   "hour": 12,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.685,
+   "roi": 0.0447,
+   "ci90": [
+    -0.3045,
+    0.3939
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1+market",
+   "hour": 12,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.685,
+   "roi": 0.0447,
+   "ci90": [
+    -0.3045,
+    0.3939
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+market",
+   "hour": 14,
+   "n": 49,
+   "has_mos": true,
+   "hit": 0.878,
+   "ask": 0.833,
+   "roi": 0.0438,
+   "ci90": [
+    -0.009,
+    0.1101
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1+market",
+   "hour": 14,
+   "n": 42,
+   "has_mos": true,
+   "hit": 0.905,
+   "ask": 0.858,
+   "roi": 0.0437,
+   "ci90": [
+    -0.0535,
+    0.1597
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS",
+   "hour": 14,
+   "n": 56,
+   "has_mos": true,
+   "hit": 0.821,
+   "ask": 0.773,
+   "roi": 0.0435,
+   "ci90": [
+    -0.0237,
+    0.1211
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+market",
+   "hour": 11,
+   "n": 54,
+   "has_mos": false,
+   "hit": 0.63,
+   "ask": 0.591,
+   "roi": 0.0396,
+   "ci90": [
+    -0.1344,
+    0.3666
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+market",
+   "hour": 10,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.615,
+   "ask": 0.585,
+   "roi": 0.0388,
+   "ci90": [
+    -0.2088,
+    0.3238
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1+market",
+   "hour": 14,
+   "n": 55,
+   "has_mos": true,
+   "hit": 0.873,
+   "ask": 0.835,
+   "roi": 0.0386,
+   "ci90": [
+    -0.0302,
+    0.0987
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS",
+   "hour": 14,
+   "n": 46,
+   "has_mos": true,
+   "hit": 0.87,
+   "ask": 0.821,
+   "roi": 0.0371,
+   "ci90": [
+    -0.0463,
+    0.1072
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+market",
+   "hour": 13,
+   "n": 40,
+   "has_mos": true,
+   "hit": 0.775,
+   "ask": 0.733,
+   "roi": 0.0371,
+   "ci90": [
+    -0.0939,
+    0.1353
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+market",
+   "hour": 14,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.842,
+   "ask": 0.786,
+   "roi": 0.035,
+   "ci90": [
+    -0.0276,
+    0.131
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+P1+market",
+   "hour": 14,
+   "n": 61,
+   "has_mos": false,
+   "hit": 0.885,
+   "ask": 0.843,
+   "roi": 0.0348,
+   "ci90": [
+    -0.024,
+    0.087
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS",
+   "hour": 11,
+   "n": 44,
+   "has_mos": true,
+   "hit": 0.545,
+   "ask": 0.516,
+   "roi": 0.034,
+   "ci90": [
+    -0.1996,
+    0.4051
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+P1+market",
+   "hour": 14,
+   "n": 48,
+   "has_mos": true,
+   "hit": 0.875,
+   "ask": 0.837,
+   "roi": 0.0331,
+   "ci90": [
+    -0.032,
+    0.1101
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1+market",
+   "hour": 11,
+   "n": 39,
+   "has_mos": false,
+   "hit": 0.667,
+   "ask": 0.62,
+   "roi": 0.0308,
+   "ci90": [
+    -0.1974,
+    0.2835
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+P1+market",
+   "hour": 11,
+   "n": 11,
+   "has_mos": true,
+   "hit": 0.636,
+   "ask": 0.582,
+   "roi": 0.0271,
+   "ci90": [
+    -0.1803,
+    0.3267
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS",
+   "hour": 14,
+   "n": 59,
+   "has_mos": true,
+   "hit": 0.797,
+   "ask": 0.751,
+   "roi": 0.0265,
+   "ci90": [
+    -0.0457,
+    0.1181
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+P1+market",
+   "hour": 14,
+   "n": 45,
+   "has_mos": true,
+   "hit": 0.889,
+   "ask": 0.86,
+   "roi": 0.0255,
+   "ci90": [
+    -0.0485,
+    0.1129
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0+MOS",
+   "hour": 14,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.846,
+   "ask": 0.801,
+   "roi": 0.0238,
+   "ci90": [
+    -0.0945,
+    0.1921
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+market",
+   "hour": 11,
+   "n": 29,
+   "has_mos": true,
+   "hit": 0.655,
+   "ask": 0.62,
+   "roi": 0.0198,
+   "ci90": [
+    -0.2489,
+    0.4333
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+P1",
+   "hour": 10,
+   "n": 34,
+   "has_mos": false,
+   "hit": 0.588,
+   "ask": 0.544,
+   "roi": 0.0197,
+   "ci90": [
+    -0.0797,
+    0.1355
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1+market",
+   "hour": 11,
+   "n": 32,
+   "has_mos": true,
+   "hit": 0.625,
+   "ask": 0.594,
+   "roi": 0.0178,
+   "ci90": [
+    -0.1192,
+    0.3294
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+market",
+   "hour": 14,
+   "n": 78,
+   "has_mos": false,
+   "hit": 0.833,
+   "ask": 0.806,
+   "roi": 0.0155,
+   "ci90": [
+    -0.0427,
+    0.0906
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+market",
+   "hour": 10,
+   "n": 32,
+   "has_mos": false,
+   "hit": 0.625,
+   "ask": 0.593,
+   "roi": 0.0146,
+   "ci90": [
+    -0.1635,
+    0.2507
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+D0",
+   "hour": 13,
+   "n": 23,
+   "has_mos": false,
+   "hit": 0.565,
+   "ask": 0.613,
+   "roi": 0.0107,
+   "ci90": [
+    -0.4444,
+    0.5525
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+market",
+   "hour": 14,
+   "n": 26,
+   "has_mos": false,
+   "hit": 0.808,
+   "ask": 0.773,
+   "roi": 0.0095,
+   "ci90": [
+    -0.1402,
+    0.111
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+P1+market",
+   "hour": 13,
+   "n": 32,
+   "has_mos": true,
+   "hit": 0.781,
+   "ask": 0.757,
+   "roi": 0.0095,
+   "ci90": [
+    -0.1773,
+    0.1613
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS",
+   "hour": 13,
+   "n": 51,
+   "has_mos": true,
+   "hit": 0.686,
+   "ask": 0.649,
+   "roi": 0.0092,
+   "ci90": [
+    -0.1239,
+    0.1756
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0+P1+market",
+   "hour": 14,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.857,
+   "ask": 0.829,
+   "roi": 0.0041,
+   "ci90": [
+    -0.0792,
+    0.1075
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+market",
+   "hour": 13,
+   "n": 71,
+   "has_mos": false,
+   "hit": 0.746,
+   "ask": 0.731,
+   "roi": 0.0007,
+   "ci90": [
+    -0.0681,
+    0.0849
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1+market",
+   "hour": 14,
+   "n": 67,
+   "has_mos": false,
+   "hit": 0.851,
+   "ask": 0.836,
+   "roi": 0.0006,
+   "ci90": [
+    -0.0624,
+    0.0618
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0",
+   "hour": 14,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.824,
+   "ask": 0.787,
+   "roi": 0.0003,
+   "ci90": [
+    -0.0617,
+    0.1003
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0",
+   "hour": 11,
+   "n": 47,
+   "has_mos": false,
+   "hit": 0.574,
+   "ask": 0.545,
+   "roi": -0.0013,
+   "ci90": [
+    -0.1475,
+    0.0991
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS",
+   "hour": 11,
+   "n": 27,
+   "has_mos": true,
+   "hit": 0.444,
+   "ask": 0.474,
+   "roi": -0.0031,
+   "ci90": [
+    -0.537,
+    0.5308
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1",
+   "hour": 14,
+   "n": 44,
+   "has_mos": true,
+   "hit": 0.864,
+   "ask": 0.834,
+   "roi": -0.0037,
+   "ci90": [
+    -0.0938,
+    0.1043
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+market",
+   "hour": 10,
+   "n": 20,
+   "has_mos": false,
+   "hit": 0.55,
+   "ask": 0.546,
+   "roi": -0.0062,
+   "ci90": [
+    -0.096,
+    0.1017
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+P1",
+   "hour": 14,
+   "n": 53,
+   "has_mos": true,
+   "hit": 0.811,
+   "ask": 0.788,
+   "roi": -0.0073,
+   "ci90": [
+    -0.1011,
+    0.0978
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS",
+   "hour": 14,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.692,
+   "ask": 0.623,
+   "roi": -0.0079,
+   "ci90": [
+    -0.2049,
+    0.1891
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+market",
+   "hour": 14,
+   "n": 75,
+   "has_mos": false,
+   "hit": 0.827,
+   "ask": 0.814,
+   "roi": -0.008,
+   "ci90": [
+    -0.0398,
+    0.027
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "MOS+market",
+   "hour": 13,
+   "n": 53,
+   "has_mos": true,
+   "hit": 0.736,
+   "ask": 0.724,
+   "roi": -0.0098,
+   "ci90": [
+    -0.1703,
+    0.123
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1+market",
+   "hour": 10,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.583,
+   "ask": 0.584,
+   "roi": -0.0108,
+   "ci90": [
+    -0.2088,
+    0.2617
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1",
+   "hour": 14,
+   "n": 61,
+   "has_mos": true,
+   "hit": 0.803,
+   "ask": 0.789,
+   "roi": -0.014,
+   "ci90": [
+    -0.123,
+    0.0987
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+P1",
+   "hour": 10,
+   "n": 14,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.51,
+   "roi": -0.014,
+   "ci90": [
+    -0.5313,
+    0.5034
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+P1+market",
+   "hour": 11,
+   "n": 22,
+   "has_mos": true,
+   "hit": 0.636,
+   "ask": 0.622,
+   "roi": -0.0158,
+   "ci90": [
+    -0.1995,
+    0.4212
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+P1",
+   "hour": 14,
+   "n": 16,
+   "has_mos": true,
+   "hit": 0.812,
+   "ask": 0.777,
+   "roi": -0.016,
+   "ci90": [
+    -0.2737,
+    0.2351
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+P1+market",
+   "hour": 14,
+   "n": 75,
+   "has_mos": false,
+   "hit": 0.827,
+   "ask": 0.815,
+   "roi": -0.0163,
+   "ci90": [
+    -0.075,
+    0.0504
+   ],
+   "days_pos": 3,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1+market",
+   "hour": 14,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.824,
+   "ask": 0.799,
+   "roi": -0.0166,
+   "ci90": [
+    -0.167,
+    0.131
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+market",
+   "hour": 12,
+   "n": 29,
+   "has_mos": false,
+   "hit": 0.586,
+   "ask": 0.605,
+   "roi": -0.0167,
+   "ci90": [
+    -0.2361,
+    0.1616
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "MOS+P1",
+   "hour": 13,
+   "n": 49,
+   "has_mos": true,
+   "hit": 0.694,
+   "ask": 0.695,
+   "roi": -0.0171,
+   "ci90": [
+    -0.1769,
+    0.1655
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+P1",
+   "hour": 14,
+   "n": 47,
+   "has_mos": true,
+   "hit": 0.851,
+   "ask": 0.838,
+   "roi": -0.0181,
+   "ci90": [
+    -0.1115,
+    0.0646
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+MOS+P1",
+   "hour": 14,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.833,
+   "ask": 0.815,
+   "roi": -0.0208,
+   "ci90": [
+    -0.2033,
+    0.1921
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+MOS+P1",
+   "hour": 14,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.833,
+   "ask": 0.815,
+   "roi": -0.0208,
+   "ci90": [
+    -0.2033,
+    0.1921
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+P1+market",
+   "hour": 11,
+   "n": 27,
+   "has_mos": false,
+   "hit": 0.667,
+   "ask": 0.65,
+   "roi": -0.0214,
+   "ci90": [
+    -0.2165,
+    0.2291
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+market",
+   "hour": 12,
+   "n": 25,
+   "has_mos": true,
+   "hit": 0.68,
+   "ask": 0.678,
+   "roi": -0.0221,
+   "ci90": [
+    -0.2475,
+    0.1047
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+P1+market",
+   "hour": 14,
+   "n": 20,
+   "has_mos": false,
+   "hit": 0.8,
+   "ask": 0.792,
+   "roi": -0.027,
+   "ci90": [
+    -0.2398,
+    0.1689
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+market",
+   "hour": 13,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.769,
+   "ask": 0.769,
+   "roi": -0.0278,
+   "ci90": [
+    -0.2166,
+    0.1843
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1+market",
+   "hour": 13,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.769,
+   "ask": 0.769,
+   "roi": -0.0278,
+   "ci90": [
+    -0.2166,
+    0.1843
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS",
+   "hour": 12,
+   "n": 55,
+   "has_mos": true,
+   "hit": 0.545,
+   "ask": 0.55,
+   "roi": -0.0279,
+   "ci90": [
+    -0.2623,
+    0.1361
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+market",
+   "hour": 14,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.789,
+   "ask": 0.789,
+   "roi": -0.0288,
+   "ci90": [
+    -0.071,
+    0.0091
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+MOS",
+   "hour": 14,
+   "n": 15,
+   "has_mos": true,
+   "hit": 0.8,
+   "ask": 0.775,
+   "roi": -0.0292,
+   "ci90": [
+    -0.2077,
+    0.1981
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+market",
+   "hour": 13,
+   "n": 30,
+   "has_mos": true,
+   "hit": 0.767,
+   "ask": 0.778,
+   "roi": -0.0336,
+   "ci90": [
+    -0.2483,
+    0.1307
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+P1+market",
+   "hour": 13,
+   "n": 30,
+   "has_mos": true,
+   "hit": 0.767,
+   "ask": 0.778,
+   "roi": -0.0336,
+   "ci90": [
+    -0.2483,
+    0.1307
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+P1+market",
+   "hour": 12,
+   "n": 36,
+   "has_mos": false,
+   "hit": 0.722,
+   "ask": 0.716,
+   "roi": -0.0343,
+   "ci90": [
+    -0.1167,
+    0.0724
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1+market",
+   "hour": 13,
+   "n": 42,
+   "has_mos": true,
+   "hit": 0.738,
+   "ask": 0.74,
+   "roi": -0.0344,
+   "ci90": [
+    -0.2307,
+    0.1421
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+P1+market",
+   "hour": 13,
+   "n": 57,
+   "has_mos": false,
+   "hit": 0.772,
+   "ask": 0.775,
+   "roi": -0.0358,
+   "ci90": [
+    -0.1153,
+    0.0356
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1+market",
+   "hour": 10,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.526,
+   "ask": 0.521,
+   "roi": -0.0385,
+   "ci90": [
+    -0.3216,
+    0.2447
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+P1+market",
+   "hour": 11,
+   "n": 24,
+   "has_mos": false,
+   "hit": 0.583,
+   "ask": 0.57,
+   "roi": -0.0417,
+   "ci90": [
+    -0.417,
+    0.3335
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1",
+   "hour": 11,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.647,
+   "ask": 0.634,
+   "roi": -0.0422,
+   "ci90": [
+    -0.1391,
+    0.0433
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "MOS+market",
+   "hour": 11,
+   "n": 47,
+   "has_mos": true,
+   "hit": 0.574,
+   "ask": 0.58,
+   "roi": -0.0436,
+   "ci90": [
+    -0.2252,
+    0.2664
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+P1+market",
+   "hour": 13,
+   "n": 45,
+   "has_mos": false,
+   "hit": 0.778,
+   "ask": 0.784,
+   "roi": -0.0436,
+   "ci90": [
+    -0.152,
+    0.0886
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+market",
+   "hour": 13,
+   "n": 47,
+   "has_mos": false,
+   "hit": 0.766,
+   "ask": 0.776,
+   "roi": -0.0444,
+   "ci90": [
+    -0.1237,
+    0.0495
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1+market",
+   "hour": 10,
+   "n": 40,
+   "has_mos": false,
+   "hit": 0.575,
+   "ask": 0.577,
+   "roi": -0.045,
+   "ci90": [
+    -0.1994,
+    0.0921
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1",
+   "hour": 10,
+   "n": 59,
+   "has_mos": false,
+   "hit": 0.525,
+   "ask": 0.511,
+   "roi": -0.046,
+   "ci90": [
+    -0.184,
+    0.0859
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "P1+market",
+   "hour": 14,
+   "n": 87,
+   "has_mos": false,
+   "hit": 0.793,
+   "ask": 0.802,
+   "roi": -0.0469,
+   "ci90": [
+    -0.1096,
+    0.0172
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1+market",
+   "hour": 11,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.6,
+   "ask": 0.585,
+   "roi": -0.048,
+   "ci90": [
+    -0.2601,
+    0.2702
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0",
+   "hour": 12,
+   "n": 26,
+   "has_mos": false,
+   "hit": 0.577,
+   "ask": 0.575,
+   "roi": -0.0483,
+   "ci90": [
+    -0.445,
+    0.2917
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0",
+   "hour": 11,
+   "n": 15,
+   "has_mos": false,
+   "hit": 0.6,
+   "ask": 0.57,
+   "roi": -0.0491,
+   "ci90": [
+    -0.2626,
+    0.1377
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+P1",
+   "hour": 10,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.51,
+   "roi": -0.0493,
+   "ci90": [
+    -0.2207,
+    0.122
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1+market",
+   "hour": 12,
+   "n": 44,
+   "has_mos": false,
+   "hit": 0.705,
+   "ask": 0.707,
+   "roi": -0.0508,
+   "ci90": [
+    -0.0847,
+    -0.0145
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS",
+   "hour": 13,
+   "n": 36,
+   "has_mos": true,
+   "hit": 0.694,
+   "ask": 0.717,
+   "roi": -0.052,
+   "ci90": [
+    -0.2365,
+    0.1307
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0",
+   "hour": 12,
+   "n": 18,
+   "has_mos": false,
+   "hit": 0.611,
+   "ask": 0.608,
+   "roi": -0.052,
+   "ci90": [
+    -0.3624,
+    0.2585
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+P1+market",
+   "hour": 13,
+   "n": 13,
+   "has_mos": false,
+   "hit": 0.769,
+   "ask": 0.781,
+   "roi": -0.052,
+   "ci90": [
+    -0.2252,
+    0.275
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+P1",
+   "hour": 13,
+   "n": 62,
+   "has_mos": false,
+   "hit": 0.71,
+   "ask": 0.721,
+   "roi": -0.0525,
+   "ci90": [
+    -0.1704,
+    0.0898
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "P1+market",
+   "hour": 13,
+   "n": 76,
+   "has_mos": false,
+   "hit": 0.724,
+   "ask": 0.735,
+   "roi": -0.0576,
+   "ci90": [
+    -0.1535,
+    0.0434
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+P1",
+   "hour": 14,
+   "n": 67,
+   "has_mos": false,
+   "hit": 0.806,
+   "ask": 0.798,
+   "roi": -0.0579,
+   "ci90": [
+    -0.1155,
+    -0.0052
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+market",
+   "hour": 11,
+   "n": 23,
+   "has_mos": true,
+   "hit": 0.609,
+   "ask": 0.619,
+   "roi": -0.0585,
+   "ci90": [
+    -0.2542,
+    0.3376
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+market",
+   "hour": 13,
+   "n": 23,
+   "has_mos": false,
+   "hit": 0.652,
+   "ask": 0.68,
+   "roi": -0.0628,
+   "ci90": [
+    -0.237,
+    0.179
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1",
+   "hour": 14,
+   "n": 15,
+   "has_mos": false,
+   "hit": 0.8,
+   "ask": 0.803,
+   "roi": -0.0628,
+   "ci90": [
+    -0.1876,
+    0.1003
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1+market",
+   "hour": 14,
+   "n": 15,
+   "has_mos": false,
+   "hit": 0.8,
+   "ask": 0.827,
+   "roi": -0.0628,
+   "ci90": [
+    -0.1876,
+    0.1003
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0",
+   "hour": 14,
+   "n": 73,
+   "has_mos": false,
+   "hit": 0.781,
+   "ask": 0.77,
+   "roi": -0.0633,
+   "ci90": [
+    -0.1114,
+    -0.0171
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+market",
+   "hour": 11,
+   "n": 35,
+   "has_mos": false,
+   "hit": 0.543,
+   "ask": 0.544,
+   "roi": -0.0638,
+   "ci90": [
+    -0.3947,
+    0.2671
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS",
+   "hour": 13,
+   "n": 27,
+   "has_mos": true,
+   "hit": 0.741,
+   "ask": 0.756,
+   "roi": -0.0638,
+   "ci90": [
+    -0.2819,
+    0.1843
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1",
+   "hour": 13,
+   "n": 27,
+   "has_mos": true,
+   "hit": 0.741,
+   "ask": 0.756,
+   "roi": -0.0638,
+   "ci90": [
+    -0.2819,
+    0.1843
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "MOS+market",
+   "hour": 12,
+   "n": 51,
+   "has_mos": true,
+   "hit": 0.588,
+   "ask": 0.622,
+   "roi": -0.0642,
+   "ci90": [
+    -0.1342,
+    -0.0174
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+market",
+   "hour": 13,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.647,
+   "ask": 0.704,
+   "roi": -0.0659,
+   "ci90": [
+    -0.2283,
+    0.2234
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+market",
+   "hour": 12,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.529,
+   "ask": 0.601,
+   "roi": -0.0668,
+   "ci90": [
+    -0.2564,
+    0.0961
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+P1+market",
+   "hour": 13,
+   "n": 57,
+   "has_mos": false,
+   "hit": 0.737,
+   "ask": 0.755,
+   "roi": -0.0693,
+   "ci90": [
+    -0.173,
+    0.0633
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1",
+   "hour": 14,
+   "n": 14,
+   "has_mos": true,
+   "hit": 0.786,
+   "ask": 0.785,
+   "roi": -0.0712,
+   "ci90": [
+    -0.3171,
+    0.1981
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+market",
+   "hour": 12,
+   "n": 60,
+   "has_mos": false,
+   "hit": 0.633,
+   "ask": 0.656,
+   "roi": -0.0714,
+   "ci90": [
+    -0.1311,
+    -0.0172
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "P1+market",
+   "hour": 11,
+   "n": 62,
+   "has_mos": false,
+   "hit": 0.565,
+   "ask": 0.58,
+   "roi": -0.0714,
+   "ci90": [
+    -0.3273,
+    0.2366
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+MOS+market",
+   "hour": 13,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.7,
+   "ask": 0.73,
+   "roi": -0.0726,
+   "ci90": [
+    -0.3606,
+    0.2489
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+market",
+   "hour": 12,
+   "n": 22,
+   "has_mos": false,
+   "hit": 0.591,
+   "ask": 0.638,
+   "roi": -0.0756,
+   "ci90": [
+    -0.2166,
+    0.0787
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "D0+P1",
+   "hour": 14,
+   "n": 73,
+   "has_mos": false,
+   "hit": 0.781,
+   "ask": 0.796,
+   "roi": -0.0816,
+   "ci90": [
+    -0.1405,
+    -0.0243
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+market",
+   "hour": 13,
+   "n": 62,
+   "has_mos": false,
+   "hit": 0.726,
+   "ask": 0.755,
+   "roi": -0.0833,
+   "ci90": [
+    -0.2037,
+    0.0177
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "D0+market",
+   "hour": 10,
+   "n": 59,
+   "has_mos": false,
+   "hit": 0.542,
+   "ask": 0.563,
+   "roi": -0.0836,
+   "ci90": [
+    -0.1838,
+    0.0098
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+P1",
+   "hour": 14,
+   "n": 89,
+   "has_mos": false,
+   "hit": 0.73,
+   "ask": 0.737,
+   "roi": -0.0858,
+   "ci90": [
+    -0.1662,
+    -0.0069
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+P1",
+   "hour": 13,
+   "n": 34,
+   "has_mos": true,
+   "hit": 0.706,
+   "ask": 0.739,
+   "roi": -0.091,
+   "ci90": [
+    -0.3126,
+    0.1307
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+D0",
+   "hour": 14,
+   "n": 24,
+   "has_mos": false,
+   "hit": 0.667,
+   "ask": 0.678,
+   "roi": -0.0924,
+   "ci90": [
+    -0.1028,
+    -0.0734
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+P1",
+   "hour": 11,
+   "n": 29,
+   "has_mos": true,
+   "hit": 0.552,
+   "ask": 0.57,
+   "roi": -0.0951,
+   "ci90": [
+    -0.1591,
+    0.0369
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS",
+   "hour": 11,
+   "n": 18,
+   "has_mos": true,
+   "hit": 0.611,
+   "ask": 0.615,
+   "roi": -0.0955,
+   "ci90": [
+    -0.2453,
+    0.0107
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0",
+   "hour": 13,
+   "n": 52,
+   "has_mos": false,
+   "hit": 0.712,
+   "ask": 0.736,
+   "roi": -0.0956,
+   "ci90": [
+    -0.1751,
+    0.0046
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+P1+market",
+   "hour": 13,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.706,
+   "ask": 0.742,
+   "roi": -0.0977,
+   "ci90": [
+    -0.2761,
+    0.2134
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+market",
+   "hour": 12,
+   "n": 31,
+   "has_mos": true,
+   "hit": 0.613,
+   "ask": 0.659,
+   "roi": -0.1005,
+   "ci90": [
+    -0.3211,
+    0.0758
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+market",
+   "hour": 12,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.538,
+   "ask": 0.625,
+   "roi": -0.1008,
+   "ci90": [
+    -0.363,
+    0.205
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS+market",
+   "hour": 10,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.543,
+   "roi": -0.1017,
+   "ci90": [
+    -0.4449,
+    0.3177
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+P1",
+   "hour": 13,
+   "n": 48,
+   "has_mos": false,
+   "hit": 0.729,
+   "ask": 0.756,
+   "roi": -0.1034,
+   "ci90": [
+    -0.1938,
+    -0.0005
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+D0",
+   "hour": 11,
+   "n": 27,
+   "has_mos": false,
+   "hit": 0.519,
+   "ask": 0.521,
+   "roi": -0.1041,
+   "ci90": [
+    -0.336,
+    0.0435
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1",
+   "hour": 10,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.534,
+   "roi": -0.1053,
+   "ci90": [
+    -0.5807,
+    0.3701
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+MOS+market",
+   "hour": 10,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.534,
+   "roi": -0.1053,
+   "ci90": [
+    -0.5807,
+    0.3701
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1+market",
+   "hour": 10,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.534,
+   "roi": -0.1053,
+   "ci90": [
+    -0.5807,
+    0.3701
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+market",
+   "hour": 13,
+   "n": 13,
+   "has_mos": false,
+   "hit": 0.692,
+   "ask": 0.752,
+   "roi": -0.1058,
+   "ci90": [
+    -0.1866,
+    0.1136
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+market",
+   "hour": 11,
+   "n": 22,
+   "has_mos": false,
+   "hit": 0.545,
+   "ask": 0.568,
+   "roi": -0.1077,
+   "ci90": [
+    -0.3589,
+    0.2551
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1+market",
+   "hour": 12,
+   "n": 21,
+   "has_mos": true,
+   "hit": 0.667,
+   "ask": 0.704,
+   "roi": -0.1098,
+   "ci90": [
+    -0.2253,
+    0.0083
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0",
+   "hour": 12,
+   "n": 58,
+   "has_mos": false,
+   "hit": 0.603,
+   "ask": 0.612,
+   "roi": -0.1099,
+   "ci90": [
+    -0.306,
+    0.053
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+market",
+   "hour": 13,
+   "n": 16,
+   "has_mos": false,
+   "hit": 0.688,
+   "ask": 0.733,
+   "roi": -0.1124,
+   "ci90": [
+    -0.1906,
+    0.1156
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1",
+   "hour": 13,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.781,
+   "roi": -0.1139,
+   "ci90": [
+    -0.3286,
+    0.2992
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1+market",
+   "hour": 13,
+   "n": 11,
+   "has_mos": false,
+   "hit": 0.727,
+   "ask": 0.781,
+   "roi": -0.1139,
+   "ci90": [
+    -0.3286,
+    0.2992
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS",
+   "hour": 12,
+   "n": 16,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.557,
+   "roi": -0.1141,
+   "ci90": [
+    -0.4446,
+    0.143
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "P1+market",
+   "hour": 12,
+   "n": 60,
+   "has_mos": false,
+   "hit": 0.617,
+   "ask": 0.663,
+   "roi": -0.116,
+   "ci90": [
+    -0.2087,
+    -0.0267
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+D0+P1",
+   "hour": 12,
+   "n": 13,
+   "has_mos": false,
+   "hit": 0.615,
+   "ask": 0.634,
+   "roi": -0.116,
+   "ci90": [
+    -0.49,
+    0.3939
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1",
+   "hour": 12,
+   "n": 13,
+   "has_mos": false,
+   "hit": 0.615,
+   "ask": 0.634,
+   "roi": -0.116,
+   "ci90": [
+    -0.49,
+    0.3939
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1",
+   "hour": 14,
+   "n": 16,
+   "has_mos": false,
+   "hit": 0.75,
+   "ask": 0.803,
+   "roi": -0.1214,
+   "ci90": [
+    -0.2781,
+    0.1003
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+market",
+   "hour": 10,
+   "n": 23,
+   "has_mos": false,
+   "hit": 0.478,
+   "ask": 0.525,
+   "roi": -0.1225,
+   "ci90": [
+    -0.3563,
+    0.1114
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+market",
+   "hour": 12,
+   "n": 38,
+   "has_mos": true,
+   "hit": 0.579,
+   "ask": 0.636,
+   "roi": -0.1227,
+   "ci90": [
+    -0.2725,
+    -0.025
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+P1",
+   "hour": 10,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.462,
+   "ask": 0.51,
+   "roi": -0.1263,
+   "ci90": [
+    -0.3192,
+    0.1327
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+P1+market",
+   "hour": 11,
+   "n": 43,
+   "has_mos": false,
+   "hit": 0.558,
+   "ask": 0.603,
+   "roi": -0.1274,
+   "ci90": [
+    -0.3741,
+    0.2486
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+market",
+   "hour": 10,
+   "n": 22,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.558,
+   "roi": -0.1298,
+   "ci90": [
+    -0.4923,
+    0.2236
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1",
+   "hour": 10,
+   "n": 21,
+   "has_mos": false,
+   "hit": 0.476,
+   "ask": 0.489,
+   "roi": -0.13,
+   "ci90": [
+    -0.3893,
+    0.2156
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+P1",
+   "hour": 11,
+   "n": 29,
+   "has_mos": true,
+   "hit": 0.552,
+   "ask": 0.551,
+   "roi": -0.1322,
+   "ci90": [
+    -0.2949,
+    0.1495
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+P1+market",
+   "hour": 12,
+   "n": 27,
+   "has_mos": true,
+   "hit": 0.63,
+   "ask": 0.681,
+   "roi": -0.133,
+   "ci90": [
+    -0.218,
+    -0.0932
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+market",
+   "hour": 11,
+   "n": 11,
+   "has_mos": true,
+   "hit": 0.545,
+   "ask": 0.584,
+   "roi": -0.1345,
+   "ci90": [
+    -0.3658,
+    0.2702
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+P1",
+   "hour": 11,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.571,
+   "ask": 0.579,
+   "roi": -0.1391,
+   "ci90": [
+    -0.3838,
+    0.1055
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+market",
+   "hour": 10,
+   "n": 61,
+   "has_mos": false,
+   "hit": 0.492,
+   "ask": 0.548,
+   "roi": -0.1442,
+   "ci90": [
+    -0.3724,
+    0.0494
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+P1+market",
+   "hour": 12,
+   "n": 47,
+   "has_mos": false,
+   "hit": 0.617,
+   "ask": 0.681,
+   "roi": -0.1451,
+   "ci90": [
+    -0.187,
+    -0.0872
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1+market",
+   "hour": 12,
+   "n": 32,
+   "has_mos": true,
+   "hit": 0.594,
+   "ask": 0.658,
+   "roi": -0.1462,
+   "ci90": [
+    -0.3559,
+    -0.0348
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+P1",
+   "hour": 12,
+   "n": 57,
+   "has_mos": false,
+   "hit": 0.596,
+   "ask": 0.629,
+   "roi": -0.1469,
+   "ci90": [
+    -0.1899,
+    -0.103
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+P1",
+   "hour": 10,
+   "n": 34,
+   "has_mos": false,
+   "hit": 0.441,
+   "ask": 0.466,
+   "roi": -0.1495,
+   "ci90": [
+    -0.4816,
+    0.2241
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+P1",
+   "hour": 14,
+   "n": 23,
+   "has_mos": false,
+   "hit": 0.696,
+   "ask": 0.746,
+   "roi": -0.1539,
+   "ci90": [
+    -0.3919,
+    0.1074
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1",
+   "hour": 11,
+   "n": 18,
+   "has_mos": false,
+   "hit": 0.556,
+   "ask": 0.575,
+   "roi": -0.1556,
+   "ci90": [
+    -0.2935,
+    -0.0678
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS",
+   "hour": 13,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.529,
+   "ask": 0.543,
+   "roi": -0.1572,
+   "ci90": [
+    -0.3025,
+    0.1059
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+P1",
+   "hour": 13,
+   "n": 74,
+   "has_mos": false,
+   "hit": 0.635,
+   "ask": 0.672,
+   "roi": -0.1576,
+   "ci90": [
+    -0.2283,
+    -0.0833
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1",
+   "hour": 14,
+   "n": 20,
+   "has_mos": false,
+   "hit": 0.7,
+   "ask": 0.745,
+   "roi": -0.1641,
+   "ci90": [
+    -0.363,
+    0.0603
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+D0+MOS",
+   "hour": 12,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.5,
+   "ask": 0.57,
+   "roi": -0.1666,
+   "ci90": [
+    -0.4962,
+    0.1123
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+P1+market",
+   "hour": 10,
+   "n": 47,
+   "has_mos": false,
+   "hit": 0.489,
+   "ask": 0.556,
+   "roi": -0.1683,
+   "ci90": [
+    -0.3862,
+    0.0742
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+D0",
+   "hour": 13,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.643,
+   "ask": 0.721,
+   "roi": -0.1696,
+   "ci90": [
+    -0.2657,
+    0.1136
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+D0+P1",
+   "hour": 11,
+   "n": 38,
+   "has_mos": false,
+   "hit": 0.526,
+   "ask": 0.57,
+   "roi": -0.1719,
+   "ci90": [
+    -0.2725,
+    -0.0945
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS+P1+market",
+   "hour": 10,
+   "n": 19,
+   "has_mos": true,
+   "hit": 0.474,
+   "ask": 0.561,
+   "roi": -0.1737,
+   "ci90": [
+    -0.45,
+    0.1368
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+P1",
+   "hour": 12,
+   "n": 45,
+   "has_mos": false,
+   "hit": 0.6,
+   "ask": 0.642,
+   "roi": -0.1744,
+   "ci90": [
+    -0.2721,
+    -0.0688
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1+market",
+   "hour": 11,
+   "n": 19,
+   "has_mos": false,
+   "hit": 0.526,
+   "ask": 0.576,
+   "roi": -0.1784,
+   "ci90": [
+    -0.5256,
+    0.2989
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+MOS",
+   "hour": 13,
+   "n": 10,
+   "has_mos": true,
+   "hit": 0.6,
+   "ask": 0.676,
+   "roi": -0.1793,
+   "ci90": [
+    -0.4885,
+    0.2716
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+P1+market",
+   "hour": 12,
+   "n": 25,
+   "has_mos": true,
+   "hit": 0.6,
+   "ask": 0.68,
+   "roi": -0.1823,
+   "ci90": [
+    -0.29,
+    -0.0832
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS",
+   "hour": 10,
+   "n": 37,
+   "has_mos": true,
+   "hit": 0.405,
+   "ask": 0.455,
+   "roi": -0.1845,
+   "ci90": [
+    -0.4008,
+    0.069
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "MOS+P1",
+   "hour": 11,
+   "n": 46,
+   "has_mos": true,
+   "hit": 0.478,
+   "ask": 0.519,
+   "roi": -0.1922,
+   "ci90": [
+    -0.2732,
+    -0.0597
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS",
+   "hour": 12,
+   "n": 33,
+   "has_mos": true,
+   "hit": 0.545,
+   "ask": 0.604,
+   "roi": -0.1922,
+   "ci90": [
+    -0.4835,
+    -0.0057
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+P1",
+   "hour": 10,
+   "n": 66,
+   "has_mos": false,
+   "hit": 0.439,
+   "ask": 0.493,
+   "roi": -0.1924,
+   "ci90": [
+    -0.3435,
+    -0.0483
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+P1+market",
+   "hour": 10,
+   "n": 19,
+   "has_mos": true,
+   "hit": 0.474,
+   "ask": 0.566,
+   "roi": -0.1931,
+   "ci90": [
+    -0.4561,
+    -0.0449
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+P1+market",
+   "hour": 12,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.529,
+   "ask": 0.636,
+   "roi": -0.1968,
+   "ci90": [
+    -0.5219,
+    0.0945
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1",
+   "hour": 13,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.643,
+   "ask": 0.746,
+   "roi": -0.2033,
+   "ci90": [
+    -0.3843,
+    0.1789
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+D0+P1+market",
+   "hour": 13,
+   "n": 14,
+   "has_mos": false,
+   "hit": 0.643,
+   "ask": 0.746,
+   "roi": -0.2033,
+   "ci90": [
+    -0.3843,
+    0.1789
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+P1+market",
+   "hour": 10,
+   "n": 25,
+   "has_mos": false,
+   "hit": 0.44,
+   "ask": 0.516,
+   "roi": -0.2039,
+   "ci90": [
+    -0.4229,
+    0.0749
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+P1",
+   "hour": 11,
+   "n": 57,
+   "has_mos": false,
+   "hit": 0.491,
+   "ask": 0.531,
+   "roi": -0.2062,
+   "ci90": [
+    -0.3406,
+    -0.0455
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "P1+market",
+   "hour": 10,
+   "n": 66,
+   "has_mos": false,
+   "hit": 0.455,
+   "ask": 0.543,
+   "roi": -0.2165,
+   "ci90": [
+    -0.4253,
+    -0.0138
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "D0+MOS+P1",
+   "hour": 12,
+   "n": 33,
+   "has_mos": true,
+   "hit": 0.545,
+   "ask": 0.624,
+   "roi": -0.2205,
+   "ci90": [
+    -0.2897,
+    -0.1626
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+MOS",
+   "hour": 11,
+   "n": 34,
+   "has_mos": true,
+   "hit": 0.471,
+   "ask": 0.535,
+   "roi": -0.2281,
+   "ci90": [
+    -0.2743,
+    -0.1805
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1+market",
+   "hour": 12,
+   "n": 15,
+   "has_mos": false,
+   "hit": 0.533,
+   "ask": 0.661,
+   "roi": -0.2339,
+   "ci90": [
+    -0.49,
+    0.0222
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "MOS+P1",
+   "hour": 10,
+   "n": 41,
+   "has_mos": true,
+   "hit": 0.39,
+   "ask": 0.488,
+   "roi": -0.2431,
+   "ci90": [
+    -0.4802,
+    0.0709
+   ],
+   "days_pos": 2,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS",
+   "hour": 10,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.417,
+   "ask": 0.489,
+   "roi": -0.2544,
+   "ci90": [
+    -0.6775,
+    0.2456
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+P1+market",
+   "hour": 10,
+   "n": 12,
+   "has_mos": true,
+   "hit": 0.417,
+   "ask": 0.528,
+   "roi": -0.2544,
+   "ci90": [
+    -0.6775,
+    0.2456
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+P1",
+   "hour": 11,
+   "n": 67,
+   "has_mos": false,
+   "hit": 0.433,
+   "ask": 0.521,
+   "roi": -0.2612,
+   "ci90": [
+    -0.4049,
+    -0.13
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS",
+   "hour": 12,
+   "n": 16,
+   "has_mos": true,
+   "hit": 0.438,
+   "ask": 0.581,
+   "roi": -0.2694,
+   "ci90": [
+    -0.5045,
+    0.0328
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+P1",
+   "hour": 13,
+   "n": 21,
+   "has_mos": false,
+   "hit": 0.571,
+   "ask": 0.645,
+   "roi": -0.2695,
+   "ci90": [
+    -0.4571,
+    -0.0195
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "D0+MOS+market",
+   "hour": 10,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.423,
+   "ask": 0.557,
+   "roi": -0.2739,
+   "ci90": [
+    -0.4357,
+    -0.1357
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+P1",
+   "hour": 13,
+   "n": 17,
+   "has_mos": false,
+   "hit": 0.588,
+   "ask": 0.652,
+   "roi": -0.2751,
+   "ci90": [
+    -0.4518,
+    0.002
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+market",
+   "hour": 10,
+   "n": 15,
+   "has_mos": true,
+   "hit": 0.4,
+   "ask": 0.533,
+   "roi": -0.2759,
+   "ci90": [
+    -0.6607,
+    0.3013
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+market",
+   "hour": 10,
+   "n": 38,
+   "has_mos": false,
+   "hit": 0.395,
+   "ask": 0.521,
+   "roi": -0.2782,
+   "ci90": [
+    -0.4626,
+    -0.0246
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+P1",
+   "hour": 12,
+   "n": 76,
+   "has_mos": false,
+   "hit": 0.461,
+   "ask": 0.554,
+   "roi": -0.2787,
+   "ci90": [
+    -0.3302,
+    -0.2299
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "MOS+market",
+   "hour": 10,
+   "n": 42,
+   "has_mos": true,
+   "hit": 0.405,
+   "ask": 0.544,
+   "roi": -0.2791,
+   "ci90": [
+    -0.5413,
+    -0.0036
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "member_bayes+D0+MOS+P1",
+   "hour": 12,
+   "n": 26,
+   "has_mos": true,
+   "hit": 0.538,
+   "ask": 0.637,
+   "roi": -0.281,
+   "ci90": [
+    -0.4678,
+    -0.1292
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+P1",
+   "hour": 11,
+   "n": 36,
+   "has_mos": false,
+   "hit": 0.417,
+   "ask": 0.495,
+   "roi": -0.2864,
+   "ci90": [
+    -0.5365,
+    -0.0362
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+P1",
+   "hour": 11,
+   "n": 26,
+   "has_mos": false,
+   "hit": 0.423,
+   "ask": 0.522,
+   "roi": -0.2961,
+   "ci90": [
+    -0.5311,
+    -0.0219
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS",
+   "hour": 12,
+   "n": 43,
+   "has_mos": true,
+   "hit": 0.465,
+   "ask": 0.577,
+   "roi": -0.3001,
+   "ci90": [
+    -0.6135,
+    -0.1108
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1",
+   "hour": 12,
+   "n": 11,
+   "has_mos": true,
+   "hit": 0.455,
+   "ask": 0.595,
+   "roi": -0.3012,
+   "ci90": [
+    -0.5798,
+    0.1012
+   ],
+   "days_pos": 2,
+   "days": 3
+  },
+  {
+   "subset": "MOS+P1+market",
+   "hour": 10,
+   "n": 28,
+   "has_mos": true,
+   "hit": 0.393,
+   "ask": 0.55,
+   "roi": -0.3157,
+   "ci90": [
+    -0.6333,
+    -0.0633
+   ],
+   "days_pos": 1,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS+P1",
+   "hour": 11,
+   "n": 14,
+   "has_mos": true,
+   "hit": 0.429,
+   "ask": 0.532,
+   "roi": -0.32,
+   "ci90": [
+    -0.4081,
+    -0.2183
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes",
+   "hour": 10,
+   "n": 30,
+   "has_mos": false,
+   "hit": 0.367,
+   "ask": 0.461,
+   "roi": -0.3272,
+   "ci90": [
+    -0.4895,
+    -0.1584
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+P1",
+   "hour": 11,
+   "n": 17,
+   "has_mos": true,
+   "hit": 0.412,
+   "ask": 0.514,
+   "roi": -0.3354,
+   "ci90": [
+    -0.3741,
+    -0.2976
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes",
+   "hour": 11,
+   "n": 34,
+   "has_mos": false,
+   "hit": 0.382,
+   "ask": 0.492,
+   "roi": -0.3435,
+   "ci90": [
+    -0.4905,
+    -0.1572
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes",
+   "hour": 12,
+   "n": 31,
+   "has_mos": false,
+   "hit": 0.419,
+   "ask": 0.546,
+   "roi": -0.344,
+   "ci90": [
+    -0.538,
+    -0.0151
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "MOS+P1",
+   "hour": 12,
+   "n": 46,
+   "has_mos": true,
+   "hit": 0.435,
+   "ask": 0.577,
+   "roi": -0.3558,
+   "ci90": [
+    -0.5334,
+    -0.2598
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+P1",
+   "hour": 12,
+   "n": 25,
+   "has_mos": false,
+   "hit": 0.4,
+   "ask": 0.551,
+   "roi": -0.3613,
+   "ci90": [
+    -0.592,
+    -0.0904
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes+P1",
+   "hour": 12,
+   "n": 18,
+   "has_mos": false,
+   "hit": 0.444,
+   "ask": 0.611,
+   "roi": -0.3616,
+   "ci90": [
+    -0.6175,
+    -0.0417
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS",
+   "hour": 12,
+   "n": 25,
+   "has_mos": true,
+   "hit": 0.36,
+   "ask": 0.518,
+   "roi": -0.3654,
+   "ci90": [
+    -0.571,
+    -0.1127
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "member_bayes+MOS+P1",
+   "hour": 12,
+   "n": 33,
+   "has_mos": true,
+   "hit": 0.455,
+   "ask": 0.608,
+   "roi": -0.3805,
+   "ci90": [
+    -0.528,
+    -0.2822
+   ],
+   "days_pos": 0,
+   "days": 4
+  },
+  {
+   "subset": "F+member_bayes+MOS",
+   "hour": 11,
+   "n": 16,
+   "has_mos": true,
+   "hit": 0.375,
+   "ask": 0.524,
+   "roi": -0.405,
+   "ci90": [
+    -0.5068,
+    -0.2742
+   ],
+   "days_pos": 0,
+   "days": 3
+  },
+  {
+   "subset": "F+MOS+P1",
+   "hour": 12,
+   "n": 13,
+   "has_mos": true,
+   "hit": 0.385,
+   "ask": 0.562,
+   "roi": -0.4087,
+   "ci90": [
+    -0.6537,
+    -0.0168
+   ],
+   "days_pos": 1,
+   "days": 3
+  },
+  {
+   "subset": "F+member_bayes",
+   "hour": 13,
+   "n": 26,
+   "has_mos": false,
+   "hit": 0.423,
+   "ask": 0.557,
+   "roi": -0.4538,
+   "ci90": [
+    -0.596,
+    -0.3221
+   ],
+   "days_pos": 0,
+   "days": 3
+  }
+ ]
+}
