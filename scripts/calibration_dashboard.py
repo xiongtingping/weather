@@ -15859,6 +15859,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-c>i{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:8px;font-size:12px;line-height:1.5;white-space:nowrap}
 .sd-sun-c>i small{font-size:10.5px}
 .sd-sun-c>i span:last-child{font-variant-numeric:tabular-nums;color:var(--text)}
+.sd-sun-c>.sd-rev{margin-top:6px;padding:5px 8px;border-radius:6px;background:var(--surface-2, rgba(127,127,127,.1));display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px}
+.sd-sun-c>.sd-rev>small{font-size:11px;color:var(--muted)}
+.sd-sun-c>.sd-rev>b{font-size:20px;font-variant-numeric:tabular-nums}
 .sd-pnl-c>b.sd-warm{color:var(--pill-red-fg)}.sd-pnl-c>b.sd-cold{color:var(--accent)}.sd-pnl-c>b.muted{color:var(--muted);font-weight:600}
 .sd-sunage{font-size:12px;color:var(--muted)}
 .sd-sunnew{font-size:12px;font-weight:700;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
@@ -24086,9 +24089,9 @@ const SD_ICON = {
   rain: '<path d="M4.6 9.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/><path d="M5.5 11.6l-.7 1.8M8.3 11.6l-.7 1.8M11.1 11.6l-.7 1.8"/>',
 };
 const sdIcon = k => `<svg class="sd-ico sd-ico-${k}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SD_ICON[k]}</svg>`;
-const sdSunCard = (icon, label, tag, big, cls, rows, tip) =>
+const sdSunCard = (icon, label, tag, big, cls, rows, tip, foot) =>
   `<div class="sd-pnl-c sd-sun-c" title="${sdEsc(tip)}"><span><em>${icon ? sdIcon(icon) : ""}${label}</em><small>${tag}</small></span><b class="${cls || ""}">${big}</b>${
-    rows.map(([k, v]) => `<i><span>${k}</span><span>${v}</span></i>`).join("")}</div>`;
+    rows.map(([k, v]) => `<i><span>${k}</span><span>${v}</span></i>`).join("")}${foot || ""}</div>`;
 const sdPct = (a, b) => a != null && b ? 100 * (a - b) / b : null;
 const sdWarmCls = v => v == null ? "" : v >= 0 ? "sd-warm" : "sd-cold";
 // The newest 10-minute scan at the station (JAXA Himawari Level 2, user
@@ -24382,18 +24385,29 @@ function sdSky(day){
   // carry no warm/cold colour -- their pull on the maximum is not one-way.
   const newest = key => (H.rows || []).filter(r => r.obs && r.obs[key] != null && (r.forecast || {})[key] != null)
     .reduce((a, r) => !a || Number(r.hour) > Number(a.hour) ? r : a, null);
-  const diffCard = (icon, label, key, unit, digits, why, extra) => {
+  const diffCard = (icon, label, key, unit, digits, why, extra, foot) => {
     const r = newest(key);
     if(!r) return "";
     const ob = r.obs[key], fc = r.forecast[key], d = ob - fc;
     // A difference that rounds to zero reads 0, not −0.
     return sdSunCard(icon, label, `${hh(r.hour)} 点 · ${unit}`, `${Math.abs(d) < 0.5 * Math.pow(10, -digits) ? "0" : sdSg(d, digits)} ${unit}`, "",
-      [["实况", sdN(ob, digits)], ["预报", sdN(fc, digits)]].concat(extra || []), `${why}：${hh(r.hour)}:00 报文对同一小时的预报（Open-Meteo 逐小时）`);
+      [["实况", sdN(ob, digits)], ["预报", sdN(fc, digits)]].concat(extra || []), `${why}：${hh(r.hour)}:00 报文对同一小时的预报（Open-Meteo 逐小时）`, foot);
   };
   // Observed against forecast only (user 2026-10-21 「其他卡片不再拟合温度，比如
   // 低云、露点等，其他卡片只对比实况vs预报的数值」): the per-variable ΔT lines
   // are retired; how each pulls the maximum is the composite card's breakdown.
-  const tempCard = diffCard("temp", "气温 · 实况对比预报", "temp_c", "°C", 1, "报文气温");
+  // How the latest best_match run moved the day's maximum against the run a
+  // day earlier (user 2026-10-23 「在这个卡片里体现best_match的温度变化（突出）」):
+  // the composite card starts from the day-ahead maximum, the table shows the
+  // latest run, so the two read 1 °C apart on a revised day.
+  const fcPeak = k => {
+    const v = (H.rows || []).map(r => (r.forecast || {})[k]);
+    return v.length && v.every(x => x != null) ? Math.max(...v) : null;
+  };
+  const peakNow = fcPeak("temp_c"), peakD1 = fcPeak("temp_c_d1");
+  const peakRev = peakNow == null || peakD1 == null ? null : Math.round(10 * (peakNow - peakD1)) / 10;
+  const tempRev = peakRev == null ? "" : `<div class="sd-rev" title="${sdEsc(`Open-Meteo best_match 逐小时预报的当天最高（整点最大值）：提前 1 天那一轮 ${sdN(peakD1, 1)}°C，最新一轮 ${sdN(peakNow, 1)}°C；表格「预报」列是最新一轮，观测更新型 MOS 从提前 1 天那一轮出发`)}"><small>best_match 最高温改动</small><b class="${peakRev === 0 ? "" : sdWarmCls(peakRev)}">${peakRev === 0 ? "0" : sdSg(peakRev, 1)} °C</b><small>${sdN(peakD1, 1)} → ${sdN(peakNow, 1)}</small></div>`;
+  const tempCard = diffCard("temp", "气温 · 实况对比预报", "temp_c", "°C", 1, "报文气温", null, tempRev);
   // Dew point read against the air temperature (user 2026-10-21 「露点要和温度对比才
   // 有比较的意义吧」): the spread T − Td at the newest hour with both in the report
   // and the forecast; wider than forecast = drier air than expected.
