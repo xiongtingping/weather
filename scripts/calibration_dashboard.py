@@ -16048,8 +16048,8 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-conv-row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:12px;align-items:center}
 @media (max-width:700px){.sd-conv-row{grid-template-columns:minmax(0,1fr)}}
 .sd-conv-score{display:flex;flex-direction:column;gap:3px}.sd-conv-score>small{font-size:11px;color:var(--muted)}
-.sd-conv-score>b.sd-conv-bucket{font-size:44px;line-height:1.05;font-weight:750;color:var(--text);font-variant-numeric:tabular-nums}
-.sd-conv-sc{font-size:12px;color:var(--muted)}.sd-conv-sc>b{font-size:20px;color:var(--text)}.sd-conv-sc>small{font-size:11px}
+.sd-conv-score>b.sd-conv-big{font-size:44px;line-height:1.05;font-weight:750;color:var(--text)}.sd-conv-score>b.sd-conv-big small{font-size:14px;color:var(--muted);font-weight:500}
+.sd-conv-sc{font-size:12px;color:var(--muted)}.sd-conv-sc>b{font-size:24px;color:var(--text);font-variant-numeric:tabular-nums}.sd-conv-sc>small{font-size:11px}
 .sd-conv-picks{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
 .sd-conv-picks>i{font-style:normal;font-size:11px;color:var(--muted);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:5px;padding:1px 5px;opacity:.6}
 .sd-conv-picks>i.on{opacity:1;color:var(--text)}.sd-conv-picks>i b{font-weight:700}
@@ -23059,8 +23059,8 @@ function sdConvergence(day){
     const lh = lk.median_hour == null || lk.median_hour >= 24 ? "—" : String(lk.median_hour).padStart(2, "0") + "点";
     return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:5px" title="${sdEsc(`${SD_HIT_NAMES[m] || m}：中位锁定时刻＝从这一刻起一直指向真值档；${lk.n || 0} 站日，从未锁定 ${lk.never || 0}`)}"><i style="width:14px;height:3px;border-radius:2px;display:inline-block;background:${SD_HIT_COL[m] || "var(--muted)"}"></i>${sdEsc(SD_HIT_NAMES[m] || m)} <b class="mono">${lh}</b></span>`; }).join("");
   const score = N ? `<div class="sd-conv-score" title="${sdEsc(`当地 ${N.hour} 点，${N.voters} 个估计里 ${N.agree} 个指向 ${N.bucket}（${SD_CONV_BIN[N.bin] || N.bin}）；已结算的日子里同一时刻、同样一致程度时，这个档是真值档的比例 ≈ ${N.score}%（${N.n} 站日，少的向该时刻整体 ${Math.round(100 * N.hour_hit)}% 收缩）`)}">
-      <small>多数指向 · ${String(N.hour).padStart(2, "0")} 点</small><b class="sd-conv-bucket">${sdEsc(N.bucket)}</b>
-      <span class="sd-conv-sc">信心 <b class="mono">${N.score}</b><small>/100 · ${N.agree}/${N.voters} ${SD_CONV_BIN[N.bin] || N.bin}</small></span>
+      <small>收敛信心 · ${String(N.hour).padStart(2, "0")} 点</small><b class="sd-conv-big mono">${N.score}<small>/100</small></b>
+      <span class="sd-conv-sc">多数指向 <b>${sdEsc(N.bucket)}</b><small> · ${N.agree}/${N.voters} ${SD_CONV_BIN[N.bin] || N.bin}</small></span>
       <span class="sd-conv-picks">${C.methods.map(m => `<i class="${N.picks[m] === N.bucket ? "on" : ""}" style="--c:${SD_HIT_COL[m] || "var(--muted)"}">${sdEsc((SD_HIT_NAMES[m] || m).replace(/ .*/, ""))} <b>${sdEsc(N.picks[m] || "—")}</b></i>`).join("")}</span></div>` : "";
   return `<div class="card sd-conv" style="margin:4px 0 12px"><div class="sd-hit-h">收敛时间线 <small>事件日当地各整点，指向真值档的比例 · 黑线＝多数估计指向的档 · 图例＝中位锁定时刻 · ${((SD.data || {}).estimate_hit || {}).days || 0} 个事件日</small></div>
     <div class="sd-conv-row">${score}<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:auto">${grid}${lines}${line(cons, "var(--text)", 3, "多数估计指向的档是真值档的比例")}${now}</svg></div>
