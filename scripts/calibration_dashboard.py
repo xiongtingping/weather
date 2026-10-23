@@ -15861,7 +15861,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-c>i span:last-child{font-variant-numeric:tabular-nums;color:var(--text)}
 .sd-sun-c>.sd-rev{margin-top:6px;padding:5px 8px;border-radius:6px;background:var(--surface-2, rgba(127,127,127,.1));display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px}
 .sd-sun-c>.sd-rev>small{font-size:11px;color:var(--muted)}
-.sd-sun-c>.sd-rev>b{font-size:20px;font-variant-numeric:tabular-nums}
+.sd-sun-c>.sd-rev>b{font-size:24px;color:var(--text);font-variant-numeric:tabular-nums}
 .sd-pnl-c>b.sd-warm{color:var(--pill-red-fg)}.sd-pnl-c>b.sd-cold{color:var(--accent)}.sd-pnl-c>b.muted{color:var(--muted);font-weight:600}
 .sd-sunage{font-size:12px;color:var(--muted)}
 .sd-sunnew{font-size:12px;font-weight:700;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
@@ -24406,7 +24406,7 @@ function sdSky(day){
   };
   const peakNow = fcPeak("temp_c"), peakD1 = fcPeak("temp_c_d1");
   const peakRev = peakNow == null || peakD1 == null ? null : Math.round(10 * (peakNow - peakD1)) / 10;
-  const tempRev = peakRev == null ? "" : `<div class="sd-rev" title="${sdEsc(`Open-Meteo best_match 逐小时预报的当天最高（整点最大值）：提前 1 天那一轮 ${sdN(peakD1, 1)}°C，最新一轮 ${sdN(peakNow, 1)}°C；表格「预报」列是最新一轮，观测更新型 MOS 从提前 1 天那一轮出发`)}"><small>best_match 最高温改动</small><b class="${peakRev === 0 ? "" : sdWarmCls(peakRev)}">${peakRev === 0 ? "0" : sdSg(peakRev, 1)} °C</b><small>${sdN(peakD1, 1)} → ${sdN(peakNow, 1)}</small></div>`;
+  const tempRev = peakRev == null ? "" : `<div class="sd-rev" title="${sdEsc(`Open-Meteo best_match 逐小时预报的当天最高（整点最大值）：提前 1 天那一轮 ${sdN(peakD1, 1)}°C，最新一轮 ${sdN(peakNow, 1)}°C；表格「预报」列是最新一轮，观测更新型 MOS 从提前 1 天那一轮出发`)}"><small>best_match 最新最高温</small><b>${sdN(peakNow, 1)} °C</b><small>提前 1 天 ${sdN(peakD1, 1)} · <span class="${peakRev === 0 ? "" : sdWarmCls(peakRev) + "-t"}">${peakRev === 0 ? "0" : sdSg(peakRev, 1)}</span></small></div>`;
   const tempCard = diffCard("temp", "气温 · 实况对比预报", "temp_c", "°C", 1, "报文气温", null, tempRev);
   // Dew point read against the air temperature (user 2026-10-21 「露点要和温度对比才
   // 有比较的意义吧」): the spread T − Td at the newest hour with both in the report
