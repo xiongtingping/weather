@@ -1,6 +1,6 @@
 {
   "schema": "basket_strategy_lanes_v1",
-  "updated_at_utc": "2026-10-21T16:12:38Z",
+  "updated_at_utc": "2026-10-23T07:00:51Z",
   "rationale": "User ruling 2026-09-18: put the tiebreak lane (秤砣线) live and pause every other strategy -- closed, not deleted. A paused lane still compiles, records its decisions and writes the evidence the ledger and the fits read; only its sends are held (basket BUYs end failed with strategy_lane_paused:basket on their event; the two sell lanes are skipped by the daemon). Read fresh before every send. Missing file = every lane enabled; unreadable file = every lane paused. Charters 146, 163, 166 and 175. Charter 229 (user rulings 2026-09-26 「篮子策略单独在前端加开关，篮子策略仅限p0开仓建仓，p0m和p1仅限秤砣线策略开仓。」「秤砣线也是单独加开关」「停同心线」「P0 只留篮子」): the basket buys in P0 only (a code rule, delta_v2_runtime.BASKET_BUYING_STAGES), the tiebreak lane opens on the stages in its opening_stages, P0-M and P1, and 同心线 is switched off. The basket, tiebreak and 同心线 switches are on the board (scripts/live_control_server.py POST /api/lane). Charter 231 (user rulings 2026-09-26 「调整下注规则」 and 「实盘上线，p＝天气模型」): the Proper 下注线 (proper_bet) replaces the basket's betting rule -- the basket is switched off here (it still compiles and records its decisions, which the new lane reads as its first decisions), and proper_bet opens on the P0 first decision. Charter 249 (user rulings 2026-10-03 「重开Proper 线并放开 YES，只开YES，市场众数桶，挂单」「限p0」): proper_bet reopens on rule v3 -- YES on the market's modal bucket only, resting, P0 and more than 36 hours out; its sides switch reads [\"YES\"]. The far-tail lane (tail_short) keeps running beside it: another lane's acknowledged rung on a different bucket no longer holds its takes back.",
   "lanes": {
     "basket": {
@@ -288,7 +288,7 @@
       "note": "反向线 B (charter 277; same ruling): the newest stage is P0, more than 36 h out, the served mode is not the market's and |model mean - market mean| > min_mean_gap_rungs rungs -> FOK NO on the MODEL's mode at 1 - YES best bid, up to stake_usdc, once a station-day. Measured on 504 first decisions: +3.1c a share [+0.6,+5.3] on a 0.84 cost; the threshold is the tercile cut it was read at (0.5/1.0/1.3 -> +1.1/+0.8/-0.3)."
     },
     "consensus_noon": {
-      "enabled": false,
+      "enabled": true,
       "rule": "noon_all_agree_majority_yes_taker_v1",
       "entry_local_hour": 12,
       "entry_window_minutes": 60.0,
@@ -305,7 +305,8 @@
       "send_book_fresh_seconds": 60.0,
       "live_ws_book": true,
       "lookback_days": 1,
-      "note": "共识线 (charter 280; user ruling 2026-10-23 「做成车道」): at the first cycle inside local entry_local_hour..+entry_window_minutes of the event day, the board's estimates -- the listing's deterministic F, member-trajectory Bayes, D0, P1 and the market (MOS is not read: it needs network fetches the cycle does not make) -- are read once with estimate_hit_readings.picks_at; at least min_voters present and every one on the same bucket -> FOK YES on it at the best ask (min_ask..max_ask), up to stake_usdc, depth-capped, once a station-day, held to settlement. Read 10-15..10-22 (docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit 80% at a 0.71 ask, +13% a leg [+6,+22], 7 of 8 days positive; 10 h +12%, 11 h +4%, 13 h +1%; a cell picked among about twenty on 8 event days -- the lane is the forward read, re-read at 30 event days. Off by default: the board switch is the operator's."
+      "note": "共识线 (charter 280; user ruling 2026-10-23 「做成车道」): at the first cycle inside local entry_local_hour..+entry_window_minutes of the event day, the board's estimates -- the listing's deterministic F, member-trajectory Bayes, D0, P1 and the market (MOS is not read: it needs network fetches the cycle does not make) -- are read once with estimate_hit_readings.picks_at; at least min_voters present and every one on the same bucket -> FOK YES on it at the best ask (min_ask..max_ask), up to stake_usdc, depth-capped, once a station-day, held to settlement. Read 10-15..10-22 (docs/research/estimate_convergence_20261023): 12 h all agreeing n70, hit 80% at a 0.71 ask, +13% a leg [+6,+22], 7 of 8 days positive; 10 h +12%, 11 h +4%, 13 h +1%; a cell picked among about twenty on 8 event days -- the lane is the forward read, re-read at 30 event days. Off by default: the board switch is the operator's.",
+      "enabled_at_utc": "2026-10-23T07:00:51Z"
     }
   }
 }
