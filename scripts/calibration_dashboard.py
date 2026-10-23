@@ -1047,9 +1047,44 @@ def _stations_without_p0(
         first = today
         while (first - timedelta(days=1)).isoformat() in days[station]:
             first -= timedelta(days=1)
-        out.append({"station_id": station, "reason": reasons.get(station, "原因未记录"),
+        out.append({"station_id": station,
+                    "reason": reasons.get(station) or _no_p0_certificate_reason(conn, station, now),
                     "since": first.isoformat()})
     return out
+
+
+def _no_p0_certificate_reason(conn: sqlite3.Connection, station: str, now: datetime) -> str:
+    """Why a station the P0 compile never reached has no P0: it holds no
+    cross-system certificate yet (a new station still earning one -- KDEN
+    from 2026-10-23 sat at 「原因未记录」 with 24 GEFS certificates and no
+    second family), or else the reason is genuinely unrecorded."""
+
+    stamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        cross = conn.execute(
+            "SELECT 1 FROM calibration_native_ensemble_activation"
+            " WHERE artifact_kind='CROSS_NATIVE_ENSEMBLE' AND station_id=?"
+            " AND authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+            " AND valid_from_utc<=? AND valid_until_utc>? LIMIT 1",
+            (station, stamp, stamp),
+        ).fetchone()
+        if cross is not None:
+            return "原因未记录"
+        families = [
+            str(row[0]) for row in conn.execute(
+                "SELECT DISTINCT ensemble_system_id_or_star FROM calibration_native_ensemble_activation"
+                " WHERE artifact_kind='NATIVE_ENSEMBLE_SYSTEM_CALIBRATION' AND station_id=?"
+                " AND authority_scope='PRODUCTION_NO_LIVE_ONLY'"
+                " AND valid_from_utc<=? AND valid_until_utc>?",
+                (station, stamp, stamp),
+            )
+        ]
+    except sqlite3.Error:
+        return "原因未记录"
+    return (
+        f"还没有跨系统证书（单系统证书 {len(families)} 家，至少要两家）"
+        if families else "还没有任何证书"
+    )
 
 
 def _production_health(
