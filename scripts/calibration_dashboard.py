@@ -15862,6 +15862,9 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-c>.sd-rev{margin-top:6px;padding:5px 8px;border-radius:6px;background:var(--surface-2, rgba(127,127,127,.1));display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px}
 .sd-sun-c>.sd-rev>small{font-size:11px;color:var(--muted)}
 .sd-sun-c>.sd-rev>b{font-size:24px;color:var(--text);font-variant-numeric:tabular-nums}
+/* user 2026-10-23 「弱化当前实况vs预报」: the newest-hour report against forecast steps back beside the best_match maximum */
+.sd-sun-c:has(>.sd-rev)>b,.sd-sun-g .sd-sun-c:has(>.sd-rev)>b{font-size:14px;font-weight:600;color:var(--muted)}
+.sd-sun-c:has(>.sd-rev)>i,.sd-sun-c:has(>.sd-rev)>i span:last-child{font-size:11px;color:var(--muted)}
 .sd-pnl-c>b.sd-warm{color:var(--pill-red-fg)}.sd-pnl-c>b.sd-cold{color:var(--accent)}.sd-pnl-c>b.muted{color:var(--muted);font-weight:600}
 .sd-sunage{font-size:12px;color:var(--muted)}
 .sd-sunnew{font-size:12px;font-weight:700;padding:1px 7px;border-radius:9px;background:color-mix(in srgb,var(--amber) 20%,transparent);color:var(--amber)}
