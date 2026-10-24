@@ -132,3 +132,32 @@ def test_forecast_history_survives_removed_runs_and_gives_the_change(tmp_path: P
     assert E["fcst_history"] == [["2026-10-22T00:00:00Z", 19.4], ["2026-10-22T06:00:00Z", 20.0]]
     assert E["configs"]["fcst"]["change_c"] == 0.6 and E["configs"]["fcst"]["prev_tmax_c"] == 19.4
     assert runs["ZUUU"]["2026-10-22T06:00:00Z"]["2026-10-23"]["tmax_c"] == 20.0
+
+
+def test_a_newer_run_that_misses_the_peak_does_not_replace_a_whole_day(tmp_path: Path, monkeypatch) -> None:
+    """User 2026-10-25「wrf…未来三天都要」: the 10-24 12Z run starts at 20:00 local, so its
+    10-24 is an evening reading; the 10-22 00Z run's whole-day 10-24 maximum stands."""
+
+    for name in ("20261025_from_2026102200", "20261027_from_2026102412"):
+        d = tmp_path / "run" / "fcst" / name
+        d.mkdir(parents=True)
+        (d / "wrfout_d01_x").write_bytes(b"")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {})
+    monkeypatch.setattr(W, "_domain_files", lambda d: ("d01", [str(d)]))
+    monkeypatch.setattr(W, "_status", lambda d, now: "complete")
+
+    class Cache:
+        read = 0
+
+        def frames(self, path, var, point):
+            if var != "T2":
+                return {}
+            if path.endswith("2026102200"):   # 10-24 local 08..20 = 00..12Z, peak 21.0
+                return {f"2026-10-24_{h:02d}:00:00": 15.0 + h / 2 for h in range(0, 13)}
+            return {f"2026-10-24_{h:02d}:00:00": 18.0 for h in range(12, 16)}   # evening only
+
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 25, tzinfo=timezone.utc),
+                    cache=Cache(), fcst_runs={})
+    rec = out["stations"]["ZUUU"]["days"]["2026-10-24"]["configs"]["fcst"]
+    assert rec["init_utc"] == "2026-10-22T00:00:00Z" and rec["tmax_c"] == 21.0

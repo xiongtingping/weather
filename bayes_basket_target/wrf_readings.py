@@ -331,11 +331,17 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 g = _day_max(gfs, day, zone)
                 if g:
                     entry["gfs"] = {"tmax_c": g["tmax_c"], "at_local": g["at_local"]}
-            entry["configs"][config] = rec
             if config == FORECAST:
                 fcst_runs.setdefault(station, {}).setdefault(rec["init_utc"], {})[day] = {
                     k: rec[k] for k in ("tmax_c", "at_local", "peak_covered", "status")}
+                # A newer init stands for the day only once it covers the day's peak hours, or
+                # when the older one did not either: the 10-24 12Z run starts at 20:00 local and
+                # must not replace 10-22 00Z's whole-day 10-24 maximum with an evening reading.
+                held = entry["configs"].get(FORECAST)
+                if not held or rec["peak_covered"] or not held.get("peak_covered"):
+                    entry["configs"][config] = rec
                 continue  # scored below, once per day on the init that stands
+            entry["configs"][config] = rec
             if entry["truth_c"] is not None and status == "complete" and m["peak_covered"]:
                 rec["error_c"] = round(m["tmax_c"] - entry["truth_c"], 2)
                 errs.setdefault(config, []).append(rec["error_c"])
