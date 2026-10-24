@@ -270,3 +270,94 @@ def test_an_expired_packet_in_the_p0_inbox_does_not_block_the_rest(
         ] == ["KLAX"]
     finally:
         worker.close()
+
+
+def test_a_packet_decided_after_the_cycle_clock_waits_and_does_not_block_the_rest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Decided after this cycle's clock is not malformed either (2026-10-24:
+    the inbox writer landed mid-cycle and eight such packets held back all
+    141 behind ``resident_p0_future_decision_forbidden``)."""
+
+    conn = sqlite3.connect(":memory:")
+    apply_production_ssot_schema(conn)
+    read_db = tmp_path / "target-read.db"
+    with sqlite3.connect(read_db) as read:
+        read.execute("CREATE TABLE marker(value TEXT)")
+    worker = TargetProductionWorker(read_db, commit_conn=conn)
+    worker.p0_inbox_path = tmp_path / "p0-inbox.json"
+
+    def _envelope(station: str, decided: str) -> ProbabilityEnvelope:
+        return ProbabilityEnvelope.from_mapping({
+            "stage": "P0",
+            "checkpoint_id": f"p0-{station}",
+            "station_id": station,
+            "event_date": "2099-09-14",
+            "settlement_timezone": "America/Los_Angeles",
+            "decision_at_utc": decided,
+            "fresh_until_utc": "2099-09-13T11:00:00.000Z",
+            "bucket_ordinals": {"a": 0, "b": 1},
+            "probabilities": {"a": 0.5, "b": 0.5},
+            "posterior_version": "p0-test",
+            "posterior_sha256": content_sha256([station]),
+            "bridge_sha256": "b" * 64,
+            "lineage": {
+                "settlement_timezone": "America/Los_Angeles",
+                "native_transport_provider": (
+                    "OFFICIAL_NATIVE_MIXED_CYCLE_SNAPSHOT"
+                ),
+                "settlement_definition": "station_local_calendar_day_tmax",
+                "bucket_intervals_c_json": json.dumps(
+                    {"a": [None, 20.5], "b": [20.5, None]},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            },
+        })
+
+    envelopes = {
+        "KSFO": _envelope("KSFO", "2099-09-13T08:00:05.000Z"),
+        "KLAX": _envelope("KLAX", "2099-09-13T05:00:00.000Z"),
+    }
+    packets = [
+        {"stage": "P0", "station_id": station,
+         "probability_pathway": production_worker_module.P0_PROBABILITY_PATHWAY}
+        for station in envelopes
+    ]
+    worker.p0_inbox_path.write_text(json.dumps({
+        "schema": "bayes_basket_target_p0_inbox_v1",
+        "packets": [
+            {
+                "source_class": "calibrated_native_cross_ensemble",
+                "packet": packet,
+                "packet_content_sha256": content_sha256(packet),
+            }
+            for packet in packets
+        ],
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        production_worker_module,
+        "build_probability_envelope",
+        lambda packet: envelopes[packet["station_id"]],
+    )
+    try:
+        result = worker.materialize_resident_p0(
+            as_of_utc="2099-09-13T08:00:00.000Z"
+        )
+        assert result["blockers"] == []
+        assert result["state"] == "COMMITTED"
+        states = {
+            item["station_id"]: item["state"] for item in result["receipts"]
+        }
+        assert states == {
+            "KSFO": "DEFERRED_DECIDED_AFTER_CYCLE_CLOCK",
+            "KLAX": "COMMITTED",
+        }
+        assert [
+            row[0] for row in conn.execute(
+                "SELECT station_id FROM basket_probability_envelope"
+            )
+        ] == ["KLAX"]
+    finally:
+        worker.close()

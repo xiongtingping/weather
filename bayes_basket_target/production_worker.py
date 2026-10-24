@@ -18439,9 +18439,21 @@ class TargetProductionWorker:
                 if envelope.stage != "P0":
                     raise ContractError("resident_p0_stage_invalid")
                 if envelope.decision_at_utc > as_of_utc:
-                    raise ContractError(
-                        "resident_p0_future_decision_forbidden"
-                    )
+                    # Compiled after this cycle's clock, not malformed: the
+                    # inbox is rewritten while a cycle runs, and the next
+                    # cycle's clock admits it.  Raising here failed the whole
+                    # bounded inbox -- every station's P0 that cycle -- each
+                    # time the writer landed mid-cycle (2026-10-24: eight
+                    # packets stamped 13:35:45Z held back all 141).  As-of
+                    # holds either way: nothing is written ahead of the clock.
+                    receipts.append({
+                        "station_id": envelope.station_id,
+                        "event_date": envelope.event_date,
+                        "state": "DEFERRED_DECIDED_AFTER_CYCLE_CLOCK",
+                        "wrote": False,
+                        "decision_at_utc": envelope.decision_at_utc,
+                    })
+                    continue
                 if not envelope.is_fresh(as_of_utc):
                     # Expired in the handoff inbox, not malformed: it cannot
                     # become a servable P0 and must not stop the ones that
