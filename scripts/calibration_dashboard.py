@@ -24548,12 +24548,18 @@ function sdSky(day){
   // temperature is set against the forecast surface at that hour.
   const skin = H.skin || {};
   const skinRow = (H.rows || []).filter(r => r.sat_skin_c != null && r.forecast && r.forecast.soil0_c != null).pop();
-  const skinD = skinRow ? skinRow.sat_skin_c - skinRow.forecast.soil0_c : null;
+  const skinRaw = skinRow ? skinRow.sat_skin_c - skinRow.forecast.soil0_c : null;
+  // Judged against this station's usual offset at the same hour (user 2026-10-24
+  // 「卡片按本站近 7 天同一整点的常态差扣掉后再判冷暖」): pavement and the
+  // model's soil differ by several degrees every day, so the raw gap is no signal.
+  const skinN = skin.normal || {};
+  const skinD = skinRaw != null && skinN.offset_c != null && skinN.hour === skinRow.hour ? skinRaw - skinN.offset_c : null;
   const soilCard = skinRow
-    ? sdSunCard("soil", "地表皮温 · 实况对比预报", `${hh(skinRow.hour)} 点 · °C`, `${Math.abs(skinD) < 0.05 ? "0" : sdSg(skinD, 1)} °C`, "",
-        [["卫星皮温", `${sdN(skinRow.sat_skin_c, 1)}°C`], ["预报地表", `${sdN(skinRow.forecast.soil0_c, 1)}°C`]]
-          .concat(skinRow.forecast.soil6_c == null ? [] : [["预报 6 cm", `${sdN(skinRow.forecast.soil6_c, 1)}°C`]]),
-        `${sdEsc(skin.label || "NOAA GOES LST")}：卫星测的地表皮温（2 km 像元、站点周围约 6 km 平均、只取高/中质量），每小时一张、扫描后约 15 分钟公开；有云的小时测不到，所以取最近一个晴的整点。对同一整点的最新逐小时预报地表（0 cm）土温（Open-Meteo）。皮温比预报高＝地面晒得比预报热，利于升温；取于 ${sdLocal(skin.fetched_at_utc, true)}`)
+    ? sdSunCard("soil", "地表皮温 · 实况对比预报", `${hh(skinRow.hour)} 点 · 扣常态差 · °C`,
+        skinD == null ? "—" : `${Math.abs(skinD) < 0.05 ? "0" : sdSg(skinD, 1)} °C`, "",
+        [["卫星皮温", `${sdN(skinRow.sat_skin_c, 1)}°C`], ["预报地表", `${sdN(skinRow.forecast.soil0_c, 1)}°C`],
+         ["今天差 · 常态差", `${sdSg(skinRaw, 1)} · ${skinN.offset_c == null ? (skinN.unread ? "读取中" : "样本不足") : sdSg(skinN.offset_c, 1)}`]],
+        `${sdEsc(skin.label || "NOAA GOES LST")}：卫星测的地表皮温（2 km 像元、站点周围约 6 km 平均、只取高/中质量），每小时一张、扫描后约 15 分钟公开；有云的小时测不到，所以取最近一个晴的整点。今天差＝卫星皮温 − 同一整点的最新逐小时预报地表（0 cm）土温（Open-Meteo）；常态差＝本站前 ${skinN.days || 7} 天同一整点的今天差平均（晴的 ${skinN.pairs ?? 0} 天，至少 3 天才算）。大数字＝今天差 − 常态差：为正＝地面比平常晒得更热，利于升温；为负＝比平常凉；取于 ${sdLocal(skin.fetched_at_utc, true)}`)
     : !(peak && peak.forecast.soil0_c != null) ? "" : (() => {
     const s6 = peak.forecast.soil6_c;
     const dawn = fcRows.find(r => Number(r.hour) === 6);

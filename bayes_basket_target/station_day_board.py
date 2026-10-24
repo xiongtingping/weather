@@ -1642,6 +1642,76 @@ def _goes_skin_hours(station: str, lat: float, lon: float, day: str, zone: ZoneI
             "fetched_at_utc": _iso(now_utc), "asked_hours": len(wanted)}
 
 
+#: The skin card's usual offset (user 2026-10-24「卡片按本站近 7 天同一整点的
+#: 「卫星皮温−预报地表」常态差扣掉后再判冷暖」): the same local hour on the
+#: seven days before, at least this many clear pairs.
+SKIN_NORMAL_DAYS, SKIN_NORMAL_MIN_PAIRS = 7, 3
+_SOIL_HISTORY_CACHE: dict[tuple[str, str], tuple[float, list[float | None]]] = {}
+
+
+def _open_meteo_soil_history(lat: float, lon: float, tz: str, first: str, last: str) -> list[float | None] | None:
+    """Hourly soil temperature at 0 cm over closed local days ``first``..``last``
+    (latest run, one call, kept six hours); None when refused or failed."""
+
+    import ssl  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    from . import open_meteo_quota as quota  # noqa: PLC0415
+
+    key = (f"{lat:.3f},{lon:.3f}", f"{first}..{last}")
+    hit = _SOIL_HISTORY_CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < CLOSED_DAY_CACHE_SECONDS:
+        return hit[1]
+    if _DAY_REFUSED_UNTIL and datetime.now(timezone.utc).isoformat() < _DAY_REFUSED_UNTIL[0]:
+        return None
+    try:
+        quota.charge(quota_lane.get(), 1)
+    except quota.QuotaRefused:
+        return None
+    query = urlencode({"latitude": lat, "longitude": lon, "timezone": tz, "start_date": first,
+                       "end_date": last, "hourly": "soil_temperature_0cm"})
+    try:
+        import certifi  # noqa: PLC0415
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    try:
+        with urlopen(Request(f"{OPEN_METEO_PREVIOUS_RUNS}?{query}",
+                             headers={"User-Agent": "weather-board-station-day"}),
+                     timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
+            values = [_float(v) for v in (json.loads(resp.read().decode("utf-8")).get("hourly") or {}).get("soil_temperature_0cm") or []]
+    except Exception:  # noqa: BLE001 -- the card shows the raw difference
+        return None
+    _SOIL_HISTORY_CACHE[key] = (time.monotonic(), values)
+    return values
+
+
+def _skin_normal(station: str, lat: float, lon: float, day: str, zone: ZoneInfo, hour: int) -> dict[str, Any]:
+    """The mean of (GOES skin - forecast surface) at local ``hour`` over the
+    seven days before ``day``; scans not read yet are queued and counted."""
+
+    from . import goes_surface_radiation as goes  # noqa: PLC0415
+
+    d = datetime.fromisoformat(day).date()
+    days = [d - timedelta(days=k) for k in range(SKIN_NORMAL_DAYS, 0, -1)]
+    soil = _open_meteo_soil_history(lat, lon, str(zone.key), days[0].isoformat(), days[-1].isoformat())
+    instants = [datetime.combine(x, dtime(hour), zone).astimezone(timezone.utc) for x in days]
+    got = goes.measured(station, lat, lon, instants, kind="lst")
+    pairs = []
+    for i, at in enumerate(instants):
+        skin_c = got.get(at.isoformat())
+        fc = soil[i * 24 + hour] if soil is not None and i * 24 + hour < len(soil) else None
+        if skin_c is not None and fc is not None:
+            pairs.append(skin_c - fc)
+    ok = len(pairs) >= SKIN_NORMAL_MIN_PAIRS
+    return {"hour": hour, "offset_c": round(sum(pairs) / len(pairs), 2) if ok else None,
+            "pairs": len(pairs), "days": SKIN_NORMAL_DAYS, "forecast_read": soil is not None,
+            "unread": sum(1 for at in instants if at.isoformat() not in got)}
+
+
 def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
     """Haurwitz clear-sky global horizontal irradiance, W/m^2."""
 
@@ -1785,6 +1855,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         rows.append(row)
     sums = {k: (round(sum(r["forecast"].get(k) or 0 for r in rows) * 0.0036, 2) if times else None)
             for k in ("sw", "sw_d1")}
+    skin_last = next((r for r in reversed(rows) if r["sat_skin_c"] is not None
+                      and (r["forecast"] or {}).get("soil0_c") is not None), None)
+    skin_normal = _skin_normal(station, lat, lon, day, zone, skin_last["hour"]) if skin_last else None
     past = [r for r in rows if r["obs"] and r["obs"]["inferred_sw_wm2"] is not None]
     measured = [r for r in rows if r["past"] and r["sat_sw_wm2"] is not None]
     return {
@@ -1800,6 +1873,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                       "last_hour": max((r["hour"] for r in measured), default=None)},
         "skin": {"covered": SKIN_LON_WEST < lon < SKIN_LON_EAST, "label": skin.get("label"),
                  "available": bool(skin.get("available")), "reason": skin.get("reason"),
+                 "normal": skin_normal,
                  "fetched_at_utc": skin.get("fetched_at_utc")},
         "sat_sw_mj_so_far": round(sum(r["sat_sw_wm2"] for r in measured) * 0.0036, 2) if measured else None,
         "sat_forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in measured) * 0.0036, 2) if measured and times else None,

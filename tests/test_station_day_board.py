@@ -877,4 +877,36 @@ def test_the_soil_card_sets_satellite_skin_against_the_forecast_surface() -> Non
     dash = (Path(__file__).resolve().parents[1] / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert 'sdSunCard("soil", "地表皮温 · 实况对比预报"' in dash
     assert "skinRow.sat_skin_c - skinRow.forecast.soil0_c" in dash
-    assert "toned(soilCard, toneOf([], skinD, true, 2))" in dash
+    assert "skinRaw - skinN.offset_c" in dash and "toned(soilCard, toneOf([], skinD, true, 2))" in dash
+
+
+def test_skin_normal_is_the_same_hour_over_the_seven_days_before(monkeypatch) -> None:
+    """User 2026-10-24「卡片按本站近 7 天同一整点的「卫星皮温−预报地表」常态差
+    扣掉后再判冷暖」: hour h on each of the 7 days before; cloudy days drop out;
+    under 3 clear pairs there is no normal."""
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from bayes_basket_target import goes_surface_radiation as goes
+    from bayes_basket_target import station_day_board as board
+
+    zone = ZoneInfo("America/New_York")
+    asked: list = []
+    soil = [None] * (7 * 24)
+    for i in range(7):
+        soil[i * 24 + 14] = 20.0 + i          # 10-17 .. 10-23 at 14:00
+    monkeypatch.setattr(board, "_open_meteo_soil_history",
+                        lambda lat, lon, tz, first, last: asked.append((first, last)) or soil)
+
+    def fake(station, lat, lon, instants, kind="dsr"):
+        assert kind == "lst" and len(instants) == 7
+        # Clear on four days, skin 5 °C above the forecast plus 0..3.
+        return {at.isoformat(): 20.0 + i + 5.0 + j for j, (i, at) in enumerate(list(enumerate(instants))[:4])}
+
+    monkeypatch.setattr(goes, "measured", fake)
+    out = board._skin_normal("KATL", 33.64, -84.43, "2026-10-24", zone, 14)
+    assert asked == [("2026-10-17", "2026-10-23")]
+    assert out["pairs"] == 4 and out["offset_c"] == 6.5 and out["unread"] == 3
+    monkeypatch.setattr(goes, "measured", lambda *a, **k: {})
+    assert board._skin_normal("KATL", 33.64, -84.43, "2026-10-24", zone, 14)["offset_c"] is None
