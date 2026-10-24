@@ -24545,13 +24545,12 @@ function sdSky(day){
   // Soil temperature (user 2026-10-24「增加土壤温度」): the forecast surface and
   // 6 cm at the day's warmest hour; airports report none, so forecast only.
   const soilCard = !(peak && peak.forecast.soil0_c != null) ? "" : (() => {
-    const s6 = peak.forecast.soil6_c, s6d1 = peak.forecast.soil6_c_d1;
+    const s6 = peak.forecast.soil6_c;
     const dawn = fcRows.find(r => Number(r.hour) === 6);
     return sdSunCard("soil", "土壤温度 · 预报", `${hh(peak.hour)} 点（最高温时）· 地表`, `${sdN(peak.forecast.soil0_c, 1)}°C`, "",
       [["6 cm", s6 == null ? "—" : `${sdN(s6, 1)}°C`]]
-        .concat(dawn && dawn.forecast.soil6_c != null ? [["6 cm · 06 点", `${sdN(dawn.forecast.soil6_c, 1)}°C`]] : [])
-        .concat(s6 == null || s6d1 == null || Math.abs(s6 - s6d1) < 0.05 ? [] : [["6 cm 提前 1 天", `${sdN(s6d1, 1)}°C`]]),
-      "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时；提前 1 天＝约 24 小时前那一轮。机场报文不测土温，只有预报");
+        .concat(dawn && dawn.forecast.soil6_c != null ? [["6 cm · 06 点", `${sdN(dawn.forecast.soil6_c, 1)}°C`]] : []),
+      "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时。机场报文不测土温，Open-Meteo 也不存前一天那轮的土温，所以只有最新预报");
   })();
   if(!windCard && day917.length){
     const w = mean(day917, "wind_mps"), wmax = Math.max(...day917.map(r => r.forecast.wind_mps).filter(x => x != null));
