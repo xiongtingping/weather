@@ -1415,13 +1415,16 @@ def _open_meteo_hourly(lat: float, lon: float, tz: str, day: str) -> dict[str, A
     # beside the sun (user 2026-10-15「增加露点、风、雨等信息卡片」) take the place
     # of the day-before total cloud nothing read.
     fields = ["cloud_cover", "cloud_cover_low", "shortwave_radiation", "temperature_2m"]
-    extra = ["dew_point_2m", "wind_speed_10m", "precipitation", "relative_humidity_2m"]
+    # Soil temperature at the surface and 6 cm (user 2026-10-24「增加土壤温度」).
+    extra = ["dew_point_2m", "wind_speed_10m", "precipitation", "relative_humidity_2m",
+             "soil_temperature_0cm", "soil_temperature_6cm"]
     query = urlencode({
         "latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
         # The composite ΔT reads the day-ahead dew point, humidity and wind
         # (user 2026-10-21, docs/research/tmax_physics_m3_eval_20261021).
         "hourly": ",".join(fields + extra + [f + "_previous_day1" for f in fields if f != "cloud_cover_low"]
-                           + [f + "_previous_day1" for f in ("dew_point_2m", "relative_humidity_2m", "wind_speed_10m")]),
+                           + [f + "_previous_day1" for f in ("dew_point_2m", "relative_humidity_2m", "wind_speed_10m",
+                                                                "soil_temperature_6cm")]),
         "wind_speed_unit": "ms",
     })
     try:
@@ -1689,6 +1692,8 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             "sw_d1": val("shortwave_radiation", True), "temp_c_d1": val("temperature_2m", True),
             "dew_c_d1": val("dew_point_2m", True), "rh_pct_d1": val("relative_humidity_2m", True),
             "wind_mps_d1": val("wind_speed_10m", True),
+            "soil0_c": val("soil_temperature_0cm"), "soil6_c": val("soil_temperature_6cm"),
+            "soil6_c_d1": val("soil_temperature_6cm", True),
         } if times else {}
         obs = by_hour.get(h)
         sat_sw = sat_values[h] if h < len(sat_values) else None

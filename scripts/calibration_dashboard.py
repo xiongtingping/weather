@@ -15835,7 +15835,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
 .sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:5px;line-height:1.25}
-.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}
+.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}.sd-ico-soil{color:#9a6b3f}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .sd-sun-c>b{margin:2px 0 4px}
 .sd-pnl-c.sd-tone-warm{background:color-mix(in srgb,var(--pill-red-fg) 10%,var(--card));border-color:color-mix(in srgb,var(--pill-red-fg) 28%,var(--line))}
@@ -24167,6 +24167,7 @@ const SD_ICON = {
   dew: '<path d="M8 2.2c2.4 3 3.9 5.2 3.9 7.1a3.9 3.9 0 0 1-7.8 0c0-1.9 1.5-4.1 3.9-7.1z"/>',
   wind: '<path d="M1.8 6h8.4a2 2 0 1 0-2-2M1.8 9.5h11a2 2 0 1 1-2 2M1.8 13h5"/>',
   rain: '<path d="M4.6 9.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/><path d="M5.5 11.6l-.7 1.8M8.3 11.6l-.7 1.8M11.1 11.6l-.7 1.8"/>',
+  soil: '<path d="M1.5 8.5h13"/><path d="M3 11h1.5M7 11h1.5M11 11h1.5M5 13.5h1.5M9.5 13.5h1.5"/><path d="M8 7V3.5M6.3 5 8 3.2 9.7 5"/>',
 };
 const sdIcon = k => `<svg class="sd-ico sd-ico-${k}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SD_ICON[k]}</svg>`;
 const sdSunCard = (icon, label, tag, big, cls, rows, tip) =>
@@ -24541,6 +24542,17 @@ function sdSky(day){
   if(!dewCard && peak && peak.forecast.dew_c != null)
     dewCard = sdSunCard("dew", "露点 · 预报", `${hh(peak.hour)} 点（最高温时）`, `${sdN(peak.forecast.dew_c, 1)}°C`, "",
       [["气温−露点", `${sdN(peak.forecast.temp_c - peak.forecast.dew_c, 1)}°C`]], "最新逐小时预报在当天最高温那个整点的露点");
+  // Soil temperature (user 2026-10-24「增加土壤温度」): the forecast surface and
+  // 6 cm at the day's warmest hour; airports report none, so forecast only.
+  const soilCard = !(peak && peak.forecast.soil0_c != null) ? "" : (() => {
+    const s6 = peak.forecast.soil6_c, s6d1 = peak.forecast.soil6_c_d1;
+    const dawn = fcRows.find(r => Number(r.hour) === 6);
+    return sdSunCard("soil", "土壤温度 · 预报", `${hh(peak.hour)} 点（最高温时）· 地表`, `${sdN(peak.forecast.soil0_c, 1)}°C`, "",
+      [["6 cm", s6 == null ? "—" : `${sdN(s6, 1)}°C`]]
+        .concat(dawn && dawn.forecast.soil6_c != null ? [["6 cm · 06 点", `${sdN(dawn.forecast.soil6_c, 1)}°C`]] : [])
+        .concat(s6 == null || s6d1 == null || Math.abs(s6 - s6d1) < 0.05 ? [] : [["6 cm 提前 1 天", `${sdN(s6d1, 1)}°C`]]),
+      "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时；提前 1 天＝约 24 小时前那一轮。机场报文不测土温，只有预报");
+  })();
   if(!windCard && day917.length){
     const w = mean(day917, "wind_mps"), wmax = Math.max(...day917.map(r => r.forecast.wind_mps).filter(x => x != null));
     if(w != null) windCard = sdSunCard("wind", "风 · 预报", "09–17 点平均 · m/s", `${sdN(w, 1)} m/s`, "",
@@ -24728,6 +24740,7 @@ function sdSky(day){
     toned(cloudCard, toneOf([], cloudD, false, 10)),
     ...fcOnly,
     toned(dewCard, toneOf([], spreadD, true, 1)),
+    soilCard,
     toned(rhCard, toneOf(["rh"], dOf("rh_pct"), false, 5)),
     toned(windCard, toneOf(["wind"], dOf("wind_mps"), true, 1)),
     toned(rainCard, toneOf(["rain"], rainD, false, 1)),
