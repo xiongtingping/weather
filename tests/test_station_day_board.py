@@ -910,3 +910,30 @@ def test_skin_normal_is_the_same_hour_over_the_seven_days_before(monkeypatch) ->
     assert out["pairs"] == 4 and out["offset_c"] == 6.5 and out["unread"] == 3
     monkeypatch.setattr(goes, "measured", lambda *a, **k: {})
     assert board._skin_normal("KATL", 33.64, -84.43, "2026-10-24", zone, 14)["offset_c"] is None
+
+
+def test_mos_mode_side_reads_its_rung_against_the_market_mode_and_its_newest_change() -> None:
+    """User 2026-10-25「MOS增加判断真值在市场众数哪侧和方向的变化（突出）」."""
+
+    from bayes_basket_target import station_day_board as board
+
+    axis = [{"bucket": "18°C or below", "lo_c": None, "hi_c": 18.5}, {"bucket": "19°C", "lo_c": 18.5, "hi_c": 19.5},
+            {"bucket": "20°C", "lo_c": 19.5, "hi_c": 20.5}, {"bucket": "21°C or higher", "lo_c": 20.5, "hi_c": None}]
+    cx = {"forecast_tmax_d1_c": 19.0, "total_c": 1.2,
+          "series": [{"hour": 8, "total_c": 0.9}, {"hour": 9, "total_c": 0.2}, {"hour": 10, "total_c": 0.3},
+                     {"hour": 11, "total_c": 1.2}]}
+    out = board.composite_mode_side(cx, axis, "19°C")
+    assert out["bucket"] == "20°C" and out["side"] == 1 and out["changes"] == 2
+    assert out["change"] == {"hour": 11, "from": "19°C", "to": "20°C", "dir": 1, "from_mode": True}
+    assert board.composite_mode_side({**cx, "total_c": 0.0}, axis, "19°C")["side"] == 0
+    assert board.composite_mode_side(cx, axis, None)["side"] is None
+    assert board._rung_holding(axis, 25.0) == "21°C or higher" and board._rung_holding(axis, 10.0) == "18°C or below"
+
+
+def test_both_mos_cards_show_the_mode_side_boxes() -> None:
+    from pathlib import Path
+
+    dash = (Path(__file__).resolve().parents[1] / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "function sdMosSide(X)" in dash
+    assert "body: sdMosSide(X) +" in dash and "+ sdMosSide(CX)" in dash
+    assert "<small>真值在市场众数哪侧</small>" in dash and "MOS 方向变化" in dash

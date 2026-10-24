@@ -2150,7 +2150,43 @@ def _with_composite_buckets(day: dict[str, Any]) -> dict[str, Any]:
             and cx.get("resid_sd_c")):
         cx["buckets"] = composite_bucket_probabilities(
             axis, float(cx["forecast_tmax_d1_c"]) + float(cx["total_c"]), float(cx["resid_sd_c"]), cx.get("t_df"))
+        cx["mode_side"] = composite_mode_side(cx, axis, ((day.get("market") or {}).get("stats") or {}).get("mode"))
     return day
+
+
+def _rung_holding(axis: Sequence[Mapping[str, Any]], value: float) -> str:
+    """The rung holding ``value``: lower bound inclusive, the open ends catching
+    the rest (``listing_forecast_f._rung_of``, as the estimate-hit reading reads MOS)."""
+
+    for row in axis:
+        lo, hi = row.get("lo_c"), row.get("hi_c")
+        if (lo is None or value >= lo) and (hi is None or value < hi):
+            return str(row["bucket"])
+    first_hi = axis[0].get("hi_c")
+    return str(axis[0]["bucket"] if first_hi is not None and value < first_hi else axis[-1]["bucket"])
+
+
+def composite_mode_side(cx: Mapping[str, Any], axis: Sequence[Mapping[str, Any]], market_mode: str | None) -> dict[str, Any]:
+    """MOS against the market's modal rung (user 2026-10-25 「MOS增加判断真值在市场众数
+    哪侧和方向的变化（突出）」): the rung its newest estimate is in and that rung's
+    side of the mode (+1 warmer, 0 on it, -1 colder), and its newest change of rung
+    (hour, from, to, direction, whether it moved off the mode).  Readings behind the
+    card: docs/research/direction_mos_truth_20261025 (from local 10 h a change says
+    the truth's side of the mode 64%, off the mode 80%; before 10 h nothing)."""
+
+    order = {str(row["bucket"]): i for i, row in enumerate(axis)}
+    base = float(cx["forecast_tmax_d1_c"])
+    rungs = [(int(p["hour"]), _rung_holding(axis, base + float(p["total_c"])))
+             for p in cx.get("series") or [] if p.get("total_c") is not None]
+    now = _rung_holding(axis, base + float(cx["total_c"]))
+    change = None
+    for (h0, r0), (h1, r1) in zip(rungs, rungs[1:]):
+        if r0 != r1:
+            change = {"hour": h1, "from": r0, "to": r1, "dir": 1 if order[r1] > order[r0] else -1,
+                      "from_mode": r0 == market_mode}
+    side = None if market_mode not in order else (order[now] > order[market_mode]) - (order[now] < order[market_mode])
+    return {"bucket": now, "market_mode": market_mode, "side": side, "change": change,
+            "changes": sum(1 for a, b in zip(rungs, rungs[1:]) if a[1] != b[1])}
 
 
 def _registry_axis(conn, station: str, day: str) -> list[dict[str, Any]] | None:

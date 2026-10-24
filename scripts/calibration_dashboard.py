@@ -15863,6 +15863,13 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-cx-now{font-size:12.5px;color:var(--muted);margin-top:4px}.sd-cx-now b{color:var(--text)}
 .sd-cx-now b.sd-warm{color:var(--pill-red-fg)}.sd-cx-now b.sd-cold{color:var(--accent)}
 .sd-cx-range{font-size:12.5px;color:var(--muted)}.sd-cx-range b{color:var(--text)}
+.sd-ms{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.sd-ms-c{flex:1 1 120px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel-2,transparent)}
+.sd-ms-c small{display:block;font-size:11.5px;color:var(--muted)}
+.sd-ms-c b{display:block;font-size:22px;line-height:1.2}
+.sd-ms-c i{font-style:normal;font-size:11.5px;color:var(--muted)}
+.sd-ms-c.warm{border-color:var(--pill-red-fg);background:color-mix(in srgb,var(--pill-red-fg) 10%,transparent)}.sd-ms-c.warm b{color:var(--pill-red-fg)}
+.sd-ms-c.cold{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}.sd-ms-c.cold b{color:var(--accent)}
 .sd-cx-land b{color:var(--text)}.sd-cx-land b.sd-warm{color:var(--pill-red-fg)}.sd-cx-land b.sd-cold{color:var(--accent)}
 .sd-cx-buckets{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .sd-cx-buckets span{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap}
@@ -23191,6 +23198,30 @@ function sdWrf(day){
 // maximum plus ΔT as the estimate, its likeliest rung, the same two
 // comparisons, its hour-by-hour estimate on the clock and the parts.  Read
 // only; computed by station_day_board, never here.
+// MOS against the market mode (user 2026-10-25 「MOS增加判断真值在市场众数哪侧和
+// 方向的变化（突出）」): two boxes -- its rung's side of the market's modal rung
+// now, and its newest change of rung.  How far to trust them is the 10-25
+// reading (docs/research/direction_mos_truth_20261025, 6 event days): a change
+// from local 10 h on said the truth's side of the mode 64%, off the mode 80%;
+// before 10 h nothing.
+function sdMosSide(X){
+  const M = (X || {}).mode_side;
+  if(!M || !M.bucket) return "";
+  const hh2 = h => String(h).padStart(2, "0");
+  const word = s => s > 0 ? "暖侧" : s < 0 ? "冷侧" : "众数上";
+  const cls = s => s > 0 ? "warm" : s < 0 ? "cold" : "";
+  const side = M.side == null ? `<div class="sd-ms-c"><small>真值在市场众数哪侧</small><b class="muted">无市场</b></div>`
+    : `<div class="sd-ms-c ${cls(M.side)}" title="${sdEsc(`MOS 最新推算落在 ${M.bucket}，市场众数（当前盘口）${M.market_mode}。`
+        + `\n读数（10-19 起 6 个事件日）：当地 10 点起 MOS 换档后，真值落在它指的众数那一侧 64%；换档前正在众数上的 80%；10 点前的换档没有判别力。只读，不进任何层。`)}">`
+      + `<small>真值在市场众数哪侧</small><b>${word(M.side)}</b><i>MOS ${sdEsc(M.bucket)} · 众数 ${sdEsc(M.market_mode)}</i></div>`;
+  const C = M.change;
+  const trust = C ? (C.hour >= 10 ? (C.from_mode ? "离开众数 · 读数 80%" : "10 点后 · 读数 64%") : "10 点前 · 无判别力") : "";
+  const move = !C ? `<div class="sd-ms-c"><small>MOS 方向变化</small><b class="muted">今天未换档</b></div>`
+    : `<div class="sd-ms-c ${C.hour >= 10 ? cls(C.dir) : ""}" title="${sdEsc(`今天 MOS 换档 ${M.changes} 次；最近一次 ${hh2(C.hour)}:00 由 ${C.from} ${C.dir > 0 ? "升" : "降"}到 ${C.to}${C.from_mode ? "（换档前正在市场众数上）" : ""}。`
+        + `\n读数：换档朝真值方向 00–09 点 73%、10–13 点 89%、14–17 点 99%；清晨的换档跳近跳远一样多。`)}">`
+      + `<small>MOS 方向变化 · ${hh2(C.hour)}:00</small><b>${C.dir > 0 ? "↑ 升温" : "↓ 降温"}</b><i>${sdEsc(C.from)} → ${sdEsc(C.to)} · ${trust}</i></div>`;
+  return `<div class="sd-ms">${side}${move}</div>`;
+}
 const SD_MOS_NAMES = {tdev: "气温差", rh: "湿度", dew: "露点", wind: "风", sw: "日照", phys: "日照累计", rain: "降水", rmax: "已观测最高温"};
 function sdMosPoints(day){
   const X = (day.hourly_sky || {}).composite_tmax_shift;
@@ -23231,7 +23262,7 @@ function sdMos(day){
     modeLabel: "众数",
     cmp: [[`比 ${bel ? bel.stage : "信念"}`, bel ? est - bel.mean : null, "MOS 推算减当前服务信念均值"], ["比市场", mk == null ? null : est - mk, "MOS 推算减市场均值"]],
     sub: `日前预报 ${sdN(X.forecast_tmax_d1_c, 1)}°C ${sdSg(X.total_c, 1)}（最新 ${hh2(X.hour)}:00）${hi.hour === X.hour ? "" : ` · 今天推算最高 ${hh2(hi.hour)}:00 → ${sdN(X.forecast_tmax_d1_c + hi.total_c, 1)}°C`} · σ ${sdN(X.resid_sd_c, 2)} · ${X.station_fit ? "本站系数" : "全队系数"}`,
-    body: parts ? `<div class="sd-d0-parts">${parts}</div>` : "", trend,
+    body: sdMosSide(X) + (parts ? `<div class="sd-d0-parts">${parts}</div>` : ""), trend,
     foot: fwd && fwd.n ? `前向误差（${fwd.days} 天）：MOS ${sdN(fwd.mae_composite_c, 2)} · 日前 ${sdN(fwd.mae_raw_c, 2)}°C`
       : `历史样本外误差：9 点 1.12 · 13 点 0.63 · 17 点 0.18°C`});
 }
@@ -24706,6 +24737,7 @@ function sdSky(day){
               + `<div class="sd-cx-peaktmax">推算最高温 <b class="${sdWarmCls(CX.total_c)}">${T(CX.total_c)}</b> <small>（日前预报 ${sdN(fc, 1)}）</small></div>`
               + `<div class="sd-cx-nowbox"><div class="sd-cx-buckets" title="${sdEsc(`按最新 ${hh(CX.hour)}:00 的推算（${T(CX.total_c)}）在当天市场梯子上算出的各档概率（t 分布，自由度 ${CX.t_df || "—"}）。样本外分档 LogScore 每个时刻都显著好于日前预报`)}"><small>各档概率</small>${
                 (CX.buckets || []).slice().sort((a, b) => b.p - a.p).slice(0, 3).map((x, i) => `<span class="${i ? "" : "sd-cx-top"}">${sdEsc(x.bucket)} <b>${sdN(100 * x.p, 0)}%</b></span>`).join("")}</div></div>`
+              + sdMosSide(CX)
               + (past ? `<div class="sd-cx-range">${past}</div>` : "");
           })()}
           ${cxForward}

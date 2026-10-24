@@ -145,7 +145,7 @@ def build_direction(conn):
             has_phys = any(feats.get(k) is not None for k in ("icon_shortwave", "dew_point_consensus", "ecmwf_wind_inverse"))
             model_side = sgn(ds.model_score(mom["M"], feats)) if has_phys else 0
             rows.append({"station": station, "day": day, "band": band, "unit": "F" if "°F" in settled else "C",
-                         "y": sgn(order[settled] - order[mode]), "M": m_side, "model": model_side,
+                         "y": sgn(order[settled] - order[mode]), "M": m_side, "model": model_side, "M_raw": mom["M"],
                          "combined": ds.combined_side(m_side, model_side) if has_phys else m_side,
                          "has_phys": has_phys})
     return rows
