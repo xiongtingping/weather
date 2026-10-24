@@ -1612,6 +1612,36 @@ def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) 
             "fetched_at_utc": _iso(now_utc), "pending_hours": sum(1 for h in wanted if values[h] is None)}
 
 
+#: GOES-East/West see the Americas fleet; elsewhere no geostationary skin
+#: temperature is open without an account (user 2026-10-24「先接地表皮温」).
+SKIN_LON_WEST, SKIN_LON_EAST = -170.0, -30.0
+
+
+def _goes_skin_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
+    """The local day's GOES land surface skin temperature (°C): hour h is the
+    hourly scan nearest h:00 (the forecast's soil 0 cm is the value at the
+    stamp); cloudy hours have none; a scan not read yet arrives later."""
+
+    from . import goes_surface_radiation as goes  # noqa: PLC0415
+
+    if not SKIN_LON_WEST < lon < SKIN_LON_EAST:
+        return {"available": False, "values": [None] * 24, "reason": "no_open_skin_temperature_here"}
+    d = datetime.fromisoformat(day).date()
+    now_utc = datetime.now(timezone.utc)
+    wanted = {h: datetime.combine(d, dtime(h), zone).astimezone(timezone.utc) for h in range(24)}
+    # Published about 15 minutes after the scan.
+    wanted = {h: at for h, at in wanted.items() if at + timedelta(minutes=20) <= now_utc}
+    values: list[float | None] = [None] * 24
+    try:
+        got = goes.measured(station, lat, lon, sorted(wanted.values(), reverse=True), kind="lst")
+    except Exception as exc:  # noqa: BLE001 -- the card says why
+        return {"available": False, "values": values, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    for h, instant in wanted.items():
+        values[h] = got.get(instant.isoformat())
+    return {"available": any(v is not None for v in values), "values": values, "label": goes.LST_LABEL,
+            "fetched_at_utc": _iso(now_utc), "asked_hours": len(wanted)}
+
+
 def _clear_sky_ghi(lat: float, lon: float, when_utc: datetime) -> float:
     """Haurwitz clear-sky global horizontal irradiance, W/m^2."""
 
@@ -1665,6 +1695,8 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         product = product or "noaa_goes_dsr"
         sat = {"available": False, "reason": "day_not_started"}
     sat_values = sat.get("values") or []
+    skin = (_goes_skin_hours(station, lat, lon, day, zone) if started
+            else {"available": False, "values": [None] * 24, "reason": "day_not_started"})
     hourly = fc.get("hourly") or {}
     times = hourly.get("time") or []
     by_hour: dict[int, dict[str, Any]] = {}
@@ -1700,6 +1732,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         row: dict[str, Any] = {"hour": h, "past": start <= now_local, "forecast": fc_row, "obs": None,
                                "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0),
                                "sat_cloud": sat_cloud, "diffs": [],
+                               "sat_skin_c": skin["values"][h],
                                # The sun's height at h:00 (user 2026-10-17 「增加一列太阳高度角」).
                                "sun_elev_deg": round(_solar_elevation_deg(lat, lon, start.astimezone(timezone.utc)), 1)}
         if obs is not None:
@@ -1765,6 +1798,9 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                       "available": bool(sat.get("available")), "reason": sat.get("reason"),
                       "fetched_at_utc": sat.get("fetched_at_utc"),
                       "last_hour": max((r["hour"] for r in measured), default=None)},
+        "skin": {"covered": SKIN_LON_WEST < lon < SKIN_LON_EAST, "label": skin.get("label"),
+                 "available": bool(skin.get("available")), "reason": skin.get("reason"),
+                 "fetched_at_utc": skin.get("fetched_at_utc")},
         "sat_sw_mj_so_far": round(sum(r["sat_sw_wm2"] for r in measured) * 0.0036, 2) if measured else None,
         "sat_forecast_sw_mj_so_far": round(sum(r["forecast"].get("sw") or 0 for r in measured) * 0.0036, 2) if measured and times else None,
         "inferred_sw_mj_so_far": round(sum(r["obs"]["inferred_sw_wm2"] for r in past) * 0.0036, 2) if past else None,

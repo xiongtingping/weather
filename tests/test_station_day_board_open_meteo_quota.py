@@ -107,4 +107,4 @@ def test_the_panel_asks_for_soil_temperature_and_the_board_shows_it(ledger, monk
     assert {"soil_temperature_0cm", "soil_temperature_6cm"} <= set(hourly)
     from pathlib import Path
     dash = (Path(__file__).resolve().parents[1] / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert 'sdSunCard("soil", "土壤温度 · 预报"' in dash and "    soilCard,\n" in dash
+    assert 'sdSunCard("soil", "土壤温度 · 预报"' in dash and "toned(soilCard," in dash

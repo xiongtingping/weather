@@ -24543,14 +24543,26 @@ function sdSky(day){
     dewCard = sdSunCard("dew", "露点 · 预报", `${hh(peak.hour)} 点（最高温时）`, `${sdN(peak.forecast.dew_c, 1)}°C`, "",
       [["气温−露点", `${sdN(peak.forecast.temp_c - peak.forecast.dew_c, 1)}°C`]], "最新逐小时预报在当天最高温那个整点的露点");
   // Soil temperature (user 2026-10-24「增加土壤温度」): the forecast surface and
-  // 6 cm at the day's warmest hour; airports report none, so forecast only.
-  const soilCard = !(peak && peak.forecast.soil0_c != null) ? "" : (() => {
+  // 6 cm at the day's warmest hour.  Where GOES sees the station (the Americas,
+  // user 2026-10-24「先接地表皮温」) the newest clear hour's satellite skin
+  // temperature is set against the forecast surface at that hour.
+  const skin = H.skin || {};
+  const skinRow = (H.rows || []).filter(r => r.sat_skin_c != null && r.forecast && r.forecast.soil0_c != null).pop();
+  const skinD = skinRow ? skinRow.sat_skin_c - skinRow.forecast.soil0_c : null;
+  const soilCard = skinRow
+    ? sdSunCard("soil", "地表皮温 · 实况对比预报", `${hh(skinRow.hour)} 点 · °C`, `${Math.abs(skinD) < 0.05 ? "0" : sdSg(skinD, 1)} °C`, "",
+        [["卫星皮温", `${sdN(skinRow.sat_skin_c, 1)}°C`], ["预报地表", `${sdN(skinRow.forecast.soil0_c, 1)}°C`]]
+          .concat(skinRow.forecast.soil6_c == null ? [] : [["预报 6 cm", `${sdN(skinRow.forecast.soil6_c, 1)}°C`]]),
+        `${sdEsc(skin.label || "NOAA GOES LST")}：卫星测的地表皮温（2 km 像元、站点周围约 6 km 平均、只取高/中质量），每小时一张、扫描后约 15 分钟公开；有云的小时测不到，所以取最近一个晴的整点。对同一整点的最新逐小时预报地表（0 cm）土温（Open-Meteo）。皮温比预报高＝地面晒得比预报热，利于升温；取于 ${sdLocal(skin.fetched_at_utc, true)}`)
+    : !(peak && peak.forecast.soil0_c != null) ? "" : (() => {
     const s6 = peak.forecast.soil6_c;
     const dawn = fcRows.find(r => Number(r.hour) === 6);
     return sdSunCard("soil", "土壤温度 · 预报", `${hh(peak.hour)} 点（最高温时）· 地表`, `${sdN(peak.forecast.soil0_c, 1)}°C`, "",
       [["6 cm", s6 == null ? "—" : `${sdN(s6, 1)}°C`]]
-        .concat(dawn && dawn.forecast.soil6_c != null ? [["6 cm · 06 点", `${sdN(dawn.forecast.soil6_c, 1)}°C`]] : []),
-      "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时。机场报文不测土温，Open-Meteo 也不存前一天那轮的土温，所以只有最新预报");
+        .concat(dawn && dawn.forecast.soil6_c != null ? [["6 cm · 06 点", `${sdN(dawn.forecast.soil6_c, 1)}°C`]] : [])
+        .concat(skin.covered ? [["卫星皮温", skin.reason === "day_not_started" ? "未到" : "有云或未到"]] : []),
+      "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时。机场报文不测土温，Open-Meteo 也不存前一天那轮的土温，所以只有最新预报" +
+      (skin.covered ? "；卫星皮温（NOAA GOES LST）只在晴的整点测得到" : "；这个站没有免账号的卫星地表皮温（GOES 只看得到美洲）"));
   })();
   if(!windCard && day917.length){
     const w = mean(day917, "wind_mps"), wmax = Math.max(...day917.map(r => r.forecast.wind_mps).filter(x => x != null));
@@ -24739,7 +24751,7 @@ function sdSky(day){
     toned(cloudCard, toneOf([], cloudD, false, 10)),
     ...fcOnly,
     toned(dewCard, toneOf([], spreadD, true, 1)),
-    soilCard,
+    toned(soilCard, toneOf([], skinD, true, 2)),
     toned(rhCard, toneOf(["rh"], dOf("rh_pct"), false, 5)),
     toned(windCard, toneOf(["wind"], dOf("wind_mps"), true, 1)),
     toned(rainCard, toneOf(["rain"], rainD, false, 1)),

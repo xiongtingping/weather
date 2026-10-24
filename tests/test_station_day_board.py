@@ -836,3 +836,45 @@ def test_the_reported_high_leaves_out_a_speci_that_does_not_settle() -> None:
     rows = [{"temp_c": 24.0, "settles": True}, {"temp_c": 26.0, "settles": False}, {"temp_c": None}]
     assert b._settled_high(rows) == 24.0
     assert b._settled_high([{"temp_c": 26.0}]) == 26.0  # rows without the flag (older payloads) count
+
+
+def test_goes_skin_hours_read_the_scan_at_each_hour_and_only_in_the_americas(monkeypatch) -> None:
+    """User 2026-10-24「先接地表皮温」: GOES LST, hour h is the scan at h:00
+    local; a scan under 20 minutes old is not asked for; outside GOES's view
+    (the rest of the fleet) nothing is asked at all."""
+
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    from bayes_basket_target import goes_surface_radiation as goes
+    from bayes_basket_target import station_day_board as board
+
+    asked: list[tuple[datetime, str]] = []
+
+    def fake_measured(station, lat, lon, instants, kind="dsr"):
+        asked.extend((i, kind) for i in instants)
+        return {datetime(2026, 10, 8, 14, 0, tzinfo=timezone.utc).isoformat(): 18.4}  # 10:00 EDT
+
+    monkeypatch.setattr(goes, "measured", fake_measured)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 8, 17, 10, tzinfo=timezone.utc)  # 13:10 EDT
+
+    monkeypatch.setattr(board, "datetime", Clock)
+    out = board._goes_skin_hours("KLGA", 40.77945, -73.88027, "2026-10-08", ZoneInfo("America/New_York"))
+    assert out["values"][10] == 18.4 and out["values"][12] is None and out["values"][13] is None
+    assert {k for _, k in asked} == {"lst"} and max(i for i, _ in asked) == datetime(2026, 10, 8, 16, 0, tzinfo=timezone.utc)
+    asked.clear()
+    far = board._goes_skin_hours("LEMD", 40.47, -3.56, "2026-10-08", ZoneInfo("Europe/Madrid"))
+    assert far["available"] is False and asked == []
+
+
+def test_the_soil_card_sets_satellite_skin_against_the_forecast_surface() -> None:
+    from pathlib import Path
+
+    dash = (Path(__file__).resolve().parents[1] / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert 'sdSunCard("soil", "地表皮温 · 实况对比预报"' in dash
+    assert "skinRow.sat_skin_c - skinRow.forecast.soil0_c" in dash
+    assert "toned(soilCard, toneOf([], skinD, true, 2))" in dash

@@ -14,6 +14,11 @@ column is the mean of the hour ending at the stamp), a 5x5-pixel (~10 km)
 mean.  Reads run on one background thread and land in a cache keyed by
 (station, UTC instant), so the board's request never waits on the network:
 an hour not read yet is simply absent.
+
+The same reader takes NOAA's ABI L2 Land Surface (skin) Temperature
+(``ABI-L2-LST2KMF``, 2 km, hourly at HH:00, ~15 minutes after the scan) for
+the station board's soil card (user 2026-10-24「先接地表皮温」): clear-sky
+only, a 3x3-pixel (~6 km) mean of high/medium-quality pixels, in °C.
 """
 
 from __future__ import annotations
@@ -31,6 +36,11 @@ BUCKET_EAST = "noaa-goes19"
 BUCKET_WEST = "noaa-goes18"
 PRODUCT = "ABI-L2-DSRF"
 LABEL = "NOAA GOES-19/18 DSR"
+LST_PRODUCT = "ABI-L2-LST2KMF"
+LST_LABEL = "NOAA GOES-19/18 LST"
+LST_HALF_BOX = 1
+#: DQF 0 high, 1 medium quality; 2 low (cloud edges read cold) and 3 none are dropped.
+LST_MAX_DQF = 1
 BLOCK = 16 * 1024
 MAX_FETCH_BYTES = 24 * 1024 * 1024
 HALF_BOX = 2
@@ -38,9 +48,9 @@ REQUEST_TIMEOUT_SECONDS = 30.0
 MISS_RETRY_SECONDS = 600.0
 MAX_CACHE = 20000
 
-_CACHE: dict[tuple[str, str], tuple[float, float | None]] = {}
-_PENDING: set[tuple[str, str]] = set()
-_QUEUE: "queue.Queue[tuple[str, float, float, datetime]]" = queue.Queue()
+_CACHE: dict[tuple[str, str, str], tuple[float, float | None]] = {}
+_PENDING: set[tuple[str, str, str]] = set()
+_QUEUE: "queue.Queue[tuple[str, str, float, float, datetime]]" = queue.Queue()
 _LOCK = threading.Lock()
 _WORKER: threading.Thread | None = None
 _LOCAL = threading.local()
@@ -128,10 +138,10 @@ class _RangeFile(io.RawIOBase):
         return n
 
 
-def _scan_near(bucket: str, instant: datetime) -> tuple[str, int] | None:
-    """The DSR object whose scan starts nearest ``instant`` (same UTC hour)."""
+def _scan_near(bucket: str, instant: datetime, product: str = PRODUCT) -> tuple[str, int] | None:
+    """The ``product`` object whose scan starts nearest ``instant`` (same UTC hour)."""
 
-    prefix = f"{PRODUCT}/{instant:%Y}/{instant.timetuple().tm_yday:03d}/{instant:%H}/"
+    prefix = f"{product}/{instant:%Y}/{instant.timetuple().tm_yday:03d}/{instant:%H}/"
     body = _get(f"https://{bucket}.s3.amazonaws.com/?list-type=2&prefix={prefix}&max-keys=20").text
     best: tuple[float, str, int] | None = None
     for key, size in zip(re.findall(r"<Key>([^<]+)</Key>", body), re.findall(r"<Size>(\d+)</Size>", body)):
@@ -164,15 +174,16 @@ def _fixed_grid(lat: float, lon: float, proj) -> tuple[float, float] | None:
     return math.asin(-sy / math.sqrt(sx * sx + sy * sy + sz * sz)), math.atan(sz / sx)
 
 
-def read_dsr(lat: float, lon: float, instant: datetime) -> float | None:
-    """Surface downward shortwave (W/m2) around the station at the scan
-    nearest ``instant``; None when no scan or no valid pixel."""
+def _read_box(product: str, var: str, half: int, max_dqf: int | None,
+              lat: float, lon: float, instant: datetime) -> float | None:
+    """The mean of ``var`` over a (2*half+1)^2 pixel box around the station at
+    the scan nearest ``instant``; None when no scan or no valid pixel."""
 
     import h5py  # noqa: PLC0415
     import numpy as np  # noqa: PLC0415
 
     bucket = bucket_for(lon)
-    scan = _scan_near(bucket, instant)
+    scan = _scan_near(bucket, instant, product)
     if scan is None:
         return None
     key, size = scan
@@ -180,27 +191,49 @@ def read_dsr(lat: float, lon: float, instant: datetime) -> float | None:
         grid = _fixed_grid(lat, lon, handle["goes_imager_projection"])
         if grid is None:
             return None
-        xs, ys, ds = handle["x"], handle["y"], handle["DSR"]
+        xs, ys, ds = handle["x"], handle["y"], handle[var]
         col = round((grid[0] - float(xs.attrs["add_offset"][0])) / float(xs.attrs["scale_factor"][0]))
         line = round((grid[1] - float(ys.attrs["add_offset"][0])) / float(ys.attrs["scale_factor"][0]))
         n_y, n_x = ds.shape
-        if not (HALF_BOX <= col < n_x - HALF_BOX and HALF_BOX <= line < n_y - HALF_BOX):
+        if not (half <= col < n_x - half and half <= line < n_y - half):
             return None
-        raw = ds[line - HALF_BOX:line + HALF_BOX + 1, col - HALF_BOX:col + HALF_BOX + 1].astype(float)
+        box = (slice(line - half, line + half + 1), slice(col - half, col + half + 1))
+        raw = ds[box].astype(float)
         fill = np.asarray(ds.attrs.get("_FillValue")).ravel()
         if fill.size:
             raw[raw == fill[0]] = np.nan
+        if max_dqf is not None:
+            raw[handle["DQF"][box] > max_dqf] = np.nan
         values = raw * float(np.asarray(ds.attrs["scale_factor"]).ravel()[0]) + float(np.asarray(ds.attrs.get("add_offset", [0.0])).ravel()[0])
         good = values[np.isfinite(values)]
-        return None if not good.size else round(float(good.mean()), 1)
+        return None if not good.size else float(good.mean())
+
+
+def read_dsr(lat: float, lon: float, instant: datetime) -> float | None:
+    """Surface downward shortwave (W/m2) around the station at the scan
+    nearest ``instant``; None when no scan or no valid pixel."""
+
+    value = _read_box(PRODUCT, "DSR", HALF_BOX, None, lat, lon, instant)
+    return None if value is None else round(value, 1)
+
+
+def read_lst(lat: float, lon: float, instant: datetime) -> float | None:
+    """Land surface skin temperature (°C) around the station at the hourly
+    scan nearest ``instant``; None when cloudy, no scan or no good pixel."""
+
+    value = _read_box(LST_PRODUCT, "LST", LST_HALF_BOX, LST_MAX_DQF, lat, lon, instant)
+    return None if value is None else round(value - 273.15, 1)
+
+
+_READERS = {"dsr": read_dsr, "lst": read_lst}
 
 
 def _work() -> None:
     while True:
-        station, lat, lon, instant = _QUEUE.get()
-        key = (station, instant.isoformat())
+        kind, station, lat, lon, instant = _QUEUE.get()
+        key = (kind, station, instant.isoformat())
         try:
-            value = read_dsr(lat, lon, instant)
+            value = _READERS[kind](lat, lon, instant)
         except Exception:  # noqa: BLE001 -- asked again after MISS_RETRY_SECONDS
             value = None
         with _LOCK:
@@ -210,8 +243,9 @@ def _work() -> None:
             _PENDING.discard(key)
 
 
-def measured(station: str, lat: float, lon: float, instants: list[datetime]) -> dict[str, float]:
-    """instant (ISO, UTC) -> W/m2 for the instants already read; the others
+def measured(station: str, lat: float, lon: float, instants: list[datetime],
+             kind: str = "dsr") -> dict[str, float]:
+    """instant (ISO, UTC) -> W/m2 (``kind="lst"``: skin °C) for the instants already read; the others
     are queued for the background reader (an empty answer is re-asked after
     a while, so a scan published late still arrives)."""
 
@@ -223,13 +257,13 @@ def measured(station: str, lat: float, lon: float, instants: list[datetime]) -> 
             _WORKER = threading.Thread(target=_work, name="goes-dsr-reader", daemon=True)
             _WORKER.start()
         for instant in instants:
-            key = (station, instant.isoformat())
+            key = (kind, station, instant.isoformat())
             hit = _CACHE.get(key)
             if hit is not None and hit[1] is not None:
-                out[key[1]] = hit[1]
+                out[key[2]] = hit[1]
                 continue
             if key in _PENDING or (hit is not None and now - hit[0] < MISS_RETRY_SECONDS):
                 continue
             _PENDING.add(key)
-            _QUEUE.put((station, lat, lon, instant))
+            _QUEUE.put((kind, station, lat, lon, instant))
     return out
