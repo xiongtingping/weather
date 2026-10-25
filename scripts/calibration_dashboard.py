@@ -22487,7 +22487,7 @@ function sdProbabilityCards(day){
       sub: [`<span title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值 <b>${sdN(st.mean_c, 2)}°C</b></span>`,
             `<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
             stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心（P0 为 F 挪后的服务中心），更新前的输入">${rootLabel} <b>${sdN(e.root_served_center_c != null ? e.root_served_center_c : e.root_center_c, 2)}°C</b></span>${e.root_f_shift_c != null ? ` <span class="sd-rootf" title="${sdEsc(`根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）已服务确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C；本阶段在这个根上更新，挪动随根传下来（宪章 279 补记七）`)}">根含 F ${sdSg(e.root_f_shift_c, 2)}</span>` : ""}` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: (stage !== "P0" ? sdFInherited(e) : "") + sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
+      trend: sdStageTrend(day, stage), body: (stage !== "P0" ? sdStageMove(e, stage) : "") + sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
   }).join("");
 }
 // Charter 279 (user 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」, then
@@ -22533,16 +22533,24 @@ function sdConsensusServed(c, v, nc, tip, wf){
   const math = `F ${sdN(v.f_c, 1)}°C（${nc != null ? nc + " 家" : ""}）${sdSg(v.bias_c, 2)} 偏差 = ${sdN(v.f_cal_c, 1)}°C · 距中心 ${sdSg(v.gap_c, 2)} × κ ${sdN(v.kappa, 2)} = ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触上限）" : ""}`;
   return sdMoveBox("F 进 P0 · 挪", c.served_delta_c, c.served, ["挪前", "挪后"], math, tip, wf);
 }
-// User 2026-10-25 「p0m和p1也和p0一样，增加这个信息」: what F's move in the root
-// did to P0-M / P1 -- the stage's recorded steps replayed on the root P0 before
-// F moved it (station_day_board._f_inherited; shown only when the replay
-// rebuilds the served vector).
-function sdFInherited(e){
-  const S = e.f_inherited;
+// User 2026-10-25 「p0m…应该体现taf挪动效果」: P0-M and P1 show their own
+// update -- the root they multiplied (as served, F included) against what they
+// serve (station_day_board._stage_move); F's share of the root is one line
+// (the root replayed without F, station_day_board._f_inherited).
+function sdStageMove(e, stage){
+  const S = e.stage_move;
   if(!S) return "";
-  const tip = `本阶段没有自己挪：根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）服务了确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C。把本阶段记录下的似然（P0-M 的 TAF、P1 的实况）原样乘在 F 挪动前的 P0 上，得到「无 F」；乘在挪后的 P0 上即现服务的向量（宪章 279 补记七）。`;
-  const math = `根里 P0 挪 ${sdSg(e.root_f_shift_c, 2)}°C → 本阶段似然照乘 → 传下来 ${sdSg(S.delta_c, 2)}°C`;
-  return sdMoveBox("F 经根 · 挪", S.delta_c, S, ["无 F", "现服务"], math, tip, "");
+  const root = S.root_stage || (stage === "P0-M" ? "P0" : "前序阶段");
+  const title = stage === "P0-M" ? "TAF 挪" : "实况挪";
+  const why = stage === "P0-M"
+    ? (e.tx_c == null ? "这份 TAF 没有 TX，似然恒等" : `TAF TX ${sdN(e.tx_c, 0)}°C · 比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`)
+    : `实况最高 ${sdN(e.running_high_c, 1)}°C`;
+  const F = e.f_inherited;
+  const fLine = F ? ` · 根含 F ${sdSg(e.root_f_shift_c, 2)}（没有 F 时本阶段 ${sdN(F.pre.mean_c, 2)}°C）` : "";
+  const tip = stage === "P0-M"
+    ? `P0-M＝根 P0（F 挪后的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；把同一 TAF 似然乘在 F 挪动前的 P0 上，本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`
+    : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；没有 F 时本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`;
+  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + fLine, tip, "");
 }
 function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const pre = S.pre || {}, post = S.post || {};

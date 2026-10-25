@@ -679,17 +679,41 @@ def _f_inherited(served_root: Mapping[str, float], pre_root: Mapping[str, float]
         return None
     if set(again) != set(served) or max(abs(again[k] - float(served[k])) for k in served) > F_INHERITED_REBUILD_TOL:
         return None
-    pre, post = vector_stats(without, axis), vector_stats(served, axis)
+    return _vector_move(without, served, axis)
+
+
+def _vector_move(before: Mapping[str, float], after: Mapping[str, float], axis) -> dict[str, Any] | None:
+    """Before -> after: each vector's mean, mode and its share, and the buckets carrying the mass."""
+
+    pre, post = vector_stats(before, axis), vector_stats(after, axis)
     if pre is None or post is None:
         return None
-    order = list(served)
-    keep = sorted(order, key=lambda k: -max(without[k], float(served[k])))[:5]
+    order = [k for k in after if k in before]
+    keep = sorted(order, key=lambda k: -max(float(before[k]), float(after[k])))[:5]
     return {
         "delta_c": round(post["mean_c"] - pre["mean_c"], 4),
         "pre": {"mean_c": pre["mean_c"], "mode": pre["mode"], "mode_p": pre.get("mode_p")},
         "post": {"mean_c": post["mean_c"], "mode": post["mode"], "mode_p": post.get("mode_p")},
-        "buckets": [{"bucket": k, "pre": without[k], "post": float(served[k])} for k in order if k in keep],
+        "buckets": [{"bucket": k, "pre": float(before[k]), "post": float(after[k])} for k in order if k in keep],
     }
+
+
+def _stage_move(conn, head: Mapping[str, Any], station: str, day: str, axis, stage: str) -> dict[str, Any] | None:
+    """User 2026-10-25 「p0m…应该体现taf挪动效果」: the stage's own update -- the
+    root it multiplied (as served, F included) against what it serves."""
+
+    L = head["lineage"]
+    if stage == "P0-M":
+        root = _envelope_row(conn, L.get("p0_root_checkpoint_id"), L.get("p0_root_content_sha256"), station, day, "P0")
+    else:
+        root = _envelope_row(conn, L.get("prediction_root_checkpoint_id"), L.get("prediction_root_content_sha256"),
+                             station, day, str(L.get("prediction_root_stage")))
+    if root is None or not root["vector"]:
+        return None
+    move = _vector_move({k: float(v) for k, v in root["vector"].items()}, head["vector"], axis)
+    if move is not None:
+        move["root_stage"] = "P0" if stage == "P0-M" else L.get("prediction_root_stage")
+    return move
 
 
 def _envelope_row(conn, checkpoint: Any, digest: Any, station: str, day: str, stage: str):
@@ -2312,11 +2336,13 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
         elif stage == "P0-M":
             entry.update(_p0m_brief(head, conn, station, day))
             entry["f_inherited"] = _f_inherited_p0m(conn, head, station, day, axis)
+            entry["stage_move"] = _stage_move(conn, head, station, day, axis, "P0-M")
         else:
             entry.update(_p1_brief(head))
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
             entry["root_f_shift_c"], entry["root_f_p0_at_utc"] = _p1_root_f(conn, head, station, day)
             entry["f_inherited"] = _f_inherited_p1(conn, head, station, day, axis)
+            entry["stage_move"] = _stage_move(conn, head, station, day, axis, "P1")
         stages[stage] = entry
     head_stage = day_word(stages)
     market = _market(conn, station, day, axis)

@@ -478,9 +478,10 @@ def test_the_board_leads_with_the_served_p0_and_details_the_move():
         {k: vector[k] for k in (b["bucket"] for b in detail["buckets"])}, abs=1e-7)
     assert B._consensus_brief({DCS.LINEAGE_KEY: json.dumps(receipt)})["served"] is None
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    block = source[source.index("function sdConsensusServed("):][:2500]
-    for label in ("F 进 P0 · 挪", "挪前", "挪后", "<th>桶</th>"):
+    block = source[source.index("function sdConsensusServed("):][:800]
+    for label in ("F 进 P0 · 挪", "挪前", "挪后", "sdMoveBox("):
         assert label in block
+    assert "<th>桶</th>" in source[source.index("function sdMoveBox("):][:2500]
     assert "if(served && c.served) return sdConsensusServed(" in source
 
 
@@ -541,4 +542,9 @@ def test_p0m_and_p1_replay_their_recorded_steps_on_the_root_before_f_moved_it():
     off["22°C"] += 0.01
     assert B._f_inherited(p0, served["pre_shift_probabilities"], [(taf, {"20°C or below"}, True)], off, axis) is None
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
-    assert '(stage !== "P0" ? sdFInherited(e) : "")' in source and 'sdMoveBox("F 经根 · 挪"' in source
+    # User 2026-10-25 「p0m…应该体现taf挪动效果」: the box is the stage's own move; F is its one line.
+    assert '(stage !== "P0" ? sdStageMove(e, stage) : "")' in source and "sdFInherited" not in source
+    move = B._vector_move(p0, p0m, axis)
+    assert move["delta_c"] == pytest.approx(move["post"]["mean_c"] - move["pre"]["mean_c"], abs=1e-3)
+    block = source[source.index("function sdStageMove("):][:2500]
+    assert '"TAF 挪"' in block and '"实况挪"' in block and "没有 F 时本阶段" in block
