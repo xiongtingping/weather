@@ -22501,7 +22501,7 @@ function sdProbabilityCards(day){
 // it -- and the window's walk-forward verdict from the daily fit
 // (D.deterministic_consensus), fleet first.  A record: nothing here is served.
 const SD_CONS_STATE = {NO_FIT: "等待首次拟合", TOO_FEW_SYSTEMS: "不足 3 家", NO_READ: "读不到确定性预报",
-                       NOT_READ_AT_STAGE: "本阶段不读", NO_AXIS: "无桶轴", ERROR: "出错"};
+                       NOT_READ_AT_STAGE: "距结算不足 12 小时，F 不进 P0（只在 12 小时以上服务）", NO_AXIS: "无桶轴", ERROR: "出错"};
 function sdConsensusTip(v){
   return `F_cal = F ${sdSg(v.bias_c, 2)} = ${sdN(v.f_cal_c, 2)}°C；F_cal − 中心 ${sdSg(v.gap_c, 2)}°C；κ ${sdN(v.kappa, 3)}；挪 ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触 1.5°C 上限）" : ""}${v.bias_source === "fleet_fallback" ? "；该站无逐站偏差，用舰队值" : ""}`;
 }
