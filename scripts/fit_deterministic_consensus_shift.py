@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Charter 279: fit the deterministic consensus shift on settled station-days.
 
-Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0-M, P1) and per variant
+Per stage family (P0 beyond 36 h, P0 within 12-36 h, P0 within 12 h, P0-M, P1) and per variant
 (fleet or station bias; the ten-system roster): F's bias against the settled
 truth, kappa through the origin, and the walk-forward scores of the shift
 each event day would have had under the parameters fitted on the days before
@@ -55,7 +55,7 @@ ENVELOPES_SQL = (
     " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=?"
     " ORDER BY decision_at_utc LIMIT ?"
 )
-# P0 is walked until both its families are found; P0-M and P1 take their first.
+# P0 is walked until its three families are found; P0-M and P1 take their first.
 STAGE_LIMIT = {"P0": -1, "P0-M": 1, "P1": 1}
 TRUTH_SQL = (
     "SELECT event_date, truth_revision_no, settled_tmax_c FROM basket_station_day_settlement_label"
@@ -90,6 +90,7 @@ def _pre_shift(text) -> dict[str, float] | None:
 
 def _first_per_family(conn: sqlite3.Connection, station: str, day: str) -> list[tuple[str, tuple]]:
     """(family, envelope row) for the first P0 beyond 36 h, the first P0 within 12-36 h,
+    the first P0 within 12 h (补记八),
     the first P0-M and the first P1 (charter 279 补记三)."""
 
     picked: list[tuple[str, tuple]] = []
@@ -106,7 +107,7 @@ def _first_per_family(conn: sqlite3.Connection, station: str, day: str) -> list[
                 continue
             seen.add(family)
             picked.append((family, row))
-            if stage != "P0" or len([f for f in seen if f.startswith("P0_")]) == 2:
+            if stage != "P0" or len([f for f in seen if f.startswith("P0_")]) == 3:
                 break
     return picked
 

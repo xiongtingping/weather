@@ -62,11 +62,12 @@ def test_the_stage_families_split_p0_at_36_hours_and_p1_has_its_own():
     assert DCS.stage_family("P0", 54.6) == "P0_far"
     assert DCS.stage_family("P0", 36.0) == "P0_near"
     assert DCS.stage_family("P0", 12.0) == "P0_near"
-    assert DCS.stage_family("P0", 11.9) is None
+    assert DCS.stage_family("P0", 11.9) == "P0_lt12"     # 补记八
+    assert DCS.stage_family("P0", 0.0) is None
     assert DCS.stage_family("P0-M", 5.0) == "P0M"
     assert DCS.stage_family("P1", 5.0) == "P1"
     assert DCS.stage_family("P0", None) is None
-    assert DCS.STAGE_FAMILIES == ("P0_far", "P0_near", "P0M", "P1")
+    assert DCS.STAGE_FAMILIES == ("P0_far", "P0_near", "P0_lt12", "P0M", "P1")
     assert DCS.CENSOR_BY_FAMILY["P0M"] is True and DCS.CENSOR_BY_FAMILY["P1"] is False
 
 
@@ -263,7 +264,7 @@ def test_a_real_p0_compile_serves_the_primary_shift_and_keeps_the_vector_it_move
     loud_envelope = compile_once(loud)
     quiet_envelope = compile_once(lambda conn, **kw: {"state": "OFF"})
     receipt = json.loads(loud_envelope["lineage"][DCS.LINEAGE_KEY])
-    assert receipt["family"] in {"P0_far", "P0_near"}
+    assert receipt["family"] in {"P0_far", "P0_near", "P0_lt12"}
     fleet = receipt["variants"]["fleet_wide"]
     assert fleet["state"] == "READ" and fleet["delta_c"] == DCS.CAP_C
     # 补记七: the served vector is the primary variant's shadow, the receipt keeps what it moved.
@@ -286,6 +287,13 @@ def test_a_real_p0_compile_serves_the_primary_shift_and_keeps_the_vector_it_move
 
 def test_only_p0_beyond_12_hours_serves_and_a_silent_primary_serves_unshifted():
     assert DCS.SERVE_FAMILIES == frozenset({"P0_far", "P0_near"}) and DCS.MODE == "serve"
+    # 补记八: P0_lt12 is recorded and fitted, not served.
+    assert "P0_lt12" in DCS.STAGE_FAMILIES and "P0_lt12" not in DCS.SERVE_FAMILIES
+    lt12 = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(family="P0_lt12"),
+                              family="P0_lt12", station_id="SBGR", served_probability=SERVED,
+                              ordered=ORDER, intervals=INTERVALS)
+    vector, out = DCS.serve(lt12, SERVED, ORDER, INTERVALS)
+    assert vector == SERVED and out["serve_state"] == "FAMILY_NOT_SERVED" and out["state"] == "SHADOW"
     read = _read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4, CMA=20.0)
     for family in ("P0M", "P1"):
         receipt = DCS.shadow_receipt(read=read, fit=_fit(family=family), family=family, station_id="SBGR",

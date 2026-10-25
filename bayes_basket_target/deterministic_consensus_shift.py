@@ -41,6 +41,12 @@ finished P0 vector (``serve``); the receipt keeps the vector it moved
 (``pre_shift_probabilities``) so the fit keeps scoring the unshifted chain.
 P0-M and P1 stay shadow: their root is the served P0, so their receipts and the
 fit's post-serving walk-forward now read what is left on top of it.
+
+补记八 (2026-10-25): a P0 decided within 12 h of settlement is its own family,
+``P0_lt12``, recorded and fitted daily like the others.  It does not serve: the
+research form (per-system bias, intercept, LogScore fit; ``docs/research/
+det_ens_blend_20261025`` 补记一) passed, but this module's form (fleet bias, kappa
+through the origin) scored -0.0088 [-0.0215, +0.0045] on the same days.
 """
 
 from __future__ import annotations
@@ -81,7 +87,7 @@ FIT_ARTIFACT_PATH = Path(
 FIT_SCHEMA = "bayes_basket_target_deterministic_consensus_fit_v1"
 # 补记七: ``serve`` serves SERVE_FAMILIES' primary variant; ``shadow`` records only.
 MODE = os.environ.get("PM_DETERMINISTIC_CONSENSUS_MODE", "serve").strip().lower()
-#: The families that serve (补记七): P0 beyond 12 h.  P0-M and P1 record.
+#: The families that serve (补记七): P0 beyond 12 h.  P0_lt12, P0-M and P1 record.
 SERVE_FAMILIES: frozenset[str] = frozenset({"P0_far", "P0_near"})
 #: When P0 v31 declares (``serving_arithmetic``): P0-M and P1 envelopes decided
 #: from here on sit on a served-consensus root -- their residual walk-forward
@@ -103,13 +109,13 @@ PRODUCT_OF_SYSTEM = {SYSTEM_IDS[p]: p for p in PRODUCTS}
 BIAS_FORMS: tuple[str, ...] = ("fleet", "station")
 VARIANTS: tuple[str, ...] = tuple(f"{form}_wide" for form in BIAS_FORMS)
 PRIMARY_VARIANT = "fleet_wide"
-STAGE_FAMILIES: tuple[str, ...] = ("P0_far", "P0_near", "P0M", "P1")
+STAGE_FAMILIES: tuple[str, ...] = ("P0_far", "P0_near", "P0_lt12", "P0M", "P1")
 FAR_HOURS = 36.0
 NEAR_FLOOR_HOURS = 12.0
 #: How each family's shadow treats the buckets the day's observed high has
 #: already ruled out: P0-M censors them onto the lowest live bucket (charter
 #: 241), P1 renormalises proportionally over the live ones (its own rule).
-CENSOR_BY_FAMILY: Mapping[str, bool] = {"P0_far": False, "P0_near": False, "P0M": True, "P1": False}
+CENSOR_BY_FAMILY: Mapping[str, bool] = {"P0_far": False, "P0_near": False, "P0_lt12": False, "P0M": True, "P1": False}
 
 _FIT_CACHE: dict[str, Any] = {}
 
@@ -142,6 +148,8 @@ def stage_family(stage: str, hours_to_settlement: float | None) -> str | None:
         return "P0_far"
     if hours >= NEAR_FLOOR_HOURS:
         return "P0_near"
+    if hours > 0.0:
+        return "P0_lt12"
     return None
 
 
