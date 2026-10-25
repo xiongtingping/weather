@@ -178,7 +178,7 @@ def _mos_series(conn: sqlite3.Connection, station: str, day: str, zone: ZoneInfo
     # Charged to this reading's own lane, never the live board's.
     token = B.quota_lane.set(QUOTA_LANE)
     try:
-        sky = B._hourly_vs_forecast(conn, station, day, zone, metar)
+        sky = B._hourly_vs_forecast(conn, station, day, zone, metar, extras=False)
     finally:
         B.quota_lane.reset(token)
     cx = (sky or {}).get("composite_tmax_shift") or {}

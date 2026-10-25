@@ -15812,7 +15812,7 @@ table.sd-sky td.sd-sky-tags .pill{margin:1px 2px 1px 0}
 .sd-sun-g .sd-pnl-c>b{font-size:24px}
 .sd-sun-c>span{display:flex;flex-direction:column;gap:1px}
 .sd-sun-c>span em{font-style:normal;font-size:12.5px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:5px;line-height:1.25}
-.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}.sd-ico-soil{color:#9a6b3f}
+.sd-ico{width:15px;height:15px;flex:none}.sd-ico-sun{color:#e8a317}.sd-ico-cloud{color:#7d8aa0}.sd-ico-temp{color:var(--pill-red-fg)}.sd-ico-dew{color:#3b9ec9}.sd-ico-wind{color:#6b8e9e}.sd-ico-rain{color:#4a7fd4}.sd-ico-soil{color:#9a6b3f}.sd-ico-aerosol{color:#8a7f6a}
 .sd-sun-c>span small{font-size:11px;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .sd-sun-c>b{margin:2px 0 4px}
 .sd-pnl-c.sd-tone-warm{background:color-mix(in srgb,var(--pill-red-fg) 10%,var(--card));border-color:color-mix(in srgb,var(--pill-red-fg) 28%,var(--line))}
@@ -24202,6 +24202,7 @@ const SD_ICON = {
   dew: '<path d="M8 2.2c2.4 3 3.9 5.2 3.9 7.1a3.9 3.9 0 0 1-7.8 0c0-1.9 1.5-4.1 3.9-7.1z"/>',
   wind: '<path d="M1.8 6h8.4a2 2 0 1 0-2-2M1.8 9.5h11a2 2 0 1 1-2 2M1.8 13h5"/>',
   rain: '<path d="M4.6 9.5h6.9a2.9 2.9 0 0 0 .3-5.8 4 4 0 0 0-7.6.9 2.5 2.5 0 0 0 .4 4.9z"/><path d="M5.5 11.6l-.7 1.8M8.3 11.6l-.7 1.8M11.1 11.6l-.7 1.8"/>',
+  aerosol: '<circle cx="4" cy="5" r="1.2"/><circle cx="9" cy="4" r="1"/><circle cx="12.5" cy="7" r="1.3"/><circle cx="6" cy="10" r="1"/><circle cx="10.5" cy="12" r="1.2"/><circle cx="3.5" cy="13" r="0.8"/>',
   soil: '<path d="M1.5 8.5h13"/><path d="M3 11h1.5M7 11h1.5M11 11h1.5M5 13.5h1.5M9.5 13.5h1.5"/><path d="M8 7V3.5M6.3 5 8 3.2 9.7 5"/>',
 };
 const sdIcon = k => `<svg class="sd-ico sd-ico-${k}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SD_ICON[k]}</svg>`;
@@ -24605,6 +24606,30 @@ function sdSky(day){
       "最新逐小时预报（Open-Meteo）在当天最高温那个整点的地表（0 cm）与 6 cm 土壤温度；06 点＝清晨未升温时。机场报文不测土温，Open-Meteo 也不存前一天那轮的土温，所以只有最新预报" +
       (skin.covered ? "；卫星皮温（NOAA GOES LST）只在晴的整点测得到" : "；这个站没有免账号的卫星地表皮温（GOES 只看得到美洲）"));
   })();
+  // Aerosol (user 2026-10-25「增加气溶胶的数据」): the satellite's measured optical
+  // depth at the newest clear daylight hour against the CAMS forecast at that hour;
+  // before one (or where no open satellite sees the station) the forecast alone.
+  const AE = H.aerosol || {};
+  const aeRow = (H.rows || []).filter(r => r.sat_aod != null && r.aod_fc != null).pop();
+  const aeD = aeRow ? aeRow.sat_aod - aeRow.aod_fc : null;
+  const aeTip = "气溶胶光学厚度（AOD，约 550 nm）：整层空气里霾、沙尘、烟的多少；约 0.1 很干净，0.3 左右有霾，0.5 以上重霾或沙尘。越大地面日照越弱，利于降温。";
+  const aeDay = day917.filter(r => r.aod_fc != null);
+  const aerosolCard = aeRow
+    ? sdSunCard("aerosol", "气溶胶 · 实况对比预报", `${hh(aeRow.hour)} 点 · 光学厚度`,
+        Math.abs(aeD) < 0.005 ? "0" : `${aeD > 0 ? "+" : "−"}${sdN(Math.abs(aeD), 2)}`, "",
+        [["卫星实测", sdN(aeRow.sat_aod, 2)], ["预报（CAMS）", sdN(aeRow.aod_fc, 2)]]
+          .concat(aeRow.dust_fc >= 1 ? [["沙尘预报", `${sdN(aeRow.dust_fc, 0)} µg/m³`]] : []),
+        `${aeTip}\n卫星：${sdEsc(AE.label || "")}，只在白天、晴的整点测得到，取最近一个；预报：CAMS 全球（Open-Meteo 空气质量接口，每 3 小时取一次）。实测比预报大＝比预报浑，日照会比预报弱；取于 ${sdLocal(AE.fetched_at_utc, true)}`)
+    : !aeDay.length ? "" : (() => {
+      const m = aeDay.reduce((a, r) => a + r.aod_fc, 0) / aeDay.length;
+      const top = aeDay.reduce((a, r) => r.aod_fc > a.aod_fc ? r : a, aeDay[0]);
+      const dust = aeDay.filter(r => r.dust_fc != null);
+      const dm = dust.length ? dust.reduce((a, r) => a + r.dust_fc, 0) / dust.length : null;
+      return sdSunCard("aerosol", "气溶胶 · 预报", "09–17 点平均 · 光学厚度", sdN(m, 2), "",
+        [["最大", `${sdN(top.aod_fc, 2)}（${hh(top.hour)} 点）`]].concat(dm != null && dm >= 1 ? [["沙尘", `${sdN(dm, 0)} µg/m³`]] : [])
+          .concat([["卫星实测", AE.covered === false ? "无开放卫星" : AE.reason === "day_not_started" ? "未到" : "有云或未到"]]),
+        `${aeTip}\n预报：CAMS 全球（Open-Meteo 空气质量接口，每 3 小时取一次）。卫星实测：亚洲与大洋洲用 JAXA 葵花逐小时产品，美洲用 GOES；欧洲、非洲、中东没有免账号的静止卫星气溶胶，只有预报。`);
+    })();
   if(!windCard && day917.length){
     const w = mean(day917, "wind_mps"), wmax = Math.max(...day917.map(r => r.forecast.wind_mps).filter(x => x != null));
     if(w != null) windCard = sdSunCard("wind", "风 · 预报", "09–17 点平均 · m/s", `${sdN(w, 1)} m/s`, "",
@@ -24794,6 +24819,7 @@ function sdSky(day){
     ...fcOnly,
     toned(dewCard, toneOf([], spreadD, true, 1)),
     toned(soilCard, toneOf([], skinD, true, 2)),
+    toned(aerosolCard, toneOf([], aeD, false, 0.1)),
     toned(rhCard, toneOf(["rh"], dOf("rh_pct"), false, 5)),
     toned(windCard, toneOf(["wind"], dOf("wind_mps"), true, 1)),
     toned(rainCard, toneOf(["rain"], rainD, false, 1)),

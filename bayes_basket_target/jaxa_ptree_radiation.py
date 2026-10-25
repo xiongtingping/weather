@@ -80,6 +80,17 @@ CLP_PUBLISH_AFTER = timedelta(minutes=55)
 CLP_HALF_BOX = 2
 CLP_TYPES = {0: "晴", 1: "卷云", 2: "卷层云", 3: "深对流", 4: "高积云", 5: "高层云", 6: "雨层云",
              7: "积云", 8: "层积云", 9: "层云", 10: "未知"}
+#: JAXA Himawari aerosol (user 2026-10-25「增加气溶胶的数据」): Level 3 hourly
+#: combined aerosol, the CLP grid (60N..60S, 80E..160W, 0.05 deg), ~90 minutes
+#: after the hour begins (the 23:00 file at 00:30).  ``AOT_Pure`` is the
+#: quality-screened optical thickness (500 nm); ``AOT_Merged`` adds the
+#: interpolated cells and stands in when no pure cell is in the box.  The hour's
+#: ``AOT_L2_Mean`` is left out: cloud edges pass into it (ZUUU 10-25 03Z read 4.99).
+ARP_DIR = "/pub/himawari/L3/ARP"
+_ARP_RE = re.compile(r"^H\d\d_(\d{8})_(\d{2})00_1HARP\d{3}_FLDK\.02401_02401\.nc$")
+ARP_PUBLISH_AFTER = timedelta(minutes=95)
+ARP_LABEL = "JAXA Himawari 气溶胶（P-Tree 官方）"
+_ARP: dict[str, dict[str, dict[str, Any]]] = {}   # hour ISO -> station -> reading
 _L2_STATE: dict[str, Any] = {"pending": False, "checked": -1e9}
 _CLP: dict[str, dict[str, dict[str, Any]]] = {}   # scan ISO -> station -> reading
 
@@ -272,6 +283,67 @@ def read_clp_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict
             pass
 
 
+def _arp_remote(hour: datetime) -> str | None:
+    hour = hour_start(hour)
+    directory = f"{ARP_DIR}/{_version(ARP_DIR)}/{hour:%Y%m}/{hour:%d}"
+    try:
+        names = _listing(directory)
+    except RuntimeError:
+        return None
+    stamp = (hour.strftime("%Y%m%d"), hour.strftime("%H"))
+    for name in names:
+        m = _ARP_RE.match(name)
+        if m and (m.group(1), m.group(2)) == stamp:
+            return f"{directory}/{name}"
+    return None
+
+
+def read_arp_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str, dict[str, Any]]:
+    """One hourly aerosol file at every station's 5 x 5 box (file deleted after)."""
+
+    import h5py  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
+
+    path = _download(remote)
+    try:
+        with h5py.File(path, "r") as f:
+            if f["AOT_Pure"].shape != (CLP_SIZE, CLP_SIZE):
+                raise RuntimeError(f"grid {f['AOT_Pure'].shape}")
+            lat_axis, lon_axis = f["latitude"], f["longitude"]
+
+            def scaled(name: str, box):
+                attrs = f[name].attrs
+                raw = f[name][box]
+                data = raw.astype(float)
+                data[raw == int(np.ravel(attrs.get("missing_value", [-32768]))[0])] = np.nan
+                return data * float(np.ravel(attrs.get("scale_factor", [1.0]))[0]) + float(
+                    np.ravel(attrs.get("add_offset", [0.0]))[0])
+
+            out: dict[str, dict[str, Any]] = {}
+            for station, (lat, lon) in stations.items():
+                cell = clp_cell(lat, lon)
+                if cell is None:
+                    continue
+                r, c = cell
+                if abs(float(lat_axis[r]) - lat) > STEP or abs(((float(lon_axis[c]) - lon) + 180.0) % 360.0 - 180.0) > STEP:
+                    raise RuntimeError(f"grid axis disagrees at {station}")
+                box = np.s_[r - CLP_HALF_BOX:r + CLP_HALF_BOX + 1, c - CLP_HALF_BOX:c + CLP_HALF_BOX + 1]
+                for name, kind in (("AOT_Pure", "pure"), ("AOT_Merged", "merged")):
+                    values = scaled(name, box)
+                    good = values[np.isfinite(values)]
+                    if good.size:
+                        out[station] = {"aod": round(float(good.mean()), 3), "kind": kind, "cells": int(good.size)}
+                        break
+                else:
+                    out[station] = {"aod": None, "kind": None, "cells": 0}
+        return out
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def _fleet() -> dict[str, tuple[float, float]]:
     from .station_registry import _COORDINATES  # noqa: PLC0415
 
@@ -338,6 +410,8 @@ def _absorb(doc: dict[str, Any]) -> None:
         _CACHE.setdefault(key, values)
     for key, values in (doc.get("clp") or {}).items():
         _CLP.setdefault(key, values)
+    for key, values in (doc.get("arp") or {}).items():
+        _ARP.setdefault(key, values)
     latest = doc.get("l2_latest")
     mine = _L2_STATE.get("latest") or {}
     if isinstance(latest, dict) and str(latest.get("scan_utc") or "") > str(mine.get("scan_utc") or ""):
@@ -383,11 +457,13 @@ def _persist(cache: dict[str, dict[str, float | None]]) -> None:
             keep_scans = sorted(_CLP)[-KEEP_HOURS:]
             for stale in set(_CLP) - set(keep_scans):
                 _CLP.pop(stale, None)
+            for stale in set(_ARP) - set(sorted(_ARP)[-KEEP_HOURS:]):
+                _ARP.pop(stale, None)
             fd, temporary = tempfile.mkstemp(dir=CACHE_PATH.parent, prefix=CACHE_PATH.name, suffix=".tmp")
             with os.fdopen(fd, "w", encoding="utf-8") as out:
                 json.dump({"schema": CACHE_SCHEMA, "written_at_utc": datetime.now(timezone.utc)
                            .strftime("%Y-%m-%dT%H:%M:%SZ"), "hours": cache,
-                           "l2_latest": _L2_STATE.get("latest"), "clp": _CLP}, out, sort_keys=True)
+                           "l2_latest": _L2_STATE.get("latest"), "clp": _CLP, "arp": _ARP}, out, sort_keys=True)
             os.replace(temporary, CACHE_PATH)
             _CACHE_STAMP = CACHE_PATH.stat().st_mtime_ns
         finally:
@@ -439,11 +515,34 @@ def _read_clp(scan: datetime) -> None:
         _persist(_load())
 
 
+def _read_arp(hour: datetime) -> None:
+    key = "ARP:" + _key(hour)
+    try:
+        remote = _arp_remote(hour)
+        values = read_arp_file(remote, _fleet_clp()) if remote else None
+        error = None
+    except Exception as exc:  # noqa: BLE001 -- asked again after MISS_RETRY_SECONDS
+        values, error = None, f"{type(exc).__name__}: {str(exc)[:120]}"
+    with _LOCK:
+        _PENDING.discard(key)
+        if values is None:
+            _MISSES[key] = time.monotonic()
+            if error:
+                _STATUS.update(arp_error=error)
+            return
+        _load()
+        _ARP[_key(hour)] = values
+        _persist(_load())
+
+
 def _work() -> None:
     while True:
         hour = _QUEUE.get()
         if hour == _L2_TASK:
             _read_latest_l2()
+            continue
+        if isinstance(hour, tuple) and hour[0] == "ARP":
+            _read_arp(hour[1])
             continue
         if isinstance(hour, tuple) and hour[0] == "CLP":
             _read_clp(hour[1])
@@ -527,6 +626,28 @@ def clouds(station: str, scans: list[datetime]) -> dict[str, dict[str, Any] | No
     return out
 
 
+def aerosol(station: str, hours: list[datetime]) -> dict[str, dict[str, Any] | None]:
+    """hour start (``YYYY-MM-DDTHH:00Z``) -> the station's hourly aerosol reading
+    for the hours already read; the others are queued, newest first.  Never waits."""
+
+    out: dict[str, dict[str, Any] | None] = {}
+    now = time.monotonic()
+    with _LOCK:
+        _ensure_worker()
+        _load()
+        for hour in sorted(hours, reverse=True):
+            key = _key(hour)
+            if key in _ARP:
+                out[key] = _ARP[key].get(station.upper())
+                continue
+            task = "ARP:" + key
+            if task in _PENDING or now - _MISSES.get(task, -1e9) < MISS_RETRY_SECONDS:
+                continue
+            _PENDING.add(task)
+            _QUEUE.put(("ARP", hour_start(hour)))
+    return out
+
+
 def latest(station: str) -> dict[str, Any] | None:
     """The newest 10-minute scan read so far at the station: ``{"scan_utc",
     "sw_wm2", "read_at_utc"}``, or None; asks the background reader for a newer
@@ -551,5 +672,6 @@ def status() -> dict[str, Any]:
         return dict(_STATUS, pending=len(_PENDING))
 
 
-__all__ = ["CLP_PUBLISH_AFTER", "CLP_TYPES", "LABEL", "PUBLISH_AFTER", "clouds", "clp_cell", "covers",
+__all__ = ["ARP_LABEL", "ARP_PUBLISH_AFTER", "CLP_PUBLISH_AFTER", "CLP_TYPES", "LABEL", "PUBLISH_AFTER", "aerosol",
+           "clouds", "clp_cell", "covers", "read_arp_file",
            "hour_start", "latest", "measured", "pixel", "read_clp_file", "read_file", "read_hour", "status"]

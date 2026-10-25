@@ -18,7 +18,10 @@ an hour not read yet is simply absent.
 The same reader takes NOAA's ABI L2 Land Surface (skin) Temperature
 (``ABI-L2-LST2KMF``, 2 km, hourly at HH:00, ~15 minutes after the scan) for
 the station board's soil card (user 2026-10-24「先接地表皮温」): clear-sky
-only, a 3x3-pixel (~6 km) mean of high/medium-quality pixels, in °C.
+only, a 3x3-pixel (~6 km) mean of high/medium-quality pixels, in °C.  And
+the Aerosol Optical Depth (``ABI-L2-AODF``, 550 nm, 2 km, every 10 minutes,
+daytime and clear only) for the aerosol card (user 2026-10-25「增加气溶胶的
+数据」): a 5x5-pixel (~10 km) mean of high/medium-quality pixels.
 """
 
 from __future__ import annotations
@@ -41,6 +44,9 @@ LST_LABEL = "NOAA GOES-19/18 LST"
 LST_HALF_BOX = 1
 #: DQF 0 high, 1 medium quality; 2 low (cloud edges read cold) and 3 none are dropped.
 LST_MAX_DQF = 1
+AOD_PRODUCT = "ABI-L2-AODF"
+AOD_LABEL = "NOAA GOES-19/18 AOD"
+AOD_MAX_DQF = 1
 BLOCK = 16 * 1024
 MAX_FETCH_BYTES = 24 * 1024 * 1024
 HALF_BOX = 2
@@ -225,7 +231,15 @@ def read_lst(lat: float, lon: float, instant: datetime) -> float | None:
     return None if value is None else round(value - 273.15, 1)
 
 
-_READERS = {"dsr": read_dsr, "lst": read_lst}
+def read_aod(lat: float, lon: float, instant: datetime) -> float | None:
+    """Aerosol optical depth (550 nm) around the station at the scan nearest
+    ``instant``; None at night, under cloud, or with no good pixel."""
+
+    value = _read_box(AOD_PRODUCT, "AOD", HALF_BOX, AOD_MAX_DQF, lat, lon, instant)
+    return None if value is None else round(max(value, 0.0), 3)
+
+
+_READERS = {"dsr": read_dsr, "lst": read_lst, "aod": read_aod}
 
 
 def _work() -> None:
@@ -245,7 +259,7 @@ def _work() -> None:
 
 def measured(station: str, lat: float, lon: float, instants: list[datetime],
              kind: str = "dsr") -> dict[str, float]:
-    """instant (ISO, UTC) -> W/m2 (``kind="lst"``: skin °C) for the instants already read; the others
+    """instant (ISO, UTC) -> W/m2 (``kind="lst"``: skin °C; ``"aod"``: optical depth) for the instants already read; the others
     are queued for the background reader (an empty answer is re-asked after
     a while, so a scan published late still arrives)."""
 

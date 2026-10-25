@@ -1654,6 +1654,98 @@ def _goes_hours(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) 
             "fetched_at_utc": _iso(now_utc), "pending_hours": sum(1 for h in wanted if values[h] is None)}
 
 
+#: Aerosol (user 2026-10-25「增加气溶胶的数据」): the CAMS forecast through
+#: Open-Meteo's air-quality API (its own quota lane, kept three hours: CAMS runs
+#: twice a day), set against the satellite's measured optical depth -- JAXA
+#: Himawari over Asia and Oceania, GOES over the Americas; Europe, Africa and
+#: the Middle East have no open geostationary aerosol, forecast only there.
+OPEN_METEO_AIR_QUALITY = "https://air-quality-api.open-meteo.com/v1/air-quality"
+AEROSOL_QUOTA_LANE = "station_day_board_aerosol"
+AEROSOL_CACHE_SECONDS = 3 * 3600.0
+_AEROSOL_CACHE: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+
+
+def _open_meteo_aerosol(lat: float, lon: float, tz: str, day: str) -> dict[str, Any]:
+    """The local day's hourly CAMS aerosol optical depth (550 nm) and dust
+    (µg/m³); ``{"available": False, "reason"}`` when refused or failed."""
+
+    import ssl  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    from urllib.parse import urlencode  # noqa: PLC0415
+    from urllib.request import Request, urlopen  # noqa: PLC0415
+
+    from . import open_meteo_quota as quota  # noqa: PLC0415
+
+    key = (f"{lat:.3f},{lon:.3f}", day)
+    hit = _AEROSOL_CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < AEROSOL_CACHE_SECONDS:
+        return hit[1]
+    if _DAY_REFUSED_UNTIL and datetime.now(timezone.utc).isoformat() < _DAY_REFUSED_UNTIL[0]:
+        return {"available": False, "reason": "Open-Meteo 当日额度已满，00:00Z 恢复"}
+    try:
+        quota.charge(AEROSOL_QUOTA_LANE, 1)
+    except quota.QuotaRefused as exc:
+        return {"available": False, "reason": f"气溶胶预报当日份额已用完（{str(exc).rsplit(':', 1)[-1]}）"}
+    query = urlencode({"latitude": lat, "longitude": lon, "timezone": tz, "start_date": day, "end_date": day,
+                       "hourly": "aerosol_optical_depth,dust"})
+    try:
+        import certifi  # noqa: PLC0415
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    try:
+        with urlopen(Request(f"{OPEN_METEO_AIR_QUALITY}?{query}", headers={"User-Agent": "weather-board-station-day"}),
+                     timeout=20, context=context) as resp:  # noqa: S310 -- fixed https host
+            hourly = json.loads(resp.read().decode("utf-8")).get("hourly") or {}
+    except Exception as exc:  # noqa: BLE001 -- the card says why
+        return {"available": False, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    out = {"available": bool(hourly.get("time")), "aod": [_float(v) for v in hourly.get("aerosol_optical_depth") or []],
+           "dust": [_float(v) for v in hourly.get("dust") or []], "fetched_at_utc": _iso(datetime.now(timezone.utc))}
+    if out["available"]:
+        _AEROSOL_CACHE[key] = (time.monotonic(), out)
+    return out
+
+
+def _at(values: Sequence[Any] | None, index: int) -> Any:
+    return values[index] if values and index < len(values) else None
+
+
+def _satellite_aerosol(station: str, lat: float, lon: float, day: str, zone: ZoneInfo) -> dict[str, Any]:
+    """The local day's measured aerosol optical depth per hour h: Himawari's
+    hourly file starting at h:00 (JAXA, Asia/Oceania) or the GOES scan at h:00
+    (the Americas); clear daylight only, a scan not read yet arrives later."""
+
+    from . import goes_surface_radiation as goes  # noqa: PLC0415
+    from . import jaxa_ptree_radiation as jaxa  # noqa: PLC0415
+
+    d = datetime.fromisoformat(day).date()
+    now_utc = datetime.now(timezone.utc)
+    starts = {h: datetime.combine(d, dtime(h), zone).astimezone(timezone.utc) for h in range(24)}
+    values: list[float | None] = [None] * 24
+    try:
+        if jaxa.clp_cell(lat, lon) is not None:
+            wanted = {h: at for h, at in starts.items()
+                      if at + jaxa.ARP_PUBLISH_AFTER <= now_utc and _solar_elevation_deg(lat, lon, at) > 10.0}
+            got = jaxa.aerosol(station, list(wanted.values()))
+            for h, at in wanted.items():
+                rec = got.get(at.strftime("%Y-%m-%dT%H:00Z"))
+                values[h] = (rec or {}).get("aod")
+            label = jaxa.ARP_LABEL
+        elif SKIN_LON_WEST < lon < SKIN_LON_EAST:
+            wanted = {h: at for h, at in starts.items()
+                      if at + timedelta(minutes=20) <= now_utc and _solar_elevation_deg(lat, lon, at) > 10.0}
+            got = goes.measured(station, lat, lon, sorted(wanted.values(), reverse=True), kind="aod")
+            for h, at in wanted.items():
+                values[h] = got.get(at.isoformat())
+            label = goes.AOD_LABEL
+        else:
+            return {"covered": False, "values": values, "reason": "no_open_geostationary_aerosol"}
+    except Exception as exc:  # noqa: BLE001 -- the card says why
+        return {"covered": True, "values": values, "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    return {"covered": True, "values": values, "label": label, "fetched_at_utc": _iso(now_utc)}
+
+
 #: GOES-East/West see the Americas fleet; elsewhere no geostationary skin
 #: temperature is open without an account (user 2026-10-24「先接地表皮温」).
 SKIN_LON_WEST, SKIN_LON_EAST = -170.0, -30.0
@@ -1786,7 +1878,10 @@ def _solar_cosz(lat: float, lon: float, when_utc: datetime) -> float:
 
 
 def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
-                        metar: list[dict[str, Any]]) -> dict[str, Any]:
+                        metar: list[dict[str, Any]], *, extras: bool = True) -> dict[str, Any]:
+    """``extras=False`` leaves out the cards no reading needs (skin temperature,
+    aerosol): the estimate-hit MOS recompute walks closed days and must not
+    fetch their satellite files or spend the aerosol quota."""
     where = _station_lat_lon(conn, station)
     if where is None:
         return {"available": False, "reason": "no_station_coordinates"}
@@ -1807,8 +1902,11 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
         product = product or "noaa_goes_dsr"
         sat = {"available": False, "reason": "day_not_started"}
     sat_values = sat.get("values") or []
-    skin = (_goes_skin_hours(station, lat, lon, day, zone) if started
-            else {"available": False, "values": [None] * 24, "reason": "day_not_started"})
+    skin = (_goes_skin_hours(station, lat, lon, day, zone) if started and extras
+            else {"available": False, "values": [None] * 24, "reason": "day_not_started" if extras else "not_read"})
+    aerosol_fc = _open_meteo_aerosol(lat, lon, str(zone.key), day) if extras else {"available": False}
+    aerosol_sat = (_satellite_aerosol(station, lat, lon, day, zone) if started and extras
+                   else {"covered": None, "values": [None] * 24, "reason": "day_not_started" if extras else "not_read"})
     hourly = fc.get("hourly") or {}
     times = hourly.get("time") or []
     by_hour: dict[int, dict[str, Any]] = {}
@@ -1845,6 +1943,8 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                                "sat_sw_wm2": None if sat_sw is None else round(sat_sw, 0),
                                "sat_cloud": sat_cloud, "diffs": [],
                                "sat_skin_c": skin["values"][h],
+                               "sat_aod": aerosol_sat["values"][h],
+                               "aod_fc": _at(aerosol_fc.get("aod"), h), "dust_fc": _at(aerosol_fc.get("dust"), h),
                                # The sun's height at h:00 (user 2026-10-17 「增加一列太阳高度角」).
                                "sun_elev_deg": round(_solar_elevation_deg(lat, lon, start.astimezone(timezone.utc)), 1)}
         if obs is not None:
@@ -1899,7 +1999,7 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
             for k in ("sw", "sw_d1")}
     skin_last = next((r for r in reversed(rows) if r["sat_skin_c"] is not None
                       and (r["forecast"] or {}).get("soil0_c") is not None), None)
-    skin_normal = _skin_normal(station, lat, lon, day, zone, skin_last["hour"]) if skin_last else None
+    skin_normal = _skin_normal(station, lat, lon, day, zone, skin_last["hour"]) if skin_last and extras else None
     past = [r for r in rows if r["obs"] and r["obs"]["inferred_sw_wm2"] is not None]
     measured = [r for r in rows if r["past"] and r["sat_sw_wm2"] is not None]
     return {
@@ -1913,6 +2013,10 @@ def _hourly_vs_forecast(conn, station: str, day: str, zone: ZoneInfo,
                       "available": bool(sat.get("available")), "reason": sat.get("reason"),
                       "fetched_at_utc": sat.get("fetched_at_utc"),
                       "last_hour": max((r["hour"] for r in measured), default=None)},
+        "aerosol": {"forecast_available": bool(aerosol_fc.get("available")), "forecast_reason": aerosol_fc.get("reason"),
+                    "forecast_fetched_at_utc": aerosol_fc.get("fetched_at_utc"),
+                    "covered": aerosol_sat.get("covered"), "label": aerosol_sat.get("label"),
+                    "reason": aerosol_sat.get("reason"), "fetched_at_utc": aerosol_sat.get("fetched_at_utc")},
         "skin": {"covered": SKIN_LON_WEST < lon < SKIN_LON_EAST, "label": skin.get("label"),
                  "available": bool(skin.get("available")), "reason": skin.get("reason"),
                  "normal": skin_normal,
