@@ -598,8 +598,10 @@ def _excluded(text: Any) -> list[str]:
 def _p0m_brief(head: Mapping[str, Any], conn=None, station: str = "", day: str = "") -> dict[str, Any]:
     L = head["lineage"]
     receipt = _json(L.get("p0m_taf_likelihood_json"), {})
-    root_shift = _root_p0_shift(conn, L, station, day) if conn is not None else 0.0
+    root_shift, root_p0_at = _root_p0_served(conn, L, station, day) if conn is not None else (0.0, None)
     return {
+        # 补记七: how much of the root is F's move, and which P0 made it.
+        "root_f_shift_c": root_shift if root_p0_at else None, "root_f_p0_at_utc": root_p0_at,
         # 补记七: the P0 root as served (its pool centre plus the consensus
         # shift); ``root_center_c`` stays what the TAF likelihood read.
         "root_served_center_c": _shifted(_float(receipt.get("root_center_c")), root_shift),
@@ -633,19 +635,158 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _root_p0_shift(conn, lineage: Mapping[str, Any], station: str, day: str) -> float:
-    """The consensus shift the P0 root of a P0-M served (补记七)."""
+#: How close the recorded steps must rebuild the served vector before the
+#: no-F counterfactual is shown (the board never shows a guess).
+F_INHERITED_REBUILD_TOL = 1e-5
+
+
+def _f_step(prior: Mapping[str, float], likelihood: Mapping[str, Any], excluded: set[str],
+            *, censor: bool) -> dict[str, float]:
+    """One recorded update, as served: prior x likelihood, the observed bound
+    re-applied (P0-M censors onto the lowest live bucket, charter 241; P1
+    renormalises), charter 224's floor last."""
+
+    from .materialization import floor_probabilities  # noqa: PLC0415
+
+    order = list(prior)
+    raw = {k: float(prior[k]) * float(likelihood.get(k, 1.0)) for k in order}
+    live = [k for k in order if k not in excluded]
+    lost = sum(raw[k] for k in order if k in excluded)
+    raw = {k: (0.0 if k in excluded else v) for k, v in raw.items()}
+    if censor and live:
+        raw[live[0]] += lost
+    mass = sum(raw.values())
+    if not (mass > 0.0):
+        raise ValueError("empty step")
+    floored, _ = floor_probabilities({k: v / mass for k, v in raw.items()}, excluded & set(order))
+    return {k: float(floored[k]) for k in order}
+
+
+def _f_inherited(served_root: Mapping[str, float], pre_root: Mapping[str, float],
+                 steps: Sequence[tuple[Mapping[str, Any], set[str], bool]],
+                 served: Mapping[str, float], axis) -> dict[str, Any] | None:
+    """补记七 (user 2026-10-25 「p0m和p1也和p0一样，增加这个信息」): what F's move
+    in the root did to this stage -- the recorded steps replayed on the root
+    P0 F moved and on the vector it moved; shown only when the replay on the
+    served root rebuilds the served vector."""
+
+    try:
+        again, without = dict(served_root), dict(pre_root)
+        for likelihood, excluded, censor in steps:
+            again = _f_step(again, likelihood, excluded, censor=censor)
+            without = _f_step(without, likelihood, excluded, censor=censor)
+    except (ValueError, KeyError, TypeError):
+        return None
+    if set(again) != set(served) or max(abs(again[k] - float(served[k])) for k in served) > F_INHERITED_REBUILD_TOL:
+        return None
+    pre, post = vector_stats(without, axis), vector_stats(served, axis)
+    if pre is None or post is None:
+        return None
+    order = list(served)
+    keep = sorted(order, key=lambda k: -max(without[k], float(served[k])))[:5]
+    return {
+        "delta_c": round(post["mean_c"] - pre["mean_c"], 4),
+        "pre": {"mean_c": pre["mean_c"], "mode": pre["mode"], "mode_p": pre.get("mode_p")},
+        "post": {"mean_c": post["mean_c"], "mode": post["mode"], "mode_p": post.get("mode_p")},
+        "buckets": [{"bucket": k, "pre": without[k], "post": float(served[k])} for k in order if k in keep],
+    }
+
+
+def _envelope_row(conn, checkpoint: Any, digest: Any, station: str, day: str, stage: str):
+    if not checkpoint or not digest:
+        return None
+    row = conn.execute(
+        "SELECT probabilities_json, lineage_json, decision_at_utc FROM basket_probability_envelope"
+        " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
+        " AND stage=? AND state='COMMITTED' LIMIT 1",
+        (checkpoint, digest, station, day, stage),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"vector": _json(row[0], {}), "lineage": _json(row[1], {}), "decided_at_utc": str(row[2])}
+
+
+def _p0m_step(lineage: Mapping[str, Any], *, censor: bool) -> tuple[Mapping[str, Any], set[str], bool]:
+    receipt = _json(lineage.get("p0m_taf_likelihood_json"), {})
+    return (receipt.get("likelihood_by_bucket") or {}, set(_excluded(lineage.get("observed_hard_excluded_buckets"))),
+            censor)
+
+
+def _f_inherited_p0m(conn, head: Mapping[str, Any], station: str, day: str, axis) -> dict[str, Any] | None:
+    L = head["lineage"]
+    root = _envelope_row(conn, L.get("p0_root_checkpoint_id"), L.get("p0_root_content_sha256"), station, day, "P0")
+    receipt = _json((root or {}).get("lineage", {}).get("deterministic_consensus_json"), {})
+    if root is None or receipt.get("state") != "SERVED" or not receipt.get("pre_shift_probabilities"):
+        return None
+    return _f_inherited(root["vector"], receipt["pre_shift_probabilities"], [_p0m_step(L, censor=True)],
+                        head["vector"], axis)
+
+
+def _f_inherited_p1(conn, head: Mapping[str, Any], station: str, day: str, axis) -> dict[str, Any] | None:
+    L = head["lineage"]
+    stage = L.get("prediction_root_stage")
+    root = _envelope_row(conn, L.get("prediction_root_checkpoint_id"), L.get("prediction_root_content_sha256"),
+                         station, day, str(stage))
+    if root is None or stage not in {"P0", "P0-M"}:
+        return None
+    steps: list = []
+    p0 = root
+    if stage == "P0-M":
+        # Charter 241: P1 multiplies the P0-M's proportional shape, not the censored one.
+        steps.append(_p0m_step(root["lineage"], censor=False))
+        p0 = _envelope_row(conn, root["lineage"].get("p0_root_checkpoint_id"),
+                           root["lineage"].get("p0_root_content_sha256"), station, day, "P0")
+    receipt = _json((p0 or {}).get("lineage", {}).get("deterministic_consensus_json"), {})
+    if p0 is None or receipt.get("state") != "SERVED" or not receipt.get("pre_shift_probabilities"):
+        return None
+    obs = _json(L.get("p1_observation_likelihood_json"), {})
+    steps.append((obs.get("likelihood_by_bucket") or {}, set(_excluded(L.get("hard_excluded_buckets"))), False))
+    return _f_inherited(p0["vector"], receipt["pre_shift_probabilities"], steps, head["vector"], axis)
+
+
+def _root_p0_served(conn, lineage: Mapping[str, Any], station: str, day: str) -> tuple[float, str | None]:
+    """The consensus shift the P0 root of a P0-M (or of a P1) served, and when
+    that P0 was decided; (0, None) when the root P0 served none (补记七)."""
 
     checkpoint, digest = lineage.get("p0_root_checkpoint_id"), lineage.get("p0_root_content_sha256")
     if not checkpoint or not digest:
-        return 0.0
+        return 0.0, None
     row = conn.execute(
-        "SELECT json_extract(lineage_json,'$.deterministic_consensus_json') FROM basket_probability_envelope"
+        "SELECT json_extract(lineage_json,'$.deterministic_consensus_json'), decision_at_utc"
+        " FROM basket_probability_envelope"
         " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
         " AND stage='P0' AND state='COMMITTED' LIMIT 1",
         (checkpoint, digest, station, day),
     ).fetchone()
-    return 0.0 if row is None else _served_shift_c(row[0])
+    if row is None or _json(row[0], {}).get("state") != "SERVED":
+        return 0.0, None
+    return _served_shift_c(row[0]), str(row[1])
+
+
+def _p1_root_f(conn, head: Mapping[str, Any], station: str, day: str) -> tuple[float | None, str | None]:
+    """补记七: F's move inside a P1's root -- the root P0's served shift, read
+    through the P0-M when the root is one; (None, None) when it carries none."""
+
+    lineage = head["lineage"]
+    checkpoint, digest = lineage.get("prediction_root_checkpoint_id"), lineage.get("prediction_root_content_sha256")
+    stage = lineage.get("prediction_root_stage")
+    if not checkpoint or not digest or stage not in {"P0", "P0-M"}:
+        return None, None
+    if stage == "P0":
+        root_lineage = {"p0_root_checkpoint_id": checkpoint, "p0_root_content_sha256": digest}
+    else:
+        row = conn.execute(
+            "SELECT json_extract(lineage_json,'$.p0_root_checkpoint_id'),"
+            " json_extract(lineage_json,'$.p0_root_content_sha256') FROM basket_probability_envelope"
+            " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
+            " AND stage='P0-M' AND state='COMMITTED' LIMIT 1",
+            (checkpoint, digest, station, day),
+        ).fetchone()
+        if row is None:
+            return None, None
+        root_lineage = {"p0_root_checkpoint_id": row[0], "p0_root_content_sha256": row[1]}
+    shift, at = _root_p0_served(conn, root_lineage, station, day)
+    return (shift, at) if at else (None, None)
 
 
 def _p1_root_center(conn, head: Mapping[str, Any], station: str, day: str) -> float | None:
@@ -2170,9 +2311,12 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
                     conn, station, day, str(head["decided_at_utc"]), entry["radiation"].get("radiation_sum_mj")))
         elif stage == "P0-M":
             entry.update(_p0m_brief(head, conn, station, day))
+            entry["f_inherited"] = _f_inherited_p0m(conn, head, station, day, axis)
         else:
             entry.update(_p1_brief(head))
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
+            entry["root_f_shift_c"], entry["root_f_p0_at_utc"] = _p1_root_f(conn, head, station, day)
+            entry["f_inherited"] = _f_inherited_p1(conn, head, station, day, axis)
         stages[stage] = entry
     head_stage = day_word(stages)
     market = _market(conn, station, day, axis)

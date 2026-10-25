@@ -482,3 +482,63 @@ def test_the_board_leads_with_the_served_p0_and_details_the_move():
     for label in ("F 进 P0 · 挪", "挪前", "挪后", "<th>桶</th>"):
         assert label in block
     assert "if(served && c.served) return sdConsensusServed(" in source
+
+
+def test_p0m_and_p1_cards_say_how_much_of_their_root_is_f_and_the_shadow_is_one_grey_line():
+    """User 2026-10-25 「在 P0-M 和 P1 卡的根中心旁加一个小标签「根含 F +0.23」」「弱化下方的影子」."""
+    from bayes_basket_target import station_day_board as B  # noqa: PLC0415
+
+    receipt = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(), family="P0_far",
+                                 station_id="SBGR", served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    _vector, served = DCS.serve(receipt, SERVED, ORDER, INTERVALS)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE basket_probability_envelope (checkpoint_id, content_sha256, station_id, event_date,"
+                 " stage, state, decision_at_utc, lineage_json)")
+    rows = [
+        ("p0", "a", "P0", {B_KEY: json.dumps(served)} if (B_KEY := DCS.LINEAGE_KEY) else {}),
+        ("p0s", "b", "P0", {DCS.LINEAGE_KEY: json.dumps(receipt)}),
+        ("m", "c", "P0-M", {"p0_root_checkpoint_id": "p0", "p0_root_content_sha256": "a"}),
+    ]
+    for ck, sha, stage, lineage in rows:
+        conn.execute("INSERT INTO basket_probability_envelope VALUES (?,?,?,?,?,?,?,?)",
+                     (ck, sha, "ZUUU", "2026-10-25", stage, "COMMITTED", "2026-10-25T01:38:59Z", json.dumps(lineage)))
+    shift = served["served_delta_c"]
+    assert B._root_p0_served(conn, {"p0_root_checkpoint_id": "p0", "p0_root_content_sha256": "a"},
+                             "ZUUU", "2026-10-25") == (pytest.approx(shift), "2026-10-25T01:38:59Z")
+    assert B._root_p0_served(conn, {"p0_root_checkpoint_id": "p0s", "p0_root_content_sha256": "b"},
+                             "ZUUU", "2026-10-25") == (0.0, None)
+    via_p0m = {"lineage": {"prediction_root_checkpoint_id": "m", "prediction_root_content_sha256": "c",
+                           "prediction_root_stage": "P0-M"}}
+    assert B._p1_root_f(conn, via_p0m, "ZUUU", "2026-10-25") == (pytest.approx(shift), "2026-10-25T01:38:59Z")
+    via_p0 = {"lineage": {"prediction_root_checkpoint_id": "p0s", "prediction_root_content_sha256": "b",
+                          "prediction_root_stage": "P0"}}
+    assert B._p1_root_f(conn, via_p0, "ZUUU", "2026-10-25") == (None, None)
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert "根含 F ${sdSg(e.root_f_shift_c, 2)}" in source
+    block = source[source.index("function sdConsensusBlock(c, stage){"):][:3500]
+    assert 'class="sd-cons-sh"' in block and "影子（未服务）· 再挪" in block
+    assert '<span>影子</span><span class="sd-cons-v">' not in block
+
+
+def test_p0m_and_p1_replay_their_recorded_steps_on_the_root_before_f_moved_it():
+    """User 2026-10-25 「p0m和p1也和p0一样，增加这个信息」: the stage's own likelihoods,
+    replayed on the root P0 before and after F, rebuild the served vector and the no-F one."""
+    from bayes_basket_target import station_day_board as B  # noqa: PLC0415
+
+    axis = [{"bucket": k, "ordinal": i, "centre_c": 20.0 + i} for i, k in enumerate(ORDER)]
+    receipt = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(), family="P0_far",
+                                 station_id="SBGR", served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    p0, served = DCS.serve(receipt, SERVED, ORDER, INTERVALS)
+    taf = {k: 1.0 + 0.1 * i for i, k in enumerate(ORDER)}
+    p0m = B._f_step(p0, taf, {"20°C or below"}, censor=True)
+    detail = B._f_inherited(p0, served["pre_shift_probabilities"], [(taf, {"20°C or below"}, True)], p0m, axis)
+    assert detail is not None and detail["post"]["mean_c"] > detail["pre"]["mean_c"]
+    assert detail["delta_c"] == pytest.approx(detail["post"]["mean_c"] - detail["pre"]["mean_c"], abs=1e-3)
+    assert {b["bucket"]: b["post"] for b in detail["buckets"]} == pytest.approx(
+        {b["bucket"]: p0m[b["bucket"]] for b in detail["buckets"]})
+    # A served vector the recorded steps do not rebuild shows nothing.
+    off = dict(p0m)
+    off["22°C"] += 0.01
+    assert B._f_inherited(p0, served["pre_shift_probabilities"], [(taf, {"20°C or below"}, True)], off, axis) is None
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    assert '(stage !== "P0" ? sdFInherited(e) : "")' in source and 'sdMoveBox("F 经根 · 挪"' in source

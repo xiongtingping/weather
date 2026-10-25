@@ -16050,6 +16050,9 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-cmv-a{color:var(--muted)}
 .sd-cmv-t{margin-top:6px;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.sd-cmv-t th,.sd-cmv-t td{padding:1px 10px 1px 0;text-align:right}.sd-cmv-t th:first-child,.sd-cmv-t td:first-child{text-align:left}.sd-cmv-t th{color:var(--muted);font-weight:500}
 .sd-up{color:var(--accent)}.sd-dn{color:var(--pill-red-fg)}
+.sd-cons-sh{margin:4px 0 8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sd-cons-sh .sd-cons-ok,.sd-cons-sh .sd-cons-no{color:inherit;font-weight:500}
+.sd-rootf{display:inline-block;padding:0 6px;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .sd-cons-ok{color:var(--accent);font-weight:600}.sd-cons-no{color:var(--pill-red-fg);font-weight:600}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
 /* The four estimate cards in one row, aligned (user 2026-10-21 「设计排版美化对齐」):
@@ -22483,8 +22486,8 @@ function sdProbabilityCards(day){
             ["比市场", mk == null || st.mean_c == null ? null : st.mean_c - mk, "分布均值减市场均值"]],
       sub: [`<span title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值 <b>${sdN(st.mean_c, 2)}°C</b></span>`,
             `<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
-            stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心（P0 为 F 挪后的服务中心），更新前的输入">${rootLabel} <b>${sdN(e.root_served_center_c != null ? e.root_served_center_c : e.root_center_c, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
+            stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心（P0 为 F 挪后的服务中心），更新前的输入">${rootLabel} <b>${sdN(e.root_served_center_c != null ? e.root_served_center_c : e.root_center_c, 2)}°C</b></span>${e.root_f_shift_c != null ? ` <span class="sd-rootf" title="${sdEsc(`根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）已服务确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C；本阶段在这个根上更新，挪动随根传下来（宪章 279 补记七）`)}">根含 F ${sdSg(e.root_f_shift_c, 2)}</span>` : ""}` : ""].filter(Boolean).join(" · "),
+      trend: sdStageTrend(day, stage), body: (stage !== "P0" ? sdFInherited(e) : "") + sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
   }).join("");
 }
 // Charter 279 (user 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」, then
@@ -22514,30 +22517,45 @@ function sdConsensusBlock(c, stage){
   const tip = (served ? "宪章 279 补记七（已服务）" : "宪章 279 影子（只记录，不服务）") + "：十家全球确定性预报日最高温中位数，加舰队偏差，按 κ 把本阶段中心往它挪。\n"
     + (fleet && fleet.state === "READ" ? sdConsensusTip(fleet) + "\n" : "") + sysTip;
   if(!fleet || fleet.state !== "READ") {
-    return `<div class="sd-cons" title="${sdEsc(tip)}"><div class="sd-cons-r">共识 F 影子 · ${sdEsc(SD_CONS_STATE[(fleet || {}).state || c.state] || (fleet || {}).state || c.state || "—")}${fc != null ? ` · 原始 F ${sdN(fc, 1)}°C` : ""}</div></div>`;
+    return `<div class="sd-cons-sh" title="${sdEsc(tip)}">共识 F 影子 · ${sdEsc(SD_CONS_STATE[(fleet || {}).state || c.state] || (fleet || {}).state || c.state || "—")}${fc != null ? ` · 原始 F ${sdN(fc, 1)}°C` : ""}</div>`;
   }
   if(served && c.served) return sdConsensusServed(c, fleet, nc, tip, sdConsensusFoot(c, stage));
-  const result = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>影子</span><span class="sd-cons-v">${sdN(fleet.shadow_centre_c, 2)}°C</span>${fleet.shadow_mode ? `<span class="sd-cons-b">${sdEsc(fleet.shadow_mode)}</span>` : ""}</div>`;
-  const process = `<div class="sd-cons-p" title="${sdEsc(tip)}">F ${sdN(fleet.f_cal_c, 1)}°C（${nc != null ? nc + " 家" : ""}）· 挪 ${sdSg(fleet.delta_c, 2)}°C${station && station.state === "READ" ? ` · 逐站 ${sdN(station.shadow_centre_c, 2)}°C` : ""}</div>`;
+  // User 2026-10-25 「弱化下方的影子」: a record that is not served is one small
+  // grey line -- the extra move it would make, where it would land, the verdict.
   const wf = sdConsensusFoot(c, stage);
-  return `<div class="sd-cons">${result}${process}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
+  return `<div class="sd-cons-sh" title="${sdEsc(tip)}">影子（未服务）· 再挪 ${sdSg(fleet.delta_c, 2)}°C → ${sdN(fleet.shadow_centre_c, 2)}°C${fleet.shadow_mode ? " " + sdEsc(fleet.shadow_mode) : ""} · F ${sdN(fleet.f_cal_c, 1)}°C${wf ? " · " + wf : ""}</div>`;
 }
 // Charter 279 补记七 (user 2026-10-25 「不应该突出原来的概率向量，应该突出f进p0后的概率向量，
 // 明细里应该体现挪动的明细」): the card's big numbers are the served (shifted)
 // vector; this box is the move itself -- before -> after, F's arithmetic, and
 // the buckets that carry the mass, before -> after.
 function sdConsensusServed(c, v, nc, tip, wf){
-  const S = c.served, pre = S.pre || {}, post = S.post || {};
-  const head = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>F 进 P0 · 挪</span><span class="sd-cons-v">${sdSg(c.served_delta_c, 2)}°C</span></div>`;
+  const math = `F ${sdN(v.f_c, 1)}°C（${nc != null ? nc + " 家" : ""}）${sdSg(v.bias_c, 2)} 偏差 = ${sdN(v.f_cal_c, 1)}°C · 距中心 ${sdSg(v.gap_c, 2)} × κ ${sdN(v.kappa, 2)} = ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触上限）" : ""}`;
+  return sdMoveBox("F 进 P0 · 挪", c.served_delta_c, c.served, ["挪前", "挪后"], math, tip, wf);
+}
+// User 2026-10-25 「p0m和p1也和p0一样，增加这个信息」: what F's move in the root
+// did to P0-M / P1 -- the stage's recorded steps replayed on the root P0 before
+// F moved it (station_day_board._f_inherited; shown only when the replay
+// rebuilds the served vector).
+function sdFInherited(e){
+  const S = e.f_inherited;
+  if(!S) return "";
+  const tip = `本阶段没有自己挪：根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）服务了确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C。把本阶段记录下的似然（P0-M 的 TAF、P1 的实况）原样乘在 F 挪动前的 P0 上，得到「无 F」；乘在挪后的 P0 上即现服务的向量（宪章 279 补记七）。`;
+  const math = `根里 P0 挪 ${sdSg(e.root_f_shift_c, 2)}°C → 本阶段似然照乘 → 传下来 ${sdSg(S.delta_c, 2)}°C`;
+  return sdMoveBox("F 经根 · 挪", S.delta_c, S, ["无 F", "现服务"], math, tip, "");
+}
+function sdMoveBox(title, delta, S, labels, math, tip, wf){
+  const pre = S.pre || {}, post = S.post || {};
+  const head = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>${title}</span><span class="sd-cons-v">${sdSg(delta, 2)}°C</span></div>`;
   const side = (lab, x) => `<div class="sd-cmv-s"><span>${lab}</span><b>${sdN(x.mean_c, 2)}°C</b><i>${sdEsc(x.mode || "—")} ${x.mode_p == null ? "" : sdPc(x.mode_p, 0)}</i></div>`;
-  const move = `<div class="sd-cmv">${side("挪前", pre)}<span class="sd-cmv-a">→</span>${side("挪后", post)}</div>`;
-  const math = `<div class="sd-cons-p" title="${sdEsc(tip)}">F ${sdN(v.f_c, 1)}°C（${nc != null ? nc + " 家" : ""}）${sdSg(v.bias_c, 2)} 偏差 = ${sdN(v.f_cal_c, 1)}°C · 距中心 ${sdSg(v.gap_c, 2)} × κ ${sdN(v.kappa, 2)} = ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触上限）" : ""}</div>`;
+  const move = `<div class="sd-cmv">${side(labels[0], pre)}<span class="sd-cmv-a">→</span>${side(labels[1], post)}</div>`;
+  const mathLine = `<div class="sd-cons-p" title="${sdEsc(tip)}">${math}</div>`;
   const rows = (S.buckets || []).map(b => {
     const d = b.post == null || b.pre == null ? null : b.post - b.pre;
     return `<tr><td>${sdEsc(b.bucket)}</td><td>${sdPc(b.pre, 1)}</td><td>${sdPc(b.post, 1)}</td><td class="${d > 0.0005 ? "sd-up" : d < -0.0005 ? "sd-dn" : ""}">${d == null ? "—" : (d >= 0 ? "+" : "−") + (Math.abs(d) * 100).toFixed(1)}</td></tr>`;
   }).join("");
-  const table = rows ? `<table class="sd-cmv-t"><thead><tr><th>桶</th><th>挪前</th><th>挪后</th><th>点</th></tr></thead><tbody>${rows}</tbody></table>` : "";
-  return `<div class="sd-cons">${head}${move}${math}${table}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
+  const table = rows ? `<table class="sd-cmv-t"><thead><tr><th>桶</th><th>${labels[0]}</th><th>${labels[1]}</th><th>点</th></tr></thead><tbody>${rows}</tbody></table>` : "";
+  return `<div class="sd-cons">${head}${move}${mathLine}${table}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
 }
 function sdConsensusFoot(c, stage){
   // The walk-forward as a verdict in words; the numbers in the tooltip.
