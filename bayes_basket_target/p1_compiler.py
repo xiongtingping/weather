@@ -16,11 +16,6 @@ from .contracts import (
     content_sha256,
 )
 from .materialization import materialize_p1
-from .deterministic_consensus_shift import (
-    consensus_read,
-    load_fit_artifact as load_deterministic_consensus_fit,
-    packet_bundle as consensus_packet_bundle,
-)
 from .p1_observation_likelihood import feature_vector
 from .regional_features import regional_features_at
 from .metar_four_layer import (
@@ -604,12 +599,6 @@ def compile_station_p1_packets(
         upper_by_bucket=upper_by_bucket,
     )
     consumed = set(consumed_observation_ids or ())
-    # Charter 279 补记三 (user 「影子也要进p1」): the deterministic consensus
-    # shadow, read off the same regional runs the caller handed in (no
-    # read of its own) at each step's clock.  The fit is read once a compile
-    # and only the P1 family's parameters ride on each packet.  Without the
-    # runs (a replay, a test) no receipt is written, as before.
-    consensus_fit = load_deterministic_consensus_fit() if regional_runs is not None else None
     ordered = sorted(
         observations,
         key=lambda item: (
@@ -1106,16 +1095,6 @@ def compile_station_p1_packets(
                     ),
                     "artifact": observation_likelihood_artifact,
                 }
-            deterministic_consensus = None
-            if regional_runs is not None:
-                deterministic_consensus = consensus_packet_bundle(
-                    consensus_read(
-                        None, station_id=root.station_id, event_date=root.event_date,
-                        as_of_utc=decision_text, settlement_timezone=root.settlement_timezone,
-                        rows=regional_runs,
-                    ),
-                    fit=consensus_fit, family="P1", station_id=root.station_id,
-                )
             envelope = materialize_p1(
                 previous,
                 prediction_root=root,
@@ -1138,7 +1117,6 @@ def compile_station_p1_packets(
                     truth_revision_sha_by_observation.get(observation_id) or None
                 ),
                 observation_likelihood=observation_likelihood,
-                deterministic_consensus=deterministic_consensus,
             )
             packets.append({
                 "observation_id": observation_id,
@@ -1160,7 +1138,6 @@ def compile_station_p1_packets(
                 "bucket_upper_bounds_c": bucket_upper_bounds_c,
                 "reported_high_advanced": high_advanced,
                 "observation_likelihood": observation_likelihood,
-                "deterministic_consensus": deterministic_consensus,
                 "state_refresh_of_checkpoint_id": (
                     previous.checkpoint_id if is_state_refresh else ""
                 ),

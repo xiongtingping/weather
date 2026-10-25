@@ -64,10 +64,7 @@ from .fusion_blend import overlay_system_weights
 from .deterministic_feature_correction import (
     shadow_receipt as deterministic_feature_shadow_receipt,
 )
-from .deterministic_consensus_shift import (
-    serve as deterministic_consensus_serve,
-    shadow_receipt_from_conn as deterministic_consensus_shadow_receipt,
-)
+from . import p0_ngr
 from .stable_pool import (
     P0_MEMBERSHIP_MODE,
     P0_MEMBERSHIP_MODE_STABLE_POOL,
@@ -229,9 +226,10 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 271 (2026-10-16 ruling 「做」): the width layer carries a
 # mode-to-shoulder share per horizon bin, fitted nightly; identity until the
 # lane admits one.
-# Charter 279 补记七 (2026-10-25 ruling 「F 先只在 P0（远+近）上服务」): beyond
-# 12 h the deterministic consensus shift is served on the finished vector.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v31"
+# Charter 281 (2026-10-25 ruling 「按 N2 形态重建 P0」): P0 is one distributional
+# regression over the calibrated systems, the deterministic forecasts and the
+# radiation score; the consensus shift (charter 279 补记七) is retired.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v32"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4894,25 +4892,28 @@ def compile_native_ensemble_p0(
         intervals=intervals_raw,
         served_layers=_served_layers_again,
     )
-    # Charter 279: the deterministic global consensus F -- the fleet-level form
-    # of the same feature -- recorded under each bias form and roster.  A
-    # record, not a change: the served vector above is still what is served.
-    deterministic_consensus_receipt = deterministic_consensus_shadow_receipt(
-        conn,
-        station_id=station_id,
-        event_date=event_date,
-        decision_at_utc=decision_at_utc,
-        settlement_timezone=timezone_name,
-        stage="P0",
-        hours_to_settlement=hours_to_settlement,
-        served_probability=probability,
+    # Charter 281: P0 is one distributional regression over the seated
+    # systems' calibrated vectors, the deterministic forecasts knowable now
+    # and the radiation score, served when the daily fit's walk-forward
+    # passes charter 240 against the vector above; that vector is the
+    # fallback, served (and kept in the receipt) whenever the regression
+    # cannot be.
+    probability, p0_ngr_receipt = p0_ngr.serve(
+        fallback=probability,
         ordered=ordered,
         intervals=intervals_raw,
-    )
-    # Charter 279 补记七: beyond 12 h the primary variant's vector is served --
-    # the transform the fit scored, on the finished vector, its floor last.
-    probability, deterministic_consensus_receipt = deterministic_consensus_serve(
-        deterministic_consensus_receipt, probability, ordered, intervals_raw,
+        system_probabilities=system_probabilities,
+        family_by_system=family_by_system,
+        deterministic=p0_ngr.read_deterministic(
+            conn,
+            station_id=station_id,
+            event_date=event_date,
+            as_of_utc=decision_at_utc,
+            settlement_timezone=timezone_name,
+        ),
+        hours_to_settlement=hours_to_settlement,
+        radiation_standardised=(synoptic_cooling_receipt or {}).get("standardised"),
+        fit=p0_ngr.load_fit_artifact(),
     )
     if center_width_receipt is not None:
         center_width_receipt["seated_system_count"] = int(seated_system_count)
@@ -5363,7 +5364,7 @@ def compile_native_ensemble_p0(
         "system_weights_json": _json(system_weights),
         "fusion_blend_json": _json(fusion_blend_receipt),
         "deterministic_feature_json": _json(deterministic_feature_receipt),
-        "deterministic_consensus_json": _json(deterministic_consensus_receipt),
+        p0_ngr.LINEAGE_KEY: _json(p0_ngr_receipt),
         "provisional_uncalibrated_system_ids_json": _json(sorted(provisional_uncalibrated_system_ids)),
         "provisional_parameter_sources_json": _json(provisional_parameter_sources),
         "p0_membership_demotions_json": _json(p0_membership_demotions),

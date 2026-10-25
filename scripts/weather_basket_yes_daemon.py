@@ -605,13 +605,13 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
         86400.0,
         1800.0,
     ),
-    # Charter 279: the deterministic consensus shift's bias/kappa per stage
-    # family and variant, walk-forward scored on settled days.  SSOT
-    # ``mode=ro``, one JSON artifact the P0/P0-M compiles read for their
-    # shadow receipt; daily because a station-day settles once a day.
+    # Charter 281: P0's distributional regression -- per-product bias,
+    # parameters and the walk-forward verdict that is serving's precondition.
+    # SSOT ``mode=ro``, one JSON artifact the P0 compile reads; daily because a
+    # station-day settles once a day.
     (
-        "fit_deterministic_consensus_shift",
-        "scripts/fit_deterministic_consensus_shift_sweep.sh",
+        "fit_p0_ngr",
+        "scripts/fit_p0_ngr_sweep.sh",
         86400.0,
         1800.0,
     ),
@@ -702,8 +702,8 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     "probe_deterministic_runs": "none",
     # Charter 201 step 2: SSOT ``mode=ro``, one JSON artifact.
     "fit_deterministic_feature_gate": "none",
-    # Charter 279: SSOT ``mode=ro``, one JSON artifact.
-    "fit_deterministic_consensus_shift": "none",
+    # Charter 281: SSOT ``mode=ro``, one JSON artifact.
+    "fit_p0_ngr": "none",
     # Charter 197: SSOT ``mode=ro``, HEAD probes, one small JSON file.
     "supply_watch": "none",
     # Charter 199: SSOT ``mode=ro``; writes data/fusion_blend_training.db

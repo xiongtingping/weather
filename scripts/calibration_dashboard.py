@@ -12062,51 +12062,29 @@ def collect_tail_short_lane(conn: sqlite3.Connection) -> dict[str, Any]:
     return out
 
 
-def collect_deterministic_consensus() -> dict[str, Any]:
-    """Charter 279: the daily consensus-shift fit, summarised for the P0 / P0-M cards.
+def collect_p0_ngr() -> dict[str, Any]:
+    """Charter 281: P0's regression fit, summarised for the P0 card (the artifact
+    the compile reads; no SSOT): parameters and the walk-forward verdict."""
 
-    Reads the artifact the compiles read (no SSOT); per stage family and
-    variant the serving parameters and the walk-forward scores with their
-    charter 240 verdict.
-    """
+    from bayes_basket_target import p0_ngr as NGR  # noqa: PLC0415
 
-    from bayes_basket_target import deterministic_consensus_shift as DCS  # noqa: PLC0415
-
-    path = DCS.FIT_ARTIFACT_PATH
+    path = NGR.FIT_ARTIFACT_PATH
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     except Exception:  # noqa: BLE001
         return {"available": False, "path": str(path)}
-    if not isinstance(raw, dict) or raw.get("schema") != DCS.FIT_SCHEMA:
+    if not isinstance(raw, dict) or raw.get("schema") != NGR.FIT_SCHEMA:
         return {"available": False, "path": str(path), "reason": "schema"}
-    families: dict[str, Any] = {}
-    for family, entry in (raw.get("families") or {}).items():
-        variants: dict[str, Any] = {}
-        for variant, params in (entry.get("variants") or {}).items():
-            forward = params.get("walk_forward") or {}
-            variants[str(variant)] = {
-                "bias_c": params.get("bias_c"), "kappa": params.get("kappa"),
-                "n_days": params.get("n_days"), "n_decisions": params.get("n_decisions"),
-                "station_bias_n": len(params.get("station_bias_c") or {}),
-                "walk_forward": {
-                    key: forward.get(key)
-                    for key in ("n", "n_days", "logscore", "crps", "brier", "days_better",
-                                "stations_better", "verdict")
-                },
-            }
-        families[str(family)] = {
-            "n_records": entry.get("n_records"), "n_days": entry.get("n_days"),
-            "n_stations": entry.get("n_stations"), "f_bias_c": entry.get("f_bias_c"),
-            "variants": variants,
-        }
+    forward = raw.get("walk_forward") or {}
     return {
         "available": True, "fitted_at_utc": raw.get("fitted_at_utc"),
         "age_days": round((_now() - mtime).total_seconds() / 86400.0, 2),
-        "window": raw.get("window"), "rosters": raw.get("rosters"), "primary": raw.get("primary"),
-        # Charter 279 补记四: the walk-forward below scores decisions from here on.
-        "score_from_decision_utc": raw.get("score_from_decision_utc"),
-        "counts": raw.get("counts"), "families": families, "mode": DCS.MODE,
+        "window": raw.get("window"), "n_records": raw.get("n_records"), "n_days": raw.get("n_days"),
+        "theta": dict(zip(raw.get("theta_names") or [], raw.get("theta") or [])),
+        "score_from_decision_utc": raw.get("score_from_decision_utc"), "mode": NGR.MODE,
+        "walk_forward": {k: forward.get(k) for k in ("n", "n_days", "logscore", "crps", "brier",
+                                                     "days_better", "by_band", "verdict")},
     }
 
 
@@ -15650,7 +15628,7 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "tail_short_lane": tail_short_lane,
         "fade_lanes": fade_lanes,
         # Charter 279: one file read, for the P0 / P0-M cards' shadow comparison.
-        "deterministic_consensus": collect_deterministic_consensus(),
+        "p0_ngr": collect_p0_ngr(),
         "copy_follow_lane": copy_follow_lane,
         "basket_shadow": collect_basket_shadow(),
         "wrf_tmax": collect_wrf_tmax(),
@@ -16052,7 +16030,6 @@ details>.sd-evidence-card,.sd-evidence-solo{margin:8px 0}
 .sd-up{color:var(--accent)}.sd-dn{color:var(--pill-red-fg)}
 .sd-cons-sh{margin:4px 0 8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .sd-cons-sh .sd-cons-ok,.sd-cons-sh .sd-cons-no{color:inherit;font-weight:500}
-.sd-rootf{display:inline-block;padding:0 6px;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .sd-cons-ok{color:var(--accent);font-weight:600}.sd-cons-no{color:var(--pill-red-fg);font-weight:600}
 .sd-mc .sd-det-grid{margin-top:4px}.sd-mc-foot{margin-top:6px}
 /* The four estimate cards in one row, aligned (user 2026-10-21 「设计排版美化对齐」):
@@ -22472,13 +22449,12 @@ function sdProbabilityCards(day){
     if(!e) return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], empty: "等待该阶段的概率信封"});
     const pv = previousOf(stage, e);
     const meanP = st.mean_bucket ? (e.vector || {})[st.mean_bucket] : null;
-    const fServed = stage === "P0" && (e.consensus || {}).state === "SERVED";
     // User 2026-10-25 「22.34°C 和 22.38°C 对不上」: every number on the three cards
     // is the served vector's distribution mean -- the big one, "since last", the
     // root and the move box -- so a root reads the same on its own card and on
     // the card built on it.  P0's pool centre (before the width layers) is a
     // different quantity and lives in the tooltip only.
-    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型加权中心 ${sdN(e.model_center_c, 2)}°C${fServed ? `（含 F ${sdSg((e.consensus || {}).served_delta_c, 2)}°C）` : ""}，是宽度层之前的量，与分布均值不同` : ""}`;
+    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；集合池加权中心 ${sdN(e.model_center_c, 2)}°C（TAF 似然读它），与分布均值不同` : ""}`;
     const rootLabel = stage === "P0-M" ? "根均值（P0）" : `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
     // P0-M's evidence, top right: the TAF's forecast maximum and how far it
     // sits from P0's model centre (x, what the likelihood reads).
@@ -22490,57 +22466,33 @@ function sdProbabilityCards(day){
       cmp: [["比上次", pv && st.mean_c != null && (pv.stats || {}).mean_c != null ? st.mean_c - pv.stats.mean_c : null, "本次分布均值减同阶段上一次决策的分布均值"],
             ["比市场", mk == null || st.mean_c == null ? null : st.mean_c - mk, "分布均值减市场均值"]],
       sub: [`<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
-            stage !== "P0" ? `<span title="本阶段实际引用的前序信封（服务向量，P0 已含 F）的分布均值，更新前的输入">${rootLabel} <b>${sdN((e.stage_move || {}).pre ? e.stage_move.pre.mean_c : null, 2)}°C</b></span>${e.root_f_shift_c != null ? ` <span class="sd-rootf" title="${sdEsc(`根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）已服务确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C；本阶段在这个根上更新，挪动随根传下来（宪章 279 补记七）`)}">根含 F ${sdSg(e.root_f_shift_c, 2)}</span>` : ""}` : ""].filter(Boolean).join(" · "),
-      trend: sdStageTrend(day, stage), body: (stage !== "P0" ? sdStageMove(e, stage) : "") + sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
+            stage !== "P0" ? `<span title="本阶段实际引用的前序信封（服务向量）的分布均值，更新前的输入">${rootLabel} <b>${sdN((e.stage_move || {}).pre ? e.stage_move.pre.mean_c : null, 2)}°C</b></span>` : ""].filter(Boolean).join(" · "),
+      trend: sdStageTrend(day, stage), body: (stage === "P0" ? sdNgrBlock(e.ngr) : sdStageMove(e, stage)) + sdRecentRuns(day, stage)});
   }).join("");
 }
-// Charter 279 (user 2026-10-22 「改，先影子，尝试测试逐站偏差！放在p0卡片里对比」, then
-// 「影子也要进p1.把逐站弱化。把舰队突出」): the deterministic consensus F's shadow
-// shift inside the P0 / P0-M / P1 card (station_day_board._consensus_brief) --
-// the fleet bias as the card's line, the station bias one small grey line under
-// it -- and the window's walk-forward verdict from the daily fit
-// (D.deterministic_consensus), fleet first.  A record: nothing here is served.
-const SD_CONS_STATE = {NO_FIT: "等待首次拟合", TOO_FEW_SYSTEMS: "不足 3 家", NO_READ: "读不到确定性预报",
-                       NOT_READ_AT_STAGE: "距结算不足 12 小时，F 不进 P0（只在 12 小时以上服务）", NO_AXIS: "无桶轴", ERROR: "出错"};
-function sdConsensusTip(v){
-  return `F_cal = F ${sdSg(v.bias_c, 2)} = ${sdN(v.f_cal_c, 2)}°C；F_cal − 中心 ${sdSg(v.gap_c, 2)}°C；κ ${sdN(v.kappa, 3)}；挪 ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触 1.5°C 上限）" : ""}${v.bias_source === "fleet_fallback" ? "；该站无逐站偏差，用舰队值" : ""}`;
-}
-function sdConsensusBlock(c, stage){
-  // User 2026-10-22 「突出挪后的……其他都应该弱化，突出结果，弱化过程和解释」「直接给结论」:
-  // the box leads with the shadow's result (shifted centre and its bucket);
-  // F, the shift and the station row are one small grey line; the arithmetic
-  // lives in the tooltips.
-  if(!c) return `<div class="sd-cons" title="宪章 279 影子回执随每次编译写入；这一次编译早于上线，下一次编译后显示。"><div class="sd-cons-r">共识 F 影子 · 本次编译早于上线，等下一次编译</div></div>`;
-  const sys = c.systems || {}, names = Object.keys(sys);
-  const sysTip = names.length
-    ? names.map(k => `${k} ${sdN(sys[k].day_max_c, 1)}°C（起报 ${String(sys[k].run_init_utc || "").slice(5, 13).replace("T", " ")}Z）`).join("\n")
-    : "决策时刻没有可读的确定性预报";
-  const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
-  const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
-  const served = c.state === "SERVED";
-  const tip = (served ? "宪章 279 补记七（已服务）" : "宪章 279 影子（只记录，不服务）") + "：十家全球确定性预报日最高温中位数，加舰队偏差，按 κ 把本阶段中心往它挪。\n"
-    + (fleet && fleet.state === "READ" ? sdConsensusTip(fleet) + "\n" : "") + sysTip;
-  if(!fleet || fleet.state !== "READ") {
-    return `<div class="sd-cons-sh" title="${sdEsc(tip)}">共识 F 影子 · ${sdEsc(SD_CONS_STATE[(fleet || {}).state || c.state] || (fleet || {}).state || c.state || "—")}${fc != null ? ` · 原始 F ${sdN(fc, 1)}°C` : ""}</div>`;
+// Charter 281 (user 2026-10-25 「按 N2 形态重建 P0」): the P0 card's box is the
+// regression's move against the older layers' vector (the fallback) -- before
+// -> after, its inputs in one line, the daily fit's walk-forward verdict below
+// (D.p0_ngr).  When it is not served, one grey line says why.
+const SD_NGR_REASON = {NO_FIT: "等待首次拟合", NO_SEATED_FAMILY: "没有入座的集合家族", TOO_FEW_DETERMINISTIC: "确定性预报不足 3 家",
+                       NO_HOURS_TO_SETTLEMENT: "距结算未知", GATE_NOT_PASSED: "每日前推未过 240 门", MODE_SHADOW: "影子模式", ERROR: "出错"};
+function sdNgrBlock(g){
+  if(!g) return `<div class="sd-cons-sh">分布回归 · 本次编译早于上线，等下一次编译</div>`;
+  const det = g.deterministic || {}, names = Object.keys(det);
+  const tip = `宪章 281：P0＝一次分布回归——各家集合校准后的均值与离散度、十家确定性预报（逐家去偏）、辐射标准分，中心与宽度一起按 LogScore 每日前推拟合，过 240 门才服务。\n`
+    + `中心 μ ${sdN(g.mu_c, 2)}°C · 宽度 σ ${sdN(g.sd_c, 2)}°C · 距结算项 L ${sdN(g.L, 2)} · 辐射 z ${sdSg(g.radiation_standardised, 2)}\n`
+    + Object.entries(g.family_moments || {}).map(([f, v]) => `${f} ${sdN(v[0], 2)}±${sdN(v[1], 2)}°C`).join("\n")
+    + (names.length ? "\n" + names.map(k => `${k} ${sdN(det[k], 1)}°C`).join(" · ") : "");
+  const wf = sdNgrFoot();
+  if(g.state !== "SERVED" || !g.move) {
+    return `<div class="sd-cons-sh" title="${sdEsc(tip)}">分布回归未服务 · ${sdEsc(SD_NGR_REASON[g.reason] || g.reason || "—")}（服务旧链向量）${wf ? " · " + wf : ""}</div>`;
   }
-  if(served && c.served) return sdConsensusServed(c, fleet, nc, tip, sdConsensusFoot(c, stage));
-  // User 2026-10-25 「弱化下方的影子」: a record that is not served is one small
-  // grey line -- the extra move it would make, where it would land, the verdict.
-  const wf = sdConsensusFoot(c, stage);
-  return `<div class="sd-cons-sh" title="${sdEsc(tip)}">影子（未服务）· 再挪 ${sdSg(fleet.delta_c, 2)}°C → ${sdN(fleet.shadow_centre_c, 2)}°C${fleet.shadow_mode ? " " + sdEsc(fleet.shadow_mode) : ""} · F ${sdN(fleet.f_cal_c, 1)}°C${wf ? " · " + wf : ""}</div>`;
-}
-// Charter 279 补记七 (user 2026-10-25 「不应该突出原来的概率向量，应该突出f进p0后的概率向量，
-// 明细里应该体现挪动的明细」): the card's big numbers are the served (shifted)
-// vector; this box is the move itself -- before -> after, F's arithmetic, and
-// the buckets that carry the mass, before -> after.
-function sdConsensusServed(c, v, nc, tip, wf){
-  const math = `F ${sdN(v.f_c, 1)}°C（${nc != null ? nc + " 家" : ""}）${sdSg(v.bias_c, 2)} 偏差 = ${sdN(v.f_cal_c, 1)}°C · 距中心 ${sdSg(v.gap_c, 2)} × κ ${sdN(v.kappa, 2)} = ${sdSg(v.delta_c, 2)}°C${v.clipped ? "（触上限）" : ""}`;
-  return sdMoveBox("F 进 P0 · 挪", c.served_delta_c, c.served, ["挪前", "挪后"], math, tip, wf);
+  const math = `F ${sdN(g.f_c, 1)}°C（${names.length} 家，去偏后）· μ ${sdN(g.mu_c, 2)}°C · σ ${sdN(g.sd_c, 2)}°C · 辐射 ${sdSg(g.radiation_standardised, 2)}`;
+  return sdMoveBox("分布回归 · 挪", g.move.delta_c, g.move, ["旧链", "回归"], math, tip, wf);
 }
 // User 2026-10-25 「p0m…应该体现taf挪动效果」: P0-M and P1 show their own
-// update -- the root they multiplied (as served, F included) against what they
-// serve (station_day_board._stage_move); F's share of the root is one line
-// (the root replayed without F, station_day_board._f_inherited).
+// update -- the root they multiplied (as served) against what they serve
+// (station_day_board._stage_move).
 function sdStageMove(e, stage){
   const S = e.stage_move;
   if(!S) return "";
@@ -22551,12 +22503,10 @@ function sdStageMove(e, stage){
     : `实况最高 ${sdN(e.running_high_c, 1)}°C`;
   const nx = (e.excluded || []).length;
   const exLine = nx ? ` · 含实况下界排除 ${nx} 档` : "";
-  const F = e.f_inherited;
-  const fLine = F ? ` · 根含 F ${sdSg(e.root_f_shift_c, 2)}（没有 F 时本阶段 ${sdN(F.pre.mean_c, 2)}°C）` : "";
   const tip = stage === "P0-M"
-    ? `P0-M＝根 P0（F 挪后的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；把同一 TAF 似然乘在 F 挪动前的 P0 上，本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`
-    : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；没有 F 时本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`;
-  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + exLine + fLine, tip, "");
+    ? "P0-M＝根 P0（分布回归的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。"
+    : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。`;
+  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + exLine, tip, "");
 }
 function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const pre = S.pre || {}, post = S.post || {};
@@ -22571,22 +22521,18 @@ function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const table = rows ? `<table class="sd-cmv-t"><thead><tr><th>桶</th><th>${labels[0]}</th><th>${labels[1]}</th><th>点</th></tr></thead><tbody>${rows}</tbody></table>` : "";
   return `<div class="sd-cons">${head}${move}${mathLine}${table}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;
 }
-function sdConsensusFoot(c, stage){
-  // The walk-forward as a verdict in words; the numbers in the tooltip.
-  if(!c || !c.family) return "";
-  const fit = ((D.deterministic_consensus || {}).families || {})[c.family];
-  if(!fit) return "前推：等待每日拟合";
-  // Charter 279 补记四: same-period (decisions from score_from_decision_utc) only.
-  const from = (D.deterministic_consensus || {}).score_from_decision_utc;
-  if(!from) return "前推：等待同期口径重拟";
-  const fw = ((fit.variants || {}).fleet_wide || {}).walk_forward;
-  if(!fw || !fw.n) return "前推：样本不足";
+function sdNgrFoot(){
+  // The daily fit's walk-forward against the older layers, as a verdict in words.
+  const fit = D.p0_ngr || {};
+  if(!fit.available) return "前推：等待每日拟合";
+  const fw = fit.walk_forward || {};
+  if(!fw.n) return "前推：样本不足";
   const ls = fw.logscore || {}, ci = ls.ci || [];
-  const tip = `${String(from).slice(0, 10)} 以后的决策逐日前推（参数只用之前的日子拟）：${fw.n_days} 个事件日 ${fw.n} 个决策；LogScore ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}]（负＝挪后更准）；CRPS ${sdSg((fw.crps || {}).delta, 4)}；Brier ${sdSg((fw.brier || {}).delta, 4)}；判决 ${fw.verdict}（宪章 240）`;
+  const tip = `${String(fit.score_from_decision_utc || "").slice(0, 10)} 以后的决策逐日前推（参数只用之前的日子拟），对旧链：${fw.n_days} 个事件日 ${fw.n} 个决策；LogScore ${sdSg(ls.delta, 3)} [${sdSg(ci[0], 3)}, ${sdSg(ci[1], 3)}]（负＝回归更准）；CRPS ${sdSg((fw.crps || {}).delta, 4)}；Brier ${sdSg((fw.brier || {}).delta, 4)}；判决 ${fw.verdict}（宪章 240）`;
   const days = `${fw.n_days} 天里 ${fw.days_better} 天更准`;
-  const word = fw.verdict === "PASS" ? `<span class="sd-cons-ok">挪了更准 ✓</span>（${days}）`
-    : fw.verdict === "REFUSED" ? `<span class="sd-cons-no">挪了不更准</span>（${days}）`
-    : `数据还不够下结论（${fw.n_days}/${20} 天，目前 ${days}）`;
+  const word = fw.verdict === "PASS" ? `<span class="sd-cons-ok">比旧链更准 ✓</span>（${days}）`
+    : fw.verdict === "REFUSED" ? `<span class="sd-cons-no">不比旧链准</span>（${days}）`
+    : `数据还不够下结论（${fw.n_days}/20 天，目前 ${days}）`;
   return `<span title="${sdEsc(tip)}">${word}</span>`;
 }
 function sdProbExplain(){

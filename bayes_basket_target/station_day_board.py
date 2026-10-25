@@ -455,73 +455,26 @@ def _raw_by_system(station: str, day: str, snapshot_sha: Any, axis) -> dict[str,
     return out
 
 
-def _served_shift_c(consensus: Any) -> float:
-    """The consensus shift a P0 served (charter 279 补记七), 0 when it served none."""
+def _ngr_brief(L: Mapping[str, Any], axis) -> dict[str, Any] | None:
+    """Charter 281: the regression's receipt without its vectors, and its move
+    against the fallback (the older layers' vector) -- before -> after."""
 
-    receipt = _json(consensus, {}) if not isinstance(consensus, Mapping) else consensus
-    if not isinstance(receipt, Mapping) or receipt.get("state") != "SERVED":
-        return 0.0
-    return _float(receipt.get("served_delta_c")) or 0.0
-
-
-def _vector_head(vector: Mapping[str, Any], ordered: Sequence[str]) -> tuple[str | None, float | None]:
-    best = None
-    for key in ordered:
-        value = _float(vector.get(key))
-        if value is not None and (best is None or value > best[1]):
-            best = (key, value)
-    return (None, None) if best is None else best
-
-
-def _served_detail(receipt: Mapping[str, Any]) -> dict[str, Any] | None:
-    """补记七: the served P0's move, before against after -- the mean and mode
-    of each vector and the buckets that carry the mass, before -> after."""
-
-    pre = receipt.get("pre_shift_probabilities") or {}
-    post = (((receipt.get("variants") or {}).get(receipt.get("served_variant") or "") or {})
-            .get("shadow_probabilities") or {})
-    if receipt.get("state") != "SERVED" or not pre or not post:
-        return None
-    ordered = list(pre)
-    pre_mode, pre_p = _vector_head(pre, ordered)
-    post_mode, post_p = _vector_head(post, ordered)
-    keep = sorted(ordered, key=lambda k: -max(_float(pre.get(k)) or 0.0, _float(post.get(k)) or 0.0))[:5]
-    return {
-        "pre": {"mean_c": _float(receipt.get("centre_c")), "mode": pre_mode, "mode_p": pre_p},
-        "post": {"mean_c": _float(receipt.get("served_centre_c")), "mode": post_mode, "mode_p": post_p},
-        "buckets": [{"bucket": k, "pre": _float(pre.get(k)), "post": _float(post.get(k))}
-                    for k in ordered if k in keep],
-    }
-
-
-def _consensus_brief(L: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Charter 279: the deterministic consensus shift's shadow receipt, without its vectors."""
-
-    receipt = _json(L.get("deterministic_consensus_json"), {})
+    receipt = _json(L.get("p0_ngr_json"), {})
     if not receipt:
         return None
-    variants = {}
-    for name, v in (receipt.get("variants") or {}).items():
-        variants[str(name)] = {
-            "state": v.get("state"), "form": v.get("form"), "roster": v.get("roster"),
-            "f_c": _float(v.get("f_c")), "bias_c": _float(v.get("bias_c")), "bias_source": v.get("bias_source"),
-            "kappa": _float(v.get("kappa")), "f_cal_c": _float(v.get("f_cal_c")), "gap_c": _float(v.get("gap_c")),
-            "delta_c": _float(v.get("delta_c")), "clipped": bool(v.get("clipped")),
-            "shadow_centre_c": _float(v.get("shadow_centre_c")), "shadow_mode": v.get("shadow_mode"),
-        }
+    fallback = receipt.get("fallback_probabilities") or {}
+    ngr = receipt.get("ngr_probabilities") or {}
+    move = _vector_move({k: float(v) for k, v in fallback.items()}, {k: float(v) for k, v in ngr.items()}, axis) \
+        if fallback and ngr else None
     return {
-        "state": receipt.get("state"), "family": receipt.get("family"), "primary": receipt.get("primary"),
-        "centre_c": _float(receipt.get("centre_c")), "f_c": receipt.get("f_c") or {}, "n": receipt.get("n") or {},
-        "systems": {
-            str(k): {"day_max_c": _float(v.get("day_max_c")), "run_init_utc": v.get("run_init_utc")}
-            for k, v in (receipt.get("systems") or {}).items() if isinstance(v, Mapping)
-        },
-        "fit_fitted_at_utc": receipt.get("fit_fitted_at_utc"), "variants": variants,
-        "error": receipt.get("error"), "excluded": receipt.get("excluded") or [],
-        # 补记七: P0 beyond 12 h serves the primary variant.
-        "serve_state": receipt.get("serve_state"), "served_delta_c": _float(receipt.get("served_delta_c")),
-        "served_variant": receipt.get("served_variant"),
-        "served": _served_detail(receipt),
+        "state": receipt.get("state"), "reason": receipt.get("reason"), "mode": receipt.get("mode"),
+        "fit_fitted_at_utc": receipt.get("fit_fitted_at_utc"), "fit_verdict": receipt.get("fit_verdict"),
+        "f_c": _float(receipt.get("f_c")), "z": _float(receipt.get("z")), "L": _float(receipt.get("L")),
+        "mu_c": _float(receipt.get("mu_c")), "sd_c": _float(receipt.get("sd_c")),
+        "radiation_standardised": _float(receipt.get("radiation_standardised")),
+        "family_moments": receipt.get("family_moments") or {},
+        "deterministic": {str(k): _float((v or {}).get("day_max_c")) for k, v in (receipt.get("deterministic") or {}).items()},
+        "move": move,
     }
 
 
@@ -545,11 +498,7 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
         "model_history": _model_history(conn, station, day, axis) if conn is not None else [],
         "run_cycle": L.get("run_cycle"), "lead_bucket": L.get("lead_bucket"),
         "season_bin": L.get("season_bin"),
-        # 补记七: the card leads with the centre F moved P0 to; the pool's own
-        # centre stays beside it as the move's start.
-        "model_center_c": _shifted(_float(L.get("model_center_c")), _served_shift_c(L.get("deterministic_consensus_json"))),
-        "pre_shift_center_c": (_float(L.get("model_center_c"))
-                               if _served_shift_c(L.get("deterministic_consensus_json")) else None),
+        "model_center_c": _float(L.get("model_center_c")),
         "model_envelope": [L.get("model_envelope_lower_bucket"), L.get("model_envelope_upper_bucket")],
         "radiation": {
             "state": rad.get("state"), "method": rad.get("method_tag"),
@@ -583,28 +532,18 @@ def _p0_brief(head: Mapping[str, Any], axis, previous: Mapping[str, Any] | None 
             "wind_speed_mps": _float(taf_w.get("wind_speed_mps")),
         } if taf_w else None,
         "far_peak_ceiling": ceiling or None,
-        "consensus": _consensus_brief(L),
+        "ngr": _ngr_brief(L, axis),
     }
-
-
-def _shifted(centre: float | None, delta: float) -> float | None:
-    return None if centre is None else round(centre + delta, 4)
 
 
 def _excluded(text: Any) -> list[str]:
     return [b for b in str(text or "").split(",") if b and b != "NONE"]
 
 
-def _p0m_brief(head: Mapping[str, Any], conn=None, station: str = "", day: str = "") -> dict[str, Any]:
+def _p0m_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     L = head["lineage"]
     receipt = _json(L.get("p0m_taf_likelihood_json"), {})
-    root_shift, root_p0_at = _root_p0_served(conn, L, station, day) if conn is not None else (0.0, None)
     return {
-        # 补记七: how much of the root is F's move, and which P0 made it.
-        "root_f_shift_c": root_shift if root_p0_at else None, "root_f_p0_at_utc": root_p0_at,
-        # 补记七: the P0 root as served (its pool centre plus the consensus
-        # shift); ``root_center_c`` stays what the TAF likelihood read.
-        "root_served_center_c": _shifted(_float(receipt.get("root_center_c")), root_shift),
         "model_center_c": _float(L.get("model_center_c")),
         "taf_state": receipt.get("state") or L.get("taf_revision_state"),
         "tx_c": _float(L.get("taf_observed_tx_c")),
@@ -614,7 +553,6 @@ def _p0m_brief(head: Mapping[str, Any], conn=None, station: str = "", day: str =
         "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
         "observed_running_high_c": _float(L.get("observed_running_high_c")),
         "excluded": _excluded(L.get("observed_hard_excluded_buckets")),
-        "consensus": _consensus_brief(L),
     }
 
 
@@ -631,55 +569,7 @@ def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
         "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
         "excluded": _excluded(L.get("hard_excluded_buckets")),
         "root_stage": L.get("prediction_root_stage"),
-        "consensus": _consensus_brief(L),
     }
-
-
-#: How close the recorded steps must rebuild the served vector before the
-#: no-F counterfactual is shown (the board never shows a guess).
-F_INHERITED_REBUILD_TOL = 1e-5
-
-
-def _f_step(prior: Mapping[str, float], likelihood: Mapping[str, Any], excluded: set[str],
-            *, censor: bool) -> dict[str, float]:
-    """One recorded update, as served: prior x likelihood, the observed bound
-    re-applied (P0-M censors onto the lowest live bucket, charter 241; P1
-    renormalises), charter 224's floor last."""
-
-    from .materialization import floor_probabilities  # noqa: PLC0415
-
-    order = list(prior)
-    raw = {k: float(prior[k]) * float(likelihood.get(k, 1.0)) for k in order}
-    live = [k for k in order if k not in excluded]
-    lost = sum(raw[k] for k in order if k in excluded)
-    raw = {k: (0.0 if k in excluded else v) for k, v in raw.items()}
-    if censor and live:
-        raw[live[0]] += lost
-    mass = sum(raw.values())
-    if not (mass > 0.0):
-        raise ValueError("empty step")
-    floored, _ = floor_probabilities({k: v / mass for k, v in raw.items()}, excluded & set(order))
-    return {k: float(floored[k]) for k in order}
-
-
-def _f_inherited(served_root: Mapping[str, float], pre_root: Mapping[str, float],
-                 steps: Sequence[tuple[Mapping[str, Any], set[str], bool]],
-                 served: Mapping[str, float], axis) -> dict[str, Any] | None:
-    """补记七 (user 2026-10-25 「p0m和p1也和p0一样，增加这个信息」): what F's move
-    in the root did to this stage -- the recorded steps replayed on the root
-    P0 F moved and on the vector it moved; shown only when the replay on the
-    served root rebuilds the served vector."""
-
-    try:
-        again, without = dict(served_root), dict(pre_root)
-        for likelihood, excluded, censor in steps:
-            again = _f_step(again, likelihood, excluded, censor=censor)
-            without = _f_step(without, likelihood, excluded, censor=censor)
-    except (ValueError, KeyError, TypeError):
-        return None
-    if set(again) != set(served) or max(abs(again[k] - float(served[k])) for k in served) > F_INHERITED_REBUILD_TOL:
-        return None
-    return _vector_move(without, served, axis)
 
 
 def _vector_move(before: Mapping[str, float], after: Mapping[str, float], axis) -> dict[str, Any] | None:
@@ -730,89 +620,6 @@ def _envelope_row(conn, checkpoint: Any, digest: Any, station: str, day: str, st
     return {"vector": _json(row[0], {}), "lineage": _json(row[1], {}), "decided_at_utc": str(row[2])}
 
 
-def _p0m_step(lineage: Mapping[str, Any], *, censor: bool) -> tuple[Mapping[str, Any], set[str], bool]:
-    receipt = _json(lineage.get("p0m_taf_likelihood_json"), {})
-    return (receipt.get("likelihood_by_bucket") or {}, set(_excluded(lineage.get("observed_hard_excluded_buckets"))),
-            censor)
-
-
-def _f_inherited_p0m(conn, head: Mapping[str, Any], station: str, day: str, axis) -> dict[str, Any] | None:
-    L = head["lineage"]
-    root = _envelope_row(conn, L.get("p0_root_checkpoint_id"), L.get("p0_root_content_sha256"), station, day, "P0")
-    receipt = _json((root or {}).get("lineage", {}).get("deterministic_consensus_json"), {})
-    if root is None or receipt.get("state") != "SERVED" or not receipt.get("pre_shift_probabilities"):
-        return None
-    return _f_inherited(root["vector"], receipt["pre_shift_probabilities"], [_p0m_step(L, censor=True)],
-                        head["vector"], axis)
-
-
-def _f_inherited_p1(conn, head: Mapping[str, Any], station: str, day: str, axis) -> dict[str, Any] | None:
-    L = head["lineage"]
-    stage = L.get("prediction_root_stage")
-    root = _envelope_row(conn, L.get("prediction_root_checkpoint_id"), L.get("prediction_root_content_sha256"),
-                         station, day, str(stage))
-    if root is None or stage not in {"P0", "P0-M"}:
-        return None
-    steps: list = []
-    p0 = root
-    if stage == "P0-M":
-        # Charter 241: P1 multiplies the P0-M's proportional shape, not the censored one.
-        steps.append(_p0m_step(root["lineage"], censor=False))
-        p0 = _envelope_row(conn, root["lineage"].get("p0_root_checkpoint_id"),
-                           root["lineage"].get("p0_root_content_sha256"), station, day, "P0")
-    receipt = _json((p0 or {}).get("lineage", {}).get("deterministic_consensus_json"), {})
-    if p0 is None or receipt.get("state") != "SERVED" or not receipt.get("pre_shift_probabilities"):
-        return None
-    obs = _json(L.get("p1_observation_likelihood_json"), {})
-    steps.append((obs.get("likelihood_by_bucket") or {}, set(_excluded(L.get("hard_excluded_buckets"))), False))
-    return _f_inherited(p0["vector"], receipt["pre_shift_probabilities"], steps, head["vector"], axis)
-
-
-def _root_p0_served(conn, lineage: Mapping[str, Any], station: str, day: str) -> tuple[float, str | None]:
-    """The consensus shift the P0 root of a P0-M (or of a P1) served, and when
-    that P0 was decided; (0, None) when the root P0 served none (补记七)."""
-
-    checkpoint, digest = lineage.get("p0_root_checkpoint_id"), lineage.get("p0_root_content_sha256")
-    if not checkpoint or not digest:
-        return 0.0, None
-    row = conn.execute(
-        "SELECT json_extract(lineage_json,'$.deterministic_consensus_json'), decision_at_utc"
-        " FROM basket_probability_envelope"
-        " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
-        " AND stage='P0' AND state='COMMITTED' LIMIT 1",
-        (checkpoint, digest, station, day),
-    ).fetchone()
-    if row is None or _json(row[0], {}).get("state") != "SERVED":
-        return 0.0, None
-    return _served_shift_c(row[0]), str(row[1])
-
-
-def _p1_root_f(conn, head: Mapping[str, Any], station: str, day: str) -> tuple[float | None, str | None]:
-    """补记七: F's move inside a P1's root -- the root P0's served shift, read
-    through the P0-M when the root is one; (None, None) when it carries none."""
-
-    lineage = head["lineage"]
-    checkpoint, digest = lineage.get("prediction_root_checkpoint_id"), lineage.get("prediction_root_content_sha256")
-    stage = lineage.get("prediction_root_stage")
-    if not checkpoint or not digest or stage not in {"P0", "P0-M"}:
-        return None, None
-    if stage == "P0":
-        root_lineage = {"p0_root_checkpoint_id": checkpoint, "p0_root_content_sha256": digest}
-    else:
-        row = conn.execute(
-            "SELECT json_extract(lineage_json,'$.p0_root_checkpoint_id'),"
-            " json_extract(lineage_json,'$.p0_root_content_sha256') FROM basket_probability_envelope"
-            " WHERE checkpoint_id=? AND content_sha256=? AND station_id=? AND event_date=?"
-            " AND stage='P0-M' AND state='COMMITTED' LIMIT 1",
-            (checkpoint, digest, station, day),
-        ).fetchone()
-        if row is None:
-            return None, None
-        root_lineage = {"p0_root_checkpoint_id": row[0], "p0_root_content_sha256": row[1]}
-    shift, at = _root_p0_served(conn, root_lineage, station, day)
-    return (shift, at) if at else (None, None)
-
-
 def _p1_root_center(conn, head: Mapping[str, Any], station: str, day: str) -> float | None:
     """Read the exact committed prediction root, never the latest stage head."""
     lineage = head["lineage"]
@@ -834,10 +641,7 @@ def _p1_root_center(conn, head: Mapping[str, Any], station: str, day: str) -> fl
     # .844Z is earlier than .844006Z even though it sorts after it.
     if root_time is None or head_time is None or root_time > head_time:
         return None
-    root = _json(row[0], {})
-    # 补记七: a P0 root's centre as served.
-    return _shifted(_float(root.get("model_center_c")),
-                    _served_shift_c(root.get("deterministic_consensus_json")) if stage == "P0" else 0.0)
+    return _float(_json(row[0], {}).get("model_center_c"))
 
 
 def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
@@ -849,8 +653,7 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         " json_extract(lineage_json,'$.taf_observed_tx_c'),"
         " json_extract(lineage_json,'$.reported_high_c'),"
         " coalesce(json_extract(lineage_json,'$.prediction_root_checkpoint_id'),"
-        "          json_extract(lineage_json,'$.p0_root_checkpoint_id')),"
-        " json_extract(lineage_json,'$.deterministic_consensus_json')"
+        "          json_extract(lineage_json,'$.p0_root_checkpoint_id'))"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
         " AND state='COMMITTED' ORDER BY decision_at_utc",
         (station, day),
@@ -864,10 +667,7 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
     drop = set(sorted(p1, key=lambda k: k[1])[:-P1_TREND_MAX]) if len(p1) > P1_TREND_MAX else set()
     out = []
     before: dict[str, tuple] = {}
-    for key, (stage, at, probs, version, center, *why_consensus) in sorted(keep.items(), key=lambda kv: str(kv[1][1])):
-        why, consensus = why_consensus[:-1], why_consensus[-1]
-        # 补记七: a P0's centre as served.
-        center = _shifted(_float(center), _served_shift_c(consensus) if stage == "P0" else 0.0)
+    for key, (stage, at, probs, version, center, *why) in sorted(keep.items(), key=lambda kv: str(kv[1][1])):
         cause = _timeline_cause(stage, why, before.get(stage))
         before[stage] = tuple(why)
         if key in drop:
@@ -2334,14 +2134,11 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
                 entry["radiation"].update(_radiation_capture(
                     conn, station, day, str(head["decided_at_utc"]), entry["radiation"].get("radiation_sum_mj")))
         elif stage == "P0-M":
-            entry.update(_p0m_brief(head, conn, station, day))
-            entry["f_inherited"] = _f_inherited_p0m(conn, head, station, day, axis)
+            entry.update(_p0m_brief(head))
             entry["stage_move"] = _stage_move(conn, head, station, day, axis, "P0-M")
         else:
             entry.update(_p1_brief(head))
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
-            entry["root_f_shift_c"], entry["root_f_p0_at_utc"] = _p1_root_f(conn, head, station, day)
-            entry["f_inherited"] = _f_inherited_p1(conn, head, station, day, axis)
             entry["stage_move"] = _stage_move(conn, head, station, day, axis, "P1")
         stages[stage] = entry
     head_stage = day_word(stages)

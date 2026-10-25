@@ -115,9 +115,6 @@ from .quote_freshness import QuoteFreshnessPolicy
 from .market_materialization import insert_market_evidence_bundle, build_confirmed_inventory_snapshot, build_order_state_snapshot
 from .market_ingress import materialize_official_ws_evidence_cache
 from .materialization import materialize_p0m_observed
-from .deterministic_consensus_shift import (
-    consensus_read as deterministic_consensus_read,
-)
 from .probability_bridge import materialize_probability_bridge
 from .p1_observation_likelihood import (
     load_artifact as load_p1_observation_likelihood_artifact,
@@ -17961,20 +17958,9 @@ class TargetProductionWorker:
                             root=root,
                         )
                     )
-                    # Charter 279: the deterministic consensus knowable at
-                    # this decision, for the stage's shadow receipt.  A
-                    # record; the read never raises.
-                    consensus = deterministic_consensus_read(
-                        self.commit_conn if self.commit_conn is not None else self.conn,
-                        station_id=station,
-                        event_date=day,
-                        as_of_utc=decision_at,
-                        settlement_timezone=root.settlement_timezone,
-                    )
                     return materialize_p0m_observed(
                         predecessor,
                         p0_root=root,
-                        deterministic_consensus_read=consensus,
                         observed_hard_excluded_buckets=observed_excluded,
                         observed_running_high_c=observed_high,
                         forecast_revision_id=revision.revision_id,
