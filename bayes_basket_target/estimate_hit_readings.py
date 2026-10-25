@@ -158,11 +158,13 @@ def _f_ledger() -> dict[tuple[str, str], float]:
     return out
 
 
-def _wrf_records() -> dict[str, dict[str, Any]]:
+def _wrf_records() -> dict[str, list[dict[str, Any]]]:
+    """day -> the frozen issue and its re-runs on newer scans, by ready time."""
+
     from . import wrf_readings  # noqa: PLC0415
 
     try:
-        return wrf_readings.nowcast_records()
+        return wrf_readings.nowcast_issues()
     except Exception:  # noqa: BLE001 -- the WRF volume is optional
         return {}
 
@@ -228,9 +230,11 @@ def picks_at(conn: sqlite3.Connection, station: str, day: str, when: datetime, l
         past = [v for hour, v in mos if hour <= h]
         picks["MOS"] = _label_of(ladder, past[-1]) if past else None
     picks["WRF"] = None
-    rec = wrf.get(day) if station == "ZUUU" else None
-    if rec and rec.get("ready_utc") and str(rec["ready_utc"]) <= at and rec.get("wrf_sat_tmax_with_obs_c") is not None:
-        picks["WRF"] = _label_of(ladder, rec["wrf_sat_tmax_with_obs_c"])
+    # The newest issue out by then (the frozen one, or a re-run on a newer scan).
+    out = [r for r in (wrf.get(day) or [] if station == "ZUUU" else [])
+           if r.get("ready_utc") and str(r["ready_utc"]) <= at and r.get("wrf_sat_tmax_with_obs_c") is not None]
+    if out:
+        picks["WRF"] = _label_of(ladder, out[-1]["wrf_sat_tmax_with_obs_c"])
     return picks
 
 

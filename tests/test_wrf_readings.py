@@ -161,3 +161,37 @@ def test_a_newer_run_that_misses_the_peak_does_not_replace_a_whole_day(tmp_path:
                     cache=Cache(), fcst_runs={})
     rec = out["stations"]["ZUUU"]["days"]["2026-10-24"]["configs"]["fcst"]
     assert rec["init_utc"] == "2026-10-22T00:00:00Z" and rec["tmax_c"] == 21.0
+
+
+def test_rerun_on_newer_scans_leads_the_card_and_is_not_scored(tmp_path: Path, monkeypatch) -> None:
+    """The sat arm re-run on every new scan (user 2026-10-25 「不应该只跑一次，有新数据就应该跑」):
+    every issue is listed by ready time, the card leads with the newest, the frozen issue
+    stays beside it and the forward score is the frozen issue's alone."""
+
+    import json  # noqa: PLC0415
+
+    from bayes_basket_target import board_readings  # noqa: PLC0415
+
+    base = tmp_path / "run" / "nowcast"
+    base.mkdir(parents=True)
+    (base / "log.jsonl").write_text(json.dumps(
+        {"day": "2026-10-25", "station": "ZUUU", "ready_utc": "2026-10-25T03:27:26Z", "last_sat_hour_utc": 2,
+         "wrf_sat_tmax_with_obs_c": 25.12}) + "\n", encoding="utf-8")
+    ups = [{"day": "2026-10-25", "station": "ZUUU", "kind": "update", "run": f"upd/{h:02d}",
+            "ready_utc": f"2026-10-25T{h + 1:02d}:30:00Z", "last_sat_hour_utc": h, "wrf_sat_tmax_with_obs_c": v}
+           for h, v in ((4, 24.1), (3, 24.6))]
+    (base / W.NOWCAST_UPDATE_LOG).write_text("\n".join(json.dumps(r) for r in ups) + "\n", encoding="utf-8")
+    issues = W.nowcast_issues(tmp_path)["2026-10-25"]
+    assert [r["last_sat_hour_utc"] for r in issues] == [2, 3, 4]
+    assert W.nowcast_records(tmp_path)["2026-10-25"]["last_sat_hour_utc"] == 2  # the frozen issue
+
+    value = {"state": "ok", "stations": {"ZUUU": {"timezone": "Asia/Shanghai", "scores": {}, "nowcast_scores": {},
+             "days": {"2026-10-25": {
+                 "truth_c": None, "nowcast": W._nowcast_view(issues[0]),
+                 "nowcast_updates": [W._nowcast_view(r) for r in issues[1:]],
+                 "nowcast_update_run": {"tmax_c": 24.0, "series": [["t", 24.0]], "status": "complete", "run": "upd/04"},
+                 "configs": {"nowcast_sat": {"tmax_c": 25.12, "series": [], "status": "complete"}}}}}}}
+    monkeypatch.setattr(board_readings, "load_reading", lambda name: {"value": value})
+    v = W.stored("ZUUU", "2026-10-25")
+    assert v["nowcast"]["last_sat_hour_utc"] == 4 and v["nowcast"]["sat_obs_c"] == 24.1
+    assert v["runs"]["nowcast_sat"]["tmax_c"] == 24.0 and v["nowcast_first"]["sat_obs_c"] == 25.12

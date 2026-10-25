@@ -57,6 +57,10 @@ FORECAST = "fcst"
 FCST_RUNS_PATH = board_readings.READINGS_DIR / "wrf_fcst_runs_v1.json"
 NOWCAST_ARMS = {"sat": "nowcast_sat", "ctl": "nowcast_ctl"}
 NOWCAST_LOG = "log.jsonl"
+#: The sat arm re-run on every new scan (run/nowcast_update.sh, user 2026-10-25 「不应该只跑一次，
+#: 有新数据就应该跑」): ``run/nowcast/<YYYYMMDD>/upd/<scan HH>``, one record per run in
+#: ``run/nowcast/log_update.jsonl``.  The frozen issue above stays the forward test and its score.
+NOWCAST_UPDATE_LOG = "log_update.jsonl"
 #: The hindcast experiments' results frozen before their files were archived (user
 #: 2026-10-22 「保留代码和结果，归档实验数据，冻结配置！」): a run absent on disk is filled
 #: from here, so the board keeps every hindcast number.
@@ -264,6 +268,51 @@ def nowcast_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
     return out
 
 
+def nowcast_updates(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]:
+    """day (YYYY-MM-DD) -> the day's update records, oldest first."""
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        lines = (root / "run" / "nowcast" / NOWCAST_UPDATE_LOG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("day") and r.get("ready_utc"):
+            out.setdefault(str(r["day"]), []).append(r)
+    for recs in out.values():
+        recs.sort(key=lambda r: str(r["ready_utc"]))
+    return out
+
+
+def nowcast_issues(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]:
+    """day -> every nowcast record, the frozen issue and its updates, by ready time: what
+    the newest WRF said as of any moment."""
+
+    out = {day: [rec] for day, rec in nowcast_records(root).items()}
+    for day, recs in nowcast_updates(root).items():
+        out.setdefault(day, []).extend(recs)
+    for recs in out.values():
+        recs.sort(key=lambda r: str(r.get("ready_utc") or ""))
+    return out
+
+
+def _nowcast_view(rec: dict[str, Any]) -> dict[str, Any]:
+    m, b = rec.get("market") or {}, rec.get("belief") or {}
+    return {
+        "ready_utc": rec.get("ready_utc"), "last_sat_hour_utc": rec.get("last_sat_hour_utc"),
+        "metar_max_so_far_c": rec.get("metar_max_so_far_c"),
+        "sat_c": rec.get("wrf_sat_tmax_c"), "ctl_c": rec.get("wrf_ctl_tmax_c"),
+        "sat_obs_c": rec.get("wrf_sat_tmax_with_obs_c"), "ctl_obs_c": rec.get("wrf_ctl_tmax_with_obs_c"),
+        "market_mean_c": m.get("mean_c"), "market_mode_c": m.get("mode_c"), "market_mode_p": m.get("mode_p"),
+        "belief_mean_c": b.get("mean_c"), "belief_mode_c": b.get("mode_c"), "belief_mode_p": b.get("mode_p"),
+        "belief_stage": b.get("stage"),
+    }
+
+
 def load_fcst_runs(path: Path = FCST_RUNS_PATH) -> dict[str, Any]:
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -393,17 +442,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
         for day, rec in nowcast_records(root).items():
             if rec.get("station", station) != station:
                 continue
-            m, b = rec.get("market") or {}, rec.get("belief") or {}
             entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
-            entry["nowcast"] = {
-                "ready_utc": rec.get("ready_utc"), "last_sat_hour_utc": rec.get("last_sat_hour_utc"),
-                "metar_max_so_far_c": rec.get("metar_max_so_far_c"),
-                "sat_c": rec.get("wrf_sat_tmax_c"), "ctl_c": rec.get("wrf_ctl_tmax_c"),
-                "sat_obs_c": rec.get("wrf_sat_tmax_with_obs_c"), "ctl_obs_c": rec.get("wrf_ctl_tmax_with_obs_c"),
-                "market_mean_c": m.get("mean_c"), "market_mode_c": m.get("mode_c"), "market_mode_p": m.get("mode_p"),
-                "belief_mean_c": b.get("mean_c"), "belief_mode_c": b.get("mode_c"), "belief_mode_p": b.get("mode_p"),
-                "belief_stage": b.get("stage"),
-            }
+            entry["nowcast"] = _nowcast_view(rec)
             t = entry["truth_c"]
             if t is None:
                 continue
@@ -411,6 +451,25 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                 v = entry["nowcast"][k]
                 if v is not None:
                     nowcast_errs.setdefault(k, []).append(float(v) - t)
+        # The re-runs on newer scans: every one's numbers, and the newest run's hourly T2.
+        # Not scored -- each issue is a different moment; the frozen issue is the test.
+        for day, recs in nowcast_updates(root).items():
+            recs = [r for r in recs if r.get("station", station) == station]
+            if not recs:
+                continue
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            entry["nowcast_updates"] = [_nowcast_view(r) for r in recs]
+            last = recs[-1]
+            d = root / "run" / "nowcast" / day.replace("-", "") / str(last.get("run") or "")
+            frames: dict[str, float] = {}
+            for fn in _domain_files(d)[1]:
+                frames.update(cache.frames(fn, "T2", point))
+            m = _day_max(frames, day, zone)
+            if m:
+                entry["nowcast_update_run"] = {
+                    "status": _status(d, now.timestamp()), "domain": "d01", "run": last.get("run"),
+                    "init_utc": _iso(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc) - timedelta(hours=6)),
+                    **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
         configs = sorted({c for e in days.values() for c in e["configs"]},
                          key=lambda c: (c != "nowcast_sat", c != "nowcast_ctl", c != FORECAST, c != BASELINE, c))
         latest = max(days) if days else None
@@ -446,8 +505,15 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
                                                 "peak_covered", "prev_init_utc", "prev_tmax_c", "change_c")}
             for c in ("nowcast_sat", "nowcast_ctl", FORECAST) if c in configs}
     scores = S.get("scores") or {}
+    # The card leads with the newest issue: the last re-run on a newer scan when there is
+    # one (user 2026-10-25 「有新数据就应该跑」), else the frozen 11:10 issue.
+    nowcast, updates = E.get("nowcast"), E.get("nowcast_updates") or []
+    if updates and E.get("nowcast_update_run"):
+        nowcast = updates[-1]
+        keep["nowcast_sat"] = {k: E["nowcast_update_run"].get(k) for k in keep.get("nowcast_sat") or E["nowcast_update_run"]}
     return {"state": "ok", "as_of_utc": value.get("as_of_utc"), "timezone": S.get("timezone"),
-            "truth_c": E.get("truth_c"), "gfs": E.get("gfs"), "nowcast": E.get("nowcast"), "runs": keep,
+            "truth_c": E.get("truth_c"), "gfs": E.get("gfs"), "nowcast": nowcast, "runs": keep,
+            "nowcast_first": E.get("nowcast"), "nowcast_updates": updates,
             "fcst_history": E.get("fcst_history") or [],
             "nowcast_scores": S.get("nowcast_scores") or {},
             "oracle_score": scores.get("satcld_rhc85"), "selfcloud_score": scores.get("indep_rhc85")}
