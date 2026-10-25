@@ -22545,12 +22545,14 @@ function sdStageMove(e, stage){
   const why = stage === "P0-M"
     ? (e.tx_c == null ? "这份 TAF 没有 TX，似然恒等" : `TAF TX ${sdN(e.tx_c, 0)}°C · 比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`)
     : `实况最高 ${sdN(e.running_high_c, 1)}°C`;
+  const nx = (e.excluded || []).length;
+  const exLine = nx ? ` · 含实况下界排除 ${nx} 档` : "";
   const F = e.f_inherited;
   const fLine = F ? ` · 根含 F ${sdSg(e.root_f_shift_c, 2)}（没有 F 时本阶段 ${sdN(F.pre.mean_c, 2)}°C）` : "";
   const tip = stage === "P0-M"
     ? `P0-M＝根 P0（F 挪后的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；把同一 TAF 似然乘在 F 挪动前的 P0 上，本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`
     : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。${F ? `\n根里的 P0 已服务确定性共识 F（挪 ${sdSg(e.root_f_shift_c, 2)}°C）；没有 F 时本阶段会是 ${sdN(F.pre.mean_c, 2)}°C。` : ""}`;
-  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + fLine, tip, "");
+  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + exLine + fLine, tip, "");
 }
 function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const pre = S.pre || {}, post = S.post || {};
