@@ -303,11 +303,11 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     ].default
     # Charter 198 bumped all three again (P0 v9, P0-M v11, P1 v19); the
     # charter-190 versions keep their shared declaration.
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v32"
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
     # Charter 241 moved P0-M on to v23 (its own change).
-    assert p0m == "p0m_taf_likelihood_v35"
+    assert p0m == "p0m_taf_likelihood_v36"
     # Charter 200 moved P1 on to v20 (its own change).
-    assert p1 == "p1_joint_likelihood_v45"
+    assert p1 == "p1_joint_likelihood_v46"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )

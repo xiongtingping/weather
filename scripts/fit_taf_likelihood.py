@@ -405,6 +405,30 @@ class CachedSource:
         ).fetchall()
 
 
+class ReplayRootSource:
+    """Charter 281's roots for the refit (``build_p0_ngr_root_replay``): a root
+    reads its rebuilt regression vector and centre; a root not rebuilt is absent."""
+
+    def __init__(self, base: Any, replay_path: Path | str) -> None:
+        self.base = base
+        self.replay = sqlite3.connect(f"file:{replay_path}?mode=ro", uri=True)
+
+    def p0m_rows(self, since: str, through: str) -> list[tuple]:
+        return self.base.p0m_rows(since, through)
+
+    def p0_roots(self, station_id: str, event_date: str) -> list[tuple]:
+        return self.base.p0_roots(station_id, event_date)
+
+    def root(self, checkpoint_id: str) -> tuple | None:
+        row = self.replay.execute(
+            "SELECT mu_c, probabilities_json FROM root WHERE checkpoint_id=?", (checkpoint_id,),
+        ).fetchone()
+        base = self.base.root(checkpoint_id) if row is not None else None
+        if row is None or base is None:
+            return None
+        return (row[0], row[1], base[2], base[3])
+
+
 def load_cases(
     conn: sqlite3.Connection, *, since: str, through: str, source: Any = None,
 ) -> list[dict[str, Any]]:
@@ -939,6 +963,10 @@ def main() -> int:
         "--case-cache", default=str(CASE_CACHE_PATH),
         help="frozen days' envelope rows; '' reads every day off the SSOT",
     )
+    parser.add_argument(
+        "--root-replay", default="",
+        help="charter 281: read each P0 root from build_p0_ngr_root_replay's file (vector and centre)",
+    )
     args = parser.parse_args()
 
     from datetime import date, timedelta  # noqa: PLC0415
@@ -958,6 +986,8 @@ def main() -> int:
                     frozen_through=min(frozen_through, args.through), now_utc=now_utc,
                 )
             source = CachedSource(conn, cache) if cache is not None else SsotSource(conn)
+            if args.root_replay:
+                source = ReplayRootSource(source, args.root_replay)
             cases = load_cases(conn, since=args.since, through=args.through, source=source)
             if len(cases) < 50:
                 print(json.dumps({"state": "REFUSED_THIN", "cases": len(cases)}))

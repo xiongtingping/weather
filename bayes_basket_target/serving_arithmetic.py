@@ -428,8 +428,12 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "calibrated_native_cross_ensemble_p0_v31": "2026-10-25T03:00:00Z",
         # Charter 281: P0 is one distributional regression over the calibrated
         # systems, the deterministic forecasts and the radiation score; the
-        # consensus shift retires.  Declared past the push and the restart.
-        "calibrated_native_cross_ensemble_p0_v32": "2026-10-25T08:30:00Z",
+        # consensus shift retires.  Declared at the restart that deployed it
+        # (06:26Z; first served 06:29Z).
+        "calibrated_native_cross_ensemble_p0_v32": "2026-10-25T06:30:00Z",
+        # Charter 281 补记一: a served regression's centre is the envelope's
+        # model centre (P0-M's c0).  Declared past the push and the restart.
+        "calibrated_native_cross_ensemble_p0_v33": "2026-10-25T08:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -503,7 +507,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 279 补记七: root bump at the instant P0 v31 declares.
         "p0m_taf_likelihood_v34": "2026-10-25T03:00:00Z",
         # Charter 281: root bump at the instant P0 v32 declares.
-        "p0m_taf_likelihood_v35": "2026-10-25T08:30:00Z",
+        "p0m_taf_likelihood_v35": "2026-10-25T06:30:00Z",
+        # Charter 281 补记一: the TAF line refitted on the regression's roots,
+        # c0 the regression's centre.
+        "p0m_taf_likelihood_v36": "2026-10-25T08:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -593,7 +600,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 279 补记七: root bump at the instant P0 v31 declares.
         "p1_joint_likelihood_v44": "2026-10-25T03:00:00Z",
         # Charter 281: root bump at the instant P0 v32 declares.
-        "p1_joint_likelihood_v45": "2026-10-25T08:30:00Z",
+        "p1_joint_likelihood_v45": "2026-10-25T06:30:00Z",
+        # Charter 281 补记一: alpha and the direct update refitted on the
+        # regression's roots.
+        "p1_joint_likelihood_v46": "2026-10-25T08:00:00Z",
     },
 }
 

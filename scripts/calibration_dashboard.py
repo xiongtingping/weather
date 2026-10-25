@@ -22454,7 +22454,7 @@ function sdProbabilityCards(day){
     // root and the move box -- so a root reads the same on its own card and on
     // the card built on it.  P0's pool centre (before the width layers) is a
     // different quantity and lives in the tooltip only.
-    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；集合池加权中心 ${sdN(e.model_center_c, 2)}°C（TAF 似然读它），与分布均值不同` : ""}`;
+    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型中心 ${sdN(e.model_center_c, 2)}°C（服务分布回归时即回归中心 μ，P0-M 的 TAF 似然以它为 c0），与分布均值不同` : ""}`;
     const rootLabel = stage === "P0-M" ? "根均值（P0）" : `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
     // P0-M's evidence, top right: the TAF's forecast maximum and how far it
     // sits from P0's model centre (x, what the likelihood reads).

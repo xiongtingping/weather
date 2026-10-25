@@ -56,9 +56,16 @@ else
   echo "sample build failed; the refit below reads yesterday's samples" >&2
 fi
 
+# Charter 281 补记一: every root P1 is fitted on is the regression's -- the
+# rebuilt history plus the roots served since, a P0-M root multiplied by the
+# TAF line serving now where it was not served on the new root.
+"$PY" scripts/build_p0_ngr_root_replay.py --live \
+  --p1-roots-taf-artifact "$OUT/taf_likelihood_artifact.json" \
+  || echo "root replay copy failed; fitting on the store as it was" >&2
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] P1 joint observation likelihood refit"
 "$PY" scripts/fit_p1_observation_likelihood.py \
-  --since "$SINCE" --through "$THROUGH" || RC=$?
+  --since "$SINCE" --through "$THROUGH" --root-replay "$OUT/p0_ngr_root_replay.db" || RC=$?
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] done rc=$RC"
 exit "$RC"

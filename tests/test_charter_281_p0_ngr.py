@@ -198,10 +198,11 @@ def test_the_consensus_shift_is_gone_and_the_versions_moved():
         assert "deterministic_consensus" not in (ROOT / path).read_text(encoding="utf-8"), path
     from bayes_basket_target import native_ensemble_p0 as P0  # noqa: PLC0415
     from bayes_basket_target import serving_arithmetic as sa  # noqa: PLC0415
-    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v32"
-    declared = sa.version_effective_from("P0", P0.POSTERIOR_VERSION)
-    assert declared and declared == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v35") \
-        == sa.version_effective_from("P1", "p1_joint_likelihood_v45")
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
+    for p0v, p0mv, p1v in (("v32", "v35", "v45"), ("v33", "v36", "v46")):
+        declared = sa.version_effective_from("P0", f"calibrated_native_cross_ensemble_p0_{p0v}")
+        assert declared and declared == sa.version_effective_from("P0-M", f"p0m_taf_likelihood_{p0mv}") \
+            == sa.version_effective_from("P1", f"p1_joint_likelihood_{p1v}")
 
 
 def test_the_daily_fit_is_a_managed_read_only_sweep():
@@ -226,3 +227,60 @@ def test_the_board_shows_the_regressions_move_against_the_fallback():
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert 'body: (stage === "P0" ? sdNgrBlock(e.ngr) : sdStageMove(e, stage))' in source
     assert '"p0_ngr": collect_p0_ngr()' in source and "sdConsensus" not in source
+
+
+def test_a_served_regressions_centre_is_the_envelopes_model_centre(monkeypatch):
+    """补记一 (user 2026-10-25 「重新拟合」): P0-M's TAF likelihood subtracts it."""
+    from bayes_basket_target import native_ensemble_oos, station_season  # noqa: PLC0415
+    from bayes_basket_target import native_ensemble_p0 as p0  # noqa: PLC0415
+    from tests.test_native_ensemble_p0 import (  # noqa: PLC0415
+        _install_mixed_cycle_calibrations, _mixed_packet,
+    )
+
+    monkeypatch.setattr(native_ensemble_oos, "P0_MEMBERSHIP_MODE", "subset_contest")
+    monkeypatch.setattr(p0, "P0_MEMBERSHIP_MODE", "subset_contest")
+    monkeypatch.setitem(station_season._SEASON_ANCHOR_MONTH, "TEST", 7)
+    monkeypatch.setattr(NGR, "read_deterministic", lambda conn, **kw: DET)
+    monkeypatch.setattr(NGR, "load_fit_artifact", lambda path=None: _fit())
+    conn = sqlite3.connect(":memory:")
+    _install_mixed_cycle_calibrations(conn)
+    envelope = p0.compile_native_ensemble_p0(conn, forward_packet=_mixed_packet(),
+                                             decision_at_utc="2026-07-01T13:00:00Z")["packet"]["native_probability_envelope"]
+    receipt = json.loads(envelope["lineage"][NGR.LINEAGE_KEY])
+    assert receipt["state"] == "SERVED"
+    assert float(envelope["lineage"]["model_center_c"]) == pytest.approx(receipt["mu_c"], abs=1e-9)
+
+
+def test_the_likelihood_refits_read_the_regressions_roots(tmp_path):
+    import build_p0_ngr_root_replay as RB  # noqa: PLC0415
+    import fit_p1_observation_likelihood as P1FIT  # noqa: PLC0415
+    import fit_taf_likelihood as TAFFIT  # noqa: PLC0415
+
+    replay = tmp_path / "replay.db"
+    out = sqlite3.connect(replay)
+    out.executescript(RB.SCHEMA)
+    out.executescript(RB.P1_ROOT_SCHEMA)
+    out.execute("INSERT INTO root VALUES ('p0-a','ZUUU','2026-10-20','2026-10-19T00:00:00Z',22.4,1.1,?,'2026-10-19')",
+                (json.dumps({"22": 0.6, "23": 0.4}),))
+    out.execute("INSERT INTO p1_root VALUES ('p0m-a','P0-M','2026-10-20',?, 'x')", (json.dumps({"22": 0.3, "23": 0.7}),))
+    out.commit()
+
+    class Base:
+        def root(self, ck):
+            return ("21.0", json.dumps({"22": 0.5, "23": 0.5}), json.dumps({"22": 0, "23": 1}), "{}")
+
+        def p0m_rows(self, since, through):
+            return []
+
+        def p0_roots(self, station, day):
+            return []
+
+    source = TAFFIT.ReplayRootSource(Base(), replay)
+    assert source.root("p0-a") == (22.4, json.dumps({"22": 0.6, "23": 0.4}), json.dumps({"22": 0, "23": 1}), "{}")
+    assert source.root("p0-missing") is None
+    assert "replay" in P1FIT.RootCache.__init__.__code__.co_varnames
+    for sweep, needle in (("scripts/taf_likelihood_refit_sweep.sh", '--root-replay "$REPLAY"'),
+                          ("scripts/p1_likelihood_refit_sweep.sh", '--root-replay "$OUT/p0_ngr_root_replay.db"')):
+        text = (ROOT / sweep).read_text(encoding="utf-8")
+        assert needle in text and "build_p0_ngr_root_replay.py --live" in text
+    assert RB.P0M_ON_NEW_ROOT == frozenset({"p0m_taf_likelihood_v36"})

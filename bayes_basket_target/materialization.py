@@ -1009,7 +1009,9 @@ def materialize_p0m_observed(
     # deterministic consensus shift served beyond 12 h.
     # v35 (charter 281, 2026-10-25): the root (P0 v32) -- P0 is one
     # distributional regression; the consensus shift retires.
-    posterior_version: str = "p0m_taf_likelihood_v35",
+    # v36 (charter 281 补记一): the TAF line refitted on the regression's
+    # roots, c0 the regression's centre.
+    posterior_version: str = "p0m_taf_likelihood_v36",
     observed_hard_excluded_buckets: Sequence[str] = (),
     observed_running_high_c: float | None = None,
     taf_likelihood_artifact: Mapping[str, Any] | None = None,
@@ -1412,7 +1414,9 @@ def materialize_p1(
     # v44 (charter 279 补记七, 2026-10-25): the root again (P0 v31, P0-M
     # v34) -- the deterministic consensus shift served beyond 12 h.
     # v45 (charter 281, 2026-10-25): the root again (P0 v32, P0-M v35).
-    posterior_version: str = "p1_joint_likelihood_v45",
+    # v46 (charter 281 补记一): alpha and the direct update refitted on the
+    # regression's roots.
+    posterior_version: str = "p1_joint_likelihood_v46",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild

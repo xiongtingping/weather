@@ -229,7 +229,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 281 (2026-10-25 ruling 「按 N2 形态重建 P0」): P0 is one distributional
 # regression over the calibrated systems, the deterministic forecasts and the
 # radiation score; the consensus shift (charter 279 补记七) is retired.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v32"
+# 补记一 (same day 「重新拟合」): a served regression's centre is the
+# envelope's model centre.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v33"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4915,6 +4917,11 @@ def compile_native_ensemble_p0(
         radiation_standardised=(synoptic_cooling_receipt or {}).get("standardised"),
         fit=p0_ngr.load_fit_artifact(),
     )
+    # Charter 281 补记一: a served regression's centre is P0's centre -- the
+    # anchor and the c0 P0-M's TAF likelihood subtracts (refitted on it).
+    if p0_ngr_receipt.get("state") == "SERVED":
+        model_center_c = float(p0_ngr_receipt["mu_c"])
+        model_center_bucket = _bucket_for_value(model_center_c, intervals_raw)
     if center_width_receipt is not None:
         center_width_receipt["seated_system_count"] = int(seated_system_count)
         center_width_receipt["hours_to_settlement"] = (

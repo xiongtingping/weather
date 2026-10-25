@@ -469,10 +469,17 @@ def fit_continuation(
 
 
 class RootCache:
-    """Root geometry by checkpoint, parsed once per evaluation."""
+    """Root geometry by checkpoint, parsed once per evaluation.
 
-    def __init__(self, target: sqlite3.Connection) -> None:
+    Charter 281 (``--root-replay``): the vector a root contributes is read from
+    ``build_p0_ngr_root_replay``'s ``p1_root`` table -- the regression's P0, or
+    that P0 times the TAF likelihood for a P0-M root -- and a root it does not
+    hold is absent; the geometry stays the envelope's own.
+    """
+
+    def __init__(self, target: sqlite3.Connection, replay: sqlite3.Connection | None = None) -> None:
         self._target = target
+        self._replay = replay
         self._cache: dict[str, dict[str, Any]] = {}
 
     def get(self, checkpoint_id: str) -> dict[str, Any] | None:
@@ -514,10 +521,19 @@ class RootCache:
         if not intervals:
             self._cache[checkpoint_id] = None
             return None
+        probabilities = p1_root_probabilities(envelope)
+        if self._replay is not None:
+            hit = self._replay.execute(
+                "SELECT probabilities_json FROM p1_root WHERE checkpoint_id=?", (checkpoint_id,),
+            ).fetchone()
+            if hit is None:
+                self._cache[checkpoint_id] = None
+                return None
+            probabilities = {str(k): float(v) for k, v in json.loads(hit[0]).items()}
         view = {
             # Charter 241: the prior P1 multiplies at serving -- a censoring
             # P0-M's proportional shape -- read through the same function.
-            "probabilities": p1_root_probabilities(envelope),
+            "probabilities": probabilities,
             "ordinals": dict(envelope.bucket_ordinals),
             "centers": centers,
             "uppers": uppers,
@@ -1719,6 +1735,8 @@ def main() -> int:
     parser.add_argument("--out", default=str(OL.ARTIFACT_PATH))
     parser.add_argument("--margin", type=float, default=DEFAULT_MARGIN)
     parser.add_argument("--fitted-at-utc", default=None)
+    parser.add_argument("--root-replay", default="",
+                        help="charter 281: read each root's vector from build_p0_ngr_root_replay's p1_root table")
     parser.add_argument("--archive-db", default=str(ROOT / "data" / "archive.db"))
     parser.add_argument(
         "--candidate-out", default=None,
@@ -1734,7 +1752,10 @@ def main() -> int:
         Path(args.samples), since=args.since, through=args.through
     )
     target = sqlite3.connect(f"file:{args.target_db}?mode=ro", uri=True)
-    roots = RootCache(target)
+    roots = RootCache(
+        target,
+        sqlite3.connect(f"file:{args.root_replay}?mode=ro", uri=True) if args.root_replay else None,
+    )
     samples, unlabelled = label_samples(
         raw_samples, roots, load_truth_known_at(target)
     )
