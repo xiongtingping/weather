@@ -3792,9 +3792,8 @@ def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
     out: dict[str, Any] = {"available": True}
     try:
         from bayes_basket_target import taf_likelihood as TL  # noqa: PLC0415
-        # As it serves: charter 151's ruling stamped over the measured gate
-        # (which stays beside it as ``measured_state``).
-        raw = TL.apply_gate_ruling(json.loads(TL.ARTIFACT_PATH.read_text()))
+        # As it serves: the measured gate (charter 151's ruling revoked 2026-10-25).
+        raw = json.loads(TL.ARTIFACT_PATH.read_text())
         mtime = datetime.fromtimestamp(TL.ARTIFACT_PATH.stat().st_mtime, timezone.utc)
     except Exception:  # noqa: BLE001
         raw, mtime = {}, None
@@ -22430,7 +22429,7 @@ function sdDay(day){
 }
 
 function sdProbabilityCards(day){
-  const descriptions = {"P0":"天气模型", "P0-M":"TAF 与物理一致性确认", "P1":"正式观测更新"};
+  const descriptions = {"P0":"天气模型", "P0-M":"实况下界（TAF 按门）", "P1":"正式观测更新"};
   const mk = ((day.market || {}).stats || {}).mean_c;
   // Against the previous served decision of the same stage.
   const previousOf = (stage, e) => {
@@ -22497,7 +22496,9 @@ function sdStageMove(e, stage){
   const S = e.stage_move;
   if(!S) return "";
   const root = S.root_stage || (stage === "P0-M" ? "P0" : "前序阶段");
-  const title = stage === "P0-M" ? "TAF 挪" : "实况挪";
+  // Charter 281 补记二: the TAF line serves only on its own gate; when it is
+  // closed P0-M's move is the observed bound's alone.
+  const title = stage === "P0-M" ? (e.taf_state === "APPLIED" ? "TAF 挪" : "下界挪") : "实况挪";
   const why = stage === "P0-M"
     ? (e.tx_c == null ? "这份 TAF 没有 TX，似然恒等" : `TAF TX ${sdN(e.tx_c, 0)}°C · 比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`)
     : `实况最高 ${sdN(e.running_high_c, 1)}°C`;

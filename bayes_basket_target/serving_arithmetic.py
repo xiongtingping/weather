@@ -511,6 +511,10 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 281 补记一: the TAF line refitted on the regression's roots,
         # c0 the regression's centre.
         "p0m_taf_likelihood_v36": "2026-10-25T08:00:00Z",
+        # Charter 281 补记二: charter 151's ruling revoked -- the TAF line serves
+        # only on its own gate (closed), so P0-M is P0 under the observed bound.
+        # Its own change; declared past the push and the restart.
+        "p0m_taf_likelihood_v37": "2026-10-25T08:30:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -604,6 +608,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 281 补记一: alpha and the direct update refitted on the
         # regression's roots.
         "p1_joint_likelihood_v46": "2026-10-25T08:00:00Z",
+        # Charter 281 补记二: root bump at the instant P0-M v37 declares (the
+        # P0-M root without the TAF line), alpha refitted on those roots.
+        "p1_joint_likelihood_v47": "2026-10-25T08:30:00Z",
     },
 }
 

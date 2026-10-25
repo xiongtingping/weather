@@ -128,7 +128,7 @@ def build_p1_roots(out: sqlite3.Connection, *, days: list[str], taf_artifact: di
 LIVE_FROM = "2026-10-25"
 #: P0-M versions built on the regression's centre and the TAF line refitted on
 #: it (charter 281 补记一); earlier P0-M rows on a live root are recomputed.
-P0M_ON_NEW_ROOT = frozenset({"p0m_taf_likelihood_v36"})
+P0M_ON_NEW_ROOT = frozenset({"p0m_taf_likelihood_v36", "p0m_taf_likelihood_v37"})
 LIVE_P0_SQL = (
     "SELECT checkpoint_id, station_id, decision_at_utc, probabilities_json,"
     " json_extract(lineage_json,'$.p0_ngr_json')"

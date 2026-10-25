@@ -287,10 +287,10 @@ def test_the_bump_names_charter_198() -> None:
     ].default
     assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
     # Charter 241 moved P0-M on to v23 (its own change); charter 242 to v24 (root).
-    assert p0m == "p0m_taf_likelihood_v36"
+    assert p0m == "p0m_taf_likelihood_v37"
     # Charter 200 moved P1 on to v20 (its own change); v19 keeps this
     # charter's moment.
-    assert p1 == "p1_joint_likelihood_v46"
+    assert p1 == "p1_joint_likelihood_v47"
     # Charter 204 moved all three on again (P0 v10, P0-M v12, P1 v21); this
     # charter's versions keep their shared declaration.
     start = sa.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v9")

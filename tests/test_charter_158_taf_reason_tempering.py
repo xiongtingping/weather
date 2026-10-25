@@ -116,11 +116,9 @@ def test_without_the_block_charter_150_is_served_unchanged() -> None:
     assert r1["tempering"]["state"] == "ABSENT" and r2["tempering"]["lambda"] == 1.0
 
 
-def test_the_ruling_that_opens_the_line_leaves_the_tempering_gate_alone() -> None:
-    body = _tempered(TL.GATE_IDENTITY, UNREASONED_COLD=0.5)
-    body["gate"] = {"state": TL.GATE_IDENTITY}
-    served = TL.apply_gate_ruling(body, TL.GATE_SERVE)
-    assert served["gate"]["state"] == TL.GATE_SERVE
+def test_an_open_line_gate_leaves_the_tempering_gate_alone() -> None:
+    served = _tempered(TL.GATE_IDENTITY, UNREASONED_COLD=0.5)
+    served["gate"] = {"state": TL.GATE_SERVE}
     assert served[TL.TEMPERING_KEY]["state"] == TL.GATE_IDENTITY
     assert TL.tempering_lambda(served, TL.GROUP_UNREASONED_COLD) == 1.0
 
@@ -143,7 +141,7 @@ def test_p0m_groups_on_the_root_s_served_mean_and_the_capture_s_weather() -> Non
 
     dry = seat(0.2, 0.0)
     receipt = json.loads(dry.lineage[TL.LINEAGE_KEY])
-    assert dry.posterior_version == "p0m_taf_likelihood_v36"
+    assert dry.posterior_version == "p0m_taf_likelihood_v37"
     assert receipt["tempering"]["group"] == TL.GROUP_UNREASONED_COLD
     assert receipt["tempering"]["x_served_c"] == pytest.approx(tx - mean)
     x = tx - 38.0

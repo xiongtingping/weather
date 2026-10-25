@@ -305,9 +305,9 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     # charter-190 versions keep their shared declaration.
     assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v33"
     # Charter 241 moved P0-M on to v23 (its own change).
-    assert p0m == "p0m_taf_likelihood_v36"
+    assert p0m == "p0m_taf_likelihood_v37"
     # Charter 200 moved P1 on to v20 (its own change).
-    assert p1 == "p1_joint_likelihood_v46"
+    assert p1 == "p1_joint_likelihood_v47"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )
@@ -324,11 +324,13 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     assert latest > start
     # The latest root bump (charter 246: P0 v24) is shared with P0-M v27 and
     # P1 v35; charter 241's P0-M v23 (its own change) sits between v20 and v21.
-    assert SA.version_effective_from("P0-M", p0m) == latest
-    # Charters 274 and 275 moved P1 alone on to v42 and v43 (its own
-    # changes); charter 279 补记七's root bump (P1 v44) is shared again.
+    # Charter 281 补记二 moved P0-M (its own change, v37) and P1 (v47) after
+    # the latest P0 bump; P0 v33's root bump is P0-M v36 / P1 v46.
+    assert SA.version_effective_from("P0-M", "p0m_taf_likelihood_v36") == latest
+    assert SA.version_effective_from("P0-M", p0m) > latest
     assert SA.version_effective_from("P1", "p1_joint_likelihood_v41") < latest
-    assert SA.version_effective_from("P1", p1) == latest
+    assert SA.version_effective_from("P1", "p1_joint_likelihood_v46") == latest
+    assert SA.version_effective_from("P1", p1) == SA.version_effective_from("P0-M", p0m)
     v20 = SA.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v20")
     v21 = SA.version_effective_from("P0", "calibrated_native_cross_ensemble_p0_v21")
     assert SA.version_effective_from("P0-M", "p0m_taf_likelihood_v22") == v20

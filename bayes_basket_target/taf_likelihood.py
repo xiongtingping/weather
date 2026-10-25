@@ -66,16 +66,10 @@ ARTIFACT_PATH = (
 )
 GATE_SERVE = "SERVE"
 GATE_IDENTITY = "IDENTITY"
-# Charter 151 (user ruling 2026-09-19, 「taf要触发概率重算」「你先打开」): the
-# TAF likelihood serves without waiting for the walk-forward interval to clear
-# zero.  Applied where the fitted file is READ, not where it is compiled: the
-# daily refit keeps writing the gate it measured, the loader stamps the ruling
-# over it (keeping the measurement beside it) and re-hashes, so the served
-# arithmetic -- and the P0-M fingerprint -- is exactly the path an automatic
-# gate flip takes, and a receipt's artifact_sha256 names what actually served.
-# "" restores the measured gate.
-GATE_RULING = GATE_SERVE
-GATE_RULING_ID = "charter_151_user_ruling_2026_09_19"
+# Charter 151's ruling (2026-09-19, the line served whatever its gate
+# measured) was revoked 2026-10-25 (charter 281 补记二, 「重裁宪章 151：TAF 似然
+# 不再强制服务，P0-M 只保留实况下界」): the line serves only when the refit's own
+# walk-forward gate says SERVE; the file is served exactly as measured.
 
 # Charter 158: per-group tempering of the one line.  The group reads the
 # TAF's own weather over the day's heating window (the capture's
@@ -310,37 +304,9 @@ def load_artifact(path: Path | None = None) -> dict[str, Any] | None:
             return None
         if not isinstance(body, dict) or body.get("schema") != SCHEMA:
             return None
-        body = apply_gate_ruling(body)
         _CACHE.clear()
         _CACHE[key] = body
     return _CACHE[key]
-
-
-def apply_gate_ruling(
-    body: Mapping[str, Any], ruling: str | None = None
-) -> dict[str, Any]:
-    """The artifact as it serves under charter 151's ruling.
-
-    The measured gate stays in the file and beside the ruling
-    (``measured_state``); the content hash is recomputed over what is served,
-    so an envelope's receipt never names the measured file for an artifact
-    that served differently.
-    """
-
-    ruling = GATE_RULING if ruling is None else ruling
-    gate = dict(body.get("gate") or {})
-    if not ruling or gate.get("state") == ruling:
-        return dict(body)
-    served = {key: value for key, value in body.items() if key != "content_sha256"}
-    served["gate"] = {
-        **gate,
-        "measured_state": gate.get("state"),
-        "state": ruling,
-        "ruling": GATE_RULING_ID,
-    }
-    served["measured_content_sha256"] = body.get("content_sha256")
-    served["content_sha256"] = content_sha256(served)
-    return served
 
 
 __all__ = [
@@ -363,8 +329,6 @@ __all__ = [
     "RULE",
     "SCHEMA",
     "SHRINK_K",
-    "GATE_RULING",
-    "apply_gate_ruling",
     "compile_taf_likelihood",
     "load_artifact",
     "station_parameters",

@@ -283,4 +283,4 @@ def test_the_likelihood_refits_read_the_regressions_roots(tmp_path):
                           ("scripts/p1_likelihood_refit_sweep.sh", '--root-replay "$OUT/p0_ngr_root_replay.db"')):
         text = (ROOT / sweep).read_text(encoding="utf-8")
         assert needle in text and "build_p0_ngr_root_replay.py --live" in text
-    assert RB.P0M_ON_NEW_ROOT == frozenset({"p0m_taf_likelihood_v36"})
+    assert RB.P0M_ON_NEW_ROOT == frozenset({"p0m_taf_likelihood_v36", "p0m_taf_likelihood_v37"})

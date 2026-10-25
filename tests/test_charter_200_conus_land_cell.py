@@ -342,7 +342,7 @@ def test_p1_v20_declares_its_start_and_the_moved_pair_restarts_six_days_later():
     p1 = inspect.signature(materialize_p1).parameters["posterior_version"].default
     # Charters 204 and 210 moved P1 on to v21 and v22 (root bumps); v20 keeps
     # this charter's moment, and the moved pair's clock is six days past it.
-    assert p1 == "p1_joint_likelihood_v46"
+    assert p1 == "p1_joint_likelihood_v47"
     start = sa.version_effective_from("P1", "p1_joint_likelihood_v20")
     assert start and start > sa.version_effective_from("P1", "p1_joint_likelihood_v19")
     assert sa.version_effective_from("P1", p1) > start
