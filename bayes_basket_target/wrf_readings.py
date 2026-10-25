@@ -61,6 +61,12 @@ NOWCAST_LOG = "log.jsonl"
 #: 有新数据就应该跑」): ``run/nowcast/<YYYYMMDD>/upd/<scan HH>``, one record per run in
 #: ``run/nowcast/log_update.jsonl``.  The frozen issue above stays the forward test and its score.
 NOWCAST_UPDATE_LOG = "log_update.jsonl"
+#: The strict as-of replay of the frozen nowcast (run/replay_nowcast.sh, user 2026-10-25 「做严格回放：
+#: 用冻结配置、每天只用 11:10 前已有的 GFS 前一日 18Z 和 02Z 前的云图，回放 10-01 至 10-24，单独成段，不计入
+#: 前向天数」), with the aerosol arm (「测试打开气溶胶（雾霾）的效果」): ``run/replay/log.jsonl``, its own
+#: segment and score, never the forward test's.
+REPLAY_LOG = "replay/log.jsonl"
+REPLAY_ARMS = ("sat", "ctl", "sat_aer")
 #: The hindcast experiments' results frozen before their files were archived (user
 #: 2026-10-22 「保留代码和结果，归档实验数据，冻结配置！」): a run absent on disk is filled
 #: from here, so the board keeps every hindcast number.
@@ -249,6 +255,21 @@ def _stats(errs: list[float]) -> dict[str, Any]:
             "hit": sum(1 for e in errs if abs(e) < 0.5) / len(errs)}
 
 
+def _paired(diffs: list[float]) -> dict[str, Any]:
+    """|this − truth| − |sat − truth| over the same days: mean, sd and t (negative = this
+    arm nearer the truth)."""
+
+    import math  # noqa: PLC0415
+
+    n = len(diffs)
+    if n < 2:
+        return {"n": n}
+    mean = sum(diffs) / n
+    sd = math.sqrt(sum((d - mean) ** 2 for d in diffs) / (n - 1))
+    return {"n": n, "mean_c": round(mean, 3), "sd_c": round(sd, 3),
+            "t": None if sd == 0 else round(mean / (sd / math.sqrt(n)), 2)}
+
+
 def nowcast_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
     """day (YYYY-MM-DD) -> the day's latest nowcast record (market and served belief as of
     the moment the forecast became available)."""
@@ -285,6 +306,24 @@ def nowcast_updates(root: Path = WRF_ROOT) -> dict[str, list[dict[str, Any]]]:
             out.setdefault(str(r["day"]), []).append(r)
     for recs in out.values():
         recs.sort(key=lambda r: str(r["ready_utc"]))
+    return out
+
+
+def replay_records(root: Path = WRF_ROOT) -> dict[str, dict[str, Any]]:
+    """day -> the day's newest replay record."""
+
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        lines = (root / "run" / REPLAY_LOG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(r, dict) and r.get("day"):
+            out[str(r["day"])] = r
     return out
 
 
@@ -470,6 +509,32 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
                     "status": _status(d, now.timestamp()), "domain": "d01", "run": last.get("run"),
                     "init_utc": _iso(datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc) - timedelta(hours=6)),
                     **{k: m[k] for k in ("tmax_c", "at_local", "peak_covered", "last_local", "series")}}
+        # The replay segment: each arm with the observed maximum so far, the market and the
+        # served belief as of the nominal issue, scored on their own; and each arm paired
+        # against the sat arm on the same days.
+        replay_errs: dict[str, list[float]] = {}
+        replay_pairs: dict[str, list[float]] = {}
+        for day, rec in replay_records(root).items():
+            if rec.get("station", station) != station:
+                continue
+            m, b = rec.get("market") or {}, rec.get("belief") or {}
+            view = {f"{arm}_obs_c": rec.get(f"wrf_{arm}_tmax_with_obs_c") for arm in REPLAY_ARMS}
+            view.update({f"{arm}_c": rec.get(f"wrf_{arm}_tmax_c") for arm in REPLAY_ARMS})
+            view.update({"ready_utc": rec.get("ready_utc"), "last_sat_hour_utc": rec.get("last_sat_hour_utc"),
+                         "metar_max_so_far_c": rec.get("metar_max_so_far_c"),
+                         "market_mean_c": m.get("mean_c"), "belief_mean_c": b.get("mean_c"), "belief_stage": b.get("stage")})
+            entry = days.setdefault(day, {"truth_c": truth.get(day), "configs": {}})
+            entry["replay"] = view
+            t = entry["truth_c"]
+            if t is None:
+                continue
+            for k in [f"{arm}_obs_c" for arm in REPLAY_ARMS] + ["market_mean_c", "belief_mean_c"]:
+                if view.get(k) is not None:
+                    replay_errs.setdefault(k, []).append(float(view[k]) - t)
+            if view.get("sat_obs_c") is not None:
+                for k in [f"{arm}_obs_c" for arm in REPLAY_ARMS if arm != "sat"] + ["market_mean_c", "belief_mean_c"]:
+                    if view.get(k) is not None:
+                        replay_pairs.setdefault(k, []).append(abs(float(view[k]) - t) - abs(float(view["sat_obs_c"]) - t))
         configs = sorted({c for e in days.values() for c in e["configs"]},
                          key=lambda c: (c != "nowcast_sat", c != "nowcast_ctl", c != FORECAST, c != BASELINE, c))
         latest = max(days) if days else None
@@ -479,6 +544,8 @@ def compute(conn: sqlite3.Connection, *, root: Path = WRF_ROOT, now: datetime | 
             "scores": {c: _stats(errs.get(c, [])) for c in configs},
             "gfs_score": _stats(gfs_errs),
             "nowcast_scores": {k: _stats(v) for k, v in nowcast_errs.items()},
+            "replay_scores": {k: _stats(v) for k, v in replay_errs.items()},
+            "replay_vs_sat": {k: _paired(v) for k, v in replay_pairs.items()},
         }
     return {"state": "ok", "root": str(root), "as_of_utc": _iso(now), "files_read": cache.read,
             "running": [f"{c}/{ymd}" for c, ymd, d in runs if _status(d, now.timestamp()) == "running"],

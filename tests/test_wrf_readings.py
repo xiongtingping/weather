@@ -195,3 +195,25 @@ def test_rerun_on_newer_scans_leads_the_card_and_is_not_scored(tmp_path: Path, m
     v = W.stored("ZUUU", "2026-10-25")
     assert v["nowcast"]["last_sat_hour_utc"] == 4 and v["nowcast"]["sat_obs_c"] == 24.1
     assert v["runs"]["nowcast_sat"]["tmax_c"] == 24.0 and v["nowcast_first"]["sat_obs_c"] == 25.12
+
+
+def test_replay_segment_is_scored_on_its_own(tmp_path: Path, monkeypatch) -> None:
+    """The strict as-of replay (user 2026-10-25 「单独成段，不计入前向天数」): its arms, the
+    market and the belief scored apart from the forward test, and each arm paired against
+    the sat arm on the same days."""
+
+    import json  # noqa: PLC0415
+
+    (tmp_path / "run" / "replay").mkdir(parents=True)
+    recs = [{"day": d, "station": "ZUUU", "kind": "replay", "ready_utc": f"{d}T03:30:00Z",
+             "wrf_sat_tmax_with_obs_c": s, "wrf_ctl_tmax_with_obs_c": c, "wrf_sat_aer_tmax_with_obs_c": a,
+             "market": {"mean_c": m}, "belief": {"mean_c": m}}
+            for d, s, c, a, m in (("2026-10-01", 26.0, 25.0, 25.5, 26.5), ("2026-10-02", 23.0, 24.0, 22.5, 22.0))]
+    (tmp_path / "run" / W.REPLAY_LOG).write_text("\n".join(json.dumps(r) for r in recs) + "\n", encoding="utf-8")
+    monkeypatch.setattr(W, "_zone", lambda conn, st: ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(W, "_truth", lambda conn, st: {"2026-10-01": 27.0, "2026-10-02": 22.0})
+    out = W.compute(sqlite3.connect(":memory:"), root=tmp_path, now=datetime(2026, 10, 25, tzinfo=timezone.utc))
+    S = out["stations"]["ZUUU"]
+    assert S["replay_scores"]["sat_obs_c"] == {"n": 2, "bias_c": 0.0, "mae_c": 1.0, "hit": 0.0}
+    assert S["replay_vs_sat"]["sat_aer_obs_c"] == {"n": 2, "mean_c": 0.0, "sd_c": 0.707, "t": 0.0}
+    assert S["nowcast_scores"] == {} and S["days"]["2026-10-02"]["replay"]["ctl_obs_c"] == 24.0
