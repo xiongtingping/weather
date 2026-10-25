@@ -457,3 +457,28 @@ def test_the_daily_fit_is_a_managed_sweep_that_writes_no_database():
     assert '"fit_deterministic_consensus_shift": "none"' in daemon
     sweep = ROOT / "scripts" / "fit_deterministic_consensus_shift_sweep.sh"
     assert sweep.exists() and "fit_deterministic_consensus_shift.py" in sweep.read_text(encoding="utf-8")
+
+
+def test_the_board_leads_with_the_served_p0_and_details_the_move():
+    """补记七 (user 2026-10-25 「不应该突出原来的概率向量，应该突出f进p0后的概率向量，明细里应该体现挪动的明细」)."""
+    from bayes_basket_target import station_day_board as B  # noqa: PLC0415
+
+    receipt = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(), family="P0_far",
+                                 station_id="SBGR", served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    vector, served = DCS.serve(receipt, SERVED, ORDER, INTERVALS)
+    lineage = {"model_center_c": "22.0", DCS.LINEAGE_KEY: json.dumps(served)}
+    assert B._served_shift_c(lineage[DCS.LINEAGE_KEY]) == pytest.approx(served["served_delta_c"])
+    assert B._served_shift_c(json.dumps(receipt)) == 0.0
+    brief = B._consensus_brief(lineage)
+    detail = brief["served"]
+    assert detail["pre"]["mean_c"] == pytest.approx(receipt["centre_c"])
+    assert detail["post"]["mean_c"] == pytest.approx(served["served_centre_c"])
+    assert detail["pre"]["mode"] == "22°C" and len(detail["buckets"]) == 5
+    assert {b["bucket"]: b["post"] for b in detail["buckets"]} == pytest.approx(
+        {k: vector[k] for k in (b["bucket"] for b in detail["buckets"])}, abs=1e-7)
+    assert B._consensus_brief({DCS.LINEAGE_KEY: json.dumps(receipt)})["served"] is None
+    source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
+    block = source[source.index("function sdConsensusServed("):][:2500]
+    for label in ("F 进 P0 · 挪", "挪前", "挪后", "<th>桶</th>"):
+        assert label in block
+    assert "if(served && c.served) return sdConsensusServed(" in source
