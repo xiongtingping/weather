@@ -22473,20 +22473,24 @@ function sdProbabilityCards(day){
     const pv = previousOf(stage, e);
     const meanP = st.mean_bucket ? (e.vector || {})[st.mean_bucket] : null;
     const fServed = stage === "P0" && (e.consensus || {}).state === "SERVED";
-    const centerLabel = stage === "P0" ? (fServed ? `F 进 P0 后的中心（模型加权中心 ${sdN(e.pre_shift_center_c, 2)}°C ${sdSg((e.consensus || {}).served_delta_c, 2)}°C）` : "模型加权温度中心") : "本阶段融合后中心";
-    const rootLabel = stage === "P0-M" ? "根中心（P0）" : `根中心（${sdEsc(e.root_stage || "前序阶段")}）`;
+    // User 2026-10-25 「22.34°C 和 22.38°C 对不上」: every number on the three cards
+    // is the served vector's distribution mean -- the big one, "since last", the
+    // root and the move box -- so a root reads the same on its own card and on
+    // the card built on it.  P0's pool centre (before the width layers) is a
+    // different quantity and lives in the tooltip only.
+    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型加权中心 ${sdN(e.model_center_c, 2)}°C${fServed ? `（含 F ${sdSg((e.consensus || {}).served_delta_c, 2)}°C）` : ""}，是宽度层之前的量，与分布均值不同` : ""}`;
+    const rootLabel = stage === "P0-M" ? "根均值（P0）" : `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
     // P0-M's evidence, top right: the TAF's forecast maximum and how far it
     // sits from P0's model centre (x, what the likelihood reads).
     const corner = stage === "P0-M" ? `<div class="sd-prob-tx" title="TAF 预报最高温 TX；x＝TX − P0 模型加权中心 ${sdN(e.root_center_c, 2)}°C（F 挪动之前，似然读的就是它）；似然状态 ${sdEsc(e.taf_state || "—")}"><span>TAF TX</span><b>${e.tx_c == null ? "—" : sdN(e.tx_c, 0) + "°C"}</b><span>${e.tx_c == null ? "这份 TAF 没有 TX" : e.x_c == null ? sdEsc(e.taf_state || "") : `比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`}</span></div>` : "";
     return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], corner,
       fresh: sdAgeSpan(e.decided_at_utc, "sd-age sd-bare"),
-      value: sdTemperature(e.model_center_c), valueTip: `${centerLabel}；决策于 ${sdLocal(e.decided_at_utc, true)}`,
+      value: sdTemperature(st.mean_c), valueTip: `${centerLabel}；决策于 ${sdLocal(e.decided_at_utc, true)}`,
       mode: st.mode, modeP: st.mode_p,
-      cmp: [["比上次", pv && e.model_center_c != null && pv.center_c != null ? e.model_center_c - pv.center_c : null, "本次中心减同阶段上一次决策的中心"],
+      cmp: [["比上次", pv && st.mean_c != null && (pv.stats || {}).mean_c != null ? st.mean_c - pv.stats.mean_c : null, "本次分布均值减同阶段上一次决策的分布均值"],
             ["比市场", mk == null || st.mean_c == null ? null : st.mean_c - mk, "分布均值减市场均值"]],
-      sub: [`<span title="最终概率向量按桶代表温度加权；开口桶使用桶轴声明的代表温度">分布均值 <b>${sdN(st.mean_c, 2)}°C</b></span>`,
-            `<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
-            stage !== "P0" ? `<span title="本阶段实际引用的前序信封中心（P0 为 F 挪后的服务中心），更新前的输入">${rootLabel} <b>${sdN(e.root_served_center_c != null ? e.root_served_center_c : e.root_center_c, 2)}°C</b></span>${e.root_f_shift_c != null ? ` <span class="sd-rootf" title="${sdEsc(`根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）已服务确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C；本阶段在这个根上更新，挪动随根传下来（宪章 279 补记七）`)}">根含 F ${sdSg(e.root_f_shift_c, 2)}</span>` : ""}` : ""].filter(Boolean).join(" · "),
+      sub: [`<span title="生产口径（mean_center_bucket_v1，宪章 75）：按桶概率加权的平均档位最近的桶">均值桶 <b>${sdEsc(st.mean_bucket || "—")}</b>${meanP != null ? " " + sdPc(meanP, 0) : ""}</span>`,
+            stage !== "P0" ? `<span title="本阶段实际引用的前序信封（服务向量，P0 已含 F）的分布均值，更新前的输入">${rootLabel} <b>${sdN((e.stage_move || {}).pre ? e.stage_move.pre.mean_c : null, 2)}°C</b></span>${e.root_f_shift_c != null ? ` <span class="sd-rootf" title="${sdEsc(`根里的 P0（${sdLocal(e.root_f_p0_at_utc, true)} 决策）已服务确定性共识 F，挪 ${sdSg(e.root_f_shift_c, 2)}°C；本阶段在这个根上更新，挪动随根传下来（宪章 279 补记七）`)}">根含 F ${sdSg(e.root_f_shift_c, 2)}</span>` : ""}` : ""].filter(Boolean).join(" · "),
       trend: sdStageTrend(day, stage), body: (stage !== "P0" ? sdStageMove(e, stage) : "") + sdConsensusBlock(e.consensus, stage) + sdRecentRuns(day, stage)});
   }).join("");
 }
