@@ -65,6 +65,7 @@ from .deterministic_feature_correction import (
     shadow_receipt as deterministic_feature_shadow_receipt,
 )
 from .deterministic_consensus_shift import (
+    serve as deterministic_consensus_serve,
     shadow_receipt_from_conn as deterministic_consensus_shadow_receipt,
 )
 from .stable_pool import (
@@ -228,7 +229,9 @@ SCHEMA = "calibrated_native_cross_ensemble_p0_packet_v1"
 # Charter 271 (2026-10-16 ruling 「做」): the width layer carries a
 # mode-to-shoulder share per horizon bin, fitted nightly; identity until the
 # lane admits one.
-POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v30"
+# Charter 279 补记七 (2026-10-25 ruling 「F 先只在 P0（远+近）上服务」): beyond
+# 12 h the deterministic consensus shift is served on the finished vector.
+POSTERIOR_VERSION = "calibrated_native_cross_ensemble_p0_v31"
 DEFAULT_FRESH_SECONDS = 6 * 60 * 60
 # Systems whose members enter cross-ensemble artifacts without being model
 # runs.  They carry an issuance instant, not a run initialisation, so they
@@ -4905,6 +4908,11 @@ def compile_native_ensemble_p0(
         served_probability=probability,
         ordered=ordered,
         intervals=intervals_raw,
+    )
+    # Charter 279 补记七: beyond 12 h the primary variant's vector is served --
+    # the transform the fit scored, on the finished vector, its floor last.
+    probability, deterministic_consensus_receipt = deterministic_consensus_serve(
+        deterministic_consensus_receipt, probability, ordered, intervals_raw,
     )
     if center_width_receipt is not None:
         center_width_receipt["seated_system_count"] = int(seated_system_count)

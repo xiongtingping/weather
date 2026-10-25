@@ -233,7 +233,7 @@ def test_the_verdict_is_charter_240s():
     assert DCS.verdict_of({**base, "crps": {"ci": [0.001, 0.02]}}) == "REFUSED"
 
 
-def test_a_real_p0_compile_carries_the_receipt_and_serves_the_same_vector(monkeypatch):
+def test_a_real_p0_compile_serves_the_primary_shift_and_keeps_the_vector_it_moved(monkeypatch):
     from bayes_basket_target import native_ensemble_oos, station_season  # noqa: PLC0415
     from bayes_basket_target import native_ensemble_p0 as p0  # noqa: PLC0415
     from tests.test_native_ensemble_p0 import (  # noqa: PLC0415
@@ -262,13 +262,74 @@ def test_a_real_p0_compile_carries_the_receipt_and_serves_the_same_vector(monkey
 
     loud_envelope = compile_once(loud)
     quiet_envelope = compile_once(lambda conn, **kw: {"state": "OFF"})
-    assert loud_envelope["probabilities"] == quiet_envelope["probabilities"]
     receipt = json.loads(loud_envelope["lineage"][DCS.LINEAGE_KEY])
-    assert receipt["state"] == "SHADOW" and receipt["served_delta_c"] == 0.0
     assert receipt["family"] in {"P0_far", "P0_near"}
     fleet = receipt["variants"]["fleet_wide"]
     assert fleet["state"] == "READ" and fleet["delta_c"] == DCS.CAP_C
-    assert fleet["shadow_probabilities"] != {k: round(float(v), 8) for k, v in loud_envelope["probabilities"].items()}
+    # 补记七: the served vector is the primary variant's shadow, the receipt keeps what it moved.
+    assert receipt["state"] == receipt["serve_state"] == "SERVED" and receipt["served_variant"] == "fleet_wide"
+    assert receipt["served_delta_c"] == DCS.CAP_C
+    served = {k: float(v) for k, v in loud_envelope["probabilities"].items()}
+    assert served != {k: float(v) for k, v in quiet_envelope["probabilities"].items()}
+    assert served == pytest.approx(fleet["shadow_probabilities"], abs=1e-7)
+    assert receipt["pre_shift_probabilities"] == pytest.approx(
+        {k: float(v) for k, v in quiet_envelope["probabilities"].items()}, abs=1e-9)
+    assert receipt["served_centre_c"] == pytest.approx(fleet["shadow_centre_c"], abs=1e-3)
+    # Shadow mode serves the vector untouched.
+    monkeypatch.setattr(DCS, "MODE", "shadow")
+    shadow_envelope = compile_once(loud)
+    assert shadow_envelope["probabilities"] == quiet_envelope["probabilities"]
+    shadow_receipt = json.loads(shadow_envelope["lineage"][DCS.LINEAGE_KEY])
+    assert shadow_receipt["state"] == "SHADOW" and shadow_receipt["serve_state"] == "MODE_SHADOW"
+    assert shadow_receipt["served_delta_c"] == 0.0
+
+
+def test_only_p0_beyond_12_hours_serves_and_a_silent_primary_serves_unshifted():
+    assert DCS.SERVE_FAMILIES == frozenset({"P0_far", "P0_near"}) and DCS.MODE == "serve"
+    read = _read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4, CMA=20.0)
+    for family in ("P0M", "P1"):
+        receipt = DCS.shadow_receipt(read=read, fit=_fit(family=family), family=family, station_id="SBGR",
+                                     served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+        vector, out = DCS.serve(receipt, SERVED, ORDER, INTERVALS)
+        assert vector == SERVED and out["state"] == "SHADOW" and out["serve_state"] == "FAMILY_NOT_SERVED"
+        assert out["served_delta_c"] == 0.0
+    near = DCS.shadow_receipt(read=read, fit=_fit(family="P0_near"), family="P0_near", station_id="SBGR",
+                              served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    vector, out = DCS.serve(near, SERVED, ORDER, INTERVALS)
+    assert out["state"] == "SERVED" and vector != SERVED
+    assert out["served_delta_c"] == near["variants"]["fleet_wide"]["delta_c"]
+    assert sum(vector.values()) == pytest.approx(1.0) and min(vector.values()) >= 1e-3 - 1e-9
+    thin = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.1), fit=_fit(), family="P0_far", station_id="SBGR",
+                              served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    vector, out = DCS.serve(thin, SERVED, ORDER, INTERVALS)
+    assert vector == SERVED and out["serve_state"] == "PRIMARY_TOO_FEW_SYSTEMS" and out["served_delta_c"] == 0.0
+    no_fit = DCS.shadow_receipt(read=read, fit=None, family="P0_far", station_id="SBGR",
+                                served_probability=SERVED, ordered=ORDER, intervals=INTERVALS)
+    vector, out = DCS.serve(no_fit, SERVED, ORDER, INTERVALS)
+    assert vector == SERVED and out["serve_state"] == "PRIMARY_NO_FIT"
+
+
+def test_the_fit_scores_a_served_p0_on_the_vector_it_moved_and_reads_the_residual_after_serving():
+    import fit_deterministic_consensus_shift as fit  # noqa: PLC0415
+
+    served = DCS.serve(DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(),
+                                          family="P0_far", station_id="SBGR", served_probability=SERVED,
+                                          ordered=ORDER, intervals=INTERVALS), SERVED, ORDER, INTERVALS)[1]
+    assert fit._pre_shift(json.dumps(served)) == pytest.approx(SERVED)
+    shadow_only = DCS.shadow_receipt(read=_read(AIFS=23.0, IFS9KM=23.2, UKMO10=23.4), fit=_fit(),
+                                     family="P0M", station_id="SBGR", served_probability=SERVED,
+                                     ordered=ORDER, intervals=INTERVALS)
+    assert fit._pre_shift(json.dumps(shadow_only)) is None and fit._pre_shift(None) is None
+    assert "deterministic_consensus_json" in fit.ENVELOPES_SQL
+    source = (ROOT / "scripts" / "fit_deterministic_consensus_shift.py").read_text(encoding="utf-8")
+    assert "walk_forward_after_p0_serving" in source and "DCS.SERVE_FROM_DECISION_UTC" in source
+    from bayes_basket_target import native_ensemble_p0 as P0  # noqa: PLC0415
+    from bayes_basket_target import serving_arithmetic as sa  # noqa: PLC0415
+    assert P0.POSTERIOR_VERSION == "calibrated_native_cross_ensemble_p0_v31"
+    declared = sa.version_effective_from("P0", P0.POSTERIOR_VERSION)
+    assert declared == DCS.SERVE_FROM_DECISION_UTC
+    assert declared == sa.version_effective_from("P0-M", "p0m_taf_likelihood_v34") \
+        == sa.version_effective_from("P1", "p1_joint_likelihood_v44")
 
 
 def test_p0m_records_the_shadow_on_its_own_served_vector_and_serves_the_same(monkeypatch):

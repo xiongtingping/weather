@@ -22504,12 +22504,13 @@ function sdConsensusBlock(c, stage){
     : "决策时刻没有可读的确定性预报";
   const fc = (c.f_c || {}).wide, nc = (c.n || {}).wide;
   const fleet = (c.variants || {}).fleet_wide, station = (c.variants || {}).station_wide;
-  const tip = "宪章 279 影子（只记录，不服务）：十家全球确定性预报日最高温中位数，加舰队偏差，按 κ 把本阶段中心往它挪。\n"
+  const served = c.state === "SERVED";
+  const tip = (served ? "宪章 279 补记七（已服务）" : "宪章 279 影子（只记录，不服务）") + "：十家全球确定性预报日最高温中位数，加舰队偏差，按 κ 把本阶段中心往它挪。\n"
     + (fleet && fleet.state === "READ" ? sdConsensusTip(fleet) + "\n" : "") + sysTip;
   if(!fleet || fleet.state !== "READ") {
     return `<div class="sd-cons" title="${sdEsc(tip)}"><div class="sd-cons-r">共识 F 影子 · ${sdEsc(SD_CONS_STATE[(fleet || {}).state || c.state] || (fleet || {}).state || c.state || "—")}${fc != null ? ` · 原始 F ${sdN(fc, 1)}°C` : ""}</div></div>`;
   }
-  const result = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>影子</span><span class="sd-cons-v">${sdN(fleet.shadow_centre_c, 2)}°C</span>${fleet.shadow_mode ? `<span class="sd-cons-b">${sdEsc(fleet.shadow_mode)}</span>` : ""}</div>`;
+  const result = `<div class="sd-cons-r" title="${sdEsc(tip)}"><span>${served ? "已服务" : "影子"}</span><span class="sd-cons-v">${sdN(fleet.shadow_centre_c, 2)}°C</span>${fleet.shadow_mode ? `<span class="sd-cons-b">${sdEsc(fleet.shadow_mode)}</span>` : ""}</div>`;
   const process = `<div class="sd-cons-p" title="${sdEsc(tip)}">F ${sdN(fleet.f_cal_c, 1)}°C（${nc != null ? nc + " 家" : ""}）· 挪 ${sdSg(fleet.delta_c, 2)}°C${station && station.state === "READ" ? ` · 逐站 ${sdN(station.shadow_centre_c, 2)}°C` : ""}</div>`;
   const wf = sdConsensusFoot(c, stage);
   return `<div class="sd-cons">${result}${process}${wf ? `<div class="sd-cons-wf">${wf}</div>` : ""}</div>`;

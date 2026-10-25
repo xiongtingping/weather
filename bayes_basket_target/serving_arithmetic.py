@@ -423,6 +423,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # under artifacts whose holdout scored it.  Declared past the push
         # and past the restart that deploys it.
         "calibrated_native_cross_ensemble_p0_v30": "2026-10-16T04:00:00Z",
+        # Charter 279 补记七: beyond 12 h the deterministic consensus shift
+        # is served.  Declared past the push and past the restart.
+        "calibrated_native_cross_ensemble_p0_v31": "2026-10-25T03:00:00Z",
     },
     "P0-M": {
         "p0m_taf_observed_v3": "2026-09-06T04:18:00Z",
@@ -493,6 +496,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         "p0m_taf_likelihood_v32": "2026-10-15T17:10:00Z",
         # Charter 273: root bump at the instant P0 v30 declares.
         "p0m_taf_likelihood_v33": "2026-10-16T04:00:00Z",
+        # Charter 279 补记七: root bump at the instant P0 v31 declares.
+        "p0m_taf_likelihood_v34": "2026-10-25T03:00:00Z",
     },
     # P1 bumps on time for its own changes.  v10 is the first bump caused
     # upstream (charter 134 changed the P0 root it composes on), so it
@@ -579,6 +584,8 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # Charter 275: the direct update reads the two report-gap columns
         # where its block carries them.  Declared past the push and restart.
         "p1_joint_likelihood_v43": "2026-10-16T17:00:00Z",
+        # Charter 279 补记七: root bump at the instant P0 v31 declares.
+        "p1_joint_likelihood_v44": "2026-10-25T03:00:00Z",
     },
 }
 

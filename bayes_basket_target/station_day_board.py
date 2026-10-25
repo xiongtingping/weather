@@ -479,6 +479,9 @@ def _consensus_brief(L: Mapping[str, Any]) -> dict[str, Any] | None:
         },
         "fit_fitted_at_utc": receipt.get("fit_fitted_at_utc"), "variants": variants,
         "error": receipt.get("error"), "excluded": receipt.get("excluded") or [],
+        # 补记七: P0 beyond 12 h serves the primary variant.
+        "serve_state": receipt.get("serve_state"), "served_delta_c": _float(receipt.get("served_delta_c")),
+        "served_variant": receipt.get("served_variant"),
     }
 
 

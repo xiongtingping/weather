@@ -9,7 +9,11 @@ it (``deterministic_consensus_shift.walk_forward``; charter 240's verdict), on
 decisions from ``SCORE_FROM_DECISION_UTC`` only (补记四; the whole window is
 kept as ``walk_forward_whole_window``).
 One record per station-day x family: the first decision of that family, its
-served vector, the consensus knowable at that decision.
+served vector, the consensus knowable at that decision.  补记七: a P0 that
+served the shift contributes the vector it moved, so P0's own fit stays on the
+unshifted chain; P0-M and P1 also carry ``walk_forward_after_p0_serving``,
+fitted and scored on decisions from ``SERVE_FROM_DECISION_UTC`` alone -- the
+residual on top of the served P0 root the next ruling reads.
 
 SSOT ``mode=ro``, no database written; one JSON artifact the P0 and P0-M
 compiles read (``deterministic_consensus_shift.FIT_ARTIFACT_PATH``).
@@ -45,7 +49,8 @@ ENVELOPES_SQL = (
     "SELECT decision_at_utc, settlement_timezone, probabilities_json, bucket_ordinals_json,"
     " json_extract(lineage_json,'$.bucket_intervals_c_json'),"
     " json_extract(lineage_json,'$.observed_hard_excluded_buckets'),"
-    " json_extract(lineage_json,'$.hard_excluded_buckets')"
+    " json_extract(lineage_json,'$.hard_excluded_buckets'),"
+    " json_extract(lineage_json,'$.deterministic_consensus_json')"
     " FROM basket_probability_envelope INDEXED BY basket_probability_envelope_asof_idx"
     " WHERE station_id=? AND event_date=? AND state='COMMITTED' AND stage=?"
     " ORDER BY decision_at_utc LIMIT ?"
@@ -68,6 +73,19 @@ def _truth(conn: sqlite3.Connection, station: str, start: str, end: str) -> dict
 
 def _excluded(text) -> list[str]:
     return [b for b in str(text or "").split(",") if b and b != "NONE"]
+
+
+def _pre_shift(text) -> dict[str, float] | None:
+    """The vector a served shift moved (charter 279 补记七), else None."""
+
+    try:
+        receipt = json.loads(text) if text else None
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(receipt, dict) or receipt.get("state") != "SERVED":
+        return None
+    pre = receipt.get("pre_shift_probabilities")
+    return {k: float(v) for k, v in pre.items()} if isinstance(pre, dict) and pre else None
 
 
 def _first_per_family(conn: sqlite3.Connection, station: str, day: str) -> list[tuple[str, tuple]]:
@@ -101,7 +119,7 @@ def collect(
         "SELECT station_id FROM calibration_station_registry ORDER BY station_id")]
     records: list[dict] = []
     counts = {"stations": 0, "station_days": 0, "envelopes": 0, "no_read": 0, "too_few_systems": 0,
-              "no_winner": 0, "partial": False}
+              "no_winner": 0, "served_pre_shift": 0, "partial": False}
     for station in roster:
         if time.time() - started > budget_seconds:
             counts["partial"] = True
@@ -119,10 +137,15 @@ def collect(
                 rows = runs_for(conn, station_id=station, event_date=day, as_of_utc="9999-12-31T23:59:59Z")
             except Exception:  # noqa: BLE001
                 rows = None
-            for family, (dec, tz, pj, oj, ivj, p0m_excluded, p1_excluded) in picked:
+            for family, (dec, tz, pj, oj, ivj, p0m_excluded, p1_excluded, consensus_json) in picked:
                 counts["envelopes"] += 1
                 try:
                     served = {k: float(v) for k, v in json.loads(pj).items()}
+                    # 补记七: a P0 that served the shift is scored on the vector it moved.
+                    pre = _pre_shift(consensus_json)
+                    if pre is not None:
+                        served = pre
+                        counts["served_pre_shift"] += 1
                     ordinals = json.loads(oj)
                     intervals = json.loads(ivj)
                 except (TypeError, ValueError):
@@ -175,11 +198,22 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None, days: int, budge
         # window is kept beside it for reference.
         forward = DCS.walk_forward(records, family=family, score_from_utc=DCS.SCORE_FROM_DECISION_UTC)
         forward_whole = DCS.walk_forward(records, family=family)
+        # 补记七: P0-M and P1 on the served-consensus root -- what is left on
+        # top of P0's shift, fitted and scored on those decisions alone.
+        residual = (
+            DCS.walk_forward(
+                [r for r in records if str(r["decision_at_utc"]) >= DCS.SERVE_FROM_DECISION_UTC],
+                family=family,
+            )
+            if family not in DCS.SERVE_FAMILIES else {}
+        )
         variants = {}
         for variant in DCS.VARIANTS:
             entry = dict(params.get(variant) or {})
             entry["walk_forward"] = forward.get(variant)
             entry["walk_forward_whole_window"] = forward_whole.get(variant)
+            if family not in DCS.SERVE_FAMILIES:
+                entry["walk_forward_after_p0_serving"] = residual.get(variant)
             variants[variant] = entry
         families[family] = {
             "n_records": len(own), "n_days": len({r["day"] for r in own}),
@@ -198,6 +232,8 @@ def fit(db: Path, *, now: datetime, stations: list[str] | None, days: int, budge
         "window": [start, end], "cap_c": DCS.CAP_C, "min_systems": DCS.MIN_SYSTEMS,
         "min_fit_event_days": DCS.MIN_FIT_EVENT_DAYS, "verdict_min_event_days": DCS.VERDICT_MIN_EVENT_DAYS,
         "score_from_decision_utc": DCS.SCORE_FROM_DECISION_UTC,
+        "serve_from_decision_utc": DCS.SERVE_FROM_DECISION_UTC,
+        "serve_families": sorted(DCS.SERVE_FAMILIES), "mode": DCS.MODE,
         "station_bias_prior_days": DCS.STATION_BIAS_PRIOR_DAYS,
         "rosters": {"wide": list(DCS.PRODUCTS)},
         "primary": DCS.PRIMARY_VARIANT, "counts": counts, "families": families,

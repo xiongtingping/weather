@@ -28,13 +28,19 @@ variants = bias form; the fit scores each one walk-forward and the receipt
 carries both, so the P0 card compares them.  The roster key stays ``wide`` so
 the artifact and the receipts written before the ruling read unchanged.
 
-This step records, it does not serve: every P0, P0-M and P1 compile carries
-``deterministic_consensus_json`` and the served vector is untouched
-(``served_delta_c`` 0).  Nothing in the shadow can stop a compile.  The daily
-fit (``scripts/fit_deterministic_consensus_shift.py``) writes one JSON artifact
-the P0 and P0-M compiles read; P1, whose envelope is rebuilt from its packet,
-carries the read and its family's parameters on the packet (``packet_bundle``).
-Serving is a later ruling, after >= 30 forward event days.
+Every P0, P0-M and P1 compile carries ``deterministic_consensus_json``.  The
+daily fit (``scripts/fit_deterministic_consensus_shift.py``) writes one JSON
+artifact the P0 and P0-M compiles read; P1, whose envelope is rebuilt from its
+packet, carries the read and its family's parameters on the packet
+(``packet_bundle``).  Nothing in the shadow can stop a compile.
+
+补记七 (user ruling 2026-10-25 「F 先只在 P0（远+近）上服务，升版重启，P0-M/P1
+看每日拟合的残余再裁」): P0 beyond 12 h serves the primary variant's vector --
+exactly the transform the fit scored, floor(shift(served, delta)) on the
+finished P0 vector (``serve``); the receipt keeps the vector it moved
+(``pre_shift_probabilities``) so the fit keeps scoring the unshifted chain.
+P0-M and P1 stay shadow: their root is the served P0, so their receipts and the
+fit's post-serving walk-forward now read what is left on top of it.
 """
 
 from __future__ import annotations
@@ -73,8 +79,14 @@ FIT_ARTIFACT_PATH = Path(
     or ROOT / "data" / "runtime" / "bayes_basket_target_nwp" / "deterministic_consensus_fit.json"
 )
 FIT_SCHEMA = "bayes_basket_target_deterministic_consensus_fit_v1"
-# Shadow: every compile records, none serves.
-MODE = os.environ.get("PM_DETERMINISTIC_CONSENSUS_MODE", "shadow").strip().lower()
+# 补记七: ``serve`` serves SERVE_FAMILIES' primary variant; ``shadow`` records only.
+MODE = os.environ.get("PM_DETERMINISTIC_CONSENSUS_MODE", "serve").strip().lower()
+#: The families that serve (补记七): P0 beyond 12 h.  P0-M and P1 record.
+SERVE_FAMILIES: frozenset[str] = frozenset({"P0_far", "P0_near"})
+#: When P0 v31 declares (``serving_arithmetic``): P0-M and P1 envelopes decided
+#: from here on sit on a served-consensus root -- their residual walk-forward
+#: fits and scores on these alone.
+SERVE_FROM_DECISION_UTC = "2026-10-25T03:00:00Z"
 
 # The ten (user ruling 2026-10-22 「统一用十家」): 补记十一's four -- charter 201's
 # default readers, the AIFS single member and the IFS 9 km / UKMO relays and CMA
@@ -366,6 +378,49 @@ def shadow_receipt(
         receipt["state"] = "ERROR"
         receipt["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     return receipt
+
+
+def serve(
+    receipt: Mapping[str, Any],
+    served_probability: Mapping[str, float],
+    ordered: Sequence[str],
+    intervals: Mapping[str, Sequence[float | None]],
+    *, mode: str | None = None,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """补记七: the vector P0 serves and the receipt that says so.
+
+    A serving family whose primary variant read serves that variant's shadow,
+    recomputed unrounded by the same ``shift_served`` the receipt and the fit
+    use; anything else serves the vector it was handed, and the receipt names
+    why (``serve_state``).  Never raises -- a failed serve serves unshifted.
+    """
+
+    out = dict(receipt)
+    base = {key: float(served_probability[key]) for key in ordered}
+    mode = MODE if mode is None else mode
+    variant = (receipt.get("variants") or {}).get(PRIMARY_VARIANT) or {}
+    if mode != "serve":
+        out["serve_state"] = "MODE_SHADOW"
+    elif receipt.get("family") not in SERVE_FAMILIES:
+        out["serve_state"] = "FAMILY_NOT_SERVED"
+    elif variant.get("state") != "READ":
+        out["serve_state"] = f"PRIMARY_{variant.get('state') or receipt.get('state') or 'ABSENT'}"
+    else:
+        try:
+            delta = float(variant["delta_c"])
+            vector = shift_served(base, ordered, intervals, delta)
+        except Exception as exc:  # noqa: BLE001 -- serving never stops a compile
+            out["serve_state"] = "ERROR"
+            out["serve_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            return base, out
+        out.update(
+            state="SERVED", serve_state="SERVED", served_variant=PRIMARY_VARIANT,
+            served_delta_c=round(delta, 4),
+            served_centre_c=round(served_mean_c(vector, ordered, intervals), 4),
+            pre_shift_probabilities={key: round(base[key], 10) for key in ordered},
+        )
+        return vector, out
+    return base, out
 
 
 def shadow_receipt_from_conn(
