@@ -1,0 +1,2466 @@
+{
+ "new": {
+  "days": [
+   "2026-10-06",
+   "2026-10-24"
+  ],
+  "n_days": 19,
+  "split": "2026-10-15",
+  "vs_R": {
+   "P": {
+    "all": {
+     "logscore": {
+      "delta": 0.06306,
+      "ci": [
+       0.02012,
+       0.12995
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.02449,
+      "ci": [
+       0.00651,
+       0.04969
+      ]
+     },
+     "brier": {
+      "delta": 0.01336,
+      "ci": [
+       0.00274,
+       0.02795
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.11356,
+      "ci": [
+       0.02614,
+       0.24157
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.04116,
+      "ci": [
+       0.00493,
+       0.09021
+      ]
+     },
+     "brier": {
+      "delta": 0.02465,
+      "ci": [
+       0.00423,
+       0.05109
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01845,
+      "ci": [
+       0.00604,
+       0.03239
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.00978,
+      "ci": [
+       0.00339,
+       0.01728
+      ]
+     },
+     "brier": {
+      "delta": 0.0034,
+      "ci": [
+       -0.00098,
+       0.0086
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.28529,
+      "ci": [
+       0.08902,
+       0.61847
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.11157,
+      "ci": [
+       0.03753,
+       0.21914
+      ]
+     },
+     "brier": {
+      "delta": 0.06805,
+      "ci": [
+       0.0148,
+       0.14868
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.05919,
+      "ci": [
+       0.01646,
+       0.12779
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.02399,
+      "ci": [
+       0.00586,
+       0.04985
+      ]
+     },
+     "brier": {
+      "delta": 0.0133,
+      "ci": [
+       0.00241,
+       0.02843
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "cloud_rain": {
+    "all": {
+     "logscore": {
+      "delta": 0.00672,
+      "ci": [
+       -0.002,
+       0.01657
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 10,
+     "crps": {
+      "delta": 0.00213,
+      "ci": [
+       -0.00293,
+       0.00792
+      ]
+     },
+     "brier": {
+      "delta": 0.0008,
+      "ci": [
+       -0.00272,
+       0.00439
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.00857,
+      "ci": [
+       -0.00751,
+       0.02746
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.00235,
+      "ci": [
+       -0.0069,
+       0.01356
+      ]
+     },
+     "brier": {
+      "delta": 0.00072,
+      "ci": [
+       -0.00569,
+       0.00768
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.00509,
+      "ci": [
+       -0.00135,
+       0.01214
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.00193,
+      "ci": [
+       -0.00163,
+       0.00584
+      ]
+     },
+     "brier": {
+      "delta": 0.00087,
+      "ci": [
+       -0.00143,
+       0.00339
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00196,
+      "ci": [
+       -0.02259,
+       0.02141
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 5,
+     "crps": {
+      "delta": -0.00013,
+      "ci": [
+       -0.01159,
+       0.01052
+      ]
+     },
+     "brier": {
+      "delta": -0.00076,
+      "ci": [
+       -0.00687,
+       0.00549
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00285,
+      "ci": [
+       -0.00466,
+       0.01191
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00163,
+      "ci": [
+       -0.00322,
+       0.00713
+      ]
+     },
+     "brier": {
+      "delta": 0.00074,
+      "ci": [
+       -0.00242,
+       0.00422
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "convection": {
+    "all": {
+     "logscore": {
+      "delta": 0.00478,
+      "ci": [
+       -0.00015,
+       0.00986
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.0008,
+      "ci": [
+       -0.00038,
+       0.00193
+      ]
+     },
+     "brier": {
+      "delta": 0.00011,
+      "ci": [
+       -0.0014,
+       0.00144
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.00696,
+      "ci": [
+       -0.00274,
+       0.01691
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.00095,
+      "ci": [
+       -0.00124,
+       0.00318
+      ]
+     },
+     "brier": {
+      "delta": -0.0006,
+      "ci": [
+       -0.00325,
+       0.00173
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.00285,
+      "ci": [
+       -0.00082,
+       0.0062
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00067,
+      "ci": [
+       -0.00023,
+       0.00162
+      ]
+     },
+     "brier": {
+      "delta": 0.00073,
+      "ci": [
+       -0.00052,
+       0.00211
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": -0.00076,
+      "ci": [
+       -0.01498,
+       0.01156
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 8,
+     "crps": {
+      "delta": -0.00192,
+      "ci": [
+       -0.00632,
+       0.00212
+      ]
+     },
+     "brier": {
+      "delta": -0.00292,
+      "ci": [
+       -0.00699,
+       0.00064
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00091,
+      "ci": [
+       -0.00021,
+       0.00219
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 8,
+     "crps": {
+      "delta": 0.0003,
+      "ci": [
+       -0.00044,
+       0.00115
+      ]
+     },
+     "brier": {
+      "delta": 5e-05,
+      "ci": [
+       -0.00041,
+       0.00054
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "wind_speed": {
+    "all": {
+     "logscore": {
+      "delta": 0.00937,
+      "ci": [
+       0.00232,
+       0.01952
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.0029,
+      "ci": [
+       -0.00022,
+       0.00783
+      ]
+     },
+     "brier": {
+      "delta": 0.00024,
+      "ci": [
+       -0.00131,
+       0.00169
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.01716,
+      "ci": [
+       0.00311,
+       0.03654
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.0054,
+      "ci": [
+       -0.00055,
+       0.01491
+      ]
+     },
+     "brier": {
+      "delta": -0.00071,
+      "ci": [
+       -0.00344,
+       0.00212
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.00249,
+      "ci": [
+       -0.0003,
+       0.00527
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00069,
+      "ci": [
+       -0.00117,
+       0.00228
+      ]
+     },
+     "brier": {
+      "delta": 0.00108,
+      "ci": [
+       0.00011,
+       0.0021
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00294,
+      "ci": [
+       -0.00989,
+       0.01509
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.00078,
+      "ci": [
+       -0.0027,
+       0.00425
+      ]
+     },
+     "brier": {
+      "delta": -0.00049,
+      "ci": [
+       -0.00488,
+       0.00377
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00549,
+      "ci": [
+       -0.00138,
+       0.01746
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.0024,
+      "ci": [
+       -0.00105,
+       0.00792
+      ]
+     },
+     "brier": {
+      "delta": 0.00018,
+      "ci": [
+       -0.00123,
+       0.00171
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "fog": {
+    "all": {
+     "logscore": {
+      "delta": 0.0053,
+      "ci": [
+       0.00023,
+       0.01115
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.0016,
+      "ci": [
+       -0.00019,
+       0.00354
+      ]
+     },
+     "brier": {
+      "delta": 0.00067,
+      "ci": [
+       -0.00118,
+       0.00247
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.00694,
+      "ci": [
+       -0.00383,
+       0.01853
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00168,
+      "ci": [
+       -0.00176,
+       0.00532
+      ]
+     },
+     "brier": {
+      "delta": 0.00028,
+      "ci": [
+       -0.00339,
+       0.00382
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.00386,
+      "ci": [
+       0.00012,
+       0.00701
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.00153,
+      "ci": [
+       -3e-05,
+       0.00323
+      ]
+     },
+     "brier": {
+      "delta": 0.00102,
+      "ci": [
+       -0.00031,
+       0.0025
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00312,
+      "ci": [
+       -0.01461,
+       0.01753
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.00192,
+      "ci": [
+       -0.00292,
+       0.0068
+      ]
+     },
+     "brier": {
+      "delta": -0.00079,
+      "ci": [
+       -0.00545,
+       0.00335
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00143,
+      "ci": [
+       -0.00047,
+       0.00345
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 8,
+     "crps": {
+      "delta": 0.00109,
+      "ci": [
+       -0.00027,
+       0.0025
+      ]
+     },
+     "brier": {
+      "delta": 0.00062,
+      "ci": [
+       -0.00025,
+       0.00152
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "tx_direction": {
+    "all": {
+     "logscore": {
+      "delta": 0.031,
+      "ci": [
+       0.01133,
+       0.0594
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.01614,
+      "ci": [
+       0.00458,
+       0.0311
+      ]
+     },
+     "brier": {
+      "delta": 0.00584,
+      "ci": [
+       0.00166,
+       0.01047
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.05077,
+      "ci": [
+       0.01018,
+       0.10518
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.02541,
+      "ci": [
+       0.00152,
+       0.05508
+      ]
+     },
+     "brier": {
+      "delta": 0.00797,
+      "ci": [
+       -0.00061,
+       0.01669
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01354,
+      "ci": [
+       0.00891,
+       0.0183
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 1,
+     "crps": {
+      "delta": 0.00795,
+      "ci": [
+       0.0035,
+       0.01284
+      ]
+     },
+     "brier": {
+      "delta": 0.00395,
+      "ci": [
+       0.00095,
+       0.00705
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.15726,
+      "ci": [
+       0.04215,
+       0.34118
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.08922,
+      "ci": [
+       0.02286,
+       0.18108
+      ]
+     },
+     "brier": {
+      "delta": 0.0311,
+      "ci": [
+       0.00535,
+       0.0609
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.02713,
+      "ci": [
+       0.00805,
+       0.05657
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.01563,
+      "ci": [
+       0.00419,
+       0.03115
+      ]
+     },
+     "brier": {
+      "delta": 0.00578,
+      "ci": [
+       0.00166,
+       0.01073
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "wind_direction": {
+    "all": {
+     "logscore": {
+      "delta": 0.00105,
+      "ci": [
+       -0.00364,
+       0.00574
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 9,
+     "crps": {
+      "delta": -0.00066,
+      "ci": [
+       -0.00195,
+       0.00049
+      ]
+     },
+     "brier": {
+      "delta": -0.00052,
+      "ci": [
+       -0.00181,
+       0.00066
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.0035,
+      "ci": [
+       -0.00476,
+       0.0121
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 4,
+     "crps": {
+      "delta": -7e-05,
+      "ci": [
+       -0.00222,
+       0.00196
+      ]
+     },
+     "brier": {
+      "delta": -0.00064,
+      "ci": [
+       -0.00289,
+       0.00153
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": -0.00112,
+      "ci": [
+       -0.0057,
+       0.00268
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 5,
+     "crps": {
+      "delta": -0.00118,
+      "ci": [
+       -0.00251,
+       -5e-05
+      ]
+     },
+     "brier": {
+      "delta": -0.00041,
+      "ci": [
+       -0.00159,
+       0.0007
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": -0.0022,
+      "ci": [
+       -0.01424,
+       0.00968
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 8,
+     "crps": {
+      "delta": -0.00164,
+      "ci": [
+       -0.00611,
+       0.00244
+      ]
+     },
+     "brier": {
+      "delta": -0.00212,
+      "ci": [
+       -0.00569,
+       0.00128
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": -0.00282,
+      "ci": [
+       -0.00442,
+       -0.00117
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 15,
+     "crps": {
+      "delta": -0.00116,
+      "ci": [
+       -0.00205,
+       -0.0003
+      ]
+     },
+     "brier": {
+      "delta": -0.00058,
+      "ci": [
+       -0.00119,
+       0.00013
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "width_only": {
+    "all": {
+     "logscore": {
+      "delta": 0.01568,
+      "ci": [
+       0.00574,
+       0.02672
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00429,
+      "ci": [
+       0.00166,
+       0.00799
+      ]
+     },
+     "brier": {
+      "delta": 0.00291,
+      "ci": [
+       0.00084,
+       0.00488
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.0241,
+      "ci": [
+       0.00651,
+       0.04201
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 2,
+     "crps": {
+      "delta": 0.00714,
+      "ci": [
+       0.00201,
+       0.01427
+      ]
+     },
+     "brier": {
+      "delta": 0.00409,
+      "ci": [
+       0.0003,
+       0.00764
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.00825,
+      "ci": [
+       -0.00123,
+       0.01856
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00177,
+      "ci": [
+       0.00012,
+       0.00348
+      ]
+     },
+     "brier": {
+      "delta": 0.00187,
+      "ci": [
+       4e-05,
+       0.00334
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.05689,
+      "ci": [
+       0.01818,
+       0.11765
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.01671,
+      "ci": [
+       0.0035,
+       0.04209
+      ]
+     },
+     "brier": {
+      "delta": 0.00929,
+      "ci": [
+       -0.00019,
+       0.0247
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.01181,
+      "ci": [
+       0.00265,
+       0.02326
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00378,
+      "ci": [
+       0.00097,
+       0.00815
+      ]
+     },
+     "brier": {
+      "delta": 0.00285,
+      "ci": [
+       0.00064,
+       0.00575
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    }
+   },
+   "intercept": {
+    "all": {
+     "logscore": {
+      "delta": 0.00387,
+      "ci": [
+       -0.00133,
+       0.00923
+      ]
+     },
+     "n_days": 19,
+     "n": 887,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.0005,
+      "ci": [
+       -0.00054,
+       0.00159
+      ]
+     },
+     "brier": {
+      "delta": 6e-05,
+      "ci": [
+       -0.00153,
+       0.00151
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.00542,
+      "ci": [
+       -0.00457,
+       0.01593
+      ]
+     },
+     "n_days": 9,
+     "n": 416,
+     "days_better": 4,
+     "crps": {
+      "delta": 0.00036,
+      "ci": [
+       -0.00175,
+       0.00246
+      ]
+     },
+     "brier": {
+      "delta": -0.00086,
+      "ci": [
+       -0.00375,
+       0.00196
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.0025,
+      "ci": [
+       -0.00138,
+       0.00603
+      ]
+     },
+     "n_days": 10,
+     "n": 471,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00063,
+      "ci": [
+       -0.00017,
+       0.00141
+      ]
+     },
+     "brier": {
+      "delta": 0.00087,
+      "ci": [
+       -0.0002,
+       0.00204
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00068,
+      "ci": [
+       -0.01306,
+       0.01328
+      ]
+     },
+     "n_days": 18,
+     "n": 153,
+     "days_better": 8,
+     "crps": {
+      "delta": -0.00035,
+      "ci": [
+       -0.00347,
+       0.00277
+      ]
+     },
+     "brier": {
+      "delta": -0.00175,
+      "ci": [
+       -0.00551,
+       0.00178
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": null
+   }
+  },
+  "theta_last_P": [
+   0.0226,
+   -0.0165,
+   -0.0116,
+   -0.0225,
+   -0.0036,
+   0.0088,
+   -0.0215,
+   0.0037,
+   -0.0225,
+   0.0164,
+   0.0363,
+   0.0144,
+   -0.0075
+  ]
+ },
+ "old": {
+  "days": [
+   "2026-10-01",
+   "2026-10-24"
+  ],
+  "n_days": 24,
+  "split": "2026-10-13",
+  "vs_R": {
+   "P": {
+    "all": {
+     "logscore": {
+      "delta": 0.06088,
+      "ci": [
+       0.00695,
+       0.13838
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 10,
+     "crps": {
+      "delta": 0.02609,
+      "ci": [
+       0.00446,
+       0.05729
+      ]
+     },
+     "brier": {
+      "delta": 0.01484,
+      "ci": [
+       0.00297,
+       0.03108
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.08821,
+      "ci": [
+       -0.01849,
+       0.25398
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.03655,
+      "ci": [
+       -0.00509,
+       0.10232
+      ]
+     },
+     "brier": {
+      "delta": 0.01919,
+      "ci": [
+       -0.00298,
+       0.05312
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.03409,
+      "ci": [
+       0.00952,
+       0.05542
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.01584,
+      "ci": [
+       0.00369,
+       0.02648
+      ]
+     },
+     "brier": {
+      "delta": 0.01056,
+      "ci": [
+       0.00404,
+       0.01675
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.38188,
+      "ci": [
+       0.03212,
+       0.92861
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.15749,
+      "ci": [
+       0.00946,
+       0.37914
+      ]
+     },
+     "brier": {
+      "delta": 0.07643,
+      "ci": [
+       -0.00389,
+       0.20205
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.05471,
+      "ci": [
+       0.00478,
+       0.12935
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.02396,
+      "ci": [
+       0.00251,
+       0.05419
+      ]
+     },
+     "brier": {
+      "delta": 0.01191,
+      "ci": [
+       0.00059,
+       0.02808
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "cloud_rain": {
+    "all": {
+     "logscore": {
+      "delta": 0.00736,
+      "ci": [
+       -0.00547,
+       0.0205
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00303,
+      "ci": [
+       -0.00052,
+       0.0068
+      ]
+     },
+     "brier": {
+      "delta": 0.00333,
+      "ci": [
+       -0.00019,
+       0.00726
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00783,
+      "ci": [
+       -0.02622,
+       0.00838
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 8,
+     "crps": {
+      "delta": -0.0008,
+      "ci": [
+       -0.00377,
+       0.00268
+      ]
+     },
+     "brier": {
+      "delta": -1e-05,
+      "ci": [
+       -0.00416,
+       0.00511
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.02226,
+      "ci": [
+       0.00595,
+       0.03812
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00679,
+      "ci": [
+       0.00083,
+       0.01218
+      ]
+     },
+     "brier": {
+      "delta": 0.0066,
+      "ci": [
+       0.00141,
+       0.01153
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": -0.00318,
+      "ci": [
+       -0.03231,
+       0.02007
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 6,
+     "crps": {
+      "delta": -0.00465,
+      "ci": [
+       -0.01484,
+       0.00539
+      ]
+     },
+     "brier": {
+      "delta": -0.00557,
+      "ci": [
+       -0.0151,
+       0.00368
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00119,
+      "ci": [
+       -0.00341,
+       0.00663
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 14,
+     "crps": {
+      "delta": 0.0009,
+      "ci": [
+       -0.00195,
+       0.00429
+      ]
+     },
+     "brier": {
+      "delta": 0.0004,
+      "ci": [
+       -0.00132,
+       0.00232
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "convection": {
+    "all": {
+     "logscore": {
+      "delta": 0.00644,
+      "ci": [
+       -0.00676,
+       0.01925
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00218,
+      "ci": [
+       -0.00044,
+       0.00493
+      ]
+     },
+     "brier": {
+      "delta": 0.00284,
+      "ci": [
+       -0.00072,
+       0.00686
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00354,
+      "ci": [
+       -0.02325,
+       0.01258
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.00149,
+      "ci": [
+       -0.00138,
+       0.00454
+      ]
+     },
+     "brier": {
+      "delta": 0.00128,
+      "ci": [
+       -0.0026,
+       0.00648
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01623,
+      "ci": [
+       -0.00115,
+       0.03388
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00286,
+      "ci": [
+       -0.00172,
+       0.00728
+      ]
+     },
+     "brier": {
+      "delta": 0.00437,
+      "ci": [
+       -0.0016,
+       0.01005
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": -0.00242,
+      "ci": [
+       -0.03062,
+       0.02143
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 6,
+     "crps": {
+      "delta": -0.00398,
+      "ci": [
+       -0.01173,
+       0.00347
+      ]
+     },
+     "brier": {
+      "delta": -0.00533,
+      "ci": [
+       -0.01548,
+       0.00361
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00027,
+      "ci": [
+       -0.00158,
+       0.00221
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 5e-05,
+      "ci": [
+       -0.00127,
+       0.00136
+      ]
+     },
+     "brier": {
+      "delta": -9e-05,
+      "ci": [
+       -0.00072,
+       0.00052
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "wind_speed": {
+    "all": {
+     "logscore": {
+      "delta": 0.00712,
+      "ci": [
+       -0.00675,
+       0.02055
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 10,
+     "crps": {
+      "delta": 0.00267,
+      "ci": [
+       -0.00015,
+       0.00566
+      ]
+     },
+     "brier": {
+      "delta": 0.00311,
+      "ci": [
+       -0.00053,
+       0.0072
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00216,
+      "ci": [
+       -0.02407,
+       0.01495
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00249,
+      "ci": [
+       -0.00095,
+       0.006
+      ]
+     },
+     "brier": {
+      "delta": 0.0019,
+      "ci": [
+       -0.00216,
+       0.00737
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01621,
+      "ci": [
+       -0.00114,
+       0.03391
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00285,
+      "ci": [
+       -0.00164,
+       0.00719
+      ]
+     },
+     "brier": {
+      "delta": 0.00429,
+      "ci": [
+       -0.0017,
+       0.00996
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00277,
+      "ci": [
+       -0.02376,
+       0.02639
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 5,
+     "crps": {
+      "delta": -0.00116,
+      "ci": [
+       -0.00777,
+       0.00532
+      ]
+     },
+     "brier": {
+      "delta": -0.00416,
+      "ci": [
+       -0.01404,
+       0.00461
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00095,
+      "ci": [
+       -0.00022,
+       0.00264
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 10,
+     "crps": {
+      "delta": 0.00054,
+      "ci": [
+       -0.00012,
+       0.00147
+      ]
+     },
+     "brier": {
+      "delta": 0.00018,
+      "ci": [
+       -0.00021,
+       0.00076
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "fog": {
+    "all": {
+     "logscore": {
+      "delta": 0.00672,
+      "ci": [
+       -0.00714,
+       0.02027
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00269,
+      "ci": [
+       -0.00015,
+       0.00583
+      ]
+     },
+     "brier": {
+      "delta": 0.00323,
+      "ci": [
+       -0.00033,
+       0.0075
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00378,
+      "ci": [
+       -0.02458,
+       0.0137
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.00167,
+      "ci": [
+       -0.00153,
+       0.00543
+      ]
+     },
+     "brier": {
+      "delta": 0.00171,
+      "ci": [
+       -0.00258,
+       0.0076
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01701,
+      "ci": [
+       -0.00031,
+       0.03407
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00369,
+      "ci": [
+       -0.00089,
+       0.00858
+      ]
+     },
+     "brier": {
+      "delta": 0.00471,
+      "ci": [
+       -0.00101,
+       0.01039
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00341,
+      "ci": [
+       -0.02611,
+       0.02857
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 5,
+     "crps": {
+      "delta": -0.00016,
+      "ci": [
+       -0.00794,
+       0.0074
+      ]
+     },
+     "brier": {
+      "delta": -0.00414,
+      "ci": [
+       -0.01389,
+       0.00467
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.00055,
+      "ci": [
+       -0.00096,
+       0.00204
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00056,
+      "ci": [
+       -0.00049,
+       0.00162
+      ]
+     },
+     "brier": {
+      "delta": 0.0003,
+      "ci": [
+       -0.00031,
+       0.00092
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "tx_direction": {
+    "all": {
+     "logscore": {
+      "delta": 0.03795,
+      "ci": [
+       0.00309,
+       0.08584
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 9,
+     "crps": {
+      "delta": 0.02026,
+      "ci": [
+       0.00354,
+       0.04499
+      ]
+     },
+     "brier": {
+      "delta": 0.00828,
+      "ci": [
+       0.00222,
+       0.01536
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.04815,
+      "ci": [
+       -0.01843,
+       0.14879
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.02909,
+      "ci": [
+       -0.00387,
+       0.08212
+      ]
+     },
+     "brier": {
+      "delta": 0.00878,
+      "ci": [
+       -0.00185,
+       0.0233
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.02796,
+      "ci": [
+       0.01074,
+       0.04494
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.01159,
+      "ci": [
+       0.00502,
+       0.01728
+      ]
+     },
+     "brier": {
+      "delta": 0.00779,
+      "ci": [
+       0.00292,
+       0.01286
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.23366,
+      "ci": [
+       0.02137,
+       0.58748
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.12986,
+      "ci": [
+       0.00997,
+       0.32146
+      ]
+     },
+     "brier": {
+      "delta": 0.03444,
+      "ci": [
+       -0.00523,
+       0.0859
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.03178,
+      "ci": [
+       0.00321,
+       0.07684
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.01813,
+      "ci": [
+       0.00207,
+       0.04275
+      ]
+     },
+     "brier": {
+      "delta": 0.00536,
+      "ci": [
+       0.00035,
+       0.01162
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "wind_direction": {
+    "all": {
+     "logscore": {
+      "delta": 0.00529,
+      "ci": [
+       -0.00803,
+       0.01849
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 8,
+     "crps": {
+      "delta": 0.00171,
+      "ci": [
+       -0.00085,
+       0.00454
+      ]
+     },
+     "brier": {
+      "delta": 0.00273,
+      "ci": [
+       -0.00084,
+       0.0067
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00377,
+      "ci": [
+       -0.02409,
+       0.01255
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 3,
+     "crps": {
+      "delta": 0.00159,
+      "ci": [
+       -0.00119,
+       0.00436
+      ]
+     },
+     "brier": {
+      "delta": 0.00174,
+      "ci": [
+       -0.00243,
+       0.0072
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01416,
+      "ci": [
+       -0.00314,
+       0.03163
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00183,
+      "ci": [
+       -0.00272,
+       0.00618
+      ]
+     },
+     "brier": {
+      "delta": 0.0037,
+      "ci": [
+       -0.00219,
+       0.00928
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00041,
+      "ci": [
+       -0.02642,
+       0.02474
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 6,
+     "crps": {
+      "delta": -0.00281,
+      "ci": [
+       -0.00954,
+       0.00385
+      ]
+     },
+     "brier": {
+      "delta": -0.005,
+      "ci": [
+       -0.01449,
+       0.00379
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": -0.00088,
+      "ci": [
+       -0.0016,
+       -0.00017
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 16,
+     "crps": {
+      "delta": -0.00042,
+      "ci": [
+       -0.00089,
+       5e-05
+      ]
+     },
+     "brier": {
+      "delta": -0.0002,
+      "ci": [
+       -0.00049,
+       8e-05
+      ]
+     },
+     "verdict": "PASS"
+    }
+   },
+   "width_only": {
+    "all": {
+     "logscore": {
+      "delta": 0.01237,
+      "ci": [
+       -0.00483,
+       0.031
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 14,
+     "crps": {
+      "delta": 0.0051,
+      "ci": [
+       2e-05,
+       0.0121
+      ]
+     },
+     "brier": {
+      "delta": 0.00404,
+      "ci": [
+       -0.00022,
+       0.00881
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": 0.00731,
+      "ci": [
+       -0.02097,
+       0.03978
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.00701,
+      "ci": [
+       -0.00056,
+       0.01959
+      ]
+     },
+     "brier": {
+      "delta": 0.00383,
+      "ci": [
+       -0.00102,
+       0.00998
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01733,
+      "ci": [
+       -0.00344,
+       0.03806
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 7,
+     "crps": {
+      "delta": 0.00323,
+      "ci": [
+       -0.00233,
+       0.00892
+      ]
+     },
+     "brier": {
+      "delta": 0.00425,
+      "ci": [
+       -0.00268,
+       0.01109
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.05409,
+      "ci": [
+       -0.02043,
+       0.1608
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.02045,
+      "ci": [
+       -0.00891,
+       0.06912
+      ]
+     },
+     "brier": {
+      "delta": 0.00467,
+      "ci": [
+       -0.0162,
+       0.03244
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": {
+     "logscore": {
+      "delta": 0.0062,
+      "ci": [
+       -0.00293,
+       0.01954
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 10,
+     "crps": {
+      "delta": 0.00297,
+      "ci": [
+       -0.00049,
+       0.00885
+      ]
+     },
+     "brier": {
+      "delta": 0.00112,
+      "ci": [
+       -0.00089,
+       0.00412
+      ]
+     },
+     "verdict": "REFUSED"
+    }
+   },
+   "intercept": {
+    "all": {
+     "logscore": {
+      "delta": 0.00617,
+      "ci": [
+       -0.00736,
+       0.0196
+      ]
+     },
+     "n_days": 24,
+     "n": 1123,
+     "days_better": 11,
+     "crps": {
+      "delta": 0.00213,
+      "ci": [
+       -0.00034,
+       0.00492
+      ]
+     },
+     "brier": {
+      "delta": 0.00293,
+      "ci": [
+       -0.00071,
+       0.007
+      ]
+     },
+     "verdict": "REFUSED"
+    },
+    "first_half": {
+     "logscore": {
+      "delta": -0.00364,
+      "ci": [
+       -0.02432,
+       0.01292
+      ]
+     },
+     "n_days": 12,
+     "n": 556,
+     "days_better": 6,
+     "crps": {
+      "delta": 0.00168,
+      "ci": [
+       -0.0009,
+       0.00451
+      ]
+     },
+     "brier": {
+      "delta": 0.00167,
+      "ci": [
+       -0.00248,
+       0.00723
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "second_half": {
+     "logscore": {
+      "delta": 0.01578,
+      "ci": [
+       -0.00155,
+       0.03344
+      ]
+     },
+     "n_days": 12,
+     "n": 567,
+     "days_better": 5,
+     "crps": {
+      "delta": 0.00257,
+      "ci": [
+       -0.00181,
+       0.00685
+      ]
+     },
+     "brier": {
+      "delta": 0.00416,
+      "ci": [
+       -0.0018,
+       0.00982
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "tx_days": {
+     "logscore": {
+      "delta": 0.00166,
+      "ci": [
+       -0.02504,
+       0.02557
+      ]
+     },
+     "n_days": 18,
+     "n": 154,
+     "days_better": 5,
+     "crps": {
+      "delta": -0.00185,
+      "ci": [
+       -0.00849,
+       0.00473
+      ]
+     },
+     "brier": {
+      "delta": -0.0046,
+      "ci": [
+       -0.01418,
+       0.00422
+      ]
+     },
+     "verdict": "INSUFFICIENT"
+    },
+    "vs_intercept": null
+   }
+  },
+  "theta_last_P": [
+   0.062,
+   -0.0172,
+   -0.0198,
+   -0.0185,
+   0.0355,
+   0.0123,
+   0.0037,
+   0.001,
+   -0.0211,
+   0.0219,
+   0.0436,
+   0.0148,
+   -0.0129
+  ]
+ }
+}

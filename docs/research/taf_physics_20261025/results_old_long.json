@@ -1,0 +1,1217 @@
+{
+ "days": [
+  "2026-08-31",
+  "2026-10-24"
+ ],
+ "n_days": 55,
+ "split": "2026-09-27",
+ "vs_R": {
+  "P": {
+   "all": {
+    "logscore": {
+     "delta": 0.03089,
+     "ci": [
+      0.00284,
+      0.06889
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 26,
+    "crps": {
+     "delta": 0.01338,
+     "ci": [
+      0.00213,
+      0.02862
+     ]
+    },
+    "brier": {
+     "delta": 0.0104,
+     "ci": [
+      0.00336,
+      0.01889
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.0013,
+     "ci": [
+      -0.0178,
+      0.01491
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 15,
+    "crps": {
+     "delta": -1e-05,
+     "ci": [
+      -0.00598,
+      0.00588
+     ]
+    },
+    "brier": {
+     "delta": 0.0055,
+     "ci": [
+      -0.00189,
+      0.0132
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.05669,
+     "ci": [
+      0.01066,
+      0.12463
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 11,
+    "crps": {
+     "delta": 0.02412,
+     "ci": [
+      0.00588,
+      0.05114
+     ]
+    },
+    "brier": {
+     "delta": 0.01432,
+     "ci": [
+      0.00414,
+      0.02877
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.38188,
+     "ci": [
+      0.03212,
+      0.92861
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 6,
+    "crps": {
+     "delta": 0.15749,
+     "ci": [
+      0.00946,
+      0.37914
+     ]
+    },
+    "brier": {
+     "delta": 0.07643,
+     "ci": [
+      -0.00389,
+      0.20205
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.03034,
+     "ci": [
+      0.0051,
+      0.06773
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 20,
+    "crps": {
+     "delta": 0.01347,
+     "ci": [
+      0.00283,
+      0.02848
+     ]
+    },
+    "brier": {
+     "delta": 0.00801,
+     "ci": [
+      0.00224,
+      0.01582
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "cloud_rain": {
+   "all": {
+    "logscore": {
+     "delta": 0.00466,
+     "ci": [
+      -0.00573,
+      0.015
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 29,
+    "crps": {
+     "delta": 0.00234,
+     "ci": [
+      -0.00143,
+      0.0061
+     ]
+    },
+    "brier": {
+     "delta": 0.00457,
+     "ci": [
+      0.00053,
+      0.00922
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00178,
+     "ci": [
+      -0.01893,
+      0.01597
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 17,
+    "crps": {
+     "delta": 0.0001,
+     "ci": [
+      -0.00679,
+      0.00665
+     ]
+    },
+    "brier": {
+     "delta": 0.00473,
+     "ci": [
+      -0.00291,
+      0.01305
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00982,
+     "ci": [
+      -0.00267,
+      0.02236
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 12,
+    "crps": {
+     "delta": 0.00413,
+     "ci": [
+      0.00041,
+      0.00851
+     ]
+    },
+    "brier": {
+     "delta": 0.00445,
+     "ci": [
+      0.00045,
+      0.00871
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": -0.00318,
+     "ci": [
+      -0.03231,
+      0.02007
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 6,
+    "crps": {
+     "delta": -0.00465,
+     "ci": [
+      -0.01484,
+      0.00539
+     ]
+    },
+    "brier": {
+     "delta": -0.00557,
+     "ci": [
+      -0.0151,
+      0.00368
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.00411,
+     "ci": [
+      -0.0009,
+      0.00916
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 28,
+    "crps": {
+     "delta": 0.00242,
+     "ci": [
+      -0.00068,
+      0.00565
+     ]
+    },
+    "brier": {
+     "delta": 0.00218,
+     "ci": [
+      6e-05,
+      0.00455
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "convection": {
+   "all": {
+    "logscore": {
+     "delta": 0.00149,
+     "ci": [
+      -0.00925,
+      0.01235
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 29,
+    "crps": {
+     "delta": 0.00021,
+     "ci": [
+      -0.00352,
+      0.00358
+     ]
+    },
+    "brier": {
+     "delta": 0.0025,
+     "ci": [
+      -0.00079,
+      0.00602
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00792,
+     "ci": [
+      -0.02597,
+      0.01209
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 17,
+    "crps": {
+     "delta": -0.00369,
+     "ci": [
+      -0.0107,
+      0.00266
+     ]
+    },
+    "brier": {
+     "delta": 0.00069,
+     "ci": [
+      -0.00489,
+      0.00641
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00903,
+     "ci": [
+      -0.0033,
+      0.02073
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 12,
+    "crps": {
+     "delta": 0.00334,
+     "ci": [
+      0.00068,
+      0.00632
+     ]
+    },
+    "brier": {
+     "delta": 0.00395,
+     "ci": [
+      0.00038,
+      0.00771
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": -0.00242,
+     "ci": [
+      -0.03062,
+      0.02143
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 6,
+    "crps": {
+     "delta": -0.00398,
+     "ci": [
+      -0.01173,
+      0.00347
+     ]
+    },
+    "brier": {
+     "delta": -0.00533,
+     "ci": [
+      -0.01548,
+      0.00361
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.00095,
+     "ci": [
+      -0.00093,
+      0.00314
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 28,
+    "crps": {
+     "delta": 0.00029,
+     "ci": [
+      -0.00083,
+      0.0015
+     ]
+    },
+    "brier": {
+     "delta": 0.00011,
+     "ci": [
+      -0.00059,
+      0.00082
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "wind_speed": {
+   "all": {
+    "logscore": {
+     "delta": 0.00017,
+     "ci": [
+      -0.00992,
+      0.01021
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 29,
+    "crps": {
+     "delta": 0.00039,
+     "ci": [
+      -0.00332,
+      0.00354
+     ]
+    },
+    "brier": {
+     "delta": 0.00281,
+     "ci": [
+      -0.00051,
+      0.0062
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.01167,
+     "ci": [
+      -0.02714,
+      0.00259
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 18,
+    "crps": {
+     "delta": -0.00368,
+     "ci": [
+      -0.01067,
+      0.00194
+     ]
+    },
+    "brier": {
+     "delta": 0.00112,
+     "ci": [
+      -0.00424,
+      0.00676
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00966,
+     "ci": [
+      -0.00325,
+      0.02175
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 11,
+    "crps": {
+     "delta": 0.00366,
+     "ci": [
+      0.00089,
+      0.00655
+     ]
+    },
+    "brier": {
+     "delta": 0.00417,
+     "ci": [
+      0.00055,
+      0.00798
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.00277,
+     "ci": [
+      -0.02376,
+      0.02639
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 5,
+    "crps": {
+     "delta": -0.00116,
+     "ci": [
+      -0.00777,
+      0.00532
+     ]
+    },
+    "brier": {
+     "delta": -0.00416,
+     "ci": [
+      -0.01404,
+      0.00461
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": -0.00038,
+     "ci": [
+      -0.00489,
+      0.00323
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 21,
+    "crps": {
+     "delta": 0.00048,
+     "ci": [
+      -0.00117,
+      0.00214
+     ]
+    },
+    "brier": {
+     "delta": 0.00043,
+     "ci": [
+      -0.00099,
+      0.00173
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "fog": {
+   "all": {
+    "logscore": {
+     "delta": 0.00136,
+     "ci": [
+      -0.00953,
+      0.01197
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 31,
+    "crps": {
+     "delta": 0.00062,
+     "ci": [
+      -0.0031,
+      0.00407
+     ]
+    },
+    "brier": {
+     "delta": 0.00285,
+     "ci": [
+      -0.00044,
+      0.00615
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00881,
+     "ci": [
+      -0.02612,
+      0.01023
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 19,
+    "crps": {
+     "delta": -0.00333,
+     "ci": [
+      -0.01035,
+      0.00295
+     ]
+    },
+    "brier": {
+     "delta": 0.00109,
+     "ci": [
+      -0.0042,
+      0.00615
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00952,
+     "ci": [
+      -0.00337,
+      0.02141
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 12,
+    "crps": {
+     "delta": 0.00378,
+     "ci": [
+      0.00091,
+      0.00695
+     ]
+    },
+    "brier": {
+     "delta": 0.00426,
+     "ci": [
+      0.00053,
+      0.00819
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.00341,
+     "ci": [
+      -0.02611,
+      0.02857
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 5,
+    "crps": {
+     "delta": -0.00016,
+     "ci": [
+      -0.00794,
+      0.0074
+     ]
+    },
+    "brier": {
+     "delta": -0.00414,
+     "ci": [
+      -0.01389,
+      0.00467
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.00082,
+     "ci": [
+      -0.00121,
+      0.00293
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 27,
+    "crps": {
+     "delta": 0.0007,
+     "ci": [
+      -0.00056,
+      0.00197
+     ]
+    },
+    "brier": {
+     "delta": 0.00046,
+     "ci": [
+      -0.00039,
+      0.00146
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "tx_direction": {
+   "all": {
+    "logscore": {
+     "delta": 0.01576,
+     "ci": [
+      -0.00418,
+      0.04082
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 29,
+    "crps": {
+     "delta": 0.00859,
+     "ci": [
+      -0.00057,
+      0.02119
+     ]
+    },
+    "brier": {
+     "delta": 0.00495,
+     "ci": [
+      0.00079,
+      0.00942
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00964,
+     "ci": [
+      -0.02738,
+      0.00968
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 19,
+    "crps": {
+     "delta": -0.00407,
+     "ci": [
+      -0.01102,
+      0.00198
+     ]
+    },
+    "brier": {
+     "delta": 0.00043,
+     "ci": [
+      -0.00471,
+      0.00568
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.03612,
+     "ci": [
+      0.00627,
+      0.07995
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 10,
+    "crps": {
+     "delta": 0.01874,
+     "ci": [
+      0.00456,
+      0.04044
+     ]
+    },
+    "brier": {
+     "delta": 0.00858,
+     "ci": [
+      0.00342,
+      0.01518
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.23366,
+     "ci": [
+      0.02137,
+      0.58748
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 5,
+    "crps": {
+     "delta": 0.12986,
+     "ci": [
+      0.00997,
+      0.32146
+     ]
+    },
+    "brier": {
+     "delta": 0.03444,
+     "ci": [
+      -0.00523,
+      0.0859
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.01521,
+     "ci": [
+      0.00141,
+      0.03654
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 21,
+    "crps": {
+     "delta": 0.00868,
+     "ci": [
+      0.00086,
+      0.02053
+     ]
+    },
+    "brier": {
+     "delta": 0.00256,
+     "ci": [
+      0.00023,
+      0.00564
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "wind_direction": {
+   "all": {
+    "logscore": {
+     "delta": -0.00036,
+     "ci": [
+      -0.01112,
+      0.01032
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 27,
+    "crps": {
+     "delta": -0.00072,
+     "ci": [
+      -0.00443,
+      0.00269
+     ]
+    },
+    "brier": {
+     "delta": 0.00202,
+     "ci": [
+      -0.00127,
+      0.00539
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.01031,
+     "ci": [
+      -0.02847,
+      0.01006
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 18,
+    "crps": {
+     "delta": -0.00477,
+     "ci": [
+      -0.01202,
+      0.00162
+     ]
+    },
+    "brier": {
+     "delta": 1e-05,
+     "ci": [
+      -0.00542,
+      0.00543
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00763,
+     "ci": [
+      -0.00502,
+      0.01903
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 9,
+    "crps": {
+     "delta": 0.00253,
+     "ci": [
+      -8e-05,
+      0.00527
+     ]
+    },
+    "brier": {
+     "delta": 0.00364,
+     "ci": [
+      5e-05,
+      0.00744
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.00041,
+     "ci": [
+      -0.02642,
+      0.02474
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 6,
+    "crps": {
+     "delta": -0.00281,
+     "ci": [
+      -0.00954,
+      0.00385
+     ]
+    },
+    "brier": {
+     "delta": -0.005,
+     "ci": [
+      -0.01449,
+      0.00379
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": -0.0009,
+     "ci": [
+      -0.00178,
+      -1e-05
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 34,
+    "crps": {
+     "delta": -0.00063,
+     "ci": [
+      -0.0011,
+      -0.00015
+     ]
+    },
+    "brier": {
+     "delta": -0.00037,
+     "ci": [
+      -0.00069,
+      -4e-05
+     ]
+    },
+    "verdict": "PASS"
+   }
+  },
+  "width_only": {
+   "all": {
+    "logscore": {
+     "delta": 0.0052,
+     "ci": [
+      -0.00746,
+      0.01846
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 31,
+    "crps": {
+     "delta": 0.00162,
+     "ci": [
+      -0.00293,
+      0.00613
+     ]
+    },
+    "brier": {
+     "delta": 0.00335,
+     "ci": [
+      -0.00022,
+      0.00692
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00603,
+     "ci": [
+      -0.02545,
+      0.01577
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 16,
+    "crps": {
+     "delta": -0.00348,
+     "ci": [
+      -0.01055,
+      0.00289
+     ]
+    },
+    "brier": {
+     "delta": 0.00138,
+     "ci": [
+      -0.0042,
+      0.00696
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.0142,
+     "ci": [
+      -0.00152,
+      0.03228
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 15,
+    "crps": {
+     "delta": 0.00571,
+     "ci": [
+      0.00106,
+      0.01208
+     ]
+    },
+    "brier": {
+     "delta": 0.00493,
+     "ci": [
+      0.00089,
+      0.00929
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.05409,
+     "ci": [
+      -0.02043,
+      0.1608
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 6,
+    "crps": {
+     "delta": 0.02045,
+     "ci": [
+      -0.00891,
+      0.06912
+     ]
+    },
+    "brier": {
+     "delta": 0.00467,
+     "ci": [
+      -0.0162,
+      0.03244
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": {
+    "logscore": {
+     "delta": 0.00466,
+     "ci": [
+      -0.00053,
+      0.01145
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 24,
+    "crps": {
+     "delta": 0.00171,
+     "ci": [
+      -8e-05,
+      0.00451
+     ]
+    },
+    "brier": {
+     "delta": 0.00096,
+     "ci": [
+      -0.00017,
+      0.00241
+     ]
+    },
+    "verdict": "REFUSED"
+   }
+  },
+  "intercept": {
+   "all": {
+    "logscore": {
+     "delta": 0.00054,
+     "ci": [
+      -0.0102,
+      0.01106
+     ]
+    },
+    "n_days": 55,
+    "n": 2346,
+    "days_better": 31,
+    "crps": {
+     "delta": -9e-05,
+     "ci": [
+      -0.00368,
+      0.00325
+     ]
+    },
+    "brier": {
+     "delta": 0.00239,
+     "ci": [
+      -0.0009,
+      0.00575
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "first_half": {
+    "logscore": {
+     "delta": -0.00964,
+     "ci": [
+      -0.02738,
+      0.00968
+     ]
+    },
+    "n_days": 27,
+    "n": 1044,
+    "days_better": 19,
+    "crps": {
+     "delta": -0.00407,
+     "ci": [
+      -0.01102,
+      0.00198
+     ]
+    },
+    "brier": {
+     "delta": 0.00043,
+     "ci": [
+      -0.00471,
+      0.00568
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "second_half": {
+    "logscore": {
+     "delta": 0.00871,
+     "ci": [
+      -0.00399,
+      0.02033
+     ]
+    },
+    "n_days": 28,
+    "n": 1302,
+    "days_better": 12,
+    "crps": {
+     "delta": 0.00311,
+     "ci": [
+      0.00054,
+      0.00582
+     ]
+    },
+    "brier": {
+     "delta": 0.00396,
+     "ci": [
+      0.00031,
+      0.00776
+     ]
+    },
+    "verdict": "REFUSED"
+   },
+   "tx_days": {
+    "logscore": {
+     "delta": 0.00166,
+     "ci": [
+      -0.02504,
+      0.02557
+     ]
+    },
+    "n_days": 18,
+    "n": 154,
+    "days_better": 5,
+    "crps": {
+     "delta": -0.00185,
+     "ci": [
+      -0.00849,
+      0.00473
+     ]
+    },
+    "brier": {
+     "delta": -0.0046,
+     "ci": [
+      -0.01418,
+      0.00422
+     ]
+    },
+    "verdict": "INSUFFICIENT"
+   },
+   "vs_intercept": null
+  }
+ }
+}
