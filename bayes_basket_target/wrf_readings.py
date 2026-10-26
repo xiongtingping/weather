@@ -343,6 +343,8 @@ def _nowcast_view(rec: dict[str, Any]) -> dict[str, Any]:
     m, b = rec.get("market") or {}, rec.get("belief") or {}
     return {
         "ready_utc": rec.get("ready_utc"), "last_sat_hour_utc": rec.get("last_sat_hour_utc"),
+        "last_scan_utc": rec.get("last_scan_utc") or (None if rec.get("last_sat_hour_utc") is None
+                                                      else f"{int(rec['last_sat_hour_utc']):02d}:00"),
         "metar_max_so_far_c": rec.get("metar_max_so_far_c"),
         "sat_c": rec.get("wrf_sat_tmax_c"), "ctl_c": rec.get("wrf_ctl_tmax_c"),
         "sat_obs_c": rec.get("wrf_sat_tmax_with_obs_c"), "ctl_obs_c": rec.get("wrf_ctl_tmax_with_obs_c"),

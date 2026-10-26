@@ -241,3 +241,12 @@ def test_card_leads_with_the_newest_issue_early_frozen_or_rerun(monkeypatch) -> 
     assert v["nowcast"]["kind"] == "frozen" and v["runs"]["nowcast_sat"]["tmax_c"] == 22.0
     later = early + [{"ready_utc": "2026-10-27T04:30:00Z", "kind": "update"}]
     assert card(frozen, later)["nowcast"]["kind"] == "update"
+
+
+def test_issue_view_names_the_newest_scan() -> None:
+    """Half-hour re-runs (user 2026-10-26 「重跑改成每 30 分钟：用最新的整点和半点云图」): an issue says which
+    scan it saw; a record from before carries its hour."""
+
+    assert W._nowcast_view({"last_sat_hour_utc": 4, "last_scan_utc": "04:30"})["last_scan_utc"] == "04:30"
+    assert W._nowcast_view({"last_sat_hour_utc": 2})["last_scan_utc"] == "02:00"
+    assert W._nowcast_view({})["last_scan_utc"] is None
