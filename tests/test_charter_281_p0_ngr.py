@@ -251,36 +251,16 @@ def test_a_served_regressions_centre_is_the_envelopes_model_centre(monkeypatch):
     assert float(envelope["lineage"]["model_center_c"]) == pytest.approx(receipt["mu_c"], abs=1e-9)
 
 
-def test_the_likelihood_refits_read_the_regressions_roots(tmp_path):
+def test_the_p1_refit_reads_the_regressions_roots():
+    """P1's daily refit roots on the regression's P0 (charter 283: P0-M and its
+    TAF refit are retired)."""
+
     import build_p0_ngr_root_replay as RB  # noqa: PLC0415
     import fit_p1_observation_likelihood as P1FIT  # noqa: PLC0415
-    import fit_taf_likelihood as TAFFIT  # noqa: PLC0415
 
-    replay = tmp_path / "replay.db"
-    out = sqlite3.connect(replay)
-    out.executescript(RB.SCHEMA)
-    out.executescript(RB.P1_ROOT_SCHEMA)
-    out.execute("INSERT INTO root VALUES ('p0-a','ZUUU','2026-10-20','2026-10-19T00:00:00Z',22.4,1.1,?,'2026-10-19')",
-                (json.dumps({"22": 0.6, "23": 0.4}),))
-    out.execute("INSERT INTO p1_root VALUES ('p0m-a','P0-M','2026-10-20',?, 'x')", (json.dumps({"22": 0.3, "23": 0.7}),))
-    out.commit()
-
-    class Base:
-        def root(self, ck):
-            return ("21.0", json.dumps({"22": 0.5, "23": 0.5}), json.dumps({"22": 0, "23": 1}), "{}")
-
-        def p0m_rows(self, since, through):
-            return []
-
-        def p0_roots(self, station, day):
-            return []
-
-    source = TAFFIT.ReplayRootSource(Base(), replay)
-    assert source.root("p0-a") == (22.4, json.dumps({"22": 0.6, "23": 0.4}), json.dumps({"22": 0, "23": 1}), "{}")
-    assert source.root("p0-missing") is None
     assert "replay" in P1FIT.RootCache.__init__.__code__.co_varnames
-    for sweep, needle in (("scripts/taf_likelihood_refit_sweep.sh", '--root-replay "$REPLAY"'),
-                          ("scripts/p1_likelihood_refit_sweep.sh", '--root-replay "$OUT/p0_ngr_root_replay.db"')):
-        text = (ROOT / sweep).read_text(encoding="utf-8")
-        assert needle in text and "build_p0_ngr_root_replay.py --live" in text
-    assert RB.P0M_ON_NEW_ROOT == frozenset({"p0m_taf_likelihood_v36", "p0m_taf_likelihood_v37"})
+    text = (ROOT / "scripts" / "p1_likelihood_refit_sweep.sh").read_text(encoding="utf-8")
+    assert '--root-replay "$OUT/p0_ngr_root_replay.db"' in text
+    assert "build_p0_ngr_root_replay.py --live" in text and "taf" not in text.split("--live")[1].split("\n")[0]
+    assert not (ROOT / "scripts" / "taf_likelihood_refit_sweep.sh").exists()
+    assert not hasattr(RB, "build_p1_roots") and not hasattr(RB, "P0M_ON_NEW_ROOT")

@@ -135,7 +135,6 @@ def _wire_chain(monkeypatch, worker, *, new_roots: list[tuple[str, str, str]]):
         return {"state": "COMMITTED"}
 
     monkeypatch.setattr(worker, "materialize_resident_p0", p0)
-    monkeypatch.setattr(worker, "_materialize_resident_p0m", lambda *, as_of_utc: calls.append("P0-M") or {"state": "COMMITTED", "stage_clock_utc": "2026-09-18T06:00:00.001Z"})
 
     def p1(**kwargs):
         calls.append("P1")
@@ -151,9 +150,9 @@ def test_without_a_head_pass_the_chain_runs_p1_once_as_before(monkeypatch) -> No
     worker._early_p1_this_cycle = {"state": "SKIPPED_NO_UNCOVERED_REPORTS", "ran": False}
     calls, p1_calls = _wire_chain(monkeypatch, worker, new_roots=[])
     out = worker._materialize_resident_probability_chain(as_of_utc=CLOCK)
-    assert calls == ["P0", "P0-M", "P1"]
-    assert p1_calls == [{"as_of_utc": CLOCK, "stage_clock_utc": "2026-09-18T06:00:00.001Z"}]
-    assert out["stage_order"] == ["P0", "P0-M", "P1"]
+    assert calls == ["P0", "P1"]
+    assert p1_calls == [{"as_of_utc": CLOCK}]
+    assert out["stage_order"] == ["P0", "P1"]
 
 
 def test_after_a_head_pass_the_chain_skips_p1_when_no_root_was_rebuilt(monkeypatch) -> None:
@@ -162,7 +161,7 @@ def test_after_a_head_pass_the_chain_skips_p1_when_no_root_was_rebuilt(monkeypat
     worker._early_p1_this_cycle = {"state": "RAN", "ran": True, "p1": head}
     calls, p1_calls = _wire_chain(monkeypatch, worker, new_roots=[])
     out = worker._materialize_resident_probability_chain(as_of_utc=CLOCK)
-    assert calls == ["P0", "P0-M"]
+    assert calls == ["P0"]
     assert p1_calls == []
     assert out["p1"]["receipts"] == head["receipts"]
     assert out["p1"]["late_pass_scopes"] == []
@@ -175,13 +174,12 @@ def test_after_a_head_pass_the_chain_reroots_only_what_it_rebuilt(monkeypatch) -
     worker._early_p1_this_cycle = {"state": "RAN", "ran": True, "p1": head}
     calls, p1_calls = _wire_chain(
         monkeypatch, worker,
-        new_roots=[("ZUUU", "2026-09-18", "P0"), ("ZUUU", "2026-09-18", "P0-M"), ("KATL", "2026-09-19", "P0-M"), ("RJTT", "2026-09-18", "P1")],
+        new_roots=[("ZUUU", "2026-09-18", "P0"), ("KATL", "2026-09-19", "P0"), ("RJTT", "2026-09-18", "P1")],
     )
     out = worker._materialize_resident_probability_chain(as_of_utc=CLOCK)
-    assert calls == ["P0", "P0-M", "P1"]
+    assert calls == ["P0", "P1"]
     assert len(p1_calls) == 1
     assert p1_calls[0]["only_scopes"] == {("ZUUU", "2026-09-18"), ("KATL", "2026-09-19")}
-    assert p1_calls[0]["stage_clock_utc"] == "2026-09-18T06:00:00.001Z"
     assert out["p1"]["late_pass_scopes"] == ["KATL|2026-09-19", "ZUUU|2026-09-18"]
     assert len(out["p1"]["receipts"]) == 4
 
@@ -198,12 +196,15 @@ def test_merged_receipt_keeps_every_blocker_and_its_state() -> None:
     assert only_blocked["state"] == "BLOCKED_FAIL_CLOSED"
 
 
-def test_rooted_after_reads_only_committed_p0_and_p0m_past_the_mark() -> None:
+def test_rooted_after_reads_only_committed_p0_past_the_mark() -> None:
     worker = _worker()
     mark = worker._envelope_rowid_ceiling()
     worker.commit_conn.executemany(
         "INSERT INTO basket_probability_envelope VALUES (?,?,?,?)",
-        [("zuuu", "2026-09-18", "P0-M", "COMMITTED"), ("KATL", "2026-09-19", "P0", "QUARANTINED"), ("RJTT", "2026-09-18", "P1", "COMMITTED")],
+        [("zuuu", "2026-09-18", "P0", "COMMITTED"), ("KATL", "2026-09-19", "P0", "QUARANTINED"),
+         ("RJTT", "2026-09-18", "P1", "COMMITTED"),
+         # Charter 283: a P0-M row (the history before it) roots nothing.
+         ("ZUCK", "2026-09-18", "P0-M", "COMMITTED")],
     )
     assert worker._scopes_rooted_after(mark) == [("ZUUU", "2026-09-18")]
     assert worker._scopes_rooted_after(None) == []

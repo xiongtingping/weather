@@ -438,7 +438,7 @@ def serving_arithmetic_floor(conn: sqlite3.Connection) -> str | None:
     from bayes_basket_target import serving_arithmetic  # noqa: PLC0415
 
     floors: list[str] = []
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         try:
             reading = serving_arithmetic.watchdog(conn, stage=stage)
         except sqlite3.Error as exc:
@@ -576,32 +576,6 @@ def evidence_anchor_floor(conn: sqlite3.Connection) -> str | None:
         else:
             days.append((moment.date() - timedelta(days=EVIDENCE_EVENT_DATE_MARGIN_DAYS)).isoformat())
     return min(days) if days else None
-
-
-def taf_case_cache_floor(conn: sqlite3.Connection) -> str | None:
-    """The first day the TAF fit still reads off the SSOT (not yet in its cache)."""
-
-    from scripts import fit_taf_likelihood as taf  # noqa: PLC0415
-
-    path = Path(taf.CASE_CACHE_PATH)
-    if not path.is_file():
-        return taf.DEFAULT_SINCE
-    try:
-        # Not mode=ro: a WAL file whose writer has closed has no -shm,
-        # and a read-only open cannot make one.
-        cache = sqlite3.connect(str(path))
-        cache.execute("PRAGMA query_only=1")
-        try:
-            frozen = {str(r[0]) for r in cache.execute("SELECT event_date FROM frozen_date")}
-        finally:
-            cache.close()
-    except sqlite3.Error as exc:
-        raise OffloadRefused(f"taf_case_cache_unreadable:{path}") from exc
-    last = (_utc_now().date() - timedelta(days=taf.FREEZE_LAG_DAYS)).isoformat()
-    for day in taf._days(taf.DEFAULT_SINCE, last):
-        if day not in frozen:
-            return day
-    return None
 
 
 def _cross_activation_generations(conn: sqlite3.Connection) -> dict[tuple, int]:
@@ -1038,7 +1012,7 @@ POLICIES += (
             "fit_deterministic_feature_gate: P0 of the last 60 event days; "
             "build_metar_phase_hazard_samples / fit_p1_observation_likelihood: P0/P0-M "
             "roots of 44 days; board_readings.seat_windows: three stages, 45 days; "
-            "fit_taf_likelihood: from 2026-08-16 via its case cache; refit_center_width / "
+            "refit_center_width / "
             "refit_off_centre_claim and serving_arithmetic: from the evidence anchor; "
             "dashboard: valuation 28 days, posterior 14, live_book the envelope each live "
             "decision names, "
@@ -1091,11 +1065,6 @@ POLICIES += (
                 name="metar_trajectory_training",
                 why="P1's trajectory training reads a station-day off the SSOT until its root cache has frozen it",
                 resolve=metar_trajectory_training_floor,
-            ),
-            DynamicFloor(
-                name="taf_case_cache",
-                why="the TAF fit reads a day off the SSOT until its case cache has frozen it",
-                resolve=taf_case_cache_floor,
             ),
         ),
     ),

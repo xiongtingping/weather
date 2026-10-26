@@ -150,7 +150,6 @@ from .production import (
 from .materialization import (
     MATERIALIZATION_SCHEMA,
     insert_probability_envelope,
-    materialize_p0m,
     materialize_p1,
 )
 from .probability_bridge import (
@@ -356,7 +355,6 @@ __all__ = [
     "export_canonical_observation_evidence",
     "evaluate_cash_phase",
     "materialize_p0",
-    "materialize_p0m",
     "compile_taf_revision_proof",
     "validate_taf_revision_proof",
     "materialize_p1",

@@ -29,7 +29,7 @@ from bayes_basket_target.contracts import ProbabilityEnvelope
 from bayes_basket_target.metar_trajectory import hard_bound_excluded_buckets
 from bayes_basket_target.p1_compiler import _bucket_geometry_c, compile_station_p1_packets
 from tests.test_bayes_basket_target_p1_bucket_geometry import F_INTERVALS, F_UPPER_LABELS, _root
-from tests.test_bayes_basket_target_materialization import _envelope, _p0m_root
+from tests.test_bayes_basket_target_materialization import _envelope, _p1_root
 from tests.test_charter_150_p1_joint_likelihood import _artifact, _observation, _registry
 from bayes_basket_target import p1_observation_likelihood as OL
 from bayes_basket_target.materialization import (
@@ -51,7 +51,7 @@ def _fitter():
 
 
 def _open_top_root() -> ProbabilityEnvelope:
-    base = _p0m_root(_envelope())
+    base = _p1_root(_envelope())
     return ProbabilityEnvelope.from_mapping({
         **base.to_dict(),
         "lineage": {
@@ -95,7 +95,7 @@ def test_the_f_ladder_s_open_top_is_unbounded_too() -> None:
 
 
 def test_the_registry_ladder_s_open_top_is_unbounded_too() -> None:
-    root = _p0m_root(_envelope())
+    root = _p1_root(_envelope())
     bare = ProbabilityEnvelope.from_mapping({
         **root.to_dict(),
         "lineage": {k: v for k, v in root.lineage.items() if k != "bucket_intervals_c_json"},

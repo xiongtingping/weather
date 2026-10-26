@@ -503,7 +503,7 @@ def test_the_envelope_window_and_floors_are_tied_to_their_readers() -> None:
     for window in (off.FEATURE_GATE_WINDOW_DAYS, off.P1_LIKELIHOOD_WINDOW_DAYS, board_readings.SEAT_LOOKBACK_DAYS):
         assert roots.days > window
     assert {f.name for f in policy.floors} == {
-        "calibration_evidence_anchor", "taf_case_cache", "metar_trajectory_training",
+        "calibration_evidence_anchor", "metar_trajectory_training",
     }
     # The dashboard's fixed-start sections recompute through the cold tier
     # instead of holding rows back (「在外置硬盘」).
@@ -543,21 +543,6 @@ def test_an_unanchored_calibration_lane_moves_nothing(
 
     expected = (date.fromisoformat(payloads.frozen_through(now)) + timedelta(days=1)).isoformat()
     assert off.evidence_anchor_floor(sqlite3.connect(":memory:")) == expected
-
-
-def test_the_taf_floor_is_the_first_day_its_cache_has_not_frozen(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from scripts import fit_taf_likelihood as taf
-
-    path = tmp_path / "cases.db"
-    monkeypatch.setattr(taf, "CASE_CACHE_PATH", path)
-    assert off.taf_case_cache_floor(sqlite3.connect(":memory:")) == taf.DEFAULT_SINCE
-    cache = taf.open_case_cache(path)
-    for day in taf._days(taf.DEFAULT_SINCE, "2026-08-20"):
-        cache.execute("INSERT INTO frozen_date VALUES(?,0,0,?,?)", (day, taf.CASE_CACHE_SCHEMA, "x"))
-    cache.close()
-    assert off.taf_case_cache_floor(sqlite3.connect(":memory:")) == "2026-08-21"
 
 
 def test_an_unlabelled_fact_keeps_its_envelope(store: Path, cold: Path, tmp_path: Path) -> None:

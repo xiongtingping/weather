@@ -618,7 +618,7 @@ def test_serving_arithmetic_is_stamped_at_the_start_that_served_it() -> None:
             conn, started_at_utc="2026-08-26T10:00:00.000Z"
         )
         assert first["state"] == "ok"
-        assert sorted(first["stages"]) == ["P0", "P0-M", "P1"]
+        assert sorted(first["stages"]) == ["P0", "P1"]  # P0-M retired (charter 283)
         assert all(first["stages"][stage] for stage in first["stages"])
 
         # A restart on unchanged code must not move the boundary forward.

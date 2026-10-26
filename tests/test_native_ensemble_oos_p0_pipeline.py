@@ -17,7 +17,6 @@ from bayes_basket_target.event_contracts import ForecastRevision
 from bayes_basket_target.calibration import (
     bind_taf_artifact_to_live_nwp_compatibility,
 )
-from bayes_basket_target.materialization import materialize_p0m
 from bayes_basket_target.market_registry import (
     apply_target_market_registry_schema,
 )
@@ -1801,53 +1800,6 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         **artifact_identity,
         "content_sha256": content_sha256(artifact_identity),
     })
-    revision = ForecastRevision.from_mapping({
-        "revision_id": "taf-test-1",
-        "station_id": "TEST",
-        "event_date": "2026-07-01",
-        "revision_kind": "TAF",
-        "sequence": 1,
-        "issued_at_utc": "2026-07-01T12:10:00Z",
-        "received_at_utc": "2026-07-01T12:20:00Z",
-        "valid_from_utc": "2026-07-01T12:00:00Z",
-        "valid_until_utc": "2026-07-02T18:00:00Z",
-        "source_object_sha256": "7" * 64,
-        "supersedes_revision_id": None,
-    })
-    proof = compile_taf_revision_proof(
-        envelope,
-        p0_root=envelope,
-        forecast_revision=revision,
-        artifact=taf_artifact,
-        bucket_centers_c={
-            "19°C or below": 19.0,
-            "20°C": 20.0,
-            "21°C": 21.0,
-            "22°C or higher": 22.0,
-        },
-        taf_fields={
-            "tx_c": 20.0,
-            "cloud_cover_fraction": 0.2,
-            "precipitation_probability": 0.1,
-            "wind_speed_mps": 4.0,
-        },
-        decision_at_utc="2026-07-01T13:00:01Z",
-    )
-    p0m = materialize_p0m(
-        envelope,
-        p0_root=envelope,
-        taf_revision_artifact=taf_artifact,
-        taf_revision_proof=proof,
-        decision_at_utc="2026-07-01T13:00:01Z",
-        fresh_until_utc="2026-07-01T19:00:00Z",
-        bridge_sha256=envelope.bridge_sha256,
-    )
-    assert p0m.stage == "P0-M"
-    assert p0m.lineage["p0_root_checkpoint_id"] == envelope.checkpoint_id
-    assert_formal_probability_model_authority(
-        [envelope, p0m],
-        probability=p0m,
-    )
     registry_rows = [
         {
             "station_id": "TEST",
@@ -1865,8 +1817,8 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
         )
     ]
     p1_packets = compile_station_p1_packets(
-        predecessor=p0m,
-        prediction_root=p0m,
+        predecessor=envelope,
+        prediction_root=envelope,
         observations=[{
             "observation_id": "metar-test-1",
             "station_id": "TEST",
@@ -1900,10 +1852,10 @@ def test_forward_taf_is_observational_and_never_enters_p0m_oos() -> None:
     assert p1.stage == "P1"
     assert p1.lineage["p0_root_checkpoint_id"] == envelope.checkpoint_id
     assert p1.lineage["prediction_root_checkpoint_id"] == (
-        p0m.checkpoint_id
+        envelope.checkpoint_id
     )
     assert_formal_probability_model_authority(
-        [envelope, p0m, p1],
+        [envelope, p1],
         probability=p1,
     )
     regime = build_regime_artifact(p1)

@@ -1258,10 +1258,12 @@ def test_stage_router_preserves_highest_existing_authority_across_new_updates() 
             "fresh_until_utc": "2026-07-23T08:00:00Z",
         }
     )
+    # Charter 283: a P0-M row is history, never the authority -- the newest P0
+    # speaks until a P1 stands.
     assert select_current_stage(
         [p0, p0m_old, p0_new],
         at_utc="2026-07-23T04:20:00Z",
-    ).checkpoint_id == "p0m-old"
+    ).checkpoint_id == "p0-new"
 
     p0m_new = ProbabilityEnvelope.from_mapping(
         {
@@ -1273,7 +1275,7 @@ def test_stage_router_preserves_highest_existing_authority_across_new_updates() 
     assert select_current_stage(
         [p0, p0m_old, p0_new, p0m_new],
         at_utc="2026-07-23T04:30:00Z",
-    ).checkpoint_id == "p0m-new"
+    ).checkpoint_id == "p0-new"
 
     p1 = ProbabilityEnvelope.from_mapping(
         {

@@ -79,17 +79,16 @@ def test_every_likelihood_feature_has_a_reader_facing_name() -> None:
 
 
 def test_the_observation_update_has_its_own_container() -> None:
-    """Charter 150: the four-layer container became the joint likelihood's,
-    and P0-M's TAF likelihood got a board of its own.  Charter 161
+    """Charter 150: the four-layer container became the joint likelihood's
+    (P0-M's TAF likelihood board left with charter 283).  Charter 161
     (2026-09-20) replaced g**alpha with the update fitted on the final P1,
     so the section is named for the slot rather than for one of its rules."""
 
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     assert '[p1JointBoard,"P1 观测更新"]' in source
     assert '[p1PathSkill,"P1 温度路径命中率"]' in source
-    assert '[p0mTafBoard,"P0-M TAF 似然"]' in source
+    assert "p0mTafBoard" not in source and "p0m_taf_likelihood" not in source
     assert '"p1_joint_likelihood": p1_joint_likelihood,' in source
-    assert '"p0m_taf_likelihood": p0m_taf_likelihood,' in source
     assert "fourLayerBoard" not in source
 
 
@@ -225,7 +224,7 @@ def test_the_section_leads_with_what_is_serving_and_keeps_g_alpha_as_fallback() 
 
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     start = source.index("function p1JointBoard(){")
-    body = source[start:source.index("function p0mTafBoard(){", start)]
+    body = source[start:source.index("// The newest day of a daily series", start)]
     assert "A.direct_update" in body, "the section reads charter 161's block"
     assert "F.served_update" in body, "and which rule each station actually served"
     lead = body.index("第 161 条：直接更新")
@@ -285,7 +284,7 @@ def test_charter_157s_station_clock_is_not_folded_into_the_fallback() -> None:
     )
     source = (ROOT / "scripts" / "calibration_dashboard.py").read_text(encoding="utf-8")
     start = source.index("function p1JointBoard(){")
-    body = source[start:source.index("function p0mTafBoard(){", start)]
+    body = source[start:source.index("// The newest day of a daily series", start)]
     clock = body.index("${clockNote}")
     fallback = body.index("<b>第 150 条：g<sup>α</sup></b>")
     assert clock < fallback, "the shared clock reads above the fallback fold"

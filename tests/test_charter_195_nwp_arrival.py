@@ -1,7 +1,8 @@
 """Charter 195: model runs captured on arrival, compiled on capture.
 
 (一) a run merged into the official inbox mid-cycle is compiled into P0 at the
-next fast-lane checkpoint -- P0, then P0-M, then P1 for what it re-rooted --
+next fast-lane checkpoint -- P0, then P1 for what it re-rooted (P0-M retired,
+charter 283) --
 instead of waiting for the next cycle's replay compile; and the arrival probe
 records when each run is actually on the server the capture reads, without
 starting anything.
@@ -26,11 +27,8 @@ MARK = (10, 0, "2026-09-22")
 def _worker(tmp_path, *, chain_ran=True):
     worker = object.__new__(pw.TargetProductionWorker)
     worker._stage_timings_ms = {}
-    worker.taf_inbox_path = tmp_path / "taf_inbox.json"
-    worker.taf_inbox_path.write_bytes(b"{}")
     worker.canonical_source_conn = object()
     worker._probability_chain_ran = chain_ran
-    worker._p0m_covered_taf_watermark = pw._taf_inbox_watermark(worker.taf_inbox_path)
     worker._p1_covered_watermark = MARK
     worker.nwp_runtime_root = tmp_path
     inbox = tmp_path / "official_native_ensemble_forward_inbox.json"
@@ -53,7 +51,7 @@ def test_an_unmoved_inbox_costs_nothing(monkeypatch, tmp_path) -> None:
     assert worker._fast_lane_checkpoint("before_decisions") is None
 
 
-def test_a_merged_run_after_the_chain_goes_p0_then_p0m_then_p1(monkeypatch, tmp_path) -> None:
+def test_a_merged_run_after_the_chain_goes_p0_then_p1(monkeypatch, tmp_path) -> None:
     worker, inbox = _worker(tmp_path)
     inbox.write_bytes(b'{"packets": ["new run"]}')
     order = []
@@ -63,13 +61,8 @@ def test_a_merged_run_after_the_chain_goes_p0_then_p0m_then_p1(monkeypatch, tmp_
         assert kwargs["official_watermark"] == pw._official_inbox_watermark(inbox)
         return {"state": "RAN", "new_envelopes": True, "rowid_before": 700}
 
-    def fake_p0m(**kwargs):
-        order.append(("p0m", kwargs["force"]))
-        return {"ran": True, "new_envelopes": True, "rowid_before": 710}
-
-    rooted = {700: [("ZUUU", "2026-09-23")], 710: [("ZUUU", "2026-09-23"), ("KLAX", "2026-09-22")]}
+    rooted = {700: [("ZUUU", "2026-09-23"), ("KLAX", "2026-09-22")]}
     monkeypatch.setattr(worker, "_fast_lane_official_p0", fake_p0)
-    monkeypatch.setattr(worker, "_materialize_early_p0m", fake_p0m)
     monkeypatch.setattr(worker, "_scopes_rooted_after", lambda mark: rooted.get(mark, []))
     seen = {}
 
@@ -80,7 +73,7 @@ def test_a_merged_run_after_the_chain_goes_p0_then_p0m_then_p1(monkeypatch, tmp_
 
     monkeypatch.setattr(worker, "_materialize_early_p1", fake_p1)
     receipt = worker._fast_lane_checkpoint("before_decisions")
-    assert order == [("p0", True), ("p0m", True), ("p1", None)]
+    assert order == [("p0", True), ("p1", None)]
     assert seen["only_scopes"] == {("ZUUU", "2026-09-23"), ("KLAX", "2026-09-22")}
     assert receipt["nwp_p0"]["new_envelopes"] is True
     # No new report: the covered report mark stays where it was.
@@ -93,7 +86,6 @@ def test_before_the_chain_a_merged_run_only_reaches_the_p0_inbox(monkeypatch, tm
     seen = {}
     monkeypatch.setattr(worker, "_fast_lane_official_p0",
                         lambda **k: seen.update(k) or {"state": "RAN", "new_envelopes": False})
-    monkeypatch.setattr(worker, "_materialize_early_p0m", lambda **k: pytest.fail("the chain re-roots"))
     monkeypatch.setattr(worker, "_materialize_early_p1", lambda **k: pytest.fail("the chain re-roots"))
     worker._fast_lane_checkpoint("before_decisions")
     assert seen["materialize"] is False

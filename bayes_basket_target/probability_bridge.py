@@ -23,7 +23,9 @@ from datetime import datetime
 from typing import Any
 
 from .atomic_ledger import ledger_span
-from .contracts import ContractError, ProbabilityEnvelope, canonical_json, content_sha256, timestamp_lt, timestamp_lte
+from .contracts import (
+    ContractError, ProbabilityEnvelope, RETIRED_STAGES, canonical_json, content_sha256, timestamp_lt, timestamp_lte,
+)
 from .materialization import (
     MATERIALIZATION_SCHEMA,
     insert_probability_envelope,
@@ -498,6 +500,9 @@ def _authoritative_history(
 
 
 def _select_authoritative_history(rows: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    # Charter 283: a retired stage's history is never the pointer -- a P0-M
+    # committed before the retirement must not outrank the P0 minted after it.
+    rows = [row for row in rows if str(row["stage"]) not in RETIRED_STAGES]
     if not rows:
         raise ContractError("xsb_probability_history_missing")
     # Stage authority is deliberately independent of the most recent P0 clock:
@@ -1243,6 +1248,8 @@ def _backfill_probability_bridges(
 
     authoritative: dict[tuple[str, str], ProbabilityEnvelope] = {}
     for envelope, _created in envelopes:
+        if envelope.stage in RETIRED_STAGES:
+            continue
         scope = (envelope.station_id, envelope.event_date)
         current = authoritative.get(scope)
         if current is None:

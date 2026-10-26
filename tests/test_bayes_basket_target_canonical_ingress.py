@@ -35,22 +35,6 @@ def _p0() -> ProbabilityEnvelope:
     })
 
 
-def _p0m() -> ProbabilityEnvelope:
-    p0 = _p0()
-    return ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
-        "stage": "P0-M",
-        "checkpoint_id": "p0m-canonical-test",
-        "decision_at_utc": "2026-07-23T05:05:00Z",
-        "posterior_version": "p0m-test",
-        "lineage": {
-            **p0.lineage,
-            "p0_root_checkpoint_id": p0.checkpoint_id,
-            "p0_root_content_sha256": p0.content_sha256,
-        },
-    })
-
-
 def _observation(
     conn: sqlite3.Connection,
     *,
@@ -86,7 +70,8 @@ def _observation(
 
 
 def _p1_kwargs(*, decision_at_utc: str = "2026-07-23T05:20:00Z") -> dict:
-    root = _p0m()
+    # Charter 283: P1 roots on the P0 itself.
+    root = _p0()
     packet = compile_station_p1_packets(
         predecessor=root,
         observations=[{

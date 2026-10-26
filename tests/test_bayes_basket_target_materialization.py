@@ -21,7 +21,6 @@ from bayes_basket_target import (
     content_sha256,
     insert_market_evidence_bundle,
     insert_probability_envelope,
-    materialize_p0m,
     materialize_p1,
 )
 from bayes_basket_target.materialization import (
@@ -210,22 +209,11 @@ def _lineage(*, event_id: str = "obs-1") -> dict[str, str]:
     }
 
 
-def _p0m_root(root: ProbabilityEnvelope) -> ProbabilityEnvelope:
-    if root.stage == "P0-M":
-        return root
+def _p1_root(root: ProbabilityEnvelope) -> ProbabilityEnvelope:
+    """The root a P1 compiles on: the P0 itself (charter 283 retired P0-M)."""
+
     assert root.stage == "P0"
-    return ProbabilityEnvelope.from_mapping({
-        **root.to_dict(),
-        "stage": "P0-M",
-        "checkpoint_id": f"{root.checkpoint_id}-p0m-root",
-        "decision_at_utc": "2026-07-23T05:00:00Z",
-        "posterior_version": "p0m-test",
-        "lineage": {
-            **root.lineage,
-            "p0_root_checkpoint_id": root.checkpoint_id,
-            "p0_root_content_sha256": root.content_sha256,
-        },
-    })
+    return root
 
 
 def _trajectory_packet(
@@ -234,9 +222,8 @@ def _trajectory_packet(
     event_id: str = "obs-1",
     temperature_c: float = 38.2,
     decision_at_utc: str = "2026-07-23T05:30:00Z",
-    use_p0m: bool = True,
 ) -> dict:
-    root = _p0m_root(root) if use_p0m else root
+    root = _p1_root(root)
     registry = [
         {
             "station_id": root.station_id,
@@ -395,64 +382,6 @@ def _taf_proof(
     )
 
 
-def test_production_schema_accepts_p0m_revision_stage() -> None:
-    with sqlite3.connect(":memory:") as conn:
-        result = apply_production_ssot_schema(conn)
-        assert result["ok"] is True
-        assert production_ssot_schema_status(conn)["probability_stage_contract_ok"] is True
-        sql = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='basket_probability_envelope'"
-        ).fetchone()[0]
-        assert "'P0-M'" in sql
-
-
-def test_cli_p0m_packet_uses_strict_asof_model_materializer() -> None:
-    artifacts = {model: _artifact(model, 0.0) for model in ("ECMWF", "GFS", "ICON")}
-    ensemble = _rehash_ensemble(_ensemble(), promoted=False)
-    # The ensemble activation must match the exact three-model mask.
-    from bayes_basket_target import model_set_hash
-
-    activations = [
-        _activation(
-            kind="MODEL_ENSEMBLE",
-            artifact_id="ens-1",
-            mask=model_set_hash(("ECMWF", "GFS", "ICON")),
-        ),
-        *[
-            _activation(kind="MODEL_CALIBRATION", artifact_id=f"cal-{model}", model=model)
-            for model in ("ECMWF", "GFS", "ICON")
-        ],
-    ]
-    packet = {
-        "stage": "P0",
-        "current_model_runs": [asdict(row) for row in _runs()],
-        "diagnostic_model_runs": [asdict(row) for row in _runs()],
-        "calibration_artifacts": {
-            model: {**asdict(row), "promoted": False}
-            for model, row in artifacts.items()
-        },
-        "diagnostic_calibration_artifacts": {
-            model: {**asdict(row), "promoted": False}
-            for model, row in artifacts.items()
-        },
-        "ensemble_artifact": asdict(ensemble),
-        "calibration_activations": [
-            {**asdict(row), "authority_scope": "PRODUCTION_NO_LIVE_ONLY"}
-            for row in activations
-        ],
-        "bucket_intervals": {"37": [None, 38.0], "38": [38.0, 39.0], "39": [39.0, None]},
-        "station_id": "ZUUU",
-        "event_date": "2026-07-23",
-        "settlement_timezone": "Asia/Shanghai",
-        "decision_at_utc": "2026-07-23T04:00:00Z",
-        "fresh_until_utc": "2026-07-23T05:00:00Z",
-        "bridge_sha256": "b" * 64,
-    }
-    envelope = _CLI.build_envelope(packet)
-    assert envelope.stage == "P0"
-    assert abs(sum(envelope.probabilities.values()) - 1.0) < 1e-9
-
-
 def test_direct_cli_p0_materialization_is_forbidden(
     tmp_path: Path,
 ) -> None:
@@ -472,201 +401,6 @@ def test_direct_cli_p0_materialization_is_forbidden(
             apply=False,
             confirm="",
         )
-
-
-def test_p0m_first_and_replacement_are_weak_only_and_asof_ordered() -> None:
-    p0 = _envelope()
-    artifact = _taf_artifact(station_id=p0.station_id)
-    first_revision = _forecast_revision()
-    first_proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=first_revision,
-        artifact=artifact,
-    )
-    first = materialize_p0m(
-        p0,
-        p0_root=p0,
-        taf_revision_artifact=artifact,
-        taf_revision_proof=first_proof,
-        decision_at_utc="2026-07-23T05:00:00Z",
-        fresh_until_utc="2026-07-23T06:00:00Z",
-        bridge_sha256="b" * 64,
-    )
-    assert first.stage == "P0-M"
-    assert first.lineage["p0_root_posterior_sha256"] == p0.posterior_sha256
-    assert first.lineage["taf_hard_exclusion"] == "FORBIDDEN"
-    assert first.lineage["taf_tx_calibrated_center_c"] == (
-        f"{first_proof.tx_calibrated_center_c:.17g}"
-    )
-    assert first.lineage["taf_tx_c"] == f"{first_proof.taf_tx_c:.17g}"
-    assert first.lineage["taf_physical_features_sha256"] == (
-        first_proof.physical_features_sha256
-    )
-    assert first.lineage["taf_cloud_cover_fraction"] == (
-        f"{first_proof.physical_features['cloud_cover_fraction']:.17g}"
-    )
-    assert first.lineage["taf_precipitation_probability"] == (
-        f"{first_proof.physical_features['precipitation_probability']:.17g}"
-    )
-    assert first.lineage["taf_wind_speed_normalized"] == (
-        f"{first_proof.physical_features['wind_speed_normalized']:.17g}"
-    )
-    assert first.lineage["taf_physically_confirmed_center_c"] == (
-        f"{first_proof.physically_confirmed_center_c:.17g}"
-    )
-    assert first.lineage["taf_physical_adjustment_c"] == (
-        f"{first_proof.physical_adjustment_c:.17g}"
-    )
-    assert first.lineage["taf_physical_confirmation_state"] == (
-        first_proof.physical_confirmation_state
-    )
-    assert first.lineage["taf_physical_consistency_factor"] == (
-        f"{first_proof.physical_consistency_factor:.17g}"
-    )
-    replacement_revision = _forecast_revision(
-        revision_id="taf-2",
-        kind="AMD",
-        sequence=2,
-        supersedes="taf-1",
-        source_sha="d" * 64,
-        received_at="2026-07-23T05:15:00Z",
-    )
-    replacement_proof = _taf_proof(
-        first,
-        p0_root=p0,
-        revision=replacement_revision,
-        artifact=artifact,
-        tx_c=39.0,
-        decision_at="2026-07-23T05:30:00Z",
-    )
-    replacement = materialize_p0m(
-        first,
-        revision=True,
-        p0_root=p0,
-        taf_revision_artifact=artifact,
-        taf_revision_proof=replacement_proof,
-        decision_at_utc="2026-07-23T05:30:00Z",
-        fresh_until_utc="2026-07-23T07:00:00Z",
-        bridge_sha256="b" * 64,
-    )
-    assert replacement.stage == "P0-M"
-    assert replacement.probabilities["39"] > first.probabilities["39"]
-    assert replacement.probabilities == replacement_proof.posterior_probabilities
-    assert replacement.lineage["revision_mode"] == "root_replacement"
-    with pytest.raises(ContractError, match="decision_time_rewind"):
-        materialize_p0m(
-            p0,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=first_proof,
-            decision_at_utc="2026-07-23T03:00:00Z",
-            fresh_until_utc="2026-07-23T05:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-
-def test_p0m_preserves_explicit_p0_bound_future_curve_lineage() -> None:
-    base = _envelope()
-    curve = build_root_future_temperature_curve({
-        "station_id": base.station_id,
-        "event_date": base.event_date,
-        "settlement_timezone": base.settlement_timezone,
-        "root_checkpoint_id": base.checkpoint_id,
-        "root_probability_sha256": base.posterior_sha256,
-        "available_at_utc": base.decision_at_utc,
-        "source_snapshot_sha256": "e" * 64,
-        "independence_family_ids": ["ECMWF", "NOAA_GEFS"],
-        "points": [
-            {"valid_time_utc": "2026-07-23T10:00:00Z", "temperature_c": 37.0},
-            {"valid_time_utc": "2026-07-23T14:00:00Z", "temperature_c": 38.0},
-            {"valid_time_utc": "2026-07-23T18:00:00Z", "temperature_c": 39.0},
-            {"valid_time_utc": "2026-07-23T22:00:00Z", "temperature_c": 38.0},
-        ],
-    })
-    p0 = ProbabilityEnvelope.from_mapping({
-        **base.to_dict(),
-        "lineage": {
-            **dict(base.lineage),
-            "conditional_future_temperature_curve_json": json.dumps(
-                curve.to_dict(), sort_keys=True, separators=(",", ":")
-            ),
-            "conditional_future_temperature_curve_sha256": curve.content_sha256,
-            "conditional_future_temperature_curve_root_stage": "P0",
-            "conditional_future_temperature_curve_root_checkpoint_id": base.checkpoint_id,
-            "conditional_future_temperature_curve_root_probability_sha256": base.posterior_sha256,
-        },
-    })
-    artifact = _taf_artifact(station_id=p0.station_id)
-    proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=_forecast_revision(),
-        artifact=artifact,
-    )
-    p0m = materialize_p0m(
-        p0,
-        p0_root=p0,
-        taf_revision_artifact=artifact,
-        taf_revision_proof=proof,
-        decision_at_utc="2026-07-23T05:00:00Z",
-        fresh_until_utc="2026-07-23T06:00:00Z",
-        bridge_sha256="b" * 64,
-    )
-    assert p0m.lineage["conditional_future_temperature_curve_sha256"] == (
-        curve.content_sha256
-    )
-    assert p0m.lineage[
-        "conditional_future_temperature_curve_root_checkpoint_id"
-    ] == p0.checkpoint_id
-    assert p0m.lineage["p0_root_posterior_sha256"] == p0.posterior_sha256
-
-
-def test_mixed_native_lineage_is_inherited_by_p0m_and_p1() -> None:
-    p0 = _mixed_native_envelope()
-    artifact = _taf_artifact(
-        station_id=p0.station_id,
-        run_cycle=p0.lineage["run_cycle"],
-        nwp_live_compatibility_fingerprint_sha256=(
-            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
-        ),
-    )
-    proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=_forecast_revision(revision_id="taf-mixed-native"),
-        artifact=artifact,
-    )
-    p0m = materialize_p0m(
-        p0,
-        p0_root=p0,
-        taf_revision_artifact=artifact,
-        taf_revision_proof=proof,
-        decision_at_utc="2026-07-23T05:00:00Z",
-        fresh_until_utc="2026-07-23T06:00:00Z",
-        bridge_sha256="b" * 64,
-    )
-    keys = (
-        "run_cycle",
-        "run_cycle_scope",
-        "run_cycle_by_system_json",
-        "run_init_utc_by_system_json",
-        "archive_query_at_utc_by_system_json",
-        "native_forward_availability_evidence_json",
-        "native_forward_lineage_sha256",
-        "taf_nwp_live_compatibility_fingerprint_sha256",
-        "taf_nwp_live_compatibility_json",
-    )
-    assert {key: p0m.lineage[key] for key in keys} == {
-        key: p0.lineage[key] for key in keys
-    }
-
-    p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(p0m, temperature_c=37.0)["expected_envelope"]
-    )
-    assert {key: p1.lineage[key] for key in keys} == {
-        key: p0.lineage[key] for key in keys
-    }
 
 
 def test_a_system_observed_but_not_selected_does_not_block_the_chain() -> None:
@@ -691,7 +425,7 @@ def test_a_system_observed_but_not_selected_does_not_block_the_chain() -> None:
     assert set(availability["by_system"]) > set(cycles)
 
     p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(_p0m_root(p0), temperature_c=37.0)[
+        _trajectory_packet(_p1_root(p0), temperature_c=37.0)[
             "expected_envelope"
         ]
     )
@@ -719,151 +453,7 @@ def test_a_system_in_use_without_a_receipt_still_fails_closed() -> None:
         },
     })
     with pytest.raises(ContractError):
-        _trajectory_packet(_p0m_root(stripped), temperature_c=37.0)
-
-
-@pytest.mark.parametrize(
-    "missing_key",
-    (
-        "run_cycle_scope",
-        "run_cycle_by_system_json",
-        "run_init_utc_by_system_json",
-        "archive_query_at_utc_by_system_json",
-        "native_forward_availability_evidence_json",
-        "native_forward_lineage_sha256",
-    ),
-)
-def test_mixed_native_lineage_missing_root_field_fails_closed(
-    missing_key: str,
-) -> None:
-    p0 = _mixed_native_envelope()
-    lineage = dict(p0.lineage)
-    lineage.pop(missing_key)
-    broken = ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
-        "lineage": lineage,
-    })
-    artifact = _taf_artifact(
-        station_id=p0.station_id,
-        run_cycle=p0.lineage["run_cycle"],
-        nwp_live_compatibility_fingerprint_sha256=(
-            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
-        ),
-    )
-    proof = _taf_proof(
-        broken,
-        p0_root=broken,
-        revision=_forecast_revision(revision_id="taf-mixed-missing"),
-        artifact=artifact,
-    )
-    with pytest.raises(ContractError, match="native_forward_lineage_missing"):
-        materialize_p0m(
-            broken,
-            p0_root=broken,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=proof,
-            decision_at_utc="2026-07-23T05:00:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-
-def test_mixed_native_lineage_predecessor_tampering_fails_closed() -> None:
-    p0 = _mixed_native_envelope()
-    lineage = dict(p0.lineage)
-    lineage["run_cycle_by_system_json"] = json.dumps(
-        {"ECMWF_ENS": "00Z", "GEPS": "00Z"},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    broken_predecessor = ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
-        "lineage": lineage,
-    })
-    artifact = _taf_artifact(
-        station_id=p0.station_id,
-        run_cycle=p0.lineage["run_cycle"],
-        nwp_live_compatibility_fingerprint_sha256=(
-            p0.lineage["taf_nwp_live_compatibility_fingerprint_sha256"]
-        ),
-    )
-    proof = _taf_proof(
-        broken_predecessor,
-        p0_root=p0,
-        revision=_forecast_revision(revision_id="taf-mixed-tampered"),
-        artifact=artifact,
-    )
-    with pytest.raises(ContractError, match="native_forward_lineage_conflict"):
-        materialize_p0m(
-            broken_predecessor,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=proof,
-            decision_at_utc="2026-07-23T05:00:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-
-def test_taf_low_high_low_revisions_replace_from_one_p0_root_without_accumulation() -> None:
-    p0 = _envelope()
-    artifact = _taf_artifact(station_id=p0.station_id)
-    revisions = (
-        _forecast_revision(revision_id="taf-low-1"),
-        _forecast_revision(
-            revision_id="taf-high-2",
-            kind="AMD",
-            sequence=2,
-            supersedes="taf-low-1",
-            source_sha="d" * 64,
-            received_at="2026-07-23T05:10:00Z",
-        ),
-        _forecast_revision(
-            revision_id="taf-low-3",
-            kind="COR",
-            sequence=3,
-            supersedes="taf-high-2",
-            source_sha="e" * 64,
-            received_at="2026-07-23T05:40:00Z",
-        ),
-    )
-    decisions = (
-        "2026-07-23T05:00:00Z",
-        "2026-07-23T05:30:00Z",
-        "2026-07-23T06:00:00Z",
-    )
-    tx_values = (37.0, 39.0, 37.0)
-    predecessor = p0
-    envelopes = []
-    for index, (revision, decision, tx_c) in enumerate(
-        zip(revisions, decisions, tx_values)
-    ):
-        proof = _taf_proof(
-            predecessor,
-            p0_root=p0,
-            revision=revision,
-            artifact=artifact,
-            tx_c=tx_c,
-            decision_at=decision,
-        )
-        predecessor = materialize_p0m(
-            predecessor,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=proof,
-            decision_at_utc=decision,
-            fresh_until_utc="2026-07-23T07:00:00Z",
-            bridge_sha256="b" * 64,
-            revision=index > 0,
-        )
-        envelopes.append(predecessor)
-
-    assert envelopes[0].probabilities == envelopes[2].probabilities
-    assert envelopes[1].probabilities["39"] > envelopes[0].probabilities["39"]
-    assert all(
-        envelope.lineage["p0_root_content_sha256"] == p0.content_sha256
-        for envelope in envelopes
-    )
+        _trajectory_packet(_p1_root(stripped), temperature_c=37.0)
 
 
 def test_taf_physical_conflict_discounts_correction_and_caps_mass_without_zeroing() -> None:
@@ -925,166 +515,6 @@ def test_taf_physical_conflict_discounts_correction_and_caps_mass_without_zeroin
         )
 
 
-def test_taf_matching_p0m_is_bounded_confirmation_not_a_second_center() -> None:
-    p0 = _envelope()
-    base_mean = sum(
-        p0.probabilities[bucket] * center
-        for bucket, center in {"37": 37.0, "38": 38.0, "39": 39.0}.items()
-    )
-    artifact = _taf_artifact(
-        station_id=p0.station_id,
-        tx_bias_c=0.0,
-        physical_feature_effect_c={
-            "cloud_cover_fraction": 0.0,
-            "precipitation_probability": 0.0,
-            "wind_speed_normalized": 0.0,
-        },
-    )
-    proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=_forecast_revision(revision_id="taf-confirmation"),
-        artifact=artifact,
-        tx_c=base_mean,
-    )
-    assert proof.mode == "CONFIRMATION"
-    assert proof.tx_calibrated_center_c == pytest.approx(base_mean)
-    assert proof.physically_confirmed_center_c == pytest.approx(base_mean)
-    assert proof.physical_confirmation_state == "NEUTRAL"
-    assert proof.center_displacement_buckets == 0
-    assert proof.probability_mass_transfer <= artifact.max_probability_mass_transfer
-    assert all(value > 0.0 for value in proof.posterior_probabilities.values())
-
-
-def test_taf_fails_closed_on_timezone_or_hard_exclusion_tampering() -> None:
-    p0 = _envelope()
-    wrong_timezone = _taf_artifact(
-        station_id=p0.station_id,
-        settlement_timezone="Asia/Seoul",
-    )
-    with pytest.raises(ContractError, match="settlement_timezone_mismatch"):
-        _taf_proof(
-            p0,
-            p0_root=p0,
-            revision=_forecast_revision(revision_id="taf-wrong-zone"),
-            artifact=wrong_timezone,
-        )
-
-    artifact = _taf_artifact(station_id=p0.station_id)
-    proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=_forecast_revision(revision_id="taf-no-hard-bound"),
-        artifact=artifact,
-    )
-    tampered = {
-        **proof.to_dict(include_content_sha256=False),
-        "hard_excluded_buckets": ["37"],
-    }
-    tampered["content_sha256"] = content_sha256(tampered)
-    from bayes_basket_target import TafRevisionProof
-
-    with pytest.raises(ContractError, match="hard_exclusion_forbidden"):
-        TafRevisionProof.from_mapping(tampered)
-
-    dishonest_mass = {
-        **proof.to_dict(include_content_sha256=False),
-        "probability_mass_transfer": 0.0,
-    }
-    dishonest_mass["content_sha256"] = content_sha256(dishonest_mass)
-    with pytest.raises(ContractError, match="mass_transfer_proof_mismatch"):
-        materialize_p0m(
-            p0,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=dishonest_mass,
-            decision_at_utc="2026-07-23T05:00:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-    dishonest_center = {
-        **proof.to_dict(include_content_sha256=False),
-        "center_after": "37" if proof.center_after != "37" else "39",
-    }
-    dishonest_center["content_sha256"] = content_sha256(dishonest_center)
-    with pytest.raises(ContractError, match="center_proof_mismatch"):
-        materialize_p0m(
-            p0,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=dishonest_center,
-            decision_at_utc="2026-07-23T05:00:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-    dishonest_physical_confirmation = {
-        **proof.to_dict(include_content_sha256=False),
-        "physically_confirmed_center_c":
-            proof.physically_confirmed_center_c + 0.25,
-    }
-    dishonest_physical_confirmation["content_sha256"] = content_sha256(
-        dishonest_physical_confirmation
-    )
-    with pytest.raises(
-        ContractError,
-        match="physical_second_confirmation_arithmetic_invalid",
-    ):
-        materialize_p0m(
-            p0,
-            p0_root=p0,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=dishonest_physical_confirmation,
-            decision_at_utc="2026-07-23T05:00:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
-
-
-def test_peripheral_model_reliability_lineage_survives_p0m_and_p1() -> None:
-    reliability = {"37": 0.0, "38": 0.8, "39": 0.2}
-    p0 = ProbabilityEnvelope.from_mapping(
-        {
-            **_envelope().to_dict(),
-            "checkpoint_id": "p0m-reliability-lineage",
-            "lineage": {
-                **_envelope().lineage,
-                "peripheral_model_reliability_by_bucket_json": json.dumps(
-                    reliability,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-        }
-    )
-    artifact = _taf_artifact(station_id=p0.station_id)
-    proof = _taf_proof(
-        p0,
-        p0_root=p0,
-        revision=_forecast_revision(revision_id="taf-reliability"),
-        artifact=artifact,
-    )
-    p0m = materialize_p0m(
-        p0,
-        p0_root=p0,
-        taf_revision_artifact=artifact,
-        taf_revision_proof=proof,
-        decision_at_utc="2026-07-23T05:00:00Z",
-        fresh_until_utc="2026-07-23T06:00:00Z",
-        bridge_sha256="b" * 64,
-    )
-    p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(
-            p0m, temperature_c=37.0
-        )["expected_envelope"]
-    )
-
-    key = "peripheral_model_reliability_by_bucket_json"
-    assert json.loads(p0m.lineage[key]) == reliability
-    assert json.loads(p1.lineage[key]) == reliability
-
-
 def test_without_a_likelihood_artifact_p1_is_the_root_under_the_hard_bound() -> None:
     """Charter 150: no artifact, no likelihood -- and the receipt says so.
 
@@ -1093,176 +523,13 @@ def test_without_a_likelihood_artifact_p1_is_the_root_under_the_hard_bound() -> 
     tests/test_charter_150_p1_joint_likelihood.py.
     """
 
-    root = _p0m_root(_envelope())
+    root = _p1_root(_envelope())
     left = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
     right = _trajectory_packet(root, temperature_c=37.0)["expected_envelope"]
     assert left == right
     assert "metar_ceiling_json" not in left["lineage"]
     receipt = json.loads(left["lineage"]["p1_observation_likelihood_json"])
     assert receipt["state"] == "SILENT_NO_ARTIFACT"
-
-
-def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
-    p0 = _envelope()
-    p0m = _p0m_root(p0)
-    p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(p0m)["expected_envelope"]
-    )
-    assert p1.stage == "P1"
-    assert p1.probabilities["37"] == 0.0
-    assert abs(sum(p1.probabilities.values()) - 1.0) < 1e-9
-    assert p1.lineage["canonical_observation_event_id"] == "obs-1"
-    assert p1.lineage["canonical_observation_sha256"] == "a" * 64
-    assert (
-        p1.lineage["canonical_observation_committed_at"]
-        == "2026-07-23T05:30:00.000000Z"
-    )
-    assert p1.lineage["source_lane"] == "AWC"
-    assert p1.lineage["report_type"] == "METAR"
-    assert p1.lineage["prediction_root_stage"] == "P0-M"
-    assert p1.lineage["prediction_root_checkpoint_id"] == p0m.checkpoint_id
-    assert p1.lineage["p0_root_checkpoint_id"] == p0.checkpoint_id
-    assert p1.lineage["p0_root_content_sha256"] == p0.content_sha256
-    assert p1.lineage["metar_trajectory_direction_role"] == (
-        "DIAGNOSTIC_ONLY_BASKET_RECOMPUTES_POLICY_DIRECTION"
-    )
-    assert p1.lineage["metar_trajectory_positive_core_role"] == (
-        "DIAGNOSTIC_POSITIVE_PROBABILITY_SUPPORT_NOT_BASKET_CORE"
-    )
-    facts = target_atomic_facts_from_cycle(
-        {"probability_envelope": p1.to_dict()}
-    )
-    # The atomic root is the observation *contract*, not a reconstructed
-    # observation row: this used to assert a "observation" fact assembled from
-    # the lineage, and that key no longer exists.  What identifies the
-    # observation now is the PR12 revision hash the truth ledger is keyed on.
-    assert set(facts) == {
-        "awc_observation_contract",
-        "truth_observation_revision_content_sha256",
-        "bound",
-    }
-    assert facts["truth_observation_revision_content_sha256"] == "b" * 64
-    assert (
-        facts["truth_observation_revision_content_sha256"]
-        == p1.lineage["truth_observation_revision_content_sha256"]
-    )
-    assert facts["bound"]["bound_id"] == p1.lineage["hard_bound_id"]
-    assert facts["bound"]["station_id"] == p1.station_id
-    assert facts["bound"]["event_date"] == p1.event_date
-
-    with sqlite3.connect(":memory:") as conn:
-        conn.row_factory = sqlite3.Row
-        apply_production_ssot_schema(conn)
-        p0_row = insert_probability_envelope(
-            conn, p0, created_at_utc="2026-07-23T04:01:00Z"
-        )
-        p0m_row = insert_probability_envelope(
-            conn, p0m, created_at_utc="2026-07-23T05:00:00Z"
-        )
-        p1_row = insert_probability_envelope(
-            conn, p1, created_at_utc="2026-07-23T05:01:00Z"
-        )
-        assert p0_row["wrote"] is True
-        assert p0m_row["wrote"] is True
-        assert p1_row["wrote"] is True
-        assert insert_probability_envelope(
-            conn, p1, created_at_utc="2026-07-23T05:02:00Z"
-        )["wrote"] is False
-
-        altered = ProbabilityEnvelope.from_mapping(
-            _trajectory_packet(
-                p0m,
-                temperature_c=39.0,
-                decision_at_utc="2026-07-23T05:35:00Z",
-            )["expected_envelope"]
-        )
-        with pytest.raises(ContractError, match="already_consumed"):
-            insert_probability_envelope(
-                conn, altered, created_at_utc="2026-07-23T05:06:00Z"
-            )
-
-
-def test_a_second_p0m_on_one_p0_root_starts_a_p1_branch_that_commits() -> None:
-    """A fresh P0-M ends the old P1 branch; its first P1 is not a repeat.
-
-    Consume-once was keyed on ``(canonical_observation_event_id,
-    p0_root_checkpoint_id)``, but the branch the compiler works on is the
-    prediction root.  A second P0-M on an unchanged P0 root is routine -- 365
-    station-days carried one between 2026-08-20 and 08-26 -- and it correctly
-    makes the compiler replay the day's observations against the new root and
-    emit that branch's first, non-reaffirming P1.  The old key read that as
-    the same evidence answered twice, and EGLC's P1 fail-closed every cycle
-    from 05:54Z on 2026-08-26 until the key named the branch too.
-    """
-
-    p0 = _envelope()
-    first_root = _p0m_root(p0)
-    second_root = ProbabilityEnvelope.from_mapping({
-        **first_root.to_dict(),
-        "checkpoint_id": f"{p0.checkpoint_id}-p0m-root-2",
-        "decision_at_utc": "2026-07-23T05:20:00Z",
-        "posterior_version": "p0m-test-revised",
-    })
-    # Same P0 root, different prediction root -- exactly the shape that wedged.
-    assert (
-        second_root.lineage["p0_root_checkpoint_id"]
-        == first_root.lineage["p0_root_checkpoint_id"]
-    )
-    assert second_root.checkpoint_id != first_root.checkpoint_id
-    assert second_root.content_sha256 != first_root.content_sha256
-
-    first_p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(first_root, temperature_c=38.2)["expected_envelope"]
-    )
-    second_p1 = ProbabilityEnvelope.from_mapping(
-        _trajectory_packet(
-            second_root,
-            temperature_c=38.2,
-            decision_at_utc="2026-07-23T05:40:00Z",
-        )["expected_envelope"]
-    )
-    # The same observation event on both branches, which is what the guard
-    # was reading as a repeat.
-    assert (
-        second_p1.lineage["canonical_observation_event_id"]
-        == first_p1.lineage["canonical_observation_event_id"]
-    )
-    assert not second_p1.lineage.get("reaffirmation_of_checkpoint_id")
-
-    with sqlite3.connect(":memory:") as conn:
-        conn.row_factory = sqlite3.Row
-        apply_production_ssot_schema(conn)
-        for envelope, created in (
-            (p0, "2026-07-23T04:01:00Z"),
-            (first_root, "2026-07-23T05:00:00Z"),
-            (first_p1, "2026-07-23T05:31:00Z"),
-            (second_root, "2026-07-23T05:20:00Z"),
-        ):
-            assert insert_probability_envelope(
-                conn, envelope, created_at_utc=created
-            )["wrote"] is True
-
-        receipt = insert_probability_envelope(
-            conn, second_p1, created_at_utc="2026-07-23T05:41:00Z"
-        )
-        assert receipt["wrote"] is True
-        assert conn.execute(
-            "SELECT COUNT(*) FROM basket_probability_envelope WHERE stage='P1'"
-        ).fetchone()[0] == 2
-
-        # And within the new branch the guard is unchanged: the same evidence
-        # still may not produce a second, different answer.
-        altered = ProbabilityEnvelope.from_mapping(
-            _trajectory_packet(
-                second_root,
-                temperature_c=39.0,
-                decision_at_utc="2026-07-23T05:45:00Z",
-            )["expected_envelope"]
-        )
-        with pytest.raises(ContractError, match="already_consumed"):
-            insert_probability_envelope(
-                conn, altered, created_at_utc="2026-07-23T05:46:00Z"
-            )
 
 
 def test_p1_rejects_legacy_raw_likelihood_boundary() -> None:
@@ -1276,60 +543,6 @@ def test_p1_rejects_legacy_raw_likelihood_boundary() -> None:
         _CLI.build_envelope(packet)
 
 
-def test_materialize_p1_accepts_p0_prediction_root_without_taf() -> None:
-    p0 = _envelope()
-    packet = _trajectory_packet(p0, use_p0m=False)
-    p1 = materialize_p1(
-        p0,
-        prediction_root=p0,
-        trajectory_artifact=packet["trajectory_artifact"],
-        trajectory_proof=packet["trajectory_proof"],
-        trajectory_observations=packet["trajectory_observations"],
-        bucket_centers_c=packet["bucket_centers_c"],
-        bucket_upper_bounds_c=packet["bucket_upper_bounds_c"],
-        reported_high_advanced=packet["reported_high_advanced"],
-        decision_at_utc=packet["decision_at_utc"],
-        fresh_until_utc=packet["fresh_until_utc"],
-        bridge_sha256=p0.bridge_sha256,
-    )
-    assert p1.stage == "P1"
-    assert p1.lineage["prediction_root_stage"] == "P0"
-
-
-def test_materialize_p1_rejects_cross_prediction_root_predecessor() -> None:
-    """A P0-root P1 cannot silently continue on a later P0-M branch."""
-
-    p0 = _envelope()
-    p0m = _p0m_root(p0)
-    p0_packet = _trajectory_packet(p0, use_p0m=False)
-    p0_p1 = ProbabilityEnvelope.from_mapping(
-        p0_packet["expected_envelope"]
-    )
-    p0m_packet = _trajectory_packet(
-        p0m,
-        event_id="obs-2",
-        decision_at_utc="2026-07-23T05:31:00Z",
-    )
-
-    with pytest.raises(
-        ContractError,
-        match="p1_predecessor_root_stage_mismatch",
-    ):
-        materialize_p1(
-            p0_p1,
-            prediction_root=p0m,
-            trajectory_artifact=p0m_packet["trajectory_artifact"],
-            trajectory_proof=p0m_packet["trajectory_proof"],
-            trajectory_observations=p0m_packet["trajectory_observations"],
-            bucket_centers_c=p0m_packet["bucket_centers_c"],
-            bucket_upper_bounds_c=p0m_packet["bucket_upper_bounds_c"],
-            reported_high_advanced=p0m_packet["reported_high_advanced"],
-            decision_at_utc=p0m_packet["decision_at_utc"],
-            fresh_until_utc=p0m_packet["fresh_until_utc"],
-            bridge_sha256=p0.bridge_sha256,
-        )
-
-
 def test_p1_with_no_hard_exclusions_records_explicit_none_lineage() -> None:
     p0 = _envelope()
     p1 = ProbabilityEnvelope.from_mapping(
@@ -1338,28 +551,6 @@ def test_p1_with_no_hard_exclusions_records_explicit_none_lineage() -> None:
         )["expected_envelope"]
     )
     assert p1.lineage["hard_excluded_buckets"] == "NONE"
-
-
-def test_cli_packet_boundary_rejects_unknown_fields_and_builds_no_live_p1() -> None:
-    p0 = _envelope().to_dict()
-    rich = _trajectory_packet(_envelope())
-    packet = materialization_packet(rich)
-    assert set(packet) <= _CLI.ALLOWED_KEYS
-    envelope = _CLI.build_envelope(packet)
-    assert envelope.stage == "P1"
-    assert envelope.probabilities["37"] == 0.0
-    with pytest.raises(ContractError, match="unknown_fields"):
-        _CLI.build_envelope({**packet, "raw_metar": {"temperature": 38.0}})
-    with pytest.raises(ContractError, match="unknown_fields"):
-        _CLI.build_envelope(
-            {
-                "stage": "P0-M",
-                "predecessor": p0,
-                "likelihood_ratio_by_bucket": {
-                    bucket: 1.0 for bucket in p0["probabilities"]
-                },
-            }
-        )
 
 
 def test_official_ws_inventory_order_state_bundle_is_atomic_and_monotone() -> None:
@@ -1713,55 +904,6 @@ def test_probability_insert_replay_is_idempotent_but_same_stage_instant_conflict
         ).fetchone()[0] == 1
 
 
-def test_a_descendant_root_recovers_the_capture_cycle_from_its_document() -> None:
-    """A P1 may root on a P0-M, which does not inherit the capture cycle key.
-
-    Two encodings of "did the systems ride different cycles" live in a P0
-    root.  ``run_cycle_scope`` is inherited by every stage; the capture cycle
-    itself is written by the P0 compiler under ``native_forward_run_cycle``
-    and deliberately not inherited.  Reading the calibration ``run_cycle`` in
-    its place compares the scope an activation was fitted under against a
-    question about what the archive delivered -- and that refused 86 P0-M
-    roots across 27 stations, KAUS on 2026-09-02 among them, each a P1
-    blocked on a disagreement that was not one.
-
-    The value is not lost: the compatibility document carries it, that
-    document is inherited, and it is bound by its own hash.  This pins the
-    shape that broke -- a mixed-cycle root whose top level says only the
-    calibration cycle -- and the P0 shape it must not disturb.
-    """
-
-    p0 = _mixed_native_envelope()
-    # The descendant shape: the capture cycle key is gone and the top level
-    # carries the calibration cycle instead.  Everything else is inherited.
-    descendant = ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
-        "lineage": {
-            **{
-                key: value for key, value in p0.lineage.items()
-                if key != "native_forward_run_cycle"
-            },
-            "run_cycle": "00Z",
-        },
-    })
-    recovered = _native_forward_lineage(
-        "P1", root=descendant, predecessor=descendant
-    )
-    assert recovered["run_cycle_scope"] == "PER_SYSTEM_NATIVE_CYCLE"
-
-    # A P0 root that states the capture cycle at the top level is unchanged,
-    # and the cross-check it gets is still the strict one.
-    stated = ProbabilityEnvelope.from_mapping({
-        **p0.to_dict(),
-        "lineage": {
-            **p0.lineage,
-            "native_forward_run_cycle": "MIXED_NATIVE_CYCLES",
-            "run_cycle": "00Z",
-        },
-    })
-    assert _native_forward_lineage("P1", root=stated, predecessor=stated)
-
-
 def test_a_scope_the_document_contradicts_still_fails_closed() -> None:
     """Recovery is not permission: the two must still agree.
 
@@ -1811,3 +953,170 @@ def test_an_unreadable_document_falls_back_rather_than_refusing() -> None:
         # The document itself is checked later and is genuinely broken here;
         # what matters is that the failure names the document, not the scope.
         _native_forward_lineage("P1", root=broken, predecessor=broken)
+
+
+def test_p1_consumes_canonical_event_once_and_applies_hard_support() -> None:
+    p0 = _envelope()
+    p1 = ProbabilityEnvelope.from_mapping(
+        _trajectory_packet(p0)["expected_envelope"]
+    )
+    assert p1.stage == "P1"
+    assert p1.probabilities["37"] == 0.0
+    assert abs(sum(p1.probabilities.values()) - 1.0) < 1e-9
+    assert p1.lineage["canonical_observation_event_id"] == "obs-1"
+    assert p1.lineage["canonical_observation_sha256"] == "a" * 64
+    assert (
+        p1.lineage["canonical_observation_committed_at"]
+        == "2026-07-23T05:30:00.000000Z"
+    )
+    assert p1.lineage["source_lane"] == "AWC"
+    assert p1.lineage["report_type"] == "METAR"
+    assert p1.lineage["prediction_root_stage"] == "P0"
+    assert p1.lineage["prediction_root_checkpoint_id"] == p0.checkpoint_id
+    assert p1.lineage["p0_root_checkpoint_id"] == p0.checkpoint_id
+    assert p1.lineage["p0_root_content_sha256"] == p0.content_sha256
+    assert p1.lineage["metar_trajectory_direction_role"] == (
+        "DIAGNOSTIC_ONLY_BASKET_RECOMPUTES_POLICY_DIRECTION"
+    )
+    assert p1.lineage["metar_trajectory_positive_core_role"] == (
+        "DIAGNOSTIC_POSITIVE_PROBABILITY_SUPPORT_NOT_BASKET_CORE"
+    )
+    facts = target_atomic_facts_from_cycle(
+        {"probability_envelope": p1.to_dict()}
+    )
+    # The atomic root is the observation *contract*, not a reconstructed
+    # observation row: this used to assert a "observation" fact assembled from
+    # the lineage, and that key no longer exists.  What identifies the
+    # observation now is the PR12 revision hash the truth ledger is keyed on.
+    assert set(facts) == {
+        "awc_observation_contract",
+        "truth_observation_revision_content_sha256",
+        "bound",
+    }
+    assert facts["truth_observation_revision_content_sha256"] == "b" * 64
+    assert (
+        facts["truth_observation_revision_content_sha256"]
+        == p1.lineage["truth_observation_revision_content_sha256"]
+    )
+    assert facts["bound"]["bound_id"] == p1.lineage["hard_bound_id"]
+    assert facts["bound"]["station_id"] == p1.station_id
+    assert facts["bound"]["event_date"] == p1.event_date
+
+    with sqlite3.connect(":memory:") as conn:
+        conn.row_factory = sqlite3.Row
+        apply_production_ssot_schema(conn)
+        p0_row = insert_probability_envelope(
+            conn, p0, created_at_utc="2026-07-23T04:01:00Z"
+        )
+        p1_row = insert_probability_envelope(
+            conn, p1, created_at_utc="2026-07-23T05:01:00Z"
+        )
+        assert p0_row["wrote"] is True
+        assert p1_row["wrote"] is True
+        assert insert_probability_envelope(
+            conn, p1, created_at_utc="2026-07-23T05:02:00Z"
+        )["wrote"] is False
+
+        altered = ProbabilityEnvelope.from_mapping(
+            _trajectory_packet(
+                p0,
+                temperature_c=39.0,
+                decision_at_utc="2026-07-23T05:35:00Z",
+            )["expected_envelope"]
+        )
+        with pytest.raises(ContractError, match="already_consumed"):
+            insert_probability_envelope(
+                conn, altered, created_at_utc="2026-07-23T05:06:00Z"
+            )
+
+
+def test_materialize_p1_accepts_p0_prediction_root_without_taf() -> None:
+    p0 = _envelope()
+    packet = _trajectory_packet(p0)
+    p1 = materialize_p1(
+        p0,
+        prediction_root=p0,
+        trajectory_artifact=packet["trajectory_artifact"],
+        trajectory_proof=packet["trajectory_proof"],
+        trajectory_observations=packet["trajectory_observations"],
+        bucket_centers_c=packet["bucket_centers_c"],
+        bucket_upper_bounds_c=packet["bucket_upper_bounds_c"],
+        reported_high_advanced=packet["reported_high_advanced"],
+        decision_at_utc=packet["decision_at_utc"],
+        fresh_until_utc=packet["fresh_until_utc"],
+        bridge_sha256=p0.bridge_sha256,
+    )
+    assert p1.stage == "P1"
+    assert p1.lineage["prediction_root_stage"] == "P0"
+
+
+def test_cli_packet_boundary_rejects_unknown_fields_and_builds_no_live_p1() -> None:
+    p0 = _envelope().to_dict()
+    rich = _trajectory_packet(_envelope())
+    packet = materialization_packet(rich)
+    assert set(packet) <= _CLI.ALLOWED_KEYS
+    envelope = _CLI.build_envelope(packet)
+    assert envelope.stage == "P1"
+    assert envelope.probabilities["37"] == 0.0
+    with pytest.raises(ContractError, match="unknown_fields"):
+        _CLI.build_envelope({**packet, "raw_metar": {"temperature": 38.0}})
+    with pytest.raises(ContractError, match="unknown_fields"):
+        _CLI.build_envelope(
+            {
+                "stage": "P0-M",
+                "predecessor": p0,
+                "likelihood_ratio_by_bucket": {
+                    bucket: 1.0 for bucket in p0["probabilities"]
+                },
+            }
+        )
+
+
+def test_a_descendant_root_recovers_the_capture_cycle_from_its_document() -> None:
+    """A descendant root does not inherit the capture cycle key (the P0-M roots of
+    the history before charter 283 are the case that broke).
+
+    Two encodings of "did the systems ride different cycles" live in a P0
+    root.  ``run_cycle_scope`` is inherited by every stage; the capture cycle
+    itself is written by the P0 compiler under ``native_forward_run_cycle``
+    and deliberately not inherited.  Reading the calibration ``run_cycle`` in
+    its place compares the scope an activation was fitted under against a
+    question about what the archive delivered -- and that refused 86 P0-M
+    roots across 27 stations, KAUS on 2026-09-02 among them, each a P1
+    blocked on a disagreement that was not one.
+
+    The value is not lost: the compatibility document carries it, that
+    document is inherited, and it is bound by its own hash.  This pins the
+    shape that broke -- a mixed-cycle root whose top level says only the
+    calibration cycle -- and the P0 shape it must not disturb.
+    """
+
+    p0 = _mixed_native_envelope()
+    # The descendant shape: the capture cycle key is gone and the top level
+    # carries the calibration cycle instead.  Everything else is inherited.
+    descendant = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **{
+                key: value for key, value in p0.lineage.items()
+                if key != "native_forward_run_cycle"
+            },
+            "run_cycle": "00Z",
+        },
+    })
+    recovered = _native_forward_lineage(
+        "P1", root=descendant, predecessor=descendant
+    )
+    assert recovered["run_cycle_scope"] == "PER_SYSTEM_NATIVE_CYCLE"
+
+    # A P0 root that states the capture cycle at the top level is unchanged,
+    # and the cross-check it gets is still the strict one.
+    stated = ProbabilityEnvelope.from_mapping({
+        **p0.to_dict(),
+        "lineage": {
+            **p0.lineage,
+            "native_forward_run_cycle": "MIXED_NATIVE_CYCLES",
+            "run_cycle": "00Z",
+        },
+    })
+    assert _native_forward_lineage("P1", root=stated, predecessor=stated)

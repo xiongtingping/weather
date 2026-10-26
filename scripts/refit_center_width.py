@@ -129,7 +129,7 @@ def main() -> int:
         # The first stamp for a stage falls back to when the version it serves
         # first appeared, because an empty table means nobody had looked, not
         # that the shape is new.
-        for stage in ("P0", "P0-M", "P1"):
+        for stage in ("P0", "P1"):
             try:
                 serving_arithmetic.record(
                     conn, stage=stage,

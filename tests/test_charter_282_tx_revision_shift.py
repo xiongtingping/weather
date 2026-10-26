@@ -27,7 +27,7 @@ from bayes_basket_target.p1_compiler import compile_station_p1_packets  # noqa: 
 from bayes_basket_target.probability_packet import build_probability_envelope  # noqa: E402
 from bayes_basket_target.p1_compiler import materialization_packet  # noqa: E402
 from tests.test_charter_150_p1_joint_likelihood import (  # noqa: E402
-    _envelope, _observation, _p0m_root, _registry,
+    _envelope, _observation, _p1_root, _registry,
 )
 
 TZ = "America/New_York"
@@ -99,7 +99,7 @@ def test_a_ruled_out_bucket_stays_at_zero():
 
 
 def _compile(at, **kw):
-    root = _p0m_root(_envelope())
+    root = _p1_root(_envelope())
     packets = compile_station_p1_packets(
         predecessor=root, observations=[_observation(root, "a", at, 36.8)],
         registry_rows=_registry(root), compilation_at_utc=at, **kw,
@@ -113,7 +113,7 @@ def test_the_p1_compile_moves_after_the_bound_and_rides_the_packet():
     receipt = json.loads(envelope["lineage"][TXR.LINEAGE_KEY])
     assert receipt["state"] == "SERVED"
     assert envelope["probabilities"]["39"] > receipt["pre_shift_probabilities"]["39"]
-    assert envelope["posterior_version"] == "p1_joint_likelihood_v48"
+    assert envelope["posterior_version"] == "p1_joint_likelihood_v49"
     # The strict materializer rebuilds the same envelope from the packet alone.
     packet = {**packets[-1], "expected_envelope": envelope}
     rebuilt = build_probability_envelope(materialization_packet(packet))

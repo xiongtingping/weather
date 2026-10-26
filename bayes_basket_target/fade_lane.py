@@ -4,17 +4,13 @@ User ruling 2026-10-22 「把格 A 和格 B 做成车道并开启实盘，单笔
 
 Measured on the served record 09-12..10-20 (``docs/research/p0_mode_hit_20261021``,
 补记五, ``PROTOCOL_DIRECTIONAL.md``): the truth lands on the far side of the
-market from the model's disagreement.  Where the P0-M mode sits warm of the
-market's mode the truth runs 0.187 buckets cold of the market mean; where the
-P0 mode (more than 36 h out) sits cold of the market's, 0.175 warm.  Two legs
-carried that at the taker price, each on first decisions, each positive on
-both halves, odd and even days, September and October:
+market from the model's disagreement.  Where the P0 mode (more than 36 h out)
+sits cold of the market's, the truth runs 0.175 buckets warm of the market
+mean.  The leg carried that at the taker price on first decisions, positive
+on both halves, odd and even days, September and October.  (反向线 A, the
+P0-M leg, was deleted with P0-M: charter 283, 2026-10-26 「反向线 A 随 P0-M
+一起删除」.)
 
-* **反向线 A** (``fade_p0m``): the station-day's newest stage is P0-M and its
-  served mode is warm of the market's mode -> buy YES on the bucket one rung
-  COLD of the market's mode, at the best ask.  670 decisions, +5.3 cents a
-  share [+1.4, +9.2], cost 0.17 a share; unconditionally that bucket pays
-  +0.6, with the model cold of the market -4.0, the model's own side -5.2.
 * **反向线 B** (``fade_p0``): the newest stage is P0, more than 36 h out, the
   model's mode is not the market's and the two means are more than
   ``min_mean_gap_rungs`` (0.76) rungs apart -> buy NO on the MODEL's mode at
@@ -22,7 +18,7 @@ both halves, odd and even days, September and October:
   [+0.6, +5.3] on a 0.84 cost; the threshold is the tercile cut it was read
   at (0.5 / 1.0 / 1.3 gave +1.1 / +0.8 / -0.3).
 
-Both are FOK takes sized up to ``stake_usdc`` and capped by the depth at the
+It is a FOK take sized up to ``stake_usdc`` and capped by the depth at the
 level they cross (the P1 tail lane's headroom), once a station-day, held to
 settlement.  Every station-day the rule looks at is written down in
 ``fade_lane_evaluation`` -- sent, filled, killed or refused -- so the forward
@@ -30,7 +26,7 @@ read is the whole population, not the legs.  Nothing is read or written while
 ``data/live_paused.flag`` is up or the arming flag is down.
 
 The model sets the DIRECTION only: which rung, which side.  It sets no price
-and no size, and nothing here enters P0, P0-M or P1.
+and no size, and nothing here enters P0 or P1.
 """
 
 from __future__ import annotations
@@ -55,9 +51,7 @@ from . import realisation_store
 from .settlement_time import hours_to_settlement, settlement_day_state
 from .strategy_lanes import (
     FADE_P0_DEFAULT_SETTINGS,
-    FADE_P0M_DEFAULT_SETTINGS,
     LANE_FADE_P0,
-    LANE_FADE_P0M,
     lane_settings,
 )
 from .tail_short_lane import (
@@ -74,23 +68,21 @@ from .tiebreak_lane import _cash_refusal, settle_stuck_lane_cycles
 
 STRATEGY_ID = "bayes_basket_target_v1"
 SCHEMA = "fade_lane_plan_v1"
-RULE_A = "p0m_warm_fade_cold_neighbour_yes_taker_v1"
 RULE_B = "p0_far_disagreement_fade_model_mode_no_taker_v1"
-RULE_VERSIONS = {RULE_A: "fade_lane_a_v1", RULE_B: "fade_lane_b_v1"}
+RULE_VERSIONS = {RULE_B: "fade_lane_b_v1"}
 EXECUTION_CANDIDATE = "TAKER_FOK"
 #: The venue's floor on a marketable BUY's notional (USDC), learned from its
 #: refusal on 2026-10-21/22 ("invalid amount for a marketable BUY order
 #: ($0.4), min size: 1"); the five-share minimum is a separate rule.
 MIN_MARKETABLE_NOTIONAL_USDC = 1.0
 EVALUATION_TABLE = "fade_lane_evaluation"
-INTENT_PREFIX = {LANE_FADE_P0M: "fadep0m", LANE_FADE_P0: "fadep0"}
-TITLES = {LANE_FADE_P0M: "反向线 A", LANE_FADE_P0: "反向线 B"}
-DEFAULTS = {LANE_FADE_P0M: FADE_P0M_DEFAULT_SETTINGS, LANE_FADE_P0: FADE_P0_DEFAULT_SETTINGS}
+INTENT_PREFIX = {LANE_FADE_P0: "fadep0"}
+TITLES = {LANE_FADE_P0: "反向线 B"}
+DEFAULTS = {LANE_FADE_P0: FADE_P0_DEFAULT_SETTINGS}
 #: Refusals of the rule itself -- the station-day is looked at again next
 #: cycle; a refusal written once a station-day.
 SIGNAL_REFUSALS = frozenset({
-    "signal:modes_agree", "signal:model_not_warm_of_market", "signal:model_not_cold_of_market",
-    "signal:mean_gap_small", "signal:no_cold_neighbour",
+    "signal:modes_agree", "signal:mean_gap_small",
 })
 
 Admission = Callable[[str, sqlite3.Connection], Mapping[str, Any]]
@@ -204,16 +196,6 @@ def fade_reading(
     }
     if pm == qm:
         out["refusal"] = "signal:modes_agree"
-        return out
-    if rule == RULE_A:
-        if pm < qm:
-            out["refusal"] = "signal:model_not_warm_of_market"
-            return out
-        if qm == 0:
-            out["refusal"] = "signal:no_cold_neighbour"
-            return out
-        target = qm - 1
-        out["leg"] = {"bucket": order[target], "side": "YES", "p": p[target], "q": q[target]}
         return out
     if rule == RULE_B:
         if abs(mean_gap) <= float(min_mean_gap_rungs):
@@ -605,7 +587,7 @@ def execute_fade(
 
 
 __all__ = [
-    "EVALUATION_TABLE", "EXECUTION_CANDIDATE", "INTENT_PREFIX", "RULE_A", "RULE_B", "RULE_VERSIONS",
+    "EVALUATION_TABLE", "EXECUTION_CANDIDATE", "INTENT_PREFIX", "RULE_B", "RULE_VERSIONS",
     "SIGNAL_REFUSALS", "TITLES", "ensure_lane_schema", "execute_fade", "fade_reading", "lane_cost_today",
     "plan_fade",
 ]

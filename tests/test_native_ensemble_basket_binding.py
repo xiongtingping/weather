@@ -129,7 +129,7 @@ def _scenario(*, source_kind: str = "official_native") -> dict[str, object]:
 def _envelope(stage: str, checkpoint: str, *, decision: str = "2026-07-31T00:00:00Z") -> dict[str, object]:
     lineage: dict[str, object] = {"authority": "materialized_stage", "stage": stage}
     if stage == "P1":
-        lineage["prediction_root_stage"] = "P0-M"
+        lineage["prediction_root_stage"] = "P0"
     return {
         "schema": "bayes_basket_probability_envelope_v1",
         "stage": stage,
@@ -174,11 +174,11 @@ def test_selector_inbox_schema_is_accepted_and_stage_fallback_is_explicit():
     scenario["content_sha256"] = content_sha256(identity)
     result = build_native_ensemble_basket_binding(
         scenario_roles_artifact=scenario,
-        probability_stage_snapshots=_envelope("P0-M", "p0m"),
+        probability_stage_snapshots=_envelope("P0", "p0"),
     )
     station = result["candidates"][0]
     assert result["state"] == "BUILT_NO_LIVE"
-    assert station["selected_probability_stage"] == "P0-M"
+    assert station["selected_probability_stage"] == "P0"
     assert station["probability_stage"]["content_sha256"] == station[
         "probability_stage"
     ]["computed_content_sha256"]

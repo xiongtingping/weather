@@ -137,7 +137,6 @@ MEMBER_FAMILIES = tuple(
 )
 STAGE_MEANING = {
     "P0": "开仓：模型融合出的第一版概率，交易据此建仓",
-    "P0-M": "确认：当天早上的机场人工预报（TAF）对 P0 的确认或修正",
     "P1": "盯盘：当天实测气温不断进来后对概率的滚动更新",
 }
 
@@ -210,7 +209,6 @@ def _age_hours(stamp: str | None) -> float | None:
 _PRODUCTION_LANES = (
     ("resident_probability_chain", "概率链"),
     ("resident_p0_ingress", "P0"),
-    ("resident_p0m_ingress", "P0-M"),
     ("resident_p1_ingress", "P1"),
     ("market_ingress", "行情入口"),
     ("native_ensemble_ingress", "模型入口"),
@@ -2941,7 +2939,7 @@ def collect_taf_board(conn: sqlite3.Connection) -> dict[str, Any]:
         def comparator(day: str) -> tuple[float | None, str]:
             if day not in comparators:
                 found: tuple[float | None, str] = (None, "")
-                for stage in ("P0", "P0-M"):
+                for stage in ("P0",):
                     try:
                         served = _latest_envelope(conn, station, day, stage)
                     except sqlite3.Error:
@@ -3782,78 +3780,6 @@ def collect_p1_joint_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
     out["stations"] = stations
     out["outcome"] = dict(outcome)
     out["served_update"] = dict(served)
-    return out
-
-
-def collect_p0m_taf_likelihood(conn: sqlite3.Connection) -> dict[str, Any]:
-    """P0-M's TAF likelihood (charter 150): the fitted line, its walk-forward
-    serve gate, and what it did on each station's newest P0-M."""
-
-    out: dict[str, Any] = {"available": True}
-    try:
-        from bayes_basket_target import taf_likelihood as TL  # noqa: PLC0415
-        # As it serves: the measured gate (charter 151's ruling revoked 2026-10-25).
-        raw = json.loads(TL.ARTIFACT_PATH.read_text())
-        mtime = datetime.fromtimestamp(TL.ARTIFACT_PATH.stat().st_mtime, timezone.utc)
-    except Exception:  # noqa: BLE001
-        raw, mtime = {}, None
-    out["artifact"] = {
-        "gate": raw.get("gate") or {},
-        # Charter 158: per-group pull, served only under its own walk-forward.
-        "tempering": {
-            key: value
-            for key, value in (raw.get("reason_tempering") or {}).items()
-            if key in ("rule", "state", "lambda_by_group",
-                       "group_weight_station_days", "tafs", "walk_forward")
-        },
-        "pool": raw.get("pool") or {},
-        "station_n": len(raw.get("stations") or {}),
-        "shrink_k": raw.get("shrink_k"),
-        "trained_from": raw.get("trained_from"),
-        "trained_through": raw.get("trained_through"),
-        "fitted_at_utc": raw.get("fitted_at_utc"),
-        "age_days": (
-            None if mtime is None
-            else round((_now() - mtime).total_seconds() / 86400.0, 1)
-        ),
-    } if raw else {}
-    floor = (_now() - timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    stations = []
-    outcome = Counter()
-    for station, decided in conn.execute(
-        "SELECT station_id, MAX(decision_at_utc) FROM basket_probability_envelope"
-        " WHERE state='COMMITTED' AND stage='P0-M' AND decision_at_utc>=?"
-        " GROUP BY station_id",
-        (floor,),
-    ).fetchall():
-        row = conn.execute(
-            "SELECT event_date, posterior_version,"
-            " json_extract(lineage_json,'$.p0m_taf_likelihood_json'),"
-            " json_extract(lineage_json,'$.taf_observed_tx_c'),"
-            " json_extract(lineage_json,'$.taf_revision_state')"
-            " FROM basket_probability_envelope WHERE station_id=? AND stage='P0-M'"
-            " AND state='COMMITTED' AND decision_at_utc=? LIMIT 1",
-            (station, decided),
-        ).fetchone()
-        if row is None:
-            continue
-        try:
-            receipt = json.loads(row[2] or "{}")
-        except ValueError:
-            receipt = {}
-        state = str(receipt.get("state") or row[4] or "PRE_CHARTER_150")
-        outcome[state] += 1
-        stations.append({
-            "station_id": str(station), "event_date": str(row[0]),
-            "decided_at_utc": str(decided), "posterior_version": row[1],
-            "state": state, "tx_c": row[3],
-            "root_center_c": receipt.get("root_center_c"),
-            "x_c": receipt.get("x_c"), "b": receipt.get("b"), "tau": receipt.get("tau"),
-            "tempering": receipt.get("tempering"),
-        })
-    stations.sort(key=lambda e: e["station_id"])
-    out["stations"] = stations
-    out["outcome"] = dict(outcome)
     return out
 
 
@@ -7800,7 +7726,7 @@ def collect_center_width(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         ):
             journal.setdefault(str(stage), list(rest))
     rows = []
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         active = served.get(stage)
         last = journal.get(stage)
         evidence: dict[str, Any] = {}
@@ -8112,7 +8038,6 @@ def _center_landing_tiers() -> tuple[tuple[float, float, str, str], ...]:
 CENTER_LANDING_TIERS = _center_landing_tiers()
 CENTER_LANDING_STAGE_MEANING = {
     "P0": "开仓：模型融合出的第一版概率",
-    "P0-M": "确认：早上的 TAF 对 P0 的修正",
     "P1": "盯盘：当天实测进来后的滚动更新",
 }
 
@@ -8596,7 +8521,7 @@ def collect_center_landing(
         (SKEW_STATE_RIGHT, "right", "右偏（暖尾）"),
     )
     stages_out: list[dict[str, Any]] = []
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         # ``windows`` replays an earlier version's span for comparison (user,
         # 2026-09-18: 显示，做对比): [since, until) of that version's cells.
         window = (windows or {}).get(stage) if windows is not None else None
@@ -9437,7 +9362,7 @@ def _previous_version_window(
 
 def _previous_version_windows(conn: sqlite3.Connection) -> dict[str, dict[str, str]]:
     return {
-        stage: window for stage in ("P0", "P0-M", "P1")
+        stage: window for stage in ("P0", "P1")
         if (window := _previous_version_window(conn, stage))
     }
 
@@ -9477,7 +9402,7 @@ def collect_model_accuracy_trend(
     )
     landing = collect_center_landing(
         conn, windows={stage: {"since": since, "until": until}
-                       for stage in ("P0", "P0-M", "P1")},
+                       for stage in ("P0", "P1")},
     )
     return {
         "since": since,
@@ -9592,7 +9517,7 @@ def collect_station_calibration_windows(
         for key, label, days in STATION_RANK_WINDOWS
     ]
     stages_out: dict[str, Any] = {}
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         readings: dict[tuple[str, str], dict[str, Any]] = {}
         todo: set[tuple[str, str]] = set()
         floor: str | None = None
@@ -11293,7 +11218,7 @@ def _entry_economics_from_rows(
         return {"available": False, "reason": "结算行里没有篮子成本",
                 "chains": len(rows)}
     stages: list[dict[str, Any]] = []
-    for stage in ("P0", "P0-M", "P1"):
+    for stage in ("P0", "P1"):
         block = _entry_economics_block(
             [r for r in rows if str(r[0]) == stage]
         )
@@ -12088,7 +12013,7 @@ def collect_p0_ngr() -> dict[str, Any]:
 
 
 def collect_fade_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
-    """Charter 277: the two 反向线 (A: ``fade_p0m``, B: ``fade_p0``) -- each
+    """Charter 277: 反向线 B (``fade_p0``; A, ``fade_p0m``, left with P0-M) -- each
     lane's switch and stake, every station-day it judged and why, its sends,
     fills and how they settled.  Read only, like every lane page."""
 
@@ -12101,7 +12026,9 @@ def collect_fade_lanes(conn: sqlite3.Connection) -> dict[str, Any]:
         "basket_target_execution_cycles",
     ))
     settled_cache: dict[tuple[str, str], Any] = {}
-    for lane in ("fade_p0m", "fade_p0"):
+    # Charter 283: 反向线 A (fade_p0m) was deleted with P0-M; its legs stay in
+    # the money boards' history.
+    for lane in ("fade_p0",):
         cfg = lanes["lanes"].get(lane) or {}
         entry: dict[str, Any] = {
             "settings": {k: cfg.get(k) for k in (
@@ -15357,9 +15284,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
     p1_joint_likelihood = _cached_section(
         "p1_joint_likelihood", collect_p1_joint_likelihood, conn
     )
-    p0m_taf_likelihood = _cached_section(
-        "p0m_taf_likelihood", collect_p0m_taf_likelihood, conn
-    )
     p1_path_skill = _cached_section(
         "p1_path_skill", collect_p1_path_skill, conn,
         _unavailable={"available": False},
@@ -15617,7 +15541,6 @@ def _build_payload(conn: sqlite3.Connection, db: Path) -> dict[str, Any]:
         "observation_intake": observation_intake,
         "regional_usage": regional_usage,
         "p1_joint_likelihood": p1_joint_likelihood,
-        "p0m_taf_likelihood": p0m_taf_likelihood,
         "p1_path_skill": p1_path_skill,
         "tables": tables,
         "truth_landing": truth_landing,
@@ -16969,7 +16892,7 @@ const OVERALL = {green:["运转正常","所有环节都在按预期更新"],
 const SWEEP_LABEL = {
   settlement_truth:"结算真值",
   calibration_refit:"校准重拟", pr12_awc_observation:"观测身份（P1 的根）",
-  p1_likelihood_refit:"P1 似然重拟", taf_likelihood_refit:"P0-M TAF 似然重拟",
+  p1_likelihood_refit:"P1 似然重拟",
   settled_day_cycle_close:"已结算日收盘",
   correction_review_auto_clear:"订正复核自动清除",
   forward_packet_retention:"前瞻包保留", auto_station_exclusions:"自动禁入站",
@@ -18541,11 +18464,10 @@ const MONEY_BOARD = [
      ["tailshort", "远尾做空 H1 · 宪章 234",
       () => tailShortLane(),
       "sec-tail-short"],
-     // Charter 277: the two 反向线 -- A fades the P0-M mode warm of the
-     // market (YES one rung cold of the market's mode), B fades the P0 mode
-     // far from the market (NO on the model's mode); their switches, stakes,
-     // every station-day judged, and the legs on their own.
-     ["fadelanes", "反向线 A/B · 宪章 277",
+     // Charter 277: 反向线 B fades the P0 mode far from the market (NO on
+     // the model's mode); its switch, stake, every station-day judged, and
+     // the legs on their own.  A left with P0-M (charter 283).
+     ["fadelanes", "反向线 B · 宪章 277",
       () => safe(() => fadeLanes(), "反向线"),
       "sec-fade-lanes"],
      // Charter 256/257: the copy-follow lane's own page -- the cluster's
@@ -18857,8 +18779,6 @@ function fadeLanes(){
   const p3=v=>v==null?"—":(+v).toFixed(3);
   const tile=(name,value,note)=>`<div class="card"><div class="muted">${name}</div><div class="mono" style="font-size:1.35em">${value}</div><div class="muted">${note}</div></div>`;
   const META={
-    fade_p0m:{name:"反向线 A",rule:"P0-M 模型众数在市场众数暖侧 → 吃单买市场众数冷侧一档 YES（@卖一）",
-      measured:"登记读数 09-12..10-20：670 个首决策，+5.3¢/份 [+1.4,+9.2]，成本 0.17；不看模型 +0.6¢，模型冷侧 −4.0¢，买模型侧 −5.2¢"},
     fade_p0:{name:"反向线 B",rule:"P0、距结算 >36h、模型众数≠市场众数、|模型均值−市场均值| > 门槛桶 → 对模型众数吃单买 NO（@1−买一）",
       measured:"登记读数：504 个首决策，+3.1¢/份 [+0.6,+5.3]，成本 0.84；门槛 0.76 是三分位切点（0.5/1.0/1.3 → +1.1/+0.8/−0.3）"}};
   const one=(lane)=>{
@@ -18889,7 +18809,7 @@ function fadeLanes(){
       ${recent?`<div class="scroll" style="min-width:0;max-width:100%;max-height:520px"><table><thead><tr><th>时间</th><th>站</th><th>事件日</th><th>距结算</th><th>模型众数 / 市场众数</th><th>均值差</th><th>腿</th><th>价</th><th>结果</th></tr></thead><tbody>${recent}</tbody></table></div>`:"<div class='muted'>—</div>"}</details>`;
     return head+totals+funnel+legsTable+recentTable;
   };
-  return one("fade_p0m")+`<div style="height:14px"></div>`+one("fade_p0");
+  return one("fade_p0");
 }
 
 // 「跟单线」(charters 256/257): the eight-wallet cluster's taker fills as the
@@ -19557,7 +19477,6 @@ const LC_KNOBS = {
   tiebreak: lcStakeKnob("tiebreak", "lc-tiebreak", "秤砣每笔"),
   tail_short: lcStakeKnob("tail_short", "lc-tail-short", "远尾每笔"),
   proper_bet: lcStakeKnob("proper_bet", "lc-proper-bet", "Proper每笔"),
-  fade_p0m: lcStakeKnob("fade_p0m", "lc-fade-p0m", "反向A每笔"),
   fade_p0: lcStakeKnob("fade_p0", "lc-fade-p0", "反向B每笔"),
   consensus_noon: lcStakeKnob("consensus_noon", "lc-consensus-noon", "共识线每笔"),
 };
@@ -19614,8 +19533,6 @@ function liveControlStrip(){
       + stakeKnob("proper_bet", "Proper 下注线每笔预算 stake_usdc（USDC；每个站日这一笔挂满这么多，不低于交易所最小单，受现金封顶；宪章 252）"))}
     ${group("远尾做空 H1", "tail_short", laneSwitch("tail_short")
       + stakeKnob("tail_short", "远尾做空 H1 每笔预算 stake_usdc（USDC；每笔 NO 吃单最多花这么多，按 NO 卖价、受买一深度封顶；宪章 234/252）"))}
-    ${group("反向线 A", "fade_p0m", laneSwitch("fade_p0m")
-      + stakeKnob("fade_p0m", "反向线 A 每笔预算 stake_usdc（USDC；P0-M 模型众数在市场暖侧时吃单买市场众数冷侧一档 YES，每站日一腿，受卖一深度封顶；宪章 277）"))}
     ${group("反向线 B", "fade_p0", laneSwitch("fade_p0")
       + stakeKnob("fade_p0", "反向线 B 每笔预算 stake_usdc（USDC；P0 >36h 分歧大时对模型众数吃单买 NO，每站日一腿，受买一深度封顶；宪章 277）"))}
     ${group("共识线", "consensus_noon", laneSwitch("consensus_noon")
@@ -19663,9 +19580,6 @@ const LC_LANES = {
   tail_short: {name:"远尾做空 H1",
     on:"实盘举旗时，P0 首决策、距结算 >36h 的远尾桶照常按 NO 卖价吃单（宪章 234/251）",
     off:"整条车道跳过：不评估、不发新单；已买到的 NO 照常持有到结算"},
-  fade_p0m: {name:"反向线 A",
-    on:"实盘举旗时，站日最新阶段为 P0-M 且模型众数在市场众数暖侧，吃单买市场众数冷侧一档 YES，每站日一腿（宪章 277）",
-    off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
   fade_p0: {name:"反向线 B",
     on:"实盘举旗时，站日最新阶段为 P0、距结算 >36h、模型与市场均值差 >0.76 桶，对模型众数吃单买 NO，每站日一腿（宪章 277）",
     off:"整条车道跳过：不评估、不发新单；已买到的腿照常持有到结算"},
@@ -20906,7 +20820,7 @@ function stationCalibrationRank(){
   const trend = T.landing_stations || {};
   const evid = {};
   (CL.stages || []).forEach(st => { if(st.stations && st.stations.rows) evid[st.stage] = st.stations; });
-  const STAGES = ["P0", "P0-M", "P1"];
+  const STAGES = ["P0", "P1"];
   const has = R => R && R.rows && R.rows.length;
   const WINS = (W.windows || []);
   const winsOf = s => WINS.filter(w => has(((WS[s] || {}).windows || {})[w.key]));
@@ -21177,7 +21091,7 @@ function modelAccuracyBoard(){
     trendChart({title: "CRPS 比平分布好", sub: "越高越准", dates,
       series: [{name: "P0", values: col(F, dates, "crps_skill")}], marks, fmt: v => (100 * v).toFixed(0) + "%"}),
     trendChart({title: "真值离服务均值（桶）", sub: "分阶段；负＝真值比服务均值冷", dates: landDates,
-      series: ["P0", "P0-M", "P1"].filter(s => (LD[s] || []).length)
+      series: ["P0", "P1"].filter(s => (LD[s] || []).length)
         .map(s => ({name: s, values: col(LD[s], landDates, "bias_rungs")})),
       ref: {y: 0, label: "0"}, marks, fmt: v => (v > 0 ? "+" : "") + Number(v).toFixed(2)}),
     trendChart({title: "席位窗覆盖（P0）", sub: "声称会盖住的概率 vs 实际盖住的比例", dates: landDates,
@@ -21195,7 +21109,7 @@ function modelAccuracyBoard(){
     return `<tr${settling ? ' class="muted"' : ""}><td class="mono">${h(d)}${settling ? " 结算中" : ""}</td><td class="mono">${f.station_days ?? "—"}</td>
       <td class="mono">${n2(f.bias_c)}</td><td class="mono">${n2(f.mae_c)}</td>
       <td class="mono">${f.crps_skill == null ? "—" : pctS(f.crps_skill)}</td><td class="mono">${n2(f.spread_skill)}</td>
-      <td class="mono">${n2(lg("P0").bias_rungs)}</td><td class="mono">${n2(lg("P0-M").bias_rungs)}</td>
+      <td class="mono">${n2(lg("P0").bias_rungs)}</td>
       <td class="mono">${n2(lg("P1").bias_rungs)}</td>
       <td class="mono">${pctS(lg("P0").seat_claim)} / ${pctS(lg("P0").seat_cover)}</td></tr>`;
   }).join("");
@@ -21234,7 +21148,7 @@ function modelAccuracyBoard(){
   <details class="note"><summary>表格视图：逐事件日的全部读数</summary>
     <div class="scroll" style="max-height:360px"><table><thead><tr><th>事件日</th><th>站日</th>
       <th>中心偏差 °C</th><th>平均误差 °C</th><th>CRPS 技能</th><th>宽度÷误差</th>
-      <th>离均值 P0（桶）</th><th>P0-M</th><th>P1</th><th>P0 覆盖 声称/实际</th></tr></thead>
+      <th>离均值 P0（桶）</th><th>P1</th><th>P0 覆盖 声称/实际</th></tr></thead>
       <tbody>${tableRows}</tbody></table></div></details>`;
 }
 
@@ -21273,7 +21187,7 @@ function northStarBlock(LD, landDates, col){
   ((D.center_landing || {}).stages || []).forEach(x => { pooled[x.stage] = x.core || {}; });
   const W = D.previous_version_windows || {};
   const MIN_DAYS = (D.scorecard || {}).min_event_days || 8;
-  const STAGES = ["P0", "P0-M", "P1"];
+  const STAGES = ["P0", "P1"];
   const coreOf = (land, s) => (((land.stages || []).find(x => x.stage === s)) || {}).core || null;
   const present = STAGES.filter(s => (pooled[s] && pooled[s].station_days) || coreOf(cur, s));
   if(!present.length) return {empty: `<p class="sub">服务样本还没有算出桶概率指标（新字段要等下一轮整库渲染）。</p>`};
@@ -21364,7 +21278,7 @@ function northStarBlock(LD, landDates, col){
 
 function landingPrevious(){
   const W = D.previous_version_windows || {};
-  const stages = ["P0", "P0-M", "P1"];
+  const stages = ["P0", "P1"];
   const rows = stages.map(s => {
     const a = landingCover(D.center_landing_previous, s), b = landingCover(D.center_landing_version || D.center_landing, s);
     if(!a && !b) return "";
@@ -21623,7 +21537,7 @@ function p1JointBoard(){
     桶按 g 的那套读法描述：<b>再升</b>＝1[比已报最高的桶更高]，<b>每格</b>＝再高几格，另有开口顶一项；根自己对「还会不会升」的看法作为特征进去，
     所以重叠的那部分不会被算两遍。第 150 条的 g<sup>α</sup> 把根乘上一个<b>预测分布</b>而不是似然，等于把训练基频再数一遍，一个逐小时的 α 拿不回来：
     ${withEv("p1_overconfidence_20260919",(V,e)=>`${h(String(e.measured_on||"").slice(5))} 复核实测服务出去的 P1 过度自信（校准斜率 ${V.calibration_slope}，声称 ${V.claimed_a} 兑现 ${V.realised_a}、${V.claimed_b} 兑现 ${V.realised_b}）。`)}
-    <b>根</b>是 P0-M（没有 TAF 时是 P0）——校准只在 P0 做一次；P1 没有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。区域模型只在这里当协变量。</p>
+    <b>根</b>是 P0（P0-M 已退役，宪章 283）——校准只在 P0 做一次；P1 没有中心/宽度、band 表、时钟天花板、区域路径先验、四层链。区域模型只在这里当协变量。</p>
   <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
     <b>过去 18 小时各站最新一步实际服务的规则：</b>${served || `<span class="muted">这一轮的读数还没带上（等下一次整库渲染）</span>`}
     <span style="flex:1"></span><span class="muted">回执状态：</span>${outcome || "—"}</div>
@@ -21661,46 +21575,6 @@ function p1JointBoard(){
   </details>
   <div class="muted" style="margin-top:8px">看板上那个「再升 %」在第 161 条下是<b>从后验反推</b>的（回执 <span class="mono">rise_probability_basis: posterior_before_floor</span>），
     不是第 150 条那个再升模型算出来的。</div>`;
-}
-
-function p0mTafBoard(){
-  const T = D.p0m_taf_likelihood || {};
-  if(!T.available) return "";
-  const A = T.artifact || {}, G = A.gate || {}, P = A.pool || {}, O = T.outcome || {};
-  const n3 = v => v == null ? "—" : Number(v).toFixed(3);
-  const sg = (v, d = 3) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Number(v)).toFixed(d);
-  const word = {APPLIED:["green","似然说话"], IDENTITY_GATE_CLOSED:["","闸未开（恒等）"], IDENTITY_NO_TX:["","TAF 没有 TX（恒等）"],
-    IDENTITY_NO_ARTIFACT:["red","没有拟合件（恒等）"], IDENTITY_NO_ROOT_GEOMETRY:["amber","根没有桶几何（恒等）"],
-    OBSERVED_NO_CALIBRATED_ARTIFACT:["amber","旧版 P0-M（v6 及以前）"], PRE_CHARTER_150:["amber","旧版 P0-M"]};
-  const outcome = Object.entries(O).map(([k, v]) => { const [t, w] = word[k] || ["", k]; return `<span class="pill ${t}">${w} ${v}</span>`; }).join(" ");
-  return `<h2>P0-M 的 TAF 似然：P0 × 一条 TAF 似然</h2>
-  <p class="sub">第 150 条：<b>P0-M(桶) ∝ P0(桶) × N(TX − c₀ ; a + b·(桶中心 − c₀), τ)</b>，c₀ 是 P0 自己的中心。TAF 只当似然——不改中心、不改宽度、没有 TAF 格、没有 band 表。
-    b 是「TAF 看得到今天偏离模型的几成」，τ 是它的散布；每站按 K=${A.shrink_k ?? 15} 个站日向全队收缩。
-    <b>服务闸</b>：逐日走查（只用更早的日子拟合），按日聚类的 95% 区间下沿大于 0 才开；没开时 P0-M 就是 P0，只标记 TAF 到达的决策时刻。</p>
-  <div class="grid g3">
-    <div class="card"><div class="muted">服务闸</div><div class="big"><span class="pill ${G.state === "SERVE" ? (G.ruling ? "amber" : "green") : ""}">${G.state === "SERVE" ? (G.ruling ? "开（裁决）" : "开") : "未开（恒等）"}</span></div>${
-        G.ruling ? `<div class="muted">宪章 151 用户裁决打开；走查本身${G.measured_state === "SERVE" ? "也已过" : "还没过"}（实测 ${h(G.measured_state || "—")}）</div>` : ""}
-      <div class="muted">逐日增益 ${sg(G.by_day_mean_gain_nat)} nat [${sg(G.ci_low)}, ${sg(G.ci_high)}] · ${G.days ?? "—"} 天 · ${G.station_days ?? "—"} 站日</div></div>
-    <div class="card"><div class="muted">全队这条线</div><div class="big mono">b ${n3(P.b)} · τ ${n3(P.tau)}°C</div>
-      <div class="muted">a ${sg(P.a)}°C · ${P.n ?? "—"} 站日 · 其中 ${A.station_n ?? 0} 站有自己的收缩线</div></div>
-    <div class="card"><div class="muted">众数命中（走查）</div><div class="big mono">${G.mode_hit_root == null ? "—" : (100 * G.mode_hit_root).toFixed(1) + "%"} → ${G.mode_hit_taf == null ? "—" : (100 * G.mode_hit_taf).toFixed(1) + "%"}</div>
-      <div class="muted">P0 → P0 × TAF 似然 · 训练 ${h(A.trained_from || "—")}..${h(A.trained_through || "—")} · ${A.age_days ?? "—"} 天前拟合</div></div></div>
-  ${(() => {
-    const R = A.tempering || {}, L = R.lambda_by_group || {}, WF = R.walk_forward || {}, GW = R.group_weight_station_days || {};
-    if(!R.state) return `<div class="card muted" style="margin-top:8px">按理由调力度（第 158 条）：拟合件里还没有这一块，四组都按力度 1（即第 150 条原样）。</div>`;
-    const name = {REASONED:"有天气理由的分歧", UNREASONED_COLD:"没理由的往冷改", OTHER:"其他分歧", SMALL:"小分歧/无天气"};
-    const served = R.state === "SERVE";
-    const byGroup = WF.gain_by_group_nat || {};
-    const rows = ["UNREASONED_COLD", "REASONED", "OTHER", "SMALL"].map(g => `<tr><td>${name[g]}</td>
-      <td class="mono">${L[g] == null ? "1" : Number(L[g]).toFixed(2)}${served ? "" : "（未服务，按 1）"}</td>
-      <td class="mono">${GW[g] == null ? "—" : Math.round(GW[g])}</td>
-      <td class="mono">${byGroup[g] == null ? "—" : sg(byGroup[g])}</td></tr>`).join("");
-    return `<div class="card" style="margin-top:8px"><div class="muted">按理由调力度（第 158 条）：TAF 比 P0 均值低 ≥1°C 却既不报降水（<30%）也不报阴天（云量 ≤0.6）时，它的似然只用 λ 次方
-      <span class="pill ${served ? "green" : ""}">${served ? "服务中" : "未开（四组都按 1）"}</span></div>
-      <div class="muted">逐日走查对「不调」${sg(WF.by_day_mean_gain_vs_lambda_one_nat, 4)} nat [${sg(WF.ci_low, 4)}, ${sg(WF.ci_high, 4)}] · ${WF.days ?? "—"} 天 · ${R.tafs ?? "—"} 份 TAF；走查点估计 >0 才服务</div>
-      <table class="by-tab"><thead><tr><th>组</th><th>λ</th><th>站日</th><th>走查增益/站日</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  })()}
-  <div style="margin-top:8px"><span class="muted">过去 36 小时各站最新 P0-M：</span>${outcome || "—"}</div>`;
 }
 
 // The newest day of a daily series is drawn only once its sample reaches
@@ -22320,7 +22194,7 @@ function sdFromPath(path, root){
 // One day.
 function sdSeries(day){
   const out = [];
-  ["P0", "P0-M", "P1"].forEach(s => { const e = (day.stages || {})[s]; if(e) out.push({key:s, label:s + " 概率", vector:e.vector, stats:e.stats, at:e.decided_at_utc, version:e.version}); });
+  ["P0", "P1"].forEach(s => { const e = (day.stages || {})[s]; if(e) out.push({key:s, label:s + " 概率", vector:e.vector, stats:e.stats, at:e.decided_at_utc, version:e.version}); });
   const m = day.market || {};
   if(m.available && m.stats) out.push({key:"MKT", label:"市场", vector:m.vector, stats:m.stats, at:m.observed_at_utc});
   return out;
@@ -22429,7 +22303,7 @@ function sdDay(day){
 }
 
 function sdProbabilityCards(day){
-  const descriptions = {"P0":"天气模型", "P0-M":"实况下界（TAF 按门）", "P1":"正式观测更新"};
+  const descriptions = {"P0":"天气模型", "P1":"正式观测更新"};
   const mk = ((day.market || {}).stats || {}).mean_c;
   // Against the previous served decision of the same stage.
   const previousOf = (stage, e) => {
@@ -22442,7 +22316,7 @@ function sdProbabilityCards(day){
   // 「重新优化6个卡片的排版」): name, the stage's centre big with its mode bucket,
   // the move since its last decision and the gap to the market, one line of the
   // distribution, the day's trend, then the last five decisions.
-  return ["P0", "P0-M", "P1"].map(stage => {
+  return ["P0", "P1"].map(stage => {
     const e = (day.stages || {})[stage], st = (e || {}).stats || {};
     const title = `${stage} 概率`;
     if(!e) return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], empty: "等待该阶段的概率信封"});
@@ -22453,11 +22327,9 @@ function sdProbabilityCards(day){
     // root and the move box -- so a root reads the same on its own card and on
     // the card built on it.  P0's pool centre (before the width layers) is a
     // different quantity and lives in the tooltip only.
-    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型中心 ${sdN(e.model_center_c, 2)}°C（服务分布回归时即回归中心 μ，P0-M 的 TAF 似然以它为 c0），与分布均值不同` : ""}`;
-    const rootLabel = stage === "P0-M" ? "根均值（P0）" : `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
-    // P0-M's evidence, top right: the TAF's forecast maximum and how far it
-    // sits from P0's model centre (x, what the likelihood reads).
-    const corner = stage === "P0-M" ? `<div class="sd-prob-tx" title="TAF 预报最高温 TX；x＝TX − P0 模型加权中心 ${sdN(e.root_center_c, 2)}°C（F 挪动之前，似然读的就是它）；似然状态 ${sdEsc(e.taf_state || "—")}"><span>TAF TX</span><b>${e.tx_c == null ? "—" : sdN(e.tx_c, 0) + "°C"}</b><span>${e.tx_c == null ? "这份 TAF 没有 TX" : e.x_c == null ? sdEsc(e.taf_state || "") : `比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`}</span></div>` : "";
+    const centerLabel = `分布均值（最终概率向量按桶代表温度加权）${stage === "P0" && e.model_center_c != null ? `；模型中心 ${sdN(e.model_center_c, 2)}°C（服务分布回归时即回归中心 μ），与分布均值不同` : ""}`;
+    const rootLabel = `根均值（${sdEsc(e.root_stage || "前序阶段")}）`;
+    const corner = "";
     return sdModelCard({title, tag: descriptions[stage], color: SD_COL[stage], corner,
       fresh: sdAgeSpan(e.decided_at_utc, "sd-age sd-bare"),
       value: sdTemperature(st.mean_c), valueTip: `${centerLabel}；决策于 ${sdLocal(e.decided_at_utc, true)}`,
@@ -22489,19 +22361,15 @@ function sdNgrBlock(g){
   const math = `F ${sdN(g.f_c, 1)}°C（${names.length} 家，去偏后）· μ ${sdN(g.mu_c, 2)}°C · σ ${sdN(g.sd_c, 2)}°C · 辐射 ${sdSg(g.radiation_standardised, 2)}`;
   return sdMoveBox("分布回归 · 挪", g.move.delta_c, g.move, ["旧链", "回归"], math, tip, wf);
 }
-// User 2026-10-25 「p0m…应该体现taf挪动效果」: P0-M and P1 show their own
-// update -- the root they multiplied (as served) against what they serve
-// (station_day_board._stage_move).
+// User 2026-10-25 「…应该体现…挪动效果」: P1 shows its own update -- the root it
+// multiplied against what it serves (station_day_board._stage_move).  P0-M
+// is retired (charter 283); a P1 of the history before it rooted on P0-M.
 function sdStageMove(e, stage){
   const S = e.stage_move;
   if(!S) return "";
-  const root = S.root_stage || (stage === "P0-M" ? "P0" : "前序阶段");
-  // Charter 281 补记二: the TAF line serves only on its own gate; when it is
-  // closed P0-M's move is the observed bound's alone.
-  const title = stage === "P0-M" ? (e.taf_state === "APPLIED" ? "TAF 挪" : "下界挪") : "实况挪";
-  const why = stage === "P0-M"
-    ? (e.tx_c == null ? "这份 TAF 没有 TX，似然恒等" : `TAF TX ${sdN(e.tx_c, 0)}°C · 比 P0 模型中心 ${sdSg(e.x_c, 2)}°C${e.taf_state && e.taf_state !== "APPLIED" ? " · 未用" : ""}`)
-    : `实况最高 ${sdN(e.running_high_c, 1)}°C`;
+  const root = S.root_stage || "P0";
+  const title = "实况挪";
+  const why = `实况最高 ${sdN(e.running_high_c, 1)}°C`;
   const nx = (e.excluded || []).length;
   // Charter 282: a TX revision inside its window -- served, or the shadow's move.
   const tx = stage === "P1" ? e.tx_shift : null;
@@ -22509,9 +22377,7 @@ function sdStageMove(e, stage){
     ? ` · 含 TX 修订挪 ${sdSg(tx.delta_c, 2)}°C（TX ${sdN(tx.previous_tx_c, 0)}→${sdN(tx.tx_c, 0)}°C）`
     : ` · TX 修订影子 ${sdSg(tx.delta_c, 2)}°C 未用`;
   const exLine = (nx ? ` · 含实况下界排除 ${nx} 档` : "") + txLine;
-  const tip = stage === "P0-M"
-    ? "P0-M＝根 P0（分布回归的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。"
-    : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。`;
+  const tip = `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。`;
   // Charter 241: P1 multiplies P0-M's proportional vector, so the root shown is that one --
   // the floor-bucket mass is P0-M's own move and is not counted again here.
   const rootLab = S.root_proportional ? `根（${root} 按比例）` : `根（${root}）`;
@@ -22610,7 +22476,7 @@ function sdCompareChart(day){
     // The six cards' curves (user 2026-10-18「把六个曲线放在一起对比」) and the
     // market's mean they are read against (「少了市场的曲线」).
     S("MKT", "市场均值", SD_COL.MKT, ((day.market || {}).trend || []).map(t => [t.at_utc, (t.stats || {}).mean_c])),
-    st("P0"), st("P0-M"), st("P1"),
+    st("P0"), st("P1"),
     S("DET", "确定性 F 中位", SD_COL.DET, sdDetMedian(day).map(p => [p[0], p[1]]), false, sdDetMedian(day)),
     S("MB", "成员轨迹贝叶斯", SD_COL.MB, ((day.member_bayes || {}).history || []).map(h => [h.as_of_utc, h.post_mean_c])),
     S("D0", "D0 实况模型", SD_COL.D0, ((day.d0 || {}).history || []).map(h => [h.at, h.centre_c])),
@@ -22663,7 +22529,7 @@ function sdStageLine(day, stage){
 // once) is one event, coloured by the earliest stage it moved.
 function sdCurveEvents(day, from){
   const by = new Map();
-  ["P0", "P0-M", "P1"].forEach(k => sdStageLine(day, k).marks.forEach(m => {
+  ["P0", "P1"].forEach(k => sdStageLine(day, k).marks.forEach(m => {
     if(from != null && Date.parse(m[0]) < from) return;
     const t = (day.timeline || []).find(x => x.stage === k && x.at_utc === m[0]) || {};
     const at = String(m[0]).slice(0, 16), e = by.get(at) || {at: m[0], color: SD_COL[k], stages: new Map(), causes: new Set()};
@@ -23010,7 +22876,7 @@ const SD_MB_STATE = {not_computed: "还没算", no_trajectories: "还没有成�
 // trend and one muted footnote.
 function sdBeliefOf(day){
   const S = day.stages || {};
-  const stage = [day.head_stage, "P1", "P0-M", "P0"].find(k => k && ((S[k] || {}).stats || {}).mean_c != null);
+  const stage = [day.head_stage, "P1", "P0"].find(k => k && ((S[k] || {}).stats || {}).mean_c != null);
   return stage ? {stage, mean: S[stage].stats.mean_c} : null;
 }
 function sdModelCard(o){
@@ -23346,7 +23212,7 @@ function sdDeterministic(day){
 
 function sdStatsTable(day, S){
   const mk = (day.market || {}).stats;
-  const entries = ["P0", "P0-M", "P1"].map(key => S.find(s => s.key === key) || {key, label:key + " 概率", missing:true});
+  const entries = ["P0", "P1"].map(key => S.find(s => s.key === key) || {key, label:key + " 概率", missing:true});
   entries.push(...S.filter(s => s.key === "MKT"));
   const rows = entries.map(s => {
     if(s.missing) return `<tr><td><b style="color:${SD_COL[s.key]}">${sdEsc(s.label)}</b></td><td colspan="12" class="muted">尚未生成该阶段的概率</td></tr>`;
@@ -23384,7 +23250,7 @@ function sdDistSvg(day, S){
   S.forEach(s => Object.values(s.vector || {}).forEach(v => { if(v > pmax) pmax = v; }));
   pmax = Math.min(1, Math.ceil(pmax * 10) / 10);
   const x = p => left + (W - left - right) * p / pmax;
-  const excl = new Set([].concat(((day.stages || {})["P1"] || {}).excluded || [], ((day.stages || {})["P0-M"] || {}).excluded || []));
+  const excl = new Set(((day.stages || {})["P1"] || {}).excluded || []);
   // y of a temperature: its rung's row, linearly inside the rung.
   const yOf = t => {
     if(t == null) return null;
@@ -23419,7 +23285,7 @@ function sdDistSvg(day, S){
   });
   const marks = [];
   if(day.running_high_c != null) marks.push([day.running_high_c, "已报最高", "var(--red)"]);
-  const tx = ((day.stages || {})["P0-M"] || {}).tx_c;
+  const tx = (((day.stages || {})["P0"] || {}).taf_witness || {}).tx_c;
   if(tx != null) marks.push([tx, "TAF TX", "var(--violet)"]);
   marks.forEach(([t, label, col]) => {
     const y = yOf(t);
@@ -23434,7 +23300,7 @@ function sdDistSvg(day, S){
 }
 
 function sdBucketTable(day, S){
-  const columns = ["P0", "P0-M", "P1"].map(key => S.find(s => s.key === key) || {key, label:key + " 概率", missing:true});
+  const columns = ["P0", "P1"].map(key => S.find(s => s.key === key) || {key, label:key + " 概率", missing:true});
   columns.push(...S.filter(s => s.key === "MKT"));
   const head = (day.stages || {})[day.head_stage] || {};
   const book = {};
@@ -23828,7 +23694,7 @@ function sdFleetShape(F){
   if(!F || F.error) return F && F.error ? `<div class="card muted sd-sub" style="margin:8px 0">全队偏态统计读取失败：${sdEsc(F.error)}</div>` : "";
   const days = (F.days || []).filter(d => d.station_days > 0);
   if(!days.length) return "";
-  const series = [["P0","P0"], ["P0-M","P0-M"], ["P1","P1"], ["MKT","市场"]];
+  const series = [["P0","P0"], ["P1","P1"], ["MKT","市场"]];
   const blocks = days.map(d => {
     const C = d.counts || {}, H = C.HEAD || {};
     const tiles = SD_SHAPE_KEYS.map(([k, w, c]) => `<div class="sd-fs-tile" style="--c:${c}"><b>${H[k] || 0}</b><span>${w}</span></div>`).join("");
@@ -24087,7 +23953,7 @@ function sdModeAgreement(A){
       c.every || {}, `${(c.every || {}).n || 0} 次`, c.mover === "model" ? "市场众数不动，我方众数移到市场众数上" : "我方众数不动，市场众数移到我方众数上"))).join("");
   const open = SD.agreeOpen !== false;
   return `<details class="card" style="margin:8px 0"${open ? " open" : ""} ontoggle="SD.agreeOpen=this.open">
-    <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0-M＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
+    <summary class="sd-t" title="沿每个已结算站日的决策时刻逐个核对：我方当时的信念（P1＞P0）与 ${Math.round((A.book_window_sec || 0) / 60)} 分钟内的市场整条梯子，两边众数同一桶算同桶；连续同桶算一次，分开或换桶后再同桶算下一次；无盘口的时刻跳过；${sdEsc(sdLocal(A.computed_at_utc || ""))}">我方众数 = 市场众数时，真值命中率 <span class="muted sd-sub">${sdEsc(A.since || "")}..${sdEsc(A.through || "")} · ${A.event_days || 0} 个事件日</span></summary>
     <div class="grid g3">${sumCards}</div>
     ${everyTable}
     <div class="muted sd-sub" title="不论是否同桶，每个站日第一个有盘口的时刻">首个配对时刻：我方众数命中 ${pc(F.ours_hit)} · 市场众数命中 ${pc(F.market_hit)}（${F.n || 0} 站日）</div>
@@ -24278,7 +24144,7 @@ function sdRadTotal(R, H){
   return sdSunStat("辐射总量（最新）", newest.mj, newest.at, `最新 ${sdN(newest.mj, 2)} MJ/m²（${newest.src}，取于 ${sdLocal(newest.at, true)} 当地）；${used}`, p0);
 }
 function sdEvidence(day){
-  const p0 = (day.stages || {})["P0"] || {}, pm = (day.stages || {})["P0-M"], p1 = (day.stages || {})["P1"];
+  const p0 = (day.stages || {})["P0"] || {}, p1 = (day.stages || {})["P1"];
   const R = p0.radiation;
   // The label is the day's sunshine against the station's usual (the
   // receipt's side), the colour and the number are the shift: the two
@@ -24294,18 +24160,12 @@ function sdEvidence(day){
   const dir = sdDirection(day.direction, R);
   const dirCard = sdEvidenceCard("方向（宪章 266 · 相对市场众数）" + (day.direction ? sdDirFresh(day.direction) : ""), dir.color, dir.main, dir.body);
   const tw = p0.taf_witness;
-  const sameTx = tw && pm && tw.tx_c != null && pm.tx_c != null && tw.tx_c === pm.tx_c;
-  const tafTx = sameTx ? `<b class="sd-evidence-primary">TX ${sdN(tw.tx_c,2)}°C</b>`
-    : `${tw ? `<b class="sd-evidence-primary">P0 TX ${tw.tx_c == null ? "—" : sdN(tw.tx_c,2)+"°C"}</b>` : ""}${
-      pm ? `<b class="sd-evidence-primary" style="color:${SD_COL["P0-M"]}">P0-M TX ${pm.tx_c == null ? "—" : sdN(pm.tx_c,2)+"°C"}</b>` : ""}`;
-  const taf = sdEvidenceCard("TAF · P0 见到的 TAF / P0-M（TAF 似然）", SD_COL.P0,
-    `${tafTx}${tw ? `<b>TAF 云量 ${sdPc(tw.cloud_cover_fraction,0)} <span class="sd-sub">（未分高度）</span></b><b>降水概率 ${sdPc(tw.precipitation_probability,0)}</b>` : ""}${
-      pm ? `<b style="color:${SD_COL["P0-M"]}">P0-M ${sdEsc(pm.taf_state || "—")}</b>` : '<b style="color:var(--muted)">P0-M 尚未生成</b>'}`,
-    `<div>${tw ? `<b>P0 见证</b> · 签发 ${sdLocal(tw.issued_at_utc,true)} · 风 ${sdN(tw.wind_speed_mps,1)} m/s${sameTx ? " · P0 与 P0-M 的 TX 相同" : ""}` : "P0 回执没有 TAF 见证记录"}</div>
-    ${tw ? sdTafCloudDetails(tw) : ""}
-    <div>${pm ? `<b>P0-M 似然</b> · 根中心 ${sdN(pm.root_center_c, 2)}°C${
-      pm.x_c != null ? ` · x ${sdN(pm.x_c, 2)} b ${sdN(pm.b, 2)} τ ${sdN(pm.tau, 2)}` : ""}${pm.observed_running_high_c != null ? ` · 观测下界 ${sdN(pm.observed_running_high_c,2)}°C` : ""}${
-      (pm.excluded || []).length ? ` · 排除 ${sdEsc(pm.excluded.join("、"))}` : ""}` : "等待 P0-M 概率信封"}</div>`, true);
+  // Charter 283: P0-M and its TAF likelihood are retired; the TAF here is the
+  // one P0's envelope witnessed.
+  const taf = sdEvidenceCard("TAF · P0 见到的 TAF", SD_COL.P0,
+    `${tw ? `<b class="sd-evidence-primary">TX ${tw.tx_c == null ? "—" : sdN(tw.tx_c,2)+"°C"}</b><b>TAF 云量 ${sdPc(tw.cloud_cover_fraction,0)} <span class="sd-sub">（未分高度）</span></b><b>降水概率 ${sdPc(tw.precipitation_probability,0)}</b>` : "<b>无记录</b>"}`,
+    `<div>${tw ? `<b>P0 见证</b> · 签发 ${sdLocal(tw.issued_at_utc,true)} · 风 ${sdN(tw.wind_speed_mps,1)} m/s` : "P0 回执没有 TAF 见证记录"}</div>
+    ${tw ? sdTafCloudDetails(tw) : ""}`, true);
   const F = (p1 || {}).features || {};
   const p1Line = sdEvidenceCard("P1（正式观测）", SD_COL.P1,
     p1 ? `<b class="sd-evidence-primary">已报最高 ${sdN(p1.running_high_c,2)}°C</b><b>再升概率 ${sdPc(p1.rise_probability)}</b><b>云量 ${sdPc(F.cloud_cover_fraction,0)}</b>` : "<b>尚未生成</b>",
@@ -25753,9 +25613,9 @@ const GROUPS = [
         // Out of the station-board area altogether (user 2026-10-21 「移出站点看板区」);
         // filled by the station board's read wherever it sits.
         [fleetShapePanel,"全队偏态"]]},
-     {box:"④ P0 之后的三条规则（全队层）", nav:"P0-M · P1", kind:"live",
-      note:"三份全队拟合件：TAF 似然的服务闸与那条线、P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量",
-      sections:[[p0mTafBoard,"P0-M TAF 似然"],[p1JointBoard,"P1 观测更新"],
+     {box:"④ P0 之后的规则（全队层）", nav:"P1", kind:"live",
+      note:"P1 观测更新（第 161 条 e^f 在服务、第 150 条 g^α 退为回退）的闸与走查、区域模型的采集与逐站 run；最后一节是服务出去的 P1 猜中最高温的命中率与提前量（P0-M 与 TAF 似然已退役，宪章 283）",
+      sections:[[p1JointBoard,"P1 观测更新"],
         [regionalBoard,"区域模型"],[p1PathSkill,"P1 温度路径命中率"]]},
      {box:"⑤ 物理协变量：模型说的雨，站上到底下没下", nav:"物理协变量", kind:"audit",
       note:"读辐射降温项用的同一张物理表里 Open-Meteo 的逐日降水预报，对官方 METAR/SPECI 打 2×2 列联表的六项分类评分；只是读数，不进 P0/P0-M/P1，不改任何权重",
@@ -25849,8 +25709,6 @@ const LANES = {
     role:"各家各占多少；过样本外检验才换代"},
   "共识桥": {layer:"概率层 · 分布", status:"live",
     role:(()=>{const R=((D.consensus_bridge||{}).rule)||{}; return `中心差 >${R.gap_start_c??"—"}°C 时往中间补一块共识成分，${R.gap_full_c??"—"}°C 补满 ${R.lambda_max??"—"}（读自回执）`;})()},
-  "P0-M TAF 似然": {layer:"P0-M · 唯一的更新", status:"live",
-    role:"P0 × N(TX−c₀; a+b·(桶−c₀), τ)；服务闸未开时恒等，只标记 TAF 到达的决策时刻"},
 
   "P1 温度路径命中率": {layer:"P1 · 读数", status:"audit",
     role:"各时刻众数桶命中结算桶的比例、按事件日的趋势、锁定正确桶比温度计到达早多少"},
@@ -25888,8 +25746,8 @@ const LANES = {
     role:"P0 首决策、距结算 >36h：s = log(p/q) 定方向与份数（YES/NO 双边），各腿买一加一档 post-only 最短有效期，未成交重挂到成交"},
   "远尾做空 H1 · 宪章 234": {layer:"实盘 · 车道", status:"live",
     role:"纯市场价与市场众数距离筛选远尾，在 P0 首决策 FOK 买 NO"},
-  "反向线 A/B · 宪章 277": {layer:"实盘 · 车道", status:"live",
-    role:"A：P0-M 模型众数在市场暖侧时买市场众数冷侧一档 YES；B：P0 >36h 分歧大时对模型众数买 NO；模型只定方向"},
+  "反向线 B · 宪章 277": {layer:"实盘 · 车道", status:"live",
+    role:"P0 >36h 分歧大时对模型众数买 NO；模型只定方向（A 随 P0-M 删除，宪章 283）"}, 
   "融合权重候选": {layer:"概率层 · 融合", status:"live",
     role:"宪章 199：09-24 起服务融合权重；前向记账比融合与席位权重，并列切换后的研究候选"},
   // --- the book's own account ---
@@ -25906,7 +25764,7 @@ const LANES = {
 (()=>{
   const sw=(D.live_readiness||{}).strategy_lanes||{};
   [["秤砣线 · 宪章 146","tiebreak"],["Proper 下注线 · 宪章 231","proper_bet"],
-   ["远尾做空 H1 · 宪章 234","tail_short"],["反向线 A/B · 宪章 277","fade_p0m"]]
+   ["远尾做空 H1 · 宪章 234","tail_short"],["反向线 B · 宪章 277","fade_p0"]]
     .forEach(([name,key])=>{
       if(LANES[name] && key in sw) LANES[name].status = sw[key] ? "live" : "off";
     });
@@ -25956,7 +25814,7 @@ const SECTION_CACHE_NAMES={truth_landing:"真值落点",
     chain_volume:"链路量",chain:"链路",truth_coverage:"真值覆盖",truth_materialization:"真值物化",
     station_difficulty:"站点难度",
     single_system_width:"单系统宽度",consensus_bridge:"共识桥",precip_classification:"降水分类",regional_usage:"区域模型使用",
-    p1_joint_likelihood:"P1 联合似然",p0m_taf_likelihood:"P0-M TAF 似然",correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
+    p1_joint_likelihood:"P1 联合似然",correction_and_weights:"订正与权重表",gaps:"缺口",oos_scores:"OOS 评分",serving_weights:"服务权重",
     center_width:"宽度层",live_days:"每日统计",
     live_readiness:"上线闸门",live_money:"资金",observation_intake:"观测入库",hosted_sweeps:"托管 sweep"};
 // The caches this section read, and the caches that fed those, that were

@@ -290,14 +290,10 @@ def test_the_recovery_matrix_keeps_the_point_rule() -> None:
 def test_the_bump_is_declared_once_for_three_stages() -> None:
     import inspect
 
-    from bayes_basket_target.materialization import (
-        materialize_p0m_observed,
-        materialize_p1,
-    )
+    from bayes_basket_target.materialization import materialize_p1
 
-    p0m = inspect.signature(materialize_p0m_observed).parameters[
-        "posterior_version"
-    ].default
+    # Charter 283: P0-M is retired; its last version stays declared as history.
+    p0m = "p0m_taf_likelihood_v37"
     p1 = inspect.signature(materialize_p1).parameters[
         "posterior_version"
     ].default
@@ -307,7 +303,7 @@ def test_the_bump_is_declared_once_for_three_stages() -> None:
     # Charter 241 moved P0-M on to v23 (its own change).
     assert p0m == "p0m_taf_likelihood_v37"
     # Charter 200 moved P1 on to v20 (its own change).
-    assert p1 == "p1_joint_likelihood_v48"
+    assert p1 == "p1_joint_likelihood_v49"
     start = SA.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v8"
     )

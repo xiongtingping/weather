@@ -121,7 +121,7 @@ def test_one_stake_table_for_the_dialled_lanes() -> None:
     # Charter 252's three, plus charter 257's copy-follow stake (bounded 1..50)
     # and charter 277's two 反向线 stakes.
     assert set(lanes.STAKE_DIALS) == {lanes.LANE_TIEBREAK, lanes.LANE_TAIL_SHORT, lanes.LANE_PROPER_BET,
-                                      lanes.LANE_COPY_FOLLOW, lanes.LANE_FADE_P0M, lanes.LANE_FADE_P0,
+                                      lanes.LANE_COPY_FOLLOW, lanes.LANE_FADE_P0,
                                       lanes.LANE_CONSENSUS_NOON}
     for name, dial in lanes.STAKE_DIALS.items():
         assert dial["bounds"] == ((1.0, 50.0) if name == lanes.LANE_COPY_FOLLOW else (1.0, 100.0))

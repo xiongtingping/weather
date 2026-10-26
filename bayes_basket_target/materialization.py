@@ -22,7 +22,6 @@ from .contracts import (
     ProbabilityEnvelope,
     content_sha256,
     timestamp_lt,
-    timestamp_lte,
 )
 from .center_width_calibration import bucket_centers_from_intervals
 from .center_width_store import EDGE_WIDTH_C
@@ -39,19 +38,9 @@ from .p1_observation_likelihood import (
 )
 from .settlement_time import settlement_day_window
 from . import tx_revision_shift as _tx_revision_shift
-from .observed_floor_censoring import (
-    OBSERVED_FLOOR_CENSORING_LINEAGE_KEY,
-    OBSERVED_FLOOR_CENSORING_RECEIPT_SCHEMA,
-    OBSERVED_FLOOR_CENSORING_RULE,
-    p1_root_probabilities,
-)
+from .observed_floor_censoring import p1_root_probabilities
 from .ssot import production_ssot_schema_status
 from .resource_bounds import assert_connection_target_capacity
-from .taf_likelihood import (
-    LIKELIHOOD_MODE as TAF_LIKELIHOOD_MODE,
-    LINEAGE_KEY as TAF_LIKELIHOOD_LINEAGE_KEY,
-    compile_taf_likelihood,
-)
 from .metar_trajectory import (
     METAR_TRAJECTORY_CONDITIONAL_HOURLY_CURVE_METHOD_VERSION,
     METAR_TRAJECTORY_CONDITIONAL_PATH_METHOD_VERSION,
@@ -62,11 +51,6 @@ from .metar_trajectory import (
     MetarTrajectoryObservation,
     MetarTrajectoryUpdateProof,
     validate_metar_trajectory_update_proof,
-)
-from .taf_revision import (
-    TafRevisionArtifact,
-    TafRevisionProof,
-    validate_taf_revision_proof,
 )
 
 
@@ -789,7 +773,6 @@ def _posterior(
     fresh_until_utc: str,
     bridge_sha256: str,
     anchor_geometry: Mapping[str, Mapping[str, Any]] | None = None,
-    floor_censoring: bool = False,
     prior_probabilities: Mapping[str, float] | None = None,
     post_shift: Callable[[dict[str, float]], tuple[dict[str, float], Mapping[str, Any]]] | None = None,
     post_shift_lineage_key: str | None = None,
@@ -797,8 +780,9 @@ def _posterior(
     """One Bayesian update of a calibrated root: prior x likelihood x mask.
 
     Charter 150 (2026-09-19): P0 is the only stage with post-hoc calibration.
-    P0-M and P1 each multiply their root by one likelihood -- TAF's, and the
-    reports' joint one -- under the observation hard bound, and stop.  The
+    P1 multiplies its root by the reports' joint likelihood under the
+    observation hard bound, and stops (P0-M and its TAF likelihood were
+    retired by charter 283; this function still rebuilds their history).  The
     centre/width scalars, the band table, the clock ceiling, the regional path
     prior and the four-layer chain that used to run here after the
     multiplication all re-shaped an already-updated distribution; each of them
@@ -806,10 +790,6 @@ def _posterior(
     correction of the model, it is the rule that only an observation may write
     an exact zero.
 
-    ``floor_censoring`` (charter 241, P0-M only): the mass the mask removes
-    lands on the lowest surviving bucket -- the running high's -- instead of
-    being spread over the survivors by renormalisation; the proportional
-    vector rides along in the lineage for P1 to root on.
     ``prior_probabilities`` replaces the predecessor's vector as the prior
     (same buckets), for P1 rooting on that proportional shape; identity,
     ordinals and lineage still bind the predecessor itself.
@@ -852,43 +832,7 @@ def _posterior(
     if not math.isfinite(total) or total <= 0.0:
         raise ContractError("probability_posterior_empty_after_hard_bound")
     probabilities = {bucket: value / total for bucket, value in unnormalized.items()}
-    censoring_receipt: dict[str, Any] | None = None
-    if floor_censoring and excluded:
-        ruled_out = sum(
-            float(prior[bucket]) * float(likelihoods[bucket])
-            for bucket in excluded
-        )
-        whole = total + ruled_out
-        if ruled_out > 0.0 and math.isfinite(whole):
-            floor_bucket = min(
-                (
-                    bucket for bucket in predecessor.probabilities
-                    if bucket not in excluded
-                ),
-                key=lambda bucket: (predecessor.bucket_ordinals[bucket], bucket),
-            )
-            proportional, _proportional_floored = floor_probabilities(
-                probabilities, excluded
-            )
-            probabilities = {
-                bucket: value / whole
-                for bucket, value in unnormalized.items()
-            }
-            probabilities[floor_bucket] += ruled_out / whole
-            censoring_receipt = {
-                "schema": OBSERVED_FLOOR_CENSORING_RECEIPT_SCHEMA,
-                "rule": OBSERVED_FLOOR_CENSORING_RULE,
-                "floor_bucket": floor_bucket,
-                "censored_mass": ruled_out / whole,
-                # What the stage served before charter 241, bucket for bucket:
-                # the vector P1 roots on.
-                "proportional_probabilities": proportional,
-            }
     lineage = dict(lineage)
-    if censoring_receipt is not None:
-        lineage[OBSERVED_FLOOR_CENSORING_LINEAGE_KEY] = json.dumps(
-            censoring_receipt, sort_keys=True
-        )
     if post_shift is not None:
         probabilities, shift_receipt = post_shift(probabilities)
         lineage[str(post_shift_lineage_key)] = json.dumps(
@@ -958,343 +902,6 @@ def _posterior(
         "bridge_sha256": _sha("bridge_sha256", bridge_sha256),
         "lineage": dict(lineage),
     })
-
-
-def materialize_p0m_observed(
-    predecessor: ProbabilityEnvelope | Mapping[str, Any],
-    *,
-    p0_root: ProbabilityEnvelope | Mapping[str, Any],
-    forecast_revision_id: str,
-    forecast_source_object_sha256: str,
-    taf_tx_c: float | None,
-    decision_at_utc: str,
-    fresh_until_utc: str,
-    bridge_sha256: str,
-    checkpoint_id: str | None = None,
-    # v2: the settlement-fact hard bound (charter 61) joined the stage's
-    # arithmetic -- buckets the day's observed high has already ruled out
-    # are excluded before normalisation, exactly as P1 has always done.
-    # v3: P0-M is built on P0's root and moves with it, so the width changes
-    # that owed P0 a bump owe this one too -- same three changes, same moment,
-    # same declared start in ``serving_arithmetic.STAGE_VERSION_EFFECTIVE_FROM``.
-    # v4: the station width table retired 2026-09-10T15:27Z (see the P0 v4
-    # note); same moment, same declared start.
-    # v5: charter 134 changed the P0 root this stage is built on (see the
-    # P0 v5 note); same deploy, same declared start.
-    # v6: charter 149 moved the P0 root's per-member calibration key (see
-    # the P0 v6 note); same deploy, same declared start.
-    # v7 (charter 150, 2026-09-19): P0-M is P0 times the TAF likelihood under
-    # the observed-high mask, and nothing else -- the centre/width scalars,
-    # the TAF cells and the band table no longer run on this stage.
-    # v8 (charter 158, 2026-09-19): the likelihood's pull is tempered by
-    # whether the TAF's own weather explains its disagreement with P0's
-    # served mean (``taf_likelihood.disagreement_group``).
-    # v9 (charter 160, 2026-09-19): the root (P0 v7).
-    # v10 (charter 190, 2026-09-21): the root (P0 v8) -- its width layer
-    # carries open edge buckets as tails; same declared start.
-    # v11 (charter 198, 2026-09-22): the root (P0 v9) -- the Fahrenheit rung
-    # and the uncut activation read; same declared start.
-    # v12 (charter 204, 2026-09-23): the root (P0 v10) -- AIFS ENS seated.
-    # v13 (charter 210, 2026-09-23): the root (P0 v11) -- the radiation shift
-    # at the fleet coefficient on every artifact; same declared start.
-    # v17 (charter 217, 2026-09-25): the root (P0 v15) -- AIFS ENS its own
-    # family.
-    # v18 (charter 222, 2026-09-25): the root (P0 v16) -- the radiation
-    # coefficient's warm and cold sides.
-    # v20 (charter 222 ruling, 2026-09-25): the root (P0 v18) -- the
-    # radiation pair at 0.18 / 0.06.
-    # v21 (charter 199, 2026-09-25): the root (P0 v19) -- the US ASOS
-    # stations blended.
-    # v22 (charter 236, 2026-09-27): the root (P0 v20) -- pool seats rank
-    # breadth ahead of the instant they were minted.
-    # v23 (charter 241, 2026-10-01): the observed hard bound censors -- the
-    # ruled-out mass lands on the running high's bucket.
-    # v28 (charter 247, 2026-10-02): the root (P0 v25) -- single-system
-    # width laid on by widening the kernel, not stretching the members.
-    # v29 (charter 248, 2026-10-03): the root (P0 v26) -- the thin-far
-    # slice is a tail mix on the stage pair.
-    # v31 (charter 261, 2026-10-09): the root (P0 v28) -- past 36 h an F
-    # station is served the fixed tail mix.
-    # v30 (charter 253, 2026-10-04): the root (P0 v27) -- past 36 h no
-    # bucket is served above 0.45.
-    # v34 (charter 279 补记七, 2026-10-25): the root (P0 v31) -- the
-    # deterministic consensus shift served beyond 12 h.
-    # v35 (charter 281, 2026-10-25): the root (P0 v32) -- P0 is one
-    # distributional regression; the consensus shift retires.
-    # v36 (charter 281 补记一): the TAF line refitted on the regression's
-    # roots, c0 the regression's centre.
-    # v37 (charter 281 补记二, 2026-10-25): charter 151's ruling revoked -- the
-    # TAF line serves only on its own measured gate.
-    posterior_version: str = "p0m_taf_likelihood_v37",
-    observed_hard_excluded_buckets: Sequence[str] = (),
-    observed_running_high_c: float | None = None,
-    taf_likelihood_artifact: Mapping[str, Any] | None = None,
-    # The same capture's weather over the heating window, which charter 158
-    # groups the disagreement on.  None groups as SMALL (lambda of that group).
-    taf_cloud_cover: float | None = None,
-    taf_precip_prob: float | None = None,
-) -> ProbabilityEnvelope:
-    """Seat P0-M: P0 times the TAF's likelihood, and the TAF's arrival as a moment.
-
-    Charter 150 (user ruling 2026-09-19): the TAF is evidence about the day's
-    maximum and enters only as a likelihood of each bucket
-    (``taf_likelihood.compile_taf_likelihood``) -- it never moves the root's
-    centre or width, and this stage carries no band table.  Until the
-    likelihood's own walk-forward gate admits it, the likelihood is identity
-    and the lineage says which of its silent states held; the probabilities
-    are then P0's, and what the stage contributes is the decision moment the
-    entry walk prices against whatever book exists at that hour.
-
-    Charter 241: the observed high's mask censors rather than renormalises --
-    a root scenario the day has already beaten settles in the running high's
-    bucket (``_posterior`` ``floor_censoring``).
-    """
-
-    previous = (
-        predecessor
-        if isinstance(predecessor, ProbabilityEnvelope)
-        else ProbabilityEnvelope.from_mapping(predecessor)
-    )
-    root = (
-        p0_root
-        if isinstance(p0_root, ProbabilityEnvelope)
-        else ProbabilityEnvelope.from_mapping(p0_root)
-    )
-    if previous.stage not in {"P0", "P0-M"}:
-        raise ContractError("p0m_predecessor_stage_invalid")
-    if root.stage != "P0":
-        raise ContractError("p0m_root_stage_invalid")
-    raw_center = root.lineage.get("model_center_c")
-    try:
-        root_center = (
-            None if raw_center in (None, "", "NONE") else float(raw_center)
-        )
-    except (TypeError, ValueError):
-        root_center = None
-    axis = _bucket_centers_c(root.lineage, bucket_ordinals=root.bucket_ordinals)
-    root_mean = None
-    if axis is not None:
-        weights = [
-            (float(root.probabilities.get(bucket, 0.0)), float(center))
-            for bucket, center in zip(*axis)
-        ]
-        mass = sum(w for w, _ in weights)
-        if mass > 0.0:
-            root_mean = sum(w * c for w, c in weights) / mass
-    likelihoods, taf_receipt = compile_taf_likelihood(
-        taf_likelihood_artifact,
-        station_id=root.station_id,
-        tx_c=None if taf_tx_c is None else float(taf_tx_c),
-        root_center_c=root_center,
-        bucket_centers_c=None if axis is None else dict(zip(*axis)),
-        buckets=root.probabilities,
-        root_mean_c=root_mean,
-        taf_cloud_cover=taf_cloud_cover,
-        taf_precip_prob=taf_precip_prob,
-    )
-    values = _lineage(
-        "P0-M",
-        {
-            **_native_forward_lineage("P0-M", root=root, predecessor=previous),
-            "forecast_revision_id": _text(
-                "forecast_revision_id", forecast_revision_id
-            ),
-            "forecast_source_object_sha256": _sha(
-                "forecast_source_object_sha256", forecast_source_object_sha256
-            ),
-            # The whole point of this row, stated where a reader looks.
-            "taf_revision_state": str(taf_receipt["state"]),
-            "taf_likelihood_mode": (
-                TAF_LIKELIHOOD_MODE if taf_receipt["state"] == "APPLIED"
-                else str(taf_receipt["state"])
-            ),
-            TAF_LIKELIHOOD_LINEAGE_KEY: json.dumps(taf_receipt, sort_keys=True),
-            "taf_observed_tx_c": (
-                "NONE" if taf_tx_c is None else f"{float(taf_tx_c):.17g}"
-            ),
-            "taf_hard_exclusion": "FORBIDDEN",
-            # Charter 61: the exclusion below is the OBSERVED-high fact,
-            # not a TAF judgement -- the FORBIDDEN above still holds for
-            # anything TAF-derived.
-            "observed_running_high_c": (
-                "NONE" if observed_running_high_c is None
-                else f"{float(observed_running_high_c):.17g}"
-            ),
-            "observed_hard_excluded_buckets": (
-                ",".join(str(b) for b in observed_hard_excluded_buckets)
-                or "NONE"
-            ),
-        },
-        predecessor=previous,
-        required=("forecast_revision_id", "forecast_source_object_sha256"),
-    )
-    values["p0_root_checkpoint_id"] = root.checkpoint_id
-    values["p0_root_content_sha256"] = root.content_sha256
-    values["p0_root_posterior_sha256"] = root.posterior_sha256
-    values["revision_mode"] = "taf_likelihood"
-    # When the likelihood speaks the stage's anchor is its own served
-    # vector's weighted centre, as at P1; while it is identity the root's
-    # anchor is inherited unchanged and the envelope is P0's shape exactly.
-    anchor_geometry = None
-    if taf_receipt["state"] == "APPLIED" and axis is not None:
-        intervals = json.loads(str(root.lineage.get("bucket_intervals_c_json")))
-        anchor_geometry = {
-            "centers_c": dict(zip(*axis)),
-            "upper_bounds_c": {
-                str(bucket): bounds[1] for bucket, bounds in intervals.items()
-            },
-        }
-    return _posterior(
-        root,
-        lineage=values,
-        stage="P0-M",
-        likelihoods=likelihoods,
-        hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
-        checkpoint_id=checkpoint_id,
-        posterior_version=posterior_version,
-        decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
-        fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
-        bridge_sha256=bridge_sha256,
-        anchor_geometry=anchor_geometry,
-        floor_censoring=True,
-    )
-
-
-def materialize_p0m(
-    predecessor: ProbabilityEnvelope | Mapping[str, Any],
-    *,
-    p0_root: ProbabilityEnvelope | Mapping[str, Any],
-    taf_revision_artifact: TafRevisionArtifact | Mapping[str, Any],
-    taf_revision_proof: TafRevisionProof | Mapping[str, Any],
-    decision_at_utc: str,
-    fresh_until_utc: str,
-    bridge_sha256: str,
-    checkpoint_id: str | None = None,
-    # v2: charter 61 -- the observed-high hard bound is part of the stage's
-    # arithmetic, same as the observed path.
-    posterior_version: str = "p0m_taf_target_v2",
-    revision: bool = False,
-    observed_hard_excluded_buckets: Sequence[str] = (),
-    observed_running_high_c: float | None = None,
-) -> ProbabilityEnvelope:
-    """Materialize TAF confirmation/correction as the P0-M checkpoint.
-
-    The first TAF must consume NWP P0. Subsequent AMD/COR revisions consume
-    P0-M. Every version is recomputed from the same immutable P0 root using
-    an activated OOS artifact and a content-addressed bounded revision proof.
-    No raw TAF/METAR/NWP payload or caller-authored likelihood ratio is
-    accepted here.
-    """
-
-    previous = predecessor if isinstance(predecessor, ProbabilityEnvelope) else ProbabilityEnvelope.from_mapping(predecessor)
-    root = p0_root if isinstance(p0_root, ProbabilityEnvelope) else ProbabilityEnvelope.from_mapping(p0_root)
-    stage = "P0-M"
-    if (previous.stage != "P0" and not revision) or (
-        revision and previous.stage != "P0-M"
-    ):
-        raise ContractError("p0m_predecessor_stage_invalid")
-    if root.stage != "P0":
-        raise ContractError("p0m_root_stage_invalid")
-    native_values = _native_forward_lineage(
-        stage,
-        root=root,
-        predecessor=previous,
-    )
-    proof = validate_taf_revision_proof(
-        taf_revision_proof,
-        artifact=taf_revision_artifact,
-        predecessor=previous,
-        p0_root=root,
-    )
-    values = _lineage(
-        stage,
-        {
-            **native_values,
-            "forecast_revision_id": proof.forecast_revision_id,
-            "forecast_source_object_sha256": proof.forecast_source_object_sha256,
-            "taf_revision_artifact_id": proof.artifact_id,
-            "taf_revision_artifact_sha256": proof.artifact_content_sha256,
-            "taf_revision_activation_id": proof.activation_id,
-            "taf_revision_proof_id": proof.proof_id,
-            "taf_revision_proof_sha256": proof.content_sha256,
-            "taf_revision_mode": proof.mode,
-            "taf_probability_mass_transfer": f"{proof.probability_mass_transfer:.17g}",
-            "taf_center_displacement_buckets": str(proof.center_displacement_buckets),
-            "taf_applied_strength": f"{proof.applied_strength:.17g}",
-            "taf_tx_calibrated_center_c": f"{proof.tx_calibrated_center_c:.17g}",
-            "taf_tx_c": f"{proof.taf_tx_c:.17g}",
-            "taf_physical_features_sha256": proof.physical_features_sha256,
-            "taf_cloud_cover_fraction": (
-                f"{proof.physical_features['cloud_cover_fraction']:.17g}"
-            ),
-            "taf_precipitation_probability": (
-                f"{proof.physical_features['precipitation_probability']:.17g}"
-            ),
-            "taf_wind_speed_normalized": (
-                f"{proof.physical_features['wind_speed_normalized']:.17g}"
-            ),
-            "taf_physically_confirmed_center_c": (
-                f"{proof.physically_confirmed_center_c:.17g}"
-            ),
-            "taf_physical_adjustment_c": f"{proof.physical_adjustment_c:.17g}",
-            "taf_physical_confirmation_state": proof.physical_confirmation_state,
-            "taf_physical_consistency_factor": (
-                f"{proof.physical_consistency_factor:.17g}"
-            ),
-            "taf_hard_exclusion": "FORBIDDEN",
-        },
-        predecessor=previous,
-        required=("forecast_revision_id", "forecast_source_object_sha256"),
-    )
-    values["p0_root_checkpoint_id"] = root.checkpoint_id
-    values["p0_root_content_sha256"] = root.content_sha256
-    values["p0_root_posterior_sha256"] = root.posterior_sha256
-    values["revision_mode"] = (
-        "root_replacement" if revision else "first_taf_confirmation"
-    )
-    # Stage anchor, published under the same key P0 and P1 use.  P0-M's own
-    # point estimate is the TAF TX center after calibration and the cloud /
-    # precipitation / wind physical confirmation -- that is precisely "where
-    # this stage's data points".  Anchoring on the posterior argmax instead
-    # would inherit P0's edge-bucket defect: an open-ended bucket spans an
-    # unbounded interval and can win an argmax without the forecast pointing
-    # anywhere near it.
-    anchor_bucket = _anchor_bucket_for_temperature(
-        proof.physically_confirmed_center_c,
-        root_lineage=root.lineage,
-        bucket_ordinals=root.bucket_ordinals,
-    )
-    if anchor_bucket is not None:
-        values["model_center_bucket"] = anchor_bucket
-        values["model_center_c"] = (
-            f"{proof.physically_confirmed_center_c:.12g}"
-        )
-    _sha("forecast_source_object_sha256", values["forecast_source_object_sha256"])
-    # Charter 61: the observed-high fact, recorded and applied exactly as
-    # on the observed path.
-    values["observed_running_high_c"] = (
-        "NONE" if observed_running_high_c is None
-        else f"{float(observed_running_high_c):.17g}"
-    )
-    values["observed_hard_excluded_buckets"] = (
-        ",".join(str(b) for b in observed_hard_excluded_buckets) or "NONE"
-    )
-    return _posterior(
-        root,
-        stage=stage,
-        likelihoods=_likelihoods(
-            root.probabilities,
-            proof.likelihood_ratio_by_bucket,
-            name="forecast_likelihood_ratio",
-        ),
-        hard_excluded_buckets=tuple(observed_hard_excluded_buckets),
-        lineage=values,
-        checkpoint_id=checkpoint_id,
-        posterior_version=posterior_version,
-        decision_at_utc=_timestamp("decision_at_utc", decision_at_utc),
-        fresh_until_utc=_timestamp("fresh_until_utc", fresh_until_utc),
-        bridge_sha256=bridge_sha256,
-    )
 
 
 def _p1_prediction_root_lineage(root: ProbabilityEnvelope) -> tuple[str, str]:
@@ -1433,7 +1040,8 @@ def materialize_p1(
     # v47 (charter 281 补记二): the root again (P0-M v37).
     # v48 (charter 282, 2026-10-26): the TX-revision narrow-window shift --
     # receipt on every step, the vector moved only while its fit passes 240.
-    posterior_version: str = "p1_joint_likelihood_v48",
+    # v49 (charter 283, 2026-10-26): P0-M retired -- every P1 roots on P0.
+    posterior_version: str = "p1_joint_likelihood_v49",
     # {"features": ..., "artifact": ..., "regional_system_id": ...}: the
     # step's observation-side feature vector and the fitted likelihood,
     # handed in for the reason every fitted table is -- a replay must rebuild
@@ -2388,6 +1996,5 @@ __all__ = [
     "MATERIALIZATION_SCHEMA",
     "floor_probabilities",
     "insert_probability_envelope",
-    "materialize_p0m",
     "materialize_p1",
 ]

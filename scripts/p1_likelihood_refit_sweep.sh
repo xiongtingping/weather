@@ -11,11 +11,8 @@
 #      and, in the same file, charter 161's directly fitted update behind its
 #      own forward gate (it serves in g**alpha's place while that gate holds).
 #
-# P0-M's TAF likelihood was step 3 until 2026-10-12, when steps 1-2 took the
-# whole 900 s (samples ~4 min, the fit 7.6 min idle and ~10.5 min at 00Z,
-# four fifths of it charter 161's walk-forward) and the TAF refit was killed
-# 50 s in, leaving the 10-11 file serving.  It shares nothing with these two
-# steps and is its own lane now (scripts/taf_likelihood_refit_sweep.sh).
+# P0-M's TAF likelihood was step 3 until 2026-10-12 and its own lane after;
+# both left with P0-M (charter 283).
 #
 # Reads the SSOT and the archive read-only and writes two files, so it
 # holds no database lock ("none" in HOSTED_SWEEP_WRITE_DOMAIN).  The served
@@ -57,10 +54,9 @@ else
 fi
 
 # Charter 281 补记一: every root P1 is fitted on is the regression's -- the
-# rebuilt history plus the roots served since, a P0-M root multiplied by the
-# TAF line serving now where it was not served on the new root.
+# rebuilt history plus the P0 roots served since (P1 roots on P0 since
+# charter 283).
 "$PY" scripts/build_p0_ngr_root_replay.py --live \
-  --p1-roots-taf-artifact "$OUT/taf_likelihood_artifact.json" \
   || echo "root replay copy failed; fitting on the store as it was" >&2
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] P1 joint observation likelihood refit"

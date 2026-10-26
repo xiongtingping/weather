@@ -1,8 +1,12 @@
-"""Charter 241: P0-M's observed hard bound censors; P1 roots on the proportional shape.
+"""Charter 241's history reader: the vector a P1 multiplied on a censoring P0-M root.
 
-A leaf module (contracts only) so the P1 side -- ``materialization``,
-``metar_trajectory``, ``p1_compiler`` and the update's fit -- can all read the
-root through one function without an import cycle.
+Charter 283 (2026-10-26) retired P0-M and with it the censoring this module's
+rule described; every new P1 roots on a P0, whose vector is its own.  What
+stays is the reader for the P1 history rooted on P0-M -- the strict
+materializer rebuilding those envelopes and the fits whose windows still hold
+them (P1's update, the phase-hazard samples) -- until those rows age out.  A
+leaf module (contracts only), so every reader shares one function without an
+import cycle.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ from typing import Mapping
 
 from .contracts import ContractError, ProbabilityEnvelope
 
-# Charter 241 (user ruling 2026-10-01 「修p0m」): where P0-M puts the mass the
+# Charter 241 (user ruling 2026-10-01 「修p0m」, retired by charter 283): where P0-M put the mass the
 # observed high has ruled out.  The day's maximum is max(running high, the
 # rest of the day), so a scenario of the root that ended below the running
 # high ends AT it -- in the running high's bucket -- not spread over the

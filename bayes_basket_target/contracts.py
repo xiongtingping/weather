@@ -36,6 +36,11 @@ FORMAL_ENSEMBLE_METHOD_VERSION = (
     "rolling_origin_probability_stack_v4_five_model_pool_min2"
 )
 STAGES = ("P0", "P0-M", "P1")
+# Charter 283 (user ruling 2026-10-26 「按清单退役 P0-M」): no P0-M is compiled
+# any more.  The stage stays in ``STAGES`` because its committed rows stay in
+# the record and are read back as history; it is never the current stage --
+# every selector of "the stage that speaks now" skips it.
+RETIRED_STAGES = frozenset({"P0-M"})
 # How far the *event* still is, which is not how old the run is.  Both
 # quantities are labelled from this one vocabulary and no table carries both
 # columns, so nothing shows a reader they differ -- a join written on them
@@ -1038,6 +1043,7 @@ __all__ = [
     "REGIONAL_CALIBRATION_MODEL_IDS",
     "ResidualObservation",
     "STAGES",
+    "RETIRED_STAGES",
     "canonical_json",
     "calibration_candidate_model_set_hash",
     "content_sha256",

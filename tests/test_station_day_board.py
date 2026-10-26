@@ -239,10 +239,10 @@ def test_mean_mode_card_names_the_side() -> None:
                 return source[start:index + 1]
         raise AssertionError(name)
 
-    day = {"head_stage": "P0-M", "stages": {
+    day = {"head_stage": "P1", "stages": {
         "P0": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "skew_sign": 0,
                          "skew_gap_buckets": 0.1, "skew_threshold_buckets": 0.38}},
-        "P0-M": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "skew_sign": -1,
+        "P1": {"stats": {"mean_bucket": "24°C", "mode": "24°C", "skew_sign": -1,
                            "skew_gap_buckets": -0.42, "skew_threshold_buckets": 0.4}}},
         "market": {"available": True, "stats": {"mean_bucket": "24°C", "mode": "23°C", "skew_sign": 1,
                                                  "skew_gap_buckets": 0.6, "skew_threshold_buckets": 0.45}}}
@@ -253,8 +253,8 @@ def test_mean_mode_card_names_the_side() -> None:
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     out = result.stdout
-    # The P0-M mean sits on the mode's rung and still reads left (by probability).
-    assert '<b class="sd-evidence-primary">左偏</b><b style="color:var(--text)">P0-M · 均值离众数 −0.42 档</b>' in out
+    # The P1 mean sits on the mode's rung and still reads left (by probability).
+    assert '<b class="sd-evidence-primary">左偏</b><b style="color:var(--text)">P1 · 均值离众数 −0.42 档</b>' in out
     assert "门槛 ±0.40" in out and "均 24°C · 众 24°C" in out
     assert ">对称</b>" in out and ">右偏</b>" in out and "+0.60 档 / ±0.45" in out
 
@@ -319,7 +319,8 @@ def test_day_word_follows_charter_260_precedence() -> None:
               "P0-M": {"decided_at_utc": "2026-10-10T12:30:00Z"},
               "P1": {"decided_at_utc": "2026-10-10T12:10:00Z"}}
     assert day_word(stages) == "P1"
-    assert day_word({k: stages[k] for k in ("P0", "P0-M")}) == "P0-M"
+    # Charter 283: a P0-M row (history) is never the day's word.
+    assert day_word({k: stages[k] for k in ("P0", "P0-M")}) == "P0"
     assert day_word({}) is None
 
 

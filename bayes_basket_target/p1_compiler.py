@@ -570,7 +570,7 @@ def compile_station_p1_packets(
     )
     root = (
         previous
-        if prediction_root is None and previous.stage in {"P0", "P0-M"}
+        if prediction_root is None and previous.stage == "P0"
         else (
             prediction_root
             if isinstance(prediction_root, ProbabilityEnvelope)
@@ -579,7 +579,9 @@ def compile_station_p1_packets(
             else None
         )
     )
-    if root is None or root.stage not in {"P0", "P0-M"}:
+    # Charter 283: P0-M is retired; every new P1 roots on a P0.  The
+    # materializer still reads P0-M-rooted P1 of the history it rebuilds.
+    if root is None or root.stage != "P0":
         raise ContractError("p1_prediction_root_stage_invalid")
     if (
         root.station_id != previous.station_id
@@ -1192,8 +1194,8 @@ def p1_stands_on_replay_base(
     """Whether this P1 was compiled on exactly the base P1 should stand on.
 
     Both parents, both by checkpoint and by content: the direct prediction
-    root (P0-M when the root carries a confirmation, else the P0 itself) and
-    the P0 ancestor.  The compiler uses this to decide what is its own branch
+    root (the P0 itself since charter 283; P0-M in the history before it)
+    and the P0 ancestor.  The compiler uses this to decide what is its own branch
     and the decision loop uses it to decide whether the P1 it is about to
     trade has caught up -- one predicate, so the two cannot disagree the way
     they did until 2026-09-13, when the decision loop checked only the P0
@@ -1234,16 +1236,17 @@ def select_p1_replay_base(
     set[str],
     bool,
 ]:
-    """Select the newest available P0/P0-M branch and replay cursor.
+    """Select the newest P0 branch and replay cursor.
 
     A replay cursor is durable history, not necessarily a currently
     consumable probability.  It may therefore be stale while a delayed
     formal observation is being applied.  The resident writer must append
     that deterministic replay result even when it is already stale, so the
-    observation is consumed exactly once.  P1 is rooted at the newest
-    compatible P0-M when that checkpoint exists; otherwise it is rooted at
-    the current P0.  Both cases bind the exact root checkpoint and content
-    hash, so an old P1 from another root cannot become a replay cursor.
+    observation is consumed exactly once.  P1 is rooted at the current P0
+    (charter 283: P0-M is retired, and a P0-M committed before the
+    retirement is never a base), binding the exact root checkpoint and
+    content hash, so an old P1 from another root cannot become a replay
+    cursor.
     """
 
     rows = [
@@ -1264,32 +1267,8 @@ def select_p1_replay_base(
         as_of_utc=as_of_utc,
     )
     root_id = latest_p0.checkpoint_id
-    branch_taf = [
-        row
-        for row in rows
-        if row.stage == "P0-M"
-        and row.decision_at_utc <= as_of_utc
-        and str(row.lineage.get("p0_root_checkpoint_id") or "")
-        == root_id
-    ]
-    base = (
-        _select_replay_checkpoint(branch_taf, as_of_utc=as_of_utc)
-        if branch_taf
-        else latest_p0
-    )
-    if base.stage == "P0":
-        p0_root_content = base.content_sha256
-    else:
-        p0_root_content = str(
-            base.lineage.get("p0_root_content_sha256") or ""
-        ).lower()
-        if len(p0_root_content) != 64 or any(
-            character not in "0123456789abcdef"
-            for character in p0_root_content
-        ):
-            raise ContractError("p1_replay_p0m_root_lineage_missing")
-        if p0_root_content != latest_p0.content_sha256:
-            raise ContractError("p1_replay_p0m_root_lineage_mismatch")
+    base = latest_p0
+    p0_root_content = base.content_sha256
     branch_p1: list[ProbabilityEnvelope] = [
         row
         for row in rows

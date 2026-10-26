@@ -223,7 +223,7 @@ def test_a_day_that_has_left_p0_is_not_opened(store, warm) -> None:
     _seed(store)
     later = "2026-09-18T12:05:00.000Z"
     _snapshot(store, "snap_f2", later, _ladder(), 2)
-    _fact(store, stage="P0-M", fact_id="f2", decided=later, snapshot_id="snap_f2")
+    _fact(store, stage="P1", fact_id="f2", decided=later, snapshot_id="snap_f2")
     sent: list = []
     receipt = _run(store, sent, now="2026-09-18T12:05:20.000Z")
     assert receipt["planned"] == 0 and receipt["evaluated"] == 0 and not sent
@@ -429,7 +429,7 @@ def test_v3_stays_selectable_after_charter_265() -> None:
     assert lane.allowed_sides(V3) == YES_ONLY and lane.bucket_scope(V3) == "market_mode"
     assert lane.belief_source(V3) == "weather_p"
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
-    assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0", "P0-M", "P1"]
+    assert defaults["entry"] == "latest_decision" and defaults["opening_stages"] == ["P0", "P1"]
     assert defaults["min_hours_to_settlement"] == 0.0 and defaults["rung_horizon_seconds"] == 900.0
     assert defaults["freshness"] == "envelope_validity"
 

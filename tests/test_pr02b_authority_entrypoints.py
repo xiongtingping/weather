@@ -90,10 +90,11 @@ def test_resident_worker_retains_only_ordered_probability_stages() -> None:
         encoding="utf-8"
     )
     p0 = worker.index("p0 = self.materialize_resident_p0")
-    p0m = worker.index("p0m = self._materialize_resident_p0m")
     p1 = worker.index("p1 = self._materialize_resident_p1")
-    assert p0 < p0m < p1
-    assert '"stage_order": ["P0", "P0-M", "P1"]' in worker
+    assert p0 < p1
+    # Charter 283: P0-M is retired.
+    assert "_materialize_resident_p0m" not in worker
+    assert '"stage_order": ["P0", "P1"]' in worker
 
 
 def test_only_three_user_domain_services_and_targetctl_remain() -> None:

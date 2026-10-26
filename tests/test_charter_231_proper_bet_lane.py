@@ -349,12 +349,16 @@ def test_the_plan_stops_at_36_hours_and_when_the_day_leaves_p0(store) -> None:
     assert store.execute(f"SELECT plan_state FROM {lane.EVALUATION_TABLE}").fetchone()[0] == lane.PLAN_CLOSED
 
 
-def test_a_p0m_decision_ends_the_plan(store) -> None:
+def test_a_p1_decision_ends_the_plan_and_a_retired_p0m_does_not(store) -> None:
     _seed(store)
     _run(store, [])
-    _fact(store, stage="P0-M", fact_id="f9", decided="2026-09-18T12:05:00.000Z", snapshot_id="snap_f1")
+    # Charter 283: a P0-M fact (the history before the retirement) moves nothing.
+    _fact(store, stage="P0-M", fact_id="f8", decided="2026-09-18T12:04:00.000Z", snapshot_id="snap_f1")
+    held = _run(store, [], now="2026-09-18T12:04:30.000Z")
+    assert not held.get("closed_plans")
+    _fact(store, stage="P1", fact_id="f9", decided="2026-09-18T12:05:00.000Z", snapshot_id="snap_f1")
     closed = _run(store, [], now="2026-09-18T12:06:00.000Z")
-    assert closed["closed_plans"][0]["reason"] == "stage_left_p0:P0-M"
+    assert closed["closed_plans"][0]["reason"] == "stage_left_p0:P1"
 
 
 def test_a_first_decision_inside_36_hours_is_not_planned(store) -> None:
@@ -557,8 +561,9 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     defaults = strategy_lanes.PROPER_BET_DEFAULT_SETTINGS
     # v2 stays a rule the lane knows; which rule ships is charter 249's suite.
     assert lane.RULE_VERSIONS[lane.RULE_MAKER_V2] == "proper_bet_lane_v2"
-    # Charter 231 补记二 (2026-10-10 「把 P0-M、P1 阶段也放开」): every belief stage opens.
-    assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0", "P0-M", "P1"]
+    # Charter 231 补记二 (2026-10-10 「把 P0-M、P1 阶段也放开」): every belief stage
+    # opens -- P0 and P1 since charter 283 retired P0-M.
+    assert defaults["rule"] in lane.RULE_VERSIONS and defaults["opening_stages"] == ["P0", "P1"]
     # Charter 231 补记 (2026-10-10 「按照proper线本来的设计来」): no hour window.
     assert defaults["min_hours_to_settlement"] == 0.0
     # The budget is charter 252's dial; its suite pins the rule and the default.
@@ -569,7 +574,7 @@ def test_the_lane_is_registered_with_its_window_and_the_basket_off() -> None:
     # The on/off switch is the operator's; the window is pinned here, the rule
     # it runs in charter 249's suite.
     assert proper["rule"] in lane.RULE_VERSIONS
-    assert proper["min_hours_to_settlement"] == 0.0 and proper["opening_stages"] == ["P0", "P0-M", "P1"]
+    assert proper["min_hours_to_settlement"] == 0.0 and proper["opening_stages"] == ["P0", "P1"]
     assert shipped["lanes"]["basket"]["enabled"] is False
 
 

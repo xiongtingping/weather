@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-from .contracts import ContractError, ProbabilityEnvelope, STAGES
+from .contracts import ContractError, ProbabilityEnvelope, RETIRED_STAGES, STAGES
 
 
 STAGE_PRECEDENCE = {stage: index for index, stage in enumerate(STAGES)}
@@ -30,7 +30,11 @@ def select_latest_checkpoint(
             raise ContractError("duplicate_probability_checkpoint")
         seen.add(key)
 
-    visible = [row for row in rows if row.decision_at_utc <= at_utc]
+    # Charter 283: a retired stage's rows are history, never the current stage.
+    visible = [
+        row for row in rows
+        if row.decision_at_utc <= at_utc and row.stage not in RETIRED_STAGES
+    ]
     if not visible:
         raise ContractError("no_probability_checkpoint_asof")
     latest_at = max(row.decision_at_utc for row in visible)
@@ -52,9 +56,10 @@ def select_current_stage(
 ) -> ProbabilityEnvelope:
     """Select the highest submitted stage in the unique SSOT stage chain.
 
-    NWP P0 drives initial basket selection. Once TAF/P0-M or METAR/P1 exists, a
-    later model refresh must rebuild the base and replay those higher-stage
-    facts; it must never downgrade the current authority back to raw P0.
+    NWP P0 drives initial basket selection. Once METAR/P1 exists, a later
+    model refresh must rebuild the base and replay those higher-stage facts;
+    it must never downgrade the current authority back to raw P0.  P0-M is
+    retired (charter 283) and its rows are skipped.
     """
     rows = [item if isinstance(item, ProbabilityEnvelope) else ProbabilityEnvelope.from_mapping(item) for item in envelopes]
     if not rows:
@@ -63,6 +68,9 @@ def select_current_stage(
     if len(station_days) != 1:
         raise ContractError("probability_envelope_scope_mismatch")
     for stage in reversed(STAGES):
+        if stage in RETIRED_STAGES:
+            # Charter 283: P0-M rows are history; P1 or P0 speaks now.
+            continue
         candidates = [
             row
             for row in rows

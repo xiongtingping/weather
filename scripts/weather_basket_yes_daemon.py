@@ -124,7 +124,6 @@ from bayes_basket_target.strategy_lanes import (
     LANE_CERTAIN_WIN_RECYCLE,
     LANE_COPY_FOLLOW,
     LANE_FADE_P0,
-    LANE_FADE_P0M,
     LANE_CONSENSUS_NOON,
     LANE_MIS_BOUGHT_LEG_EXIT,
     LANE_P1_CONSENSUS,
@@ -393,9 +392,9 @@ HOSTED_SWEEPS: tuple[tuple[str, str, float, float], ...] = (
     # samples took ~4 min and the P1 fit 7.6 min idle / ~10.5 min at 00Z
     # (charter 161's walk-forward, rows x days), the lane was killed at
     # 900 s and the TAF refit after it never ran.  The TAF refit is its own
-    # lane now, and this one is timed for the P1 pair it still runs.
+    # lane now, and this one is timed for the P1 pair it still runs.  The TAF
+    # refit lane was deleted with P0-M and the TAF likelihood (charter 283).
     ("p1_likelihood_refit", "scripts/p1_likelihood_refit_sweep.sh", 86_400.0, 1800.0),
-    ("taf_likelihood_refit", "scripts/taf_likelihood_refit_sweep.sh", 86_400.0, 900.0),
     # Capital that only ever leaves the pool.  A prepared cycle holds its
     # reservation until a newer decision on the same station-day supersedes
     # it, and a day whose settlement window has closed can never compile one
@@ -695,8 +694,6 @@ HOSTED_SWEEP_WRITE_DOMAIN: dict[str, str] = {
     # Reads the SSOT and the archive ``mode=ro``; writes the samples DB and
     # two JSON artifacts under data/runtime, none of them a shared database.
     "p1_likelihood_refit": "none",
-    # SSOT ``mode=ro``; writes its own case cache and one JSON artifact.
-    "taf_likelihood_refit": "none",
     # Reads the SSOT ``mode=ro`` and writes only JSON config files, so it
     # holds no database lock and can overlap anything.
     "auto_station_exclusions": "none",
@@ -1441,7 +1438,8 @@ def _stamp_serving_arithmetic(
     if commit_conn is None:
         return {"state": "no_writer", "stages": {}}
     stamped: dict[str, Any] = {}
-    for stage in ("P0", "P0-M", "P1"):
+    # P0-M left with charter 283: no stage serves its arithmetic.
+    for stage in ("P0", "P1"):
         try:
             stamped[stage] = serving_arithmetic.record(
                 commit_conn, stage=stage, now_utc=started_at_utc
@@ -4296,12 +4294,12 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_head_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
-    # Charter 277: the two 反向线 at the head too, right after H1 -- each reads
-    # the newest served vector and the live ladder, so a signal visible at the
+    # Charter 277: 反向线 B at the head too, right after H1 -- it reads the
+    # newest served vector and the live ladder, so a signal visible at the
     # cycle boundary does not wait behind the long work.  A failure is a
-    # receipt, never a stop.
+    # receipt, never a stop.  (A left with P0-M, charter 283.)
     fade_head_receipts: dict[str, Any] = {}
-    for _fade_lane in (LANE_FADE_P0M, LANE_FADE_P0):
+    for _fade_lane in (LANE_FADE_P0,):
         if (
             PRODUCTION_EXECUTION_MODE == "production_live"
             and head_connection is not None
@@ -4559,9 +4557,10 @@ def run_target_production_cycle(
             )
         except Exception as exc:
             tail_short_receipt = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
-    # Charter 277: the two 反向线 again on the vectors this cycle committed.
+    # Charter 277: 反向线 B again on the vectors this cycle committed (A left
+    # with P0-M, charter 283).
     fade_receipts: dict[str, Any] = {}
-    for _fade_lane in (LANE_FADE_P0M, LANE_FADE_P0):
+    for _fade_lane in (LANE_FADE_P0,):
         if PRODUCTION_EXECUTION_MODE != "production_live":
             continue
         if not lane_enabled(_fade_lane):

@@ -15,7 +15,7 @@ from .contracts import (
     ProbabilityEnvelope,
     content_sha256,
 )
-from .materialization import materialize_p0m, materialize_p1
+from .materialization import materialize_p1
 from .native_ensemble_contract import (
     P0_PROBABILITY_PATHWAY,
     validate_cross_native_ensemble_weights,
@@ -27,8 +27,7 @@ ALLOWED_KEYS = {
     "calibration_artifacts", "diagnostic_calibration_artifacts",
     "ensemble_artifact", "calibration_activations", "bucket_intervals",
     "station_id", "event_date", "settlement_timezone",
-    "p0_historical_tilt_proof", "p0_root",
-    "taf_revision_artifact", "taf_revision_proof", "prediction_root",
+    "p0_historical_tilt_proof", "prediction_root",
     "trajectory_artifact", "trajectory_proof", "trajectory_observations",
     "bucket_centers_c", "bucket_upper_bounds_c",
     "reported_high_advanced",
@@ -295,16 +294,6 @@ def build_probability_envelope(
     }
     if packet.get("posterior_version") not in (None, ""):
         common["posterior_version"] = str(packet["posterior_version"])
-    if stage == "P0-M":
-        previous_stage = str(predecessor.get("stage") or "")
-        return materialize_p0m(
-            predecessor,
-            p0_root=packet.get("p0_root"),
-            taf_revision_artifact=packet.get("taf_revision_artifact"),
-            taf_revision_proof=packet.get("taf_revision_proof"),
-            revision=previous_stage == "P0-M",
-            **common,
-        )
     if stage == "P1":
         return materialize_p1(
             predecessor,

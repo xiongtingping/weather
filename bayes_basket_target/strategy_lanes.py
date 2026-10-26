@@ -62,9 +62,9 @@ LANE_TAIL_SHORT = "tail_short"
 LANE_COPY_FOLLOW = "copy_follow"
 LANE_PAIR_MAKER = "pair_maker"
 #: Charter 277's 反向线 (user ruling 2026-10-22 「把格 A 和格 B 做成车道并开启实盘，
-#: 单笔5u」): A fades the P0-M mode warm of the market, B fades the P0 mode
-#: far from the market.  See ``fade_lane``.
-LANE_FADE_P0M = "fade_p0m"
+#: 单笔5u」): B fades the P0 mode far from the market.  A (``fade_p0m``, the
+#: P0-M mode warm of the market) was deleted with P0-M (charter 283, 2026-10-26
+#: 「反向线 A 随 P0-M 一起删除」).  See ``fade_lane``.
 LANE_FADE_P0 = "fade_p0"
 #: Charter 280's 共识线 (user ruling 2026-10-23 「做成车道」): at local noon every
 #: estimate on the board points to one bucket -> YES on it.  See ``consensus_lane``.
@@ -80,7 +80,6 @@ KNOWN_LANES: tuple[str, ...] = (
     LANE_TAIL_SHORT,
     LANE_COPY_FOLLOW,
     LANE_PAIR_MAKER,
-    LANE_FADE_P0M,
     LANE_FADE_P0,
     LANE_CONSENSUS_NOON,
 )
@@ -133,12 +132,12 @@ TIEBREAK_DEFAULT_SETTINGS: dict[str, Any] = {
     # 「P0 只留篮子」): the stages whose first decision may open.  A P0 first
     # decision is still scored into the evaluation table -- the forward
     # sample stays the whole population -- and a fired one is refused
-    # ``stage_not_opening:P0``, for good.
-    "opening_stages": ["P0-M", "P1"],
+    # ``stage_not_opening:P0``, for good.  P0-M left with charter 283.
+    "opening_stages": ["P1"],
 }
 
-#: Every stage a lane may be told to open on.
-KNOWN_STAGES: tuple[str, ...] = ("P0", "P0-M", "P1")
+#: Every stage a lane may be told to open on (P0-M retired, charter 283).
+KNOWN_STAGES: tuple[str, ...] = ("P0", "P1")
 
 #: The P1 tail lane's settings (charter 166, user ruling 2026-09-20 「上线尾段
 #: 车道 p1_tail 策略」).  The belief is the market's own mid ladder under the
@@ -284,8 +283,9 @@ PROPER_BET_DEFAULT_SETTINGS: dict[str, Any] = {
     "stake_usdc": 1.0,
     # Was 「仅p0阶段下单」 / 「限p0」 (2026-09-26 / 10-03): only a station-day in
     # P0 opened.  Charter 231 补记二 (user ruling 2026-10-10 「把 P0-M、P1 阶段也放开」): every
-    # belief stage opens a plan, each read off its own stage's b.
-    "opening_stages": ["P0", "P0-M", "P1"],
+    # belief stage opens a plan, each read off its own stage's b.  P0-M left
+    # with charter 283.
+    "opening_stages": ["P0", "P1"],
     # Charter 249: which decision opens the station-day.  ``latest_decision``
     # judges its newest P0 decision on every pass until a plan is made;
     # ``first_decision`` (charter 231) judged only the first, inside its first
@@ -385,38 +385,6 @@ TAIL_SHORT_DEFAULT_SETTINGS: dict[str, Any] = {
     "unsent_retry_seconds": 300.0,
     "max_daily_cost_usdc": 150.0,
     # Polymarket's weather taker fee rate: fee = shares x rate x p x (1 - p).
-    "taker_fee_rate": 0.05,
-    "send_book_fresh_seconds": 60.0,
-    "live_ws_book": True,
-    "lookback_days": 1,
-}
-
-#: Charter 277's 反向线 A (user ruling 2026-10-22 「把格 A 和格 B 做成车道并开启实盘，
-#: 单笔5u，前端统计数据」): the station-day's newest stage is P0-M and the served
-#: P0-M mode is warm of the market's mode -> YES on the bucket one rung cold
-#: of the market's mode, FOK at the best ask.  Measured 09-12..10-20 on 670
-#: first decisions: +5.3 cents a share [+1.4, +9.2] on a 0.17 cost, positive
-#: on both halves, odd and even days, both months
-#: (docs/research/p0_mode_hit_20261021, 补记五).  On by default: the ruling
-#: put it live.
-FADE_P0M_DEFAULT_SETTINGS: dict[str, Any] = {
-    "enabled": True,
-    "rule": "p0m_warm_fade_cold_neighbour_yes_taker_v1",
-    "stage": "P0-M",
-    "side": "YES",
-    # The bands measured positive: 36-48h +6.0, 24-36h +5.0; 12-24h had 22
-    # decisions (-1.1).  The window opens where P0-M takes the day over and
-    # closes 12 hours before the clock.
-    "min_hours_to_settlement": 12.0,
-    "max_hours_to_settlement": None,
-    # Per take, in USDC at the ask; the depth at the ask caps it.
-    "stake_usdc": 5.0,
-    "walk_ticks": 0,
-    "max_legs_per_station_day": 1,
-    "max_attempts_per_bucket": 3,
-    "max_orders_per_bucket": 8,
-    "unsent_retry_seconds": 300.0,
-    "max_daily_cost_usdc": 150.0,
     "taker_fee_rate": 0.05,
     "send_book_fresh_seconds": 60.0,
     "live_ws_book": True,
@@ -543,7 +511,7 @@ COPY_FOLLOW_DEFAULT_SETTINGS: dict[str, Any] = {
     "lead_hours": [12.0, 48.0],
     "station_units": ["C"],
     # Charter 260: once a P1 stands it is the belief, so the lane may read it.
-    "model_stages": ["P0", "P0-M", "P1"],
+    "model_stages": ["P0", "P1"],
     "episode_gap_seconds": 3600.0,
     # Charter 257 (2026-10-09 「3+5」): take or nothing -- a follow is a FOK at
     # or under the cap within ``take_window_seconds`` of the episode's buy, or
@@ -615,8 +583,7 @@ STAKE_DIALS: dict[str, dict[str, Any]] = {
     LANE_TAIL_SHORT: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_PROPER_BET: {"bounds": (1.0, 100.0), "step": 1.0},
     LANE_COPY_FOLLOW: {"bounds": (1.0, 50.0), "step": 1.0},
-    # Charter 277: the two 反向线 takes, 5 USDC by the ruling.
-    LANE_FADE_P0M: {"bounds": (1.0, 100.0), "step": 1.0},
+    # Charter 277: the 反向线 B take, 5 USDC by the ruling.
     LANE_FADE_P0: {"bounds": (1.0, 100.0), "step": 1.0},
     # Charter 280: the 共识线 take.
     LANE_CONSENSUS_NOON: {"bounds": (1.0, 100.0), "step": 1.0},
@@ -633,7 +600,6 @@ DEFAULT_LANES: dict[str, dict[str, Any]] = {
     LANE_TAIL_SHORT: dict(TAIL_SHORT_DEFAULT_SETTINGS),
     LANE_COPY_FOLLOW: dict(COPY_FOLLOW_DEFAULT_SETTINGS),
     LANE_PAIR_MAKER: dict(PAIR_MAKER_DEFAULT_SETTINGS),
-    LANE_FADE_P0M: dict(FADE_P0M_DEFAULT_SETTINGS),
     LANE_FADE_P0: dict(FADE_P0_DEFAULT_SETTINGS),
     LANE_CONSENSUS_NOON: dict(CONSENSUS_NOON_DEFAULT_SETTINGS),
 }
@@ -764,9 +730,7 @@ __all__ = [
     "LANE_BASKET",
     "LANE_COPY_FOLLOW",
     "LANE_PAIR_MAKER",
-    "LANE_FADE_P0M",
     "LANE_FADE_P0",
-    "FADE_P0M_DEFAULT_SETTINGS",
     "FADE_P0_DEFAULT_SETTINGS",
     "LANE_CONSENSUS_NOON",
     "CONSENSUS_NOON_DEFAULT_SETTINGS",

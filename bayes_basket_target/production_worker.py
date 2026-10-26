@@ -114,7 +114,6 @@ from .production_io import (
 from .quote_freshness import QuoteFreshnessPolicy
 from .market_materialization import insert_market_evidence_bundle, build_confirmed_inventory_snapshot, build_order_state_snapshot
 from .market_ingress import materialize_official_ws_evidence_cache
-from .materialization import materialize_p0m_observed
 from .probability_bridge import materialize_probability_bridge
 from .p1_observation_likelihood import (
     load_artifact as load_p1_observation_likelihood_artifact,
@@ -124,7 +123,6 @@ from .tx_revision_shift import (
     load_bulletins as load_tx_bulletins,
     load_fit_artifact as load_tx_revision_fit,
 )
-from .taf_likelihood import load_artifact as load_taf_likelihood_artifact
 from .regional_point_debias import (
     load_artifact as load_regional_point_debias_artifact,
 )
@@ -652,20 +650,6 @@ OFFICIAL_NATIVE_CAPTURE_PENDING_STATES = frozenset({
 # station count made "more than one day is open" an error, which is how the
 # lane came to depend on something upstream pinning it to a single date.
 MAX_FORWARD_P0_STATION_DAYS = MAX_FORWARD_P0_STATIONS * 4
-# How many station-days may rebuild their TAF confirmation in one cycle.
-#
-# A bound on the pathological case, not a rate: every open station-day whose
-# root moved rebuilds in the cycle it moved.  It was four, set on 2026-08-31
-# when the rebuild cost a full-lineage read per scope and a first live cycle
-# with 383 eligible scopes ran 1,523 seconds.  The read has since moved in
-# front of this decision (the scope is loaded whether or not it rebuilds), so
-# the cap stopped saving the expensive part and kept only the delay: measured
-# 2026-09-13 04:02Z, four rebuilt and 56 waited, and 74 of 651 sampled
-# higher-stage heads on 2026-09-11..12 served a P0-M on a root whose
-# probabilities the newest P0 had already replaced.  The whole scope loop was
-# 4.5 of that cycle's 244 seconds.  One per open station-day is the most a
-# single root generation can ask for.
-MAX_P0M_REPLAYS_PER_CYCLE = MAX_FORWARD_P0_STATION_DAYS
 # How little lease may remain on a day's books before its next scope is
 # compiled against a re-read instead.
 #
@@ -921,8 +905,6 @@ STAGE_TIER: dict[str, int] = {
     # Charter 148: reports that landed during the previous cycle are turned
     # into P1 at the head of this one, ahead of the NWP arrival stages.
     "early_p1": STAGE_TIER_R0_DECISION,
-    # The fast lane: a new TAF becomes P0-M before anything else in the cycle.
-    "early_p0m": STAGE_TIER_R0_DECISION,
     # ... and again right before the decision loop, when something new landed.
     "fast_lane_before_decisions": STAGE_TIER_R0_DECISION,
     # Charter 165: the same checkpoint re-armed at the heavy stage
@@ -943,7 +925,6 @@ STAGE_TIER: dict[str, int] = {
     # older cycle's receipt still reads.
     "fast_lane_in_decision_loop": STAGE_TIER_R0_DECISION,
     "probability_p0": STAGE_TIER_R0_DECISION,
-    "probability_p0m": STAGE_TIER_R0_DECISION,
     "probability_p1": STAGE_TIER_R0_DECISION,
     "regime": STAGE_TIER_R0_DECISION,
     "ws_scope_catalog": STAGE_TIER_R0_DECISION,
@@ -1533,22 +1514,6 @@ OFFICIAL_NATIVE_CAPTURE_DEADLINE_SEC = 7200.0
 # Floor between two OOS station scans.  Deliberately far below the cycle it
 # rides inside: the cycle is the real pacing, and this only stops a very fast
 # cycle from re-scanning the same station back to back.
-# Whether the cheap P0-M scope verdict is trusted, only measured, or absent.
-# "on" lets it skip the expensive read; "shadow" computes it beside the real
-# path and reports disagreements without acting on any; "off" removes it.
-#
-# It shipped as "shadow", because P0-M is the stage that goes silent without
-# saying so and a verdict that agrees over real cycles is worth more than an
-# argument that it must.  Three consecutive cycles agreed on all 168 scopes,
-# the last two comparing whole receipts field for field rather than the state
-# word, with no scope the shadow could not answer for; 151 to 152 of the 168
-# were scopes it would have skipped.  So the default is "on" and the shadow
-# comparison keeps running underneath it: when the verdict is acted on, the
-# real path is not there to disagree with, which is the point -- what remains
-# reported is how many scopes it answered for and how many it declined.
-P0M_FAST_PATH_MODE = str(
-    os.environ.get("PM_P0M_FAST_PATH", "on") or "on"
-).strip().lower()
 
 NATIVE_ENSEMBLE_OOS_SCAN_MIN_INTERVAL_SEC = 60.0
 METAR_TRAJECTORY_TRAINING_RETRY_SEC = 6 * 3600.0
@@ -1566,15 +1531,6 @@ METAR_TRAJECTORY_TRAINING_BUCKETS = (
     "NIGHT", "MORNING", "AFTERNOON", "EVENING",
 )
 METAR_TRAJECTORY_ARTIFACT_VALID_DAYS = 14
-# TAF revision training is the same shape as the trajectory pass -- one due
-# station per cycle, offline scripts, a gate this worker does not get to
-# override -- but its evidence is the rolling strict-OOS native series rather
-# than settled folds.  The chain writes no SSOT row at all: its only product is
-# the registry file the resident P0-M stage reads, assembled by the validated
-# builder from artifacts that already carry a bound live-compatibility proof.
-TAF_REVISION_TRAINING_RETRY_SEC = 6 * 3600.0
-TAF_REVISION_TRAINING_DEADLINE_SEC = 900.0
-TAF_REVISION_ARTIFACT_VALID_DAYS = 30
 # The AWC date-addressed endpoint serves 30 days and no more; past that it
 # answers 400 with "Data is available for up to 30 days for date".  A day not
 # captured while it is inside that window is gone for good, so this cannot be
@@ -4502,17 +4458,6 @@ EARLY_P1_ENABLED = (
     os.environ.get("PM_EARLY_P1", "1").strip().lower()
     not in {"0", "off", "false", "no", ""}
 )
-# The fast lane (user, 2026-09-19: 「把taf和metar的抓取入库和bayes更新优先级提高
-# 最高」).  A TAF the capture round landed is turned into P0-M at the very head
-# of the next cycle -- before the intent reconcile and the NWP stages, which
-# measured 49s and ~100s of the ~150s a new TAF used to wait inside the cycle
-# -- and a P0-M that changed forces the head P1 so P1 re-roots on it at once.
-# The chain's own P0-M pass still runs for roots the cycle rebuilds.
-# ``PM_EARLY_P0M=0`` restores the single P0-M pass inside the chain.
-EARLY_P0M_ENABLED = (
-    os.environ.get("PM_EARLY_P0M", "1").strip().lower()
-    not in {"0", "off", "false", "no", ""}
-)
 
 
 # Checkpoints between the cycle's long stages (user, 2026-09-19: 「极限压低信息
@@ -4636,11 +4581,16 @@ REGIME_STAGE_INCREMENTAL = (
 def _official_inbox_watermark(path: Any) -> tuple[int, str] | None:
     """``(size, sha256)`` of the official-native inbox bytes.
 
-    Content, not mtime, for ``_taf_inbox_watermark``'s reason: the capture
-    merge rewrites the file on passes that brought nothing new.
+    Content, not modification time: the capture merge rewrites the file on
+    passes that brought nothing new, so an mtime watermark would move on
+    rounds that landed nothing.  A few MB hash in milliseconds.
     """
 
-    return _taf_inbox_watermark(path)
+    try:
+        data = Path(path).read_bytes()
+    except (OSError, TypeError):
+        return None
+    return (len(data), hashlib.sha256(data).hexdigest())
 
 
 def _later_report_watermark(
@@ -4714,23 +4664,6 @@ def _covered_report_watermark(
     """
 
     return early_watermark if early_p1_ran else cycle_watermark
-
-
-def _taf_inbox_watermark(path: Any) -> tuple[int, str] | None:
-    """``(size, sha256)`` of the TAF inbox's bytes: what moves when a round
-    lands a bulletin.
-
-    Content, not modification time: every capture round rewrites the file
-    (``refresh_forward_taf_inbox`` ends in an unconditional write), so an
-    mtime watermark would move on rounds that landed nothing and run the
-    head P0-M -- ~7s -- for no new TAF.  A few MB hash in milliseconds.
-    """
-
-    try:
-        data = Path(path).read_bytes()
-    except (OSError, TypeError):
-        return None
-    return (len(data), hashlib.sha256(data).hexdigest())
 
 
 def _merge_resident_p1_receipts(
@@ -5049,92 +4982,6 @@ def _resident_open_event_dates(
     # is downstream of the thing it would be gating.  Live registry discovery
     # is upstream and already bounded, so it owns the scope.
     return tuple(sorted(dates))
-
-
-def _p0m_window_until(
-    decision_at_utc: str,
-    *,
-    root: ProbabilityEnvelope,
-    revision: ForecastRevision | None,
-) -> str | None:
-    """Where a TAF confirmation stops being servable, or None if it cannot start.
-
-    No later than either thing it stands on: the P0 root's own freshness and
-    the forecaster's validity period.  The window used to be the root's span
-    re-measured from P0-M's decision (``_shift_window``), which was right
-    while P0-M rooted on "the P0 current when the forecast arrived" -- a root
-    that had, by construction, often expired.  Since the 2026-08-31 ruling
-    the root is the newest P0, and the shifted window became a way for a
-    confirmation to outlive its root.  Measured 2026-09-11..12 over 45
-    stations: 1,320 of 1,507 P0-M checkpoints outlived their root (median
-    0.52h, max 13.5h), 50 were decided after the root had already expired
-    -- KAUS 09-12 minted a P0-M at 22:25Z on a P0 from 08:54Z and served it
-    until 03:59Z -- and 3 outlived the TAF itself.  An identity-likelihood
-    confirmation carries no model information of its own; it cannot be
-    fresher than the model it confirms.
-
-    None when the window would not clear the mint floor: the scope waits for
-    the next root (or the next TAF) rather than seating a checkpoint that is
-    dead on arrival.
-    """
-
-    until = str(root.fresh_until_utc)
-    if revision is not None and timestamp_lt(
-        str(revision.valid_until_utc), until
-    ):
-        until = str(revision.valid_until_utc)
-    try:
-        assert_mintable_freshness_window(
-            decision_at_utc, until, name="resident_taf_confirmation"
-        )
-    except ContractError:
-        return None
-    return until
-
-
-def _p0m_replay_decision_at(
-    as_of_utc: str, *, after_decision_utc: str
-) -> str:
-    """The instant a confirmation rebuilt on a moved root is seated.
-
-    Now: the forecaster spoke hours ago, and what happened now is that the
-    base moved.  Except that every P0 this cycle compiled carries the cycle
-    clock itself as its decision, and a stage may not share its
-    predecessor's instant (``probability_decision_time_rewind``) -- so a
-    confirmation of a root minted this very cycle is seated one millisecond
-    after it.  Declining instead (the old ``decision_at <= predecessor``
-    skip) left the rebuild to the next cycle, and in between P1 rooted on
-    the bare P0 and then had to replay the whole day a second time.
-
-    Millisecond precision, the cycle clock's own, so the stamp's byte order
-    and instant order agree with the root's.
-    """
-
-    here = datetime.fromisoformat(str(as_of_utc).replace("Z", "+00:00"))
-    after = datetime.fromisoformat(
-        str(after_decision_utc).replace("Z", "+00:00")
-    )
-    if here > after:
-        return str(as_of_utc)
-    lifted = after.replace(
-        microsecond=(after.microsecond // 1000) * 1000
-    ) + timedelta(milliseconds=1)
-    return lifted.astimezone(timezone.utc).isoformat(
-        timespec="milliseconds"
-    ).replace("+00:00", "Z")
-
-
-def _p0m_scope_day_order(event_date: Any) -> str:
-    """Sort token putting the furthest event day first.
-
-    Dates are ISO, so descending lexical order is descending chronological
-    order.  Inverting each character keeps the comparison a plain string sort
-    while reversing its direction, which is cheaper and less error-prone than
-    parsing a date per scope in a 389-scope loop.
-    """
-
-    text = str(event_date or "")
-    return "".join(chr(0x10FFFD - ord(char)) for char in text)
 
 
 def _live_order_number(value: Any) -> float | None:
@@ -5803,8 +5650,6 @@ class TargetProductionWorker:
         # Set here as well as per cycle: a caller that drives one stage
         # directly (every test of this lane does) must not meet an
         # AttributeError inside a try that would file it as a scope blocker.
-        self._p0m_replay_blocked_scopes: frozenset[tuple[str, str]] = frozenset()
-        self._p0m_replay_blocked_next: set[tuple[str, str]] = set()
         self.taf_rotation_state_path = (
             self.nwp_runtime_root / "taf_rotation_state.json"
         )
@@ -16469,23 +16314,11 @@ class TargetProductionWorker:
         *,
         as_of_utc: str,
         freshness_seconds: int = 3600,
-        stage_clock_utc: str | None = None,
         only_scopes: "set[tuple[str, str]] | None" = None,
     ) -> dict[str, Any]:
-        """Append resident official new-high P1 through the unique compiler.
-
-        ``stage_clock_utc`` is the latest decision the stages below this one
-        stamped in the same cycle.  Observations stay strictly as of
-        ``as_of_utc`` -- their truth revisions were identified against that
-        clock -- but the root this compile builds on is read as of the stage
-        clock, so a P0-M rebuilt one millisecond after a root minted at the
-        cycle clock (``_p0m_replay_decision_at``) is the root P1 takes, not a
-        cycle later after a detour through the bare P0.
-        """
+        """Append resident official new-high P1 through the unique compiler."""
 
         envelope_as_of_utc = as_of_utc
-        if stage_clock_utc and timestamp_lt(as_of_utc, stage_clock_utc):
-            envelope_as_of_utc = str(stage_clock_utc)
 
         if self.canonical_source_conn is None:
             return {
@@ -17048,33 +16881,6 @@ class TargetProductionWorker:
             "orders_submitted": 0,
         }
 
-    @staticmethod
-    def _p0m_no_op_receipt(
-        *,
-        station_id: str,
-        event_date: str,
-        state: str,
-        dropped_pre_root: int | None = None,
-    ) -> dict[str, Any]:
-        """The receipt for a scope this stage does nothing for.
-
-        One constructor for both no-op exits, and for the cheap path that
-        reaches the same conclusion without the read.  Three copies of the
-        same dict is how a fast path and a slow path stop agreeing without
-        anyone noticing.
-        """
-
-        receipt: dict[str, Any] = {
-            "station_id": station_id,
-            "event_date": event_date,
-            "state": state,
-            "write_count": 0,
-            "writes": [],
-        }
-        if dropped_pre_root is not None:
-            receipt["dropped_pre_root_captures"] = dropped_pre_root
-        return receipt
-
     def _observed_running_high_c(
         self,
         *,
@@ -17114,1177 +16920,6 @@ class TargetProductionWorker:
                 as_of_utc=as_of_utc,
             ),
         )
-
-    def _p0m_observed_hard_bound(
-        self,
-        *,
-        station_id: str,
-        event_date: str,
-        as_of_utc: str,
-        root: Any,
-    ) -> tuple[tuple[str, ...], float | None]:
-        """Charter 61: the observed-high fact for one P0-M decision.
-
-        Promoted from P1: the settlement rule defines truth as the day's
-        maximum, so a reported high of X makes every bucket ending at or
-        below X arithmetically dead whatever any model claims.  Returns
-        ((), None) whenever the day has no formal observations yet (a
-        pre-day TAF confirmation), and refuses to exhaust the support from
-        here -- the materializer would raise, and a bound that deletes the
-        whole distribution is evidence of a vocabulary problem, not a fact
-        to apply.
-        """
-
-        running_high = self._observed_running_high_c(
-            station_id=station_id,
-            event_date=event_date,
-            as_of_utc=as_of_utc,
-        )
-        if running_high is None:
-            return (), None
-        excluded = dead_buckets_for_running_high(
-            ordered_buckets=sorted(
-                root.probabilities,
-                key=lambda bucket: root.bucket_ordinals.get(bucket, 0),
-            ),
-            bucket_intervals_c_json=root.lineage.get(
-                "bucket_intervals_c_json"
-            ),
-            running_high_c=running_high,
-        )
-        return excluded, running_high
-
-    @staticmethod
-    def _p0_root_latest_run_init_utc(root: ProbabilityEnvelope) -> datetime | None:
-        """The newest model run a P0 root is built on, or None if unknown.
-
-        ``run_init_utc_by_system_json`` names one run per family; the root
-        knows everything its newest member knows, so that is the instant a
-        forecast must postdate to bring information the root lacks.
-        """
-
-        raw = root.lineage.get("run_init_utc_by_system_json")
-        if not raw:
-            return None
-        try:
-            by_system = json.loads(str(raw))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return None
-        if not isinstance(by_system, Mapping) or not by_system:
-            return None
-        latest: datetime | None = None
-        for value in by_system.values():
-            try:
-                parsed = datetime.fromisoformat(
-                    str(value).replace("Z", "+00:00")
-                )
-            except (TypeError, ValueError):
-                return None
-            if parsed.tzinfo is None:
-                return None
-            parsed = parsed.astimezone(timezone.utc)
-            if latest is None or parsed > latest:
-                latest = parsed
-        return latest
-
-    @staticmethod
-    def _taf_issued_after(
-        capture: Mapping[str, Any], instant: datetime
-    ) -> bool:
-        issued_raw = str(
-            (capture.get("forecast_revision") or {}).get("issued_at_utc")
-            or ""
-        )
-        try:
-            issued = datetime.fromisoformat(issued_raw.replace("Z", "+00:00"))
-        except (TypeError, ValueError):
-            return False
-        if issued.tzinfo is None:
-            return False
-        return issued.astimezone(timezone.utc) > instant
-
-    @staticmethod
-    def _p0m_scope_shape(
-        envelopes: Sequence[ProbabilityEnvelope],
-        captures: Sequence[Mapping[str, Any]],
-        *,
-        as_of_utc: str | None = None,
-    ) -> dict[str, Any]:
-        """The P0/P0-M-only shape both the real and the cheap path read.
-
-        One implementation, called twice on two lists, is what makes the
-        shadow comparison meaningful: a disagreement is then a disagreement
-        about the *rows*, which is the thing under test, and never about two
-        copies of the arithmetic drifting apart.
-        """
-
-        first_root_at = min(
-            (
-                item.decision_at_utc
-                for item in envelopes
-                if item.stage == "P0"
-            ),
-            default="",
-        )
-        # Seatability is an information question, not a delivery one.  A
-        # TAF adjusts a root when the forecaster issued it after the model
-        # run the root is built on; when it was carried into our inbox, and
-        # when we happened to mint the root, are our clocks and say nothing
-        # about which knows more.  Judged by our clocks, the five TX
-        # stations of 2026-09-04 lost their only TAF: issued 21:04Z on the
-        # 2nd, three hours after the 18Z run the root reads, received 01Z,
-        # while the root itself was minted 05:56Z after a night of capture
-        # starvation -- and ZBAA answered forecast_revision_chain_empty on
-        # every cycle.  The receipt rule remains for roots that carry no
-        # run identity (the aggregator fallback), so nothing they admitted
-        # before is lost.  (User ruling 2026-09-03.)
-        gate_root = max(
-            (item for item in envelopes if item.stage == "P0"),
-            key=lambda item: item.decision_at_utc,
-            default=None,
-        )
-        gate_run_init = (
-            TargetProductionWorker._p0_root_latest_run_init_utc(gate_root)
-            if gate_root is not None else None
-        )
-        if gate_run_init is not None:
-            seatable = [
-                capture for capture in captures
-                if TargetProductionWorker._taf_issued_after(
-                    capture, gate_run_init
-                )
-            ]
-        else:
-            seatable = [
-                capture for capture in captures
-                if first_root_at
-                and str(
-                    (capture.get("forecast_revision") or {}).get(
-                        "received_at_utc"
-                    ) or ""
-                ) >= first_root_at
-            ]
-        earliest_taf = min(
-            (
-                str(
-                    (capture.get("forecast_revision") or {}).get(
-                        "received_at_utc"
-                    ) or ""
-                )
-                for capture in seatable
-            ),
-            default="",
-        )
-        # Charter, operator ruling 2026-08-31: a TAF replayed onto a newer
-        # model base is still the forecaster's confirmation, and P0-M should
-        # be built on P0's latest probabilities the way P1 already is.
-        #
-        # The base used to be the last P0 predating the earliest un-applied
-        # TAF, and stayed there while that TAF stayed earliest.  KATL is the
-        # specimen: TAF at 05:39, base frozen on the 05:28 P0, and P0-M was
-        # still serving it at 10:43 -- five hours and four model improvements
-        # later, stating 0.347 for the 92-93F bucket while the current P0
-        # said 0.427.  Stage precedence serves the higher stage, so the book
-        # was priced off the older number with the newer one in hand.
-        roots = [item for item in envelopes if item.stage == "P0"]
-        latest_root = (
-            max(roots, key=lambda item: item.decision_at_utc) if roots else None
-        )
-        # Confirmed on the root being served -- that exact checkpoint.
-        #
-        # This used to be "seen under a base with the same probabilities",
-        # on the argument that a P0 is re-minted every compile and keying on
-        # the id would re-apply every scope every cycle.  Two things changed
-        # the arithmetic.  A confirmation's window now ends with its root's
-        # (``_p0m_window_until``), so a re-minted root with the same numbers
-        # but a later freshness leaves the old confirmation expiring on a
-        # root nobody serves.  And P1 roots on the P0-M whose root *is* the
-        # newest P0 checkpoint (``select_p1_replay_base``), so a confirmation
-        # left on an equal-probability predecessor sent P1 onto the bare P0
-        # -- dropping the stage -- until the probabilities next moved.  The
-        # re-mint rate the old note feared is the rate P1 already replays
-        # at: 2,834 P0 transitions over 90 station-days, 2026-09-11..12.
-        seen_revisions = {
-            str(item.lineage.get("forecast_source_object_sha256") or "")
-            for item in envelopes
-            if item.stage == "P0-M"
-            and latest_root is not None
-            and str(item.lineage.get("p0_root_checkpoint_id") or "")
-            == latest_root.checkpoint_id
-        }
-        # Every TAF text that has ever confirmed this station-day, under any
-        # root.  A text in here has already been judged seatable once; the
-        # forecaster has not spoken again just because the model moved.
-        seated_revisions = {
-            str(item.lineage.get("forecast_source_object_sha256") or "")
-            for item in envelopes
-            if item.stage == "P0-M"
-        } - {""}
-        # What a rebuilt confirmation should carry: the forecaster's newest
-        # word that is still valid.  Operator ruling 2026-08-31 -- "a TAF
-        # replayed onto a newer model base is still the forecaster's
-        # confirmation" -- so a text that already confirmed an older root is
-        # carried onto the newer one even when it was issued before the newer
-        # run.  The 2026-09-03 information-order rule still governs *new*
-        # texts (``seatable``); applied to the replay as well, it stranded
-        # the confirmation on its old root whenever a model run landed after
-        # the last TAF: 17 of the 86 sampled P0-M heads serving a superseded
-        # root on 2026-09-11..12 had no way off it until the next issuance.
-        #
-        # And the newest, not the first.  The replay walked revisions in
-        # receipt order and seated each at "now"; the second one then failed
-        # the strictly-after test, so what survived was the *oldest* text,
-        # whose TX then chose the charter-57 centre/width cell.
-        replay_candidates: dict[str, Mapping[str, Any]] = {}
-        for capture in (
-            *seatable,
-            *(
-                capture for capture in captures
-                if str(
-                    (capture.get("forecast_revision") or {}).get(
-                        "source_object_sha256"
-                    ) or ""
-                ) in seated_revisions
-            ),
-        ):
-            revision_raw = capture.get("forecast_revision") or {}
-            if as_of_utc is not None:
-                valid_until = str(revision_raw.get("valid_until_utc") or "")
-                if not valid_until or not timestamp_lt(as_of_utc, valid_until):
-                    continue
-            replay_candidates[
-                str(revision_raw.get("source_object_sha256") or "")
-            ] = capture
-        ordered_candidates = sorted(
-            replay_candidates.values(),
-            key=lambda capture: (
-                str((capture.get("forecast_revision") or {}).get(
-                    "issued_at_utc"
-                ) or ""),
-                str((capture.get("forecast_revision") or {}).get(
-                    "received_at_utc"
-                ) or ""),
-                str((capture.get("forecast_revision") or {}).get(
-                    "revision_id"
-                ) or ""),
-            ),
-            reverse=True,
-        )
-        replay_target = ordered_candidates[0] if ordered_candidates else None
-        replay_target_sha = (
-            str(
-                (replay_target.get("forecast_revision") or {}).get(
-                    "source_object_sha256"
-                ) or ""
-            )
-            if replay_target is not None
-            else ""
-        )
-        # Texts never seated that may still seat: an expired one never will,
-        # and counting it would keep the cheap path from ever skipping the
-        # scope again.
-        new_revision_count = sum(
-            1 for capture in seatable
-            if str(
-                (capture.get("forecast_revision") or {}).get(
-                    "source_object_sha256"
-                ) or ""
-            ) not in seated_revisions
-            and str(
-                (capture.get("forecast_revision") or {}).get(
-                    "source_object_sha256"
-                ) or ""
-            ) in replay_candidates
-        )
-        return {
-            "first_root_at": first_root_at,
-            "seatable": seatable,
-            "dropped_pre_root": len(captures) - len(seatable),
-            "earliest_taf": earliest_taf,
-            "roots": roots,
-            "latest_root": latest_root,
-            "seen_revisions": seen_revisions,
-            "seated_revisions": seated_revisions,
-            "replay_target": replay_target,
-            "new_revision_count": new_revision_count,
-            # A root with no usable life left can lend a confirmation none
-            # (``_p0m_window_until``), so the scope has nothing to do until
-            # the next P0 -- and must not need a registry shard to say so.
-            "root_exhausted": bool(
-                as_of_utc is not None
-                and latest_root is not None
-                and _p0m_window_until(
-                    as_of_utc, root=latest_root, revision=None
-                ) is None
-            ),
-            # Whether the root being served still lacks a confirmation of the
-            # text it should carry -- the rebuild this lane owes the scope.
-            "reroot_due": bool(
-                replay_target_sha
-                and replay_target_sha not in seen_revisions
-            ),
-        }
-
-    def _materialize_resident_p0m(
-        self,
-        *,
-        as_of_utc: str,
-    ) -> dict[str, Any]:
-        """Consume a bounded forward-only TAF inbox before resident P1."""
-
-        if self.commit_conn is None:
-            return {
-                "state": "not_attempted",
-                "reason": "target_atomic_writer_not_injected",
-                "writes_target_ssot": False,
-            }
-        if not self.taf_inbox_path.is_file():
-            return {
-                "state": "not_configured",
-                "reason": "resident_taf_inbox_missing",
-                "writes_target_ssot": False,
-            }
-        with self._span("p0m_inputs_load"):
-            inbox = load_bounded_json(self.taf_inbox_path)
-        if not isinstance(inbox, Mapping):
-            raise ContractError("resident_taf_input_invalid")
-        if inbox.get("schema") != "bayes_basket_target_taf_revision_inbox_v1":
-            raise ContractError("resident_taf_inbox_schema_invalid")
-        try:
-            with self._span("p0m_taf_fact_ingress"):
-                taf_fact_ingress = ingest_forward_taf_inbox(
-                    self.commit_conn,
-                    inbox,
-                )
-            # The sibling point system rides the same stage.  Its lane is
-            # forward-only accumulation -- each pass projects whichever noon
-            # anchors have newly passed, and settled days become OOS folds on
-            # their own -- so a failure here is one missed pass, never a
-            # reason to block the TAF ingest it shares the stage with.
-            try:
-                if self.canonical_source_conn is None:
-                    projection_receipt: dict[str, Any] = {
-                        "state": "not_attempted",
-                        "reason": "canonical_source_conn_missing",
-                    }
-                else:
-                    # Plan outside the lock; take it only if there is a row
-                    # to write.  Nearly every cycle plans nothing (all
-                    # station-days already projected), and those cycles now
-                    # never open a transaction at all.
-                    with self._span("metar_proj_plan"):
-                        pending_projection, projection_receipt = (
-                            plan_metar_physical_member_runs(
-                                self.commit_conn,
-                                archive_conn=self.canonical_source_conn,
-                                as_of_utc=as_of_utc,
-                            )
-                        )
-                    if pending_projection:
-                        with _writer_transaction(
-                            self.commit_conn,
-                            savepoint="metar_physical_projection",
-                        ):
-                            with self._span("metar_proj_apply"):
-                                projection_receipt = {
-                                    **projection_receipt,
-                                    "wrote_count": (
-                                        apply_metar_physical_member_runs(
-                                            self.commit_conn,
-                                            pending_projection,
-                                        )
-                                    ),
-                                }
-            except Exception as exc:  # noqa: BLE001 - stage isolation
-                projection_receipt = {
-                    "state": "failed",
-                    "reason": f"{type(exc).__name__}:{exc}"[:200],
-                }
-            taf_fact_ingress = {
-                **taf_fact_ingress,
-                "metar_physical_projection": projection_receipt,
-            }
-        except ContractError as exc:
-            if str(exc) != "forward_taf_capture_content_conflict":
-                raise
-            return {
-                "schema": "bayes_basket_target_resident_taf_ingress_v1",
-                "state": "BLOCKED_FAIL_CLOSED",
-                "taf_fact_ingress": {
-                    "state": "BLOCKED_FAIL_CLOSED",
-                    "reason": f"ContractError:{exc}",
-                    "wrote_count": 0,
-                },
-                "receipts": [],
-                "blockers": [{
-                    "reason": f"ContractError:{exc}",
-                }],
-                "writes_target_ssot": False,
-                "places_orders": False,
-                "calls_order_gateway": False,
-                "live_submit_authorized": False,
-                "orders_submitted": 0,
-            }
-        raw_captures = inbox.get("captures")
-        if not isinstance(raw_captures, list) or len(raw_captures) > 2048:
-            raise ContractError("resident_taf_inbox_capture_count_invalid")
-        captures_by_scope: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
-        # A capture that fails its own checks is set aside on its own, as the
-        # fact ingest above now does: its scope has no committed TAF fact and
-        # fails closed for P0-M, and no other station's P0-M waits on it.
-        refused_captures: list[dict[str, str]] = []
-        # One revision twice in the inbox: the newer is the revision
-        # (「以最新的为准」, 2026-09-23), the same one the fact ingest keeps.
-        newest = newest_forward_taf_captures(raw_captures)
-        for index, raw_capture in enumerate(raw_captures):
-            if index not in newest:
-                refused_captures.append(rejected_forward_taf_capture(
-                    raw_capture, "forward_taf_capture_superseded_in_inbox"
-                ))
-                continue
-            try:
-                if not isinstance(raw_capture, Mapping):
-                    raise ContractError("resident_taf_capture_invalid")
-                supplied_sha = str(raw_capture.get("content_sha256") or "")
-                identity = {
-                    key: value
-                    for key, value in raw_capture.items()
-                    if key != "content_sha256"
-                }
-                if supplied_sha != content_sha256(identity):
-                    raise ContractError(
-                        "resident_taf_capture_content_sha_mismatch"
-                    )
-                boundary = raw_capture.get("boundary")
-                if (
-                    raw_capture.get("source_class")
-                    != "official_forward_native_receipt"
-                    or not isinstance(boundary, Mapping)
-                    or boundary.get("native_local_receipt") is not True
-                    or boundary.get("retrospective_replay_only") is not False
-                ):
-                    raise ContractError("resident_taf_forward_receipt_required")
-                revision = ForecastRevision.from_mapping(
-                    raw_capture.get("forecast_revision")
-                )
-            except ContractError as exc:
-                refused_captures.append(
-                    rejected_forward_taf_capture(raw_capture, str(exc))
-                )
-                continue
-            if revision.received_at_utc > as_of_utc:
-                continue
-            captures_by_scope.setdefault(
-                (revision.station_id, revision.event_date),
-                [],
-            ).append(raw_capture)
-        receipts: list[dict[str, Any]] = []
-        blockers: list[dict[str, str]] = []
-        ignored_inactive_scope_count = 0
-        ignored_no_artifact_scope_count = 0
-        # What a cheaper path would have concluded, kept beside what the real
-        # path concludes so the two can be compared before either is trusted.
-        #
-        # The real path reads every committed envelope for the station-day to
-        # decide, and 80% of that read is per-row work -- JSON-decoding the
-        # row, hashing it back to check its stored sha, building the envelope
-        # -- while P1 is 78% of the rows and no part of this decision needs
-        # it.  Measured 2026-08-22: 168 scopes, 197 seconds, and every one of
-        # the 168 concluded NO_NEW_TAF_REVISION, having built 1,353 envelopes
-        # per scope to say so.
-        #
-        # The cheap path loads P0 and P0-M only and answers two questions:
-        # are there roots, and is every capture already materialised.  It is
-        # run in shadow first because P0-M is the stage that goes silent
-        # without saying so, and a verdict that agrees on one cycle is worth
-        # more than an argument that it must.
-        shadow_verdicts: dict[tuple[str, str], dict[str, Any] | None] = {}
-        shadow_errors: list[dict[str, str]] = []
-        replays_this_cycle = 0
-        replays_deferred: list[str] = []
-        p0m_serving_tables: dict[str, Any] | None = None
-        # The latest decision this pass stamped, which a rebuild on a root
-        # minted at the cycle clock places one millisecond past it.  P1 reads
-        # its roots as of this, so it builds on the confirmation just made.
-        p0m_stage_clock_utc: str | None = None
-        # Furthest event day first, then station.
-        #
-        # The replay budget is four scopes a cycle and this loop used to walk
-        # (station, day) alphabetically, so for any station the *current* day
-        # came before the forward one and spent the budget first.  Measured
-        # 2026-09-01 16:05: twelve scopes deferred on budget -- nine of them
-        # the current day, three the forward one -- and the single write the
-        # budget bought went to the current day.
-        #
-        # That is the wrong day for this stage.  Each event day has one stage
-        # that governs it: the furthest day has only P0, because nothing else
-        # can open its position; the day after that is shaped by P0-M, the
-        # TAF confirmation that sizes it before it opens; and the day already
-        # open is P1's, driven by arriving observations.  A P0-M replay spent
-        # on the open day refines a book P1 is about to restate anyway, while
-        # the forward day -- the one P0-M actually governs -- waits.
-        #
-        # Descending date puts the forward days first and the settled backlog
-        # last, which is also where it belongs: those are skipped above
-        # before anything is read.
-        _p0m_loop_started = time.perf_counter()
-        _replay_blocked = getattr(
-            self, "_p0m_replay_blocked_scopes", frozenset()
-        )
-        for (station, day), captures in sorted(
-            captures_by_scope.items(),
-            key=lambda item: (
-                # A scope whose decision was refused last round for want of
-                # this replay comes first, whatever day it is.  The day order
-                # below is the stage-governs-its-own-day rule and stays the
-                # rule; this is the case that rule cannot see, because a
-                # forward day that is being served fine and an open day that
-                # is refusing every cycle look identical to a date.
-                0 if item[0] in _replay_blocked else 1,
-                _p0m_scope_day_order(item[0][1]),
-                item[0][0],
-            ),
-        ):
-            try:
-                with self._span("p0m_scope_exists", label=station):
-                    # The settlement timezone comes off the same row, from the
-                    # same index seek: the day-state test below needs it and
-                    # nothing else here does, so asking for it costs nothing.
-                    scope_exists = self.commit_conn.execute(
-                        "SELECT settlement_timezone"
-                        " FROM basket_probability_envelope "
-                        "WHERE station_id=? AND event_date=? "
-                        "AND state='COMMITTED' AND stage='P0' "
-                        "AND decision_at_utc<=? LIMIT 1",
-                        (station, day, as_of_utc),
-                    ).fetchone()
-                if scope_exists is None:
-                    ignored_inactive_scope_count += 1
-                    receipts.append({
-                        "station_id": station,
-                        "event_date": day,
-                        "state": "IGNORED_NO_P0_SCOPE",
-                        "write_count": 0,
-                        "writes": [],
-                    })
-                    continue
-                # A settled day, decided before anything is read.
-                #
-                # "Only where trading can still happen": a settled day's base
-                # never moves again and nobody prices it.  That ruling already
-                # existed, but it sat two reads deep -- past the shadow load
-                # and past the full scope load -- so every closed station-day
-                # in the backlog paid for both before being told it had
-                # nothing to do.  The day state is a pure function of the
-                # date, the timezone and the clock, so it can be asked first.
-                #
-                # Measured 2026-09-01 over one cycle's 389 scopes: 323 were
-                # closed and *every one of them wrote nothing* -- 290 already
-                # labelled REPLAY_SKIPPED_SETTLED_DAY and 33 reaching the same
-                # no-op through the fast path's NO_NEW_TAF_REVISION.  So this
-                # changes no write anywhere; it changes when the answer is
-                # known.  At the shadow load's measured 133.8ms a scope that
-                # is about 43 seconds of a 409-second cycle.
-                #
-                # The 33 are relabelled deliberately.  A closed day does
-                # nothing because it is closed, not because its TAF is
-                # unchanged, and the receipt should say the binding reason.
-                #
-                # Unreadable falls through rather than skipping, and the
-                # original guard downstream stays where it is: it is the
-                # backstop for exactly that case.
-                try:
-                    p0m_day_state = event_day_window(
-                        day,
-                        as_of_utc=as_of_utc,
-                        target_timezone=str(scope_exists[0] or ""),
-                    )["state"]
-                except Exception:  # noqa: BLE001 -- unreadable is not skippable
-                    p0m_day_state = ""
-                if p0m_day_state and p0m_day_state not in {
-                    "open", "not_started"
-                }:
-                    ignored_no_artifact_scope_count += 1
-                    receipts.append(self._p0m_no_op_receipt(
-                        station_id=station,
-                        event_date=day,
-                        state="REPLAY_SKIPPED_SETTLED_DAY",
-                    ))
-                    continue
-                # Read the station-day once.  The lane gate below is a pure
-                # function of this list, so the second call reuses it rather
-                # than paying for the whole read again -- 24 to 27 MB with
-                # lineage_json on the largest days, twice per scope, per
-                # cycle.  Reusing it also means both gates judge one snapshot
-                # instead of two taken moments apart.
-                # The cheap verdict, taken before the expensive read so it is
-                # answering the same question from the same instant.  Nothing
-                # acts on it yet.
-                if P0M_FAST_PATH_MODE != "off":
-                    try:
-                        with self._span(
-                            "p0m_shadow_load", label=f"{station}|{day}"
-                        ):
-                            narrow = load_materialized_probability_envelopes(
-                                self.commit_conn,
-                                station_id=station,
-                                event_date=day,
-                                evaluation_at_utc=as_of_utc,
-                                stages=("P0", "P0-M"),
-                            )
-                        narrow_shape = self._p0m_scope_shape(
-                            narrow, captures, as_of_utc=as_of_utc
-                        )
-                        if not narrow_shape["roots"]:
-                            fast_receipt = self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="IGNORED_NO_P0_BEFORE_FORECAST",
-                                dropped_pre_root=narrow_shape[
-                                    "dropped_pre_root"
-                                ],
-                            )
-                        elif narrow_shape["root_exhausted"]:
-                            fast_receipt = self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="IGNORED_STALE_P0_SCOPE",
-                            )
-                        elif (
-                            not narrow_shape["new_revision_count"]
-                            and not narrow_shape["reroot_due"]
-                        ):
-                            fast_receipt = self._p0m_no_op_receipt(
-                                station_id=station,
-                                event_date=day,
-                                state="NO_NEW_TAF_REVISION",
-                            )
-                        else:
-                            fast_receipt = None
-                        shadow_verdicts[(station, day)] = fast_receipt
-                        if (
-                            P0M_FAST_PATH_MODE == "on"
-                            and fast_receipt is not None
-                        ):
-                            if fast_receipt["state"] == "NO_NEW_TAF_REVISION":
-                                ignored_no_artifact_scope_count += 1
-                            else:
-                                ignored_inactive_scope_count += 1
-                            receipts.append(fast_receipt)
-                            continue
-                    except Exception as exc:  # noqa: BLE001
-                        # A shadow that cannot answer is a shadow finding, not
-                        # a cycle fault.
-                        shadow_verdicts[(station, day)] = {
-                            "state": f"SHADOW_ERROR:{type(exc).__name__}",
-                        }
-                        shadow_errors.append({
-                            "station_id": station,
-                            "event_date": day,
-                            "reason": f"{type(exc).__name__}:{exc}"[:200],
-                        })
-                scope_validated: list[ProbabilityEnvelope] = []
-                with self._span("p0m_scope_load", label=f"{station}|{day}"):
-                    envelopes = load_materialized_probability_envelopes(
-                        self.commit_conn,
-                        station_id=station,
-                        event_date=day,
-                        evaluation_at_utc=as_of_utc,
-                        validated_out=scope_validated,
-                    )
-                # As-of the forecast, not as-of now.  The three stages run
-                # at wildly different cadences -- P0 recompiles on every
-                # model update (78-106 times a station-day), the TAF is
-                # issued once or twice, P1 follows each observation -- so
-                # "the newest P0" is almost always stamped after the TAF
-                # that is being applied, and a stage whose decision must
-                # follow its predecessor can then never be seated.  P1
-                # already resolves this the right way and says so: its base
-                # is "durable history, not necessarily a currently
-                # consumable probability", chosen by decision time and
-                # explicitly allowed to be stale.  P0-M now follows the same
-                # contract, which is also what it is *for*: laying new
-                # evidence on the model that was current when the evidence
-                # arrived.  Freshness is re-established by P0-M's own
-                # decision time, not inherited from the root.
-                # Per capture, not batch-min.  The inbox carries every
-                # forward capture for the scope on every cycle, so one
-                # revision received before the scope's first P0 root dragged
-                # the anchor in front of every root forever and the whole
-                # batch was discarded each cycle -- including revisions that
-                # individually satisfy the contract.  Measured 2026-08-20:
-                # ZGGG event 2026-08-21 had a TX-less 15:06Z TAF received
-                # 16:23Z, first P0 root 17:31Z, and the TX-carrying 21:04Z
-                # revision behind it; seven stations sat in
-                # IGNORED_NO_P0_BEFORE_FORECAST with no way out, because the
-                # blocking capture never leaves the inbox.  A capture with
-                # no root before it cannot seat *itself* under the contract
-                # -- "no P0 before forecast" is true of it alone -- so it is
-                # dropped alone, counted, and its siblings proceed.
-                shape = self._p0m_scope_shape(
-                    envelopes, captures, as_of_utc=as_of_utc
-                )
-                first_root_at = shape["first_root_at"]
-                dropped_pre_root = shape["dropped_pre_root"]
-                # Kept whole beside the seatable subset: a text issued before
-                # the newest run may not seat afresh, but one that already
-                # confirmed an older root is carried onto the new one.
-                scope_captures = captures
-                captures = shape["seatable"]
-                earliest_taf = shape["earliest_taf"]
-                roots = shape["roots"]
-                if not roots:
-                    ignored_inactive_scope_count += 1
-                    receipts.append(self._p0m_no_op_receipt(
-                        station_id=station,
-                        event_date=day,
-                        state="IGNORED_NO_P0_BEFORE_FORECAST",
-                        dropped_pre_root=dropped_pre_root,
-                    ))
-                    continue
-                if shape["root_exhausted"]:
-                    ignored_inactive_scope_count += 1
-                    receipts.append(self._p0m_no_op_receipt(
-                        station_id=station,
-                        event_date=day,
-                        state="IGNORED_STALE_P0_SCOPE",
-                    ))
-                    continue
-                # A stale historical P0 scope is a no-op and must not need a
-                # current market registry shard.  Once a fresh P0 can feed a
-                # P0-M write, resolve the authoritative lane and re-read the
-                # complete chain through the P1 gate before using it.
-                with self._span("p0m_source_lane", label=station):
-                    expected_source_lane = target_registry_source_lane(
-                        self.commit_conn,
-                        station_id=station,
-                        event_date=day,
-                    )
-                with self._span("p0m_lane_gate", label=f"{station}|{day}"):
-                    envelopes = load_materialized_probability_envelopes(
-                        self.commit_conn,
-                        station_id=station,
-                        event_date=day,
-                        evaluation_at_utc=as_of_utc,
-                        expected_source_lane=expected_source_lane,
-                        preloaded_validated=scope_validated,
-                    )
-                # Same rule as the shape gate: the base is the latest P0, so
-                # a confirmation rebuilt this cycle is rebuilt on the
-                # forecast being served.
-                roots = [item for item in envelopes if item.stage == "P0"]
-                if not roots:
-                    raise ContractError("resident_p0_scope_changed_during_lane_gate")
-                root = max(roots, key=lambda item: item.decision_at_utc)
-                # P0-M has one operator: the identity likelihood.  The
-                # calibrated TAF branch (``compile_taf_revision_proof`` +
-                # ``materialize_p0m``) went offline 2026-09-13 by user ruling
-                # (charter 133, "TAF 校准分支下线，仅作研究"): it moved the centre
-                # toward the TAF, which settled truth scored worse (NLL
-                # 1.80->1.91 over its own 171 transport rows), and served no
-                # row in the five days before.  What the TAF says about the
-                # day is served by the width cells inside this operator.
-                ignored_no_artifact_scope_count += 1
-                capture_by_id = {
-                    str(
-                        (item.get("forecast_revision") or {}).get(
-                            "revision_id"
-                        ) or ""
-                    ): item
-                    for item in scope_captures
-                }
-
-                def _taf_field(
-                    capture: Mapping[str, Any], name: str
-                ) -> float | None:
-                    fields = capture.get("taf_fields")
-                    if not isinstance(fields, Mapping):
-                        return None
-                    try:
-                        value = float(fields[name])
-                    except (KeyError, TypeError, ValueError):
-                        return None
-                    return value if math.isfinite(value) else None
-
-                # Deliberately not the chain validator for the observed path.
-                # That exists for the correcting path, where each revision's
-                # likelihood is applied on top of the last and a gap would
-                # silently drop a correction.  Identity-likelihood seats are
-                # each their own entry moment, and failing the scope on a gap
-                # took the whole stage down on first run (14 stations).
-                revisions = sorted(
-                    (
-                        ForecastRevision.from_mapping(item["forecast_revision"])
-                        for item in captures
-                    ),
-                    key=lambda item: (item.received_at_utc, item.revision_id),
-                )
-                # Keyed by the source object hash: revision ids are re-keyed
-                # when the inbox chain repair renumbers a scope, and matching
-                # on them re-seated every committed revision at its exact
-                # original received instant (43 stations, 2026-08-20).
-                gated_shape = self._p0m_scope_shape(
-                    envelopes, scope_captures, as_of_utc=as_of_utc
-                )
-                seen_revisions = gated_shape["seen_revisions"]
-                seated_revisions = gated_shape["seated_revisions"]
-                # Texts never seated for this day that may seat now; a
-                # bulletin without a TX seats too (the identity operator does
-                # not read one).
-                new_revisions = [
-                    revision
-                    for revision in revisions
-                    if revision.source_object_sha256 not in seated_revisions
-                    and timestamp_lt(as_of_utc, revision.valid_until_utc)
-                ]
-                if p0m_serving_tables is None:
-                    # Read once a pass, not once a revision: the rebuild runs
-                    # for every scope whose root moved.  Charter 150: P0-M is
-                    # P0 times the TAF likelihood and carries no post-hoc
-                    # table of its own.
-                    p0m_serving_tables = {
-                        "taf_likelihood_artifact": (
-                            load_taf_likelihood_artifact()
-                        ),
-                    }
-                observed_pending: list[tuple[ProbabilityEnvelope, str]] = []
-                observed_error: str | None = None
-                window_refusals: list[str] = []
-                replay_skip_state: str | None = None
-                # Every seat chains from the root.
-                observed_predecessor: ProbabilityEnvelope = root
-
-                def _observe(
-                    revision: ForecastRevision,
-                    decision_at: str,
-                    predecessor: ProbabilityEnvelope,
-                ) -> ProbabilityEnvelope | None:
-                    window_until = _p0m_window_until(
-                        decision_at, root=root, revision=revision
-                    )
-                    if window_until is None:
-                        window_refusals.append(revision.revision_id)
-                        return None
-                    capture = capture_by_id.get(revision.revision_id) or {}
-                    observed_excluded, observed_high = (
-                        self._p0m_observed_hard_bound(
-                            station_id=station,
-                            event_date=day,
-                            as_of_utc=decision_at,
-                            root=root,
-                        )
-                    )
-                    return materialize_p0m_observed(
-                        predecessor,
-                        p0_root=root,
-                        observed_hard_excluded_buckets=observed_excluded,
-                        observed_running_high_c=observed_high,
-                        forecast_revision_id=revision.revision_id,
-                        forecast_source_object_sha256=(
-                            revision.source_object_sha256
-                        ),
-                        taf_tx_c=_taf_field(capture, "tx_c"),
-                        # Charter 158: the same bulletin's weather says
-                        # whether its disagreement with P0 has a reason.
-                        taf_cloud_cover=_taf_field(
-                            capture, "cloud_cover_fraction"
-                        ),
-                        taf_precip_prob=_taf_field(
-                            capture, "precipitation_probability"
-                        ),
-                        decision_at_utc=decision_at,
-                        fresh_until_utc=window_until,
-                        bridge_sha256=root.bridge_sha256,
-                        **p0m_serving_tables,
-                    )
-
-                for revision in new_revisions:
-                    # The forecast's own arrival is the moment, and it has to
-                    # be strictly later than what it follows.  A revision that
-                    # was in hand before its predecessor was minted is seated
-                    # at the predecessor's clock plus a second; the chain only
-                    # needs its order, and the information order was settled
-                    # by the seatability gate.
-                    previous_time = datetime.fromisoformat(
-                        observed_predecessor.decision_at_utc.replace(
-                            "Z", "+00:00"
-                        )
-                    ).astimezone(timezone.utc)
-                    received_time = datetime.fromisoformat(
-                        revision.received_at_utc.replace("Z", "+00:00")
-                    ).astimezone(timezone.utc)
-                    decision_time = max(previous_time, received_time)
-                    decision_time = decision_time.replace(microsecond=0)
-                    if decision_time <= previous_time:
-                        decision_time = previous_time.replace(
-                            microsecond=0
-                        ) + timedelta(seconds=1)
-                    decision_at = decision_time.isoformat().replace(
-                        "+00:00", "Z"
-                    )
-                    if (
-                        decision_at <= observed_predecessor.decision_at_utc
-                        or decision_at > as_of_utc
-                    ):
-                        # Not this cycle's to date at its arrival -- the root
-                        # was minted after it.  The rebuild below seats it now
-                        # if it is the newest word.
-                        continue
-                    try:
-                        observed = _observe(
-                            revision, decision_at, observed_predecessor
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        # The identity path is additive: a scope it cannot
-                        # serve falls back to silence rather than failing the
-                        # stage for every other scope (it did, twice, on first
-                        # run).
-                        observed_error = f"ContractError:{exc}"[:200]
-                        break
-                    if observed is None:
-                        continue
-                    observed_pending.append((observed, decision_at))
-                    observed_predecessor = observed
-                # The root being served carries the forecaster's newest valid
-                # word, rebuilt now when the model moved under it.
-                replay_target = gated_shape["replay_target"]
-                replay_revision = (
-                    ForecastRevision.from_mapping(
-                        replay_target["forecast_revision"]
-                    )
-                    if replay_target is not None
-                    else None
-                )
-                if (
-                    observed_error is None
-                    and replay_revision is not None
-                    and replay_revision.source_object_sha256
-                    not in seen_revisions
-                    and replay_revision.source_object_sha256
-                    not in {
-                        str(
-                            envelope.lineage.get(
-                                "forecast_source_object_sha256"
-                            ) or ""
-                        )
-                        for envelope, _decision in observed_pending
-                    }
-                ):
-                    # Only where trading can still happen.
-                    try:
-                        replay_day_state = event_day_window(
-                            day,
-                            as_of_utc=as_of_utc,
-                            target_timezone=root.settlement_timezone,
-                        )["state"]
-                    except Exception:  # noqa: BLE001 -- unreadable is not replayable
-                        replay_day_state = "closed"
-                    if replay_day_state not in {"open", "not_started"}:
-                        replay_skip_state = "REPLAY_SKIPPED_SETTLED_DAY"
-                    elif replays_this_cycle >= MAX_P0M_REPLAYS_PER_CYCLE:
-                        replays_deferred.append(f"{station}|{day}")
-                        replay_skip_state = "REPLAY_DEFERRED_CYCLE_BUDGET"
-                    else:
-                        replays_this_cycle += 1
-                        # Now: the forecaster spoke once; what happened just
-                        # now is that the model moved and this confirmation was
-                        # re-made against the forecast being served.  The
-                        # text's own issued/received clocks stay on the
-                        # revision; only the computation is dated now.
-                        decision_at = _p0m_replay_decision_at(
-                            as_of_utc,
-                            after_decision_utc=(
-                                observed_predecessor.decision_at_utc
-                            ),
-                        )
-                        try:
-                            observed = _observe(
-                                replay_revision,
-                                decision_at,
-                                observed_predecessor,
-                            )
-                        except Exception as exc:  # noqa: BLE001
-                            observed_error = f"ContractError:{exc}"[:200]
-                            observed = None
-                        if observed is not None:
-                            observed_pending.append((observed, decision_at))
-                            observed_predecessor = observed
-                observed_writes = []
-                if observed_pending and observed_error is None:
-                    with _writer_transaction(
-                        self.commit_conn,
-                        savepoint="resident_taf_observed_scope",
-                    ):
-                        for envelope, decision_at in observed_pending:
-                            observed_writes.append(
-                                insert_probability_envelope(
-                                    self.commit_conn,
-                                    envelope,
-                                    created_at_utc=decision_at,
-                                )
-                            )
-                observed_count = sum(
-                    1 for write in observed_writes
-                    if write.get("wrote") is True
-                )
-                for _envelope, written_at in (
-                    observed_pending if observed_writes else ()
-                ):
-                    if p0m_stage_clock_utc is None or timestamp_lt(
-                        p0m_stage_clock_utc, written_at
-                    ):
-                        p0m_stage_clock_utc = written_at
-                if (
-                    not observed_count
-                    and observed_error is None
-                    and replay_skip_state is not None
-                ):
-                    receipts.append(self._p0m_no_op_receipt(
-                        station_id=station,
-                        event_date=day,
-                        state=replay_skip_state,
-                    ))
-                    continue
-                receipts.append({
-                    "station_id": station,
-                    "event_date": day,
-                    "state": (
-                        "COMMITTED_OBSERVED_NO_ARTIFACT"
-                        if observed_count
-                        else "OBSERVED_PATH_REFUSED"
-                        if observed_error
-                        # The root or the TAF has too little life left to lend
-                        # a confirmation: the scope waits for the next P0 or
-                        # the next issuance.
-                        else "CONFIRMATION_WINDOW_EXHAUSTED"
-                        if window_refusals
-                        else "NO_NEW_TAF_REVISION"
-                    ),
-                    **(
-                        {"observed_reason": observed_error}
-                        if observed_error else {}
-                    ),
-                    **(
-                        {"window_refused_revision_ids": window_refusals[:8]}
-                        if window_refusals else {}
-                    ),
-                    "write_count": observed_count,
-                    "writes": observed_writes,
-                })
-            except Exception as exc:
-                blockers.append({
-                    "station_id": station,
-                    "event_date": day,
-                    "reason": f"{type(exc).__name__}:{exc}",
-                })
-            assert_process_memory_budget()
-        self._add_span(
-            "p0m_scope_loop",
-            (time.perf_counter() - _p0m_loop_started) * 1000.0,
-            label=f"{len(captures_by_scope)} scopes",
-        )
-        # Where the cheap verdict and the real receipt disagreed, and on what.
-        # Reported rather than acted on: this is the evidence the switch is
-        # waiting for.
-        shadow_report: dict[str, Any] | None = None
-        if P0M_FAST_PATH_MODE != "off":
-            actual = {
-                (str(item.get("station_id")), str(item.get("event_date"))):
-                item
-                for item in receipts
-            }
-            agreed = 0
-            disagreed: list[dict[str, Any]] = []
-            for scope, verdict in shadow_verdicts.items():
-                real = actual.get(scope)
-                if real is None:
-                    # The scope raised before it produced a receipt; the
-                    # blocker already records that and the shadow has nothing
-                    # to say about it.
-                    continue
-                if verdict is None:
-                    # The cheap path declined to answer, which is never wrong.
-                    agreed += 1
-                    continue
-                # The whole receipt, not just its state: a fast path that
-                # picks the right word and the wrong dropped-capture count is
-                # still a fast path that changed the record.
-                if verdict == real:
-                    agreed += 1
-                    continue
-                disagreed.append({
-                    "station_id": scope[0],
-                    "event_date": scope[1],
-                    "shadow": verdict,
-                    "actual": {
-                        key: value for key, value in real.items()
-                        if key != "writes"
-                    },
-                })
-            shadow_report = {
-                "schema": "bayes_basket_target_p0m_fast_path_shadow_v1",
-                "mode": P0M_FAST_PATH_MODE,
-                "scopes": len(shadow_verdicts),
-                "agreed": agreed,
-                "disagreed_count": len(disagreed),
-                "shadow_would_skip": sum(
-                    1 for verdict in shadow_verdicts.values()
-                    if verdict is not None
-                    and str(verdict.get("state") or "").startswith(
-                        ("NO_NEW_TAF_REVISION", "IGNORED_NO_P0")
-                    )
-                ),
-                "shadow_error_count": len(shadow_errors),
-                "disagreed": disagreed[:8],
-                "shadow_errors": shadow_errors[:4],
-            }
-        return {
-            "schema": "bayes_basket_target_resident_taf_ingress_v1",
-            **(
-                {"fast_path_shadow": shadow_report}
-                if shadow_report is not None else {}
-            ),
-            "state": "BLOCKED_FAIL_CLOSED" if blockers else "COMMITTED",
-            "taf_fact_ingress": taf_fact_ingress,
-            "receipts": receipts,
-            "blockers": blockers,
-            "ignored_inactive_scope_count": ignored_inactive_scope_count,
-            "ignored_no_artifact_scope_count":
-                ignored_no_artifact_scope_count,
-            # The size and reach of the set this stage walks, because the
-            # stage's cost is a function of them and nothing reported either.
-            # This lane's cost went 168 scopes (2026-08-22) to 389
-            # (2026-09-01) to 498 (2026-09-07) while the inbox filled to its
-            # 2048-capture ceiling and came to span thirteen event days --
-            # and every profile in between reported only the seconds, so the
-            # growth read as a mystery regression instead of as a window
-            # that had stopped being forward-only.  Measured the same day:
-            # 447 of the 498 are closed days that skip before anything is
-            # read, so the count that matters is not the total.
-            "scope_count": len(captures_by_scope),
-            "inbox_capture_count": len(raw_captures),
-            "inbox_event_date_span": sorted({
-                str(day) for _station, day in captures_by_scope
-            })[:1] + sorted({
-                str(day) for _station, day in captures_by_scope
-            })[-1:],
-            # Counted, not inferred.  A replay budget that silently drops
-            # scopes reads exactly like a replay that never fired.
-            "replays_this_cycle": replays_this_cycle,
-            "replay_budget": MAX_P0M_REPLAYS_PER_CYCLE,
-            "replays_deferred": replays_deferred[:20],
-            "replays_deferred_count": len(replays_deferred),
-            "refused_capture_count": len(refused_captures),
-            "refused_captures": refused_captures[:20],
-            "stage_clock_utc": p0m_stage_clock_utc,
-            "writes_target_ssot": any(
-                item["write_count"] > 0 for item in receipts
-            ),
-            "places_orders": False,
-            "calls_order_gateway": False,
-            "live_submit_authorized": False,
-            "orders_submitted": 0,
-        }
 
     def materialize_resident_p0(
         self,
@@ -18661,11 +17296,12 @@ class TargetProductionWorker:
     ) -> dict[str, Any]:
         """Run the only resident probability event chain in stage order.
 
-        The daemon may refresh bounded NWP/TAF inboxes before this method is
+        The daemon may refresh bounded NWP inboxes before this method is
         called.  This method alone owns their SSOT handoff order:
-        NWP/P0 -> TAF physical confirmation/P0-M -> METAR/SPECI/P1.  Each
-        stage remains its own atomic append transaction, while the returned
-        receipt makes the order and no-live boundary explicit to the caller.
+        NWP/P0 -> METAR/SPECI/P1 (charter 283: P0-M retired, P1 roots on P0).
+        Each stage remains its own atomic append transaction, while the
+        returned receipt makes the order and no-live boundary explicit to the
+        caller.
         """
 
         # The chain is the cycle's largest pre-loop cost (239s measured
@@ -18678,23 +17314,8 @@ class TargetProductionWorker:
         rowid_mark = self._envelope_rowid_ceiling() if early_ran else None
         p0 = self.materialize_resident_p0(as_of_utc=as_of_utc)
         self._mark("probability_p0")
-        taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
-        p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
-        if (
-            taf_mark is not None
-            and str((p0m or {}).get("state") or "").upper() != "BLOCKED_FAIL_CLOSED"
-        ):
-            # The next head pass runs only for a TAF landed after this read.
-            self._p0m_covered_taf_watermark = taf_mark
-        self._mark("probability_p0m")
-        stage_clock = (
-            p0m.get("stage_clock_utc") if isinstance(p0m, Mapping) else None
-        )
         if not early_ran:
-            p1 = self._materialize_resident_p1(
-                as_of_utc=as_of_utc,
-                stage_clock_utc=stage_clock,
-            )
+            p1 = self._materialize_resident_p1(as_of_utc=as_of_utc)
         else:
             # The head of the cycle already ran P1 over every scope on the
             # roots committed before it.  What it could not see is a root
@@ -18704,7 +17325,6 @@ class TargetProductionWorker:
             late = (
                 self._materialize_resident_p1(
                     as_of_utc=as_of_utc,
-                    stage_clock_utc=stage_clock,
                     only_scopes=set(rerooted),
                 )
                 if rerooted else None
@@ -18715,20 +17335,19 @@ class TargetProductionWorker:
         self._mark("probability_p1")
         blocked_stages = [
             stage
-            for stage, receipt in (("P0", p0), ("P0-M", p0m), ("P1", p1))
+            for stage, receipt in (("P0", p0), ("P1", p1))
             if str(receipt.get("state") or "").upper()
             == "BLOCKED_FAIL_CLOSED"
         ]
         return {
             "schema": "bayes_basket_target_resident_probability_chain_v1",
-            "stage_order": ["P0", "P0-M", "P1"],
+            "stage_order": ["P0", "P1"],
             "state": (
                 "BLOCKED_FAIL_CLOSED" if blocked_stages else "COMMITTED"
             ),
             "blocked_stages": blocked_stages,
             "as_of_utc": as_of_utc,
             "p0": p0,
-            "p0m": p0m,
             "p1": p1,
             "calls_order_gateway": False,
             "places_orders": False,
@@ -18744,7 +17363,7 @@ class TargetProductionWorker:
         ).fetchone()[0])
 
     def _scopes_rooted_after(self, after_rowid: int | None) -> list[tuple[str, str]]:
-        """Station-days that gained a committed P0 or P0-M past ``after_rowid``.
+        """Station-days that gained a committed P0 past ``after_rowid``.
 
         A rowid range seek; ``stage`` and ``state`` are filtered here rather
         than in SQL for the reason ``_fresh_committed_envelope_scopes`` gives.
@@ -18758,7 +17377,7 @@ class TargetProductionWorker:
             " FROM basket_probability_envelope WHERE rowid>?",
             (int(after_rowid),),
         ):
-            if state == "COMMITTED" and stage in ("P0", "P0-M"):
+            if state == "COMMITTED" and stage == "P0":
                 scopes.add((
                     str(station_id or "").strip().upper(),
                     str(event_date or "").strip(),
@@ -18788,70 +17407,6 @@ class TargetProductionWorker:
         receipt = dict(self._identify_live_observations())
         receipt["head_pass_state"] = str((head or {}).get("state") or "")
         return receipt
-
-    def _materialize_early_p0m(
-        self,
-        *,
-        as_of_utc: str,
-        taf_watermark: tuple[int, str] | None,
-        force: bool = False,
-    ) -> dict[str, Any]:
-        """The fast lane: P0-M at the head of the cycle, for TAFs it has not seen.
-
-        Runs only when the TAF inbox moved since the last P0-M pass covered it,
-        on the roots already committed.  Never raises: anything short of a
-        clean pass leaves the chain's own P0-M to do it, as before.
-        ``new_envelopes`` says whether it committed anything, which is what
-        forces the head P1 to re-root on it.
-
-        ``force`` (charter 195): a checkpoint has just committed new P0 roots,
-        so P0-M re-seats on them even though no TAF moved.
-        """
-
-        boundary = {
-            "calls_order_gateway": False,
-            "places_orders": False,
-            "live_submit_authorized": False,
-            "orders_submitted": 0,
-        }
-        if not EARLY_P0M_ENABLED:
-            return {"state": "DISABLED", "ran": False, **boundary}
-        if taf_watermark is None:
-            return {"state": "SKIPPED_INBOX_UNREADABLE", "ran": False, **boundary}
-        if (
-            not force
-            and getattr(self, "_p0m_covered_taf_watermark", None) == taf_watermark
-        ):
-            return {"state": "SKIPPED_NO_NEW_TAF", "ran": False, **boundary}
-        started = time.perf_counter()
-        try:
-            before = self._envelope_rowid_ceiling()
-            p0m = self._materialize_resident_p0m(as_of_utc=as_of_utc)
-            after = self._envelope_rowid_ceiling()
-        except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
-            return {
-                "state": "FAILED",
-                "ran": False,
-                "reason": f"{type(exc).__name__}:{str(exc)[:200]}",
-                "duration_sec": round(time.perf_counter() - started, 3),
-                **boundary,
-            }
-        state = str((p0m or {}).get("state") or "")
-        if state.upper() != "BLOCKED_FAIL_CLOSED":
-            self._p0m_covered_taf_watermark = taf_watermark
-        return {
-            "state": "RAN",
-            "ran": True,
-            "p0m_state": state,
-            "new_envelopes": after > before,
-            "rowid_before": before,
-            # The latest decision this pass stamped: a P0-M rebuilt on a root
-            # minted at this clock is seated a millisecond after it, and the
-            # P1 that follows reads its root as of this, as the chain does.
-            "stage_clock_utc": (p0m or {}).get("stage_clock_utc"),
-            "duration_sec": round(time.perf_counter() - started, 3),
-            **boundary,
-        }
 
     def _copy_follow_if_due(self, label: str) -> dict[str, Any] | None:
         """Charter 257 补记三: the copy-follow lane at a safe writer checkpoint.
@@ -19067,11 +17622,10 @@ class TargetProductionWorker:
     ) -> dict[str, Any] | None:
         """Update, mid-cycle, only what landed since the last pass covered it.
 
-        P0-M when the TAF inbox content moved -- once the chain has settled
-        the roots, so the pass has only the new bulletins to seat.  P1 for
-        the stations with a report past the covered watermark and for the
-        scopes a new P0-M re-rooted.  Returns None, having marked nothing,
-        when neither moved.  Never raises: both passes catch their own
+        P0 when the official-native inbox moved (charter 195), and P1 for the
+        stations with a report past the covered watermark and for the scopes
+        a new P0 re-rooted.  Returns None, having marked nothing, when
+        neither moved.  Never raises: both passes catch their own
         failures, and the chain and the next head remain the fallback.
         """
 
@@ -19086,15 +17640,9 @@ class TargetProductionWorker:
         self._last_fast_lane_checkpoint_mono = time.monotonic()
         self._last_fast_lane_checkpoint_cost_sec = 0.0
         chain_ran = bool(getattr(self, "_probability_chain_ran", False))
-        taf_mark = _taf_inbox_watermark(getattr(self, "taf_inbox_path", None))
         archive = getattr(self, "canonical_source_conn", None)
         report_mark = _live_observation_watermark(archive)
         covered = getattr(self, "_p1_covered_watermark", None)
-        new_taf = (
-            chain_ran
-            and taf_mark is not None
-            and taf_mark != getattr(self, "_p0m_covered_taf_watermark", None)
-        )
         new_reports = (
             report_mark is not None
             and report_mark != covered
@@ -19102,7 +17650,7 @@ class TargetProductionWorker:
         )
         # Charter 195 (一): the official-native inbox moved since the replay
         # compile covered it -- a capture merged a run mid-cycle.  Read before
-        # the clock (charter 148's order), like the two marks above.
+        # the clock (charter 148's order), like the report mark above.
         nwp_covered = getattr(self, "_p0_covered_official_watermark", None)
         nwp_mark = (
             _official_inbox_watermark(
@@ -19113,7 +17661,7 @@ class TargetProductionWorker:
             else None
         )
         new_nwp = nwp_mark is not None and nwp_mark != nwp_covered
-        if not new_taf and not new_reports and not new_nwp:
+        if not new_reports and not new_nwp:
             return None
         clock = utc_now()
         nwp = (
@@ -19124,16 +17672,6 @@ class TargetProductionWorker:
             )
             if new_nwp else None
         )
-        # A new P0 root moves every P0-M built on the old one, so P0-M runs
-        # after it whether or not a TAF landed -- once, covering both.
-        p0m = (
-            self._materialize_early_p0m(
-                as_of_utc=clock,
-                taf_watermark=taf_mark,
-                force=bool((nwp or {}).get("new_envelopes")),
-            )
-            if new_taf or (nwp or {}).get("new_envelopes") else None
-        )
         scopes: set[tuple[str, str]] | None = set()
         if new_reports:
             stations = _stations_with_reports_after(archive, covered)
@@ -19143,18 +17681,11 @@ class TargetProductionWorker:
             )
         if scopes is not None and (nwp or {}).get("new_envelopes"):
             scopes |= set(self._scopes_rooted_after(nwp.get("rowid_before")))
-        if scopes is not None and (p0m or {}).get("new_envelopes"):
-            scopes |= set(self._scopes_rooted_after(p0m.get("rowid_before")))
         p1 = None
         if scopes is None or scopes:
-            # The P0-M this pass rebuilt on a root minted at ``clock`` sits at
-            # clock + 1 ms; read as of ``clock`` alone, P1 missed it and
-            # rooted on the bare P0 until the next pass (charter 150 (三): at
-            # a TAF station the root is P0-M).
             p1 = self._materialize_early_p1(
                 as_of_utc=clock, report_watermark=report_mark, force=True,
                 only_scopes=scopes,
-                stage_clock_utc=(p0m or {}).get("stage_clock_utc"),
             )
             if p1.get("ran") and new_reports:
                 p1_state = str(((p1.get("p1") or {}).get("state")) or "").upper()
@@ -19173,7 +17704,6 @@ class TargetProductionWorker:
             "at_utc": clock,
             "scopes": None if scopes is None else len(scopes),
             "nwp_p0": nwp,
-            "p0m": {k: v for k, v in (p0m or {}).items() if k != "p0m"} or None,
             "p1": {k: v for k, v in (p1 or {}).items() if k != "p1"} or None,
         }
         receipts = getattr(self, "_fast_lane_receipts", None)
@@ -19274,7 +17804,6 @@ class TargetProductionWorker:
         report_watermark: tuple[int, int, str] | None,
         force: bool = False,
         only_scopes: "set[tuple[str, str]] | None" = None,
-        stage_clock_utc: str | None = None,
     ) -> dict[str, Any]:
         """Charter 148: P1 at the head of the cycle, for reports it has not seen.
 
@@ -19296,8 +17825,8 @@ class TargetProductionWorker:
             return {"state": "DISABLED", "ran": False, **boundary}
         if report_watermark is None and not force:
             return {"state": "SKIPPED_WATERMARK_UNREADABLE", "ran": False, **boundary}
-        # ``force``: the head P0-M just committed, so P1 re-roots on it now
-        # rather than at the end of the chain.
+        # ``force``: a checkpoint just committed new P0 roots, so P1 re-roots
+        # on them now rather than at the end of the chain.
         if not force and getattr(self, "_p1_covered_watermark", None) == report_watermark:
             return {"state": "SKIPPED_NO_UNCOVERED_REPORTS", "ran": False, **boundary}
         started = time.perf_counter()
@@ -19316,9 +17845,6 @@ class TargetProductionWorker:
             resident: dict[str, Any] = {"as_of_utc": as_of_utc}
             if only_scopes is not None:
                 resident["only_scopes"] = set(only_scopes)
-            if stage_clock_utc:
-                # The stage below's own clock: its root is read as of it.
-                resident["stage_clock_utc"] = str(stage_clock_utc)
             p1 = self._materialize_resident_p1(**resident)
         except Exception as exc:  # noqa: BLE001 -- the chain's pass is the fallback
             return {
@@ -19800,11 +18326,10 @@ class TargetProductionWorker:
         """Refuse to trade a higher stage that has not caught up with its root.
 
         The target is resolved by the compiler's own resolver
-        (``select_p1_replay_base``): the newest P0, and on it the newest P0-M
-        if one exists.  A P1 is current only when both of its parents -- the
+        (``select_p1_replay_base``): the newest P0 (charter 283: P0-M is
+        retired).  A P1 is current only when both of its parents -- the
         direct prediction root and the P0 ancestor, each by checkpoint and by
-        content -- are that target (``p1_stands_on_replay_base``); a P0-M is
-        current only when its root is exactly the newest P0.
+        content -- are that target (``p1_stands_on_replay_base``).
 
         Until 2026-09-13 this read the P0 ancestor alone, so a P1 still on a
         P0-M the lane had just replaced passed as current, and it excused any
@@ -19816,11 +18341,6 @@ class TargetProductionWorker:
         not happen -- and equal probabilities are not equal inputs: 444 of
         2,834 P0 transitions on 2026-09-11..12 kept the numbers and moved the
         future temperature curve that P1's remaining-warming layer reads.
-
-        When no P1 exists, an older P0-M branch still blocks: stage precedence
-        would serve it, and it is built on a superseded root.  When a P1 on
-        the current target exists, an older P0-M is irrelevant -- P1 is what
-        is served.
         """
 
         if self.conn is None:
@@ -19862,37 +18382,14 @@ class TargetProductionWorker:
                 )
             except ContractError:
                 return "resident_p1_replay_required"
-            if base.stage == "P0":
-                p0_root_content = base.content_sha256
-            else:
-                p0_root_content = str(
-                    base.lineage.get("p0_root_content_sha256") or ""
-                ).lower()
             if p1_stands_on_replay_base(
                 latest_p1[0],
                 base=base,
                 p0_root_checkpoint_id=latest_p0.checkpoint_id,
-                p0_root_content_sha256=p0_root_content,
+                p0_root_content_sha256=base.content_sha256,
             ):
                 return None
             return "resident_p1_replay_required"
-        p0m_rows = [row for row in envelopes if row.stage == "P0-M"]
-        if not p0m_rows:
-            return None
-        latest_p0m_at = max(row.decision_at_utc for row in p0m_rows)
-        latest_p0m = [
-            row for row in p0m_rows if row.decision_at_utc == latest_p0m_at
-        ]
-        if len(latest_p0m) != 1:
-            return "resident_p0m_scope_ambiguous"
-        lineage = latest_p0m[0].lineage
-        if (
-            str(lineage.get("p0_root_checkpoint_id") or "")
-            != latest_p0.checkpoint_id
-            or str(lineage.get("p0_root_content_sha256") or "").lower()
-            != latest_p0.content_sha256
-        ):
-            return "resident_p0m_replay_required"
         return None
 
     def _portfolio_quota(
@@ -21536,22 +20033,6 @@ class TargetProductionWorker:
         self._maintenance_spent_sec = 0.0
         self._maintenance_admissions = {}
         self._quote_lease_seconds = None
-        # Which scopes the last decision loop refused for want of a P0-M
-        # replay.  Carried across the cycle boundary on purpose: the P0-M
-        # lane runs before the decision loop, so the only refusals it can
-        # order itself by are the previous round's -- and a scope stays in
-        # the set until a replay clears it, which is exactly the condition
-        # for wanting the budget.
-        #
-        # It reads the guard's answer rather than recomputing it.  Deciding
-        # "is this scope blocked" up front would mean loading every
-        # station-day's envelopes before the loop that exists to avoid
-        # exactly that, and an ordering hint that re-derives the rule is how
-        # an ordering hint comes to disagree with it.
-        self._p0m_replay_blocked_scopes = frozenset(
-            getattr(self, "_p0m_replay_blocked_next", frozenset())
-        )
-        self._p0m_replay_blocked_next = set()
         self._begin_cycle_scratch()
         begin_statement_ledger()
         # Charter 180: the Python-side counterpart of the statement ledger.
@@ -21640,7 +20121,6 @@ class TargetProductionWorker:
         # 148's rule) and neither can raise, so nothing here can keep the
         # reconcile from running.
         self._early_p1_this_cycle = None
-        self._early_p0m_this_cycle = None
         self._fast_lane_receipts = []
         self._copy_follow_receipts = []
         self._probability_chain_ran = False
@@ -21648,19 +20128,10 @@ class TargetProductionWorker:
         early_report_watermark = _live_observation_watermark(
             getattr(self, "canonical_source_conn", None)
         )
-        early_taf_watermark = _taf_inbox_watermark(
-            getattr(self, "taf_inbox_path", None)
-        )
         early_now = utc_now()
-        self._early_p0m_this_cycle = self._materialize_early_p0m(
-            as_of_utc=early_now, taf_watermark=early_taf_watermark,
-        )
-        self._mark("early_p0m")
         self._early_p1_this_cycle = self._materialize_early_p1(
             as_of_utc=early_now,
             report_watermark=early_report_watermark,
-            force=bool((self._early_p0m_this_cycle or {}).get("new_envelopes")),
-            stage_clock_utc=(self._early_p0m_this_cycle or {}).get("stage_clock_utc"),
         )
         self._early_p1_watermark = early_report_watermark
         self._mark("early_p1")
@@ -21777,7 +20248,6 @@ class TargetProductionWorker:
         now = utc_now()
         market_ingress: dict[str, Any] | None = None
         resident_p0_ingress: dict[str, Any] | None = None
-        resident_p0m_ingress: dict[str, Any] | None = None
         resident_p1_ingress: dict[str, Any] | None = None
         resident_probability_chain: dict[str, Any] | None = None
         regime_ingress: dict[str, Any] | None = None
@@ -22408,7 +20878,6 @@ class TargetProductionWorker:
             )
             self._probability_chain_ran = True
             resident_p0_ingress = resident_probability_chain["p0"]
-            resident_p0m_ingress = resident_probability_chain["p0m"]
             resident_p1_ingress = resident_probability_chain["p1"]
             # Charter 148: this cycle's P1 covered every report committed by
             # its clock; the next head pass runs only for later ones.  A
@@ -22429,9 +20898,6 @@ class TargetProductionWorker:
                 self._p1_covered_watermark = _later_report_watermark(
                     getattr(self, "_p1_covered_watermark", None), covered_mark
                 )
-            resident_probability_chain["early_p0m"] = dict(
-                self._early_p0m_this_cycle or {}
-            )
             resident_probability_chain["early_p1"] = {
                 key: value
                 for key, value in (self._early_p1_this_cycle or {}).items()
@@ -22988,7 +21454,6 @@ class TargetProductionWorker:
                     "durable_blocked_decisions": self._blocked_receipt_summary(receipts),
                     "market_ingress": market_ingress,
                     "resident_p0_ingress": resident_p0_ingress,
-                    "resident_p0m_ingress": resident_p0m_ingress,
                     "resident_p1_ingress": resident_p1_ingress,
                     "regime_ingress": regime_ingress,
                     "delta_v2_truth_ingress": delta_v2_truth_ingress,
@@ -23358,16 +21823,6 @@ class TargetProductionWorker:
                         validated_out=scope_validated,
                     )
                     if replay_blocker is not None:
-                        if replay_blocker == "resident_p0m_replay_required":
-                            # Next cycle's P0-M lane spends its replay budget
-                            # here first.  Measured 2026-09-09 04:24Z: the
-                            # budget of four was spent on the furthest event
-                            # day -- correct by the stage-governs-its-day
-                            # rule, and none of those scopes was blocked --
-                            # while nineteen waited and KLGA and KMIA, whose
-                            # decisions this refusal was actually stopping,
-                            # were among them.
-                            self._p0m_replay_blocked_next.add((station, day))
                         raise ContractError(replay_blocker)
                     _compile_started = time.perf_counter()
                     candidate = compile_production_cycle_from_ssot(
@@ -23717,7 +22172,6 @@ class TargetProductionWorker:
                     native_ensemble_oos_ingress
                 ),
                 "resident_p0_ingress": resident_p0_ingress,
-                "resident_p0m_ingress": resident_p0m_ingress,
                 "resident_p1_ingress": resident_p1_ingress,
                 "resident_probability_chain": resident_probability_chain,
                 "regime_ingress": regime_ingress,
@@ -23868,11 +22322,6 @@ class TargetProductionWorker:
                 "reason": reason,
                 "writes_target_ssot": False,
             }
-            payload["resident_p0m_ingress"] = resident_p0m_ingress or {
-                "state": "blocked_fail_closed",
-                "reason": reason,
-                "writes_target_ssot": False,
-            }
             payload["resident_p1_ingress"] = resident_p1_ingress or {
                 "state": "blocked_fail_closed",
                 "reason": reason,
@@ -23880,7 +22329,7 @@ class TargetProductionWorker:
             }
             payload["resident_probability_chain"] = resident_probability_chain or {
                 "schema": "bayes_basket_target_resident_probability_chain_v1",
-                "stage_order": ["P0", "P0-M", "P1"],
+                "stage_order": ["P0", "P1"],
                 "state": "BLOCKED_FAIL_CLOSED",
                 "reason": reason,
                 "calls_order_gateway": False,

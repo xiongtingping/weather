@@ -357,25 +357,26 @@ def test_the_live_book_counts_the_leg_under_its_decision_with_the_claim(store) -
 
 
 def test_one_attempt_per_station_day_and_once_per_stage(store) -> None:
-    _seed(store)
+    # Charter 283: the stage before P1 is P0 now (P0-M retired); open both.
+    _seed(store, stage="P0")
     sent: list = []
     first = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
-                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert first["submitted"] == 1
     # The same first decision on the next cycle: already evaluated, nothing new.
     again = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
-                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert again["evaluated"] == 0 and again["planned"] == 0 and len(sent) == 1
     # A later stage's first decision on the same station-day fires but is not bought twice.
-    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z")
+    _seed(store, stage="P1", fact_id="f2", decided="2026-09-18T12:05:00.000Z")
     third = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
-                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert third["evaluated"] == 1 and third["fired"] == 1 and third["planned"] == 0
     assert third["refusals"] == ["station_day_already_attempted"] and len(sent) == 1
     # And the second decision of a stage is never the reading: only the earliest.
     _seed(store, stage="P1", fact_id="f3", decided="2026-09-18T12:08:00.000Z")
     fourth = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
-                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert fourth["evaluated"] == 0
 
 
@@ -421,7 +422,7 @@ def test_v2_1_refuses_a_wide_or_one_sided_book_on_the_model_bucket(store) -> Non
     # One-sided: no bid on the model's bucket (another station-day, so the
     # first buy above does not shadow it).
     store.execute(f"DELETE FROM {lane.EVALUATION_TABLE}")
-    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", book=_book(bid_28=None), event_date="2026-09-20")
+    _seed(store, stage="P1", fact_id="f2", decided="2026-09-18T12:05:00.000Z", book=_book(bid_28=None), event_date="2026-09-20")
     one_sided = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                               live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     # A bucket priced 0.46 with no bid is refused before the rule is asked --
@@ -468,7 +469,7 @@ def test_the_market_move_since_the_previous_decision_is_recorded_not_gated(store
     D2 = "2026-09-20"
     _seed(store, stage="P0", fact_id="f0", decided="2026-09-18T10:30:00.000Z", event_date=D2,
           probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1}, book=_book(asks_28=((0.40, 100.0),), bid_28=0.38))
-    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", event_date=D2)
+    _seed(store, stage="P1", fact_id="f2", decided="2026-09-18T12:05:00.000Z", event_date=D2)
     receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                             live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
     rows = {r[0]: r for r in store.execute(
@@ -476,7 +477,7 @@ def test_the_market_move_since_the_previous_decision_is_recorded_not_gated(store
         f" prev_model_mode, prev_market_share_on_model_mode FROM {lane.EVALUATION_TABLE} WHERE event_date=?", (D2,)
     )}
     assert rows["P0"][2] == "first_decision_stale"
-    p0m = rows["P0-M"]
+    p0m = rows["P1"]
     assert p0m[1] == 1 and p0m[2] is None
     # 28°C mid now 0.45 of 1.02; then 0.39 of 0.96: the market moved toward the model's bucket.
     assert p0m[4] == "2026-09-18T10:30:00.000Z" and p0m[5] == pytest.approx(95.0)
@@ -505,8 +506,8 @@ def test_the_reference_point_is_always_the_previous_stage_never_the_same_one(sto
     _seed(store, stage="P0", fact_id="r0", decided="2026-09-18T09:00:00.000Z", event_date=day,
           probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1},
           book=_book(asks_28=((0.40, 100.0),), bid_28=0.38))
-    _seed(store, stage="P0-M", fact_id="r1", decided="2026-09-18T12:02:00.000Z", event_date=day)
-    _seed(store, stage="P0-M", fact_id="r2", decided="2026-09-18T12:06:00.000Z", event_date=day)
+    _seed(store, stage="P1", fact_id="r1", decided="2026-09-18T12:02:00.000Z", event_date=day)
+    _seed(store, stage="P1", fact_id="r2", decided="2026-09-18T12:06:00.000Z", event_date=day)
     lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                   live_submit_authorized=True, settings={"stake_usdc": 20.0},
                                   admission=ADMIT)
@@ -517,10 +518,10 @@ def test_the_reference_point_is_always_the_previous_stage_never_the_same_one(sto
         )
     }
     # One row per stage, and the P0-M row is the stage's FIRST decision.
-    assert scored["P0-M"][1] == "r1" and scored["P0-M"][2] == "2026-09-18T12:02:00.000Z"
+    assert scored["P1"][1] == "r1" and scored["P1"][2] == "2026-09-18T12:02:00.000Z"
     # Its reference is the P0 -- not the later same-stage decision, and not itself.
-    assert scored["P0-M"][3] == "2026-09-18T09:00:00.000Z"
-    assert scored["P0-M"][4] == pytest.approx(182.0)
+    assert scored["P1"][3] == "2026-09-18T09:00:00.000Z"
+    assert scored["P1"][4] == pytest.approx(182.0)
     same_stage = {r[0] for r in store.execute(
         f"SELECT f.stage FROM {lane.EVALUATION_TABLE} e"
         f" JOIN basket_policy_training_fact f"
@@ -535,18 +536,19 @@ def test_the_lane_file_selects_v1_and_the_row_says_which_rule_scored_it(store) -
     """A stage scored under v1 keeps v1's version on its row; v2 rows sit
     beside it (user ruling: v1's forward sample is not overwritten)."""
 
-    _seed(store, probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
+    # Charter 283: the stage before P1 is P0 now (P0-M retired); open both.
+    _seed(store, stage="P0", probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
     receipt = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                             live_submit_authorized=True,
-                                            settings={"stake_usdc": 20.0, "rule": "adjacent_tie_v1"}, admission=ADMIT)
+                                            settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"], "rule": "adjacent_tie_v1"}, admission=ADMIT)
     assert receipt["rule"] == "tiebreak_adjacent_mode_market_share_v1"
     assert receipt["refusals"] == ["rule_not_met:modes_agree"]
     assert store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}").fetchone()[0] == "tiebreak_adjacent_mode_market_share_v1"
     # The same envelope under v2 (a later stage) fires and is recorded as v2.
-    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z", probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
+    _seed(store, stage="P1", fact_id="f2", decided="2026-09-18T12:05:00.000Z", probabilities={"27°C": 0.6, "28°C": 0.3, "29°C": 0.1})
     sent: list = []
     second = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
-                                           live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                           live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert second["fired"] == 1 and second["submitted"] == 1 and sent[0][1]["token_id"] == "t27"
     versions = sorted(r[0] for r in store.execute(f"SELECT rule_version FROM {lane.EVALUATION_TABLE}"))
     assert versions == ["tiebreak_adjacent_mode_market_share_v1", "tiebreak_model_mode_market_midband_spread_maker_paid_cap_v2_3"]
@@ -707,15 +709,16 @@ def test_a_standing_rung_holds_the_station_day_even_on_a_newer_book(store) -> No
     that token, so the station-day is spent -- a later stage's first decision
     fires and is refused, and a newer book buys nothing."""
 
-    _seed(store)
+    # Charter 283: the stage before P1 is P0 now (P0-M retired); open both.
+    _seed(store, stage="P0")
     sent: list = []
     lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
-                                  live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                  live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert len(sent) == 1
     _newer_snapshot(store, observed_at="2026-09-18T12:09:00.000Z", snapshot_id="snap_standing")
-    _seed(store, stage="P0-M", fact_id="f9", decided="2026-09-18T12:09:00.000Z")
+    _seed(store, stage="P1", fact_id="f9", decided="2026-09-18T12:09:00.000Z")
     later = lane.execute_tiebreak_entries(store, transport=_resting_transport(sent), now_utc=NOW,
-                                          live_submit_authorized=True, settings={"stake_usdc": 20.0}, admission=ADMIT)
+                                          live_submit_authorized=True, settings={"stake_usdc": 20.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert later["fired"] == 1 and later["planned"] == 0 and len(sent) == 1
     assert later["refusals"] == ["station_day_already_attempted"]
 
@@ -1187,7 +1190,8 @@ def test_the_paid_ceiling_is_the_lane_files_to_set() -> None:
 
 # ---------------------------------------------------------------------------
 # Charter 229 (user rulings 2026-09-26 「p0m和p1仅限秤砣线策略开仓」 and 「P0 只留
-# 篮子」): the lane opens on P0-M and P1 first decisions only.
+# 篮子」): the lane opens on P0-M and P1 first decisions only -- P1 only since
+# charter 283 retired P0-M.
 
 
 def test_charter_229_a_p0_first_decision_is_scored_and_never_opens(store) -> None:
@@ -1207,8 +1211,8 @@ def test_charter_229_a_p0_first_decision_is_scored_and_never_opens(store) -> Non
     again = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
                                           live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
     assert again["evaluated"] == 0 and again["retried"] == 0 and sent == []
-    # The refusal spent nothing: the station-day's P0-M first decision opens.
-    _seed(store, stage="P0-M", fact_id="f2", decided="2026-09-18T12:05:00.000Z")
+    # The refusal spent nothing: the station-day's P1 first decision opens.
+    _seed(store, stage="P1", fact_id="f2", decided="2026-09-18T12:05:00.000Z")
     p0m = lane.execute_tiebreak_entries(store, transport=_fill_transport(sent), now_utc=NOW,
                                         live_submit_authorized=True, settings={"stake_usdc": 6.0}, admission=ADMIT)
     assert p0m["evaluated"] == 1 and p0m["submitted"] == 1 and len(sent) == 1
@@ -1227,7 +1231,7 @@ def test_charter_229_an_older_retryable_p0_row_is_closed_not_resent(store) -> No
         "positions_value_usdc": 70.0, "equity_usdc": 71.7, "resting_buy_usdc": 0.0, "created_at_utc": NOW,
         "content_sha256": "f" * 64,
     })
-    before = {"stake_usdc": 6.0, "opening_stages": ["P0", "P0-M", "P1"]}
+    before = {"stake_usdc": 6.0, "opening_stages": ["P0", "P1"]}
     poor = lane.execute_tiebreak_entries(store, transport=_fill_transport([]), now_utc=NOW,
                                          live_submit_authorized=True, settings=before, admission=ADMIT)
     assert poor["refusals"][0].startswith("insufficient_cash:")
@@ -1252,7 +1256,7 @@ def test_charter_229_the_stages_are_the_lane_files_to_name(store) -> None:
     sent: list = []
     receipt = lane.execute_tiebreak_entries(
         store, transport=_fill_transport(sent), now_utc=NOW, live_submit_authorized=True,
-        settings={"stake_usdc": 6.0, "opening_stages": ["P0", "P0-M", "P1"]}, admission=ADMIT)
+        settings={"stake_usdc": 6.0, "opening_stages": ["P0", "P1"]}, admission=ADMIT)
     assert receipt["submitted"] == 1 and len(sent) == 1
     for bad in (["P2"], "P0-M,P1", None):
         with pytest.raises(ValueError):
@@ -1262,4 +1266,5 @@ def test_charter_229_the_stages_are_the_lane_files_to_name(store) -> None:
 def test_charter_229_the_shipped_stages_leave_p0_to_the_basket() -> None:
     from bayes_basket_target import strategy_lanes  # noqa: PLC0415
 
-    assert strategy_lanes.opening_stages(strategy_lanes.TIEBREAK_DEFAULT_SETTINGS) == {"P0-M", "P1"}
+    # Charter 283: P0-M is retired; the lane opens on P1 only.
+    assert strategy_lanes.opening_stages(strategy_lanes.TIEBREAK_DEFAULT_SETTINGS) == {"P1"}

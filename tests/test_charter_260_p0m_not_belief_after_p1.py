@@ -1,7 +1,10 @@
 """Charter 260: once a P1 stands for a station-day, that day's P0-M is not an
 independent belief (user ruling 2026-10-09 「裁决」 on 「P0-M 在 P1 存在后的当日决策
 是否不再作为独立信念服务」).  Readers take P1 > P0-M > P0 at the instant; the width
-lane does not count a superseded P0-M decision as evidence."""
+lane does not count a superseded P0-M decision as evidence.
+
+Charter 283 (2026-10-26) retired P0-M: the belief is P1 > P0, and a P0-M row
+committed before the retirement is never the belief at all."""
 from __future__ import annotations
 
 import sys
@@ -28,21 +31,30 @@ def test_the_belief_is_the_most_informed_stage_standing_not_the_newest_row(store
     assert (belief["stage"], belief["history_id"]) == ("P1", "h_p1"), "the later P0-M row is not the belief"
     belief = SA.served_belief_row(store, station_id=ST, event_date=ED, at_utc="2026-09-18T11:50:00Z")
     assert belief["stage"] == "P1"
+    assert SA.BELIEF_STAGE_PRECEDENCE == ("P1", "P0")
+
+
+def test_a_retired_p0m_row_is_never_the_belief(store) -> None:  # noqa: F811
+    _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3}, stage="P0", decided="2026-09-18T06:00:00Z", hid="h_p0")
+    _served(store, {"27°C": 0.1, "28°C": 0.3, "29°C": 0.6}, stage="P0-M", decided="2026-09-18T08:00:00Z", hid="h_pm")
+    belief = SA.served_belief_row(store, station_id=ST, event_date=ED, at_utc="2026-09-18T09:00:00Z")
+    assert (belief["stage"], belief["history_id"]) == ("P0", "h_p0")
 
 
 def test_the_copy_follow_lane_reads_the_belief_stage_and_refuses_a_stage_it_may_not_read(store) -> None:  # noqa: F811
     _served(store, {"27°C": 0.2, "28°C": 0.5, "29°C": 0.3}, stage="P0", decided="2026-09-18T06:00:00Z", hid="h_p0")
+    # Charter 283: a P0-M committed before the retirement is not read.
     _served(store, {"27°C": 0.1, "28°C": 0.3, "29°C": 0.6}, stage="P0-M", decided="2026-09-18T08:00:00Z", hid="h_pm")
     got = lane.served_side_probability(store, station_id=ST, event_date=ED, bucket="29°C", side="YES",
-                                       stages=["P0", "P0-M"], now_utc="2026-09-18T09:00:00Z")
-    assert got["state"] == "ok" and got["stage"] == "P0-M" and got["p"] == pytest.approx(0.6, abs=1e-3)
+                                       stages=["P0"], now_utc="2026-09-18T09:00:00Z")
+    assert got["state"] == "ok" and got["stage"] == "P0" and got["p"] == pytest.approx(0.3, abs=1e-3)
     _served(store, {"27°C": 0.05, "28°C": 0.9, "29°C": 0.05}, stage="P1", decided="2026-09-18T10:00:00Z", hid="h_p1")
     got = lane.served_side_probability(store, station_id=ST, event_date=ED, bucket="29°C", side="YES",
-                                       stages=["P0", "P0-M", "P1"], now_utc="2026-09-18T11:00:00Z")
+                                       stages=["P0", "P1"], now_utc="2026-09-18T11:00:00Z")
     assert got["stage"] == "P1" and got["p"] == pytest.approx(0.05, abs=2e-3), "P1 stands: it is the belief"
     held = lane.served_side_probability(store, station_id=ST, event_date=ED, bucket="29°C", side="YES",
-                                        stages=["P0", "P0-M"], now_utc="2026-09-18T11:00:00Z")
-    assert held["state"] == "stage_not_allowed:P1", "never a fall back to the superseded P0-M"
+                                        stages=["P0"], now_utc="2026-09-18T11:00:00Z")
+    assert held["state"] == "stage_not_allowed:P1", "never a fall back to an earlier stage"
     assert "P1" in strategy_lanes.COPY_FOLLOW_DEFAULT_SETTINGS["model_stages"]
 
 

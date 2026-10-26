@@ -101,7 +101,7 @@ def test_the_wait_is_a_number_the_card_carries():
     ).isoformat()
     # At or past the threshold there is nothing to count down to, and no
     # date may be invented for it.
-    for stage in ("P0-M", "P1"):
+    for stage in ("P1",):  # P0-M left the card with charter 283
         assert _row(rows, stage)["days_remaining"] == 0
         assert _row(rows, stage)["earliest_refit_date"] is None
 

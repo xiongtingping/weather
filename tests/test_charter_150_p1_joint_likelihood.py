@@ -1,10 +1,10 @@
-"""Charter 150: P0-M and P1 are one likelihood update each on a calibrated root.
+"""Charter 150: P1 is one likelihood update on a calibrated root (P0-M and its
+TAF likelihood were retired by charter 283).
 
 User ruling 2026-09-19 ("按照方案全量落地并测试调优"):
 
 * P0 is the only stage with post-hoc calibration (centre/width; the band
   table beside it retired with charter 232).
-* P0-M = P0 x L_TAF under the observed-high mask -- TAF as a likelihood only.
 * P1 = root x 1[k >= running-high bucket] x g(d_k | s_t) ** alpha(hours) -- one
   joint observation likelihood per decision, no chained layers after it.
 
@@ -15,20 +15,15 @@ order-path gate that reads the new receipt.
 from __future__ import annotations
 
 import json
-import math
 
 import pytest
 
 from bayes_basket_target import metar_trajectory as MT
 from bayes_basket_target import p1_observation_likelihood as OL
-from bayes_basket_target import taf_likelihood as TL
 from bayes_basket_target.contracts import ContractError, ProbabilityEnvelope
-from bayes_basket_target.materialization import (
-    PROBABILITY_MODEL_ZERO_FLOOR,
-    materialize_p0m_observed,
-)
+from bayes_basket_target.materialization import PROBABILITY_MODEL_ZERO_FLOOR
 from bayes_basket_target.p1_compiler import compile_station_p1_packets
-from tests.test_bayes_basket_target_materialization import _envelope, _p0m_root
+from tests.test_bayes_basket_target_materialization import _envelope, _p1_root
 
 RETIRED_P1_KEYS = (
     "center_width_json",
@@ -107,7 +102,7 @@ def _observation(root, suffix: str, at: str, temperature_c: float) -> dict:
 
 
 def _compile(artifact=None, *, observations=None, at="2026-07-23T15:00:00Z"):
-    root = _p0m_root(_envelope())
+    root = _p1_root(_envelope())
     return root, compile_station_p1_packets(
         predecessor=root,
         observations=observations or [_observation(root, "a", at, 36.8)],
@@ -184,12 +179,12 @@ def test_no_retired_layer_speaks_on_p1() -> None:
     assert not [key for key in RETIRED_P1_KEYS if key in lineage]
     assert lineage["observation_likelihood_mode"] == OL.LIKELIHOOD_MODE
     assert packets[-1]["expected_envelope"]["posterior_version"] == (
-        "p1_joint_likelihood_v48"
+        "p1_joint_likelihood_v49"
     )
 
 
 def test_silent_on_replayed_steps_behind_the_current_high() -> None:
-    root = _p0m_root(_envelope())
+    root = _p1_root(_envelope())
     at1, at2 = "2026-07-23T15:00:00Z", "2026-07-23T16:00:00Z"
     _, packets = _compile(
         _artifact(),
@@ -248,85 +243,6 @@ def test_the_order_gate_trades_only_a_step_the_likelihood_spoke_on() -> None:
         MT.assert_p1_execution_evidence(
             silent[-1]["expected_envelope"]["lineage"]
         )
-
-
-# -- P0-M ------------------------------------------------------------------
-
-
-def _taf_artifact(state: str = TL.GATE_SERVE) -> dict:
-    return {
-        "schema": TL.SCHEMA,
-        "rule": TL.RULE,
-        "pool": {"a": 0.0, "b": 0.5, "tau": 1.0, "n": 100},
-        "stations": {},
-        "shrink_k": TL.SHRINK_K,
-        "gate": {"state": state},
-        "content_sha256": "d" * 64,
-    }
-
-
-def _p0m(root: ProbabilityEnvelope, artifact, tx: float | None = 39.0):
-    return materialize_p0m_observed(
-        root,
-        p0_root=root,
-        forecast_revision_id="taf-1",
-        forecast_source_object_sha256="e" * 64,
-        taf_tx_c=tx,
-        decision_at_utc="2026-07-23T05:00:00Z",
-        fresh_until_utc="2026-07-23T06:00:00Z",
-        bridge_sha256="b" * 64,
-        taf_likelihood_artifact=artifact,
-    )
-
-
-def _root_with_centre() -> ProbabilityEnvelope:
-    base = _envelope()
-    return ProbabilityEnvelope.from_mapping({
-        **base.to_dict(),
-        "lineage": {**base.lineage, "model_center_c": "38"},
-    })
-
-
-def test_a_closed_gate_leaves_p0m_equal_to_p0() -> None:
-    root = _root_with_centre()
-    envelope = _p0m(root, _taf_artifact(TL.GATE_IDENTITY))
-    assert dict(envelope.probabilities) == dict(root.probabilities)
-    assert envelope.lineage["taf_revision_state"] == "IDENTITY_GATE_CLOSED"
-    assert envelope.posterior_version == "p0m_taf_likelihood_v37"
-
-
-def test_an_open_gate_multiplies_p0_by_the_taf_gaussian() -> None:
-    root = _root_with_centre()
-    envelope = _p0m(root, _taf_artifact())
-    receipt = json.loads(envelope.lineage[TL.LINEAGE_KEY])
-    assert receipt["state"] == "APPLIED"
-    # x = 1, y_k = k - 38, a = 0, b = 0.5, tau = 1.
-    likelihood = {
-        b: math.exp(-((1.0 - 0.5 * (float(b) - 38.0)) ** 2) / 2.0)
-        for b in root.probabilities
-    }
-    weighted = {b: p * likelihood[b] for b, p in root.probabilities.items()}
-    total = sum(weighted.values())
-    for bucket, value in weighted.items():
-        assert envelope.probabilities[bucket] == pytest.approx(value / total)
-    assert envelope.lineage["taf_likelihood_mode"] == TL.LIKELIHOOD_MODE
-    # The anchor follows the served vector once the likelihood speaks.
-    centre = sum(float(b) * p for b, p in envelope.probabilities.items())
-    assert float(envelope.lineage["model_center_c"]) == pytest.approx(centre)
-
-
-def test_p0m_carries_no_centre_width_and_no_band() -> None:
-    envelope = _p0m(_root_with_centre(), _taf_artifact())
-    assert "center_width_json" not in envelope.lineage
-    assert "band_reliability_json" not in envelope.lineage
-    assert "center_width_taf_cell" not in envelope.lineage
-
-
-def test_no_tx_is_identity_and_says_so() -> None:
-    root = _root_with_centre()
-    envelope = _p0m(root, _taf_artifact(), tx=None)
-    assert dict(envelope.probabilities) == dict(root.probabilities)
-    assert envelope.lineage["taf_revision_state"] == "IDENTITY_NO_TX"
 
 
 def test_only_p0_serves_post_hoc_tables() -> None:

@@ -26,7 +26,7 @@ from bayes_basket_target.materialization import insert_probability_envelope
 from bayes_basket_target.ssot import apply_production_ssot_schema
 from tests.test_bayes_basket_target_materialization import (
     _envelope,
-    _p0m_root,
+    _p1_root,
     _trajectory_packet,
 )
 
@@ -218,7 +218,7 @@ def test_an_in_memory_store_is_not_remembered() -> None:
 
 def test_consume_once_on_a_file_store_still_refuses_a_second_answer(tmp_path) -> None:
     p0 = _envelope()
-    p0m = _p0m_root(p0)
+    p0m = _p1_root(p0)
     p1 = ProbabilityEnvelope.from_mapping(_trajectory_packet(p0m)["expected_envelope"])
     altered = ProbabilityEnvelope.from_mapping(
         _trajectory_packet(

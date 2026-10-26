@@ -62,9 +62,10 @@ ACTIVE_NAME = "active.json"
 #: Charter 231 补记二 (user ruling 2026-10-10 「把 P0-M、P1 阶段也放开」): the Proper
 #: lane bets every belief stage, so b is fitted and gated per stage on that
 #: stage's own decisions.  P0 keeps ``active.json`` (the board and the far-tail
-#: shadow read it); the others write ``active_<slug>.json``.
-STAGES = ("P0", "P0-M", "P1")
-_STAGE_SLUGS = {"P0": "p0", "P0-M": "p0m", "P1": "p1"}
+#: shadow read it); the others write ``active_<slug>.json``.  Charter 283
+#: retired P0-M: there is no P0-M belief left to bet, so no P0-M b is fitted.
+STAGES = ("P0", "P1")
+_STAGE_SLUGS = {"P0": "p0", "P1": "p1"}
 
 
 def _stage_slug(stage: str) -> str:
@@ -302,8 +303,7 @@ def population(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Every ``stage`` decision more than ``MIN_HOURS_TO_SETTLEMENT`` out a
     fit at ``cutoff_utc`` could use: its label knowable by then, its book
-    complete, its envelope's ladder the book's.  A P0-M decision taken at or
-    after the day's first P1 is not one (charter 260: it is no belief)."""
+    complete, its envelope's ladder the book's."""
 
     from .label_knowability import knowable_labels  # noqa: PLC0415
 
@@ -315,7 +315,7 @@ def population(
     _stage_slug(stage)
     counts: dict[str, Any] = {
         "stage": str(stage), "facts_read": 0, "no_label": 0, "inside_window": 0, "decided_after_cutoff": 0,
-        "superseded_by_p1": 0, "row_missing": 0, "market_incomplete": 0, "ladder_mismatch": 0, "invalid": 0,
+        "row_missing": 0, "market_incomplete": 0, "ladder_mismatch": 0, "invalid": 0,
         "label_outside_ladder": 0,
     }
     if not labels:
@@ -331,11 +331,6 @@ def population(
         " AND stage=? AND event_date > ? AND event_date <= ?",
         (str(stage), floor_day, latest),
     ).fetchall()
-    first_p1: dict[tuple[str, str], str] = {}
-    if str(stage) == "P0-M":
-        from .stage_authority import first_p1_decisions  # noqa: PLC0415
-
-        first_p1 = first_p1_decisions(conn, min_decision_at_utc=f"{floor_day}T00:00:00Z")
     decisions: list[dict[str, Any]] = []
     runs_cache: dict[tuple[str, str], dict[str, list[tuple]]] = {}
     cached = _load_population_cache(stage)
@@ -351,12 +346,6 @@ def population(
         if str(decided) > cutoff_utc:
             counts["decided_after_cutoff"] += 1
             continue
-        if first_p1:
-            from .stage_authority import p0m_superseded  # noqa: PLC0415
-
-            if p0m_superseded("P0-M", str(station), str(day), str(decided), first_p1):
-                counts["superseded_by_p1"] += 1
-                continue
         hours = hours_to_settlement_if_known(str(day), as_of_utc=str(decided), settlement_timezone=tz)
         if hours is None or not hours > MIN_HOURS_TO_SETTLEMENT:
             counts["inside_window"] += 1

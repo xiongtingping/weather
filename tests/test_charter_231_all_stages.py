@@ -2,7 +2,8 @@
 realisation layer's b is fitted, stored and read per stage.
 
 User ruling 2026-10-10 「把 P0-M、P1 阶段也放开」 (after 「也是人工定的，按照proper
-线本来的设计来」 dropped the >36 h window).
+线本来的设计来」 dropped the >36 h window).  Charter 283 (2026-10-26) retired
+P0-M: the stages are P0 and P1.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from tests.test_charter_231_proper_bet_lane import (  # noqa: E402
 from tests.test_charter_254_realisation_layer_shadow import _artifact  # noqa: E402
 from tests.test_tiebreak_lane import store  # noqa: E402,F401 -- ``store`` is a fixture
 
-ALL = ["P0", "P0-M", "P1"]
+ALL = ["P0", "P1"]
 
 
 def test_the_default_opens_every_stage() -> None:
@@ -34,16 +35,17 @@ def test_the_default_opens_every_stage() -> None:
 def test_the_belief_stage_is_the_most_informed_not_the_newest(store) -> None:
     _snapshot(store, "snap_a", DECIDED, _ladder(), 1)
     _fact(store, stage="P1", fact_id="a1", decided="2026-09-18T11:00:00.000Z", snapshot_id="snap_a")
-    # P0-M keeps being compiled after the day's first P1 (charter 260): it is newer, and not the belief.
+    # A P0-M row after the day's first P1 (the history before charter 283) is
+    # newer, and neither the belief nor the latest stage.
     _fact(store, stage="P0-M", fact_id="a2", decided="2026-09-18T11:30:00.000Z", snapshot_id="snap_a")
-    assert lane._latest_stage(store, ST, ED) == "P0-M"
+    assert lane._latest_stage(store, ST, ED) == "P1"
     assert lane._belief_stage(store, ST, ED) == "P1"
     picked = lane.belief_stage_decisions(store, now_utc="2026-09-18T12:00:00Z")
     assert [(d["stage"], d["decision_at_utc"]) for d in picked] == [("P1", "2026-09-18T11:00:00.000Z")]
 
 
-@pytest.mark.parametrize("stage", ["P0-M", "P1"])
-def test_a_p0m_or_p1_station_day_is_planned_when_its_stage_is_open(store, stage) -> None:
+@pytest.mark.parametrize("stage", ["P1"])
+def test_a_p1_station_day_is_planned_when_its_stage_is_open(store, stage) -> None:
     _seed(store, stage=stage)
     sent: list = []
     receipt = _run(store, sent, opening_stages=ALL)
@@ -59,16 +61,16 @@ def test_a_closed_stage_still_waits(store) -> None:
 
 
 def test_a_plan_closes_when_its_stage_moves_on_and_the_next_stage_plans(store) -> None:
-    _seed(store, stage="P0-M")
+    _seed(store, stage="P0")
     sent: list = []
     assert _run(store, sent, opening_stages=ALL)["planned"] == 1
     _snapshot(store, "snap_p1", "2026-09-18T12:04:00.000Z", _ladder(), 2)
     _fact(store, stage="P1", fact_id="p1", decided="2026-09-18T12:04:00.000Z", snapshot_id="snap_p1")
     receipt = _run(store, sent, now="2026-09-18T12:04:30.000Z", opening_stages=ALL)
     reasons = [c["reason"] for c in receipt.get("closed_plans") or []]
-    assert "stage_left_p0m:P1" in reasons
+    assert "stage_left_p0:P1" in reasons
     stages = {r[0] for r in store.execute(f"SELECT stage FROM {lane.EVALUATION_TABLE}")}
-    assert stages == {"P0-M", "P1"}
+    assert stages == {"P0", "P1"}
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,9 @@ def test_artifacts_are_kept_per_stage(tmp_path) -> None:
     assert p0.name == "active.json" and p1.name == "active_p1.json"
     assert rstore.load_active(tmp_path)["stage"] == "P0"
     assert rstore.load_active(tmp_path, stage="P1")["theta"][0] == 1.0
-    assert rstore.load_active(tmp_path, stage="P0-M") is None
+    # Charter 283: P0-M is retired -- no b is kept for it.
+    with pytest.raises(ValueError, match="realisation_stage_unknown"):
+        rstore.load_active(tmp_path, stage="P0-M")
     # P0's history keeps its names; another stage's carry its slug, pruned apart.
     assert len(list((tmp_path / "history").glob("fit_[0-9]*.json"))) == 1
     assert len(list((tmp_path / "history").glob("fit-p1_*.json"))) == 1
@@ -94,26 +98,6 @@ def test_b_is_read_only_under_its_own_stage(store) -> None:
     read = rstore.belief_vector(store, station_id=ST, event_date=ED, as_of_utc=DECIDED, p_raw={"a": 1.0},
                                 book_buckets=[], artifact=wrong, stage="P1")
     assert read["state"] == "fit_stage_mismatch"
-
-
-def test_the_p0m_population_drops_decisions_after_the_first_p1(store, monkeypatch) -> None:
-    calls: list = []
-
-    def fake_first(conn, *, min_decision_at_utc=None):
-        calls.append(min_decision_at_utc)
-        return {(ST, ED): "2026-09-18T11:00:00.000Z"}
-
-    monkeypatch.setattr("bayes_basket_target.stage_authority.first_p1_decisions", fake_first)
-    monkeypatch.setattr("bayes_basket_target.label_knowability.knowable_labels",
-                        lambda conn: {(ST, ED): {"bucket": "28°C", "known_at": "2026-09-19T00:00:00Z"}})
-    _snapshot(store, "snap_m", DECIDED, _ladder(), 1)
-    _fact(store, stage="P0-M", fact_id="m1", decided="2026-09-18T10:00:00.000Z", snapshot_id="snap_m")
-    _fact(store, stage="P0-M", fact_id="m2", decided="2026-09-18T11:30:00.000Z", snapshot_id="snap_m")
-    _decisions, counts = rstore.population(store, cutoff_utc="2026-09-20T00:00:00Z", stage="P0-M")
-    assert calls and counts["stage"] == "P0-M" and counts["facts_read"] == 2
-    assert counts["superseded_by_p1"] == 1
-    _decisions, p0_counts = rstore.population(store, cutoff_utc="2026-09-20T00:00:00Z", stage="P0")
-    assert p0_counts["facts_read"] == 0
 
 
 def test_the_lanes_file_opens_every_stage() -> None:

@@ -47,7 +47,7 @@ SCHEMA = "serving_arithmetic_fingerprint_v1"
 # served centre), so the closure is hashed, not the root's own body.  And
 # the training entry whose artifacts a stage serves is a root in its own
 # right: what P0 serves is decided as much when the artifact is fitted as
-# when it is compiled.  P0-M is built on P0's root and moves with it.
+# when it is compiled.
 # The table lanes are roots for the reason ``_fit_parameters`` is one:
 # what a stage serves is decided as much where the number is fitted as where
 # it is applied, and both reach serving baked into a row rather than through a
@@ -68,21 +68,8 @@ STAGE_SOURCES: Mapping[str, Sequence[tuple[str, str]]] = {
         ("bayes_basket_target.center_width_store", "fit_center_width"),
         ("bayes_basket_target.center_width_store", "fit_station_width"),
     ),
-    "P0-M": (
-        # ``materialize_p0m`` (the calibrated TAF operator) left this list
-        # 2026-09-13 when that branch went offline (charter 133): P0-M
-        # serves only the observed operator.  Since charter 150 that operator
-        # is P0 times the TAF likelihood, whose arithmetic the closure
-        # reaches through the call; the entries below it are P0's root,
-        # which this stage moves with -- P0-M applies no table of its own.
-        ("bayes_basket_target.materialization", "materialize_p0m_observed"),
-        ("bayes_basket_target.native_ensemble_oos", "build_native_ensemble_oos"),
-        ("bayes_basket_target.native_ensemble_oos", "_fit_parameters"),
-        ("bayes_basket_target.center_width_calibration",
-         "apply_center_width_calibration"),
-        ("bayes_basket_target.center_width_store", "fit_center_width"),
-        ("bayes_basket_target.center_width_store", "fit_station_width"),
-    ),
+    # P0-M left with charter 283 (2026-10-26): no stage serves its arithmetic
+    # any more; its version declarations below stay as history.
     # Charter 150: the root under the hard bound times one joint observation
     # likelihood.  ``materialize_p1`` reaches the likelihood's arithmetic
     # through its call; the step's features are computed in the compiler and
@@ -615,6 +602,9 @@ STAGE_VERSION_EFFECTIVE_FROM: Mapping[str, Mapping[str, str]] = {
         # step (the vector moved only while its fit passes 240).  Declared
         # past the push and the restart.
         "p1_joint_likelihood_v48": "2026-10-26T04:00:00Z",
+        # Charter 283: P0-M retired, every P1 roots on P0.  Declared past the
+        # push and the restart.
+        "p1_joint_likelihood_v49": "2026-10-26T07:00:00Z",
     },
 }
 

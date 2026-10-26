@@ -127,7 +127,9 @@ def test_the_lane_is_known_dialled_off_in_code_and_live_in_the_file() -> None:
     doc = json.loads((ROOT / "config" / "trading" / "strategy_lanes_v1.json").read_text(encoding="utf-8"))
     # Live by the ruling 2026-10-23 「开启共识线实盘，单笔 5 U」, rule v2.
     lane_doc = doc["lanes"]["consensus_noon"]
-    assert lane_doc["enabled"] is True and lane_doc["stake_usdc"] == 5.0
+    # The stake is the operator's dial (5 by the ruling, moved on the board
+    # since); a test pins the bounds, not the number last clicked.
+    assert lane_doc["enabled"] is True and 1.0 <= lane_doc["stake_usdc"] <= 100.0
     assert lane_doc["rule"] == lane.RULE and lane_doc["voters"] == ["D0", "P1", "market"]
     text = (ROOT / "scripts" / "weather_basket_yes_daemon.py").read_text(encoding="utf-8")
     assert text.count("execute_consensus(") == 2

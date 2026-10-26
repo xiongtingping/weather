@@ -319,20 +319,6 @@ class CaptureFallbackTest(unittest.TestCase):
         self.assertIsNotNone(identity["taf_fields"]["cloud_cover_fraction"])
 
 
-class TemperingTest(unittest.TestCase):
-    def test_a_tgftp_taf_lands_in_the_small_group(self) -> None:
-        """Charter 158's own rule, restated here because charter 162 now
-        relies on it: no weather beside the TX means SMALL, pull unchanged."""
-
-        from bayes_basket_target import taf_likelihood as TL
-
-        self.assertEqual(
-            TL.disagreement_group(x_served_c=2.5, cloud_cover=None, precip_prob=None),
-            TL.GROUP_SMALL,
-        )
-        self.assertEqual(TL.tempering_lambda(None, TL.GROUP_SMALL), 1.0)
-
-
 if __name__ == "__main__":
     unittest.main()
 

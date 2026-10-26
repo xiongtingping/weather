@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping
 from .contracts import (
     ContractError,
     ProbabilityEnvelope,
+    RETIRED_STAGES,
     content_sha256,
     shift_timestamp_utc,
     stage_servable_grace_seconds,
@@ -323,10 +324,13 @@ def _select_resident_probabilities(
                 scope,
             ).fetchall()
         }
+        # Charter 283: a regime cut on a P0-M before its retirement is history;
+        # the P0 that speaks now is not a rewind past it.
         if any(
             STAGE_PRECEDENCE.get(stage, len(STAGE_PRECEDENCE))
             > STAGE_PRECEDENCE[probability.stage]
             for stage in existing_stages
+            if stage not in RETIRED_STAGES
         ):
             raise ContractError("resident_regime_stage_rewind_forbidden")
         selected.append(probability)
@@ -343,7 +347,8 @@ def materialize_resident_regimes(
 ) -> dict[str, Any]:
     """Atomically materialize the one authoritative regime per station-day.
 
-    The highest submitted stage is authoritative (P1, then P0-M, then P0).
+    The highest submitted stage is authoritative (P1, then P0; P0-M is
+    retired, charter 283).
     A malformed, ambiguous, or stale higher stage aborts the whole batch;
     lower stages are never used as a recovery path.  Registry timezones are
     exact scope authority and probability content is immutable per

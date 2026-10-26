@@ -7,6 +7,8 @@ filling, and from the cache.
 
 from __future__ import annotations
 
+import re
+
 import ast
 import json
 import sqlite3
@@ -18,10 +20,17 @@ import pytest
 from bayes_basket_target import serving_payload_cache as P
 from bayes_basket_target import ssot
 from bayes_basket_target.contracts import ContractError, content_sha256
-from tests.test_taf_likelihood_review_20260919 import _ddl
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)   # frozen through 09-28
+
+
+def _ddl(script: str, table: str) -> str:
+    match = re.search(
+        rf"CREATE TABLE IF NOT EXISTS {table} \(.*?\n\);", script, flags=re.DOTALL
+    )
+    assert match is not None, table
+    return match.group(0)
 
 
 @pytest.fixture(autouse=True)

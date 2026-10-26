@@ -46,15 +46,12 @@ def test_the_width_lane_scores_the_ladder_crps_on_the_served_vector() -> None:
     assert math.isnan(missing)
 
 
-def test_the_likelihood_lanes_share_the_arithmetic() -> None:
-    import fit_taf_likelihood as taf
+def test_the_likelihood_lane_shares_the_arithmetic() -> None:
     import fit_p1_observation_likelihood as p1
 
     served, _ = floor_probabilities(dict(P))
     brier_ref = sum((served[k] - (1.0 if k == "21C" else 0.0)) ** 2 for k in KEYS)
     crps_ref = _reference_crps(served, KEYS, CENTRES, "21C")
-    brier, crps = taf._floored_guard_scores(P, dict(zip(KEYS, CENTRES)), "21C")
-    assert (brier, crps) == pytest.approx((brier_ref, crps_ref))
     vectors = np.array([[served[k] for k in KEYS]])
     got = p1._guard_scores(vectors, np.array([1]), np.array([CENTRES]))
     assert got[0].tolist() == pytest.approx([brier_ref, crps_ref])

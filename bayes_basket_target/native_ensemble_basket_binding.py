@@ -43,7 +43,8 @@ SCENARIO_ARTIFACT_SCHEMAS = frozenset({
 })
 SCENARIO_CANDIDATE_SCHEMA = "native_ensemble_scenario_roles_station_v1"
 AUTHORITY_SCOPE = "PRODUCTION_NO_LIVE_CANDIDATE"
-STAGES = ("P1", "P0-M", "P0")
+#: Most authoritative first; P0-M is retired (charter 283) and never selected.
+STAGES = ("P1", "P0")
 MAX_STATIONS = expected_station_count()
 MAX_SNAPSHOTS = 3 * MAX_STATIONS
 MAX_ROLE_LINEAGE_PRODUCTS = 256

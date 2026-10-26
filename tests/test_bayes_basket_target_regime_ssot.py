@@ -467,6 +467,7 @@ def test_resident_regime_stage_chain_is_monotonic_idempotent_and_deterministic()
         assert first["selected"][0]["stage"] == "P0"
         assert first["wrote_count"] == 1
 
+        # Charter 283: a P0-M row (history) is never selected; P0 still speaks.
         second = materialize_resident_regimes(
             conn,
             envelopes=[p0m, p0],
@@ -474,7 +475,8 @@ def test_resident_regime_stage_chain_is_monotonic_idempotent_and_deterministic()
             evaluation_at_utc="2026-07-26T19:00:00Z",
             created_at_utc="2026-07-26T19:01:00Z",
         )
-        assert second["selected"][0]["stage"] == "P0-M"
+        assert second["selected"][0]["stage"] == "P0"
+        assert second["wrote_count"] == 0
 
         third = materialize_resident_regimes(
             conn,
@@ -497,7 +499,7 @@ def test_resident_regime_stage_chain_is_monotonic_idempotent_and_deterministic()
         assert again["idempotent_count"] == 1
         assert conn.execute(
             "SELECT COUNT(*) FROM basket_regime_artifact"
-        ).fetchone()[0] == 3
+        ).fetchone()[0] == 2
 
         with pytest.raises(
             ContractError,

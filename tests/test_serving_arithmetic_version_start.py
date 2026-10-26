@@ -32,7 +32,8 @@ from bayes_basket_target.center_width_store import (  # noqa: E402
     served_arithmetic_anchor,
 )
 
-STAGES = ("P0", "P0-M", "P1")
+#: The stages that serve arithmetic (P0-M left with charter 283).
+STAGES = ("P0", "P1")
 
 
 # Charter 160: the instant P0 v7, P0-M v9 and P1 v16 declare.
@@ -153,6 +154,7 @@ CHARTER_281B_START = sa.version_effective_from(
 # Charter 281 补记二 (charter 151's ruling revoked): P0-M v37 and P1 v47 only.
 CHARTER_281C_START = sa.version_effective_from("P0-M", "p0m_taf_likelihood_v37")
 CHARTER_282_START = "2026-10-26T04:00:00Z"
+CHARTER_283_START = sa.version_effective_from("P1", "p1_joint_likelihood_v49")
 
 
 def _served(version: str) -> sqlite3.Connection:
@@ -234,9 +236,9 @@ def test_every_stage_hashes_the_lanes_that_decide_its_tables() -> None:
         ("bayes_basket_target.center_width_store", "fit_center_width"),
         ("bayes_basket_target.center_width_store", "fit_station_width"),
     }
-    # Charter 150: P1 applies no table; P0-M applies none of its own but is
-    # built on P0's root, whose tables it therefore moves with.
-    for stage in ("P0", "P0-M"):
+    # Charter 150: P1 applies no table (P0-M, which moved with P0's root, left
+    # with charter 283).
+    for stage in ("P0",):
         members = set(sa.closure(stage) or [])
         assert wanted <= members, stage
         # And the search inside them, not just the entry: the grid is where
@@ -267,8 +269,10 @@ def test_a_root_is_never_excluded() -> None:
 def test_every_stage_still_has_a_fingerprint() -> None:
     seen = {stage: sa.fingerprint(stage) for stage in STAGES}
     assert all(value for value in seen.values())
-    # Three stages, three different closures, three different hashes.
-    assert len(set(seen.values())) == 3
+    # Two stages, two different closures, two different hashes; the retired
+    # P0-M has none.
+    assert len(set(seen.values())) == 2
+    assert sa.fingerprint("P0-M") is None
 
 
 def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
@@ -279,7 +283,6 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     string their own module emits.
     """
 
-    from bayes_basket_target.materialization import materialize_p0m_observed
     from bayes_basket_target.native_ensemble_p0 import POSTERIOR_VERSION
     import inspect
 
@@ -372,9 +375,8 @@ def test_the_shipped_declarations_name_the_versions_that_are_served() -> None:
     assert sa.version_effective_from(
         "P0", "calibrated_native_cross_ensemble_p0_v6"
     ) == "2026-09-18T09:18:16Z"
-    p0m = inspect.signature(
-        materialize_p0m_observed
-    ).parameters["posterior_version"].default
+    # Charter 283: P0-M is retired; its last version stays declared as history.
+    p0m = "p0m_taf_likelihood_v37"
     # Charter 158's v8 is declared at the restart that deployed it, after
     # the tempered artifact was written.  Charter 150's v7 was this stage's
     # own change and declared its own first decision -- the value the
@@ -483,9 +485,10 @@ def test_p1_declares_only_the_bump_its_root_caused() -> None:
     # (charter 200) is P1's own change, declared past its push and restart.
     # v21 (charter 204) and v22 (charter 210) are the seventh and eighth
     # root bumps, at P0 v10's and P0 v11's moments.
-    assert p1 == "p1_joint_likelihood_v48"
-    assert sa.version_effective_from("P1", p1) == CHARTER_282_START
-    assert CHARTER_282_START > CHARTER_281C_START
+    assert p1 == "p1_joint_likelihood_v49"
+    assert sa.version_effective_from("P1", p1) == CHARTER_283_START
+    assert CHARTER_283_START > CHARTER_282_START > CHARTER_281C_START
+    assert sa.version_effective_from("P1", "p1_joint_likelihood_v48") == CHARTER_282_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v47") == CHARTER_281C_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v46") == CHARTER_281B_START
     assert sa.version_effective_from("P1", "p1_joint_likelihood_v43") == CHARTER_275_START

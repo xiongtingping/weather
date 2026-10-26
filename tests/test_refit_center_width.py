@@ -862,7 +862,9 @@ def test_fingerprint_covers_the_training_arithmetic_a_stage_serves_from() -> Non
 
     from bayes_basket_target import serving_arithmetic
 
-    for stage in ("P0", "P0-M"):
+    # P0-M, which moved with P0's root, left with charter 283.
+    assert serving_arithmetic.closure("P0-M") is None
+    for stage in ("P0",):
         members = serving_arithmetic.closure(stage)
         assert members is not None
         names = {function for _module, function in members}

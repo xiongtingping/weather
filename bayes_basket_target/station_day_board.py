@@ -1,7 +1,7 @@
 """One station's two live days, read for the board on demand.
 
 User, 2026-10-05: 「前端增加zuuu单站点每日的概率分布（含模型run及权重、概率的分布
-（温度竖）、概率的均值桶、众数桶，对比市场的均值桶、众数桶，以及p0、p0m、p1三阶段
+（温度竖）、概率的均值桶、众数桶，对比市场的均值桶、众数桶，以及p0、p1两阶段（P0-M 已退役，宪章 283）
 的概率变化）以及温度桶概率变化的趋势。只显示第二日和今日。包括taf、metar、辐射偏
 移、云雨等信息。这个区域增加刷新和渲染的频率，增加自动刷新和一键点击刷新」，并
 「以及均值、方差、离散度等」.
@@ -66,7 +66,9 @@ DIRECTION_SNAPSHOT_STALE_SEC = 1500.0
 #: the P0 card) -- read, never computed here.
 LISTING_F_PATH = ROOT / "data" / "runtime" / "listing_forecast_f_v1.json"
 _LISTING_F_CACHE: dict[str, Any] = {}
-STAGES = ("P0", "P0-M", "P1")
+#: Charter 283: P0-M retired -- the board shows P0 and P1; P0-M rows already
+#: committed are not drawn.
+STAGES = ("P0", "P1")
 #: One market point per this many minutes on the trend chart (plus the newest).
 MARKET_TREND_STEP_MIN = 15
 #: The newest P1 steps kept on the trend (a replayed day has hundreds).
@@ -163,10 +165,10 @@ def skew_floor(mode: str | None, axis: Sequence[Mapping[str, Any]], running_high
 
 
 def _lineage_running_high(lineage: Mapping[str, Any], stage: str) -> float | None:
-    """The running observed high a P0-M or P1 envelope was decided on, from
+    """The running observed high a P1 envelope was decided on, from
     its own lineage; None for P0 (no observation stage)."""
 
-    key = {"P0-M": "observed_running_high_c", "P1": "reported_high_c"}.get(stage)
+    key = {"P1": "reported_high_c"}.get(stage)
     return _float(lineage.get(key)) if key else None
 
 
@@ -540,22 +542,6 @@ def _excluded(text: Any) -> list[str]:
     return [b for b in str(text or "").split(",") if b and b != "NONE"]
 
 
-def _p0m_brief(head: Mapping[str, Any]) -> dict[str, Any]:
-    L = head["lineage"]
-    receipt = _json(L.get("p0m_taf_likelihood_json"), {})
-    return {
-        "model_center_c": _float(L.get("model_center_c")),
-        "taf_state": receipt.get("state") or L.get("taf_revision_state"),
-        "tx_c": _float(L.get("taf_observed_tx_c")),
-        "root_center_c": _float(receipt.get("root_center_c")),
-        "x_c": _float(receipt.get("x_c")), "b": _float(receipt.get("b")),
-        "tau": _float(receipt.get("tau")), "tempering": receipt.get("tempering"),
-        "likelihood_by_bucket": receipt.get("likelihood_by_bucket") or {},
-        "observed_running_high_c": _float(L.get("observed_running_high_c")),
-        "excluded": _excluded(L.get("observed_hard_excluded_buckets")),
-    }
-
-
 def _p1_brief(head: Mapping[str, Any]) -> dict[str, Any]:
     L = head["lineage"]
     receipt = _json(L.get("p1_observation_likelihood_json"), {})
@@ -607,23 +593,19 @@ def _vector_move(before: Mapping[str, float], after: Mapping[str, float], axis) 
 
 
 def _stage_move(conn, head: Mapping[str, Any], station: str, day: str, axis, stage: str) -> dict[str, Any] | None:
-    """User 2026-10-25 「p0m…应该体现taf挪动效果」: the stage's own update -- the
-    root it multiplied (as served, F included) against what it serves."""
+    """P1's own update -- the root it multiplied against what it serves (user
+    2026-10-25 「…应该体现…挪动效果」).  The root is P0 since charter 283; a P1
+    of the history before it rooted on P0-M and multiplied that root's
+    proportional vector (charter 241), which is what it is compared with."""
 
     L = head["lineage"]
-    if stage == "P0-M":
-        root = _envelope_row(conn, L.get("p0_root_checkpoint_id"), L.get("p0_root_content_sha256"), station, day, "P0")
-    else:
-        root = _envelope_row(conn, L.get("prediction_root_checkpoint_id"), L.get("prediction_root_content_sha256"),
-                             station, day, str(L.get("prediction_root_stage")))
+    root = _envelope_row(conn, L.get("prediction_root_checkpoint_id"), L.get("prediction_root_content_sha256"),
+                         station, day, str(L.get("prediction_root_stage")))
     if root is None or not root["vector"]:
         return None
     vector = root["vector"]
     proportional = False
-    if stage == "P1":
-        # Charter 241: P1 multiplies the P0-M root's proportional vector (the
-        # bound applied by renormalising), not the censored one P0-M serves --
-        # the bound's mass on the floor bucket is P0-M's own move, not P1's.
+    if str(L.get("prediction_root_stage")) == "P0-M":
         from .observed_floor_censoring import OBSERVED_FLOOR_CENSORING_LINEAGE_KEY  # noqa: PLC0415
 
         censoring = _json(root["lineage"].get(OBSERVED_FLOOR_CENSORING_LINEAGE_KEY), {})
@@ -631,7 +613,7 @@ def _stage_move(conn, head: Mapping[str, Any], station: str, day: str, axis, sta
             vector, proportional = censoring["proportional_probabilities"], True
     move = _vector_move({k: float(v) for k, v in vector.items()}, head["vector"], axis)
     if move is not None:
-        move["root_stage"] = "P0" if stage == "P0-M" else L.get("prediction_root_stage")
+        move["root_stage"] = L.get("prediction_root_stage")
         move["root_proportional"] = proportional
     return move
 
@@ -685,7 +667,7 @@ def _timeline(conn, station: str, day: str, axis) -> list[dict[str, Any]]:
         " coalesce(json_extract(lineage_json,'$.prediction_root_checkpoint_id'),"
         "          json_extract(lineage_json,'$.p0_root_checkpoint_id'))"
         " FROM basket_probability_envelope WHERE station_id=? AND event_date=?"
-        " AND state='COMMITTED' ORDER BY decision_at_utc",
+        " AND state='COMMITTED' AND stage IN ('P0','P1') ORDER BY decision_at_utc",
         (station, day),
     ).fetchall()
     # A P1 decision second replays the day's prefix: only the last of a
@@ -740,8 +722,6 @@ def _timeline_cause(stage: str, why: Sequence[Any], prev: tuple | None) -> list[
             out.append(f"{name} {str(b)[11:13]}Z 入座")
         else:
             out.append(f"{name} {str(a)[11:13]}Z→{str(b)[11:13]}Z")
-    if stage == "P0-M" and why[1] != prev[1]:
-        out.append(f"新 TAF（TX {why[2]}°C）" if why[2] not in (None, "") else "新 TAF")
     if stage == "P1" and why[3] != prev[3] and why[3] is not None:
         out.append(f"已报最高 {prev[3] if prev[3] is not None else '—'}→{why[3]}°C")
     if stage != "P0" and why[4] != prev[4] and not out:
@@ -2267,9 +2247,6 @@ def _day(conn, station: str, day: str, role: str, zone: ZoneInfo, *, taf_inbox: 
             if entry.get("radiation"):
                 entry["radiation"].update(_radiation_capture(
                     conn, station, day, str(head["decided_at_utc"]), entry["radiation"].get("radiation_sum_mj")))
-        elif stage == "P0-M":
-            entry.update(_p0m_brief(head))
-            entry["stage_move"] = _stage_move(conn, head, station, day, axis, "P0-M")
         else:
             entry.update(_p1_brief(head))
             entry["root_center_c"] = _p1_root_center(conn, head, station, day)
@@ -2437,7 +2414,7 @@ def _member_bayes(station: str, day: str) -> dict[str, Any] | None:
 
 def day_word(stages: Mapping[str, Any]) -> str | None:
     """The day's word: the most informed stage present (charter 260's
-    precedence, ``stage_authority.BELIEF_STAGE_PRECEDENCE``: P1 > P0-M > P0).
+    precedence, ``stage_authority.BELIEF_STAGE_PRECEDENCE``: P1 > P0).
 
     It was the newest stage decided, but P0-M (and P0) keep committing after
     P1 exists, so the word flipped back to a superseded stage -- over
@@ -2919,9 +2896,8 @@ def fleet_shape(*, db: Path = DEFAULT_DB, now: datetime | None = None) -> dict[s
                 axis = ladder_axis(newest["ordinals"],
                                    _json(newest["lineage"].get("bucket_intervals_c_json"), {}))
                 signs, gaps, floors = {}, {}, {}
-                # The newest observation stage's running high (P1 over P0-M).
-                high = next((h for h in (_lineage_running_high(seen[s]["lineage"], s)
-                                         for s in ("P1", "P0-M") if s in seen) if h is not None), None)
+                # The observation stage's running high (P1).
+                high = _lineage_running_high(seen["P1"]["lineage"], "P1") if "P1" in seen else None
                 for stage, head in seen.items():
                     stats = vector_stats(head["vector"], axis) or {}
                     signs[stage], gaps[stage] = stats.get("skew_sign"), stats.get("skew_gap_buckets")

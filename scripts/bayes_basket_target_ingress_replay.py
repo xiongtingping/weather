@@ -32,23 +32,13 @@ from bayes_basket_target.event_contracts import (  # noqa: E402
     ForecastRevision,
     validate_forecast_revision_chain,
 )
-from bayes_basket_target.materialization import materialize_p0m  # noqa: E402
 from bayes_basket_target.p1_compiler import (  # noqa: E402
     canonical_materialization_packet,
     compile_station_p1_packets,
 )
 from bayes_basket_target.resource_bounds import write_bounded_json  # noqa: E402
 from bayes_basket_target.ssot import apply_production_ssot_schema  # noqa: E402
-from bayes_basket_target.taf_revision import (  # noqa: E402
-    TAF_ARTIFACT_SCHEMA,
-    TAF_CORRELATION_METHOD,
-    TAF_METHOD_VERSION,
-    TAF_NWP_CROSSFIT_ARTIFACT_KIND,
-    TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION,
-    TAF_NWP_LIVE_FINGERPRINT_SCHEMA,
-    TafRevisionArtifact,
-    compile_taf_revision_proof,
-)
+from bayes_basket_target.taf_revision import TAF_NWP_LIVE_FINGERPRINT_SCHEMA  # noqa: E402
 
 
 NOW = "2026-07-23T05:00:00Z"
@@ -149,62 +139,6 @@ def _p0(registry_row: Mapping[str, str]) -> ProbabilityEnvelope:
     })
 
 
-def _taf_artifact(predecessor: ProbabilityEnvelope) -> TafRevisionArtifact:
-    identity = {
-        "schema": TAF_ARTIFACT_SCHEMA,
-        "artifact_id": f"taf-replay-{predecessor.station_id}",
-        "activation_id": f"taf-replay-activation-{predecessor.station_id}",
-        "station_id": predecessor.station_id,
-        "season_bin": "summer",
-        "lead_bucket": "d0",
-        "run_cycle": "00Z",
-        "settlement_definition": "official_daily_tmax_c",
-        "settlement_timezone": predecessor.settlement_timezone,
-        "method_version": TAF_METHOD_VERSION,
-        "trained_through_utc": "2026-07-01T00:00:00Z",
-        "sample_n": 100,
-        "effective_sample_n": 80.0,
-        "oos_metrics": {"brier_score": 0.12, "nll": 0.4, "crps": 0.6},
-        "tx_bias_c": 0.0,
-        "taf_nwp_delta_coefficient": 0.6,
-        "tx_residual_scale_c": 0.8,
-        "physical_feature_effect_c": {
-            "cloud_cover_fraction": -0.4,
-            "precipitation_probability": -0.4,
-            "wind_speed_normalized": 0.0,
-        },
-        "wind_speed_cap_mps": 20.0,
-        "confirmation_tolerance_c": 0.75,
-        "max_confirmation_strength": 0.25,
-        "max_correction_strength": 0.20,
-        "max_probability_mass_transfer": 0.10,
-        "max_center_displacement_buckets": 1,
-        "likelihood_ratio_floor": 0.25,
-        "likelihood_ratio_ceiling": 4.0,
-        "nwp_combination_artifact_sha256": "9" * 64,
-        "nwp_combination_artifact_kind": TAF_NWP_CROSSFIT_ARTIFACT_KIND,
-        "nwp_live_compatibility_contract_version": (
-            TAF_NWP_LIVE_COMPATIBILITY_CONTRACT_VERSION
-        ),
-        "nwp_live_compatibility_fingerprint_sha256": predecessor.lineage[
-            "taf_nwp_live_compatibility_fingerprint_sha256"
-        ],
-        "nwp_live_compatibility_evidence_sha256": "8" * 64,
-        "nwp_live_compatibility_validated": True,
-        "oos_taf_nwp_residual_correlation": 0.25,
-        "correlation_discount_method": TAF_CORRELATION_METHOD,
-        "correlation_discount": 0.75,
-        "joint_physical_oos_validated": True,
-        "valid_from_utc": "2026-07-01T00:00:00Z",
-        "valid_until_utc": "2026-08-01T00:00:00Z",
-        "authority_scope": "PRODUCTION_NO_LIVE_ONLY",
-        "activated": True,
-    }
-    return TafRevisionArtifact.from_mapping(
-        {**identity, "content_sha256": content_sha256(identity)}
-    )
-
-
 def _observation_table(
     conn: sqlite3.Connection,
     *,
@@ -240,45 +174,9 @@ def _stage_chain(lane: str) -> dict[str, object]:
         apply_production_ssot_schema(conn)
         _observation_table(conn, lane=lane, station=station)
         predecessor = _p0(registry_row)
-        artifact = _taf_artifact(predecessor)
-        forecast_revision = ForecastRevision.from_mapping({
-            "revision_id": f"taf-{lane.lower()}-1",
-            "station_id": station,
-            "event_date": event_date,
-            "revision_kind": "TAF",
-            "sequence": 1,
-            "issued_at_utc": "2026-07-23T04:30:00Z",
-            "received_at_utc": "2026-07-23T04:31:00Z",
-            "valid_from_utc": "2026-07-23T04:30:00Z",
-            "valid_until_utc": "2026-07-24T04:30:00Z",
-            "source_object_sha256": "d" * 64,
-            "supersedes_revision_id": None,
-        })
-        proof = compile_taf_revision_proof(
-            predecessor,
-            p0_root=predecessor,
-            forecast_revision=forecast_revision,
-            artifact=artifact,
-            bucket_centers_c={"37": 37.0, "38": 38.0, "39": 39.0},
-            taf_fields={
-                "tx_c": 38.0,
-                "cloud_cover_fraction": 0.25,
-                "precipitation_probability": 0.10,
-                "wind_speed_mps": 3.0,
-            },
-            decision_at_utc="2026-07-23T05:05:00Z",
-        )
-        p0m = materialize_p0m(
-            predecessor,
-            p0_root=predecessor,
-            taf_revision_artifact=artifact,
-            taf_revision_proof=proof,
-            decision_at_utc="2026-07-23T05:05:00Z",
-            fresh_until_utc="2026-07-23T06:00:00Z",
-            bridge_sha256="b" * 64,
-        )
+        # Charter 283: P1 roots on the P0 itself (P0-M retired).
         rich_packet = compile_station_p1_packets(
-            predecessor=p0m,
+            predecessor=predecessor,
             observations=[{
                 "observation_id": "obs-replay-1",
                 "station_id": station,
@@ -373,7 +271,6 @@ def _stage_chain(lane: str) -> dict[str, object]:
             "operational_timezone_not_authoritative": True,
             "market_registry_scope_sha256": content_sha256(registry_row),
             "p0_stage": predecessor.stage,
-            "p0_m_stage": p0m.stage,
             "p1_stage": committed["p1_checkpoint_id"].split("_")[0].upper(),
             "p1_commit_state": committed["state"],
             "p1_materialization_attempts": 101,
@@ -782,10 +679,8 @@ def build_receipt() -> dict[str, object]:
     checks = {
         # Original eight checks are retained and strengthened below.
         "amsc_stage_chain": stage_runs[0]["p1_row_count"] == 1
-        and stage_runs[0]["p0_m_stage"] == "P0-M"
         and stage_runs[0]["station_id"] == "ZUUU",
         "awc_stage_chain": stage_runs[1]["p1_row_count"] == 1
-        and stage_runs[1]["p0_m_stage"] == "P0-M"
         and stage_runs[1]["station_id"] == "KATL",
         "p1_exactly_once": all(
             row["same_event_same_p1_only_one_write"]

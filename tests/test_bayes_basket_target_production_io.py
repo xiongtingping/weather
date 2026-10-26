@@ -1722,7 +1722,6 @@ def test_target_registry_lane_mismatch_rejects_p1_before_p0_fallback() -> None:
 @pytest.mark.parametrize(
     "stage,expired_at",
     [
-        ("P0-M", "2026-07-23T05:00:04Z"),
         ("P1", "2026-07-23T08:00:04Z"),
     ],
 )
@@ -1794,8 +1793,8 @@ def test_stage_routing_only_falls_back_when_higher_stage_is_not_yet_asof() -> No
         root = _seed_native_probability_only(conn)
         future_p0m = _stage_envelope(
             root,
-            stage="P0-M",
-            checkpoint_id="p0m-future",
+            stage="P1",
+            checkpoint_id="p1-future",
             decision_at="2026-07-23T05:00:06Z",
             fresh_until="2026-07-23T06:00:00Z",
         )
@@ -1825,7 +1824,30 @@ def test_stage_routing_only_falls_back_when_higher_stage_is_not_yet_asof() -> No
         assert select_current_stage(
             after,
             at_utc="2026-07-23T05:00:07Z",
-        ).checkpoint_id == "p0m-future"
+        ).checkpoint_id == "p1-future"
+
+
+def test_a_retired_p0m_row_is_never_the_current_stage() -> None:
+    """Charter 283: a P0-M committed before the retirement does not outrank a
+    later P0, and a stale one does not fail the station-day closed."""
+
+    with sqlite3.connect(":memory:") as conn:
+        root = _seed_native_probability_only(conn)
+        stale_p0m = _stage_envelope(
+            root,
+            stage="P0-M",
+            checkpoint_id="p0m-stale",
+            decision_at="2026-07-23T05:00:01Z",
+            fresh_until="2026-07-23T05:00:03Z",
+        )
+        _insert_probability_row(conn, stale_p0m, created_at="2026-07-23T05:00:01Z")
+        envelopes = load_materialized_probability_envelopes(
+            conn,
+            station_id="ZUUU",
+            event_date="2026-07-23",
+            evaluation_at_utc="2026-07-23T05:00:04Z",
+        )
+        assert select_current_stage(envelopes, at_utc="2026-07-23T05:00:04Z").stage == "P0"
 
 
 def test_low_high_low_arrival_never_rewinds_selected_p1() -> None:

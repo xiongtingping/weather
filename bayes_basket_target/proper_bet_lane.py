@@ -726,9 +726,10 @@ def _fact(conn: sqlite3.Connection, key: Mapping[str, Any]) -> dict[str, Any] | 
 
 
 def _latest_stage(conn: sqlite3.Connection, station_id: str, event_date: str) -> str | None:
+    # Charter 283: a P0-M fact committed before the retirement moves no plan.
     row = conn.execute(
         "SELECT stage FROM basket_policy_training_fact WHERE station_id=? AND event_date=?"
-        " ORDER BY decision_at_utc DESC LIMIT 1",
+        " AND stage<>'P0-M' ORDER BY decision_at_utc DESC LIMIT 1",
         (station_id, event_date),
     ).fetchone()
     return str(row[0]) if row else None
@@ -736,9 +737,9 @@ def _latest_stage(conn: sqlite3.Connection, station_id: str, event_date: str) ->
 
 def _belief_stage(conn: sqlite3.Connection, station_id: str, event_date: str) -> str | None:
     """The station-day's belief stage now (charter 260): the most informed
-    stage with a decision fact -- P1 before P0-M before P0 -- not the stage
-    of the newest row (P0-M keeps being compiled after the day's first P1,
-    P0 after its first P0-M)."""
+    stage with a decision fact -- P1 before P0 (P0-M retired, charter 283)
+    -- not the stage of the newest row (P0 keeps being compiled after the
+    day's first P1)."""
 
     from .stage_authority import BELIEF_STAGE_PRECEDENCE  # noqa: PLC0415
 
@@ -774,7 +775,7 @@ def belief_stage_decisions(
 ) -> list[dict[str, Any]]:
     """Every recent station-day's newest fact of its belief stage (charter
     231 补记二 under charter 260): the most informed stage with a fact, P1
-    before P0-M before P0, and that stage's newest decision."""
+    before P0 (P0-M retired, charter 283), and that stage's newest decision."""
 
     from .stage_authority import BELIEF_STAGE_PRECEDENCE  # noqa: PLC0415
 

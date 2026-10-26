@@ -23,16 +23,16 @@ def test_due_stages_are_the_stale_ones_stalest_first(monkeypatch, tmp_path) -> N
     script = _script()
     monkeypatch.setattr(script, "ATTEMPT_DIR", tmp_path)   # no killed-run marks from the live machine
     store = script.store
+    # Charter 283: P0-M is retired; the stages are P0 and P1.
     artifacts = {
-        "P0": {"fitted_at_utc": "2026-10-16T07:17:50Z"},   # current
-        "P0-M": {"fitted_at_utc": "2026-10-12T04:19:51Z"},
+        "P0": {"fitted_at_utc": "2026-10-16T07:17:50Z"},
         "P1": {"fitted_at_utc": "2026-10-10T07:02:04Z"},
     }
     monkeypatch.setattr(store, "load_active", lambda stage="P0", **_: artifacts.get(stage))
-    monkeypatch.setattr(store, "artifact_is_current", lambda a, **_: a is artifacts["P0"])
-    assert script.due_stages() == ["P1", "P0-M"]
-    artifacts["P0-M"] = None  # never fitted: before any that has a fit
-    assert script.due_stages() == ["P0-M", "P1"]
+    monkeypatch.setattr(store, "artifact_is_current", lambda a, **_: False)
+    assert script.due_stages() == ["P1", "P0"]
+    artifacts["P0"] = None  # never fitted: before any that has a fit
+    assert script.due_stages() == ["P0", "P1"]
 
 
 def test_the_sweep_calls_each_due_stage_with_its_own_timeout() -> None:

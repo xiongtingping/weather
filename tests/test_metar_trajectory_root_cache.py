@@ -10,6 +10,8 @@ read lineage key, either way.
 
 from __future__ import annotations
 
+import re
+
 import ast
 import hashlib
 import importlib.util
@@ -21,11 +23,18 @@ import pytest
 
 from bayes_basket_target import ssot
 from bayes_basket_target.materialization import LINEAGE_DOCUMENT_DDL
-from tests.test_taf_likelihood_review_20260919 import _ddl
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "build_bayes_basket_target_metar_trajectory_training_packet.py"
 NOW = "2026-10-01T03:00:00Z"
+
+
+def _ddl(script: str, table: str) -> str:
+    match = re.search(
+        rf"CREATE TABLE IF NOT EXISTS {table} \(.*?\n\);", script, flags=re.DOTALL
+    )
+    assert match is not None, table
+    return match.group(0)
 
 
 def _packet():

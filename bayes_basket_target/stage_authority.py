@@ -1,5 +1,10 @@
 """Charter 260: which stage is the belief at an instant.
 
+Charter 283 (user ruling 2026-10-26 「按清单退役 P0-M」): P0-M is retired; the
+belief is P1 once one stands and P0 before it.  The P0-M rows already
+committed stay in the record and are never the belief again; the two
+supersession helpers below remain for fits whose windows still hold them.
+
 User ruling 2026-10-09 (「P0-M 在 P1 存在后的当日决策是否不再作为独立信念服务」—
 「裁决」): once a P1 decision stands for a station-day, that day's P0-M is no
 longer an independent belief.  P0-M keeps being compiled -- it is P1's root --
@@ -21,9 +26,9 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Iterable, Mapping, Sequence
 
-#: Most informed first.  The chain's order (charter 229): observations (P1)
-#: over TAF-adjusted (P0-M) over NWP alone (P0).
-BELIEF_STAGE_PRECEDENCE: tuple[str, ...] = ("P1", "P0-M", "P0")
+#: Most informed first: observations (P1) over NWP alone (P0).  P0-M was
+#: retired by charter 283; its committed rows are not read as the belief.
+BELIEF_STAGE_PRECEDENCE: tuple[str, ...] = ("P1", "P0")
 
 
 def served_belief_row(

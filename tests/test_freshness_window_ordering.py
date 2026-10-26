@@ -19,10 +19,6 @@ from bayes_basket_target.contracts import (
     timestamp_lt,
 )
 from bayes_basket_target.event_contracts import ForecastRevision
-from bayes_basket_target.production_worker import (
-    _p0m_replay_decision_at,
-    _p0m_window_until,
-)
 
 
 # ---------------------------------------------------------------- ring 3
@@ -179,97 +175,6 @@ def _taf(valid_until: str) -> ForecastRevision:
         "source_object_sha256": "d" * 64,
         "supersedes_revision_id": None,
     })
-
-
-def test_a_confirmation_cannot_outlive_its_root():
-    """The old shifted window lent a root's span again from P0-M's own now.
-
-    KAUS 2026-09-12: a P0-M decided at 22:25Z on a P0 decided at 08:54Z was
-    served until 03:59Z the next day.  The window now ends where the root's
-    does.
-    """
-
-    root = _root("2026-08-27T09:38:41.000Z", "2026-08-27T15:31:52.000Z")
-    out = _p0m_window_until(
-        "2026-08-27T12:00:00.000Z",
-        root=root,
-        revision=_taf("2026-08-28T18:00:00Z"),
-    )
-    assert out == root.fresh_until_utc
-
-
-def test_a_confirmation_cannot_outlive_the_forecast_it_carries():
-    root = _root("2026-08-27T09:38:41.000Z", "2026-08-27T15:31:52.000Z")
-    out = _p0m_window_until(
-        "2026-08-27T12:00:00.000Z",
-        root=root,
-        revision=_taf("2026-08-27T14:00:00Z"),
-    )
-    assert out == "2026-08-27T14:00:00Z"
-    assert freshness_window_ordering_agrees("2026-08-27T12:00:00.000Z", out)
-
-
-def test_an_expired_root_lends_nothing_rather_than_being_revived():
-    """Refused, not shifted: the scope waits for the next root."""
-
-    root = _root("2026-08-27T09:38:41.000Z", "2026-08-27T15:31:52.000Z")
-    assert _p0m_window_until(
-        "2026-08-27T17:52:11.000Z", root=root, revision=None
-    ) is None
-
-
-def test_the_window_floor_is_the_mint_floor_not_zero():
-    """A 44ms root is not a root; exactly the floor still is."""
-
-    decision = datetime(2026, 8, 27, 15, 0, 0, tzinfo=timezone.utc)
-    stamp = lambda d: d.isoformat(timespec="milliseconds").replace(  # noqa: E731
-        "+00:00", "Z"
-    )
-    at_floor = _root(
-        "2026-08-27T09:38:41.000Z",
-        stamp(decision + timedelta(seconds=MIN_USABLE_FRESHNESS_SECONDS)),
-    )
-    assert _p0m_window_until(stamp(decision), root=at_floor, revision=None)
-    under = _root(
-        "2026-08-27T09:38:41.000Z",
-        stamp(
-            decision
-            + timedelta(seconds=MIN_USABLE_FRESHNESS_SECONDS - 0.001)
-        ),
-    )
-    assert _p0m_window_until(
-        stamp(decision), root=under, revision=None
-    ) is None
-
-
-def test_a_rebuild_is_seated_now_when_the_root_is_older():
-    assert _p0m_replay_decision_at(
-        "2026-09-13T04:02:00.123Z",
-        after_decision_utc="2026-09-13T03:55:00.000Z",
-    ) == "2026-09-13T04:02:00.123Z"
-
-
-def test_a_rebuild_on_a_root_minted_this_cycle_follows_it_by_a_millisecond():
-    """Every P0 this cycle compiles is stamped with the cycle clock itself.
-
-    A stage may not share its predecessor's instant, and declining left the
-    rebuild to the next cycle while P1 rooted on the bare P0 in between.
-    """
-
-    out = _p0m_replay_decision_at(
-        "2026-09-13T04:02:00.123Z",
-        after_decision_utc="2026-09-13T04:02:00.123Z",
-    )
-    assert out == "2026-09-13T04:02:00.124Z"
-    assert timestamp_lt("2026-09-13T04:02:00.123Z", out)
-    # Byte order agrees with instant order against the root's own stamp.
-    assert "2026-09-13T04:02:00.123Z" < out
-    micro = _p0m_replay_decision_at(
-        "2026-09-13T04:02:00.123Z",
-        after_decision_utc="2026-09-13T04:02:00.123456Z",
-    )
-    assert micro == "2026-09-13T04:02:00.124Z"
-    assert timestamp_lt("2026-09-13T04:02:00.123456Z", micro)
 
 
 # ---------------------------------------------------------------- ring 1
