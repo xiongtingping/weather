@@ -22512,7 +22512,11 @@ function sdStageMove(e, stage){
   const tip = stage === "P0-M"
     ? "P0-M＝根 P0（分布回归的服务向量）× TAF 似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是 TAF 的挪动。"
     : `P1＝根（${root}）× 实况似然，再施观测下界；左边是根，右边是本阶段服务的向量，差就是实况更新的挪动。`;
-  return sdMoveBox(title, S.delta_c, S, [`根（${root}）`, stage], why + exLine, tip, "");
+  // Charter 241: P1 multiplies P0-M's proportional vector, so the root shown is that one --
+  // the floor-bucket mass is P0-M's own move and is not counted again here.
+  const rootLab = S.root_proportional ? `根（${root} 按比例）` : `根（${root}）`;
+  const tipP = S.root_proportional ? tip + "\n根取 P0-M 施下界后按比例归一的向量（P1 实际乘的就是它）；P0-M 卡上把排除质量堆到下界桶的部分只是 P0-M 自己的挪动，P1 不再重复。" : tip;
+  return sdMoveBox(title, S.delta_c, S, [rootLab, stage], why + exLine, tipP, "");
 }
 function sdMoveBox(title, delta, S, labels, math, tip, wf){
   const pre = S.pre || {}, post = S.post || {};

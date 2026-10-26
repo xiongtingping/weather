@@ -618,9 +618,21 @@ def _stage_move(conn, head: Mapping[str, Any], station: str, day: str, axis, sta
                              station, day, str(L.get("prediction_root_stage")))
     if root is None or not root["vector"]:
         return None
-    move = _vector_move({k: float(v) for k, v in root["vector"].items()}, head["vector"], axis)
+    vector = root["vector"]
+    proportional = False
+    if stage == "P1":
+        # Charter 241: P1 multiplies the P0-M root's proportional vector (the
+        # bound applied by renormalising), not the censored one P0-M serves --
+        # the bound's mass on the floor bucket is P0-M's own move, not P1's.
+        from .observed_floor_censoring import OBSERVED_FLOOR_CENSORING_LINEAGE_KEY  # noqa: PLC0415
+
+        censoring = _json(root["lineage"].get(OBSERVED_FLOOR_CENSORING_LINEAGE_KEY), {})
+        if censoring.get("proportional_probabilities"):
+            vector, proportional = censoring["proportional_probabilities"], True
+    move = _vector_move({k: float(v) for k, v in vector.items()}, head["vector"], axis)
     if move is not None:
         move["root_stage"] = "P0" if stage == "P0-M" else L.get("prediction_root_stage")
+        move["root_proportional"] = proportional
     return move
 
 
