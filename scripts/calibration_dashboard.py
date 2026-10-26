@@ -18651,7 +18651,22 @@ function wrfTmaxPanel(){
     const others = rest.filter(c => !KEYC.includes(c));
     const restDays = days.filter(d => others.some(c => S.days[d].configs[c]));
     const restTable = others.length ? `<details style="margin-top:6px"><summary class="muted">其它回算配置逐日表（${others.length}）</summary><div class="card" style="margin-top:6px;overflow-x:auto">${tbl(others, restDays)}</div></details>` : "";
-    return top + aheadRow + ncRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
+    // Every issue of the newest day on the clock it came out (user 2026-10-26 「做成曲线」「在下方"WRF
+    // 最高温预报"专区也要体现」): early, the frozen 11:10 one and the half-hour re-runs, against the
+    // airport's maximum so far, the market then and the truth once in -- the station card's chart.
+    const ISSUE_KIND = {early: "早版", frozen: "冻结版", update: "重跑"};
+    const issues = [L.nowcast, ...(L.nowcast_updates || [])].filter(r => r && r.ready_utc && r.sat_obs_c != null)
+      .sort((a, b) => String(a.ready_utc).localeCompare(String(b.ready_utc)));
+    const issueLines = !issues.length ? [] : [
+      {pts: issues.map(r => [r.ready_utc, r.sat_obs_c]), stroke: "#0e9f6e", width: 2, label: "WRF 各版",
+       marks: issues.map(r => [r.ready_utc, r.sat_obs_c, `${ISSUE_KIND[r.kind] || r.kind || ""} · 云图 ${r.last_scan_utc ? loc(`${last}T${r.last_scan_utc}:00Z`) : "—"} · ${loc(r.ready_utc)} 出数 · ${n(r.sat_obs_c, 2)}°C`])},
+      {pts: issues.filter(r => r.metar_max_so_far_c != null).map(r => [r.ready_utc, r.metar_max_so_far_c]), stroke: "#6e7781", dash: true, label: "已报最高"},
+      {pts: issues.filter(r => r.market_mean_c != null).map(r => [r.ready_utc, r.market_mean_c]), stroke: "#f778ba", width: 1, label: "市场均值"},
+      ...(L.truth_c == null ? [] : [{pts: [[issues[0].ready_utc, L.truth_c], [issues[issues.length - 1].ready_utc, L.truth_c]], stroke: "var(--text)", dash: true, width: 1, label: "实测"}])];
+    const newest = issues[issues.length - 1];
+    const issueRow = issues.length < 2 ? "" : `<div class="trend-t" style="margin-top:8px" title="早版（约 10:00、10:30）、冻结版（11:10 起跑）、之后每半小时一张新云图重跑一次；每个点＝那一版报的今天最高温（已与当时报文最高取大），横轴＝出数时间；悬停看是哪一版、用哪张云图">今天 WRF 各版最高温 · 按出数时间（${issues.length} 版，最新 ${h(loc(newest.ready_utc))} ${n(newest.sat_obs_c)}°C）</div>
+      <div class="card">${sdTimeTempChart(issueLines, null, null, {h: 180})}</div>`;
+    return top + aheadRow + ncRow + issueRow + tiles + `<div class="grid g2" style="margin-top:8px">${chart1}${chart2}</div>` + table + restTable;
   }).join("") + `<div class="muted" style="margin-top:6px">读于 ${h(String(W.as_of_utc || "").slice(0, 16).replace("T", " "))}Z${(W.running || []).length ? ` · 运行中 ${W.running.length} 轮` : ""} · 只显示，不进任何层</div>`;
 }
 
