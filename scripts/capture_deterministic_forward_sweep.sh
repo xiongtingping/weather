@@ -25,7 +25,11 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] deterministic family forward capture"
 # 2026-10-21, the red 「上次尝试 network_retry」 whose kept tail began after them
 # and so never named the source that dropped).
 CAPTURE_OUT="$(mktemp -t deterministic_capture.XXXXXX)"
-trap 'rm -f "$CAPTURE_OUT"' EXIT
+# Chained, not replaced: single_instance's EXIT trap releases the lane's lock,
+# and overwriting it left the lock behind on every pass, so each next start
+# opened its tail with "reclaiming a lock left by pid ..." (2026-10-26, read
+# on the board as if a dead copy had blocked the write).
+trap "rm -f \"\$CAPTURE_OUT\"; $(trap -p EXIT | sed -e "s/^trap -- '//" -e "s/' EXIT\$//")" EXIT
 "$PY" scripts/capture_deterministic_forward.py | tee "$CAPTURE_OUT"
 
 # Charter 267 补记八 (user 2026-10-18 「接，从现在开始采」): the same runs'
