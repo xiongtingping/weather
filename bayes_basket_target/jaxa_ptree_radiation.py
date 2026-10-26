@@ -53,6 +53,7 @@ PUBLISH_AFTER = timedelta(minutes=75)
 MAX_FILE_BYTES = 80 * 1024 * 1024
 MIN_FREE_BYTES = 2 * 1024 ** 3
 CURL_TIMEOUT_SECONDS = 300
+STALE_DOWNLOAD_SECONDS = 3600
 LISTING_TTL_SECONDS = 300.0
 MISS_RETRY_SECONDS = 600.0
 KEEP_HOURS = 96
@@ -212,19 +213,41 @@ def _download(remote: str) -> str:
     workdir.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(workdir).free < MIN_FREE_BYTES:
         raise RuntimeError("free disk below the floor")
+    _sweep_stale_downloads(workdir)
     handle, path = tempfile.mkstemp(suffix=".nc", dir=workdir)
     os.close(handle)
-    # A transfer the server closes early (curl 18, seen 2026-10-15) is
-    # tried once more; anything else fails at once.
-    for _attempt in range(2):
-        got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
-                    timeout=CURL_TIMEOUT_SECONDS)
-        if got.returncode != 18:
-            break
-    if got.returncode != 0:
+    try:
+        # A transfer the server closes early (curl 18, seen 2026-10-15) is
+        # tried once more; anything else fails at once.
+        for _attempt in range(2):
+            got = _curl("--max-filesize", str(MAX_FILE_BYTES), "-o", path, f"ftps://{HOST}{remote}",
+                        timeout=CURL_TIMEOUT_SECONDS)
+            if got.returncode != 18:
+                break
+        if got.returncode != 0:
+            raise RuntimeError(f"download: curl {got.returncode} {got.stderr.decode(errors='replace')[:120]}")
+    except BaseException:
+        # A curl timeout raised here left its partial file behind: 749 MiB
+        # of tmp*.nc by 2026-10-26.
         os.unlink(path)
-        raise RuntimeError(f"download: curl {got.returncode} {got.stderr.decode(errors='replace')[:120]}")
+        raise
     return path
+
+
+def _sweep_stale_downloads(workdir: Path) -> None:
+    """Drop temp files a killed reader never got to delete.
+
+    A reader holds its file for at most two curl attempts plus the read, so
+    anything older than STALE_DOWNLOAD_SECONDS has no owner left.
+    """
+
+    cutoff = time.time() - STALE_DOWNLOAD_SECONDS
+    for stale in workdir.glob("tmp*.nc"):
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def read_clp_file(remote: str, stations: dict[str, tuple[float, float]]) -> dict[str, dict[str, Any]]:

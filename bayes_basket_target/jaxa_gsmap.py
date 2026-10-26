@@ -45,6 +45,7 @@ DATA_LAT_LIMIT = 60.0
 PUBLISH_AFTER = timedelta(minutes=62)
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MIN_FREE_BYTES = 2 * 1024 ** 3
+STALE_DOWNLOAD_SECONDS = 3600
 FTP_TIMEOUT_SECONDS = 60
 MISS_RETRY_SECONDS = 600.0
 KEEP_SLOTS = 200
@@ -103,6 +104,15 @@ def read_slot(start: datetime, stations: dict[str, tuple[float, float]]) -> dict
     if shutil.disk_usage(workdir).free < MIN_FREE_BYTES:
         raise RuntimeError("free disk below the floor")
     user, password = _account()
+    # A reader killed mid-read never reaches its finally; nothing still
+    # running holds a file this old.
+    cutoff = time.time() - STALE_DOWNLOAD_SECONDS
+    for stale in workdir.glob("tmp*.nc"):
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+        except FileNotFoundError:
+            pass
     handle, path = tempfile.mkstemp(suffix=".nc", dir=workdir)
     os.close(handle)
     try:
