@@ -217,3 +217,27 @@ def test_replay_segment_is_scored_on_its_own(tmp_path: Path, monkeypatch) -> Non
     assert S["replay_scores"]["sat_obs_c"] == {"n": 2, "bias_c": 0.0, "mae_c": 1.0, "hit": 0.0}
     assert S["replay_vs_sat"]["sat_aer_obs_c"] == {"n": 2, "mean_c": 0.0, "sd_c": 0.707, "t": 0.0}
     assert S["nowcast_scores"] == {} and S["days"]["2026-10-02"]["replay"]["ctl_obs_c"] == 24.0
+
+
+def test_card_leads_with_the_newest_issue_early_frozen_or_rerun(monkeypatch) -> None:
+    """Early issues before 11:10 (user 2026-10-26 「在 11:10 之前加两轮带卫星云的早版」): before the
+    frozen issue the newest early one leads; once the frozen issue is out it leads until a
+    later re-run."""
+
+    from bayes_basket_target import board_readings  # noqa: PLC0415
+
+    def card(frozen, updates):
+        value = {"state": "ok", "stations": {"ZUUU": {"timezone": "Asia/Shanghai", "scores": {}, "days": {"2026-10-27": {
+            "truth_c": None, "nowcast": frozen, "nowcast_updates": updates,
+            "nowcast_update_run": {"tmax_c": 21.0, "series": [], "status": "complete", "run": "upd/x"},
+            "configs": {"nowcast_sat": {"tmax_c": 22.0, "series": [], "status": "complete"}} if frozen else {}}}}}}
+        monkeypatch.setattr(board_readings, "load_reading", lambda name: {"value": value})
+        return W.stored("ZUUU", "2026-10-27")
+
+    early = [{"ready_utc": "2026-10-27T01:45:00Z", "kind": "early"}, {"ready_utc": "2026-10-27T02:45:00Z", "kind": "early"}]
+    frozen = {"ready_utc": "2026-10-27T03:27:00Z", "kind": "frozen"}
+    assert card(None, early)["nowcast"]["ready_utc"] == "2026-10-27T02:45:00Z"
+    v = card(frozen, early)
+    assert v["nowcast"]["kind"] == "frozen" and v["runs"]["nowcast_sat"]["tmax_c"] == 22.0
+    later = early + [{"ready_utc": "2026-10-27T04:30:00Z", "kind": "update"}]
+    assert card(frozen, later)["nowcast"]["kind"] == "update"

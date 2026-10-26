@@ -348,7 +348,7 @@ def _nowcast_view(rec: dict[str, Any]) -> dict[str, Any]:
         "sat_obs_c": rec.get("wrf_sat_tmax_with_obs_c"), "ctl_obs_c": rec.get("wrf_ctl_tmax_with_obs_c"),
         "market_mean_c": m.get("mean_c"), "market_mode_c": m.get("mode_c"), "market_mode_p": m.get("mode_p"),
         "belief_mean_c": b.get("mean_c"), "belief_mode_c": b.get("mode_c"), "belief_mode_p": b.get("mode_p"),
-        "belief_stage": b.get("stage"),
+        "belief_stage": b.get("stage"), "kind": rec.get("kind") or "frozen",
     }
 
 
@@ -572,10 +572,12 @@ def stored(station: str, day: str) -> dict[str, Any] | None:
                                                 "peak_covered", "prev_init_utc", "prev_tmax_c", "change_c")}
             for c in ("nowcast_sat", "nowcast_ctl", FORECAST) if c in configs}
     scores = S.get("scores") or {}
-    # The card leads with the newest issue: the last re-run on a newer scan when there is
-    # one (user 2026-10-25 「有新数据就应该跑」), else the frozen 11:10 issue.
+    # The card leads with the newest issue by ready time: a re-run on a newer scan (user
+    # 2026-10-25 「有新数据就应该跑」) or an early issue before 11:10 (user 2026-10-26 「在 11:10 之前
+    # 加两轮带卫星云的早版」) when it came out after the frozen 11:10 issue or there is none yet.
     nowcast, updates = E.get("nowcast"), E.get("nowcast_updates") or []
-    if updates and E.get("nowcast_update_run"):
+    if updates and E.get("nowcast_update_run") and (
+            not nowcast or str(updates[-1].get("ready_utc") or "") > str(nowcast.get("ready_utc") or "")):
         nowcast = updates[-1]
         keep["nowcast_sat"] = {k: E["nowcast_update_run"].get(k) for k in keep.get("nowcast_sat") or E["nowcast_update_run"]}
     return {"state": "ok", "as_of_utc": value.get("as_of_utc"), "timezone": S.get("timezone"),
